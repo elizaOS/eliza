@@ -51,6 +51,9 @@ const h = vi.hoisted(() => {
     // imports of the capture) install methods onto ElizaClient.prototype at
     // module scope; give the mock a real class so those installs land.
     ElizaClient: class ElizaClient {},
+    apiBase: "https://shared.example.test",
+    authorityRevision: 0,
+    authoritySubscribers: new Set<() => void>(),
     getStatus: vi.fn(async () => ({ state: "running" })),
     captureLifeOpsActivitySignal: vi.fn(async () => ({
       signal: { id: "sig-1" },
@@ -112,6 +115,12 @@ vi.mock("@elizaos/ui/api", () => ({
     return () => h.authSubscribers.delete(listener);
   },
   client: {
+    getBaseUrl: () => h.apiBase,
+    getAuthorityRevision: () => h.authorityRevision,
+    onAuthorityChange: (listener: () => void) => {
+      h.authoritySubscribers.add(listener);
+      return () => h.authoritySubscribers.delete(listener);
+    },
     getStatus: h.getStatus,
     captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
   },
@@ -128,6 +137,12 @@ vi.mock("@elizaos/ui/bridge", () => ({
   APP_PAUSE_EVENT: "eliza:app-pause",
   APP_RESUME_EVENT: "eliza:app-resume",
   client: {
+    getBaseUrl: () => h.apiBase,
+    getAuthorityRevision: () => h.authorityRevision,
+    onAuthorityChange: (listener: () => void) => {
+      h.authoritySubscribers.add(listener);
+      return () => h.authoritySubscribers.delete(listener);
+    },
     getStatus: h.getStatus,
     captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
   },
@@ -147,6 +162,12 @@ vi.mock("@elizaos/ui/events", () => ({
   APP_PAUSE_EVENT: "eliza:app-pause",
   APP_RESUME_EVENT: "eliza:app-resume",
   client: {
+    getBaseUrl: () => h.apiBase,
+    getAuthorityRevision: () => h.authorityRevision,
+    onAuthorityChange: (listener: () => void) => {
+      h.authoritySubscribers.add(listener);
+      return () => h.authoritySubscribers.delete(listener);
+    },
     getStatus: h.getStatus,
     captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
   },
@@ -177,6 +198,12 @@ vi.mock("@elizaos/ui/browser", () => ({
     return () => h.authSubscribers.delete(listener);
   },
   client: {
+    getBaseUrl: () => h.apiBase,
+    getAuthorityRevision: () => h.authorityRevision,
+    onAuthorityChange: (listener: () => void) => {
+      h.authoritySubscribers.add(listener);
+      return () => h.authoritySubscribers.delete(listener);
+    },
     getStatus: h.getStatus,
     captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
   },
@@ -315,6 +342,9 @@ describe("startLifeOpsActivitySignalCapture", () => {
     h.loadDesktopWorkspaceSnapshot.mockResolvedValue({ supported: false });
     h.authState = { phase: "authenticated", access: { role: "OWNER" } };
     h.authSubscribers.clear();
+    h.authoritySubscribers.clear();
+    h.apiBase = "https://shared.example.test";
+    h.authorityRevision = 0;
     h.capacitorGetPlatform.mockReturnValue("web");
     h.capacitorIsNative.mockReturnValue(false);
     h.capacitorIsPluginAvailable.mockReturnValue(true);
@@ -1121,7 +1151,7 @@ describe("startLifeOpsActivitySignalCapture", () => {
     expect(sources).toContain("page_visibility");
   });
 
-  it("latches off for the document after a typed dedicated-runtime-unavailable 503", async () => {
+  it("stands down on the same authority after a typed dedicated-runtime-unavailable 503", async () => {
     vi.useFakeTimers();
     const consoleError = vi
       .spyOn(console, "error")
@@ -1145,7 +1175,8 @@ describe("startLifeOpsActivitySignalCapture", () => {
     document.dispatchEvent(new Event("visibilitychange"));
     window.dispatchEvent(new Event("focus"));
     document.dispatchEvent(new Event("eliza:app-resume"));
-    await vi.advanceTimersByTimeAsync(65_000);
+    for (const listener of h.authoritySubscribers) listener();
+    await vi.advanceTimersByTimeAsync(300_000);
     document.dispatchEvent(new Event("visibilitychange"));
     await vi.advanceTimersByTimeAsync(0);
 
@@ -1155,6 +1186,93 @@ describe("startLifeOpsActivitySignalCapture", () => {
     );
     expect(consoleError).not.toHaveBeenCalled();
     consoleError.mockRestore();
+  });
+
+  it.each(["dedicated handoff", "same-host account change"])(
+    "recovers activity capture after %s without reloading the document",
+    async (transition) => {
+      vi.useFakeTimers();
+      h.isApiError.mockImplementation(
+        (error) =>
+          typeof error === "object" && error !== null && "kind" in error,
+      );
+      h.captureLifeOpsActivitySignal.mockRejectedValue(
+        typedLifeOpsUnavailableError(),
+      );
+      stop = startLifeOpsActivitySignalCapture(true);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.captureLifeOpsActivitySignal).toHaveBeenCalledTimes(1);
+
+      h.captureLifeOpsActivitySignal.mockClear();
+      h.captureLifeOpsActivitySignal.mockResolvedValue({
+        signal: { id: "new-runtime" },
+      });
+      if (transition === "dedicated handoff") {
+        h.apiBase = "https://dedicated.example.test";
+      } else {
+        h.authorityRevision += 1;
+      }
+      for (const listener of h.authoritySubscribers) listener();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(capturedSources()).toContain("app_lifecycle");
+      expect(capturedSources()).toContain("page_visibility");
+      const resumed = h.captureLifeOpsActivitySignal.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(65_000);
+      expect(h.captureLifeOpsActivitySignal.mock.calls.length).toBeGreaterThan(
+        resumed,
+      );
+      expect(h.dispatchStatus).not.toHaveBeenCalledWith(
+        expect.objectContaining({ status: "capture_error" }),
+      );
+    },
+  );
+
+  it("does not carry queued signals or a late unsupported response into the next authority", async () => {
+    vi.useFakeTimers();
+    h.isApiError.mockImplementation(
+      (error) => typeof error === "object" && error !== null && "kind" in error,
+    );
+    let rejectOld: (error: unknown) => void = () => {
+      throw new Error("Old request has not started");
+    };
+    h.captureLifeOpsActivitySignal.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectOld = reject;
+        }),
+    );
+    stop = startLifeOpsActivitySignalCapture(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.captureLifeOpsActivitySignal).toHaveBeenCalledTimes(1);
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.captureLifeOpsActivitySignal).toHaveBeenCalledTimes(1);
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    h.apiBase = "https://dedicated.example.test";
+    for (const listener of h.authoritySubscribers) listener();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.captureLifeOpsActivitySignal.mock.calls.length).toBeGreaterThan(1);
+    rejectOld(typedLifeOpsUnavailableError());
+    await vi.advanceTimersByTimeAsync(0);
+    const resumed = h.captureLifeOpsActivitySignal.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(65_000);
+    expect(h.captureLifeOpsActivitySignal.mock.calls.length).toBeGreaterThan(
+      resumed,
+    );
+    expect(h.captureLifeOpsActivitySignal).not.toHaveBeenCalledWith(
+      expect.objectContaining({ state: "hidden" }),
+    );
+    expect(h.dispatchStatus).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: "capture_error" }),
+    );
   });
 
   it("removes every listener and interval on stop", async () => {

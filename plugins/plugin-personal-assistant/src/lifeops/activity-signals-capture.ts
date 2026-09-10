@@ -1,72 +1,13 @@
 /**
- * Imperative renderer-side controller that captures presence/health/screen-time
- * activity signals and posts them to the LifeOps activity-signals endpoint:
- * browser lifecycle listeners on every platform, the Capacitor MobileSignals
- * plugin on native mobile, and the Electrobun power/workspace bridge on
- * desktop. Signals are deduped by per-source fingerprint and re-captured on app
- * resume.
+ * Captures owner-consented presence, health and screen-time signals in the
+ * renderer service host. One instance owns browser listeners, mobile monitoring
+ * and desktop polling; stop awaits native teardown before replacement starts.
  *
- * The renderer-service host starts this via `../register.ts`
- * (`registerRendererService`), passing its per-instance context through, scoped
- * to main app windows only — never popouts, detached shells, the phone
- * companion, app windows, or the model tester. The controller upholds four
- * hard guarantees (#16504, #17110):
- *
- * - **Idempotent start.** One capture per renderer: a second start while one
- *   is active returns the active capture's stop function instead of installing
- *   duplicate listeners/pollers. Stop fully releases the singleton so a later
- *   start re-initializes cleanly (host replacement, HMR).
- * - **Race-safe stop.** Native startup awaits (permission check, listener
- *   registration, monitor start) re-check the stop flag after every await:
- *   stopping mid-start removes the late listener handle, stops monitoring if
- *   it already engaged, and never installs a late poller interval.
- * - **No capture before consent.** Native monitoring starts only when the OS
- *   permission status is already "granted". This background service never
- *   prompts — requesting permission is the settings UI's job — and a denial
- *   is surfaced as a `permission_unavailable` status event, then re-checked on
- *   each app resume so a grant made in Settings activates without a restart.
- * - **Commit-after-success teardown.** `stop()` is async-capable: it removes
- *   the native listener, stops monitoring, cancels any scheduled background
- *   refresh, and awaits all of it before resolving, so the renderer-service
- *   registry can serialize a successor's start behind it (defect #2 of
- *   #17110 — a stale generation's in-flight `stopMonitoring()` can no longer
- *   land after the replacement's `startMonitoring()`). Symmetrically, native
- *   monitoring only *commits* its listener handle once `startMonitoring()`
- *   resolves `{ enabled: true }`; a rejection or `enabled: false` rolls the
- *   listener back instead of wedging the retry guard forever. The optional
- *   `context` (the registry's per-instance shell/signal) is accepted so this
- *   module's `start()` matches the renderer-service contract, but `signal` is
- *   deliberately not independently observed via an `abort` listener: the
- *   registry always calls this returned `stop` as the instance's cleanup in
- *   the same synchronous tick as aborting the signal, and a second listener
- *   racing that call would see `mounted` already false and hand back an
- *   already-resolved promise — silently orphaning the real, still in-flight
- *   teardown and defeating the serialization this fix exists to provide.
- *   `mounted` alone is the race-free source of truth every async
- *   continuation re-checks after its await, so a late completion (a
- *   resolved/rejected in-flight request, a delayed native event) discards
- *   itself instead of publishing after stop.
- *
- * Canonical auth state gates runtime readiness: a signed-out renderer makes no
- * protected status requests, and the capture arms immediately when the app's
- * existing auth probe publishes a valid session. A defensive 401/403 from an
- * already-armed request suspends the poller until auth publishes again.
- * Expected unavailability (runtime not yet running, transient network/timeout,
- * endpoint 503, a stale binding whose deleted agent answers with the structural
- * agent-gone 404) quietly stands the capture down.
- * A typed dedicated-runtime-unavailable gate (`lifeops_runtime_unavailable`,
- * requiredExecutionTier dedicated-always) latches every activity-signal source
- * off for this document: Shared will not grow a LifeOps ingest path later in
- * the same renderer, so retrying page/visibility POSTs only fans out 503s.
- * Generic capability 503s still use a bounded retry interval because a
- * Dedicated plugin may come up after boot, and the global runtime status
- * cannot prove that this optional route is active. Sends are serialized so a
- * retry boundary cannot emit lifecycle + page-state before the probe settles.
- * Anything else is surfaced observably: a `capture_error` status event plus a
- * prefixed console.error — but only while still mounted; a failure that lands
- * after stop is discarded rather than published. Teardown's own failures are
- * the exception: they always report (J6), since they are this instance's own
- * teardown, not a stale generation's late noise.
+ * Signal requests serialize within an API authority. An unsupported LifeOps
+ * route stands down until that authority changes; generic transient failures
+ * retain bounded recovery. Queued requests and late responses cannot cross
+ * authority or session generations. Authentication and existing native consent
+ * gate capture, and unexpected failures remain observable through status events.
  */
 import { Capacitor } from "@capacitor/core";
 import {
@@ -291,6 +232,8 @@ export function startLifeOpsActivitySignalCapture(
   let activitySignalsUnsupported = false;
   let sendChain: Promise<void> = Promise.resolve();
   let mounted = true;
+  let authorityBase = client.getBaseUrl();
+  let authorityRevision = client.getAuthorityRevision();
 
   const stopRuntimeReadiness = (): void => {
     runtimeReadinessGeneration += 1;
@@ -326,23 +269,20 @@ export function startLifeOpsActivitySignalCapture(
     if (!data || typeof data !== "object") {
       return false;
     }
-    const body = data as {
-      code?: unknown;
-      capability?: unknown;
-      requiredExecutionTier?: unknown;
-    };
     return (
-      body.code === "lifeops_runtime_unavailable" ||
-      (body.capability === "lifeops-activity-signals" &&
-        body.requiredExecutionTier === "dedicated-always")
+      ("code" in data && data.code === "lifeops_runtime_unavailable") ||
+      ("capability" in data &&
+        data.capability === "lifeops-activity-signals" &&
+        "requiredExecutionTier" in data &&
+        data.requiredExecutionTier === "dedicated-always")
     );
   };
 
   const standDownActivitySignals = (error: unknown): void => {
     runtimeReady = false;
     if (isTypedDedicatedRuntimeUnavailable(error)) {
-      // Shared (and any other dedicated-always wall) will not start ingesting
-      // later in this document. Bounded retry is only for generic 503s.
+      // A Shared authority cannot ingest this capability. Dedicated handoff
+      // or account replacement resets this state through onAuthorityChange.
       activitySignalsUnsupported = true;
       return;
     }
@@ -463,8 +403,14 @@ export function startLifeOpsActivitySignalCapture(
   const sendSignal = async (
     signal: CaptureLifeOpsActivitySignalRequest,
   ): Promise<LifeOpsActivitySignal | null> => {
+    const generation = runtimeReadinessGeneration;
     const run = async (): Promise<LifeOpsActivitySignal | null> => {
-      if (!mounted || !runtimeReady || activitySignalsUnsupported) {
+      if (
+        !mounted ||
+        !runtimeReady ||
+        activitySignalsUnsupported ||
+        generation !== runtimeReadinessGeneration
+      ) {
         return null;
       }
       const normalized: CaptureLifeOpsActivitySignalRequest = {
@@ -486,8 +432,12 @@ export function startLifeOpsActivitySignalCapture(
       try {
         const { signal: persisted } =
           await client.captureLifeOpsActivitySignal(normalized);
+        if (!mounted || generation !== runtimeReadinessGeneration) return null;
         return persisted;
       } catch (error) {
+        // error-policy:J4 stale responses belong to a retired capture authority;
+        // current transport failures stand down or propagate to the boundary.
+        if (!mounted || generation !== runtimeReadinessGeneration) return null;
         lastSent.delete(dedupeKey);
         if (isSessionUnavailableError(error)) {
           suspendForUnavailableSession();
@@ -505,6 +455,7 @@ export function startLifeOpsActivitySignalCapture(
       }
     };
     const pending = sendChain.then(run, run);
+    // error-policy:J5 the caller observes pending; the queue must remain usable.
     sendChain = pending.then(
       () => undefined,
       () => undefined,
@@ -799,13 +750,19 @@ export function startLifeOpsActivitySignalCapture(
   };
 
   const emitCurrentState = (reason: string): void => {
+    const generation = runtimeReadinessGeneration;
     void (async () => {
       await sendSignal({
         source: "app_lifecycle",
         state: "active",
         metadata: { reason: "resume" },
       });
-      if (!mounted || !runtimeReady || activitySignalsUnsupported) {
+      if (
+        !mounted ||
+        !runtimeReady ||
+        activitySignalsUnsupported ||
+        generation !== runtimeReadinessGeneration
+      ) {
         return;
       }
       emitPageState(reason);
@@ -871,6 +828,25 @@ export function startLifeOpsActivitySignalCapture(
   // Subscribe before reading the snapshot so an auth publication racing this
   // startup cannot be missed. A duplicate authenticated publication is a no-op.
   const unsubscribeAuthStatus = subscribeAuthStatus(handleAuthStatus);
+  const unsubscribeAuthority = client.onAuthorityChange(() => {
+    const nextBase = client.getBaseUrl();
+    const nextRevision = client.getAuthorityRevision();
+    if (
+      !mounted ||
+      (nextBase === authorityBase && nextRevision === authorityRevision)
+    )
+      return;
+    authorityBase = nextBase;
+    authorityRevision = nextRevision;
+    stopRuntimeReadiness();
+    activitySignalsUnsupported = false;
+    activitySignalsRetryAtMs = 0;
+    lastSent.clear();
+    // A slow request to the previous host must not block the new owner. Its
+    // queued work and completion are invalidated by the readiness generation.
+    sendChain = Promise.resolve();
+    startRuntimeReadiness("runtime-authority-changed");
+  });
   const initialAuth = getAuthStatusSnapshot();
   if (
     isAuthenticatedNow() &&
@@ -905,6 +881,7 @@ export function startLifeOpsActivitySignalCapture(
       activeCaptureStop = null;
     }
     unsubscribeAuthStatus();
+    unsubscribeAuthority();
     sessionAllowsReadiness = false;
     stopRuntimeReadiness();
     document.removeEventListener("visibilitychange", handleVisibilityChange);
