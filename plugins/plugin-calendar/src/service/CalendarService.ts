@@ -200,6 +200,7 @@ import {
   createLifeOpsAuditEvent,
   createLifeOpsReminderPlan,
 } from "./gate.js";
+import { LinkedCalendarControlRepository } from "./linked-calendar-control.js";
 import {
   GoogleLinkedCalendarProviderPort,
   type LinkedCalendarEventRecord,
@@ -1188,6 +1189,7 @@ export class CalendarService extends Service {
   private microsoftPort: MicrosoftGraphCalendarPort;
   private readonly googleWatch: GoogleCalendarWatchLifecycle;
   private readonly linkedRepo: LinkedCalendarRepository;
+  private readonly linkedControl: LinkedCalendarControlRepository;
   private linkedCalendarDrain: Promise<void> | null = null;
   private linkedCalendarDrainRequested = false;
   private readonly googleSyncLocks = new Map<string, Promise<void>>();
@@ -1200,6 +1202,7 @@ export class CalendarService extends Service {
     super(runtime);
     this.repo = new CalendarRepository(this.runtime);
     this.linkedRepo = new LinkedCalendarRepository(this.runtime);
+    this.linkedControl = new LinkedCalendarControlRepository(this.runtime);
     this.gate = createDefaultCalendarHostGate(this.runtime);
     this.microsoftPort = new DefaultMicrosoftGraphCalendarPort(this.runtime);
     this.googleWatch = new GoogleCalendarWatchLifecycle(this.runtime, {
@@ -1353,47 +1356,57 @@ export class CalendarService extends Service {
 
   private async activeLinkedCalendarTarget(): Promise<{
     connectorAccountId: string;
-    providerCalendarId: "primary";
+    providerCalendarId: string;
   } | null> {
+    const control = await this.linkedControl.read();
+    if (control.paused || !control.destination) return null;
     const accounts = await this.gate.getGoogleConnectorAccounts(
       new URL("http://localhost/api/lifeops/calendar/linked/automatic-sync"),
       "owner",
     );
-    const writable = accounts
-      .filter(
-        (account) =>
-          account.connected &&
-          account.grant?.capabilities.includes("google.calendar.read") &&
-          account.grant.capabilities.includes("google.calendar.write"),
-      )
-      .sort(
-        (left, right) =>
-          Number(right.preferredByAgent) - Number(left.preferredByAgent) ||
-          String(right.grant?.updatedAt).localeCompare(
-            String(left.grant?.updatedAt),
-          ) ||
-          String(left.grant?.id).localeCompare(String(right.grant?.id)),
+    const account = accounts.find(
+      (account) =>
+        account.connected &&
+        account.grant?.capabilities.includes("google.calendar.read") &&
+        account.grant.capabilities.includes("google.calendar.write") &&
+        accountIdForGrant(account.grant) ===
+          control.destination?.connectorAccountId,
+    );
+    if (!account) {
+      throw new CalendarServiceError(
+        409,
+        "The selected Google calendar account is unavailable or missing permissions. Review its connection before resuming sync.",
+        "LINKED_CALENDAR_DESTINATION_UNAVAILABLE",
       );
-    const grant = writable[0]?.grant;
-    if (
-      !grant &&
-      accounts.length > 0 &&
-      accounts.every((account) => account.reason === "disconnected")
-    ) {
-      for (const accountId of new Set(
-        (await this.linkedRepo.listForAgent(this.agentId())).map(
-          (link) => link.connectorAccountId,
-        ),
-      )) {
-        await this.linkedRepo.pauseAccount(this.agentId(), accountId);
-      }
     }
-    return grant
-      ? {
-          connectorAccountId: accountIdForGrant(grant),
-          providerCalendarId: "primary",
-        }
-      : null;
+    return control.destination;
+  }
+
+  private async runLinkedCalendarOperation(
+    record: LinkedCalendarEventRecord,
+    strategy?: "keep_eliza" | "keep_google",
+  ) {
+    const control = await this.linkedControl.read();
+    if (control.paused || control.dispatch) return "paused" as const;
+    if (!(await this.activeLinkedCalendarTarget())) return "paused" as const;
+    const reconciler = this.linkedReconciler();
+    const token = await this.linkedControl.acquireDispatch(
+      control.revision,
+      record.id,
+      {
+        connectorAccountId: record.connectorAccountId,
+        providerCalendarId: record.providerCalendarId,
+      },
+    );
+    // A thrown provider/checkpoint error retains the durable receipt. A restart
+    // must reconcile its outcome before admitting another operation or cutover.
+    const outcome = strategy
+      ? await reconciler.resolveConflict(record, strategy)
+      : await reconciler.reconcile(record);
+    if (outcome !== "quarantined") {
+      await this.linkedControl.settleDispatch(token);
+    }
+    return outcome;
   }
 
   private async enqueueBuiltInCalendarMutation(
@@ -1463,7 +1476,7 @@ export class CalendarService extends Service {
   private async drainLinkedCalendarQueue(): Promise<void> {
     for (const record of await this.linkedRepo.listActionable(this.agentId())) {
       try {
-        await this.linkedReconciler().reconcile(record);
+        await this.runLinkedCalendarOperation(record);
       } catch (error) {
         // error-policy:J7 Durable linked-calendar work remains queued for the
         // next boot or feed refresh; one provider failure must not stop peers.
@@ -1579,7 +1592,7 @@ export class CalendarService extends Service {
       ),
       localRevision: local.revision,
     });
-    const outcome = await this.linkedReconciler().reconcile(created);
+    const outcome = await this.runLinkedCalendarOperation(created);
     const current = this.requireCurrentLinkedRecord(
       await this.linkedRepo.getById(this.agentId(), created.id),
     );
@@ -1594,7 +1607,7 @@ export class CalendarService extends Service {
       await this.linkedRepo.getById(this.agentId(), linkId),
       requireNonEmptyString(request.expectedUpdatedAt, "expectedUpdatedAt"),
     );
-    const outcome = await this.linkedReconciler().reconcile(record);
+    const outcome = await this.runLinkedCalendarOperation(record);
     const current = this.requireCurrentLinkedRecord(
       await this.linkedRepo.getById(this.agentId(), linkId),
     );
@@ -1619,7 +1632,7 @@ export class CalendarService extends Service {
       await this.linkedRepo.getById(this.agentId(), linkId),
       requireNonEmptyString(request.expectedUpdatedAt, "expectedUpdatedAt"),
     );
-    const outcome = await this.linkedReconciler().resolveConflict(
+    const outcome = await this.runLinkedCalendarOperation(
       record,
       request.strategy,
     );
@@ -1660,7 +1673,7 @@ export class CalendarService extends Service {
         record.providerEventId !== null && changed.has(record.providerEventId),
     );
     for (const record of records) {
-      await this.linkedReconciler().reconcile(record);
+      await this.runLinkedCalendarOperation(record);
     }
   }
 

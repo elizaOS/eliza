@@ -341,6 +341,13 @@ export async function ensureLinkedCalendarControlTable(
     paused BOOLEAN NOT NULL DEFAULT TRUE,
     connector_account_id TEXT,
     provider_calendar_id TEXT,
+    dispatch_token TEXT,
+    dispatch_link_id TEXT,
+    CONSTRAINT linked_calendar_control_dispatch_valid CHECK (
+      (dispatch_token IS NULL AND dispatch_link_id IS NULL) OR
+      (dispatch_token IS NOT NULL AND length(dispatch_token) > 0
+        AND dispatch_link_id IS NOT NULL AND length(dispatch_link_id) > 0
+        AND connector_account_id IS NOT NULL)),
     CONSTRAINT linked_calendar_control_destination_valid CHECK ((connector_account_id IS NULL AND provider_calendar_id IS NULL AND paused)
       OR (connector_account_id IS NOT NULL AND length(trim(connector_account_id)) > 0
         AND provider_calendar_id IS NOT NULL AND length(trim(provider_calendar_id)) > 0))

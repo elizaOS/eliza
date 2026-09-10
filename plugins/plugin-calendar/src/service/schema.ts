@@ -286,9 +286,19 @@ export const linkedCalendarControl = calendarPgSchema.table(
     paused: boolean("paused").notNull().default(true),
     connectorAccountId: text("connector_account_id"),
     providerCalendarId: text("provider_calendar_id"),
+    dispatchToken: text("dispatch_token"),
+    dispatchLinkId: text("dispatch_link_id"),
   },
   (t) => [
     check("linked_calendar_control_revision_valid", sql`${t.revision} >= 0`),
+    check(
+      "linked_calendar_control_dispatch_valid",
+      sql`
+      (${t.dispatchToken} IS NULL AND ${t.dispatchLinkId} IS NULL) OR
+      (${t.dispatchToken} IS NOT NULL AND length(${t.dispatchToken}) > 0
+        AND ${t.dispatchLinkId} IS NOT NULL AND length(${t.dispatchLinkId}) > 0
+        AND ${t.connectorAccountId} IS NOT NULL)`,
+    ),
     check(
       "linked_calendar_control_destination_valid",
       sql`

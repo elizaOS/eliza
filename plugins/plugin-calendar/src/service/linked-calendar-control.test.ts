@@ -6,6 +6,8 @@ import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime } from "@elizaos/core";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, describe, expect, it } from "vitest";
+import { CalendarService } from "./CalendarService.js";
+import type { CalendarHostGate } from "./gate.js";
 import { LinkedCalendarControlRepository } from "./linked-calendar-control.js";
 import { LinkedCalendarRepository } from "./linked-calendar-sync.js";
 import {
@@ -47,6 +49,76 @@ afterEach(async () => {
 });
 
 describe("durable linked calendar review", { timeout: 30_000 }, () => {
+  it("keeps the public reconciliation path paused without initializing a provider", async () => {
+    const h = await harness();
+    const runtime = {
+      ...h.runtime(),
+      getService: () => {
+        throw new Error("Provider must not be initialized while paused");
+      },
+    } as unknown as IAgentRuntime;
+    const link = await new LinkedCalendarRepository(runtime).create({
+      agentId: runtime.agentId,
+      localEventId: "paused-event",
+      ...destination,
+      localRevision: 1,
+    });
+    const service = new CalendarService(runtime);
+    const result = await service.executeLinkedCalendarReconciliation(link.id, {
+      expectedUpdatedAt: link.updatedAt,
+      idempotencyKey: "paused-review",
+    });
+    expect(result.outcome).toBe("paused");
+    expect(result.link.pendingOperation).toBe("create");
+  });
+
+  it("refuses a configured but disconnected destination through the public service path", async () => {
+    const h = await harness();
+    let observeBootstrap!: (error: unknown) => void;
+    const bootstrapFailure = new Promise<unknown>((resolve) => {
+      observeBootstrap = resolve;
+    });
+    const runtime = {
+      ...h.runtime(),
+      reportError: (_scope: string, error: unknown) => observeBootstrap(error),
+    } as unknown as IAgentRuntime;
+    const link = await new LinkedCalendarRepository(runtime).create({
+      agentId: runtime.agentId,
+      localEventId: "disconnected-event",
+      ...destination,
+      localRevision: 1,
+    });
+    const initial = await h.controls().read();
+    const selected = await h
+      .controls()
+      .selectDestination(initial.revision, destination);
+    await h.controls().resume(selected.revision);
+    const service = new CalendarService(runtime);
+    service.setGate({
+      getGoogleConnectorAccounts: async () => [],
+    } as unknown as CalendarHostGate);
+    await expect(
+      service.executeLinkedCalendarReconciliation(link.id, {
+        expectedUpdatedAt: link.updatedAt,
+        idempotencyKey: "disconnected-review",
+      }),
+    ).rejects.toMatchObject({
+      code: "LINKED_CALENDAR_DESTINATION_UNAVAILABLE",
+    });
+    expect(await bootstrapFailure).toMatchObject({
+      code: "LINKED_CALENDAR_DESTINATION_UNAVAILABLE",
+    });
+    expect((await h.controls().read()).dispatch).toBeNull();
+    expect(
+      (
+        await new LinkedCalendarRepository(runtime).getById(
+          runtime.agentId,
+          link.id,
+        )
+      )?.pendingOperation,
+    ).toBe("create");
+  });
+
   it("rejects resume until a destination is selected and rejects replacement while active", async () => {
     const h = await harness();
     const controls = h.controls();
@@ -83,16 +155,104 @@ describe("durable linked calendar review", { timeout: 30_000 }, () => {
       .controls()
       .selectDestination(initial.revision, destination);
     const active = await h.controls().resume(selected.revision);
+    const token = await h
+      .controls()
+      .acquireDispatch(active.revision, "pending-event", destination);
     const paused = await h.controls().pause(active.revision);
     await h.pg.close();
     databases.splice(databases.indexOf(h.pg), 1);
     const reopened = await harness(directory);
     expect(await reopened.controls().read()).toEqual(paused);
     await expect(
+      reopened.controls().resume(paused.revision),
+    ).rejects.toMatchObject({
+      code: "LINKED_CALENDAR_CONTROL_TRANSITION_REJECTED",
+    });
+    await reopened.controls().settleDispatch(token);
+    expect((await reopened.controls().resume(paused.revision)).paused).toBe(
+      false,
+    );
+    await expect(
       reopened.controls().resume(selected.revision),
     ).rejects.toMatchObject({
       code: "LINKED_CALENDAR_CONTROL_TRANSITION_REJECTED",
     });
+  });
+
+  it("blocks new dispatch, destination change and resume until an admitted operation settles", async () => {
+    const h = await harness();
+    const initial = await h.controls().read();
+    const selected = await h
+      .controls()
+      .selectDestination(initial.revision, destination);
+    const active = await h.controls().resume(selected.revision);
+    const token = await h
+      .controls()
+      .acquireDispatch(active.revision, "event-a", destination);
+    await expect(
+      h.controls().acquireDispatch(active.revision, "event-b", destination),
+    ).rejects.toMatchObject({ code: "LINKED_CALENDAR_DISPATCH_REJECTED" });
+    const paused = await h.controls().pause(active.revision);
+    await expect(
+      h.controls().selectDestination(paused.revision, null),
+    ).rejects.toMatchObject({
+      code: "LINKED_CALENDAR_CONTROL_TRANSITION_REJECTED",
+    });
+    await expect(h.controls().resume(paused.revision)).rejects.toMatchObject({
+      code: "LINKED_CALENDAR_CONTROL_TRANSITION_REJECTED",
+    });
+    await expect(
+      h.controls().settleDispatch("unrelated-receipt"),
+    ).rejects.toMatchObject({
+      code: "LINKED_CALENDAR_DISPATCH_RECEIPT_REJECTED",
+    });
+    await h.controls().settleDispatch(token);
+    await expect(
+      h.controls().acquireDispatch(paused.revision, "event-b", destination),
+    ).rejects.toMatchObject({ code: "LINKED_CALENDAR_DISPATCH_REJECTED" });
+    const resumed = await h.controls().resume(paused.revision);
+    await expect(
+      h.controls().acquireDispatch(resumed.revision, "event-b", {
+        ...destination,
+        providerCalendarId: "unselected-calendar",
+      }),
+    ).rejects.toMatchObject({ code: "LINKED_CALENDAR_DISPATCH_REJECTED" });
+    const second = await h
+      .controls()
+      .acquireDispatch(resumed.revision, "event-b", destination);
+    await h.controls().settleDispatch(second);
+  });
+
+  it("serializes a pause racing admission across independent repository instances", async () => {
+    const h = await harness();
+    const initial = await h.controls().read();
+    const selected = await h
+      .controls()
+      .selectDestination(initial.revision, destination);
+    const active = await h.controls().resume(selected.revision);
+    const [admission, pause] = await Promise.allSettled([
+      h
+        .controls()
+        .acquireDispatch(active.revision, "racing-event", destination),
+      h.controls().pause(active.revision),
+    ]);
+    expect(pause.status).toBe("fulfilled");
+    const current = await h.controls().read();
+    expect(current.paused).toBe(true);
+    if (admission.status === "fulfilled") {
+      expect(current.dispatch?.token).toBe(admission.value);
+      await expect(h.controls().resume(current.revision)).rejects.toMatchObject(
+        { code: "LINKED_CALENDAR_CONTROL_TRANSITION_REJECTED" },
+      );
+      await h.controls().settleDispatch(admission.value);
+    } else {
+      expect(current.dispatch).toBeNull();
+    }
+    await expect(
+      h
+        .controls()
+        .acquireDispatch(current.revision, "later-event", destination),
+    ).rejects.toMatchObject({ code: "LINKED_CALENDAR_DISPATCH_REJECTED" });
   });
 
   it("allows only one concurrent review and rejects a stale resume", async () => {
