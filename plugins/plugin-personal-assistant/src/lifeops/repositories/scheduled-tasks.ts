@@ -316,6 +316,20 @@ export class ScheduledTaskRepository {
     );
   }
 
+  /**
+   * Wipe every scheduling-domain row this agent owns: the scheduled-task
+   * store and its log, plus the derived schedule/circadian state (merged
+   * states, per-day insights, raw observations, the current circadian
+   * row, and check-in report rows — a persisted morning report otherwise
+   * dedupes the next scenario's due check-in as already sent, #29068).
+   * Used only by the scenario-runner between corpus scenarios — the CLI
+   * shares ONE runtime + PGLite DB across the whole corpus, so a scenario that
+   * injects a future `now` (e.g. a persona pack ticking two days ahead) can
+   * otherwise persist a "sleeping" circadian state that a LATER scenario reads
+   * as authoritative at its own earlier clock and wrongly suppresses reminders
+   * as "probable_sleep". Production never crosses scenarios and never rewinds
+   * the clock, so this reset has no production caller.
+   */
   async resetSchedulingStateForScenario(agentId: string): Promise<void> {
     const quotedAgent = sqlQuote(agentId);
     for (const statement of [
@@ -325,6 +339,7 @@ export class ScheduledTaskRepository {
       `DELETE FROM app_lifeops.life_schedule_insights WHERE agent_id = ${quotedAgent}`,
       `DELETE FROM app_lifeops.life_schedule_observations WHERE agent_id = ${quotedAgent}`,
       `DELETE FROM app_lifeops.life_circadian_states WHERE agent_id = ${quotedAgent}`,
+      `DELETE FROM app_lifeops.life_checkin_reports WHERE agent_id = ${quotedAgent}`,
     ]) {
       await executeRawSql(this.runtime, statement);
     }
