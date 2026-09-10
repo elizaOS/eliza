@@ -5,6 +5,7 @@
 
 import type { ReactNode } from "react";
 import { ViewHeader } from "../shared/ViewHeader";
+import { ScrollArea } from "../ui/scroll-area";
 
 export interface PluginPageFrameProps {
   title: string;
@@ -26,15 +27,18 @@ export function PluginPageFrame({
       }`}
     >
       <ViewHeader title={title} />
-      <section
-        aria-label={title}
-        tabIndex={contentOverflow === "auto" ? 0 : undefined}
-        className={`min-h-0 min-w-0 flex-1 ${
-          contentOverflow === "auto" ? "overflow-y-auto" : "overflow-hidden"
-        }`}
-      >
-        {children}
-      </section>
+      {contentOverflow === "auto" ? (
+        <section aria-label={title} className="min-h-0 min-w-0 flex-1">
+          <ScrollArea className="h-full min-w-0">{children}</ScrollArea>
+        </section>
+      ) : (
+        <section
+          aria-label={title}
+          className="min-h-0 min-w-0 flex-1 overflow-hidden"
+        >
+          {children}
+        </section>
+      )}
     </div>
   );
 }
