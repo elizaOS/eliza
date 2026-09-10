@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   extractIdentityLinkCode,
   identityLinkReply,
+  normalizeIdentityLinkCodeBody,
 } from "./identity-link-code.js";
 
 describe("extractIdentityLinkCode", () => {
@@ -24,6 +25,17 @@ describe("extractIdentityLinkCode", () => {
 
   it("handles code at boundaries", () => {
     expect(extractIdentityLinkCode("LINK-ABCDEFGH")).toBe("LINK-ABCDEFGH");
+  });
+
+  it("rejects symbols outside the product link-code alphabet", () => {
+    for (const body of ["01ABCDEF", "ABCDILOP", "ABCD2340"]) {
+      expect(normalizeIdentityLinkCodeBody(body)).toBeNull();
+      expect(extractIdentityLinkCode(`LINK-${body}`)).toBeNull();
+    }
+  });
+
+  it("normalizes a valid unprefixed body for command transports", () => {
+    expect(normalizeIdentityLinkCodeBody("abcd2345")).toBe("ABCD2345");
   });
 });
 

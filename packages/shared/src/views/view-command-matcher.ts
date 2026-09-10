@@ -228,24 +228,6 @@ const POSSESSIVES = [
 
 // Per-view multilingual noun synonyms. Order = match priority.
 const VIEW_NOUNS: Record<string, readonly string[]> = {
-  "pendant-transcript": [
-    "pendant transcript",
-    "pendant voice transcript",
-    "pendant recording transcript",
-  ],
-  files: [
-    "stored files",
-    "stored attachments",
-    "uploaded files",
-    "attachments",
-    "uploads",
-  ],
-  stream: [
-    "activity stream",
-    "live activity stream",
-    "media stream",
-    "live stream",
-  ],
   vault: [
     "vault",
     "secret vault",
@@ -254,6 +236,12 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
     "credentials vault",
     "stored secrets",
     "stored credentials",
+  ],
+  "pendant-transcript": [
+    "pendant transcript",
+    "pendant transcripts",
+    "pendant voice transcript",
+    "pendant recording transcript",
   ],
   transcripts: [
     "transcripts",
@@ -593,13 +581,20 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
     "ghi chú",
     "ghi chu",
   ],
+  files: [
+    "files",
+    "file",
+    "stored files",
+    "stored attachments",
+    "uploaded files",
+    "attachments",
+    "uploads",
+  ],
   documents: [
     "documents",
     "document",
     ...Object.values(DOCUMENTS_NAV_VOCABULARY.localizedLabels),
     ...DOCUMENTS_NAV_VOCABULARY.aliases,
-    "files",
-    "file",
     "docs",
     "papers",
     "documentos",
@@ -701,6 +696,13 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
     "대화",
     "trò chuyện",
     "tro chuyen",
+  ],
+  stream: [
+    "stream",
+    "activity stream",
+    "live activity stream",
+    "media stream",
+    "live stream",
   ],
   cockpit: [
     "cockpit",
@@ -890,6 +892,7 @@ const VIEW_PRIORITY = [
   "projects",
   "task-coordinator",
   "pendant-transcript",
+  "stream",
   "finances",
   "relationships",
   "automations",
@@ -897,7 +900,6 @@ const VIEW_PRIORITY = [
   "documents",
   "memories",
   "transcripts",
-  "stream",
   "vault",
   "settings",
   "background",

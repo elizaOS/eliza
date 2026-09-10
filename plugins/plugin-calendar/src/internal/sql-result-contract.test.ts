@@ -27,11 +27,15 @@ it.each(
 
 it("stops migration startup at an invalid database response", async () => {
   let calls = 0;
+  const execute = async () => {
+    calls += 1;
+    return { rows: [{ present: true }, null] };
+  };
   const db = {
-    execute: async () => {
-      calls += 1;
-      return { rows: [{ present: true }, null] };
-    },
+    execute,
+    transaction: async <T>(
+      operation: (transaction: { execute: typeof execute }) => Promise<T>,
+    ) => operation({ execute }),
   };
   const runtime = { db, adapter: { db } } as unknown as IAgentRuntime;
   await expect(CalendarMigrationService.start(runtime)).rejects.toMatchObject({

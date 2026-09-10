@@ -49,7 +49,15 @@ def test_polarquant_recipe_serializes_with_paper_metadata():
 def test_polarquant_dry_run_emits_recipe_json(capsys):
     from polarquant_apply import main
 
-    rc = main(["--model", "google/gemma-4-E2B", "--output", "/tmp/_polarquant_unused", "--dry-run"])
+    rc = main(
+        [
+            "--model",
+            "google/gemma-4-E2B",
+            "--output",
+            "/tmp/_polarquant_unused",
+            "--dry-run",
+        ]
+    )
     assert rc == 0
     out = capsys.readouterr().out
     payload = json.loads(out)
@@ -62,12 +70,17 @@ def test_polarquant_dry_run_rejects_missing_calibration(tmp_path):
 
     bogus = tmp_path / "does-not-exist.jsonl"
     with pytest.raises(FileNotFoundError):
-        main([
-            "--model", "google/gemma-4-E2B",
-            "--output", str(tmp_path / "out"),
-            "--calibration", str(bogus),
-            "--dry-run",
-        ])
+        main(
+            [
+                "--model",
+                "google/gemma-4-E2B",
+                "--output",
+                str(tmp_path / "out"),
+                "--calibration",
+                str(bogus),
+                "--dry-run",
+            ]
+        )
 
 
 def test_fused_turboquant_recipe_metadata():
@@ -86,12 +99,17 @@ def test_fused_turboquant_dry_run_rejects_missing_calibration(tmp_path):
 
     bogus = tmp_path / "does-not-exist.jsonl"
     with pytest.raises(FileNotFoundError):
-        main([
-            "--model", "google/gemma-4-E2B",
-            "--output", str(tmp_path / "out"),
-            "--calibration", str(bogus),
-            "--dry-run",
-        ])
+        main(
+            [
+                "--model",
+                "google/gemma-4-E2B",
+                "--output",
+                str(tmp_path / "out"),
+                "--calibration",
+                str(bogus),
+                "--dry-run",
+            ]
+        )
 
 
 def test_fp8_apply_dry_run_emits_capability_json(capsys):
@@ -102,7 +120,9 @@ def test_fp8_apply_dry_run_emits_capability_json(capsys):
     JSON output."""
     from fp8_apply import main
 
-    rc = main(["--model", "google/gemma-4-E2B", "--output", "/tmp/_fp8_unused", "--dry-run"])
+    rc = main(
+        ["--model", "google/gemma-4-E2B", "--output", "/tmp/_fp8_unused", "--dry-run"]
+    )
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert "fp8_ok" in payload
@@ -162,9 +182,14 @@ def test_common_layer_types_filters_full_attention_layers():
     class HybridConfig:
         num_hidden_layers = 8
         layer_types = [
-            "linear_attention", "linear_attention", "linear_attention",
-            "full_attention", "linear_attention", "linear_attention",
-            "linear_attention", "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
         ]
 
     indices = full_attention_layer_indices(HybridConfig())
@@ -176,12 +201,14 @@ def test_common_load_calibration_prompts_pulls_current_message_content(tmp_path)
 
     p = tmp_path / "val.jsonl"
     p.write_text(
-        "\n".join([
-            json.dumps({"currentMessage": {"content": "first"}}),
-            json.dumps({"currentMessage": {"content": "second"}}),
-            "",
-            json.dumps({"currentMessage": {"content": "third"}}),
-        ]),
+        "\n".join(
+            [
+                json.dumps({"currentMessage": {"content": "first"}}),
+                json.dumps({"currentMessage": {"content": "second"}}),
+                "",
+                json.dumps({"currentMessage": {"content": "third"}}),
+            ]
+        ),
         encoding="utf-8",
     )
     out = load_calibration_prompts(p, n=2)
@@ -232,20 +259,60 @@ def test_legacy_push_model_to_hf_redirects_to_canonical_publishers():
 
 # _HERE = .../eliza/packages/training/scripts/quantization
 _REPO_ROOT = _HERE.parents[3]
-_REF_C = _REPO_ROOT / "plugins" / "plugin-local-inference" / "native" / "verify" / "qjl_polar_ref.c"
-_REF_H = _REPO_ROOT / "plugins" / "plugin-local-inference" / "native" / "verify" / "qjl_polar_ref.h"
-_TURBO_C = _REPO_ROOT / "plugins" / "plugin-local-inference" / "native" / "reference" / "turbo_kernels.c"
-_TURBO_H = _REPO_ROOT / "plugins" / "plugin-local-inference" / "native" / "reference" / "turbo_kernels.h"
+_REF_C = (
+    _REPO_ROOT
+    / "plugins"
+    / "plugin-local-inference"
+    / "native"
+    / "verify"
+    / "qjl_polar_ref.c"
+)
+_REF_H = (
+    _REPO_ROOT
+    / "plugins"
+    / "plugin-local-inference"
+    / "native"
+    / "verify"
+    / "qjl_polar_ref.h"
+)
+_TURBO_C = (
+    _REPO_ROOT
+    / "plugins"
+    / "plugin-local-inference"
+    / "native"
+    / "reference"
+    / "turbo_kernels.c"
+)
+_TURBO_H = (
+    _REPO_ROOT
+    / "plugins"
+    / "plugin-local-inference"
+    / "native"
+    / "reference"
+    / "turbo_kernels.h"
+)
 
 
 # Canonical 4-bit Lloyd-Max centroids for N(0,1), bit-exact match required
 # against eliza/packages/native/plugins/polarquant-cpu/include/polarquant/polar_centroids.h
 # and eliza/plugins/plugin-local-inference/native/verify/qjl_polar_ref.c.
 _C_POLAR_Q4_CENTROIDS = (
-    -2.754354807, -2.093562707, -1.643041510, -1.279739752,
-    -0.962640978, -0.672392117, -0.397897103, -0.131757782,
-    +0.131757782, +0.397897103, +0.672392117, +0.962640978,
-    +1.279739752, +1.643041510, +2.093562707, +2.754354807,
+    -2.754354807,
+    -2.093562707,
+    -1.643041510,
+    -1.279739752,
+    -0.962640978,
+    -0.672392117,
+    -0.397897103,
+    -0.131757782,
+    +0.131757782,
+    +0.397897103,
+    +0.672392117,
+    +0.962640978,
+    +1.279739752,
+    +1.643041510,
+    +2.093562707,
+    +2.754354807,
 )
 
 
@@ -262,7 +329,7 @@ def test_polarquant_centroids_match_c_reference():
     for i, (p, c) in enumerate(zip(py, _C_POLAR_Q4_CENTROIDS)):
         assert abs(p - c) < 1e-6, (
             f"centroid[{i}] disagrees: python={p:.9f} c_ref={c:.9f} "
-            f"(delta={abs(p-c):.2e}). Did Python's default n_iter change?"
+            f"(delta={abs(p - c):.2e}). Did Python's default n_iter change?"
         )
 
 
@@ -305,9 +372,7 @@ def test_polarquant_python_sign_vector_pinned():
 
     c_buf = (ctypes.c_float * QK_POLAR)()
     lib.eliza_polar_qjl_signs(c_buf)
-    c_signs = np.frombuffer(c_buf, dtype=np.float32, count=QK_POLAR).astype(
-        np.int8
-    )
+    c_signs = np.frombuffer(c_buf, dtype=np.float32, count=QK_POLAR).astype(np.int8)
 
     py_signs = polar_xorshift32_signs(QK_POLAR, seed=42)
 
@@ -454,11 +519,19 @@ def _try_compile_qjl_polar_ref():
         return tmp, None
     cmd = [
         cc,
-        "-O2", "-std=c11", "-fPIC", "-shared",
-        "-I", str(_REF_C.parent),
-        "-I", str(_TURBO_C.parent),
-        str(_REF_C), str(_TURBO_C), "-lm",
-        "-o", str(tmp),
+        "-O2",
+        "-std=c11",
+        "-fPIC",
+        "-shared",
+        "-I",
+        str(_REF_C.parent),
+        "-I",
+        str(_TURBO_C.parent),
+        str(_REF_C),
+        str(_TURBO_C),
+        "-lm",
+        "-o",
+        str(tmp),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
@@ -488,6 +561,7 @@ def test_qjl_block_layout_packing_matches_c_ref():
             ("qs", ctypes.c_uint8 * 32),
             ("norm_bf16", ctypes.c_uint16),
         ]
+
     assert ctypes.sizeof(block_qjl1_256) == 34
 
     lib = ctypes.CDLL(str(so_path))
@@ -515,7 +589,7 @@ def test_qjl_block_layout_packing_matches_c_ref():
 
     # --- Python path mirroring the recipe's bit-packing convention ---
     sketch = np.sum(key[:, None] * prj, axis=0, dtype=np.float32)  # (proj_dim,)
-    bits = (sketch > 0).astype(np.uint8)                 # (proj_dim,)
+    bits = (sketch > 0).astype(np.uint8)  # (proj_dim,)
     # LSB-first packing within each byte, matches qjl_quantize_row_ref.
     py_qs = bytearray(proj_dim // 8)
     for j in range(proj_dim):
@@ -560,10 +634,11 @@ def test_polarquant_block_dequant_parity_against_c_ref():
     class block_q4_polar(ctypes.Structure):
         _pack_ = 1
         _fields_ = [
-            ("d", ctypes.c_uint16),                # fp16 per-block L2 norm
+            ("d", ctypes.c_uint16),  # fp16 per-block L2 norm
             ("qs", ctypes.c_uint8 * (QK_POLAR // 2)),
             ("qjl", ctypes.c_uint8 * (QK_POLAR // 8)),
         ]
+
     assert ctypes.sizeof(block_q4_polar) == 82
 
     lib = ctypes.CDLL(str(so_path))
@@ -582,8 +657,8 @@ def test_polarquant_block_dequant_parity_against_c_ref():
     f = np.float32(2.5)
     f_bits = f.view(np.uint32).item()
     sign = (f_bits >> 16) & 0x8000
-    exp = ((f_bits >> 23) & 0xff) - 127 + 15
-    mant = (f_bits >> 13) & 0x3ff
+    exp = ((f_bits >> 23) & 0xFF) - 127 + 15
+    mant = (f_bits >> 13) & 0x3FF
     blk.d = (sign | (exp << 10) | mant) & 0xFFFF
 
     codes = [(i * 7) & 0xF for i in range(QK_POLAR)]
@@ -595,7 +670,10 @@ def test_polarquant_block_dequant_parity_against_c_ref():
 
     out = (ctypes.c_float * QK_POLAR)()
     lib.eliza_polar_dequantize_row(
-        ctypes.byref(blk), out, QK_POLAR, 0,
+        ctypes.byref(blk),
+        out,
+        QK_POLAR,
+        0,
     )
     c_decoded = np.frombuffer(out, dtype=np.float32, count=QK_POLAR).copy()
 
@@ -648,6 +726,7 @@ def test_qjl_projection_layout_matches_c_ref():
             ("qs", ctypes.c_uint8 * 32),
             ("norm_bf16", ctypes.c_uint16),
         ]
+
     assert ctypes.sizeof(block_qjl1_256) == 34
 
     lib = ctypes.CDLL(str(so_path))
@@ -703,6 +782,7 @@ def test_qjl_apply_recipe_projection_shape_is_canonical():
 
     # Direct import to avoid pulling _common.py's transformers dep.
     import importlib.util
+
     spec = importlib.util.spec_from_file_location(
         "qjl_apply_isolated", _HERE / "qjl_apply.py"
     )
@@ -759,6 +839,7 @@ def test_polarquant_full_block_parity_against_c_ref():
             ("qs", ctypes.c_uint8 * (QK_POLAR // 2)),
             ("qjl", ctypes.c_uint8 * (QK_POLAR // 8)),
         ]
+
     assert ctypes.sizeof(block_q4_polar) == 82
 
     lib = ctypes.CDLL(str(so_path))
@@ -790,9 +871,7 @@ def test_polarquant_full_block_parity_against_c_ref():
 
     # Pack the Python output into the C block_q4_polar layout.
     py_blk = block_q4_polar()
-    norm_fp16_bits = (
-        res.norms[0].view(torch.int16).item() & 0xFFFF
-    )
+    norm_fp16_bits = res.norms[0].view(torch.int16).item() & 0xFFFF
     py_blk.d = norm_fp16_bits
 
     codes = res.codes.tolist()
@@ -812,9 +891,7 @@ def test_polarquant_full_block_parity_against_c_ref():
     # the failure is actionable rather than an opaque hex blob.
     if py_bytes != c_bytes:
         diffs = [
-            (i, py_bytes[i], c_bytes[i])
-            for i in range(82)
-            if py_bytes[i] != c_bytes[i]
+            (i, py_bytes[i], c_bytes[i]) for i in range(82) if py_bytes[i] != c_bytes[i]
         ]
         regions = []
         diff_idx = {i for i, _, _ in diffs}
@@ -861,7 +938,8 @@ _KQUANT_SIBLINGS = (
     ("gguf-q3_k_m_apply", "Q3_K_M"),
     ("gguf-q4_k_m_apply", "Q4_K_M"),
     ("gguf-q5_k_m_apply", "Q5_K_M"),
-    ("gguf-q6_k_apply",   "Q6_K"),
+    ("gguf-q6_k_apply", "Q6_K"),
+    ("gguf-q8_0_apply", "Q8_0"),
 )
 
 
@@ -895,11 +973,15 @@ def test_kquant_sibling_dry_run_prints_quant_level(
     Q4_K_M baseline. Output is JSON and contains the recipe-level
     metadata."""
     mod = _load_quantization_module(module_basename)
-    rc = mod.main([
-        "--model", "google/gemma-4-E2B",
-        "--output", str(tmp_path),
-        "--dry-run",
-    ])
+    rc = mod.main(
+        [
+            "--model",
+            "google/gemma-4-E2B",
+            "--output",
+            str(tmp_path),
+            "--dry-run",
+        ]
+    )
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["quant_level"] == _expected_level
@@ -935,10 +1017,14 @@ def test_kquant_sibling_fails_when_artifact_load_smoke_fails(
         lambda _gguf, _quantize: {"ok": False, "error": "synthetic load failure"},
     )
 
-    rc = mod.main([
-        "--model", "google/gemma-4-E2B",
-        "--output", str(tmp_path / "out"),
-    ])
+    rc = mod.main(
+        [
+            "--model",
+            "google/gemma-4-E2B",
+            "--output",
+            str(tmp_path / "out"),
+        ]
+    )
 
     assert rc == 2
     assert not list((tmp_path / "out").glob("gguf_*.json"))
@@ -969,11 +1055,15 @@ def test_kquant_sibling_no_smoke_marks_artifact_not_release_eligible(
     monkeypatch.setattr(mod, "_run", fake_run)
 
     out_dir = tmp_path / "out"
-    rc = mod.main([
-        "--model", "google/gemma-4-E2B",
-        "--output", str(out_dir),
-        "--no-smoke-load",
-    ])
+    rc = mod.main(
+        [
+            "--model",
+            "google/gemma-4-E2B",
+            "--output",
+            str(out_dir),
+            "--no-smoke-load",
+        ]
+    )
 
     assert rc == 0
     sidecar = json.loads(next(out_dir.glob("gguf_*.json")).read_text())
@@ -1008,10 +1098,7 @@ def test_gguf_wrappers_default_to_runtime_llama_cpp_submodule(module_basename: s
     assert (
         _CANONICAL_LLAMA_CPP_SUFFIX.as_posix() in source
         or '"plugins" / "plugin-local-inference" / "native" / "llama.cpp"' in source
-        or (
-            "DEFAULT_LLAMA_CPP_DIR" in source
-            and "find_llama_convert_script" in source
-        )
+        or ("DEFAULT_LLAMA_CPP_DIR" in source and "find_llama_convert_script" in source)
     )
     assert '"packages" / "inference" / "llama.cpp"' not in source
     assert "packages/inference/llama.cpp" not in source
@@ -1043,7 +1130,9 @@ def test_q4_k_m_apply_records_passing_recipe_test(monkeypatch, tmp_path):
         else:
             Path(cmd[-2]).write_bytes(b"quant")
 
-    monkeypatch.setattr(mod, "_find_convert_script", lambda _path: tmp_path / "convert.py")
+    monkeypatch.setattr(
+        mod, "_find_convert_script", lambda _path: tmp_path / "convert.py"
+    )
     monkeypatch.setattr(mod, "_find_quantize_binary", lambda _path: fake_quantize)
     monkeypatch.setattr(mod, "_run", fake_run)
     monkeypatch.setattr(
@@ -1078,12 +1167,17 @@ def test_gguf_asr_apply_dry_run_single_quant(capsys, tmp_path):
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 
-    rc = mod.main([
-        "--model", "Qwen/Qwen3-ASR-0.6B",
-        "--output", str(tmp_path),
-        "--quant", "Q5_K_M",
-        "--dry-run",
-    ])
+    rc = mod.main(
+        [
+            "--model",
+            "Qwen/Qwen3-ASR-0.6B",
+            "--output",
+            str(tmp_path),
+            "--quant",
+            "Q5_K_M",
+            "--dry-run",
+        ]
+    )
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["quants"] == ["Q5_K_M"]
@@ -1104,12 +1198,16 @@ def test_gguf_asr_apply_dry_run_full_ladder(capsys, tmp_path):
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 
-    rc = mod.main([
-        "--model", "Qwen/Qwen3-ASR-1.7B",
-        "--output", str(tmp_path),
-        "--quant-ladder",
-        "--dry-run",
-    ])
+    rc = mod.main(
+        [
+            "--model",
+            "Qwen/Qwen3-ASR-1.7B",
+            "--output",
+            str(tmp_path),
+            "--quant-ladder",
+            "--dry-run",
+        ]
+    )
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["quants"] == ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"]
@@ -1128,12 +1226,16 @@ def test_gguf_asr_apply_dry_run_skip_mmproj_omits_mmproj_quant(capsys, tmp_path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 
-    rc = mod.main([
-        "--model", "Qwen/Qwen3-ASR-0.6B",
-        "--output", str(tmp_path),
-        "--skip-mmproj",
-        "--dry-run",
-    ])
+    rc = mod.main(
+        [
+            "--model",
+            "Qwen/Qwen3-ASR-0.6B",
+            "--output",
+            str(tmp_path),
+            "--skip-mmproj",
+            "--dry-run",
+        ]
+    )
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["skip_mmproj"] is True
@@ -1155,13 +1257,18 @@ def test_turn_detector_convert_to_gguf_dry_run(capsys, tmp_path):
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 
-    rc = mod.main([
-        "--model", "livekit/turn-detector",
-        "--revision", "v1.2.2-en",
-        "--output", str(tmp_path),
-        "--quant-ladder",
-        "--dry-run",
-    ])
+    rc = mod.main(
+        [
+            "--model",
+            "livekit/turn-detector",
+            "--revision",
+            "v1.2.2-en",
+            "--output",
+            str(tmp_path),
+            "--quant-ladder",
+            "--dry-run",
+        ]
+    )
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["quants"] == ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"]

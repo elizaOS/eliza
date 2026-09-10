@@ -18,7 +18,7 @@
 import type { ViewCapability } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@elizaos/ui", () => ({
+vi.mock("@elizaos/ui/api", () => ({
   // Every client method resolves benignly; list returns [] so the open-task
   // fallback path terminates without a second-stage fetch.
   client: new Proxy(

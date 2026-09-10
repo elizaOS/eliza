@@ -141,6 +141,24 @@ describe("smoke view bundle provenance over HTTP (#15791)", () => {
         .filter(isRecord)
         .map((view) => [String(view.id), view] as const),
     );
+    expect(byId.get("calendar")?.surface).toEqual({
+      header: "fullscreen",
+      capabilities: ["agent-surface"],
+    });
+    for (const id of ["contacts", "messages", "phone", "relationships"]) {
+      expect(byId.get(id)?.surface).toEqual({
+        capabilities: ["agent-surface"],
+      });
+    }
+    expect(byId.get("notes")?.surface).toEqual({
+      header: "normal",
+      layout: {
+        kind: "content",
+        width: "wide",
+        scroll: "view",
+        gutter: "standard",
+      },
+    });
     expect(byId.get("orchestrator")?.surface).toEqual({
       capabilities: ["agent-surface"],
     });

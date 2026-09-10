@@ -12,7 +12,7 @@
  * rule: restricted ≠ empty ≠ error), never a healthy-empty fabrication.
  */
 import type { AccessContext, StoredFileListItem, UUID } from "@elizaos/core";
-import { actorFromAccessContext } from "@elizaos/core";
+import { actorFromAccessContext, isAdminRank } from "@elizaos/core";
 
 /** The `GET /api/files` response body. */
 export interface FilesListDto {
@@ -37,11 +37,7 @@ export function selectFilesForViewer(
 ): FilesListDto {
   if (!accessContext) return { files, restricted: false };
   const actor = actorFromAccessContext(accessContext, agentId);
-  if (
-    actor.role === "OWNER" ||
-    actor.role === "ADMIN" ||
-    actor.role === "AGENT"
-  ) {
+  if (isAdminRank(actor.role) || actor.role === "AGENT") {
     return { files, restricted: false };
   }
   return { files: [], restricted: true };

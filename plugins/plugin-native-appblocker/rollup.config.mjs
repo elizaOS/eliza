@@ -1,8 +1,8 @@
 /**
- * Bundles the compiled `dist/esm/index.js` into an IIFE (`dist/plugin.js`,
- * for CDN/`unpkg` consumers) and a CJS build (`dist/plugin.cjs.js`, for Node
- * consumers); `@capacitor/core` stays external since host apps provide it.
+ * Generated native Capacitor package build configuration. Change the scaffold
+ * manifest or generator instead of editing this file directly.
  */
+
 export default {
   input: "dist/esm/index.js",
   output: [
@@ -10,9 +10,7 @@ export default {
       file: "dist/plugin.js",
       format: "iife",
       name: "capacitorAppBlocker",
-      globals: {
-        "@capacitor/core": "capacitorExports",
-      },
+      globals: { "@capacitor/core": "capacitorExports" },
       sourcemap: true,
       inlineDynamicImports: true,
     },

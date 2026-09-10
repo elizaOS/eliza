@@ -42,6 +42,9 @@ describe("repository ruleset contract", () => {
       "subscription-authority-postgres",
     ]);
     expect(admission.jobs["billing-payment-replay-e2e"].needs).toBeUndefined();
+    expect(
+      admission.jobs["subscription-authority-postgres"].needs,
+    ).toBeUndefined();
     expect(admission.jobs["browser-bridge-windows-security"].uses).toBe(
       "./.github/workflows/browser-bridge-windows-security.yml",
     );

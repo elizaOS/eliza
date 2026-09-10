@@ -7,6 +7,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { v5 as uuidv5 } from "uuid";
 import type { A2AContext, MessageSendParams } from "./types";
 
 function unexpectedDependencyCall(name: string): never {
@@ -63,7 +64,7 @@ mock.module("@ai-sdk/openai", () => ({
 
 mock.module("uuid", () => ({
   v4: () => "00000000-0000-4000-8000-000000000000",
-  v5: () => "00000000-0000-5000-8000-000000000000",
+  v5: uuidv5,
 }));
 
 mock.module("../../pricing", () => ({
