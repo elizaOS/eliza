@@ -331,6 +331,7 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 			success: true,
 			type: "tool_result",
 			parameters: { text: "Preview only" },
+			args: { text: "Preview only" },
 			result,
 		});
 		expect(b.semanticStages).toMatchObject([

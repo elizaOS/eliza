@@ -67,7 +67,10 @@ The **Model call** selector switches directly between calls, showing recorded
 input/output tokens and time. Complete **Input**, **Output** and **System** text
 stays in a bounded scroll area with **Copy** above it. **Steps** selects handler,
 planner and tool records with **Input**, **Output** and **Full step** tabs;
-model stages describe the same calls, not additional calls.
+model stages describe the same calls, not additional calls. Tool activity
+shows recorded action parameters as arguments. Valid preview-only effect receipts
+are labeled **Preview · no changes**; explicit errors and invalid receipts retain
+failure status. Full raw results remain available for inspection.
 **Copy entire recorded run** preserves the full returned record. Context and
 timeline have their own **Context & timeline** section.
 
@@ -118,11 +121,10 @@ tokens; its counts remained after collapse. All 36 focused tests passed.
 The exact previously empty single-call reply also displayed and copied its
 87,116-character input and 679-character output without changes.
 
-The root verification gate remains open: its design graph has 14 pre-existing
-findings in DeveloperTrace, WireEvidence and ModelConfigurationPanel. An
-unchanged-scanner read of HEAD sources found 33 before this work. The final graph
-introduces no findings after comparing the recorded rule, owner and evidence
-without source line numbers. No debt allowance or test expectation was relaxed.
+The developer inspector and model settings now use the canonical controls;
+their 14 previously recorded design findings were resolved. The latest root
+verification still reports three unrelated NativeSelect overrides in
+WorkflowTriggerPanel. No debt allowance or test expectation was relaxed.
 
 The app capture audit passed 222 checks. Pixel triage reported 204 verified,
 zero broken and 12 needing visual review across 216 captured views. This broad
