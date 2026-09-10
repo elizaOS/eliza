@@ -79,7 +79,7 @@ import {
 	stripReasoningPrefixes,
 } from "../utils/reasoning-tags";
 import { resolveStateDir } from "../utils/state-dir";
-import { isPlainObject } from "../utils/type-guards";
+import { isObjectRecord, isPlainObject } from "../utils/type-guards";
 import { toWellFormedUnicode } from "../utils/well-formed";
 import {
 	computePrefixHashes,
@@ -5420,8 +5420,60 @@ function parameterNamesNamedByFailure(
 	return names;
 }
 
-// Exported for unit coverage of the correlation contract: the resolver's
-// decision is the deliverable, so tests pin its shapes directly.
+/** Projects only provably redundant, rejected transport metadata for correlation. */
+function withoutRedundantRejectedRecordEncoding(
+	params: Record<string, unknown>,
+	result: PlannerToolResult | undefined,
+): Record<string, unknown> {
+	const error = typeof result?.error === "string" ? result.error : result?.text;
+	if (typeof error !== "string") return params;
+	const path =
+		/Unexpected argument ['"]([^'"]+\.__eliza_record_entries)['"]/.exec(
+			error,
+		)?.[1];
+	if (!path) return params;
+	const segments = path.split(".");
+	let parent = params;
+	const ancestors: Array<{ parent: Record<string, unknown>; key: string }> = [];
+	for (const key of segments.slice(0, -1)) {
+		if (!Object.hasOwn(parent, key) || !isObjectRecord(parent[key]))
+			return params;
+		ancestors.push({ parent, key });
+		parent = parent[key];
+	}
+	const marker = "__eliza_record_entries";
+	const entries = parent[marker];
+	if (!Array.isArray(entries) || entries.length === 0) return params;
+	for (const entry of entries) {
+		if (
+			!isObjectRecord(entry) ||
+			Object.keys(entry).length !== 2 ||
+			typeof entry.key !== "string" ||
+			typeof entry.value !== "string"
+		)
+			return params;
+		const entryKey = entry.key.toLowerCase();
+		const matching = Object.keys(parent).filter(
+			(key) => key !== marker && key.toLowerCase() === entryKey,
+		);
+		if (matching.length !== 1) return params;
+		try {
+			if (!correlationValuesEqual(JSON.parse(entry.value), parent[matching[0]]))
+				return params;
+		} catch {
+			// error-policy:J3 Invalid transport JSON cannot prove redundant content.
+			return params;
+		}
+	}
+	let projected = Object.fromEntries(
+		Object.entries(parent).filter(([key]) => key !== marker),
+	);
+	for (const ancestor of ancestors.reverse()) {
+		projected = { ...ancestor.parent, [ancestor.key]: projected };
+	}
+	return projected;
+}
+
 export function malformedCallSupersededBy(
 	failedCall: PlannerToolCall,
 	failedResult: PlannerToolResult | undefined,
@@ -5452,7 +5504,13 @@ export function malformedCallSupersededBy(
 			),
 		),
 	};
-	for (const [name, value] of Object.entries(failedCall.params ?? {})) {
+	// A rejected native-record wrapper may only disappear when every encoded
+	// value duplicates a surviving sibling. The full arguments remain recorded.
+	const failedParams = withoutRedundantRejectedRecordEncoding(
+		failedCall.params ?? {},
+		failedResult,
+	);
+	for (const [name, value] of Object.entries(failedParams)) {
 		if (name === "eliza_turn_scope") continue;
 		if ((PLANNER_TOOL_DISCRIMINATOR_KEYS as readonly string[]).includes(name)) {
 			continue;
