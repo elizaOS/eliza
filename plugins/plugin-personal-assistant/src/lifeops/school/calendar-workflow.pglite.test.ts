@@ -341,6 +341,10 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
       "2026-09-16 | CCHS early release",
       "2026-09-17 | CMS early release",
       "2026-11-06 | Elementary conferences",
+      "2026-08-28 | 9th Grade Orientation",
+      "2026-11-05 | PreK Conferences",
+      "2027-06-05 | Graduation",
+      "2026-10-28 | PreK-12 Early Release",
     ].join("\n");
     runtime.getService = ((name: string) =>
       name === CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE
@@ -357,10 +361,50 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
     expect((await service.runSchool("scheduled")).state).toBe("applied");
     expect(createdRanges.map((range) => range.title)).toEqual([
       "Labor Day - no school",
+      "PreK-12 Early Release",
       "Elementary conferences",
     ]);
     expect((await service.runSchool("scheduled")).state).toBe("unchanged");
+    expect(creates).toBe(3);
+  });
+
+  it("removes previously imported other-grade events despite identical PDF bytes", async () => {
+    text = "2026-08-28 | 9th Grade Orientation\n2026-09-07 | Labor Day";
+    const initial = await workflow.run();
+    if (initial.state !== "awaiting_approval")
+      throw new Error("expected initial plan");
+    await workflow.applyApprovedPlan({
+      runId: initial.runId,
+      requestUrl: new URL("http://localhost"),
+      gateway,
+    });
+    const config = {
+      ...CONCORD_SCHOOL_CALENDAR_SOURCE,
+      schoolLevel: "elementary" as const,
+    };
+    await workflow.configure(config);
+    await db.query(
+      "UPDATE app_lifeops.life_school_calendar_sources SET calendar_contract_version=2,last_content_sha256=$1",
+      [hash(pdfBytes)],
+    );
+    const correction = await workflow.run(config, "scheduled");
+    if (correction.state !== "awaiting_approval")
+      throw new Error("expected correction despite equal hash");
+    expect(correction.plan.changes.map((change) => change.kind).sort()).toEqual(
+      ["cancel", "unchanged"],
+    );
+    const cancel = vi.spyOn(gateway, "cancel");
+    await workflow.applyApprovedPlan({
+      runId: correction.runId,
+      config,
+      requestUrl: new URL("http://localhost"),
+      gateway,
+    });
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(updatedRanges).toEqual([]);
     expect(creates).toBe(2);
+    expect((await workflow.run(config, "scheduled")).state).toBe("unchanged");
+    expect(cancel).toHaveBeenCalledTimes(1);
   });
 
   it("reprocesses unchanged PDF bytes when school selection changes", async () => {
@@ -504,7 +548,7 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
     if (migration.state !== "awaiting_approval") {
       throw new Error("expected migration plan");
     }
-    expect(migration.plan.calendarContractVersion).toBe(2);
+    expect(migration.plan.calendarContractVersion).toBe(3);
     expect(migration.plan.changes.map((change) => change.kind)).toEqual([
       "update",
       "update",

@@ -50,7 +50,8 @@ const MAX_LANDING_BYTES = 512 * 1024;
 const MAX_PDF_BYTES = 20 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 10_000;
 const LEASE_MS = 5 * 60_000;
-const SCHOOL_CALENDAR_CONTRACT_VERSION = 2;
+const SCHOOL_CALENDAR_CONTRACT_VERSION = 3;
+const SCHOOL_CALENDAR_ALL_DAY_VERSION = 2;
 
 const SCHEMA = [
   `CREATE SCHEMA IF NOT EXISTS app_lifeops`,
@@ -150,7 +151,7 @@ export type SchoolCalendarChange =
 
 export interface SchoolCalendarApprovalPlan {
   version: 1;
-  calendarContractVersion: 2;
+  calendarContractVersion: 3;
   sourceId: string;
   runId: string;
   contentSha256: string;
@@ -180,12 +181,15 @@ export function selectSchoolCalendarEvents(
 ): SchoolCalendarSemanticEvent[] {
   if (level !== "elementary") return events;
   return events.filter((event) => {
-    const title = event.title;
+    const title = event.title.replace(/[‐–—]/gu, "-");
     const elementary =
-      /\b(elementary|CPS|all schools|district[- ]wide)\b/iu.test(title);
-    const otherSchool = /\b(CCHS|CCRHS|CMS|high school|middle school)\b/iu.test(
-      title,
-    );
+      /\b(elementary|CPS|all schools|district[- ]wide|K\s*-\s*5|pre-?K\s*-\s*12)\b/iu.test(
+        title,
+      );
+    const otherSchool =
+      /\b(CCHS|CCRHS|CMS|high school|middle school|pre-?K|preschool|graduation|(?:[6-9]|1[0-2])(?:st|nd|rd|th)?\s+grade|grade\s+(?:[6-9]|1[0-2]))\b/iu.test(
+        title,
+      );
     return elementary || !otherSchool;
   });
 }
@@ -857,7 +861,7 @@ export class SchoolCalendarWorkflow {
       const previous = await this.events(config.sourceId);
       const changes = diffSchoolCalendarEvents(previous, current, {
         migrateToAllDay:
-          source.calendarContractVersion < SCHOOL_CALENDAR_CONTRACT_VERSION,
+          source.calendarContractVersion < SCHOOL_CALENDAR_ALL_DAY_VERSION,
       });
       if (changes.every((change) => change.kind === "unchanged")) {
         await this.completeNoop(
