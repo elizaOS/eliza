@@ -294,8 +294,20 @@ function firstNumber(...values: unknown[]): number | undefined {
   return undefined;
 }
 
-function resolvePromptCacheOptions(params: GenerateTextParams): OpenAIPromptCacheOptions {
+function resolvePromptCacheOptions(
+  params: GenerateTextParams,
+  runtime: IAgentRuntime
+): OpenAIPromptCacheOptions {
   const withOpenAIOptions = params as GenerateTextParamsWithOpenAIOptions;
+  const cerebras = withOpenAIOptions.providerOptions?.cerebras;
+  if (isCerebrasMode(runtime) && cerebras && typeof cerebras === "object") {
+    const camel = "promptCacheKey" in cerebras ? cerebras.promptCacheKey : undefined;
+    const snake = "prompt_cache_key" in cerebras ? cerebras.prompt_cache_key : undefined;
+    return {
+      promptCacheKey:
+        typeof camel === "string" ? camel : typeof snake === "string" ? snake : undefined,
+    };
+  }
   return {
     promptCacheKey: withOpenAIOptions.providerOptions?.openai?.promptCacheKey,
     promptCacheRetention: withOpenAIOptions.providerOptions?.openai?.promptCacheRetention,
@@ -453,7 +465,7 @@ function resolveProviderOptions(
 ): Record<string, unknown> | undefined {
   const withOpenAIOptions = params as GenerateTextParamsWithOpenAIOptions;
   const rawProviderOptions = withOpenAIOptions.providerOptions;
-  const promptCacheOptions = resolvePromptCacheOptions(params);
+  const promptCacheOptions = resolvePromptCacheOptions(params, runtime);
   const reasoningEffort = resolveReasoningEffort(runtime, modelName);
   // Thinking-off suppression outranks the env pin and provider default so
   // forced-tool planner calls do not enter an incompatible reasoning mode.
@@ -473,13 +485,8 @@ function resolveProviderOptions(
     return undefined;
   }
 
-  // Cerebras supports prompt caching on gpt-oss-120b — 128-token blocks,
-  // default-on. The `prompt_cache_key` field IS accepted by Cerebras's
-  // OpenAI-compatible endpoint and surfaces hit counts via
-  // `usage.prompt_tokens_details.cached_tokens` (same shape as OpenAI), so
-  // we keep it in the request body. Only `prompt_cache_retention` is an
-  // OpenAI-direct-only field that Cerebras rejects with HTTP 400
-  // (`wrong_api_format`), so we strip just that one when in Cerebras mode.
+  // Cerebras accepts affinity keys, but not OpenAI's retention directive.
+  // Resolve its namespace before the SDK's OpenAI-compatible serialization.
   const skipCacheRetention = isCerebrasMode(runtime);
 
   const { agentName: _agentName, openai: rawOpenAIOptions, ...rest } = rawProviderOptions ?? {};
@@ -489,7 +496,11 @@ function resolveProviderOptions(
   const sanitizedRawOpenAIOptions = (() => {
     if (!rawOpenAIOptions || typeof rawOpenAIOptions !== "object") return rawOpenAIOptions;
     if (!skipCacheRetention) return rawOpenAIOptions;
-    const { promptCacheRetention: _drop, ...rest2 } = rawOpenAIOptions as Record<string, unknown>;
+    const {
+      promptCacheRetention: _drop,
+      promptCacheKey: _key,
+      ...rest2
+    } = rawOpenAIOptions as Record<string, unknown>;
     return rest2;
   })();
   const openaiOptions = {

@@ -22,15 +22,26 @@ describe("ProviderCachePlan", () => {
 		expect(plan.providerOptions.openai).toEqual({
 			promptCacheKey: "v5:abc123",
 		});
-		expect(plan.providerOptions.cerebras).toEqual({
-			promptCacheKey: "v5:abc123",
-			prompt_cache_key: "v5:abc123",
-		});
+		expect(plan.providerOptions.cerebras).toEqual({});
 		expect(plan.providerOptions.openrouter).toEqual({
 			promptCacheKey: "v5:abc123",
 			prompt_cache_key: "v5:abc123",
 		});
 		expect(plan.providerOptions.gateway).toEqual({ caching: "auto" });
+	});
+
+	it("keeps Cerebras workflow affinity through prompt evolution and separates resumed workflows", () => {
+		const identity = `agent-a:room:${"x".repeat(2000)}`;
+		const plan = (conversationId: string, prefixHash: string) =>
+			buildProviderCachePlan({ conversationId, prefixHash }).providerOptions;
+		const first = plan(identity, "before");
+		const resumed = plan(identity, "after");
+		const other = plan(`${identity}:other`, "before");
+		expect(first.cerebras).toEqual(resumed.cerebras);
+		expect(first.cerebras).not.toEqual(other.cerebras);
+		expect(first.openai).not.toEqual(resumed.openai);
+		expect(first.eliza).toMatchObject({ conversationId: identity });
+		expect(JSON.stringify(first.cerebras)).not.toContain(identity);
 	});
 
 	it("only emits OpenAI 24h retention for documented extended-retention models", () => {

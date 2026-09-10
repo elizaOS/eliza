@@ -1486,12 +1486,18 @@ export async function runV5MessageRuntimeStage1(
 								effects: evaluatorEffects,
 								recorder,
 								trajectoryId,
-								cacheConversationId: String(args.message.roomId),
+								cacheConversationId: JSON.stringify([
+									args.runtime.agentId,
+									args.message.roomId,
+								]),
 							}),
 						evaluatorEffects,
 						recorder,
 						trajectoryId,
-						cacheConversationId: String(args.message.roomId),
+						cacheConversationId: JSON.stringify([
+							args.runtime.agentId,
+							args.message.roomId,
+						]),
 						providerAttributionState: plannerProviderAttributionState,
 					});
 				}
@@ -1591,7 +1597,10 @@ export async function runV5MessageRuntimeStage1(
 					evaluatorEffects,
 					recorder,
 					trajectoryId,
-					cacheConversationId: String(args.message.roomId),
+					cacheConversationId: JSON.stringify([
+						args.runtime.agentId,
+						args.message.roomId,
+					]),
 					providerAttributionState: plannerProviderAttributionState,
 					executeToolCall: (toolCall, ctx) =>
 						timeInferenceSpan(
@@ -1650,7 +1659,10 @@ export async function runV5MessageRuntimeStage1(
 								effects: evaluatorEffects,
 								recorder,
 								trajectoryId,
-								cacheConversationId: String(args.message.roomId),
+								cacheConversationId: JSON.stringify([
+									args.runtime.agentId,
+									args.message.roomId,
+								]),
 							}),
 						),
 				}),

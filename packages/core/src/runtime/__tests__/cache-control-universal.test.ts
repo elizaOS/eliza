@@ -29,7 +29,10 @@ describe("cacheProviderOptions — universal cache directives", () => {
 	});
 
 	it("cerebras carries promptCacheKey (camelCase) and prompt_cache_key (snake_case)", () => {
-		const opts = cacheProviderOptions({ prefixHash: HASH });
+		const opts = cacheProviderOptions({
+			prefixHash: HASH,
+			conversationId: "session",
+		});
 		const cerebras = opts.cerebras as Record<string, unknown>;
 		expect(typeof cerebras.promptCacheKey).toBe("string");
 		expect(typeof cerebras.prompt_cache_key).toBe("string");
