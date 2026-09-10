@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "sourceAtomicSchemaVersion": 1,
-  "scannedFiles": 910,
+  "scannedFiles": 911,
   "canonicalContracts": [
     {
       "id": "auth-result-shell",
@@ -108,7 +108,7 @@
       "maintainedReferences": 2
     }
   ],
-  "eligibleComponents": 103,
+  "eligibleComponents": 104,
   "clusters": [
     {
       "archetype": "row",
@@ -1053,6 +1053,70 @@
       "semanticFingerprint": "sha256:7c11e8d4a6401f86006252780a6d7d428dc8d5ade6007d697bf320b213c709af"
     },
     {
+      "archetype": "panel",
+      "atomicDependencies": [
+        "button",
+        "select"
+      ],
+      "entries": [
+        {
+          "atomicDependencies": [
+            "button",
+            "select"
+          ],
+          "file": "plugins/plugin-personal-assistant/src/components/lifeops-connections/AccountTransitionPanel.tsx",
+          "line": 20,
+          "name": "AccountTransitionPanel",
+          "renderedTags": [
+            "Button",
+            "Select",
+            "SelectContent",
+            "SelectItem",
+            "SelectTrigger",
+            "SelectValue",
+            "div",
+            "h2",
+            "label",
+            "p",
+            "section",
+            "strong"
+          ],
+          "archetype": "panel"
+        },
+        {
+          "atomicDependencies": [
+            "button",
+            "select"
+          ],
+          "file": "plugins/plugin-personal-assistant/src/components/lifeops-connections/CalendarSyncPanel.tsx",
+          "line": 29,
+          "name": "CalendarSyncPanel",
+          "renderedTags": [
+            "Button",
+            "Select",
+            "SelectContent",
+            "SelectItem",
+            "SelectTrigger",
+            "SelectValue",
+            "div",
+            "h2",
+            "label",
+            "p",
+            "section"
+          ],
+          "archetype": "panel"
+        }
+      ],
+      "signature": "panel:button+select",
+      "disposition": "distinct-domain-compositions",
+      "rationale": "AccountTransitionPanel reviews Google grant health and retires a selected account across mail and calendar. CalendarSyncPanel owns the agent-wide calendar destination, revision-checked pause/resume, and reconciliation of pending dispatch receipts. Their state transitions and server authorities differ; both already compose the canonical Button and Select controls.",
+      "memberComponentIds": [
+        "plugins/plugin-personal-assistant/src/components/lifeops-connections/AccountTransitionPanel.tsx:AccountTransitionPanel",
+        "plugins/plugin-personal-assistant/src/components/lifeops-connections/CalendarSyncPanel.tsx:CalendarSyncPanel"
+      ],
+      "semanticFingerprint": "sha256:df2a91e87b067eb47ad612fe4f772eddf645b6d22f6a4cf7c57bf2312990afb0"
+    },
+    {
       "archetype": "row",
       "atomicDependencies": [
         "button",
@@ -1111,8 +1175,8 @@
     }
   ],
   "summary": {
-    "clusterCount": 12,
-    "clusteredComponents": 31,
+    "clusterCount": 13,
+    "clusteredComponents": 33,
     "largestCluster": 4
   }
 }

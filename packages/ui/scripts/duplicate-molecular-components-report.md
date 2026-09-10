@@ -1,6 +1,6 @@
 # Molecular component duplicate inventory
 
-Scanned 910 maintained React files. 103 exported compositions have a recognized molecular role and at least two atomic dependencies.
+Scanned 911 maintained React files. 104 exported compositions have a recognized molecular role and at least two atomic dependencies.
 
 Clusters share both a role and an atomic dependency signature. Detection creates a review queue; this committed report contains only final dispositions based on product behavior, state ownership, and responsive layout.
 
@@ -31,6 +31,7 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 | dialog | alert, button, card | 2 | distinct-domain-compositions |
 | form | button, input, textarea | 2 | distinct-domain-compositions |
 | panel | button, input | 2 | distinct-domain-compositions |
+| panel | button, select | 2 | distinct-domain-compositions |
 | row | button, card, statusDot | 2 | distinct-domain-compositions |
 
 ## Reviewed clusters
@@ -118,6 +119,13 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 - `ReleaseNotesSection` in `packages/ui/src/components/release-center/sections.tsx:241`
 - Fingerprint: `sha256:7c11e8d4a6401f86006252780a6d7d428dc8d5ade6007d697bf320b213c709af`
 - Decision: **distinct-domain-compositions**. Search, connector setup, and release-note panels have different interaction and state contracts.
+
+### panel: button + select
+
+- `AccountTransitionPanel` in `plugins/plugin-personal-assistant/src/components/lifeops-connections/AccountTransitionPanel.tsx:20`
+- `CalendarSyncPanel` in `plugins/plugin-personal-assistant/src/components/lifeops-connections/CalendarSyncPanel.tsx:29`
+- Fingerprint: `sha256:df2a91e87b067eb47ad612fe4f772eddf645b6d22f6a4cf7c57bf2312990afb0`
+- Decision: **distinct-domain-compositions**. AccountTransitionPanel reviews Google grant health and retires a selected account across mail and calendar. CalendarSyncPanel owns the agent-wide calendar destination, revision-checked pause/resume, and reconciliation of pending dispatch receipts. Their state transitions and server authorities differ; both already compose the canonical Button and Select controls.
 
 ### row: button + card + statusDot
 
