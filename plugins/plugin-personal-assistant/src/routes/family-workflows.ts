@@ -41,6 +41,40 @@ export async function handleFamilyWorkflowRoutes(
       return true;
     }
     if (
+      method === "POST" &&
+      pathname === "/api/lifeops/family-workflows/email-recipients/confirm"
+    ) {
+      const body = await readJsonBody<{
+        entityId?: unknown;
+        name?: unknown;
+        address?: unknown;
+        confirmed?: unknown;
+      }>(req, res);
+      if (!body) return true;
+      if (
+        body.confirmed !== true ||
+        typeof body.name !== "string" ||
+        typeof body.address !== "string" ||
+        (body.entityId !== null && typeof body.entityId !== "string")
+      ) {
+        ctx.error(
+          res,
+          "Review and confirm the exact contact name and email address.",
+          400,
+        );
+        return true;
+      }
+      json(res, {
+        recipient: await runtimeService.confirmEmailRecipient({
+          entityId: body.entityId,
+          name: body.name,
+          address: body.address,
+          confirmedBy: String(ctx.state.adminEntityId ?? "self"),
+        }),
+      });
+      return true;
+    }
+    if (
       method === "PUT" &&
       pathname === "/api/lifeops/family-workflows/school/source"
     ) {

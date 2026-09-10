@@ -38,6 +38,7 @@ import {
 } from "react";
 import { nextFamilyPacketPeriod } from "../../lifeops/family-workflows/period.js";
 import { defaultFamilyOperationsAdapter } from "./adapter.js";
+import { RecipientSetup } from "./RecipientSetup.js";
 import { PacketDraftEditor } from "./PacketDraftEditor.js";
 import type {
   FamilyOperationsAdapter,
@@ -1012,6 +1013,16 @@ function PacketPanel({
           external draft.
         </p>
       ) : null}
+      <RecipientSetup
+        adapter={adapter}
+        onConfirmed={async (contact) => {
+          await refresh();
+          setRecipientKey(JSON.stringify([contact.entityId, contact.address]));
+          setNotice(
+            "Recipient confirmed. Review a new draft before approving email delivery.",
+          );
+        }}
+      />
       <Card
         title="Monthly email"
         detail="Choose your sending account and a verified recipient. Review the exact email before approving delivery."

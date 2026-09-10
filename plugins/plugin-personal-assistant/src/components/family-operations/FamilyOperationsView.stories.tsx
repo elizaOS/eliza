@@ -6,6 +6,10 @@ import { FamilyOperationsView } from "./FamilyOperationsView.js";
 import type { FamilyOperationsAdapter } from "./types.js";
 
 const adapter = {
+  listRecipientContacts: async () => [],
+  confirmEmailRecipient: async () => {
+    throw new Error("This preview does not save contacts.");
+  },
   load: async () => ({
     agreements: { status: "ready", data: [] },
     calendarLinks: { status: "ready", data: [] },

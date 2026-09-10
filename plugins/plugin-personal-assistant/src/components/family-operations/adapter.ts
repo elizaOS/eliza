@@ -201,6 +201,25 @@ async function loadPackets(): Promise<Loadable<FamilyPacketView[]>> {
 }
 
 export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter = {
+  async listRecipientContacts() {
+    const result = await request<{
+      entities: Array<{ entityId: string; preferredName: string }>;
+    }>("/api/lifeops/entities?type=person");
+    return result.entities.map((person) => ({
+      entityId: person.entityId,
+      name: person.preferredName,
+    }));
+  },
+  async confirmEmailRecipient(input) {
+    const result = await request<{
+      recipient: { entityId: string; name: string; address: string };
+    }>("/api/lifeops/family-workflows/email-recipients/confirm", {
+      method: "POST",
+      body: JSON.stringify({ ...input, confirmed: true }),
+    });
+    return result.recipient;
+  },
+
   async load(): Promise<FamilyOperationsSnapshot> {
     const [agreements, calendarLinks, school, packets, emailOptions] =
       await Promise.all([

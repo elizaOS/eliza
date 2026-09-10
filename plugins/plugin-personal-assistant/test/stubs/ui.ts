@@ -46,7 +46,11 @@ function TestButton({
   children,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement>): ReactNode {
-  return createElement("button", { ...props, type: "button" }, children);
+  return createElement(
+    "button",
+    { ...props, type: props.type ?? "button" },
+    children,
+  );
 }
 
 function TestCheckbox({

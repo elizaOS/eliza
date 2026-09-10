@@ -465,6 +465,23 @@ export class FamilyWorkflowRuntimeService extends Service {
     };
   }
 
+  async confirmEmailRecipient(input: {
+    entityId: string | null;
+    name: string;
+    address: string;
+    confirmedBy: string;
+  }): Promise<{ entityId: string; name: string; address: string }> {
+    const graph = resolveKnowledgeGraphService(this.runtime);
+    if (!graph)
+      throw new ElizaError(
+        "The contact graph is unavailable. Retry recipient setup when it is ready.",
+        { code: "FAMILY_RECIPIENT_GRAPH_UNAVAILABLE" },
+      );
+    return graph
+      .getEntityStore(this.runtime.agentId)
+      .confirmEmailRecipient(input);
+  }
+
   async validateRecipientIdentity(input: {
     recipientEntityId: string;
     recipient: string;

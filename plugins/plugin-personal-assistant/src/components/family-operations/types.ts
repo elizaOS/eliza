@@ -87,7 +87,18 @@ export interface FamilyOperationsSnapshot {
   emailOptions: Loadable<FamilyEmailOptions>;
 }
 
+export interface FamilyRecipientContact {
+  entityId: string;
+  name: string;
+}
+
 export interface FamilyOperationsAdapter {
+  listRecipientContacts(): Promise<FamilyRecipientContact[]>;
+  confirmEmailRecipient(input: {
+    entityId: string | null;
+    name: string;
+    address: string;
+  }): Promise<FamilyRecipientContact & { address: string }>;
   load(): Promise<FamilyOperationsSnapshot>;
   uploadAgreement(input: AgreementUploadInput): Promise<void>;
   decideObligation(

@@ -41,6 +41,12 @@ import {
   toText,
 } from "./sql.ts";
 
+import {
+  confirmEmailRecipient,
+  type ConfirmEmailRecipientInput,
+  type ConfirmedEmailRecipient,
+} from "./confirmed-email-recipient.ts";
+
 function isoNow(): string {
   return new Date().toISOString();
 }
@@ -123,6 +129,12 @@ export class EntityStore {
     private readonly runtime: IAgentRuntime,
     private readonly agentId: string,
   ) {}
+
+  confirmEmailRecipient(
+    input: ConfirmEmailRecipientInput,
+  ): Promise<ConfirmedEmailRecipient> {
+    return confirmEmailRecipient(this.runtime, this.agentId, input);
+  }
 
   /**
    * Bootstrap the special `self` entity if it does not exist. Idempotent.

@@ -30,6 +30,8 @@ export function createFamilyPacketFixture(
     throw new Error("This operation is outside the synthetic email fixture.");
   };
   return {
+    listRecipientContacts: unsupported,
+    confirmEmailRecipient: unsupported,
     async load(): Promise<FamilyOperationsSnapshot> {
       return {
         agreements: { status: "ready", data: [] },
