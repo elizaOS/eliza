@@ -8,7 +8,8 @@
 
 import { once } from "node:events";
 import { createServer, type Server } from "node:http";
-import { afterEach, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
+import { WebSocket as TcpWebSocket, WebSocketServer } from "ws";
 import { authMe } from "../../../../../ui/src/api/auth-client";
 import { ElizaClient } from "../../../../../ui/src/api/client-base";
 import { client } from "../../../../../ui/src/api/index";
@@ -19,6 +20,7 @@ import {
   composeAgentStatusSnapshot,
   readAgentStatusViaHttp,
 } from "../agent-status-rpc";
+import { applyElectrobunApiBaseUpdate } from "../bridge/electrobun-boot-config";
 import {
   composeAuthMeSnapshot,
   readAuthMeViaHttp,
@@ -37,7 +39,12 @@ import {
   updateConfigViaHttp,
 } from "../settings-mutations-rpc";
 
+// Use the real TCP WebSocket client without Node EventTarget/jsdom realm mixing.
+beforeAll(() => vi.stubGlobal("WebSocket", TcpWebSocket));
+afterAll(() => vi.unstubAllGlobals());
+
 const servers: Server[] = [];
+const webSockets: WebSocketServer[] = [];
 const rpcCalls: string[] = [];
 const desktopWindow = window as typeof window & {
   __ELIZA_DESKTOP_LOCAL_API_BASE__?: string;
@@ -57,9 +64,12 @@ async function host(name: string, prefix = "") {
     writes: 0,
     rejectAuth: false,
     paths: [] as string[],
+    bearers: [] as (string | undefined)[],
+    upgrades: [] as string[],
   };
   const server = createServer(async (req, res) => {
     state.paths.push(`${req.method} ${req.url}`);
+    state.bearers.push(req.headers.authorization);
     const route = req.url?.slice(prefix.length);
     if (route === "/api/auth/me" && state.rejectAuth) {
       res.writeHead(401, { "Content-Type": "application/json" });
@@ -122,6 +132,12 @@ async function host(name: string, prefix = "") {
     res.end(JSON.stringify(body));
   });
   servers.push(server);
+  const wsServer = new WebSocketServer({ noServer: true });
+  webSockets.push(wsServer);
+  server.on("upgrade", (req, socket, head) => {
+    state.upgrades.push(req.url ?? "");
+    wsServer.handleUpgrade(req, socket, head, () => {});
+  });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const address = server.address();
@@ -169,6 +185,7 @@ function bindLocal(port: number, base: string) {
 }
 
 afterEach(async () => {
+  client.disconnectWs();
   setPendingFirstRunTextReleaseHandler(null);
   delete desktopWindow.__ELIZA_DESKTOP_LOCAL_API_BASE__;
   delete desktopWindow.__ELIZA_ELECTROBUN_RPC__;
@@ -176,6 +193,10 @@ afterEach(async () => {
   localStorage.clear();
   sessionStorage.clear();
   rpcCalls.length = 0;
+  for (const wsServer of webSockets.splice(0)) {
+    for (const socket of wsServer.clients) socket.terminate();
+    wsServer.close();
+  }
   for (const server of servers.splice(0)) {
     server.closeAllConnections();
     await new Promise<void>((resolve, reject) =>
@@ -273,4 +294,114 @@ it("preserves remote unauthorized state instead of accepting the local session, 
   });
   expect(rpcCalls).toEqual([]);
   expect(local.state.paths).toEqual([]);
+});
+
+it("retains selected remote auth and writes when the native host publishes a port update", async () => {
+  const local = await host("local");
+  const remote = await host("remote", "/deployment");
+  bindLocal(local.port, local.base);
+  applyLaunchConnection({ apiBase: remote.base, token: "synthetic-remote" });
+  expect(await authMe()).toMatchObject({
+    ok: true,
+    identity: { id: "remote" },
+  });
+  applyElectrobunApiBaseUpdate(window, {
+    base: local.base,
+    token: "synthetic-local",
+    localApiBase: local.base,
+  });
+  expect(await authMe()).toMatchObject({
+    ok: true,
+    identity: { id: "remote" },
+  });
+  await client.updateConfig({ meta: { firstRunComplete: true } });
+  expect(local.state.paths).toEqual([]);
+  expect(remote.state.writes).toBe(1);
+});
+
+it("rotates explicit local selection and its bearer after returning from a remote host", async () => {
+  const oldLocal = await host("old-local");
+  const remote = await host("remote");
+  const nextLocal = await host("next-local");
+  bindLocal(oldLocal.port, oldLocal.base);
+  applyLaunchConnection({ apiBase: remote.base, token: "synthetic-remote" });
+  client.setBaseUrl(oldLocal.base);
+  client.setToken("synthetic-old-local");
+  applyElectrobunApiBaseUpdate(window, {
+    base: nextLocal.base,
+    token: "synthetic-next-local",
+    localApiBase: nextLocal.base,
+  });
+  // Remove RPC only to observe the real client's serialized HTTP destination and bearer.
+  delete desktopWindow.__ELIZA_ELECTROBUN_RPC__;
+  expect((await client.getStatus()).agentName).toBe("next-local");
+  expect(await authMe()).toMatchObject({
+    ok: true,
+    identity: { id: "next-local" },
+  });
+  expect(
+    nextLocal.state.bearers.every(
+      (value) => value === "Bearer synthetic-next-local",
+    ),
+  ).toBe(true);
+  expect(oldLocal.state.paths).toEqual([]);
+  expect(remote.state.paths).toEqual([]);
+  let authorityChanges = 0;
+  const unsubscribe = client.onAuthorityChange(() => {
+    authorityChanges += 1;
+  });
+  applyElectrobunApiBaseUpdate(window, {
+    base: nextLocal.base,
+    token: "synthetic-next-local",
+    localApiBase: nextLocal.base,
+  });
+  expect(authorityChanges).toBe(0);
+  unsubscribe();
+});
+
+it("rotates an unselected local boot and preserves a selected different prefix", async () => {
+  const local = await host("local");
+  const nextLocal = await host("next-local");
+  bindLocal(local.port, local.base);
+  client.setBaseUrl(local.base);
+  client.setToken(null);
+  client.setBaseUrl(null, { persist: false });
+  client.connectWs();
+  await expect.poll(() => local.state.upgrades.length).toBe(1);
+  await expect.poll(() => client.getConnectionState().state).toBe("connected");
+  let changes = 0;
+  const stopObserving = client.onAuthorityChange(() => {
+    changes += 1;
+  });
+  applyElectrobunApiBaseUpdate(window, {
+    base: nextLocal.base,
+    token: "synthetic-next",
+    localApiBase: nextLocal.base,
+  });
+  delete desktopWindow.__ELIZA_ELECTROBUN_RPC__;
+  expect((await client.getStatus()).agentName).toBe("next-local");
+  expect(nextLocal.state.bearers.at(-1)).toBe("Bearer synthetic-next");
+  await expect.poll(() => nextLocal.state.upgrades.length).toBe(1);
+  await expect.poll(() => client.getConnectionState().state).toBe("connected");
+  expect(changes).toBe(1);
+  stopObserving();
+  client.disconnectWs();
+  const prefixed = await host("prefixed", "/deployment");
+  bindLocal(prefixed.port, `http://127.0.0.1:${prefixed.port}`);
+  applyLaunchConnection({ apiBase: prefixed.base, token: "synthetic-prefix" });
+  applyElectrobunApiBaseUpdate(window, {
+    base: local.base,
+    token: "synthetic-local",
+    localApiBase: local.base,
+  });
+  expect(await authMe()).toMatchObject({
+    ok: true,
+    identity: { id: "prefixed" },
+  });
+  expect((await client.getStatus()).agentName).toBe("prefixed");
+  expect(
+    prefixed.state.bearers.every(
+      (value) => value === "Bearer synthetic-prefix",
+    ),
+  ).toBe(true);
 });

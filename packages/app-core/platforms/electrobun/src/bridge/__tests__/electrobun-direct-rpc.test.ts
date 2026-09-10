@@ -446,7 +446,7 @@ describe("electrobun-direct-rpc preload", () => {
       token: "secret",
       externalApiBase: "  https://ext.example/  ",
     });
-    expect(w.__ELIZA_DESKTOP_EXTERNAL_API_BASE__).toBe("https://ext.example/");
+    expect(w.__ELIZA_DESKTOP_EXTERNAL_API_BASE__).toBe("https://ext.example");
     expect(w.__ELIZAOS_APP_BOOT_CONFIG__).toEqual({
       apiBase: "http://127.0.0.1:31337",
       apiToken: "secret",
@@ -457,7 +457,7 @@ describe("electrobun-direct-rpc preload", () => {
     });
   });
 
-  it("clears a blank or non-string external API base and omits a falsy token", () => {
+  it("rotates a bound local base and clears its absent credential", () => {
     const w = (globalThis as unknown as { window?: TestWindow }).window;
     if (!w) {
       throw new Error("test window missing");
@@ -467,20 +467,22 @@ describe("electrobun-direct-rpc preload", () => {
       base: "http://127.0.0.1:8",
       token: "keep-me",
       externalApiBase: "https://seed.example",
+      localApiBase: "http://127.0.0.1:8",
     });
     harness.wildcardMessage?.("apiBaseUpdate", {
       base: "http://127.0.0.1:9",
       token: "",
       externalApiBase: "   ",
+      localApiBase: "http://127.0.0.1:9",
     });
     expect(w.__ELIZA_DESKTOP_EXTERNAL_API_BASE__).toBeUndefined();
     expect(w.__ELIZAOS_APP_BOOT_CONFIG__).toEqual({
       apiBase: "http://127.0.0.1:9",
-      apiToken: "keep-me",
     });
 
     harness.wildcardMessage?.("apiBaseUpdate", {
       base: "http://127.0.0.1:10",
+      localApiBase: "http://127.0.0.1:10",
       externalApiBase: null,
     });
     expect(w.__ELIZA_DESKTOP_EXTERNAL_API_BASE__).toBeUndefined();
