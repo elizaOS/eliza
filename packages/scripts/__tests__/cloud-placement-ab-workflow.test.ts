@@ -66,7 +66,7 @@ describe("Cloud placement A/B workflow", () => {
       expect(inputs[name]).toMatchObject({ required: true, type: "string" });
     }
     const preflight = step("Validate trusted exact-SHA staging dispatch").run;
-    expect(preflight).toContain('"$GITHUB_REF" != "refs/heads/develop"');
+    expect(preflight).toContain('"$GITHUB_REF" != "refs/heads/staging"');
     expect(preflight).toContain('"$GITHUB_SHA" != "$EXPECTED_DEPLOY_SHA"');
     expect(preflight).toContain("^[a-f0-9]{40}$");
     for (const name of [

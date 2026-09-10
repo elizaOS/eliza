@@ -325,7 +325,7 @@ export function SidebarItemDescription({
     <span
       data-sidebar-item-description
       className={cn(
-        "mt-1 block whitespace-normal break-words [overflow-wrap:anywhere] text-xs-tight leading-relaxed text-muted/85",
+        "mt-1 block whitespace-normal break-words [overflow-wrap:anywhere] text-xs-tight leading-relaxed text-muted",
         className,
       )}
       {...props}

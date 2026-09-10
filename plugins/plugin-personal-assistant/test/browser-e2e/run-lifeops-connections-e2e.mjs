@@ -63,7 +63,7 @@ const styles = buildResult.output
 if (!styles)
   throw new Error("LifeOps fixture omitted production control styles.");
 
-const html = `<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LifeOps no-provider acceptance</title><style>:root{color-scheme:dark;--brand-white:#fdfaf7;--brand-black:#000;--txt:var(--brand-white);--muted:rgba(255,255,255,.56);--bg:var(--brand-black);--card:#121212;--bg-muted:rgba(255,255,255,.06);--bg-accent:var(--brand-black);--accent:#ff6a1f;--accent-muted:#c94400;--accent-foreground:var(--brand-black);--accent-subtle:rgba(255,106,31,.14);--border:rgba(255,255,255,.12);--border-strong:rgba(255,255,255,.22);--destructive:#ff6a1f;--destructive-foreground:var(--brand-black);--destructive-subtle:rgba(255,106,31,.12);--status-success:#4ade80;--status-success-bg:rgba(74,222,128,.16);--status-warning:#ff6a1f;--status-warning-bg:rgba(255,106,31,.12);--status-danger:#ff6a1f;--status-danger-bg:rgba(255,106,31,.12);--scrim:rgba(0,0,0,.72)}html,body,#root{width:100%;height:100%;margin:0;background:var(--bg);color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}*{box-sizing:border-box}</style></head><body><div id="root"></div><script>${bundle}</script></body></html>`;
+const html = `<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LifeOps no-provider acceptance</title><style>:root{color-scheme:dark;--brand-white:#fdfaf7;--brand-black:#000;--txt:var(--brand-white);--muted:rgba(255,255,255,.56);--bg:var(--brand-black);--card:#121212;--bg-muted:rgba(255,255,255,.06);--bg-accent:var(--brand-black);--accent:#ff6a1f;--accent-muted:#c94400;--accent-foreground:var(--brand-black);--accent-subtle:rgba(255,106,31,.14);--border:rgba(255,255,255,.12);--border-strong:rgba(255,255,255,.22);--status-success:#4ade80;--status-success-bg:rgba(74,222,128,.16);--status-warning:#ff6a1f;--status-warning-bg:rgba(255,106,31,.12);--status-danger:#ff6a1f;--status-danger-bg:rgba(255,106,31,.12);--scrim:rgba(0,0,0,.72)}html,body,#root{width:100%;height:100%;margin:0;background:var(--bg);color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}*{box-sizing:border-box}</style></head><body><div id="root"></div><script>${bundle}</script></body></html>`;
 const server = Bun.serve({
   hostname: "127.0.0.1",
   port,
@@ -247,6 +247,22 @@ try {
     )) === "Cancel",
     "destructive confirmation receives keyboard focus",
   );
+  const confirmPurge = desktop.getByRole("button", { name: "Confirm purge" });
+  for (const state of ["rest", "hover"]) {
+    if (state === "hover") await confirmPurge.hover();
+    const colors = await confirmPurge.evaluate((element) => ({
+      foreground: getComputedStyle(element).color,
+      background: getComputedStyle(element).backgroundColor,
+    }));
+    assert(
+      contrastRatio(colors.foreground, colors.background) >= 4.5,
+      `production destructive confirmation ${state} contrast remains WCAG AA`,
+    );
+    await desktop.screenshot({
+      path: join(outputDir, `desktop-confirm-purge-${state}.png`),
+      fullPage: true,
+    });
+  }
   await desktop.keyboard.press("Escape");
   await desktop.getByRole("alertdialog").waitFor({ state: "detached" });
   assert(

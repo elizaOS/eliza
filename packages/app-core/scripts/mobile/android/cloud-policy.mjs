@@ -8,6 +8,10 @@ import {
   ANDROID_LP3_PRIVATE_ACTIONS,
   resolveAndroidArtifactKind,
 } from "../../lib/android-cloud-artifact-audit.mjs";
+import {
+  ANDROID_CLOUD_ROUTING_MARKERS,
+  findAndroidCloudRoutingMarkers,
+} from "../../lib/android-cloud-routing-markers.mjs";
 import { mobileBuildError } from "../build-error.mjs";
 import { APP } from "../context.mjs";
 import { isTruthyEnv } from "../environment.mjs";
@@ -223,6 +227,7 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "ElizaRecognitionService.java",
   "ElizaVoiceInputMethodService.java",
   "ElizaBootReceiver.java",
+  "ElizaApplication.java",
   "ElizaWorkScheduler.java",
   "ElizaNotificationListenerService.java",
   "ElizaVoiceCaptureService.java",
@@ -758,6 +763,11 @@ export const ANDROID_PLAY_DATA_EXTRACTION_RULES = `<?xml version="1.0" encoding=
 
 export function applyAndroidPlayManifestHardening(source) {
   let xml = source
+    // WorkManager belongs to the local-agent target and is absent from Play.
+    .replace(
+      /(<application\b[^>]*?)\s+android:name="(?:[\w.]*\.)?ElizaApplication"/,
+      "$1",
+    )
     .replace(/\s+android:dataExtractionRules="[^"]*"/, "")
     .replace(/\s+android:fullBackupContent="[^"]*"/, "")
     .replace(
@@ -785,14 +795,8 @@ export function applyAndroidPlayManifestHardening(source) {
   return `${xml.slice(0, insertion)}\n\n${permissions}${xml.slice(insertion)}`;
 }
 
-export const ANDROID_PLAY_FORBIDDEN_ASSET_MARKERS = Object.freeze([
-  "32437",
-  "32438",
-  "10.0.2.2",
-  "adb reverse",
-  "__ELIZA_ANDROID_IPC_FETCH_BRIDGE__",
-  "navigator.serviceWorker",
-]);
+export const ANDROID_PLAY_FORBIDDEN_ASSET_MARKERS =
+  ANDROID_CLOUD_ROUTING_MARKERS;
 
 export const ANDROID_PLAY_FORBIDDEN_INDEX_HTML_MARKERS = Object.freeze([
   "__ELIZA_ANDROID_IPC_FETCH_BRIDGE__",
@@ -826,10 +830,8 @@ export function findAndroidPlayTextAssetFindings(entries, buffers) {
   const findings = [];
   for (let index = 0; index < entries.length; index += 1) {
     const content = Buffer.from(buffers[index]).toString("utf8");
-    for (const marker of ANDROID_PLAY_FORBIDDEN_ASSET_MARKERS) {
-      if (content.toLowerCase().includes(marker.toLowerCase())) {
-        findings.push(`${entries[index]}: local routing marker ${marker}`);
-      }
+    for (const marker of findAndroidCloudRoutingMarkers(content)) {
+      findings.push(`${entries[index]}: local routing marker ${marker}`);
     }
     for (const [label, pattern] of ANDROID_PLAY_SECRET_PATTERNS) {
       if (pattern.test(content)) findings.push(`${entries[index]}: ${label}`);

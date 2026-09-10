@@ -13,8 +13,8 @@
  * path-filtered commits and manual production dispatches may have no successor.
  * Divergence, missing successor proof, and unverifiable state all fail hard.
  * With --allow-monotonic-forward-progress, protected staging may continue
- * after develop advances only when the served commit is an ancestor of the run
- * SHA and the run SHA is an ancestor of the new develop head. This prevents
+ * after staging advances only when the served commit is an ancestor of the run
+ * SHA and the run SHA is an ancestor of the new staging head. This prevents
  * sustained merge traffic from starving staging without permitting rollback.
  */
 import { appendFileSync } from "node:fs";
@@ -26,7 +26,7 @@ import {
 import { fetchServedCommit } from "./deploy-freshness-guard.mjs";
 
 const COMMIT_SHA_PATTERN = /^[a-f0-9]{40}$/;
-const CANONICAL_REFS = new Set(["refs/heads/develop", "refs/heads/main"]);
+const CANONICAL_REFS = new Set(["refs/heads/staging", "refs/heads/main"]);
 const ACTIVE_WORKFLOW_RUN_STATUSES = new Set([
   "queued",
   "in_progress",
@@ -134,7 +134,7 @@ export function decideCanonicalDeploySource({
     const normalizedServed = normalizeSha(servedCommit);
     if (
       allowMonotonicForwardProgress &&
-      normalizedRef === "refs/heads/develop" &&
+      normalizedRef === "refs/heads/staging" &&
       runShaIsAncestorOfHead === true &&
       normalizedServed &&
       servedCommitIsAncestorOfRun === true
@@ -180,7 +180,7 @@ export function decideCanonicalDeploySource({
 }
 
 /**
- * Accepts only an active develop push run of Cloud CF Deploy for the exact
+ * Accepts only an active staging push run of Cloud CF Deploy for the exact
  * canonical head. A completed success may still be a no-op (release skipped or
  * superseded), so completed runs are not sufficient ownership proof.
  * @param {unknown} payload
@@ -203,7 +203,7 @@ export function hasEligibleSuccessorReleaseRun(
     const exactIdentity =
       String(run.id) !== currentRunId &&
       normalizeSha(run.head_sha) === canonicalHead &&
-      run.head_branch === "develop" &&
+      run.head_branch === "staging" &&
       run.event === "push";
     if (!exactIdentity) return false;
     return (
@@ -234,7 +234,7 @@ export async function proveSuccessorReleaseRun(
     `repos/${repository}/actions/workflows/cloud-cf-deploy.yml/runs`,
     apiUrl.endsWith("/") ? apiUrl : `${apiUrl}/`,
   );
-  url.searchParams.set("branch", "develop");
+  url.searchParams.set("branch", "staging");
   url.searchParams.set("event", "push");
   url.searchParams.set("head_sha", canonicalHead);
   url.searchParams.set("exclude_pull_requests", "true");
@@ -413,7 +413,7 @@ async function main() {
     const successorRunOwnsHead =
       args.neutralWhenSuperseded &&
       runShaIsAncestorOfHead &&
-      args.canonicalRef === "refs/heads/develop" &&
+      args.canonicalRef === "refs/heads/staging" &&
       (await proveSuccessorReleaseRun(canonicalHead));
     let servedCommit = null;
     let servedCommitIsAncestorOfRun = null;

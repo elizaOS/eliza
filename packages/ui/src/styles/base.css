@@ -1,4 +1,4 @@
-/* Eliza — Theme System */
+/** Supplies shared semantic surface, text, and control color pairs for elizaOS frontends. */
 
 :root {
   /* Capacitor SystemBars publishes corrected Android insets (including zero
@@ -122,13 +122,15 @@
   --ok-foreground: #15803d;
   --ok-muted: rgba(34, 197, 94, 0.72);
   --ok-subtle: rgba(34, 197, 94, 0.12);
-  --destructive: #dc2626;
+  --destructive: #b91c1c;
+  --destructive-solid: #b91c1c;
+  --destructive-solid-hover: #991b1b;
   --destructive-foreground: #ffffff;
   --destructive-subtle: rgba(220, 38, 38, 0.1);
   --warn: #a16207;
   --warn-muted: rgba(161, 98, 7, 0.72);
   --warn-subtle: rgba(161, 98, 7, 0.1);
-  --danger: #dc2626;
+  --danger: #b91c1c;
   --info: var(--muted-strong);
 
   /* Status semantic aliases */
@@ -395,13 +397,15 @@
   --ok-foreground: var(--ok);
   --ok-muted: rgba(74, 222, 128, 0.7);
   --ok-subtle: rgba(74, 222, 128, 0.12);
-  --destructive: #ef4444;
+  --destructive: #fca5a5;
+  --destructive-solid: #b91c1c;
+  --destructive-solid-hover: #991b1b;
   --destructive-foreground: #ffffff;
   --destructive-subtle: rgba(239, 68, 68, 0.12);
   --warn: #eab308;
   --warn-muted: rgba(234, 179, 8, 0.7);
   --warn-subtle: rgba(234, 179, 8, 0.1);
-  --danger: #ef4444;
+  --danger: #fca5a5;
   --info: var(--muted-strong);
 
   --status-success: var(--ok);

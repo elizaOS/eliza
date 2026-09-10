@@ -465,7 +465,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                   </AlertDialogCancel>
                   <AlertDialogAction
                     onClick={handleRegenerateApiKey}
-                    className="bg-destructive text-destructive-fg hover:bg-destructive/85"
+                    className="bg-destructive-solid text-destructive-fg hover:bg-destructive-solid-hover"
                   >
                     {t("cloud.appSettings.regenerateApiKey", {
                       defaultValue: "Regenerate API Key",
@@ -534,7 +534,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                   </AlertDialogCancel>
                   <AlertDialogAction
                     onClick={handleDelete}
-                    className="bg-destructive text-destructive-fg hover:bg-destructive/85"
+                    className="bg-destructive-solid text-destructive-fg hover:bg-destructive-solid-hover"
                   >
                     {t("cloud.appSettings.deleteApp", {
                       defaultValue: "Delete App",

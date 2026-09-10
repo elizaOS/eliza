@@ -143,7 +143,7 @@ describe("onboardingFetch — bounded hops fail closed and keep caller signals",
     const start = Date.now();
     await expect(
       onboardingFetch(hungStub, "https://onboarding.internal/resolve", undefined, 100),
-    ).rejects.toThrow(/aborted/i);
+    ).rejects.toMatchObject({ name: "TimeoutError" });
     expect(Date.now() - start).toBeLessThan(5_000);
   });
 
@@ -210,14 +210,68 @@ describe("onboardingFetch — bounded hops fail closed and keep caller signals",
     expect(cancelled).toBe(true);
   });
 
+  test("cancels a response when its headers arrive after the deadline", async () => {
+    let now = 0;
+    let cancelled = false;
+    const clock = spyOn(performance, "now").mockImplementation(() => now);
+    try {
+      const stub = {
+        fetch: async () => {
+          now = 11;
+          return new Response(
+            new ReadableStream({
+              cancel() {
+                cancelled = true;
+              },
+            }),
+          );
+        },
+      };
+      await expect(
+        onboardingFetch(stub, "https://onboarding.internal/resolve", undefined, 10),
+      ).rejects.toMatchObject({ name: "TimeoutError" });
+      expect(cancelled).toBe(true);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  test("releases a late response after caller cancellation has already returned", async () => {
+    let deliver!: (response: Response) => void;
+    let observeCancellation!: (reason: unknown) => void;
+    const response = new Promise<Response>((resolve) => {
+      deliver = resolve;
+    });
+    const cancellation = new Promise<unknown>((resolve) => {
+      observeCancellation = resolve;
+    });
+    const controller = new AbortController();
+    const reason = new DOMException("caller stopped", "AbortError");
+    const pending = onboardingFetch(
+      { fetch: () => response },
+      "https://onboarding.internal/resolve",
+      {
+        signal: controller.signal,
+      },
+    );
+    controller.abort(reason);
+    await expect(pending).rejects.toBe(reason);
+    deliver(new Response(new ReadableStream({ cancel: observeCancellation })));
+    expect(await cancellation).toBe(reason);
+  });
+
   test("enforces the wall-clock deadline across immediately-ready empty chunks", async () => {
     let cancelled = false;
     let emitted = 0;
+    let now = 0;
+    const realNow = performance.now.bind(performance);
+    const clock = spyOn(performance, "now").mockImplementation(() => now);
     const stub = {
       fetch: async () =>
         new Response(
           new ReadableStream<Uint8Array>({
             pull(controller) {
+              now += 1;
               if (emitted < 100_000) {
                 emitted += 1;
                 controller.enqueue(new Uint8Array(0));
@@ -231,13 +285,18 @@ describe("onboardingFetch — bounded hops fail closed and keep caller signals",
           }),
         ),
     };
-    const startedAt = performance.now();
-    await expect(
-      onboardingFetch(stub, "https://onboarding.internal/resolve", undefined, 1),
-    ).rejects.toMatchObject({ name: "TimeoutError" });
-    expect(performance.now() - startedAt).toBeLessThan(1_000);
-    expect(emitted).toBeLessThan(100_000);
-    expect(cancelled).toBe(true);
+    const startedAt = realNow();
+    try {
+      await expect(
+        onboardingFetch(stub, "https://onboarding.internal/resolve", undefined, 10),
+      ).rejects.toMatchObject({ name: "TimeoutError" });
+      expect(realNow() - startedAt).toBeLessThan(1_000);
+      expect(emitted).toBeGreaterThan(0);
+      expect(emitted).toBeLessThan(100_000);
+      expect(cancelled).toBe(true);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   test("preserves the caller reason when stream cancellation rejects differently", async () => {

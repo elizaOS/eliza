@@ -773,6 +773,9 @@ function DomainCard({
                     <Button
                       variant="surfaceDestructive"
                       size="icon-sm"
+                      aria-label={t("cloud.appDomains.removeDomainTooltip", {
+                        defaultValue: "Remove domain",
+                      })}
                       disabled={isRemoving}
                     >
                       {isRemoving ? (
@@ -818,7 +821,7 @@ function DomainCard({
                   </AlertDialogCancel>
                   <AlertDialogAction
                     onClick={onRemove}
-                    className="bg-destructive hover:bg-accent-hover text-accent-foreground"
+                    className="bg-destructive-solid hover:bg-destructive-solid-hover text-destructive-fg"
                   >
                     {t("cloud.appDomains.removeDomainTitle", {
                       defaultValue: "Remove Domain",
