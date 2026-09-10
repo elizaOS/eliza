@@ -70,4 +70,50 @@ describe("js-runtime-bridge (host-node)", () => {
     expect(entries.get("value")).toEqual({ kind: "number", value: 42 });
     expect(entries.get("name")).toEqual({ kind: "string", value: "eliza" });
   });
+
+  it("marshals shared (non-cyclic) references as full values, not as [cycle]", async () => {
+    // A value graph that reuses one object from two places is a DAG, not a
+    // cycle; every reference must marshal to the same full JsValue.
+    const result = await bridge.evaluate({
+      code: "(() => { const shared = { id: 'cfg', n: 1 }; return { a: shared, b: shared, list: [shared, shared] }; })()",
+    });
+    const sharedValue = {
+      kind: "object",
+      entries: [
+        ["id", { kind: "string", value: "cfg" }],
+        ["n", { kind: "number", value: 1 }],
+      ],
+    };
+    expect(result).toEqual({
+      kind: "object",
+      entries: [
+        ["a", sharedValue],
+        ["b", sharedValue],
+        ["list", { kind: "array", items: [sharedValue, sharedValue] }],
+      ],
+    });
+  });
+
+  it("still collapses a true cycle to [cycle] and marshals its siblings", async () => {
+    const result = await bridge.evaluate({
+      code: "(() => { const root = { name: 'root' }; root.self = root; root.child = { parent: root, tag: 't' }; return root; })()",
+    });
+    expect(result).toEqual({
+      kind: "object",
+      entries: [
+        ["name", { kind: "string", value: "root" }],
+        ["self", { kind: "string", value: "[cycle]" }],
+        [
+          "child",
+          {
+            kind: "object",
+            entries: [
+              ["parent", { kind: "string", value: "[cycle]" }],
+              ["tag", { kind: "string", value: "t" }],
+            ],
+          },
+        ],
+      ],
+    });
+  });
 });

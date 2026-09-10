@@ -86,7 +86,9 @@ const MAX_MARSHAL_DEPTH = 32;
  * Convert a host JS value into the wire {@link JsValue} shape. Cycles, BigInts,
  * Symbols, Dates, and class instances collapse to a plain object/string view —
  * the bridge contract is intentionally narrow so the iOS/Android sides have a
- * minimal surface to implement.
+ * minimal surface to implement. Only a reference back to an ancestor is a
+ * cycle; an object reached twice through different paths is duplicated, since
+ * the wire shape carries no reference identity.
  */
 export function toJsValue(input: unknown, ctx?: MarshalContext): JsValue {
   const c = ctx ?? newMarshalContext();
@@ -123,24 +125,37 @@ function marshalValue(
     return { kind: "function", functionId: id };
   }
 
+  // `seen` holds the ancestor path of the value being marshalled, not every
+  // object visited so far: an object is a cycle only while it is still open
+  // above us. It is removed once its children are done, so a graph that
+  // reuses one object from two places (a DAG) marshals both references in
+  // full instead of collapsing the second one to "[cycle]".
   if (Array.isArray(input)) {
     if (seen.has(input)) return { kind: "string", value: "[cycle]" };
     seen.add(input);
-    return {
-      kind: "array",
-      items: input.map((item) => marshalValue(item, ctx, depth + 1, seen)),
-    };
+    try {
+      return {
+        kind: "array",
+        items: input.map((item) => marshalValue(item, ctx, depth + 1, seen)),
+      };
+    } finally {
+      seen.delete(input);
+    }
   }
 
   if (t === "object") {
     const obj = input as Record<string, unknown>;
     if (seen.has(obj)) return { kind: "string", value: "[cycle]" };
     seen.add(obj);
-    const entries: Array<[string, JsValue]> = [];
-    for (const key of Object.keys(obj)) {
-      entries.push([key, marshalValue(obj[key], ctx, depth + 1, seen)]);
+    try {
+      const entries: Array<[string, JsValue]> = [];
+      for (const key of Object.keys(obj)) {
+        entries.push([key, marshalValue(obj[key], ctx, depth + 1, seen)]);
+      }
+      return { kind: "object", entries };
+    } finally {
+      seen.delete(obj);
     }
-    return { kind: "object", entries };
   }
 
   return { kind: "undefined" };
