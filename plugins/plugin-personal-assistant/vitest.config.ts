@@ -86,6 +86,9 @@ const agentSourceJsToTsPlugin = {
     if (source === "@elizaos/agent/api/server-helpers") {
       return path.join(agentSourceRoot, "api", "server-helpers.ts");
     }
+    if (source === "@elizaos/agent/runtime/plugin-collector") {
+      return path.join(agentSourceRoot, "runtime", "plugin-collector.ts");
+    }
     if (source === "@elizaos/ui") {
       return path.join(lifeopsTestStubsRoot, "ui.ts");
     }
@@ -281,6 +284,16 @@ export default defineConfig({
       {
         find: /^@elizaos\/agent\/api\/server-helpers$/,
         replacement: path.join(agentSourceRoot, "api", "server-helpers.ts"),
+      },
+      {
+        // The real plugin collector, so a runtime test can register plugins
+        // in the order the standalone agent derives (#30943).
+        find: /^@elizaos\/agent\/runtime\/plugin-collector$/,
+        replacement: path.join(
+          agentSourceRoot,
+          "runtime",
+          "plugin-collector.ts",
+        ),
       },
       {
         find: /^@elizaos\/app-core\/platform\/native-library-policy$/,
