@@ -392,3 +392,41 @@ test("relationships decomposed view: renders the graph and toggles a kind filter
     timeout: 15_000,
   });
 });
+
+for (const width of [1280, 390]) {
+  test(`connections calendar recovery loads through the built host at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await page.route(
+      "**/api/lifeops/connectors/google/status**",
+      async (route) => {
+        await route.fulfill({ json: { accounts: [] } });
+      },
+    );
+    await openAppPath(page, "/lifeops/connections");
+    const refresh = page.getByRole("button", {
+      name: "Retry all connection checks and synchronization",
+    });
+    await expect(refresh).toBeEnabled({ timeout: 60_000 });
+    await page
+      .getByRole("button", { name: "Replace an account", exact: true })
+      .click();
+    await expect(
+      page.getByLabel("Test account to disconnect", { exact: true }),
+    ).toBeVisible();
+    const synchronized = page.waitForRequest((request) => {
+      const url = new URL(request.url());
+      return (
+        url.pathname === "/api/lifeops/calendar/feed" &&
+        url.searchParams.get("forceSync") === "true"
+      );
+    });
+    await refresh.click();
+    await synchronized;
+    await expect(refresh).toBeEnabled();
+    expect(pageErrors).toEqual([]);
+  });
+}
