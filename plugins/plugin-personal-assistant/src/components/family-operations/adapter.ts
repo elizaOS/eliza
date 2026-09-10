@@ -21,6 +21,7 @@ import type {
 
 interface PacketPersistenceState {
   packetId: string;
+  internalVersion: number;
   draft: MonthlyFamilyDraft | null;
   approvalId: string | null;
 }
@@ -145,17 +146,18 @@ function packetView(
       section: claim.section,
       text: claim.statement,
     })),
-    draft: persistence?.draft
-      ? {
-          draftVersion: persistence.draft.draftVersion,
-          recipient: persistence.draft.recipient,
-          recipientEntityId: persistence.draft.recipientEntityId,
-          calendarPrivacyMode: persistence.draft.calendarPrivacyMode,
-          body: persistence.draft.body,
-          email: persistence.draft.email,
-          approvalId: persistence.approvalId ?? undefined,
-        }
-      : null,
+    draft:
+      persistence?.draft?.internalVersion === packet.version
+        ? {
+            draftVersion: persistence.draft.draftVersion,
+            recipient: persistence.draft.recipient,
+            recipientEntityId: persistence.draft.recipientEntityId,
+            calendarPrivacyMode: persistence.draft.calendarPrivacyMode,
+            body: persistence.draft.body,
+            email: persistence.draft.email,
+            approvalId: persistence.approvalId ?? undefined,
+          }
+        : null,
   };
 }
 
@@ -185,12 +187,18 @@ async function loadPackets(): Promise<Loadable<FamilyPacketView[]>> {
       packetStates?: PacketPersistenceState[];
     }>("/api/lifeops/family-workflows/packets");
     const states = new Map(
-      (payload.packetStates ?? []).map((state) => [state.packetId, state]),
+      (payload.packetStates ?? []).map((state) => [
+        JSON.stringify([state.packetId, state.internalVersion]),
+        state,
+      ]),
     );
     return {
       status: "ready",
       data: payload.packets.map((packet) =>
-        packetView(packet, states.get(packet.packetId)),
+        packetView(
+          packet,
+          states.get(JSON.stringify([packet.packetId, packet.version])),
+        ),
       ),
     };
   } catch (error) {
@@ -468,6 +476,7 @@ export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter = {
       {
         method: "POST",
         body: JSON.stringify({
+          expectedPacketVersion: input.expectedPacketVersion,
           recipient: input.recipient,
           recipientEntityId: input.recipientEntityId,
           calendarPrivacyMode: input.calendarPrivacyMode,

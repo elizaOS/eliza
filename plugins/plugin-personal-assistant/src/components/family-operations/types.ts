@@ -78,6 +78,7 @@ export interface AgreementUploadInput {
 
 export interface PacketDraftInput {
   packetId: string;
+  expectedPacketVersion: number;
   recipient: string;
   recipientEntityId: string;
   calendarPrivacyMode: "full" | "times_only" | "busy_only";

@@ -973,7 +973,10 @@ function PacketPanel({
       );
     }
   };
-  const createDraft = async (packetId: string) => {
+  const createDraft = async (
+    packetId: string,
+    expectedPacketVersion: number,
+  ) => {
     try {
       setError(null);
       setNotice(null);
@@ -981,6 +984,7 @@ function PacketPanel({
         throw new Error("Choose a connected sender and a verified recipient.");
       await adapter.createPacketDraft({
         packetId,
+        expectedPacketVersion,
         recipient: recipient.address,
         recipientEntityId: recipient.entityId,
         calendarPrivacyMode,
@@ -1198,7 +1202,9 @@ function PacketPanel({
               <Button
                 variant="outline"
                 disabled={!canCreateDraft}
-                onClick={() => void createDraft(packet.packetId)}
+                onClick={() =>
+                  void createDraft(packet.packetId, packet.version)
+                }
               >
                 Create privacy-filtered draft
               </Button>

@@ -3,6 +3,7 @@
  * family packet generation, review, drafting, and canonical approval enqueue.
  */
 
+import { ElizaError } from "@elizaos/core";
 import type {
   FamilyPacketEmailDelivery,
   FamilyPacketPeriod,
@@ -162,9 +163,11 @@ export async function handleFamilyWorkflowRoutes(
           packets.map(async (packet) => {
             const draft = await runtimeService.packets.readLatestDraft(
               packet.packetId,
+              packet.version,
             );
             return {
               packetId: packet.packetId,
+              internalVersion: packet.version,
               draft,
               approvalId: draft
                 ? await runtimeService.packets.readDraftApprovalId(
@@ -206,12 +209,21 @@ export async function handleFamilyWorkflowRoutes(
     );
     if (method === "POST" && draftMatch) {
       const body = await readJsonBody<{
+        expectedPacketVersion?: unknown;
         recipient?: unknown;
         recipientEntityId?: unknown;
         calendarPrivacyMode?: unknown;
         email?: unknown;
       }>(req, res);
       if (!body) return true;
+      if (
+        typeof body.expectedPacketVersion !== "number" ||
+        !Number.isSafeInteger(body.expectedPacketVersion) ||
+        body.expectedPacketVersion < 1
+      ) {
+        ctx.error(res, "expectedPacketVersion must be a positive integer", 400);
+        return true;
+      }
       let email: FamilyPacketEmailDelivery | undefined;
       if (body.email !== undefined) {
         if (
@@ -253,6 +265,7 @@ export async function handleFamilyWorkflowRoutes(
         await runtimeService.createDraft(
           decodeURIComponent(draftMatch[1] ?? ""),
           {
+            expectedPacketVersion: body.expectedPacketVersion,
             recipient: body.recipient.trim(),
             recipientEntityId: body.recipientEntityId.trim(),
             ...(email ? { email } : {}),
@@ -323,6 +336,17 @@ export async function handleFamilyWorkflowRoutes(
     return true;
   } catch (error) {
     // error-policy:J1 HTTP boundary returns a structured failure.
+    if (
+      error instanceof ElizaError &&
+      [
+        "FAMILY_PACKET_VERSION_STALE",
+        "FAMILY_PACKET_INTERNAL_STALE",
+        "FAMILY_PACKET_DRAFT_STALE",
+      ].includes(error.code)
+    ) {
+      json(res, { error: { code: error.code, message: error.message } }, 409);
+      return true;
+    }
     ctx.error(res, error instanceof Error ? error.message : String(error), 400);
     return true;
   }

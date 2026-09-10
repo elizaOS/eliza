@@ -541,4 +541,60 @@ describe("MonthlyFamilyPacketService with real PGlite", () => {
       ).rejects.toMatchObject({ code: "FAMILY_PACKET_APPROVAL_TAMPERED" });
     }
   });
+  it("keeps versioned draft history while rejecting approval against replaced source evidence", async () => {
+    const firstPacket = await service.buildInternal(period("2026-09"), [
+      claim("first"),
+    ]);
+    const firstDraft = await service.createExternalDraft(
+      firstPacket,
+      guestDraft,
+    );
+    const queue = {
+      enqueueTransactional: vi.fn(async (input: ApprovalEnqueueInput) => ({
+        request: approval(input),
+        reused: false,
+      })),
+      surfaceEnqueuedApproval: vi.fn(async () => undefined),
+    };
+    const input = {
+      draft: firstDraft,
+      queue,
+      requestedBy: "owner",
+      subjectUserId: "owner",
+      expiresAt: new Date("2026-09-05T00:00:00.000Z"),
+    };
+    const request = await service.enqueueDraftApproval(input);
+    const secondPacket = await service.buildInternal(period("2026-09"), [
+      claim("replacement"),
+    ]);
+    await expect(
+      service.readLatestDraft(firstPacket.packetId, firstPacket.version),
+    ).resolves.toMatchObject({ draftVersion: firstDraft.draftVersion });
+    await expect(
+      service.readLatestDraft(secondPacket.packetId, secondPacket.version),
+    ).resolves.toBeNull();
+    await expect(service.enqueueDraftApproval(input)).rejects.toMatchObject({
+      code: "FAMILY_PACKET_INTERNAL_STALE",
+    });
+    await expect(
+      service.validateApprovedDraft({ ...request, state: "approved" }),
+    ).rejects.toMatchObject({ code: "FAMILY_PACKET_INTERNAL_STALE" });
+    expect(queue.enqueueTransactional).toHaveBeenCalledTimes(1);
+    const secondDraft = await service.createExternalDraft(
+      secondPacket,
+      guestDraft,
+    );
+    await expect(
+      service.readLatestDraft(secondPacket.packetId, secondPacket.version),
+    ).resolves.toMatchObject({
+      draftVersion: secondDraft.draftVersion,
+      internalVersion: secondPacket.version,
+    });
+    await expect(
+      service.readLatestDraft(firstPacket.packetId, firstPacket.version),
+    ).resolves.toMatchObject({
+      draftVersion: firstDraft.draftVersion,
+      internalVersion: firstPacket.version,
+    });
+  });
 });

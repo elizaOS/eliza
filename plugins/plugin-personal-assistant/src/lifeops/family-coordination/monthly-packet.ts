@@ -784,6 +784,12 @@ export class MonthlyFamilyPacketService {
     ) {
       fail("draft is missing or tampered", "FAMILY_PACKET_DRAFT_TAMPERED");
     }
+    const latestPacket = await this.read(draft.packetId);
+    if (!latestPacket || latestPacket.version !== draft.internalVersion)
+      fail(
+        "The source packet changed. Review a new draft before approval or delivery.",
+        "FAMILY_PACKET_INTERNAL_STALE",
+      );
     const latestRows = await executeRawSql(
       this.runtime,
       `SELECT MAX(draft_version) AS version FROM app_lifeops.life_family_packet_drafts WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND packet_id=${sqlQuote(draft.packetId)}`,
@@ -875,6 +881,12 @@ export class MonthlyFamilyPacketService {
         request.payload.familyPacketId !== draft.packetId)
     )
       fail("approved payload was tampered", "FAMILY_PACKET_APPROVAL_TAMPERED");
+    const latestPacket = await this.read(draft.packetId);
+    if (!latestPacket || latestPacket.version !== draft.internalVersion)
+      fail(
+        "The source packet changed. Review a new draft before approval or delivery.",
+        "FAMILY_PACKET_INTERNAL_STALE",
+      );
     const latestRows = await executeRawSql(
       this.runtime,
       `SELECT MAX(draft_version) AS version FROM app_lifeops.life_family_packet_drafts WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND packet_id=${sqlQuote(draft.packetId)}`,
@@ -972,11 +984,22 @@ export class MonthlyFamilyPacketService {
     };
   }
 
-  async readLatestDraft(packetId: string): Promise<MonthlyFamilyDraft | null> {
+  async readLatestDraft(
+    packetId: string,
+    internalVersion?: number,
+  ): Promise<MonthlyFamilyDraft | null> {
+    if (
+      internalVersion !== undefined &&
+      (!Number.isSafeInteger(internalVersion) || internalVersion < 1)
+    )
+      fail(
+        "Packet version must be a positive integer",
+        "FAMILY_PACKET_VERSION_INVALID",
+      );
     await this.ensureSchema();
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT draft_version FROM app_lifeops.life_family_packet_drafts WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND packet_id=${sqlQuote(packetId)} ORDER BY draft_version DESC LIMIT 1`,
+      `SELECT draft_version FROM app_lifeops.life_family_packet_drafts WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND packet_id=${sqlQuote(packetId)}${internalVersion === undefined ? "" : ` AND internal_version=${internalVersion}`} ORDER BY draft_version DESC LIMIT 1`,
     );
     return rows[0]
       ? this.readDraft(packetId, toNumber(rows[0].draft_version))

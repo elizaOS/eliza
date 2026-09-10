@@ -88,6 +88,7 @@ describe("defaultFamilyOperationsAdapter", () => {
     });
     await defaultFamilyOperationsAdapter.createPacketDraft({
       packetId: "packet/1",
+      expectedPacketVersion: 1,
       recipient: "+15551234567",
       recipientEntityId: "guest-1",
       calendarPrivacyMode: "times_only",
@@ -113,6 +114,7 @@ describe("defaultFamilyOperationsAdapter", () => {
       contentIdentity: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
     expect(JSON.parse(calls[4]?.[1]?.body as string)).toEqual({
+      expectedPacketVersion: 1,
       recipient: "+15551234567",
       recipientEntityId: "guest-1",
       calendarPrivacyMode: "times_only",
@@ -264,7 +266,7 @@ describe("defaultFamilyOperationsAdapter", () => {
     expect(sessionStorage.getItem(resumeKey)).toBeNull();
   });
 
-  it("restores the latest draft and approval binding into the packet view", async () => {
+  it("associates drafts and approvals only with their source packet version", async () => {
     const packet = {
       packetId: "packet-1",
       period: {
@@ -296,10 +298,11 @@ describe("defaultFamilyOperationsAdapter", () => {
             : path.endsWith("/school/status")
               ? { sourceId: "concord", config: null, lastRun: null }
               : {
-                  packets: [packet],
+                  packets: [{ ...packet, version: 2 }, packet],
                   packetStates: [
                     {
                       packetId: "packet-1",
+                      internalVersion: 1,
                       draft: {
                         packetId: "packet-1",
                         internalVersion: 1,
@@ -328,8 +331,10 @@ describe("defaultFamilyOperationsAdapter", () => {
     expect(loaded.packets).toMatchObject({
       status: "ready",
       data: [
+        { packetId: "packet-1", version: 2, draft: null },
         {
           packetId: "packet-1",
+          version: 1,
           sections: packet.sections,
           status: "contradictory",
           draft: {

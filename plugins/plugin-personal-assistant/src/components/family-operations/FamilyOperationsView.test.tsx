@@ -406,6 +406,7 @@ describe("FamilyOperationsView", () => {
     await waitFor(() =>
       expect(local.createPacketDraft).toHaveBeenCalledWith({
         packetId: "packet/1",
+        expectedPacketVersion: 1,
         recipient: "guest@example.com",
         recipientEntityId: "guest-1",
         calendarPrivacyMode: "busy_only",

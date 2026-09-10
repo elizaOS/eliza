@@ -375,6 +375,7 @@ export class FamilyWorkflowRuntimeService extends Service {
   async createDraft(
     packetId: string,
     input: {
+      expectedPacketVersion: number;
       recipient: string;
       recipientEntityId: string;
       calendarPrivacyMode: "full" | "times_only" | "busy_only";
@@ -383,6 +384,19 @@ export class FamilyWorkflowRuntimeService extends Service {
   ): Promise<MonthlyFamilyDraft> {
     const packet = await this.packets.read(packetId);
     if (!packet) throw new Error("[FamilyWorkflowRuntime] packet not found");
+    if (packet.version !== input.expectedPacketVersion) {
+      throw new ElizaError(
+        "The packet changed. Refresh and review its latest version before creating a draft.",
+        {
+          code: "FAMILY_PACKET_VERSION_STALE",
+          context: {
+            packetId,
+            expectedVersion: input.expectedPacketVersion,
+            currentVersion: packet.version,
+          },
+        },
+      );
+    }
     const recipient = input.recipient.trim();
     await this.validateRecipientIdentity({ ...input, recipient });
     if (input.email) {
