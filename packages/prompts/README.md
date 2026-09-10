@@ -2,6 +2,14 @@
 
 Shared prompt templates and action specs for elizaOS.
 
+The Stage-1 message-handler template uses the registered flat response schema:
+`contexts`, `intents`, `candidateActionNames`, `facts`, `relationships`, and
+`addressedTo`. Routing is derived by the runtime; the model is not asked to
+invent retired `simple`, `requiresTool`, `parentActionHints`, `contextSlices`,
+or nested `extract` fields. Complete history, provider data, context catalogs,
+and registered field descriptions remain the responsibility of their existing
+renderers. Changing this template does not truncate those inputs.
+
 ## Overview
 
 This package is the single source of truth for prompt templates used by the runtime. Prompts are authored directly in `src/index.ts`.
