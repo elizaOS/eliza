@@ -71,6 +71,7 @@ Focused tests cover canonical sending, message/room correlation, live elapsed
 time before usage, lazy detail reads, unknown usage, stage classification,
 polling cancellation, normal routes and developer navigation isolation.
 `DeveloperWorkspace.stories.tsx` contains synthetic summary/trace fixtures.
-Real Home and Notes prompts, live counts and route checks are documented in
-`/Users/nubs/Documents/ChatGPT/test/eliza-dev-chat-isolation-20260909.md`.
-These checks establish local UI behavior, not full release or latency acceptance.
+Original local validation exercised real Home and Notes prompts, live counts,
+route isolation, and desktop/mobile layouts. The pull request tracks validation
+on the current branch and any remaining evidence requirements. Local behavior
+checks do not establish full release or latency acceptance.
