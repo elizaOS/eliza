@@ -4,6 +4,8 @@
  * so Worker and sidecar callers share transport behavior without sharing policy.
  */
 
+const BODY_READS_PER_TASK = 1_024;
+
 export interface BoundedFetchOptions {
   timeoutMs: number;
   maxResponseBytes: number;
@@ -80,6 +82,7 @@ export async function boundedFetch(
     callerSignal?.reason ??
     new DOMException(options.cancellationMessage, "AbortError");
   if (callerSignal?.aborted) throw cancellationReason();
+  const deadline = performance.now() + timeoutMs;
   const controller = new AbortController();
   let rejectAbort!: (reason: unknown) => void;
   const aborted = new Promise<never>((_resolve, reject) => {
@@ -90,6 +93,31 @@ export async function boundedFetch(
     // Select provenance before the transport rejects with its own AbortError.
     rejectAbort(reason);
     controller.abort(reason);
+  };
+  const checkDeadline = (): void => {
+    // Ready response chunks can keep the microtask queue busy while the timer
+    // waits. Enforce the same budget without imposing an extra chunk limit.
+    if (performance.now() >= deadline) {
+      abort(new DOMException(options.timeoutMessage, "TimeoutError"));
+    }
+    controller.signal.throwIfAborted();
+  };
+  const checkAfterTaskYield = async (): Promise<void> => {
+    checkDeadline();
+    let yieldTimer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      // Deployed Worker clocks can stay fixed between I/O events. Let native
+      // deadline and caller-abort callbacks run without discarding body chunks.
+      await Promise.race([
+        new Promise<void>((resolve) => {
+          yieldTimer = setTimeout(resolve, 0);
+        }),
+        aborted,
+      ]);
+      checkDeadline();
+    } finally {
+      clearTimeout(yieldTimer);
+    }
   };
   const onCallerAbort = (): void => abort(cancellationReason());
   callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
@@ -114,7 +142,7 @@ export async function boundedFetch(
       },
     );
     response = await Promise.race([pending, aborted]);
-    controller.signal.throwIfAborted();
+    checkDeadline();
     const rawLength = response.headers.get("content-length");
     if (
       rawLength !== null &&
@@ -125,14 +153,18 @@ export async function boundedFetch(
         maxResponseBytes,
       });
     }
-    if (!response.body) return response;
+    if (!response.body) {
+      await checkAfterTaskYield();
+      return response;
+    }
     reader = response.body.getReader();
     const retainedChunks: Uint8Array[] = [];
     let receivedBytes = 0;
     let chunks = 0;
     for (;;) {
+      checkDeadline();
       const next = await Promise.race([reader.read(), aborted]);
-      controller.signal.throwIfAborted();
+      checkDeadline();
       if (next.done) break;
       chunks += 1;
       receivedBytes += next.value.byteLength;
@@ -149,12 +181,14 @@ export async function boundedFetch(
         });
       }
       if (next.value.byteLength > 0) retainedChunks.push(next.value);
+      if (chunks % BODY_READS_PER_TASK === 0) await checkAfterTaskYield();
     }
     releaseNoThrow(reader);
     reader = undefined;
     const retained = new Uint8Array(receivedBytes);
     let offset = 0;
     for (const chunk of retainedChunks) {
+      checkDeadline();
       retained.set(chunk, offset);
       offset += chunk.byteLength;
     }
@@ -168,13 +202,15 @@ export async function boundedFetch(
       response.status === 204 ||
       response.status === 205 ||
       response.status === 304;
-    return new Response(bodyless ? null : retained, {
+    const buffered = new Response(bodyless ? null : retained, {
       headers,
       status: response.status,
       statusText: response.statusText,
     });
+    await checkAfterTaskYield();
+    return buffered;
   } catch (error) {
-    // error-policy:J2 Preserve the selected transport or boundary error through teardown.
+    // error-policy:J6 Teardown must not replace the selected transport or boundary failure.
     if (reader) cancelReaderDetached(reader, error);
     else if (response) cancelBodyDetached(response.body, error);
     throw error;

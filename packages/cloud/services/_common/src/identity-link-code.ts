@@ -1,13 +1,22 @@
 /** Defines connector-side identity-link code recognition and user replies. */
 
-const LINK_CODE_PATTERN = /\bLINK-([A-HJ-NP-Z2-9]{8})\b/i;
+const LINK_CODE_BODY_PATTERN = /^[A-HJ-KM-NP-Z2-9]{8}$/i;
+const LINK_CODE_PATTERN = /\bLINK-([A-HJ-KM-NP-Z2-9]{8})\b/i;
+
+/** Validates and normalizes the unprefixed body shared by link-code transports. */
+export function normalizeIdentityLinkCodeBody(
+  body: string | undefined,
+): string | null {
+  return body && LINK_CODE_BODY_PATTERN.test(body) ? body.toUpperCase() : null;
+}
 
 export function extractIdentityLinkCode(
   text: string | undefined,
 ): string | null {
   if (!text) return null;
   const match = LINK_CODE_PATTERN.exec(text);
-  return match ? `LINK-${match[1].toUpperCase()}` : null;
+  const body = normalizeIdentityLinkCodeBody(match?.[1]);
+  return body ? `LINK-${body}` : null;
 }
 
 export function identityLinkReply(status: string): string {

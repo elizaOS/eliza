@@ -18,6 +18,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = new URL("../../../", import.meta.url);
+const SUBPROCESS_TIMEOUT_MS = 15_000;
+const SUBPROCESS_TEST_TIMEOUT_MS = 60_000;
 const source = readFileSync(
   new URL(
     ".github/workflows/activate-personal-shared-telegram-edge.yml",
@@ -102,6 +104,7 @@ function validateTarget(
     },
     stderr: "pipe",
     stdout: "pipe",
+    timeout: SUBPROCESS_TIMEOUT_MS,
   });
 }
 
@@ -273,6 +276,7 @@ esac
         },
         stderr: "pipe",
         stdout: "pipe",
+        timeout: SUBPROCESS_TIMEOUT_MS,
       },
     );
   } finally {
@@ -334,6 +338,7 @@ printf '200'`,
         },
         stderr: "pipe",
         stdout: "pipe",
+        timeout: SUBPROCESS_TIMEOUT_MS,
       },
     );
     expect(existsSync(rollbackMarker)).toBe(true);
@@ -373,6 +378,7 @@ function exerciseUnavailableDisableProof(): ReturnType<typeof Bun.spawnSync> {
         },
         stderr: "pipe",
         stdout: "pipe",
+        timeout: SUBPROCESS_TIMEOUT_MS,
       },
     );
     if (!existsSync(removalMarker)) {
@@ -386,7 +392,9 @@ function exerciseUnavailableDisableProof(): ReturnType<typeof Bun.spawnSync> {
   }
 }
 
-describe("Personal Shared Telegram edge deploy", () => {
+describe("Personal Shared Telegram edge deploy", {
+  timeout: SUBPROCESS_TEST_TIMEOUT_MS,
+}, () => {
   test("authorizes before entering one protected mutation lock and canonical endpoint set", () => {
     const inputs = workflow.on?.workflow_dispatch?.inputs;
     expect(inputs?.environment).toEqual({

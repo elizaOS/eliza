@@ -208,10 +208,10 @@ describe("BACKGROUND stays on the planner surface for undo/redo/reset follow-ups
 		}
 	});
 
-	it("does not hijack a genuine settings-navigation turn", () => {
-		// "open the settings" has no background vocabulary. The Stage-1 candidate
-		// must produce an exact VIEWS hint while BACKGROUND remains merely a
-		// context-weighted option on the complete callable surface.
+	it("does not claim a genuine settings-navigation turn", async () => {
+		// Consolidated tiering keeps every authorized action callable, but the exact
+		// navigation hint must outrank BACKGROUND and its validator must still
+		// decline a settings-navigation turn with no background vocabulary.
 		const { retrieval, tiered } = routeTurn({
 			messageText: "open the settings",
 			candidateActions: ["OPEN_SETTINGS"],
@@ -226,5 +226,13 @@ describe("BACKGROUND stays on the planner surface for undo/redo/reset follow-ups
 			retrieval.results.find((result) => result.name === "BACKGROUND")
 				?.matchedBy,
 		).not.toContain("exact");
+		expect(
+			await backgroundAction.validate?.(
+				{} as never,
+				{
+					content: { text: "open the settings" },
+				} as never,
+			),
+		).toBe(false);
 	});
 });

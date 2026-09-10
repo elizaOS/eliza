@@ -7,6 +7,7 @@
  */
 import type http from "node:http";
 import { type Service, ServiceType } from "@elizaos/core";
+import { BackgroundTaskRunCoordinator } from "@elizaos/shared/host-use-cases";
 import { ensureRouteAuthorized } from "./auth.ts";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { sendJson } from "./response";
@@ -24,24 +25,7 @@ function isTaskServiceLike(
   );
 }
 
-let runDueTasksInFlight: Promise<void> | null = null;
-
-async function runDueTasksOnce(service: Service & TaskServiceLike): Promise<{
-  coalesced: boolean;
-}> {
-  if (runDueTasksInFlight !== null) {
-    await runDueTasksInFlight;
-    return { coalesced: true };
-  }
-
-  runDueTasksInFlight = service.runDueTasks();
-  try {
-    await runDueTasksInFlight;
-    return { coalesced: false };
-  } finally {
-    runDueTasksInFlight = null;
-  }
-}
+const backgroundTaskRuns = new BackgroundTaskRunCoordinator();
 
 export async function handleBackgroundTasksRoute(
   req: http.IncomingMessage,
@@ -78,7 +62,7 @@ export async function handleBackgroundTasksRoute(
   }
 
   try {
-    const result = await runDueTasksOnce(service);
+    const result = await backgroundTaskRuns.run(service);
     sendJson(res, 200, {
       ok: true,
       ranAt: new Date().toISOString(),

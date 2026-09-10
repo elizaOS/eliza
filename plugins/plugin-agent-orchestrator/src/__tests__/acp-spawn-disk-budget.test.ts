@@ -56,7 +56,7 @@ function workerSession(id: string): SessionInfo {
   return {
     id,
     name: id,
-    agentType: "claude",
+    agentType: "opencode",
     workdir: "/tmp/preexisting",
     status: "running",
     approvalPreset: "standard",
@@ -88,7 +88,7 @@ describe("AcpService spawn disk-budget + registry (#13773)", () => {
     const before = registry.size();
 
     await expect(
-      svc.spawnSession({ agentType: "claude", slotClass: "worker" }),
+      svc.spawnSession({ agentType: "codex", slotClass: "worker" }),
     ).rejects.toThrow();
 
     // No leaked task-* dir under the configured root, and no live registry entry
@@ -124,7 +124,7 @@ describe("AcpService spawn disk-budget + registry (#13773)", () => {
     });
 
     await expect(
-      svc.spawnSession({ agentType: "claude", slotClass: "worker" }),
+      svc.spawnSession({ agentType: "codex", slotClass: "worker" }),
     ).rejects.toThrow();
 
     const [session] = await store.list();
@@ -152,7 +152,7 @@ describe("AcpService spawn disk-budget + registry (#13773)", () => {
 
     let refusal: unknown;
     try {
-      await svc.spawnSession({ agentType: "claude", slotClass: "worker" });
+      await svc.spawnSession({ agentType: "opencode", slotClass: "worker" });
     } catch (err) {
       refusal = err;
     }

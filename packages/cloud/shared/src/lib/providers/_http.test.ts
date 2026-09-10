@@ -214,6 +214,24 @@ describe("providerFetchWithTimeout retry", () => {
     expect(calls).toBe(1);
   });
 
+  test("does not replay a semantically unsafe buffered POST", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      return jsonResponse(503, { error: { message: "ambiguous outcome" } });
+    }) as typeof fetch;
+    await expect(
+      providerFetchWithTimeout(
+        "https://x/v1/side-effect",
+        { method: "POST", body: JSON.stringify({ mutate: true }) },
+        30_000,
+        LABEL,
+        { maxRetries: 3, baseDelayMs: 1, replayPolicy: "never" },
+      ),
+    ).rejects.toMatchObject({ status: 503 });
+    expect(calls).toBe(1);
+  });
+
   const _unusedHttpError: ProviderHttpError = { status: 429, error: { message: "x" } };
   void _unusedHttpError;
 });

@@ -69,23 +69,23 @@ beforeAll(async () => {
   const { organizations } = await import("./schemas/organizations");
   const { users } = await import("./schemas/users");
   const { userCharacters } = await import("./schemas/user-characters");
-  const { agentNodeIncarnationHistories } = await import(
-    "./schemas/agent-node-incarnation-histories"
-  );
   const { agentSandboxes, agentSandboxBackups, agentBackupCatalogAuthorities } = await import(
     "./schemas/agent-sandboxes"
   );
   const { agentBackupObjects } = await import("./schemas/agent-backup-catalog");
+  const { agentNodeIncarnationHistories } = await import(
+    "./schemas/agent-node-incarnation-histories"
+  );
   const { pushSchema } = await import("./push-schema-for-tests");
   const { apply } = await pushSchema(
     {
       organizations,
       users,
       userCharacters,
-      agentNodeIncarnationHistories,
       agentSandboxes,
       agentSandboxBackups,
       agentBackupCatalogAuthorities,
+      agentNodeIncarnationHistories,
       agentBackupObjects,
     } as never,
     dbWrite as never,

@@ -193,7 +193,10 @@ mock.module("../../db/repositories", () => ({
   },
 }));
 
+const cacheClientActualModule = await import("../cache/client");
+
 mock.module("../cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     get: async () => null,
     set: async () => {},
@@ -204,7 +207,10 @@ mock.module("../cache/client", () => ({
       deletedCacheKeys.push(key);
       return true;
     },
-    delPatternConfirmed: async () => true,
+    delPatternConfirmed: async (key: string) => {
+      deletedCacheKeys.push(key);
+      return true;
+    },
   },
 }));
 

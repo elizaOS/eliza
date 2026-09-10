@@ -6,12 +6,19 @@
  * Env-only deployments still surface as a single `default` account.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { checkPairingAllowed, isInAllowlist, type PairingCheckResult } from "@elizaos/core";
+import {
+  checkPairingAllowed,
+  DEFAULT_CONNECTOR_ACCOUNT_ID,
+  isInAllowlist,
+  normalizeConnectorAccountId,
+  type PairingCheckResult,
+  selectDefaultConnectorAccountId,
+} from "@elizaos/core";
 
 /**
  * Default account identifier used when no specific account is configured
  */
-export const DEFAULT_ACCOUNT_ID = "default";
+export const DEFAULT_ACCOUNT_ID = DEFAULT_CONNECTOR_ACCOUNT_ID;
 
 /**
  * Token source indicator
@@ -122,14 +129,7 @@ export interface ResolvedWhatsAppAccount {
  * Normalizes an account ID, returning the default if not provided
  */
 export function normalizeAccountId(accountId?: string | null): string {
-  if (!accountId || typeof accountId !== "string") {
-    return DEFAULT_ACCOUNT_ID;
-  }
-  const trimmed = accountId.trim().toLowerCase();
-  if (!trimmed || trimmed === "default") {
-    return DEFAULT_ACCOUNT_ID;
-  }
-  return trimmed;
+  return normalizeConnectorAccountId(accountId);
 }
 
 /**
@@ -218,11 +218,7 @@ export function assertUniqueWhatsAppAccountIds(runtime: IAgentRuntime): void {
  * Resolves the default account ID to use
  */
 export function resolveDefaultWhatsAppAccountId(runtime: IAgentRuntime): string {
-  const ids = listWhatsAppAccountIds(runtime);
-  if (ids.includes(DEFAULT_ACCOUNT_ID)) {
-    return DEFAULT_ACCOUNT_ID;
-  }
-  return ids[0] ?? DEFAULT_ACCOUNT_ID;
+  return selectDefaultConnectorAccountId(listWhatsAppAccountIds(runtime));
 }
 
 /**

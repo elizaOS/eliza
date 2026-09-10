@@ -18,9 +18,7 @@
   ],
   "latestReports": [
     "verify/HARDWARE_VERIFICATION.md",
-    "verify/CUDA_VERIFICATION.md",
-    "reports/porting/2026-05-14/kokoro-llama-cpp-feasibility.md",
-    "reports/porting/2026-05-14/smoke-pipeline-audit.md"
+    "verify/CUDA_VERIFICATION.md"
   ],
   "hardwareEvidence": {
     "schemaVersion": 1,
@@ -597,6 +595,18 @@
       "runtimeDispatch": "symbol-shipped",
       "deviceRun": "needs-hardware",
       "nextGate": "Run simulator smoke against the embedded metallib and GGML_OP_ATTN_SCORE_TBQ Turbo4 route."
+    },
+    "ios-arm64-metal-fused": {
+      "kernelVerification": "symbol-shipped",
+      "runtimeDispatch": "symbol-shipped",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run the fused voice ABI and embedded Metal graph on a physical iOS device."
+    },
+    "ios-arm64-simulator-metal-fused": {
+      "kernelVerification": "symbol-shipped",
+      "runtimeDispatch": "symbol-shipped",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run the fused voice ABI and embedded Metal graph in the iOS simulator."
     },
     "windows-x64-cpu": {
       "kernelVerification": "compile-only",

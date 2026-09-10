@@ -131,7 +131,7 @@ Hard rules:
   `kv-cache`).
 - Every applied recipe MUST run its real-artifact test before exit. For
   the shipping Q4_K_M path, `gguf-q4_k_m_apply.py` runs a
-  `llama-cli` load-smoke against the produced GGUF and refuses to write
+  `llama-completion` load-smoke against the produced GGUF and refuses to write
   a release-suitable sidecar when it fails. A failing test is a
   publish-blocking error.
 - If a recipe is asked to run on weights or cache geometry that do not

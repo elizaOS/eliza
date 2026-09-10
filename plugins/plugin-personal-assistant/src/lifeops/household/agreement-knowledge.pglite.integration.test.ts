@@ -14,6 +14,7 @@ import {
   type AgentRuntime,
   documentsPluginCore,
   ElizaError,
+  type IAgentRuntime,
   type Plugin,
   Service,
   ServiceType,
@@ -44,6 +45,13 @@ const fileStoragePlugin: Plugin = {
 
 class AgreementTestPdfService extends Service {
   static override serviceType = ServiceType.PDF;
+
+  static override async start(
+    runtime: IAgentRuntime,
+  ): Promise<AgreementTestPdfService> {
+    return new AgreementTestPdfService(runtime);
+  }
+
   override capabilityDescription =
     "Deterministic complete PDF extraction for agreement domain tests";
 

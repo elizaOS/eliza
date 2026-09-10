@@ -8,6 +8,9 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: {
     alias: {
+      "@elizaos/shared/db/raw-sql": fileURLToPath(
+        new URL("../../packages/shared/src/db/raw-sql.ts", import.meta.url),
+      ),
       "@elizaos/shared/host-execution-env": fileURLToPath(
         new URL(
           "../../packages/shared/src/host-execution-env.ts",
@@ -25,6 +28,9 @@ export default defineConfig({
       // through its built dist; pin it to source for clean-checkout runs.
       "@elizaos/vault": fileURLToPath(
         new URL("../../packages/vault/src/index.ts", import.meta.url),
+      ),
+      "@elizaos/plugin-sql": fileURLToPath(
+        new URL("../plugin-sql/src/index.node.ts", import.meta.url),
       ),
       "@elizaos/shared": fileURLToPath(
         new URL("./__tests__/shared-runtime-env.ts", import.meta.url),

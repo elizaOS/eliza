@@ -186,7 +186,7 @@ describe("wallet signup atomic opening-balance creation", () => {
   );
 
   test(
-    "a pre-existing zero-balance wallet organization is adopted without a credit write",
+    "a legacy zero-balance wallet organization is adopted with canonical funding but no ledger transaction",
     async () => {
       if (!pgliteReady) throw pgliteError;
 
@@ -201,12 +201,12 @@ describe("wallet signup atomic opening-balance creation", () => {
       expect(result.isNewAccount).toBe(true);
       expect(result.user.role).toBe("owner");
       expect(result.user.organization?.slug).toBe(slug);
-      expect(result.initialCreditsGranted).toBe(false);
-      expect(result.initialFreeCreditsUsd).toBe(0);
+      expect(result.initialCreditsGranted).toBe(true);
+      expect(result.initialFreeCreditsUsd).toBe(SIGNUP_CREDIT_POLICY.automaticGrantUsd);
       expect(await countRows("organizations")).toBe(1);
       expect(await countRows("users")).toBe(1);
       expect(await countRows("credit_transactions")).toBe(0);
-      expect(await orgBalanceBySlug(slug)).toBe(0);
+      expect(await orgBalanceBySlug(slug)).toBe(SIGNUP_CREDIT_POLICY.automaticGrantUsd);
     },
     PGLITE_TIMEOUT,
   );
