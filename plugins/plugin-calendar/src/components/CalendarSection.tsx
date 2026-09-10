@@ -263,7 +263,7 @@ function CalendarStatusIcon({
 }) {
   return (
     <div
-      className="flex items-center justify-center py-12 text-muted"
+      className="flex flex-col items-center justify-center gap-2 py-12 text-sm text-muted"
       role="status"
       aria-label={label}
       title={label}
@@ -273,7 +273,7 @@ function CalendarStatusIcon({
       ) : (
         <CalendarClock className="size-5 opacity-70" aria-hidden />
       )}
-      <span className="sr-only">{label}</span>
+      <span>{label}</span>
     </div>
   );
 }
