@@ -1,17 +1,9 @@
 /**
- * Pure billing-decision policy for the container-billing cron.
- *
- * The cron's hot path mixes side-effecting calls (DB writes, emails, earnings
- * conversion) with the decision of "how should we split this charge across
- * earnings vs credits, or do we need to warn the org instead?". Extracting
- * that decision into a pure function lets us prove the load-bearing rules
- * (pay-as-you-go pulls from earnings before credits; pay-as-you-go=off
- * preserves earnings; insufficient total triggers warning) without a real
- * database.
- *
- * Anything that mutates state stays in `container-billing/route.ts`. This
- * file only computes "what's the plan?".
+ * Computes preliminary funding availability for the container-billing cron.
+ * Invalid monetary inputs fail before route-side warning or stop requests;
+ * the repository independently settles authoritative charges using Decimal.
  */
+
 import { ElizaError } from "@elizaos/core";
 
 export interface ContainerBillingPlanInput {
@@ -39,30 +31,7 @@ export interface ContainerBillingPlan {
   earningsEligible: number;
 }
 
-/**
- * Decide how to split today's container charge between earnings and credits.
- *
- * Rules (the load-bearing survival-economics behavior):
- *  1. `payAsYouGoFromEarnings === false` → earnings stay frozen, charge comes
- *     purely from credits. Default when org owner opts out at
- *     /cloud/billing.
- *  2. `payAsYouGoFromEarnings === true` (default) → earnings absorb the bill
- *     first up to `dailyCost`, then credits cover the remainder. This is what
- *     keeps an earning agent self-funding ("survival economics" loop).
- *  3. If `earnings + credits < dailyCost`, return `action: "insufficient"`.
- *     The caller emits the 48-hour shutdown warning.
- *
- * Money math fails closed on garbage: non-finite inputs (NaN/±Infinity) in any
- * field and a negative `dailyCost` throw `ElizaError`
- * (`CONTAINER_BILLING_PLAN_INPUT_INVALID`) instead of returning a NaN-bearing
- * plan — under float comparison a NaN `totalAvailable < dailyCost` is false,
- * so the pre-fix function silently returned `action: "billed"` with NaN debit
- * legs. A negative `currentBalance` falls through to the ordinary
- * `totalAvailable < dailyCost` insufficiency path instead of throwing: the
- * read at route.ts (`Number(org.credit_balance)`) has no other guard, so a
- * non-finite parse must throw here, while a finite negative must keep the
- * container on the warn/shutdown track rather than erroring the run.
- */
+/** Validates monetary inputs and applies the organization's earnings opt-out. */
 export function computeContainerBillingPlan(
   input: ContainerBillingPlanInput,
 ): ContainerBillingPlan {

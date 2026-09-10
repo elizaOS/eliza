@@ -1,23 +1,8 @@
 /**
- * Container-billing cron driver coverage.
- *
- * The daily container-billing cron (`route.ts`) is the real-money debit driver
- * for hosted containers, and it had no test. It owns the orchestration that the
- * pure policy/repository units can't cover on their own:
- *  - computing each container's dailyCost,
- *  - the earnings-first-then-credits split,
- *  - draining the in-memory earnings/credit pools ACROSS containers in the same
- *    org within a single run,
- *  - the documented fallback that charges the full day to credits when the
- *    earnings conversion throws (a prior bug-fix — guarded here against
- *    regression),
- *  - isolating a per-container failure so the rest of the run still bills,
- *  - skipping an already-billed period without charging.
- *
- * Mirrors the sibling `agent-billing/route.test.ts`: mock ONLY the repo/data
- * seam (`listBillableContainers`, `listBillingOrganizations`,
- * `recordSuccessfulDailyBilling`, earnings/users) and drive the REAL Hono route
- * handler so the real split + pool-drain + fallback orchestration executes.
+ * Exercises the real Hono container-billing route and billing policy with
+ * deterministic repository, mail, authorization and provider-job seams.
+ * Invalid monetary inputs must stop before warning, shutdown or settlement
+ * dispatch while independent valid containers continue through the run.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -180,37 +165,6 @@ mock.module("@/lib/constants/pricing", () => ({
   CONTAINER_LIMITS: {},
 }));
 
-mock.module("@/lib/services/container-billing-policy", () => ({
-  computeContainerBillingPlan: (input: {
-    dailyCost: number;
-    currentBalance: number;
-    ownerEarningsAvailable: number;
-    payAsYouGoFromEarnings: boolean;
-  }) => {
-    const earningsEligible = input.payAsYouGoFromEarnings
-      ? input.ownerEarningsAvailable
-      : 0;
-    const totalAvailable = input.currentBalance + earningsEligible;
-    if (totalAvailable < input.dailyCost) {
-      return {
-        action: "insufficient" as const,
-        fromEarnings: 0,
-        fromCredits: 0,
-        totalAvailable,
-        earningsEligible,
-      };
-    }
-    const fromEarnings = Math.min(earningsEligible, input.dailyCost);
-    return {
-      action: "billed" as const,
-      fromEarnings,
-      fromCredits: input.dailyCost - fromEarnings,
-      totalAvailable,
-      earningsEligible,
-    };
-  },
-}));
-
 const { default: app } = await import("./route");
 
 const ORG_ID = "11111111-1111-1111-1111-111111111111";
@@ -310,6 +264,55 @@ describe("container-billing cron", () => {
       },
     ]);
   });
+
+  test.each(["active", "shutdown_pending"])(
+    "isolates a non-finite stored balance before %s side effects",
+    async (billingStatus) => {
+      const healthyOrgId = "22222222-2222-2222-2222-222222222222";
+      listBillableContainers.mockResolvedValueOnce([
+        makeContainer({
+          id: "invalid-balance",
+          billing_status: billingStatus,
+          scheduled_shutdown_at: new Date("2020-01-01T00:00:00Z"),
+        }),
+        makeContainer({ id: "healthy", organization_id: healthyOrgId }),
+      ]);
+      listBillingOrganizations.mockResolvedValueOnce([
+        makeOrg({ credit_balance: "NaN" }),
+        makeOrg({ id: healthyOrgId }),
+      ]);
+
+      const response = await runCron();
+      const result = (await response.json()) as {
+        data: {
+          errors: number;
+          containersBilled: number;
+          results: { containerId: string; action: string; error?: string }[];
+        };
+      };
+      expect(response.status).toBe(200);
+      expect(result.data.errors).toBe(1);
+      expect(result.data.containersBilled).toBe(1);
+      expect(result.data.results).toEqual([
+        expect.objectContaining({
+          containerId: "invalid-balance",
+          action: "error",
+          error: expect.stringContaining("currentBalance"),
+        }),
+        expect.objectContaining({ containerId: "healthy", action: "billed" }),
+      ]);
+      expect(recordSuccessfulDailyBilling).toHaveBeenCalledTimes(1);
+      expect(recordSuccessfulDailyBilling.mock.calls[0][0].containerId).toBe(
+        "healthy",
+      );
+      expect(scheduleShutdownWarning).not.toHaveBeenCalled();
+      expect(recordBillingFailure).not.toHaveBeenCalled();
+      expect(sendContainerShutdownWarningEmail).not.toHaveBeenCalled();
+      expect(enqueueContainerStopOnce).not.toHaveBeenCalled();
+      expect(triggerImmediate).not.toHaveBeenCalled();
+      expect(convertToCredits).not.toHaveBeenCalled();
+    },
+  );
 
   test("recovers a provider-confirmed user stop even when no container is billable", async () => {
     const providerCutoff = new Date("2026-08-26T10:00:00.000Z");

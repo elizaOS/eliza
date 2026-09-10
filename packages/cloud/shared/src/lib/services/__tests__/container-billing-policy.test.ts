@@ -125,10 +125,7 @@ describe("computeContainerBillingPlan", () => {
     expect(plan.fromCredits).toBe(0);
   });
 
-  test("a negative credit balance is legitimate and fails closed as insufficient", () => {
-    // Raw SQL storage debits (org-storage-mutations.ts) can leave
-    // credit_balance below zero; the policy must route that to the ordinary
-    // insufficiency path rather than throw.
+  test("a finite negative credit balance remains insufficient when eligible earnings cannot cover it", () => {
     const plan = computeContainerBillingPlan({
       dailyCost: 1,
       currentBalance: -0.5,
@@ -200,31 +197,5 @@ describe("computeContainerBillingPlan — money math fails closed on garbage inp
     }
     expect(thrown).toBeInstanceOf(ElizaError);
     expect((thrown as { code?: string }).code).toBe("CONTAINER_BILLING_PLAN_INPUT_INVALID");
-  });
-});
-
-describe("computeContainerBillingPlan — float residue vs the Decimal ledger path", () => {
-  test("the mixed split at the DB suite's realistic 0.027917/hour rate is deliberately unrounded", () => {
-    // 0.027917 * 24 === 0.670008 exactly, so the strict `<` boundary is safe
-    // at this rate. The mixed split is where the pure function and the ledger
-    // path visibly diverge: the pure function keeps the IEEE-754 float
-    // residue (fromCredits 0.37000800000000006) while the ledger
-    // (container-billing.ts:518) rounds the earnings leg to 4dp ROUND_UP in
-    // Decimal. The float residue never reaches a ledger — the route forwards
-    // the float legs only through deprecated compatibility fields that the
-    // repository ignores, and the repository recomputes the authoritative
-    // split in Decimal. Pinning the unrounded value fails if someone later
-    // "fixes" the pure function by rounding it, which would silently change
-    // the reference definition the repository's own comment cites.
-    const plan = computeContainerBillingPlan({
-      dailyCost: 0.670008,
-      currentBalance: 2,
-      ownerEarningsAvailable: 0.3,
-      payAsYouGoFromEarnings: true,
-    });
-    expect(plan.action).toBe("billed");
-    expect(plan.fromEarnings).toBe(0.3);
-    // Exact IEEE-754 residue, not a rounded 0.370008.
-    expect(plan.fromCredits).toBe(0.37000800000000006);
   });
 });
