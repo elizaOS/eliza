@@ -366,6 +366,18 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
     ]);
     expect((await service.runSchool("scheduled")).state).toBe("unchanged");
     expect(creates).toBe(3);
+    const imported = await workflow.listImportedEvents();
+    expect(imported.map((record) => record.event.title)).toEqual(
+      createdRanges.map((range) => range.title),
+    );
+    expect(imported.every((record) => record.providerEventId.length > 0)).toBe(
+      true,
+    );
+    const otherAgent = new SchoolCalendarWorkflow({
+      ...runtime,
+      agentId: "other-agent" as IAgentRuntime["agentId"],
+    });
+    expect(await otherAgent.listImportedEvents()).toEqual([]);
   });
 
   it("removes previously imported other-grade events despite identical PDF bytes", async () => {
@@ -403,6 +415,9 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
     expect(cancel).toHaveBeenCalledTimes(1);
     expect(updatedRanges).toEqual([]);
     expect(creates).toBe(2);
+    expect(
+      (await workflow.listImportedEvents()).map((record) => record.event.title),
+    ).toEqual(["Labor Day"]);
     expect((await workflow.run(config, "scheduled")).state).toBe("unchanged");
     expect(cancel).toHaveBeenCalledTimes(1);
   });

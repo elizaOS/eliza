@@ -112,6 +112,14 @@ export interface SchoolCalendarSemanticEvent {
   citation?: SchoolCalendarCitation;
 }
 
+export interface SchoolCalendarImportedEvent {
+  sourceId: string;
+  grantId: string;
+  calendarId: string;
+  providerEventId: string;
+  event: SchoolCalendarSemanticEvent;
+}
+
 export interface SchoolCalendarCitation {
   page: number;
   sourceText: string;
@@ -782,6 +790,32 @@ export class SchoolCalendarWorkflow {
           }
         : null,
     };
+  }
+
+  async listImportedEvents(): Promise<SchoolCalendarImportedEvent[]> {
+    await this.ensureSchema();
+    const sources = await executeRawSql(
+      this.runtime,
+      `SELECT source_id, config_json FROM app_lifeops.life_school_calendar_sources WHERE agent_id=${sqlQuote(this.runtime.agentId)}`,
+    );
+    const result: SchoolCalendarImportedEvent[] = [];
+    for (const source of sources) {
+      const sourceId = toText(source.source_id);
+      const config = parseJsonRecord(
+        source.config_json,
+      ) as unknown as SchoolCalendarSourceConfig;
+      for (const event of await this.events(sourceId)) {
+        if (!event.active || !event.providerEventId) continue;
+        result.push({
+          sourceId,
+          grantId: config.targetGrantId,
+          calendarId: config.targetCalendarId,
+          providerEventId: event.providerEventId,
+          event,
+        });
+      }
+    }
+    return result;
   }
 
   async review(runId: string): Promise<SchoolCalendarRunReview | null> {
