@@ -48,41 +48,37 @@ describe("normalizeRemoteAgentUrl", () => {
 function makeClient(overrides: Partial<RemoteFirstRunClient> = {}): {
   client: RemoteFirstRunClient;
   getFirstRunStatus: ReturnType<typeof vi.fn>;
-  submitFirstRun: ReturnType<typeof vi.fn>;
+  updateConfig: ReturnType<typeof vi.fn>;
 } {
-  const getFirstRunStatus = vi.fn(async () => ({ complete: false }));
-  const submitFirstRun = vi.fn(async () => undefined);
+  const getFirstRunStatus = vi
+    .fn(async () => ({ complete: true }))
+    .mockResolvedValueOnce({ complete: false });
+  const updateConfig = vi.fn(async () => ({}));
   const client: RemoteFirstRunClient = {
     getFirstRunStatus,
-    submitFirstRun,
+    updateConfig,
     ...overrides,
   };
-  return { client, getFirstRunStatus, submitFirstRun };
+  return { client, getFirstRunStatus, updateConfig };
 }
 
 describe("adoptRemoteAgentFirstRun", () => {
-  it("adopts a fresh remote: probes then POSTs the remote deployment target", async () => {
-    const { client, submitFirstRun } = makeClient({
-      getFirstRunStatus: vi.fn(async () => ({ complete: false })),
-    });
-
+  it("confirms remote completion after writing only the completion marker", async () => {
+    const { client, updateConfig, getFirstRunStatus } = makeClient();
     const result = await adoptRemoteAgentFirstRun(client, {
-      apiBase: "http://127.0.0.1:31337",
+      apiBase: "https://agent.example.com",
+      token: "synthetic-device-token",
+      uiLanguage: "en",
     });
-
     expect(result).toEqual({ alreadyComplete: false });
-    expect(submitFirstRun).toHaveBeenCalledTimes(1);
-    const payload = submitFirstRun.mock.calls[0][0] as {
-      deploymentTarget?: { runtime?: string; remoteApiBase?: string };
-    };
-    expect(payload.deploymentTarget?.runtime).toBe("remote");
-    expect(payload.deploymentTarget?.remoteApiBase).toBe(
-      "http://127.0.0.1:31337",
-    );
+    expect(updateConfig).toHaveBeenCalledWith({
+      meta: { firstRunComplete: true },
+    });
+    expect(getFirstRunStatus).toHaveBeenCalledTimes(2);
   });
 
   it("does NOT clobber a host that already finished first-run", async () => {
-    const { client, submitFirstRun } = makeClient({
+    const { client, updateConfig } = makeClient({
       getFirstRunStatus: vi.fn(async () => ({ complete: true })),
     });
 
@@ -91,7 +87,7 @@ describe("adoptRemoteAgentFirstRun", () => {
     });
 
     expect(result).toEqual({ alreadyComplete: true });
-    expect(submitFirstRun).not.toHaveBeenCalled();
+    expect(updateConfig).not.toHaveBeenCalled();
   });
 
   it("preserves the host and pending intent when its status cannot be read", async () => {
@@ -99,7 +95,7 @@ describe("adoptRemoteAgentFirstRun", () => {
     const release = vi.fn();
     setPendingFirstRunTextReleaseHandler(release);
     const failure = new Error("network down");
-    const { client, submitFirstRun } = makeClient({
+    const { client, updateConfig } = makeClient({
       getFirstRunStatus: vi.fn(async () => {
         throw failure;
       }),
@@ -112,7 +108,7 @@ describe("adoptRemoteAgentFirstRun", () => {
         complete,
       ),
     ).rejects.toBe(failure);
-    expect(submitFirstRun).not.toHaveBeenCalled();
+    expect(updateConfig).not.toHaveBeenCalled();
     expect(complete).not.toHaveBeenCalled();
     expect(release).not.toHaveBeenCalled();
   });
@@ -120,7 +116,7 @@ describe("adoptRemoteAgentFirstRun", () => {
   it("propagates a completion-write failure instead of faking success", async () => {
     const { client } = makeClient({
       getFirstRunStatus: vi.fn(async () => ({ complete: false })),
-      submitFirstRun: vi.fn(async () => {
+      updateConfig: vi.fn(async () => {
         throw new Error("remote unreachable");
       }),
     });
@@ -130,18 +126,24 @@ describe("adoptRemoteAgentFirstRun", () => {
     ).rejects.toThrow(/remote unreachable/);
   });
 
-  it("forwards an access token in the submitted plan", async () => {
-    const { client, submitFirstRun } = makeClient();
-
-    await adoptRemoteAgentFirstRun(client, {
-      apiBase: "https://agent.example.com",
-      token: "secret-key",
+  it("does not complete or release if a host ignores the completion marker", async () => {
+    const { client } = makeClient({
+      getFirstRunStatus: vi.fn(async () => ({ complete: false })),
     });
-
-    const payload = submitFirstRun.mock.calls[0][0] as {
-      deploymentTarget?: { remoteAccessToken?: string };
-    };
-    expect(payload.deploymentTarget?.remoteAccessToken).toBe("secret-key");
+    const complete = vi.fn();
+    const release = vi.fn();
+    setPendingFirstRunTextReleaseHandler(release);
+    await expect(
+      completeRemoteAgentFirstRun(
+        client,
+        {
+          apiBase: "https://agent.example.com",
+        },
+        complete,
+      ),
+    ).rejects.toMatchObject({ code: "REMOTE_ADOPTION_NOT_CONFIRMED" });
+    expect(complete).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
   });
 });
 
@@ -149,7 +151,10 @@ describe("completeRemoteAgentFirstRun", () => {
   it("releases typed onboarding intent only after successful remote adoption", async () => {
     const order: string[] = [];
     const { client } = makeClient({
-      submitFirstRun: vi.fn(async () => void order.push("adopt")),
+      updateConfig: vi.fn(async () => {
+        order.push("adopt");
+        return {};
+      }),
     });
     setPendingFirstRunTextReleaseHandler(() => void order.push("release"));
 
@@ -166,7 +171,7 @@ describe("completeRemoteAgentFirstRun", () => {
     const complete = vi.fn();
     const release = vi.fn();
     const { client } = makeClient({
-      submitFirstRun: vi.fn(async () => {
+      updateConfig: vi.fn(async () => {
         throw new Error("remote unreachable");
       }),
     });

@@ -3,11 +3,13 @@
  * agent. Deep links and the Settings connection flow share this use case.
  * A successful status probe gates setup writes; transport or authorization
  * failures must preserve both host state and pending local onboarding intent.
- * Completed hosts are adopted without another setup write.
+ * Completed hosts are adopted without another write. Incomplete hosts receive
+ * only a completion marker through the config patch API, preserving their
+ * runtime, account, and character configuration.
  */
 
+import { ElizaError } from "@elizaos/core";
 import type { UiLanguage } from "../i18n";
-import { buildFirstRunSubmitPlan } from "./first-run";
 import { releasePendingFirstRunText } from "./first-run-pending-text";
 
 /**
@@ -41,15 +43,17 @@ export function normalizeRemoteAgentUrl(value: string): string {
 /** The minimal client surface this use case needs (a subset of `ElizaClient`). */
 export interface RemoteFirstRunClient {
   getFirstRunStatus(): Promise<{ complete: boolean }>;
-  submitFirstRun(data: Record<string, unknown>): Promise<void>;
+  updateConfig(
+    patch: Record<string, unknown>,
+  ): Promise<Record<string, unknown>>;
 }
 
 export interface AdoptRemoteAgentFirstRunInput {
   /** The remote agent URL — already normalized/applied by the caller. */
   apiBase: string;
-  /** Optional pre-shared access token for a pairing-disabled remote. */
+  /** Already applied to the client transport; never written into host config. */
   token?: string | null;
-  /** Drives the default character preset language; defaults to English. */
+  /** Retained for callers; adoption preserves the host's character language. */
   uiLanguage?: UiLanguage;
 }
 
@@ -76,18 +80,16 @@ export async function adoptRemoteAgentFirstRun(
     return { alreadyComplete: true };
   }
 
-  const plan = buildFirstRunSubmitPlan({
-    draft: {
-      agentName: "",
-      runtime: "remote",
-      localInference: "all-local",
-      remoteApiBase: input.apiBase,
-      remoteToken: input.token ?? "",
-    },
-    uiLanguage: input.uiLanguage ?? "en",
-  });
-
-  await client.submitFirstRun(plan.payload);
+  await client.updateConfig({ meta: { firstRunComplete: true } });
+  if ((await client.getFirstRunStatus()).complete !== true) {
+    throw new ElizaError(
+      "The remote agent did not confirm setup completion. Finish setup on the host, then reconnect.",
+      {
+        code: "REMOTE_ADOPTION_NOT_CONFIRMED",
+        context: { apiBase: input.apiBase },
+      },
+    );
+  }
   return { alreadyComplete: false };
 }
 
