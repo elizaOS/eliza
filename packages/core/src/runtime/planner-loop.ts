@@ -885,7 +885,14 @@ async function runPlannerLoopIterations(
 			}
 			if (
 				lastPlannerExplicitCompleted === false &&
-				plannerOutput.invalidNativeScopeCalls?.length
+				plannerOutput.invalidNativeScopeCalls?.length &&
+				!(
+					plannerOutput.toolCalls.length > 0 &&
+					plannerOutput.toolCalls.every(
+						(call) =>
+							isTerminalToolCall(call) && call.name.toUpperCase() !== "REPLY",
+					)
+				)
 			) {
 				const scopeError = new ElizaError(
 					"A native planner batch must explicitly declare its scope while earlier work remains pending.",
@@ -913,8 +920,35 @@ async function runPlannerLoopIterations(
 					}),
 				});
 				consecutiveScopeProtocolRejections++;
-				if (consecutiveScopeProtocolRejections >= config.maxRepeatedFailures)
-					throw scopeError;
+				if (consecutiveScopeProtocolRejections >= config.maxRepeatedFailures) {
+					const terminalFailure = {
+						kind: "provider_issue" as const,
+						code: scopeError.code,
+						transient: false,
+						message:
+							"The planner stopped after repeated invalid scope declarations. Earlier action outcomes are preserved; the rejected batch did not run.",
+					};
+					try {
+						const summary = await finishWithForcedSynthesis({
+							loop: params,
+							config,
+							trajectory,
+							iteration,
+							onUsage: params.onModelUsage,
+							failureAware: true,
+							instruction:
+								"Planning stopped with PLANNER_SCOPE_DECLARATION_REQUIRED after repeated invalid turn-scope declarations. Do not call any tool or claim the whole request completed. Explain which earlier operations are confirmed by the complete recorded results and which requested work remains unfinished. Every call in the rejected batches did not run. Preserve exact returned identifiers and do not ask the user to repeat already settled mutations.",
+						});
+						return { ...summary, terminalFailure };
+					} catch (error) {
+						// error-policy:J1 Presentation failure preserves settled action evidence at the planner boundary.
+						params.runtime.logger?.warn?.(
+							{ iteration, error, code: scopeError.code },
+							"[planner-loop] protocol failure summary unavailable; preserving recorded outcomes",
+						);
+						return { status: "finished", trajectory, terminalFailure };
+					}
+				}
 				continue;
 			}
 			consecutiveScopeProtocolRejections = 0;

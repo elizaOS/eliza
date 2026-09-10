@@ -132,6 +132,60 @@ function harness(args: {
 }
 
 describe("planner-declared pending work", () => {
+	it.each(["STOP", "IGNORE", "NONE"])(
+		"preserves explicit silent control %s after pending work",
+		async (name) => {
+			const h = harness({
+				plans: [
+					{ text: "", toolCalls: [call("READ", "more_work_pending")] },
+					{ text: "", toolCalls: [call(name)] },
+				],
+				evaluations: [continueWork("More work was pending.")],
+			});
+			const result = await h.run();
+			expect(h.executed).toEqual(["READ"]);
+			expect(result.endedWithDeliberateSilence).toBe(true);
+			expect(result.silentTerminalAction).toBe(
+				name === "STOP" ? "STOP" : "IGNORE",
+			);
+		},
+	);
+	it("does not exempt executable calls mixed with silent controls", async () => {
+		const h = harness({
+			plans: [
+				{ text: "", toolCalls: [call("READ", "more_work_pending")] },
+				{ text: "", toolCalls: [call("STOP"), call("UPDATE")] },
+				{ text: "", toolCalls: [call("STOP")] },
+			],
+			evaluations: [continueWork("More work was pending.")],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["READ"]);
+		expect(result.silentTerminalAction).toBe("STOP");
+		expect(JSON.stringify(h.useModel.mock.calls[3])).toContain(
+			"PLANNER_SCOPE_DECLARATION_REQUIRED",
+		);
+	});
+	it("resets the consecutive protocol budget after a corrected independent batch", async () => {
+		const h = harness({
+			plans: [
+				{ text: "", toolCalls: [call("READ", "more_work_pending")] },
+				{ text: "", toolCalls: [call("UPDATE")] },
+				{ text: "", toolCalls: [call("UPDATE", "more_work_pending")] },
+				{ text: "", toolCalls: [call("NOTIFY")] },
+				{ text: "", toolCalls: [call("NOTIFY", "final")] },
+			],
+			evaluations: [
+				continueWork("Update."),
+				continueWork("Notify."),
+				finish("Both operations finished."),
+			],
+		});
+		const result = await h.run({ config: { maxRepeatedFailures: 2 } });
+		expect(h.executed).toEqual(["READ", "UPDATE", "NOTIFY"]);
+		expect(result.finalMessage).toBe("Both operations finished.");
+		expect(result.terminalFailure).toBeUndefined();
+	});
 	it("repairs a missing native scope before executing the pending mutation", async () => {
 		const completeArgument =
 			"Copper record " +
@@ -221,9 +275,14 @@ describe("planner-declared pending work", () => {
 			],
 			evaluations: [continueWork("Use the returned record.")],
 		});
-		await expect(
-			h.run({ config: { maxRepeatedFailures: 2 } }),
-		).rejects.toMatchObject({ code: "PLANNER_SCOPE_DECLARATION_REQUIRED" });
+		const result = await h.run({ config: { maxRepeatedFailures: 2 } });
+		expect(result.terminalFailure).toMatchObject({
+			code: "PLANNER_SCOPE_DECLARATION_REQUIRED",
+			transient: false,
+		});
+		expect(result.trajectory.steps.filter((step) => step.result)).toHaveLength(
+			1,
+		);
 		expect(h.executed).toEqual(["READ"]);
 	});
 	it("preserves the JSON planner completion contract after native pending work", async () => {
