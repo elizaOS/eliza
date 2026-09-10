@@ -56,6 +56,7 @@ function makeClient(overrides: Partial<RemoteFirstRunClient> = {}): {
   const updateConfig = vi.fn(async () => ({}));
   const client: RemoteFirstRunClient = {
     getFirstRunStatus,
+    getStatus: async () => ({ state: "running", canRespond: true }),
     updateConfig,
     ...overrides,
   };
@@ -63,6 +64,32 @@ function makeClient(overrides: Partial<RemoteFirstRunClient> = {}): {
 }
 
 describe("adoptRemoteAgentFirstRun", () => {
+  it.each([
+    { state: "stopped", canRespond: false },
+    { state: "starting", canRespond: false },
+    { state: "running", canRespond: false },
+    { state: "running" },
+  ])("leaves an unready host in setup (%j)", async (status) => {
+    const { client, updateConfig } = makeClient({
+      getStatus: async () => status,
+    });
+    const complete = vi.fn();
+    const release = vi.fn();
+    setPendingFirstRunTextReleaseHandler(release);
+    await expect(
+      completeRemoteAgentFirstRun(
+        client,
+        {
+          apiBase: "https://agent.example.com",
+        },
+        complete,
+      ),
+    ).rejects.toMatchObject({ code: "REMOTE_ADOPTION_HOST_NOT_READY" });
+    expect(updateConfig).not.toHaveBeenCalled();
+    expect(complete).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
+  });
+
   it("confirms remote completion after writing only the completion marker", async () => {
     const { client, updateConfig, getFirstRunStatus } = makeClient();
     const result = await adoptRemoteAgentFirstRun(client, {

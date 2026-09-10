@@ -43,6 +43,7 @@ export function normalizeRemoteAgentUrl(value: string): string {
 /** The minimal client surface this use case needs (a subset of `ElizaClient`). */
 export interface RemoteFirstRunClient {
   getFirstRunStatus(): Promise<{ complete: boolean }>;
+  getStatus(): Promise<{ state: string; canRespond?: boolean }>;
   updateConfig(
     patch: Record<string, unknown>,
   ): Promise<Record<string, unknown>>;
@@ -78,6 +79,17 @@ export async function adoptRemoteAgentFirstRun(
 
   if (alreadyComplete) {
     return { alreadyComplete: true };
+  }
+
+  const status = await client.getStatus();
+  if (status.state !== "running" || status.canRespond !== true) {
+    throw new ElizaError(
+      "Start and configure the remote agent on its host before connecting, then try again.",
+      {
+        code: "REMOTE_ADOPTION_HOST_NOT_READY",
+        context: { state: status.state, canRespond: status.canRespond },
+      },
+    );
   }
 
   await client.updateConfig({ meta: { firstRunComplete: true } });
