@@ -327,6 +327,11 @@ describe("TelegramService startup wiring", () => {
     expect(handleMessage).toHaveBeenCalledTimes(1);
   });
 
+  // sanity guard for the counts below: finishBotStartup reuses the identity
+  // cached by beginMembershipGateBootstrap, so each successful boot issues
+  // exactly ONE getMe — a regression back to duplicate lookups shows up as
+  // an off-by-one in these expectations.
+
   it("registers commands, handlers, and shutdown hooks once across an injected retry", async () => {
     const api = await startStubBotApi(3);
     const runtime = makeRuntime(api.apiRoot);
@@ -361,7 +366,10 @@ describe("TelegramService startup wiring", () => {
     });
     await deadline(handled.promise, "Expected the message handler to run");
 
-    expect(api.getMeCalls()).toBe(5);
+    // Deduplicated identity lookup: each successful boot issues exactly one
+    // getMe (the bootstrap lookup is cached and reused). Four calls total
+    // across the failing first boot and the successful retry.
+    expect(api.getMeCalls()).toBe(4);
     expect(startRegistration).toHaveBeenCalledTimes(1);
     expect(commandRegistration).toHaveBeenCalledTimes(
       buildTelegramCommandDescriptors(runtime.agentId).length + 3,
@@ -371,7 +379,9 @@ describe("TelegramService startup wiring", () => {
         eventRegistration.mock.calls.length +
         2,
     );
-    expect(eventRegistration).toHaveBeenCalledTimes(3);
+    // message, message_reaction, callback_query, and my_chat_member (the
+    // bot's own membership-status delivery contract).
+    expect(eventRegistration).toHaveBeenCalledTimes(4);
     expect(handleMessage).toHaveBeenCalledTimes(1);
     expect(process.listenerCount("SIGINT") - sigintBefore).toBe(1);
     expect(process.listenerCount("SIGTERM") - sigtermBefore).toBe(1);
@@ -417,7 +427,8 @@ describe("TelegramService poller lifecycle", () => {
     services.push(service);
     await api.waitForActiveGetUpdates(1);
 
-    expect(api.getMeCalls()).toBe(5);
+    // Same dedup accounting as above: one getMe per successful boot.
+    expect(api.getMeCalls()).toBe(4);
     expect(api.activeGetUpdates()).toBe(1);
 
     await service.stop();

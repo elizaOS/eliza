@@ -1,6 +1,12 @@
 /** Owns the opt-in standalone Telegram poller and its process-wide token lock. */
 import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { type Context, Telegraf } from "telegraf";
+import { telegramStatusToMembership } from "../membership";
+import {
+  createTelegramMembershipGate,
+  type TelegramMembershipGate,
+  TelegramMembershipMessageGate,
+} from "../membership-gate";
 import {
   claimTelegramPollerToken,
   getTelegramPollerClaim,
@@ -64,6 +70,18 @@ export class TelegramStandaloneService extends Service {
 
   private bot: Telegraf<Context> | null = null;
   private botToken: string | null = null;
+  /**
+   * Membership admission gate for the standalone poller — the same
+   * authority the full TelegramService uses, so standalone group admission
+   * and bot kick/re-add tombstoning cannot bypass the membership authority.
+   * Null while bootstrap is pending; the message gate instance fails closed
+   * (pending) until the gate settles absent/failed. Constructed lazily in
+   * launch() with the REAL runtime: every warning/denial path in
+   * TelegramMembershipMessageGate dereferences runtime.agentId, so a
+   * null-runtime gate would throw instead of denying (and throw instead of
+   * the documented absent-authority allow mode).
+   */
+  private admissionGate: TelegramMembershipMessageGate | null = null;
 
   static async start(
     runtime: IAgentRuntime,
@@ -83,6 +101,116 @@ export class TelegramStandaloneService extends Service {
     }
   }
 
+  /**
+   * Bootstraps the standalone membership gate BEFORE polling can deliver
+   * updates: resolve bot identity, seed the authority gate, and bind the
+   * admission gate. A FAILED bootstrap marks the gate broken (group
+   * admission fails closed); an absent authority settles to the legacy
+   * allow mode.
+   */
+  private async bootstrapMembershipGate(bot: Telegraf<Context>): Promise<void> {
+    this.gate().markPending();
+    try {
+      const botInfo = await bot.telegram.getMe();
+      const gate = await createTelegramMembershipGate({
+        runtime: this.runtime,
+        botTelegramUserId: String(botInfo.id),
+      });
+      if (gate) {
+        this.membershipGate = gate;
+        this.gate().rebind(gate.authority, gate.botTelegramUserId);
+      } else {
+        this.gate().markAbsent();
+      }
+    } catch (error) {
+      // error-policy:J2 Bootstrap failure must not degrade to the absent-
+      // authority allow mode: mark broken so group admission fails closed.
+      this.gate().markBroken();
+      this.runtime.reportError(
+        "telegram-standalone:membership-bootstrap",
+        error,
+        {
+          accountId: "default",
+        },
+      );
+    }
+  }
+
+  /**
+   * Applies the bot's own chat-member status transition from a
+   * `my_chat_member` update — same contract as the full TelegramService:
+   * kicked/left tombstones the scope (fail-closed admission for the whole
+   * chat); a revoked→present transition clears the tombstone.
+   */
+  private async handleMyChatMemberUpdate(
+    update:
+      | {
+          chat?: { id: number | string };
+          new_chat_member?: { status: string; user: { id: number } };
+          old_chat_member?: { status: string; user: { id: number } };
+        }
+      | undefined,
+  ): Promise<void> {
+    const gate = this.membershipGate;
+    if (!gate || !update?.chat || !update.new_chat_member) {
+      return;
+    }
+    try {
+      if (
+        update.new_chat_member.user.id.toString() !== gate.botTelegramUserId
+      ) {
+        return;
+      }
+      const chatId = update.chat.id.toString();
+      const membership = telegramStatusToMembership(update.new_chat_member);
+      const previous = telegramStatusToMembership(
+        update.old_chat_member ?? update.new_chat_member,
+      );
+      if (membership.state === "revoked") {
+        await gate.authority.markScopeUnavailable({
+          chatId,
+          chatRoomKey: chatId,
+          reason: "bot_removed",
+        });
+        return;
+      }
+      if (previous.state === "revoked") {
+        await gate.authority.clearScopeRemoval({
+          chatId,
+          chatRoomKey: chatId,
+        });
+      }
+    } catch (error) {
+      // error-policy:J2 The tombstone/clear could not be applied; the scope
+      // may still authorize on stale evidence. Mark the admission gate
+      // broken so every group admission fails closed.
+      this.gate().markBroken();
+      this.membershipGate = null;
+      this.runtime.reportError(
+        "telegram-standalone:membership-scope-health",
+        error,
+        {
+          chatId: update?.chat?.id?.toString() ?? "unknown",
+          accountId: "default",
+          reason: "bot_removed",
+          source: "my_chat_member",
+        },
+      );
+    }
+  }
+
+  private membershipGate: TelegramMembershipGate | null = null;
+
+  /**
+   * The admission gate consulted for standalone group admission. Never null
+   * once launch() begins (constructed with the real runtime there); the
+   * non-null assertion documents that bot.on("message") handlers only run
+   * after launch() has created it.
+   */
+  private gate(): TelegramMembershipMessageGate {
+    return this.admissionGate as TelegramMembershipMessageGate;
+  }
+
   private async launch(): Promise<void> {
     // Stop any previous poller (hot restart) before launching a new one.
     if (activeStandaloneBot) {
@@ -99,6 +227,15 @@ export class TelegramStandaloneService extends Service {
       const bot = new Telegraf(botToken, { telegram: { apiRoot } });
       this.bot = bot;
       this.botToken = botToken;
+      // Construct the admission gate with the REAL runtime BEFORE any
+      // handler can consult it: the gate's warning/denial paths
+      // dereference runtime.agentId, so a null-runtime gate would throw
+      // instead of returning a decision.
+      this.admissionGate = new TelegramMembershipMessageGate({
+        runtime: this.runtime,
+        authority: null,
+        botTelegramUserId: null,
+      });
       claimTelegramPollerToken(botToken, {
         bot,
         mode: "standalone",
@@ -108,7 +245,25 @@ export class TelegramStandaloneService extends Service {
 
       bot.on("message", async (ctx) => {
         markTelegramPollerUpdate(botToken, bot);
-        await handleTelegramStandaloneMessage(this.runtime, ctx);
+        await handleTelegramStandaloneMessage(this.runtime, ctx, {
+          admissionGate: this.gate(),
+          // Live membership-status provider so the gate's reconcile path can
+          // admit an ordinary active member whose scope evidence is missing
+          // or expired — without it authority-backed standalone groups could
+          // only admit principals with already-current durable evidence.
+          getChatMember: async (chatId, userId) =>
+            await ctx.telegram.getChatMember(chatId, Number(userId)),
+        });
+      });
+
+      // The bot's own chat-member status transitions (kick/leave/re-add):
+      // while polling, my_chat_member is the ONLY signal that the bot was
+      // removed from a chat — without it the standalone poller could never
+      // tombstone a scope and stale evidence would keep authorizing members
+      // of a chat the bot can no longer observe.
+      bot.on("my_chat_member", async (ctx) => {
+        markTelegramPollerUpdate(botToken, bot);
+        await this.handleMyChatMemberUpdate(ctx.update.my_chat_member);
       });
 
       bot.catch((err: unknown) => {
@@ -122,12 +277,19 @@ export class TelegramStandaloneService extends Service {
         );
       });
 
+      // Membership gate must settle BEFORE polling can deliver updates:
+      // getMe + authority bootstrap happen here, ahead of bot.launch(). A
+      // kick/re-add delivered before the gate existed would otherwise be
+      // dropped (or admitted through the pending window) — this is the
+      // standalone mirror of the full service's startup-window contract.
+      await this.bootstrapMembershipGate(bot);
+
       // Fire-and-forget — bot.launch() only resolves on stop().
       bot
         .launch(
           {
             dropPendingUpdates: false,
-            allowedUpdates: ["message", "message_reaction"],
+            allowedUpdates: ["message", "message_reaction", "my_chat_member"],
           },
           () => {
             markTelegramPollerConnected(botToken, bot);

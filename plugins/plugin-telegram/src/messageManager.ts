@@ -53,6 +53,7 @@ import {
   telegramIdentityMetadata,
 } from "./identity";
 import { renderTelegramInteractions } from "./interactions";
+import { TelegramMembershipMessageGate } from "./membership-gate";
 import {
   type TelegramContent,
   TelegramEventTypes,
@@ -390,10 +391,34 @@ export class MessageManager {
     this.bot = bot;
     this.runtime = runtime;
     this.accountId = accountId;
+    this.telegramMembershipGate = new TelegramMembershipMessageGate({
+      runtime,
+      authority: null,
+      botTelegramUserId: null,
+    });
   }
 
   private scopedTelegramKey(key: string): string {
     return this.accountId === "default" ? key : `${this.accountId}:${key}`;
+  }
+
+  /** Membership admission gate for group/supergroup messages; lazily bound by the owning TelegramService. */
+  public readonly telegramMembershipGate: TelegramMembershipMessageGate;
+
+  /** Binds the authority-backed membership gate once the service has bootstrapped it. */
+  bindMembershipGate(gate: {
+    authority: import("./membership").TelegramMembershipAuthority;
+    botTelegramUserId: string;
+  }): void {
+    this.telegramMembershipGate.rebind(gate.authority, gate.botTelegramUserId);
+  }
+
+  /**
+   * Marks the membership gate broken (authority configured but bootstrap
+   * failed): group admission fails closed until a later successful boot.
+   */
+  markMembershipGateBroken(): void {
+    this.telegramMembershipGate.markBroken();
   }
 
   private telegramMessageMemoryKey(
@@ -1534,6 +1559,42 @@ export class MessageManager {
         return;
       }
 
+      // Get chat type and determine channel type
+      const chat = message.chat as Chat;
+      const channelType = getChannelType(chat);
+
+      // Membership admission gate: group/supergroup chats require canonical
+      // membership authority. DMs stay under the DM policy; channels have no
+      // inbound admission surface in this connector — a channel post must not
+      // register or consult a membership scope the connector does not own, so
+      // the gate matches on the raw Telegram chat type (the same predicate as
+      // TelegramService.chatAndEntityMiddleware and the standalone handler's
+      // admission gate) rather than this file's collapsed ChannelType mapping,
+      // which folds `channel` into GROUP — unlike the standalone
+      // getTelegramChannelType, which maps `channel` to FEED. The gate runs
+      // BEFORE processMessage and ensureConnection
+      // so a denied sender can neither trigger media fetch/vision work nor
+      // mutate room-participant state; the authority bootstraps the principal
+      // entity itself when evidence needs the row.
+      if (chat.type === "group" || chat.type === "supergroup") {
+        const admitted = await this.telegramMembershipGate.authorizeMessage({
+          chatId: telegramChatId,
+          chatRoomKey: this.scopedTelegramKey(telegramChatId),
+          chatType: chat.type,
+          principalEntityId: entityId,
+          telegramUserId,
+          runtimeMapping: { worldId, roomId, entityId },
+          getChatMember: async () =>
+            ctx.telegram.getChatMember(
+              Number(telegramChatId),
+              Number(telegramUserId),
+            ),
+        });
+        if (!admitted) {
+          return;
+        }
+      }
+
       // Process message content and attachments
       const { processedContent, attachments } =
         await this.processMessage(message);
@@ -1550,10 +1611,6 @@ export class MessageManager {
       if (!cleanedContent && cleanedAttachments.length === 0) {
         return;
       }
-
-      // Get chat type and determine channel type
-      const chat = message.chat as Chat;
-      const channelType = getChannelType(chat);
 
       await this.runtime.ensureConnection({
         entityId,
