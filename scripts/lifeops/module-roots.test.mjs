@@ -1,13 +1,18 @@
 /**
- * Regression tests for the repo-root derivation in the lifeops scripts that
- * default their file paths to this checkout. Each module is copied into a
- * temporary checkout whose path contains a space and imported from there, so
- * the test observes the real ROOT the module computes; a root derived from the
- * percent-encoded URL pathname would leak `%20` into every derived path
- * (#29569). Real filesystem, no mocks.
+ * Exercises ledger persistence and credential-layer reads/writes from an isolated
+ * checkout whose path needs URL decoding. Real filesystem operations prove that
+ * operator state stays in the checkout, without accessing actual credentials.
  */
 import assert from "node:assert/strict";
-import { cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -18,7 +23,7 @@ const HERE = fileURLToPath(new URL(".", import.meta.url));
 async function importFromSpacedCheckout(moduleName, run) {
   const base = realpathSync(mkdtempSync(join(tmpdir(), "lifeops-root-")));
   try {
-    const repo = join(base, "sp ace", "repo");
+    const repo = join(base, "sp ace-é#", "repo");
     const scripts = join(repo, "scripts", "lifeops");
     mkdirSync(scripts, { recursive: true });
     cpSync(join(HERE, moduleName), join(scripts, moduleName));
@@ -29,31 +34,54 @@ async function importFromSpacedCheckout(moduleName, run) {
   }
 }
 
-test("hitl-ledger derives LEDGER_PATH from the decoded checkout path", async () => {
+test("ledger outcomes persist in the decoded checkout and survive a reread", async () => {
   await importFromSpacedCheckout("hitl-ledger.mjs", (mod, repo) => {
-    assert.equal(
-      mod.LEDGER_PATH,
-      join(repo, "docs", "testing", "hitl-ledger.json"),
+    const outcome = {
+      pathId: "fixture-calendar",
+      ok: true,
+      at: "2026-09-10T10:00:00.000Z",
+      lane: "fixture",
+      commit: "fixture-commit",
+      counts: { passed: 1, failed: 0, skipped: 0 },
+    };
+    mod.recordOutcome(outcome);
+    const persisted = JSON.parse(
+      readFileSync(join(repo, "docs", "testing", "hitl-ledger.json"), "utf8"),
     );
-    assert.ok(
-      !mod.LEDGER_PATH.includes("%20"),
-      `LEDGER_PATH leaked an encoded space: ${mod.LEDGER_PATH}`,
-    );
+    assert.equal(persisted.entries[outcome.pathId].lastSuccessAt, outcome.at);
+    mod.recordOutcome({
+      ...outcome,
+      ok: false,
+      at: "2026-09-10T11:00:00.000Z",
+      counts: { passed: 0, failed: 1, skipped: 0 },
+    });
+    const reread = mod.readLedger().entries[outcome.pathId];
+    assert.equal(reread.lastSuccessAt, outcome.at);
+    assert.equal(reread.counts.failed, 1);
   });
 });
 
-test("env-layers derives the default repo .env layer from the decoded checkout path", async () => {
+test("credential reads and writes use the decoded checkout's repo layer", async () => {
   await importFromSpacedCheckout("env-layers.mjs", (mod, repo) => {
-    const { layers } = mod.loadLayeredEnv({
-      processEnv: {},
-      homeEnvPath: join(repo, "home", ".env"),
-    });
-    const repoLayer = layers.find((layer) => layer.source === "repo");
-    assert.ok(repoLayer, "loadLayeredEnv must report a repo layer");
-    assert.equal(repoLayer.path, join(repo, ".env"));
-    assert.ok(
-      !repoLayer.path.includes("%20"),
-      `repo layer leaked an encoded space: ${repoLayer.path}`,
+    const envPath = join(repo, ".env");
+    writeFileSync(
+      envPath,
+      "FIXTURE_CALENDAR_TOKEN=before\nFIXTURE_KEEP=retained\n",
     );
+    const options = { processEnv: {}, homeEnvPath: join(repo, "home", ".env") };
+    assert.equal(
+      mod.loadLayeredEnv(options).values.FIXTURE_CALENDAR_TOKEN,
+      "before",
+    );
+    mod.writeSecret("FIXTURE_CALENDAR_TOKEN", "after", {
+      ...options,
+      scope: "repo",
+    });
+    const disk = mod.parseDotenv(readFileSync(envPath, "utf8"));
+    assert.equal(disk.FIXTURE_CALENDAR_TOKEN, "after");
+    assert.equal(disk.FIXTURE_KEEP, "retained");
+    const loaded = mod.loadLayeredEnv({ ...options, processEnv: {} });
+    assert.equal(loaded.values.FIXTURE_CALENDAR_TOKEN, "after");
+    assert.equal(loaded.sources.FIXTURE_CALENDAR_TOKEN, "repo");
   });
 });
