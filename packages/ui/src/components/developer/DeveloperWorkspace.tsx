@@ -4,6 +4,7 @@ import {
   memo,
   type ReactNode,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -31,7 +32,9 @@ import { OwnerOnlyNotice, RoleGate } from "../RoleGate";
 import { ModelConfigurationPanel } from "../settings/ModelConfigurationPanel";
 import { ToolCallEventLog } from "../tool-events/ToolCallEventLog";
 import { Button } from "../ui/button";
+import { NativeSelect } from "../ui/native-select";
 import { SemanticForm } from "../ui/semantic-form";
+import { Table } from "../ui/table";
 import { Textarea } from "../ui/textarea";
 import {
   trajectoryRevision,
@@ -123,7 +126,7 @@ export function DeveloperTrace({
         are not measured here.
       </p>
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs">
+        <Table density="compact" className="caption-top text-left">
           <caption className="pb-2 text-left font-medium">
             Model calls · {record.status}
           </caption>
@@ -168,7 +171,7 @@ export function DeveloperTrace({
               </tr>
             ))}
           </tbody>
-        </table>
+        </Table>
       </div>
       {detail.semanticStages?.length ? (
         <details>
@@ -206,6 +209,7 @@ export function DeveloperTrace({
 }
 
 function WireEvidence({ record }: { record: TrajectoryRecord }) {
+  const evidenceId = useId();
   const [open, setOpen] = useState(false);
   const [wire, setWire] = useState<TrajectoryDetailResult | null>(null);
   const [error, setError] = useState(false);
@@ -248,10 +252,11 @@ function WireEvidence({ record }: { record: TrajectoryRecord }) {
             applied.
           </p>
           {wire ? (
-            <label className="block text-xs text-muted">
+            <label htmlFor={evidenceId} className="block text-xs text-muted">
               Evidence section
-              <select
-                className="mt-2 block min-h-10 w-full rounded-md border border-border bg-bg px-2 text-txt"
+              <NativeSelect
+                id={evidenceId}
+                className="mt-2 block"
                 value={part}
                 onChange={(event) => setPart(event.target.value)}
               >
@@ -261,7 +266,7 @@ function WireEvidence({ record }: { record: TrajectoryRecord }) {
                   </option>
                 ))}
                 <option value="all">Entire recorded run</option>
-              </select>
+              </NativeSelect>
             </label>
           ) : null}
           {error ? (
@@ -559,6 +564,7 @@ function LiveActivity({
 }
 
 function DeveloperPanel({ section }: { section: "chat" | "settings" }) {
+  const runSelectId = useId();
   const {
     chatSending,
     chatInput: draft,
@@ -707,11 +713,15 @@ function DeveloperPanel({ section }: { section: "chat" | "settings" }) {
                           : "Pause telemetry"}
                       </Button>
                     </div>
-                    <label className="block text-xs text-muted">
+                    <label
+                      htmlFor={runSelectId}
+                      className="block text-xs text-muted"
+                    >
                       Inspect a run
-                      <select
+                      <NativeSelect
+                        id={runSelectId}
                         aria-label="Inspect a run"
-                        className="mt-2 block min-h-10 w-full min-w-0 rounded-md border border-border bg-bg px-2 text-xs text-txt"
+                        className="mt-2 block min-w-0"
                         value={telemetry.selectedId ?? ""}
                         onChange={(event) =>
                           telemetry.select(event.target.value || null)
@@ -730,7 +740,7 @@ function DeveloperPanel({ section }: { section: "chat" | "settings" }) {
                             · {row.id}
                           </option>
                         ))}
-                      </select>
+                      </NativeSelect>
                     </label>
                     <div className="flex items-center justify-between gap-2 text-xs text-muted">
                       <span>
