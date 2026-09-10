@@ -212,7 +212,11 @@ export class TalkModeWeb extends WebPlugin {
         this.notifyListeners("speakComplete", {
           completed: !outcome.cancelled,
         });
-        if (!stale) this.setState("listening", "Listening");
+        if (!stale)
+          this.setState(
+            this.enabled ? "listening" : "idle",
+            this.enabled ? "Listening" : "Off",
+          );
         resolve({
           completed: !outcome.cancelled,
           interrupted: outcome.cancelled,
@@ -243,9 +247,10 @@ export class TalkModeWeb extends WebPlugin {
       this.cancelPendingSpeech();
       // The cancelled utterance's own end event is stale from here on, so the
       // resumed listening state is set here rather than by that handler.
-      if (this.enabled) {
-        this.setState("listening", "Listening");
-      }
+      this.setState(
+        this.enabled ? "listening" : "idle",
+        this.enabled ? "Listening" : "Off",
+      );
       return { interruptedAt: undefined };
     }
     return {};

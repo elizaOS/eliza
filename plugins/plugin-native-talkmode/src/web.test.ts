@@ -204,6 +204,11 @@ describe("TalkModeWeb fallback", () => {
       isSystemTts: true,
     });
     expect(complete).toHaveBeenCalledWith({ completed: true });
+    await expect(plugin.isEnabled()).resolves.toEqual({ enabled: false });
+    await expect(plugin.getState()).resolves.toEqual({
+      state: "idle",
+      statusText: "Off",
+    });
   });
 
   it.each(["end", "error"] as const)(
@@ -246,6 +251,33 @@ describe("TalkModeWeb fallback", () => {
       await plugin.stop();
     },
   );
+
+  it("keeps standalone TTS off after interruption", async () => {
+    let utterance: FakeUtterance | undefined;
+    setWindow({
+      speechSynthesis: {
+        cancel: () => utterance?.onend?.(),
+        speak: (value: FakeUtterance) => {
+          utterance = value;
+        },
+        speaking: false,
+      },
+    });
+    vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
+    const plugin = new TalkModeWeb();
+    const reply = plugin.speak({ text: "Standalone reply" });
+    await plugin.stopSpeaking();
+    await expect(reply).resolves.toEqual({
+      completed: false,
+      interrupted: true,
+      usedSystemTts: true,
+    });
+    await expect(plugin.isEnabled()).resolves.toEqual({ enabled: false });
+    await expect(plugin.getState()).resolves.toEqual({
+      state: "idle",
+      statusText: "Off",
+    });
+  });
 
   it.each(["stop", "stopSpeaking"] as const)(
     "%s marks the complete browser queue interrupted before synchronous cancel callbacks",
