@@ -639,6 +639,8 @@ export class MessageProcessor {
 					}
 					const proposedText = event.text.trim();
 					const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
+						providers: state.data.providers,
+						request: message.content.text,
 						reply: proposedText,
 						actionResults: [],
 						actions: runtime.actions,
