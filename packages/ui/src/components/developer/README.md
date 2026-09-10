@@ -47,12 +47,12 @@ disclosures: initial detail reads use `includePayloads: false` after expansion
 or advanced inspection; full prompts, tools, results and context load behind
 another disclosure. Routine polling remains lightweight and excludes payloads.
 
-Reply token counts include recorded post-turn evaluation. Expanded calls
-distinguish foreground, evaluation and background memory; provider adapters
-often label every call `external_llm`, so the recorded semantic stage determines
-the evaluation lane. Missing usage is unknown, partial totals are labeled, and
-estimated per-call usage carries `≈`. Run duration may include evaluation;
-overlapping stage durations must not be added. HTTP attempts, queue time and
+Reply and run token counts include every recorded call, including final-response
+evaluation. Run source distinguishes chat from background memory. A semantic
+stage named `evaluation` alone does not prove that it happened after delivery;
+the viewer does not infer a foreground/post-turn split from it. Missing usage is
+unknown, partial totals are labeled, and estimated per-call usage carries `≈`.
+Overlapping stage durations must not be added. HTTP attempts, queue time and
 provider first-token timing are not measured here. Configured routing does not
 prove the provider used: recorded calls can show fallback providers.
 

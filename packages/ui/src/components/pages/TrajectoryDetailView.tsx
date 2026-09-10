@@ -947,7 +947,7 @@ export function TrajectoryDetailView({
           ].map(([value, label]) => (
             <Button
               key={value}
-                variant={inspectionPart === value ? "secondary" : "ghost"}
+              variant={inspectionPart === value ? "secondary" : "ghost"}
               size="touch"
               aria-pressed={inspectionPart === value}
               onClick={() => setInspectionPart(value)}

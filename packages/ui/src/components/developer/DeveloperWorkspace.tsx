@@ -58,15 +58,10 @@ const count = (value: number | null | undefined) =>
 const duration = (value: number | null | undefined) =>
   typeof value === "number" ? `${(value / 1000).toFixed(2)}s` : "—";
 
-export function callLane(
-  call: Pick<TrajectoryLlmCall, "purpose">,
-  source: string,
-  stage = call.purpose,
-): string {
+/** Source identifies ownership; an evaluation stage does not identify delivery timing. */
+export function callLane(source: string): string {
   if (source === "background_memory") return "Background memory";
-  if (stage === "evaluation" || call.purpose === "evaluation")
-    return "Post-turn evaluation";
-  return source === "client_chat" ? "Foreground" : source;
+  return source === "client_chat" ? "Chat run" : source;
 }
 
 function recordedStage(
@@ -91,19 +86,13 @@ export function DeveloperTrace({
   record: TrajectoryRecord;
   detail: TrajectoryDetailResult;
 }) {
-  const foreground = detail.llmCalls.filter(
-    (call) =>
-      callLane(call, record.source, recordedStage(call, detail)) ===
-      "Foreground",
-  );
-  const knownInputs = foreground.reduce(
+  const calls = detail.llmCalls;
+  const knownInputs = calls.reduce(
     (total, call) => total + (call.promptTokens ?? 0),
     0,
   );
-  const missingUsage = foreground.some((call) => call.promptTokens == null);
-  const hasMeasuredInputs = foreground.some(
-    (call) => call.promptTokens != null,
-  );
+  const missingUsage = calls.some((call) => call.promptTokens == null);
+  const hasMeasuredInputs = calls.some((call) => call.promptTokens != null);
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-3 gap-3 border-y border-border py-3">
@@ -113,15 +102,13 @@ export function DeveloperTrace({
         </div>
         <div>
           <div className="text-xs text-muted">
-            Foreground input
+            Run input
             {missingUsage && hasMeasuredInputs ? " (partial)" : ""}
           </div>
           <div className="text-lg tabular-nums">
-            {record.source === "client_chat"
-              ? !hasMeasuredInputs
-                ? "Unknown"
-                : `${count(knownInputs)}${missingUsage ? "+" : ""}`
-              : "—"}
+            {!hasMeasuredInputs
+              ? "Unknown"
+              : `${count(knownInputs)}${missingUsage ? "+" : ""}`}
           </div>
         </div>
         <div>
@@ -132,10 +119,11 @@ export function DeveloperTrace({
         </div>
       </div>
       <p className="text-xs leading-relaxed text-muted">
-        Usage is recorded provider usage; missing values are unknown. Run
-        duration can include post-turn evaluation. Stage spans overlap and must
-        not be added. HTTP attempts, queue time and provider first-token timing
-        are not measured here.
+        Run input includes every recorded model call in this run, including
+        evaluation. Evaluation stages do not establish whether a call ran before
+        or after the reply. Missing usage is unknown; ≈ marks estimates. Stage
+        spans overlap and must not be added. HTTP attempts, queue time and
+        provider first-token timing are not measured here.
       </p>
       <div className="overflow-x-auto">
         <Table density="compact" className="caption-top text-left">
@@ -164,7 +152,7 @@ export function DeveloperTrace({
                     {call.provider || "Provider not recorded"} / {call.model}
                   </div>
                   <div className="mt-1 text-muted">
-                    {callLane(call, record.source, recordedStage(call, detail))}
+                    {callLane(record.source)}
                   </div>
                 </td>
                 <td className="py-3 pr-3 text-right tabular-nums">
@@ -482,8 +470,8 @@ export function DeveloperReplyDetails({
             className="developer-details-scroll space-y-3"
           >
             <p className="text-xs text-muted">
-              Recorded tokens across this run’s model calls, including any
-              post-turn evaluation. Background memory runs separately.
+              Recorded tokens across this run’s model calls, including
+              evaluation. Background memory runs separately.
             </p>
             {error ? (
               <p role="alert">

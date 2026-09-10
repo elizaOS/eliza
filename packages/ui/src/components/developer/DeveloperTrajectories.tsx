@@ -8,7 +8,7 @@ import { NativeSelect } from "../ui/native-select";
 import { trajectoryRevision } from "./useDeveloperTrajectories";
 
 const runLabel = (record: TrajectoryRecord) =>
-  `${record.source === "client_chat" ? "Foreground" : record.source === "background_memory" ? "Background memory" : record.source.replace(/_/g, " ")} · ${record.llmCallCount} model ${record.llmCallCount === 1 ? "call" : "calls"} · ${record.status}`;
+  `${record.source === "client_chat" ? "Chat run" : record.source === "background_memory" ? "Background memory" : record.source.replace(/_/g, " ")} · ${record.llmCallCount} model ${record.llmCallCount === 1 ? "call" : "calls"} · ${record.status}`;
 
 export function useMessageTrajectories({
   records,

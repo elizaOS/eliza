@@ -163,15 +163,10 @@ const flush = async () => {
 };
 
 describe("developer workspace", () => {
-  it("classifies generic provider calls by their recorded semantic stage", () => {
-    const call = { purpose: "external_llm" };
-    expect(callLane(call, "client_chat", "evaluation")).toBe(
-      "Post-turn evaluation",
-    );
-    expect(callLane(call, "client_chat", "planner")).toBe("Foreground");
-    expect(callLane(call, "background_memory", "evaluation")).toBe(
-      "Background memory",
-    );
+  it("uses recorded run ownership without inferring post-turn timing from stage names", () => {
+    expect(callLane("client_chat")).toBe("Chat run");
+    expect(callLane("background_memory")).toBe("Background memory");
+    expect(callLane("recovery")).toBe("recovery");
   });
   it("sends through canonical chat without overriding view, authority or conversation", async () => {
     render(
@@ -209,7 +204,7 @@ describe("developer workspace", () => {
     expect(screen.getByText("Which view is open?")).toBeTruthy();
     expect(screen.getByText(/100 tokens in · 20 out/)).toBeTruthy();
     expect(screen.queryByText("Recorded runs")).toBeNull();
-    expect(screen.queryByText("Foreground input")).toBeNull();
+    expect(screen.queryByText("Run input")).toBeNull();
     expect(mocks.detail).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Inspect" }));
     await flush();
@@ -217,7 +212,7 @@ describe("developer workspace", () => {
       "run-1",
       expect.objectContaining({ includePayloads: false }),
     );
-    expect(screen.getByText("Foreground input")).toBeTruthy();
+    expect(screen.getByText("Run input")).toBeTruthy();
     expect(screen.queryByLabelText("Full trajectory JSON")).toBeNull();
   });
 
@@ -563,7 +558,7 @@ describe("developer workspace", () => {
     expect(mocks.detail).not.toHaveBeenCalled();
   });
 
-  it("keeps unknown usage and post-turn evaluation distinct from foreground totals", () => {
+  it("includes final response evaluation in run totals while keeping unknown usage explicit", () => {
     const calls = [
       {
         id: "one",
@@ -581,9 +576,8 @@ describe("developer workspace", () => {
         detail={{ ...detail, llmCalls: calls }}
       />,
     );
-    expect(screen.getByText("100+")).toBeTruthy();
-    expect(screen.getByText("Post-turn evaluation")).toBeTruthy();
-    expect(screen.queryByText("900")).toBeNull();
+    expect(screen.getByText("900+")).toBeTruthy();
+    expect(screen.queryByText("Post-turn evaluation")).toBeNull();
   });
   it("shows unknown instead of an invented zero for wholly missing usage", () => {
     render(
