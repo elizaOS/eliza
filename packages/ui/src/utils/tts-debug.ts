@@ -67,11 +67,17 @@ export function ttsDebugTextPreview(
   return `${truncateWellFormed(wellFormed, maxChars)}…`;
 }
 
+/** Object nodes one debug detail may serialize before collapsing to "[Truncated]". */
+const MAX_DEBUG_DETAIL_NODES = 10_000;
+
 function serializeTtsDebugDetail(detail: Record<string, unknown>): string {
   // Track the open ancestor chain through the replacer's holder (`this`) so
   // only a reference back to an ancestor is circular; a value shared by two
   // keys serializes in full at both sites.
   const ancestors: object[] = [];
+  // Shared objects are emitted once per path; past the node ceiling every
+  // further object collapses to a marker so a debug line stays bounded.
+  let remainingNodes = MAX_DEBUG_DETAIL_NODES;
   try {
     return JSON.stringify(
       detail,
@@ -85,6 +91,8 @@ function serializeTtsDebugDetail(detail: Record<string, unknown>): string {
             ancestors.pop();
           }
           if (ancestors.includes(value)) return "[Circular]";
+          if (remainingNodes <= 0) return "[Truncated]";
+          remainingNodes -= 1;
           ancestors.push(value);
         }
         return value;

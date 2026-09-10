@@ -29,4 +29,32 @@ describe("redactSensitiveData reference handling", () => {
       child: { parent: "[Circular]", note: "child" },
     });
   });
+
+  it("bounds a shared-reference chain instead of expanding it exponentially", () => {
+    // 13 distinct objects, each holding the same next level under four keys:
+    // 4^12 paths. The walker returns a structure, so the budget is its only
+    // ceiling.
+    let level: Record<string, unknown> = { note: "leaf" };
+    for (let i = 0; i < 12; i++)
+      level = { a: level, b: level, c: level, d: level };
+    const started = performance.now();
+    const out = redactSensitiveData(level);
+    const elapsedMs = performance.now() - started;
+    let objects = 0;
+    let markers = 0;
+    const walk = (value: unknown): void => {
+      if (value === "[Truncated]") {
+        markers += 1;
+        return;
+      }
+      if (value && typeof value === "object") {
+        objects += 1;
+        for (const item of Object.values(value)) walk(item);
+      }
+    };
+    walk(out);
+    expect(markers).toBeGreaterThan(0);
+    expect(objects).toBeLessThanOrEqual(50_000);
+    expect(elapsedMs).toBeLessThan(5_000);
+  });
 });

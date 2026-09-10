@@ -138,11 +138,20 @@ function redactString(
   return valueWithoutEmails;
 }
 
+/** Object nodes one redaction may emit before collapsing to "[Truncated]". */
+const MAX_REDACT_NODES = 50_000;
+
+/** Per-walk emission counter; shared objects are emitted once per path. */
+interface RedactBudget {
+  remaining: number;
+}
+
 function redactValue(
   rawKey: string,
   value: unknown,
   opts: RedactOptions,
   seen: WeakSet<object>,
+  budget: RedactBudget,
 ): unknown {
   if (value === null || value === undefined) return value;
   if (typeof value === "string") {
@@ -153,10 +162,16 @@ function redactValue(
   // redacted in full at both sites and only a true cycle collapses.
   if (Array.isArray(value)) {
     if (seen.has(value)) return "[Circular]";
+    // The walker returns a structure, not a string, so nothing downstream
+    // can catch an oversized result: the budget is the only ceiling.
+    if (budget.remaining <= 0) return "[Truncated]";
+    budget.remaining -= 1;
     seen.add(value);
     try {
       // Arrays use the parent key for redaction context (e.g. `toList: [...]`).
-      return value.map((entry) => redactValue(rawKey, entry, opts, seen));
+      return value.map((entry) =>
+        redactValue(rawKey, entry, opts, seen, budget),
+      );
     } finally {
       seen.delete(value);
     }
@@ -164,11 +179,13 @@ function redactValue(
   if (typeof value === "object") {
     const obj = value as Record<string, unknown>;
     if (seen.has(obj)) return "[Circular]";
+    if (budget.remaining <= 0) return "[Truncated]";
+    budget.remaining -= 1;
     seen.add(obj);
     try {
       const out: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(obj)) {
-        out[k] = redactValue(k, v, opts, seen);
+        out[k] = redactValue(k, v, opts, seen, budget);
       }
       return out;
     } finally {
@@ -188,5 +205,7 @@ function redactValue(
  * input value is left intact.
  */
 export function redactSensitiveData<T>(value: T, opts: RedactOptions = {}): T {
-  return redactValue("", value, opts, new WeakSet()) as T;
+  return redactValue("", value, opts, new WeakSet(), {
+    remaining: MAX_REDACT_NODES,
+  }) as T;
 }
