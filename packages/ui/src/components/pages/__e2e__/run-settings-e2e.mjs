@@ -18,7 +18,7 @@
  *   bun run --cwd packages/ui test:settings-e2e
  */
 
-import { mkdir, readdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { builtinModules } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,6 +31,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const uiSrc = resolve(here, "../../..");
 const repoRoot = resolve(uiSrc, "../../..");
 const outDir = join(here, "output-settings");
+await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
 
 let failures = 0;
@@ -434,9 +435,15 @@ assert(
 );
 await atBreakpoint.close();
 
-const mobile = await context.newPage();
+const mobileContext = await browser.newContext({
+  viewport: { width: 390, height: 844 },
+  recordVideo: { dir: outDir, size: { width: 390, height: 844 } },
+  reducedMotion: "reduce",
+});
+const mobile = await mobileContext.newPage();
+const mobileVideo = mobile.video();
+if (!mobileVideo) throw new Error("Mobile Settings recording is unavailable");
 mobile.on("pageerror", (e) => pageErrors.push(String(e)));
-await mobile.setViewportSize({ width: 390, height: 844 });
 await mobile.goto(url, { waitUntil: "domcontentloaded" });
 await mobile.waitForSelector('[data-testid="settings-hub-list"]');
 assert(
@@ -503,6 +510,8 @@ assert(
 await mobile.waitForTimeout(450);
 await snap(mobile, `${String(shotIndex).padStart(2, "0")}-voice-mobile`);
 await mobile.close();
+await mobileContext.close();
+await mobileVideo.saveAs(join(outDir, "walkthrough.webm"));
 
 // Connected account actions must fit the native Settings content pane, not
 // merely the full window width. The fixture retains the desktop rail gutter.
@@ -537,14 +546,7 @@ await p.close();
 await context.close();
 await browser.close();
 
-// Name the recorded walkthrough deterministically.
-for (const f of await readdir(outDir)) {
-  if (f.endsWith(".webm") && f !== "walkthrough.webm") {
-    await rename(join(outDir, f), join(outDir, "walkthrough.webm"));
-    console.log("  🎥 walkthrough.webm");
-    break;
-  }
-}
+console.log("  🎥 walkthrough.webm (mobile Settings navigation)");
 
 // Page errors from stubbed-data sections are contained by the per-section
 // error boundary; NOTHING may escape to a page error — a real shell TypeError
