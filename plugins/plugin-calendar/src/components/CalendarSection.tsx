@@ -801,7 +801,7 @@ function MonthGrid({
         ))}
       </div>
       <div
-        className="grid gap-px bg-border/8"
+        className="grid gap-px bg-border"
         style={{ gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}
       >
         {days.map((day) => {
@@ -941,7 +941,7 @@ function MonthDayButton({
   return (
     <Button
       ref={control.ref}
-      variant="selection"
+      variant={today ? "accentDarkHover" : "selection"}
       size="touch"
       type="button"
       className="min-w-0 self-start px-1"
