@@ -14,6 +14,11 @@
 import type { ServerResponse } from "node:http";
 import { ElizaError } from "../../errors";
 import type { TrajectorySemanticStageRecord } from "../../services/trajectory-semantic-stage";
+import type {
+	TrajectoryActionAttemptRecord,
+	TrajectoryLlmCallRecord,
+	TrajectoryProviderAccessRecord,
+} from "../../services/trajectory-types";
 import type { IAgentRuntime, UUID } from "../../types";
 
 interface ServiceTrajectoryListItem {
@@ -36,7 +41,7 @@ interface ServiceTrajectoryListItem {
 	updatedAt?: string;
 }
 
-interface ServiceLlmCall {
+interface ServiceLlmCall extends TrajectoryLlmCallRecord {
 	callId: string;
 	model: string;
 	provider?: string;
@@ -57,13 +62,13 @@ interface ServiceLlmCall {
 	cacheCreationInputTokens?: number;
 }
 
-interface ServiceProviderAccess {
+interface ServiceProviderAccess extends TrajectoryProviderAccessRecord {
 	providerId: string;
 	providerName: string;
 	purpose?: string;
 }
 
-interface ServiceActionAttempt {
+interface ServiceActionAttempt extends Partial<TrajectoryActionAttemptRecord> {
 	attemptId: string;
 	actionType: string;
 	actionName: string;
@@ -239,16 +244,13 @@ function detailToUi(
 		const calls = step.llmCalls;
 		for (const c of calls) {
 			llmCalls.push({
+				// The service owns redaction. Full reads preserve the complete
+				// recorded request/response, including native tools and options.
+				...(includePayloads ? c : {}),
 				id: c.callId,
 				stepId: step.stepId,
+				trajectoryId: id,
 				timestamp: c.timestamp,
-				...(includePayloads
-					? {
-							systemPrompt: c.systemPrompt,
-							userPrompt: c.userPrompt,
-							response: c.response,
-						}
-					: {}),
 				temperature: c.temperature,
 				maxTokens: c.maxTokens,
 				maxTokensOmitted: c.maxTokensOmitted,
@@ -257,6 +259,10 @@ function detailToUi(
 				completionTokens: c.completionTokens,
 				cacheReadInputTokens: c.cacheReadInputTokens,
 				cacheCreationInputTokens: c.cacheCreationInputTokens,
+				reasoningTokens: c.reasoningTokens,
+				tokenUsageEstimated: c.tokenUsageEstimated,
+				finishReason: c.finishReason,
+				modelType: c.modelType,
 				model: c.model,
 				...(c.provider ? { provider: c.provider } : {}),
 				...(c.purpose ? { purpose: c.purpose } : {}),
@@ -266,8 +272,13 @@ function detailToUi(
 		}
 		const accesses = step.providerAccesses;
 		for (const p of accesses) {
+			const { data, query, ...accessMetadata } = p;
 			providerAccesses.push({
+				...accessMetadata,
+				...(includePayloads ? { data, query } : {}),
 				id: p.providerId,
+				stepId: step.stepId,
+				trajectoryId: id,
 				providerName: p.providerName,
 				...(p.purpose ? { purpose: p.purpose } : {}),
 			});
@@ -277,8 +288,13 @@ function detailToUi(
 		const action = step.action;
 		if (action && (action.actionName || action.actionType)) {
 			const failed = action.success === false || Boolean(action.error);
+			const { parameters, result, reasoning, ...actionMetadata } = action;
 			toolEvents.push({
+				...actionMetadata,
+				...(includePayloads ? { parameters, result, reasoning } : {}),
 				id: action.attemptId,
+				stepId: step.stepId,
+				trajectoryId: id,
 				type: failed ? "tool_error" : "tool_result",
 				actionName: action.actionName || action.actionType,
 				status: failed ? "failed" : "completed",
