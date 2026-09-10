@@ -115,57 +115,70 @@ function holdingClaims(
 		/\b(?:wallet|crypto|token|holdings|portfolio|SOL|ETH|BTC|USDC|USDT)\b/i.test(
 			request ?? "",
 		);
-	const clauses = reply
-		.split(/(?<=[.!?])\s+|\n/u)
-		.filter((sentence) => !sentence.includes("?"))
-		.flatMap((sentence) =>
-			sentence.split(/;\s*|,\s+|\s+(?:and|but|however)\s+/iu),
-		);
-	for (const clause of clauses) {
-		const holdingContext =
-			/\b(?:wallet|holdings|portfolio|(?:token|SOL|ETH|BTC|USDC|USDT)\s+balance)\b/i.test(
-				clause,
-			) ||
-			(walletRequest &&
-				/\b(?:balance|holds|contains|(?:you|I)\s+(?:(?:currently|now|still)\s+)?(?:have|hold|own))\b/i.test(
+	const sentences = reply.split(/(?<=[.!?])\s+/u);
+	for (const sentence of sentences) {
+		if (sentence.includes("?")) continue;
+		// A coordinated asset list keeps its subject until another wallet is named.
+		// New sentences reset scope; line breaks within a list do not erase ownership.
+		let personal = false;
+		const clauses = sentence.split(/\n|;\s*|,\s+|\s+(?:and|but|however)\s+/iu);
+		for (const clause of clauses) {
+			if (
+				/\b(?:your|my)\s+(?:[A-Za-z][A-Za-z0-9]*\s+)?(?:wallet|holdings|portfolio|balance)\b|\b(?:you|I)\s+(?:(?:currently|now|still)\s+)?(?:(?:do not|don't|did not|didn't)\s+)?(?:have|hold|own)\b/i.test(
 					clause,
-				)) ||
-			(walletRequest &&
-				/^\s*\d[\d,.]*\s+[A-Za-z][A-Za-z0-9]*[.!]?\s*$/.test(clause));
-		if (!holdingContext) continue;
-		const personal =
-			/\b(?:your|my)\s+(?:wallet|holdings|portfolio|balance)\b|\b(?:you|I)\s+(?:(?:currently|now|still)\s+)?(?:have|hold|own)\b/i.test(
-				clause,
-			);
-		// Ordinary named-asset absence is a zero claim, not a statement of unknown data.
-		for (const match of clause.matchAll(
-			/\b(?:no|(?:didn't|did not|don't|do not|doesn't|does not)\s+(?:find|have|hold|own)\s+any)\s+([A-Za-z][A-Za-z0-9]*)(?=\s+(?:holdings|tokens|balance)\b|[.!]?\s*$)/gi,
-		)) {
-			if (
-				NON_ASSET_UNITS.test(match[1]) ||
-				UNVERIFIED.test(clause.slice(0, match.index))
-			)
-				continue;
-			claims.push({ symbol: match[1].toUpperCase(), amount: "0", personal });
-		}
-		for (const match of clause.matchAll(
-			/(?<![\w.+-])(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s+([A-Za-z][A-Za-z0-9]*)\b/g,
-		)) {
-			const prefix = clause.slice(0, match.index);
-			if (
-				UNVERIFIED.test(prefix) ||
-				/\b(?:worth|valuation|price|valued|not|don't|doesn't|isn't|aren't)\b/i.test(
-					prefix,
 				)
-			)
-				continue;
-			if (NON_ASSET_UNITS.test(match[2])) continue;
-			const claim = holding(match[2], match[1].replace(/,/g, ""));
-			if (claim)
-				claims.push({
-					...claim,
-					personal,
-				});
+			) {
+				personal = true;
+			} else if (
+				/\b(?:queried|third-party|third party)\s+wallet\b|\bwallet\s+(?:you|I)\s+(?:queried|checked)\b/i.test(
+					clause,
+				)
+			) {
+				personal = false;
+			}
+			const holdingContext =
+				/\b(?:wallet|holdings|portfolio|(?:token|SOL|ETH|BTC|USDC|USDT)\s+balance)\b/i.test(
+					clause,
+				) ||
+				(walletRequest &&
+					/\b(?:balance|holds|contains|(?:you|I)\s+(?:(?:currently|now|still)\s+)?(?:have|hold|own))\b/i.test(
+						clause,
+					)) ||
+				(walletRequest &&
+					/^\s*(?:[-*]\s+)?\d[\d,.]*\s+[A-Za-z][A-Za-z0-9]*[.!]?\s*$/.test(
+						clause,
+					));
+			if (!holdingContext) continue;
+			// Ordinary named-asset absence is a zero claim, not a statement of unknown data.
+			for (const match of clause.matchAll(
+				/\b(?:no|(?:didn't|did not|don't|do not|doesn't|does not)\s+(?:find|have|hold|own)\s+any)\s+([A-Za-z][A-Za-z0-9]*)(?=\s+(?:holdings|tokens|balance)\b|[.!]?\s*$)/gi,
+			)) {
+				if (
+					NON_ASSET_UNITS.test(match[1]) ||
+					UNVERIFIED.test(clause.slice(0, match.index))
+				)
+					continue;
+				claims.push({ symbol: match[1].toUpperCase(), amount: "0", personal });
+			}
+			for (const match of clause.matchAll(
+				/(?<![\w.+-])(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s+([A-Za-z][A-Za-z0-9]*)\b/g,
+			)) {
+				const prefix = clause.slice(0, match.index);
+				if (
+					UNVERIFIED.test(prefix) ||
+					/\b(?:worth|valuation|price|valued|not|don't|doesn't|isn't|aren't)\b/i.test(
+						prefix,
+					)
+				)
+					continue;
+				if (NON_ASSET_UNITS.test(match[2])) continue;
+				const claim = holding(match[2], match[1].replace(/,/g, ""));
+				if (claim)
+					claims.push({
+						...claim,
+						personal,
+					});
+			}
 		}
 	}
 	return claims;

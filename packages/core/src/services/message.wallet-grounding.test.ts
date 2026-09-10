@@ -1078,3 +1078,81 @@ it("does not infer no SOL holdings from a different observed asset", async () =>
 	expect(texts).toContain(BALANCE_UNVERIFIED);
 	expect(stored).not.toContain(reply);
 });
+
+it.each([
+	["Your SOL balance is 4 SOL.", 4],
+	["You do not have any SOL holdings.", 0],
+] as const)(
+	"does not let public observations prove personal phrasing: %s",
+	async (reply, amount) => {
+		const { texts, stored } = await deliver(
+			reply,
+			walletRead(amount),
+			BALANCE_UNVERIFIED,
+			"Look up the portfolio of this third-party wallet.",
+		);
+		expect(texts).toContain(BALANCE_UNVERIFIED);
+		expect(stored).not.toContain(reply);
+	},
+);
+
+it.each([
+	"You hold 2 SOL and 4 ETH.",
+	"You hold 2 SOL, 4 ETH.",
+	"You hold:\n- 2 SOL\n- 4 ETH.",
+])("keeps personal ownership across an asset list: %s", async (reply) => {
+	const { texts, stored } = await deliver(
+		reply,
+		walletRead(4, "ETH"),
+		BALANCE_UNVERIFIED,
+		"Compare my wallet with this third-party wallet.",
+		{
+			providers: {
+				"solana-wallet": { data: { items: [{ symbol: "SOL", uiAmount: 2 }] } },
+			},
+		},
+	);
+	expect(texts).toContain(BALANCE_UNVERIFIED);
+	expect(stored).not.toContain(reply);
+});
+
+it("preserves a personal asset list observed by configured wallet providers", async () => {
+	const reply = "You hold 2 SOL and 4 ETH.";
+	const { texts, stored } = await deliver(
+		reply,
+		walletRead(4, "ETH"),
+		undefined,
+		"Compare my wallet with this third-party wallet.",
+		{
+			providers: {
+				"solana-wallet": {
+					data: {
+						items: [
+							{ symbol: "SOL", uiAmount: 2 },
+							{ symbol: "ETH", uiAmount: 4 },
+						],
+					},
+				},
+			},
+		},
+	);
+	expect(texts).toContain(reply);
+	expect(stored).toContain(reply);
+});
+
+it("allows an explicitly named queried wallet to change a list's subject", async () => {
+	const reply = "You hold 2 SOL and the queried wallet holds 4 ETH.";
+	const { texts, stored } = await deliver(
+		reply,
+		walletRead(4, "ETH"),
+		undefined,
+		"Compare my wallet with this third-party wallet.",
+		{
+			providers: {
+				"solana-wallet": { data: { items: [{ symbol: "SOL", uiAmount: 2 }] } },
+			},
+		},
+	);
+	expect(texts).toContain(reply);
+	expect(stored).toContain(reply);
+});
