@@ -934,6 +934,10 @@ export class AgreementKnowledgeService {
         error instanceof ElizaError &&
         error.code === "PDF_PAGE_TRANSCRIPTION_UNAVAILABLE"
       ) {
+        this.deps.runtime.reportError(
+          "AgreementKnowledge.extractCompleteDocument",
+          error,
+        );
         throw new AgreementKnowledgeError(
           "Document reading is temporarily unavailable. Check the model service, then retry this upload.",
           "AGREEMENT_EXTRACTION_UNAVAILABLE",

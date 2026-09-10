@@ -608,6 +608,13 @@ describe("parenting-agreement knowledge — real PGlite", () => {
           cause: failure,
         },
       );
+      expect(runtime.getRecentReportedErrors()).toContainEqual(
+        expect.objectContaining({
+          scope: "AgreementKnowledge.extractCompleteDocument",
+          code: "PDF_PAGE_TRANSCRIPTION_UNAVAILABLE",
+          context: { pageNumber: 2, pageCount: 2 },
+        }),
+      );
       expect(
         await service.listOwnerAgreements({ ownerEntityId: SELF_ENTITY_ID }),
       ).toEqual(before);
