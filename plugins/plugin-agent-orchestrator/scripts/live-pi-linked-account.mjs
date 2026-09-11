@@ -54,6 +54,7 @@ const phases = new Set([
   "pi-provider-route",
   "pi-acp-initialize",
   "pi-selected-model-admission",
+  "pi-startup-info",
   "live-provider-response",
   "provider-dispatch",
   "provider-stop-reason",
@@ -191,7 +192,9 @@ async function child() {
   };
   enforcePiProviderCredentialIsolation(env);
   let actualModel;
+  let startup = "";
   let response = "";
+  let fullTranscript = "";
   let toolCall = false;
   let sentPrompt;
   const client = new NativeAcpClient({
@@ -202,16 +205,20 @@ async function child() {
     terminal: false,
     timeoutMs: 90_000,
     env,
-    onEvent(event) {
-      if (event.result?.models?.currentModelId)
+    onEvent(event, _sessionId, context) {
+      if (event.result?.models?.currentModelId) {
         actualModel = event.result.models.currentModelId;
+      }
       if (event.method === "session/prompt") sentPrompt = event.params.prompt;
       const update = event.params?.update;
       if (
         update?.sessionUpdate === "agent_message_chunk" &&
         update.content?.type === "text"
-      )
-        response += update.content.text;
+      ) {
+        fullTranscript += update.content.text;
+        if (context?.kind === "startup") startup += update.content.text;
+        else response += update.content.text;
+      }
       if (update?.sessionUpdate === "tool_call") toolCall = true;
     },
     onStderr() {
@@ -248,6 +255,18 @@ async function child() {
     assert.equal(response.trim(), marker);
   } catch (error) {
     // error-policy:J2 Preserve response failure through mandatory native cleanup.
+    if (
+      typeof error?.code === "string" &&
+      ([
+        "ACP_STARTUP_INVALID",
+        "ACP_STARTUP_MISMATCH",
+        "ACP_STARTUP_TIMEOUT",
+        "ACP_STARTUP_CLOSED",
+      ].includes(error.code) ||
+        (error.code === "ACP_INVALID_UTF8" &&
+          phase === "pi-selected-model-admission"))
+    )
+      phase = "pi-startup-info";
     responseError = error;
     failures.push(error);
   } finally {
@@ -274,6 +293,15 @@ async function child() {
     credential,
     privateRoots: [root, process.env.TMPDIR],
   });
+  responseOutcome.startupOutput = safeTranscriptText(startup, credential, [
+    root,
+    process.env.TMPDIR,
+  ]);
+  responseOutcome.fullAssistantTranscript = safeTranscriptText(
+    fullTranscript,
+    credential,
+    [root, process.env.TMPDIR],
+  );
   if (failures.length > 0)
     throw new AggregateError(failures, "Live Pi response or cleanup failed");
   const receipt = {
@@ -301,6 +329,8 @@ async function child() {
     promptSha256: hash(prompt),
     response,
     responseSha256: hash(response),
+    startupOutput: responseOutcome.startupOutput,
+    fullAssistantTranscript: responseOutcome.fullAssistantTranscript,
     stopReason: result.stopReason,
     toolCalls: 0,
     nativeClientClosed: true,
@@ -461,6 +491,18 @@ async function parent() {
   );
 }
 
+/** Retains complete text or an explicit sensitive-text omission with its integrity receipt. */
+function safeTranscriptText(text, credential, privateRoots) {
+  const excluded =
+    Boolean(credential && text.includes(credential)) ||
+    privateRoots.some((value) => value && text.includes(value));
+  return {
+    sha256: hash(text),
+    bytes: Buffer.byteLength(text),
+    ...(excluded ? { omittedReason: "credential-or-private-path" } : { text }),
+  };
+}
+
 /** Projects actual prompt outcomes into credential-free diagnostics without raw provider errors. */
 export function safeResponseOutcome(options) {
   const {
@@ -491,6 +533,7 @@ export function safeResponseOutcome(options) {
     "TimeoutError",
     "AssertionError",
     "TypeError",
+    "ElizaError",
   ]);
   const errorName = error
     ? names.has(error.name)

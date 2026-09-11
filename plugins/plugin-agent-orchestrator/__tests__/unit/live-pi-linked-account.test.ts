@@ -438,3 +438,145 @@ test.each([false, true])(
   },
   10000,
 );
+
+test.each([
+  "close-before-dispatch",
+  "delayed-overrun",
+  "delayed",
+  "same-buffer",
+  "unicode-split",
+  "observer-throws",
+  "null",
+  "undeclared",
+  "absent",
+  "mismatch",
+  "overrun",
+  "invalid",
+  "exit",
+  "close",
+  "malformed",
+  "truncated",
+])(
+  "real ACP startup boundary handles %s before any prompt",
+  async (mode) => {
+    const { NativeAcpClient } = await import(
+      "../../src/services/acp-native-transport"
+    );
+    const root = await mkdtemp(path.join(tmpdir(), "pi-startup-wire-"));
+    const fixture = path.join(root, "adapter.mjs");
+    const promptFile = path.join(root, "prompt.json");
+    const startup = "Adapter status 🌿\n";
+    const modelText = "Model preserves Adapter status 🌿\nunchanged";
+    let actualStartup = "",
+      response = "",
+      fullTranscript = "";
+    const metadata =
+      mode === "undeclared"
+        ? {}
+        : {
+            startupInfo:
+              mode === "null" ? null : mode === "invalid" ? 42 : startup,
+          };
+    await writeFile(
+      fixture,
+      String.raw`import readline from 'node:readline'; import {writeFileSync} from 'node:fs';
+    const mode=${JSON.stringify(mode)};
+    const send=value=>process.stdout.write(JSON.stringify(value)+'\n');
+    const update=text=>({jsonrpc:'2.0',method:'session/update',params:{sessionId:'qa',update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text}}}});
+    const chunk=text=>send(update(text));
+    for await(const line of readline.createInterface({input:process.stdin})) {
+      const r=JSON.parse(line); if(!r.id)continue;
+      if(r.method==='initialize')send({jsonrpc:'2.0',id:r.id,result:{protocolVersion:1,agentCapabilities:{}}});
+      else if(r.method==='session/new') {
+        const result={jsonrpc:'2.0',id:r.id,result:{sessionId:'qa',models:{currentModelId:'openrouter/openai/gpt-4.1-mini'},_meta:{piAcp:${JSON.stringify(metadata)}}}};
+        if(mode==='same-buffer'||mode==='overrun'||mode==='close-before-dispatch')process.stdout.write(JSON.stringify(result)+'\n'+JSON.stringify(update(${JSON.stringify(startup)}))+'\n'+(mode==='overrun'?JSON.stringify(update('extra'))+'\n':''));
+        else {
+          send(result);
+          if(mode==='delayed'||mode==='observer-throws'){setTimeout(()=>chunk('Adapter '),30);setTimeout(()=>chunk('status 🌿\n'),60);}
+          if(mode==='unicode-split'){
+            const bytes=Buffer.from(JSON.stringify(update(${JSON.stringify(startup)}))+'\n');
+            const split=bytes.indexOf(Buffer.from('🌿'))+2;
+            process.stdout.write(bytes.subarray(0,split));setTimeout(()=>process.stdout.write(bytes.subarray(split)),40);
+          }
+          if(mode==='delayed-overrun')setTimeout(()=>process.stdout.write(JSON.stringify(update(${JSON.stringify(startup)}))+'\n'+JSON.stringify(update('extra'))+'\n'),30);
+          if(mode==='mismatch')setTimeout(()=>chunk('Unexpected status'),30);
+          if(mode==='malformed')setTimeout(()=>process.stdout.write(Buffer.from([255,10])),30);
+          if(mode==='truncated')setTimeout(()=>{process.stdout.write(Buffer.from([240,159]));process.stdout.end();},30);
+          if(mode==='exit')setTimeout(()=>process.exit(0),30);
+        }
+      } else if(r.method==='session/prompt') {writeFileSync(${JSON.stringify(promptFile)},JSON.stringify(r.params.prompt));chunk(${JSON.stringify(modelText)});send({jsonrpc:'2.0',id:r.id,result:{stopReason:'end_turn'}});}
+      else send({jsonrpc:'2.0',id:r.id,result:{}});
+    }`,
+    );
+    const client = new NativeAcpClient({
+      command: `${process.execPath} ${fixture}`,
+      cwd: root,
+      approvalPreset: "readonly",
+      timeoutMs: 1000,
+      expectedModelId: "openrouter/openai/gpt-4.1-mini",
+      env: { PATH: process.env.PATH },
+      onEvent(event, _sessionId, context) {
+        const update = event.params?.update;
+        if (update?.sessionUpdate === "agent_message_chunk") {
+          fullTranscript += update.content.text;
+          if (context?.kind === "startup") actualStartup += update.content.text;
+          else response += update.content.text;
+        }
+        if (mode === "observer-throws") throw new Error("observer failure");
+      },
+    });
+    try {
+      await client.start();
+      const creation = client.createSession();
+      const success = [
+        "delayed",
+        "same-buffer",
+        "unicode-split",
+        "observer-throws",
+        "null",
+        "undeclared",
+      ].includes(mode);
+      if (mode === "close-before-dispatch") {
+        const session = await creation;
+        const prompted = client.prompt(session.sessionId, "must not dispatch");
+        const closed = client.closeSession(session.sessionId);
+        await assert.rejects(prompted);
+        await closed;
+        await assert.rejects(readFile(promptFile), { code: "ENOENT" });
+      } else if (success) {
+        const session = await creation;
+        await assert.rejects(readFile(promptFile), { code: "ENOENT" });
+        const result = await client.prompt(
+          session.sessionId,
+          "Complete benign prompt",
+        );
+        assert.equal(result.stopReason, "end_turn");
+        assert.deepEqual(JSON.parse(await readFile(promptFile, "utf8")), [
+          { type: "text", text: "Complete benign prompt" },
+        ]);
+        const expectedStartup = ["null", "undeclared"].includes(mode)
+          ? ""
+          : startup;
+        assert.deepEqual(
+          { startup: actualStartup, response, fullTranscript },
+          {
+            startup: expectedStartup,
+            response: modelText,
+            fullTranscript: expectedStartup + modelText,
+          },
+        );
+      } else {
+        const rejected = ["malformed", "truncated"].includes(mode)
+          ? assert.rejects(creation, { code: "ACP_INVALID_UTF8" })
+          : assert.rejects(creation);
+        if (mode === "close") await client.close();
+        await rejected;
+        await assert.rejects(readFile(promptFile), { code: "ENOENT" });
+      }
+    } finally {
+      await client.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+  10000,
+);

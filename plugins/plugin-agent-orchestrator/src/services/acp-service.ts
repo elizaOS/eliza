@@ -55,7 +55,11 @@ import {
   getHostExecutionBaseline,
   HOST_EXECUTION_BASELINE_ENV_MIRROR_KEYS,
 } from "@elizaos/shared/host-execution-env";
-import { NativeAcpClient, splitCommandLine } from "./acp-native-transport.js";
+import {
+  NativeAcpClient,
+  type NativeAcpEventContext,
+  splitCommandLine,
+} from "./acp-native-transport.js";
 import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
 import {
   CODEX_NO_LANDLOCK_SANDBOX_MODE_ENV,
@@ -3563,7 +3567,7 @@ export class AcpService extends Service {
         opts.codexInitialAgentModeOverride,
       ),
       mcpServers: readConfigMcpServers(),
-      onEvent: (event, protocolSessionId) => {
+      onEvent: (event, protocolSessionId, context) => {
         this.handleAcpEvent(
           event,
           session.id,
@@ -3571,6 +3575,8 @@ export class AcpService extends Service {
           Date.now(),
           false,
           new Set<string>(),
+          false,
+          context,
         );
         if (protocolSessionId && protocolSessionId !== session.id) {
           void this.store
@@ -3605,7 +3611,7 @@ export class AcpService extends Service {
       env: opts.env,
       mcpServers: readConfigMcpServers(),
       timeoutMs: opts.timeoutMs ?? this.sessionTimeoutMs,
-      onEvent: (event, protocolSessionId) => {
+      onEvent: (event, protocolSessionId, context) => {
         this.handleAcpEvent(
           event,
           session.id,
@@ -3613,6 +3619,8 @@ export class AcpService extends Service {
           Date.now(),
           false,
           new Set<string>(),
+          false,
+          context,
         );
         if (protocolSessionId && protocolSessionId !== session.id) {
           void this.store
@@ -3817,7 +3825,11 @@ export class AcpService extends Service {
     let finalText = "";
     let eventStopReason: string | undefined;
     const capturedToolOutputs = new Set<string>();
-    const previousOnAcp = (event: AcpJsonRpcMessage) => {
+    const previousOnAcp = (
+      event: AcpJsonRpcMessage,
+      _protocolSessionId?: string,
+      context?: NativeAcpEventContext,
+    ) => {
       const handled = this.handleAcpEvent(
         event,
         session.id,
@@ -3825,6 +3837,8 @@ export class AcpService extends Service {
         startedAt,
         true,
         capturedToolOutputs,
+        false,
+        context,
       );
       finalText = handled.finalText;
       eventStopReason = handled.stopReason ?? eventStopReason;
@@ -3934,7 +3948,7 @@ export class AcpService extends Service {
         error: message,
       };
     } finally {
-      client.setEventHandler((event, protocolSessionId) => {
+      client.setEventHandler((event, protocolSessionId, context) => {
         this.handleAcpEvent(
           event,
           session.id,
@@ -3942,6 +3956,8 @@ export class AcpService extends Service {
           Date.now(),
           false,
           new Set<string>(),
+          false,
+          context,
         );
         if (protocolSessionId && protocolSessionId !== session.id) {
           void this.store
@@ -4538,6 +4554,7 @@ export class AcpService extends Service {
     emitPromptTerminalEvents: boolean,
     capturedToolOutputs: Set<string>,
     deferPromptTerminalEvent = false,
+    context?: NativeAcpEventContext,
   ): {
     finalText: string;
     stopReason?: string;
@@ -4585,6 +4602,24 @@ export class AcpService extends Service {
     // Some adapters put fields at params.* directly. Look in both places.
     const updateBlock = asRecord(params?.update) ?? params;
     const sessionUpdate = updateBlock?.sessionUpdate ?? params?.sessionUpdate;
+
+    if (context?.kind === "startup") {
+      const content = asRecord(updateBlock?.content);
+      // The native transport owns declaration matching and the pre-prompt
+      // barrier. Keep its status bytes in the event trail, never in the answer
+      // or message stream consumed by task memory and conversation narration.
+      if (
+        sessionId &&
+        content?.type === "text" &&
+        typeof content.text === "string"
+      ) {
+        this.emitSessionEvent(sessionId, "startup", {
+          text: content.text,
+          protocolSessionId: context.sessionId,
+        });
+      }
+      return { finalText };
+    }
 
     if (
       sessionId &&

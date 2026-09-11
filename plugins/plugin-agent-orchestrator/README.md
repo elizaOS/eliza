@@ -343,7 +343,11 @@ job. It does not qualify UI enrollment or multi-account failover.
 The successful `pi-linked-account-<SHA>` artifact contains the complete benign prompt and
 response, their hashes, source hashes, and cleanup result. Account storage paths,
 credentials, and raw provider diagnostics are excluded. Failed checks retain only
-the fixed failure phase and source SHA. The executable versions
+the fixed failure phase, source SHA, structured transport outcome, and complete
+assistant text when it contains no credential or private profile path. Adapter-declared
+startup text is retained separately from model response text; the combined assistant
+text transcript is not a complete RPC transcript. Sensitive text is omitted explicitly,
+with its byte length and SHA-256 retained. The executable versions
 are pinned to Pi `0.84.2`, pi-acp `0.0.33`, and pi-ai `0.84.4` for this check.
 The underlying command is `bun run test:e2e:pi-linked-account`; it requires the
 explicit `RUN_LIVE_PI_LINKED_ACCOUNT=1`, reviewed `LIVE_PI_SOURCE_SHA`, and the
