@@ -76,6 +76,35 @@ describe("dynamic skill current-turn relevance", () => {
     expect(result.text).not.toContain("eliza-cloud");
   });
 
+  it("does not treat the host language instruction as a skill query", async () => {
+    const provider = createDynamicSkillProvider();
+    const host = runtime();
+    host.getService = () => ({
+      getLoadedSkills: () => [
+        ...skills,
+        {
+          slug: "english-reply",
+          name: "English Replies",
+          description:
+            "Reply in natural English unless the user explicitly requests another language.",
+        },
+      ],
+      getSkillInstructions: (slug: string) => ({
+        slug,
+        body: "UNRELATED_ENGLISH_SKILL",
+        estimatedTokens: 1,
+      }),
+    });
+    const run = (text: string) =>
+      provider.get(host as never, { content: { text } } as never, {} as never);
+    const clean = await run("open notes");
+    const wrapped = await run(
+      "open notes\n\n[Language instruction: Reply in natural English unless the user explicitly requests another language.]",
+    );
+    expect(wrapped).toEqual(clean);
+    expect(wrapped.text).not.toContain("UNRELATED_ENGLISH_SKILL");
+  });
+
   it("still activates a skill explicitly named in the current turn", async () => {
     const provider = createDynamicSkillProvider();
     const result = await provider.get(

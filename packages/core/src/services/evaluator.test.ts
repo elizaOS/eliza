@@ -1461,6 +1461,17 @@ describe("lossless evaluator prefix and processing", () => {
 		runtime.registerEvaluator(evaluator);
 		runtime.useModel = vi.fn(async (_type, params) => {
 			const prompt = params.messages[0].content;
+			// The full output contract survives every schema/json/plain fallback,
+			// but indentation no longer consumes thousands of input tokens.
+			const wireSchema = /## Output JSON Schema\n([^\n]+)\n\n/.exec(
+				prompt,
+			)?.[1];
+			expect(wireSchema).toBeDefined();
+			if (!wireSchema) throw new Error("Missing complete schema on model wire");
+			const parsedSchema = JSON.parse(wireSchema);
+			if (params.responseSchema)
+				expect(parsedSchema).toEqual(params.responseSchema);
+			expect(wireSchema).toBe(JSON.stringify(parsedSchema));
 			expect(
 				params.promptSegments
 					.map((segment: { content: string }) => segment.content)

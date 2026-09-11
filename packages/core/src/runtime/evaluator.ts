@@ -65,6 +65,7 @@ import type {
 	PlannerTrajectory,
 	RunEvaluatorParams,
 } from "./planner-types";
+import { projectDeferredProviders } from "./provider-context";
 import type {
 	RecordedStage,
 	RecordedUsage,
@@ -584,7 +585,7 @@ export async function runEvaluator(
 			trajectoryId: params.trajectoryId,
 			parentStageId: params.parentStageId,
 			iteration: params.iteration ?? 1,
-			...(output.raw?.contextRequest === "full" &&
+			...(typeof output.raw?.contextRequest === "string" &&
 			(snapshot?.input ?? renderedInput).completionSelectionApplied
 				? { attempt: 0 }
 				: {}),
@@ -602,23 +603,39 @@ export async function runEvaluator(
 			prefixHash: snapshot?.prefixHash ?? prefixHash,
 			logger: params.runtime.logger,
 		});
-	if (output.raw?.contextRequest === "full" && !output.protocolFailure) {
-		if ((snapshot?.input ?? renderedInput).completionSelectionApplied) {
+	if (
+		typeof output.raw?.contextRequest === "string" &&
+		!output.protocolFailure
+	) {
+		const scope = output.raw?.contextRequest;
+		const original = params.trajectory.modelBaseContext ?? params.context;
+		const readHistory = scope === "history" || scope === "full";
+		const readProviders = scope === "providers" || scope === "full";
+		if (
+			(readHistory && selectCompletionContext(original).applied) ||
+			(readProviders && projectDeferredProviders(original).available.length)
+		) {
 			// This is a read of the original in-memory sources, not another
 			// planner turn. No callbacks or tools run before the full-context
 			// evaluator decides; removing the selector makes this one-shot.
 			await recordOutput();
-			const original = params.trajectory.modelBaseContext ?? params.context;
-			return runEvaluator({
-				...params,
-				trajectory: {
-					...params.trajectory,
-					modelBaseContext: {
-						...original,
-						metadata: { ...original.metadata, completionContext: undefined },
-					},
+			const restored =
+				readProviders &&
+				projectDeferredProviders(original).available.length &&
+				params.runtime.restoreProviderContext
+					? await params.runtime.restoreProviderContext(original)
+					: original;
+			// Keep the restored sources for subsequent planner/evaluator rounds,
+			// including CONTINUE outcomes. The original context events are intact.
+			params.trajectory.modelBaseContext = {
+				...restored,
+				metadata: {
+					...original.metadata,
+					...(readHistory ? { completionContext: undefined } : {}),
+					...(readProviders ? { providerDiscoveryEnabled: false } : {}),
 				},
-			});
+			};
+			return runEvaluator(params);
 		}
 		output = {
 			...output,
@@ -820,15 +837,23 @@ function renderEvaluatorModelInput(params: {
 	const completion = selectCompletionContext(
 		params.trajectory.modelBaseContext ?? params.context,
 	);
+	const deferred = projectDeferredProviders(completion.context);
 	const renderedContext = renderContextObject(
-		projectEvaluatorContext(completion.context),
+		projectEvaluatorContext(deferred.context),
 	);
+	if (deferred.available.length)
+		renderedContext.promptSegments.push({
+			id: "completion-provider-discovery",
+			label: "completion_context",
+			stable: false,
+			content: `Deferred provider references: ${JSON.stringify(deferred.available)}. If their complete syntax or factual details are needed, request contextRequest=providers with decision=CONTINUE, success=false and no user reply or clipboard effect. This reads authorized provider bodies without adding omitted dialogue or running tools. Do not emit Stage-1 contextRequests here. Do not request missing context when settled receipts already establish the answer.`,
+		});
 	if (completion.applied) {
 		renderedContext.promptSegments.push({
 			id: "completion-context-selection",
 			label: "completion_context",
 			stable: false,
-			content: `${JSON.stringify({ selection: completion.selection, omittedSourceCount: completion.omittedSourceCount })}\nOnly Stage-1-selected prior user sources are shown. All original sources remain available in this turn. If any constraint, correction, referent or requested historical evidence is missing, request contextRequest=full with decision=CONTINUE, success=false, and no user reply or clipboard effect. The runtime will restore the complete original context for one tool-free evaluator call. Do not infer or count omitted messages; do not repeat a successful action to retrieve conversation context.`,
+			content: `${JSON.stringify({ selection: completion.selection, omittedSourceCount: completion.omittedSourceCount })}\nOnly Stage-1-selected prior dialogue sources are shown. All original sources remain available in this turn. If any constraint, correction, referent or requested historical evidence is missing, request contextRequest=history with decision=CONTINUE, success=false, and no user reply or clipboard effect. The runtime restores complete original dialogue without expanding unrelated provider references for one tool-free evaluator call. Do not infer or count omitted messages; do not repeat a successful action to retrieve conversation context.`,
 		});
 	}
 	const template = params.template ?? evaluatorTemplate;
@@ -911,7 +936,8 @@ function renderEvaluatorModelInput(params: {
 		messages,
 		promptSegments,
 		cacheKeySegments,
-		completionSelectionApplied: completion.applied,
+		completionSelectionApplied:
+			completion.applied || deferred.available.length > 0,
 	};
 }
 
@@ -1073,13 +1099,15 @@ function evaluatorEnvelopeProtocolError(
 		return 'required field "thought" must be a string';
 	if (
 		Object.hasOwn(output, "contextRequest") &&
-		(output.contextRequest !== "full" ||
+		(!["full", "history", "providers"].includes(
+			String(output.contextRequest),
+		) ||
 			output.success !== false ||
 			parseEvaluatorRoute(output.decision ?? output.route) !== "CONTINUE" ||
 			Object.hasOwn(output, "messageToUser") ||
 			Object.hasOwn(output, "copyToClipboard"))
 	)
-		return "contextRequest must be full with CONTINUE, success=false, and no messageToUser or copyToClipboard";
+		return "contextRequest must be full, history or providers with CONTINUE, success=false, and no messageToUser or copyToClipboard";
 	if (
 		Object.hasOwn(output, "messageToUser") &&
 		typeof output.messageToUser !== "string"

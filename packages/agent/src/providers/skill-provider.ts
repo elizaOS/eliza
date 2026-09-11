@@ -14,6 +14,7 @@
  */
 
 import {
+  getUserMessageText,
   type IAgentRuntime,
   type Memory,
   type Provider,
@@ -350,8 +351,7 @@ export function createDynamicSkillProvider(): Provider {
         // of irrelevant instruction characters into every later planner call.
         // Conversational history is already rendered separately for the model;
         // this provider only owns retrieval of instructions for the present ask.
-        const messageText =
-          ((message.content as Record<string, unknown>)?.text as string) ?? "";
+        const messageText = getUserMessageText(message);
         const scored = scoreQuery(indexCache, messageText);
         const topMatch = scored[0];
 

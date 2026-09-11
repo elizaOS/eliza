@@ -43,8 +43,8 @@ export function createPlannerToolDiscoveryAction(
 	return {
 		name: DISCOVER_TOOLS_NAME,
 		description:
-			"Load complete tool schemas from the authorized catalog below when an exposed tool does not cover an intent. " +
-			"Pass one or more exact parent or child names. All authorized operations of each selected family become callable on the next planner round. " +
+			"Load complete tool schemas from the authorized name index below when an exposed tool does not cover an intent. " +
+			"Pass exact parent or child names to load all authorized operations of those families. Pass names=[] to read the complete family descriptions and routing hints if the names alone are ambiguous. " +
 			(resolveAdditionalActions
 				? "The catalog lists families admitted for the current routing contexts. Other exact registered names may be requested; the same permission, context, account-policy and availability checks must admit them before loading. "
 				: "") +
@@ -52,14 +52,14 @@ export function createPlannerToolDiscoveryAction(
 			JSON.stringify(
 				catalog.parents.map((parent) => ({
 					name: parent.name,
-					description: parent.routingHint || parent.description,
 					children: parent.childNames,
 				})),
 			),
 		parameters: [
 			{
 				name: "names",
-				description: "Exact authorized parent or child tool names to load.",
+				description:
+					"Exact authorized parent or child tool names to load; [] reads the full catalog descriptions without loading tools.",
 				required: true,
 				schema: { type: "array", items: { type: "string" } },
 			},
@@ -71,7 +71,6 @@ export function createPlannerToolDiscoveryAction(
 				: undefined;
 			if (
 				!Array.isArray(names) ||
-				names.length === 0 ||
 				!names.every(
 					(name): name is string => typeof name === "string" && name.length > 0,
 				)
@@ -82,6 +81,20 @@ export function createPlannerToolDiscoveryAction(
 						"Select exact names from the authorized discovery catalog. No tools were loaded.",
 				};
 			}
+			if (names.length === 0)
+				return {
+					success: true,
+					turnComplete: false,
+					text: "Complete authorized catalog descriptions. Select exact names to load schemas; no domain work was performed.",
+					data: {
+						catalog: catalog.parents.map((parent) => ({
+							name: parent.name,
+							description: parent.description,
+							routingHint: parent.routingHint,
+							children: parent.childNames,
+						})),
+					},
+				};
 			// Stage 1 can omit a domain even when the planner explicitly requests
 			// its family. Reuse canonical candidate admission with that exact name;
 			// never turn routing context into a permanent capability denial.

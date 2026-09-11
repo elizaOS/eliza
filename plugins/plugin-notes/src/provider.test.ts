@@ -149,6 +149,28 @@ describe("SAVED_NOTES provider", () => {
     ).toEqual([notesProvider]);
   });
 
+  it("indexes exact labels and count while retaining complete bodies for context reads", async () => {
+    const body = "Exact body\n  spacing and punctuation!?";
+    const service = await serviceWithNotes([
+      `Lookup label\n${body}`,
+      "Second label",
+    ]);
+    const runtime = await runtimeWith(service);
+    const result = await notesProvider.get(
+      runtime,
+      recallMessage(runtime, "open notes"),
+      EMPTY_STATE,
+    );
+    expect(result.discoveryText).toContain('"Lookup label"');
+    expect(result.discoveryText).toContain('"Second label"');
+    expect(result.discoveryText).toContain("Exact note count: 2");
+    expect(result.discoveryText).not.toContain("Exact body");
+    expect(result.text).toContain(JSON.stringify(`Lookup label\n${body}`));
+    expect(
+      service.listNotes().find((note) => note.title === "Lookup label")?.body,
+    ).toBe(body);
+  });
+
   it("surfaces a saved note through composeState so recall does not depend on memory search", async () => {
     // The live failure (2026-08-14): this note existed while "who is alex
     // again" answered "Found 0 memory item(s)" twice.

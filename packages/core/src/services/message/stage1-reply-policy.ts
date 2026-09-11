@@ -338,7 +338,8 @@ export function shouldSuppressInferredCandidateEscalation(args: {
 			(args.inference.kind === "view-surface" ||
 				args.inference.kind === "owner-goals" ||
 				args.inference.kind === "owner-scheduled-admin") &&
-			args.stageOneReplyEffectStatus === "none" &&
+			(args.stageOneReplyEffectStatus === "none" ||
+				args.stageOneReplyEffectStatus === "non_applied") &&
 			args.stageOneIntents.length === 0
 		)
 	) {

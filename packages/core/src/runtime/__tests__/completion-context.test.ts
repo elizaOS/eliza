@@ -99,7 +99,7 @@ function selection(context: ContextObject): CompletionContextSelection {
 		relevantSourceIds: ["h2"],
 		constraintSourceIds: ["h1", "h4"],
 		referentSourceIds: ["h2"],
-		pendingIntentSourceIds: [],
+		pendingIntentSourceIds: ["h5"],
 	};
 }
 
@@ -176,18 +176,16 @@ describe("source-bound completion relevance", () => {
 		expect(JSON.stringify(full)).toBe(before);
 	});
 
-	it("keeps bindings valid across provider recomposition and assistant filtering", () => {
+	it("keeps bindings valid across provider recomposition", () => {
 		const original = historyContext();
 		const recomposed: ContextObject = {
 			...original,
 			createdAt: Date.now(),
-			events: original.events
-				.filter((event) => event.id !== "history:assistant")
-				.map((event) =>
-					event.id === "provider:privacy"
-						? { ...event, text: "Recomposed owner privacy: no access granted." }
-						: event,
-				),
+			events: original.events.map((event) =>
+				event.id === "provider:privacy"
+					? { ...event, text: "Recomposed owner privacy: no access granted." }
+					: event,
+			),
 		};
 		expect(completionContextSources(recomposed).sourceSetId).toBe(
 			completionContextSources(original).sourceSetId,
@@ -197,6 +195,28 @@ describe("source-bound completion relevance", () => {
 		);
 		expect(focused.applied).toBe(true);
 		expect(JSON.stringify(focused.context)).toContain("no access granted");
+	});
+
+	it("binds assistant sources and omits only reviewed unrelated replies", () => {
+		const original = historyContext();
+		const chosen = selection(original);
+		chosen.pendingIntentSourceIds = [];
+		const focused = selectCompletionContext(withSelection(original, chosen));
+		expect(
+			focused.context.events.some((event) => event.id === "history:assistant"),
+		).toBe(false);
+		const edited = {
+			...original,
+			events: original.events.filter(
+				(event) => event.id !== "history:assistant",
+			),
+		};
+		expect(selectCompletionContext(withSelection(edited, chosen)).applied).toBe(
+			false,
+		);
+		expect(
+			original.events.some((event) => event.id === "history:assistant"),
+		).toBe(true);
 	});
 
 	it.each([
@@ -360,7 +380,12 @@ describe("source-bound completion relevance", () => {
 			expect(JSON.stringify(input)).toContain("exact");
 		}
 		expect(effect).not.toHaveBeenCalled();
-		expect(JSON.stringify(stored)).toBe(before);
+		expect(
+			JSON.stringify({ ...stored, modelBaseContext: stored.context }),
+		).toBe(before);
+		expect(
+			stored.modelBaseContext?.metadata?.completionContext,
+		).toBeUndefined();
 	});
 
 	it("cannot loop repeated full-context requests or deliver an intermediate reply", async () => {
@@ -563,6 +588,217 @@ describe("planner source selection and restoration", () => {
 		expect(calls[1]).toContain("complete");
 		expect(JSON.stringify(full)).toBe(before);
 	});
+	it("defers provider bodies with no history selection and reauthorizes restoration before effects", async () => {
+		const full = historyContext();
+		full.metadata = { ...full.metadata, providerDiscoveryEnabled: true };
+		full.events.push({
+			id: "provider:guide",
+			type: "provider",
+			name: "GUIDE",
+			source: "composeState",
+			text: `STALE_PRIVATE_BODY ${"detail ".repeat(300)}`,
+			discoveryText: "Guide syntax available on request.",
+		});
+		const before = JSON.stringify(full);
+		const calls: string[] = [];
+		const execute = vi.fn(async () => ({ success: true, text: "read" }));
+		const restore = vi.fn(async (original: ContextObject) => ({
+			...original,
+			events: original.events.map((event) =>
+				event.id === "provider:guide"
+					? { ...event, text: "FRESH_AUTHORIZED_GUIDE" }
+					: event,
+			),
+		}));
+		await runPlannerLoop({
+			context: full,
+			tools,
+			executeToolCall: execute,
+			runtime: {
+				restoreProviderContext: restore,
+				useModel: async (_type, params) => {
+					calls.push(JSON.stringify(params));
+					return {
+						text: "",
+						toolCalls:
+							calls.length === 1
+								? [
+										{
+											id: "restore",
+											name: "RESTORE_CONTEXT",
+											arguments: { reason: "Need syntax" },
+										},
+										{
+											id: "forbidden",
+											name: "NOTES",
+											arguments: { id: "wrong" },
+										},
+									]
+								: [{ id: "read", name: "NOTES", arguments: { id: "note-1" } }],
+					};
+				},
+			},
+			evaluate: async () => ({
+				success: true,
+				decision: "FINISH",
+				thought: "done",
+				messageToUser: "Read.",
+			}),
+		});
+		expect(calls).toHaveLength(2);
+		expect(calls[0]).toContain("RESTORE_CONTEXT");
+		expect(calls[0]).not.toContain("STALE_PRIVATE_BODY");
+		expect(calls[1]).toContain("FRESH_AUTHORIZED_GUIDE");
+		expect(calls[1]).not.toContain("STALE_PRIVATE_BODY");
+		expect(restore).toHaveBeenCalledTimes(1);
+		expect(execute).toHaveBeenCalledTimes(1);
+		expect(JSON.stringify(full)).toBe(before);
+	});
+
+	it.each(["history", "providers"] as const)(
+		"restores only requested %s in planner and completion",
+		async (scope) => {
+			for (const stage of ["planner", "completion"] as const) {
+				const full = withSelection(historyContext());
+				full.metadata = { ...full.metadata, providerDiscoveryEnabled: true };
+				full.events.push({
+					id: "provider:guide",
+					type: "provider",
+					name: "GUIDE",
+					text: `Complete guide ${"detail ".repeat(300)}`,
+					discoveryText: "Guide reference available.",
+				});
+				const before = JSON.stringify(full);
+				const calls: string[] = [];
+				const execute = vi.fn();
+				const restore = vi.fn(async (original: ContextObject) => original);
+				const runtime = {
+					restoreProviderContext: restore,
+					useModel: async (_type: unknown, params: { messages?: unknown }) => {
+						calls.push(JSON.stringify(params.messages));
+						if (stage === "completion")
+							return JSON.stringify(
+								calls.length === 1
+									? {
+											thought: "Need missing context",
+											success: false,
+											decision: "CONTINUE",
+											contextRequest: scope,
+										}
+									: {
+											thought: "Verified",
+											success: true,
+											decision: "FINISH",
+											messageToUser: "Done.",
+										},
+							);
+						return {
+							text: "",
+							toolCalls:
+								calls.length === 1
+									? [
+											{
+												id: "restore",
+												name: "RESTORE_CONTEXT",
+												arguments: { reason: "Need missing context", scope },
+											},
+											{ id: "must-not-run", name: "NOTES", arguments: {} },
+										]
+									: [
+											{
+												id: "reply",
+												name: "REPLY",
+												arguments: { text: "Done.", eliza_turn_scope: "final" },
+											},
+										],
+						};
+					},
+				};
+				if (stage === "completion")
+					await runEvaluator({
+						context: full,
+						trajectory: trajectory(full),
+						runtime,
+					});
+				else
+					await runPlannerLoop({
+						context: full,
+						tools,
+						runtime,
+						executeToolCall: execute,
+						evaluate: async () => ({
+							thought: "Verified",
+							success: true,
+							decision: "FINISH",
+							messageToUser: "Done.",
+						}),
+					});
+				expect(calls).toHaveLength(2);
+				expect(calls[0]).not.toContain("Complete guide");
+				expect(calls[0]).not.toContain(
+					"Old completed unrelated weather request.",
+				);
+				expect(calls[1]?.includes("Complete guide")).toBe(
+					scope === "providers",
+				);
+				expect(
+					calls[1]?.includes("Old completed unrelated weather request."),
+				).toBe(scope === "history");
+				expect(restore).toHaveBeenCalledTimes(scope === "providers" ? 1 : 0);
+				expect(execute).not.toHaveBeenCalled();
+				expect(JSON.stringify(full)).toBe(before);
+			}
+		},
+	);
+
+	it("restores deferred provider text for completion without another action", async () => {
+		const full = historyContext();
+		full.metadata = { ...full.metadata, providerDiscoveryEnabled: true };
+		full.events.push({
+			id: "provider:guide",
+			type: "provider",
+			name: "GUIDE",
+			text: `Complete guide ${"detail ".repeat(300)}`,
+			discoveryText: "Guide reference available.",
+		});
+		const calls: string[] = [];
+		const effects = vi.fn();
+		const restore = vi.fn(async (original: ContextObject) => original);
+		const turn = trajectory(full);
+		await runEvaluator({
+			context: full,
+			trajectory: turn,
+			effects: { messageToUser: effects },
+			runtime: {
+				restoreProviderContext: restore,
+				useModel: async (_type, params) => {
+					calls.push(JSON.stringify(params.messages));
+					return calls.length === 1
+						? JSON.stringify({
+								success: false,
+								decision: "CONTINUE",
+								thought: "Need syntax",
+								contextRequest: "full",
+							})
+						: JSON.stringify({
+								success: true,
+								decision: "FINISH",
+								thought: "verified",
+								messageToUser: "Done.",
+							});
+				},
+			},
+		});
+		expect(calls).toHaveLength(2);
+		expect(calls[0]).not.toContain("Complete guide");
+		expect(calls[1]).toContain("Complete guide");
+		expect(restore).toHaveBeenCalledTimes(1);
+		expect(effects).toHaveBeenCalledTimes(1);
+		expect(turn.modelBaseContext?.metadata?.providerDiscoveryEnabled).toBe(
+			false,
+		);
+	});
+
 	it("restores every original source without executing any call in the restoration batch", async () => {
 		const full = withSelection(historyContext());
 		const before = JSON.stringify(full);

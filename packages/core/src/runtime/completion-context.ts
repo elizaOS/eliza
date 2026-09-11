@@ -1,6 +1,6 @@
 /**
- * Binds Stage-1 relevance selections to exact prior-user dialogue sources for
- * the planner and completion evaluator. Current requests, providers, assistant referents,
+ * Binds Stage-1 relevance selections to exact prior dialogue sources for
+ * the planner and completion evaluator. Current requests, standing provider constraints,
  * instructions, runtime feedback and tool evidence are never selectable away.
  * Absent, malformed or stale selections preserve the complete original context.
  */
@@ -28,7 +28,7 @@ export const COMPLETION_CONTEXT_SCHEMA: JSONSchema = {
 		complete: {
 			type: "boolean",
 			description:
-				"True only after reviewing all labeled prior user sources and including every applicable constraint, correction, referent and referenced pending intent. It certifies this source selection, not completion of future tool work.",
+				"True only after reviewing all labeled prior user and assistant sources and including every applicable constraint, correction, referent and referenced pending intent. It certifies this source selection, not completion of future tool work.",
 		},
 		relevantSourceIds: { type: "array", items: { type: "string" } },
 		constraintSourceIds: { type: "array", items: { type: "string" } },
@@ -112,7 +112,8 @@ export function completionContextSources(context: ContextObject): {
 			typeof segment !== "object" ||
 			Array.isArray(segment) ||
 			!("label" in segment) ||
-			segment.label !== "prior_message:user" ||
+			(segment.label !== "prior_message:user" &&
+				segment.label !== "prior_message:agent") ||
 			!("id" in segment) ||
 			segment.id !== event.id ||
 			!("content" in segment) ||

@@ -206,3 +206,7 @@ changes, additionally capture and inspect:
   service path ran end to end; and
 - the resulting memory, entity, relationship, scheduled-task, media, or other
   persistent artifacts rather than inferring them from a successful response.
+
+Chat widget and generative-UI providers publish complete bodies plus discovery notices. Direct text turns load syntax only through the explicit context-read protocol, including planner/completion restoration. Do not activate full generative guides by scanning arbitrary old dialogue for keywords; visual follow-ups can request the same complete reference. Channel and role gates still apply.
+
+Always-on response providers bypass context selection only, never role or private-provider gates. The generative UI guide is an ADMIN-authorized discovery reference in Stage 1 and later stages; do not require historical keywords or expose its full syntax before a context read.

@@ -143,9 +143,13 @@ describe("same-turn contextual navigation", () => {
 			};
 		});
 	}
-	it.each(["none", "forbidden"])(
-		"reuses the Stage-1 %s decision without another model or catalog request",
-		async (disposition) => {
+	it.each([
+		{ disposition: "none", viewId: "" },
+		{ disposition: "forbidden", viewId: "" },
+		{ disposition: "forbidden", viewId: "calendar" },
+	])(
+		"reuses the Stage-1 $disposition decision with viewId=$viewId without another model or catalog request",
+		async ({ disposition, viewId }) => {
 			const ctx = context(
 				"Keep the current screen and answer our hypothetical",
 				{
@@ -156,7 +160,7 @@ describe("same-turn contextual navigation", () => {
 			);
 			const result = await runWithField(ctx, {
 				disposition,
-				viewId: "",
+				viewId,
 				reason: "no navigation",
 			});
 			expect(result.errors).toEqual([]);

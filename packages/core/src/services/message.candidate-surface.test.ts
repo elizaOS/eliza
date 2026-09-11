@@ -107,6 +107,36 @@ describe("budgeted model-selected action surface", () => {
 		});
 		expect(result.plan.intents).toEqual(intents);
 	});
+	it("defers broad context matches when complete other families remain discoverable", () => {
+		const catalog: Action[] = [
+			{
+				name: "NOTES",
+				description: "Saved notes",
+				contexts: ["notes"],
+				subActions: ["NOTES_LIST"],
+			},
+			{ name: "NOTES_LIST", description: "Read notes", contexts: ["notes"] },
+			{ name: "DOCUMENT", description: "Documents", contexts: ["documents"] },
+			{ name: "FILES", description: "Files", contexts: ["documents"] },
+		];
+		expect(
+			collectBudgetedStageOneCandidateActions({
+				actions: catalog,
+				candidateActions: ["NOTES_LIST"],
+				contexts: ["general", "documents"],
+				deferUnselectedContexts: true,
+			}).map((a) => a.name),
+		).toEqual(["NOTES", "NOTES_LIST"]);
+		// Legacy budget recovery has no discovery guarantee and retains fallback.
+		expect(
+			collectBudgetedStageOneCandidateActions({
+				actions: catalog,
+				candidateActions: ["NOTES_LIST"],
+				contexts: ["documents"],
+			}).map((a) => a.name),
+		).toEqual(["NOTES", "NOTES_LIST", "DOCUMENT", "FILES"]);
+	});
+
 	it("retains a selected child's authorized umbrella without exposing unrelated domains", () => {
 		expect(
 			collectBudgetedStageOneCandidateActions({

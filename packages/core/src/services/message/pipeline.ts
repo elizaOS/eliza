@@ -341,6 +341,8 @@ export async function runV5MessageRuntimeStage1(
 			inferenceMessageText,
 			parsedResponseHandlerReply,
 			messageHandlerEndedAt,
+			providerDiscoveryEnabled,
+			loadedContextProviders,
 		} = await generateStage1Decision(
 			args,
 			{
@@ -1060,6 +1062,7 @@ export async function runV5MessageRuntimeStage1(
 						actions: plannerCandidateActions,
 						candidateActions: stageOneCandidates,
 						contexts: selectedContexts,
+						deferUnselectedContexts: true,
 					});
 		const progressiveActions =
 			args.codingMode !== true &&
@@ -1157,6 +1160,11 @@ export async function runV5MessageRuntimeStage1(
 		const responseHandlerContextSlices = stringArrayProperty(
 			(messageHandler.plan as { contextSlices?: unknown }).contextSlices,
 		);
+		plannerContext.metadata = {
+			...plannerContext.metadata,
+			providerDiscoveryEnabled,
+			loadedContextProviders,
+		};
 		if (messageHandler.plan.completionContext) {
 			plannerContext.metadata = {
 				...plannerContext.metadata,
@@ -1210,6 +1218,42 @@ export async function runV5MessageRuntimeStage1(
 			getService?: (service: string) => unknown;
 		};
 		const plannerRuntime: PlannerRuntime = {
+			restoreProviderContext: async (original) => {
+				getStreamingContext()?.abortSignal?.throwIfAborted();
+				const freshState = await args.runtime.composeState(
+					args.message,
+					plannerProviderNames,
+					true,
+					false,
+				);
+				const fresh = await createV5MessageContextObject({
+					...args,
+					state: freshState,
+					selectedContexts,
+					userRoles: [senderRole],
+					availableContexts,
+					extraProviderExclusions: ambientTurnProviderExclusions(
+						args.runtime,
+						args.message,
+					),
+				});
+				getStreamingContext()?.abortSignal?.throwIfAborted();
+				// Preserve dialogue, patches and settled receipts. Replace every old
+				// composed provider, including ones now absent after a permission change.
+				return {
+					...original,
+					events: [
+						...original.events.filter(
+							(event) =>
+								!(event.type === "provider" && event.source === "composeState"),
+						),
+						...fresh.events.filter(
+							(event) =>
+								event.type === "provider" && event.source === "composeState",
+						),
+					],
+				};
+			},
 			getService: (service) =>
 				typeof runtimeWithOptionalServices.getService === "function"
 					? runtimeWithOptionalServices.getService(service)
@@ -1291,6 +1335,11 @@ export async function runV5MessageRuntimeStage1(
 						args.message,
 					),
 				});
+				umbrellaContext.metadata = {
+					...umbrellaContext.metadata,
+					providerDiscoveryEnabled,
+					loadedContextProviders,
+				};
 				if (messageHandler.plan.completionContext) {
 					umbrellaContext.metadata = {
 						...umbrellaContext.metadata,

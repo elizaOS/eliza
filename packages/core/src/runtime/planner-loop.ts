@@ -137,6 +137,7 @@ import type {
 	PlannerToolResult,
 	PlannerTrajectory,
 } from "./planner-types";
+import { projectDeferredProviders } from "./provider-context";
 import {
 	buildPlannerActionGrammarStrict,
 	buildSpanSamplerPlan,
@@ -2381,11 +2382,14 @@ function appendPendingToolQueueFeedbackEvent(
 const RESTORE_CONTEXT_TOOL: ToolDefinition = {
 	name: "RESTORE_CONTEXT",
 	description:
-		"Restore all original prior user dialogue and referenced retrieval diagnostics when the selected sources leave any constraint, correction, referent or historical evidence uncertain. This reads the complete in-memory turn context once, performs no domain action and emits no user reply. Call it alone before planning effects; other calls in the same response will not execute.",
+		"Read missing context: scope=history restores original dialogue and retrieval diagnostics, scope=providers reads deferred provider bodies, scope=full (default) restores both. Use history for missing corrections or referents; a note-read tool already supplies note bodies. This reads the complete in-memory turn context once, performs no domain action and emits no user reply. Call it alone before planning effects; other calls in the same response will not execute.",
 	parameters: {
 		type: "object",
 		additionalProperties: false,
-		properties: { reason: { type: "string" } },
+		properties: {
+			reason: { type: "string" },
+			scope: { type: "string", enum: ["history", "providers", "full"] },
+		},
 		required: ["reason"],
 	},
 };
@@ -2417,7 +2421,18 @@ function renderPlannerModelInput(params: {
 		params.allowSourceSelection && !params.codingMode
 			? referencePlannerQueryTokens(selected.context)
 			: { context: selected.context, applied: false };
-	const renderedContext = renderContextObject(diagnosticProjection.context);
+	const deferred =
+		params.allowSourceSelection && !params.codingMode
+			? projectDeferredProviders(diagnosticProjection.context)
+			: { context: diagnosticProjection.context, available: [] };
+	const renderedContext = renderContextObject(deferred.context);
+	if (deferred.available.length)
+		renderedContext.promptSegments.push({
+			id: "planner-provider-discovery",
+			label: "planner_context",
+			stable: false,
+			content: `Deferred provider references: ${JSON.stringify(deferred.available)}. Their notices describe available context, not complete bodies. In this planner stage, call RESTORE_CONTEXT alone with scope=providers to read complete references before using their syntax or missing factual details. Do not emit Stage-1 contextRequests here. No read is needed when supplied evidence and tools already cover this request.`,
+		});
 	if (diagnosticProjection.applied)
 		renderedContext.promptSegments.push({
 			id: "planner-query-token-reference",
@@ -2431,7 +2446,7 @@ function renderPlannerModelInput(params: {
 			id: "planner-context-selection",
 			label: "planner_context",
 			stable: false,
-			content: `${JSON.stringify({ selection: selected.selection, omittedSourceCount: selected.omittedSourceCount })}\nStage 1 reviewed every prior user source for this request. Only its selected sources are shown; current request, providers, assistant referents, pending work and all current tool receipts remain complete. If a constraint, correction, referent or historical dependency is uncertain, call RESTORE_CONTEXT alone before taking effects. Every original source will be restored for this and all later planner rounds. Never infer or count omitted messages or replay an action to retrieve conversation context.`,
+			content: `${JSON.stringify({ selection: selected.selection, omittedSourceCount: selected.omittedSourceCount })}\nStage 1 reviewed every prior dialogue source for this request. Only its selected sources are shown; current request, standing provider constraints, selected assistant referents/pending work and all current tool receipts remain complete. If a constraint, correction, referent or historical dependency is uncertain, call RESTORE_CONTEXT alone with scope=history before taking effects. Every original source will be restored for this and all later planner rounds. Never infer or count omitted messages or replay an action to retrieve conversation context.`,
 		});
 	const template = params.template ?? plannerTemplate;
 	const instructions = (
@@ -2505,7 +2520,10 @@ function renderPlannerModelInput(params: {
 		messages,
 		promptSegments,
 		cacheKeySegments,
-		sourceSelectionApplied: selected.applied || diagnosticProjection.applied,
+		sourceSelectionApplied:
+			selected.applied ||
+			diagnosticProjection.applied ||
+			deferred.available.length > 0,
 	};
 }
 
@@ -3457,35 +3475,54 @@ async function callPlanner(
 		)
 			return output;
 		const original = params.trajectory.modelBaseContext ?? params.context;
+		const reads = output.toolCalls.filter(
+			(call) => call.name === RESTORE_CONTEXT_TOOL.name,
+		);
+		const scope = reads[0]?.params?.scope ?? "full";
+		const readHistory = scope === "history" || scope === "full";
+		const readProviders = scope === "providers" || scope === "full";
 		if (
 			params.trajectory.codingMode ||
 			!params.tools?.length ||
-			(!selectCompletionContext(original).applied &&
-				!referencePlannerQueryTokens(original).applied)
+			reads.length !== 1 ||
+			(!readHistory && !readProviders) ||
+			(!(
+				readHistory &&
+				(selectCompletionContext(original).applied ||
+					referencePlannerQueryTokens(original).applied)
+			) &&
+				!(readProviders && projectDeferredProviders(original).available.length))
 		) {
 			throw new ElizaError(
 				"Original planner context is already complete; repeated restoration is invalid",
 				{ code: "PLANNER_CONTEXT_RESTORE_INVALID" },
 			);
 		}
+		const restored =
+			readProviders &&
+			projectDeferredProviders(original).available.length &&
+			params.runtime.restoreProviderContext
+				? await params.runtime.restoreProviderContext(original)
+				: original;
 		// Record the original request above, but execute none of its proposed
 		// actions. Removing the selector makes restoration one-shot and preserves
 		// complete sources for subsequent rounds and the completion evaluator.
 		params.trajectory.modelBaseContext = appendContextEvent(
 			{
-				...original,
+				...restored,
 				metadata: {
 					...original.metadata,
-					completionContext: undefined,
-					plannerQueryTokensRestored: true,
+					...(readHistory
+						? { completionContext: undefined, plannerQueryTokensRestored: true }
+						: {}),
+					...(readProviders ? { providerDiscoveryEnabled: false } : {}),
 				},
 			},
 			{
 				id: "planner-context-restored",
 				type: "instruction",
 				source: "planner-loop",
-				content:
-					"Full original prior dialogue and retrieval diagnostics have been restored as requested. No tool from the restoration response executed. Plan the current request using the complete sources and the existing settled receipts; do not repeat completed effects.",
+				content: `Requested context restored: ${scope}. No tool from the restoration response executed. Use the restored sources and existing settled receipts; do not repeat completed effects. Other deferred references remain available if needed.`,
 			},
 		);
 		return await callPlanner(params);

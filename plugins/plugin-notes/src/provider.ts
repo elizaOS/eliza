@@ -85,6 +85,14 @@ export const notesProvider: Provider = {
       }
       return {
         text: renderSavedNotesText(notes),
+        discoveryText: [
+          "context_discovery: SAVED_NOTES",
+          "Fresh saved-note index. These are exact first-line labels, not complete note bodies. MEMORY does not search this notes store. Read the full SAVED_NOTES reference or use NOTES to retrieve the needed body before quoting it or preparing replacement content. Ordinary navigation needs no body read. Never infer missing body text from a title.",
+          `Exact note count: ${notes.length}.`,
+          ...notes.map(
+            (note) => `- ${JSON.stringify(toWellFormedUnicode(note.title))}`,
+          ),
+        ].join("\n"),
         values: { savedNotesAvailable: true, savedNoteCount: notes.length },
         data: { savedNotes: notes },
       };

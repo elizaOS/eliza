@@ -1,6 +1,9 @@
 /** Selects and composes message response providers using the full authorized context and turn policy. */
 
-import { filterProvidersByContextGate } from "../../runtime/context-gates.ts";
+import {
+	filterProvidersByContextGate,
+	satisfiesRoleGate,
+} from "../../runtime/context-gates.ts";
 import type { Action, AgentContext, Provider } from "../../types/components";
 import type { RoleGateRole } from "../../types/contexts";
 import type { Memory } from "../../types/memory";
@@ -14,6 +17,7 @@ import {
 import {
 	isAmbientStage1Turn,
 	messageExplicitlyAddressesAgent,
+	resolveStage1SenderRole,
 } from "./addressing.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
 
@@ -50,6 +54,7 @@ export const CORE_RESPONSE_STATE_PROVIDERS = [
  */
 export function alwaysOnResponseStateProviderNames(
 	runtime: IAgentRuntime,
+	userRoles?: readonly RoleGateRole[],
 ): string[] {
 	const providers = Array.isArray(runtime.providers)
 		? (runtime.providers as Provider[])
@@ -57,7 +62,13 @@ export function alwaysOnResponseStateProviderNames(
 	const names: string[] = [];
 	for (const provider of providers) {
 		const name = provider.name?.trim();
-		if (provider.alwaysInResponseState && name && !provider.private) {
+		if (
+			provider.alwaysInResponseState &&
+			name &&
+			!provider.private &&
+			satisfiesRoleGate(userRoles, provider.roleGate) &&
+			satisfiesRoleGate(userRoles, provider.contextGate?.roleGate)
+		) {
 			names.push(name);
 		}
 	}
@@ -288,11 +299,12 @@ export function uiViewActionPriority(
 export function stage1ResponseStateProviderNames(
 	runtime: IAgentRuntime,
 	message: Memory,
+	userRoles?: readonly RoleGateRole[],
 ): string[] {
 	const excluded = new Set(ambientTurnProviderExclusions(runtime, message));
 	return [
 		...CORE_RESPONSE_STATE_PROVIDERS,
-		...alwaysOnResponseStateProviderNames(runtime),
+		...alwaysOnResponseStateProviderNames(runtime, userRoles),
 		...(hasInboundBenchmarkContext(message) ? ["CONTEXT_BENCH"] : []),
 	].filter((name) => !excluded.has(name));
 }
@@ -302,7 +314,17 @@ export async function composeResponseState(
 	message: Memory,
 	skipCache = false,
 ): Promise<State> {
-	const providers = stage1ResponseStateProviderNames(runtime, message);
+	// Always-on is a context opt-in, never a role-gate bypass. Resolve only
+	// when a registered always-on provider needs a role decision.
+	const needsRole = runtime.providers?.some(
+		(provider) =>
+			provider.alwaysInResponseState &&
+			(provider.roleGate || provider.contextGate?.roleGate),
+	);
+	const roles = needsRole
+		? [await resolveStage1SenderRole(runtime, message)]
+		: undefined;
+	const providers = stage1ResponseStateProviderNames(runtime, message, roles);
 	if (hasPageScopedRoutingMetadata(message)) {
 		return runtime.composeState(
 			message,
@@ -332,7 +354,10 @@ export function selectV5PlannerStateProviderNames(args: {
 	// are composed regardless of the turn's selected contexts (like the core
 	// FACTS / CURRENT_TIME signals) — so a plugin's dynamic provider can reach
 	// Stage 1 without core naming it.
-	for (const name of alwaysOnResponseStateProviderNames(args.runtime)) {
+	for (const name of alwaysOnResponseStateProviderNames(
+		args.runtime,
+		args.userRoles,
+	)) {
 		providerNames.add(name);
 	}
 	// filterProvidersByContextGate honors the FULL declared contextGate

@@ -644,6 +644,8 @@ export async function generateStage1Decision(
 
 	return {
 		messageHandler,
+		providerDiscoveryEnabled: discoveryEnabled,
+		loadedContextProviders: [...loadedContext],
 		fieldRunResult,
 		inferenceMessageText,
 		parsedResponseHandlerReply,

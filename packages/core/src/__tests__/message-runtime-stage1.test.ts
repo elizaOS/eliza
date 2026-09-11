@@ -4090,6 +4090,53 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
+	it("delivers an unsubmitted form directly without inferred view tools", async () => {
+		const answer =
+			'[FORM]\n{"title":"Project","fields":[{"name":"project_name","type":"text","label":"Project name","required":true},{"name":"due_date","type":"date","label":"Due date","required":true}]}\n[/FORM]';
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				intents: [],
+				candidateActionNames: [],
+				replyText: answer,
+				extra: { replyEffectStatus: "non_applied" },
+			}),
+		]);
+		const handler = vi.fn(async () => ({
+			success: true,
+			text: "must not execute",
+		}));
+		runtime.actions = [
+			{
+				name: "VIEWS",
+				description: "Open and show app views.",
+				tags: ["domain:views", "capability:read", "capability:write"],
+				validate: async () => true,
+				handler,
+			},
+			{
+				name: "APP",
+				description: "Control the application.",
+				validate: async () => true,
+				handler,
+			},
+		];
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "Show a form with a project name and a due date. Leave it unsubmitted and keep all app records unchanged.",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		expect(useModelCalls(runtime)).toHaveLength(1);
+		expect(result.messageHandler.plan.candidateActions ?? []).toEqual([]);
+		expect(handler).not.toHaveBeenCalled();
+		if (result.kind === "direct_reply")
+			expect(result.result.responseContent?.text).toBe(answer);
+	});
+
 	it.each(["STOP", "IGNORE"] as const)(
 		"keeps %s terminal even when the model marks work pending",
 		async (shouldRespond) => {
@@ -6632,7 +6679,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			"prior_message:user:\n[completion_source=h1]\n1gig: whats the btc price",
 		);
 		expect(userContent).toContain(
-			"prior_message:agent:\nTest Agent: BTC is around $63,000 right now.",
+			"prior_message:agent:\n[completion_source=h2]\nTest Agent: BTC is around $63,000 right now.",
 		);
 		// Chronological interleave: the agent reply follows the user turn.
 		expect(userContent.indexOf("prior_message:user:")).toBeLessThan(

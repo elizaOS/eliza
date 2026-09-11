@@ -618,6 +618,8 @@ export function collectBudgetedStageOneCandidateActions(args: {
 	actions: readonly Action[];
 	candidateActions: readonly string[];
 	contexts: readonly AgentContext[];
+	/** The progressive lane offers other contexts through discovery instead. */
+	deferUnselectedContexts?: boolean;
 }): Action[] {
 	if (args.candidateActions.length === 0) return [];
 
@@ -670,7 +672,9 @@ export function collectBudgetedStageOneCandidateActions(args: {
 			.flatMap((action) => action.contexts ?? [])
 			.map((context) => String(context).trim().toLowerCase()),
 	);
-	const uncoveredContexts = args.contexts.filter(
+	const uncoveredContexts = (
+		args.deferUnselectedContexts ? [] : args.contexts
+	).filter(
 		(context) => !coveredContexts.has(String(context).trim().toLowerCase()),
 	);
 	const noFocusedViewActions = new Set<string>();

@@ -62,6 +62,37 @@ function countingProvider(name: string): {
 }
 
 describe("stage1ResponseStateProviderNames", () => {
+	it("does not let always-on opt-in bypass either declared role gate", () => {
+		const runtime = {
+			providers: [
+				{
+					name: "private-reference",
+					alwaysInResponseState: true,
+					private: true,
+				},
+				{
+					name: "admin-reference",
+					alwaysInResponseState: true,
+					roleGate: { minRole: "ADMIN" },
+				},
+				{
+					name: "owner-reference",
+					alwaysInResponseState: true,
+					roleGate: { minRole: "ADMIN" },
+					contextGate: { roleGate: { minRole: "OWNER" } },
+				},
+			],
+			getSetting: () => undefined,
+		} as unknown as IAgentRuntime;
+		const message = makeMessage("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1");
+		for (const role of ["MEMBER", "ADMIN", "OWNER"] as const) {
+			const names = stage1ResponseStateProviderNames(runtime, message, [role]);
+			expect(names).not.toContain("private-reference");
+			expect(names.includes("admin-reference")).toBe(role !== "MEMBER");
+			expect(names.includes("owner-reference")).toBe(role === "OWNER");
+		}
+	});
+
 	it("keeps the core response providers complete on an unexcluded turn", () => {
 		const runtime = {
 			providers: [],

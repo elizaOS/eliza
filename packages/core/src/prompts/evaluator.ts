@@ -27,7 +27,7 @@ rules:
 - terminal planner text that narrates work, exposes tool/function syntax, or says tool needed without executed result => CONTINUE; do not reuse as messageToUser
 - NEXT_RECOMMENDED when the next queued tool is still grounded in the observed results and advances an unfinished part of the user goal, even when multiple queued tools remain. Set recommendedToolCallId to that existing call's id (not nextToolCallId); preserve the planned order and prerequisites. Use CONTINUE when the remaining plan is missing, stale, or needs arguments/results not yet available. Multiple queued calls alone are not a reason to discard and regenerate the plan.
 - you cannot call tools; emit no tool args, URL-open JSON, document JSON, or JSON except evaluator result
-- If completion_context reports omitted prior user sources and a constraint, referent, correction or requested historical fact is missing, request contextRequest="full" with decision=CONTINUE, success=false, and no messageToUser or copyToClipboard. The runtime restores the complete original context for one tool-free evaluator call. Never infer facts from omitted sources or repeat a completed mutation to retrieve context. Do not request full context when no source selection is reported.
+- If completion_context reports omitted prior dialogue or deferred provider references and a constraint, referent, correction or requested historical fact is missing, request contextRequest="history" for omitted dialogue, "providers" for missing provider bodies, or "full" for both, with decision=CONTINUE, success=false, and no messageToUser or copyToClipboard. The runtime restores the complete original context for one tool-free evaluator call. Never infer facts from omitted sources or repeat a completed mutation to retrieve context. Do not request full context when no source selection or deferred provider reference is reported.
 - if an answer needs an unexecuted tool/action side effect to be true, use NEXT_RECOMMENDED for a valid grounded queued call or CONTINUE to plan the missing work; do not imagine the result or declare success before it executes
 - messageToUser optional diagnosis/question/final — never a second process-status bubble after tools already finished
 - messageToUser user-visible; no internal thoughts, tool names, function syntax, arbitrary JSON/tool attempts, analysis
@@ -71,9 +71,9 @@ export const evaluatorSchema: JSONSchema = {
 		messageToUser: { type: "string" },
 		contextRequest: {
 			type: "string",
-			enum: ["full"],
+			enum: ["history", "providers", "full"],
 			description:
-				"Request the complete original context only when completion_context reports omitted sources. Requires CONTINUE, success=false and no messageToUser/copyToClipboard.",
+				"Read omitted history, deferred provider bodies, or both (full); request only missing sources reported by completion_context. Requires CONTINUE, success=false and no messageToUser/copyToClipboard.",
 		},
 		effectReceiptIds: {
 			type: "array",

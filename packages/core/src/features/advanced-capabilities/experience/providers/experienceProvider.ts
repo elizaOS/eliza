@@ -6,11 +6,13 @@
  * `[RELEVANT EXPERIENCES]` block. No EXPERIENCE service, a too-short message, or no
  * matches yields empty output; errors fail soft to empty text.
  */
+
 import { logger } from "../../../../logger.ts";
 import type { Provider, ProviderResult } from "../../../../types/components.ts";
 import type { Memory } from "../../../../types/memory.ts";
 import type { IAgentRuntime } from "../../../../types/runtime.ts";
 import type { State } from "../../../../types/state.ts";
+import { getUserMessageText } from "../../../../utils/message-text";
 import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import type { ExperienceService } from "../service";
 import { formatExperienceForPrompt } from "../utils/experienceFormatter.ts";
@@ -47,7 +49,7 @@ export const experienceProvider: Provider = {
 			}
 
 			// Get message text for context
-			const messageText = message.content.text || "";
+			const messageText = getUserMessageText(message);
 			if (messageText.length < 10) {
 				return { text: "", data: {}, values: {} };
 			}

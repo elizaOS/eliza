@@ -41,6 +41,8 @@ export type EvaluatorModelResult =
 	| (Partial<GenerateTextResult> & { object?: unknown });
 
 export interface EvaluatorRuntime {
+	/** Same fresh provider read used by the planner restoration protocol. */
+	restoreProviderContext?(context: ContextObject): Promise<ContextObject>;
 	/** True when useModel invokes prepareModelAttempt before every provider handler. */
 	supportsModelAttemptPreparation?: boolean;
 	/** Optional model registry access used to resolve evaluator context ceilings. */
@@ -98,6 +100,8 @@ export type EvaluatorOutput = EvaluationResult & {
 
 export interface PlannerRuntime {
 	getService?(service: string): unknown;
+	/** Reauthorize deferred provider reads before restoring model context. */
+	restoreProviderContext?(context: ContextObject): Promise<ContextObject>;
 	/** Optional per-agent setting lookup used by guarded runtime features. */
 	getSetting?(key: string): string | boolean | number | null;
 	reportError?(

@@ -46,7 +46,7 @@ export const viewContinuationField: ResponseHandlerFieldEvaluator<ContextualNavi
 		name: "visualContinuation",
 		priority: 60,
 		description:
-			"Classify visual continuation for the final current request while preserving applicable earlier constraints. Return {disposition: requested|optional|none|forbidden|unresolved, viewId: string, reason: string}. Use none for ordinary conversation, hypothetical discussion, questions answerable without changing views, and ambiguity. Use forbidden for a requirement to stay on the current screen or not navigate. Use requested when the user requests navigation, and optional only when a surface clearly helps the requested activity; never infer navigation solely from a domain noun. For requested/optional, use a known shell view ID (Home is chat); use unresolved if the destination or permission is uncertain, so the live-catalog classifier can resolve it. For multiple requested views, name one and leave every destination/layout in the full request for the planner. Keep restrictions scoped: forbidding data edits does not prohibit requested navigation; forbidding other views does not prohibit the named views. Navigation never completes domain work. Use an empty viewId for none/forbidden/unresolved. This is a routing judgment only: no navigation or data operation has executed.",
+			"Classify visual continuation for the final current request while preserving applicable earlier constraints. Return {disposition: requested|optional|none|forbidden|unresolved, viewId: string, reason: string}. Use none for ordinary conversation, hypothetical discussion, questions answerable without changing views, and ambiguity. Use forbidden for a requirement to stay on the current screen or not navigate. Use requested when the user requests navigation, and optional only when a surface clearly helps the requested activity; never infer navigation solely from a domain noun. For requested/optional, use a known shell view ID (Home is chat); use unresolved if the destination or permission is uncertain, so the live-catalog classifier can resolve it. For multiple requested views, name one and leave every destination/layout in the full request for the planner. Keep restrictions scoped: forbidding data edits does not prohibit requested navigation; forbidding other views does not prohibit the named views. Navigation never completes domain work. Opening an existing app view alone selects candidateActionNames=[VIEWS], not the destination domain tools. Add NOTES, CALENDAR or other domain tools only when the current request also asks to read or change their records. Use an empty viewId for none/forbidden/unresolved. This is a routing judgment only: no navigation or data operation has executed.",
 		schema: {
 			type: "object",
 			additionalProperties: false,
@@ -75,7 +75,13 @@ export const viewContinuationField: ResponseHandlerFieldEvaluator<ContextualNavi
 				typeof record.viewId !== "string"
 			)
 				return null;
-			if (record.disposition === "none" || record.disposition === "forbidden") {
+			// An explicit prohibition remains authoritative even if the model also
+			// identifies the current view. Discard that destination, never reclassify
+			// the prohibition into permission to navigate.
+			if (record.disposition === "forbidden") {
+				return { disposition: "forbidden", reason: record.reason };
+			}
+			if (record.disposition === "none") {
 				return record.viewId === ""
 					? { disposition: record.disposition, reason: record.reason }
 					: null;

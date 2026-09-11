@@ -15,6 +15,7 @@ import { parseSubAgentTaskCompleteRelay } from "./task-completion-relay.js";
 export function asProviderRecord(value: unknown):
 	| {
 			text?: unknown;
+			discoveryText?: unknown;
 			providerName?: unknown;
 	  }
 	| undefined {
@@ -23,6 +24,7 @@ export function asProviderRecord(value: unknown):
 	}
 	return value as {
 		text?: unknown;
+		discoveryText?: unknown;
 		providerName?: unknown;
 	};
 }
@@ -584,6 +586,9 @@ export function appendStateProviderEvents(
 			source: "composeState",
 			name: resolvedName,
 			text,
+			...(typeof provider.discoveryText === "string"
+				? { discoveryText: provider.discoveryText }
+				: {}),
 			cacheStable: cacheStableByName.get(resolvedName.toUpperCase()),
 		});
 	}

@@ -360,3 +360,5 @@ The fetch boundary applies standard RequestInit overrides and observes caller
 cancellation; cancellation cannot undo native side effects already dispatched.
 Native stream failures propagate without replay. Buffered compatibility is
 selected only before dispatch when streaming events are unavailable.
+
+Chat JSONL rendering may ignore only redundant closing braces following a complete valid patch object. Do not synthesize missing values, repair truncated input, consume trailing prose, or alter stored message/trajectory bytes. The same parser and existing prototype-pollution checks serve all chat surfaces.

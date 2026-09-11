@@ -11,12 +11,17 @@ import {
   stage1ResponseStateProviderNames,
 } from "../../../core/src/services/message/provider-state.ts";
 import {
+  uiGenerativeProvider,
   uiWidgetCapabilitiesProvider,
   uiWidgetsProvider,
 } from "./ui-catalog.ts";
 
 const runtime = {
-  providers: [uiWidgetCapabilitiesProvider, uiWidgetsProvider],
+  providers: [
+    uiWidgetCapabilitiesProvider,
+    uiWidgetsProvider,
+    uiGenerativeProvider,
+  ],
   getSetting: () => undefined,
 } as unknown as IAgentRuntime;
 const message = {
@@ -28,6 +33,23 @@ describe("production widget provider routing", () => {
     const names = stage1ResponseStateProviderNames(runtime, message);
     expect(names).toContain("uiWidgetCapabilities");
     expect(names).not.toContain("uiWidgets");
+  });
+
+  it("makes the generative reference discoverable only for authorized roles", () => {
+    for (const role of ["MEMBER", "ADMIN"] as const) {
+      const stage1 = stage1ResponseStateProviderNames(runtime, message, [role]);
+      const planner = selectV5PlannerStateProviderNames({
+        runtime,
+        message,
+        selectedContexts: ["simple"],
+        userRoles: [role],
+      });
+      expect(stage1.includes("uiGenerative")).toBe(role === "ADMIN");
+      expect(planner.includes("uiGenerative")).toBe(role === "ADMIN");
+    }
+    expect(stage1ResponseStateProviderNames(runtime, message)).not.toContain(
+      "uiGenerative",
+    );
   });
 
   it.each(["general", "tasks", "connectors", "settings"] as AgentContext[])(

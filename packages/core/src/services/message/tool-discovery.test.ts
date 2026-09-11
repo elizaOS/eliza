@@ -183,8 +183,31 @@ describe("planner tool discovery", () => {
 		expect(executions).toBe(0);
 	});
 
+	it("keeps all names inline and retrieves complete descriptions without loading tools", async () => {
+		let loads = 0;
+		const detail = `Exact family documentation ${"detail\n".repeat(900)} FINAL_DETAIL`;
+		const discovery = createPlannerToolDiscoveryAction(
+			[
+				{ name: "NOTES", description: detail, subActions: ["NOTES_READ"] },
+				{ name: "NOTES_READ", description: "Read" },
+			],
+			() => {
+				loads++;
+			},
+		);
+		expect(discovery.description).toContain("NOTES_READ");
+		expect(discovery.description).not.toContain("FINAL_DETAIL");
+		const result = await discovery.handler?.(runtime, message, undefined, {
+			parameters: { names: [] },
+		});
+		expect(result?.success).toBe(true);
+		expect(JSON.stringify(result?.data)).toContain(
+			JSON.stringify(detail).slice(1, -1),
+		);
+		expect(loads).toBe(0);
+	});
+
 	it.each([
-		{ names: [] },
 		{ names: ["VIEWS", "UNAUTHORIZED"] },
 		{ names: [null] },
 		{ names: ["views"] },

@@ -117,6 +117,33 @@ describe("experienceProvider", () => {
 		},
 	);
 
+	it("queries only the authored request, excluding host language instructions", async () => {
+		const { runtime, queryCalls } = makeRuntime();
+		await experienceProvider.get(
+			runtime,
+			makeMessage(
+				"retrieve prior learnings\n\n[Language instruction: Reply in natural English unless the user explicitly requests another language.]",
+			),
+		);
+		expect(queryCalls[0]).toMatchObject({ query: "retrieve prior learnings" });
+	});
+
+	it("references identical reason text without losing distinct reasons or provenance", async () => {
+		const repeated = makeExperience("same", "Exact\n  full learning!?");
+		repeated.result = repeated.learning;
+		const distinct = makeExperience("different", "A different learning");
+		const { runtime } = makeRuntime({ semantic: [repeated, distinct] });
+		const result = await experienceProvider.get(
+			runtime,
+			makeMessage("retrieve prior learnings"),
+		);
+		expect(result.text?.split(repeated.learning)).toHaveLength(2);
+		expect(result.text).toContain("WHY: Same text as DO above.");
+		expect(result.text).toContain("WHY: result-different");
+		expect(result.text).toContain("WHEN: context-same");
+		expect(result.data?.experiences).toEqual([repeated, distinct]);
+	});
+
 	it("returns empty output when both retrieval sources are empty", async () => {
 		const { runtime, queryCalls, listCalls } = makeRuntime();
 
