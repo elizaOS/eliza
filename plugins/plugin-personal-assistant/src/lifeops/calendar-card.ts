@@ -16,6 +16,7 @@ import {
   ServiceType,
   stableStringify,
 } from "@elizaos/core";
+import { isValidTimeZone } from "@elizaos/shared";
 import type {
   ApprovalPayload,
   CalendarCardApprovalCorrelation,
@@ -23,6 +24,173 @@ import type {
 import { executeRawSql, sqlQuote, toText } from "./sql.js";
 
 export type CalendarCardPrivacyMode = "full" | "times_only" | "busy_only";
+
+const CALENDAR_CARD_PRIVACY_MODES: ReadonlySet<string> = new Set([
+  "full",
+  "times_only",
+  "busy_only",
+]);
+
+/** Owner request to issue a private daily calendar card, after validation. */
+export interface CalendarCardRequest {
+  readonly date: string;
+  readonly timeZone: string;
+  readonly privacyMode: CalendarCardPrivacyMode;
+  readonly recipient: string;
+  readonly recipientEntityId: string | null;
+  readonly events: readonly CalendarCardEvent[];
+  readonly ttlMs: number | null;
+}
+
+export type CalendarCardRequestParse =
+  | { readonly ok: true; readonly request: CalendarCardRequest }
+  | { readonly ok: false; readonly error: string };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function nonEmptyText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function isCalendarDay(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  // Date.UTC rolls an out-of-range day such as 02-30 into the next month, so
+  // the parts must survive the round trip unchanged.
+  const roundTrip = new Date(Date.UTC(year, month - 1, day, 12));
+  return (
+    roundTrip.getUTCFullYear() === year &&
+    roundTrip.getUTCMonth() === month - 1 &&
+    roundTrip.getUTCDate() === day
+  );
+}
+
+function parseCalendarCardEvent(
+  value: unknown,
+  index: number,
+): CalendarCardEvent | string {
+  if (!isRecord(value)) return `events[${index}] must be an object`;
+  const id = nonEmptyText(value.id);
+  if (!id) return `events[${index}].id must be a non-empty string`;
+  const title = typeof value.title === "string" ? value.title : null;
+  if (title === null) return `events[${index}].title must be a string`;
+  const startAt = typeof value.startAt === "string" ? value.startAt : null;
+  const endAt = typeof value.endAt === "string" ? value.endAt : null;
+  const startMs = startAt === null ? Number.NaN : Date.parse(startAt);
+  const endMs = endAt === null ? Number.NaN : Date.parse(endAt);
+  if (!Number.isFinite(startMs))
+    return `events[${index}].startAt must be a parseable timestamp`;
+  if (!Number.isFinite(endMs))
+    return `events[${index}].endAt must be a parseable timestamp`;
+  if (endMs < startMs)
+    return `events[${index}].endAt must not be before startAt`;
+  const location = value.location;
+  if (
+    location !== undefined &&
+    location !== null &&
+    typeof location !== "string"
+  ) {
+    return `events[${index}].location must be a string when present`;
+  }
+  return {
+    id,
+    title,
+    startAt: startAt as string,
+    endAt: endAt as string,
+    location: typeof location === "string" ? location : null,
+  };
+}
+
+/**
+ * Validate an untrusted calendar-card request body once, so the route can
+ * answer a 400 instead of letting the composer, Intl, or the approval queue
+ * throw on a malformed date, time zone, event, or lifetime.
+ */
+export function parseCalendarCardRequest(
+  body: unknown,
+): CalendarCardRequestParse {
+  if (!isRecord(body)) {
+    return { ok: false, error: "Calendar card request must be an object" };
+  }
+  const date = typeof body.date === "string" ? body.date.trim() : "";
+  if (!isCalendarDay(date)) {
+    return {
+      ok: false,
+      error: "date must be a valid YYYY-MM-DD calendar date",
+    };
+  }
+  const timeZone = nonEmptyText(body.timeZone);
+  if (!timeZone || !isValidTimeZone(timeZone)) {
+    return { ok: false, error: "timeZone must be a valid IANA time zone" };
+  }
+  const privacyMode =
+    typeof body.privacyMode === "string" &&
+    CALENDAR_CARD_PRIVACY_MODES.has(body.privacyMode)
+      ? (body.privacyMode as CalendarCardPrivacyMode)
+      : null;
+  if (!privacyMode) {
+    return {
+      ok: false,
+      error: "privacyMode must be one of full, times_only, busy_only",
+    };
+  }
+  const recipient = nonEmptyText(body.recipient);
+  if (!recipient) {
+    return { ok: false, error: "recipient must be a non-empty string" };
+  }
+  let recipientEntityId: string | null = null;
+  if (body.recipientEntityId !== undefined && body.recipientEntityId !== null) {
+    recipientEntityId = nonEmptyText(body.recipientEntityId);
+    if (!recipientEntityId) {
+      return {
+        ok: false,
+        error: "recipientEntityId must be a non-empty string when present",
+      };
+    }
+  }
+  if (!Array.isArray(body.events)) {
+    return { ok: false, error: "events must be an array" };
+  }
+  const events: CalendarCardEvent[] = [];
+  for (const [index, candidate] of body.events.entries()) {
+    const parsed = parseCalendarCardEvent(candidate, index);
+    if (typeof parsed === "string") return { ok: false, error: parsed };
+    events.push(parsed);
+  }
+  let ttlMs: number | null = null;
+  if (body.ttlMs !== undefined && body.ttlMs !== null) {
+    if (
+      typeof body.ttlMs !== "number" ||
+      !Number.isInteger(body.ttlMs) ||
+      body.ttlMs <= 0
+    ) {
+      return {
+        ok: false,
+        error: "ttlMs must be a positive integer number of milliseconds",
+      };
+    }
+    ttlMs = body.ttlMs;
+  }
+  return {
+    ok: true,
+    request: {
+      date,
+      timeZone,
+      privacyMode,
+      recipient,
+      recipientEntityId,
+      events,
+      ttlMs,
+    },
+  };
+}
 
 export interface CalendarCardEvent {
   readonly id: string;
