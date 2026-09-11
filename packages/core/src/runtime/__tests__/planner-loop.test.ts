@@ -7428,3 +7428,128 @@ describe("terminal-only tool surface short-circuit", () => {
 		expect(runtime.useModel).toHaveBeenCalled();
 	});
 });
+
+describe("verified intent gate", () => {
+	function nativePlannerOnce(opts: {
+		text?: string;
+		toolCalls: Array<{
+			id: string;
+			name: string;
+			arguments?: Record<string, unknown>;
+		}>;
+	}) {
+		// Native-mode return: parsePlannerOutput's native branch infers
+		// messageToUser from `text` but does NOT carry it as an explicit field.
+		// The gate must withhold even if `text` is a clean string, because in
+		// native mode `text` is ambiguous (thought vs final answer).
+		return vi.fn(async () => ({
+			text: opts.text ?? "",
+			toolCalls: opts.toolCalls,
+		}));
+	}
+
+	const receipt = {
+		receiptId: "memory-receipt-1",
+		operation: "memory.create",
+		resource: { kind: "memory", id: "mem-1" },
+		artifacts: [],
+		idempotency: { key: null, replayed: false },
+		observedAt: "2026-09-11T17:50:00.000Z",
+		outcome: "applied",
+		commit: {
+			kind: "durable",
+			id: "mem-1",
+			committedAt: "2026-09-11T17:50:00.000Z",
+		},
+	};
+	function intentContext(intents: string[]) {
+		return {
+			id: "ctx",
+			events: [
+				{
+					id: "message-handler:1",
+					type: "message_handler",
+					source: "message-service",
+					createdAt: 1,
+					metadata: { plan: { intents } },
+				},
+			],
+		} as never;
+	}
+	function harness(reply: string) {
+		const runtime = {
+			useModel: nativePlannerOnce({
+				toolCalls: [
+					{
+						id: "memory-1",
+						name: "MEMORY_CREATE",
+						arguments: {
+							text: "User's favorite tea is matcha.",
+							eliza_turn_scope: "final",
+						},
+					},
+				],
+			}),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: "Stored memory mem-1.",
+			userFacingText: reply,
+			verifiedUserFacing: true,
+			turnComplete: true,
+			effectReceipts: [receipt],
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "evaluator ran",
+			messageToUser: "Got it, unfucked the memory.",
+		}));
+		return { runtime, executeToolCall, evaluate };
+	}
+
+	it("skips the evaluator when the sole verified result names the single declared intent", async () => {
+		const { runtime, executeToolCall, evaluate } = harness(
+			"Saved: your favorite tea is matcha.",
+		);
+		const result = await runPlannerLoop({
+			runtime,
+			context: intentContext(["remember favorite tea is matcha"]),
+			executeToolCall,
+			evaluate,
+		});
+		expect(evaluate).not.toHaveBeenCalled();
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe("Saved: your favorite tea is matcha.");
+		expect(result.evaluator?.thought).toContain("single declared intent");
+	});
+
+	it("still evaluates when the verified text does not cover the declared intent", async () => {
+		const { runtime, executeToolCall, evaluate } = harness(
+			"Forgot: your dog is named Rex.",
+		);
+		await runPlannerLoop({
+			runtime,
+			context: intentContext(["forget my favorite tea"]),
+			executeToolCall,
+			evaluate,
+		});
+		expect(evaluate).toHaveBeenCalled();
+	});
+
+	it("still evaluates when Stage 1 declared several intents", async () => {
+		const { runtime, executeToolCall, evaluate } = harness(
+			"Saved: your favorite tea is matcha.",
+		);
+		await runPlannerLoop({
+			runtime,
+			context: intentContext([
+				"remember favorite tea is matcha",
+				"remind me tomorrow",
+			]),
+			executeToolCall,
+			evaluate,
+		});
+		expect(evaluate).toHaveBeenCalled();
+	});
+});

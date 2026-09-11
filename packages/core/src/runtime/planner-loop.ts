@@ -386,7 +386,8 @@ async function runPlannerLoopIterations(
 	// Tool success proves execution, not fulfillment of the user's intent.
 	// Evaluate even a single declared intent: a final-scope call can still
 	// target the wrong resource or surface.
-	const declaredIntentCount = declaredIntentsFromContext(plannerContext).length;
+	const declaredIntents = declaredIntentsFromContext(plannerContext);
+	const declaredIntentCount = declaredIntents.length;
 	const requiresIntentEvaluation = declaredIntentCount > 0;
 	// Diagnostic projection for every context/event copy of tool-call
 	// arguments: runtime-known secrets composed with the shared tool-shape
@@ -2159,7 +2160,12 @@ async function runPlannerLoopIterations(
 				declaredIntentCount,
 			}) ??
 			(requiresIntentEvaluation
-				? null
+				? tryVerifiedIntentGate({
+						trajectory,
+						failures,
+						lastPlannerExplicitCompleted,
+						declaredIntents,
+					})
 				: tryGateEvaluator({
 						trajectory,
 						failures,
@@ -7858,8 +7864,160 @@ type GatedEvaluatorDecision = {
 		| "action_terminal_result"
 		| "action_terminal_failure"
 		| "post_tool_model_reply"
-		| "sub_planner_evaluator_finish";
+		| "sub_planner_evaluator_finish"
+		| "verified_intent_result";
 };
+
+export const VERIFIED_INTENT_GATED_EVALUATOR_THOUGHT =
+	"Gated FINISH: the single declared intent is fulfilled by the sole verified action-owned result (its own user-facing text names the intent's content and it carries an applied receipt); evaluator LLM call skipped.";
+
+const INTENT_STOP_WORDS = new Set([
+	"a",
+	"an",
+	"the",
+	"my",
+	"your",
+	"our",
+	"me",
+	"you",
+	"i",
+	"we",
+	"it",
+	"its",
+	"is",
+	"are",
+	"was",
+	"be",
+	"to",
+	"of",
+	"in",
+	"on",
+	"at",
+	"for",
+	"and",
+	"or",
+	"that",
+	"this",
+	"with",
+	"about",
+	"from",
+	"into",
+	"as",
+	"so",
+	"up",
+	"now",
+	"please",
+	"remember",
+	"recall",
+	"forget",
+	"note",
+	"save",
+	"store",
+	"set",
+	"create",
+	"make",
+	"add",
+	"remove",
+	"delete",
+	"cancel",
+	"update",
+	"change",
+	"move",
+	"reschedule",
+	"put",
+	"get",
+	"do",
+	"did",
+	"have",
+	"has",
+	"user",
+	"users",
+	"again",
+	"then",
+	"just",
+	"also",
+]);
+
+function intentContentTokens(text: string): string[] {
+	return text
+		.toLowerCase()
+		.split(/[^\p{L}\p{N}]+/u)
+		.filter((token) => token.length >= 2 && !INTENT_STOP_WORDS.has(token));
+}
+
+/**
+ * Deterministic fulfillment check: every content word of the declared intent
+ * that survives stop-word removal must appear in the action-owned reply
+ * (60% coverage, at least one word). "remember favorite tea is matcha" →
+ * "Saved: your favorite tea is matcha." matches; "forget my favorite tea" →
+ * "Forgot: your dog is named Rex." does not, and the evaluator still runs.
+ */
+export function intentFulfilledByResultText(
+	intent: string,
+	resultText: string,
+): boolean {
+	const intentTokens = [...new Set(intentContentTokens(intent))];
+	if (intentTokens.length === 0) return false;
+	const resultTokens = new Set(intentContentTokens(resultText));
+	const matched = intentTokens.filter((token) =>
+		resultTokens.has(token),
+	).length;
+	return matched >= 1 && matched / intentTokens.length >= 0.6;
+}
+
+/**
+ * Intent-aware sibling of {@link tryGateEvaluator}. Stage 1 declared exactly
+ * one intent and the sole executed tool completed it on its own terms:
+ * `success`, `turnComplete`, `verifiedUserFacing`, a safe `userFacingText`
+ * that names the intent's content, and an applied effect receipt. The
+ * evaluator would re-read that same result to author prose (live VPS:
+ * 1.3–2.5 s and ~15K prompt tokens per memory turn, and it rephrased
+ * "Forgot: your favorite tea…" into slang). Anything else — several intents,
+ * pending work, a failure, no receipt, or text that does not cover the
+ * intent — still evaluates.
+ */
+function tryVerifiedIntentGate(args: {
+	trajectory: PlannerTrajectory;
+	failures: readonly FailureLike[];
+	lastPlannerExplicitCompleted: boolean | undefined;
+	declaredIntents: readonly string[];
+}): GatedEvaluatorDecision | null {
+	const { trajectory, failures } = args;
+	if (args.declaredIntents.length !== 1) return null;
+	if (args.lastPlannerExplicitCompleted === false) return null;
+	if (trajectory.plannedQueue.length > 0) return null;
+	if (failures.length > 0) return null;
+	if (completedToolStepCount(trajectory) !== 1) return null;
+	if (latestUnresolvedFailedNonTerminalToolStep(trajectory)) return null;
+	const latestStep = trajectory.steps[trajectory.steps.length - 1];
+	const result = latestStep?.result;
+	if (!latestStep?.toolCall || !result) return null;
+	if (result.success !== true) return null;
+	if (result.turnComplete !== true || result.verifiedUserFacing !== true)
+		return null;
+	if (
+		hasAwaitingUserInputMarker(result) ||
+		hasRequiresConfirmationMarker(result)
+	)
+		return null;
+	const applied = (result.effectReceipts ?? []).some(
+		(receipt) => receipt?.outcome === "applied",
+	);
+	if (!applied) return null;
+	const message = result.userFacingText?.trim();
+	if (!message || isUnsafeUserVisibleText(message)) return null;
+	if (!intentFulfilledByResultText(args.declaredIntents[0], message))
+		return null;
+	return {
+		reason: "verified_intent_result",
+		output: {
+			success: true,
+			decision: "FINISH",
+			thought: VERIFIED_INTENT_GATED_EVALUATOR_THOUGHT,
+			messageToUser: message,
+		},
+	};
+}
 
 export const SUB_PLANNER_VERDICT_GATED_EVALUATOR_THOUGHT =
 	"Gated FINISH: the umbrella action's sub-planner evaluator already judged these results against the declared intents; second evaluator LLM call skipped.";
