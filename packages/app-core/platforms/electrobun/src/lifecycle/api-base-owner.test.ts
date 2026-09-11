@@ -2,7 +2,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { runInNewContext } from "node:vm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { isDesktopLocalApiBaseUrl } from "../../../../../ui/src/api/desktop-local-api-base";
 import {
   getCurrent,
   injectIntoHtml,
@@ -157,6 +159,7 @@ describe("api-base-owner", () => {
       base: "https://agent.example.com",
       token: "cloud-token",
       externalApiBase: "https://agent.example.com",
+      localApiBase: null,
     });
   });
 
@@ -176,6 +179,7 @@ describe("api-base-owner", () => {
       base: "http://127.0.0.1:31337",
       token: "dev-token",
       externalApiBase: null,
+      localApiBase: "http://127.0.0.1:31337",
     });
   });
 
@@ -224,4 +228,35 @@ describe("api-base-owner", () => {
       `http://127.0.0.1:31337/${ls}p`,
     );
   });
+});
+
+it("executes native bootstrap binding so remote selection and other ports cannot acquire local RPC", () => {
+  setCurrent("http://127.0.0.1:31337/runtime/");
+  const html = injectIntoHtml("<html><head></head><body></body></html>");
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  if (!script) throw new Error("Missing native bootstrap");
+  const nativeWindow = {};
+  runInNewContext(script, { window: nativeWindow });
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "window");
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: nativeWindow,
+  });
+  try {
+    expect(isDesktopLocalApiBaseUrl("http://127.0.0.1:31337/runtime")).toBe(
+      true,
+    );
+    expect(isDesktopLocalApiBaseUrl("http://127.0.0.1:31338/runtime")).toBe(
+      false,
+    );
+    expect(
+      isDesktopLocalApiBaseUrl("http://127.0.0.1:31337/runtime/other"),
+    ).toBe(false);
+    expect(isDesktopLocalApiBaseUrl("https://remote.example/runtime")).toBe(
+      false,
+    );
+  } finally {
+    if (previous) Object.defineProperty(globalThis, "window", previous);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
 });

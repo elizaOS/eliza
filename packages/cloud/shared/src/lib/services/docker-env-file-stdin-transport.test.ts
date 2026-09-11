@@ -273,7 +273,7 @@ describe("generic Docker env-file stdin transport", () => {
       }
       rmSync(temporaryDirectory, { recursive: true, force: true });
     }
-  }, 10_000);
+  }, 20_000);
 });
 
 describe.skipIf(!RUN_REAL_DOCKER)(

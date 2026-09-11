@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * Reconciles exact-input develop effects through the durable GitHub Deployment
- * ledger and promotes only the still-current fully verified develop commit.
+ * Reconciles exact-input branch effects through the durable GitHub Deployment
+ * ledger and admits only the still-current fully verified source commit.
  */
 
 import { createHash } from "node:crypto";
@@ -10,9 +10,17 @@ import { existsSync, lstatSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  assertProductionCertificationFresh,
+  requireProductionCertification,
+} from "../cloud/scripts/production-effect-certification.mjs";
+import {
   canonicalJson,
   verifyCompleteManifest,
 } from "./develop-impact-evidence.mjs";
+import {
+  requestReviewedPromotion,
+  verifyMergedPromotion,
+} from "./reviewed-branch-promotion.mjs";
 
 const DEFAULT_REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -88,6 +96,13 @@ function readJson(filePath) {
   return JSON.parse(readFileSync(filePath, "utf8"));
 }
 
+function assertPromotionBranches(sourceBranch, targetBranch) {
+  const nextBranch = { develop: "staging", staging: "main" }[sourceBranch];
+  if (!nextBranch || targetBranch !== nextBranch) {
+    throw new Error("promotion must follow develop -> staging -> main");
+  }
+}
+
 export function validateRegistry(registry) {
   assertObject(registry, "effect registry");
   if (registry.schemaVersion !== 1)
@@ -99,6 +114,14 @@ export function validateRegistry(registry) {
     throw new Error("effect registry must contain effects");
   }
   const ids = new Set();
+  if (registry.afterPromotionEffects !== undefined) {
+    throw new Error(
+      "post-promotion effects must validate the destination branch first",
+    );
+  }
+  const branch = registry.sourceBranch ?? registry.promotion?.sourceBranch;
+  if (!["develop", "staging", "main"].includes(branch))
+    throw new Error("invalid registry source branch");
   for (const effect of registry.effects) {
     assertObject(effect, "effect");
     if (!/^[a-z][a-z0-9-]*$/.test(effect.id ?? "")) {
@@ -132,7 +155,16 @@ export function validateRegistry(registry) {
       }
     }
   }
+  if (branch === "main") {
+    if (registry.promotion !== null)
+      throw new Error(
+        "promotion must follow develop -> staging -> main; main is terminal",
+      );
+    return registry;
+  }
   assertObject(registry.promotion, "promotion");
+  if (registry.promotion.sourceBranch !== branch)
+    throw new Error("registry source branch mismatch");
   if (ids.has(registry.promotion.id))
     throw new Error("promotion id collides with effect");
   for (const key of ["id", "sourceBranch", "targetBranch"]) {
@@ -140,9 +172,10 @@ export function validateRegistry(registry) {
       throw new Error(`invalid promotion ${key}`);
     }
   }
-  if (registry.promotion.sourceBranch === registry.promotion.targetBranch) {
-    throw new Error("promotion branches must differ");
-  }
+  assertPromotionBranches(
+    registry.promotion.sourceBranch,
+    registry.promotion.targetBranch,
+  );
   return registry;
 }
 
@@ -166,7 +199,7 @@ export function buildEffectPlans({ expected, observed, registry, repoRoot }) {
     expected.surfaces.map((surface) => [surface.id, surface]),
   );
   const registryDigest = sha256(canonicalJson(registry));
-  const plans = registry.effects.map((effect) => {
+  const planEffect = (effect, sourceBranch) => {
     const surfaceDigests = Object.fromEntries(
       [...new Set(effect.surfaces)].sort(compareText).map((id) => {
         const surface = surfaces.get(id);
@@ -177,6 +210,7 @@ export function buildEffectPlans({ expected, observed, registry, repoRoot }) {
     const digest = sha256(
       canonicalJson({
         effect: effect.id,
+        sourceSha: expected.headSha,
         inputs: effect.inputs,
         ledgerVersion: registry.ledgerVersion,
         registryDigest,
@@ -188,11 +222,18 @@ export function buildEffectPlans({ expected, observed, registry, repoRoot }) {
     );
     return {
       ...effect,
+      sourceBranch,
       environment: `develop-effect/${effect.id}`,
       inputDigest: digest,
       surfaceDigests,
     };
-  });
+  };
+  const plans = registry.effects.map((effect) =>
+    planEffect(
+      effect,
+      registry.sourceBranch ?? registry.promotion.sourceBranch,
+    ),
+  );
   const promotionDigest = sha256(
     canonicalJson({
       environmentDigest: expected.environmentDigest,
@@ -207,23 +248,38 @@ export function buildEffectPlans({ expected, observed, registry, repoRoot }) {
   );
   return {
     plans,
-    promotion: {
-      ...registry.promotion,
-      environment: `develop-effect/${registry.promotion.id}`,
-      inputDigest: promotionDigest,
-    },
+    promotion:
+      registry.promotion === null
+        ? null
+        : {
+            ...registry.promotion,
+            environment: `develop-effect/${registry.promotion.id}`,
+            inputDigest: promotionDigest,
+          },
     registryDigest,
   };
 }
 
-export function validateSourceRun(run, sourceSha, sourceRunId) {
+export function validateSourceRun(
+  run,
+  sourceSha,
+  sourceRunId,
+  sourceBranch = "develop",
+) {
+  if (!["develop", "staging", "main"].includes(sourceBranch)) {
+    throw new Error("source branch must be develop, staging, or main");
+  }
   assertObject(run, "source workflow run");
   assertFullSha(sourceSha, "source SHA");
   if (String(run.id) !== String(sourceRunId))
     throw new Error("source workflow run id mismatch");
-  if (run.event !== "push") throw new Error("source workflow was not a push");
-  if (run.head_branch !== "develop")
-    throw new Error("source workflow branch is not develop");
+  if (run.event !== "push" && !(run.event === "workflow_dispatch")) {
+    throw new Error(
+      "source workflow was not a push or a staging validation dispatch",
+    );
+  }
+  if (run.head_branch !== sourceBranch)
+    throw new Error(`source workflow branch is not ${sourceBranch}`);
   if (run.head_sha !== sourceSha)
     throw new Error("source workflow SHA mismatch");
   if (run.path !== ".github/workflows/develop-full.yml") {
@@ -319,10 +375,10 @@ export function decidePromotion({
   assertFullSha(sourceSha, "promotion source SHA");
   if (developSha !== sourceSha) return { action: "stale" };
   if (mainSha === sourceSha) return { action: "reconcile-success" };
-  if (comparison !== "ahead") {
-    throw new Error(`main cannot fast-forward to develop: ${comparison}`);
-  }
-  return { action: "fast-forward" };
+  if (comparison === "behind") return { action: "reconcile-success" };
+  if (!["ahead", "diverged"].includes(comparison))
+    throw new Error("invalid branch comparison");
+  return { action: "awaiting-review" };
 }
 
 export function simulateReconciliation({ plans, sourceSha, state }) {
@@ -342,12 +398,15 @@ export function simulateReconciliation({ plans, sourceSha, state }) {
       action: decision.action,
     };
   });
-  const promotion = decidePromotion({
-    comparison: state.comparison,
-    developSha: state.developSha,
-    mainSha: state.mainSha,
-    sourceSha,
-  }).action;
+  const promotion =
+    plans.promotion === null
+      ? "complete"
+      : decidePromotion({
+          comparison: state.comparison,
+          developSha: state.developSha,
+          mainSha: state.mainSha,
+          sourceSha,
+        }).action;
   return { sourceSha, stale: false, effects, promotion };
 }
 
@@ -361,7 +420,7 @@ class GitHubApi {
     this.token = token;
   }
 
-  async request(method, endpoint, body) {
+  async request(method, endpoint, body, responseMode = "json") {
     const response = await fetch(
       `${this.apiUrl}/repos/${this.repository}${endpoint}`,
       {
@@ -375,6 +434,11 @@ class GitHubApi {
         body: body === undefined ? undefined : JSON.stringify(body),
       },
     );
+    if (responseMode === "bytes") {
+      if (!response.ok)
+        throw new Error(`GitHub artifact download failed (${response.status})`);
+      return Buffer.from(await response.arrayBuffer());
+    }
     const text = await response.text();
     if (!response.ok) {
       throw new Error(
@@ -410,11 +474,11 @@ function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-async function waitForSource(api, sourceSha, sourceRunId) {
+async function waitForSource(api, sourceSha, sourceRunId, sourceBranch) {
   for (let attempt = 0; attempt < 120; attempt += 1) {
     const run = await api.request("GET", `/actions/runs/${sourceRunId}`);
     if (run.status === "completed")
-      return validateSourceRun(run, sourceSha, sourceRunId);
+      return validateSourceRun(run, sourceSha, sourceRunId, sourceBranch);
     await sleep(5_000);
   }
   throw new Error("timed out waiting for Develop Full completion");
@@ -502,7 +566,7 @@ export async function dispatchEffect(api, plan, sourceSha) {
         effect_digest: plan.inputDigest,
         [plan.shaInput]: sourceSha,
       },
-      ref: "develop",
+      ref: plan.sourceBranch,
       return_run_details: true,
     },
   );
@@ -518,6 +582,7 @@ export function selectRediscoveredRun(plan, sourceSha, runs) {
     (run) =>
       run.event === "workflow_dispatch" &&
       run.head_sha === sourceSha &&
+      run.head_branch === plan.sourceBranch &&
       String(run.path).endsWith(`/${plan.workflow}`) &&
       String(run.display_title).includes(sourceSha) &&
       String(run.display_title).includes(plan.inputDigest),
@@ -558,6 +623,8 @@ async function waitForEffectRun(api, plan, sourceSha, runId) {
       throw new Error(`${plan.id}: downstream run event mismatch`);
     if (run.head_sha !== sourceSha)
       throw new Error(`${plan.id}: downstream run SHA mismatch`);
+    if (run.head_branch !== plan.sourceBranch)
+      throw new Error(`${plan.id}: downstream run branch mismatch`);
     if (!String(run.path).endsWith(`/${plan.workflow}`))
       throw new Error(`${plan.id}: downstream workflow mismatch`);
     if (run.status === "completed") return run;
@@ -623,6 +690,10 @@ export async function reconcileEffect(api, plan, context) {
       "queued",
       "Awaiting exact downstream dispatch",
     );
+    if (context.productionCertification)
+      assertProductionCertificationFresh(
+        context.productionCertification.expiresAt,
+      );
     runId = await dispatchEffect(api, plan, context.sourceSha);
     await setDeploymentStatus(
       api,
@@ -654,39 +725,6 @@ export async function reconcileEffect(api, plan, context) {
   return { ...deployment, payload, state: "success" };
 }
 
-export async function atomicallyPromoteRefs(
-  api,
-  { repositoryId, sourceBranch, sourceSha, targetBranch, targetSha },
-) {
-  assertFullSha(sourceSha, "atomic promotion source SHA");
-  assertFullSha(targetSha, "atomic promotion target SHA");
-  return api.graphql(
-    `mutation AtomicDevelopPromotion($input: UpdateRefsInput!) {
-      updateRefs(input: $input) { clientMutationId }
-    }`,
-    {
-      input: {
-        clientMutationId: `develop-promotion-${sourceSha}`,
-        repositoryId,
-        refUpdates: [
-          {
-            afterOid: sourceSha,
-            beforeOid: sourceSha,
-            force: false,
-            name: `refs/heads/${sourceBranch}`,
-          },
-          {
-            afterOid: sourceSha,
-            beforeOid: targetSha,
-            force: false,
-            name: `refs/heads/${targetBranch}`,
-          },
-        ],
-      },
-    },
-  );
-}
-
 async function getRefSha(api, branch) {
   const ref = await api.request(
     "GET",
@@ -696,23 +734,6 @@ async function getRefSha(api, branch) {
 }
 
 async function reconcilePromotion(api, promotion, context, effectDeployments) {
-  const developSha = await getRefSha(api, promotion.sourceBranch);
-  const mainSha = await getRefSha(api, promotion.targetBranch);
-  let comparison = "identical";
-  if (mainSha !== context.sourceSha) {
-    const compare = await api.request(
-      "GET",
-      `/compare/${encodeURIComponent(mainSha)}...${encodeURIComponent(context.sourceSha)}`,
-    );
-    comparison = compare.status;
-  }
-  const decision = decidePromotion({
-    comparison,
-    developSha,
-    mainSha,
-    sourceSha: context.sourceSha,
-  });
-  if (decision.action === "stale") return { action: "stale" };
   for (const [effectId, deployment] of effectDeployments) {
     if (
       deployment.state !== "success" ||
@@ -723,72 +744,109 @@ async function reconcilePromotion(api, promotion, context, effectDeployments) {
       );
     }
   }
-  const payload = createLedgerPayload({
-    effect: promotion.id,
-    inputDigest: promotion.inputDigest,
-    ledgerVersion: context.ledgerVersion,
-    sourceRunId: context.sourceRunId,
+  return requestReviewedPromotion(api, {
+    ...promotion,
     sourceSha: context.sourceSha,
-    workflow: "develop-reconcile.yml",
+    sourceRunUrl: `${context.serverUrl}/${context.repository}/actions/runs/${context.sourceRunId}`,
   });
-  const deployments = await listEffectDeployments(api, promotion);
-  const ledgerDecision = decideEffectReconciliation(
-    { ...promotion, workflow: "develop-reconcile.yml" },
-    context.sourceSha,
-    deployments,
-  );
-  if (ledgerDecision.action === "reuse-exact") return { action: "reuse-exact" };
-  const deployment =
-    ledgerDecision.action === "resume"
-      ? ledgerDecision.deployment
-      : await createDeployment(api, promotion, payload);
-  await setDeploymentStatus(
-    api,
-    deployment.id,
-    "in_progress",
-    "Rechecking exact develop SHA before main fast-forward",
-    `${context.serverUrl}/${context.repository}/actions/runs/${context.reconcileRunId}`,
-  );
-  if (decision.action === "fast-forward") {
-    const repository = await api.request("GET", "");
-    if (typeof repository?.node_id !== "string" || !repository.node_id) {
-      throw new Error("repository node id is unavailable for atomic promotion");
-    }
-    await atomicallyPromoteRefs(api, {
-      repositoryId: repository.node_id,
-      sourceBranch: promotion.sourceBranch,
-      sourceSha: context.sourceSha,
-      targetBranch: promotion.targetBranch,
-      targetSha: mainSha,
+}
+
+export async function verifyIncomingEffectProofs(
+  api,
+  incoming,
+  previousRegistry,
+) {
+  for (const effect of previousRegistry.effects) {
+    const records = await listEffectDeployments(api, {
+      ...effect,
+      environment: `develop-effect/${effect.id}`,
     });
-  }
-  const [finalMain, finalDevelop] = await Promise.all([
-    getRefSha(api, promotion.targetBranch),
-    getRefSha(api, promotion.sourceBranch),
-  ]);
-  if (finalMain !== context.sourceSha || finalDevelop !== context.sourceSha) {
-    await setDeploymentStatus(
-      api,
-      deployment.id,
-      "failure",
-      "Branch refs changed during promotion proof",
+    const proof = records.find(
+      (record) =>
+        record.state === "success" &&
+        record.payload.sourceSha === incoming.sourceSha &&
+        record.payload.workflow === effect.workflow &&
+        record.payload.ledgerVersion === previousRegistry.ledgerVersion,
     );
-    throw new Error("exact-SHA promotion proof failed");
+    if (!proof)
+      throw new Error(
+        `${effect.id}: promoted source lacks exact successful effect evidence`,
+      );
+    const sourceRun = await api.request(
+      "GET",
+      `/actions/runs/${proof.payload.sourceRunId}`,
+    );
+    validateSourceRun(
+      sourceRun,
+      incoming.sourceSha,
+      proof.payload.sourceRunId,
+      incoming.sourceBranch,
+    );
   }
-  await setDeploymentStatus(
-    api,
-    deployment.id,
-    "success",
-    `Main fast-forwarded to exact green develop ${context.sourceSha.slice(0, 12)}`,
-    `${context.serverUrl}/${context.repository}/actions/runs/${context.reconcileRunId}`,
-  );
-  return { action: decision.action };
+}
+
+/** Runs the destination admission before starting the ordered branch effect plan. */
+export async function reconcileBranchEffects({
+  api,
+  sourceBranch,
+  sourceSha,
+  repoRoot,
+  plans,
+  context,
+}) {
+  let productionCertification;
+  if (sourceBranch !== "develop") {
+    const incoming = await verifyMergedPromotion(api, sourceBranch, sourceSha);
+    const previousRegistry = validateRegistry(
+      readJson(
+        path.join(repoRoot, `.github/${incoming.sourceBranch}-effects.json`),
+      ),
+    );
+    await verifyIncomingEffectProofs(api, incoming, previousRegistry);
+    if (sourceBranch === "main") {
+      productionCertification = await requireProductionCertification({
+        api,
+        repository: context.repository,
+        treeSha: incoming.treeSha,
+        repoRoot,
+      });
+    }
+  }
+  const completed = new Map();
+  for (const plan of plans.plans) {
+    const stillCurrent = await getRefSha(api, sourceBranch);
+    if (stillCurrent !== sourceSha) {
+      console.log(
+        `[develop-effects] ${sourceBranch} advanced before ${plan.id}; stopping reconciliation`,
+      );
+      return;
+    }
+    if (productionCertification)
+      assertProductionCertificationFresh(productionCertification.expiresAt);
+    completed.set(
+      plan.id,
+      await reconcileEffect(api, plan, { ...context, productionCertification }),
+    );
+  }
+  const promotion = plans.promotion
+    ? await reconcilePromotion(api, plans.promotion, context, completed)
+    : { action: "complete" };
+  return { completed, promotion };
 }
 
 async function reconcileCommand(args) {
   const repoRoot = path.resolve(args.repo ?? DEFAULT_REPO_ROOT);
   const sourceSha = requireString(args, "source-sha");
   const sourceRunId = requireString(args, "source-run-id");
+  const sourceBranch = requireString(args, "source-branch");
+  if (
+    !["develop", "staging", "main"].includes(sourceBranch) ||
+    environment("GITHUB_REF_NAME") !== sourceBranch
+  ) {
+    throw new Error(
+      "source branch must match the develop, staging, or main workflow ref",
+    );
+  }
   assertFullSha(sourceSha, "source SHA");
   if (environment("GITHUB_SHA") !== sourceSha) {
     throw new Error("reconcile workflow head SHA does not match source SHA");
@@ -799,8 +857,12 @@ async function reconcileCommand(args) {
     throw new Error("manifest source SHA mismatch");
   }
   const registry = validateRegistry(
-    readJson(path.join(repoRoot, args.registry ?? DEFAULT_REGISTRY)),
+    readJson(path.join(repoRoot, `.github/${sourceBranch}-effects.json`)),
   );
+  if (
+    (registry.sourceBranch ?? registry.promotion?.sourceBranch) !== sourceBranch
+  )
+    throw new Error("registry source branch mismatch");
   const plans = buildEffectPlans({ expected, observed, registry, repoRoot });
   const api = new GitHubApi({
     apiUrl: environment("GITHUB_API_URL") ?? "https://api.github.com",
@@ -808,11 +870,11 @@ async function reconcileCommand(args) {
     token: environment("GITHUB_TOKEN"),
   });
   const sourceRun = await api.request("GET", `/actions/runs/${sourceRunId}`);
-  validateSourceRun(sourceRun, sourceSha, sourceRunId);
-  const currentDevelop = await getRefSha(api, registry.promotion.sourceBranch);
+  validateSourceRun(sourceRun, sourceSha, sourceRunId, sourceBranch);
+  const currentDevelop = await getRefSha(api, sourceBranch);
   if (currentDevelop !== sourceSha) {
     console.log(
-      `[develop-effects] ${sourceSha} is no longer develop; no effects accepted`,
+      `[develop-effects] ${sourceSha} is no longer ${sourceBranch}; no effects accepted`,
     );
     return;
   }
@@ -824,23 +886,16 @@ async function reconcileCommand(args) {
     sourceRunId,
     sourceSha,
   };
-  const completed = new Map();
-  for (const plan of plans.plans) {
-    const stillCurrent = await getRefSha(api, registry.promotion.sourceBranch);
-    if (stillCurrent !== sourceSha) {
-      console.log(
-        `[develop-effects] develop advanced before ${plan.id}; stopping reconciliation`,
-      );
-      return;
-    }
-    completed.set(plan.id, await reconcileEffect(api, plan, context));
-  }
-  const promotion = await reconcilePromotion(
+  const result = await reconcileBranchEffects({
     api,
-    plans.promotion,
+    sourceBranch,
+    sourceSha,
+    repoRoot,
+    plans,
     context,
-    completed,
-  );
+  });
+  if (!result) return;
+  const { completed, promotion } = result;
   console.log(
     `[develop-effects] reconciled ${completed.size} effects; promotion=${promotion.action}`,
   );
@@ -849,12 +904,21 @@ async function reconcileCommand(args) {
 async function awaitSourceCommand(args) {
   const sourceSha = requireString(args, "source-sha");
   const sourceRunId = requireString(args, "source-run-id");
+  const sourceBranch = requireString(args, "source-branch");
+  if (
+    !["develop", "staging", "main"].includes(sourceBranch) ||
+    environment("GITHUB_REF_NAME") !== sourceBranch
+  ) {
+    throw new Error(
+      "source branch must match the develop, staging, or main workflow ref",
+    );
+  }
   const api = new GitHubApi({
     apiUrl: environment("GITHUB_API_URL") ?? "https://api.github.com",
     repository: environment("GITHUB_REPOSITORY"),
     token: environment("GITHUB_TOKEN"),
   });
-  await waitForSource(api, sourceSha, sourceRunId);
+  await waitForSource(api, sourceSha, sourceRunId, sourceBranch);
   console.log(
     `[develop-effects] Develop Full run ${sourceRunId} is green at ${sourceSha}`,
   );

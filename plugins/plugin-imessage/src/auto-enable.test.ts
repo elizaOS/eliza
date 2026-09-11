@@ -24,4 +24,15 @@ describe("plugin-imessage auto enable", () => {
     expect(shouldEnable(context({}, { imessage: { enabled: true } }))).toBe(true);
     expect(shouldEnable(context({}, { imessage: { enabled: false } }))).toBe(false);
   });
+
+  it("enables the integrated plugin for an enabled Blooio connector block", () => {
+    expect(shouldEnable(context({}, { blooio: { enabled: true } }))).toBe(true);
+    expect(shouldEnable(context({}, { blooio: { enabled: false } }))).toBe(false);
+  });
+
+  it("loads when either integrated connector identity is enabled", () => {
+    expect(
+      shouldEnable(context({}, { imessage: { enabled: false }, blooio: { enabled: true } }))
+    ).toBe(true);
+  });
 });

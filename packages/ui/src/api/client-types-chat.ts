@@ -86,8 +86,11 @@ export interface UiSpecBlock {
 /** Union of all content block types. */
 export type ContentBlock = TextBlock | ConfigFormBlock | UiSpecBlock;
 
-/** An image attachment to send with a chat message. */
-export interface ImageAttachment {
+/**
+ * Bytes held transiently by the composer and sent to the authenticated media
+ * write boundary. This shape is never a reference to already-stored media.
+ */
+export interface TransientClientMediaInput {
   /** Base64-encoded image data (no data URL prefix). */
   data: string;
   mimeType: string;
@@ -99,9 +102,22 @@ export interface ImageAttachment {
    * resolution opens in the lightbox.
    */
   thumbnail?: { data: string; mimeType: string };
+}
+
+/** Canonical client reference returned after media has been stored. */
+export interface StoredClientMediaReference {
+  id: string;
+  url: string;
+  mimeType?: string;
+  thumbnailUrl?: string;
+  transcriptId?: string;
+}
+
+/** Compatibility name for the transient chat-upload wire payload. */
+export interface ImageAttachment extends TransientClientMediaInput {
   /**
-   * The stored {@link Transcript} record id when this attachment is a saved
-   * transcript — lets the chat tile re-open the rich, editable record.
+   * Compatibility-only rich transcript link. New file intake returns
+   * `TransientClientMediaInput`, which cannot carry stored-record identity.
    */
   transcriptId?: string;
 }

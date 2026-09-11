@@ -151,8 +151,10 @@ with import-cycle checks and parity tests across both plugins.
   (`life_goal_definitions` / `life_goal_links`) were carved out of PA's
   `app_lifeops` into `app_goals`, owned here, registered via the plugin `schema`
   field; `GoalsMigrationService` performs the non-destructive one-time copy of
-  any existing `app_lifeops` rows (finances/reminders/calendar carve pattern:
-  skip if source missing / target non-empty, never drop the source). Requires
+  existing `app_lifeops` rows only into empty owner tables without completed
+  migration claims. Fresh imports verify the full projection; established owner
+  rows and deletions remain authoritative, and legacy sources are never dropped.
+  Requires
   `@elizaos/plugin-sql` loaded first. PA auto-registers this plugin
   (`ensureLifeOpsGoalsPluginRegistered`) so `app_goals` exists and the migration
   runs whenever PA is loaded.

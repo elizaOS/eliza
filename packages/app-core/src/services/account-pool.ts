@@ -145,12 +145,19 @@ const DIRECT_PROVIDER_BY_BACKEND: Readonly<
   deepseek: "deepseek-api",
   zai: "zai-api",
   moonshot: "moonshot-api",
+  openrouter: "openrouter-api",
+  // First-run canonicalizes xAI to `grok` and persists that backend id in
+  // `serviceRouting.llmText`; `xai` stays as the compatibility alias.
+  grok: "xai-api",
+  xai: "xai-api",
 };
 
 const OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER: Readonly<
   Partial<Record<DirectAccountProvider, string>>
 > = {
   "moonshot-api": "https://api.moonshot.ai/v1",
+  "openrouter-api": "https://openrouter.ai/api/v1",
+  "xai-api": "https://api.x.ai/v1",
 };
 
 const KEEP_ALIVE_INTERVAL_MS = 5 * 60_000;
@@ -1427,6 +1434,242 @@ export function getDefaultAccountPool(): AccountPool {
   return cachedDefaultPool;
 }
 
+export interface DirectProviderCredentialExportDeps {
+  pool: Pick<AccountPool, "select">;
+  listAccounts: (
+    providerId: DirectAccountProvider,
+  ) => readonly Pick<AccountCredentialRecord, "id">[];
+  getToken: (
+    providerId: DirectAccountProvider,
+    accountId: string,
+  ) => Promise<string | null>;
+  env: NodeJS.ProcessEnv;
+  /** Env values this module exported on earlier passes; cleared on fail-closed. */
+  ledger: DirectProviderEnvLedger;
+}
+
+/**
+ * Tracks which env values the export pass wrote so a later pass can retract
+ * exactly those values. A displaced operator value is restored when pool
+ * ownership ends; an operator edit made during ownership is left untouched.
+ */
+export type DirectProviderEnvLedger = Map<
+  DirectAccountProvider,
+  {
+    token: string;
+    openAiCompat: boolean;
+    /** False when only compatibility aliases, not the provider key, are owned. */
+    providerEnv?: boolean;
+  }
+>;
+
+const defaultDirectProviderEnvLedger: DirectProviderEnvLedger = new Map();
+
+type DisplacedEnvValue = { present: false } | { present: true; value: string };
+
+/**
+ * Baselines are scoped to a ledger so tests and alternate hosts do not share
+ * authority state. A WeakMap keeps the public ledger wire shape compatible
+ * while retaining the operator values displaced by a live pool export.
+ */
+const displacedDirectProviderEnv = new WeakMap<
+  DirectProviderEnvLedger,
+  Map<string, DisplacedEnvValue>
+>();
+const directProviderExportGeneration = new WeakMap<
+  DirectProviderEnvLedger,
+  number
+>();
+
+function nextDirectProviderExportGeneration(
+  ledger: DirectProviderEnvLedger,
+): number {
+  const generation = (directProviderExportGeneration.get(ledger) ?? 0) + 1;
+  directProviderExportGeneration.set(ledger, generation);
+  return generation;
+}
+
+function assignExportedEnv(
+  env: NodeJS.ProcessEnv,
+  ledger: DirectProviderEnvLedger,
+  key: string,
+  value: string,
+): void {
+  let displaced = displacedDirectProviderEnv.get(ledger);
+  if (!displaced) {
+    displaced = new Map();
+    displacedDirectProviderEnv.set(ledger, displaced);
+  }
+  if (!displaced.has(key)) {
+    const previous = env[key];
+    displaced.set(
+      key,
+      previous === undefined
+        ? { present: false }
+        : { present: true, value: previous },
+    );
+  }
+  env[key] = value;
+}
+
+function restoreExportedEnv(
+  env: NodeJS.ProcessEnv,
+  ledger: DirectProviderEnvLedger,
+  key: string,
+  ownedValue: string,
+): void {
+  if (env[key] !== ownedValue) return;
+  const displaced = displacedDirectProviderEnv.get(ledger)?.get(key);
+  if (displaced?.present) env[key] = displaced.value;
+  else delete env[key];
+}
+
+function retractExportedDirectProviderEnv(
+  providerId: DirectAccountProvider,
+  env: NodeJS.ProcessEnv,
+  ledger: DirectProviderEnvLedger,
+): void {
+  const previous = ledger.get(providerId);
+  if (!previous) return;
+  ledger.delete(providerId);
+  const envKey = DIRECT_ACCOUNT_PROVIDER_ENV[providerId];
+  if (previous.providerEnv !== false) {
+    restoreExportedEnv(env, ledger, envKey, previous.token);
+    if (providerId === "zai-api" && env.Z_AI_API_KEY === previous.token) {
+      restoreExportedEnv(env, ledger, "Z_AI_API_KEY", previous.token);
+    }
+  }
+  const openAiCompatBase = OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER[providerId];
+  if (previous.openAiCompat && openAiCompatBase) {
+    restoreExportedEnv(env, ledger, "OPENAI_API_KEY", previous.token);
+    restoreExportedEnv(env, ledger, "OPENAI_BASE_URL", openAiCompatBase);
+  }
+}
+
+function retractAllExportedDirectProviderEnvInternal(
+  env: NodeJS.ProcessEnv,
+  ledger: DirectProviderEnvLedger,
+): void {
+  for (const providerId of DIRECT_ACCOUNT_PROVIDER_IDS) {
+    retractExportedDirectProviderEnv(providerId, env, ledger);
+  }
+  displacedDirectProviderEnv.delete(ledger);
+}
+
+export function retractAllExportedDirectProviderEnv(
+  env: NodeJS.ProcessEnv,
+  ledger: DirectProviderEnvLedger,
+): void {
+  nextDirectProviderExportGeneration(ledger);
+  retractAllExportedDirectProviderEnvInternal(env, ledger);
+}
+
+/**
+ * Export the pool-selected credential of every direct provider into `env`.
+ *
+ * The pool is the authority: when it rejects every linked account (disabled,
+ * invalid, rate-limited, or a pin that names no account) nothing is exported and
+ * any value this pass previously exported for that provider is retracted, so a
+ * user-excluded key can never keep serving billable calls. Launch env set by the
+ * operator is only consulted for the active OpenAI-compatible route when the
+ * provider has no linked accounts at all.
+ */
+export async function applyDirectProviderCredentialsToEnv(
+  activeBackend: string | null | undefined,
+  deps: DirectProviderCredentialExportDeps,
+): Promise<void> {
+  const { pool, env, ledger } = deps;
+  const generation = nextDirectProviderExportGeneration(ledger);
+  // Revoke the prior export before any storage or selection read can fail or
+  // suspend. A durable disable/delete must never leave its old credential live
+  // merely because the follow-up reconciliation could not finish.
+  retractAllExportedDirectProviderEnvInternal(env, ledger);
+  const activeProvider = activeBackend
+    ? DIRECT_PROVIDER_BY_BACKEND[activeBackend]
+    : undefined;
+  const selected = new Map<DirectAccountProvider, string>();
+  const providersWithAccounts = new Set<DirectAccountProvider>();
+
+  for (const providerId of DIRECT_ACCOUNT_PROVIDER_IDS) {
+    const accounts = deps.listAccounts(providerId);
+    if (accounts.length === 0) continue;
+    providersWithAccounts.add(providerId);
+
+    const account = await pool.select({
+      providerId,
+      sessionKey: `env:${providerId}`,
+      ...selectionForProvider(providerId),
+    });
+    const token = account ? await deps.getToken(providerId, account.id) : null;
+    if (account && token) selected.set(providerId, token);
+  }
+
+  // A newer mutation began a sync while this pass was resolving credentials.
+  // Its view of account eligibility is authoritative; an older snapshot must
+  // never re-export a credential after the newer pass disabled or deleted it.
+  if (directProviderExportGeneration.get(ledger) !== generation) return;
+
+  for (const [providerId, token] of selected) {
+    const envKey = DIRECT_ACCOUNT_PROVIDER_ENV[providerId];
+    assignExportedEnv(env, ledger, envKey, token);
+    if (providerId === "zai-api") {
+      if (!env.Z_AI_API_KEY) {
+        assignExportedEnv(env, ledger, "Z_AI_API_KEY", token);
+      }
+    }
+    ledger.set(providerId, {
+      token,
+      openAiCompat: false,
+      providerEnv: true,
+    });
+  }
+
+  let activeProviderToken = activeProvider
+    ? (selected.get(activeProvider) ?? null)
+    : null;
+  if (
+    activeProvider &&
+    !activeProviderToken &&
+    !providersWithAccounts.has(activeProvider)
+  ) {
+    const envKey = DIRECT_ACCOUNT_PROVIDER_ENV[activeProvider];
+    activeProviderToken = env[envKey]?.trim() || null;
+    if (!activeProviderToken && activeProvider === "zai-api") {
+      activeProviderToken = env.Z_AI_API_KEY?.trim() || null;
+    }
+    if (!activeProviderToken && activeProvider === "moonshot-api") {
+      activeProviderToken = env.KIMI_API_KEY?.trim() || null;
+    }
+  }
+  const openAiCompatibleBase = activeProvider
+    ? OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER[activeProvider]
+    : undefined;
+  if (openAiCompatibleBase && activeProviderToken) {
+    assignExportedEnv(env, ledger, "OPENAI_API_KEY", activeProviderToken);
+    assignExportedEnv(env, ledger, "OPENAI_BASE_URL", openAiCompatibleBase);
+    const exported = activeProvider ? ledger.get(activeProvider) : undefined;
+    if (exported) {
+      exported.openAiCompat = true;
+    } else if (activeProvider) {
+      // The provider key came from operator launch env, but the compatibility
+      // aliases are still values written by this module and must be retracted
+      // or restored on route switch/reset.
+      ledger.set(activeProvider, {
+        token: activeProviderToken,
+        openAiCompat: true,
+        providerEnv: false,
+      });
+    }
+  }
+}
+
+/**
+ * Boot-time and mutation-time bridge: re-reads the selection config, then
+ * exports the selected credential of every direct provider into `process.env`.
+ * The account routes call this after add, replace, enable/disable, priority,
+ * strategy, and delete so the live environment follows pool authority without
+ * a process restart.
+ */
 export async function applyAccountPoolApiCredentials(
   opts: {
     activeBackend?: string | null;
@@ -1438,71 +1681,16 @@ export async function applyAccountPoolApiCredentials(
     accountStrategies: opts.accountStrategies,
     serviceRouting: opts.serviceRouting,
   });
-  const pool = getDefaultAccountPool();
-  const activeProvider = opts.activeBackend
-    ? DIRECT_PROVIDER_BY_BACKEND[opts.activeBackend]
-    : undefined;
-  let activeProviderToken: string | null = null;
-
-  for (const providerId of DIRECT_ACCOUNT_PROVIDER_IDS) {
-    const accounts = listProviderAccounts(providerId);
-    if (accounts.length === 0) continue;
-
-    const account =
-      (await pool.select({
-        providerId,
-        sessionKey: `env:${providerId}`,
-        ...selectionForProvider(providerId),
-      })) ??
-      accounts.slice().sort((a, b) => {
-        const aTime = Number.isFinite(a.createdAt) ? a.createdAt : 0;
-        const bTime = Number.isFinite(b.createdAt) ? b.createdAt : 0;
-        return aTime - bTime;
-      })[0];
-    if (!account) continue;
-
-    const token = await getAccountAccessToken(providerId, account.id, {
-      storagePolicy: defaultRuntimeStoragePolicy(),
-    });
-    if (!token) continue;
-
-    const envKey = DIRECT_ACCOUNT_PROVIDER_ENV[providerId];
-    process.env[envKey] = token;
-    if (activeProvider === providerId) {
-      activeProviderToken = token;
-    }
-    if (providerId === "zai-api") {
-      process.env.Z_AI_API_KEY ??= token;
-    }
-
-    const openAiCompatibleBase =
-      activeProvider === providerId
-        ? OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER[providerId]
-        : undefined;
-    if (openAiCompatibleBase) {
-      process.env.OPENAI_API_KEY = token;
-      process.env.OPENAI_BASE_URL = openAiCompatibleBase;
-    }
-  }
-
-  if (activeProvider && !activeProviderToken) {
-    const envKey = DIRECT_ACCOUNT_PROVIDER_ENV[activeProvider];
-    activeProviderToken = process.env[envKey]?.trim() || null;
-    if (!activeProviderToken && activeProvider === "zai-api") {
-      activeProviderToken = process.env.Z_AI_API_KEY?.trim() || null;
-    }
-    if (!activeProviderToken && activeProvider === "moonshot-api") {
-      activeProviderToken = process.env.KIMI_API_KEY?.trim() || null;
-    }
-    const openAiCompatibleBase = activeProviderToken
-      ? OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER[activeProvider]
-      : undefined;
-    const token = activeProviderToken;
-    if (openAiCompatibleBase && token) {
-      process.env.OPENAI_API_KEY = token;
-      process.env.OPENAI_BASE_URL = openAiCompatibleBase;
-    }
-  }
+  await applyDirectProviderCredentialsToEnv(opts.activeBackend, {
+    pool: getDefaultAccountPool(),
+    listAccounts: (providerId) => listProviderAccounts(providerId),
+    getToken: (providerId, accountId) =>
+      getAccountAccessToken(providerId, accountId, {
+        storagePolicy: defaultRuntimeStoragePolicy(),
+      }),
+    env: process.env,
+    ledger: defaultDirectProviderEnvLedger,
+  });
 }
 
 export interface AccountPoolKeepAliveResult {
@@ -1699,12 +1887,9 @@ export async function sweepAccountPoolKeepAlive(
       const token = outcome.accessToken;
 
       if (!isSubscriptionProvider(providerId)) {
-        // Direct-API providers have no usage probe, but a successful token
-        // resolve proves the credential works — clear any stale needs-reauth /
-        // invalid flag so a transient earlier failure doesn't strand the account
-        // out of rotation (filterEligible only re-admits OK + reset rate-limits,
-        // and refreshUsage — the only other path to `ok` — skips direct APIs).
-        await pool.markHealthy(record.id, { providerId });
+        // Reading a locally stored API key proves only that storage is intact.
+        // Provider-observed 401/429 health remains authoritative until the
+        // explicit authenticated probe route records a successful response.
         continue;
       }
 
@@ -1847,6 +2032,10 @@ function installAnthropicBridge(pool: AccountPool): void {
 
 export function resetDefaultAccountPoolAfterCredentialReset(): void {
   stopAccountPoolKeepAliveForTests();
+  retractAllExportedDirectProviderEnv(
+    process.env,
+    defaultDirectProviderEnvLedger,
+  );
   cachedDefaultPool = null;
   cachedRuntimeStoragePolicy = null;
 }

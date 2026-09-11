@@ -1,8 +1,10 @@
 /**
  * Unit tests for the non-destructive `app_lifeops` → `app_goals` table copy,
  * driven by a scripted in-memory `SqlExecutor` (no real database): asserts the
- * skip-when-source-missing / skip-when-target-non-empty / copy paths.
+ * source-missing, populated-target reconciliation, copy, and collision paths.
  */
+
+import type { CarveOutDatabase } from "@elizaos/plugin-sql";
 import { describe, expect, it } from "vitest";
 import {
   MIGRATED_GOAL_TABLES,
@@ -18,11 +20,31 @@ function fakeExec(
 ): SqlExecutor {
   return async (sql: string) => {
     log?.push(sql);
+    if (sql.includes("carve-out:claim")) {
+      return [{ holder_token: [...sql.matchAll(/'([^']+)'/g)][1]?.[1] }];
+    }
+    if (sql.includes("carve-out:complete")) return [{ migration_key: "done" }];
     for (const [re, rows] of responses) {
       if (re.test(sql)) return rows;
     }
+    if (sql.includes("carve-out:verify-projection")) {
+      return [
+        {
+          missing_count: "0",
+          conflict_count: "0",
+          source_null_key_count: "0",
+          target_null_key_count: "0",
+          source_duplicate_key_count: "0",
+          target_duplicate_key_count: "0",
+        },
+      ];
+    }
     return [];
   };
+}
+
+function transactionDatabase(exec: SqlExecutor): CarveOutDatabase {
+  return { execute: exec, transaction: (operation) => operation(exec) };
 }
 
 describe("GoalsMigration", () => {
@@ -32,7 +54,7 @@ describe("GoalsMigration", () => {
     expect(r.outcome).toBe("source-missing");
   });
 
-  it("skips when the target table is non-empty", async () => {
+  it("preserves ownership when the target table is non-empty", async () => {
     const exec = fakeExec([
       [/to_regclass/, [{ present: true }]],
       [/NOT EXISTS/, [{ empty: false }]],
@@ -70,7 +92,7 @@ describe("GoalsMigration", () => {
       ],
       log,
     );
-    const results = await migrateGoalTables(exec);
+    const results = await migrateGoalTables(transactionDatabase(exec));
     expect(results.map((r) => r.table)).toEqual([...MIGRATED_GOAL_TABLES]);
     expect(
       log.some((s) => /CREATE SCHEMA IF NOT EXISTS app_goals/.test(s)),

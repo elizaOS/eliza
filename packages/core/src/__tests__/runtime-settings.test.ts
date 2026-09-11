@@ -107,6 +107,22 @@ describe("AgentRuntime.getSetting", () => {
 		expect(runtime.getSetting("DISCORD_APPLICATION_ID")).toBeNull();
 	});
 
+	it("replaces and revokes a boot-copied nested secret", () => {
+		const runtime = new AgentRuntime({
+			character: {
+				name: "nested-secret-live-update-test",
+				settings: { secrets: { OPENROUTER_API_KEY: "token-a" } },
+			} as Character,
+			settings: { OPENROUTER_API_KEY: "token-a" },
+		});
+
+		expect(runtime.getSetting("OPENROUTER_API_KEY")).toBe("token-a");
+		runtime.setSetting("OPENROUTER_API_KEY", "token-b", true);
+		expect(runtime.getSetting("OPENROUTER_API_KEY")).toBe("token-b");
+		runtime.setSetting("OPENROUTER_API_KEY", null, true);
+		expect(runtime.getSetting("OPENROUTER_API_KEY")).toBeNull();
+	});
+
 	it("uses fresh constructor settings over DB-persisted agent settings on restart", async () => {
 		const adapter = new InMemoryDatabaseAdapter();
 		const characterName = "runtime-settings-restart-test";

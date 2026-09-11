@@ -6,6 +6,7 @@ import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   listGoogleChatAccountIds,
+  normalizeGoogleChatAccountId,
   readGoogleChatAccountId,
   resolveDefaultGoogleChatAccountId,
   resolveGoogleChatAccountSettings,
@@ -23,6 +24,12 @@ function runtime(
 }
 
 describe("Google Chat account config", () => {
+  it("preserves case-sensitive account IDs while sharing default selection", () => {
+    const rt = runtime({}, { googleChat: { accounts: { TeamBot: { enabled: true } } } });
+    expect(normalizeGoogleChatAccountId(" TeamBot ")).toBe("TeamBot");
+    expect(resolveDefaultGoogleChatAccountId(rt)).toBe("TeamBot");
+  });
+
   it("does not fabricate a default account when Google Chat is unconfigured", () => {
     const rt = runtime();
 

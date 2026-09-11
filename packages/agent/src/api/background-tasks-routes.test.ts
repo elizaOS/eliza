@@ -59,8 +59,9 @@ describe("handleBackgroundTasksRoute", () => {
           resolveRun = resolve;
         }),
     );
+    const service = { runDueTasks };
     const runtime = {
-      getService: vi.fn(() => ({ runDueTasks })),
+      getService: vi.fn(() => service),
     };
     const first = makeCtx("POST", "/api/background/run-due-tasks", runtime);
     const second = makeCtx("POST", "/api/background/run-due-tasks", runtime);

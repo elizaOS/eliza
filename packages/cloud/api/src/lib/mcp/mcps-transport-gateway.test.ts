@@ -2,8 +2,8 @@
  * Deterministic unit coverage for the Workers MCP transport gateway.
  * Drives `createMcpsTransportApp` through real JSON-RPC and routing branches.
  * Auth, upstream proxy, and DoorDash browser calls are protocol-faithful
- * collaborators because those modules do not resolve under the root Vitest
- * alias map; kill-switch policy is the real catalog module. Network I/O for
+ * collaborators installed through Bun's package test runner; kill-switch
+ * policy is the real catalog module. Network I/O for
  * weather and crypto is a fetch stub that returns provider payloads — the
  * assertions cover the gateway's wrapping, not the stub's return value.
  */
@@ -39,7 +39,6 @@ mock.module(
   "@/api-app/lib/mcp/integration-catalog",
   () => realIntegrationCatalog,
 );
-
 mock.module("@/lib/mcp/mcp-upstream-forward", () => ({
   forwardMcpUpstreamRequest: async (
     _request: Request,

@@ -15,7 +15,7 @@ Required settings come from the generated first-party registry metadata.
 
 | Connector key | Plugin package | Required setting |
 | --- | --- | --- |
-| `blooio` | `@elizaos/plugin-imessage` | `IMESSAGE_BLOOIO_API_KEY` |
+| `blooio` | `@elizaos/plugin-imessage` | `IMESSAGE_BLOOIO_API_KEY`, `IMESSAGE_BLOOIO_WEBHOOK_SECRET`, `IMESSAGE_BLOOIO_FROM_NUMBER`, `IMESSAGE_BLOOIO_CHANNEL_ID` |
 | `discord` | `@elizaos/plugin-discord` | `DISCORD_API_TOKEN` |
 | `discordLocal` | `@elizaos/plugin-discord` | See the plugin's local-account setup |
 | `googlechat` | `@elizaos/plugin-google-workspace` | Google OAuth credentials |
@@ -56,6 +56,54 @@ Do not commit connector tokens. The config file may contain secrets and should
 remain owner-readable only; environment variables or the app's credential UI
 are preferable for shared projects.
 </Warning>
+
+## iMessage: native or Blooio
+
+`@elizaos/plugin-imessage` has two distinct transports. Native mode reads the
+local Messages database and sends through Messages.app, so it requires macOS,
+an active iMessage account, Full Disk Access for message history, and Automation
+permission for sending. Select it with an `imessage` connector entry:
+
+```json5
+// ~/.local/state/eliza/eliza.json
+{
+  connectors: {
+    imessage: { enabled: true },
+  },
+  env: {
+    vars: {
+      IMESSAGE_TRANSPORT: "native",
+    },
+  },
+}
+```
+
+Blooio mode is the hosted alternative and does not use Messages.app or
+`chat.db`. Select the plugin with a `blooio` connector entry and provide the
+complete Blooio transport contract through the credential UI or `env.vars`:
+
+```json5
+// ~/.local/state/eliza/eliza.json
+{
+  connectors: {
+    blooio: { enabled: true },
+  },
+  env: {
+    vars: {
+      IMESSAGE_TRANSPORT: "blooio",
+      IMESSAGE_BLOOIO_API_KEY: "<api-key>",
+      IMESSAGE_BLOOIO_WEBHOOK_SECRET: "<webhook-signing-secret>",
+      IMESSAGE_BLOOIO_FROM_NUMBER: "+15551234567",
+      IMESSAGE_BLOOIO_CHANNEL_ID: "<channel-id>",
+    },
+  },
+}
+```
+
+Configure Blooio to deliver signed webhooks to
+`/api/imessage/webhook/blooio` on the agent's public origin. The configured
+channel ID must exactly match the inbound webhook channel; the plugin rejects
+unsigned deliveries and deliveries for any other channel.
 
 ## Find every supported field
 

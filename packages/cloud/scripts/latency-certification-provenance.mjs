@@ -1,5 +1,5 @@
 /**
- * Binds a trusted develop verifier to a served ancestor without checking out
+ * Binds a trusted staging verifier to a served ancestor without checking out
  * older code. Changed verifier contracts require an exact operator acknowledgement;
  * source and deployment identities remain distinct throughout the evidence.
  */
@@ -40,12 +40,12 @@ export async function verifyCertificationSource(
   { cwd = process.cwd() } = {},
 ) {
   if (
-    sourceRef !== "refs/heads/develop" ||
+    sourceRef !== "refs/heads/staging" ||
     !SHA.test(sourceSha) ||
     !SHA.test(deploySha)
   ) {
     throw new Error(
-      "Certification requires trusted develop source and exact commit identities",
+      "Certification requires trusted staging source and exact commit identities",
     );
   }
   if (

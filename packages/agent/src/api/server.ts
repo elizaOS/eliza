@@ -2265,7 +2265,7 @@ async function handleRequest(
       readJsonBody,
       json,
       error,
-      state: { config: state.config },
+      state: { config: state.config, runtime: state.runtime },
       saveConfig: saveElizaConfig,
     })
   ) {
@@ -3987,14 +3987,7 @@ export async function startApiServer(opts?: {
     ["system", "plugins"],
   );
 
-  if (!opts?.skipDeferredStartupWork) {
-    void getOrFetchAllProviders().catch((err) => {
-      // error-policy:J7 Background catalog discovery must not stop the API host.
-      logger.warn("[api] Provider cache warm-up failed:", err);
-      if (opts?.runtime)
-        opts.runtime.reportError("api.providerCacheWarmup", err);
-    });
-  }
+  let providerCacheWarmupPromise: Promise<void> | null = null;
 
   let detachApiLogListener: (() => void) | null = null;
   const captureStructuredLog = (entry: LogEntry): void => {
@@ -4206,6 +4199,15 @@ export async function startApiServer(opts?: {
   // ── Deferred startup work (non-blocking) ────────────────────────────────
   // Keep API startup fast: listen first, then warm optional subsystems.
   const startDeferredStartupWork = async (): Promise<void> => {
+    providerCacheWarmupPromise ??= getOrFetchAllProviders()
+      .then(() => undefined)
+      .catch((err) => {
+        // error-policy:J7 Background catalog discovery must not stop the API host.
+        logger.warn("[api] Provider cache warm-up failed:", err);
+        if (opts?.runtime)
+          opts.runtime.reportError("api.providerCacheWarmup", err);
+      });
+
     void registerBuiltinViews(state.runtime).catch((err) => {
       logger.warn(
         `[eliza-api] Built-in view registration failed after listen: ${
@@ -5319,6 +5321,12 @@ export async function startApiServer(opts?: {
       dispose: () => {
         state.connectorHealthMonitor?.stop();
         state.connectorHealthMonitor = null;
+      },
+    },
+    {
+      name: "provider model cache warm-up",
+      dispose: async () => {
+        await providerCacheWarmupPromise;
       },
     },
     {

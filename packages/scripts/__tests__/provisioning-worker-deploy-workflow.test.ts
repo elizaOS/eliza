@@ -8,7 +8,7 @@ const workflow = readFileSync(
   "utf8",
 );
 const effectRegistry = readFileSync(
-  join(root, ".github/develop-effects.json"),
+  join(root, ".github/staging-effects.json"),
   "utf8",
 );
 const surfaceGraph = readFileSync(
@@ -72,22 +72,18 @@ describe("provisioning worker deployment contract", () => {
   it("uses hosted deployment capacity unless the Hetzner fleet is explicitly healthy", () => {
     const selector =
       "runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && " +
-      "'[\"ubuntu-24.04\"]' || '[\"self-hosted\",\"hetzner-robot\"]') }}";
-    expect(
-      workflow.split(selector),
-    ).toHaveLength(3);
+      '\'["ubuntu-24.04"]\' || \'["self-hosted","hetzner-robot"]\') }}';
+    expect(workflow.split(selector)).toHaveLength(3);
     expect(
       workflow.match(/^\s+runs-on: \[self-hosted, Linux, X64\]$/gm) ?? [],
     ).toHaveLength(0);
-    expect(
-      workflow.match(/HETZNER_FLEET_ONLINE/g),
-    ).toHaveLength(2);
+    expect(workflow.match(/HETZNER_FLEET_ONLINE/g)).toHaveLength(2);
   });
 
   it("resolves one immutable SHA and deploys exactly that snapshot", () => {
     expect(workflow).toContain('deployment_sha="$PUSH_SHA"');
     expect(workflow).toContain(
-      '"repos/$' + '{GITHUB_REPOSITORY}/git/ref/heads/$' + '{BRANCH}"',
+      '"repos/$' + "{GITHUB_REPOSITORY}/git/ref/heads/$" + '{BRANCH}"',
     );
     expect(workflow).not.toContain(
       'git ls-remote "https://github.com/$' + '{GITHUB_REPOSITORY}.git"',
@@ -112,10 +108,12 @@ describe("provisioning worker deployment contract", () => {
   it("permits an auditable exact commit only through protected staging dispatch", () => {
     expect(workflow).toContain("deployment_sha:");
     expect(workflow).toContain('elif [ -n "$REQUESTED_SHA" ]; then');
-    expect(workflow).toContain('[ "$TARGET_ENVIRONMENT" = "staging" ] || {');
+    expect(workflow).toContain(
+      '[ "$TARGET_ENVIRONMENT" = "staging" ] || [ -n "$EFFECT_DIGEST" ] || {',
+    );
     expect(workflow).toContain('[[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]] || {');
     expect(workflow).toContain(
-      '"repos/$' + '{GITHUB_REPOSITORY}/commits/$' + '{REQUESTED_SHA}"',
+      '"repos/$' + "{GITHUB_REPOSITORY}/commits/$" + '{REQUESTED_SHA}"',
     );
     expect(workflow).toContain("GH_TOKEN: $" + "{{ github.token }}");
     expect(workflow).toContain('[ "$deployment_sha" = "$REQUESTED_SHA" ] || {');
@@ -197,6 +195,7 @@ describe("provisioning worker deployment contract", () => {
 
   it("scopes protected values away from checkout, setup, and install actions", () => {
     const secretNames = [
+      "GITHUB_TOKEN",
       "DEPLOY_HOST",
       "DEPLOY_SSH_KEY",
       "HEADSCALE_API_KEY",
@@ -232,6 +231,7 @@ describe("provisioning worker deployment contract", () => {
 
     const migration = deployStep("Run exact-SHA canonical database migrations");
     expect(Object.keys(migration.env ?? {})).toEqual([
+      "GITHUB_TOKEN",
       "DATABASE_URL",
       "DATABASE_IDENTITY_GATE_MODE",
       "DATABASE_IDENTITY_ENVIRONMENT",
@@ -311,9 +311,9 @@ describe("provisioning worker deployment contract", () => {
       ["Setup Node for migration gate", 5],
       ["Setup Bun for migration gate", 5],
       ["Install exact migration dependencies", 10],
-      ["Fence current develop SHA before database mutation", 1],
+      ["Fence current branch SHA before database mutation", 1],
       ["Run exact-SHA canonical database migrations", 10],
-      ["Recheck current develop SHA before host deployment", 1],
+      ["Recheck current branch SHA before host deployment", 1],
       ["Prepare exact incremental source bundle", 5],
       ["Transfer exact incremental source bundle", 5],
     ]);
@@ -363,7 +363,11 @@ describe("provisioning worker deployment contract", () => {
     expect(workflow).toContain("git reset --hard HEAD\n");
     expect(workflow).not.toContain("git reset --hard HEAD 2>/dev/null || true");
     expect(effectRegistry).toContain('"id": "provisioning-worker-staging"');
-    expect(effectRegistry).toContain('"surfaces": ["canonical", "cloud"]');
+    expect(
+      JSON.parse(effectRegistry).effects.find(
+        (effect: { id: string }) => effect.id === "provisioning-worker-staging",
+      ).surfaces,
+    ).toEqual(["canonical", "cloud"]);
     expect(surfaceGraph).toContain('"packages/shared"');
   });
 
@@ -409,9 +413,7 @@ describe("provisioning worker deployment contract", () => {
     );
     expect(script).not.toContain("x-access-token");
     expect(script).not.toContain("github.token");
-    expect(workflow).toContain(
-      'if [ "$deployed_sha" = "$DEPLOY_SHA" ]; then',
-    );
+    expect(workflow).toContain('if [ "$deployed_sha" = "$DEPLOY_SHA" ]; then');
   });
 
   it("regenerates before deploy and self-heals every service", () => {
