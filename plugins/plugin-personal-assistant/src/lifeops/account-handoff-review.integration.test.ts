@@ -228,12 +228,10 @@ it("requires old-account and unbound email approvals in review and rechecks newl
   ).rejects.toMatchObject({
     code: "ACCOUNT_HANDOFF_APPROVAL_REVIEW_INCOMPLETE",
   });
-  let state = await p
-    .service()
-    .create({
-      ...p.choices,
-      retireApprovalIds: [old.id, legacy.id, unboundCalendar.id],
-    });
+  let state = await p.service().create({
+    ...p.choices,
+    retireApprovalIds: [old.id, legacy.id, unboundCalendar.id],
+  });
   const late = await enqueue(p.f.review.previous.grantId);
   const admission = new AccountHandoffAdmission(
     host.runtime,
