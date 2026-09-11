@@ -128,12 +128,13 @@ export function collectCalendarClaims(
           entry.calendarId === source.calendarId,
       ),
     );
+    const shareSchool = school?.packetVisibility === "guest_shareable";
     return {
       claimId: key,
       stableKey: key,
       section: school ? "school" : "custody_calendar",
-      statement: event.title,
-      visibility: "owner_only",
+      statement: shareSchool ? school.event.title : event.title,
+      visibility: shareSchool ? "guest_shareable" : "owner_only",
       provenance: [
         ...events.map((entry) => ({
           source: "calendar" as const,
@@ -152,7 +153,16 @@ export function collectCalendarClaims(
             ]
           : []),
       ],
-      dates: dates(event),
+      dates: dates(
+        shareSchool
+          ? {
+              ...event,
+              isAllDay: true,
+              startAt: `${school.event.startDate}T00:00:00.000Z`,
+              endAt: `${school.event.endDateExclusive}T00:00:00.000Z`,
+            }
+          : event,
+      ),
       requests: [],
       urgency: null,
       commitments: [],

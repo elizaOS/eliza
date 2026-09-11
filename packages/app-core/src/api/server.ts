@@ -48,6 +48,7 @@ import {
 import { isDevCloudConfigAuthorityView } from "@elizaos/agent/config/dev-cloud-env-authority";
 import { getDeferredBootStatus } from "@elizaos/agent/runtime/deferred-boot-status";
 import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/account-storage";
+import { DIRECT_ACCOUNT_PROVIDER_ENV } from "@elizaos/auth/types";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
 import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
@@ -818,13 +819,25 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
         logger.info(
           "[eliza][reset] Skipping loopback API cleanup; runtime stop plus PGlite data-dir removal clears conversations, knowledge, and trajectories without re-entering the HTTP server.",
         );
-        await clearCompatPgliteDataDir(state.current, config);
+        const runtimeBeforeReset = state.current;
+        await clearCompatPgliteDataDir(runtimeBeforeReset, config);
         state.current = null;
         clearPersistedFirstRunConfig(
           config,
           createRuntimeAccountStoragePolicy(resolveStateDir()),
         );
         resetDefaultAccountPoolAfterCredentialReset();
+        if (runtimeBeforeReset) {
+          for (const key of new Set([
+            ...Object.values(DIRECT_ACCOUNT_PROVIDER_ENV),
+            "Z_AI_API_KEY",
+            "KIMI_API_KEY",
+            "OPENAI_API_KEY",
+          ])) {
+            runtimeBeforeReset.setSetting(key, null, true);
+          }
+          runtimeBeforeReset.setSetting("OPENAI_BASE_URL", null);
+        }
         saveElizaConfig(config);
         clearCloudSecrets();
         await deleteWalletSecretsFromOsStore();

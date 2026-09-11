@@ -77,6 +77,48 @@ const remote = () =>
   });
 
 describe("calendar facts in monthly family packets", () => {
+  it("shares only opted-in imported school facts, preserving private calendar edits", () => {
+    const privateEvent = event("school-local", {
+      title: "Private custody discussion",
+      description: "Private note",
+      startAt: "2026-10-15T00:00:00.000Z",
+      endAt: "2026-10-16T00:00:00.000Z",
+    });
+    const source = {
+      sourceId: "district",
+      grantId: privateEvent.grantId,
+      calendarId: privateEvent.calendarId,
+      providerEventId: privateEvent.externalId,
+      event: {
+        eventKey: "closure",
+        title: "School closed",
+        startDate: "2026-10-12",
+        endDateExclusive: "2026-10-13",
+      },
+    };
+    const shared = collectCalendarClaims(
+      feed([privateEvent]),
+      [],
+      [{ ...source, packetVisibility: "guest_shareable" }],
+    );
+    expect(shared[0]).toMatchObject({
+      statement: "School closed",
+      dates: ["2026-10-12"],
+      visibility: "guest_shareable",
+    });
+    expect(JSON.stringify(shared)).not.toContain("Private custody discussion");
+    expect(JSON.stringify(shared)).not.toContain("Private note");
+    const unreviewed = collectCalendarClaims(
+      feed([privateEvent]),
+      [],
+      [source],
+    );
+    expect(unreviewed[0]).toMatchObject({
+      statement: "Private custody discussion",
+      dates: ["2026-10-15"],
+      visibility: "owner_only",
+    });
+  });
   it.each([
     { startAt: "2026-02-30T00:00:00Z", endAt: "2026-03-03T00:00:00Z" },
     { startAt: "not-a-date", endAt: "2026-03-03T00:00:00Z" },

@@ -7,11 +7,13 @@
 import { createHash } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime } from "@elizaos/core";
+import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ApprovalEnqueueInput,
   ApprovalRequest,
 } from "../approval-queue.types.js";
+import { collectCalendarClaims } from "../family-workflows/calendar-claims.js";
 import type { RawSqlQuery } from "../sql.js";
 import {
   type FamilyPacketClaim,
@@ -139,6 +141,67 @@ describe("MonthlyFamilyPacketService with real PGlite", () => {
   });
 
   afterEach(async () => db.close());
+
+  it("includes opted-in school source facts in the external draft without sharing private calendar edits", async () => {
+    const event: LifeOpsCalendarEvent = {
+      id: "school-local",
+      externalId: "school-local",
+      agentId: "agent-a",
+      provider: "eliza",
+      side: "owner",
+      calendarId: "primary",
+      grantId: "eliza-calendar",
+      title: "Private custody discussion",
+      description: "Private school note",
+      location: "Private address",
+      status: "confirmed",
+      startAt: "2026-09-15T00:00:00.000Z",
+      endAt: "2026-09-16T00:00:00.000Z",
+      isAllDay: true,
+      timezone: "America/New_York",
+      htmlLink: null,
+      conferenceLink: null,
+      organizer: null,
+      attendees: [],
+      metadata: {},
+      syncedAt: "2026-08-30T12:00:00.000Z",
+      updatedAt: "2026-08-30T12:00:00.000Z",
+    };
+    const claims = collectCalendarClaims(
+      {
+        calendarId: "all",
+        events: [event],
+        state: "complete",
+        source: "synced",
+        sources: [],
+        timeMin: "2026-09-01T00:00:00.000Z",
+        timeMax: "2026-10-01T00:00:00.000Z",
+        syncedAt: "2026-08-30T12:00:00.000Z",
+      },
+      [],
+      [
+        {
+          sourceId: "public-district",
+          grantId: event.grantId,
+          calendarId: event.calendarId,
+          providerEventId: event.externalId,
+          packetVisibility: "guest_shareable",
+          event: {
+            eventKey: "labor-day",
+            title: "School closed for Labor Day",
+            startDate: "2026-09-07",
+            endDateExclusive: "2026-09-08",
+          },
+        },
+      ],
+    );
+    const packet = await service.buildInternal(period("2026-09"), claims);
+    const draft = await service.createExternalDraft(packet, guestDraft);
+    expect(draft.body).toContain("School closed for Labor Day");
+    expect(draft.body).toContain("2026-09-07");
+    expect(draft.body).not.toContain("Private");
+    expect(draft.body).not.toContain("2026-09-15");
+  });
 
   it("deduplicates simultaneous packet generation and retains both concurrent draft requests", async () => {
     const peer = new MonthlyFamilyPacketService(runtime);
