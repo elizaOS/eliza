@@ -194,6 +194,17 @@ export const handoffReadSourceReviewSchema = z
       sources.length,
   );
 
+export const handoffRecipientBindingsSchema = z.array(
+  accountHandoffReviewSchema.shape.messageDestinations.element
+    .extend({
+      recipientEntityId: identity,
+      identityPlatform: identity,
+      identityHandle: identity,
+      identityConnectorAccountId: identity,
+    })
+    .strict(),
+);
+
 export class AccountHandoffStore {
   constructor(
     private readonly db: LifeOpsDatabaseContext,
@@ -347,6 +358,39 @@ export class AccountHandoffStore {
       expectedPhase: "verifying_replacement",
       phase: "verifying_replacement",
       receipt: { googleVerification: receipt },
+    });
+  }
+
+  async checkpointRecipientReview(input: {
+    operationId: string;
+    expectedRevision: number;
+    bindings: z.infer<typeof handoffRecipientBindingsSchema>;
+  }): Promise<AccountHandoffRecord> {
+    const bindings = handoffRecipientBindingsSchema.parse(input.bindings);
+    const record = await this.read(input.operationId);
+    if (!record) throw this.conflict();
+    if (
+      record.phase !== "reviewed" ||
+      record.revision !== input.expectedRevision ||
+      bindings.length !== record.review.messageDestinations.length
+    )
+      throw this.conflict();
+    for (const [index, binding] of bindings.entries()) {
+      const destination = record.review.messageDestinations[index];
+      if (
+        !destination ||
+        binding.channel !== destination.channel ||
+        binding.connectorAccountId !== destination.connectorAccountId ||
+        binding.recipientId !== destination.recipientId
+      )
+        throw this.conflict();
+    }
+    return this.writeCheckpoint({
+      operationId: input.operationId,
+      expectedRevision: input.expectedRevision,
+      expectedPhase: "reviewed",
+      phase: "reviewed",
+      receipt: { recipientReview: bindings },
     });
   }
 

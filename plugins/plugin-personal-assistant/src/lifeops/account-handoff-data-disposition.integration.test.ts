@@ -1,6 +1,9 @@
 /** Real PGlite cleanup and checkpoint recovery with deterministic connector operations; no provider account is disconnected or messaged. */
 
-import { ApprovalDispatchControlStore } from "@elizaos/agent";
+import {
+  ApprovalDispatchControlStore,
+  resolveKnowledgeGraphService,
+} from "@elizaos/agent";
 import {
   CalendarService,
   createDefaultCalendarHostGate,
@@ -16,6 +19,7 @@ import { AccountHandoffAdmission } from "./account-handoff-admission.js";
 import { AccountHandoffCalendarMappings } from "./account-handoff-calendar-mappings.js";
 import { AccountHandoffDataDisposition } from "./account-handoff-data-disposition.js";
 import { AccountHandoffDisconnect } from "./account-handoff-disconnect.js";
+import { AccountHandoffRecipients } from "./account-handoff-recipients.js";
 import { AccountHandoffResume } from "./account-handoff-resume.js";
 import { AccountHandoffStore } from "./account-handoff-store.js";
 import { AccountHandoffVerification } from "./account-handoff-verification.js";
@@ -32,6 +36,31 @@ beforeAll(async () => {
 afterAll(async () => {
   await host.cleanup();
 });
+
+async function setRecipient(entityId: string, verified: boolean) {
+  const graph = resolveKnowledgeGraphService(host.runtime);
+  if (!graph) throw new Error("Fixture identity service missing");
+  await graph.getEntityStore(host.runtime.agentId).upsert({
+    entityId,
+    type: "person",
+    preferredName: entityId,
+    identities: [
+      {
+        platform: "email",
+        handle: "self@example.test",
+        connectorAccountId: "default",
+        verified,
+        confidence: 1,
+        addedAt: "2026-09-01T00:00:00Z",
+        addedVia: "user_chat",
+        evidence: ["Synthetic owner confirmation"],
+      },
+    ],
+    tags: [],
+    visibility: "owner_only",
+    state: {},
+  });
+}
 
 async function prepared(
   owner: string,
@@ -91,6 +120,12 @@ async function prepared(
   const store = new AccountHandoffStore(host.runtime, owner);
   const url = new URL("http://localhost");
   let state = await store.review(owner, f.review);
+  await setRecipient(owner, true);
+  state = await new AccountHandoffRecipients(host.runtime, owner).capture(
+    state.operationId,
+    state.revision,
+    [owner],
+  );
   const admission = new AccountHandoffAdmission(
     host.runtime,
     owner,
@@ -380,6 +415,27 @@ describe("handoff imported-data disposition", () => {
     ).toEqual(p.previousSnapshot);
     expect(await p.store.read(p.state.operationId)).toEqual(p.state);
   });
+  it("keeps the old account connected when the reviewed recipient is revoked", async () => {
+    const owner = "disconnect-revoked-recipient-owner";
+    const p = await prepared(owner, true, false);
+    const approval = await new ApprovalDispatchControlStore(host.runtime).read(
+      owner,
+    );
+    const calendar = await p.calendar.getLinkedCalendarControl();
+    const accounts = p.statuses.map(({ grant }) => grant?.id);
+    await setRecipient(owner, false);
+    await expect(
+      p.disconnect().apply(p.state.operationId, p.state.revision),
+    ).rejects.toMatchObject({ code: "ACCOUNT_HANDOFF_RECIPIENT_CHANGED" });
+    expect(p.disconnectCalls).toEqual([]);
+    expect(p.statuses.map(({ grant }) => grant?.id)).toEqual(accounts);
+    expect(
+      await new ApprovalDispatchControlStore(host.runtime).read(owner),
+    ).toEqual(approval);
+    expect(await p.calendar.getLinkedCalendarControl()).toEqual(calendar);
+    expect(await p.store.read(p.state.operationId)).toEqual(p.state);
+  });
+
   it("does not repeat account removal after its checkpoint failed", async () => {
     const p = await prepared("disconnect-retry-owner", true, false);
     const control = await p.calendar.getLinkedCalendarControl();
@@ -440,6 +496,29 @@ describe("handoff imported-data disposition", () => {
     expect(p.disconnectCalls).toEqual([]);
     expect(await p.store.read(p.state.operationId)).toEqual(p.state);
   });
+  it("keeps delivery and calendar paused when the reviewed recipient is revoked", async () => {
+    const owner = "revoked-recipient-owner";
+    const p = await prepared(owner, true, true, true);
+    const ready = await p
+      .service()
+      .apply(p.state.operationId, p.state.revision);
+    const controls = new ApprovalDispatchControlStore(host.runtime);
+    const approval = await controls.read(owner);
+    const calendar = await p.calendar.getLinkedCalendarControl();
+    await setRecipient(owner, false);
+    await setRecipient("same-handle-other-entity", true);
+    await expect(
+      p.resume().apply(ready.operationId, ready.revision),
+    ).rejects.toMatchObject({ code: "ACCOUNT_HANDOFF_RECIPIENT_CHANGED" });
+    expect(await controls.read(owner)).toEqual(approval);
+    expect(await p.calendar.getLinkedCalendarControl()).toEqual(calendar);
+    expect(await p.store.read(ready.operationId)).toEqual(ready);
+    await setRecipient(owner, true);
+    expect(
+      (await p.resume().apply(ready.operationId, ready.revision)).phase,
+    ).toBe("completed");
+  });
+
   it("recovers a released approval pause after the completion checkpoint failed", async () => {
     const p = await prepared("resume-retry-owner");
     const ready = await p

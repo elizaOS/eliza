@@ -11,6 +11,7 @@ import type { IGoogleWorkspaceService } from "@elizaos/plugin-google-workspace";
 import { z } from "zod";
 import { verifyAccountHandoffGoogle } from "./account-handoff-google-verification.js";
 import { verifyAccountHandoffReadSources } from "./account-handoff-read-sources.js";
+import { AccountHandoffRecipients } from "./account-handoff-recipients.js";
 import {
   type AccountHandoffRecord,
   AccountHandoffStore,
@@ -117,6 +118,10 @@ export class AccountHandoffDisconnect {
       record.review,
     );
     await assertPaused();
+    await new AccountHandoffRecipients(this.runtime, this.ownerEntityId).verify(
+      operationId,
+      expectedRevision,
+    );
     if (old) {
       await this.accounts.disconnectGoogleConnector(
         {

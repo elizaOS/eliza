@@ -12,6 +12,7 @@ import { z } from "zod";
 import { verifyAccountHandoffGoogle } from "./account-handoff-google-verification.js";
 import { accountHandoffOperationKey } from "./account-handoff-operation-key.js";
 import { verifyAccountHandoffReadSources } from "./account-handoff-read-sources.js";
+import { AccountHandoffRecipients } from "./account-handoff-recipients.js";
 import {
   type AccountHandoffRecord,
   AccountHandoffStore,
@@ -135,6 +136,10 @@ export class AccountHandoffResume {
       record.review,
     );
     await assertApprovalOwnership();
+    await new AccountHandoffRecipients(this.runtime, this.ownerEntityId).verify(
+      operationId,
+      expectedRevision,
+    );
     const current = await this.calendar.getLinkedCalendarControl();
     const selected = record.review.writeCalendar;
     if (
