@@ -23,6 +23,7 @@ const reminderFixture = vi.hoisted(() => ({
   attempts: [{ id: "attempt-1", status: "sent" }],
 }));
 const processRemindersMock = vi.hoisted(() => vi.fn());
+const serviceOwnerContexts = vi.hoisted(() => [] as Array<string | undefined>);
 const householdFixture = vi.hoisted(() => ({
   reconcileGrantExpiryWarnings: vi.fn(async () => [
     {
@@ -50,12 +51,27 @@ vi.mock("./scheduler-task.js", () => ({
   resolveLifeOpsTaskIntervalMs: vi.fn(() => 60_000),
 }));
 
+vi.mock("./scheduled-task/scheduler.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./scheduled-task/scheduler.js")>()),
+  processDueScheduledTasks: vi.fn(async () => ({
+    completions: [],
+    fires: [],
+    completionTimeouts: [],
+    pendingPrompts: [],
+    errors: [],
+  })),
+}));
+
 vi.mock("./app-state.js", () => ({
   loadLifeOpsAppState: vi.fn(async () => ({ enabled: true })),
 }));
 
 vi.mock("./service.js", () => ({
   LifeOpsService: class {
+    constructor(_runtime: IAgentRuntime, options?: { ownerEntityId?: string }) {
+      serviceOwnerContexts.push(options?.ownerEntityId);
+    }
+
     async processReminders(options: { now?: string; limit?: number }) {
       return processRemindersMock(options);
     }
@@ -73,6 +89,13 @@ vi.mock("./intent-sync.js", () => ({
 vi.mock("./household/service.js", () => ({
   createHouseholdCoordinationService: vi.fn(() => householdFixture),
   getHouseholdCoordinationService: vi.fn(() => householdFixture),
+}));
+
+vi.mock("@elizaos/agent", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/agent")>()),
+  resolveOwnerEntityId: (
+    await import("../../../../packages/agent/src/runtime/owner-entity.ts")
+  ).resolveOwnerEntityId,
 }));
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000ee" as UUID;
@@ -96,7 +119,89 @@ describe("executeLifeOpsReminderTask", () => {
   });
 });
 
+describe("scheduler owner context", () => {
+  it("uses the configured owner for the scheduled-work and reminder consumers", async () => {
+    const ownerId = "00000000-0000-0000-0000-000000000123";
+    const configuredRuntime = {
+      ...runtime,
+      getSetting: (key: string) =>
+        key === "ELIZA_ADMIN_ENTITY_ID" ? ownerId : undefined,
+    } as unknown as IAgentRuntime;
+    serviceOwnerContexts.length = 0;
+    processRemindersMock.mockResolvedValueOnce(reminderFixture);
+    await executeLifeOpsReminderTask(configuredRuntime);
+    await executeLifeOpsSchedulerTask(configuredRuntime);
+    expect(serviceOwnerContexts).toEqual([ownerId, ownerId]);
+  });
+});
+
 describe("registerLifeOpsTaskWorker", () => {
+  it("rejects incompatible full and selective hosts before replacing the worker", () => {
+    let worker: TaskWorker | undefined;
+    const hostRuntime = {
+      getTaskWorker: () => worker,
+      registerTaskWorker: (registered: TaskWorker) => {
+        worker = registered;
+      },
+    } as unknown as IAgentRuntime;
+    registerLifeOpsTaskWorker(hostRuntime, { mode: "reminders" });
+    const admitted = worker;
+    expect(() => registerLifeOpsTaskWorker(hostRuntime)).toThrow(
+      /either the full assistant/,
+    );
+    expect(worker).toBe(admitted);
+  });
+
+  it("drains admitted reminder work and rejects execution after stop", async () => {
+    let worker: TaskWorker | undefined;
+    const hostRuntime = {
+      ...runtime,
+      getTaskWorker: () => worker,
+      registerTaskWorker: (registered: TaskWorker) => {
+        worker = registered;
+      },
+      unregisterTaskWorker: () => {
+        worker = undefined;
+        return true;
+      },
+    } as unknown as IAgentRuntime;
+    let finish: (result: typeof reminderFixture) => void = () => {
+      throw new Error("not started");
+    };
+    processRemindersMock.mockClear();
+    processRemindersMock.mockImplementationOnce(
+      () =>
+        new Promise<typeof reminderFixture>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const stop = registerLifeOpsTaskWorker(hostRuntime, { mode: "reminders" });
+    const admitted = worker;
+    if (!admitted) throw new Error("expected registered worker");
+    const execution = admitted.execute(
+      hostRuntime,
+      {},
+      { name: "LIFEOPS_SCHEDULER" },
+    );
+    await vi.waitFor(() => expect(processRemindersMock).toHaveBeenCalled());
+    let stopped = false;
+    const stopping = stop().then(() => {
+      stopped = true;
+    });
+    await Promise.resolve();
+    expect(stopped).toBe(false);
+    await expect(
+      admitted.shouldRun?.(hostRuntime, { name: "LIFEOPS_SCHEDULER" }),
+    ).resolves.toBe(false);
+    finish(reminderFixture);
+    await execution;
+    await stopping;
+    expect(worker).toBeUndefined();
+    await expect(
+      admitted.execute(hostRuntime, {}, { name: "LIFEOPS_SCHEDULER" }),
+    ).rejects.toMatchObject({ code: "LIFEOPS_SCHEDULER_INACTIVE" });
+  });
+
   it("keeps the task identity valid without executing when scheduler is disabled", async () => {
     let registered: TaskWorker | undefined;
     const disabledRuntime = {

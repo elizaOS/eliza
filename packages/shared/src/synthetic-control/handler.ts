@@ -1,6 +1,7 @@
 /** Translates authenticated HTTP requests into calls on the owning synthetic-state authority. */
 
 import { createHash, timingSafeEqual } from "node:crypto";
+import { isSyntheticEnvironmentNamespace } from "../contracts/synthetic-environment-lease.js";
 import { parseSyntheticControlRequest, readBoundedJson } from "./codec.js";
 import {
   SYNTHETIC_CONTROL_MAX_REQUEST_BYTES,
@@ -77,10 +78,10 @@ export function createSyntheticControlHandler(
       "synthetic control token must contain at least 16 characters",
     );
   }
-  const namespace = options.namespace.trim();
-  if (namespace.length === 0 || namespace.length > 512) {
+  const namespace = options.namespace;
+  if (!isSyntheticEnvironmentNamespace(namespace)) {
     throw new Error(
-      "synthetic control namespace must contain at most 512 characters",
+      "synthetic control namespace must be canonical, nonempty, and at most 512 characters",
     );
   }
   const expectedTokenHash = createHash("sha256").update(options.token).digest();

@@ -149,6 +149,7 @@ import {
   SCHEDULE_OBSERVATION_LOOKBACK_MS,
 } from "../schedule-state.js";
 import {
+  DEFAULT_SCHEDULED_TASK_PROCESS_LIMIT,
   type ProcessDueScheduledTasksResult,
   processDueScheduledTasks,
 } from "../scheduled-task/scheduler.js";
@@ -248,6 +249,7 @@ import {
   getZonedDateParts,
 } from "../time.js";
 import {
+  callerDefinitionScopes,
   getCallerDefinition,
   getCallerOccurrence,
   getCallerOccurrenceView,
@@ -266,8 +268,6 @@ const LIFEOPS_SCHEDULE_DEVICE_KINDS = [
   "cloud",
   "unknown",
 ] as const;
-
-const DEFAULT_SCHEDULED_TASK_PROCESS_LIMIT = 25;
 
 // Upper bound on a device-timezone-inferred travel window. A device-zone shift
 // is a weak signal (a laptop crossing a border, a VPN, a mislabeled home zone),
@@ -5142,12 +5142,10 @@ export class RemindersDomain {
       return dueAttempts;
     }
 
-    // This is a background scheduler boundary, not a caller-facing read. A
-    // chat-created owner definition may belong to any owner entity under the
-    // agent, so filtering through the service's default synthetic owner would
-    // silently drop real reminders created from another room or connector.
-    const definitions = await this.ctx.repository.listActiveDefinitions(
-      this.ctx.agentId(),
+    const definitions = await listCallerDefinitions(
+      this.ctx.repository,
+      this.ctx,
+      { activeOnly: true },
     );
     for (const definition of definitions) {
       await this.refreshDefinitionOccurrences(definition, now);
@@ -5161,6 +5159,7 @@ export class RemindersDomain {
       await this.ctx.repository.listOccurrenceViewsForOverview(
         this.ctx.agentId(),
         horizon,
+        callerDefinitionScopes(this.ctx),
       )
     ).filter((occurrence) => definitionsById.has(occurrence.definitionId));
     const occurrencePlans =

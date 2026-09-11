@@ -3,10 +3,15 @@
  * agent record and the LifeOps scheduler task exist, and re-exports the
  * scheduler-task helpers callers use to bootstrap the plugin at init.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { resolveOwnerEntityId } from "@elizaos/agent";
+import type { IAgentRuntime, TaskWorker } from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
 import { loadLifeOpsAppState } from "./app-state.js";
 import type { HouseholdGrantExpiryWarningReceipt } from "./household/grant-expiry-warning.js";
+import {
+  DEFAULT_SCHEDULED_TASK_PROCESS_LIMIT,
+  processDueScheduledTasks,
+} from "./scheduled-task/scheduler.js";
 import {
   isMissingLifeOpsRelationError,
   LIFEOPS_TASK_NAME,
@@ -88,7 +93,11 @@ export async function executeLifeOpsSchedulerTask(
       : {}),
   };
 
-  const service = new LifeOpsService(runtime);
+  const ownerEntityId = await resolveOwnerEntityId(runtime);
+  const service = new LifeOpsService(
+    runtime,
+    ownerEntityId ? { ownerEntityId } : {},
+  );
   let scheduledWork: Awaited<
     ReturnType<LifeOpsService["processScheduledWork"]>
   >;
@@ -130,6 +139,14 @@ export async function executeLifeOpsSchedulerTask(
 
   let householdGrantWarningReceipts: HouseholdGrantExpiryWarningReceipt[] = [];
   const subsystemFailures = [...scheduledWork.subsystemFailures];
+  if (!ownerEntityId) {
+    const error = new ElizaError("LifeOps scheduler owner is unavailable", {
+      code: "LIFEOPS_SCHEDULER_OWNER_UNAVAILABLE",
+      context: { agentId: runtime.agentId },
+    });
+    runtime.reportError("LifeOpsScheduler.owner", error);
+    subsystemFailures.push({ subsystem: "owner", error: error.message });
+  }
   try {
     const {
       createHouseholdCoordinationService,
@@ -171,7 +188,14 @@ export async function executeLifeOpsReminderTask(
   runtime: IAgentRuntime,
   options: { now?: string; limit?: number } = {},
 ): Promise<Awaited<ReturnType<LifeOpsService["processReminders"]>>> {
-  const service = new LifeOpsService(runtime);
+  const ownerEntityId = await resolveOwnerEntityId(runtime);
+  if (!ownerEntityId) {
+    throw new ElizaError("Configure an owner before running owner reminders", {
+      code: "LIFEOPS_REMINDER_OWNER_UNAVAILABLE",
+      context: { agentId: runtime.agentId },
+    });
+  }
+  const service = new LifeOpsService(runtime, { ownerEntityId });
   const request = { ...options, scope: "definitions" as const };
   try {
     return await service.processReminders(request);
@@ -189,18 +213,115 @@ export async function executeLifeOpsReminderTask(
   }
 }
 
+async function executeReminderHostTick(
+  runtime: IAgentRuntime,
+  options: Record<string, unknown>,
+) {
+  const now = resolveSchedulerNowIso(options) ?? new Date().toISOString();
+  const limit =
+    options.scheduledTaskLimit ?? DEFAULT_SCHEDULED_TASK_PROCESS_LIMIT;
+  if (typeof limit !== "number" || !Number.isSafeInteger(limit) || limit < 1) {
+    throw new ElizaError("scheduledTaskLimit must be a positive integer", {
+      code: "LIFEOPS_SCHEDULED_TASK_LIMIT_INVALID",
+      context: { agentId: runtime.agentId },
+    });
+  }
+  const reminders = await executeLifeOpsReminderTask(runtime, {
+    now,
+    ...(typeof options.reminderLimit === "number"
+      ? { limit: options.reminderLimit }
+      : {}),
+  });
+  const scheduledTasks = await processDueScheduledTasks({
+    runtime,
+    agentId: runtime.agentId,
+    now: new Date(now),
+    limit,
+  });
+  return {
+    ...reminders,
+    scheduledTasks,
+    nextInterval: resolveLifeOpsTaskIntervalMs(runtime.agentId),
+  };
+}
+
+type LifeOpsWorkerMode = "all" | "reminders";
+const workerModes = new WeakMap<TaskWorker, LifeOpsWorkerMode>();
+const workerStops = new WeakMap<TaskWorker, () => Promise<void>>();
+const hostAdmissions = new WeakMap<
+  IAgentRuntime,
+  { mode: LifeOpsWorkerMode }
+>();
+
+/** Holds host admission across deferred startup and complete disposal. */
+export function reserveLifeOpsSchedulerHost(
+  runtime: IAgentRuntime,
+  mode: LifeOpsWorkerMode,
+): () => void {
+  assertLifeOpsTaskWorkerMode(runtime, mode);
+  if (hostAdmissions.has(runtime)) {
+    throw new ElizaError(
+      "LifeOps scheduler host is still initialized or disposing",
+      {
+        code: "LIFEOPS_SCHEDULER_HOST_CONFLICT",
+        context: { requestedMode: mode, agentId: runtime.agentId },
+      },
+    );
+  }
+  const admission = { mode };
+  hostAdmissions.set(runtime, admission);
+  return () => {
+    if (hostAdmissions.get(runtime) === admission)
+      hostAdmissions.delete(runtime);
+  };
+}
+
+/** Reject incompatible hosts before either changes the runtime's contributions. */
+export function assertLifeOpsTaskWorkerMode(
+  runtime: IAgentRuntime,
+  mode: LifeOpsWorkerMode,
+): void {
+  const existing = runtime.getTaskWorker(LIFEOPS_TASK_NAME);
+  const admission = hostAdmissions.get(runtime);
+  if (
+    (existing && workerModes.get(existing) !== mode) ||
+    (admission && admission.mode !== mode)
+  ) {
+    throw new ElizaError(
+      "Load either the full assistant or its reminder assembly",
+      {
+        code: "LIFEOPS_SCHEDULER_HOST_CONFLICT",
+        context: { requestedMode: mode, agentId: runtime.agentId },
+      },
+    );
+  }
+}
+
 export function registerLifeOpsTaskWorker(
   runtime: IAgentRuntime,
   options: {
     disabled?: boolean;
+    mode?: LifeOpsWorkerMode;
     isWorkflowClaimSchemaReady?: () => boolean;
   } = {},
-): void {
-  if (runtime.getTaskWorker(LIFEOPS_TASK_NAME)) {
-    return;
+): () => Promise<void> {
+  const mode = options.mode ?? "all";
+  assertLifeOpsTaskWorkerMode(runtime, mode);
+  const existing = runtime.getTaskWorker(LIFEOPS_TASK_NAME);
+  if (existing) {
+    const existingStop = workerStops.get(existing);
+    if (!existingStop) {
+      throw new ElizaError("LifeOps scheduler lifecycle is unavailable", {
+        code: "LIFEOPS_SCHEDULER_LIFECYCLE_UNAVAILABLE",
+        context: { mode, agentId: runtime.agentId },
+      });
+    }
+    return existingStop;
   }
+  let stopped = false;
+  const pending = new Set<Promise<unknown>>();
   const disabled = options.disabled === true;
-  runtime.registerTaskWorker({
+  const worker: TaskWorker = {
     name: LIFEOPS_TASK_NAME,
     // Keep the worker identity registered even when the process-level scheduler
     // kill switch is set. Owner-profile writes use the scheduler row as their
@@ -209,7 +330,7 @@ export function registerLifeOpsTaskWorker(
     // TASK_WORKER_MISSING error every second. Returning false preserves the kill
     // switch exactly: the timer still validates the row, but never executes it.
     shouldRun: async (rt) => {
-      if (disabled) return false;
+      if (disabled || stopped) return false;
       if (options.isWorkflowClaimSchemaReady?.() === false) return false;
       try {
         const state = await loadLifeOpsAppState(rt as IAgentRuntime);
@@ -224,6 +345,12 @@ export function registerLifeOpsTaskWorker(
       }
     },
     execute: async (rt, taskOptions) => {
+      if (stopped || disabled) {
+        throw new ElizaError("LifeOps scheduler host is stopped or disabled", {
+          code: "LIFEOPS_SCHEDULER_INACTIVE",
+          context: { agentId: rt.agentId },
+        });
+      }
       if (options.isWorkflowClaimSchemaReady?.() === false) {
         throw new ElizaError(
           "[LifeOpsScheduler] workflow-run claim schema is not ready",
@@ -234,10 +361,28 @@ export function registerLifeOpsTaskWorker(
           },
         );
       }
-      return executeLifeOpsSchedulerTask(
-        rt,
-        isRecord(taskOptions) ? taskOptions : {},
-      );
+      const taskRequest = isRecord(taskOptions) ? taskOptions : {};
+      const execution =
+        mode === "reminders"
+          ? executeReminderHostTick(rt, taskRequest)
+          : executeLifeOpsSchedulerTask(rt, taskRequest);
+      pending.add(execution);
+      try {
+        return await execution;
+      } finally {
+        pending.delete(execution);
+      }
     },
-  });
+  };
+  workerModes.set(worker, mode);
+  runtime.registerTaskWorker(worker);
+  const stop = async () => {
+    stopped = true;
+    await Promise.allSettled([...pending]);
+    if (runtime.getTaskWorker(LIFEOPS_TASK_NAME) === worker) {
+      runtime.unregisterTaskWorker(LIFEOPS_TASK_NAME);
+    }
+  };
+  workerStops.set(worker, stop);
+  return stop;
 }

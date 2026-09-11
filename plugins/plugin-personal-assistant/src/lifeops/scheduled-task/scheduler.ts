@@ -90,6 +90,8 @@ interface NoReplyState {
   terminalOutcome?: string;
 }
 
+export const DEFAULT_SCHEDULED_TASK_PROCESS_LIMIT = 25;
+
 export interface ProcessDueScheduledTasksRequest {
   runtime: IAgentRuntime;
   agentId: string;
