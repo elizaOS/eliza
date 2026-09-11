@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   accountMetaFromSessionMetadata,
   classifyAccountFailure,
+  connectedCodingAccountCount,
   diagnoseCodingAccountFallback,
   getCodingAccountBridge,
   isMultiAccountAgentType,
@@ -22,15 +23,15 @@ function clearBridge() {
 afterEach(clearBridge);
 
 describe("isMultiAccountAgentType", () => {
-  it("is true for pool-rotated coding agents (claude/codex)", () => {
-    for (const t of ["claude", "codex", "CLAUDE", "Codex"]) {
+  it("is true for pool-rotated coding agents (claude/codex/Pi)", () => {
+    for (const t of ["claude", "codex", "pi-agent", "CLAUDE", "Codex"]) {
       expect(isMultiAccountAgentType(t)).toBe(true);
     }
   });
   it("is false for runtime/local agents and providers without a coding CLI", () => {
-    // elizaos/pi-agent authenticate via their own backend; z.ai/kimi/glm have
-    // no first-party coding CLI to spawn.
-    for (const t of ["elizaos", "pi-agent", "zai", "glm", "kimi", ""]) {
+    // elizaos authenticates through its runtime; provider names are not coding
+    // backends even when Pi can consume their selected accounts.
+    for (const t of ["elizaos", "zai", "glm", "kimi", ""]) {
       expect(isMultiAccountAgentType(t)).toBe(false);
     }
   });
@@ -143,6 +144,23 @@ describe("selectCodingAccount", () => {
       }),
     };
     expect(await selectCodingAccount("codex", {})).toBeNull();
+  });
+
+  it("fails closed on a bridge fault when a routed child requires it", async () => {
+    (globalThis as Record<symbol, unknown>)[BRIDGE_SYMBOL] = {
+      describe: () => ({
+        "pi-agent": [
+          { providerId: "deepseek-api", total: 1, enabled: 1, healthy: 1 },
+        ],
+      }),
+      select: vi.fn(async () => {
+        throw new Error("pool exploded");
+      }),
+    };
+    await expect(
+      selectCodingAccount("pi-agent", { failClosedOnError: true }),
+    ).rejects.toMatchObject({ code: "CODING_ACCOUNT_SELECTION_FAILED" });
+    expect(connectedCodingAccountCount("pi-agent")).toBe(1);
   });
 });
 
