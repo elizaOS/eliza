@@ -5,11 +5,60 @@
  * adapter, no model calls.
  */
 import { describe, expect, it } from "vitest";
+import { createCharacter } from "../character";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { AgentRuntime } from "../runtime";
 import type { Character } from "../types";
 
 describe("AgentRuntime.getSetting", () => {
+	it.each([false, true])(
+		"keeps runtime setting writes local (secret=%s)",
+		(secret) => {
+			const first = new AgentRuntime({
+				character: createCharacter({ name: "settings-first" }),
+			});
+			const second = new AgentRuntime({
+				character: createCharacter({ name: "settings-second" }),
+			});
+			const key = "RUNTIME_SETTINGS_LOCAL_TEST";
+			try {
+				first.setSetting(key, "first-value", secret);
+				expect(first.getSetting(key)).toBe("first-value");
+				expect(second.getSetting(key)).toBeNull();
+				const later = new AgentRuntime({
+					character: createCharacter({ name: "settings-later" }),
+				});
+				expect(later.getSetting(key)).toBeNull();
+				second.setSetting(key, "second-value", secret);
+				first.setSetting(key, null, secret);
+				expect(first.getSetting(key)).toBeNull();
+				expect(second.getSetting(key)).toBe("second-value");
+			} finally {
+				first.setSetting(key, null, secret);
+				second.setSetting(key, null, secret);
+			}
+		},
+	);
+
+	it("owns a mutable copy of caller-provided constructor settings", () => {
+		const settings = Object.freeze({ RUNTIME_SETTINGS_COPY_TEST: "initial" });
+		const first = new AgentRuntime({
+			character: createCharacter({ name: "copy-first" }),
+			settings,
+		});
+		const second = new AgentRuntime({
+			character: createCharacter({ name: "copy-second" }),
+			settings,
+		});
+		first.setSetting("RUNTIME_SETTINGS_COPY_TEST", "updated");
+		expect(first.getSetting("RUNTIME_SETTINGS_COPY_TEST")).toBe("updated");
+		expect(second.getSetting("RUNTIME_SETTINGS_COPY_TEST")).toBe("initial");
+		first.setSetting("RUNTIME_SETTINGS_COPY_TEST", null);
+		expect(first.getSetting("RUNTIME_SETTINGS_COPY_TEST")).toBeNull();
+		expect(second.getSetting("RUNTIME_SETTINGS_COPY_TEST")).toBe("initial");
+		expect(settings.RUNTIME_SETTINGS_COPY_TEST).toBe("initial");
+	});
+
 	it("reads primitive character env values as runtime settings", () => {
 		const runtime = new AgentRuntime({
 			character: {
