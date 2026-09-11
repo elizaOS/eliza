@@ -13,6 +13,7 @@ import type { V5MessageRuntimeInput } from "./turn-input.js";
 
 export type { V5MessageRuntimeInput } from "./turn-input.js";
 
+import { DISCOVER_TOOLS_NAME } from "../../actions/to-tool";
 import { ElizaError } from "../../errors";
 import { runShouldRespondInjectionGate } from "../../features/trust/should-respond-risk-gate";
 import { timeInferenceSpan } from "../../inference-timing";
@@ -1064,11 +1065,22 @@ export async function runV5MessageRuntimeStage1(
 						contexts: selectedContexts,
 						deferUnselectedContexts: true,
 					});
+		// Discovery is planner protocol, registered below rather than in
+		// runtime.actions. An explicit request must keep it even when no domain
+		// hint resolved, or when every admitted domain action was selected.
+		const requestsToolDiscovery = stageOneCandidates.some(
+			(name) =>
+				normalizeActionIdentifier(name) ===
+				normalizeActionIdentifier(DISCOVER_TOOLS_NAME),
+		);
 		const progressiveActions =
 			args.codingMode !== true &&
 			!deterministicPlanSelection &&
-			(selectedActionFamilies.length > 0 || verifyReplyWithoutActionHints) &&
-			selectedActionFamilies.length < plannerCandidateActions.length
+			(requestsToolDiscovery ||
+				selectedActionFamilies.length > 0 ||
+				verifyReplyWithoutActionHints) &&
+			(requestsToolDiscovery ||
+				selectedActionFamilies.length < plannerCandidateActions.length)
 				? selectedActionFamilies
 				: undefined;
 		if (progressiveActions) {
