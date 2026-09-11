@@ -14,7 +14,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "vitest";
-import { runOwnedChild } from "../../scripts/live-pi-linked-account.mjs";
+import {
+  runOwnedChild,
+  safeResponseOutcome,
+} from "../../scripts/live-pi-linked-account.mjs";
 
 const script = fileURLToPath(
   new URL("../../scripts/live-pi-linked-account.mjs", import.meta.url),
@@ -335,4 +338,103 @@ test.each(
       await rm(container, { recursive: true, force: true });
     }
   },
+);
+
+test.each([false, true])(
+  "real ACP rejection keeps structured status and excludes sensitive response text (%s)",
+  async (sensitiveResponse) => {
+    const { NativeAcpClient } = await import(
+      "../../src/services/acp-native-transport"
+    );
+    const root = await mkdtemp(path.join(tmpdir(), "pi-outcome-wire-"));
+    const credential = "synthetic-not-a-provider-key";
+    const response = sensitiveResponse
+      ? `untrusted response ${credential}`
+      : "Complete benign response 🌿\nsecond line";
+    const fixture = path.join(root, "provider.mjs");
+    await writeFile(
+      fixture,
+      String.raw`import readline from 'node:readline';
+    for await (const line of readline.createInterface({input:process.stdin})) {
+      const request=JSON.parse(line); if(!request.id) continue;
+      if(request.method==='session/prompt') {
+        process.stdout.write(JSON.stringify({jsonrpc:'2.0',method:'session/update',params:{sessionId:'qa',update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:${JSON.stringify(response)}}}}})+'\n');
+        process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:request.id,error:{code:-32000,message:${JSON.stringify(credential)},data:{status:402,privatePath:${JSON.stringify(root)}}}})+'\n');
+      } else process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:request.id,result:request.method==='initialize'?{protocolVersion:1,agentCapabilities:{}}:{sessionId:'qa',models:{currentModelId:'openrouter/openai/gpt-4.1-mini'}}})+'\n');
+    }`,
+    );
+    let actualResponse = "";
+    let actualPrompt: unknown;
+    let rejection: unknown;
+    const client = new NativeAcpClient({
+      command: `${process.execPath} ${fixture}`,
+      cwd: root,
+      approvalPreset: "readonly",
+      timeoutMs: 5000,
+      expectedModelId: "openrouter/openai/gpt-4.1-mini",
+      env: { PATH: process.env.PATH },
+      onEvent(event) {
+        if (event.method === "session/prompt")
+          actualPrompt = event.params.prompt;
+        const update = event.params?.update;
+        if (update?.sessionUpdate === "agent_message_chunk")
+          actualResponse += update.content.text;
+      },
+    });
+    try {
+      try {
+        await client.start();
+        const session = await client.createSession();
+        await assert.rejects(async () => {
+          try {
+            await client.prompt(
+              session.sessionId,
+              "Complete response-only prompt",
+            );
+          } catch (error) {
+            rejection = error;
+            throw error;
+          }
+        });
+      } finally {
+        await client.close();
+      }
+      const outcome = safeResponseOutcome({
+        result: undefined,
+        response: actualResponse,
+        sentPrompt: actualPrompt,
+        expectedPrompt: "Complete response-only prompt",
+        expectedResponse: "expected",
+        promptResolved: false,
+        modelConfirmed: true,
+        toolCall: false,
+        nativeCleanupClosed: true,
+        error: rejection,
+        credential,
+        privateRoots: [root],
+      });
+      assert.deepEqual(outcome.transportError, {
+        name: "AcpRequestError",
+        httpStatus: 402,
+        jsonRpcCode: -32000,
+      });
+      assert.equal(outcome.promptResolved, false);
+      assert.equal(outcome.promptBytesMatch, true);
+      assert.equal(outcome.nativeCleanupClosed, true);
+      assert.equal(outcome.responseBytes, Buffer.byteLength(response));
+      if (sensitiveResponse) {
+        assert.equal(outcome.response, undefined);
+        assert.equal(
+          outcome.responseOmittedReason,
+          "credential-or-private-path",
+        );
+      } else assert.equal(outcome.response, response);
+      const serialized = JSON.stringify(outcome);
+      assert.ok(!serialized.includes(credential));
+      assert.ok(!serialized.includes(root));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+  10000,
 );

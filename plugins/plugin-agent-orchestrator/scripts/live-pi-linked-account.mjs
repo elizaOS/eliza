@@ -33,6 +33,7 @@ const hash = (value) => createHash("sha256").update(value).digest("hex");
 let phase = "admission";
 let childAdmitted = false;
 let checkoutChanges;
+let responseOutcome;
 const phases = new Set([
   "admission",
   "admission-opt-in",
@@ -54,6 +55,13 @@ const phases = new Set([
   "pi-acp-initialize",
   "pi-selected-model-admission",
   "live-provider-response",
+  "provider-dispatch",
+  "provider-stop-reason",
+  "provider-terminal-failure",
+  "provider-prompt-integrity",
+  "provider-tool-use",
+  "provider-response-integrity",
+
   "native-client-cleanup",
   "owned-process-cleanup",
   "child-execution",
@@ -212,35 +220,60 @@ async function child() {
   });
   let result;
   const failures = [];
+  let promptResolved = false;
+  let nativeCleanupClosed = false;
+  let responseError;
   try {
     phase = "pi-acp-initialize";
     await client.start();
     phase = "pi-selected-model-admission";
     const session = await client.createSession();
     assert.equal(actualModel, `openrouter/${model}`);
-    phase = "live-provider-response";
+    phase = "provider-dispatch";
     result = await client.prompt(session.sessionId, prompt);
+    promptResolved = true;
+    phase = "provider-stop-reason";
     assert.equal(result.stopReason, "end_turn");
+    phase = "provider-terminal-failure";
     assert.equal(result.terminalFailure, undefined);
+    phase = "provider-prompt-integrity";
     assert.deepEqual(sentPrompt, [{ type: "text", text: prompt }]);
+    phase = "provider-tool-use";
     assert.equal(
       toolCall,
       false,
       "Response-only check unexpectedly invoked a tool",
     );
+    phase = "provider-response-integrity";
     assert.equal(response.trim(), marker);
   } catch (error) {
     // error-policy:J2 Preserve response failure through mandatory native cleanup.
+    responseError = error;
     failures.push(error);
   } finally {
     try {
       await client.close();
+      nativeCleanupClosed = true;
     } catch (cleanupError) {
       // error-policy:J2 Both response and cleanup failures remain failures.
       phase = "native-client-cleanup";
       failures.push(cleanupError);
     }
   }
+  responseOutcome = safeResponseOutcome({
+    result,
+    response,
+    sentPrompt,
+    expectedPrompt: prompt,
+    expectedResponse: marker,
+    promptResolved,
+    modelConfirmed: actualModel === `openrouter/${model}`,
+    toolCall,
+    nativeCleanupClosed,
+    error: responseError,
+    credential,
+    privateRoots: [root, process.env.TMPDIR],
+  });
   if (failures.length > 0)
     throw new AggregateError(failures, "Live Pi response or cleanup failed");
   const receipt = {
@@ -395,6 +428,15 @@ async function parent() {
       );
       assert.ok(phases.has(failure.phase));
       phase = failure.phase;
+      if (failure.responseOutcome) {
+        const safe = JSON.stringify(failure.responseOutcome);
+        assert.ok(
+          !safe.includes(credential) &&
+            !safe.includes(root) &&
+            !safe.includes(container),
+        );
+        responseOutcome = failure.responseOutcome;
+      }
       throw new Error(`Live Pi check failed during ${failure.phase}`);
     }
     receipt = JSON.parse(
@@ -417,6 +459,85 @@ async function parent() {
   process.stdout.write(
     "Live Pi linked-account qualification passed; sanitized receipt written.\n",
   );
+}
+
+/** Projects actual prompt outcomes into credential-free diagnostics without raw provider errors. */
+export function safeResponseOutcome(options) {
+  const {
+    result,
+    response,
+    sentPrompt,
+    expectedPrompt,
+    expectedResponse,
+    promptResolved,
+    modelConfirmed,
+    toolCall,
+    nativeCleanupClosed,
+    error,
+    credential,
+    privateRoots,
+  } = options;
+  const knownStopReasons = new Set([
+    "end_turn",
+    "max_tokens",
+    "max_turn_requests",
+    "refusal",
+    "cancelled",
+  ]);
+  const names = new Set([
+    "Error",
+    "AcpRequestError",
+    "AbortError",
+    "TimeoutError",
+    "AssertionError",
+    "TypeError",
+  ]);
+  const errorName = error
+    ? names.has(error.name)
+      ? error.name
+      : "unknown"
+    : undefined;
+  const transportError = error ? { name: errorName } : undefined;
+  if (transportError) {
+    for (const candidate of [
+      error.status,
+      error.statusCode,
+      error.data?.status,
+      error.data?.statusCode,
+    ]) {
+      if (Number.isInteger(candidate) && candidate >= 100 && candidate <= 599) {
+        transportError.httpStatus = candidate;
+        break;
+      }
+    }
+    if (errorName === "AcpRequestError" && Number.isSafeInteger(error.code))
+      transportError.jsonRpcCode = error.code;
+  }
+  const excluded =
+    Boolean(credential && response.includes(credential)) ||
+    privateRoots.some((value) => value && response.includes(value));
+  return {
+    promptResolved,
+    modelConfirmed,
+    stopReason: result
+      ? knownStopReasons.has(result.stopReason)
+        ? result.stopReason
+        : "unknown"
+      : null,
+    terminalFailurePresent: Boolean(result?.terminalFailure),
+    promptBytesMatch:
+      JSON.stringify(sentPrompt) ===
+      JSON.stringify([{ type: "text", text: expectedPrompt }]),
+    toolCallObserved: toolCall,
+    responseMatchesExpected: response.trim() === expectedResponse,
+    responseSha256: hash(response),
+    responseBytes: Buffer.byteLength(response),
+    ...(excluded
+      ? { responseOmittedReason: "credential-or-private-path" }
+      : { response }),
+    nativeCleanupClosed,
+    ...(transportError ? { transportError } : {}),
+  };
 }
 
 /** Owns the Linux process group through natural exit, timeout, and descendant cleanup. */
@@ -515,7 +636,10 @@ if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(script)) {
     if (process.argv.includes("--child") && childAdmitted) {
       await writeFile(
         path.join(process.env.ELIZA_HOME, "failure.json"),
-        JSON.stringify({ phase }),
+        JSON.stringify({
+          phase,
+          ...(responseOutcome ? { responseOutcome } : {}),
+        }),
         { mode: 0o600 },
       );
     }
@@ -530,6 +654,7 @@ if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(script)) {
             status: "failed",
             phase,
             sourceSha: process.env.LIVE_PI_SOURCE_SHA || null,
+            ...(responseOutcome ? { responseOutcome } : {}),
             ...(phase === "admission-clean-checkout" && checkoutChanges
               ? { checkoutChanges }
               : {}),
