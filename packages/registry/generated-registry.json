@@ -1374,6 +1374,54 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "elizaos-plugin-aiworker": {
+      "git": {
+        "repo": "ai-worker227/aiworker-examples",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-aiworker",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "aiworker's paid x402 data routes as ElizaOS actions: DeFi yields and protocol snapshots, page-to-Markdown, Base token and wallet checks, Polymarket resolution, odds, history, screener and backtests, fact checks, sourced briefs and headline search. Each call pays its own USDC on Base from the agent's wallet; nothing is settled unless the request succeeds.",
+      "homepage": "https://aiworker.duckdns.org",
+      "topics": [
+        "data",
+        "x402",
+        "usdc",
+        "base",
+        "defi",
+        "polymarket",
+        "web-scraping",
+        "news"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "elizaos"
+    },
     "elizaos-plugin-coinrailz": {
       "git": {
         "repo": "tdnupe3/elizaos-plugin-coinrailz",
