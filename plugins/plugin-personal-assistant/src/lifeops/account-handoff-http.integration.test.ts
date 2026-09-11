@@ -1,6 +1,8 @@
 /** Real loopback HTTP, owner gate and PGlite review round-trip; Google discovery is deterministic and no provider mutation or message occurs. */
 
 import { once } from "node:events";
+import { ElizaClient } from "@elizaos/ui/api/client-base";
+import "../api/client-lifeops.js";
 import { createServer, type Server } from "node:http";
 import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import { getConnectorAccountManager, stringToUuid } from "@elizaos/core";
@@ -13,6 +15,15 @@ import {
 import { GoogleWorkspaceTestService } from "../../test/stubs/plugin-google-workspace.js";
 import { personalAssistantRoutesPlugin } from "../routes/plugin.js";
 import { AccountHandoffStore } from "./account-handoff-store.js";
+
+// The package harness aliases UI modules to inert controls. Restore the real
+// client for this transport test; requests still cross the actual HTTP socket.
+vi.mock("@elizaos/ui/api/client-base", async () => ({
+  ...(await vi.importActual<typeof import("../../test/stubs/ui.js")>(
+    "../../test/stubs/ui.js",
+  )),
+  ...(await import("../../../../packages/ui/src/api/client-base.js")),
+}));
 
 let host: RealTestRuntimeResult;
 let server: Server;
@@ -30,13 +41,13 @@ const choices = {
   calendarLinks: [],
   messageDestinations: [
     {
-      channel: "email",
+      channel: "email" as const,
       connectorAccountId: "http-new",
       recipientId: "recipient@example.test",
       recipientEntityId: owner,
     },
   ],
-  importedData: "retain",
+  importedData: "retain" as const,
   retireApprovalIds: [],
 };
 
@@ -166,25 +177,17 @@ it("rejects unauthenticated requests and malformed approval IDs before a saved r
 });
 
 it("creates and replays a review through canonical services and ignores forged owner headers during readback", async () => {
-  const post = () =>
-    fetch(baseUrl, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(choices),
-    });
-  const created = await post();
-  const payload = await created.json();
-  expect(created.status, JSON.stringify(payload)).toBe(200);
+  const client = new ElizaClient(new URL(baseUrl).origin, token);
+  const payload = await client.createLifeOpsAccountHandoff(choices);
   expect(payload.handoff.review.replacement.email).toBe(
     "http-new@example.test",
   );
   expect(payload.handoff.phase).toBe("reviewed");
-  const replay = await post();
-  expect(replay.status).toBe(200);
-  expect(await replay.json()).toEqual(payload);
+  expect(await client.createLifeOpsAccountHandoff(choices)).toEqual(payload);
+  expect(await client.getActiveLifeOpsAccountHandoff()).toEqual(payload);
+  expect(await client.getLifeOpsAccountHandoff(choices.operationId)).toEqual(
+    payload,
+  );
   const active = await fetch(`${baseUrl}/active`, {
     headers: {
       authorization: `Bearer ${token}`,
@@ -218,9 +221,11 @@ it("cancels only an unchanged unstarted review and permits replay without anothe
     });
   expect((await cancel(review.revision - 1)).status).toBe(409);
   expect(await store.read(review.operationId)).toEqual(review);
-  const response = await cancel(review.revision);
-  expect(response.status).toBe(200);
-  const cancelled = await response.json();
+  const client = new ElizaClient(new URL(baseUrl).origin, token);
+  const cancelled = await client.cancelLifeOpsAccountHandoff(
+    review.operationId,
+    review.revision,
+  );
   expect(cancelled.handoff.phase).toBe("cancelled");
   expect(await store.active()).toBeNull();
   expect(await (await cancel(review.revision)).json()).toEqual(cancelled);

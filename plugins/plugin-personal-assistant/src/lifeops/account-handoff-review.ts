@@ -53,6 +53,8 @@ export const accountHandoffChoicesSchema = accountHandoffGoogleChoicesSchema
   })
   .strict();
 
+export type AccountHandoffChoices = z.infer<typeof accountHandoffChoicesSchema>;
+
 export class AccountHandoffReviewService {
   constructor(
     private readonly runtime: IAgentRuntime,
