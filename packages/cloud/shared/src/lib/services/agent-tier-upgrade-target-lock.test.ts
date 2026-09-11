@@ -22,6 +22,7 @@ process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS ||= "1";
 
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import * as helpersActual from "../../db/helpers";
@@ -29,7 +30,6 @@ import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { organizations } from "../../db/schemas/organizations";
 import { personalDedicatedAdoptionSelections } from "../../db/schemas/personal-dedicated-adoption-selections";
 import { personalDedicatedUpgradeAuthorities } from "../../db/schemas/personal-dedicated-upgrade-authorities";
-import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
 import * as loggerActual from "../utils/logger";
 import * as apiKeysActual from "./api-keys";
 import * as managedConfigActual from "./managed-eliza-config";
