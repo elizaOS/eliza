@@ -36,9 +36,12 @@ import {
   resolveCloudApiBaseUrl,
 } from "@elizaos/plugin-elizacloud/cloud/managed-payment-clients";
 import {
+  isValidTimeZone,
+  resolveDefaultTimeZone,
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
 } from "@elizaos/shared";
+import { calendarDateKeyInZone } from "./calendar-date.ts";
 import {
   FinancesRepository,
   PlaidSyncCursorConflictError,
@@ -125,6 +128,13 @@ const plaidJwkCache = new Map<
 /** Optional construction options (mirrors the LifeOps service shape). */
 export type FinancesServiceOptions = {
   ownerEntityId?: string | null;
+  /**
+   * Resolve the owner's IANA zone for calendar-day comparisons such as bill
+   * due dates. Hosts that know the owner (the personal-assistant routes) pass
+   * the owner-fact resolver; otherwise the agent's `TIMEZONE` setting and then
+   * the host zone apply.
+   */
+  resolveTimeZone?: (now: Date) => Promise<string> | string;
 };
 
 export function resolveFinancesCloudManagedClientConfig(): ElizaCloudManagedClientConfig {
@@ -509,6 +519,9 @@ function computeSpendingSummary(args: {
 export class FinancesService {
   public readonly repository: FinancesRepository;
   public readonly ownerEntityId: string | null;
+  private readonly resolveConfiguredTimeZone:
+    | ((now: Date) => Promise<string> | string)
+    | null;
   public plaidManagedClientCache: PlaidManagedClient | null = null;
   public paypalManagedClientCache: PaypalManagedClient | null = null;
 
@@ -518,6 +531,27 @@ export class FinancesService {
   ) {
     this.repository = new FinancesRepository(runtime);
     this.ownerEntityId = normalizeOptionalString(options.ownerEntityId) ?? null;
+    this.resolveConfiguredTimeZone = options.resolveTimeZone ?? null;
+  }
+
+  /**
+   * Owner calendar zone for due-date status: the host-supplied resolver, then
+   * the agent's `TIMEZONE` setting, then the process zone. An invalid value at
+   * any step falls through to the next so a stale setting cannot pin the
+   * comparison to a zone Intl cannot format.
+   */
+  async resolveCalendarTimeZone(now: Date): Promise<string> {
+    if (this.resolveConfiguredTimeZone) {
+      const resolved = normalizeOptionalString(
+        await this.resolveConfiguredTimeZone(now),
+      );
+      if (resolved && isValidTimeZone(resolved)) return resolved;
+    }
+    const setting = this.runtime.getSetting("TIMEZONE");
+    const configured =
+      typeof setting === "string" ? normalizeOptionalString(setting) : null;
+    if (configured && isValidTimeZone(configured)) return configured;
+    return resolveDefaultTimeZone();
   }
 
   agentId(): string {
@@ -991,7 +1025,7 @@ export class FinancesService {
    * so extraction misses do not disappear from the user's review queue.
    */
   async getUpcomingBills(
-    args: { now?: Date } = {},
+    args: { now?: Date; timeZone?: string | null } = {},
   ): Promise<LifeOpsUpcomingBill[]> {
     const sources = await this.listPaymentSources();
     const emailSource = sources.find((source) => source.kind === "email");
@@ -1003,7 +1037,14 @@ export class FinancesService {
       },
     );
     const now = args.now ?? new Date();
-    const todayIso = now.toISOString().slice(0, 10);
+    const explicitZone = normalizeOptionalString(args.timeZone);
+    if (explicitZone && !isValidTimeZone(explicitZone)) {
+      fail(400, "timeZone must be a valid IANA time zone");
+    }
+    const todayIso = calendarDateKeyInZone(
+      now,
+      explicitZone ?? (await this.resolveCalendarTimeZone(now)),
+    );
     const bills: LifeOpsUpcomingBill[] = [];
     for (const transaction of transactions) {
       const metadata = transaction.metadata;

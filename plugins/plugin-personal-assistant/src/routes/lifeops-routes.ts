@@ -122,6 +122,7 @@ import {
   composeDailyCalendarCard,
 } from "../lifeops/calendar-card.js";
 import { probeFullDiskAccess } from "../lifeops/fda-probe.js";
+import { resolveOwnerTimeZone } from "../lifeops/owner/fact-store.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { entityHasVerifiedMachineAuthBinding } from "./authenticated-entity-principal.js";
@@ -214,6 +215,9 @@ function getFinancesService(ctx: LifeOpsRouteContext): FinancesService | null {
   }
   return new FinancesService(runtime, {
     ownerEntityId: ctx.state.adminEntityId,
+    // Bill due dates are owner calendar days; classify them in the owner's
+    // stored zone rather than the agent host's.
+    resolveTimeZone: (now) => resolveOwnerTimeZone(runtime, now),
   });
 }
 
