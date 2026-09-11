@@ -14,6 +14,7 @@ import { z } from "zod";
 import { usersRepository } from "@/db/repositories/users";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import {
   finalizePersonalTierUpgradeCutover,
   findActivePersonalDedicatedTarget,
@@ -21,6 +22,8 @@ import {
 } from "@/lib/services/agent-tier-upgrade-target";
 import { readPersonalElizaCutover } from "@/lib/services/eliza-agent-config";
 import { invalidatePersonalDeliveryProjection } from "@/lib/services/eliza-app/personal-delivery-projection-contract";
+import { SandboxTransport } from "@/lib/services/eliza-sandbox/bridge/transport";
+import type { AgentNetworkTarget } from "@/lib/services/eliza-sandbox/bridge/transport-contract";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import {
   coordinateSharedCutoverCommit,
@@ -180,18 +183,38 @@ async function readJsonResponse(response: Response): Promise<unknown> {
 }
 
 async function postDedicatedImport(
+  target: AgentNetworkTarget,
   url: string,
   body: Record<string, unknown>,
   agentToken: string,
 ): Promise<{ response: Response; receipt: Record<string, unknown> | null }> {
-  const response = await fetch(url, {
+  // Same-zone Worker fetches bypass the public Dedicated proxy. Use the
+  // canonical origin transport for both import and post-commit activation.
+  // The explicit local harness sentinel uses the DB-owned loopback base
+  // validated by personalDedicatedAgentApiBase, including its path prefix.
+  const localHarness =
+    getCloudAwareEnv().ELIZA_CLOUD_AGENT_BASE_DOMAIN === "https://";
+  const destination = (localHarness
+    ? null
+    : new SandboxTransport().getWorkerAgentRouterFetchTarget(
+        target,
+        new URL(url).pathname,
+      )) ?? { url };
+  const response = await fetch(destination.url, {
     method: "POST",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
       Authorization: `Bearer ${agentToken}`,
       "X-API-Key": agentToken,
+      ...(destination.forwardedHost
+        ? {
+            "X-Forwarded-Host": destination.forwardedHost,
+            "X-Forwarded-Proto": "https",
+          }
+        : {}),
     },
+    redirect: "manual",
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(20_000),
   });
@@ -412,6 +435,7 @@ app.post("/", async (c) => {
             authoritative: true,
           });
           const activation = await postDedicatedImport(
+            active,
             `${activeBase}/api/conversations/${encodeURIComponent(sourceAgentId)}/import`,
             {
               messages: [],
@@ -635,6 +659,7 @@ app.post("/", async (c) => {
       }));
       for (let attempt = 0; ; attempt += 1) {
         const imported = await postDedicatedImport(
+          target,
           importUrl,
           {
             messages: importedMessages,
@@ -750,6 +775,7 @@ app.post("/", async (c) => {
         { namespace: conversationNamespace },
       );
       const activation = await postDedicatedImport(
+        target,
         importUrl,
         {
           messages: importedMessages,
