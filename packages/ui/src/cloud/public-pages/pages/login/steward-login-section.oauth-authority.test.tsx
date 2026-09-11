@@ -135,6 +135,54 @@ async function begin(provider = "Google") {
   return view;
 }
 describe("hosted OAuth original intent", () => {
+  it.each(
+    [
+      "staging.eliza-app.pages.dev",
+      "develop.eliza-app.pages.dev",
+      "feature.eliza-app.pages.dev",
+    ].flatMap((host) =>
+      ["Google", "Discord", "GitHub", "X", "Apple"].map((provider) => [
+        host,
+        provider,
+      ]),
+    ),
+  )(
+    "keeps %s %s callback with its one-use launch record",
+    async (host, provider) => {
+      const preview = new URL(
+        `/login${new URL(loginUrl).search}`,
+        `https://${host}`,
+      );
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: {
+          ...window.location,
+          href: preview.href,
+          origin: preview.origin,
+          hostname: preview.hostname,
+          pathname: preview.pathname,
+          search: preview.search,
+          hash: "",
+        },
+      });
+      await begin(provider);
+      await waitFor(() => expect(window.location.href).not.toBe(preview.href));
+      const destination = new URL(window.location.href);
+      const state = destination.searchParams.get("state");
+      const redirect = destination.searchParams.get("redirect_uri");
+      if (!state || !redirect) throw new Error("Missing OAuth parameters");
+      // Server-side tenant allowlisting remains required; a redirect alone is not
+      // proof that any preview is approved to receive a real provider callback.
+      expect(new URL(redirect).origin).toBe(preview.origin);
+      const attempt = await consumeStewardOAuthAttempt(state);
+      expect(attempt.codeVerifier).toBeTruthy();
+      expect(attempt.returnTo).toBe("/chat?conversation=fixture");
+      expect(peekStewardOAuthState()).toBeNull();
+      await expect(consumeStewardOAuthAttempt(state)).rejects.toThrow();
+      expect(native.open).not.toHaveBeenCalled();
+    },
+  );
+
   it.each(["Google", "Discord", "GitHub", "X", "Apple"])(
     "preserves a usable PKCE pair and the conversation intent for %s",
     async (provider) => {

@@ -2303,10 +2303,10 @@ export default function StewardLoginSection() {
           attempt.expected,
         );
         await withSignInAttempt(attempt, async () => {
-          const host = window.location.hostname.toLowerCase();
-          const oauthOrigin = host.endsWith(".pages.dev")
-            ? "https://staging.eliza.app"
-            : window.location.origin;
+          // PKCE and session authority are origin-local. A callback on another
+          // origin cannot consume this launch, even when both serve the same app.
+          // Tenant redirect allowlisting remains enforced by Steward.
+          const oauthOrigin = window.location.origin;
           const state = generateStewardOAuthState();
           const authorizeUrl = buildStewardOAuthAuthorizeUrlCore(
             provider,
