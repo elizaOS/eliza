@@ -468,7 +468,11 @@ describe("MEMORY mutations settle with receipts for the grounded reply gate", ()
     });
     expect(result.success).toBe(true);
     expect(result.transcriptVisibility).toBe("internal");
-    expect(result.turnComplete).toBeUndefined();
+    // The mutation owns its verified user-facing line and completes a
+    // single-tool turn (planner loop gate); compound turns still fall through
+    // to the evaluator because the gate requires exactly one executed tool.
+    expect(result.turnComplete).toBe(true);
+    expect(result.verifiedUserFacing).toBe(true);
     expect(result.effectReceipts).toHaveLength(1);
     expect(result.effectReceipts?.[0]).toMatchObject({
       operation: "memory.create",
@@ -2230,5 +2234,48 @@ describe("MEMORY op:delete by query ignores copied imperatives", () => {
 
     expect(result.success).toBe(true);
     expect(rows.some((row) => row.memory.id === factId)).toBe(false);
+  });
+});
+
+describe("MEMORY results own a verified user-facing line", () => {
+  it("speaks to the user on create and forget so the planner loop can skip its evaluator round", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = makeMessage();
+    message.content.text = "remember that my favorite tea is yerba";
+    const created = await runAction(runtime, message, {
+      action: "create",
+      text: "User's favorite tea is yerba.",
+    });
+    expect(created.success).toBe(true);
+    expect(created).toMatchObject({
+      userFacingText: "Saved: your favorite tea is yerba.",
+      verifiedUserFacing: true,
+      turnComplete: true,
+    });
+    expect(rows.length).toBeGreaterThan(0);
+
+    message.content.text = "forget my favorite tea";
+    const forgotten = await runAction(runtime, message, {
+      action: "delete",
+      query: "favorite tea",
+      confirm: true,
+    });
+    expect(forgotten.success).toBe(true);
+    expect(forgotten).toMatchObject({
+      userFacingText: "Forgot: your favorite tea is yerba.",
+      verifiedUserFacing: true,
+      turnComplete: true,
+    });
+  });
+
+  it("renders memory lines in second person without inventing content", async () => {
+    const { memoryUserFacingLine } = await import("./memories");
+    expect(
+      memoryUserFacingLine("Saved", "The user prefers green tea without sugar"),
+    ).toBe("Saved: the user prefers green tea without sugar.");
+    expect(memoryUserFacingLine("Updated", "user's dog is named Rex.")).toBe(
+      "Updated: your dog is named Rex.",
+    );
+    expect(memoryUserFacingLine("Forgot", "   ")).toBe("Forgot.");
   });
 });

@@ -152,6 +152,25 @@ const SEARCH_QUERY_STOP_WORDS = new Set([
   "called",
 ]);
 
+/**
+ * A sentence the user can see verbatim for a completed memory mutation. Stored
+ * facts are third person ("User's favorite tea is yerba."); the reply speaks to
+ * the user. With `verifiedUserFacing` + `turnComplete` the planner loop skips
+ * its post-tool evaluator round (1.3–2.5 s, ~15K tokens on the VPS) for a
+ * single-tool turn and delivers this line as the reply.
+ */
+export function memoryUserFacingLine(verb: string, factText: string): string {
+  const cleaned = toWellFormedUnicode(factText).replace(/\s+/g, " ").trim();
+  // Only possessives are rewritten ("user's" → "your"); subject rewrites would
+  // need verb agreement ("the user prefers" → "you prefer") and are left as-is.
+  const spoken = cleaned
+    .replace(/^(?:the )?user'?s\b/i, "your")
+    .replace(/\bthe user'?s\b/gi, "your");
+  const body = spoken ? spoken.charAt(0).toLowerCase() + spoken.slice(1) : "";
+  const terminated = /[.!?]$/.test(body) ? body : `${body}.`;
+  return body ? `${verb}: ${terminated}` : `${verb}.`;
+}
+
 function fail(
   text: string,
   error: string,
@@ -464,6 +483,9 @@ async function upgradeStageFact(
     success: true,
     transcriptVisibility: "internal",
     text: `Stored memory ${stageFact.id}.`,
+    userFacingText: memoryUserFacingLine("Saved", next.text),
+    verifiedUserFacing: true,
+    turnComplete: true,
     values: {
       memoryId: stageFact.id,
       kind: next.kind ?? null,
@@ -584,6 +606,9 @@ async function doCreate(
     success: true,
     transcriptVisibility: "internal",
     text: `Stored memory ${memoryId}.`,
+    userFacingText: memoryUserFacingLine("Saved", text),
+    verifiedUserFacing: true,
+    turnComplete: true,
     values: { memoryId, kind: kind ?? null, tagCount: tags.length },
     effectReceipts: [
       memoryMutationReceipt({
@@ -1198,6 +1223,9 @@ async function doUpdate(
     success: true,
     transcriptVisibility: "internal",
     text: `Updated ${updatedIds.length} memory record(s).`,
+    userFacingText: memoryUserFacingLine("Updated", updatedText),
+    verifiedUserFacing: true,
+    turnComplete: true,
     values: { memoryId: primaryMemoryId, updatedCount: updatedIds.length },
     effectReceipts: updatedIds.map((id) =>
       memoryMutationReceipt({
@@ -1256,6 +1284,9 @@ async function doDelete(
       success: true,
       transcriptVisibility: "internal",
       text: `Forgot memory ${memoryId}: ${toWellFormedUnicode(existing.content.text ?? "")}`,
+      userFacingText: memoryUserFacingLine("Forgot", forgottenText),
+      verifiedUserFacing: true,
+      turnComplete: true,
       values: { memoryId },
       effectReceipts: [
         memoryMutationReceipt({
@@ -1424,6 +1455,9 @@ async function doDeleteByQuery(
     success: true,
     transcriptVisibility: "internal",
     text: `Forgot ${deleted.length} memory record(s) matching "${query}": ${toWellFormedUnicode(deleted[0]?.text ?? "")}`,
+    userFacingText: memoryUserFacingLine("Forgot", forgottenTexts.join("; ")),
+    verifiedUserFacing: true,
+    turnComplete: true,
     values: { deletedCount: deleted.length },
     effectReceipts: deleted.map((item) =>
       memoryMutationReceipt({
