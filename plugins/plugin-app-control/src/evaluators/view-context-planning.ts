@@ -33,6 +33,7 @@ export type ContextualNavigationIntent =
 			viewId: string;
 			reason: string;
 			singleViewOnly?: boolean;
+			navigationOnly?: boolean;
 	  };
 
 // A field result is reusable only inside the same runtime and exact incoming
@@ -55,7 +56,7 @@ export const viewContinuationField: ResponseHandlerFieldEvaluator<ContextualNavi
 		name: "visualContinuation",
 		priority: 60,
 		description:
-			"Classify visual continuation for the final current request while preserving applicable earlier constraints. Return {disposition: requested|optional|none|forbidden|unresolved, viewId: string, reason: string, singleViewOnly: boolean}. Set singleViewOnly=true only when ALL needed UI operations are opening one known view; independent domain record reads/writes may still be needed. Set it false for multiple destinations, layouts, catalog discovery, inspection, controls or selecting a date/record inside a view, no navigation, and uncertainty. Use none for ordinary conversation, hypothetical discussion, questions answerable without changing views, and ambiguity. Use forbidden for a requirement to stay on the current screen or not navigate. Use requested when the user requests navigation, and optional only when a surface clearly helps the requested activity; never infer navigation solely from a domain noun. For requested/optional, use a known shell view ID (Home is chat); use unresolved if the destination or permission is uncertain, so the live-catalog classifier can resolve it. For multiple requested views, name one and leave every destination/layout in the full request for the planner. Keep restrictions scoped: forbidding data edits does not prohibit requested navigation; forbidding other views does not prohibit the named views. Navigation never completes domain work. Opening one known app view alone selects candidateActionNames=[VIEWS_SHOW]; layouts or catalog discovery select VIEWS. Neither selects the destination domain tools. Add NOTES, CALENDAR or other domain tools only when the current request also asks to read or change their records. Use an empty viewId for none/forbidden/unresolved. This is a routing judgment only: no navigation or data operation has executed.",
+			"Classify visual continuation for the FINAL CURRENT REQUEST, preserving earlier applicable constraints. disposition: requested for requested navigation; optional only if a surface helps the requested work; forbidden when navigation or leaving the current screen is prohibited; none for conversation, hypotheticals, questions answerable without changing views, or ambiguity; unresolved if destination/permission needs live-catalog resolution. Domain nouns alone never request navigation. For requested/optional, viewId is a known shell view (Home=chat); otherwise empty. singleViewOnly=true means all needed UI operations open one known view; domain work may still be required. False for multiple destinations, layouts, catalog discovery, inspection, controls, date/record selection, no navigation or uncertainty. navigationOnly=true ONLY if the ENTIRE request is satisfied by opening that one view: no separate question/recall, domain read/write, other destination, layout or pending work. Otherwise false. Keep each restriction scoped: no data edits still permits requested navigation; prohibiting other views still permits named ones. Select VIEWS_SHOW for one known view; VIEWS for layouts/discovery. Add domain candidates only for requested record operations; navigation never proves those complete. Preserve all destinations and domain work for the planner. No operation has executed yet. For navigationOnly, replyText may contain a concise destination confirmation; the runtime must hold it until the navigation receipt proves it.",
 		schema: {
 			type: "object",
 			additionalProperties: false,
@@ -64,11 +65,22 @@ export const viewContinuationField: ResponseHandlerFieldEvaluator<ContextualNavi
 					type: "string",
 					enum: ["requested", "optional", "none", "forbidden", "unresolved"],
 				},
-				viewId: { type: "string" },
+				viewId: {
+					type: "string",
+					description:
+						"Required nonempty destination ID for requested/optional navigation. Use the known shell ID or destination name for runtime catalog validation; Home=chat. Never leave this blank while requesting navigation. Empty only for none/forbidden/unresolved.",
+				},
 				singleViewOnly: { type: "boolean" },
+				navigationOnly: { type: "boolean" },
 				reason: { type: "string" },
 			},
-			required: ["disposition", "viewId", "reason", "singleViewOnly"],
+			required: [
+				"disposition",
+				"viewId",
+				"reason",
+				"singleViewOnly",
+				"navigationOnly",
+			],
 		},
 		shouldRun: ({ runtime, message }) =>
 			!messageHasNoViewSurface(message) &&
@@ -80,9 +92,13 @@ export const viewContinuationField: ResponseHandlerFieldEvaluator<ContextualNavi
 			if (
 				Object.keys(record).some(
 					(key) =>
-						!["disposition", "viewId", "reason", "singleViewOnly"].includes(
-							key,
-						),
+						![
+							"disposition",
+							"viewId",
+							"reason",
+							"singleViewOnly",
+							"navigationOnly",
+						].includes(key),
 				) ||
 				typeof record.reason !== "string" ||
 				typeof record.viewId !== "string"
@@ -95,14 +111,16 @@ export const viewContinuationField: ResponseHandlerFieldEvaluator<ContextualNavi
 				return { disposition: "forbidden", reason: record.reason };
 			}
 			if (
-				record.singleViewOnly !== undefined &&
-				typeof record.singleViewOnly !== "boolean"
+				(record.singleViewOnly !== undefined &&
+					typeof record.singleViewOnly !== "boolean") ||
+				(record.navigationOnly !== undefined &&
+					typeof record.navigationOnly !== "boolean")
 			)
 				return null;
 			if (record.disposition === "none") {
-				return record.viewId === ""
-					? { disposition: record.disposition, reason: record.reason }
-					: null;
+				// Naming the current screen does not override a no-navigation
+				// decision. Keep denial instead of paying for reclassification.
+				return { disposition: "none", reason: record.reason };
 			}
 			if (
 				(record.disposition === "requested" ||
@@ -115,6 +133,9 @@ export const viewContinuationField: ResponseHandlerFieldEvaluator<ContextualNavi
 					reason: record.reason,
 					...(typeof record.singleViewOnly === "boolean"
 						? { singleViewOnly: record.singleViewOnly }
+						: {}),
+					...(typeof record.navigationOnly === "boolean"
+						? { navigationOnly: record.navigationOnly }
 						: {}),
 				};
 			return null;
@@ -192,6 +213,7 @@ export function parseContextualNavigationIntent(
 export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 	name: "app-control.view-context-planning",
 	priority: 60,
+	deterministicActions: ["VIEWS_SHOW"],
 	description:
 		"Adds authorized visual continuation to the existing domain plan before its final reply.",
 	shouldRun({ runtime, messageHandler, message }) {
@@ -331,9 +353,34 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 			(name) => !narrowShowOnly || name !== "VIEWS",
 		);
 		const parentHints = messageHandler.plan.parentActionHints ?? [];
+		// Reuse only this turn's structured model decision, never utterance
+		// matching or client metadata. The canonical executor rechecks action and
+		// destination authority and retains cancellation, receipts and reply recovery.
+		const directNavigation =
+			narrowShowOnly &&
+			intent.navigationOnly === true &&
+			intent.disposition === "requested" &&
+			message.content.source === "client_chat" &&
+			message.content.channelType === "DM" &&
+			!!message.id &&
+			messageHandler.plan.intents?.length === 1 &&
+			selectedActions.length > 0 &&
+			selectedActions.every((name) => name === "VIEWS_SHOW") &&
+			parentHints.every((name) => name === "VIEWS" || name === "VIEWS_SHOW");
 		return {
 			requiresTool: true,
 			clearReply: true,
+			...(directNavigation
+				? {
+						deterministicToolCall: {
+							name: "VIEWS_SHOW",
+							params: {
+								view: selectedView.id,
+								navigationStepId: `stage1:${message.id}`,
+							},
+						},
+					}
+				: {}),
 			// The model's navigation decision passed the live catalog checks.
 			// Preserve every selected domain/layout operation, but do not let the
 			// later text backstop add tools for negated work ("don't create events")

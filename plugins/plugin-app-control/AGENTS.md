@@ -237,7 +237,7 @@ The visual-continuation field reuses the existing Stage-1 model judgment. Its
 result is bound in memory to the exact runtime, message, actor, room, request
 text and sender role; caller metadata cannot supply it. Non-navigation decisions
 set the existing deny constraint. Requested/optional destinations still require
-the fresh authorized catalog, with normal planner execution and transport gates.
+the fresh authorized catalog, with canonical action execution and transport gates.
 Missing, malformed, uncertain, stale or unavailable selections retain the
 separate live-catalog model classifier. No field handler executes navigation.
 
@@ -255,3 +255,6 @@ Navigation handoffs retain the selected destination and every capability identit
 The same destination projection is used in pre-planner navigation context and `VIEWS show` promptData, explicitly opting into `promptDataMode: "replace-data"`. Keep raw result.data complete, retain navigation status and scoped actions, and expose the fresh VIEWS list read for deferred interaction parameters. Background review must use this declared model projection as well.
 
 Stage-1 visual continuation records whether all UI work is a single known-view show. Only that explicit same-turn model judgment may replace the VIEWS umbrella hint with VIEWS_SHOW; legacy/missing judgments and compound UI operations retain the parent. Domain candidates, full requests, permissions, discovery and delivery receipts remain authoritative. Explicit navigation does not consume a pending view-creation choice.
+
+A fresh same-turn Stage-1 navigationOnly judgment can select the existing deterministic VIEWS_SHOW executor for a client_chat DM only when the entire request is one requested view switch, the sole intent and all candidates agree, and the destination passes the live authorized catalog. singleViewOnly alone is insufficient: compound questions, domain work, multiple views, optional navigation and missing/stale classifications keep normal planning. The canonical executor retains all admission, receipt, cancellation and reply-recovery gates; post-tool synthesis grounds the visible confirmation. No utterance parser or caller metadata grants this fast path.
+A none decision remains a navigation denial even if the model also names the current screen; discard the irrelevant destination without a classifier call. This never grants navigation.

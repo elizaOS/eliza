@@ -21,6 +21,7 @@ import { logger } from "../logger";
 import { parseInteractionBlocks } from "../messaging/interactions/parse";
 import {
 	plannerBatchScopeDescription,
+	plannerReplyTemplate,
 	plannerRequiredPolicy,
 	plannerSchema,
 	plannerTemplate,
@@ -2434,6 +2435,7 @@ function renderPlannerModelInput(params: {
 	codingMode?: boolean;
 	runtime?: PlannerRuntime;
 	allowSourceSelection?: boolean;
+	replyOnly?: boolean;
 }): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
@@ -2489,11 +2491,13 @@ function renderPlannerModelInput(params: {
 		});
 	const template = params.template ?? plannerTemplate;
 	const instructions = (
-		params.codingMode
-			? template.split("context_object:")[0]
-			: appendMandatoryPlannerPolicy(
-					template.split("context_object:")[0] ?? template,
-				)
+		params.replyOnly && !params.codingMode && template === plannerTemplate
+			? plannerReplyTemplate
+			: params.codingMode
+				? template.split("context_object:")[0]
+				: appendMandatoryPlannerPolicy(
+						template.split("context_object:")[0] ?? template,
+					)
 	).trim();
 	const stepMessages =
 		params.trajectory.modelHistory ??
@@ -3188,6 +3192,7 @@ async function dispatchPlannerModelCall(params: {
 		allowSourceSelection:
 			Boolean(params.tools?.length) ||
 			params.allowReplyContextProjection === true,
+		replyOnly: params.allowReplyContextProjection === true,
 	};
 	const renderedInput = renderPlannerModelInput(renderArgs);
 	if (
