@@ -416,7 +416,7 @@
     },
     "@orkid-labs/plugin-orkid": {
       "git": {
-        "repo": "jjcav84/plugin-orkid",
+        "repo": "orkid-labs/plugin-orkid",
         "v0": {
           "branch": null
         },
@@ -431,7 +431,7 @@
         "repo": "@orkid-labs/plugin-orkid",
         "v0": null,
         "v1": null,
-        "v2": "2.0.2"
+        "v2": "2.0.3"
       },
       "supports": {
         "v0": false,
@@ -439,7 +439,7 @@
         "v2": true
       },
       "description": "Orkid gasless swap engine integration — quote, execute, dry-run, confirm, and track swaps via @orkid-labs/sdk",
-      "homepage": "https://github.com/jjcav84/plugin-orkid",
+      "homepage": "https://github.com/orkid-labs/plugin-orkid",
       "topics": [
         "orkid",
         "swap",
