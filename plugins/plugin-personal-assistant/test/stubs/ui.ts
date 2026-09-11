@@ -38,7 +38,25 @@ function TestAlertDescription({
   return createElement("div", null, children);
 }
 
-export class ElizaClient {}
+export class ElizaClient {
+  async fetch<T>(path: string, init?: RequestInit): Promise<T> {
+    const response = await fetch(path, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...init?.headers },
+    });
+    const payload = (await response.json().catch(() => null)) as {
+      error?: { message?: string } | string;
+    } | null;
+    if (!response.ok) {
+      const message =
+        typeof payload?.error === "string"
+          ? payload.error
+          : payload?.error?.message;
+      throw new Error(message || `Request failed (${response.status})`);
+    }
+    return payload as T;
+  }
+}
 
 export const client = new ElizaClient();
 
