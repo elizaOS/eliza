@@ -464,6 +464,31 @@ describe("LifeOpsConnectionsView", () => {
     );
   });
 
+  it("does not offer account setup from a failed initial inventory and recovers on retry", async () => {
+    const localAdapter = adapter();
+    vi.mocked(localAdapter.load)
+      .mockRejectedValueOnce(new Error("Failed to fetch"))
+      .mockResolvedValueOnce(snapshot());
+    render(<LifeOpsConnectionsView adapter={localAdapter} />);
+
+    await screen.findByRole("alert");
+    expect(screen.queryByText("No Google account is connected.")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Continue to Google" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Seed selected context" }),
+    ).toBeNull();
+    expect(localAdapter.connectGoogle).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    await screen.findByText("owner@example.test");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Connect another Google account" }),
+    ).toBeTruthy();
+  });
+
   it("supports an Apple-only bounded seed without fabricating a Google grant", async () => {
     const localAdapter = adapter();
     const apple = calendar("apple_calendar");

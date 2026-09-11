@@ -63,16 +63,23 @@ for (const width of [1280, 390]) {
         identityEmail: email,
       },
     });
-    await page.route("**/api/lifeops/connectors/google/status**", (route) =>
-      route.fulfill({
+    let inventoryAvailable = false;
+    await page.route("**/api/lifeops/connectors/google/status**", (route) => {
+      if (!inventoryAvailable) {
+        return route.fulfill({
+          status: 503,
+          json: { error: "Connection inventory is temporarily unavailable" },
+        });
+      }
+      return route.fulfill({
         json: {
           accounts: [
             account("test-account", "test@example.test"),
             account("real-account", "real@example.test"),
           ],
         },
-      }),
-    );
+      });
+    });
     const reviewSource = {
       grantId: "real-account",
       connectorAccountId: "real-account",
@@ -232,6 +239,24 @@ for (const width of [1280, 390]) {
       return route.fulfill({ json: { handoff: saved } });
     });
     await openAppPath(page, "/lifeops/connections");
+    await expect(
+      page.getByRole("heading", { name: "Connections are unavailable" }),
+    ).toBeVisible();
+    await expect(page.getByText("No Google account is connected.")).toHaveCount(
+      0,
+    );
+    await expect(
+      page.getByRole("button", { name: "Continue to Google" }),
+    ).toHaveCount(0);
+    await page.screenshot({
+      path: testInfo.outputPath(`inventory-error-${width}.png`),
+    });
+    await page.getByRole("button", { name: "Retry", exact: true }).hover();
+    await page.screenshot({
+      path: testInfo.outputPath(`inventory-error-hover-${width}.png`),
+    });
+    inventoryAvailable = true;
+    await page.getByRole("button", { name: "Retry", exact: true }).click();
     const panel = page.getByRole("region", {
       name: "Switch from test to real accounts",
     });
@@ -334,7 +359,10 @@ for (const width of [1280, 390]) {
           (entry) => entry.kind === "http" && /^[45][0-9]{2} /.test(entry.text),
         )
         .map((entry) => entry.text),
-    ).toEqual([expect.stringMatching(/^503 .*account-handoffs.*advance/)]);
+    ).toEqual([
+      expect.stringMatching(/^503 .*connectors\/google\/status/),
+      expect.stringMatching(/^503 .*account-handoffs.*advance/),
+    ]);
     expect(disconnectCalls).toBe(0);
     expect(advanceCalls).toBe(2);
   });

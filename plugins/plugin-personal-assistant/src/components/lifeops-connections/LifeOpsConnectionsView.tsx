@@ -623,6 +623,24 @@ export function LifeOpsConnectionsView({
     );
   }
 
+  if (!snapshot) {
+    return (
+      <main style={ROOT_STYLE}>
+        <div className="lifeops-shell">
+          <h1>Connections are unavailable</h1>
+          <div className="lifeops-banner lifeops-banner-error" role="alert">
+            <AlertTriangle size={18} aria-hidden />
+            <span>{error}</span>
+          </div>
+          <Button type="button" onClick={() => void refresh(false)}>
+            Retry
+          </Button>
+        </div>
+        <LifeOpsStyles />
+      </main>
+    );
+  }
+
   return (
     <main style={ROOT_STYLE}>
       <div className="lifeops-shell">
