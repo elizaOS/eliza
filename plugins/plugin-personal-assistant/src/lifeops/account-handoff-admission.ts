@@ -208,6 +208,14 @@ export class AccountHandoffAdmission {
         throw this.changed();
     };
     await assertPaused();
+    const control = await this.approvals.read(this.ownerEntityId);
+    if (!control.operationId) throw this.changed();
+    await this.approvals.fenceGoogleAccount({
+      subjectUserId: this.ownerEntityId,
+      operationId: control.operationId,
+      expectedRevision: paused.approvalRevision,
+      grantId: record.review.previous.grantId,
+    });
     const queue = createApprovalQueue(this.runtime, {
       agentId: this.runtime.agentId,
     });

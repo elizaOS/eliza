@@ -1,7 +1,9 @@
 /** Real PGlite cleanup and checkpoint recovery with deterministic connector operations; no provider account is disconnected or messaged. */
 
+import { randomUUID } from "node:crypto";
 import {
   ApprovalDispatchControlStore,
+  type ApprovalEnqueueInput,
   createApprovalQueue,
   resolveKnowledgeGraphService,
 } from "@elizaos/agent";
@@ -27,7 +29,7 @@ import { AccountHandoffVerification } from "./account-handoff-verification.js";
 import { lifeOpsGmailMessageFromGoogle } from "./google-plugin-delegates.js";
 import { LifeOpsRepository } from "./repository.js";
 import type { LifeOpsGoogleService } from "./service-mixin-google.js";
-import { executeRawSql } from "./sql.js";
+import { executeRawSql, sqlJson, sqlText } from "./sql.js";
 
 let host: RealTestRuntimeResult;
 beforeAll(async () => {
@@ -521,7 +523,7 @@ describe("handoff imported-data disposition", () => {
   });
 
   it.each(["unbound", "previous"] as const)(
-    "keeps handoff paused when a %s approval arrives after retirement",
+    "rejects new %s approvals and keeps handoff paused for an unfenced legacy writer",
     async (binding) => {
       const owner = `late-${binding}-approval-owner`;
       const p = await prepared(owner);
@@ -531,7 +533,7 @@ describe("handoff imported-data disposition", () => {
       const queue = createApprovalQueue(host.runtime, {
         agentId: host.runtime.agentId,
       });
-      const late = await queue.enqueue({
+      const input: ApprovalEnqueueInput = {
         requestedBy: owner,
         subjectUserId: owner,
         action: "send_email",
@@ -549,7 +551,20 @@ describe("handoff imported-data disposition", () => {
           replyToMessageId: null,
           ...(binding === "previous" ? { grantId: p.previousGrant.id } : {}),
         },
+      };
+      await expect(queue.enqueue(input)).rejects.toMatchObject({
+        code: "APPROVAL_ACCOUNT_REVIEW_REQUIRED",
       });
+      const late = { id: randomUUID(), payload: input.payload };
+      // An older process can still insert without the new admission column during a rolling upgrade.
+      await executeRawSql(
+        host.runtime,
+        `INSERT INTO approval_requests
+        (id, agent_id, requested_by, subject_user_id, state, action, channel, payload, reason, expires_at)
+        VALUES (${sqlText(late.id)}, ${sqlText(host.runtime.agentId)}, ${sqlText(owner)}, ${sqlText(owner)},
+          'pending', 'send_email', 'email', ${sqlJson(input.payload)}, ${sqlText(input.reason)},
+          ${sqlText(input.expiresAt.toISOString())})`,
+      );
       await queue.approve(late.id, owner, {
         resolvedBy: owner,
         resolutionReason: "Synthetic approval",

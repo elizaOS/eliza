@@ -2,9 +2,30 @@
  * Serializes owner dispatch admission with durable handoff pauses. Claims and
  * control mutations write the same database row, so a pause cannot race past
  * an unobserved claim. Unknown delivery outcomes prevent resuming admission.
+ * Account retirement records a control-revision cutoff. Insertion captures that
+ * revision under the same lock, distinguishing old approvals from fresh reviews
+ * after reconnect without relying on timestamps or banning an account forever.
  */
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import { executeRawSql, sqlText } from "./sql.ts";
+
+/** SQL expressions are supplied only by the approval store and canonical claim CTE. */
+export function approvalAccountAdmissionSql(
+  payload: string,
+  revision: string,
+): string {
+  const grant = `NULLIF(${payload}->>'grantId', '')`;
+  const google = `(${payload}->>'action' = 'send_email' OR (
+    ${payload}->>'action' IN ('schedule_event', 'modify_event', 'cancel_event')
+    AND (${payload}->>'side' IS DISTINCT FROM 'agent')
+    AND (${grant} IS NOT NULL OR ${payload}->>'expectedProvider' IS NULL
+      OR ${payload}->>'expectedProvider' = 'google'))) `;
+  return `(NOT ${google} OR CASE WHEN ${grant} IS NULL
+    THEN NOT google_binding_required
+    WHEN retired_google_grants ? ${grant}
+    THEN COALESCE(${revision} > (retired_google_grants->>${grant})::integer, FALSE)
+    ELSE TRUE END)`;
+}
 
 export interface ApprovalDispatchControl {
   revision: number;
@@ -50,6 +71,7 @@ function parseControl(row: Record<string, unknown>): ApprovalDispatchControl {
 export function approvalDispatchAdmissionCte(
   agentId: string,
   subjectUserId: string,
+  requestId?: string,
 ): string {
   validateIdentity(subjectUserId);
   return `WITH approval_admission AS (
@@ -57,8 +79,17 @@ export function approvalDispatchAdmissionCte(
     VALUES (${sqlText(agentId)}, ${sqlText(subjectUserId)})
     ON CONFLICT (agent_id, subject_user_id) DO UPDATE
       SET revision = approval_dispatch_controls.revision
-    RETURNING paused
-  )`;
+    RETURNING paused, revision, google_binding_required, retired_google_grants
+  )${
+    requestId
+      ? `, approval_permission AS (
+    SELECT paused, ${approvalAccountAdmissionSql("request.payload", "request.admission_revision")} AS permitted
+    FROM approval_admission CROSS JOIN approval_requests AS request
+    WHERE request.id = ${sqlText(requestId)} AND request.agent_id = ${sqlText(agentId)}
+      AND request.subject_user_id = ${sqlText(subjectUserId)}
+  )`
+      : ""
+  }`;
 }
 
 export class ApprovalDispatchControlStore {
@@ -66,6 +97,25 @@ export class ApprovalDispatchControlStore {
     private readonly runtime: IAgentRuntime,
     private readonly agentId: string = runtime.agentId,
   ) {}
+
+  /** Freezes old approvals under the same row lock used by insertion and dispatch. */
+  async fenceGoogleAccount(
+    input: ApprovalDispatchControlMutation & { grantId: string },
+  ): Promise<void> {
+    this.validate(input);
+    validateIdentity(input.grantId);
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE approval_dispatch_controls
+      SET google_binding_required = TRUE,
+        retired_google_grants = retired_google_grants || jsonb_build_object(${sqlText(input.grantId)}, revision),
+        updated_at = NOW()
+      WHERE agent_id = ${sqlText(this.agentId)} AND subject_user_id = ${sqlText(input.subjectUserId)}
+        AND paused AND operation_id = ${sqlText(input.operationId)} AND revision = ${input.expectedRevision}
+      RETURNING revision`,
+    );
+    if (!rows.length) throw this.conflict(input);
+  }
 
   async read(subjectUserId: string): Promise<ApprovalDispatchControl> {
     validateIdentity(subjectUserId);

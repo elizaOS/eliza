@@ -236,19 +236,24 @@ function createApprovalTableRuntime(
   ): { rows: Array<Record<string, unknown>> } => {
     let trimmed = sqlText.trim();
     if (trimmed.startsWith("WITH approval_admission AS")) {
-      const update = trimmed.indexOf("UPDATE approval_requests");
-      if (update < 0)
-        throw new Error("Approval admission has no claim mutation");
-      trimmed = trimmed.slice(update);
+      const mutation = trimmed.search(
+        /(?:INSERT INTO|UPDATE) approval_requests/,
+      );
+      if (mutation < 0) {
+        if (trimmed.endsWith("SELECT permitted FROM approval_permission"))
+          return { rows: [{ permitted: true }] };
+        throw new Error("Approval admission has no supported mutation");
+      }
+      trimmed = trimmed.slice(mutation);
     }
     if (/^SELECT[\s\S]+FROM approval_dispatch_controls/i.test(trimmed)) {
       return { rows: [] };
     }
 
     if (/^INSERT\s+INTO\s+approval_requests/i.test(trimmed)) {
-      const colsMatch = trimmed.match(/\(([\s\S]+?)\)\s*VALUES/i);
+      const colsMatch = trimmed.match(/\(([\s\S]+?)\)\s*SELECT/i);
       const valsMatch = trimmed.match(
-        /VALUES\s*\(([\s\S]+?)\)\s*(?:ON\s+CONFLICT[\s\S]+?)?RETURNING/i,
+        /\)\s*SELECT\s+([\s\S]+?)\s+FROM approval_admission/i,
       );
       if (!colsMatch || !valsMatch) throw new Error("bad INSERT in mock");
       const columns = colsMatch[1].split(",").map((s) => s.trim());

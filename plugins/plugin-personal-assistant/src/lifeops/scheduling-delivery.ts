@@ -333,10 +333,14 @@ export class SchedulingDeliveryStore {
       // approval claims, holding it until this claim transaction commits.
       const admissionRows = await executeRawSqlTx(
         tx,
-        `${approvalDispatchAdmissionCte(this.runtime.agentId, request.subjectUserId)} SELECT paused FROM approval_admission`,
+        `${approvalDispatchAdmissionCte(this.runtime.agentId, request.subjectUserId, request.id)} SELECT paused, permitted FROM approval_permission`,
       );
       const admission = admissionRows[0];
-      if (!admission || typeof admission.paused !== "boolean")
+      if (
+        !admission ||
+        typeof admission.paused !== "boolean" ||
+        typeof admission.permitted !== "boolean"
+      )
         throw deliveryInvariant(
           "SCHEDULING_DELIVERY_ADMISSION_INVALID",
           "dispatch admission returned no valid control",
@@ -385,6 +389,20 @@ export class SchedulingDeliveryStore {
 
       if (admission.paused)
         return { kind: "blocked", reason: "paused", attempt };
+
+      if (!admission.permitted) {
+        const invalidated = await this.invalidateTx(tx, request, attempt, {
+          error: "SCHEDULING_APPROVAL_STALE",
+          detail:
+            "Review a new approval for the current sender account after handoff",
+        });
+        return {
+          kind: "invalidated",
+          error: "SCHEDULING_APPROVAL_STALE",
+          detail: "The sender approval predates account handoff",
+          attempt: invalidated,
+        };
+      }
 
       const sourceFailure = await this.sourcePreconditionFailureTx(
         tx,
