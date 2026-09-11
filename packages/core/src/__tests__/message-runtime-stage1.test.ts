@@ -10813,3 +10813,82 @@ describe("planner prior dialogue and continuation resolution (#17024)", () => {
 		expect(useModelCalls(runtime)).toHaveLength(1);
 	});
 });
+
+// The protocol action is registered after candidate admission. A sole explicit
+// discovery hint must not look unresolved and fall back to broad domain tools.
+describe("explicit discovery survives planner surface construction", () => {
+	it.each([false, true])(
+		"retains discovery when all domain candidates selected=%s",
+		async (includeDomain) => {
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["agent_internal"],
+					candidateActionNames: includeDomain
+						? ["DISCOVER_TOOLS", "RUNTIME"]
+						: ["DISCOVER_TOOLS"],
+					intents: ["inspect the RUNTIME schema"],
+					extra: { requiresTool: true },
+				}),
+				{
+					text: "",
+					toolCalls: [
+						{
+							id: "catalog-1",
+							name: "DISCOVER_TOOLS",
+							arguments: { names: ["RUNTIME"], eliza_turn_scope: "final" },
+						},
+					],
+				},
+				JSON.stringify({
+					decision: "FINISH",
+					success: true,
+					thought: "Requested schema loaded.",
+					messageToUser: "RUNTIME is available.",
+				}),
+			]);
+			const domainHandler = vi.fn(async () => ({
+				success: true,
+				text: "Domain action must not run.",
+			}));
+			runtime.actions = [
+				{
+					name: "RUNTIME",
+					similes: [],
+					description: "Inspect runtime state.",
+					contexts: ["agent_internal"],
+					parameters: [],
+					validate: async () => true,
+					handler: domainHandler,
+				},
+			] as never;
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "Use DISCOVER_TOOLS to inspect the RUNTIME schema. Do not run RUNTIME.",
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000009" as UUID,
+			});
+			expect(result.kind).toBe("planned_reply");
+			const calls = useModelCalls(runtime);
+			expect(calls.map(([type]) => type)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+				ModelType.ACTION_PLANNER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+			const planner = calls[1][1] as { tools?: Array<{ name: string }> };
+			expect(planner.tools?.map((tool) => tool.name)).toContain(
+				"DISCOVER_TOOLS",
+			);
+			if (!includeDomain)
+				expect(planner.tools?.map((tool) => tool.name)).not.toContain(
+					"RUNTIME",
+				);
+			expect(domainHandler).not.toHaveBeenCalled();
+			if (result.kind === "planned_reply")
+				expect(result.result.responseContent?.text).toBe(
+					"RUNTIME is available.",
+				);
+		},
+	);
+});
