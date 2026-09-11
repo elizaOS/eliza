@@ -269,6 +269,70 @@ export class AccountHandoffStore {
     return this.writeCheckpoint(input);
   }
 
+  async checkpointGoogleVerification(input: {
+    operationId: string;
+    expectedRevision: number;
+    receipt: {
+      connectorAccountId: string;
+      grantId: string;
+      email: string;
+      calendarIds: string[];
+      writableCalendarId: string | null;
+      gmailHistoryId: string | null;
+      checkedAt: string;
+    };
+  }): Promise<AccountHandoffRecord> {
+    const receipt = z
+      .object({
+        connectorAccountId: identity,
+        grantId: identity,
+        email: z.email(),
+        calendarIds: z.array(identity),
+        writableCalendarId: identity.nullable(),
+        gmailHistoryId: identity.nullable(),
+        checkedAt: z.iso.datetime(),
+      })
+      .strict()
+      .parse(input.receipt);
+    const record = await this.read(input.operationId);
+    if (
+      !record ||
+      record.revision !== input.expectedRevision ||
+      record.phase !== "verifying_replacement"
+    )
+      throw this.conflict();
+    const selected = new Set([
+      ...record.review.readCalendars.map((calendar) => calendar.calendarId),
+      ...(record.review.writeCalendar
+        ? [record.review.writeCalendar.calendarId]
+        : []),
+    ]);
+    if (
+      receipt.connectorAccountId !==
+        record.review.replacement.connectorAccountId ||
+      receipt.grantId !== record.review.replacement.grantId ||
+      receipt.email.toLowerCase() !==
+        record.review.replacement.email.toLowerCase() ||
+      receipt.writableCalendarId !==
+        (record.review.writeCalendar?.calendarId ?? null) ||
+      selected.size !== receipt.calendarIds.length ||
+      receipt.calendarIds.some((id) => !selected.has(id)) ||
+      new Set(receipt.calendarIds).size !== receipt.calendarIds.length ||
+      (record.review.messageDestinations.some(
+        (destination) => destination.channel === "email",
+      ) &&
+        !receipt.gmailHistoryId)
+    )
+      throw this.conflict();
+    return this.writeCheckpoint({
+      operationId: input.operationId,
+      expectedRevision: input.expectedRevision,
+      expectedPhase: "verifying_replacement",
+      phase: "verifying_replacement",
+      receipt: { googleVerification: receipt },
+    });
+  }
+
   async checkpointMappingDestination(input: {
     operationId: string;
     expectedRevision: number;
