@@ -122,10 +122,65 @@ const plaidJwkCache = new Map<
   }
 >();
 
+/**
+ * Resolves the owner's effective IANA time zone for a given instant. The host
+ * (e.g. the personal-assistant route factory) injects this so bill dueness is
+ * judged against the owner's calendar day, not the container's UTC day. A
+ * resolver may return `null`/`undefined` (or throw) to signal "no owner zone";
+ * the service then falls through to the agent `TIMEZONE` setting and the host
+ * zone.
+ */
+export type OwnerTimeZoneResolver = (
+  now: Date,
+) => Promise<string | null | undefined> | string | null | undefined;
+
 /** Optional construction options (mirrors the LifeOps service shape). */
 export type FinancesServiceOptions = {
   ownerEntityId?: string | null;
+  resolveTimeZone?: OwnerTimeZoneResolver;
 };
+
+/**
+ * True when `timeZone` is a usable IANA identifier accepted by `Intl`. Used to
+ * guard every zone candidate so a malformed stored fact or setting falls
+ * through to the next source instead of throwing during classification.
+ */
+export function isValidTimeZone(timeZone: string): boolean {
+  if (timeZone.trim().length === 0) return false;
+  try {
+    new Intl.DateTimeFormat("en-CA", { timeZone });
+    return true;
+  } catch {
+    // error-policy:J3 — an unknown IANA zone id makes the Intl constructor
+    // throw RangeError; that is a validation result, not a recoverable state.
+    return false;
+  }
+}
+
+/**
+ * The `YYYY-MM-DD` calendar-day key for `now` as observed in `timeZone`. Bare
+ * `dueDate` strings are the day the owner reads on their own calendar, so
+ * dueness must be compared against this key rather than `now.toISOString()`,
+ * which is the UTC day. Throws (via `Intl`) on an invalid/unknown zone so the
+ * caller can fall through to the next zone source.
+ */
+export function calendarDateKeyInZone(now: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+  if (!year || !month || !day) {
+    throw new Error(
+      `Unable to derive calendar date key for time zone "${timeZone}"`,
+    );
+  }
+  return `${year}-${month}-${day}`;
+}
 
 export function resolveFinancesCloudManagedClientConfig(): ElizaCloudManagedClientConfig {
   if (resolveDevCloudEnvAuthority()) {
@@ -509,6 +564,7 @@ function computeSpendingSummary(args: {
 export class FinancesService {
   public readonly repository: FinancesRepository;
   public readonly ownerEntityId: string | null;
+  private readonly resolveTimeZoneOption: OwnerTimeZoneResolver | null;
   public plaidManagedClientCache: PlaidManagedClient | null = null;
   public paypalManagedClientCache: PaypalManagedClient | null = null;
 
@@ -518,6 +574,49 @@ export class FinancesService {
   ) {
     this.repository = new FinancesRepository(runtime);
     this.ownerEntityId = normalizeOptionalString(options.ownerEntityId) ?? null;
+    this.resolveTimeZoneOption = options.resolveTimeZone ?? null;
+  }
+
+  /**
+   * Resolve the owner's effective IANA zone for `now` in precedence order:
+   * explicit argument, injected owner resolver, agent `TIMEZONE` setting, then
+   * the process/host zone. Every candidate is validated; an invalid or failing
+   * source falls through to the next so classification never throws. Returns
+   * `"UTC"` only when no candidate yields a usable zone.
+   */
+  private async resolveCalendarTimeZone(
+    now: Date,
+    explicitTimeZone?: string | null,
+  ): Promise<string> {
+    const candidates: Array<
+      () => Promise<string | null | undefined> | string | null | undefined
+    > = [
+      () => explicitTimeZone,
+      () => this.resolveTimeZoneOption?.(now),
+      () => this.runtime.getSetting("TIMEZONE") as string | null | undefined,
+      () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+    ];
+    for (const candidate of candidates) {
+      try {
+        const value = await candidate();
+        if (typeof value === "string") {
+          const trimmed = value.trim();
+          if (trimmed.length > 0 && isValidTimeZone(trimmed)) {
+            return trimmed;
+          }
+        }
+      } catch (error) {
+        // error-policy:J4 — an unavailable or throwing zone source (fact-store
+        // read failure, malformed value) must not break bill classification;
+        // fall through to the next candidate and ultimately the host zone.
+        this.logFinancesWarn(
+          "resolveCalendarTimeZone",
+          "Time zone candidate failed to resolve; falling through to next source.",
+          { error: error instanceof Error ? error.message : String(error) },
+        );
+      }
+    }
+    return "UTC";
   }
 
   agentId(): string {
@@ -991,7 +1090,7 @@ export class FinancesService {
    * so extraction misses do not disappear from the user's review queue.
    */
   async getUpcomingBills(
-    args: { now?: Date } = {},
+    args: { now?: Date; timeZone?: string } = {},
   ): Promise<LifeOpsUpcomingBill[]> {
     const sources = await this.listPaymentSources();
     const emailSource = sources.find((source) => source.kind === "email");
@@ -1003,7 +1102,12 @@ export class FinancesService {
       },
     );
     const now = args.now ?? new Date();
-    const todayIso = now.toISOString().slice(0, 10);
+    // Bare `dueDate` strings are the owner's calendar day. Compare against the
+    // owner-zone calendar day (not the UTC day) so a bill due today does not
+    // flip to "overdue" in the owner's afternoon west of Greenwich, and a bill
+    // due yesterday does not linger as "upcoming" until UTC midnight east of it.
+    const timeZone = await this.resolveCalendarTimeZone(now, args.timeZone);
+    const todayIso = calendarDateKeyInZone(now, timeZone);
     const bills: LifeOpsUpcomingBill[] = [];
     for (const transaction of transactions) {
       const metadata = transaction.metadata;
