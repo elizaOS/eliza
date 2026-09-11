@@ -175,6 +175,22 @@ export const intentsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	},
 };
 
+export const contextRequestsFieldEvaluator: ResponseHandlerFieldEvaluator<
+	string[]
+> = {
+	name: "contextRequests",
+	description:
+		"Read deferred context without action planning: return exact context_discovery names here, contexts=[simple], replyText empty, and no action candidates. The runtime then supplies those complete provider bodies and calls you again to make the final decision. Request all needed bodies together. For remembered personal details absent from supplied dialogue, read FACTS before choosing a broader memory search; search stored history only if the supplied facts cannot answer or exact source records are required. For requested chat controls, read uiWidgetCapabilities to learn their syntax. Return [] when supplied evidence suffices, for ordinary conversation, or when no context_discovery is offered. Do not fetch facts merely to greet someone. Never invent missing facts or claim advertised chat controls are unsupported.",
+	descriptionCompressed:
+		'Request needed context_discovery names before answering; replyText="". [] if supplied evidence suffices. Context reads need no action planning.',
+	priority: 14,
+	schema: { type: "array", items: { type: "string" } },
+	parse: (value) =>
+		Array.isArray(value)
+			? value.filter((entry): entry is string => typeof entry === "string")
+			: [],
+};
+
 export const completionContextFieldEvaluator: ResponseHandlerFieldEvaluator<
 	CompletionContextSelection | undefined
 > = {
@@ -517,6 +533,7 @@ export const BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS: ReadonlyArray<ResponseHa
 		shouldRespondFieldEvaluator,
 		contextsFieldEvaluator,
 		intentsFieldEvaluator,
+		contextRequestsFieldEvaluator,
 		completionContextFieldEvaluator,
 		replyTextFieldEvaluator,
 		replyEffectStatusFieldEvaluator,

@@ -32,6 +32,7 @@ import {
 	resolveZeroDeliveryRecovery,
 	runV5MessageRuntimeStage1,
 } from "../services/message";
+import { runWithStreamingContext } from "../streaming-context";
 import { runWithTrajectoryContext } from "../trajectory-context";
 import {
 	applyGroundedActionReply,
@@ -162,6 +163,7 @@ function makeAttachmentState(): State {
 }
 
 function stage1Response(fields: {
+	contextRequests?: string[];
 	shouldRespond?: "RESPOND" | "IGNORE" | "STOP";
 	thought?: string;
 	contexts?: string[];
@@ -185,6 +187,7 @@ function stage1Response(fields: {
 					contexts: fields.contexts ?? [],
 					intents: fields.intents ?? [],
 					candidateActionNames: fields.candidateActionNames ?? [],
+					contextRequests: fields.contextRequests ?? [],
 					replyText: fields.replyText ?? "",
 					facts: fields.facts ?? [],
 					relationships: fields.relationships ?? [],
@@ -314,6 +317,228 @@ async function seededPiiSession(): Promise<{
 }
 
 describe("runV5MessageRuntimeStage1", () => {
+	it("keeps the system prefix identical when loading a stable provider reference", async () => {
+		const full =
+			"Complete widget syntax: [FORM] with every supported field and option.";
+		const runtime = makeRuntime([
+			stage1Response({ contextRequests: ["WIDGETS"], contexts: ["simple"] }),
+			stage1Response({ contexts: ["simple"], replyText: "Here is the form." }),
+		]);
+		runtime.providers = [{ name: "WIDGETS", cacheStable: true, get: vi.fn() }];
+		const state = makeState();
+		state.data.providers = {
+			WIDGETS: { text: full, discoveryText: "context_discovery: WIDGETS" },
+		};
+		runtime.composeState = vi.fn(async () => structuredClone(state));
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.DM }),
+			state,
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		const calls = useModelCalls(runtime).map(
+			([, params]) =>
+				params as {
+					messages: Array<{ role: string; content: string }>;
+					providerOptions: { eliza: { prefixHash: string } };
+				},
+		);
+		expect(calls).toHaveLength(2);
+		expect(calls[0]?.messages[0]).toEqual(calls[1]?.messages[0]);
+		expect(calls[0]?.providerOptions.eliza.prefixHash).toEqual(
+			calls[1]?.providerOptions.eliza.prefixHash,
+		);
+		expect(JSON.stringify(calls[0]?.messages)).not.toContain(full);
+		expect(
+			calls[1]?.messages.find((message) => message.role === "user")?.content,
+		).toContain(full);
+	});
+	it("does not add a discovery pass to voice replies", async () => {
+		const runtime = makeRuntime([
+			stage1Response({ contexts: ["simple"], replyText: "Hello." }),
+		]);
+		const state = makeState();
+		const full = "A complete saved fact body for the existing voice contract.";
+		state.data.providers = {
+			FACTS: { text: full, discoveryText: "context_discovery: FACTS" },
+		};
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.VOICE_DM }),
+			state,
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(useModelCalls(runtime)).toHaveLength(1);
+		expect(JSON.stringify(useModelCalls(runtime)[0]?.[1])).toContain(full);
+	});
+
+	it("stops a requested context read before another model call when cancelled during recomposition", async () => {
+		const abort = new AbortController();
+		const runtime = makeRuntime([
+			stage1Response({ contextRequests: ["FACTS"] }),
+		]);
+		const state = makeState();
+		state.data.providers = {
+			FACTS: {
+				text: "The complete facts available to this authorized turn.",
+				discoveryText: "context_discovery: FACTS",
+			},
+		};
+		runtime.composeState = vi.fn(async () => {
+			abort.abort(new Error("cancelled context read"));
+			return structuredClone(state);
+		});
+		await expect(
+			runWithStreamingContext({ abortSignal: abort.signal }, () =>
+				runV5MessageRuntimeStage1({
+					runtime,
+					message: makeMessage({ channelType: ChannelType.DM }),
+					state,
+					responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+				}),
+			),
+		).rejects.toThrow("cancelled context read");
+		expect(useModelCalls(runtime)).toHaveLength(1);
+	});
+	it("keeps discoverable bodies off the ordinary reply wire without another call", async () => {
+		const runtime = makeRuntime([
+			stage1Response({ contexts: ["simple"], replyText: "Hello." }),
+		]);
+		const state = makeState();
+		state.data.providers = {
+			FACTS: {
+				text: "A complete saved fact body with an exact personal detail.",
+				discoveryText: "context_discovery: FACTS",
+			},
+		};
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.DM }),
+			state,
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		expect(useModelCalls(runtime)).toHaveLength(1);
+		const wire = JSON.stringify(useModelCalls(runtime)[0]?.[1]);
+		expect(wire).toContain("context_discovery: FACTS");
+		expect(wire).not.toContain("exact personal detail");
+		expect(state.data.providers.FACTS.text).toContain("exact personal detail");
+	});
+
+	it("expands requested context in full before dispatching the final direct reply", async () => {
+		const full =
+			"Remembered detail: green mug. ".repeat(500) +
+			"Correction: the mug is now blue.";
+		const runtime = makeRuntime([
+			stage1Response({
+				contextRequests: ["FACTS"],
+				contexts: ["simple"],
+				replyText: "This draft must not be delivered.",
+				facts: ["unverified draft fact"],
+			}),
+			stage1Response({ contexts: ["simple"], replyText: "The mug is blue." }),
+		]);
+		const state = makeState();
+		state.data.providers = {
+			FACTS: { text: full, discoveryText: "context_discovery: FACTS" },
+		};
+		runtime.composeState = vi.fn(async () => structuredClone(state));
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text: "What color is the mug?",
+			}),
+			state,
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(useModelCalls(runtime)).toHaveLength(2);
+		expect(JSON.stringify(useModelCalls(runtime)[0]?.[1])).not.toContain(full);
+		expect(JSON.stringify(useModelCalls(runtime)[1]?.[1])).toContain(full);
+		expect(useModelCalls(runtime)[1]?.[1]).toMatchObject({
+			providerOptions: { eliza: { thinking: "off" } },
+		});
+		expect(runtime.composeState).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.any(Array),
+			true,
+			true,
+		);
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply")
+			expect(result.result.responseContent?.text).toBe("The mug is blue.");
+		expect(
+			(runtime.runActionsByMode as ReturnType<typeof vi.fn>).mock.calls.filter(
+				([mode]) => mode === "RESPONSE_HANDLER_BEFORE",
+			),
+		).toHaveLength(1);
+	});
+
+	it("does not reuse a discoverable body denied by fresh provider authorization", async () => {
+		const runtime = makeRuntime([
+			stage1Response({ contextRequests: ["FACTS"], contexts: ["simple"] }),
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "That saved context is unavailable.",
+			}),
+		]);
+		const state = makeState();
+		state.data.providers = {
+			FACTS: {
+				text: "Private personal detail which has been revoked.",
+				discoveryText: "context_discovery: FACTS",
+			},
+		};
+		runtime.composeState = vi.fn(async () => makeState());
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.DM }),
+			state,
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(JSON.stringify(useModelCalls(runtime))).not.toContain(
+			"Private personal detail",
+		);
+		expect(useModelCalls(runtime)).toHaveLength(2);
+	});
+
+	it("rejects an unknown context request before another model call or action", async () => {
+		const runtime = makeRuntime([
+			stage1Response({ contextRequests: ["OTHER_USERS_FACTS"] }),
+		]);
+		await expect(
+			runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ channelType: ChannelType.DM }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			}),
+		).rejects.toThrow("Request only context providers");
+		expect(useModelCalls(runtime)).toHaveLength(1);
+	});
+	it("refuses a repeated context request instead of creating an unbounded model loop", async () => {
+		const runtime = makeRuntime([
+			stage1Response({ contextRequests: ["FACTS"] }),
+			stage1Response({ contextRequests: ["FACTS"] }),
+		]);
+		const state = makeState();
+		state.data.providers = {
+			FACTS: {
+				text: "All the authorized saved facts are available in this full body.",
+				discoveryText: "context_discovery: FACTS",
+			},
+		};
+		runtime.composeState = vi.fn(async () => structuredClone(state));
+		await expect(
+			runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ channelType: ChannelType.DM }),
+				state,
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			}),
+		).rejects.toThrow("Request only context providers");
+		expect(useModelCalls(runtime)).toHaveLength(2);
+	});
 	it("preserves a committed action when its reply is unavailable without recovery models or context-after actions", async () => {
 		const unavailable = createUnavailableGroundedActionReply({
 			kind: "provider_issue",
@@ -1793,6 +2018,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(required).toEqual([
 			"shouldRespond",
 			"contexts",
+			"contextRequests",
 			"intents",
 			"completionContext",
 			"replyText",
@@ -5143,7 +5369,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			"you may scan the prior_message blocks above and answer from what is literally visible there",
 		);
 		expect(renderedPrompt).toContain(
-			"Only when the asked-about token appears neither in the current message nor in any visible prior_message block, say so plainly",
+			"Only when supplied dialogue and available facts cannot answer, say so plainly",
 		);
 		expect(renderedPrompt).toContain(
 			"there is no separate chat-history search tool",
@@ -5175,17 +5401,17 @@ describe("runV5MessageRuntimeStage1", () => {
 		// guard), the memory branch declares the window bounded and routes
 		// beyond-window recall/count to the memory context.
 		expect(renderedPrompt).toContain(
-			"only the most recent window of a longer stored conversation",
+			"supplied authorized dialogue; do not assume they represent every stored record",
 		);
 		expect(renderedPrompt).toContain(
 			"route it to the memory context (set requiresTool)",
 		);
 		expect(renderedPrompt).toContain(
-			"Never answer a beyond-window recall or count question from the visible window alone",
+			"Never answer an exhaustive stored-record count from rendered dialogue or facts alone",
 		);
 	});
 
-	it("renders the bounded-window disclosure and routes beyond-window recall to the planner when a memory context is available", async () => {
+	it("distinguishes supplied dialogue from exhaustive stored records and preserves memory-search routing", async () => {
 		// Rendered-prompt + route-decision pin for the tj-69d82bb89ebb69 fix.
 		// With a role-visible `memory` context registered, the Stage 1 user
 		// message must declare the visible dialogue a bounded window of a longer
@@ -5244,7 +5470,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			.map((message) => message.content ?? "")
 			.join("\n");
 		expect(fullPrompt).toContain(
-			"only the most recent window of a longer stored conversation",
+			"supplied authorized dialogue; do not assume they represent every stored record",
 		);
 		expect(fullPrompt).toContain(
 			"route it to the memory context (set requiresTool)",
@@ -5297,7 +5523,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			"explicitly label any observation as limited to the recent messages you can see",
 		);
 		expect(fullPrompt).not.toContain(
-			"only the most recent window of a longer stored conversation",
+			"supplied authorized dialogue; do not assume they represent every stored record",
 		);
 		expect(fullPrompt).not.toContain(
 			"route it to the memory context (set requiresTool)",

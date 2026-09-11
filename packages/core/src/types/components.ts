@@ -759,6 +759,11 @@ export interface ProviderResult {
 	/** Human-readable text for LLM prompt inclusion */
 	text?: string;
 
+	/** Optional Stage-1 discovery notice. Keep standing constraints complete here;
+	 * the response handler can request the entire authorized `text` before answering.
+	 * Other consumers retain `text`. This never replaces stored provider evidence. */
+	discoveryText?: string;
+
 	/**
 	 * Complete, explicit retrieval representation used only when the primary
 	 * text cannot fit the selected model's input boundary. This must describe

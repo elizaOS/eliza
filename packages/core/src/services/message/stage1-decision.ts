@@ -35,12 +35,17 @@ import type {
 	listAvailableContextsForRole,
 	resolveStage1SenderRole,
 } from "./addressing.js";
-import type { createV5MessageContextObject } from "./context-assembly.js";
+import { createV5MessageContextObject } from "./context-assembly.js";
+import {
+	projectDiscoverableContext,
+	readContextRequests,
+} from "./context-discovery.js";
 import {
 	getActionInferenceMessageText,
 	isSubAgentCompletionArtifact,
 	resolveContinuationInferenceMessageText,
 } from "./dialogue-context.js";
+import { composeResponseState } from "./provider-state.js";
 import {
 	getStage1FinishReason,
 	stage1HitCompletionLimit,
@@ -139,9 +144,15 @@ export async function generateStage1Decision(
 		);
 	const responseHandlerSchema =
 		args.runtime.responseHandlerFieldRegistry.composeSchema();
-	const messageHandlerInput = renderMessageHandlerModelInput(
+	const loadedContext = new Set<string>();
+	const discoveryEnabled =
+		directMessageChannel && !voiceDirectMessageChannel && !args.codingMode;
+	let discovery = discoveryEnabled
+		? projectDiscoverableContext(context, args.state, loadedContext)
+		: { context, available: new Set<string>() };
+	let messageHandlerInput = renderMessageHandlerModelInput(
 		args.runtime,
-		context,
+		discovery.context,
 		availableContexts,
 		{
 			directMessage: directMessageChannel,
@@ -149,7 +160,7 @@ export async function generateStage1Decision(
 			responseHandlerFields: responseHandlerFieldPrompt.rendered,
 		},
 	);
-	const stage1PrefixHashes = computePrefixHashes(
+	let stage1PrefixHashes = computePrefixHashes(
 		messageHandlerInput.promptSegments,
 	);
 	const stableStage1Segments = messageHandlerInput.promptSegments.filter(
@@ -160,7 +171,7 @@ export async function generateStage1Decision(
 		typeof messageHandlerInput.messages[0]?.content === "string"
 			? messageHandlerInput.messages[0].content
 			: "";
-	const stage1PrefixHash =
+	let stage1PrefixHash =
 		stableStage1PrefixHashes[stableStage1PrefixHashes.length - 1]?.hash ??
 		hashString(`stage1:${stage1SystemContent}`);
 	const messageHandlerTools = [
@@ -265,7 +276,7 @@ export async function generateStage1Decision(
 			{}),
 		thinking: "off",
 	};
-	const stage1ModelParams = {
+	let stage1ModelParams = {
 		messages: messageHandlerInput.messages,
 		promptSegments: messageHandlerInput.promptSegments,
 		tools: messageHandlerTools,
@@ -346,6 +357,87 @@ export async function generateStage1Decision(
 			stage1ModelParams,
 		)) as string | GenerateTextResult;
 		stage1RetryReason = getStage1RetryReason(rawMessageHandler);
+	}
+	// A context request is an incomplete decision. Recompose through the same
+	// permission/disclosure gates before another model call, and never dispatch
+	// its draft, extraction fields, or action candidates. Each provider can be
+	// expanded once; there is no action-planner loop for reading provider text.
+	while (discoveryEnabled) {
+		const requested = readContextRequests(
+			extractMessageHandlerRawParsed(rawMessageHandler),
+			discovery.available,
+		);
+		if (requested.length === 0) break;
+		stage1TurnSignal.throwIfAborted();
+		for (const name of requested) loadedContext.add(name);
+		const refreshed = await composeResponseState(
+			args.runtime,
+			args.message,
+			true,
+		);
+		Object.assign(args.state, refreshed);
+		const refreshedContext = await createV5MessageContextObject({
+			...args,
+			userRoles: [senderRole],
+			availableContexts,
+		});
+		Object.assign(context, refreshedContext, { id: context.id });
+		discovery = projectDiscoverableContext(context, args.state, loadedContext);
+		messageHandlerInput = renderMessageHandlerModelInput(
+			args.runtime,
+			discovery.context,
+			availableContexts,
+			{
+				directMessage: directMessageChannel,
+				voiceDirectMessage: voiceDirectMessageChannel,
+				responseHandlerFields: responseHandlerFieldPrompt.rendered,
+			},
+		);
+		stage1PrefixHashes = computePrefixHashes(
+			messageHandlerInput.promptSegments,
+		);
+		const stableHashes = computePrefixHashes(
+			messageHandlerInput.promptSegments.filter((segment) => segment.stable),
+		);
+		stage1PrefixHash =
+			stableHashes.at(-1)?.hash ?? hashString("context-discovery");
+		const expandedCacheOptions = cacheProviderOptions({
+			prefixHash: stage1PrefixHash,
+			segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
+			promptSegments: messageHandlerInput.promptSegments,
+			conversationId: args.message.roomId
+				? String(args.message.roomId)
+				: undefined,
+		});
+		stage1ModelParams = {
+			...stage1ModelParams,
+			messages: messageHandlerInput.messages,
+			promptSegments: messageHandlerInput.promptSegments,
+			providerOptions: withModelInputBudgetProviderOptions(
+				{
+					...stage1ProviderOptions,
+					...expandedCacheOptions,
+					eliza: {
+						...(stage1ProviderOptions.eliza as object),
+						...(expandedCacheOptions.eliza as object),
+					},
+				},
+				buildModelInputBudget({
+					messages: messageHandlerInput.messages,
+					promptSegments: messageHandlerInput.promptSegments,
+					tools: messageHandlerTools,
+				}),
+			),
+		};
+		args.runtime.logger.debug(
+			{ providers: requested },
+			"[message] Expanding requested context before final response decision",
+		);
+		stage1TurnSignal.throwIfAborted();
+		rawMessageHandler = (await args.runtime.useModel(
+			ModelType.RESPONSE_HANDLER,
+			stage1ModelParams,
+		)) as string | GenerateTextResult;
 	}
 	const messageHandlerEndedAt = Date.now();
 	// Capture the provider that served the Stage-1 (RESPONSE_HANDLER) call
@@ -536,7 +628,7 @@ export async function generateStage1Decision(
 				messages: messageHandlerInput.messages,
 				tools: messageHandlerTools,
 				toolChoice: "required",
-				providerOptions: messageHandlerProviderOptions,
+				providerOptions: stage1ModelParams.providerOptions,
 				raw: rawMessageHandler,
 				parsed: messageHandler,
 				startedAt: messageHandlerStartedAt,

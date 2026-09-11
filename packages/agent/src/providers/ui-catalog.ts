@@ -122,7 +122,7 @@ is ordered; [CHECKLIST] is unordered.
 - Your own multi-step work → [CHECKLIST] (unordered) / [WORKFLOW] (ordered)
 - Custom dashboards/tables/charts → separate generative-UI guide; facts → text`;
 
-/** Small discovery hint for direct replies; full grammar loads only in planning. */
+/** Complete compact marker reference; Stage 1 can read it on demand. */
 export const UI_WIDGETS_CAPABILITIES = `## In-chat controls
 Render standalone controls directly in replyText with contexts=["simple"] and candidateActionNames=[]; no tool, discovery or planning call is needed just to display them. A request to display a configuration card alone does not ask for a live status check, connection, or settings change. Select task contexts only for actual tool work. The planner receives longer uiWidgets examples.
 Canonical inline syntax:
@@ -145,6 +145,9 @@ export const uiWidgetCapabilitiesProvider: Provider = {
   cacheScope: "agent",
   get: async (_runtime: IAgentRuntime, message: Memory) => ({
     text: isAllowedChannel(message) ? UI_WIDGETS_CAPABILITIES : "",
+    discoveryText: isAllowedChannel(message)
+      ? 'context_discovery: uiWidgetCapabilities\nThis chat renderer supports configuration cards, choice buttons, forms, follow-ups, checklists and workflows regardless of the focused app view. To display one, return contextRequests=["uiWidgetCapabilities"], contexts=["simple"], replyText=""; the runtime supplies exact syntax before your final reply. This is not a view capability or an app action. Ordinary text needs no widget guide.'
+      : "",
   }),
 };
 

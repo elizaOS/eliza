@@ -304,10 +304,13 @@ describe("managed incremental evaluators", () => {
 			"### backfill\nIncremental evidence contract: process all evidence records above.",
 		);
 		expect(prompt).toContain(
-			`### current\nIncremental evidence contract: process only message IDs ${JSON.stringify([current.id], null, 2)}.`,
+			"### current\nIncremental evidence contract: process only the exact source IDs in evidence-set-1 defined above.",
 		);
 		if (typeof prompt !== "string")
 			throw new Error("Expected evaluator prompt");
+		expect(
+			JSON.parse(prompt.match(/evidence-set-1: (\[[\s\S]*?\])/)?.[1] ?? "null"),
+		).toEqual([current.id]);
 		expect(prompt.match(/OLDER_SHARED_EVIDENCE/g)).toHaveLength(1);
 	});
 
