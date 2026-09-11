@@ -168,12 +168,18 @@ export function parseCalendarCardRequest(
   if (body.ttlMs !== undefined && body.ttlMs !== null) {
     if (
       typeof body.ttlMs !== "number" ||
-      !Number.isInteger(body.ttlMs) ||
+      !Number.isSafeInteger(body.ttlMs) ||
       body.ttlMs <= 0
     ) {
       return {
         ok: false,
         error: "ttlMs must be a positive integer number of milliseconds",
+      };
+    }
+    if (!Number.isFinite(new Date(Date.now() + body.ttlMs).getTime())) {
+      return {
+        ok: false,
+        error: "ttlMs must produce a representable expiry date",
       };
     }
     ttlMs = body.ttlMs;

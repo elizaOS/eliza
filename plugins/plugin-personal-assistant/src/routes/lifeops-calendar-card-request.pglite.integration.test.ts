@@ -92,6 +92,14 @@ it("answers malformed card bodies with a 400 and issues a well-formed card", asy
         { ...valid, ttlMs: -5 },
         "ttlMs must be a positive integer number of milliseconds",
       ],
+      [
+        { ...valid, ttlMs: 1e20 },
+        "ttlMs must be a positive integer number of milliseconds",
+      ],
+      [
+        { ...valid, ttlMs: Number.MAX_SAFE_INTEGER },
+        "ttlMs must produce a representable expiry date",
+      ],
     ];
     for (const [body, error] of rejected) {
       const response = await post(body);
