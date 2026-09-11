@@ -12,6 +12,7 @@ import {
 import { GoogleWorkspaceTestService } from "../../test/stubs/plugin-google-workspace.js";
 import { AccountHandoffAdmission } from "./account-handoff-admission.js";
 import { AccountHandoffCalendarMappings } from "./account-handoff-calendar-mappings.js";
+import { deriveAccountHandoffGoogleReview } from "./account-handoff-google-review.js";
 import { AccountHandoffSourceSelection } from "./account-handoff-source-selection.js";
 import { AccountHandoffStore } from "./account-handoff-store.js";
 import { executeRawSql } from "./sql.js";
@@ -51,9 +52,23 @@ async function prepared(owner: string) {
   const provider = await host.runtime.getServiceLoadPromise("google");
   Object.assign(provider, { listCalendars: async () => entries });
   const calendar = new CalendarService(host.runtime);
+  const accounts = {
+    getGoogleConnectorAccounts: async () => [
+      f.status,
+      {
+        ...f.status,
+        grant: {
+          ...f.grant,
+          id: f.review.previous.grantId,
+          connectorAccountId: f.review.previous.connectorAccountId,
+          identityEmail: f.review.previous.email,
+        },
+      },
+    ],
+  };
   calendar.setGate({
     ...createDefaultCalendarHostGate(host.runtime),
-    getGoogleConnectorAccounts: async () => [f.status],
+    ...accounts,
   });
   const url = new URL("http://localhost");
   const list = () =>
@@ -82,7 +97,20 @@ async function prepared(owner: string) {
   const store = new AccountHandoffStore(host.runtime, owner);
   const service = () =>
     new AccountHandoffSourceSelection(host.runtime, owner, calendar, url);
-  let state = await store.review(owner, f.review);
+  const facts = await deriveAccountHandoffGoogleReview(
+    host.runtime.agentId,
+    url,
+    {
+      previousGrantId: f.review.previous.grantId,
+      replacementGrantId: f.grant.id,
+      readCalendarIds: ["selected"],
+      writeCalendarId: null,
+      calendarLinks: [],
+    },
+    accounts,
+    calendar,
+  );
+  let state = await store.review(owner, { ...f.review, ...facts });
   state = await service().capture(state.operationId, state.revision);
   const reviewed = state;
   const admission = new AccountHandoffAdmission(
