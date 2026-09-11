@@ -7,6 +7,7 @@
 
 import { createHash } from "node:crypto";
 import path from "node:path";
+import { ElizaError } from "@elizaos/core";
 import type {
   ScenarioStabilityAttemptNumber,
   ScenarioStabilityFailureClassification,
@@ -615,6 +616,7 @@ export function deriveScenarioStabilityFailureClusters(
 /** Validates the execution-owned relationships within one retained cell. */
 export function assertScenarioStabilityExecutedCellCoherence(
   cell: ScenarioStabilityExecutedCell,
+  budgets: ScenarioStabilityExecutionBudgets,
 ): void {
   if (
     cell.attempts.length !== 3 ||
@@ -625,6 +627,16 @@ export function assertScenarioStabilityExecutedCellCoherence(
     );
   }
   for (const attempt of cell.attempts) {
+    const violation = budgetViolation(attempt, budgets);
+    if (attempt.passed && violation) {
+      throw new ElizaError(
+        "Passing stability attempt exceeds its execution budget",
+        {
+          code: "STABILITY_PASSED_BUDGET_VIOLATION",
+          context: { attemptId: attempt.attemptId, violation },
+        },
+      );
+    }
     if (attempt.passed !== (attempt.failureClassification === null)) {
       throw new Error(
         "stability attempt pass and failure classification disagree",
@@ -671,6 +683,25 @@ export function assertScenarioStabilityExecutedCellCoherence(
     ) {
       throw new Error(
         "stability cell baseline does not match its admitted passing attempts",
+      );
+    }
+    const firstAdmitted = cell.attempts.find(
+      (attempt) => attempt.initialStateHash !== "unavailable",
+    );
+    if (
+      firstAdmitted &&
+      cell.baselineInitialStateHash !== firstAdmitted.initialStateHash
+    ) {
+      throw new ElizaError(
+        "Stability baseline must match the first admitted attempt",
+        {
+          code: "STABILITY_BASELINE_ORDER_MISMATCH",
+          context: {
+            attemptId: firstAdmitted.attemptId,
+            baseline: cell.baselineInitialStateHash,
+            initialStateHash: firstAdmitted.initialStateHash,
+          },
+        },
       );
     }
   }
@@ -803,7 +834,7 @@ export async function executeScenarioStability(input: {
       strictPassed: passedAttempts === 3,
       attempts,
     };
-    assertScenarioStabilityExecutedCellCoherence(cell);
+    assertScenarioStabilityExecutedCellCoherence(cell, input.budgets);
     cells.push(cell);
   }
   const focusList = deriveScenarioStabilityFocusList(cells);

@@ -8,6 +8,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import { link, mkdir, open, rmdir, unlink } from "node:fs/promises";
 import path from "node:path";
+import { ElizaError } from "@elizaos/core";
 import {
   assertScenarioStabilityBoundedJson,
   assertScenarioStabilityExecutedCellCoherence,
@@ -286,11 +287,20 @@ async function readBoundedArtifact(
 ): Promise<Buffer> {
   const handle = await open(
     filePath,
-    fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW,
+    fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK,
   );
   try {
     const before = await handle.stat({ bigint: true });
-    if (!before.isFile() || before.size > BigInt(maximumBytes)) {
+    if (!before.isFile()) {
+      throw new ElizaError(
+        `${path.basename(filePath)} must be a regular file`,
+        {
+          code: "STABILITY_ARTIFACT_NOT_REGULAR_FILE",
+          context: { filePath },
+        },
+      );
+    }
+    if (before.size > BigInt(maximumBytes)) {
       throw new Error(`${path.basename(filePath)} exceeds its artifact limit`);
     }
     const expectedBytes = Number(before.size);
@@ -673,7 +683,7 @@ function parseCloudStabilityExecutionReport(
     parseExecutedCell,
   );
   for (const cell of cells) {
-    assertScenarioStabilityExecutedCellCoherence(cell);
+    assertScenarioStabilityExecutedCellCoherence(cell, budgets);
   }
   const focusList = strictArray(
     record.focusList,
