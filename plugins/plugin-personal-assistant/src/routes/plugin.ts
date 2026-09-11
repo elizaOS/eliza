@@ -465,6 +465,7 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/account-handoffs" },
   { type: "GET", path: "/api/lifeops/account-handoffs/active" },
   { type: "GET", path: "/api/lifeops/account-handoffs/retirement-candidates" },
+  { type: "GET", path: "/api/lifeops/account-handoffs/calendar-entries" },
   { type: "GET", path: "/api/lifeops/account-handoffs/:operationId" },
   { type: "POST", path: "/api/lifeops/account-handoffs/:operationId/cancel" },
   { type: "POST", path: "/api/lifeops/account-handoffs/:operationId/advance" },

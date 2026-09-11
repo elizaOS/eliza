@@ -106,7 +106,10 @@ import { ElizaClient } from "@elizaos/ui/api/client-base";
 // them to the shared ElizaClient prototype so the LifeOps dashboard keeps them.
 import "@elizaos/plugin-calendar/api/client-calendar";
 import type { AccountHandoffRetirementCandidate } from "../lifeops/account-handoff-approval-inventory.js";
-import type { AccountHandoffChoices } from "../lifeops/account-handoff-review.js";
+import type {
+  AccountHandoffCalendarEntry,
+  AccountHandoffChoices,
+} from "../lifeops/account-handoff-review.js";
 import type { AccountHandoffRecord } from "../lifeops/account-handoff-store.js";
 import type { FullDiskAccessProbeResult } from "../lifeops/fda-probe.js";
 import type {
@@ -146,6 +149,9 @@ export interface LifeOpsElizaClientMethods {
   getLifeOpsHandoffRetirementCandidates(
     previousGrantId: string,
   ): Promise<{ candidates: AccountHandoffRetirementCandidate[] }>;
+  getLifeOpsHandoffCalendarEntries(
+    previousGrantId: string,
+  ): Promise<{ entries: AccountHandoffCalendarEntry[] }>;
   createLifeOpsAccountHandoff(
     choices: AccountHandoffChoices,
   ): Promise<{ handoff: AccountHandoffRecord }>;
@@ -511,6 +517,15 @@ lifeOpsClientPrototype.getLifeOpsHandoffRetirementCandidates = async function (
 ) {
   return this.fetch(
     `/api/lifeops/account-handoffs/retirement-candidates?${new URLSearchParams({ previousGrantId })}`,
+  );
+};
+
+lifeOpsClientPrototype.getLifeOpsHandoffCalendarEntries = async function (
+  this: ElizaClient,
+  previousGrantId,
+) {
+  return this.fetch(
+    `/api/lifeops/account-handoffs/calendar-entries?${new URLSearchParams({ previousGrantId })}`,
   );
 };
 
