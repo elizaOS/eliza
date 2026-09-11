@@ -37,9 +37,7 @@ import {
 	getMessageHandlerReply,
 	routeMessageHandlerOutput,
 } from "../../runtime/message-handler";
-import { DEFAULT_CONTEXT_WINDOW_TOKENS } from "../../runtime/model-input-budget";
 import {
-	buildInitialPlannerModelInputBudget,
 	type PlannerLoopResult,
 	type PlannerRuntime,
 	type PlannerToolCall,
@@ -116,7 +114,6 @@ import {
 	collectBudgetedStageOneCandidateActions,
 	collectPlannerTools,
 	collectPreviousActionResults,
-	decideUmbrellaPlannerBudget,
 	executeV5PlannedToolCall,
 } from "./planned-tool.js";
 import {
@@ -1095,6 +1092,16 @@ export async function runV5MessageRuntimeStage1(
 			localizedExamples: localizedExamples ?? undefined,
 		});
 		if (progressiveActions) {
+			// The discovery tool is planner protocol, not a capability family; keep
+			// it out of the tier-A parent summary rendered into the planner context.
+			actionSurface.summary.tierAParents =
+				actionSurface.summary.tierAParents.filter(
+					(name) =>
+						normalizeActionIdentifier(name) !==
+						normalizeActionIdentifier("DISCOVER_TOOLS"),
+				);
+		}
+		if (progressiveActions) {
 			actionSurface.summary.discoverableActionCount =
 				plannerCandidateActions.length;
 			actionSurface.summary.discoveryToolName = "DISCOVER_TOOLS";
@@ -1198,98 +1205,12 @@ export async function runV5MessageRuntimeStage1(
 				candidateActions: getMessageHandlerCandidateActions(messageHandler),
 			},
 		);
-		let budgetedPlannerContextWithDecision = plannerContextWithDecision;
+		// No dispatch-budget preflight: the planner receives every authorized
+		// action the progressive surface exposes plus DISCOVER_TOOLS, and the model
+		// transport rejects at its real input boundary. An estimate is diagnostic,
+		// not permission to discard authorized tools (message-runtime-umbrella-budget).
+		const budgetedPlannerContextWithDecision = plannerContextWithDecision;
 		const plannerProviderAttributionState = plannerState;
-		const preflightConfig = {
-			...args.plannerLoopConfig,
-			contextWindowTokens:
-				args.plannerLoopConfig?.contextWindowTokens ??
-				args.runtime
-					.getModelRegistrations?.()
-					.find(
-						(registration) =>
-							registration.modelType === ModelType.ACTION_PLANNER &&
-							typeof registration.metadata?.contextWindowTokens === "number",
-					)?.metadata?.contextWindowTokens ??
-				DEFAULT_CONTEXT_WINDOW_TOKENS,
-		};
-		const initialBudget = buildInitialPlannerModelInputBudget({
-			runtime: plannerRuntime,
-			context: plannerContextWithDecision,
-			config: preflightConfig,
-			tools: plannerTools,
-			codingMode: args.codingMode === true,
-		});
-		if (
-			args.codingMode !== true &&
-			initialBudget.estimatedInputTokens > initialBudget.dispatchThresholdTokens
-		) {
-			// Preserve every authorized parent and every explicit model candidate.
-			// The existing sub-planner exposes the selected parent's children with
-			// their full schemas. Do not expand those same schemas globally too.
-			const parentNames = new Set(
-				actionSurface.summary.tierAParents.map(normalizeActionIdentifier),
-			);
-			const actionLookup = buildRuntimeActionLookup({
-				actions: exposedPlannerActions,
-			});
-			for (const name of getMessageHandlerCandidateActions(messageHandler)) {
-				const action = resolveRuntimeAction(actionLookup, name);
-				if (action) parentNames.add(normalizeActionIdentifier(action.name));
-			}
-			const umbrellaActions = exposedPlannerActions.filter((action) =>
-				parentNames.has(normalizeActionIdentifier(action.name)),
-			);
-			if (
-				umbrellaActions.length > 0 &&
-				umbrellaActions.length < exposedPlannerActions.length
-			) {
-				const umbrellaContext = await createV5MessageContextObject({
-					...args,
-					state: plannerState,
-					selectedContexts,
-					includeTools: true,
-					userRoles: [senderRole],
-					availableContexts,
-					preselectedActions: umbrellaActions,
-					actionSurface: {
-						exposedActionNames: parentNames,
-						summary: {
-							...actionSurface.summary,
-							exposedActionCount: umbrellaActions.length,
-							fallback: "umbrella-parent-budget",
-						},
-					},
-					ambientTurn,
-					extraProviderExclusions: ambientTurnProviderExclusions(
-						args.runtime,
-						args.message,
-					),
-				});
-				const context = appendContextEvent(
-					umbrellaContext,
-					plannerDecisionEvent,
-				);
-				const tools = collectPlannerTools(context, umbrellaActions, {
-					expandSubActions: false,
-				});
-				const budget = buildInitialPlannerModelInputBudget({
-					runtime: plannerRuntime,
-					context,
-					config: preflightConfig,
-					tools,
-				});
-				if (
-					decideUmbrellaPlannerBudget({
-						umbrella: budget,
-						current: initialBudget,
-					}) !== "not-smaller"
-				) {
-					budgetedPlannerContextWithDecision = context;
-					plannerTools = tools;
-				}
-			}
-		}
 		const benchmarkForcingToolCall = isBenchmarkForcingToolCall(args.message);
 		// Only HARD-enforce a non-terminal tool when Stage 1 both flagged the turn
 		// tool-required AND named at least one candidate action. A bare

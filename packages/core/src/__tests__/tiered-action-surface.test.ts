@@ -578,7 +578,7 @@ describe("v5 tiered action surface", () => {
 		expect(handler).toHaveBeenCalledOnce();
 	});
 
-	it("routes an oversized family through its parent without dropping child schemas", async () => {
+	it("keeps an oversized family's children on the planner surface (the estimate is diagnostic)", async () => {
 		const childHandler = vi.fn(async () => ({
 			success: true,
 			text: "Calendar event created",
@@ -606,9 +606,7 @@ describe("v5 tiered action surface", () => {
 					contexts: ["calendar"],
 					candidateActionNames: ["CALENDAR"],
 				}),
-				plannerToolResponse("CALENDAR"),
 				plannerToolResponse("CALENDAR_OP_01"),
-				finishEvaluatorResponse("Calendar event created."),
 				finishEvaluatorResponse("Calendar event created."),
 			],
 		});
@@ -622,17 +620,15 @@ describe("v5 tiered action surface", () => {
 
 		const toolNames = plannerToolNames(runtime);
 		expect(toolNames).toContain("CALENDAR");
-		expect(toolNames).not.toContain("CALENDAR_OP_01");
-		const subPlannerCall = getCalls(runtime).filter(
+		expect(toolNames).toContain("CALENDAR_OP_01");
+		expect(toolNames).toContain("CALENDAR_OP_28");
+		const plannerCall = getCalls(runtime).find(
 			(call) => call.modelType === ModelType.ACTION_PLANNER,
-		)[1];
-		if (!subPlannerCall) throw new Error("Expected the child-family planner");
-		const childTools = (
-			subPlannerCall.params as { tools: Array<{ name: string }> }
-		).tools;
-		expect(childTools.map((tool) => tool.name)).toContain("CALENDAR_OP_01");
-		expect(childTools.map((tool) => tool.name)).toContain("CALENDAR_OP_28");
-		expect(JSON.stringify(childTools)).toContain(children[27].description);
+		);
+		if (!plannerCall) throw new Error("Expected the planner call");
+		const tools = (plannerCall.params as { tools: Array<{ name: string }> })
+			.tools;
+		expect(JSON.stringify(tools)).toContain(children[27].description);
 		expect(childHandler).toHaveBeenCalledOnce();
 	});
 
