@@ -1,4 +1,4 @@
-/* A chat first; the existing app and diagnostics open only on request. */
+/* The live app and developer chat share one client and remain visible together. */
 .eliza-developer-workspace {
   display: flex;
   flex-direction: column;
@@ -41,9 +41,7 @@
 }
 .developer-app-pane {
   display: none;
-  position: relative;
-  contain: layout paint;
-  isolation: isolate;
+  flex-direction: column;
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -145,17 +143,45 @@
 .eliza-developer-workspace :is(button, select, summary) {
   min-height: 44px;
 }
+.developer-app-location {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+}
+.developer-app-surface {
+  position: relative;
+  contain: layout paint;
+  isolation: isolate;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+/* The real shell sizes to this pane, not the full browser viewport. */
+.developer-app-surface [data-app-shell-root] {
+  height: 100%;
+}
 .eliza-developer-workspace[data-show-app="true"] .developer-app-pane {
-  display: block;
+  display: flex;
 }
 .eliza-developer-workspace[data-show-app="true"] .developer-inspector-pane {
-  display: none;
+  border-left: 1px solid var(--border);
 }
-@media (min-width: 1280px) {
+@media (max-width: 899px) {
+  .eliza-developer-workspace[data-show-app="true"] .developer-workspace-body {
+    flex-direction: column;
+  }
+  .eliza-developer-workspace[data-show-app="true"] .developer-app-pane {
+    flex: 0 0 40%;
+  }
   .eliza-developer-workspace[data-show-app="true"] .developer-inspector-pane {
-    display: block;
-    flex: 0 0 480px;
-    border-left: 1px solid var(--border);
+    border-left: 0;
+    border-top: 1px solid var(--border);
   }
 }
 @media (max-width: 600px) {

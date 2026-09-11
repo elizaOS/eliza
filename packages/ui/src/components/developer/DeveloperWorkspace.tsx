@@ -635,7 +635,7 @@ function LiveActivity({
   const operation = serverTurnStatus?.actionName || serverTurnStatus?.toolName;
   return (
     <div className="developer-live-activity">
-      <p role="status" className="text-sm">
+      <p role="status" aria-label="Current activity" className="text-sm">
         <span className="developer-live-dot" />
         {phase}
         {operation ? ` · ${operation}` : ""}{" "}
@@ -1044,7 +1044,7 @@ export function DeveloperWorkspace({ children }: { children: ReactNode }) {
   const { activeTab } = useAppSelectorShallow((state) => ({
     activeTab: state.tab,
   }));
-  const [showApp, setShowApp] = useState(false);
+  const [showApp, setShowApp] = useState(true);
   const [section, setSection] = useState<"chat" | "settings">("chat");
   return (
     <div className="eliza-developer-workspace" data-show-app={showApp}>
@@ -1060,7 +1060,7 @@ export function DeveloperWorkspace({ children }: { children: ReactNode }) {
               setSection("chat");
             }}
           >
-            {showApp ? "Back to chat" : "Show app"}
+            {showApp ? "Hide app" : "Show app"}
           </Button>
           <Button
             size="sm"
@@ -1077,9 +1077,19 @@ export function DeveloperWorkspace({ children }: { children: ReactNode }) {
         </nav>
       </header>
       <div className="developer-workspace-body">
-        <div data-testid="developer-app-pane" className="developer-app-pane">
-          {children}
-        </div>
+        <section
+          aria-label="Live app"
+          data-testid="developer-app-pane"
+          className="developer-app-pane"
+        >
+          <div className="developer-app-location">
+            <span>Live app</span>
+            <output aria-label="Current app path">
+              {pathForTab(activeTab)}
+            </output>
+          </div>
+          <div className="developer-app-surface">{children}</div>
+        </section>
         <div className="developer-inspector-pane">
           <RoleGate minRole="OWNER" fallback={<OwnerOnlyNotice />}>
             <DeveloperPanel key={authority} section={section} />
