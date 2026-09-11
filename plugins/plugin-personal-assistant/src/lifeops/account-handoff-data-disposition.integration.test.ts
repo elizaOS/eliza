@@ -1,4 +1,4 @@
-/** Real PGlite cleanup and checkpoint recovery with deterministic disconnected-account status; no provider account is disconnected or messaged. */
+/** Real PGlite cleanup and checkpoint recovery with deterministic connector operations; no provider account is disconnected or messaged. */
 import { CalendarService } from "@elizaos/plugin-calendar";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { googleHandoffFixture } from "../../test/helpers/handoff-google.js";
@@ -9,10 +9,12 @@ import {
 import { AccountHandoffAdmission } from "./account-handoff-admission.js";
 import { AccountHandoffCalendarMappings } from "./account-handoff-calendar-mappings.js";
 import { AccountHandoffDataDisposition } from "./account-handoff-data-disposition.js";
+import { AccountHandoffDisconnect } from "./account-handoff-disconnect.js";
 import { AccountHandoffStore } from "./account-handoff-store.js";
 import { AccountHandoffVerification } from "./account-handoff-verification.js";
 import { lifeOpsGmailMessageFromGoogle } from "./google-plugin-delegates.js";
 import { LifeOpsRepository } from "./repository.js";
+import type { LifeOpsGoogleService } from "./service-mixin-google.js";
 import { executeRawSql } from "./sql.js";
 
 let host: RealTestRuntimeResult;
@@ -23,7 +25,11 @@ afterAll(async () => {
   await host.cleanup();
 });
 
-async function prepared(owner: string, remove = true) {
+async function prepared(
+  owner: string,
+  remove = true,
+  performDisconnect = true,
+) {
   const f = googleHandoffFixture();
   f.grant.agentId = host.runtime.agentId;
   f.review.readCalendars = [];
@@ -59,8 +65,8 @@ async function prepared(owner: string, remove = true) {
     f.google,
     url,
   ).verifyGoogle(state.operationId, state.revision);
-  // The system under test begins after disconnection; the account status below
-  // represents that external boundary and is not evidence of a live disconnect.
+  // Destination verification before this phase is a fixture boundary. The
+  // connector port below is deterministic, not evidence of a live disconnect.
   state = await store.advance({
     operationId: state.operationId,
     expectedRevision: state.revision,
@@ -68,15 +74,45 @@ async function prepared(owner: string, remove = true) {
     phase: "disconnecting_previous",
     receipt: {},
   });
-  state = await store.advance({
-    operationId: state.operationId,
-    expectedRevision: state.revision,
-    expectedPhase: "disconnecting_previous",
-    phase: "disposing_imports",
-    receipt: { previousDisconnected: { ...f.review.previous } },
-  });
-  const statuses = [f.status];
-  const accounts = { getGoogleConnectorAccounts: async () => statuses };
+  const previousGrant = {
+    ...f.grant,
+    id: f.review.previous.grantId,
+    connectorAccountId: f.review.previous.connectorAccountId,
+    identityEmail: f.review.previous.email,
+  };
+  const statuses = [f.status, { ...f.status, grant: previousGrant }];
+  const disconnectCalls: Array<
+    Parameters<LifeOpsGoogleService["disconnectGoogleConnector"]>[0]
+  > = [];
+  const accounts: Pick<
+    LifeOpsGoogleService,
+    | "getGoogleConnectorStatus"
+    | "getGoogleConnectorAccounts"
+    | "disconnectGoogleConnector"
+  > = {
+    ...f.accounts,
+    getGoogleConnectorAccounts: async () => statuses,
+    disconnectGoogleConnector: async (request) => {
+      disconnectCalls.push(request);
+      const index = statuses.findIndex(
+        ({ grant }) => grant?.id === request.grantId,
+      );
+      if (index < 0) throw new Error("The fixture account was already removed");
+      statuses.splice(index, 1);
+      return f.status;
+    },
+  };
+  const disconnect = () =>
+    new AccountHandoffDisconnect(
+      host.runtime,
+      owner,
+      calendar,
+      accounts,
+      f.google,
+      url,
+    );
+  if (performDisconnect)
+    state = await disconnect().apply(state.operationId, state.revision);
   const service = () =>
     new AccountHandoffDataDisposition(
       host.runtime,
@@ -86,12 +122,6 @@ async function prepared(owner: string, remove = true) {
       url,
     );
   const repo = new LifeOpsRepository(host.runtime);
-  const previousGrant = {
-    ...f.grant,
-    id: f.review.previous.grantId,
-    connectorAccountId: f.review.previous.connectorAccountId,
-    identityEmail: f.review.previous.email,
-  };
   const message = {
     externalId: owner,
     threadId: owner,
@@ -159,6 +189,9 @@ async function prepared(owner: string, remove = true) {
     replacementMessage,
     previousSnapshot,
     replacementSnapshot,
+    disconnect,
+    disconnectCalls,
+    previousGrant,
   };
 }
 
@@ -268,6 +301,66 @@ describe("handoff imported-data disposition", () => {
         p.previousMessage.id,
       ),
     ).toEqual(p.previousSnapshot);
+    expect(await p.store.read(p.state.operationId)).toEqual(p.state);
+  });
+  it("does not repeat account removal after its checkpoint failed", async () => {
+    const p = await prepared("disconnect-retry-owner", true, false);
+    const control = await p.calendar.getLinkedCalendarControl();
+    await executeRawSql(
+      host.runtime,
+      "ALTER TABLE app_lifeops.life_account_handoffs ADD CONSTRAINT reject_disconnect_checkpoint CHECK (NOT (receipt_json::jsonb ? 'previousDisconnected')) NOT VALID",
+    );
+    try {
+      await expect(
+        p.disconnect().apply(p.state.operationId, p.state.revision),
+      ).rejects.toThrow();
+      expect(p.statuses.map(({ grant }) => grant?.id)).toEqual([
+        p.f.review.replacement.grantId,
+      ]);
+      expect(await p.store.read(p.state.operationId)).toEqual(p.state);
+    } finally {
+      await executeRawSql(
+        host.runtime,
+        "ALTER TABLE app_lifeops.life_account_handoffs DROP CONSTRAINT reject_disconnect_checkpoint",
+      );
+    }
+    const saved = await p
+      .disconnect()
+      .apply(p.state.operationId, p.state.revision);
+    expect(saved.phase).toBe("disposing_imports");
+    expect(saved.receipt.previousDisconnected).toEqual(p.f.review.previous);
+    expect(p.disconnectCalls).toEqual([
+      {
+        mode: "local",
+        side: "owner",
+        grantId: p.f.review.previous.grantId,
+        purgeImportedData: false,
+      },
+    ]);
+    expect(
+      await p.repo.getGmailMessage(
+        host.runtime.agentId,
+        "google",
+        p.previousMessage.id,
+      ),
+    ).toEqual(p.previousSnapshot);
+    expect(await p.calendar.getLinkedCalendarControl()).toEqual(control);
+  });
+
+  it("does not remove a changed old identity or a replacement without current provider access", async () => {
+    const p = await prepared("disconnect-guard-owner", true, false);
+    p.previousGrant.identityEmail = "unexpected@example.test";
+    await expect(
+      p.disconnect().apply(p.state.operationId, p.state.revision),
+    ).rejects.toMatchObject({ code: "ACCOUNT_HANDOFF_CONFLICT" });
+    p.previousGrant.identityEmail = p.f.review.previous.email;
+    p.f.status.connected = false;
+    await expect(
+      p.disconnect().apply(p.state.operationId, p.state.revision),
+    ).rejects.toMatchObject({
+      code: "ACCOUNT_HANDOFF_REPLACEMENT_UNAVAILABLE",
+    });
+    expect(p.disconnectCalls).toEqual([]);
     expect(await p.store.read(p.state.operationId)).toEqual(p.state);
   });
 });
