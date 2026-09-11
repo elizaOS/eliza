@@ -111,6 +111,11 @@ describe("AddAccountDialog", () => {
     );
     expect(onCreated).toHaveBeenCalledWith({ id: "account-1", label: "Work" });
     expect(onClose).toHaveBeenCalled();
+    await waitFor(() =>
+      expect((screen.getByLabelText("API key") as HTMLInputElement).value).toBe(
+        "",
+      ),
+    );
   });
 
   it("shows humanized API-key copy without mode-0600 jargon", () => {
