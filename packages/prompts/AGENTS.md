@@ -124,3 +124,5 @@ validation, action selection, and result.
 The authored default handler consolidates duplicate rules and distinguishes literal supplied-history recall from current-record reads. Keep live-state/effect routing, owner-goal versus work-task routing, crisis deferral, untrusted-input boundaries, secret protection and explicit memory mutations intact when editing it. This does not change runtime context renderers or impose history limits.
 
 For navigation-only turns, the model drafts a concise destination confirmation that the runtime holds until successful receipt-grounded execution. Other planning replies remain acknowledgments; a navigation confirmation cannot claim a record read or mutation.
+
+Exact dialogue quotations may use supplied original message text and authors directly. Missing evidence, absent requested source metadata, explicit history searches and exhaustive stored-history coverage retain authorized retrieval; honor user restrictions on lookup. This does not treat prior dialogue as current live-record state or permit invented provenance.

@@ -5452,9 +5452,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(renderedPrompt).toContain(
 			"supplied authorized dialogue; do not assume they represent every stored record",
 		);
-		expect(renderedPrompt).toContain(
-			"route it to the memory context (set requiresTool)",
-		);
+		expect(renderedPrompt).toContain("memory context (set requiresTool)");
 		expect(renderedPrompt).toContain(
 			"Never answer an exhaustive stored-record count from rendered dialogue or facts alone",
 		);
@@ -5521,9 +5519,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(fullPrompt).toContain(
 			"supplied authorized dialogue; do not assume they represent every stored record",
 		);
-		expect(fullPrompt).toContain(
-			"route it to the memory context (set requiresTool)",
-		);
+		expect(fullPrompt).toContain("memory context (set requiresTool)");
 		// No contradictory capability text anywhere in the rendered prompt —
 		// system message included. The denial sentence and its "no chat-history
 		// search" qualifier must both be absent when the search surface exists.
@@ -5574,9 +5570,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(fullPrompt).not.toContain(
 			"supplied authorized dialogue; do not assume they represent every stored record",
 		);
-		expect(fullPrompt).not.toContain(
-			"route it to the memory context (set requiresTool)",
-		);
+		expect(fullPrompt).not.toContain("memory context (set requiresTool)");
 		expect(fullPrompt).not.toContain("search it with MEMORY op:search");
 		// Route decision: honest denial ships directly — no planner escalation,
 		// so exactly one model call (Stage 1 only) is made.
@@ -6304,7 +6298,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			?.map((message) => message.content ?? "")
 			.join("\n");
 		expect(prompt).toContain("there is no separate chat-history search tool");
-		expect(prompt).not.toContain("route it to the memory context");
+		expect(prompt).not.toContain("memory context (set requiresTool)");
 		expect(prompt).not.toContain("search it with MEMORY op:search");
 		expect(prompt).not.toContain(
 			"available_contexts lists a memory or recall context",
@@ -6351,7 +6345,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			?.map((message) => message.content ?? "")
 			.join("\n");
 		expect(prompt).toContain("there is no separate chat-history search tool");
-		expect(prompt).not.toContain("route it to the memory context");
+		expect(prompt).not.toContain("memory context (set requiresTool)");
 		expect(prompt).not.toContain("search it with MEMORY op:search");
 		// Route decision: a role-hidden action is not an executable surface for
 		// this caller — no planner escalation, one Stage 1 call only.
