@@ -404,7 +404,10 @@ describe("view management actions", () => {
 		const action = createViewsAction();
 		const closeOne = createViewsAliasAction("CLOSE_VIEW");
 		const closeAll = createViewsAliasAction("CLOSE_ALL_VIEWS");
-		expect(action.routingHint).toContain("UI view/window/panel/app navigation");
+		expect(action.routingHint).toContain(
+			"Opening one known app view -> VIEWS_SHOW",
+		);
+		expect(action.routingHint).toContain("VIEWS action=show is the fallback");
 		expect(action.routingHint).toContain("Close/hide means VIEWS action=close");
 		expect(action.routingHint).toContain(
 			"agent-fill and agent-click are only for an explicitly requested form-control interaction",

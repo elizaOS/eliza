@@ -688,6 +688,93 @@ describe("planner source selection and restoration", () => {
 		expect(referencePlannerQueryTokens(foreign).applied).toBe(false);
 	});
 
+	it("uses lossless references on restored planner and evaluator wire requests without replaying a blocked effect", async () => {
+		const original = historyContext();
+		original.metadata = {
+			...original.metadata,
+			historyReferenceEncoding: true,
+		};
+		const first = completionContextSources(original).sources[0].event;
+		first.segment.content += " Exact standing constraint. ".repeat(60);
+		const repeated = structuredClone(first);
+		repeated.id = "history:repeated";
+		repeated.segment.id = repeated.id;
+		original.events.push(repeated);
+		const full = withSelection(original);
+		const before = structuredClone(full);
+		const calls: Array<{ type: string; wire: string }> = [];
+		let plans = 0;
+		const execute = vi.fn(async () => ({
+			success: true,
+			text: "Read verified.",
+		}));
+		await runPlannerLoop({
+			context: full,
+			tools: [
+				{
+					name: "NOTES",
+					description: "Read",
+					parameters: { type: "object", properties: {} },
+				},
+			],
+			runtime: {
+				useModel: async (type, params) => {
+					calls.push({
+						type: String(type),
+						wire: JSON.stringify(params.messages),
+					});
+					if (String(type) !== "ACTION_PLANNER")
+						return JSON.stringify({
+							success: true,
+							decision: "FINISH",
+							thought: "Receipt checked",
+							messageToUser: "Read verified.",
+						});
+					plans++;
+					return {
+						text: "",
+						toolCalls:
+							plans === 1
+								? [
+										{
+											id: "restore",
+											name: "RESTORE_CONTEXT",
+											arguments: {
+												scope: "history",
+												reason: "Need the repeated occurrence",
+											},
+										},
+										{ id: "blocked", name: "NOTES", arguments: {} },
+									]
+								: [
+										{
+											id: "read",
+											name: "NOTES",
+											arguments: { eliza_turn_scope: "final" },
+										},
+									],
+					};
+				},
+			},
+			executeToolCall: execute,
+		});
+		expect(calls.map(({ type }) => type)).toEqual([
+			"ACTION_PLANNER",
+			"ACTION_PLANNER",
+			"RESPONSE_HANDLER",
+		]);
+		expect(calls[0].wire).not.toContain("same_text_as=");
+		for (const { wire } of calls.slice(1)) {
+			expect(wire).toContain("[completion_source=h6; same_text_as=h1]");
+			expect(wire).toContain(first.segment.content);
+			expect(wire).toContain(
+				"Correction: keep the exact title  Picnic!?  with its spacing.",
+			);
+		}
+		expect(execute).toHaveBeenCalledTimes(1);
+		expect(full).toEqual(before);
+	});
+
 	const tools = [
 		{
 			name: "NOTES",

@@ -10,6 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 import { promoteSubactionsToActions } from "../../actions/promote-subactions";
 import {
 	plannerBatchScopeDescription,
+	plannerRequiredPolicy,
 	plannerSchema,
 	plannerTemplate,
 } from "../../prompts/planner";
@@ -341,46 +342,6 @@ describe("v5 planner loop skeleton", () => {
 		);
 	});
 
-	it("forbids using SHELL as a fallback for chat-message search/recall", () => {
-		// Regression for elizaOS/eliza#7935: Stage 1 hinted
-		// candidateActions=["SEARCH_MESSAGES"], but no matching action was
-		// registered. The planner fell back to echo placeholders and grep
-		// commands, burning iterations without a real chat-history capability.
-		expect(plannerTemplate).toContain(
-			"SHELL is for filesystem/process work, not a fallback for chat-message search/recall",
-		);
-		expect(plannerTemplate).toContain(
-			"do not run shell greps, echo placeholders, or simulate the search",
-		);
-		expect(plannerTemplate).toContain(
-			"memory queries, or agent-history lookups",
-		);
-	});
-
-	it("forbids spawning coding sub-agents for chat-message recall tasks", () => {
-		expect(plannerTemplate).toContain(
-			"TASKS_SPAWN_AGENT is for delegating coding/build/repo work",
-		);
-		expect(plannerTemplate).toContain(
-			"not a fallback for chat-message recall, memory queries, or agent-history lookups",
-		);
-		expect(plannerTemplate).toContain(
-			"routinely ends in sub-agent error/timeout",
-		);
-	});
-
-	it("forbids inventing tool workarounds for dead candidateActions hints", () => {
-		expect(plannerTemplate).toContain(
-			"candidateActions naming a tool that is not in this turn's exposed tools list is a dead hint",
-		);
-		expect(plannerTemplate).toContain(
-			"do not invent SHELL/BROWSER/TASKS workarounds to fulfill it",
-		);
-		expect(plannerTemplate).toContain(
-			"placeholder echoes burn cost and produce no progress",
-		);
-	});
-
 	it("allows structured chat markers while still banning arbitrary JSON/tool attempts", () => {
 		expect(plannerTemplate).toContain("arbitrary JSON/tool attempts");
 		expect(plannerTemplate).toContain(
@@ -390,95 +351,51 @@ describe("v5 planner loop skeleton", () => {
 		expect(plannerTemplate).toContain("The JSON inside [FORM] is form data");
 	});
 
-	it("forbids phantom in-flight investigative claims in messageToUser/REPLY (planner side)", () => {
-		// Live regression on 2026-05-26: user asked
-		// "look it up bitch" after the bot honestly declined a current-news
-		// question. Stage 1 routed simple=false + requiresTool=true with
-		// candidateActions=[WEB_SEARCH, SHELL]. The planner ran 4 SHELL curl
-		// iterations against duckduckgo/google-news/etc — all blocked by
-		// anti-scraping. Iter 5 REPLY then emitted:
-		//   "I'm fetching the latest info on 'big Yahu'. Please hold..."
-		// — a phantom present-continuous claim. iters=5 tools=4 but no
-		// further fetch was queued. The planner does not run in the
-		// background after returning; the user was promised data that
-		// would never arrive.
-		//
-		// The phantom-action-claim ban already lives in
-		// messageHandlerTemplate (Stage 1). This regression covers the
-		// SAME ban in plannerTemplate — the planner's messageToUser /
-		// REPLY text path that runs after every tool iteration.
-		expect(plannerTemplate).toContain(
-			"messageToUser and REPLY text must NEVER claim or imply an investigative OR task-execution action is happening",
-		);
-		expect(plannerTemplate).toContain('"I\'m fetching X, please hold"');
-		expect(plannerTemplate).toContain(
-			"The planner does not run in the background after returning",
-		);
-		expect(plannerTemplate).toContain("set messageToUser saying so plainly");
-		expect(plannerTemplate).toContain(
-			'"please hold" / "give me a sec" / "be right back" / "almost done" style stalling phrases',
-		);
-		// The ban now also covers task-execution claims (working on / fixing /
-		// wrapping up), not just investigative ones. Live regression 2026-06-28:
-		// in a multi-bot arena the bot claimed it was "wrapping the runtime-identity
-		// fix" with zero TASKS_SPAWN_AGENT this turn — pure narration.
-		expect(plannerTemplate).toContain('"I\'m working on it"');
-		expect(plannerTemplate).toContain(
-			"A claim that you are working on / starting / fixing / building / wrapping up a task is only legitimate when a task-executing tool call",
-		);
-	});
-
-	it("appends mandatory chat-recall fallback policy to optimized planner prompts", async () => {
-		const runtime = {
-			useModel: vi.fn(async () => ({ text: "No chat search is available." })),
-			getService: vi.fn(() => ({
-				getPrompt: vi.fn(() => ({
-					prompt:
-						"task: Optimized planner without bundled safety policy.\n\ncontext_object:\n{{contextObject}}\n\ntrajectory:\n{{trajectory}}",
+	it.each([
+		["default", plannerTemplate, false],
+		[
+			"one missing rule",
+			plannerTemplate.replace(plannerRequiredPolicy.discovery, ""),
+			true,
+		],
+		[
+			"custom",
+			"task: Custom planner.\ncontext_object:\n{{contextObject}}\ntrajectory:\n{{trajectory}}",
+			true,
+		],
+		[
+			"introductory fragments only",
+			Object.values(plannerRequiredPolicy)
+				.map((rule) => rule.split(". ")[0])
+				.join("\n"),
+			true,
+		],
+	] as const)(
+		"sends every complete mandatory rule once for %s prompts",
+		async (_name, template, appended) => {
+			const runtime = {
+				useModel: vi.fn(async () => ({ text: "No chat search is available." })),
+				getService: vi.fn(() => ({
+					getPrompt: vi.fn(() => ({ prompt: template })),
 				})),
-			})),
-		};
-
-		await runPlannerLoop({
-			runtime,
-			context: { id: "ctx", events: [] },
-			executeToolCall: vi.fn(),
-			evaluate: vi.fn(),
-		});
-
-		const plannerParams = runtime.useModel.mock.calls[0]?.[1] as {
-			messages?: Array<{ role?: string; content?: string }>;
-		};
-		const systemContent =
-			plannerParams.messages?.find((message) => message.role === "system")
-				?.content ?? "";
-		expect(systemContent).toContain(
-			"Optimized planner without bundled safety policy",
-		);
-		expect(systemContent).toContain("mandatory planner policy:");
-		expect(systemContent).toContain(
-			"Structured chat markers are allowed in messageToUser",
-		);
-		expect(systemContent).toContain("[FORM]\\n{json}\\n[/FORM]");
-		expect(systemContent).toContain(
-			"SHELL is for filesystem/process work, not a fallback for chat-message search/recall",
-		);
-		expect(systemContent).toContain(
-			"candidateActions naming a tool that is not in this turn's exposed tools list is a dead hint",
-		);
-		expect(systemContent).toContain(
-			"TASKS_SPAWN_AGENT is for delegating coding/build/repo work",
-		);
-		expect(systemContent).toContain(
-			"messageToUser alone cannot save, schedule, send, update, remember, or complete anything",
-		);
-		expect(systemContent).toContain(
-			"messageToUser and REPLY text must NEVER claim or imply an investigative OR task-execution action is happening",
-		);
-		expect(systemContent).toContain(
-			'"please hold" / "give me a sec" / "be right back" / "almost done" style stalling phrases',
-		);
-	});
+			};
+			await runPlannerLoop({
+				runtime,
+				context: { id: "ctx", events: [] },
+				executeToolCall: vi.fn(),
+				evaluate: vi.fn(),
+			});
+			const params = runtime.useModel.mock.calls[0]?.[1] as {
+				messages?: Array<{ role?: string; content?: string }>;
+			};
+			const system =
+				params.messages?.find(({ role }) => role === "system")?.content ?? "";
+			expect(system.includes("mandatory planner policy:")).toBe(appended);
+			for (const rule of Object.values(plannerRequiredPolicy)) {
+				expect(system.split(rule)).toHaveLength(2);
+			}
+		},
+	);
 
 	it("calls ACTION_PLANNER, executes the first queued tool, then evaluates", async () => {
 		const runtime = {

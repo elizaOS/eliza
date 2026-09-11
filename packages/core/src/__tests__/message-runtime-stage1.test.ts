@@ -3128,7 +3128,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(
 			plannerCall.tools?.find((tool) => tool.name === "DISCOVER_TOOLS")
 				?.description,
-		).toContain('"name":"FILE"');
+		).toContain('"FILE":[');
 	});
 
 	it("keeps the complete umbrella dispatcher when duplicate child schemas exceed the input budget", async () => {
@@ -8109,7 +8109,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(
 			plannerParams.tools?.find((tool) => tool.name === "DISCOVER_TOOLS")
 				?.description,
-		).toContain('"name":"SHELL"');
+		).toContain('"SHELL":[');
 		expect(
 			plannerParams.messages
 				?.map((entry) => String(entry.content ?? ""))
@@ -9184,8 +9184,8 @@ describe("verified read actions own the turn's single user-facing message", () =
 		const discovery = plannerParams.tools?.find(
 			(tool) => tool.name === "DISCOVER_TOOLS",
 		)?.description;
-		expect(discovery).toContain('"name":"SCHEDULED_HOUSEHOLD_DISTRACTOR"');
-		expect(discovery).toContain('"name":"WEEKLY_BRIEF_DISTRACTOR"');
+		expect(discovery).toContain('"SCHEDULED_HOUSEHOLD_DISTRACTOR":[');
+		expect(discovery).toContain('"WEEKLY_BRIEF_DISTRACTOR":[');
 		expect(result.kind).toBe("planned_reply");
 		expect(result.messageHandler.plan.deterministicToolCall).toBeUndefined();
 		if (result.kind === "planned_reply") {

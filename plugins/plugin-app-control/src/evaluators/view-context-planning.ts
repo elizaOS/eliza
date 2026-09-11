@@ -28,7 +28,12 @@ import { userRequestMessageText } from "../params.js";
 export type ContextualNavigationIntent =
 	| { disposition: "none"; reason: string }
 	| { disposition: "forbidden"; reason: string }
-	| { disposition: "requested" | "optional"; viewId: string; reason: string };
+	| {
+			disposition: "requested" | "optional";
+			viewId: string;
+			reason: string;
+			singleViewOnly?: boolean;
+	  };
 
 // A field result is reusable only inside the same runtime and exact incoming
 // message. It is not caller metadata, a persisted permission, or a catalog cache.
@@ -50,7 +55,7 @@ export const viewContinuationField: ResponseHandlerFieldEvaluator<ContextualNavi
 		name: "visualContinuation",
 		priority: 60,
 		description:
-			"Classify visual continuation for the final current request while preserving applicable earlier constraints. Return {disposition: requested|optional|none|forbidden|unresolved, viewId: string, reason: string}. Use none for ordinary conversation, hypothetical discussion, questions answerable without changing views, and ambiguity. Use forbidden for a requirement to stay on the current screen or not navigate. Use requested when the user requests navigation, and optional only when a surface clearly helps the requested activity; never infer navigation solely from a domain noun. For requested/optional, use a known shell view ID (Home is chat); use unresolved if the destination or permission is uncertain, so the live-catalog classifier can resolve it. For multiple requested views, name one and leave every destination/layout in the full request for the planner. Keep restrictions scoped: forbidding data edits does not prohibit requested navigation; forbidding other views does not prohibit the named views. Navigation never completes domain work. Opening one known app view alone selects candidateActionNames=[VIEWS_SHOW]; layouts or catalog discovery select VIEWS. Neither selects the destination domain tools. Add NOTES, CALENDAR or other domain tools only when the current request also asks to read or change their records. Use an empty viewId for none/forbidden/unresolved. This is a routing judgment only: no navigation or data operation has executed.",
+			"Classify visual continuation for the final current request while preserving applicable earlier constraints. Return {disposition: requested|optional|none|forbidden|unresolved, viewId: string, reason: string, singleViewOnly: boolean}. Set singleViewOnly=true only when ALL needed UI operations are opening one known view; independent domain record reads/writes may still be needed. Set it false for multiple destinations, layouts, catalog discovery, inspection, controls or selecting a date/record inside a view, no navigation, and uncertainty. Use none for ordinary conversation, hypothetical discussion, questions answerable without changing views, and ambiguity. Use forbidden for a requirement to stay on the current screen or not navigate. Use requested when the user requests navigation, and optional only when a surface clearly helps the requested activity; never infer navigation solely from a domain noun. For requested/optional, use a known shell view ID (Home is chat); use unresolved if the destination or permission is uncertain, so the live-catalog classifier can resolve it. For multiple requested views, name one and leave every destination/layout in the full request for the planner. Keep restrictions scoped: forbidding data edits does not prohibit requested navigation; forbidding other views does not prohibit the named views. Navigation never completes domain work. Opening one known app view alone selects candidateActionNames=[VIEWS_SHOW]; layouts or catalog discovery select VIEWS. Neither selects the destination domain tools. Add NOTES, CALENDAR or other domain tools only when the current request also asks to read or change their records. Use an empty viewId for none/forbidden/unresolved. This is a routing judgment only: no navigation or data operation has executed.",
 		schema: {
 			type: "object",
 			additionalProperties: false,
@@ -60,9 +65,10 @@ export const viewContinuationField: ResponseHandlerFieldEvaluator<ContextualNavi
 					enum: ["requested", "optional", "none", "forbidden", "unresolved"],
 				},
 				viewId: { type: "string" },
+				singleViewOnly: { type: "boolean" },
 				reason: { type: "string" },
 			},
-			required: ["disposition", "viewId", "reason"],
+			required: ["disposition", "viewId", "reason", "singleViewOnly"],
 		},
 		shouldRun: ({ runtime, message }) =>
 			!messageHasNoViewSurface(message) &&
@@ -73,7 +79,10 @@ export const viewContinuationField: ResponseHandlerFieldEvaluator<ContextualNavi
 			const record = value as Record<string, unknown>;
 			if (
 				Object.keys(record).some(
-					(key) => !["disposition", "viewId", "reason"].includes(key),
+					(key) =>
+						!["disposition", "viewId", "reason", "singleViewOnly"].includes(
+							key,
+						),
 				) ||
 				typeof record.reason !== "string" ||
 				typeof record.viewId !== "string"
@@ -85,6 +94,11 @@ export const viewContinuationField: ResponseHandlerFieldEvaluator<ContextualNavi
 			if (record.disposition === "forbidden") {
 				return { disposition: "forbidden", reason: record.reason };
 			}
+			if (
+				record.singleViewOnly !== undefined &&
+				typeof record.singleViewOnly !== "boolean"
+			)
+				return null;
 			if (record.disposition === "none") {
 				return record.viewId === ""
 					? { disposition: record.disposition, reason: record.reason }
@@ -99,6 +113,9 @@ export const viewContinuationField: ResponseHandlerFieldEvaluator<ContextualNavi
 					disposition: record.disposition,
 					viewId: record.viewId.trim(),
 					reason: record.reason,
+					...(typeof record.singleViewOnly === "boolean"
+						? { singleViewOnly: record.singleViewOnly }
+						: {}),
 				};
 			return null;
 		},
@@ -210,6 +227,11 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 		if (intent?.disposition === "none" || intent?.disposition === "forbidden") {
 			setNavigationConstraint(message, "deny", intent.reason);
 			return {
+				// This is also a completed model judgment. Keep its domain hints
+				// authoritative so the text backstop cannot add VIEWS for "do not
+				// navigate" after navigation has explicitly been declined.
+				clearCandidateActions: true,
+				addCandidateActions: [...(messageHandler.plan.candidateActions ?? [])],
 				addContextSlices: [
 					VIEW_CATALOG_SCOPE_CONTEXT,
 					`Navigation intent: ${JSON.stringify(intent)}. Preserve every domain operation; do not navigate when forbidden.`,
@@ -273,6 +295,8 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 		if (intent.disposition === "none" || intent.disposition === "forbidden") {
 			setNavigationConstraint(message, "deny", intent.reason);
 			return {
+				clearCandidateActions: true,
+				addCandidateActions: [...(messageHandler.plan.candidateActions ?? [])],
 				addContextSlices: [
 					VIEW_CATALOG_SCOPE_CONTEXT,
 					`Navigation intent: ${JSON.stringify(intent)}. Preserve every domain operation; do not navigate when forbidden.`,
@@ -299,7 +323,14 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 		)
 			? "VIEWS_SHOW"
 			: "VIEWS";
-		const selectedActions = messageHandler.plan.candidateActions ?? [];
+		// Only the same-turn model's explicit operation judgment can narrow an
+		// umbrella hint. A destination ID alone does not rule out compound UI work.
+		const narrowShowOnly =
+			navigationAction === "VIEWS_SHOW" && intent.singleViewOnly === true;
+		const selectedActions = (messageHandler.plan.candidateActions ?? []).filter(
+			(name) => !narrowShowOnly || name !== "VIEWS",
+		);
+		const parentHints = messageHandler.plan.parentActionHints ?? [];
 		return {
 			requiresTool: true,
 			clearReply: true,
@@ -310,7 +341,12 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 			// and authorized discovery remain available to the planner.
 			clearCandidateActions: true,
 			addCandidateActions: [...selectedActions, navigationAction],
-			addParentActionHints: navigationAction === "VIEWS" ? ["VIEWS"] : [],
+			clearParentActionHints: narrowShowOnly,
+			addParentActionHints: narrowShowOnly
+				? parentHints.filter((name) => name !== "VIEWS")
+				: navigationAction === "VIEWS"
+					? ["VIEWS"]
+					: [],
 			addContextSlices: [
 				VIEW_CATALOG_SCOPE_CONTEXT,
 				`Navigation intent: ${JSON.stringify(intent)}. No navigation has executed.`,

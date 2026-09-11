@@ -2510,11 +2510,11 @@ function asViewInteractionDataValue(
 
 const VIEWS_ROUTING_HINT = [
 	"Opening one known app view -> VIEWS_SHOW with view and navigationStepId. UI layouts, catalog discovery and other operations -> VIEWS.",
-	"Eliza's home screen is the chat view: return home with action=show view=chat. The views-manager is the app list, not home. App navigation never requires turning the user's words into a website URL.",
+	"Eliza's home screen is the chat view: return home with VIEWS_SHOW view=chat when available, otherwise VIEWS action=show view=chat. The views-manager is the app list, not home. App navigation never requires turning the user's words into a website URL.",
 	"UI Context identifies the open view and its capabilities, not its displayed contents. Answer identity-only questions from that context. To describe visible text, balances, settings, or selections, first inspect the view with get-text or list-elements, or use its domain read action. Configuration diagnostics are not evidence of what the screen displays.",
-	"View switching is a common proactive response in app chat: use action=show when the user asks to open, show, switch to, or pull up a matching surface, including a bare surface name in any language.",
-	"Use VIEWS for navigation, close/hide, the view manager, split/tile/window/pin layouts, and explicit capabilities that the selected view declares when no dedicated domain action owns the data.",
-	"Opening the Calendar surface uses VIEWS action=show; reading or changing calendar events uses CALENDAR. Opening Calendar does not select the requested date. To show a particular day's agenda, open Calendar, then invoke its declared VIEW_CALENDAR_SELECT_VISIBLE_DAY tool directly with date, never as an interact capability. If that tool is not exposed, inspect the view's declared scoped-action steps and execute them with VIEWS interact (agent-click uses params.id); navigate the month first if needed. An event read does not prove UI selection. Verify the displayed selection before saying that day is open.",
+	"For a request to open, show, switch to, or pull up one known surface, including a bare surface name in any language, prefer VIEWS_SHOW when available; VIEWS action=show is the fallback.",
+	"Use VIEWS for close/hide, the view manager, split/tile/window/pin layouts, and explicit capabilities that the selected view declares when no dedicated domain action owns the data.",
+	"Opening the Calendar surface uses VIEWS_SHOW when available, otherwise VIEWS action=show; reading or changing calendar events uses CALENDAR. Opening Calendar does not select the requested date. To show a particular day's agenda, open Calendar, then invoke its declared VIEW_CALENDAR_SELECT_VISIBLE_DAY tool directly with date, never as an interact capability. If that tool is not exposed, inspect the view's declared scoped-action steps and execute them with VIEWS interact (agent-click uses params.id); navigate the month first if needed. An event read does not prove UI selection. Verify the displayed selection before saying that day is open.",
 	"Reading, searching, creating, updating, or deleting note records uses NOTES, not VIEWS. Pass the complete user-authored note in the single content field; never invent a separate title or body. Do not route Notes to documents or Knowledge.",
 	"Phone flashlight requests use action=interact view=device-control capability=set-flashlight with params={enabled:true|false}; never claim success before the capability returns success.",
 	"For declared domain capabilities, use action=interact with an explicit view and capability. Semantic record capabilities are required; agent-fill and agent-click are only for an explicitly requested form-control interaction. Pass parameters in params rather than dotted keys.",
@@ -2689,7 +2689,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"torch",
 		],
 		description:
-			"Manage and navigate Eliza UI views. Return to the home/main chat screen with action=show view=chat. List available views, report the current view, open or close a view, search views, show the view manager (app list, not home), arrange layouts, and invoke explicit capabilities that a view declares when no dedicated domain action owns the data, including native device controls. Notes records belong to NOTES and calendar events belong to CALENDAR; VIEWS opens those surfaces. action=interact invokes a capability without opening its view. An explicit open-and-edit request requires show/open navigation as well as the data operation.",
+			"Manage Eliza UI views. For opening one known view, prefer the registered VIEWS_SHOW child; this parent covers layouts, catalog discovery and other operations. Home is view=chat. List available views, report the current view, open or close a view, search views, show the view manager (app list, not home), arrange layouts, and invoke explicit capabilities that a view declares when no dedicated domain action owns the data, including native device controls. Notes records belong to NOTES and calendar events belong to CALENDAR; VIEWS opens those surfaces. action=interact invokes a capability without opening its view. An explicit open-and-edit request requires show/open navigation as well as the data operation.",
 		descriptionCompressed:
 			"show/open navigates UI; interact invokes capabilities without navigation; Notes data uses NOTES, Calendar data uses CALENDAR; open-and-edit requires both operations",
 		routingHint: VIEWS_ROUTING_HINT,
@@ -3080,8 +3080,10 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				const roomId =
 					typeof message.roomId === "string" ? message.roomId : runtime.agentId;
 
-				// Multi-turn follow-up: choice reply for an in-progress create flow.
-				if (isChoiceReply(text)) {
+				const mode = inferMode(text, actionOptions);
+				// A pending flow cannot change the operation explicitly selected by
+				// the planner, especially the navigation-only VIEWS_SHOW child.
+				if ((!mode || mode === "create") && isChoiceReply(text)) {
 					if (await hasPendingViewsCreateIntent(runtime, roomId)) {
 						if (!(await ownerCheck(runtime, message))) {
 							return ownerRequiredViewMutation("create");
@@ -3100,8 +3102,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 
 				// Multi-turn follow-up: structured confirmation for a pending delete.
 				if (
-					isDeleteConfirmation(actionOptions) ||
-					isDeleteCancellation(actionOptions)
+					(!mode || mode === "delete") &&
+					(isDeleteConfirmation(actionOptions) ||
+						isDeleteCancellation(actionOptions))
 				) {
 					if (await hasPendingDeleteConfirm(runtime, roomId)) {
 						if (!(await ownerCheck(runtime, message))) {
@@ -3119,7 +3122,6 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					}
 				}
 
-				const mode = inferMode(text, actionOptions);
 				const viewType = readViewTypeOption(text, actionOptions);
 				if (!mode) {
 					const reply =

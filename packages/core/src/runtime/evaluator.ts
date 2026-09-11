@@ -4,6 +4,7 @@
  * decision (FINISH / CONTINUE / NEXT_RECOMMENDED) before the loop acts on it.
  * Also records each evaluation as a trajectory stage for offline review.
  */
+
 import { ElizaError } from "../errors";
 import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { timeInferenceSpan } from "../inference-timing";
@@ -13,6 +14,7 @@ import {
 	projectToolDiagnosticValue,
 	type ToolDiagnosticTextRedactor,
 } from "../security/tool-diagnostics";
+import { referenceRepeatedHistory } from "../services/message/history-wire";
 import {
 	emitStreamingHook,
 	getStreamingContext,
@@ -840,6 +842,10 @@ function renderEvaluatorModelInput(params: {
 	const deferred = projectDeferredProviders(completion.context);
 	const renderedContext = renderContextObject(
 		projectEvaluatorContext(deferred.context),
+	);
+	renderedContext.promptSegments = referenceRepeatedHistory(
+		params.trajectory.modelBaseContext ?? params.context,
+		renderedContext.promptSegments,
 	);
 	if (deferred.available.length)
 		renderedContext.promptSegments.push({
