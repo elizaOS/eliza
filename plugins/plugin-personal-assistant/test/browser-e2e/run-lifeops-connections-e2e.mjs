@@ -5,12 +5,15 @@
  */
 
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import { chromium } from "playwright";
 import { build as viteBuild } from "vite";
+import { nativeModuleStubPlugin } from "../../../../packages/app/vite/native-module-stub-plugin.ts";
+import { FILE_FIXTURE_BOOTSTRAP } from "../../../../packages/ui/src/testing/e2e-runner/fixture-bundle.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "../../..");
@@ -29,6 +32,10 @@ const result = await viteBuild({
   define: { "process.env.NODE_ENV": '"production"' },
   plugins: [
     tailwindcss(),
+    nativeModuleStubPlugin({
+      isCapacitorMobileBuild: false,
+      requireModule: createRequire(import.meta.url),
+    }),
     {
       name: "lifeops-production-adapter-stub",
       enforce: "pre",
@@ -63,12 +70,20 @@ const styles = buildResult.output
 if (!styles)
   throw new Error("LifeOps fixture omitted production control styles.");
 
-const html = `<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LifeOps no-provider acceptance</title><style>:root{color-scheme:dark;--brand-white:#fdfaf7;--brand-black:#000;--txt:var(--brand-white);--muted:rgba(255,255,255,.56);--bg:var(--brand-black);--card:#121212;--bg-muted:rgba(255,255,255,.06);--bg-accent:var(--brand-black);--accent:#ff6a1f;--accent-muted:#c94400;--accent-foreground:var(--brand-black);--accent-subtle:rgba(255,106,31,.14);--border:rgba(255,255,255,.12);--border-strong:rgba(255,255,255,.22);--status-success:#4ade80;--status-success-bg:rgba(74,222,128,.16);--status-warning:#ff6a1f;--status-warning-bg:rgba(255,106,31,.12);--status-danger:#ff6a1f;--status-danger-bg:rgba(255,106,31,.12);--scrim:rgba(0,0,0,.72)}html,body,#root{width:100%;height:100%;margin:0;background:var(--bg);color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}*{box-sizing:border-box}</style></head><body><div id="root"></div><script>${bundle}</script></body></html>`;
+const html = `<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LifeOps no-provider acceptance</title><style>:root{color-scheme:dark;--brand-white:#fdfaf7;--brand-black:#000;--txt:var(--brand-white);--muted:rgba(255,255,255,.56);--bg:var(--brand-black);--card:#121212;--bg-muted:rgba(255,255,255,.06);--bg-accent:var(--brand-black);--accent:#ff6a1f;--accent-muted:#c94400;--accent-foreground:var(--brand-black);--accent-subtle:rgba(255,106,31,.14);--border:rgba(255,255,255,.12);--border-strong:rgba(255,255,255,.22);--status-success:#4ade80;--status-success-bg:rgba(74,222,128,.16);--status-warning:#ff6a1f;--status-warning-bg:rgba(255,106,31,.12);--status-danger:#ff6a1f;--status-danger-bg:rgba(255,106,31,.12);--scrim:rgba(0,0,0,.72)}html,body,#root{width:100%;height:100%;margin:0;background:var(--bg);color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}*{box-sizing:border-box}</style></head><body><div id="root"></div><script>${FILE_FIXTURE_BOOTSTRAP}</script><script src="/fixture.js"></script></body></html>`;
 const server = Bun.serve({
   hostname: "127.0.0.1",
   port,
   fetch(request) {
     const url = new URL(request.url);
+    if (url.pathname === "/fixture.js") {
+      return new Response(bundle, {
+        headers: {
+          "content-type": "text/javascript; charset=utf-8",
+          "cache-control": "no-store",
+        },
+      });
+    }
     if (url.pathname === "/" || url.pathname === "/index.html") {
       return new Response(
         html.replace("<style>", `<style>${styles}</style><style>`),
@@ -123,7 +138,10 @@ try {
     reducedMotion: "reduce",
   });
   const pageErrors = [];
-  desktop.on("pageerror", (error) => pageErrors.push(String(error)));
+  desktop.on("pageerror", (error) => {
+    pageErrors.push(String(error));
+    process.stderr.write(`Browser startup error: ${error.stack}\n`);
+  });
   await desktop.goto(baseURL);
   await desktop.getByRole("heading", { name: /Bring your inbox/ }).waitFor();
   const initialColors = await desktop
@@ -657,7 +675,12 @@ try {
     faultPage.on("pageerror", (error) => faultErrors.push(String(error)));
     await faultPage.goto(`${baseURL}?${fault.query}`);
     await faultPage
-      .getByRole("heading", { name: /Bring your inbox/ })
+      .getByRole("heading", {
+        name:
+          fault.query === "failure=load"
+            ? "Connections are unavailable"
+            : /Bring your inbox/,
+      })
       .waitFor();
     if (fault.query === "failure=load") {
       await faultPage.getByRole("alert").waitFor();
