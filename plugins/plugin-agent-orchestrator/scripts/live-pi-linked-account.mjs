@@ -34,6 +34,19 @@ let phase = "admission";
 let childAdmitted = false;
 const phases = new Set([
   "admission",
+  "admission-opt-in",
+  "admission-credential",
+  "admission-source",
+  "admission-tool-versions",
+  "admission-clean-checkout",
+  "admission-platform",
+  "child-ownership",
+  "import-account-storage",
+  "import-account-pool",
+  "import-core",
+  "import-provider-route",
+  "import-native-client",
+
   "encrypted-account-storage",
   "linked-account-selection",
   "pi-provider-route",
@@ -54,6 +67,7 @@ const sourcePaths = [
 ];
 
 async function child() {
+  phase = "child-ownership";
   assert.equal(process.env.RUN_LIVE_PI_LINKED_ACCOUNT, "1");
   const credential = process.env.OPENROUTER_API_KEY;
   assert.ok(credential?.trim(), "Selected live Pi check requires a credential");
@@ -73,14 +87,19 @@ async function child() {
   childAdmitted = true;
   const workdir = path.join(root, "workspace");
   await mkdir(workdir, { mode: 0o700 });
+  phase = "import-account-storage";
   const { createRuntimeAccountStoragePolicy, saveAccount, loadAccount } =
     await import("@elizaos/auth/account-storage");
+  phase = "import-account-pool";
   const { getDefaultAccountPool } = await import(
     "../../../packages/app-core/src/services/account-pool.ts"
   );
+  phase = "import-core";
   const { getCodingAgentSelectorBridge } = await import("@elizaos/core");
+  phase = "import-provider-route";
   const { preparePiProviderRoute, enforcePiProviderCredentialIsolation } =
     await import("../src/services/pi-provider-config.ts");
+  phase = "import-native-client";
   const { NativeAcpClient } = await import(
     "../src/services/acp-native-transport.ts"
   );
@@ -262,16 +281,19 @@ async function child() {
 }
 
 async function parent() {
+  phase = "admission-opt-in";
   assert.equal(
     process.env.RUN_LIVE_PI_LINKED_ACCOUNT,
     "1",
     "Explicit live Pi opt-in is required",
   );
+  phase = "admission-credential";
   const credential = process.env.OPENROUTER_API_KEY;
   assert.ok(
     credential?.trim(),
     "OPENROUTER_API_KEY is required; selected live checks never skip",
   );
+  phase = "admission-source";
   const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], {
     cwd: repo,
     encoding: "utf8",
@@ -281,11 +303,13 @@ async function parent() {
     process.env.LIVE_PI_SOURCE_SHA,
     "Checkout must match the reviewed source SHA",
   );
+  phase = "admission-tool-versions";
   assert.deepEqual(
     JSON.parse(process.env.LIVE_PI_TOOL_VERSIONS),
     { pi: "0.84.2", piAcp: "0.0.33", piAi: "0.84.4" },
     "Live tool versions must match reviewed pins",
   );
+  phase = "admission-clean-checkout";
   assert.equal(
     execFileSync("git", ["status", "--porcelain"], {
       cwd: repo,
@@ -297,6 +321,7 @@ async function parent() {
   const destination = path.resolve(
     process.env.LIVE_PI_EVIDENCE_DIR || "artifacts/pi-linked-account",
   );
+  phase = "admission-platform";
   assert.equal(
     process.platform,
     "linux",

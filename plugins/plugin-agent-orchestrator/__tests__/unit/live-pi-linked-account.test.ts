@@ -1,7 +1,14 @@
 /** Exercises live-harness admission and owned child cleanup with real keyless subprocesses; no provider is contacted. */
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import {
+  chmod,
+  copyFile,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -114,7 +121,7 @@ test("failed admission writes only a sanitized failure receipt", async () => {
       await readFile(path.join(root, "receipt.json"), "utf8"),
     );
     assert.equal(receipt.status, "failed");
-    assert.equal(receipt.phase, "admission");
+    assert.equal(receipt.phase, "admission-credential");
     assert.ok(!JSON.stringify(receipt).includes(root));
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -190,4 +197,67 @@ test.skipIf(process.platform === "win32")(
     }
   },
   10000,
+);
+
+test("wrong reviewed source retains the source-admission phase without exposing credentials", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "pi-source-admission-"));
+  const syntheticCredential = "synthetic-not-a-provider-key";
+  try {
+    const result = spawnSync(process.execPath, [script], {
+      env: {
+        PATH: process.env.PATH,
+        RUN_LIVE_PI_LINKED_ACCOUNT: "1",
+        OPENROUTER_API_KEY: syntheticCredential,
+        LIVE_PI_SOURCE_SHA: "0".repeat(40),
+        LIVE_PI_EVIDENCE_DIR: root,
+      },
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 1);
+    const serialized = await readFile(path.join(root, "receipt.json"), "utf8");
+    assert.equal(JSON.parse(serialized).phase, "admission-source");
+    assert.ok(!serialized.includes(syntheticCredential));
+    assert.ok(!result.stderr.includes(syntheticCredential));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test.skipIf(process.platform === "win32")(
+  "an authorized child reports its real missing dependency import without provider execution",
+  async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "pi-import-admission-"));
+    try {
+      await chmod(root, 0o700);
+      const copiedScript = path.join(root, "harness.mjs");
+      await copyFile(script, copiedScript);
+      const authorization = "a".repeat(64);
+      await writeFile(path.join(root, ".child-authorization"), authorization, {
+        mode: 0o600,
+      });
+      const result = spawnSync(process.execPath, [copiedScript, "--child"], {
+        env: {
+          PATH: process.env.PATH,
+          HOME: root,
+          ELIZA_HOME: root,
+          RUN_LIVE_PI_LINKED_ACCOUNT: "1",
+          OPENROUTER_API_KEY: "synthetic-not-a-provider-key",
+          LIVE_PI_CHILD_AUTHORIZATION: authorization,
+        },
+        encoding: "utf8",
+      });
+      assert.equal(result.status, 1);
+      assert.equal(
+        JSON.parse(await readFile(path.join(root, "failure.json"), "utf8"))
+          .phase,
+        "import-account-storage",
+      );
+      await assert.rejects(readFile(path.join(root, "receipt.json")), {
+        code: "ENOENT",
+      });
+      assert.ok(!result.stderr.includes("synthetic-not-a-provider-key"));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
 );
