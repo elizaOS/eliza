@@ -89,3 +89,5 @@ The plugin contributes a **View Manager** GUI view at `/views` — a browser for
 See [CLAUDE.md](CLAUDE.md) for file layout, how to add new sub-modes, service wiring, and plugin-specific gotchas.
 
 Navigation keeps the full view receipt in runtime data. Model-facing navigation receipts carry destination, every capability identity/description and scoped actions, with interaction parameters explicitly deferred to a fresh `VIEWS action=list` read. That catalog read still supplies full parameter schemas before interaction.
+
+Single-view navigation can reuse the typed decision from the existing response-handler call. When that decision covers the entire request, the regular executor performs `VIEWS_SHOW` and the reply-only round confirms its actual receipt. Compound or uncertain requests keep the planner. All role, destination, transport and recovery checks still apply.

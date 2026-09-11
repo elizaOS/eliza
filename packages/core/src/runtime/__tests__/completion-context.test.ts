@@ -5,6 +5,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { validateSchema } from "../../actions/validate-tool-args";
+import { plannerRequiredPolicy, plannerTemplate } from "../../prompts/planner";
 import { renderMessageHandlerModelInput } from "../../services/message/stage1-input";
 import type { CompletionContextSelection } from "../../types/components";
 import type { ContextObject } from "../../types/context-object";
@@ -209,7 +210,7 @@ describe("source-bound completion relevance", () => {
 			context,
 		);
 		expect(String(input.messages[1].content)).toContain(
-			"[completion_source=h6; same_text_as=h1]",
+			"[h6; same_text_as=h1]",
 		);
 		const chosen = {
 			...selection(context),
@@ -234,9 +235,7 @@ describe("source-bound completion relevance", () => {
 		);
 		const user = String(input.messages[1].content);
 		for (const { id, event } of completionContextSources(context).sources) {
-			expect(user).toContain(
-				`[completion_source=${id}]\n${event.segment.content}`,
-			);
+			expect(user).toContain(`[${id}]\n${event.segment.content}`);
 		}
 		expect(user).toContain(completionContextSources(context).sourceSetId);
 		const chosen = selection(context);
@@ -284,6 +283,27 @@ describe("source-bound completion relevance", () => {
 		);
 		expect(focused.applied).toBe(true);
 		expect(JSON.stringify(focused.context)).toContain("no access granted");
+	});
+	it("preserves identical evidence when each source is emitted only in its most specific category", () => {
+		const original = historyContext();
+		const chosen = selection(original);
+		chosen.relevantSourceIds = [];
+		const duplicated = {
+			...chosen,
+			relevantSourceIds: [
+				...chosen.relevantSourceIds,
+				...chosen.constraintSourceIds,
+				...chosen.referentSourceIds,
+				...chosen.pendingIntentSourceIds,
+			],
+		};
+		const compact = selectCompletionContext(withSelection(original, chosen));
+		const repeated = selectCompletionContext(
+			withSelection(original, duplicated),
+		);
+		expect(compact.applied).toBe(true);
+		expect(compact.context.events).toEqual(repeated.context.events);
+		expect(compact.omittedSourceCount).toBe(repeated.omittedSourceCount);
 	});
 
 	it("binds assistant sources and omits only reviewed unrelated replies", () => {
@@ -521,9 +541,13 @@ describe("source-bound completion relevance", () => {
 });
 
 describe("planner source selection and restoration", () => {
-	it.each([false, true])(
-		"keeps reply-only synthesis scoped and restores original evidence without effects (restore=%s)",
-		async (restore) => {
+	it.each([
+		{ restore: false, custom: false },
+		{ restore: true, custom: false },
+		{ restore: true, custom: true },
+	])(
+		"keeps reply-only synthesis scoped and restores original evidence without effects ($restore, custom=$custom)",
+		async ({ restore, custom }) => {
 			const full = withSelection(historyContext());
 			const before = JSON.stringify(full);
 			const captured: Record<string, unknown>[] = [];
@@ -544,6 +568,16 @@ describe("planner source selection and restoration", () => {
 					},
 				},
 				runtime: {
+					...(custom
+						? {
+								getService: () => ({
+									getPrompt: () => ({
+										prompt:
+											"Custom reply policy: use the note's exact punctuation.",
+									}),
+								}),
+							}
+						: {}),
 					useModel: async (_type, params) => {
 						captured.push(params);
 						return {
@@ -588,7 +622,30 @@ describe("planner source selection and restoration", () => {
 			expect(first).toContain("permission denied for shared room");
 			expect(first).toContain("Exact note body: violet, previously amber.");
 			expect(first).toContain("Reply-only context access");
-			for (const call of captured) expect(call.tools).toBeUndefined();
+			for (const call of captured) {
+				expect(call.tools).toBeUndefined();
+				const system = (call.messages as ChatMessage[]).find(
+					({ role }) => role === "system",
+				)?.content as string;
+				expect(system).toContain("Never expose private data.");
+				for (const rule of [
+					plannerRequiredPolicy.completedEffects,
+					plannerRequiredPolicy.responseStyle,
+					plannerRequiredPolicy.widgets,
+					plannerRequiredPolicy.workClaims,
+					plannerRequiredPolicy.errorClaims,
+				]) {
+					expect(system).toContain(rule);
+				}
+				if (custom) {
+					expect(system).toContain(
+						"Custom reply policy: use the note's exact punctuation.",
+					);
+				} else {
+					// A settled-result round should not pay for the entire action planner.
+					expect(system.length).toBeLessThan(plannerTemplate.length / 2);
+				}
+			}
 			if (restore) {
 				expect(JSON.stringify(captured[1].messages)).toContain(
 					"Old completed unrelated weather request.",
@@ -765,7 +822,7 @@ describe("planner source selection and restoration", () => {
 		]);
 		expect(calls[0].wire).not.toContain("same_text_as=");
 		for (const { wire } of calls.slice(1)) {
-			expect(wire).toContain("[completion_source=h6; same_text_as=h1]");
+			expect(wire).toContain("[h6; same_text_as=h1]");
 			expect(wire).toContain(first.segment.content);
 			expect(wire).toContain(
 				"Correction: keep the exact title  Picnic!?  with its spacing.",

@@ -27,7 +27,7 @@ export function labelHistorySources(
 		return sourceId
 			? {
 					...segment,
-					content: `[completion_source=${sourceId}]\n${segment.content}`,
+					content: `[${sourceId}]\n${segment.content}`,
 				}
 			: segment;
 	});
@@ -45,7 +45,7 @@ export function labelHistorySources(
 			anchors.set(sourceId, index);
 			return original[index];
 		}
-		const content = `[completion_source=${sourceId}; same_text_as=${first}]`;
+		const content = `[${sourceId}; same_text_as=${first}]`;
 		const saving =
 			(labels === "all" ? original[index] : segment).content.length -
 			content.length;

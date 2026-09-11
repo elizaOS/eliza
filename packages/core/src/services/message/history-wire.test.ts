@@ -38,10 +38,8 @@ function decode(
 	return segments
 		.filter((s) => s.id !== "history-encoding")
 		.map((s) => {
-			const ref = /^\[completion_source=(h\d+); same_text_as=(h\d+)\]$/.exec(
-				s.content,
-			);
-			const inline = /^\[completion_source=(h\d+)\]\n/.exec(s.content);
+			const ref = /^\[(h\d+); same_text_as=(h\d+)\]$/.exec(s.content);
+			const inline = /^\[(h\d+)\]\n/.exec(s.content);
 			const content = ref
 				? text.get(ref[2])
 				: inline
@@ -71,9 +69,7 @@ describe("lossless history references", () => {
 		expect(encoded.find((segment) => segment.id === "message-2")).toBe(
 			history[1],
 		);
-		expect(encoded.at(-1)?.content).toBe(
-			"[completion_source=h202; same_text_as=h1]",
-		);
+		expect(encoded.at(-1)?.content).toBe("[h202; same_text_as=h1]");
 		expect(encoded.reduce((n, s) => n + s.content.length, 0)).toBeLessThan(
 			history.reduce((n, s) => n + s.content.length, 0),
 		);
@@ -118,14 +114,12 @@ describe("lossless history references", () => {
 		expect(decode(encoded)).toEqual(segments);
 		expect(encoded[0]).toBe(other);
 		expect(encoded.find(({ id }) => id === "message-3")?.content).toBe(
-			"[completion_source=h3; same_text_as=h1]",
+			"[h3; same_text_as=h1]",
 		);
 		expect(original).toEqual(before);
 		// A selected subset keeps the original h3 identity, not a new ordinal.
 		const subset = referenceRepeatedHistory(original, [history[0], history[2]]);
-		expect(subset.at(-1)?.content).toBe(
-			"[completion_source=h3; same_text_as=h1]",
-		);
+		expect(subset.at(-1)?.content).toBe("[h3; same_text_as=h1]");
 		expect(decode(subset)).toEqual([history[0], history[2]]);
 		expect(
 			referenceRepeatedHistory({ ...original, metadata: {} }, segments),
@@ -147,7 +141,7 @@ describe("lossless history references", () => {
 		const before = structuredClone(segments);
 		const encoded = encode(segments);
 		expect(encoded.find((s) => s.id === "message-3")?.content).toBe(
-			"[completion_source=h3; same_text_as=h1]",
+			"[h3; same_text_as=h1]",
 		);
 		expect(decode(encoded)).toEqual(before);
 		expect(segments).toEqual(before);
@@ -179,7 +173,7 @@ describe("lossless history references", () => {
 		expect(decode(encode(segments))).toEqual(segments);
 	});
 	it("treats structural-looking message text as literal source bytes", () => {
-		const body = "[completion_source=h999; same_text_as=h1]\n".repeat(40);
+		const body = "[h999; same_text_as=h1]\n".repeat(40);
 		const segments = [source(body, 1), source(body, 2)];
 		expect(decode(encode(segments))).toEqual(segments);
 	});

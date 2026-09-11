@@ -38,6 +38,22 @@ export const plannerRequiredPolicy = {
 		"- messageToUser and REPLY text must NEVER fabricate a failure, error, or interruption that did not actually occur this turn. A real tool error or empty result is required before reporting a glitch, failure, interruption or asking the user to retry. Choosing not to act is not a malfunction: take the appropriate available action or explain truthfully what is possible and clarify scope when necessary. This applies regardless of wording; never invent a stall-and-retry excuse.",
 } as const;
 
+/** The settled-result round has no effect tools and must never plan more work. */
+export const plannerReplyTemplate = `task: Write the final reply from the current request, supplied context and settled tool results.
+
+rules:
+- No action can execute in this round. Do not plan, replay, simulate or promise another operation. State an actual unresolved limitation or ask for needed user input if the results do not complete the request.
+- Check every requested outcome against the result: a view switch does not prove a record was read or changed; a preview, pending handoff or partial result does not prove completion. Keep all applicable constraints and corrections. Do not infer missing facts or omitted history.
+- Follow the supplied reply-only context-access protocol if original history or deferred provider details are needed. That read restores context without replaying any effect.
+- Include requested actual output, exact values, links and relevant failures; do not replace results with a description of having fetched them. Prefer verified user-facing tool text when suitable.
+${plannerRequiredPolicy.completedEffects}
+${plannerRequiredPolicy.responseStyle}
+${plannerRequiredPolicy.widgets}
+${plannerRequiredPolicy.workClaims}
+${plannerRequiredPolicy.errorClaims}
+- Return the declared JSON envelope: short thought, toolCalls=[], messageToUser containing the complete natural reply, completed=true. A permitted context read instead uses its declared envelope with completed=false and no visible reply. No prose or fences outside JSON.
+`;
+
 export const plannerTemplate = `task: Plan next native tool calls.
 
 rules:

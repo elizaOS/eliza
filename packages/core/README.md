@@ -485,3 +485,5 @@ For agent-facing notes on layout, the public surface, and how to extend the runt
 ---
 
 Experience retrieval orders candidates by semantic similarity, then quality for equal scores; confidence cannot promote a weaker match above a stronger one. The complete candidate set and embedding-failure fallback remain available. Incremental background extractors share provenance instructions once while retaining independent source sets and edited/deleted evidence contracts.
+
+Foreground history uses compact source labels and exact-repeat references without discarding stored or model-readable conversation evidence. Settled-result reply-only rounds use a smaller default instruction set, preserve original-context restoration, and cannot execute tools again. Custom prompt policies and ordinary planning remain intact.

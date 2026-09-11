@@ -148,7 +148,102 @@ describe("same-turn contextual navigation", () => {
 		});
 	}
 	it.each([
+		{ navigationOnly: true, expected: true },
+		{ navigationOnly: false, expected: false },
+		{ navigationOnly: undefined, expected: false },
+	])(
+		"reuses a fully specified navigation-only model decision: %j",
+		async ({ navigationOnly, expected }) => {
+			const ctx = context("Open Observatory", {});
+			ctx.runtime.actions.push({
+				name: "VIEWS_SHOW",
+			} as (typeof ctx.runtime.actions)[number]);
+			Object.assign(ctx.message.content, {
+				source: "client_chat",
+				channelType: "DM",
+			});
+			Object.assign(ctx.messageHandler.plan, {
+				candidateActions: ["VIEWS_SHOW"],
+				parentActionHints: [],
+				intents: ["open Observatory"],
+			});
+			const result = await runWithField(ctx, {
+				disposition: "requested",
+				viewId: "observatory",
+				reason: "Open one view",
+				singleViewOnly: true,
+				...(navigationOnly === undefined ? {} : { navigationOnly }),
+			});
+			expect(result.errors).toEqual([]);
+			expect(ctx.messageHandler.plan.deterministicToolCall).toEqual(
+				expected
+					? {
+							name: "VIEWS_SHOW",
+							params: {
+								view: "observatory",
+								navigationStepId: "stage1:turn-1",
+							},
+						}
+					: undefined,
+			);
+			expect(prompts).toEqual([]);
+		},
+	);
+	it.each([
+		"domain",
+		"question",
+		"voice",
+		"optional",
+		"multiple",
+		"stale",
+		"metadata",
+	])("keeps %s work on the ordinary planner path", async (variant) => {
+		const ctx = context("Open Observatory", {
+			disposition: "none",
+			reason: "do not use stale input",
+		});
+		ctx.runtime.actions.push({
+			name: "VIEWS_SHOW",
+		} as (typeof ctx.runtime.actions)[number]);
+		Object.assign(ctx.message.content, {
+			source: "client_chat",
+			channelType: variant === "voice" ? "VOICE_DM" : "DM",
+		});
+		Object.assign(ctx.messageHandler.plan, {
+			candidateActions:
+				variant === "domain" ? ["VIEWS_SHOW", "CALENDAR"] : ["VIEWS_SHOW"],
+			parentActionHints: [],
+			intents:
+				variant === "question"
+					? ["open Observatory", "recall the original color"]
+					: ["open Observatory"],
+		});
+		const judgment = {
+			disposition: variant === "optional" ? "optional" : "requested",
+			viewId: "observatory",
+			reason: "Model judgment",
+			singleViewOnly: variant !== "multiple",
+			navigationOnly: true,
+		};
+		if (variant === "metadata") {
+			ctx.message.content.metadata = { visualContinuation: judgment };
+			await run(ctx);
+		} else {
+			await runWithField(
+				ctx,
+				judgment,
+				variant === "stale"
+					? () => {
+							ctx.message.content.text = "Never mind";
+						}
+					: undefined,
+			);
+		}
+		expect(ctx.messageHandler.plan.deterministicToolCall).toBeUndefined();
+	});
+	it.each([
 		{ disposition: "none", viewId: "" },
+		{ disposition: "none", viewId: "notes" },
 		{ disposition: "forbidden", viewId: "" },
 		{ disposition: "forbidden", viewId: "calendar" },
 	])(
@@ -455,7 +550,6 @@ describe("same-turn contextual navigation", () => {
 		{ disposition: "unresolved", viewId: "", reason: "uncertain" },
 		{ disposition: "requested", viewId: "admin", reason: "restricted" },
 		{ disposition: "requested", viewId: "offline", reason: "unavailable" },
-		{ disposition: "none", viewId: "observatory", reason: "conflicting" },
 	])(
 		"retains the classifier for invalid, unresolved or unauthorized field decisions: %j",
 		async (value) => {
