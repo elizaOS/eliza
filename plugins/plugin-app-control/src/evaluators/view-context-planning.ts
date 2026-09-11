@@ -286,6 +286,20 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 			);
 		}
 		setNavigationConstraint(message, "allow", intent.reason);
+		// Navigation needs the destination and capability identities, not every
+		// interaction's parameter schema. The catalog remains complete; VIEWS list
+		// rereads it through the normal authorization boundary before interaction.
+		const destinationReference = {
+			...selectedView,
+			...(selectedView.capabilities && {
+				capabilities: selectedView.capabilities.map(
+					({ params, ...capability }) =>
+						params === undefined
+							? capability
+							: { ...capability, paramsDeferred: true },
+				),
+			}),
+		};
 		return {
 			requiresTool: true,
 			clearReply: true,
@@ -295,7 +309,14 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 				VIEW_CATALOG_SCOPE_CONTEXT,
 				`Navigation intent: ${JSON.stringify(intent)}. No navigation has executed.`,
 				"Keep every domain operation and destination/data restriction from the full original request. For a single destination, execute visual continuation through VIEWS action=show with view=<selected id>, navigationIntent=planner-step, navigationStepId=<unique plan step>. Preserve an explicitly requested compound layout: two views side by side horizontally require VIEWS action=split with layout=horizontal and both resolved destinations, rather than sequential show calls or a grid tile. A per-step target may differ from another step only within the user's permitted scope. Optional navigation must not block server-backed domain operations. Respect cancellation and user constraints. Ask before ambiguous effects. Ground the final response separately in actual navigation receipts and domain receipts; a switch never proves a save or draft.",
-				`Selected authorized destination: ${JSON.stringify(selectedView)}`,
+				`Selected authorized destination: ${JSON.stringify(destinationReference)}`,
+				...(selectedView.capabilities?.some(
+					({ params }) => params !== undefined,
+				)
+					? [
+							"Capability entries marked paramsDeferred are an index, not callable parameter schemas. Before using one through VIEWS interact, read its complete current schema with VIEWS action=list. Navigation show/open needs no capability schema. Domain actions retain their own complete schemas; never invent interaction parameters.",
+						]
+					: []),
 				"This is the selected destination, not the full catalog. For another destination or compound navigation, use VIEWS action=list or action=search to discover authorized views. Never infer that an unlisted view is unavailable.",
 			],
 		};

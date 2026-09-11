@@ -13,7 +13,11 @@ import {
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { navigationDispatchBlock } from "../actions/navigation-execution.js";
-import type { ViewSummary } from "../actions/views-client.js";
+import {
+	createViewsClient,
+	type ViewSummary,
+} from "../actions/views-client.js";
+import { runViewsList } from "../actions/views-list.js";
 import {
 	parseContextualNavigationIntent,
 	viewContextPlanningEvaluator,
@@ -188,6 +192,79 @@ describe("same-turn contextual navigation", () => {
 			"CALENDAR",
 			"VIEWS",
 		]);
+	});
+	it("defers interaction schemas in the navigation handoff and reads them completely from the live catalog", async () => {
+		const description = `${"Keep every user constraint. ".repeat(1200)}END`;
+		const capability = {
+			id: "save-observation",
+			description: "Save a telescope observation only with explicit approval.",
+			params: {
+				content: { type: "string", description, required: true },
+				confirm: {
+					type: "boolean",
+					description: "Explicit user approval",
+					enum: [true],
+					required: true,
+				},
+			},
+		};
+		extraViews = [
+			{
+				id: "observations",
+				label: "Observations",
+				pluginName: "astronomy",
+				available: true,
+				capabilities: [capability],
+			},
+		];
+		const ctx = context("Open Observations without changing records", {});
+		const result = await runWithField(ctx, {
+			disposition: "requested",
+			viewId: "observations",
+			reason: "explicit",
+		});
+		expect(result.errors).toEqual([]);
+		expect(result.navigationBlock).toBeUndefined();
+		const handoff = ctx.messageHandler.plan.contextSlices?.join("\n") ?? "";
+		expect(handoff).toContain(capability.id);
+		expect(handoff).toContain(capability.description);
+		expect(handoff).toContain('"paramsDeferred":true');
+		expect(handoff).toContain("complete current schema with VIEWS action=list");
+		expect(handoff).not.toContain(description);
+		expect(prompts).toEqual([]);
+		const listed = await runViewsList({ client: createViewsClient() });
+		expect(listed.success).toBe(true);
+		expect(listed.data).toMatchObject({
+			views: expect.arrayContaining([
+				expect.objectContaining({
+					id: "observations",
+					capabilities: [capability],
+				}),
+			]),
+		});
+		// Explicit discovery must see fresh schemas, not a stored projected copy.
+		extraViews[0].capabilities = [
+			{
+				...capability,
+				params: {
+					...capability.params,
+					content: {
+						...capability.params.content,
+						description: `${description} updated`,
+					},
+				},
+			},
+		];
+		const refreshed = await runViewsList({ client: createViewsClient() });
+		expect(refreshed.data).toMatchObject({
+			views: expect.arrayContaining([
+				expect.objectContaining({
+					id: "observations",
+					capabilities: extraViews[0].capabilities,
+				}),
+			]),
+		});
+		expect(requestedPaths).toEqual(["/api/views", "/api/views", "/api/views"]);
 	});
 	it.each(["home", "Home", "chat"])(
 		"reuses a model-selected %s target through the canonical catalog alias without another call",
@@ -413,6 +490,7 @@ describe("same-turn contextual navigation", () => {
 		);
 		const handoff = ctx.messageHandler.plan.contextSlices?.join("\n") ?? "";
 		expect(handoff).toContain("Selected authorized destination:");
+		expect(handoff).not.toContain("paramsDeferred");
 		expect(handoff).toContain("VIEWS action=list or action=search");
 		expect(handoff).not.toContain("Authorized live catalog:");
 		expect(requestedPaths).toEqual(["/api/views"]);
