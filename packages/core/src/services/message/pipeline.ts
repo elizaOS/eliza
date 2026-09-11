@@ -1197,7 +1197,7 @@ export async function runV5MessageRuntimeStage1(
 				),
 			logger: args.runtime.logger as PlannerRuntime["logger"],
 		};
-		let plannerTools = collectPlannerTools(
+		const plannerTools = collectPlannerTools(
 			plannerContextWithDecision,
 			undefined,
 			{

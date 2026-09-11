@@ -2213,7 +2213,11 @@ describe("MEMORY op:delete by query ignores copied imperatives", () => {
     const factId = seedFact(rows, {
       text: "User's favorite tea is yerba.",
       entityId: USER_ID,
-      metadata: { messageId: "msg-yerba", subject: "user", subjectResolved: true },
+      metadata: {
+        messageId: "msg-yerba",
+        subject: "user",
+        subjectResolved: true,
+      },
     });
     const message = makeMessage();
     message.content.text = "forget my favorite tea";

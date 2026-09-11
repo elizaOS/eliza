@@ -2925,7 +2925,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(plannerUserContent).toContain(
 			'"tierAParents":["TASKS_SPAWN_AGENT"]',
 		);
-		expect(plannerUserContent).toContain('"discoveryToolName":"DISCOVER_TOOLS"');
+		expect(plannerUserContent).toContain(
+			'"discoveryToolName":"DISCOVER_TOOLS"',
+		);
 	});
 
 	it("keeps the complete umbrella dispatcher and its children when duplicate child schemas exceed the estimated budget", async () => {

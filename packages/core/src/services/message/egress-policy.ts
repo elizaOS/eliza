@@ -35,13 +35,13 @@ import { normalizeActionIdentifier } from "./direct-action-heuristics";
 import { financialCompletionIsUngrounded } from "./financial-completion";
 import { financialHoldingIsUngrounded } from "./financial-observations";
 import {
-	groundedCurrentTimeReply,
-	statedTimeIsUngrounded,
-} from "./time-observations";
-import {
 	replyClaimsCompletedSideEffect,
 	replyClaimsEmptyTrackedWorkState,
 } from "./side-effect-claims.ts";
+import {
+	groundedCurrentTimeReply,
+	statedTimeIsUngrounded,
+} from "./time-observations";
 
 export type PlannedReplyClaimKind =
 	| "completed_side_effect"
@@ -272,7 +272,8 @@ export async function resolvePlannedReplyEgress(args: {
 			),
 		};
 	}
-	const reason = decision.verdict === "reject" ? decision.kind : "missing_reply";
+	const reason =
+		decision.verdict === "reject" ? decision.kind : "missing_reply";
 	if (reason === "stated_time") {
 		// The provider's own rendering is the complete answer to "what time is
 		// it"; no model is needed to restate it, and a second model pass could
@@ -291,7 +292,9 @@ export async function resolvePlannedReplyEgress(args: {
 		// turn's entire composed context (live 2026-09-11 05:35Z: ~380K chars of
 		// room history rode along on a completed_side_effect recovery and the
 		// rewrite request exceeded the provider's context limit, failing the turn).
-		...(PROVIDER_EVIDENCE_KINDS.has(reason) ? { providers: args.providers } : {}),
+		...(PROVIDER_EVIDENCE_KINDS.has(reason)
+			? { providers: args.providers }
+			: {}),
 	});
 	const rewritten = await rewriteActionCallbackInCharacter({
 		runtime: args.runtime,

@@ -2388,7 +2388,8 @@ export function resolveUpdateTimeRange(args: {
   if (!startAt || endAt) return { startAt, endAt };
   const durationMs =
     Date.parse(args.target.endAt) - Date.parse(args.target.startAt);
-  if (!Number.isFinite(durationMs) || durationMs <= 0) return { startAt, endAt };
+  if (!Number.isFinite(durationMs) || durationMs <= 0)
+    return { startAt, endAt };
   const timeZone = args.timeZone?.trim() || "UTC";
   const start = parseDateTimeInZone(startAt, timeZone);
   if (!start) return { startAt, endAt };

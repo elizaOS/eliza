@@ -41,7 +41,8 @@ const WEEKDAY_NAMES = [
 
 const MONTH_DAY_PATTERN =
 	/\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?/gi;
-const CLOCK_PATTERN = /\b(\d{1,2})(?::(\d{2}))(?::\d{2})?\s*(AM|PM|a\.m\.|p\.m\.)/gi;
+const CLOCK_PATTERN =
+	/\b(\d{1,2})(?::(\d{2}))(?::\d{2})?\s*(AM|PM|a\.m\.|p\.m\.)/gi;
 const WEEKDAY_PATTERN =
 	/\b(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\b/gi;
 

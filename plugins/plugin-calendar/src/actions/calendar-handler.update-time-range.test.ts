@@ -70,7 +70,10 @@ describe("resolveUpdateTimeRange", () => {
     expect(
       resolveUpdateTimeRange({
         explicitStart: "2026-09-11T16:00:00",
-        target: { startAt: "2026-09-11T19:00:00.000Z", endAt: "2026-09-11T19:00:00.000Z" },
+        target: {
+          startAt: "2026-09-11T19:00:00.000Z",
+          endAt: "2026-09-11T19:00:00.000Z",
+        },
         timeZone: "America/New_York",
       }),
     ).toEqual({ startAt: "2026-09-11T16:00:00", endAt: undefined });
