@@ -15,6 +15,7 @@ import {
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { authMe } from "../api/auth-client";
+import { client } from "../api/client";
 import { clearStaleStewardSession } from "../cloud/shell/StewardProviderShared";
 import { getBootConfig, setBootConfig } from "../config/boot-config-store";
 import {
@@ -27,6 +28,7 @@ import {
   __setAuthStatusForTests,
   isAuthenticatedNow,
   primeAuthStatusProbe,
+  revalidateAuthStatus,
   subscribeAuthStatus,
   useAuthStatus,
 } from "./useAuthStatus";
@@ -609,6 +611,209 @@ describe("primeAuthStatusProbe + activation reuse", () => {
       expect(result.current.state.phase).toBe("authenticated"),
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("discards a late success without detaching the replacement probe", async () => {
+    client.setBaseUrl("https://first.example.test");
+    const first = Promise.withResolvers<Response>();
+    const second = Promise.withResolvers<Response>();
+    fetchMock
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    act(() => client.setBaseUrl("https://second.example.test"));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await act(async () => first.resolve(jsonResponse(200, AUTH_ME_BODY)));
+    expect(result.current.state.phase).toBe("loading");
+    const joined = revalidateAuthStatus();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      second.resolve(
+        jsonResponse(401, {
+          reason: "remote_password_not_configured",
+          access: {
+            mode: "remote",
+            passwordConfigured: false,
+            ownerConfigured: true,
+          },
+        }),
+      );
+      await joined;
+    });
+    expect(result.current.state.phase).toBe("unauthenticated");
+  });
+
+  it("does not reuse a fresh startup prime from the previous server", async () => {
+    client.setBaseUrl("https://first.example.test");
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, AUTH_ME_BODY));
+    primeAuthStatusProbe();
+    await waitFor(() => expect(isAuthenticatedNow()).toBe(true));
+    client.setBaseUrl("https://second.example.test");
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        ...AUTH_ME_BODY,
+        identity: { ...AUTH_ME_BODY.identity, id: "second-owner" },
+      }),
+    );
+    const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
+    await waitFor(() =>
+      expect(result.current.state).toMatchObject({
+        phase: "authenticated",
+        identity: { id: "second-owner" },
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not continue an old rejection through the replacement server's pairing route", async () => {
+    client.setBaseUrl("https://first.example.test");
+    const first = Promise.withResolvers<Response>();
+    fetchMock
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValue(jsonResponse(200, { required: false }));
+    const pending = authMe();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    client.setBaseUrl("https://second.example.test");
+    client.setToken("second-token");
+    first.resolve(
+      jsonResponse(401, {
+        reason: "remote_auth_required",
+        access: {
+          mode: "remote",
+          passwordConfigured: true,
+          ownerConfigured: true,
+        },
+      }),
+    );
+    await pending;
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getBootConfig().apiToken).toBe("second-token");
+  });
+
+  it("does not return the old identity when selection changes during body parsing", async () => {
+    client.setBaseUrl("https://first.example.test");
+    const body = Promise.withResolvers<typeof AUTH_ME_BODY>();
+    const response = jsonResponse(200, AUTH_ME_BODY);
+    const parse = vi.fn(() => body.promise);
+    response.json = parse;
+    fetchMock.mockResolvedValueOnce(response);
+    const pending = authMe();
+    await waitFor(() => expect(parse).toHaveBeenCalledOnce());
+    client.setBaseUrl("https://second.example.test");
+    body.resolve(AUTH_ME_BODY);
+    expect(await pending).toMatchObject({ ok: false });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not clear a replacement Cloud binding after a stale refresh rejection", async () => {
+    const firstBase = "https://api.eliza.app/api/v1/eliza/agents/shared-first";
+    const secondBase =
+      "https://api.eliza.app/api/v1/eliza/agents/shared-second";
+    client.setBaseUrl(firstBase);
+    client.setToken(null);
+    await writeStoredStewardToken(makeJwt(-3600));
+    savePersistedActiveServer({
+      id: "cloud:first",
+      kind: "cloud",
+      label: "First",
+      apiBase: firstBase,
+      accessToken: "first-agent-token",
+    });
+    const refresh = Promise.withResolvers<Response>();
+    fetchMock.mockReturnValueOnce(refresh.promise);
+    const pending = authMe();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    client.setBaseUrl(secondBase);
+    savePersistedActiveServer({
+      id: "cloud:second",
+      kind: "cloud",
+      label: "Second",
+      apiBase: secondBase,
+      accessToken: "second-agent-token",
+    });
+    refresh.resolve(jsonResponse(401, {}));
+    await pending;
+    expect(loadPersistedActiveServer()).toMatchObject({
+      id: "cloud:second",
+      apiBase: secondBase,
+    });
+    expect(getBootConfig().apiBase).toBe(secondBase);
+  });
+
+  it("revalidates a mounted gate against the newly selected server", async () => {
+    client.setBaseUrl("https://first.example.test");
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, AUTH_ME_BODY));
+    const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
+    await waitFor(() =>
+      expect(result.current.state.phase).toBe("authenticated"),
+    );
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(401, {
+        reason: "remote_password_not_configured",
+        access: {
+          mode: "remote",
+          passwordConfigured: true,
+          ownerConfigured: true,
+        },
+      }),
+    );
+    act(() => client.setBaseUrl("https://second.example.test"));
+    expect(result.current.state.phase).toBe("loading");
+    await waitFor(() =>
+      expect(result.current.state.phase).toBe("unauthenticated"),
+    );
+    expect(String(fetchMock.mock.calls.at(-1)?.[0])).toBe(
+      "https://second.example.test/api/auth/me",
+    );
+  });
+
+  it("does not let the previous server's delayed rejection erase the new credential", async () => {
+    client.setBaseUrl("https://first.example.test");
+    client.setToken("first-token");
+    let rejectFirst!: (response: Response) => void;
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          rejectFirst = resolve;
+        }),
+    );
+    const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, {
+        ...AUTH_ME_BODY,
+        identity: { ...AUTH_ME_BODY.identity, id: "second-owner" },
+      }),
+    );
+    act(() => {
+      client.setBaseUrl("https://second.example.test");
+      client.setToken("second-token");
+    });
+    await act(async () =>
+      rejectFirst(
+        jsonResponse(401, {
+          reason: "remote_password_not_configured",
+          access: {
+            mode: "remote",
+            passwordConfigured: true,
+            ownerConfigured: true,
+          },
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(result.current.state).toMatchObject({
+        phase: "authenticated",
+        identity: { id: "second-owner" },
+      }),
+    );
+    expect(getBootConfig().apiToken).toBe("second-token");
+    expect(
+      fetchMock.mock.calls.filter(([url]) =>
+        String(url).startsWith("https://first.example.test"),
+      ),
+    ).toHaveLength(1);
   });
 });
 
