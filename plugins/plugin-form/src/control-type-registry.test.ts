@@ -121,6 +121,45 @@ describe("control type registry bridge (#31049)", () => {
     expect(parseValue("+1 (555) 123-4567", phoneControl)).toBe("+15551234567");
     expect(formatValue("+15551234567", phoneControl)).toBe("tel:+15551234567");
   });
+
+  it("keeps a custom allowOverride contract when another agent's FormService starts", async () => {
+    // The handler registry is process-global while each service's control
+    // map is per instance. A second runtime in the same process boots its own
+    // FormService, whose builtins pass its (empty) instance guard; they must
+    // not overwrite the override the first agent installed.
+    const emailControl: FormControl = {
+      key: "email",
+      label: "Email",
+      type: "email",
+    };
+    service.registerControlType(
+      {
+        id: "email",
+        validate: (value: JsonValue) =>
+          String(value).endsWith("@corp.example")
+            ? { valid: true }
+            : { valid: false, error: "corporate domains only" },
+        extractionPrompt: "a corporate email",
+      },
+      { allowOverride: true },
+    );
+    expect(validateField("x@gmail.com", emailControl)).toEqual({
+      valid: false,
+      error: "corporate domains only",
+    });
+
+    await FormService.start(makeRuntime());
+
+    expect(validateField("x@gmail.com", emailControl)).toEqual({
+      valid: false,
+      error: "corporate domains only",
+    });
+    expect(promptFor([emailControl])).toContain("a corporate email");
+    // A builtin the first agent left alone is still published for the second.
+    expect(getTypeHandler("date")?.extractionPrompt).toBe(
+      "a date (preferably in YYYY-MM-DD format)",
+    );
+  });
 });
 
 describe("date control names the same calendar day on every host (#31049)", () => {
