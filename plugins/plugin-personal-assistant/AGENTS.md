@@ -172,3 +172,11 @@ this transition. The Todo projection tags real target IDs as `definition` or
 ## Verification
 
 Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run the relevant package lanes above, then exercise the real connector, scheduler, database, approval, or UI boundary changed. Inspect scheduled-task records, database rows, logs, trajectories, and rendered behavior; mocked success is not evidence for a real integration.
+
+Planner-owned LifeOps replies hand complete action-specific facts, character
+context and reply rules to the final response model through `data.replyGrounding`.
+Only the full message planner grants this ownership for the same message while
+its action handler is active. Direct/background callers and withheld result
+payloads keep standalone rendering. Deferred replies are internal evidence,
+never unavailable status or canned user prose; preserve receipts, clarification
+states, permission rechecks, final-context restoration and reply-only recovery.

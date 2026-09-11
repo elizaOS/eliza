@@ -240,3 +240,11 @@ UI_CONTEXT distinguishes opening a view from reading or writing its records and 
 Exact dialogue quotations may use supplied original message text and authors directly. Missing evidence, absent requested source metadata, explicit history searches and exhaustive stored-history coverage retain authorized retrieval; honor user restrictions on lookup. This does not treat prior dialogue as current live-record state or permit invented provenance.
 
 Reminder fallback seeding requires a model-selected scheduling context/candidate or the existing capability-denial recovery condition. Ordinary recall wording alone must not add reminder families to unrelated navigation/read plans. Preserve explicit candidates, owner/group fallback, discovery and execution gates; seeding is not authorization.
+
+Planner-owned LifeOps replies hand complete action-specific facts, character
+context and reply rules to the final response model through `data.replyGrounding`.
+Only the full message planner grants this ownership for the same message while
+its action handler is active. Direct/background callers and withheld result
+payloads keep standalone rendering. Deferred replies are internal evidence,
+never unavailable status or canned user prose; preserve receipts, clarification
+states, permission rechecks, final-context restoration and reply-only recovery.

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { parseEvaluatorOutput } from "../runtime/evaluator";
 import { createMockRuntime } from "../testing/mock-runtime";
 import { type ActionResult, type Memory, ModelType } from "../types";
+import { applyGroundedActionReply } from "../types/action-reply";
 import { resolvePlannedReplyEgress } from "./message";
 
 const message: Memory = {
@@ -168,12 +169,15 @@ describe("model-backed final reply recovery", () => {
 		const processActions = vi.fn();
 		const runtime = createMockRuntime({ useModel, processActions });
 		const context = `${"prior constraint ".repeat(2000)}Keep the existing calendar event unchanged.`;
+		const grounding = `${"complete action fact 🦊 ".repeat(2000)}Preserve both original and corrected descriptions.`;
 		await expect(
 			resolvePlannedReplyEgress({
 				runtime,
 				message,
 				reply: "",
-				actionResults: [savedNote],
+				actionResults: [
+					applyGroundedActionReply(savedNote, { kind: "deferred", grounding }),
+				],
 				recovery: {
 					context,
 					pendingToolCalls: [
@@ -189,6 +193,7 @@ describe("model-backed final reply recovery", () => {
 		expect(useModel).toHaveBeenCalledTimes(1);
 		const parameters = useModel.mock.calls[0]?.[1] as { prompt: string };
 		expect(parameters.prompt).toContain(context);
+		expect(parameters.prompt).toContain(grounding);
 		expect(parameters.prompt).toContain("Calendar is still pending");
 		expect(parameters.prompt).toContain(
 			"does not prove the whole request completed",

@@ -103,6 +103,7 @@ export interface ExecuteV5PlannedToolCallParams {
 
 export interface BuildV5ExecutorContextParams {
 	message: Memory;
+	replyOwner?: "planner";
 	state: State;
 	selectedContexts: AgentContext[];
 	senderRole: RoleGateRole;
@@ -115,6 +116,7 @@ export function buildV5ExecutorContext(
 ): ExecutePlannedToolCallContext {
 	return {
 		message: args.message,
+		...(args.replyOwner ? { replyOwner: args.replyOwner } : {}),
 		state: args.state,
 		activeContexts: args.selectedContexts,
 		userRoles: [args.senderRole],

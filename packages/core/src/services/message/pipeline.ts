@@ -1870,6 +1870,7 @@ export async function runV5MessageRuntimeStage1(
 										plannerContext: loopContext,
 										executorCtx: buildV5ExecutorContext({
 											message: args.message,
+											replyOwner: "planner",
 											state: plannerState,
 											selectedContexts,
 											senderRole,
