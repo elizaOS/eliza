@@ -63,6 +63,7 @@ import {
 } from "../tool-events/ToolCallEventLog.helpers";
 import { Button } from "../ui/button";
 import { NativeSelect } from "../ui/native-select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 
 // ---------------------------------------------------------------------------
 // Pipeline stage mapping
@@ -554,6 +555,7 @@ export function TrajectoryDetailView({
   const [retry, setRetry] = useState(0);
   const [inspectionPart, setInspectionPart] = useState("calls");
   const [selectedCallId, setSelectedCallId] = useState<string>();
+  const [selectedProviderId, setSelectedProviderId] = useState<string>();
   const instanceId = useId();
   // biome-ignore lint/correctness/useExhaustiveDependencies: Revision and explicit retry invalidate the recorded payload.
   useEffect(() => {
@@ -596,7 +598,21 @@ export function TrajectoryDetailView({
   const llmCalls = currentDetail?.llmCalls ?? [];
   const selectedCall =
     llmCalls.find((call) => call.id === selectedCallId) ?? llmCalls[0];
-  const providerAccesses = detail?.providerAccesses ?? [];
+  const providerAccesses = currentDetail?.providerAccesses ?? [];
+  const selectedProvider =
+    providerAccesses.find((access) => access.id === selectedProviderId) ??
+    providerAccesses[0];
+  const providerData = selectedProvider?.data;
+  const providerText =
+    typeof providerData?.text === "string" ? providerData.text : undefined;
+  const providerRequest =
+    typeof selectedProvider?.query?.message === "string"
+      ? selectedProvider.query.message
+      : selectedProvider?.query;
+  const providerSize =
+    typeof providerData?.textLength === "number"
+      ? providerData.textLength
+      : providerText?.length;
   const trajectory = currentDetail?.trajectory;
   const tokenCount = trajectoryDetailTokenCount(trajectory, llmCalls);
   // The whole event pipeline (several O(n) dedupeEvents + the O(n log n)
@@ -1018,6 +1034,134 @@ export function TrajectoryDetailView({
               : "contents"
           }
         >
+          {selectedProvider ? (
+            <section className="space-y-3" aria-label="Context providers">
+              <label
+                htmlFor={`${instanceId}-provider`}
+                className="block text-sm font-medium text-txt"
+              >
+                Context provider · {providerAccesses.length} recorded reads
+              </label>
+              <NativeSelect
+                id={`${instanceId}-provider`}
+                value={selectedProvider.id}
+                onChange={(event) => setSelectedProviderId(event.target.value)}
+              >
+                {providerAccesses.map((access, index) => (
+                  <option key={access.id} value={access.id}>
+                    {index + 1}. {access.providerName || "Unknown provider"}
+                    {typeof access.data?.textLength === "number"
+                      ? ` · ${access.data.textLength.toLocaleString()} characters`
+                      : ""}
+                    {access.data?.cacheHit === true ? " · reused" : ""}
+                  </option>
+                ))}
+              </NativeSelect>
+              <p className="text-sm text-txt">
+                {typeof providerData?.outcome === "string"
+                  ? providerData.outcome
+                  : "Status not recorded"}
+                {selectedProvider.durationMs != null
+                  ? ` · ${formatTrajectoryDuration(selectedProvider.durationMs)}`
+                  : " · Duration not recorded"}
+                {providerSize != null
+                  ? ` · ${providerSize.toLocaleString()} characters returned`
+                  : ""}
+              </p>
+              <p className="text-xs text-muted">
+                {providerData?.cacheHit === true
+                  ? "Provider cache: reused result."
+                  : providerData?.cacheHit === false
+                    ? "Provider cache: result was not reused."
+                    : "Provider cache: not recorded."}{" "}
+                This is separate from the model’s prompt cache.
+                {providerData?.coalesced === true
+                  ? " Shared an in-flight provider execution."
+                  : ""}
+              </p>
+              {typeof providerData?.errorCode === "string" ? (
+                <p role="status" className="text-sm text-danger">
+                  Provider error: {providerData.errorCode}
+                </p>
+              ) : null}
+              <Tabs defaultValue="result">
+                <TabsList aria-label="Provider evidence">
+                  <TabsTrigger value="result">Result</TabsTrigger>
+                  <TabsTrigger value="request">Request</TabsTrigger>
+                  <TabsTrigger value="raw">Raw data</TabsTrigger>
+                </TabsList>
+                <TabsContent value="result" className="space-y-2">
+                  {providerText === undefined ? (
+                    <p role="status" className="py-3 text-sm text-muted">
+                      Provider result text was not recorded for this read. Its
+                      size or status does not contain the result. Check Model
+                      calls → Input for the assembled model input.
+                    </p>
+                  ) : providerText === "" ? (
+                    <p role="status" className="py-3 text-sm text-muted">
+                      Provider returned no text.
+                    </p>
+                  ) : (
+                    <TrajectoryCodeBlock
+                      compact
+                      label="Provider result text"
+                      content={providerText}
+                      linesLabel=""
+                      copyLabel="Copy"
+                      collapseLabel="Collapse"
+                      expandLabel="Expand"
+                      onCopy={(content) => void copyToClipboard(content)}
+                    />
+                  )}
+                  {providerText !== undefined &&
+                  selectedProvider.purpose === "compose_state" ? (
+                    <p className="text-xs text-muted">
+                      Text retained after access checks and secret redaction.
+                      This is the provider’s text contribution, not its internal
+                      data or proof that a later model call included it.
+                    </p>
+                  ) : null}
+                </TabsContent>
+                <TabsContent value="request" className="space-y-2">
+                  <p className="text-xs text-muted">
+                    Message or query recorded when this provider ran.
+                  </p>
+                  {providerRequest == null ? (
+                    <p role="status" className="text-sm text-muted">
+                      Provider request was not recorded.
+                    </p>
+                  ) : (
+                    <TrajectoryCodeBlock
+                      compact
+                      label="Provider request"
+                      content={formatProviderPayload(providerRequest)}
+                      linesLabel=""
+                      copyLabel="Copy"
+                      collapseLabel="Collapse"
+                      expandLabel="Expand"
+                      onCopy={(content) => void copyToClipboard(content)}
+                    />
+                  )}
+                </TabsContent>
+                <TabsContent value="raw">
+                  <TrajectoryCodeBlock
+                    compact
+                    label="Full provider record"
+                    content={formatProviderPayload(selectedProvider)}
+                    linesLabel=""
+                    copyLabel="Copy"
+                    collapseLabel="Collapse"
+                    expandLabel="Expand"
+                    onCopy={(content) => void copyToClipboard(content)}
+                  />
+                </TabsContent>
+              </Tabs>
+            </section>
+          ) : (
+            <p className="text-sm text-muted">
+              No provider reads were recorded for this run.
+            </p>
+          )}
           {orchestratorData ? (
             <section>
               <h3 className="mb-3 text-sm font-semibold text-[color:var(--settings-foreground)]">
@@ -1166,65 +1310,6 @@ export function TrajectoryDetailView({
                 diffs={contextDiffSummaries}
               />
             </div>
-          ) : null}
-
-          {providerAccesses.length > 0 ? (
-            <section>
-              <h3 className="mb-3 text-sm font-semibold text-[color:var(--settings-foreground)]">
-                Context providers
-              </h3>
-              <div className="divide-y divide-[color:var(--settings-hairline)] border-y border-[color:var(--settings-hairline)]">
-                {providerAccesses.map((access, index) => (
-                  <details key={access.id} className="group overflow-hidden">
-                    <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-4 py-3">
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium text-[color:var(--settings-foreground)]">
-                          {access.providerName || "Unknown provider"}
-                        </span>
-                        <span className="block truncate text-xs text-[color:var(--settings-muted)]">
-                          {access.purpose ||
-                            t("trajectorydetailview.ProviderAccess", {
-                              defaultValue: "Provider access",
-                            })}
-                        </span>
-                      </span>
-                      <span className="shrink-0 text-xs text-[color:var(--settings-muted)] group-open:hidden">
-                        #{index + 1} Show
-                      </span>
-                      <span className="hidden shrink-0 text-xs text-[color:var(--settings-muted)] group-open:inline">
-                        Hide
-                      </span>
-                    </summary>
-                    <div className="space-y-4 border-t border-[color:var(--settings-hairline)] py-4">
-                      {[
-                        ...(access.query
-                          ? [{ label: "Provider query", value: access.query }]
-                          : []),
-                        { label: "Provider context", value: access.data },
-                      ].map((part) =>
-                        part.value == null ? (
-                          <p key={part.label} className="text-sm text-muted">
-                            No separate provider payload was recorded.
-                          </p>
-                        ) : (
-                          <TrajectoryCodeBlock
-                            key={part.label}
-                            compact={collapsibleCalls}
-                            label={part.label}
-                            content={formatProviderPayload(part.value)}
-                            linesLabel=""
-                            copyLabel="Copy"
-                            collapseLabel="Collapse"
-                            expandLabel="Expand"
-                            onCopy={(content) => void copyToClipboard(content)}
-                          />
-                        ),
-                      )}
-                    </div>
-                  </details>
-                ))}
-              </div>
-            </section>
           ) : null}
         </div>
       ) : null}

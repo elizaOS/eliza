@@ -76,9 +76,20 @@ timeline have their own **Context & timeline** section.
 
 Inspection makes no model calls. Full payload reads occur only for open runs,
 refresh when the run revision changes and abort on cleanup. These payloads may
-contain private conversation content and remain untruncated. Missing separately
-recorded provider payloads are labeled unavailable; the complete recorded model
-input remains viewable and copyable.
+contain private conversation content and remain untruncated. Context providers use a selector with **Result**, **Request** and **Raw data**
+views. Status, duration, text size and application provider-cache reuse are shown
+as readable summaries; provider-cache reuse is distinct from model prompt caching.
+Requests with a message field display actual line breaks instead of escaped JSON.
+All compact text blocks have visible labels and copy the entire recorded text.
+
+New state-composition reads retain each provider's complete secret-redacted text
+only after the final audience and cancellation checks. Cached reads retain the
+same text without executing the provider again. Internal provider values/data
+are not newly captured. Compositions failing those checks retain metadata without text. A later
+assembly failure can still have recorded provider results. Older records lacking text say **Provider result text was not recorded**;
+a recorded empty string says **Provider returned no text**. Provider output is
+not proof that a later model call included it; inspect that call's recorded input.
+Missing separately recorded payloads cannot be reconstructed from a size/hash.
 
 ## Layout and accessibility
 

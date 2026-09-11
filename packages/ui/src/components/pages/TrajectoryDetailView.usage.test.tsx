@@ -68,6 +68,116 @@ describe("TrajectoryDetailView recorded usage", () => {
     vi.clearAllMocks();
   });
 
+  it("distinguishes missing provider text, captured text, empty results and raw metadata", async () => {
+    const text = `Actual provider output\n${"context ".repeat(10000)}EXACT_END`;
+    const legacy = {
+      id: "legacy",
+      providerName: "recent-conversations",
+      purpose: "compose_state",
+      query: { message: "hi\n[Language instruction]" },
+      durationMs: 58,
+      data: { textLength: 1782, outcome: "success", cacheHit: false },
+    };
+    const captured = {
+      ...legacy,
+      id: "captured",
+      data: {
+        text,
+        textLength: text.length,
+        outcome: "success",
+        cacheHit: true,
+      },
+    };
+    const empty = {
+      ...legacy,
+      id: "empty",
+      data: { text: "", textLength: 0, outcome: "success" },
+    };
+    api.getTrajectoryDetail.mockResolvedValue({
+      ...detail(),
+      providerAccesses: [
+        legacy,
+        captured,
+        empty,
+        {
+          ...legacy,
+          id: "failed",
+          data: { outcome: "error", errorCode: "PROVIDER_COMPOSITION_FAILED" },
+        },
+      ],
+    });
+    render(
+      <TrajectoryDetailView
+        trajectoryId="recorded-correction"
+        collapsibleCalls
+      />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Context & timeline" }),
+      ).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Context & timeline" }));
+    expect(
+      screen.getByText(/Provider result text was not recorded/),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/Provider cache: result was not reused/),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("region", { name: "Full provider record" }),
+    ).toBeNull();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Request" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    expect(
+      screen.getByRole("region", { name: "Provider request" }).textContent,
+    ).toBe(legacy.query.message);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copy Provider request" }),
+    );
+    expect(api.copy).toHaveBeenLastCalledWith(legacy.query.message);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Result" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    fireEvent.change(
+      screen.getByRole("combobox", { name: /Context provider/ }),
+      { target: { value: "captured" } },
+    );
+    expect(
+      screen.getByRole("region", { name: "Provider result text" }).textContent,
+    ).toBe(text);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copy Provider result text" }),
+    );
+    expect(api.copy).toHaveBeenLastCalledWith(text);
+    expect(screen.getByText(/Provider cache: reused result/)).toBeTruthy();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Raw data" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    expect(
+      JSON.parse(
+        screen.getByRole("region", { name: "Full provider record" })
+          .textContent ?? "",
+      ),
+    ).toEqual(captured);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Result" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    fireEvent.change(
+      screen.getByRole("combobox", { name: /Context provider/ }),
+      { target: { value: "empty" } },
+    );
+    expect(screen.getByText("Provider returned no text.")).toBeTruthy();
+    expect(
+      screen.queryByText(/Provider result text was not recorded/),
+    ).toBeNull();
+  });
+
   it("renders 102.5k instead of zero when the detail response omits rollups", async () => {
     api.getTrajectoryDetail.mockResolvedValue(detail());
     render(<TrajectoryDetailView trajectoryId="recorded-correction" />);
