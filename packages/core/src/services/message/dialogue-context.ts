@@ -5,6 +5,7 @@ import { OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS } from "../../security/trust
 import type { ContextEvent } from "../../types/context-object";
 import type { Memory } from "../../types/memory";
 import { MESSAGE_SOURCE_SUB_AGENT } from "../../types/message-source";
+import { ChannelType } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
 import type { State } from "../../types/state";
 import { extractUserText, getUserMessageText } from "../../utils/message-text";
@@ -249,19 +250,38 @@ export function currentMessageContentForContext(
 ): Memory["content"] {
 	const currentText = getUserMessageText(message);
 	const content = message.content;
-	if (
-		!currentText ||
-		!content ||
-		typeof content !== "object" ||
-		typeof content.text !== "string" ||
-		content.text === currentText
-	) {
+	if (!content || typeof content !== "object") {
 		return content;
 	}
-	return {
-		...content,
-		text: currentText,
-	};
+	const projected =
+		currentText &&
+		typeof content.text === "string" &&
+		content.text !== currentText
+			? { ...content, text: currentText }
+			: content;
+	if (
+		content.source !== "client_chat" ||
+		content.channelType !== ChannelType.DM
+	) {
+		return projected;
+	}
+	// These client-chat carriers belong to replay protection and UI dispatch,
+	// not the model's request. Never mutate the Memory used by persistence,
+	// recovery or action execution, and retain every other content/metadata key.
+	const modelContent = { ...projected };
+	delete modelContent.chatIdempotency;
+	const metadata = modelContent.metadata;
+	if (
+		metadata &&
+		typeof metadata === "object" &&
+		!Array.isArray(metadata) &&
+		"viewClientId" in metadata
+	) {
+		const modelMetadata = { ...metadata };
+		delete modelMetadata.viewClientId;
+		modelContent.metadata = modelMetadata;
+	}
+	return modelContent;
 }
 
 export function readMessageContentString(
