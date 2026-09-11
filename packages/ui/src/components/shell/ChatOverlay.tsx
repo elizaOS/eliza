@@ -34,6 +34,7 @@ import {
 } from "motion/react";
 import * as React from "react";
 import { type OrbState, ThinkingOrb } from "thinking-orbs";
+import { registerPendingFirstRunTextConsumer } from "../../first-run/first-run-pending-text";
 import { ChatVoiceStatusBar } from "../composites/chat/ChatVoiceStatusBar";
 import {
   highlightSearchMatches,
@@ -1335,6 +1336,7 @@ export function ChatOverlay({
   agentName = "Eliza",
   slash: slashProp,
   firstRunOpen = false,
+  acceptPendingFirstRunText = false,
   initialMode = "input",
   releaseFirstRunToFull = false,
   fillHostAtHalf = false,
@@ -1357,6 +1359,8 @@ export function ChatOverlay({
    * There is never a separate desktop web chat.
    */
   firstRunOpen?: boolean;
+  /** The host confirms setup completion before this composer may consume queued intent. */
+  acceptPendingFirstRunText?: boolean;
   /** Initial resting detent when a host opens this shared chat surface. */
   initialMode?: "input" | "half";
   /**
@@ -4254,11 +4258,14 @@ export function ChatOverlay({
     expand();
   }, [hasRevealableThread, expand]);
 
+  const pendingFirstRunAcknowledgementRef = React.useRef<{
+    text: string;
+    acknowledge: () => void;
+  } | null>(null);
   React.useEffect(() => {
     if (typeof window === "undefined") return undefined;
-    const onPrefill = (event: Event) => {
+    const applyPrefill = (detail: ChatPrefillEventDetail) => {
       if (firstRunOpen) return;
-      const detail = (event as CustomEvent<ChatPrefillEventDetail>).detail;
       const text = typeof detail?.text === "string" ? detail.text : "";
       if (!text.trim()) return;
       setMode((m) => (m === "pill" ? "input" : m));
@@ -4280,9 +4287,37 @@ export function ChatOverlay({
         prefillFocusTimerRef.current = window.setTimeout(focusComposer, 0);
       }
     };
+    const onPrefill = (event: Event) =>
+      applyPrefill((event as CustomEvent<ChatPrefillEventDetail>).detail);
     window.addEventListener(CHAT_PREFILL_EVENT, onPrefill);
-    return () => window.removeEventListener(CHAT_PREFILL_EVENT, onPrefill);
-  }, [clearPrefillFocusSchedule, firstRunOpen, setDraft]);
+    const unregister =
+      !firstRunOpen && acceptPendingFirstRunText
+        ? registerPendingFirstRunTextConsumer((text, acknowledge) => {
+            pendingFirstRunAcknowledgementRef.current = { text, acknowledge };
+            applyPrefill({ text, select: true });
+          })
+        : undefined;
+    return () => {
+      window.removeEventListener(CHAT_PREFILL_EVENT, onPrefill);
+      unregister?.();
+      pendingFirstRunAcknowledgementRef.current = null;
+    };
+  }, [
+    acceptPendingFirstRunText,
+    clearPrefillFocusSchedule,
+    firstRunOpen,
+    setDraft,
+  ]);
+
+  React.useEffect(() => {
+    if (!acceptPendingFirstRunText || firstRunOpen) return;
+    const pending = pendingFirstRunAcknowledgementRef.current;
+    if (!pending || pending.text !== draft) return;
+    // A committed composer render acknowledges the complete draft; a remount
+    // before this point leaves the durable onboarding intent available.
+    pending.acknowledge();
+    pendingFirstRunAcknowledgementRef.current = null;
+  }, [acceptPendingFirstRunText, draft, firstRunOpen]);
 
   // "Open chat" intent (the launcher's Messages tile). Land the user IN an open
   // conversation instead of the wordless home with a collapsed pill: un-pill to

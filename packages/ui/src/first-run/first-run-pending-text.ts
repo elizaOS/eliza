@@ -4,12 +4,45 @@
  * removed atomically when the composer consumes it.
  */
 
-import { dispatchChatPrefill } from "../events";
 import { shellLocalStorage } from "../surface-realm-channel";
 
 const PENDING_FIRST_RUN_TEXT_STORAGE_KEY = "eliza:first-run:pending-text";
 type PendingFirstRunTextReleaseHandler = () => void;
 let releaseHandler: PendingFirstRunTextReleaseHandler | null = null;
+type PendingTextConsumer = (text: string, acknowledge: () => void) => void;
+let consumer: PendingTextConsumer | null = null;
+let releasedRequests: readonly string[] | null = null;
+
+function deliverPendingRequests(): void {
+  if (!consumer) return;
+  const requests = releasedRequests ?? readPendingFirstRunText();
+  if (requests.length === 0) return;
+  releasedRequests = requests;
+  consumer(requests.join("\n\n"), () => {
+    // An older render must not acknowledge a newer producer's request batch.
+    if (releasedRequests !== requests) return;
+    clearPendingFirstRunText();
+  });
+}
+
+/** Retain the authoritative in-memory batch until a mounted composer commits it. */
+export function handoffPendingFirstRunText(requests: readonly string[]): void {
+  if (requests.length === 0) return;
+  releasedRequests = [...requests];
+  writePendingFirstRunText(requests);
+  deliverPendingRequests();
+}
+
+/** Register only after setup completes; remounts retry an unacknowledged batch. */
+export function registerPendingFirstRunTextConsumer(
+  next: PendingTextConsumer,
+): () => void {
+  consumer = next;
+  deliverPendingRequests();
+  return () => {
+    if (consumer === next) consumer = null;
+  };
+}
 
 function parsePendingText(raw: string | null): string[] {
   if (!raw) return [];
@@ -82,13 +115,11 @@ export function releasePendingFirstRunText(): void {
     releaseHandler();
     return;
   }
-  const pending = takePendingFirstRunText();
-  if (pending.length === 0) return;
-  const text = pending.join("\n\n");
-  queueMicrotask(() => dispatchChatPrefill({ text, select: true }));
+  handoffPendingFirstRunText(releasedRequests ?? readPendingFirstRunText());
 }
 
 export function clearPendingFirstRunText(): void {
+  releasedRequests = null;
   if (typeof window === "undefined") return;
   try {
     shellLocalStorage.removeItem(PENDING_FIRST_RUN_TEXT_STORAGE_KEY);
