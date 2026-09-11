@@ -74,6 +74,7 @@ import { inflectionTermKeys } from "../utils/inflection-term-keys";
 import {
 	isModelProviderError,
 	isProviderContextOverflowError,
+	isProviderContextOverflowFailure,
 	modelProviderErrorDetail,
 	PROVIDER_CONTEXT_OVERFLOW,
 } from "../utils/model-errors";
@@ -3481,7 +3482,7 @@ function providerContextOverflowFailure(
 	context: Record<string, unknown>,
 ): ElizaError {
 	return new ElizaError(
-		"Planner model input exceeded the provider's context limit and could not " +
+		"Model input exceeded the provider's context limit and could not " +
 			"be recovered losslessly.",
 		{
 			code: PROVIDER_CONTEXT_OVERFLOW,
@@ -4234,6 +4235,29 @@ async function executeQueuedToolCall(params: {
 		logger: params.params.runtime.logger,
 		description: exposedTool?.description,
 	});
+	// A nested action model has the same hard limit as the planner model.
+	// Record the failed attempt and preserve earlier receipts before stopping;
+	// rephrasing tool arguments cannot make its unchanged history fit.
+	if (!result.success) {
+		const overflow = [result.error, result.data?.error].find(
+			isProviderContextOverflowFailure,
+		);
+		// Private-result projection removes the provider payload but retains
+		// the settlement boundary's typed control provenance.
+		const provenance = result.failureProvenance;
+		const projectedOverflow =
+			provenance?.kind === "handler_error" &&
+			provenance.boundary === "handler" &&
+			provenance.code === PROVIDER_CONTEXT_OVERFLOW &&
+			provenance.retryable === false;
+		if (overflow !== undefined || projectedOverflow) {
+			throw providerContextOverflowFailure(overflow, {
+				iteration: params.iteration,
+				actionName: params.toolCall.name,
+				recovery: "typed_boundary_terminal",
+			});
+		}
+	}
 }
 
 async function recordToolStage(args: {

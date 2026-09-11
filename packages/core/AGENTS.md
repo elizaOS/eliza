@@ -248,3 +248,10 @@ its action handler is active. Direct/background callers and withheld result
 payloads keep standalone rendering. Deferred replies are internal evidence,
 never unavailable status or canned user prose; preserve receipts, clarification
 states, permission rechecks, final-context restoration and reply-only recovery.
+
+A structurally confirmed provider context overflow inside an action is a terminal
+planner boundary too. Settlement retains non-retryable typed provenance, including
+through private-result projection. Record the failed tool before stopping; keep
+earlier receipts and complete history. Do not retry changed argument wording
+against the same oversized action context or mistake arbitrary error text, schema
+errors or rate limits for a context overflow.
