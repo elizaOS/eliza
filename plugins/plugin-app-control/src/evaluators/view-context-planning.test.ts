@@ -193,6 +193,38 @@ describe("same-turn contextual navigation", () => {
 			"VIEWS",
 		]);
 	});
+	it.each([
+		{ candidates: [] },
+		{ candidates: ["VIEWS", "CALENDAR"] },
+		{ candidates: ["VIEWS_SHOW", "CALENDAR"] },
+	])(
+		"offers registered narrow navigation while preserving existing compound candidates %j",
+		async ({ candidates }) => {
+			const ctx = context("Open Observatory", {});
+			ctx.runtime.actions.push({
+				name: "VIEWS_SHOW",
+			} as (typeof ctx.runtime.actions)[number]);
+			ctx.messageHandler.plan.candidateActions = candidates;
+			const result = await runWithField(ctx, {
+				disposition: "requested",
+				viewId: "observatory",
+				reason: "explicit",
+			});
+			expect(result.errors).toEqual([]);
+			expect(ctx.messageHandler.plan.candidateActions).toEqual([
+				...new Set([...candidates, "VIEWS_SHOW"]),
+			]);
+			expect(result.candidateActionsClearedByEvaluators).toBe(true);
+			expect(ctx.messageHandler.plan.contextSlices?.join("\n")).toContain(
+				"VIEWS_SHOW with view=<selected id> and navigationStepId=<unique plan step>",
+			);
+			expect(ctx.messageHandler.plan.contextSlices?.join("\n")).toContain(
+				"VIEWS action=split",
+			);
+			expect(prompts).toEqual([]);
+		},
+	);
+
 	it("defers interaction schemas in the navigation handoff and reads them completely from the live catalog", async () => {
 		const description = `${"Keep every user constraint. ".repeat(1200)}END`;
 		const capability = {

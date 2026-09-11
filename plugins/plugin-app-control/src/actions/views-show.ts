@@ -515,7 +515,17 @@ export async function runViewsShow({
 			transcriptVisibility: "internal",
 			turnComplete: false,
 			text: "A planner navigation step requires an explicit view and navigationStepId. Domain work has not completed by navigation.",
-			data: { navigation: receipt("invalid", null, "VIEW_STEP_INVALID") },
+			data: {
+				navigation: receipt("invalid", null, "VIEW_STEP_INVALID"),
+				// Use the planner's existing malformed-call recovery contract. A
+				// later successful retry must still preserve this call's destination.
+				parameterErrors: ["view", "navigationStepId"]
+					.filter((name) => !readStringOpt(options, name))
+					.map((name) => ({
+						name,
+						message: `${name} is required when navigationIntent is planner-step.`,
+					})),
+			},
 		};
 	}
 	if (!target) {

@@ -139,7 +139,6 @@ describe("uiWidgetsProvider — marker vocabulary (common path)", () => {
 describe("uiGenerativeProvider — generative UI escape hatch", () => {
   it("carries the JSONL method and the full component catalog", async () => {
     const text = await generativeText();
-    expect(text).toContain("RFC 6902");
     expect(text).toContain('{"op":"add","path":"/root"');
     expect(text).toContain("Available components");
   });

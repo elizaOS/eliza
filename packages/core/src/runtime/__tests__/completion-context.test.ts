@@ -4,16 +4,19 @@
  * writes or live provider calls run; stored contexts are checked unchanged.
  */
 import { describe, expect, it, vi } from "vitest";
+import { validateSchema } from "../../actions/validate-tool-args";
 import { renderMessageHandlerModelInput } from "../../services/message/stage1-input";
 import type { CompletionContextSelection } from "../../types/components";
 import type { ContextObject } from "../../types/context-object";
 import type { ChatMessage } from "../../types/model";
 import { completionContextFieldEvaluator } from "../builtin-field-evaluators";
 import {
+	COMPLETION_CONTEXT_SCHEMA,
 	completionContextSources,
 	parseCompletionContextSelection,
 	referencePlannerQueryTokens,
 	selectCompletionContext,
+	withRequiredCompletionSourceIdentity,
 } from "../completion-context";
 import { runEvaluator } from "../evaluator";
 import { parseMessageHandlerOutput } from "../message-handler";
@@ -136,6 +139,61 @@ function trajectory(context: ContextObject): PlannerTrajectory {
 }
 
 describe("source-bound completion relevance", () => {
+	it("requires a complete identity only when history supplies one without varying the tool schema by turn", () => {
+		const context = historyContext();
+		const schema = {
+			type: "object",
+			properties: { completionContext: COMPLETION_CONTEXT_SCHEMA },
+		};
+		const before = JSON.stringify(schema);
+		const bound = withRequiredCompletionSourceIdentity(schema, context);
+		const missing = { ...selection(context), sourceSetId: "" };
+		const errors: string[] = [];
+		validateSchema(bound, { completionContext: missing }, "", errors);
+		expect(errors).toEqual([expect.stringContaining("sourceSetId")]);
+		const nextTurn = { ...context, id: "another-turn" };
+		expect(completionContextSources(nextTurn).sourceSetId).not.toBe(
+			selection(context).sourceSetId,
+		);
+		expect(withRequiredCompletionSourceIdentity(schema, nextTurn)).toEqual(
+			bound,
+		);
+		const empty = { ...context, events: [] };
+		expect(withRequiredCompletionSourceIdentity(schema, empty)).toBe(schema);
+		expect(JSON.stringify(schema)).toBe(before);
+	});
+
+	it("declares complete source identities to the model and keeps truncated selections in full-context fallback", () => {
+		const context = historyContext();
+		const complete = selection(context);
+		const validErrors: string[] = [];
+		validateSchema(
+			COMPLETION_CONTEXT_SCHEMA,
+			complete,
+			"selection",
+			validErrors,
+		);
+		expect(validErrors).toEqual([]);
+		const truncated = {
+			...complete,
+			sourceSetId: complete.sourceSetId.slice(0, 38),
+		};
+		const errors: string[] = [];
+		validateSchema(COMPLETION_CONTEXT_SCHEMA, truncated, "selection", errors);
+		expect(errors).toEqual([expect.stringContaining("sourceSetId")]);
+		const fallback = selectCompletionContext(withSelection(context, truncated));
+		expect(fallback.applied).toBe(false);
+		expect(fallback.context.events).toEqual(context.events);
+		const noSourceErrors: string[] = [];
+		validateSchema(
+			COMPLETION_CONTEXT_SCHEMA,
+			{ ...complete, mode: "full", complete: false, sourceSetId: "" },
+			"selection",
+			noSourceErrors,
+		);
+		expect(noSourceErrors).toEqual([]);
+	});
+
 	it("selects the exact repeated occurrence from its original full source", () => {
 		const context = historyContext();
 		const first = completionContextSources(context).sources[0].event;

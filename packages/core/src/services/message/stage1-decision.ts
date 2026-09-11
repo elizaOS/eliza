@@ -6,6 +6,7 @@ import {
 } from "../../actions/to-tool";
 import { recordInferenceSpan, timeInferenceSpan } from "../../inference-timing";
 import { getCandidateActionBackstopRules } from "../../runtime/candidate-action-backstop";
+import { withRequiredCompletionSourceIdentity } from "../../runtime/completion-context";
 import { computePrefixHashes, hashString } from "../../runtime/context-hash";
 import { getMessageHandlerReply } from "../../runtime/message-handler";
 import {
@@ -177,7 +178,12 @@ export async function generateStage1Decision(
 	const messageHandlerTools = [
 		createHandleResponseTool({
 			directMessage: directMessageChannel,
-			parameters: responseHandlerSchema,
+			parameters: voiceDirectMessageChannel
+				? responseHandlerSchema
+				: withRequiredCompletionSourceIdentity(
+						responseHandlerSchema,
+						discovery.context,
+					),
 			description:
 				"Stage 1: populate registered response-handler fields once before action tools. Empty values for non-applicable fields.",
 		}),

@@ -1926,6 +1926,26 @@ describe("canonical evaluation of grounded internal receipts", () => {
 		expect(result.finalMessage).toBe(honestReply);
 	});
 
+	it.each(["list", "current", "read", "get", "search", "inspect"])(
+		"does not clear failed navigation with a successful %s of the same view",
+		(action) => {
+			const params = { view: "calendar", navigationIntent: "planner-step" };
+			expect(
+				malformedCallSupersededBy(
+					{ name: "VIEWS", params: { ...params, action: "show" } },
+					{
+						success: false,
+						data: { parameterErrors: [{ name: "navigationStepId" }] },
+					},
+					{
+						name: "VIEWS",
+						params: { ...params, action, navigationStepId: "step-1" },
+					},
+				),
+			).toBe(false);
+		},
+	);
+
 	it("malformed-call supersession keeps every supplied target of the failed call", () => {
 		const failedUpdateA = {
 			name: "VIEWS",
