@@ -1,9 +1,18 @@
 /** Real canonical connector storage and Google grant projection verify handoff permissions; provider reads are deterministic and no message is sent. */
 import { getConnectorAccountManager } from "@elizaos/core";
+import {
+  CalendarService,
+  createDefaultCalendarHostGate,
+} from "@elizaos/plugin-calendar";
 import { expect, it } from "vitest";
 import { googleHandoffFixture } from "../../test/helpers/handoff-google.js";
 import { createLifeOpsTestRuntime } from "../../test/helpers/runtime.js";
+import { AccountHandoffAdmission } from "./account-handoff-admission.js";
+import { AccountHandoffCalendarMappings } from "./account-handoff-calendar-mappings.js";
 import { verifyAccountHandoffGoogle } from "./account-handoff-google-verification.js";
+import { verifyAccountHandoffReadSources } from "./account-handoff-read-sources.js";
+import { AccountHandoffReviewService } from "./account-handoff-review.js";
+import { AccountHandoffSourceSelection } from "./account-handoff-source-selection.js";
 import { googleGrantIdForAccount } from "./google-plugin-delegates.js";
 import { LifeOpsService } from "./service.js";
 
@@ -29,6 +38,12 @@ it("verifies a canonical Gmail read/send grant, then rejects lost send permissio
         ],
       },
     });
+    const previous = await manager.upsertAccount("google", {
+      ...saved,
+      id: "previous-mail",
+      accountKey: "previous-mail",
+      displayHandle: "previous@example.test",
+    });
     const service = new LifeOpsService(host.runtime);
     const url = new URL("http://localhost");
     const f = googleHandoffFixture();
@@ -47,6 +62,65 @@ it("verifies a canonical Gmail read/send grant, then rejects lost send permissio
         recipientId: "recipient@example.test",
       },
     ];
+    // The real calendar service has no Google provider installed: Gmail-only
+    // review and source application must not require a calendar API call.
+    const calendar = new CalendarService(host.runtime);
+    calendar.setGate({
+      ...createDefaultCalendarHostGate(host.runtime),
+      getGoogleConnectorAccounts:
+        service.getGoogleConnectorAccounts.bind(service),
+    });
+    const owner = "gmail-only-owner";
+    let state = await new AccountHandoffReviewService(
+      host.runtime,
+      owner,
+      service,
+      calendar,
+      url,
+    ).create({
+      operationId: "gmail-only-switch",
+      previousGrantId: googleGrantIdForAccount(previous.id),
+      replacementGrantId: grantId,
+      readCalendarIds: [],
+      writeCalendarId: null,
+      calendarLinks: [],
+      messageDestinations: [],
+      importedData: "retain",
+      retireApprovalIds: [],
+    });
+    const admission = new AccountHandoffAdmission(
+      host.runtime,
+      owner,
+      calendar,
+      url,
+    );
+    state = await admission.begin(state.operationId, state.revision);
+    state = await admission.pause(state.operationId, state.revision);
+    state = await admission.drain(state.operationId, state.revision);
+    state = await admission.retireApprovals(state.operationId, state.revision);
+    const mappings = new AccountHandoffCalendarMappings(
+      host.runtime,
+      owner,
+      calendar,
+      url,
+    );
+    state = await mappings.applyNext(state.operationId, state.revision);
+    state = await mappings.applyNext(state.operationId, state.revision);
+    const applied = await new AccountHandoffSourceSelection(
+      host.runtime,
+      owner,
+      calendar,
+      url,
+    ).applyNext(state.operationId, state.revision);
+    expect(applied.complete).toBe(true);
+    await verifyAccountHandoffReadSources(
+      calendar,
+      url,
+      applied.handoff.review,
+    );
+    expect(await calendar.getLinkedCalendarControl()).toMatchObject({
+      paused: true,
+    });
     const run = () =>
       verifyAccountHandoffGoogle(
         host.runtime.agentId,
