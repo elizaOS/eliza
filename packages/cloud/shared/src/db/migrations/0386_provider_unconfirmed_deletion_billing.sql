@@ -1,3 +1,79 @@
+-- Reject unavailable historical authority before changing schema, functions or rows.
+DO $$
+DECLARE unresolved text;
+BEGIN
+WITH history AS (
+  SELECT c.id, c.organization_id, c.lifecycle_revision,
+    latest.id AS latest_id, latest.billing_state, latest.rate_per_hour,
+    to_jsonb(latest)->>'lifecycle_status' AS lifecycle_status,
+    previous.billing_state AS previous_state,
+    previous.rate_per_hour AS previous_rate,
+    latest.lifecycle_revision AS latest_revision,
+    previous.lifecycle_revision AS previous_revision,
+    EXISTS (
+      SELECT 1 FROM container_compute_stop_intents proof
+      JOIN compute_billing_rate_segments fence
+        ON fence.organization_id = proof.organization_id
+       AND fence.workload_kind = 'container' AND fence.workload_id = proof.container_id
+       AND fence.lifecycle_revision = proof.lifecycle_revision
+       AND fence.effective_at = proof.provider_confirmed_at
+       AND fence.billing_state = 'not_billable' AND fence.rate_per_hour = 0
+      WHERE proof.organization_id = c.organization_id AND proof.container_id = c.id
+        AND proof.provider_confirmed_at IS NOT NULL
+        AND c.lifecycle_revision BETWEEN proof.lifecycle_revision AND proof.lifecycle_revision + 2
+        AND NOT EXISTS (
+          SELECT 1 FROM compute_billing_rate_segments later
+          WHERE later.organization_id = c.organization_id AND later.workload_kind = 'container'
+            AND later.workload_id = c.id AND later.effective_at > fence.effective_at
+            AND later.rate_per_hour > 0
+        )
+    ) AS stopped_proof
+  FROM containers c
+  LEFT JOIN LATERAL (
+    SELECT * FROM compute_billing_rate_segments r
+    WHERE r.organization_id = c.organization_id AND r.workload_kind = 'container'
+      AND r.workload_id = c.id ORDER BY effective_at DESC, id DESC LIMIT 1
+  ) latest ON true
+  LEFT JOIN LATERAL (
+    SELECT * FROM compute_billing_rate_segments r
+    WHERE r.organization_id = c.organization_id AND r.workload_kind = 'container'
+      AND r.workload_id = c.id AND (r.effective_at, r.id) < (latest.effective_at, latest.id)
+    ORDER BY effective_at DESC, id DESC LIMIT 1
+  ) previous ON true
+  WHERE c.status = 'deleting'
+), recovery AS (
+  SELECT *, CASE
+    WHEN lifecycle_status = 'deleting' OR billing_state = 'running' OR stopped_proof THEN billing_state
+    WHEN billing_state = 'not_billable' AND previous_state = 'running'
+      AND latest_revision = previous_revision + 1 THEN 'running'
+    ELSE NULL END AS recovered_state,
+    CASE WHEN lifecycle_status = 'deleting' OR billing_state = 'running' OR stopped_proof THEN rate_per_hour
+      WHEN billing_state = 'not_billable' AND previous_state = 'running'
+        AND latest_revision = previous_revision + 1 THEN previous_rate
+      ELSE NULL END AS recovered_rate
+  FROM history
+)
+  SELECT string_agg(id::text, ',' ORDER BY id) INTO unresolved
+  FROM recovery WHERE recovered_state IS NULL;
+  IF unresolved IS NOT NULL THEN
+    RAISE EXCEPTION USING MESSAGE = 'CONTAINER_DELETION_BILLING_HISTORY_UNRESOLVED',
+      DETAIL = unresolved,
+      HINT = 'Reconcile each owned workload through provider-confirmed stop recovery or restore its verified lifecycle history; do not infer a charge from deleting status.';
+  END IF;
+  SELECT string_agg(id::text, ',' ORDER BY id) INTO unresolved FROM agent_sandboxes
+  WHERE status IN ('deletion_pending', 'deletion_failed') AND billing_status = 'suspended'
+    AND pool_status IS NULL AND execution_tier <> 'shared' AND deleted_at IS NULL
+    AND (deletion_previous_billing_status IS NULL OR deletion_previous_status IS NULL)
+    AND (deletion_previous_status = 'stopped' AND last_backup_at IS NULL) IS NOT TRUE;
+  IF unresolved IS NOT NULL THEN
+    RAISE EXCEPTION USING MESSAGE = 'AGENT_DELETION_BILLING_PROVENANCE_UNRESOLVED',
+      DETAIL = unresolved,
+      HINT = 'Resolve missing pre-deletion billing authority against the owned lifecycle records before retrying; do not assume active billing.';
+  END IF;
+END $$;
+
+ALTER TABLE compute_billing_rate_segments ADD COLUMN IF NOT EXISTS lifecycle_status text;
+
 -- Provider-backed compute remains billable while deletion is only requested,
 -- pending, failed, or timed out. Provider-confirmed terminal states stay zero.
 
@@ -26,9 +102,9 @@ BEGIN
         AND workload_id = NEW.id;
     INSERT INTO compute_billing_rate_segments
       (organization_id, workload_kind, workload_id, lifecycle_revision,
-       billing_state, rate_per_hour, effective_at)
+       billing_state, rate_per_hour, effective_at, lifecycle_status)
     VALUES (NEW.organization_id, 'agent', NEW.id, NEW.lifecycle_revision,
-      next_state, next_rate, next_effective_at);
+      next_state, next_rate, next_effective_at, NEW.status);
   END IF;
   RETURN NEW;
 END $$ LANGUAGE plpgsql;
@@ -42,10 +118,22 @@ CREATE TRIGGER agent_compute_billing_rate_segment_append
 CREATE OR REPLACE FUNCTION append_container_compute_billing_rate_segment() RETURNS trigger AS $$
 DECLARE next_state text;
 DECLARE next_daily_rate numeric(16,6);
+DECLARE prior_state text;
+DECLARE prior_rate numeric(16,6);
 DECLARE next_effective_at timestamptz;
 BEGIN
-  next_state := CASE WHEN NEW.status IN ('running', 'deleting')
-    THEN 'running' ELSE 'not_billable' END;
+  IF NEW.status = 'deleting' AND TG_OP = 'UPDATE' THEN
+    SELECT billing_state, rate_per_hour INTO prior_state, prior_rate
+      FROM compute_billing_rate_segments
+      WHERE organization_id = OLD.organization_id AND workload_kind = 'container'
+        AND workload_id = OLD.id
+      ORDER BY effective_at DESC, id DESC LIMIT 1;
+    IF prior_state IS NULL THEN
+      RAISE EXCEPTION 'CONTAINER_DELETION_BILLING_HISTORY_MISSING: %', OLD.id;
+    END IF;
+  END IF;
+  next_state := CASE WHEN NEW.status = 'deleting' AND TG_OP = 'UPDATE' THEN prior_state
+    WHEN NEW.status IN ('running', 'deleting') THEN 'running' ELSE 'not_billable' END;
   next_daily_rate := CASE WHEN next_state = 'running' THEN ROUND((
     0.67::numeric * GREATEST(NEW.desired_count, 1)
     * CASE WHEN NEW.cpu > 1024 THEN NEW.cpu::numeric / 1024 ELSE 1 END
@@ -60,9 +148,10 @@ BEGIN
         AND workload_id = NEW.id;
     INSERT INTO compute_billing_rate_segments
       (organization_id, workload_kind, workload_id, lifecycle_revision,
-       billing_state, rate_per_hour, effective_at)
+       billing_state, rate_per_hour, effective_at, lifecycle_status)
     VALUES (NEW.organization_id, 'container', NEW.id, NEW.lifecycle_revision,
-      next_state, next_daily_rate / 24, next_effective_at);
+      next_state, CASE WHEN NEW.status = 'deleting' AND TG_OP = 'UPDATE'
+        THEN prior_rate ELSE next_daily_rate / 24 END, next_effective_at, NEW.status);
   END IF;
   RETURN NEW;
 END $$ LANGUAGE plpgsql;
@@ -73,36 +162,100 @@ CREATE TRIGGER container_compute_billing_rate_segment_append
   ON containers FOR EACH ROW
   EXECUTE FUNCTION append_container_compute_billing_rate_segment();
 
+UPDATE agent_sandboxes a
+SET billing_status = a.deletion_previous_billing_status,
+    shutdown_warning_sent_at = a.deletion_previous_shutdown_warning_sent_at,
+    scheduled_shutdown_at = a.deletion_previous_scheduled_shutdown_at
+WHERE a.status IN ('deletion_pending', 'deletion_failed') AND a.billing_status = 'suspended'
+  AND a.deletion_previous_billing_status IN ('active', 'warning', 'shutdown_pending')
+  AND a.pool_status IS NULL AND a.execution_tier <> 'shared' AND a.deleted_at IS NULL
+  AND (a.deletion_previous_status = 'running'
+    OR (a.deletion_previous_status = 'stopped' AND a.last_backup_at IS NOT NULL))
+  AND NOT EXISTS (
+    SELECT 1 FROM agent_compute_stop_intents proof
+    WHERE proof.organization_id = a.organization_id AND proof.agent_id = a.id
+      AND proof.provider_confirmed_at >= a.deletion_started_at
+      AND proof.lifecycle_revision <= a.lifecycle_revision
+  );
+
 INSERT INTO compute_billing_rate_segments
   (organization_id, workload_kind, workload_id, lifecycle_revision,
-   billing_state, rate_per_hour, effective_at)
-SELECT workload.organization_id, workload.kind, workload.id, workload.lifecycle_revision,
-  workload.billing_state, workload.rate_per_hour,
-  GREATEST(clock_timestamp(), latest.effective_at + interval '1 microsecond')
-FROM (
-  SELECT organization_id, 'agent'::text AS kind, id, lifecycle_revision,
-    CASE WHEN deletion_previous_status = 'stopped'
-      THEN CASE WHEN last_backup_at IS NOT NULL THEN 'backup' ELSE 'not_billable' END
-      ELSE 'running' END AS billing_state,
-    CASE WHEN deletion_previous_status = 'stopped'
-      THEN CASE WHEN last_backup_at IS NOT NULL THEN 0.002500 ELSE 0.000000 END
-      ELSE 0.010000 END::numeric AS rate_per_hour
-  FROM agent_sandboxes
-  WHERE status IN ('deletion_pending', 'deletion_failed')
-    AND pool_status IS NULL AND execution_tier <> 'shared' AND deleted_at IS NULL
-  UNION ALL
-  SELECT organization_id, 'container', id, lifecycle_revision, 'running',
-    ROUND((0.67::numeric * GREATEST(desired_count, 1)
-      * CASE WHEN cpu > 1024 THEN cpu::numeric / 1024 ELSE 1 END
-      * CASE WHEN memory > 2048 THEN sqrt(memory::numeric / 2048) ELSE 1 END), 2) / 24
-  FROM containers WHERE status = 'deleting'
-) workload
+   billing_state, rate_per_hour, effective_at, lifecycle_status)
+SELECT a.organization_id, 'agent', a.id, a.lifecycle_revision,
+  CASE WHEN a.deletion_previous_status = 'stopped' THEN 'backup' ELSE 'running' END,
+  CASE WHEN a.deletion_previous_status = 'stopped' THEN 0.002500 ELSE 0.010000 END,
+  GREATEST(clock_timestamp(), latest.effective_at + interval '1 microsecond'), a.status
+FROM agent_sandboxes a
 JOIN LATERAL (
-  SELECT billing_state, rate_per_hour, effective_at
-  FROM compute_billing_rate_segments segment
-  WHERE segment.organization_id = workload.organization_id
-    AND segment.workload_kind = workload.kind AND segment.workload_id = workload.id
+  SELECT billing_state, rate_per_hour, effective_at FROM compute_billing_rate_segments s
+  WHERE s.organization_id = a.organization_id AND s.workload_kind = 'agent' AND s.workload_id = a.id
   ORDER BY effective_at DESC, id DESC LIMIT 1
 ) latest ON true
-WHERE latest.billing_state IS DISTINCT FROM workload.billing_state
-  OR latest.rate_per_hour IS DISTINCT FROM workload.rate_per_hour;
+WHERE a.status IN ('deletion_pending', 'deletion_failed')
+  AND a.pool_status IS NULL AND a.execution_tier <> 'shared' AND a.deleted_at IS NULL
+  AND a.billing_status IN ('active', 'warning', 'shutdown_pending')
+  AND (a.deletion_previous_status IS DISTINCT FROM 'stopped' OR a.last_backup_at IS NOT NULL)
+  AND (latest.billing_state IS DISTINCT FROM
+    CASE WHEN a.deletion_previous_status = 'stopped' THEN 'backup' ELSE 'running' END
+    OR latest.rate_per_hour IS DISTINCT FROM
+    CASE WHEN a.deletion_previous_status = 'stopped' THEN 0.002500 ELSE 0.010000 END);
+
+WITH history AS (
+  SELECT c.id, c.organization_id, c.lifecycle_revision,
+    latest.id AS latest_id, latest.billing_state, latest.rate_per_hour,
+    to_jsonb(latest)->>'lifecycle_status' AS lifecycle_status,
+    previous.billing_state AS previous_state,
+    previous.rate_per_hour AS previous_rate,
+    latest.lifecycle_revision AS latest_revision,
+    previous.lifecycle_revision AS previous_revision,
+    EXISTS (
+      SELECT 1 FROM container_compute_stop_intents proof
+      JOIN compute_billing_rate_segments fence
+        ON fence.organization_id = proof.organization_id
+       AND fence.workload_kind = 'container' AND fence.workload_id = proof.container_id
+       AND fence.lifecycle_revision = proof.lifecycle_revision
+       AND fence.effective_at = proof.provider_confirmed_at
+       AND fence.billing_state = 'not_billable' AND fence.rate_per_hour = 0
+      WHERE proof.organization_id = c.organization_id AND proof.container_id = c.id
+        AND proof.provider_confirmed_at IS NOT NULL
+        AND c.lifecycle_revision BETWEEN proof.lifecycle_revision AND proof.lifecycle_revision + 2
+        AND NOT EXISTS (
+          SELECT 1 FROM compute_billing_rate_segments later
+          WHERE later.organization_id = c.organization_id AND later.workload_kind = 'container'
+            AND later.workload_id = c.id AND later.effective_at > fence.effective_at
+            AND later.rate_per_hour > 0
+        )
+    ) AS stopped_proof
+  FROM containers c
+  LEFT JOIN LATERAL (
+    SELECT * FROM compute_billing_rate_segments r
+    WHERE r.organization_id = c.organization_id AND r.workload_kind = 'container'
+      AND r.workload_id = c.id ORDER BY effective_at DESC, id DESC LIMIT 1
+  ) latest ON true
+  LEFT JOIN LATERAL (
+    SELECT * FROM compute_billing_rate_segments r
+    WHERE r.organization_id = c.organization_id AND r.workload_kind = 'container'
+      AND r.workload_id = c.id AND (r.effective_at, r.id) < (latest.effective_at, latest.id)
+    ORDER BY effective_at DESC, id DESC LIMIT 1
+  ) previous ON true
+  WHERE c.status = 'deleting'
+), recovery AS (
+  SELECT *, CASE
+    WHEN lifecycle_status = 'deleting' OR billing_state = 'running' OR stopped_proof THEN billing_state
+    WHEN billing_state = 'not_billable' AND previous_state = 'running'
+      AND latest_revision = previous_revision + 1 THEN 'running'
+    ELSE NULL END AS recovered_state,
+    CASE WHEN lifecycle_status = 'deleting' OR billing_state = 'running' OR stopped_proof THEN rate_per_hour
+      WHEN billing_state = 'not_billable' AND previous_state = 'running'
+        AND latest_revision = previous_revision + 1 THEN previous_rate
+      ELSE NULL END AS recovered_rate
+  FROM history
+)
+INSERT INTO compute_billing_rate_segments
+  (organization_id, workload_kind, workload_id, lifecycle_revision,
+   billing_state, rate_per_hour, effective_at, lifecycle_status)
+SELECT r.organization_id, 'container', r.id, r.lifecycle_revision,
+  r.recovered_state, r.recovered_rate,
+  GREATEST(clock_timestamp(), latest.effective_at + interval '1 microsecond'), 'deleting'
+FROM recovery r JOIN compute_billing_rate_segments latest ON latest.id = r.latest_id
+WHERE r.lifecycle_status IS NULL;

@@ -203,7 +203,7 @@ beforeAll(async () => {
       workload_kind text NOT NULL,
       workload_id uuid NOT NULL,
       lifecycle_revision bigint NOT NULL,
-      billing_state text NOT NULL,
+      lifecycle_status text, billing_state text NOT NULL,
       rate_per_hour numeric(16,6) NOT NULL,
       effective_at timestamp NOT NULL,
       created_at timestamp NOT NULL DEFAULT now()
