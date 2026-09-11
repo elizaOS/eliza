@@ -794,18 +794,16 @@ describe("compute billing recovery", () => {
     try {
       const id = crypto.randomUUID();
       const start = new Date();
-      await dbWrite
-        .insert(containers)
-        .values({
-          id,
-          organization_id: org.id,
-          user_id: user.id,
-          name: "stopped-retirement",
-          project_name: "stopped-retirement",
-          status: "stopped",
-          billing_status: "suspended",
-          last_billed_at: start,
-        });
+      await dbWrite.insert(containers).values({
+        id,
+        organization_id: org.id,
+        user_id: user.id,
+        name: "stopped-retirement",
+        project_name: "stopped-retirement",
+        status: "stopped",
+        billing_status: "suspended",
+        last_billed_at: start,
+      });
       await retireContainerWithDeleteJob(id, org.id);
       const settled = await dbWrite.transaction((tx) =>
         settleComputeRateSegments(tx, {
@@ -834,40 +832,34 @@ describe("compute billing recovery", () => {
     try {
       const id = crypto.randomUUID();
       const at = new Date(Math.floor(Date.now() / 1000) * 1000);
-      await dbWrite
-        .insert(containers)
-        .values({
-          id,
-          organization_id: org.id,
-          user_id: user.id,
-          name: "confirmed-stop",
-          project_name: "confirmed-stop",
-          status: "running",
-          billing_status: "suspended",
-          lifecycle_revision: 17,
-        });
-      await dbWrite
-        .insert(containerComputeStopIntents)
-        .values({
-          organization_id: org.id,
-          container_id: id,
-          lifecycle_revision: 17,
-          authorization: "user_request",
-          status: "retry",
-          provider_confirmed_at: at,
-        });
+      await dbWrite.insert(containers).values({
+        id,
+        organization_id: org.id,
+        user_id: user.id,
+        name: "confirmed-stop",
+        project_name: "confirmed-stop",
+        status: "running",
+        billing_status: "suspended",
+        lifecycle_revision: 17,
+      });
+      await dbWrite.insert(containerComputeStopIntents).values({
+        organization_id: org.id,
+        container_id: id,
+        lifecycle_revision: 17,
+        authorization: "user_request",
+        status: "retry",
+        provider_confirmed_at: at,
+      });
       // The production stop fence records this exact confirmation-time segment before final row settlement.
-      await dbWrite
-        .insert(computeBillingRateSegments)
-        .values({
-          organization_id: org.id,
-          workload_kind: "container",
-          workload_id: id,
-          lifecycle_revision: 17,
-          billing_state: "not_billable",
-          rate_per_hour: "0.000000",
-          effective_at: new Date(at.getTime() + 2000),
-        });
+      await dbWrite.insert(computeBillingRateSegments).values({
+        organization_id: org.id,
+        workload_kind: "container",
+        workload_id: id,
+        lifecycle_revision: 17,
+        billing_state: "not_billable",
+        rate_per_hour: "0.000000",
+        effective_at: new Date(at.getTime() + 2000),
+      });
       await dbWrite
         .update(containerComputeStopIntents)
         .set({ provider_confirmed_at: new Date(at.getTime() + 2000) })
@@ -910,30 +902,26 @@ describe("compute billing recovery", () => {
       })
       .where(eq(agentSandboxes.id, sandbox.id));
     const id = crypto.randomUUID();
-    await dbWrite
-      .insert(containers)
-      .values({
-        id,
-        organization_id: org.id,
-        user_id: user.id,
-        name: "ambiguous-history",
-        project_name: "ambiguous-history",
-        status: "deleting",
-        billing_status: "active",
-        lifecycle_revision: 2,
-      });
+    await dbWrite.insert(containers).values({
+      id,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "ambiguous-history",
+      project_name: "ambiguous-history",
+      status: "deleting",
+      billing_status: "active",
+      lifecycle_revision: 2,
+    });
     for (const revision of [1, 2])
-      await dbWrite
-        .insert(computeBillingRateSegments)
-        .values({
-          organization_id: org.id,
-          workload_kind: "container",
-          workload_id: id,
-          lifecycle_revision: revision,
-          billing_state: "not_billable",
-          rate_per_hour: "0.000000",
-          effective_at: new Date(1_700_000_000_000 + revision * 1000),
-        });
+      await dbWrite.insert(computeBillingRateSegments).values({
+        organization_id: org.id,
+        workload_kind: "container",
+        workload_id: id,
+        lifecycle_revision: revision,
+        billing_state: "not_billable",
+        rate_per_hour: "0.000000",
+        effective_at: new Date(1_700_000_000_000 + revision * 1000),
+      });
     const before = await dbWrite.select().from(computeBillingRateSegments);
     await expect(
       dbWrite.transaction((tx) => tx.execute(sql.raw(deletionBillingMigration))),
@@ -954,18 +942,16 @@ describe("compute billing recovery", () => {
   test("supported legacy running deletion recovers prospectively without rewriting immutable history", async () => {
     const { org, user } = await seed();
     const id = crypto.randomUUID();
-    await dbWrite
-      .insert(containers)
-      .values({
-        id,
-        organization_id: org.id,
-        user_id: user.id,
-        name: "legacy-running-delete",
-        project_name: "legacy-running-delete",
-        status: "deleting",
-        billing_status: "active",
-        lifecycle_revision: 2,
-      });
+    await dbWrite.insert(containers).values({
+      id,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "legacy-running-delete",
+      project_name: "legacy-running-delete",
+      status: "deleting",
+      billing_status: "active",
+      lifecycle_revision: 2,
+    });
     const past = new Date(Date.now() - 86_400_000);
     await dbWrite.insert(computeBillingRateSegments).values([
       {
