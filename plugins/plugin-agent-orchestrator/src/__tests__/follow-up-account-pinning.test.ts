@@ -49,7 +49,9 @@ function selection(accountId: string, token: string): CodingAgentSelection {
 function makeBridge(opts: { healthyIds: string[] }) {
   const calls: Array<{
     accountIds?: string[];
+    providerId?: string;
     exclude?: string[];
+    excludeAccounts?: Array<{ providerId: string; accountId: string }>;
     sessionKey?: string;
   }> = [];
   const bridge: CodingAgentSelectorBridge = {
@@ -57,11 +59,27 @@ function makeBridge(opts: { healthyIds: string[] }) {
     async select(_agentType, selectOpts) {
       calls.push({
         accountIds: selectOpts?.accountIds,
+        providerId: selectOpts?.providerId,
         exclude: selectOpts?.exclude,
+        excludeAccounts: selectOpts?.excludeAccounts,
         sessionKey: selectOpts?.sessionKey,
       });
+      if (
+        selectOpts?.providerId &&
+        selectOpts.providerId !== ACCOUNT_A.providerId
+      ) {
+        return null;
+      }
       const eligible = opts.healthyIds
         .filter((id) => !selectOpts?.exclude?.includes(id))
+        .filter(
+          (id) =>
+            !selectOpts?.excludeAccounts?.some(
+              (account) =>
+                account.providerId === ACCOUNT_A.providerId &&
+                account.accountId === id,
+            ),
+        )
         .filter(
           (id) => !selectOpts?.accountIds || selectOpts.accountIds.includes(id),
         );
@@ -175,7 +193,9 @@ describe("follow-up prompt account pinning (cli transport)", () => {
     expect(env?.CLAUDE_CODE_OAUTH_TOKEN).toBe("token-acct-b");
     // First call pinned to A; the failover pick excluded the dud.
     expect(calls[0]?.accountIds).toEqual(["acct-a"]);
-    expect(calls[1]?.exclude).toEqual(["acct-a"]);
+    expect(calls[1]?.excludeAccounts).toEqual([
+      { providerId: ACCOUNT_A.providerId, accountId: "acct-a" },
+    ]);
     // Session metadata follows the credential actually injected — in memory
     // (next prompt's pin) and durably.
     const sessionAccount = session.metadata?.account;

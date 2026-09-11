@@ -398,8 +398,8 @@ export function ProviderAccountRow({
 
       {/* ── Expanded detail: accounts + rotation strategy ── */}
       {connected && expanded ? (
-        <div className="grid gap-2 border-t border-border/40 px-3 pb-3 pt-2.5">
-          <div className="flex items-center justify-between gap-2">
+        <div className="grid min-w-0 gap-2 border-t border-border/40 px-3 pb-3 pt-2.5">
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
             <span className="text-xs-tight font-medium uppercase tracking-wider text-muted">
               {t("accounts.row.accountsLabel", {
                 defaultValue: "Accounts in pool",
@@ -434,9 +434,9 @@ export function ProviderAccountRow({
               }
             />
           ) : (
-            <div className="grid gap-2">
+            <div className="grid min-w-0 gap-2">
               {sorted.map((account, index) => (
-                <div key={account.id} className="relative">
+                <div key={account.id} className="relative min-w-0">
                   {account.id === selection.accountId ? (
                     <span
                       className="absolute -left-px top-3 h-6 w-0.5 rounded-full bg-accent"

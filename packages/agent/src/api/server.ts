@@ -2265,7 +2265,7 @@ async function handleRequest(
       readJsonBody,
       json,
       error,
-      state: { config: state.config },
+      state: { config: state.config, runtime: state.runtime },
       saveConfig: saveElizaConfig,
     })
   ) {

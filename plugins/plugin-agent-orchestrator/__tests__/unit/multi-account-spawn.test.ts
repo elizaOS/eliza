@@ -20,6 +20,7 @@ type NativeEventHandler = (
 ) => void;
 type NativeOptions = {
   command: string;
+  expectedModelId?: string;
   cwd: string;
   approvalPreset: ApprovalPreset;
   timeoutMs?: number;
@@ -137,7 +138,7 @@ interface FakeSelection {
   providerId: string;
   accountId: string;
   label: string;
-  source: "oauth" | "api-key";
+  source: "oauth" | "api-key" | "coding-plan-key";
   strategy: string;
   envPatch: Record<string, string>;
 }
@@ -292,6 +293,376 @@ describe("multi-account coding-agent spawn", () => {
     ).toBeUndefined();
     await service.stop();
   });
+
+  it("binds a Pi child to one private provider route and strips ambient keys", async () => {
+    const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pi-spawn-route-"));
+    const previous = {
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      XAI_API_KEY: process.env.XAI_API_KEY,
+      CEREBRAS_API_KEY: process.env.CEREBRAS_API_KEY,
+    };
+    process.env.OPENAI_API_KEY = "ambient-openai-key";
+    process.env.XAI_API_KEY = "ambient-xai-key";
+    process.env.CEREBRAS_API_KEY = "ambient-cerebras-key";
+    installBridge({
+      "pi-agent": {
+        providerId: "deepseek-api",
+        accountId: "deepseek-primary",
+        label: "DeepSeek primary",
+        source: "api-key",
+        strategy: "least-used",
+        envPatch: { DEEPSEEK_API_KEY: "selected-deepseek-key" },
+      },
+    });
+    try {
+      const service = new AcpService(
+        runtime({
+          ELIZA_ACP_STATE_DIR: stateRoot,
+          ELIZA_PI_AGENT_ACP_COMMAND: "test-pi-agent",
+        }),
+      );
+      await service.start();
+      const result = await service.spawnSession({
+        name: "pi-deepseek",
+        agentType: "pi-agent",
+        workdir: "/tmp/acp-test",
+      });
+      const env = firstNativeClient().opts.env ?? {};
+      expect(env.ELIZA_PI_ROUTE_API_KEY).toBe("selected-deepseek-key");
+      expect(env.DEEPSEEK_API_KEY).toBeUndefined();
+      expect(env.OPENAI_API_KEY).toBeUndefined();
+      expect(env.XAI_API_KEY).toBeUndefined();
+      expect(env.CEREBRAS_API_KEY).toBeUndefined();
+      expect(firstNativeClient().opts.expectedModelId).toBe(
+        "deepseek/deepseek-v4-flash",
+      );
+      const piHome = env.PI_CODING_AGENT_DIR;
+      if (!piHome) throw new Error("missing private Pi home");
+      const models = fs.readFileSync(path.join(piHome, "models.json"), "utf8");
+      expect(models).toContain("ELIZA_PI_ROUTE_API_KEY");
+      expect(models).not.toContain("selected-deepseek-key");
+      expect(result.metadata).toMatchObject({
+        account: {
+          providerId: "deepseek-api",
+          accountId: "deepseek-primary",
+        },
+        piProvider: {
+          accountProviderId: "deepseek-api",
+          piProviderId: "deepseek",
+          billingMode: "api-payg",
+          model: "deepseek-v4-flash",
+        },
+      });
+      expect(JSON.stringify(result.metadata)).not.toContain(
+        "selected-deepseek-key",
+      );
+      await service.stop();
+    } finally {
+      fs.rmSync(stateRoot, { recursive: true, force: true });
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
+  it("keeps a Pi reconnect on its provider when another account shares its id", async () => {
+    const stateRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), "pi-provider-pin-"),
+    );
+    let earlierProviderEnabled = false;
+    const select = vi.fn(
+      async (_agentType: string, opts: { providerId?: string }) => {
+        const kimi =
+          !earlierProviderEnabled || opts.providerId === "kimi-coding";
+        return {
+          providerId: kimi ? "kimi-coding" : "zai-coding",
+          accountId: "shared",
+          label: "Controlled account",
+          source: "coding-plan-key" as const,
+          strategy: "least-used",
+          envPatch: kimi
+            ? { KIMI_API_KEY: "selected-kimi" }
+            : { ZAI_API_KEY: "unselected-zai" },
+        };
+      },
+    );
+    (globalThis as Record<symbol, unknown>)[BRIDGE_SYMBOL] = {
+      describe: () => ({}),
+      select,
+      markRateLimited: vi.fn(),
+      markNeedsReauth: vi.fn(),
+      recordUsage: vi.fn(),
+    };
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_STATE_DIR: stateRoot,
+        ELIZA_PI_AGENT_ACP_COMMAND: "test-pi-agent",
+      }),
+    );
+    try {
+      await service.start();
+      const spawned = await service.spawnSession({
+        name: "pi-pin",
+        agentType: "pi-agent",
+        workdir: "/tmp/acp-test",
+      });
+      earlierProviderEnabled = true;
+      (
+        service as unknown as { nativeClients: Map<string, MockNativeClient> }
+      ).nativeClients.delete(spawned.sessionId);
+      await service.sendPrompt(spawned.sessionId, "Continue the same task");
+      expect(
+        nativeClientMock.instances[1]?.opts.env?.ELIZA_PI_ROUTE_API_KEY,
+      ).toBe("selected-kimi");
+      expect(
+        (await service.getSession(spawned.sessionId))?.metadata,
+      ).toMatchObject({
+        account: { providerId: "kimi-coding", accountId: "shared" },
+        piProvider: {
+          accountProviderId: "kimi-coding",
+          model: "kimi-for-coding",
+        },
+      });
+    } finally {
+      await service.stop();
+      fs.rmSync(stateRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses ambient Pi credentials when linked routes are unavailable", async () => {
+    const previous = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = "ambient-must-not-run";
+    (globalThis as Record<symbol, unknown>)[BRIDGE_SYMBOL] = {
+      describe: () => ({
+        "pi-agent": [
+          { providerId: "deepseek-api", total: 1, enabled: 1, healthy: 0 },
+        ],
+      }),
+      select: vi.fn(async () => null),
+      markRateLimited: vi.fn(async () => undefined),
+      markNeedsReauth: vi.fn(async () => undefined),
+      recordUsage: vi.fn(async () => undefined),
+    };
+    try {
+      const service = new AcpService(
+        runtime({ ELIZA_PI_AGENT_ACP_COMMAND: "test-pi-agent" }),
+      );
+      await service.start();
+      await expect(
+        service.spawnSession({
+          name: "pi-unavailable",
+          agentType: "pi-agent",
+          workdir: "/tmp/acp-test",
+        }),
+      ).rejects.toMatchObject({ code: "PI_PROVIDER_ROUTE_UNAVAILABLE" });
+      expect(nativeClientMock.instances).toHaveLength(0);
+      await service.stop();
+    } finally {
+      if (previous === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = previous;
+    }
+  });
+
+  it.each([
+    { transport: "native", explicitModel: false },
+    { transport: "native", explicitModel: true },
+    { transport: "cli", explicitModel: true },
+    { transport: "cli", explicitModel: false },
+  ] as const)(
+    "keeps Pi failover model authority consistent ($transport, explicit=$explicitModel)",
+    async ({ transport, explicitModel }) => {
+      const stateRoot = fs.mkdtempSync(
+        path.join(os.tmpdir(), "pi-failover-route-"),
+      );
+      const select = vi.fn(
+        async (
+          _agentType: string,
+          opts: {
+            accountIds?: string[];
+            excludeAccounts?: Array<{ providerId: string; accountId: string }>;
+          },
+        ) => {
+          if (opts.accountIds?.includes("deepseek-primary")) return null;
+          if (
+            opts.excludeAccounts?.some(
+              (account) =>
+                account.providerId === "deepseek-api" &&
+                account.accountId === "deepseek-primary",
+            )
+          ) {
+            return {
+              providerId: "zai-api",
+              accountId: "zai-secondary",
+              label: "Z.AI secondary",
+              source: "api-key" as const,
+              strategy: "least-used",
+              envPatch: { ZAI_API_KEY: "selected-zai-key" },
+            };
+          }
+          return {
+            providerId: "deepseek-api",
+            accountId: "deepseek-primary",
+            label: "DeepSeek primary",
+            source: "api-key" as const,
+            strategy: "least-used",
+            envPatch: { DEEPSEEK_API_KEY: "selected-deepseek-key" },
+          };
+        },
+      );
+      (globalThis as Record<symbol, unknown>)[BRIDGE_SYMBOL] = {
+        describe: () => ({}),
+        select,
+        markRateLimited: vi.fn(async () => undefined),
+        markNeedsReauth: vi.fn(async () => undefined),
+        recordUsage: vi.fn(async () => undefined),
+      };
+      try {
+        const service = new AcpService(
+          runtime({
+            ELIZA_ACP_STATE_DIR: stateRoot,
+            ELIZA_PI_AGENT_ACP_COMMAND: "test-pi-agent",
+          }),
+        );
+        await service.start();
+        const spawned = await service.spawnSession({
+          name: "pi-failover",
+          agentType: "pi-agent",
+          workdir: "/tmp/acp-test",
+        });
+
+        // Simulate a detached native client. Reconnect must pin the old account,
+        // fail over when it is unavailable, and attach exactly one replacement.
+        const internals = service as unknown as {
+          nativeClients: Map<string, MockNativeClient>;
+        };
+        internals.nativeClients.delete(spawned.sessionId);
+        if (transport === "cli") {
+          await service.updateSessionMetadata(spawned.sessionId, {
+            transportMode: "cli",
+          });
+          vi.spyOn(
+            service as unknown as {
+              hasAcpxSessionState(id: string): Promise<boolean>;
+            },
+            "hasAcpxSessionState",
+          ).mockResolvedValue(true);
+        }
+        const cliCalls: Array<{ args: string[]; env: NodeJS.ProcessEnv }> = [];
+        if (transport === "cli") {
+          vi.spyOn(
+            service as unknown as {
+              runAcpx(input: {
+                args: string[];
+                env: NodeJS.ProcessEnv;
+              }): Promise<{
+                code: number;
+                signal: null;
+                finalText: string;
+                stderr: string;
+                durationMs: number;
+              }>;
+            },
+            "runAcpx",
+          ).mockImplementation(async (input) => {
+            cliCalls.push(input);
+            return {
+              code: 0,
+              signal: null,
+              finalText: "continued",
+              stderr: "",
+              durationMs: 1,
+            };
+          });
+        }
+        if (explicitModel) {
+          await expect(
+            service.sendPrompt(spawned.sessionId, "continue", {
+              model: "deepseek-v4-flash",
+            }),
+          ).rejects.toThrow("does not match the selected provider route");
+          expect(nativeClientMock.instances).toHaveLength(1);
+          expect(cliCalls).toHaveLength(0);
+          const { spawn } = await import("node:child_process");
+          expect(spawn).not.toHaveBeenCalled();
+          const refused = await service.getSession(spawned.sessionId);
+          expect(refused?.metadata?.piProvider).toMatchObject({
+            accountProviderId: "zai-api",
+            model: "glm-5.3",
+          });
+          await service.stop();
+          return;
+        }
+        const previousModel = process.env.OPENAI_MODEL;
+        process.env.OPENAI_MODEL = "deepseek-v4-flash";
+        try {
+          await service.sendPrompt(spawned.sessionId, "continue");
+        } finally {
+          if (previousModel === undefined) delete process.env.OPENAI_MODEL;
+          else process.env.OPENAI_MODEL = previousModel;
+        }
+
+        expect(nativeClientMock.instances).toHaveLength(
+          transport === "native" ? 2 : 1,
+        );
+        if (transport === "cli") {
+          expect(cliCalls).toHaveLength(1);
+          const args = cliCalls[0].args;
+          expect(args[args.indexOf("--model") + 1]).toBe("glm-5.3");
+        }
+        const reconnectEnv =
+          transport === "cli"
+            ? cliCalls[0].env
+            : (nativeClientMock.instances[1]?.opts.env ?? {});
+        expect(reconnectEnv.ELIZA_PI_ROUTE_API_KEY).toBe("selected-zai-key");
+        expect(reconnectEnv.OPENAI_MODEL).toBe("glm-5.3");
+        expect(reconnectEnv.ZAI_API_KEY).toBeUndefined();
+        expect(reconnectEnv.DEEPSEEK_API_KEY).toBeUndefined();
+        const piHome = reconnectEnv.PI_CODING_AGENT_DIR;
+        if (!piHome) throw new Error("missing failover Pi home");
+        expect(
+          JSON.parse(
+            fs.readFileSync(path.join(piHome, "settings.json"), "utf8"),
+          ).defaultModel,
+        ).toBe(reconnectEnv.OPENAI_MODEL);
+        const models = fs.readFileSync(
+          path.join(piHome, "models.json"),
+          "utf8",
+        );
+        expect(models).toContain('"zai"');
+        expect(models).toContain("ELIZA_PI_ROUTE_API_KEY");
+        expect(models).not.toContain("selected-zai-key");
+
+        const session = await service.getSession(spawned.sessionId);
+        expect(session?.metadata).toMatchObject({
+          account: { providerId: "zai-api", accountId: "zai-secondary" },
+          piProvider: {
+            accountProviderId: "zai-api",
+            piProviderId: "zai",
+            model: "glm-5.3",
+          },
+        });
+        expect(JSON.stringify(session?.metadata)).not.toContain(
+          "selected-zai-key",
+        );
+        expect(select).toHaveBeenCalledWith(
+          "pi-agent",
+          expect.objectContaining({ accountIds: ["deepseek-primary"] }),
+        );
+        expect(select).toHaveBeenCalledWith(
+          "pi-agent",
+          expect.objectContaining({
+            excludeAccounts: [
+              { providerId: "deepseek-api", accountId: "deepseek-primary" },
+            ],
+          }),
+        );
+        await service.stop();
+      } finally {
+        fs.rmSync(stateRoot, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("does not consult the bridge for non-multi-account agent types", async () => {
     const select = installBridge({

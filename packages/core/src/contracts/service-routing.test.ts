@@ -19,6 +19,8 @@ describe("isLinkedAccountProviderId", () => {
 			"openai-codex",
 			"anthropic-api",
 			"cerebras-api",
+			"openrouter-api",
+			"xai-api",
 		]) {
 			expect(isLinkedAccountProviderId(id)).toBe(true);
 		}
