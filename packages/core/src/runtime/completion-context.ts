@@ -13,6 +13,15 @@ import type {
 import type { JSONSchema } from "../types/model";
 import { hashStableJson } from "./context-hash";
 
+/** One stable policy for source selection; the dynamic tail supplies only its binding. */
+export const COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS = `history_source_selection:
+Review all [hN] user and assistant sources, selecting ONLY those needed to plan, execute and answer the FINAL CURRENT REQUEST. complete=true certifies this relevance review, not selecting every message or completing future tool work.
+Use mode=selected after resolving the dependencies; copy the exact completion_source_set into sourceSetId. A reviewed empty selection is valid. Assign each ID once, to its most specific array: relevantSourceIds=factual background; constraintSourceIds=applicable preferences, permissions, prohibitions and corrections; referentSourceIds=this/that/it and follow-ups; pendingIntentSourceIds=unfinished work referenced now. The runtime retains their union without a cap.
+Keep applicable standing constraints even when old. Completed unrelated tasks, greetings and repeated navigation are not standing constraints or pending work. A restriction on a completed task stays scoped to that task unless made standing or carried into the current request. Do not drop an active constraint merely because a newer request exists.
+For a correction, select the original user correction and its referent, not only an assistant recap or repeated question. Include assistant proposals, exact IDs and receipts when referenced. Select original sources, never summaries.
+Use mode=full, complete=false if an applicable dependency remains unresolved, this request requires exhaustive history/count/recall, or no source set is supplied. Long history or old unrelated recall requests alone do not require full mode.
+Current request, standing provider constraints and current tool evidence are always retained. Future tool receipts are appended automatically; their absence does not make source review incomplete.`;
+
 /** Shared static and registered Stage-1 wire schema. */
 export const COMPLETION_CONTEXT_SCHEMA: JSONSchema = {
 	type: "object",

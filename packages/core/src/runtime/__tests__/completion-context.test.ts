@@ -13,6 +13,7 @@ import type { ChatMessage } from "../../types/model";
 import { completionContextFieldEvaluator } from "../builtin-field-evaluators";
 import {
 	COMPLETION_CONTEXT_SCHEMA,
+	COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS,
 	completionContextSources,
 	parseCompletionContextSelection,
 	referencePlannerQueryTokens,
@@ -140,6 +141,44 @@ function trajectory(context: ContextObject): PlannerTrajectory {
 }
 
 describe("source-bound completion relevance", () => {
+	it.each([false, true])(
+		"renders source policy once in the stable prefix without changing evidence or binding (registered fields: %s)",
+		(withFields) => {
+			const context = historyContext();
+			const before = structuredClone(context);
+			const sources = completionContextSources(context);
+			const input = renderMessageHandlerModelInput(
+				{ character: { name: "Eliza" } },
+				context,
+				[],
+				{
+					responseHandlerFields: withFields
+						? `### completionContext\n${completionContextFieldEvaluator.description}`
+						: undefined,
+				},
+			);
+			const policySegments = input.promptSegments.filter((segment) =>
+				segment.content.includes(COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS),
+			);
+			expect(policySegments).toHaveLength(1);
+			expect(policySegments[0]?.stable).toBe(true);
+			const binding = input.promptSegments.filter((segment) =>
+				segment.content.includes(
+					`completion_source_set: ${sources.sourceSetId}`,
+				),
+			);
+			expect(binding).toHaveLength(1);
+			expect(binding[0]?.stable).toBe(false);
+			const wire = input.messages.map((message) => message.content).join("\n");
+			for (const { id, event } of sources.sources) {
+				expect(wire).toContain(`[${id}]`);
+				expect(wire).toContain(event.segment.content);
+			}
+			expect(context).toEqual(before);
+			expect(completionContextSources(context)).toEqual(sources);
+		},
+	);
+
 	it("requires a complete identity only when history supplies one without varying the tool schema by turn", () => {
 		const context = historyContext();
 		const schema = {
@@ -424,6 +463,11 @@ describe("source-bound completion relevance", () => {
 		expect(JSON.stringify(input.messages)).not.toContain(
 			"completion_source_set:",
 		);
+		expect(
+			input.promptSegments.some((segment) =>
+				segment.content.includes(COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS),
+			),
+		).toBe(false);
 		expect(JSON.stringify(input.messages)).toContain(
 			"Old completed unrelated weather request.",
 		);

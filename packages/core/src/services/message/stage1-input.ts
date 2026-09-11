@@ -3,7 +3,10 @@
 import { v4 } from "uuid";
 import { HANDLE_RESPONSE_TOOL_NAME } from "../../actions/to-tool";
 import { messageHandlerTemplate } from "../../prompts";
-import { completionContextSources } from "../../runtime/completion-context";
+import {
+	COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS,
+	completionContextSources,
+} from "../../runtime/completion-context";
 import {
 	normalizePromptSegments,
 	renderContextObject,
@@ -237,7 +240,7 @@ export function renderMessageHandlerModelInput(
 		...(completionSources?.sources.length
 			? [
 					{
-						content: `completion_source_set: ${completionSources.sourceSetId}\nThe [hN] source labels above identify prior user and assistant messages. Review every source needed to PLAN, EXECUTE and ANSWER the FINAL CURRENT REQUEST and return its exact IDs in completionContext. The planner and completion evaluator both reuse this selection; include all applicable action constraints and dependencies, not just facts for the final prose. Use selected/complete=true after resolving the applicable standing constraints, corrections, facts, referents and referenced unfinished work; a reviewed empty selection is valid. Use full/complete=false if applicable context remains uncertain or the current request requires exhaustive history. Select assistant proposals, exact IDs, receipts and unfinished work when the current request refers to them. For recall of a correction, select the original user correction and its referent, not only a recent assistant recap or a repeated copy of the current question. Current request, standing provider constraints and current tool evidence remain included automatically; future tool results will be appended later.`,
+						content: `completion_source_set: ${completionSources.sourceSetId}\nThe [hN] labels above belong to this source set. Return completionContext according to history_source_selection.`,
 						stable: false,
 					},
 				]
@@ -248,6 +251,9 @@ export function renderMessageHandlerModelInput(
 	const stableWireSegments = [
 		...stableSegments,
 		{ content: `message_handler_stage:\n${instructions}`, stable: true },
+		...(completionSources?.sources.length
+			? [{ content: COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS, stable: true }]
+			: []),
 	];
 	const promptSegments = normalizePromptSegments([
 		...stableWireSegments,
