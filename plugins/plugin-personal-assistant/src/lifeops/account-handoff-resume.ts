@@ -4,11 +4,15 @@
  * an explicit local-only calendar choice remain paused; later user changes are
  * conflicts rather than state to overwrite.
  */
-import { ApprovalDispatchControlStore } from "@elizaos/agent";
+import {
+  ApprovalDispatchControlStore,
+  createApprovalQueue,
+} from "@elizaos/agent";
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import type { CalendarService } from "@elizaos/plugin-calendar";
 import type { IGoogleWorkspaceService } from "@elizaos/plugin-google-workspace";
 import { z } from "zod";
+import { assertGoogleHandoffApprovalSelection } from "./account-handoff-approval-inventory.js";
 import { verifyAccountHandoffGoogle } from "./account-handoff-google-verification.js";
 import { accountHandoffOperationKey } from "./account-handoff-operation-key.js";
 import { verifyAccountHandoffReadSources } from "./account-handoff-read-sources.js";
@@ -140,6 +144,14 @@ export class AccountHandoffResume {
       operationId,
       expectedRevision,
     );
+    const requests = await createApprovalQueue(this.runtime, {
+      agentId: this.runtime.agentId,
+    }).list({
+      subjectUserId: this.ownerEntityId,
+      state: null,
+      action: null,
+    });
+    assertGoogleHandoffApprovalSelection(requests, previous.grantId, []);
     const current = await this.calendar.getLinkedCalendarControl();
     const selected = record.review.writeCalendar;
     if (

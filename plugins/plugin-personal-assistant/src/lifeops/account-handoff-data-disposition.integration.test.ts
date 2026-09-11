@@ -2,6 +2,7 @@
 
 import {
   ApprovalDispatchControlStore,
+  createApprovalQueue,
   resolveKnowledgeGraphService,
 } from "@elizaos/agent";
 import {
@@ -518,6 +519,77 @@ describe("handoff imported-data disposition", () => {
       (await p.resume().apply(ready.operationId, ready.revision)).phase,
     ).toBe("completed");
   });
+
+  it.each(["unbound", "previous"] as const)(
+    "keeps handoff paused when a %s approval arrives after retirement",
+    async (binding) => {
+      const owner = `late-${binding}-approval-owner`;
+      const p = await prepared(owner);
+      const ready = await p
+        .service()
+        .apply(p.state.operationId, p.state.revision);
+      const queue = createApprovalQueue(host.runtime, {
+        agentId: host.runtime.agentId,
+      });
+      const late = await queue.enqueue({
+        requestedBy: owner,
+        subjectUserId: owner,
+        action: "send_email",
+        channel: "email",
+        reason: "Synthetic email approval arriving after handoff retirement",
+        expiresAt: new Date(Date.now() + 86_400_000),
+        payload: {
+          action: "send_email",
+          to: ["self@example.test"],
+          cc: [],
+          bcc: [],
+          subject: "Synthetic late approval",
+          body: "Synthetic test only",
+          threadId: null,
+          replyToMessageId: null,
+          ...(binding === "previous" ? { grantId: p.previousGrant.id } : {}),
+        },
+      });
+      await queue.approve(late.id, owner, {
+        resolvedBy: owner,
+        resolutionReason: "Synthetic approval",
+      });
+      const calendar = await p.calendar.getLinkedCalendarControl();
+      await expect(
+        p.resume().apply(ready.operationId, ready.revision),
+      ).rejects.toMatchObject({
+        code: "ACCOUNT_HANDOFF_APPROVAL_REVIEW_INCOMPLETE",
+      });
+      expect(
+        (await new ApprovalDispatchControlStore(host.runtime).read(owner))
+          .paused,
+      ).toBe(true);
+      expect(await p.calendar.getLinkedCalendarControl()).toEqual(calendar);
+      expect((await p.store.read(ready.operationId))?.phase).toBe("resuming");
+      await queue.markExpired(late.id, owner);
+      const other = await queue.enqueue({
+        requestedBy: owner,
+        subjectUserId: owner,
+        action: "send_email",
+        channel: "email",
+        reason: "Synthetic explicitly bound unrelated-account approval",
+        expiresAt: new Date(Date.now() + 86_400_000),
+        payload: { ...late.payload, grantId: "unrelated-account-grant" },
+      });
+      expect(
+        (await p.resume().apply(ready.operationId, ready.revision)).phase,
+      ).toBe("completed");
+      expect(
+        (
+          await queue.list({
+            subjectUserId: owner,
+            state: "pending",
+            action: null,
+          })
+        ).map((request) => request.id),
+      ).toContain(other.id);
+    },
+  );
 
   it("recovers a released approval pause after the completion checkpoint failed", async () => {
     const p = await prepared("resume-retry-owner");
