@@ -244,25 +244,25 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 
 // ---------------------------------------------------------------------------
 // replyText — priority 20.
-// Always required. Empty string when routing to planner (planner emits the
-// reply via REPLY action). Populate when contexts=["simple"].
+// Always required. Simple turns carry the whole answer; planning turns carry
+// an acknowledgement or a held navigation confirmation, never an early effect claim.
 // ---------------------------------------------------------------------------
 
 const NAVIGATION_REPLY_RULE =
-	'For UI navigation, mention the requested destination in your own concise wording; never use a generic bare acknowledgement such as "On it." as the whole navigation reply. ';
+	"For UI navigation, name the destination. When visualContinuation.navigationOnly=true, draft a concise destination confirmation to deliver IF navigation succeeds, without progress or waiting language; the runtime holds it for the confirming receipt. Do not claim any record was read or changed. ";
 
 export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
 	name: "replyText",
 	description:
 		NAVIGATION_REPLY_RULE +
-		'User-facing reply. Populate when shouldRespond=RESPOND. contexts includes "simple" => whole answer. Planning/tool path => brief ack only ("On it.", "Spawning the sub-agent now.", "Looking into it."); planner sends grounded follow-up. IGNORE => empty. No thinking/reasoning.\n\nNEVER refuse in replyText on planning path. If `contexts` or `candidateActionNames` != "simple", planner handles work; ack only, no capability gatekeeping. Ban refusal openings: "I cannot...", "I am unable to...", "I don\'t have the ability to...", "Sorry, I can\'t...". Tools exist (FILE, BASH, TASKS_SPAWN_AGENT, etc.). If no tool can attempt, use shouldRespond=RESPOND, `contexts: ["simple"]`, explain.',
+		'User-facing reply. Populate when shouldRespond=RESPOND. contexts includes "simple" => whole answer. Other planning/tool work => brief ack ("On it.", "Spawning the sub-agent now.", "Looking into it."); planner sends grounded follow-up. IGNORE => empty. No thinking/reasoning.\n\nNEVER refuse in replyText on planning path. If `contexts` or `candidateActionNames` != "simple", planner handles work; no capability gatekeeping. Ban refusal openings: "I cannot...", "I am unable to...", "I don\'t have the ability to...", "Sorry, I can\'t...". Tools exist (FILE, BASH, TASKS_SPAWN_AGENT, etc.). If no tool can attempt, use shouldRespond=RESPOND, `contexts: ["simple"]`, explain.',
 	descriptionCompressed:
-		"User-facing reply. simple=whole answer; tool/planning path=brief ack, never a refusal; navigation must name its destination; IGNORE=empty string.",
+		"User-facing reply. simple=whole answer; navigationOnly=destination confirmation held for successful navigation; other planning=brief ack, never a refusal; IGNORE=empty string.",
 	priority: 20,
 	schema: {
 		type: "string",
 		description:
-			"User-facing reply. Simple=whole answer. Planning=brief ack. UI navigation must name the destination instead of using a generic bare acknowledgement. Never refuse on planning path. Plain text unless channel supports markdown.",
+			"User-facing reply. Simple=whole answer. navigationOnly=concise destination confirmation held until navigation succeeds, without progress language or record-read/change claims. Other planning=brief ack. Never refuse on planning path. Plain text unless channel supports markdown.",
 	},
 	parse(value) {
 		if (typeof value !== "string") return "";

@@ -680,7 +680,8 @@ export const REGISTER_RESPONSE_POLICY = registerResponsePolicy;
 
 export const navigationReplyPolicy = `navigation_reply:
 - UI navigation still belongs to Eliza: mention the requested destination in your own concise wording
-- never use a generic bare acknowledgement such as "On it." as the whole navigation reply`;
+- never use a generic bare acknowledgement such as "On it." as the whole navigation reply
+- when visualContinuation.navigationOnly=true, draft the concise destination confirmation to deliver IF navigation succeeds, without progress or waiting language; the runtime holds it for the matching navigation receipt. Do not claim any record was read or changed`;
 
 export const NAVIGATION_REPLY_POLICY = navigationReplyPolicy;
 
@@ -708,7 +709,7 @@ Decision order:
 
 Reply contract:
 - Populate only registered schema fields; use the field descriptions below. A simple reply is the complete nonempty answer, never a placeholder, internal plan, promise to fetch, or investigative action claim. No planner follows a simple reply.
-- A planning reply is a brief natural acknowledgment, not a claim of completed work or a premature refusal. Only long-running asynchronous handoffs emit that acknowledgment ahead of the grounded result; synchronous tool turns deliver the final result. Keep every requested outcome, including opening a view separately from reading/changing its data.
+- A planning reply is a brief natural acknowledgment, except for the held navigation-only confirmation described above. It must not prematurely claim completed work or refuse. Only long-running asynchronous handoffs emit an acknowledgment ahead of the grounded result; synchronous tool turns deliver the final result. Keep every requested outcome, including opening a view separately from reading/changing its data.
 - Match the character and incoming register. Use familiar dates/times rather than machine timestamps. Hide internal IDs, tool names, raw JSON, receipts and backend jargon unless technical/raw output is requested. Preserve exact code and user-provided values when they are the subject.
 - Claim an investigation or effect happened only from a real result this turn. Do not disguise absent work with tense or phrasing ("I scanned", "I'm checking", "Scanning...", "Looking into it", "Searching:"). A planning acknowledgment cannot be used as a simple answer. Use existing evidence honestly or route the needed work.
 - Current/latest prices, weather, news and other changing facts require planning, never stale knowledge or a simple refusal. The planner decides whether a fetch is available and reports an actual limitation if it is not. Current date/time/year already comes from CURRENT_TIME and can be answered directly. Preserve the agent's named identity; do not volunteer model-training/cutoff metadata or abstract third-person model labels.

@@ -2585,6 +2585,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		handlerResult: ActionResult,
 		options: {
 			stageOneReply?: string;
+			stageOneEffectStatus?: string;
 			postToolReply?: string;
 		} = {},
 	): Promise<string | undefined> => {
@@ -2633,6 +2634,9 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						contexts: ["general"],
 						candidateActionNames: ["VIEWS"],
 						replyText: stageOneReply,
+						extra: options.stageOneEffectStatus
+							? { replyEffectStatus: options.stageOneEffectStatus }
+							: undefined,
 						thought: "The view switch is deterministic.",
 					}),
 				},
@@ -2674,110 +2678,250 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			: undefined;
 	};
 
-	it("releases the model-authored view reply after the accepted effect receipt without another inference", async () => {
-		const text = await runDeterministicViewsTurn({
-			success: true,
-			text: JSON.stringify({
-				effect: "view_navigation",
-				status: "accepted",
-				viewId: "chat",
-				label: "Home",
-				path: "/",
-			}),
-			transcriptVisibility: "internal",
-			modelReplyRequired: true,
-		});
-		expect(text).toBe("Opening Home now.");
-	});
-
-	it("keeps a natural navigation acknowledgement through reply egress when the label is a tracked-work noun", async () => {
-		const text = await runDeterministicViewsTurn(
-			{
+	it.each(["accepted", "delivered"])(
+		"releases the model-authored view reply after the %s effect receipt without another inference",
+		async (status) => {
+			const text = await runDeterministicViewsTurn({
 				success: true,
 				text: JSON.stringify({
 					effect: "view_navigation",
-					status: "accepted",
-					viewId: "settings",
-					label: "Settings",
-					path: "/settings",
+					status,
+					viewId: "chat",
+					label: "Home",
+					path: "/",
 				}),
 				transcriptVisibility: "internal",
 				modelReplyRequired: true,
-			},
-			{ stageOneReply: "You're in Settings now." },
-		);
-		expect(text).toBe("You're in Settings now.");
-	});
+			});
+			expect(text).toBe("Opening Home now.");
+		},
+	);
 
-	it("uses post-tool synthesis when Stage 1 supplied no user-facing prose", async () => {
-		const text = await runDeterministicViewsTurn(
-			{
-				success: true,
-				text: JSON.stringify({
-					effect: "view_navigation",
-					status: "accepted",
-					viewId: "notes",
-					label: "Notes",
-					path: "/notes",
-				}),
-				transcriptVisibility: "internal",
-				modelReplyRequired: true,
-			},
-			{
-				stageOneReply: "",
-				postToolReply: "Notes are open whenever you're ready.",
-			},
-		);
-		expect(text).toBe("Notes are open whenever you're ready.");
-	});
+	it.each(["accepted", "delivered"])(
+		"keeps a natural %s navigation acknowledgement through reply egress when the label is a tracked-work noun",
+		async (status) => {
+			const text = await runDeterministicViewsTurn(
+				{
+					success: true,
+					text: JSON.stringify({
+						effect: "view_navigation",
+						status,
+						viewId: "settings",
+						label: "Settings",
+						path: "/settings",
+					}),
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+				},
+				{
+					stageOneReply: "You're in Settings now.",
+					stageOneEffectStatus: status === "delivered" ? "pending" : undefined,
+				},
+			);
+			expect(text).toBe("You're in Settings now.");
+		},
+	);
 
-	it("uses post-tool synthesis when the Stage 1 navigation reply omits the destination", async () => {
-		const text = await runDeterministicViewsTurn(
-			{
-				success: true,
-				text: JSON.stringify({
-					effect: "view_navigation",
-					status: "accepted",
-					viewId: "notes",
-					label: "Notes",
-					path: "/notes",
-				}),
-				transcriptVisibility: "internal",
-				modelReplyRequired: true,
-			},
-			{
-				stageOneReply: "On it.",
-				postToolReply: "Notes are open.",
-			},
-		);
-		expect(text).toBe("Notes are open.");
-	});
+	it.each(["accepted", "delivered"])(
+		"uses post-tool synthesis for %s navigation when Stage 1 supplied no user-facing prose",
+		async (status) => {
+			const text = await runDeterministicViewsTurn(
+				{
+					success: true,
+					text: JSON.stringify({
+						effect: "view_navigation",
+						status,
+						viewId: "notes",
+						label: "Notes",
+						path: "/notes",
+					}),
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+				},
+				{
+					stageOneReply: "",
+					postToolReply: "Notes are open whenever you're ready.",
+				},
+			);
+			expect(text).toBe("Notes are open whenever you're ready.");
+		},
+	);
 
-	it("uses post-tool synthesis instead of releasing an unrelated mutation claim", async () => {
-		const text = await runDeterministicViewsTurn(
-			{
-				success: true,
-				text: JSON.stringify({
-					effect: "view_navigation",
-					status: "accepted",
-					viewId: "notes",
-					label: "Notes",
-					path: "/notes",
-				}),
-				transcriptVisibility: "internal",
-				modelReplyRequired: true,
-			},
-			{
-				stageOneReply: "Done — I saved your note and opened Notes.",
-				postToolReply: "Notes are open. I didn't change any of them.",
-			},
-		);
-		expect(text).toBe("Notes are open. I didn't change any of them.");
-	});
+	it.each(["accepted", "delivered"])(
+		"uses post-tool synthesis for %s navigation when the Stage 1 reply omits the destination",
+		async (status) => {
+			const text = await runDeterministicViewsTurn(
+				{
+					success: true,
+					text: JSON.stringify({
+						effect: "view_navigation",
+						status,
+						viewId: "notes",
+						label: "Notes",
+						path: "/notes",
+					}),
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+				},
+				{
+					stageOneReply: "On it.",
+					stageOneEffectStatus: "pending",
+					postToolReply: "Notes are open.",
+				},
+			);
+			expect(text).toBe("Notes are open.");
+		},
+	);
+
+	it.each(["accepted", "delivered"])(
+		"uses post-tool synthesis for %s navigation instead of releasing an unrelated mutation claim",
+		async (status) => {
+			const text = await runDeterministicViewsTurn(
+				{
+					success: true,
+					text: JSON.stringify({
+						effect: "view_navigation",
+						status,
+						viewId: "notes",
+						label: "Notes",
+						path: "/notes",
+					}),
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+				},
+				{
+					stageOneReply: "Done — I saved your note and opened Notes.",
+					stageOneEffectStatus: "pending",
+					postToolReply: "Notes are open. I didn't change any of them.",
+				},
+			);
+			expect(text).toBe("Notes are open. I didn't change any of them.");
+		},
+	);
 
 	it("uses a model reply for a deterministic success without a reportable result", async () => {
 		const text = await runDeterministicViewsTurn({ success: true });
 		expect(text).toBe("The action did not return a confirmed result.");
+	});
+
+	it("keeps a pending navigation confirmation held when the receipt only says accepted", async () => {
+		const text = await runDeterministicViewsTurn(
+			{
+				success: true,
+				text: JSON.stringify({
+					effect: "view_navigation",
+					status: "accepted",
+					label: "Home",
+				}),
+				transcriptVisibility: "internal",
+				modelReplyRequired: true,
+			},
+			{
+				stageOneReply: "Home is open.",
+				stageOneEffectStatus: "pending",
+				postToolReply: "The request to open Home was accepted.",
+			},
+		);
+		expect(text).toBe("The request to open Home was accepted.");
+	});
+
+	it("does not reuse a navigation confirmation without a destination in the receipt", async () => {
+		const text = await runDeterministicViewsTurn(
+			{
+				success: true,
+				text: JSON.stringify({
+					effect: "view_navigation",
+					status: "delivered",
+				}),
+				transcriptVisibility: "internal",
+				modelReplyRequired: true,
+			},
+			{
+				stageOneReply: "Home is open.",
+				stageOneEffectStatus: "pending",
+				postToolReply: "I couldn't confirm which destination was opened.",
+			},
+		);
+		expect(text).toBe("I couldn't confirm which destination was opened.");
+	});
+
+	it.each([
+		"not-delivered",
+		"malformed",
+		"unconfirmed",
+		"cancelled",
+		"http-error",
+	])(
+		"does not reuse a navigation confirmation for a %s receipt",
+		async (status) => {
+			const text = await runDeterministicViewsTurn(
+				{
+					success: true,
+					text: JSON.stringify({
+						effect: "view_navigation",
+						status,
+						viewId: "chat",
+						label: "Home",
+					}),
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+				},
+				{
+					stageOneReply: "Home is open.",
+					stageOneEffectStatus: "pending",
+					postToolReply: "The navigation request was not confirmed.",
+				},
+			);
+			expect(text).toBe("The navigation request was not confirmed.");
+		},
+	);
+
+	it.each([
+		'{"action":"VIEWS_SHOW","params":{"view":"Home"}}',
+		'{"shouldRespond":"RESPOND","contexts":["Home"]}',
+	])(
+		"does not release a pending navigation control envelope: %s",
+		async (reply) => {
+			const text = await runDeterministicViewsTurn(
+				{
+					success: true,
+					text: JSON.stringify({
+						effect: "view_navigation",
+						status: "delivered",
+						viewId: "chat",
+						label: "Home",
+					}),
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+				},
+				{
+					stageOneReply: reply,
+					stageOneEffectStatus: "pending",
+					postToolReply: "Home is open.",
+				},
+			);
+			expect(text).toBe("Home is open.");
+		},
+	);
+
+	it("does not apply navigation's delivered status to an unrelated effect", async () => {
+		const text = await runDeterministicViewsTurn(
+			{
+				success: true,
+				text: JSON.stringify({
+					effect: "app_launch",
+					status: "delivered",
+					label: "Home",
+				}),
+				transcriptVisibility: "internal",
+				modelReplyRequired: true,
+			},
+			{
+				stageOneReply: "Home is open.",
+				postToolReply: "The launcher returned its current status.",
+			},
+		);
+		expect(text).toBe("The launcher returned its current status.");
 	});
 
 	it("lets the model write the final reply after a deterministic tool completes", async () => {

@@ -1,6 +1,7 @@
 /** Coordinates Stage 1 decisions, planner execution, visible reply resolution, and ordered trajectory finalization for a message turn. */
 
 import { TurnAbortedError } from "../../runtime/turn-controller";
+import { sanitizeUserVisibleModelOutput } from "../../runtime/user-visible-model-output";
 import { getStreamingContext } from "../../streaming-context";
 import { isObjectRecord as isRecord } from "../../utils/type-guards";
 import type { EvaluatorService } from "../evaluator";
@@ -1669,12 +1670,32 @@ export async function runV5MessageRuntimeStage1(
 					result.modelReplyRequired === true
 				) {
 					// Stage 1 already wrote this turn in the agent's voice. Hold that prose
-					// until the deterministic action returns an accepted effect receipt, then
+					// until the deterministic action returns a confirming effect receipt, then
 					// release it without a second inference. The normal reply-egress guard
 					// below still rejects unrelated mutation claims. Missing prose keeps the
 					// post-tool synthesis path so an internal receipt never becomes canned UI.
-					const acceptedEffect = structuredEffectFromToolResult(result);
-					const groundedModelReply = prePatchStageOneReply?.trim();
+					const effectReceipt = structuredEffectFromToolResult(result);
+					// A navigation draft can correctly be marked pending before dispatch.
+					// Only this confirmed navigation branch may reuse it; ordinary pending
+					// work remains excluded from the planner's answer-rescue fallbacks.
+					let groundedModelReply = prePatchStageOneReply?.trim();
+					if (effectReceipt?.effect === "view_navigation") {
+						let draft = parsedResponseHandlerReply;
+						const registeredReplyDraft = fieldRunResult?.parsed.replyText;
+						if (
+							!draft &&
+							effectReceipt.status === "delivered" &&
+							prePatchStageOneReplyEffectStatus === "pending" &&
+							typeof registeredReplyDraft === "string"
+						) {
+							draft = registeredReplyDraft;
+						}
+						const visibleDraft = sanitizeUserVisibleModelOutput(draft);
+						groundedModelReply =
+							visibleDraft.kind === "text" && effectReceipt.label?.trim()
+								? visibleDraft.text
+								: undefined;
+					}
 					const groundedModelReplyEgress = groundedModelReply
 						? evaluatePlannedReplyEgress({
 								reply: groundedModelReply,
@@ -1683,11 +1704,13 @@ export async function runV5MessageRuntimeStage1(
 							})
 						: undefined;
 					if (
-						acceptedEffect?.status === "accepted" &&
+						(effectReceipt?.status === "accepted" ||
+							(effectReceipt?.effect === "view_navigation" &&
+								effectReceipt.status === "delivered")) &&
 						groundedModelReply &&
 						replyNamesStructuredEffectDestination(
 							groundedModelReply,
-							acceptedEffect,
+							effectReceipt,
 						) &&
 						groundedModelReplyEgress?.verdict === "allow"
 					) {

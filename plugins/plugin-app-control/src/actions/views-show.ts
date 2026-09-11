@@ -701,9 +701,9 @@ export async function runViewsShow({
 		success: navigationSucceeded,
 		text: JSON.stringify(navigation),
 		// Navigation has already been handed to the shell. A confirmed success
-		// requests exactly one post-tool model reply so the acknowledgement stays
-		// natural and model-owned without an evaluator/planner retry loop. Failed or
-		// unconfirmed navigation retains full evaluation and recovery.
+		// requires a model-authored reply. The caller can release a held same-turn
+		// draft after checking this receipt, or synthesize a post-tool reply when
+		// needed. Failed/unconfirmed navigation retains evaluation and recovery.
 		transcriptVisibility: "internal",
 		...(navigationSucceeded
 			? { modelReplyRequired: true }
