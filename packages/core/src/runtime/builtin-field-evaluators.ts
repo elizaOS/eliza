@@ -215,6 +215,7 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 	name: "candidateActionNames",
 	description:
 		"An action mentioned only as prohibited, cancelled, or hypothetical is not requested work. Cancelling an unexecuted conversational intention needs no record mutation; cancelling a persisted record or scheduled job does. Determine which from the current request and evidence, retaining any lookup needed to resolve uncertainty. " +
+		"Use DISCOVER_TOOLS as the sole candidate only when inspecting available tool schemas is the entire requested operation. If discovery is preparation for reading/changing records or any other domain work, include that work's candidates too. " +
 		"UPPER_SNAKE_CASE retrieval hints covering every requested intent. Prefer exact available child operations when the operation is known: NOTES_CREATE for creating a sticky note, NOTES_LIST for finding/reading notes, NOTES_UPDATE or NOTES_DELETE for changes; CALENDAR_NEXT_EVENT/FEED/SEARCH_EVENTS for the corresponding calendar reads, CALENDAR_CREATE_EVENT/UPDATE_EVENT/DELETE_EVENT for writes. These examples do not prove availability. Use an umbrella only when the operation is unresolved or no suitable child is known; the planner can discover other authorized operations as needed. Opening one known app view uses VIEWS_SHOW when registered; other view/layout/native-device operations use VIEWS. Opening a view requires navigation, not a calendar or note-data action unless that data is also requested. Life-management uses the matching available OWNER_* or TRIGGER action. Include only work needed before this reply. For a clarification requiring no lookup or independently executable work, return [] with simple context; omit future actions awaiting the user's answer. Confident unlisted hints are allowed but are not execution or permission proof. Empty when no action is needed.",
 	descriptionCompressed:
 		"Likely UPPER_SNAKE_CASE actions needed before this reply. Notes data -> NOTES; single view -> VIEWS_SHOW when registered; other navigation/native device -> VIEWS; calendar data -> CALENDAR. Open-and-edit requires both. A clarification that needs no lookup uses [] and simple context; do not name future tools awaiting the answer. Keep independently executable current work.",
@@ -309,15 +310,15 @@ export const replyEffectStatusFieldEvaluator: ResponseHandlerFieldEvaluator<Repl
 export const factsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	name: "facts",
 	description:
-		'Durable facts explicitly stated in this message about user/world/entities, worth remembering. Examples: "user lives in Brooklyn", "user prefers email over phone", "Bob is Alice\'s coworker at Acme". Skip transient state/current mood. Empty if none.',
+		'Extract only durable assertions newly stated by the user in the FINAL CURRENT MESSAGE. Never copy facts from history, providers or your answer to a recall question. "What color was Rowan\'s mug?" states no fact; "Rowan\'s mug is blue now; what was it before?" states the new blue correction. Keep fictional facts explicitly fictional. Skip transient state/mood and facts owned by explicit memory mutations, including deletions. Return [] when no independent new assertion remains.',
 	descriptionCompressed:
-		"Durable facts stated in this message; skip transient state. Empty if none.",
+		"Only durable assertions newly stated in the final current user message; no recalled answers, transient state or facts owned by explicit memory mutations. Keep fictional framing. Otherwise [].",
 	priority: 80,
 	schema: {
 		type: "array",
 		items: { type: "string" },
 		description:
-			"Plain-English facts. One per item. Prefer subject-predicate-object.",
+			"New durable assertions in the final user message only, not answers recalled from context. One plain-English fact per item; [] for recall-only questions.",
 	},
 	parse(value) {
 		if (!Array.isArray(value)) return [];

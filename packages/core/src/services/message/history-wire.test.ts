@@ -1,7 +1,10 @@
 /** Proves exact history reassembly, occurrence order and identity isolation using the real wire encoder. */
 import { describe, expect, it } from "vitest";
-import type { ContextObjectPromptSegment } from "../../types/context-object";
-import { labelHistorySources } from "./history-wire";
+import type {
+	ContextObject,
+	ContextObjectPromptSegment,
+} from "../../types/context-object";
+import { labelHistorySources, referenceRepeatedHistory } from "./history-wire";
 
 function source(
 	content: string,
@@ -52,6 +55,83 @@ function decode(
 		});
 }
 describe("lossless history references", () => {
+	it("saves repeated text among hundreds of short unique messages without labeling every unique source", () => {
+		const history = [
+			source("Exact reusable source. ".repeat(60), 1),
+			...Array.from({ length: 200 }, (_, i) =>
+				source(`Unique message ${i}`, i + 2),
+			),
+			source("Exact reusable source. ".repeat(60), 202),
+		];
+		const ids = new Map(
+			history.map((segment, i) => [segment.id ?? "", `h${i + 1}`]),
+		);
+		const encoded = labelHistorySources(history, ids, "referenced");
+		expect(decode(encoded)).toEqual(history);
+		expect(encoded.find((segment) => segment.id === "message-2")).toBe(
+			history[1],
+		);
+		expect(encoded.at(-1)?.content).toBe(
+			"[completion_source=h202; same_text_as=h1]",
+		);
+		expect(encoded.reduce((n, s) => n + s.content.length, 0)).toBeLessThan(
+			history.reduce((n, s) => n + s.content.length, 0),
+		);
+	});
+	it("reassembles restored planning/evaluation dialogue while preserving other context and source IDs", () => {
+		const repeated = "Exact old source with a standing constraint.\n".repeat(
+			100,
+		);
+		const history = [
+			source(repeated, 1),
+			source("Correction: keep the calendar unchanged.", 2),
+			source(repeated, 3),
+		];
+		const other = {
+			id: "provider",
+			label: "provider:FACTS",
+			content: repeated,
+			stable: false,
+		};
+		const original: ContextObject = {
+			id: "turn",
+			metadata: { historyReferenceEncoding: true },
+			events: history.map((segment) => ({
+				id: segment.id ?? "invalid-fixture",
+				type: "segment",
+				source: "prior-dialogue",
+				segment,
+			})),
+		};
+		const segments = [
+			other,
+			...history,
+			{
+				id: "current",
+				label: "message:user",
+				content: "Keep every source",
+				stable: false,
+			},
+		];
+		const before = structuredClone(original);
+		const encoded = referenceRepeatedHistory(original, segments);
+		expect(decode(encoded)).toEqual(segments);
+		expect(encoded[0]).toBe(other);
+		expect(encoded.find(({ id }) => id === "message-3")?.content).toBe(
+			"[completion_source=h3; same_text_as=h1]",
+		);
+		expect(original).toEqual(before);
+		// A selected subset keeps the original h3 identity, not a new ordinal.
+		const subset = referenceRepeatedHistory(original, [history[0], history[2]]);
+		expect(subset.at(-1)?.content).toBe(
+			"[completion_source=h3; same_text_as=h1]",
+		);
+		expect(decode(subset)).toEqual([history[0], history[2]]);
+		expect(
+			referenceRepeatedHistory({ ...original, metadata: {} }, segments),
+		).toBe(segments);
+	});
+
 	it("preserves every source, including a repeated assertion after its correction", () => {
 		const original = `  Rowan's mug is green.\n${"exact whitespace 🦊 ?! ".repeat(80)}`;
 		const segments = [

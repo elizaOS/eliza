@@ -4,6 +4,8 @@ import {
 	collectBudgetedStageOneCandidateActions,
 	messageHandlerFromFieldResult,
 } from "./message";
+import { inferDirectCurrentRequestCandidateInference } from "./message/direct-action-heuristics";
+import { parseMessageHandlerModelOutput } from "./message/stage1-generation";
 
 const actions: Action[] = [
 	{
@@ -17,6 +19,102 @@ const actions: Action[] = [
 ];
 
 describe("budgeted model-selected action surface", () => {
+	it.each([
+		{ candidates: ["DISCOVER_TOOLS"] },
+		{ candidates: ["DISCOVER_TOOLS", "NOTES"] },
+	])(
+		"retains framework discovery hints before the planner registers them: %j",
+		({ candidates }) => {
+			const result = messageHandlerFromFieldResult(
+				{
+					shouldRespond: "RESPOND",
+					contexts: ["general"],
+					intents: ["inspect tool schemas"],
+					candidateActionNames: candidates,
+					replyText: "Discovering NOTES.",
+					replyEffectStatus: "pending",
+					facts: [],
+					relationships: [],
+					addressedTo: [],
+				},
+				undefined,
+				{
+					actions: [
+						{
+							name: "VIEWS",
+							tags: [
+								"views",
+								"ui",
+								"panel",
+								"view-capability",
+								"notes",
+								"calendar",
+							],
+						},
+						{ name: "NOTES" },
+					],
+					messageText:
+						"Technical QA: use DISCOVER_TOOLS to discover the NOTES family by its exact name. Tell me which note operations it exposes. Do not create, edit, delete, or navigate.",
+				},
+			);
+			expect(result.plan.candidateActions).toEqual(candidates);
+			expect(result.plan.requiresTool).toBe(true);
+			// Native and text envelopes take the separate legacy backstop before
+			// field parsing. Exercise that actual live dispatch path as well.
+			const envelope = {
+				shouldRespond: "RESPOND",
+				contexts: ["general"],
+				intents: ["inspect tools"],
+				candidateActionNames: candidates,
+				replyText: "Discovering NOTES.",
+				replyEffectStatus: "pending",
+			};
+			const runtime = {
+				actions: [
+					{
+						name: "VIEWS",
+						tags: [
+							"views",
+							"ui",
+							"panel",
+							"view-capability",
+							"notes",
+							"calendar",
+						],
+					},
+					{ name: "NOTES" },
+				],
+				messageText:
+					"Discover NOTES. Do not create, edit, delete, or navigate.",
+			};
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					runtime.actions,
+					runtime.messageText,
+				).names,
+			).toContain("VIEWS");
+			expect(
+				parseMessageHandlerModelOutput(JSON.stringify(envelope), runtime)?.plan
+					.candidateActions,
+			).toEqual(candidates);
+			expect(
+				parseMessageHandlerModelOutput(
+					{
+						text: "",
+						toolCalls: [
+							{
+								type: "tool-call",
+								toolCallId: "stage1",
+								toolName: "HANDLE_RESPONSE",
+								input: envelope,
+							},
+						],
+					},
+					runtime,
+				)?.plan.candidateActions,
+			).toEqual(candidates);
+		},
+	);
 	it.each([
 		"One quick conversation test: use Spanish for the next note confirmation only. Do not save that preference; just keep it in this conversation.",
 		"Do not save it.",

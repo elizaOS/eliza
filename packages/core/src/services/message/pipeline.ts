@@ -1163,6 +1163,7 @@ export async function runV5MessageRuntimeStage1(
 		plannerContext.metadata = {
 			...plannerContext.metadata,
 			providerDiscoveryEnabled,
+			historyReferenceEncoding: providerDiscoveryEnabled,
 			loadedContextProviders,
 		};
 		if (messageHandler.plan.completionContext) {
@@ -1338,6 +1339,7 @@ export async function runV5MessageRuntimeStage1(
 				umbrellaContext.metadata = {
 					...umbrellaContext.metadata,
 					providerDiscoveryEnabled,
+					historyReferenceEncoding: providerDiscoveryEnabled,
 					loadedContextProviders,
 				};
 				if (messageHandler.plan.completionContext) {

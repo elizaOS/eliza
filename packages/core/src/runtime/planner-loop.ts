@@ -21,6 +21,7 @@ import { logger } from "../logger";
 import { parseInteractionBlocks } from "../messaging/interactions/parse";
 import {
 	plannerBatchScopeDescription,
+	plannerRequiredPolicy,
 	plannerSchema,
 	plannerTemplate,
 } from "../prompts/planner";
@@ -31,6 +32,7 @@ import {
 	projectToolDiagnosticValue,
 	type ToolDiagnosticTextRedactor,
 } from "../security/tool-diagnostics";
+import { referenceRepeatedHistory } from "../services/message/history-wire";
 import { resolveOptimizedPromptForRuntime } from "../services/optimized-prompt-resolver";
 import {
 	emitStreamingHook,
@@ -480,9 +482,29 @@ async function runPlannerLoopIterations(
 	// gate on (when real coding tools are exposed) so such a turn is re-prompted
 	// into actually acting instead of being accepted as the final answer. A
 	// genuinely blocking question still surfaces after the miss budget.
+	let stageOnePlan: unknown;
+	for (let index = plannerContext.events.length - 1; index >= 0; index--) {
+		const event = plannerContext.events[index];
+		if (
+			event.type === "message_handler" &&
+			event.source === "message-service"
+		) {
+			stageOnePlan = event.metadata?.plan;
+			break;
+		}
+	}
+	const discoveryWasRequested =
+		!codingMode &&
+		isPlainObject(stageOnePlan) &&
+		Array.isArray(stageOnePlan.candidateActions) &&
+		stageOnePlan.candidateActions.includes(DISCOVER_TOOLS_NAME);
 	const requireNonTerminalToolCall =
 		(params.requireNonTerminalToolCall === true || codingMode) &&
-		hasExposedNonTerminalTool(params.tools);
+		(hasExposedNonTerminalTool(params.tools) ||
+			(discoveryWasRequested &&
+				params.tools?.some(
+					(tool) => getToolDefinitionName(tool) === DISCOVER_TOOLS_NAME,
+				)));
 	// A PRESENT but terminal-only surface (REPLY/IGNORE/STOP and nothing else)
 	// means every stage-1 candidate failed to resolve to a runnable action —
 	// the turn has zero capability. Running a planner round anyway hands a
@@ -898,7 +920,7 @@ async function runPlannerLoopIterations(
 			// immediately preceding valid FINISH, with no intervening action or
 			// context replacement. The existing final-message/receipt authority
 			// still owns delivery; the planner's REPLY prose is not adopted.
-			const releasesRejectedFinish =
+			const requestsRejectedFinishRelease =
 				!codingDrainQueue &&
 				pendingScopeRejectedFinish?.iteration === iteration - 1 &&
 				pendingScopeRejectedFinish.output.protocolFailure !== true &&
@@ -906,7 +928,6 @@ async function runPlannerLoopIterations(
 				trajectory.context === contextBeforePlanner &&
 				failures.length === 0 &&
 				!latestUnresolvedFailedNonTerminalToolStep(trajectory) &&
-				plannerOutput.completed === true &&
 				plannerOutput.toolCalls.length === 1 &&
 				plannerOutput.toolCalls[0].name.toUpperCase() === "REPLY" &&
 				!terminalMessageFromToolCalls(
@@ -952,7 +973,7 @@ async function runPlannerLoopIterations(
 			}
 			if (pendingScopeRejectedFinish) {
 				if (
-					releasesRejectedFinish ||
+					requestsRejectedFinishRelease ||
 					batchOnlyRepeatsSettledWork(plannerOutput.toolCalls)
 				) {
 					if (plannerOutput.completed !== true) {
@@ -962,10 +983,13 @@ async function runPlannerLoopIterations(
 							source: "planner-loop",
 							createdAt: Date.now(),
 							content:
-								"This batch only repeats successful recorded operations and was not executed again. " +
+								"This batch only requests scope release or repeats settled work; it was not executed or evaluated again. " +
 								"Continue the outstanding parts of the user's request. If the entire request is already satisfied, " +
 								"explicitly declare final scope and answer from the recorded results instead of repeating the work.",
 						});
+						// No new evidence exists to evaluate. Keep the verified verdict
+						// for a later explicit final declaration; pending scope still holds.
+						pendingScopeRejectedFinish.iteration = iteration;
 						continue;
 					}
 					// The planner now explicitly agrees that the whole request is
@@ -1938,7 +1962,8 @@ async function runPlannerLoopIterations(
 		const latestResult = trajectory.steps[trajectory.steps.length - 1]?.result;
 		if (
 			toolCall.name === DISCOVER_TOOLS_NAME &&
-			latestResult?.success === true
+			latestResult?.success === true &&
+			(!discoveryWasRequested || trajectory.plannedQueue.length > 0)
 		) {
 			// Loading schemas is planner protocol, not completed user work. The
 			// next model round chooses the newly available operation; there is no
@@ -1950,6 +1975,9 @@ async function runPlannerLoopIterations(
 				lastPlannerExplicitCompleted = false;
 			continue;
 		}
+		// Explicit catalog inspection with a drained queue is ordinary read work:
+		// let the existing evaluator judge the whole request against its result.
+		// Candidate hints alone cannot prove that accompanying domain work is done.
 		if (latestResult?.replyFailure) {
 			// The action already settled. A failed presentation is not an action
 			// failure and must never trigger model rescue, tool replay, or another
@@ -2431,6 +2459,12 @@ function renderPlannerModelInput(params: {
 			? projectDeferredProviders(diagnosticProjection.context)
 			: { context: diagnosticProjection.context, available: [] };
 	const renderedContext = renderContextObject(deferred.context);
+	if (params.allowSourceSelection && !params.codingMode) {
+		renderedContext.promptSegments = referenceRepeatedHistory(
+			original,
+			renderedContext.promptSegments,
+		);
+	}
 	if (deferred.available.length)
 		renderedContext.promptSegments.push({
 			id: "planner-provider-discovery",
@@ -2619,35 +2653,15 @@ const ROUTING_HINTS_MEMO = new WeakMap<
 	string | null
 >();
 
-const MANDATORY_PLANNER_POLICY_LINES = [
-	"messageToUser alone cannot save, schedule, send, update, remember, or complete anything",
-	"SHELL is for filesystem/process work, not a fallback for chat-message search/recall, memory queries, or agent-history lookups.",
-	"candidateActions naming a tool that is not in this turn's exposed tools list is a dead hint",
-	"TASKS_SPAWN_AGENT is for delegating coding/build/repo work",
-	"Structured chat markers are allowed in messageToUser",
-	"messageToUser and REPLY text must NEVER claim or imply",
-	"messageToUser must read like natural conversation, not a database or debug log",
-];
-
-const MANDATORY_PLANNER_POLICY = [
-	"mandatory planner policy:",
-	'- messageToUser alone cannot save, schedule, send, update, remember, or complete anything. If an exposed tool can perform the requested side effect, call it. Never say "saved", "logged", "scheduled", "sent", "updated", or "done" unless a tool result this turn proves it.',
-	"- Structured chat markers are allowed in messageToUser when they are the actual user-visible interaction payload: [FORM]\\n{json}\\n[/FORM], [CHOICE:scope id=id]\\nvalue=Label\\n[/CHOICE], [FOLLOWUPS id=id]\\nvalue=Label\\n[/FOLLOWUPS], or [TASK:threadId]Title[/TASK]. The JSON inside [FORM] is form data, not a tool attempt; keep JSON inside the marker and do not emit unrelated JSON.",
-	"- messageToUser must read like natural conversation, not a database or debug log. Prefer concise everyday wording. Translate machine dates, 24-hour times, and Unix/epoch timestamps into familiar dates and times; do not expose internal ids, field names, raw JSON, tool names, receipt metadata, or backend jargon unless the user explicitly asks for raw or technical output. Preserve exact code and user-provided values when they are the subject of the request.",
-	"- SHELL is for filesystem/process work, not a fallback for chat-message search/recall, memory queries, or agent-history lookups. When the user wants chat-message search/recall, memory queries, or agent-history lookups and no dedicated search action (e.g. SEARCH_MESSAGES, MESSAGE_SEARCH, MEMORY_SEARCH) is exposed, do not run shell greps, echo placeholders, or simulate the search — set messageToUser explaining that the capability is not available this turn.",
-	'- candidateActions naming a tool that is not in this turn\'s exposed tools list is a dead hint — do not invent SHELL/BROWSER/TASKS workarounds to fulfill it. Either an exposed tool genuinely resolves the user\'s intent (call it), or no tool fits (set messageToUser). A dead hint does NOT mean the capability is missing: scan the exposed tools\' names, routing hints, and descriptions for one that covers the same intent (e.g. github issues -> TASKS_MANAGE_ISSUES when GITHUB_LIST_ISSUES is not exposed; reminders -> TRIGGER_CREATE when OWNER_REMINDERS is not exposed) and call it before declaring the capability unavailable. Never emit echo-placeholder SHELL commands such as: echo "<intent-name>" / echo "placeholder for <ACTION>" / echo "search <X>" as a way to "trigger" a missing capability — placeholder echoes burn cost and produce no progress.',
-	'- TASKS_SPAWN_AGENT is for delegating coding/build/repo work to a coding sub-agent (file edits, shell tooling, building/deploying apps, running tests, opening PRs). It is not a fallback for chat-message recall, memory queries, or agent-history lookups. Spawning a coding sub-agent to "search the Discord channel for messages mentioning X" routinely ends in sub-agent error/timeout and a generic "Sorry, something went wrong" reply to the user. When the user wants chat-message recall and no dedicated search action is exposed, set messageToUser explaining the capability is not available — do not spawn a sub-agent for it.',
-	'- messageToUser and REPLY text must NEVER claim or imply an investigative OR task-execution action is happening, has happened, or is about to happen — "I\'m fetching X, please hold", "Let me look that up", "Pulling up the info", "Searching for the answer", "I\'m checking now", "I\'ll get back to you", "Spawning a sub-agent", "I\'m working on it", "I\'m fixing that now", "Let me get that done", "Wrapping it up", "Almost done", "Building it now", "I\'ll start on that" — when no tool call this turn is in flight to produce that content. A claim that you are working on / starting / fixing / building / wrapping up a task is only legitimate when a task-executing tool call (e.g. TASKS_SPAWN_AGENT) is actually in flight THIS turn; if you did not spawn a sub-agent or take an action this turn, do not say the task is underway. The planner does not run in the background after returning; once this turn ends, no further tool work happens unless a NEW user message arrives. If your tool iterations exhausted without a usable result (search returned nothing, fetch was blocked, scrape gave no usable HTML, RSS was empty), set messageToUser saying so plainly: "I tried web search via the available tools and couldn\'t find current info on X — try checking a news site directly" or "The searches returned no usable results". Never promise ongoing fetch when this turn is the planner\'s final iteration. This rule covers every grammatical form for both investigative and task-execution verbs (fetch/search/look up/check AND work on/start/fix/build/wrap up/finish): past-perfect ("I have fetched", "I have started fixing it"), bare past-tense ("I fetched", "I started on it"), present-continuous with subject ("I\'m fetching now", "I\'m checking", "I\'m working on it", "I\'m fixing it"), bare present-participle without subject ("Fetching latest info", "Looking it up", "Working on it", "Wrapping it up"), and "please hold" / "give me a sec" / "be right back" / "almost done" style stalling phrases.',
-	'- messageToUser and REPLY text must NEVER fabricate a failure, error, or interruption that did not actually occur this turn. Do not claim something "glitched", "hiccuped", "broke", "went wrong", "snagged", "errored out", "got cut off", "didn\'t go through", "failed on my end", or invite the user to "give it another go / try that again / ask again" UNLESS a real tool call THIS turn actually returned an error or empty result. If you are choosing NOT to take an action this turn (no tool call in flight), do not invent a malfunction to excuse it: instead either (a) take the correct action (e.g. spawn the coding sub-agent for a build request), or (b) say plainly and truthfully what you can do and ask the user to confirm scope, e.g. "I can build that as a single-file site in its own folder, want me to start?". A fabricated "something glitched, give it another go" is a hallucinated failure and is forbidden when nothing failed.',
-].join("\n");
-
 function appendMandatoryPlannerPolicy(instructions: string): string {
-	if (
-		MANDATORY_PLANNER_POLICY_LINES.every((line) => instructions.includes(line))
-	) {
-		return instructions;
-	}
-	return `${instructions}\n\n${MANDATORY_PLANNER_POLICY}`;
+	// Match complete canonical rules, not introductory fragments: a partial or
+	// stale custom template must not disable the rest of a required policy.
+	const missing = Object.values(plannerRequiredPolicy).filter(
+		(rule) => !instructions.includes(rule),
+	);
+	return missing.length === 0
+		? instructions
+		: `${instructions}\n\nmandatory planner policy:\n${missing.join("\n")}`;
 }
 
 function renderRoutingHintsBlock(context: ContextObject): string | null {

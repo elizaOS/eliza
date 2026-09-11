@@ -49,11 +49,11 @@ export function createPlannerToolDiscoveryAction(
 				? "The catalog lists families admitted for the current routing contexts. Other exact registered names may be requested; the same permission, context, account-policy and availability checks must admit them before loading. "
 				: "") +
 			"Discovery does not execute the requested work; continue with the loaded tools. Do not claim a capability is unavailable before checking this catalog.\n" +
+			"Index maps each exact family name to its exact child names (an empty list means no children):\n" +
 			JSON.stringify(
-				catalog.parents.map((parent) => ({
-					name: parent.name,
-					children: parent.childNames,
-				})),
+				Object.fromEntries(
+					catalog.parents.map((parent) => [parent.name, parent.childNames]),
+				),
 			),
 		parameters: [
 			{
@@ -123,7 +123,7 @@ export function createPlannerToolDiscoveryAction(
 			return {
 				success: true,
 				turnComplete: false,
-				text: "Tool schemas loaded. Continue with the requested work; discovery itself did not perform it.",
+				text: "Tool schemas loaded. Only schema discovery ran; no domain action or data mutation ran. Continue with any requested domain work.",
 				data: { loadedTools: selected.map((action) => action.name) },
 			};
 		},

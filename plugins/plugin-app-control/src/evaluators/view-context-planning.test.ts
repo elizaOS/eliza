@@ -174,6 +174,28 @@ describe("same-turn contextual navigation", () => {
 			expect(ctx.messageHandler.plan.candidateActions).toEqual(["CALENDAR"]);
 		},
 	);
+	it.each(["none", "forbidden"])(
+		"preserves catalog-only candidates after a %s judgment so text inference cannot re-add navigation",
+		async (disposition) => {
+			const ctx = context(
+				"Discover NOTES. Do not create, edit, delete or navigate.",
+				{},
+			);
+			ctx.messageHandler.plan.candidateActions = ["DISCOVER_TOOLS"];
+			const result = await runWithField(ctx, {
+				disposition,
+				viewId: "",
+				reason: "No navigation requested",
+			});
+			expect(result.errors).toEqual([]);
+			expect(result.candidateActionsClearedByEvaluators).toBe(true);
+			expect(ctx.messageHandler.plan.candidateActions).toEqual([
+				"DISCOVER_TOOLS",
+			]);
+			expect(result.navigationBlock).toBe("forbidden");
+			expect(prompts).toEqual([]);
+		},
+	);
 	it("validates a Stage-1 requested destination against the live role-filtered catalog without repeating inference", async () => {
 		const ctx = context("Show the observatory and draft the event", {
 			disposition: "none",
@@ -222,6 +244,48 @@ describe("same-turn contextual navigation", () => {
 				"VIEWS action=split",
 			);
 			expect(prompts).toEqual([]);
+		},
+	);
+
+	it.each([
+		{ singleViewOnly: true, child: true, expected: ["CALENDAR", "VIEWS_SHOW"] },
+		{
+			singleViewOnly: false,
+			child: true,
+			expected: ["VIEWS", "CALENDAR", "VIEWS_SHOW"],
+		},
+		{
+			singleViewOnly: undefined,
+			child: true,
+			expected: ["VIEWS", "CALENDAR", "VIEWS_SHOW"],
+		},
+		{ singleViewOnly: true, child: false, expected: ["VIEWS", "CALENDAR"] },
+	])(
+		"narrows only an explicit same-turn single-view classification: %j",
+		async ({ singleViewOnly, child, expected }) => {
+			const ctx = context(
+				"Open Observatory and read my calendar; do not edit events",
+				{},
+			);
+			if (child)
+				ctx.runtime.actions.push({
+					name: "VIEWS_SHOW",
+				} as (typeof ctx.runtime.actions)[number]);
+			ctx.messageHandler.plan.candidateActions = ["VIEWS", "CALENDAR"];
+			ctx.messageHandler.plan.parentActionHints = ["VIEWS", "CALENDAR"];
+			const result = await runWithField(ctx, {
+				disposition: "requested",
+				viewId: "observatory",
+				reason: "Model operation judgment",
+				...(singleViewOnly === undefined ? {} : { singleViewOnly }),
+			});
+			expect(result.errors).toEqual([]);
+			expect(ctx.messageHandler.plan.candidateActions).toEqual(expected);
+			expect(ctx.messageHandler.plan.parentActionHints).toEqual(
+				singleViewOnly && child ? ["CALENDAR"] : ["VIEWS", "CALENDAR"],
+			);
+			expect(prompts).toEqual([]);
+			expect(result.navigationBlock).toBeUndefined();
 		},
 	);
 
@@ -475,7 +539,11 @@ describe("same-turn contextual navigation", () => {
 		expect(result.appliedPatches).toEqual([
 			expect.objectContaining({
 				evaluatorName: "app-control.view-context-planning",
-				changed: ["contextSlices:add"],
+				changed: [
+					"candidateActions:clear",
+					"candidateActions:add",
+					"contextSlices:add",
+				],
 			}),
 		]);
 	});

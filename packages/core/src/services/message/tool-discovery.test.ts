@@ -236,6 +236,38 @@ describe("planner tool discovery", () => {
 		expect(executions).toBe(0);
 	});
 
+	it("losslessly encodes every authorized family and exact child in the name index", async () => {
+		const actions: Action[] = Array.from({ length: 250 }, (_, i) => ({
+			name: `FAMILY_${i}`,
+			description: `Complete documentation ${i}`,
+			subActions: [`CHILD_${i}`],
+		}));
+		actions.push(
+			...Array.from({ length: 250 }, (_, i) => ({
+				name: `CHILD_${i}`,
+				description: `Operation ${i}`,
+			})),
+		);
+		let loads = 0;
+		const discovery = createPlannerToolDiscoveryAction(actions, () => {
+			loads++;
+		});
+		const index = JSON.parse(discovery.description.split("\n").at(-1) ?? "");
+		const result = await discovery.handler?.(runtime, message, undefined, {
+			parameters: { names: [] },
+		});
+		const catalog = result?.data?.catalog as Array<{
+			name: string;
+			children: string[];
+		}>;
+		expect(Object.entries(index)).toEqual(
+			catalog.map(({ name, children }) => [name, children]),
+		);
+		expect(Object.keys(index)).toHaveLength(250);
+		expect(index.FAMILY_249).toEqual(["CHILD_249"]);
+		expect(loads).toBe(0);
+	});
+
 	it("keeps all names inline and retrieves complete descriptions without loading tools", async () => {
 		let loads = 0;
 		const detail = `Exact family documentation ${"detail\n".repeat(900)} FINAL_DETAIL`;

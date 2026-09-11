@@ -882,6 +882,23 @@ describe("canonical evaluation of grounded internal receipts", () => {
 		},
 	);
 
+	it("retries an unscoped empty REPLY without reevaluating unchanged evidence", async () => {
+		const h = harness({
+			plans: [
+				{ text: "", toolCalls: [call("READ", "more_work_pending")] },
+				{ text: "", toolCalls: [call("REPLY")] },
+				{ text: "", toolCalls: [call("REPLY", "final")] },
+			],
+			evaluations: [finish("The recorded read is complete.")],
+			intents: ["read record"],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["READ"]);
+		expect(modelCalls(h, ModelType.ACTION_PLANNER)).toBe(3);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
+		expect(result.finalMessage).toBe("The recorded read is complete.");
+	});
+
 	it("does not reuse a rejected FINISH if context changes during the scope-release planner call", async () => {
 		let activeTrajectory: PlannerTrajectory | undefined;
 		const h = harness({
@@ -938,13 +955,12 @@ describe("canonical evaluation of grounded internal receipts", () => {
 				],
 				evaluations: [
 					finish("The record was read."),
-					continueWork("The destination still needs to open."),
 					finish("The record was read and the destination is open."),
 				],
 			});
 			const result = await h.run();
 			expect(h.executed).toEqual(["READ", "NAVIGATE"]);
-			expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(3);
+			expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(2);
 			expect(result.finalMessage).toBe(
 				"The record was read and the destination is open.",
 			);
