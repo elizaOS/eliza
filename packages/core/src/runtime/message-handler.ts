@@ -278,7 +278,7 @@ const EXPLICIT_MEDIA_GENERATION_REQUEST_RE =
 const CAPABILITY_DENIAL_REPLY_RE =
 	/\b(?:can'?t|cannot|unable to|no|don'?t have|lack)\b[^.!?]{0,80}\b(?:tool|generat|capabilit|action|model|service|setup|environment)|private surface|owner'?s private info|(?:limited|only available) to (?:the owner|them)|don'?t have access to that/i;
 
-/** Explicit reminder/alarm request shape — as unambiguous as an ask gets. */
+/** Reminder wording supports scheduling votes and denial recovery, not intent on its own. */
 const EXPLICIT_REMINDER_REQUEST_RE =
 	/\bremind me\b|\bset (?:a |an )?(?:reminder|alarm)\b/i;
 
@@ -349,9 +349,23 @@ export function routeMessageHandlerOutput(
 	// Seeding is applied ONLY on routes that enter the planner: a simple-path
 	// clarify ("a picture of what exactly?") must stay a final reply, so the
 	// seed never by itself converts a simple turn into planning.
-	const isExplicitReminderAsk = EXPLICIT_REMINDER_REQUEST_RE.test(
-		messageTextForRouting,
-	);
+	// "Remind me" also introduces ordinary recall. Do not turn an unrelated
+	// navigation/read plan into scheduling solely because that phrase occurs.
+	// Keep the existing owner/group sibling fallback for a scheduling vote or
+	// a capability denial that needs to be checked against the real surface.
+	const hasReminderPlanningVote =
+		allContexts.some((context) =>
+			["tasks", "todos", "automation"].includes(context),
+		) ||
+		(output.plan.candidateActions ?? []).some((name) =>
+			/^(?:OWNER_REMINDERS|TRIGGER)(?:_|$)/u.test(
+				String(name).trim().toUpperCase(),
+			),
+		);
+	const isExplicitReminderAsk =
+		EXPLICIT_REMINDER_REQUEST_RE.test(messageTextForRouting) &&
+		(hasReminderPlanningVote ||
+			CAPABILITY_DENIAL_REPLY_RE.test(getMessageHandlerReply(output)));
 	const isExplicitTaskStatusAsk = EXPLICIT_TASK_STATUS_REQUEST_RE.test(
 		messageTextForRouting,
 	);

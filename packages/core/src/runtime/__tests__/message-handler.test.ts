@@ -345,6 +345,7 @@ describe("v5 message handler routing", () => {
 		expect(keys).toEqual([
 			"shouldRespond",
 			"contexts",
+			"contextRequests",
 			"intents",
 			"completionContext",
 			"replyText",
@@ -359,6 +360,7 @@ describe("v5 message handler routing", () => {
 		expect(HANDLE_RESPONSE_SCHEMA.required).toEqual([
 			"shouldRespond",
 			"contexts",
+			"contextRequests",
 			"intents",
 			"completionContext",
 			"replyText",
@@ -583,5 +585,109 @@ describe("explicit media-ask promotion", () => {
 		expect(route.output.plan.candidateActions ?? []).not.toContain(
 			"GENERATE_MEDIA",
 		);
+	});
+});
+
+describe("reminder fallback routing", () => {
+	it.each(["simple", "general", "memory"])(
+		"keeps navigation and recall candidates without injecting scheduling for %s context",
+		(context) => {
+			const output = parseMessageHandlerOutput(
+				JSON.stringify({
+					shouldRespond: "RESPOND",
+					contexts: [context],
+					candidateActionNames: ["VIEWS_SHOW"],
+					replyText:
+						"Home is up. The original mug was green and it is now violet.",
+					replyEffectStatus: "pending",
+				}),
+			);
+			expect(output).not.toBeNull();
+			if (!output) return;
+			const route = routeMessageHandlerOutput(output, {
+				messageText:
+					"Go Home, and remind me of the original mug color, the corrected mug color, and the notebook color in our made-up Rowan story. Keep voice off and do not change any notes or calendar events.",
+			});
+			expect(route.type).toBe("planning_needed");
+			expect(route.output.plan.candidateActions).toEqual(["VIEWS_SHOW"]);
+			if (route.type === "planning_needed")
+				expect(route.contexts).toEqual([
+					context === "simple" ? "general" : context,
+				]);
+		},
+	);
+
+	it.each([
+		{ contexts: ["tasks"], candidateActionNames: [] },
+		{ contexts: ["automation"], candidateActionNames: ["TRIGGER_CREATE"] },
+		{ contexts: ["simple"], candidateActionNames: ["OWNER_REMINDERS_CREATE"] },
+	])(
+		"preserves reminder siblings for a model-selected scheduling plan %j",
+		(plan) => {
+			const output = parseMessageHandlerOutput(
+				JSON.stringify({
+					shouldRespond: "RESPOND",
+					...plan,
+					replyText: "On it.",
+				}),
+			);
+			expect(output).not.toBeNull();
+			if (!output) return;
+			const route = routeMessageHandlerOutput(output, {
+				messageText: "Remind me in three minutes to check the mail.",
+			});
+			expect(route.type).toBe("planning_needed");
+			expect(route.output.plan.candidateActions).toEqual(
+				expect.arrayContaining([
+					...plan.candidateActionNames,
+					"OWNER_REMINDERS",
+					"TRIGGER",
+				]),
+			);
+		},
+	);
+
+	it("preserves poisoned reminder-denial recovery without a scheduling vote", () => {
+		const output = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				contexts: ["simple"],
+				replyText: "That's a private surface, limited to the owner.",
+				candidateActionNames: [],
+			}),
+		);
+		expect(output).not.toBeNull();
+		if (!output) return;
+		const route = routeMessageHandlerOutput(output, {
+			messageText: "Remind me in three minutes to check the mail.",
+		});
+		expect(route.type).toBe("planning_needed");
+		expect(route.output.plan.candidateActions).toEqual([
+			"OWNER_REMINDERS",
+			"TRIGGER",
+		]);
+		if (route.type === "planning_needed")
+			expect(route.contexts).toEqual(["tasks"]);
+	});
+
+	it("does not invent scheduling for a simple recall or clarification", () => {
+		for (const message of [
+			"Remind me of the original mug color.",
+			"Remind me to check the mail.",
+		]) {
+			const output = parseMessageHandlerOutput(
+				JSON.stringify({
+					shouldRespond: "RESPOND",
+					contexts: ["simple"],
+					replyText: "Which one do you mean?",
+					candidateActionNames: [],
+				}),
+			);
+			expect(output).not.toBeNull();
+			if (!output) continue;
+			const route = routeMessageHandlerOutput(output, { messageText: message });
+			expect(route.type).toBe("final_reply");
+			expect(route.output.plan.candidateActions ?? []).toEqual([]);
+		}
 	});
 });

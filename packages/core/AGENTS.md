@@ -238,3 +238,5 @@ Deterministic navigation reply reuse recognizes the canonical view_navigation de
 UI_CONTEXT distinguishes opening a view from reading or writing its records and prefers available child actions, matching candidateActionNames. Preserve the exact renderer metadata, capability hints and live-read requirements; navigation never proves a domain operation.
 
 Exact dialogue quotations may use supplied original message text and authors directly. Missing evidence, absent requested source metadata, explicit history searches and exhaustive stored-history coverage retain authorized retrieval; honor user restrictions on lookup. This does not treat prior dialogue as current live-record state or permit invented provenance.
+
+Reminder fallback seeding requires a model-selected scheduling context/candidate or the existing capability-denial recovery condition. Ordinary recall wording alone must not add reminder families to unrelated navigation/read plans. Preserve explicit candidates, owner/group fallback, discovery and execution gates; seeding is not authorization.
