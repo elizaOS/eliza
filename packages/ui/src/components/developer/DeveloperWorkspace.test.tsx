@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   list: vi.fn(),
   detail: vi.fn(),
   send: vi.fn(),
+  relay: vi.fn(),
   stop: vi.fn(),
 }));
 const record = {
@@ -67,6 +68,21 @@ const appState = {
   handleChatStop: mocks.stop,
   tab: "notes",
 };
+vi.mock("../../state/developer-tab-bridge", () => {
+  const snapshot = {
+    peers: [
+      { id: "app-tab", path: "/notes", conversationId: "conversation-1" },
+    ],
+    selectedId: "app-tab",
+  };
+  return {
+    getDeveloperTabState: () => snapshot,
+    subscribeDeveloperTabs: () => () => {},
+    selectDeveloperAppTab: vi.fn(),
+    sendToDeveloperAppTab: mocks.relay,
+    stopDeveloperAppTurn: mocks.stop,
+  };
+});
 vi.mock("../../api/client", () => ({
   client: { getTrajectories: mocks.list, getTrajectoryDetail: mocks.detail },
 }));
@@ -146,6 +162,7 @@ beforeEach(() => {
   });
   mocks.detail.mockResolvedValue(detail);
   mocks.send.mockResolvedValue(undefined);
+  mocks.relay.mockResolvedValue(undefined);
   Object.defineProperty(document, "hidden", {
     configurable: true,
     value: false,
@@ -168,7 +185,7 @@ describe("developer workspace", () => {
     expect(callLane("background_memory")).toBe("Background memory");
     expect(callLane("recovery")).toBe("recovery");
   });
-  it("sends through canonical chat without overriding view, authority or conversation", async () => {
+  it("relays to the selected normal app tab without sending from the hidden developer client", async () => {
     render(
       <DeveloperWorkspace>
         <div>Existing app</div>
@@ -182,8 +199,10 @@ describe("developer workspace", () => {
     if (!form) throw new Error("Composer form missing");
     fireEvent.submit(form);
     await flush();
-    expect(mocks.send).toHaveBeenCalledExactlyOnceWith(
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.relay).toHaveBeenCalledExactlyOnceWith(
       "Open Calendar without changing anything",
+      "conversation-1",
     );
     expect(screen.getByText("Existing app")).toBeTruthy();
     expect(

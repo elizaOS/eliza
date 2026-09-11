@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { client } from "../../api/client";
 import type { ConversationMessage } from "../../api/client-types-chat";
@@ -24,6 +25,13 @@ import { useAppSelectorShallow } from "../../state/app-store";
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";
 import { useChatTurnStatus } from "../../state/ChatTurnStatusContext.hooks";
 import { useConversationMessages } from "../../state/ConversationMessagesContext.hooks";
+import {
+  getDeveloperTabState,
+  selectDeveloperAppTab,
+  sendToDeveloperAppTab,
+  stopDeveloperAppTurn,
+  subscribeDeveloperTabs,
+} from "../../state/developer-tab-bridge";
 import { deriveAgentReady } from "../../state/types";
 import { AddAccountDialog } from "../accounts/AddAccountDialog";
 import { MessageContent } from "../chat/MessageContent";
@@ -684,8 +692,6 @@ function DeveloperPanel({ section }: { section: "chat" | "settings" }) {
     activeConversationId: s.activeConversationId,
     conversations: s.conversations,
     status: s.agentStatus,
-    send: s.sendChatText,
-    stop: s.handleChatStop,
   }));
   const conversation = state.conversations.find(
     (item) => item.id === state.activeConversationId,
@@ -780,11 +786,15 @@ function DeveloperPanel({ section }: { section: "chat" | "settings" }) {
     telemetry.setOffset(0);
     telemetry.select(null);
     try {
-      await state.send(prompt);
-    } catch {
-      // error-policy:J4 Canonical chat retains recovery; keep the unsent draft.
+      await sendToDeveloperAppTab(prompt, state.activeConversationId);
+    } catch (error) {
+      // error-policy:J4 Relay failures stay visible; never replay a possibly effectful turn.
       if (!draftRef.current) setDraft(prompt);
-      setSendError("Couldn’t send. Check the connection and try again.");
+      setSendError(
+        error instanceof Error
+          ? error.message
+          : "Couldn’t send to the app tab. Check it before retrying.",
+      );
     } finally {
       setSending(false);
     }
@@ -1016,7 +1026,11 @@ function DeveloperPanel({ section }: { section: "chat" | "settings" }) {
               Enter to send · Shift+Enter for a new line
             </span>
             {busy ? (
-              <Button type="button" variant="outline" onClick={state.stop}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={stopDeveloperAppTurn}
+              >
                 Stop
               </Button>
             ) : (
@@ -1044,36 +1058,56 @@ export function DeveloperWorkspace({ children }: { children: ReactNode }) {
   const { activeTab } = useAppSelectorShallow((state) => ({
     activeTab: state.tab,
   }));
-  const [showApp, setShowApp] = useState(false);
+  const appTabs = useSyncExternalStore(
+    subscribeDeveloperTabs,
+    getDeveloperTabState,
+    getDeveloperTabState,
+  );
+  const selectedApp =
+    appTabs.peers.find((peer) => peer.id === appTabs.selectedId) ??
+    (appTabs.peers.length === 1 ? appTabs.peers[0] : undefined);
   const [section, setSection] = useState<"chat" | "settings">("chat");
   return (
-    <div className="eliza-developer-workspace" data-show-app={showApp}>
+    <div className="eliza-developer-workspace">
       <header className="developer-chat-header">
         <h1>Eliza</h1>
         <nav aria-label="Chat options">
-          <Button
-            size="sm"
-            variant="ghost"
-            aria-pressed={showApp}
-            onClick={() => {
-              setShowApp(!showApp);
-              setSection("chat");
-            }}
-          >
-            {showApp ? "Back to chat" : "Show app"}
-          </Button>
+          {appTabs.peers.length > 1 ? (
+            <NativeSelect
+              aria-label="App tab"
+              value={selectedApp?.id ?? ""}
+              onChange={(event) => selectDeveloperAppTab(event.target.value)}
+            >
+              <option value="">Select app tab</option>
+              {appTabs.peers.map((peer) => (
+                <option key={peer.id} value={peer.id}>
+                  {peer.path} · {peer.id.slice(-6)}
+                </option>
+              ))}
+            </NativeSelect>
+          ) : (
+            <span className="text-xs text-muted">
+              {selectedApp
+                ? `App tab: ${selectedApp.path}`
+                : "Waiting for app tab"}
+            </span>
+          )}
+          {!selectedApp && (
+            <a href="/chat" target="_blank" rel="noopener noreferrer">
+              Open app
+            </a>
+          )}
           <Button
             size="sm"
             variant="ghost"
             aria-pressed={section === "settings"}
             onClick={() => {
               setSection(section === "settings" ? "chat" : "settings");
-              setShowApp(false);
             }}
           >
             {section === "settings" ? "Back to chat" : "Settings"}
           </Button>
-          <a href={pathForTab(activeTab)}>Exit</a>
+          <a href={selectedApp?.path ?? pathForTab(activeTab)}>Exit</a>
         </nav>
       </header>
       <div className="developer-workspace-body">

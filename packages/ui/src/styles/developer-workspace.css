@@ -1,4 +1,4 @@
-/* A chat first; the existing app and diagnostics open only on request. */
+/* Developer chat and diagnostics; the real app runs in its own tab. */
 .eliza-developer-workspace {
   display: flex;
   flex-direction: column;
@@ -144,19 +144,6 @@
 }
 .eliza-developer-workspace :is(button, select, summary) {
   min-height: 44px;
-}
-.eliza-developer-workspace[data-show-app="true"] .developer-app-pane {
-  display: block;
-}
-.eliza-developer-workspace[data-show-app="true"] .developer-inspector-pane {
-  display: none;
-}
-@media (min-width: 1280px) {
-  .eliza-developer-workspace[data-show-app="true"] .developer-inspector-pane {
-    display: block;
-    flex: 0 0 480px;
-    border-left: 1px solid var(--border);
-  }
 }
 @media (max-width: 600px) {
   .developer-chat-header {
