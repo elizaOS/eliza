@@ -124,6 +124,7 @@ import {
 import { probeFullDiskAccess } from "../lifeops/fda-probe.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
+import { parseLocalDateKey } from "../lifeops/time.js";
 import { entityHasVerifiedMachineAuthBinding } from "./authenticated-entity-principal.js";
 import { handleFamilyWorkflowRoutes } from "./family-workflows.js";
 
@@ -557,8 +558,11 @@ function parseDateOnlyQuery(
   if (!normalized) {
     return null;
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
-    throw new LifeOpsServiceError(400, `${field} must be a YYYY-MM-DD date`);
+  if (parseLocalDateKey(normalized) === null) {
+    throw new LifeOpsServiceError(
+      400,
+      `${field} must be a valid YYYY-MM-DD calendar date`,
+    );
   }
   return normalized;
 }
