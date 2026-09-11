@@ -60,6 +60,15 @@ Overlapping stage durations must not be added. HTTP attempts, queue time and
 provider first-token timing are not measured here. Configured routing does not
 prove the provider used: recorded calls can show fallback providers.
 
+The reply footer labels the recorded duration **total** (or **so far** while
+active) and includes the number of model calls. Details separates **Total run
+time** from **Combined model time**, the sum of recorded call durations. These
+are different measurements: the run includes context, tools and orchestration;
+concurrent calls can overlap, so subtracting their sum does not reliably measure
+other work. Neither number measures time to first token or reply delivery.
+Cached input is shown separately as an included portion of input tokens.
+Missing, invalid or not-yet-loaded call measurements keep totals partial.
+
 ## Message trajectories
 
 The **Trajectories** tab lazily finds all runs for the reply through the existing

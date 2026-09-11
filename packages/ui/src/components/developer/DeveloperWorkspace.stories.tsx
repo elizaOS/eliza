@@ -17,7 +17,7 @@ const record = {
   startTime: 1000,
   endTime: 2800,
   durationMs: 1800,
-  llmCallCount: 2,
+  llmCallCount: 1,
   providerAccessCount: 0,
   totalPromptTokens: 20000,
   totalCompletionTokens: 70,
@@ -65,6 +65,50 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 export const Completed: Story = {};
+/** Timing/usage values from a recorded navigation; no private prompts or IDs. */
+export const NavigationTiming: Story = {
+  args: {
+    record: {
+      ...record,
+      llmCallCount: 3,
+      durationMs: 3427,
+      totalPromptTokens: 50855,
+      totalCompletionTokens: 510,
+    },
+    detail: {
+      ...detail,
+      llmCalls: [
+        {
+          ...detail.llmCalls[0],
+          id: "handler",
+          purpose: "response_handler",
+          promptTokens: 29431,
+          completionTokens: 390,
+          cacheReadInputTokens: 24576,
+          latencyMs: 989,
+        },
+        {
+          ...detail.llmCalls[0],
+          id: "planner",
+          purpose: "action_planner",
+          promptTokens: 11759,
+          completionTokens: 59,
+          cacheReadInputTokens: 6144,
+          latencyMs: 813,
+        },
+        {
+          ...detail.llmCalls[0],
+          id: "completion",
+          purpose: "response_handler",
+          promptTokens: 9665,
+          completionTokens: 61,
+          cacheReadInputTokens: 4096,
+          latencyMs: 490,
+        },
+      ],
+    },
+  },
+};
 /** Summary-only fixture; live expanded evidence is verified against the local app. */
 export const ChatReply: Story = {
   render: () => (
