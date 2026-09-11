@@ -903,7 +903,7 @@ describe("SharedRuntimeChatService", () => {
     expect(enforceOrgRateLimit).toHaveBeenCalledWith(agent.organization_id, "completions", {
       cacheOnly: true,
       executionCtx: h.executionCtx,
-      config: { windowMs: 60_000, maxRequests: 60 },
+      config: undefined,
     });
     expect(getInferenceAdmissionSnapshotCacheOnly).not.toHaveBeenCalled();
     expect(admitOrganizationInference).not.toHaveBeenCalled();
