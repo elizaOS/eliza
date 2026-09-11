@@ -38,10 +38,11 @@ async function prepared(
   remove = true,
   performDisconnect = true,
   withWriteCalendar = false,
+  withReadCalendar = false,
 ) {
   const f = googleHandoffFixture();
   f.grant.agentId = host.runtime.agentId;
-  f.review.readCalendars = [];
+  if (!withReadCalendar) f.review.readCalendars = [];
   if (!withWriteCalendar) f.review.writeCalendar = null;
   f.review.importedData = remove ? "remove_previous_account_imports" : "retain";
   const previousGrant = {
@@ -246,6 +247,29 @@ async function prepared(
         url,
       ),
   };
+}
+
+async function setReplacementSource(
+  p: Awaited<ReturnType<typeof prepared>>,
+  included: boolean,
+) {
+  const url = new URL("http://localhost");
+  const [source] = await p.calendar.listCalendars(url, {
+    mode: "local",
+    side: "owner",
+    grantId: p.f.grant.id,
+  });
+  if (!source) throw new Error("Replacement fixture calendar missing");
+  return p.calendar.setCalendarIncluded(url, {
+    provider: "google",
+    mode: "local",
+    side: "owner",
+    grantId: p.f.grant.id,
+    connectorAccountId: p.f.grant.connectorAccountId,
+    calendarId: source.calendarId,
+    includeInFeed: included,
+    expectedVersion: source.selectionVersion,
+  });
 }
 
 describe("handoff imported-data disposition", () => {
@@ -532,5 +556,83 @@ describe("handoff imported-data disposition", () => {
     ).rejects.toMatchObject({ code: "ACCOUNT_HANDOFF_CONFLICT" });
     expect(await approvals.read("later-pause-owner")).toEqual(manual);
     expect(await p.store.read(ready.operationId)).toEqual(ready);
+  });
+  it("requires the reviewed read source before removing the old account", async () => {
+    const p = await prepared(
+      "missing-read-source-owner",
+      true,
+      false,
+      false,
+      true,
+    );
+    await expect(
+      p.disconnect().apply(p.state.operationId, p.state.revision),
+    ).rejects.toMatchObject({ code: "ACCOUNT_HANDOFF_READ_SOURCES_CHANGED" });
+    expect(p.disconnectCalls).toEqual([]);
+    expect(await p.store.read(p.state.operationId)).toEqual(p.state);
+    await setReplacementSource(p, true);
+    try {
+      const disconnected = await p
+        .disconnect()
+        .apply(p.state.operationId, p.state.revision);
+      expect(disconnected.phase).toBe("disposing_imports");
+      expect(p.disconnectCalls).toHaveLength(1);
+    } finally {
+      await setReplacementSource(p, false);
+    }
+  });
+
+  it("blocks resume if an unreviewed replacement source becomes included", async () => {
+    const p = await prepared("extra-read-source-owner");
+    const ready = await p
+      .service()
+      .apply(p.state.operationId, p.state.revision);
+    const approval = await new ApprovalDispatchControlStore(host.runtime).read(
+      "extra-read-source-owner",
+    );
+    const control = await p.calendar.getLinkedCalendarControl();
+    await setReplacementSource(p, true);
+    try {
+      await expect(
+        p.resume().apply(ready.operationId, ready.revision),
+      ).rejects.toMatchObject({
+        code: "ACCOUNT_HANDOFF_READ_SOURCES_CHANGED",
+      });
+      expect(
+        await new ApprovalDispatchControlStore(host.runtime).read(
+          "extra-read-source-owner",
+        ),
+      ).toEqual(approval);
+      expect(await p.calendar.getLinkedCalendarControl()).toEqual(control);
+      expect(await p.store.read(ready.operationId)).toEqual(ready);
+    } finally {
+      await setReplacementSource(p, false);
+    }
+    expect(
+      (await p.resume().apply(ready.operationId, ready.revision)).phase,
+    ).toBe("completed");
+  });
+  it("does not treat failed provider discovery as an empty reviewed selection", async () => {
+    const p = await prepared("unavailable-read-source-owner", true, false);
+    const provider = await host.runtime.getServiceLoadPromise("google");
+    Object.assign(provider, {
+      listCalendars: async () => {
+        throw new Error("Synthetic calendar discovery outage");
+      },
+    });
+    try {
+      await expect(
+        p.disconnect().apply(p.state.operationId, p.state.revision),
+      ).rejects.toMatchObject({
+        code: "CALENDAR_SOURCES_UNAVAILABLE",
+      });
+      expect(p.disconnectCalls).toEqual([]);
+      expect(await p.store.read(p.state.operationId)).toEqual(p.state);
+    } finally {
+      Object.assign(provider, { listCalendars: p.f.google.listCalendars });
+    }
+    expect(
+      (await p.disconnect().apply(p.state.operationId, p.state.revision)).phase,
+    ).toBe("disposing_imports");
   });
 });

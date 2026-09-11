@@ -11,6 +11,7 @@ import type { IGoogleWorkspaceService } from "@elizaos/plugin-google-workspace";
 import { z } from "zod";
 import { verifyAccountHandoffGoogle } from "./account-handoff-google-verification.js";
 import { accountHandoffOperationKey } from "./account-handoff-operation-key.js";
+import { verifyAccountHandoffReadSources } from "./account-handoff-read-sources.js";
 import {
   type AccountHandoffRecord,
   AccountHandoffStore,
@@ -43,7 +44,9 @@ export class AccountHandoffResume {
     private readonly ownerEntityId: string,
     private readonly calendar: Pick<
       CalendarService,
-      "getLinkedCalendarControl" | "executeLinkedCalendarControl"
+      | "getLinkedCalendarControl"
+      | "executeLinkedCalendarControl"
+      | "listCalendars"
     >,
     private readonly accounts: Pick<
       LifeOpsGoogleService,
@@ -125,6 +128,11 @@ export class AccountHandoffResume {
       record.review,
       this.accounts,
       this.google,
+    );
+    await verifyAccountHandoffReadSources(
+      this.calendar,
+      this.requestUrl,
+      record.review,
     );
     await assertApprovalOwnership();
     const current = await this.calendar.getLinkedCalendarControl();

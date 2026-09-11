@@ -10,6 +10,7 @@ import type { CalendarService } from "@elizaos/plugin-calendar";
 import type { IGoogleWorkspaceService } from "@elizaos/plugin-google-workspace";
 import { z } from "zod";
 import { verifyAccountHandoffGoogle } from "./account-handoff-google-verification.js";
+import { verifyAccountHandoffReadSources } from "./account-handoff-read-sources.js";
 import {
   type AccountHandoffRecord,
   AccountHandoffStore,
@@ -24,7 +25,7 @@ export class AccountHandoffDisconnect {
     private readonly ownerEntityId: string,
     private readonly calendar: Pick<
       CalendarService,
-      "getLinkedCalendarControl"
+      "getLinkedCalendarControl" | "listCalendars"
     >,
     private readonly accounts: Pick<
       LifeOpsGoogleService,
@@ -110,6 +111,11 @@ export class AccountHandoffDisconnect {
       this.accounts,
       this.google,
     );
+    await verifyAccountHandoffReadSources(
+      this.calendar,
+      this.requestUrl,
+      record.review,
+    );
     await assertPaused();
     if (old) {
       await this.accounts.disconnectGoogleConnector(
@@ -141,6 +147,11 @@ export class AccountHandoffDisconnect {
       record.review,
       this.accounts,
       this.google,
+    );
+    await verifyAccountHandoffReadSources(
+      this.calendar,
+      this.requestUrl,
+      record.review,
     );
     await assertPaused();
     return this.store.advance({
