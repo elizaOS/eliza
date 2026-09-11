@@ -1,35 +1,18 @@
 /**
- * Dynamic prompt guides for rich UI output, split by cost and intent (#14324):
- * `uiWidgets` teaches the closed in-chat marker vocabulary ([CONFIG:pluginId],
- * [CHOICE], [FOLLOWUPS], [FORM], [CHECKLIST], [WORKFLOW]) in a hard-budgeted ~60 lines,
- * while `uiGenerative` carries the expensive generative-UI method (inline RFC
- * 6902 JSONL patches + the ~156-component catalog) behind narrower
- * dashboard/table/visualization relevance keywords. Both are `dynamic: true`
- * (excluded from default state composition) and DM/API-channel gated; the
- * heavier generative guide also stays ADMIN-gated. The split keeps everyday
- * widget guidance cheap and stops the JSONL method from steering the model when
- * the user only wants a plugin set up; `ui-widgets.budget.test.ts` enforces the
- * size ceiling.
+ * Supplies inline widget syntax and richer UI guides to the chat runtime.
+ * The always-on uiWidgetCapabilities provider lets Stage 1 render standalone
+ * controls directly. Context-selected uiWidgets adds full examples for planning;
+ * rendering a widget alone must not force another model call.
  *
- * Discovery: on the live v5 chat path, dynamic providers reach the planner
- * prompt when their contextGate matches the turn's Stage-1 contexts
- * (selectV5PlannerStateProviderNames → composeState onlyInclude) — the
- * request-by-name loop (PROVIDERS advertisement → Content.providers) is
- * currently unreachable there, so `description` is model-invisible on that
- * path (kept for the legacy composeState path and any future re-wiring).
- * `relevanceKeywords` is advisory metadata no selection engine consumes; the
- * *enforced* intent gate for the expensive catalog is the in-get check on
- * `uiGenerative` (the plugin-manager precedent): word-boundary keyword
- * matching over the message + recent history (bare substring matching fired
- * on "paragraph"/"comfortable"), OR-ed with a continuation signal — recent
- * JSONL patch output keeps the guide alive while the user iterates on a
- * rendered UI after the intent keywords scroll out of the history window.
- * `uiWidgets` is context-gated to the Stage-1 contexts its markers serve
- * (general/tasks/todos/productivity/connectors/settings). Gating it on the
- * old general-only context silenced [FORM] guidance on scheduling turns and
- * [CONFIG] guidance on connector setup turns. uiWidgets' constant text is
- * cacheable per-agent; uiGenerative's output varies per turn, so it must not
- * declare cacheStable.
+ * Both widget providers emit constant text on DM/API channels and are cacheable
+ * per agent. Their channel guard still applies when invoked directly.
+ * uiGenerative contains the larger JSONL/component catalog: it is ADMIN-gated
+ * and checks intent plus recent JSONL continuation inside get(), so its output
+ * varies by turn and must not declare cacheStable. Relevance keywords alone are
+ * advisory; live planner composition uses context gates.
+ *
+ * Marker grammar is shared with the UI parsers. Parser and routing tests guard
+ * direct replies, planning, and the separation from the generative catalog.
  */
 import {
   ChannelType,
@@ -139,16 +122,38 @@ is ordered; [CHECKLIST] is unordered.
 - Your own multi-step work → [CHECKLIST] (unordered) / [WORKFLOW] (ordered)
 - Custom dashboards/tables/charts → separate generative-UI guide; facts → text`;
 
-/**
- * Everyday marker guidance — cheap, always the first thing the model learns
- * about rich output, including response turns that bypass dynamic selection.
- */
+/** Small discovery hint for direct replies; full grammar loads only in planning. */
+export const UI_WIDGETS_CAPABILITIES = `## In-chat controls
+Render standalone controls directly in replyText with contexts=["simple"] and candidateActionNames=[]; no tool, discovery or planning call is needed just to display them. A request to display a configuration card alone does not ask for a live status check, connection, or settings change. Select task contexts only for actual tool work. The planner receives longer uiWidgets examples.
+Canonical inline syntax:
+- Plugin setup/status: [CONFIG:pluginId]. Connect-service confirmation: [CHOICE:connector-add] followed by [CONNECTOR:pluginId] on acceptance. Cards handle credentials; never request secrets or auth links in chat.
+- Choices: [CHOICE:scope] then one value=Label per line, then [/CHOICE]. Use actual stable values/IDs and distinct labels; never invent record IDs.
+- Optional follow-ups: [FOLLOWUPS] then kind:payload=Label per line, then [/FOLLOWUPS]. Kinds: reply (text), navigate (path), prompt (text).
+- Form: [FORM] then one JSON object {"title":"Title","fields":[{"name":"field","type":"text","label":"Label","required":true}]} then [/FORM]. Field types: text, number, select (options), checkbox, date, time, datetime. Use forms for 2+ missing fields; never secrets/API keys.
+- Checklist: [CHECKLIST] then {"items":[{"content":"Task","status":"pending"}]} then [/CHECKLIST]. Status: pending, in_progress, completed.
+- Workflow: [WORKFLOW] then {"steps":[{"label":"Step","status":"pending"}]} then [/WORKFLOW]. Status: pending, running, done, failed.
+Opening/choosing/submitting a control is not proof of a saved change; only tool results establish effects.`;
+
+export const uiWidgetCapabilitiesProvider: Provider = {
+  name: "uiWidgetCapabilities",
+  description:
+    "Compact syntax for direct chat controls; longer examples are supplied when planning.",
+  dynamic: true,
+  alwaysInResponseState: true,
+  contexts: ["general"],
+  cacheStable: true,
+  cacheScope: "agent",
+  get: async (_runtime: IAgentRuntime, message: Memory) => ({
+    text: isAllowedChannel(message) ? UI_WIDGETS_CAPABILITIES : "",
+  }),
+};
+
+/** Full marker grammar, selected by the existing planner context routing. */
 export const uiWidgetsProvider: Provider = {
   name: "uiWidgets",
   description:
     "How to render in-chat widgets: plugin config cards, forms with native date/time pickers, follow-up chips, checklists, and step pipelines",
   dynamic: true,
-  alwaysInResponseState: true,
   relevanceKeywords: getValidationKeywordTerms("provider.uiWidgets.relevance", {
     includeAllLocales: true,
   }),

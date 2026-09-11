@@ -207,8 +207,8 @@ describe("uiGenerative — catalog isolation (#14324)", () => {
       // by-name request path); deleting one dies silently otherwise.
       expect(provider.description?.length ?? 0).toBeGreaterThan(20);
     }
-    // The cheap marker guide must be available to normal chat response turns.
-    expect(uiWidgetsProvider.alwaysInResponseState).toBe(true);
+    // The full marker guide is selected for planning; Stage 1 gets a discovery hint.
+    expect(uiWidgetsProvider.alwaysInResponseState).toBeUndefined();
     expect(uiWidgetsProvider.roleGate).toBeUndefined();
     // The expensive custom-UI catalog stays admin-only.
     expect(uiGenerativeProvider.roleGate).toEqual({ minRole: "ADMIN" });

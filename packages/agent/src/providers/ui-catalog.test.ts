@@ -15,7 +15,11 @@ import {
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 
-import { uiGenerativeProvider, uiWidgetsProvider } from "./ui-catalog.ts";
+import {
+  uiGenerativeProvider,
+  uiWidgetCapabilitiesProvider,
+  uiWidgetsProvider,
+} from "./ui-catalog.ts";
 
 function makeRuntime(): IAgentRuntime {
   return {} as unknown as IAgentRuntime;
@@ -179,7 +183,7 @@ describe("relevance keyword separation", () => {
 
   it("keeps the compact marker guide available to ordinary response turns", () => {
     expect(uiWidgetsProvider.dynamic).toBe(true);
-    expect(uiWidgetsProvider.alwaysInResponseState).toBe(true);
+    expect(uiWidgetsProvider.alwaysInResponseState).toBeUndefined();
     expect(uiWidgetsProvider.cacheStable).toBe(true);
     expect(uiWidgetsProvider.cacheScope).toBe("agent");
     expect(uiWidgetsProvider.roleGate).toBeUndefined();
@@ -214,6 +218,36 @@ describe("relevance keyword separation", () => {
   it("both providers keep relevance keywords", () => {
     for (const provider of [uiWidgetsProvider, uiGenerativeProvider]) {
       expect(provider.relevanceKeywords?.length ?? 0).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("widget guide progressive discovery", () => {
+  it("supports direct controls without forcing another model call", async () => {
+    const hint = await uiWidgetCapabilitiesProvider.get(
+      makeRuntime(),
+      makeMessage(ChannelType.API, "hi"),
+      {} as State,
+    );
+    expect(hint.text).toContain("[CHOICE:scope]");
+    expect(hint.text).toContain('contexts=["simple"]');
+    expect(hint.text).toContain("never secrets/API keys");
+    expect(hint.text).toContain("[FORM]");
+    expect(hint.text).toContain("[CONFIG:pluginId]");
+    expect(hint.text?.length).toBeLessThan(2000);
+  });
+
+  it("keeps the discovery hint off connector group and feed channels", async () => {
+    for (const channel of [ChannelType.GROUP, ChannelType.FEED]) {
+      expect(
+        (
+          await uiWidgetCapabilitiesProvider.get(
+            makeRuntime(),
+            makeMessage(channel),
+            {} as State,
+          )
+        ).text,
+      ).toBe("");
     }
   });
 });
