@@ -215,7 +215,7 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 	name: "candidateActionNames",
 	description:
 		"An action mentioned only as prohibited, cancelled, or hypothetical is not requested work. Cancelling an unexecuted conversational intention needs no record mutation; cancelling a persisted record or scheduled job does. Determine which from the current request and evidence, retaining any lookup needed to resolve uncertainty. " +
-		"Likely UPPER_SNAKE_CASE action names covering all requested intents. Prefer available_actions; confident unlisted names ok. Sticky Notes -> NOTES; UI navigation and native-device operations -> VIEWS; calendar-event reads/writes -> CALENDAR. Opening a view and editing its data require both navigation and data actions, not just one. Life-management (goals/todos/reminders/routines) -> the matching AVAILABLE action (OWNER_REMINDERS, TRIGGER); hint, not a claim. Include only actions needed BEFORE this turn's reply. When replyText asks the user to choose or clarify before any tool can run, return [] and simple context; do not name the future update or other action awaiting their answer. Retain tools for independent work that can proceed now or a lookup genuinely needed to ask the question. Empty when no action is needed.",
+		"UPPER_SNAKE_CASE retrieval hints covering every requested intent. Prefer exact available child operations when the operation is known: NOTES_CREATE for creating a sticky note, NOTES_LIST for finding/reading notes, NOTES_UPDATE or NOTES_DELETE for changes; CALENDAR_NEXT_EVENT/FEED/SEARCH_EVENTS for the corresponding calendar reads, CALENDAR_CREATE_EVENT/UPDATE_EVENT/DELETE_EVENT for writes. These examples do not prove availability. Use an umbrella only when the operation is unresolved or no suitable child is known; the planner can discover other authorized operations as needed. UI navigation/native-device operations use VIEWS. Opening a view requires navigation, not a calendar or note-data action unless that data is also requested. Life-management uses the matching available OWNER_* or TRIGGER action. Include only work needed before this reply. For a clarification requiring no lookup or independently executable work, return [] with simple context; omit future actions awaiting the user's answer. Confident unlisted hints are allowed but are not execution or permission proof. Empty when no action is needed.",
 	descriptionCompressed:
 		"Likely UPPER_SNAKE_CASE actions needed before this reply. Notes data -> NOTES; navigation/native device -> VIEWS; calendar data -> CALENDAR. Open-and-edit requires both. A clarification that needs no lookup uses [] and simple context; do not name future tools awaiting the answer. Keep independently executable current work.",
 	priority: 50,
@@ -532,8 +532,8 @@ export const BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS: ReadonlyArray<ResponseHa
 	[
 		shouldRespondFieldEvaluator,
 		contextsFieldEvaluator,
-		intentsFieldEvaluator,
 		contextRequestsFieldEvaluator,
+		intentsFieldEvaluator,
 		completionContextFieldEvaluator,
 		replyTextFieldEvaluator,
 		replyEffectStatusFieldEvaluator,

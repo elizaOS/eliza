@@ -250,3 +250,5 @@ keep the classifier rather than selecting a fuzzy destination.
 Explicit VIEWS list/current/search operations remain reads even when the request mentions keeping a split or window visible; layout inference must not turn a read into a mutation or an avoidable planner repair round.
 
 Navigation handoffs retain the selected destination and every capability identity/description, while marking interaction parameter schemas as deferred. VIEWS action=list returns the complete fresh authorized catalog before interaction; navigation itself needs no interaction schema. The classifier, domain action schemas, catalog storage and execution gates remain complete.
+
+The same destination projection is used in pre-planner navigation context and `VIEWS show` promptData, explicitly opting into `promptDataMode: "replace-data"`. Keep raw result.data complete, retain navigation status and scoped actions, and expose the fresh VIEWS list read for deferred interaction parameters. Background review must use this declared model projection as well.

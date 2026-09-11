@@ -483,3 +483,5 @@ bun run --cwd packages/core typecheck     # tsgo --noEmit
 For agent-facing notes on layout, the public surface, and how to extend the runtime, see [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md).
 
 ---
+
+Experience retrieval orders candidates by semantic similarity, then quality for equal scores; confidence cannot promote a weaker match above a stronger one. The complete candidate set and embedding-failure fallback remain available. Incremental background extractors share provenance instructions once while retaining independent source sets and edited/deleted evidence contracts.

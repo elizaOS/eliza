@@ -109,3 +109,5 @@ bun run check:secrets
 ```
 
 Scans `packages/prompts/src/**/*.ts`, plugin prompt TS modules (paths matching `prompts/**/*.ts`, `workflow-prompts/**/*.ts`, etc.), and a few explicit files — see `scripts/check-secrets.js`.
+
+The default handler groups routing, reply, crisis and authority rules without repeating the same constraints. Literal recall from supplied evidence can answer directly; live records and effects still plan. Registered field contracts and source selection remain complete.

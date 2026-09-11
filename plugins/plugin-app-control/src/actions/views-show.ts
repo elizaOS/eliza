@@ -27,6 +27,10 @@ import {
 } from "./view-catalog-scope.js";
 import { matchViewCommand } from "./view-command-matcher.js";
 import { isRealtimeVoiceTurn } from "./view-delivery.js";
+import {
+	NAVIGATION_CAPABILITY_READ_INSTRUCTION,
+	navigationDestinationReference,
+} from "./view-navigation-context.js";
 import { resolveCanonicalViewTarget } from "./view-target.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
@@ -713,5 +717,17 @@ export async function runViewsShow({
 			navigation,
 			...(result.subview ? { subview: result.subview } : {}),
 		},
+		// Clients retain the complete catalog object in data. The model receives
+		// the same navigation evidence without eagerly reloading interaction
+		// schemas that were already deferred by the pre-planner handoff.
+		promptData: {
+			view: navigationDestinationReference(view),
+			navigation,
+			...(result.subview ? { subview: result.subview } : {}),
+			...(view.capabilities?.some(({ params }) => params !== undefined)
+				? { capabilityRead: NAVIGATION_CAPABILITY_READ_INSTRUCTION }
+				: {}),
+		},
+		promptDataMode: "replace-data",
 	};
 }

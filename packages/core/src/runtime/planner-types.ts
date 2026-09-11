@@ -210,6 +210,8 @@ export interface PlannerToolResult {
 	data?: Record<string, unknown>;
 	/** Model-bound projection of `data`; complete data remains on the result. */
 	promptData?: Record<string, unknown>;
+	/** Producer-declared complete model projection; absent preserves both fields. */
+	promptDataMode?: "replace-data";
 	error?: unknown;
 	/** Typed boundary provenance retained through planner retry exhaustion. */
 	failureProvenance?: ActionFailureProvenance;

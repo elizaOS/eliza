@@ -362,6 +362,16 @@ function buildPrompt(params: {
 			stable: true,
 		},
 	];
+	if (active.some((entry) => entry.progress !== undefined)) {
+		// This rule is shared by every incremental extractor. Keep revision IDs
+		// and selected source sets per extractor below; repeat neither the rule
+		// nor its speaker/provenance protections for each section.
+		stable.push({
+			content:
+				"Incremental evidence rules: each incremental section identifies its exact source set and edited/removed IDs. Existing facts and other evaluator records are reference context, not additional evidence. Attribute personal facts only to their actual speaker; another speaker's statement is not a fact about the triggering sender. Agent thoughts are not independent factual evidence. If a reference cannot be resolved from the evidence and existing records, do not invent a memory.\n\n",
+			stable: true,
+		});
+	}
 	const dynamic: PromptSegment[] = [];
 	const evidenceSets = new Map<
 		string,
@@ -449,7 +459,7 @@ function buildPrompt(params: {
 			}
 		}
 		dynamic.push({
-			content: `### ${evaluator.name}\n${entry.progress ? `Incremental evidence contract: process ${evidenceSelection}. Removed source IDs: ${stringifyForModel(entry.progress.removedMessageIds)}. Edited source IDs: ${stringifyForModel(entry.progress.changedMessageIds)}. Existing facts and other evaluator records are reference context, not additional evidence. Attribute personal facts only to their actual speaker; another speaker's statement is not a fact about the triggering sender. Agent thoughts are not independent factual evidence. If a reference cannot be resolved from the evidence and existing records, do not invent a memory.\n` : ""}${segments
+			content: `### ${evaluator.name}\n${entry.progress ? `Incremental evidence contract: process ${evidenceSelection}. Removed source IDs: ${stringifyForModel(entry.progress.removedMessageIds)}. Edited source IDs: ${stringifyForModel(entry.progress.changedMessageIds)}.\n` : ""}${segments
 				.filter((segment) => !segment.stable)
 				.map((segment) => segment.content)
 				.join("")}\n\n`,

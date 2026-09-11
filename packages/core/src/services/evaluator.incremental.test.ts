@@ -312,6 +312,9 @@ describe("managed incremental evaluators", () => {
 			JSON.parse(prompt.match(/evidence-set-1: (\[[\s\S]*?\])/)?.[1] ?? "null"),
 		).toEqual([current.id]);
 		expect(prompt.match(/OLDER_SHARED_EVIDENCE/g)).toHaveLength(1);
+		expect(
+			prompt.match(/Attribute personal facts only to their actual speaker/g),
+		).toHaveLength(1);
 	});
 
 	it("excludes replay-only evidence from a fresh extractor's prompt without changing the durable replay", async () => {

@@ -16,6 +16,10 @@ import {
 } from "@elizaos/core";
 import { setNavigationConstraint } from "../actions/navigation-execution.js";
 import { VIEW_CATALOG_SCOPE_CONTEXT } from "../actions/view-catalog-scope.js";
+import {
+	NAVIGATION_CAPABILITY_READ_INSTRUCTION,
+	navigationDestinationReference,
+} from "../actions/view-navigation-context.js";
 import { resolveCanonicalViewTarget } from "../actions/view-target.js";
 import { messageHasNoViewSurface } from "../actions/views.js";
 import { createViewsClient } from "../actions/views-client.js";
@@ -289,17 +293,7 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 		// Navigation needs the destination and capability identities, not every
 		// interaction's parameter schema. The catalog remains complete; VIEWS list
 		// rereads it through the normal authorization boundary before interaction.
-		const destinationReference = {
-			...selectedView,
-			...(selectedView.capabilities && {
-				capabilities: selectedView.capabilities.map(
-					({ params, ...capability }) =>
-						params === undefined
-							? capability
-							: { ...capability, paramsDeferred: true },
-				),
-			}),
-		};
+		const destinationReference = navigationDestinationReference(selectedView);
 		return {
 			requiresTool: true,
 			clearReply: true,
@@ -313,9 +307,7 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 				...(selectedView.capabilities?.some(
 					({ params }) => params !== undefined,
 				)
-					? [
-							"Capability entries marked paramsDeferred are an index, not callable parameter schemas. Before using one through VIEWS interact, read its complete current schema with VIEWS action=list. Navigation show/open needs no capability schema. Domain actions retain their own complete schemas; never invent interaction parameters.",
-						]
+					? [NAVIGATION_CAPABILITY_READ_INSTRUCTION]
 					: []),
 				"This is the selected destination, not the full catalog. For another destination or compound navigation, use VIEWS action=list or action=search to discover authorized views. Never infer that an unlisted view is unavailable.",
 			],

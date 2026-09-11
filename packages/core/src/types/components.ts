@@ -1041,13 +1041,14 @@ export interface ActionResult {
 	data?: ProviderDataRecord;
 
 	/**
-	 * Optional model-bound projection of `data`. When present, prompt renderers
-	 * use only this object and never additionally serialize `data`. Exact source
-	 * pages remain in `text`; progressive readers put model-safe `ReadView`
-	 * metadata here and keep native locators and complete bodies out of both
-	 * prompt projections and trajectories.
+	 * Supplemental model-bound metadata. By default both this and data remain
+	 * complete on the model wire. A producer may explicitly declare replace-data
+	 * only when this contains the complete model contract, including a fresh read
+	 * route for any deferred schema. Text and effect receipts are never replaced.
 	 */
 	promptData?: ProviderDataRecord;
+	/** Explicit producer opt-in; complete data stays in runtime state/recordings. */
+	promptDataMode?: "replace-data";
 
 	/** Error information if the action failed */
 	error?: string | Error;

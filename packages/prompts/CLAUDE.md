@@ -120,3 +120,5 @@ model-facing prompt needs rendered-contract evidence, not a live-model run.
 When prompt behavior changes, execute the affected behavior against a live model
 and review the full trajectory—including rendered prompt, raw output,
 validation, action selection, and result.
+
+The authored default handler consolidates duplicate rules and distinguishes literal supplied-history recall from current-record reads. Keep live-state/effect routing, owner-goal versus work-task routing, crisis deferral, untrusted-input boundaries, secret protection and explicit memory mutations intact when editing it. This does not change runtime context renderers or impose history limits.

@@ -366,12 +366,13 @@ describe("emotionFieldEvaluator", () => {
 });
 
 describe("BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS", () => {
-	it("registers exactly the eleven built-in evaluators in priority order", () => {
+	it("registers the built-in evaluators in priority order", () => {
 		expect(
 			BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS.map((e) => e.name),
 		).toEqual([
 			"shouldRespond",
 			"contexts",
+			"contextRequests",
 			"intents",
 			"completionContext",
 			"replyText",

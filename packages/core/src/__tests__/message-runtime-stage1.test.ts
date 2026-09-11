@@ -2638,19 +2638,21 @@ describe("runV5MessageRuntimeStage1", () => {
 		const systemContent = params.messages?.[0]?.content ?? "";
 		expect(systemContent).toContain("task: Plan this direct message.");
 		expect(systemContent).toContain(
-			"Never tell the user you lack a capability",
+			"never claim an available capability is missing",
 		);
 		expect(systemContent).toContain(
-			"available_contexts supplies routing domains but does not by itself prove a handler exists.",
+			"Available contexts are routing domains; only this turn's role-visible executable actions prove capabilities.",
 		);
 		expect(systemContent).toContain(
-			"A tool that errored on an earlier turn is not permanently unavailable",
+			"Earlier errors do not permanently disable a tool",
 		);
 		// Inverse grounding (matrix F15, poisoned-room receipt): the room's
 		// history contained an old planner exchange asking for "your mom's
 		// number", and stage-1 parroted the implied SMS surface. History must
 		// never create a capability the surface list doesn't.
-		expect(systemContent).toContain("History never creates a capability");
+		expect(systemContent).toContain(
+			"it never authorizes new work or proves current state",
+		);
 	});
 
 	it("keeps tool-like direct messages on the structured routing path", async () => {
@@ -8277,15 +8279,15 @@ describe("runV5MessageRuntimeStage1", () => {
 		};
 		const systemContent =
 			params.messages?.find((m) => m.role === "system")?.content ?? "";
+		expect(systemContent).toContain('Otherwise use contexts=["simple"]');
 		expect(systemContent).toContain(
-			'simple shortcut: choose contexts=["simple"]',
+			"Claim an investigation or effect happened only from a real result this turn",
 		);
+		expect(systemContent).toContain('("I scanned", "I\'m checking",');
+		expect(systemContent).toContain("Personal-crisis rule:");
 		expect(systemContent).toContain(
-			"Never write replyText that claims or implies an investigative action",
+			"qualified counsel or appropriate medical/safety help",
 		);
-		expect(systemContent).toContain('bare past-tense ("I scanned")');
-		expect(systemContent).toContain("personal-crisis situation");
-		expect(systemContent).toContain("recommend qualified professional help");
 	});
 
 	it("routes high-stakes direct-message crisis prompts through Stage 1 instead of the fast reply path", async () => {
@@ -8316,9 +8318,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		};
 		const systemContent =
 			params.messages?.find((m) => m.role === "system")?.content ?? "";
-		expect(systemContent).toContain("personal-crisis situation");
+		expect(systemContent).toContain("Personal-crisis rule:");
 		expect(systemContent).toContain(
-			"The deferral itself is the complete reply",
+			"The deferral is the complete simple reply",
 		);
 	});
 

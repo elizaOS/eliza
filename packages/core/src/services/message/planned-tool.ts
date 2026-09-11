@@ -875,6 +875,15 @@ export function collectPreviousActionResults(
 				...actionData,
 				actionName,
 			},
+			// Keep the producer's explicit model contract through background-task
+			// persistence. Losing it here re-inflates completed navigation receipts.
+			...(step.result.promptDataMode === "replace-data" &&
+			step.result.promptData
+				? {
+						promptData: { ...step.result.promptData, actionName },
+						promptDataMode: step.result.promptDataMode,
+					}
+				: {}),
 			...(values ? { values } : {}),
 			...(error !== undefined ? { error } : {}),
 			...(step.result.turnComplete !== undefined

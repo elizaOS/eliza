@@ -8595,7 +8595,14 @@ export function actionResultToPlannerToolResult(
 		effectReceipts: result.effectReceipts,
 		userFacingEffectReceiptIds: result.userFacingEffectReceiptIds,
 		data: Object.keys(data).length > 0 ? data : undefined,
-		promptData: result.promptData,
+		promptData:
+			result.promptDataMode === "replace-data" && result.promptData
+				? {
+						...result.promptData,
+						...(result.values ? { values: result.values } : {}),
+					}
+				: result.promptData,
+		promptDataMode: result.promptDataMode,
 		error: result.error,
 		failureProvenance: result.failureProvenance,
 		replyFailure: result.replyFailure,

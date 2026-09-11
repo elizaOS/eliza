@@ -174,7 +174,7 @@ visible.
 - Device-class inference budgets reject unsupported model-output requests before
   dispatch. They may bound queue wait as a resource policy, but must never lower
   `maxTokens` and pass a partial generation off as the requested result.
-- `ActionResult.promptData` may replace runtime-only `data` only as a declared,
+- `ActionResult.promptData` may replace runtime-only `data` only with explicit `promptDataMode: "replace-data"` as a declared,
   complete model schema; prompt serializers never emit both carriers. Context
   rendering preserves exact whitespace and complete runtime-event fields, and
   content-reference discovery uses cycle-safe complete traversal rather than
@@ -217,3 +217,5 @@ Progressive tool discovery must not eagerly refill unrelated context families af
 Stage-1 history may reference byte-identical earlier dialogue text in the same request. Keep every occurrence, source ID, role, speaker, metadata and ordering; prove complete reassembly. Selection and restoration use original full sources. Never normalize differing text or apply a history window. Role-filtered context catalogs omit cache and enforcement metadata while runtime authorization remains unchanged. Experience context contains query matches, not an unconditional high-quality list.
 
 Progressive planners load exact Stage-1 child operations without automatically loading their parents and siblings. Explicit parent hints and DISCOVER_TOOLS still load the complete authorized family; legacy budget fallback retains family expansion. Test compound hints and subsequent discovery before changing this boundary.
+
+Experience ranking prioritizes similarity before quality, preserving the candidate set and embedding-failure fallback; neither ranking nor a low cosine floor proves applicability. Incremental evaluators share common provenance instructions once, but keep revision IDs and exact evidence selections per extractor.
