@@ -9,6 +9,8 @@ import {
   resolveKnowledgeGraphService,
 } from "@elizaos/agent";
 import { getConnectorAccountManager, stringToUuid } from "@elizaos/core";
+import { CalendarService } from "@elizaos/plugin-calendar";
+import { LinkedCalendarRepository } from "@elizaos/plugin-calendar/service/linked-calendar-sync";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { googleHandoffFixture } from "../../test/helpers/handoff-google.js";
 import {
@@ -18,6 +20,7 @@ import {
 import { GoogleWorkspaceTestService } from "../../test/stubs/plugin-google-workspace.js";
 import { personalAssistantRoutesPlugin } from "../routes/plugin.js";
 import { AccountHandoffStore } from "./account-handoff-store.js";
+import { LifeOpsService } from "./service.js";
 
 // The package harness aliases UI modules to inert controls. Restore the real
 // client for this transport test; requests still cross the actual HTTP socket.
@@ -120,7 +123,8 @@ beforeAll(async () => {
     const path =
       pathname === "/api/lifeops/account-handoffs" ||
       pathname.endsWith("/active") ||
-      pathname.endsWith("/retirement-candidates")
+      pathname.endsWith("/retirement-candidates") ||
+      pathname.endsWith("/calendar-entries")
         ? pathname
         : pathname.endsWith("/cancel")
           ? "/api/lifeops/account-handoffs/:operationId/cancel"
@@ -309,4 +313,85 @@ it("returns exact owner retirement candidates through the app client and denies 
   });
   expect(malformed.status).toBe(400);
   expect(serverErrors).toEqual([]);
+});
+
+it("returns the selected account's real event details and explicit missing-event state through the client", async () => {
+  const calendar = await host.runtime.getServiceLoadPromise(
+    CalendarService.serviceType,
+  );
+  if (!(calendar instanceof CalendarService))
+    throw new Error("Fixture calendar unavailable");
+  const accounts = await new LifeOpsService(host.runtime, {
+    ownerEntityId: owner,
+  }).getGoogleConnectorAccounts(new URL(baseUrl), "owner");
+  const previousId = accounts.find(
+    (account) => account.grant?.id === choices.previousGrantId,
+  )?.grant?.connectorAccountId;
+  const replacementId = accounts.find(
+    (account) => account.grant?.id === choices.replacementGrantId,
+  )?.grant?.connectorAccountId;
+  if (!previousId || !replacementId)
+    throw new Error("Fixture account identity unavailable");
+  const created = await calendar.createCalendarEventMutation(new URL(baseUrl), {
+    calendarId: "primary",
+    title: "Synthetic school pickup",
+    description: "Owner review details",
+    startAt: "2026-10-01T19:00:00.000Z",
+    endAt: "2026-10-01T19:30:00.000Z",
+    timeZone: "America/New_York",
+    idempotencyKey: "handoff-calendar-inventory-event",
+  });
+  if (!created.event) throw new Error("Fixture event not persisted");
+  const links = new LinkedCalendarRepository(host.runtime);
+  const mapped = await links.create({
+    agentId: host.runtime.agentId,
+    localEventId: created.event.id,
+    connectorAccountId: previousId,
+    providerCalendarId: "old-family",
+    localRevision: 1,
+  });
+  const missing = await links.create({
+    agentId: host.runtime.agentId,
+    localEventId: "missing-local-event",
+    connectorAccountId: previousId,
+    providerCalendarId: "old-family",
+    localRevision: 1,
+  });
+  const foreign = await links.create({
+    agentId: host.runtime.agentId,
+    localEventId: "unrelated-local-event",
+    connectorAccountId: replacementId,
+    providerCalendarId: "new-family",
+    localRevision: 1,
+  });
+  const client = new ElizaClient(new URL(baseUrl).origin, token);
+  const result = await client.getLifeOpsHandoffCalendarEntries(
+    choices.previousGrantId,
+  );
+  expect(
+    result.entries.find((entry) => entry.link.id === mapped.id)?.event,
+  ).toMatchObject({
+    id: created.event.id,
+    title: "Synthetic school pickup",
+    startAt: "2026-10-01T19:00:00.000Z",
+    description: "Owner review details",
+  });
+  expect(
+    result.entries.find((entry) => entry.link.id === missing.id)?.event,
+  ).toBeNull();
+  expect(result.entries.some((entry) => entry.link.id === foreign.id)).toBe(
+    false,
+  );
+  const denied = await fetch(
+    `${baseUrl}/calendar-entries?${new URLSearchParams({ previousGrantId: choices.previousGrantId })}`,
+  );
+  expect(denied.status).toBe(401);
+  const unknown = await fetch(
+    `${baseUrl}/calendar-entries?previousGrantId=unavailable`,
+    { headers: { authorization: `Bearer ${token}` } },
+  );
+  expect(unknown.status).toBe(409);
+  expect(await calendar.getCalendarEventById(created.event.id)).toEqual(
+    created.event,
+  );
 });

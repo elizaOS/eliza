@@ -39,7 +39,8 @@ export async function handleAccountHandoffRoutes(
     }
     if (
       ctx.method === "GET" &&
-      ctx.pathname === `${base}/retirement-candidates`
+      (ctx.pathname === `${base}/retirement-candidates` ||
+        ctx.pathname === `${base}/calendar-entries`)
     ) {
       const grantId = z
         .string()
@@ -59,9 +60,12 @@ export async function handleAccountHandoffRoutes(
         calendar,
         ctx.url,
       );
-      ctx.json(ctx.res, {
-        candidates: await service.retirementCandidates(grantId),
-      });
+      ctx.json(
+        ctx.res,
+        ctx.pathname === `${base}/calendar-entries`
+          ? { entries: await service.calendarEntries(grantId) }
+          : { candidates: await service.retirementCandidates(grantId) },
+      );
       return true;
     }
     if (ctx.method === "POST" && ctx.pathname === base) {

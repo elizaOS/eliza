@@ -6,6 +6,10 @@
 import { createApprovalQueue } from "@elizaos/agent";
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import type { CalendarService } from "@elizaos/plugin-calendar";
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsLinkedCalendarLink,
+} from "@elizaos/shared";
 import { z } from "zod";
 import {
   type AccountHandoffRetirementCandidate,
@@ -60,6 +64,12 @@ export const accountHandoffChoicesSchema = accountHandoffGoogleChoicesSchema
 
 export type AccountHandoffChoices = z.infer<typeof accountHandoffChoicesSchema>;
 
+export interface AccountHandoffCalendarEntry {
+  link: LifeOpsLinkedCalendarLink;
+  /** Null marks a missing local event; it must not appear as an empty healthy event. */
+  event: LifeOpsCalendarEvent | null;
+}
+
 export class AccountHandoffReviewService {
   constructor(
     private readonly runtime: IAgentRuntime,
@@ -74,6 +84,7 @@ export class AccountHandoffReviewService {
       | "listLinkedCalendarEvents"
       | "setCalendarIncluded"
       | "getLinkedCalendarControl"
+      | "getCalendarEventById"
     >,
     private readonly requestUrl: URL,
   ) {}
@@ -81,30 +92,8 @@ export class AccountHandoffReviewService {
   async retirementCandidates(
     previousGrantId: string,
   ): Promise<AccountHandoffRetirementCandidate[]> {
-    const grantId = identity.parse(previousGrantId);
-    const accounts = await this.accounts.getGoogleConnectorAccounts(
-      this.requestUrl,
-      "owner",
-    );
-    const matches = accounts.filter((account) => account.grant?.id === grantId);
-    const account = matches[0];
-    if (
-      matches.length !== 1 ||
-      !account?.connected ||
-      account.mode !== "local" ||
-      account.side !== "owner" ||
-      account.grant?.agentId !== this.runtime.agentId ||
-      account.grant.provider !== "google" ||
-      account.grant.side !== "owner" ||
-      account.grant.mode !== "local"
-    ) {
-      throw new ElizaError(
-        "Choose an available owner Google account before reviewing its approvals.",
-        {
-          code: "ACCOUNT_HANDOFF_GOOGLE_REVIEW_CHANGED",
-        },
-      );
-    }
+    const account = await this.previousAccount(previousGrantId);
+    const grantId = account.id;
     const queue = createApprovalQueue(this.runtime, {
       agentId: this.runtime.agentId,
     });
@@ -122,6 +111,52 @@ export class AccountHandoffReviewService {
       reason: request.reason,
       expiresAt: request.expiresAt.toISOString(),
     }));
+  }
+
+  async calendarEntries(
+    previousGrantId: string,
+  ): Promise<AccountHandoffCalendarEntry[]> {
+    const account = await this.previousAccount(previousGrantId);
+    const links = await this.calendar.listLinkedCalendarEvents();
+    return Promise.all(
+      links
+        .filter(
+          (link) => link.connectorAccountId === account.connectorAccountId,
+        )
+        .map(async (link) => ({
+          link,
+          event: await this.calendar.getCalendarEventById(link.localEventId),
+        })),
+    );
+  }
+
+  private async previousAccount(previousGrantId: string) {
+    const grantId = identity.parse(previousGrantId);
+    const accounts = await this.accounts.getGoogleConnectorAccounts(
+      this.requestUrl,
+      "owner",
+    );
+    const matches = accounts.filter((account) => account.grant?.id === grantId);
+    const account = matches[0];
+    if (
+      matches.length !== 1 ||
+      !account?.connected ||
+      account.mode !== "local" ||
+      account.side !== "owner" ||
+      account.grant?.agentId !== this.runtime.agentId ||
+      account.grant.provider !== "google" ||
+      !account.grant.connectorAccountId ||
+      account.grant.side !== "owner" ||
+      account.grant.mode !== "local"
+    ) {
+      throw new ElizaError(
+        "Choose an available owner Google account before reviewing the account switch.",
+        {
+          code: "ACCOUNT_HANDOFF_GOOGLE_REVIEW_CHANGED",
+        },
+      );
+    }
+    return account.grant;
   }
 
   async create(input: z.infer<typeof accountHandoffChoicesSchema>) {
