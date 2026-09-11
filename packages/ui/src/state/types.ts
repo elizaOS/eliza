@@ -778,6 +778,8 @@ export interface AppActions {
       conversationId?: string | null;
       images?: ImageAttachment[];
       metadata?: Record<string, unknown>;
+      /** Stable identity for a programmatically relayed logical turn. */
+      clientMessageId?: string;
     },
   ) => Promise<void>;
 
