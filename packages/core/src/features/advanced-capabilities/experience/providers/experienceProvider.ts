@@ -1,10 +1,9 @@
 /**
  * The experience provider for the experience capability: injects the most relevant
- * past learnings into turn context. Merges semantically matched experiences
- * (queried by the current message text) with the highest-quality top experiences,
+ * past learnings into turn context. Queries experiences for the authored request,
  * dedupes by id and renders every match into a
  * `[RELEVANT EXPERIENCES]` block. No EXPERIENCE service, a too-short message, or no
- * matches yields empty output; errors fail soft to empty text.
+ * matches yields empty output; retrieval errors are explicitly unavailable.
  */
 
 import { logger } from "../../../../logger.ts";
@@ -60,16 +59,9 @@ export const experienceProvider: Provider = {
 				minImportance: 0.5,
 				includeRelated: true,
 			});
-			const topExperiences = await experienceService.listExperiences({
-				minConfidence: 0.7,
-				minImportance: 0.7,
-			});
 			const relevantExperiences = [
 				...new Map(
-					[...semanticExperiences, ...topExperiences].map((experience) => [
-						experience.id,
-						experience,
-					]),
+					semanticExperiences.map((experience) => [experience.id, experience]),
 				).values(),
 			];
 
@@ -92,6 +84,13 @@ export const experienceProvider: Provider = {
 
 			return {
 				text: contextText,
+				discoveryText: [
+					"Past-experience candidates, not current app state. Read experienceProvider for complete learnings and provenance when an earlier situation applies:",
+					...relevantExperiences.map(
+						(experience) =>
+							`${experience.id} [${experience.domain}]: ${experience.context}`,
+					),
+				].join("\n"),
 				data: {
 					experiences: relevantExperiences,
 					count: relevantExperiences.length,

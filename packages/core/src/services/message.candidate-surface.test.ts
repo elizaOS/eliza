@@ -126,7 +126,7 @@ describe("budgeted model-selected action surface", () => {
 				contexts: ["general", "documents"],
 				deferUnselectedContexts: true,
 			}).map((a) => a.name),
-		).toEqual(["NOTES", "NOTES_LIST"]);
+		).toEqual(["NOTES_LIST"]);
 		// Legacy budget recovery has no discovery guarantee and retains fallback.
 		expect(
 			collectBudgetedStageOneCandidateActions({

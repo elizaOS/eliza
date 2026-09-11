@@ -866,6 +866,10 @@ describe("canonical evaluation of grounded internal receipts", () => {
 				ModelType.ACTION_PLANNER,
 			]);
 			expect(result.finalMessage).toBe(reply);
+			// The final-scope planner must see the actual verified answer before
+			// deciding to reuse it; a CONTINUE event drops messageToUser.
+			const releaseCall = h.useModel.mock.calls.at(-1)?.[1];
+			expect(JSON.stringify(releaseCall?.messages)).toContain(reply);
 			expect(result.evaluator).toMatchObject({
 				decision: "FINISH",
 				success: true,

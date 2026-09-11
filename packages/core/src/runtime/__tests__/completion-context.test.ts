@@ -136,6 +136,37 @@ function trajectory(context: ContextObject): PlannerTrajectory {
 }
 
 describe("source-bound completion relevance", () => {
+	it("selects the exact repeated occurrence from its original full source", () => {
+		const context = historyContext();
+		const first = completionContextSources(context).sources[0].event;
+		first.segment.content +=
+			" Preserve this exact standing constraint. ".repeat(40);
+		const repeated = structuredClone(first);
+		repeated.id = "history:repeated";
+		repeated.segment.id = repeated.id;
+		context.events.push(repeated);
+		const before = JSON.stringify(context);
+		const input = renderMessageHandlerModelInput(
+			{ character: { name: "Eliza" } },
+			context,
+		);
+		expect(String(input.messages[1].content)).toContain(
+			"[completion_source=h6; same_text_as=h1]",
+		);
+		const chosen = {
+			...selection(context),
+			relevantSourceIds: ["h6"],
+			constraintSourceIds: [],
+			referentSourceIds: [],
+			pendingIntentSourceIds: [],
+		};
+		const focused = selectCompletionContext(withSelection(context, chosen));
+		expect(
+			completionContextSources(focused.context).sources.map((s) => s.event),
+		).toEqual([repeated]);
+		expect(JSON.stringify(context)).toBe(before);
+		expect(focused.context.events).toContainEqual(repeated);
+	});
 	it("labels complete Stage-1 source text and carries model-selected IDs through parsing", () => {
 		const context = historyContext();
 		const before = JSON.stringify(context);
@@ -432,6 +463,88 @@ describe("source-bound completion relevance", () => {
 });
 
 describe("planner source selection and restoration", () => {
+	it.each([false, true])(
+		"keeps reply-only synthesis scoped and restores original evidence without effects (restore=%s)",
+		async (restore) => {
+			const full = withSelection(historyContext());
+			const before = JSON.stringify(full);
+			const captured: Record<string, unknown>[] = [];
+			const execute = vi.fn();
+			const evaluate = vi.fn();
+			const result = await runPlannerLoop({
+				context: full,
+				postToolReplySeed: {
+					toolCall: {
+						id: "settled",
+						name: "NOTES_READ",
+						params: { id: "note-1" },
+					},
+					result: {
+						success: true,
+						modelReplyRequired: true,
+						text: "Exact note body: violet, previously amber.",
+					},
+				},
+				runtime: {
+					useModel: async (_type, params) => {
+						captured.push(params);
+						return {
+							text: JSON.stringify(
+								restore && captured.length === 1
+									? {
+											toolCalls: [
+												{
+													name: "RESTORE_CONTEXT",
+													params: {
+														scope: "history",
+														reason: "Need original weather evidence",
+													},
+												},
+												{
+													name: "NOTES_CREATE",
+													params: { title: "Must never execute" },
+												},
+											],
+											messageToUser: "",
+											completed: false,
+										}
+									: {
+											toolCalls: [],
+											messageToUser: "The mug is violet, previously amber.",
+											completed: true,
+										},
+							),
+						};
+					},
+				},
+				executeToolCall: execute,
+				evaluate,
+			});
+			expect(captured).toHaveLength(restore ? 2 : 1);
+			const first = JSON.stringify(captured[0].messages);
+			expect(first).not.toContain("Old completed unrelated weather request.");
+			expect(first).toContain(
+				"Correction: keep the exact title  Picnic!?  with its spacing.",
+			);
+			expect(first).toContain("calendar read is still pending");
+			expect(first).toContain("permission denied for shared room");
+			expect(first).toContain("Exact note body: violet, previously amber.");
+			expect(first).toContain("Reply-only context access");
+			for (const call of captured) expect(call.tools).toBeUndefined();
+			if (restore) {
+				expect(JSON.stringify(captured[1].messages)).toContain(
+					"Old completed unrelated weather request.",
+				);
+				expect(JSON.stringify(captured[1].messages)).toContain(
+					"Exact note body: violet, previously amber.",
+				);
+			}
+			expect(execute).not.toHaveBeenCalled();
+			expect(evaluate).not.toHaveBeenCalled();
+			expect(result.finalMessage).toBe("The mug is violet, previously amber.");
+			expect(JSON.stringify(full)).toBe(before);
+		},
+	);
 	it("references large query diagnostics losslessly and restores them without executing accompanying tools", async () => {
 		const full = historyContext();
 		const tokens = Array.from({ length: 1000 }, (_, i) => `query-token-${i}`);

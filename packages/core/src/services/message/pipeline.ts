@@ -1043,8 +1043,8 @@ export async function runV5MessageRuntimeStage1(
 					deterministicPlanSelection.name,
 				)
 			: undefined;
-		// Stage 1 has already interpreted the request. Load its complete action
-		// families first, while keeping every other authorized family explicitly
+		// Stage 1 has already interpreted the request. Load its exact operations
+		// (or complete families for parent hints), keeping other operations explicitly
 		// discoverable. Only an entirely unresolved selection retains the full
 		// surface; an unknown hint must not discard the known families. A reply
 		// sent to planning only to verify an applied claim, with no action hints,

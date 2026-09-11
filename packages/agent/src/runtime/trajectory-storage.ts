@@ -16,7 +16,7 @@ import {
   type JsonValue,
   omitUnvalidatedProviderSpans,
   parseTrajectorySemanticStages,
-  projectModelCallDiagnosticValue,
+  projectProtectedModelCallValue,
   projectToolDiagnosticValue,
   type RecordedStage,
   recordedStageToSemanticStage,
@@ -842,7 +842,7 @@ export function projectLlmCallDiagnostics(
   rawParams: Record<string, unknown>,
 ): Record<string, unknown> {
   const redactDiagnosticText = composeToolDiagnosticRedactor(runtime);
-  const projectedParams = projectModelCallDiagnosticValue(
+  const projectedParams = projectProtectedModelCallValue(
     rawParams,
     redactDiagnosticText,
   );

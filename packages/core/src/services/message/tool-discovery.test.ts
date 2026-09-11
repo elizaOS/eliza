@@ -7,6 +7,7 @@ import type { Action } from "../../types/components";
 import type { Memory } from "../../types/memory";
 import type { IAgentRuntime } from "../../types/runtime";
 import { collectV5PlannerCandidateActions } from "./action-surface";
+import { collectBudgetedStageOneCandidateActions } from "./planned-tool";
 import {
 	appendDiscoveredPlannerTools,
 	createPlannerToolDiscoveryAction,
@@ -16,6 +17,58 @@ const runtime = {} as IAgentRuntime;
 const message = {} as Memory;
 
 describe("planner tool discovery", () => {
+	it("starts with exact child hints, retaining other operations through explicit discovery", async () => {
+		const actions: Action[] = [
+			{
+				name: "NOTES",
+				description: "Note operations",
+				subActions: ["NOTES_CREATE", "NOTES_LIST", "NOTES_DELETE"],
+			},
+			{ name: "NOTES_CREATE", description: "Create a note" },
+			{ name: "NOTES_LIST", description: "Read notes" },
+			{ name: "NOTES_DELETE", description: "Delete a note" },
+		];
+		const initial = collectBudgetedStageOneCandidateActions({
+			actions,
+			candidateActions: ["NOTES_CREATE"],
+			contexts: [],
+			deferUnselectedContexts: true,
+		});
+		expect(initial.map((a) => a.name)).toEqual(["NOTES_CREATE"]);
+		const compound = collectBudgetedStageOneCandidateActions({
+			actions,
+			candidateActions: ["NOTES_CREATE", "NOTES_LIST"],
+			contexts: [],
+			deferUnselectedContexts: true,
+		});
+		expect(compound.map((a) => a.name)).toEqual(["NOTES_CREATE", "NOTES_LIST"]);
+		let loaded: Action[] = [];
+		const discovery = createPlannerToolDiscoveryAction(actions, (next) => {
+			loaded = next;
+		});
+		expect(discovery.description).toContain("NOTES_LIST");
+		const result = await discovery.handler?.(runtime, message, undefined, {
+			parameters: { names: ["NOTES_LIST"] },
+		});
+		expect(result?.success).toBe(true);
+		expect(loaded).toEqual(actions);
+		// Legacy callers and explicit parent requests retain complete families.
+		expect(
+			collectBudgetedStageOneCandidateActions({
+				actions,
+				candidateActions: ["NOTES"],
+				contexts: [],
+				deferUnselectedContexts: true,
+			}),
+		).toEqual(actions);
+		expect(
+			collectBudgetedStageOneCandidateActions({
+				actions,
+				candidateActions: ["NOTES_CREATE"],
+				contexts: [],
+			}),
+		).toEqual(actions);
+	});
 	it.each(["ADMIN", "USER"] as const)(
 		"re-admits a requested domain with canonical gates for %s",
 		async (role) => {

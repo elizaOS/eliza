@@ -164,6 +164,7 @@ export {
 	composeToolDiagnosticRedactor,
 	projectCompleteToolValueForModel,
 	projectModelCallDiagnosticValue,
+	projectProtectedModelCallValue,
 	projectToolDiagnosticArgs,
 	projectToolDiagnosticValue,
 	TOOL_DIAGNOSTIC_MASK,

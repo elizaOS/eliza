@@ -164,11 +164,9 @@ describe("formatAvailableContextsForPrompt", () => {
 		const block = formatAvailableContextsForPrompt(FIXTURE_CONTEXTS);
 		expect(block).toContain("- general [label=General]: Normal conversation.");
 		expect(block).toContain(
-			"- calendar [label=Calendar; role>=ADMIN]: Manage calendar events.",
+			"- calendar [label=Calendar]: Manage calendar events.",
 		);
-		expect(block).toContain(
-			"- memory [label=Memory; role>=USER]: Long-term agent memory.",
-		);
+		expect(block).toContain("- memory [label=Memory]: Long-term agent memory.");
 	});
 
 	it("falls back to a placeholder when no contexts are registered", () => {

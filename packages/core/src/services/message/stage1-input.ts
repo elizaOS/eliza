@@ -27,6 +27,7 @@ import {
 	resolveStage1SenderRole,
 } from "./addressing.js";
 import { createV5MessageContextObject } from "./context-assembly.js";
+import { labelHistorySources } from "./history-wire.js";
 import {
 	ambientTurnProviderExclusions,
 	composeResponseState,
@@ -57,6 +58,8 @@ export function formatAvailableContextsForPrompt(
 	return contexts
 		.map((definition) => {
 			const description = definition.description?.trim();
+			// Authorization has already filtered this catalog. Cache policy and
+			// enforcement metadata do not help the model select a task context.
 			const metadata = [
 				definition.label && definition.label !== definition.id
 					? `label=${definition.label}`
@@ -69,13 +72,9 @@ export function formatAvailableContextsForPrompt(
 					: definition.parents?.length
 						? `parents=${definition.parents.join(",")}`
 						: undefined,
-				definition.roleGate
-					? formatRoleGateForPrompt(definition.roleGate)
-					: undefined,
 				definition.sensitivity
 					? `sensitivity=${definition.sensitivity}`
 					: undefined,
-				definition.cacheScope ? `cache=${definition.cacheScope}` : undefined,
 			].filter(Boolean);
 			const suffix = metadata.length > 0 ? ` [${metadata.join("; ")}]` : "";
 			return description
@@ -208,17 +207,12 @@ export function renderMessageHandlerModelInput(
 	const remainingDynamicSegments = dynamicSegments.filter(
 		(segment) => segment.id !== "current-turn-boundary",
 	);
-	const priorDialogueSegments = remainingDynamicSegments
-		.filter((segment) => segment.label?.startsWith("prior_message:") === true)
-		.map((segment) => {
-			const sourceId = segment.id && completionSourceIds.get(segment.id);
-			return sourceId
-				? {
-						...segment,
-						content: `[completion_source=${sourceId}]\n${segment.content}`,
-					}
-				: segment;
-		});
+	const priorDialogueSegments = labelHistorySources(
+		remainingDynamicSegments.filter(
+			(segment) => segment.label?.startsWith("prior_message:") === true,
+		),
+		completionSourceIds,
+	);
 	const dynamicProviderSegments = remainingDynamicSegments.filter(
 		(segment) => segment.label?.startsWith("provider:") === true,
 	);

@@ -656,6 +656,7 @@ async function runPlannerLoopIterations(
 				"Continue the remaining planned work from the recorded results without repeating settled operations. " +
 				"If a genuine blocker prevents completion, report that stopped outcome with success=false. " +
 				"Only an explicit final planner declaration can supersede the pending scope. " +
+				`The evaluator's already verified reply is: ${JSON.stringify(evaluator.messageToUser)}. ` +
 				"If no operation remains and you agree with the recorded evaluator FINISH, return only REPLY with final scope and no text; the already verified evaluator reply will be delivered. Do not regenerate narration or replay a tool just to release scope.",
 		});
 		pendingScopeRejectedFinish = { output: evaluator, iteration };
@@ -836,6 +837,10 @@ async function runPlannerLoopIterations(
 					// output exactly once, including when a non-compliant provider invents
 					// a tool call despite receiving no tools.
 					tools: synthesizingRequiredModelReply ? undefined : params.tools,
+					// Removing effect tools must not undo Stage-1 source selection.
+					// This reply-only round can read original context through the
+					// intercepted RESTORE_CONTEXT protocol, never execute an action.
+					allowReplyContextProjection: synthesizingRequiredModelReply,
 					// Force a tool call ONLY while the turn's "use a real tool" requirement
 					// is still unmet. Once a non-terminal tool has executed, relax to
 					// "auto" so the planner is free to synthesize a terminal REPLY from
@@ -3122,6 +3127,7 @@ async function dispatchPlannerModelCall(params: {
 	modelType?: TextGenerationModelType;
 	provider?: string;
 	tools?: ToolDefinition[];
+	allowReplyContextProjection?: boolean;
 	toolChoice?: ToolChoice;
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
@@ -3154,9 +3160,26 @@ async function dispatchPlannerModelCall(params: {
 				: resolveOptimizedPlannerTemplate(params.runtime),
 		codingMode: params.trajectory.codingMode === true,
 		runtime: params.runtime,
-		allowSourceSelection: Boolean(params.tools?.length),
+		allowSourceSelection:
+			Boolean(params.tools?.length) ||
+			params.allowReplyContextProjection === true,
 	};
 	const renderedInput = renderPlannerModelInput(renderArgs);
+	if (
+		params.allowReplyContextProjection &&
+		renderedInput.sourceSelectionApplied
+	) {
+		// No native effects are exposed in this round. The existing JSON planner
+		// schema can still request a read, intercepted before synthesis consumes
+		// the output. Missing context therefore never requires action replay.
+		const instruction = {
+			content:
+				'Reply-only context access: if original dialogue or deferred provider details are needed, return toolCalls=[{"name":"RESTORE_CONTEXT","params":{"scope":"history","reason":"what is missing"}}], using scope=providers or scope=full when needed, with an empty messageToUser and completed=false. No other action can execute in this round. Otherwise answer from the supplied evidence and settled receipts with toolCalls=[] and completed=true.',
+			stable: false,
+		};
+		renderedInput.messages.push({ role: "user", content: instruction.content });
+		renderedInput.promptSegments.push(instruction);
+	}
 	const prefixHashes = computePrefixHashes(renderedInput.promptSegments);
 	const cachePrefixHashes = computePrefixHashes(renderedInput.cacheKeySegments);
 	const prefixHash =
@@ -3483,7 +3506,7 @@ async function callPlanner(
 		const readProviders = scope === "providers" || scope === "full";
 		if (
 			params.trajectory.codingMode ||
-			!params.tools?.length ||
+			(!params.tools?.length && !params.allowReplyContextProjection) ||
 			reads.length !== 1 ||
 			(!readHistory && !readProviders) ||
 			(!(

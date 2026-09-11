@@ -618,7 +618,7 @@ export function collectBudgetedStageOneCandidateActions(args: {
 	actions: readonly Action[];
 	candidateActions: readonly string[];
 	contexts: readonly AgentContext[];
-	/** The progressive lane offers other contexts through discovery instead. */
+	/** The progressive lane offers unselected operations through discovery. */
 	deferUnselectedContexts?: boolean;
 }): Action[] {
 	if (args.candidateActions.length === 0) return [];
@@ -641,12 +641,11 @@ export function collectBudgetedStageOneCandidateActions(args: {
 		}
 	}
 	if (selectedNames.size === 0) return [];
-	// A candidate child is a routing hint, not a complete plan. Keep its
-	// authorized umbrella available so a compound request can use another
-	// operation after the first result (e.g. navigate, then read the page).
-	// Use declared relationships, never guessed name prefixes. Only parents
-	// already admitted by the execution gates may enter this surface.
-	for (const parent of args.actions) {
+	// Legacy budget fallback has no discovery guarantee and keeps the whole
+	// family. Progressive planning keeps exact child hints; unselected siblings
+	// and their parent stay in DISCOVER_TOOLS, including for compound follow-ups.
+	// An explicitly selected parent still expands its complete authorized family.
+	for (const parent of args.deferUnselectedContexts ? [] : args.actions) {
 		if (
 			parent.subActions?.some((child) =>
 				selectedNames.has(

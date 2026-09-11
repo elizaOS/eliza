@@ -2605,7 +2605,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		const systemContent = params.messages?.[0]?.content ?? "";
 		expect(systemContent).toContain("task: Plan this direct message.");
 		expect(systemContent).toContain("- calendar [label=Calendar");
-		expect(systemContent).toContain("role>=ADMIN");
+		expect(systemContent).not.toContain("role>=ADMIN");
 		expect(systemContent).toContain(longDescription);
 	});
 

@@ -51,6 +51,36 @@ function runtime() {
 }
 
 describe("dynamic skill current-turn relevance", () => {
+  it("does not activate Apple Notes from an ambiguous native Notes request", async () => {
+    let instructionReads = 0;
+    const host = {
+      getService: () => ({
+        getLoadedSkills: () => [
+          {
+            slug: "apple-notes",
+            name: "Apple Notes",
+            description:
+              "Use for notes. Create notes, edit notes and open notes in Apple Notes using the CLI.",
+          },
+        ],
+        getSkillInstructions: () => {
+          instructionReads++;
+          return { body: "RUN THE EXTERNAL NOTES CLI" };
+        },
+      }),
+    };
+    const result = await createDynamicSkillProvider().get(
+      host as never,
+      { content: { text: "open notes" } } as never,
+      {} as never,
+    );
+    expect(result.text).toContain("not activated");
+    expect(result.text).toContain("apple-notes");
+    expect(result.text).not.toContain("RUN THE EXTERNAL");
+    expect(instructionReads).toBe(0);
+    expect(result.discoveryText).toContain("apple-notes");
+    expect(result.discoveryText).not.toContain("CLI");
+  });
   it("does not activate a skill from stale recent messages", async () => {
     const provider = createDynamicSkillProvider();
     const result = await provider.get(
