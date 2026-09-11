@@ -391,6 +391,37 @@ it("returns the selected account's real event details and explicit missing-event
     { headers: { authorization: `Bearer ${token}` } },
   );
   expect(unknown.status).toBe(409);
+  await links.markLocalDirty({
+    agentId: host.runtime.agentId,
+    localEventId: created.event.id,
+    localRevision: 2,
+  });
+  const staleReview = await fetch(baseUrl, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      ...choices,
+      operationId: "stale-calendar-review",
+      calendarLinks: result.entries.map(({ link }) => ({
+        linkId: link.id,
+        expectedLocalRevision: link.localRevision,
+        expectedUpdatedAt: link.updatedAt,
+        disposition: "retain_local",
+      })),
+    }),
+  });
+  expect(staleReview.status).toBe(409);
+  expect(JSON.stringify(await staleReview.json())).toContain(
+    "ACCOUNT_HANDOFF_GOOGLE_REVIEW_CHANGED",
+  );
+  expect(
+    await new AccountHandoffStore(host.runtime, owner).read(
+      "stale-calendar-review",
+    ),
+  ).toBeNull();
   expect(await calendar.getCalendarEventById(created.event.id)).toEqual(
     created.event,
   );

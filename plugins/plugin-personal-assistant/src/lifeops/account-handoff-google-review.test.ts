@@ -58,7 +58,12 @@ function fixture() {
     readCalendarIds: ["family"],
     writeCalendarId: "family",
     calendarLinks: [
-      { linkId: "local-link", disposition: "copy_to_replacement" as const },
+      {
+        linkId: "local-link",
+        expectedUpdatedAt: link.updatedAt,
+        expectedLocalRevision: link.localRevision,
+        disposition: "copy_to_replacement" as const,
+      },
     ],
   };
   let reads = 0;
@@ -98,7 +103,17 @@ describe("server-derived Google handoff review", () => {
     });
     f.link.localRevision = 10;
     f.link.updatedAt = "2026-09-10T13:00:00Z";
-    const refreshed = await f.run();
+    await expect(f.run()).rejects.toMatchObject({
+      code: "ACCOUNT_HANDOFF_GOOGLE_REVIEW_CHANGED",
+    });
+    const refreshed = await f.run({
+      ...f.choices,
+      calendarLinks: f.choices.calendarLinks.map((choice) => ({
+        ...choice,
+        expectedLocalRevision: f.link.localRevision,
+        expectedUpdatedAt: f.link.updatedAt,
+      })),
+    });
     expect(refreshed.calendarLinks[0]).toMatchObject({
       expectedLocalRevision: 10,
       expectedUpdatedAt: f.link.updatedAt,
@@ -164,6 +179,31 @@ describe("server-derived Google handoff review", () => {
       code: "ACCOUNT_HANDOFF_GOOGLE_REVIEW_CHANGED",
     });
   });
+  it("requires a fresh review when an event changes after the owner loaded its choices", async () => {
+    const f = fixture();
+    f.link.localRevision++;
+    await expect(f.run()).rejects.toMatchObject({
+      code: "ACCOUNT_HANDOFF_GOOGLE_REVIEW_CHANGED",
+    });
+    f.link.localRevision--;
+    f.link.updatedAt = "2026-09-11T00:00:00Z";
+    await expect(f.run()).rejects.toMatchObject({
+      code: "ACCOUNT_HANDOFF_GOOGLE_REVIEW_CHANGED",
+    });
+    const refreshed = {
+      ...f.choices,
+      calendarLinks: f.choices.calendarLinks.map((choice) => ({
+        ...choice,
+        expectedUpdatedAt: f.link.updatedAt,
+        expectedLocalRevision: f.link.localRevision,
+      })),
+    };
+    expect((await f.run(refreshed)).calendarLinks[0]).toMatchObject({
+      expectedUpdatedAt: f.link.updatedAt,
+      expectedLocalRevision: f.link.localRevision,
+    });
+  });
+
   it("allows retaining local events with read-only access but refuses copying without a destination", async () => {
     const f = fixture();
     f.f.grant.capabilities = ["google.calendar.read"];
@@ -172,7 +212,12 @@ describe("server-derived Google handoff review", () => {
       ...f.choices,
       writeCalendarId: null,
       calendarLinks: [
-        { linkId: f.link.id, disposition: "retain_local" as const },
+        {
+          linkId: f.link.id,
+          expectedUpdatedAt: f.link.updatedAt,
+          expectedLocalRevision: f.link.localRevision,
+          disposition: "retain_local" as const,
+        },
       ],
     };
     const reviewed = await f.run(input);
@@ -182,7 +227,12 @@ describe("server-derived Google handoff review", () => {
       f.run({
         ...input,
         calendarLinks: [
-          { linkId: f.link.id, disposition: "copy_to_replacement" },
+          {
+            linkId: f.link.id,
+            expectedUpdatedAt: f.link.updatedAt,
+            expectedLocalRevision: f.link.localRevision,
+            disposition: "copy_to_replacement",
+          },
         ],
       }),
     ).rejects.toMatchObject({

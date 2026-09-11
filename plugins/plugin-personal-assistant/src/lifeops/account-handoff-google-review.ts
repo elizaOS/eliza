@@ -26,6 +26,8 @@ export const accountHandoffGoogleChoicesSchema = z
         z
           .object({
             linkId: id,
+            expectedUpdatedAt: z.iso.datetime({ offset: true }),
+            expectedLocalRevision: z.number().int().nonnegative(),
             disposition: z.enum(["retain_local", "copy_to_replacement"]),
           })
           .strict(),
@@ -153,6 +155,8 @@ export async function deriveAccountHandoffGoogleReview(
     const link = ownedLinks.find((candidate) => candidate.id === choice.linkId);
     if (
       !link ||
+      link.updatedAt !== choice.expectedUpdatedAt ||
+      link.localRevision !== choice.expectedLocalRevision ||
       (choice.disposition === "copy_to_replacement" &&
         choices.writeCalendarId === null)
     )

@@ -31,7 +31,6 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 | dialog | alert, button, card | 2 | distinct-domain-compositions |
 | form | button, input, textarea | 2 | distinct-domain-compositions |
 | panel | button, input | 2 | distinct-domain-compositions |
-| panel | button, select | 2 | distinct-domain-compositions |
 | row | button, card, statusDot | 2 | distinct-domain-compositions |
 
 ## Reviewed clusters
@@ -119,13 +118,6 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 - `ReleaseNotesSection` in `packages/ui/src/components/release-center/sections.tsx:241`
 - Fingerprint: `sha256:ec039280f3434f35b9ebaf6933da18f63de754b08530e467b553a1bdc32717e9`
 - Decision: **distinct-domain-compositions**. Search, connector setup, and release-note panels have different interaction and state contracts.
-
-### panel: button + select
-
-- `AccountTransitionPanel` in `plugins/plugin-personal-assistant/src/components/lifeops-connections/AccountTransitionPanel.tsx:20`
-- `CalendarSyncPanel` in `plugins/plugin-personal-assistant/src/components/lifeops-connections/CalendarSyncPanel.tsx:29`
-- Fingerprint: `sha256:0cd196c2c4eb3517103033095de852eb26436efdcd0c120d5e0a98d41e27f0d2`
-- Decision: **distinct-domain-compositions**. AccountTransitionPanel reviews Google grant health and retires a selected account across mail and calendar. CalendarSyncPanel owns the agent-wide calendar destination, revision-checked pause/resume, and reconciliation of pending dispatch receipts. Their state transitions and server authorities differ; both already compose the canonical Button and Select controls.
 
 ### row: button + card + statusDot
 

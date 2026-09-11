@@ -42,6 +42,7 @@ import {
 import { AccountTransitionPanel } from "./AccountTransitionPanel.js";
 import { defaultLifeOpsConnectionsAdapter } from "./adapter.js";
 import { CalendarSyncPanel } from "./CalendarSyncPanel.js";
+import type { AccountHandoffAdapter } from "./handoff-adapter.js";
 import type {
   LifeOpsConnectionsAdapter,
   LifeOpsConnectionsSnapshot,
@@ -314,10 +315,12 @@ function permissionPresentation(permission: PermissionState): {
 
 export interface LifeOpsConnectionsViewProps {
   adapter?: LifeOpsConnectionsAdapter;
+  handoffAdapter?: AccountHandoffAdapter;
 }
 
 export function LifeOpsConnectionsView({
   adapter = defaultLifeOpsConnectionsAdapter,
+  handoffAdapter,
 }: LifeOpsConnectionsViewProps) {
   const [snapshot, setSnapshot] = useState<LifeOpsConnectionsSnapshot | null>(
     null,
@@ -669,7 +672,7 @@ export function LifeOpsConnectionsView({
         {snapshot ? (
           <AccountTransitionPanel
             snapshot={snapshot}
-            adapter={adapter}
+            api={handoffAdapter}
             refresh={() => refresh(false)}
           />
         ) : null}

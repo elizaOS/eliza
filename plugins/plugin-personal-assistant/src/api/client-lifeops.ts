@@ -111,6 +111,7 @@ import type {
   AccountHandoffChoices,
 } from "../lifeops/account-handoff-review.js";
 import type { AccountHandoffRecord } from "../lifeops/account-handoff-store.js";
+import type { FamilyEmailOptions } from "../lifeops/family-workflows/runtime.js";
 import type { FullDiskAccessProbeResult } from "../lifeops/fda-probe.js";
 import type {
   LifeOpsScheduleInspection,
@@ -146,6 +147,7 @@ export type {
 // `declare module "@elizaos/ui"` merge below only covers root-barrel
 // importers, so they re-type their client view with a Pick of this interface.
 export interface LifeOpsElizaClientMethods {
+  getLifeOpsFamilyEmailOptions(): Promise<{ options: FamilyEmailOptions }>;
   getLifeOpsHandoffRetirementCandidates(
     previousGrantId: string,
   ): Promise<{ candidates: AccountHandoffRetirementCandidate[] }>;
@@ -510,6 +512,12 @@ declare module "@elizaos/ui/api/client-base" {
 
 const lifeOpsClientPrototype = ElizaClient.prototype as ElizaClient &
   LifeOpsElizaClientMethods;
+
+lifeOpsClientPrototype.getLifeOpsFamilyEmailOptions = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/lifeops/family-workflows/email-options");
+};
 
 lifeOpsClientPrototype.getLifeOpsHandoffRetirementCandidates = async function (
   this: ElizaClient,

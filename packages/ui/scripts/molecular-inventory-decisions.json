@@ -115,15 +115,6 @@
         "plugins/plugin-personal-assistant/src/components/family-operations/PacketDraftEditor.tsx:PacketDraftEditor"
       ],
       "semanticFingerprint": "sha256:173f0f898a7384e9d1d418903e0385ae1fd1845d178512241aeed07f627e216f"
-    },
-    "panel:button+select": {
-      "disposition": "distinct-domain-compositions",
-      "rationale": "AccountTransitionPanel reviews Google grant health and retires a selected account across mail and calendar. CalendarSyncPanel owns the agent-wide calendar destination, revision-checked pause/resume, and reconciliation of pending dispatch receipts. Their state transitions and server authorities differ; both already compose the canonical Button and Select controls.",
-      "memberComponentIds": [
-        "plugins/plugin-personal-assistant/src/components/lifeops-connections/AccountTransitionPanel.tsx:AccountTransitionPanel",
-        "plugins/plugin-personal-assistant/src/components/lifeops-connections/CalendarSyncPanel.tsx:CalendarSyncPanel"
-      ],
-      "semanticFingerprint": "sha256:0cd196c2c4eb3517103033095de852eb26436efdcd0c120d5e0a98d41e27f0d2"
     }
   }
 }
