@@ -328,6 +328,28 @@ Native transport is covered by unit tests under `__tests__/unit/acp-native-trans
 
 PRs welcome. Run `npm run typecheck && npm test` before opening.
 
+
+### Explicit live Pi linked-account qualification
+
+The `pi-linked-account` option in the existing **Live Smoke** workflow uses the
+repository `OPENROUTER_API_KEY` only inside its selected job. Dispatch the reviewed
+branch with `suite=pi-linked-account` and `pi_source_sha=<exact dispatch-ref SHA>`.
+It selects the explicit model `openai/gpt-4.1-mini` through a disposable encrypted
+OpenRouter account and the production account selector, then confirms the Pi ACP
+provider/model before requesting one response-only turn. Missing credentials,
+unconfirmed routing, tool use, failed inference, or incomplete cleanup fail the
+job. It does not qualify UI enrollment or multi-account failover.
+
+The successful `pi-linked-account-<SHA>` artifact contains the complete benign prompt and
+response, their hashes, source hashes, and cleanup result. Account storage paths,
+credentials, and raw provider diagnostics are excluded. Failed checks retain only
+the fixed failure phase and source SHA. The executable versions
+are pinned to Pi `0.84.2`, pi-acp `0.0.33`, and pi-ai `0.84.4` for this check.
+The underlying command is `bun run test:e2e:pi-linked-account`; it requires the
+explicit `RUN_LIVE_PI_LINKED_ACCOUNT=1`, reviewed `LIVE_PI_SOURCE_SHA`, and the
+workflow's verified `LIVE_PI_TOOL_VERSIONS` metadata. Ordinary tests never arm it.
+
+
 ## License
 
 MIT. See [LICENSE](./LICENSE).
