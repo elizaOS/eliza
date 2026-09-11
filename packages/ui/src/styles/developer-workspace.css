@@ -362,6 +362,12 @@
   font-size: 12px;
   line-height: 1.6;
 }
+/* Diagnostics already owns scrolling. Its unconstrained text blocks must not
+   intercept wheel/touch gestures in a second, non-scrollable container. */
+.developer-reply-inspector .developer-diagnostics-scroll .developer-raw-text {
+  overflow: visible;
+  overscroll-behavior: auto;
+}
 .developer-evidence-footer {
   flex-shrink: 0;
   display: flex;
