@@ -160,13 +160,15 @@ function seedFact(
   return id;
 }
 
-function makeMessage(): Memory {
+function makeMessage(overrides: { text?: string } = {}): Memory {
   return {
     id: crypto.randomUUID() as UUID,
     entityId: USER_ID,
     agentId: AGENT_ID,
     roomId: ROOM_ID,
-    content: { text: "remember this: my favorite color is blue" },
+    content: {
+      text: overrides.text ?? "remember this: my favorite color is blue",
+    },
     createdAt: Date.now(),
   } as Memory;
 }
@@ -1473,6 +1475,47 @@ describe("MEMORY uuid validation", () => {
 });
 
 describe("MEMORY op:delete by query", () => {
+  it("falls back to the user's own message when the planner sends confirm alone (live regression)", async () => {
+    // Live 2026-09-11: "forget my favorite tea" dispatched `{"confirm": true}`;
+    // the missing-target failure cost an evaluator round and a second planner
+    // call before the query was quoted. The message text is the contract's
+    // query, and the every-term match still guards the delete.
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "nubs's favorite tea is darjeeling",
+      entityId: USER_ID,
+    });
+    seedFact(rows, { text: "nubs lives on a boat", entityId: USER_ID });
+
+    const result = await runAction(
+      runtime,
+      makeMessage({ text: "forget my favorite tea" }),
+      { action: "delete", confirm: true },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.userFacingText).toBe(
+      "Forgot: nubs's favorite tea is darjeeling.",
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].memory.content.text).toBe("nubs lives on a boat");
+  });
+
+  it("still refuses a target-less delete when the message carries no content terms", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, { text: "nubs lives on a boat", entityId: USER_ID });
+
+    const result = await runAction(
+      runtime,
+      makeMessage({ text: "forget that" }),
+      { action: "delete", confirm: true },
+    );
+
+    expect(result.success).toBe(false);
+    expect((result.data as { error: string }).error).toBe("MEMORY_MISSING_ID");
+    expect(rows).toHaveLength(1);
+  });
+
   it("resolves the fact by text and deletes every duplicate row of it", async () => {
     // Reflection dedup failures store the same fact several times (live: six
     // copies of "nubs plays guitar" across two sibling entity ids). One
@@ -2117,6 +2160,7 @@ describe("promoted MEMORY_UPDATE / MEMORY_DELETE target selection", () => {
     operation: "update" | "delete",
     runtime: IAgentRuntime,
     parameters: Record<string, unknown>,
+    message: Memory = makeMessage(),
   ): Promise<ActionResult> {
     const name = `MEMORY_${operation.toUpperCase()}`;
     const action = children.find((candidate) => candidate.name === name);
@@ -2126,7 +2170,7 @@ describe("promoted MEMORY_UPDATE / MEMORY_DELETE target selection", () => {
     if (!validated.valid || !validated.args) {
       throw new Error(`Promoted mutation arguments rejected for ${name}`);
     }
-    return (await action.handler(runtime, makeMessage(), undefined, {
+    return (await action.handler(runtime, message, undefined, {
       parameters: validated.args,
     } as never)) as ActionResult;
   }
@@ -2189,13 +2233,20 @@ describe("promoted MEMORY_UPDATE / MEMORY_DELETE target selection", () => {
           });
           const before = structuredClone(rows);
 
-          const result = await runPromotedMutation(operation, runtime, {
-            confirm: true,
-            ...(operation === "update"
-              ? { text: "My favorite tea is oolong." }
-              : {}),
-            ...parameters,
-          });
+          // A delete may fall back to the user's own words, so the message
+          // here carries none: the handler's own rejection is what is pinned.
+          const result = await runPromotedMutation(
+            operation,
+            runtime,
+            {
+              confirm: true,
+              ...(operation === "update"
+                ? { text: "My favorite tea is oolong." }
+                : {}),
+              ...parameters,
+            },
+            makeMessage({ text: "forget that" }),
+          );
 
           expect(result.success).toBe(false);
           expect(result.data).toMatchObject({ error: "MEMORY_MISSING_ID" });
@@ -2275,6 +2326,15 @@ describe("MEMORY results own a verified user-facing line", () => {
     ).toBe("Saved: the user prefers green tea without sugar.");
     expect(memoryUserFacingLine("Updated", "user's dog is named Rex.")).toBe(
       "Updated: your dog is named Rex.",
+    );
+    // Live 2026-09-10: the planner stored "My favorite tea is genmaicha.";
+    // the possessive flips to second person, a first-person "I" keeps its
+    // capital because the verb would not agree after a rewrite.
+    expect(memoryUserFacingLine("Saved", "My favorite tea is genmaicha.")).toBe(
+      "Saved: your favorite tea is genmaicha.",
+    );
+    expect(memoryUserFacingLine("Saved", "I like my coffee black")).toBe(
+      "Saved: I like your coffee black.",
     );
     expect(memoryUserFacingLine("Forgot", "   ")).toBe("Forgot.");
   });

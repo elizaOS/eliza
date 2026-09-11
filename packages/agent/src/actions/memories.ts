@@ -161,12 +161,17 @@ const SEARCH_QUERY_STOP_WORDS = new Set([
  */
 export function memoryUserFacingLine(verb: string, factText: string): string {
   const cleaned = toWellFormedUnicode(factText).replace(/\s+/g, " ").trim();
-  // Only possessives are rewritten ("user's" → "your"); subject rewrites would
-  // need verb agreement ("the user prefers" → "you prefer") and are left as-is.
+  // Only possessives are rewritten ("user's" / "my" → "your"); subject rewrites
+  // would need verb agreement ("the user prefers" → "you prefer") and are left
+  // as-is, so a first-person "I" keeps its capital.
   const spoken = cleaned
     .replace(/^(?:the )?user'?s\b/i, "your")
-    .replace(/\bthe user'?s\b/gi, "your");
-  const body = spoken ? spoken.charAt(0).toLowerCase() + spoken.slice(1) : "";
+    .replace(/\bthe user'?s\b/gi, "your")
+    .replace(/\bmy\b/gi, "your");
+  const body =
+    spoken && !/^I\b/.test(spoken)
+      ? spoken.charAt(0).toLowerCase() + spoken.slice(1)
+      : spoken;
   const terminated = /[.!?]$/.test(body) ? body : `${body}.`;
   return body ? `${verb}: ${terminated}` : `${verb}.`;
 }
@@ -1252,6 +1257,23 @@ async function doUpdate(
   };
 }
 
+/**
+ * The planner sometimes dispatches a forget with `confirm` alone ("forget my
+ * favorite tea" → `{"confirm": true}`, live 2026-09-11), which cost a failed
+ * step, an evaluator round and a second planner call (~3 s) before it quoted
+ * the message. The query contract is the user's own words from this message,
+ * so use them directly when the message carries content terms; the same
+ * every-term match and ambiguity refusal still guard the delete.
+ */
+function deleteQueryFromMessage(message: Memory): string | undefined {
+  const text = message.content.text?.trim();
+  if (!text || scoreQueryTerms(text).length === 0) return undefined;
+  logger.info(
+    "[MEMORY] delete carried no query; using the user's message text",
+  );
+  return text;
+}
+
 async function doDelete(
   runtime: IAgentRuntime,
   message: Memory,
@@ -1260,7 +1282,7 @@ async function doDelete(
   const memoryParam = parseUuidParam(params.memoryId, "memoryId");
   if (!memoryParam.ok) return memoryParam.result;
   const memoryId = memoryParam.id;
-  const query = params.query?.trim();
+  const query = params.query?.trim() || deleteQueryFromMessage(message);
   if (!memoryId && !query) {
     return fail(MEMORY_MISSING_TARGET_MESSAGE, "MEMORY_MISSING_ID");
   }
@@ -1581,7 +1603,7 @@ export const memoryAction: Action = {
     {
       name: "text",
       description:
-        "create: REQUIRED — the content to remember, as a complete sentence (never leave it empty and never put it in query). update: complete replacement text for the existing record; preserve every unrelated fact. When correcting saved knowledge, search the subject and reconcile all affected records before reporting completion.",
+        'create: REQUIRED — the content to remember, as a complete third-person sentence about the user ("The user\'s favorite tea is matcha." — not "my", not their name; never leave it empty and never put it in query). update: complete replacement text for the existing record; preserve every unrelated fact. When correcting saved knowledge, search the subject and reconcile all affected records before reporting completion.',
       required: false,
       requiredForSubactions: ["create", "update"],
       schema: { type: "string" as const },
