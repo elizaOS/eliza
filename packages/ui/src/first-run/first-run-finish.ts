@@ -20,6 +20,7 @@ import {
   isDirectCloudSharedAgentBase,
 } from "../api/client-cloud";
 import type { CloudCompatAgent } from "../api/client-types-cloud";
+import type { DedicatedActivationConfirmationRequester } from "../api/dedicated-activation-confirmation";
 import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
 import { type AgentPluginLike, getAgentPlugin } from "../bridge/native-plugins";
 import {
@@ -136,6 +137,7 @@ export interface FirstRunFinishPorts {
   onInteractiveLoginComplete?: () => void;
   /** Visible first-run quote/consent seam; absent callers stay read-only. */
   requestDedicatedAdoptionConfirmation?: DedicatedAdoptionConfirmationRequester;
+  requestDedicatedActivationConfirmation?: DedicatedActivationConfirmationRequester;
 }
 
 type FirstRunRuntimeStateKey =
@@ -832,6 +834,12 @@ export async function listOrAutoProvisionCloudAgent(
     authToken,
     signal: ports.signal,
     onProgress: (status, detail) => ports.onStatus?.(detail ?? status, status),
+    ...(ports.requestDedicatedActivationConfirmation
+      ? {
+          requestDedicatedActivationConfirmation:
+            ports.requestDedicatedActivationConfirmation,
+        }
+      : {}),
     ...(ports.requestDedicatedAdoptionConfirmation
       ? {
           requestDedicatedAdoptionConfirmation:

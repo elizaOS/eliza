@@ -509,6 +509,15 @@ describe("AppModeEntryRoute — rowless personal entry", () => {
             success: true,
             data: {
               quoteId: ACTIVATION_QUOTE_ID,
+              sourceAgentId: PERSONAL_ID,
+              hourlyRateUsd: 0.01,
+              dailyRateUsd: 0.24,
+              minimumBalanceUsd: 0.72,
+              minimumRunwayDays: 3,
+              balanceUsd: 10,
+              deficitUsd: 0,
+              requiresConfirmation: true,
+              action: "activate_dedicated",
               canActivate: true,
               activation:
                 activation === "fresh"
@@ -641,22 +650,17 @@ describe("AppModeEntryRoute — rowless personal entry", () => {
     expect(assignedUrls).toEqual([]);
   });
 
-  it("fresh browser, clean account → authoritative binding persists and chat mounts without a document reload", async () => {
+  it("fresh browser, clean account → quote review in /join without starting compute or completing onboarding", async () => {
     signIn();
     stubNetwork({ agents: agentsOk([]), ...personalDedicatedOk("fresh") });
     renderEntry();
 
-    expect(await screen.findByTestId("agent-app")).toBeTruthy();
-    expect(loadPersistedActiveServer()).toMatchObject({
-      id: `cloud:${PERSONAL_ID}`,
-      apiBase: DEDICATED_BASE,
-      cloudRuntimeAgentId: DEDICATED_ID,
-      cloudRuntime: "dedicated",
-    });
+    expect(await screen.findByTestId("join-page")).toBeTruthy();
+    expect(loadPersistedActiveServer()).toBeNull();
     expect(
       personalDedicatedRequests().map((line) => line.split(" ")[0]),
-    ).toEqual(["GET", "POST", "POST"]);
-    expect(screen.queryByTestId("join-page")).toBeNull();
+    ).toEqual(["GET"]);
+    expect(screen.queryByTestId("agent-app")).toBeNull();
     expect(assignedUrls).toEqual([]);
   });
 

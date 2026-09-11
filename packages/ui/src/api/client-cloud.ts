@@ -67,6 +67,11 @@ import type {
   SandboxStartResponse,
   SandboxWindowInfo,
 } from "./client-types";
+import {
+  confirmDedicatedActivation,
+  type DedicatedActivationConfirmationRequester,
+  parseDedicatedActivationConfirmationQuote,
+} from "./dedicated-activation-confirmation";
 import { desktopHttpTransportForUrl } from "./desktop-http-transport";
 import {
   DEFAULT_DIRECT_CLOUD_APP_BASE_URL,
@@ -2040,6 +2045,8 @@ declare module "./client-base" {
        * only after rendering the server quote and receiving a visible choice.
        */
       requestDedicatedAdoptionConfirmation?: DedicatedAdoptionConfirmationRequester;
+      /** Visible quote review; silent startup must not start billable compute. */
+      requestDedicatedActivationConfirmation?: DedicatedActivationConfirmationRequester;
       pollIntervalMs?: number;
       timeoutMs?: number;
     }): Promise<{
@@ -5177,6 +5184,18 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
   }
 
   if (activationPostRequired) {
+    const reviewedQuote = parseDedicatedActivationConfirmationQuote(
+      quote ?? {},
+      personal.personalElizaId,
+    );
+    options.onProgress?.("confirmation", "Review Dedicated hosting…");
+    await confirmDedicatedActivation(
+      reviewedQuote,
+      options.requestDedicatedActivationConfirmation,
+      options.signal,
+    );
+    throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+    options.onProgress?.("provisioning", "Starting your Dedicated agent…");
     const activationResponse = await directCloudJsonResponse<unknown>(
       upgradeUrl,
       {
@@ -5314,10 +5333,7 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
       if (!code || !PERSONAL_DEDICATED_RETRYABLE_CUTOVER_CODES.has(code)) {
         throw error;
       }
-      options.onProgress?.(
-        "starting",
-        "Your Dedicated agent is still starting…",
-      );
+      options.onProgress?.("starting", "Finishing your Dedicated setup…");
       await abortableDelay(
         Math.min(intervalMs, deadline - Date.now()),
         options.signal,

@@ -5,6 +5,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DedicatedAdoptionConfirmationQuote } from "../../api/client-cloud";
+import type { DedicatedActivationConfirmationRequester } from "../../api/dedicated-activation-confirmation";
 
 const runJoinFlowMock = vi.hoisted(() => vi.fn());
 
@@ -70,6 +71,65 @@ describe("JoinPage Dedicated adoption consent", () => {
   });
 
   afterEach(cleanup);
+
+  it.each(["Start Dedicated", "Not now"])(
+    "reviews fresh hosting terms before %s",
+    async (choice) => {
+      let submitted:
+        | Awaited<ReturnType<DedicatedActivationConfirmationRequester>>
+        | undefined;
+      runJoinFlowMock.mockImplementation(
+        async ({ requestDedicatedActivationConfirmation, signal }) => {
+          submitted = await requestDedicatedActivationConfirmation(
+            {
+              quoteId: "fresh-quote",
+              sourceAgentId: "personal:account",
+              hourlyRateUsd: 0.01,
+              dailyRateUsd: 0.24,
+              minimumBalanceUsd: 0.72,
+              minimumRunwayDays: 3,
+              balanceUsd: 10,
+              deficitUsd: 0,
+              canActivate: true,
+              requiresConfirmation: true,
+              action: "activate_dedicated",
+            },
+            { signal },
+          );
+          if (!submitted) throw new Error("Dedicated setup was not started.");
+          return CONNECTED;
+        },
+      );
+      render(<JoinPage />);
+      expect(
+        await screen.findByRole("heading", {
+          name: "Start your Dedicated Eliza",
+        }),
+      ).toBeTruthy();
+      expect(screen.getByText("$0.24/day ($0.01/hr)")).toBeTruthy();
+      expect(
+        screen.getByText("Balance: $10.00 · Minimum to start: $0.72"),
+      ).toBeTruthy();
+      expect(document.body.textContent).not.toContain("fresh-quote");
+      expect(submitted).toBeUndefined();
+      await userEvent.click(screen.getByRole("button", { name: choice }));
+      if (choice === "Start Dedicated") {
+        await waitFor(() =>
+          expect(submitted).toEqual({
+            action: "activate_dedicated",
+            quoteId: "fresh-quote",
+          }),
+        );
+        expect((await screen.findByTestId("navigate")).textContent).toBe("/");
+      } else {
+        expect(
+          await screen.findByText("Dedicated setup was not started."),
+        ).toBeTruthy();
+        expect(submitted).toBeNull();
+        expect(screen.queryByTestId("navigate")).toBeNull();
+      }
+    },
+  );
 
   it("renders changed server terms without private ids and submits only the exact confirmed quote", async () => {
     let submitted:
