@@ -1482,6 +1482,7 @@ export async function executeApprovedRequest(args: {
     const familyWorkflow = getFamilyWorkflowRuntimeService(args.runtime);
     const familyPackets = familyWorkflow?.packets;
     let familyPacketDraft = null;
+    let senderGrantId: string;
     try {
       if (payload.familyPacketId && !familyWorkflow)
         throw new ApprovalConnectorPreflightError(
@@ -1506,15 +1507,16 @@ export async function executeApprovedRequest(args: {
           "A new email requires at least one recipient",
         );
       }
-      await service.requireGoogleGmailSendGrant(
+      const senderGrant = await service.requireGoogleGmailSendGrant(
         INTERNAL_URL,
         "local",
         "owner",
         payload.grantId,
       );
+      senderGrantId = senderGrant.id;
       if (payload.replyToMessageId) {
         await service.readGmailMessage(INTERNAL_URL, {
-          grantId: payload.grantId,
+          grantId: senderGrantId,
           mode: "local",
           side: "owner",
           messageId: payload.replyToMessageId,
@@ -1538,7 +1540,7 @@ export async function executeApprovedRequest(args: {
           }
           if (payload.replyToMessageId) {
             await service.sendGmailReply(INTERNAL_URL, {
-              grantId: payload.grantId,
+              grantId: senderGrantId,
               messageId: payload.replyToMessageId,
               bodyText: payload.body,
               subject: payload.subject || undefined,
@@ -1548,7 +1550,7 @@ export async function executeApprovedRequest(args: {
             });
           } else {
             sentEmail = await service.sendGmailMessage(INTERNAL_URL, {
-              grantId: payload.grantId,
+              grantId: senderGrantId,
               to: [...payload.to],
               cc: [...payload.cc],
               bcc: [...payload.bcc],
