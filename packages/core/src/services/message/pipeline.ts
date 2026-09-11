@@ -1692,7 +1692,9 @@ export async function runV5MessageRuntimeStage1(
 						}
 						const visibleDraft = sanitizeUserVisibleModelOutput(draft);
 						groundedModelReply =
-							visibleDraft.kind === "text" && effectReceipt.label?.trim()
+							visibleDraft.kind === "text" &&
+							prePatchStageOneReplyEffectStatus !== "non_applied" &&
+							effectReceipt.label?.trim()
 								? visibleDraft.text
 								: undefined;
 					}

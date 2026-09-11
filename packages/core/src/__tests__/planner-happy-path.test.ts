@@ -2825,6 +2825,31 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(text).toBe("The request to open Home was accepted.");
 	});
 
+	it.each(["accepted", "delivered"])(
+		"does not reuse a pre-execution denial after %s navigation succeeds",
+		async (status) => {
+			const text = await runDeterministicViewsTurn(
+				{
+					success: true,
+					text: JSON.stringify({
+						effect: "view_navigation",
+						status,
+						label: "Calendar",
+					}),
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+				},
+				{
+					stageOneReply:
+						"Just a note, your Calendar permission is still pending on your end. If I try to open it now, it'll hit a wall unless you grant it first in Settings.",
+					stageOneEffectStatus: "non_applied",
+					postToolReply: "Calendar is open. I didn't change any events.",
+				},
+			);
+			expect(text).toBe("Calendar is open. I didn't change any events.");
+		},
+	);
+
 	it("does not reuse a navigation confirmation without a destination in the receipt", async () => {
 		const text = await runDeterministicViewsTurn(
 			{
