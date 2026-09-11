@@ -712,7 +712,9 @@ const rawPersonalAssistantPlugin: Plugin = {
   // @elizaos/plugin-scheduling hosts the ScheduledTaskRunnerService + the
   // generic scheduled-task route; PA injects its production deps into it. It is
   // always-loaded (CORE + MOBILE), but declaring the dependency guarantees the
-  // runner host is registered before PA's init injects deps + seeds.
+  // runner host is registered before PA's init injects deps + seeds. Agreement
+  // ingestion also resolves the canonical complete-document PDF service and
+  // must not boot with that required collaborator absent.
   dependencies: [
     GOOGLE_CONNECTOR_PLUGIN_PACKAGE,
     "@elizaos/plugin-scheduling",
@@ -1178,8 +1180,8 @@ const rawPersonalAssistantPlugin: Plugin = {
 
     // Register the activity-profile maintenance worker. One scheduler
     // (#10721 H1): this tick only maintains the owner activity profile and
-    // runs the WS5 background-planner observability loop — owner-facing
-    // proactive dispatch (GM/GN, nudges, check-ins) is owned by the
+    // learned schedule facts, without planning actions or creating approvals.
+    // Owner-facing proactive dispatch (GM/GN, nudges, check-ins) is owned by the
     // scheduled-task runner via the first-run defaults pack + default-pack
     // catalog below. ELIZA_DISABLE_PROACTIVE_AGENT keeps its historical
     // semantics: it gates this worker (never the spine-seeded records).

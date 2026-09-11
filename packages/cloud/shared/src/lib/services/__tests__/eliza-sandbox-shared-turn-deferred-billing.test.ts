@@ -57,6 +57,18 @@ mock.module("../shared-runtime/run-shared-agent-turn", () => ({
   runSharedAgentTurn: mock(async () => turnImpl()),
 }));
 
+const historyActual = await import("../../../db/repositories/shared-runtime-history");
+const persistedHistory = mock(
+  async (...args: Parameters<typeof historyActual.sharedRuntimeHistoryRepository.merge>) => args[2],
+);
+mock.module("../../../db/repositories/shared-runtime-history", () => ({
+  ...historyActual,
+  sharedRuntimeHistoryRepository: {
+    get: mock(async () => []),
+    merge: persistedHistory,
+  },
+}));
+
 const { ElizaSandboxService } = await import("../eliza-sandbox");
 
 type BridgeCallable = {
@@ -65,23 +77,10 @@ type BridgeCallable = {
     rpc: { jsonrpc: string; id: number; method: string; params: { text: string } },
     executionCtx?: { waitUntil(promise: Promise<unknown>): void },
   ) => Promise<{ result?: { text?: string } }>;
-  buildSharedRuntimeCharacter: (...args: unknown[]) => Promise<unknown>;
-  loadSharedRuntimeHistory: (...args: unknown[]) => Promise<unknown>;
-  saveSharedRuntimeHistory: (...args: unknown[]) => Promise<unknown>;
 };
 
 function makeService(): BridgeCallable {
-  const svc = new ElizaSandboxService() as unknown as BridgeCallable;
-  // Private seams the turn path calls before/after runSharedAgentTurn.
-  svc.buildSharedRuntimeCharacter = mock(async () => ({
-    name: "Eliza",
-    model: "openai/gpt-oss-120b",
-    system: "",
-    bio: [],
-  })) as never;
-  svc.loadSharedRuntimeHistory = mock(async () => []) as never;
-  svc.saveSharedRuntimeHistory = mock(async () => undefined) as never;
-  return svc;
+  return new ElizaSandboxService() as unknown as BridgeCallable;
 }
 
 /** executionCtx spy that captures every promise handed to waitUntil. */
@@ -96,6 +95,7 @@ function makeExecutionCtx() {
 }
 
 function reset() {
+  persistedHistory.mockClear();
   reconcileCalls.length = 0;
   reservation = makeReservation();
   turnImpl = () => ({

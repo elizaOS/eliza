@@ -10,7 +10,7 @@ import {
   CLOUD_LIVE_TRAJECTORY_TIMEOUT_MS,
 } from "./test/cloud-live-trajectory-diagnostic";
 
-const DEPLOYED_RENDERER_ALIAS = "https://develop.eliza-app.pages.dev";
+const DEPLOYED_RENDERER_ALIAS = "https://staging.eliza-app.pages.dev";
 
 export default defineConfig({
   testDir: "./test/ui-smoke",

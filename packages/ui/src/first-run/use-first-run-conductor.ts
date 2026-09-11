@@ -80,7 +80,7 @@ import {
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { getBootConfig } from "../config/boot-config";
 import { useBranding } from "../config/branding";
-import { APP_RESUME_EVENT, dispatchChatPrefill } from "../events";
+import { APP_RESUME_EVENT } from "../events";
 import {
   ACCENT_PRESETS,
   useAppSelector,
@@ -139,9 +139,9 @@ import {
   FIRST_RUN_SIGN_IN_PROMPT,
 } from "./first-run-greeting";
 import {
+  handoffPendingFirstRunText,
   readPendingFirstRunText,
   setPendingFirstRunTextReleaseHandler,
-  takePendingFirstRunText,
   writePendingFirstRunText,
 } from "./first-run-pending-text";
 import { isRuntimeChooserEnabled } from "./first-run-runtime-flag";
@@ -586,12 +586,11 @@ export function useFirstRunConductor(): void {
     // must not roll it back to an older durable prefix. On a cold mount the ref
     // was initialized from that same durable copy.
     const pending = pendingFirstRunTextRef.current;
-    const durable = takePendingFirstRunText();
+    const durable = readPendingFirstRunText();
     if (pending.length === 0 && durable.length > 0) pending.push(...durable);
     if (pending.length === 0) return;
     pendingFirstRunTextRef.current = [];
-    const text = pending.join("\n\n");
-    queueMicrotask(() => dispatchChatPrefill({ text, select: true }));
+    handoffPendingFirstRunText(pending);
   }, []);
   // Re-offered choice turns have the same collision risk: a user can reject
   // two unavailable options before the wall clock advances.
@@ -993,7 +992,10 @@ export function useFirstRunConductor(): void {
   );
 
   // ── Flow launchers (shared by the action handler + the auto-resume) ──────
+  const allowInteractiveCloudLoginRef = React.useRef(true);
   const startCloudProvisionFlow = React.useCallback(() => {
+    const allowInteractiveCloudLogin = allowInteractiveCloudLoginRef.current;
+    allowInteractiveCloudLoginRef.current = true;
     busyRef.current = true;
     // Explicit waiting state on the opener while Cloud auth runs in the
     // popup/tab — the sign-in CTA must not look idle (#18001). A silent cloud
@@ -1083,6 +1085,7 @@ export function useFirstRunConductor(): void {
     }
     void listOrAutoProvisionCloudAgent(draftRef.current, {
       ...portsRef.current,
+      allowInteractiveCloudLogin,
       signal: abortController.signal,
       onInteractiveLogin: () => {
         if (!cloudLoginAttemptRef.current.isCurrent(attempt)) return;
@@ -1174,6 +1177,10 @@ export function useFirstRunConductor(): void {
       }
       pendingCloudResumeRef.current = null;
       if (resume === "cloud") {
+        // Automatic resume may reuse a valid session, but it has no user
+        // gesture authorizing a browser handoff. A stale credential must fall
+        // back to the visible sign-in choice instead of replacing localhost.
+        allowInteractiveCloudLoginRef.current = false;
         startCloudProvisionFlow();
         return;
       }

@@ -82,58 +82,113 @@ function healthObservation(diagnostics) {
   };
 }
 
+// Decode only string literals emitted by console inspection, never expressions.
+// The suffix remains unconsumed so abbreviation and executable syntax are rejected.
+function consoleString(text) {
+  const quote = text[0];
+  if (!['"', "'", "`"].includes(quote)) return null;
+  let value = "";
+  for (let index = 1; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === quote) return { value, suffix: text.slice(index + 1) };
+    if (
+      character.charCodeAt(0) < 32 ||
+      (quote === "`" && character === "$" && text[index + 1] === "{")
+    )
+      return null;
+    if (character !== "\\") {
+      value += character;
+      continue;
+    }
+    const escapedCharacter = text[++index];
+    const escapes = { n: "\n", r: "\r", t: "\t", b: "\b", f: "\f", v: "\v" };
+    if (Object.hasOwn(escapes, escapedCharacter))
+      value += escapes[escapedCharacter];
+    else if (['"', "'", "`", "\\", "/"].includes(escapedCharacter))
+      value += escapedCharacter;
+    else if (escapedCharacter === "0" && !/[0-9]/.test(text[index + 1] ?? ""))
+      value += "\0";
+    else if (escapedCharacter === "x" || escapedCharacter === "u") {
+      const length = escapedCharacter === "x" ? 2 : 4;
+      const digits = text.slice(index + 1, index + 1 + length);
+      if (digits.length !== length || !/^[0-9a-f]+$/i.test(digits)) return null;
+      value += String.fromCharCode(Number.parseInt(digits, 16));
+      index += length;
+    } else return null;
+  }
+  return null;
+}
+
 /** Parses only complete console frames; unexpected/interleaved lines discard attribution. */
 export function summarizeHealthFrames(messages, targetDigest) {
   const all = healthSummary();
   const target = targetDigest ? { frames: 0, observations: [] } : null;
-  let frame = [];
+  let frame = null;
   for (const message of messages) {
     for (const line of message.split("\n")) {
-      if (line === "[docker-sandbox] Health timeout diagnostics {") {
-        if (frame.length) all.malformedFrames += 1;
-        frame = [line];
+      if (
+        /^\[docker-sandbox\] Health timeout diagnostics (?:\[Object: null prototype\] )?\{$/.test(
+          line,
+        )
+      ) {
+        if (frame) all.malformedFrames += 1;
+        frame = { phase: "container", container: "", diagnostics: "" };
         continue;
       }
-      if (!frame.length) continue;
-      const expected = [
-        null,
-        /^ {2}containerName: "agent-[A-Za-z0-9_.-]+",$/,
-        /^ {2}nodeId: "(?:[^"\\]|\\.)*",$/,
-        /^ {2}diagnostics: "(?:[^"\\]|\\.)*",$/,
-        /^}$/,
-      ][frame.length];
-      if (!expected?.test(line)) {
-        all.malformedFrames += 1;
-        frame = [];
-        continue;
-      }
-      frame.push(line);
-      if (frame.length !== 5) continue;
-      try {
-        const container = JSON.parse(
-          frame[1].slice("  containerName: ".length, -1),
-        );
-        const diagnostics = JSON.parse(
-          frame[3].slice("  diagnostics: ".length, -1),
-        );
-        const observation = healthObservation(diagnostics);
+      if (!frame) continue;
+      if (frame.phase === "close" && line === "}") {
+        const observation = healthObservation(frame.diagnostics);
         all.frames += 1;
         all.observations.push(observation);
         if (
           target &&
-          createHash("sha256").update(container).digest("hex") === targetDigest
+          createHash("sha256").update(frame.container).digest("hex") ===
+            targetDigest
         ) {
           target.frames += 1;
           target.observations.push(observation);
         }
-      } catch {
-        // error-policy:J3 Unsupported console escaping is explicitly unparsed, never evaluated.
-        all.malformedFrames += 1;
+        frame = null;
+        continue;
       }
-      frame = [];
+      const prefix = {
+        container: "  containerName: ",
+        node: "  nodeId: ",
+        diagnostics: "  diagnostics: ",
+        continuation: "    ",
+      }[frame.phase];
+      const fragment =
+        prefix && line.startsWith(prefix)
+          ? consoleString(line.slice(prefix.length))
+          : null;
+      if (
+        fragment &&
+        frame.phase === "container" &&
+        fragment.suffix === "," &&
+        /^agent-[A-Za-z0-9_.-]+$/.test(fragment.value)
+      ) {
+        frame.container = fragment.value;
+        frame.phase = "node";
+      } else if (
+        fragment &&
+        frame.phase === "node" &&
+        fragment.suffix === ","
+      ) {
+        frame.phase = "diagnostics";
+      } else if (
+        fragment &&
+        ["diagnostics", "continuation"].includes(frame.phase) &&
+        ["", ",", " +"].includes(fragment.suffix)
+      ) {
+        frame.diagnostics += fragment.value;
+        frame.phase = fragment.suffix === " +" ? "continuation" : "close";
+      } else {
+        all.malformedFrames += 1;
+        frame = null;
+      }
     }
   }
-  if (frame.length) all.malformedFrames += 1;
+  if (frame) all.malformedFrames += 1;
   return { association: "complete-adjacent-worker-log-frame", all, target };
 }
 

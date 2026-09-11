@@ -45,3 +45,25 @@ export function resolveViteCommand({
   args.push(...viteArgs);
   return { command: runtimePath, args };
 }
+
+/**
+ * Resolves the Vite child owned by the combined API-and-UI supervisor.
+ * Vite's HTTP proxy uses Node socket methods that Bun does not implement, so
+ * this child stays on Node even when the independently supervised API uses Bun.
+ */
+export function resolveSupervisedViteCommand({
+  appDir,
+  force = false,
+  nodePath,
+  port,
+  viteArgs = [],
+}) {
+  return resolveViteCommand({
+    appDir,
+    force,
+    runtime: "node",
+    runtimePath: nodePath,
+    port,
+    viteArgs,
+  });
+}

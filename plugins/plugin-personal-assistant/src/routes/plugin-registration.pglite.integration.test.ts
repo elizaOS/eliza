@@ -197,6 +197,23 @@ it("serves owner definition CRUD from the normally registered personal-assistant
     expect(
       (await service.getDefinition(scheduled.definition.id)).definition.status,
     ).toBe("active");
+    const archived = await service.createDefinition({
+      title: "Archived undated task",
+      kind: "task",
+      cadence: { kind: "unscheduled" },
+      timezone: "UTC",
+      reminderPlan: null,
+    });
+    await service.updateDefinition(archived.definition.id, {
+      status: "archived",
+    });
+    const afterArchive = await fetch(`${base}/api/lifeops/todos`);
+    expect(afterArchive.status).toBe(200);
+    expect(
+      (await afterArchive.json()).todos.some(
+        (todo: { id: string }) => todo.id === archived.definition.id,
+      ),
+    ).toBe(false);
     const deleted = await fetch(
       `${base}/api/lifeops/definitions/${saved.definition.id}`,
       { method: "DELETE" },

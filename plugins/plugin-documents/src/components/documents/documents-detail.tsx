@@ -477,7 +477,7 @@ export function DocumentViewer({
 
   return (
     <PagePanel className="settings-surface flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto pb-4">
+      <div className="custom-scrollbar eliza-chat-scroll min-h-0 flex-1 overflow-y-auto pb-4">
         {loading ? (
           <div
             role="status"

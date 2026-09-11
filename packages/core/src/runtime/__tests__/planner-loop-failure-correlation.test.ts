@@ -76,6 +76,53 @@ async function withCodingFullSurface<T>(run: () => Promise<T>): Promise<T> {
 }
 
 describe("planner-loop failed-operation correlation", () => {
+	it.each([true, false])(
+		"does not revive a recovered failure when the final evaluator success is %s",
+		async (evaluatorSuccess) => {
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce(viewsUpdateCall("note-a", "A"))
+					.mockResolvedValueOnce(viewsUpdateCall("note-a", "A"))
+					.mockResolvedValueOnce({ text: "", toolCalls: [] })
+					.mockResolvedValueOnce("The note is now titled A."),
+			};
+			const result = await runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				executeToolCall: vi
+					.fn()
+					.mockResolvedValueOnce({ success: false, error: "revision conflict" })
+					.mockResolvedValueOnce({ success: true, text: "Saved title A." }),
+				evaluate: vi
+					.fn()
+					.mockResolvedValueOnce({
+						success: false,
+						decision: "CONTINUE",
+						thought: "Retry the same operation.",
+					})
+					.mockResolvedValueOnce({
+						success: evaluatorSuccess,
+						decision: "FINISH",
+						thought: "The retry succeeded.",
+						messageToUser: "call:VIEWS{action:show}",
+					}),
+			});
+
+			expect(result.finalMessage).toBe("The note is now titled A.");
+			expect(runtime.useModel).toHaveBeenCalledTimes(4);
+			const rescue = runtime.useModel.mock.calls[3]?.[1];
+			expect(JSON.stringify(rescue)).toContain("Saved title A.");
+			expect(JSON.stringify(rescue)).not.toContain("did not complete");
+			expect(JSON.stringify(rescue)).not.toContain("revision conflict");
+			expect(
+				result.trajectory.steps.filter(
+					(step) => step.result?.success === false,
+				),
+			).toHaveLength(1);
+		},
+	);
+
 	it("finishes with the just-failed action when its evaluator violates protocol", async () => {
 		const runtime = {
 			useModel: vi.fn().mockResolvedValueOnce(
@@ -1104,3 +1151,205 @@ describe("planner-loop failed-operation correlation", () => {
 		expect(runtime.useModel).toHaveBeenCalledTimes(3);
 	});
 });
+
+it.each([
+	["redundant native record metadata", "2026-09-10T00:00:00", true],
+	["different encoded target", "2026-09-12T00:00:00", false],
+	["malformed encoded value", undefined, false],
+] as const)(
+	"retains the correct calendar result after %s",
+	async (_label, encodedStart, recovered) => {
+		const details = {
+			timeMin: "2026-09-10T00:00:00",
+			timeMax: "2026-09-11T00:00:00",
+			timeZone: "America/New_York",
+		};
+		const corrected = {
+			action: "feed",
+			intent: "Read the local calendar for September 10.",
+			details,
+		};
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValue({
+					text: "The failed read remains unresolved.",
+					toolCalls: [],
+				})
+				.mockResolvedValueOnce(
+					plannerToolCall("invalid", "CALENDAR", {
+						...corrected,
+						details: {
+							...details,
+							__eliza_record_entries: [
+								{
+									key: "timemin",
+									value:
+										encodedStart === undefined
+											? "invalid JSON"
+											: JSON.stringify(encodedStart),
+								},
+								{ key: "timemax", value: JSON.stringify(details.timeMax) },
+								{ key: "timezone", value: JSON.stringify(details.timeZone) },
+							],
+						},
+					}),
+				)
+				.mockResolvedValueOnce(
+					plannerToolCall("corrected", "CALENDAR", corrected),
+				),
+		};
+		const verifiedReply =
+			"The calendar read succeeded. Event evt-copper is scheduled for 11:00 to 11:45 AM.";
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "corrected-calendar" },
+			executeToolCall: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					error: "Unexpected argument 'details.__eliza_record_entries'",
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					data: {
+						events: [{ id: "evt-copper", start: "11:00", end: "11:45" }],
+					},
+				}),
+			evaluate: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Remove the rejected representation field and retry.",
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					decision: "FINISH",
+					thought: "The corrected read returned the event.",
+					messageToUser: verifiedReply,
+				}),
+		});
+		if (recovered) {
+			expect(result.finalMessage).toBe(verifiedReply);
+			expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		} else {
+			expect(result.finalMessage).not.toBe(verifiedReply);
+		}
+		const outcomes = result.trajectory.steps
+			.filter((step) => step.result)
+			.map((step) => step.result?.success);
+		expect(outcomes).toContain(false);
+		expect(outcomes).toContain(true);
+	},
+);
+
+it.each([
+	["retained raw target", "evt-copper", "eventId", true],
+	["different target", "evt-other", "eventId", false],
+	["redacted target", "***", "eventId", false],
+	["target prefix", "evt-copp", "eventId", false],
+	["unknown field", "evt-copper", "unrecognized", false],
+	["duplicate key", "evt-copper", "eventId", false],
+	["extra entry field", "evt-copper", "eventId", false],
+	["missing original target", "evt-copper", "eventId", false],
+	["missing corrected target", "evt-copper", "eventId", false],
+	["changed bounds", "evt-copper", "eventId", false],
+	["swapped bounds", "evt-copper", "eventId", false],
+	["added conflicting target", "evt-copper", "eventId", false],
+	["conflicting sibling", "evt-copper", "eventId", false],
+] as const)(
+	"correlates a rejected record target only with preserved semantics: %s",
+	async (label, encodedTarget, key, recovered) => {
+		const corrected = {
+			...(label === "added conflicting target" ? { eventId: "evt-other" } : {}),
+			action: "feed",
+			intent: "Read the calendar and verify event evt-copper.",
+			details: {
+				timeMin: "2026-09-10T00:00:00",
+				timeMax: "2026-09-11T00:00:00",
+				timeZone: "America/New_York",
+			},
+		};
+		const failed = {
+			...corrected,
+			details: {
+				...corrected.details,
+				__eliza_record_entries: [
+					{
+						key,
+						value: encodedTarget,
+						...(label === "extra entry field"
+							? { other: "hidden-target" }
+							: {}),
+					},
+					...(label === "duplicate key" ? [{ key, value: encodedTarget }] : []),
+				],
+				...(label === "conflicting sibling" ? { eventId: "evt-other" } : {}),
+			},
+		};
+		if (label === "added conflicting target") delete failed.eventId;
+		if (label === "swapped bounds")
+			[corrected.details.timeMin, corrected.details.timeMax] = [
+				corrected.details.timeMax,
+				corrected.details.timeMin,
+			];
+		if (label === "missing original target")
+			failed.intent = "Read the calendar.";
+		if (label === "missing corrected target")
+			corrected.intent = "Read the calendar.";
+		if (label === "changed bounds")
+			corrected.details.timeMin = "2026-09-12T00:00:00";
+		const failure = {
+			success: false,
+			error: "Unexpected argument 'details.__eliza_record_entries'",
+		};
+		const reply = "Verified event evt-copper from the corrected calendar read.";
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValue({
+					text: "The read remains unresolved.",
+					toolCalls: [],
+				})
+				.mockResolvedValueOnce(plannerToolCall("invalid", "CALENDAR", failed))
+				.mockResolvedValueOnce(
+					plannerToolCall("corrected", "CALENDAR", corrected),
+				),
+		};
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "record-target" },
+			executeToolCall: vi
+				.fn()
+				.mockResolvedValueOnce(failure)
+				.mockResolvedValueOnce({
+					success: true,
+					data: { events: [{ id: "evt-copper" }] },
+				}),
+			evaluate: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Correct the rejected argument representation.",
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					decision: "FINISH",
+					thought: "The corrected read verified the exact event.",
+					messageToUser: reply,
+				}),
+		});
+		if (recovered) {
+			expect(result.finalMessage).toBe(reply);
+			expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		} else {
+			expect(result.finalMessage).not.toBe(reply);
+		}
+		const steps = result.trajectory.steps.filter((step) => step.result);
+		expect(steps[0].result).toEqual(failure);
+		expect(steps[0].toolCall?.params).toEqual(failed);
+		expect(steps[1].result?.success).toBe(true);
+	},
+);

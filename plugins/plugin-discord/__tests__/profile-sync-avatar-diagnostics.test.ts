@@ -144,6 +144,32 @@ describe("Discord profile avatar resolution diagnostics", () => {
 		);
 	});
 
+	it("treats an absent built-in default avatar as a no-op and still syncs the username", async () => {
+		const readFile = vi
+			.spyOn(fs, "readFile")
+			.mockRejectedValue(fsError("ENOENT", "/avatars/eliza.png"));
+		const setUsername = vi.fn(async () => undefined);
+		const setAvatar = vi.fn(async () => undefined);
+		const runtime = fakeRuntime(undefined);
+		const debug = vi.spyOn(runtime.logger, "debug");
+
+		await expect(
+			syncDiscordClientProfile(
+				runtime,
+				{ username: "Old", setUsername, setAvatar },
+				{ syncProfile: true, profileName: "Eliza" } as DiscordSettings,
+			),
+		).resolves.toBeUndefined();
+
+		expect(readFile).toHaveBeenCalled();
+		expect(setAvatar).not.toHaveBeenCalled();
+		expect(setUsername).toHaveBeenCalledWith("Eliza");
+		expect(debug).toHaveBeenCalledWith(
+			expect.objectContaining({ src: "plugin:discord" }),
+			expect.stringContaining("skipping avatar sync"),
+		);
+	});
+
 	it("leaves the avatar untouched when profile sync is disabled", async () => {
 		const setAvatar = vi.fn(async () => undefined);
 		await syncDiscordClientProfile(

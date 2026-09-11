@@ -62,7 +62,19 @@ async function runStorePlan(
 				messages.push(JSON.stringify(params));
 				const toolCalls = batches[modelCalls++];
 				if (!toolCalls) throw new Error("Unexpected extra planner round");
-				return { text: "", toolCalls };
+				return {
+					text: "",
+					toolCalls: toolCalls.map((call) => ({
+						...call,
+						arguments: {
+							...call.arguments,
+							// The final planned read settles the declared remaining work.
+							// Earlier batches must continue even if the evaluator says FINISH.
+							eliza_turn_scope:
+								modelCalls === batches.length ? "final" : "more_work_pending",
+						},
+					})),
+				};
 			},
 		},
 		context: {

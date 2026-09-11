@@ -19,6 +19,7 @@ import {
   DEFAULT_BOOT_CONFIG,
   setBootConfig,
 } from "../config/boot-config-store";
+import type { ExistingFirstRunProbeResult } from "./first-run-bootstrap";
 import type { PersistedActiveServer } from "./persistence";
 import {
   clearPersistedActiveServer,
@@ -65,7 +66,9 @@ const bridgeMock = vi.hoisted(() => ({
 }));
 
 const firstRunBootstrapMock = vi.hoisted(() => ({
-  detectExistingFirstRunConnection: vi.fn(async () => null),
+  detectExistingFirstRunConnection: vi.fn(
+    async (): Promise<ExistingFirstRunProbeResult | null> => null,
+  ),
 }));
 
 vi.mock("../bridge", () => bridgeMock);
@@ -123,6 +126,37 @@ describe("cloud restore routes the client without waiting on the Steward refresh
     setBootConfig(DEFAULT_BOOT_CONFIG);
     localStorage.clear();
     vi.restoreAllMocks();
+  });
+
+  it("detects the existing runtime behind the Vite proxy instead of reopening setup", async () => {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: new URL("http://localhost:2138/chat"),
+    });
+    bridgeMock.isElectrobunRuntime.mockReturnValue(false);
+    firstRunBootstrapMock.detectExistingFirstRunConnection.mockResolvedValueOnce(
+      {
+        activeServer: { id: "local", kind: "local", label: "Local Agent" },
+        detectedExistingInstall: true,
+      },
+    );
+    const dispatch = vi.fn();
+    await runRestoringSession(
+      makeDeps(),
+      dispatch,
+      { current: null },
+      { current: false },
+    );
+    expect(
+      firstRunBootstrapMock.detectExistingFirstRunConnection,
+    ).toHaveBeenCalled();
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "SESSION_RESTORED",
+      target: "embedded-local",
+    });
+    expect(dispatch).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "NO_SESSION" }),
+    );
   });
 
   it("clears the inherited credential before routing while Steward refresh is in flight", async () => {

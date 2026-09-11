@@ -457,6 +457,10 @@ describe("conversation-routes streaming persistence ordering", () => {
 
     expect(persistCalledAt).not.toBeNull();
     expect(persistResolvedAt).toBeNull();
+    const replyReadyFrame = record.writes.find((w) =>
+      w.includes('"type":"reply_ready"'),
+    );
+    expect(replyReadyFrame).toContain('"fullText":"ok"');
     expect(record.writes.some((w) => w.includes('"type":"done"'))).toBe(false);
     expect(record.ended).toBe(false);
 

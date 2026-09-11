@@ -112,8 +112,8 @@ describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
     expect(prompt.detectedText).toBe("Save\nProject settings\nDeploy now");
   });
 
-  // OCR fused into the IMAGE_DESCRIPTION prompt remains complete so the model
-  // never reasons over a silently truncated view of the screen.
+  // OCR normalization may remove blank or duplicate lines, but the model must
+  // receive every remaining line instead of a silent prefix of the screen.
   function sceneWithOcr(service: VisionService, fullScreenOCR: string): void {
     Object.defineProperty(service, "lastEnhancedScene", {
       configurable: true,
@@ -132,7 +132,7 @@ describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
     });
   }
 
-  it("preserves every normalized OCR line in the prompt", async () => {
+  it("preserves every normalized OCR line in the model prompt", async () => {
     const { runtime, useModel } = createRuntime({
       imageDescriptionResult: { description: "A long list." },
     });
@@ -140,6 +140,7 @@ describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
     const fullScreenOCR = Array.from({ length: 60 }, (_, i) => `row ${i}`).join(
       "\n",
     );
+    // Model-facing OCR must remain complete rather than imposing a line cap.
     sceneWithOcr(service, fullScreenOCR);
     const describeFn = Reflect.get(service, "describeSceneWithVLM") as (
       imageUrl: string,
@@ -156,9 +157,10 @@ describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
     }
     const prompt = JSON.parse(modelArgs.prompt) as { detectedText?: string };
     expect(prompt.detectedText).toBe(fullScreenOCR);
+    expect(prompt.detectedText?.split("\n")).toHaveLength(60);
   });
 
-  it("preserves long OCR text in the prompt", async () => {
+  it("preserves the complete normalized OCR text beyond legacy prompt caps", async () => {
     const { runtime, useModel } = createRuntime({
       imageDescriptionResult: { description: "A wall of text." },
     });
@@ -166,6 +168,8 @@ describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
     const fullScreenOCR = [0, 1, 2]
       .map((i) => `${i} ${"x".repeat(1000)}`)
       .join("\n");
+    // Three distinct ~1000-char lines prove the retired 2000-character cap is
+    // not reintroduced on the model-facing path.
     sceneWithOcr(service, fullScreenOCR);
     const describeFn = Reflect.get(service, "describeSceneWithVLM") as (
       imageUrl: string,
@@ -182,6 +186,7 @@ describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
     }
     const prompt = JSON.parse(modelArgs.prompt) as { detectedText?: string };
     expect(prompt.detectedText).toBe(fullScreenOCR);
+    expect(prompt.detectedText).toHaveLength(3008);
   });
 
   it("falls through to detected-objects synthesis when IMAGE_DESCRIPTION returns the unhelpful sentinel", async () => {

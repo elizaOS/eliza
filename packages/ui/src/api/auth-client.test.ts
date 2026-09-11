@@ -63,6 +63,9 @@ vi.mock("./client-cloud", () => ({
   cloudTokenSecsRemaining: vi.fn(),
   refreshCloudStewardSession: vi.fn(),
 }));
+vi.mock("./desktop-local-api-base", () => ({
+  isDesktopLocalApiBaseUrl: vi.fn(() => true),
+}));
 vi.mock("./desktop-external-api-base", () => ({
   isDesktopExternalApiBaseUrl: vi.fn(),
 }));
@@ -429,6 +432,7 @@ describe("authLogout", () => {
 
 describe("authMe over plain HTTP boundaries", () => {
   beforeEach(() => {
+    getBootConfigMock.mockReturnValue({ branding: {} });
     fetchWithCsrfMock.mockReset();
     isManagedCloudSharedAgentBaseMock.mockReturnValue(false);
     isDesktopExternalApiBaseUrlMock.mockReturnValue(false);
@@ -591,9 +595,13 @@ describe("authMe over plain HTTP boundaries", () => {
       passwordConfigured: false,
       ownerConfigured: true,
     };
-    fetchWithCsrfMock.mockResolvedValueOnce(
-      jsonResponse({ reason: "remote_auth_required", access }, 401),
-    );
+    fetchWithCsrfMock
+      .mockResolvedValueOnce(
+        jsonResponse({ reason: "remote_auth_required", access }, 401),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ required: true, pairingEnabled: false }),
+      );
 
     const result = await authMe();
 
@@ -602,6 +610,37 @@ describe("authMe over plain HTTP boundaries", () => {
       status: 401,
       reason: "remote_auth_required",
       access,
+    });
+  });
+
+  it("prefers pairing when a rich remote 401 reports pairing is enabled", async () => {
+    fetchWithCsrfMock
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            reason: "remote_auth_required",
+            access: {
+              mode: "remote",
+              passwordConfigured: true,
+              ownerConfigured: true,
+            },
+          },
+          401,
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ required: true, pairingEnabled: true }),
+      );
+
+    await expect(authMe()).resolves.toEqual({
+      ok: false,
+      status: 401,
+      reason: "remote_auth_required",
+      access: {
+        mode: "remote",
+        passwordConfigured: true,
+        ownerConfigured: false,
+      },
     });
   });
 

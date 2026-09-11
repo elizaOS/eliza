@@ -8,6 +8,7 @@
  */
 import type http from "node:http";
 import { ServiceType } from "@elizaos/core";
+import { BackgroundTaskRunCoordinator } from "@elizaos/shared/host-use-cases";
 
 interface TaskServiceLike {
   runDueTasks(): Promise<void>;
@@ -38,24 +39,7 @@ function isTaskServiceLike(service: unknown): service is TaskServiceLike {
   );
 }
 
-let runDueTasksInFlight: Promise<void> | null = null;
-
-async function runDueTasksOnce(service: TaskServiceLike): Promise<{
-  coalesced: boolean;
-}> {
-  if (runDueTasksInFlight !== null) {
-    await runDueTasksInFlight;
-    return { coalesced: true };
-  }
-
-  runDueTasksInFlight = service.runDueTasks();
-  try {
-    await runDueTasksInFlight;
-    return { coalesced: false };
-  } finally {
-    runDueTasksInFlight = null;
-  }
-}
+const backgroundTaskRuns = new BackgroundTaskRunCoordinator();
 
 export async function handleBackgroundTasksRoute({
   method,
@@ -98,7 +82,7 @@ export async function handleBackgroundTasksRoute({
   }
 
   try {
-    const result = await runDueTasksOnce(service);
+    const result = await backgroundTaskRuns.run(service);
     json(res, {
       ok: true,
       ranAt: new Date().toISOString(),

@@ -639,6 +639,8 @@ export class MessageProcessor {
 					}
 					const proposedText = event.text.trim();
 					const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
+						providers: state.data.providers,
+						request: message.content.text,
 						reply: proposedText,
 						actionResults: [],
 						actions: runtime.actions,
@@ -692,8 +694,9 @@ export class MessageProcessor {
 							responseId: earlyResponseId,
 						}),
 					);
-					earlyContent = enforceEffectGroundedVisibleContent(
+					earlyContent = await enforceEffectGroundedVisibleContent(
 						runtime,
+						message,
 						earlyContent,
 					);
 					earlyContent = await enforceTrustedDeliveryAudienceAtEgress(
@@ -853,6 +856,13 @@ export class MessageProcessor {
 				) {
 					throw error;
 				}
+				if (isRecord(error) && error.code === "REPLY_GROUNDING_FAILED") {
+					// The result renderer already exhausted its grounded model reply.
+					// Effects may be committed: preserve the typed delivery failure for
+					// the caller's settled-result handling, never synthesize an apology
+					// from the pre-action state or invite a duplicate mutation.
+					throw error;
+				}
 				const errMsg = error instanceof Error ? error.message : String(error);
 				const errStack = error instanceof Error ? error.stack : undefined;
 				// Provider failures often surface with a masked statusText message
@@ -873,6 +883,10 @@ export class MessageProcessor {
 				runtime.reportError("MessageService.v5Runtime", error, {
 					entityId: message.entityId,
 					roomId: message.roomId,
+					// This boundary owns user-facing failure delivery, including when
+					// a fallback masks the original provider error. Retain diagnostics
+					// without escalating a second, raw technical message into chat.
+					diagnosticOnly: true,
 					...(providerErrorDetail
 						? { providerError: providerErrorDetail as JsonValue }
 						: {}),
@@ -1248,10 +1262,12 @@ export class MessageProcessor {
 							}),
 						),
 					);
-					deliverableResponseContent = enforceEffectGroundedVisibleContent(
-						runtime,
-						deliverableResponseContent,
-					);
+					deliverableResponseContent =
+						await enforceEffectGroundedVisibleContent(
+							runtime,
+							message,
+							deliverableResponseContent,
+						);
 					deliverableResponseContent =
 						await enforceTrustedDeliveryAudienceAtEgress(
 							runtime,
@@ -1501,8 +1517,15 @@ export class MessageProcessor {
 		// evaluator child step, and the run terminal follows in the same detached
 		// barrier so the parent cannot close while that child's telemetry is still
 		// being written. Child failure is reported at that barrier, which still
-		// releases the trajectory exactly once after the child settles.
+		// releases the trajectory exactly once after the child settles. Fact,
+		// preference and ALWAYS_AFTER writes are room state, not diagnostics;
+		// retain ordering until their processors support conflict-safe commits.
 		runTerminalOwner.track("post_turn", async () => {
+			if (actionResults?.some((result) => result.replyFailure !== undefined)) {
+				// The action already settled and response generation is unavailable.
+				// Close the run without another evaluation/model or action hook.
+				return;
+			}
 			await withEvaluatorStep(runtime, "post_turn", async () => {
 				if (semanticSignal) {
 					await runPostTurnEvaluators(runtime, message, state, {

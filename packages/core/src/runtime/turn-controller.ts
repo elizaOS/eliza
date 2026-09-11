@@ -63,12 +63,13 @@ function getCurrentTurnStorage(): TurnStorage {
 		if (
 			typeof process !== "undefined" &&
 			typeof process.versions !== "undefined" &&
-			typeof process.versions.node !== "undefined"
+			typeof process.versions.node !== "undefined" &&
+			typeof process.getBuiltinModule === "function"
 		) {
 			try {
-				// eslint-disable-next-line @typescript-eslint/no-require-imports
-				const { AsyncLocalStorage } =
-					require("node:async_hooks") as typeof import("node:async_hooks");
+				const { AsyncLocalStorage } = process.getBuiltinModule(
+					"node:async_hooks",
+				) as typeof import("node:async_hooks");
 				currentTurnStorage = new AsyncLocalStorage();
 			} catch {
 				// error-policy:J4 Turn-context storage is optional outside Node;

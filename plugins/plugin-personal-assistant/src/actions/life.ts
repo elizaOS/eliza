@@ -18,6 +18,7 @@ import type {
   ActionResult,
   AgentContext,
   EffectReceipt,
+  GroundedActionReply,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
@@ -25,6 +26,7 @@ import type {
   State,
 } from "@elizaos/core";
 import {
+  applyGroundedActionReply,
   ElizaError,
   logger,
   NoModelProviderConfiguredError,
@@ -137,7 +139,7 @@ import {
   applyOwnerPolicySetReminder,
 } from "./lib/owner-policy-writes.js";
 import {
-  textContradictsExplicitUndatedTodo,
+  resolveUndatedTodoAuthority,
   textStatesExplicitUndatedTodo,
 } from "./lib/undated-todo-intent.js";
 
@@ -1714,7 +1716,7 @@ async function renderLifeActionReply(args: {
   scenario: LifeReplyScenario;
   fallback: string;
   context?: Record<string, unknown>;
-}): Promise<string> {
+}): Promise<GroundedActionReply> {
   const { runtime, message, state, intent, scenario, fallback, context } = args;
   const naturalFallback = buildRuleBasedLifeReply({
     scenario,
@@ -1722,7 +1724,7 @@ async function renderLifeActionReply(args: {
     fallback,
     context,
   });
-  const rendered = await renderGroundedActionReply({
+  return renderGroundedActionReply({
     runtime,
     message,
     state,
@@ -1747,7 +1749,46 @@ async function renderLifeActionReply(args: {
       "Answer only about the user's tracked items (todos, reminders, goals, routines, habits, alarms). If the user's message also asked about something outside these records — a personal fact, general knowledge, another tool — leave that part unaddressed rather than answering or denying it; the assistant covers it separately.",
     ],
   });
-  return rendered.trim().length > 0 ? rendered : naturalFallback;
+}
+
+// Keep reply availability attached to the outcome until the action boundary
+// binds its receipt. A missing reply must not discard an already committed write.
+type PendingLifeActionResult = Omit<ActionResult, "text" | "userFacingText"> & {
+  text?: string | GroundedActionReply;
+  userFacingText?: string | GroundedActionReply;
+};
+
+function settleLifeActionReply(result: PendingLifeActionResult): ActionResult {
+  const { text, userFacingText, ...outcome } = result;
+  if (typeof text !== "object") {
+    return {
+      ...outcome,
+      ...(text !== undefined ? { text } : {}),
+      ...(typeof userFacingText === "string" ? { userFacingText } : {}),
+    };
+  }
+  if (outcome.success === false && text.kind === "model") {
+    // A renderer's prose is not verification of a rejected operation. Keep
+    // the complete draft with its typed failure for the planner to resolve.
+    return applyGroundedActionReply(
+      {
+        ...outcome,
+        transcriptVisibility: "internal",
+        verifiedUserFacing: false,
+        turnComplete: false,
+      },
+      text,
+    );
+  }
+  return applyGroundedActionReply(
+    {
+      ...outcome,
+      ...(userFacingText !== undefined && text.kind === "model"
+        ? { userFacingText: text.text }
+        : {}),
+    },
+    text,
+  );
 }
 
 function buildLifeClarificationFallback(args: {
@@ -1810,7 +1851,7 @@ type LifeConnectedQueryOperation =
  * unconnected owners get a refusal. Exported for direct unit testing with a
  * stubbed service.
  */
-export async function runLifeConnectedQuery(args: {
+async function runLifeConnectedQueryInner(args: {
   runtime: IAgentRuntime;
   message: Memory;
   state: State | undefined;
@@ -1818,7 +1859,7 @@ export async function runLifeConnectedQuery(args: {
   service: LifeOpsService;
   queryOperation: LifeConnectedQueryOperation;
   actionName: string;
-}): Promise<ActionResult> {
+}): Promise<PendingLifeActionResult> {
   const {
     runtime,
     message,
@@ -1946,6 +1987,12 @@ export async function runLifeConnectedQuery(args: {
     }
     throw err;
   }
+}
+
+export async function runLifeConnectedQuery(
+  args: Parameters<typeof runLifeConnectedQueryInner>[0],
+): Promise<ActionResult> {
+  return settleLifeActionReply(await runLifeConnectedQueryInner(args));
 }
 
 // ── Calendar/email formatters ─────────────────────────
@@ -3360,6 +3407,7 @@ function shouldRequireLifeCreateConfirmation(args: {
   cadence?: LifeOpsCadence;
   multiStep?: boolean;
   explicitUndated?: boolean;
+  operationScopedUndated?: boolean;
   previewRequested?: boolean;
 }): boolean {
   if (args.messageSource === "autonomy") {
@@ -3386,13 +3434,12 @@ function shouldRequireLifeCreateConfirmation(args: {
   // halves — the item AND that it has no date ("add a todo: X, no deadline") —
   // a preview would ask them to confirm exactly what they just said. Scoped to
   // an EXPLICIT textual no-date statement (the same canonical authority that
-  // guards the unscheduled-cadence wipe), single-step asks only, mirroring the
-  // #16941 over-trigger guard. An extraction-inferred unscheduled cadence
-  // without the explicit statement still previews.
+  // guards the unscheduled-cadence wipe). Multi-step requests need a unique
+  // authored Todo clause; model-only scope cannot bypass confirmation.
   if (
     args.cadence?.kind === "unscheduled" &&
     args.explicitUndated === true &&
-    !args.multiStep
+    (!args.multiStep || args.operationScopedUndated === true)
   ) {
     return false;
   }
@@ -4187,7 +4234,7 @@ async function runLifeOperationHandlerInner(
   message: Memory,
   state: State | undefined,
   options: HandlerOptions | undefined,
-): Promise<ActionResult> {
+): Promise<PendingLifeActionResult> {
   const ownerSurfaceActionName = ownerSurfaceActionNameFromOptions(options);
   // Defense-in-depth: validate() excludes owner-operation candidates on
   // foreign page-* scopes, and this handler keeps direct tool execution a
@@ -4207,9 +4254,8 @@ async function runLifeOperationHandlerInner(
     | LifeParams
     | undefined;
   const params = rawParams ?? ({} as LifeParams);
-  const currentText = normalizeLifeInputText(
-    extractPrimaryLifeInputText(messageText(message)),
-  );
+  const authoredText = extractPrimaryLifeInputText(messageText(message));
+  const currentText = normalizeLifeInputText(authoredText);
   const details = params.details;
   const stateDeferredDraft = latestDeferredLifeDraft(state);
   const cachedDeferredDraftState = await readDeferredLifeDraftCacheState(
@@ -4849,17 +4895,28 @@ async function runLifeOperationHandlerInner(
           await invalidateDeferredLifeDraftCache(runtime, message);
         }
       }
+      const undatedAuthority = resolveUndatedTodoAuthority(authoredText, title);
+      // A uniquely authored no-date directive supplies the cadence even when
+      // the planner omits it; timing on another operation cannot fill this slot.
+      if (
+        ownerSurfaceActionName === "OWNER_TODOS" &&
+        !editingDeferredDefinitionDraft &&
+        cadence === undefined &&
+        undatedAuthority.operationScoped &&
+        undatedAuthority.explicit
+      ) {
+        cadence = { kind: "unscheduled" };
+      }
       const confirmsValidatedUndatedDraft =
         deferredDraftReuseMode === "confirm" &&
         deferredDefinitionDraft?.request.cadence?.kind === "unscheduled";
       if (
         (editingDeferredDefinitionDraft &&
           deferredDefinitionDraft.request.cadence?.kind === "unscheduled" &&
-          textContradictsExplicitUndatedTodo(currentText)) ||
+          undatedAuthority.contradicts) ||
         (cadence?.kind === "unscheduled" &&
           (ownerSurfaceActionName !== "OWNER_TODOS" ||
-            (!confirmsValidatedUndatedDraft &&
-              !textStatesExplicitUndatedTodo(currentText))))
+            (!confirmsValidatedUndatedDraft && !undatedAuthority.explicit)))
       ) {
         cadence = undefined;
         if (editingDeferredDefinitionDraft) {
@@ -5146,8 +5203,8 @@ async function runLifeOperationHandlerInner(
           // skip is for the owner's fresh "add a todo: X, no deadline" ask,
           // where the preview would echo back exactly what they just said.
           explicitUndated:
-            !editingDeferredDefinitionDraft &&
-            textStatesExplicitUndatedTodo(currentText),
+            !editingDeferredDefinitionDraft && undatedAuthority.explicit,
+          operationScopedUndated: undatedAuthority.operationScoped,
           previewRequested: LIFE_TEXT_REQUESTS_PREVIEW_RE.test(currentText),
         })
       ) {
@@ -6451,11 +6508,17 @@ async function runLifeOperationHandlerInner(
         };
       }
       const reviewDomain = domain ?? "user_lifeops";
-      const active = (await listCallerDefinitions(service)).filter(
+      const scoped = (await listCallerDefinitions(service)).filter(
         (record) =>
-          record.definition.status === "active" &&
+          (record.definition.status === "active" ||
+            (surface === "OWNER_TODOS" &&
+              record.definition.status === "completed" &&
+              record.definition.id === targetName)) &&
           record.definition.domain === reviewDomain &&
           definitionReviewSurface(record) === surface,
+      );
+      const active = scoped.filter(
+        (record) => record.definition.status === "active",
       );
       let selected = active;
       // A list-shaped review sometimes arrives with the planner's own list
@@ -6470,7 +6533,19 @@ async function runLifeOperationHandlerInner(
           targetName.trim(),
         );
       if (targetName && !isListVerbiageTarget) {
-        const resolved = resolveDefinitionInRecords(active, targetName);
+        // A returned todo ID remains readable after completion. Keep ordinary
+        // lists and fuzzy title resolution restricted to active definitions.
+        const completedTodo =
+          surface === "OWNER_TODOS"
+            ? scoped.find(
+                (record) =>
+                  record.definition.id === targetName &&
+                  record.definition.status === "completed",
+              )
+            : undefined;
+        const resolved = completedTodo
+          ? { match: completedTodo, ambiguousCandidates: [] }
+          : resolveDefinitionInRecords(active, targetName);
         if (resolved.ambiguousCandidates.length > 0) {
           const fallback = `Multiple ${definitionReviewSurfaceLabel(surface)} match "${targetName}": ${resolved.ambiguousCandidates.join(", ")}. Which one did you mean?`;
           return {
@@ -6522,13 +6597,18 @@ async function runLifeOperationHandlerInner(
         };
       }
       const listed = selected.map((record) => ({
+        id: record.definition.id,
         title: record.definition.title,
+        status: record.definition.status,
         cadence: summarizeCadence(record.definition.cadence),
         kind: record.definition.kind,
       }));
       const fallback = [
         `You're tracking ${selected.length} ${definitionReviewSurfaceLabel(surface)} item${selected.length === 1 ? "" : "s"}:`,
-        ...listed.map((item) => `- ${item.title} (${item.cadence})`),
+        ...listed.map(
+          (item) =>
+            `- ${item.title} (${item.status}; ${item.cadence}; ID: ${item.id})`,
+        ),
         ...(selected.length > listed.length
           ? [`…and ${selected.length - listed.length} more.`]
           : []),
@@ -6701,11 +6781,8 @@ export async function runLifeOperationHandler(
   options: HandlerOptions | undefined,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
-  const result = await runLifeOperationHandlerInner(
-    runtime,
-    message,
-    state,
-    options,
+  const result = settleLifeActionReply(
+    await runLifeOperationHandlerInner(runtime, message, state, options),
   );
   const receipt = await lifeEffectReceiptForResult({
     runtime,
@@ -6720,11 +6797,16 @@ export async function runLifeOperationHandler(
     lifeRequestedOperation(options) === "review" &&
     receipt.outcome === "failed" &&
     receipt.failure.acceptance === "rejected";
-  return completeLifeOpsEffect(
-    callback,
-    observationFailure
-      ? { ...result, data: { ...result.data, readOnlyOperation: true } }
-      : result,
-    receipt,
-  );
+  const settledResult = observationFailure
+    ? { ...result, data: { ...result.data, readOnlyOperation: true } }
+    : result;
+  if (
+    result.replyFailure ||
+    (result.transcriptVisibility === "internal" &&
+      result.success === false &&
+      result.userFacingText === undefined)
+  ) {
+    return { ...settledResult, effectReceipts: [receipt] };
+  }
+  return completeLifeOpsEffect(callback, settledResult, receipt);
 }

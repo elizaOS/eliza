@@ -26,7 +26,8 @@
  * under a distinct name keeps exactly one `ENTITY` action at runtime.
  */
 
-import { hasOwnerAccess, resolveKnowledgeGraphService } from "@elizaos/agent";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
+import { resolveKnowledgeGraphService } from "@elizaos/agent/services/knowledge-graph";
 import type {
   Action,
   ActionResult,

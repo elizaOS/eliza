@@ -166,9 +166,16 @@ export default defineConfig({
       // node:test/bun:test. They are executed by `bun run test:script-suites`
       // (chained from `test`) so the exclusion no longer means "runs nowhere".
       // Uses Node.js built-in test runner (node:test), not vitest.
+      "scripts/build-experimental-exact-window-helper.test.mjs",
+      "scripts/ensure-fused-inference-install.test.mjs",
       "scripts/mobile-auth-simulator-smoke-endstate.test.mjs",
       "scripts/android-sms-gateway-template.test.mjs",
       "scripts/stage-android-agent.test.mjs",
+      "scripts/android-pglite-staging.test.mjs",
+      "scripts/ensure-vision-deps-policy.test.mjs",
+      "scripts/lib/dev-port-ownership.test.mjs",
+      "scripts/lib/apk-runtime-provenance.test.mjs",
+      "scripts/lib/android-runtime-packaging.test.mjs",
       "scripts/stage-desktop-fused-lib-staleness.test.mjs",
       "scripts/ensure-fused-inference-install.test.mjs",
       "scripts/build-helpers/arm64-simd.test.mjs",
@@ -179,6 +186,7 @@ export default defineConfig({
       // `bun run test:script-suites` (node --test list).
       "scripts/store-listing-urls.test.mjs",
       // Uses bun:test, not vitest; runs in `bun run test:script-suites`.
+      "scripts/lib/live-stack-safe-diagnostics.test.ts",
       "scripts/voice/voice-models-publish-all.test.mjs",
       // Uses bun:test, not vitest.
       "scripts/aosp/stage-default-models.test.mjs",
@@ -262,6 +270,10 @@ export default defineConfig({
       {
         find: /^@elizaos\/auth\/(.+)$/,
         replacement: path.join(authSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/login$/,
+        replacement: path.join(monorepoRoot, "packages/login/src/sdk/index.ts"),
       },
       { find: /^@elizaos\/ui$/, replacement: path.join(uiDir, "src/index.ts") },
       {

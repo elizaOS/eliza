@@ -145,6 +145,7 @@ import {
 } from "./client-types";
 import { isApiError } from "./client-types-core";
 import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
+import { isDesktopLocalApiBaseUrl } from "./desktop-local-api-base";
 import { workflowSurfaceClient } from "./workflow-surface-routing";
 
 export {
@@ -275,6 +276,7 @@ async function getDesktopStatusRpc<T>(
   params?: unknown,
 ): Promise<T | null> {
   if (
+    !isDesktopLocalApiBaseUrl(baseUrl) ||
     isDesktopExternalApiBaseUrl(baseUrl) ||
     isRemoteRelayRestAdapterBase(baseUrl)
   ) {
@@ -294,6 +296,7 @@ async function invokeLocalDesktopAgentRpc<T>(
   options: { rpcMethod: string; ipcChannel: string; params?: unknown },
 ): Promise<T | null> {
   if (
+    !isDesktopLocalApiBaseUrl(baseUrl) ||
     isDesktopExternalApiBaseUrl(baseUrl) ||
     isRemoteRelayRestAdapterBase(baseUrl)
   ) {

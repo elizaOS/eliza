@@ -83,6 +83,12 @@ export interface FirstRunFinishPorts {
   uiLanguage: UiLanguage;
   elizaCloudConnected: boolean;
   /**
+   * False for boot-time session recovery, where no user gesture authorized
+   * opening an authentication surface. A missing or rejected credential must
+   * return `needs-cloud-login` so the conductor can render its sign-in choice.
+   */
+  allowInteractiveCloudLogin?: boolean;
+  /**
    * Interactive Cloud login entry point: pre-opens the named popup window
    * itself, so the first-run flow cannot omit it (#17129). Use this for
    * user-facing login; the deliberate same-tab boot-recovery path lives on
@@ -798,6 +804,9 @@ export async function listOrAutoProvisionCloudAgent(
   );
   ports.setRuntimeState("firstRunProvider", "elizacloud");
   if (!getCloudAuthToken(client)) {
+    if (ports.allowInteractiveCloudLogin === false) {
+      return { kind: "needs-cloud-login" };
+    }
     // Interactive OAuth is the unbounded wait (#19255): tell the conductor so
     // it can seed the waiting turn and arm the bounded recovery deadline.
     ports.onInteractiveLogin?.();

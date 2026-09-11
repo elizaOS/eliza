@@ -13,8 +13,11 @@ import {
 } from "./runtime/service-lifecycle.js";
 
 export {
+	EMBEDDING_STORE_ACCEPT_MODEL_SETTING,
+	EMBEDDING_STORE_IDENTITY_CACHE_KEY,
 	EmbeddingDimensionProbeError,
 	type EmbeddingProbeAttempt,
+	type EmbeddingStoreIdentity,
 } from "./runtime/embeddings.js";
 
 import { RuntimeModelDispatch } from "./runtime/model-dispatch/dispatcher.js";
@@ -355,6 +358,20 @@ async function settleBeforeTimeout(
 		if (timer !== undefined) clearTimeout(timer);
 	}
 }
+
+/**
+ * Configuration keys that operators commonly place under `settings.secrets`
+ * but that carry no credential; their values are safe in prompts and must not
+ * be redacted literally. Closed set on purpose: any other key under `secrets`
+ * keeps the literal redaction.
+ */
+const NON_CREDENTIAL_SECRET_KEYS: ReadonlySet<string> = new Set([
+	"TIMEZONE",
+	"TZ",
+	"LOCALE",
+	"LANGUAGE",
+	"LANG",
+]);
 
 export class AgentRuntime implements IAgentRuntime {
 	private readonly dataMutations = new RuntimeDataMutations(this, {
@@ -1300,20 +1317,10 @@ export class AgentRuntime implements IAgentRuntime {
 			// snapshot, otherwise the first declaration can fail before a later
 			// implementation of the same service type is visible.
 			for (const serviceType of serviceTypesToStart) {
-				this._ensureServiceStarted(serviceType).catch((err) => {
-					// error-policy:J5 eager startup is fire-and-forget; _runServiceStart
-					// reports the failure and service-load callers observe the rejection.
-					this.logger.error(
-						{
-							src: "agent",
-							agentId: this.agentId,
-							plugin: pluginToRegister.name,
-							serviceType,
-							error: err instanceof Error ? err.message : String(err),
-						},
-						"Service start failed",
-					);
-				});
+				void this.serviceLifecycle.startServiceEagerly(
+					serviceType,
+					pluginToRegister.name,
+				);
 			}
 		}
 		if (pluginToRegister.adapter) {
@@ -2025,7 +2032,15 @@ export class AgentRuntime implements IAgentRuntime {
 					agentId: this.agentId,
 					attempts: error.attempts,
 				};
-				if (pendingLocalHandler) {
+				const pendingConfiguredHandler =
+					error.attempts.length === 1 &&
+					error.attempts[0]?.error === "no registered handler yet";
+				if (pendingConfiguredHandler) {
+					this.logger.info(
+						context,
+						"Configured TEXT_EMBEDDING provider has not registered yet; keeping embedding generation disabled until the deferred re-probe pins it",
+					);
+				} else if (pendingLocalHandler) {
 					this.logger.info(
 						context,
 						"Local TEXT_EMBEDDING handler will register during deferred plugin boot; keeping embedding generation disabled until the deferred probe",
@@ -5091,9 +5106,11 @@ export class AgentRuntime implements IAgentRuntime {
 		if (!secrets || typeof secrets !== "object") {
 			return {};
 		}
-		// Filter to only include string values
+		// Preserve declared non-credential configuration in model context.
+		// Other secret strings retain literal redaction and the pattern sweep.
 		const result: Record<string, string> = {};
 		for (const [key, value] of Object.entries(secrets)) {
+			if (NON_CREDENTIAL_SECRET_KEYS.has(key.trim().toUpperCase())) continue;
 			if (typeof value === "string" && value.length > 0) {
 				result[key] = value;
 			}

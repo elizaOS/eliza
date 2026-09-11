@@ -241,7 +241,13 @@ describe("useAgentSurfaceElementReporter", () => {
     expect(init?.method).toBe("POST");
     expect(lastPostBody()).toEqual({
       elements: [
-        { id: "send.amount", role: "text-input", label: "Amount", value: "5" },
+        {
+          id: "send.amount",
+          role: "text-input",
+          label: "Amount",
+          value: "5",
+          visible: false,
+        },
       ],
       viewPath: "/chat",
       viewType: "gui",
@@ -307,7 +313,7 @@ describe("useAgentSurfaceElementReporter", () => {
       "/api/views/view-b/elements",
     );
     expect(lastPostBody().elements).toEqual([
-      { id: "b", role: "region", label: "B" },
+      { id: "b", role: "region", label: "B", visible: false },
     ]);
   });
 });

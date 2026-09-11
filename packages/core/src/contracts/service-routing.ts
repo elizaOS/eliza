@@ -63,7 +63,7 @@ export type {
 	ServiceTransport,
 };
 
-export const DEFAULT_CEREBRAS_TEXT_MODEL = "gemma-4-31b";
+export const DEFAULT_CEREBRAS_TEXT_MODEL = "qwen-3.8-27b";
 export const DEFAULT_ELIZA_CLOUD_TEXT_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
 // Managed Dedicated agents deliberately use one Cerebras-native model for both
 // text tiers so planner/reasoning cannot fall through to a different provider.
@@ -431,6 +431,11 @@ export function normalizeLinkedAccountRecord(
 		typeof record.lastUsedAt === "number" && Number.isFinite(record.lastUsedAt)
 			? record.lastUsedAt
 			: undefined;
+	const lastPrimedAt =
+		typeof record.lastPrimedAt === "number" &&
+		Number.isFinite(record.lastPrimedAt)
+			? record.lastPrimedAt
+			: undefined;
 	const healthDetail = normalizeLinkedAccountHealthDetail(record.healthDetail);
 	const usage = normalizeLinkedAccountUsage(record.usage);
 	const subscriptionEndsAt =
@@ -453,6 +458,7 @@ export function normalizeLinkedAccountRecord(
 		createdAt,
 		health,
 		...(lastUsedAt !== undefined ? { lastUsedAt } : {}),
+		...(lastPrimedAt !== undefined ? { lastPrimedAt } : {}),
 		...(healthDetail ? { healthDetail } : {}),
 		...(usage ? { usage } : {}),
 		...(subscriptionEndsAt !== undefined ? { subscriptionEndsAt } : {}),
@@ -480,6 +486,9 @@ export function normalizeLinkedAccountsRecords(
 
 	return Object.keys(out).length > 0 ? out : null;
 }
+
+/** Compat alias for older packaged app-core and Electrobun flag-map consumers. */
+export const normalizeLinkedAccountsConfig = normalizeLinkedAccountFlagsConfig;
 
 export function normalizeServiceRouteConfig(
 	value: unknown,

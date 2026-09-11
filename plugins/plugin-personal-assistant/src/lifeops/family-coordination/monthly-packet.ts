@@ -108,6 +108,7 @@ export interface FamilyPacketTransformation {
     | "internal_metadata_omitted"
     | "contradiction_surfaced"
     | "missing_section_surfaced"
+    | "owner_text_edited"
     | "unanswered_carried_once";
   readonly claimId: string | null;
   readonly detail: string;
@@ -125,6 +126,63 @@ export interface MonthlyFamilyDraft {
   readonly bodySha256: string;
   readonly transformations: readonly FamilyPacketTransformation[];
   readonly createdAt: string;
+  readonly email: FamilyPacketEmailDelivery | null;
+}
+
+export interface FamilyPacketEmailDelivery {
+  readonly subject: string;
+  readonly senderGrantId: string;
+}
+
+function matchesDraftApproval(
+  draft: MonthlyFamilyDraft,
+  request: ApprovalRequest,
+): boolean {
+  const payload = request.payload;
+  if (draft.email) {
+    return (
+      request.action === "send_email" &&
+      payload.action === "send_email" &&
+      request.channel === "email" &&
+      payload.to.length === 1 &&
+      payload.to[0] === draft.recipient &&
+      payload.cc.length === 0 &&
+      payload.bcc.length === 0 &&
+      !payload.threadId &&
+      !payload.replyToMessageId &&
+      payload.subject === draft.email.subject &&
+      payload.grantId === draft.email.senderGrantId &&
+      payload.body === draft.body &&
+      sha256(payload.body) === draft.bodySha256
+    );
+  }
+  return (
+    request.action === "send_message" &&
+    payload.action === "send_message" &&
+    request.channel === "imessage" &&
+    payload.recipient === draft.recipient &&
+    !payload.replyToMessageId &&
+    payload.body === draft.body &&
+    sha256(payload.body) === draft.bodySha256
+  );
+}
+
+function readEmailDelivery(value: unknown): FamilyPacketEmailDelivery | null {
+  if (value === null || value === undefined) return null;
+  const parsed = parseJsonValue<unknown>(value, null);
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    !("subject" in parsed) ||
+    typeof parsed.subject !== "string" ||
+    !parsed.subject.trim() ||
+    !("senderGrantId" in parsed) ||
+    typeof parsed.senderGrantId !== "string" ||
+    !parsed.senderGrantId.trim()
+  ) {
+    fail("stored email delivery is invalid", "FAMILY_PACKET_EMAIL_INVALID");
+  }
+  return { subject: parsed.subject, senderGrantId: parsed.senderGrantId };
 }
 
 const SCHEMA = [
@@ -150,6 +208,7 @@ const SCHEMA = [
   `ALTER TABLE app_lifeops.life_family_packet_drafts ADD COLUMN IF NOT EXISTS recipient_entity_id TEXT`,
   `ALTER TABLE app_lifeops.life_family_packet_drafts ADD COLUMN IF NOT EXISTS calendar_privacy_mode TEXT`,
   `ALTER TABLE app_lifeops.life_family_packet_drafts ADD COLUMN IF NOT EXISTS included_claim_ids_json TEXT`,
+  `ALTER TABLE app_lifeops.life_family_packet_drafts ADD COLUMN IF NOT EXISTS email_json TEXT`,
   `CREATE TABLE IF NOT EXISTS app_lifeops.life_family_packet_approvals (
     agent_id TEXT NOT NULL, packet_id TEXT NOT NULL, draft_version INTEGER NOT NULL,
     draft_sha256 TEXT NOT NULL, approval_id TEXT NOT NULL, created_at TEXT NOT NULL,
@@ -403,6 +462,7 @@ export class MonthlyFamilyPacketService {
       recipient: string;
       recipientEntityId: string;
       calendarPrivacyMode: "full" | "times_only" | "busy_only";
+      email?: FamilyPacketEmailDelivery;
     },
   ): Promise<MonthlyFamilyDraft> {
     await this.ensureSchema();
@@ -422,6 +482,17 @@ export class MonthlyFamilyPacketService {
     const recipientEntityId = input.recipientEntityId.trim();
     if (!recipient || !recipientEntityId)
       fail("recipient is required", "FAMILY_PACKET_RECIPIENT_INVALID");
+    if (
+      input.email &&
+      (!input.email.subject.trim() ||
+        /[\r\n]/u.test(input.email.subject) ||
+        !input.email.senderGrantId.trim())
+    ) {
+      fail(
+        "email subject and sender account are required",
+        "FAMILY_PACKET_EMAIL_INVALID",
+      );
+    }
     const transformations: FamilyPacketTransformation[] = [];
     const shareable: FamilyPacketClaim[] = [];
     const agreements = getAgreementKnowledgeService(this.runtime);
@@ -589,11 +660,100 @@ export class MonthlyFamilyPacketService {
       bodySha256: sha256(body),
       transformations,
       createdAt: this.now().toISOString(),
+      email: input.email ?? null,
     };
     await executeRawSql(
       this.runtime,
-      `INSERT INTO app_lifeops.life_family_packet_drafts (agent_id,packet_id,internal_version,draft_version,recipient,recipient_entity_id,calendar_privacy_mode,included_claim_ids_json,body,body_sha256,transformations_json,created_at) VALUES (${sqlQuote(this.runtime.agentId)},${sqlQuote(packet.packetId)},${packet.version},${draftVersion},${sqlQuote(recipient)},${sqlQuote(recipientEntityId)},${sqlQuote(input.calendarPrivacyMode)},${sqlQuote(JSON.stringify(draft.includedClaimIds))},${sqlQuote(body)},${sqlQuote(draft.bodySha256)},${sqlQuote(JSON.stringify(transformations))},${sqlQuote(draft.createdAt)})`,
+      `INSERT INTO app_lifeops.life_family_packet_drafts (agent_id,packet_id,internal_version,draft_version,recipient,recipient_entity_id,calendar_privacy_mode,included_claim_ids_json,body,body_sha256,transformations_json,created_at,email_json) VALUES (${sqlQuote(this.runtime.agentId)},${sqlQuote(packet.packetId)},${packet.version},${draftVersion},${sqlQuote(recipient)},${sqlQuote(recipientEntityId)},${sqlQuote(input.calendarPrivacyMode)},${sqlQuote(JSON.stringify(draft.includedClaimIds))},${sqlQuote(body)},${sqlQuote(draft.bodySha256)},${sqlQuote(JSON.stringify(transformations))},${sqlQuote(draft.createdAt)},${draft.email ? sqlQuote(JSON.stringify(draft.email)) : "NULL"})`,
     );
+    return draft;
+  }
+
+  async reviseDraft(input: {
+    packetId: string;
+    expectedDraftVersion: number;
+    body: string;
+    subject: string;
+  }): Promise<MonthlyFamilyDraft> {
+    await this.ensureSchema();
+    if (
+      !Number.isSafeInteger(input.expectedDraftVersion) ||
+      input.expectedDraftVersion < 1
+    )
+      fail(
+        "A valid saved draft version is required",
+        "FAMILY_PACKET_EDIT_INVALID",
+      );
+    if (
+      !input.body.trim() ||
+      !input.subject.trim() ||
+      /[\r\n]/u.test(input.subject)
+    )
+      fail(
+        "Email text and a single-line subject are required",
+        "FAMILY_PACKET_EDIT_INVALID",
+      );
+    const previous = await this.readDraft(
+      input.packetId,
+      input.expectedDraftVersion,
+    );
+    if (!previous?.email)
+      fail("Email draft not found", "FAMILY_PACKET_DRAFT_STALE");
+    const packet = await this.read(input.packetId);
+    if (!packet || packet.version !== previous.internalVersion)
+      fail(
+        "Regenerate the draft from the current packet before editing",
+        "FAMILY_PACKET_INTERNAL_STALE",
+      );
+    for (const claim of packet.claims) {
+      if (
+        claim.visibility === "owner_only" &&
+        (input.body.includes(claim.statement) ||
+          input.subject.includes(claim.statement))
+      )
+        fail(
+          "Owner-only content cannot be included in an external draft",
+          "FAMILY_PACKET_PRIVACY_LEAK",
+        );
+    }
+    const draft: MonthlyFamilyDraft = {
+      ...previous,
+      draftVersion: previous.draftVersion + 1,
+      body: input.body,
+      bodySha256: sha256(input.body),
+      email: { ...previous.email, subject: input.subject },
+      createdAt: this.now().toISOString(),
+      transformations: [
+        ...previous.transformations,
+        {
+          kind: "owner_text_edited",
+          claimId: null,
+          detail: `Owner revised draft ${previous.draftVersion}; a fresh approval is required.`,
+        },
+      ],
+    };
+    await withRequiredTransaction(this.runtime, async (tx) => {
+      // Serialize edits on the persisted packet before checking the current draft.
+      const packets = await executeRawSqlTx(
+        tx,
+        `SELECT internal_version FROM app_lifeops.life_family_packets WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND packet_id=${sqlQuote(input.packetId)} ORDER BY internal_version DESC LIMIT 1 FOR UPDATE`,
+      );
+      if (toNumber(packets[0]?.internal_version) !== previous.internalVersion)
+        fail("Packet changed while editing", "FAMILY_PACKET_INTERNAL_STALE");
+      const versions = await executeRawSqlTx(
+        tx,
+        `SELECT MAX(draft_version) AS version FROM app_lifeops.life_family_packet_drafts WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND packet_id=${sqlQuote(input.packetId)}`,
+      );
+      if (toNumber(versions[0]?.version) !== input.expectedDraftVersion)
+        fail(
+          "Another draft was saved; reload before editing",
+          "FAMILY_PACKET_DRAFT_STALE",
+        );
+      await executeRawSqlTx(
+        tx,
+        `INSERT INTO app_lifeops.life_family_packet_drafts (agent_id,packet_id,internal_version,draft_version,recipient,recipient_entity_id,calendar_privacy_mode,included_claim_ids_json,body,body_sha256,transformations_json,created_at,email_json) VALUES (${sqlQuote(this.runtime.agentId)},${sqlQuote(draft.packetId)},${draft.internalVersion},${draft.draftVersion},${sqlQuote(draft.recipient)},${sqlQuote(draft.recipientEntityId)},${sqlQuote(draft.calendarPrivacyMode)},${sqlQuote(JSON.stringify(draft.includedClaimIds))},${sqlQuote(draft.body)},${sqlQuote(draft.bodySha256)},${sqlQuote(JSON.stringify(draft.transformations))},${sqlQuote(draft.createdAt)},${sqlQuote(JSON.stringify(draft.email))})`,
+      );
+    });
     return draft;
   }
 
@@ -618,7 +778,9 @@ export class MonthlyFamilyPacketService {
       draft.body !== args.draft.body ||
       draft.recipient !== args.draft.recipient ||
       draft.recipientEntityId !== args.draft.recipientEntityId ||
-      draft.calendarPrivacyMode !== args.draft.calendarPrivacyMode
+      draft.calendarPrivacyMode !== args.draft.calendarPrivacyMode ||
+      draft.email?.subject !== args.draft.email?.subject ||
+      draft.email?.senderGrantId !== args.draft.email?.senderGrantId
     ) {
       fail("draft is missing or tampered", "FAMILY_PACKET_DRAFT_TAMPERED");
     }
@@ -633,14 +795,27 @@ export class MonthlyFamilyPacketService {
         {
           requestedBy: args.requestedBy,
           subjectUserId: args.subjectUserId,
-          action: "send_message",
-          payload: {
-            action: "send_message",
-            recipient: draft.recipient,
-            body: draft.body,
-            replyToMessageId: null,
-          },
-          channel: "imessage",
+          action: draft.email ? "send_email" : "send_message",
+          payload: draft.email
+            ? {
+                action: "send_email",
+                familyPacketId: draft.packetId,
+                grantId: draft.email.senderGrantId,
+                to: [draft.recipient],
+                cc: [],
+                bcc: [],
+                subject: draft.email.subject,
+                body: draft.body,
+                threadId: null,
+              }
+            : {
+                action: "send_message",
+                familyPacketId: draft.packetId,
+                recipient: draft.recipient,
+                body: draft.body,
+                replyToMessageId: null,
+              },
+          channel: draft.email ? "email" : "imessage",
           reason: `Review monthly family coordination packet ${draft.packetId} draft ${draft.draftVersion}`,
           idempotencyKey: `family-packet:${draft.packetId}:draft:${draft.draftVersion}:${draft.bodySha256}`,
           expiresAt: args.expiresAt,
@@ -648,12 +823,7 @@ export class MonthlyFamilyPacketService {
         tx,
       );
       const approval = enqueued.request;
-      if (
-        approval.action !== "send_message" ||
-        approval.payload.action !== "send_message" ||
-        sha256(approval.payload.body) !== draft.bodySha256 ||
-        approval.payload.recipient !== draft.recipient
-      ) {
+      if (!matchesDraftApproval(draft, approval)) {
         fail(
           "approval payload does not match the immutable draft",
           "FAMILY_PACKET_APPROVAL_TAMPERED",
@@ -675,8 +845,7 @@ export class MonthlyFamilyPacketService {
     await this.ensureSchema();
     if (
       request.state !== "approved" ||
-      request.action !== "send_message" ||
-      request.payload.action !== "send_message"
+      (request.action !== "send_message" && request.action !== "send_email")
     )
       fail(
         "approval is not an approved message",
@@ -699,8 +868,11 @@ export class MonthlyFamilyPacketService {
     if (
       !draft ||
       draft.bodySha256 !== toText(binding.draft_sha256) ||
-      sha256(request.payload.body) !== draft.bodySha256 ||
-      request.payload.recipient !== draft.recipient
+      !matchesDraftApproval(draft, request) ||
+      ((request.payload.action === "send_email" ||
+        request.payload.action === "send_message") &&
+        request.payload.familyPacketId !== undefined &&
+        request.payload.familyPacketId !== draft.packetId)
     )
       fail("approved payload was tampered", "FAMILY_PACKET_APPROVAL_TAMPERED");
     const latestRows = await executeRawSql(
@@ -757,6 +929,16 @@ export class MonthlyFamilyPacketService {
       this.runtime,
       `SELECT approval_id FROM app_lifeops.life_family_packet_approvals WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND approval_id=${sqlQuote(request.id)} LIMIT 1`,
     );
+    if (
+      (request.payload.action === "send_email" ||
+        request.payload.action === "send_message") &&
+      request.payload.familyPacketId &&
+      !rows[0]
+    )
+      fail(
+        "family approval binding is missing",
+        "FAMILY_PACKET_APPROVAL_INVALID",
+      );
     return rows[0] ? this.validateApprovedDraft(request) : null;
   }
 
@@ -786,6 +968,7 @@ export class MonthlyFamilyPacketService {
         row.transformations_json,
       ),
       createdAt: toText(row.created_at),
+      email: readEmailDelivery(row.email_json),
     };
   }
 

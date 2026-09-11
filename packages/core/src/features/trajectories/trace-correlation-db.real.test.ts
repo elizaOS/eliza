@@ -54,6 +54,9 @@ function createLookupGate(): {
 async function makeDelayedLookupService(
 	agentId: string,
 	lookupCount: number,
+	shouldDelay: (text: string) => boolean = (text) =>
+		text.includes("FROM trajectory_step_index i"),
+	delayAfterExecute = false,
 ): Promise<{
 	service: TrajectoriesService;
 	runtime: IAgentRuntime;
@@ -69,14 +72,17 @@ async function makeDelayedLookupService(
 	let nextGate = 0;
 	const proxyDb = {
 		execute: async (query: RawQuery) => {
-			if (
-				delaysEnabled &&
-				queryText(query).includes("FROM trajectory_step_index i")
-			) {
+			if (delaysEnabled && shouldDelay(queryText(query))) {
 				const state = gateStates[nextGate];
 				nextGate += 1;
 				if (!state) {
 					throw new Error("Unexpected delayed trajectory lookup");
+				}
+				if (delayAfterExecute) {
+					const result = await db.execute(query);
+					state.markEntered();
+					await state.waitForRelease;
+					return result;
 				}
 				state.markEntered();
 				await state.waitForRelease;
@@ -90,6 +96,7 @@ async function makeDelayedLookupService(
 	};
 	const runtime = {
 		agentId,
+		runtimeInstanceId: crypto.randomUUID(),
 		adapter: { db: proxyDb },
 		getService: () => null,
 		getServicesByType: () => [],
@@ -146,6 +153,7 @@ async function makeFaultService(agentId: string): Promise<{
 	};
 	const runtime = {
 		agentId,
+		runtimeInstanceId: crypto.randomUUID(),
 		adapter: { db: proxyDb },
 		getService: () => null,
 		getServicesByType: () => [],
@@ -204,6 +212,7 @@ beforeAll(async () => {
 	db = drizzle(client);
 	serviceRuntime = {
 		agentId: "00000000-0000-4000-8000-000000000001",
+		runtimeInstanceId: crypto.randomUUID(),
 		adapter: { db },
 		getService: () => null,
 		getServicesByType: () => [],
@@ -217,6 +226,241 @@ beforeAll(async () => {
 
 afterAll(async () => {
 	await client?.close?.();
+});
+
+describe("trajectory graceful shutdown ownership (real PGlite)", () => {
+	it("does not reclaim ownership after a concurrent clear deletes a committed start", async () => {
+		const owner = await makeDelayedLookupService(
+			crypto.randomUUID(),
+			1,
+			(text) => text.includes("INSERT INTO trajectories"),
+			true,
+		);
+		const gate = owner.gates[0];
+		if (!gate) throw new Error("Missing committed insert gate");
+		owner.enableDelays();
+		const starting = owner.service.startTrajectory(owner.runtime.agentId);
+		await gate.entered;
+		const count = await owner.service.clearAllTrajectories();
+		gate.release();
+		const trajectoryId = await starting;
+		expect(count).toBe(1);
+		expect(await owner.service.getTrajectoryDetail(trajectoryId)).toBeNull();
+		// No owned run remains, so stopping must not need a storage transaction.
+		owner.runtime.adapter.db = {};
+		await expect(owner.service.stop()).resolves.toBeUndefined();
+	});
+
+	it.each(["selected", "all"] as const)(
+		"releases shutdown ownership after deleting %s trajectories",
+		async (mode) => {
+			const owner = await makeFaultService(crypto.randomUUID());
+			const other = await makeFaultService(crypto.randomUUID());
+			const trajectoryId = await owner.service.startTrajectory(
+				owner.runtime.agentId,
+			);
+			const otherId = await other.service.startTrajectory(
+				other.runtime.agentId,
+			);
+			const count =
+				mode === "selected"
+					? await owner.service.deleteTrajectories([trajectoryId, otherId])
+					: await owner.service.clearAllTrajectories();
+			expect(count).toBe(1);
+			expect(await owner.service.getTrajectoryDetail(trajectoryId)).toBeNull();
+			expect(
+				(await other.service.getTrajectoryDetail(otherId))?.metrics.finalStatus,
+			).toBe("active");
+			// A deleted run must not leave a shutdown write behind if the database
+			// later becomes unavailable during process teardown.
+			owner.fault.failAt = 1;
+			await expect(owner.service.stop()).resolves.toBeUndefined();
+		},
+	);
+
+	it("terminates only this service's starts and preserves settled content and other owners", async () => {
+		const owner = await makeFaultService(
+			"00000000-0000-4000-8000-000000000401",
+		);
+		const sibling = await makeFaultService(owner.runtime.agentId);
+		const otherAgent = await makeFaultService(
+			"00000000-0000-4000-8000-000000000402",
+		);
+		const noStepId = await owner.service.startTrajectory(
+			owner.runtime.agentId,
+			{
+				metadata: { runtimeInstanceId: sibling.runtime.runtimeInstanceId },
+			},
+		);
+		const activeId = await owner.service.startTrajectory(owner.runtime.agentId);
+		const stepId = owner.service.startStep(activeId, { timestamp: Date.now() });
+		await owner.service.flushWriteQueue(activeId);
+		owner.service.logLlmCall({
+			stepId,
+			model: "shutdown-proof",
+			systemPrompt: "system",
+			userPrompt: "prompt",
+			response: "Saved before shutdown.",
+			purpose: "action",
+		});
+		await owner.service.flushWriteQueue(activeId);
+		const contentBefore = await owner.service.getTrajectoryDetail(activeId);
+		const completedId = await owner.service.startTrajectory(
+			owner.runtime.agentId,
+		);
+		// A terminal event can be persisted through another service before the
+		// creator shuts down. Its local start registry must not reopen that result.
+		await sibling.service.endTrajectory(completedId, "completed");
+		const completedBefore =
+			await owner.service.getTrajectoryDetail(completedId);
+		const siblingId = await sibling.service.startTrajectory(
+			sibling.runtime.agentId,
+		);
+		const otherId = await otherAgent.service.startTrajectory(
+			otherAgent.runtime.agentId,
+		);
+		// A service can capture a same-agent trajectory through the public routing
+		// contract. That routing is not authority to terminate its creator's run.
+		owner.service.startStep(siblingId, { timestamp: Date.now() });
+		await owner.service.flushWriteQueue(siblingId);
+		const siblingBefore = await sibling.service.getTrajectoryDetail(siblingId);
+
+		await Promise.all([owner.service.stop(), owner.service.stop()]);
+
+		const stopped = await owner.service.getTrajectoryDetail(activeId);
+		expect(stopped?.metrics.finalStatus).toBe("terminated");
+		expect(stopped?.steps).toEqual(contentBefore?.steps);
+		expect(stopped?.metadata).toEqual(contentBefore?.metadata);
+		expect(stopped?.endTime).toBeGreaterThanOrEqual(
+			stopped?.startTime ?? Infinity,
+		);
+		expect(stopped?.durationMs).toBe(
+			(stopped?.endTime ?? 0) - (stopped?.startTime ?? 0),
+		);
+		expect(
+			await raw(
+				`SELECT is_active FROM trajectory_step_index WHERE step_id = '${stepId}'`,
+			),
+		).toEqual([{ is_active: false }]);
+		const noStep = await owner.service.getTrajectoryDetail(noStepId);
+		expect(noStep).toMatchObject({
+			steps: [],
+			metrics: { finalStatus: "terminated", episodeLength: 0 },
+			metadata: { runtimeInstanceId: owner.runtime.runtimeInstanceId },
+		});
+		expect(await sibling.service.getTrajectoryDetail(siblingId)).toEqual(
+			siblingBefore,
+		);
+		expect(
+			(await otherAgent.service.getTrajectoryDetail(otherId))?.metrics
+				.finalStatus,
+		).toBe("active");
+		expect(await owner.service.getTrajectoryDetail(completedId)).toEqual(
+			completedBefore,
+		);
+		await owner.service.stop();
+		expect(await owner.service.getTrajectoryDetail(activeId)).toEqual(stopped);
+	});
+
+	it("waits for an accepted no-step insert before shutdown and rejects new starts", async () => {
+		const owner = await makeDelayedLookupService(
+			"00000000-0000-4000-8000-000000000403",
+			1,
+			(text) => text.includes("INSERT INTO trajectories"),
+		);
+		const gate = owner.gates[0];
+		if (!gate) throw new Error("Missing start gate");
+		owner.enableDelays();
+		const starting = owner.service.startTrajectory(owner.runtime.agentId);
+		await gate.entered;
+		let stopped = false;
+		const stopping = owner.service.stop().then(() => {
+			stopped = true;
+		});
+		await Promise.resolve();
+		await Promise.resolve();
+		const stoppedBeforeInsert = stopped;
+		const rejectedId = await owner.service.startTrajectory(
+			owner.runtime.agentId,
+		);
+		gate.release();
+		const trajectoryId = await starting;
+		await stopping;
+		expect(stoppedBeforeInsert).toBe(false);
+		expect(await owner.service.getTrajectoryDetail(trajectoryId)).toMatchObject(
+			{
+				steps: [],
+				metrics: { finalStatus: "terminated" },
+			},
+		);
+		expect(await owner.service.getTrajectoryDetail(rejectedId)).toBeNull();
+	});
+
+	it("drains queued capture before termination without discarding its recorded result", async () => {
+		const owner = await makeFaultService(
+			"00000000-0000-4000-8000-000000000404",
+		);
+		const trajectoryId = await owner.service.startTrajectory(
+			owner.runtime.agentId,
+		);
+		const stepId = owner.service.startStep(trajectoryId, {
+			timestamp: Date.now(),
+		});
+		owner.service.logLlmCall({
+			stepId,
+			model: "queued-before-stop",
+			systemPrompt: "system",
+			userPrompt: "prompt",
+			response: "The accepted response must survive.",
+			purpose: "action",
+		});
+		await owner.service.stop();
+		const detail = await owner.service.getTrajectoryDetail(trajectoryId);
+		expect(detail?.metrics.finalStatus).toBe("terminated");
+		expect(detail?.steps.flatMap((step) => step.llmCalls)).toEqual([
+			expect.objectContaining({
+				response: "The accepted response must survive.",
+			}),
+		]);
+	});
+
+	it("rolls back every shutdown statement and allows a later stop to finish", async () => {
+		for (let failAt = 1; failAt <= 3; failAt += 1) {
+			const owner = await makeFaultService(
+				`00000000-0000-4000-8000-00000000041${failAt}`,
+			);
+			const trajectoryId = await owner.service.startTrajectory(
+				owner.runtime.agentId,
+			);
+			const stepId = owner.service.startStep(trajectoryId, {
+				timestamp: Date.now(),
+			});
+			await owner.service.flushWriteQueue(trajectoryId);
+			const before = await owner.service.getTrajectoryDetail(trajectoryId);
+			owner.fault.failAt = failAt;
+			await expect(owner.service.stop()).rejects.toThrow();
+			owner.fault.failAt = null;
+			expect(await owner.service.getTrajectoryDetail(trajectoryId)).toEqual(
+				before,
+			);
+			expect(
+				await raw(
+					`SELECT is_active FROM trajectory_step_index WHERE step_id = '${stepId}'`,
+				),
+			).toEqual([{ is_active: true }]);
+			expect(owner.service.isEnabled()).toBe(false);
+			await owner.service.stop();
+			expect(
+				(await owner.service.getTrajectoryDetail(trajectoryId))?.metrics
+					.finalStatus,
+			).toBe("terminated");
+			expect(
+				await raw(
+					`SELECT is_active FROM trajectory_step_index WHERE step_id = '${stepId}'`,
+				),
+			).toEqual([{ is_active: false }]);
+		}
+	});
 });
 
 describe("trajectories trace_id join key (real PGLite)", () => {
@@ -483,93 +727,100 @@ describe("trajectories trace_id join key (real PGLite)", () => {
 		await harness.service.flushWriteQueue(trajectoryId);
 		await harness.service.endTrajectory(trajectoryId, "completed");
 
-		harness.service.logLlmCall({
-			stepId,
-			model: "native-after-end",
-			systemPrompt: "system",
-			userPrompt: "prompt",
-			response: "must be rejected",
-			purpose: "action",
-		});
-		harness.service.logProviderAccess(stepId, {
-			providerName: "native-after-end-provider",
-			data: {},
-			purpose: "context",
-		});
-		await harness.service.flushWriteQueue(trajectoryId);
-		const completed = await harness.service.getTrajectoryDetail(trajectoryId);
-		expect(completed?.metrics.finalStatus).toBe("completed");
-		expect(completed?.steps.flatMap((step) => step.llmCalls)).toHaveLength(1);
-		expect(completed?.steps.flatMap((step) => step.providerAccesses)).toEqual(
-			[],
-		);
-		expect(
-			(
-				harness.runtime.reportError as ReturnType<typeof vi.fn>
-			).mock.calls.filter(
-				([scope, , context]) =>
-					scope === "TrajectoriesService.lateCapture" &&
-					(context as { diagnosticOnly?: boolean }).diagnosticOnly === true,
-			),
-		).toHaveLength(2);
+		// Immediate post-delivery captures are allowed; this test owns rejection
+		// after that grace window, both in memory and after a service reload.
+		const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 121_000);
+		try {
+			harness.service.logLlmCall({
+				stepId,
+				model: "native-after-end",
+				systemPrompt: "system",
+				userPrompt: "prompt",
+				response: "must be rejected",
+				purpose: "action",
+			});
+			harness.service.logProviderAccess(stepId, {
+				providerName: "native-after-end-provider",
+				data: {},
+				purpose: "context",
+			});
+			await harness.service.flushWriteQueue(trajectoryId);
+			const completed = await harness.service.getTrajectoryDetail(trajectoryId);
+			expect(completed?.metrics.finalStatus).toBe("completed");
+			expect(completed?.steps.flatMap((step) => step.llmCalls)).toHaveLength(1);
+			expect(completed?.steps.flatMap((step) => step.providerAccesses)).toEqual(
+				[],
+			);
+			expect(
+				(
+					harness.runtime.reportError as ReturnType<typeof vi.fn>
+				).mock.calls.filter(
+					([scope, , context]) =>
+						scope === "TrajectoriesService.lateCapture" &&
+						(context as { diagnosticOnly?: boolean }).diagnosticOnly === true,
+				),
+			).toHaveLength(2);
 
-		const reloaded = await makeFaultService(harness.runtime.agentId);
-		reloaded.service.logLlmCall({
-			stepId,
-			model: "native-after-reload",
-			systemPrompt: "system",
-			userPrompt: "prompt",
-			response: "must still be rejected",
-			purpose: "action",
-		});
-		reloaded.service.logProviderAccess(stepId, {
-			providerName: "native-after-reload-provider",
-			data: {},
-			purpose: "context",
-		});
-		await new Promise((resolve) => setTimeout(resolve, 20));
-		await reloaded.service.flushWriteQueue(trajectoryId);
-		expect(
-			(
-				reloaded.runtime.reportError as ReturnType<typeof vi.fn>
-			).mock.calls.filter(
-				([scope, , context]) =>
-					scope === "TrajectoriesService.lateCapture" &&
-					(context as { diagnosticOnly?: boolean }).diagnosticOnly === true,
-			),
-		).toHaveLength(2);
-		const afterReloadCapture =
-			await reloaded.service.getTrajectoryDetail(trajectoryId);
-		expect(
-			afterReloadCapture?.steps.flatMap((step) => step.llmCalls),
-		).toHaveLength(1);
-		expect(
-			afterReloadCapture?.steps.flatMap((step) => step.providerAccesses),
-		).toEqual([]);
+			const reloaded = await makeFaultService(harness.runtime.agentId);
+			reloaded.service.logLlmCall({
+				stepId,
+				model: "native-after-reload",
+				systemPrompt: "system",
+				userPrompt: "prompt",
+				response: "must still be rejected",
+				purpose: "action",
+			});
+			reloaded.service.logProviderAccess(stepId, {
+				providerName: "native-after-reload-provider",
+				data: {},
+				purpose: "context",
+			});
+			await new Promise((resolve) => setTimeout(resolve, 20));
+			await reloaded.service.flushWriteQueue(trajectoryId);
+			expect(
+				(
+					reloaded.runtime.reportError as ReturnType<typeof vi.fn>
+				).mock.calls.filter(
+					([scope, , context]) =>
+						scope === "TrajectoriesService.lateCapture" &&
+						(context as { diagnosticOnly?: boolean }).diagnosticOnly === true,
+				),
+			).toHaveLength(2);
+			const afterReloadCapture =
+				await reloaded.service.getTrajectoryDetail(trajectoryId);
+			expect(
+				afterReloadCapture?.steps.flatMap((step) => step.llmCalls),
+			).toHaveLength(1);
+			expect(
+				afterReloadCapture?.steps.flatMap((step) => step.providerAccesses),
+			).toEqual([]);
 
-		await harness.service.stop();
-		const rowsBefore = await raw(
-			`SELECT count(*)::int AS total FROM trajectories WHERE agent_id = '${harness.runtime.agentId}'`,
-		);
-		const inertId = await harness.service.startTrajectory(
-			harness.runtime.agentId,
-			{ source: "native-after-stop" },
-		);
-		harness.service.startStep(inertId, { timestamp: Date.now() });
-		harness.service.logLlmCall({
-			stepId,
-			model: "native-after-stop",
-			systemPrompt: "system",
-			userPrompt: "prompt",
-			response: "must remain inert",
-			purpose: "action",
-		});
-		await harness.service.flushWriteQueue(inertId);
-		const rowsAfter = await raw(
-			`SELECT count(*)::int AS total FROM trajectories WHERE agent_id = '${harness.runtime.agentId}'`,
-		);
-		expect(rowsAfter[0]?.total).toBe(rowsBefore[0]?.total);
-		expect(harness.service.isEnabled()).toBe(false);
+			await harness.service.stop();
+			const rowsBefore = await raw(
+				`SELECT count(*)::int AS total FROM trajectories WHERE agent_id = '${harness.runtime.agentId}'`,
+			);
+			const inertId = await harness.service.startTrajectory(
+				harness.runtime.agentId,
+				{ source: "native-after-stop" },
+			);
+			harness.service.startStep(inertId, { timestamp: Date.now() });
+			harness.service.logLlmCall({
+				stepId,
+				model: "native-after-stop",
+				systemPrompt: "system",
+				userPrompt: "prompt",
+				response: "must remain inert",
+				purpose: "action",
+			});
+			await harness.service.flushWriteQueue(inertId);
+			const rowsAfter = await raw(
+				`SELECT count(*)::int AS total FROM trajectories WHERE agent_id = '${harness.runtime.agentId}'`,
+			);
+			expect(rowsAfter[0]?.total).toBe(rowsBefore[0]?.total);
+			expect(harness.service.isEnabled()).toBe(false);
+		} finally {
+			clock.mockRestore();
+		}
 	});
 
 	it("drains cache-miss capture and terminal lookup before native stop", async () => {

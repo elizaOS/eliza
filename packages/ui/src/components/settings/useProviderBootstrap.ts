@@ -22,6 +22,8 @@ import type { useCloudModelConfig } from "./useCloudModelConfig";
 import type { useProviderSelection } from "./useProviderSelection";
 
 export interface ProviderBootstrapState {
+  /** True after the saved routing config has either loaded or failed. */
+  routingConfigResolved: boolean;
   subscriptionStatus: SubscriptionProviderStatus[];
   anthropicConnected: boolean;
   setAnthropicConnected: Dispatch<SetStateAction<boolean>>;
@@ -42,6 +44,7 @@ export function useProviderBootstrap(
   const [anthropicConnected, setAnthropicConnected] = useState(false);
   const [anthropicCliDetected, setAnthropicCliDetected] = useState(false);
   const [openaiConnected, setOpenaiConnected] = useState(false);
+  const [routingConfigResolved, setRoutingConfigResolved] = useState(false);
 
   const loadSubscriptionStatus = useCallback(async () => {
     try {
@@ -82,6 +85,10 @@ export function useProviderBootstrap(
         selection.initializeFromConfig(cfg);
       } catch {
         // config load is best-effort; defaults apply
+      } finally {
+        // Until this settles, rendering a provider-specific detail panel can
+        // flash the Local panel before the saved Cerebras/Cloud route arrives.
+        setRoutingConfigResolved(true);
       }
     })();
   }, [enabled, loadSubscriptionStatus]);
@@ -115,6 +122,7 @@ export function useProviderBootstrap(
   }, [subscriptionStatus]);
 
   return {
+    routingConfigResolved,
     subscriptionStatus,
     anthropicConnected,
     setAnthropicConnected,

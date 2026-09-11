@@ -13,6 +13,7 @@ import { isDeepStrictEqual } from "node:util";
 import ts from "typescript";
 import {
   buildInventory,
+  compareCodePoints,
   listMaintainedSourceFiles,
 } from "./find-duplicate-components.mjs";
 
@@ -70,23 +71,19 @@ function componentId(component) {
 export function molecularClusterBinding(cluster) {
   const memberComponentIds = cluster.entries
     .map(componentId)
-    .sort((a, b) => a.localeCompare(b));
+    .sort(compareCodePoints);
   const semanticInput = {
     archetype: cluster.archetype,
-    atomicDependencies: [...cluster.atomicDependencies].sort((a, b) =>
-      a.localeCompare(b),
-    ),
+    atomicDependencies: [...cluster.atomicDependencies].sort(compareCodePoints),
     members: cluster.entries
       .map((entry) => ({
-        atomicDependencies: [...entry.atomicDependencies].sort((a, b) =>
-          a.localeCompare(b),
+        atomicDependencies: [...entry.atomicDependencies].sort(
+          compareCodePoints,
         ),
         id: componentId(entry),
-        renderedTags: [...entry.renderedTags].sort((a, b) =>
-          a.localeCompare(b),
-        ),
+        renderedTags: [...entry.renderedTags].sort(compareCodePoints),
       }))
-      .sort((a, b) => a.id.localeCompare(b.id)),
+      .sort((a, b) => compareCodePoints(a.id, b.id)),
   };
   const semanticFingerprint = `sha256:${createHash("sha256")
     .update(JSON.stringify(semanticInput))
@@ -588,9 +585,9 @@ export function detectMolecularClusters(atomicComponents) {
       atomicDependencies: entries[0].atomicDependencies,
       entries: entries.sort(
         (a, b) =>
-          a.file.localeCompare(b.file) ||
+          compareCodePoints(a.file, b.file) ||
           a.line - b.line ||
-          a.name.localeCompare(b.name),
+          compareCodePoints(a.name, b.name),
       ),
       signature,
     }))
@@ -598,7 +595,7 @@ export function detectMolecularClusters(atomicComponents) {
     .sort(
       (a, b) =>
         b.entries.length - a.entries.length ||
-        a.signature.localeCompare(b.signature),
+        compareCodePoints(a.signature, b.signature),
     );
   return { clusters, eligibleComponents: components.length };
 }

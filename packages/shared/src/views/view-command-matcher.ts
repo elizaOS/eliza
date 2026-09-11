@@ -551,6 +551,9 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
     "to do",
     "to-do",
     "todo",
+    "todo list",
+    "to-do list",
+    "to do list",
     "tasks",
     "task list",
     "checklist",
@@ -706,6 +709,7 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
     "agents view",
     "my agents",
   ],
+  projects: ["projects", "projects view", "project view"],
   "task-coordinator": [
     "task coordinator",
     "orchestrator",
@@ -883,6 +887,7 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
 // "task coordinator" wins over a bare "coding" elsewhere, etc.
 const VIEW_PRIORITY = [
   "cockpit",
+  "projects",
   "task-coordinator",
   "pendant-transcript",
   "finances",
@@ -953,7 +958,11 @@ const CJK_NOUN_BOUNDARIES = [
     script: "Han",
     endsWith: /\p{Script=Han}$/u,
     startsWith: /^\p{Script=Han}/u,
-    particles: [],
+    // Sentence-final softener particles ("我的日历吧") and thanks tails
+    // ("我的日历谢谢" — zh writes without spaces, so the tail abuts the noun).
+    // Lookahead-only: they admit a noun before the particle without consuming
+    // or enabling mid-word matches (compound continuations like 吧台 reject).
+    particles: ["吧", "呗", "谢谢", "多谢"],
   },
   {
     script: "Hiragana",
@@ -1165,7 +1174,13 @@ const CLOUD_APPS_PARTICLES = [
 const CLOUD_APPS_COURTESY = [
   "please",
   "por favor",
+  // French "please" — cover straight (') and curly (’, U+2019) apostrophes
+  // (French keyboards/iOS emit the curly form) and the accent-stripped
+  // variants, mirroring the dual-apostrophe negation handling above.
   "s'il vous plaît",
+  "s'il vous plait",
+  "s’il vous plaît",
+  "s’il vous plait",
   "s il vous plait",
   "bitte",
 ] as const;
@@ -1220,6 +1235,121 @@ interface CompiledView {
   re: RegExp;
 }
 
+// Trailing words a whole-message possessive command may carry ("my calendar
+// please", "my settings now") — mirrors CLOUD_APPS_COMMAND_RE's courtesy-tail
+// handling. Anything else after the noun ("what is on my calendar this week?")
+// is a read/question, not navigation, and must reach the normal planner.
+//
+// DESIGN DECISION — bounded vocabulary, not language enumeration. Missing this
+// deterministic shortcut degrades to the model path: the bot still navigates,
+// just slower. So the tail (and filler) lists are deliberately small, and
+// long-tail phrasings outside them — compound possessives ("my calendar and my
+// todo list"), novel courtesy ("cheers mate"), free-form trailers — are an
+// ACCEPTED tradeoff, left to the planner instead of growing these lists
+// unboundedly. Each entry mirrors a language the matcher already supports
+// (POSSESSIVES / VIEW_NOUNS); do not add new languages here alone.
+const POSS_TAIL_WORDS = [
+  ...CLOUD_APPS_COURTESY,
+  // en
+  "now",
+  "right now",
+  "rn",
+  "asap",
+  "again",
+  "real quick",
+  "when you can",
+  "pls",
+  "plz",
+  "thanks",
+  "thank you",
+  "thx",
+  "ty",
+  "thanks a lot",
+  "thank you so much",
+  "please and thank you",
+  // es
+  "gracias",
+  "muchas gracias",
+  // fr — informal "please"; CLOUD_APPS_COURTESY covers the vous forms
+  "merci",
+  "merci beaucoup",
+  "s'il te plaît",
+  "s'il te plait",
+  "s’il te plaît",
+  "s’il te plait",
+  // de
+  "danke",
+  "danke schön",
+  "dankeschön",
+  "vielen dank",
+  // pt
+  "obrigado",
+  "obrigada",
+  "muito obrigado",
+  "muito obrigada",
+  // zh — thanks + the sentence-final softeners also in the Han noun boundary
+  "谢谢",
+  "多谢",
+  "吧",
+  "呗",
+  // ja — nouns/verbs support ja; POSSESSIVES has no ja possessive today, so
+  // these fire only on mixed-script phrasings. Kept for symmetry.
+  "ありがとう",
+  "ありがとうございます",
+  "お願い",
+  "お願いします",
+  // ko
+  "부탁해",
+  "부탁해요",
+  "부탁합니다",
+  "감사합니다",
+  "고마워",
+  "고마워요",
+  "고맙습니다",
+  // vi
+  "cảm ơn",
+  "cám ơn",
+  "làm ơn",
+  // tl
+  "salamat",
+  "pakiusap",
+] as const;
+const POSS_TAIL_ALT = alt(POSS_TAIL_WORDS);
+// After the noun, also admit symbols (\p{S}: emoji like 🙏, ✨), combining
+// marks and format chars (\p{M}/\p{Cf}: emoji variation selector U+FE0F, ZWJ)
+// so "my calendar 🙏" still reads as a whole-message navigation command.
+const POSS_TRAIL = `[\\s\\p{P}\\p{S}\\p{M}\\p{Cf}]`;
+const POSS_OPTIONAL_COURTESY = `(?:(?:${CLOUD_APPS_COURTESY_ALT})[\\s\\p{P}]+)?`;
+// Leading discourse filler / vocative that voice transcription often prepends
+// ("uh my calendar", "ok so my calendar"). Anchored prefix only — a filler
+// never licenses a question form ("uh whats on my calendar" still reaches the
+// planner because "whats" is not a filler. Fillers may stack ("uh okay my
+// calendar"), bounded to three. Same bounded-vocabulary tradeoff as
+// POSS_TAIL_WORDS above.
+const POSS_FILLER_WORDS = [
+  "uh",
+  "uhh",
+  "um",
+  "umm",
+  "er",
+  "erm",
+  "ok",
+  "okay",
+  "k",
+  "kk",
+  "hey",
+  "yo",
+  "so",
+  "oh",
+  "ah",
+  "hmm",
+  "alright",
+  "right",
+  "well",
+] as const;
+const POSS_FILLER_ALT = alt(POSS_FILLER_WORDS);
+const POSS_OPTIONAL_FILLERS = `(?:(?:${POSS_FILLER_ALT})[\\s\\p{P}]+){0,3}`;
+
 // Standalone grammar consumes the whole request. Only grammatical articles,
 // possessives and particles may separate verbs and view nouns; arbitrary filler
 // would let a quoted instruction or another clause steal domain action hints.
@@ -1262,6 +1392,7 @@ const COMPILED: CompiledView[] = VIEW_PRIORITY.filter(
     `(?:${COMMAND_VERB})\\s*${noun}`,
     `${noun}${COMMAND_PARTICLE}\\s*(?:${COMMAND_VERB})`,
     `(?:${POSS_ALT})\\s*(?:${N})`,
+    `${POSS_OPTIONAL_FILLERS}${POSS_OPTIONAL_COURTESY}(?:${POSS_ALT})\\s*(?:${N})(?:${POSS_TRAIL}*(?:${POSS_TAIL_ALT}))*${POSS_TRAIL}*`,
     `(?:${N})\\s*(?:${VW_ALT})`,
     `(?:${N})`,
   ].join("|");

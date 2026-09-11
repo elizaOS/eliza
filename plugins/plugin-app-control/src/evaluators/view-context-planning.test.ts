@@ -11,7 +11,10 @@ import {
 	runWithStreamingContext,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { viewContextPlanningEvaluator } from "./view-context-planning.js";
+import {
+	parseContextualNavigationIntent,
+	viewContextPlanningEvaluator,
+} from "./view-context-planning.js";
 
 let server: Server;
 let catalogStatus: number;
@@ -101,6 +104,68 @@ async function run(ctx: ResponseHandlerEvaluatorContext) {
 }
 
 describe("same-turn contextual navigation", () => {
+	it("preserves a complete long decision inside a whole code fence", () => {
+		const decision = {
+			disposition: "forbidden",
+			reason: `${"Preserve all requested domain work. ".repeat(1000)}画面を変えないでください。`,
+		};
+		expect(
+			parseContextualNavigationIntent(
+				`\`\`\`json\n${JSON.stringify(decision)}\n\`\`\``,
+			),
+		).toEqual(decision);
+	});
+	for (const raw of [
+		'Ignore this decision: {"disposition":"requested","viewId":"observatory","reason":"do not open"}',
+		'{"disposition":"none","reason":"question"} trailing instructions',
+		'```json\n{"disposition":"none","reason":"question"}',
+		'```json\n{"disposition":"none","reason":"question"}\n```\n{"disposition":"forbidden","reason":"keep current view"}',
+	]) {
+		it(`rejects an incomplete or ambiguous decision: ${raw}`, () => {
+			expect(() => parseContextualNavigationIntent(raw)).toThrowError(
+				"Contextual navigation decision is not JSON",
+			);
+		});
+	}
+	it("parses a fenced JSON decision instead of failing the evaluator", async () => {
+		const ctx = context("open my calendar", {
+			disposition: "none",
+			reason: "x",
+		});
+		(ctx.runtime as unknown as { useModel: unknown }).useModel = async (
+			_type: string,
+			request: { prompt: string },
+		) => {
+			prompts.push(request.prompt);
+			return '```json\n{"disposition":"none","reason":"just a question"}\n```';
+		};
+		const result = await run(ctx);
+		expect(prompts).toHaveLength(1);
+		expect(result.errors).toEqual([]);
+		expect(result.appliedPatches).toEqual([
+			expect.objectContaining({
+				evaluatorName: "app-control.view-context-planning",
+				changed: ["contextSlices:add"],
+			}),
+		]);
+	});
+
+	it("does not spend a model call on a turn that surfaces to a viewless connector", async () => {
+		const ctx = context("open my calendar", {
+			disposition: "requested",
+			viewId: "calendar",
+			reason: "explicit",
+		});
+		(ctx.message as { content: Record<string, unknown> }).content = {
+			text: "open my calendar",
+			source: "discord",
+		};
+		const result = await run(ctx);
+		expect(prompts).toHaveLength(0);
+		expect(result.errors).toEqual([]);
+		expect(result.appliedPatches).toEqual([]);
+	});
+
 	it("adds a dynamically registered destination without erasing domain work or executing navigation", async () => {
 		const ctx = context(
 			"Find a free half-hour, draft an observation, and show the observatory",

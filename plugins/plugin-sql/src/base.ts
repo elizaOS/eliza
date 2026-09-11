@@ -102,7 +102,7 @@ import {
   type WorldMetadataMutationResult,
   worldMetadataValueEquals,
 } from "@elizaos/core";
-import { sanitizeJsonObject } from "./sanitize-json";
+import { sanitizeJsonObject, serializeJsonb } from "./sanitize-json";
 import { worldRoleAuditTable } from "./schema/worldRoleAudit";
 import {
   readTaskDueAt,
@@ -2919,9 +2919,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         conditions.push(eq(memoryTable.unique, true));
       }
 
-      if (agentId) {
-        conditions.push(eq(memoryTable.agentId, agentId));
-      }
+      // An adapter is bound to one agent; a read that names no agent is a read
+      // of that agent's memories. Relying on RLS alone leaked one agent's facts
+      // into another agent's prompt on a database without RLS policies (live
+      // 2026-09-06: the owner's facts stored by a second agent rendered in the
+      // first agent's FACTS block and could not be forgotten from it).
+      conditions.push(eq(memoryTable.agentId, agentId ?? this.agentId));
 
       if (textContains) {
         // Push the keyword filter into the store as a case-insensitive ILIKE;
@@ -4104,11 +4107,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   ): Promise<void> {
     // Ensure we always pass a JSON string to the SQL bind parameter; if we pass an
     // object directly PG sees `[object Object]` and fails the `::jsonb` cast.
-    const contentToInsert =
-      typeof memory.content === "string" ? memory.content : JSON.stringify(memory.content);
+    const contentToInsert = serializeJsonb(memory.content);
 
-    const metadataToInsert =
-      typeof memory.metadata === "string" ? memory.metadata : JSON.stringify(memory.metadata ?? {});
+    const metadataToInsert = serializeJsonb(memory.metadata ?? {});
 
     const inserted = await tx
       .insert(memoryTable)
@@ -4189,13 +4190,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         await this.db.transaction(async (tx) => {
           // Update memory content if provided
           if (memory.content) {
-            const contentToUpdate =
-              typeof memory.content === "string" ? memory.content : JSON.stringify(memory.content);
+            const contentToUpdate = serializeJsonb(memory.content);
 
-            const metadataToUpdate =
-              typeof memory.metadata === "string"
-                ? memory.metadata
-                : JSON.stringify(memory.metadata ?? {});
+            const metadataToUpdate = serializeJsonb(memory.metadata ?? {});
 
             await tx
               .update(memoryTable)
@@ -4208,10 +4205,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
               .where(eq(memoryTable.id, memory.id));
           } else if (memory.metadata) {
             // Update only metadata if content is not provided
-            const metadataToUpdate =
-              typeof memory.metadata === "string"
-                ? memory.metadata
-                : JSON.stringify(memory.metadata);
+            const metadataToUpdate = serializeJsonb(memory.metadata);
 
             await tx
               .update(memoryTable)
@@ -4475,9 +4469,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       if (params.entityId) {
         conditions.push(eq(memoryTable.entityId, params.entityId));
       }
-      if (params.agentId) {
-        conditions.push(eq(memoryTable.agentId, params.agentId));
-      }
+      conditions.push(eq(memoryTable.agentId, params.agentId ?? this.agentId));
       if (params.unique) {
         conditions.push(eq(memoryTable.unique, true));
       }

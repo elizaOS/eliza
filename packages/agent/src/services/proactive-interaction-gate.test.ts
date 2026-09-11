@@ -178,8 +178,13 @@ describe("resolveProactiveChattiness — kill-switch + setting", () => {
     ).toBe("off");
   });
 
-  it("defaults to subtle and respects the user setting / env", () => {
-    expect(resolveProactiveChattiness({})).toBe("subtle");
+  it("defaults to off and respects the user setting / env", () => {
+    expect(resolveProactiveChattiness({})).toBe("off");
+    for (const value of ["false", "0", "no", "invalid", " off "]) {
+      expect(
+        resolveProactiveChattiness({ ELIZA_PROACTIVE_INTERACTIONS: value }),
+      ).toBe("off");
+    }
     expect(resolveProactiveChattiness({}, "chatty")).toBe("chatty");
     expect(
       resolveProactiveChattiness({ ELIZA_PROACTIVE_INTERACTIONS: "off" }),

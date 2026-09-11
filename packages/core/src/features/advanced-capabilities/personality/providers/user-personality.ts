@@ -110,6 +110,7 @@ export const userPersonalityProvider: Provider = {
 		try {
 			const preferences = await runtime.getMemories({
 				entityId: message.entityId,
+				authorEntityIds: [message.entityId],
 				roomId: runtime.agentId,
 				tableName: USER_PREFS_TABLE,
 			});

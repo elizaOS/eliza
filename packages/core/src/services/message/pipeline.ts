@@ -36,7 +36,6 @@ import { getLocalizedExamplesProvider } from "../../runtime/localized-examples-p
 import {
 	getMessageHandlerReply,
 	routeMessageHandlerOutput,
-	SIMPLE_CONTEXT_ID,
 } from "../../runtime/message-handler";
 import {
 	type PlannerLoopResult,
@@ -66,6 +65,7 @@ import type {
 	HandlerCallback,
 	MessageHandlerResult,
 } from "../../types/components";
+import type { ContextEvent } from "../../types/context-object";
 import type { GenerateTextParams } from "../../types/model";
 import type { JsonValue } from "../../types/primitives";
 import { ChannelType } from "../../types/primitives";
@@ -93,6 +93,7 @@ import {
 } from "./action-surface.js";
 import {
 	isAmbientStage1Turn,
+	isStage1AmbientHardGated,
 	listAvailableContextsForRole,
 	messageChallengesPriorAgentReply,
 	messageContinuesAfterRecentAgentCorrection,
@@ -104,7 +105,10 @@ import { createV5MessageContextObject } from "./context-assembly.js";
 import type { V5MessageRuntimeStage1Result } from "./contracts.js";
 import { withoutIntermediateVisibleText } from "./delivery.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
-import { evaluatePlannedReplyEgress } from "./egress-policy.js";
+import {
+	evaluatePlannedReplyEgress,
+	resolvePlannedReplyEgress,
+} from "./egress-policy.js";
 import {
 	buildV5ExecutorContext,
 	collectPlannerTools,
@@ -117,13 +121,13 @@ import {
 	isOwnerLifeManagementToolCandidate,
 	isTextScoredBenchmarkTurn,
 	selectV5PlannerStateProviderNames,
-	withProviderOverflowText,
 } from "./provider-state.js";
 import {
 	createV5ReplyStrategyResult,
 	deliveredTextsCoverReply,
 	normalizeVisibleTextForDuplicateCheck,
 	preservedSettledToolResult,
+	replyNamesStructuredEffectDestination,
 	restorePiiInUserReplyText,
 	structuredEffectFromToolResult,
 	trackSettledPlannerToolResult,
@@ -132,7 +136,10 @@ import {
 	isTerseReplyWorthKeeping,
 	isUnusableStage1Reply,
 } from "./reply-quality.js";
-import { withContextRoutingValues } from "./response-state.js";
+import {
+	withActionResultsForPrompt,
+	withContextRoutingValues,
+} from "./response-state.js";
 import {
 	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 	filterSelectedContextsForRole,
@@ -140,8 +147,6 @@ import {
 import { exposedActionMatches } from "./stage1-output.js";
 import {
 	inferDirectCurrentRequestCandidateInference,
-	LIVE_LOOKUP_UNAVAILABLE_REPLY,
-	shouldReplaceUnavailableLiveLookupAck,
 	uniqueActionNames,
 } from "./stage1-reply-policy.js";
 import { subAgentCompletionRelayBody } from "./task-completion-relay.js";
@@ -233,11 +238,14 @@ export async function runV5MessageRuntimeStage1(
 			) ||
 			peerCorrectionContinuation,
 	);
+	const ambientHardGate =
+		ambientTurn && isStage1AmbientHardGated(args.runtime, args.message);
 	const context = await createV5MessageContextObject({
 		...args,
 		userRoles: [senderRole],
 		availableContexts,
 		ambientTurn,
+		ambientHardGate,
 		peerCorrectionContinuation,
 		extraProviderExclusions: ambientTurnProviderExclusions(
 			args.runtime,
@@ -247,21 +255,6 @@ export async function runV5MessageRuntimeStage1(
 		// left RECENT_ERRORS in state, an unaddressed group turn must not
 		// render internal diagnostics into its Stage-1 context.
 	});
-	const overflowState = withProviderOverflowText(args.state);
-	const overflowContext = overflowState
-		? await createV5MessageContextObject({
-				...args,
-				state: overflowState,
-				userRoles: [senderRole],
-				availableContexts,
-				ambientTurn,
-				peerCorrectionContinuation,
-				extraProviderExclusions: ambientTurnProviderExclusions(
-					args.runtime,
-					args.message,
-				),
-			})
-		: null;
 	const stage1PreprocessStartedAt = performance.now();
 
 	// G10/G11: construct the per-trajectory recorder. No-op when disabled via
@@ -337,7 +330,6 @@ export async function runV5MessageRuntimeStage1(
 			inferenceMessageText,
 			parsedResponseHandlerReply,
 			messageHandlerEndedAt,
-			useProviderOverflow,
 		} = await generateStage1Decision(
 			args,
 			{
@@ -345,7 +337,6 @@ export async function runV5MessageRuntimeStage1(
 				context,
 				availableContexts,
 				directMessageChannel,
-				overflowContext,
 				stage1PreprocessStartedAt,
 				recorder,
 				trajectoryId,
@@ -540,6 +531,7 @@ export async function runV5MessageRuntimeStage1(
 			nonDisclosureRejectedExplicitCandidates: [] as string[],
 		};
 		const prePatchStageOneReply =
+			messageHandler.plan.replyEffectStatus !== "pending" &&
 			typeof messageHandler.plan.reply === "string" &&
 			messageHandler.plan.reply.trim().length > 0
 				? messageHandler.plan.reply
@@ -726,24 +718,24 @@ export async function runV5MessageRuntimeStage1(
 				reply = "I'm not sure how to answer that.";
 				replyIsModelVoice = false;
 			}
-			if (
-				shouldReplaceUnavailableLiveLookupAck({
-					message: args.message,
-					actions: args.runtime.actions ?? [],
-					reply,
-				})
-			) {
-				reply = LIVE_LOOKUP_UNAVAILABLE_REPLY;
-				replyIsModelVoice = false;
-			}
 			const directReplyEgressDecision = evaluatePlannedReplyEgress({
+				providers: args.state.data.providers,
+				request: args.message.content.text,
 				reply,
 				actionResults: [],
 				actions: args.runtime.actions,
 			});
 			if (directReplyEgressDecision.verdict === "reject") {
-				reply = directReplyEgressDecision.fallbackReply;
-				replyIsModelVoice = false;
+				reply = (
+					await resolvePlannedReplyEgress({
+						providers: args.state.data.providers,
+						runtime: args.runtime,
+						message: args.message,
+						reply,
+						actionResults: [],
+					})
+				).text;
+				replyIsModelVoice = true;
 			}
 			return {
 				kind: "direct_reply",
@@ -798,6 +790,8 @@ export async function runV5MessageRuntimeStage1(
 		const onResponseHandlerEarlyReply = args.onResponseHandlerEarlyReply;
 		if (earlyReplyText.length > 0 && onResponseHandlerEarlyReply) {
 			const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
+				providers: args.state.data.providers,
+				request: args.message.content.text,
 				reply: earlyReplyText,
 				actionResults: [],
 				actions: args.runtime.actions,
@@ -870,19 +864,8 @@ export async function runV5MessageRuntimeStage1(
 						},
 					}
 				: undefined;
-		// Once Stage 1 has explicitly selected the memory domain, the planner owns
-		// retrieval through its complete search tools. Repeating an eager corpus in
-		// every tool iteration adds no recall capability and can turn a technically
-		// admissible prompt into an operational timeout. Ordinary chat still keeps
-		// eager context; this branch is driven by the typed routing decision.
-		const retrievalContextSelected = selectedContexts.includes("memory");
-		const capacityAdjustedPlannerState =
-			useProviderOverflow || retrievalContextSelected
-				? (withProviderOverflowText(recomposedPlannerState) ??
-					recomposedPlannerState)
-				: recomposedPlannerState;
 		const plannerState = withContextRoutingValues(
-			attachAvailableContexts(capacityAdjustedPlannerState, args.runtime),
+			attachAvailableContexts(recomposedPlannerState, args.runtime),
 			selectedContextRoutingState,
 		);
 		if (args.codingMode === true) {
@@ -1017,45 +1000,6 @@ export async function runV5MessageRuntimeStage1(
 				}),
 			};
 		}
-		// Live-lookup unavailability short-circuit. The progress-ack promotion
-		// (routeMessageHandlerOutput, #20249) now routes "On it."-shaped turns
-		// into planning, which bypassed the direct-reply egress replacement that
-		// used to convert a live-lookup ask with NO registered web action into
-		// the honest decline. A planner round cannot conjure the missing
-		// capability — its best case is a model-authored decline and its worst
-		// case is a shell fallback — so decline deterministically here, exactly
-		// like the egress-side replacement. Scope: only turns whose planning
-		// round exists purely because of the promotion (stage-1's own plan
-		// selected no non-simple context). When stage-1 genuinely routed to a
-		// context, or a named candidate survived collection, the planner may
-		// hold a registered domain action that serves the ask without web
-		// search — those turns still plan.
-		const stageOneOwnNonSimpleContexts = (
-			messageHandler.plan.contexts ?? []
-		).filter((context) => {
-			const normalized = String(context).trim().toLowerCase();
-			return normalized.length > 0 && normalized !== SIMPLE_CONTEXT_ID;
-		});
-		if (
-			stageOneOwnNonSimpleContexts.length === 0 &&
-			!anyNamedStageOneCandidateSurvived &&
-			shouldReplaceUnavailableLiveLookupAck({
-				message: args.message,
-				actions: args.runtime.actions ?? [],
-				reply: prePatchStageOneReply ?? "",
-			})
-		) {
-			return {
-				kind: "direct_reply",
-				messageHandler,
-				result: createV5ReplyStrategyResult({
-					...args,
-					text: LIVE_LOOKUP_UNAVAILABLE_REPLY,
-					thought: messageHandler.thought,
-					agentVoiced: false,
-				}),
-			};
-		}
 		const localizedExamplesProvider = getLocalizedExamplesProvider(
 			args.runtime,
 		);
@@ -1064,8 +1008,27 @@ export async function runV5MessageRuntimeStage1(
 					recentMessage: getUserMessageText(args.message),
 				})
 			: null;
+		// A deterministic tool call executes exactly one pre-selected action and
+		// never dispatches the outer planner, so the planner surface (and the
+		// context tool payload the sub-planner inherits) narrows to that action.
+		// Without this, a wide keyword tier builds and re-estimates a
+		// multi-hundred-K-token surface only to discard it (observed live:
+		// deterministic calendar turns spent seconds on a ~590K-token build plus
+		// overflow recovery and fed the CALENDAR sub-planner an 82K prompt).
+		// An unresolvable selection falls back to the full surface unchanged;
+		// the deterministic invoker below owns that failure path.
+		const deterministicPlanSelection =
+			messageHandler.plan.deterministicToolCall;
+		const deterministicSurfaceAction = deterministicPlanSelection
+			? resolveRuntimeAction(
+					buildRuntimeActionLookup(args.runtime),
+					deterministicPlanSelection.name,
+				)
+			: undefined;
 		const actionSurface = buildV5PlannerActionSurface({
-			actions: plannerCandidateActions,
+			actions: deterministicSurfaceAction
+				? [deterministicSurfaceAction]
+				: plannerCandidateActions,
 			forceFullSurface: args.codingMode === true,
 			codingActionProfile,
 			message: args.message,
@@ -1110,7 +1073,7 @@ export async function runV5MessageRuntimeStage1(
 		const responseHandlerContextSlices = stringArrayProperty(
 			(messageHandler.plan as { contextSlices?: unknown }).contextSlices,
 		);
-		const plannerContextWithDecision = appendContextEvent(plannerContext, {
+		const plannerDecisionEvent: ContextEvent = {
 			id: `message-handler:${messageHandlerEndedAt}`,
 			type: "message_handler",
 			source: "message-service",
@@ -1122,6 +1085,8 @@ export async function runV5MessageRuntimeStage1(
 				processMessage: messageHandler.processMessage,
 				plan: {
 					contexts: messageHandler.plan.contexts,
+					replyEffectStatus: messageHandler.plan.replyEffectStatus ?? "none",
+					intents: messageHandler.plan.intents ?? [],
 					...(messageHandler.plan.requiresTool !== undefined
 						? { requiresTool: messageHandler.plan.requiresTool }
 						: {}),
@@ -1147,7 +1112,11 @@ export async function runV5MessageRuntimeStage1(
 				} as JsonValue,
 				thought: messageHandler.thought,
 			},
-		});
+		};
+		const plannerContextWithDecision = appendContextEvent(
+			plannerContext,
+			plannerDecisionEvent,
+		);
 		const runtimeWithOptionalServices = args.runtime as typeof args.runtime & {
 			getService?: (service: string) => unknown;
 		};
@@ -1164,7 +1133,16 @@ export async function runV5MessageRuntimeStage1(
 				),
 			logger: args.runtime.logger as PlannerRuntime["logger"],
 		};
-		const plannerTools = collectPlannerTools(plannerContextWithDecision);
+		const plannerTools = collectPlannerTools(
+			plannerContextWithDecision,
+			undefined,
+			{
+				canonicalFamilies: true,
+				candidateActions: getMessageHandlerCandidateActions(messageHandler),
+			},
+		);
+		const budgetedPlannerContextWithDecision = plannerContextWithDecision;
+		const plannerProviderAttributionState = plannerState;
 		const benchmarkForcingToolCall = isBenchmarkForcingToolCall(args.message);
 		// Only HARD-enforce a non-terminal tool when Stage 1 both flagged the turn
 		// tool-required AND named at least one candidate action. A bare
@@ -1229,7 +1207,7 @@ export async function runV5MessageRuntimeStage1(
 			(!isTextScoredBenchmarkTurn(args.message) ||
 				stageOneNamedOwnerLifeManagementTool);
 		const effectivePlannerContext = requireNonTerminalToolCall
-			? appendContextEvent(plannerContextWithDecision, {
+			? appendContextEvent(budgetedPlannerContextWithDecision, {
 					id: `tool-required:${messageHandlerEndedAt}`,
 					type: "instruction",
 					source: "message-service",
@@ -1243,7 +1221,7 @@ export async function runV5MessageRuntimeStage1(
 							"Do not answer directly from memory, chat history, prior attachments, or prior tool output. " +
 							"Call at least one exposed non-terminal tool that can attempt the current request.",
 				})
-			: plannerContextWithDecision;
+			: budgetedPlannerContextWithDecision;
 		const plannerContextAfterEarlyReply = earlyReplySent
 			? appendContextEvent(effectivePlannerContext, {
 					id: `early-reply:${messageHandlerEndedAt}`,
@@ -1458,6 +1436,8 @@ export async function runV5MessageRuntimeStage1(
 					const groundedModelReply = prePatchStageOneReply?.trim();
 					const groundedModelReplyEgress = groundedModelReply
 						? evaluatePlannedReplyEgress({
+								providers: plannerState.data.providers,
+								request: args.message.content.text,
 								reply: groundedModelReply,
 								actionResults: [],
 								actions: args.runtime.actions,
@@ -1466,6 +1446,10 @@ export async function runV5MessageRuntimeStage1(
 					if (
 						acceptedEffect?.status === "accepted" &&
 						groundedModelReply &&
+						replyNamesStructuredEffectDestination(
+							groundedModelReply,
+							acceptedEffect,
+						) &&
 						groundedModelReplyEgress?.verdict === "allow"
 					) {
 						return {
@@ -1502,13 +1486,19 @@ export async function runV5MessageRuntimeStage1(
 								effects: evaluatorEffects,
 								recorder,
 								trajectoryId,
-								cacheConversationId: String(args.message.roomId),
+								cacheConversationId: JSON.stringify([
+									args.runtime.agentId,
+									args.message.roomId,
+								]),
 							}),
 						evaluatorEffects,
 						recorder,
 						trajectoryId,
-						cacheConversationId: String(args.message.roomId),
-						providerAttributionState: plannerState,
+						cacheConversationId: JSON.stringify([
+							args.runtime.agentId,
+							args.message.roomId,
+						]),
+						providerAttributionState: plannerProviderAttributionState,
 					});
 				}
 
@@ -1529,6 +1519,9 @@ export async function runV5MessageRuntimeStage1(
 						evaluatorOutputs: [],
 					},
 					...(finalMessage ? { finalMessage } : {}),
+					...(result.replyFailure
+						? { terminalFailure: result.replyFailure }
+						: {}),
 				};
 			};
 
@@ -1604,8 +1597,11 @@ export async function runV5MessageRuntimeStage1(
 					evaluatorEffects,
 					recorder,
 					trajectoryId,
-					cacheConversationId: String(args.message.roomId),
-					providerAttributionState: plannerState,
+					cacheConversationId: JSON.stringify([
+						args.runtime.agentId,
+						args.message.roomId,
+					]),
+					providerAttributionState: plannerProviderAttributionState,
 					executeToolCall: (toolCall, ctx) =>
 						timeInferenceSpan(
 							"actions:planner-tool",
@@ -1663,7 +1659,10 @@ export async function runV5MessageRuntimeStage1(
 								effects: evaluatorEffects,
 								recorder,
 								trajectoryId,
-								cacheConversationId: String(args.message.roomId),
+								cacheConversationId: JSON.stringify([
+									args.runtime.agentId,
+									args.message.roomId,
+								]),
 							}),
 						),
 				}),
@@ -1795,13 +1794,50 @@ export async function runV5MessageRuntimeStage1(
 			plannerResult.trajectory,
 			exposedPlannerActions,
 		);
+		if (
+			plannerResult.terminalFailure &&
+			(egressActionResults.some(
+				(result) => result.replyFailure !== undefined,
+			) ||
+				(plannerResult.terminalFailure.code ===
+					"PLANNER_SCOPE_DECLARATION_REQUIRED" &&
+					!plannerResult.finalMessage?.trim()))
+		) {
+			// There is no model-authored reply to deliver. Preserve every action
+			// outcome and surface the unavailable system status separately; none of
+			// the answerless/egress/context-after fallbacks may call another model
+			// or execute another action after this presentation failure.
+			return {
+				kind: "planned_reply",
+				messageHandler,
+				result: {
+					responseContent: null,
+					responseMessages: [],
+					state: withActionResultsForPrompt(
+						plannerState,
+						egressActionResults,
+						args.runtime,
+					),
+					mode: "none",
+					terminalFailure: plannerResult.terminalFailure,
+					actionResults: egressActionResults,
+				},
+			};
+		}
+		let replyRecovered = false;
+		let recoveredReply:
+			| Awaited<ReturnType<typeof resolvePlannedReplyEgress>>
+			| undefined;
 		const plannedReplyEgressDecision =
 			args.codingMode === true
 				? ({ verdict: "allow" } as const)
 				: evaluatePlannedReplyEgress({
+						providers: plannerState.data.providers,
+						request: args.message.content.text,
 						reply: String(plannerResult.finalMessage ?? ""),
 						actionResults: egressActionResults,
 						actions: args.runtime.actions,
+						evaluator: plannerResult.evaluator,
 					});
 		// A reply an action callback already delivered this turn (verbatim or as
 		// a strict superset) is a planner echo: the suppression below drops it, so
@@ -1825,10 +1861,19 @@ export async function runV5MessageRuntimeStage1(
 				},
 				"[message] replaced a planned reply whose state claim lacked a matching action receipt",
 			);
+			recoveredReply = await resolvePlannedReplyEgress({
+				providers: plannerState.data.providers,
+				runtime: args.runtime,
+				message: args.message,
+				reply: plannerResult.finalMessage ?? "",
+				actionResults: egressActionResults,
+				evaluator: plannerResult.evaluator,
+			});
 			plannerResult = {
 				...plannerResult,
-				finalMessage: plannedReplyEgressDecision.fallbackReply,
+				finalMessage: recoveredReply.text,
 			};
+			replyRecovered = true;
 		}
 
 		// CONTEXT_AFTER (blocking): hooks fire after the planner loop, before
@@ -1845,7 +1890,9 @@ export async function runV5MessageRuntimeStage1(
 				),
 			{ mode: "CONTEXT_AFTER" },
 		);
-		return finalizePlannerReply(args, {
+		return await finalizePlannerReply(args, {
+			recoveredReply,
+			replyRecovered,
 			plannerResult,
 			exposedPlannerActions,
 			plannerState,

@@ -17,6 +17,7 @@ import {
 	type RoleGateRole,
 	type ViewCapability,
 	type ViewCapabilityParameter,
+	type ViewScopedAction,
 	type ViewType,
 } from "@elizaos/core";
 import { getAppControlApiBase } from "../loopback-api.js";
@@ -41,6 +42,8 @@ export interface ViewSummary {
 	heroImageUrl?: string;
 	available: boolean;
 	capabilities?: ViewCapability[];
+	/** Static discovery metadata, not proof of selection or permission to act. */
+	scopedActions?: ViewScopedAction[];
 	visibleInManager?: boolean;
 	developerOnly?: boolean;
 }
@@ -328,6 +331,57 @@ function parseViewCapability(entry: unknown): ViewCapability | null {
 	};
 }
 
+function parseViewScopedAction(entry: unknown): ViewScopedAction | null {
+	if (
+		!isObject(entry) ||
+		typeof entry.name !== "string" ||
+		!entry.name.trim() ||
+		typeof entry.description !== "string" ||
+		!Array.isArray(entry.steps)
+	) {
+		return null;
+	}
+	const parameters = entry.parameters;
+	const similes = entry.similes;
+	if (
+		(parameters !== undefined &&
+			(!Array.isArray(parameters) ||
+				!parameters.every((value: unknown) => typeof value === "string"))) ||
+		(similes !== undefined &&
+			(!Array.isArray(similes) ||
+				!similes.every((value: unknown) => typeof value === "string")))
+	) {
+		return null;
+	}
+	const steps: ViewScopedAction["steps"] = [];
+	for (const step of entry.steps) {
+		// Never advertise a partial sequence when one declared step is invalid.
+		if (
+			!isObject(step) ||
+			(step.kind !== "agent-click" &&
+				step.kind !== "agent-fill" &&
+				step.kind !== "agent-focus") ||
+			typeof step.target !== "string" ||
+			!step.target.trim() ||
+			(step.value !== undefined && typeof step.value !== "string")
+		) {
+			return null;
+		}
+		steps.push({
+			kind: step.kind,
+			target: step.target,
+			...(step.value !== undefined ? { value: step.value } : {}),
+		});
+	}
+	return {
+		name: entry.name,
+		description: entry.description,
+		steps,
+		...(parameters !== undefined ? { parameters: [...parameters] } : {}),
+		...(similes !== undefined ? { similes: [...similes] } : {}),
+	};
+}
+
 export function parseViewSummary(entry: Record<string, unknown>): ViewSummary {
 	const id = entry.id;
 	const label = entry.label;
@@ -376,6 +430,14 @@ export function parseViewSummary(entry: Record<string, unknown>): ViewSummary {
 					(capability): capability is ViewCapability => capability !== null,
 				)
 		: undefined;
+	// The role-filtered registry already supplies these declarations. Keep their
+	// complete control contract in show/open receipts so the evaluator can find
+	// remaining UI work; the existing active-view and caller gates still apply.
+	const scopedActions = Array.isArray(entry.scopedActions)
+		? entry.scopedActions
+				.map(parseViewScopedAction)
+				.filter((action): action is ViewScopedAction => action !== null)
+		: undefined;
 
 	return {
 		id,
@@ -391,6 +453,7 @@ export function parseViewSummary(entry: Record<string, unknown>): ViewSummary {
 		heroImageUrl,
 		available,
 		capabilities,
+		...(scopedActions !== undefined ? { scopedActions } : {}),
 		visibleInManager,
 		developerOnly,
 		roleGate: parseViewRoleGate(entry.roleGate),

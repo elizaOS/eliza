@@ -164,6 +164,7 @@ const REASONING_MODEL_PATTERNS: RegExp[] = [
   // otherwise a default/low max_tokens truncates mid-reasoning and returns empty
   // (but billed) output, intermittently per call.
   /^gemma-4-31b$/,
+  /^qwen-3\.8-27b$/,
   /^gpt-oss/,
 ];
 

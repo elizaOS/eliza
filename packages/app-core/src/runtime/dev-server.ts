@@ -361,8 +361,18 @@ async function bootstrapRuntime(reason: string): Promise<void> {
  * Create a fresh runtime via startEliza (headless).
  * If a runtime is already running, stop it first.
  */
+let trajectoryRecoveryIpc: ReturnType<
+  typeof import("./dev-trajectory-recovery-ipc").createDevTrajectoryRecoveryIpc
+> | null = null;
+const devTrajectoryRecoveryRequested =
+  process.env.ELIZA_DEV_TRAJECTORY_RECOVERY === "1";
+// Only this launched dev-server owns the parent's IPC channel. Helpers started
+// by its runtime must not inherit the instruction to register with that parent.
+delete process.env.ELIZA_DEV_TRAJECTORY_RECOVERY;
+
 async function createRuntime(): Promise<AgentRuntime> {
-  const { shutdownRuntime, startEliza } = await loadElizaRuntimeModule();
+  const runtimeModule = await loadElizaRuntimeModule();
+  const { shutdownRuntime, startEliza } = runtimeModule;
   if (currentRuntime) {
     await shutdownRuntime(currentRuntime, "dev-server createRuntime");
     currentRuntime = null;
@@ -373,6 +383,25 @@ async function createRuntime(): Promise<AgentRuntime> {
     throw new Error("startEliza returned null — runtime failed to initialize");
   }
 
+  if (devTrajectoryRecoveryRequested) {
+    const { createDevTrajectoryRecoveryIpc } = await import(
+      "./dev-trajectory-recovery-ipc"
+    );
+    trajectoryRecoveryIpc ??= createDevTrajectoryRecoveryIpc();
+    try {
+      await runtimeModule.prepareDevTrajectoryRecovery(
+        result,
+        trajectoryRecoveryIpc,
+      );
+    } catch (error) {
+      // error-policy:J2 A failed ownership/recovery gate must not publish a runtime.
+      await shutdownRuntime(result, "dev-server trajectory recovery failed");
+      throw new Error(
+        "Development trajectory recovery failed before runtime readiness",
+        { cause: error },
+      );
+    }
+  }
   currentRuntime = result as AgentRuntime;
   return currentRuntime;
 }

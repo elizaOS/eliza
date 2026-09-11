@@ -132,7 +132,7 @@ describe("IntelligenceServingSummary", () => {
     expect(runtimeValue()).toBe("This device");
     // The review's P1: this row previously read "This device" for a direct
     // Cerebras/OpenAI/Anthropic route.
-    expect(inferenceValue()).toBe("cerebras");
+    expect(inferenceValue()).toBe("Cerebras");
     expect(inferenceValue()).not.toBe("This device");
     expect(
       screen.getByText(/external provider at api\.cerebras\.ai/),
@@ -147,13 +147,21 @@ describe("IntelligenceServingSummary", () => {
   });
 
   it("keeps a remote host distinct from Eliza Cloud", () => {
-    renderAxes({ deploymentRuntime: "remote" });
+    renderAxes({ deploymentRuntime: "remote", activeChat: CEREBRAS });
 
     expect(runtimeValue()).toBe("Remote host");
+    expect(inferenceValue()).toBe("Cerebras");
     expect(
       screen.getByText(
         "The agent process runs on a remote host you configured, not on Eliza Cloud.",
       ),
     ).toBeTruthy();
+    expect(
+      screen.getByText(/external provider at api\.cerebras\.ai/),
+    ).toBeTruthy();
+    cleanup();
+    renderAxes({ deploymentRuntime: "remote" });
+    expect(runtimeValue()).toBe("Remote host");
+    expect(inferenceValue()).toBe("Unconfirmed");
   });
 });

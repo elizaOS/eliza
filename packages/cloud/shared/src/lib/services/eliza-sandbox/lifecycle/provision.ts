@@ -22,7 +22,10 @@ import { prepareManagedElizaEnvironment } from "../../managed-eliza-env";
 import { applyRemoteDockerRuntimeMode } from "../../remote-docker-runtime-mode";
 import { resolveSandboxContainerLaunchConfig } from "../../sandbox-container-launch-config";
 import { type SandboxHandle, type SandboxProvider } from "../../sandbox-provider";
-import { SandboxReplacementCleanupUnresolvedError } from "../../sandbox-provider-types";
+import {
+  type SandboxHealthContext,
+  SandboxReplacementCleanupUnresolvedError,
+} from "../../sandbox-provider-types";
 import {
   agentConfigForProvision,
   computeManagedAgentDbEnv,
@@ -380,6 +383,7 @@ export class SandboxProvision {
     for (let attempt = 1; attempt <= MAX_PROVISION_ATTEMPTS; attempt++) {
       attemptsMade = attempt;
       let handle;
+      let healthContext: SandboxHealthContext = { kind: "candidate" };
 
       try {
         const retryHandle =
@@ -388,6 +392,7 @@ export class SandboxProvision {
             : null;
         if (retryHandle) {
           handle = retryHandle;
+          healthContext = { kind: "canonical" };
           logger.info(
             "[agent-sandbox] Re-probing persisted provisioning container before create",
             {
@@ -469,9 +474,9 @@ export class SandboxProvision {
         // timeout path.
         const provider = await this.host.getProvider();
         const health = provider.checkHealthDetailed
-          ? await provider.checkHealthDetailed(handle)
+          ? await provider.checkHealthDetailed(handle, healthContext)
           : {
-              ready: await provider.checkHealth(handle),
+              ready: await provider.checkHealth(handle, healthContext),
               verdict: "not_ready" as const,
             };
 

@@ -228,12 +228,16 @@ describe("Stage 1 prompt — available contexts catalog", () => {
 		const systemContent = params?.messages?.[0]?.content ?? "";
 
 		expect(systemContent).toContain("available_contexts:");
+		const catalog = systemContent.match(
+			/available_contexts:\n([\s\S]*?)\n\n/,
+		)?.[1];
+		expect(catalog).toBeDefined();
 		// `general` (no gate) and `memory` (USER) are visible to USER role.
-		expect(systemContent).toContain("- general ");
-		expect(systemContent).toContain("- memory ");
+		expect(catalog).toContain("- general ");
+		expect(catalog).toContain("- memory ");
 		// `wallet` (OWNER-only) and `calendar` (ADMIN-only) must NOT appear.
-		expect(systemContent).not.toMatch(/^- wallet\b/m);
-		expect(systemContent).not.toMatch(/^- calendar\b/m);
+		expect(catalog).not.toMatch(/^- wallet\b/m);
+		expect(catalog).not.toMatch(/^- calendar\b/m);
 	});
 
 	it("falls back to the placeholder line when no context registry is attached", async () => {

@@ -399,6 +399,7 @@ import {
 } from "../services/agent-export.ts";
 import { registerClientChatSendHandler } from "../services/client-chat-sender.ts";
 import { createConfigPluginManager } from "../services/config-plugin-manager.ts";
+import type { ConnectorSetupServiceInstance } from "../services/connector-setup-service.ts";
 import {
   type CoreManagerLike,
   isCoreManagerLike,
@@ -1404,6 +1405,7 @@ export {
 // boundary-role registry (#12087 item 12).
 export { isWaifuChatAuthorized } from "./waifu-chat-role-resolver.ts";
 
+import { resolveHostSessionAccessContext } from "./host-session-access-context.ts";
 import { resolveHttpAccessContext } from "./http-access-context.ts";
 import { resolveInboxRequestAuthorization } from "./inbox-request-authorization.ts";
 
@@ -3674,14 +3676,18 @@ async function handleRequest(
         isAuthorized(req) ||
         isBoundaryRoleAuthorized(req, method, pathname),
       isTrustedLocal: () => isTrustedLocalRequest(req),
-      // Per-viewer principal for DTO selection (#14781). Trunk-authorized
-      // callers stay on the single-owner boundary (no context → routes serve
-      // unfiltered, unchanged); only resolver-recognized viewer tokens
-      // (WaifuChat, artifact share-viewer) carry a principal into dispatch.
-      accessContext: () =>
-        hostSessionAuthorization.ok || isAuthorized(req)
-          ? undefined
-          : resolveHttpAccessContext(req),
+      // Session admission and disclosure share the verified host principal.
+      // Only trusted local requests retain the plugin's local-owner fallback.
+      accessContext: () => {
+        if (hostSessionAuthorization.ok && state.runtime) {
+          return resolveHostSessionAccessContext(
+            hostSessionAuthorization,
+            state.runtime,
+          );
+        }
+        if (isTrustedLocalRequest(req)) return undefined;
+        return resolveHttpAccessContext(req);
+      },
     })
   ) {
     return;
@@ -3981,10 +3987,7 @@ export async function startApiServer(opts?: {
     ["system", "plugins"],
   );
 
-  // Warm per-provider model caches in background (non-blocking)
-  void getOrFetchAllProviders().catch((err) => {
-    logger.warn("[api] Provider cache warm-up failed:", err);
-  });
+  let providerCacheWarmupPromise: Promise<void> | null = null;
 
   let detachApiLogListener: (() => void) | null = null;
   const captureStructuredLog = (entry: LogEntry): void => {
@@ -4132,6 +4135,26 @@ export async function startApiServer(opts?: {
       detachRuntimeStreams();
       detachRuntimeStreams = null;
     }
+    let active = true;
+    const unsubscribe: Array<() => void> = [];
+    detachRuntimeStreams = () => {
+      active = false;
+      for (const detach of unsubscribe) detach();
+    };
+
+    // Registration is lazy: a synchronous lookup can miss the service at
+    // startup. Bind each runtime once it loads, and detach on swap or close.
+    if (runtime?.hasService("connector-setup")) {
+      void runtime
+        .getServiceLoadPromise("connector-setup")
+        .then((service) => {
+          if (!active) return;
+          const setup = service as ConnectorSetupServiceInstance;
+          setup.setBroadcastWs(broadcastWs);
+          unsubscribe.push(() => setup.setBroadcastWs(null));
+        })
+        .catch((error) => runtime.reportError("api.connectorBroadcast", error));
+    }
     const svc = getAgentEventSvc(runtime);
     if (!svc) {
       if (runtime) {
@@ -4170,15 +4193,21 @@ export async function startApiServer(opts?: {
       });
     });
 
-    detachRuntimeStreams = () => {
-      unsubAgentEvents();
-      unsubHeartbeat();
-    };
+    unsubscribe.push(unsubAgentEvents, unsubHeartbeat);
   };
 
   // ── Deferred startup work (non-blocking) ────────────────────────────────
   // Keep API startup fast: listen first, then warm optional subsystems.
   const startDeferredStartupWork = async (): Promise<void> => {
+    providerCacheWarmupPromise ??= getOrFetchAllProviders()
+      .then(() => undefined)
+      .catch((err) => {
+        // error-policy:J7 Background catalog discovery must not stop the API host.
+        logger.warn("[api] Provider cache warm-up failed:", err);
+        if (opts?.runtime)
+          opts.runtime.reportError("api.providerCacheWarmup", err);
+      });
+
     void registerBuiltinViews(state.runtime).catch((err) => {
       logger.warn(
         `[eliza-api] Built-in view registration failed after listen: ${
@@ -5024,20 +5053,6 @@ export async function startApiServer(opts?: {
 
   state.broadcastWsToConversation = (conversationId: string, data: object) =>
     eventHub.sendToConversation(conversationId, data);
-  // Wire up ConnectorSetupService broadcastWs so connector plugins
-  // Pairing connectors such as WhatsApp can broadcast events via the service.
-  if (state.runtime) {
-    try {
-      const setupSvc = state.runtime.getService("connector-setup") as {
-        setBroadcastWs?: (
-          fn: ((data: Record<string, unknown>) => void) | null,
-        ) => void;
-      } | null;
-      setupSvc?.setBroadcastWs?.(state.broadcastWs);
-    } catch {
-      // non-fatal — service may not be registered yet
-    }
-  }
 
   // Broadcast status every 5 seconds
   const statusInterval = setInterval(broadcastStatus, 5000);
@@ -5306,6 +5321,12 @@ export async function startApiServer(opts?: {
       dispose: () => {
         state.connectorHealthMonitor?.stop();
         state.connectorHealthMonitor = null;
+      },
+    },
+    {
+      name: "provider model cache warm-up",
+      dispose: async () => {
+        await providerCacheWarmupPromise;
       },
     },
     {

@@ -24,7 +24,6 @@ import type {
 	Action,
 	ActionExample,
 	ActionResult,
-	Content,
 	ContentReference,
 	DocumentRangeReadResult,
 	HandlerCallback,
@@ -666,13 +665,6 @@ function result(
 	};
 }
 
-async function emit(
-	callback: HandlerCallback | undefined,
-	content: Content,
-): Promise<void> {
-	await callback?.(content);
-}
-
 async function handleSearch(
 	service: DocumentService,
 	message: Memory,
@@ -980,7 +972,7 @@ async function handleWrite(
 	service: DocumentService,
 	message: Memory,
 	params: DocumentActionParameters,
-	callback?: HandlerCallback,
+	_callback?: HandlerCallback,
 ): Promise<ActionResult> {
 	const text = getCleanWriteText(params);
 	if (!text) {
@@ -1038,15 +1030,10 @@ async function handleWrite(
 		},
 	});
 
-	// Humanized single delivery: the save confirmation is the complete answer,
-	// so verified + turnComplete keep the evaluator from double-messaging. The
-	// UUID and fragment count stay planner-facing in values/data.
+	// Return persistence evidence to the planner; the model owns the reply.
 	const response = `Saved "${title}" to your documents.`;
-	await emit(callback, { text: response, actions: ["DOCUMENT"] });
+
 	return result(true, response, "write", {
-		userFacingText: response,
-		verifiedUserFacing: true,
-		turnComplete: true,
 		values: {
 			documentId: stored.clientDocumentId,
 			fragmentCount: stored.fragmentCount,
@@ -1061,7 +1048,7 @@ async function handleEdit(
 	service: DocumentService,
 	message: Memory,
 	params: DocumentActionParameters,
-	callback?: HandlerCallback,
+	_callback?: HandlerCallback,
 ): Promise<ActionResult> {
 	const documentId = getDocumentId(params, message);
 	const text = typeof params.text === "string" ? params.text : params.content;
@@ -1083,14 +1070,10 @@ async function handleEdit(
 		content: text.trim(),
 		message,
 	});
-	// Humanized single delivery: the update confirmation is the complete
-	// answer; the UUID and fragment count stay planner-facing in values.
+	// Return update evidence for the model to evaluate the whole request.
 	const response = "Updated the document.";
-	await emit(callback, { text: response, actions: ["DOCUMENT"] });
+
 	return result(true, response, "edit", {
-		userFacingText: response,
-		verifiedUserFacing: true,
-		turnComplete: true,
 		values: {
 			documentId: updated.documentId,
 			fragmentCount: updated.fragmentCount,
@@ -1102,7 +1085,7 @@ async function handleDelete(
 	service: DocumentService,
 	message: Memory,
 	params: DocumentActionParameters,
-	callback?: HandlerCallback,
+	_callback?: HandlerCallback,
 ): Promise<ActionResult> {
 	const documentId = getDocumentId(params, message);
 	if (!documentId) {
@@ -1138,14 +1121,10 @@ async function handleDelete(
 		}
 		throw error;
 	}
-	// Humanized single delivery: the delete confirmation is the complete
-	// answer; the UUID stays planner-facing in values.
+	// The mutation result is planner-facing; it does not complete other requested work.
 	const text = "Deleted the document.";
-	await emit(callback, { text, actions: ["DOCUMENT"] });
+
 	return result(true, text, "delete", {
-		userFacingText: text,
-		verifiedUserFacing: true,
-		turnComplete: true,
 		values: { documentId },
 	});
 }
@@ -1202,7 +1181,7 @@ async function handleList(
 	service: DocumentService,
 	message: Memory,
 	params: DocumentActionParameters,
-	callback?: HandlerCallback,
+	_callback?: HandlerCallback,
 ): Promise<ActionResult> {
 	const scope =
 		typeof params.scope === "string" &&
@@ -1261,13 +1240,9 @@ async function handleList(
 			? { availableNextCursor: listResult.availableNextCursor }
 			: {}),
 	};
-	await emit(callback, { text, actions: ["DOCUMENT"] });
-	// The listing IS the complete answer: verified + turnComplete make the
-	// callback the sole delivery instead of double-messaging with the evaluator.
+
+	// Keep the listing available to the model for follow-up actions and its reply.
 	return result(true, text, "list", {
-		userFacingText: text,
-		verifiedUserFacing: true,
-		turnComplete: true,
 		values: listData,
 		data: listData,
 	});
@@ -1278,7 +1253,7 @@ async function handleImportFile(
 	service: DocumentService,
 	message: Memory,
 	params: DocumentActionParameters,
-	callback?: HandlerCallback,
+	_callback?: HandlerCallback,
 ): Promise<ActionResult> {
 	const filePath = getFilePath(params, message);
 	const content =
@@ -1339,14 +1314,10 @@ async function handleImportFile(
 			},
 		});
 		const filename = path.basename(filePath);
-		// Humanized single delivery: the import confirmation is the complete
-		// answer; the UUID and fragment count stay planner-facing in values.
+		// Return import evidence for the model to evaluate the whole request.
 		const text = `Imported "${filename}" into your documents.`;
-		await emit(callback, { text, actions: ["DOCUMENT"] });
+
 		return result(true, text, "import_file", {
-			userFacingText: text,
-			verifiedUserFacing: true,
-			turnComplete: true,
 			values: {
 				documentId: stored.clientDocumentId,
 				fragmentCount: stored.fragmentCount,
@@ -1380,11 +1351,8 @@ async function handleImportFile(
 		},
 	});
 	const text = `Imported "${title}" into your documents.`;
-	await emit(callback, { text, actions: ["DOCUMENT"] });
+
 	return result(true, text, "import_file", {
-		userFacingText: text,
-		verifiedUserFacing: true,
-		turnComplete: true,
 		values: {
 			documentId: stored.clientDocumentId,
 			fragmentCount: stored.fragmentCount,
@@ -1399,7 +1367,7 @@ async function handleImportUrl(
 	service: DocumentService,
 	message: Memory,
 	params: DocumentActionParameters,
-	callback?: HandlerCallback,
+	_callback?: HandlerCallback,
 ): Promise<ActionResult> {
 	const url = getUrl(params, message);
 	if (!url) {
@@ -1465,11 +1433,8 @@ async function handleImportUrl(
 	// Humanized single delivery: the import confirmation is the complete
 	// answer; filename and fragment count stay planner-facing in values.
 	const text = `Imported the ${label} from ${url} into your documents.`;
-	await emit(callback, { text, actions: ["DOCUMENT"] });
+
 	return result(true, text, "import_url", {
-		userFacingText: text,
-		verifiedUserFacing: true,
-		turnComplete: true,
 		values: {
 			documentId: stored.clientDocumentId,
 			fragmentCount: stored.fragmentCount,

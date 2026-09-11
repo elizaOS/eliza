@@ -247,7 +247,7 @@ async function createHarness(opts: HarnessOptions = {}) {
 
 describe("simple-path deliver-then-persist ordering", () => {
 	it("fires the delivery callback before the reply persist completes, then still persists it", async () => {
-		const h = await createHarness();
+		const h = await createHarness({ holdReplyPersist: true });
 		let orderAtDelivery: string[] | undefined;
 		let deliveryActionName: string | undefined;
 
@@ -257,14 +257,11 @@ describe("simple-path deliver-then-persist ordering", () => {
 			async (_content, actionName) => {
 				h.order.push("callback");
 				deliveryActionName = actionName;
-				// Direct proof delivery precedes persistence: the reply-row write
-				// is started only after the delivery callback has been entered, so
-				// no persist marker exists yet at this synchronous point. Read it
-				// synchronously — the two tasks then run CONCURRENTLY (see the
-				// Promise.allSettled in the simple-path branch), so awaiting an
-				// adapter read here would hand the in-memory persist a scheduling
-				// window and prove nothing about the ordering contract.
+				// Hold the real storage boundary until delivery enters. This proves
+				// a slow write cannot block delivery without assuming asynchronous
+				// privacy checks and an immediate in-memory write settle in order.
 				orderAtDelivery = [...h.order];
+				h.releaseReplyPersist();
 				return [];
 			},
 		);
@@ -398,12 +395,13 @@ describe("simple-path deliver-then-persist ordering", () => {
 	});
 
 	it("still persists the reply when the delivery callback throws, then rethrows that exact error", async () => {
-		const h = await createHarness();
+		const h = await createHarness({ holdReplyPersist: true });
 		const boom = new Error("connector send failed");
 
 		await expect(
 			h.service.handleMessage(h.runtime, h.makeMessage(), async () => {
 				h.order.push("callback-throw");
+				h.releaseReplyPersist();
 				throw boom;
 			}),
 		).rejects.toBe(boom);

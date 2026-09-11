@@ -8,8 +8,6 @@ import {
 import { looksLikeRawFieldTranscript } from "../../runtime/response-field-transcript";
 import type { ResponseHandlerResult } from "../../runtime/response-handler-field-evaluator";
 import type { Action, MessageHandlerResult } from "../../types/components";
-import type { Memory } from "../../types/memory";
-import { getUserMessageText } from "../../utils/message-text";
 import { canonicalPlannerControlActionName } from "./action-identifiers.js";
 import {
 	looksLikeCodingWorkRequest,
@@ -20,7 +18,6 @@ import {
 	type DirectCurrentRequestCandidateInference,
 	findCodingDelegationActionName,
 	findShellDirectActionName,
-	findWebLookupActionName,
 	findWebLookupActionNames,
 	inferDirectCurrentRequestCandidateActions as inferDirectCurrentRequestCandidateActionsFromHeuristics,
 	inferDirectCurrentRequestCandidateInference as inferDirectCurrentRequestCandidateInferenceFromHeuristics,
@@ -321,30 +318,32 @@ export function inferDirectCurrentRequestCandidateInference(
 }
 
 /**
- * True when a text-inferred (never model-emitted) candidate set must NOT
- * escalate this turn to a tool-required planner surface: Stage 1 already
- * ANSWERED the turn (only simple/absent contexts, a non-empty replyText, and
- * zero candidateActionNames of its own) and the only "evidence" for a tool is
- * a weak view-capability token overlap (e.g. "whats 17 TIMES 23" matching the
- * views action's "screen-time" tag via TIME). Observed live on both the app
- * REST surface and Discord (trajectories tj-501e594bfb23a7, tj-5d1c9601f33e8d):
- * the injected VIEWS candidate forced toolChoice=required, the planner's
- * correct terminal answer was rejected maxRequiredToolMisses times, and the
- * user got the generic transient-failure apology instead of the answer.
- *
- * Deliberately narrow — keyed on the Stage-1 plan SHAPE, not the connector:
- * model-emitted candidates always escalate, shell/coding/web inferences keep
- * their backstop behavior (live-info acks still force the fetch), and the
- * strong view inferences (explicit surface nouns, bare-name voice navigation)
- * still escalate so genuine view-switching UX is untouched.
+ * Keep answered simple turns out of planning when only inferred view or owner
+ * metadata suggests a tool. Surface-word and owner matches also require the
+ * model's explicit no-effect classification and no declared intent; legacy
+ * incomplete envelopes remain conservative. Model-selected actions and
+ * pending/applied effects keep their normal planning and verification paths.
  */
 export function shouldSuppressInferredCandidateEscalation(args: {
 	inference: DirectCurrentRequestCandidateInference;
 	stageOneContexts: readonly string[];
 	stageOneReplyText: string;
 	stageOneCandidateActions: readonly string[];
+	stageOneReplyEffectStatus: MessageHandlerResult["plan"]["replyEffectStatus"];
+	stageOneIntents: readonly string[];
 }): boolean {
-	if (args.inference.kind !== "view-capability") return false;
+	if (
+		args.inference.kind !== "view-capability" &&
+		!(
+			(args.inference.kind === "view-surface" ||
+				args.inference.kind === "owner-goals" ||
+				args.inference.kind === "owner-scheduled-admin") &&
+			args.stageOneReplyEffectStatus === "none" &&
+			args.stageOneIntents.length === 0
+		)
+	) {
+		return false;
+	}
 	if (args.stageOneCandidateActions.length > 0) return false;
 	if (args.stageOneReplyText.trim().length === 0) return false;
 	// An ack-shaped reply ("On it.", "Let me pull that up.") is a delegation
@@ -398,23 +397,6 @@ export function viewOverlapRequiredToolMissBudget(args: {
 		return undefined;
 	}
 	return 0;
-}
-
-export const LIVE_LOOKUP_UNAVAILABLE_REPLY =
-	"I don't have a live web search action available here, so I can't look up current information in this chat.";
-
-export function shouldReplaceUnavailableLiveLookupAck(args: {
-	message: Memory;
-	actions: ReadonlyArray<Pick<Action, "name" | "similes">>;
-	reply: string;
-}): boolean {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	return (
-		text.length > 0 &&
-		looksLikeWebSearchRequest(text) &&
-		!findWebLookupActionName(args.actions) &&
-		looksLikeProgressOnlyReply(args.reply)
-	);
 }
 
 export function uniqueActionNames(names: readonly string[]): string[] {

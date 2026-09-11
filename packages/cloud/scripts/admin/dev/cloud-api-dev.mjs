@@ -4,8 +4,9 @@
  * `dev:full` in packages/cloud/api): starts a PGlite TCP bridge when no real
  * DATABASE_URL is configured, runs db:cloud:migrate, then launches
  * `wrangler dev` with local-only vars injected via `--var` (wrangler.toml
- * carries production values). `--with-control-plane` also boots the
- * container-control-plane service on :8791 so provisioning jobs get picked up.
+ * carries production values). Integration callers can provide dedicated env,
+ * persistence, and cache paths so concurrent Workers share no mutable state.
+ * `--with-control-plane` also boots the container-control-plane service.
  */
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -26,6 +27,9 @@ const port = Number.parseInt(
   10,
 );
 const apiPort = process.env.API_DEV_PORT || "8787";
+const apiDevVarsPath = process.env.ELIZA_API_DEV_VARS_PATH?.trim();
+const wranglerPersistTo = process.env.DEV_CLOUD_WRANGLER_PERSIST_TO?.trim();
+const integrationRunId = process.env.CLOUD_INTEGRATION_RUN_ID?.trim();
 const maxConnections = process.env.PGLITE_MAX_CONNECTIONS || "16";
 const startupTimeoutMs = Number.parseInt(
   process.env.DEV_CLOUD_STARTUP_TIMEOUT_MS || "120000",
@@ -253,6 +257,9 @@ async function main() {
               `CLOUD_E2E_RUN_RECEIPT:${process.env.CLOUD_E2E_RUN_RECEIPT}`,
             ]
           : []),
+        ...(integrationRunId
+          ? ["--var", `ELIZA_DEPLOY_COMMIT:${integrationRunId}`]
+          : []),
         "--var",
         `ELIZA_KMS_BACKEND:${kmsBackend}`,
         ...(localRootKey
@@ -318,7 +325,10 @@ async function main() {
           "127.0.0.1",
           "--port",
           apiPort,
+          ...(integrationRunId ? ["--inspector-port", "0"] : []),
           "--local",
+          ...(apiDevVarsPath ? ["--env-file", apiDevVarsPath] : []),
+          ...(wranglerPersistTo ? ["--persist-to", wranglerPersistTo] : []),
           ...testModeVars,
           ...stripeE2EDevVars,
           ...redisDevVars,

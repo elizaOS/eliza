@@ -28,7 +28,10 @@ import {
   validatePluginConfig,
 } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import {
+  logger,
+  resolveNativeRuntimeFeatureFromPluginName,
+} from "@elizaos/core";
 import type { PluginParamDef, ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   asRecord,
@@ -606,6 +609,9 @@ export async function handlePluginRoutes(
       const isLoaded =
         loadedNames.length > 0 &&
         loadedNames.some((name) => {
+          // Native runtime features do not establish npm plugin ownership.
+          if (npmPkgName && resolveNativeRuntimeFeatureFromPluginName(name))
+            return false;
           return (
             name === plugin.id ||
             name === suffix ||

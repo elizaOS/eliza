@@ -465,6 +465,7 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/family-workflows/school/run" },
   { type: "POST", path: "/api/lifeops/family-workflows/school/apply" },
   { type: "POST", path: "/api/lifeops/family-workflows/run-now" },
+  { type: "GET", path: "/api/lifeops/family-workflows/email-options" },
   { type: "GET", path: "/api/lifeops/family-workflows/packets" },
   { type: "POST", path: "/api/lifeops/family-workflows/packets" },
   // Knowledge-graph: entities + relationships.
@@ -490,6 +491,10 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
   {
     type: "POST",
     path: "/api/lifeops/family-workflows/packets/:packetId/drafts/:draftVersion/approval",
+  },
+  {
+    type: "POST",
+    path: "/api/lifeops/family-workflows/packets/:packetId/drafts/:draftVersion/revision",
   },
   {
     type: "GET",

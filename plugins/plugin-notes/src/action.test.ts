@@ -1,10 +1,7 @@
 /**
- * Pins the NOTES action's operation-parsing contract against a real
- * `NotesService` over a temp-file store. The case that matters: an operation
- * name this action does not implement must NOT degrade into a read. The action
- * advertises DELETE_NOTE / SEARCH_NOTES / UPDATE_NOTE as similes, so a planner
- * emitting `action: "remove"` is expected traffic — and silently listing the
- * notes in response contradicts this action's own routing contract.
+ * Exercises Notes dispatch, validation, ownership, and persistence against a
+ * real NotesService over a temp-file store. Scripted model outputs drive the
+ * real core planner to verify corrected-call recovery and unrelated failures.
  */
 
 import { promises as fs } from "node:fs";
@@ -20,7 +17,12 @@ import {
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import {
+  type PlannerToolCall,
+  runPlannerLoop,
+} from "../../../packages/core/src/runtime/planner-loop.js";
 import { notesAction } from "./action.js";
+import { notesPlugin } from "./plugin.js";
 import { NOTES_SERVICE_TYPE, NotesService } from "./service.js";
 import { NotesStore } from "./store.js";
 import { parseNoteContent } from "./validation.js";
@@ -66,7 +68,327 @@ async function run(
   return result;
 }
 
+async function executorHarness(): Promise<IAgentRuntime> {
+  const runtime = await harness();
+  Object.assign(runtime, {
+    actions: notesPlugin.actions,
+    agentId: "agent-id" as UUID,
+    getRoom: vi.fn(async () => null),
+    reportError: vi.fn(),
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  });
+  return runtime;
+}
+
+function execute(
+  runtime: IAgentRuntime,
+  call: PlannerToolCall,
+  userRoles: Parameters<typeof executePlannedToolCall>[1]["userRoles"] = [
+    "OWNER",
+  ],
+) {
+  return executePlannedToolCall(
+    runtime,
+    {
+      message: {
+        id: "message-id" as UUID,
+        entityId: "owner-id" as UUID,
+        roomId: "room-id" as UUID,
+        content: { text: "Create the requested note." },
+      } as Memory,
+      activeContexts: ["notes"],
+      userRoles,
+    },
+    call,
+  );
+}
+
+describe("promoted Notes execution", () => {
+  it("creates, lists, updates, and deletes through the registered children", async () => {
+    const runtime = await executorHarness();
+    const created = await execute(runtime, {
+      name: "NOTES_CREATE",
+      params: {
+        content:
+          "Conversation context QA\nBring the blue notebook and charger; no water.",
+      },
+    });
+    expect(created.success).toBe(true);
+    expect(created.data?.note).toMatchObject({
+      title: "Conversation context QA",
+      body: "Bring the blue notebook and charger; no water.",
+    });
+    const updated = await execute(runtime, {
+      name: "NOTES_UPDATE",
+      params: {
+        content: "Conversation context QA",
+        body: "Conversation context QA\nBring only the blue notebook.",
+      },
+    });
+    expect(updated.success).toBe(true);
+    expect(updated.data?.noteId).toBe(created.data?.noteId);
+    const listed = await execute(runtime, {
+      name: "NOTES_LIST",
+      params: { content: "" },
+    });
+    expect(listed.data?.notes).toMatchObject([
+      {
+        title: "Conversation context QA",
+        body: "Bring only the blue notebook.",
+      },
+    ]);
+    expect(listed.data?.filterApplied).toBe(false);
+    const deleted = await execute(runtime, {
+      name: "NOTES_DELETE",
+      params: { content: "Conversation context QA" },
+    });
+    expect(deleted.success).toBe(true);
+    expect(deleted.data?.note).toEqual(updated.data?.note);
+    expect((await run(runtime, { action: "list" })).data?.notes).toEqual([]);
+
+    for (const result of [created, listed, updated, deleted]) {
+      expect(result).toMatchObject({
+        success: true,
+        transcriptVisibility: "internal",
+        modelReplyRequired: true,
+      });
+      expect(result).not.toHaveProperty("userFacingText");
+      expect(result).not.toHaveProperty("text");
+      expect(result).not.toHaveProperty("verifiedUserFacing");
+      expect(result).not.toHaveProperty("turnComplete");
+    }
+    expect(listed.effectReceipts).toBeUndefined();
+    for (const result of [created, updated, deleted]) {
+      expect(result.effectReceipts).toEqual([
+        expect.objectContaining({
+          outcome: "applied",
+          resource: { kind: "notes.note", id: created.data?.noteId },
+          commit: expect.objectContaining({ kind: "durable" }),
+        }),
+      ]);
+    }
+  });
+
+  it("advances a committed Notes step to queued navigation but still evaluates the final reply", async () => {
+    const runtime = await executorHarness();
+    const useModel = vi.fn().mockResolvedValue({
+      toolCalls: [
+        {
+          id: "create-note",
+          name: "NOTES_CREATE",
+          arguments: {
+            content: "Queue contract QA\nBring the notebook.",
+            eliza_turn_scope: "final",
+          },
+        },
+        {
+          id: "open-notes",
+          name: "VIEWS",
+          arguments: {
+            action: "show",
+            view: "notes",
+            eliza_turn_scope: "final",
+          },
+        },
+      ],
+    });
+    const executeToolCall = vi.fn(async (call: PlannerToolCall) =>
+      call.name === "VIEWS"
+        ? {
+            success: true,
+            text: "Navigation accepted: notes.",
+            transcriptVisibility: "internal" as const,
+            modelReplyRequired: true,
+            turnComplete: false,
+          }
+        : execute(runtime, call),
+    );
+    const evaluate = vi.fn<
+      NonNullable<Parameters<typeof runPlannerLoop>[0]["evaluate"]>
+    >(async ({ trajectory }) =>
+      trajectory.steps.at(-1)?.toolCall?.name === "VIEWS"
+        ? {
+            success: true,
+            decision: "FINISH",
+            thought: "The note is saved and navigation completed.",
+            messageToUser: "Your notebook note is saved, and Notes is open.",
+            effectReceiptIds: trajectory.steps.flatMap((step) =>
+              (step.result?.effectReceipts ?? []).map(
+                (receipt) => receipt.receiptId,
+              ),
+            ),
+          }
+        : {
+            success: false,
+            decision: "NEXT_RECOMMENDED",
+            thought: "Opening Notes remains queued.",
+            recommendedToolCallId: "open-notes",
+          },
+    );
+
+    const result = await runPlannerLoop({
+      runtime: { useModel },
+      context: { id: "notes-navigation", events: [] },
+      executeToolCall,
+      evaluate,
+    });
+
+    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(executeToolCall.mock.calls.map(([call]) => call.name)).toEqual([
+      "NOTES_CREATE",
+      "VIEWS",
+    ]);
+    expect(evaluate).toHaveBeenCalledTimes(1);
+    expect(result.finalMessage).toBe(
+      "Your notebook note is saved, and Notes is open.",
+    );
+    expect((await run(runtime, { action: "list" })).data?.notes).toMatchObject([
+      { title: "Queue contract QA", body: "Bring the notebook." },
+    ]);
+  });
+
+  it.each([
+    ["NOTES_CREATE", { body: "Bring the notebook." }, "content"],
+    ["NOTES_CREATE", { content: "" }, "content"],
+    ["NOTES_UPDATE", { body: "Replacement" }, "content"],
+    ["NOTES_UPDATE", { content: "" }, "content"],
+    ["NOTES_UPDATE", { content: "Existing note" }, "body"],
+    ["NOTES_UPDATE", { content: "Existing note", body: "" }, "body"],
+    ["NOTES_DELETE", {}, "content"],
+    ["NOTES_DELETE", { content: "" }, "content"],
+  ])(
+    "rejects incomplete %s arguments before writing: %j",
+    async (name, params, missing) => {
+      const runtime = await executorHarness();
+      await run(runtime, {
+        action: "create",
+        content: "Existing note\nKeep this body.",
+      });
+      const before = (await run(runtime, { action: "list" })).data?.notes;
+      const rejected = await execute(runtime, { name, params });
+      expect(rejected.success).toBe(false);
+      expect(rejected.effectReceipts).toBeUndefined();
+      expect(rejected.verifiedUserFacing).not.toBe(true);
+      expect(rejected.turnComplete).not.toBe(true);
+      expect(rejected.data?.parameterErrors).toEqual(
+        expect.arrayContaining([expect.stringContaining(missing)]),
+      );
+      expect((await run(runtime, { action: "list" })).data?.notes).toEqual(
+        before,
+      );
+    },
+  );
+
+  it("denies a non-owner promoted write without changing the store", async () => {
+    const runtime = await executorHarness();
+    const rejected = await execute(
+      runtime,
+      {
+        name: "NOTES_CREATE",
+        params: { content: "Unauthorized note" },
+      },
+      ["USER"],
+    );
+    expect(rejected.success).toBe(false);
+    expect(rejected.effectReceipts).toBeUndefined();
+    expect((await run(runtime, { action: "list" })).data?.notes).toEqual([]);
+  });
+
+  it.each([
+    { name: "NOTES", related: true },
+    { name: "NOTES", related: false },
+    { name: "NOTES_CREATE", related: true },
+    { name: "NOTES_CREATE", related: false },
+  ])(
+    "retains only unresolved $name failure authority after a related retry: $related",
+    async ({ name, related }) => {
+      const runtime = await executorHarness();
+      const body = "Bring the blue notebook and charger; no water.";
+      const content = related
+        ? `Conversation context QA\n${body}`
+        : "Dentist appointment\nTuesday afternoon.";
+      const useModel = vi
+        .fn()
+        .mockResolvedValue(
+          "The first note could not be saved; the second note was saved.",
+        )
+        .mockResolvedValueOnce({
+          toolCalls: [
+            {
+              id: "missing-content",
+              name,
+              arguments: { action: "create", body },
+            },
+          ],
+        })
+        .mockResolvedValueOnce({
+          toolCalls: [
+            { id: "retry", name, arguments: { action: "create", content } },
+          ],
+        });
+      const completion = "Hecho. La nota solicitada está guardada.";
+      const result = await runPlannerLoop({
+        runtime: { useModel },
+        context: { id: "notes-recovery", events: [] },
+        executeToolCall: (call) => execute(runtime, call),
+        evaluate: ({ trajectory }) => {
+          const lastResult = trajectory.steps.at(-1)?.result;
+          return lastResult?.success
+            ? {
+                success: true,
+                decision: "FINISH",
+                thought: "The requested note was saved.",
+                messageToUser: completion,
+                effectReceiptIds: lastResult.effectReceipts?.map(
+                  (receipt) => receipt.receiptId,
+                ),
+              }
+            : {
+                success: false,
+                decision: "CONTINUE",
+                thought: "Correct the missing content.",
+              };
+        },
+      });
+      expect((await run(runtime, { action: "list" })).data?.count).toBe(1);
+      expect(
+        result.trajectory.steps.filter(
+          (step) => step.result?.success === false,
+        ),
+      ).toHaveLength(1);
+      if (related) {
+        expect(result.finalMessage).toBe(completion);
+        expect(useModel).toHaveBeenCalledTimes(2);
+      } else {
+        expect(result.finalMessage).not.toBe(completion);
+        expect(useModel.mock.calls.length).toBeGreaterThan(2);
+      }
+    },
+  );
+});
+
 describe("NOTES operation parsing", () => {
+  it.each(["text", "note", "title"])(
+    "preserves the direct handler's legacy %s content alias",
+    async (alias) => {
+      const runtime = await harness();
+      const created = await run(runtime, {
+        action: "create",
+        [alias]: "Legacy title",
+        body: "Legacy body",
+      });
+      expect(created.success).toBe(true);
+      expect(
+        (await run(runtime, { action: "list" })).data?.notes,
+      ).toMatchObject([{ title: "Legacy title", body: "Legacy body" }]);
+    },
+  );
+
   it("keeps canonical Notes aliases distinct from generic view navigation", () => {
     expect(notesAction.similes).toEqual(
       expect.arrayContaining(["NOTES_LIST", "NOTES_READ", "SEARCH_NOTES"]),
@@ -110,8 +432,8 @@ describe("NOTES operation parsing", () => {
     const result = await run(runtime, {});
 
     expect(result.success).toBe(true);
-    expect(result.text).toBe("You have 1 note.");
-    expect(result.data?.notes).toEqual([
+    expect(result.data).toMatchObject({ count: 1, total: 1 });
+    expect(result.data?.notes).toMatchObject([
       { title: "wifi is on the fridge", body: "", color: "yellow" },
     ]);
   });
@@ -126,9 +448,8 @@ describe("NOTES operation parsing", () => {
     expect(callback).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       success: true,
-      text: "You have 1 note.",
+      transcriptVisibility: "internal",
       modelReplyRequired: true,
-      modelReplyFallback: "You have 1 note.",
       data: {
         count: 1,
         total: 1,
@@ -136,6 +457,8 @@ describe("NOTES operation parsing", () => {
       },
     });
     expect(result).not.toHaveProperty("userFacingText");
+    expect(result).not.toHaveProperty("text");
+    expect(result).not.toHaveProperty("modelReplyFallback");
     expect(result).not.toHaveProperty("verifiedUserFacing");
     expect(result).not.toHaveProperty("turnComplete");
   });
@@ -177,13 +500,42 @@ describe("NOTES operation parsing", () => {
 
     expect(result).toMatchObject({
       success: true,
-      text: "You have 2 notes.",
       data: {
         count: 2,
         total: 2,
         filterApplied: false,
       },
     });
+  });
+
+  it("preserves stored identity and timestamps so the model can compare recency", async () => {
+    const runtime = await harness();
+    const created = await run(runtime, {
+      action: "create",
+      content: "Recency check\noriginal body",
+    });
+    const updated = await run(runtime, {
+      action: "update",
+      content: "Recency check",
+      body: "Recency check\nupdated body",
+    });
+    const result = await run(runtime, { action: "list" });
+
+    expect(result.data?.notes).toEqual([updated.data?.note]);
+    expect(result.data?.notes).toMatchObject([
+      {
+        id: created.data?.noteId,
+        createdAt: expect.any(String),
+        updatedAt: expect.any(String),
+        title: "Recency check",
+        body: "updated body",
+      },
+    ]);
+    const filtered = await run(runtime, {
+      action: "list",
+      content: "Recency check",
+    });
+    expect(filtered.data?.notes).toEqual(result.data?.notes);
   });
 
   it("keeps a topic-scoped read from exposing unrelated notes", async () => {
@@ -198,8 +550,7 @@ describe("NOTES operation parsing", () => {
     });
 
     const match = await run(runtime, { action: "list", content: "PLUMBER" });
-    expect(match.text).toBe("I found 1 matching note.");
-    expect(match.data?.notes).toEqual([
+    expect(match.data?.notes).toMatchObject([
       {
         title: "the plumber comes thursday morning",
         body: "",
@@ -213,7 +564,6 @@ describe("NOTES operation parsing", () => {
     });
 
     const absent = await run(runtime, { action: "list", query: "dentist" });
-    expect(absent.text).toBe("I couldn't find a matching note.");
     expect(absent.data?.notes).toEqual([]);
     expect(absent.data).toMatchObject({
       count: 0,
@@ -231,7 +581,93 @@ describe("NOTES operation parsing", () => {
       content: "Demo Checklist: mic, charger, water",
     });
     expect(created.success).toBe(true);
-    expect(created.text).toContain("Demo Checklist — mic, charger, water");
+    expect(created.data?.note).toMatchObject({
+      title: "Demo Checklist",
+      body: "mic, charger, water",
+    });
+  });
+
+  it.each(["Stable Local Notes QA", "QA: afternoon"])(
+    "preserves a separate create body with title %s",
+    async (title) => {
+      const runtime = await harness();
+      const created = await run(runtime, {
+        action: "create",
+        content: title,
+        body: "Cerebras local note persistence",
+      });
+
+      expect(created.success).toBe(true);
+      expect(created.data?.note).toMatchObject({
+        title,
+        body: "Cerebras local note persistence",
+      });
+      const listed = await run(runtime, { action: "list" });
+      expect(listed.data?.notes).toMatchObject([
+        {
+          title,
+          body: "Cerebras local note persistence",
+          color: "yellow",
+        },
+      ]);
+    },
+  );
+
+  it("stores a redundant create body once without removing intentional repeated lines", async () => {
+    const runtime = await harness();
+    const body = "Bring a charger and water.\nBring a charger and water.";
+    const created = await run(runtime, {
+      action: "create",
+      content: `Checklist\n${body}`,
+      body,
+    });
+    expect(created.success).toBe(true);
+    const listed = await run(runtime, { action: "list", content: "Checklist" });
+    expect(listed.data?.notes).toMatchObject([{ title: "Checklist", body }]);
+    expect(listed.data?.count).toBe(1);
+  });
+
+  it("rejects conflicting create bodies without persisting either version", async () => {
+    const runtime = await harness();
+    const created = await run(runtime, {
+      action: "create",
+      content: "Checklist\nBring water.",
+      body: "Bring a charger.",
+    });
+    expect(created).toMatchObject({
+      success: false,
+      error: "NOTES_CONFLICTING_BODY",
+    });
+    const listed = await run(runtime, { action: "list" });
+    expect(listed.data?.notes).toEqual([]);
+  });
+
+  it("returns the persisted label and body as evidence after a content update", async () => {
+    const runtime = await harness();
+    const created = await run(runtime, {
+      action: "create",
+      content: "Demo checklist",
+      body: "charger",
+    });
+    const updated = await run(runtime, {
+      action: "update",
+      content: "Demo checklist",
+      body: "Demo checklist\ncharger and water",
+    });
+    expect(updated.success).toBe(true);
+    expect(updated.modelReplyRequired).toBe(true);
+    expect(updated.data?.note).toMatchObject({
+      id: created.data?.noteId,
+      title: "Demo checklist",
+      body: "charger and water",
+    });
+    const listed = await run(runtime, {
+      action: "list",
+      content: "Demo checklist",
+    });
+    expect(listed.data?.notes).toMatchObject([
+      { title: "Demo checklist", body: "charger and water", color: "yellow" },
+    ]);
   });
 
   it("lets the owner create, search/list, update, and delete in one store", async () => {
@@ -241,11 +677,11 @@ describe("NOTES operation parsing", () => {
       content: "bins go out tuesday",
     });
     expect(created.success).toBe(true);
-    expect(created.text).toContain("saved a note");
+    expect(created.data?.note).toMatchObject({ title: "bins go out tuesday" });
 
     const listed = await run(runtime, { action: "list" });
     expect(listed.success).toBe(true);
-    expect(listed.data?.notes).toEqual([
+    expect(listed.data?.notes).toMatchObject([
       { title: "bins go out tuesday", body: "", color: "yellow" },
     ]);
 
@@ -255,17 +691,19 @@ describe("NOTES operation parsing", () => {
       body: "bins go out wednesday",
     });
     expect(updated.success).toBe(true);
-    expect(updated.text).toContain("bins go out wednesday");
+    expect(updated.data?.note).toMatchObject({
+      title: "bins go out wednesday",
+    });
 
     const deleted = await run(runtime, {
       action: "delete",
       content: "wednesday",
     });
     expect(deleted.success).toBe(true);
-    expect(deleted.text).toContain("deleted the note");
+    expect(deleted.data?.note).toEqual(updated.data?.note);
 
     const after = await run(runtime, { action: "list" });
-    expect(after.text).toBe("You don't have any notes yet.");
+    expect(after.data).toMatchObject({ count: 0, total: 0, notes: [] });
   });
 });
 
@@ -314,10 +752,13 @@ describe("identical-duplicate notes", () => {
 
     const result = await run(runtime, { action: "delete", content: "milk" });
     expect(result.success).toBe(true);
-    expect(result.text).toContain("removed 4 identical copies");
+    expect(result.data).toMatchObject({
+      removedCount: 4,
+      note: { title: "i need to buy milk", body: "" },
+    });
 
     const after = await run(runtime, { action: "list" });
-    expect(after.data?.notes).toEqual([
+    expect(after.data?.notes).toMatchObject([
       { title: "spare key under the mat", body: "", color: "yellow" },
     ]);
   });
@@ -342,11 +783,10 @@ describe("identical-duplicate notes", () => {
       body: "i already bought milk",
     });
 
-    expect(result.text).toContain("consolidated 4 identical copies");
     expect(result.data).toMatchObject({ consolidatedCount: 3 });
     const after = await run(runtime, { action: "list" });
     expect(after.data).toMatchObject({ count: 1, total: 1 });
-    expect(after.data?.notes).toEqual([
+    expect(after.data?.notes).toMatchObject([
       { title: "i already bought milk", body: "", color: "yellow" },
     ]);
   });

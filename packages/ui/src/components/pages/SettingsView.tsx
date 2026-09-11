@@ -8,6 +8,7 @@
  * plus normal product visibility; `initialSection` deep-links a specific
  * section. Also reusable in modal form (`inModal`).
  */
+
 import { isViewVisible } from "@elizaos/core";
 import { isPermissionId, type PermissionId } from "@elizaos/shared";
 import {
@@ -19,6 +20,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useAgentElement } from "../../agent-surface";
+import { reportUserViewSwitch } from "../../chat/view-navigation-report";
 import { isManagedCloudRuntime } from "../../cloud/managed-cloud-runtime";
 import { getBootConfig } from "../../config/boot-config-store";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
@@ -65,7 +67,7 @@ import {
   settingsSectionLabel,
   settingsSectionTitle,
 } from "../settings/settings-sections";
-import { navigateBackToLauncher, ViewHeader } from "../shared/ViewHeader";
+import { navigateBackToLauncher, ViewBackButton } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
@@ -107,7 +109,7 @@ function SettingsSectionLoading({ title }: { title: string }) {
 }
 
 /**
- * The active section's body. The uniform `ViewHeader` lives at the view root
+ * The active section's body. Compact navigation lives at the view root
  * (not per-section), so this only renders the lazy section component behind a
  * transparent Suspense + error boundary. One opaque token surface for the whole
  * view — no per-section `theme-cloud bg-black` islands (#13452).
@@ -266,7 +268,6 @@ export function SettingsView({
     loadPlugins: s.loadPlugins,
     walletEnabled: s.walletEnabled,
   }));
-  const plugins = useAppSelector((s) => s.plugins);
   const runtimeTarget = useAppSelector((s) => s.startupCoordinator.target);
   const cloudOnlyBranding = getBootConfig().branding.cloudOnly === true;
   const managedCloudRuntime =
@@ -513,6 +514,10 @@ export function SettingsView({
     ? desktopSectionDef
     : activeSectionDef;
 
+  useEffect(() => {
+    reportUserViewSwitch("settings", "/settings", displayedSectionDef?.id);
+  }, [displayedSectionDef?.id]);
+
   // Mobile keeps the uniform top bar: the hub shows "Settings" and a section
   // shows its title with a back action. Connector detail is one level deeper
   // (detail → connectors index → settings hub → launcher).
@@ -521,25 +526,10 @@ export function SettingsView({
     settingsRoute.kind === "connector-detail"
       ? settingsRoute.connectorId
       : null;
-  const connectorDetailName = connectorDetailId
-    ? (plugins.find((p) => p.id === connectorDetailId)?.name ??
-      connectorDetailId)
-    : null;
-  const headerTitle = connectorDetailName
-    ? connectorDetailName
-    : activeSectionDef
-      ? settingsSectionTitle(activeSectionDef, t)
-      : settingsTitle;
-  const onBack = connectorDetailId
-    ? backToConnectorsIndex
-    : activeSectionDef
-      ? backToHub
-      : navigateBackToLauncher;
+  const onBack = connectorDetailId ? backToConnectorsIndex : backToHub;
   const backLabel = connectorDetailId
     ? "Back to Connectors"
-    : activeSectionDef
-      ? "Back to Settings"
-      : "Back to launcher";
+    : "Back to Settings";
   const desktopSidebar = isWideSettings ? (
     <DesktopSettingsNavigation
       grouped={navigationGrouped}
@@ -597,17 +587,18 @@ export function SettingsView({
           {!isWideSettings ? (
             <div
               className={cn(
-                isNativeCompactSettings &&
-                  "pt-[max(calc(var(--safe-area-top,0px)-2rem),0.75rem)]",
+                isNativeCompactSettings && "pt-[var(--safe-area-top,0px)]",
               )}
             >
-              <ViewHeader
-                title={headerTitle}
-                onBack={onBack}
-                backLabel={backLabel}
-                showBack={Boolean(activeSectionDef) || !detachedSettingsShell}
-                className="px-1.5 sm:px-1.5"
-              />
+              {activeSectionDef || connectorDetailId ? (
+                <nav
+                  aria-label={settingsTitle}
+                  data-testid="view-header"
+                  className="flex shrink-0 items-center px-1.5 py-2 sm:px-1.5"
+                >
+                  <ViewBackButton onBack={onBack} label={backLabel} />
+                </nav>
+              ) : null}
             </div>
           ) : null}
 

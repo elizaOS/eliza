@@ -2,11 +2,13 @@
  * Playwright UI-smoke spec for the Apps Comms Device Interactions app flow
  * using the real renderer fixture.
  */
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
+import { findRemoteBundleDeclaration } from "./aesthetic-audit-rules";
 import {
   assertReadyChecks,
   hideChatOverlay,
   installDefaultAppRoutes,
+  openAppPath,
   seedAppStorage,
 } from "./helpers";
 
@@ -55,6 +57,7 @@ type FixtureWindow = Window & {
       openedDialers: Array<Record<string, unknown> | null>;
     };
     messages: {
+      listRequests: number;
       sent: Array<{ address: string; body: string }>;
       roleRequests: number;
       roleHeld: boolean;
@@ -268,9 +271,10 @@ async function openPhoneCompanionMode(page: Page): Promise<void> {
 
 async function installDeterministicNativeBridge(
   page: Page,
-  options: { nativePlatform?: boolean } = {},
+  options: { nativePlatform?: boolean; communicationsBridge?: boolean } = {},
 ): Promise<void> {
   const nativePlatform = options.nativePlatform ?? true;
+  const communicationsBridge = options.communicationsBridge ?? false;
   const pairingQr = Buffer.from(
     JSON.stringify({
       agentId: "agent-ui-smoke",
@@ -281,7 +285,12 @@ async function installDeterministicNativeBridge(
   ).toString("base64");
 
   await page.addInitScript(
-    ({ headers, nativePlatform: isNativePlatform, qr }) => {
+    ({
+      headers,
+      nativePlatform: isNativePlatform,
+      communicationsBridge,
+      qr,
+    }) => {
       const win = window as FixtureWindow;
       const browserFetch = win.fetch.bind(win);
       const fixedNow = Date.parse("2026-01-01T12:00:00.000Z");
@@ -389,6 +398,16 @@ async function installDeterministicNativeBridge(
           starred: false,
         },
       ];
+      for (let index = 0; index < 9; index += 1) {
+        contacts.push({
+          id: `contact-qa-${index}`,
+          lookupKey: `lookup-qa-${index}`,
+          displayName: `QA Contact ${index} complete organization reference`,
+          phoneNumbers: [`+1415555020${index}`],
+          emailAddresses: [`qa-contact-${index}-complete-address@example.test`],
+          starred: false,
+        });
+      }
       const recentCalls = [
         {
           id: "call-ada",
@@ -461,6 +480,7 @@ async function installDeterministicNativeBridge(
           openedDialers: [] as Array<Record<string, unknown> | null>,
         },
         messages: {
+          listRequests: 0,
           sent: [] as Array<{ address: string; body: string }>,
           roleRequests: 0,
           roleHeld: false,
@@ -781,7 +801,10 @@ async function installDeterministicNativeBridge(
           ) {
             return { sms: "granted" };
           }
-          if (methodName === "listMessages") return clone(messages());
+          if (methodName === "listMessages") {
+            fixture.messages.listRequests += 1;
+            return clone(messages());
+          }
           if (methodName === "sendSms") {
             fixture.messages.sent.push({
               address: String(options?.address ?? ""),
@@ -898,7 +921,15 @@ async function installDeterministicNativeBridge(
           headers.some(
             (entry: NativePluginHeader) => entry.name === pluginName,
           ),
-        PluginHeaders: isNativePlatform ? headers : [],
+        PluginHeaders: isNativePlatform
+          ? headers
+          : communicationsBridge
+            ? headers.filter(
+                (entry) =>
+                  entry.name === "ElizaMessages" ||
+                  entry.name === "ElizaSystem",
+              )
+            : [],
         nativePromise: async (
           pluginName: string,
           methodName: string,
@@ -1017,7 +1048,12 @@ async function installDeterministicNativeBridge(
       };
       win.Capacitor = cap;
     },
-    { headers: PLUGIN_HEADERS, nativePlatform, qr: pairingQr },
+    {
+      headers: PLUGIN_HEADERS,
+      nativePlatform,
+      communicationsBridge,
+      qr: pairingQr,
+    },
   );
 }
 
@@ -1104,9 +1140,7 @@ test.describe("Android communications app interactions", () => {
     await openAppWindow(page, "messages", "/messages", [
       { selector: '[data-agent-id="messages-refresh"]' },
     ]);
-    await page
-      .locator('[data-agent-id="open-thread-thread-alpha"]')
-      .click();
+    await page.locator('[data-agent-id="open-thread-thread-alpha"]').click();
     await expect(page.getByText("Can you review the build?")).toBeVisible();
     const latestThreadMessage = page.getByText(
       "Yes, checking the deterministic smoke path now.",
@@ -1161,6 +1195,130 @@ test.describe("Android communications app interactions", () => {
       "contacts deterministic controls",
     );
   });
+
+  for (const width of [390, 844]) {
+    for (const view of ["phone", "messages", "contacts"] as const) {
+      test(`${view} normal route keeps native actions reachable above the composer at ${width}px`, async ({
+        page,
+      }) => {
+        await page.setViewportSize({
+          width,
+          height: width === 390 ? 844 : 390,
+        });
+        await installDefaultAppRoutes(page);
+        await openAppPath(page, `/${view}`);
+        const title = view[0].toUpperCase() + view.slice(1);
+        await expect(
+          page.getByRole("region", { name: title, exact: true }),
+        ).toBeVisible();
+        const composer = page.locator('[data-testid="chat-sheet"]');
+        await expect(composer).toBeVisible();
+        const region = page.getByRole("region", { name: title, exact: true });
+        if (view === "contacts") {
+          await expect(
+            page.getByText("QA Contact 8 complete organization reference", {
+              exact: true,
+            }),
+          ).toBeAttached();
+        }
+        await expect
+          .poll(() =>
+            region
+              .locator('[data-slot="scroll-area-viewport"]')
+              .evaluate((element) => element.scrollWidth - element.clientWidth),
+          )
+          .toBeLessThanOrEqual(1);
+        let target: Locator;
+        if (view === "phone") {
+          target = page.locator('[data-agent-id="call:call-grace"]');
+        } else if (view === "messages") {
+          await page
+            .locator('[data-agent-id="compose-address"]')
+            .fill("+14155550103");
+          await page
+            .locator('[data-agent-id="compose-body"]')
+            .fill("Complete message from the composer-clearance regression");
+          target = page.locator('[data-agent-id="messages-send"]');
+        } else {
+          const existingContact = page.locator(
+            '[data-agent-id="select:contact-qa-8"]',
+          );
+          await existingContact.evaluate((element) =>
+            element.scrollIntoView({ block: "center", behavior: "instant" }),
+          );
+          await existingContact.click();
+          await expect(
+            page.getByText("QA Contact 8 complete organization reference", {
+              exact: true,
+            }),
+          ).toBeVisible();
+          await expect(
+            page.getByText("qa-contact-8-complete-address@example.test", {
+              exact: true,
+            }),
+          ).toBeVisible();
+          await page.locator('[data-agent-id="back"]').click();
+          await page.locator('[data-agent-id="new"]').click();
+          await page.locator('[data-agent-id="name"]').fill("Lin Clearance");
+          await page.locator('[data-agent-id="phone"]').fill("+14155550199");
+          await page
+            .locator('[data-agent-id="email"]')
+            .fill("lin.clearance@example.test");
+          target = page.locator('[data-agent-id="save"]');
+        }
+        await expect(target).toBeEnabled();
+        await expect(composer).toBeVisible();
+        await target.evaluate((element) =>
+          element.scrollIntoView({
+            block: "center",
+            inline: "nearest",
+            behavior: "instant",
+          }),
+        );
+        await expect
+          .poll(() =>
+            target.evaluate((element) => {
+              const rect = element.getBoundingClientRect();
+              const hit = document.elementFromPoint(
+                rect.x + rect.width / 2,
+                rect.y + rect.height / 2,
+              );
+              return hit !== null && element.contains(hit);
+            }),
+          )
+          .toBe(true);
+        await target.click();
+        if (view === "phone") {
+          await expect
+            .poll(
+              async () =>
+                (await readFixture(page))?.phone.placedCalls.at(-1)?.number,
+            )
+            .toBe("+14155550102");
+        } else if (view === "messages") {
+          await expect
+            .poll(async () => (await readFixture(page))?.messages.sent.at(-1))
+            .toEqual({
+              address: "+14155550103",
+              body: "Complete message from the composer-clearance regression",
+            });
+        } else {
+          await expect
+            .poll(async () =>
+              (await readFixture(page))?.contacts.created.at(-1),
+            )
+            .toEqual({
+              displayName: "Lin Clearance",
+              phoneNumber: "+14155550199",
+              emailAddress: "lin.clearance@example.test",
+            });
+          await expect(
+            page.getByText("Lin Clearance", { exact: true }),
+          ).toBeVisible();
+        }
+      });
+    }
+  }
 
   test("phone companion pairing form is reachable and deterministic", async ({
     page,
@@ -1240,4 +1398,156 @@ test.describe("Android communications app interactions", () => {
 
     await expectNoIssues(page, issues.splice(0), "phone companion pairing");
   });
+});
+
+// The audit route mounts the published raw bundle. Only the device transport
+// is supplied: the browser runtime owns the HTTP registry and page routing.
+test.describe("remote Messages bundle", () => {
+  test.beforeEach(async ({ page }) => {
+    await installDeterministicNativeBridge(page, {
+      nativePlatform: false,
+      communicationsBridge: true,
+    });
+  });
+  test.use({
+    userAgent:
+      "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
+  });
+  for (const width of [390, 844]) {
+    test(`remote Messages refresh and complete send remain reachable at ${width}px`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize({
+        width,
+        height: width === 390 ? 844 : 390,
+      });
+      await installDefaultAppRoutes(page);
+      const registryResponse = await page.request.get("/api/views");
+      expect(registryResponse.ok()).toBe(true);
+      const payload = await registryResponse.json();
+      const registered = findRemoteBundleDeclaration(
+        payload,
+        "messages",
+        "gui",
+      );
+      if (!registered)
+        throw new Error("Real remote Messages declaration missing");
+      const auditPath = "/__audit/plugin-view/messages";
+      await page.route("**/api/views", async (route) => {
+        if (route.request().method() !== "GET") {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ...payload,
+            views: payload.views.map((entry: { id: string }) =>
+              entry.id === "messages" ? { ...entry, path: auditPath } : entry,
+            ),
+          }),
+        });
+      });
+      const bundlePath = new URL(registered.bundleUrl, "http://audit.local")
+        .pathname;
+      const bundle = page.waitForResponse(
+        (response) => new URL(response.url()).pathname === bundlePath,
+        { timeout: 30_000 },
+      );
+      await openAppPath(page, auditPath);
+      expect((await bundle).ok()).toBe(true);
+      const surface = page.locator(
+        '[data-agent-surface-kind="dynamic"][data-agent-surface-view-id="messages"]',
+      );
+      const refresh = surface.locator('[data-agent-id="messages-refresh"]');
+      await expect(refresh).toBeEnabled();
+      const before = (await readFixture(page))?.messages.listRequests;
+      if (before === undefined)
+        throw new Error("Native Messages fixture missing");
+      await refresh.evaluate((element) =>
+        element.scrollIntoView({
+          block: "center",
+          inline: "nearest",
+          behavior: "instant",
+        }),
+      );
+      const geometry = await refresh.evaluate((element) => {
+        const rows = [];
+        for (
+          let parent: Element | null = element;
+          parent;
+          parent = parent.parentElement
+        ) {
+          const r = parent.getBoundingClientRect();
+          const c = getComputedStyle(parent);
+          rows.push({
+            tag: parent.tagName,
+            classes: parent.className,
+            owner: parent.getAttribute("data-scroll-owner"),
+            rect: { x: r.x, y: r.y, width: r.width, height: r.height },
+            top: parent.scrollTop,
+            max: parent.scrollHeight - parent.clientHeight,
+            width: parent.clientWidth,
+            scrollWidth: parent.scrollWidth,
+            padding: c.paddingBottom,
+            overflow: c.overflowY,
+          });
+        }
+        return rows;
+      });
+      await testInfo.attach("remote-messages-scroll-geometry", {
+        body: JSON.stringify(geometry, null, 2),
+        contentType: "application/json",
+      });
+      await testInfo.attach("remote-messages-refresh-reached", {
+        body: await page.screenshot(),
+        contentType: "image/png",
+      });
+      await expect
+        .poll(() =>
+          refresh.evaluate((element) => {
+            const rect = element.getBoundingClientRect();
+            const hit = document.elementFromPoint(
+              rect.x + rect.width / 2,
+              rect.y + rect.height / 2,
+            );
+            return hit !== null && element.contains(hit);
+          }),
+        )
+        .toBe(true);
+      await refresh.click();
+      await expect
+        .poll(async () => (await readFixture(page))?.messages.listRequests)
+        .toBeGreaterThan(before);
+      await expect(page.locator('[data-testid="chat-sheet"]')).toBeVisible();
+      expect(
+        await surface
+          .locator("[data-scroll-cert-scroller]")
+          .evaluate((element) => {
+            if (element.clientWidth <= 0)
+              throw new Error("Messages canvas has no width");
+            return element.scrollWidth - element.clientWidth;
+          }),
+      ).toBeLessThanOrEqual(1);
+      const body =
+        "Complete remote message with an organization reference and a final detail that must reach the native bridge unchanged.";
+      await surface
+        .locator('[data-agent-id="compose-address"]')
+        .fill("+14155550103");
+      await surface.locator('[data-agent-id="compose-body"]').fill(body);
+      const send = surface.locator('[data-agent-id="messages-send"]');
+      await send.evaluate((element) =>
+        element.scrollIntoView({
+          block: "center",
+          inline: "nearest",
+          behavior: "instant",
+        }),
+      );
+      await send.click();
+      await expect
+        .poll(async () => (await readFixture(page))?.messages.sent.at(-1))
+        .toEqual({ address: "+14155550103", body });
+    });
+  }
 });

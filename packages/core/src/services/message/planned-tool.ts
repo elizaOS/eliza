@@ -1,10 +1,13 @@
 /** Adapts planner tool calls to the existing action executor and settles stream events and evidence-sensitive provider caches. */
 
+import { normalizeActionJsonSchema } from "../../actions/action-schema";
+import { promotedSubactionParent } from "../../actions/promote-subactions";
 import {
 	buildPlannerToolsFromTieredActions,
 	CORE_PLANNER_TERMINALS,
 } from "../../actions/to-tool";
 import { actionGateFailure } from "../../runtime/action-gate";
+import { parentAliasesForCandidateAction } from "../../runtime/action-retrieval";
 import type {
 	EvaluatorEffects,
 	EvaluatorOutput,
@@ -61,9 +64,11 @@ import { toWellFormedUnicode } from "../../utils/well-formed";
 import {
 	buildRuntimeActionLookup,
 	resolvePlannerActionName,
+	resolveRuntimeAction,
 } from "./action-identifiers.js";
 import { mergeAgentContexts } from "./action-surface.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
+import { uiViewActionPriority } from "./provider-state.js";
 
 export interface ExecuteV5PlannedToolCallParams {
 	runtime: IAgentRuntime;
@@ -489,12 +494,27 @@ export function subPlannerResultToPlannerToolResult(
 		transcriptVisibility: lastStep?.result?.transcriptVisibility,
 		...(internalTerminalPayload ? {} : { userFacingText }),
 		...(effectReceipts.length > 0 ? { effectReceipts } : {}),
+		...(terminalResult?.replyFailure
+			? { replyFailure: terminalResult.replyFailure }
+			: {}),
 		...(terminalUserFacingEffectReceiptIds
 			? {
 					userFacingEffectReceiptIds: terminalUserFacingEffectReceiptIds,
 				}
 			: {}),
 		...(terminalVerifiedUserFacing ? { verifiedUserFacing: true } : {}),
+		...(evaluator?.decision === "FINISH" && evaluator.protocolFailure !== true
+			? {
+					subPlannerEvaluation: {
+						decision: "FINISH" as const,
+						success: evaluator.success === true,
+						...(typeof evaluator.messageToUser === "string" &&
+						evaluator.messageToUser.trim()
+							? { messageToUser: evaluator.messageToUser }
+							: {}),
+					},
+				}
+			: {}),
 		data,
 		error: lastStep?.result?.error,
 		// Propagate the terminal sub-action's chain signal to the parent
@@ -520,6 +540,11 @@ export function subPlannerResultToPlannerToolResult(
 export function collectPlannerTools(
 	context: ContextObject,
 	narrowedActions?: ReadonlyArray<Action>,
+	options: {
+		expandSubActions?: boolean;
+		canonicalFamilies?: boolean;
+		candidateActions?: readonly string[];
+	} = {},
 ): ToolDefinition[] {
 	const hasAnyAction = context.events.some(
 		(event) =>
@@ -532,12 +557,53 @@ export function collectPlannerTools(
 	if (!hasAnyAction) return [];
 	const actions = narrowedActions ?? collectActionsFromContext(context);
 	const tierAParents = readTierAParentsFromContext(context);
-	const actionTools = buildPlannerToolsFromTieredActions(actions, {
+	const wireActions = options.canonicalFamilies
+		? collectCanonicalPlannerActions(actions, options.candidateActions ?? [])
+		: actions;
+	const actionTools = buildPlannerToolsFromTieredActions(wireActions, {
 		tierAParents,
+		expandSubActions: options.canonicalFamilies
+			? false
+			: options.expandSubActions,
 		actionLookup: new Map(
 			actions.map((action) => [action.name, action] as const),
 		),
 	});
+	if (options.canonicalFamilies) {
+		const wireNames = new Set(wireActions.map((action) => action.name));
+		for (const parentTool of actionTools) {
+			const parent = actions.find((action) => action.name === parentTool.name);
+			if (!parent) continue;
+			const aliases = actions.filter(
+				(action) =>
+					!wireNames.has(action.name) &&
+					promotedSubactionParent(action) === parent.name,
+			);
+			if (aliases.length === 0) continue;
+			const parentSchema = normalizeActionJsonSchema(parent);
+			const aliasContracts = aliases.map((alias) => {
+				const { properties = {}, ...schema } = normalizeActionJsonSchema(alias);
+				return {
+					name: alias.name,
+					description: alias.description,
+					routingHint: alias.routingHint,
+					strict: alias.toolSchemaStrict ?? true,
+					parameters: {
+						...schema,
+						parentParameterNames: Object.keys(properties),
+						propertyOverrides: Object.fromEntries(
+							Object.entries(properties).filter(
+								([name, property]) =>
+									JSON.stringify(property) !==
+									JSON.stringify(parentSchema.properties?.[name]),
+							),
+						),
+					},
+				};
+			});
+			parentTool.description += `\nGenerated aliases represented by this umbrella: call this tool using the alias's pinned discriminator. Each alias parameter object uses exactly parentParameterNames from this tool's complete properties, including descriptions and defaults; propertyOverrides replaces only differing properties. Other schema fields (including required) are explicit. Complete alias contracts:\n${JSON.stringify(aliasContracts)}`;
+		}
+	}
 	const terminalNames = new Set(
 		CORE_PLANNER_TERMINALS.map((tool) => normalizeActionIdentifier(tool.name)),
 	);
@@ -551,6 +617,160 @@ export function collectPlannerTools(
 		),
 		...CORE_PLANNER_TERMINALS,
 	];
+}
+
+/**
+ * Represents generated aliases once through their complete authorized umbrella.
+ * Independent child actions and explicitly requested aliases remain direct. The
+ * caller retains every original context action for execution and trajectories.
+ */
+export function collectCanonicalPlannerActions(
+	actions: readonly Action[],
+	candidateActions: readonly string[],
+): Action[] {
+	const lookup = buildRuntimeActionLookup({ actions });
+	const directCandidates = new Set(
+		candidateActions.map((name) => resolveRuntimeAction(lookup, name)?.name),
+	);
+	const authorized = new Map(actions.map((action) => [action.name, action]));
+	return actions.filter((action) => {
+		if (directCandidates.has(action.name)) return true;
+		const parentName = promotedSubactionParent(action);
+		if (!parentName) return true;
+		const parent = authorized.get(parentName);
+		// An umbrella requiring a field absent from this alias cannot represent
+		// that alias's valid calls without manufacturing an extra argument.
+		if (
+			parent?.parameters?.some(
+				(parameter) =>
+					parameter.required &&
+					!action.parameters?.some((entry) => entry.name === parameter.name),
+			)
+		)
+			return true;
+		if (
+			parent?.subActions?.some(
+				(child) =>
+					!authorized.has(typeof child === "string" ? child : child.name),
+			)
+		)
+			return true;
+		return !parent?.subActions?.some(
+			(child) =>
+				(typeof child === "string" ? child : child.name) === action.name,
+		);
+	});
+}
+
+export type UmbrellaPlannerBudgetDecision =
+	| "under-dispatch-budget"
+	| "smaller-than-complete-surface"
+	| "not-smaller";
+
+/**
+ * Decide whether the umbrella-parent request replaces the current planner
+ * request. The dispatch threshold compares a utf8-upper-bound ESTIMATE (one
+ * token per byte) against the model window, and the provider's real count runs
+ * far below it (190,732 tokens for a surface this estimator put at 506,107), so
+ * an umbrella that misses the estimate routinely fits the real window. Both
+ * requests are measured with the same upper bound, so a smaller umbrella
+ * estimate is a strictly smaller request: keeping the larger complete surface
+ * instead fails whenever the umbrella would fail and also whenever it would not
+ * (the provider rejects the larger request and the turn ends in the typed
+ * overflow apology). The umbrella keeps every authorized parent, and the
+ * provider boundary in planner-loop.ts remains the ground-truth backstop.
+ */
+export function decideUmbrellaPlannerBudget(args: {
+	umbrella: { estimatedInputTokens: number; dispatchThresholdTokens: number };
+	current: { estimatedInputTokens: number };
+}): UmbrellaPlannerBudgetDecision {
+	if (
+		args.umbrella.estimatedInputTokens <= args.umbrella.dispatchThresholdTokens
+	) {
+		return "under-dispatch-budget";
+	}
+	if (args.umbrella.estimatedInputTokens < args.current.estimatedInputTokens) {
+		return "smaller-than-complete-surface";
+	}
+	return "not-smaller";
+}
+
+/**
+ * Recover an oversized planner request from Stage 1's model-authored action
+ * candidates. This is a dispatch-budget fallback, not a command router: Stage 1
+ * has already interpreted the user's request with the response-handler model,
+ * and the action planner still has to select and call one of the resulting
+ * tools. Unknown or ambiguous candidates fail open to the complete authorized
+ * surface so this helper cannot invent authority or silently pick an action.
+ */
+export function collectBudgetedStageOneCandidateActions(args: {
+	actions: readonly Action[];
+	candidateActions: readonly string[];
+	contexts: readonly AgentContext[];
+}): Action[] {
+	if (args.candidateActions.length === 0) return [];
+
+	const actionLookup = buildRuntimeActionLookup({ actions: args.actions });
+	const selectedNames = new Set<string>();
+	for (const candidateName of args.candidateActions) {
+		const direct = resolveRuntimeAction(actionLookup, candidateName);
+		const resolved = direct
+			? [direct]
+			: parentAliasesForCandidateAction(candidateName)
+					.map((alias) => resolveRuntimeAction(actionLookup, alias))
+					.filter((action): action is Action => action !== undefined);
+		if (resolved.length === 0) return [];
+		for (const action of resolved) {
+			selectedNames.add(normalizeActionIdentifier(action.name));
+		}
+	}
+	// A candidate child is a routing hint, not a complete plan. Keep its
+	// authorized umbrella available so a compound request can use another
+	// operation after the first result (e.g. navigate, then read the page).
+	// Use declared relationships, never guessed name prefixes. Only parents
+	// already admitted by the execution gates may enter this surface.
+	for (const parent of args.actions) {
+		if (
+			parent.subActions?.some((child) =>
+				selectedNames.has(
+					normalizeActionIdentifier(
+						typeof child === "string" ? child : child.name,
+					),
+				),
+			)
+		) {
+			selectedNames.add(normalizeActionIdentifier(parent.name));
+		}
+	}
+	// Fill only domains missing from the resolved candidates. A synthetic
+	// candidate may resolve to VIEWS without the Notes data action. Once an
+	// explicit candidate covers a domain, do not add every related action:
+	// Calendar shares its context with many life-management tools, whose full
+	// schemas can overflow the model despite a precise CALENDAR selection.
+	const coveredContexts = new Set(
+		args.actions
+			.filter((action) =>
+				selectedNames.has(normalizeActionIdentifier(action.name)),
+			)
+			.flatMap((action) => action.contexts ?? [])
+			.map((context) => String(context).trim().toLowerCase()),
+	);
+	const uncoveredContexts = args.contexts.filter(
+		(context) => !coveredContexts.has(String(context).trim().toLowerCase()),
+	);
+	const noFocusedViewActions = new Set<string>();
+	for (const action of args.actions) {
+		if (
+			uiViewActionPriority(action, uncoveredContexts, noFocusedViewActions) ===
+			1
+		) {
+			selectedNames.add(normalizeActionIdentifier(action.name));
+		}
+	}
+
+	return args.actions.filter((action) =>
+		selectedNames.has(normalizeActionIdentifier(action.name)),
+	);
 }
 
 /**
@@ -635,6 +855,9 @@ export function collectPreviousActionResults(
 				...(step.result.effectReceipts !== undefined
 					? { effectReceipts: step.result.effectReceipts }
 					: {}),
+				...(step.result.replyFailure !== undefined
+					? { replyFailure: step.result.replyFailure }
+					: {}),
 				...(step.result.userFacingEffectReceiptIds !== undefined
 					? {
 							userFacingEffectReceiptIds:
@@ -703,6 +926,9 @@ export function collectPreviousActionResults(
 				: {}),
 			...(step.result.effectReceipts !== undefined
 				? { effectReceipts: step.result.effectReceipts }
+				: {}),
+			...(step.result.replyFailure !== undefined
+				? { replyFailure: step.result.replyFailure }
 				: {}),
 			...(step.result.userFacingEffectReceiptIds !== undefined
 				? {

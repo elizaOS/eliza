@@ -131,10 +131,6 @@ export default defineConfig({
 				replacement: path.join(sharedSrc, "steward-session-client/index.ts"),
 			},
 			{
-				find: "@elizaos/shared/contracts",
-				replacement: path.join(sharedSrc, "contracts/index.ts"),
-			},
-			{
 				find: "@elizaos/shared/elizacloud/domain-contract",
 				replacement: path.join(sharedSrc, "elizacloud/domain-contract.ts"),
 			},
@@ -144,6 +140,10 @@ export default defineConfig({
 				// like steward-session-client above.
 				find: /^@elizaos\/shared\/elizacloud$/,
 				replacement: path.join(sharedSrc, "elizacloud/index.ts"),
+			},
+			{
+				find: /^@elizaos\/shared\/local-inference$/,
+				replacement: path.join(sharedSrc, "local-inference/index.ts"),
 			},
 			{
 				find: /^@elizaos\/shared\/contracts$/,
@@ -165,6 +165,10 @@ export default defineConfig({
 				find: /^@elizaos\/core\/(.*)\.js$/,
 				replacement: path.join(coreSrc, "$1.ts"),
 			},
+			{
+				find: /^@elizaos\/core\/(.*)$/,
+				replacement: path.join(coreSrc, "$1.ts"),
+			},
 			// Bare subpath exports must be pinned before the plain string alias
 			// below: a string alias rewrites "@elizaos/core/client-public" to
 			// "<coreSrc>/index.node.ts/client-public" (ENOTDIR) instead of the
@@ -178,7 +182,7 @@ export default defineConfig({
 				replacement: path.join(coreSrc, "client-public.ts"),
 			},
 			{
-				find: "@elizaos/core/errors",
+				find: /^@elizaos\/core\/errors$/,
 				replacement: path.join(coreSrc, "errors.ts"),
 			},
 			{
@@ -193,6 +197,15 @@ export default defineConfig({
 			{
 				find: "@elizaos/cloud-routing",
 				replacement: path.join(cloudRoutingSrc, "index.ts"),
+			},
+			// Core's src also re-exports `@elizaos/prompts`, which likewise has no
+			// dist build in this lane — anchor it to source for the same reason.
+			{
+				find: "@elizaos/prompts",
+				replacement: path.resolve(
+					__dirname,
+					"../../packages/prompts/src/index.ts",
+				),
 			},
 			{
 				find: "@elizaos/logger",

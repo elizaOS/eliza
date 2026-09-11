@@ -400,8 +400,9 @@ export async function installHomeRoutes(
   });
 
   // Local-inference shell-level GETs — a fresh agent has no local model, so an
-  // idle/unsupported snapshot matches real zero-state (and the local first-run
-  // path's background auto-download probe lands on this empty hub).
+  // idle snapshot with valid OS-fallback hardware matches the real zero-state
+  // (and the local first-run path's background auto-download probe lands on
+  // this empty hub).
   await page.route("**/api/local-inference/hub", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -1150,11 +1151,9 @@ async function expectCloudOnlyCompletion(
   expectedDetent: "full" | "collapsed" = "full",
 ): Promise<{ surface: Locator }> {
   // Completion fires at provisioning success and returns the user to the home
-  // surface. Cloud-only completion rides the SAME full→half falling-edge settle
-  // as chooser mode (ChatOverlay's wasFirstRunOpenRef effect →
-  // goToDetent("half"); ChatOverlay.firstrun.test), so the sheet rests
-  // at the half detent with the home revealed behind it and the composer
-  // unlocked. The durable contract is asserted on that settle, the onboarded
+  // surface. An interactive sign-in retains the completed turn at full height;
+  // silent session restoration may close it immediately. Both are completed,
+  // unlocked home states. The durable contract is asserted on that settle, the onboarded
   // home, the absent tutorial gate, and the exactly-once POST. The wrap-up copy
   // is covered by the conductor unit suite.
   await expect(page.getByTestId("chat-sheet")).toHaveAttribute(

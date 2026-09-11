@@ -6,8 +6,7 @@
  * an owner flip the brain between loaded providers at runtime. It must:
  *  - flip to the named provider when that provider has a handler,
  *  - be a no-op (highest-priority pick) when unset,
- *  - SAFELY fall back to the default when the named provider has no handler
- *    (a stale/typo'd value must never strand the brain),
+ *  - fail closed when the named provider has no handler,
  *  - never override an explicitly-pinned provider.
  */
 import { describe, expect, it } from "vitest";
@@ -58,13 +57,12 @@ describe("brain provider override (ELIZA_BRAIN_PROVIDER)", () => {
 		expect(out).toBe("answered-by:cerebras");
 	});
 
-	it("falls back to the default when the named provider has NO handler", async () => {
-		// The override names a provider that was never registered — must NOT throw,
-		// must use the default highest-priority pick instead.
+	it("fails closed when the named provider has NO handler", async () => {
 		const runtime = makeRuntime({ ELIZA_BRAIN_PROVIDER: "ghost-provider" });
 		registerEcho(runtime, "anthropic", 10);
-		const out = await runtime.useModel(ModelType.TEXT_LARGE, { prompt: "hi" });
-		expect(out).toBe("answered-by:anthropic");
+		await expect(
+			runtime.useModel(ModelType.TEXT_LARGE, { prompt: "hi" }),
+		).rejects.toThrow("No handler found");
 	});
 
 	it("never overrides an explicitly pinned provider", async () => {

@@ -1,8 +1,10 @@
 /** Exercises agent source watcher behavior with deterministic app-core test fixtures. */
-import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { stripTypeScriptTypes } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -166,6 +168,162 @@ describe("startAgentSourceWatcher (integration)", () => {
     // A single edit reports a small changed-count (the bulk guard keys on this).
     expect(calls.every((c) => c.count <= 2)).toBe(true);
   });
+
+  it("reloads an opted-in flat provider model edit without reacting to build output", async () => {
+    root = mkdtempSync(path.join(tmpdir(), "agent-watch-flat-"));
+    const pluginRoot = path.join(root, "plugins", "plugin-flat-provider");
+    for (const dir of ["models", "dist", "node_modules", "__tests__"]) {
+      mkdirSync(path.join(pluginRoot, dir), { recursive: true });
+    }
+    writeFileSync(
+      path.join(pluginRoot, "package.json"),
+      JSON.stringify({
+        name: "@elizaos/plugin-flat-provider",
+        type: "module",
+        exports: { ".": "./dist/index.node.js" },
+        elizaos: { plugin: { workspaceSource: { ".": "./index.node.ts" } } },
+      }),
+    );
+    writeFileSync(
+      path.join(pluginRoot, "index.node.ts"),
+      'export { model } from "./models/text.ts";\n',
+    );
+    const modelPath = path.join(pluginRoot, "models", "text.ts");
+    writeFileSync(modelPath, "export const model = 'before';\n");
+
+    const partialRoot = path.join(root, "plugins", "plugin-partial");
+    mkdirSync(partialRoot);
+    writeFileSync(
+      path.join(partialRoot, "package.json"),
+      JSON.stringify({
+        elizaos: { plugin: { workspaceSource: { ".": "./missing.ts" } } },
+      }),
+    );
+    const disabledRoot = path.join(root, "plugins", "plugin-disabled");
+    mkdirSync(disabledRoot);
+    writeFileSync(
+      path.join(disabledRoot, "package.json"),
+      JSON.stringify({
+        elizaos: { plugin: { workspaceSource: false } },
+      }),
+    );
+    writeFileSync(
+      path.join(disabledRoot, "index.node.ts"),
+      "export const disabled = true;\n",
+    );
+
+    const calls = [];
+    const errors = [];
+    handle = startAgentSourceWatcher({
+      root,
+      debounceMs: 60,
+      onChange: (rel, count) => calls.push({ rel, count }),
+      onError: (dir, error) => errors.push({ dir, error }),
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].dir).toBe(partialRoot);
+    expect(errors[0].error.message).toContain("declared entry is missing");
+    // macOS may deliver fixture-creation events after the watcher attaches.
+    await delay(300);
+    calls.length = 0;
+    for (const ignored of [
+      "dist/index.node.js",
+      "dist/manifest.json",
+      "models/text.d.ts",
+      "models/text.test.ts",
+      "node_modules/dependency.ts",
+      "__tests__/fixture.ts",
+    ]) {
+      writeFileSync(
+        path.join(pluginRoot, ignored),
+        "export const ignored = 1;\n",
+      );
+    }
+    await delay(250);
+    expect(calls).toEqual([]);
+
+    writeFileSync(modelPath, "export const model = 'after';\n");
+    expect(await waitUntil(() => calls.length > 0, 4000)).toBe(true);
+    expect(calls.some((call) => call.rel.endsWith("models/text.ts"))).toBe(
+      true,
+    );
+    expect(calls.every((call) => call.count === 1)).toBe(true);
+  });
+
+  it.each([
+    { runtime: "node", main: "./index.js" },
+    { runtime: "bun", main: "./index.js" },
+    { runtime: "node", main: "./dist/index.js" },
+    { runtime: "bun", main: "./dist/index.js" },
+  ])(
+    "loads the published helper under $runtime/source condition with main $main",
+    ({ runtime, main }) => {
+      root = mkdtempSync(path.join(tmpdir(), "agent-watch-installed-"));
+      const agentPackage = path.join(root, "node_modules/@elizaos/agent");
+      const compiledRoot = path.join(agentPackage, path.dirname(main));
+      mkdirSync(path.join(compiledRoot, "runtime"), { recursive: true });
+      writeFileSync(
+        path.join(agentPackage, "package.json"),
+        JSON.stringify({
+          name: "@elizaos/agent",
+          type: "module",
+          main,
+          exports: {
+            "./package.json": "./package.json",
+            "./runtime/*": {
+              "eliza-source": "./src/runtime/*.ts",
+              bun: "./src/runtime/*.ts",
+              default: `${path.dirname(main)}/runtime/*.js`,
+            },
+          },
+        }),
+      );
+      const helperSource = readFileSync(
+        path.join(
+          repoRoot,
+          "packages/agent/src/runtime/workspace-plugin-source.ts",
+        ),
+        "utf8",
+      );
+      writeFileSync(
+        path.join(compiledRoot, "runtime/workspace-plugin-source.js"),
+        stripTypeScriptTypes(helperSource),
+      );
+      const watcherPath = path.join(root, "watcher.mjs");
+      writeFileSync(
+        watcherPath,
+        readFileSync(
+          fileURLToPath(new URL("./agent-source-watcher.mjs", import.meta.url)),
+          "utf8",
+        ),
+      );
+      const pluginRoot = path.join(root, "plugins/plugin-flat");
+      mkdirSync(pluginRoot, { recursive: true });
+      writeFileSync(
+        path.join(pluginRoot, "package.json"),
+        JSON.stringify({
+          elizaos: { plugin: { workspaceSource: { ".": "./index.node.ts" } } },
+        }),
+      );
+      writeFileSync(
+        path.join(pluginRoot, "index.node.ts"),
+        "export const source = true;\n",
+      );
+      const child = spawnSync(
+        runtime === "node" ? process.execPath : "bun",
+        [
+          ...(runtime === "bun" ? ["--no-install"] : ["--input-type=module"]),
+          "--conditions=eliza-source",
+          "-e",
+          `import { collectAgentSourceDirs } from ${JSON.stringify(pathToFileURL(watcherPath).href)}; console.log(JSON.stringify(collectAgentSourceDirs(${JSON.stringify(root)})));`,
+        ],
+        { cwd: root, encoding: "utf8", timeout: 10_000 },
+      );
+      expect(child.error).toBeUndefined();
+      expect(child.status, child.stderr).toBe(0);
+      expect(JSON.parse(child.stdout)).toEqual([pluginRoot]);
+    },
+  );
 
   it("reports a high changed-count for a bulk rewrite (so callers can skip it)", async () => {
     root = mkdtempSync(path.join(tmpdir(), "agent-watch-bulk-"));

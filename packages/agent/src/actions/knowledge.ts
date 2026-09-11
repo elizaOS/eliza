@@ -561,17 +561,10 @@ export const searchKnowledgeAction: Action = {
     logger.info(
       `[SEARCH_KNOWLEDGE] query="${query}" role=${actor.role} activeRoomPublic=${activeRoomIsPublic} matched=${items.length}`,
     );
-    // Only the snippet list is canonical user-facing content: the excerpts
-    // must reach the user byte-exact, so that branch settles verifiedUserFacing.
-    // The empty outcome is diagnostic — settling it verbatim shipped raw
-    // machinery ("No knowledge items match for …") into chat; leaving it
-    // unsettled lets the model voice the miss in character.
     return {
       success: true,
       text,
-      ...(items.length
-        ? { userFacingText: text, verifiedUserFacing: true }
-        : {}),
+      modelReplyRequired: true,
       data: { query, count: items.length, items },
     };
   },
@@ -691,8 +684,7 @@ export const attachToChatAction: Action = {
       return {
         success: false,
         text: surface.reason,
-        userFacingText: surface.reason,
-        verifiedUserFacing: true,
+        modelReplyRequired: true,
         data: { error: "ATTACH_SCOPE_REFUSED", scope: surface.scope },
       };
     }
@@ -716,7 +708,7 @@ export const attachToChatAction: Action = {
     }
 
     const content: Content = {
-      text: `Attached: ${item.title}`,
+      text: "",
       attachments: [media],
     };
     await callback(content, "ATTACH_TO_CHAT");
@@ -727,8 +719,7 @@ export const attachToChatAction: Action = {
     return {
       success: true,
       text: `Attached "${item.title}" to the chat.`,
-      userFacingText: `Attached "${item.title}" to the chat.`,
-      verifiedUserFacing: true,
+      modelReplyRequired: true,
       data: { mediaUrl: media.url, title: item.title },
     };
   },
@@ -813,8 +804,7 @@ export const sendMediaToAction: Action = {
       return {
         success: false,
         text: wall.reason,
-        userFacingText: wall.reason,
-        verifiedUserFacing: true,
+        modelReplyRequired: true,
         data: { error: "SEND_SCOPE_REFUSED", scope: wall.scope },
       };
     }
@@ -852,8 +842,7 @@ export const sendMediaToAction: Action = {
     return {
       success: true,
       text: `Sent "${item.title}" to the target.`,
-      userFacingText: `Sent "${item.title}" to the target.`,
-      verifiedUserFacing: true,
+      modelReplyRequired: true,
       data: { dispatch, title: item.title },
     };
   },

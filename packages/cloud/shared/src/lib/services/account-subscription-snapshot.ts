@@ -6,6 +6,7 @@ import type { SubscriptionAllowanceEligibility } from "../../db/repositories/sub
 import type {
   Observed,
   OrganizationSubscriptionSnapshot,
+  SubscriptionCancellationNoticeSnapshot,
 } from "../../types/account-billing-snapshot";
 
 export function buildOrganizationSubscriptionSnapshot(
@@ -74,6 +75,7 @@ export function buildOrganizationSubscriptionSnapshot(
       pendingPlanKey: subscription.pending_plan_key,
       graceExpiresAt: subscription.grace_expires_at?.toISOString() ?? null,
       dunningStartedAt: subscription.dunning_started_at?.toISOString() ?? null,
+      cancellationNotice: buildCancellationNotice(primary, observedAt),
       allowance,
     },
   };
@@ -85,4 +87,48 @@ function money(value: string): string {
       context: { field: "subscription_allowance" },
     });
   return value;
+}
+
+function buildCancellationNotice(
+  primary: Extract<PrimaryOrganizationSubscription, { state: "current" }>,
+  observedAt: string,
+): Observed<SubscriptionCancellationNoticeSnapshot> {
+  const provenance = { source: "primary-subscription-notice", observedAt };
+  if (primary.subscription.status !== "canceled")
+    return { ...provenance, status: "not_applicable", reason: "no_current_cancellation_notice" };
+  const notice = primary.cancellationNotice;
+  if (!notice)
+    return {
+      ...provenance,
+      status: "unavailable",
+      error: { code: "subscription_notice_unavailable", retryable: true },
+    };
+  const state = notice.state;
+  switch (state) {
+    case "policy_unavailable":
+    case "scheduled":
+    case "dispatching":
+    case "accepted":
+    case "rejected":
+    case "uncertain":
+    case "unavailable":
+    case "superseded":
+    case "reconciliation_required":
+      return {
+        ...provenance,
+        status: "available",
+        value: {
+          sourceLifecycleRevision: String(notice.sourceRevision),
+          state,
+          updatedAt: notice.updatedAt.toISOString(),
+          channel: "email",
+          delivery: "not_observed",
+        },
+      };
+    default:
+      throw new ElizaError("Subscription notice state is invalid", {
+        code: "INVALID_ACCOUNT_BILLING_PRIMARY_SOURCE",
+        context: { field: "subscription_notice_state" },
+      });
+  }
 }

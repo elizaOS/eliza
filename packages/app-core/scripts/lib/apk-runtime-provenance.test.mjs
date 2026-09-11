@@ -1,4 +1,6 @@
-import { test, expect } from "bun:test";
+/** Verifies provenance against actual ZIP contents, including changed and missing runtime payloads. */
+import { test } from "node:test";
+import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -23,21 +25,24 @@ test("records packaged bytes after native stripping and asset renaming", () => {
     const apk = path.join(root, "runtime.apk");
     execFileSync("zip", ["-qr", apk, "assets", "lib"], { cwd: root });
     const files = packagedRuntimeFiles(apk);
-    expect(
+    assert.equal(
       files.find((file) => file.path === "lib/x86_64/runtime.so")?.sha256,
-    ).toBe(createHash("sha256").update("stripped native").digest("hex"));
-    expect(
+      createHash("sha256").update("stripped native").digest("hex"),
+    );
+    assert.equal(
       files.find((file) => file.path === "assets/agent/vector.tar")?.size_bytes,
-    ).toBe(Buffer.byteLength("expanded asset"));
+      Buffer.byteLength("expanded asset"),
+    );
     fs.writeFileSync(
       path.join(root, "lib/x86_64/runtime.so"),
       "changed native",
     );
     execFileSync("zip", ["-q", apk, "lib/x86_64/runtime.so"], { cwd: root });
-    expect(packagedRuntimeFiles(apk)).not.toEqual(files);
+    assert.notDeepEqual(packagedRuntimeFiles(apk), files);
     execFileSync("zip", ["-qd", apk, "assets/agent/agent-bundle.js"]);
-    expect(() => packagedRuntimeFiles(apk)).toThrow(
-      "missing its packaged agent bundle",
+    assert.throws(
+      () => packagedRuntimeFiles(apk),
+      /missing its packaged agent bundle/,
     );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

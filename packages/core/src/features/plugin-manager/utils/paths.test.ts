@@ -24,10 +24,15 @@ describe("resolveConfigPath", () => {
 	});
 
 	it("resolves an absolute override verbatim", () => {
-		const absolute = path.resolve(path.sep, "etc", "eliza", "custom.json");
-		expect(resolveConfigPath({ ELIZA_CONFIG_PATH: absolute }, stateDir)).toBe(
-			absolute,
+		const absoluteOverride = path.join(
+			path.parse(process.cwd()).root,
+			"etc",
+			"eliza",
+			"custom.json",
 		);
+		expect(
+			resolveConfigPath({ ELIZA_CONFIG_PATH: absoluteOverride }, stateDir),
+		).toBe(absoluteOverride);
 	});
 
 	it("expands a tilde override to the home directory", () => {

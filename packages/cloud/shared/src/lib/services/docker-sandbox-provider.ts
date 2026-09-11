@@ -113,6 +113,7 @@ import type {
   SandboxExactRestoreCreateConfig,
   SandboxExactRestoreTarget,
   SandboxHandle,
+  SandboxHealthContext,
   SandboxHealthOutcome,
   SandboxProvider,
   SandboxReplacementCleanupLocator,
@@ -4358,6 +4359,9 @@ export class DockerSandboxProvider implements SandboxProvider {
       nodeId,
       hostname,
       ...replacementPlacementMetadata,
+      nodeSshPort: sshPort,
+      nodeSshUser: sshUser,
+      nodeHostKeyFingerprint: hostKeyFingerprint,
       containerName,
       bridgePort,
       webUiPort,
@@ -5751,8 +5755,58 @@ export class DockerSandboxProvider implements SandboxProvider {
     return false;
   }
 
-  async checkHealth(handle: SandboxHandle): Promise<boolean> {
-    return (await this.checkHealthDetailed(handle)).ready;
+  /** Resolve only the candidate handle; canonical placement may still name its predecessor. */
+  private candidateHealthPlacement(handle: SandboxHandle): ContainerMeta {
+    const meta = handle.metadata;
+    const validPort = (value: unknown): value is number =>
+      typeof value === "number" && Number.isSafeInteger(value) && value > 0 && value <= 65_535;
+    if (
+      !meta ||
+      meta.provider !== "docker" ||
+      typeof meta.nodeId !== "string" ||
+      !meta.nodeId.trim() ||
+      typeof meta.hostname !== "string" ||
+      !meta.hostname.trim() ||
+      typeof meta.agentId !== "string" ||
+      typeof meta.containerName !== "string" ||
+      meta.containerName !== handle.sandboxId ||
+      !validPort(meta.bridgePort) ||
+      !validPort(meta.webUiPort) ||
+      !validPort(meta.nodeSshPort) ||
+      typeof meta.nodeSshUser !== "string" ||
+      !meta.nodeSshUser.trim() ||
+      (meta.nodeHostKeyFingerprint !== undefined && typeof meta.nodeHostKeyFingerprint !== "string")
+    ) {
+      throw new ElizaError("Candidate health requires complete matching Docker placement", {
+        code: "SANDBOX_CANDIDATE_HEALTH_PLACEMENT_INVALID",
+      });
+    }
+    try {
+      if (meta.containerName !== getContainerName(meta.agentId)) {
+        throw new Error("Candidate container does not match its agent");
+      }
+    } catch (cause) {
+      // error-policy:J3 invalid candidate identity must not fall back to canonical placement.
+      throw new ElizaError("Candidate health requires a matching Docker identity", {
+        code: "SANDBOX_CANDIDATE_HEALTH_PLACEMENT_INVALID",
+        cause,
+      });
+    }
+    return {
+      nodeId: meta.nodeId,
+      hostname: meta.hostname,
+      containerName: meta.containerName,
+      agentId: meta.agentId,
+      bridgePort: meta.bridgePort,
+      webUiPort: meta.webUiPort,
+      sshPort: meta.nodeSshPort,
+      sshUser: meta.nodeSshUser,
+      hostKeyFingerprint: meta.nodeHostKeyFingerprint,
+    };
+  }
+
+  async checkHealth(handle: SandboxHandle, context?: SandboxHealthContext): Promise<boolean> {
+    return (await this.checkHealthDetailed(handle, context)).ready;
   }
 
   /**
@@ -5761,8 +5815,14 @@ export class DockerSandboxProvider implements SandboxProvider {
    * reached the container as RETRYABLE rather than a terminal failure. See
    * {@link SandboxHealthVerdict}.
    */
-  async checkHealthDetailed(handle: SandboxHandle): Promise<SandboxHealthOutcome> {
-    const meta = await this.resolveContainer(handle.sandboxId);
+  async checkHealthDetailed(
+    handle: SandboxHandle,
+    context: SandboxHealthContext = { kind: "canonical" },
+  ): Promise<SandboxHealthOutcome> {
+    const meta =
+      context.kind === "candidate"
+        ? this.candidateHealthPlacement(handle)
+        : await this.resolveContainer(handle.sandboxId);
     const deadline = Date.now() + HEALTH_CHECK_TIMEOUT_MS;
 
     // When the agent is reachable over the headscale mesh, validate THAT
@@ -5788,11 +5848,12 @@ export class DockerSandboxProvider implements SandboxProvider {
       const nodeHealth = await this.pollSshDockerHealth(
         meta,
         Date.now() + HEALTH_CHECK_SSH_FALLBACK_TIMEOUT_MS,
+        context,
       );
       return nodeHealth.ready ? { ready: false, verdict: "ingress_unresolved" } : nodeHealth;
     }
 
-    return this.pollSshDockerHealth(meta, deadline);
+    return this.pollSshDockerHealth(meta, deadline, context);
   }
 
   /**
@@ -5805,6 +5866,7 @@ export class DockerSandboxProvider implements SandboxProvider {
   private async pollSshDockerHealth(
     meta: ContainerMeta,
     deadline: number,
+    context: SandboxHealthContext = { kind: "canonical" },
   ): Promise<SandboxHealthOutcome> {
     // The budget varies by caller (full window standalone, short window as the
     // tailnet fallback), so log the actual one instead of a constant.
@@ -5823,9 +5885,9 @@ export class DockerSandboxProvider implements SandboxProvider {
     let reachedContainer = false;
 
     const runOneProbe = async (): Promise<"ready" | "not_ready" | "transport"> => {
-      // Placement-affecting jobs can overlap the health wait, so each probe
-      // reads the current node before dialing docker on that host.
-      current = await this.refreshNodeMeta(current);
+      // Established probes follow committed placement changes. A pre-cutover
+      // candidate must retain its captured node while the predecessor is canonical.
+      if (context.kind === "canonical") current = await this.refreshNodeMeta(current);
       const ssh = DockerSSHClient.getClient(
         current.hostname,
         current.sshPort,

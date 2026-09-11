@@ -174,10 +174,11 @@ export function injectIntoHtml(html: string): string {
     // injected when explicitly cloud, so the default desktop/web behavior is
     // unchanged.
     const externalApiBase = resolveCurrentExternalApiBase();
+    const localApiBaseInject = `window.__ELIZA_DESKTOP_LOCAL_API_BASE__=${safeJsonForHtml(externalApiBase ? null : current.base)};`;
     const externalApiBaseInject = externalApiBase
       ? `window.__ELIZA_DESKTOP_EXTERNAL_API_BASE__=${safeJsonForHtml(externalApiBase)};`
       : "";
-    apiBaseInject = `${externalApiBaseInject}${bootConfigInject}`;
+    apiBaseInject = `${externalApiBaseInject}${localApiBaseInject}${bootConfigInject}`;
   }
 
   const script = `<script>${startupTraceInject}${runtimeChooserTestInject}${desktopTestBridgeInject}${runtimeModeInject}${apiBaseInject}</script>`;
@@ -203,6 +204,7 @@ export function pushToWindow(win: { webview: { rpc?: unknown } }): void {
     current.base,
     current.token || undefined,
     resolveCurrentExternalApiBase(),
+    resolveCurrentExternalApiBase() ? null : current.base,
   );
 }
 

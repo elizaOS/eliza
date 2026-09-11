@@ -28,14 +28,14 @@ function rawSqlText(query: unknown): string {
 }
 
 describe("recordFactCandidate", () => {
-	it("does nothing when the runtime database is unavailable", async () => {
+	it("reports unavailable persistence instead of claiming a saved candidate", async () => {
 		await expect(
 			recordFactCandidate(makeRuntime(undefined), {
 				entityId: ENTITY_ID,
 				kind: "merge",
 				proposedText: "The user lives in Berlin",
 			}),
-		).resolves.toBeUndefined();
+		).rejects.toMatchObject({ code: "FACT_CANDIDATE_STORAGE_UNAVAILABLE" });
 
 		await expect(
 			recordFactCandidate(makeRuntime({ execute: "not callable" }), {
@@ -43,7 +43,7 @@ describe("recordFactCandidate", () => {
 				kind: "merge",
 				proposedText: "The user lives in Berlin",
 			}),
-		).resolves.toBeUndefined();
+		).rejects.toMatchObject({ code: "FACT_CANDIDATE_STORAGE_UNAVAILABLE" });
 	});
 
 	it("inserts a complete contradiction candidate with escaped SQL literals", async () => {

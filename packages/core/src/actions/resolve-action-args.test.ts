@@ -48,6 +48,36 @@ function makeMessage(text: string): Memory {
 }
 
 describe("resolveActionArgs", () => {
+	it("preserves an explicit description clear while extracting a missing goal ID", async () => {
+		const runtime = makeMockRuntime(
+			JSON.stringify({
+				action: "UPDATE",
+				params: { id: "goal-1", description: "Old description" },
+				missing: [],
+				confidence: 0.95,
+			}),
+		);
+		const result = await resolveActionArgs({
+			runtime,
+			message: makeMessage("clear the description of my goal"),
+			actionName: "OWNER_GOALS",
+			subactions: {
+				UPDATE: {
+					description: "Update an owner goal by ID",
+					descriptionCompressed: "update goal",
+					required: ["id"],
+					optional: ["description"],
+				},
+			},
+			options: { parameters: { action: "UPDATE", id: null, description: "" } },
+		});
+		expect(result).toEqual({
+			ok: true,
+			subaction: "UPDATE",
+			params: { id: "goal-1", description: "" },
+		});
+	});
+
 	it("trusts complete planner-supplied parameters without invoking model extraction", async () => {
 		const runtime = makeMockRuntime();
 		const message = makeMessage("create a task");
@@ -105,6 +135,41 @@ describe("resolveActionArgs", () => {
 		}
 		expect(runtime.useModel).toHaveBeenCalled();
 	});
+
+	it.each([null, ""])(
+		"uses extracted parameters when the planner supplied an absent value (%j)",
+		async (plannerTitle) => {
+			const modelOutput = JSON.stringify({
+				action: "CREATE",
+				params: { title: "Buy groceries" },
+				missing: [],
+				confidence: 0.95,
+			});
+
+			const runtime = makeMockRuntime(modelOutput);
+			const message = makeMessage("create a task to buy groceries");
+
+			const result = await resolveActionArgs<TaskSubactions>({
+				runtime,
+				message,
+				actionName: "TASK",
+				subactions: taskSubactions,
+				options: {
+					parameters: {
+						action: "CREATE",
+						title: plannerTitle,
+					},
+				},
+			});
+
+			expect(result).toEqual({
+				ok: true,
+				subaction: "CREATE",
+				params: { title: "Buy groceries" },
+			});
+			expect(runtime.useModel).toHaveBeenCalled();
+		},
+	);
 
 	it("returns clarification failure when required parameters cannot be extracted", async () => {
 		const modelOutput = JSON.stringify({

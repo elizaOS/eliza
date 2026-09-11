@@ -1,10 +1,11 @@
 /**
  * Provider that exposes complete authorized cross-platform conversation
- * history with a lossless retrieval manifest for models whose input boundary
- * cannot admit the eager representation. RECENT_MESSAGES owns the current-room
+ * history with supplementary room retrieval metadata. RECENT_MESSAGES owns the current-room
  * transcript when present. Suppressed
  * inside automation and page-scoped rooms, which carry their own context.
  * Gated to ADMIN (enforced by applyPluginRoleGating).
+ * Authorized message bodies remain complete regardless of recall keywords.
+ * The model transport owns explicit rejection at an actual input boundary.
  */
 import type {
   IAgentRuntime,
@@ -18,6 +19,7 @@ import type {
 } from "@elizaos/core";
 import {
   buildCrossWorldConversationAccessContext,
+  dedupeHygienicDialogueMessages,
   markOwnerExclusiveDisclosureUsed,
   OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
   recordOwnerExclusiveSuppression,
@@ -134,11 +136,33 @@ export const recentConversationsProvider: Provider = {
         roomIds,
         accessContext,
       });
-      const sorted = memories
-        .filter(
-          (memory) =>
+      // Per room, the canonical RECENT_MESSAGES dedupe pass (consecutive
+      // identical rows from one sender; repeated assistant texts within one
+      // assistant run): connector record-of-send rows duplicate every delivered
+      // reply, and this eager form rendered both copies for every room (live:
+      // 378 duplicate entries, ~7K tokens, in one Stage-1 prompt).
+      const byRoom = new Map<string, Memory[]>();
+      for (const memory of memories) {
+        if (
+          !(
             Boolean(memory.content.text) ||
-            (memory.content.attachments?.length ?? 0) > 0,
+            (memory.content.attachments?.length ?? 0) > 0
+          )
+        ) {
+          continue;
+        }
+        const bucket = byRoom.get(memory.roomId) ?? [];
+        bucket.push(memory);
+        byRoom.set(memory.roomId, bucket);
+      }
+      const sorted = [...byRoom.values()]
+        .flatMap((roomMemories) =>
+          dedupeHygienicDialogueMessages(
+            roomMemories.sort(
+              (left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0),
+            ),
+            runtime.agentId,
+          ),
         )
         .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0));
       if (sorted.length === 0) {
@@ -191,9 +215,10 @@ export const recentConversationsProvider: Provider = {
 
       markOwnerExclusiveDisclosureUsed(message);
 
+      const manifestText = manifestLines.join("\n");
       return {
         text: eagerLines.join("\n"),
-        overflowText: manifestLines.join("\n"),
+        overflowText: manifestText,
         values: {
           recentConversationCount: sorted.length,
           recentConversationRoomCount: rooms.length,

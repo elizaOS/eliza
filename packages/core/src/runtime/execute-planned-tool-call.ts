@@ -386,6 +386,9 @@ export function projectActionResultForClipboard(
 		...(result.failureProvenance !== undefined
 			? { failureProvenance: result.failureProvenance }
 			: {}),
+		...(result.replyFailure !== undefined
+			? { replyFailure: result.replyFailure }
+			: {}),
 		...(Object.keys(safeControlData).length > 0
 			? { data: safeControlData }
 			: {}),
@@ -436,6 +439,9 @@ function projectSettledResultForObserver(
 			: {}),
 		...(projected.failureProvenance !== undefined
 			? { failureProvenance: projected.failureProvenance }
+			: {}),
+		...(projected.replyFailure !== undefined
+			? { replyFailure: projected.replyFailure }
 			: {}),
 		data: controlData,
 		...(projected.turnComplete !== undefined
@@ -778,9 +784,15 @@ export async function executePlannedToolCall(
 		actionStatus: "executing" as const,
 		source: executorCtx.message.content.source,
 	};
+	// ACTION_STARTED is a lifecycle notification. Its dispatch runs alongside
+	// the handler instead of in front of it (live: 30-145 ms of subscriber
+	// work per tool call before the handler could begin); ACTION_COMPLETED
+	// below awaits this dispatch first, so subscribers still observe the two
+	// events settle in order.
+	let actionStartedDispatch: Promise<void> = Promise.resolve();
 	if (typeof runtime.emitEvent === "function") {
 		const worldId = await getActionEventWorldId();
-		await runtime
+		actionStartedDispatch = runtime
 			.emitEvent(EventType.ACTION_STARTED, {
 				runtime,
 				...(messageId ? { messageId } : {}),
@@ -926,6 +938,7 @@ export async function executePlannedToolCall(
 
 	if (typeof runtime.emitEvent === "function") {
 		const worldId = await getActionEventWorldId();
+		await actionStartedDispatch;
 		await runtime
 			.emitEvent(EventType.ACTION_COMPLETED, {
 				runtime,
@@ -1108,6 +1121,7 @@ function actionResultToStreamingResult(
 		userFacingText: result.userFacingText,
 		verifiedUserFacing: result.verifiedUserFacing,
 		effectReceipts: result.effectReceipts,
+		replyFailure: result.replyFailure,
 		userFacingEffectReceiptIds: result.userFacingEffectReceiptIds,
 		error: result.error ? stringifyError(result.error) : undefined,
 		data: options.suppressData

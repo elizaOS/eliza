@@ -15,6 +15,7 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import { isDeepStrictEqual } from "node:util";
 import {
+  type ActionReplyFailure,
   type ActionResult,
   type AgentRuntime,
   attestAuthenticatedApiDeliveryAudience,
@@ -25,10 +26,8 @@ import {
   ElizaError,
   EventType,
   emitInferenceTiming,
-  executePlannedToolCall,
   getEntityRole,
   getInferenceTimer,
-  getSwarmCoordinatorService,
   hasAppliedUserFacingEffectProof,
   hasAtLeastRole,
   INFERENCE_MARKS,
@@ -46,6 +45,7 @@ import {
   type RolesWorldMetadata,
   type RoomHandlerLease,
   type RouteRequestContext,
+  readActionReplyFailure,
   recordOwnerGrant,
   recordRoleGrant,
   renderInteractionsAsPlainText,
@@ -79,7 +79,6 @@ import {
   parseChatFailureKind,
   parseChatTerminalFailure,
   readAliasedEnv,
-  resolveStreamingUpdate,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
@@ -130,16 +129,12 @@ import {
   loadLocalInferenceRouteApi,
 } from "./local-inference-server-api.ts";
 import {
-  buildWalletActionNotExecutedReply,
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
   getErrorMessage,
   hasBlockedObjectKeyDeep,
-  isWalletActionRequiredIntent,
-  maybeAugmentChatMessageWithWalletContext,
   normalizeIncomingChatPrompt,
   resolveAppUserName,
-  trimWalletProgressPrefix,
   validateChatImages,
 } from "./server-helpers.ts";
 import {
@@ -147,6 +142,7 @@ import {
   isServerTokenAuthorized,
 } from "./server-helpers-auth.ts";
 import type { ChatImageAttachment } from "./server-types.ts";
+import { updateWorldMetadataWithRetry } from "./world-metadata-retry.ts";
 
 export type { ChatImageAttachment, LogEntry };
 
@@ -432,146 +428,6 @@ export function __getChatDedupeTtlMsForTests(): number {
   return chatIdempotency.retentionMs;
 }
 
-const ANDROID_LOCAL_DIRECT_CHAT_DENY_PATTERN =
-  /\b(check|search|find|fetch|get|look\s+up|browse|open|click|call|email|send|create|update|delete|save|remember|schedule|remind|set|run|execute|install|download|upload|read|inspect|build|deploy|commit|push|pull|merge|rebase|book|pay|buy|order)\b/i;
-
-const ANDROID_LOCAL_CURRENT_DATA_PATTERN =
-  /\b(latest|current|today|tomorrow|yesterday|weather|price|calendar|email|file|repo|repository|log|logs|issue|issues|pr|pull\s+request|wallet|transaction|account|contact|contacts)\b/i;
-
-const ANDROID_LOCAL_CONTEXTUAL_MEMORY_PATTERN =
-  /\b(what\s+did\s+i\s+just\s+say|what\s+(?:is|'s)\s+my\s+name|who\s+am\s+i|do\s+you\s+remember|remember\s+(?:me|my|that)|what\s+was\s+my|what\s+did\s+we|previous(?:ly)?|earlier|last\s+(?:message|thing|question|conversation)|recent\s+(?:message|conversation)|my\s+(?:name|email|address|phone|preference|preferences))\b/i;
-
-function readRuntimeStringSetting(
-  runtime: AgentRuntime,
-  key: string,
-): string | null {
-  const setting =
-    typeof runtime.getSetting === "function" ? runtime.getSetting(key) : null;
-  if (typeof setting === "string" && setting.trim().length > 0) {
-    return setting.trim();
-  }
-  if (typeof setting === "number" || typeof setting === "boolean") {
-    return String(setting);
-  }
-  const env = process.env[key];
-  return typeof env === "string" && env.trim().length > 0 ? env.trim() : null;
-}
-
-function isAndroidLocalDirectChatRuntime(runtime: AgentRuntime): boolean {
-  const optIn = readRuntimeStringSetting(
-    runtime,
-    "ELIZA_MOBILE_LOCAL_DIRECT_REPLY",
-  );
-  // A native device bridge says where capabilities execute, not which model
-  // owns conversation. Bypassing the full Eliza planner is therefore explicit
-  // opt-in; merely connecting an Android/iOS bridge must keep chat on the host
-  // runtime and its configured model providers.
-  if (!/^(1|true|yes|on)$/i.test(optIn ?? "")) {
-    return false;
-  }
-  const platform =
-    readRuntimeStringSetting(runtime, "ELIZA_MOBILE_PLATFORM") ??
-    readRuntimeStringSetting(runtime, "ELIZA_PLATFORM");
-  const normalizedPlatform = platform?.toLowerCase();
-  const localLlama =
-    readRuntimeStringSetting(runtime, "ELIZA_LOCAL_LLAMA") === "1" ||
-    readRuntimeStringSetting(runtime, "ELIZA_DEVICE_BRIDGE_ENABLED") === "1" ||
-    readRuntimeStringSetting(runtime, "ELIZA_IOS_LOCAL_BACKEND") === "1";
-  return (
-    (normalizedPlatform === "android" || normalizedPlatform === "ios") &&
-    localLlama
-  );
-}
-
-function hasAndroidLocalDirectChatBlockingContent(
-  content: Content & Record<string, unknown>,
-): boolean {
-  if (Array.isArray(content.attachments) && content.attachments.length > 0) {
-    return true;
-  }
-  if (Array.isArray(content.media) && content.media.length > 0) {
-    return true;
-  }
-  if (Array.isArray(content.files) && content.files.length > 0) {
-    return true;
-  }
-  if (content.documentIds || content.documents || content.localInference) {
-    return true;
-  }
-  const metadata =
-    content.metadata && typeof content.metadata === "object"
-      ? (content.metadata as Record<string, unknown>)
-      : {};
-  return Boolean(
-    metadata.benchmark || metadata.localInference || metadata.contextRouting,
-  );
-}
-
-function isAndroidLocalDirectChatChannel(content: Content): boolean {
-  const channelType = (content as Record<string, unknown>).channelType;
-  return (
-    channelType === ChannelType.API ||
-    channelType === ChannelType.DM ||
-    channelType === ChannelType.SELF ||
-    channelType === ChannelType.VOICE_DM ||
-    channelType === undefined
-  );
-}
-
-function shouldUseAndroidLocalDirectChat(
-  runtime: AgentRuntime,
-  message: ReturnType<typeof createMessageMemory>,
-): boolean {
-  if (!isAndroidLocalDirectChatRuntime(runtime)) {
-    return false;
-  }
-  const text = normalizeAndroidLocalDirectUserText(
-    extractCompatTextContent(message.content),
-  );
-  if (!text || text.length > 700) {
-    return false;
-  }
-  if (!isAndroidLocalDirectChatChannel(message.content)) {
-    return false;
-  }
-  if (
-    hasAndroidLocalDirectChatBlockingContent(
-      message.content as Content & Record<string, unknown>,
-    )
-  ) {
-    return false;
-  }
-  if (ANDROID_LOCAL_DIRECT_CHAT_DENY_PATTERN.test(text)) {
-    return false;
-  }
-  if (ANDROID_LOCAL_CONTEXTUAL_MEMORY_PATTERN.test(text)) {
-    return false;
-  }
-  if (ANDROID_LOCAL_CURRENT_DATA_PATTERN.test(text)) {
-    return /\b(local|locally|on[-\s]?device|device|pixel|eliza[-\s]?1|llama)\b/i.test(
-      text,
-    );
-  }
-  return true;
-}
-
-function escapeAndroidLocalChatTemplateTokens(text: string): string {
-  return text
-    .replaceAll("<start_of_turn>", "< start_of_turn >")
-    .replaceAll("<end_of_turn>", "< end_of_turn >")
-    .replaceAll("<|im_start|>", "<| im_start |>")
-    .replaceAll("<|im_end|>", "<| im_end |>")
-    .replaceAll("<think>", "< think >")
-    .replaceAll("</think>", "</ think >");
-}
-
-function normalizeAndroidLocalDirectUserText(text: string): string {
-  return text
-    .replace(/(^|\s)\/(?:no_)?think\b/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 export function compareCreatedAtAscending(
   left: { createdAt?: number; id?: string },
   right: { createdAt?: number; id?: string },
@@ -588,316 +444,6 @@ export function compareCreatedAtAscending(
       ? right.createdAt
       : -1;
   return leftVal - rightVal || (left.id ?? "").localeCompare(right.id ?? "");
-}
-
-async function buildAndroidLocalDirectChatPrompt(args: {
-  runtime: AgentRuntime;
-  message: ReturnType<typeof createMessageMemory>;
-  userText: string;
-}): Promise<string | null> {
-  let history: string[] = [];
-  try {
-    const recent = await args.runtime.getMemories({
-      roomId: args.message.roomId,
-      tableName: "messages",
-      includeEmbedding: false,
-    });
-    history = recent
-      .filter((memory) => memory.id !== args.message.id)
-      .sort(compareCreatedAtAscending)
-      .flatMap((memory) => {
-        const text = extractCompatTextContent(memory.content).trim();
-        if (!text) return [];
-        const role =
-          memory.entityId === args.runtime.agentId ? "Assistant" : "User";
-        return [`${role}: ${escapeAndroidLocalChatTemplateTokens(text)}`];
-      });
-  } catch (err) {
-    // error-policy:J7 diagnostics-must-not-kill-the-loop — the full message
-    // runtime remains a correct fallback, but the failed memory path must still
-    // reach RECENT_ERRORS and owner escalation instead of disappearing in logcat.
-    args.runtime.reportError("AndroidLocalDirectChat.history", err, {
-      roomId: args.message.roomId,
-      messageId: args.message.id,
-    });
-    args.runtime.logger.warn(
-      { src: "eliza-api", err },
-      "[eliza-api] Android local direct chat history unavailable; using normal runtime",
-    );
-    return null;
-  }
-
-  const systemText = [
-    "Eliza-1 on device.",
-    "Answer in 1-3 concise, natural spoken sentences.",
-    "If asked local/on-device: yes, local Eliza-1.",
-    "No markdown, labels, tools, logs, or hidden reasoning.",
-  ].join("\n");
-  return [
-    "<start_of_turn>user",
-    systemText,
-    ...(history.length > 0
-      ? ["", "Recent conversation (oldest to newest):", ...history]
-      : []),
-    "",
-    escapeAndroidLocalChatTemplateTokens(args.userText),
-    "<end_of_turn>",
-    "<start_of_turn>model",
-    // Match the Gemma thinking-disabled chat-template shape.
-    // The direct mobile path is for short voice/chat replies; pre-filling an
-    // empty think block prevents the model from spending its first tokens on
-    // hidden `<think>...</think>` scaffolding before any speakable text.
-    "<think>",
-    "",
-    "</think>",
-    "",
-  ].join("\n");
-}
-
-function extractAndroidLocalModelText(raw: unknown): string {
-  if (typeof raw === "string") {
-    return raw;
-  }
-  if (!raw || typeof raw !== "object") {
-    return "";
-  }
-  const record = raw as Record<string, unknown>;
-  if (typeof record.text === "string") {
-    return record.text;
-  }
-  if (typeof record.content === "string") {
-    return record.content;
-  }
-  if (Array.isArray(record.content)) {
-    return record.content
-      .map((part) => {
-        if (typeof part === "string") return part;
-        if (part && typeof part === "object") {
-          const partRecord = part as Record<string, unknown>;
-          return typeof partRecord.text === "string" ? partRecord.text : "";
-        }
-        return "";
-      })
-      .join("");
-  }
-  return "";
-}
-
-function stripAndroidLocalReasoning(text: string): string {
-  let next = text.replace(/<think>[\s\S]*?<\/think>/gi, "");
-  const danglingClose = next.lastIndexOf("</think>");
-  if (danglingClose >= 0) {
-    next = next.slice(danglingClose + "</think>".length);
-  }
-  const danglingOpen = next.indexOf("<think>");
-  if (danglingOpen >= 0) {
-    next = next.slice(0, danglingOpen);
-  }
-  return next;
-}
-
-function cleanAndroidLocalDirectChatReply(raw: unknown): string {
-  let text = stripAndroidLocalReasoning(extractAndroidLocalModelText(raw));
-  text = text
-    .split("<end_of_turn>")[0]
-    .split("<start_of_turn>")[0]
-    .split("<|im_end|>")[0]
-    .split("<|im_start|>")[0]
-    .replace(/^\s*(assistant|model|eliza)\s*:\s*/i, "")
-    .replace(/\bEliza-1\b/gi, "Eliza-1")
-    .trim();
-  text = text.replace(/\s+/g, " ").trim();
-  return toWellFormedUnicode(text);
-}
-
-async function rewriteDirectActionCallbackText(args: {
-  runtime: AgentRuntime;
-  actionName: string;
-  text: string;
-  content?: Content;
-  abortSignal?: AbortSignal;
-}): Promise<string> {
-  const text = args.text.trim();
-  if (!text) return args.text;
-  const fallback = () => {
-    const error =
-      typeof args.content?.error === "string" && args.content.error.trim()
-        ? ` It reported: ${args.content.error.trim()}`
-        : "";
-    return `I ran ${args.actionName} and got a result, but I couldn't format the details cleanly here.${error}`;
-  };
-  if (args.abortSignal?.aborted) return fallback();
-  try {
-    const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt: [
-        "Rewrite this direct action callback in the assistant character's user-facing voice.",
-        'Return strict JSON only: {"response":"..."}.',
-        "",
-        "Rules:",
-        "- Preserve status, IDs, names, URLs, counts, errors, and next steps.",
-        "- Do not expose raw JSON, shell output, schema names, stack traces, or internal action plumbing unless an exact value is necessary.",
-        "- Do not claim success if the payload says failed or pending.",
-        "- Keep it brief and natural.",
-        "",
-        `Character: ${JSON.stringify({
-          name: args.runtime.character?.name,
-          system: args.runtime.character?.system,
-          bio: args.runtime.character?.bio,
-          style: args.runtime.character?.style,
-        })}`,
-        `Action: ${JSON.stringify(args.actionName)}`,
-        `Payload: ${JSON.stringify(text)}`,
-        `Metadata: ${JSON.stringify({
-          source: args.content?.source,
-          actions: args.content?.actions,
-          actionStatus: args.content?.actionStatus,
-          error: args.content?.error,
-        })}`,
-      ].join("\n"),
-      signal: args.abortSignal,
-      providerOptions: { eliza: { thinking: "off" } },
-    });
-    const parsed = JSON.parse(String(raw).trim()) as { response?: unknown };
-    return typeof parsed.response === "string" && parsed.response.trim()
-      ? parsed.response.trim()
-      : fallback();
-  } catch (err) {
-    args.runtime.logger.debug(
-      {
-        src: "eliza-api",
-        action: args.actionName,
-        err: err instanceof Error ? err.message : String(err),
-      },
-      "[eliza-api] Direct action callback voice rewrite failed",
-    );
-    return fallback();
-  }
-}
-
-async function maybeGenerateAndroidLocalDirectChatResponse(args: {
-  runtime: AgentRuntime;
-  message: ReturnType<typeof createMessageMemory>;
-  agentName: string;
-  signal: AbortSignal;
-  opts?: ChatGenerateOptions;
-}): Promise<ChatGenerationResult | null> {
-  if (!shouldUseAndroidLocalDirectChat(args.runtime, args.message)) {
-    return null;
-  }
-  const userText = normalizeAndroidLocalDirectUserText(
-    extractCompatTextContent(args.message.content),
-  );
-  if (!userText) return null;
-  const prompt = await buildAndroidLocalDirectChatPrompt({
-    runtime: args.runtime,
-    message: args.message,
-    userText,
-  });
-  if (!prompt) return null;
-  const startedAt = Date.now();
-  args.runtime.logger.info(
-    {
-      src: "eliza-api",
-      promptChars: prompt.length,
-      messageId: args.message.id,
-    },
-    "[eliza-api] Android local direct chat fast path start",
-  );
-  let streamedRaw = "";
-  let lastStreamedSnapshot = "";
-  let streamedChunks = 0;
-  const emitCleanStreamingSnapshot = (snapshot: string): void => {
-    if (!snapshot || snapshot === lastStreamedSnapshot) return;
-    const update = resolveStreamingUpdate(lastStreamedSnapshot, snapshot);
-    if (update.kind === "append") {
-      args.opts?.onChunk?.(update.emittedText);
-    } else if (update.kind === "replace" && !args.opts?.onSnapshot) {
-      // OpenAI-compatible SSE cannot rewrite already-sent text. In the rare
-      // case cleaning turns a partial local reply into a non-append snapshot,
-      // hold the rewrite for the final response body instead of duplicating
-      // content on the token stream.
-      args.runtime.logger.debug(
-        {
-          src: "eliza-api",
-          previousChars: lastStreamedSnapshot.length,
-          nextChars: snapshot.length,
-          messageId: args.message.id,
-        },
-        "[eliza-api] Android local direct chat fast path held non-append streaming snapshot",
-      );
-    }
-    args.opts?.onSnapshot?.(snapshot);
-    lastStreamedSnapshot = snapshot;
-  };
-  const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, {
-    prompt,
-    stopSequences: ["<end_of_turn>", "<start_of_turn>"],
-    temperature: 0,
-    providerOptions: {
-      eliza: {
-        thinking: "off",
-      },
-      androidLocal: {
-        stopOnFirstSentence: false,
-        minFirstSentenceChars: 12,
-      },
-    },
-    signal: args.signal,
-    stream: true,
-    onStreamChunk: (chunk: string) => {
-      streamedRaw += chunk;
-      streamedChunks += 1;
-      const snapshot = cleanAndroidLocalDirectChatReply(streamedRaw);
-      emitCleanStreamingSnapshot(snapshot);
-    },
-  });
-  const text = cleanAndroidLocalDirectChatReply(raw);
-  if (!text) {
-    args.runtime.logger.warn(
-      { src: "eliza-api", messageId: args.message.id },
-      "[eliza-api] Android local direct chat fast path returned empty text",
-    );
-    return null;
-  }
-  const latencyMs = Date.now() - startedAt;
-  emitCleanStreamingSnapshot(text);
-  const localInference = {
-    provider: "mobile-local-direct-reply",
-    mode: "api_fast_path",
-    latencyMs,
-    promptChars: prompt.length,
-    streamedChunks,
-  } satisfies LocalInferenceChatMetadata;
-  const responseContent = {
-    text,
-    source: MESSAGE_SOURCE_CLIENT_CHAT,
-    actions: ["REPLY"],
-    localInference,
-  } satisfies Content;
-  args.runtime.logger.info(
-    {
-      src: "eliza-api",
-      latencyMs,
-      textChars: text.length,
-      messageId: args.message.id,
-    },
-    "[eliza-api] Android local direct chat fast path done",
-  );
-  return {
-    text,
-    agentName: args.agentName,
-    localInference,
-    responseContent,
-    usage: {
-      promptTokens: estimateTokenCount(prompt),
-      completionTokens: estimateTokenCount(text),
-      totalTokens: estimateTokenCount(prompt) + estimateTokenCount(text),
-      model: detectRuntimeModel(args.runtime, undefined) ?? undefined,
-      provider: "mobile-local-direct-reply",
-      isEstimated: true,
-      llmCalls: 1,
-    },
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -969,8 +515,17 @@ export interface ChatActionResultSummary {
 export type ChatStreamTextOrigin = "model" | "action_callback";
 
 export interface ChatGenerateOptions {
+  /** Internal host timer begun before room admission; never read from a request body. */
+  inferenceTimer?: InferenceTurnTimer;
   onChunk?: (chunk: string, origin?: ChatStreamTextOrigin) => void;
   onSnapshot?: (text: string, origin?: ChatStreamTextOrigin) => void;
+  /**
+   * Called once the authoritative generation result is settled, before the
+   * room's post-delivery bookkeeping is drained. Realtime transports can use
+   * this boundary to start delivery without weakening serialized room
+   * ownership or skipping trajectory/action-receipt work.
+   */
+  onReplyReady?: (result: ChatGenerationResult) => void | Promise<void>;
   /**
    * In-flight phase changes for the rich status indicator. Emitted additively
    * alongside `onChunk`/`onSnapshot` — `thinking` before the first visible
@@ -1005,6 +560,7 @@ function recoverSettledMutatingActionTurn(
   text: string;
   actionResults: ActionResult[];
   actionNames: string[];
+  replyFailure?: ActionReplyFailure;
 } | null {
   const allReceipts = settledResults.flatMap(
     (result) => result.effectReceipts ?? [],
@@ -1036,6 +592,10 @@ function recoverSettledMutatingActionTurn(
   });
   if (committedResults.length === 0) return null;
 
+  const replyFailure = settledResults
+    .map((result) => readActionReplyFailure(result.replyFailure))
+    .find((failure) => failure !== undefined);
+
   let verifiedResult: ActionResult | undefined;
   try {
     verifiedResult = [...committedResults]
@@ -1065,9 +625,11 @@ function recoverSettledMutatingActionTurn(
     ),
   );
   return {
-    text: verifiedText || POST_COMMIT_INTERRUPTED_REPLY,
+    text:
+      replyFailure?.message ?? (verifiedText || POST_COMMIT_INTERRUPTED_REPLY),
     actionResults: [...settledResults],
     actionNames,
+    ...(replyFailure ? { replyFailure } : {}),
   };
 }
 
@@ -1308,144 +870,6 @@ function getLatestVisibleResponseMessageText(
   return "";
 }
 
-const EXACT_GROUNDED_VALUE_REQUEST =
-  /\b(?:exact|verbatim|copy|quoted?|identifier|codeword|return only|only the)\b/i;
-const DOCUMENT_VALUE_CAPTURE =
-  /\b(?:codeword|identifier|token|value)\s*(?:is|=|:)\s*([A-Za-z0-9][A-Za-z0-9._-]{1,127})\b/gi;
-const UPPERCASE_IDENTIFIER_CAPTURE = /\b[A-Z0-9]+(?:[-_][A-Z0-9]+)+\b/g;
-const UUID_IDENTIFIER_CAPTURE =
-  /\b[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}\b/gi;
-
-function uniqueMatches(matches: Iterable<string>): string[] {
-  return Array.from(
-    new Set(Array.from(matches).map((value) => value.trim())),
-  ).filter((value) => value.length > 0);
-}
-
-function collectRegexMatches(
-  text: string,
-  pattern: RegExp,
-  groupIndex?: number,
-): string[] {
-  const regex = new RegExp(pattern.source, pattern.flags);
-  return Array.from(text.matchAll(regex), (match) =>
-    String(groupIndex === undefined ? match[0] : (match[groupIndex] ?? "")),
-  );
-}
-
-function extractExactGroundedValueFromText(
-  messageText: string,
-  documentText: string,
-): string | null {
-  if (!messageText || !EXACT_GROUNDED_VALUE_REQUEST.test(messageText)) {
-    return null;
-  }
-
-  if (!documentText) {
-    return null;
-  }
-
-  const capturedDocumentValues = uniqueMatches(
-    collectRegexMatches(documentText, DOCUMENT_VALUE_CAPTURE, 1),
-  );
-  if (capturedDocumentValues.length === 1) {
-    return capturedDocumentValues[0];
-  }
-
-  const uppercaseCandidates = uniqueMatches(
-    collectRegexMatches(documentText, UPPERCASE_IDENTIFIER_CAPTURE),
-  );
-  if (uppercaseCandidates.length === 1) {
-    return uppercaseCandidates[0];
-  }
-
-  const uuidCandidates = uniqueMatches(
-    collectRegexMatches(documentText, UUID_IDENTIFIER_CAPTURE),
-  );
-  if (uuidCandidates.length === 1) {
-    return uuidCandidates[0];
-  }
-
-  return null;
-}
-
-async function resolveExactDocumentValueForChat(
-  runtime: AgentRuntime,
-  message: ReturnType<typeof createMessageMemory>,
-): Promise<string | null> {
-  const messageText =
-    typeof extractCompatTextContent(message.content) === "string"
-      ? extractCompatTextContent(message.content).trim()
-      : "";
-  if (!messageText || !EXACT_GROUNDED_VALUE_REQUEST.test(messageText)) {
-    return null;
-  }
-
-  const documentsService = runtime.getService("documents") as
-    | {
-        searchDocuments?: (
-          message: ReturnType<typeof createMessageMemory>,
-        ) => Promise<
-          Array<{
-            content?: { text?: string };
-            metadata?: Record<string, unknown>;
-          }>
-        >;
-      }
-    | null
-    | undefined;
-  if (
-    !documentsService ||
-    typeof documentsService.searchDocuments !== "function"
-  ) {
-    return null;
-  }
-
-  try {
-    const matches = await documentsService.searchDocuments(message);
-    if (!Array.isArray(matches) || matches.length === 0) {
-      return null;
-    }
-
-    const uploadedMatches = matches.filter((match) => {
-      const metadata =
-        match.metadata && typeof match.metadata === "object"
-          ? match.metadata
-          : null;
-      return metadata?.source === "upload";
-    });
-    const preferredMatches =
-      uploadedMatches.length > 0 ? uploadedMatches : matches;
-    const exactMatchCandidates = uniqueMatches(
-      preferredMatches
-        .map((match) =>
-          typeof match.content?.text === "string"
-            ? extractExactGroundedValueFromText(
-                messageText,
-                match.content.text.trim(),
-              )
-            : null,
-        )
-        .filter((value): value is string => typeof value === "string"),
-    );
-    if (exactMatchCandidates.length === 1) {
-      return exactMatchCandidates[0];
-    }
-
-    const documentsText = preferredMatches
-      .map((match) =>
-        typeof match.content?.text === "string"
-          ? match.content.text.trim()
-          : "",
-      )
-      .filter((text) => text.length > 0)
-      .join("\n\n");
-    return extractExactGroundedValueFromText(messageText, documentsText);
-  } catch {
-    return null;
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Chat failure / no-response helpers
 // ---------------------------------------------------------------------------
@@ -1598,11 +1022,12 @@ export function markSyntheticChatFailureContent<T extends Content>(
 function terminalFailureVisibleText(
   deliveredText: string,
   failure: ChatTerminalFailure,
+  replyUnavailable = false,
 ): string {
   const delivered = deliveredText.trimEnd();
   if (!delivered) return failure.message;
   if (delivered.includes(failure.message)) return deliveredText;
-  return `${delivered}\n\nTask failed: ${failure.message}`;
+  return `${delivered}\n\n${replyUnavailable ? "" : "Task failed: "}${failure.message}`;
 }
 
 /** Converts the public DTO to Content's JSON-compatible indexed object shape. */
@@ -1755,157 +1180,6 @@ function isProgressActionCallback(content: Content): boolean {
   );
 }
 
-type WalletAttributedOperation =
-  | "APPROVE"
-  | "BALANCE"
-  | "BUY"
-  | "EXECUTE"
-  | "SELL"
-  | "SWAP"
-  | "TRADE"
-  | "TRANSFER";
-
-const WALLET_ROUTER_SUBACTION_OPERATIONS = new Map<
-  string,
-  readonly WalletAttributedOperation[]
->([
-  ["TRANSFER", ["TRANSFER"]],
-  ["SWAP", ["BUY", "SELL", "SWAP", "TRADE"]],
-  ["BRIDGE", ["TRANSFER"]],
-  ["GOV", []],
-  ["PUMP_FUN_BUY", ["BUY", "TRADE"]],
-  ["TOKEN_INFO", []],
-  ["SEARCH_ADDRESS", ["BALANCE"]],
-]);
-
-const WALLET_GOV_OP_OPERATIONS = new Map<
-  string,
-  readonly WalletAttributedOperation[]
->([
-  ["PROPOSE", []],
-  ["VOTE", ["APPROVE"]],
-  ["QUEUE", []],
-  ["EXECUTE", ["EXECUTE"]],
-]);
-
-// This fail-closed boundary intentionally duplicates the wallet plugin's public
-// action names and similes so an unrelated action cannot gain wallet authority
-// merely by containing a financial verb.
-const WALLET_ACTION_OPERATIONS = new Map<
-  string,
-  readonly WalletAttributedOperation[]
->([
-  ["EVM_TRANSFER", ["TRANSFER"]],
-  ["SOLANA_TRANSFER", ["TRANSFER"]],
-  ["CROSS_CHAIN_TRANSFER", ["TRANSFER"]],
-  ["TRANSFER", ["TRANSFER"]],
-  ["TRANSFER_TOKEN", ["TRANSFER"]],
-  ["TRANSFER_TOKENS", ["TRANSFER"]],
-  ["TRANSFER_SOL", ["TRANSFER"]],
-  ["WALLET_TRANSFER", ["TRANSFER"]],
-  ["SEND_TOKEN", ["TRANSFER"]],
-  ["SEND_TOKENS", ["TRANSFER"]],
-  ["SEND_SOL", ["TRANSFER"]],
-  ["PREPARE_TRANSFER", ["TRANSFER"]],
-  ["PAY", ["TRANSFER"]],
-  ["EVM_SWAP", ["BUY", "SELL", "SWAP", "TRADE"]],
-  ["SOLANA_SWAP", ["BUY", "SELL", "SWAP", "TRADE"]],
-  ["SWAP", ["BUY", "SELL", "SWAP", "TRADE"]],
-  ["SWAP_SOL", ["BUY", "SELL", "SWAP", "TRADE"]],
-  ["SWAP_SOLANA", ["BUY", "SELL", "SWAP", "TRADE"]],
-  ["SWAP_TOKEN", ["BUY", "SELL", "SWAP", "TRADE"]],
-  ["SWAP_TOKENS", ["BUY", "SELL", "SWAP", "TRADE"]],
-  ["WALLET_SWAP", ["BUY", "SELL", "SWAP", "TRADE"]],
-  ["TOKEN_SWAP", ["BUY", "SELL", "SWAP", "TRADE"]],
-  ["TRADE", ["TRADE", "BUY", "SELL"]],
-  ["PUMP_FUN_BUY", ["BUY", "TRADE"]],
-  ["PUMPFUN_BUY", ["BUY", "TRADE"]],
-  ["BUY_PUMP_FUN", ["BUY", "TRADE"]],
-  ["BUY_PUMPFUN", ["BUY", "TRADE"]],
-  ["CHECK_BALANCE", ["BALANCE"]],
-  ["WALLET_SEARCH_ADDRESS", ["BALANCE"]],
-  ["BIRDEYE_SEARCH", ["BALANCE"]],
-  ["BIRDEYE_LOOKUP", ["BALANCE"]],
-]);
-
-function walletActionMatchesIntent(
-  prompt: string,
-  successfulActionName: string,
-  result?: unknown,
-): boolean {
-  const actionName = normalizeActionName(successfulActionName);
-  if (!actionName) return false;
-  const record =
-    result && typeof result === "object"
-      ? (result as Record<string, unknown>)
-      : null;
-  const data =
-    record?.data && typeof record.data === "object"
-      ? (record.data as Record<string, unknown>)
-      : null;
-  const values =
-    record?.values && typeof record.values === "object"
-      ? (record.values as Record<string, unknown>)
-      : null;
-  const metadata =
-    data?.metadata && typeof data.metadata === "object"
-      ? (data.metadata as Record<string, unknown>)
-      : null;
-  const walletSubaction = normalizeActionName(
-    data?.subaction ??
-      data?.walletSubaction ??
-      values?.walletSubaction ??
-      values?.subaction,
-  );
-  const walletGovOp = normalizeActionName(
-    data?.op ?? metadata?.op ?? values?.walletGovOp,
-  );
-  const tradeHasExecutionEvidence =
-    values?.tradeActionPrepared === true ||
-    values?.tradeActionSucceeded === true ||
-    normalizeActionName(values?.tradeOutcome) === "SUBMITTED" ||
-    normalizeActionName(data?.outcome) === "SUBMITTED";
-  const attributedOperations =
-    actionName === "WALLET"
-      ? walletSubaction === "GOV"
-        ? WALLET_GOV_OP_OPERATIONS.get(walletGovOp)
-        : WALLET_ROUTER_SUBACTION_OPERATIONS.get(walletSubaction)
-      : actionName === "TRADE"
-        ? tradeHasExecutionEvidence
-          ? WALLET_ACTION_OPERATIONS.get(actionName)
-          : undefined
-        : WALLET_ACTION_OPERATIONS.get(actionName);
-  if (!attributedOperations) return false;
-  const matches = (operation: WalletAttributedOperation) =>
-    attributedOperations.includes(operation);
-
-  if (/\b(send|transfer)\b/i.test(prompt)) {
-    return matches("TRANSFER");
-  }
-  if (/\bswap\b/i.test(prompt)) {
-    return matches("SWAP");
-  }
-  if (/\btrade\b/i.test(prompt)) {
-    return matches("TRADE") || matches("BUY") || matches("SELL");
-  }
-  if (/\bbuy\b/i.test(prompt)) {
-    return matches("BUY");
-  }
-  if (/\bsell\b/i.test(prompt)) {
-    return matches("SELL");
-  }
-  if (/\bapprove\b/i.test(prompt)) {
-    return matches("APPROVE");
-  }
-  if (/\bexecute\b/i.test(prompt)) {
-    return matches("EXECUTE");
-  }
-  if (/\b(balance|portfolio|holdings|funds)\b/i.test(prompt)) {
-    return matches("BALANCE");
-  }
-  return attributedOperations.length > 0;
-}
-
 function sanitizeActionResultValue(
   value: unknown,
   ancestors: WeakSet<object> = new WeakSet(),
@@ -1976,7 +1250,10 @@ function summarizeActionResultForClient(
     (typeof data?.actionName === "string" && data.actionName.trim()) ||
     (typeof record.actionName === "string" && record.actionName.trim()) ||
     undefined;
-  const values = sanitizeActionResultValues(record.values);
+  // Planner tool results preserve ActionResult.values under data.values.
+  // Prefer a direct ActionResult field when present, then recover the canonical
+  // planner projection so renderer handoffs survive both execution paths.
+  const values = sanitizeActionResultValues(record.values ?? data?.values);
   const text =
     typeof record.text === "string" && record.text.trim()
       ? String(sanitizeActionResultValue(record.text))
@@ -2211,35 +1488,6 @@ function normalizeIntentText(text: string): string {
     .replace(/[_-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function hasLocalInferenceMetadata(
-  message: ReturnType<typeof createMessageMemory>,
-): boolean {
-  const contentMetadata = asRecord(message.content.metadata);
-  const messageMetadata = asRecord(message.metadata);
-  const metadata = {
-    ...(contentMetadata ? contentMetadata : {}),
-    ...(messageMetadata ? messageMetadata : {}),
-  };
-  const localValue =
-    metadata.localInference ??
-    metadata.localInferenceContext ??
-    metadata.localModel ??
-    metadata.modelHub;
-  if (localValue === true) return true;
-  if (typeof localValue === "string") {
-    return /^(1|true|yes|local|local-inference|model-hub)$/i.test(
-      localValue.trim(),
-    );
-  }
-  const context =
-    typeof metadata.context === "string"
-      ? metadata.context
-      : typeof metadata.scope === "string"
-        ? metadata.scope
-        : "";
-  return /\blocal[-_\s]?inference\b|\bmodel[-_\s]?hub\b/i.test(context);
 }
 
 function hasLocalInferenceTopic(text: string): boolean {
@@ -3316,7 +2564,6 @@ async function generateChatResponseWithTiming(
   let closeResponseFinalization: (() => void) | undefined;
   try {
     generationAbortController.signal.throwIfAborted();
-    const originalUserText = String(extractCompatTextContent(message.content));
     type StreamSource = "unset" | "callback" | "onStreamChunk";
     let responseText = "";
     // Snapshot consumers can replace prior text. Append-only transports need
@@ -3491,56 +2738,6 @@ async function generateChatResponseWithTiming(
         ? { trajectoryStepId: trajectoryStepId.trim() }
         : undefined;
 
-    const androidDirectResult = await runWithTrajectoryContext(
-      trajectoryContext,
-      () =>
-        maybeGenerateAndroidLocalDirectChatResponse({
-          runtime,
-          message,
-          agentName,
-          signal: generationAbortController.signal,
-          opts,
-        }),
-    );
-    if (androidDirectResult) {
-      // A successful model return commits the turn even when transport
-      // cancellation races with that return. Discarding it here would release
-      // the retry key and bill the same completed work a second time.
-      try {
-        if (
-          androidDirectResult.responseContent &&
-          !generationAbortController.signal.aborted &&
-          typeof runtime.emitEvent === "function"
-        ) {
-          const memoryLike = createMessageMemory({
-            id: crypto.randomUUID() as UUID,
-            roomId: message.roomId,
-            entityId: runtime.agentId,
-            content: ensureMessageMemoryContent(
-              androidDirectResult.responseContent,
-            ),
-          });
-          memoryLike.metadata = message.metadata;
-          await runtime.emitEvent(EventType.MESSAGE_SENT, {
-            message: memoryLike,
-            source: messageSource,
-          });
-        }
-      } catch (err) {
-        runtime.logger.warn(
-          {
-            err,
-            src: "eliza-api",
-            messageId: message.id,
-            roomId: message.roomId,
-          },
-          "Failed to emit MESSAGE_SENT event",
-        );
-      }
-      return androidDirectResult;
-    }
-    generationAbortController.signal.throwIfAborted();
-
     let result:
       | Awaited<
           ReturnType<
@@ -3549,6 +2746,7 @@ async function generateChatResponseWithTiming(
         >
       | undefined;
     let terminalFailure: ChatTerminalFailure | undefined;
+    let replyFailure: ActionReplyFailure | undefined;
     let trajectoryTerminalOwner: "run" | undefined;
     const settledActionResults: ActionResult[] = [];
     let capturedUsage: CapturedModelUsage | null = null;
@@ -3624,159 +2822,16 @@ async function generateChatResponseWithTiming(
           }
           generationAbortController.signal.throwIfAborted();
 
-          // Direct dispatch for explicit task creation intent from UI
-          const contentMetadata = message.content.metadata as
-            | Record<string, unknown>
-            | undefined;
-          if (contentMetadata?.intent === "create_task") {
-            const coordinator = getSwarmCoordinatorService(runtime);
-            if (coordinator) {
-              const createTaskAction =
-                runtime.actions.find(
-                  (a) => a.name.toUpperCase() === "START_CODING_TASK",
-                ) ??
-                runtime.actions.find(
-                  (a) => a.name.toUpperCase() === "CREATE_TASK",
-                );
-              if (createTaskAction) {
-                runtime.logger.info(
-                  {
-                    src: "eliza-api",
-                    agentType: contentMetadata.agentType,
-                    intent: "create_task",
-                  },
-                  "[eliza-api] Direct dispatch START_CODING_TASK from UI intent",
-                );
-                let actionResponseText = "";
-                const declaredParameters = new Set(
-                  createTaskAction.parameters?.map(
-                    (parameter) => parameter.name,
-                  ) ?? [],
-                );
-                const directTaskParameters: Record<string, unknown> = {};
-                if (declaredParameters.has("action")) {
-                  directTaskParameters.action = "create";
-                } else if (declaredParameters.has("op")) {
-                  directTaskParameters.op = "create";
-                }
-                if (
-                  declaredParameters.has("task") &&
-                  typeof message.content.text === "string"
-                ) {
-                  directTaskParameters.task = message.content.text;
-                }
-                if (
-                  declaredParameters.has("agentType") &&
-                  typeof contentMetadata.agentType === "string"
-                ) {
-                  directTaskParameters.agentType = contentMetadata.agentType;
-                }
-                const directActionResult = await executePlannedToolCall(
-                  runtime,
-                  {
-                    message,
-                    activeContexts: createTaskAction.contexts ?? [
-                      "code",
-                      "automation",
-                    ],
-                    callback: async (content: Content) => {
-                      const chunk = extractCompatTextContent(content);
-                      if (chunk) {
-                        const voicedChunk =
-                          await rewriteDirectActionCallbackText({
-                            runtime,
-                            actionName: createTaskAction.name,
-                            text: chunk,
-                            content,
-                            abortSignal: generationAbortController.signal,
-                          });
-                        applyCallbackTextUpdate(content, voicedChunk);
-                        actionResponseText = responseText;
-                      }
-                      return [];
-                    },
-                  },
-                  {
-                    name: createTaskAction.name,
-                    params: directTaskParameters,
-                  },
-                  {
-                    actions: [createTaskAction],
-                    abortSignal: generationAbortController.signal,
-                  },
-                );
-                // The action has already returned a committed result. Keep
-                // finalizing it if the transport disappears at this boundary
-                // so reconnect cannot repeat an external side effect.
-                const finalText =
-                  actionResponseText ||
-                  directActionResult.text ||
-                  responseText ||
-                  "Task created.";
-                result = {
-                  didRespond: true,
-                  responseContent: { text: finalText },
-                  responseMessages: [],
-                } as typeof result;
-                responseText = finalText;
-                return;
-              }
-            }
-            // Fall through to normal LLM-based routing if coordinator not available
-          }
-
-          generationAbortController.signal.throwIfAborted();
-          const localInferenceIntent = detectLocalInferenceCommandIntent(
-            originalUserText,
-            {
-              localInferenceContext: hasLocalInferenceMetadata(message),
-            },
-          );
-          if (localInferenceIntent) {
-            const { handleLocalInferenceChatCommand } =
-              await getLocalInferenceChatApi();
-            generationAbortController.signal.throwIfAborted();
-            const localResult = await handleLocalInferenceChatCommand(
-              localInferenceIntent,
-              originalUserText,
-            );
-            emitSnapshot(localResult.text);
-            result = {
-              didRespond: true,
-              responseContent: {
-                text: localResult.text,
-                source: MESSAGE_SOURCE_CLIENT_CHAT,
-                actions: ["REPLY"],
-                localInference: localResult.localInference as
-                  | Record<string, unknown>
-                  | undefined,
-                failureKind:
-                  localResult.localInference.status === "failed" ||
-                  localResult.localInference.status === "no_space"
-                    ? "local_inference"
-                    : undefined,
-              } as Content,
-              responseMessages: [],
-            } as typeof result;
-            responseText = localResult.text;
-            return;
-          }
-
           const languageAugmentedMessage = maybeAugmentChatMessageWithLanguage(
             message,
             opts?.preferredLanguage,
           );
-          const walletAugmentedMessage =
-            maybeAugmentChatMessageWithWalletContext(
-              runtime,
-              languageAugmentedMessage,
-            );
           const generationMessage = await timeInferenceSpan(
             "chat:document-augmentation",
             () =>
               maybeAugmentChatMessageWithDocuments(
                 runtime,
-                walletAugmentedMessage,
+                languageAugmentedMessage,
                 { signal: generationAbortController.signal },
               ),
             { phase: "pre-model" },
@@ -3884,16 +2939,21 @@ async function generateChatResponseWithTiming(
             if (!recovery) throw error;
             responseText = recovery.text;
             result = {
-              didRespond: true,
-              responseContent: {
-                text: recovery.text,
-                ...(recovery.actionNames.length > 0
-                  ? { actions: recovery.actionNames }
-                  : {}),
-              },
+              didRespond: !recovery.replyFailure,
+              responseContent: recovery.replyFailure
+                ? null
+                : {
+                    text: recovery.text,
+                    ...(recovery.actionNames.length > 0
+                      ? { actions: recovery.actionNames }
+                      : {}),
+                  },
               responseMessages: [],
               actionResults: recovery.actionResults,
               mode: "actions",
+              ...(recovery.replyFailure
+                ? { terminalFailure: recovery.replyFailure }
+                : {}),
               ...(trajectoryTerminalOwner ? { trajectoryTerminalOwner } : {}),
             } as typeof result;
             runtime.logger.warn(
@@ -3913,12 +2973,21 @@ async function generateChatResponseWithTiming(
           // new work while the owner signal is live.
 
           terminalFailure = parseChatTerminalFailure(result?.terminalFailure);
+          replyFailure = result?.actionResults
+            ?.map((actionResult) =>
+              readActionReplyFailure(actionResult.replyFailure),
+            )
+            .find((failure) => failure !== undefined);
           if (terminalFailure) {
             const failureText =
               opts?.onChunk && !opts.onSnapshot
-                ? terminalFailureVisibleText(responseText, terminalFailure)
+                ? terminalFailureVisibleText(
+                    responseText,
+                    terminalFailure,
+                    replyFailure !== undefined,
+                  )
                 : terminalFailure.message;
-            if (opts?.onSnapshot) {
+            if (opts?.onSnapshot && !replyFailure) {
               emitSnapshot(failureText);
             } else {
               responseText = failureText;
@@ -3946,6 +3015,13 @@ async function generateChatResponseWithTiming(
                   text: responseText,
                   failureKind: terminalFailure.kind,
                   terminalFailure: terminalFailureContentValue(terminalFailure),
+                  ...(replyFailure
+                    ? {
+                        elizaSyntheticFailure: true,
+                        agentVoiced: false,
+                        replyFailure: { ...replyFailure },
+                      }
+                    : {}),
                 } satisfies Content)
               : baseFallbackResponseContent;
             // Safety net ONLY for flows where the message handler produced no
@@ -4005,8 +3081,8 @@ async function generateChatResponseWithTiming(
               "Failed to emit MESSAGE_SENT event",
             );
           }
-          // Post-process fallback actions
-          if (result) {
+          // A terminal reply failure must not start new actions after a commit.
+          if (result && !terminalFailure) {
             const rc = result.responseContent as Record<string, unknown> | null;
             const resultRecord = asRecord(result);
             runtime.logger.info(
@@ -4153,12 +3229,6 @@ async function generateChatResponseWithTiming(
     for (const actionName of fallbackSuccessfulActionNames) {
       successfulActionNames.add(actionName);
     }
-    const successfulTurnActionResults = listSuccessfulActionResults(
-      runtime,
-      typeof message.id === "string" ? message.id : undefined,
-      result?.actionResults,
-    );
-
     const responseMessageText = getLatestVisibleResponseMessageText(
       result?.responseMessages,
     );
@@ -4177,13 +3247,19 @@ async function generateChatResponseWithTiming(
     );
 
     // Fallback: if callbacks weren't used for text, stream + return final text.
-    if (!responseText && resultText && resultTextVisibility !== "internal") {
+    if (
+      !terminalFailure &&
+      !responseText &&
+      resultText &&
+      resultTextVisibility !== "internal"
+    ) {
       if (opts?.onSnapshot) {
         emitSnapshot(resultText);
       } else {
         emitChunk(resultText);
       }
     } else if (
+      !terminalFailure &&
       visibleCallbackDeliveries === 0 &&
       resultText &&
       resultTextVisibility !== "internal" &&
@@ -4192,6 +3268,7 @@ async function generateChatResponseWithTiming(
     ) {
       emitChunk(resultText.slice(responseText.length));
     } else if (
+      !terminalFailure &&
       visibleCallbackDeliveries === 0 &&
       resultText &&
       resultTextVisibility !== "internal" &&
@@ -4206,39 +3283,10 @@ async function generateChatResponseWithTiming(
       }
     }
 
-    if (
-      isWalletActionRequiredIntent(originalUserText) &&
-      !successfulTurnActionResults.some((actionResult) => {
-        const normalizedName = readActionResultName(actionResult);
-        const canonicalName =
-          actionNameLookup.get(normalizedName) ?? normalizedName;
-        return walletActionMatchesIntent(
-          originalUserText,
-          canonicalName,
-          actionResult,
-        );
-      })
-    ) {
-      const failureText = buildWalletActionNotExecutedReply(
-        runtime,
-        originalUserText.trim(),
-      );
-      if (opts?.onSnapshot) {
-        emitSnapshot(failureText);
-      } else {
-        responseText = failureText;
-      }
-    }
-
     const noResponseFallback = opts?.resolveNoResponseText?.();
-    const exactDocumentValue = generationAbortController.signal.aborted
-      ? null
-      : await resolveExactDocumentValueForChat(runtime, message);
-    const normalizedResponseText = trimWalletProgressPrefix(
-      terminalFailure
-        ? responseText
-        : exactDocumentValue || responseText || resultText || "",
-    );
+    const normalizedResponseText = terminalFailure
+      ? responseText
+      : responseText || resultText || "";
     const intentionalNoResponse = isIntentionalNoResponseResult(
       result,
       normalizedResponseText,
@@ -4261,7 +3309,7 @@ async function generateChatResponseWithTiming(
             resultContentCandidates,
           );
 
-    if (opts?.onChunk && !opts.onSnapshot) {
+    if (opts?.onChunk && !opts.onSnapshot && !replyFailure) {
       const authoritativeText =
         transcriptVisibility === "internal" ? "" : finalText;
       if (!authoritativeText.startsWith(appendOnlyText)) {
@@ -4307,6 +3355,13 @@ async function generateChatResponseWithTiming(
               ...(terminalFailureKind
                 ? { failureKind: terminalFailureKind }
                 : {}),
+              ...(replyFailure
+                ? {
+                    elizaSyntheticFailure: true,
+                    agentVoiced: false,
+                    replyFailure: { ...replyFailure },
+                  }
+                : {}),
               ...(terminalFailure
                 ? {
                     terminalFailure:
@@ -4325,6 +3380,13 @@ async function generateChatResponseWithTiming(
               text: finalText,
               ...(terminalFailureKind
                 ? { failureKind: terminalFailureKind }
+                : {}),
+              ...(replyFailure
+                ? {
+                    elizaSyntheticFailure: true,
+                    agentVoiced: false,
+                    replyFailure: { ...replyFailure },
+                  }
                 : {}),
               ...(terminalFailure
                 ? {
@@ -4457,12 +3519,14 @@ async function generateOwnedChatResponse(
     return result;
   }
 
-  const timer = new InferenceTurnTimer({
-    turnId: nextInferenceTurnId(),
-    traceId: opts?.traceId,
-    label: "chat-request",
-    roomId: message.roomId,
-  });
+  const timer =
+    opts?.inferenceTimer ??
+    new InferenceTurnTimer({
+      turnId: nextInferenceTurnId(),
+      traceId: opts?.traceId,
+      label: "chat-request",
+      roomId: message.roomId,
+    });
   return runWithInferenceTiming(timer, async () => {
     try {
       const result = await runWithGenerationTimeout(
@@ -4508,10 +3572,17 @@ export async function generateChatResponse(
     roomHandlerLease: RoomHandlerLease,
   ): Promise<ChatGenerationResult> => {
     try {
-      return await generateOwnedChatResponse(runtime, message, agentName, {
-        ...opts,
-        roomHandlerLease,
-      });
+      const result = await generateOwnedChatResponse(
+        runtime,
+        message,
+        agentName,
+        {
+          ...opts,
+          roomHandlerLease,
+        },
+      );
+      await opts?.onReplyReady?.(result);
+      return result;
     } finally {
       await drainRoomPostDeliveryTasks(runtime, message.roomId);
     }
@@ -4662,8 +3733,9 @@ export async function ensureCompatChatConnection(
   }
 
   // Ensure world ownership only for a directly authenticated owner principal.
-  const world = await runtime.getWorld(worldId);
-  if (world) {
+  // Re-applied on a fresh read when the revision moved underneath (the
+  // connection bootstrap and deferred boot maintenance write the same world).
+  await updateWorldMetadataWithRetry(runtime, worldId, (world) => {
     let needsUpdate = false;
     if (!world.metadata) {
       world.metadata = {};
@@ -4683,10 +3755,8 @@ export async function ensureCompatChatConnection(
     if (recordOwnerGrant(world.metadata as RolesWorldMetadata, userId)) {
       needsUpdate = true;
     }
-    if (needsUpdate) {
-      await runtime.updateWorld(world);
-    }
-  }
+    return needsUpdate;
+  });
 
   return { userId, roomId, worldId };
 }
@@ -4716,7 +3786,18 @@ async function grantSessionUserWorldRole(
   worldId: UUID,
   entityId: UUID,
 ): Promise<void> {
-  const world = await runtime.getWorld(worldId);
+  const world = await updateWorldMetadataWithRetry(
+    runtime,
+    worldId,
+    (world) => {
+      world.metadata ??= {};
+      const metadata = world.metadata as RolesWorldMetadata;
+      if (hasAtLeastRole(getEntityRole(metadata, entityId), "USER")) {
+        return false;
+      }
+      return recordRoleGrant(metadata, entityId, "USER", "session");
+    },
+  );
   if (!world) {
     // ensureConnection creates the world before this runs; a missing world
     // fails closed (the entity stays GUEST) rather than failing the turn.
@@ -4724,15 +3805,6 @@ async function grantSessionUserWorldRole(
       { src: "eliza-api", worldId, entityId },
       "[eliza-api] machine-session USER grant skipped: web-chat world missing",
     );
-    return;
-  }
-  world.metadata ??= {};
-  const metadata = world.metadata as RolesWorldMetadata;
-  if (hasAtLeastRole(getEntityRole(metadata, entityId), "USER")) {
-    return;
-  }
-  if (recordRoleGrant(metadata, entityId, "USER", "session")) {
-    await runtime.updateWorld(world);
   }
 }
 
@@ -5692,6 +4764,34 @@ export async function handleChatRoutes(
         messagePrincipal,
       );
 
+      // Answer the HTTP caller the moment the reply is settled. The room's
+      // post-delivery tasks (facts extraction, topic stamping, ~3 s) still
+      // drain inside generateChatResponse before the next same-room turn, but
+      // they are side effects and must not hold the response (live
+      // 2026-09-06: API callers waited 9.6-13.9 s for replies that were ready
+      // at 4.8-8.6 s; Discord users got the same replies at the callback).
+      let responded = false;
+      const respond = (result: ChatGenerationResult): void => {
+        if (responded || res.headersSent) return;
+        responded = true;
+        syncRuntimeCharacterToChatStateConfig(state);
+        const resolvedText =
+          result.transcriptVisibility === "internal"
+            ? ""
+            : normalizeChatResponseText(
+                result.text,
+                state.logBuffer,
+                state.runtime,
+              );
+        json(res, {
+          response: renderChatSurfaceText(resolvedText),
+          agentName: result.agentName,
+          ...(result.failureKind ? { failureKind: result.failureKind } : {}),
+          ...(result.localInference
+            ? { localInference: result.localInference }
+            : {}),
+        });
+      };
       const result = await generateChatResponse(
         runtime,
         message,
@@ -5699,28 +4799,26 @@ export async function handleChatRoutes(
         {
           resolveNoResponseText: () =>
             resolveNoResponseFallback(state.logBuffer, runtime),
+          onReplyReady: async (ready) => {
+            respond(ready);
+          },
         },
       );
-      syncRuntimeCharacterToChatStateConfig(state);
-
-      const resolvedText =
-        result.transcriptVisibility === "internal"
-          ? ""
-          : normalizeChatResponseText(
-              result.text,
-              state.logBuffer,
-              state.runtime,
-            );
-
-      json(res, {
-        response: renderChatSurfaceText(resolvedText),
-        agentName: result.agentName,
-        ...(result.failureKind ? { failureKind: result.failureKind } : {}),
-        ...(result.localInference
-          ? { localInference: result.localInference }
-          : {}),
-      });
+      respond(result);
     } catch (err) {
+      if (res.headersSent) {
+        // error-policy:J7 The reply already reached the caller; a failure in
+        // the room's post-delivery drain is diagnostics for the log.
+        state.runtime?.logger.warn(
+          {
+            src: "eliza-api",
+            route: "POST /api/agents/:id/message",
+            err: getErrorMessage(err),
+          },
+          "[eliza-api] post-delivery drain failed after the reply was sent",
+        );
+        return true;
+      }
       if (isLocalInferenceError(err)) {
         const { getLocalInferenceChatStatus } =
           await getLocalInferenceChatApi();
@@ -5745,6 +4843,29 @@ export async function handleChatRoutes(
           503,
         );
       } else {
+        // error-policy:J1 Boundary translation; the cause must be visible in
+        // the server log, not only in the 500 body (live 2026-09-06: repeated
+        // stale-revision 500s with no trace of the throwing writer).
+        state.runtime?.logger.warn(
+          {
+            src: "eliza-api",
+            route: "POST /api/agents/:id/message",
+            err: getErrorMessage(err),
+            code: err instanceof ElizaError ? err.code : undefined,
+            context: err instanceof ElizaError ? err.context : undefined,
+            // One line: the console transport keeps only the first line of a
+            // multi-line value, which hid every frame.
+            frames:
+              err instanceof Error && err.stack
+                ? err.stack
+                    .split("\n")
+                    .slice(1, 12)
+                    .map((frame) => frame.trim())
+                    .join(" <- ")
+                : undefined,
+          },
+          "[eliza-api] compat message route failed",
+        );
         json(res, { error: getErrorMessage(err) }, 500);
       }
     }

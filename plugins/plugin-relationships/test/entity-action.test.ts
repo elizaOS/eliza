@@ -1,8 +1,8 @@
 /**
  * `KNOWLEDGE_GRAPH` action — unit tests.
  *
- * Mocks `@elizaos/agent` (`hasOwnerAccess` + `resolveKnowledgeGraphService`)
- * so the suite exercises the action's op dispatch against a fake
+ * Mocks the agent access and knowledge-graph subpaths so the suite exercises
+ * the action's op dispatch against a fake
  * EntityStore/RelationshipStore without a DB. Asserts create / read / list /
  * log_interaction / set_relationship dispatch onto the right store method,
  * while agent-authored identity verification and merging fail before any
@@ -23,8 +23,11 @@ const mocks = vi.hoisted(() => ({
   resolveKnowledgeGraphService: vi.fn(),
 }));
 
-vi.mock("@elizaos/agent", () => ({
+vi.mock("@elizaos/agent/security/access", () => ({
   hasOwnerAccess: mocks.hasOwnerAccess,
+}));
+
+vi.mock("@elizaos/agent/services/knowledge-graph", () => ({
   resolveKnowledgeGraphService: mocks.resolveKnowledgeGraphService,
 }));
 

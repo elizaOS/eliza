@@ -12,6 +12,7 @@ import {
 import { Cloud, Cpu, KeyRound } from "lucide-react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import en from "../../i18n/locales/en.json";
 import {
   ProviderSwitcher,
   reconcileProviderEntriesWithServingAxes,
@@ -40,6 +41,10 @@ const getModelsConfig = vi.hoisted(() =>
     },
   })),
 );
+const bootstrapState = vi.hoisted(() => ({ routingConfigResolved: true }));
+const persistedRuntime = vi.hoisted(() => ({
+  kind: null as "local" | "cloud" | "remote" | null,
+}));
 
 const voiceState = vi.hoisted(() => ({
   provider: "local-inference",
@@ -77,13 +82,23 @@ vi.mock("../../api", () => ({
     getModelsConfig,
   },
 }));
+vi.mock("../../state/persistence", () => ({
+  loadPersistedActiveServer: () =>
+    persistedRuntime.kind
+      ? {
+          id: `test-${persistedRuntime.kind}`,
+          kind: persistedRuntime.kind,
+          label: persistedRuntime.kind,
+        }
+      : null,
+}));
 vi.mock("../../state", () => ({
   useAppSelectorShallow: (
     selector: (state: Record<string, unknown>) => unknown,
   ) =>
     selector({
       t: (key: string, vars?: Record<string, unknown>) =>
-        String(vars?.defaultValue ?? key),
+        String(en[key as keyof typeof en] ?? vars?.defaultValue ?? key),
       plugins: [],
       elizaCloudVoiceProxyAvailable: voiceState.proxyAvailable,
       setActionNotice: vi.fn(),
@@ -110,6 +125,7 @@ vi.mock("./useCloudModelConfig", () => ({
 }));
 vi.mock("./useProviderBootstrap", () => ({
   useProviderBootstrap: () => ({
+    routingConfigResolved: bootstrapState.routingConfigResolved,
     subscriptionStatus: {},
     anthropicCliDetected: false,
   }),
@@ -165,19 +181,29 @@ vi.mock("./useProviderEntries", () => ({
 vi.mock("./ProviderCard", () => ({
   ProviderCard: ({
     label,
+    description,
     onSelect,
     id,
   }: {
     label: string;
+    description?: string;
     id: string;
     onSelect: (id: string) => void;
   }) => (
-    <button type="button" onClick={() => onSelect(id)}>
-      {label}
-    </button>
+    <div>
+      <button type="button" aria-label={label} onClick={() => onSelect(id)}>
+        {label}
+      </button>
+      {description ? <p>{description}</p> : null}
+    </div>
   ),
 }));
 vi.mock("./ProviderPanels", () => ({
+  describeUnsignedCloudChat: (
+    axes: { inference: string; activeChatProvider: string | null },
+    _t: unknown,
+    surface: string,
+  ) => `${surface}:${axes.inference}:${axes.activeChatProvider ?? "unknown"}`,
   LocalProviderPanel: ({
     onSelectLocalOnly,
   }: {
@@ -216,8 +242,11 @@ describe("ProviderSwitcher", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
     selection.visibleProviderPanelId = "__local__";
     selection.cloudRuntimeLocked = false;
+    bootstrapState.routingConfigResolved = true;
+    persistedRuntime.kind = null;
     voiceState.provider = "local-inference";
     voiceState.proxyAvailable = true;
   });
@@ -276,6 +305,75 @@ describe("ProviderSwitcher", () => {
     expect(selection.handleProviderPanelSelect).toHaveBeenCalledWith(
       "__cloud__",
     );
+  });
+
+  it.each(["VITE_VOICE_REALTIME_FORCE", "VITE_VOICE_REALTIME_SELF_HOSTED"])(
+    "does not claim a verified Cartesia connection from %s",
+    async (flag) => {
+      vi.stubEnv(flag, "1");
+      render(<ProviderSwitcher />);
+      await waitFor(() => {
+        expect(screen.getByTestId("serving-inference-value").textContent).toBe(
+          "Unconfirmed",
+        );
+      });
+      const voiceGroup = screen
+        .getByRole("heading", { name: "Voice" })
+        .closest("section");
+      expect(voiceGroup).not.toBeNull();
+      expect(voiceGroup?.textContent).toContain("Cartesia (realtime)");
+      expect(voiceGroup?.textContent).toContain("Enabled");
+      expect(voiceGroup?.textContent).toContain("Connection not verified.");
+      expect(voiceGroup?.textContent).not.toMatch(
+        /Configured|Connected|Ready|Active/,
+      );
+      expect(screen.queryByText("Kokoro (on-device)")).toBeNull();
+    },
+  );
+
+  it("preserves the default voice row when realtime is disabled", async () => {
+    vi.stubEnv("VITE_VOICE_REALTIME_FORCE", "0");
+    vi.stubEnv("VITE_VOICE_REALTIME_SELF_HOSTED", "0");
+    render(<ProviderSwitcher />);
+    await waitFor(() => {
+      expect(screen.getByTestId("serving-inference-value").textContent).toBe(
+        "Unconfirmed",
+      );
+    });
+    expect(screen.getByText("Speech playback")).toBeTruthy();
+    expect(screen.queryByText("Cartesia (realtime)")).toBeNull();
+    expect(screen.queryByText(/Connection not verified/)).toBeNull();
+  });
+
+  it("keeps local-model and Cartesia copy relative to a selected remote host", async () => {
+    persistedRuntime.kind = "remote";
+    vi.stubEnv("VITE_VOICE_REALTIME_SELF_HOSTED", "1");
+    render(<ProviderSwitcher />);
+    await waitFor(() => {
+      expect(screen.getByTestId("serving-runtime-value").textContent).toBe(
+        "Remote host",
+      );
+    });
+    expect(screen.getByText(/Runs with your remote agent/)).toBeTruthy();
+    expect(
+      screen.getByText(/Your agent stays on the remote host/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/stays on this device/)).toBeNull();
+  });
+
+  it("withholds provider detail panels until saved routing is resolved", async () => {
+    bootstrapState.routingConfigResolved = false;
+    render(<ProviderSwitcher />);
+    expect(screen.queryByRole("button", { name: "local panel" })).toBeNull();
+    expect(screen.queryByText("model config")).toBeNull();
+    expect(screen.queryByText("accounts panel")).toBeNull();
+    expect(screen.queryByText("Speech playback")).toBeNull();
+    expect(screen.getByRole("button", { name: "Local" })).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByTestId("serving-inference-value").textContent).toBe(
+        "Unconfirmed",
+      );
+    });
   });
 
   it("renders the cloud panel and activates cloud routing", async () => {
@@ -337,6 +435,27 @@ describe("ProviderSwitcher", () => {
     },
   );
 
+  it("keeps unsigned Cloud tile copy aligned with external inference", async () => {
+    getModelsConfig.mockResolvedValueOnce({
+      targets: { small: {}, large: {}, coding: {} },
+      activeChat: {
+        provider: "cerebras",
+        family: "OPENAI",
+        endpoint: "api.cerebras.ai",
+      },
+    });
+
+    render(<ProviderSwitcher />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("serving-inference-value").textContent).toBe(
+        "Cerebras",
+      );
+    });
+    expect(screen.getByText("tile:external:cerebras")).toBeTruthy();
+    expect(screen.queryByText(/replies use Local until then/)).toBeNull();
+  });
+
   it("preserves a non-serving provider warning under external routing", () => {
     const entries = [
       {
@@ -366,6 +485,7 @@ describe("ProviderSwitcher", () => {
 
   it("does not advertise local inference or model controls in a Cloud-only build", async () => {
     selection.cloudRuntimeLocked = true;
+    vi.stubEnv("VITE_VOICE_REALTIME_FORCE", "1");
     render(<ProviderSwitcher elizaCloudConnected />);
 
     await waitFor(() => {

@@ -57,6 +57,14 @@ function augmentedText(userText: string): string {
 }
 
 describe("stripAugmentationForPersistence", () => {
+	it("strips language-only augmentation without mutating the LLM prompt", () => {
+		const text = "The picnic bag contains an apple and a blue flask.";
+		const rendered = `${text}\n\n[Language instruction: Reply in natural English.]`;
+		const message = { content: { text: rendered } } as Memory;
+		expect(stripAugmentationForPersistence(message).content.text).toBe(text);
+		expect(message.content.text).toBe(rendered);
+	});
+
 	it("unwraps the document augmentation envelope so persisted text is what the user typed", () => {
 		const userText = "just fixing eliza app for demo";
 		const message = {

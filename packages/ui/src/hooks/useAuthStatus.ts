@@ -27,6 +27,7 @@ import {
   type AuthSessionInfo,
   authMe,
 } from "../api/auth-client";
+import { client } from "../api/client";
 import { getBootConfig, setBootConfig } from "../config/boot-config-store";
 import { scrubRejectedActiveServerCredential } from "../state/active-server-credential";
 import { scrubPersistedAgentProfileTokens } from "../state/agent-profiles";
@@ -90,6 +91,38 @@ let authStatusPrime: Promise<void> | null = null;
 let authStatusPrimeSettledAt = 0;
 let authStatusPrimeRetryAt = 0;
 let authStatusEpoch = 0;
+let authStatusAuthority = currentAuthAuthority();
+
+function currentAuthAuthority(): string {
+  const config = getBootConfig();
+  return `${config.apiBase ?? ""}\u0000${config.apiToken ?? ""}`;
+}
+
+function synchronizeAuthAuthority(): void {
+  const authority = currentAuthAuthority();
+  if (authority === authStatusAuthority) return;
+  const previousBase = authStatusAuthority.split("\u0000", 1)[0];
+  authStatusAuthority = authority;
+  authStatusEpoch += 1;
+  authStatusFetch = null;
+  authStatusPrime = null;
+  authStatusPrimeSettledAt = 0;
+  authStatusPrimeRetryAt = 0;
+  if (
+    isManagedCloudSharedAgentBase(previousBase) &&
+    !getBootConfig().apiBase &&
+    !loadPersistedActiveServer()
+  ) {
+    // Shared-account teardown removes its target; same-origin auth cannot
+    // substitute for the account that was just signed out.
+    publishAuthStatus({
+      phase: "unauthenticated",
+      reason: "remote_auth_required",
+    });
+  } else {
+    publishAuthStatus({ phase: "loading" });
+  }
+}
 // A primed result is only trusted by the activation path for a boot-scale
 // window; a hook that (re)activates later re-probes exactly as before, so a
 // stale prime can never stand in for the session's current auth state.
@@ -107,8 +140,16 @@ function publishAuthStatus(state: AuthStatusState): void {
   }
 }
 
-async function authMeWithRejectedBearerRecovery() {
+async function authMeWithRejectedBearerRecovery(probeEpoch: number) {
+  const requestAuthority = currentAuthAuthority();
   const result = await authMe();
+  // A rejected request owns only the credential it actually dispatched with.
+  if (
+    probeEpoch !== authStatusEpoch ||
+    requestAuthority !== currentAuthAuthority()
+  ) {
+    return result;
+  }
   if (result.ok || result.status !== 401 || result.access?.mode !== "remote") {
     return result;
   }
@@ -123,10 +164,12 @@ async function authMeWithRejectedBearerRecovery() {
   // seeing the same rejected Authorization header twice.
   setBootConfig({ ...getBootConfig(), apiToken: undefined });
   scrubRejectedActiveServerCredential(apiToken);
+  authStatusAuthority = currentAuthAuthority();
   return authMe();
 }
 
 async function fetchAuthStatus(): Promise<void> {
+  synchronizeAuthAuthority();
   if (authStatusFetch) return authStatusFetch;
 
   // The shared snapshot already starts in `loading`, so the cold probe remains
@@ -137,7 +180,7 @@ async function fetchAuthStatus(): Promise<void> {
   const probeEpoch = authStatusEpoch;
   authStatusFetch = (async () => {
     for (let attempt = 0; ; attempt += 1) {
-      const result = await authMeWithRejectedBearerRecovery();
+      const result = await authMeWithRejectedBearerRecovery(probeEpoch);
       if (probeEpoch !== authStatusEpoch) return;
       if (result.ok === true) {
         publishAuthStatus({
@@ -189,6 +232,7 @@ async function fetchAuthStatus(): Promise<void> {
       return;
     }
   })().finally(() => {
+    if (probeEpoch !== authStatusEpoch) return;
     authStatusFetch = null;
   });
 
@@ -213,11 +257,12 @@ async function fetchAuthStatus(): Promise<void> {
  * an already-resolved snapshot make it a no-op.
  */
 export function primeAuthStatusProbe(): void {
+  synchronizeAuthAuthority();
   if (authStatusPrime || authStatusFetch) return;
   if (authStatusSnapshot.phase !== "loading") return;
   const probeEpoch = authStatusEpoch;
   authStatusPrime = (async () => {
-    const result = await authMeWithRejectedBearerRecovery();
+    const result = await authMeWithRejectedBearerRecovery(probeEpoch);
     if (probeEpoch !== authStatusEpoch) return;
     // A real fetch started (or a state was published) while the prime was in
     // flight — that path owns the snapshot; drop the primed result.
@@ -247,6 +292,7 @@ export function primeAuthStatusProbe(): void {
       access: result.access,
     });
   })().finally(() => {
+    if (probeEpoch !== authStatusEpoch) return;
     authStatusPrimeSettledAt = Date.now();
   });
 }
@@ -260,9 +306,12 @@ export function primeAuthStatusProbe(): void {
  * a real probe.
  */
 async function ensureAuthStatusProbe(): Promise<void> {
+  synchronizeAuthAuthority();
+  const activationEpoch = authStatusEpoch;
   if (authStatusFetch) return authStatusFetch;
   if (authStatusPrime) {
     await authStatusPrime;
+    if (activationEpoch !== authStatusEpoch) return;
     if (authStatusPrimeRetryAt > Date.now()) {
       const probeEpoch = authStatusEpoch;
       await new Promise((resolve) =>
@@ -304,7 +353,7 @@ export function useIsAuthenticated(): boolean {
  * (#16242). Mirrors {@link useIsAuthenticated} without subscribing.
  */
 export function isAuthenticatedNow(): boolean {
-  return authStatusSnapshot.phase === "authenticated";
+  return getAuthStatusSnapshot().phase === "authenticated";
 }
 
 /**
@@ -314,7 +363,9 @@ export function isAuthenticatedNow(): boolean {
  * isolating its inbox per user/agent (#18391). Mirrors {@link isAuthenticatedNow}.
  */
 export function getAuthStatusSnapshot(): AuthStatusState {
-  return authStatusSnapshot;
+  return currentAuthAuthority() === authStatusAuthority
+    ? authStatusSnapshot
+    : { phase: "loading" };
 }
 
 /**
@@ -362,6 +413,7 @@ export function __setAuthStatusForTests(state: AuthStatusState): () => void {
  * product code.
  */
 export function __resetAuthStatusForTests(): void {
+  authStatusAuthority = currentAuthAuthority();
   authStatusFetch = null;
   authStatusPrime = null;
   authStatusPrimeSettledAt = 0;
@@ -398,11 +450,27 @@ export function useAuthStatus(options: UseAuthStatusOptions = {}): {
   useEffect(() => {
     mountedRef.current = true;
     authStatusSubscribers.add(setState);
+    synchronizeAuthAuthority();
     setState(authStatusSnapshot);
+    const unsubscribeAuthority = client.onAuthorityChange(() => {
+      synchronizeAuthAuthority();
+      // Connection selection sets base and bearer synchronously. Probe only
+      // after that transaction, while invalidating the old snapshot immediately.
+      queueMicrotask(() => {
+        if (
+          mountedRef.current &&
+          !skip &&
+          !observeOnly &&
+          authStatusSnapshot.phase === "loading"
+        )
+          void activate();
+      });
+    });
     if (!skip && !observeOnly) void activate();
     return () => {
       mountedRef.current = false;
       authStatusSubscribers.delete(setState);
+      unsubscribeAuthority();
     };
   }, [skip, observeOnly, activate]);
 
@@ -504,5 +572,11 @@ export function useAuthStatus(options: UseAuthStatusOptions = {}): {
     };
   }, [skip, observeOnly, pollIntervalMs, fetch]);
 
-  return { state, refetch: fetch };
+  return {
+    state:
+      currentAuthAuthority() === authStatusAuthority
+        ? state
+        : { phase: "loading" },
+    refetch: fetch,
+  };
 }

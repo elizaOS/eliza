@@ -4,6 +4,7 @@
   "type": "module",
   "description": "Personal-assistant orchestration plugin: BRIEF, PRIORITIZE, PERSONAL_ASSISTANT cross-domain orchestration, scheduled-task owner CRUD, and default-pack composition. Slimmed from the legacy plugin-lifeops; domain-specific surfaces have moved to plugin-inbox, plugin-goals, plugin-calendar, plugin-blocker, plugin-finances, plugin-relationships, etc.",
   "sideEffects": [
+    "**/*.css",
     "./src/api/client-lifeops.ts",
     "./dist/api/client-lifeops.js",
     "./src/register.ts",
@@ -105,6 +106,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.1",
+    "tailwindcss": "^4.3.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "@electric-sql/pglite": "^0.4.0",
     "@types/jsdom": "^30.0.0",

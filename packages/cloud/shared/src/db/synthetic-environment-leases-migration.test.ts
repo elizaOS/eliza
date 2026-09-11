@@ -10,7 +10,7 @@ const journalUrl = new URL("./migrations/meta/_journal.json", import.meta.url);
 describe("0299 synthetic environment leases migration", () => {
   it("creates the fenced authority table and rejects partial authority rows", async () => {
     const journal = JSON.parse(await readFile(journalUrl, "utf8")) as {
-      entries: Array<{ tag: string }>;
+      entries: Array<{ idx: number; tag: string }>;
     };
     expect(
       journal.entries.filter(({ tag }) => tag === "0299_synthetic_environment_leases"),

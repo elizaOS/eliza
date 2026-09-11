@@ -16,6 +16,10 @@ import type { Plugin } from "@elizaos/core";
 
 import type { ElizaConfig } from "../config/config.ts";
 import type { PluginInstallRecord } from "../config/types.eliza.ts";
+import {
+  type PackageExportEntry,
+  packageExportCandidates,
+} from "./workspace-plugin-source.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -246,29 +250,6 @@ export function repairBrokenInstallRecord(
   record.installPath = "";
   record.source = "npm";
   return true;
-}
-
-/** Read package.json exports/main to find the importable entry file. */
-type PackageExportEntry =
-  | string
-  | {
-      "eliza-source"?: PackageExportEntry;
-      import?: string;
-      default?: string;
-    };
-
-function packageExportCandidates(entry: PackageExportEntry): string[] {
-  if (typeof entry === "string") {
-    return [entry];
-  }
-
-  return [
-    ...(entry["eliza-source"]
-      ? packageExportCandidates(entry["eliza-source"])
-      : []),
-    ...(typeof entry.import === "string" ? [entry.import] : []),
-    ...(typeof entry.default === "string" ? [entry.default] : []),
-  ];
 }
 
 /** @internal Exported for testing. */

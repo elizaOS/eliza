@@ -171,6 +171,37 @@ describe("resolvePlugins manifest discovery", () => {
     }
   });
 
+  it("the Eliza app manifest marks the personal assistant requiredForReady and leaves the calendar plugin deferred (#30943)", async () => {
+    // With this manifest the assistant loads in the blocking wave (the
+    // generic partition is pinned by "loads a host-manifest readiness plugin
+    // in blocking only"); the collector withholds the standalone calendar and
+    // goals entries whenever the assistant is present, so on both hosts the
+    // assistant's init registers them with the composed names withheld.
+    const appPackagePath = path.resolve(
+      import.meta.dirname,
+      "../../../app/package.json",
+    );
+    const appPackage = JSON.parse(
+      await fs.readFile(appPackagePath, "utf8"),
+    ) as {
+      elizaos?: {
+        app?: {
+          defaults?: Record<
+            string,
+            { enabled?: boolean; requiredForReady?: boolean }
+          >;
+        };
+      };
+    };
+    const defaults = appPackage.elizaos?.app?.defaults ?? {};
+    expect(defaults["personal-assistant"]).toMatchObject({
+      enabled: true,
+      requiredForReady: true,
+    });
+    expect(defaults.calendar?.requiredForReady).not.toBe(true);
+    expect(defaults.goals?.requiredForReady).not.toBe(true);
+  });
+
   it("loads a host-manifest readiness plugin in blocking only", async () => {
     const previousCwd = process.cwd();
     const workspace = await mkdtemp(path.join(tmpdir(), "eliza-app-ready-"));

@@ -267,11 +267,11 @@ const FRONTEND_ALIAS_TARGETS: Record<
     apiHost: "api.eliza.app",
   },
   "cloud-staging.eliza.app": {
-    appHost: "develop.eliza-app.pages.dev",
+    appHost: "staging.eliza-app.pages.dev",
     apiHost: "api-staging.eliza.app",
   },
   "staging.eliza.app": {
-    appHost: "develop.eliza-app.pages.dev",
+    appHost: "staging.eliza-app.pages.dev",
     apiHost: "api-staging.eliza.app",
   },
 };

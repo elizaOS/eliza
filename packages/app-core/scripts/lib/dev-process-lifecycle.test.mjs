@@ -258,3 +258,112 @@ describe("createApiHealthWatchdog", () => {
     }
   });
 });
+
+describe("API watchdog diagnostics", () => {
+  const failedProbe = {
+    healthy: false,
+    reason: "timeout",
+    status: null,
+    elapsedMs: 1502,
+    childPid: 123,
+  };
+
+  it("retains each failed probe and recovery without changing the restart streak", async () => {
+    const healthyProbe = {
+      ...failedProbe,
+      healthy: true,
+      reason: "ready",
+      status: 200,
+      elapsedMs: 7,
+    };
+    const probes = [
+      failedProbe,
+      healthyProbe,
+      failedProbe,
+      failedProbe,
+      failedProbe,
+    ];
+    const onProbe = vi.fn();
+    const restart = vi.fn();
+    const watchdog = createApiHealthWatchdog({
+      check: async () => probes.shift(),
+      restart,
+      onProbe,
+    });
+    for (let i = 0; i < 4; i++) await watchdog.checkNow();
+    expect(restart).not.toHaveBeenCalled();
+    await watchdog.checkNow();
+    expect(restart).toHaveBeenCalledTimes(1);
+    expect(
+      onProbe.mock.calls.map(([probe]) => [probe.decision, probe.failureCount]),
+    ).toEqual([
+      ["retry", 1],
+      ["healthy", 0],
+      ["retry", 1],
+      ["retry", 2],
+      ["restart", 3],
+    ]);
+    expect(onProbe.mock.calls[0][0]).toMatchObject({
+      ...failedProbe,
+      generation: 0,
+    });
+    expect(onProbe.mock.calls[1][0].recovered).toBe(true);
+  });
+
+  it("discards stale diagnostics and identifies replacement boot grace", async () => {
+    const pendingProbe = deferred();
+    const onProbe = vi.fn();
+    const restart = vi.fn();
+    const watchdog = createApiHealthWatchdog({
+      check: vi
+        .fn()
+        .mockImplementationOnce(() => pendingProbe.promise)
+        .mockResolvedValue({ ...failedProbe, childPid: 456 }),
+      restart,
+      onProbe,
+      failureThreshold: 1,
+    });
+    const pending = watchdog.checkNow();
+    watchdog.beginRecovery();
+    await watchdog.checkNow();
+    pendingProbe.resolve(failedProbe);
+    await pending;
+    expect(restart).not.toHaveBeenCalled();
+    expect(onProbe).toHaveBeenCalledTimes(1);
+    expect(onProbe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        generation: 1,
+        childPid: 456,
+        decision: "boot_grace",
+        failureCount: 0,
+      }),
+    );
+  });
+
+  it("redacts thrown check errors while retaining the failed check duration", async () => {
+    let clock = 100;
+    const onProbe = vi.fn();
+    const watchdog = createApiHealthWatchdog({
+      check: async () => {
+        clock = 200;
+        throw new Error("private-credential");
+      },
+      restart: vi.fn(),
+      onProbe,
+      now: () => clock,
+    });
+    await watchdog.checkNow();
+    expect(onProbe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        healthy: false,
+        reason: "check_error",
+        status: null,
+        elapsedMs: 100,
+        decision: "retry",
+      }),
+    );
+    expect(JSON.stringify(onProbe.mock.calls)).not.toContain(
+      "private-credential",
+    );
+  });
+});

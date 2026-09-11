@@ -109,11 +109,17 @@ describe.skipIf(process.platform === "win32")(
 
       expect(result.code).toBe(0);
       expect(result.stderr).toEqual(Buffer.alloc(0));
-      expect(result.stdout.subarray(0, STDOUT_BYTES)).toEqual(
-        Buffer.alloc(STDOUT_BYTES, "x"),
-      );
-      expect(result.stdout.subarray(STDOUT_BYTES).toString()).toBe(
-        `${STDOUT_SENTINEL}${RESOLVED_MARKER}`,
+      const resolvedMarker = Buffer.from(RESOLVED_MARKER);
+      const resolvedMarkerOffset = result.stdout.indexOf(resolvedMarker);
+      expect(resolvedMarkerOffset).toBeGreaterThanOrEqual(0);
+      // The harness and detached child inherit the same pipe, so scheduling may
+      // place this harness marker before, within, or after the child payload.
+      const containerStdout = Buffer.concat([
+        result.stdout.subarray(0, resolvedMarkerOffset),
+        result.stdout.subarray(resolvedMarkerOffset + resolvedMarker.length),
+      ]);
+      expect(containerStdout).toEqual(
+        Buffer.from(`${"x".repeat(STDOUT_BYTES)}${STDOUT_SENTINEL}`),
       );
       expect(result.stdout.length).toBe(
         STDOUT_BYTES +
