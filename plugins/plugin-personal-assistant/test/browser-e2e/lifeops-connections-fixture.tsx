@@ -183,14 +183,27 @@ function source(item: LifeOpsCalendarSummary): LifeOpsCalendarSourceHealth {
 function snapshot(): LifeOpsConnectionsSnapshot {
   const connected = isConnected();
   const appleOnly = scenario === "apple-only";
+  const builtInOnly = scenario === "built-in-only";
   const multiAccount = scenario === "multi-account";
   const calendars = [
     calendar("google"),
     ...(multiAccount ? [secondGoogleCalendar()] : []),
     calendar("apple_calendar"),
   ];
-  const visibleCalendars =
-    connected && !appleOnly
+  const visibleCalendars: LifeOpsCalendarSummary[] = builtInOnly
+    ? [
+        {
+          ...calendar("google"),
+          provider: "eliza",
+          grantId: "eliza-calendar",
+          connectorAccountId: "eliza-calendar",
+          accountEmail: null,
+          calendarId: "eliza-calendar",
+          summary: "Eliza Calendar",
+          accessRole: "owner",
+        },
+      ]
+    : connected && !appleOnly
       ? calendars
       : calendars.filter((item) => item.provider === "apple_calendar");
   const requestedPermission = params.get(
@@ -199,25 +212,26 @@ function snapshot(): LifeOpsConnectionsSnapshot {
   const permissionStatus =
     permissionOverride ?? requestedPermission ?? "denied";
   return {
-    googleAccounts: appleOnly
-      ? []
-      : [
-          googleStatus(connected),
-          ...(multiAccount && connected ? [secondGoogleStatus()] : []),
-        ],
+    googleAccounts:
+      appleOnly || builtInOnly
+        ? []
+        : [
+            googleStatus(connected),
+            ...(multiAccount && connected ? [secondGoogleStatus()] : []),
+          ],
     calendars: visibleCalendars,
     calendarFeed: {
       calendarId: "all",
       events: [],
       source: "cache",
-      state: healthRecovered ? "complete" : "partial",
+      state: builtInOnly || healthRecovered ? "complete" : "partial",
       sources: visibleCalendars.map(source),
       timeMin: "2026-07-23T00:00:00.000Z",
       timeMax: "2026-11-20T00:00:00.000Z",
       syncedAt: "2026-08-22T08:00:00.000Z",
     },
     gmailHealthByGrantId:
-      connected && !appleOnly
+      connected && !appleOnly && !builtInOnly
         ? {
             [GRANT_ID]: {
               provider: "google",
