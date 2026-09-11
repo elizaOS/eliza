@@ -7,14 +7,18 @@ the old `eliza.developer-workspace` session flag or `?devtools=1` query.
 
 ## Same app, separate view
 
-The developer chat shares one `AppProvider`, active conversation, composer
-draft, `sendChatText` path and stop handler with the app. Prompts control the
-real app. There is no second agent, runtime or conversation. The app remains
-mounted when hidden; **Show app** reveals it without changing the conversation.
-Navigation stays inside `/dev#/notes`, `/dev#/chat`, etc. Both hash-aware
-navigation and the privileged shell history writer preserve this boundary,
-including imperative agent view actions. **Exit** opens the active app route
-without developer chrome.
+Keep `/dev` and the normal app in separate tabs on the same loopback origin.
+The developer composer relays prompts to the selected normal app tab through
+`developer-tab-bridge`; that tab owns the actual conversation, send/stop path
+and view navigation. A single matching app tab is selected automatically. With
+multiple app tabs, use **App tab** to select the target. **Open app** opens
+`/chat` when none is available. Requests are correlated and time out visibly;
+stale tabs and tabs for another agent are not valid targets.
+
+Sending “open Notes” from `/dev` therefore navigates the selected normal tab to
+`/notes`. The developer tab stays at `/dev` and displays the shared conversation
+and recorded trajectories. The hidden app mount supplies the existing app
+context; it is not a second visible app pane. **Exit** opens the normal route.
 
 The default view is a single chat column: messages, recorded token counts,
 an **Inspect** button on each reply, and a fixed composer. **Inspect** opens a
@@ -100,11 +104,10 @@ Details disclosures use the shared Collapsible and Button controls; complete JSO
 scroll region. Enter sends; Shift+Enter inserts a newline; IME composition does
 not submit. Failed sends preserve the draft without replacing newly typed text.
 
-The app is hidden initially. When revealed, widths below 1280px show the app
-with **Back to chat** available. Wider screens show the app beside a 480px chat
-column. Buttons and disclosures have 44px targets, visible focus and accessible
-names. The live indicator respects reduced motion. Colors, typography and
-controls reuse the shared app design system described in `../../../PRODUCT.md`.
+The normal app is viewed in its separate tab at every viewport width. Buttons
+and disclosures have visible focus and accessible names. The live indicator
+respects reduced motion. Colors, typography and controls reuse the shared app
+design system described in `../../../PRODUCT.md`.
 
 `DeveloperWorkspace.tsx` owns the shell, chat, settings and trace disclosures.
 `useDeveloperTrajectories.ts` owns summary polling and advanced selection.
@@ -120,26 +123,9 @@ Focused tests cover canonical sending, message/room correlation, live elapsed
 time before usage, lazy detail reads, unknown usage, stage classification,
 polling cancellation, normal routes and developer navigation isolation.
 `DeveloperWorkspace.stories.tsx` contains synthetic summary/trace fixtures.
-Real Home and Notes prompts, live counts and route checks are documented in
-`/Users/nubs/Documents/ChatGPT/test/eliza-dev-chat-isolation-20260909.md`.
-
-The 2026-09-10 Trajectories check used a real Notes turn with three foreground
-model calls, five semantic stages and a separate memory run. Clipboard and DOM
-text matched exactly for 88,994 input characters, 53,759 system characters and
-862 output characters. A separate background input copied all 50,758 characters.
-Opening an older Calendar reply recovered five calls and 82,039 input / 835 output
-tokens; its counts remained after collapse. All 36 focused tests passed.
-The exact previously empty single-call reply also displayed and copied its
-87,116-character input and 679-character output without changes.
-
-The developer inspector and model settings now use the canonical controls;
-their 14 previously recorded design findings were resolved. The latest root
-verification still reports three unrelated NativeSelect overrides in
-WorkflowTriggerPanel. No debt allowance or test expectation was relaxed.
-
-The app capture audit passed 222 checks. Pixel triage reported 204 verified,
-zero broken and 12 needing visual review across 216 captured views. This broad
-capture predates the final developer-only label/control adjustments; the live
-developer view is checked separately. Full release and latency acceptance remain
-open. Evidence lives locally under
-`/Users/nubs/Documents/ChatGPT/test/eliza-trajectories-20260910`.
+Real Home, Notes, Calendar and note-creation checks have been run on the local
+integration branch. The pull request distinguishes that supporting evidence
+from validation on its isolated head. Full current-head screenshot, video,
+OCR and log evidence and the repository verification gate remain requirements
+for final acceptance. Recorded input/output counts are not first-token timing
+or proof that foreground latency and quota costs are fully optimized.
