@@ -8,7 +8,6 @@
 import {
   CORE_PLANNER_TERMINALS,
   type IAgentRuntime,
-  promoteSubactionsToActions,
   Service,
   ServiceType,
 } from "@elizaos/core";
@@ -36,9 +35,7 @@ const reminderArgs = {
   },
 };
 const plannerToolNames = [
-  ...promoteSubactionsToActions(ownerRemindersAction).map(
-    (action) => action.name,
-  ),
+  ownerRemindersAction.name,
   ...CORE_PLANNER_TERMINALS.map((tool) => tool.name),
 ];
 const syntheticRuntimePolicy = {
@@ -395,12 +392,12 @@ const definition = scenario({
         name: "cloud-reminder-post-action-evaluator",
         match: {
           modelType: "RESPONSE_HANDLER",
-          input: { includes: request },
+          input: { exact: '{"plannerCompleted":true,"turnScope":"final"}' },
           toolNames: [],
         },
         response: {
           json: {
-            success: true,
+            success: false,
             decision: "FINISH",
             thought: "The reminder draft is waiting for owner confirmation.",
           },

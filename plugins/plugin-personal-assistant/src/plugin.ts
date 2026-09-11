@@ -217,6 +217,7 @@ import {
 } from "./lifeops/resource-capacity/index.js";
 // LifeOps runtime (scheduler task worker + registration)
 import {
+  assertLifeOpsTaskWorkerMode,
   ensureLifeOpsSchedulerTask,
   LIFEOPS_TASK_NAME,
   registerLifeOpsTaskWorker,
@@ -944,6 +945,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     _pluginConfig: Record<string, unknown>,
     runtime: IAgentRuntime,
   ) => {
+    assertLifeOpsTaskWorkerMode(runtime, "all");
     registerPersonalAssistantConflictDetectHost(runtime);
     runtime.registerEvent(MEETING_TRANSCRIPT_FINALIZED_EVENT, async (payload) =>
       handleMeetingTranscriptFinalized(

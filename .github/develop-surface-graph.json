@@ -74,7 +74,8 @@
       "workspacePatterns": [
         "packages/cloud/**",
         "plugins/plugin-cloud-apps",
-        "plugins/plugin-elizacloud"
+        "plugins/plugin-elizacloud",
+        "packages/scenario-runner"
       ],
       "inputs": ["scripts/cloud/**"],
       "dependsOn": ["canonical"]

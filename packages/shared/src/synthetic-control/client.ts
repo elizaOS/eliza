@@ -1,6 +1,7 @@
 /** Sends authenticated synthetic-control commands and rejects malformed or mismatched subprocess replies. */
 
 import { randomUUID } from "node:crypto";
+import { isSyntheticEnvironmentNamespace } from "../contracts/synthetic-environment-lease.js";
 import {
   parseSyntheticControlRequest,
   parseSyntheticControlResponse,
@@ -59,10 +60,10 @@ export class SyntheticControlClient {
     if (base.username || base.password) {
       throw new Error("synthetic control baseUrl must not contain credentials");
     }
-    const namespace = options.namespace.trim();
-    if (namespace.length === 0 || namespace.length > 512) {
+    const namespace = options.namespace;
+    if (!isSyntheticEnvironmentNamespace(namespace)) {
       throw new Error(
-        "synthetic control namespace must contain at most 512 characters",
+        "synthetic control namespace must be canonical, nonempty, and at most 512 characters",
       );
     }
     if (options.token.trim().length < 16) {

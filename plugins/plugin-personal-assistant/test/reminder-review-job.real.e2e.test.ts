@@ -12,8 +12,15 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { TaskService } from "@elizaos/core/node";
+import {
+  getScheduledTaskRunner,
+  getScheduledTaskRunnerDeps,
+  registerScheduledTaskChannelDispatcher,
+} from "@elizaos/plugin-scheduling";
+import { describe, expect, it, vi } from "vitest";
 import { createRealTestRuntime } from "../../../packages/app-core/test/helpers/real-runtime.ts";
+import { schedulingPlugin } from "../../plugin-scheduling/src/plugin.ts";
 import type { LifeOpsOccurrence } from "../src/contracts/index.js";
 import {
   createLifeOpsReminderAttempt,
@@ -21,6 +28,12 @@ import {
   createLifeOpsTaskDefinition,
   LifeOpsRepository,
 } from "../src/lifeops/repository.js";
+import {
+  assertLifeOpsTaskWorkerMode,
+  ensureLifeOpsSchedulerTask,
+  executeLifeOpsSchedulerTask,
+  LIFEOPS_TASK_NAME,
+} from "../src/lifeops/runtime.ts";
 import { LifeOpsService } from "../src/lifeops/service.js";
 import {
   REMINDER_LIFECYCLE_METADATA_KEY,
@@ -30,6 +43,7 @@ import {
   REMINDER_REVIEW_STATUS_METADATA_KEY,
   REMINDER_URGENCY_METADATA_KEY,
 } from "../src/lifeops/service-constants.js";
+import { personalAssistantRemindersPlugin } from "../src/reminders-plugin.ts";
 
 const baseAt = new Date("2026-04-29T17:00:00.000Z");
 
@@ -41,13 +55,14 @@ function makeOccurrence(args: {
   runtime: AgentRuntime;
   definitionId: string;
   subjectId?: string;
+  agentOwned?: boolean;
 }): LifeOpsOccurrence {
   const subjectId = args.subjectId ?? String(args.runtime.agentId);
   return {
     id: crypto.randomUUID(),
     agentId: String(args.runtime.agentId),
-    domain: "user_lifeops",
-    subjectType: "owner",
+    domain: args.agentOwned ? "agent_ops" : "user_lifeops",
+    subjectType: args.agentOwned ? "agent" : "owner",
     subjectId,
     visibilityScope: "owner_agent_admin",
     contextPolicy: "explicit_only",
@@ -73,13 +88,14 @@ async function seedDueStretchReview(args: {
   repository: LifeOpsRepository;
   ownerEntityId?: string;
   deliveryRoomId?: string;
+  agentOwned?: boolean;
 }) {
   const agentId = String(args.runtime.agentId);
   const subjectId = args.ownerEntityId ?? agentId;
   const definition = createLifeOpsTaskDefinition({
     agentId,
-    domain: "user_lifeops",
-    subjectType: "owner",
+    domain: args.agentOwned ? "agent_ops" : "user_lifeops",
+    subjectType: args.agentOwned ? "agent" : "owner",
     subjectId,
     visibilityScope: "owner_agent_admin",
     contextPolicy: "explicit_only",
@@ -125,6 +141,7 @@ async function seedDueStretchReview(args: {
     runtime: args.runtime,
     definitionId: definition.id,
     subjectId,
+    agentOwned: args.agentOwned,
   });
   await args.repository.upsertOccurrence(occurrence);
   const initialAttempt = createLifeOpsReminderAttempt({
@@ -200,6 +217,252 @@ async function seedOwnerReply(args: {
 }
 
 describe("reminder review jobs real scenarios", () => {
+  it("keeps agent-owned work running in the full scheduler without a configured human owner", async () => {
+    const handle = await createRealTestRuntime({
+      characterName: "lifeops-agent-owned-clock",
+    });
+    const runtime = handle.runtime;
+    try {
+      await TaskService.stop(runtime);
+      await LifeOpsRepository.bootstrapSchema(runtime);
+      const repository = new LifeOpsRepository(runtime);
+      const { initialAttempt, occurrence } = await seedDueStretchReview({
+        runtime,
+        repository,
+        agentOwned: true,
+      });
+      const result = await executeLifeOpsSchedulerTask(runtime, {
+        now: addMinutes(baseAt, 8),
+        reminderLimit: 1,
+        sleepCycleCheckins: false,
+      });
+      expect(result.reminderAttempts).toContainEqual(
+        expect.objectContaining({
+          ownerId: occurrence.id,
+          outcome: "delivered",
+        }),
+      );
+      const attempts = await repository.listReminderAttempts(
+        String(runtime.agentId),
+        { ownerType: "occurrence", ownerId: occurrence.id },
+      );
+      expect(
+        attempts.find((attempt) => attempt.id === initialAttempt.id)
+          ?.reviewStatus,
+      ).toBe("escalated");
+    } finally {
+      await handle.cleanup();
+    }
+  }, 30_000);
+
+  it("removes a lazily created disabled-host scheduler row on stop", async () => {
+    const previous = process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
+    process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER = "1";
+    const runtimeHandle = await createRealTestRuntime({
+      characterName: "lifeops-selective-disabled",
+    });
+    const runtime = runtimeHandle.runtime;
+    try {
+      await TaskService.stop(runtime);
+      await LifeOpsRepository.bootstrapSchema(runtime);
+      await personalAssistantRemindersPlugin.init?.({}, runtime);
+      const taskId = await ensureLifeOpsSchedulerTask(runtime);
+      const worker = runtime.getTaskWorker(LIFEOPS_TASK_NAME);
+      await expect(
+        worker?.shouldRun?.(runtime, { name: LIFEOPS_TASK_NAME }),
+      ).resolves.toBe(false);
+      await personalAssistantRemindersPlugin.dispose?.(runtime);
+      expect(await runtime.getTask(taskId)).toBeNull();
+      expect(getScheduledTaskRunnerDeps(runtime)).toBeNull();
+    } finally {
+      await personalAssistantRemindersPlugin.dispose?.(runtime);
+      await runtimeHandle.cleanup();
+      if (previous === undefined)
+        delete process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
+      else process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER = previous;
+    }
+  }, 30_000);
+
+  it("serializes concurrent selective disposal before admitting a replacement host", async () => {
+    const runtimeHandle = await createRealTestRuntime({
+      characterName: "lifeops-selective-disposal",
+    });
+    const runtime = runtimeHandle.runtime;
+    let releaseDelete: () => void = () => undefined;
+    const deleteGate = new Promise<void>((resolve) => {
+      releaseDelete = resolve;
+    });
+    const disposals: Promise<void>[] = [];
+    try {
+      await TaskService.stop(runtime);
+      await LifeOpsRepository.bootstrapSchema(runtime);
+      await personalAssistantRemindersPlugin.init?.({}, runtime);
+      await expect
+        .poll(() =>
+          runtime
+            .getTaskWorker(LIFEOPS_TASK_NAME)
+            ?.shouldRun?.(runtime, { name: LIFEOPS_TASK_NAME }),
+        )
+        .toBe(true);
+      const originalDelete = runtime.deleteTask.bind(runtime);
+      const deletion = vi
+        .spyOn(runtime, "deleteTask")
+        .mockImplementation(async (id) => {
+          await deleteGate;
+          return originalDelete(id);
+        });
+      disposals.push(
+        Promise.resolve(personalAssistantRemindersPlugin.dispose?.(runtime)),
+      );
+      disposals.push(
+        Promise.resolve(personalAssistantRemindersPlugin.dispose?.(runtime)),
+      );
+      await vi.waitFor(() => expect(deletion).toHaveBeenCalled());
+      await expect(
+        personalAssistantRemindersPlugin.init?.({}, runtime),
+      ).rejects.toThrow(/already initialized/);
+      expect(() => assertLifeOpsTaskWorkerMode(runtime, "all")).toThrow(
+        /either the full assistant/,
+      );
+      expect(deletion).toHaveBeenCalledTimes(1);
+      releaseDelete();
+      await Promise.all(disposals);
+      deletion.mockRestore();
+      await personalAssistantRemindersPlugin.init?.({}, runtime);
+      await expect
+        .poll(() =>
+          runtime
+            .getTaskWorker(LIFEOPS_TASK_NAME)
+            ?.shouldRun?.(runtime, { name: LIFEOPS_TASK_NAME }),
+        )
+        .toBe(true);
+      const tasks = await runtime.getTasks({ agentIds: [runtime.agentId] });
+      expect(
+        tasks.filter((task) => task.name === LIFEOPS_TASK_NAME),
+      ).toHaveLength(1);
+    } finally {
+      releaseDelete();
+      await Promise.allSettled(disposals);
+      vi.restoreAllMocks();
+      await personalAssistantRemindersPlugin.dispose?.(runtime);
+      await runtimeHandle.cleanup();
+    }
+  }, 30_000);
+
+  it("delivers configured-owner reminders through TaskService and stops its selective host", async () => {
+    const runtimeHandle = await createRealTestRuntime({
+      characterName: "lifeops-selective-configured-owner",
+      plugins: [schedulingPlugin],
+    });
+    const runtime = runtimeHandle.runtime;
+    const taskService = new TaskService(runtime);
+    try {
+      await TaskService.stop(runtime);
+      const ownerId = stringToUuid("lifeops-selective-configured-owner-person");
+      runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", ownerId);
+      await LifeOpsRepository.bootstrapSchema(runtime);
+      const repository = new LifeOpsRepository(runtime);
+      const { initialAttempt, occurrence } = await seedDueStretchReview({
+        runtime,
+        repository,
+        ownerEntityId: ownerId,
+      });
+      await personalAssistantRemindersPlugin.init?.({}, runtime);
+      const worker = runtime.getTaskWorker(LIFEOPS_TASK_NAME);
+      if (!worker) throw new Error("Reminder host did not register its worker");
+      await expect
+        .poll(() => worker.shouldRun?.(runtime, { name: LIFEOPS_TASK_NAME }))
+        .toBe(true);
+      const dispatched: string[] = [];
+      registerScheduledTaskChannelDispatcher(runtime, {
+        channelKey: "local_review_delivery",
+        dispatch: async (record) => {
+          dispatched.push(record.taskId);
+          return { ok: true, messageId: `local:${record.taskId}` };
+        },
+      });
+      const runner = getScheduledTaskRunner(runtime, {
+        agentId: runtime.agentId,
+      });
+      const scheduled = await runner.schedule({
+        kind: "reminder",
+        promptInstructions:
+          "Deliver the configured owner's scheduled reminder.",
+        trigger: { kind: "once", atIso: addMinutes(baseAt, 5) },
+        priority: "medium",
+        escalation: {
+          steps: [{ delayMinutes: 0, channelKey: "local_review_delivery" }],
+        },
+        respectsGlobalPause: false,
+        source: "user_chat",
+        createdBy: ownerId,
+        ownerVisible: true,
+      });
+      const tasks = await runtime.getTasks({ agentIds: [runtime.agentId] });
+      const task = tasks.find(
+        (candidate) => candidate.name === LIFEOPS_TASK_NAME,
+      );
+      if (!task?.id) throw new Error("Reminder host did not persist its task");
+      await runtime.updateTask(task.id, {
+        metadata: {
+          ...task.metadata,
+          now: addMinutes(baseAt, 8),
+          reminderLimit: 1,
+          updatedAt: 0,
+        },
+      });
+      const dueTask = await runtime.getTask(task.id);
+      if (!dueTask)
+        throw new Error("Reminder task disappeared before its due tick");
+      await taskService.runTick([dueTask]);
+      expect(dispatched).toEqual([scheduled.taskId]);
+      expect(
+        (await runner.list()).find((task) => task.taskId === scheduled.taskId)
+          ?.metadata?.lastDispatchResult,
+      ).toMatchObject({ ok: true, messageId: `local:${scheduled.taskId}` });
+      await taskService.runTick([dueTask]);
+      expect(dispatched).toEqual([scheduled.taskId]);
+      const attempts = await repository.listReminderAttempts(
+        String(runtime.agentId),
+        {
+          ownerType: "occurrence",
+          ownerId: occurrence.id,
+        },
+      );
+      expect(
+        attempts.find((attempt) => attempt.id === initialAttempt.id)
+          ?.reviewStatus,
+      ).toBe("escalated");
+      expect(
+        attempts.some(
+          (attempt) =>
+            attempt.id !== initialAttempt.id && attempt.outcome === "delivered",
+        ),
+      ).toBe(true);
+      await personalAssistantRemindersPlugin.dispose?.(runtime);
+      expect(runtime.getTaskWorker(LIFEOPS_TASK_NAME)).toBeUndefined();
+      expect(getScheduledTaskRunnerDeps(runtime)).toBeNull();
+      expect(
+        (await runtime.getTasks({ agentIds: [runtime.agentId] })).some(
+          (candidate) => candidate.name === LIFEOPS_TASK_NAME,
+        ),
+      ).toBe(false);
+      await expect(worker.execute(runtime, {}, dueTask)).rejects.toMatchObject({
+        code: "LIFEOPS_SCHEDULER_INACTIVE",
+      });
+      expect(
+        await repository.listReminderAttempts(String(runtime.agentId), {
+          ownerType: "occurrence",
+          ownerId: occurrence.id,
+        }),
+      ).toEqual(attempts);
+    } finally {
+      await personalAssistantRemindersPlugin.dispose?.(runtime);
+      await taskService.stop();
+      await runtimeHandle.cleanup();
+    }
+  }, 30_000);
+
   it("runs a persisted due review callback and escalates without waiting for plan exhaustion", async () => {
     const runtimeHandle = await createRealTestRuntime({
       characterName: "lifeops-reminder-review-job-agent",

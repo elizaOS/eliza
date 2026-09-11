@@ -5,6 +5,23 @@ calendar, email, messaging, follow-ups with people, blockers, watchers, and
 the operational glue around them. This README is the architecture summary
 for contributors.
 
+## Selective reminder hosts
+
+Hosts that need owner reminder actions without the other assistant domains can
+load `@elizaos/plugin-personal-assistant/reminders-plugin` with its declared
+scheduling, reminders, and goals dependencies. This assembly uses the existing
+`LIFEOPS_SCHEDULER` task on core `TaskService`: each tick processes owner reminder
+definitions and the canonical scheduled-item spine. It does not start a separate
+clock or run the full assistant's other domain jobs.
+
+Load either the selective assembly or the full assistant in one runtime. An
+incompatible host is rejected before it takes over the scheduler. Initialization
+waits for runtime readiness before ensuring the persisted task;
+`ELIZA_DISABLE_LIFEOPS_SCHEDULER` retains a disabled worker. Disposal drains
+admitted work, removes scheduler rows, and releases its runner dependencies
+before a replacement host can start. Reminder reads retain their caller scope;
+background entrypoints resolve the same owner identity used for delivery.
+
 ## Mail and calendar connections
 
 The focused `/lifeops/connections` view owns cross-domain onboarding and

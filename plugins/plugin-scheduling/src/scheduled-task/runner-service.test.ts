@@ -30,11 +30,17 @@ import {
   listScheduledTaskChannelDispatcherKeys,
   registerScheduledTaskChannelDispatcher,
 } from "./channel-dispatcher-registry.js";
-import type { ScheduledTaskDispatchRecord } from "./runner.js";
+import {
+  createInMemoryScheduledTaskStore,
+  type ScheduledTaskDispatchRecord,
+} from "./runner.js";
 import {
   getScheduledTaskRunner,
+  registerScheduledTaskRunnerDeps,
+  type ScheduledTaskRunnerDepsProvider,
   ScheduledTaskRunnerService,
 } from "./runner-service.js";
+import { createInMemoryScheduledTaskLogStore } from "./state-log.js";
 
 it("exposes a typed unavailable error when the runner service is absent", () => {
   const runtime = {
@@ -64,6 +70,73 @@ function makeFakeRuntime(): IAgentRuntime {
     reportError: () => undefined,
   } as unknown as IAgentRuntime;
 }
+
+it("replaces released provider handles and blocks their later dispatch", async () => {
+  const runtime = makeFakeRuntime();
+  const deliveries: string[] = [];
+  const provider =
+    (label: string): ScheduledTaskRunnerDepsProvider =>
+    () => ({
+      store: createInMemoryScheduledTaskStore(),
+      logStore: createInMemoryScheduledTaskLogStore(),
+      ownerFacts: () => ({ preferredName: label }),
+      globalPause: { current: async () => ({ active: false }) },
+      activity: { hasSignalSince: () => false },
+      subjectStore: { wasUpdatedSince: () => false },
+      dispatcher: {
+        dispatch: async () => {
+          deliveries.push(label);
+          return { ok: true };
+        },
+      },
+    });
+  let activeProvider = provider("first");
+  const stableProvider: ScheduledTaskRunnerDepsProvider = (rt, agentId) =>
+    activeProvider(rt, agentId);
+  const release = registerScheduledTaskRunnerDeps(runtime, stableProvider);
+  const service = await ScheduledTaskRunnerService.start(runtime);
+  try {
+    const first = service.getRunner({ agentId: runtime.agentId });
+    const input = {
+      kind: "reminder" as const,
+      promptInstructions: "Send this complete reminder.",
+      trigger: { kind: "manual" as const },
+      priority: "medium" as const,
+      respectsGlobalPause: false,
+      source: "user_chat" as const,
+      createdBy: runtime.agentId,
+      ownerVisible: true,
+    };
+    const oldTask = await first.schedule(input);
+    release();
+    activeProvider = provider("second");
+    const releaseSecond = registerScheduledTaskRunnerDeps(
+      runtime,
+      stableProvider,
+    );
+    try {
+      release(); // An old lease must not remove the replacement provider.
+      const second = service.getRunner({ agentId: runtime.agentId });
+      expect(await second.resolveOwnerFacts()).toEqual({
+        preferredName: "second",
+      });
+      expect(await first.resolveOwnerFacts()).toEqual({
+        preferredName: "first",
+      });
+      const denied = await first.fire(oldTask.taskId);
+      expect(denied.state.status).toBe("failed");
+      expect(deliveries).toEqual([]);
+      const newTask = await second.schedule(input);
+      await second.fire(newTask.taskId);
+      expect(deliveries).toEqual(["second"]);
+    } finally {
+      releaseSecond();
+    }
+  } finally {
+    release();
+    await service.stop();
+  }
+});
 
 describe("ScheduledTaskRunnerService — rebindable tick clock", () => {
   it("caches one runner per agent and rebinds the clock on every getRunner call", async () => {

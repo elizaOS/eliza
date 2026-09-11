@@ -1321,8 +1321,8 @@ export function createRuntimeScheduledTaskRunner(
  */
 export function registerLifeOpsScheduledTaskRunnerDeps(
   runtime: IAgentRuntime,
-): void {
-  registerScheduledTaskRunnerDeps(runtime, (rt, agentId) =>
+): () => void {
+  return registerScheduledTaskRunnerDeps(runtime, (rt, agentId) =>
     buildLifeOpsRunnerDeps({ runtime: rt, agentId }),
   );
 }

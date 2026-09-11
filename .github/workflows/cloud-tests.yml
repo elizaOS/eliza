@@ -24,6 +24,10 @@ permissions:
   contents: read
 
 jobs:
+  agent-stability:
+    uses: ./.github/workflows/cloud-stability.yml
+    secrets: inherit
+
   lint-and-types:
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 25

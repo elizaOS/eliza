@@ -141,10 +141,23 @@ export type ScheduledTaskRunnerDepsProvider = (
   agentId: string,
 ) => ScheduledTaskRunnerDepsBundle;
 
-const depsProvidersByRuntime = new WeakMap<
+interface RunnerDepsRegistration {
+  readonly provider: ScheduledTaskRunnerDepsProvider | null;
+}
+const depsRegistrationsByRuntime = new WeakMap<
   IAgentRuntime,
-  ScheduledTaskRunnerDepsProvider
+  RunnerDepsRegistration
 >();
+function getRunnerDepsRegistration(
+  runtime: IAgentRuntime,
+): RunnerDepsRegistration {
+  let registration = depsRegistrationsByRuntime.get(runtime);
+  if (!registration) {
+    registration = { provider: null };
+    depsRegistrationsByRuntime.set(runtime, registration);
+  }
+  return registration;
+}
 
 /**
  * Register the production deps provider on the runtime. First-wins: a later
@@ -152,26 +165,35 @@ const depsProvidersByRuntime = new WeakMap<
  * registers during init keeps ownership. The runtime cache is not used here
  * because the provider is a function (not serializable); it is stored on the
  * runtime object directly, mirroring the runtime-registry pattern used by the
- * anchor registry.
+ * anchor registry. The returned release function removes only this registration;
+ * a rejected later registration receives a no-op release. Hosts must drain their
+ * admitted work before release. Retained handles preserve their read snapshot,
+ * but cannot begin another dispatch after their provider changes.
  */
 export function registerScheduledTaskRunnerDeps(
   runtime: IAgentRuntime,
   provider: ScheduledTaskRunnerDepsProvider,
-): void {
-  if (depsProvidersByRuntime.has(runtime)) {
+): () => void {
+  if (getRunnerDepsRegistration(runtime).provider !== null) {
     logger.debug(
       { src: SERVICE_TYPE, agentId: runtime.agentId },
       "ScheduledTask runner deps provider already registered; keeping first-wins registration.",
     );
-    return;
+    return () => undefined;
   }
-  depsProvidersByRuntime.set(runtime, provider);
+  const registration = { provider };
+  depsRegistrationsByRuntime.set(runtime, registration);
+  return () => {
+    if (depsRegistrationsByRuntime.get(runtime) === registration) {
+      depsRegistrationsByRuntime.set(runtime, { provider: null });
+    }
+  };
 }
 
 export function getScheduledTaskRunnerDeps(
   runtime: IAgentRuntime,
 ): ScheduledTaskRunnerDepsProvider | null {
-  return depsProvidersByRuntime.get(runtime) ?? null;
+  return getRunnerDepsRegistration(runtime).provider;
 }
 
 // --- Runner boot hooks ------------------------------------------------------
@@ -526,7 +548,8 @@ function buildRunner(
   runtime: IAgentRuntime,
   opts: GetScheduledTaskRunnerOptions,
 ): ScheduledTaskRunnerHandle {
-  const provider = getScheduledTaskRunnerDeps(runtime);
+  const registration = getRunnerDepsRegistration(runtime);
+  const provider = registration.provider;
   const deps = (provider ?? defaultRunnerDeps)(runtime, opts.agentId);
 
   const gates = deps.gates ?? createTaskGateRegistry();
@@ -560,6 +583,15 @@ function buildRunner(
   // runner was built are still honored.
   const dispatcher: ScheduledTaskDispatcher = {
     dispatch(record) {
+      if (getRunnerDepsRegistration(runtime) !== registration) {
+        throw new ElizaError(
+          "Reacquire the scheduled-task runner after its host changes",
+          {
+            code: "SCHEDULED_TASK_RUNNER_HOST_CHANGED",
+            context: { agentId: opts.agentId },
+          },
+        );
+      }
       const contributed = getScheduledTaskChannelDispatcher(
         runtime,
         record.channelKey,
@@ -615,6 +647,7 @@ function buildRunner(
 const SYSTEM_CLOCK = (): Date => new Date();
 
 interface RunnerCacheEntry {
+  registration: RunnerDepsRegistration;
   runner: ScheduledTaskRunnerHandle;
   /** Mutable clock the cached runner reads through on every `now()` call. */
   clock: { now: () => Date };
@@ -690,7 +723,10 @@ export class ScheduledTaskRunnerService extends Service {
 
   getRunner(opts: GetScheduledTaskRunnerOptions): ScheduledTaskRunnerHandle {
     let entry = this.runners.get(opts.agentId);
-    if (!entry) {
+    const registration = this.runtime
+      ? getRunnerDepsRegistration(this.runtime)
+      : null;
+    if (!entry || entry.registration !== registration) {
       const runtime = this.runtime;
       if (!runtime) {
         throw new Error(
@@ -704,7 +740,11 @@ export class ScheduledTaskRunnerService extends Service {
         agentId: opts.agentId,
         now: () => clock.now(),
       });
-      entry = { runner, clock };
+      entry = {
+        runner,
+        clock,
+        registration: getRunnerDepsRegistration(runtime),
+      };
       this.runners.set(opts.agentId, entry);
     }
     entry.clock.now = opts.now ?? SYSTEM_CLOCK;

@@ -205,22 +205,23 @@ async function runCleanupStep(
   const timeoutPromise = new Promise<"timeout">((resolve) => {
     timeout = setTimeout(() => resolve("timeout"), timeoutMs);
   });
-  const result = await Promise.race([
-    operation().then(() => "done" as const),
-    timeoutPromise,
-  ]);
-  if (timeout) {
-    clearTimeout(timeout);
-  }
-  if (result === "timeout") {
-    if (failOnTimeout) {
-      throw new Error(
+  try {
+    const result = await Promise.race([
+      operation().then(() => "done" as const),
+      timeoutPromise,
+    ]);
+    if (result === "timeout") {
+      if (failOnTimeout) {
+        throw new Error(
+          `[scenario-runner] cleanup step timed out after ${timeoutMs}ms: ${label}`,
+        );
+      }
+      logger.warn(
         `[scenario-runner] cleanup step timed out after ${timeoutMs}ms: ${label}`,
       );
     }
-    logger.warn(
-      `[scenario-runner] cleanup step timed out after ${timeoutMs}ms: ${label}`,
-    );
+  } finally {
+    if (timeout) clearTimeout(timeout);
   }
 }
 
@@ -1577,11 +1578,12 @@ export async function createScenarioRuntime(
       }
     });
     cancelScenarioOnlyLazyServiceStarts(runtime);
-    await runCleanupStep("provider plugin dispose", async () => {
+    await cleanupBoundary("provider plugin dispose", async () => {
       try {
         await disposeScenarioProviderPlugin(selectedProviderPlugin, runtime);
       } catch (err) {
-        // error-policy:J6 provider teardown must not prevent remaining runtime cleanup.
+        // error-policy:J6 Ordinary provider teardown remains best effort; strict synthetic runs aggregate failure.
+        if (syntheticPolicy) throw err;
         logger.debug(`[scenario-runner] provider plugin dispose error: ${err}`);
       }
     });
