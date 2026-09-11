@@ -1151,19 +1151,38 @@ async function finalizeCalendarPlan(args: {
  * "cancel my zorblax checkup" arrived with it set, on a solo event with no
  * attendees. The built-in calendar has no mail path and rejects the flag with a
  * 400, so a plain cancel died on a field the user never asked for and the reply
- * claimed the event could not be found (live capture 2026-08-14).
+ * claimed the event could not be found (live capture 2026-08-14). The same 400
+ * killed "move my vet appointment to 4pm" once the event carried a fabricated
+ * guest (live capture 2026-09-10), so the built-in provider never receives the
+ * flag: the change lands and the completed reply says nobody was emailed
+ * (see builtInNotifyNote).
  *
  * Same shape as the recurrenceScope guard beside it: honor the flag only when
  * the resolved target can actually act on it. Notifying nobody is a no-op, not
  * a conflict.
  */
-function shouldNotifyAttendees(
+export function shouldNotifyAttendees(
   details: Record<string, unknown> | undefined,
-  targetEvent: { attendees?: unknown } | undefined,
+  targetEvent: { provider?: unknown; attendees?: unknown } | undefined,
 ): boolean {
   if (detailBoolean(details, "notifyAttendees") !== true) return false;
+  if (targetEvent?.provider === ELIZA_CALENDAR_PROVIDER) return false;
   const attendees = targetEvent?.attendees;
   return Array.isArray(attendees) && attendees.length > 0;
+}
+
+/**
+ * Completed-reply fact for a built-in calendar mutation that asked for
+ * attendee notifications on an event with guests: the change is stored, but
+ * nobody was emailed, and the reply must not imply otherwise.
+ */
+export function builtInNotifyNote(
+  details: Record<string, unknown> | undefined,
+  targetEvent: { attendees: readonly unknown[] },
+): string {
+  if (detailBoolean(details, "notifyAttendees") !== true) return "";
+  if (targetEvent.attendees.length === 0) return "";
+  return " The built-in calendar can't email attendees, so nobody was notified.";
 }
 
 function buildCalendarServiceErrorFallback(
@@ -1178,11 +1197,6 @@ function buildCalendarServiceErrorFallback(
   // calendar has no recurrence engine. The generic copy invited a retry that
   // can only fail again ("couldn't add that weekly standup … try again." —
   // live capture), so name the boundary and the one action that lifts it.
-  // Reached only when the event really does have attendees; a spurious flag on
-  // a solo event is dropped before the service call (see shouldNotifyAttendees).
-  if (error.code === "ELIZA_CALENDAR_ATTENDEE_NOTIFICATIONS_UNSUPPORTED") {
-    return "The built-in calendar can't email the other attendees, so I left that one alone. Connect Google Calendar and I'll send the update, or say go ahead without notifying anyone.";
-  }
   if (error.code === "ELIZA_CALENDAR_RECURRENCE_UNSUPPORTED") {
     return "Repeating events need a connected calendar — the built-in one only holds single events. Connect Google Calendar and I'll set up the recurring one, or I can add a single event now.";
   }
@@ -4004,6 +4018,21 @@ export function formatCalendarSearchResults(
   return lines.join("\n");
 }
 
+/**
+ * Reserved documentation and testing domains (RFC 2606 / RFC 6761) never
+ * receive mail. The planner fabricates guests such as "sam@example.com" for
+ * asks that named nobody ("add a vet appointment friday at 3pm" — live capture
+ * 2026-09-10); the follow-up "move it to 4pm" then carried `notifyAttendees`
+ * and the built-in calendar 400'd over a guest the user never mentioned.
+ */
+const PLACEHOLDER_EMAIL_DOMAIN =
+  /(?:^|\.)(?:example\.(?:com|net|org)|example|test|invalid|localhost)$/i;
+
+export function attendeeEmailAccepted(email: string): boolean {
+  if (!basicEmailValid(email)) return false;
+  return !PLACEHOLDER_EMAIL_DOMAIN.test(email.slice(email.indexOf("@") + 1));
+}
+
 export function normalizeCalendarAttendees(
   details: Record<string, unknown> | undefined,
 ): CreateLifeOpsCalendarEventAttendee[] | undefined {
@@ -4015,7 +4044,7 @@ export function normalizeCalendarAttendees(
     attendees.map((attendee) => {
       if (typeof attendee === "string") {
         const email = attendee.trim();
-        return basicEmailValid(email) ? { email } : null;
+        return attendeeEmailAccepted(email) ? { email } : null;
       }
       if (
         !attendee ||
@@ -4026,7 +4055,8 @@ export function normalizeCalendarAttendees(
       }
       const record = attendee as Record<string, unknown>;
       const email =
-        typeof record.email === "string" && basicEmailValid(record.email.trim())
+        typeof record.email === "string" &&
+        attendeeEmailAccepted(record.email.trim())
           ? record.email.trim()
           : null;
       if (!email) {
@@ -5391,7 +5421,7 @@ const calendarAction: CalendarHandlerAction = {
           const fallback = `Updated “${updatedEvent.title}” for ${formatCalendarEventDateTime(
             updatedEvent,
             { includeTimeZoneName: true },
-          )}.`;
+          )}.${builtInNotifyNote(details, targetEvent)}`;
           return respond({
             success: true,
             text: await renderReply("update_event_completed", fallback, {
@@ -5659,7 +5689,7 @@ const calendarAction: CalendarHandlerAction = {
             expectedProviderVersion,
             idempotencyKey,
           });
-          const fallback = `Deleted “${targetEvent.title}” from your calendar.`;
+          const fallback = `Deleted “${targetEvent.title}” from your calendar.${builtInNotifyNote(details, targetEvent)}`;
           return respond({
             success: true,
             text: await renderReply("delete_event_completed", fallback, {
