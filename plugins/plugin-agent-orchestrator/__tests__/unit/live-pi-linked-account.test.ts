@@ -1,9 +1,10 @@
 /** Exercises live-harness admission and owned child cleanup with real keyless subprocesses; no provider is contacted. */
 import assert from "node:assert/strict";
-import { spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import {
   chmod,
   copyFile,
+  mkdir,
   mkdtemp,
   readFile,
   rm,
@@ -258,6 +259,80 @@ test.skipIf(process.platform === "win32")(
       assert.ok(!result.stderr.includes("synthetic-not-a-provider-key"));
     } finally {
       await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test.each(
+  process.platform === "win32"
+    ? ["generated cache.txt"]
+    : ["generated cache.txt", "generated\ncache.txt"],
+)(
+  "dirty source is rejected with safe status metadata: %j",
+  async (filename) => {
+    const container = await mkdtemp(path.join(tmpdir(), "pi-dirty-checkout-"));
+    const repo = path.join(container, "repo");
+    const evidence = path.join(container, "evidence");
+    const copiedScript = path.join(
+      repo,
+      "plugins/plugin-agent-orchestrator/scripts/live-pi-linked-account.mjs",
+    );
+    try {
+      await mkdir(path.dirname(copiedScript), { recursive: true });
+      await copyFile(script, copiedScript);
+      const git = (args: string[]) =>
+        execFileSync("git", args, {
+          cwd: repo,
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+      git(["init"]);
+      git(["add", "."]);
+      git([
+        "-c",
+        "user.name=Disposable QA",
+        "-c",
+        "user.email=qa@example.invalid",
+        "commit",
+        "-m",
+        "fixture",
+      ]);
+      const head = git(["rev-parse", "HEAD"]).trim();
+      const contents = "synthetic-private-content-never-in-receipt";
+      await writeFile(path.join(repo, filename), contents);
+      const result = spawnSync(process.execPath, [copiedScript], {
+        env: {
+          PATH: process.env.PATH,
+          RUN_LIVE_PI_LINKED_ACCOUNT: "1",
+          OPENROUTER_API_KEY: "synthetic-not-a-provider-key",
+          LIVE_PI_SOURCE_SHA: head,
+          LIVE_PI_TOOL_VERSIONS: JSON.stringify({
+            pi: "0.84.2",
+            piAcp: "0.0.33",
+            piAi: "0.84.4",
+          }),
+          LIVE_PI_EVIDENCE_DIR: evidence,
+        },
+        encoding: "utf8",
+      });
+      assert.equal(result.status, 1);
+      const serialized = await readFile(
+        path.join(evidence, "receipt.json"),
+        "utf8",
+      );
+      const receipt = JSON.parse(serialized);
+      assert.equal(receipt.phase, "admission-clean-checkout");
+      if (filename.includes("\n"))
+        assert.equal(receipt.checkoutChanges, undefined);
+      else
+        assert.deepEqual(receipt.checkoutChanges, [
+          { status: "??", path: filename },
+        ]);
+      assert.ok(!serialized.includes(contents));
+      assert.ok(!serialized.includes(container));
+      assert.ok(!serialized.includes("synthetic-not-a-provider-key"));
+    } finally {
+      await rm(container, { recursive: true, force: true });
     }
   },
 );

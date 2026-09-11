@@ -32,6 +32,7 @@ const prompt = `This is a response-only integration check. Do not call any tools
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 let phase = "admission";
 let childAdmitted = false;
+let checkoutChanges;
 const phases = new Set([
   "admission",
   "admission-opt-in",
@@ -310,12 +311,32 @@ async function parent() {
     "Live tool versions must match reviewed pins",
   );
   phase = "admission-clean-checkout";
+  const records = execFileSync("git", ["status", "--porcelain=v1", "-z"], {
+    cwd: repo,
+    encoding: "utf8",
+  }).split("\0");
+  assert.equal(records.pop(), "");
+  const changes = [];
+  const safePath = (value) => {
+    assert.ok(value && !/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\ufffd]/u.test(value));
+    assert.ok(
+      !path.posix.isAbsolute(value) && !value.split("/").includes(".."),
+    );
+    return value;
+  };
+  for (let index = 0; index < records.length; index++) {
+    const record = records[index];
+    const status = record.slice(0, 2);
+    assert.match(status, /^[ MTADRCU?!]{2}$/);
+    assert.equal(record[2], " ");
+    const entry = { status, path: safePath(record.slice(3)) };
+    if (/[RC]/.test(status)) entry.originalPath = safePath(records[++index]);
+    changes.push(entry);
+  }
+  checkoutChanges = changes;
   assert.equal(
-    execFileSync("git", ["status", "--porcelain"], {
-      cwd: repo,
-      encoding: "utf8",
-    }).trim(),
-    "",
+    changes.length,
+    0,
     "Live proof requires a clean reviewed checkout",
   );
   const destination = path.resolve(
@@ -509,6 +530,9 @@ if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(script)) {
             status: "failed",
             phase,
             sourceSha: process.env.LIVE_PI_SOURCE_SHA || null,
+            ...(phase === "admission-clean-checkout" && checkoutChanges
+              ? { checkoutChanges }
+              : {}),
           },
           null,
           2,
