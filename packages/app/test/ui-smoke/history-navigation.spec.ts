@@ -19,8 +19,6 @@ type HistoryRoute = {
   mode?: Parameters<typeof assertReadyChecks>[3];
 };
 
-const ASSET_FETCH_RETRY_DELAYS_MS = [100, 250] as const;
-
 const CHAT_COMPOSER_SELECTOR =
   '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]';
 
@@ -63,32 +61,6 @@ async function prepareHistoryPage(page: Parameters<typeof seedAppStorage>[0]) {
       body: JSON.stringify({ skills: [] }),
     });
   });
-  await page.route(/\.(?:js|mjs|tsx)(?:[?#].*)?$/i, async (route) => {
-    let response: Awaited<ReturnType<typeof route.fetch>>;
-    for (let attempt = 0; ; attempt++) {
-      try {
-        response = await route.fetch();
-        break;
-      } catch {
-        if (attempt >= ASSET_FETCH_RETRY_DELAYS_MS.length) {
-          await route.continue();
-          return;
-        }
-        await new Promise((resolve) =>
-          setTimeout(resolve, ASSET_FETCH_RETRY_DELAYS_MS[attempt]),
-        );
-      }
-    }
-    const headers = response.headers();
-    if (headers["content-type"]?.includes("application/octet-stream")) {
-      await route.fulfill({
-        response,
-        headers: { ...headers, "content-type": "application/javascript" },
-      });
-      return;
-    }
-    await route.fulfill({ response });
-  });
 }
 
 async function expectRouteReady(
@@ -108,6 +80,12 @@ async function expectRouteReady(
 }
 
 test.describe("browser history navigation", () => {
+  test.afterEach(async ({ page }) => {
+    // Wait for API fixture handlers before disposing their page, preserving
+    // handler failures while navigation requests are still settling.
+    await page.unrouteAll({ behavior: "wait" });
+  });
+
   test("preserves route state across back and forward navigation", async ({
     page,
   }) => {

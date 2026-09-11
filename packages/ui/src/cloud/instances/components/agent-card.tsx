@@ -593,7 +593,7 @@ function AgentCardInner({
                 <AlertDialogAction
                   onClick={handleConfirmDelete}
                   disabled={isDeleting}
-                  className="bg-destructive text-destructive-fg hover:bg-destructive/85"
+                  className="bg-destructive-solid text-destructive-fg hover:bg-destructive-solid-hover"
                 >
                   {isDeleting
                     ? t("cloud.agentCard.deleting", {
@@ -830,7 +830,7 @@ function AgentCardInner({
               <AlertDialogAction
                 onClick={handleConfirmDelete}
                 disabled={isDeleting}
-                className="bg-destructive text-destructive-fg hover:bg-destructive/85"
+                className="bg-destructive-solid text-destructive-fg hover:bg-destructive-solid-hover"
               >
                 {isDeleting
                   ? t("cloud.agentCard.deleting", {

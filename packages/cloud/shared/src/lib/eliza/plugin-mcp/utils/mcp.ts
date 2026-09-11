@@ -1,12 +1,10 @@
-// Wires hosted Eliza agent mcp behavior for cloud runtime services.
+/**
+ * Builds hosted MCP provider context and enforces the per-request OAuth server
+ * allowlist before Cloud tools or resources become planner-visible.
+ */
 import { type IAgentRuntime, logger, type Memory } from "@elizaos/core";
-import type {
-  McpProvider,
-  McpProviderData,
-  McpResourceInfo,
-  McpServer,
-  McpToolInfo,
-} from "../types";
+import { buildMcpProviderProjection } from "@elizaos/shared/mcp";
+import type { McpProvider, McpServer } from "../types";
 
 /**
  * Checks MCP_ENABLED_SERVERS request-context setting for per-user OAuth gating.
@@ -46,8 +44,6 @@ export function checkMcpOAuthAccess(runtime: IAgentRuntime, serverName?: string)
   return true;
 }
 
-const NO_DESC = "No description";
-
 export async function createMcpMemory(
   runtime: IAgentRuntime,
   message: Memory,
@@ -69,55 +65,5 @@ export async function createMcpMemory(
 }
 
 export function buildMcpProviderData(servers: McpServer[]): McpProvider {
-  if (servers.length === 0) {
-    return {
-      values: { mcp: {} },
-      data: { mcp: {} },
-      text: "No MCP servers connected.",
-    };
-  }
-
-  const mcpData: McpProviderData = {};
-  const lines: string[] = ["# MCP Configuration\n"];
-
-  for (const server of servers) {
-    const tools: Record<string, McpToolInfo> = {};
-    const resources: Record<string, McpResourceInfo> = {};
-
-    lines.push(`## ${server.name} (${server.status})\n`);
-
-    if (server.tools?.length) {
-      lines.push("### Tools\n");
-      for (const t of server.tools) {
-        tools[t.name] = {
-          description: t.description || NO_DESC,
-          inputSchema: t.inputSchema || {},
-        };
-        lines.push(`- **${t.name}**: ${t.description || NO_DESC}`);
-      }
-      lines.push("");
-    }
-
-    if (server.resources?.length) {
-      lines.push("### Resources\n");
-      for (const r of server.resources) {
-        resources[r.uri] = {
-          name: r.name,
-          description: r.description || NO_DESC,
-          mimeType: r.mimeType,
-        };
-        lines.push(`- **${r.name}** (${r.uri}): ${r.description || NO_DESC}`);
-      }
-      lines.push("");
-    }
-
-    mcpData[server.name] = { status: server.status, tools, resources };
-  }
-
-  const text = lines.join("\n");
-  return {
-    values: { mcp: mcpData, mcpText: text },
-    data: { mcp: mcpData },
-    text,
-  };
+  return buildMcpProviderProjection(servers) as McpProvider;
 }

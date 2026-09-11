@@ -113,6 +113,10 @@ export const VIEW_OCR_POLICIES = {
   "builtin-character": expected({
     requireAny: ["Personality", "Relationships", "Knowledge", "Skills"],
   }),
+  "builtin-relationships": expected({
+    requireAll: ["Relationships"],
+    requireAny: ["People", "Organizations"],
+  }),
   "builtin-character-select": expected({
     requireAny: [
       "Name",

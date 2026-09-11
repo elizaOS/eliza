@@ -152,6 +152,8 @@ describe("watch-sms-gateway-readiness CLI timing boundary", () => {
       path.join(os.tmpdir(), "sms-watch-marker-"),
     );
     const fakeCurl = path.join(fakeDir, "curl");
+    const fakeIoreg = path.join(fakeDir, "ioreg");
+    fs.writeFileSync(fakeIoreg, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     fs.writeFileSync(
       fakeCurl,
       // Busy-wait in the shell itself (no sleep child to orphan): SIGKILL on

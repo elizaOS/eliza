@@ -34,6 +34,7 @@ import {
 } from "motion/react";
 import * as React from "react";
 import { type OrbState, ThinkingOrb } from "thinking-orbs";
+import { registerPendingFirstRunTextConsumer } from "../../first-run/first-run-pending-text";
 import { ChatVoiceStatusBar } from "../composites/chat/ChatVoiceStatusBar";
 import {
   highlightSearchMatches,
@@ -45,7 +46,7 @@ type ChatSheetMotionStyle = MotionStyle & {
   "--chat-composer-border"?: string | MotionValue<string>;
   "--chat-composer-shadow"?: string | MotionValue<string>;
   "--chat-sheet-background"?: string | MotionValue<string>;
-  "--chat-sheet-backdrop-filter"?: string;
+  "--chat-sheet-backdrop-filter"?: string | MotionValue<string>;
   "--chat-sheet-image"?: string;
   "--chat-sheet-radius"?: string | MotionValue<string>;
   "--chat-sheet-shadow"?: string | MotionValue<string>;
@@ -1322,6 +1323,7 @@ export function ChatOverlay({
   agentName = "Eliza",
   slash: slashProp,
   firstRunOpen = false,
+  acceptPendingFirstRunText = false,
   initialMode = "input",
   releaseFirstRunToFull = false,
   fillHostAtHalf = false,
@@ -1344,6 +1346,8 @@ export function ChatOverlay({
    * There is never a separate desktop web chat.
    */
   firstRunOpen?: boolean;
+  /** The host confirms setup completion before this composer may consume queued intent. */
+  acceptPendingFirstRunText?: boolean;
   /** Initial resting detent when a host opens this shared chat surface. */
   initialMode?: "input" | "half";
   /**
@@ -3428,6 +3432,11 @@ export function ChatOverlay({
     const percent = (clamp01(t) * 100).toFixed(3);
     return `color-mix(in srgb, var(--bg) ${percent}%, ${GLASS_SHEET_FILL})`;
   });
+  // Opaque sheets do not need to filter the hidden backdrop.
+  const surfaceBackdropFilter = useTransform(
+    surfaceBlackout,
+    (t: number): string => (t >= 1 ? "none" : GLASS_SHEET_BACKDROP_FILTER),
+  );
   // Keep transformed transcript children one physical border-width inside the
   // inset glass. The rim is translucent, so clipping at its outer edge lets
   // compositor-promoted text show through the antialiased top curve even when
@@ -4236,11 +4245,14 @@ export function ChatOverlay({
     expand();
   }, [hasRevealableThread, expand]);
 
+  const pendingFirstRunAcknowledgementRef = React.useRef<{
+    text: string;
+    acknowledge: () => void;
+  } | null>(null);
   React.useEffect(() => {
     if (typeof window === "undefined") return undefined;
-    const onPrefill = (event: Event) => {
+    const applyPrefill = (detail: ChatPrefillEventDetail) => {
       if (firstRunOpen) return;
-      const detail = (event as CustomEvent<ChatPrefillEventDetail>).detail;
       const text = typeof detail?.text === "string" ? detail.text : "";
       if (!text.trim()) return;
       setMode((m) => (m === "pill" ? "input" : m));
@@ -4262,9 +4274,37 @@ export function ChatOverlay({
         prefillFocusTimerRef.current = window.setTimeout(focusComposer, 0);
       }
     };
+    const onPrefill = (event: Event) =>
+      applyPrefill((event as CustomEvent<ChatPrefillEventDetail>).detail);
     window.addEventListener(CHAT_PREFILL_EVENT, onPrefill);
-    return () => window.removeEventListener(CHAT_PREFILL_EVENT, onPrefill);
-  }, [clearPrefillFocusSchedule, firstRunOpen, setDraft]);
+    const unregister =
+      !firstRunOpen && acceptPendingFirstRunText
+        ? registerPendingFirstRunTextConsumer((text, acknowledge) => {
+            pendingFirstRunAcknowledgementRef.current = { text, acknowledge };
+            applyPrefill({ text, select: true });
+          })
+        : undefined;
+    return () => {
+      window.removeEventListener(CHAT_PREFILL_EVENT, onPrefill);
+      unregister?.();
+      pendingFirstRunAcknowledgementRef.current = null;
+    };
+  }, [
+    acceptPendingFirstRunText,
+    clearPrefillFocusSchedule,
+    firstRunOpen,
+    setDraft,
+  ]);
+
+  React.useEffect(() => {
+    if (!acceptPendingFirstRunText || firstRunOpen) return;
+    const pending = pendingFirstRunAcknowledgementRef.current;
+    if (!pending || pending.text !== draft) return;
+    // A committed composer render acknowledges the complete draft; a remount
+    // before this point leaves the durable onboarding intent available.
+    pending.acknowledge();
+    pendingFirstRunAcknowledgementRef.current = null;
+  }, [acceptPendingFirstRunText, draft, firstRunOpen]);
 
   // "Open chat" intent (the launcher's Messages tile). Land the user IN an open
   // conversation instead of the wordless home with a collapsed pill: un-pill to
@@ -5771,12 +5811,6 @@ export function ChatOverlay({
     tintColor: NATIVE_GLASS_DARK_TINT,
   });
   const nativeInsetSheet = nativeSheetTier === "native";
-  // Keep the CSS material identity stable through fullscreen and its restore.
-  // Toggling backdrop-filter on at the first downward frame forces a new
-  // compositor surface exactly when the finger needs the frame budget. The
-  // fullscreen fill is opaque, so the already-present filter is visually inert
-  // there; retaining it makes restore the same warm compositor path as maximize.
-  const cssSheetBackdropActive = !nativeInsetSheet;
   // Why-not-native, as a slug (glass/native-backdrop.ts) — the observable
   // half of the tier system's J4 degrades, rendered into the AX probe below.
   const nativeGlassDiag = useNativeGlassDiag();
@@ -6054,12 +6088,11 @@ export function ChatOverlay({
                       firstRunOpen || nativeInsetSheet
                         ? "var(--bg)"
                         : surfaceBackgroundColor,
-                    "--chat-sheet-backdrop-filter": cssSheetBackdropActive
-                      ? GLASS_SHEET_BACKDROP_FILTER
-                      : undefined,
-                    // The strong perimeter and drag handle own the sheet edge. A
-                    // directional bevel, specular wash, or outer shadow stacks into
-                    // a distracting white arc above the conversation.
+                    "--chat-sheet-backdrop-filter":
+                      firstRunOpen || nativeInsetSheet
+                        ? "none"
+                        : surfaceBackdropFilter,
+                    // The strong perimeter and drag handle own the sheet edge.
                     "--chat-sheet-shadow": "none",
                     "--chat-sheet-image": "none",
                   } satisfies ChatSheetMotionStyle),

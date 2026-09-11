@@ -1142,7 +1142,11 @@ const PACKAGE_METADATA_ENTRY_NAMES = new Set([
   "README.md",
   "package.json",
 ]);
-const NON_RUNTIME_EXPORT_CONDITIONS = new Set(["eliza-source", "types"]);
+const NON_RUNTIME_EXPORT_CONDITIONS = new Set([
+  "eliza-source",
+  "types",
+  "typings",
+]);
 
 function getTopLevelPublishEntry(rawEntry: string): string | null {
   if (rawEntry.trim().startsWith("!")) {
@@ -2374,7 +2378,7 @@ function collectRuntimeExportEntryPaths(value: unknown): string[] {
   }
 
   return entries.flatMap(([condition, entry]) => {
-    if (condition === "types" || condition === "typings") {
+    if (NON_RUNTIME_EXPORT_CONDITIONS.has(condition)) {
       return [];
     }
     return collectRuntimeExportEntryPaths(entry);

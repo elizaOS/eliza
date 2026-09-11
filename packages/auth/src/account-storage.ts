@@ -333,7 +333,10 @@ function removeStaleLock(
   policy: AccountStoragePolicy,
   lockDir: string,
 ): boolean {
-  const stat = fs.lstatSync(lockDir);
+  const stat = fs.lstatSync(lockDir, { throwIfNoEntry: false });
+  // The owner can release its lock after our mkdir observed EEXIST. Retry
+  // acquisition so the generation fence runs under the newly acquired lock.
+  if (!stat) return true;
   if (stat.isSymbolicLink() || !stat.isDirectory()) {
     throw storageError(
       "AUTH_CREDENTIAL_PATH_ESCAPE",

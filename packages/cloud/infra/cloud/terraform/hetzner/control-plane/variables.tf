@@ -114,15 +114,11 @@ variable "canonical_headscale_hostname" {
 }
 
 variable "deploy_branch" {
-  description = "Git branch the host's auto-deploy workflow follows. Staging defaults to 'develop'; production MUST be 'main' (enforced by the validation below) so a staging fix doesn't accidentally land in prod via the wrong branch pin."
+  description = "Git branch the host's auto-deploy workflow follows. Staging defaults to 'staging'; production MUST be 'main' (enforced by the validation below) so a staging fix doesn't accidentally land in prod via the wrong branch pin."
   type        = string
-  default     = "develop"
+  default     = "staging"
   validation {
-    condition     = var.environment != "development" || var.deploy_branch == "develop"
-    error_message = "Development control planes must follow develop"
-  }
-  validation {
-    condition     = var.environment != "production" || var.deploy_branch == "main"
-    error_message = "deploy_branch must be 'main' when environment='production' — set it explicitly via the workflow to prevent prod tracking develop"
+    condition     = var.deploy_branch == (var.environment == "production" ? "main" : var.environment == "development" ? "develop" : "staging")
+    error_message = "deploy_branch must be 'develop' for development, 'staging' for staging, and 'main' for production"
   }
 }

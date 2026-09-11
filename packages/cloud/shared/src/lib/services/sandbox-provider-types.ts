@@ -55,6 +55,9 @@ export type SandboxHealthVerdict =
   | "transport_unresolved"
   | "ingress_unresolved";
 
+/** Candidate probes retain pre-cutover placement; canonical probes follow committed placement. */
+export type SandboxHealthContext = { kind: "candidate" } | { kind: "canonical" };
+
 export interface SandboxHealthOutcome {
   ready: boolean;
   verdict: SandboxHealthVerdict;
@@ -306,7 +309,7 @@ export interface SandboxProvider {
       "sandboxId" | "nodeId" | "containerName" | "vpnNodeId"
     >,
   ): Promise<void>;
-  checkHealth(handle: SandboxHandle): Promise<boolean>;
+  checkHealth(handle: SandboxHandle, context?: SandboxHealthContext): Promise<boolean>;
   /**
    * Richer readiness probe that distinguishes a genuine `not_ready` from a
    * unresolved transport/managed-ingress exhaustion (see
@@ -314,7 +317,10 @@ export interface SandboxProvider {
    * Optional so providers that cannot fail at a transport layer (memory/local)
    * need not implement it; callers fall back to `checkHealth` when absent.
    */
-  checkHealthDetailed?(handle: SandboxHandle): Promise<SandboxHealthOutcome>;
+  checkHealthDetailed?(
+    handle: SandboxHandle,
+    context?: SandboxHealthContext,
+  ): Promise<SandboxHealthOutcome>;
   runCommand?(sandboxId: string, cmd: string, args?: string[]): Promise<string>;
   /** Tail container logs from the sandbox runtime (e.g. `docker logs --tail N`). */
   fetchLogs?(sandboxId: string, tail: number): Promise<string>;

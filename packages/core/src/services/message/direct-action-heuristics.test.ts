@@ -1054,6 +1054,21 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 	});
 
 	it.each([
+		"the window is open",
+		"this window remains open",
+		"the current view stays open",
+		"if the window is open, leave it alone",
+		'preserve the text "the window is open"',
+	])(
+		"does not mistake declarative view state for inspection: %s",
+		(message) => {
+			expect(
+				inferDirectCurrentRequestCandidateInference([viewsAction], message),
+			).toEqual({ names: ["VIEWS"], kind: "view-surface" });
+		},
+	);
+
+	it.each([
 		[
 			"create / and / inspection-first",
 			"identify the current view and add a new panel",

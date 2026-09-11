@@ -1,23 +1,15 @@
 /**
- * Real local chat — executed, NO secret and NO native llama. Exercises the FULL
- * real chat pipeline: a real AgentRuntime + the real conversation routes + the
- * real message-handling/RESPONSE_HANDLER flow + real history persistence. The
- * only deterministic part is token generation, supplied by the in-process
- * deterministic model provider (a real Plugin with real model handlers) — NOT the
- * ui-smoke api-stub, which fakes the entire conversation endpoint and bypasses
- * the runtime. So this proves the chat machinery works end-to-end, not just that
- * a stub echoes a fixture.
- *
- * Because the proxy provides every text model + embedding handler, it needs no
- * provider/cloud key and no llama, so it runs and passes in CI without secrets.
- *
- * Run via the repo's tsx runner (real module resolution):
- *   node packages/app-core/scripts/run-node-tsx.mjs \
- *     packages/app-core/scripts/check-real-local-chat.ts
+ * Verifies local chat through a real AgentRuntime, HTTP routes, and database.
+ * A deterministic terminal-reply fixture supplies model output; assertions
+ * require the generated reply in both the HTTP response and persisted history.
+ * This smoke needs no provider credentials and does not certify live inference.
  */
 
 import assert from "node:assert/strict";
-import { createDeterministicModelPlugin } from "@elizaos/core/testing";
+import {
+  createDeterministicModelPlugin,
+  strictTerminalReplyFixture,
+} from "@elizaos/core/testing";
 import { startApiServer } from "../src/api/server.ts";
 import {
   createConversation,
@@ -32,20 +24,10 @@ async function main(): Promise<void> {
   const configEnv = useIsolatedConfigEnv("eliza-local-chat-check-");
   // Real Plugin with real model handlers (priority 1000 wins). Deterministic
   // output; the pipeline around it is fully real.
+  const input = "Say hello in one short sentence.";
+  const expectedReply = "Hello from the deterministic model provider.";
   const modelProvider = createDeterministicModelPlugin({
-    fixtures: [
-      {
-        name: "local-chat-reply",
-        match: { modelType: "RESPONSE_HANDLER" },
-        response: {
-          contexts: ["simple"],
-          intents: ["greeting"],
-          replyText: "Hello from the deterministic model provider.",
-          candidateActionNames: [],
-        },
-        times: 1,
-      },
-    ],
+    fixtures: [strictTerminalReplyFixture({ input, text: expectedReply })],
   });
   const runtimeResult = await createRealTestRuntime({
     characterName: "LocalChatCheck",
@@ -81,12 +63,17 @@ async function main(): Promise<void> {
     const sent = await postConversationMessage(
       port,
       conv.conversationId,
-      { text: "Say hello in one short sentence." },
+      { text: input },
       undefined,
       { timeoutMs: 90_000 },
     );
     assert.equal(sent.status, 200, "message POST must return 200");
     const replyText = String(sent.data.text ?? "");
+    assert.equal(
+      replyText,
+      expectedReply,
+      "HTTP reply must match generated text",
+    );
     assert.ok(
       replyText.length > 0,
       "the agent must produce a non-empty reply through the real pipeline",
@@ -125,11 +112,10 @@ async function main(): Promise<void> {
       "history must contain the user message",
     );
     assert.ok(
-      messages.some(
-        (m) => m.role === "assistant" && String(m.text ?? "").length > 0,
-      ),
-      "history must contain a non-empty assistant reply",
+      messages.some((m) => m.role === "assistant" && m.text === expectedReply),
+      "history must contain the generated assistant reply",
     );
+    modelProvider.assertFixturesConsumed();
     console.log(
       `[local-chat] PASS history persisted ${messages.length} real messages`,
     );

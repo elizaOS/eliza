@@ -11,7 +11,10 @@ let nextSession = 1;
 let executionOutputs: unknown[] = [];
 let scopedBindings: Record<string, unknown> | undefined;
 
+const cacheClientActualModule = await import("../cache/client");
+
 mock.module("../cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     get: async <T>(key: string) => (values.get(key) as T | undefined) ?? null,
     del: async (key: string) => {
@@ -26,6 +29,8 @@ mock.module("../cache/client", () => ({
       values.set(key, value);
       return { kind: "written", backend: "memory" };
     },
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 

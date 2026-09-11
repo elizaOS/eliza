@@ -8,9 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildCockpitCreateTaskInput,
-  cockpitModeModel,
   cockpitModeProviderSource,
-  cockpitModeToProviderPolicy,
   normalizeCockpitSpawnTarget,
 } from "./cockpit-modes";
 
@@ -40,57 +38,6 @@ describe("cockpit-modes lowering", () => {
           proxy: "codex-cli",
         }),
       ).toBe("user-openai");
-    });
-  });
-
-  describe("cockpitModeModel", () => {
-    it("eliza-cloud maps tier→model; others pass through (or undefined)", () => {
-      expect(
-        cockpitModeModel({
-          mode: "eliza-cloud",
-          agentType: "elizaos",
-          tier: "small",
-        }),
-      ).toBe("gemma-4-31b");
-      expect(
-        cockpitModeModel({
-          mode: "eliza-cloud",
-          agentType: "elizaos",
-          tier: "large",
-        }),
-      ).toBe("gemma-4-31b");
-      expect(
-        cockpitModeModel({
-          mode: "subscription",
-          agentType: "claude",
-          model: "opus",
-        }),
-      ).toBe("opus");
-    });
-  });
-
-  describe("cockpitModeToProviderPolicy", () => {
-    it("produces the {preferredFramework, providerSource, model} the create route accepts", () => {
-      expect(
-        cockpitModeToProviderPolicy({
-          mode: "eliza-cloud",
-          agentType: "elizaos",
-          tier: "large",
-        }),
-      ).toEqual({
-        preferredFramework: "elizaos",
-        providerSource: "eliza-cloud",
-        model: "gemma-4-31b",
-      });
-      expect(
-        cockpitModeToProviderPolicy({
-          mode: "subscription",
-          agentType: "claude",
-        }),
-      ).toEqual({
-        preferredFramework: "claude",
-        providerSource: "user-claude",
-      });
     });
   });
 

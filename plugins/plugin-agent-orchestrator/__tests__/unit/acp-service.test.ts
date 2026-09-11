@@ -28,6 +28,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // form so the same source compares correctly on both POSIX and Windows.
 const RESOLVED_ACP_WORKDIR = path.resolve("/tmp/acp-test");
 
+import type { NativeAcpEventContext } from "../../src/services/acp-native-transport.js";
 import {
   type AcpJsonRpcMessage,
   type ApprovalPreset,
@@ -38,6 +39,7 @@ import {
 type NativeEventHandler = (
   event: AcpJsonRpcMessage,
   sessionId?: string,
+  context?: NativeAcpEventContext,
 ) => void;
 type NativeOptions = {
   command: string;
@@ -63,7 +65,7 @@ type MockNativeClient = {
   setEventHandler: (handler: NativeEventHandler | undefined) => void;
   setTimeoutMs: (timeoutMs: number | undefined) => void;
   configureClaimedSession: (opts: NativeOptions) => void;
-  emit: (event: AcpJsonRpcMessage, sessionId?: string) => void;
+  emit: NativeEventHandler;
 };
 type NativeMockState = {
   NativeAcpClient?: new (opts: NativeOptions) => MockNativeClient;
@@ -141,8 +143,12 @@ vi.mock(
         this.eventHandler = opts.onEvent;
       }
 
-      emit(event: AcpJsonRpcMessage, sessionId?: string) {
-        this.eventHandler?.(event, sessionId);
+      emit(
+        event: AcpJsonRpcMessage,
+        sessionId?: string,
+        context?: NativeAcpEventContext,
+      ) {
+        this.eventHandler?.(event, sessionId, context);
       }
     };
     return { ...actual, NativeAcpClient: state.NativeAcpClient };
@@ -2781,6 +2787,73 @@ describe("AcpService", () => {
     expect(result.finalText).toBe(
       "the change is proven and received at runtime",
     );
+  });
+
+  it("retains declared startup status across native observers without recording model output", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const events: Array<{ event: string; data: unknown }> = [];
+    const rawEvents: AcpJsonRpcMessage[] = [];
+    service.onSessionEvent((_sid, event, data) => events.push({ event, data }));
+    service.onAcpEvent((event) => rawEvents.push(event));
+    const startup = "Pi startup 🟠\nComplete adapter status\n";
+    const chunk = (text: string): AcpJsonRpcMessage => ({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: "protocol-session",
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text },
+        },
+      },
+    });
+    const context: NativeAcpEventContext = {
+      kind: "startup",
+      sessionId: "protocol-session",
+    };
+    const startupEvent = chunk(startup);
+    nativeClientMock.createSessionImplementation = async (client) => {
+      client.emit(startupEvent, "protocol-session", context);
+      return { sessionId: "protocol-session", agentSessionId: "agent-session" };
+    };
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-startup",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    expect(await service.getSessionOutput(sessionId)).toBe("");
+    const client = firstNativeClient();
+    // Exercise the prompt observer too: transport classification is authoritative,
+    // while identical unclassified text remains complete model output.
+    client.prompt.mockImplementationOnce(async () => {
+      client.emit(startupEvent, "protocol-session", context);
+      client.emit(chunk(startup));
+      client.emit(chunk("Actual answer 🟠"));
+      return { stopReason: "end_turn" };
+    });
+    const result = await service.sendPrompt(sessionId, "finish");
+    expect(result.response).toBe(startup + "Actual answer 🟠");
+    expect(result.finalText).toBe(startup + "Actual answer 🟠");
+    const output = await service.getSessionOutput(sessionId);
+    expect(output).toBe(startup + "Actual answer 🟠");
+    client.emit(startupEvent, "protocol-session", context);
+    expect(await service.getSessionOutput(sessionId)).toBe(output);
+    expect(events.filter(({ event }) => event === "startup")).toEqual(
+      Array.from({ length: 3 }, () => ({
+        event: "startup",
+        data: { text: startup, protocolSessionId: "protocol-session" },
+      })),
+    );
+    expect(
+      events.filter(({ event }) => event === "message").map(({ data }) => data),
+    ).toEqual([{ text: startup }, { text: "Actual answer 🟠" }]);
+    expect(rawEvents.filter((event) => event === startupEvent)).toEqual([
+      startupEvent,
+      startupEvent,
+      startupEvent,
+    ]);
+    await service.stop();
   });
 
   it("retains typed adapter warnings without adding them to the model answer", async () => {

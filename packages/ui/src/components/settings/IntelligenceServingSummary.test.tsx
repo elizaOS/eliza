@@ -147,19 +147,21 @@ describe("IntelligenceServingSummary", () => {
   });
 
   it("keeps a remote host distinct from Eliza Cloud", () => {
-    renderAxes({ deploymentRuntime: "remote" });
+    renderAxes({ deploymentRuntime: "remote", activeChat: CEREBRAS });
 
     expect(runtimeValue()).toBe("Remote host");
-    expect(inferenceValue()).toBe("Remote host");
+    expect(inferenceValue()).toBe("Cerebras");
     expect(
       screen.getByText(
         "The agent process runs on a remote host you configured, not on Eliza Cloud.",
       ),
     ).toBeTruthy();
     expect(
-      screen.getByText(
-        "Chat replies are computed by a model running with your remote agent.",
-      ),
+      screen.getByText(/external provider at api\.cerebras\.ai/),
     ).toBeTruthy();
+    cleanup();
+    renderAxes({ deploymentRuntime: "remote" });
+    expect(runtimeValue()).toBe("Remote host");
+    expect(inferenceValue()).toBe("Unconfirmed");
   });
 });

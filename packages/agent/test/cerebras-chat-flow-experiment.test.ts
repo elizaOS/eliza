@@ -420,6 +420,55 @@ describe("real chat cache experiment", () => {
         }),
       ).rejects.toBe(reason);
       expect(evidence.at(-1)?.outcome).toBe("error");
+      const dispatchedAbort = new AbortController();
+      const dispatchedReason = new Error("owner disconnected at dispatch");
+      const dispatchMeasured = measuredProviderFetch(
+        fetch,
+        { text: base, embedding: base },
+        () => ({ phase: "cancellation", proof: "dispatch-proof" }),
+        (item) => evidence.push(item),
+        (kind, context) => {
+          expect(kind).toBe("text");
+          expect(context?.proof).toBe("dispatch-proof");
+          expect(dispatchedAbort.signal.aborted).toBe(false);
+          dispatchedAbort.abort(dispatchedReason);
+        },
+      );
+      await expect(
+        dispatchMeasured(`${base}/chat/completions`, {
+          method: "POST",
+          body: JSON.stringify(body),
+          signal: dispatchedAbort.signal,
+        }),
+      ).rejects.toBe(dispatchedReason);
+      expect(evidence.at(-1)).toMatchObject({
+        outcome: "error",
+        context: { proof: "dispatch-proof" },
+        request: body,
+      });
+      const observerAbort = new AbortController();
+      const observerReason = new Error("dispatch observer failed");
+      const failedObserver = measuredProviderFetch(
+        fetch,
+        { text: base, embedding: base },
+        () => ({ phase: "cancellation" }),
+        (item) => evidence.push(item),
+        () => {
+          queueMicrotask(() =>
+            observerAbort.abort(new Error("late transport rejection")),
+          );
+          throw observerReason;
+        },
+      );
+      await expect(
+        failedObserver(`${base}/chat/completions`, {
+          method: "POST",
+          body: JSON.stringify(body),
+          signal: observerAbort.signal,
+        }),
+      ).rejects.toBe(observerReason);
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(evidence.at(-1)?.outcome).toBe("error");
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));

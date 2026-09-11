@@ -51,6 +51,9 @@ const h = vi.hoisted(() => {
     // imports of the capture) install methods onto ElizaClient.prototype at
     // module scope; give the mock a real class so those installs land.
     ElizaClient: class ElizaClient {},
+    apiBase: "https://shared.example.test",
+    authorityRevision: 0,
+    authoritySubscribers: new Set<() => void>(),
     getStatus: vi.fn(async () => ({ state: "running" })),
     captureLifeOpsActivitySignal: vi.fn(async () => ({
       signal: { id: "sig-1" },
@@ -112,6 +115,12 @@ vi.mock("@elizaos/ui/api", () => ({
     return () => h.authSubscribers.delete(listener);
   },
   client: {
+    getBaseUrl: () => h.apiBase,
+    getAuthorityRevision: () => h.authorityRevision,
+    onAuthorityChange: (listener: () => void) => {
+      h.authoritySubscribers.add(listener);
+      return () => h.authoritySubscribers.delete(listener);
+    },
     getStatus: h.getStatus,
     captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
   },
@@ -128,6 +137,12 @@ vi.mock("@elizaos/ui/bridge", () => ({
   APP_PAUSE_EVENT: "eliza:app-pause",
   APP_RESUME_EVENT: "eliza:app-resume",
   client: {
+    getBaseUrl: () => h.apiBase,
+    getAuthorityRevision: () => h.authorityRevision,
+    onAuthorityChange: (listener: () => void) => {
+      h.authoritySubscribers.add(listener);
+      return () => h.authoritySubscribers.delete(listener);
+    },
     getStatus: h.getStatus,
     captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
   },
@@ -147,6 +162,12 @@ vi.mock("@elizaos/ui/events", () => ({
   APP_PAUSE_EVENT: "eliza:app-pause",
   APP_RESUME_EVENT: "eliza:app-resume",
   client: {
+    getBaseUrl: () => h.apiBase,
+    getAuthorityRevision: () => h.authorityRevision,
+    onAuthorityChange: (listener: () => void) => {
+      h.authoritySubscribers.add(listener);
+      return () => h.authoritySubscribers.delete(listener);
+    },
     getStatus: h.getStatus,
     captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
   },
@@ -177,6 +198,12 @@ vi.mock("@elizaos/ui/browser", () => ({
     return () => h.authSubscribers.delete(listener);
   },
   client: {
+    getBaseUrl: () => h.apiBase,
+    getAuthorityRevision: () => h.authorityRevision,
+    onAuthorityChange: (listener: () => void) => {
+      h.authoritySubscribers.add(listener);
+      return () => h.authoritySubscribers.delete(listener);
+    },
     getStatus: h.getStatus,
     captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
   },
@@ -273,6 +300,34 @@ function publishAuthStatus(phase: string): void {
   }
 }
 
+function typedLifeOpsUnavailableError(): {
+  kind: "http";
+  status: number;
+  path: string;
+  code: string;
+  data: {
+    success: false;
+    code: string;
+    capability: string;
+    requiredExecutionTier: "dedicated-always";
+    upgradeRequired: true;
+  };
+} {
+  return {
+    kind: "http",
+    status: 503,
+    path: "/api/lifeops/activity-signals",
+    code: "lifeops_runtime_unavailable",
+    data: {
+      success: false,
+      code: "lifeops_runtime_unavailable",
+      capability: "lifeops-activity-signals",
+      requiredExecutionTier: "dedicated-always",
+      upgradeRequired: true,
+    },
+  };
+}
+
 describe("startLifeOpsActivitySignalCapture", () => {
   let stop: (() => void) | undefined;
 
@@ -287,6 +342,9 @@ describe("startLifeOpsActivitySignalCapture", () => {
     h.loadDesktopWorkspaceSnapshot.mockResolvedValue({ supported: false });
     h.authState = { phase: "authenticated", access: { role: "OWNER" } };
     h.authSubscribers.clear();
+    h.authoritySubscribers.clear();
+    h.apiBase = "https://shared.example.test";
+    h.authorityRevision = 0;
     h.capacitorGetPlatform.mockReturnValue("web");
     h.capacitorIsNative.mockReturnValue(false);
     h.capacitorIsPluginAvailable.mockReturnValue(true);
@@ -1054,6 +1112,167 @@ describe("startLifeOpsActivitySignalCapture", () => {
     await settle();
 
     expect(h.captureLifeOpsActivitySignal).toHaveBeenCalled();
+    expect(h.dispatchStatus).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: "capture_error" }),
+    );
+  });
+
+  it("serializes one capability probe at the ready boundary before lifecycle/page-state fan-out", async () => {
+    vi.useFakeTimers();
+    let resolveCapture:
+      | ((value: { signal: { id: string } }) => void)
+      | undefined;
+    h.captureLifeOpsActivitySignal.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCapture = resolve;
+        }),
+    );
+
+    stop = startLifeOpsActivitySignalCapture(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.captureLifeOpsActivitySignal).toHaveBeenCalledTimes(1);
+    expect(capturedSources()).toEqual(["app_lifecycle"]);
+
+    document.dispatchEvent(new Event("visibilitychange"));
+    window.dispatchEvent(new Event("focus"));
+    document.dispatchEvent(new Event("eliza:app-resume"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.captureLifeOpsActivitySignal).toHaveBeenCalledTimes(1);
+
+    h.captureLifeOpsActivitySignal.mockResolvedValue({
+      signal: { id: "sig-ok" },
+    });
+    resolveCapture?.({ signal: { id: "sig-ok" } });
+    await vi.advanceTimersByTimeAsync(0);
+
+    const sources = capturedSources();
+    expect(sources[0]).toBe("app_lifecycle");
+    expect(sources).toContain("page_visibility");
+  });
+
+  it("stands down on the same authority after a typed dedicated-runtime-unavailable 503", async () => {
+    vi.useFakeTimers();
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    h.isApiError.mockImplementation(
+      (error) => typeof error === "object" && error !== null && "kind" in error,
+    );
+    h.captureLifeOpsActivitySignal.mockRejectedValue(
+      typedLifeOpsUnavailableError(),
+    );
+
+    stop = startLifeOpsActivitySignalCapture(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.captureLifeOpsActivitySignal).toHaveBeenCalledTimes(1);
+    expect(capturedSources()).toEqual(["app_lifecycle"]);
+    expect(h.dispatchStatus).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: "capture_error" }),
+    );
+
+    h.captureLifeOpsActivitySignal.mockClear();
+    document.dispatchEvent(new Event("visibilitychange"));
+    window.dispatchEvent(new Event("focus"));
+    document.dispatchEvent(new Event("eliza:app-resume"));
+    for (const listener of h.authoritySubscribers) listener();
+    await vi.advanceTimersByTimeAsync(300_000);
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(h.captureLifeOpsActivitySignal).not.toHaveBeenCalled();
+    expect(h.dispatchStatus).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: "capture_error" }),
+    );
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it.each(["dedicated handoff", "same-host account change"])(
+    "recovers activity capture after %s without reloading the document",
+    async (transition) => {
+      vi.useFakeTimers();
+      h.isApiError.mockImplementation(
+        (error) =>
+          typeof error === "object" && error !== null && "kind" in error,
+      );
+      h.captureLifeOpsActivitySignal.mockRejectedValue(
+        typedLifeOpsUnavailableError(),
+      );
+      stop = startLifeOpsActivitySignalCapture(true);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.captureLifeOpsActivitySignal).toHaveBeenCalledTimes(1);
+
+      h.captureLifeOpsActivitySignal.mockClear();
+      h.captureLifeOpsActivitySignal.mockResolvedValue({
+        signal: { id: "new-runtime" },
+      });
+      if (transition === "dedicated handoff") {
+        h.apiBase = "https://dedicated.example.test";
+      } else {
+        h.authorityRevision += 1;
+      }
+      for (const listener of h.authoritySubscribers) listener();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(capturedSources()).toContain("app_lifecycle");
+      expect(capturedSources()).toContain("page_visibility");
+      const resumed = h.captureLifeOpsActivitySignal.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(65_000);
+      expect(h.captureLifeOpsActivitySignal.mock.calls.length).toBeGreaterThan(
+        resumed,
+      );
+      expect(h.dispatchStatus).not.toHaveBeenCalledWith(
+        expect.objectContaining({ status: "capture_error" }),
+      );
+    },
+  );
+
+  it("does not carry queued signals or a late unsupported response into the next authority", async () => {
+    vi.useFakeTimers();
+    h.isApiError.mockImplementation(
+      (error) => typeof error === "object" && error !== null && "kind" in error,
+    );
+    let rejectOld: (error: unknown) => void = () => {
+      throw new Error("Old request has not started");
+    };
+    h.captureLifeOpsActivitySignal.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectOld = reject;
+        }),
+    );
+    stop = startLifeOpsActivitySignalCapture(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.captureLifeOpsActivitySignal).toHaveBeenCalledTimes(1);
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.captureLifeOpsActivitySignal).toHaveBeenCalledTimes(1);
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    h.apiBase = "https://dedicated.example.test";
+    for (const listener of h.authoritySubscribers) listener();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.captureLifeOpsActivitySignal.mock.calls.length).toBeGreaterThan(1);
+    rejectOld(typedLifeOpsUnavailableError());
+    await vi.advanceTimersByTimeAsync(0);
+    const resumed = h.captureLifeOpsActivitySignal.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(65_000);
+    expect(h.captureLifeOpsActivitySignal.mock.calls.length).toBeGreaterThan(
+      resumed,
+    );
+    expect(h.captureLifeOpsActivitySignal).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "page_visibility",
+        metadata: expect.objectContaining({ visibilityState: "hidden" }),
+      }),
+    );
     expect(h.dispatchStatus).not.toHaveBeenCalledWith(
       expect.objectContaining({ status: "capture_error" }),
     );

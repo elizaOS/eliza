@@ -3,6 +3,8 @@
  * logo references for the Classic variant. Parallel to the default `brand/`
  * tokens; surfaces select one variant at render time.
  */
+
+import { LOGO_FILES } from "../brand/index.js";
 import {
   trimEndCharacters,
   trimStartCharacters,
@@ -27,27 +29,27 @@ export const brandColors = {
 } as const;
 
 export const brandLogos = {
-  elizaOsTextBlack: "/brand/logos/elizaOS_text_black.svg",
-  elizaOsTextWhite: "/brand/logos/elizaOS_text_white.svg",
-  elizaLogotext: "/brand/logos/eliza_logotext.svg",
-  elizaLogotextBlack: "/brand/logos/eliza_logotext_black.svg",
-  elizaTextBlack: "/brand/logos/eliza_text_black.svg",
-  elizaTextWhite: "/brand/logos/eliza_text_white.svg",
-  elizaCloudLogotext: "/brand/logos/elizacloud_logotext.svg",
-  elizaCloudLogotextBlack: "/brand/logos/elizacloud_logotext_black.svg",
-  elizaCloudTextBlack: "/brand/logos/elizacloud_text_black.svg",
-  elizaCloudTextWhite: "/brand/logos/elizacloud_text_white.svg",
-  elizaOsLogotext: "/brand/logos/elizaos_logotext.svg",
-  elizaOsLogotextBlack: "/brand/logos/elizaos_logotext_black.svg",
-  logoBlueBlackBg: "/brand/logos/logo_blue_blackbg.svg",
-  logoBlueNoBg: "/brand/logos/logo_blue_nobg.svg",
-  logoOrangeBlackBg: "/brand/logos/logo_orange_blackbg.svg",
-  logoOrangeNoBg: "/brand/logos/logo_orange_nobg.svg",
-  logoWhiteBlackBg: "/brand/logos/logo_white_blackbg.svg",
-  logoWhiteBlueBg: "/brand/logos/logo_white_bluebg.svg",
-  logoWhiteGrayBg: "/brand/logos/logo_white_graybg.svg",
-  logoWhiteNoBg: "/brand/logos/logo_white_nobg.svg",
-  logoWhiteOrangeBg: "/brand/logos/logo_white_orangebg.svg",
+  elizaOsTextBlack: brandAssetPath(`logos/${LOGO_FILES.osBlack}`),
+  elizaOsTextWhite: brandAssetPath(`logos/${LOGO_FILES.osWhite}`),
+  elizaLogotext: brandAssetPath(`logos/${LOGO_FILES.elizaLockupWhite}`),
+  elizaLogotextBlack: brandAssetPath(`logos/${LOGO_FILES.elizaLockupBlack}`),
+  elizaTextBlack: brandAssetPath(`logos/${LOGO_FILES.elizaBlack}`),
+  elizaTextWhite: brandAssetPath(`logos/${LOGO_FILES.elizaWhite}`),
+  elizaCloudLogotext: brandAssetPath(`logos/${LOGO_FILES.cloudWhite}`),
+  elizaCloudLogotextBlack: brandAssetPath(`logos/${LOGO_FILES.cloudBlack}`),
+  elizaCloudTextBlack: brandAssetPath(`logos/${LOGO_FILES.cloudTextBlack}`),
+  elizaCloudTextWhite: brandAssetPath(`logos/${LOGO_FILES.cloudTextWhite}`),
+  elizaOsLogotext: brandAssetPath(`logos/${LOGO_FILES.osLockupWhite}`),
+  elizaOsLogotextBlack: brandAssetPath(`logos/${LOGO_FILES.osLockupBlack}`),
+  logoBlueBlackBg: brandAssetPath(`logos/${LOGO_FILES.markBlueBlackBg}`),
+  logoBlueNoBg: brandAssetPath(`logos/${LOGO_FILES.markBlueNoBg}`),
+  logoOrangeBlackBg: brandAssetPath(`logos/${LOGO_FILES.markOrangeBlackBg}`),
+  logoOrangeNoBg: brandAssetPath(`logos/${LOGO_FILES.markOrangeNoBg}`),
+  logoWhiteBlackBg: brandAssetPath(`logos/${LOGO_FILES.markWhiteBlackBg}`),
+  logoWhiteBlueBg: brandAssetPath(`logos/${LOGO_FILES.markWhiteBlueBg}`),
+  logoWhiteGrayBg: brandAssetPath(`logos/${LOGO_FILES.markWhiteGrayBg}`),
+  logoWhiteNoBg: brandAssetPath(`logos/${LOGO_FILES.markWhiteNoBg}`),
+  logoWhiteOrangeBg: brandAssetPath(`logos/${LOGO_FILES.markWhiteOrangeBg}`),
 } as const;
 
 export const brandFavicons = {

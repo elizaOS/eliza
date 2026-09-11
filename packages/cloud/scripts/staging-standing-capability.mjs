@@ -35,7 +35,7 @@ export class StandingCapabilityError extends Error {
 
 export function validateCapabilityConfig(config) {
   if (
-    config.sourceRef !== "refs/heads/develop" ||
+    config.sourceRef !== "refs/heads/staging" ||
     !SHA.test(config.sourceSha) ||
     !SHA.test(config.expectedDeploySha)
   ) {

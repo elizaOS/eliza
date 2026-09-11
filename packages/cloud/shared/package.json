@@ -27,6 +27,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "typecheck": "node ../../shared/scripts/generate-keywords.mjs && tsc --noEmit",
     "check:tenant-scope": "bun scripts/check-tenant-scope.ts",
+    "check:migration-prefix-order": "node scripts/check-migration-prefix-order.mjs",
     "check:tenant-scope:self-test": "bun test scripts/check-tenant-scope.test.ts",
     "verify:tenant-isolation": "bun scripts/verify-tenant-db-isolation.ts",
     "reconcile:container-delete-jobs": "bun scripts/reconcile-container-delete-jobs.ts",

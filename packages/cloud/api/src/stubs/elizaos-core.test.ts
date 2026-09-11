@@ -16,6 +16,7 @@ const DOCUMENT_PREFIX =
   "Answer the user request using the contextual documents";
 
 const THROWING_EXPORTS = [
+  "registerProviderModels",
   "composeActionExamples",
   "formatActions",
   "formatActionNames",

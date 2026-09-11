@@ -4,10 +4,11 @@
  * screenshots only to a temporary directory outside the repository.
  */
 
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import tailwindcss from "@tailwindcss/vite";
 import { chromium } from "playwright";
 import { build as viteBuild } from "vite";
 
@@ -27,12 +28,14 @@ const result = await viteBuild({
   resolve: { conditions: ["eliza-source", "browser"] },
   define: { "process.env.NODE_ENV": '"production"' },
   plugins: [
+    tailwindcss(),
     {
       name: "lifeops-production-adapter-stub",
       enforce: "pre",
       resolveId(source, importer) {
         return source === "./adapter.js" &&
-          importer?.endsWith("LifeOpsConnectionsView.tsx")
+          (importer?.endsWith("LifeOpsConnectionsView.tsx") ||
+            importer?.endsWith("FamilyOperationsView.tsx"))
           ? adapterStub
           : null;
       },
@@ -40,6 +43,7 @@ const result = await viteBuild({
   ],
   build: {
     write: false,
+    cssCodeSplit: false,
     minify: false,
     rollupOptions: {
       input: join(here, "lifeops-connections-fixture.tsx"),
@@ -52,20 +56,29 @@ const bundle = buildResult.output.find(
   (entry) => entry.type === "chunk" && entry.isEntry,
 )?.code;
 if (!bundle) throw new Error("LifeOps fixture bundle was empty.");
+const styles = buildResult.output
+  .filter((entry) => entry.type === "asset" && entry.fileName.endsWith(".css"))
+  .map((entry) => String(entry.source))
+  .join("\n");
+if (!styles)
+  throw new Error("LifeOps fixture omitted production control styles.");
 
-const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LifeOps no-provider acceptance</title><style>:root{color-scheme:dark;--brand-white:#fdfaf7;--brand-black:#000;--txt:var(--brand-white);--muted:rgba(255,255,255,.56);--bg:var(--brand-black);--card:#121212;--bg-muted:rgba(255,255,255,.06);--bg-accent:var(--brand-black);--accent:#ff6a1f;--accent-muted:#c94400;--accent-foreground:var(--brand-black);--accent-subtle:rgba(255,106,31,.14);--border:rgba(255,255,255,.12);--border-strong:rgba(255,255,255,.22);--destructive:#ff6a1f;--destructive-foreground:var(--brand-black);--destructive-subtle:rgba(255,106,31,.12);--status-success:#4ade80;--status-success-bg:rgba(74,222,128,.16);--status-warning:#ff6a1f;--status-warning-bg:rgba(255,106,31,.12);--status-danger:#ff6a1f;--status-danger-bg:rgba(255,106,31,.12);--scrim:rgba(0,0,0,.72)}html,body,#root{width:100%;height:100%;margin:0;background:var(--bg);color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}*{box-sizing:border-box}</style></head><body><div id="root"></div><script>${bundle}</script></body></html>`;
+const html = `<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LifeOps no-provider acceptance</title><style>:root{color-scheme:dark;--brand-white:#fdfaf7;--brand-black:#000;--txt:var(--brand-white);--muted:rgba(255,255,255,.56);--bg:var(--brand-black);--card:#121212;--bg-muted:rgba(255,255,255,.06);--bg-accent:var(--brand-black);--accent:#ff6a1f;--accent-muted:#c94400;--accent-foreground:var(--brand-black);--accent-subtle:rgba(255,106,31,.14);--border:rgba(255,255,255,.12);--border-strong:rgba(255,255,255,.22);--status-success:#4ade80;--status-success-bg:rgba(74,222,128,.16);--status-warning:#ff6a1f;--status-warning-bg:rgba(255,106,31,.12);--status-danger:#ff6a1f;--status-danger-bg:rgba(255,106,31,.12);--scrim:rgba(0,0,0,.72)}html,body,#root{width:100%;height:100%;margin:0;background:var(--bg);color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}*{box-sizing:border-box}</style></head><body><div id="root"></div><script>${bundle}</script></body></html>`;
 const server = Bun.serve({
   hostname: "127.0.0.1",
   port,
   fetch(request) {
     const url = new URL(request.url);
     if (url.pathname === "/" || url.pathname === "/index.html") {
-      return new Response(html, {
-        headers: {
-          "content-type": "text/html; charset=utf-8",
-          "cache-control": "no-store",
+      return new Response(
+        html.replace("<style>", `<style>${styles}</style><style>`),
+        {
+          headers: {
+            "content-type": "text/html; charset=utf-8",
+            "cache-control": "no-store",
+          },
         },
-      });
+      );
     }
     return new Response("Not found", { status: 404 });
   },
@@ -107,6 +120,7 @@ const browser = await chromium.launch({ headless: true });
 try {
   const desktop = await browser.newPage({
     viewport: { width: 1280, height: 900 },
+    reducedMotion: "reduce",
   });
   const pageErrors = [];
   desktop.on("pageerror", (error) => pageErrors.push(String(error)));
@@ -125,6 +139,16 @@ try {
   const primaryButton = desktop.getByRole("button", {
     name: "Seed selected context",
   });
+  const rangeColors = await desktop
+    .getByRole("button", { name: "7 days", exact: true })
+    .evaluate((button) => ({
+      foreground: getComputedStyle(button).color,
+      background: getComputedStyle(button.closest("section")).backgroundColor,
+    }));
+  assert(
+    contrastRatio(rangeColors.foreground, rangeColors.background) >= 4.5,
+    "unselected history range remains legible on the dark panel",
+  );
   const primaryRestColors = await primaryButton.evaluate((element) => {
     const style = getComputedStyle(element);
     return {
@@ -181,7 +205,7 @@ try {
     animations: "disabled",
   });
 
-  await desktop.getByRole("radio", { name: "7 days" }).check();
+  await desktop.getByRole("button", { name: "7 days", exact: true }).click();
   await desktop.getByRole("button", { name: "Seed selected context" }).click();
   await desktop.getByTestId("seed-receipt").waitFor();
   assert(
@@ -223,6 +247,22 @@ try {
     )) === "Cancel",
     "destructive confirmation receives keyboard focus",
   );
+  const confirmPurge = desktop.getByRole("button", { name: "Confirm purge" });
+  for (const state of ["rest", "hover"]) {
+    if (state === "hover") await confirmPurge.hover();
+    const colors = await confirmPurge.evaluate((element) => ({
+      foreground: getComputedStyle(element).color,
+      background: getComputedStyle(element).backgroundColor,
+    }));
+    assert(
+      contrastRatio(colors.foreground, colors.background) >= 4.5,
+      `production destructive confirmation ${state} contrast remains WCAG AA`,
+    );
+    await desktop.screenshot({
+      path: join(outputDir, `desktop-confirm-purge-${state}.png`),
+      fullPage: true,
+    });
+  }
   await desktop.keyboard.press("Escape");
   await desktop.getByRole("alertdialog").waitFor({ state: "detached" });
   assert(
@@ -295,7 +335,10 @@ try {
   await multiAccount.goto(`${baseURL}?scenario=multi-account`);
   await multiAccount
     .getByRole("combobox", { name: "Active Google account" })
-    .selectOption("connector-account:fixture-account-2");
+    .click();
+  await multiAccount
+    .getByRole("option", { name: "fixture-second@example.test", exact: true })
+    .click();
   await multiAccount
     .getByRole("button", { name: "Seed selected context" })
     .click();
@@ -545,9 +588,130 @@ try {
     await faultPage.close();
   }
 
+  for (const width of [1180, 390]) {
+    const family = await browser.newPage({
+      viewport: { width, height: 850 },
+      hasTouch: width === 390,
+      isMobile: width === 390,
+    });
+    const familyErrors = [];
+    family.on("pageerror", (error) => familyErrors.push(String(error)));
+    await family.goto(`${baseURL}?scenario=family-packet`);
+    await family
+      .getByRole("button", { name: "Monthly packet", exact: true })
+      .click();
+    await family.getByText(/Review guest-shareable draft/).click();
+    await family.getByRole("button", { name: "Edit email draft" }).click();
+    const editor = family.getByRole("group", { name: "Edit saved email" });
+    await editor
+      .getByLabel("Email text", { exact: true })
+      .fill("Please confirm pickup at 3 PM.\nThank you.");
+    await editor
+      .getByLabel("Email subject", { exact: true })
+      .fill("Updated October plans");
+    assert(
+      (await family
+        .getByRole("button", { name: "Request owner approval" })
+        .count()) === 0,
+      `${width}px hides approval while unsaved text is being edited`,
+    );
+    await editor.screenshot({
+      path: join(outputDir, `family-editor-${width}.png`),
+      animations: "disabled",
+    });
+    const saveButton = editor.getByRole("button", { name: "Save new draft" });
+    if (width === 1180) {
+      await saveButton.hover();
+      const colors = await saveButton.evaluate((element) => ({
+        foreground: getComputedStyle(element).color,
+        background: getComputedStyle(element).backgroundColor,
+      }));
+      assert(
+        contrastRatio(colors.foreground, colors.background) >= 4.5,
+        "email save hover preserves readable contrast",
+      );
+      await editor.screenshot({
+        path: join(outputDir, "family-editor-hover.png"),
+        animations: "disabled",
+      });
+    }
+    await saveButton.click();
+    await family.getByText(/Review guest-shareable draft v2/).waitFor();
+    await family
+      .getByRole("button", { name: "Request owner approval" })
+      .click();
+    await family.waitForFunction(
+      () => document.documentElement.dataset.familyApprovalVersion === "2",
+    );
+    assert(
+      (await family.evaluate(
+        () => document.documentElement.dataset.familyApprovalVersion,
+      )) === "2",
+      `${width}px approval uses the saved new version`,
+    );
+    const downloading = family.waitForEvent("download");
+    await family.getByRole("link", { name: "Download draft record" }).click();
+    const download = await downloading;
+    const downloadPath = await download.path();
+    if (!downloadPath)
+      throw new Error("Browser did not write the draft download");
+    const recordText = await readFile(downloadPath, "utf8");
+    const record = JSON.parse(recordText);
+    assert(
+      record.draft.body === "Please confirm pickup at 3 PM.\nThank you." &&
+        record.draft.email.subject === "Updated October plans",
+      `${width}px downloaded record preserves saved edits`,
+    );
+    assert(
+      !recordText.includes("Private fixture canary"),
+      `${width}px downloaded draft excludes owner-private claims`,
+    );
+    assert(
+      await family.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+      ),
+      `${width}px editor has no horizontal overflow`,
+    );
+    assert(
+      familyErrors.length === 0,
+      `${width}px family editing has no page errors`,
+    );
+    await family.close();
+  }
+  const failedEdit = await browser.newPage();
+  await failedEdit.goto(`${baseURL}?scenario=family-packet&failure=revision`);
+  await failedEdit
+    .getByRole("button", { name: "Monthly packet", exact: true })
+    .click();
+  await failedEdit.getByText(/Review guest-shareable draft/).click();
+  await failedEdit.getByRole("button", { name: "Edit email draft" }).click();
+  await failedEdit
+    .getByLabel("Email text", { exact: true })
+    .fill("Keep this unsaved owner text.");
+  await failedEdit.getByRole("button", { name: "Save new draft" }).click();
+  await failedEdit
+    .getByRole("alert")
+    .filter({ hasText: "Fixture revision could not be saved." })
+    .waitFor();
+  assert(
+    (await failedEdit
+      .getByLabel("Email text", { exact: true })
+      .inputValue()) === "Keep this unsaved owner text.",
+    "failed save preserves unsaved owner text",
+  );
+  assert(
+    (await failedEdit
+      .getByRole("button", { name: "Request owner approval" })
+      .count()) === 0,
+    "failed save cannot approve unsaved edits",
+  );
+  await failedEdit.close();
+
   const mobile = await browser.newPage({
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
   });
   const mobileErrors = [];
   mobile.on("pageerror", (error) => mobileErrors.push(String(error)));
@@ -557,14 +721,24 @@ try {
     () => document.documentElement.scrollWidth <= window.innerWidth + 1,
   );
   assert(fitsViewport, "mobile layout has no horizontal overflow");
-  const shortButtonCount = await mobile
-    .locator("button")
-    .evaluateAll(
-      (buttons) =>
-        buttons.filter((button) => button.getBoundingClientRect().height < 44)
-          .length,
-    );
-  assert(shortButtonCount === 0, "mobile buttons meet the 44px touch target");
+  const shortButtons = await mobile.locator("button").evaluateAll((buttons) =>
+    buttons
+      .filter(
+        (button) =>
+          (button.closest("label") ?? button).getBoundingClientRect().height <
+          44,
+      )
+      .map((button) => ({
+        label: button.textContent,
+        height: button.getBoundingClientRect().height,
+      })),
+  );
+  assert(
+    shortButtons.length === 0,
+    "mobile buttons meet the 44px touch target",
+  );
+  if (shortButtons.length)
+    process.stdout.write(`${JSON.stringify(shortButtons)}\n`);
   await mobile.screenshot({
     path: join(outputDir, "mobile-initial.png"),
     fullPage: true,

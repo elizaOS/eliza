@@ -114,6 +114,33 @@ export const WithErrorStage: Story = {
   },
 };
 
+export const LightThemeErrorStage: Story = {
+  ...WithErrorStage,
+  globals: { theme: "light" },
+};
+
+export const AppThemeErrorStage: Story = {
+  ...WithErrorStage,
+  decorators: [
+    (Story) => (
+      <div className="theme-app">
+        <Story />
+      </div>
+    ),
+  ],
+};
+
+export const CloudsThemeErrorStage: Story = {
+  ...WithErrorStage,
+  decorators: [
+    (Story) => (
+      <div className="theme-clouds">
+        <Story />
+      </div>
+    ),
+  ],
+};
+
 export const HighCallCounts: Story = {
   args: {
     nodes: baseNodes.map((node, i) => ({

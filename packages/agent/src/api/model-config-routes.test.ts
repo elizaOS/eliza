@@ -480,6 +480,8 @@ describe("POST /api/models/config coding writes", () => {
     expect(String(body.error)).toContain('Unknown backend "opencode"');
     expect(saveElizaConfig).not.toHaveBeenCalled();
     expect((config as Record<string, unknown>).env).toBeUndefined();
+    expect(saveElizaConfig).not.toHaveBeenCalled();
+    expect(config).toEqual({});
   });
 
   it("persists defaultBackend eliza-code under the orchestrator's elizaos spelling", async () => {

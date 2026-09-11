@@ -1,3 +1,4 @@
+/** Defines light and dark semantic color pairs for standalone themed surfaces. */
 :root {
   /* --brand-blue retained as a legacy token but remapped to neutral so
      stragglers that still reference it don't render blue. The Eliza Cloud
@@ -32,12 +33,14 @@
   --accent-rgb: 0, 0, 0;
   --accent-foreground: var(--brand-white);
   --accent-subtle: rgba(0, 0, 0, 0.08);
-  --destructive: #dc2626;
+  --destructive: #b91c1c;
+  --destructive-solid: #b91c1c;
+  --destructive-solid-hover: #991b1b;
   --destructive-foreground: #ffffff;
   --destructive-subtle: rgba(220, 38, 38, 0.1);
   --status-success: #22c55e;
   --status-success-bg: rgba(34, 197, 94, 0.12);
-  --status-danger: #dc2626;
+  --status-danger: #b91c1c;
   --status-danger-bg: rgba(220, 38, 38, 0.1);
   --status-warning: #a16207;
   --status-warning-bg: rgba(161, 98, 7, 0.1);
@@ -84,12 +87,14 @@
   --accent-rgb: 253, 250, 247;
   --accent-foreground: var(--brand-black);
   --accent-subtle: rgba(255, 255, 255, 0.12);
-  --destructive: #ef4444;
+  --destructive: #fca5a5;
+  --destructive-solid: #b91c1c;
+  --destructive-solid-hover: #991b1b;
   --destructive-foreground: #ffffff;
   --destructive-subtle: rgba(239, 68, 68, 0.12);
   --status-success: #4ade80;
   --status-success-bg: rgba(74, 222, 128, 0.16);
-  --status-danger: #ef4444;
+  --status-danger: #fca5a5;
   --status-danger-bg: rgba(239, 68, 68, 0.12);
   --status-warning: #eab308;
   --status-warning-bg: rgba(234, 179, 8, 0.1);

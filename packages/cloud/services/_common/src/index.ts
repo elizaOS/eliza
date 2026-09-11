@@ -1,4 +1,4 @@
-// Shares index service primitives across cloud worker sidecars.
+/** Exposes dependency-free transport primitives shared by Cloud worker sidecars. */
 
 export {
   GATEWAY_TOKEN_MAX_LIFETIME_SECONDS,
@@ -9,8 +9,31 @@ export {
   parseGatewayTokenResponse,
 } from "./gateway-auth";
 export {
+  executeGatewayForwardAttempts,
+  type GatewayForwardOptions,
+  type GatewayPostOptions,
+  type GatewayTargetResult,
+  postGatewayTarget,
+} from "./gateway-forward";
+export {
+  type GatewayRoutingRedis,
+  type GatewayServerLookup,
+  type GatewayWakeDependencies,
+  observeGatewayWake,
+  refreshGatewayActivity,
+  resolveGatewayAgentServer,
+  wakeGatewayServer,
+} from "./gateway-routing";
+export {
+  type ConsistentHashRing,
+  createHashRouter,
+  type HashRouter,
+  type HashRouterOptions,
+} from "./hash-router";
+export {
   extractIdentityLinkCode,
   identityLinkReply,
+  normalizeIdentityLinkCodeBody,
 } from "./identity-link-code";
 export {
   DEFAULT_K8S_WAKE_TIMEOUT_MS,
@@ -28,21 +51,19 @@ export {
   type ServiceLoggerOptions,
 } from "./logger";
 export {
-  ELIZA_FAILURE_CAUSE_NAME_HEADER,
-  ELIZA_FAILURE_NAME_HEADER,
-  ELIZA_FAILURE_STAGE_HEADER,
-  ELIZA_RETRYABLE_HEADER,
-  PERSONAL_SHARED_FAILURE_REPLY,
-  type PersonalSharedFailureMetadata,
-  readPersonalSharedFailureMetadata,
-} from "./personal-shared-failure";
-export {
   executeResponseAttempts,
   type ResponseAttemptObservation,
   type ResponseAttemptsOptions,
   type ResponseAttemptsResult,
+  type ResponseReplayPolicy,
   type ResponseRetryReason,
 } from "./response-attempts";
+export {
+  type BackoffOptions,
+  computeBackoffMs,
+  parseRetryAfterMs,
+  sleepWithAbort,
+} from "./retry";
 export {
   __resetTelegramIdentityAttestationCacheForTests,
   attestTelegramBotIdentity,
@@ -56,13 +77,10 @@ export {
   TELEGRAM_VOICE_MAX_DURATION_SECONDS,
   TelegramApiResponseError,
   TelegramApiTransportError,
-  type TelegramAttestedBotIdentity,
   type TelegramConnectorConfig,
   type TelegramConnectorEvent,
   type TelegramConnectorLogger,
   type TelegramDeliveryReceipt,
-  TelegramIdentityAttestationError,
-  type TelegramIdentityAttestationFailureReason,
   type TelegramReplyDeliveryHooks,
   type TelegramResolvedVoiceNote,
   verifyTelegramWebhook,

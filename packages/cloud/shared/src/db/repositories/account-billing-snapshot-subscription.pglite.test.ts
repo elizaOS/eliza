@@ -146,6 +146,7 @@ test("current-source read preserves exact allowance and strips all provider auth
     observedAt: "2026-08-20T12:00:00.000Z",
     value: {
       lifecycleRevision: "1",
+      cancellationNotice: { status: "not_applicable", reason: "no_current_cancellation_notice" },
       cancelAtPeriodEnd: false,
       allowance: {
         status: "available",

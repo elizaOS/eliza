@@ -29,6 +29,8 @@ process.env.MOCK_REDIS = "1";
 import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import * as realAuth from "@/lib/auth";
+import { runWithCloudBindings } from "@/lib/runtime/cloud-bindings";
+import { SandboxTransport } from "@/lib/services/eliza-sandbox/bridge/transport";
 import {
   personalSharedAgent,
   personalSharedAgentId,
@@ -187,6 +189,7 @@ const ENV = {
   SHARED_RUNTIME_CONVERSATIONS: cutoverNamespace,
   PERSONAL_DELIVERY_PROJECTIONS: personalDeliveryProjectionNamespace,
   ELIZA_CLOUD_AGENT_BASE_DOMAIN: "dedicated-cutover.test",
+  AGENT_ROUTER_ORIGIN_HOST: "router-cutover.test",
 } as unknown as AppEnv["Bindings"];
 
 let pgliteReady = true;
@@ -365,17 +368,19 @@ function quote(agentId: string) {
 }
 
 function cutover(agentId: string, dedicatedAgentId: string) {
-  return app.request(
-    `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/upgrade-tier/cutover`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer steward-test",
-        "Content-Type": "application/json",
+  return runWithCloudBindings(ENV, () =>
+    app.request(
+      `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/upgrade-tier/cutover`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer steward-test",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ dedicatedAgentId }),
       },
-      body: JSON.stringify({ dedicatedAgentId }),
-    },
-    ENV,
+      ENV,
+    ),
   );
 }
 
@@ -1299,6 +1304,10 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     });
 
     const originalFetch = globalThis.fetch;
+    const workerRuntime = spyOn(
+      SandboxTransport.prototype,
+      "isCloudflareWorkerRuntime",
+    ).mockReturnValue(true);
     const importFetch = mock(
       async (_input: RequestInfo | URL, _init?: RequestInit) =>
         Response.json({ error: "not ready" }, { status: 503 }),
@@ -1622,12 +1631,15 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         },
       });
       expect(importFetch).toHaveBeenLastCalledWith(
-        `https://${CUTOVER_TARGET}.dedicated-cutover.test/api/conversations/${encodeURIComponent(PERSONAL_C)}/import`,
+        `https://router-cutover.test/api/conversations/${encodeURIComponent(PERSONAL_C)}/import`,
         expect.objectContaining({
           method: "POST",
+          redirect: "manual",
           headers: expect.objectContaining({
             Authorization: "Bearer agent_cutover_transport",
             "X-API-Key": "agent_cutover_transport",
+            "X-Forwarded-Host": `${CUTOVER_TARGET}.dedicated-cutover.test`,
+            "X-Forwarded-Proto": "https",
           }),
         }),
       );
@@ -1816,6 +1828,15 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       cutoverCoordinatorOperations.length = 0;
       const recoveredAfterCommit = await cutover(PERSONAL_C, CUTOVER_TARGET);
       expect(recoveredAfterCommit.status).toBe(200);
+      // Initial import, activation, and committed retry must all use the
+      // origin. A public UUID-host fetch from a Worker bypasses its own proxy.
+      for (const [url, init] of importFetch.mock.calls) {
+        expect(new URL(String(url)).hostname).toBe("router-cutover.test");
+        expect(new Headers(init?.headers).get("X-Forwarded-Host")).toBe(
+          `${CUTOVER_TARGET}.dedicated-cutover.test`,
+        );
+        expect(init?.redirect).toBe("manual");
+      }
       expect(cutoverCoordinatorOperations).toEqual(["cutover-commit"]);
       const [afterCommittedRecovery] = await dbWrite
         .select()
@@ -1868,6 +1889,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         .delete(personalAccountConvergences)
         .where(eq(personalAccountConvergences.token, convergenceToken));
       globalThis.fetch = originalFetch;
+      workerRuntime.mockRestore();
       currentUser.id = USER_A;
       currentUser.email = "owner-a@test.test";
       currentUser.organization_id = ORG_A;

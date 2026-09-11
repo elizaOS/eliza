@@ -21,6 +21,7 @@
 
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { MockAppProvider } from "../../storybook/mock-providers";
 import { registerAllCloudSurfaces } from "../register-all";
 import {
   CloudAccountSection,
@@ -103,4 +104,8 @@ function Fixture() {
 
 const rootEl = document.getElementById("root");
 if (!rootEl) throw new Error("fixture root missing");
-createRoot(rootEl).render(<Fixture />);
+createRoot(rootEl).render(
+  <MockAppProvider>
+    <Fixture />
+  </MockAppProvider>,
+);

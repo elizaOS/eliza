@@ -9,7 +9,7 @@ import { decideReleaseAdmission } from "./release-admission.mjs";
 const staging = {
   eventName: "push",
   targetEnvironment: "",
-  ref: "refs/heads/develop",
+  ref: "refs/heads/staging",
   force: false,
   runDeployedRendererStaging: false,
   runId: "200",
@@ -93,13 +93,13 @@ describe("decideReleaseAdmission", () => {
     {
       eventName: "workflow_dispatch",
       targetEnvironment: "staging",
-      ref: "refs/heads/develop",
+      ref: "refs/heads/staging",
       force: true,
     },
     {
       eventName: "workflow_dispatch",
       targetEnvironment: "staging",
-      ref: "refs/heads/develop",
+      ref: "refs/heads/staging",
       force: false,
     },
   ])("always admits non-supersedable releases", (input) => {

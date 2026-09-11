@@ -8,6 +8,8 @@ import type { Character, IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   listEnabledTelegramAccounts,
+  normalizeTelegramAccountId,
+  resolveDefaultTelegramAccountId,
   resolveTelegramAccount,
   type TelegramMultiAccountConfig,
 } from "./accounts";
@@ -45,6 +47,14 @@ afterEach(() => {
 });
 
 describe("resolveTelegramAccount owner-bind fail-closed", () => {
+  it("preserves case-sensitive account IDs while sharing default selection", () => {
+    const rt = createRuntime({
+      accounts: { " Team-Bot ": { botToken: "token", enabled: true } },
+    });
+    expect(normalizeTelegramAccountId(" Team-Bot ")).toBe("Team-Bot");
+    expect(resolveDefaultTelegramAccountId(rt)).toBe(" Team-Bot ");
+  });
+
   it("lets the default account inherit character-level botToken", () => {
     const rt = createRuntime({ botToken: "owner-bot-token" });
     const resolved = resolveTelegramAccount(rt, "default");

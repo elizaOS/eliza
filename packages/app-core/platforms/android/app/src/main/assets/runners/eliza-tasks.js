@@ -1,4 +1,4 @@
-/*
+/**
  * Eliza background runner — fired by Capacitor BackgroundRunner inside a
  * separate JSContext (iOS QuickJS, Android V8) per wake event.
  *

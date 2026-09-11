@@ -12,13 +12,9 @@ provenance in ``evidence/release.json`` and the manifest gates.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
-import os
-import shutil
 import sys
-from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Final, Mapping, Sequence
 
@@ -69,10 +65,21 @@ except ImportError:  # pragma: no cover - direct script execution path
 
 from benchmarks.eliza1_gates import apply_gates  # noqa: E402
 from scripts.quantization._kernel_manifest import kernel_manifest_fragment  # noqa: E402
-
-LOCAL_MODEL_ROOT: Final[Path] = (
-    Path.home() / ".eliza" / "local-inference" / "models"
+from scripts.manifest.eliza1_staging_kernel import (  # noqa: E402
+    CHECKSUM_PATH,
+    StagedFile,
+    StagingProfile,
+    ensure_release_dirs,
+    json_write as _json_write,
+    now_iso as _now_iso,
+    sha256_file,
+    stage_file as _stage_file,
+    text_write as _text_write,
+    validate_checksum_manifest,
+    write_checksum_manifest,
 )
+
+LOCAL_MODEL_ROOT: Final[Path] = Path.home() / ".eliza" / "local-inference" / "models"
 DEFAULT_BUNDLE_DIR: Final[Path] = LOCAL_MODEL_ROOT / "eliza-1-2b.bundle"
 DEFAULT_TEXT_STANDIN_CANDIDATES: Final[tuple[Path, ...]] = (
     LOCAL_MODEL_ROOT / "gemma4-e2b-official" / "gemma-4-E2B_q4_0-it.gguf",
@@ -83,17 +90,13 @@ DEFAULT_TEXT_STANDIN_CANDIDATES: Final[tuple[Path, ...]] = (
 )
 DEFAULT_DRAFTER_STANDIN_CANDIDATES: Final[tuple[Path, ...]] = (
     LOCAL_MODEL_ROOT / "gemma4-e2b-assistant-mtp" / "drafter-2b.gguf",
-    LOCAL_MODEL_ROOT
-    / "gemma4-e2b-assistant-mtp"
-    / "gemma-4-E2B-mtp-draft.gguf",
+    LOCAL_MODEL_ROOT / "gemma4-e2b-assistant-mtp" / "gemma-4-E2B-mtp-draft.gguf",
     LOCAL_MODEL_ROOT / "gemma4-e2b-assistant-mtp.gguf",
     # Legacy local cache names from the pre-official-source Gemma smoke runs.
     LOCAL_MODEL_ROOT
     / "gemma4-e4b-mtp-drafter-q4"
     / "gemma-4-E4B-MTP-Q4_K_M.repaired.gguf",
-    LOCAL_MODEL_ROOT
-    / "gemma4-e4b-mtp-drafter-q4"
-    / "gemma-4-E4B-MTP-Q4_K_M.gguf",
+    LOCAL_MODEL_ROOT / "gemma4-e4b-mtp-drafter-q4" / "gemma-4-E4B-MTP-Q4_K_M.gguf",
     LOCAL_MODEL_ROOT / "gemma4-e4b-mtp-drafter-q4.repaired.gguf",
     LOCAL_MODEL_ROOT / "gemma4-e4b-mtp-drafter-q4.gguf",
 )
@@ -112,7 +115,6 @@ DEFAULT_VOICE_CAPABILITIES: Final[tuple[str, ...]] = (
     "emotion-tags",
     "singing",
 )
-CHECKSUM_PATH: Final[Path] = Path("checksums/SHA256SUMS")
 LOCAL_EVIDENCE_NAME: Final[str] = "local-bundle-completion.json"
 REQUIRED_RELEASE_DIRS: Final[tuple[str, ...]] = (
     "text",
@@ -131,31 +133,15 @@ REQUIRED_RELEASE_DIRS: Final[tuple[str, ...]] = (
 )
 
 
-@dataclass(frozen=True, slots=True)
-class StagedFile:
-    role: str
-    source: str
-    destination: str
-    sha256: str
-    sizeBytes: int
-    method: str
-    provenance: str
-
-
-def sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as fh:
-        for block in iter(lambda: fh.read(chunk), b""):
-            h.update(block)
-    return h.hexdigest()
+LOCAL_STAGING_PROFILE: Final[StagingProfile] = StagingProfile(
+    name="local-standin",
+    release_dirs=REQUIRED_RELEASE_DIRS,
+    conditional_dirs={},
+)
 
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[4]
-
-
-def _now_iso() -> str:
-    return datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _first_existing(candidates: Sequence[Path], label: str) -> Path:
@@ -197,66 +183,8 @@ def _choose_source(
     return _first_existing(fallback_candidates, label)
 
 
-def _json_write(path: Path, data: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
-
-
-def _text_write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text)
-
-
-def _stage_file(
-    *,
-    role: str,
-    source: Path,
-    destination: Path,
-    provenance: str,
-    force: bool,
-) -> StagedFile:
-    source = source.resolve()
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    source_sha = sha256_file(source)
-
-    if destination.exists():
-        dest_sha = sha256_file(destination)
-        if dest_sha == source_sha:
-            method = "existing"
-        elif force:
-            destination.unlink()
-            method = _link_or_copy(source, destination)
-        else:
-            raise FileExistsError(
-                f"{destination} already exists with sha256 {dest_sha}; "
-                f"expected {source_sha}. Re-run with --force to replace it."
-            )
-    else:
-        method = _link_or_copy(source, destination)
-
-    return StagedFile(
-        role=role,
-        source=str(source),
-        destination=str(destination),
-        sha256=source_sha,
-        sizeBytes=destination.stat().st_size,
-        method=method,
-        provenance=provenance,
-    )
-
-
-def _link_or_copy(source: Path, destination: Path) -> str:
-    try:
-        os.link(source, destination)
-        return "hardlink"
-    except OSError:
-        shutil.copy2(source, destination)
-        return "copy"
-
-
 def _ensure_release_dirs(bundle_dir: Path) -> None:
-    for rel in REQUIRED_RELEASE_DIRS:
-        (bundle_dir / rel).mkdir(parents=True, exist_ok=True)
+    ensure_release_dirs(bundle_dir, LOCAL_STAGING_PROFILE, "2b")
 
 
 def _load_smoke_report(path: Path | None) -> dict[str, Any] | None:
@@ -374,9 +302,7 @@ def _write_licenses(bundle_dir: Path, *, tier: str, force: bool) -> list[str]:
     return written
 
 
-_GGUF_DRAFTER_TARGET_CHECKPOINT_KEY: Final[str] = (
-    "mtp-draft.target_checkpoint_sha256"
-)
+_GGUF_DRAFTER_TARGET_CHECKPOINT_KEY: Final[str] = "mtp-draft.target_checkpoint_sha256"
 
 
 def _read_drafter_target_checkpoint_sha256(drafter_path: Path) -> str | None:
@@ -451,9 +377,7 @@ def _write_target_meta(
                 "publishEligible": False,
                 "reason": f"MTP is disabled for Eliza-1 {tier}.",
                 "targetText": {
-                    "path": str(
-                        Path(primary_text.destination).relative_to(bundle_dir)
-                    ),
+                    "path": str(Path(primary_text.destination).relative_to(bundle_dir)),
                     "sha256": primary_text.sha256,
                     "provenance": primary_text.provenance,
                     "finalElizaWeights": False,
@@ -492,8 +416,7 @@ def _write_target_meta(
     # Local stand-in drafters have no recorded hash, so this is False here;
     # the real publish gate refuses to ship a drafter where this is not True.
     drafter_matches_target = (
-        drafter_target_sha is not None
-        and drafter_target_sha == primary_text.sha256
+        drafter_target_sha is not None and drafter_target_sha == primary_text.sha256
     )
     _json_write(
         bundle_dir / "mtp" / "target-meta.json",
@@ -504,9 +427,7 @@ def _write_target_meta(
             "mtpEnabled": True,
             "publishEligible": False,
             "targetText": {
-                "path": str(
-                    Path(primary_text.destination).relative_to(bundle_dir)
-                ),
+                "path": str(Path(primary_text.destination).relative_to(bundle_dir)),
                 "sha256": primary_text.sha256,
                 "provenance": primary_text.provenance,
                 "finalElizaWeights": False,
@@ -521,9 +442,7 @@ def _write_target_meta(
                 for item in text_files
             ],
             "drafter": {
-                "path": str(
-                    Path(drafter_file.destination).relative_to(bundle_dir)
-                ),
+                "path": str(Path(drafter_file.destination).relative_to(bundle_dir)),
                 "sha256": drafter_file.sha256,
                 "provenance": drafter_file.provenance,
                 "finalElizaWeights": False,
@@ -808,7 +727,9 @@ def _write_quantization_sidecars(
 
 
 def _collect_files(bundle_dir: Path, *, tier: str) -> dict[str, list[FileEntry]]:
-    def entries(subdir: str, *, text: bool = False, gguf_only: bool = False) -> list[FileEntry]:
+    def entries(
+        subdir: str, *, text: bool = False, gguf_only: bool = False
+    ) -> list[FileEntry]:
         root = bundle_dir / subdir
         if not root.is_dir():
             return []
@@ -862,15 +783,13 @@ def _write_lineage(
     vision_file: StagedFile | None = None,
 ) -> dict[str, LineageEntry]:
     existing = {
-        slot: asdict(entry)
-        for slot, entry in _read_lineage(bundle_dir).items()
+        slot: asdict(entry) for slot, entry in _read_lineage(bundle_dir).items()
     }
     existing.update(
         {
             "text": {
                 "base": (
-                    f"local-standin:{text_file.source}"
-                    f"@sha256:{text_file.sha256}"
+                    f"local-standin:{text_file.source}" f"@sha256:{text_file.sha256}"
                 ),
                 "license": "local stand-in; release license not attested",
             },
@@ -879,8 +798,7 @@ def _write_lineage(
     if drafter_file is not None:
         existing["drafter"] = {
             "base": (
-                f"local-standin:{drafter_file.source}"
-                f"@sha256:{drafter_file.sha256}"
+                f"local-standin:{drafter_file.source}" f"@sha256:{drafter_file.sha256}"
             ),
             "license": "local stand-in; release license not attested",
         }
@@ -889,8 +807,7 @@ def _write_lineage(
     if vision_file is not None:
         existing["vision"] = {
             "base": (
-                f"local-standin:{vision_file.source}"
-                f"@sha256:{vision_file.sha256}"
+                f"local-standin:{vision_file.source}" f"@sha256:{vision_file.sha256}"
             ),
             "license": "local stand-in; release license not attested",
         }
@@ -1010,57 +927,6 @@ def _render_readme(
     _text_write(bundle_dir / "README.md", "\n".join(lines))
 
 
-def _all_checksum_inputs(bundle_dir: Path) -> list[Path]:
-    out: list[Path] = []
-    for path in sorted(bundle_dir.rglob("*")):
-        if not path.is_file():
-            continue
-        rel = path.relative_to(bundle_dir)
-        if rel == CHECKSUM_PATH:
-            continue
-        if any(part.startswith(".") for part in rel.parts):
-            continue
-        out.append(path)
-    return out
-
-
-def write_checksum_manifest(bundle_dir: Path) -> Path:
-    checksum_path = bundle_dir / CHECKSUM_PATH
-    checksum_path.parent.mkdir(parents=True, exist_ok=True)
-    lines = [
-        f"{sha256_file(path)}  {path.relative_to(bundle_dir)}"
-        for path in _all_checksum_inputs(bundle_dir)
-    ]
-    checksum_path.write_text("\n".join(lines) + "\n")
-    return checksum_path
-
-
-def validate_checksum_manifest(bundle_dir: Path) -> tuple[str, ...]:
-    checksum_path = bundle_dir / CHECKSUM_PATH
-    if not checksum_path.is_file():
-        return (f"missing {CHECKSUM_PATH}",)
-    recorded: dict[str, str] = {}
-    errors: list[str] = []
-    for line_no, raw in enumerate(checksum_path.read_text().splitlines(), start=1):
-        if not raw.strip():
-            continue
-        parts = raw.split(None, 1)
-        if len(parts) != 2:
-            errors.append(f"{CHECKSUM_PATH}:{line_no}: expected '<sha>  <path>'")
-            continue
-        sha, rel = parts[0], parts[1].strip()
-        recorded[rel] = sha
-    expected = [str(p.relative_to(bundle_dir)) for p in _all_checksum_inputs(bundle_dir)]
-    for rel in expected:
-        if rel not in recorded:
-            errors.append(f"{CHECKSUM_PATH}: missing {rel}")
-            continue
-        actual = sha256_file(bundle_dir / rel)
-        if recorded[rel] != actual:
-            errors.append(f"{CHECKSUM_PATH}: checksum mismatch for {rel}")
-    return tuple(errors)
-
-
 def _write_release_evidence(
     *,
     bundle_dir: Path,
@@ -1074,7 +940,9 @@ def _write_release_evidence(
         root = bundle_dir / subdir
         if not root.is_dir():
             return []
-        return sorted(str(p.relative_to(bundle_dir)) for p in root.iterdir() if p.is_file())
+        return sorted(
+            str(p.relative_to(bundle_dir)) for p in root.iterdir() if p.is_file()
+        )
 
     license_files = [
         "licenses/LICENSE.text",
@@ -1254,7 +1122,9 @@ def _write_repo_evidence(
                 str(p.relative_to(bundle_dir))
                 for p in bundle_dir.rglob("*")
                 if p.is_file()
-                and not any(part.startswith(".") for part in p.relative_to(bundle_dir).parts)
+                and not any(
+                    part.startswith(".") for part in p.relative_to(bundle_dir).parts
+                )
             ),
             "manifestValidation": {
                 "localNonPublishableOk": not manifest_local_errors,
@@ -1524,7 +1394,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ap.add_argument("--text-source", type=Path, default=None)
     ap.add_argument("--drafter-source", type=Path, default=None)
     ap.add_argument("--vision-source", type=Path, default=None)
-    ap.add_argument("--context", choices=tuple({c for v in CONTEXTS_BY_TIER.values() for c in v}), default=None)
+    ap.add_argument(
+        "--context",
+        choices=tuple({c for v in CONTEXTS_BY_TIER.values() for c in v}),
+        default=None,
+    )
     ap.add_argument(
         "--all-contexts",
         action="store_true",
