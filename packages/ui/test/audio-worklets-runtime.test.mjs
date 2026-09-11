@@ -94,6 +94,45 @@ describe("packaged voice AudioWorklets", () => {
     });
   });
 
+  it("retires old-only samples played after a short reply ends mid-crossfade", () => {
+    const downlink = processor("eliza-voice-session-downlink");
+    const send = (data) => downlink.port.onmessage({ data });
+    send({ type: "pcm", pcm: new Float32Array(32).fill(0.8), sequence: 1 });
+    downlink.process([], [[new Float32Array(2)]]);
+    send({ type: "handoff", crossfadeSamples: 20, sequence: 2 });
+    send({ type: "pcm", pcm: new Float32Array(8).fill(-0.8), sequence: 3 });
+    const output = new Float32Array(22);
+    downlink.process([], [[output]]);
+    // 8 mixed frames retire 16 samples; the next 14 frames play old audio
+    // alone and must retire one sample each, leaving 8 of the original 30.
+    expect(output[12]).toBeCloseTo(0.8);
+    send({ type: "pcm", pcm: new Float32Array(2), sequence: 4 });
+    expect(downlink.port.postMessage).toHaveBeenLastCalledWith({
+      type: "queue-depth",
+      queuedSamples: 10,
+      sequence: 4,
+    });
+  });
+
+  it("retires the abandoned old tail when a handoff is replaced before it completes", () => {
+    const downlink = processor("eliza-voice-session-downlink");
+    const send = (data) => downlink.port.onmessage({ data });
+    send({ type: "pcm", pcm: new Float32Array(32).fill(0.8), sequence: 1 });
+    downlink.process([], [[new Float32Array(2)]]);
+    send({ type: "handoff", crossfadeSamples: 20, sequence: 2 });
+    send({ type: "pcm", pcm: new Float32Array(32).fill(-0.8), sequence: 3 });
+    downlink.process([], [[new Float32Array(10)]]);
+    // 10 mixed frames retired 20: 20 old and 22 new samples remain.
+    send({ type: "handoff", crossfadeSamples: 20, sequence: 4 });
+    send({ type: "pcm", pcm: new Float32Array(32).fill(0.4), sequence: 5 });
+    // The 20 unplayed old samples left with the replaced handoff: 22 + 32.
+    expect(downlink.port.postMessage).toHaveBeenLastCalledWith({
+      type: "queue-depth",
+      queuedSamples: 54,
+      sequence: 5,
+    });
+  });
+
   it("captures the playback reference as averaged mono PCM", () => {
     const tap = processor("eliza-playback-reference-tap");
 

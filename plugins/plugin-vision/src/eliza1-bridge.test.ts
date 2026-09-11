@@ -140,6 +140,7 @@ describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
     const fullScreenOCR = Array.from({ length: 60 }, (_, i) => `row ${i}`).join(
       "\n",
     );
+    // Model-facing OCR must remain complete rather than imposing a line cap.
     sceneWithOcr(service, fullScreenOCR);
     const describeFn = Reflect.get(service, "describeSceneWithVLM") as (
       imageUrl: string,
@@ -167,6 +168,8 @@ describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
     const fullScreenOCR = [0, 1, 2]
       .map((i) => `${i} ${"x".repeat(1000)}`)
       .join("\n");
+    // Three distinct ~1000-char lines prove the retired 2000-character cap is
+    // not reintroduced on the model-facing path.
     sceneWithOcr(service, fullScreenOCR);
     const describeFn = Reflect.get(service, "describeSceneWithVLM") as (
       imageUrl: string,

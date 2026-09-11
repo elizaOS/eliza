@@ -7,10 +7,15 @@
  * owner homeserver / userId / accessToken / password / deviceId from env
  * or the top-level character `settings.matrix` identity fields.
  */
-import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import {
+  DEFAULT_CONNECTOR_ACCOUNT_ID,
+  ElizaError,
+  type IAgentRuntime,
+  selectDefaultConnectorAccountId,
+} from "@elizaos/core";
 import type { MatrixSettings } from "./types.js";
 
-export const DEFAULT_MATRIX_ACCOUNT_ID = "default";
+export const DEFAULT_MATRIX_ACCOUNT_ID = DEFAULT_CONNECTOR_ACCOUNT_ID;
 
 export type MatrixAccountConfig = Partial<Omit<MatrixSettings, "rooms" | "accountId">> & {
   accountId?: string;
@@ -122,8 +127,7 @@ export function resolveDefaultMatrixAccountId(runtime: IAgentRuntime): string {
     stringSetting(runtime, "MATRIX_ACCOUNT_ID");
   if (requested) return normalizeMatrixAccountId(requested);
 
-  const ids = listMatrixAccountIds(runtime);
-  return ids.includes(DEFAULT_MATRIX_ACCOUNT_ID) ? DEFAULT_MATRIX_ACCOUNT_ID : ids[0];
+  return selectDefaultConnectorAccountId(listMatrixAccountIds(runtime));
 }
 
 export function readMatrixAccountId(...sources: unknown[]): string | undefined {

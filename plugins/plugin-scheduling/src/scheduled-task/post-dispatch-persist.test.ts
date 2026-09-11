@@ -9,6 +9,7 @@
  */
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime } from "@elizaos/core";
+import type { CarveOutDatabase } from "@elizaos/plugin-sql";
 import { describe, expect, it, vi } from "vitest";
 
 import type { DispatchResult } from "../dispatch-types.js";
@@ -29,6 +30,22 @@ import {
   registerBuiltInGates,
 } from "./gate-registry.js";
 import { migrateSchedulingTables } from "./migration.js";
+
+function carveOutDatabase(pg: PGlite): CarveOutDatabase {
+  const execute = async (statement: string) =>
+    (await pg.query<Record<string, unknown>>(statement)).rows;
+  return {
+    execute,
+    transaction: (operation) =>
+      pg.transaction((transaction) =>
+        operation(
+          async (statement) =>
+            (await transaction.query<Record<string, unknown>>(statement)).rows,
+        ),
+      ),
+  };
+}
+
 import {
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
@@ -225,10 +242,7 @@ describe("upsertIfStatus guard (SQL store, PGlite)", () => {
   it("applies only while the stored status still matches", async () => {
     const pg = new PGlite();
     try {
-      await migrateSchedulingTables(async (sql) => {
-        const result = await pg.query<Record<string, unknown>>(sql);
-        return result.rows;
-      });
+      await migrateSchedulingTables(carveOutDatabase(pg));
       const runtime = {
         agentId: "agent-guard",
         adapter: {
@@ -299,10 +313,7 @@ describe("upsertIfStatus guard (SQL store, PGlite)", () => {
   it("reports a loss instead of resurrecting a deleted task", async () => {
     const pg = new PGlite();
     try {
-      await migrateSchedulingTables(async (sql) => {
-        const result = await pg.query<Record<string, unknown>>(sql);
-        return result.rows;
-      });
+      await migrateSchedulingTables(carveOutDatabase(pg));
       const runtime = {
         agentId: "agent-guard",
         adapter: {

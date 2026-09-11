@@ -1,7 +1,11 @@
 /** Vitest configuration for the WhatsApp plugin test suite. */
 import { defineConfig } from "vitest/config";
+import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/source-aliases";
 
 export default defineConfig({
+	resolve: {
+		alias: buildWorkspaceSourceAliases(),
+	},
 	test: {
 		include: [
 			"__tests__/**/*.test.ts",

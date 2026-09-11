@@ -78,7 +78,7 @@ export function CalendarSourceHealth({
       : status === "partial"
         ? "text-warning"
         : "text-muted-strong";
-  const refresh = useAgentElement<HTMLButtonElement>({
+  const refreshControl = useAgentElement<HTMLButtonElement>({
     id: "refresh-calendar-sources",
     role: "button",
     label: refreshing ? "Refreshing calendar sources" : "Refresh calendar",
@@ -104,7 +104,7 @@ export function CalendarSourceHealth({
           {headline}
         </p>
         <Button
-          ref={refresh.ref}
+          ref={refreshControl.ref}
           variant="ghostMuted"
           size="tiny"
           type="button"
@@ -120,7 +120,7 @@ export function CalendarSourceHealth({
                   defaultValue: "Refresh calendar",
                 })
           }
-          {...refresh.agentProps}
+          {...refreshControl.agentProps}
         >
           <RefreshCw
             className={`size-3.5 ${refreshing ? "animate-spin" : ""}`}

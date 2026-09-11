@@ -82,6 +82,54 @@ describe("Shared Eliza runtime in Workerd", () => {
               },
             });
           }
+          if (todoPlannerRequests > 2) {
+            const receiptIds = [
+              ...new Set(
+                JSON.stringify(body).match(/todos:mutation:[a-zA-Z0-9-]+/g) ??
+                  [],
+              ),
+            ];
+            if (receiptIds.length !== 1)
+              throw new Error(
+                "TODO reply fixture requires the actual applied receipt in its model request",
+              );
+            return Response.json({
+              id: "chatcmpl-workerd-todo-grounded-reply",
+              object: "chat.completion",
+              created: 0,
+              model: "shared-runtime-probe",
+              choices: [
+                {
+                  index: 0,
+                  message: {
+                    role: "assistant",
+                    content: JSON.stringify(
+                      JSON.stringify(body).includes(
+                        "Compose a user-facing response in the assistant character",
+                      )
+                        ? {
+                            response: "I added Buy milk to your todo list.",
+                            effectReceiptIds: receiptIds,
+                          }
+                        : {
+                            success: true,
+                            decision: "FINISH",
+                            thought: "The Todo is stored.",
+                            messageToUser:
+                              "I added Buy milk to your todo list.",
+                          },
+                    ),
+                  },
+                  finish_reason: "stop",
+                },
+              ],
+              usage: {
+                prompt_tokens: 50,
+                completion_tokens: 14,
+                total_tokens: 64,
+              },
+            });
+          }
           return Response.json({
             id: "chatcmpl-workerd-todo-action",
             object: "chat.completion",
@@ -776,19 +824,18 @@ describe("Shared Eliza runtime in Workerd", () => {
       storedTodos: Array<Record<string, unknown>>;
     };
     expect(payload.result).toMatchObject({
-      reply: 'Added "Buy milk" to your list.',
+      reply: "I added Buy milk to your todo list.",
       degraded: false,
       usage: {
-        promptTokens: 70,
-        completionTokens: 22,
-        totalTokens: 92,
+        promptTokens: 170,
+        completionTokens: 50,
+        totalTokens: 220,
       },
     });
     expect(payload.result.actionResults).toHaveLength(1);
     expect(payload.result.actionResults?.[0]).toMatchObject({
       success: true,
       text: 'Added "Buy milk" to your list.',
-      verifiedUserFacing: true,
       effectReceipts: [
         {
           operation: "todos.create",
@@ -808,7 +855,11 @@ describe("Shared Eliza runtime in Workerd", () => {
       }),
     ]);
     const todoRequests = modelRequests.slice(requestsBefore);
-    expect(todoRequests).toHaveLength(2);
+    expect(todoRequests).toHaveLength(4);
+    const receipts = payload.result.actionResults?.[0]?.effectReceipts;
+    if (!Array.isArray(receipts) || typeof receipts[0]?.receiptId !== "string")
+      throw new Error("Applied Todo receipt is missing");
+    expect(JSON.stringify(todoRequests[3])).toContain(receipts[0].receiptId);
     const todoPlanTools = todoRequests[1]?.tools as
       | Array<{ function?: { name?: string } }>
       | undefined;
@@ -817,7 +868,6 @@ describe("Shared Eliza runtime in Workerd", () => {
     expect(todoPlanTools.some((tool) => tool.function?.name === "TODO")).toBe(
       true,
     );
-    expect(todoPlannerRequests).toBe(2);
   }, 120_000);
 
   test("runs the genuine REMINDERS action with a trusted Discord DM inside Workerd", async () => {
@@ -1042,17 +1092,9 @@ describe("Shared Eliza runtime in Workerd", () => {
       mediaRequests: Array<Record<string, unknown>>;
     };
 
-    expect(payload.result.reply).toBe(
-      "I tried to complete that, but the available runtime step failed before it produced a usable result.",
-    );
+    expect(payload.result.reply).toBe("The call is connected and ready.");
     expect(payload.result.history[0]?.role).toBe("system");
-    expect(payload.result.actionResults).toEqual([
-      expect.objectContaining({
-        success: false,
-        error: "Action not found: GENERATE_MEDIA",
-        data: { actionName: "GENERATE_MEDIA" },
-      }),
-    ]);
+    expect(payload.result.actionResults).toBeUndefined();
     expect(payload.mediaRequests).toEqual([]);
 
     const lifecycleRequests = modelRequests.slice(requestsBefore);

@@ -1,8 +1,8 @@
-// Vite view-bundle entry. Re-exports the unified spatial view component plus
-// the `interact` capability handler so the built bundle (dist/views/bundle.js)
-// exposes the named exports the view loader reads (`PhoneView`, `interact`).
-// Kept separate from PhoneView.tsx so that file exports only React components
-// and stays Fast-Refresh-compatible in dev.
+/**
+ * Exposes the embeddable Phone view and interaction handler under the names
+ * read from the separately built Vite view bundle. The remote-view host owns
+ * page chrome; signed native registration continues to mount `PhonePage`.
+ */
 
 export { PhoneView } from "./PhoneView.tsx";
 export { interact } from "./phone-interact.ts";

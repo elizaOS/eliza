@@ -21,6 +21,9 @@ vi.mock("@elizaos/core", async () => {
 	const { parseBooleanValue } = await import(
 		"../../../../packages/core/src/utils/boolean"
 	);
+	const { parseFrontmatterDocument } = await import(
+		"../../../../packages/core/src/markdown/frontmatter"
+	);
 	const streamingContext = new AsyncLocalStorage<
 		{ abortSignal?: AbortSignal } | undefined
 	>();
@@ -131,6 +134,7 @@ vi.mock("@elizaos/core", async () => {
 		toWellFormedUnicode,
 		truncateWellFormed,
 		parseBooleanValue,
+		parseFrontmatterDocument,
 		Service: class {
 			constructor(public runtime?: unknown) {}
 			static serviceType = "mock-service";

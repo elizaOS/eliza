@@ -438,7 +438,7 @@ describeE2E("Group H — POST /api/cron/agent-billing", () => {
 // ─────────────────────────────────────────────────────────────────────────
 describeE2E("Group H — POST /api/crypto/payments/:id/confirm", () => {
   test("browser preflight returns credentialed CORS without route bootstrap", async () => {
-    const origin = "https://develop.eliza-app.pages.dev";
+    const origin = "https://staging.eliza-app.pages.dev";
     const res = await fetch(url("/api/crypto/payments/missing-id/confirm"), {
       method: "OPTIONS",
       headers: {

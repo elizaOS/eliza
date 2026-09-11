@@ -20,11 +20,11 @@ export function decideReleaseAdmission({
     if (
       eventName !== "workflow_dispatch" ||
       targetEnvironment !== "staging" ||
-      ref !== "refs/heads/develop" ||
+      ref !== "refs/heads/staging" ||
       force
     ) {
       throw new Error(
-        "Deployed-renderer staging proof requires a non-forced workflow_dispatch from refs/heads/develop targeting staging",
+        "Deployed-renderer staging proof requires a non-forced workflow_dispatch from refs/heads/staging targeting staging",
       );
     }
 

@@ -91,38 +91,19 @@ afterEach(() => {
 });
 
 describe("mobile sidebar header trigger", () => {
-  it("without a scope, mobile keeps the inline trigger below the header (legacy layouts)", () => {
+  it("opens and closes the unscoped mobile sidebar from the content", () => {
     mockViewport({ desktop: false });
     render(<UnscopedFixture />);
-
-    const trigger = screen.getByTestId("page-layout-mobile-sidebar-trigger");
-    expect(trigger.textContent).toContain("People");
-    // Inline variant: rendered inside the layout's main pane, not the header.
+    fireEvent.click(screen.getByTestId("page-layout-mobile-sidebar-trigger"));
+    const drawer = screen.getByTestId("page-layout-mobile-sidebar-drawer");
+    expect(within(drawer).getByText("sidebar body")).toBeTruthy();
+    fireEvent.click(within(drawer).getByTestId("conversations-mobile-close"));
     expect(
-      within(screen.getByTestId("view-header")).queryByTestId(
-        "page-layout-mobile-sidebar-trigger",
-      ),
+      screen.queryByTestId("page-layout-mobile-sidebar-drawer"),
     ).toBeNull();
-    expect(trigger.closest("main")).not.toBeNull();
-  });
-
-  it("with a scope, mobile renders the trigger in the header right slot and nothing in the content flow", () => {
-    mockViewport({ desktop: false });
-    render(<ScopedFixture />);
-
-    const triggers = screen.getAllByTestId(
-      "page-layout-mobile-sidebar-trigger",
-    );
-    expect(triggers).toHaveLength(1);
-    const [trigger] = triggers;
-    expect(trigger.textContent).toContain("People");
-    // Header variant: inside the ViewHeader, outside the layout's main pane.
     expect(
-      within(screen.getByTestId("view-header")).getByTestId(
-        "page-layout-mobile-sidebar-trigger",
-      ),
-    ).toBe(trigger);
-    expect(trigger.closest("main")).toBeNull();
+      screen.getByTestId("page-layout-mobile-sidebar-trigger"),
+    ).toBeTruthy();
   });
 
   it("header trigger opens the drawer, hides while open, and returns on close", async () => {

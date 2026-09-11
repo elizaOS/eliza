@@ -237,6 +237,17 @@ async function openEarnings(page: Page, mode: QuoteMode) {
     "eliza:ui-shell-mode": "web",
   });
   await installDefaultAppRoutes(page);
+  await page.route("**/api/cloud/status", (route) =>
+    route.fulfill(
+      jsonResponse({
+        connected: true,
+        enabled: true,
+        cloudVoiceProxyAvailable: true,
+        hasApiKey: true,
+        userId: "earnings-redemption-smoke-user",
+      }),
+    ),
+  );
   // Playwright evaluates the most recently registered matching route first, so
   // these focused contracts override the default deterministic API backend.
   const state = await installRedemptionStubs(page, mode);

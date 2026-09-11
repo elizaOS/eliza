@@ -203,7 +203,7 @@ describe("zerollama native wire helpers", () => {
         promptForEstimate: "hi",
         modelName: "qwen3:0.6b",
       })
-    ).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
+    ).rejects.toMatchObject({ code: "MODEL_OUTPUT_INCOMPLETE" });
   });
 
   it("signals a native stream output-boundary stop after its final delta", async () => {
@@ -240,9 +240,9 @@ describe("zerollama native wire helpers", () => {
 
     await expect(async () => {
       for await (const chunk of result.textStream) chunks.push(chunk);
-    }).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
+    }).rejects.toMatchObject({ code: "MODEL_OUTPUT_INCOMPLETE" });
     expect(chunks).toEqual(["partial"]);
-    await expect(result.text).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
+    await expect(result.text).rejects.toMatchObject({ code: "MODEL_OUTPUT_INCOMPLETE" });
   });
 
   it("posts /api/embed with model+input only", async () => {

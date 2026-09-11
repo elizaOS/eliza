@@ -16,6 +16,7 @@ const h = vi.hoisted(() => ({
   // imports of the capture) install methods onto ElizaClient.prototype at
   // module scope; give the mock a real class so those installs land.
   ElizaClient: class ElizaClient {},
+  authoritySubscribers: new Set<() => void>(),
   getStatus: vi.fn(async () => ({ state: "running" })),
   captureLifeOpsActivitySignal: vi.fn(async () => ({
     signal: { id: "sig-1" },
@@ -73,6 +74,12 @@ vi.mock("@elizaos/ui/api", () => ({
   APP_PAUSE_EVENT: "eliza:app-pause",
   APP_RESUME_EVENT: "eliza:app-resume",
   client: {
+    getBaseUrl: () => "http://fixture.local",
+    getAuthorityRevision: () => 0,
+    onAuthorityChange: (listener: () => void) => {
+      h.authoritySubscribers.add(listener);
+      return () => h.authoritySubscribers.delete(listener);
+    },
     getStatus: h.getStatus,
     captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
   },
@@ -81,6 +88,12 @@ vi.mock("@elizaos/ui/bridge", () => ({
   APP_PAUSE_EVENT: "eliza:app-pause",
   APP_RESUME_EVENT: "eliza:app-resume",
   client: {
+    getBaseUrl: () => "http://fixture.local",
+    getAuthorityRevision: () => 0,
+    onAuthorityChange: (listener: () => void) => {
+      h.authoritySubscribers.add(listener);
+      return () => h.authoritySubscribers.delete(listener);
+    },
     getStatus: h.getStatus,
     captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
   },
@@ -95,6 +108,12 @@ vi.mock("@elizaos/ui/events", () => ({
   APP_PAUSE_EVENT: "eliza:app-pause",
   APP_RESUME_EVENT: "eliza:app-resume",
   client: {
+    getBaseUrl: () => "http://fixture.local",
+    getAuthorityRevision: () => 0,
+    onAuthorityChange: (listener: () => void) => {
+      h.authoritySubscribers.add(listener);
+      return () => h.authoritySubscribers.delete(listener);
+    },
     getStatus: h.getStatus,
     captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
   },
@@ -115,6 +134,12 @@ vi.mock("@elizaos/ui/browser", () => ({
   APP_PAUSE_EVENT: "eliza:app-pause",
   APP_RESUME_EVENT: "eliza:app-resume",
   client: {
+    getBaseUrl: () => "http://fixture.local",
+    getAuthorityRevision: () => 0,
+    onAuthorityChange: (listener: () => void) => {
+      h.authoritySubscribers.add(listener);
+      return () => h.authoritySubscribers.delete(listener);
+    },
     getStatus: h.getStatus,
     captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
   },
@@ -125,6 +150,12 @@ vi.mock("@elizaos/ui/auth-status", () => ({
   APP_RESUME_EVENT: "eliza:app-resume",
   ElizaClient: h.ElizaClient,
   client: {
+    getBaseUrl: () => "http://fixture.local",
+    getAuthorityRevision: () => 0,
+    onAuthorityChange: (listener: () => void) => {
+      h.authoritySubscribers.add(listener);
+      return () => h.authoritySubscribers.delete(listener);
+    },
     getStatus: h.getStatus,
     captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
   },
@@ -200,6 +231,7 @@ describe("personal-assistant renderer registration entry", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    h.authoritySubscribers.clear();
     h.getStatus.mockResolvedValue({ state: "running" });
     h.capacitorGetPlatform.mockReturnValue("web");
     h.capacitorIsPluginAvailable.mockReturnValue(true);

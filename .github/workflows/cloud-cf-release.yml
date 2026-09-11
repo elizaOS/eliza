@@ -48,7 +48,7 @@ on:
         type: string
         default: ""
       certified_recovery_policy_sha:
-        description: Exact certified develop policy SHA admitted by the caller
+        description: Exact certified staging policy SHA admitted by the caller
         required: false
         type: string
         default: ""
@@ -397,7 +397,7 @@ jobs:
       - name: Verify canonical deploy source
         id: source_guard
         env:
-          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
+          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/staging' }}
           FORCE: ${{ inputs.force }}
           GITHUB_TOKEN: ${{ github.token }}
           NEUTRAL_WHEN_SUPERSEDED: ${{ inputs.target_environment == 'staging' && github.event_name == 'push' }}
@@ -692,11 +692,11 @@ jobs:
 
           git fetch --no-tags \
             "https://github.com/${GITHUB_REPOSITORY}.git" \
-            develop:refs/remotes/origin/develop
+            staging:refs/remotes/origin/staging
           git cat-file -e "${POLICY_SHA}^{commit}"
           git cat-file -e "${BASE_SHA}^{commit}"
-          git merge-base --is-ancestor "$POLICY_SHA" refs/remotes/origin/develop || {
-            echo "::error::Certified recovery policy is no longer contained in develop."
+          git merge-base --is-ancestor "$POLICY_SHA" refs/remotes/origin/staging || {
+            echo "::error::Certified recovery policy is no longer contained in staging."
             exit 1
           }
           trusted_admission="$evidence_dir/trusted-production-hyperdrive-binding-admission.mjs"
@@ -815,7 +815,7 @@ jobs:
           DATABASE_IDENTITY_ENVIRONMENT: ${{ inputs.target_environment }}
           DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
           DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
-          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
+          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/staging' }}
           FORCE: ${{ inputs.force }}
           MONOTONIC_FORWARD_PROGRESS: ${{ inputs.target_environment == 'staging' }}
           SERVED_SOURCE_URL: ${{ inputs.target_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
@@ -1242,7 +1242,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CANONICAL_REF: ${{ steps.env.outputs.deploy_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
+          CANONICAL_REF: ${{ steps.env.outputs.deploy_environment == 'production' && 'refs/heads/main' || 'refs/heads/staging' }}
           FORCE: ${{ inputs.force }}
           MONOTONIC_FORWARD_PROGRESS: ${{ steps.env.outputs.deploy_environment == 'staging' }}
           SERVED_SOURCE_URL: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
@@ -1966,7 +1966,7 @@ jobs:
           ELIZA_APP_TELEGRAM_BOT_ID: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_id }}
           ELIZA_APP_TELEGRAM_BOT_USERNAME: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_username }}
           WORKER_SECRETS_FILE: ${{ steps.worker-secrets.outputs.secrets_file }}
-          CANONICAL_REF: ${{ steps.env.outputs.deploy_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
+          CANONICAL_REF: ${{ steps.env.outputs.deploy_environment == 'production' && 'refs/heads/main' || 'refs/heads/staging' }}
           FORCE: ${{ inputs.force }}
           MONOTONIC_FORWARD_PROGRESS: ${{ steps.env.outputs.deploy_environment == 'staging' }}
           SERVED_SOURCE_URL: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
@@ -2870,7 +2870,7 @@ jobs:
             fi
             pages_branch="pr-${PR_NUMBER}"
             case "$pages_branch" in
-              main|develop)
+              main|staging)
                 echo "::error::Pull-request Pages branch may not target canonical branch $pages_branch"
                 exit 1
                 ;;
@@ -2878,7 +2878,7 @@ jobs:
           elif [ "$TARGET_ENVIRONMENT" = "production" ]; then
             pages_branch="main"
           else
-            pages_branch="develop"
+            pages_branch="staging"
           fi
           echo "branch=$pages_branch" >> "$GITHUB_OUTPUT"
 
@@ -2915,7 +2915,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           EVENT_NAME: ${{ github.event_name }}
-          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
+          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/staging' }}
           FORCE: ${{ inputs.force }}
           MONOTONIC_FORWARD_PROGRESS: ${{ inputs.target_environment == 'staging' }}
           SERVED_SOURCE_URL: ${{ inputs.target_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
@@ -2970,10 +2970,10 @@ jobs:
           PAGES_AUTHORITY_FILE: ${{ runner.temp }}/pages-deployment-authority/pages-deployment-authority.json
           PAGES_BRANCH: ${{ steps.pages.outputs.branch }}
           PAGES_PROJECT: eliza-app
-          PAGES_ALIAS: https://develop.eliza-app.pages.dev
+          PAGES_ALIAS: https://staging.eliza-app.pages.dev
           TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
           EVENT_NAME: ${{ github.event_name }}
-          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
+          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/staging' }}
           FORCE: ${{ inputs.force }}
           MONOTONIC_FORWARD_PROGRESS: ${{ inputs.target_environment == 'staging' }}
           SERVED_SOURCE_URL: ${{ inputs.target_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
@@ -3075,7 +3075,7 @@ jobs:
 
           served_frontends=("$MARKETING_URL" "$CLOUD_APP_URL")
           if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
-            if [ "$PAGES_ALIAS" != "https://develop.eliza-app.pages.dev" ]; then
+            if [ "$PAGES_ALIAS" != "https://staging.eliza-app.pages.dev" ]; then
               echo "::error::Staging byte verification requires the canonical Pages alias"
               exit 1
             fi

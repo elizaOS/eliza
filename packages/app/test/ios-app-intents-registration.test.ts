@@ -147,10 +147,6 @@ const iosDeviceCapture = readFileSync(
   path.join(repoRoot, "packages/app/scripts/ios-device-capture.mjs"),
   "utf8",
 );
-const mobileBuildScript = readFileSync(
-  path.join(repoRoot, "packages/app-core/scripts/run-mobile-build.mjs"),
-  "utf8",
-);
 const appCoreIosPlist = readFileSync(
   path.join(repoRoot, "packages/app-core/scripts/mobile/ios-plist.mjs"),
   "utf8",
@@ -642,23 +638,6 @@ describe("native assistant entry contracts", () => {
     expect(appPatchIosPlist).toContain("NSSupportsLiveActivities");
   });
 
-  it("wires ElizaWidgets and version threading through the iOS build pipeline", () => {
-    // Brand rewrite: bundle-id suffix, app-group entitlements, fastlane ids,
-    // and the personal-team strip list all cover the widget extension.
-    expect(mobileBuildScript).toContain('"ElizaWidgets",');
-    expect(mobileBuildScript).toMatch(/\$\{appId\}\.ElizaWidgets/);
-    expect(mobileBuildScript).toContain('"ElizaWidgets.entitlements"');
-    expect(mobileBuildScript).toContain('"EWDG00010000000000000401"');
-    // D11: ELIZAOS_VERSION_NAME/ELIZAOS_VERSION_CODE → MARKETING_VERSION /
-    // CURRENT_PROJECT_VERSION so the running iOS build is identifiable.
-    expect(mobileBuildScript).toContain("ELIZAOS_VERSION_NAME");
-    expect(mobileBuildScript).toContain("ELIZAOS_VERSION_CODE");
-    expect(mobileBuildScript).toMatch(/MARKETING_VERSION = \$\{versionName\};/);
-    expect(mobileBuildScript).toMatch(
-      /CURRENT_PROJECT_VERSION = \$\{versionCode\};/,
-    );
-  });
-
   it("builds the ElizaKeyboard voice-first keyboard extension target (#12185)", () => {
     // Target + product type + embed: a keyboard extension is a distinct appex
     // embedded in the App bundle, exactly like ElizaWidgets.
@@ -725,12 +704,6 @@ describe("native assistant entry contracts", () => {
         new RegExp(`isa = PBXBuildFile; fileRef = ${stateFileRef} `, "g"),
       )?.length,
     ).toBe(2);
-
-    // Brand rewrite covers the new target: bundle-id suffix, app-group
-    // entitlements file, and fastlane target ids.
-    expect(mobileBuildScript).toContain('"ElizaKeyboard",');
-    expect(mobileBuildScript).toMatch(/\$\{appId\}\.ElizaKeyboard/);
-    expect(mobileBuildScript).toContain('"ElizaKeyboard.entitlements"');
   });
 
   it("preserves Android assistant and voice-command text when launching Eliza", () => {

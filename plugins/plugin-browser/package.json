@@ -41,6 +41,7 @@
     "build:types": "tsc6 --noCheck -p tsconfig.build.json"
   },
   "dependencies": {
+    "@elizaos/shared": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/vault": "workspace:*",
     "drizzle-orm": "0.45.2"

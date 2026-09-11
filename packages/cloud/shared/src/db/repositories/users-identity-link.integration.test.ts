@@ -1,7 +1,7 @@
 /**
  * Exercises Telegram account creation and phone linking against the real
- * Drizzle schema on isolated PGlite, including signup-credit first contact,
- * exact identity convergence, fresh projection lookups, and transactional rollback.
+ * Drizzle schema on isolated PGlite, including canonical signup funding, exact
+ * identity convergence, fresh projection lookups, and transactional rollback.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
@@ -179,7 +179,7 @@ describe("UsersRepository.linkTelegramAndPhoneIdentity", () => {
 });
 
 describe("UsersRepository.findOrCreateMessagingPersonalAccount", () => {
-  test("creates one signup-credit rowless account and reuses it on replay", async () => {
+  test("creates one signup-funded rowless account and reuses it on replay", async () => {
     const input = {
       platform: "telegram" as const,
       telegramId: "714700001",
