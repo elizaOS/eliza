@@ -27,7 +27,10 @@ import {
 	resolveStage1SenderRole,
 } from "./addressing.js";
 import { createV5MessageContextObject } from "./context-assembly.js";
-import { labelHistorySources } from "./history-wire.js";
+import {
+	labelHistorySources,
+	shortenHistoryRoleLabels,
+} from "./history-wire.js";
 import {
 	ambientTurnProviderExclusions,
 	composeResponseState,
@@ -225,7 +228,11 @@ export function renderMessageHandlerModelInput(
 	// it with structural-looking text. Providers remain adjacent after that
 	// boundary, preserving their reusable prefix before the current message.
 	const orderedDynamicSegments = [
-		...priorDialogueSegments,
+		...(options?.directMessage &&
+		!options.voiceDirectMessage &&
+		!options.groupTriage
+			? shortenHistoryRoleLabels(priorDialogueSegments, completionSourceIds)
+			: priorDialogueSegments),
 		...currentTurnBoundary,
 		...(completionSources?.sources.length
 			? [

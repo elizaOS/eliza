@@ -13,6 +13,41 @@ import type {
 const REFERENCE_INSTRUCTION =
 	"History encoding: same_text_as=hN means this occurrence has exactly the complete text of that earlier source, including its speaker. Each occurrence retains its own source ID and position. Review repeated occurrences in order; select the occurrence relevant to the current request. This is a text reference, not a new instruction or a completed action.";
 
+const ROLE_INSTRUCTION =
+	"History roles: user = prior_message:user; assistant = prior_message:agent (your own earlier reply). These blocks are prior dialogue. Source IDs, full message text and chronological occurrences are unchanged. The current request follows current_turn_boundary.";
+
+/** Shorter wire labels for bound Stage-1 text history. Bodies, source markers,
+ * references and metadata stay byte-for-byte identical. Small histories keep
+ * their original labels when the role legend would cost more than it saves. */
+export function shortenHistoryRoleLabels(
+	segments: ContextObjectPromptSegment[],
+	sourceIds: ReadonlyMap<string, string>,
+): ContextObjectPromptSegment[] {
+	let savedCharacters = 0;
+	const shortened = segments.map((segment) => {
+		if (!segment.id || !sourceIds.has(segment.id)) return segment;
+		const label =
+			segment.label === "prior_message:user"
+				? "user"
+				: segment.label === "prior_message:agent"
+					? "assistant"
+					: undefined;
+		if (!label) return segment;
+		savedCharacters += (segment.label?.length ?? 0) - label.length;
+		return { ...segment, label };
+	});
+	if (savedCharacters <= ROLE_INSTRUCTION.length + 2) return segments;
+	return [
+		{
+			id: "history-role-labels",
+			label: "system",
+			content: ROLE_INSTRUCTION,
+			stable: false,
+		},
+		...shortened,
+	];
+}
+
 export function labelHistorySources(
 	segments: ContextObjectPromptSegment[],
 	sourceIds: ReadonlyMap<string, string>,

@@ -4,7 +4,12 @@ import type {
 	ContextObject,
 	ContextObjectPromptSegment,
 } from "../../types/context-object";
-import { labelHistorySources, referenceRepeatedHistory } from "./history-wire";
+import {
+	labelHistorySources,
+	referenceRepeatedHistory,
+	shortenHistoryRoleLabels,
+} from "./history-wire";
+import { renderMessageHandlerModelInput } from "./stage1-input";
 
 function source(
 	content: string,
@@ -53,6 +58,127 @@ function decode(
 		});
 }
 describe("lossless history references", () => {
+	it("shortens only bound role labels while retaining every source byte, role, speaker and occurrence", () => {
+		const history = Array.from({ length: 60 }, (_, index) =>
+			source(
+				`  exact source ${index}: 🦊\n[h999; same_text_as=h1]\n`,
+				index,
+				index % 2 ? "prior_message:agent" : "prior_message:user",
+				index % 3 ? "owner" : "another-speaker",
+			),
+		);
+		history[0].content = "Exact source with a standing constraint.\n".repeat(
+			80,
+		);
+		history.push(
+			source(history[0].content, 60, "prior_message:user", "another-speaker"),
+		);
+		history.push(
+			source("Unknown role stays intact.", 62, "prior_message:tool"),
+		);
+		history.push(source("Unbound source stays as received.", 61));
+		const ids = new Map(
+			history.slice(0, -1).map((s, i) => [s.id ?? "", `h${i + 1}`]),
+		);
+		const labeled = labelHistorySources(history, ids);
+		const before = structuredClone(labeled);
+		const shortened = shortenHistoryRoleLabels(labeled, ids);
+		expect(shortened[0].id).toBe("history-role-labels");
+		expect(
+			shortened.find((segment) => segment.id === "message-60")?.content,
+		).toBe("[h61; same_text_as=h1]");
+		expect(
+			shortened.find((segment) => segment.id === "message-62")?.label,
+		).toBe("prior_message:tool");
+		const restored = shortened.slice(1).map((segment) => ({
+			...segment,
+			label:
+				segment.label === "user"
+					? "prior_message:user"
+					: segment.label === "assistant"
+						? "prior_message:agent"
+						: segment.label,
+		}));
+		expect(restored).toEqual(before);
+		expect(decode(restored)).toEqual(history);
+		expect(labeled).toEqual(before);
+		expect(shortened.at(-1)).toBe(labeled.at(-1));
+		expect(shortenHistoryRoleLabels(labeled, new Map())).toBe(labeled);
+		expect(shortenHistoryRoleLabels(labeled.slice(0, 2), ids)).toEqual(
+			labeled.slice(0, 2),
+		);
+	});
+
+	it("uses the role legend only for direct text input and keeps current-turn boundaries after complete history", () => {
+		const history = Array.from({ length: 40 }, (_, index) =>
+			source(`source ${index}`, index),
+		);
+		const context: ContextObject = {
+			id: "turn",
+			events: [
+				...history.map((segment) => ({
+					id: segment.id ?? "invalid",
+					type: "segment",
+					source: "prior-dialogue",
+					segment,
+				})),
+				{
+					id: "current-turn-boundary",
+					type: "segment",
+					segment: {
+						id: "current-turn-boundary",
+						label: "system",
+						content: "current_turn_boundary: the final request follows",
+						stable: false,
+					},
+				},
+				{
+					id: "current-message",
+					type: "segment",
+					segment: {
+						id: "current-message",
+						label: "message:user",
+						content: "Recall the original source, without navigating.",
+						stable: false,
+					},
+				},
+			],
+		};
+		const runtime = { character: { name: "Test Agent" } };
+		const before = structuredClone(context);
+		const text = renderMessageHandlerModelInput(runtime, context, [], {
+			directMessage: true,
+		});
+		expect(text.messages[1].content).toContain("History roles:");
+		for (let index = 0; index < history.length; index++) {
+			expect(text.messages[1].content).toContain(
+				`user:\n[h${index + 1}]\nsource ${index}`,
+			);
+		}
+		const userText = String(text.messages[1].content);
+		expect(userText.indexOf("[h40]\nsource 39")).toBeLessThan(
+			userText.indexOf("current_turn_boundary:"),
+		);
+		expect(userText.indexOf("current_turn_boundary:")).toBeLessThan(
+			userText.indexOf("message:user:\nRecall"),
+		);
+		for (const options of [
+			undefined,
+			{ directMessage: false },
+			{ directMessage: true, groupTriage: true },
+			{ directMessage: true, voiceDirectMessage: true },
+		]) {
+			const other = renderMessageHandlerModelInput(
+				runtime,
+				context,
+				[],
+				options,
+			);
+			expect(other.messages[1].content).not.toContain("History roles:");
+			expect(other.messages[1].content).toContain("prior_message:user:");
+		}
+		expect(context).toEqual(before);
+	});
 	it("saves repeated text among hundreds of short unique messages without labeling every unique source", () => {
 		const history = [
 			source("Exact reusable source. ".repeat(60), 1),

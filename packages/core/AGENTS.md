@@ -230,3 +230,5 @@ Stage-1 source markers use compact [hN] labels; every original message and chron
 Source selection may list each ID once in its most specific category because all categories retain the same complete union; duplicates remain accepted for compatibility. The static HANDLE_RESPONSE schema includes contextRequests like the production field registry, preserving deferred-provider reads for fallback callers.
 
 Client-chat DM model context omits only the host-owned chatIdempotency carrier and metadata.viewClientId. The original Memory remains unchanged for persistence, replay/recovery and executor tab targeting. Preserve all other current-message fields, attachments, reply references, live view state and plugin metadata; other connector/channel contracts retain their complete content.
+
+Stage-1 direct-text history may use user/assistant wire labels with an explicit prior_message role legend when the complete encoding is smaller. Every original source marker, message byte, speaker, metadata and chronological occurrence remains intact. Group/voice inputs and unbound/unknown roles keep their original labels; the current-turn boundary stays after all history.

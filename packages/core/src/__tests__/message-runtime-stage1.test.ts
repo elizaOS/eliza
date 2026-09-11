@@ -6582,10 +6582,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(userContent).not.toContain("# Conversation Messages");
 		expect(userContent).not.toContain("provider text should not render");
 		expect(userContent).toContain(
-			"prior_message:user:\n[completion_source=h1]\nbotdick: Hey, nice to meet shebotdick.",
+			"prior_message:user:\n[h1]\nbotdick: Hey, nice to meet shebotdick.",
 		);
 		expect(userContent).toContain(
-			"prior_message:user:\n[completion_source=h2]\n1gig: i was asking about shedick",
+			"prior_message:user:\n[h2]\n1gig: i was asking about shedick",
 		);
 		expect(userContent).toContain(
 			'message:user:\n{"text":"whats the compatibility between her and botdick","source":"test"}',
@@ -6678,10 +6678,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		// The user's turn keeps the user tag; the agent's own reply is present
 		// and role-tagged with the character name so recall is grounded.
 		expect(userContent).toContain(
-			"prior_message:user:\n[completion_source=h1]\n1gig: whats the btc price",
+			"prior_message:user:\n[h1]\n1gig: whats the btc price",
 		);
 		expect(userContent).toContain(
-			"prior_message:agent:\n[completion_source=h2]\nTest Agent: BTC is around $63,000 right now.",
+			"prior_message:agent:\n[h2]\nTest Agent: BTC is around $63,000 right now.",
 		);
 		// Chronological interleave: the agent reply follows the user turn.
 		expect(userContent.indexOf("prior_message:user:")).toBeLessThan(
