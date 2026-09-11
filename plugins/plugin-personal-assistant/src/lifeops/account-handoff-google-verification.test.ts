@@ -36,7 +36,7 @@ describe("reviewed Google handoff verification", () => {
     f.grant.capabilities = [
       "google.calendar.read",
       "google.calendar.write",
-      "google.gmail.read",
+      "google.gmail.triage",
     ];
     await expect(f.run()).rejects.toMatchObject({
       code: "ACCOUNT_HANDOFF_REPLACEMENT_UNAVAILABLE",

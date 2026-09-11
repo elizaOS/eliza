@@ -5,6 +5,7 @@
  */
 import { ElizaError } from "@elizaos/core";
 import type { IGoogleWorkspaceService } from "@elizaos/plugin-google-workspace";
+import type { LifeOpsGoogleCapability } from "@elizaos/shared";
 import type { AccountHandoffReview } from "./account-handoff-store.js";
 import type { LifeOpsGoogleService } from "./service-mixin-google.js";
 
@@ -80,17 +81,18 @@ export async function verifyAccountHandoffGoogle(
     throw unavailable(
       "Select a Google calendar or email capability before verifying this replacement account.",
     );
-  const required = new Set<string>();
-  if (selected.length) required.add("google.calendar.read");
-  if (review.writeCalendar) required.add("google.calendar.write");
+  const required = new Map<LifeOpsGoogleCapability, string>();
+  if (selected.length) required.set("google.calendar.read", "calendar reading");
+  if (review.writeCalendar)
+    required.set("google.calendar.write", "calendar editing");
   if (emailDestinations.length) {
-    required.add("google.gmail.read");
-    required.add("google.gmail.send");
+    required.set("google.gmail.triage", "Gmail reading");
+    required.set("google.gmail.send", "email sending");
   }
-  for (const capability of required)
+  for (const [capability, description] of required)
     if (!grant.capabilities.includes(capability))
       throw unavailable(
-        `Reconnect the replacement account with ${capability} permission.`,
+        `Reconnect the replacement account and allow ${description}.`,
       );
   const calendarIds = [
     ...new Set(selected.map((calendar) => calendar.calendarId)),

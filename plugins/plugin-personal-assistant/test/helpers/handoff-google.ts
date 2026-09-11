@@ -18,7 +18,7 @@ export function googleHandoffFixture() {
     capabilities: [
       "google.calendar.read",
       "google.calendar.write",
-      "google.gmail.read",
+      "google.gmail.triage",
       "google.gmail.send",
     ],
     tokenRef: null,
@@ -49,7 +49,7 @@ export function googleHandoffFixture() {
     grantedCapabilities: [
       "google.calendar.read",
       "google.calendar.write",
-      "google.gmail.read",
+      "google.gmail.triage",
       "google.gmail.send",
     ],
     grantedScopes: [],
