@@ -154,6 +154,18 @@ describe("getUpcomingBills owner-zone dueness (#31062)", () => {
     expect(status).toBe("upcoming");
   });
 
+  it("falls through to the TIMEZONE setting when the injected resolver reports no owner zone (null)", async () => {
+    // The HTTP route injects the owner-fact-only resolver, which returns `null`
+    // when no owner timezone fact is stored (#31062). A `null` miss must not be
+    // treated as a resolved zone: the service continues to the agent TIMEZONE
+    // setting (here Honolulu -> same owner day -> upcoming), not the UTC host
+    // day (which would misclassify as overdue).
+    const status = await statusFor("Pacific/Honolulu", {
+      resolveTimeZone: () => null,
+    });
+    expect(status).toBe("upcoming");
+  });
+
   it("falls through to the next source when the resolver throws", async () => {
     const status = await statusFor("America/Los_Angeles", {
       resolveTimeZone: () => {

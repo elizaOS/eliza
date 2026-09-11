@@ -10,6 +10,11 @@
  * owner-fact timezone is consulted, that it falls back to the host zone only
  * when no fact is stored (never fabricated), and that an active-travel
  * destination zone overrides the home zone while travel is live.
+ *
+ * Also covers the fact-only variant `resolveOwnerTimeZoneFact` (#31062), which
+ * the finances HTTP route injects: it reports a miss as `null` rather than
+ * substituting the host zone, so a caller's own precedence chain (owner fact ->
+ * agent TIMEZONE setting -> host zone) is honored instead of short-circuited.
  */
 
 import type { IAgentRuntime, UUID } from "@elizaos/core";
@@ -21,6 +26,7 @@ import {
   registerOwnerFactStore,
   resolveOwnerFactStore,
   resolveOwnerTimeZone,
+  resolveOwnerTimeZoneFact,
 } from "./fact-store.js";
 
 function makeCacheRuntime(): IAgentRuntime {
@@ -129,5 +135,46 @@ describe("resolveOwnerTimeZone (#13509)", () => {
     // NOW (2026-07-04) is AFTER the travel window ended: home zone wins.
     const tz = await resolveOwnerTimeZone(runtime, NOW);
     expect(tz).toBe("America/Chicago");
+  });
+});
+
+describe("resolveOwnerTimeZoneFact (#31062)", () => {
+  // The fact-only variant is what the finances HTTP route injects as its
+  // `resolveTimeZone` resolver. It must report a miss as `null` (never the host
+  // zone) so the service's own precedence chain (owner fact -> agent TIMEZONE
+  // setting -> host zone) is reached; `resolveOwnerTimeZone`'s baked host-zone
+  // fallback would otherwise short-circuit that chain.
+  it("returns null when no owner timezone fact is stored (the service decides the fallback)", async () => {
+    const runtime = makeRuntimeWithStore();
+    const tz = await resolveOwnerTimeZoneFact(runtime, NOW);
+    expect(tz).toBeNull();
+  });
+
+  it("returns the owner's stored timezone fact when present", async () => {
+    const runtime = makeRuntimeWithStore();
+    await resolveOwnerFactStore(runtime).update(
+      { timezone: "America/Chicago" },
+      provenance,
+    );
+    const tz = await resolveOwnerTimeZoneFact(runtime, NOW);
+    expect(tz).toBe("America/Chicago");
+  });
+
+  it("returns null when the stored timezone fact is not a valid IANA zone", async () => {
+    const runtime = makeRuntimeWithStore();
+    await resolveOwnerFactStore(runtime).update(
+      { timezone: "Central Time (definitely not IANA)" },
+      provenance,
+    );
+    const tz = await resolveOwnerTimeZoneFact(runtime, NOW);
+    expect(tz).toBeNull();
+  });
+
+  it("returns null when the fact-store read throws (no cache backend), never crashing", async () => {
+    const runtimeNoCache = {
+      agentId: "66666666-6666-6666-6666-666666666666" as UUID,
+    } as unknown as IAgentRuntime;
+    const tz = await resolveOwnerTimeZoneFact(runtimeNoCache, NOW);
+    expect(tz).toBeNull();
   });
 });

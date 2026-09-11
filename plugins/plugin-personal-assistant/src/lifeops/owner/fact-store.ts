@@ -1053,6 +1053,30 @@ export async function resolveOwnerTimeZone(
   runtime: IAgentRuntime,
   now: Date,
 ): Promise<string> {
+  return (
+    (await resolveOwnerTimeZoneFact(runtime, now)) ?? resolveDefaultTimeZone()
+  );
+}
+
+/**
+ * Resolve the owner's effective IANA zone from the fact store alone, returning
+ * `null` when no usable owner fact exists instead of substituting the host
+ * zone. This is the "owner zone or nothing" variant: callers that layer their
+ * own fallback chain (e.g. the finances service, whose precedence is owner fact
+ * → agent `TIMEZONE` setting → host zone) must be able to distinguish a real
+ * owner fact from the host default, which {@link resolveOwnerTimeZone}'s baked
+ * fallback hides. Injecting this directly as a `resolveTimeZone` resolver keeps
+ * the `null` = "no owner zone" contract those chains rely on.
+ *
+ * Honors the same active-travel override and validation as
+ * {@link resolveOwnerTimeZone}: an invalid stored zone is warned and treated as
+ * absent (`null`), and a fact-store read failure degrades to `null` so the
+ * caller's own fallback — not a silent host-zone substitution — takes over.
+ */
+export async function resolveOwnerTimeZoneFact(
+  runtime: IAgentRuntime,
+  now: Date,
+): Promise<string | null> {
   try {
     const facts = await resolveOwnerFactStore(runtime).read();
     const view = ownerFactsToView(facts, now);
@@ -1062,20 +1086,20 @@ export async function resolveOwnerTimeZone(
     if (view.timezone) {
       logger.warn(
         { src: "lifeops:owner:resolve-timezone", storedZone: view.timezone },
-        "Owner timezone fact is not a valid IANA zone; falling back to host zone for time resolution.",
+        "Owner timezone fact is not a valid IANA zone; ignoring it for time resolution.",
       );
     }
-    return resolveDefaultTimeZone();
+    return null;
   } catch (error) {
     // error-policy:J4 — a fact-store read failure (missing/unavailable cache
-    // backend) must not break time resolution. Degrade to the host zone, the
-    // same honest best-effort default used when no owner fact exists, and
+    // backend) must not break time resolution. Report the miss as `null` so the
+    // caller's own fallback chain decides the honest best-effort default, and
     // surface the failure so the operator can see the store is unreachable
     // rather than silently anchoring to the wrong zone with no signal.
     logger.warn(
       { src: "lifeops:owner:resolve-timezone", error },
-      "Failed to read owner timezone fact; falling back to host zone for time resolution.",
+      "Failed to read owner timezone fact; treating owner zone as unavailable for time resolution.",
     );
-    return resolveDefaultTimeZone();
+    return null;
   }
 }
