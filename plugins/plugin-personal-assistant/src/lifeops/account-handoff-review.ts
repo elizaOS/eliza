@@ -7,6 +7,7 @@ import { createApprovalQueue } from "@elizaos/agent";
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import type { CalendarService } from "@elizaos/plugin-calendar";
 import { z } from "zod";
+import { assertGoogleHandoffApprovalSelection } from "./account-handoff-approval-inventory.js";
 import {
   accountHandoffGoogleChoicesSchema,
   deriveAccountHandoffGoogleReview,
@@ -117,6 +118,15 @@ export class AccountHandoffReviewService {
     const queue = createApprovalQueue(this.runtime, {
       agentId: this.runtime.agentId,
     });
+    assertGoogleHandoffApprovalSelection(
+      await queue.list({
+        subjectUserId: this.ownerEntityId,
+        state: null,
+        action: null,
+      }),
+      google.previous.grantId,
+      choices.retireApprovalIds,
+    );
     for (const id of choices.retireApprovalIds) {
       const approval = await queue.byId(id, this.ownerEntityId);
       if (

@@ -1,5 +1,8 @@
 /** Real PGlite review assembly and recipient preflight with deterministic provider discovery; no external changes or messages. */
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
+import {
+  createApprovalQueue,
+  resolveKnowledgeGraphService,
+} from "@elizaos/agent";
 import {
   CalendarService,
   createDefaultCalendarHostGate,
@@ -11,6 +14,7 @@ import {
   type RealTestRuntimeResult,
 } from "../../test/helpers/runtime.js";
 import { GoogleWorkspaceTestService } from "../../test/stubs/plugin-google-workspace.js";
+import { AccountHandoffAdmission } from "./account-handoff-admission.js";
 import { AccountHandoffReviewService } from "./account-handoff-review.js";
 import { AccountHandoffStore } from "./account-handoff-store.js";
 
@@ -167,4 +171,99 @@ it("rejects client-supplied review facts and email routing to the previous accou
     }),
   ).rejects.toMatchObject({ code: "ACCOUNT_HANDOFF_REVIEW_CHANGED" });
   expect(await p.store.active()).toBeNull();
+});
+
+it("requires old-account and unbound email approvals in review and rechecks newly queued work before retirement", async () => {
+  const owner = "review-approval-inventory";
+  const p = await fixture(owner);
+  const queue = createApprovalQueue(host.runtime, {
+    agentId: host.runtime.agentId,
+  });
+  const enqueue = (grantId?: string) =>
+    queue.enqueue({
+      requestedBy: owner,
+      subjectUserId: owner,
+      action: "send_email",
+      payload: {
+        action: "send_email",
+        ...(grantId ? { grantId } : {}),
+        to: ["synthetic@example.test"],
+        cc: [],
+        bcc: [],
+        subject: "Synthetic handoff",
+        body: "No provider used",
+        threadId: null,
+      },
+      channel: "email",
+      reason: "Synthetic retirement proof",
+      expiresAt: new Date(Date.now() + 600_000),
+    });
+  const old = await enqueue(p.f.review.previous.grantId);
+  const legacy = await enqueue();
+  const replacement = await enqueue(p.f.grant.id);
+  const cancel = (expectedProvider: "google" | "eliza") =>
+    queue.enqueue({
+      requestedBy: owner,
+      subjectUserId: owner,
+      action: "cancel_event",
+      payload: {
+        action: "cancel_event",
+        calendarId: "family",
+        eventId: "synthetic-event",
+        expectedProvider,
+        notifyAttendees: false,
+      },
+      channel: "browser",
+      reason: "Synthetic calendar approval",
+      expiresAt: new Date(Date.now() + 600_000),
+    });
+  const unboundCalendar = await cancel("google");
+  const localCalendar = await cancel("eliza");
+  await expect(p.service().create(p.choices)).rejects.toMatchObject({
+    code: "ACCOUNT_HANDOFF_APPROVAL_REVIEW_INCOMPLETE",
+  });
+  expect(await p.store.active()).toBeNull();
+  await expect(
+    p.service().create({ ...p.choices, retireApprovalIds: [old.id] }),
+  ).rejects.toMatchObject({
+    code: "ACCOUNT_HANDOFF_APPROVAL_REVIEW_INCOMPLETE",
+  });
+  let state = await p
+    .service()
+    .create({
+      ...p.choices,
+      retireApprovalIds: [old.id, legacy.id, unboundCalendar.id],
+    });
+  const late = await enqueue(p.f.review.previous.grantId);
+  const admission = new AccountHandoffAdmission(
+    host.runtime,
+    owner,
+    p.calendar,
+    new URL("http://localhost"),
+  );
+  state = await admission.begin(state.operationId, state.revision);
+  state = await admission.pause(state.operationId, state.revision);
+  state = await admission.drain(state.operationId, state.revision);
+  await expect(
+    admission.retireApprovals(state.operationId, state.revision),
+  ).rejects.toMatchObject({
+    code: "ACCOUNT_HANDOFF_APPROVAL_REVIEW_INCOMPLETE",
+  });
+  expect((await queue.byId(old.id, owner))?.state).toBe("pending");
+  expect((await queue.byId(legacy.id, owner))?.state).toBe("pending");
+  expect((await p.store.read(state.operationId))?.phase).toBe(
+    "retiring_approvals",
+  );
+  expect(await p.calendar.getLinkedCalendarControl()).toMatchObject({
+    paused: true,
+  });
+  // A separately resolved late request no longer blocks the frozen review.
+  await queue.markExpired(late.id, owner);
+  state = await admission.retireApprovals(state.operationId, state.revision);
+  expect(state.phase).toBe("applying_mappings");
+  expect((await queue.byId(old.id, owner))?.state).toBe("expired");
+  expect((await queue.byId(legacy.id, owner))?.state).toBe("expired");
+  expect((await queue.byId(replacement.id, owner))?.state).toBe("pending");
+  expect((await queue.byId(unboundCalendar.id, owner))?.state).toBe("expired");
+  expect((await queue.byId(localCalendar.id, owner))?.state).toBe("pending");
 });

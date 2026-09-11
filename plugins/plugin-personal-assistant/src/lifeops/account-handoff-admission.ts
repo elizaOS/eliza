@@ -10,6 +10,7 @@ import {
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import type { CalendarService } from "@elizaos/plugin-calendar";
 import { z } from "zod";
+import { assertGoogleHandoffApprovalSelection } from "./account-handoff-approval-inventory.js";
 import { accountHandoffOperationKey } from "./account-handoff-operation-key.js";
 import {
   type AccountHandoffRecord,
@@ -210,6 +211,17 @@ export class AccountHandoffAdmission {
     const queue = createApprovalQueue(this.runtime, {
       agentId: this.runtime.agentId,
     });
+    const assertSelectionComplete = async () =>
+      assertGoogleHandoffApprovalSelection(
+        await queue.list({
+          subjectUserId: this.ownerEntityId,
+          state: null,
+          action: null,
+        }),
+        record.review.previous.grantId,
+        record.review.retireApprovalIds,
+      );
+    await assertSelectionComplete();
     const selected = [];
     for (const requestId of new Set(record.review.retireApprovalIds)) {
       const request = await queue.byId(requestId, this.ownerEntityId);
@@ -240,6 +252,7 @@ export class AccountHandoffAdmission {
       outcomes.push({ requestId: retired.id, state: retired.state });
     }
     await assertPaused();
+    await assertSelectionComplete();
     return this.store.advance({
       operationId,
       expectedRevision: record.revision,
