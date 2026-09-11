@@ -255,6 +255,25 @@ export class AccountHandoffStore {
     throw this.conflict();
   }
 
+  async cancelReviewed(
+    operationId: string,
+    expectedRevision: number,
+  ): Promise<AccountHandoffRecord> {
+    const record = await this.read(operationId);
+    if (
+      record?.phase === "cancelled" &&
+      record.revision === expectedRevision + 1
+    )
+      return record;
+    return this.advance({
+      operationId,
+      expectedRevision,
+      expectedPhase: "reviewed",
+      phase: "cancelled",
+      receipt: {},
+    });
+  }
+
   async advance(
     input: HandoffCheckpointMutation,
   ): Promise<AccountHandoffRecord> {

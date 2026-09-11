@@ -66,13 +66,26 @@ export class AccountHandoffRecipients {
       await this.verify(operationId, expectedRevision);
       return record;
     }
+    const bindings = await this.resolve(
+      record.review.messageDestinations,
+      ids.data,
+    );
+    return this.store.checkpointRecipientReview({
+      operationId,
+      expectedRevision,
+      bindings,
+    });
+  }
+
+  async resolve(
+    destinations: Destination[],
+    recipientEntityIds: string[],
+  ): Promise<z.infer<typeof handoffRecipientBindingsSchema>> {
+    if (destinations.length !== recipientEntityIds.length) throw this.changed();
     const graph = this.graph();
     const bindings: z.infer<typeof handoffRecipientBindingsSchema> = [];
-    for (const [
-      index,
-      destination,
-    ] of record.review.messageDestinations.entries()) {
-      const entityId = ids.data[index];
+    for (const [index, destination] of destinations.entries()) {
+      const entityId = recipientEntityIds[index];
       if (!entityId) throw this.changed();
       const entity = await graph.get(entityId);
       if (!entity) throw this.changed();
@@ -104,11 +117,7 @@ export class AccountHandoffRecipients {
         ),
       });
     }
-    return this.store.checkpointRecipientReview({
-      operationId,
-      expectedRevision,
-      bindings,
-    });
+    return bindings;
   }
 
   async verify(operationId: string, expectedRevision: number): Promise<void> {

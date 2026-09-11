@@ -12,7 +12,7 @@ import {
 import { GoogleWorkspaceTestService } from "../../test/stubs/plugin-google-workspace.js";
 import { AccountHandoffAdmission } from "./account-handoff-admission.js";
 import { AccountHandoffCalendarMappings } from "./account-handoff-calendar-mappings.js";
-import { deriveAccountHandoffGoogleReview } from "./account-handoff-google-review.js";
+import { AccountHandoffReviewService } from "./account-handoff-review.js";
 import { AccountHandoffSourceSelection } from "./account-handoff-source-selection.js";
 import { AccountHandoffStore } from "./account-handoff-store.js";
 import { executeRawSql } from "./sql.js";
@@ -97,21 +97,23 @@ async function prepared(owner: string) {
   const store = new AccountHandoffStore(host.runtime, owner);
   const service = () =>
     new AccountHandoffSourceSelection(host.runtime, owner, calendar, url);
-  const facts = await deriveAccountHandoffGoogleReview(
-    host.runtime.agentId,
-    url,
-    {
-      previousGrantId: f.review.previous.grantId,
-      replacementGrantId: f.grant.id,
-      readCalendarIds: ["selected"],
-      writeCalendarId: null,
-      calendarLinks: [],
-    },
+  let state = await new AccountHandoffReviewService(
+    host.runtime,
+    owner,
     accounts,
     calendar,
-  );
-  let state = await store.review(owner, { ...f.review, ...facts });
-  state = await service().capture(state.operationId, state.revision);
+    url,
+  ).create({
+    operationId: owner,
+    previousGrantId: f.review.previous.grantId,
+    replacementGrantId: f.grant.id,
+    readCalendarIds: ["selected"],
+    writeCalendarId: null,
+    calendarLinks: [],
+    messageDestinations: [],
+    importedData: "retain",
+    retireApprovalIds: [],
+  });
   const reviewed = state;
   const admission = new AccountHandoffAdmission(
     host.runtime,

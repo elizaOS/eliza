@@ -124,6 +124,7 @@ import {
 import { probeFullDiskAccess } from "../lifeops/fda-probe.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
+import { handleAccountHandoffRoutes } from "./account-handoff.js";
 import { entityHasVerifiedMachineAuthBinding } from "./authenticated-entity-principal.js";
 import { handleFamilyWorkflowRoutes } from "./family-workflows.js";
 
@@ -1377,6 +1378,19 @@ export async function handleLifeOpsRoutes(
     return gateway;
   };
 
+  if (
+    ctx.pathname === "/api/lifeops/account-handoffs" ||
+    ctx.pathname.startsWith("/api/lifeops/account-handoffs/")
+  ) {
+    if (
+      rateLimitRequest(
+        ctx,
+        ctx.method === "GET" ? "default" : "connector_write",
+      )
+    )
+      return true;
+    if (await handleAccountHandoffRoutes(ctx)) return true;
+  }
   if (await handleFamilyWorkflowRoutes(ctx)) return true;
 
   // Calendar routes are owned by @elizaos/plugin-calendar; the path -> service

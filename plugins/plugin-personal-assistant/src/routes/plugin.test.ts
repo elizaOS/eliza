@@ -334,6 +334,10 @@ describe("LifeOps raw route owner/admin gate", () => {
   });
 
   it.each([
+    ["POST", "/api/lifeops/account-handoffs"],
+    ["GET", "/api/lifeops/account-handoffs/active"],
+    ["GET", "/api/lifeops/account-handoffs/:operationId"],
+    ["POST", "/api/lifeops/account-handoffs/:operationId/cancel"],
     ["GET", "/api/lifeops/family-workflows/email-options"],
     [
       "POST",
