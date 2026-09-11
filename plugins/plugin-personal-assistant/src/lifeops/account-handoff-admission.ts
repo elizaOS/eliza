@@ -3,7 +3,6 @@
  * the canonical approval queue and calendar control. Original pause ownership
  * is checkpointed before mutation so retries preserve pre-existing pauses.
  */
-import { createHash } from "node:crypto";
 import {
   ApprovalDispatchControlStore,
   createApprovalQueue,
@@ -11,6 +10,7 @@ import {
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import type { CalendarService } from "@elizaos/plugin-calendar";
 import { z } from "zod";
+import { accountHandoffOperationKey } from "./account-handoff-operation-key.js";
 import {
   type AccountHandoffRecord,
   AccountHandoffStore,
@@ -261,17 +261,12 @@ export class AccountHandoffAdmission {
   }
 
   private operationKey(operationId: string): string {
-    const key = createHash("sha256")
-      .update(
-        JSON.stringify([
-          this.runtime.agentId,
-          this.ownerEntityId,
-          operationId,
-          "pause",
-        ]),
-      )
-      .digest("hex");
-    return `account-handoff:${key}`;
+    return accountHandoffOperationKey(
+      this.runtime.agentId,
+      this.ownerEntityId,
+      operationId,
+      "pause",
+    );
   }
 
   private changed(): ElizaError {

@@ -1,15 +1,22 @@
 /** Real PGlite cleanup and checkpoint recovery with deterministic connector operations; no provider account is disconnected or messaged. */
-import { CalendarService } from "@elizaos/plugin-calendar";
+
+import { ApprovalDispatchControlStore } from "@elizaos/agent";
+import {
+  CalendarService,
+  createDefaultCalendarHostGate,
+} from "@elizaos/plugin-calendar";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { googleHandoffFixture } from "../../test/helpers/handoff-google.js";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../test/helpers/runtime.js";
+import { GoogleWorkspaceTestService } from "../../test/stubs/plugin-google-workspace.js";
 import { AccountHandoffAdmission } from "./account-handoff-admission.js";
 import { AccountHandoffCalendarMappings } from "./account-handoff-calendar-mappings.js";
 import { AccountHandoffDataDisposition } from "./account-handoff-data-disposition.js";
 import { AccountHandoffDisconnect } from "./account-handoff-disconnect.js";
+import { AccountHandoffResume } from "./account-handoff-resume.js";
 import { AccountHandoffStore } from "./account-handoff-store.js";
 import { AccountHandoffVerification } from "./account-handoff-verification.js";
 import { lifeOpsGmailMessageFromGoogle } from "./google-plugin-delegates.js";
@@ -20,6 +27,7 @@ import { executeRawSql } from "./sql.js";
 let host: RealTestRuntimeResult;
 beforeAll(async () => {
   host = await createLifeOpsTestRuntime();
+  await host.runtime.registerService(GoogleWorkspaceTestService);
 }, 60_000);
 afterAll(async () => {
   await host.cleanup();
@@ -29,13 +37,56 @@ async function prepared(
   owner: string,
   remove = true,
   performDisconnect = true,
+  withWriteCalendar = false,
 ) {
   const f = googleHandoffFixture();
   f.grant.agentId = host.runtime.agentId;
   f.review.readCalendars = [];
-  f.review.writeCalendar = null;
+  if (!withWriteCalendar) f.review.writeCalendar = null;
   f.review.importedData = remove ? "remove_previous_account_imports" : "retain";
+  const previousGrant = {
+    ...f.grant,
+    id: f.review.previous.grantId,
+    connectorAccountId: f.review.previous.connectorAccountId,
+    identityEmail: f.review.previous.email,
+  };
+  const statuses = [f.status, { ...f.status, grant: previousGrant }];
+  const provider = await host.runtime.getServiceLoadPromise("google");
+  Object.assign(provider, { listCalendars: f.google.listCalendars });
   const calendar = new CalendarService(host.runtime);
+  calendar.setGate({
+    ...createDefaultCalendarHostGate(host.runtime),
+    getGoogleConnectorAccounts: async () => statuses,
+  });
+  if (withWriteCalendar) {
+    let control = await calendar.getLinkedCalendarControl();
+    if (!control.paused)
+      control = await calendar.executeLinkedCalendarControl(
+        new URL("http://localhost"),
+        {
+          operation: "pause",
+          expectedRevision: control.revision,
+          idempotencyKey: `fixture:${owner}:pause`,
+        },
+      );
+    control = await calendar.executeLinkedCalendarControl(
+      new URL("http://localhost"),
+      {
+        operation: "select",
+        expectedRevision: control.revision,
+        idempotencyKey: `fixture:${owner}:select`,
+        destination: {
+          connectorAccountId: previousGrant.connectorAccountId,
+          providerCalendarId: f.entry.calendarId,
+        },
+      },
+    );
+    await calendar.executeLinkedCalendarControl(new URL("http://localhost"), {
+      operation: "resume",
+      expectedRevision: control.revision,
+      idempotencyKey: `fixture:${owner}:resume`,
+    });
+  }
   const store = new AccountHandoffStore(host.runtime, owner);
   const url = new URL("http://localhost");
   let state = await store.review(owner, f.review);
@@ -74,13 +125,6 @@ async function prepared(
     phase: "disconnecting_previous",
     receipt: {},
   });
-  const previousGrant = {
-    ...f.grant,
-    id: f.review.previous.grantId,
-    connectorAccountId: f.review.previous.connectorAccountId,
-    identityEmail: f.review.previous.email,
-  };
-  const statuses = [f.status, { ...f.status, grant: previousGrant }];
   const disconnectCalls: Array<
     Parameters<LifeOpsGoogleService["disconnectGoogleConnector"]>[0]
   > = [];
@@ -192,6 +236,15 @@ async function prepared(
     disconnect,
     disconnectCalls,
     previousGrant,
+    resume: () =>
+      new AccountHandoffResume(
+        host.runtime,
+        owner,
+        calendar,
+        accounts,
+        f.google,
+        url,
+      ),
   };
 }
 
@@ -362,5 +415,122 @@ describe("handoff imported-data disposition", () => {
     });
     expect(p.disconnectCalls).toEqual([]);
     expect(await p.store.read(p.state.operationId)).toEqual(p.state);
+  });
+  it("recovers a released approval pause after the completion checkpoint failed", async () => {
+    const p = await prepared("resume-retry-owner");
+    const ready = await p
+      .service()
+      .apply(p.state.operationId, p.state.revision);
+    const controls = new ApprovalDispatchControlStore(host.runtime);
+    await executeRawSql(
+      host.runtime,
+      "ALTER TABLE app_lifeops.life_account_handoffs ADD CONSTRAINT reject_resume_checkpoint CHECK (NOT (receipt_json::jsonb ? 'resumed')) NOT VALID",
+    );
+    try {
+      await expect(
+        p.resume().apply(ready.operationId, ready.revision),
+      ).rejects.toThrow();
+      expect((await controls.read("resume-retry-owner")).paused).toBe(false);
+      expect(await p.store.read(ready.operationId)).toEqual(ready);
+    } finally {
+      await executeRawSql(
+        host.runtime,
+        "ALTER TABLE app_lifeops.life_account_handoffs DROP CONSTRAINT reject_resume_checkpoint",
+      );
+    }
+    const released = await controls.read("resume-retry-owner");
+    const complete = await p.resume().apply(ready.operationId, ready.revision);
+    expect(complete.phase).toBe("completed");
+    expect(await controls.read("resume-retry-owner")).toEqual(released);
+    expect((await p.calendar.getLinkedCalendarControl()).paused).toBe(true);
+  });
+
+  it("preserves an approval pause that existed before the handoff", async () => {
+    const controls = new ApprovalDispatchControlStore(host.runtime);
+    const original = await controls.pause({
+      subjectUserId: "prepaused-owner",
+      operationId: "manual-pause",
+      expectedRevision: 0,
+    });
+    const p = await prepared("prepaused-owner");
+    const ready = await p
+      .service()
+      .apply(p.state.operationId, p.state.revision);
+    const complete = await p.resume().apply(ready.operationId, ready.revision);
+    expect(complete.phase).toBe("completed");
+    expect(await controls.read("prepaused-owner")).toEqual(original);
+  });
+
+  it("releases the canonical calendar control with its reviewed replacement destination", async () => {
+    const p = await prepared("calendar-resume-owner", true, true, true);
+    const ready = await p
+      .service()
+      .apply(p.state.operationId, p.state.revision);
+    expect((await p.calendar.getLinkedCalendarControl()).paused).toBe(true);
+    await executeRawSql(
+      host.runtime,
+      "ALTER TABLE app_lifeops.life_account_handoffs ADD CONSTRAINT reject_calendar_resume_checkpoint CHECK (NOT (receipt_json::jsonb ? 'resumed')) NOT VALID",
+    );
+    try {
+      await expect(
+        p.resume().apply(ready.operationId, ready.revision),
+      ).rejects.toThrow();
+    } finally {
+      await executeRawSql(
+        host.runtime,
+        "ALTER TABLE app_lifeops.life_account_handoffs DROP CONSTRAINT reject_calendar_resume_checkpoint",
+      );
+    }
+    const activated = await p.calendar.getLinkedCalendarControl();
+    expect(activated.paused).toBe(false);
+    const complete = await p.resume().apply(ready.operationId, ready.revision);
+    expect(await p.calendar.getLinkedCalendarControl()).toEqual(activated);
+    expect(complete.phase).toBe("completed");
+    expect(await p.calendar.getLinkedCalendarControl()).toMatchObject({
+      paused: false,
+      destination: {
+        connectorAccountId: p.f.review.replacement.connectorAccountId,
+        providerCalendarId: p.f.entry.calendarId,
+      },
+    });
+    expect(
+      (
+        await new ApprovalDispatchControlStore(host.runtime).read(
+          "calendar-resume-owner",
+        )
+      ).paused,
+    ).toBe(false);
+  });
+  it("does not overwrite a later owner pause after an interrupted release", async () => {
+    const p = await prepared("later-pause-owner");
+    const ready = await p
+      .service()
+      .apply(p.state.operationId, p.state.revision);
+    const approvals = new ApprovalDispatchControlStore(host.runtime);
+    await executeRawSql(
+      host.runtime,
+      "ALTER TABLE app_lifeops.life_account_handoffs ADD CONSTRAINT reject_later_pause_checkpoint CHECK (NOT (receipt_json::jsonb ? 'resumed')) NOT VALID",
+    );
+    try {
+      await expect(
+        p.resume().apply(ready.operationId, ready.revision),
+      ).rejects.toThrow();
+    } finally {
+      await executeRawSql(
+        host.runtime,
+        "ALTER TABLE app_lifeops.life_account_handoffs DROP CONSTRAINT reject_later_pause_checkpoint",
+      );
+    }
+    const released = await approvals.read("later-pause-owner");
+    const manual = await approvals.pause({
+      subjectUserId: "later-pause-owner",
+      operationId: "later-owner-pause",
+      expectedRevision: released.revision,
+    });
+    await expect(
+      p.resume().apply(ready.operationId, ready.revision),
+    ).rejects.toMatchObject({ code: "ACCOUNT_HANDOFF_CONFLICT" });
+    expect(await approvals.read("later-pause-owner")).toEqual(manual);
+    expect(await p.store.read(ready.operationId)).toEqual(ready);
   });
 });
