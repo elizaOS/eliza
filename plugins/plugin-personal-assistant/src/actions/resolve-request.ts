@@ -1284,6 +1284,22 @@ export async function executeApprovedRequest(args: {
         },
       };
     }
+    if (claim.kind === "blocked" && claim.reason === "paused") {
+      const text =
+        "Scheduling delivery is paused for an account switch. Finish the handoff before sending this approved draft.";
+      await args.callback?.({ text });
+      return {
+        text,
+        success: false,
+        data: {
+          error: "APPROVAL_DISPATCH_PAUSED",
+          requestId: args.request.id,
+          state: args.request.state,
+          sent: false,
+          attempt: claim.attempt,
+        },
+      };
+    }
     if (claim.kind === "blocked") {
       const error =
         claim.reason === "ambiguous"

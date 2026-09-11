@@ -335,6 +335,7 @@ export {
   ApprovalStateTransitionError,
   type ApprovalTravelCalendarSync,
   type ApprovalTravelPassenger,
+  approvalDispatchAdmissionCte,
   createApprovalQueue,
   PgApprovalQueue,
   resolveApprovalService,

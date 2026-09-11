@@ -17,6 +17,7 @@ export {
   APPROVAL_SERVICE,
   ApprovalDispatchControlStore,
   ApprovalService,
+  approvalDispatchAdmissionCte,
   resolveApprovalService,
 } from "../../../../packages/agent/src/services/approval/index.ts";
 export {

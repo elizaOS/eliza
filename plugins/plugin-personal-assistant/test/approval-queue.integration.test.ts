@@ -1059,6 +1059,72 @@ describe("ApprovalQueue integration (real PGlite)", () => {
     expect(sendEmail).not.toHaveBeenCalled();
   }, 60_000);
 
+  it("keeps scheduling delivery unclaimed during a handoff pause and sends once after resume", async () => {
+    const { request } = await createOpeningApproval({
+      suffix: "handoff-pause",
+    });
+    const approved = await queue.approve(request.id, request.subjectUserId, {
+      resolvedBy: String(runtime.agentId),
+      resolutionReason: "Synthetic owner approval",
+    });
+    const controls = new ApprovalDispatchControlStore(runtime);
+    const before = await controls.read(request.subjectUserId);
+    const paused = await controls.pause({
+      subjectUserId: request.subjectUserId,
+      operationId: "scheduling-handoff-pause",
+      expectedRevision: before.revision,
+    });
+    const email = getChannelRegistry(runtime)?.get("email");
+    if (!email) throw new Error("Email fixture missing");
+    const original = email.send;
+    const send = vi.fn(async (payload: Parameters<typeof original>[0]) =>
+      receiptResult(payload, "scheduling-after-resume"),
+    );
+    email.send = send;
+    try {
+      const result = await executeApprovedRequest({
+        runtime,
+        queue,
+        request: approved,
+      });
+      expect(result).toMatchObject({
+        success: false,
+        data: {
+          error: "APPROVAL_DISPATCH_PAUSED",
+          sent: false,
+          state: "approved",
+        },
+      });
+      expect(send).not.toHaveBeenCalled();
+      expect((await queue.byId(request.id, request.subjectUserId))?.state).toBe(
+        "approved",
+      );
+      expect(
+        await new SchedulingDeliveryStore(runtime).byApprovalRequestId(
+          request.id,
+        ),
+      ).toMatchObject({ state: "awaiting_approval", attemptCount: 0 });
+      await controls.resume({
+        subjectUserId: request.subjectUserId,
+        operationId: "scheduling-handoff-pause",
+        expectedRevision: paused.revision,
+      });
+      expect(
+        await executeApprovedRequest({ runtime, queue, request: approved }),
+      ).toMatchObject({ success: true });
+      expect(send).toHaveBeenCalledTimes(1);
+    } finally {
+      email.send = original;
+      const current = await controls.read(request.subjectUserId);
+      if (current.paused)
+        await controls.resume({
+          subjectUserId: request.subjectUserId,
+          operationId: "scheduling-handoff-pause",
+          expectedRevision: current.revision,
+        });
+    }
+  }, 60_000);
+
   it("suppresses a concurrent duplicate send and completes only with one durable provider receipt", async () => {
     const { request } = await createOpeningApproval({
       suffix: "concurrent-1001",
