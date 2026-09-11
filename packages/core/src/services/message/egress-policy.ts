@@ -35,6 +35,10 @@ import { normalizeActionIdentifier } from "./direct-action-heuristics";
 import { financialCompletionIsUngrounded } from "./financial-completion";
 import { financialHoldingIsUngrounded } from "./financial-observations";
 import {
+	groundedCurrentTimeReply,
+	statedTimeIsUngrounded,
+} from "./time-observations";
+import {
 	replyClaimsCompletedSideEffect,
 	replyClaimsEmptyTrackedWorkState,
 } from "./side-effect-claims.ts";
@@ -43,12 +47,14 @@ export type PlannedReplyClaimKind =
 	| "completed_side_effect"
 	| "financial_completion"
 	| "financial_holding"
+	| "stated_time"
 	| "empty_tracked_state";
 
 /** Rejection kinds whose correction must see the complete provider evidence. */
 const PROVIDER_EVIDENCE_KINDS: ReadonlySet<string> = new Set([
 	"financial_holding",
 	"financial_completion",
+	"stated_time",
 ]);
 
 export function appliedEffectReceiptIdsForReply(
@@ -190,6 +196,15 @@ export function evaluatePlannedReplyEgress(args: {
 	if (financialHoldingIsUngrounded(args)) {
 		return { verdict: "reject", kind: "financial_holding" };
 	}
+	if (
+		statedTimeIsUngrounded({
+			reply,
+			request: args.request,
+			providers: args.providers,
+		})
+	) {
+		return { verdict: "reject", kind: "stated_time" };
+	}
 	if (replyClaimsCompletedSideEffect(reply)) {
 		if (
 			plannedReplyHasClaimGroundingReceipt({
@@ -258,6 +273,13 @@ export async function resolvePlannedReplyEgress(args: {
 		};
 	}
 	const reason = decision.verdict === "reject" ? decision.kind : "missing_reply";
+	if (reason === "stated_time") {
+		// The provider's own rendering is the complete answer to "what time is
+		// it"; no model is needed to restate it, and a second model pass could
+		// invent a second date.
+		const grounded = groundedCurrentTimeReply(args.providers);
+		if (grounded) return { text: grounded, effectReceiptIds: [] };
+	}
 	const text = JSON.stringify({
 		request: args.message.content,
 		rejectedReply: args.reply,
