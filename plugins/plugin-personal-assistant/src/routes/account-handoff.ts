@@ -1,7 +1,7 @@
 /**
- * Owner-gated HTTP review and readback for account handoff. The route accepts
- * choices only; the review service derives facts and owns checkpoint writes.
- * Execution and delivery verification are separate from saving a review.
+ * Owner-gated review, readback and checkpoint execution for account handoff.
+ * Saving choices derives an immutable review; advancing accepts its revision
+ * only and delegates side effects to the durable execution coordinator.
  */
 import { ElizaError } from "@elizaos/core";
 import {
@@ -9,11 +9,13 @@ import {
   CalendarServiceError,
 } from "@elizaos/plugin-calendar";
 import { ZodError, z } from "zod";
+import { AccountHandoffExecution } from "../lifeops/account-handoff-execution.js";
 import {
   AccountHandoffReviewService,
   accountHandoffChoicesSchema,
 } from "../lifeops/account-handoff-review.js";
 import { AccountHandoffStore } from "../lifeops/account-handoff-store.js";
+import { requireGoogleWorkspaceService } from "../lifeops/google-plugin-delegates.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 
@@ -86,6 +88,45 @@ export async function handleAccountHandoffRoutes(
       ctx.json(ctx.res, { handoff: await service.create(choices) });
       return true;
     }
+    if (ctx.method === "POST" && ctx.pathname.endsWith("/advance")) {
+      const id = ctx.decodePathComponent(
+        ctx.pathname.substring(
+          base.length + 1,
+          ctx.pathname.length - "/advance".length,
+        ),
+        ctx.res,
+        "handoff ID",
+      );
+      if (id === null) return true;
+      const body = await ctx.readJsonBody<Record<string, unknown>>(
+        ctx.req,
+        ctx.res,
+      );
+      if (!body) return true;
+      const { expectedRevision } = z
+        .object({ expectedRevision: z.number().int().nonnegative() })
+        .strict()
+        .parse(body);
+      const calendar = await runtime.getServiceLoadPromise(
+        CalendarService.serviceType,
+      );
+      if (!(calendar instanceof CalendarService)) {
+        ctx.error(ctx.res, "Calendar service is unavailable", 503);
+        return true;
+      }
+      const execution = new AccountHandoffExecution(
+        runtime,
+        owner,
+        calendar,
+        new LifeOpsService(runtime, { ownerEntityId: owner }),
+        requireGoogleWorkspaceService(runtime),
+        ctx.url,
+      );
+      ctx.json(ctx.res, {
+        handoff: await execution.advance(id, expectedRevision),
+      });
+      return true;
+    }
     if (ctx.method === "POST" && ctx.pathname.endsWith("/cancel")) {
       const id = ctx.decodePathComponent(
         ctx.pathname.substring(
@@ -125,7 +166,7 @@ export async function handleAccountHandoffRoutes(
     ctx.error(ctx.res, "Account handoff operation not found", 404);
     return true;
   } catch (error) {
-    // error-policy:J1 Translate rejected review choices at the owner HTTP boundary.
+    // error-policy:J1 Translate rejected owner requests at the HTTP boundary.
     if (error instanceof ZodError) {
       ctx.json(
         ctx.res,
@@ -151,7 +192,7 @@ export async function handleAccountHandoffRoutes(
     runtime.reportError("AccountHandoffRoutes", error, { method: ctx.method });
     ctx.error(
       ctx.res,
-      "Account handoff review is unavailable. Retry when the workspace is ready.",
+      "Account switch is unavailable. Retry when the workspace is ready.",
       500,
     );
     return true;

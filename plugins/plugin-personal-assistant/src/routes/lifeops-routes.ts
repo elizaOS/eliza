@@ -262,6 +262,9 @@ const LIFEOPS_RATE_LIMITS = {
   // credentials or initiate consent flows.
   oauth_init: { maxRequests: 5, windowMs: 60_000 },
   connector_write: { maxRequests: 10, windowMs: 60_000 },
+  // A saved account switch takes multiple revision-checked checkpoints; it
+  // must not exhaust the budget for starting new connector consent flows.
+  account_handoff_advance: { maxRequests: 30, windowMs: 60_000 },
   // Generic outbound messaging (X DMs, iMessage, Telegram). Tighter
   // than the default to limit blast radius.
   outbound_message: { maxRequests: 5, windowMs: 60_000 },
@@ -1385,7 +1388,11 @@ export async function handleLifeOpsRoutes(
     if (
       rateLimitRequest(
         ctx,
-        ctx.method === "GET" ? "default" : "connector_write",
+        ctx.method === "GET"
+          ? "default"
+          : ctx.method === "POST" && ctx.pathname.endsWith("/advance")
+            ? "account_handoff_advance"
+            : "connector_write",
       )
     )
       return true;

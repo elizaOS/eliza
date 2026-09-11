@@ -159,6 +159,10 @@ export interface LifeOpsElizaClientMethods {
     operationId: string,
     expectedRevision: number,
   ): Promise<{ handoff: AccountHandoffRecord }>;
+  advanceLifeOpsAccountHandoff(
+    operationId: string,
+    expectedRevision: number,
+  ): Promise<{ handoff: AccountHandoffRecord }>;
 
   getLifeOpsGoogleConnectorAccounts(options?: {
     side?: LifeOpsConnectorSide;
@@ -532,6 +536,20 @@ lifeOpsClientPrototype.getLifeOpsAccountHandoff = async function (
     `/api/lifeops/account-handoffs/${encodeURIComponent(operationId)}`,
   );
 };
+lifeOpsClientPrototype.advanceLifeOpsAccountHandoff = async function (
+  this: ElizaClient,
+  operationId,
+  expectedRevision,
+) {
+  return this.fetch(
+    `/api/lifeops/account-handoffs/${encodeURIComponent(operationId)}/advance`,
+    {
+      method: "POST",
+      body: JSON.stringify({ expectedRevision }),
+    },
+  );
+};
+
 lifeOpsClientPrototype.cancelLifeOpsAccountHandoff = async function (
   this: ElizaClient,
   operationId,
