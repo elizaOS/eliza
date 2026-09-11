@@ -163,6 +163,7 @@ export {
 export {
 	composeToolDiagnosticRedactor,
 	projectModelCallDiagnosticValue,
+	projectProtectedModelCallValue,
 	projectToolDiagnosticArgs,
 	projectToolDiagnosticValue,
 	TOOL_DIAGNOSTIC_MASK,

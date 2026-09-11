@@ -14,6 +14,11 @@
 import type { ServerResponse } from "node:http";
 import { ElizaError } from "../../errors";
 import type { TrajectorySemanticStageRecord } from "../../services/trajectory-semantic-stage";
+import type {
+	TrajectoryActionAttemptRecord,
+	TrajectoryLlmCallRecord,
+	TrajectoryProviderAccessRecord,
+} from "../../services/trajectory-types";
 import type { IAgentRuntime, UUID } from "../../types";
 
 interface ServiceTrajectoryListItem {
@@ -36,7 +41,7 @@ interface ServiceTrajectoryListItem {
 	updatedAt?: string;
 }
 
-interface ServiceLlmCall {
+interface ServiceLlmCall extends TrajectoryLlmCallRecord {
 	callId: string;
 	model: string;
 	provider?: string;
@@ -57,13 +62,13 @@ interface ServiceLlmCall {
 	cacheCreationInputTokens?: number;
 }
 
-interface ServiceProviderAccess {
+interface ServiceProviderAccess extends TrajectoryProviderAccessRecord {
 	providerId: string;
 	providerName: string;
 	purpose?: string;
 }
 
-interface ServiceActionAttempt {
+interface ServiceActionAttempt extends Partial<TrajectoryActionAttemptRecord> {
 	attemptId: string;
 	actionType: string;
 	actionName: string;
@@ -218,6 +223,7 @@ function listItemToUi(
 function detailToUi(
 	traj: ServiceTrajectory,
 	roomContext?: ResolvedRoomContext | null,
+	includePayloads = true,
 ): Record<string, unknown> {
 	const id = String(traj.trajectoryId);
 	const metadata = traj.metadata;
@@ -228,15 +234,23 @@ function detailToUi(
 
 	const steps = traj.steps;
 	for (const step of steps) {
-		if (step.semanticStages) semanticStages.push(...step.semanticStages);
+		if (step.semanticStages) {
+			semanticStages.push(
+				...step.semanticStages.map((stage) =>
+					includePayloads ? stage : { ...stage, payload: {} },
+				),
+			);
+		}
 		const calls = step.llmCalls;
 		for (const c of calls) {
 			llmCalls.push({
+				// The service owns redaction. Full reads preserve the complete
+				// recorded request/response, including native tools and options.
+				...(includePayloads ? c : {}),
 				id: c.callId,
 				stepId: step.stepId,
+				trajectoryId: id,
 				timestamp: c.timestamp,
-				systemPrompt: c.systemPrompt,
-				userPrompt: c.userPrompt,
 				temperature: c.temperature,
 				maxTokens: c.maxTokens,
 				maxTokensOmitted: c.maxTokensOmitted,
@@ -245,8 +259,11 @@ function detailToUi(
 				completionTokens: c.completionTokens,
 				cacheReadInputTokens: c.cacheReadInputTokens,
 				cacheCreationInputTokens: c.cacheCreationInputTokens,
+				reasoningTokens: c.reasoningTokens,
+				tokenUsageEstimated: c.tokenUsageEstimated,
+				finishReason: c.finishReason,
+				modelType: c.modelType,
 				model: c.model,
-				response: c.response,
 				...(c.provider ? { provider: c.provider } : {}),
 				...(c.purpose ? { purpose: c.purpose } : {}),
 				...(c.actionType ? { actionType: c.actionType } : {}),
@@ -255,8 +272,13 @@ function detailToUi(
 		}
 		const accesses = step.providerAccesses;
 		for (const p of accesses) {
+			const { data, query, ...accessMetadata } = p;
 			providerAccesses.push({
+				...accessMetadata,
+				...(includePayloads ? { data, query } : {}),
 				id: p.providerId,
+				stepId: step.stepId,
+				trajectoryId: id,
 				providerName: p.providerName,
 				...(p.purpose ? { purpose: p.purpose } : {}),
 			});
@@ -266,8 +288,15 @@ function detailToUi(
 		const action = step.action;
 		if (action && (action.actionName || action.actionType)) {
 			const failed = action.success === false || Boolean(action.error);
+			const { parameters, result, reasoning, ...actionMetadata } = action;
 			toolEvents.push({
+				...actionMetadata,
+				...(includePayloads
+					? { parameters, args: parameters, result, reasoning }
+					: {}),
 				id: action.attemptId,
+				stepId: step.stepId,
+				trajectoryId: id,
 				type: failed ? "tool_error" : "tool_result",
 				actionName: action.actionName || action.actionType,
 				status: failed ? "failed" : "completed",
@@ -293,6 +322,7 @@ function detailToUi(
 	const durationMs =
 		endTime !== null && startTime > 0 ? Math.max(0, endTime - startTime) : null;
 	return {
+		payloadsIncluded: includePayloads,
 		trajectory: {
 			id,
 			agentId: traj.agentId,
@@ -487,6 +517,7 @@ export async function tryHandleTrajectoryReadRoutes(options: {
 							roomCache,
 						)
 					: null,
+				url.searchParams.get("includePayloads") !== "0",
 			),
 		);
 		return true;

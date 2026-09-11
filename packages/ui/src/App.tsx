@@ -220,6 +220,7 @@ import {
   isBootstrapGateRequired,
   isLoopbackGatewayHost,
 } from "./state/use-startup-shell-controller";
+import { DeveloperTabHost } from "./state/useDeveloperTabHost";
 import {
   SurfaceRealmScope,
   setActiveSurfaceRealmScope,
@@ -3975,6 +3976,7 @@ function AppContent() {
 export function App() {
   return (
     <>
+      {import.meta.env.DEV && <DeveloperTabHost />}
       <NotificationsDataBoot />
       <AppContent />
     </>

@@ -773,8 +773,12 @@ declare module "./client-base" {
     refreshRegistry(): Promise<void>;
     getTrajectories(
       options?: TrajectoryListOptions,
+      init?: RequestInit,
     ): Promise<TrajectoryListResult>;
-    getTrajectoryDetail(trajectoryId: string): Promise<TrajectoryDetailResult>;
+    getTrajectoryDetail(
+      trajectoryId: string,
+      options?: RequestInit & { includePayloads?: boolean },
+    ): Promise<TrajectoryDetailResult>;
     getTrajectoryStats(): Promise<TrajectoryStats>;
     getTrajectoryConfig(): Promise<TrajectoryConfig>;
     updateTrajectoryConfig(
@@ -2044,17 +2048,23 @@ ElizaClient.prototype.refreshRegistry = async function (this: ElizaClient) {
 ElizaClient.prototype.getTrajectories = async function (
   this: ElizaClient,
   options?,
+  init?,
 ) {
   const params = buildTrajectoryParams(options);
   const query = params.toString();
-  return this.fetch(`/api/trajectories${query ? `?${query}` : ""}`);
+  return this.fetch(`/api/trajectories${query ? `?${query}` : ""}`, init);
 };
 
 ElizaClient.prototype.getTrajectoryDetail = async function (
   this: ElizaClient,
   trajectoryId,
+  options?,
 ) {
-  return this.fetch(`/api/trajectories/${encodeURIComponent(trajectoryId)}`);
+  const { includePayloads = true, ...init } = options ?? {};
+  return this.fetch(
+    `/api/trajectories/${encodeURIComponent(trajectoryId)}${includePayloads ? "" : "?includePayloads=0"}`,
+    init,
+  );
 };
 
 ElizaClient.prototype.getTrajectoryStats = async function (this: ElizaClient) {
