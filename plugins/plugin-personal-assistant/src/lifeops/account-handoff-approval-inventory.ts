@@ -6,6 +6,11 @@
 import type { ApprovalRequest } from "@elizaos/agent";
 import { ElizaError } from "@elizaos/core";
 
+export type AccountHandoffRetirementCandidate = Pick<
+  ApprovalRequest,
+  "id" | "action" | "payload" | "channel" | "state" | "reason"
+> & { expiresAt: string };
+
 export function requiredGoogleHandoffApprovals(
   requests: readonly ApprovalRequest[],
   previousGrantId: string,

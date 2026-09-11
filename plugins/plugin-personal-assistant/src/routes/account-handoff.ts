@@ -35,6 +35,33 @@ export async function handleAccountHandoffRoutes(
       ctx.json(ctx.res, { handoff: await store.active() });
       return true;
     }
+    if (
+      ctx.method === "GET" &&
+      ctx.pathname === `${base}/retirement-candidates`
+    ) {
+      const grantId = z
+        .string()
+        .min(1)
+        .parse(ctx.url.searchParams.get("previousGrantId"));
+      const calendar = await runtime.getServiceLoadPromise(
+        CalendarService.serviceType,
+      );
+      if (!(calendar instanceof CalendarService)) {
+        ctx.error(ctx.res, "Calendar service is unavailable", 503);
+        return true;
+      }
+      const service = new AccountHandoffReviewService(
+        runtime,
+        owner,
+        new LifeOpsService(runtime, { ownerEntityId: owner }),
+        calendar,
+        ctx.url,
+      );
+      ctx.json(ctx.res, {
+        candidates: await service.retirementCandidates(grantId),
+      });
+      return true;
+    }
     if (ctx.method === "POST" && ctx.pathname === base) {
       const body = await ctx.readJsonBody<Record<string, unknown>>(
         ctx.req,

@@ -4,7 +4,10 @@ import { once } from "node:events";
 import { ElizaClient } from "@elizaos/ui/api/client-base";
 import "../api/client-lifeops.js";
 import { createServer, type Server } from "node:http";
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
+import {
+  createApprovalQueue,
+  resolveKnowledgeGraphService,
+} from "@elizaos/agent";
 import { getConnectorAccountManager, stringToUuid } from "@elizaos/core";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { googleHandoffFixture } from "../../test/helpers/handoff-google.js";
@@ -116,7 +119,8 @@ beforeAll(async () => {
     const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
     const path =
       pathname === "/api/lifeops/account-handoffs" ||
-      pathname.endsWith("/active")
+      pathname.endsWith("/active") ||
+      pathname.endsWith("/retirement-candidates")
         ? pathname
         : pathname.endsWith("/cancel")
           ? "/api/lifeops/account-handoffs/:operationId/cancel"
@@ -247,5 +251,62 @@ it("cancels only an unchanged unstarted review and permits replay without anothe
   });
   expect(refused.status).toBe(409);
   expect(await store.read(started.operationId)).toEqual(started);
+  expect(serverErrors).toEqual([]);
+});
+
+it("returns exact owner retirement candidates through the app client and denies foreign, unknown-account and unauthenticated reads", async () => {
+  const queue = createApprovalQueue(host.runtime, {
+    agentId: host.runtime.agentId,
+  });
+  const enqueue = (subjectUserId: string, grantId: string) =>
+    queue.enqueue({
+      requestedBy: subjectUserId,
+      subjectUserId,
+      action: "send_email",
+      payload: {
+        action: "send_email",
+        grantId,
+        to: ["synthetic@example.test"],
+        cc: [],
+        bcc: [],
+        subject: "École 📅 reviewed mail",
+        body: "Exact synthetic content for owner review.",
+        threadId: null,
+      },
+      channel: "email",
+      reason: "Synthetic candidate inventory",
+      expiresAt: new Date(Date.now() + 600_000),
+    });
+  const old = await enqueue(owner, choices.previousGrantId);
+  await enqueue("foreign-candidate-owner", choices.previousGrantId);
+  await enqueue(owner, choices.replacementGrantId);
+  const client = new ElizaClient(new URL(baseUrl).origin, token);
+  const result = await client.getLifeOpsHandoffRetirementCandidates(
+    choices.previousGrantId,
+  );
+  expect(result.candidates.map((candidate) => candidate.id)).toEqual([old.id]);
+  expect(result.candidates[0]?.payload).toEqual(old.payload);
+  expect((await queue.byId(old.id, owner))?.state).toBe("pending");
+  const denied = await fetch(
+    `${baseUrl}/retirement-candidates?${new URLSearchParams({ previousGrantId: choices.previousGrantId })}`,
+    {
+      headers: { "x-eliza-entity-id": owner },
+    },
+  );
+  expect(denied.status).toBe(401);
+  const unknown = await fetch(
+    `${baseUrl}/retirement-candidates?previousGrantId=unavailable`,
+    {
+      headers: { authorization: `Bearer ${token}` },
+    },
+  );
+  expect(unknown.status).toBe(409);
+  expect(await unknown.json()).toMatchObject({
+    code: "ACCOUNT_HANDOFF_GOOGLE_REVIEW_CHANGED",
+  });
+  const malformed = await fetch(`${baseUrl}/retirement-candidates`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  expect(malformed.status).toBe(400);
   expect(serverErrors).toEqual([]);
 });

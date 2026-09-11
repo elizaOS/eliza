@@ -7,7 +7,11 @@ import { createApprovalQueue } from "@elizaos/agent";
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import type { CalendarService } from "@elizaos/plugin-calendar";
 import { z } from "zod";
-import { assertGoogleHandoffApprovalSelection } from "./account-handoff-approval-inventory.js";
+import {
+  type AccountHandoffRetirementCandidate,
+  assertGoogleHandoffApprovalSelection,
+  requiredGoogleHandoffApprovals,
+} from "./account-handoff-approval-inventory.js";
 import {
   accountHandoffGoogleChoicesSchema,
   deriveAccountHandoffGoogleReview,
@@ -73,6 +77,52 @@ export class AccountHandoffReviewService {
     >,
     private readonly requestUrl: URL,
   ) {}
+
+  async retirementCandidates(
+    previousGrantId: string,
+  ): Promise<AccountHandoffRetirementCandidate[]> {
+    const grantId = identity.parse(previousGrantId);
+    const accounts = await this.accounts.getGoogleConnectorAccounts(
+      this.requestUrl,
+      "owner",
+    );
+    const matches = accounts.filter((account) => account.grant?.id === grantId);
+    const account = matches[0];
+    if (
+      matches.length !== 1 ||
+      !account?.connected ||
+      account.mode !== "local" ||
+      account.side !== "owner" ||
+      account.grant?.agentId !== this.runtime.agentId ||
+      account.grant.provider !== "google" ||
+      account.grant.side !== "owner" ||
+      account.grant.mode !== "local"
+    ) {
+      throw new ElizaError(
+        "Choose an available owner Google account before reviewing its approvals.",
+        {
+          code: "ACCOUNT_HANDOFF_GOOGLE_REVIEW_CHANGED",
+        },
+      );
+    }
+    const queue = createApprovalQueue(this.runtime, {
+      agentId: this.runtime.agentId,
+    });
+    const requests = await queue.list({
+      subjectUserId: this.ownerEntityId,
+      state: null,
+      action: null,
+    });
+    return requiredGoogleHandoffApprovals(requests, grantId).map((request) => ({
+      id: request.id,
+      action: request.action,
+      payload: request.payload,
+      channel: request.channel,
+      state: request.state,
+      reason: request.reason,
+      expiresAt: request.expiresAt.toISOString(),
+    }));
+  }
 
   async create(input: z.infer<typeof accountHandoffChoicesSchema>) {
     const choices = accountHandoffChoicesSchema.parse(input);

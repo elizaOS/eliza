@@ -105,6 +105,7 @@ import { ElizaClient } from "@elizaos/ui/api/client-base";
 // …) live in @elizaos/plugin-calendar now; this side-effect import attaches
 // them to the shared ElizaClient prototype so the LifeOps dashboard keeps them.
 import "@elizaos/plugin-calendar/api/client-calendar";
+import type { AccountHandoffRetirementCandidate } from "../lifeops/account-handoff-approval-inventory.js";
 import type { AccountHandoffChoices } from "../lifeops/account-handoff-review.js";
 import type { AccountHandoffRecord } from "../lifeops/account-handoff-store.js";
 import type { FullDiskAccessProbeResult } from "../lifeops/fda-probe.js";
@@ -142,6 +143,9 @@ export type {
 // `declare module "@elizaos/ui"` merge below only covers root-barrel
 // importers, so they re-type their client view with a Pick of this interface.
 export interface LifeOpsElizaClientMethods {
+  getLifeOpsHandoffRetirementCandidates(
+    previousGrantId: string,
+  ): Promise<{ candidates: AccountHandoffRetirementCandidate[] }>;
   createLifeOpsAccountHandoff(
     choices: AccountHandoffChoices,
   ): Promise<{ handoff: AccountHandoffRecord }>;
@@ -496,6 +500,15 @@ declare module "@elizaos/ui/api/client-base" {
 
 const lifeOpsClientPrototype = ElizaClient.prototype as ElizaClient &
   LifeOpsElizaClientMethods;
+
+lifeOpsClientPrototype.getLifeOpsHandoffRetirementCandidates = async function (
+  this: ElizaClient,
+  previousGrantId: string,
+) {
+  return this.fetch(
+    `/api/lifeops/account-handoffs/retirement-candidates?${new URLSearchParams({ previousGrantId })}`,
+  );
+};
 
 lifeOpsClientPrototype.createLifeOpsAccountHandoff = async function (
   this: ElizaClient,
