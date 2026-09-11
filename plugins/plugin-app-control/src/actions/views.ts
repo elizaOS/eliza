@@ -2509,7 +2509,7 @@ function asViewInteractionDataValue(
 }
 
 const VIEWS_ROUTING_HINT = [
-	"UI view/window/panel/app navigation and layout -> VIEWS.",
+	"Opening one known app view -> VIEWS_SHOW with view and navigationStepId. UI layouts, catalog discovery and other operations -> VIEWS.",
 	"Eliza's home screen is the chat view: return home with action=show view=chat. The views-manager is the app list, not home. App navigation never requires turning the user's words into a website URL.",
 	"UI Context identifies the open view and its capabilities, not its displayed contents. Answer identity-only questions from that context. To describe visible text, balances, settings, or selections, first inspect the view with get-text or list-elements, or use its domain read action. Configuration diagnostics are not evidence of what the screen displays.",
 	"View switching is a common proactive response in app chat: use action=show when the user asks to open, show, switch to, or pull up a matching surface, including a bare surface name in any language.",
@@ -2531,6 +2531,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 
 	return {
 		name: "VIEWS",
+		subActions: ["VIEWS_SHOW"],
 		contexts: [...VIEW_ACTION_CONTEXTS],
 		// `browser` stays out of `contexts` so browser/web retrieval cannot make
 		// VIEWS hijack live-information turns. It is allowed at execution time,
@@ -2729,14 +2730,14 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			{
 				name: "navigationIntent",
 				description:
-					"Use planner-step for an explicit target within a contextual or compound plan. The per-step target takes precedence over unrelated original-message clauses.",
+					"Use planner-step for an explicit target within a contextual or compound plan; include both view and navigationStepId. The per-step target takes precedence over unrelated original-message clauses.",
 				required: false,
 				schema: { type: "string", enum: ["planner-step"] },
 			},
 			{
 				name: "navigationStepId",
 				description:
-					"Unique plan-step identity for separately tracking navigation and domain receipts.",
+					"Required with navigationIntent=planner-step. Supply a unique nonempty step identity, such as open-notes-1, to track navigation separately from domain receipts.",
 				required: false,
 				schema: { type: "string" },
 			},
@@ -3992,6 +3993,47 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 	};
 }
 
+/** Single-destination navigation with a complete planner-step contract. The
+ * parent remains discoverable for layouts, catalog reads and interactions. */
+export function createShowViewAction(deps: ViewsActionDeps = {}): Action {
+	const parent = createViewsAction(deps);
+	const navigationOptions = (options?: Record<string, unknown>) => {
+		const params = normalizeActionOptions(options);
+		return {
+			action: "show",
+			navigationIntent: "planner-step",
+			view: readStringOption(params, "view"),
+			navigationStepId: readStringOption(params, "navigationStepId"),
+		};
+	};
+	return {
+		...parent,
+		name: "VIEWS_SHOW",
+		subActions: undefined,
+		similes: [],
+		examples: [],
+		description:
+			"Open one authorized app view in the originating user's app. Supply the catalog view ID (Home is chat) and a unique navigation step ID. This only navigates: it never reads or changes records, selects a calendar date, or proves domain work complete. For another operation, compound layout or unknown destination, discover VIEWS. Respect the full request's navigation and destination restrictions; use the delivery receipt to report the outcome.",
+		descriptionCompressed: "Open one authorized app view; navigation only.",
+		routingHint:
+			"Opening one known app view -> VIEWS_SHOW with view and navigationStepId. Layouts, catalog discovery and interactions -> VIEWS. Domain records still use their owning tools.",
+		parameters: parent.parameters
+			?.filter(({ name }) => name === "view" || name === "navigationStepId")
+			.map((parameter) => ({ ...parameter, required: true })),
+		allowAdditionalParameters: false,
+		validate: (runtime, message, state, options) =>
+			parent.validate(runtime, message, state, navigationOptions(options)),
+		handler: (runtime, message, state, options, callback) =>
+			parent.handler(
+				runtime,
+				message,
+				state,
+				navigationOptions(options),
+				callback,
+			),
+	};
+}
+
 export function createViewsAliasAction(
 	name: "CLOSE_VIEW" | "CLOSE_ALL_VIEWS",
 	deps: ViewsActionDeps = {},
@@ -4029,6 +4071,7 @@ export function createViewsAliasAction(
 	return {
 		...action,
 		name,
+		subActions: undefined,
 		parameters: targetParameters,
 		allowAdditionalParameters: false,
 		tags: closeAll
@@ -4451,5 +4494,6 @@ async function broadcastViewEvent(
 
 export const viewsAction: Action = createViewsAction();
 export const closeViewAction: Action = createViewsAliasAction("CLOSE_VIEW");
+export const showViewAction: Action = createShowViewAction();
 export const closeAllViewsAction: Action =
 	createViewsAliasAction("CLOSE_ALL_VIEWS");

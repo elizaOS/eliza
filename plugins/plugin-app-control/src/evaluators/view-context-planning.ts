@@ -50,7 +50,7 @@ export const viewContinuationField: ResponseHandlerFieldEvaluator<ContextualNavi
 		name: "visualContinuation",
 		priority: 60,
 		description:
-			"Classify visual continuation for the final current request while preserving applicable earlier constraints. Return {disposition: requested|optional|none|forbidden|unresolved, viewId: string, reason: string}. Use none for ordinary conversation, hypothetical discussion, questions answerable without changing views, and ambiguity. Use forbidden for a requirement to stay on the current screen or not navigate. Use requested when the user requests navigation, and optional only when a surface clearly helps the requested activity; never infer navigation solely from a domain noun. For requested/optional, use a known shell view ID (Home is chat); use unresolved if the destination or permission is uncertain, so the live-catalog classifier can resolve it. For multiple requested views, name one and leave every destination/layout in the full request for the planner. Keep restrictions scoped: forbidding data edits does not prohibit requested navigation; forbidding other views does not prohibit the named views. Navigation never completes domain work. Opening an existing app view alone selects candidateActionNames=[VIEWS], not the destination domain tools. Add NOTES, CALENDAR or other domain tools only when the current request also asks to read or change their records. Use an empty viewId for none/forbidden/unresolved. This is a routing judgment only: no navigation or data operation has executed.",
+			"Classify visual continuation for the final current request while preserving applicable earlier constraints. Return {disposition: requested|optional|none|forbidden|unresolved, viewId: string, reason: string}. Use none for ordinary conversation, hypothetical discussion, questions answerable without changing views, and ambiguity. Use forbidden for a requirement to stay on the current screen or not navigate. Use requested when the user requests navigation, and optional only when a surface clearly helps the requested activity; never infer navigation solely from a domain noun. For requested/optional, use a known shell view ID (Home is chat); use unresolved if the destination or permission is uncertain, so the live-catalog classifier can resolve it. For multiple requested views, name one and leave every destination/layout in the full request for the planner. Keep restrictions scoped: forbidding data edits does not prohibit requested navigation; forbidding other views does not prohibit the named views. Navigation never completes domain work. Opening one known app view alone selects candidateActionNames=[VIEWS_SHOW]; layouts or catalog discovery select VIEWS. Neither selects the destination domain tools. Add NOTES, CALENDAR or other domain tools only when the current request also asks to read or change their records. Use an empty viewId for none/forbidden/unresolved. This is a routing judgment only: no navigation or data operation has executed.",
 		schema: {
 			type: "object",
 			additionalProperties: false,
@@ -188,7 +188,7 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 			userRequestMessageText(message).trim().length > 0
 		);
 	},
-	async evaluate({ runtime, message, userRoles }) {
+	async evaluate({ runtime, message, userRoles, messageHandler }) {
 		setNavigationConstraint(
 			message,
 			"deny",
@@ -294,15 +294,27 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 		// interaction's parameter schema. The catalog remains complete; VIEWS list
 		// rereads it through the normal authorization boundary before interaction.
 		const destinationReference = navigationDestinationReference(selectedView);
+		const navigationAction = runtime.actions.some(
+			(action) => action.name === "VIEWS_SHOW",
+		)
+			? "VIEWS_SHOW"
+			: "VIEWS";
+		const selectedActions = messageHandler.plan.candidateActions ?? [];
 		return {
 			requiresTool: true,
 			clearReply: true,
-			addCandidateActions: ["VIEWS"],
-			addParentActionHints: ["VIEWS"],
+			// The model's navigation decision passed the live catalog checks.
+			// Preserve every selected domain/layout operation, but do not let the
+			// later text backstop add tools for negated work ("don't create events")
+			// or re-add a parent after its exact child was selected. The full request
+			// and authorized discovery remain available to the planner.
+			clearCandidateActions: true,
+			addCandidateActions: [...selectedActions, navigationAction],
+			addParentActionHints: navigationAction === "VIEWS" ? ["VIEWS"] : [],
 			addContextSlices: [
 				VIEW_CATALOG_SCOPE_CONTEXT,
 				`Navigation intent: ${JSON.stringify(intent)}. No navigation has executed.`,
-				"Keep every domain operation and destination/data restriction from the full original request. For a single destination, execute visual continuation through VIEWS action=show with view=<selected id>, navigationIntent=planner-step, navigationStepId=<unique plan step>. Preserve an explicitly requested compound layout: two views side by side horizontally require VIEWS action=split with layout=horizontal and both resolved destinations, rather than sequential show calls or a grid tile. A per-step target may differ from another step only within the user's permitted scope. Optional navigation must not block server-backed domain operations. Respect cancellation and user constraints. Ask before ambiguous effects. Ground the final response separately in actual navigation receipts and domain receipts; a switch never proves a save or draft.",
+				`Keep every domain operation and destination/data restriction from the full original request. For a single destination, execute ${navigationAction === "VIEWS_SHOW" ? "VIEWS_SHOW with view=<selected id> and navigationStepId=<unique plan step>" : "VIEWS action=show with view=<selected id>, navigationIntent=planner-step, navigationStepId=<unique plan step>"}. Preserve an explicitly requested compound layout: two views side by side horizontally require VIEWS action=split with layout=horizontal and both resolved destinations, rather than sequential show calls or a grid tile. A per-step target may differ from another step only within the user's permitted scope. Optional navigation must not block server-backed domain operations. Respect cancellation and user constraints. Ask before ambiguous effects. Ground the final response separately in actual navigation receipts and domain receipts; a switch never proves a save or draft.`,
 				`Selected authorized destination: ${JSON.stringify(destinationReference)}`,
 				...(selectedView.capabilities?.some(
 					({ params }) => params !== undefined,

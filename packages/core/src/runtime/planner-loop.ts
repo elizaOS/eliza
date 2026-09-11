@@ -2848,8 +2848,19 @@ async function dispatchWithCodingCallTimeout<T>(args: {
  */
 export function withTurnScopeToolArg(
 	tools: ToolDefinition[] | undefined,
+	sharedSystemPrompt?: string,
 ): ToolDefinition[] | undefined {
 	if (!tools) return tools;
+	// Keep the complete protocol once in the trusted system instructions rather
+	// than repeating it in every tool. Standalone/custom-template callers retain
+	// the full schema description unless that exact instruction is present.
+	const scopeSchema = sharedSystemPrompt?.includes(plannerBatchScopeDescription)
+		? {
+				...TURN_SCOPE_ARG_SCHEMA,
+				description:
+					"Follow the shared Batch scope instruction. Use the same scope on every call in this batch. Stripped before execution.",
+			}
+		: TURN_SCOPE_ARG_SCHEMA;
 	return tools.map((tool) => {
 		const parameters = tool.parameters;
 		if (
@@ -2877,7 +2888,7 @@ export function withTurnScopeToolArg(
 				...parameters,
 				properties: {
 					...properties,
-					[TURN_SCOPE_ARG]: TURN_SCOPE_ARG_SCHEMA,
+					[TURN_SCOPE_ARG]: scopeSchema,
 				},
 				required: required.includes(TURN_SCOPE_ARG)
 					? required
@@ -3235,6 +3246,10 @@ async function dispatchPlannerModelCall(params: {
 			renderedInput.sourceSelectionApplied
 				? [...(params.tools ?? []), RESTORE_CONTEXT_TOOL]
 				: params.tools,
+			renderedInput.messages[0]?.role === "system" &&
+				typeof renderedInput.messages[0].content === "string"
+				? renderedInput.messages[0].content
+				: undefined,
 		);
 		// Force a native tool call. With actions exposed directly as tools,
 		// every viable planner outcome —
@@ -5358,6 +5373,9 @@ function plannerToolDiscriminatorValue(call: PlannerToolCall): string {
 const DESTRUCTIVE_DISCRIMINATOR_PATTERN =
 	/^(?:delete|remove|clear|forget|cancel|archive|purge|reset|revoke|destroy|drop|unlink|wipe)/i;
 
+const READ_DISCRIMINATOR_PATTERN =
+	/^(?:get|list|read|search|current|inspect|lookup|find)(?:$|[_-])/i;
+
 /** Parameter names that address a target even when their value is one word. */
 const TARGET_PARAMETER_KEY_PATTERN =
 	/^(?:id|ids|query|title|name|text|content|body|path|url|key|subject|target|filter|search|q|email|handle|username|channel|room|entity|event|note|file)$|(?:Id|Ids|Name|Title|Query|Path|Url|Key|Text|Handle)$/;
@@ -5603,6 +5621,15 @@ export function malformedCallSupersededBy(
 ): boolean {
 	const failedDiscriminator = plannerToolDiscriminatorValue(failedCall);
 	const discriminator = plannerToolDiscriminatorValue(call);
+	if (
+		failedDiscriminator !== discriminator &&
+		(READ_DISCRIMINATOR_PATTERN.test(failedDiscriminator) ||
+			READ_DISCRIMINATOR_PATTERN.test(discriminator))
+	) {
+		// Inspecting the same target is not evidence that a failed effect ran;
+		// conversely, performing an effect does not complete a failed read.
+		return false;
+	}
 	if (
 		failedDiscriminator !== discriminator &&
 		(DESTRUCTIVE_DISCRIMINATOR_PATTERN.test(failedDiscriminator) ||

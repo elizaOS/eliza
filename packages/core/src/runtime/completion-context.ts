@@ -24,7 +24,12 @@ export const COMPLETION_CONTEXT_SCHEMA: JSONSchema = {
 			description:
 				"selected is the normal completed relevance review for planning, executing and answering the final current request, including a verified empty selection; full is the fallback for unresolved applicable context, exhaustive current-request recall, or missing source set.",
 		},
-		sourceSetId: { type: "string" },
+		sourceSetId: {
+			type: "string",
+			pattern: "^(?:[0-9a-f]{64})?$",
+			description:
+				"Copy the entire 64-character completion_source_set value exactly. Never abbreviate or generate it. Use an empty string only when no source set is supplied.",
+		},
 		complete: {
 			type: "boolean",
 			description:
@@ -45,6 +50,38 @@ export const COMPLETION_CONTEXT_SCHEMA: JSONSchema = {
 		"pendingIntentSourceIds",
 	],
 };
+
+/** A labeled history always supplies its source-set identity. Keep the schema
+ * static across such turns, but do not offer an empty-ID escape hatch that
+ * silently forces both later stages back to full history. Empty-history and
+ * voice callers retain the general schema. This never substitutes a model ID
+ * or relaxes the exact source binding checked by selectCompletionContext. */
+export function withRequiredCompletionSourceIdentity(
+	schema: JSONSchema,
+	context: ContextObject,
+): JSONSchema {
+	const completion = schema.properties?.completionContext;
+	const identity = completion?.properties?.sourceSetId;
+	if (
+		!completion ||
+		identity?.type !== "string" ||
+		completionContextSources(context).sources.length === 0
+	)
+		return schema;
+	return {
+		...schema,
+		properties: {
+			...schema.properties,
+			completionContext: {
+				...completion,
+				properties: {
+					...completion.properties,
+					sourceSetId: { ...identity, pattern: "^[0-9a-f]{64}$" },
+				},
+			},
+		},
+	};
+}
 
 const SOURCE_LIST_FIELDS = [
 	"relevantSourceIds",

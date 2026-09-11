@@ -133,7 +133,7 @@ export const uiWidgetCapabilitiesProvider: Provider = {
   get: async (_runtime: IAgentRuntime, message: Memory) => ({
     text: isAllowedChannel(message) ? UI_WIDGETS_CAPABILITIES : "",
     discoveryText: isAllowedChannel(message)
-      ? 'context_discovery: uiWidgetCapabilities\nThis chat renderer supports configuration cards, choice buttons, forms, follow-ups, checklists and workflows regardless of the focused app view. To display one, return contextRequests=["uiWidgetCapabilities"], contexts=["simple"], replyText=""; the runtime supplies exact syntax before your final reply. This is not a view capability or an app action. Ordinary text needs no widget guide.'
+      ? "context_discovery: uiWidgetCapabilities\nReply-formatting reference: syntax for authoring configuration cards, choices, forms, follow-ups, checklists and workflows INSIDE a chat reply. Read only when composing one of these controls. Opening an existing app view uses VIEWS; its navigation needs no reply-formatting reference. Ordinary prose needs none. Advertised chat controls are available regardless of the focused app view."
       : "",
   }),
 };

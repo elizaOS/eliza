@@ -5390,6 +5390,38 @@ describe("v5 planner loop skeleton", () => {
 		expect(injected?.[2]).toBe(tools[2]);
 	});
 
+	it("shares the complete batch protocol across native tools without changing their required scope", () => {
+		const tools = ["VIEWS", "NOTES_LIST", "REPLY"].map((name) => ({
+			name,
+			parameters: { type: "object", properties: {} },
+		}));
+		const shared = withTurnScopeToolArg(tools, plannerTemplate);
+		const standalone = withTurnScopeToolArg(
+			tools,
+			"Custom instructions without the batch contract.",
+		);
+		for (let i = 0; i < tools.length; i++) {
+			const scope = shared?.[i]?.parameters?.properties?.[TURN_SCOPE_ARG];
+			expect(scope).toMatchObject({
+				type: "string",
+				enum: [TURN_SCOPE_FINAL, TURN_SCOPE_MORE_WORK_PENDING],
+			});
+			expect(shared?.[i]?.parameters?.required).toContain(TURN_SCOPE_ARG);
+			expect(scope?.description).not.toContain(plannerBatchScopeDescription);
+			expect(
+				standalone?.[i]?.parameters?.properties?.[TURN_SCOPE_ARG]?.description,
+			).toContain(plannerBatchScopeDescription);
+		}
+		expect(JSON.stringify(shared).length).toBeLessThan(
+			JSON.stringify(standalone).length,
+		);
+		expect(
+			tools.every(
+				(tool) => Object.keys(tool.parameters.properties).length === 0,
+			),
+		).toBe(true);
+	});
+
 	it("never overwrites a genuine parameter that already uses the reserved name", () => {
 		const tools = [
 			{
