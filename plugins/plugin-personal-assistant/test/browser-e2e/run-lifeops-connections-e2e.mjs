@@ -1,10 +1,10 @@
 /**
  * Real-Chromium, no-provider acceptance harness for LifeOps connections.
  * It serves an isolated in-memory fixture on port 41873 by default and writes
- * screenshots only to a temporary directory outside the repository.
+ * screenshots, recordings, and browser diagnostics to a temporary directory.
  */
 
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -976,6 +976,75 @@ try {
     animations: "disabled",
   });
   assert(mobileErrors.length === 0, "mobile flow has no page errors");
+  for (const width of [1280, 390]) {
+    const context = await browser.newContext({
+      viewport: { width, height: 900 },
+      recordVideo: { dir: outputDir, size: { width, height: 900 } },
+      reducedMotion: "reduce",
+    });
+    const local = await context.newPage();
+    const diagnostics = [];
+    local.on("pageerror", (error) =>
+      diagnostics.push({ type: "error", message: String(error) }),
+    );
+    local.on("console", (message) =>
+      diagnostics.push({ type: message.type(), message: message.text() }),
+    );
+    local.on("response", (response) =>
+      diagnostics.push({
+        type: "response",
+        url: response.url(),
+        status: response.status(),
+      }),
+    );
+    await local.goto(`${baseURL}?scenario=built-in-only`);
+    await local.getByRole("heading", { name: /Bring your inbox/ }).waitFor();
+    for (const heading of await local.getByRole("heading").all()) {
+      await heading.scrollIntoViewIfNeeded();
+    }
+    const source = local.locator('article[data-provider="eliza"]');
+    await source.scrollIntoViewIfNeeded();
+    await local.screenshot({
+      path: join(outputDir, `built-in-health-${width}.png`),
+      animations: "disabled",
+    });
+    await source.screenshot({
+      path: join(outputDir, `built-in-health-panel-${width}.png`),
+      animations: "disabled",
+    });
+    const refresh = local.getByRole("button", {
+      name: "Retry all connection checks and synchronization",
+      exact: true,
+    });
+    await refresh.scrollIntoViewIfNeeded();
+    await local.screenshot({
+      path: join(outputDir, `built-in-rest-${width}.png`),
+      animations: "disabled",
+    });
+    await refresh.hover();
+    await local.screenshot({
+      path: join(outputDir, `built-in-hover-${width}.png`),
+      animations: "disabled",
+    });
+    assert(
+      await local.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 1,
+      ),
+      `${width}px built-in-only source has no horizontal overflow`,
+    );
+    assert(
+      !diagnostics.some((entry) => entry.type === "error"),
+      `${width}px built-in-only source has no browser errors`,
+    );
+    await writeFile(
+      join(outputDir, `built-in-diagnostics-${width}.json`),
+      JSON.stringify(diagnostics, null, 2),
+    );
+    const video = local.video();
+    await context.close();
+    if (video)
+      await video.saveAs(join(outputDir, `built-in-walkthrough-${width}.webm`));
+  }
   await mobile.close();
   await desktop.close();
 } finally {

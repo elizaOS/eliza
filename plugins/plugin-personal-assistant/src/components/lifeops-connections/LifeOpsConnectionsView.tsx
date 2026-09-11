@@ -1,6 +1,7 @@
 /** Focused onboarding and ongoing-management UI for Gmail and calendar sources. */
 
 import type {
+  LifeOpsCalendarProvider,
   LifeOpsCalendarSourceHealth,
   LifeOpsCalendarSummary,
   LifeOpsGoogleCapability,
@@ -50,6 +51,14 @@ import type {
   LifeOpsSeedReceipt,
 } from "./types.js";
 
+const CALENDAR_PROVIDER_LABELS: Record<LifeOpsCalendarProvider, string> = {
+  eliza: "Eliza Calendar",
+  google: "Google Calendar",
+  microsoft: "Microsoft Calendar",
+  apple_calendar: "Apple Calendar",
+  ics: "Calendar subscription",
+};
+
 const GOOGLE_CAPABILITY_OPTIONS: Array<{
   capability: LifeOpsGoogleCapability;
   title: string;
@@ -75,8 +84,7 @@ const GOOGLE_CAPABILITY_OPTIONS: Array<{
     capability: "google.gmail.send",
     title: "Send approved email",
     scope: "gmail.send",
-    detail:
-      "Every send still requires confirmation immediately before it runs.",
+    detail: "Send email using your approval and automation settings.",
     defaultOn: false,
   },
   {
@@ -98,7 +106,7 @@ const GOOGLE_CAPABILITY_OPTIONS: Array<{
     capability: "google.calendar.write",
     title: "Change Google Calendar",
     scope: "calendar.events",
-    detail: "Create, update, invite, or delete only after confirmation.",
+    detail: "Sync events and run calendar changes you authorize.",
     defaultOn: false,
   },
 ];
@@ -628,6 +636,7 @@ export function LifeOpsConnectionsView({
             type="button"
             onClick={() => void refresh(true)}
             disabled={loading || busy !== null}
+            className="lifeops-primary"
             aria-label="Retry all connection checks and synchronization"
           >
             <RefreshCw size={16} aria-hidden /> Refresh health
@@ -905,18 +914,22 @@ export function LifeOpsConnectionsView({
                 <CalendarDays size={20} aria-hidden />
                 <div>
                   <strong>
-                    {source.key.provider === "apple_calendar"
-                      ? "Apple Calendar"
-                      : "Google Calendar"}
-                    {source.summary ? ` · ${source.summary}` : ""}
+                    {CALENDAR_PROVIDER_LABELS[source.key.provider]}
+                    {source.summary &&
+                    source.summary !==
+                      CALENDAR_PROVIDER_LABELS[source.key.provider]
+                      ? ` · ${source.summary}`
+                      : ""}
                   </strong>
                   <span>Last sync {formatTime(source.syncedAt)}</span>
                   <small>
                     {source.changeDelivery
                       ? `${source.changeDelivery.mode} updates · ${source.changeDelivery.status}`
-                      : source.key.provider === "apple_calendar"
-                        ? "EventKit store-change updates with polling recovery"
-                        : "Polling recovery available"}
+                      : source.key.provider === "eliza"
+                        ? "Stored in Eliza"
+                        : source.key.provider === "apple_calendar"
+                          ? "EventKit store-change updates with polling recovery"
+                          : "Polling recovery available"}
                   </small>
                   {source.error ? (
                     <small className="lifeops-error-copy">
