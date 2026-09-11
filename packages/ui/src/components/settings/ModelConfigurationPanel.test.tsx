@@ -258,9 +258,7 @@ beforeEach(() => {
   clientMock.getModelsConfig.mockResolvedValue(fixtureConfig());
   clientMock.updateModelsConfig.mockReset();
   clientMock.getStatus.mockReset();
-  clientMock.getStatus
-    .mockResolvedValueOnce({ state: "running", startedAt: 1 })
-    .mockResolvedValue({ state: "running", startedAt: 2 });
+  clientMock.getStatus.mockResolvedValue({ state: "running" });
   clientMock.restartAgent.mockReset();
 });
 
@@ -836,14 +834,11 @@ describe("chat save flow", () => {
       keys: ["OPENAI_SMALL_MODEL", "OPENAI_REASONING_EFFORT"],
     });
     let resolveStatus: (value: unknown) => void = () => {};
-    clientMock.getStatus
-      .mockReset()
-      .mockResolvedValueOnce({ state: "running", startedAt: 1 })
-      .mockReturnValue(
-        new Promise((resolve) => {
-          resolveStatus = resolve;
-        }),
-      );
+    clientMock.getStatus.mockReturnValue(
+      new Promise((resolve) => {
+        resolveStatus = resolve;
+      }),
+    );
     await renderReady();
 
     act(() => agentButton("models-small-save").click());
@@ -866,74 +861,11 @@ describe("chat save flow", () => {
     expect(clientMock.restartAgent).not.toHaveBeenCalled();
 
     await act(async () => {
-      resolveStatus({ state: "running", startedAt: 2 });
+      resolveStatus({ state: "running" });
     });
     expect(await screen.findByText("Saved")).toBeTruthy();
     // Source notes refresh from the server after a successful write.
     expect(clientMock.getModelsConfig).toHaveBeenCalledTimes(2);
-  });
-
-  it.each([false, true])(
-    "refreshes shared effort while preserving sibling edits: %s",
-    async (editSibling) => {
-      const response = deferred<ModelsConfigResponse>();
-      await renderReady();
-      const config = fixtureConfig();
-      for (const target of ["small", "large"] as const) {
-        config.targets[target].OPENAI_REASONING_EFFORT = {
-          value: "medium",
-          source: "config.env",
-        };
-      }
-      clientMock.getModelsConfig.mockReturnValue(response.promise);
-      clientMock.updateModelsConfig.mockResolvedValue({
-        kind: "applied",
-        restart: true,
-      });
-      fill("models-small-effort", "medium");
-      act(() => agentButton("models-small-save").click());
-      act(() => agentButton("models-small-confirm-restart").click());
-      await waitFor(() =>
-        expect(clientMock.getModelsConfig).toHaveBeenCalledTimes(2),
-      );
-      if (editSibling) fill("models-large-effort", "high");
-      await act(async () => response.resolve(config));
-      expect(await screen.findByText("Saved")).toBeTruthy();
-      expect(agentElements.get("models-small-effort")?.getValue?.()).toBe(
-        "medium",
-      );
-      expect(agentElements.get("models-large-effort")?.getValue?.()).toBe(
-        editSibling ? "high" : "medium",
-      );
-      expect(clientMock.updateModelsConfig).toHaveBeenCalledTimes(1);
-      expect(clientMock.restartAgent).not.toHaveBeenCalled();
-    },
-  );
-
-  it("keeps waiting when status still describes the previous runtime", async () => {
-    clientMock.updateModelsConfig.mockResolvedValue({
-      kind: "applied",
-      restart: true,
-    });
-    const replacement = deferred<{ state: string; startedAt: number }>();
-    clientMock.getStatus
-      .mockReset()
-      .mockResolvedValueOnce({ state: "running", startedAt: 1 })
-      .mockResolvedValueOnce({ state: "running", startedAt: 1 })
-      .mockReturnValue(replacement.promise);
-    await renderReady();
-    act(() => agentButton("models-small-save").click());
-    act(() => agentButton("models-small-confirm-restart").click());
-    expect(await screen.findByText("Restarting agent…")).toBeTruthy();
-    expect(screen.queryByText("Saved")).toBeNull();
-    await waitFor(() => expect(clientMock.getStatus).toHaveBeenCalledTimes(3), {
-      timeout: 2000,
-    });
-    await act(async () =>
-      replacement.resolve({ state: "running", startedAt: 2 }),
-    );
-    expect(await screen.findByText("Saved")).toBeTruthy();
-    expect(clientMock.restartAgent).not.toHaveBeenCalled();
   });
 
   it("cancels an armed restart confirmation without posting", async () => {

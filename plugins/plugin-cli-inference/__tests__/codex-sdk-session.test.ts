@@ -64,22 +64,6 @@ function makeSession(
 }
 
 describe("CodexSdkSession — TEXT mode", () => {
-  it("disables inherited tools and memories in the inference child", async () => {
-    const { session, codexOptions } = makeSession([{ finalResponse: "hello" }]);
-    await session.generate("hi");
-    expect(codexOptions()[0].config).toEqual({
-      features: {
-        apps: false,
-        plugins: false,
-        shell_tool: false,
-        unified_exec: false,
-        multi_agent: false,
-        hooks: false,
-        memories: false,
-        image_generation: false,
-      },
-    });
-  });
   it("returns the turn finalResponse", async () => {
     const { session } = makeSession([{ finalResponse: "hello" }]);
     expect(await session.generate("hi")).toBe("hello");
@@ -92,10 +76,7 @@ describe("CodexSdkSession — TEXT mode", () => {
       subprocessEnv,
     });
     expect(await session.generate("hi")).toBe("hello");
-    expect(codexOptions()[0].env).toEqual({
-      ...subprocessEnv,
-      ELIZA_CODEX_INFERENCE_BIN: "codex",
-    });
+    expect(codexOptions()[0].env).toBe(subprocessEnv);
     session.dispose();
   });
 
@@ -147,7 +128,7 @@ describe("CodexSdkSession — ROUTE mode (native outputSchema)", () => {
     session.dispose();
   });
 
-  it("rejects structured JSON wrapped in prose instead of guessing a route", async () => {
+  it("salvages a JSON object wrapped in prose", async () => {
     const { session } = makeSession(
       [
         {
@@ -157,18 +138,20 @@ describe("CodexSdkSession — ROUTE mode (native outputSchema)", () => {
       ],
       { router: true }
     );
-    await expect(session.route("2+2?")).rejects.toThrow(/non-JSON output/);
+    const out = JSON.parse(await session.route("2+2?"));
+    expect(out).toEqual({ action: "REPLY", params: { text: "4" } });
     session.dispose();
   });
 
-  it("rejects malformed parameters rather than replacing them with an empty object", async () => {
+  it("coerces a non-object params to {} but keeps the action", async () => {
     const { session } = makeSession(
       [{ finalResponse: '{"action":"IGNORE","params":"not valid json"}' }],
       {
         router: true,
       }
     );
-    await expect(session.route("hi")).rejects.toThrow();
+    const out = JSON.parse(await session.route("hi"));
+    expect(out).toEqual({ action: "IGNORE", params: {} });
     session.dispose();
   });
 

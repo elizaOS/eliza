@@ -21,8 +21,6 @@
  * tier, not this flag; see the broker header).
  */
 
-import { developerShellUrl } from "./navigation/developer-route";
-
 // Reentrancy depth, not a boolean: privileged shell paths nest (e.g. the
 // navigation reducer persisting the last tab while pushing a route).
 let privilegedShellDepth = 0;
@@ -64,13 +62,9 @@ export const shellLocalStorage = {
 /** The shell router/chrome's history writer (guard-exempt, DOM signatures). */
 export const shellHistory = {
   pushState(data: unknown, unused: string, url?: string | URL | null): void {
-    runAsPrivilegedShell(() =>
-      window.history.pushState(data, unused, developerShellUrl(url)),
-    );
+    runAsPrivilegedShell(() => window.history.pushState(data, unused, url));
   },
   replaceState(data: unknown, unused: string, url?: string | URL | null): void {
-    runAsPrivilegedShell(() =>
-      window.history.replaceState(data, unused, developerShellUrl(url)),
-    );
+    runAsPrivilegedShell(() => window.history.replaceState(data, unused, url));
   },
 };

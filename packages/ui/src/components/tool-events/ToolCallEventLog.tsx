@@ -1,6 +1,6 @@
 /**
  * Renders one native tool-call event (a `NativeToolCallEvent` from the agent's
- * activity stream) as a collapsible log row: a running/success/preview/failure status
+ * activity stream) as a collapsible log row: a running/success/failure status
  * icon and the tool name, expanding to show the truncated argument/result
  * previews and pretty-printed JSON. State + name derivation live in
  * `ToolCallEventLog.helpers`.
@@ -21,11 +21,7 @@ export interface ToolCallEventLogProps {
   className?: string;
 }
 
-export type ToolCallEventDisplayState =
-  | "running"
-  | "success"
-  | "failure"
-  | "preview";
+export type ToolCallEventDisplayState = "running" | "success" | "failure";
 
 function previewValue(value: unknown): string {
   if (value == null) return "—";
@@ -59,13 +55,11 @@ function StatePill({ state }: { state: ToolCallEventDisplayState }) {
     running: "text-primary",
     success: "text-success",
     failure: "text-danger",
-    preview: "text-muted",
   };
   const labels = {
     running: "Running",
     success: "Success",
     failure: "Failure",
-    preview: "Preview · no changes",
   };
   return (
     <span

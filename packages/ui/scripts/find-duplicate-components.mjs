@@ -67,7 +67,6 @@ export const ATOMS = {
   },
   input: { names: ["Input"], hosts: ["input"], rawHosts: ["input"] },
   marker: { names: ["Marker"], hosts: ["div", "span"], rawHosts: [] },
-  nativeSelect: { names: ["NativeSelect"], hosts: ["select"], rawHosts: [] },
   popover: { names: ["Popover"], hosts: ["div"], rawHosts: [] },
   progress: {
     names: ["Progress"],

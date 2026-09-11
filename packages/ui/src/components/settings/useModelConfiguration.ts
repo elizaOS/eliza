@@ -471,7 +471,6 @@ export function useModelConfiguration(
   // The catalog the drafts were resolved against, for post-save re-resolution
   // of `configured` markers without threading it through every callback.
   const catalogRef = useRef<ModelCatalog | null>(null);
-  const configRef = useRef<ModelsConfigResponse | null>(null);
 
   const setSaveState = useCallback(
     (group: "small" | "large" | "coding", next: ModelGroupSaveState) => {
@@ -528,7 +527,6 @@ export function useModelConfiguration(
         config: parseConfigResponse(configResponse),
       };
       catalogRef.current = data.catalog;
-      configRef.current = data.config;
       initializeDrafts(data);
       setLoad({ phase: "ready", data });
     } catch (err) {
@@ -557,8 +555,8 @@ export function useModelConfiguration(
   /**
    * Refresh the effective config after a successful write so source notes and
    * the persisted default backend reflect what the server actually stored.
-   * Reconcile untouched effort selections with shared provider knobs while
-   * preserving unsaved selections, including edits made during the request.
+   * Deliberately leaves the user's draft selections alone — only the
+   * `configured` markers are re-resolved.
    */
   const refreshConfig = useCallback(async () => {
     let config: ModelsConfigResponse;
@@ -571,8 +569,6 @@ export function useModelConfiguration(
       return;
     }
     if (disposedRef.current) return;
-    const previousConfig = configRef.current;
-    configRef.current = config;
     setLoad((prev) =>
       prev.phase === "ready"
         ? { phase: "ready", data: { ...prev.data, config } }
@@ -581,26 +577,16 @@ export function useModelConfiguration(
     setPersistedDefaultBackend(parsePersistedDefaultBackend(config));
     const catalog = catalogRef.current;
     if (!catalog) return;
-    setChatDrafts((prev) => {
-      const reconcile = (target: ChatTarget): ChatDraft => {
-        const draft = prev[target];
-        const effective = resolveChatDraft(target, catalog, config);
-        const previous = previousConfig
-          ? resolveChatDraft(target, catalog, previousConfig)
-          : null;
-        const untouched =
-          previous !== null &&
-          draft.provider === previous.provider &&
-          draft.model === previous.model &&
-          draft.effort === previous.effort;
-        return {
-          ...draft,
-          effort: untouched ? effective.effort : draft.effort,
-          configured: effective.configured,
-        };
-      };
-      return { small: reconcile("small"), large: reconcile("large") };
-    });
+    setChatDrafts((prev) => ({
+      small: {
+        ...prev.small,
+        configured: resolveChatDraft("small", catalog, config).configured,
+      },
+      large: {
+        ...prev.large,
+        configured: resolveChatDraft("large", catalog, config).configured,
+      },
+    }));
     setCodingDrafts((prev) => ({
       codex: {
         ...prev.codex,
@@ -618,44 +604,28 @@ export function useModelConfiguration(
     }));
   }, []);
 
-  const waitForRuntimeRunning = useCallback(
-    async (previousStartedAt: number | null) => {
-      let sawNotRunning = false;
-      const isRunning = async (): Promise<boolean> => {
-        try {
-          const status = await client.getStatus();
-          if (status.state !== "running") {
-            sawNotRunning = true;
-            return false;
-          }
-          return previousStartedAt !== null
-            ? typeof status.startedAt === "number" &&
-                status.startedAt !== previousStartedAt
-            : sawNotRunning;
-        } catch {
-          // error-policy:J4 status is expected to fail while the agent is down
-          // mid-restart; "unreachable" is the designed not-yet-running signal
-          // the poll loop keeps waiting on.
-          sawNotRunning = true;
-          return false;
-        }
-      };
-      const startedAt = Date.now();
-      for (;;) {
-        if (disposedRef.current) return;
-        if (await isRunning()) return;
-        if (Date.now() - startedAt >= RESTART_MAX_WAIT_MS) {
-          throw new Error(
-            "Settings were saved, but the replacement agent has not reported ready yet. Check runtime status before retrying.",
-          );
-        }
-        await new Promise((resolve) =>
-          setTimeout(resolve, RESTART_POLL_INTERVAL_MS),
-        );
+  const waitForRuntimeRunning = useCallback(async () => {
+    const isRunning = async (): Promise<boolean> => {
+      try {
+        const status = await client.getStatus();
+        return status.state === "running";
+      } catch {
+        // error-policy:J4 status is expected to fail while the agent is down
+        // mid-restart; "unreachable" is the designed not-yet-running signal
+        // the poll loop keeps waiting on.
+        return false;
       }
-    },
-    [],
-  );
+    };
+    const startedAt = Date.now();
+    for (;;) {
+      if (disposedRef.current) return;
+      if (await isRunning()) return;
+      if (Date.now() - startedAt >= RESTART_MAX_WAIT_MS) return;
+      await new Promise((resolve) =>
+        setTimeout(resolve, RESTART_POLL_INTERVAL_MS),
+      );
+    }
+  }, []);
 
   const scheduleIdle = useCallback((group: "small" | "large" | "coding") => {
     setTimeout(() => {
@@ -675,9 +645,6 @@ export function useModelConfiguration(
     ) => {
       setSaveState(group, { phase: "saving" });
       try {
-        const before = group === "coding" ? null : await client.getStatus();
-        const previousStartedAt =
-          typeof before?.startedAt === "number" ? before.startedAt : null;
         const result = await client.updateModelsConfig(request);
         if (disposedRef.current) return;
         if (result.kind === "invalid") {
@@ -704,7 +671,7 @@ export function useModelConfiguration(
               ? { operationId: result.operationId }
               : {}),
           });
-          await waitForRuntimeRunning(previousStartedAt);
+          await waitForRuntimeRunning();
           if (disposedRef.current) return;
         }
         await refreshConfig();

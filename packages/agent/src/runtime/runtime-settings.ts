@@ -119,8 +119,6 @@ export function buildRuntimeSettingsProjection(
   options: RuntimeSettingsProjectionOptions = {},
 ): Record<string, string> {
   const env = options.env ?? process.env;
-  const brainProviderName =
-    env.ELIZA_BRAIN_PROVIDER?.trim() || options.brainProviderName;
   const hasCanonicalRouting = Object.hasOwn(config, "serviceRouting");
   const canonicalRouting = hasCanonicalRouting
     ? resolveServiceRoutingInConfig(config as Record<string, unknown>)
@@ -151,7 +149,9 @@ export function buildRuntimeSettingsProjection(
     ...(options.preferredProviderId
       ? { MODEL_PROVIDER: options.preferredProviderId }
       : {}),
-    ...(brainProviderName ? { ELIZA_BRAIN_PROVIDER: brainProviderName } : {}),
+    ...(options.brainProviderName
+      ? { ELIZA_BRAIN_PROVIDER: options.brainProviderName }
+      : {}),
     ...(options.embeddingProviderName
       ? { ELIZA_EMBEDDING_PROVIDER: options.embeddingProviderName }
       : {}),

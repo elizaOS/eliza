@@ -763,8 +763,6 @@ export interface TrajectoryListResult
   extends CoreTrajectoryListResult<TrajectoryRecord> {}
 
 export interface TrajectoryDetailResult {
-  /** False for lightweight inspection; full stored wire evidence remains available. */
-  payloadsIncluded?: boolean;
   trajectory: TrajectoryRecord;
   llmCalls: TrajectoryLlmCall[];
   providerAccesses: TrajectoryProviderAccess[];
