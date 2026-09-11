@@ -102,7 +102,7 @@ test.skipIf(process.platform === "win32")(
         if (
           error instanceof Error &&
           "code" in error &&
-          error.code === "ENOENT"
+          (error.code === "ENOENT" || error.code === "ESRCH")
         )
           return;
         throw error;
