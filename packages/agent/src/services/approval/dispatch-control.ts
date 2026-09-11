@@ -130,6 +130,24 @@ export class ApprovalDispatchControlStore {
       : parseControl(rows[0]);
   }
 
+  /** An interrupted release may complete only with its original account fence intact. */
+  async requireReleasedGoogleAccountFence(
+    input: ApprovalDispatchControlMutation & { grantId: string },
+  ): Promise<void> {
+    this.validate(input);
+    validateIdentity(input.grantId);
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT revision FROM approval_dispatch_controls
+      WHERE agent_id = ${sqlText(this.agentId)} AND subject_user_id = ${sqlText(input.subjectUserId)}
+        AND NOT paused AND operation_id = ${sqlText(input.operationId)}
+        AND revision = ${input.expectedRevision + 1}
+        AND google_binding_required
+        AND (retired_google_grants->>${sqlText(input.grantId)})::integer >= ${input.expectedRevision}`,
+    );
+    if (!rows.length) throw this.conflict(input);
+  }
+
   async pause(
     input: ApprovalDispatchControlMutation,
   ): Promise<ApprovalDispatchControl> {

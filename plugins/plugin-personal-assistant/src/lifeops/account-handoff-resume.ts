@@ -144,6 +144,18 @@ export class AccountHandoffResume {
       operationId,
       expectedRevision,
     );
+    // Older in-progress operations may have crossed retirement before the fence
+    // columns existed. Establish it under the admission lock before inventory.
+    const ownedApproval = await assertApprovalOwnership();
+    if (!ownedApproval.operationId) throw this.changed();
+    const fence = {
+      subjectUserId: this.ownerEntityId,
+      operationId: ownedApproval.operationId,
+      expectedRevision: admission.approvalRevision,
+      grantId: previous.grantId,
+    };
+    if (ownedApproval.paused) await this.approvals.fenceGoogleAccount(fence);
+    else await this.approvals.requireReleasedGoogleAccountFence(fence);
     const requests = await createApprovalQueue(this.runtime, {
       agentId: this.runtime.agentId,
     }).list({

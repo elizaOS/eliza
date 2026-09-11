@@ -606,6 +606,47 @@ describe("handoff imported-data disposition", () => {
     },
   );
 
+  it("fences an in-progress handoff created before account admission fencing existed", async () => {
+    const owner = "upgrade-resume-owner";
+    const p = await prepared(owner);
+    const ready = await p
+      .service()
+      .apply(p.state.operationId, p.state.revision);
+    // The additive migration initializes these fields this way for an older paused operation.
+    await executeRawSql(
+      host.runtime,
+      `UPDATE approval_dispatch_controls
+      SET google_binding_required = FALSE, retired_google_grants = '{}'::jsonb
+      WHERE agent_id = ${sqlText(host.runtime.agentId)} AND subject_user_id = ${sqlText(owner)}`,
+    );
+    expect(
+      (await p.resume().apply(ready.operationId, ready.revision)).phase,
+    ).toBe("completed");
+    const queue = createApprovalQueue(host.runtime, {
+      agentId: host.runtime.agentId,
+    });
+    await expect(
+      queue.enqueue({
+        requestedBy: owner,
+        subjectUserId: owner,
+        action: "send_email",
+        channel: "email",
+        reason: "Synthetic legacy approval after upgrade",
+        expiresAt: new Date(Date.now() + 86_400_000),
+        payload: {
+          action: "send_email",
+          to: ["self@example.test"],
+          cc: [],
+          bcc: [],
+          subject: "Synthetic legacy draft",
+          body: "No provider send",
+          threadId: null,
+          replyToMessageId: null,
+        },
+      }),
+    ).rejects.toMatchObject({ code: "APPROVAL_ACCOUNT_REVIEW_REQUIRED" });
+  });
+
   it("recovers a released approval pause after the completion checkpoint failed", async () => {
     const p = await prepared("resume-retry-owner");
     const ready = await p
@@ -632,6 +673,35 @@ describe("handoff imported-data disposition", () => {
     const complete = await p.resume().apply(ready.operationId, ready.revision);
     expect(complete.phase).toBe("completed");
     expect(await controls.read("resume-retry-owner")).toEqual(released);
+    expect((await p.calendar.getLinkedCalendarControl()).paused).toBe(true);
+  });
+
+  it("rejects an unfenced release from an older interrupted handoff", async () => {
+    const owner = "unfenced-released-owner";
+    const p = await prepared(owner);
+    const ready = await p
+      .service()
+      .apply(p.state.operationId, p.state.revision);
+    const controls = new ApprovalDispatchControlStore(host.runtime);
+    const paused = await controls.read(owner);
+    if (!paused.operationId) throw new Error("Expected an owned pause");
+    await controls.resume({
+      subjectUserId: owner,
+      operationId: paused.operationId,
+      expectedRevision: paused.revision,
+    });
+    await executeRawSql(
+      host.runtime,
+      `UPDATE approval_dispatch_controls
+      SET google_binding_required = FALSE, retired_google_grants = '{}'::jsonb
+      WHERE agent_id = ${sqlText(host.runtime.agentId)} AND subject_user_id = ${sqlText(owner)}`,
+    );
+    const released = await controls.read(owner);
+    await expect(
+      p.resume().apply(ready.operationId, ready.revision),
+    ).rejects.toMatchObject({ code: "APPROVAL_DISPATCH_CONTROL_CONFLICT" });
+    expect(await p.store.read(ready.operationId)).toEqual(ready);
+    expect(await controls.read(owner)).toEqual(released);
     expect((await p.calendar.getLinkedCalendarControl()).paused).toBe(true);
   });
 
