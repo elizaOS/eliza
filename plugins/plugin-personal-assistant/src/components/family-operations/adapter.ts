@@ -1,5 +1,6 @@
-/** Production Family Operations adapter over owner-authorized local APIs. */
+/** Production Family Operations adapter over owner-authorized canonical client APIs. Delegates all data queries, agreement uploads, workflow actions, and packet mutations to the authenticated client transport to preserve machine-session bearer tokens and non-default API origins across paired remote sessions. */
 
+import { client, type ElizaClient } from "@elizaos/ui/api";
 import type {
   MonthlyFamilyDraft,
   MonthlyFamilyPacket,
@@ -18,6 +19,8 @@ import type {
   Loadable,
   SchoolWorkflowView,
 } from "./types.js";
+
+export type FamilyOperationsApiClient = Pick<ElizaClient, "fetch">;
 
 interface PacketPersistenceState {
   packetId: string;
@@ -58,36 +61,6 @@ async function agreementContentIdentity(input: {
   return sha256Hex(new TextEncoder().encode(canonical).buffer);
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    credentials: "include",
-    ...init,
-    headers: { "content-type": "application/json", ...init?.headers },
-  });
-  const payload = (await response.json().catch(() => null)) as {
-    error?: { message?: string } | string;
-  } | null;
-  if (!response.ok) {
-    const message =
-      typeof payload?.error === "string"
-        ? payload.error
-        : payload?.error?.message;
-    throw new Error(message || `Request failed (${response.status})`);
-  }
-  return payload as T;
-}
-
-async function loadSection<T>(path: string, key: string): Promise<Loadable<T>> {
-  try {
-    const payload = await request<Record<string, T>>(path);
-    return { status: "ready", data: payload[key] as T };
-  } catch (error) {
-    return {
-      status: "unavailable",
-      message: error instanceof Error ? error.message : "Service unavailable",
-    };
-  }
-}
 
 function schoolView(
   status: SchoolCalendarWorkflowStatus,
@@ -158,50 +131,69 @@ function packetView(
   };
 }
 
-async function loadSchool(): Promise<Loadable<SchoolWorkflowView>> {
-  try {
-    const status = await request<SchoolCalendarWorkflowStatus>(
-      "/api/lifeops/family-workflows/school/status",
-    );
-    const review = status.lastRun?.runId
-      ? await request<SchoolCalendarRunReview>(
-          `/api/lifeops/family-workflows/school/runs/${encodeURIComponent(status.lastRun.runId)}`,
-        )
-      : null;
-    return { status: "ready", data: schoolView(status, review) };
-  } catch (error) {
-    return {
-      status: "unavailable",
-      message: error instanceof Error ? error.message : "Service unavailable",
-    };
+export function createFamilyOperationsAdapter(
+  apiClient: FamilyOperationsApiClient = client,
+): FamilyOperationsAdapter {
+  async function request<T>(path: string, init?: RequestInit): Promise<T> {
+    return apiClient.fetch<T>(path, init);
   }
-}
 
-async function loadPackets(): Promise<Loadable<FamilyPacketView[]>> {
-  try {
-    const payload = await request<{
-      packets: MonthlyFamilyPacket[];
-      packetStates?: PacketPersistenceState[];
-    }>("/api/lifeops/family-workflows/packets");
-    const states = new Map(
-      (payload.packetStates ?? []).map((state) => [state.packetId, state]),
-    );
-    return {
-      status: "ready",
-      data: payload.packets.map((packet) =>
-        packetView(packet, states.get(packet.packetId)),
-      ),
-    };
-  } catch (error) {
-    return {
-      status: "unavailable",
-      message: error instanceof Error ? error.message : "Service unavailable",
-    };
+  async function loadSection<T>(path: string, key: string): Promise<Loadable<T>> {
+    try {
+      const payload = await request<Record<string, T>>(path);
+      return { status: "ready", data: payload[key] as T };
+    } catch (error) {
+      return {
+        status: "unavailable",
+        message: error instanceof Error ? error.message : "Service unavailable",
+      };
+    }
   }
-}
 
-export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter = {
-  async load(): Promise<FamilyOperationsSnapshot> {
+  async function loadSchool(): Promise<Loadable<SchoolWorkflowView>> {
+    try {
+      const status = await request<SchoolCalendarWorkflowStatus>(
+        "/api/lifeops/family-workflows/school/status",
+      );
+      const review = status.lastRun?.runId
+        ? await request<SchoolCalendarRunReview>(
+            `/api/lifeops/family-workflows/school/runs/${encodeURIComponent(status.lastRun.runId)}`,
+          )
+        : null;
+      return { status: "ready", data: schoolView(status, review) };
+    } catch (error) {
+      return {
+        status: "unavailable",
+        message: error instanceof Error ? error.message : "Service unavailable",
+      };
+    }
+  }
+
+  async function loadPackets(): Promise<Loadable<FamilyPacketView[]>> {
+    try {
+      const payload = await request<{
+        packets: MonthlyFamilyPacket[];
+        packetStates?: PacketPersistenceState[];
+      }>("/api/lifeops/family-workflows/packets");
+      const states = new Map(
+        (payload.packetStates ?? []).map((state) => [state.packetId, state]),
+      );
+      return {
+        status: "ready",
+        data: payload.packets.map((packet) =>
+          packetView(packet, states.get(packet.packetId)),
+        ),
+      };
+    } catch (error) {
+      return {
+        status: "unavailable",
+        message: error instanceof Error ? error.message : "Service unavailable",
+      };
+    }
+  }
+
+  return {
+    async load(): Promise<FamilyOperationsSnapshot> {
     const [agreements, calendarLinks, school, packets, emailOptions] =
       await Promise.all([
         loadSection<ParentingAgreementView[]>(
@@ -304,7 +296,7 @@ export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter = {
           {
             method: "PUT",
             headers: {
-              "content-type": "application/octet-stream",
+              "Content-Type": "application/octet-stream",
               "x-chunk-sha256": sha256,
             },
             body: bytes,
@@ -471,4 +463,8 @@ export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter = {
       { method: "POST", body: JSON.stringify({}) },
     );
   },
-};
+  };
+}
+
+export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter =
+  createFamilyOperationsAdapter(client);

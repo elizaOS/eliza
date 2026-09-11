@@ -1,7 +1,11 @@
 /** HTTP contract tests for Family Operations calendar conflict mutations. */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { defaultFamilyOperationsAdapter } from "./adapter.js";
+import {
+  createFamilyOperationsAdapter,
+  defaultFamilyOperationsAdapter,
+  type FamilyOperationsApiClient,
+} from "./adapter.js";
 
 afterEach(() => {
   sessionStorage.clear();
@@ -378,5 +382,198 @@ describe("defaultFamilyOperationsAdapter", () => {
       retainEvents: true,
       expectedUpdatedAt: "2026-08-30T13:00:00.000Z",
     });
+  });
+});
+
+describe("createFamilyOperationsAdapter", () => {
+  it("routes queries, binary chunk uploads, and workflow mutations through the authenticated client transport", async () => {
+    const fetchCalls: Array<{ path: string; init?: RequestInit }> = [];
+    const mockClient: FamilyOperationsApiClient = {
+      fetch: vi.fn(async (path: string, init?: RequestInit) => {
+        fetchCalls.push({ path, init });
+        if (path === "/api/lifeops/agreements") {
+          return { agreements: [] } as any;
+        }
+        if (path === "/api/lifeops/calendar/links") {
+          return { links: [] } as any;
+        }
+        if (path === "/api/lifeops/family-workflows/school/status") {
+          return {
+            sourceId: "concord",
+            config: {
+              landingPageUrl: "https://school.example/calendar",
+              schoolLevel: "elementary",
+              updateMode: "review",
+            },
+            lastRun: {
+              runId: "school-run-1",
+              state: "applied",
+              updatedAt: "2026-09-01T00:00:00Z",
+            },
+          } as any;
+        }
+        if (path === "/api/lifeops/family-workflows/school/runs/school-run-1") {
+          return {
+            plan: { changes: [{ kind: "add", event: { title: "Orientation" } }] },
+            errorMessage: null,
+          } as any;
+        }
+        if (path === "/api/lifeops/family-workflows/packets") {
+          return {
+            packets: [
+              {
+                packetId: "packet-99",
+                period: { key: "2026-09" },
+                version: 1,
+                createdAt: "2026-09-01T00:00:00Z",
+                sections: [{ section: "calendar", state: "complete" }],
+                claims: [
+                  {
+                    claimId: "claim-1",
+                    section: "calendar",
+                    statement: "Schedule aligned",
+                  },
+                ],
+              },
+            ],
+            packetStates: [],
+          } as any;
+        }
+        if (path === "/api/lifeops/family-workflows/email-options") {
+          return { options: { recipients: [] } } as any;
+        }
+        if (path === "/api/lifeops/agreement-uploads") {
+          return {
+            upload: {
+              uploadId: "upload-remote-1",
+              sizeBytes: 8,
+              chunkSizeBytes: 4,
+              chunkCount: 2,
+              receivedChunks: [],
+              receivedBytes: 0,
+              status: "uploading",
+            },
+          } as any;
+        }
+        if (path.includes("/chunks/")) {
+          return { upload: {} } as any;
+        }
+        if (path.endsWith("/commit")) {
+          return { upload: { status: "complete" } } as any;
+        }
+        if (path.includes("/obligations/")) {
+          return { obligation: { id: "ob-1", status: "accepted" } } as any;
+        }
+        if (path.endsWith("/pins")) {
+          if (init?.method === "POST") return { pin: { id: "pin-1" } } as any;
+          return { pins: [] } as any;
+        }
+        if (path.includes("/pins/")) {
+          return { pin: { id: "pin-1" } } as any;
+        }
+        if (path.endsWith("/grants/preview")) {
+          return { preview: { canGrant: true } } as any;
+        }
+        if (path.endsWith("/grants")) {
+          return { grant: { id: "grant-1" } } as any;
+        }
+        if (path.includes("/grants/") && path.endsWith("/revoke")) {
+          return { grant: { id: "grant-1", status: "revoked" } } as any;
+        }
+        return {} as any;
+      }),
+    };
+
+    const adapter = createFamilyOperationsAdapter(mockClient);
+    const snapshot = await adapter.load();
+
+    expect(snapshot.agreements).toEqual({ status: "ready", data: [] });
+    expect(snapshot.school).toMatchObject({
+      status: "ready",
+      data: {
+        sourceId: "concord",
+        state: "applied",
+        changes: [{ kind: "add", label: "Orientation" }],
+      },
+    });
+    expect(snapshot.packets.status).toBe("ready");
+
+    const file = new File(["%PDF-1.7sample"], "test.pdf", {
+      type: "application/pdf",
+    });
+    await adapter.uploadAgreement({
+      agreementKey: "plan-a",
+      title: "Plan A",
+      file,
+    });
+
+    const chunkUploadCalls = fetchCalls.filter((c) =>
+      c.path.includes("/chunks/"),
+    );
+    expect(chunkUploadCalls.length).toBeGreaterThan(0);
+    for (const chunkCall of chunkUploadCalls) {
+      expect(chunkCall.init?.headers).toMatchObject({
+        "Content-Type": "application/octet-stream",
+      });
+      expect(chunkCall.init?.headers).toHaveProperty("x-chunk-sha256");
+    }
+
+    await adapter.decideObligation({ id: "ob-1" } as any, "accept", "aligned");
+    await adapter.listPins("artifact-1");
+    await adapter.pin({
+      artifactId: "artifact-1",
+      target: "parenting_time",
+      label: "Weekend",
+    } as any);
+    await adapter.unpin("pin-1");
+    await adapter.previewGrant({
+      artifactId: "artifact-1",
+      recipient: "partner",
+    } as any);
+    await adapter.issueGrant({
+      artifactId: "artifact-1",
+      recipient: "partner",
+    } as any);
+    await adapter.revokeGrant("grant-1", "outdated");
+    await adapter.resolveCalendarConflict(
+      "link-1",
+      "keep_eliza",
+      "2026-09-01T00:00:00Z",
+    );
+    await adapter.disconnectCalendar("link-1", "2026-09-01T00:00:00Z");
+    await adapter.runSchoolWorkflow();
+    await adapter.configureSchool({
+      landingPageUrl: "https://school.example/calendar",
+    } as any);
+    await adapter.approveSchoolDiff("school-run-1");
+    await adapter.generatePacket("2026-09");
+    await adapter.createPacketDraft({
+      packetId: "packet-99",
+      recipient: "co-parent",
+      calendarPrivacyMode: "times_only",
+    });
+    await adapter.revisePacketDraft({
+      packetId: "packet-99",
+      expectedDraftVersion: 1,
+      body: "Updated",
+      subject: "Plan",
+    });
+    await adapter.requestPacketApproval("packet-99", 2);
+
+    expect(mockClient.fetch).toHaveBeenCalledWith(
+      "/api/lifeops/agreements",
+      undefined,
+    );
+    expect(mockClient.fetch).toHaveBeenCalledWith(
+      "/api/lifeops/calendar/links",
+      undefined,
+    );
+    expect(mockClient.fetch).toHaveBeenCalledWith(
+      "/api/lifeops/family-workflows/school/run",
+      {
+        method: "POST",
+        body: JSON.stringify({}),
+      },
+    );
   });
 });
