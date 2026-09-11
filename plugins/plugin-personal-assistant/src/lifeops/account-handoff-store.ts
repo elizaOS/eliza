@@ -177,6 +177,23 @@ type HandoffCheckpointMutation = {
   receipt: AccountHandoffReceipt;
 };
 
+export const handoffReadSourceReviewSchema = z
+  .array(
+    z
+      .object({
+        calendarId: identity,
+        expectedVersion: z.number().int().nonnegative(),
+        initiallyIncluded: z.boolean(),
+        included: z.boolean(),
+      })
+      .strict(),
+  )
+  .refine(
+    (sources) =>
+      new Set(sources.map((source) => source.calendarId)).size ===
+      sources.length,
+  );
+
 export class AccountHandoffStore {
   constructor(
     private readonly db: LifeOpsDatabaseContext,
@@ -330,6 +347,81 @@ export class AccountHandoffStore {
       expectedPhase: "verifying_replacement",
       phase: "verifying_replacement",
       receipt: { googleVerification: receipt },
+    });
+  }
+
+  async checkpointReadSourceReview(input: {
+    operationId: string;
+    expectedRevision: number;
+    sources: z.infer<typeof handoffReadSourceReviewSchema>;
+  }): Promise<AccountHandoffRecord> {
+    const sources = handoffReadSourceReviewSchema.parse(input.sources);
+    const record = await this.read(input.operationId);
+    if (!record) throw this.conflict();
+    if (
+      record.phase !== "reviewed" ||
+      record.revision !== input.expectedRevision
+    )
+      throw this.conflict();
+    const selected = new Set(
+      record.review.readCalendars.map((source) => source.calendarId),
+    );
+    const included = sources.filter((source) => source.included);
+    if (
+      included.length !== selected.size ||
+      included.some((source) => !selected.has(source.calendarId))
+    )
+      throw this.conflict();
+    return this.writeCheckpoint({
+      operationId: input.operationId,
+      expectedRevision: input.expectedRevision,
+      expectedPhase: "reviewed",
+      phase: "reviewed",
+      receipt: { readSourceReview: sources },
+    });
+  }
+
+  async checkpointReadSourceSelection(input: {
+    operationId: string;
+    expectedRevision: number;
+    calendarId: string;
+    verifiedVersion: number;
+  }): Promise<AccountHandoffRecord> {
+    const calendarId = identity.parse(input.calendarId);
+    const verifiedVersion = z
+      .number()
+      .int()
+      .nonnegative()
+      .parse(input.verifiedVersion);
+    const record = await this.read(input.operationId);
+    if (!record) throw this.conflict();
+    if (
+      record.phase !== "verifying_replacement" ||
+      record.revision !== input.expectedRevision
+    )
+      throw this.conflict();
+    const sources = handoffReadSourceReviewSchema.parse(
+      record.receipt.readSourceReview,
+    );
+    const source = sources.find((entry) => entry.calendarId === calendarId);
+    if (
+      !source ||
+      verifiedVersion !==
+        source.expectedVersion +
+          (source.initiallyIncluded === source.included ? 0 : 1)
+    )
+      throw this.conflict();
+    return this.writeCheckpoint({
+      operationId: input.operationId,
+      expectedRevision: input.expectedRevision,
+      expectedPhase: "verifying_replacement",
+      phase: "verifying_replacement",
+      receipt: {
+        [`readSource:${calendarId}`]: {
+          included: source.included,
+          verifiedVersion,
+        },
+      },
     });
   }
 
