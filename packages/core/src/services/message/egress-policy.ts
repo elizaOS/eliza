@@ -45,6 +45,12 @@ export type PlannedReplyClaimKind =
 	| "financial_holding"
 	| "empty_tracked_state";
 
+/** Rejection kinds whose correction must see the complete provider evidence. */
+const PROVIDER_EVIDENCE_KINDS: ReadonlySet<string> = new Set([
+	"financial_holding",
+	"financial_completion",
+]);
+
 export function appliedEffectReceiptIdsForReply(
 	reply: string,
 	results: readonly ActionResult[],
@@ -251,12 +257,19 @@ export async function resolvePlannedReplyEgress(args: {
 			),
 		};
 	}
+	const reason = decision.verdict === "reject" ? decision.kind : "missing_reply";
 	const text = JSON.stringify({
 		request: args.message.content,
 		rejectedReply: args.reply,
-		reason: decision.verdict === "reject" ? decision.kind : "missing_reply",
+		reason,
 		results: renderActionResultsForModel([...args.actionResults]).text,
-		providers: args.providers,
+		// Complete provider evidence is what grounds a corrected quantity. A
+		// side-effect, empty-state or missing-reply correction is grounded by
+		// the settled results and their receipts alone; the provider map is the
+		// turn's entire composed context (live 2026-09-11 05:35Z: ~380K chars of
+		// room history rode along on a completed_side_effect recovery and the
+		// rewrite request exceeded the provider's context limit, failing the turn).
+		...(PROVIDER_EVIDENCE_KINDS.has(reason) ? { providers: args.providers } : {}),
 	});
 	const rewritten = await rewriteActionCallbackInCharacter({
 		runtime: args.runtime,

@@ -1,0 +1,82 @@
+import { describe, expect, it, vi } from "vitest";
+import type { ActionResult, IAgentRuntime, Memory } from "../../types";
+import { resolvePlannedReplyEgress } from "./egress-policy";
+
+const PROVIDER_MARKER = "complete-provider-evidence-marker";
+
+function makeRuntime(rewriteText: string) {
+  const useModel = vi.fn(async () =>
+    JSON.stringify({ response: rewriteText, effectReceiptIds: [] }),
+  );
+  const runtime = {
+    agentId: "00000000-0000-0000-0000-000000000001",
+    character: { name: "Eliza", bio: "" },
+    actions: [],
+    useModel,
+    getSetting: () => undefined,
+    reportError: vi.fn(),
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), trace: vi.fn() },
+  } as unknown as IAgentRuntime;
+  return { runtime, useModel };
+}
+
+function makeMessage(text: string): Memory {
+  return {
+    id: "00000000-0000-0000-0000-000000000010",
+    entityId: "00000000-0000-0000-0000-000000000002",
+    roomId: "00000000-0000-0000-0000-000000000003",
+    content: { text, source: "test" },
+    createdAt: Date.now(),
+  } as Memory;
+}
+
+const providers = {
+  RECENT_MESSAGES: {
+    text: `${PROVIDER_MARKER} ${"x".repeat(5000)}`,
+    values: {},
+    data: {},
+  },
+} as unknown as NonNullable<Parameters<typeof resolvePlannedReplyEgress>[0]["providers"]>;
+
+describe("resolvePlannedReplyEgress recovery envelope", () => {
+  it("does not ship the provider map when correcting an unproven side-effect claim", async () => {
+    const { runtime, useModel } = useModelHarness("The event is gone.");
+    await resolvePlannedReplyEgress({
+      runtime,
+      message: makeMessage("delete the dentist appointment from my calendar"),
+      reply: "Deleted your dentist appointment from the calendar.",
+      providers,
+      actionResults: [] as ActionResult[],
+    }).catch(() => undefined);
+    expect(useModel).toHaveBeenCalled();
+    const prompt = String((useModel.mock.calls[0]?.[1] as { prompt?: string })?.prompt ?? "");
+    expect(prompt).toContain("completed_side_effect");
+    expect(prompt).not.toContain(PROVIDER_MARKER);
+  });
+
+  it("ships the provider map when correcting an unsupported holding", async () => {
+    const { runtime, useModel } = useModelHarness("I could not verify that balance.");
+    await resolvePlannedReplyEgress({
+      runtime,
+      message: makeMessage("what is my SOL balance?"),
+      reply: "Your wallet balance is 4 SOL.",
+      providers: {
+        ...providers,
+        "solana-wallet": {
+          text: "",
+          values: {},
+          data: { items: [{ symbol: "SOL", uiAmount: 2 }], totalSol: "2" },
+        },
+      } as typeof providers,
+      actionResults: [] as ActionResult[],
+    }).catch(() => undefined);
+    expect(useModel).toHaveBeenCalled();
+    const prompt = String((useModel.mock.calls[0]?.[1] as { prompt?: string })?.prompt ?? "");
+    expect(prompt).toContain("financial_holding");
+    expect(prompt).toContain(PROVIDER_MARKER);
+  });
+});
+
+function useModelHarness(rewriteText: string) {
+  return makeRuntime(rewriteText);
+}
