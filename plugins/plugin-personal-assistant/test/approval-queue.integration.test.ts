@@ -20,7 +20,11 @@ import {
   knowledgeGraphSchema,
 } from "@elizaos/agent";
 import type { AgentRuntime, Plugin } from "@elizaos/core";
-import { AgentEventService, parseInteractionBlocks } from "@elizaos/core";
+import {
+  AgentEventService,
+  getConnectorAccountManager,
+  parseInteractionBlocks,
+} from "@elizaos/core";
 import {
   type DispatchResult,
   schedulingPlugin,
@@ -203,6 +207,10 @@ async function createOpeningApproval(args: {
   if (!request) {
     throw new Error("scheduling handler did not persist its approval request");
   }
+  if (request.payload.action === "send_email") {
+    expect(request.payload.grantId).toMatch(/^connector-account:/);
+    expect(request.reason).toContain("From: sender@example.test");
+  }
   return { request, negotiationId: data.negotiation.id };
 }
 
@@ -243,6 +251,26 @@ beforeAll(async () => {
     await runtime.registerService(AgentEventService);
     await runtime.getServiceLoadPromise(AgentEventService.serviceType);
   }
+  const accounts = getConnectorAccountManager(runtime);
+  if (!accounts.getProvider("google"))
+    accounts.registerProvider({ provider: "google" });
+  await accounts.upsertAccount("google", {
+    id: "scheduling-owner",
+    provider: "google",
+    role: "OWNER",
+    purpose: ["reading", "messaging"],
+    accessGate: "owner_binding",
+    status: "connected",
+    displayHandle: "sender@example.test",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    metadata: {
+      grantedScopes: [
+        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/gmail.send",
+      ],
+    },
+  });
   queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
 }, 180_000);
 
@@ -1155,6 +1183,15 @@ describe("ApprovalQueue integration (real PGlite)", () => {
         data: { error: "SCHEDULING_DELIVERY_IN_FLIGHT", sent: false },
       });
       expect(send).toHaveBeenCalledTimes(1);
+      if (approved.payload.action !== "send_email")
+        throw new Error("Expected email fixture");
+      expect(send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            grantId: approved.payload.grantId,
+          }),
+        }),
+      );
       // A fresh queue/store instance models a worker restart with no in-memory
       // execution state. The persisted receipt remains the dedupe authority.
       const restartedQueue = new PgApprovalQueue(runtime, {

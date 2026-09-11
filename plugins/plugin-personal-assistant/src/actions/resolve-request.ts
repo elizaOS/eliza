@@ -947,7 +947,12 @@ async function revalidateSchedulingApproval(args: {
       detail: "counterparty delivery target is no longer available",
     };
   }
-  const currentPayload = schedulingApprovalPayloadForDraft(draft);
+  const currentPayload = schedulingApprovalPayloadForDraft(
+    draft,
+    args.request.payload.action === "send_email"
+      ? args.request.payload.grantId
+      : undefined,
+  );
   const current = verifySchedulingApprovalContent(currentPayload);
   if (
     !current ||
@@ -1375,6 +1380,9 @@ export async function executeApprovedRequest(args: {
       payload.action === "send_email"
         ? {
             subject: payload.subject,
+            ...(payload.grantId === undefined
+              ? {}
+              : { grantId: payload.grantId }),
             cc: [...payload.cc],
             bcc: [...payload.bcc],
           }
