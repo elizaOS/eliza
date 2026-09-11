@@ -13,6 +13,7 @@ import { CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE } from "@elizaos/plugin-calenda
 import type { CalendarOwnerMutationGateway } from "@elizaos/plugin-calendar/routes/mutation-gateway";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { collectCalendarClaims } from "../family-workflows/calendar-claims.js";
 import { FamilyWorkflowRuntimeService } from "../family-workflows/runtime.js";
 import type { RawSqlQuery } from "../sql.js";
 import {
@@ -373,6 +374,46 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
     expect(imported.every((record) => record.providerEventId.length > 0)).toBe(
       true,
     );
+    const projectionFeed = {
+      calendarId: "all",
+      events: imported.map((record) => ({
+        ...event(record.providerEventId, "Private calendar title"),
+        grantId: record.grantId,
+        calendarId: record.calendarId,
+      })),
+      state: "complete" as const,
+      source: "synced" as const,
+      sources: [],
+      timeMin: "2026-09-01T00:00:00.000Z",
+      timeMax: "2026-12-01T00:00:00.000Z",
+      syncedAt: "2026-08-30T12:00:00.000Z",
+    };
+    const sharedClaims = collectCalendarClaims(projectionFeed, [], imported);
+    expect(sharedClaims.map((claim) => claim.statement)).toEqual(
+      createdRanges.map((range) => range.title),
+    );
+    expect(
+      sharedClaims.every((claim) => claim.visibility === "guest_shareable"),
+    ).toBe(true);
+    await workflow.configure({
+      ...CONCORD_SCHOOL_CALENDAR_SOURCE,
+      schoolLevel: "elementary",
+      updateMode: "automatic",
+      packetVisibility: "owner_only",
+    });
+    const privateClaims = collectCalendarClaims(
+      projectionFeed,
+      [],
+      await workflow.listImportedEvents(),
+    );
+    expect(
+      privateClaims.every((claim) => claim.visibility === "owner_only"),
+    ).toBe(true);
+    expect(
+      privateClaims.every(
+        (claim) => claim.statement === "Private calendar title",
+      ),
+    ).toBe(true);
     const otherAgent = new SchoolCalendarWorkflow({
       ...runtime,
       agentId: "other-agent" as IAgentRuntime["agentId"],

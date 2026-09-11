@@ -31,6 +31,7 @@ import {
 
 export const CONCORD_SCHOOL_CALENDAR_SOURCE: SchoolCalendarSourceConfig = {
   sourceId: "concord-cps-school-year-calendar",
+  packetVisibility: "guest_shareable",
   landingPageUrl:
     "https://www.concordps.org/district-resources/school-year-calendars",
   allowedHosts: ["www.concordps.org", "resources.finalsite.net"],
@@ -91,6 +92,8 @@ const SCHEMA = [
 ] as const;
 
 export interface SchoolCalendarSourceConfig {
+  /** Allows imported source facts in owner-reviewed family drafts; calendar edits remain private. */
+  packetVisibility?: "owner_only" | "guest_shareable";
   sourceId: string;
   landingPageUrl: string;
   allowedHosts: string[];
@@ -113,6 +116,7 @@ export interface SchoolCalendarSemanticEvent {
 }
 
 export interface SchoolCalendarImportedEvent {
+  packetVisibility?: "owner_only" | "guest_shareable";
   sourceId: string;
   grantId: string;
   calendarId: string;
@@ -808,6 +812,10 @@ export class SchoolCalendarWorkflow {
         if (!event.active || !event.providerEventId) continue;
         result.push({
           sourceId,
+          packetVisibility:
+            config.packetVisibility === "guest_shareable"
+              ? "guest_shareable"
+              : "owner_only",
           grantId: config.targetGrantId,
           calendarId: config.targetCalendarId,
           providerEventId: event.providerEventId,
