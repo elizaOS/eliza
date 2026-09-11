@@ -139,6 +139,7 @@ import { useBootConfig } from "./config/boot-config-react.hooks";
 import { useBranding } from "./config/branding";
 import {
   CHAT_OPEN_EVENT,
+  type ConnectRequestResult,
   dispatchNavigateViewEvent,
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
@@ -287,6 +288,7 @@ import {
 import { ViewHeader } from "./components/shared/ViewHeader";
 import { DynamicViewLoader } from "./components/views/DynamicViewLoader";
 import { registerSandboxProbeView } from "./components/views/sandbox-probe-view";
+import { useActiveAgentAuthority } from "./hooks/useActiveAgentAuthority";
 import {
   useAvailableViews,
   useRoutableViews,
@@ -880,6 +882,56 @@ function useActiveScreenBackgroundPolicy({
 interface ActiveViewSurface {
   manifest: ResolvedSurfaceManifest;
   viewId: string;
+  sourceKey: string;
+  memberViewIds?: readonly string[];
+  sourceComponent?: AppShellPageRegistration["Component"];
+  sourceLoader?: AppShellPageRegistration["loader"];
+}
+
+function shellSurfaceOwner(page: AppShellPageRegistration) {
+  return {
+    sourceKey: JSON.stringify(["shell", page.pluginId, page.id]),
+    sourceComponent: page.Component,
+    sourceLoader: page.loader,
+  };
+}
+
+function remoteSurfaceOwner(view: ViewRegistryEntry) {
+  return {
+    sourceKey: JSON.stringify([
+      "remote",
+      view.pluginName,
+      view.id,
+      view.bundleUrl,
+      view.frameUrl,
+      view.componentExport,
+    ]),
+  };
+}
+
+function surfacePolicyKey({
+  manifest,
+  viewId,
+  sourceKey,
+  memberViewIds,
+}: ActiveViewSurface): string {
+  const { background, header, isolation, lifecycle, layout, capabilities } =
+    manifest;
+  return JSON.stringify([
+    viewId,
+    sourceKey,
+    memberViewIds,
+    background,
+    header,
+    isolation,
+    lifecycle,
+    layout.kind,
+    layout.topology,
+    layout.width,
+    layout.scroll,
+    layout.gutter,
+    [...capabilities].sort(),
+  ]);
 }
 
 function resolveActiveViewSurface({
@@ -905,6 +957,8 @@ function resolveActiveViewSurface({
   // it resolves to the safe default (no grants) — the default-deny baseline.
   if (viewLayout) {
     return {
+      sourceKey: "layout",
+      memberViewIds: viewLayout.viewIds,
       manifest: resolveRoutedSurfaceManifest(null),
       viewId: `layout:${viewLayout.viewIds.join("+") || tab}`,
     };
@@ -927,6 +981,7 @@ function resolveActiveViewSurface({
     )
   ) {
     return {
+      ...shellSurfaceOwner(visibleAppShellPage),
       manifest: resolveRoutedSurfaceManifest(visibleAppShellPage),
       viewId: visibleAppShellPage.id,
     };
@@ -936,6 +991,7 @@ function resolveActiveViewSurface({
   // their intentional remote-bundle precedence below.
   if (visibleAppShellPage && !isDynamicViewLoadingAllowed()) {
     return {
+      ...shellSurfaceOwner(visibleAppShellPage),
       manifest: resolveRoutedSurfaceManifest(visibleAppShellPage),
       viewId: visibleAppShellPage.id,
     };
@@ -953,6 +1009,7 @@ function resolveActiveViewSurface({
   );
   if (remoteView) {
     return {
+      ...remoteSurfaceOwner(remoteView),
       manifest: resolveRoutedSurfaceManifest(remoteView),
       viewId: remoteView.id,
     };
@@ -960,6 +1017,7 @@ function resolveActiveViewSurface({
 
   if (visibleAppShellPage) {
     return {
+      ...shellSurfaceOwner(visibleAppShellPage),
       manifest: resolveRoutedSurfaceManifest(visibleAppShellPage),
       viewId: visibleAppShellPage.id,
     };
@@ -975,6 +1033,7 @@ function resolveActiveViewSurface({
   );
   if (appShellPageForTab) {
     return {
+      ...shellSurfaceOwner(appShellPageForTab),
       manifest: resolveRoutedSurfaceManifest(appShellPageForTab),
       viewId: appShellPageForTab.agentViewId ?? appShellPageForTab.id,
     };
@@ -982,6 +1041,16 @@ function resolveActiveViewSurface({
 
   if (dynamicPage) {
     return {
+      ...(dynamicPage.registration
+        ? shellSurfaceOwner(dynamicPage.registration)
+        : {
+            sourceKey: JSON.stringify([
+              "dynamic",
+              dynamicPage.pluginId,
+              dynamicPage.id,
+              dynamicPage.componentExport,
+            ]),
+          }),
       manifest: resolveRoutedSurfaceManifest(
         dynamicPage.registration ?? dynamicPage,
       ),
@@ -998,6 +1067,7 @@ function resolveActiveViewSurface({
   );
   if (registeredView) {
     return {
+      ...remoteSurfaceOwner(registeredView),
       manifest: resolveRoutedSurfaceManifest(registeredView),
       viewId: registeredView.id,
     };
@@ -1012,6 +1082,7 @@ function resolveActiveViewSurface({
   const builtinManifest = resolveBuiltinRoutedViewManifest(tab);
   if (builtinManifest) {
     return {
+      sourceKey: "builtin",
       manifest: builtinManifest,
       viewId: tab === "tasks" ? "projects" : resolveBuiltinTabId(tab),
     };
@@ -1020,6 +1091,7 @@ function resolveActiveViewSurface({
   const builtinDescriptor = resolveBuiltinRouteDescriptor(tab);
   if (builtinDescriptor) {
     return {
+      sourceKey: "builtin",
       manifest: {
         ...resolveSurfaceManifest({
           surface: { layout: builtinDescriptor.layout },
@@ -1030,7 +1102,11 @@ function resolveActiveViewSurface({
     };
   }
 
-  return { manifest: resolveRoutedSurfaceManifest(null), viewId: tab };
+  return {
+    sourceKey: "unregistered",
+    manifest: resolveRoutedSurfaceManifest(null),
+    viewId: tab,
+  };
 }
 
 function useActiveViewSurface({
@@ -1053,7 +1129,7 @@ function useActiveViewSurface({
   cloudAuthenticated: boolean;
 }): ActiveViewSurface {
   const registryVersion = useAppShellPageRegistryVersion();
-  return useMemo(() => {
+  const resolved = useMemo(() => {
     void registryVersion;
     return resolveActiveViewSurface({
       tab,
@@ -1076,6 +1152,19 @@ function useActiveViewSurface({
     tab,
     viewLayout,
   ]);
+  // Registry and auth refreshes can replace DTO identities without replacing
+  // the mounted owner. Keep its imported broker handles alive until its actual
+  // policy/source changes; render-phase state adjustment remains render-local.
+  const [stable, setStable] = useState(resolved);
+  if (
+    surfacePolicyKey(stable) !== surfacePolicyKey(resolved) ||
+    stable.sourceComponent !== resolved.sourceComponent ||
+    stable.sourceLoader !== resolved.sourceLoader
+  ) {
+    setStable(resolved);
+    return resolved;
+  }
+  return stable;
 }
 
 function trimmedNavigationPath(navigationPath: string): string {
@@ -2459,6 +2548,7 @@ function ChatOverlayMount({
       initialMode={initialMode}
       fillHostAtHalf={fillHostAtHalf}
       firstRunOpen={firstRunOpen}
+      acceptPendingFirstRunText={firstRunComplete}
       releaseFirstRunToFull={releaseFirstRunToFull}
       onFirstRunReleaseHandled={onFirstRunReleaseHandled}
       onPilledChange={onPilledChange}
@@ -2626,7 +2716,7 @@ function AppContent() {
       token?: string;
       completeFirstRun?: boolean;
       skipConfirm?: boolean;
-    }): Promise<void> => {
+    }): Promise<ConnectRequestResult> => {
       const shouldCompleteFirstRun = payload.completeFirstRun === true;
       const skipConfirm = payload.skipConfirm === true;
       if (!skipConfirm && !isLoopbackGatewayHost(payload.gatewayUrl)) {
@@ -2641,7 +2731,7 @@ function AppContent() {
         });
         if (!approved) {
           setActionNotice("Connection request cancelled.", "info", 4200);
-          return;
+          return { status: "cancelled" };
         }
       }
 
@@ -2655,7 +2745,6 @@ function AppContent() {
         setState("firstRunRuntimeTarget", "remote");
         setState("firstRunRemoteApiBase", connection.apiBase);
         setState("firstRunRemoteToken", connection.token ?? "");
-        setState("firstRunRemoteConnected", true);
         setState("firstRunRemoteError", null);
         if (shouldCompleteFirstRun) {
           await completeRemoteAgentFirstRun(
@@ -2668,16 +2757,20 @@ function AppContent() {
             completeFirstRun,
           );
         }
+        setState("firstRunRemoteConnected", true);
         setActionNotice("Connected to remote backend.", "success", 4200);
         retryStartup();
+        return { status: "connected" };
       } catch (err) {
-        setActionNotice(
+        // error-policy:J1 expose failed adoption to both the initiating form and shell notice.
+        const message =
           err instanceof Error
             ? err.message
-            : "Failed to connect remote backend.",
-          "error",
-          8000,
-        );
+            : "Failed to connect remote backend.";
+        setState("firstRunRemoteConnected", false);
+        setState("firstRunRemoteError", message);
+        setActionNotice(message, "error", 8000);
+        return { status: "failed", message };
       }
     };
 
@@ -2988,6 +3081,7 @@ function AppContent() {
   // and the view's global root/body-class + `:root`-var mutations reset on
   // teardown so nothing a view injected into the host realm survives into the
   // next view. `resolveSurfaceManifest` stays the single policy source.
+  const activeSurfaceAuthority = useActiveAgentAuthority();
   const activeViewSurface = useActiveViewSurface({
     tab,
     navigationPath,
@@ -3024,18 +3118,20 @@ function AppContent() {
   ]);
   useEffect(() => {
     if (typeof window === "undefined") return;
+    void activeSurfaceAuthority;
     const scope = new SurfaceRealmScope(
       activeViewSurface.manifest,
       activeViewSurface.viewId,
       window.localStorage,
       navigateBrowserPath,
+      activeViewSurface.memberViewIds,
     );
     setActiveSurfaceRealmScope(scope);
     return () => {
       scope.resetHostRealm();
       setActiveSurfaceRealmScope(null);
     };
-  }, [activeViewSurface]);
+  }, [activeViewSurface, activeSurfaceAuthority]);
 
   const [editingAction, setEditingAction] = useState<
     import("./api").CustomActionDef | null

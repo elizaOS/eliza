@@ -14,6 +14,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -38,6 +39,11 @@ import {
   FIRST_RUN_GREETING,
   FIRST_RUN_SIGN_IN_PROMPT,
 } from "../../first-run/first-run-greeting";
+import {
+  clearPendingFirstRunText,
+  handoffPendingFirstRunText,
+  readPendingFirstRunText,
+} from "../../first-run/first-run-pending-text";
 import { __setAppValueForTests } from "../../state/app-store";
 import type { AppContextValue } from "../../state/internal";
 import { resetShellSurfaceForTests } from "../../state/shell-surface-store";
@@ -51,6 +57,7 @@ beforeAll(() => {
 
 afterEach(() => {
   cleanup();
+  clearPendingFirstRunText();
   resetShellSurfaceForTests();
   setViewChatBinding(null);
   __setAppValueForTests(null);
@@ -1025,4 +1032,86 @@ describe("ChatOverlay first-run gating", () => {
     expect(sheet.getAttribute("data-variant")).toBe("open");
     expect(onHandled).toHaveBeenCalledTimes(1);
   });
+});
+
+it("retains the complete queue until onboarding closes and the actual composer commits it", async () => {
+  const controller = makeController();
+  const requests = [
+    "First complete request with its final sentence.",
+    "Second request.\nKeep the paragraph intact.",
+  ];
+  const view = render(
+    <ChatOverlay
+      controller={controller}
+      firstRunOpen
+      acceptPendingFirstRunText={false}
+    />,
+  );
+  act(() => handoffPendingFirstRunText(requests));
+  expect((screen.getByLabelText("message") as HTMLTextAreaElement).value).toBe(
+    "",
+  );
+  expect(readPendingFirstRunText()).toEqual(requests);
+  view.rerender(
+    <ChatOverlay
+      controller={controller}
+      firstRunOpen={false}
+      acceptPendingFirstRunText
+    />,
+  );
+  await waitFor(() =>
+    expect(
+      (screen.getByLabelText("message") as HTMLTextAreaElement).value,
+    ).toBe(requests.join("\n\n")),
+  );
+  expect(readPendingFirstRunText()).toEqual([]);
+  expect(controller.send).not.toHaveBeenCalled();
+});
+
+it("recovers a cold-start queue only after the host authorizes a ready composer", async () => {
+  const requests = [
+    "Cold startup request",
+    "Retain the second request exactly.",
+  ];
+  handoffPendingFirstRunText(requests);
+  const controller = makeController();
+  const view = render(
+    <ChatOverlay controller={controller} acceptPendingFirstRunText={false} />,
+  );
+  expect(readPendingFirstRunText()).toEqual(requests);
+  expect((screen.getByLabelText("message") as HTMLTextAreaElement).value).toBe(
+    "",
+  );
+  view.rerender(
+    <ChatOverlay controller={controller} acceptPendingFirstRunText />,
+  );
+  await waitFor(() =>
+    expect(
+      (screen.getByLabelText("message") as HTMLTextAreaElement).value,
+    ).toBe(requests.join("\n\n")),
+  );
+  expect(readPendingFirstRunText()).toEqual([]);
+});
+
+it("acknowledges an already committed equal draft when setup authority arrives", async () => {
+  const controller = makeController();
+  const requests = [
+    "Full Unicode request: 渡船 🚢\nKeep every paragraph.\n".repeat(400),
+    "Final request: café, mañana, and the complete ending. 🧡",
+  ];
+  const text = requests.join("\n\n");
+  const view = render(
+    <ChatOverlay controller={controller} acceptPendingFirstRunText={false} />,
+  );
+  const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+  fireEvent.change(input, { target: { value: text } });
+  expect(input.value).toBe(text);
+  handoffPendingFirstRunText(requests);
+  expect(readPendingFirstRunText()).toEqual(requests);
+  view.rerender(
+    <ChatOverlay controller={controller} acceptPendingFirstRunText />,
+  );
+  await waitFor(() => expect(readPendingFirstRunText()).toEqual([]));
+  expect(input.value).toBe(text);
+  expect(controller.send).not.toHaveBeenCalled();
 });
