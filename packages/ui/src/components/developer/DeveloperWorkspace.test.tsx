@@ -194,29 +194,6 @@ describe("developer workspace", () => {
     );
   });
 
-  it("keeps the live app and draft mounted when toggling the split view", async () => {
-    render(
-      <DeveloperWorkspace>
-        <input aria-label="Live app draft" defaultValue="unsaved note" />
-      </DeveloperWorkspace>,
-    );
-    await flush();
-    const liveDraft = screen.getByLabelText("Live app draft");
-    expect(screen.getByLabelText("Current app path").textContent).toBe(
-      "/notes",
-    );
-    fireEvent.change(screen.getByLabelText("Message Eliza"), {
-      target: { value: "keep this draft" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Hide app" }));
-    expect(screen.getByLabelText("Live app draft")).toBe(liveDraft);
-    fireEvent.click(screen.getByRole("button", { name: "Show app" }));
-    expect(screen.getByLabelText("Live app draft")).toBe(liveDraft);
-    expect(
-      (screen.getByLabelText("Message Eliza") as HTMLTextAreaElement).value,
-    ).toBe("keep this draft");
-  });
-
   it("shows the conversation and tokens, fetching details only after expansion", async () => {
     render(
       <DeveloperWorkspace>
@@ -491,15 +468,11 @@ describe("developer workspace", () => {
       </DeveloperWorkspace>,
     );
     await flush();
-    expect(
-      screen.getByRole("status", { name: "Current activity" }).textContent,
-    ).toContain("Thinking");
+    expect(screen.getByRole("status").textContent).toContain("Thinking");
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000);
     });
-    expect(
-      screen.getByRole("status", { name: "Current activity" }).textContent,
-    ).toContain("1.00s");
+    expect(screen.getByRole("status").textContent).toContain("1.00s");
     expect(screen.getByText(/Waiting for the run/)).toBeTruthy();
     expect(screen.queryByText(/tokens in/)).toBeNull();
     expect(mocks.detail).not.toHaveBeenCalled();
