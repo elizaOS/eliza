@@ -1,18 +1,114 @@
 /** HTTP contract tests for Family Operations calendar conflict mutations. */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { client } from "@elizaos/ui/api";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultFamilyOperationsAdapter } from "./adapter.js";
 
+// The package aliases UI imports to an empty client. Exercise the production
+// transport here so bearer, origin and binary-body regressions remain visible.
+vi.mock("@elizaos/ui/api", async () => {
+  const { ElizaClient } = await import(
+    "../../../../../packages/ui/src/api/client-base.ts"
+  );
+  return { client: new ElizaClient() };
+});
+
+const testApiBase = "https://family-api.example";
+
+function requestPath(input: string | URL | Request): string {
+  return new URL(String(input), testApiBase).pathname;
+}
+
+beforeEach(() => {
+  client.setBaseUrl(testApiBase, { persist: false });
+  client.setToken("family-adapter-test-session");
+});
+
 afterEach(() => {
+  vi.useRealTimers();
+  client.setToken(null);
+  client.setBaseUrl(null, { persist: false });
   sessionStorage.clear();
   vi.unstubAllGlobals();
 });
 
 describe("defaultFamilyOperationsAdapter", () => {
+  it("allows provider-backed mutations to complete beyond the ordinary read timeout", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "fetch",
+      (_input: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((resolve, reject) => {
+          const timer = setTimeout(
+            () => resolve(new Response("{}", { status: 202 })),
+            11_000,
+          );
+          init?.signal?.addEventListener(
+            "abort",
+            () => {
+              clearTimeout(timer);
+              reject(new DOMException("Request aborted", "AbortError"));
+            },
+            { once: true },
+          );
+        }),
+    );
+    const result = defaultFamilyOperationsAdapter.runSchoolWorkflow().then(
+      () => "accepted",
+      (error) => error,
+    );
+    await vi.advanceTimersByTimeAsync(11_000);
+    expect(await result).toBe("accepted");
+  });
+
+  it("uses the active remote bearer for reads and returns accepted mutations once", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(String(input), "https://renderer.example");
+        if (
+          url.origin !== testApiBase ||
+          new Headers(init?.headers).get("authorization") !==
+            "Bearer family-adapter-test-session"
+        ) {
+          return new Response(JSON.stringify({ error: "Unauthorized" }), {
+            status: 401,
+          });
+        }
+        calls.push(url.pathname);
+        const payload = url.pathname.endsWith("/agreements")
+          ? { agreements: [] }
+          : url.pathname.endsWith("/calendar/links")
+            ? { links: [] }
+            : url.pathname.endsWith("/school/status")
+              ? { sourceId: "concord", config: null, lastRun: null }
+              : url.pathname.endsWith("/packets")
+                ? { packets: [], packetStates: [] }
+                : { accepted: true };
+        return new Response(JSON.stringify(payload), {
+          status: init?.method === "POST" ? 202 : 200,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    );
+    const snapshot = await defaultFamilyOperationsAdapter.load();
+    expect(snapshot.agreements).toEqual({ status: "ready", data: [] });
+    await defaultFamilyOperationsAdapter.runSchoolWorkflow();
+    expect(calls.filter((path) => path.endsWith("/school/run"))).toHaveLength(
+      1,
+    );
+    client.setToken(null);
+    expect((await defaultFamilyOperationsAdapter.load()).agreements).toEqual({
+      status: "unavailable",
+      message: "Unauthorized",
+    });
+  });
+
   it("loads and mutates the mounted family workflow contracts", async () => {
     const calls: string[] = [];
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
-      const path = String(input);
+      const path = requestPath(input);
       calls.push(path);
       const payload = path.endsWith("/agreements")
         ? { agreements: [] }
@@ -54,8 +150,8 @@ describe("defaultFamilyOperationsAdapter", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-        calls.push([String(input), init]);
-        const path = String(input);
+        calls.push([requestPath(input), init]);
+        const path = requestPath(input);
         const payload =
           path === "/api/lifeops/agreement-uploads"
             ? {
@@ -109,6 +205,22 @@ describe("defaultFamilyOperationsAdapter", () => {
     });
     expect(calls[1]?.[1]?.body).toBeInstanceOf(ArrayBuffer);
     expect(calls[2]?.[1]?.body).toBeInstanceOf(ArrayBuffer);
+    for (const [, init] of calls.slice(1, 3)) {
+      const headers = new Headers(init?.headers);
+      expect(headers.get("authorization")).toBe(
+        "Bearer family-adapter-test-session",
+      );
+      expect(headers.get("content-type")).toBe("application/octet-stream");
+      const hash = await crypto.subtle.digest(
+        "SHA-256",
+        init?.body as ArrayBuffer,
+      );
+      expect(headers.get("x-chunk-sha256")).toBe(
+        [...new Uint8Array(hash)]
+          .map((byte) => byte.toString(16).padStart(2, "0"))
+          .join(""),
+      );
+    }
     expect(JSON.parse(calls[3]?.[1]?.body as string)).toEqual({
       contentIdentity: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
@@ -224,7 +336,7 @@ describe("defaultFamilyOperationsAdapter", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-        const path = String(input);
+        const path = requestPath(input);
         calls.push([path, init]);
         const payload =
           path === "/api/lifeops/agreement-uploads/upload-1"
@@ -281,7 +393,7 @@ describe("defaultFamilyOperationsAdapter", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL | Request) => {
-        const path = String(input);
+        const path = requestPath(input);
         const payload = path.endsWith("/agreements")
           ? { agreements: [] }
           : path.endsWith("/calendar/links")
@@ -351,7 +463,9 @@ describe("defaultFamilyOperationsAdapter", () => {
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const [path, init] = fetchMock.mock.calls[0];
-    expect(path).toBe("/api/lifeops/calendar/links/link%2F1/resolve");
+    expect(requestPath(path)).toBe(
+      "/api/lifeops/calendar/links/link%2F1/resolve",
+    );
     expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({
       strategy: "keep_eliza",
       expectedUpdatedAt: "2026-08-30T12:00:00.000Z",

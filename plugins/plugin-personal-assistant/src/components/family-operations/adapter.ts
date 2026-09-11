@@ -1,5 +1,6 @@
 /** Production Family Operations adapter over owner-authorized local APIs. */
 
+import { client } from "@elizaos/ui/api";
 import type {
   MonthlyFamilyDraft,
   MonthlyFamilyPacket,
@@ -59,12 +60,24 @@ async function agreementContentIdentity(input: {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    credentials: "include",
-    ...init,
-    headers: { "content-type": "application/json", ...init?.headers },
-  });
-  const payload = (await response.json().catch(() => null)) as {
+  const response = await client.rawRequest(
+    path,
+    {
+      ...init,
+      headers: { "content-type": "application/json", ...init?.headers },
+    },
+    {
+      allowNonOk: true,
+      // A workflow's accepted mutation is terminal for this request; polling
+      // it as agent startup could repeat the owner-authorized operation.
+      skipResume: true,
+      // PDF extraction and school discovery can include model work. Keep
+      // those mutations on the same ten-minute budget as a model-backed turn.
+      timeoutMs:
+        init?.method && init.method !== "GET" ? 10 * 60_000 : undefined,
+    },
+  );
+  const payload = (await response.json()) as {
     error?: { message?: string } | string;
   } | null;
   if (!response.ok) {
