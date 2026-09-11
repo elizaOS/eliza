@@ -67,10 +67,24 @@ import {
   useDeveloperTrajectories,
 } from "./useDeveloperTrajectories";
 
+const isMeasurement = (value: number | null | undefined): value is number =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0;
 const count = (value: number | null | undefined) =>
-  typeof value === "number" ? value.toLocaleString() : "—";
+  isMeasurement(value) ? value.toLocaleString() : "—";
 const duration = (value: number | null | undefined) =>
-  typeof value === "number" ? `${(value / 1000).toFixed(2)}s` : "—";
+  isMeasurement(value) ? `${(value / 1000).toFixed(2)}s` : "—";
+
+/** Unknown measurements stay unknown, including calls not yet loaded. */
+function recordedTotal(
+  values: (number | null | undefined)[],
+  expected: number,
+  format: (value: number) => string,
+): string {
+  const measured = values.filter(isMeasurement);
+  if (!measured.length && expected > 0) return "Unknown";
+  const total = format(measured.reduce((sum, value) => sum + value, 0));
+  return measured.length < expected ? `${total}+ (partial)` : total;
+}
 
 /** Source identifies ownership; an evaluation stage does not identify delivery timing. */
 export function callLane(source: string): string {
@@ -101,12 +115,22 @@ export function DeveloperTrace({
   detail: TrajectoryDetailResult;
 }) {
   const calls = detail.llmCalls;
-  const knownInputs = calls.reduce(
-    (total, call) => total + (call.promptTokens ?? 0),
-    0,
+  const expectedCalls = Math.max(record.llmCallCount, calls.length);
+  const input = recordedTotal(
+    calls.map((call) => call.promptTokens),
+    expectedCalls,
+    count,
   );
-  const missingUsage = calls.some((call) => call.promptTokens == null);
-  const hasMeasuredInputs = calls.some((call) => call.promptTokens != null);
+  const modelTime = recordedTotal(
+    calls.map((call) => call.latencyMs),
+    expectedCalls,
+    duration,
+  );
+  const cachedInput = recordedTotal(
+    calls.map((call) => call.cacheReadInputTokens),
+    expectedCalls,
+    count,
+  );
   return (
     <div className="space-y-4">
       <Separator />
@@ -116,30 +140,42 @@ export function DeveloperTrace({
           <div className="text-lg tabular-nums">{detail.llmCalls.length}</div>
         </div>
         <div>
-          <div className="text-xs text-muted">
-            Run input
-            {missingUsage && hasMeasuredInputs ? " (partial)" : ""}
-          </div>
+          <div className="text-xs text-muted">Run input</div>
           <div className="text-lg tabular-nums">
-            {!hasMeasuredInputs
-              ? "Unknown"
-              : `${count(knownInputs)}${missingUsage ? "+" : ""}`}
+            {calls.some((call) => call.tokenUsageEstimated) ? "≈ " : ""}
+            {input}
           </div>
         </div>
         <div>
-          <div className="text-xs text-muted">Run duration</div>
+          <div className="text-xs text-muted">
+            {record.status === "active" ? "Run so far" : "Total run time"}
+          </div>
           <div className="text-lg tabular-nums">
             {duration(record.durationMs)}
           </div>
         </div>
       </div>
       <Separator />
+      <dl className="space-y-3 text-sm">
+        <div className="flex flex-wrap justify-between gap-x-3">
+          <dt>Combined model time</dt>
+          <dd className="tabular-nums">{modelTime}</dd>
+          <dd className="mt-1 w-full text-xs leading-relaxed text-muted">
+            Sum of recorded call durations. Total run time also includes
+            context, tools and orchestration. Concurrent calls can overlap, so
+            this sum cannot be subtracted to measure other work.
+          </dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt>Cached input (included)</dt>
+          <dd className="tabular-nums">{cachedInput}</dd>
+        </div>
+      </dl>
       <p className="text-xs leading-relaxed text-muted">
-        Run input includes every recorded model call in this run, including
-        evaluation. Evaluation stages do not establish whether a call ran before
-        or after the reply. Missing usage is unknown; ≈ marks estimates. Stage
-        spans overlap and must not be added. HTTP attempts, queue time and
-        provider first-token timing are not measured here.
+        Tokens are summed across calls, including evaluation and cached input.
+        Missing usage is unknown; ≈ marks estimates. Run time measures the
+        recorded run, not time to first token or reply delivery. HTTP attempts,
+        queue time and provider first-token timing are not measured here.
       </p>
       <div className="overflow-x-auto">
         <Table density="compact" className="caption-top text-left">
@@ -151,7 +187,7 @@ export function DeveloperTrace({
               <th className="py-2 pr-3">Call / route</th>
               <th className="pr-3 text-right">Input</th>
               <th className="pr-3 text-right">Output</th>
-              <th className="text-right">Time</th>
+              <th className="text-right">Model time</th>
             </tr>
           </thead>
           <tbody>
@@ -177,6 +213,7 @@ export function DeveloperTrace({
                 </td>
                 <td className="py-3 pr-3 text-right tabular-nums">
                   {count(call.completionTokens)}
+                  {call.tokenUsageEstimated ? " ≈" : ""}
                 </td>
                 <td className="py-3 text-right tabular-nums">
                   {duration(call.latencyMs)}
@@ -194,6 +231,10 @@ export function DeveloperTrace({
             </Button>
           </CollapsibleTrigger>
           <CollapsibleContent>
+            <p className="py-2 text-xs text-muted">
+              Inclusive spans: stages contain model calls and may overlap. Do
+              not add them to model time or to each other.
+            </p>
             <ol className="space-y-2 py-2 text-xs">
               {detail.semanticStages.map((stage) => (
                 <li key={stage.stageId} className="flex justify-between gap-3">
@@ -425,7 +466,7 @@ export function DeveloperReplyDetails({
         {record || open ? (
           <span
             className="developer-token-count"
-            title="Recorded input and output tokens for this run. Missing usage can make counts partial; expand for per-call details."
+            title="Tokens summed across recorded model calls, including cached input. Total is recorded run time, not time to first token. Inspect for model time and missing or estimated usage."
           >
             {record &&
             (record.totalPromptTokens > 0 || record.totalCompletionTokens > 0)
@@ -443,9 +484,12 @@ export function DeveloperReplyDetails({
                   : record.llmCallCount === 0
                     ? "No recorded model calls"
                     : "Usage details"}
-            {record?.durationMs == null
+            {record && record.llmCallCount > 0
+              ? ` · ${count(record.llmCallCount)} model ${record.llmCallCount === 1 ? "call" : "calls"}`
+              : ""}
+            {!isMeasurement(record?.durationMs)
               ? ""
-              : ` · ${duration(record.durationMs)}`}
+              : ` · ${duration(record?.durationMs)} ${record?.status === "active" ? "so far" : "total"}`}
             {record?.status === "active" ? " · Working…" : ""}
           </span>
         ) : null}
@@ -522,7 +566,10 @@ export function DeveloperReplyDetails({
             {record ? <WireEvidence record={record} /> : null}
             {backgrounds.length ? (
               <details>
-                <summary>Background memory ({backgrounds.length} runs)</summary>
+                <summary>
+                  Background memory ({backgrounds.length}{" "}
+                  {backgrounds.length === 1 ? "run" : "runs"})
+                </summary>
                 {backgrounds.map((background) => (
                   <DeveloperReplyDetails
                     key={background.id}

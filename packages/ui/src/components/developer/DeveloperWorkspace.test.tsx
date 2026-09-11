@@ -222,6 +222,7 @@ describe("developer workspace", () => {
     await flush();
     expect(screen.getByText("Which view is open?")).toBeTruthy();
     expect(screen.getByText(/100 tokens in · 20 out/)).toBeTruthy();
+    expect(screen.getByText(/1 model call · 1.50s total/)).toBeTruthy();
     expect(screen.queryByText("Recorded runs")).toBeNull();
     expect(screen.queryByText("Run input")).toBeNull();
     expect(mocks.detail).not.toHaveBeenCalled();
@@ -629,7 +630,7 @@ describe("developer workspace", () => {
         detail={{ ...detail, llmCalls: calls }}
       />,
     );
-    expect(screen.getByText("900+")).toBeTruthy();
+    expect(screen.getByText("900+ (partial)")).toBeTruthy();
     expect(screen.queryByText("Post-turn evaluation")).toBeNull();
   });
   it("shows unknown instead of an invented zero for wholly missing usage", () => {
@@ -644,8 +645,96 @@ describe("developer workspace", () => {
         }}
       />,
     );
-    expect(screen.getByText("Unknown")).toBeTruthy();
+    expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
     expect(screen.queryByText("0+")).toBeNull();
+  });
+  it("distinguishes the reported 3.43s run from 2.29s combined model time and includes cached tokens", () => {
+    const calls = [
+      [29431, 390, 24576, 989],
+      [11759, 59, 6144, 813],
+      [9665, 61, 4096, 490],
+    ].map(
+      (
+        [promptTokens, completionTokens, cacheReadInputTokens, latencyMs],
+        index,
+      ) => ({
+        id: String(index),
+        model: "qwen",
+        purpose: "reply",
+        promptTokens,
+        completionTokens,
+        cacheReadInputTokens,
+        latencyMs,
+      }),
+    ) as TrajectoryDetailResult["llmCalls"];
+    render(
+      <DeveloperTrace
+        record={{ ...record, llmCallCount: 3, durationMs: 3427 }}
+        detail={{ ...detail, llmCalls: calls }}
+      />,
+    );
+    expect(screen.getByText("50,855")).toBeTruthy();
+    expect(screen.getByText("3.43s")).toBeTruthy();
+    expect(
+      screen.getByText("Combined model time").nextElementSibling?.textContent,
+    ).toBe("2.29s");
+    expect(
+      screen.getByText("Cached input (included)").nextElementSibling
+        ?.textContent,
+    ).toBe("34,816");
+    expect(screen.getAllByRole("row")).toHaveLength(4);
+  });
+  it("does not fabricate overhead from concurrent calls whose combined duration exceeds the run", () => {
+    const calls = [0, 1].map((id) => ({
+      id: String(id),
+      timestamp: 1000,
+      model: "qwen",
+      latencyMs: 1000,
+    })) as TrajectoryDetailResult["llmCalls"];
+    render(
+      <DeveloperTrace
+        record={{ ...record, llmCallCount: 2 }}
+        detail={{ ...detail, llmCalls: calls }}
+      />,
+    );
+    expect(
+      screen.getByText("Combined model time").nextElementSibling?.textContent,
+    ).toBe("2.00s");
+    expect(screen.getByText("1.50s")).toBeTruthy();
+    expect(screen.getByText(/Concurrent calls can overlap/)).toBeTruthy();
+    expect(screen.queryByText(/-0.50s/)).toBeNull();
+  });
+  it("marks missing, invalid and unloaded call measurements partial while retaining measured zero", () => {
+    const calls = [
+      {
+        id: "measured",
+        latencyMs: 0,
+        promptTokens: 0,
+        cacheReadInputTokens: 0,
+      },
+      {
+        id: "invalid",
+        latencyMs: Number.NaN,
+        promptTokens: -1,
+        cacheReadInputTokens: Number.POSITIVE_INFINITY,
+      },
+    ] as TrajectoryDetailResult["llmCalls"];
+    render(
+      <DeveloperTrace
+        record={{ ...record, llmCallCount: 3 }}
+        detail={{ ...detail, llmCalls: calls }}
+      />,
+    );
+    expect(
+      screen.getByText("Combined model time").nextElementSibling?.textContent,
+    ).toBe("0.00s+ (partial)");
+    expect(screen.getAllByText("0+ (partial)")).toHaveLength(2);
+    expect(screen.queryByText(/NaN|Infinity/)).toBeNull();
+  });
+  it("does not call an active run's duration a completed total", () => {
+    render(<DeveloperReplyDetails record={{ ...record, status: "active" }} />);
+    expect(screen.getByText(/1.50s so far · Working/)).toBeTruthy();
+    expect(screen.queryByText(/1.50s total/)).toBeNull();
   });
   it("does not label an unavailable agent ready", async () => {
     appState.agentStatus.canRespond = false;
