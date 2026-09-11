@@ -134,7 +134,7 @@ import type {
   UncertainFieldSummary,
 } from "./types";
 import { FORM_CONTROL_DEFAULTS, FORM_DEFINITION_DEFAULTS } from "./types";
-import { formatValue, validateField } from "./validation";
+import { formatValue, registerTypeHandler, validateField } from "./validation";
 
 const UNSAFE_OBJECT_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 
@@ -333,6 +333,18 @@ export class FormService extends Service {
     }
 
     this.controlTypes.set(type.id, type);
+    // Extraction, parsing, validation, and display resolve a control's type
+    // through the handler registry in validation.ts, not through this map, so
+    // a registered type only takes effect for top-level fields once it is
+    // published there as well. A custom type supplies its whole contract; a
+    // builtin publishes only its extraction prompt, because builtin parsing,
+    // validation, and display live on the hardened switch paths in
+    // validation.ts (strict number parsing, persistence-safe rejection,
+    // calendar-day dates) and the ControlType copies here serve subcontrols.
+    registerTypeHandler(
+      type.id,
+      type.builtin ? { extractionPrompt: type.extractionPrompt } : type,
+    );
     logger.debug(`[FormService] Registered control type: ${type.id}`);
   }
 

@@ -63,6 +63,11 @@
  */
 
 import type { JsonValue } from "@elizaos/core";
+import {
+  calendarDateComponents,
+  formatCalendarDate,
+  parseCalendarDate,
+} from "./calendar-date";
 import { basicEmailValid } from "./email";
 import type { ControlType, FormControl, ValidationResult } from "./types";
 import { testControlPattern } from "./validation";
@@ -381,7 +386,8 @@ const selectType: ControlType = {
  * WHY flexible parsing:
  * - Users say "tomorrow", "next Monday", "12/25/2024"
  * - LLM should normalize to ISO
- * - We accept anything Date() can parse as fallback
+ * - Other formats resolve to the calendar day they name on every host
+ *   timezone; a year-less or unparseable answer is rejected and re-asked
  *
  * WHY locale display:
  * - Agent should speak in user's date format
@@ -403,29 +409,22 @@ const dateType: ControlType = {
       return { valid: false, error: "Must be in YYYY-MM-DD format" };
     }
 
-    // Check if it's a valid date
-    const date = new Date(str);
-    if (Number.isNaN(date.getTime())) {
+    // Check if it's a real calendar day (rejects roll-overs like 2026-02-30)
+    if (!calendarDateComponents(str)) {
       return { valid: false, error: "Invalid date" };
     }
 
     return { valid: true };
   },
 
-  parse: (value: string): string => {
-    // Try to parse and normalize to ISO
-    const date = new Date(value);
-    if (!Number.isNaN(date.getTime())) {
-      return date.toISOString().split("T")[0];
-    }
-    return value.trim();
-  },
+  // Resolve the answer to the calendar day it names; an unparseable or
+  // year-less answer is kept verbatim so validate() rejects it and the form
+  // re-asks instead of storing a fabricated day.
+  parse: (value: string): string => parseCalendarDate(value) ?? value.trim(),
 
   format: (value: JsonValue): string => {
     if (!value) return "";
-    const date = new Date(String(value));
-    if (Number.isNaN(date.getTime())) return String(value);
-    return date.toLocaleDateString();
+    return formatCalendarDate(String(value));
   },
 
   extractionPrompt: "a date (preferably in YYYY-MM-DD format)",
