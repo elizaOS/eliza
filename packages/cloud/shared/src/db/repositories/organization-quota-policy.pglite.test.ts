@@ -106,6 +106,52 @@ test("canonical legacy accounts keep purchased-credit RPM and distinct eager/non
     policy.requireOrganizationResourceLimit(after, "nonEagerSandboxes"),
   );
 });
+test("legacy credit selection excludes grants, debits and other tenants while retaining empty-credit policy", async () => {
+  const pg = database.getPgliteClientForTests();
+  const target = crypto.randomUUID();
+  const other = crypto.randomUUID();
+  await pg.exec(`
+    INSERT INTO organizations(id,credit_balance,balance_revision,balance_decrease_revision,settings,is_active,account_lifecycle_state)
+    VALUES('${target}',100,1,0,'{}',true,'active'),('${other}',100,1,0,'{}',true,'active');
+  `);
+  const empty = await policy.readOrganizationQuotaPolicy(target);
+  expect(Number(empty.tierSourceCreditTotal)).toBe(0);
+  await pg.exec(`
+    INSERT INTO credit_transactions(id,organization_id,amount,type,metadata) VALUES
+    (gen_random_uuid(),'${target}',1000,'credit','{"type":"initial_free_credits"}'),
+    (gen_random_uuid(),'${target}',1000,'credit','{"type":"wallet_signup"}'),
+    (gen_random_uuid(),'${target}',1000,'credit','{"type":"signup_code_bonus"}'),
+    (gen_random_uuid(),'${target}',-7,'debit','{}'),
+    (gen_random_uuid(),'${other}',999999,'credit','{}');
+  `);
+  const excluded = await policy.readOrganizationQuotaPolicy(target);
+  expect(excluded.tier).toEqual(empty.tier);
+  expect(Number(excluded.tierSourceCreditTotal)).toBe(0);
+  await pg.exec(`
+    INSERT INTO credit_transactions(id,organization_id,amount,type,metadata) VALUES
+    (gen_random_uuid(),'${target}',6,'credit','{}'),
+    (gen_random_uuid(),'${target}',4,'credit','{"type":null}');
+  `);
+  const funded = await policy.readOrganizationQuotaPolicy(target);
+  expect(Number(funded.tierSourceCreditTotal)).toBe(10);
+  expect(policy.requireOrganizationRateTier(funded).completionsRpm).toBeGreaterThan(
+    policy.requireOrganizationRateTier(empty).completionsRpm,
+  );
+});
+test("a missing subscription association cannot admit a subscriber as a legacy account", async () => {
+  const pg = database.getPgliteClientForTests();
+  await pg.exec(`UPDATE organization_subscription_authorities
+    SET state='none',subscription_id=NULL WHERE organization_id='${ORG}'`);
+  try {
+    await expect(policy.readOrganizationQuotaPolicy(ORG)).rejects.toMatchObject({
+      code: "ORGANIZATION_POLICY_UNAVAILABLE",
+      context: { organizationId: ORG, reason: "legacy_association_conflict" },
+    });
+  } finally {
+    await pg.exec(`UPDATE organization_subscription_authorities
+      SET state='current',subscription_id='${SUB}' WHERE organization_id='${ORG}'`);
+  }
+});
 test("corrupt purchased balance does not erase independently valid subscriber rate policy", async () => {
   const pg = database.getPgliteClientForTests();
   const before = await policy.readOrganizationQuotaPolicy(ORG);
