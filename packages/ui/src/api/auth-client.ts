@@ -22,7 +22,10 @@ import { normalizeCloudApiKeyToken } from "../cloud/lib/cloud-api-key-token";
 import { getBootConfig } from "../config/boot-config";
 import { isNative } from "../platform";
 import { clearSharedCloudAccountBinding } from "../state/shared-cloud-account-binding";
-import { isManagedCloudSharedAgentBase } from "../utils/cloud-agent-base";
+import {
+  isDedicatedCloudAgentBase,
+  isManagedCloudSharedAgentBase,
+} from "../utils/cloud-agent-base";
 import { rememberCsrfTokenForUrl } from "./auth/csrf-cookie";
 import {
   cloudTokenSecsRemaining,
@@ -560,10 +563,22 @@ export async function authMe(): Promise<AuthMeResult> {
 
   if (res.status === 401) {
     const body = (await res.json().catch(() => ({}))) as {
+      code?: string;
       reason?: string;
       access?: AuthAccessInfo;
     };
     if (!requestIsCurrent()) return { ok: false, status: 503 };
+    if (
+      !body.reason &&
+      body.code === "cloud_auth_rejected" &&
+      isDedicatedCloudAgentBase(requestBase)
+    ) {
+      // The Dedicated edge rejected the saved Cloud-shaped bearer before the
+      // runtime could return its auth contract. Keep the gate closed, but let
+      // the existing Cloud-authorized re-pair flow replace that credential.
+      // The same rejected bearer cannot query the edge's protected status route.
+      return { ok: false, status: 401, reason: "remote_auth_required" };
+    }
     const result: AuthMeResult = {
       ok: false,
       status: 401,

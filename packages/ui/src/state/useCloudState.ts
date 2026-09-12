@@ -2044,7 +2044,19 @@ export function useCloudState({
         });
         if (disposed) return;
         if (result?.token) {
-          await replaceStoredStewardTokenIfCurrent(storedToken, result.token);
+          const replaced = await replaceStoredStewardTokenIfCurrent(
+            storedToken,
+            result.token,
+          );
+          // Disconnected accounts have no recurring status poll. Recheck the
+          // server after refresh so a recovered session becomes usable in place.
+          if (
+            replaced &&
+            !disposed &&
+            readStoredStewardToken() === result.token
+          ) {
+            await pollCloudCredits();
+          }
         }
       } catch (err: unknown) {
         // error-policy:J4 a pre-emptive refresh or protected persistence
@@ -2070,7 +2082,7 @@ export function useCloudState({
       disposed = true;
       clearInterval(interval);
     };
-  }, [elizaCloudConnected]);
+  }, [elizaCloudConnected, pollCloudCredits]);
 
   // ── Return ─────────────────────────────────────────────────────────
 

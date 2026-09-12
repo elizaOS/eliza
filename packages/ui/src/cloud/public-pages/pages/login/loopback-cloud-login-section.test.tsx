@@ -96,10 +96,33 @@ it.each([
     expect(destination.origin).toBe("https://staging.eliza.app");
     const returnTo = new URL(requiredReturnTo(destination));
     expect(returnTo.origin).toBe("http://localhost:21484");
-    expect(returnTo.pathname).toBe("/chat");
+    expect(returnTo.pathname + returnTo.hash).toBe("/settings#cloud-overview");
     expect(returnTo.searchParams.get("elizaCloudLoginSession")).toBe(sessionId);
   },
 );
+
+it.each(["/", "/chat"])(
+  "offers agent selection after account switching instead of returning to %s without an agent",
+  async (path) => {
+    await begin(`/login?switchAccount=1&returnTo=${encodeURIComponent(path)}`);
+    await waitFor(() => expect(mocks.assign).toHaveBeenCalledOnce());
+    const login = new URL(mocks.assign.mock.calls[0][0]);
+    const handoff = new URL(requiredReturnTo(login), login.origin);
+    const returnTo = new URL(requiredReturnTo(handoff));
+    expect(mocks.clearBinding).toHaveBeenCalledOnce();
+    expect(returnTo.pathname + returnTo.hash).toBe("/settings#cloud-overview");
+    expect(returnTo.searchParams.get("elizaCloudLoginSession")).toBe(sessionId);
+  },
+);
+
+it("retains an explicit chat return when the existing agent binding is preserved", async () => {
+  await begin("/login?returnTo=%2Fchat");
+  await waitFor(() => expect(mocks.assign).toHaveBeenCalledOnce());
+  const handoff = new URL(mocks.assign.mock.calls[0][0]);
+  const returnTo = new URL(requiredReturnTo(handoff));
+  expect(mocks.clearBinding).not.toHaveBeenCalled();
+  expect(returnTo.pathname).toBe("/chat");
+});
 
 it("preserves a safe app destination and performs explicit account switching on both origins", async () => {
   await begin("/login?switchAccount=1&returnTo=%2Fsettings%23cloud-overview");
