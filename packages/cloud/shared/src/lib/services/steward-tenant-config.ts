@@ -122,6 +122,7 @@ export async function ensureStewardTenant(
       "X-Steward-Platform-Key": platformKey,
     },
     body: JSON.stringify({ id: tenantId, name: tenantName }),
+    signal: AbortSignal.timeout(10_000),
   });
 
   // A 409 ("already exists") is a recovery path that only needs the STATUS,
