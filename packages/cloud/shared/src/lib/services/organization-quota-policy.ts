@@ -131,42 +131,47 @@ export async function readOrganizationQuotaPolicyInTransaction(
   organizationId: string,
   observedAt?: Date,
 ): Promise<OrganizationQuotaPolicy> {
-  const [org] = await tx
+  // These rows are unique per organization. One statement keeps the policy
+  // inputs together without paying a separate database round trip for each.
+  const [inputs] = await tx
     .select({
-      balance: organizations.credit_balance,
-      revision: sql<string>`${organizations.balance_revision}::text`,
-      settings: organizations.settings,
+      org: {
+        balance: organizations.credit_balance,
+        revision: sql<string>`${organizations.balance_revision}::text`,
+        settings: organizations.settings,
+      },
+      association: organizationSubscriptionAuthorities,
+      override: {
+        // The row can exist with null RPM fields; retain its non-null join identity.
+        id: orgRateLimitOverrides.id,
+        completions_rpm: orgRateLimitOverrides.completions_rpm,
+        embeddings_rpm: orgRateLimitOverrides.embeddings_rpm,
+        standard_rpm: orgRateLimitOverrides.standard_rpm,
+        strict_rpm: orgRateLimitOverrides.strict_rpm,
+      },
+      config: { settings: organizationConfig.settings },
+      storage: {
+        bytes_limit: orgStorageQuota.bytes_limit,
+        limit_override_authorized: orgStorageQuota.limit_override_authorized,
+      },
     })
     .from(organizations)
+    .leftJoin(
+      organizationSubscriptionAuthorities,
+      eq(organizationSubscriptionAuthorities.organization_id, organizations.id),
+    )
+    .leftJoin(orgRateLimitOverrides, eq(orgRateLimitOverrides.organization_id, organizations.id))
+    .leftJoin(organizationConfig, eq(organizationConfig.organization_id, organizations.id))
+    .leftJoin(orgStorageQuota, eq(orgStorageQuota.organization_id, organizations.id))
     .where(eq(organizations.id, organizationId));
-  const [association] = await tx
-    .select()
-    .from(organizationSubscriptionAuthorities)
-    .where(eq(organizationSubscriptionAuthorities.organization_id, organizationId));
-  if (!org || !association || association.state === "unavailable")
+  if (!inputs || !inputs.association || inputs.association.state === "unavailable")
     return unavailable(organizationId, "missing_account_authority");
+  const { org, association, override, config, storage } = inputs;
   const balance = Number(org.balance);
   const validBalance =
     typeof org.balance === "string" &&
     /^[+-]?(?:\d+|\d*\.\d+)$/.test(org.balance.trim()) &&
     Number.isFinite(balance);
-  const [override] = await tx
-    .select({
-      completions_rpm: orgRateLimitOverrides.completions_rpm,
-      embeddings_rpm: orgRateLimitOverrides.embeddings_rpm,
-      standard_rpm: orgRateLimitOverrides.standard_rpm,
-      strict_rpm: orgRateLimitOverrides.strict_rpm,
-    })
-    .from(orgRateLimitOverrides)
-    .where(eq(orgRateLimitOverrides.organization_id, organizationId));
-  const [config] = await tx
-    .select({ settings: organizationConfig.settings })
-    .from(organizationConfig)
-    .where(eq(organizationConfig.organization_id, organizationId));
-  const [storage] = await tx
-    .select()
-    .from(orgStorageQuota)
-    .where(eq(orgStorageQuota.organization_id, organizationId));
   const base = {
     overrides: {
       completionsRpm: override?.completions_rpm ?? null,
@@ -216,7 +221,9 @@ export async function readOrganizationQuotaPolicyInTransaction(
         effectiveUntil: null,
       },
       tier: observe(
-        () => resolveOrgTierFromSourceValues(organizationId, credits.total, override).tierData,
+        () =>
+          resolveOrgTierFromSourceValues(organizationId, credits.total, override ?? undefined)
+            .tierData,
       ),
       tierSourceCreditTotal: credits.total,
       subscriptionFunded: false,
