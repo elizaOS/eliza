@@ -2620,6 +2620,22 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       if (!canRequesterManageDocumentDirectGrants(existing, params)) {
         return { status: "forbidden" };
       }
+      if (params.requesterRole === "ADMIN") {
+        // Serialize against membership removal before granting durable access.
+        const [membership] = await tx
+          .select({ id: participantTable.id })
+          .from(participantTable)
+          .where(
+            and(
+              eq(participantTable.agentId, params.agentId),
+              eq(participantTable.roomId, existing.roomId),
+              eq(participantTable.entityId, params.requesterEntityId)
+            )
+          )
+          .for("share")
+          .limit(1);
+        if (!membership) return { status: "forbidden" };
+      }
       if (directGrantEntityIds.length > 0) {
         const grantees = await tx
           .select({ id: entityTable.id })
