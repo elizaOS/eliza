@@ -257,3 +257,8 @@ through private-result projection. Record the failed tool before stopping; keep
 earlier receipts and complete history. Do not retry changed argument wording
 against the same oversized action context or mistake arbitrary error text, schema
 errors or rate limits for a context overflow.
+
+The action barrel exports `validateSchema` alongside `validateToolArgs` so plugins
+can validate nested structured plans through the same tool schema rules, including
+when called directly. Use the public barrel; wildcard deep implementation paths
+may have declarations without a corresponding bundled runtime entry.

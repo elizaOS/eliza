@@ -28,6 +28,7 @@ import type {
 import {
   applyGroundedActionReply,
   ElizaError,
+  extractUserText,
   logger,
   NoModelProviderConfiguredError,
   normalizeEffectReceipt,
@@ -138,6 +139,7 @@ import {
   applyOwnerPolicyConfigureEscalation,
   applyOwnerPolicySetReminder,
 } from "./lib/owner-policy-writes.js";
+import { parseNativeTaskCreatePlan } from "./lib/task-create-plan-parameter.js";
 import {
   textContradictsExplicitUndatedTodo,
   textStatesExplicitUndatedTodo,
@@ -186,6 +188,7 @@ type LifeParams = {
    * re-extracted plan instead of previewing again.
    */
   confirmed?: boolean;
+  createPlan?: unknown;
   details?: Record<string, unknown>;
   ownerSurface?: string;
 };
@@ -616,13 +619,13 @@ function isBareLifeCreateConfirmationMessage(text: string): boolean {
   if (!isExplicitLifeCreateConfirmation(text)) {
     return false;
   }
-  const residue = text
+  const residue = extractUserText(text)
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .replace(LIFE_CONFIRMATION_CUE_STRIP_RE, " ")
     .replace(LIFE_CONFIRMATION_FILLER_STRIP_RE, " ")
     .trim();
-  return residue.length <= 3;
+  return residue.length === 0;
 }
 
 function stringifyLifeDetailForPrompt(value: unknown): string | null {
@@ -4325,6 +4328,17 @@ async function runLifeOperationHandlerInner(
           reason: "draft_expired",
         },
       }),
+      values: {
+        success: false,
+        error: "DRAFT_EXPIRED",
+        awaitingUserInput: true,
+      },
+      data: {
+        actionName: ownerSurfaceActionName,
+        reason: "draft_expired",
+        lifeDraftInvalidated: true,
+        awaitingUserInput: true,
+      },
     };
   }
   if (deferredDraftFollowupMode === "cancel") {
@@ -4686,6 +4700,7 @@ async function runLifeOperationHandlerInner(
       const hasCompleteNativeDefinitionCreatePlan = Boolean(
         params.title && explicitCadenceDetail && detailString(details, "kind"),
       );
+      const nativeCreatePlan = parseNativeTaskCreatePlan(params.createPlan);
       const fallbackTitle = deferredDefinitionDraft?.request.title ?? null;
       let title: string | null = editingDeferredDefinitionDraft
         ? (params.title ?? fallbackTitle)
@@ -4777,21 +4792,23 @@ async function runLifeOperationHandlerInner(
       let llmRequestKind: NativeAppleReminderLikeKind | null = null;
       if (
         (!deferredDefinitionDraft || editingDeferredDefinitionDraft) &&
-        !hasCompleteNativeDefinitionCreatePlan
+        (nativeCreatePlan || !hasCompleteNativeDefinitionCreatePlan)
       ) {
         try {
-          llmPlan = await extractTaskCreatePlanWithLlm({
-            runtime,
-            intent,
-            state: state ?? undefined,
-            message: message,
-            timeZone:
-              normalizeLifeTimeZoneToken(
-                detailString(details, "timeZone") ??
-                  deferredDefinitionDraft?.request.timezone ??
-                  windowPolicy?.timezone,
-              ) ?? undefined,
-          });
+          llmPlan =
+            nativeCreatePlan ??
+            (await extractTaskCreatePlanWithLlm({
+              runtime,
+              intent,
+              state: state ?? undefined,
+              message: message,
+              timeZone:
+                normalizeLifeTimeZoneToken(
+                  detailString(details, "timeZone") ??
+                    deferredDefinitionDraft?.request.timezone ??
+                    windowPolicy?.timezone,
+                ) ?? undefined,
+            }));
         } catch (error) {
           // error-policy:J4 Explicit create parameters remain usable without a
           // model; missing fields fall through to the visible clarifications.

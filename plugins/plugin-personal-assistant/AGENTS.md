@@ -182,3 +182,21 @@ never unavailable status or canned user prose; preserve receipts, clarification
 states, permission rechecks, final-context restoration and reply-only recovery.
 
 Deferred-draft follow-up classification propagates model failures to action settlement. A provider error is not an unrelated-message verdict and must not start another extraction or replace the pending draft. Valid classifier abstention retains the existing follow-up rules.
+
+Owner definition CREATE surfaces accept `createPlan`, the same semantic task plan
+as the fallback extractor. Validate the supplied shape and pass it through the
+existing cadence, timezone, multi-step, check-in, consent, and draft machinery;
+unknown or malformed plans retain extraction. Expose these instructions only on
+CREATE, not reads/deletes or goal actions. A plan cannot confirm, cancel, or replace
+a pending draft by itself; draft follow-up classification and current-owner-text
+consent still govern reuse. Omitted native fields normalize to unknown, never
+invented schedule values.
+
+The native plan requires an explicit requestKind (alarm/reminder/unspecified) so
+omission cannot silently lose the classification used for consent and native
+reminder metadata. Other unknown fields stay omitted on the native wire.
+Bare confirmation matching uses the shared authored-text extractor to exclude
+the host language footer, while preserving the original message/model context.
+Any remaining substantive text, including a short time such as 9pm, requires the
+normal draft classifier. Expired confirmations invalidate the draft and return
+awaitingUserInput so the planner can explain the required restatement directly.
