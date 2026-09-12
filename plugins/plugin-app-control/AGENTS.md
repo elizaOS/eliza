@@ -260,3 +260,5 @@ A fresh same-turn Stage-1 navigationOnly judgment can select the existing determ
 A none decision remains a navigation denial even if the model also names the current screen; discard the irrelevant destination without a classifier call. This never grants navigation.
 
 The navigation-only reply draft describes the conditional successful destination, not progress or a domain effect. Core may reuse it after the successful matching navigation receipt and egress checks, including when Stage 1 marked the draft pending. Failed/unconfirmed navigation and compound requests retain their normal evaluation/recovery paths.
+
+An explicitly conditional navigation request remains requested pending work. Preserve its prerequisite read, destination and condition for the planner; it is not navigationOnly and cannot use direct navigation. The planner must observe a satisfying read result before navigating and keep the current view when the condition fails. None/forbidden decisions remain denied at dispatch.
