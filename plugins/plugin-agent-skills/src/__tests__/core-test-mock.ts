@@ -16,6 +16,11 @@ vi.mock("@elizaos/core", async () => {
 	const { toWellFormedUnicode, truncateWellFormed } = await import(
 		"../../../../packages/core/src/utils/well-formed"
 	);
+	// The skills service reads its boolean flags through core's shared parser;
+	// the real implementation keeps the string/boolean contract under test.
+	const { parseBooleanValue } = await import(
+		"../../../../packages/core/src/utils/boolean"
+	);
 	const { parseFrontmatterDocument } = await import(
 		"../../../../packages/core/src/markdown/frontmatter"
 	);
@@ -128,6 +133,7 @@ vi.mock("@elizaos/core", async () => {
 		sanitizeSpawnEnv,
 		toWellFormedUnicode,
 		truncateWellFormed,
+		parseBooleanValue,
 		parseFrontmatterDocument,
 		Service: class {
 			constructor(public runtime?: unknown) {}
