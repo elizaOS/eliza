@@ -569,6 +569,8 @@ export function redactObjectSecrets<T>(
 
 const REDACTED_MASK = "[REDACTED]";
 const MAX_LOG_REDACT_DEPTH = 8;
+/** Marker for a value that is its own ancestor; deliberately not the credential mask. */
+const CIRCULAR_MARKER = "[circular]";
 
 /**
  * Redact one log argument for output at the sink. A string is scrubbed with the
@@ -593,13 +595,15 @@ const MAX_LOG_REDACT_DEPTH = 8;
  * innocent-looking key, and JSON.stringify would emit them as
  * {"type":"Buffer","data":[…]} — either way secret bytes survive in every sink.
  *
- * Depth is bounded and cycles are broken (returning the mask) so a pathological
- * log payload cannot hang or blow the stack — a redactor must never be the thing
- * that takes the process down.
+ * Depth is bounded and true cycles are broken with a distinct circular marker so
+ * a pathological log payload cannot hang or blow the stack — a redactor must
+ * never be the thing that takes the process down. Only ancestors of the current
+ * value count as a cycle: an object referenced from two places in one call is
+ * rendered in full both times, never as the credential mask.
  */
 function redactLogArg(
 	value: unknown,
-	seen: WeakSet<object>,
+	ancestors: WeakSet<object>,
 	depth: number,
 ): unknown {
 	if (typeof value === "string") {
@@ -611,20 +615,15 @@ function redactLogArg(
 	if (value === null || typeof value !== "object") {
 		return value;
 	}
-	if (depth >= MAX_LOG_REDACT_DEPTH || seen.has(value)) {
+	if (depth >= MAX_LOG_REDACT_DEPTH) {
 		return REDACTED_MASK;
 	}
-	seen.add(value);
-	if (Array.isArray(value)) {
-		// Do not call value.map: an Array subclass, custom Symbol.species, or own
-		// map property can return caller-owned data carrying a serializer hook.
-		// Index into the input but construct the output with the intrinsic Array
-		// constructor so no caller-controlled method or result prototype survives.
-		const result: unknown[] = [];
-		for (let index = 0; index < value.length; index += 1) {
-			result.push(redactLogArg(value[index], seen, depth + 1));
-		}
-		return result;
+	// `ancestors` holds only the objects on the current walk path (entries are
+	// removed on the way back out), so this catches a genuine cycle and nothing
+	// else. A shared reference must not be masked: "[REDACTED]" would tell the
+	// reader a credential was present where there was only aliasing.
+	if (ancestors.has(value)) {
+		return CIRCULAR_MARKER;
 	}
 	if (value instanceof Error) {
 		// Preserve the Error shape (name/stack) callers rely on, but scrub the
@@ -641,25 +640,42 @@ function redactLogArg(
 	if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) {
 		return `[BUFFER REDACTED ${value.byteLength} bytes]`;
 	}
-	// A null-prototype target prevents a __proto__ input key from changing the
-	// clone's prototype and reintroducing inherited serializer behavior.
-	const result = Object.create(null) as Record<string, unknown>;
-	for (const [key, entry] of Object.entries(value)) {
-		if (isSensitiveKeyName(key)) {
-			result[key] = REDACTED_MASK;
-			continue;
+	ancestors.add(value);
+	try {
+		if (Array.isArray(value)) {
+			// Do not call value.map: an Array subclass, custom Symbol.species, or
+			// own map property can return caller-owned data carrying a serializer
+			// hook. Index into the input but construct the output with the
+			// intrinsic Array constructor so no caller-controlled method or result
+			// prototype survives.
+			const result: unknown[] = [];
+			for (let index = 0; index < value.length; index += 1) {
+				result.push(redactLogArg(value[index], ancestors, depth + 1));
+			}
+			return result;
 		}
-		// Function-valued properties are executable serializer hooks
-		// (toJSON/valueOf/toString): a copied hook re-runs when a sink
-		// JSON-stringifies the clone and can reconstitute the very secrets the
-		// walk just masked. JSON.stringify omits function props anyway, so
-		// dropping the key matches serialization semantics.
-		if (typeof entry === "function") {
-			continue;
+		// A null-prototype target prevents a __proto__ input key from changing
+		// the clone's prototype and reintroducing inherited serializer behavior.
+		const result = Object.create(null) as Record<string, unknown>;
+		for (const [key, entry] of Object.entries(value)) {
+			if (isSensitiveKeyName(key)) {
+				result[key] = REDACTED_MASK;
+				continue;
+			}
+			// Function-valued properties are executable serializer hooks
+			// (toJSON/valueOf/toString): a copied hook re-runs when a sink
+			// JSON-stringifies the clone and can reconstitute the very secrets the
+			// walk just masked. JSON.stringify omits function props anyway, so
+			// dropping the key matches serialization semantics.
+			if (typeof entry === "function") {
+				continue;
+			}
+			result[key] = redactLogArg(entry, ancestors, depth + 1);
 		}
-		result[key] = redactLogArg(entry, seen, depth + 1);
+		return result;
+	} finally {
+		ancestors.delete(value);
 	}
-	return result;
 }
 
 /**
