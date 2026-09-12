@@ -28,6 +28,8 @@ export interface JsonSchema {
 	properties?: Record<string, JsonSchema>;
 	required?: string[];
 	items?: JsonSchema;
+	minItems?: number;
+	maxItems?: number;
 	additionalProperties?: boolean | JsonSchema;
 	minimum?: number;
 	maximum?: number;
@@ -264,6 +266,12 @@ export function actionParameterSchemaToJsonSchema(
 	}
 
 	if (schema.type === "array") {
+		if (schema.minItems !== undefined) {
+			jsonSchema.minItems = schema.minItems;
+		}
+		if (schema.maxItems !== undefined) {
+			jsonSchema.maxItems = schema.maxItems;
+		}
 		jsonSchema.items = schema.items
 			? actionParameterSchemaToJsonSchema(schema.items, {
 					path: `${path}[]`,
