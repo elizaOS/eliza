@@ -103,6 +103,15 @@ async function writeFixtureState(
     path.join(root, "skills", "active.json"),
     '{"skills":[]}\n',
   );
+  await fs.mkdir(path.join(root, "skills", ".cache"), { recursive: true });
+  await fs.writeFile(
+    path.join(root, "skills", ".cache", "catalog.json"),
+    "downloadable catalog",
+  );
+  await fs.writeFile(
+    path.join(root, "skills", ".cache", "lock.json"),
+    '{"installed":"pinned"}',
+  );
   // Re-downloadable model weights / caches must never enter stateFiles (#17920).
   await fs.mkdir(path.join(root, "models"), { recursive: true });
   await fs.writeFile(
@@ -198,6 +207,8 @@ describe("agent backup manifest", () => {
     expect(pgliteFilePaths).not.toContain("eliza-pglite.lock");
     expect(pgliteFilePaths).not.toContain("pg_stat_tmp/stats.tmp");
     expect(stateFilePaths).toContain("skills/active.json");
+    expect(stateFilePaths).toContain("skills/.cache/lock.json");
+    expect(stateFilePaths).not.toContain("skills/.cache/catalog.json");
     expect(stateFilePaths).not.toContain("pglite/pgdata.bin");
     // #17920: models + cache trees are excluded from the stateFiles manifest.
     expect(stateFilePaths).not.toContain("models/openai.json");

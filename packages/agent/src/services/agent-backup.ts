@@ -564,6 +564,8 @@ function withFileSetHash(fileSet: AgentBackupFileSet): AgentBackupFileSet {
 }
 
 function baseStateFileInclude(relativePath: string): boolean {
+  // The catalog is downloadable; its neighboring lock.json records installed skills.
+  if (relativePath === "skills/.cache/catalog.json") return false;
   const first = relativePath.split("/")[0];
   if (
     first === MEDIA_DIR_NAME ||
