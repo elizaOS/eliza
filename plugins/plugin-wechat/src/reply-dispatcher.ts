@@ -1,23 +1,34 @@
 /**
- * Outbound send path for WeChat replies: splits long text into proxy-safe chunks
- * and sends each chunk (and images) through the `ProxyClient`.
+ * Outbound send path for WeChat replies: splits long text into
+ * platform-size-limited chunks (Unicode-safe) and sends each chunk through the
+ * first-party API transport.
  */
 import {
   ElizaError,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import type { ProxyClient } from "./proxy-client";
+import { WechatError } from "./types";
 
 const DEFAULT_CHUNK_SIZE = 2000;
 
+/** Minimal outbound transport the dispatcher needs (implemented by the API client). */
+export interface WechatOutboundTransport {
+  sendText: (to: string, text: string) => Promise<void>;
+  sendImage?: (
+    to: string,
+    imagePath: string,
+    caption?: string,
+  ) => Promise<void>;
+}
+
 export interface ReplyDispatcherOptions {
-  client: ProxyClient;
+  client: WechatOutboundTransport;
   chunkSize?: number;
 }
 
 export class ReplyDispatcher {
-  private readonly client: ProxyClient;
+  private readonly client: WechatOutboundTransport;
   private readonly chunkSize: number;
 
   constructor(options: ReplyDispatcherOptions) {
@@ -41,8 +52,14 @@ export class ReplyDispatcher {
       try {
         await this.client.sendText(to, chunk);
       } catch (err) {
-        console.error(`[wechat] Failed to send text to ${to}:`, err);
-        throw err;
+        // error-policy:J2 the send failure is wrapped in the typed send
+        // error with destination context and the original cause preserved.
+        throw new WechatError(
+          "WECHAT_SEND_FAILED",
+          "chunked text delivery to the first-party endpoint failed",
+          { to, chunkLength: chunk.length },
+          { cause: err },
+        );
       }
     }
   }
@@ -52,11 +69,23 @@ export class ReplyDispatcher {
     imagePath: string,
     caption?: string,
   ): Promise<void> {
+    if (!this.client.sendImage) {
+      throw new ElizaError(
+        "WeChat image sending is not available on this transport",
+        { code: "WECHAT_SEND_FAILED", context: { to } },
+      );
+    }
     try {
       await this.client.sendImage(to, imagePath, caption);
     } catch (err) {
-      console.error(`[wechat] Failed to send image to ${to}:`, err);
-      throw err;
+      // error-policy:J2 the send failure is wrapped in the typed send
+      // error with destination context and the original cause preserved.
+      throw new WechatError(
+        "WECHAT_SEND_FAILED",
+        "image delivery to the first-party endpoint failed",
+        { to, imagePath },
+        { cause: err },
+      );
     }
   }
 
