@@ -217,22 +217,33 @@ export class WalletProvider {
     forceRefresh = false
   ): Promise<Record<SupportedChain, ChainBalanceState>> {
     const cacheKey = path.join(this.cacheKey, "walletBalances");
+    const chainNames = this.getSupportedChains();
     const cachedData = forceRefresh
       ? undefined
       : await this._runtime.getCache<Record<SupportedChain, string>>(cacheKey);
 
     if (cachedData) {
-      logger.log(`Returning cached wallet balances`);
-      const states = {} as Record<SupportedChain, ChainBalanceState>;
-      for (const [chainName, balance] of Object.entries(cachedData)) {
-        states[chainName as SupportedChain] = { status: "ok", balance };
+      // A cached map is only trusted when it covers every configured chain.
+      // Maps written before this check existed could be missing a chain whose
+      // RPC failed at write time (#31111); the cache has no TTL, so such an
+      // entry would otherwise be served as complete indefinitely.
+      const missing = chainNames.filter((chainName) => cachedData[chainName] === undefined);
+      if (missing.length === 0) {
+        logger.log(`Returning cached wallet balances`);
+        const states = {} as Record<SupportedChain, ChainBalanceState>;
+        for (const chainName of chainNames) {
+          states[chainName] = { status: "ok", balance: cachedData[chainName] };
+        }
+        return states;
       }
-      return states;
+      logger.warn(
+        `Cached wallet balances discarded: missing ${missing.join(", ")}; refreshing from RPC`
+      );
+      await this._runtime.deleteCache(cacheKey);
     }
 
     const states = {} as Record<SupportedChain, ChainBalanceState>;
     const balances = {} as Record<SupportedChain, string>;
-    const chainNames = this.getSupportedChains();
 
     const results = await Promise.allSettled(
       chainNames.map(async (chainName) => {
@@ -259,6 +270,10 @@ export class WalletProvider {
       await this._runtime.setCache(cacheKey, balances);
       logger.log("Wallet balances cached");
     } else {
+      // Never leave an older complete snapshot behind either: a reader that
+      // skips the RPC would otherwise serve balances from before the outage as
+      // current.
+      await this._runtime.deleteCache(cacheKey);
       logger.warn(
         `Wallet balances not cached: ${unavailable} of ${chainNames.length} chains unavailable`
       );
