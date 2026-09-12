@@ -251,6 +251,17 @@ function finishEvaluatorResponse(messageToUser = "Done."): CannedResponse {
 	};
 }
 
+function continueEvaluatorResponse(): CannedResponse {
+	return {
+		body: JSON.stringify({
+			success: false,
+			decision: "CONTINUE",
+			thought:
+				"The requested operation has not executed; continue planning it.",
+		}),
+	};
+}
+
 function plannerUserContent(runtime: IAgentRuntime): string {
 	const plannerCall = getCalls(runtime).find(
 		(call) => call.modelType === ModelType.ACTION_PLANNER,
@@ -372,10 +383,6 @@ describe("v5 tiered action surface", () => {
 			name: "claimed effect",
 			fields: { replyEffectStatus: "applied" as const },
 		},
-		{
-			name: "unapplied effect",
-			fields: { replyEffectStatus: "non_applied" as const },
-		},
 		{ name: "progress-only acknowledgment", fields: { replyText: "On it." } },
 		{
 			name: "legacy incomplete envelope",
@@ -388,7 +395,17 @@ describe("v5 tiered action surface", () => {
 		},
 		{ name: "malformed effect status", fields: { replyEffectStatus: {} } },
 	])("preserves Calendar planning for $name", async ({ fields }) => {
-		const handler = vi.fn(async () => ({ success: true }));
+		const evaluatesDraft = "intents" in fields;
+		const handler = vi.fn(async () => {
+			if (evaluatesDraft) {
+				expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+					ModelType.RESPONSE_HANDLER,
+					ModelType.RESPONSE_HANDLER,
+					ModelType.ACTION_PLANNER,
+				]);
+			}
+			return { success: true };
+		});
 		const runtime = makeRuntime({
 			actions: [makeAction({ name: "CALENDAR", handler })],
 			responses: [
@@ -398,6 +415,7 @@ describe("v5 tiered action surface", () => {
 					replyText: "The requested time is Friday at 1 PM.",
 					...fields,
 				}),
+				...(evaluatesDraft ? [continueEvaluatorResponse()] : []),
 				plannerToolResponse("CALENDAR"),
 				finishEvaluatorResponse("The Calendar tool returned."),
 			],
@@ -413,6 +431,7 @@ describe("v5 tiered action surface", () => {
 		expect(handler).toHaveBeenCalledTimes(1);
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
 			ModelType.RESPONSE_HANDLER,
+			...(evaluatesDraft ? [ModelType.RESPONSE_HANDLER] : []),
 			ModelType.ACTION_PLANNER,
 			ModelType.RESPONSE_HANDLER,
 		]);
@@ -422,7 +441,17 @@ describe("v5 tiered action surface", () => {
 		{ name: "mutation intent", fields: { intents: ["move lunch"] } },
 		{ name: "tool requirement", fields: { requiresTool: true } },
 	])("preserves nested legacy $name", async ({ fields }) => {
-		const handler = vi.fn(async () => ({ success: true }));
+		const evaluatesDraft = "intents" in fields;
+		const handler = vi.fn(async () => {
+			if (evaluatesDraft) {
+				expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+					ModelType.RESPONSE_HANDLER,
+					ModelType.RESPONSE_HANDLER,
+					ModelType.ACTION_PLANNER,
+				]);
+			}
+			return { success: true };
+		});
 		const runtime = makeRuntime({
 			actions: [makeAction({ name: "CALENDAR", handler })],
 			responses: [
@@ -439,6 +468,7 @@ describe("v5 tiered action surface", () => {
 						},
 					}),
 				},
+				...(evaluatesDraft ? [continueEvaluatorResponse()] : []),
 				plannerToolResponse("CALENDAR"),
 				finishEvaluatorResponse("The Calendar tool returned."),
 			],
@@ -454,10 +484,49 @@ describe("v5 tiered action surface", () => {
 		expect(handler).toHaveBeenCalledTimes(1);
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
 			ModelType.RESPONSE_HANDLER,
+			...(evaluatesDraft ? [ModelType.RESPONSE_HANDLER] : []),
 			ModelType.ACTION_PLANNER,
 			ModelType.RESPONSE_HANDLER,
 		]);
 	});
+
+	it.each([
+		{ candidateActionNames: [] },
+		{ candidateActionNames: ["CALENDAR"] },
+	])(
+		"preserves a terminal non_applied preview with candidate hints %j",
+		async ({ candidateActionNames }) => {
+			const answer =
+				"Proposed time: Friday at 1 PM. I have not moved the event.";
+			const handler = vi.fn(async () => ({ success: true }));
+			const runtime = makeRuntime({
+				actions: [makeAction({ name: "CALENDAR", handler })],
+				responses: [
+					stage1Response({
+						contexts: ["simple"],
+						candidateActionNames,
+						replyEffectStatus: "non_applied",
+						replyText: answer,
+					}),
+				],
+			});
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(
+					"Show the proposed Friday 1 PM time without moving lunch.",
+				),
+				state: makeState(),
+				responseId: RESPONSE_ID,
+			});
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply")
+				expect(result.result.responseContent?.text).toBe(answer);
+			expect(handler).not.toHaveBeenCalled();
+			expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+			]);
+		},
+	);
 
 	it.each([
 		{ replyEffectStatus: undefined, shouldPlan: true },
@@ -684,7 +753,7 @@ describe("v5 tiered action surface", () => {
 		expect(prompt).not.toContain("SEND_EMAIL");
 	});
 
-	it("executes the model-selected app action while retaining authorized focused-view tools", async () => {
+	it("executes the model-selected app action while keeping focused-view tools discoverable", async () => {
 		const notesHandler = vi.fn(async () => ({
 			success: true,
 			text: "Unrelated Notes content.",
@@ -746,9 +815,11 @@ describe("v5 tiered action surface", () => {
 		});
 
 		const tools = plannerToolNames(runtime);
-		expect(tools).toContain("NOTES");
+		expect(tools).not.toContain("NOTES");
 		expect(tools).not.toContain("VIEWS");
 		expect(tools).toContain("MESSAGE");
+		expect(tools).toContain("DISCOVER_TOOLS");
+		expect(availableActionsSection(runtime)).toContain('"NOTES":[]');
 		expect(emailHandler).toHaveBeenCalledTimes(1);
 		expect(notesHandler).not.toHaveBeenCalled();
 		const calls = getCalls(runtime);
@@ -902,8 +973,8 @@ describe("v5 tiered action surface", () => {
 		expect(tools).toContain("REPLY");
 		expect(tools).not.toContain("CALENDAR");
 		expect(tools).not.toContain("NOTES");
-		expect(availableActionsSection(runtime)).toContain('"name":"CALENDAR"');
-		expect(availableActionsSection(runtime)).toContain('"name":"NOTES"');
+		expect(availableActionsSection(runtime)).toContain('"CALENDAR":[]');
+		expect(availableActionsSection(runtime)).toContain('"NOTES":[]');
 		expect(handler).not.toHaveBeenCalled();
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply")
@@ -959,8 +1030,8 @@ describe("v5 tiered action surface", () => {
 		expect(tools).not.toContain("VIEWS");
 		expect(tools).not.toContain("MESSAGE");
 		expect(tools).toContain("DISCOVER_TOOLS");
-		expect(availableActionsSection(runtime)).toContain('"name":"VIEWS"');
-		expect(availableActionsSection(runtime)).toContain('"name":"MESSAGE"');
+		expect(availableActionsSection(runtime)).toContain('"VIEWS":[]');
+		expect(availableActionsSection(runtime)).toContain('"MESSAGE":[]');
 	});
 
 	it.each(["VIEWS", "MISSING_CAPABILITY", "NOTES_GET"])(
@@ -1407,87 +1478,120 @@ describe("v5 tiered action surface", () => {
 		expect(toolNames).not.toContain("SEND_EMAIL");
 	});
 
-	it("keeps every registered child of a hot parent callable (#24699)", async () => {
-		// One hot tier-A parent must not expose its whole namespace (observed
-		// live: all 24 MESSAGE_* children on a two-intent turn). The per-parent
-		// child narrow keeps the Stage-1 candidate plus the best query-token
-		// matches under the default cap of 8; everything else stays reachable
-		// only through the MESSAGE umbrella, whose handler routes any subaction.
-		const reviewQueue = makeAction({
-			name: "MESSAGE_REVIEW_QUEUE",
-			description: "Review channel messages awaiting a response.",
-		});
-		const sendReply = makeAction({
-			name: "MESSAGE_SEND_REPLY",
-			description: "Reply to messages needing a response.",
-		});
-		const bulkOps = Array.from({ length: 10 }, (_, i) =>
-			makeAction({
-				name: `MESSAGE_OP_${i}`,
-				description: `Unrelated bulk operation number ${i}.`,
-			}),
-		);
-		const message = makeAction({
-			name: "MESSAGE",
-			description: "Message management parent action.",
-			subActions: [
-				"MESSAGE_REVIEW_QUEUE",
-				"MESSAGE_SEND_REPLY",
-				...bulkOps.map((action) => action.name),
-			],
-		});
-		const runtime = makeRuntime({
-			actions: [message, reviewQueue, sendReply, ...bulkOps],
-			responses: [
-				stage1Response({
-					contexts: ["general"],
-					intents: ["review channel messages", "reply to messages"],
-					candidateActionNames: ["MESSAGE_REVIEW_QUEUE"],
+	it.each(["MESSAGE", "MESSAGE_REVIEW_QUEUE"])(
+		"keeps every registered child reachable from %s (#24699)",
+		async (candidate) => {
+			// An explicitly selected parent exposes every authorized child. Exact
+			// child selection instead leaves siblings in the discovery catalog.
+			const reviewQueue = makeAction({
+				name: "MESSAGE_REVIEW_QUEUE",
+				description: "Review channel messages awaiting a response.",
+			});
+			const sendReply = makeAction({
+				name: "MESSAGE_SEND_REPLY",
+				description: "Reply to messages needing a response.",
+			});
+			const bulkHandler = vi.fn(async () => ({
+				success: true,
+				transcriptVisibility: "internal" as const,
+				data: { messages: [{ sender: "Dana", subject: "Renewal date" }] },
+			}));
+			const bulkOps = Array.from({ length: 10 }, (_, i) =>
+				makeAction({
+					name: `MESSAGE_OP_${i}`,
+					description: `Read message archive ${i}.`,
+					...(i === 9 ? { handler: bulkHandler } : {}),
 				}),
-				plannerToolResponse("MESSAGE_REVIEW_QUEUE"),
-				finishEvaluatorResponse("Reviewed the queue."),
-			],
-		});
+			);
+			const message = makeAction({
+				name: "MESSAGE",
+				description: "Message management parent action.",
+				subActions: [
+					"MESSAGE_REVIEW_QUEUE",
+					"MESSAGE_SEND_REPLY",
+					...bulkOps.map((action) => action.name),
+				],
+			});
+			const runtime = makeRuntime({
+				actions: [message, reviewQueue, sendReply, ...bulkOps],
+				responses: [
+					stage1Response({
+						contexts: ["general"],
+						intents: ["read message archive 9"],
+						candidateActionNames: [candidate],
+					}),
+					...(candidate === "MESSAGE"
+						? []
+						: [
+								plannerToolResponse("DISCOVER_TOOLS", {
+									names: ["MESSAGE"],
+									eliza_turn_scope: "more_work_pending",
+								}),
+							]),
+					plannerToolResponse("MESSAGE_OP_9", { eliza_turn_scope: "final" }),
+					finishEvaluatorResponse("Dana asked about the renewal date."),
+				],
+			});
 
-		await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage("review the channel messages needing a response"),
-			state: makeState(),
-			responseId: RESPONSE_ID,
-		});
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage("Read message archive 9."),
+				state: makeState(),
+				responseId: RESPONSE_ID,
+			});
 
-		const plannerCall = getCalls(runtime).find(
-			(call) => call.modelType === ModelType.ACTION_PLANNER,
-		);
-		const tools = (
-			plannerCall?.params as { tools?: Array<{ name?: string }> } | undefined
-		)?.tools;
-		const toolNames = tools?.map((tool) => tool.name).filter(Boolean) ?? [];
-		// Fires when relevant: the umbrella and the turn-relevant children are
-		// first-class tools.
-		expect(toolNames).toContain("MESSAGE");
-		expect(toolNames).toContain("MESSAGE_REVIEW_QUEUE");
-		expect(toolNames).toContain("MESSAGE_SEND_REPLY");
-		// No narrowing: every registered child stays callable. Relevance may
-		// reorder the surface, but a child the planner never sees is a
-		// capability the agent silently cannot use (#24699).
-		const childTools = toolNames.filter((name) =>
-			String(name).startsWith("MESSAGE_"),
-		);
-		expect(childTools.sort()).toEqual(
-			[
-				"MESSAGE_REVIEW_QUEUE",
-				"MESSAGE_SEND_REPLY",
-				...bulkOps.map((action) => action.name),
-			].sort(),
-		);
-		// The rendered action section mirrors the tool surface, so a child that
-		// is callable must also be described — otherwise the planner can invoke
-		// something the prompt never told it about.
-		const prompt = availableActionsSection(runtime);
-		expect(prompt).toContain("MESSAGE_REVIEW_QUEUE");
-		expect(prompt).toContain("MESSAGE_OP_9");
-	});
+			const plannerCalls = getCalls(runtime).filter(
+				(call) => call.modelType === ModelType.ACTION_PLANNER,
+			);
+			expect(plannerCalls).toHaveLength(candidate === "MESSAGE" ? 1 : 2);
+			if (candidate !== "MESSAGE") {
+				const initialTools = (
+					plannerCalls[0].params as { tools: Array<{ name: string }> }
+				).tools;
+				expect(initialTools.map((tool) => tool.name)).toEqual([
+					"MESSAGE_REVIEW_QUEUE",
+					"DISCOVER_TOOLS",
+					"REPLY",
+					"IGNORE",
+					"STOP",
+				]);
+			}
+			const plannerCall = plannerCalls.at(-1);
+			const tools = (
+				plannerCall?.params as { tools?: Array<{ name?: string }> } | undefined
+			)?.tools;
+			const toolNames = tools?.map((tool) => tool.name).filter(Boolean) ?? [];
+			// After explicit parent selection or discovery, every authorized child
+			// is a first-class tool, including children beyond the old cap of eight.
+			expect(toolNames).toContain("MESSAGE");
+			expect(toolNames).toContain("MESSAGE_REVIEW_QUEUE");
+			expect(toolNames).toContain("MESSAGE_SEND_REPLY");
+			const childTools = toolNames.filter((name) =>
+				String(name).startsWith("MESSAGE_"),
+			);
+			expect(childTools.sort()).toEqual(
+				[
+					"MESSAGE_REVIEW_QUEUE",
+					"MESSAGE_SEND_REPLY",
+					...bulkOps.map((action) => action.name),
+				].sort(),
+			);
+			// The initial catalog advertises the unselected children; the loaded
+			// schema supplies their complete descriptions after parent discovery.
+			const prompt = availableActionsSection(runtime);
+			expect(prompt).toContain("MESSAGE_REVIEW_QUEUE");
+			expect(prompt).toContain("MESSAGE_OP_9");
+			for (const action of bulkOps) {
+				expect(JSON.stringify(tools)).toContain(action.description);
+			}
+			expect(bulkHandler).toHaveBeenCalledOnce();
+			expect(result.kind).toBe("planned_reply");
+			if (result.kind === "planned_reply")
+				expect(result.result.responseContent?.text).toBe(
+					"Dana asked about the renewal date.",
+				);
+		},
+	);
 
 	it("keeps a denied inline child's metadata out of model context (#24699)", async () => {
 		// The parent keeps inline metadata for every registered child, but this
