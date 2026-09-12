@@ -6,10 +6,13 @@
  */
 
 import crypto from "node:crypto";
+import { once } from "node:events";
 import fs from "node:fs";
+import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { resolveKnowledgeGraphService } from "@elizaos/agent";
+import { AuthStore } from "@elizaos/app-core/services/auth-store";
 import {
   type AgentRuntime,
   attestAuthenticatedApiDeliveryAudience,
@@ -25,12 +28,15 @@ import {
 } from "@elizaos/core";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { tryHandleRuntimePluginRoute } from "../../../../../packages/agent/src/api/runtime-plugin-routes.ts";
 import { LocalFileStorageService } from "../../../../../packages/agent/src/services/file-storage.js";
+import { createMachineSession } from "../../../../../packages/app-core/src/api/auth/sessions.ts";
 import { composeResponseState } from "../../../../../packages/core/src/services/message/provider-state.js";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.js";
+import { bindMachineAuthIdentityToEntity } from "../../routes/authenticated-entity-principal.js";
 import { executeRawSql, sqlQuote } from "../sql.js";
 import {
   AgreementKnowledgeError,
@@ -995,6 +1001,116 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         principalEntityId: "verified-co-parent",
       }),
     ).rejects.toMatchObject({ code: "AGREEMENT_ACCESS_DENIED" });
+  });
+
+  it("serves only the bound guest projection over HTTP and denies revoked access", async () => {
+    const db = (
+      runtime as AgentRuntime & {
+        adapter: { db: ConstructorParameters<typeof AuthStore>[0] };
+      }
+    ).adapter.db;
+    const auth = new AuthStore(db);
+    const identityId = crypto.randomUUID();
+    await auth.createIdentity({
+      id: identityId,
+      kind: "machine",
+      displayName: "synthetic guest",
+      createdAt: Date.now(),
+      passwordHash: null,
+      cloudUserId: null,
+    });
+    const { session } = await createMachineSession(auth, {
+      identityId,
+      scopes: [],
+    });
+    const service = createAgreementKnowledgeService(runtime);
+    const server = createServer(async (req, res) => {
+      const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      const handled = await tryHandleRuntimePluginRoute({
+        req,
+        res,
+        url,
+        pathname: url.pathname,
+        method: req.method ?? "GET",
+        runtime,
+        isAuthorized: () => true,
+      });
+      if (!handled && !res.headersSent) {
+        res.statusCode = 404;
+        res.end("not found");
+      }
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("Missing test server address");
+    const base = `http://127.0.0.1:${address.port}/api/lifeops/agreements/${artifact.id}`;
+    // Model the public reverse proxy so loopback operator trust cannot mask guest auth.
+    const headers = {
+      Host: "guest-agreement.example.test",
+      "x-forwarded-for": "203.0.113.20",
+      Authorization: `Bearer ${session.id}`,
+      "x-eliza-entity-id": "self",
+    };
+    try {
+      const unbound = await fetch(`${base}/shared?principalEntityId=self`, {
+        headers,
+      });
+      expect(unbound.status, await unbound.text()).toBe(403);
+      await bindMachineAuthIdentityToEntity({
+        runtime,
+        entityId: "verified-co-parent",
+        authIdentityId: identityId,
+      });
+      expect((await fetch(`${base}/shared`, { headers })).status).toBe(403);
+      const grant = await service.grantGuestRead({
+        artifactId: artifact.id,
+        principalEntityId: "verified-co-parent",
+        householdGrantId: guestHouseholdGrantId,
+        issuedByEntityId: SELF_ENTITY_ID,
+      });
+      const response = await fetch(`${base}/shared?principalEntityId=self`, {
+        headers,
+      });
+      expect(response.status, await response.clone().text()).toBe(200);
+      expect(response.headers.get("cache-control")).toContain("no-store");
+      const payload = await response.json();
+      expect(payload.agreement.obligations).toHaveLength(1);
+      expect(payload.agreement.obligations[0]).toMatchObject({
+        status: "approved",
+        pageStart: 4,
+        pageEnd: 5,
+      });
+      expect(payload.agreement.artifact).not.toHaveProperty("mediaUrl");
+      expect(payload.agreement.obligations[0]).not.toHaveProperty(
+        "decisionReason",
+      );
+      for (const [suffix, method] of [
+        ["", "GET"],
+        ["/download", "GET"],
+        ["/export", "POST"],
+        ["/guest-projection?principalEntityId=self", "GET"],
+      ]) {
+        expect(
+          (await fetch(`${base}${suffix}`, { method, headers })).status,
+        ).toBe(403);
+      }
+      await service.revokeGuestRead({
+        grantId: grant.id,
+        revokedByEntityId: SELF_ENTITY_ID,
+        reason: "Synthetic HTTP acceptance cleanup",
+      });
+      expect((await fetch(`${base}/shared`, { headers })).status).toBe(403);
+      expect(await auth.revokeSession(session.id)).toBe(true);
+      expect((await fetch(`${base}/shared`, { headers })).status).not.toBe(200);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+      await auth.revokeSession(session.id);
+    }
   });
 
   it("rejects non-owner mutations and malformed PDF input", async () => {
