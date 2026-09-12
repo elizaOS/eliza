@@ -93,6 +93,10 @@ import {
 	ELIZA_POOLING_MEAN,
 } from "../services/voice/ffi-bindings";
 import { extractRequestedKokoroVoiceId } from "../services/voice/requested-voice.js";
+import {
+	generateWithAppleFoundation,
+	resolveAppleFoundationFastPath,
+} from "./apple-foundation-fast-path";
 import { DEFAULT_MODELS_DIR } from "./embedding-manager-support";
 import {
 	EMBEDDING_PRESETS,
@@ -464,8 +468,20 @@ function engineGenerateArgsFromParams(
 	};
 }
 
-function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
+function makeHandler(
+	slot: AgentModelSlot,
+	modelType: string,
+): GenerateTextHandler {
 	return async (runtime, params) => {
+		// iOS 26 opportunistic fast path: a registered, available Apple
+		// Foundation adapter serves plain short TEXT_SMALL / TEXT_COMPLETION
+		// calls; everything else (planner, structured, streaming, long prompts)
+		// stays on llama.cpp below.
+		const appleFoundation = resolveAppleFoundationFastPath(modelType, params);
+		if (appleFoundation) {
+			return generateWithAppleFoundation(appleFoundation, params);
+		}
+
 		const loader = getLoader(runtime);
 
 		// Lazy-load the assigned model for this slot, if any. Swaps are
@@ -1650,7 +1666,7 @@ export async function ensureLocalInferenceHandler(
 		try {
 			runtimeWithRegistration.registerModel(
 				modelType,
-				makeHandler(slot),
+				makeHandler(slot, modelType),
 				provider,
 				LOCAL_INFERENCE_PRIORITY,
 				{ local: true, streamable: true },

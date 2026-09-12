@@ -26,7 +26,12 @@
  * this hook only owns the local-inference-specific init.
  */
 import { type AgentRuntime, isMobilePlatform, logger } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/shared";
 
+import {
+	resolveIosComputerUseBridge,
+	tryRegisterAppleFoundationAdapter,
+} from "./apple-foundation-fast-path";
 import { ensureLocalInferenceHandler } from "./ensure-local-inference-handler";
 import {
 	shouldEnableMobileLocalInference,
@@ -54,6 +59,18 @@ export async function registerLocalInferenceBoot(
 	});
 
 	if (isMobilePlatform()) {
+		// iOS 26 Apple Foundation Models: register the opportunistic adapter
+		// when the Capacitor bridge probe reports it. The local text handler
+		// consults it per call; llama.cpp stays the owned backend.
+		const appleFoundation = await tryRegisterAppleFoundationAdapter({
+			platform: readAliasedEnv("ELIZA_PLATFORM")?.trim().toLowerCase(),
+			getBridge: resolveIosComputerUseBridge,
+		});
+		if (appleFoundation.outcome === "skipped") {
+			logger.debug(
+				`[local-inference] Apple Foundation fast path not registered: ${appleFoundation.reason}`,
+			);
+		}
 		// Mobile bundle wires the local model handler only when a mobile-safe
 		// backend (device-bridge / AOSP FFI / bionic host / riscv64) is enabled;
 		// otherwise the runtime serves from a remote/cloud provider.
