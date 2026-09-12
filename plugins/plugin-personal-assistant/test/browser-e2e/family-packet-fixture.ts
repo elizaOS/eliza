@@ -46,6 +46,7 @@ export function createFamilyPacketFixture(
       byte.toString(16).padStart(2, "0"),
     ).join("");
   }
+  const pins: Awaited<ReturnType<FamilyOperationsAdapter["listPins"]>> = [];
   return {
     async decidePacketApproval(input) {
       const draft = packet.draft;
@@ -168,11 +169,51 @@ export function createFamilyPacketFixture(
     uploadAgreement: unsupported,
     downloadAgreement: unsupported,
     decideObligation: unsupported,
-    async listPins() {
-      return [];
+    async listPinTargets() {
+      return {
+        agent: { id: "fixture-agent", name: "Family assistant" },
+        chats: [
+          {
+            id: "fixture-acceptance-chat",
+            name: "Family planning",
+            source: "test",
+          },
+        ],
+      };
     },
-    pin: unsupported,
-    unpin: unsupported,
+    async listPins(artifactId) {
+      return pins
+        .filter(
+          (pin) => pin.artifactId === artifactId && pin.unpinnedAt === null,
+        )
+        .map((pin) => ({ ...pin }));
+    },
+    async pin(input) {
+      if (
+        input.targetId !==
+        (input.targetType === "agent"
+          ? "fixture-agent"
+          : "fixture-acceptance-chat")
+      )
+        throw new Error("Unknown fixture pin destination");
+      const pin = {
+        ...input,
+        id: `fixture-pin-${pins.length}`,
+        agentId: "fixture-agent",
+        pinnedByEntityId: "self",
+        pinnedAt: "2026-09-20T12:00:00Z",
+        unpinnedAt: null,
+      };
+      pins.push(pin);
+      document.documentElement.dataset.familyPinTarget = input.targetId;
+      return { ...pin };
+    },
+    async unpin(pinId) {
+      const pin = pins.find((item) => item.id === pinId);
+      if (!pin) throw new Error("Unknown fixture pin");
+      pin.unpinnedAt = "2026-09-20T12:01:00Z";
+      return { ...pin };
+    },
     previewGrant: unsupported,
     issueGrant: unsupported,
     revokeGrant: unsupported,

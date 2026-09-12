@@ -104,6 +104,10 @@ function adapter(data = snapshot()): FamilyOperationsAdapter {
       status: decision === "approve" ? "approved" : "rejected",
       decisionReason: reason,
     })),
+    listPinTargets: async () => ({
+      agent: { id: "fixture-agent", name: "Family assistant" },
+      chats: [{ id: "fixture-chat", name: "Family planning", source: "test" }],
+    }),
     listPins: vi.fn(async () => []),
     pin: vi.fn(),
     unpin: vi.fn(),
@@ -187,6 +191,78 @@ function openPacketMonth(month: string) {
 }
 
 describe("FamilyOperationsView", () => {
+  it("disables pinning when destinations fail and recovers on refresh", async () => {
+    const local = adapter();
+    const available = await local.listPinTargets();
+    local.listPinTargets = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Conversations are unavailable"))
+      .mockResolvedValue(available);
+    render(<FamilyOperationsView adapter={local} />);
+    await screen.findByText("Conversations are unavailable");
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Pin",
+          exact: true,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Refresh destinations" }),
+    );
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "Pin",
+            exact: true,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+    expect(screen.queryByText("Conversations are unavailable")).toBeNull();
+  });
+
+  it.each([true, false])(
+    "confirms a pin only when it can be read back (saved=%s)",
+    async (saved) => {
+      const local = adapter();
+      const pins: Awaited<ReturnType<FamilyOperationsAdapter["listPins"]>> = [];
+      local.listPins = async () => pins;
+      local.pin = async (input) => {
+        const result = {
+          ...input,
+          id: "confirmed-pin",
+          agentId: "fixture-agent",
+          pinnedByEntityId: "self",
+          pinnedAt: "2026-09-12T12:00:00Z",
+          unpinnedAt: null,
+        };
+        if (saved) pins.push(result);
+        return result;
+      };
+      render(<FamilyOperationsView adapter={local} />);
+      const button = await screen.findByRole("button", {
+        name: "Pin",
+        exact: true,
+      });
+      await waitFor(() =>
+        expect((button as HTMLButtonElement).disabled).toBe(false),
+      );
+      fireEvent.click(button);
+      if (saved) {
+        await screen.findByText("Pin saved.");
+        expect(screen.getByText("This agent: Family assistant")).toBeTruthy();
+      } else {
+        await screen.findByText(
+          "The pin could not be confirmed. Refresh destinations before retrying.",
+        );
+        expect(screen.queryByText("Pin saved.")).toBeNull();
+      }
+    },
+  );
+
   it("keeps month intake and packet generation aligned and protects unsaved correspondence", async () => {
     const months: string[] = [];
     const intake: FamilyIntakeAdapter = {

@@ -1113,9 +1113,36 @@ try {
     const familyErrors = [];
     family.on("pageerror", (error) => familyErrors.push(String(error)));
     await family.goto(`${baseURL}?scenario=family-packet`);
-    const pinTarget = family.getByRole("textbox", { name: "Pin target ID" });
-    await pinTarget.fill("fixture-acceptance-chat");
+    await family.getByRole("button", { name: "Pin", exact: true }).click();
+    await family.getByText("Pin saved.", { exact: true }).waitFor();
+    assert(
+      (await family.locator("html").getAttribute("data-family-pin-target")) ===
+        "fixture-agent",
+      `${width}px agent pin uses the current agent without entering an ID`,
+    );
+    await family
+      .getByRole("listitem")
+      .filter({ hasText: "This agent: Family assistant" })
+      .getByRole("button", { name: "Remove", exact: true })
+      .click();
+    await family.getByText("Pin removed.", { exact: true }).waitFor();
+    await family.getByRole("combobox", { name: "Pin target type" }).click();
+    await family.getByRole("option", { name: "Chat", exact: true }).click();
+    const pinTarget = family.getByRole("combobox", {
+      name: "Pin conversation",
+    });
+    await pinTarget.click();
+    await family
+      .getByRole("option", { name: "Family planning · test", exact: true })
+      .click();
     await pinTarget.scrollIntoViewIfNeeded();
+    await family.getByRole("button", { name: "Pin", exact: true }).click();
+    await family.getByText("Pin saved.", { exact: true }).waitFor();
+    assert(
+      (await family.locator("html").getAttribute("data-family-pin-target")) ===
+        "fixture-acceptance-chat",
+      `${width}px named chat selection submits the resolved conversation identity`,
+    );
     const clipped = await family.evaluate(() =>
       [...document.querySelectorAll("main section, main button, main input")]
         .filter((element) => {

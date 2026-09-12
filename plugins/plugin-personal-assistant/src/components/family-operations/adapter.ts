@@ -438,6 +438,11 @@ export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter = {
     );
     return response.obligation;
   },
+  async listPinTargets() {
+    return request<
+      Awaited<ReturnType<FamilyOperationsAdapter["listPinTargets"]>>
+    >("/api/lifeops/agreements/pin-targets");
+  },
   async listPins(artifactId) {
     const response = await request<{
       pins: Awaited<ReturnType<FamilyOperationsAdapter["listPins"]>>;

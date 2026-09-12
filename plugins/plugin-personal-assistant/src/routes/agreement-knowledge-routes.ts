@@ -115,6 +115,13 @@ export async function handleAgreementKnowledgeRoutes(
   }
 
   try {
+    if (
+      ctx.method === "GET" &&
+      ctx.pathname === "/api/lifeops/agreements/pin-targets"
+    ) {
+      ctx.json(ctx.res, await service.listPinTargets(SELF_ENTITY_ID));
+      return true;
+    }
     if (ctx.method === "GET" && ctx.pathname === "/api/lifeops/agreements") {
       const agreements = await service.listOwnerAgreements({
         ownerEntityId: SELF_ENTITY_ID,

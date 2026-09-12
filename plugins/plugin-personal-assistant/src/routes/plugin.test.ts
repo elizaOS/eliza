@@ -339,6 +339,7 @@ describe("LifeOps raw route owner/admin gate", () => {
     ["GET", "/api/lifeops/account-handoffs/:operationId"],
     ["POST", "/api/lifeops/account-handoffs/:operationId/cancel"],
     ["POST", "/api/lifeops/agreements/:id/export"],
+    ["GET", "/api/lifeops/agreements/pin-targets"],
     ["GET", "/api/lifeops/family-workflows/email-options"],
     [
       "POST",

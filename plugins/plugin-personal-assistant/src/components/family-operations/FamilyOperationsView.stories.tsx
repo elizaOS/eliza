@@ -21,6 +21,10 @@ const adapter = {
     emailOptions: { status: "ready", data: { accounts: [], recipients: [] } },
   }),
   decideObligation: async (obligation: never) => obligation,
+  listPinTargets: async () => ({
+    agent: { id: "fixture-agent", name: "Family assistant" },
+    chats: [{ id: "fixture-chat", name: "Family planning", source: "test" }],
+  }),
   listPins: async () => [],
   pin: async () => null,
   unpin: async () => null,

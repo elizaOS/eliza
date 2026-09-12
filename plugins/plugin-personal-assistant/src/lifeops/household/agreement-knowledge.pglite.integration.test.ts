@@ -122,6 +122,19 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   let artifact: ParentingAgreementArtifact;
   let guestHouseholdGrantId: string;
   let mediaStateDir: string;
+  const familyRoomId = crypto.randomUUID() as UUID;
+
+  async function createPinRoom(id: UUID): Promise<void> {
+    await runtime.createRoom({
+      id,
+      agentId: runtime.agentId,
+      name: "Family planning",
+      source: "test",
+      type: ChannelType.GROUP,
+      worldId: runtime.agentId,
+    });
+    await runtime.addParticipant(runtime.agentId, id);
+  }
 
   beforeAll(async () => {
     mediaStateDir = fs.mkdtempSync(
@@ -132,6 +145,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       plugins: [fileStoragePlugin, documentsPluginCore],
     });
     runtime = runtimeResult.runtime;
+    await createPinRoom(familyRoomId);
     runtime.services.set(ServiceType.PDF, [
       new AgreementTestPdfService(runtime),
     ]);
@@ -384,7 +398,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     await service.pin({
       artifactId: artifact.id,
       targetType: "chat",
-      targetId: "family-chat",
+      targetId: familyRoomId,
       pinnedByEntityId: SELF_ENTITY_ID,
     });
     await expect(
@@ -401,7 +415,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
 
     const pinned = await service.activePinnedContext({
       ownerEntityId: SELF_ENTITY_ID,
-      roomId: "family-chat",
+      roomId: familyRoomId,
     });
     expect(pinned).toHaveLength(1);
     expect(pinned[0]?.obligations).toHaveLength(1);
@@ -521,7 +535,8 @@ describe("parenting-agreement knowledge — real PGlite", () => {
 
   it("persists pin provenance atomically and rolls back when the audit ledger rejects it", async () => {
     const service = createAgreementKnowledgeService(runtime);
-    const targetId = crypto.randomUUID();
+    const targetId = crypto.randomUUID() as UUID;
+    await createPinRoom(targetId);
     const pin = await service.pin({
       artifactId: artifact.id,
       targetType: "chat",
@@ -566,7 +581,8 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       WHEN (NEW.event_type = 'agreement_pinned')
       EXECUTE FUNCTION app_lifeops.reject_agreement_audit_test()`,
     );
-    const rejectedTarget = crypto.randomUUID();
+    const rejectedTarget = crypto.randomUUID() as UUID;
+    await createPinRoom(rejectedTarget);
     try {
       await expect(
         service.pin({
@@ -744,7 +760,8 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       runtime,
       runtime.agentId,
     );
-    const targetId = crypto.randomUUID();
+    const targetId = crypto.randomUUID() as UUID;
+    await createPinRoom(targetId);
     const mutate = async () => {
       for (let iteration = 0; iteration < 8; iteration += 1) {
         const pin = await service.pin({
@@ -794,13 +811,13 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     await service.pin({
       artifactId: artifact.id,
       targetType: "chat",
-      targetId: "family-chat",
+      targetId: familyRoomId,
       pinnedByEntityId: SELF_ENTITY_ID,
     });
     await expect(
       service.activePinnedContextForPrincipal({
         principalEntityId: "verified-co-parent",
-        roomId: "family-chat",
+        roomId: familyRoomId,
       }),
     ).resolves.toEqual([]);
     const unverifiedGrant = await household.issueGrant({
@@ -888,7 +905,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     }
     const guestPinned = await service.activePinnedContextForPrincipal({
       principalEntityId: "verified-co-parent",
-      roomId: "family-chat",
+      roomId: familyRoomId,
     });
     expect(guestPinned).toEqual([guestView]);
 
@@ -914,7 +931,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     await expect(
       restartedService.activePinnedContextForPrincipal({
         principalEntityId: "verified-co-parent",
-        roomId: "family-chat",
+        roomId: familyRoomId,
       }),
     ).resolves.toEqual([]);
     const exported = await restartedService.exportOwnerAgreement({
@@ -1064,4 +1081,66 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       runtime.services.set(ServiceType.PDF, previous);
     }
   });
+  it("rejects a previously listed conversation after the agent leaves it", async () => {
+    const service = createAgreementKnowledgeService(runtime);
+    const roomId = crypto.randomUUID() as UUID;
+    await createPinRoom(roomId);
+    expect(
+      (await service.listPinTargets(SELF_ENTITY_ID)).chats.some(
+        (chat) => chat.id === roomId,
+      ),
+    ).toBe(true);
+    const source = await service.createAgreementVersion({
+      agreementKey: "stale-pin-destination",
+      title: "Stale pin destination",
+      originalFilename: "stale-pin.pdf",
+      mimeType: "application/pdf",
+      bytes: pdf("stale pin destination"),
+      uploadedByEntityId: SELF_ENTITY_ID,
+    });
+    await runtime.removeParticipant(runtime.agentId, roomId);
+    await expect(
+      service.pin({
+        artifactId: source.id,
+        targetType: "chat",
+        targetId: roomId,
+        pinnedByEntityId: SELF_ENTITY_ID,
+      }),
+    ).rejects.toMatchObject({ code: "AGREEMENT_INVALID_CONTRACT" });
+    await expect(
+      service.listPins({
+        artifactId: source.id,
+        ownerEntityId: SELF_ENTITY_ID,
+      }),
+    ).resolves.toEqual([]);
+  });
+
+  it.each(["agent", "chat"] as const)(
+    "rejects a nonexistent %s pin target without saving a phantom pin",
+    async (targetType) => {
+      const service = createAgreementKnowledgeService(runtime);
+      const source = await service.createAgreementVersion({
+        agreementKey: `pin-target-${targetType}`,
+        title: "Pin target validation",
+        originalFilename: "pin-target.pdf",
+        mimeType: "application/pdf",
+        bytes: pdf(`pin target validation ${targetType}`),
+        uploadedByEntityId: SELF_ENTITY_ID,
+      });
+      await expect(
+        service.pin({
+          artifactId: source.id,
+          targetType,
+          targetId: crypto.randomUUID(),
+          pinnedByEntityId: SELF_ENTITY_ID,
+        }),
+      ).rejects.toMatchObject({ code: "AGREEMENT_INVALID_CONTRACT" });
+      await expect(
+        service.listPins({
+          artifactId: source.id,
+          ownerEntityId: SELF_ENTITY_ID,
+        }),
+      ).resolves.toEqual([]);
+    },
+  );
 });

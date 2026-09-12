@@ -11,6 +11,7 @@ import type {
 } from "../../lifeops/family-workflows/runtime.js";
 import type {
   AgreementGuestGrantPreview,
+  AgreementPinTargets,
   HouseholdKnowledgeGrant,
   HouseholdKnowledgePin,
   ParentingAgreementObligation,
@@ -128,6 +129,7 @@ export interface FamilyOperationsAdapter {
     decision: "approve" | "reject",
     reason: string,
   ): Promise<ParentingAgreementObligation>;
+  listPinTargets(): Promise<AgreementPinTargets>;
   listPins(artifactId: string): Promise<HouseholdKnowledgePin[]>;
   pin(input: {
     artifactId: string;

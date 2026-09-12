@@ -33,6 +33,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import type { FamilyPacketSection } from "../../lifeops/family-coordination/index.js";
@@ -48,6 +49,7 @@ import { RecipientSetup } from "./RecipientSetup.js";
 import type {
   FamilyOperationsAdapter,
   FamilyOperationsSnapshot,
+  Loadable,
 } from "./types.js";
 
 const packetSectionLabels: Record<FamilyPacketSection, string> = {
@@ -275,6 +277,10 @@ function AgreementPanel({
   const [reason, setReason] = useState("");
   const [targetType, setTargetType] = useState<"agent" | "chat">("agent");
   const [targetId, setTargetId] = useState("");
+  const pinLoadRequest = useRef(0);
+  const [targets, setTargets] = useState<Loadable<
+    Awaited<ReturnType<FamilyOperationsAdapter["listPinTargets"]>>
+  > | null>(null);
   const [principalEntityId, setPrincipalEntityId] = useState("");
   const [householdGrantId, setHouseholdGrantId] = useState("");
   const [revokeGrantId, setRevokeGrantId] = useState("");
@@ -292,18 +298,57 @@ function AgreementPanel({
     agreements.find((item) => item.artifact.id === selectedId) ?? agreements[0];
   const selectedArtifactId = selected?.artifact.id;
 
-  useEffect(() => {
+  const loadPinTargets = useCallback(async () => {
     if (!selectedArtifactId) return;
+    const requestId = ++pinLoadRequest.current;
     setSelectedId(selectedArtifactId);
-    adapter
-      .listPins(selectedArtifactId)
-      .then(setPins)
-      .catch((cause) =>
-        setError(
-          cause instanceof Error ? cause.message : "Pins could not load",
-        ),
-      );
+    setTargets(null);
+    setPins([]);
+    try {
+      const [loadedPins, loadedTargets] = await Promise.all([
+        adapter.listPins(selectedArtifactId),
+        adapter.listPinTargets(),
+      ]);
+      if (requestId !== pinLoadRequest.current) return;
+      setPins(loadedPins);
+      setTargets({ status: "ready", data: loadedTargets });
+    } catch (cause) {
+      // error-policy:J1 display loading failures without accepting a stale destination.
+      if (requestId === pinLoadRequest.current)
+        setTargets({
+          status: "unavailable",
+          message:
+            cause instanceof Error
+              ? cause.message
+              : "Pin destinations could not load",
+        });
+    }
   }, [adapter, selectedArtifactId]);
+
+  useEffect(() => {
+    void loadPinTargets();
+    return () => {
+      pinLoadRequest.current += 1;
+    };
+  }, [loadPinTargets]);
+
+  const pinTarget =
+    targets?.status === "ready"
+      ? targetType === "agent"
+        ? targets.data.agent.id
+        : targets.data.chats.find((chat) => chat.id === targetId)?.id
+      : undefined;
+  const pinLabel = (pin: (typeof pins)[number]): string => {
+    if (targets?.status !== "ready") return "Unavailable destination";
+    if (pin.targetType === "agent")
+      return pin.targetId === targets.data.agent.id
+        ? `This agent: ${targets.data.agent.name ?? "Unnamed agent"}`
+        : "Unavailable agent";
+    const chat = targets.data.chats.find((item) => item.id === pin.targetId);
+    return chat
+      ? `${chat.name ?? "Unnamed conversation"} · ${chat.source}`
+      : "Unavailable conversation";
+  };
 
   const act = async (operation: () => Promise<unknown>, success: string) => {
     setError(null);
@@ -555,36 +600,69 @@ function AgreementPanel({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="agent">Agent</SelectItem>
+              <SelectItem value="agent">This agent</SelectItem>
               <SelectItem value="chat">Chat</SelectItem>
             </SelectContent>
           </Select>
-          <Input
-            aria-label="Pin target ID"
-            placeholder={
-              targetType === "agent" ? "Agent ID" : "Chat or room ID"
-            }
-            value={targetId}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              setTargetId(event.target.value)
-            }
-          />
+          {targets === null ? (
+            <p role="status">Loading destinations…</p>
+          ) : targets.status === "unavailable" ? (
+            <Unavailable message={targets.message} />
+          ) : targetType === "agent" ? (
+            <p>{targets.data.agent.name ?? "Unnamed agent"}</p>
+          ) : targets.data.chats.length === 0 ? (
+            <p>
+              No conversations are available. Start a chat, then refresh
+              destinations.
+            </p>
+          ) : (
+            <Select value={pinTarget ?? ""} onValueChange={setTargetId}>
+              <SelectTrigger aria-label="Pin conversation" className="min-h-11">
+                <SelectValue placeholder="Choose a conversation" />
+              </SelectTrigger>
+              <SelectContent>
+                {targets.data.chats.map((chat) => (
+                  <SelectItem key={chat.id} value={chat.id}>
+                    {chat.name ?? "Unnamed conversation"} · {chat.source}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Button
-            disabled={!targetId.trim()}
+            disabled={!pinTarget}
             onClick={() =>
               void act(async () => {
-                await adapter.pin({
+                if (!pinTarget)
+                  throw new Error("Choose an available pin destination.");
+                const pin = await adapter.pin({
                   artifactId: selected.artifact.id,
                   targetType,
-                  targetId,
+                  targetId: pinTarget,
                 });
-                setPins(await adapter.listPins(selected.artifact.id));
+                const storedPins = await adapter.listPins(selected.artifact.id);
+                setPins(storedPins);
+                if (
+                  !storedPins.some(
+                    (stored) =>
+                      stored.id === pin.id &&
+                      stored.targetType === targetType &&
+                      stored.targetId === pinTarget &&
+                      stored.unpinnedAt === null,
+                  )
+                )
+                  throw new Error(
+                    "The pin could not be confirmed. Refresh destinations before retrying.",
+                  );
               }, "Pin saved.")
             }
           >
             Pin
           </Button>
         </div>
+        <Button variant="outline" onClick={() => void loadPinTargets()}>
+          Refresh destinations
+        </Button>
         <ul style={{ padding: 0, listStyle: "none", display: "grid", gap: 8 }}>
           {pins.map((pin) => (
             <li
@@ -596,9 +674,7 @@ function AgreementPanel({
                 gap: 8,
               }}
             >
-              <span>
-                {pin.targetType}: {pin.targetId}
-              </span>
+              <span>{pinLabel(pin)}</span>
               <Button
                 variant="outline"
                 size="sm"

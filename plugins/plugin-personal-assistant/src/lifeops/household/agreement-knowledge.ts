@@ -13,6 +13,7 @@ import {
 } from "@elizaos/agent";
 import { createZipArchive } from "@elizaos/agent/api/zip-utils";
 import {
+  ChannelType,
   DocumentService,
   ElizaError,
   type IAgentRuntime,
@@ -103,6 +104,12 @@ async function resolveAgreementOcr(): Promise<AgreementOcrService | null> {
 
 export type AgreementObligationStatus = "proposed" | "approved" | "rejected";
 export type KnowledgePinTargetType = "agent" | "chat";
+
+/** Current destinations an owner can select without entering technical identifiers. */
+export interface AgreementPinTargets {
+  agent: { id: string; name: string | null };
+  chats: Array<{ id: string; name: string | null; source: string }>;
+}
 
 export interface ParentingAgreementArtifact {
   id: string;
@@ -1509,6 +1516,48 @@ export class AgreementKnowledgeService {
     });
   }
 
+  /** Lists only conversations in this agent's current participant set. */
+  async listPinTargets(ownerEntityId: string): Promise<AgreementPinTargets> {
+    this.requireOwner(ownerEntityId);
+    const runtime = this.deps.runtime;
+    const ids = await runtime.getRoomsForParticipant(runtime.agentId);
+    const chats: Array<{ id: string; name: string | null; source: string }> =
+      [];
+    const conversational = new Set<ChannelType>([
+      ChannelType.DM,
+      ChannelType.GROUP,
+      ChannelType.THREAD,
+      ChannelType.VOICE_DM,
+      ChannelType.VOICE_GROUP,
+      ChannelType.API,
+    ]);
+    for (const id of ids) {
+      const room = await runtime.getRoom(id);
+      if (
+        room &&
+        room.agentId === runtime.agentId &&
+        conversational.has(room.type)
+      )
+        chats.push({
+          id: room.id,
+          name: room.name?.trim() || null,
+          source: room.source,
+        });
+    }
+    chats.sort(
+      (left, right) =>
+        (left.name ?? "").localeCompare(right.name ?? "") ||
+        left.id.localeCompare(right.id),
+    );
+    return {
+      agent: {
+        id: runtime.agentId,
+        name: runtime.character.name?.trim() || null,
+      },
+      chats,
+    };
+  }
+
   async pin(input: {
     artifactId: string;
     targetType: KnowledgePinTargetType;
@@ -1517,10 +1566,24 @@ export class AgreementKnowledgeService {
   }): Promise<HouseholdKnowledgePin> {
     this.requireOwner(input.pinnedByEntityId);
     const artifact = await this.requireArtifact(input.artifactId);
+    const targetId = nonEmpty(input.targetId, "targetId");
+    const targets = await this.listPinTargets(input.pinnedByEntityId);
+    const valid =
+      input.targetType === "agent"
+        ? targetId === targets.agent.id
+        : input.targetType === "chat" &&
+          targets.chats.some((chat) => chat.id === targetId);
+    if (!valid) {
+      throw new AgreementKnowledgeError(
+        "This pin destination is unavailable. Refresh the choices and select this agent or one of its current conversations.",
+        "AGREEMENT_INVALID_CONTRACT",
+        { targetType: input.targetType, targetId },
+      );
+    }
     return await this.deps.repository.setPin({
       artifactId: artifact.id,
       targetType: input.targetType,
-      targetId: nonEmpty(input.targetId, "targetId"),
+      targetId,
       pinnedByEntityId: input.pinnedByEntityId,
       pinnedAt: this.now().toISOString(),
     });
