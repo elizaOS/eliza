@@ -1266,11 +1266,20 @@ async function doUpdate(
  * so use them directly when the message carries content terms; the same
  * every-term match and ambiguity refusal still guard the delete.
  */
+const MENTION_TOKEN_PATTERN =
+  /<@!?\d{6,}>|@?[\p{L}\p{N}_.-]+\s*\(@\d{6,}\)|\(@\d{6,}\)/gu;
+
 function deleteQueryFromMessage(message: Memory): string | undefined {
   // The user's actual words, not the external-content security envelope that
   // wraps connector messages: the envelope's warning text matched nothing and
   // turned a plain "forget my favorite tea" into a hard miss (live 2026-09-12).
-  const text = unwrapUserMessageText(message).trim();
+  // Drop platform mention tokens ("Eliza (@1490833…)" / "<@1490833…>"): they
+  // are addressing, not content, and their name and id would have to match
+  // the stored fact for the every-term rule (live 2026-09-12, harness room).
+  const text = unwrapUserMessageText(message)
+    .replace(MENTION_TOKEN_PATTERN, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!text || scoreQueryTerms(text).length === 0) return undefined;
   logger.info(
     "[MEMORY] delete carried no query; using the user's message text",

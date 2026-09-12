@@ -1527,6 +1527,27 @@ describe("MEMORY op:delete by query", () => {
     expect(rows).toHaveLength(0);
   });
 
+  it("ignores platform mention tokens in the implied query (live regression)", async () => {
+    // Discord renders the addressed bot as "Eliza (@1490833425802854491)";
+    // the name and id must not become query terms.
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "The user's favorite tea is oolong.",
+      entityId: USER_ID,
+    });
+
+    const result = await runAction(
+      runtime,
+      makeMessage({
+        text: "Eliza (@1490833425802854491) forget my favorite tea <@1490833425802854491>",
+      }),
+      { action: "delete", confirm: true },
+    );
+
+    expect(result.success).toBe(true);
+    expect(rows).toHaveLength(0);
+  });
+
   it("returns the missing-target failure, not a verdict, when the implied query misses", async () => {
     const { runtime, rows } = makeRuntime();
     seedFact(rows, { text: "nubs lives on a boat", entityId: USER_ID });
