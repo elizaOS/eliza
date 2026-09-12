@@ -6523,6 +6523,9 @@ async function finishWithForcedSynthesis(params: {
 		// engines. Passing tools here would re-engage the per-action grammar /
 		// responseSkeleton, fighting the "answer in prose, call no tool" intent.
 		tools: undefined,
+		// The reply guarantee must retain the same source/provider projection
+		// and read-only restoration protocol as ordinary post-tool synthesis.
+		allowReplyContextProjection: trajectory.codingMode !== true,
 		recorder: loop.recorder,
 		trajectoryId: loop.trajectoryId,
 		cacheConversationId: loop.cacheConversationId,
@@ -6530,6 +6533,10 @@ async function finishWithForcedSynthesis(params: {
 		providerAttributionState: loop.providerAttributionState,
 		iteration,
 		onUsage: params.onUsage,
+	}).finally(() => {
+		// Preserve reads performed on the synthesis clone even if generation
+		// fails, so later reply recovery retains the restored context.
+		trajectory.modelBaseContext = synthesisTrajectory.modelBaseContext;
 	});
 	const finalMessage = preferredFinalMessageFromToolOrModel(
 		trajectory,

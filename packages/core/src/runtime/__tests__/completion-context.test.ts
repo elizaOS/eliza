@@ -586,31 +586,47 @@ describe("source-bound completion relevance", () => {
 
 describe("planner source selection and restoration", () => {
 	it.each([
-		{ restore: false, custom: false },
-		{ restore: true, custom: false },
-		{ restore: true, custom: true },
+		{ restore: false, custom: false, forced: false, fail: false },
+		{ restore: true, custom: false, forced: false, fail: false },
+		{ restore: true, custom: true, forced: false, fail: false },
+		{ restore: false, custom: false, forced: true, fail: false },
+		{ restore: true, custom: false, forced: true, fail: false },
+		{ restore: true, custom: true, forced: true, fail: false },
+		{ restore: true, custom: false, forced: true, fail: true },
 	])(
-		"keeps reply-only synthesis scoped and restores original evidence without effects ($restore, custom=$custom)",
-		async ({ restore, custom }) => {
+		"keeps reply-only synthesis scoped without replay (restore=$restore, custom=$custom, forced=$forced, fail=$fail)",
+		async ({ restore, custom, forced, fail }) => {
 			const full = withSelection(historyContext());
 			const before = JSON.stringify(full);
 			const captured: Record<string, unknown>[] = [];
-			const execute = vi.fn();
-			const evaluate = vi.fn();
+			const execute = vi.fn(async () => ({
+				success: true,
+				text: "Exact note body: violet, previously amber.",
+			}));
+			const evaluate = vi.fn(async () => ({
+				success: true,
+				decision: "FINISH" as const,
+				// A successful read with no usable final reply needs the fallback.
+				messageToUser: "call:NOTES_READ{id:note-1}",
+			}));
+			let planned = false;
 			const result = await runPlannerLoop({
 				context: full,
-				postToolReplySeed: {
-					toolCall: {
-						id: "settled",
-						name: "NOTES_READ",
-						params: { id: "note-1" },
-					},
-					result: {
-						success: true,
-						modelReplyRequired: true,
-						text: "Exact note body: violet, previously amber.",
-					},
-				},
+				tools: forced ? [{ name: "NOTES_READ" }] : undefined,
+				postToolReplySeed: forced
+					? undefined
+					: {
+							toolCall: {
+								id: "settled",
+								name: "NOTES_READ",
+								params: { id: "note-1" },
+							},
+							result: {
+								success: true,
+								modelReplyRequired: true,
+								text: "Exact note body: violet, previously amber.",
+							},
+						},
 				runtime: {
 					...(custom
 						? {
@@ -623,7 +639,23 @@ describe("planner source selection and restoration", () => {
 							}
 						: {}),
 					useModel: async (_type, params) => {
+						if (forced && !planned) {
+							planned = true;
+							return {
+								text: "",
+								toolCalls: [
+									{
+										id: "settled",
+										name: "NOTES_READ",
+										arguments: { id: "note-1" },
+									},
+								],
+							};
+						}
 						captured.push(params);
+						if (fail && captured.length === 2) {
+							throw new Error("Provider unavailable after context restoration");
+						}
 						return {
 							text: JSON.stringify(
 								restore && captured.length === 1
@@ -698,9 +730,18 @@ describe("planner source selection and restoration", () => {
 					"Exact note body: violet, previously amber.",
 				);
 			}
-			expect(execute).not.toHaveBeenCalled();
-			expect(evaluate).not.toHaveBeenCalled();
-			expect(result.finalMessage).toBe("The mug is violet, previously amber.");
+			expect(execute).toHaveBeenCalledTimes(forced ? 1 : 0);
+			expect(evaluate).toHaveBeenCalledTimes(forced ? 1 : 0);
+			if (!fail) {
+				expect(result.finalMessage).toBe(
+					"The mug is violet, previously amber.",
+				);
+			}
+			if (restore) {
+				expect(
+					result.trajectory.modelBaseContext?.metadata?.completionContext,
+				).toBeUndefined();
+			}
 			expect(JSON.stringify(full)).toBe(before);
 		},
 	);
