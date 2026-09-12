@@ -681,7 +681,7 @@ async function runPlannerLoopIterations(
 				"If a genuine blocker prevents completion, report that stopped outcome with success=false. " +
 				"Only an explicit final planner declaration can supersede the pending scope. " +
 				`The evaluator's already verified reply is: ${JSON.stringify(evaluator.messageToUser)}. ` +
-				"If no operation remains and you agree with the recorded evaluator FINISH, return only REPLY with final scope and no text; the already verified evaluator reply will be delivered. Do not regenerate narration or replay a tool just to release scope.",
+				'If no operation remains and you agree with the recorded evaluator FINISH, call native REPLY alone with arguments {"eliza_turn_scope":"final"}; omit text. The already verified evaluator reply will be delivered. REPLY with {} does not release pending scope. Do not regenerate narration or replay a tool just to release scope.',
 		});
 		pendingScopeRejectedFinish = { output: evaluator, iteration };
 		return {
@@ -994,7 +994,7 @@ async function runPlannerLoopIterations(
 							content:
 								"This batch only requests scope release or repeats settled work; it was not executed or evaluated again. " +
 								"Continue the outstanding parts of the user's request. If the entire request is already satisfied, " +
-								"explicitly declare final scope and answer from the recorded results instead of repeating the work.",
+								'call native REPLY alone with arguments {"eliza_turn_scope":"final"}; omit text. REPLY with {} does not release pending scope. The already verified answer will be delivered without repeating the work.',
 						});
 						// No new evidence exists to evaluate. Keep the verified verdict
 						// for a later explicit final declaration; pending scope still holds.

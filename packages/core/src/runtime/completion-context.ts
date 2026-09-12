@@ -16,10 +16,10 @@ import { hashStableJson } from "./context-hash";
 /** One stable policy for source selection; the dynamic tail supplies only its binding. */
 export const COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS = `history_source_selection:
 Review all [hN] user and assistant sources, selecting ONLY those needed to plan, execute and answer the FINAL CURRENT REQUEST. complete=true certifies this relevance review, not selecting every message or completing future tool work.
-Use mode=selected after resolving the dependencies; copy the exact completion_source_set into sourceSetId. A reviewed empty selection is valid. Assign each ID once, to its most specific array: relevantSourceIds=factual background; constraintSourceIds=applicable preferences, permissions, prohibitions and corrections; referentSourceIds=this/that/it and follow-ups; pendingIntentSourceIds=unfinished work referenced now. The runtime retains their union without a cap.
+Use mode=relevant_prior_dialogue after resolving the dependencies; copy the exact completion_source_set into sourceSetId. A reviewed empty selection is valid. Assign each ID once, to its most specific array: relevantSourceIds=factual background; constraintSourceIds=applicable preferences, permissions, prohibitions and corrections; referentSourceIds=this/that/it and follow-ups; pendingIntentSourceIds=unfinished work referenced now. The runtime retains their union without a cap.
 Keep applicable standing constraints even when old. Completed unrelated tasks, greetings and repeated navigation are not standing constraints or pending work. A restriction on a completed task stays scoped to that task unless made standing or carried into the current request. Do not drop an active constraint merely because a newer request exists.
 For a correction, select the original user correction and its referent, not only an assistant recap or repeated question. Include assistant proposals, exact IDs and receipts when referenced. Select original sources, never summaries.
-Use mode=full, complete=false if an applicable prior-dialogue dependency remains unresolved, the current request needs exhaustive coverage or counting of prior conversation sources, or no source set is supplied. An exact read, search or count of live app records is tool work, not exhaustive dialogue recall: select its applicable dialogue constraints/referents normally. Long history or old unrelated recall requests alone do not require full mode.
+Use mode=all_prior_dialogue, complete=false if an applicable prior-dialogue dependency remains unresolved, the current request needs exhaustive coverage or counting of prior conversation sources, or no source set is supplied. This mode concerns prior dialogue only. Reading a full live notes list or counting all app records is tool work, not exhaustive dialogue recall: use relevant_prior_dialogue with its applicable constraints/referents. Long history or old unrelated recall requests alone do not require all_prior_dialogue.
 Current request, standing provider constraints and current tool evidence are always retained. Future tool receipts are appended automatically; their absence does not make source review incomplete.`;
 
 /** Shared static and registered Stage-1 wire schema. */
@@ -29,9 +29,14 @@ export const COMPLETION_CONTEXT_SCHEMA: JSONSchema = {
 	properties: {
 		mode: {
 			type: "string",
-			enum: ["full", "selected"],
+			enum: [
+				"relevant_prior_dialogue",
+				"all_prior_dialogue",
+				"selected",
+				"full",
+			],
 			description:
-				"selected is the completed review of prior dialogue relevant to this request, including a reviewed empty selection. full is for unresolved prior-dialogue dependencies, exhaustive conversation coverage/counting, or no source set. Live app-record reads/searches/counts alone do not require full dialogue.",
+				"relevant_prior_dialogue is the completed relevance review, including a reviewed empty selection. all_prior_dialogue is for unresolved dialogue dependencies, exhaustive conversation coverage/counting, or no source set. This selects prior messages, never live app records or tool results. selected/full are legacy aliases.",
 		},
 		sourceSetId: {
 			type: "string",
@@ -112,9 +117,16 @@ export function parseCompletionContextSelection(
 	if (!value || typeof value !== "object" || Array.isArray(value))
 		return undefined;
 	const record = value as Record<string, unknown>;
+	// Keep the stored/runtime contract and legacy model responses unchanged.
+	const mode =
+		record.mode === "relevant_prior_dialogue"
+			? "selected"
+			: record.mode === "all_prior_dialogue"
+				? "full"
+				: record.mode;
 	if (
 		Object.keys(record).some((key) => !SELECTION_FIELDS.has(key)) ||
-		(record.mode !== "full" && record.mode !== "selected") ||
+		(mode !== "full" && mode !== "selected") ||
 		typeof record.sourceSetId !== "string" ||
 		typeof record.complete !== "boolean"
 	)
@@ -129,7 +141,7 @@ export function parseCompletionContextSelection(
 			return undefined;
 	}
 	return {
-		mode: record.mode,
+		mode,
 		sourceSetId: record.sourceSetId,
 		complete: record.complete,
 		relevantSourceIds: [...(record.relevantSourceIds as string[])],

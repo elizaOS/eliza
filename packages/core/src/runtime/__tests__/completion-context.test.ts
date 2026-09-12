@@ -141,6 +141,46 @@ function trajectory(context: ContextObject): PlannerTrajectory {
 }
 
 describe("source-bound completion relevance", () => {
+	it.each([
+		["relevant_prior_dialogue", "selected"],
+		["all_prior_dialogue", "full"],
+		["selected", "selected"],
+		["full", "full"],
+	] as const)(
+		"preserves source selection and restoration semantics for wire mode %s",
+		(wireMode, mode) => {
+			const context = historyContext();
+			const before = structuredClone(context);
+			const wire = { ...selection(context), mode: wireMode };
+			const errors: string[] = [];
+			validateSchema(COMPLETION_CONTEXT_SCHEMA, wire, "", errors);
+			expect(errors).toEqual([]);
+			expect(parseCompletionContextSelection(wire)).toEqual({
+				...selection(context),
+				mode,
+			});
+			const selected = selectCompletionContext(withSelection(context, wire));
+			const legacy = selectCompletionContext(
+				withSelection(context, { ...wire, mode }),
+			);
+			expect(selected.context.events).toEqual(legacy.context.events);
+			expect(selected.applied).toBe(mode === "selected");
+			expect(selected.context.events).toContainEqual(context.events[0]);
+			expect(selected.context.events).toContainEqual(context.events[3]);
+			expect(
+				selectCompletionContext(
+					withSelection(context, { ...wire, complete: false }),
+				).applied,
+			).toBe(false);
+			expect(
+				selectCompletionContext(
+					withSelection(context, { ...wire, sourceSetId: "stale" }),
+				).applied,
+			).toBe(false);
+			expect(context).toEqual(before);
+		},
+	);
+
 	it.each([false, true])(
 		"renders source policy once in the stable prefix without changing evidence or binding (registered fields: %s)",
 		(withFields) => {
