@@ -1,10 +1,10 @@
 /**
- * Cache-gated admission for organization-funded inference.
+ * Policy-gated admission for organization-funded inference.
  *
- * Admission reads current subscription authority first. Non-subscribers then
- * use pricing, affiliate-policy, and balance caches before acquiring a Durable
- * Object lease. The revision-aware lease, not isolate-local cache projection
- * state, is the dispatch fence. Post-provider accounting replays one
+ * Admission reads current subscription authority first. Workers then use its
+ * revisioned balance plus pricing and affiliate-policy caches before acquiring
+ * a Durable Object lease. The revision-aware lease, not isolate-local cache
+ * projection state, is the dispatch fence. Post-provider accounting replays one
  * deterministic debit identity; the lease alarm is the durable backstop when
  * a response-side task disappears.
  */
@@ -75,7 +75,9 @@ import {
 import { withOrganizationPolicyAdmission } from "./organization-policy-admission";
 import { sameOrganizationPolicyStamp } from "./organization-policy-stamp";
 import {
+  type OrganizationQuotaPolicy,
   readOrganizationQuotaPolicyInTransaction,
+  requireOrganizationPolicyBalance,
   requireOrganizationRateTier,
 } from "./organization-quota-policy";
 
@@ -356,7 +358,7 @@ export async function admitOrganizationInference(
       context: { organizationId: params.context.organizationId, reason: "stale_policy_snapshot" },
     });
   }
-  const admission = await admitWithFundingPolicy(params, authoritativePolicy.subscriptionFunded);
+  const admission = await admitWithFundingPolicy(params, authoritativePolicy);
   const previousDispatch = admission.markProviderDispatched;
   let dispatched = false;
   let dispatch: Promise<void> | undefined;
@@ -392,13 +394,13 @@ export async function admitOrganizationInference(
 }
 async function admitWithFundingPolicy(
   params: OrganizationInferenceAdmissionParams,
-  subscriptionFunded: boolean,
+  policy: OrganizationQuotaPolicy,
 ): Promise<OrganizationInferenceAdmission> {
   const executionCtx = params.executionCtx;
   const workerHotPath = typeof executionCtx?.waitUntil === "function";
   const affiliateMarked = Boolean(params.affiliateCode?.trim());
 
-  if (subscriptionFunded) {
+  if (policy.subscriptionFunded) {
     return await reserveSynchronously(params, true);
   }
   if (!workerHotPath && affiliateMarked) {
@@ -429,6 +431,10 @@ async function admitWithFundingPolicy(
   let balanceHint: GateBalanceSnapshot;
   let affiliateAttribution: AffiliateBillingAttribution | null = null;
   try {
+    // The primary policy read already captured the balance and revision.
+    // Requiring a separate projection here would reject a valid cold request
+    // or let an older balance replace that observation before the lease fence.
+    const workerBalance = canDefer ? requireOrganizationPolicyBalance(policy) : undefined;
     const [cost, gateBalance, resolvedAffiliateAttribution] = await Promise.all([
       params.flatCost
         ? Promise.resolve(params.flatCost)
@@ -443,12 +449,18 @@ async function admitWithFundingPolicy(
               executionCtx: params.executionCtx,
             },
           ),
-      params.admissionSnapshot
-        ? Promise.resolve(params.admissionSnapshot.balance)
-        : getGateBalanceHint(params.context.organizationId, {
-            executionCtx: params.executionCtx,
-            cacheOnly: canDefer,
-          }),
+      workerBalance
+        ? Promise.resolve({
+            balanceUsd: workerBalance.balanceUsd,
+            balanceRevision: workerBalance.revision,
+            balanceAt: Date.parse(policy.observedAt),
+          })
+        : params.admissionSnapshot
+          ? Promise.resolve(params.admissionSnapshot.balance)
+          : getGateBalanceHint(params.context.organizationId, {
+              executionCtx: params.executionCtx,
+              cacheOnly: canDefer,
+            }),
       affiliateMarked && params.executionCtx
         ? getCachedInferenceAffiliateAttribution({
             affiliateCode: params.affiliateCode,
