@@ -11,6 +11,7 @@ import {
   getTimeZoneOffsetMinutes,
   getWeekdayForLocalDate,
   getZonedDateParts,
+  parseOffsetToken,
 } from "./time.js";
 
 /**
@@ -56,20 +57,11 @@ describe("getTimeZoneOffsetMinutes", () => {
   });
 
   it("parses tokens with Unicode minus sign, UTC prefix, and bare offsets", () => {
-    const parseToken = (token: string) => {
-      if (token === "GMT" || token === "UTC") return 0;
-      const match = token.match(/^(?:GMT|UTC)?([+-]|\u2212|\u2013|\u2014)(\d{1,2})(?::?(\d{2}))?$/i);
-      if (!match) throw new Error(`unsupported offset token: ${token}`);
-      const sign = match[1] === "+" ? 1 : -1;
-      const hours = Number(match[2]);
-      const minutes = Number(match[3] ?? "0");
-      return sign * (hours * 60 + minutes);
-    };
-
-    expect(parseToken("GMT\u22127")).toBe(-420);
-    expect(parseToken("UTC-5")).toBe(-300);
-    expect(parseToken("-07:00")).toBe(-420);
-    expect(parseToken("GMT+02:00")).toBe(120);
+    expect(parseOffsetToken("GMT\u22127")).toBe(-420);
+    expect(parseOffsetToken("UTC-5")).toBe(-300);
+    expect(parseOffsetToken("-07:00")).toBe(-420);
+    expect(parseOffsetToken("GMT+02:00")).toBe(120);
+    expect(parseOffsetToken("GMT-5")).toBe(-300);
   });
 });
 
