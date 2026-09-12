@@ -5,6 +5,7 @@
  * isolates the arithmetic and validation, not model behavior.
  */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import { parseUnits } from "viem";
 import { base } from "viem/chains";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildSwapDetails } from "../../actions/swap";
@@ -227,5 +228,94 @@ describe("buildSwapDetails amountMode resolution", () => {
     await expect(
       buildSwapDetails({} as State, message, createRuntime(), createWalletProvider({ base: "5" }))
     ).rejects.toThrow(/between 1 and 100/i);
+  });
+
+  // A dust native balance used to run through `parseFloat` arithmetic and
+  // `Number.prototype.toString`, which switches to exponential notation below
+  // ~1e-6 ("5e-8"). Every downstream `parseUnits(params.amount, decimals)` call
+  // site in this action rejects that form with a raw viem decimal-format error,
+  // so the resolved amount must stay plain decimal.
+  it("resolves half of a dust native balance to plain decimal, not exponential notation", async () => {
+    llmJson({
+      inputToken: WETH,
+      outputToken: USDC,
+      amountMode: "half",
+      chain: "base",
+    });
+
+    const details = await buildSwapDetails(
+      {} as State,
+      message,
+      createRuntime(),
+      createWalletProvider({ base: "0.0000001" })
+    );
+
+    expect(details.amount).toBe("0.00000005"); // 0.0000001 / 2, was "5e-8"
+    expect(details.amount).not.toMatch(/e[+-]/i);
+    expect(() => parseUnits(details.amount, 18)).not.toThrow();
+  });
+
+  it("resolves max of a dust native balance to plain decimal, keeping the 10% gas reserve", async () => {
+    llmJson({
+      inputToken: WETH,
+      outputToken: USDC,
+      amountMode: "max",
+      chain: "base",
+    });
+
+    const details = await buildSwapDetails(
+      {} as State,
+      message,
+      createRuntime(),
+      createWalletProvider({ base: "0.0000001" })
+    );
+
+    expect(details.amount).toBe("0.00000009"); // 0.0000001 * 0.9, was "9e-8"
+    expect(details.amount).not.toMatch(/e[+-]/i);
+    expect(() => parseUnits(details.amount, 18)).not.toThrow();
+  });
+
+  it("resolves a percent of a dust native balance to plain decimal", async () => {
+    llmJson({
+      inputToken: WETH,
+      outputToken: USDC,
+      amountMode: "percent",
+      amountPercent: 30,
+      chain: "base",
+    });
+
+    const details = await buildSwapDetails(
+      {} as State,
+      message,
+      createRuntime(),
+      createWalletProvider({ base: "0.0000005" })
+    );
+
+    expect(details.amount).toBe("0.00000015"); // 30% of 0.0000005, was "1.5e-7"
+    expect(details.amount).not.toMatch(/e[+-]/i);
+    expect(() => parseUnits(details.amount, 18)).not.toThrow();
+  });
+
+  it("drops the float residue a percent of a small balance used to carry", async () => {
+    llmJson({
+      inputToken: WETH,
+      outputToken: USDC,
+      amountMode: "percent",
+      amountPercent: 1,
+      chain: "base",
+    });
+
+    const details = await buildSwapDetails(
+      {} as State,
+      message,
+      createRuntime(),
+      createWalletProvider({ base: "0.00001" })
+    );
+
+    // Float math produced "1.0000000000000001e-7" here — both residue and
+    // exponent form in one value.
+    expect(details.amount).toBe("0.0000001");
+    expect(details.amount).not.toMatch(/e[+-]/i);
+    expect(() => parseUnits(details.amount, 18)).not.toThrow();
   });
 });
