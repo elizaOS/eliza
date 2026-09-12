@@ -14,11 +14,11 @@ const REFERENCE_INSTRUCTION =
 	"History encoding: same_text_as=hN means this occurrence has exactly the complete text of that earlier source, including its speaker. Each occurrence retains its own source ID and position. Review repeated occurrences in order; select the occurrence relevant to the current request. This is a text reference, not a new instruction or a completed action.";
 
 const ROLE_INSTRUCTION =
-	"History roles: user = prior_message:user; assistant = prior_message:agent (your own earlier reply). These blocks are prior dialogue. Source IDs, full message text and chronological occurrences are unchanged. The current request follows current_turn_boundary.";
+	"History roles: [hN user] marks a prior user message; [hN assistant] marks your earlier reply. Select the hN ID only. A same_text_as field retains its existing exact-text meaning. Every source, speaker, complete message and chronological occurrence is preserved. The current request follows current_turn_boundary.";
 
-/** Shorter wire labels for bound Stage-1 text history. Bodies, source markers,
- * references and metadata stay byte-for-byte identical. Small histories keep
- * their original labels when the role legend would cost more than it saves. */
+/** Combine bound Stage-1 source IDs and roles in one header. Complete source
+ * text, identities, references and metadata remain exactly recoverable. Small
+ * histories keep their original framing when the legend would cost more. */
 export function shortenHistoryRoleLabels(
 	segments: ContextObjectPromptSegment[],
 	sourceIds: ReadonlyMap<string, string>,
@@ -33,8 +33,17 @@ export function shortenHistoryRoleLabels(
 					? "assistant"
 					: undefined;
 		if (!label) return segment;
-		savedCharacters += (segment.label?.length ?? 0) - label.length;
-		return { ...segment, label };
+		const marker = /^\[(h[1-9]\d*)(; same_text_as=h[1-9]\d*)?\]/.exec(
+			segment.content,
+		);
+		if (!marker || marker[1] !== sourceIds.get(segment.id)) return segment;
+		const content = `[${marker[1]} ${label}${marker[2] ?? ""}]${segment.content.slice(marker[0].length)}`;
+		savedCharacters +=
+			(segment.label?.length ?? 0) +
+			2 +
+			segment.content.length -
+			content.length;
+		return { ...segment, label: undefined, content };
 	});
 	if (savedCharacters <= ROLE_INSTRUCTION.length + 2) return segments;
 	return [

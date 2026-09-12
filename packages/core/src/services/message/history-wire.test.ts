@@ -86,19 +86,23 @@ describe("lossless history references", () => {
 		expect(shortened[0].id).toBe("history-role-labels");
 		expect(
 			shortened.find((segment) => segment.id === "message-60")?.content,
-		).toBe("[h61; same_text_as=h1]");
+		).toBe("[h61 user; same_text_as=h1]");
 		expect(
 			shortened.find((segment) => segment.id === "message-62")?.label,
 		).toBe("prior_message:tool");
-		const restored = shortened.slice(1).map((segment) => ({
-			...segment,
-			label:
-				segment.label === "user"
-					? "prior_message:user"
-					: segment.label === "assistant"
-						? "prior_message:agent"
-						: segment.label,
-		}));
+		const restored = shortened.slice(1).map((segment) => {
+			if (segment.label !== undefined) return segment;
+			const header = /^\[(h\d+) (user|assistant)(; same_text_as=h\d+)?\]/.exec(
+				segment.content,
+			);
+			if (!header) throw new Error("Missing encoded source header");
+			return {
+				...segment,
+				label:
+					header[2] === "user" ? "prior_message:user" : "prior_message:agent",
+				content: `[${header[1]}${header[3] ?? ""}]${segment.content.slice(header[0].length)}`,
+			};
+		});
 		expect(restored).toEqual(before);
 		expect(decode(restored)).toEqual(history);
 		expect(labeled).toEqual(before);
@@ -107,6 +111,29 @@ describe("lossless history references", () => {
 		expect(shortenHistoryRoleLabels(labeled.slice(0, 2), ids)).toEqual(
 			labeled.slice(0, 2),
 		);
+		expect(shortenHistoryRoleLabels(shortened, ids)).toBe(shortened);
+	});
+
+	it("leaves missing, malformed and mismatched source markers untouched", () => {
+		const history = Array.from({ length: 60 }, (_, index) =>
+			source(`Exact message ${index}`, index),
+		);
+		const ids = new Map(
+			history.map((s, index) => [s.id ?? "", `h${index + 1}`]),
+		);
+		const labeled = labelHistorySources(history, ids);
+		labeled[0].content = "[h999]\nA marker belonging to a different source.";
+		labeled[1].content = "[h2; same_text_as=not-a-source]\nInvalid reference.";
+		labeled[2].content = "Unlabeled source bytes.";
+		const before = structuredClone(labeled);
+		const result = shortenHistoryRoleLabels(labeled, ids);
+		expect(result[0].id).toBe("history-role-labels");
+		for (const index of [0, 1, 2]) {
+			expect(result.find((s) => s.id === labeled[index].id)).toBe(
+				labeled[index],
+			);
+		}
+		expect(labeled).toEqual(before);
 	});
 
 	it("uses the role legend only for direct text input and keeps current-turn boundaries after complete history", () => {
@@ -152,11 +179,11 @@ describe("lossless history references", () => {
 		expect(text.messages[1].content).toContain("History roles:");
 		for (let index = 0; index < history.length; index++) {
 			expect(text.messages[1].content).toContain(
-				`user:\n[h${index + 1}]\nsource ${index}`,
+				`[h${index + 1} user]\nsource ${index}`,
 			);
 		}
 		const userText = String(text.messages[1].content);
-		expect(userText.indexOf("[h40]\nsource 39")).toBeLessThan(
+		expect(userText.indexOf("[h40 user]\nsource 39")).toBeLessThan(
 			userText.indexOf("current_turn_boundary:"),
 		);
 		expect(userText.indexOf("current_turn_boundary:")).toBeLessThan(
