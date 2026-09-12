@@ -16,6 +16,7 @@ export const agreementPinsProvider: Provider = {
   descriptionCompressed:
     "Owner-approved, page-cited parenting-agreement obligations from active pins.",
   dynamic: true,
+  alwaysInResponseState: true,
   position: -8,
   cacheScope: "turn",
 
