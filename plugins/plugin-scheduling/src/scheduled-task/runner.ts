@@ -1571,12 +1571,29 @@ export function createScheduledTaskRunner(
         throw new Error(`edit: ${key} is read-only`);
       }
     }
-    Object.assign(task, payload);
-    await persist(task);
+    const edited = structuredClone(task);
+    Object.assign(edited, payload);
+    const { taskId: _taskId, state: _state, ...input } = edited;
+    const validationIssues = validateScheduledTaskInput(input, deps);
+    if (validationIssues.length > 0) {
+      throw new ScheduledTaskValidationError(validationIssues);
+    }
+    if (deps.channelKeys && input.escalation?.steps) {
+      const registered = deps.channelKeys();
+      for (const step of input.escalation.steps) {
+        if (!registered.has(step.channelKey)) {
+          throw new ChannelKeyError(
+            step.channelKey,
+            Array.from(registered).sort(),
+          );
+        }
+      }
+    }
+    await persist(edited);
     await logger.log(task.taskId, "edited", {
       detail: { keys: Object.keys(payload) },
     });
-    return task;
+    return edited;
   }
 
   async function applyReopen(
