@@ -45,6 +45,9 @@ vi.mock("../../../shell/steward-url", () => ({
 
 vi.mock("../../../shell/steward-config", () => ({
   configuredStewardTenantId: () => "elizacloud",
+  // LoginPage reads this through isLoopbackStagingStewardDevelopment at
+  // render; no override means the hosted login section renders.
+  configuredStewardApiUrlOverride: () => undefined,
   DEFAULT_STEWARD_TENANT_ID: "elizacloud",
 }));
 
