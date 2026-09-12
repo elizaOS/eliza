@@ -69,6 +69,30 @@ describe("defaultFamilyOperationsAdapter", () => {
     ).rejects.toThrow("Original failed integrity verification");
   });
 
+  it.each([
+    ["text/html", "<html>Bad gateway</html>", 502],
+    ["text/plain", "Payload too large", 413],
+    ["application/json", "{invalid", 502],
+  ])(
+    "preserves HTTP failures for %s error responses",
+    async (contentType, body, status) => {
+      vi.stubGlobal(
+        "fetch",
+        async () =>
+          new Response(body, {
+            status,
+            headers: { "content-type": contentType },
+          }),
+      );
+      await expect(
+        defaultFamilyOperationsAdapter.downloadAgreement(
+          "artifact-one",
+          "export",
+        ),
+      ).rejects.toThrow(`Download failed (${status})`);
+    },
+  );
+
   it("allows provider-backed mutations to complete beyond the ordinary read timeout", async () => {
     vi.useFakeTimers();
     vi.stubGlobal(

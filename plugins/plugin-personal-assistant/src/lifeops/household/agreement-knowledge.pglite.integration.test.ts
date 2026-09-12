@@ -895,7 +895,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       }),
     ).resolves.toMatchObject({ artifact: { id: artifact.id, version: 1 } });
 
-    await service.revokeGuestRead({
+    const revoked = await service.revokeGuestRead({
       grantId: resourceGrant.id,
       revokedByEntityId: SELF_ENTITY_ID,
       reason: "Owner removed access.",
@@ -912,6 +912,30 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         roomId: "family-chat",
       }),
     ).resolves.toEqual([]);
+    const exported = await restartedService.exportOwnerAgreement({
+      artifactId: artifact.id,
+      ownerEntityId: SELF_ENTITY_ID,
+    });
+    const manifestBytes = readStoredZip(exported.bytes).get("manifest.json");
+    if (!manifestBytes) throw new Error("Export manifest missing");
+    const manifest = JSON.parse(manifestBytes.toString("utf8"));
+    expect(manifest.grants).toContainEqual(revoked);
+    expect(manifest.householdGrants).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: guestHouseholdGrantId }),
+      ]),
+    );
+    expect(manifest.householdGrantAudit).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ owner_id: guestHouseholdGrantId }),
+      ]),
+    );
+    expect(manifest.audit).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ event_type: "agreement_granted" }),
+        expect.objectContaining({ event_type: "agreement_revoked" }),
+      ]),
+    );
   });
 
   it("fails closed after household-grant revocation or expiry", async () => {
