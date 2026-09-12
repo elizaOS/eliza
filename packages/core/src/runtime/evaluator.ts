@@ -1280,6 +1280,10 @@ function repairMissingEvaluatorMessage(
 ): EvaluatorOutput {
 	if (typeof output.messageToUser === "string") return output;
 	if (output.success !== true || output.decision !== "FINISH") return output;
+	// A terminal planner reply already supplies the message. Omitted evaluator
+	// prose approves that reply; its internal thought must not replace it.
+	const lastStep = trajectory.steps.at(-1);
+	if (lastStep?.terminalOnly && lastStep.terminalMessage?.trim()) return output;
 	const command = latestSafeCommandForUser(context, trajectory);
 	if (hasSuccessfulToolResult(trajectory) && !command) return output;
 	const thought = output.thought.trim();

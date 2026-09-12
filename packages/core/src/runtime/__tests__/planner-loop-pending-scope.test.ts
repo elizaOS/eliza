@@ -24,12 +24,17 @@ import type {
 } from "../planner-types";
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 
-function call(name: string, scope?: "more_work_pending" | "final") {
+function call(
+	name: string,
+	scope?: "more_work_pending" | "final",
+	text?: string,
+) {
 	return {
 		id: name.toLowerCase(),
 		name,
 		arguments: {
 			...(scope ? { eliza_turn_scope: scope } : {}),
+			...(text !== undefined ? { text } : {}),
 		},
 	};
 }
@@ -139,6 +144,57 @@ function harness(args: {
 }
 
 describe("planner-declared pending work", () => {
+	it.each([
+		undefined,
+		"Review this unsaved draft:\nTitle: History header QA 20260912\nBody: Bring a green folder and a charger.",
+	])(
+		"preserves the proposed preview when completion omits a replacement (%s)",
+		async (messageToUser) => {
+			// Recorded live: step-1789215630238-928oz1. The evaluator approved
+			// native REPLY without replacing it, but its thought reached the UI.
+			const preview =
+				"Here's the draft, not saved:\n\nTitle: History header QA 20260912\nBody: Bring a green folder and a charger.\n\nTell me when to save it; the app stays where it is.";
+			const thought =
+				"The user only asked for a draft preview plus a confirmation gate, with no save and no view change. The terminal output shows the exact requested title and body, states it is unsaved, and keeps the app unchanged. There is no omitted referent or constraint, so the response completes the turn.";
+			const h = harness({
+				userMessage:
+					"Show the draft and wait for my separate confirmation before saving anything. Keep the app where it is.",
+				intents: [
+					"Preview the requested note; save it only after a separate user confirmation",
+				],
+				stageOnePlan: {
+					reply: preview,
+					replyEffectStatus: "none",
+					candidateActions: [],
+				},
+				plans: [{ text: "", toolCalls: [call("REPLY", "final", preview)] }],
+				evaluations: [
+					JSON.stringify({
+						thought,
+						success: true,
+						decision: "FINISH",
+						...(messageToUser !== undefined ? { messageToUser } : {}),
+					}),
+				],
+			});
+			const result = await h.run({
+				tools: [{ name: "NOTES_CREATE" }, { name: "REPLY" }],
+				requireNonTerminalToolCall: true,
+				stageOneReplyText: preview,
+			});
+			expect(result.finalMessage).toBe(messageToUser ?? preview);
+			expect(result.finalMessage).not.toContain(thought);
+			expect(result.evaluator?.thought).toBe(thought);
+			expect(result.evaluator?.messageToUser).toBe(messageToUser);
+			expect(result.evaluator?.decision).toBe("FINISH");
+			expect(h.executed).toEqual([]);
+			expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
+				ModelType.ACTION_PLANNER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+		},
+	);
+
 	it.each(["none", "non_applied"] as const)(
 		"evaluates a proposed preview before forcing an action (%s)",
 		async (replyEffectStatus) => {
