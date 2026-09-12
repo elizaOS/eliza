@@ -1,0 +1,26 @@
+{
+  "name": "@elizaos/plugin-sigui",
+  "version": "3.0.0",
+  "description": "Sigui DePIN AI Security Oracle plugin for ElizaOS agents. Detects Drain Stars, Mixer Chains & Rug Pulls using Qwen2-VL-7B on AMD MI300X + ZK proofs.",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "dependencies": {
+    "@elizaos/core": "^0.1.7"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "^0.1.7"
+  },
+  "keywords": [
+    "elizaos",
+    "elizaos-plugin",
+    "security",
+    "oracle",
+    "depin",
+    "zk-proofs",
+    "ai-security"
+  ],
+  "author": "Sigui Protocol <contact@sigui.xyz>",
+  "license": "MIT"
+}
