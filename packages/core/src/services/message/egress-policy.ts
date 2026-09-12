@@ -94,14 +94,18 @@ export function appliedEffectReceiptIdsForReply(
 		evaluator?.decision === "FINISH" &&
 		!evaluator.protocolFailure &&
 		evaluator.messageToUser?.trim() === normalizedReply &&
-		typeof evaluator.raw?.messageToUser === "string" &&
-		evaluator.raw.messageToUser.trim() === normalizedReply
+		((typeof evaluator.raw?.messageToUser === "string" &&
+			evaluator.raw.messageToUser.trim() === normalizedReply) ||
+			evaluator.plannerReply?.text.trim() === normalizedReply)
 	) {
 		const receipts = resolveAppliedUserFacingEffectReceipts(
 			{
 				verifiedUserFacing: true,
 				userFacingText: normalizedReply,
-				userFacingEffectReceiptIds: evaluator.effectReceiptIds,
+				userFacingEffectReceiptIds:
+					evaluator.plannerReply?.text.trim() === normalizedReply
+						? evaluator.plannerReply.effectReceiptIds
+						: evaluator.effectReceiptIds,
 			},
 			allTurnReceipts,
 		);

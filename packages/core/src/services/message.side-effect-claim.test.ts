@@ -1020,6 +1020,46 @@ describe("evaluatePlannedReplyEgress", () => {
 		).toEqual({ verdict: "allow" });
 	});
 
+	it.each(["valid", "different-text", "invented-id", "missing-id", "preview"])(
+		"binds a recovered planner reply to its own recorded text and receipts (%s)",
+		(variant) => {
+			const reply = "Created your reminder for tomorrow at 9am.";
+			const decision = evaluatePlannedReplyEgress({
+				reply,
+				actions: [reminderSurface],
+				actionResults: [
+					{
+						success: true,
+						effectReceipts: [
+							variant === "preview"
+								? { ...effectBase, outcome: "preview" }
+								: appliedReceipt,
+						],
+						data: { actionName: "OWNER_REMINDERS", action: "create" },
+					},
+				],
+				evaluator: {
+					success: true,
+					decision: "FINISH",
+					thought: "The outcome was verified before presentation recovery.",
+					messageToUser: reply,
+					// These older IDs alone must never authorize the new wording.
+					effectReceiptIds: [appliedReceipt.receiptId],
+					plannerReply: {
+						text: variant === "different-text" ? "An earlier response." : reply,
+						effectReceiptIds:
+							variant === "invented-id"
+								? ["invented"]
+								: variant === "missing-id"
+									? []
+									: [appliedReceipt.receiptId],
+					},
+				},
+			});
+			expect(decision.verdict).toBe(variant === "valid" ? "allow" : "reject");
+		},
+	);
+
 	it("rejects a paraphrased completion without manufacturing replacement prose", () => {
 		const canonical = "Updated “Local calendar proof” for tomorrow at 9:10 PM.";
 		const updated: ActionResult = {

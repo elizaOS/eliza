@@ -32,6 +32,157 @@ const receipt = {
 };
 
 describe("internal applied effect followed by evaluator reply failure", () => {
+	it.each([
+		"final",
+		"pending",
+		"unscoped",
+		"evaluation-required",
+		"no-reply-delegation",
+		"invalid-reply",
+		"existing-reply",
+		"no-reply-proof",
+	])(
+		"recovers omitted presentation only after valid final scope (%s)",
+		async (variant) => {
+			const reply =
+				"The selected event was deleted. The other event is unchanged.";
+			const events = new Set(["event-1", "untouched-event"]);
+			const finish = JSON.stringify({
+				thought: "The deletion is verified.",
+				success: true,
+				decision: "FINISH",
+				messageToUser: reply,
+				effectReceiptIds: [receipt.receiptId],
+			});
+			const useModel = vi
+				.fn<PlannerRuntime["useModel"]>()
+				.mockResolvedValue(finish)
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "delete-1",
+							name: "DELETE",
+							arguments: { eliza_turn_scope: "more_work_pending" },
+						},
+					],
+				})
+				.mockResolvedValueOnce(
+					JSON.stringify({
+						thought:
+							"The durable receipt confirms the entire requested deletion.",
+						success: true,
+						decision: "FINISH",
+						effectReceiptIds: [receipt.receiptId],
+						...(variant === "existing-reply"
+							? { messageToUser: "The event is deleted." }
+							: {}),
+					}),
+				)
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "reply-1",
+							name: "REPLY",
+							arguments: {
+								...(variant === "unscoped"
+									? {}
+									: {
+											eliza_turn_scope:
+												variant === "pending" ? "more_work_pending" : "final",
+										}),
+								text: variant === "invalid-reply" ? "Working on it." : reply,
+								...(variant === "no-reply-proof"
+									? {}
+									: { effectReceiptIds: [receipt.receiptId] }),
+							},
+						},
+					],
+				})
+				.mockResolvedValueOnce(finish)
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "release-1",
+							name: "REPLY",
+							arguments: { eliza_turn_scope: "final" },
+						},
+					],
+				});
+			const executeToolCall = vi.fn(async () => {
+				expect(events.delete("event-1")).toBe(true);
+				return actionResultToPlannerToolResult({
+					success: true,
+					transcriptVisibility: "internal",
+					modelReplyRequired: variant !== "no-reply-delegation",
+					...(variant === "evaluation-required" ? { turnComplete: false } : {}),
+					effectReceipts: [receipt],
+					data: { deleted: true, remaining: [...events] },
+				});
+			});
+			const result = await runPlannerLoop({
+				runtime: { useModel },
+				context: {
+					id: "pending-omitted-reply",
+					events: [
+						{
+							id: "handler",
+							type: "message_handler",
+							metadata: { plan: { intents: ["delete the selected event"] } },
+						},
+					],
+				},
+				tools: [
+					{ name: "DELETE", description: "Delete selected event" },
+					{
+						name: "REPLY",
+						description: "Reply to the user",
+						parameters: {
+							type: "object",
+							properties: { text: { type: "string" } },
+							required: [],
+						},
+					},
+				],
+				executeToolCall,
+			});
+			const replyTools = [0, 2].map((index) =>
+				useModel.mock.calls[index][1].tools?.find(
+					(tool) => tool.name === "REPLY",
+				),
+			);
+			expect(replyTools[0]?.parameters?.required).not.toContain("text");
+			if (
+				![
+					"existing-reply",
+					"evaluation-required",
+					"no-reply-delegation",
+				].includes(variant)
+			)
+				expect(replyTools[1]?.parameters?.required).toContain("text");
+			else expect(replyTools[1]?.parameters?.required).not.toContain("text");
+			expect(result.finalMessage).toBe(reply);
+			expect(executeToolCall).toHaveBeenCalledOnce();
+			expect([...events]).toEqual(["untouched-event"]);
+			expect(useModel.mock.calls.map(([type]) => type)).toEqual([
+				ModelType.ACTION_PLANNER,
+				ModelType.RESPONSE_HANDLER,
+				ModelType.ACTION_PLANNER,
+				...(variant === "final" ? [] : [ModelType.RESPONSE_HANDLER]),
+				...(["pending", "unscoped"].includes(variant)
+					? [ModelType.ACTION_PLANNER]
+					: []),
+			]);
+			expect(result.evaluator?.effectReceiptIds).toEqual([receipt.receiptId]);
+			if (variant === "final")
+				expect(result.trajectory.steps.at(-1)).toMatchObject({
+					terminalOnly: true,
+					terminalMessage: reply,
+				});
+		},
+	);
 	it.each([true, undefined])(
 		"retains missing-reply continuation outside the non-coding planner (codingMode=%s)",
 		async (codingMode) => {

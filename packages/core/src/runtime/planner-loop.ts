@@ -663,6 +663,11 @@ async function runPlannerLoopIterations(
 	let pendingScopeRejectedFinish:
 		| { output: EvaluatorOutput; iteration: number }
 		| undefined;
+	const pendingFinishReplyInstruction = (evaluator: EvaluatorOutput): string =>
+		evaluator.messageToUser?.trim()
+			? `The evaluator's already verified reply is: ${JSON.stringify(evaluator.messageToUser)}. ` +
+				'If no operation remains and you agree with the recorded evaluator FINISH, call native REPLY alone with arguments {"eliza_turn_scope":"final"}; omit text. The already verified evaluator reply will be delivered. REPLY with {} does not release pending scope. Do not regenerate narration or replay a tool just to release scope.'
+			: "The evaluator verified the results but supplied no user-facing reply. If no operation remains and you agree with that verdict, call native REPLY alone with final scope, the complete grounded text, and effectReceiptIds selected from the supplied results for the changes your text claims. Use [] for replies without change claims. Include the actual requested outcome; do not replay a settled operation or claim unrecorded work. An empty or unscoped REPLY does not supply the missing answer.";
 	const correctPendingSuccessfulFinish = (
 		evaluator: EvaluatorOutput,
 		iteration: number,
@@ -698,8 +703,7 @@ async function runPlannerLoopIterations(
 				"Continue the remaining planned work from the recorded results without repeating settled operations. " +
 				"If a genuine blocker prevents completion, report that stopped outcome with success=false. " +
 				"Only an explicit final planner declaration can supersede the pending scope. " +
-				`The evaluator's already verified reply is: ${JSON.stringify(evaluator.messageToUser)}. ` +
-				'If no operation remains and you agree with the recorded evaluator FINISH, call native REPLY alone with arguments {"eliza_turn_scope":"final"}; omit text. The already verified evaluator reply will be delivered. REPLY with {} does not release pending scope. Do not regenerate narration or replay a tool just to release scope.',
+				pendingFinishReplyInstruction(evaluator),
 		});
 		pendingScopeRejectedFinish = { output: evaluator, iteration };
 		return {
@@ -828,7 +832,45 @@ async function runPlannerLoopIterations(
 	for (let iteration = 1; ; iteration++) {
 		if (trajectory.plannedQueue.length === 0) {
 			const contextBeforePlanner = trajectory.context;
-			const synthesizingRequiredModelReply = pendingRequiredModelReply;
+			let synthesizingRequiredModelReply = pendingRequiredModelReply;
+			const previousResult = trajectory.steps.at(-1)?.result;
+			const plannerTools =
+				!codingDrainQueue &&
+				pendingScopeRejectedFinish &&
+				!pendingScopeRejectedFinish.output.messageToUser?.trim() &&
+				isSettledInternalSuccess(previousResult) &&
+				previousResult.modelReplyRequired === true
+					? params.tools?.map((tool) => {
+							const schema = tool.parameters;
+							if (tool.name !== "REPLY" || !schema?.properties?.text)
+								return tool;
+							// Scope-only REPLY can reuse an existing answer, but this
+							// state has none. Reflect the required presentation in the
+							// native schema without mutating the shared tool catalog.
+							return {
+								...tool,
+								parameters: {
+									...schema,
+									properties: {
+										...schema.properties,
+										effectReceiptIds: {
+											type: "array" as const,
+											items: { type: "string" as const },
+											description:
+												"Select current-turn committed receipt IDs supporting the changes claimed in text. Use only supplied applied receipts or replayed commits; use [] for replies without change claims. Never invent or display IDs.",
+										},
+									},
+									required: [
+										...new Set([
+											...(schema.required ?? []),
+											"text",
+											"effectReceiptIds",
+										]),
+									],
+								},
+							};
+						})
+					: params.tools;
 			// Resolve Stage 1's draft/tool-candidate contradiction before exposing
 			// an effect to planning. Reuse normal completion evaluation: FINISH
 			// can deliver the draft; CONTINUE must still plan the outstanding work.
@@ -898,7 +940,7 @@ async function runPlannerLoopIterations(
 							// to "required" and re-run the action. The branch below consumes this
 							// output exactly once, including when a non-compliant provider invents
 							// a tool call despite receiving no tools.
-							tools: synthesizingRequiredModelReply ? undefined : params.tools,
+							tools: synthesizingRequiredModelReply ? undefined : plannerTools,
 							// Removing effect tools must not undo Stage-1 source selection.
 							// This reply-only round can read original context through the
 							// intercepted RESTORE_CONTEXT protocol, never execute an action.
@@ -959,17 +1001,20 @@ async function runPlannerLoopIterations(
 			// A terminal scope release changes no task evidence. Reuse only the
 			// immediately preceding valid FINISH, with no intervening action or
 			// context replacement. The existing final-message/receipt authority
-			// still owns delivery; the planner's REPLY prose is not adopted.
-			const requestsRejectedFinishRelease =
+			// still owns delivery. Replacing an existing answer needs evaluation;
+			// missing presentation instead needs its own model-selected proof.
+			const pendingFinishEvidenceUnchanged =
 				!codingDrainQueue &&
 				pendingScopeRejectedFinish?.iteration === iteration - 1 &&
 				pendingScopeRejectedFinish.output.protocolFailure !== true &&
-				Boolean(pendingScopeRejectedFinish.output.messageToUser?.trim()) &&
 				trajectory.context === contextBeforePlanner &&
 				failures.length === 0 &&
 				!latestUnresolvedFailedNonTerminalToolStep(trajectory) &&
 				plannerOutput.toolCalls.length === 1 &&
-				plannerOutput.toolCalls[0].name.toUpperCase() === "REPLY" &&
+				plannerOutput.toolCalls[0].name.toUpperCase() === "REPLY";
+			const requestsRejectedFinishRelease =
+				pendingFinishEvidenceUnchanged &&
+				Boolean(pendingScopeRejectedFinish?.output.messageToUser?.trim()) &&
 				!terminalMessageFromToolCalls(
 					plannerOutput.toolCalls,
 					// An explicitly empty REPLY can release scope while native
@@ -981,6 +1026,34 @@ async function runPlannerLoopIterations(
 						? undefined
 						: plannerOutput.messageToUser,
 				)?.trim();
+			const settledReplyResult = trajectory.steps.at(-1)?.result;
+			const suppliedReplyText = terminalMessageFromToolCalls(
+				plannerOutput.toolCalls,
+				plannerOutput.messageToUser,
+			);
+			const suppliedReceiptIds =
+				plannerOutput.toolCalls[0]?.params?.effectReceiptIds;
+			const suppliedReplyProof =
+				typeof suppliedReplyText === "string" &&
+				Array.isArray(suppliedReceiptIds) &&
+				suppliedReceiptIds.every(
+					(id): id is string => typeof id === "string" && id.trim().length > 0,
+				)
+					? {
+							text: suppliedReplyText,
+							effectReceiptIds: [...suppliedReceiptIds],
+						}
+					: undefined;
+			const releasedMissingReply =
+				pendingFinishEvidenceUnchanged &&
+				plannerOutput.completed === true &&
+				!pendingScopeRejectedFinish?.output.messageToUser?.trim() &&
+				isSettledInternalSuccess(settledReplyResult) &&
+				settledReplyResult.modelReplyRequired === true &&
+				suppliedReplyProof &&
+				userSafeRescueReply(suppliedReplyProof.text, trajectory)
+					? suppliedReplyProof
+					: undefined;
 			// Treat `messageToUser` as authoritative ONLY when the planner's structured
 			// output carried it as an explicit field. The native-tool-call code path
 			// in `parsePlannerOutput` falls back to `raw.text`, but in native mode
@@ -1018,6 +1091,19 @@ async function runPlannerLoopIterations(
 					}),
 				});
 			}
+			if (releasedMissingReply) {
+				// The evaluator already judged the effects, and this sole final
+				// REPLY explicitly releases pending scope without changing evidence.
+				// Fill only its missing presentation through the existing reply
+				// guarantee; never execute a tool or copy ancillary evaluator effects.
+				plannerOutput = {
+					...plannerOutput,
+					messageToUser: releasedMissingReply.text,
+					toolCalls: [],
+				};
+				pendingScopeRejectedFinish = undefined;
+				synthesizingRequiredModelReply = true;
+			}
 			if (pendingScopeRejectedFinish) {
 				if (
 					requestsRejectedFinishRelease ||
@@ -1032,7 +1118,9 @@ async function runPlannerLoopIterations(
 							content:
 								"This batch only requests scope release or repeats settled work; it was not executed or evaluated again. " +
 								"Continue the outstanding parts of the user's request. If the entire request is already satisfied, " +
-								'call native REPLY alone with arguments {"eliza_turn_scope":"final"}; omit text. REPLY with {} does not release pending scope. The already verified answer will be delivered without repeating the work.',
+								pendingFinishReplyInstruction(
+									pendingScopeRejectedFinish.output,
+								),
 						});
 						// No new evidence exists to evaluate. Keep the verified verdict
 						// for a later explicit final declaration; pending scope still holds.
@@ -1199,6 +1287,12 @@ async function runPlannerLoopIterations(
 					decision: "FINISH",
 					thought: MODEL_REPLY_GATED_EVALUATOR_THOUGHT,
 					messageToUser: finalMessage,
+					...(releasedMissingReply
+						? {
+								effectReceiptIds: releasedMissingReply.effectReceiptIds,
+								plannerReply: releasedMissingReply,
+							}
+						: {}),
 				};
 				trajectory.evaluatorOutputs.push(
 					projectToolDiagnosticValue(
