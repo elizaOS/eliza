@@ -12,6 +12,7 @@ import {
   normalize,
   type OcrResult,
   positiveExpectationMatches,
+  readableTokenShare,
 } from "../ui-smoke/ocr-content-rules";
 import {
   resolveViewOcrPolicy,
@@ -69,6 +70,25 @@ describe("normalize", () => {
   it("lowercases and canonicalizes punctuation and whitespace", () => {
     expect(normalize("  Ask   Eliza\n\n")).toBe("ask eliza");
     expect(normalize("Fine-Tuning")).toBe("fine tuning");
+  });
+});
+
+// The packaged engine's best pass over the populated mobile launcher baseline
+// (icon labels on gradient tiles): 28 "words" at 46% mean confidence, almost
+// none of them words.
+const LAUNCHER_GLYPH_SALAD =
+  "E8CE 0 rao, te vv re NCA EL & AP 09 ca 3°] a NZ DN 4 kh = MA fA Lo LJ + Ask Eliza 9";
+
+describe("readableTokenShare", () => {
+  it("separates glyph salad from rendered labels", () => {
+    expect(readableTokenShare(LAUNCHER_GLYPH_SALAD)).toBeLessThan(0.5);
+    expect(
+      readableTokenShare(
+        "Messages Settings Wallet Tasks Automations Browser Ask Eliza",
+      ),
+    ).toBe(1);
+    expect(readableTokenShare("")).toBe(0);
+    expect(readableTokenShare("$1,650.50 0250000 ETH")).toBeLessThan(0.5);
   });
 });
 
@@ -192,6 +212,37 @@ ph eg`,
       expect(f.verdict).toBe("verified");
     },
   );
+
+  it("routes an unreadable transcript that clears the confidence floor to review, not a fabricated miss", () => {
+    const f = evaluateOcrContent({
+      ocr: ocr(LAUNCHER_GLYPH_SALAD, {
+        meanConfidence: 0.46,
+        pixelBlank: false,
+      }),
+      expectation: {
+        requireAll: ["Settings", "Wallet"],
+        requireAny: ["Projects", "Calendar", "Automations"],
+      },
+    });
+    expect(f.ocrInconclusive).toBe(true);
+    expect(f.missingRequired).toHaveLength(0);
+    expect(f.blankPixels).toBe(false);
+    expect(f.verdict).toBe("needs-eyeball");
+    expect(f.reasons.join(" ")).toMatch(/readable tokens/);
+  });
+
+  it("still breaks a readable transcript that omits a required label at the same confidence", () => {
+    const f = evaluateOcrContent({
+      ocr: ocr("Messages Tasks Automations Browser Character Ask Eliza", {
+        meanConfidence: 0.46,
+        pixelBlank: false,
+      }),
+      expectation: { requireAll: ["Settings", "Wallet"] },
+    });
+    expect(f.ocrInconclusive).toBe(false);
+    expect(f.missingRequired).toEqual(["Settings", "Wallet"]);
+    expect(f.verdict).toBe("broken");
+  });
 
   it("requires token boundaries when short anchors bypass low OCR confidence", () => {
     const exactAnchor = evaluateOcrContent({

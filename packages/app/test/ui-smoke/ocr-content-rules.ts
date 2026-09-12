@@ -199,6 +199,26 @@ export function detectPlaceholderLeaks(text: string): string[] {
 export const OCR_RELIABLE_WORD_FLOOR = 2;
 export const OCR_RELIABLE_CONFIDENCE_FLOOR = 0.45;
 
+/**
+ * Minimum share of transcript tokens that read as words (three or more letters
+ * with a vowel) before a transcript with no matched semantic anchor may claim
+ * that a declared label is missing. Tesseract renders icon labels it cannot
+ * resolve as glyph salad ("MCSSUYCS", "JLUSKS", "E8CE") that can still clear
+ * the mean-confidence floor by a point; such a transcript proves nothing about
+ * which labels the view rendered, so it stays a manual check instead of a
+ * fabricated regression. The vowel test is English-only, like the audited UI.
+ */
+export const OCR_READABLE_TOKEN_SHARE_FLOOR = 0.5;
+
+export function readableTokenShare(text: string): number {
+  const tokens = normalize(text).split(" ").filter(Boolean);
+  if (tokens.length === 0) return 0;
+  const readable = tokens.filter(
+    (token) => /^\p{Letter}{3,}$/u.test(token) && /[aeiouy]/.test(token),
+  ).length;
+  return readable / tokens.length;
+}
+
 export interface EvaluateArgs {
   ocr: OcrResult;
   expectation?: OcrExpectation;
@@ -242,12 +262,14 @@ export function evaluateOcrContent({
     positiveSegments,
     expectation,
   );
+  const readableShare = readableTokenShare(ocr.text);
   const ocrInconclusive =
     !exemptFromBlank &&
     !blankPixels &&
     (ocr.words < OCR_RELIABLE_WORD_FLOOR ||
-      (ocr.meanConfidence < OCR_RELIABLE_CONFIDENCE_FLOOR &&
-        !semanticAnchorsMatched));
+      (!semanticAnchorsMatched &&
+        (ocr.meanConfidence < OCR_RELIABLE_CONFIDENCE_FLOOR ||
+          readableShare < OCR_READABLE_TOKEN_SHARE_FLOOR)));
   const errorLeaks = ocrInconclusive ? [] : detectErrorLeaks(ocr.text);
   const placeholderLeaks = ocrInconclusive
     ? []
@@ -278,7 +300,7 @@ export function evaluateOcrContent({
     );
   } else if (ocrInconclusive) {
     reasons.push(
-      `OCR inconclusive — ${ocr.words} word(s), ${(ocr.meanConfidence * 100).toFixed(1)}% mean confidence; pixels were not blank`,
+      `OCR inconclusive — ${ocr.words} word(s), ${(ocr.meanConfidence * 100).toFixed(1)}% mean confidence, ${(readableShare * 100).toFixed(0)}% readable tokens; pixels were not blank`,
     );
   }
   if (errorLeaks.length)
