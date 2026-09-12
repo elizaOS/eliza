@@ -1213,7 +1213,10 @@ export function ensureProvisionedCloudContainerConfig(
     return false;
   }
 
+  // Managed launch credentials belong to the control plane. A restored config
+  // can contain a key that was revoked when this container was provisioned.
   const apiKey =
+    trimCloudCredential(env.ELIZAOS_CLOUD_API_KEY) ??
     trimCloudCredential(config.cloud?.apiKey) ??
     readEffectiveCloudCredential(config, "ELIZAOS_CLOUD_API_KEY", env);
   if (!apiKey) {
@@ -1223,6 +1226,7 @@ export function ensureProvisionedCloudContainerConfig(
   let changed = false;
   const cloud = config.cloud ?? {};
   const baseUrl =
+    trimEnvString(env.ELIZAOS_CLOUD_BASE_URL) ??
     trimEnvString(config.cloud?.baseUrl) ??
     readEffectiveEnvValue(config, "ELIZAOS_CLOUD_BASE_URL", env);
   const agentId =
