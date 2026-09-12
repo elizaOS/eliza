@@ -1,3 +1,9 @@
+/**
+ * Exercises AppVerificationService through the real verifyProject harness.
+ * Covers Windows package-manager shim execution and cross-platform rejection of
+ * unsafe test filters before command dispatch.
+ */
+
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
