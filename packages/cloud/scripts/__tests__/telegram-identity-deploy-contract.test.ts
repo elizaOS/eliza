@@ -135,14 +135,10 @@ describe("protected Telegram identity workflow contract", () => {
       "Staging can preserve the existing Telegram credentials",
     );
     expect(prepare.env?.ELIZA_APP_TELEGRAM_BOT_TOKEN).toBe(
-      githubExpression(
-        "secrets[format('{0}{1}', 'ELIZA_APP_TELEGRAM_', 'BOT_TOKEN')]",
-      ),
+      githubExpression("secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN"),
     );
     expect(prepare.env?.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET).toBe(
-      githubExpression(
-        "secrets[format('{0}{1}', 'ELIZA_APP_TELEGRAM_', 'WEBHOOK_SECRET')]",
-      ),
+      githubExpression("secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET"),
     );
     expect(prepare.run).toContain('queue_secret "$name"');
     expect(publish.run).toContain("ELIZA_APP_TELEGRAM_BOT_ID");

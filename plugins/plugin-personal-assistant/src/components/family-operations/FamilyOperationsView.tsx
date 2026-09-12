@@ -482,7 +482,8 @@ function AgreementPanel({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "minmax(110px, 0.4fr) minmax(180px, 1fr) auto",
+            gridTemplateColumns:
+              "repeat(auto-fit, minmax(min(100%, 180px), 1fr))",
             gap: 8,
           }}
         >
@@ -1459,7 +1460,13 @@ export function FamilyOperationsView({
       }}
     >
       <div
-        style={{ maxWidth: 1040, margin: "0 auto", display: "grid", gap: 18 }}
+        style={{
+          maxWidth: 1040,
+          margin: "0 auto",
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1fr)",
+          gap: 18,
+        }}
       >
         <header>
           <p

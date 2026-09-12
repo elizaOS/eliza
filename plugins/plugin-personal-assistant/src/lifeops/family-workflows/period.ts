@@ -1,5 +1,5 @@
 /** Resolves next-month family packet periods and calendar query instants using the household timezone. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/errors";
 import type { FamilyPacketPeriod } from "../family-coordination/index.js";
 import { buildUtcDateFromLocalParts, getZonedDateParts } from "../time.js";
 
