@@ -3384,8 +3384,21 @@ function shouldAdoptPlannerCadence(args: {
  * written ("preview it first", "do not save until I confirm", "don't save it
  * yet", "ask me before"). A user-requested preview outranks every
  * crisp-ask immediate-save exemption below. */
-const LIFE_TEXT_REQUESTS_PREVIEW_RE =
-  /\b(?:preview\b[^.!?]{0,40}\bfirst|(?:do not|don'?t)\s+(?:save|add|create|write)\b[^.!?]{0,40}\b(?:until|unless|before)\b|(?:until|unless|before)\s+i\s+(?:confirm|approve|say so)|(?:don'?t|do not)\s+(?:save|add|create|write)\s+(?:it\s+)?yet\b|ask\s+(?:me\s+)?(?:first|before))/i;
+const LIFE_TEXT_REQUESTS_PREVIEW_RE = new RegExp(
+  [
+    // A direct preview request does not need the extra word "first".
+    String.raw`(?:^|[.!?;]\s*)(?:please\s+)?preview\s+(?:one|a|an|the|this|that|it|my|our)\b`,
+    String.raw`\bpreview\b[^.!?]{0,40}\bfirst`,
+    String.raw`\b(?:do not|don['’]?t)\s+(?:save|add|create|write)\b[^.!?]{0,40}\b(?:until|unless|before)\b`,
+    String.raw`\b(?:until|unless|before)\s+i\s+(?:confirm|approve|say so)`,
+    // Plain no-save instructions are authority too, not only "not yet".
+    // Keep the object scoped: "don't create other reminders" does not veto
+    // the requested reminder, and quoted titles are not preview directives.
+    String.raw`\b(?:don['’]?t|do not)\s+(?:save|add|create|write)(?:\s+(?:it|this|that|anything|any\s+records?))?\s*(?:yet\b|[.!?;]|$|or\s+(?:change|modify|edit|delete)\b)`,
+    String.raw`\bask\s+(?:me\s+)?(?:first|before)`,
+  ].join("|"),
+  "i",
+);
 
 function shouldRequireLifeCreateConfirmation(args: {
   confirmed: boolean;

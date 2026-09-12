@@ -1074,6 +1074,49 @@ describe("runLifeOperationHandler clarification contract", () => {
     ]);
   });
 
+  it.each([
+    'Preview one reminder named "Boundary QA" for September 26, 2026 at noon America/New_York.',
+    'Create a reminder named "Boundary QA" for September 26, 2026 at noon America/New_York. Do not save it or change any records.',
+    'Create a reminder named "Boundary QA" for September 26, 2026 at noon America/New_York. Do not save it.',
+    'Create a reminder named "Boundary QA" for September 26, 2026 at noon America/New_York. Don’t save anything.',
+  ])(
+    "keeps the dated reminder as a preview when the owner says %p",
+    async (ownerText) => {
+      const runtime = makeRuntime((prompt) =>
+        prompt.includes("create_definition request")
+          ? taskPlanJson({
+              requestKind: "reminder",
+              title: "Boundary QA",
+              cadenceKind: "once",
+              dueDate: "2026-09-26",
+              timeOfDay: "12:00",
+              timeZone: "America/New_York",
+            })
+          : "",
+      );
+      const result = await runLifeOperationHandler(
+        runtime,
+        makeMessage(ownerText),
+        undefined,
+        {
+          parameters: {
+            action: "create",
+            confirmed: true,
+            title: "Boundary QA",
+            intent: ownerText,
+            ownerSurface: "OWNER_REMINDERS",
+          },
+        } as HandlerOptions,
+      );
+
+      expect(result).toMatchObject({
+        success: false,
+        data: { deferred: true, saved: false, requiresConfirmation: true },
+      });
+      expect(serviceState.createCalls).toHaveLength(0);
+    },
+  );
+
   it("does not treat a future confirmation clause as current consent", async () => {
     const ownerText =
       "Create a personal todo titled Buy oat milk. It has no due date or reminder. Preview it first and do not save until I confirm.";
@@ -2471,50 +2514,61 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
     serviceState.ownerEntityIds.length = 0;
   });
 
-  it('schedules "remind me friday at 5pm" on Friday 17:00, not now', async () => {
-    const runtime = makeRuntime((prompt) => {
-      if (prompt.includes("create_definition request")) {
-        return taskPlanJson({
-          requestKind: "reminder",
-          title: "Call mom",
-          cadenceKind: "once",
-          dueWeekday: 5,
-          timeOfDay: "17:00",
-        });
-      }
-      return "";
-    });
-    const before = Date.now();
-    const message = makeMessage("remind me friday at 5pm to call mom");
-    const result = await runLifeOperationHandler(runtime, message, undefined, {
-      parameters: {
-        action: "create_reminder",
-        intent: "remind me friday at 5pm to call mom",
-      },
-    } as HandlerOptions);
-    expect(result.success).toBe(true);
-    // A completed persist is canonical: the planner must echo the action's
-    // own confirmation instead of paraphrasing the save state (#16941).
-    expect(result.verifiedUserFacing).toBe(true);
-    expect(result.userFacingText ?? "").not.toBe("");
-    expect(serviceState.createCalls).toHaveLength(1);
-    expect(serviceState.ownerEntityIds).toContain(message.entityId);
-    const cadence = serviceState.createCalls[0]?.cadence as {
-      kind: string;
-      dueAt: string;
-    };
-    expect(cadence.kind).toBe("once");
-    const dueAtMs = Date.parse(cadence.dueAt);
-    expect(dueAtMs).toBeGreaterThan(before);
-    const timeZone = resolveDefaultTimeZone();
-    const parts = getZonedDateParts(new Date(cadence.dueAt), timeZone);
-    const weekday = new Date(
-      Date.UTC(parts.year, parts.month - 1, parts.day, 12),
-    ).getUTCDay();
-    expect(weekday).toBe(5);
-    expect(parts.hour).toBe(17);
-    expect(parts.minute).toBe(0);
-  });
+  it.each([
+    "remind me friday at 5pm to call mom",
+    "remind me friday at 5pm to call mom. Do not create other reminders.",
+  ])(
+    "schedules the authorized single reminder on Friday 17:00: %p",
+    async (ownerText) => {
+      const runtime = makeRuntime((prompt) => {
+        if (prompt.includes("create_definition request")) {
+          return taskPlanJson({
+            requestKind: "reminder",
+            title: "Call mom",
+            cadenceKind: "once",
+            dueWeekday: 5,
+            timeOfDay: "17:00",
+          });
+        }
+        return "";
+      });
+      const before = Date.now();
+      const message = makeMessage(ownerText);
+      const result = await runLifeOperationHandler(
+        runtime,
+        message,
+        undefined,
+        {
+          parameters: {
+            action: "create_reminder",
+            intent: ownerText,
+          },
+        } as HandlerOptions,
+      );
+      expect(result.success).toBe(true);
+      // A completed persist is canonical: the planner must echo the action's
+      // own confirmation instead of paraphrasing the save state (#16941).
+      expect(result.verifiedUserFacing).toBe(true);
+      expect(result.userFacingText ?? "").not.toBe("");
+      expect(serviceState.createCalls).toHaveLength(1);
+      expect(serviceState.ownerEntityIds).toContain(message.entityId);
+      const cadence = serviceState.createCalls[0]?.cadence as {
+        kind: string;
+        dueAt: string;
+      };
+      expect(cadence.kind).toBe("once");
+      const dueAtMs = Date.parse(cadence.dueAt);
+      expect(dueAtMs).toBeGreaterThan(before);
+      const timeZone = resolveDefaultTimeZone();
+      const parts = getZonedDateParts(new Date(cadence.dueAt), timeZone);
+      const weekday = new Date(
+        Date.UTC(parts.year, parts.month - 1, parts.day, 12),
+      ).getUTCDay();
+      expect(weekday).toBe(5);
+      expect(parts.hour).toBe(17);
+      expect(parts.minute).toBe(0);
+    },
+  );
 
   it("previews (never writes) a multi-milestone dated ask until the owner confirms (#16941)", async () => {
     // Live finding: "history report due Monday 9am — set reminders for
