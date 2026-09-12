@@ -183,6 +183,7 @@ export {
 // exported through `./api/server.js`.
 export {
   getConfiguredApiToken,
+  isCredentialedCorsOrigin,
   isTrustedLocalRequest,
 } from "./api/server-helpers-auth.ts";
 // `server-types.ts` is the canonical source for conversation/server type
