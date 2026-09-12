@@ -1,8 +1,8 @@
 /**
  * Keeps the authorized action catalog discoverable while a turn loads only the
  * schemas it needs. Discovery has no domain effects: it adds complete authorized
- * action families to this turn's native tools; the normal executor still checks
- * their permissions before dispatch.
+ * operations or explicitly requested families to this turn's native tools.
+ * The normal executor still checks their permissions before dispatch.
  */
 import { DISCOVER_TOOLS_NAME } from "../../actions/to-tool";
 import { ElizaError } from "../../errors";
@@ -44,7 +44,7 @@ export function createPlannerToolDiscoveryAction(
 		name: DISCOVER_TOOLS_NAME,
 		description:
 			"Load complete tool schemas from the authorized name index below when an exposed tool does not cover an intent. " +
-			"Pass exact parent or child names to load all authorized operations of those families. Pass names=[] to read the complete family descriptions and routing hints if the names alone are ambiguous. " +
+			"Pass exact child names to load those operations, or parent names to load their complete authorized families. Pass names=[] to read the complete family descriptions and routing hints if the names alone are ambiguous. " +
 			(resolveAdditionalActions
 				? "The catalog lists families admitted for the current routing contexts. Other exact registered names may be requested; the same permission, context, account-policy and availability checks must admit them before loading. "
 				: "") +
@@ -118,6 +118,7 @@ export function createPlannerToolDiscoveryAction(
 				actions: [...actionsByName.values()],
 				candidateActions: names,
 				contexts: [],
+				deferUnselectedContexts: true,
 			});
 			onDiscover(selected);
 			return {
@@ -131,7 +132,7 @@ export function createPlannerToolDiscoveryAction(
 	};
 }
 
-/** Discovery adds only the requested family's complete schemas. Preserve the
+/** Discovery adds only the requested operations' complete schemas. Preserve the
  * existing budgeted definitions instead of expanding unrelated umbrellas. */
 export function appendDiscoveredPlannerTools(
 	context: ContextObject,

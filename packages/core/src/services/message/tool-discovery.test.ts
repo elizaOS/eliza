@@ -4,10 +4,14 @@ import { buildPlannerToolsFromActions } from "../../actions/to-tool";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import type { Action } from "../../types/components";
+import type { ContextObject } from "../../types/context-object";
 import type { Memory } from "../../types/memory";
 import type { IAgentRuntime } from "../../types/runtime";
 import { collectV5PlannerCandidateActions } from "./action-surface";
-import { collectBudgetedStageOneCandidateActions } from "./planned-tool";
+import {
+	collectBudgetedStageOneCandidateActions,
+	collectPlannerTools,
+} from "./planned-tool";
 import {
 	appendDiscoveredPlannerTools,
 	createPlannerToolDiscoveryAction,
@@ -116,10 +120,32 @@ describe("planner tool discovery", () => {
 			loaded = next;
 		});
 		expect(discovery.description).toContain("NOTES_LIST");
+		const context: ContextObject = {
+			id: "turn",
+			events: [{ id: "notes-create", type: "tool", tool: actions[1] }],
+		};
+		const tools = collectPlannerTools(context, initial);
+		const before = structuredClone(tools);
+		const repeated = await discovery.handler?.(runtime, message, undefined, {
+			parameters: { names: ["NOTES_CREATE"] },
+		});
+		expect(repeated?.success).toBe(true);
+		appendDiscoveredPlannerTools(context, tools, loaded);
+		expect(tools).toEqual(before);
 		const result = await discovery.handler?.(runtime, message, undefined, {
 			parameters: { names: ["NOTES_LIST"] },
 		});
 		expect(result?.success).toBe(true);
+		expect(loaded).toEqual([actions[2]]);
+		appendDiscoveredPlannerTools(context, tools, loaded);
+		expect(tools).toEqual([
+			...before,
+			...buildPlannerToolsFromActions([actions[2]]),
+		]);
+		const family = await discovery.handler?.(runtime, message, undefined, {
+			parameters: { names: ["NOTES"] },
+		});
+		expect(family?.success).toBe(true);
 		expect(loaded).toEqual(actions);
 		// Legacy callers and explicit parent requests retain complete families.
 		expect(
