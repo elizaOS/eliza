@@ -8,7 +8,29 @@
  * a spend limit and must pass through to the provider unchanged.
  */
 
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from "bun:test";
+import { mockNonSubscriberEntitlementLookup } from "./helpers/non-subscriber-entitlement-mock";
+
+// These purchased-credit fixtures have no paid subscription. Keep the real
+// funding selector and reservation path while supplying that repository state.
+let restoreEntitlementLookup: ReturnType<
+  typeof mockNonSubscriberEntitlementLookup
+>;
+beforeEach(() => {
+  restoreEntitlementLookup = mockNonSubscriberEntitlementLookup();
+});
+afterEach(() => {
+  restoreEntitlementLookup();
+});
 
 // Keep the real modules so afterAll can restore them — bun's `mock.module` is
 // process-global and leaks into sibling test files in the same batch process
@@ -117,6 +139,26 @@ const MOCKED_MODULE_ACTUALS: ReadonlyArray<
   ],
 ];
 
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
+let policyDatabase: typeof import("@/db/client");
+beforeAll(async () => {
+  policyDatabase = await import("@/db/client");
+  const pg = policyDatabase.getPgliteClientForTests();
+  await pg.exec("CREATE TABLE organizations(id uuid PRIMARY KEY)");
+  const { installOrganizationPolicyTestSchema } = await import(
+    "@/db/repositories/organization-policy-test-fixture"
+  );
+  await installOrganizationPolicyTestSchema((query) => pg.exec(query));
+  await pg.query(
+    "INSERT INTO organizations(id,credit_balance) VALUES($1,100)",
+    [ORG],
+  );
+});
+afterAll(async () => {
+  await policyDatabase.closeDatabaseConnectionsForTests();
+});
+
 const ORG = "00000000-0000-4000-8000-0000000000aa";
 const USER = "00000000-0000-4000-8000-0000000000bb";
 const API_KEY_ID = "00000000-0000-4000-8000-0000000000cc";
@@ -140,7 +182,12 @@ let generateTextResult: {
 let authResolution:
   | {
       kind: "authorized";
-      ctx: { userId: string; orgId: string; apiKeyId: string };
+      ctx: {
+        userId: string;
+        orgId: string;
+        apiKeyId: string;
+        admission: import("@/lib/services/inference-auth-cache").InferenceAdmissionSnapshot;
+      };
     }
   | { kind: "suspended" }
   | { kind: "miss" };
@@ -347,7 +394,6 @@ mock.module("@/lib/services/inference-billing-deferred", () => ({
   ...inferenceBillingDeferredActual,
   createDeferredAdmissionSettler: () => async () => null,
   isDeferredAdmissionEnabled: () => false,
-  isOrgAdmissionRefused: () => false,
 }));
 
 mock.module("@/lib/services/inference-passthrough", () => ({
@@ -398,13 +444,20 @@ afterAll(() => {
   }
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   generateTextCalls.length = 0;
   streamTextCalls.length = 0;
   catalogSupportedParameters = ["max_tokens", "reasoning"];
   authResolution = {
     kind: "authorized",
-    ctx: { userId: USER, orgId: ORG, apiKeyId: API_KEY_ID },
+    ctx: {
+      userId: USER,
+      orgId: ORG,
+      apiKeyId: API_KEY_ID,
+      admission: await (
+        await import("@/lib/services/inference-admission-snapshot")
+      ).loadInferenceAdmissionSnapshot(ORG),
+    },
   };
   providerConfigured = true;
   shouldBlockUser = false;

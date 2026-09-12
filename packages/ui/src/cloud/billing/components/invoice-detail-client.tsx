@@ -8,7 +8,7 @@
 import { Card, CornerBrackets } from "@elizaos/ui/cloud-ui";
 import { ArrowLeft, Download, ExternalLink } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { toast } from "sonner";
+import { toast } from "../../../bridge/toast";
 import { Button } from "../../../components/ui/button";
 import { isSafeNavigationUrl } from "../../lib/navigation-url";
 import { useCloudT } from "../../shell/CloudI18nProvider";

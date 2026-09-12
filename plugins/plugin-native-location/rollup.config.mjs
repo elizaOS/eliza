@@ -1,9 +1,8 @@
 /**
- * Bundles the compiled `dist/esm/index.js` into an IIFE (`dist/plugin.js`, for
- * script-tag/Electrobun consumption) and a CJS build (`dist/plugin.cjs.js`),
- * externalizing the `@capacitor/core` peer dependency so host apps supply their
- * own copy rather than bundling a second one.
+ * Generated native Capacitor package build configuration. Change the scaffold
+ * manifest or generator instead of editing this file directly.
  */
+
 export default {
   input: "dist/esm/index.js",
   output: [
@@ -11,9 +10,7 @@ export default {
       file: "dist/plugin.js",
       format: "iife",
       name: "capacitorLocation",
-      globals: {
-        "@capacitor/core": "capacitorExports",
-      },
+      globals: { "@capacitor/core": "capacitorExports" },
       sourcemap: true,
       inlineDynamicImports: true,
     },

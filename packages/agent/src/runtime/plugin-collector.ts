@@ -1067,7 +1067,49 @@ export function collectPluginNames(
   // the launcher-owned development Cloud policy.
   if (devCloudAuthority) applyProviderPrecedence();
 
+  withholdPluginsComposedByPersonalAssistant(pluginsToLoad, track);
   return pluginsToLoad;
+}
+
+/**
+ * Plugins whose same-named actions `@elizaos/plugin-personal-assistant`
+ * composes itself: CALENDAR and CONFLICT_DETECT from the calendar plugin,
+ * OWNER_GOALS from the goals plugin. The assistant's init registers both
+ * plugins and withholds those names (`ensureLifeOpsCalendarPluginRegistered`,
+ * `ensureLifeOpsGoalsPluginRegistered` in
+ * `plugins/plugin-personal-assistant/src/plugin.ts`), but only when they are
+ * not already in the runtime. `AgentRuntime.initialize` registers the
+ * non-core plugins concurrently, so a standalone calendar or goals entry in
+ * the same load set registers its actions while the assistant's init is still
+ * awaiting, the runtime's first-wins collision policy keeps the standalone
+ * action, and the composed surface (travel buffers, approval gateway,
+ * bulk_reschedule) is silently skipped (#30943). Cross-plugin `override` is
+ * neutralized by the plugin lifecycle (#12658) and array order does not
+ * survive concurrent registration, so the only deterministic lever is to let
+ * the assistant register these plugins itself.
+ */
+const PLUGINS_COMPOSED_BY_PERSONAL_ASSISTANT: readonly string[] = [
+  "@elizaos/plugin-calendar",
+  "@elizaos/plugin-goals",
+];
+
+/**
+ * Remove the standalone entries for plugins the personal assistant registers
+ * itself, in place, when the assistant is in the load set. Every other entry
+ * is untouched; without the assistant the set is unchanged.
+ */
+export function withholdPluginsComposedByPersonalAssistant(
+  pluginsToLoad: Set<string>,
+  track?: (pluginName: string, reason: string) => void,
+): void {
+  if (!pluginsToLoad.has("@elizaos/plugin-personal-assistant")) return;
+  for (const name of PLUGINS_COMPOSED_BY_PERSONAL_ASSISTANT) {
+    if (!pluginsToLoad.delete(name)) continue;
+    track?.(
+      name,
+      "registered by plugin-personal-assistant with its composed action names withheld (#30943)",
+    );
+  }
 }
 
 function resolveCloudPluginRequirement(

@@ -156,7 +156,7 @@ export class DatabaseMigrationService {
 
       if (!migrationOptions.dryRun && !this.membershipAuthorityTtlConstraintsSettled) {
         this.membershipAuthorityTtlConstraintsSettled =
-          await applyMembershipAuthorityTtlConstraints(this.db);
+          await applyMembershipAuthorityTtlConstraints(this.db, this.databaseBackend);
       }
 
       if (!this.identityPersonLinkGuardSettled) {

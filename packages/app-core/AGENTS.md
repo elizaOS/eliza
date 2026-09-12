@@ -121,3 +121,12 @@ changes, additionally capture and inspect:
 - live-model trajectories and resulting state for runtime-loading changes;
 - browser, desktop, iOS, or Android artifacts on every affected platform; and
 - the actual installed revision before collecting screenshots or recordings.
+
+### iOS local-agent transport ownership
+
+`@elizaos/ui/api/ios-local-agent-transport` owns the shared native runtime,
+fetch interception, boot progress and watchdog restart state. App-core's
+`./api/ios-local-agent-transport` subpath re-exports that owner for compatibility.
+Do not introduce another transport singleton or watchdog listener in the host.
+The fetch boundary applies standard RequestInit overrides and observes caller
+cancellation; cancellation cannot undo native side effects already dispatched.

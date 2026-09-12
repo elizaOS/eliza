@@ -12,6 +12,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getCliVersion } from "./package-info.js";
+import { DEFAULT_SKIP_ENTRIES } from "./template-copy-policy.js";
 import type {
   FullstackTemplateValues,
   PluginTemplateValues,
@@ -20,17 +21,6 @@ import type {
   TemplateUpstream,
 } from "./types.js";
 
-const SKIP_NAMES = new Set([
-  ".DS_Store",
-  ".git",
-  ".turbo",
-  ".vite",
-  "artifacts",
-  "build",
-  "coverage",
-  "dist",
-  "node_modules",
-]);
 const BINARY_EXTENSIONS = new Set([
   ".png",
   ".jpg",
@@ -333,6 +323,18 @@ function normalizeManagedRelativePath(relativePath: string): string {
   return path.join(...segments);
 }
 
+function preserveExecutablePermissions(
+  sourcePath: string,
+  destinationPath: string,
+): boolean {
+  const currentMode = fs.statSync(destinationPath).mode & 0o7777;
+  const nextMode =
+    (currentMode & 0o666) | (fs.statSync(sourcePath).mode & 0o111);
+  if (currentMode === nextMode) return false;
+  fs.chmodSync(destinationPath, nextMode);
+  return true;
+}
+
 function copyRenderedTreeInternal(
   sourceDir: string,
   destinationDir: string,
@@ -343,7 +345,10 @@ function copyRenderedTreeInternal(
   fs.mkdirSync(destinationDir, { recursive: true });
 
   for (const entry of fs.readdirSync(sourceDir, { withFileTypes: true })) {
-    if (SKIP_NAMES.has(entry.name) || entry.name === "template.json") {
+    if (
+      DEFAULT_SKIP_ENTRIES.has(entry.name) ||
+      entry.name === "template.json"
+    ) {
       continue;
     }
 
@@ -372,16 +377,14 @@ function copyRenderedTreeInternal(
       .relative(rootDir, destinationPath)
       .replaceAll(path.sep, "/");
     const buffer = fs.readFileSync(sourcePath);
-    if (isBinaryFile(sourcePath, buffer)) {
-      fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
-      fs.writeFileSync(destinationPath, buffer);
-      managedFiles[relativePath] = sha256(buffer);
-      continue;
-    }
-
-    const rendered = replaceAll(buffer.toString("utf-8"), replacements);
+    const rendered = isBinaryFile(sourcePath, buffer)
+      ? buffer
+      : replaceAll(buffer.toString("utf-8"), replacements);
     fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
-    fs.writeFileSync(destinationPath, rendered, "utf-8");
+    fs.writeFileSync(destinationPath, rendered);
+    // writeFile's mode only applies to new files. Preserve executable bits
+    // on rerenders too, without importing source special permission bits.
+    preserveExecutablePermissions(sourcePath, destinationPath);
     managedFiles[relativePath] = sha256(rendered);
   }
 }
@@ -553,21 +556,26 @@ export function updateManagedFiles(options: {
       continue;
     }
 
-    if (currentHash === previousHash) {
-      if (currentHash === nextHash) {
+    if (currentHash === nextHash) {
+      const modeChanged =
+        (fs.statSync(projectPath).mode & 0o111) !==
+        (fs.statSync(renderedPath).mode & 0o111);
+      if (modeChanged) {
+        updated.push(relativePath);
+        if (!options.dryRun)
+          preserveExecutablePermissions(renderedPath, projectPath);
+      } else {
         unchanged.push(relativePath);
-        continue;
       }
+      continue;
+    }
+
+    if (currentHash === previousHash) {
       updated.push(relativePath);
       if (!options.dryRun) {
         fs.mkdirSync(path.dirname(projectPath), { recursive: true });
         fs.copyFileSync(renderedPath, projectPath);
       }
-      continue;
-    }
-
-    if (currentHash === nextHash) {
-      unchanged.push(relativePath);
       continue;
     }
 

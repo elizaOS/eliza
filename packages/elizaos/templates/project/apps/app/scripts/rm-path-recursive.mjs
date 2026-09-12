@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Remove a path recursively with retries. This keeps the generated project
+ * Remove a path recursively with retries. This keeps the generated workspace
  * template self-contained while matching the monorepo build cleanup behavior.
  */
 import { rmSync } from "node:fs";

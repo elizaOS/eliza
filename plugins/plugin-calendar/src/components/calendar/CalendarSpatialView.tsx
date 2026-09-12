@@ -114,6 +114,7 @@ export function CalendarSpatialView({
           variant="ghost"
           tone="default"
           agent="today"
+          shrink={0}
           onPress={dispatch("today")}
         >
           Today

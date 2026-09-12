@@ -1,7 +1,7 @@
 /**
  * Real-error-path coverage for `getPreviousAgentIds` (#12268): a corrupt or
  * malformed `eliza.ai/previous-agents` annotation must throw so the reconcile
- * loop's J1 boundary surfaces it, never fabricate an empty list that silently
+ * Pepr boundary surfaces it, never fabricate an empty list that silently
  * skips Redis cleanup of removed agents.
  */
 import { describe, expect, test } from "bun:test";

@@ -1,18 +1,12 @@
-/**
- * Exercises AgentRuntime.dynamicPromptExecFromState: structured model calls
- * request JSON-object response format, structured callbacks drain before a
- * retry, a validation failure feeds corrective [REPAIR] context into the
- * reroll, and exhausted retries return null while an explicit caller response
- * format is preserved. Runs against a bare
- * AgentRuntime (no DB adapter, logModelCall stubbed) with a registered vi.fn()
- * model handler — fully deterministic, no live model.
- */
+/** Exercises structured retries, callback draining, and corrective repair prompts through a real runtime and in-memory database with deterministic model handlers. */
 import { describe, expect, it, vi } from "vitest";
+import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { AgentRuntime } from "../runtime";
-import { type Character, ModelType } from "../types";
+import { type Character, ModelType, type State } from "../types";
 
 function makeRuntime(): AgentRuntime {
 	const runtime = new AgentRuntime({
+		adapter: new InMemoryDatabaseAdapter(),
 		character: {
 			name: "dynamic-prompt-json-mode-test",
 			bio: "test",
@@ -20,15 +14,87 @@ function makeRuntime(): AgentRuntime {
 		} as Character,
 		logLevel: "fatal",
 	});
-	// This minimal runtime has no DB adapter, so logModelCall's
-	// `this.adapter.createLogs` would throw and route every useModel through the
-	// model_error path — never reaching validation. Stub it (pure logging) so
-	// useModel returns the handler output cleanly.
-	(runtime as unknown as { logModelCall: () => void }).logModelCall = () => {};
+
 	return runtime;
 }
 
 describe("AgentRuntime.dynamicPromptExecFromState", () => {
+	it("does not repeat an exhausted rate-limited provider chain", async () => {
+		const runtime = makeRuntime();
+		const limited = () =>
+			Object.assign(new Error("Provider capacity reached"), {
+				statusCode: 429,
+			});
+		const primary = vi.fn(async () => {
+			throw limited();
+		});
+		const fallback = vi.fn(async () => {
+			throw limited();
+		});
+		runtime.registerModel(ModelType.TEXT_LARGE, primary, "primary", 100);
+		runtime.registerModel(ModelType.TEXT_LARGE, fallback, "fallback", 50);
+		const state: State = { values: {}, data: {}, text: "" };
+
+		const result = await runtime.dynamicPromptExecFromState({
+			state,
+			params: { prompt: "Return an answer." },
+			schema: [{ field: "answer", description: "Answer", required: true }],
+			options: { modelType: ModelType.TEXT_LARGE, maxRetries: 3 },
+		});
+
+		expect(result).toBeNull();
+		expect(primary).toHaveBeenCalledTimes(1);
+		expect(fallback).toHaveBeenCalledTimes(1);
+		expect(state.data.structuredOutputFailure).toMatchObject({
+			kind: "model_error",
+			attempts: 1,
+			maxRetries: 3,
+			parseError: "Provider capacity reached",
+		});
+	});
+
+	it("still uses a healthy fallback after a rate-limited provider", async () => {
+		const runtime = makeRuntime();
+		const primary = vi.fn(async () => {
+			throw Object.assign(new Error("Too many requests"), { statusCode: 429 });
+		});
+		const fallback = vi.fn(async () => '{"answer":"available"}');
+		runtime.registerModel(ModelType.TEXT_LARGE, primary, "primary", 100);
+		runtime.registerModel(ModelType.TEXT_LARGE, fallback, "fallback", 50);
+		const result = await runtime.dynamicPromptExecFromState({
+			params: { prompt: "Return an answer." },
+			schema: [{ field: "answer", description: "Answer", required: true }],
+			options: {
+				modelType: ModelType.TEXT_LARGE,
+				maxRetries: 3,
+				contextCheckLevel: 0,
+			},
+		});
+		expect(result).toEqual({ answer: "available" });
+		expect(primary).toHaveBeenCalledTimes(1);
+		expect(fallback).toHaveBeenCalledTimes(1);
+	});
+
+	it("still retries a recoverable transport failure", async () => {
+		const runtime = makeRuntime();
+		const handler = vi
+			.fn()
+			.mockRejectedValueOnce(new Error("ECONNRESET"))
+			.mockResolvedValue('{"answer":"recovered"}');
+		runtime.registerModel(ModelType.TEXT_LARGE, handler, "test", 100);
+		const result = await runtime.dynamicPromptExecFromState({
+			params: { prompt: "Return an answer." },
+			schema: [{ field: "answer", description: "Answer", required: true }],
+			options: {
+				modelType: ModelType.TEXT_LARGE,
+				maxRetries: 1,
+				contextCheckLevel: 0,
+			},
+		});
+		expect(result).toEqual({ answer: "recovered" });
+		expect(handler).toHaveBeenCalledTimes(2);
+	});
+
 	it("drains an older structured callback before starting a retry", async () => {
 		const runtime = makeRuntime();
 		let attempt = 0;

@@ -163,6 +163,7 @@ describe("terminalAction validate and store-build gate", () => {
     );
 
     expect(fetchSpy).not.toHaveBeenCalled();
+    expect(result?.userFacingText).toBeUndefined();
     expect(result).toMatchObject({
       success: false,
       data: {
@@ -210,6 +211,7 @@ describe("terminalAction command resolution", () => {
         undefined,
         options(parameters),
       );
+      expect(result?.userFacingText).toBeUndefined();
       expect(result).toMatchObject({
         success: false,
         error: "TERMINAL_COMMAND_REQUIRED",
@@ -303,6 +305,7 @@ describe("terminalAction command resolution", () => {
       undefined,
       options({ command: "<![CDATA[   ]]>" }),
     );
+    expect(result?.userFacingText).toBeUndefined();
     expect(result).toMatchObject({ error: "TERMINAL_COMMAND_REQUIRED" });
   });
 });
@@ -491,11 +494,11 @@ describe("terminalAction request identity and parse failures", () => {
       undefined,
       options(),
     );
+    expect(result?.userFacingText).toBeUndefined();
     expect(result).toMatchObject({
       success: true,
-      userFacingText:
-        "The command finished (exit 0) with 3 lines of output; ask me about specifics instead of dumping it into chat.",
-      verifiedUserFacing: false,
+
+      modelReplyRequired: true,
     });
   });
 });

@@ -155,15 +155,9 @@ export interface SettingsNonCatalogAuditEntry {
 export const SETTINGS_NON_CATALOG_SECTION_AUDIT = {
 	"desktop-integration": {
 		reason:
-			"Native launch, Dock, and status-icon preferences require the desktop bridge and are not portable SETTINGS values.",
+			"Native launch and global shortcut preferences require the desktop bridge and are not portable SETTINGS values.",
 		coveredBy:
 			"Capability-gated Settings controls remain agent-addressable through the desktop Settings surface.",
-	},
-	shortcuts: {
-		reason:
-			"Global shortcut registration is an operating-system desktop workflow rather than a portable local SETTINGS value.",
-		coveredBy:
-			"Capability-gated shortcut controls remain agent-addressable through the desktop Settings surface.",
 	},
 	"cloud-overview": {
 		reason:
@@ -1834,7 +1828,7 @@ function narrateList(listing: SettingsSectionListing[]): string {
 async function handleSet(
 	request: SettingsRequest,
 	routeFetch: SettingsRouteFetch,
-	callback: HandlerCallback | undefined,
+	_callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
 	if (!request.sectionId) {
 		// Planner-facing only: the evaluator owns asking the user, in voice.
@@ -1864,7 +1858,7 @@ async function handleSet(
 
 	if (cap.kind === "unwired") {
 		const reply = `I can't change ${request.sectionId} from chat yet: ${cap.reason} Open it in Settings to change it there.`;
-		await callback?.({ text: reply });
+
 		return { success: false, text: reply };
 	}
 
@@ -1920,7 +1914,7 @@ async function handleSet(
 		// namespace), not request.key — that reads as `"null"` when the caller
 		// used a different parameter to name the key.
 		const reply = `I don't know how to set "${keyName ?? request.key}" on ${request.sectionId}. I can change: ${known}.`;
-		await callback?.({ text: reply });
+
 		return { success: false, text: reply };
 	}
 
@@ -1928,7 +1922,7 @@ async function handleSet(
 		writable.valueType === "boolean" ? parseBooleanValue(request.value) : null;
 	if (writable.valueType === "boolean" && parsedValue === null) {
 		const reply = `Tell me on or off for ${request.sectionId} ${keyName}.`;
-		await callback?.({ text: reply });
+
 		return { success: false, text: reply };
 	}
 
@@ -1950,18 +1944,16 @@ async function handleSet(
 				};
 	if (!outcome.ok) {
 		const reply = `I couldn't change ${request.sectionId} ${keyName}: ${outcome.detail ?? "the settings route failed"}.`;
-		await callback?.({ text: reply });
+
 		return { success: false, text: reply };
 	}
 	const reply = writable.successText(parsedValue, request, outcome, keyName);
-	await callback?.({ text: reply });
+
 	const requestedPermission = readPermissionFromOutcome(outcome.data);
 	return {
 		success: true,
 		text: reply,
-		userFacingText: reply,
-		verifiedUserFacing: true,
-		turnComplete: true,
+
 		values: {
 			section: request.sectionId,
 			key: keyName,
@@ -1983,7 +1975,7 @@ async function handleSet(
 
 function handleGet(
 	request: SettingsRequest,
-	callback: HandlerCallback | undefined,
+	_callback: HandlerCallback | undefined,
 ): ActionResult {
 	if (!request.sectionId) {
 		const reply =
@@ -2000,10 +1992,8 @@ function handleGet(
 				? `Written via the ${cap.action} action — ${cap.summary}`
 				: cap.summary;
 	const reply = `${label}: ${summary}`;
-	void callback?.({ text: reply });
-	// Deliberately un-gated: get is a capability probe the planner composes
-	// with (the write-capability data is machine-facing), unlike list/set
-	// which own their canonical reply.
+
+	// Capability data and results stay planner-facing; the model owns the reply.
 	return {
 		success: true,
 		text: reply,
@@ -2217,20 +2207,18 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 			if (!request) {
 				const reply =
 					"Tell me what to do with settings: list them, read one, or change one (e.g. 'turn off shell access').";
-				await callback?.({ text: reply });
+
 				return { success: false, text: reply };
 			}
 
 			if (request.verb === "list") {
 				const listing = buildListing();
 				const reply = narrateList(listing);
-				await callback?.({ text: reply });
+
 				return {
 					success: true,
 					text: reply,
-					userFacingText: reply,
-					verifiedUserFacing: true,
-					turnComplete: true,
+
 					data: { sections: listing },
 				};
 			}

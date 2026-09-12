@@ -143,6 +143,63 @@ function hasMore(body: unknown): boolean | undefined {
   return (body as { hasMore?: boolean }).hasMore;
 }
 
+describe("GET /api/conversations/:id/messages runtime readiness", () => {
+  it("returns unavailable rather than empty history for a known conversation without a runtime", async () => {
+    const state = makeState([mem(1)], [conv("c-a", roomA)]);
+    state.runtime = null;
+
+    expect(await getMessages("c-a", "", state)).toEqual({
+      status: 503,
+      body: { error: "Agent runtime not available" },
+    });
+    expect(state.conversations.has("c-a")).toBe(true);
+  });
+
+  it("returns unavailable rather than not found before conversation restoration can start", async () => {
+    const state = makeState([], []);
+    state.runtime = null;
+    state.conversationRestorePromise = null;
+
+    expect(await getMessages("c-a", "", state)).toEqual({
+      status: 503,
+      body: { error: "Agent runtime not available" },
+    });
+  });
+
+  it("keeps not found for a genuinely unknown conversation with an available runtime", async () => {
+    const state = makeState([], []);
+    state.conversationRestorePromise = null;
+
+    expect(await getMessages("missing", "", state)).toEqual({
+      status: 404,
+      body: { error: "Conversation not found" },
+    });
+    expect(state.runtime?.getMemories).not.toHaveBeenCalled();
+  });
+
+  it("waits for in-flight conversation restoration before returning persisted history", async () => {
+    const state = makeState([mem(1)], []);
+    let completeRestore!: () => void;
+    state.conversationRestorePromise = new Promise<void>((resolve) => {
+      completeRestore = resolve;
+    });
+    const responseSettled = vi.fn();
+    const response = getMessages("c-a", "", state);
+    void response.then(responseSettled);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(responseSettled).not.toHaveBeenCalled();
+    expect(state.runtime?.getMemories).not.toHaveBeenCalled();
+
+    state.conversations.set("c-a", conv("c-a", roomA));
+    completeRestore();
+    const result = await response;
+
+    expect(result.status).toBe(200);
+    expect(timestamps(result.body)).toEqual([1]);
+  });
+});
+
 describe("GET /api/conversations/:id/messages?before", () => {
   // 250 turns; default window is newest-200 (createdAt 51..250).
   const seeded = Array.from({ length: 250 }, (_, i) => mem(i + 1));

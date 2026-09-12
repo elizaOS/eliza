@@ -104,19 +104,36 @@ function stepToCapability(
   params: Record<string, unknown>,
   actionName: string,
 ): { capability: string; params: Record<string, unknown> } {
+  const target = step.target.replace(
+    /\{\{([a-zA-Z0-9_]+)\}\}/g,
+    (_token, key: string) => {
+      const value = params[key];
+      if (typeof value !== "string" || !value.trim()) {
+        throw new ElizaError(
+          `Missing target parameter "${key}" for ${actionName}`,
+          {
+            code: "VIEW_SCOPED_ACTION_PARAM_MISSING",
+            context: { actionName, parameter: key },
+            severity: "ephemeral",
+          },
+        );
+      }
+      return value;
+    },
+  );
   switch (step.kind) {
     case "agent-fill":
       return {
         capability: "agent-fill",
         params: {
-          id: step.target,
+          id: target,
           value: resolveStepValue(step, params, actionName),
         },
       };
     case "agent-click":
-      return { capability: "agent-click", params: { id: step.target } };
+      return { capability: "agent-click", params: { id: target } };
     case "agent-focus":
-      return { capability: "agent-focus", params: { id: step.target } };
+      return { capability: "agent-focus", params: { id: target } };
   }
 }
 
@@ -174,6 +191,12 @@ export function buildViewScopedAction(
     name: decl.name,
     description: decl.description,
     similes: decl.similes,
+    parameters: paramList.map((name) => ({
+      name,
+      description: `${name} for ${decl.description}`,
+      required: true,
+      schema: { type: "string" as const, minLength: 1 },
+    })),
     routingHint: `only available while the "${viewId}" view is active -> ${decl.name}${paramLine}; drives that view's controls, unavailable elsewhere`,
     // The declaring view must be the FOREGROUND active view. This is the gate
     // that keeps the agent from driving a view's controls while looking at a
@@ -235,6 +258,17 @@ export function buildViewScopedAction(
       }
 
       const params = readActionParams(options);
+      // Bind UI effects to the requesting renderer, not a stale global snapshot.
+      const metadata = _message.content?.metadata;
+      const requestedClientId =
+        metadata && typeof metadata === "object" && "viewClientId" in metadata
+          ? metadata.viewClientId
+          : undefined;
+      const clientId =
+        typeof requestedClientId === "string" &&
+        /^[A-Za-z0-9._-]{1,128}$/.test(requestedClientId)
+          ? requestedClientId
+          : active.clientId;
       const driven: string[] = [];
       const userRoles = entry.roleGate
         ? await resolveCallerRoles(runtime, _message)
@@ -254,7 +288,7 @@ export function buildViewScopedAction(
           {
             ...(broadcastWs ? { broadcastWs } : {}),
             ...(broadcastWsToClientId ? { broadcastWsToClientId } : {}),
-            ...(active.clientId ? { clientId: active.clientId } : {}),
+            ...(clientId ? { clientId } : {}),
             runtime,
             ...(userRoles ? { userRoles } : {}),
           },
@@ -293,7 +327,7 @@ export function buildViewScopedAction(
             },
           );
         }
-        driven.push(`${capability}:${step.target}`);
+        driven.push(`${capability}:${String(stepParams.id)}`);
       }
 
       logger.info(
@@ -305,7 +339,7 @@ export function buildViewScopedAction(
       return {
         success: true,
         text,
-        userFacingText: text,
+        transcriptVisibility: "internal",
         data: { viewId, actionName: decl.name, steps: driven },
       };
     },

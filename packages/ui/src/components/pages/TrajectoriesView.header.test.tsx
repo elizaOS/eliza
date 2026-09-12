@@ -1,4 +1,4 @@
-/** Verifies the responsive Trajectories header and clearance ownership. */
+/** Tests responsive local navigation, errors, and authority changes with deterministic Trajectories fixtures. */
 // @vitest-environment jsdom
 
 import {
@@ -110,7 +110,30 @@ describe("TrajectoriesView header lifecycle", () => {
     vi.clearAllMocks();
   });
 
-  it("replaces the mobile list header with one detail header and keeps clearance at the router boundary", async () => {
+  it("shows missing usage as unknown instead of zero", async () => {
+    clientMock.getTrajectories.mockResolvedValue({
+      trajectories: [
+        {
+          ...trajectory,
+          totalPromptTokens: undefined,
+          totalCompletionTokens: undefined,
+        },
+      ],
+      total: 1,
+      offset: 0,
+      limit: 50,
+    });
+    render(
+      <TrajectoriesView
+        selectedTrajectoryId={null}
+        onSelectTrajectory={vi.fn()}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("— tokens")).toBeTruthy());
+    expect(screen.queryByText("0 tokens")).toBeNull();
+  });
+
+  it("returns from a mobile run detail to the activity list", async () => {
     const onSelectTrajectory = vi.fn();
     const rendered = render(
       <TrajectoriesView
@@ -119,7 +142,6 @@ describe("TrajectoriesView header lifecycle", () => {
       />,
     );
 
-    expect(screen.getByRole("heading", { name: "Trajectories" })).toBeTruthy();
     await waitFor(() => screen.getByText("1 recorded run"));
 
     rendered.rerender(
@@ -129,22 +151,19 @@ describe("TrajectoriesView header lifecycle", () => {
       />,
     );
 
-    expect(
-      await screen.findByRole("heading", { name: "Run details" }),
-    ).toBeTruthy();
-    expect(screen.getAllByTestId("view-header")).toHaveLength(1);
     expect(screen.getByTestId("trajectory-detail").textContent).toBe("run-1");
 
     fireEvent.click(screen.getByRole("button", { name: "Back to activity" }));
     expect(onSelectTrajectory).toHaveBeenLastCalledWith(null);
 
-    for (const scroller of rendered.container.querySelectorAll<HTMLElement>(
-      ".overflow-y-auto",
-    )) {
-      expect(scroller.className).not.toContain("--eliza-chat-clearance");
-      expect(scroller.className).not.toContain("--eliza-mobile-nav-offset");
-      expect(scroller.className).not.toContain("--safe-area-bottom");
-    }
+    rendered.rerender(
+      <TrajectoriesView
+        selectedTrajectoryId={null}
+        onSelectTrajectory={onSelectTrajectory}
+      />,
+    );
+    expect(await screen.findByText("1 recorded run")).toBeTruthy();
+    expect(screen.queryByTestId("trajectory-detail")).toBeNull();
   });
 
   it("surfaces the Shared capability boundary once without offering a futile retry", async () => {

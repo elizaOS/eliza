@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { readCsrfTokenFromCookie } from "./csrf-cookie";
+import { readCsrfTokenForUrl, readCsrfTokenFromCookie } from "./csrf-cookie";
 import { CSRF_COOKIE_NAME } from "./sessions";
 
 function setCookie(pair: string) {
@@ -58,6 +58,16 @@ describe("readCsrfTokenFromCookie", () => {
     vi.stubGlobal("document", undefined);
 
     expect(readCsrfTokenFromCookie()).toBeNull();
+  });
+
+  it("does not attach a browser cookie to opaque native or file targets", () => {
+    setCookie(`${CSRF_COOKIE_NAME}=browser-csrf`);
+    for (const url of [
+      "file:///api/config",
+      "eliza-local-agent://ipc/api/config",
+    ]) {
+      expect(readCsrfTokenForUrl(url)).toBeNull();
+    }
   });
 
   it("matches the cookie name case-sensitively", () => {

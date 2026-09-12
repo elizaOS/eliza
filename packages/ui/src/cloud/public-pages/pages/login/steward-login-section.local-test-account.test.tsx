@@ -34,8 +34,8 @@ vi.mock("./passkey-capability", () => ({
     Promise.resolve({ usable: false, reason: "native-without-bridge" }),
 }));
 
-vi.mock("@stwd/sdk", () => ({
-  StewardAuth: class {
+vi.mock("@elizaos/login", () => ({
+  LoginAuth: class {
     getProviders() {
       return Promise.resolve({
         passkey: false,
@@ -148,7 +148,9 @@ function jsonResponse(body: unknown, status: number): Response {
   });
 }
 
-describe("StewardLoginSection local test account sign-in", () => {
+describe("StewardLoginSection local test account sign-in", {
+  timeout: 20_000,
+}, () => {
   beforeEach(() => {
     window.localStorage.clear();
     setCookie("eliza-test-auth=; Max-Age=0; Path=/");

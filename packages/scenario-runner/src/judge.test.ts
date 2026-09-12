@@ -20,6 +20,26 @@ describe("judgeTextWithLlm fallback parsing", () => {
     vi.unstubAllEnvs();
   });
 
+  it("delivers rubric and candidate literally without reinterpreting inserted placeholders", async () => {
+    const rubric =
+      "Keep $& and $` and $' and $$ plus {candidate} and {rubric} exactly.\n  rubric tail";
+    const candidate =
+      "Result $& $` $' $$ {rubric} {candidate}\n  candidate tail";
+    let rendered = "";
+    const useModel = async (_type: string, params: { prompt: string }) => {
+      rendered = params.prompt;
+      return '{"score":1,"reason":"complete input"}';
+    };
+    await judgeTextWithLlm(
+      { useModel } as unknown as IAgentRuntime,
+      candidate,
+      rubric,
+    );
+    expect(
+      rendered.split("RUBRIC:\n")[1].split("\n\nRespond with ONLY")[0],
+    ).toBe(`${rubric}\n\nCANDIDATE RESPONSE:\n${candidate}`);
+  });
+
   it("retries malformed TEXT_LARGE output and returns the first parseable verdict", async () => {
     const useModel = vi
       .fn()

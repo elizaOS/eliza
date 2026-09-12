@@ -5,7 +5,7 @@
  * placement, trace ids, and deployment provenance.
  */
 
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
 const AUTH_TRACE_HEADER = "x-eliza-auth-trace";
@@ -94,11 +94,37 @@ const TAIL_OUTCOMES = new Set([
   "unknown",
 ]);
 
-const OPAQUE_TRACE_ID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const TRACE_ID_PATTERN = /^[0-9a-f]{32}$/;
 
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Categorizes failed Tail validation without exposing raw parser or IO errors. */
+export function inferenceAuthTailFailureCode(error) {
+  const message = error instanceof Error ? error.message : "";
+  const exact = new Map([
+    ["Worker Tail output ended mid-record", "incomplete_stream"],
+    ["Worker Tail returned duplicate auth traces", "duplicate_auth_records"],
+    [
+      "Worker Tail returned duplicate auth cache-write traces",
+      "duplicate_deferred_writes",
+    ],
+    [
+      "Worker Tail omitted a deferred auth cache-write trace",
+      "missing_deferred_write",
+    ],
+    [
+      "Worker Tail returned an unexpected auth cache-write trace",
+      "unexpected_deferred_write",
+    ],
+  ]);
+  if (exact.has(message)) return exact.get(message);
+  if (/^Worker Tail omitted \d+ retained auth traces$/.test(message))
+    return "missing_auth_records";
+  if (message.startsWith("Worker auth ")) return "schema_mismatch";
+  if (error instanceof SyntaxError) return "invalid_json";
+  return "unclassified_failure";
 }
 
 function hasExactKeys(value, keys) {
@@ -135,10 +161,10 @@ export function sanitizeInferenceAuthTelemetry(value) {
       "Worker auth log does not match the bounded telemetry schema",
     );
   }
-  if (!OPAQUE_TRACE_ID.test(value.traceId)) {
+  if (!TRACE_ID_PATTERN.test(value.traceId)) {
     throw new Error("Worker auth log has an invalid trace id");
   }
-  const telemetry = { v: 1, traceId: value.traceId.toLowerCase() };
+  const telemetry = { v: 1, traceId: value.traceId };
   for (const [name, allowed] of Object.entries(AUTH_TELEMETRY_ENUMS)) {
     if (!allowed.has(value[name])) {
       throw new Error(
@@ -182,7 +208,7 @@ function sanitizeInferenceAuthCacheWriteTelemetry(value) {
       "Worker auth cache-write log does not match the bounded telemetry schema",
     );
   }
-  if (!OPAQUE_TRACE_ID.test(value.traceId)) {
+  if (!TRACE_ID_PATTERN.test(value.traceId)) {
     throw new Error("Worker auth cache-write log has an invalid trace id");
   }
   if (!AUTH_ENUMS.backend.has(value.cacheBackend)) {
@@ -279,10 +305,13 @@ export function sanitizeInferenceAuthTail(
       const rawTraceId = isRecord(rawTelemetry)
         ? rawTelemetry.traceId
         : undefined;
-      if (typeof rawTraceId !== "string" || !OPAQUE_TRACE_ID.test(rawTraceId)) {
+      if (
+        typeof rawTraceId !== "string" ||
+        !TRACE_ID_PATTERN.test(rawTraceId)
+      ) {
         continue;
       }
-      const traceId = rawTraceId.toLowerCase();
+      const traceId = rawTraceId;
       // A Tail session can observe unrelated traffic on the isolated hostname.
       // Correlate on the one opaque field before validating or retaining any
       // other part of the raw object, then fail closed on the complete schema.
@@ -468,8 +497,15 @@ export function parseAuthServerTiming(value) {
   return timings;
 }
 
+const CLOUDFLARE_PLACEMENT_PATTERN = /^(?:local|remote)-[A-Z]{3}$/;
+
+/** Accepts the documented cf-placement mode and airport-code wire shape. */
+export function isCloudflarePlacement(value) {
+  return typeof value === "string" && CLOUDFLARE_PLACEMENT_PATTERN.test(value);
+}
+
 function boundedPlacement(value) {
-  return /^(?:local|remote-[A-Z]{3})$/.test(value ?? "") ? value : "unknown";
+  return isCloudflarePlacement(value) ? value : "unknown";
 }
 
 function boundedColo(value) {
@@ -490,7 +526,7 @@ function assertRequiredTimings(timings, auth) {
   }
   for (const name of required) {
     if (!Object.hasOwn(timings, name))
-      throw new Error(`Missing required ${auth.result} timing`);
+      throw new Error(`Missing required ${auth.result} timing: ${name}`);
   }
 }
 
@@ -537,7 +573,7 @@ export async function probeAuthSample({
   fetchImpl = fetch,
   now = performance.now.bind(performance),
 }) {
-  const traceId = randomUUID();
+  const traceId = randomBytes(16).toString("hex");
   const headers = {
     "Content-Type": "application/json",
     "User-Agent": "eliza-inference-auth-latency/1.0",
@@ -669,6 +705,7 @@ export async function waitForInferenceAuthTail({
     throw new Error("Invalid Worker Tail readiness configuration");
   }
   let routePropagationPending = false;
+  let lastTailFailure;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     let sample;
     try {
@@ -698,7 +735,14 @@ export async function waitForInferenceAuthTail({
     routePropagationPending = false;
     for (let poll = 0; poll < pollsPerAttempt; poll++) {
       await sleep(pollIntervalMs);
-      if (readTail().includes(sample.traceId)) return attempt;
+      try {
+        sanitizeInferenceAuthTail(readTail(), [sample.traceId], deploySha);
+        return attempt;
+      } catch (error) {
+        // error-policy:J3 readiness requires a complete sanitized audit record;
+        // partial delivery and rejected records remain explicitly unready.
+        lastTailFailure = error;
+      }
     }
   }
   if (routePropagationPending) {
@@ -707,7 +751,7 @@ export async function waitForInferenceAuthTail({
     );
   }
   throw new Error(
-    "Worker Tail did not observe an authenticated readiness trace",
+    `Worker Tail did not observe an authenticated readiness trace (${inferenceAuthTailFailureCode(lastTailFailure)})`,
   );
 }
 
@@ -729,7 +773,7 @@ export async function probeAuthGuardSample({
   ) {
     throw new Error("Unknown auth guard probe");
   }
-  const traceId = randomUUID();
+  const traceId = randomBytes(16).toString("hex");
   const headers = {
     "Content-Type": "application/json",
     "User-Agent": "eliza-inference-auth-latency/1.0",

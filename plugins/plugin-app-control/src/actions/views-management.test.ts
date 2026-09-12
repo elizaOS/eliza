@@ -14,8 +14,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ResponseHandlerEvaluatorContext } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { canActionRun } from "../../../../packages/core/src/runtime/action-gate.js";
 import { viewFollowupRoutingEvaluator } from "../evaluators/view-followup-routing.js";
-import { runCreate } from "./app-create.js";
+import { APP_CREATE_INTENT_TAG, runCreate } from "./app-create.js";
 import { createViewsAction, createViewsAliasAction } from "./views.js";
 import type { ViewSummary } from "./views-client.js";
 import { runViewsCreate } from "./views-create.js";
@@ -60,6 +61,9 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 		...coreMock,
 		ElizaError: actual.ElizaError,
 		findCodingDelegationActionName: actual.findCodingDelegationActionName,
+		getStreamingContext: actual.getStreamingContext,
+		getTurnActionConstraint: actual.getTurnActionConstraint,
+		setTurnActionConstraint: actual.setTurnActionConstraint,
 		getUserMessageText: actual.getUserMessageText,
 		resolveStateDir: actual.resolveStateDir,
 		unwrapUserMessageText: actual.unwrapUserMessageText,
@@ -68,6 +72,8 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 
 type RuntimeTask = {
 	id: string;
+	agentId?: string;
+	tags?: string[];
 	metadata?: Record<string, unknown>;
 };
 
@@ -239,6 +245,16 @@ describe("view management actions", () => {
 		vi.unstubAllGlobals();
 	});
 
+	it("admits navigation on Notes turns through the planner's action gate", () => {
+		const action = createViewsAction();
+		expect(
+			canActionRun(action, { activeContexts: ["notes"], userRoles: ["USER"] }),
+		).toBe(true);
+		expect(
+			canActionRun(action, { activeContexts: ["web"], userRoles: ["USER"] }),
+		).toBe(false);
+	});
+
 	it("authenticates direct manager and broadcast loopback requests", async () => {
 		vi.stubEnv("ELIZA_API_TOKEN", "views-management-loopback-token");
 		vi.mocked(globalThis.fetch).mockResolvedValue({
@@ -380,38 +396,6 @@ describe("view management actions", () => {
 
 		expect(await viewFollowupRoutingEvaluator.shouldRun(context)).toBe(false);
 		expect(globalThis.fetch).not.toHaveBeenCalled();
-	});
-
-	it("advertises UI view switching in its planner routing hint", () => {
-		const action = createViewsAction();
-		const closeOne = createViewsAliasAction("CLOSE_VIEW");
-		const closeAll = createViewsAliasAction("CLOSE_ALL_VIEWS");
-		expect(action.routingHint).toContain("UI view/window/panel/app navigation");
-		expect(action.routingHint).toContain("Close/hide means VIEWS action=close");
-		expect(action.routingHint).toContain(
-			"agent-fill and agent-click are only for an explicitly requested form-control interaction",
-		);
-		expect(action.routingHint).toContain(
-			"reading or changing calendar events uses the CALENDAR action",
-		);
-		expect(action.routingHint).toContain(
-			"action=interact view=device-control capability=set-flashlight",
-		);
-		expect(action.similes).toContain("SET_FLASHLIGHT");
-		expect(action.tags).toContain("flashlight");
-		expect(action.description).toContain("native device controls");
-		expect(closeOne.routingHint).toContain("one open UI view/tab");
-		expect(closeAll.routingHint).toContain("every open UI view/tab");
-		expect(closeOne.routingHint).not.toContain("show or switch");
-		expect(closeAll.routingHint).not.toContain("show or switch");
-		expect(closeAll.parameters).toEqual([]);
-		expect(
-			Array.isArray(closeOne.parameters)
-				? closeOne.parameters.map((parameter) => parameter.name)
-				: [],
-		).toEqual(["view", "id", "name", "target"]);
-		expect(closeOne.tags).not.toContain("notes");
-		expect(closeAll.tags).not.toContain("notes");
 	});
 
 	it("does not reinterpret an undeclared explicit capability on the current view", async () => {
@@ -711,7 +695,7 @@ describe("view management actions", () => {
 		);
 		expect(result).toMatchObject({
 			success: true,
-			userFacingText: "Opened https://www.apple.com.",
+			modelReplyRequired: true,
 		});
 		expect(globalThis.fetch).not.toHaveBeenCalled();
 	});
@@ -1217,11 +1201,7 @@ describe("view management actions", () => {
 				}),
 			}),
 		);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({
-				text: 'Opened gui view "remote-ledger" in a separate window.',
-			}),
-		);
+		expect(callback).not.toHaveBeenCalled();
 	});
 
 	it("resolves existing registered view targets for natural-language window and pin requests", async () => {
@@ -1310,7 +1290,7 @@ describe("view management actions", () => {
 			message("open orchestrator in a new window") as never,
 			undefined,
 			{
-				action: "open",
+				action: "window",
 				view: "orchestrator",
 			},
 			callback,
@@ -1469,11 +1449,7 @@ describe("view management actions", () => {
 				}),
 			}),
 		);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({
-				text: "Split views: Notes, Calendar (horizontal).",
-			}),
-		);
+		expect(callback).not.toHaveBeenCalled();
 
 		const tileResult = await action.handler(
 			runtime as never,
@@ -1748,7 +1724,7 @@ describe("view management actions", () => {
 		);
 	});
 
-	it('treats "next to it" as split even when the planner passes action=open', async () => {
+	it('places "next to it" through the planner-selected split operation', async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
 		const action = createViewsAction({
@@ -1777,7 +1753,7 @@ describe("view management actions", () => {
 			runtime as never,
 			message("now open the calender view next to it") as never,
 			undefined,
-			{ action: "open", view: "calendar" },
+			{ action: "split", view: "calendar" },
 			callback,
 		);
 
@@ -1923,10 +1899,9 @@ describe("view management actions", () => {
 		);
 	});
 
-	it('routes "open <name> view" to show/navigate, not the current-view query', async () => {
-		// Regression: CURRENT_VIEW_VERBS once included "open", so "open wallet
-		// view" matched current before show and reported the active view instead
-		// of navigating. inferMode must resolve this to a show/navigate.
+	it("executes a planned view navigation instead of querying the current view", async () => {
+		// The planner supplies the action and target; user text cannot substitute
+		// for a missing destination or override the structured navigation.
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
 		const getCurrentView = vi.fn(async () => null);
@@ -1945,12 +1920,11 @@ describe("view management actions", () => {
 			json: async () => ({}),
 		} as Response);
 
-		// No explicit action option — this exercises inferMode on the raw text.
 		const result = await action.handler(
 			runtime as never,
 			message("open the wallet view") as never,
 			undefined,
-			undefined,
+			{ action: "show", view: "wallet" },
 			callback,
 		);
 
@@ -2110,11 +2084,7 @@ describe("view management actions", () => {
 				}),
 			}),
 		);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({
-				text: 'Opened tui view "remote-ledger" in a separate window.',
-			}),
-		);
+		expect(callback).not.toHaveBeenCalled();
 	});
 
 	it("preserves explicit future spatial viewType in window navigation payloads", async () => {
@@ -2165,11 +2135,7 @@ describe("view management actions", () => {
 				}),
 			}),
 		);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({
-				text: 'Opened xr view "remote-ledger" in a separate window.',
-			}),
-		);
+		expect(callback).not.toHaveBeenCalled();
 	});
 
 	it("routes create, edit, and delete through the unified VIEWS action dispatcher", async () => {
@@ -2263,11 +2229,7 @@ describe("view management actions", () => {
 					body: JSON.stringify({ name: "@local/plugin-ledger" }),
 				}),
 			);
-			expect(callback).toHaveBeenCalledWith(
-				expect.objectContaining({
-					text: expect.stringContaining("Deleted Remote Ledger"),
-				}),
-			);
+			expect(callback).not.toHaveBeenCalled();
 		} finally {
 			repo.cleanup();
 		}
@@ -2385,9 +2347,7 @@ describe("view management actions", () => {
 				body: JSON.stringify({ action: "close", alwaysOnTop: false }),
 			}),
 		);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({ text: "Closed Settings." }),
-		);
+		expect(callback).not.toHaveBeenCalled();
 		expect(client.getCurrentView).not.toHaveBeenCalled();
 	});
 
@@ -2428,9 +2388,7 @@ describe("view management actions", () => {
 				body: JSON.stringify({ action: "close-all", alwaysOnTop: false }),
 			}),
 		);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({ text: "Closed all views." }),
-		);
+		expect(callback).not.toHaveBeenCalled();
 	});
 
 	it('treats action=delete for "close calendar view" as non-destructive close', async () => {
@@ -2474,13 +2432,11 @@ describe("view management actions", () => {
 				body: JSON.stringify({ action: "close", alwaysOnTop: false }),
 			}),
 		);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({ text: "Closed Calendar." }),
-		);
+		expect(callback).not.toHaveBeenCalled();
 		expect(client.getCurrentView).not.toHaveBeenCalled();
 	});
 
-	it('resolves casual aliases like "notepad" and "calender" for view navigation', async () => {
+	it('resolves structured target aliases like "notepad" and "calender" for view navigation', async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
 		const action = createViewsAction({
@@ -2521,21 +2477,21 @@ describe("view management actions", () => {
 			runtime as never,
 			message("open the notepad pls") as never,
 			undefined,
-			undefined,
+			{ action: "show", view: "notepad" },
 			callback,
 		);
 		const calendarResult = await action.handler(
 			runtime as never,
 			message("open the calender view") as never,
 			undefined,
-			undefined,
+			{ action: "show", view: "calender" },
 			callback,
 		);
 		const homeResult = await action.handler(
 			runtime as never,
 			message(composedViewPrompt("go home")) as never,
 			undefined,
-			{ action: "show", mode: "simple" },
+			{ action: "show", view: "home", mode: "simple" },
 			callback,
 		);
 
@@ -4480,7 +4436,7 @@ describe("view management actions", () => {
 		);
 
 		expect(result?.success).toBe(true);
-		expect(result?.continueChain).toBe(false);
+		expect(result?.continueChain).not.toBe(false);
 		expect(result?.values).toMatchObject({
 			mode: "split",
 			viewIds: ["notes", "calendar"],
@@ -4745,11 +4701,7 @@ describe("view management actions", () => {
 				}),
 			}),
 		);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({
-				text: "Placed Notes on the left.",
-			}),
-		);
+		expect(callback).not.toHaveBeenCalled();
 	});
 
 	it("treats explicit create cancel as terminal even if the pending task is gone", async () => {
@@ -4827,6 +4779,8 @@ describe("view management actions", () => {
 		const pendingTasks: RuntimeTask[] = [
 			{
 				id: "pending-app-create",
+				agentId: "agent-1",
+				tags: [APP_CREATE_INTENT_TAG],
 				metadata: {
 					roomId: "room-1",
 					intent: "Update proof app",
@@ -4836,6 +4790,7 @@ describe("view management actions", () => {
 			},
 		];
 		const pendingRuntime = createRuntime({ tasks: pendingTasks }).runtime;
+		callback.mockClear();
 		const lostTarget = await runCreate({
 			runtime: pendingRuntime as never,
 			client: appClient as never,
@@ -4845,11 +4800,12 @@ describe("view management actions", () => {
 		});
 		expect(lostTarget).toMatchObject({
 			success: false,
-			text: 'I lost track of the edit target "edit-1". Please re-state your request.',
+			transcriptVisibility: "internal",
+			turnComplete: false,
+			data: { error: "CREATE_CHOICE_TARGET_INVALID" },
 		});
-		expect(pendingRuntime.deleteTask).toHaveBeenCalledWith(
-			"pending-app-create",
-		);
+		expect(pendingRuntime.deleteTask).not.toHaveBeenCalled();
+		expect(callback).not.toHaveBeenCalled();
 		expect(emptyRuntime.actions[0]?.handler).not.toHaveBeenCalled();
 	});
 

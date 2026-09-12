@@ -225,6 +225,12 @@ export interface VoiceMicCapture {
   stop(): Promise<void>;
   /** Which backend is driving capture, for diagnostics/evidence. */
   readonly backend: "audioworklet" | "scriptprocessor";
+  /** Processing actually enabled on the selected audio track. */
+  readonly audioProcessing: {
+    readonly echoCancellation: boolean;
+    readonly noiseSuppression: boolean;
+    readonly autoGainControl: boolean;
+  };
 }
 
 /**
@@ -354,6 +360,18 @@ export async function startVoiceMicCapture(
       "start_failed",
     );
   }
+
+  const audioTrack =
+    stream.getAudioTracks?.()[0] ?? stream.getTracks?.()[0] ?? null;
+  const trackSettings =
+    audioTrack && typeof audioTrack.getSettings === "function"
+      ? audioTrack.getSettings()
+      : null;
+  const audioProcessing = {
+    echoCancellation: trackSettings?.echoCancellation === true,
+    noiseSuppression: trackSettings?.noiseSuppression === true,
+    autoGainControl: trackSettings?.autoGainControl === true,
+  } as const;
 
   let acquiredContext: MicAudioContextLike | null = null;
   let acquiredSource: AudioNodeLike | null = null;
@@ -565,6 +583,7 @@ export async function startVoiceMicCapture(
     get backend() {
       return backend;
     },
+    audioProcessing,
     stop,
   };
 }

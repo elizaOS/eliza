@@ -37,6 +37,7 @@ describe("element-reporter buildPayload", () => {
       id: "send",
       role: "button",
       label: "Send",
+      visible: false,
     });
     // No spurious value/focused keys when absent.
     expect("value" in byId.send).toBe(false);

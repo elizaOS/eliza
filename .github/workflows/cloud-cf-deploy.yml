@@ -68,12 +68,12 @@ on:
         default: ""
         type: string
       certified_recovery_policy_sha:
-        description: Exact develop SHA whose successful staging certificate anchors the byte-identical recovery policy
+        description: Exact staging SHA whose successful staging certificate anchors the byte-identical recovery policy
         required: false
         default: ""
         type: string
       source_sha:
-        description: Exact develop SHA supplied by the effect reconciler
+        description: Exact staging SHA supplied by the effect reconciler
         required: false
         default: ""
         type: string
@@ -336,7 +336,7 @@ jobs:
           if [ "$TARGET_ENVIRONMENT" = "production" ]; then
             expected_ref="refs/heads/main"
           else
-            expected_ref="refs/heads/develop"
+            expected_ref="refs/heads/staging"
           fi
 
           if [ "$SOURCE_REF" != "$expected_ref" ]; then
@@ -391,7 +391,7 @@ jobs:
             && [ "$RUN_DEPLOYED_RENDERER_STAGING" != "true" ]; then
             latest_eligible_run_id="$(
               gh api \
-                "repos/${GITHUB_REPOSITORY}/actions/workflows/cloud-cf-deploy.yml/runs?branch=develop&event=push&per_page=1" \
+                "repos/${GITHUB_REPOSITORY}/actions/workflows/cloud-cf-deploy.yml/runs?branch=staging&event=push&per_page=1" \
                 --jq '.workflow_runs[0].id'
             )"
           fi
@@ -485,14 +485,14 @@ jobs:
             }
             git fetch --no-tags \
               "https://github.com/${GITHUB_REPOSITORY}.git" \
-              develop:refs/remotes/origin/develop
+              staging:refs/remotes/origin/staging
             git cat-file -e "${CERTIFIED_RECOVERY_POLICY_SHA}^{commit}" || {
               echo "::error::Certified recovery policy commit is unavailable."
               exit 1
             }
             git merge-base --is-ancestor \
-              "$CERTIFIED_RECOVERY_POLICY_SHA" refs/remotes/origin/develop || {
-              echo "::error::Certified recovery policy is not contained in develop."
+              "$CERTIFIED_RECOVERY_POLICY_SHA" refs/remotes/origin/staging || {
+              echo "::error::Certified recovery policy is not contained in staging."
               exit 1
             }
 
@@ -554,7 +554,7 @@ jobs:
               '.status == "completed"
                 and .conclusion == "success"
                 and (.event == "push" or .event == "workflow_dispatch")
-                and .head_branch == "develop"
+                and .head_branch == "staging"
                 and .path == ".github/workflows/cloud-cf-deploy.yml"
                 and .repository.full_name == $repo' \
               "$run_file" >/dev/null; then
@@ -576,7 +576,7 @@ jobs:
           )
 
           [ -n "$selected" ] || {
-            echo "::error::No unexpired successful develop Cloud certification exists for production tree ${ARTIFACT_NAME#cloud-staging-certification-v1-}"
+            echo "::error::No unexpired successful staging Cloud certification exists for production tree ${ARTIFACT_NAME#cloud-staging-certification-v1-}"
             exit 1
           }
 
@@ -670,7 +670,7 @@ jobs:
               '.status == "completed"
                 and .conclusion == "success"
                 and (.event == "push" or .event == "workflow_dispatch")
-                and .head_branch == "develop"
+                and .head_branch == "staging"
                 and .path == ".github/workflows/cloud-cf-deploy.yml"
                 and .repository.full_name == $repo' \
               "$run_file" >/dev/null; then
@@ -690,7 +690,7 @@ jobs:
               "$candidates_file"
           )
           [ -n "$selected" ] || {
-            echo "::error::No unexpired successful develop certification exists for the recovery policy tree."
+            echo "::error::No unexpired successful staging certification exists for the recovery policy tree."
             exit 1
           }
           printf '%s\n' "$selected" > "$artifact_file"
@@ -756,7 +756,7 @@ jobs:
             --policy-sha "$POLICY_SHA" \
             --base-sha "$BASE_SHA" \
             --candidate-sha "$CANDIDATE_SHA"
-          echo "Certified develop policy bytes admitted the bounded production candidate." >> "$GITHUB_STEP_SUMMARY"
+          echo "Certified staging policy bytes admitted the bounded production candidate." >> "$GITHUB_STEP_SUMMARY"
 
   authorize-production:
     name: Authorize production environment
@@ -872,9 +872,9 @@ jobs:
           chmod 0600 "$response"
           git fetch --no-tags \
             "https://github.com/${GITHUB_REPOSITORY}.git" \
-            develop:refs/remotes/origin/develop
-          git merge-base --is-ancestor "$POLICY_SHA" refs/remotes/origin/develop || {
-            echo "::error::Certified recovery policy is no longer contained in develop."
+            staging:refs/remotes/origin/staging
+          git merge-base --is-ancestor "$POLICY_SHA" refs/remotes/origin/staging || {
+            echo "::error::Certified recovery policy is no longer contained in staging."
             exit 1
           }
           trusted_admission="$evidence_dir/trusted-production-hyperdrive-binding-admission.mjs"
@@ -1027,11 +1027,10 @@ jobs:
       cancel-in-progress: false
       queue: max
     uses: ./.github/workflows/cloud-cf-release.yml
-    # Explicitly forward every caller-scope secret consumed by the reusable
-    # release except Telegram authority and runtime credentials. The entry
-    # workflow validates the protected receipt and passes only public identity
-    # plus a safe runtime-authority result; `inherit` could admit a repository
-    # or organization secret with the same name.
+    # Telegram credentials have empty caller bindings so GitHub exposes their
+    # names to the reusable job's selected Environment without forwarding a
+    # repository or organization value. Omitting the names makes even existing
+    # Environment secrets resolve blank. The authority receipt stays here.
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
@@ -1050,6 +1049,8 @@ jobs:
       ELIZA_APP_BLOOIO_API_KEY: ${{ secrets.ELIZA_APP_BLOOIO_API_KEY }}
       ELIZA_APP_BLOOIO_PHONE_NUMBER: ${{ secrets.ELIZA_APP_BLOOIO_PHONE_NUMBER }}
       ELIZA_APP_BLOOIO_WEBHOOK_SECRET: ${{ secrets.ELIZA_APP_BLOOIO_WEBHOOK_SECRET }}
+      ELIZA_APP_TELEGRAM_BOT_TOKEN: ""
+      ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: ""
       ELIZA_APP_WEBHOOK_GATEWAY_SECRET: ${{ secrets.ELIZA_APP_WEBHOOK_GATEWAY_SECRET }}
       ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
       ELIZA_SERVICE_JWT_SECRET: ${{ secrets.ELIZA_SERVICE_JWT_SECRET }}
@@ -1105,8 +1106,8 @@ jobs:
     # tree was never actually deployed and must not receive a certification.
     # A canonical manual staging dispatch is equally authoritative after the
     # same release and routing checks; supporting it makes intentional pinned
-    # releases certifiable when develop is moving faster than hosted runners.
-    if: ${{ always() && inputs.telegram_authority_canary != true && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/develop' && needs.release.result == 'success' && needs.release.outputs.superseded != 'true' }}
+    # releases certifiable when staging is moving faster than hosted runners.
+    if: ${{ always() && inputs.telegram_authority_canary != true && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/staging' && needs.release.result == 'success' && needs.release.outputs.superseded != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

@@ -333,6 +333,7 @@ export interface HostRealmResetResult {
 export class SurfaceRealmScope {
   readonly storage: ScopedStorage;
   readonly navigate: (path: string) => void;
+  private readonly memberViewIds: ReadonlySet<string>;
   private readonly rootClassBaseline: ReadonlySet<string>;
   private readonly bodyClassBaseline: ReadonlySet<string>;
   private readonly rootVarBaseline: ReadonlySet<string>;
@@ -349,7 +350,9 @@ export class SurfaceRealmScope {
     readonly viewId: string,
     backing: Storage,
     navigate: (path: string) => void,
+    memberViewIds: readonly string[] = [viewId],
   ) {
+    this.memberViewIds = new Set(memberViewIds);
     this.storage = brokerSurfaceStorage(manifest, backing, viewId);
     this.navigate = brokerSurfaceNavigate(manifest, viewId, navigate);
     if (typeof document === "undefined") {
@@ -375,6 +378,11 @@ export class SurfaceRealmScope {
           .map((name) => [name, root.style.getPropertyValue(name)]),
       );
     }
+  }
+
+  /** Only the routed owner or explicit layout members may evaluate in this scope. */
+  ownsView(viewId: string): boolean {
+    return this.memberViewIds.has(viewId);
   }
 
   /**
@@ -439,16 +447,29 @@ export class SurfaceRealmScope {
 // active view (and the isolation tests) reach exactly the brokered handles the
 // shell resolved for the current manifest, never the raw globals.
 let activeScope: SurfaceRealmScope | null = null;
+const activeScopeListeners = new Set<() => void>();
+
+/** Observe committed scope replacement so evaluated views renew their handles. */
+export function subscribeActiveSurfaceRealmScope(
+  listener: () => void,
+): () => void {
+  activeScopeListeners.add(listener);
+  return () => {
+    activeScopeListeners.delete(listener);
+  };
+}
 
 /** Publish the scope for the active view. Pass `null` on teardown. */
 export function setActiveSurfaceRealmScope(
   scope: SurfaceRealmScope | null,
 ): void {
+  if (activeScope === scope) return;
   activeScope = scope;
   // Guards install lazily on the first publish (not at module load) so server
   // consumers of the ui barrel never touch window, and so the guards wrap
   // whatever `window.localStorage` the environment (or a test stub) provides.
   if (scope !== null) ensureHostRealmGuards();
+  for (const listener of activeScopeListeners) listener();
 }
 
 /** The scope for the active view, or `null` when no view is mounted. */

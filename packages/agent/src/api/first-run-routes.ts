@@ -26,6 +26,7 @@ import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   asRecord,
   type DeploymentTargetConfig,
+  getDirectAccountProviderForFirstRunProvider,
   isCloudInferenceSelectedInConfig,
   migrateLegacyRuntimeConfig,
   normalizeDeploymentTargetConfig,
@@ -35,6 +36,7 @@ import {
   PostFirstRunRequestSchema,
   type ServiceRoutingConfig,
 } from "@elizaos/shared";
+import { prepareFirstRunConnectors } from "@elizaos/shared/first-run-config";
 import type { ElizaConfig } from "../config/config.ts";
 import { configFileExists, loadElizaConfig } from "../config/config.ts";
 import {
@@ -42,6 +44,11 @@ import {
   restoreDevCloudEnvAuthority,
 } from "../config/dev-cloud-env-authority.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
+import { syncDirectProviderCredentials } from "./accounts-routes.ts";
+import {
+  adoptFirstRunDirectAccount,
+  type FirstRunDirectAccountAdoption,
+} from "./first-run-direct-account.ts";
 import {
   applyCanonicalFirstRunConfig,
   applyFirstRunCredentialPersistence,
@@ -268,6 +275,35 @@ export interface FirstRunServerState {
   chatConnectionPromise: Promise<void> | null;
 }
 
+export {
+  type BlooioFirstRunResolution,
+  type CanonicalBlooioConnectorConfig,
+  resolveBlooioFirstRunConfig,
+} from "@elizaos/shared/first-run-config";
+
+function restoreProcessEnvironment(
+  snapshot: NodeJS.ProcessEnv,
+  ownedSnapshot: NodeJS.ProcessEnv,
+): void {
+  const keys = new Set([
+    ...Object.keys(snapshot),
+    ...Object.keys(ownedSnapshot),
+  ]);
+  for (const key of keys) {
+    const currentPresent = Object.hasOwn(process.env, key);
+    const ownedPresent = Object.hasOwn(ownedSnapshot, key);
+    if (
+      currentPresent !== ownedPresent ||
+      (currentPresent && process.env[key] !== ownedSnapshot[key])
+    ) {
+      continue;
+    }
+    const previous = snapshot[key];
+    if (previous === undefined) delete process.env[key];
+    else process.env[key] = previous;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
@@ -389,6 +425,15 @@ export async function handleFirstRunRoutes(
         `[eliza-api] Failed to reload config before first-run: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+    // Build first-run against an isolated config snapshot. The live server
+    // state remains authoritative until the config file has actually committed.
+    config = structuredClone(config);
+    const preCommitEnvironment = { ...process.env };
+    const connectorPreparation = prepareFirstRunConnectors(config, body);
+    if (!connectorPreparation.ok) {
+      error(res, connectorPreparation.error, 400);
+      return true;
+    }
     const configuredLanguage = ctx.normalizeCharacterLanguage(
       (body.language as string | undefined) ??
         ctx.readUiLanguageHeader(req) ??
@@ -402,10 +447,6 @@ export async function handleFirstRunRoutes(
       `${(body.name as string).trim()}-admin-entity`,
     ) as UUID;
     config.agents.defaults.adminEntityId = firstRunAdminEntityId;
-    state.adminEntityId = firstRunAdminEntityId;
-    state.chatUserId = firstRunAdminEntityId;
-    state.chatConnectionReady = null;
-    state.chatConnectionPromise = null;
 
     if (!config.agents.list) config.agents.list = [];
     if (config.agents.list.length === 0) {
@@ -545,6 +586,12 @@ export async function handleFirstRunRoutes(
       normalizedCanonicalRuntimeConfig.deploymentTarget;
     const normalizedServiceRouting =
       normalizedCanonicalRuntimeConfig.serviceRouting;
+    const firstRunDirectAccountProvider =
+      getDirectAccountProviderForFirstRunProvider(
+        normalizedServiceRouting?.llmText?.backend,
+      );
+    const firstRunAccountCredential = explicitCredentialInputs?.llmApiKey;
+    let firstRunAdoption: FirstRunDirectAccountAdoption | undefined;
 
     // ── Sandbox mode (from first-run runtime setup: off / light / standard / max)
     const sandboxMode = (body.sandboxMode as string) || "off";
@@ -632,102 +679,11 @@ export async function handleFirstRunRoutes(
       process.env.GITHUB_TOKEN = body.githubToken.trim();
     }
 
-    // ── Connectors (Telegram, Discord, WhatsApp, Twilio, Blooio) ────────
-    if (!config.connectors) config.connectors = {};
-    const explicitConnectors = asRecord(body.connectors);
-    if (explicitConnectors) {
-      for (const [connectorName, connectorValue] of Object.entries(
-        explicitConnectors,
-      )) {
-        const nextConnector = asRecord(connectorValue);
-        if (!nextConnector) {
-          continue;
-        }
-        const currentConnector = asRecord(config.connectors[connectorName]);
-        config.connectors[connectorName] = {
-          ...(currentConnector ?? {}),
-          ...nextConnector,
-        } as import("../config/types.eliza.ts").ConnectorConfig;
-      }
-    }
-    if (
-      body.telegramToken &&
-      typeof body.telegramToken === "string" &&
-      body.telegramToken.trim()
-    ) {
-      config.connectors.telegram = { botToken: body.telegramToken.trim() };
-    }
-    if (
-      body.discordToken &&
-      typeof body.discordToken === "string" &&
-      body.discordToken.trim()
-    ) {
-      config.connectors.discord = { token: body.discordToken.trim() };
-    }
-    if (
-      body.whatsappSessionPath &&
-      typeof body.whatsappSessionPath === "string" &&
-      body.whatsappSessionPath.trim()
-    ) {
-      config.connectors.whatsapp = {
-        sessionPath: body.whatsappSessionPath.trim(),
-      };
-    }
-    if (
-      body.twilioAccountSid &&
-      typeof body.twilioAccountSid === "string" &&
-      body.twilioAccountSid.trim() &&
-      body.twilioAuthToken &&
-      typeof body.twilioAuthToken === "string" &&
-      body.twilioAuthToken.trim()
-    ) {
-      if (!config.env) config.env = {};
-      (config.env as Record<string, string>).TWILIO_ACCOUNT_SID = (
-        body.twilioAccountSid as string
-      ).trim();
-      (config.env as Record<string, string>).TWILIO_AUTH_TOKEN = (
-        body.twilioAuthToken as string
-      ).trim();
-      process.env.TWILIO_ACCOUNT_SID = (body.twilioAccountSid as string).trim();
-      process.env.TWILIO_AUTH_TOKEN = (body.twilioAuthToken as string).trim();
-      if (
-        body.twilioPhoneNumber &&
-        typeof body.twilioPhoneNumber === "string" &&
-        body.twilioPhoneNumber.trim()
-      ) {
-        (config.env as Record<string, string>).TWILIO_PHONE_NUMBER = (
-          body.twilioPhoneNumber as string
-        ).trim();
-        process.env.TWILIO_PHONE_NUMBER = (
-          body.twilioPhoneNumber as string
-        ).trim();
-      }
-    }
-    if (
-      body.blooioApiKey &&
-      typeof body.blooioApiKey === "string" &&
-      body.blooioApiKey.trim()
-    ) {
-      if (!config.env) config.env = {};
-      const trimmedKey = (body.blooioApiKey as string).trim();
-      (config.env as Record<string, string>).BLOOIO_API_KEY = trimmedKey;
-      process.env.BLOOIO_API_KEY = trimmedKey;
-
-      const blooioConnector: Record<string, string> = { apiKey: trimmedKey };
-
-      if (
-        body.blooioPhoneNumber &&
-        typeof body.blooioPhoneNumber === "string" &&
-        body.blooioPhoneNumber.trim()
-      ) {
-        const trimmedPhone = (body.blooioPhoneNumber as string).trim();
-        (config.env as Record<string, string>).BLOOIO_PHONE_NUMBER =
-          trimmedPhone;
-        process.env.BLOOIO_PHONE_NUMBER = trimmedPhone;
-        blooioConnector.fromNumber = trimmedPhone;
-      }
-
-      config.connectors.blooio = blooioConnector;
+    config.connectors = connectorPreparation.connectors;
+    if (Object.keys(connectorPreparation.env).length > 0) {
+      config.env ??= {};
+      Object.assign(config.env, connectorPreparation.env);
+      Object.assign(process.env, connectorPreparation.env);
     }
 
     const explicitFeatures = asRecord(body.features);
@@ -770,6 +726,118 @@ export async function handleFirstRunRoutes(
     }
     config.meta.firstRunComplete = true;
 
+    migrateLegacyRuntimeConfig(config as Record<string, unknown>);
+    let ownedEnvironment = { ...process.env };
+    if (
+      (firstRunDirectAccountProvider === "openrouter-api" ||
+        firstRunDirectAccountProvider === "xai-api") &&
+      firstRunAccountCredential
+    ) {
+      try {
+        // Stage all fallible onboarding preparation before adopting the paid
+        // credential. A rejected probe then has no account state to unwind.
+        firstRunAdoption = await adoptFirstRunDirectAccount({
+          providerId: firstRunDirectAccountProvider,
+          apiKey: firstRunAccountCredential,
+        });
+      } catch (err) {
+        // error-policy:J1 first-run is the HTTP boundary: an unproven paid
+        // credential leaves neither config nor transaction-owned env committed.
+        restoreProcessEnvironment(preCommitEnvironment, ownedEnvironment);
+        const message = err instanceof Error ? err.message : String(err);
+        error(res, message, 400);
+        return true;
+      }
+    }
+    if (firstRunAdoption) {
+      try {
+        await syncDirectProviderCredentials(
+          { state: { ...state, config, runtime: null } } as Pick<
+            import("./accounts-routes.ts").AccountsRouteContext,
+            "state"
+          >,
+          firstRunAdoption.account.providerId,
+        );
+      } catch (err) {
+        // error-policy:J1 the account must become the live billing authority
+        // before config commit; otherwise retract it and fail onboarding.
+        await firstRunAdoption.rollback();
+        await syncDirectProviderCredentials(
+          { state: { ...state, runtime: null } } as Pick<
+            import("./accounts-routes.ts").AccountsRouteContext,
+            "state"
+          >,
+          firstRunAdoption.account.providerId,
+        );
+        restoreProcessEnvironment(preCommitEnvironment, ownedEnvironment);
+        error(
+          res,
+          err instanceof Error ? err.message : "Account activation failed",
+          500,
+        );
+        return true;
+      }
+      ownedEnvironment = { ...process.env };
+    }
+    try {
+      ctx.saveElizaConfig(config);
+    } catch (err) {
+      // error-policy:J6 config commit failed after account adoption; remove the
+      // not-yet-authoritative account so retry starts from a clean boundary.
+      await firstRunAdoption?.rollback();
+      if (firstRunAdoption) {
+        await syncDirectProviderCredentials(
+          { state: { ...state, runtime: null } } as Pick<
+            import("./accounts-routes.ts").AccountsRouteContext,
+            "state"
+          >,
+          firstRunAdoption.account.providerId,
+        );
+      }
+      restoreProcessEnvironment(preCommitEnvironment, ownedEnvironment);
+      logger.error(`[eliza-api] Failed to save config after first-run: ${err}`);
+      error(res, "Failed to save configuration", 500);
+      return true;
+    }
+
+    if (!configFileExists()) {
+      // error-policy:J6 the save helper returned without producing its durable
+      // artifact, so roll back the paired account adoption as well.
+      await firstRunAdoption?.rollback();
+      if (firstRunAdoption) {
+        await syncDirectProviderCredentials(
+          { state: { ...state, runtime: null } } as Pick<
+            import("./accounts-routes.ts").AccountsRouteContext,
+            "state"
+          >,
+          firstRunAdoption.account.providerId,
+        );
+      }
+      restoreProcessEnvironment(preCommitEnvironment, ownedEnvironment);
+      logger.error(
+        `[eliza-api] Config file does not exist after save — first-run data will be lost on restart`,
+      );
+      error(res, "Configuration file was not persisted to disk", 500);
+      return true;
+    }
+
+    state.config = config;
+    state.agentName = (body.name as string) ?? state.agentName;
+    state.adminEntityId = firstRunAdminEntityId;
+    state.chatUserId = firstRunAdminEntityId;
+    state.chatConnectionReady = null;
+    state.chatConnectionPromise = null;
+
+    if (firstRunAdoption && state.runtime) {
+      await syncDirectProviderCredentials(
+        { state } as Pick<
+          import("./accounts-routes.ts").AccountsRouteContext,
+          "state"
+        >,
+        firstRunAdoption.account.providerId,
+      );
+    }
+
     if (state.runtime) {
       const runtimeCharacter = state.runtime.character;
       const agentTopics = agent.topics as string[] | undefined;
@@ -787,7 +855,7 @@ export async function handleFirstRunRoutes(
         runtimeCharacter.topics = [...agentTopics];
       }
       if (agent.style) {
-        runtimeCharacter.style = JSON.parse(JSON.stringify(agent.style));
+        runtimeCharacter.style = structuredClone(agent.style);
       }
       if (normalizedMessageExamples) {
         runtimeCharacter.messageExamples = normalizedMessageExamples;
@@ -821,25 +889,6 @@ export async function handleFirstRunRoutes(
           `[character-db] Failed to persist first-run character to DB: ${err instanceof Error ? err.message : err}`,
         );
       }
-    }
-
-    state.config = config;
-    state.agentName = (body.name as string) ?? state.agentName;
-    migrateLegacyRuntimeConfig(config as Record<string, unknown>);
-    try {
-      ctx.saveElizaConfig(config);
-    } catch (err) {
-      logger.error(`[eliza-api] Failed to save config after first-run: ${err}`);
-      error(res, "Failed to save configuration", 500);
-      return true;
-    }
-
-    if (!configFileExists()) {
-      logger.error(
-        `[eliza-api] Config file does not exist after save — first-run data will be lost on restart`,
-      );
-      error(res, "Configuration file was not persisted to disk", 500);
-      return true;
     }
 
     const resolvedRuntime =

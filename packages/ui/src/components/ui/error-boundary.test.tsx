@@ -10,7 +10,7 @@
 
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { useState } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ErrorBoundary } from "./error-boundary";
 
 function Boom({ explode }: { explode: boolean }) {
@@ -19,8 +19,21 @@ function Boom({ explode }: { explode: boolean }) {
 }
 
 describe("ErrorBoundary", () => {
+  const originalLocation = window.location;
+  let reload: ReturnType<typeof vi.fn>;
+  beforeEach(() => {
+    reload = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...originalLocation, reload },
+    });
+  });
   afterEach(() => {
     cleanup();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: originalLocation,
+    });
     vi.restoreAllMocks();
   });
 
@@ -46,6 +59,28 @@ describe("ErrorBoundary", () => {
     expect(screen.getByText("kaboom in child")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
     consoleError.mockRestore();
+  });
+
+  it("reloads a wrapped import failure only when the user retries", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    function FailedDictionary(): never {
+      throw new Error("Unable to load Spanish translations", {
+        cause: new TypeError(
+          "Failed to fetch dynamically imported module: /assets/es.js",
+        ),
+      });
+    }
+    render(
+      <ErrorBoundary>
+        <FailedDictionary />
+      </ErrorBoundary>,
+    );
+    expect(
+      screen.getByText("Unable to load Spanish translations"),
+    ).toBeTruthy();
+    expect(reload).not.toHaveBeenCalled();
+    act(() => screen.getByRole("button", { name: "Try Again" }).click());
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 
   it("passes the error and a reset callback to a custom fallback", () => {
@@ -104,6 +139,7 @@ describe("ErrorBoundary", () => {
     });
 
     expect(screen.getByText("child is fine")).toBeTruthy();
+    expect(reload).not.toHaveBeenCalled();
     consoleError.mockRestore();
   });
 });

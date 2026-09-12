@@ -8,6 +8,11 @@ import { beforeEach, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
+const admissionActual = {
+  ...(await import("@/lib/services/organization-inference-admission")),
+};
+const creditsActual = { ...(await import("@/lib/services/credits")) };
+
 const globalSessionReads = mock();
 const standingReads: Request[] = [];
 const admissionCalls: Array<Record<string, unknown>> = [];
@@ -113,6 +118,7 @@ mock.module("@/lib/services/inference-admission-snapshot", () => ({
   inferenceRateLimitConfig: () => ({ windowMs: 60_000, maxRequests: 100 }),
 }));
 mock.module("@/lib/services/organization-inference-admission", () => ({
+  ...admissionActual,
   admitOrganizationInference: mock(async (params: Record<string, unknown>) => {
     admissionCalls.push(params);
     return {
@@ -124,14 +130,23 @@ mock.module("@/lib/services/organization-inference-admission", () => ({
   }),
 }));
 mock.module("@/lib/services/credits", () => ({
+  ...creditsActual,
   creditsService: { reserve: genericReserve },
   InsufficientCreditsError: class InsufficientCreditsError extends Error {},
 }));
 mock.module("@/lib/services/usage", () => ({
   usageService: { create: async () => undefined },
 }));
+const cacheClientActualModule = await import("@/lib/cache/client");
+
 mock.module("@/lib/cache/client", () => ({
-  cache: { get: async () => null, set: async () => undefined },
+  ...cacheClientActualModule,
+  cache: {
+    get: async () => null,
+    set: async () => undefined,
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
+  },
 }));
 mock.module("@/lib/services/proxy/pricing", () => ({
   calculateBatchCost: async () => 0.01,

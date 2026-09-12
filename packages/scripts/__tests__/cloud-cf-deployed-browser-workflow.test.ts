@@ -167,7 +167,7 @@ describe("Cloudflare deployed browser workflow contract", () => {
     expect(freshnessStep.run).toContain(
       `for served_url in "${shellExpansion("served_frontends[@]")}"`,
     );
-    expect(freshnessStep.run).toContain("https://develop.eliza-app.pages.dev");
+    expect(freshnessStep.run).toContain("https://staging.eliza-app.pages.dev");
   });
 
   test("runs only when the caller requests the staging proof", () => {
@@ -269,13 +269,19 @@ describe("Cloudflare deployed browser workflow contract", () => {
     expect(browserStep.env?.ELIZAOS_CLOUD_API_KEY).toBe(
       "$" + "{{ secrets.ELIZAOS_CLOUD_API_KEY }}",
     );
+    expect(
+      browserStep.env?.ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION,
+    ).toBe("1");
+    expect(deployedJob.if).toContain(
+      "inputs.run_deployed_renderer_staging == true",
+    );
     expect(browserStep.run).toContain(
       "--config playwright.cloud-deployed.config.ts",
     );
     expect(browserStep.run).not.toContain("webServer");
   });
 
-  test("combines every strict observation before deriving receipt v3", () => {
+  test("combines every strict observation before deriving receipt v4", () => {
     for (const input of [
       '--authority "$AUTHORITY_PATH"',
       '--preflight "$PREFLIGHT_PATH"',
@@ -331,7 +337,7 @@ describe("Cloudflare deployed browser workflow contract", () => {
 
   test("retains only privacy-safe failed output from remote Chromium", () => {
     expect(deployedConfig).toContain(
-      'const DEPLOYED_RENDERER_ALIAS = "https://develop.eliza-app.pages.dev"',
+      'const DEPLOYED_RENDERER_ALIAS = "https://staging.eliza-app.pages.dev"',
     );
     expect(deployedConfig).toContain("workers: 1");
     expect(deployedConfig).toContain("retries: 0");
@@ -346,7 +352,7 @@ describe("Cloudflare deployed browser workflow contract", () => {
     expect(smokeSpec).toContain("ELIZA_UI_SMOKE_DEPLOYED_RENDERER");
     expect(smokeSpec).toContain("cloudflare-pages-alias");
     expect(smokeSpec).toContain("elizaos.renderer.build/v1");
-    expect(smokeSpec).toContain("https://develop.eliza-app.pages.dev");
+    expect(smokeSpec).toContain("https://staging.eliza-app.pages.dev");
     expect(smokeSpec).toContain('context.on("requestfailed"');
     expect(smokeSpec).toContain(
       `privacy-safe-${shellExpansion("phase")}-history-network-diagnostics.json`,

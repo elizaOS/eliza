@@ -22,6 +22,10 @@ import {
   type Plugin,
   transformWithOxc,
 } from "vite";
+import {
+  ANDROID_CLOUD_ROUTING_MARKERS,
+  findAndroidCloudRoutingMarkers,
+} from "../app-core/scripts/lib/android-cloud-routing-markers.mjs";
 import { resolveAppBranding } from "../shared/src/config/app-config.ts";
 import { colorizeDevSettingsStartupBanner } from "../shared/src/dev-settings-banner-style.ts";
 import { prependDevSubsystemFigletHeading } from "../shared/src/dev-settings-figlet-heading.ts";
@@ -50,6 +54,7 @@ import { forbiddenForcedHostModeFlags } from "./scripts/forced-host-mode-guard.m
 import { normalizeEnvPrefix } from "./src/env-prefix.js";
 import { appSideEffectModulesPlugin } from "./vite/app-side-effect-modules.ts";
 import { calendarOptimizeDeps } from "./vite/calendar-optimize-deps.ts";
+import { configureDevApiProxy } from "./vite/dev-http-proxy.ts";
 import {
   generateNodeBuiltinStub,
   nativeModuleStubPlugin,
@@ -1076,14 +1081,8 @@ export function resolveAppShellLocalCspSources(
   };
 }
 
-export const ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS = Object.freeze([
-  "32437",
-  "32438",
-  "10.0.2.2",
-  "adb reverse",
-  "__ELIZA_ANDROID_IPC_FETCH_BRIDGE__",
-  "navigator.serviceWorker",
-]);
+export const ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS =
+  ANDROID_CLOUD_ROUTING_MARKERS;
 
 type AndroidCloudAuditOutput = {
   type: "chunk" | "asset";
@@ -1112,10 +1111,8 @@ export function findAndroidCloudEmittedRoutingFindings(
             ? new TextDecoder().decode(output.source)
             : undefined;
     if (!content) continue;
-    for (const marker of ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS) {
-      if (content.toLowerCase().includes(marker.toLowerCase())) {
-        findings.push(`${fileName}: ${marker}`);
-      }
+    for (const marker of findAndroidCloudRoutingMarkers(content)) {
+      findings.push(`${fileName}: ${marker}`);
     }
   }
   return findings.sort();
@@ -1842,7 +1839,7 @@ const VENDOR_CRYPTO_TEST =
 // import the crypto chunk and form an init-order cycle (the wagmi 3.x `connect`
 // / `ConnectorUnavailableReconnectingError` TDZ crash).
 const VENDOR_WALLET_TEST =
-  /\/node_modules\/(wagmi|@wagmi\/|viem\/|@rainbow-me\/|@walletconnect\/|@reown\/|@coinbase\/wallet|mipd|eventemitter3)(\/|$)/;
+  /\/node_modules\/(wagmi|@wagmi\/[^/]+|viem|@rainbow-me\/[^/]+|@walletconnect\/[^/]+|@reown\/[^/]+|@coinbase\/wallet[^/]*|mipd|eventemitter3)(\/|$)/;
 
 // Solana wallet/web3 stack — also folded into `vendor-crypto` (it imports the
 // same bn.js/buffer core).
@@ -1920,9 +1917,25 @@ function resolveManualChunk(id: string): string | undefined {
   // form the cross-chunk init cycle the crypto pin guards against.
   if (
     normalizedId.includes("/node_modules/@noble/") ||
-    /\/node_modules\/(uuid|zod)\//.test(normalizedId)
+    /\/node_modules\/(uuid|zod|clsx|eventemitter3)\//.test(normalizedId) ||
+    /\/node_modules\/(bs58|base-x)\/src\/esm\//.test(normalizedId)
   ) {
     return "vendor-boot-leaves";
+  }
+
+  // Dialog scroll locks and query state are shared with wallet modals. Keep
+  // their React-only support graph outside the wallet chunk so opening the app
+  // does not load every wallet adapter. Older CommonJS base-x stays with crypto
+  // because it imports safe-buffer; only the ESM codec is a boot leaf above.
+  if (
+    /\/node_modules\/@tanstack\/(react-query|query-core)\//.test(
+      normalizedId,
+    ) ||
+    /\/node_modules\/(react-remove-scroll|react-remove-scroll-bar|react-style-singleton|use-callback-ref|use-sidecar|get-nonce|detect-node-es)\//.test(
+      normalizedId,
+    )
+  ) {
+    return "vendor-ui-support";
   }
 
   if (VENDOR_OPTIMIZED_WALLET_TEST.test(normalizedId)) {
@@ -2782,6 +2795,10 @@ export const INVALID_TRACER_PROVIDER = {};
       "buffer",
     ],
     alias: [
+      {
+        find: /^@elizaos\/login$/,
+        replacement: path.resolve(elizaRoot, "packages/login/src/sdk/index.ts"),
+      },
       {
         find: /^@homepage\//,
         replacement: `${path.resolve(here, "../homepage/src")}/`,
@@ -3725,14 +3742,7 @@ export const INVALID_TRACER_PROVIDER = {};
         // as an authority mismatch, stranding a local browser on Pairing/Login.
         changeOrigin: false,
         xfwd: true,
-        configure: (proxy) => {
-          proxy.on("error", (_err, _req, res) => {
-            if (!res.headersSent) {
-              res.writeHead(502, { "Content-Type": "application/json" });
-              res.end(JSON.stringify({ error: "API server unavailable" }));
-            }
-          });
-        },
+        configure: configureDevApiProxy,
       },
       "/ws": {
         target: `ws://127.0.0.1:${apiPort}`,

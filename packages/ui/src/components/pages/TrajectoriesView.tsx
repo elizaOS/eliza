@@ -46,6 +46,7 @@ import {
 import { PagePanel } from "../composites/page-panel";
 import { TrajectorySidebarItem } from "../composites/trajectories/trajectory-sidebar-item";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
+import { ViewBackButton } from "../shared/ViewHeader";
 import { Button, type ButtonProps } from "../ui/button";
 import {
   DropdownMenu,
@@ -229,7 +230,13 @@ function AgentTrajectorySidebarItem({
       }
       tokenLabel={`${formatTrajectoryTokenCount(
         trajectory.totalPromptTokens + trajectory.totalCompletionTokens,
-        { emptyLabel: "0" },
+        {
+          emptyLabel:
+            trajectory.totalPromptTokens === 0 &&
+            trajectory.totalCompletionTokens === 0
+              ? "0"
+              : "—",
+        },
       )} tokens`}
       durationLabel={formatTrajectoryDuration(trajectory.durationMs)}
     />
@@ -718,29 +725,24 @@ function TrajectoriesViewForAuthority({
         className="settings-surface"
         data-testid="trajectories-view"
       >
-        <FramedPageHeader
-          title={
-            showingMobileDetail
-              ? t("trajectorydetailview.Title", {
-                  defaultValue: "Run details",
-                })
-              : t("trajectoriesview.Title", {
-                  defaultValue: "Trajectories",
-                })
-          }
-          onBack={
-            showingMobileDetail ? () => onSelectTrajectory(null) : undefined
-          }
-          backLabel={
-            showingMobileDetail
-              ? t("trajectorydetailview.BackToActivity", {
-                  defaultValue: "Back to activity",
-                })
-              : undefined
-          }
-          actions={contentHeader}
-          className="text-[color:var(--settings-foreground)]"
-        />
+        <div className="flex shrink-0 items-center">
+          {showingMobileDetail ? (
+            <ViewBackButton
+              onBack={() => onSelectTrajectory(null)}
+              label={t("trajectorydetailview.BackToActivity", {
+                defaultValue: "Back to activity",
+              })}
+              className="ml-2 shrink-0"
+            />
+          ) : null}
+          <FramedPageHeader
+            title={t("trajectoriesview.Title", {
+              defaultValue: "Trajectories",
+            })}
+            actions={contentHeader}
+            className="min-w-0 flex-1 text-[color:var(--settings-foreground)]"
+          />
+        </div>
         <FramedPageBody scroll="view" className="pt-2">
           {trajectories.length === 0 ? (
             <div className="flex min-h-0 flex-1 flex-col">

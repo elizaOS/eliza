@@ -178,7 +178,9 @@ app.post("/", async (c) => {
     const definitions = requestResult.success
       ? requestedDefinition
         ? [requestedDefinition]
-        : requireDefaultVideoModelDefinitions()
+        : request?.model
+          ? []
+          : requireDefaultVideoModelDefinitions()
       : [];
     const apiKeys = collectVideoProviderApiKeys(c.env);
     const providerCandidates = getConfiguredVideoProviderCandidates(
@@ -299,6 +301,7 @@ app.post("/", async (c) => {
           idempotencyKey: candidate.billingContext.requestId ?? undefined,
           admissionSnapshot,
           credential: credentialGuard.credentialForAdmission(),
+          atomicProviderBoundary: true,
         });
       } catch (error) {
         // error-policy:J1 the HTTP boundary translates insufficient-credit

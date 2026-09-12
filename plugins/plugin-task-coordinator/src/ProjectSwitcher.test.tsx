@@ -1,14 +1,5 @@
+/** Exercises project selection and failed registry recovery with mocked client calls and inline dropdown primitives. */
 // @vitest-environment jsdom
-//
-// ProjectSwitcher (#13776 item 5) — drives the switcher through the REAL
-// client boundary (mocked) and the dropdown primitives (rendered inline so
-// items are always in the DOM for assertions). Proves: it renders one row per
-// registered project with the active one marked, initial load reports the
-// active project to the host, selecting a row calls client.activateProject and
-// fires onActiveProjectChange with the new id, the degenerate zero/one-project
-// case self-hides and reports null (unfiltered, exactly like pre-switcher
-// builds — #14112), and registry/switch failures render visible error states.
-
 import {
   cleanup,
   fireEvent,
@@ -40,44 +31,17 @@ vi.mock("@elizaos/ui/agent-surface", () => ({
   useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
 }));
 
-// Render the dropdown inline: trigger + content are always mounted so items are
-// queryable without simulating the Radix portal open sequence.
-vi.mock("@elizaos/ui/components/ui/dropdown-menu", () => ({
-  DropdownMenu: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  DropdownMenuTrigger: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  DropdownMenuContent: ({
-    children,
-    align: _align,
-    ...rest
-  }: { children: ReactNode; align?: string } & Record<string, unknown>) => (
-    <div {...rest}>{children}</div>
-  ),
-  DropdownMenuItem: ({
-    children,
-    onSelect,
-    ...rest
-  }: {
-    children: ReactNode;
-    onSelect?: () => void;
-  } & Record<string, unknown>) => (
-    <button type="button" onClick={() => onSelect?.()} {...rest}>
-      {children}
-    </button>
-  ),
-}));
-
 // Full mock (no importOriginal): the switcher only touches `client`,
 // `useAppSelectorShallow`, and `Button`, so stub them and keep @elizaos/core
 // out of the browser test graph (mirrors use-orchestrator-data.test.ts).
-vi.mock("@elizaos/ui", () => ({
+vi.mock("@elizaos/ui/api", () => ({
   client: {
     listProjects: () => calls.listProjects(),
     activateProject: (id: string) => calls.activateProject(id),
   },
+}));
+
+vi.mock("@elizaos/ui", () => ({
   Button: ({
     children,
     ...rest
@@ -235,7 +199,12 @@ describe("ProjectSwitcher", () => {
   });
 
   it("renders a visible unavailable state when the registry load fails", async () => {
-    calls.listProjects.mockRejectedValue(new Error("registry down"));
+    calls.listProjects
+      .mockRejectedValueOnce(new Error("registry down"))
+      .mockResolvedValue({
+        projects: [PROJECT_A, PROJECT_B],
+        activeProjectId: "proj-b",
+      });
     const onChange = vi.fn();
     render(<ProjectSwitcher onActiveProjectChange={onChange} />);
 
@@ -246,6 +215,14 @@ describe("ProjectSwitcher", () => {
       screen.getByTestId("project-switcher-error").getAttribute("title"),
     ).toBe("registry down");
     expect(onChange).toHaveBeenCalledWith(null);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Retry loading projects" }),
+    );
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith("proj-b"));
+    expect(screen.queryByText("Projects unavailable")).toBeNull();
+    expect(
+      screen.getByTestId("project-switcher-trigger").textContent,
+    ).toContain(PROJECT_B.name);
   });
 
   it("renders a visible error when activation fails", async () => {

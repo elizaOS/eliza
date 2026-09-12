@@ -286,7 +286,9 @@ test("first trigger saves and refreshes an unsaved workflow", async ({
     timeout: 60_000,
   });
   await page.getByRole("button", { name: "New automation" }).click();
-  await page.getByRole("menuitem", { name: "New workflow" }).click();
+  const createMenu = page.getByTestId("automation-create-menu");
+  await expect(createMenu).toBeVisible();
+  await createMenu.getByRole("menuitem", { name: "New workflow" }).click();
   await page.getByRole("button", { name: "Add workflow trigger" }).click();
   await page.getByRole("button", { name: "Repeat" }).click();
   await page.getByLabel("Interval minutes").fill("15");
@@ -309,7 +311,9 @@ test("workflow studio creates, executes, inspects, and reloads a Smithers workfl
     timeout: 60_000,
   });
   await page.getByRole("button", { name: "New automation" }).click();
-  await page.getByRole("menuitem", { name: "New workflow" }).click();
+  const createMenu = page.getByTestId("automation-create-menu");
+  await expect(createMenu).toBeVisible();
+  await createMenu.getByRole("menuitem", { name: "New workflow" }).click();
 
   await expect(page.getByTestId("workflow-studio")).toBeVisible({
     timeout: 60_000,
@@ -384,3 +388,58 @@ export default smithers(() => <Workflow name="digest"><Task id="digest" output={
   expect(api.getCreateCount()).toBe(1);
   expect(api.getRunCount()).toBe(1);
 });
+
+for (const viewport of [
+  { name: "desktop", width: 1440, height: 900 },
+  { name: "mobile", width: 390, height: 844 },
+]) {
+  test(`workflow history recovers from an HTTP failure on ${viewport.name}`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize(viewport);
+    const api = await installWorkflowApi(page);
+    let unavailable = true;
+    await page.route(
+      "**/api/workflow/workflows/*/revisions**",
+      async (route) => {
+        if (!unavailable) return route.fallback();
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({
+            error: "History unavailable for this workflow",
+          }),
+        });
+      },
+    );
+    await openAppPath(page, "/automations");
+    await page.getByRole("button", { name: "New automation" }).click();
+    await page.getByRole("menuitem", { name: "New workflow" }).click();
+    await page.getByLabel("Workflow name").fill("Review and publish");
+    await page.getByLabel("Save workflow").click();
+    await expect.poll(() => api.getSaved()?.name).toBe("Review and publish");
+    await page.getByRole("button", { name: "History", exact: true }).click();
+    const studio = page.getByTestId("workflow-studio");
+    await expect(studio.getByRole("alert")).toContainText(
+      "History unavailable for this workflow",
+    );
+    await expect(studio.getByText("No saved revisions")).toHaveCount(0);
+    await page.screenshot({
+      path: testInfo.outputPath("history-unavailable.png"),
+      fullPage: true,
+    });
+    unavailable = false;
+    await studio.getByRole("button", { name: "Retry history" }).hover();
+    await page.screenshot({
+      path: testInfo.outputPath("history-retry-hover.png"),
+      fullPage: true,
+    });
+    await studio.getByRole("button", { name: "Retry history" }).click();
+    await expect(studio.getByRole("alert")).toHaveCount(0);
+    await expect(studio.getByText("No saved revisions")).toHaveCount(1);
+    await page.screenshot({
+      path: testInfo.outputPath("history-recovered.png"),
+      fullPage: true,
+    });
+  });
+}

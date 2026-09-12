@@ -1,6 +1,10 @@
 /** Bounds optional Cloud onboarding actions without retaining DOM or account data. */
 
 import type { Locator } from "@playwright/test";
+import {
+  type CloudLiveRuntimeBinding,
+  compareCloudLiveRuntimeBindings,
+} from "./cloud-live-continuity-contract";
 
 export type CloudLiveOptionalActionPhase =
   | "pre-identity-runtime-choice"
@@ -168,11 +172,24 @@ export class CloudLiveOptionalActionDeadlineError extends Error {
   }
 }
 
+export class CloudLiveRequiredActionUnavailableError extends Error {
+  readonly code = "CLOUD_LIVE_REQUIRED_ACTION_UNAVAILABLE";
+
+  constructor(
+    readonly phase: CloudLiveOptionalActionPhase,
+    readonly action: CloudLiveOptionalActionName,
+  ) {
+    super(`[cloud-live] ${phase} required action unavailable`);
+    this.name = "CloudLiveRequiredActionUnavailableError";
+  }
+}
+
 interface ClickCloudLiveOptionalActionOptions {
   phase: CloudLiveOptionalActionPhase;
   action: CloudLiveOptionalActionName;
   offerTimeoutMs: number;
   actionTimeoutMs: number;
+  required?: boolean;
 }
 
 interface PrepareCloudLivePersonalIdentityOptions {
@@ -180,6 +197,10 @@ interface PrepareCloudLivePersonalIdentityOptions {
   chatOverlay: Locator;
   chatOverlayTimeoutMs: number;
   chooseRuntimeAction: () => Promise<void>;
+  resolvedIdentity?: {
+    reference: CloudLiveRuntimeBinding;
+    readBinding: () => Promise<CloudLiveRuntimeBinding | null>;
+  };
 }
 
 interface WaitForCloudLivePersonalIdentityOptions<T> {
@@ -410,20 +431,62 @@ export async function waitForCloudLivePersonalIdentity<T>({
  * The chat overlay is a pre-choice gate, not a post-choice invariant: a valid
  * Cloud choice may replace the first-run overlay while the account binding is
  * still resolving. Callers that already chose the runtime must proceed directly
- * to the bounded binding-or-retry predicate.
+ * to the bounded binding-or-retry predicate. A fresh browser may also reconnect
+ * an existing Dedicated identity before offering the runtime picker; accepting
+ * that path requires an exact match with the previously verified binding.
  */
 export async function prepareCloudLivePersonalIdentity({
   chooseRuntime,
   chatOverlay,
   chatOverlayTimeoutMs,
   chooseRuntimeAction,
+  resolvedIdentity,
 }: PrepareCloudLivePersonalIdentityOptions): Promise<void> {
   if (!chooseRuntime) return;
+  const hasVerifiedIdentity = async (): Promise<boolean> => {
+    if (resolvedIdentity?.reference.runtime !== "dedicated") {
+      return false;
+    }
+    const binding = await withinCloudLivePersonalIdentityDeadline(
+      resolvedIdentity.readBinding,
+      Date.now() + chatOverlayTimeoutMs,
+    );
+    if (!binding) return false;
+    const reuse = compareCloudLiveRuntimeBindings(
+      resolvedIdentity.reference,
+      binding,
+    );
+    return (
+      reuse.personalIdentityReused &&
+      reuse.runtimeBindingReused &&
+      reuse.apiBaseReused
+    );
+  };
+  if (await hasVerifiedIdentity()) {
+    console.info(
+      "[cloud-live] existing Dedicated identity resolved before runtime choice",
+    );
+    return;
+  }
   await chatOverlay.waitFor({
     state: "visible",
     timeout: chatOverlayTimeoutMs,
   });
-  await chooseRuntimeAction();
+  try {
+    await chooseRuntimeAction();
+  } catch (error) {
+    // error-policy:J1 a missing picker is accepted only with independent proof
+    // of the exact prior Dedicated identity; action and identity failures remain fatal.
+    if (
+      !(error instanceof CloudLiveRequiredActionUnavailableError) ||
+      !(await hasVerifiedIdentity())
+    ) {
+      throw error;
+    }
+    console.info(
+      "[cloud-live] existing Dedicated identity resolved while runtime choice disappeared",
+    );
+  }
 }
 
 /**
@@ -450,7 +513,15 @@ export async function clickCloudLiveOptionalAction(
         throw error;
       },
     );
-  if (!offered) return false;
+  if (!offered) {
+    if (options.required) {
+      throw new CloudLiveRequiredActionUnavailableError(
+        options.phase,
+        options.action,
+      );
+    }
+    return false;
+  }
 
   try {
     await target.click({ timeout: options.actionTimeoutMs });

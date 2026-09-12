@@ -41,6 +41,7 @@ export {
   resetLadderForSnooze,
   resolveEffectiveLadder,
 } from "./scheduled-task/escalation.js";
+export { normalizeScheduledEventPayload } from "./scheduled-task/event-payload.js";
 export {
   createTaskGateRegistry,
   registerBuiltInGates,

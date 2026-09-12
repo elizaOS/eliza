@@ -371,10 +371,22 @@ describeE2E("Group H — GET /api/v1/apis/dexscreener/*", () => {
   });
 
   test("happy path: proxies the keyless public DexScreener upstream", async () => {
-    const res = await api.get(
-      "/api/v1/apis/dexscreener/latest/dex/search?q=SOL",
-      { headers: bearerHeaders() },
-    );
+    const getDexScreener = () =>
+      api.get("/api/v1/apis/dexscreener/latest/dex/search?q=SOL", {
+        headers: bearerHeaders(),
+      });
+    let res = await getDexScreener();
+    // This lane deliberately crosses the live public upstream boundary. Retry
+    // only its explicit transient gateway outcomes; authentication, validation,
+    // and application failures remain immediately visible.
+    for (
+      let attempt = 1;
+      attempt < 3 && [502, 503, 504].includes(res.status);
+      attempt++
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      res = await getDexScreener();
+    }
     // DexScreener needs no API key — the proxy must really forward and
     // return upstream JSON.
     expect(res.status).toBe(200);
@@ -426,7 +438,7 @@ describeE2E("Group H — POST /api/cron/agent-billing", () => {
 // ─────────────────────────────────────────────────────────────────────────
 describeE2E("Group H — POST /api/crypto/payments/:id/confirm", () => {
   test("browser preflight returns credentialed CORS without route bootstrap", async () => {
-    const origin = "https://develop.eliza-app.pages.dev";
+    const origin = "https://staging.eliza-app.pages.dev";
     const res = await fetch(url("/api/crypto/payments/missing-id/confirm"), {
       method: "OPTIONS",
       headers: {

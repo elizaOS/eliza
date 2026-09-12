@@ -9,11 +9,18 @@ export default defineConfig({
   resolve: {
     // The live suite imports the package by its public name. Use the workspace
     // source condition so a clean checkout does not depend on a prebuilt dist.
-    alias: {
-      "@elizaos/plugin-form": fileURLToPath(
-        new URL("./src/index.ts", import.meta.url),
-      ),
-    },
+    alias: [
+      {
+        find: /^@elizaos\/plugin-sql$/,
+        replacement: fileURLToPath(
+          new URL("../plugin-sql/src/index.node.ts", import.meta.url),
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-form$/,
+        replacement: fileURLToPath(new URL("./src/index.ts", import.meta.url)),
+      },
+    ],
     conditions: ["eliza-source"],
   },
   test: {

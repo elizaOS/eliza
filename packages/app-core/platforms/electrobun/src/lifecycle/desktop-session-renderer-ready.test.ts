@@ -144,4 +144,39 @@ describe("desktop session renderer readiness", () => {
 
     expect(window.webview.loadURL).toHaveBeenCalledTimes(2);
   });
+
+  it("does not let a superseded generation navigate after a newer generation completes", async () => {
+    const window = createWindow();
+    let releaseOldUrl: (() => void) | undefined;
+
+    const oldCall = reloadRendererAfterDesktopSessionPrime({
+      sessionPrimed: true,
+      backendGeneration: "31337:old",
+      window,
+      resolveRendererUrl: () =>
+        new Promise<string>((resolve) => {
+          releaseOldUrl = () => resolve("http://127.0.0.1:5174/old");
+        }),
+    });
+
+    // The newer generation reserves the window and completes first, while
+    // the older generation's URL lookup is still in flight.
+    await expect(
+      reloadRendererAfterDesktopSessionPrime({
+        sessionPrimed: true,
+        backendGeneration: "31337:new",
+        window,
+        resolveRendererUrl: async () => "http://127.0.0.1:5174/new",
+      }),
+    ).resolves.toBe(true);
+
+    releaseOldUrl?.();
+    await expect(oldCall).resolves.toBe(false);
+
+    expect(window.webview.loadURL).toHaveBeenCalledTimes(1);
+    expect(window.webview.loadURL).toHaveBeenCalledWith(
+      "http://127.0.0.1:5174/new",
+    );
+    expect(loggerState.info).toHaveBeenCalledTimes(1);
+  });
 });

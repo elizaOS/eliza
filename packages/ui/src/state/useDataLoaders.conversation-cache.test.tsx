@@ -848,6 +848,81 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
     ]);
   });
 
+  it.each(["history", "terminal-rekey"] as const)(
+    "keeps a second identical queued user after the first resolves by %s",
+    async (resolution) => {
+      const oldUser = { ...userMsg("old-yes"), text: "yes", timestamp: 1_000 };
+      const firstUser = {
+        ...userMsg("temp-first"),
+        text: "yes",
+        timestamp: 1_010,
+      };
+      const secondUser = {
+        ...userMsg("temp-second"),
+        text: "yes",
+        timestamp: 1_020,
+      };
+      const durableFirst = { ...firstUser, id: "durable-first" };
+      const durableSecond = { ...secondUser, id: "durable-second" };
+      let serverMessages = [oldUser];
+      mocks.client.getConversationMessages.mockImplementation(async () => ({
+        messages: [...serverMessages],
+      }));
+      const { deps, conversationMessagesRef, activeConversationIdRef } =
+        makeDeps();
+      activeConversationIdRef.current = "conv-a";
+      const hook = renderHook(() => useDataLoaders(deps));
+      try {
+        await act(async () => {
+          await hook.result.current.loadConversationMessages("conv-a");
+        });
+        act(() => {
+          conversationMessagesRef.current = [oldUser, firstUser];
+          hook.result.current.registerConversationMessageOverlay("conv-a", [
+            firstUser.id,
+          ]);
+          conversationMessagesRef.current = [oldUser, firstUser, secondUser];
+          hook.result.current.registerConversationMessageOverlay("conv-a", [
+            secondUser.id,
+          ]);
+          if (resolution === "terminal-rekey") {
+            conversationMessagesRef.current = [
+              oldUser,
+              { ...durableFirst, clientRenderId: firstUser.id },
+              secondUser,
+            ];
+          }
+        });
+        serverMessages = [oldUser, durableFirst];
+        // An around paint can show the first durable row before its optimistic
+        // lineage has retired. The later queued repeat must survive convergence.
+        await act(async () => {
+          await hook.result.current.loadConversationMessagesAround(
+            "conv-a",
+            oldUser.id,
+          );
+        });
+        for (let reload = 0; reload < 3; reload += 1) {
+          await act(async () => {
+            await hook.result.current.loadConversationMessages("conv-a");
+          });
+        }
+        expect(
+          conversationMessagesRef.current.map((message) => message.id),
+        ).toEqual([oldUser.id, durableFirst.id, secondUser.id]);
+        serverMessages = [oldUser, durableFirst, durableSecond];
+        await act(async () => {
+          await hook.result.current.loadConversationMessages("conv-a");
+        });
+        expect(
+          conversationMessagesRef.current.map((message) => message.id),
+        ).toEqual([oldUser.id, durableFirst.id, durableSecond.id]);
+      } finally {
+        hook.unmount();
+      }
+    },
+  );
+
   it("keeps an identical in-flight streamed assistant when only the repeated user turn has persisted", async () => {
     const firstUser = {
       ...userMsg("server-user-1"),
@@ -1495,6 +1570,112 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
       await returnToA;
     });
   });
+
+  it.each(["failure", "navigation", "newer-around", "authority"] as const)(
+    "bounds automatic around confirmation and respects %s",
+    async (interruption) => {
+      const oldUser = { ...userMsg("old-user"), timestamp: 1_000 };
+      const pending = {
+        ...userMsg("temp-confirm"),
+        text: "pending recovery",
+        timestamp: 2_000,
+      };
+      const persisted = { ...pending, id: "durable-confirm" };
+      let finishConfirmation:
+        | ((messages: ConversationMessage[]) => void)
+        | undefined;
+      let failConfirmation: ((error: Error) => void) | undefined;
+      let confirmationSignal: AbortSignal | undefined;
+      mocks.client.getConversationMessages
+        .mockResolvedValueOnce({ messages: [oldUser] })
+        .mockResolvedValueOnce({ messages: [oldUser] })
+        .mockResolvedValueOnce({ messages: [oldUser, persisted] })
+        .mockImplementationOnce(
+          (_id: string, options?: { signal?: AbortSignal }) =>
+            new Promise((resolve, reject) => {
+              confirmationSignal = options?.signal;
+              finishConfirmation = (messages) => resolve({ messages });
+              failConfirmation = reject;
+            }),
+        )
+        .mockResolvedValue({ messages: [userMsg("new-window")] });
+      const { deps, conversationMessagesRef, activeConversationIdRef } =
+        makeDeps();
+      activeConversationIdRef.current = "conv-a";
+      const hook = renderHook(() => useDataLoaders(deps));
+      let reload: Promise<unknown> | undefined;
+      try {
+        await act(async () => {
+          await hook.result.current.loadConversationMessages("conv-a");
+        });
+        act(() => {
+          conversationMessagesRef.current = [oldUser, pending];
+          hook.result.current.registerConversationMessageOverlay("conv-a", [
+            pending.id,
+          ]);
+        });
+        await act(async () => {
+          await hook.result.current.loadConversationMessagesAround(
+            "conv-a",
+            oldUser.id,
+          );
+        });
+        act(() => {
+          reload = hook.result.current.loadConversationMessages("conv-a");
+        });
+        await vi.waitFor(() =>
+          expect(finishConfirmation).toEqual(expect.any(Function)),
+        );
+        expect(mocks.client.getConversationMessages).toHaveBeenCalledTimes(4);
+        if (interruption === "failure") {
+          await act(async () => {
+            failConfirmation?.(
+              Object.assign(new Error("API unavailable"), { status: 502 }),
+            );
+            await reload;
+          });
+          expect(
+            conversationMessagesRef.current.map((message) => message.id),
+          ).toContain(pending.id);
+        } else {
+          if (interruption === "navigation") {
+            act(() => {
+              hook.result.current.claimConversationMessagesOwnership("conv-b");
+              activeConversationIdRef.current = "conv-b";
+            });
+            await act(async () => {
+              await hook.result.current.loadConversationMessages("conv-b");
+            });
+          } else if (interruption === "newer-around") {
+            await act(async () => {
+              await hook.result.current.loadConversationMessagesAround(
+                "conv-a",
+                "new-window",
+              );
+            });
+          } else {
+            act(() => {
+              runtimeAuthoritySwitchListener?.("before");
+            });
+          }
+          expect(confirmationSignal?.aborted).toBe(true);
+          const winningMessages = [...conversationMessagesRef.current];
+          await act(async () => {
+            finishConfirmation?.([oldUser, persisted]);
+            await reload;
+          });
+          expect(conversationMessagesRef.current).toEqual(winningMessages);
+        }
+        expect(mocks.client.getConversationMessages).toHaveBeenCalledTimes(
+          interruption === "failure" || interruption === "authority" ? 4 : 5,
+        );
+      } finally {
+        finishConfirmation?.([oldUser, persisted]);
+        await reload;
+        hook.unmount();
+      }
+    },
+  );
 
   it("uses exact ids for around windows and the first newest response after around even from a canonical view", async () => {
     const oldUser = {
@@ -2237,70 +2418,93 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
     ).toBe(false);
   });
 
-  it("does not let the first stale newest snapshot consume a same-text replacement after truncate", async () => {
-    const oldUser = {
-      ...userMsg("old-user"),
-      text: "retry me",
-      timestamp: 1_000,
-    };
-    const oldAssistant = {
-      ...assistantMsg("old-assistant"),
-      text: "failed",
-      timestamp: 1_100,
-    };
-    mocks.client.getConversationMessages
-      .mockResolvedValueOnce({ messages: [oldUser, oldAssistant] })
-      .mockResolvedValueOnce({ messages: [oldUser, oldAssistant] });
-    const {
-      deps,
-      setConversationMessages,
-      conversationMessagesRef,
-      activeConversationIdRef,
-    } = makeDeps();
-    activeConversationIdRef.current = "conv-a";
-    const { result } = renderHook(() => useDataLoaders(deps));
-    await act(async () => {
-      await result.current.loadConversationMessages("conv-a");
-    });
-    act(() => {
-      result.current.removeConversationMessageStateMessages("conv-a", {
-        mode: "truncate",
-        removedMessages: [oldUser, oldAssistant],
-        preservedMessages: [],
+  it.each(["truncate", "delete-exact"] as const)(
+    "does not consume a same-text replacement across stale snapshots after %s",
+    async (mode) => {
+      const oldUser = {
+        ...userMsg("old-user"),
+        text: "retry me",
+        timestamp: 1_000,
+      };
+      const oldAssistant = {
+        ...assistantMsg("old-assistant"),
+        text: "failed",
+        timestamp: 1_100,
+      };
+      mocks.client.getConversationMessages.mockResolvedValue({
+        messages: [oldUser, oldAssistant],
       });
-    });
+      const {
+        deps,
+        setConversationMessages,
+        conversationMessagesRef,
+        activeConversationIdRef,
+      } = makeDeps();
+      activeConversationIdRef.current = "conv-a";
+      const { result } = renderHook(() => useDataLoaders(deps));
+      await act(async () => {
+        await result.current.loadConversationMessages("conv-a");
+      });
+      act(() => {
+        result.current.removeConversationMessageStateMessages("conv-a", {
+          mode,
+          removedMessages: [oldUser, oldAssistant],
+          preservedMessages: [],
+        });
+      });
 
-    const replacementUser = {
-      ...userMsg("temp-retry-user"),
-      clientRenderId: "temp-retry-user",
-      text: "retry me",
-      timestamp: 1_005,
-    };
-    const replacementAssistant = {
-      ...assistantMsg("temp-retry-assistant"),
-      clientRenderId: "temp-retry-assistant",
-      text: "",
-      timestamp: 1_006,
-    };
-    act(() => {
-      setConversationMessages([replacementUser, replacementAssistant]);
-      result.current.registerConversationMessageOverlay("conv-a", [
-        replacementUser.clientRenderId,
-        replacementAssistant.clientRenderId,
-      ]);
-    });
+      const replacementUser = {
+        ...userMsg("temp-retry-user"),
+        clientRenderId: "temp-retry-user",
+        text: "retry me",
+        timestamp: 1_005,
+      };
+      const replacementAssistant = {
+        ...assistantMsg("temp-retry-assistant"),
+        clientRenderId: "temp-retry-assistant",
+        text: "",
+        timestamp: 1_006,
+      };
+      act(() => {
+        setConversationMessages([replacementUser, replacementAssistant]);
+        result.current.registerConversationMessageOverlay("conv-a", [
+          replacementUser.clientRenderId,
+          replacementAssistant.clientRenderId,
+        ]);
+      });
 
-    await act(async () => {
-      await result.current.loadConversationMessages("conv-a");
-    });
-    expect(
-      conversationMessagesRef.current
-        .filter(
-          (message) => message.role === "user" && message.text === "retry me",
-        )
-        .map((message) => message.id),
-    ).toEqual(["old-user", "temp-retry-user"]);
-  });
+      for (let reload = 0; reload < 3; reload += 1) {
+        await act(async () => {
+          await result.current.loadConversationMessages("conv-a");
+        });
+        expect(
+          conversationMessagesRef.current
+            .filter(
+              (message) =>
+                message.role === "user" && message.text === "retry me",
+            )
+            .map((message) => message.id),
+        ).toEqual(["old-user", "temp-retry-user"]);
+      }
+      mocks.client.getConversationMessages.mockResolvedValue({
+        messages: [
+          {
+            ...replacementUser,
+            id: "durable-retry-user",
+            clientRenderId: undefined,
+          },
+        ],
+      });
+      await act(async () => {
+        await result.current.loadConversationMessages("conv-a");
+      });
+      expect(
+        conversationMessagesRef.current
+          .filter((message) => message.role === "user")
+          .map((message) => message.id),
+      ).toEqual(["durable-retry-user"]);
+    },
+  );
 
   it("does not let an around match retire overlay state and merges stale overlay rows chronologically", async () => {
     const before = { ...userMsg("before"), timestamp: 1 };

@@ -1,6 +1,7 @@
 /** Deterministic unit coverage for paid-provider admission and dispatch ordering. */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as organizationInferenceAdmissionActual from "./organization-inference-admission";
 
 const events: string[] = [];
 const settledCosts: number[] = [];
@@ -28,6 +29,7 @@ const admitOrganizationInference = mock(async () => {
 });
 
 mock.module("./organization-inference-admission", () => ({
+  ...organizationInferenceAdmissionActual,
   admitOrganizationInference,
 }));
 
@@ -75,6 +77,7 @@ describe("runFlatProviderOperation", () => {
 
     expect(events).toEqual(["admit", "mark", "provider", "settle"]);
     expect(admitOrganizationInference.mock.calls.at(-1)?.[0].credential).toBe(credential);
+    expect(admitOrganizationInference.mock.calls.at(-1)?.[0].atomicProviderBoundary).toBe(true);
   });
 
   test("reuses one exact deferred credential across multiple atomic admissions", async () => {

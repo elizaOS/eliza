@@ -12,13 +12,14 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { parseCloudLiveContinuityEvidence } from "../../app/test/cloud-live-continuity-contract.ts";
 
 export const PAGES_AUTHORITY_SCHEMA =
   "elizaos.cloudflare.pages-deployment-authority/v1";
 export const PAGES_PUBLIC_CHECK_SCHEMA =
   "elizaos.cloudflare.pages-public-check/v1";
 export const DEPLOYED_BROWSER_SMOKE_SCHEMA =
-  "elizaos.cloud.deployed-browser-smoke/v1";
+  "elizaos.cloud.deployed-browser-smoke/v3";
 export const DEPLOYED_RENDERER_PROOF_SCHEMA =
   "elizaos.cloud.deployed-renderer-proof/v1";
 
@@ -68,35 +69,50 @@ const PUBLIC_RENDERER_KEYS = [
 ];
 const PUBLIC_API_KEYS = ["commit", "environment", "origin"];
 const REMOTE_SMOKE_KEYS = [
+  "chatCorrelation",
   "cloudApiOrigin",
   "cloudEnvironment",
   "outcome",
+  "referenceBinding",
   "rendererBuildId",
   "rendererManifestCommit",
   "rendererOrigin",
   "schema",
   "sourceSha",
 ];
+const CHAT_CORRELATION_KEYS = [
+  "preforward",
+  "providerRequestIdSha256",
+  "serverTiming",
+  "traceId",
+];
+const REFERENCE_BINDING_KEYS = ["apiBase", "runtime"];
+const TRACE_ID = /^[0-9a-f]{32}$/;
+const SAFE_TIMING_METRICS = new Set([
+  "cloud_worker",
+  "gateway_preforward",
+  "upstream_headers",
+  "dedicated_auth",
+  "dedicated_ownership",
+  "dedicated_routing",
+  "dedicated_proxy_dispatch",
+  "dedicated_total",
+]);
+const REQUIRED_DEDICATED_TIMING_METRICS = [
+  "dedicated_auth",
+  "dedicated_ownership",
+  "dedicated_routing",
+  "dedicated_proxy_dispatch",
+  "dedicated_total",
+];
+const SAFE_TIMING_DURATION = /^\d+(?:\.\d+)?$/;
+const SAFE_PREFORWARD =
+  /^total=\d+(?:\.\d+)?;auth=\d+(?:\.\d+)?;mid=\d+(?:\.\d+)?;reserve=\d+(?:\.\d+)?;setup=\d+(?:\.\d+)?$/;
 const LATENCY_KEYS = [
   "definition",
   "firstTurnLatencyMs",
   "lane",
   "metric",
-  "schemaVersion",
-];
-const CONTINUITY_KEYS = [
-  "apiBaseReused",
-  "challengeTurnCount",
-  "cleanupDisposition",
-  "conversationHistoryDisposition",
-  "forbiddenAgentMutationCount",
-  "freshContextHistoryPassed",
-  "lane",
-  "noAdditionalChatSendAfterChallenge",
-  "personalIdentityEndpointPassed",
-  "personalIdentityReused",
-  "reloadHistoryPassed",
-  "runtimeBindingReused",
   "schemaVersion",
 ];
 const PROOF_KEYS = [
@@ -188,6 +204,42 @@ function requireHttpsUrl(value, label) {
     fail(`${label} must be a bare HTTPS origin`);
   }
   return parsed.origin;
+}
+
+function requireDedicatedApiBase(value, label) {
+  const origin = requireHttpsUrl(value, label);
+  const hostname = new URL(origin).hostname;
+  const suffix = ".cloud-staging.eliza.app";
+  const agentId = hostname.endsWith(suffix)
+    ? hostname.slice(0, -suffix.length)
+    : "";
+  if (!UUID.test(agentId)) {
+    fail(`${label} must be a staging Dedicated agent origin`);
+  }
+  return origin;
+}
+
+function requireDedicatedServerTiming(value, label) {
+  const raw = requireString(value, label);
+  if (raw.length > 4_096) fail(`${label} is invalid`);
+  const names = new Set();
+  for (const metric of raw.split(", ")) {
+    const match = metric.match(/^([^;]+);dur=(.+)$/);
+    if (
+      !match ||
+      !SAFE_TIMING_METRICS.has(match[1]) ||
+      !SAFE_TIMING_DURATION.test(match[2]) ||
+      Number(match[2]) > 3_600_000 ||
+      names.has(match[1])
+    ) {
+      fail(`${label} is invalid`);
+    }
+    names.add(match[1]);
+  }
+  if (!REQUIRED_DEDICATED_TIMING_METRICS.every((name) => names.has(name))) {
+    fail(`${label} lacks required Dedicated phases`);
+  }
+  return raw;
 }
 
 function requireIsoTimestamp(value, label) {
@@ -671,6 +723,19 @@ export function parseDeployedBrowserSmoke(value) {
   ) {
     fail("remote browser smoke did not close successfully");
   }
+  const correlation = requireExactKeys(
+    smoke.chatCorrelation,
+    CHAT_CORRELATION_KEYS,
+    "remoteSmoke.chatCorrelation",
+  );
+  const referenceBinding = requireExactKeys(
+    smoke.referenceBinding,
+    REFERENCE_BINDING_KEYS,
+    "remoteSmoke.referenceBinding",
+  );
+  if (referenceBinding.runtime !== "dedicated") {
+    fail("remoteSmoke.referenceBinding.runtime must be dedicated");
+  }
   return {
     schema: DEPLOYED_BROWSER_SMOKE_SCHEMA,
     sourceSha: requireString(smoke.sourceSha, "remoteSmoke.sourceSha", SHA40),
@@ -696,6 +761,40 @@ export function parseDeployedBrowserSmoke(value) {
       smoke.cloudEnvironment,
       "remoteSmoke.cloudEnvironment",
     ),
+    referenceBinding: {
+      runtime: "dedicated",
+      apiBase: requireDedicatedApiBase(
+        referenceBinding.apiBase,
+        "remoteSmoke.referenceBinding.apiBase",
+      ),
+    },
+    chatCorrelation: {
+      traceId: requireString(
+        correlation.traceId,
+        "remoteSmoke.chatCorrelation.traceId",
+        TRACE_ID,
+      ),
+      serverTiming: requireDedicatedServerTiming(
+        correlation.serverTiming,
+        "remoteSmoke.chatCorrelation.serverTiming",
+      ),
+      preforward:
+        correlation.preforward === null
+          ? null
+          : requireString(
+              correlation.preforward,
+              "remoteSmoke.chatCorrelation.preforward",
+              SAFE_PREFORWARD,
+            ),
+      providerRequestIdSha256:
+        correlation.providerRequestIdSha256 === null
+          ? null
+          : requireString(
+              correlation.providerRequestIdSha256,
+              "remoteSmoke.chatCorrelation.providerRequestIdSha256",
+              SHA256,
+            ),
+    },
     outcome: "success",
   };
 }
@@ -722,31 +821,6 @@ function parseLatency(value) {
   };
 }
 
-function parseContinuity(value) {
-  const continuity = requireExactKeys(value, CONTINUITY_KEYS, "continuity");
-  const expected = {
-    schemaVersion: 1,
-    lane: RECEIPT_LANE,
-    challengeTurnCount: 1,
-    noAdditionalChatSendAfterChallenge: true,
-    personalIdentityEndpointPassed: true,
-    reloadHistoryPassed: true,
-    freshContextHistoryPassed: true,
-    personalIdentityReused: true,
-    runtimeBindingReused: true,
-    apiBaseReused: true,
-    forbiddenAgentMutationCount: 0,
-    cleanupDisposition: "no-test-owned-agent",
-    conversationHistoryDisposition: "preserved",
-  };
-  for (const [key, expectedValue] of Object.entries(expected)) {
-    if (continuity[key] !== expectedValue) {
-      fail(`continuity.${key} is invalid`);
-    }
-  }
-  return expected;
-}
-
 export function createDeployedRendererProof({
   authority: authorityValue,
   preflight: preflightValue,
@@ -759,7 +833,7 @@ export function createDeployedRendererProof({
   const preflight = parsePagesPublicCheck(preflightValue, "preflight");
   const remoteSmoke = parseDeployedBrowserSmoke(remoteSmokeValue);
   const latency = parseLatency(latencyValue);
-  const continuity = parseContinuity(continuityValue);
+  const continuity = parseCloudLiveContinuityEvidence(continuityValue);
   const postflight = parsePagesPublicCheck(postflightValue, "postflight");
 
   for (const [label, observed] of [

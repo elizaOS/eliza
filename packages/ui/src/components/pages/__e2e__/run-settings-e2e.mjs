@@ -18,7 +18,7 @@
  *   bun run --cwd packages/ui test:settings-e2e
  */
 
-import { mkdir, readdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { builtinModules } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,6 +31,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const uiSrc = resolve(here, "../../..");
 const repoRoot = resolve(uiSrc, "../../..");
 const outDir = join(here, "output-settings");
+await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
 
 let failures = 0;
@@ -263,6 +264,10 @@ p.on("pageerror", (e) => pageErrors.push(String(e)));
 
 await p.goto(url, { waitUntil: "domcontentloaded" });
 await p.waitForSelector('[data-testid="desktop-settings-navigation"]');
+assert(
+  await p.getByRole("button", { name: "Back to launcher" }).count() === 0,
+  "desktop Settings preserves the shell's headerless launcher navigation",
+);
 
 // ── 1. Persistent desktop rail structure ────────────────────────────────────
 const railText = await p
@@ -430,11 +435,21 @@ assert(
 );
 await atBreakpoint.close();
 
-const mobile = await context.newPage();
+const mobileContext = await browser.newContext({
+  viewport: { width: 390, height: 844 },
+  recordVideo: { dir: outDir, size: { width: 390, height: 844 } },
+  reducedMotion: "reduce",
+});
+const mobile = await mobileContext.newPage();
+const mobileVideo = mobile.video();
+if (!mobileVideo) throw new Error("Mobile Settings recording is unavailable");
 mobile.on("pageerror", (e) => pageErrors.push(String(e)));
-await mobile.setViewportSize({ width: 390, height: 844 });
 await mobile.goto(url, { waitUntil: "domcontentloaded" });
 await mobile.waitForSelector('[data-testid="settings-hub-list"]');
+assert(
+  await mobile.getByRole("button", { name: "Back to launcher" }).count() === 0,
+  "the compact Settings hub does not introduce a launcher control",
+);
 const firstMobileGroup = await mobile
   .locator('[data-slot="settings-group-surface"]')
   .first()
@@ -444,6 +459,8 @@ assert(
   "mobile hub cards align to the shared 16px content rail",
 );
 await snap(mobile, `${String(shotIndex).padStart(2, "0")}-hub-mobile`);
+// Hold verified states long enough for a reviewer to follow the recording.
+await mobile.waitForTimeout(1000);
 shotIndex += 1;
 await mobile.locator('[data-testid="settings-hub-row-appearance"]').click();
 await mobile.waitForTimeout(450);
@@ -458,9 +475,18 @@ assert(
   "mobile detail keeps the canvas full bleed and content inset 16px",
 );
 await snap(mobile, `${String(shotIndex).padStart(2, "0")}-appearance-mobile`);
+await mobile.waitForTimeout(1000);
 shotIndex += 1;
+await mobile.getByRole("button", { name: "Back to Settings" }).hover();
+await snap(mobile, "appearance-mobile-back-hover");
+await mobile.waitForTimeout(1000);
 await mobile.getByRole("button", { name: "Back to Settings" }).click();
 await mobile.waitForSelector('[data-testid="settings-hub-list"]');
+assert(
+  await mobile.getByRole("button", { name: "Back to Settings" }).count() === 0,
+  "returning to the hub removes the nested navigation control",
+);
+await mobile.waitForTimeout(1000);
 await mobile.locator('[data-testid="settings-hub-row-voice"]').click();
 await mobile.waitForSelector("#voice");
 await assertSectionRendered(mobile, "mobile Voice");
@@ -489,19 +515,43 @@ assert(
 await mobile.waitForTimeout(450);
 await snap(mobile, `${String(shotIndex).padStart(2, "0")}-voice-mobile`);
 await mobile.close();
+await mobileContext.close();
+await mobileVideo.saveAs(join(outDir, "walkthrough.webm"));
+
+// Connected account actions must fit the native Settings content pane, not
+// merely the full window width. The fixture retains the desktop rail gutter.
+for (const width of [760, 390]) {
+  const accountPage = await browser.newPage({
+    viewport: { width, height: 560 },
+    reducedMotion: "reduce",
+  });
+  accountPage.on("pageerror", (error) => pageErrors.push(String(error)));
+  await accountPage.goto(`${url}?account-row`);
+  const add = accountPage.getByRole("button", { name: "Add", exact: true });
+  await add.waitFor();
+  const fits = await add.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return rect.left >= 0 && rect.right <= window.innerWidth &&
+      element.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+  });
+  assert(fits, `connected account Add action is fully visible and hit-testable at ${width}px`);
+  await accountPage.screenshot({ path: join(outDir, `account-row-${width}.png`) });
+  await add.click();
+  assert(await accountPage.locator("output").textContent() === "add account", `visible account action dispatches at ${width}px`);
+  const activate = accountPage.getByRole("button", { name: "Use for chat & coding", exact: true });
+  await activate.hover();
+  await accountPage.screenshot({ path: join(outDir, `account-row-${width}-hover.png`) });
+  await activate.focus();
+  await accountPage.keyboard.press("Enter");
+  assert(await accountPage.locator("output").textContent() === "coding selected", `subscription activation dispatches from the keyboard at ${width}px`);
+  await accountPage.close();
+}
 
 await p.close();
 await context.close();
 await browser.close();
 
-// Name the recorded walkthrough deterministically.
-for (const f of await readdir(outDir)) {
-  if (f.endsWith(".webm") && f !== "walkthrough.webm") {
-    await rename(join(outDir, f), join(outDir, "walkthrough.webm"));
-    console.log("  🎥 walkthrough.webm");
-    break;
-  }
-}
+console.log("  🎥 walkthrough.webm (mobile Settings navigation)");
 
 // Page errors from stubbed-data sections are contained by the per-section
 // error boundary; NOTHING may escape to a page error — a real shell TypeError

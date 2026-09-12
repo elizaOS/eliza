@@ -1,4 +1,4 @@
-/** UI-free Todos plugin for Node-hosted Eliza runtimes. */
+/** Node-safe Todos descriptors: headless services and the host-discoverable dashboard declaration. */
 
 import type { Plugin } from "@elizaos/core";
 
@@ -22,4 +22,29 @@ export const todosRuntimePlugin: Plugin = {
   },
 };
 
-export default todosRuntimePlugin;
+export const todosPlugin: Plugin = {
+  ...todosRuntimePlugin,
+  views: [
+    {
+      id: "todos",
+      label: "Todos",
+      description: "Three-lane todo board: Today / Upcoming / Someday",
+      icon: "ListChecks",
+      path: "/todos",
+      responseContext: { primaryContext: "todos" },
+      modalities: ["gui"],
+      bundlePath: "dist/views/bundle.js",
+      // First-party instrumented view (data-agent-id controls): grant the
+      // agent-surface capability so the view broker admits agent-driven
+      // fills/clicks (#13452 manifest gate).
+      surface: { capabilities: ["agent-surface"] },
+      componentExport: "TodosView",
+      tags: ["todos", "tasks", "productivity"],
+      relatedActions: ["OWNER_TODOS"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
+};
+
+export default todosPlugin;

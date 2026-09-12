@@ -227,7 +227,7 @@ describe("FilesView", () => {
     );
     fireEvent.click(await screen.findByTestId("file-delete"));
 
-    expect(window.confirm).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(window.confirm).toHaveBeenCalledTimes(1));
 
     await waitFor(() => {
       expect(clientMock.deleteFile).toHaveBeenCalledWith("report.pdf");
@@ -253,6 +253,7 @@ describe("FilesView", () => {
     );
     fireEvent.click(await screen.findByTestId("file-delete"));
 
+    await waitFor(() => expect(window.confirm).toHaveBeenCalledTimes(1));
     expect(clientMock.deleteFile).not.toHaveBeenCalled();
     expect(screen.getByText("report.pdf")).toBeTruthy();
   });

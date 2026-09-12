@@ -512,7 +512,12 @@ function sendVfsError(ctx: WorkbenchRouteContext, err: unknown): void {
         ? 404
         : err.code === "QUOTA_EXCEEDED"
           ? 413
-          : 400;
+          : err.code === "INVALID_SNAPSHOT" ||
+              err.code === "VFS_STORAGE_FAILED" ||
+              err.code === "ROLLBACK_FAILED" ||
+              err.code === "ROLLBACK_RECOVERY_FAILED"
+            ? 500
+            : 400;
     ctx.error(ctx.res, err.message, status);
     return;
   }

@@ -264,6 +264,7 @@ export function consumeAgentEvent(event) {
   const content = candidates.find((value) => typeof value === "string") || "";
   return {
     content,
+    snapshot: typeof event?.fullText === "string" ? event.fullText : null,
     terminal: event?.type === "done" || event?.type === "error" ? event : null,
   };
 }
@@ -315,7 +316,13 @@ export async function readSse(
       }
       reasoningCharacters += observation.reasoning.length;
     }
-    if (observation.content) {
+    if (typeof observation.snapshot === "string") {
+      if (observation.snapshot && firstTokenMs === null) {
+        firstTokenMs = elapsed(now, startedAt);
+      }
+      outputText = observation.snapshot;
+      outputCharacters = outputText.length;
+    } else if (observation.content) {
       if (firstTokenMs === null) firstTokenMs = elapsed(now, startedAt);
       outputText += observation.content;
       outputCharacters += observation.content.length;
@@ -508,6 +515,7 @@ export async function probeOpenAi({
       reasoningEffort: probeCase.reasoningEffort,
       maxTokens: probeCase.maxTokens,
       traceId: response.headers.get("x-eliza-trace-id") || traceId,
+      status: response.status,
       responseHeadersMs,
       totalMs: round(performance.now() - startedAt),
       headers,
@@ -699,6 +707,7 @@ export async function probeDedicated({
         traceId:
           response.headers.get("x-eliza-trace-id") ||
           (requestMode === "instrumented" ? traceId : null),
+        status: response.status,
         responseHeadersMs,
         totalMs: round(performance.now() - startedAt),
         headers,

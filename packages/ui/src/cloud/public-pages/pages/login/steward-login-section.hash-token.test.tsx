@@ -29,10 +29,8 @@ const sessionSpies = vi.hoisted(() => ({
   sync: vi.fn(),
 }));
 
-vi.mock("@elizaos/shared/steward-session-client", () => ({
-  STEWARD_TOKEN_KEY: "steward_session_token",
-  registerStewardTokenPersistence: vi.fn(),
-  registerStewardTokenRemoval: vi.fn(),
+vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => ({
+  ...(await importOriginal()),
   hasStewardAuthedCookie: () => false,
   readStoredStewardToken: () => sessionSpies.storedToken,
   writeStoredStewardToken: (token: string) => {
@@ -48,8 +46,8 @@ vi.mock("@elizaos/shared/steward-session-client", () => ({
   },
 }));
 
-vi.mock("@stwd/sdk", () => ({
-  StewardAuth: class {
+vi.mock("@elizaos/login", () => ({
+  LoginAuth: class {
     getSession() {
       return null;
     }

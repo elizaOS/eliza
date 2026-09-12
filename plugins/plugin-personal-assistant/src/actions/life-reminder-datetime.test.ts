@@ -13,6 +13,7 @@
  *     reach the snooze handler instead of being discarded.
  */
 
+import * as agent from "@elizaos/agent";
 import type {
   HandlerOptions,
   IAgentRuntime,
@@ -110,7 +111,9 @@ vi.mock("../lifeops/service.js", () => {
               ? `${ownerType}_deleted`
               : ownerType === "goal"
                 ? "goal_created"
-                : "definition_created",
+                : serviceState.updateCalls.some((entry) => entry.id === ownerId)
+                  ? "definition_updated"
+                  : "definition_created",
             ownerType,
             ownerId,
             decision: {},
@@ -774,8 +777,68 @@ describe("runLifeOperationHandler definition update targeting", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
+
+  it.each(["provider_issue", "rate_limited", "no_provider"] as const)(
+    "retains a completed update and receipt when the reply is unavailable: %s",
+    async (kind) => {
+      serviceState.extraDefinitions.push({
+        definition: {
+          id: "def-reply",
+          title: "Reply target",
+          cadence: { kind: "daily", windows: ["morning"] },
+          windowPolicy: { timezone: "UTC", windows: [] },
+          updatedAt: "2026-07-01T18:00:00.000Z",
+        },
+      });
+      const failure = {
+        kind,
+        code: "REPLY_UNAVAILABLE",
+        message: "Reply generation unavailable.",
+        transient: false as const,
+      };
+      const renderReply = vi
+        .spyOn(agent, "renderGroundedActionReply")
+        .mockResolvedValue({ kind: "unavailable", failure });
+      const callback = vi.fn(async () => []);
+      const result = await runLifeOperationHandler(
+        makeRuntime(() => ""),
+        makeMessage('Rename "Reply target" to "Evening session"'),
+        undefined,
+        {
+          parameters: {
+            action: "update",
+            kind: "definition",
+            target: "Reply target",
+            title: "Evening session",
+            details: { cadence: { kind: "daily", windows: ["evening"] } },
+            intent: 'Rename "Reply target" to "Evening session"',
+          },
+        },
+        callback,
+      );
+
+      expect(serviceState.updateCalls).toHaveLength(1);
+      expect(result).toMatchObject({
+        success: true,
+        data: { definition: { id: "def-reply", title: "Evening session" } },
+        effectReceipts: [
+          { outcome: "applied", operation: "lifeops.definition.update" },
+        ],
+        replyFailure: failure,
+        transcriptVisibility: "internal",
+        turnComplete: false,
+      });
+      expect(result.text).toBeUndefined();
+      expect(result.userFacingText).toBeUndefined();
+      expect(result.verifiedUserFacing).toBeUndefined();
+      expect(result.userFacingEffectReceiptIds).toBeUndefined();
+      expect(callback).not.toHaveBeenCalled();
+      expect(renderReply).toHaveBeenCalledOnce();
+    },
+  );
 
   it("persists an explicit destination timezone and resolves the local clock in that zone", async () => {
     vi.useFakeTimers();
@@ -1437,7 +1500,7 @@ describe("runLifeOperationHandler clarification contract", () => {
     expect(serviceState.createCalls).toHaveLength(0);
   });
 
-  it("marks a missing reminder schedule as user-facing and awaiting owner input", async () => {
+  it("keeps a missing reminder schedule available for grounded owner clarification", async () => {
     const clarification = "What day and time should I use?";
     const runtime = makeRuntime((prompt) => {
       if (
@@ -1479,7 +1542,8 @@ describe("runLifeOperationHandler clarification contract", () => {
     expect(result).toMatchObject({
       success: false,
       text: "When should it happen?",
-      userFacingText: "When should it happen?",
+      transcriptVisibility: "internal",
+      turnComplete: false,
       values: {
         success: false,
         error: "MISSING_DEFINITION_FIELD",
@@ -1495,7 +1559,88 @@ describe("runLifeOperationHandler clarification contract", () => {
       },
     });
     expect(retry.effectReceipts).toEqual(result.effectReceipts);
+    expect(result.userFacingText).toBeUndefined();
     expect(serviceState.createCalls).toHaveLength(0);
+  });
+
+  it("does not deliver a renderer's saved claim for a rejected reminder create", async () => {
+    const draft =
+      "I've saved the report reminder. Ready to continue when you are.";
+    vi.spyOn(agent, "renderGroundedActionReply").mockResolvedValue({
+      kind: "model",
+      text: draft,
+    });
+    const runtime = makeRuntime(() =>
+      taskPlanJson({ mode: "respond", response: "When?", title: "Report" }),
+    );
+    const callback = vi.fn(async () => []);
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage("Create a report reminder; I have not specified when."),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          intent: "Create a report reminder",
+          title: "Report",
+          ownerSurface: "OWNER_REMINDERS",
+        },
+      } as HandlerOptions,
+      callback,
+    );
+    expect(result).toMatchObject({
+      success: false,
+      text: draft,
+      transcriptVisibility: "internal",
+      verifiedUserFacing: false,
+      turnComplete: false,
+      values: { error: "MISSING_DEFINITION_FIELD", missingField: "schedule" },
+    });
+    expect(result.userFacingText).toBeUndefined();
+    expect(result.effectReceipts).toMatchObject([{ outcome: "preview" }]);
+    expect(callback).not.toHaveBeenCalled();
+    expect(serviceState.createCalls).toHaveLength(0);
+  });
+
+  it("preserves observation recovery when a failed review has a model draft", async () => {
+    const { LifeOpsService, LifeOpsServiceError } = await import(
+      "../lifeops/service.js"
+    );
+    vi.spyOn(LifeOpsService.prototype, "listDefinitions").mockRejectedValue(
+      new LifeOpsServiceError("Definitions are unavailable", 503),
+    );
+    const draft = "I checked everything and there are no reminders.";
+    vi.spyOn(agent, "renderGroundedActionReply").mockResolvedValue({
+      kind: "model",
+      text: draft,
+    });
+    const callback = vi.fn(async () => []);
+    const result = await runLifeOperationHandler(
+      makeRuntime(() => ""),
+      makeMessage("Review my reminders."),
+      undefined,
+      {
+        parameters: {
+          action: "review",
+          intent: "Review my reminders",
+          ownerSurface: "OWNER_REMINDERS",
+        },
+      } as HandlerOptions,
+      callback,
+    );
+    expect(result).toMatchObject({
+      success: false,
+      text: draft,
+      transcriptVisibility: "internal",
+      verifiedUserFacing: false,
+      turnComplete: false,
+      data: { readOnlyOperation: true },
+      effectReceipts: [
+        { outcome: "failed", failure: { acceptance: "rejected" } },
+      ],
+    });
+    expect(result.userFacingText).toBeUndefined();
+    expect(callback).not.toHaveBeenCalled();
   });
 
   it("rejects a model-invented date when the owner explicitly withheld timing", async () => {

@@ -203,6 +203,48 @@ describe("logger", () => {
     }
   });
 
+  it("reports a failed formatted sink once while retaining subsequent entries", () => {
+    const logger = bufferLogger();
+    vi.spyOn(console, "info").mockImplementation(() => {
+      throw new Error("sink-failure-private-detail");
+    });
+    const diagnostic = vi.spyOn(console, "error").mockImplementation(() => {});
+    const delivered: LogEntry[] = [];
+    const unsubscribe = addLogListener((entry) => delivered.push(entry));
+    try {
+      expect(() => {
+        logger.info("first-retained");
+        logger.info("second-retained");
+      }).not.toThrow();
+      expect(delivered.map((entry) => entry.msg)).toEqual([
+        "first-retained",
+        "second-retained",
+      ]);
+      expect(recentLogs()).toContain("second-retained");
+      expect(diagnostic).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(diagnostic.mock.calls)).not.toContain(
+        "sink-failure-private-detail",
+      );
+      expect(JSON.stringify(diagnostic.mock.calls)).not.toContain(
+        "first-retained",
+      );
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("retains entries when both formatted and diagnostic sinks throw", () => {
+    const logger = bufferLogger();
+    vi.spyOn(console, "info").mockImplementation(() => {
+      throw new Error("primary");
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {
+      throw new Error("diagnostic");
+    });
+    expect(() => logger.info("retained-without-console")).not.toThrow();
+    expect(recentLogs()).toContain("retained-without-console");
+  });
+
   it("preserves forced browser mode for child loggers", () => {
     const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => {});
     const logger = createLogger({

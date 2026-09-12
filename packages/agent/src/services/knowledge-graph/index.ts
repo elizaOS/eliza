@@ -6,6 +6,13 @@
  * Pure KG types and the identity-merge engine live in `@elizaos/shared`.
  */
 
+export {
+  archiveCoreRelationshipsInventory,
+  type CoreRelationshipsInventoryDatabase,
+  type CoreRelationshipsInventoryReport,
+  type CoreRelationshipsInventorySession,
+  type CoreRelationshipsSourceKind,
+} from "./core-relationships-inventory.ts";
 export { EntityStore } from "./entity-store.ts";
 export { RelationshipStore } from "./relationship-store.ts";
 export { knowledgeGraphSchema } from "./schema.ts";

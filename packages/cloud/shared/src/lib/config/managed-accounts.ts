@@ -4,8 +4,9 @@
  * Each entry names a provider account the platform operates, the
  * secret-manager reference names (env vars) that prove it is provisioned,
  * and whether the program currently requires it. OAuth application entries
- * derive their credential sets from the canonical OAuth provider registry so
- * this manifest can never drift from the env vars the runtime actually reads.
+ * derive their generic credential sets from the canonical OAuth provider
+ * registry. A provider may also declare a complete consumer-specific
+ * alternative when a shipped runtime uses a separate namespace.
  *
  * Verification reports configured/partial/missing/deferred status only —
  * never credential values — so its output is safe for CI logs and issues.
@@ -46,18 +47,20 @@ export interface ManagedAccountSpec {
 }
 
 /**
- * Derive a manifest entry from the OAuth provider registry so credential sets
- * stay identical to what the OAuth routes read at runtime. Secrets-storage
- * providers contribute their secret patterns; env-var providers contribute
- * their envVars/envVarAlternatives. Secret patterns whose credential field the
- * registry marks optional (e.g. a webhook secret) are excluded so a
- * runtime-valid account is never reported partial.
+ * Derive a manifest entry from the OAuth provider registry so its generic
+ * credential sets stay identical to what the OAuth routes read at runtime.
+ * Secrets-storage providers contribute their secret patterns; env-var
+ * providers contribute their envVars/envVarAlternatives. Secret patterns whose
+ * credential field the registry marks optional (e.g. a webhook secret) are
+ * excluded so a runtime-valid account is never reported partial. Complete
+ * credential sets for a separate shipped consumer may be appended explicitly.
  */
 function fromOAuthRegistry(
   registryId: string,
   category: ManagedAccountCategory,
   consoleUrl: string,
   requirement: ManagedAccountRequirement,
+  additionalCredentialSets: readonly (readonly string[])[] = [],
 ): ManagedAccountSpec {
   const provider = OAUTH_PROVIDERS[registryId];
   if (!provider) {
@@ -81,7 +84,7 @@ function fromOAuthRegistry(
     name: provider.name,
     category,
     console: consoleUrl,
-    credentialSets,
+    credentialSets: [...credentialSets, ...additionalCredentialSets],
     requirement,
   };
 }
@@ -203,9 +206,13 @@ export const MANAGED_ACCOUNTS: readonly ManagedAccountSpec[] = [
   fromOAuthRegistry("twilio", "social_communications", "https://console.twilio.com", {
     kind: "optional",
   }),
-  fromOAuthRegistry("blooio", "social_communications", "https://blooio.com", {
-    kind: "optional",
-  }),
+  fromOAuthRegistry("blooio", "social_communications", "https://blooio.com", { kind: "optional" }, [
+    [
+      "ELIZA_APP_BLOOIO_API_KEY",
+      "ELIZA_APP_BLOOIO_PHONE_NUMBER",
+      "ELIZA_APP_BLOOIO_WEBHOOK_SECRET",
+    ],
+  ]),
   {
     id: "telegram",
     name: "Telegram",
@@ -331,8 +338,12 @@ export function evaluateManagedAccount(
     set.filter((name) => !isConfiguredValue(env, name)),
   );
   const bestIndex = missingPerSet
-    .map((missing, index) => ({ missing, index }))
-    .sort((a, b) => a.missing.length - b.missing.length)[0].index;
+    .map((missing, index) => ({
+      missing,
+      index,
+      present: spec.credentialSets[index].length - missing.length,
+    }))
+    .sort((a, b) => a.missing.length - b.missing.length || b.present - a.present)[0].index;
   const missingEnvVars = missingPerSet[bestIndex];
 
   if (missingEnvVars.length === 0) {
@@ -341,7 +352,9 @@ export function evaluateManagedAccount(
   if (spec.requirement.kind === "deferred") {
     return { ...base, state: "deferred", missingEnvVars };
   }
-  const anyPresent = missingEnvVars.length < spec.credentialSets[bestIndex].length;
+  const anyPresent = missingPerSet.some(
+    (missing, index) => missing.length < spec.credentialSets[index].length,
+  );
   return { ...base, state: anyPresent ? "partial" : "missing", missingEnvVars };
 }
 

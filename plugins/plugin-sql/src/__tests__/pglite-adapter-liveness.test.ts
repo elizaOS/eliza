@@ -59,7 +59,7 @@ function makeAdapter() {
   };
   const adapter = new PgliteDatabaseAdapter(agentId, manager as never);
   const db = {
-    execute: vi.fn(async () => [{ "?column?": 1 }]),
+    execute: vi.fn(async () => ({ rows: [{ id: "write-row", "?column?": 1 }] })),
     transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) => callback(db)),
   };
   (adapter as unknown as { db: typeof db }).db = db;

@@ -1,24 +1,17 @@
 /**
- * Vault bridge — the only place runtime-ops talks to `@elizaos/vault`.
- *
- * Enforces:
- *   1. The naming convention for provider API key vault entries
- *      (`providers.<normalizedProvider>.api-key`).
- *   2. Sensitive flag on every write (so the secret is encrypted at rest).
- *   3. Caller tagging for the audit log so a reader of
- *      `<stateDir>/audit/vault.jsonl` can attribute every access to a
- *      runtime-ops phase.
- *
- * The bridge owns NO mutable state. Either pass an explicit
- * SecretsManager (tests), or call `defaultSecretsManager()` (production)
- * which constructs a fresh manager backed by the OS-keychain vault.
+ * Resolves runtime-operation credentials and the optimized-prompt integrity key
+ * through the vault. Sensitive writes retain caller attribution; integrity-key
+ * recovery quarantines only the exact unreadable row and verifies its replacement.
+ * Concurrent integrity-key resolutions share one in-flight result per vault.
  */
 
 import { randomBytes } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import {
   createManager,
   type SecretsManager,
   type Vault,
+  VaultDecryptionError,
   writeSensitiveValueVerified,
 } from "@elizaos/vault";
 import type { OperationErrorCode } from "./types.ts";
@@ -68,16 +61,118 @@ export function parseVaultRef(value: string): string | null {
 export type VaultLike = Pick<Vault, "get" | "has">;
 
 const OPTIMIZED_PROMPT_HMAC_VAULT_KEY = "system.optimized-prompt.hmac-key";
+const OPTIMIZED_PROMPT_HMAC_RECOVERY_CALLER =
+  "runtime-boot:optimized-prompt-hmac-decryption-recovery";
+const OPTIMIZED_PROMPT_HMAC_QUARANTINE_REASON =
+  "optimized-prompt integrity key failed authenticated decryption during runtime boot";
 
-/**
- * Return the persistent integrity key used to authenticate optimized prompts.
- * The vault is authoritative; a key is generated once and encrypted at rest.
- */
-export async function resolveOptimizedPromptIntegrityKey(
-  vault: Pick<Vault, "get" | "has" | "setIfAbsent">,
+type OptimizedPromptIntegrityVault = Pick<
+  Vault,
+  "get" | "has" | "quarantineUnreadable" | "setIfAbsent"
+>;
+
+// Keep the complete read/quarantine/create/read-winner sequence single-flight
+// for the process-wide shared Vault instance. The Vault transaction preserves
+// the unreadable row; `setIfAbsent()` then selects one active replacement if a
+// racing resolver has already filled the now-vacant key.
+const optimizedPromptIntegrityKeyResolutions = new WeakMap<
+  object,
+  Promise<string>
+>();
+
+function isOptimizedPromptIntegrityKeyDecryptionFailure(
+  error: unknown,
+): error is VaultDecryptionError & { readonly entryIdentity: string } {
+  return (
+    error instanceof VaultDecryptionError &&
+    error.key === OPTIMIZED_PROMPT_HMAC_VAULT_KEY &&
+    typeof error.entryIdentity === "string" &&
+    error.entryIdentity.length > 0
+  );
+}
+
+function assertOptimizedPromptIntegrityKey(value: string): string {
+  if (value.length === 0 || value.length % 4 !== 0) {
+    throw new ElizaError(
+      "[runtime-ops:vault] optimized-prompt integrity key has an invalid encoded shape",
+      { code: "OPTIMIZED_PROMPT_INTEGRITY_KEY_INVALID", severity: "fatal" },
+    );
+  }
+  const decoded = Buffer.from(value, "base64");
+  try {
+    if (decoded.length !== 32 || decoded.toString("base64") !== value) {
+      throw new ElizaError(
+        "[runtime-ops:vault] optimized-prompt integrity key must be canonical base64 for exactly 32 bytes",
+        { code: "OPTIMIZED_PROMPT_INTEGRITY_KEY_INVALID", severity: "fatal" },
+      );
+    }
+  } finally {
+    decoded.fill(0);
+  }
+  return value;
+}
+
+async function quarantineAndReplaceUnreadableOptimizedPromptIntegrityKey(
+  vault: OptimizedPromptIntegrityVault,
+  failure: VaultDecryptionError & { readonly entryIdentity: string },
+): Promise<string> {
+  await vault.quarantineUnreadable(
+    OPTIMIZED_PROMPT_HMAC_VAULT_KEY,
+    failure.entryIdentity,
+    OPTIMIZED_PROMPT_HMAC_QUARANTINE_REASON,
+    OPTIMIZED_PROMPT_HMAC_RECOVERY_CALLER,
+  );
+
+  const replacement = randomBytes(32).toString("base64");
+  const inserted = await vault.setIfAbsent(
+    OPTIMIZED_PROMPT_HMAC_VAULT_KEY,
+    replacement,
+    {
+      sensitive: true,
+      caller: OPTIMIZED_PROMPT_HMAC_RECOVERY_CALLER,
+    },
+  );
+  const winner = await vault.get(OPTIMIZED_PROMPT_HMAC_VAULT_KEY);
+  assertOptimizedPromptIntegrityKey(winner);
+  if (inserted && winner !== replacement) {
+    throw new ElizaError(
+      "[runtime-ops:vault] optimized-prompt integrity-key recovery failed exact read-back verification",
+      {
+        code: "OPTIMIZED_PROMPT_INTEGRITY_KEY_READBACK_MISMATCH",
+        severity: "fatal",
+      },
+    );
+  }
+  return winner;
+}
+
+async function readOptimizedPromptIntegrityKeyOrRecover(
+  vault: OptimizedPromptIntegrityVault,
+): Promise<string> {
+  try {
+    return assertOptimizedPromptIntegrityKey(
+      await vault.get(OPTIMIZED_PROMPT_HMAC_VAULT_KEY),
+    );
+  } catch (error) {
+    // error-policy:J4 exact typed recovery — quarantine is an auditable,
+    // visibly distinct recovery state for this regenerable internal key only.
+    // This is the sole recoverable decryption failure: the value is randomly
+    // generated internal HMAC material, never a user/provider credential. A
+    // replacement makes old optimized-prompt artifacts fail their HMAC check;
+    // the core loader rejects them and falls back to baseline prompts.
+    if (!isOptimizedPromptIntegrityKeyDecryptionFailure(error)) throw error;
+    return quarantineAndReplaceUnreadableOptimizedPromptIntegrityKey(
+      vault,
+      error,
+    );
+  }
+}
+
+async function resolveOptimizedPromptIntegrityKeyOnce(
+  vault: OptimizedPromptIntegrityVault,
 ): Promise<string> {
   if (await vault.has(OPTIMIZED_PROMPT_HMAC_VAULT_KEY)) {
-    return vault.get(OPTIMIZED_PROMPT_HMAC_VAULT_KEY);
+    return readOptimizedPromptIntegrityKeyOrRecover(vault);
   }
   const key = randomBytes(32).toString("base64");
   const inserted = await vault.setIfAbsent(
@@ -88,7 +183,33 @@ export async function resolveOptimizedPromptIntegrityKey(
       caller: "runtime-boot",
     },
   );
-  return inserted ? key : vault.get(OPTIMIZED_PROMPT_HMAC_VAULT_KEY);
+  return inserted
+    ? assertOptimizedPromptIntegrityKey(key)
+    : readOptimizedPromptIntegrityKeyOrRecover(vault);
+}
+
+/**
+ * Return the persistent integrity key used to authenticate optimized prompts.
+ * The vault is authoritative; a key is generated once and encrypted at rest.
+ * Only authenticated-decryption failure for this exact regenerable system key
+ * is repaired. The opaque unreadable row is quarantined before first-writer
+ * replacement. All user/provider keys and every other error stay fail-closed.
+ */
+export async function resolveOptimizedPromptIntegrityKey(
+  vault: OptimizedPromptIntegrityVault,
+): Promise<string> {
+  const existing = optimizedPromptIntegrityKeyResolutions.get(vault);
+  if (existing) return existing;
+
+  const resolution = resolveOptimizedPromptIntegrityKeyOnce(vault).finally(
+    () => {
+      if (optimizedPromptIntegrityKeyResolutions.get(vault) === resolution) {
+        optimizedPromptIntegrityKeyResolutions.delete(vault);
+      }
+    },
+  );
+  optimizedPromptIntegrityKeyResolutions.set(vault, resolution);
+  return resolution;
 }
 
 /**

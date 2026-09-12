@@ -71,13 +71,14 @@ export function decodeMonoPcm16Wav(bytes: Uint8Array): TranscriptionAudio {
 	const channels = view.getUint16(22, true);
 	const sampleRate = view.getUint32(24, true);
 	const bitsPerSample = view.getUint16(34, true);
+	const fmtChunkBytes = view.getUint32(16, true);
 	if (audioFormat !== 1 || channels !== 1 || bitsPerSample !== 16) {
 		throw new Error(
 			`[voice] Local transcription expects mono PCM16 WAV (format=1 channels=1 bits=16); got format=${audioFormat} channels=${channels} bits=${bitsPerSample}`,
 		);
 	}
 
-	let pos = 36;
+	let pos = 20 + fmtChunkBytes + (fmtChunkBytes % 2);
 	while (pos + 8 <= bytes.byteLength) {
 		const chunkId = readAscii(bytes, pos, 4);
 		const chunkBytes = view.getUint32(pos + 4, true);

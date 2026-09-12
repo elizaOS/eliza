@@ -6,7 +6,10 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { expect, test } from "vitest";
-import { resolveViteCommand } from "./dev-ui-vite.mjs";
+import {
+  resolveSupervisedViteCommand,
+  resolveViteCommand,
+} from "./dev-ui-vite.mjs";
 
 const appDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -73,6 +76,26 @@ test("resolveViteCommand stays Bun-backed when its caller runs under Bun", () =>
   );
   expect(runtime.status, runtime.stderr).toBe(0);
   expect(runtime.stdout).toBe("bun");
+});
+
+test("resolveSupervisedViteCommand keeps the HTTP proxy on Node", () => {
+  const resolved = resolveSupervisedViteCommand({
+    appDir,
+    nodePath: "/test/node",
+    port: 2138,
+  });
+
+  expect(resolved.command).toBe("/test/node");
+  expect(resolved.args).toEqual([
+    "--conditions=eliza-source",
+    "--import",
+    "tsx",
+    path.join(appDir, "node_modules", "vite", "bin", "vite.js"),
+    "--configLoader",
+    "bundle",
+    "--port",
+    "2138",
+  ]);
 });
 
 test("Vite resolution succeeds with a PATH that contains Bun and no Node executable", () => {

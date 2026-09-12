@@ -1,11 +1,12 @@
 /**
  * Offline unit coverage for the cold-gateway warming retry: a 503 whose body
- * carries a structural `*_cache_warming` code (or the retryable
- * service_unavailable envelope) is retried in place with bounded backoff so a
+ * carries a structural `*_cache_warming` code, the inference admission
+ * boundary's exact `rate_limit_unavailable` shape, or the retryable
+ * service_unavailable envelope is retried in place with bounded backoff so a
  * gateway that recovers in ~3s stays within one registration. Persistent
- * warming preserves a typed exhaustion signal for provider-aware fallback,
- * while every other failure still throws immediately. The fetch is mocked;
- * timers are faked to drive the backoff deterministically.
+ * unavailability preserves a typed exhaustion signal for provider-aware
+ * fallback, while every other failure still throws immediately. The fetch is
+ * mocked; timers are faked to drive the backoff deterministically.
  */
 import { ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED, type IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -54,6 +55,13 @@ const REAL_FAILURE_BODY = {
   },
 };
 
+const RATE_LIMIT_UNAVAILABLE_BODY = {
+  success: false,
+  error: "Rate limit unavailable",
+  code: "rate_limit_unavailable",
+  message: "The inference rate limiter is temporarily unavailable.",
+};
+
 function warmingResponse(headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(WARMING_BODY), {
     status: 503,
@@ -65,6 +73,13 @@ function realFailureResponse(): Response {
   return new Response(JSON.stringify(REAL_FAILURE_BODY), {
     status: 503,
     headers: { "Content-Type": "application/json" },
+  });
+}
+
+function rateLimitUnavailableResponse(): Response {
+  return new Response(JSON.stringify(RATE_LIMIT_UNAVAILABLE_BODY), {
+    status: 503,
+    headers: { "Content-Type": "application/json", "Retry-After": "1" },
   });
 }
 
@@ -110,7 +125,7 @@ const NATIVE_PARAMS = {
 } as Parameters<typeof generateNativeChatCompletion>[2];
 
 describe("warming 503 classification", () => {
-  it("recognizes every *_cache_warming code and the retryable envelope", () => {
+  it("recognizes every explicit transient gateway shape", () => {
     expect(isWarmingUnavailableResponse(503, JSON.stringify(WARMING_BODY))).toBe(true);
     expect(
       isWarmingUnavailableResponse(
@@ -135,6 +150,9 @@ describe("warming 503 classification", () => {
         })
       )
     ).toBe(true);
+    expect(isWarmingUnavailableResponse(503, JSON.stringify(RATE_LIMIT_UNAVAILABLE_BODY))).toBe(
+      true
+    );
   });
 
   it("rejects real failures, non-503 statuses, and unparseable bodies", () => {
@@ -146,6 +164,9 @@ describe("warming 503 classification", () => {
         503,
         JSON.stringify({ success: false, code: "service_unavailable" })
       )
+    ).toBe(false);
+    expect(
+      isWarmingUnavailableResponse(503, JSON.stringify({ code: "rate_limit_unavailable" }))
     ).toBe(false);
     expect(isWarmingUnavailableResponse(503, "<html>bad gateway</html>")).toBe(false);
     expect(isWarmingUnavailableResponse(503, "")).toBe(false);
@@ -249,6 +270,17 @@ describe("buffered native chat completion", () => {
     const result = await pending;
     expect(result.text).toBe("ok");
   });
+
+  it("retries a cold inference-admission limiter and stays on Cloud", async () => {
+    const fetchMock = mockFetchSequence([rateLimitUnavailableResponse, successResponse]);
+    const pending = generateNativeChatCompletion(runtime(), "TEXT_SMALL", NATIVE_PARAMS, CONTEXT);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1000);
+    const result = await pending;
+    expect(result.text).toBe("ok");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("streaming native chat completion", () => {
@@ -276,6 +308,17 @@ describe("streaming native chat completion", () => {
     }
     expect(chunks.join("")).toBe("hi");
     await expect(result.text).resolves.toBe("hi");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries an unavailable admission limiter then streams the recovered response", async () => {
+    const fetchMock = mockFetchSequence([rateLimitUnavailableResponse, sseResponse]);
+    const pending = streamNativeChatCompletion(runtime(), "TEXT_SMALL", NATIVE_PARAMS, CONTEXT);
+    await vi.runAllTimersAsync();
+    const result = await pending;
+    const chunks: string[] = [];
+    for await (const chunk of result.textStream) chunks.push(chunk);
+    expect(chunks.join("")).toBe("hi");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 

@@ -36,6 +36,7 @@ import {
   resetLadderForSnooze,
   resolveEffectiveLadder,
 } from "./escalation.js";
+import { normalizeScheduledEventPayload } from "./event-payload.js";
 import type { TaskGateRegistry } from "./gate-registry.js";
 import { computeNextFireAt } from "./next-fire-at.js";
 import { createStateLogger, type ScheduledTaskLogStore } from "./state-log.js";
@@ -719,22 +720,6 @@ function setEscalationCursor(
  * in an infinite retry loop.
  */
 const MAX_DISPATCH_RETRIES_PER_STEP = 3;
-const DISPATCH_EVENT_PAYLOAD_LIMIT = 16_000;
-
-function normalizeDispatchEventPayload(value: unknown): unknown {
-  try {
-    const serialized = JSON.stringify(value);
-    if (serialized === undefined) return { unavailable: "not_serializable" };
-    if (serialized.length > DISPATCH_EVENT_PAYLOAD_LIMIT) {
-      return { unavailable: "payload_too_large" };
-    }
-    return JSON.parse(serialized) as unknown;
-  } catch {
-    // error-policy:J3 untrusted-input sanitizing — retries persist an explicit
-    // unavailable marker instead of retaining a non-serializable payload.
-    return { unavailable: "not_serializable" };
-  }
-}
 
 /**
  * Continuation marker for a dispatch that failed with a typed
@@ -2123,6 +2108,12 @@ export function createScheduledTaskRunner(
   ): Promise<ScheduledTaskFireResult> {
     const task = await deps.store.get(taskId);
     if (!task) throw new Error(`fire: task ${taskId} not found`);
+    const hasEventPayload =
+      Object.hasOwn(args ?? {}, "eventPayload") &&
+      args?.eventPayload !== undefined;
+    const eventPayload = hasEventPayload
+      ? normalizeScheduledEventPayload(args?.eventPayload, taskId)
+      : undefined;
     // Recurrence refire: `allowTerminalRefire` authorizes claiming the DUE
     // next occurrence of a RECURRING task whose row is parked in a
     // non-`scheduled` status — `fired` (zombie: nothing ever completed the
@@ -2385,11 +2376,11 @@ export function createScheduledTaskRunner(
       });
     }
 
-    const hasDispatchEventPayload = Object.hasOwn(args ?? {}, "eventPayload")
-      ? true
-      : Boolean(pending && Object.hasOwn(pending, "eventPayload"));
-    const dispatchEventPayload = Object.hasOwn(args ?? {}, "eventPayload")
-      ? normalizeDispatchEventPayload(args?.eventPayload)
+    const hasDispatchEventPayload =
+      hasEventPayload ||
+      Boolean(pending && Object.hasOwn(pending, "eventPayload"));
+    const dispatchEventPayload = hasEventPayload
+      ? eventPayload
       : pending?.eventPayload;
     let dispatchResult: DispatchResult | undefined;
     try {

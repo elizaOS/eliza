@@ -1,25 +1,7 @@
 /**
- * Unit tests for the provider usage probes in `account-usage.ts`.
- *
- * Gap (D): `account-usage.ts` shipped with no unit coverage. The probes parse
- * provider responses in two distinct shapes (legacy flat vs. new nested) and
- * funnel them through two internal normalizers — `utilizationToPct` (legacy
- * flat fractions or current nested percentage points, clamped to 0..100) and
- * `normalizeResetTimestamp` (epoch seconds vs.
- * milliseconds vs. ISO string). Those normalizers are NOT exported, so we
- * exercise them through the only public surface that touches them:
- * `pollAnthropicUsage` and `pollCodexUsage`. Both probes default their
- * `fetchImpl` argument to the global `fetch`, so we mock the network with
- * `vi.stubGlobal("fetch", ...)` — no live calls, fully deterministic.
- *
- * What these tests would catch as a regression:
- *  - dropping support for either the flat or nested Anthropic shape;
- *  - treating current nested `1.0` as a fraction instead of one percent;
- *  - failing to clamp utilization into [0, 100];
- *  - mishandling NaN / non-number / missing utilization;
- *  - treating epoch-seconds reset timestamps as already-milliseconds (or vice
- *    versa) and not parsing ISO-string resets;
- *  - not throwing (with the HTTP status) on a non-ok response.
+ * Exercises provider usage parsing with injected responses and daily counters
+ * with real temporary files. Legacy fractional and current percentage fields
+ * retain their distinct units; failed probes must not become healthy snapshots.
  */
 
 import {
@@ -345,6 +327,112 @@ describe("pollAnthropicUsage", () => {
     expect(typeof snap.refreshedAt).toBe("number");
   });
 
+  it.each([
+    ["null root", null],
+    ["array root", []],
+    ["numeric five_hour window", { five_hour: 7 }],
+    ["array seven_day window", { seven_day: [] }],
+    ["object limits collection", { limits: { kind: "weekly_all" } }],
+    ["non-object limits entry", { limits: [null] }],
+    [
+      "non-object limit scope",
+      { limits: [{ kind: "weekly_scoped", scope: "all-models" }] },
+    ],
+    [
+      "non-object scoped model",
+      {
+        limits: [
+          {
+            kind: "weekly_scoped",
+            scope: { model: "Fable" },
+          },
+        ],
+      },
+    ],
+  ])("rejects a malformed Anthropic usage %s", async (_name, payload) => {
+    stubFetch(jsonResponse(payload));
+
+    await expect(pollAnthropicUsage("malformed-token")).rejects.toMatchObject({
+      code: "anthropic_usage.invalid_shape",
+    });
+  });
+
+  it.each([
+    {
+      name: "session window",
+      payload: { five_hour: null, seven_day: { utilization: 42 } },
+      expected: { weeklyPct: 42 },
+    },
+    {
+      name: "weekly window",
+      payload: { five_hour: { utilization: 27 }, seven_day: null },
+      expected: { sessionPct: 27 },
+    },
+    {
+      name: "limits collection",
+      payload: {
+        five_hour: { utilization: 13 },
+        seven_day: { utilization: 61 },
+        limits: null,
+      },
+      expected: { sessionPct: 13, weeklyPct: 61 },
+    },
+  ])(
+    "retains available usage when the $name is null",
+    async ({ payload, expected }) => {
+      stubFetch(jsonResponse(payload));
+
+      const { refreshedAt, ...usage } =
+        await pollAnthropicUsage("nullable-token");
+
+      expect(usage).toEqual(expected);
+      expect(refreshedAt).toBeGreaterThan(0);
+    },
+  );
+
+  it("keeps aggregate and named model usage when another model scope is null", async () => {
+    stubFetch(
+      jsonResponse({
+        limits: [
+          {
+            kind: "weekly_scoped",
+            group: "weekly",
+            percent: 80,
+            scope: { model: null },
+          },
+          { kind: "weekly_all", group: "weekly", percent: 32 },
+          {
+            kind: "weekly_scoped",
+            group: "weekly",
+            percent: 40,
+            scope: { model: { display_name: "Fable" } },
+          },
+        ],
+      }),
+    );
+
+    const { refreshedAt, ...usage } = await pollAnthropicUsage(
+      "nullable-model-token",
+    );
+
+    expect(usage).toEqual({
+      weeklyPct: 32,
+      weeklyModelBuckets: { Fable: { pct: 40 } },
+    });
+    expect(refreshedAt).toBeGreaterThan(0);
+  });
+
+  it("rejects malformed Anthropic usage JSON with a typed decoding error", async () => {
+    stubFetch(new Response("{", { status: 200 }));
+
+    await expect(
+      pollAnthropicUsage("malformed-json-token"),
+    ).rejects.toMatchObject({
+      code: "anthropic_usage.invalid_json",
+      cause: expect.any(SyntaxError),
+    });
+  });
+
   it("passes through an epoch-MILLISECONDS reset timestamp unchanged", async () => {
     const ms = 1_700_000_000_000; // already > 1e12
     stubFetch(jsonResponse({ seven_day: { resets_at: ms } }));
@@ -472,7 +560,7 @@ describe("pollCodexUsage", () => {
     expect(typeof snap.refreshedAt).toBe("number");
   });
 
-  it("omits sessionPct when used_percent is NaN/non-numeric but still parses resets", async () => {
+  it("propagates malformed Codex usage as a failed refresh", async () => {
     stubFetch(
       jsonResponse({
         rate_limit: {
@@ -484,10 +572,9 @@ describe("pollCodexUsage", () => {
       }),
     );
 
-    const snap = await pollCodexUsage("t", "a");
-
-    expect(snap.sessionPct).toBeUndefined();
-    expect(snap.resetsAt).toBe(Date.parse("2026-06-22T00:00:00.000Z"));
+    await expect(pollCodexUsage("t", "a")).rejects.toMatchObject({
+      code: "codex_usage.invalid_shape",
+    });
   });
 
   it("throws with the HTTP status when the response is not ok", async () => {

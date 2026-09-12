@@ -65,6 +65,15 @@ export default defineConfig({
         ),
       },
       {
+        // Inbox route tests load Discord from source, whose deferred voice
+        // wiring must also resolve before workspace dist packages are built.
+        find: /^@elizaos\/plugin-meetings$/,
+        replacement: path.join(
+          monorepoRoot,
+          "plugins/plugin-meetings/src/index.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/ui$/,
         replacement: path.join(monorepoRoot, "packages/ui/src/index.ts"),
       },
@@ -180,6 +189,13 @@ export default defineConfig({
         replacement: path.join(monorepoRoot, "packages/core/src/security/$1"),
       },
       {
+        // Vitest deliberately omits Vite's `module` condition. Resolve this
+        // workspace package explicitly so parallel builds cannot remove its
+        // dist entry while an agent test imports core's prompt re-export.
+        find: /^@elizaos\/prompts$/,
+        replacement: path.join(monorepoRoot, "packages/prompts/src/index.ts"),
+      },
+      {
         find: /^@elizaos\/plugin-anthropic\/endpoint-config$/,
         replacement: path.join(
           monorepoRoot,
@@ -210,6 +226,13 @@ export default defineConfig({
           "plugins/plugin-openai/utils/config.ts",
         ),
       },
+      {
+        // Core's src re-exports `@elizaos/prompts`, which ships no dist in
+        // this lane — anchor it to source so suites importing @elizaos/core
+        // load (same fix plugin-app-control's config carries).
+        find: /^@elizaos\/prompts$/,
+        replacement: path.join(monorepoRoot, "packages/prompts/src/index.ts"),
+      },
       ...baseAliases,
       {
         find: /^@elizaos\/vault$/,
@@ -218,17 +241,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/vault\/(.+)$/,
         replacement: path.join(monorepoRoot, "packages/vault/src/$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-cli$/,
-        replacement: path.join(
-          repoRoot,
-          "plugins",
-          "plugin-cli",
-          "typescript",
-          "src",
-          "index.ts",
-        ),
       },
     ],
   },

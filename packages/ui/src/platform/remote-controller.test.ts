@@ -24,6 +24,7 @@ vi.mock("../bridge/electrobun-rpc", () => ({
   invokeDesktopBridgeRequest: vi.fn(),
 }));
 
+import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import {
   acknowledgeRemoteCommandEnqueue,
   clearRemoteControllerSessionState,
@@ -34,7 +35,10 @@ import {
 } from "./remote-controller";
 
 describe("Capacitor remote controller bridge", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    nativeAvailable.value = true;
+  });
 
   it("uses native identity storage and never accepts a private key", async () => {
     native.getOrCreateIdentity.mockResolvedValue({
@@ -139,6 +143,44 @@ describe("Capacitor remote controller bridge", () => {
       getOrCreateRemoteControllerIdentity({ ownerId: "owner-1" }),
     ).rejects.toThrow("native iOS plugin is installed");
     nativeAvailable.value = true;
+  });
+
+  it("never falls through to desktop RPC for absent native operations", async () => {
+    nativeAvailable.value = false;
+    const calls = [
+      createRemoteCommand({} as never),
+      acknowledgeRemoteCommandEnqueue({} as never),
+      openRemoteCommandResult({} as never),
+      openRemoteCommandStartReceipt({} as never),
+      clearRemoteControllerSessionState({} as never),
+    ];
+    const results = await Promise.allSettled(calls);
+    expect(results.map((result) => result.status)).toEqual([
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+    ]);
+    expect(
+      results.map((result) =>
+        result.status === "rejected" && result.reason instanceof Error
+          ? result.reason.message
+          : null,
+      ),
+    ).toEqual([
+      "Secure mobile command signing is unavailable until the native iOS plugin is installed.",
+      "Secure mobile enqueue acknowledgement is unavailable until the native iOS plugin is installed.",
+      "Secure mobile result decryption is unavailable until the native iOS plugin is installed.",
+      "Secure mobile start receipt verification is unavailable until the native iOS plugin is installed.",
+      "Secure mobile session cleanup is unavailable until the native iOS plugin is installed.",
+    ]);
+    expect(invokeDesktopBridgeRequest).not.toHaveBeenCalled();
+    expect(native.createCommand).not.toHaveBeenCalled();
+    expect(native.acknowledgeEnqueue).not.toHaveBeenCalled();
+    expect(native.openResult).not.toHaveBeenCalled();
+    expect(native.openStartReceipt).not.toHaveBeenCalled();
+    expect(native.clearSessionState).not.toHaveBeenCalled();
   });
 
   it("rejects malformed acknowledgement and cleanup bridge responses", async () => {

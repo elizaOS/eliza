@@ -14,7 +14,6 @@ import type {
 import {
 	assertModelOutputComplete,
   buildCanonicalSystemPrompt,
-  DEFAULT_CEREBRAS_TEXT_MODEL,
   ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
   ElizaError,
   logger,
@@ -395,7 +394,7 @@ function resolveCerebrasThinkingOffReasoningEffort(
   if (id === "gpt-oss-120b") {
     return "low";
   }
-  if (id === DEFAULT_CEREBRAS_TEXT_MODEL || id === "zai-glm-4.7") {
+  if (id === "qwen-3.8-27b" || id === "gemma-4-31b" || id === "zai-glm-4.7") {
     return "none";
   }
   return undefined;
@@ -424,6 +423,9 @@ function resolveUserReasoningEffort(
   const raw = runtime?.getSetting("ELIZAOS_CLOUD_REASONING_EFFORT");
   if (typeof raw !== "string" || !raw.trim()) return undefined;
   const effort = raw.trim().toLowerCase();
+  if (effort === "none" && normalizeCerebrasModelId(modelName) === "qwen-3.8-27b") {
+    return "none";
+  }
   if (!VALID_USER_REASONING_EFFORTS.has(effort)) {
     logger.warn(
       `[ELIZAOS_CLOUD] ELIZAOS_CLOUD_REASONING_EFFORT=${raw} is not a valid reasoning effort; ignoring. Expected one of: ${[...VALID_USER_REASONING_EFFORTS].join(", ")}.`
@@ -474,9 +476,10 @@ function firstNumber(...values: unknown[]): number | undefined {
 /**
  * Bounded retry for the cold-gateway "warming" 503 (first turn after idle).
  *
- * A cold Cloudflare Worker answers with 503 and a machine-readable warming
- * code (`*_cache_warming`, or the generative ApiError retryable envelope)
- * while it hydrates auth/billing caches under waitUntil — recovery is ~3s.
+ * A cold Cloudflare Worker answers with 503 and a machine-readable transient
+ * code (`*_cache_warming`, `rate_limit_unavailable`, or the generative ApiError
+ * retryable envelope) while it hydrates auth/billing/admission state under
+ * waitUntil or starts the inference-admission Durable Object — recovery is ~3s.
  * That 503 is a retry-shortly signal, NOT a dead provider, but the runtime's
  * useModel failover ladder classifies any thrown 503 as fallback-class and
  * advances instantly, so one cold gateway spent the whole
@@ -520,12 +523,13 @@ function parseJsonRecord(text: string): Record<string, unknown> | undefined {
 }
 
 /**
- * True only for the gateway's explicit cache-warming 503 shape:
+ * True only for the gateway's explicit transient 503 shapes:
  * `{ error: { code: "*_cache_warming" } }` (chat/completions, embeddings) or
  * the generative ApiError envelope `{ code: "service_unavailable",
- * details: { retryable: true } }`. Everything else — including provider-5xx
- * mapped 503s (`api_error`, upstream codes) and `ai_not_configured` — is a
- * real failure and must keep failing over promptly.
+ * details: { retryable: true } }`, plus the inference-admission boundary's
+ * `{ success: false, code: "rate_limit_unavailable" }`. Everything else —
+ * including provider-5xx mapped 503s (`api_error`, upstream codes) and
+ * `ai_not_configured` — is a real failure and must keep failing over promptly.
  */
 export function isWarmingUnavailableResponse(status: number, bodyText: string): boolean {
   if (status !== 503) return false;
@@ -533,6 +537,9 @@ export function isWarmingUnavailableResponse(status: number, bodyText: string): 
   if (!body) return false;
   const errorCode = asRecord(body.error).code;
   if (typeof errorCode === "string" && errorCode.endsWith("_cache_warming")) {
+    return true;
+  }
+  if (body.success === false && body.code === "rate_limit_unavailable") {
     return true;
   }
   return body.code === "service_unavailable" && asRecord(body.details).retryable === true;
@@ -1028,6 +1035,10 @@ function buildNativeRequestBody(
   const userReasoningEffort = resolveUserReasoningEffort(runtime, modelName);
   if (userReasoningEffort) {
     requestBody.reasoning_effort = userReasoningEffort;
+  } else if (normalizeCerebrasModelId(modelName) === "qwen-3.8-27b") {
+    // Qwen defaults to high reasoning upstream; interactive Cloud calls use
+    // the same non-reasoning default as direct Cerebras calls unless pinned.
+    requestBody.reasoning_effort = "none";
   }
   // The runtime signals "don't reason" via providerOptions.eliza.thinking="off"
   // (e.g. the Stage-1 RESPONSE_HANDLER formatting call), but

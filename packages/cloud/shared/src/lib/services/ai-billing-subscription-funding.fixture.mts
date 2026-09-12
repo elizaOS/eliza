@@ -9,12 +9,9 @@ const CREATED_AT = new Date("2026-08-20T12:00:00.000Z");
 let subscriptionFunded = true;
 let affiliateEnabled = false;
 
-const findEntitlement = mock(async () =>
-  subscriptionFunded ? { plan_key: "plus_monthly" } : { plan_key: "free" },
-);
-mock.module("../../db/repositories/subscription-entitlements", () => ({
-  subscriptionEntitlementsRepository: { find: findEntitlement },
-}));
+// This isolated wrapper test owns reserve/reconcile translation, not primary policy resolution.
+const readPolicy = mock(async () => ({ subscriptionFunded }));
+mock.module("./organization-quota-policy", () => ({ readOrganizationQuotaPolicy: readPolicy }));
 
 const getAffiliateCodeByCode = mock(async () =>
   affiliateEnabled
@@ -103,7 +100,7 @@ function billingContext() {
 beforeEach(() => {
   subscriptionFunded = true;
   affiliateEnabled = false;
-  findEntitlement.mockClear();
+  readPolicy.mockClear();
   getAffiliateCodeByCode.mockClear();
   legacyReserve.mockClear();
   fundingReserve.mockClear();

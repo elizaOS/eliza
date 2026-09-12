@@ -12,13 +12,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UserProfile } from "../data/user";
 import { AccountPageClient } from "./account-page-client";
 
-const setPageHeaderMock = vi.hoisted(() => vi.fn());
-
 vi.mock("../../../cloud-ui", () => ({
   DashboardPageContainer: ({ children }: { children: ReactNode }) => (
     <main>{children}</main>
   ),
-  useSetPageHeader: setPageHeaderMock,
 }));
 
 vi.mock("./account-details", () => ({
@@ -82,7 +79,6 @@ function makeUser(): UserProfile {
 describe("AccountPageClient", () => {
   afterEach(() => {
     cleanup();
-    setPageHeaderMock.mockReset();
   });
 
   it("renders the profile form + account details, with no org/welcome banner", () => {
@@ -95,8 +91,5 @@ describe("AccountPageClient", () => {
     expect(text).not.toMatch(/Welcome back/i);
     expect(text).not.toMatch(/You're part of/i);
     expect(text).not.toMatch(/organization/i);
-    expect(setPageHeaderMock).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Account" }),
-    );
   });
 });

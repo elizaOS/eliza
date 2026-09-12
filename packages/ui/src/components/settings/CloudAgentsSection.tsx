@@ -92,6 +92,7 @@ export function CloudAgentsSection() {
     editName,
     setEditName,
     wakingId,
+    stoppingId,
     activeId,
     refresh,
     switchTo,
@@ -159,6 +160,7 @@ export function CloudAgentsSection() {
             // card and the home-grid agent-provisioning tile, not this
             // Settings row.
             const waking = wakingId === agent.agent_id;
+            const stopping = stoppingId === agent.agent_id;
             const status = (agent.status || "").toLowerCase();
             const canSuspend = status === "running";
             const canResume = NON_RUNNING_STATES.has(status);
@@ -217,11 +219,11 @@ export function CloudAgentsSection() {
                   <span className="flex flex-col gap-1">
                     <span className="inline-flex items-center gap-2">
                       {isActive ? "Active · this device" : null}
-                      {waking ? (
+                      {waking || stopping ? (
                         <StatusBadge
                           tone="warning"
                           pulse
-                          label={`Waking ${agent.agent_name || agent.agent_id}…`}
+                          label={`${stopping ? "Shutting down" : "Waking"} ${agent.agent_name || agent.agent_id}…`}
                           data-testid={`cloud-agent-status-${agent.agent_id}`}
                         />
                       ) : (
@@ -261,7 +263,13 @@ export function CloudAgentsSection() {
                         disabled={busy}
                         onClick={() => void switchTo(agent)}
                       >
-                        {waking ? "Waking…" : busy ? "Switching…" : "Use"}
+                        {stopping
+                          ? "Shutting down…"
+                          : waking
+                            ? "Waking…"
+                            : busy
+                              ? "Working…"
+                              : "Use"}
                       </Button>
                     )}
                     {canSuspend && (

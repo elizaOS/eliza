@@ -118,6 +118,12 @@ const initializeAccessoryBar = vi.hoisted(() => vi.fn(async () => undefined));
 
 vi.mock("@capacitor/app", () => ({ App: capacitorAppMock }));
 vi.mock("@capacitor/network", () => ({ Network: networkMock }));
+vi.mock("@elizaos/ui/platform", async () => {
+  // Exercise real PWA detection without importing unrelated API clients from
+  // the platform barrel into this lifecycle-only fixture.
+  const { isStandalonePwa } = await import("@elizaos/ui/platform/init");
+  return { isStandalonePwa };
+});
 vi.mock("@elizaos/ui/components/shell/ios-chat-accessory-bar", () => ({
   initializeIosKeyboardAccessoryBar: initializeAccessoryBar,
 }));
@@ -142,6 +148,10 @@ function fireAppEvent(eventName: string, payload: unknown): void {
 function setVisibility(state: "visible" | "hidden"): void {
   Object.defineProperty(document, "visibilityState", {
     value: state,
+    configurable: true,
+  });
+  Object.defineProperty(document, "hidden", {
+    value: state === "hidden",
     configurable: true,
   });
   document.dispatchEvent(new Event("visibilitychange"));
@@ -377,6 +387,48 @@ describe("createMobileLifecycle — app lifecycle", () => {
     document.removeEventListener(APP_PAUSE_EVENT, pause);
     document.removeEventListener(APP_RESUME_EVENT, resume);
   });
+
+  it.each([
+    { surface: "browser", isNative: false, standalone: false, pauses: 0 },
+    { surface: "native", isNative: true, standalone: false, pauses: 1 },
+    { surface: "PWA", isNative: false, standalone: true, pauses: 1 },
+  ])(
+    "preserves $surface chat ownership through the AppWeb visibility bridge",
+    async ({ isNative, standalone, pauses }) => {
+      stubDisplayMode(standalone ? "standalone" : "browser");
+      const lifecycle = createMobileLifecycle(
+        makeContext({ isNative, isIOS: false, isAndroid: isNative }),
+      );
+      // @capacitor/app's AppWeb emits this from its own visibility listener,
+      // independently of our explicit native/PWA visibility fallback.
+      const emitWebAppState = () =>
+        fireAppEvent("appStateChange", { isActive: document.hidden !== true });
+      const controller = new AbortController();
+      const pause = vi.fn(() => controller.abort());
+      const resume = vi.fn();
+      document.addEventListener("visibilitychange", emitWebAppState);
+      document.addEventListener(APP_PAUSE_EVENT, pause);
+      document.addEventListener(APP_RESUME_EVENT, resume);
+      try {
+        lifecycle.initializeAppLifecycle();
+        await vi.waitFor(() => {
+          expect(appListeners.has("appUrlOpen")).toBe(true);
+          expect(appListeners.has("backButton")).toBe(true);
+        });
+        setVisibility("hidden");
+        setVisibility("hidden");
+        expect(controller.signal.aborted).toBe(pauses === 1);
+        setVisibility("visible");
+        setVisibility("visible");
+        expect(pause).toHaveBeenCalledTimes(pauses);
+        expect(resume).toHaveBeenCalledTimes(pauses);
+      } finally {
+        document.removeEventListener("visibilitychange", emitWebAppState);
+        document.removeEventListener(APP_PAUSE_EVENT, pause);
+        document.removeEventListener(APP_RESUME_EVENT, resume);
+      }
+    },
+  );
 
   it("does not double-dispatch when appStateChange and visibilitychange report the same transition", async () => {
     const lifecycle = createMobileLifecycle(makeContext());

@@ -3,6 +3,7 @@
  * in one pass. Runs on the pr-deterministic lane under the model provider.
  */
 import { ModelType } from "@elizaos/core";
+import { matchesScenarioInput } from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioTurnExecution,
@@ -14,7 +15,6 @@ import {
   registerAppControlHttpHandler,
   resetAppControlHttpLoopback,
 } from "./_helpers/app-control-http-loopback";
-import { matchesScenarioInput } from "@elizaos/core/testing";
 
 type RuntimeWithScenarioModelFixtures = {
   scenarioModelFixtures?: {
@@ -154,9 +154,28 @@ export default scenario({
               modelType: ModelType.TEXT_SMALL,
               input: "hello deterministic provider",
             },
-            response: "deterministic-test-response: hello deterministic provider",
+            response:
+              "deterministic-test-response: hello deterministic provider",
             required: false,
             times: { min: 0, max: 1 },
+          },
+          {
+            name: "pr-smoke-conversation-needs-no-view",
+            match: {
+              modelType: ModelType.TEXT_SMALL,
+              prompt: (prompt: string) =>
+                prompt.includes(
+                  "Classify visual continuation for the complete user request using only the authorized live catalog below.",
+                ) &&
+                prompt.endsWith(
+                  'Complete user request: "hello deterministic provider"',
+                ),
+            },
+            response: JSON.stringify({
+              disposition: "none",
+              reason: "A greeting does not require a visual surface.",
+            }),
+            times: 1,
           },
           {
             name: "pr-smoke-deterministic-router-reply",
@@ -168,7 +187,8 @@ export default scenario({
             response: {
               shouldRespond: "RESPOND",
               contexts: ["simple"],
-              intents: ["hello deterministic provider"],
+              intents: [],
+              replyEffectStatus: "none",
               replyText:
                 "deterministic-test-response: hello deterministic provider",
               candidateActionNames: [],
@@ -281,20 +301,33 @@ export default scenario({
         params: { name: "view-title", value: "Remote Ledger Updated" },
         view: "remote-ledger",
       },
-      responseIncludesAny: [
-        "remote-ledger",
-        "Interacted with view",
-        "Remote Ledger Updated",
-      ],
-      assertTurn: (execution) =>
-        expectViewsAction(execution, {
+      assertTurn: (execution) => {
+        const action = execution.actionsCalled.find(
+          (candidate) => candidate.actionName === "VIEWS",
+        );
+        const data = action?.result?.data;
+        const receipt =
+          data && typeof data === "object" && "result" in data
+            ? data.result
+            : undefined;
+        if (
+          action?.result?.success !== true ||
+          !receipt ||
+          typeof receipt !== "object" ||
+          !("value" in receipt) ||
+          receipt.value !== "Remote Ledger Updated"
+        ) {
+          return "view interaction did not preserve its successful transport receipt";
+        }
+        return expectViewsAction(execution, {
           action: "interact",
           capability: "fill-input",
           paramValue: "Remote Ledger Updated",
-          responseText:
-            'Interacted with view "remote-ledger" — capability "fill-input" (returned ok, capability, value).',
+          // An action-only turn retains the receipt for the planner; it does not fabricate a model-authored answer.
+          responseText: "",
           view: "remote-ledger",
-        }),
+        });
+      },
     },
   ],
   finalChecks: [
@@ -321,6 +354,13 @@ export default scenario({
       name: "view shell API received exact deterministic requests",
       predicate: () => {
         const expected = [
+          {
+            body: undefined,
+            method: "GET",
+            pathname: "/api/views",
+            response: { body: { views }, status: 200 },
+            search: "",
+          },
           {
             body: { path: "/views" },
             method: "POST",
@@ -385,7 +425,16 @@ export default scenario({
           },
         ];
 
-        const actual = readAppControlHttpRequests((request) =>
+        // The view-context evaluator may discover views independently of an
+        // action. Compare ordered effects without counting those read-only polls.
+        const isDiscoveryRead = (request: {
+          method: string;
+          pathname: string;
+        }) => request.method === "GET" && request.pathname === "/api/views";
+        const expectedEffects = expected.filter(
+          (request) => !isDiscoveryRead(request),
+        );
+        const observed = readAppControlHttpRequests((request) =>
           request.pathname.startsWith("/api/views"),
         ).map((request) => ({
           body: request.body,
@@ -394,10 +443,25 @@ export default scenario({
           response: request.response,
           search: request.search,
         }));
+        const expectedReads = expected.filter(isDiscoveryRead);
+        const observedReads = observed.filter(isDiscoveryRead);
+        if (
+          observedReads.length < expectedReads.length ||
+          observedReads.some(
+            (request) =>
+              !expectedReads.some(
+                (expectedRead) =>
+                  JSON.stringify(request) === JSON.stringify(expectedRead),
+              ),
+          )
+        ) {
+          return `view discovery response contract failed: ${JSON.stringify(observedReads)}`;
+        }
+        const actual = observed.filter((request) => !isDiscoveryRead(request));
 
-        return JSON.stringify(actual) === JSON.stringify(expected)
+        return JSON.stringify(actual) === JSON.stringify(expectedEffects)
           ? undefined
-          : `expected exact view shell API requests ${JSON.stringify(expected)}, saw ${JSON.stringify(actual)}`;
+          : `expected exact view shell API effects ${JSON.stringify(expectedEffects)}, saw ${JSON.stringify(actual)}`;
       },
     },
   ],

@@ -40,6 +40,7 @@ export type AndroidDispatchRoute = (args: {
 	isAuthorized: () => true;
 	/** Incremental sink for legacy SSE handlers — set only for streaming. */
 	onChunk?: (chunk: Buffer) => void;
+	onHeaders?: (status: number, headers: Record<string, string>) => void;
 }) => Promise<RouteHandlerResult | null | undefined>;
 
 /** The `http_request` / `http_request_stream` payload the native side sends. */
@@ -211,6 +212,20 @@ function parseAndroidWakeBody(
 	return { kind: record.kind, deadlineMs: record.deadlineMs };
 }
 
+function androidRequestAuthorization(
+	headers: Record<string, string>,
+): AndroidBufferedResponse | null {
+	if (readAliasedEnv("ELIZA_REQUIRE_LOCAL_AUTH") !== "1") return null;
+	const expected = readAliasedEnv("ELIZA_API_TOKEN")?.trim();
+	const authorization = headerValue(headers, "authorization");
+	const presented = authorization?.toLowerCase().startsWith("bearer ")
+		? authorization.slice(7).trim()
+		: null;
+	return expected && presented && secretsEqual(presented, expected)
+		? null
+		: jsonResponse(401, { error: "Unauthorized" });
+}
+
 async function directAndroidWakeRoute(
 	runtime: IAgentRuntime,
 	method: string,
@@ -291,6 +306,8 @@ function runtimeAgentName(runtime: IAgentRuntime): string {
 
 /** The persisted-config seams the first-run routes read/write (from @elizaos/agent). */
 export interface AndroidCoreRouteDeps {
+	/** Full server kernel owns health and startup state when available. */
+	fullApiKernel?: boolean;
 	configFileExists: () => boolean;
 	loadElizaConfig: () => AndroidElizaConfigLike;
 	saveElizaConfig: (config: AndroidElizaConfigLike) => void;
@@ -506,6 +523,7 @@ function directAndroidCoreRoute(
 	pathname: string,
 	coreRoutes?: AndroidCoreRouteDeps,
 ): AndroidBufferedResponse | null {
+	if (coreRoutes?.fullApiKernel) return null;
 	if (method === "GET" && pathname === "/api/health") {
 		return jsonResponse(200, {
 			ready: true,
@@ -699,6 +717,8 @@ export async function dispatchBufferedRequest(
 	}
 	const method = normalizeMethod(payload.method);
 	const headers = normalizeHeaderRecord(payload.headers);
+	const denied = androidRequestAuthorization(headers);
+	if (denied) return denied;
 	const { pathname, query } = splitPathAndQuery(rawPath);
 	const wake = await directAndroidWakeRoute(
 		runtime,
@@ -767,6 +787,16 @@ export async function dispatchStreamingRequest(
 	}
 	const method = normalizeMethod(payload.method);
 	const headers = normalizeHeaderRecord(payload.headers);
+	const denied = androidRequestAuthorization(headers);
+	if (denied) {
+		sink.emitResponse({
+			status: denied.status,
+			statusText: denied.statusText,
+			headers: denied.headers,
+		});
+		if (denied.bodyBase64) sink.emitChunk(denied.bodyBase64);
+		return;
+	}
 	const { pathname, query } = splitPathAndQuery(rawPath);
 
 	const direct = directAndroidCoreRoute(runtime, method, pathname, coreRoutes);
@@ -801,6 +831,7 @@ export async function dispatchStreamingRequest(
 		body: payloadBody(payload),
 		inProcess: true,
 		isAuthorized: () => true,
+		onHeaders: emitHead,
 		onChunk: (chunk) => {
 			// SSE handlers set the head before the first write; if the handler
 			// bypassed status(), default to 200 so the WebView still sees a head.

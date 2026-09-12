@@ -41,7 +41,7 @@ import {
   type CalendarIssue,
   useCalendarWeek,
 } from "../../hooks/useCalendarWeek.js";
-import { CalendarSourceManager } from "../CalendarSourceManager.js";
+import { calendarEventOccursOn } from "./event-days.js";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = Array.from({ length: 12 }, (_, month) =>
@@ -121,16 +121,12 @@ function formatAgendaDate(value: string): string {
   }).format(parseLocalDateKey(value));
 }
 
-function eventDateKey(event: LifeOpsCalendarEvent): string {
-  return localDateKey(new Date(event.startAt));
-}
-
 function eventsOnDate(
   events: LifeOpsCalendarEvent[],
   date: string,
 ): LifeOpsCalendarEvent[] {
   return events
-    .filter((event) => eventDateKey(event) === date)
+    .filter((event) => calendarEventOccursOn(event, date, TIME_ZONE))
     .toSorted((left, right) => left.startAt.localeCompare(right.startAt));
 }
 
@@ -679,20 +675,6 @@ export function SimpleCalendarView({
           tone: "warning",
         } as const)
       : undefined;
-  const sourceManager = (
-    <div
-      className="eliza-calendar-source-slot"
-      data-testid="simple-calendar-source-manager"
-      data-placement="promoted"
-    >
-      <CalendarSourceManager
-        sourceHealth={calendar.sources}
-        sourceNotice={sourceNotice}
-        onSelectionChanged={() => void calendar.refresh()}
-      />
-    </div>
-  );
-
   return (
     <PagePanel.Frame
       as="main"
@@ -708,7 +690,7 @@ export function SimpleCalendarView({
           outline-offset: 2px;
         }
         .eliza-calendar-day[data-outside-month="true"]:not([data-state="on"]) {
-          opacity: .48;
+          color: var(--muted-strong, #a0a0ac);
         }
         .eliza-calendar-day[data-state="on"] {
           background: transparent !important;
@@ -827,13 +809,6 @@ export function SimpleCalendarView({
           background: color-mix(in srgb, var(--card, #161616) 70%, transparent);
           padding: 14px;
         }
-        .eliza-calendar-source-slot {
-          min-width: 0;
-          margin: 0;
-        }
-        .eliza-calendar-source-slot[data-placement="promoted"] {
-          margin: 0;
-        }
         @container eliza-calendar (min-width: 720px) {
           .eliza-calendar-layout {
             grid-template-columns: minmax(0, 1fr);
@@ -877,10 +852,6 @@ export function SimpleCalendarView({
           }
           .eliza-calendar-source-slot { margin: 0; }
           .eliza-calendar-source-slot[data-placement="promoted"] { margin: 0; }
-          .eliza-calendar-source-slot[data-placement="promoted"] > [data-notice-tone][data-state="closed"] {
-            width: max-content;
-            max-width: 100%;
-          }
         }
         @media (prefers-reduced-motion: reduce) {
           .eliza-calendar-day { transition: none !important; }
@@ -920,7 +891,15 @@ export function SimpleCalendarView({
             </div>
           ) : null}
 
-          {sourceNotice ? sourceManager : null}
+          {sourceNotice ? (
+            <div className="eliza-calendar-status-slot">
+              <CalendarStatusRow
+                role="status"
+                tone="warning"
+                title={sourceNotice.label}
+              />
+            </div>
+          ) : null}
 
           <div
             className="eliza-calendar-content"

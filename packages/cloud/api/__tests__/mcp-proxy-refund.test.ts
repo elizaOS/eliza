@@ -13,9 +13,10 @@ import { __mcpProxyHopTestHooks } from "../mcp/proxy/[mcpId]/proxy-body-budget";
 const requireGenerativeRouteCaller = mock();
 const admitFlatGenerativeOperation = mock();
 let executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined;
+let generativeCacheError: ApiError | null;
 mock.module("@/api-app/lib/generative-route-auth", () => ({
   admitFlatGenerativeOperation,
-  asGenerativeCacheApiError: () => null,
+  asGenerativeCacheApiError: () => generativeCacheError,
   getGenerativeExecutionContext: () => executionCtx,
   requireGenerativeRouteCaller,
 }));
@@ -93,6 +94,7 @@ const EXTERNAL_MCP = {
 
 beforeEach(() => {
   executionCtx = undefined;
+  generativeCacheError = null;
   requireGenerativeRouteCaller.mockReset();
   requireGenerativeRouteCaller.mockResolvedValue({
     user: { id: "u1", organization_id: "org1" },
@@ -174,8 +176,51 @@ test("admits before marking dispatch and marks immediately before fetch", async 
   expect(admitFlatGenerativeOperation.mock.invocationCallOrder[0]).toBeLessThan(
     markProviderDispatched.mock.invocationCallOrder[0],
   );
+  expect(
+    admitFlatGenerativeOperation.mock.calls[0]?.[0].atomicProviderBoundary,
+  ).toBe(true);
   expect(markProviderDispatched.mock.invocationCallOrder[0]).toBeLessThan(
     safeFetch.mock.invocationCallOrder[0],
+  );
+});
+
+test("a late balance denial refunds without reaching or blaming the MCP", async () => {
+  markProviderDispatched.mockRejectedValueOnce(
+    new InsufficientCreditsError(0.05, 0.01),
+  );
+
+  const res = await post();
+
+  expect(res.status).toBe(402);
+  expect(settle).toHaveBeenCalledWith(0);
+  expect(settleUnknown).not.toHaveBeenCalled();
+  expect(safeFetch).not.toHaveBeenCalled();
+  expect(loggerError).toHaveBeenCalledWith(
+    "[MCP Proxy] Provider dispatch admission denied",
+    expect.objectContaining({ phase: "provider_dispatch" }),
+  );
+});
+
+test("a late cache denial remains a retryable admission failure", async () => {
+  generativeCacheError = new ApiError(
+    503,
+    "service_unavailable",
+    "Generative admission cache is warming; retry shortly",
+    { retryable: true, retryAfterSeconds: 1 },
+  );
+  markProviderDispatched.mockRejectedValueOnce(
+    new Error("dispatch admission unavailable"),
+  );
+
+  const res = await post();
+
+  expect(res.status).toBe(503);
+  expect(settle).toHaveBeenCalledWith(0);
+  expect(settleUnknown).not.toHaveBeenCalled();
+  expect(safeFetch).not.toHaveBeenCalled();
+  expect(loggerError).toHaveBeenCalledWith(
+    "[MCP Proxy] Provider dispatch admission failed",
+    expect.objectContaining({ phase: "provider_dispatch" }),
   );
 });
 

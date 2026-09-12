@@ -17,13 +17,16 @@ import type {
 import { ACCOUNT_PROVIDER_OPTIONS } from "./account-provider-options";
 import { ProviderAccountRow } from "./ProviderAccountRow";
 
-vi.mock("../../state/app-store", () => ({
-  useAppSelector: (
-    selector: (state: {
-      t: (key: string, vars?: Record<string, unknown>) => string;
-    }) => unknown,
-  ) => selector({ t: (key, vars) => String(vars?.defaultValue ?? key) }),
-}));
+vi.mock("../../state/app-store", async () => {
+  const { createTranslator } = await import("../../i18n");
+  return {
+    useAppSelector: (
+      selector: (state: {
+        t: (key: string, vars?: Record<string, unknown>) => string;
+      }) => unknown,
+    ) => selector({ t: createTranslator("en") }),
+  };
+});
 
 const mediaQueryState = { isDesktop: false };
 vi.mock("../../hooks/useMediaQuery", () => ({

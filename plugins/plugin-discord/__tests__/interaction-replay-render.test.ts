@@ -191,10 +191,10 @@ describe("#14527 button-tap replay renders link-out blocks natively", () => {
 		await handleInteractionCreate(service as never, interaction as never);
 
 		expect(interaction.followUp).toHaveBeenCalledTimes(1);
-		// No resolver URL: no fabricated dead button, while the surrounding reply
-		// prose remains deliverable without duplicating the task-card title.
+		// No resolver URL: no fabricated dead button, while both the surrounding
+		// reply and task-card label remain deliverable as complete fallback prose.
 		expect(follows[0]?.components ?? []).toHaveLength(0);
-		expect(follows[0]?.content).toBe("Opening your task.");
+		expect(follows[0]?.content).toBe("Opening your task.\n\nShip the release");
 	});
 
 	it("delivers via followUp in a group DM where channel.send is unavailable", async () => {

@@ -284,8 +284,8 @@ describe("threadOpsFieldEvaluator", () => {
     });
   });
 
-  describe("handle — abort suppressed for a pending CHOICE pick", () => {
-    it("routes a bare pending-choice option value to the resolver action instead of aborting", async () => {
+  describe("handle — model-owned abort decisions", () => {
+    it("honors the model's abort even when its message matches a pending choice", async () => {
       let aborted = false;
       const runtime = buildFakeRuntime({
         onAbortTurn: () => {
@@ -325,13 +325,15 @@ describe("threadOpsFieldEvaluator", () => {
       };
       const effect = await threadOpsFieldEvaluator.handle?.(handleCtx);
       expect(effect).toBeDefined();
-      // No preempt, no turn abort — the pick must reach the planner.
-      expect(effect?.preempt).toBeUndefined();
-      expect(aborted).toBe(false);
+      expect(effect?.preempt).toEqual({
+        mode: "ack-and-stop",
+        reason: "user retracted the request",
+      });
+      expect(aborted).toBe(true);
       const mutated = { ...handleCtx.parsed } as Record<string, unknown>;
       effect?.mutateResult?.(mutated as never);
-      expect(mutated.candidateActionNames).toContain("APP");
-      expect((mutated.contexts as string[]).includes("simple")).toBe(false);
+      expect(mutated.candidateActionNames).toEqual([]);
+      expect(mutated.replyText).toBe("Cancelled.");
     });
 
     it("still aborts when the message matches no pending option", async () => {

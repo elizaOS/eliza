@@ -10,6 +10,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
@@ -93,49 +94,62 @@ export const userVoices = pgTable(
  *
  * Tracks voice cloning job status and progress for instant and professional clones.
  */
-export const voiceCloningJobs = pgTable("voice_cloning_jobs", {
-  id: uuid("id").primaryKey().defaultRandom(),
+export const voiceCloningJobs = pgTable(
+  "voice_cloning_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
 
-  // Ownership
-  organizationId: uuid("organization_id")
-    .notNull()
-    .references(() => organizations.id, { onDelete: "cascade" }),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
+    // Ownership
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
 
-  // Job Details
-  jobType: text("job_type", { enum: ["instant", "professional"] }).notNull(),
-  voiceName: text("voice_name").notNull(),
-  voiceDescription: text("voice_description"),
+    // Job Details
+    jobType: text("job_type", { enum: ["instant", "professional"] }).notNull(),
+    voiceName: text("voice_name").notNull(),
+    voiceDescription: text("voice_description"),
 
-  // Status
-  status: text("status", {
-    enum: ["pending", "processing", "completed", "failed"],
-  })
-    .notNull()
-    .default("pending"),
-  progress: integer("progress").notNull().default(0),
+    // Status
+    status: text("status", {
+      enum: ["pending", "processing", "completed", "failed", "reconciliation_required"],
+    })
+      .notNull()
+      .default("pending"),
+    progress: integer("progress").notNull().default(0),
 
-  // Results
-  userVoiceId: uuid("user_voice_id").references(() => userVoices.id, {
-    onDelete: "set null",
+    // Results
+    userVoiceId: uuid("user_voice_id").references(() => userVoices.id, {
+      onDelete: "set null",
+    }),
+    elevenlabsVoiceId: text("elevenlabs_voice_id"),
+
+    // Error Handling
+    errorMessage: text("error_message"),
+    retryCount: integer("retry_count").notNull().default(0),
+    idempotencyKey: text("idempotency_key"),
+    requestDigest: text("request_digest"),
+    responsePayload: jsonb("response_payload").$type<Record<string, unknown>>(),
+
+    // Metadata
+    metadata: jsonb("metadata").notNull().default({}),
+
+    // Timestamps
+    startedAt: timestamp("started_at"),
+    completedAt: timestamp("completed_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    tenantIdempotencyIdx: uniqueIndex("voice_cloning_jobs_tenant_idempotency_uidx").on(
+      table.organizationId,
+      table.userId,
+      table.idempotencyKey,
+    ),
   }),
-  elevenlabsVoiceId: text("elevenlabs_voice_id"),
-
-  // Error Handling
-  errorMessage: text("error_message"),
-  retryCount: integer("retry_count").notNull().default(0),
-
-  // Metadata
-  metadata: jsonb("metadata").notNull().default({}),
-
-  // Timestamps
-  startedAt: timestamp("started_at"),
-  completedAt: timestamp("completed_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+);
 
 /**
  * Voice samples table schema.

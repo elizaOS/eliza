@@ -3,8 +3,8 @@
  * hardenIncomingUserMessage wraps external messages' content.text IN PLACE, so
  * every fallback that reads it as the user's request must store/echo the
  * payload, never the armor (live leak tj-2dc95f75456876; task e7312d73
- * persisted the full envelope as originalRequest). It also proves normalized
- * planner-supplied titles and labels retain their complete semantic content.
+ * persisted the full envelope as originalRequest). Also pins the clamp on
+ * planner-supplied title/label blobs at the persist/display seam.
  * Deterministic unit test with a stubbed runtime; no live model.
  */
 import * as os from "node:os";
@@ -95,7 +95,7 @@ describe("TASKS hardened-envelope unwrap", () => {
     expect(emitted).not.toContain("SECURITY NOTICE");
   });
 
-  it("create preserves a complete planner-supplied title at the persist/display seam", async () => {
+  it("create preserves a planner-supplied title blob at the persist/display seam", async () => {
     const acp = serviceMock();
     const createTask = vi.fn(async () => ({ id: THREAD_ID, title: "t" }));
     const runtime = runtimeWithTaskService(acp, createTask);
@@ -119,14 +119,13 @@ describe("TASKS hardened-envelope unwrap", () => {
 
     expect(result?.success).toBe(true);
     const stored = createTask.mock.calls[0]?.[0] as { title: string };
-    expect(stored.title).not.toContain("\n");
-    expect(stored.title).toBe(`first line of a blob ${"x".repeat(300)}`);
+    expect(stored.title).toBe(blobTitle.replace(/\s+/g, " "));
     const emitted = emittedText(cb);
     expect(emitted).toContain(`[TASK:${THREAD_ID}]`);
     expect(emitted).toContain("x".repeat(300));
   });
 
-  it("spawn_agent preserves a complete planner-supplied label in session metadata", async () => {
+  it("spawn_agent preserves a planner-supplied label blob in session metadata", async () => {
     const acp = serviceMock();
     const runtime = runtimeWith(acp);
     const blobLabel = `deploy helper\n${"y".repeat(400)}`;
@@ -152,8 +151,7 @@ describe("TASKS hardened-envelope unwrap", () => {
       metadata?: { label?: string };
     };
     const label = spawnArg.metadata?.label ?? "";
-    expect(label).not.toContain("\n");
-    expect(label).toBe(`deploy helper ${"y".repeat(400)}`);
+    expect(label).toBe(blobLabel.replace(/\s+/g, " "));
   });
 
   it("control continue forwards the unwrapped payload as the follow-up instruction", async () => {

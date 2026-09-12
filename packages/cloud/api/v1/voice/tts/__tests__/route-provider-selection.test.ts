@@ -53,6 +53,9 @@ let elevenLabsStreamFactory = () => {
   });
 };
 const elevenLabsTextToSpeech = mock(async () => elevenLabsStreamFactory());
+const getElevenLabsService = mock(() => ({
+  textToSpeech: elevenLabsTextToSpeech,
+}));
 let allowKokoroFetch = false;
 let cartesiaStatus = 200;
 let cacheBypass = true;
@@ -125,6 +128,14 @@ mock.module("@elizaos/shared/voice/first-sentence-snip", () => ({
   firstSentenceSnip: (text: string) => {
     const normalized = text.trim();
     if (!normalized) return null;
+    if (normalized === "First sentence. Second sentence.") {
+      return {
+        raw: "First sentence.",
+        normalized: "First sentence.",
+        endOffset: "First sentence.".length,
+        wordCount: 2,
+      };
+    }
     return {
       raw: normalized,
       normalized,
@@ -209,7 +220,7 @@ mock.module("@/lib/services/credits", () => {
 });
 
 mock.module("@/lib/services/elevenlabs", () => ({
-  getElevenLabsService: () => ({ textToSpeech: elevenLabsTextToSpeech }),
+  getElevenLabsService,
 }));
 
 mock.module("@/lib/services/tts-first-line-cache", () => ({
@@ -274,6 +285,10 @@ beforeEach(() => {
   billUsage.mockClear();
   createUsage.mockClear();
   elevenLabsTextToSpeech.mockClear();
+  getElevenLabsService.mockReset();
+  getElevenLabsService.mockImplementation(() => ({
+    textToSpeech: elevenLabsTextToSpeech,
+  }));
   reconcileReservation.mockClear();
   cacheGet.mockClear();
   cacheHas.mockClear();
@@ -370,6 +385,7 @@ describe("POST /api/v1/voice/tts provider selection", () => {
       provider: "cartesia",
       code: "rate_limit",
     });
+    expect(reconcileReservation).toHaveBeenCalledWith(0.001);
   });
 
   test("treats the proxy-injected legacy default as unpinned when Cartesia is configured", async () => {
@@ -549,7 +565,7 @@ describe("POST /api/v1/voice/tts provider selection", () => {
     expect(reconcileReservation).not.toHaveBeenCalled();
   });
 
-  test("refunds the reservation and never bills malformed PCM", async () => {
+  test("settles unknown and never bills malformed PCM after dispatch", async () => {
     elevenLabsBytes = new Uint8Array([1, 2, 3]);
     const response = await postTts({
       text: "Do not charge failed audio.",
@@ -559,6 +575,36 @@ describe("POST /api/v1/voice/tts provider selection", () => {
 
     expect(response.status).toBe(500);
     expect(billUsage).not.toHaveBeenCalled();
+    expect(reconcileReservation).toHaveBeenCalledTimes(1);
+    expect(reconcileReservation).toHaveBeenCalledWith(0.0012);
+  });
+
+  test("settles unknown when ElevenLabs transport fails after dispatch", async () => {
+    elevenLabsTextToSpeech.mockRejectedValueOnce(
+      new TypeError("private provider transport detail"),
+    );
+    const response = await postTts({
+      text: "Do not refund ambiguous work.",
+      voiceId: "custom-elevenlabs-voice",
+    });
+
+    expect(response.status).toBe(500);
+    expect(billUsage).not.toHaveBeenCalled();
+    expect(reconcileReservation).toHaveBeenCalledTimes(1);
+    expect(reconcileReservation).toHaveBeenCalledWith(0.0012);
+  });
+
+  test("releases the reservation when ElevenLabs service setup fails locally", async () => {
+    getElevenLabsService.mockImplementationOnce(() => {
+      throw new Error("ELEVENLABS_API_KEY is not set");
+    });
+    const response = await postTts({
+      text: "No provider work starts.",
+      voiceId: "custom-elevenlabs-voice",
+    });
+
+    expect(response.status).toBe(500);
+    expect(elevenLabsTextToSpeech).not.toHaveBeenCalled();
     expect(reconcileReservation).toHaveBeenCalledTimes(1);
     expect(reconcileReservation).toHaveBeenCalledWith(0);
   });
@@ -590,10 +636,10 @@ describe("POST /api/v1/voice/tts provider selection", () => {
     expect(oversized.locked).toBe(false);
     expect(billUsage).not.toHaveBeenCalled();
     expect(cachePut).not.toHaveBeenCalled();
-    expect(reconcileReservation).toHaveBeenCalledWith(0);
+    expect(reconcileReservation).toHaveBeenCalledWith(0.0012);
   });
 
-  test("releases failed PCM reads without billing, caching, or a partial WAV", async () => {
+  test("settles unknown after failed PCM reads without billing or caching", async () => {
     const failing = new ReadableStream<Uint8Array>({
       pull() {
         throw new Error("upstream PCM read failed");
@@ -612,7 +658,63 @@ describe("POST /api/v1/voice/tts provider selection", () => {
     expect(failing.locked).toBe(false);
     expect(billUsage).not.toHaveBeenCalled();
     expect(cachePut).not.toHaveBeenCalled();
-    expect(reconcileReservation).toHaveBeenCalledWith(0);
+    expect(reconcileReservation).toHaveBeenCalledWith(0.0012);
+  });
+
+  test("warms the exact whole-input cache from primary bytes without a second synthesis", async () => {
+    cacheBypass = false;
+    const response = await postTts({
+      text: "Cache this exact response.",
+      voiceId: "custom-elevenlabs-voice",
+    });
+
+    expect(response.status).toBe(200);
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(
+      new Uint8Array([73, 68, 51]),
+    );
+    await Bun.sleep(0);
+    expect(elevenLabsTextToSpeech).toHaveBeenCalledTimes(1);
+    expect(cacheHas).not.toHaveBeenCalled();
+    expect(cachePut).toHaveBeenCalledTimes(1);
+    const cachePutCalls = cachePut.mock.calls as unknown as [
+      [{ bytes: Uint8Array; rawText: string }],
+    ];
+    expect(cachePutCalls[0]?.[0]).toMatchObject({
+      bytes: new Uint8Array([73, 68, 51]),
+      rawText: "Cache this exact response.",
+    });
+  });
+
+  test("does not warm a partial first sentence or perform a second synthesis", async () => {
+    cacheBypass = false;
+    const response = await postTts({
+      text: "First sentence. Second sentence.",
+      voiceId: "custom-elevenlabs-voice",
+    });
+
+    expect(response.status).toBe(200);
+    await response.arrayBuffer();
+    await Bun.sleep(0);
+    expect(elevenLabsTextToSpeech).toHaveBeenCalledTimes(1);
+    expect(cacheHas).not.toHaveBeenCalled();
+    expect(cachePut).not.toHaveBeenCalled();
+  });
+
+  test("skips oversized cache capture without truncating primary audio", async () => {
+    cacheBypass = false;
+    elevenLabsBytes = new Uint8Array(256 * 1024 + 1).fill(7);
+    const response = await postTts({
+      text: "Keep every generated audio byte.",
+      voiceId: "custom-elevenlabs-voice",
+    });
+
+    expect(response.status).toBe(200);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    expect(bytes.byteLength).toBe(256 * 1024 + 1);
+    expect(bytes.every((byte) => byte === 7)).toBe(true);
+    await Bun.sleep(0);
+    expect(elevenLabsTextToSpeech).toHaveBeenCalledTimes(1);
+    expect(cachePut).not.toHaveBeenCalled();
   });
 
   // #16425: the client mints one Idempotency-Key per logical utterance (sent

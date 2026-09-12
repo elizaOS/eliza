@@ -88,9 +88,8 @@ bun run --cwd packages/app build:web
 
 The optional source harness exposes a development-only script board at
 `/demo-scenarios`, with anchors for `#household`, `#co-parenting`, `#friends`,
-`#trip`, and `#community`. In the current local review environment, for
-example, the Trip room is available at
-`http://127.0.0.1:24446/demo-scenarios#trip`.
+`#trip`, and `#community`. Open `/demo-scenarios#trip` on the running source harness to review the Trip
+room.
 
 The board and the animated desktop/mobile homepage both import
 `src/lib/landing-demo.ts`; never duplicate scenario copy in the review page.

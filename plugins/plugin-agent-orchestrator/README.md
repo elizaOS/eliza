@@ -31,9 +31,28 @@ export ELIZA_ACP_TRANSPORT=native
 export ELIZA_ACP_DEFAULT_AGENT=elizaos
 export ELIZA_ELIZAOS_ACP_COMMAND="eliza-code-acp"
 export ELIZA_PI_AGENT_ACP_COMMAND="pi-agent"
-export ELIZA_CODEX_ACP_COMMAND="npx -y @agentclientprotocol/codex-acp@1.1.2"
+export ELIZA_CODEX_ACP_COMMAND="npx -y @agentclientprotocol/codex-acp@1.10.0"
 export ELIZA_CLAUDE_ACP_COMMAND="npx -y @agentclientprotocol/claude-agent-acp@0.34.0"
 ```
+
+For Pi, install the adapter and its coding-agent executable explicitly:
+
+```bash
+bun add --global pi-acp@0.0.33 @earendil-works/pi-coding-agent@0.84.2
+export ELIZA_PI_AGENT_ACP_COMMAND="pi-acp"
+```
+
+Both `pi-acp` and `pi` must be executable on the host's configured PATH. The
+`pi-agent` backend identifier is not the executable installed by these packages;
+the command override above is required unless the host already supplies a
+compatible `pi-agent` launcher. The framework inventory reports a missing
+launcher with an instruction to configure `ELIZA_PI_AGENT_ACP_COMMAND`.
+Installation is explicit; spawning does not install packages or change PATH.
+These versions were checked with the actual ACP handshake, settings consumer,
+and model registry. Their transitive model catalog may change independently.
+A linked Pi session refuses a missing or different provider/model reported by
+the ACP handshake before sending its first prompt. Link a supported account
+separately; installing executables does not authenticate a provider.
 
 Authenticate the underlying agent you plan to use before spawning sessions. Native Codex and Claude defaults use `npx`, so pin or replace those commands in production if you do not want runtime downloads.
 
@@ -52,7 +71,20 @@ Adapter packaging decision: this release does not vendor the Codex or Claude ACP
 
 `coding-agent-adapters` is a runtime registry/API dependency used by this plugin's agent inventory and routes; it is not a bundled Codex or Claude ACP adapter executable.
 
-Linked-account enrollment and model inference are separate from executable coding-agent spawn. Claude subscription and OpenAI Codex accounts are the only linked-account transports bridged into coding sessions. Kimi's saved coding-plan key remains inference-only and is separate from the native Kimi CLI OAuth session; Grok likewise uses provider-owned CLI OAuth rather than a linked xAI API credential. DeepSeek and Z.AI credentials remain inference-only. OpenRouter remains a generic model-routing option rather than a coding-account or spawn backend.
+Linked-account enrollment and model inference remain separate from executable
+coding-agent spawn. Claude subscription and OpenAI Codex accounts feed their
+native backends. The Pi backend can instead consume a selected Z.AI or Kimi
+coding-plan key, or a DeepSeek, Z.AI, Moonshot, xAI, or OpenRouter API account.
+Each spawn receives a mode-0700 private Pi home whose config references a
+child-only environment variable using Pi's `$ENV_VAR` interpolation syntax;
+the credential itself is never written to disk. Existing Pi providers retain
+their built-in model capability metadata, while OpenRouter alone materializes
+an arbitrary requested model. If linked Pi accounts exist but selection or
+availability fails, spawn fails closed instead of using ambient provider keys.
+Coding-plan endpoints remain pinned to plan quota, DeepSeek and the other
+direct APIs remain PAYG, and OpenRouter remains credits/BYOK with an explicit
+arbitrary model. Native Kimi and Grok adapters still use provider-owned CLI
+OAuth and never reuse these API credentials.
 
 ## Quick start
 
@@ -157,7 +189,8 @@ second credential broker, and child trajectories retain their session join key.
 | `ELIZA_ACP_WARM_SPAWN` | unset | Set to `1` to keep one pre-initialized native `elizaos` child ready. It starts without session credentials, accepts one authenticated environment claim, and is disposed after that session; unclaimed children are recycled after two minutes. |
 | `ELIZA_ELIZAOS_ACP_COMMAND` | `eliza-code-acp` | Native elizaOS ACP command. |
 | `ELIZA_PI_AGENT_ACP_COMMAND` | `pi-agent` | Native Pi Agent ACP command. |
-| `ELIZA_CODEX_ACP_COMMAND` | `npx -y @agentclientprotocol/codex-acp@1.1.2` | Native Codex ACP command. The manifest default and the legacy `@zed-industries` default select the isolated managed successor; any other custom command is executed verbatim. |
+| `PI_CODING_AGENT_DIR` | spawn-managed | Private per-session Pi home. The orchestrator writes `models.json` and `settings.json`; do not configure it on the parent runtime. |
+| `ELIZA_CODEX_ACP_COMMAND` | `npx -y @agentclientprotocol/codex-acp@1.10.0` | Native Codex ACP command. The manifest default and the legacy `@zed-industries` default select the isolated managed successor; any other custom command is executed verbatim. |
 | `ELIZA_CODEX_ACP_SANDBOX_MODE` / `ELIZA_CODEX_SANDBOX_MODE` | unset | Optional managed Codex ACP sandbox mode: `read-only`, `workspace-write`, or `danger-full-access`. The successor receives these as `INITIAL_AGENT_MODE`; custom commands are not rewritten. |
 | `ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE` | unset (required when Landlock unavailable) | Codex ACP sandbox mode used when Linux Landlock is unavailable. No default — unset/invalid throws `CODEX_NO_LANDLOCK_NO_FALLBACK` rather than widening to host access. |
 | `ELIZA_CODEX_ACP_APPROVAL_POLICY` / `ELIZA_CODEX_APPROVAL_POLICY` | `never` for no-Landlock fallback, otherwise unset | Optional managed Codex ACP approval policy. Setting it requires an explicit sandbox mode; the successor supports the fixed pairs `read-only`/`on-request`, `workspace-write`/`on-request`, and `danger-full-access`/`never`. |
@@ -232,7 +265,7 @@ These live smokes ship with the repo:
 
 ```bash
 # Native AcpService against Codex ACP. No global acpx is required; the default
-# native Codex command is `npx -y @agentclientprotocol/codex-acp@1.1.2`.
+# native Codex command is `npx -y @agentclientprotocol/codex-acp@1.10.0`.
 # Authenticate Codex first.
 bun run build
 RUN_LIVE_NATIVE_ACP=1 bun run test:e2e:native
@@ -249,7 +282,7 @@ RUN_LIVE_ACPX=1 ELIZA_ACP_TRANSPORT=cli bun run test -- __tests__/live/sub-agent
 ```
 
 `live-native-acp-smoke.mjs` exercises the default native path by spawning a
-real Codex ACP session through `npx -y @agentclientprotocol/codex-acp@1.1.2`,
+real Codex ACP session through `npx -y @agentclientprotocol/codex-acp@1.10.0`,
 sending "what is 7 + 8?", and verifying `task_complete` fires with response
 `"15"`. The Vitest wrapper is skipped unless `RUN_LIVE_NATIVE_ACP=1` is set;
 when enabled, it requires `NATIVE ACP SMOKE PASSED`.
@@ -294,6 +327,32 @@ Native transport is covered by unit tests under `__tests__/unit/acp-native-trans
 ## Contributing
 
 PRs welcome. Run `npm run typecheck && npm test` before opening.
+
+
+### Explicit live Pi linked-account qualification
+
+The `pi-linked-account` option in the existing **Live Smoke** workflow uses the
+repository `OPENROUTER_API_KEY` only inside its selected job. Dispatch the reviewed
+branch with `suite=pi-linked-account` and `pi_source_sha=<exact dispatch-ref SHA>`.
+It selects the explicit model `openai/gpt-4.1-mini` through a disposable encrypted
+OpenRouter account and the production account selector, then confirms the Pi ACP
+provider/model before requesting one response-only turn. Missing credentials,
+unconfirmed routing, tool use, failed inference, or incomplete cleanup fail the
+job. It does not qualify UI enrollment or multi-account failover.
+
+The successful `pi-linked-account-<SHA>` artifact contains the complete benign prompt and
+response, their hashes, source hashes, and cleanup result. Account storage paths,
+credentials, and raw provider diagnostics are excluded. Failed checks retain only
+the fixed failure phase, source SHA, structured transport outcome, and complete
+assistant text when it contains no credential or private profile path. Adapter-declared
+startup text is retained separately from model response text; the combined assistant
+text transcript is not a complete RPC transcript. Sensitive text is omitted explicitly,
+with its byte length and SHA-256 retained. The executable versions
+are pinned to Pi `0.84.2`, pi-acp `0.0.33`, and pi-ai `0.84.4` for this check.
+The underlying command is `bun run test:e2e:pi-linked-account`; it requires the
+explicit `RUN_LIVE_PI_LINKED_ACCOUNT=1`, reviewed `LIVE_PI_SOURCE_SHA`, and the
+workflow's verified `LIVE_PI_TOOL_VERSIONS` metadata. Ordinary tests never arm it.
+
 
 ## License
 

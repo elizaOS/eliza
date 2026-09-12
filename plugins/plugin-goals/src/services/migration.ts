@@ -9,12 +9,9 @@
  * first boot we copy them across — once, idempotently, and WITHOUT ever touching
  * the source.
  *
- * Guards (per table, independently):
- *   1. Skip if the source table does not exist (fresh install / already dropped).
- *   2. Skip if the target table is non-empty (migration already ran, or the
- *      plugin owns live data).
- *   3. Otherwise copy every source row that is not already present in the target
- *      (a doubly-safe NOT EXISTS guard on the primary key).
+ * Existing completion markers and populated owner tables remain authoritative.
+ * Only a fresh import into an empty target is copied and verified; the durable
+ * receipt prevents later owner deletions from replaying stale legacy rows.
  *
  * The source table is NEVER dropped or altered. The source and target share the
  * exact column shape (PA's `app_lifeops` drizzle def and this plugin's
@@ -25,6 +22,12 @@
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import {
+  assertCarveOutProjectionComplete,
+  type CarveOutDatabase,
+  createDrizzleCarveOutDatabase,
+  runCarveOutMigration,
+} from "@elizaos/plugin-sql";
 
 export const GOALS_MIGRATION_LOG_PREFIX = "[Goals]";
 export const GOALS_MIGRATION_SERVICE_TYPE = "goals_migration";
@@ -45,7 +48,11 @@ export type SqlExecutor = (
 
 export interface TableMigrationResult {
   table: MigratedGoalTable;
-  outcome: "copied" | "source-missing" | "target-non-empty";
+  outcome:
+    | "copied"
+    | "source-missing"
+    | "target-non-empty"
+    | "already-migrated";
 }
 
 function quoteIdent(name: string): string {
@@ -90,24 +97,44 @@ export async function migrateGoalTable(
        SELECT s.* FROM ${source} AS s
        WHERE NOT EXISTS (
          SELECT 1 FROM ${target} AS t WHERE t.id = s.id
-       )`,
+       )
+       ON CONFLICT (${quoteIdent("id")}) DO NOTHING`,
   );
+  await assertCarveOutProjectionComplete(exec, {
+    migrationKey: `goals/${table}/v2`,
+    source: { schema: SOURCE_SCHEMA, table },
+    target: { schema: TARGET_SCHEMA, table },
+    keyColumns: ["id"],
+  });
   return { table, outcome: "copied" };
 }
 
 export async function migrateGoalTables(
-  exec: SqlExecutor,
+  database: CarveOutDatabase,
 ): Promise<TableMigrationResult[]> {
-  await exec(`CREATE SCHEMA IF NOT EXISTS ${TARGET_SCHEMA}`);
+  await database.execute(`CREATE SCHEMA IF NOT EXISTS ${TARGET_SCHEMA}`);
   const results: TableMigrationResult[] = [];
   for (const table of MIGRATED_GOAL_TABLES) {
-    results.push(await migrateGoalTable(exec, table));
+    const receipt = await runCarveOutMigration(database, {
+      key: `goals/${table}/v2`,
+      previousKeys: [`goals/${table}/v1`],
+      sourceTables: [{ schema: SOURCE_SCHEMA, table }],
+      run: (execute) => migrateGoalTable(execute, table),
+      outcome: (result) => result.outcome,
+      shouldComplete: (result) => result.outcome !== "source-missing",
+    });
+    results.push(
+      receipt.status === "completed"
+        ? receipt.value
+        : { table, outcome: "already-migrated" },
+    );
   }
   return results;
 }
 
 type RuntimeDb = {
   execute: (query: unknown) => Promise<unknown>;
+  transaction<T>(operation: (transaction: RuntimeDb) => Promise<T>): Promise<T>;
 };
 
 function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb {
@@ -118,25 +145,6 @@ function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb {
     );
   }
   return db;
-}
-
-function extractRows(result: unknown): Array<Record<string, unknown>> {
-  if (Array.isArray(result)) {
-    return result.filter(
-      (row): row is Record<string, unknown> =>
-        typeof row === "object" && row !== null && !Array.isArray(row),
-    );
-  }
-  if (result && typeof result === "object" && "rows" in result) {
-    const rows = (result as { rows: unknown }).rows;
-    if (Array.isArray(rows)) {
-      return rows.filter(
-        (row): row is Record<string, unknown> =>
-          typeof row === "object" && row !== null && !Array.isArray(row),
-      );
-    }
-  }
-  return [];
 }
 
 /**
@@ -157,11 +165,8 @@ export class GoalsMigrationService extends Service {
 
   private async run(): Promise<void> {
     const db = getRuntimeDb(this.runtime);
-    const { sql } = await import("drizzle-orm");
-    const exec: SqlExecutor = async (statement) =>
-      extractRows(await db.execute(sql.raw(statement)));
-
-    const results = await migrateGoalTables(exec);
+    const database = await createDrizzleCarveOutDatabase(db);
+    const results = await migrateGoalTables(database);
     const copied = results.filter((r) => r.outcome === "copied");
     if (copied.length > 0) {
       logger.info(

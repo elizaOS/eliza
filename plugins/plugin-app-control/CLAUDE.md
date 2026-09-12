@@ -5,8 +5,9 @@ models, active agent profiles, and built-in settings.
 
 ## Purpose / role
 
-This opt-in plugin registers nine actions, no `shortcuts` entries, three evaluators
-(including a deterministic exact-command pre-planner evaluator), two providers,
+This opt-in plugin registers its app and view actions, one model-assisted
+pre-planner navigation evaluator, no natural-language shortcuts or deterministic
+response-handler evaluators, three providers,
 and four services. Dashboard operations use authenticated
 loopback HTTP (`/api/apps/*`, `/api/views/*`) discovered through the existing
 port resolver.
@@ -30,9 +31,10 @@ port resolver.
 
 | Name | File | Description |
 |---|---|---|
-| `viewContextEvaluator` | `src/evaluators/view-context.ts` | Model-assisted contextual navigation when no explicit view command matched. |
-| `viewCommandShortcutEvaluator` | `src/evaluators/view-command-shortcut.ts` | Registered zero-model fast path for exact standalone view commands. It installs one deterministic `VIEWS` call before the planner; contextual and compound requests still remain model-owned. |
-| `createChoiceShortcutEvaluator` | `src/evaluators/create-choice-shortcut.ts` | Routes replies to pending app/view creation choices without another model decision. |
+| `viewContextPlanningEvaluator` | `src/evaluators/view-context-planning.ts` | Selects an authorized live-catalog destination before planning without removing domain work; the same action queue owns navigation and receipts. |
+| `viewContextEvaluator` | `src/evaluators/view-context.ts` | Legacy compatibility export only; not registered as a post-response navigator. |
+| `viewCommandShortcutEvaluator` | `src/evaluators/view-command-shortcut.ts` | Compatibility export only; not registered by the first-party plugin. |
+| `createChoiceShortcutEvaluator` | `src/evaluators/create-choice-shortcut.ts` | Compatibility export only; pending choices reach model context through `app_control_choices`. |
 | `viewFollowupRoutingEvaluator` | `src/evaluators/view-followup-routing.ts` | Compatibility export for downstream users; the first-party plugin leaves focused-view mutation follow-ups to Stage 1 and the planner. |
 
 ### Shortcuts
@@ -47,6 +49,7 @@ port resolver.
 |---|---|---|
 | `available_apps` | `src/providers/available-apps.ts` | Injects installed apps + running run counts into planner context. Active in `settings` and `automation` contexts only; cache scope is per-turn. |
 | `current_view` | `src/providers/current-view.ts` | Supplies current shell-view context and acknowledgement state for navigation turns. |
+| `app_control_choices` | `src/providers/pending-choices.ts` | Owner-private, uncached-per-turn pending app/view/model choices, available before Stage 1 and planner selection. Empty when no choice exists; never dispatches from user text. |
 
 ### Services
 
@@ -104,7 +107,8 @@ src/
   components/
     ViewManagerSpatialView.tsx    Presentational spatial view-manager component
   evaluators/
-    view-context.ts               contextual view selection
+    view-context.ts               legacy post-response compatibility export
+    view-context-planning.ts      live-catalog in-turn contextual selection
     view-command-shortcut.ts      deterministic explicit-command routing
     create-choice-shortcut.ts     pending create-choice routing
     view-followup-routing.ts      compatibility mutation-follow-up evaluator; not registered by the plugin
@@ -199,7 +203,7 @@ Follow the same pattern in `src/actions/views.ts` and create a `src/actions/view
 - **`AppWorkerHostService` auto-starts persisted worker apps best-effort.** On service start it asks `AppRegistryService` for persisted entries and spawns apps whose resolved isolation is `"worker"`. Spawn failures are reported without preventing the registry entry from remaining inspectable.
 - **Worker surfaces are explicit.** New app manifests declare `elizaos.app.worker: false` for static-only apps or `elizaos.app.worker: { entry: "dist/plugin.js" }` for an agent-side plugin. An absent field invokes conventional entry discovery only for legacy apps; a missing explicitly declared entry is a broken or unbuilt worker, not a static app.
 - **Restricted platforms.** `isRestrictedPlatform()` in `src/actions/views.ts` returns `true` on iOS/Android store builds. Use it to gate dynamic-plugin creation flows.
-- **`resolveIntentView` is a RETAINED #10471 fast-path allow-list, not a string smell.** The deterministic intent→view matcher in `src/actions/views-show.ts` (`matchViewCommand` + `INTENT_VIEW_RULES`) is intentionally kept: it is multilingual by construction (EN + ES/FR/DE/ZH/JA/KO), fires only as a fallback after normal id/label/fuzzy resolution returns nothing, never overrides an explicit planner navigation, and is the local-first safety net a small/on-device planner relies on for cross-language navigation. Do not "clean it up" into an English-only path or delete it; extend the rules multilingually and keep them anchored on a possessive/navigation-verb + surface noun. Full written justification lives on `resolveIntentView`.
+- **VIEWS navigation belongs to the real planner.** `show`/`open` require a structured destination; `runViewsShow` must not infer a target from the user's utterance or override an explicit target with `matchViewCommand`/`resolveIntentView`. Missing or unresolvable targets return an internal failure without navigation, so the planner can select a registered destination. Registered IDs/labels and explicit canonical aliases remain supported. Multilingual requests use the real planner, not phrase-based navigation shortcuts. Existing intent-matcher exports serve compatibility/context classification only; they do not authorize a navigation bypass.
 - **Pre-edit snapshots are best-effort (#8915).** `VIEWS create`/`edit` and `APP create`/edit take a `git commit --no-verify --allow-empty` snapshot of the target workdir before dispatching the coding agent and record the SHA on a `views-snapshot`-tagged Task keyed by room/plugin. A failed snapshot (workdir not in a git work tree, no committer identity, …) only disables rollback for that edit — it must never abort the dispatch. `VIEWS rollback` resolves the most-recent snapshot for the room (or an explicit `sha`/`view`), runs `git reset --hard`, then re-registers via `load-from-directory`. On verification failure after max retries, `VerificationRoomBridgeService` surfaces a chat offer naming `VIEWS action=rollback` for plugins so the user is never left with a broken create/edit. Shell out via the injectable `GitRunner` in `views-snapshot.ts` (so tests stay deterministic); do not reach into `CodingWorkspaceService`, which is keyed by managed-workspace IDs, not local repo workdirs.
 
 ## Verification
@@ -209,3 +213,22 @@ the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
 under test.
+
+Contextual navigation preserves the entire original request and keeps domain
+operations in the planner. Planner-owned VIEWS steps pass
+`navigationIntent=planner-step` and a `navigationStepId`; each target is resolved
+against the current catalog, preserving registration, availability, and role
+gates. Navigation receipts remain separate from event, note, or task effects.
+
+The contextual evaluator binds navigation permission to the incoming message,
+room, and actor through core StreamingContext. Nested model scopes preserve that
+policy and cancellation signal. Tool parameters cannot relax a deny constraint.
+The same policy applies to manager,
+close (including aliases), window, pin, and split/tile navigation, with another
+check at the shell transport boundary; read and domain modes remain independent.
+Planner steps require an explicit allow. Catalog requests and the final dispatch
+observe cancellation. Show/open outcomes and alternate-mode denials use
+`data.navigation.stepId`;
+`delivered` requires the matching completed-action handoff receipt, while missing,
+negative, or malformed delivery remains explicit. Stable handoff IDs scope replay
+to the same message, actor, client, step, and destination.

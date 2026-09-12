@@ -183,6 +183,10 @@ export const agentSandboxes = pgTable(
     character_id: uuid("character_id").references(() => userCharacters.id, {
       onDelete: "set null",
     }),
+    quota_admission_scope: text("quota_admission_scope")
+      .$type<"organization" | "trusted_internal" | "unclassified">()
+      .notNull()
+      .default("unclassified"),
     sandbox_id: text("sandbox_id"),
     status: text("status").$type<AgentSandboxStatus>().notNull().default("pending"),
     lifecycle_job_id: uuid("lifecycle_job_id"),

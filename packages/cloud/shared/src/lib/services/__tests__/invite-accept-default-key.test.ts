@@ -242,6 +242,9 @@ beforeAll(async () => {
     );
     const {
       personalSharedGroupBindings,
+      personalSharedGroupClaims,
+      personalSharedGroupDeliveryAttempts,
+      personalSharedGroupDeliveryReceipts,
       personalSharedGroupJoinChallenges,
       personalSharedGroupParticipants,
     } = await import("../../../db/schemas/personal-shared-groups");
@@ -273,9 +276,12 @@ beforeAll(async () => {
         users,
         userIdentities,
         personalAccountConvergences,
+        personalSharedGroupClaims,
         personalSharedGroupBindings,
         personalSharedGroupJoinChallenges,
+        personalSharedGroupDeliveryReceipts,
         personalSharedGroupParticipants,
+        personalSharedGroupDeliveryAttempts,
         organizationInvites,
         apiKeys,
         creditTransactions,

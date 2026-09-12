@@ -1,12 +1,14 @@
 /** Real-browser regression coverage for bounded optional Cloud actions. */
 
 import { expect, type Locator, test } from "@playwright/test";
+import type { CloudLiveRuntimeBinding } from "../cloud-live-continuity-contract";
 import { installDedicatedAdoptionConsentProof } from "../cloud-live-dedicated-adoption-consent";
 import {
   CloudLiveDedicatedConfirmationRequiredError,
   CloudLiveOptionalActionDeadlineError,
   CloudLivePersonalIdentityDeadlineError,
   CloudLivePersonalIdentityRecoveryError,
+  CloudLiveRequiredActionUnavailableError,
   clickCloudLiveOptionalAction,
   createCloudLiveDedicatedConsentGate,
   prepareCloudLivePersonalIdentity,
@@ -15,6 +17,127 @@ import {
 
 test.describe("Cloud live optional action boundary", () => {
   test.use({ serviceWorkers: "block" });
+
+  test("fails closed when the required Cloud runtime choice is absent", async ({
+    page,
+  }) => {
+    await page.setContent(`<main data-testid="chat-overlay"></main>`);
+
+    const result = await clickCloudLiveOptionalAction(
+      page.getByTestId("runtime-cloud"),
+      {
+        phase: "pre-identity-runtime-choice",
+        action: "runtime-cloud",
+        offerTimeoutMs: 100,
+        actionTimeoutMs: 100,
+        required: true,
+      },
+    ).then(
+      () => ({ ok: true as const }),
+      (error: unknown) => ({ ok: false as const, error }),
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok)
+      throw new Error("absent required action unexpectedly passed");
+    expect(result.error).toBeInstanceOf(
+      CloudLiveRequiredActionUnavailableError,
+    );
+    expect(result.error).toMatchObject({
+      name: "CloudLiveRequiredActionUnavailableError",
+      code: "CLOUD_LIVE_REQUIRED_ACTION_UNAVAILABLE",
+      phase: "pre-identity-runtime-choice",
+      action: "runtime-cloud",
+    });
+    expect(String(result.error)).not.toMatch(/data-testid|locator|selector/);
+  });
+
+  const referenceBinding: CloudLiveRuntimeBinding = {
+    personalIdentity: "personal-test-account",
+    runtimeBinding: "dedicated-test-agent",
+    runtime: "dedicated",
+    apiBase: "https://api.test/agents/dedicated-test-agent",
+  };
+
+  for (const resolvesDuringChoice of [false, true]) {
+    test(`accepts the verified existing identity ${resolvesDuringChoice ? "while the runtime choice disappears" : "before the overlay opens"}`, async ({
+      page,
+    }) => {
+      await page.setContent(
+        resolvesDuringChoice
+          ? '<main data-testid="chat-overlay">Connecting</main>'
+          : "<main>Connected</main>",
+      );
+      let binding: CloudLiveRuntimeBinding | null = resolvesDuringChoice
+        ? null
+        : referenceBinding;
+      let choiceAttempted = false;
+
+      await prepareCloudLivePersonalIdentity({
+        chooseRuntime: true,
+        chatOverlay: page.getByTestId("chat-overlay"),
+        chatOverlayTimeoutMs: 100,
+        resolvedIdentity: {
+          reference: referenceBinding,
+          readBinding: async () => binding,
+        },
+        chooseRuntimeAction: async () => {
+          choiceAttempted = true;
+          binding = referenceBinding;
+          await clickCloudLiveOptionalAction(
+            page.getByTestId("runtime-cloud"),
+            {
+              phase: "pre-identity-runtime-choice",
+              action: "runtime-cloud",
+              offerTimeoutMs: 100,
+              actionTimeoutMs: 100,
+              required: true,
+            },
+          );
+        },
+      });
+      expect(choiceAttempted).toBe(resolvesDuringChoice);
+    });
+  }
+
+  for (const [label, binding] of [
+    ["missing", null],
+    ["different account", { ...referenceBinding, personalIdentity: "other" }],
+    ["different agent", { ...referenceBinding, runtimeBinding: "other" }],
+    ["shared runtime", { ...referenceBinding, runtime: "shared" }],
+    ["different API", { ...referenceBinding, apiBase: "https://other.test" }],
+  ] as const) {
+    test(`rejects a missing choice with ${label} identity`, async ({
+      page,
+    }) => {
+      await page.setContent(
+        '<main data-testid="chat-overlay">Connecting</main>',
+      );
+      await expect(
+        prepareCloudLivePersonalIdentity({
+          chooseRuntime: true,
+          chatOverlay: page.getByTestId("chat-overlay"),
+          chatOverlayTimeoutMs: 100,
+          resolvedIdentity: {
+            reference: referenceBinding,
+            readBinding: async () => binding,
+          },
+          chooseRuntimeAction: async () => {
+            await clickCloudLiveOptionalAction(
+              page.getByTestId("runtime-cloud"),
+              {
+                phase: "pre-identity-runtime-choice",
+                action: "runtime-cloud",
+                offerTimeoutMs: 100,
+                actionTimeoutMs: 100,
+                required: true,
+              },
+            );
+          },
+        }),
+      ).rejects.toBeInstanceOf(CloudLiveRequiredActionUnavailableError);
+    });
+  }
 
   test("keeps Dedicated activation and adoption confirmation fail-closed by default", async ({
     page,
@@ -371,8 +494,11 @@ test.describe("Cloud live optional action boundary", () => {
     }
   });
 
-  test("clicks a stable offered action", async ({ page }) => {
-    await page.setContent(`
+  for (const required of [false, true]) {
+    test(`clicks a stable offered action (required=${required})`, async ({
+      page,
+    }) => {
+      await page.setContent(`
       <button data-testid="runtime-cloud">Sign in</button>
       <output data-testid="click-count">0</output>
       <script>
@@ -385,16 +511,18 @@ test.describe("Cloud live optional action boundary", () => {
       </script>
     `);
 
-    await expect(
-      clickCloudLiveOptionalAction(page.getByTestId("runtime-cloud"), {
-        phase: "pre-identity-runtime-choice",
-        action: "runtime-cloud",
-        offerTimeoutMs: 500,
-        actionTimeoutMs: 500,
-      }),
-    ).resolves.toBe(true);
-    await expect(page.getByTestId("click-count")).toHaveText("1");
-  });
+      await expect(
+        clickCloudLiveOptionalAction(page.getByTestId("runtime-cloud"), {
+          phase: "pre-identity-runtime-choice",
+          action: "runtime-cloud",
+          offerTimeoutMs: 500,
+          actionTimeoutMs: 500,
+          required,
+        }),
+      ).resolves.toBe(true);
+      await expect(page.getByTestId("click-count")).toHaveText("1");
+    });
+  }
 
   test("clicks a stable Personal identity retry", async ({ page }) => {
     await page.setContent(`
@@ -585,6 +713,7 @@ test.describe("Cloud live optional action boundary", () => {
             data: {
               quoteId: "private-quote",
               dedicatedAgentId: "private-dedicated",
+              adoptionState: "available",
               status: "stopped",
               startsCompute: true,
               hourlyRateUsd: 0.01,
@@ -594,6 +723,8 @@ test.describe("Cloud live optional action boundary", () => {
               balanceUsd: 115.54059,
               deficitUsd: 0,
               stateDisposition: "verified_backup_present",
+              canAdopt: true,
+              requiresCatalogRestore: false,
               requiresConfirmation: true,
               action: "adopt_existing_dedicated",
             },
@@ -603,11 +734,17 @@ test.describe("Cloud live optional action boundary", () => {
     );
     await page.goto("/");
     await page.setContent(`
-      <article data-testid="thread-line">
-        <p>Use your existing Dedicated agent? Current status: stopped. Hosting: $0.01/hour ($0.24/day). Balance: $115.54; minimum required: $0.72 (3 days of runway); deficit: $0.00. This action starts Dedicated compute and will restore its reviewed backup.</p>
-        <button data-testid="dedicated-adoption-confirm">Confirm and continue</button>
-        <button data-testid="dedicated-adoption-cancel">Not now</button>
-      </article>
+      <div data-testid="dedicated-adoption-review">
+        <h1>Bring this Dedicated Eliza online?</h1>
+        <p>We found an existing Dedicated Eliza for this account. Confirming reuses it — it does not create another one.</p>
+        <p>This starts Dedicated hosting at $0.24/day ($0.01/hr).</p>
+        <p>Balance: $115.54 · Required: $0.72 (3 days of runway)</p>
+        <p>Current Dedicated status: stopped.</p>
+        <p>Cloud will restore its reviewed backup before switching.</p>
+        <p>Your Shared Eliza keeps working until Dedicated is healthy. If setup fails or you cancel, nothing switches.</p>
+        <button data-testid="dedicated-adoption-cancel">Cancel setup</button>
+        <button data-testid="dedicated-adoption-confirm">Start Dedicated</button>
+      </div>
       <output data-testid="confirmation-count">0</output>
       <script>
         document.addEventListener("click", (event) => {

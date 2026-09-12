@@ -10,7 +10,7 @@
  * bypass, source precedence, and the re-read listeners.
  */
 
-import { act, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const capacitorState = { isNative: false };
@@ -18,6 +18,7 @@ const capacitorState = { isNative: false };
 vi.mock("@capacitor/core", () => ({
   Capacitor: {
     isNativePlatform: () => capacitorState.isNative,
+    registerPlugin: () => ({}),
   },
 }));
 
@@ -113,6 +114,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
   vi.unstubAllGlobals();
 });
 
@@ -179,6 +181,56 @@ describe("useSessionAuth", () => {
       expect(result.current.authenticated).toBe(false);
       expect(result.current.user).toBeNull();
     });
+
+    it("does not claim authentication when the provider has no user identity", () => {
+      const { result } = renderSessionAuth(
+        makeProviderAuth({
+          isAuthenticated: true,
+          isLoading: false,
+          user: null,
+        }),
+      );
+
+      expect(result.current.ready).toBe(true);
+      expect(result.current.authenticated).toBe(false);
+      expect(result.current.user).toBeNull();
+    });
+
+    it("does not claim authentication for a blank provider user id", () => {
+      const { result } = renderSessionAuth(
+        makeProviderAuth({
+          isAuthenticated: true,
+          isLoading: false,
+          user: { id: "   ", email: "unknown@example.com" },
+        }),
+      );
+
+      expect(result.current.authenticated).toBe(false);
+      expect(result.current.user).toBeNull();
+    });
+
+    it("does not let a signed-out provider's stale user override the stored session identity", () => {
+      storage.setItem(
+        "steward_session_token",
+        makeJwt({
+          userId: "stored_user",
+          email: "stored@example.com",
+          exp: FUTURE_EXP,
+        }),
+      );
+
+      const { result } = renderSessionAuth(
+        makeProviderAuth({
+          isAuthenticated: false,
+          isLoading: false,
+          user: { id: "stale_provider_user", email: "stale@example.com" },
+        }),
+      );
+
+      expect(result.current.authenticated).toBe(true);
+      expect(result.current.user?.id).toBe("stored_user");
+      expect(result.current.user?.email).toBe("stored@example.com");
+    });
   });
 
   describe("persisted JWT (page-reload reality: no provider mounted)", () => {
@@ -238,6 +290,18 @@ describe("useSessionAuth", () => {
       storage.setItem(
         "steward_session_token",
         makeJwt({ userId: "u1", exp: Math.floor(Date.now() / 1000) - 600 }),
+      );
+
+      const { result } = renderSessionAuth();
+
+      expect(result.current.authenticated).toBe(false);
+      expect(result.current.user).toBeNull();
+    });
+
+    it("ignores a JWT without the Steward expiry claim", () => {
+      storage.setItem(
+        "steward_session_token",
+        makeJwt({ userId: "foreign_user", email: "foreign@example.com" }),
       );
 
       const { result } = renderSessionAuth();

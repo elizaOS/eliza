@@ -7,8 +7,15 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { ElizaError } from "@elizaos/core";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { ElizaError, resolveSurfaceManifest } from "@elizaos/core";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { type ReactElement, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -16,6 +23,12 @@ import {
   type ModuleCacheTelemetryEvent,
 } from "../../cache-telemetry";
 import { APP_PAUSE_EVENT } from "../../events";
+import { Field } from "../../spatial/primitives";
+import {
+  SurfaceRealmDeniedError,
+  SurfaceRealmScope,
+  setActiveSurfaceRealmScope,
+} from "../../surface-realm-broker";
 import {
   __resetDynamicViewLoaderCacheForTests,
   DynamicViewLoader,
@@ -457,6 +470,172 @@ describe("DynamicViewLoader", () => {
     vi.useRealTimers();
   });
 
+  it("keeps a retained inactive module from acquiring the foreground owner's handles", async () => {
+    const navigations: string[] = [];
+    const makeScope = (id: string) =>
+      new SurfaceRealmScope(
+        resolveSurfaceManifest({ surface: { capabilities: ["navigate"] } }),
+        id,
+        window.localStorage,
+        (path) => navigations.push(`${id}:${path}`),
+      );
+    const loads: Record<string, number> = {};
+    const handles: Record<string, (path: string) => void> = {};
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = async (url) => {
+      loads[url] = (loads[url] ?? 0) + 1;
+      const external = await hostImport("@elizaos/ui/app-navigate-view");
+      const navigate = external.navigateBrowserPath as (path: string) => void;
+      handles[url] = navigate;
+      return {
+        default: () => (
+          <button type="button" onClick={() => navigate("/settings")}>
+            {url}
+          </button>
+        ),
+      };
+    };
+    const firstUrl = "/api/views/retained-a/bundle.js";
+    const secondUrl = "/api/views/foreground-b/bundle.js";
+    setActiveSurfaceRealmScope(makeScope("retained-a"));
+    try {
+      const rendered = render(
+        <div>
+          <DynamicViewLoader bundleUrl={firstUrl} viewId="retained-a" />
+        </div>,
+      );
+      await screen.findByRole("button", { name: firstUrl });
+      act(() => setActiveSurfaceRealmScope(makeScope("foreground-b")));
+      rendered.rerender(
+        <div>
+          <DynamicViewLoader bundleUrl={firstUrl} viewId="retained-a" />
+          <DynamicViewLoader bundleUrl={secondUrl} viewId="foreground-b" />
+        </div>,
+      );
+      fireEvent.click(await screen.findByRole("button", { name: secondUrl }));
+      expect(() => handles[firstUrl]("/borrowed")).toThrow(
+        SurfaceRealmDeniedError,
+      );
+      expect(loads[firstUrl]).toBe(1);
+      expect(navigations).toEqual(["foreground-b:/settings"]);
+    } finally {
+      cleanup();
+      setActiveSurfaceRealmScope(null);
+    }
+  }, 120_000);
+
+  it("loads both admitted split-layout members with default-deny handles", async () => {
+    const navigations: Array<(path: string) => void> = [];
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = async (url) => {
+      const external = await hostImport("@elizaos/ui/app-navigate-view");
+      navigations.push(external.navigateBrowserPath as (path: string) => void);
+      return { default: () => <div>{url}</div> };
+    };
+    const scope = new SurfaceRealmScope(
+      resolveSurfaceManifest(null),
+      "layout:a+b",
+      window.localStorage,
+      () => {
+        throw new Error("Layout unexpectedly navigated");
+      },
+      ["a", "b"],
+    );
+    setActiveSurfaceRealmScope(scope);
+    try {
+      render(
+        <>
+          <DynamicViewLoader bundleUrl="/api/views/a/bundle.js" viewId="a" />
+          <DynamicViewLoader bundleUrl="/api/views/b/bundle.js" viewId="b" />
+        </>,
+      );
+      await screen.findByText("/api/views/a/bundle.js");
+      await screen.findByText("/api/views/b/bundle.js");
+      for (const navigate of navigations)
+        expect(() => navigate("/settings")).toThrow(SurfaceRealmDeniedError);
+    } finally {
+      cleanup();
+      setActiveSurfaceRealmScope(null);
+    }
+  }, 120_000);
+
+  it("re-evaluates mounted namespace handles when the same URL gets a new scope", async () => {
+    const navigations: string[] = [];
+    const manifest = resolveSurfaceManifest({
+      surface: { capabilities: ["navigate", "storage"] },
+    });
+    const first = new SurfaceRealmScope(
+      manifest,
+      "scope-panel",
+      window.localStorage,
+      (path) => navigations.push(`first:${path}`),
+    );
+    const second = new SurfaceRealmScope(
+      manifest,
+      "scope-panel",
+      window.localStorage,
+      (path) => navigations.push(`second:${path}`),
+    );
+    const handles: Array<{
+      navigate: (path: string) => void;
+      write: (key: string, value: string) => Promise<void>;
+    }> = [];
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = async () => {
+      const navigation = await hostImport("@elizaos/ui/app-navigate-view");
+      const bridge = await hostImport("@elizaos/ui/bridge");
+      if (
+        typeof navigation.navigateBrowserPath !== "function" ||
+        typeof bridge.setStorageValue !== "function"
+      )
+        throw new Error("Missing broker handles");
+      const handle = {
+        navigate: navigation.navigateBrowserPath as (path: string) => void,
+        write: bridge.setStorageValue as (
+          key: string,
+          value: string,
+        ) => Promise<void>,
+      };
+      handles.push(handle);
+      const label = `Owned module ${handles.length}`;
+      return {
+        default: () => (
+          <button type="button" onClick={() => handle.navigate("/settings")}>
+            {label}
+          </button>
+        ),
+      };
+    };
+    setActiveSurfaceRealmScope(first);
+    try {
+      render(
+        <DynamicViewLoader
+          bundleUrl="/api/views/scope-panel/bundle.js"
+          viewId="scope-panel"
+        />,
+      );
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Owned module 1" }),
+      );
+      await handles[0].write("scope-probe", "first");
+      expect(window.localStorage.getItem("scope-probe")).toBe("first");
+      act(() => setActiveSurfaceRealmScope(second));
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Owned module 2" }),
+      );
+      expect(() => handles[0].navigate("/old")).toThrow(
+        SurfaceRealmDeniedError,
+      );
+      await expect(handles[0].write("scope-probe", "stale")).rejects.toThrow(
+        SurfaceRealmDeniedError,
+      );
+      await handles[1].write("scope-probe", "second");
+      expect(window.localStorage.getItem("scope-probe")).toBe("second");
+      expect(navigations).toEqual(["first:/settings", "second:/settings"]);
+    } finally {
+      cleanup();
+      setActiveSurfaceRealmScope(null);
+      window.localStorage.removeItem("scope-probe");
+    }
+  }, 120_000);
+
   it("imports absolute remote bundleUrl directly", async () => {
     const bundleUrl = "https://capability.example.test/assets/remote-panel.js";
     const importBundle = vi.fn(async () => ({
@@ -874,6 +1053,84 @@ describe("DynamicViewLoader", () => {
       success: true,
       result: { filled: false, reason: "value must be a string" },
     });
+  });
+
+  it("filters a spatial view through the real agent-fill bridge", async () => {
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
+      default: function StatusPanel() {
+        const [status, setStatus] = useState<string>();
+        return (
+          <section>
+            <Field
+              kind="select"
+              label="Status"
+              agent="goal-status-filter"
+              value={status}
+              options={["All goals", "Active", "Paused"]}
+              onChange={setStatus}
+            />
+            {status !== "Paused" && <p>Run a half marathon</p>}
+            {status !== "Active" && <p>Learn conversational Spanish</p>}
+          </section>
+        );
+      },
+    }));
+    render(
+      <DynamicViewLoader
+        bundleUrl="https://capability.example.test/assets/status.js"
+        viewId="status.view"
+        surface={AGENT_SURFACE_MANIFEST}
+      />,
+    );
+    await screen.findByText("Learn conversational Spanish");
+    const { dispatchViewInteract } = await import("./view-interact-registry");
+    await dispatchViewInteract(
+      "status.view",
+      "gui",
+      "list-elements",
+      undefined,
+      "req-status-unselected",
+    );
+    expect(sendWsMessage).toHaveBeenCalledWith({
+      type: "view:interact:result",
+      requestId: "req-status-unselected",
+      success: true,
+      result: expect.arrayContaining([
+        expect.objectContaining({
+          id: "goal-status-filter",
+          value: "",
+          fillable: true,
+        }),
+      ]),
+    });
+    await act(async () => {
+      await dispatchViewInteract(
+        "status.view",
+        "gui",
+        "agent-fill",
+        { id: "goal-status-filter", value: "Active" },
+        "req-status-active",
+      );
+    });
+    expect(screen.queryByText("Learn conversational Spanish")).toBeNull();
+    expect(screen.getByText("Run a half marathon")).toBeTruthy();
+    expect(sendWsMessage).toHaveBeenCalledWith({
+      type: "view:interact:result",
+      requestId: "req-status-active",
+      success: true,
+      result: { ok: true, id: "goal-status-filter", value: "Active" },
+    });
+    await act(async () => {
+      await dispatchViewInteract(
+        "status.view",
+        "gui",
+        "agent-fill",
+        { id: "goal-status-filter", value: "Paused" },
+        "req-status-paused",
+      );
+    });
+    expect(screen.queryByText("Run a half marathon")).toBeNull();
+    expect(screen.getByText("Learn conversational Spanish")).toBeTruthy();
   });
 
   it("redacts and refuses raw DOM sensitive fields", async () => {
@@ -1400,7 +1657,9 @@ describe("DynamicViewLoader", () => {
       <DynamicViewLoader bundleUrl={bundleUrl} viewId="late.cleanup.view" />,
     );
     expect(
-      screen.getByText("Loading view…").closest('[data-view-status="loading"]'),
+      screen
+        .getByText("Loading view…")
+        .closest('[role="status"][aria-busy="true"]'),
     ).toBeTruthy();
 
     rendered.unmount();

@@ -9,6 +9,7 @@ import {
 	isLinkedAccountProviderId,
 	normalizeLinkedAccountFlagConfig,
 	normalizeLinkedAccountFlagsConfig,
+	normalizeLinkedAccountsConfig,
 } from "./service-routing.ts";
 
 describe("isLinkedAccountProviderId", () => {
@@ -18,6 +19,8 @@ describe("isLinkedAccountProviderId", () => {
 			"openai-codex",
 			"anthropic-api",
 			"cerebras-api",
+			"openrouter-api",
+			"xai-api",
 		]) {
 			expect(isLinkedAccountProviderId(id)).toBe(true);
 		}
@@ -60,5 +63,15 @@ describe("normalizeLinkedAccountFlagsConfig", () => {
 				acct2: {},
 			}),
 		).toEqual({ acct1: { userId: "u" } });
+	});
+
+	it("preserves the packaged-app compatibility alias for legacy flag maps", () => {
+		expect(
+			normalizeLinkedAccountsConfig({
+				elizacloud: { status: "linked", source: "api-key" },
+			}),
+		).toEqual({
+			elizacloud: { status: "linked", source: "api-key" },
+		});
 	});
 });

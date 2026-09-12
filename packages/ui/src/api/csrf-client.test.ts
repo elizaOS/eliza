@@ -71,6 +71,36 @@ function clearCookie(name: string) {
 }
 
 describe("fetchWithCsrf", () => {
+  it("authenticates audio across same-host ports without sharing CSRF with other hosts or schemes", async () => {
+    setCookie("eliza_csrf=desktop-session-csrf; path=/");
+    const audio = new Uint8Array([82, 73, 70, 70]);
+    const api = new URL("/api/asr/cloud", location.href);
+    api.port = location.port === "31337" ? "31338" : "31337";
+
+    await fetchWithCsrf(api.href, { method: "POST", body: audio });
+    const call =
+      fetchTransportMock.fetchAgentTransport.request.mock.calls.at(-1);
+    if (!call) throw new Error("Expected authenticated audio request");
+    const [, request] = call;
+    expect(new Headers(request.headers).get("x-eliza-csrf")).toBe(
+      "desktop-session-csrf",
+    );
+    expect(request.credentials).toBe("include");
+    expect(request.body).toBe(audio);
+
+    for (const target of [
+      `${api.protocol}//unrelated.example/api/asr/cloud`,
+      `${api.protocol === "http:" ? "https:" : "http:"}//${api.host}/api/asr/cloud`,
+    ]) {
+      await fetchWithCsrf(target, { method: "POST", body: audio });
+      const isolatedCall =
+        fetchTransportMock.fetchAgentTransport.request.mock.calls.at(-1);
+      if (!isolatedCall) throw new Error("Expected isolated audio request");
+      const [, isolated] = isolatedCall;
+      expect(new Headers(isolated.headers).get("x-eliza-csrf")).toBeNull();
+    }
+  });
+
   beforeEach(() => {
     clearCookie("eliza_csrf");
     clearCookie("other");

@@ -108,139 +108,146 @@ export function MessagesSpatialView({
     snapshot.composeBody.trim().length > 0;
 
   return (
-    <Card gap={1} padding={1}>
-      <HStack gap={1} align="center">
-        <Text style="caption" tone={roleTone(snapshot)} grow={1}>
-          {roleLabel(snapshot)}
-        </Text>
-        {unread > 0 ? (
-          <Text style="caption" tone="primary">
-            {`${unread} unread`}
+    <div
+      className="eliza-chat-scroll min-h-0 overflow-y-auto"
+      data-scroll-cert-scroller
+    >
+      <Card gap={1} padding={1}>
+        <HStack gap={1} align="center">
+          <Text style="caption" tone={roleTone(snapshot)} grow={1}>
+            {roleLabel(snapshot)}
+          </Text>
+          {unread > 0 ? (
+            <Text style="caption" tone="primary">
+              {`${unread} unread`}
+            </Text>
+          ) : null}
+          <Text style="caption" tone="muted">
+            {snapshot.loading
+              ? "loading"
+              : `${snapshot.threads.length} threads`}
+          </Text>
+        </HStack>
+
+        {snapshot.error ? (
+          <Text tone="danger" style="caption">
+            {snapshot.error}
           </Text>
         ) : null}
-        <Text style="caption" tone="muted">
-          {snapshot.loading ? "loading" : `${snapshot.threads.length} threads`}
-        </Text>
-      </HStack>
 
-      {snapshot.error ? (
-        <Text tone="danger" style="caption">
-          {snapshot.error}
-        </Text>
-      ) : null}
+        {!snapshot.ownsSmsRole ? (
+          <Button
+            variant="outline"
+            tone="warning"
+            agent="request-sms-role"
+            onPress={dispatch("request-sms-role")}
+          >
+            Set default SMS
+          </Button>
+        ) : null}
 
-      {!snapshot.ownsSmsRole ? (
-        <Button
-          variant="outline"
-          tone="warning"
-          agent="request-sms-role"
-          onPress={dispatch("request-sms-role")}
-        >
-          Set default SMS
-        </Button>
-      ) : null}
-
-      <Divider label="threads" />
-      {snapshot.threads.length === 0 ? (
-        <Text tone="muted" align="center" style="caption">
-          None
-        </Text>
-      ) : (
-        <List gap={0}>
-          {snapshot.threads.slice(0, 8).map((thread) => {
-            const selected = thread.id === snapshot.selectedThreadId;
-            return (
-              <HStack key={thread.id} gap={1} align="center">
-                <Text tone={directionTone(thread.lastMessage.type)}>
-                  {directionMark(thread.lastMessage.type)}
-                </Text>
-                <VStack gap={0} grow={1}>
-                  <Text bold wrap={false}>
-                    {thread.address || "Unknown"}
+        <Divider label="threads" />
+        {snapshot.threads.length === 0 ? (
+          <Text tone="muted" align="center" style="caption">
+            None
+          </Text>
+        ) : (
+          <List gap={0}>
+            {snapshot.threads.slice(0, 8).map((thread) => {
+              const selected = thread.id === snapshot.selectedThreadId;
+              return (
+                <HStack key={thread.id} gap={1} align="center">
+                  <Text tone={directionTone(thread.lastMessage.type)}>
+                    {directionMark(thread.lastMessage.type)}
                   </Text>
+                  <VStack gap={0} grow={1}>
+                    <Text bold wrap={false}>
+                      {thread.address || "Unknown"}
+                    </Text>
+                    <Text style="caption" tone="muted" wrap={false}>
+                      {thread.lastMessage.body}
+                    </Text>
+                  </VStack>
                   <Text style="caption" tone="muted" wrap={false}>
-                    {thread.lastMessage.body}
+                    {formatMessageTime(thread.lastMessage.date)}
                   </Text>
-                </VStack>
-                <Text style="caption" tone="muted" wrap={false}>
-                  {formatMessageTime(thread.lastMessage.date)}
+                  {thread.unreadCount > 0 ? (
+                    <Text style="caption" tone="primary">
+                      {String(thread.unreadCount)}
+                    </Text>
+                  ) : null}
+                  <Button
+                    variant={selected ? "solid" : "ghost"}
+                    tone="primary"
+                    agent={`open-thread-${thread.id}`}
+                    onPress={dispatch(`open-thread:${thread.id}`)}
+                  >
+                    Open
+                  </Button>
+                </HStack>
+              );
+            })}
+          </List>
+        )}
+
+        <Divider label={selectedThread ? selectedThread.address : "compose"} />
+        {selectedThread ? (
+          <List gap={0}>
+            {selectedThread.messages.slice(-6).map((message) => (
+              <HStack key={message.id} gap={1} align="start">
+                <Text tone={directionTone(message.type)} style="caption">
+                  {messageDirection(message.type)}
                 </Text>
-                {thread.unreadCount > 0 ? (
-                  <Text style="caption" tone="primary">
-                    {String(thread.unreadCount)}
-                  </Text>
-                ) : null}
-                <Button
-                  variant={selected ? "solid" : "ghost"}
-                  tone="primary"
-                  agent={`open-thread-${thread.id}`}
-                  onPress={dispatch(`open-thread:${thread.id}`)}
-                >
-                  Open
-                </Button>
+                <Text grow={1}>{message.body}</Text>
+                <Text style="caption" tone="muted" wrap={false}>
+                  {formatMessageTime(message.date)}
+                </Text>
               </HStack>
-            );
-          })}
-        </List>
-      )}
+            ))}
+          </List>
+        ) : null}
 
-      <Divider label={selectedThread ? selectedThread.address : "compose"} />
-      {selectedThread ? (
-        <List gap={0}>
-          {selectedThread.messages.slice(-6).map((message) => (
-            <HStack key={message.id} gap={1} align="start">
-              <Text tone={directionTone(message.type)} style="caption">
-                {messageDirection(message.type)}
-              </Text>
-              <Text grow={1}>{message.body}</Text>
-              <Text style="caption" tone="muted" wrap={false}>
-                {formatMessageTime(message.date)}
-              </Text>
-            </HStack>
-          ))}
-        </List>
-      ) : null}
-
-      <Field
-        label="To"
-        value={snapshot.composeAddress}
-        placeholder="phone number"
-        agent="compose-address"
-        onChange={(value) => onAction?.(`compose-address:${value}`)}
-      />
-      <Field
-        label="Body"
-        kind="textarea"
-        value={snapshot.composeBody}
-        placeholder="message"
-        agent="compose-body"
-        onChange={(value) => onAction?.(`compose-body:${value}`)}
-      />
-      <HStack gap={1} wrap>
-        <Button
-          grow={1}
-          disabled={!canSend}
-          variant={canSend ? "solid" : "outline"}
-          tone={canSend ? "primary" : "default"}
-          agent={{ id: "messages-send", role: "button", label: "Send SMS" }}
-          onPress={dispatch("send")}
-        >
-          {snapshot.sending ? "Sending…" : "Send"}
-        </Button>
-        <Button
-          variant="outline"
-          tone="default"
-          agent={{
-            id: "messages-refresh",
-            role: "button",
-            label: "Refresh messages",
-          }}
-          disabled={snapshot.loading}
-          onPress={dispatch("refresh")}
-        >
-          {snapshot.loading ? "Refreshing…" : "Refresh"}
-        </Button>
-      </HStack>
-    </Card>
+        <Field
+          label="To"
+          value={snapshot.composeAddress}
+          placeholder="phone number"
+          agent="compose-address"
+          onChange={(value) => onAction?.(`compose-address:${value}`)}
+        />
+        <Field
+          label="Body"
+          kind="textarea"
+          value={snapshot.composeBody}
+          placeholder="message"
+          agent="compose-body"
+          onChange={(value) => onAction?.(`compose-body:${value}`)}
+        />
+        <HStack gap={1} wrap>
+          <Button
+            grow={1}
+            disabled={!canSend}
+            variant={canSend ? "solid" : "outline"}
+            tone={canSend ? "primary" : "default"}
+            agent={{ id: "messages-send", role: "button", label: "Send SMS" }}
+            onPress={dispatch("send")}
+          >
+            {snapshot.sending ? "Sending…" : "Send"}
+          </Button>
+          <Button
+            variant="outline"
+            tone="default"
+            agent={{
+              id: "messages-refresh",
+              role: "button",
+              label: "Refresh messages",
+            }}
+            disabled={snapshot.loading}
+            onPress={dispatch("refresh")}
+          >
+            {snapshot.loading ? "Refreshing…" : "Refresh"}
+          </Button>
+        </HStack>
+      </Card>
+    </div>
   );
 }

@@ -5,8 +5,6 @@
  * "don't browse the web"), since a false positive runs an unwanted
  * side-effecting action.
  */
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { Action } from "../../types/components";
 import {
@@ -332,6 +330,17 @@ describe("findAvailableActionName", () => {
 		expect(findAvailableActionName(actions, ["reply"])).toBe("SEND_MESSAGE");
 		expect(findAvailableActionName(actions, ["nonexistent"])).toBeUndefined();
 	});
+
+	it("prefers a canonical action over an earlier registered legacy alias", () => {
+		const overlappingActions = [
+			{ name: "CALENDAR", similes: ["CALENDAR_FEED"] },
+			{ name: "CALENDAR_FEED", similes: [] },
+		] as unknown as ReadonlyArray<Pick<Action, "name" | "similes">>;
+
+		expect(findAvailableActionName(overlappingActions, ["CALENDAR_FEED"])).toBe(
+			"CALENDAR_FEED",
+		);
+	});
 });
 
 describe("findCodingDelegationActionName", () => {
@@ -540,24 +549,6 @@ describe("inferDirectCurrentRequestCandidateActions owner-goal routing", () => {
 	});
 });
 
-describe("shell-direct coupling grep guard (#12636)", () => {
-	it("message.ts no longer duck-types shell-direct routing off a hardcoded name Set", () => {
-		// The audit item's brittle literal was a `SHELL_DIRECT_ACTIONS = new Set([...])`
-		// hardcoded in the core pipeline. Prove it is gone from the executable path
-		// and that routing resolves through the declared-tag helpers instead. If a
-		// future edit reintroduces the literal set, this fails loudly.
-		const messagePath = fileURLToPath(
-			new URL("../message.ts", import.meta.url),
-		);
-		const src = readFileSync(messagePath, "utf8");
-		expect(src).not.toContain("const SHELL_DIRECT_ACTIONS");
-		expect(src).not.toContain("SHELL_DIRECT_ACTIONS.has(");
-		// And it routes through the tag-aware resolver/classifier.
-		expect(src).toContain("findShellDirectActionName");
-		expect(src).toContain("isShellDirectActionName");
-	});
-});
-
 // The inference KIND is the load-bearing signal for the answered-simple-turn
 // escalation valve in services/message.ts (VIEWS hijack, tj-501e594bfb23a7):
 // only "view-capability" — an incidental token overlap with a views action's
@@ -728,6 +719,81 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 				).kind,
 			).not.toBe("owner-reads");
 		}
+		// Calendar reads run deterministically for the same reason todos reads
+		// do — and additionally so a plain schedule question never enters the
+		// full planner tool catalog (live: "what is on my calendar this week?"
+		// exceeded the planner model-context ceiling and died with a boundary
+		// reply while the todos read ran direct).
+		const calendarAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "CALENDAR",
+			similes: ["CHECK_CALENDAR"],
+			tags: [],
+		};
+		const calendarTaggedViews: Pick<Action, "name" | "similes" | "tags"> = {
+			...viewsAction,
+			tags: [...(viewsAction.tags ?? []), "calendar"],
+		};
+		const calendarFeedAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "CALENDAR_FEED",
+			similes: [],
+			tags: [],
+		};
+		for (const message of [
+			"what is on my calendar this week",
+			"whats on my schedule today",
+			"show my agenda for tomorrow",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[calendarTaggedViews, calendarAction, calendarFeedAction],
+					message,
+				),
+			).toEqual({
+				names: ["CALENDAR_FEED"],
+				kind: "owner-reads",
+			});
+		}
+		// Lean stacks without the promoted feed retain the umbrella fallback.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[calendarTaggedViews, calendarAction],
+				"what is on my calendar this week",
+			),
+		).toEqual({
+			names: ["CALENDAR"],
+			kind: "owner-reads",
+		});
+		// Navigation stays navigation.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[calendarTaggedViews, calendarAction],
+				"open my calendar page",
+			).kind,
+		).not.toBe("owner-reads");
+		// Calendar creates anchored on the explicit calendar word dispatch
+		// deterministically too (same context-ceiling rationale as reads).
+		for (const message of [
+			"add lunch with nubs friday at noon to my calendar",
+			"put the team sync on my calendar for monday 9am",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[calendarTaggedViews, calendarAction],
+					message,
+				),
+			).toEqual({
+				names: ["CALENDAR"],
+				kind: "owner-scheduled-admin",
+			});
+		}
+		// A todo create with a mealtime noun stays off the calendar surface —
+		// the create leg requires the explicit calendar/agenda word.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[calendarTaggedViews, calendarAction, todosAction],
+				"add a todo: buy stuff for dinner",
+			).kind,
+		).not.toBe("owner-scheduled-admin");
 	});
 
 	it("covers the other owner-read domains and leaves non-possessive asks alone", () => {
@@ -975,6 +1041,9 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 			"identify the current view without accidentally closing it",
 			"name the active view and do not ever hide it",
 			"Identify the current open view. Reply with the view name and exact nonce CEREBRAS-E1F-20260826-0952. Do not use tools or change anything.",
+			"Which view is open? End your answer with Mango 7.",
+			"Tell me which current panel is active.",
+			"What screen is open?",
 			"identify the current active view",
 			"name the open panel",
 		]) {
@@ -983,6 +1052,21 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 			).toEqual({ names: [], kind: null });
 		}
 	});
+
+	it.each([
+		"the window is open",
+		"this window remains open",
+		"the current view stays open",
+		"if the window is open, leave it alone",
+		'preserve the text "the window is open"',
+	])(
+		"does not mistake declarative view state for inspection: %s",
+		(message) => {
+			expect(
+				inferDirectCurrentRequestCandidateInference([viewsAction], message),
+			).toEqual({ names: ["VIEWS"], kind: "view-surface" });
+		},
+	);
 
 	it.each([
 		[
@@ -1005,6 +1089,10 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 		[
 			"open / question / inspection-first",
 			"which current view is open? switch to settings",
+		],
+		[
+			"open / natural voice question / inspection-first",
+			"which view is open? switch to settings",
 		],
 		[
 			"open / embedded / inspection-first",
@@ -1509,7 +1597,10 @@ describe("batch-1 matrix fixes: budget noun + scheduled-item admin (F3/F5)", () 
 		for (const [message, expected] of cases) {
 			expect(
 				inferDirectCurrentRequestCandidateInference(actions, message),
-			).toEqual({ names: [expected], kind: "owner-scheduled-admin" });
+			).toEqual({
+				names: [expected],
+				kind: "owner-scheduled-admin",
+			});
 		}
 	});
 

@@ -14,6 +14,7 @@ import { AgentRuntime } from "../runtime";
 import { redactWithSecrets } from "../security/redact";
 import type { Character, IAgentRuntime, Memory, State } from "../types";
 import {
+	isProviderThrottleReport,
 	QUIET_ERROR_CODES,
 	recentErrorsProvider,
 	serializeContext,
@@ -196,6 +197,77 @@ describe("RECENT_ERRORS provider", () => {
 		);
 		expect(result.text).toBe("");
 		expect(result.data?.recentErrors).toEqual([]);
+	});
+
+	it("never narrates model-provider throttling into the prompt", async () => {
+		// Live 2026-09-05: post-turn evaluator and grounded-reply 429 reports
+		// (each with its response-body context) re-entered every Stage-1 prompt
+		// of the throttled bucket, ~80K chars in one turn.
+		const now = Date.now();
+		const entries: ReportedError[] = [
+			{
+				scope: "EvaluatorService.evaluate",
+				code: "UNCLASSIFIED",
+				message: "Failed after 3 attempts. Last error: Too Many Requests",
+				at: now - 500,
+				context: { evaluatorId: "e-1" },
+			},
+			{
+				scope: "grounded-action-reply",
+				code: "GROUNDED_REPLY_GENERATION_FAILED",
+				message: "Reply provider failed",
+				at: now - 400,
+				context: {
+					status: 429,
+					providerMessage: "Tokens per minute limit exceeded",
+				},
+			},
+			{
+				scope: "calendar:feed-source",
+				code: "CALENDAR_SOURCE_DISCONNECTED",
+				message: "Google Calendar is not connected.",
+				at: now - 300,
+			},
+		];
+		const result = await recentErrorsProvider.get(
+			runtimeWith(entries),
+			message,
+			state,
+		);
+		const surfaced = result.data?.recentErrors as ReportedError[];
+		expect(surfaced.map((entry) => entry.code)).toEqual([
+			"CALENDAR_SOURCE_DISCONNECTED",
+		]);
+		expect(result.text).not.toContain("Too Many Requests");
+		expect(result.text).not.toContain("Tokens per minute");
+		expect(result.text).toContain("Google Calendar is not connected.");
+	});
+
+	it("classifies throttle reports by message or provider status only", () => {
+		expect(
+			isProviderThrottleReport({
+				message: "rate_limit_exceeded",
+				context: undefined,
+			}),
+		).toBe(true);
+		expect(
+			isProviderThrottleReport({
+				message: "provider failed",
+				context: { providerError: { status: 429 } },
+			}),
+		).toBe(true);
+		expect(
+			isProviderThrottleReport({
+				message: "provider failed",
+				context: { providerError: { status: 500 } },
+			}),
+		).toBe(false);
+		expect(
+			isProviderThrottleReport({
+				message: "Planner model input exceeded the provider's context limit",
+				context: { status: 400 },
+			}),
+		).toBe(false);
 	});
 
 	it("frames the block as internal diagnostics that never absorb user questions", async () => {

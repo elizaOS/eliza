@@ -13,14 +13,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CloudI18nProvider } from "./CloudI18nProvider";
 
 const signOutSession = vi.hoisted(() => vi.fn());
-const toastError = vi.hoisted(() => vi.fn());
 
 vi.mock("../sso-bridge/sso-bridge", () => ({
   signOutFromSsoBridgedHost: signOutSession,
-}));
-
-vi.mock("sonner", () => ({
-  toast: { error: toastError },
 }));
 
 import { CloudAccountMenu } from "./CloudAccountMenu";
@@ -40,7 +35,6 @@ describe("CloudAccountMenu", () => {
   beforeEach(() => {
     signOutSession.mockReset();
     signOutSession.mockResolvedValue(undefined);
-    toastError.mockReset();
   });
 
   afterEach(() => {
@@ -114,13 +108,14 @@ describe("CloudAccountMenu", () => {
     openMenu();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Sign out" }));
 
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith(
-        "Could not sign out safely. Please try again.",
-      ),
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Could not sign out safely. Please try again.",
     );
     expect(screen.getByText("Cloud page")).toBeTruthy();
     expect(screen.queryByText("Login page")).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign out" }));
+    await screen.findByText("Login page");
+    expect(signOutSession).toHaveBeenCalledTimes(2);
   });
 
   it("lets an isolated preview own its local-only teardown", async () => {

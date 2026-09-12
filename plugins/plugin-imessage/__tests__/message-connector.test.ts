@@ -15,7 +15,7 @@ type ConnectorTargetInfo = Parameters<RuntimeSendHandler>[1];
 type ConnectorContent = Parameters<RuntimeSendHandler>[2];
 type MessageConnectorRegistration = Parameters<IAgentRuntime["registerMessageConnector"]>[0];
 
-function makeStatus(): IMessageServiceStatus {
+function makeStatus(transport: "native" | "blooio" = "native"): IMessageServiceStatus {
   return {
     available: true,
     connected: true,
@@ -24,6 +24,7 @@ function makeStatus(): IMessageServiceStatus {
     chatDbPath: "/tmp/chat.db",
     reason: null,
     permissionAction: null,
+    transport,
   };
 }
 
@@ -40,11 +41,11 @@ function makeRuntime(registrations: MessageConnectorRegistration[]): IAgentRunti
 }
 
 describe("iMessage message connector registration", () => {
-  it("does not claim the Android Messages plugin's canonical sms source", () => {
+  it("does not claim sms and declares the integrated Blooio source alias", () => {
     expect(imessagePlugin.connectorSources).toEqual([
       expect.objectContaining({
         source: "imessage",
-        aliases: ["imessage", "messages"],
+        aliases: ["imessage", "messages", "blooio"],
       }),
     ]);
 
@@ -55,6 +56,40 @@ describe("iMessage message connector registration", () => {
     expect(registrations[0].metadata).toEqual(
       expect.objectContaining({ aliases: ["imessage", "messages"] })
     );
+  });
+
+  it("advertises and dispatches the Blooio identity without losing legacy aliases", async () => {
+    const registrations: MessageConnectorRegistration[] = [];
+    const runtime = makeRuntime(registrations);
+    const service = {
+      getStatus: vi.fn(() => makeStatus("blooio")),
+      getContacts: vi.fn(() => new Map()),
+      getChats: vi.fn(async () => []),
+      getRecentMessages: vi.fn(async () => []),
+      getMessages: vi.fn(async () => []),
+      sendMessage: vi.fn(async () => ({ success: true, messageId: "msg-blooio" })),
+    } as IMessageService;
+
+    IMessageService.registerSendHandlers(runtime, service);
+
+    const connector = registrations[0];
+    expect(connector.source).toBe("imessage");
+    expect(connector.metadata).toEqual(
+      expect.objectContaining({
+        aliases: ["blooio", "imessage", "messages"],
+        bridge: "blooio",
+      })
+    );
+
+    await connector.sendHandler(
+      runtime,
+      { source: "blooio", entityId: "+1 (415) 555-2671" as UUID } as ConnectorTargetInfo,
+      { text: "hello from linux" } as ConnectorContent
+    );
+
+    expect(service.sendMessage).toHaveBeenCalledWith("+14155552671", "hello from linux", {
+      accountId: "default",
+    });
   });
 
   it("registers unified connector metadata, contact resolution, and normalized sends", async () => {

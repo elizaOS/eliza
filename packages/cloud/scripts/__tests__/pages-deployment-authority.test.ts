@@ -3,6 +3,11 @@
  * contracts with deterministic provider records and public HTTP responses.
  */
 import { describe, expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createCloudLiveContinuityEvidence } from "../../../app/test/cloud-live-continuity-contract";
 import {
   createDeployedRendererProof,
   DEPLOYED_BROWSER_SMOKE_SCHEMA,
@@ -15,7 +20,7 @@ import {
 const sourceSha = "87da9c8ba169440f0fb21dc613f7bc425c8014b6";
 const deploymentId = "3d07ff31-d66e-4cf0-948c-3f44cd9ed23d";
 const deploymentUrl = "https://5f02a912.eliza-app.pages.dev";
-const aliasUrl = "https://develop.eliza-app.pages.dev";
+const aliasUrl = "https://staging.eliza-app.pages.dev";
 const apiOrigin = "https://api-staging.eliza.app";
 const buildId = "a".repeat(64);
 const indexHtmlSha256 = "b".repeat(64);
@@ -32,7 +37,7 @@ function wranglerRecord(
       "pages",
       "deploy",
       "--project-name=eliza-app",
-      "--branch=develop",
+      "--branch=staging",
       `--commit-hash=${sourceSha}`,
       "--commit-dirty=false",
     ],
@@ -68,7 +73,7 @@ function authority() {
   return parseWranglerPagesDeploymentOutput(wranglerRecord(), {
     expectedProject: "eliza-app",
     expectedCommit: sourceSha,
-    expectedBranch: "develop",
+    expectedBranch: "staging",
     expectedAlias: aliasUrl,
     expectedEnvironment: "preview",
     expectedProductionBranch: "main",
@@ -133,6 +138,18 @@ function remoteSmoke() {
     rendererBuildId: buildId,
     cloudApiOrigin: apiOrigin,
     cloudEnvironment: "staging",
+    referenceBinding: {
+      runtime: "dedicated",
+      apiBase:
+        "https://123e4567-e89b-42d3-a456-426614174000.cloud-staging.eliza.app",
+    },
+    chatCorrelation: {
+      traceId: "0123456789abcdef0123456789abcdef",
+      serverTiming:
+        "dedicated_auth;dur=1.25, dedicated_ownership;dur=1, dedicated_routing;dur=1, dedicated_proxy_dispatch;dur=1, dedicated_total;dur=4.25",
+      preforward: "total=3;auth=1;mid=1;reserve=1;setup=0",
+      providerRequestIdSha256: "d".repeat(64),
+    },
     outcome: "success",
   };
 }
@@ -149,21 +166,41 @@ function latency() {
 }
 
 function continuity() {
-  return {
-    schemaVersion: 1,
-    lane: "app-live-e2e-cloud-staging",
+  return createCloudLiveContinuityEvidence({
     challengeTurnCount: 1,
     noAdditionalChatSendAfterChallenge: true,
     personalIdentityEndpointPassed: true,
-    reloadHistoryPassed: true,
-    freshContextHistoryPassed: true,
-    personalIdentityReused: true,
-    runtimeBindingReused: true,
-    apiBaseReused: true,
-    forbiddenAgentMutationCount: 0,
+    reload: {
+      historyGetSucceeded: true,
+      challengeUserLinePresent: true,
+      challengeAssistantLinePresent: true,
+    },
+    freshContext: {
+      historyGetSucceeded: true,
+      challengeUserLinePresent: true,
+      challengeAssistantLinePresent: true,
+      createdWithoutStorageState: true,
+      serviceWorkersBlocked: true,
+    },
+    bindingReuse: {
+      personalIdentityReused: true,
+      runtimeBindingReused: true,
+      apiBaseReused: true,
+    },
+    dedicatedMutationProof: {
+      approvalGrantedCount: 1,
+      confirmationClickCount: 0,
+      confirmationKind: "none",
+      adoptionConfirmationPostCount: 0,
+      activationPostCount: 0,
+      cutoverPostCount: 0,
+      forbiddenAgentMutationCount: 0,
+      approvalBindingPresent: false,
+      lifecycleBindingMismatchCount: 0,
+    },
     cleanupDisposition: "no-test-owned-agent",
     conversationHistoryDisposition: "preserved",
-  };
+  });
 }
 
 describe("Pages deployment authority", () => {
@@ -174,7 +211,7 @@ describe("Pages deployment authority", () => {
       sourceSha,
       workflow: { runId: 32500000001, runAttempt: 2 },
       project: "eliza-app",
-      branch: "develop",
+      branch: "staging",
       pagesEnvironment: "preview",
       productionBranch: "main",
       deploymentUrl,
@@ -192,7 +229,7 @@ describe("Pages deployment authority", () => {
       parseWranglerPagesDeploymentOutput(`${wranglerRecord()}{}\n`, {
         expectedProject: "eliza-app",
         expectedCommit: sourceSha,
-        expectedBranch: "develop",
+        expectedBranch: "staging",
         expectedAlias: aliasUrl,
         expectedEnvironment: "preview",
         expectedProductionBranch: "main",
@@ -206,7 +243,7 @@ describe("Pages deployment authority", () => {
         {
           expectedProject: "eliza-app",
           expectedCommit: sourceSha,
-          expectedBranch: "develop",
+          expectedBranch: "staging",
           expectedAlias: aliasUrl,
           expectedEnvironment: "preview",
           expectedProductionBranch: "main",
@@ -219,7 +256,7 @@ describe("Pages deployment authority", () => {
       parseWranglerPagesDeploymentOutput(wranglerRecord({ unexpected: true }), {
         expectedProject: "eliza-app",
         expectedCommit: sourceSha,
-        expectedBranch: "develop",
+        expectedBranch: "staging",
         expectedAlias: aliasUrl,
         expectedEnvironment: "preview",
         expectedProductionBranch: "main",
@@ -235,7 +272,7 @@ describe("Pages deployment authority", () => {
       parseWranglerPagesDeploymentOutput(withoutSession, {
         expectedProject: "eliza-app",
         expectedCommit: sourceSha,
-        expectedBranch: "develop",
+        expectedBranch: "staging",
         expectedAlias: aliasUrl,
         expectedEnvironment: "preview",
         expectedProductionBranch: "main",
@@ -255,7 +292,7 @@ describe("Pages deployment authority", () => {
           {
             expectedProject: "eliza-app",
             expectedCommit: sourceSha,
-            expectedBranch: "develop",
+            expectedBranch: "staging",
             expectedAlias: aliasUrl,
             expectedEnvironment: "preview",
             expectedProductionBranch: "main",
@@ -272,7 +309,7 @@ describe("Pages deployment authority", () => {
       "pages",
       "deploy",
       "--project-name=eliza-app",
-      "--branch=develop",
+      "--branch=staging",
       `--commit-hash=${sourceSha}`,
       "--commit-dirty=false",
     ];
@@ -288,7 +325,7 @@ describe("Pages deployment authority", () => {
           : argument,
       ),
       validArgs.map((argument) =>
-        argument === "--branch=develop" ? "--branch=main" : argument,
+        argument === "--branch=staging" ? "--branch=main" : argument,
       ),
       validArgs.slice(0, -1),
       [...validArgs, "--skip-caching"],
@@ -301,7 +338,7 @@ describe("Pages deployment authority", () => {
           {
             expectedProject: "eliza-app",
             expectedCommit: sourceSha,
-            expectedBranch: "develop",
+            expectedBranch: "staging",
             expectedAlias: aliasUrl,
             expectedEnvironment: "preview",
             expectedProductionBranch: "main",
@@ -318,13 +355,13 @@ describe("Pages deployment authority", () => {
       ["deployment_trigger", { metadata: { commit_hash: "c".repeat(40) } }],
       ["alias", "https://other.eliza-app.pages.dev"],
       ["environment", "production"],
-      ["production_branch", "develop"],
+      ["production_branch", "staging"],
     ] as const) {
       expect(() =>
         parseWranglerPagesDeploymentOutput(wranglerRecord({ [field]: value }), {
           expectedProject: "eliza-app",
           expectedCommit: sourceSha,
-          expectedBranch: "develop",
+          expectedBranch: "staging",
           expectedAlias: aliasUrl,
           expectedEnvironment: "preview",
           expectedProductionBranch: "main",
@@ -349,7 +386,120 @@ describe("deployed renderer proof", () => {
     expect(parseDeployedRendererProof(proof)).toEqual(proof);
     expect(proof.sourceSha).toBe(sourceSha);
     expect(proof.remoteSmoke.outcome).toBe("success");
+    expect(proof.remoteSmoke.chatCorrelation).toEqual(
+      remoteSmoke().chatCorrelation,
+    );
     expect(proof.continuity.forbiddenAgentMutationCount).toBe(0);
+  });
+
+  test("combines the browser producer's current evidence through the Node release CLI", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "eliza-pages-proof-"));
+    try {
+      const inputs = {
+        authority: authority(),
+        preflight: await publicCheck("preflight"),
+        "remote-smoke": remoteSmoke(),
+        latency: latency(),
+        continuity: continuity(),
+        postflight: await publicCheck("postflight"),
+      };
+      const args = [
+        new URL("../pages-deployment-authority.mjs", import.meta.url).pathname,
+        "combine",
+      ];
+      for (const [name, value] of Object.entries(inputs)) {
+        const path = join(directory, `${name}.json`);
+        await writeFile(path, JSON.stringify(value));
+        args.push(`--${name}`, path);
+      }
+      const output = join(directory, "proof.json");
+      args.push("--output", output);
+      execFileSync("node", args, { timeout: 10_000, stdio: "pipe" });
+      const proof = parseDeployedRendererProof(
+        JSON.parse(await readFile(output, "utf8")),
+      );
+      expect(proof.continuity).toEqual(inputs.continuity);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("keeps continuity validation closed and enforces lifecycle approval binding", async () => {
+    const inputs = {
+      authority: authority(),
+      preflight: await publicCheck("preflight"),
+      remoteSmoke: remoteSmoke(),
+      latency: latency(),
+      postflight: await publicCheck("postflight"),
+    };
+    for (const invalid of [
+      { ...continuity(), schemaVersion: 1 },
+      { ...continuity(), credential: "must-not-be-published" },
+      { ...continuity(), reloadHistoryPassed: false },
+      { ...continuity(), dedicatedLifecycleBindingMismatchCount: 1 },
+      { ...continuity(), dedicatedCutoverPostCount: 1 },
+    ]) {
+      expect(() =>
+        createDeployedRendererProof({ ...inputs, continuity: invalid }),
+      ).toThrow();
+    }
+  });
+
+  test("rejects unsafe or unvalidated browser correlation fields", async () => {
+    const inputs = {
+      authority: authority(),
+      preflight: await publicCheck("preflight"),
+      latency: latency(),
+      continuity: continuity(),
+      postflight: await publicCheck("postflight"),
+    };
+    for (const chatCorrelation of [
+      { ...remoteSmoke().chatCorrelation, traceId: "Bearer private-secret" },
+      {
+        ...remoteSmoke().chatCorrelation,
+        serverTiming:
+          "dedicated_auth;dur=1, dedicated_ownership;dur=1, dedicated_routing;dur=1, dedicated_proxy_dispatch;dur=1, dedicated_total;dur=4, private_api_key;dur=1",
+      },
+      {
+        ...remoteSmoke().chatCorrelation,
+        providerRequestIdSha256: "private request id with spaces",
+      },
+      { ...remoteSmoke().chatCorrelation, credential: "private-secret" },
+    ]) {
+      expect(() =>
+        createDeployedRendererProof({
+          ...inputs,
+          remoteSmoke: { ...remoteSmoke(), chatCorrelation },
+        }),
+      ).toThrow();
+    }
+    for (const remote of [
+      {
+        ...remoteSmoke(),
+        referenceBinding: {
+          ...remoteSmoke().referenceBinding,
+          runtime: "shared",
+        },
+      },
+      {
+        ...remoteSmoke(),
+        referenceBinding: {
+          runtime: "dedicated",
+          apiBase: "https://api-staging.eliza.app",
+        },
+      },
+      {
+        ...remoteSmoke(),
+        chatCorrelation: {
+          ...remoteSmoke().chatCorrelation,
+          serverTiming: "dedicated_total;dur=4",
+        },
+      },
+    ]) {
+      expect(() =>
+        createDeployedRendererProof({ ...inputs, remoteSmoke: remote }),
+      ).toThrow();
+    }
   });
 
   test("rejects a stale renderer manifest before browser auth", async () => {

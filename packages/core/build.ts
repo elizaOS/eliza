@@ -28,6 +28,8 @@ export interface ElizaBuildOptions {
 	entrypoints?: string[];
 	/** Output directory - defaults to 'dist' */
 	outdir?: string;
+	/** Stable source root used to derive emitted entrypoint paths. */
+	root?: string;
 	/** Target environment - defaults to 'node' for packages */
 	target?: "node" | "bun" | "browser";
 	/** External dependencies */
@@ -163,6 +165,7 @@ export async function createElizaBuildConfig(
 	const {
 		entrypoints = ["src/index.ts"],
 		outdir = "dist",
+		root,
 		target = "node",
 		external = [],
 		sourcemap = false,
@@ -227,6 +230,7 @@ export async function createElizaBuildConfig(
 	const config: BuildConfig = {
 		entrypoints: resolvedEntrypoints,
 		outdir,
+		...(root ? { root } : {}),
 		target: target === "node" ? "node" : target,
 		format,
 		sourcemap,
@@ -810,9 +814,14 @@ export async function buildNode(
 	const runNode = runnerFactory({
 		...sharedConfig,
 		buildOptions: {
+			root: TS_SRC,
 			entrypoints: [
 				`${TS_SRC}/index.node.ts`,
-				`${TS_SRC}/errors.ts`,
+				`${TS_SRC}/contracts/cloud-topology.ts`,
+				`${TS_SRC}/contracts/first-run-options.ts`,
+				`${TS_SRC}/contracts/service-routing.ts`,
+				`${TS_SRC}/contracts/wallet.ts`,
+				`${TS_SRC}/runtime-env.ts`,
 				`${TS_SRC}/roles.ts`,
 				`${TS_SRC}/client-public.ts`,
 				`${TS_SRC}/security/kms/index.ts`,
@@ -832,6 +841,22 @@ export async function buildNode(
 	});
 
 	await runNode();
+	// This leaf is shared with browser SDKs; a Node-target build injects a
+	// createRequire shim even though the error contract needs no Node APIs.
+	await runnerFactory({
+		...sharedConfig,
+		buildOptions: {
+			entrypoints: [`${TS_SRC}/errors.ts`],
+			outdir: "dist/node",
+			target: "browser",
+			format: "esm",
+			sourcemap: true,
+			minify: false,
+			generateDts: false,
+			skipClean: true,
+			selfPackageName: "@elizaos/core",
+		},
+	})();
 
 	const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 	console.log(`✅ Node.js build complete in ${duration}s`);
@@ -849,8 +874,14 @@ export async function buildBrowser(
 	const runBrowser = runnerFactory({
 		...sharedConfig,
 		buildOptions: {
+			root: TS_SRC,
 			entrypoints: [
 				`${TS_SRC}/index.browser.ts`,
+				`${TS_SRC}/contracts/cloud-topology.ts`,
+				`${TS_SRC}/contracts/first-run-options.ts`,
+				`${TS_SRC}/contracts/service-routing.ts`,
+				`${TS_SRC}/contracts/wallet.ts`,
+				`${TS_SRC}/runtime-env.ts`,
 				`${TS_SRC}/roles.ts`,
 				`${TS_SRC}/client-public.ts`,
 			],
@@ -897,7 +928,15 @@ export async function buildEdge(
 	const runEdge = runnerFactory({
 		...sharedConfig,
 		buildOptions: {
-			entrypoints: [`${TS_SRC}/index.edge.ts`],
+			root: TS_SRC,
+			entrypoints: [
+				`${TS_SRC}/index.edge.ts`,
+				`${TS_SRC}/contracts/cloud-topology.ts`,
+				`${TS_SRC}/contracts/first-run-options.ts`,
+				`${TS_SRC}/contracts/service-routing.ts`,
+				`${TS_SRC}/contracts/wallet.ts`,
+				`${TS_SRC}/runtime-env.ts`,
+			],
 			outdir: "dist/edge",
 			// Browser targeting avoids Bun's CommonJS createRequire shim; supported
 			// node:* imports remain external for Workerd's nodejs_compat runtime.
@@ -1029,6 +1068,7 @@ export async function buildTesting(
 	const runTesting = runnerFactory({
 		...sharedConfig,
 		buildOptions: {
+			root: `${TS_SRC}/testing`,
 			entrypoints: [
 				`${TS_SRC}/testing/index.ts`,
 				`${TS_SRC}/testing/live-provider.ts`,
@@ -1640,6 +1680,34 @@ async function verifyPackedEdgeContract(): Promise<void> {
 			"dist/security/kms.js",
 			"dist/security/mcp-server-config.js",
 		];
+		const errorConsumer = join(contractRoot, "browser-errors-entry.js");
+		await fs.writeFile(
+			errorConsumer,
+			[
+				'import { ElizaError, isElizaError, toElizaError } from "@elizaos/core/errors";',
+				'const cause = new Error("request failed");',
+				'const failure = new ElizaError("login unavailable", { code: "LOGIN_UNAVAILABLE", cause, context: { operation: "refresh" } });',
+				'if (!isElizaError(failure) || failure.code !== "LOGIN_UNAVAILABLE" || failure.cause !== cause || failure.context.operation !== "refresh") throw new Error("browser error lost diagnostic context");',
+				'if (toElizaError(failure) !== failure || toElizaError(cause, "LOGIN_FAILED").cause !== cause) throw new Error("browser error normalization lost identity or cause");',
+			].join("\n"),
+		);
+		const browserErrors = await Bun.build({
+			entrypoints: [errorConsumer],
+			target: "browser",
+			format: "iife",
+			write: false,
+		});
+		if (!browserErrors.success) {
+			throw new AggregateError(
+				browserErrors.logs,
+				"Packed browser error contract failed to bundle",
+			);
+		}
+		const { runInNewContext } = await import("node:vm");
+		runInNewContext(await browserErrors.outputs[0].text(), Object.create(null));
+		console.log(
+			"✅ Packed error contract executes without Node globals or shims",
+		);
 		for (const flatFile of expectedFlatFiles) {
 			if (!(await isFile(join(packageRoot, flatFile)))) {
 				throw new Error(`packed @elizaos/core is missing ${flatFile}`);

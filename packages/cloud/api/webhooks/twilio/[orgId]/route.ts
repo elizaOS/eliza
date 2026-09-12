@@ -248,7 +248,7 @@ async function handleIncomingMessage(
     metadata: messageContext.metadata,
   });
 
-  if (!routed.handled) {
+  if (!routed.handled || !routed.userId) {
     logger.warn("[TwilioWebhook] Failed to route message to owned Agent", {
       orgId,
       reason: routed.reason,
@@ -268,6 +268,7 @@ async function handleIncomingMessage(
       agentId: routed.agentId,
       agentOrganizationId: routed.organizationId,
       agentUserId: routed.userId,
+      defer: (promise) => c.executionCtx.waitUntil(promise),
     });
 
     const responseTime = Date.now() - startTime;

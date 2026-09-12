@@ -666,7 +666,7 @@ const workerLogger = {
 export const logger = workerLogger;
 export const elizaLogger = workerLogger;
 
-export const DEFAULT_CEREBRAS_TEXT_MODEL = "gemma-4-31b";
+export const DEFAULT_CEREBRAS_TEXT_MODEL = "qwen-3.8-27b";
 export const DEFAULT_ELIZA_CLOUD_TEXT_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
 export const DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
 export const DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
@@ -1644,6 +1644,7 @@ export const addHeader = (header: string, body: string) =>
   body ? `${header}\n${body}` : "";
 
 export const UUID = (value?: string): string => asUUID(value ?? "");
+export const registerProviderModels = throwingExport("registerProviderModels");
 export const composeActionExamples = throwingExport("composeActionExamples");
 export const formatActions = throwingExport("formatActions");
 export const formatActionNames = throwingExport("formatActionNames");

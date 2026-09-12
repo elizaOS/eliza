@@ -48,7 +48,7 @@ describe("ElizaClient.listConsumerKeys", () => {
     const result = await client.listConsumerKeys();
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/accounts/consumer-keys",
-      undefined,
+      { signal: undefined },
       { timeoutMs: CONSUMER_KEYS_LIST_FETCH_TIMEOUT_MS },
     );
     expect(result).toEqual([summary]);
@@ -59,8 +59,19 @@ describe("ElizaClient.listConsumerKeys", () => {
     await client.listConsumerKeys(1234);
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/accounts/consumer-keys",
-      undefined,
+      { signal: undefined },
       { timeoutMs: 1234 },
+    );
+  });
+
+  it("forwards a caller cancellation signal without changing the timeout", async () => {
+    const { client, fetchMock } = clientWithBody({ keys: [] });
+    const controller = new AbortController();
+    await client.listConsumerKeys(undefined, controller.signal);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/accounts/consumer-keys",
+      { signal: controller.signal },
+      { timeoutMs: CONSUMER_KEYS_LIST_FETCH_TIMEOUT_MS },
     );
   });
 

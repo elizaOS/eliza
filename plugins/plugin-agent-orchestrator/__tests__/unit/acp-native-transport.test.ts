@@ -217,11 +217,47 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
     });
   });
 
+  it.each([undefined, "deepseek/wrong", "zai/deepseek-v4-flash"])(
+    "refuses an unconfirmed selected Pi model before prompts: %s",
+    async (currentModelId) => {
+      const p = queueProc();
+      const client = new NativeAcpClient({
+        command: "pi-acp",
+        cwd: "/tmp/native-acp",
+        approvalPreset: "readonly",
+        expectedModelId: "deepseek/deepseek-v4-flash",
+      });
+      const started = client.start();
+      await waitForWrites(p, 1);
+      emitJson(p, { jsonrpc: "2.0", id: 1, result: {} });
+      await started;
+      const created = client.createSession();
+      const rejected = expect(created).rejects.toMatchObject({
+        code: "ACP_SELECTED_MODEL_UNCONFIRMED",
+      });
+      await waitForWrites(p, 2);
+      emitJson(p, {
+        jsonrpc: "2.0",
+        id: 2,
+        result: {
+          sessionId: "pi-session",
+          ...(currentModelId ? { models: { currentModelId } } : {}),
+        },
+      });
+      await rejected;
+      expect(p.stdinWrites.map((line) => JSON.parse(line).method)).toEqual([
+        "initialize",
+        "session/new",
+      ]);
+      await client.close();
+    },
+  );
+
   it("sends JSON-RPC requests and resolves responses", async () => {
     const events: unknown[] = [];
     const p = queueProc();
     const client = new NativeAcpClient({
-      command: "npx -y @agentclientprotocol/codex-acp@1.1.2",
+      command: "npx -y @agentclientprotocol/codex-acp@1.10.0",
       cwd: "/tmp/native-acp",
       approvalPreset: "autonomous",
       terminal: false,
@@ -232,14 +268,23 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
     await waitForWrites(p, 1);
     expect(spawnMock).toHaveBeenCalledWith(
       "npx",
-      ["-y", "@agentclientprotocol/codex-acp@1.1.2"],
+      ["-y", "@agentclientprotocol/codex-acp@1.10.0"],
       expect.objectContaining({ cwd: "/tmp/native-acp" }),
     );
     expect(writeAt(p, 0)).toMatchObject({
       jsonrpc: "2.0",
       id: 1,
       method: "initialize",
-      params: { clientCapabilities: { terminal: false } },
+      params: {
+        clientCapabilities: {
+          terminal: false,
+          _meta: {
+            jetbrains: {
+              air: { version: 1, capabilities: ["sessionFailure"] },
+            },
+          },
+        },
+      },
     });
     emitJson(p, { jsonrpc: "2.0", id: 1, result: {} });
     await started;

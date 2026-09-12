@@ -102,6 +102,57 @@ describe("workspace source aliases", () => {
     }
   });
 
+  test.each([false, true])(
+    "imports a declared root source entry without dist (conventional index: %s)",
+    async (hasConventionalIndex) => {
+      const repoRoot = mkdtempSync(path.join(tmpdir(), "eliza-root-source-"));
+      temporaryRoots.push(repoRoot);
+      const packageDir = path.join(repoRoot, "packages", "login-fixture");
+      mkdirSync(path.join(packageDir, "src", "sdk"), { recursive: true });
+      writeFileSync(
+        path.join(packageDir, "src", "sdk", "index.ts"),
+        "export function greet(name: string) { return 'Hello, ' + name; }\n",
+      );
+      if (hasConventionalIndex) {
+        writeFileSync(
+          path.join(packageDir, "src", "index.ts"),
+          "throw new Error('The private index is not the public SDK');\n",
+        );
+      }
+      writeFileSync(
+        path.join(packageDir, "package.json"),
+        JSON.stringify({
+          name: "@elizaos/login-fixture",
+          type: "module",
+          exports: {
+            ".": {
+              "eliza-source": hasConventionalIndex
+                ? {
+                    import: "./src/sdk/index.ts",
+                    default: "./src/sdk/index.ts",
+                  }
+                : "./src/sdk/index.ts",
+              import: "./dist/sdk/index.js",
+            },
+          },
+        }),
+      );
+      const server = await createServer({
+        configFile: false,
+        root: repoRoot,
+        logLevel: "silent",
+        server: { middlewareMode: true },
+        resolve: { alias: buildWorkspaceSourceAliases(repoRoot) },
+      });
+      try {
+        const sdk = await server.ssrLoadModule("@elizaos/login-fixture");
+        expect(sdk.greet("Ada")).toBe("Hello, Ada");
+      } finally {
+        await server.close();
+      }
+    },
+  );
+
   test("honors exact eliza-source exports and null export barriers", () => {
     const repoRoot = mkdtempSync(
       path.join(tmpdir(), "eliza-vitest-source-aliases-"),

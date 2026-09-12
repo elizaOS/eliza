@@ -60,9 +60,40 @@ async function installMutableFirstRunStatus(page: Page): Promise<{
 
 async function injectFullCapabilityHost(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    (window as unknown as Record<string, unknown>).__ELIZA_APP_API_BASE__ =
-      window.location.origin;
-    (window as unknown as Record<string, number>).__electrobunWindowId = 1;
+    const origin = window.location.origin;
+    const secureStore = new Map<string, string>();
+    const win = window as unknown as Record<string, unknown>;
+    win.__ELIZA_APP_API_BASE__ = origin;
+    win.__ELIZAOS_APP_BOOT_CONFIG__ = { apiBase: origin };
+    win.__ELIZAOS_API_BASE__ = origin;
+    win.__electrobunWindowId = 1;
+    win.__ELIZA_ELECTROBUN_RPC__ = {
+      request: {
+        desktopGetVersion: async () => ({ runtime: "playwright-smoke" }),
+        desktopRegisterShortcut: async () => ({ success: true }),
+        desktopSetTrayMenu: async () => undefined,
+        secureStoreGet: async ({ kind }: { kind: string }) =>
+          secureStore.has(kind)
+            ? { ok: true, value: secureStore.get(kind) }
+            : { ok: false, reason: "not_found" },
+        secureStoreSet: async ({
+          kind,
+          value,
+        }: {
+          kind: string;
+          value: string;
+        }) => {
+          secureStore.set(kind, value);
+          return { ok: true };
+        },
+        secureStoreDelete: async ({ kind }: { kind: string }) => ({
+          ok: true,
+          deleted: secureStore.delete(kind),
+        }),
+      },
+      onMessage: () => undefined,
+      offMessage: () => undefined,
+    };
   });
 }
 
@@ -82,6 +113,10 @@ async function installWalkthroughConversationStore(page: Page): Promise<void> {
   }> = [];
   let created = false;
   let sequence = 0;
+
+  await page.route("**/api/interactions/composer", async (route) => {
+    await fulfillJson(route, 200, { success: true });
+  });
 
   await page.route("**/api/conversations", async (route) => {
     const method = route.request().method();
@@ -223,10 +258,27 @@ test.describe("walkthrough capture smoke", () => {
     await seedAppStorage(page, { "eliza:first-run-complete": "" });
     await injectFullCapabilityHost(page);
     await installDefaultAppRoutes(page);
+    // Desktop prewarms sign-in before a click; capture must not contact Cloud.
+    await page.route("**/api/auth/cli-session", async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      await fulfillJson(route, 200, {
+        sessionId: "11111111-1111-4111-8111-111111111111",
+      });
+    });
     const firstRun = await installMutableFirstRunStatus(page);
     await installWalkthroughConversationStore(page);
 
+    const desktopLoginWarmup = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/auth/cli-session" &&
+        response.request().method() === "POST" &&
+        response.status() === 200,
+    );
     await page.goto("/", { waitUntil: "domcontentloaded" });
+    await desktopLoginWarmup;
     const onboarding = page.getByTestId("chat-overlay");
     await expect(onboarding).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText(FIRST_RUN_SIGN_IN_PROMPT)).toBeVisible({

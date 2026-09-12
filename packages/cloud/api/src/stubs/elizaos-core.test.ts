@@ -16,6 +16,7 @@ const DOCUMENT_PREFIX =
   "Answer the user request using the contextual documents";
 
 const THROWING_EXPORTS = [
+  "registerProviderModels",
   "composeActionExamples",
   "formatActions",
   "formatActionNames",
@@ -109,11 +110,11 @@ describe("elizaos-core Worker stub", () => {
     expect(stubDefault.ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED).toBe(
       stub.ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
     );
-    expect(stubDefault.DEFAULT_CEREBRAS_TEXT_MODEL).toBe("gemma-4-31b");
+    expect(stubDefault.DEFAULT_CEREBRAS_TEXT_MODEL).toBe("qwen-3.8-27b");
   });
 
   test("model and media constants match the source literals", () => {
-    expect(stub.DEFAULT_CEREBRAS_TEXT_MODEL).toBe("gemma-4-31b");
+    expect(stub.DEFAULT_CEREBRAS_TEXT_MODEL).toBe("qwen-3.8-27b");
     expect(stub.ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED).toBe(
       "ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED",
     );

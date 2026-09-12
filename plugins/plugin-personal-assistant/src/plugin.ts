@@ -268,6 +268,7 @@ import { pendingPromptsProvider } from "./providers/pending-prompts.js";
 import { recentTaskStatesProvider } from "./providers/recent-task-states.js";
 import { roomPolicyProvider } from "./providers/room-policy.js";
 import { workThreadsProvider } from "./providers/work-threads.js";
+import { personalAssistantRoutesPlugin } from "./routes/plugin.js";
 import { BrowserBridgePluginService } from "./service.js";
 import {
   BLOCK_RULE_RECONCILE_TASK_NAME,
@@ -711,7 +712,9 @@ const rawPersonalAssistantPlugin: Plugin = {
   // @elizaos/plugin-scheduling hosts the ScheduledTaskRunnerService + the
   // generic scheduled-task route; PA injects its production deps into it. It is
   // always-loaded (CORE + MOBILE), but declaring the dependency guarantees the
-  // runner host is registered before PA's init injects deps + seeds.
+  // runner host is registered before PA's init injects deps + seeds. Agreement
+  // ingestion also resolves the canonical complete-document PDF service and
+  // must not boot with that required collaborator absent.
   dependencies: [
     GOOGLE_CONNECTOR_PLUGIN_PACKAGE,
     "@elizaos/plugin-scheduling",
@@ -721,6 +724,7 @@ const rawPersonalAssistantPlugin: Plugin = {
   // unless the operator explicitly disables passive mode.
   passiveConnectorsByDefault: true,
   schema: lifeOpsSchema,
+  routes: personalAssistantRoutesPlugin.routes,
   actions: [
     // Canonical owner-operation umbrellas. Each umbrella registers itself + its
     // per-action virtuals via
@@ -1176,8 +1180,8 @@ const rawPersonalAssistantPlugin: Plugin = {
 
     // Register the activity-profile maintenance worker. One scheduler
     // (#10721 H1): this tick only maintains the owner activity profile and
-    // runs the WS5 background-planner observability loop — owner-facing
-    // proactive dispatch (GM/GN, nudges, check-ins) is owned by the
+    // learned schedule facts, without planning actions or creating approvals.
+    // Owner-facing proactive dispatch (GM/GN, nudges, check-ins) is owned by the
     // scheduled-task runner via the first-run defaults pack + default-pack
     // catalog below. ELIZA_DISABLE_PROACTIVE_AGENT keeps its historical
     // semantics: it gates this worker (never the spine-seeded records).

@@ -152,6 +152,25 @@ describe("enterScenarioActionScope", () => {
     scope.restore();
     expect(runtime.actions.map((entry) => entry.name)).toEqual(["REPLY"]);
   });
+
+  it("drops seed plugin registrations with their actions", () => {
+    const runtime = {
+      actions: [action("REPLY")],
+      plugins: [plugin("bootstrap", ["REPLY"])],
+    } as unknown as Parameters<typeof enterScenarioActionScope>[0];
+
+    const scope = enterScenarioActionScope(
+      runtime,
+      scenarioDeclaring("seeded", []),
+      [],
+    );
+    runtime.plugins.push(plugin("seed-fixture", ["SEED_ONLY"]));
+    runtime.actions.push(action("SEED_ONLY"));
+    scope.restore();
+
+    expect(runtime.actions.map((entry) => entry.name)).toEqual(["REPLY"]);
+    expect(runtime.plugins.map((entry) => entry.name)).toEqual(["bootstrap"]);
+  });
 });
 
 /**

@@ -205,6 +205,7 @@ export async function ensureManagedDiscordGatewayInTransaction(
       organization_id: params.organizationId,
       user_id: params.userId,
       agent_name: MANAGED_DISCORD_GATEWAY_AGENT_NAME,
+      quota_admission_scope: "organization",
       agent_config: withManagedAgentDiscordGateway({}),
       environment_vars: {},
       // `pending` + non-pool is intentionally quota-counted. Keep this aligned

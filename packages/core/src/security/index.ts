@@ -1,5 +1,6 @@
 /** Public surface for redaction, untrusted-content handling, and runtime security primitives. */
 
+export { userRequestFromAugmentedText } from "./augmented-request.js";
 export { mnemonicValid } from "./bip39-wordlist.js";
 export {
 	applyCapabilityManifest,
@@ -32,6 +33,7 @@ export {
 	type ExternalContentSource,
 	getHookType,
 	isExternalHookSession,
+	renderStoredEnvelopesForPrompt,
 	type WrapExternalContentOptions,
 	wrapExternalContent,
 	wrapWebContent,
@@ -48,6 +50,7 @@ export {
 	registerCoreIncomingMessageSecurityHook,
 	scrubIncomingMessageTextForStorage,
 	unwrapUserMessageText,
+	unwrapUserMessageTextForDetection,
 } from "./incoming-message-security.js";
 export {
 	ENVELOPE_LEAK_NOTICE,

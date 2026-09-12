@@ -104,3 +104,32 @@ describe("processToolResult attachment ids", () => {
     expect(toolOutput).toBe("hello");
   });
 });
+
+describe("processToolResult error status", () => {
+  it("preserves the complete error detail and structured failure flag", () => {
+    const errorDetail = `Error from upstream: ${"complete-detail".repeat(1_000)}`;
+    const result = processToolResult(
+      { content: [{ type: "text", text: errorDetail }], isError: true },
+      "tool-server",
+      "flaky_tool",
+      runtime,
+      messageEntityId
+    );
+
+    expect(result.toolOutput).toBe(errorDetail);
+    expect(result.isError).toBe(true);
+  });
+
+  it.each([{ isError: false }, {}])("treats $isError as a successful result", (status) => {
+    const result = processToolResult(
+      { content: [{ type: "text", text: "requested data" }], ...status },
+      "tool-server",
+      "healthy_tool",
+      runtime,
+      messageEntityId
+    );
+
+    expect(result.toolOutput).toBe("requested data");
+    expect(result.isError).toBe(false);
+  });
+});

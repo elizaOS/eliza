@@ -42,6 +42,7 @@ const TTS_ERROR_ENGINE_LABEL: Record<VoiceTtsError["engine"], string> = {
   "local-inference": "on-device voice",
   elevenlabs: "ElevenLabs voice",
   "native-talkmode": "voice",
+  "speech-sequence": "Speech playback",
 };
 
 export interface ChatVoiceStatusBarProps {
@@ -271,10 +272,17 @@ export function ChatVoiceStatusBar({
           data-testid="chat-voice-tts-error"
           data-engine={ttsError.engine}
           title={ttsError.message}
+          className="max-w-full whitespace-normal"
         >
           <AlertTriangle className="size-3 shrink-0" aria-hidden="true" />
-          <span className="truncate">
-            {TTS_ERROR_ENGINE_LABEL[ttsError.engine]} unavailable
+          <span
+            className={
+              ttsError.engine === "speech-sequence" ? "break-words" : "truncate"
+            }
+          >
+            {ttsError.engine === "speech-sequence"
+              ? ttsError.message
+              : `${TTS_ERROR_ENGINE_LABEL[ttsError.engine]} unavailable`}
           </span>
         </Badge>
       ) : null}
@@ -361,9 +369,7 @@ export function ChatVoiceStatusBar({
       >
         {formatLatency(primaryLatency)}
         {cached ? (
-          <span className="text-3xs uppercase tracking-wider opacity-70">
-            cached
-          </span>
+          <span className="text-3xs uppercase tracking-wider">cached</span>
         ) : null}
       </Badge>
 

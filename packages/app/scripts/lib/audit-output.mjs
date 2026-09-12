@@ -1,5 +1,5 @@
 /**
- * Resolves the app-audit artifact directory while protecting repository and
+ * Resolves aesthetic-audit artifact directories while protecting repository and
  * filesystem roots from the runner's intentional recursive cleanup.
  */
 import path from "node:path";
@@ -14,10 +14,15 @@ function containsPath(parent, child) {
   );
 }
 
-export function resolveAuditAppOutput({ appDir, repoRoot, configured }) {
+function resolveAuditOutput({
+  appDir,
+  repoRoot,
+  configured,
+  defaultDirectory,
+}) {
   const outputDir = path.resolve(
     appDir,
-    configured?.trim() || "aesthetic-audit-output",
+    configured?.trim() || defaultDirectory,
   );
   const insideRepository = containsPath(repoRoot, outputDir);
   const insideApp = containsPath(appDir, outputDir);
@@ -32,4 +37,18 @@ export function resolveAuditAppOutput({ appDir, repoRoot, configured }) {
     );
   }
   return outputDir;
+}
+
+export function resolveAuditAppOutput(options) {
+  return resolveAuditOutput({
+    ...options,
+    defaultDirectory: "aesthetic-audit-output",
+  });
+}
+
+export function resolveAuditCloudOutput(options) {
+  return resolveAuditOutput({
+    ...options,
+    defaultDirectory: "aesthetic-audit-output-cloud",
+  });
 }

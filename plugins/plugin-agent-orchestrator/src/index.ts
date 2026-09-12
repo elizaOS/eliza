@@ -2373,6 +2373,17 @@ export {
   verifierVerdict,
 } from "./services/independent-verifier.js";
 export {
+  enforcePiProviderCredentialIsolation,
+  isPiProviderRouteId,
+  PI_PROVIDER_ROUTES,
+  type PiApiDialect,
+  type PiBillingMode,
+  type PiProviderRoute,
+  type PiProviderRouteId,
+  type PiTermsPolicy,
+  preparePiProviderRoute,
+} from "./services/pi-provider-config.js";
+export {
   collectScreenshotPaths,
   deliverScreenshots,
   screenshotsToAttachments,

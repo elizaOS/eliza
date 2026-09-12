@@ -28,7 +28,6 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { EvidenceError } from "../../errors.ts";
 
 const execFileAsync = promisify(execFile);
@@ -344,7 +343,7 @@ async function runAppleVision(
           // output; the bare SyntaxError says nothing about which helper broke.
           reject(
             new EvidenceError(
-              `apple-vision helper emitted unparseable output: ${truncateWellFormed(toWellFormedUnicode(line), 160)}`,
+              `apple-vision helper emitted unparseable output: ${line.slice(0, 160).toWellFormed()}`,
               {
                 code: "APPLE_VISION_OCR_FAILED",
                 cause,
@@ -358,7 +357,7 @@ async function runAppleVision(
         if (!record) {
           reject(
             new EvidenceError(
-              `apple-vision helper record missing ok/text fields: ${truncateWellFormed(toWellFormedUnicode(line), 160)}`,
+              `apple-vision helper record missing ok/text fields: ${line.slice(0, 160).toWellFormed()}`,
               { code: "APPLE_VISION_OCR_FAILED", context: { imagePath } },
             ),
           );
@@ -693,8 +692,7 @@ function isEnoent(error: unknown): boolean {
 }
 
 function errMessage(error: unknown): string {
-  return truncateWellFormed(
-    toWellFormedUnicode(String(error instanceof Error ? error.message : error)),
-    160,
-  );
+  return String(error instanceof Error ? error.message : error)
+    .slice(0, 160)
+    .toWellFormed();
 }

@@ -20,6 +20,7 @@ import {
   isDirectCloudSharedAgentBase,
 } from "../api/client-cloud";
 import type { CloudCompatAgent } from "../api/client-types-cloud";
+import type { DedicatedActivationConfirmationRequester } from "../api/dedicated-activation-confirmation";
 import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
 import { type AgentPluginLike, getAgentPlugin } from "../bridge/native-plugins";
 import {
@@ -83,6 +84,12 @@ export interface FirstRunFinishPorts {
   uiLanguage: UiLanguage;
   elizaCloudConnected: boolean;
   /**
+   * False for boot-time session recovery, where no user gesture authorized
+   * opening an authentication surface. A missing or rejected credential must
+   * return `needs-cloud-login` so the conductor can render its sign-in choice.
+   */
+  allowInteractiveCloudLogin?: boolean;
+  /**
    * Interactive Cloud login entry point: pre-opens the named popup window
    * itself, so the first-run flow cannot omit it (#17129). Use this for
    * user-facing login; the deliberate same-tab boot-recovery path lives on
@@ -130,6 +137,7 @@ export interface FirstRunFinishPorts {
   onInteractiveLoginComplete?: () => void;
   /** Visible first-run quote/consent seam; absent callers stay read-only. */
   requestDedicatedAdoptionConfirmation?: DedicatedAdoptionConfirmationRequester;
+  requestDedicatedActivationConfirmation?: DedicatedActivationConfirmationRequester;
 }
 
 type FirstRunRuntimeStateKey =
@@ -798,6 +806,9 @@ export async function listOrAutoProvisionCloudAgent(
   );
   ports.setRuntimeState("firstRunProvider", "elizacloud");
   if (!getCloudAuthToken(client)) {
+    if (ports.allowInteractiveCloudLogin === false) {
+      return { kind: "needs-cloud-login" };
+    }
     // Interactive OAuth is the unbounded wait (#19255): tell the conductor so
     // it can seed the waiting turn and arm the bounded recovery deadline.
     ports.onInteractiveLogin?.();
@@ -823,6 +834,12 @@ export async function listOrAutoProvisionCloudAgent(
     authToken,
     signal: ports.signal,
     onProgress: (status, detail) => ports.onStatus?.(detail ?? status, status),
+    ...(ports.requestDedicatedActivationConfirmation
+      ? {
+          requestDedicatedActivationConfirmation:
+            ports.requestDedicatedActivationConfirmation,
+        }
+      : {}),
     ...(ports.requestDedicatedAdoptionConfirmation
       ? {
           requestDedicatedAdoptionConfirmation:

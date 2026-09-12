@@ -8,6 +8,7 @@ import { AlertTriangle, BadgeCheck, Gauge, Sparkles } from "lucide-react";
 import type * as React from "react";
 
 import { cn } from "../../lib/utils";
+import { isRealtimeVoiceForceEnabled } from "../../voice/realtime-voice-build-flags";
 
 export type VoiceDeviceTier = "MAX" | "GOOD" | "OKAY" | "POOR";
 
@@ -17,6 +18,8 @@ export interface VoiceTierBannerProps {
   summary?: string;
   /** Compact layout for the settings card (no CTA group). */
   compact?: boolean;
+  /** Test override; production derives this from the explicit realtime build flag. */
+  realtimeVoiceConfigured?: boolean;
   className?: string;
   "data-testid"?: string;
 }
@@ -68,10 +71,19 @@ export function VoiceTierBanner({
   tier,
   summary,
   compact = false,
+  realtimeVoiceConfigured = isRealtimeVoiceForceEnabled(),
   className,
   "data-testid": dataTestId,
 }: VoiceTierBannerProps): React.ReactElement {
-  const copy = TIER_COPY[tier];
+  const copy = realtimeVoiceConfigured
+    ? {
+        title: "Realtime voice is set to use Cartesia.",
+        description:
+          "Cartesia handles speech recognition and playback when the voice gateway is available; the agent model stays on this device.",
+        tone: "accent" as const,
+        icon: Sparkles,
+      }
+    : TIER_COPY[tier];
   const Icon = copy.icon;
 
   return (

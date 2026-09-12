@@ -17,6 +17,8 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { canonicalJson } from "../canonical.ts";
+import { EvidenceError } from "../errors.ts";
+import { askResultSchema } from "./result-schema.ts";
 import type {
   AskResult,
   ImageDimensions,
@@ -55,15 +57,24 @@ export function readCache(
   cacheRoot: string,
   imageSha256: string,
   query: string,
+  questions?: VisionQuestion[],
 ): AskResult | null {
   const file = cacheFilePath(cacheRoot, imageSha256, query);
   let raw: string;
   try {
     raw = fs.readFileSync(file, "utf8");
-  } catch {
-    // error-policy:J4 a missing cache file is the common case, not an error;
-    // it degrades to a live ask.
-    return null;
+  } catch (cause) {
+    // error-policy:J2 only absence permits a new request; inaccessible state needs repair first.
+    if (cause instanceof Error && "code" in cause && cause.code === "ENOENT")
+      return null;
+    throw new EvidenceError(
+      "Cannot read the vision cache; repair the cache path or use noCache",
+      {
+        code: "VISION_CACHE_READ_FAILED",
+        context: { file },
+        cause,
+      },
+    );
   }
   let parsed: unknown;
   try {
@@ -73,8 +84,20 @@ export function readCache(
     // let the fresh result overwrite it.
     return null;
   }
-  if (!isAskResult(parsed)) return null;
-  return parsed;
+  const result = askResultSchema.safeParse(parsed);
+  if (!result.success) return null;
+  const answerIds = new Set(result.data.answers.map((answer) => answer.id));
+  if (answerIds.size !== result.data.answers.length) return null;
+  if (questions) {
+    if (
+      questions.length !== answerIds.size ||
+      questions.some((question) => !answerIds.has(question.id))
+    )
+      return null;
+    const { model, backend, dimensions } = result.data.provenance;
+    if (queryHash(model, backend, questions, dimensions) !== query) return null;
+  }
+  return result.data;
 }
 
 /** Persist a result for this (image, query) pair, creating the cache dirs. */
@@ -87,11 +110,4 @@ export function writeCache(
   const file = cacheFilePath(cacheRoot, imageSha256, query);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, `${canonicalJson(result)}\n`, "utf8");
-}
-
-/** Structural guard: only accept a parsed cache file that is a real result. */
-function isAskResult(value: unknown): value is AskResult {
-  if (typeof value !== "object" || value === null) return false;
-  const record = value as Record<string, unknown>;
-  return Array.isArray(record.answers) && typeof record.provenance === "object";
 }

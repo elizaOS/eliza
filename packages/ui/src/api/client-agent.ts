@@ -145,6 +145,7 @@ import {
 } from "./client-types";
 import { isApiError } from "./client-types-core";
 import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
+import { isDesktopLocalApiBaseUrl } from "./desktop-local-api-base";
 import { workflowSurfaceClient } from "./workflow-surface-routing";
 
 export {
@@ -275,6 +276,7 @@ async function getDesktopStatusRpc<T>(
   params?: unknown,
 ): Promise<T | null> {
   if (
+    !isDesktopLocalApiBaseUrl(baseUrl) ||
     isDesktopExternalApiBaseUrl(baseUrl) ||
     isRemoteRelayRestAdapterBase(baseUrl)
   ) {
@@ -294,6 +296,7 @@ async function invokeLocalDesktopAgentRpc<T>(
   options: { rpcMethod: string; ipcChannel: string; params?: unknown },
 ): Promise<T | null> {
   if (
+    !isDesktopLocalApiBaseUrl(baseUrl) ||
     isDesktopExternalApiBaseUrl(baseUrl) ||
     isRemoteRelayRestAdapterBase(baseUrl)
   ) {
@@ -524,7 +527,7 @@ declare module "./client-base" {
       providers: Record<string, ProviderModelRecord[]>;
       catalog: ModelCatalog;
     }>;
-    getModelsConfig(): Promise<ModelsConfigResponse>;
+    getModelsConfig(init?: RequestInit): Promise<ModelsConfigResponse>;
     updateModelsConfig(
       request: ModelsConfigWriteRequest,
     ): Promise<ModelsConfigWriteResult>;
@@ -2108,8 +2111,13 @@ ElizaClient.prototype.getModelsCatalog = async function (
     : this.fetch("/api/models?catalogOnly=1", init);
 };
 
-ElizaClient.prototype.getModelsConfig = async function (this: ElizaClient) {
-  return this.fetch("/api/models/config");
+ElizaClient.prototype.getModelsConfig = async function (
+  this: ElizaClient,
+  init,
+) {
+  return init === undefined
+    ? this.fetch("/api/models/config")
+    : this.fetch("/api/models/config", init);
 };
 
 ElizaClient.prototype.updateModelsConfig = async function (

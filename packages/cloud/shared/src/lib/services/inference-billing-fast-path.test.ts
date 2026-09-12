@@ -17,6 +17,13 @@ interface DeductCall {
   amount: number;
   source: unknown;
   idempotencyKey: string | undefined;
+  preserveInferenceBalanceHint: boolean | undefined;
+  inferenceBalanceFence:
+    | {
+        lowerCommittedBalance(balanceUsd: number, balanceRevision: string): Promise<void>;
+        publishAuthoritativeBalance(balanceUsd: number, balanceRevision: string): Promise<void>;
+      }
+    | undefined;
 }
 let deductCalls: DeductCall[] = [];
 let deductResult:
@@ -37,8 +44,13 @@ let deductResult:
       reason: "insufficient_balance";
     };
 let deductError: Error | null = null;
+let deductBalanceRevision = "2";
+let deductPostCommitGate: Promise<void> | null = null;
+let deductFenceLowered: (() => void) | null = null;
 let freshBalanceUsd: number;
 let freshBalanceCalls = 0;
+let freshBalanceGate: Promise<void> | null = null;
+let freshBalanceReadStarted: (() => void) | null = null;
 const invalidateUserCalls: string[] = [];
 let invalidateUserShouldReject = false;
 
@@ -49,20 +61,35 @@ mock.module("./credits", () => ({
       amount: number;
       metadata?: { source?: unknown; requestId?: string };
       stripePaymentIntentId?: string;
+      preserveInferenceBalanceHint?: boolean;
+      inferenceBalanceFence?: DeductCall["inferenceBalanceFence"];
     }) => {
       deductCalls.push({
         organizationId: args.organizationId,
         amount: args.amount,
         source: args.metadata?.source,
         idempotencyKey: args.stripePaymentIntentId,
+        preserveInferenceBalanceHint: args.preserveInferenceBalanceHint,
+        inferenceBalanceFence: args.inferenceBalanceFence,
       });
       if (deductError) throw deductError;
-      // Mirror production: a committed debit runs
-      // `CacheInvalidation.onCreditMutation`, which DELETES the org-balance
-      // gate hint before the settler's post-debit cache step runs. Modelling
-      // this is what makes the "next turn is warm" assertions real — without
-      // it the hint survives and the test cannot observe the 503 flap.
-      if (deductResult.success) {
+      if (deductResult.success && args.preserveInferenceBalanceHint) {
+        if (!args.inferenceBalanceFence) {
+          throw new Error("preserved inference debit requires a fence");
+        }
+        // Mirror the production debit boundary: the SQL commit is complete,
+        // then the DO is lowered before unrelated post-commit work finishes.
+        await args.inferenceBalanceFence.lowerCommittedBalance(
+          deductResult.newBalance,
+          deductBalanceRevision,
+        );
+        deductFenceLowered?.();
+        if (deductPostCommitGate) await deductPostCommitGate;
+      }
+      // Mirror production credit invalidation. Inference settlement now opts
+      // into a fenced handoff: the prior hint stays present until the
+      // authoritative post-debit read below replaces it.
+      if (deductResult.success && !args.preserveInferenceBalanceHint) {
         const { CacheKeys: Keys } = await import("../cache/keys");
         const { cache: c } = await import("../cache/client");
         await c.del(Keys.inference.orgBalance(args.organizationId));
@@ -83,6 +110,8 @@ mock.module("./credits", () => ({
     },
     getOrganizationBalanceSnapshot: async () => {
       freshBalanceCalls++;
+      freshBalanceReadStarted?.();
+      if (freshBalanceGate) await freshBalanceGate;
       return { balanceUsd: freshBalanceUsd, revision: "2" };
     },
   },
@@ -109,6 +138,7 @@ const {
   getGateBalanceUsd,
   InferenceBalanceCacheWarmingError,
   writePendingInferenceCharge,
+  debitInferenceCost,
   createOptimisticDebitSettler,
   sweepStalePendingInferenceCharges,
 } = await import("./inference-billing-fast-path");
@@ -117,9 +147,6 @@ const { CacheKeys } = await import("../cache/keys");
 const { logger } = await import("../utils/logger");
 const { invalidateOrgBalanceHint, readOrgBalanceHint, writeOrgBalanceHint } = await import(
   "./inference-auth-cache"
-);
-const { isOrgAdmissionRefused, markOrgAdmissionRefused } = await import(
-  "./inference-billing-deferred"
 );
 
 // Mirror of the module-private sweep-lock key (kept as a literal so a rename is
@@ -156,8 +183,13 @@ beforeEach(async () => {
   deductCalls = [];
   deductResult = { success: true, newBalance: 100, transaction: { id: "debit-1" } };
   deductError = null;
+  deductBalanceRevision = "2";
+  deductPostCommitGate = null;
+  deductFenceLowered = null;
   freshBalanceUsd = 50;
   freshBalanceCalls = 0;
+  freshBalanceGate = null;
+  freshBalanceReadStarted = null;
   invalidateUserCalls.length = 0;
   invalidateUserShouldReject = false;
   // Drop any pending entries left by a prior test.
@@ -304,7 +336,6 @@ describe("getGateBalanceUsd", () => {
   test("cache-only miss fails closed and hydrates under waitUntil", async () => {
     const org = uid("org");
     freshBalanceUsd = 27;
-    markOrgAdmissionRefused(org);
     const background: Promise<unknown>[] = [];
     await expect(
       getGateBalanceUsd(org, {
@@ -316,7 +347,6 @@ describe("getGateBalanceUsd", () => {
     await background[0];
     expect(freshBalanceCalls).toBe(1);
     expect((await readOrgBalanceHint(org))?.balanceUsd).toBe(27);
-    expect(isOrgAdmissionRefused(org)).toBe(false);
   });
 
   test("stale hint returns immediately and revalidates off path", async () => {
@@ -390,11 +420,14 @@ describe("createOptimisticDebitSettler", () => {
     expect(deductCalls[0].idempotencyKey).toBe(
       `inference-debit:${input.organizationId}:${input.requestId}`,
     );
+    // Legacy non-Worker settlement has no active admission lease, so it keeps
+    // the normal delete-then-republish path.
+    expect(deductCalls[0].preserveInferenceBalanceHint).toBeUndefined();
     // Entry was claimed (deleted), so the sweep can never double-charge it.
     expect(await cache.get(CacheKeys.inference.pendingCharge(input.requestId))).toBeNull();
   });
 
-  test("on debit success republishes the org-balance hint the credit mutation evicted", async () => {
+  test("on debit success publishes the authoritative org-balance hint", async () => {
     const input = chargeInput();
     deductResult = { success: true, newBalance: 7.5, transaction: { id: "debit-2" } };
     await writeOrgBalanceHint(input.organizationId, 10, Date.now(), "1");
@@ -423,6 +456,64 @@ describe("createOptimisticDebitSettler", () => {
     // And the next turn's hot-path read must succeed instead of throwing the
     // cache-warming error the route surfaces as a 503.
     await expect(getGateBalanceUsd(input.organizationId, { cacheOnly: true })).resolves.toBe(4.25);
+  });
+
+  test("a 0ms next turn remains warm while the post-stream authoritative republish is paused", async () => {
+    const input = chargeInput();
+    deductResult = { success: true, newBalance: 4.25, transaction: { id: "debit-handoff" } };
+    freshBalanceUsd = 4.25;
+    await writeOrgBalanceHint(input.organizationId, 9, Date.now(), "1");
+    const publicationGate = Promise.withResolvers<void>();
+    const publicationStarted = Promise.withResolvers<void>();
+    let releaseDeductPostCommit!: () => void;
+    deductPostCommitGate = new Promise<void>((resolve) => {
+      releaseDeductPostCommit = resolve;
+    });
+    let markDeductFenceLowered!: () => void;
+    const deductFenceWasLowered = new Promise<void>((resolve) => {
+      markDeductFenceLowered = resolve;
+    });
+    deductFenceLowered = markDeductFenceLowered;
+    const inferenceBalanceFence = {
+      lowerCommittedBalance: mock(async () => undefined),
+      publishAuthoritativeBalance: mock(async () => {
+        publicationStarted.resolve();
+        await publicationGate.promise;
+      }),
+    };
+
+    // Model stream completion starts off-response settlement. Pause at the
+    // authoritative publication to model the exact 0-300ms interval after [DONE].
+    const settlement = debitInferenceCost(input, 0.02, "deferred", {
+      preserveBalanceHintDuringFencedHandoff: true,
+      inferenceBalanceFence,
+    });
+
+    // The committed debit lowers the DO before `deductCredits` completes its
+    // unrelated post-commit work, closing the actual-cost-over-estimate window.
+    await deductFenceWasLowered;
+    expect(freshBalanceCalls).toBe(0);
+    expect(inferenceBalanceFence.lowerCommittedBalance).toHaveBeenCalledTimes(1);
+    releaseDeductPostCommit();
+    await publicationStarted.promise;
+
+    expect(deductCalls[0]?.preserveInferenceBalanceHint).toBe(true);
+    expect(deductCalls[0]?.inferenceBalanceFence).toBe(inferenceBalanceFence);
+    expect(inferenceBalanceFence.lowerCommittedBalance).toHaveBeenCalledWith(4.25, "2");
+
+    // The rapid next call must consume the committed LOWER balance, not the
+    // pre-debit projection. The actual debit may exceed the active lease's
+    // estimate, so retaining 9 here would let a concurrent request over-admit
+    // before the revisioned publication completes.
+    await expect(getGateBalanceUsd(input.organizationId, { cacheOnly: true })).resolves.toBe(4.25);
+
+    publicationGate.resolve();
+    await settlement;
+    expect(inferenceBalanceFence.publishAuthoritativeBalance).toHaveBeenCalledWith(4.25, "2");
+    expect(await readOrgBalanceHint(input.organizationId)).toMatchObject({
+      balanceUsd: 4.25,
+      balanceRevision: "2",
+    });
   });
 
   // Opposite direction: the republish must not resurrect a hint for an org the

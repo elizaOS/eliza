@@ -1,5 +1,5 @@
 /**
- * Decodes and plays generated voice bytes through the shared Web Audio graph.
+ * Plays prepared voice audio through the shared Web Audio graph.
  * Provider fetchers own authentication and caching; this module owns the one
  * analyser, playback-reference tap, timeout, teardown, and telemetry lifecycle
  * that every decoded-audio provider must follow.
@@ -11,11 +11,7 @@ import {
   type PlaybackFrameTap,
   PlaybackTapLifecycle,
 } from "./playback-frame-pump";
-import {
-  type SpeakTask,
-  toArrayBuffer,
-  type VoicePlaybackStartEvent,
-} from "./voice-chat-types";
+import type { SpeakTask, VoicePlaybackStartEvent } from "./voice-chat-types";
 
 interface MutableCell<T> {
   current: T;
@@ -23,7 +19,7 @@ interface MutableCell<T> {
 
 export interface DecodedVoicePlaybackOptions {
   context: AudioContext;
-  audioBytes: Uint8Array;
+  audioBuffer: AudioBuffer;
   generation: number;
   generationRef: MutableCell<number>;
   provider: VoicePlaybackStartEvent["provider"];
@@ -44,7 +40,7 @@ export interface DecodedVoicePlaybackOptions {
 
 export async function playDecodedVoiceAudio({
   context,
-  audioBytes,
+  audioBuffer,
   generation,
   generationRef,
   provider,
@@ -62,8 +58,6 @@ export async function playDecodedVoiceAudio({
   emitPlaybackStart,
   tracePlayback = false,
 }: DecodedVoicePlaybackOptions): Promise<void> {
-  if (generation !== generationRef.current) return;
-  const audioBuffer = await context.decodeAudioData(toArrayBuffer(audioBytes));
   if (generation !== generationRef.current) return;
 
   const analyser = context.createAnalyser();
@@ -93,6 +87,12 @@ export async function playDecodedVoiceAudio({
     });
   const tapLifecycle = new PlaybackTapLifecycle(playbackFrameTapRef);
   await tapLifecycle.attach(tapPromise);
+  if (generation !== generationRef.current) {
+    tapLifecycle.finish();
+    source.disconnect();
+    analyser.disconnect();
+    return;
+  }
 
   await new Promise<void>((resolve) => {
     let finished = false;

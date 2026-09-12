@@ -31,7 +31,11 @@ interface HarnessOptions {
   config?: ElizaConfig;
   processEnv?: NodeJS.ProcessEnv;
   managerStart?: ReturnType<typeof vi.fn>;
-  runtime?: { getModelRegistrations: () => unknown[] } | null;
+  runtime?: {
+    getModelRegistrations: () => unknown[];
+    getSetting?: (key: string) => string | null;
+    getLastResolvedModelProvider?: (type: string) => string | undefined;
+  } | null;
 }
 
 function makeHarness(
@@ -184,7 +188,7 @@ describe("POST /api/models/config validation", () => {
     const { ctx, json } = makeHarness("POST", {
       target: "coding",
       backend: "eliza-code",
-      model: "cerebras/gpt-oss-120b",
+      model: "eliza-local",
       effort: "high",
     });
     await handleModelConfigRoutes(ctx as never);
@@ -464,17 +468,20 @@ describe("POST /api/models/config coding writes", () => {
   });
 
   it("rejects the removed opencode backend without mutating config", async () => {
-    const { ctx, config, json } = makeHarness("POST", {
+    const { ctx, config, json, saveElizaConfig } = makeHarness("POST", {
       target: "coding",
       backend: "opencode",
       model: "cerebras/gpt-oss-120b",
       defaultBackend: "opencode",
     });
     await handleModelConfigRoutes(ctx as never);
-    const { status, body } = responseOf(json);
+    const { body, status } = responseOf(json);
     expect(status).toBe(400);
     expect(String(body.error)).toContain('Unknown backend "opencode"');
+    expect(saveElizaConfig).not.toHaveBeenCalled();
     expect((config as Record<string, unknown>).env).toBeUndefined();
+    expect(saveElizaConfig).not.toHaveBeenCalled();
+    expect(config).toEqual({});
   });
 
   it("persists defaultBackend eliza-code under the orchestrator's elizaos spelling", async () => {
@@ -661,6 +668,61 @@ describe("GET /api/models/config activeChat", () => {
     };
   }
 
+  function runtimeWithDirectHandler(
+    provider: "openai" | "anthropic",
+    settings: Record<string, string> = {},
+  ) {
+    return {
+      getModelRegistrations: () => [
+        {
+          modelType: ModelType.TEXT_SMALL,
+          provider,
+          priority: 0,
+          registrationOrder: 1,
+        },
+      ],
+      getSetting: (key: string) => settings[key] ?? null,
+    };
+  }
+
+  it.each([
+    { registered: true, lastProvider: "codex-cli", serving: true },
+    { registered: true, lastProvider: undefined, serving: false },
+    { registered: true, lastProvider: "openai", serving: false },
+    { registered: false, lastProvider: "codex-cli", serving: false },
+  ])(
+    "reports subscription serving evidence: %j",
+    async ({ registered, lastProvider, serving }) => {
+      const { ctx, json } = makeHarness("GET", null, {
+        config: {
+          serviceRouting: {
+            llmText: { backend: "openai-subscription", transport: "direct" },
+          },
+        },
+        runtime: {
+          getModelRegistrations: () =>
+            registered
+              ? [{ modelType: ModelType.TEXT_LARGE, provider: "codex-cli" }]
+              : [],
+          getLastResolvedModelProvider: () => lastProvider,
+          getSetting: () => null,
+        },
+        processEnv: { OPENAI_BASE_URL: "https://unrelated.example/v1" },
+      });
+      await handleModelConfigRoutes(ctx as never);
+      const { body } = responseOf(json);
+      if (serving) {
+        expect(body.activeChat).toEqual({
+          provider: "openai-codex",
+          family: "OPENAI",
+          endpoint: "chatgpt.com",
+        });
+      } else {
+        expect(body.activeChat).toBeUndefined();
+      }
+    },
+  );
+
   it("names the cloud brain + its endpoint under cloud-proxy routing", async () => {
     const { ctx, json } = makeHarness("GET", null, {
       config: cloudRoutedConfig,
@@ -683,13 +745,13 @@ describe("GET /api/models/config activeChat", () => {
       Record<string, { value: string; source: string } | null>
     >;
     // Unpinned cloud tiers report the plugin's code defaults so the operator
-    // sees what actually serves from the plugin's current defaults.
+    // sees what actually serves — both tiers use the supported Qwen model.
     expect(targets.small?.ELIZAOS_CLOUD_SMALL_MODEL).toEqual({
-      value: "gemma-4-31b",
+      value: "qwen-3.8-27b",
       source: "default",
     });
     expect(targets.large?.ELIZAOS_CLOUD_LARGE_MODEL).toEqual({
-      value: "gemma-4-31b",
+      value: "qwen-3.8-27b",
       source: "default",
     });
   });
@@ -705,7 +767,11 @@ describe("GET /api/models/config activeChat", () => {
           },
         },
       } as never,
-      processEnv: { OPENAI_BASE_URL: "https://api.cerebras.ai/v1" },
+      processEnv: {
+        CEREBRAS_API_KEY: "test-cerebras-key",
+        OPENAI_BASE_URL: "https://api.cerebras.ai/v1",
+      },
+      runtime: runtimeWithDirectHandler("openai"),
     });
     await handleModelConfigRoutes(ctx as never);
     const { body } = responseOf(json);
@@ -733,7 +799,8 @@ describe("GET /api/models/config activeChat", () => {
           },
         },
       } as never,
-      processEnv: {},
+      processEnv: { CEREBRAS_API_KEY: "test-cerebras-key" },
+      runtime: runtimeWithDirectHandler("openai"),
     });
     await handleModelConfigRoutes(ctx as never);
     expect(responseOf(json).body.activeChat).toEqual({
@@ -748,18 +815,10 @@ describe("GET /api/models/config activeChat", () => {
       config: {} as never,
       processEnv: {
         ELIZA_PROVIDER: "cerebras",
+        CEREBRAS_API_KEY: "test-cerebras-key",
         CEREBRAS_BASE_URL: "https://api.cerebras.ai/v1",
       },
-      runtime: {
-        getModelRegistrations: () => [
-          {
-            modelType: ModelType.TEXT_SMALL,
-            provider: "openai",
-            priority: 0,
-            registrationOrder: 1,
-          },
-        ],
-      },
+      runtime: runtimeWithDirectHandler("openai"),
     });
     await handleModelConfigRoutes(ctx as never);
     expect(responseOf(json).body.activeChat).toEqual({
@@ -782,7 +841,7 @@ describe("GET /api/models/config activeChat", () => {
     expect(responseOf(json).body).not.toHaveProperty("activeChat");
   });
 
-  it("uses Cerebras base URL unless the shared OpenAI override is configured", async () => {
+  it("uses the Cerebras base URL and fails closed for a non-Cerebras OpenAI override", async () => {
     const config = {
       serviceRouting: {
         llmText: {
@@ -794,7 +853,11 @@ describe("GET /api/models/config activeChat", () => {
     } as never;
     const cerebras = makeHarness("GET", null, {
       config,
-      processEnv: { CEREBRAS_BASE_URL: "https://inference.example/v1" },
+      processEnv: {
+        CEREBRAS_API_KEY: "test-cerebras-key",
+        CEREBRAS_BASE_URL: "https://inference.example/v1",
+      },
+      runtime: runtimeWithDirectHandler("openai"),
     });
     await handleModelConfigRoutes(cerebras.ctx as never);
     expect(responseOf(cerebras.json).body.activeChat).toMatchObject({
@@ -804,14 +867,16 @@ describe("GET /api/models/config activeChat", () => {
     const openAiOverride = makeHarness("GET", null, {
       config,
       processEnv: {
+        CEREBRAS_API_KEY: "test-cerebras-key",
         CEREBRAS_BASE_URL: "https://inference.example/v1",
         OPENAI_BASE_URL: "https://gateway.example/v1",
       },
+      runtime: runtimeWithDirectHandler("openai"),
     });
     await handleModelConfigRoutes(openAiOverride.ctx as never);
-    expect(responseOf(openAiOverride.json).body.activeChat).toMatchObject({
-      endpoint: "gateway.example",
-    });
+    expect(responseOf(openAiOverride.json).body).not.toHaveProperty(
+      "activeChat",
+    );
   });
 
   it("matches provider endpoint precedence across config and process env", async () => {
@@ -830,7 +895,11 @@ describe("GET /api/models/config activeChat", () => {
             vars: { OPENAI_BASE_URL: " https://nested.openai.example/v1 " },
           },
         },
-        processEnv: { OPENAI_BASE_URL: "https://process.openai.example/v1" },
+        processEnv: {
+          OPENAI_API_KEY: "test-openai-key",
+          OPENAI_BASE_URL: "https://process.openai.example/v1",
+        },
+        runtime: runtimeWithDirectHandler("openai"),
         endpoint: "nested.openai.example",
       },
       {
@@ -851,8 +920,10 @@ describe("GET /api/models/config activeChat", () => {
           },
         },
         processEnv: {
+          ANTHROPIC_API_KEY: "test-anthropic-key",
           ANTHROPIC_BASE_URL: " https://process.anthropic.example/v1 ",
         },
+        runtime: runtimeWithDirectHandler("anthropic"),
         endpoint: "process.anthropic.example",
       },
       {
@@ -900,8 +971,10 @@ describe("GET /api/models/config activeChat", () => {
           env: { vars: { OPENAI_BASE_URL: " " } },
         },
         processEnv: {
+          CEREBRAS_API_KEY: "test-cerebras-key",
           CEREBRAS_BASE_URL: "https://process.cerebras.example/v1",
         },
+        runtime: runtimeWithDirectHandler("openai"),
         endpoint: "process.cerebras.example",
       },
     ] as const;
@@ -910,7 +983,7 @@ describe("GET /api/models/config activeChat", () => {
       const harness = makeHarness("GET", null, {
         config: testCase.config as never,
         processEnv: { ...testCase.processEnv },
-        runtime: "runtime" in testCase ? testCase.runtime : undefined,
+        runtime: testCase.runtime,
       });
       await handleModelConfigRoutes(harness.ctx as never);
       expect(

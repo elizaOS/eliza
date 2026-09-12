@@ -56,23 +56,33 @@ export function useNavigationPathSync({
     // `tabFromPath` consults the live registry, so a version bump must re-run
     // this effect to reconcile a deep link that booted before its page landed.
     void appShellRegistryVersion;
-    let navPath = getWindowNavigationPath();
-    const legacyRoute = resolveLegacyBuiltinRoute(navPath);
-    if (legacyRoute && typeof window !== "undefined") {
-      const nextUrl = shouldUseHashNavigation()
-        ? `${window.location.pathname}${window.location.search}#${legacyRoute.canonicalPath}`
-        : `${legacyRoute.canonicalPath}${window.location.search}${window.location.hash}`;
-      shellHistory.replaceState(window.history.state, "", nextUrl);
-      window.dispatchEvent(new PopStateEvent("popstate"));
-      navPath = legacyRoute.canonicalPath;
-    }
-    if (isRouteRootPath(navPath)) {
-      return;
-    }
-    const routeTab = tabFromPath(navPath);
-    if (routeTab && routeTab !== tab) {
-      setTabRaw(routeTab);
-    }
+    if (typeof window === "undefined") return;
+
+    const reconcileNavigationPath = () => {
+      const navPath = getWindowNavigationPath();
+      const legacyRoute = resolveLegacyBuiltinRoute(navPath);
+      if (legacyRoute) {
+        const nextUrl = shouldUseHashNavigation()
+          ? `${window.location.pathname}${window.location.search}#${legacyRoute.canonicalPath}`
+          : `${legacyRoute.canonicalPath}${window.location.search}${window.location.hash}`;
+        shellHistory.replaceState(window.history.state, "", nextUrl);
+        window.dispatchEvent(new PopStateEvent("popstate"));
+        return;
+      }
+      if (isRouteRootPath(navPath)) return;
+      const routeTab = tabFromPath(navPath);
+      if (routeTab && routeTab !== tab) {
+        setTabRaw(routeTab);
+      }
+    };
+
+    window.addEventListener("hashchange", reconcileNavigationPath);
+    window.addEventListener("popstate", reconcileNavigationPath);
+    reconcileNavigationPath();
+    return () => {
+      window.removeEventListener("hashchange", reconcileNavigationPath);
+      window.removeEventListener("popstate", reconcileNavigationPath);
+    };
   }, [tab, setTabRaw, appShellRegistryVersion]);
 }
 

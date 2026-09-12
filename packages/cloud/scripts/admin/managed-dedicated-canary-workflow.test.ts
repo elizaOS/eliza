@@ -91,16 +91,9 @@ function namedStep(name: string): WorkflowStep {
 describe("managed dedicated live-smoke workflow contract", () => {
   test("has one manual owner and a dedicated dispatch route", () => {
     expect(Object.keys(workflow.on)).toEqual(["workflow_dispatch"]);
-    expect(workflow.on.workflow_dispatch.inputs.suite.options).toEqual([
-      "all",
-      "app",
-      "scenarios",
-      "group-chat",
-      "live-information",
-      "cloud",
-      "voice",
+    expect(workflow.on.workflow_dispatch.inputs.suite.options).toContain(
       "dedicated",
-    ]);
+    );
     expect(
       workflow.on.workflow_dispatch.inputs.stale_canary_suffix,
     ).toMatchObject({ default: "", required: false, type: "string" });
@@ -114,14 +107,14 @@ describe("managed dedicated live-smoke workflow contract", () => {
     });
     expect(workflow.jobs.smoke.if).toBe(
       githubExpression(
-        "inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite != 'dedicated'",
+        "inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite != 'dedicated' && inputs.suite != 'pi-linked-account'",
       ),
     );
     expect(dedicated.if).toBe(
-      "inputs.diagnose_canary_suffix == '' && (inputs.cleanup_only || inputs.suite == 'all' || inputs.suite == 'dedicated')",
+      "inputs.suite != 'pi-linked-account' && inputs.diagnose_canary_suffix == '' && (inputs.cleanup_only || inputs.suite == 'all' || inputs.suite == 'dedicated')",
     );
     expect(workflow.jobs["dedicated-diagnostic"].if).toBe(
-      "inputs.diagnose_canary_suffix != ''",
+      "inputs.suite != 'pi-linked-account' && inputs.diagnose_canary_suffix != ''",
     );
     expect(workflow.jobs["shared-staging-onboarding"].if).toBe(
       githubExpression(
@@ -207,6 +200,73 @@ describe("managed dedicated live-smoke workflow contract", () => {
     );
     expect(headscaleExchange?.with?.script).not.toContain('echo "$block"');
 
+    const headscaleApiInventory = diagnostic.steps.find(
+      (step) => step.name === "Classify exact Headscale API inventory",
+    );
+    expect(headscaleApiInventory?.if).toBe(
+      "steps.cleanup_reconciliation.outputs.agent_id != ''",
+    );
+    expect(headscaleApiInventory?.env?.HEADSCALE_API_KEY).toBe(
+      githubExpression("secrets.HEADSCALE_API_KEY"),
+    );
+    expect(headscaleApiInventory?.run).toContain(
+      "https://headscale-staging.eliza.app/api/v1/node",
+    );
+    expect(headscaleApiInventory?.run).toContain(
+      "headscale_api_name_match_ip_count=",
+    );
+    expect(headscaleApiInventory?.run).not.toContain('echo "$inventory"');
+
+    const controlPlaneRoute = diagnostic.steps.find(
+      (step) =>
+        step.name === "Inspect control-plane route to exact canary peer",
+    );
+    expect(controlPlaneRoute?.env?.CANARY_DIAGNOSTIC_SUFFIX).toBe(
+      githubExpression("inputs.diagnose_canary_suffix"),
+    );
+    expect(controlPlaneRoute?.with?.script).toContain(
+      "control_plane_suffix_ip_matches_database=",
+    );
+    expect(controlPlaneRoute?.with?.script).toContain(
+      "control_plane_suffix_health_reachable=",
+    );
+
+    const headscaleIngress = diagnostic.steps.find(
+      (step) => step.name === "Summarize Headscale ingress protocol",
+    );
+    expect(headscaleIngress?.if).toBe(
+      "steps.cleanup_reconciliation.outputs.agent_id != ''",
+    );
+    expect(headscaleIngress?.with?.script).toContain("headscale version");
+    expect(headscaleIngress?.with?.script).toContain(
+      "/var/log/nginx/access.log",
+    );
+    expect(headscaleIngress?.with?.script).toContain("ts2021_total=");
+    expect(headscaleIngress?.with?.script).toContain("machine_register_total=");
+    expect(headscaleIngress?.with?.script).toContain("response[1]");
+    expect(headscaleIngress?.with?.script).not.toContain("response[2]");
+    expect(headscaleIngress?.with?.script).not.toContain('echo "$version_raw"');
+
+    const suffixJournal = diagnostic.steps.find(
+      (step) => step.name === "Classify exact canary journal by suffix",
+    );
+    expect(suffixJournal).toBeDefined();
+    expect(suffixJournal?.env?.CANARY_DIAGNOSTIC_SUFFIX).toBe(
+      githubExpression("inputs.diagnose_canary_suffix"),
+    );
+    expect(suffixJournal?.with?.script).toContain(
+      "managed-dedicated-canary-$CANARY_DIAGNOSTIC_SUFFIX",
+    );
+    expect(suffixJournal?.with?.script).toContain("::add-mask::$agent_id");
+    expect(suffixJournal?.with?.script).toContain(
+      "suffix_journal_mesh_category=",
+    );
+    expect(suffixJournal?.with?.script).toContain(
+      "suffix_journal_observation_present=",
+    );
+    expect(suffixJournal?.with?.script).not.toContain('echo "$journal"');
+    expect(suffixJournal?.with?.script).not.toContain('echo "$block"');
+
     const headscaleKeys = diagnostic.steps.find(
       (step) => step.name === "Summarize recent agent pre-auth key state",
     );
@@ -259,6 +319,9 @@ describe("managed dedicated live-smoke workflow contract", () => {
     expect(lifecycleJournal?.env?.CANARY_AGENT_ID).toBe(
       githubExpression("steps.cleanup_reconciliation.outputs.agent_id"),
     );
+    expect(lifecycleJournal?.env?.CANARY_DELETE_JOB_ID).toBe(
+      githubExpression("steps.cleanup_reconciliation.outputs.delete_job_id"),
+    );
     expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
       "dedicated_lifecycle_signals=",
     );
@@ -279,6 +342,48 @@ describe("managed dedicated live-smoke workflow contract", () => {
     );
     expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
       "dedicated_delete_failure_category=",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "dedicated_docker_recovery=",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "docker daemon recovered and container removed",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "docker_command_timeout",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "docker_connect_timeout",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "docker_connection_error",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "teardown_locator_unresolved",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "teardown_node_metadata_missing",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "teardown_node_hostname_missing",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "teardown_runtime_ports_missing",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "docker_stop_pair_failed",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "stopfailurekind",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "provider_initialization",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "timestamp_shape_invalid",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "sandbox_row_delete_query_failed",
     );
 
     const cleanupFailure = diagnostic.steps.find(

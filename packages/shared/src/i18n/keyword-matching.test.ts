@@ -7,8 +7,10 @@
 import { describe, expect, it } from "vitest";
 import {
   collectKeywordTermMatches,
+  collectPreparedKeywordTermMatches,
   findKeywordTermMatch,
   normalizeKeywordMatchText,
+  prepareKeywordTerms,
   splitKeywordDoc,
   textIncludesKeywordTerm,
 } from "./keyword-matching";
@@ -56,5 +58,40 @@ describe("collectKeywordTermMatches / findKeywordTermMatch", () => {
     expect(
       findKeywordTermMatch("nothing matches", ["foo", "bar"]),
     ).toBeUndefined();
+  });
+});
+
+describe("prepared keyword terms", () => {
+  it("returns the same matches, in the same order, as the unprepared form", () => {
+    const terms = [
+      "find contact",
+      "contacto",
+      "kontakt",
+      "find contact",
+      "who is",
+    ];
+    const texts = [
+      "Wer ist der Kontakt?",
+      "please find contact Alice",
+      "unrelated",
+    ];
+    const prepared = prepareKeywordTerms(terms);
+    expect(prepared.map((entry) => entry.term)).toEqual([
+      "find contact",
+      "contacto",
+      "kontakt",
+      "who is",
+    ]);
+    expect([...collectPreparedKeywordTermMatches(texts, prepared)]).toEqual([
+      ...collectKeywordTermMatches(texts, terms),
+    ]);
+    expect([...collectPreparedKeywordTermMatches(texts, prepared)]).toEqual([
+      "kontakt",
+      "find contact",
+    ]);
+    expect(collectPreparedKeywordTermMatches(["weather"], prepared).size).toBe(
+      0,
+    );
+    expect(collectPreparedKeywordTermMatches([], prepared).size).toBe(0);
   });
 });

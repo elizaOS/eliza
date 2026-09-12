@@ -51,7 +51,7 @@ describe("describeProvisioningWait", () => {
 
   it("advances to reassurance copy past the typical-wait threshold", () => {
     expect(describeProvisioningWait("in_progress", 25_000)).toContain(
-      "usually takes under a minute",
+      "cold start can take several minutes",
     );
     expect(describeProvisioningWait("queued", 25_000)).toContain(
       "Waiting for a sandbox slot",
@@ -66,6 +66,9 @@ describe("describeProvisioningWait", () => {
     );
     expect(describeProvisioningWait("in_progress", 61_000)).toContain(
       "about 60s in",
+    );
+    expect(describeProvisioningWait("in_progress", 61_000)).toContain(
+      "Cold starts can take several minutes",
     );
     expect(describeProvisioningWait("in_progress", 95_000)).toContain(
       "about 90s in",

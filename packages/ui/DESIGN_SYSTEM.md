@@ -25,6 +25,14 @@ border, radius, typography, control height, padding, focus, hover, disabled,
 selected, invalid, loading, and destructive presentation belong to the atom's
 typed interface.
 
+Message search and the command palette share the `searchResult` Button and
+`messageSearch` Card recipes. Search controls use `--radius-search` so their
+16px corners remain consistent in compact themes. The `bg-bg-card-hover` token
+mixes the current card and strong-text colors into an opaque hover surface;
+keyboard selection uses the same surface. `data-surface="card"` keeps chat
+results opaque above the transcript, while ordinary list results rest on their
+parent surface.
+
 Raw semantic utilities can still reproduce a canonical recipe without using
 its owner. The compliance gate therefore normalizes class order and rejects the
 opaque padded surface recipe (`bg-card`, `rounded-sm`, and `p-4`) on raw hosts;

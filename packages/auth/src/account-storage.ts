@@ -152,10 +152,7 @@ function resolvePhysicalPath(target: string): string {
     existingAncestor = parent;
   }
 
-  return path.resolve(
-    fs.realpathSync.native(existingAncestor),
-    ...missingSegments,
-  );
+  return path.resolve(fs.realpathSync(existingAncestor), ...missingSegments);
 }
 
 function assertContained(
@@ -336,7 +333,10 @@ function removeStaleLock(
   policy: AccountStoragePolicy,
   lockDir: string,
 ): boolean {
-  const stat = fs.lstatSync(lockDir);
+  const stat = fs.lstatSync(lockDir, { throwIfNoEntry: false });
+  // The owner can release its lock after our mkdir observed EEXIST. Retry
+  // acquisition so the generation fence runs under the newly acquired lock.
+  if (!stat) return true;
   if (stat.isSymbolicLink() || !stat.isDirectory()) {
     throw storageError(
       "AUTH_CREDENTIAL_PATH_ESCAPE",

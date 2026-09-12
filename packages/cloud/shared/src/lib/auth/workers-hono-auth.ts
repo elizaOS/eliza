@@ -248,6 +248,14 @@ export async function getCurrentUser(c: AppContext): Promise<AuthedUser | null> 
     return null;
   }
 
+  return getCurrentUserForStewardToken(c, token);
+}
+
+/** Resolves a user from an already-selected Steward session credential. */
+export async function getCurrentUserForStewardToken(
+  c: AppContext,
+  token: string,
+): Promise<AuthedUser | null> {
   const claims = await verifyStewardTokenCached(c.env, token);
   if (!claims) {
     c.set("user", null);

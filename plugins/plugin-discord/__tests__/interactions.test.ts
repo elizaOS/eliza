@@ -113,8 +113,8 @@ describe("renderDiscordInteractions", () => {
 		const out = renderDiscordInteractions({
 			text: `Task created.\n[TASK:${id}]Ship it [CONFIG:@elizaos/plugin-gmail][/TASK]`,
 		} as Content);
-		expect(out.text).toBe("Task created.");
 		expect(out.text).not.toContain("[CONFIG:");
+		expect(out.text).toBe("Task created.\n\nShip it");
 		expect(out.components).toHaveLength(0);
 	});
 
@@ -239,8 +239,8 @@ describe("buildDiscordReplyPayload — canonical resolver derivation (#14527)", 
 			text: `Task created.\n[TASK:${TASK_ID}]Ship it[/TASK]`,
 		} as Content);
 		expect(out.components).toHaveLength(0);
-		expect(out.needsFreeTextReply).toBe(false);
-		expect(out.text).toBe("Task created.");
+		expect(out.needsFreeTextReply).toBe(true);
+		expect(out.text).toBe("Task created.\n\nShip it");
 	});
 
 	it("still renders choice buttons regardless of app-origin config", () => {

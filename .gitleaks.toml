@@ -11,6 +11,20 @@ title = "elizaOS gitleaks config"
 # Pull in upstream default ruleset.
 useDefault = true
 
+# Android routing audits pin the SHA-256 of the complete public analytics script
+# shipped by @coinbase/wallet-sdk 4.3.6. This is an integrity digest, not an access
+# token. Match only this digest in its owning file; other values remain scanned.
+[[allowlists]]
+description = "Public Coinbase SDK analytics script integrity digest"
+condition = "AND"
+paths = [
+  '''^packages/app-core/scripts/lib/android-cloud-routing-markers\.mjs$''',
+]
+regexTarget = "secret"
+regexes = [
+  '''^373bcdaea9398c1f586404f0a39045e09a11949d361ec9c58a46ca5e010f75a4$''',
+]
+
 # Allowlists for known false positives only. Entries here MUST be reviewed —
 # never add a real secret pattern. Prefer narrow path scopes over broad regexes.
 [[allowlists]]
@@ -99,6 +113,20 @@ paths = [
 regexTarget = "line"
 regexes = [
   '''capacity-proposal-key-1''',
+]
+
+# This deterministic runtime redaction test supplies an invented credential to
+# prove configured secrets are removed from output. Match only that literal in
+# that test; other credentials in the same file must still fail the scan.
+[[allowlists]]
+description = "Runtime configured-secret redaction synthetic credential fixture"
+condition = "AND"
+paths = [
+  '''(^|/)packages/core/src/__tests__/runtime-redaction-configured-secrets\.test\.ts$''',
+]
+regexTarget = "secret"
+regexes = [
+  '''^sk-live-abcdef1234567890abcdef$''',
 ]
 
 # Chrome derives an unpacked extension's stable ID from this public RSA
@@ -311,4 +339,24 @@ paths = [
 regexTarget = "line"
 regexes = [
   '''apiKey:\s*"vast-key-hunter3"''',
+]
+
+# Billing tests use fixed, non-provider fixture sentinels to select controlled
+# Stripe transports. Keep historical additions scannable while allowing only
+# these exact assignments in the owning tests; other credentials still fail.
+[[allowlists]]
+description = "Subscription billing controlled-transport fixture sentinels"
+condition = "AND"
+paths = [
+  '''(^|/)packages/cloud/shared/src/db/repositories/stripe\-terminal\-consumer\.pglite\.test\.ts$''',
+  '''(^|/)packages/cloud/shared/src/db/repositories/subscription\-cancellation\-consumer\.pglite\.test\.ts$''',
+  '''(^|/)packages/cloud/shared/src/db/repositories/subscription\-cancellation\-event\.pglite\.test\.ts$''',
+  '''(^|/)packages/cloud/shared/src/db/repositories/subscription\-notices\.pglite\.test\.ts$''',
+  '''(^|/)packages/cloud/shared/src/db/repositories/subscription\-renewal\-schedule\-lineage\.pglite\.test\.ts$''',
+  '''(^|/)packages/cloud/shared/src/db/repositories/subscription\-renewal\.pglite\.test\.ts$''',
+  '''(^|/)packages/cloud/shared/src/lib/services/subscription\-catalog\-cloud\-e2e\.test\.ts$''',
+]
+regexTarget = "line"
+regexes = [
+  '''^\s*(?:process\.env\.STRIPE_SECRET_KEY\s*=\s*|STRIPE_SECRET_KEY:\s*)"(?:sk_test_cancellationfixture|sk_test_renewalfixture|sk_test_terminalfixture|sk_test_validfixture)"[;,]?\s*$''',
 ]

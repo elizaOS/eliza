@@ -7,6 +7,7 @@ import type { ConversationMessage } from "../../api/client-types-chat";
 import type { AsrProvider } from "../../api/client-types-config";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
 import { useVoiceConfig } from "../../voice/useVoiceConfig";
+import type { VoiceTtsError } from "../../voice/voice-chat-types";
 
 /** `useVoiceChat` requires a transcript sink; the overlay owns input elsewhere. */
 const NOOP_TRANSCRIPT = (): void => {};
@@ -16,15 +17,21 @@ function findLatestAssistantText(messages: readonly ConversationMessage[]): {
   text: string;
   source?: string;
   provisional?: boolean;
+  interrupted?: boolean;
 } | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
-    if (message && message.role === "assistant" && message.text.trim()) {
+    if (
+      message &&
+      message.role === "assistant" &&
+      (message.interrupted || message.text.trim())
+    ) {
       return {
         id: message.id,
         text: message.text,
         source: message.source,
         provisional: message.provisional,
+        interrupted: message.interrupted,
       };
     }
   }
@@ -34,6 +41,8 @@ function findLatestAssistantText(messages: readonly ConversationMessage[]): {
 export interface ShellVoiceOutput {
   /** True while an assistant reply is being spoken aloud. */
   speaking: boolean;
+  /** The current configured-provider or committed-speech failure, retained until another attempt. */
+  ttsError: VoiceTtsError | null;
   /**
    * Speak an arbitrary message aloud on demand — backs the per-message
    * "Play audio" control (#10713). Distinct from the automatic voice-reply
@@ -118,6 +127,7 @@ export function useShellVoiceOutput(
     speak,
     stopSpeaking,
     isSpeaking,
+    ttsError,
     needsAudioUnlock,
     unlockAudio,
   } = useVoiceChat({
@@ -153,6 +163,19 @@ export function useShellVoiceOutput(
     if (voiceBootstrapTick === 0) return; // voice config not loaded yet
     const latest = findLatestAssistantText(conversationMessages);
     if (!latest) return;
+    // Empty interrupted outcomes still terminate selection: never replay an
+    // older answer or synthesize failure text as an assistant utterance.
+    if (latest.interrupted) {
+      const queued = spokenRef.current;
+      if (
+        queued &&
+        (queued.id === latest.id ||
+          !conversationMessages.some((message) => message.id === queued.id))
+      ) {
+        stopSpeaking();
+      }
+      return;
+    }
 
     // Proactive interaction comments (#8792) are text-only by default: they must
     // never be read aloud unless the user is actively hands-free (the latest turn
@@ -214,6 +237,7 @@ export function useShellVoiceOutput(
     conversationMessages,
     chatSending,
     queueAssistantSpeech,
+    stopSpeaking,
   ]);
 
   // Barge-in: the instant the mic opens, stop talking so the user is heard.
@@ -228,6 +252,7 @@ export function useShellVoiceOutput(
 
   return {
     speaking: isSpeaking,
+    ttsError: ttsError ?? null,
     speak,
     stopSpeaking,
     agentVoiceMuted,

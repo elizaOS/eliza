@@ -6,7 +6,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  atomicallyPromoteRefs,
   buildEffectPlans,
   createLedgerPayload,
   decideEffectReconciliation,
@@ -42,9 +41,9 @@ function registry() {
       },
     ],
     promotion: {
-      id: "main-promotion",
+      id: "staging-promotion",
       sourceBranch: "develop",
-      targetBranch: "main",
+      targetBranch: "staging",
     },
   };
 }
@@ -130,6 +129,109 @@ function deployment(
 }
 
 describe("develop effect registry and exact plans", () => {
+  test("rejects promotion paths that bypass staging or reverse direction", () => {
+    for (const [sourceBranch, targetBranch] of [
+      ["develop", "main"],
+      ["main", "staging"],
+      ["staging", "develop"],
+    ]) {
+      const config = registry();
+      config.promotion = { ...config.promotion, sourceBranch, targetBranch };
+      expect(() => validateRegistry(config)).toThrow(
+        "develop -> staging -> main",
+      );
+    }
+  });
+
+  test("production dispatch binds the resulting main SHA and does not request another promotion", async () => {
+    const config = { ...registry(), sourceBranch: "main", promotion: null };
+    const repoRoot = fixtureRoot();
+    const current = buildEffectPlans({
+      ...manifests(),
+      registry: config,
+      repoRoot,
+    });
+    const changed = manifests();
+    changed.expected.headSha = PRIOR_SHA;
+    changed.observed.headSha = PRIOR_SHA;
+    changed.observed.surfaces = changed.expected.surfaces.map((surface) =>
+      createEvidence(changed.expected, surface.id, NOW, 24),
+    );
+    const prior = buildEffectPlans({ ...changed, registry: config, repoRoot });
+    expect(current.plans[0].inputDigest).not.toBe(prior.plans[0].inputDigest);
+    let body: Record<string, unknown> | undefined;
+    await dispatchEffect(
+      {
+        request: async (
+          _method: string,
+          _path: string,
+          value: Record<string, unknown>,
+        ) => {
+          body = value;
+          return { workflow_run_id: 321 };
+        },
+      },
+      current.plans[0],
+      SOURCE_SHA,
+    );
+    expect(body).toMatchObject({
+      ref: "main",
+      inputs: { source_sha: SOURCE_SHA },
+    });
+    expect(current.promotion).toBeNull();
+  });
+
+  test("binds staging effects and source evidence to staging rather than develop", async () => {
+    const config = registry();
+    config.promotion = {
+      id: "main-promotion",
+      sourceBranch: "staging",
+      targetBranch: "main",
+    };
+    const staged = buildEffectPlans({
+      ...manifests(),
+      registry: config,
+      repoRoot: fixtureRoot(),
+    });
+    let dispatched: Record<string, unknown> | undefined;
+    await dispatchEffect(
+      {
+        request: async (
+          _method: string,
+          _path: string,
+          body: Record<string, unknown>,
+        ) => {
+          dispatched = body;
+          return { workflow_run_id: 123 };
+        },
+      },
+      staged.plans[0],
+      SOURCE_SHA,
+    );
+    expect(dispatched).toMatchObject({
+      ref: "staging",
+      inputs: { source_sha: SOURCE_SHA },
+    });
+    const run = {
+      id: 42,
+      event: "push",
+      head_branch: "staging",
+      head_sha: SOURCE_SHA,
+      path: ".github/workflows/develop-full.yml",
+      status: "completed",
+      conclusion: "success",
+    };
+    expect(validateSourceRun(run, SOURCE_SHA, "42", "staging")).toBe(run);
+    expect(() =>
+      validateSourceRun(
+        { ...run, head_branch: "develop" },
+        SOURCE_SHA,
+        "42",
+        "staging",
+      ),
+    ).toThrow("branch is not staging");
+  });
+
   test("binds surface digests, effect workflow bytes, inputs, and registry", () => {
     const baseline = plans();
     const repeated = plans();
@@ -284,12 +386,13 @@ describe("source and durable ledger contracts", () => {
     expect(await listEffectDeployments(api, plan)).toHaveLength(101);
   });
 
-  test("rediscovery binds a crashed dispatch to exact workflow, SHA, and digest", () => {
+  test("rediscovery binds a crashed dispatch to exact branch, workflow, SHA, and digest", () => {
     const plan = plans().plans[0];
     const matching = {
       id: 99,
       display_title: `Cloud ${SOURCE_SHA} ${plan.inputDigest}`,
       event: "workflow_dispatch",
+      head_branch: plan.sourceBranch,
       head_sha: SOURCE_SHA,
       path: `.github/workflows/${plan.workflow}`,
     };
@@ -297,6 +400,11 @@ describe("source and durable ledger contracts", () => {
     expect(
       selectRediscoveredRun(plan, SOURCE_SHA, [
         { ...matching, id: 1, head_sha: PRIOR_SHA },
+      ]),
+    ).toBeNull();
+    expect(
+      selectRediscoveredRun(plan, SOURCE_SHA, [
+        { ...matching, head_branch: "main" },
       ]),
     ).toBeNull();
     expect(() =>
@@ -317,6 +425,7 @@ describe("source and durable ledger contracts", () => {
       conclusion: "success",
       display_title: `Cloud ${SOURCE_SHA} ${plan.inputDigest}`,
       event: "workflow_dispatch",
+      head_branch: plan.sourceBranch,
       head_sha: SOURCE_SHA,
       path: `.github/workflows/${plan.workflow}`,
       status: "completed",
@@ -397,7 +506,7 @@ describe("source and durable ledger contracts", () => {
 });
 
 describe("develop-green-only promotion", () => {
-  test("allows only an exact current fast-forward or idempotent reconciliation", () => {
+  test("plans review only for a current source and accepts already promoted commits", () => {
     expect(
       decidePromotion({
         comparison: "ahead",
@@ -405,7 +514,7 @@ describe("develop-green-only promotion", () => {
         mainSha: MAIN_SHA,
         sourceSha: SOURCE_SHA,
       }).action,
-    ).toBe("fast-forward");
+    ).toBe("awaiting-review");
     expect(
       decidePromotion({
         comparison: "identical",
@@ -422,7 +531,7 @@ describe("develop-green-only promotion", () => {
         sourceSha: SOURCE_SHA,
       }).action,
     ).toBe("stale");
-    for (const comparison of ["behind", "diverged"]) {
+    for (const comparison of ["invalid"]) {
       expect(() =>
         decidePromotion({
           comparison,
@@ -430,72 +539,8 @@ describe("develop-green-only promotion", () => {
           mainSha: MAIN_SHA,
           sourceSha: SOURCE_SHA,
         }),
-      ).toThrow("cannot fast-forward");
+      ).toThrow("invalid branch comparison");
     }
-  });
-
-  test("atomically fences develop and main at the mutation boundary", async () => {
-    let variables: Record<string, unknown> | undefined;
-    const api = {
-      graphql: async (_query: string, value: Record<string, unknown>) => {
-        variables = value;
-        return { updateRefs: { clientMutationId: "ok" } };
-      },
-    };
-    await atomicallyPromoteRefs(api, {
-      repositoryId: "R_fixture",
-      sourceBranch: "develop",
-      sourceSha: SOURCE_SHA,
-      targetBranch: "main",
-      targetSha: MAIN_SHA,
-    });
-    expect(variables).toMatchObject({
-      input: {
-        repositoryId: "R_fixture",
-        refUpdates: [
-          {
-            name: "refs/heads/develop",
-            beforeOid: SOURCE_SHA,
-            afterOid: SOURCE_SHA,
-          },
-          {
-            name: "refs/heads/main",
-            beforeOid: MAIN_SHA,
-            afterOid: SOURCE_SHA,
-          },
-        ],
-      },
-    });
-  });
-
-  test("an advanced develop ref rejects the whole promotion mutation", async () => {
-    let mainMoved = false;
-    const api = {
-      graphql: async (
-        _query: string,
-        variables: {
-          input: {
-            refUpdates: Array<{ afterOid: string; beforeOid: string }>;
-          };
-        },
-      ) => {
-        const [develop, main] = variables.input.refUpdates;
-        if (develop.beforeOid !== PRIOR_SHA) {
-          throw new Error("develop beforeOid mismatch");
-        }
-        mainMoved = main.afterOid === SOURCE_SHA;
-      },
-    };
-    await expect(
-      atomicallyPromoteRefs(api, {
-        repositoryId: "R_fixture",
-        sourceBranch: "develop",
-        sourceSha: SOURCE_SHA,
-        targetBranch: "main",
-        targetSha: MAIN_SHA,
-      }),
-    ).rejects.toThrow("beforeOid mismatch");
-    expect(mainMoved).toBe(false);
   });
 
   test("dry reconciliation stops stale sources and exposes partial resume", () => {
@@ -533,7 +578,7 @@ describe("develop-green-only promotion", () => {
     expect(result.effects).toEqual([
       { id: plan.id, inputDigest: plan.inputDigest, action: "resume" },
     ]);
-    expect(result.promotion).toBe("fast-forward");
+    expect(result.promotion).toBe("awaiting-review");
   });
 });
 
@@ -550,14 +595,15 @@ describe("checked-in workflow authority", () => {
     };
     expect(Object.keys(workflow.on)).toEqual(["workflow_dispatch"]);
     expect(workflow.concurrency).toEqual({
-      group: "develop-effect-reconcile",
+      group: "branch-effect-reconcile-${{ github.ref_name }}",
       "cancel-in-progress": false,
       queue: "max",
     });
     expect(workflow.permissions).toEqual({
       actions: "write",
-      contents: "write",
+      contents: "read",
       deployments: "write",
+      "pull-requests": "write",
     });
   });
 
@@ -573,13 +619,122 @@ describe("checked-in workflow authority", () => {
     }
   });
 
+  test("the release gate observes completed worker deployments for its own source", async () => {
+    const checkedIn = JSON.parse(
+      readFileSync(path.join(repoRoot, ".github/staging-effects.json"), "utf8"),
+    ) as ReturnType<typeof registry>;
+    async function rollout(config: ReturnType<typeof registry>) {
+      const expected = manifests().expected;
+      expected.surfaces = [
+        ...new Set(config.effects.flatMap((effect) => effect.surfaces)),
+      ]
+        .sort()
+        .map((id) => ({ id, inputDigest: sha256(id) }));
+      const observed = {
+        ...manifests().observed,
+        surfaces: expected.surfaces.map((surface) =>
+          createEvidence(expected, surface.id, NOW, 24),
+        ),
+      };
+      const effects = buildEffectPlans({
+        expected,
+        observed,
+        registry: config,
+        repoRoot,
+      });
+      const ready = new Map<string, string>();
+      const runs = new Map<
+        number,
+        {
+          event: string;
+          head_sha: string;
+          head_branch: string;
+          path: string;
+          status: string;
+          conclusion: string;
+          workflow: string;
+        }
+      >();
+      let nextId = 1;
+      let releaseAccepted = false;
+      const api = {
+        request: async (
+          method: string,
+          endpoint: string,
+          body?: { inputs?: Record<string, string>; ref?: string },
+        ) => {
+          if (method === "GET" && endpoint.startsWith("/deployments?"))
+            return [];
+          if (method === "POST" && endpoint === "/deployments")
+            return { id: nextId++ };
+          if (method === "POST" && endpoint.endsWith("/statuses")) return {};
+          const dispatch = endpoint.match(
+            /^\/actions\/workflows\/([^/]+)\/dispatches$/,
+          );
+          if (method === "POST" && dispatch) {
+            const workflow = decodeURIComponent(dispatch[1]);
+            const source =
+              body?.inputs?.source_sha ?? body?.inputs?.deployment_sha;
+            if (!source) throw new Error("Missing downstream source");
+            let accepted = true;
+            if (workflow === "cloud-cf-deploy.yml") {
+              accepted =
+                ready.get("deploy-apps-worker.yml") === source &&
+                ready.get("deploy-eliza-provisioning-worker.yml") === source;
+              releaseAccepted = accepted;
+            }
+            const id = nextId++;
+            runs.set(id, {
+              workflow,
+              event: "workflow_dispatch",
+              head_sha: source,
+              head_branch: body?.ref ?? "missing-ref",
+              path: `.github/workflows/${workflow}`,
+              status: "completed",
+              conclusion: accepted ? "success" : "failure",
+            });
+            return { workflow_run_id: id };
+          }
+          const poll = endpoint.match(/^\/actions\/runs\/(\d+)$/);
+          if (method === "GET" && poll) {
+            const run = runs.get(Number(poll[1]));
+            if (!run) throw new Error("Unknown downstream run");
+            if (run.conclusion === "success")
+              ready.set(run.workflow, run.head_sha);
+            return run;
+          }
+          throw new Error(`Unexpected request ${method} ${endpoint}`);
+        },
+      };
+      for (const effect of effects.plans) {
+        await reconcileEffect(api, effect, {
+          ledgerVersion: config.ledgerVersion,
+          repository: "owner/repo",
+          serverUrl: "https://github.com",
+          sourceRunId: "42",
+          sourceSha: SOURCE_SHA,
+        });
+      }
+      return releaseAccepted;
+    }
+    await expect(rollout(checkedIn)).resolves.toBe(true);
+    const earlyRelease = [...checkedIn.effects].sort(
+      (left, right) =>
+        Number(right.id === "cloud-staging") -
+        Number(left.id === "cloud-staging"),
+    );
+    await expect(
+      rollout({ ...checkedIn, effects: earlyRelease }),
+    ).rejects.toThrow("cloud-staging: downstream run concluded failure");
+  });
+
   test("the handoff requires a successful aggregate and exact run-id response", () => {
     const developFull = readWorkflow("develop-full.yml");
     expect(developFull).toContain("needs.complete.result == 'success'");
     expect(developFull).toContain("X-GitHub-Api-Version: 2026-03-10");
     expect(developFull).toContain(".workflow_run_id");
     expect(developFull).toContain("-F return_run_details=true");
-    expect(developFull).toContain("-f ref=develop");
+    expect(developFull).toContain('-f "ref=$GITHUB_REF_NAME"');
     expect(developFull).not.toContain('-f "ref=$SOURCE_SHA"');
     expect(developFull).not.toContain("pull_request:");
     expect(readWorkflow("develop-reconcile.yml")).toContain(

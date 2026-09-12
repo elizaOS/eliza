@@ -1,0 +1,306 @@
+/** Exercises ACP write-path capture and completion rendering with real files and temporary Git repositories. */
+import { execFileSync } from "node:child_process";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { AgentRuntime } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AcpService } from "../services/acp-service.js";
+import { renderChangeSetBody } from "../services/completion-evidence.js";
+import {
+  captureChangeSet,
+  subtractChangeSetBaseline,
+  type WorkspaceChangeSet,
+} from "../services/workspace-diff.js";
+
+describe("complete path evidence", () => {
+  let dir: string;
+  const git = (...args: string[]) =>
+    execFileSync("git", args, { cwd: dir, encoding: "utf8" });
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "completion-path-evidence-"));
+    git("init", "-q");
+    git("config", "user.email", "test@example.com");
+    git("config", "user.name", "Test");
+    writeFileSync(join(dir, ".gitignore"), "artifacts/\n");
+    git("add", ".gitignore");
+    git("commit", "-q", "-m", "baseline");
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("renders every tool write after the first 500, with exact path bytes", async () => {
+    rmSync(join(dir, ".git"), { recursive: true, force: true });
+    const service = new AcpService(
+      new AgentRuntime({ character: { name: "Path evidence" } }),
+    );
+    mkdirSync(join(dir, "artifacts"));
+    const names = [
+      ...Array.from({ length: 500 }, (_, index) => `artifact-${index}.txt`),
+      " spaced.txt ",
+      "tab\tname.txt",
+      "line\nname.txt",
+      "snow☃.txt",
+      " ",
+    ].map((name) => `artifacts/${name}`);
+    for (const [index, path] of names.entries()) {
+      writeFileSync(join(dir, path), `CONTENT_${index}_END\n`);
+      service["handleAcpEvent"](
+        {
+          method: "session/update",
+          params: {
+            sessionId: "path-session",
+            update: {
+              sessionUpdate: "tool_call",
+              toolCallId: `write-${index}`,
+              kind: "write",
+              status: "completed",
+              ...(index % 2 === 0
+                ? { rawInput: { path } }
+                : { locations: [{ path }] }),
+            },
+          },
+        },
+        "path-session",
+        "",
+        Date.now(),
+        false,
+        new Set(),
+      );
+    }
+    const changed = await captureChangeSet(
+      dir,
+      undefined,
+      service.getChangedPaths("path-session"),
+    );
+    if (!changed) throw new Error("Expected complete tool-write evidence");
+    expect(changed.changedFiles).toEqual(names);
+    const rendered = renderChangeSetBody(changed);
+    for (const [index, path] of names.entries()) {
+      expect(rendered).toContain(path);
+      expect(rendered).toContain(`+CONTENT_${index}_END`);
+    }
+  }, 60_000);
+
+  it.each([true, false])(
+    "subtracts exact special filenames with Git quotePath=%s and persisted legacy captures",
+    async (quotePath) => {
+      git("config", "core.quotePath", String(quotePath));
+      const names = [
+        " spaced.txt ",
+        "spaced.txt",
+        "tab\tname.txt",
+        "line\nname.txt",
+        "snow☃.txt",
+        'quote"name.txt',
+        "binary.dat",
+        "deleted.txt",
+      ];
+      for (const [index, name] of names.entries())
+        writeFileSync(
+          join(dir, name),
+          `BEFORE_${index}\n${index === 1 ? "stable rename context\n".repeat(20) : ""}`,
+        );
+      git("add", ".");
+      git("commit", "-q", "-m", "files");
+      for (const [index, name] of names.entries())
+        writeFileSync(
+          join(dir, name),
+          `CHANGED_${index}\n${index === 1 ? "stable rename context\n".repeat(20) : ""}`,
+        );
+      writeFileSync(join(dir, "binary.dat"), Buffer.from([0, 1, 2, 3]));
+      rmSync(join(dir, "deleted.txt"));
+      git("mv", "spaced.txt", "renamed\t☃.txt");
+      const captured = await captureChangeSet(dir);
+      if (!captured) throw new Error("Expected captured Git evidence");
+      const legacy: WorkspaceChangeSet = {
+        ...captured,
+        fileDiffs: undefined,
+        diff: git("diff", "HEAD"),
+      };
+      expect(legacy.diff).toContain("rename from spaced.txt");
+      for (const source of [captured, legacy]) {
+        for (const removed of source.changedFiles) {
+          const remaining = source.changedFiles.filter(
+            (path) => path !== removed,
+          );
+          const result = subtractChangeSetBaseline(source, [removed]);
+          expect(result.changedFiles).toEqual(remaining);
+          const onlyRemoved = subtractChangeSetBaseline(source, remaining);
+          expect(onlyRemoved.changedFiles).toEqual([removed]);
+          expect(result.diff).not.toContain(onlyRemoved.diff.trim());
+          const rendered = renderChangeSetBody(result);
+          for (const path of remaining) {
+            expect(rendered).toContain(path);
+            if (path === "binary.dat")
+              expect(result.diff).toContain("Binary files");
+            else if (path === "deleted.txt")
+              expect(result.diff).toContain("-BEFORE_7");
+            else {
+              const index = path === "renamed\t☃.txt" ? 1 : names.indexOf(path);
+              expect(result.diff).toContain(`+CHANGED_${index}`);
+            }
+          }
+          expect(subtractChangeSetBaseline(result, remaining).diff).toBe("");
+        }
+      }
+    },
+    15_000,
+  );
+
+  it("keeps neighboring whitespace names distinct and rejects unowned legacy or inconsistent persisted patches", async () => {
+    for (const name of [" x ", "x"])
+      writeFileSync(join(dir, name), `before ${name}\n`);
+    git("add", ".");
+    git("commit", "-q", "-m", "files");
+    writeFileSync(join(dir, " x "), "SPACE_PATH_MARKER\n");
+    writeFileSync(join(dir, "x"), "PLAIN_PATH_MARKER\n");
+    const captured = await captureChangeSet(dir);
+    if (!captured) throw new Error("Expected captured evidence");
+    const result = subtractChangeSetBaseline(captured, [" x "]);
+    expect(result.changedFiles).toEqual(["x"]);
+    expect(result.diff).toContain("+PLAIN_PATH_MARKER");
+    expect(result.diff).not.toContain("SPACE_PATH_MARKER");
+    for (const broken of [
+      { ...captured, fileDiffs: undefined, diff: "unattributed patch output" },
+      { ...captured, diff: "mismatched persisted patch" },
+    ]) {
+      expect(() => subtractChangeSetBaseline(broken, [" x "])).toThrow(
+        expect.objectContaining({
+          code: "WORKSPACE_CHANGESET_PATCH_OWNERSHIP_INVALID",
+        }),
+      );
+    }
+  });
+
+  it("rejects persisted inventories that attribute a longer Git path to its suffix", async () => {
+    mkdirSync(join(dir, "nested b"));
+    for (const path of ["nested b/bar", "bar"])
+      writeFileSync(join(dir, path), "before\n");
+    git("add", ".");
+    git("commit", "-q", "-m", "files");
+    writeFileSync(join(dir, "nested b/bar"), "NESTED_PATH_MARKER\n");
+    writeFileSync(join(dir, "bar"), "BASELINE_PATH_MARKER\n");
+    const captured = await captureChangeSet(dir);
+    if (!captured) throw new Error("Expected captured Git evidence");
+    const legacy = {
+      ...captured,
+      fileDiffs: undefined,
+      diff: git("diff", "HEAD"),
+    };
+    const retained = subtractChangeSetBaseline(legacy, ["bar"]);
+    expect(retained.diff).toContain("NESTED_PATH_MARKER");
+    expect(retained.diff).not.toContain("BASELINE_PATH_MARKER");
+    const saved = join(dir, "incomplete-capture.json");
+    writeFileSync(
+      saved,
+      JSON.stringify({ ...legacy, changedFiles: ["unrelated", "bar"] }),
+    );
+    const incomplete = JSON.parse(readFileSync(saved, "utf8"));
+    expect(() => subtractChangeSetBaseline(incomplete, ["bar"])).toThrow(
+      expect.objectContaining({
+        code: "WORKSPACE_CHANGESET_PATCH_OWNERSHIP_INVALID",
+      }),
+    );
+  });
+
+  it.each(["[ab].txt", "*.txt", ":(glob)*.txt"])(
+    "captures %s as a literal path without its matching baseline neighbor",
+    async (literalPath) => {
+      for (const path of [literalPath, "a.txt"])
+        writeFileSync(join(dir, path), "before\n");
+      git("add", ".");
+      git("commit", "-q", "-m", "files");
+      writeFileSync(join(dir, literalPath), "LITERAL_PATH_MARKER\n");
+      writeFileSync(join(dir, "a.txt"), "BASELINE_NEIGHBOR_MARKER\n");
+      const captured = await captureChangeSet(dir);
+      if (!captured) throw new Error("Expected captured Git evidence");
+      const retained = subtractChangeSetBaseline(captured, ["a.txt"]);
+      expect(retained.changedFiles).toEqual([literalPath]);
+      expect(retained.diff).toContain("LITERAL_PATH_MARKER");
+      expect(retained.diff).not.toContain("BASELINE_NEIGHBOR_MARKER");
+      const scoped = await captureChangeSet(dir, undefined, [], ["a.txt"]);
+      expect(scoped?.changedFiles).toEqual([literalPath]);
+      expect(scoped?.diff).toContain("LITERAL_PATH_MARKER");
+      expect(scoped?.diff).not.toContain("BASELINE_NEIGHBOR_MARKER");
+      expect(scoped?.diffStat).toContain(JSON.stringify(literalPath));
+      expect(scoped?.diffStat).not.toContain(JSON.stringify("a.txt"));
+    },
+  );
+
+  it.each([false, true])(
+    "keeps directory child ownership separate when removed=%s",
+    async (removed) => {
+      mkdirSync(join(dir, "folder"));
+      for (const name of ["own.txt", "baseline.txt"])
+        writeFileSync(join(dir, "folder", name), `BEFORE_${name}\n`);
+      git("add", ".");
+      git("commit", "-q", "-m", "files");
+      if (removed) rmSync(join(dir, "folder"), { recursive: true });
+      else {
+        writeFileSync(join(dir, "folder/own.txt"), "OWN_CHILD_MARKER\n");
+        writeFileSync(
+          join(dir, "folder/baseline.txt"),
+          "BASELINE_CHILD_MARKER\n",
+        );
+      }
+      const captured = await captureChangeSet(dir, undefined, ["folder"]);
+      if (!captured) throw new Error("Expected directory operation capture");
+      expect(
+        captured.fileDiffs?.find((entry) => entry.path === "folder")?.diff,
+      ).toBe("");
+      const retained = subtractChangeSetBaseline(captured, [
+        "folder/baseline.txt",
+      ]);
+      expect(retained.diff).toContain(
+        removed ? "-BEFORE_own.txt" : "+OWN_CHILD_MARKER",
+      );
+      expect(retained.diff).not.toContain(
+        removed ? "BEFORE_baseline.txt" : "BASELINE_CHILD_MARKER",
+      );
+      const scoped = await captureChangeSet(
+        dir,
+        undefined,
+        ["folder"],
+        ["folder/baseline.txt"],
+      );
+      expect(scoped?.diff).not.toContain(
+        removed ? "BEFORE_baseline.txt" : "BASELINE_CHILD_MARKER",
+      );
+      expect(scoped?.diffStat).not.toContain("baseline.txt");
+    },
+  );
+
+  it("owns literal path selection even when the parent enables incompatible Git pathspec modes", async () => {
+    for (const path of ["[ab].txt", "a.txt"])
+      writeFileSync(join(dir, path), "REMOVED_MARKER\n");
+    git("add", ".");
+    git("commit", "-q", "-m", "files");
+    writeFileSync(join(dir, "[ab].txt"), "ADDED_MARKER\n");
+    writeFileSync(join(dir, "a.txt"), "BASELINE_NEIGHBOR_MARKER\n");
+    for (const name of [
+      "GIT_LITERAL_PATHSPECS",
+      "GIT_GLOB_PATHSPECS",
+      "GIT_NOGLOB_PATHSPECS",
+      "GIT_ICASE_PATHSPECS",
+    ])
+      vi.stubEnv(name, "1");
+    try {
+      const captured = await captureChangeSet(dir);
+      if (!captured)
+        throw new Error("Expected literal capture under inherited Git modes");
+      const retained = subtractChangeSetBaseline(captured, ["a.txt"]);
+      expect(retained.diff).toContain("-REMOVED_MARKER");
+      expect(retained.diff).toContain("+ADDED_MARKER");
+      expect(retained.diff).not.toContain("BASELINE_NEIGHBOR_MARKER");
+      expect(retained.diff).not.toContain("new file mode");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});

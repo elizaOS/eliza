@@ -121,7 +121,9 @@ async function handleWhatsAppWebhook(c: AppContext): Promise<Response> {
       }
 
       try {
-        await handleIncomingMessage(orgId, msg);
+        await handleIncomingMessage(orgId, msg, (promise) =>
+          c.executionCtx.waitUntil(promise),
+        );
       } catch (error) {
         // error-policy:J4 isolate ordinary message failures and release their claim.
         logger.error("[WhatsAppWebhook] Failed to process message", {
@@ -181,6 +183,7 @@ async function handleWhatsAppVerification(c: AppContext): Promise<Response> {
 async function handleIncomingMessage(
   orgId: string,
   msg: WhatsAppIncomingMessage,
+  defer: (promise: Promise<unknown>) => void,
 ): Promise<void> {
   const text = msg.text?.trim();
   if (!text) {
@@ -288,14 +291,16 @@ async function handleIncomingMessage(
     if (
       !routeResult.handled ||
       !routeResult.agentId ||
-      !routeResult.organizationId
+      !routeResult.organizationId ||
+      !routeResult.userId
     ) {
       const phoneRouteResult =
         await messageRouterService.routeIncomingMessage(messageContext);
       if (
         !phoneRouteResult.success ||
         !phoneRouteResult.agentId ||
-        !phoneRouteResult.organizationId
+        !phoneRouteResult.organizationId ||
+        !phoneRouteResult.userId
       ) {
         logger.info(
           "[WhatsAppWebhook] Message received (agent routing not configured)",
@@ -325,6 +330,8 @@ async function handleIncomingMessage(
           organizationId: phoneRouteResult.organizationId,
           agentId: phoneRouteResult.agentId,
           agentOrganizationId: phoneRouteResult.organizationId,
+          agentUserId: phoneRouteResult.userId,
+          defer,
         });
 
         if (sent.status === "delivered") {
@@ -370,6 +377,7 @@ async function handleIncomingMessage(
       agentId: routeResult.agentId,
       agentOrganizationId: routeResult.organizationId,
       agentUserId: routeResult.userId,
+      defer,
     });
 
     if (sent.status === "delivered") {

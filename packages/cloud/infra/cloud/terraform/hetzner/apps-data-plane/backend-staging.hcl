@@ -1,11 +1,6 @@
-# Cloudflare R2 backend (S3-compatible) for terraform state — apps data-plane,
-# staging. Mirrors control-plane/backend-staging.hcl (same bucket + R2 account).
-#
-# Set AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY to an R2 API token with
-# read/write on the bucket, then:
-#   terraform init -backend-config=backend-staging.hcl
-
-bucket                      = "eliza-terraform-state"
+# Environment state uses a separate R2 bucket and bucket-scoped credentials.
+# Provision this bucket before init; use credentials scoped only to staging state.
+bucket                      = "eliza-terraform-state-staging"
 key                         = "hetzner/apps-data-plane/staging.tfstate"
 region                      = "auto"
 endpoints                   = { s3 = "https://23cf6feaeaa541f6a0675053c33da768.r2.cloudflarestorage.com" }
@@ -14,6 +9,4 @@ skip_metadata_api_check     = true
 skip_region_validation      = true
 skip_requesting_account_id  = true
 use_path_style              = true
-
-# Native S3 backend lockfile (requires TF 1.10+). No DynamoDB needed.
 use_lockfile                = true

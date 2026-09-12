@@ -14,7 +14,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
-import { ElizaError, logger } from "@elizaos/core";
+import { ElizaError, logger, timeInferenceSpan } from "@elizaos/core";
 import { createKmsClient, systemKey } from "@elizaos/core/security/kms";
 import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/shared/agent-backup-limits";
 import {
@@ -564,6 +564,14 @@ function withFileSetHash(fileSet: AgentBackupFileSet): AgentBackupFileSet {
 }
 
 function baseStateFileInclude(relativePath: string): boolean {
+  // Plugin import generations are rebuilt from installed sources on boot.
+  if (
+    relativePath === "plugins/.runtime-imports" ||
+    relativePath.startsWith("plugins/.runtime-imports/")
+  )
+    return false;
+  // The catalog is downloadable; its neighboring lock.json records installed skills.
+  if (relativePath === "skills/.cache/catalog.json") return false;
   const first = relativePath.split("/")[0];
   if (
     first === MEDIA_DIR_NAME ||
@@ -1481,8 +1489,15 @@ export async function listLocalAgentBackups(
   agentId?: string,
 ): Promise<LocalAgentBackupMetadata[]> {
   const root = localBackupsDir();
-  if (!(await pathExists(root))) return [];
-  const entries = await fs.readdir(root, { withFileTypes: true });
+  if (
+    !(await timeInferenceSpan("local-backups:directory-stat", () =>
+      pathExists(root),
+    ))
+  )
+    return [];
+  const entries = await timeInferenceSpan("local-backups:directory-list", () =>
+    fs.readdir(root, { withFileTypes: true }),
+  );
   const backups: LocalAgentBackupMetadata[] = [];
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith(LOCAL_BACKUP_EXTENSION))

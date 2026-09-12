@@ -104,11 +104,12 @@ function isNodeEnvironment(): boolean {
 }
 
 function initContextManagerSync(): ITrajectoryContextManager {
-	if (isNodeEnvironment()) {
+	if (isNodeEnvironment() && typeof process.getBuiltinModule === "function") {
 		try {
-			// eslint-disable-next-line @typescript-eslint/no-require-imports
-			const { AsyncLocalStorage } =
-				require("node:async_hooks") as typeof import("node:async_hooks");
+			// Source hosts execute ESM, where a bare require cannot load the store.
+			const { AsyncLocalStorage } = process.getBuiltinModule(
+				"node:async_hooks",
+			) as typeof import("node:async_hooks");
 			const storage = new AsyncLocalStorage<TrajectoryContext | undefined>();
 			return {
 				run<T>(

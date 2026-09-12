@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { and, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";
+import { subscriptionAuthorityRepository } from "../../db/repositories/subscription-authority";
 import {
   agentBackupGcOutbox,
   agentBackupObjects,
@@ -369,6 +370,18 @@ export const ACCOUNT_DELETION_LOCAL_GRANT_INVENTORY: readonly LocalGrantInventor
       action: "delete",
     },
     {
+      table: "subscription_reconciliation_attempts",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
+      table: "subscription_reconciliation_scans",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
       table: "billing_subscription_revisions",
       column: "organization_id",
       subject: "organization",
@@ -508,6 +521,7 @@ async function countLocalRestrictiveRows(context: AccountDeletionProviderContext
 
 async function deleteLocalRestrictiveRows(context: AccountDeletionProviderContext): Promise<void> {
   await dbWrite.transaction(async (tx) => {
+    await subscriptionAuthorityRepository.releaseForAccountDeletion(tx, context.organizationId);
     await tx.execute(
       sql`SELECT set_config('eliza.subscription_account_deletion_authority', 'on', true)`,
     );

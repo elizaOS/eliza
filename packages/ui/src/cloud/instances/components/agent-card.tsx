@@ -41,7 +41,7 @@ import {
 import type * as React from "react";
 import { memo, useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { toast } from "sonner";
+import { toast } from "../../../bridge/toast";
 import { Button } from "../../../components/ui/button";
 import { useT } from "../lib/i18n";
 
@@ -593,7 +593,7 @@ function AgentCardInner({
                 <AlertDialogAction
                   onClick={handleConfirmDelete}
                   disabled={isDeleting}
-                  className="bg-destructive text-destructive-fg hover:bg-destructive/85"
+                  className="bg-destructive-solid text-destructive-fg hover:bg-destructive-solid-hover"
                 >
                   {isDeleting
                     ? t("cloud.agentCard.deleting", {
@@ -830,7 +830,7 @@ function AgentCardInner({
               <AlertDialogAction
                 onClick={handleConfirmDelete}
                 disabled={isDeleting}
-                className="bg-destructive text-destructive-fg hover:bg-destructive/85"
+                className="bg-destructive-solid text-destructive-fg hover:bg-destructive-solid-hover"
               >
                 {isDeleting
                   ? t("cloud.agentCard.deleting", {

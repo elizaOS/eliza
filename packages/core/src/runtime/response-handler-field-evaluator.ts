@@ -45,6 +45,7 @@
  *   go through the messageHandler result object.
  */
 
+import type { ReplyEffectStatus } from "../types/components";
 import type { Memory } from "../types/memory";
 import type { JSONSchema } from "../types/model";
 import type { IAgentRuntime } from "../types/runtime";
@@ -91,7 +92,7 @@ export interface ResponseHandlerResult {
 	intents: string[];
 	candidateActionNames: string[];
 	replyText: string;
-	replyEffectStatus?: "none" | "applied" | "non_applied";
+	replyEffectStatus?: ReplyEffectStatus;
 	facts: string[];
 	relationships: Array<{
 		subject: string;

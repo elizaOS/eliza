@@ -13,6 +13,7 @@ import { ApiError } from "@/lib/api/cloud-worker-errors";
 // partial mock (only `requireUserOrApiKeyWithOrg`) does not drop the other auth
 // exports (e.g. `requireUserOrApiKey`) for later test files in the same run.
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
+import * as organizationInferenceAdmissionActual from "@/lib/services/organization-inference-admission";
 
 const ORG_ID = "00000000-0000-4000-8000-0000000000aa";
 const USER_ID = "00000000-0000-4000-8000-0000000000bb";
@@ -85,6 +86,9 @@ const inferenceCredential = {
   credentialId: "key-1",
   userId: USER_ID,
 };
+let routeExecutionCtx:
+  | { waitUntil(promise: Promise<unknown>): void }
+  | undefined;
 const requireGenerativeRouteCaller = mock(
   async (
     _c?: unknown,
@@ -113,13 +117,14 @@ mock.module("@/lib/services/credits", () => ({
   InsufficientCreditsError,
 }));
 mock.module("@/lib/services/organization-inference-admission", () => ({
+  ...organizationInferenceAdmissionActual,
   admitOrganizationInference,
 }));
 
 mock.module("@/api-app/lib/generative-route-auth", () => ({
   asGenerativeCacheApiError: (error: unknown) =>
     error instanceof ApiError ? error : null,
-  getGenerativeExecutionContext: () => undefined,
+  getGenerativeExecutionContext: () => routeExecutionCtx,
   resolveInferenceCredentialAdmissionDenial: () => null,
   requireGenerativeRouteCaller,
 }));
@@ -129,7 +134,13 @@ mock.module("@/lib/services/inference-credential-revocation", () => ({
 }));
 
 mock.module("@/lib/services/characters/characters", () => ({
-  charactersService: { getById: charactersGetById },
+  charactersService: {
+    getById: charactersGetById,
+    getByIdCacheOnly: async (id: string) => ({
+      kind: "ready" as const,
+      character: await charactersGetById(id),
+    }),
+  },
 }));
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
@@ -244,6 +255,7 @@ function callRouteChat() {
 }
 
 beforeEach(() => {
+  routeExecutionCtx = undefined;
   requireGenerativeRouteCaller.mockReset();
   requireGenerativeRouteCaller.mockResolvedValue({
     user: { id: USER_ID, organization_id: ORG_ID },
@@ -378,6 +390,27 @@ describe("Agent MCP billing", () => {
     expect(reconcile.mock.invocationCallOrder[0]).toBeLessThan(
       recordCreatorEarnings.mock.invocationCallOrder[0],
     );
+  });
+
+  test("Worker chat opts into atomic admission at the provider boundary", async () => {
+    const retained: Promise<unknown>[] = [];
+    routeExecutionCtx = {
+      waitUntil(promise) {
+        retained.push(Promise.resolve(promise));
+      },
+    };
+    makeReservation({ adjustmentType: "none" });
+
+    const response = await callRouteChat();
+
+    expect(response.status).toBe(200);
+    expect(admitOrganizationInference).toHaveBeenCalledWith(
+      expect.objectContaining({
+        executionCtx: routeExecutionCtx,
+        atomicProviderBoundary: true,
+      }),
+    );
+    await Promise.all(retained);
   });
 
   // Billing uses a conservative estimate without turning that estimate into a
@@ -615,5 +648,24 @@ describe("Agent MCP billing", () => {
     expect(reconcile).toHaveBeenCalledWith(0);
     expect(streamText).not.toHaveBeenCalled();
     expect(recordCreatorEarnings).not.toHaveBeenCalled();
+  });
+
+  test("a typed late dispatch denial remains a retryable JSON-RPC admission failure", async () => {
+    const reconcile = makeReservation({ adjustmentType: "refund" });
+    markProviderDispatched.mockRejectedValue(
+      new ApiError(
+        503,
+        "service_unavailable",
+        "dispatch admission unavailable",
+      ),
+    );
+
+    const response = await callChat();
+    const body = (await response.json()) as { error?: { code: number } };
+
+    expect(response.status).toBe(503);
+    expect(body.error?.code).toBe(-32004);
+    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(streamText).not.toHaveBeenCalled();
   });
 });

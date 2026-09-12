@@ -4,6 +4,7 @@
  * stays inside this deterministic adapter.
  */
 
+import "./lifeops-connections-fixture.css";
 import type {
   LifeOpsCalendarSourceHealth,
   LifeOpsCalendarSummary,
@@ -12,11 +13,13 @@ import type {
   PermissionStatus,
 } from "@elizaos/shared";
 import { createRoot } from "react-dom/client";
+import { FamilyOperationsView } from "../../src/components/family-operations/FamilyOperationsView.js";
 import { LifeOpsConnectionsView } from "../../src/components/lifeops-connections/LifeOpsConnectionsView.js";
 import type {
   LifeOpsConnectionsAdapter,
   LifeOpsConnectionsSnapshot,
 } from "../../src/components/lifeops-connections/types.js";
+import { createFamilyPacketFixture } from "./family-packet-fixture.js";
 
 const GRANT_ID = "connector-account:fixture-account";
 const ACCOUNT_ID = "fixture-account";
@@ -373,4 +376,12 @@ const adapter: LifeOpsConnectionsAdapter = {
 
 const root = document.getElementById("root");
 if (!root) throw new Error("LifeOps fixture requires #root.");
-createRoot(root).render(<LifeOpsConnectionsView adapter={adapter} />);
+createRoot(root).render(
+  scenario === "family-packet" ? (
+    <FamilyOperationsView
+      adapter={createFamilyPacketFixture(failure === "revision")}
+    />
+  ) : (
+    <LifeOpsConnectionsView adapter={adapter} />
+  ),
+);

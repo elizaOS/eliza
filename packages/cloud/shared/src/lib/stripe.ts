@@ -23,25 +23,21 @@
  * const customer = await stripe.customers.create({ email });
  */
 
+import { ElizaError } from "@elizaos/core";
 import Stripe from "stripe";
 import {
   shouldBlockLiveStripeKeyOutsideProduction,
   shouldWarnTestStripeKeyInProduction,
 } from "./config/deployment-environment";
 import { getCloudAwareEnv } from "./runtime/cloud-bindings";
+import { type CloudE2EStripeEndpoint, resolveCloudE2EStripeEndpoint } from "./stripe-cloud-e2e";
+import { createStripeRecoveryFetch } from "./stripe-recovery-transport";
 import { logger } from "./utils/logger";
 
 type PinnedStripeApiVersion = Stripe.WebhookEndpointCreateParams.ApiVersion;
 type StripeConstructorConfig = NonNullable<ConstructorParameters<typeof Stripe>[1]>;
 
 const STRIPE_API_VERSION: PinnedStripeApiVersion = "2024-11-20.acacia";
-const CLOUD_E2E_STRIPE_SECRET_KEY = "sk_test_cloud_e2e";
-
-interface CloudE2EStripeEndpoint {
-  host: string;
-  port: string;
-  protocol: "http";
-}
 
 let stripeInstance: Stripe | null = null;
 let stripeInitError: Error | null = null;
@@ -62,65 +58,6 @@ function buildStripeCacheKey(
     env.STRIPE_CLOUD_E2E_API_ORIGIN ?? "",
     secretKey ?? "missing",
   ].join("\0");
-}
-
-/**
- * Resolve the Stripe-compatible loopback endpoint used by the full cloud E2E
- * harness. This is deliberately not a generic Stripe base-URL override: an
- * override is accepted only for the exact synthetic test key and only inside
- * the explicit local E2E runtime.
- */
-function resolveCloudE2EStripeEndpoint(
-  env: Record<string, string | undefined>,
-  secretKey: string,
-): CloudE2EStripeEndpoint | null {
-  const rawOrigin = env.STRIPE_CLOUD_E2E_API_ORIGIN?.trim();
-  if (!rawOrigin) {
-    if (secretKey === CLOUD_E2E_STRIPE_SECRET_KEY) {
-      throw new Error(
-        "SECURITY: the synthetic Stripe Cloud E2E key requires its canonical loopback endpoint",
-      );
-    }
-    return null;
-  }
-
-  if (
-    env.CLOUD_E2E !== "1" ||
-    env.NODE_ENV !== "test" ||
-    env.ENVIRONMENT !== "local" ||
-    secretKey !== CLOUD_E2E_STRIPE_SECRET_KEY
-  ) {
-    throw new Error(
-      "SECURITY: the Stripe Cloud E2E endpoint is allowed only in the explicit local CLOUD_E2E test runtime with its synthetic test key",
-    );
-  }
-
-  let origin: URL;
-  try {
-    origin = new URL(rawOrigin);
-  } catch {
-    throw new Error("SECURITY: the Stripe Cloud E2E endpoint must be a valid loopback origin");
-  }
-  if (
-    origin.protocol !== "http:" ||
-    origin.hostname !== "127.0.0.1" ||
-    !origin.port ||
-    origin.pathname !== "/" ||
-    origin.search ||
-    origin.hash ||
-    origin.username ||
-    origin.password
-  ) {
-    throw new Error(
-      "SECURITY: the Stripe Cloud E2E endpoint must be an http://127.0.0.1:<port> origin without credentials, path, query, or fragment",
-    );
-  }
-  const port = Number(origin.port);
-  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
-    throw new Error("SECURITY: the Stripe Cloud E2E endpoint must use an explicit valid port");
-  }
-
-  return { host: origin.hostname, port: origin.port, protocol: "http" };
 }
 
 /**
@@ -287,3 +224,23 @@ export function __resetStripeForTests(): void {
  * Default currency for Stripe transactions.
  */
 export const STRIPE_CURRENCY = "usd";
+
+/** Creates an uncached, read-only recovery client using the canonical credential and pinned API configuration. */
+export function createStripeRecoveryClient(deadline: number): Stripe {
+  requireStripe();
+  const env = getCloudAwareEnv();
+  const secretKey = env.STRIPE_SECRET_KEY?.trim();
+  if (!secretKey)
+    throw new ElizaError("Stripe configuration changed during recovery initialization", {
+      code: "SUBSCRIPTION_RECOVERY_PROVIDER_UNAVAILABLE",
+    });
+  const endpoint = resolveCloudE2EStripeEndpoint(env, secretKey);
+  return new Stripe(secretKey, {
+    typescript: true,
+    apiVersion: STRIPE_API_VERSION as StripeConstructorConfig["apiVersion"],
+    ...(endpoint ?? {}),
+    timeout: 10_000,
+    maxNetworkRetries: 0,
+    httpClient: Stripe.createFetchHttpClient(createStripeRecoveryFetch(deadline)),
+  });
+}

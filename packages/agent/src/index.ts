@@ -237,6 +237,13 @@ export * from "./providers/workspace.ts";
 export * from "./runtime/advanced-capabilities-config.ts";
 export * from "./runtime/agent-event-service.ts";
 export * from "./runtime/core-plugins.ts";
+export {
+  type DevTrajectoryRecoveryPreparation,
+  type DevTrajectoryRecoveryRegistration,
+  type DevTrajectoryRecoveryTransport,
+  prepareDevTrajectoryRecovery,
+} from "./runtime/dev-trajectory-recovery.ts";
+export * from "./runtime/dev-trajectory-recovery-protocol.ts";
 export * from "./runtime/eliza.ts";
 export * from "./runtime/eliza-plugin.ts";
 export * from "./runtime/first-run-names.ts";
@@ -368,6 +375,11 @@ export {
 // re-export to mirror the relationships-graph surface and avoid colliding
 // with the broad services barrel.
 export {
+  archiveCoreRelationshipsInventory,
+  type CoreRelationshipsInventoryDatabase,
+  type CoreRelationshipsInventoryReport,
+  type CoreRelationshipsInventorySession,
+  type CoreRelationshipsSourceKind,
   EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
   KnowledgeGraphService,

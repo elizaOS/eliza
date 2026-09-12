@@ -18,6 +18,7 @@ vi.mock("@capacitor/core", () => ({
   },
 }));
 
+import { installBuildConfiguredRemoteApiBaseUrl } from "../state/runtime-url-trust";
 import { DEFAULT_DIRECT_CLOUD_API_BASE_URL } from "./direct-cloud-endpoints";
 import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
 
@@ -35,6 +36,7 @@ const originalLocalStorageDescriptor = Object.getOwnPropertyDescriptor(
   "localStorage",
 );
 const runtimeModeStorage = new Map<string, string>();
+const remoteFallbackGlobal = "__ELIZA_BUILD_CONFIGURED_REMOTE_API_BASE__";
 
 function streamResponse(): Response {
   return new Response("data: hi\n\n", {
@@ -57,6 +59,7 @@ beforeEach(() => {
     webFetchMock;
   globalThis.fetch = globalFetchMock as unknown as typeof fetch;
   runtimeModeStorage.clear();
+  Reflect.deleteProperty(globalThis, remoteFallbackGlobal);
   Object.defineProperty(globalThis, "localStorage", {
     configurable: true,
     value: {
@@ -82,6 +85,7 @@ afterEach(() => {
     Reflect.deleteProperty(globalThis, "localStorage");
   }
   vi.restoreAllMocks();
+  Reflect.deleteProperty(globalThis, remoteFallbackGlobal);
 });
 
 describe("nativeCloudHttpTransportForUrl selection", () => {
@@ -237,6 +241,39 @@ describe("SSE streaming bypass", () => {
     );
     expect(webFetchMock).not.toHaveBeenCalled();
     expect(globalFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("streams bearer-authenticated SSE to the exact build-pinned remote agent", async () => {
+    globalThis.localStorage?.setItem("eliza:mobile-runtime-mode", "remote-mac");
+    installBuildConfiguredRemoteApiBaseUrl("https://bot.nubs.site");
+    const url = "https://bot.nubs.site/api/conversations/abc/messages/stream";
+    const transport = nativeCloudHttpTransportForUrl(url);
+    expect(transport).not.toBeNull();
+
+    const response = await transport?.request(url, {
+      method: "POST",
+      headers: {
+        Accept: "text/event-stream",
+        Authorization: "Bearer paired-device-token",
+        "X-ElizaOS-Turn-Correlation": "0123456789abcdef",
+        "X-ElizaOS-Turn-Attempt": "1",
+      },
+      body: "{}",
+    });
+
+    expect(webFetchMock).toHaveBeenCalledTimes(1);
+    const streamedInit = webFetchMock.mock.calls[0]?.[1] as
+      | RequestInit
+      | undefined;
+    const streamedHeaders = new Headers(streamedInit?.headers);
+    expect(streamedHeaders.get("authorization")).toBe(
+      "Bearer paired-device-token",
+    );
+    expect(streamedHeaders.has("X-ElizaOS-Turn-Correlation")).toBe(false);
+    expect(streamedHeaders.has("X-ElizaOS-Turn-Attempt")).toBe(false);
+    expect(capacitorHttpRequestMock).not.toHaveBeenCalled();
+    expect(globalFetchMock).not.toHaveBeenCalled();
+    expect(response?.body).not.toBeNull();
   });
 
   it("surfaces a remote session rejection from CapacitorHttp", async () => {

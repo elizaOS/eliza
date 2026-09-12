@@ -132,6 +132,52 @@ describe("workbench VFS routes", () => {
     });
   });
 
+  it("returns storage failures for unreadable or invalid snapshots instead of an empty list", async () => {
+    await callRoute("POST", "/api/workbench/vfs/projects", {
+      projectId: "broken-snapshot",
+    });
+    const saved = await callRoute<SnapshotResponse>(
+      "POST",
+      "/api/workbench/vfs/projects/broken-snapshot/snapshots",
+      {},
+    );
+    const metadata = path.join(
+      tmpDir,
+      "agent-vfs",
+      "projects",
+      "broken-snapshot",
+      "snapshots",
+      saved.body.snapshot.id,
+      "snapshot.json",
+    );
+    await fsp.rm(metadata);
+    await fsp.mkdir(metadata);
+    const unreadable = await callRoute<ErrorResponse>(
+      "GET",
+      "/api/workbench/vfs/projects/broken-snapshot/snapshots",
+    );
+    expect(unreadable.status).toBe(500);
+    expect(unreadable.body.error).toMatch(/read VFS metadata/);
+    expect(unreadable.body).not.toHaveProperty("snapshots");
+    await fsp.rm(metadata, { recursive: true });
+    await fsp.writeFile(
+      metadata,
+      JSON.stringify({ id: saved.body.snapshot.id }),
+    );
+    const invalid = await callRoute<ErrorResponse>(
+      "POST",
+      "/api/workbench/vfs/projects/broken-snapshot/rollback",
+      { snapshotId: saved.body.snapshot.id },
+    );
+    expect(invalid.status).toBe(500);
+    expect(invalid.body.error).toMatch(/Invalid saved snapshot metadata/);
+    const missing = await callRoute<ErrorResponse>(
+      "GET",
+      "/api/workbench/vfs/projects/broken-snapshot/snapshots/missing",
+    );
+    expect(missing.status).toBe(404);
+  });
+
   it("rejects a non-enum GET file encoding before reading bytes", async () => {
     await callRoute("POST", "/api/workbench/vfs/projects", {
       projectId: "encoding-vfs",

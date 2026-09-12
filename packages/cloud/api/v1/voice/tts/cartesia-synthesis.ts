@@ -54,8 +54,10 @@ export async function synthesizeCartesiaBytes(args: {
   voiceId: string;
   text: string;
   fetch?: typeof fetch;
+  beforeProviderDispatch?: () => Promise<void>;
 }): Promise<CartesiaBytesResult> {
   const fetchImpl = args.fetch ?? fetch;
+  await args.beforeProviderDispatch?.();
   const response = await fetchImpl(CARTESIA_BYTES_URL, {
     method: "POST",
     headers: {
@@ -127,7 +129,9 @@ function safeCartesiaRestMessage(status: number): string {
  * replays `open`/`message`/`close`/`error` from the accepted socket. The
  * adapter already queues `sendPhrase` until `open`, so a lazy connect is safe.
  */
-export function makeWorkersCartesiaWebSocketFactory(): CartesiaWebSocketFactory {
+export function makeWorkersCartesiaWebSocketFactory(
+  beforeProviderDispatch?: () => Promise<void>,
+): CartesiaWebSocketFactory {
   return (url, options) => {
     const openListeners: Array<() => void> = [];
     const messageListeners: Array<(event: { readonly data: unknown }) => void> =
@@ -148,6 +152,7 @@ export function makeWorkersCartesiaWebSocketFactory(): CartesiaWebSocketFactory 
 
     (async () => {
       try {
+        await beforeProviderDispatch?.();
         const response = await fetch(httpUrl, {
           headers: { ...options.headers, Upgrade: "websocket" },
         });
@@ -257,12 +262,14 @@ export async function synthesizeCartesiaWav(args: {
   maxPcmBytes: number;
   webSocketFactory?: CartesiaWebSocketFactory;
   timeoutMs?: number;
+  beforeProviderDispatch?: () => Promise<void>;
 }): Promise<CartesiaWavResult> {
   const adapter = new CartesiaSonicTtsAdapter({
     apiKey: args.apiKey,
     voiceId: args.voiceId,
     websocketFactory:
-      args.webSocketFactory ?? makeWorkersCartesiaWebSocketFactory(),
+      args.webSocketFactory ??
+      makeWorkersCartesiaWebSocketFactory(args.beforeProviderDispatch),
     sampleRate: args.sampleRate,
     encoding: "pcm_s16le",
   });

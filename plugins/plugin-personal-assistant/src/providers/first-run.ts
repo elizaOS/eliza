@@ -20,7 +20,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { ChannelType, logger } from "@elizaos/core";
+import { ChannelType, logger, timeInferenceSpan } from "@elizaos/core";
 import { createFirstRunStateStore } from "../lifeops/first-run/state.js";
 
 export interface FirstRunAffordance {
@@ -118,7 +118,11 @@ export const firstRunProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    if (!(await hasOwnerAccess(runtime, message))) {
+    if (
+      !(await timeInferenceSpan("provider:firstRun:owner-access", () =>
+        hasOwnerAccess(runtime, message),
+      ))
+    ) {
       return QUIET_RESULT;
     }
     let store: ReturnType<typeof createFirstRunStateStore>;
@@ -134,7 +138,9 @@ export const firstRunProvider: Provider = {
 
     let record: Awaited<ReturnType<typeof store.read>>;
     try {
-      record = await store.read();
+      record = await timeInferenceSpan("provider:firstRun:state-read", () =>
+        store.read(),
+      );
     } catch (error) {
       logger.debug("[first-run-provider] state read failed:", String(error));
       return QUIET_RESULT;
@@ -151,7 +157,9 @@ export const firstRunProvider: Provider = {
 
     const localBackups = inProgress
       ? []
-      : await listLocalAgentBackups(runtime.agentId).catch((error: unknown) => {
+      : await timeInferenceSpan("provider:firstRun:backup-scan", () =>
+          listLocalAgentBackups(runtime.agentId),
+        ).catch((error: unknown) => {
           logger.debug(
             "[first-run-provider] local backup scan failed:",
             String(error),

@@ -1,8 +1,15 @@
 /** Verifies the manual workflow that owns the protected staging re-review boundary. */
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import {
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { parse } from "yaml";
 
 type Step = {
@@ -40,6 +47,38 @@ const step = (name: string) => {
 };
 
 describe("personal Dedicated staging re-review workflow", () => {
+  test.each([0, 7])(
+    "replays complete contract output and preserves runner exit %i",
+    (exitCode) => {
+      const directory = mkdtempSync(join(tmpdir(), "preview-contract-output-"));
+      const runner = join(directory, "bun");
+      const output = "contract output\n".repeat(20000);
+      const command = step("Validate operator contracts").run;
+      if (!command) throw new Error("Contract validation command is missing");
+      try {
+        writeFileSync(
+          runner,
+          `#!${process.execPath}\nimport { writeFileSync } from "node:fs";\nwriteFileSync(1, "contract start\\n");\nwriteFileSync(2, ${JSON.stringify(output)});\nprocess.exit(${exitCode});\n`,
+        );
+        chmodSync(runner, 0o755);
+        const result = Bun.spawnSync(["bash", "-e", "-c", command], {
+          env: {
+            ...process.env,
+            PATH: `${directory}:${process.env.PATH}`,
+            TMPDIR: directory,
+          },
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        expect(result.exitCode).toBe(exitCode);
+        expect(result.stdout.toString()).toBe(`contract start\n${output}`);
+        expect(result.stderr.toString()).toBe("");
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
   test("is manual, staging protected, serialized, and GitHub read-only", () => {
     expect(Object.keys(workflow.on)).toEqual(["workflow_dispatch"]);
     expect(workflow.permissions).toEqual({ contents: "read" });
@@ -50,26 +89,61 @@ describe("personal Dedicated staging re-review workflow", () => {
     });
   });
 
-  test("requires exact develop SHA, prior digest, reviewed reason, and confirmation", () => {
-    const guard = step("Require exact develop deployment authority");
-    expect(guard.run).toContain(
-      'process.env.REF_NAME !== "refs/heads/develop"',
-    );
-    expect(guard.run).toContain("expected !== process.env.CHECKED_OUT_COMMIT");
-    expect(guard.run).toContain("APPROVAL_DIGEST");
-    expect(guard.run).toContain(
-      "retain_current_receipt_target_after_duplicate_inventory_review",
-    );
-    expect(guard.run).toContain(
-      "REREVIEW_STALE_SELECTION_WITHOUT_COMPUTE_MUTATION",
-    );
-    expect(guard.run).toContain(
-      "select_unique_verified_backup_after_duplicate_inventory_review",
-    );
-    expect(guard.run).toContain(
-      "SELECT_UNIQUE_VERIFIED_BACKUP_WITHOUT_COMPUTE_MUTATION",
-    );
-  });
+  test.each([
+    [
+      "preview of the currently served older commit",
+      { MODE: "preview", EXPECTED_COMMIT: "b".repeat(40) },
+      0,
+    ],
+    [
+      "execution against an older commit",
+      { EXPECTED_COMMIT: "b".repeat(40) },
+      1,
+    ],
+    ["preview from main", { MODE: "preview", REF_NAME: "refs/heads/main" }, 1],
+    [
+      "malformed preview commit",
+      { MODE: "preview", EXPECTED_COMMIT: "invalid" },
+      1,
+    ],
+    ["unknown operation", { MODE: "unknown" }, 1],
+    ["execution without a prior digest", { APPROVAL_DIGEST: "" }, 1],
+    ["execution without confirmation", { CONFIRMATION: "" }, 1],
+    ["execution without a reviewed reason", { REVIEWED_REASON: "" }, 1],
+    ["approved exact-head re-review", {}, 0],
+    [
+      "approved exact-head backup selection",
+      {
+        REVIEWED_REASON:
+          "select_unique_verified_backup_after_duplicate_inventory_review",
+        CONFIRMATION: "SELECT_UNIQUE_VERIFIED_BACKUP_WITHOUT_COMPUTE_MUTATION",
+      },
+      0,
+    ],
+  ] as const)(
+    "enforces shell admission for %s",
+    (_name, overrides, expectedExit) => {
+      const guard = step("Require protected staging diagnostic authority");
+      if (!guard.run)
+        throw new Error("Deployment admission command is missing");
+      const result = Bun.spawnSync({
+        cmd: ["bash", "-c", guard.run],
+        env: {
+          ...process.env,
+          REF_NAME: "refs/heads/staging",
+          EXPECTED_COMMIT: "a".repeat(40),
+          CHECKED_OUT_COMMIT: "a".repeat(40),
+          MODE: "execute",
+          APPROVAL_DIGEST: "c".repeat(64),
+          REVIEWED_REASON:
+            "retain_current_receipt_target_after_duplicate_inventory_review",
+          CONFIRMATION: "REREVIEW_STALE_SELECTION_WITHOUT_COMPUTE_MUTATION",
+          ...overrides,
+        },
+      });
+      expect(result.exitCode).toBe(expectedExit);
+    },
+  );
 
   test("binds protected identity and smoke account authorities without artifacts", () => {
     expect(job.env.DATABASE_IDENTITY_GATE_MODE).toBe("enforce");

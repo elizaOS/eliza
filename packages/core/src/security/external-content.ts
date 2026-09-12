@@ -392,6 +392,31 @@ export function containsExternalEnvelopeMaterial(text: string): boolean {
 }
 
 /**
+ * Prompt rendering of a STORED message text that carries verbatim envelopes
+ * from {@link wrapExternalContent}: the only bytes removed are the wrapper's
+ * own EXTERNAL_CONTENT_WARNING block, recognised solely by its exact adjacency
+ * to a start marker (`warning + "\n\n" + "\n" + start`, the join the wrapper
+ * emits). Start and end markers, every metadata line, the payload, and any
+ * prefix or suffix stay byte-identical, so the inside/outside boundary of each
+ * envelope is still recoverable and authored text that merely quotes the
+ * warning is untouched (a start marker can never occur inside a payload:
+ * `replaceMarkers` neutralises it). For an envelope the result equals
+ * `wrapExternalContent(payload, { ...options, includeWarning: false })`.
+ * Text without that adjacency is returned unchanged, including unterminated
+ * or malformed markers.
+ *
+ * The prompt renders the warning once for the message being acted on; it
+ * must not be replayed per stored row (live 2026-09-06: 403 replayed copies
+ * made a 137K-token evaluator prompt that the provider rejected, so memory
+ * extraction failed on every Discord turn).
+ */
+export function renderStoredEnvelopesForPrompt(text: string): string {
+	const warningBeforeStart = `${EXTERNAL_CONTENT_WARNING}\n\n\n${EXTERNAL_CONTENT_START}`;
+	if (!text.includes(warningBeforeStart)) return text;
+	return text.split(warningBeforeStart).join(`\n${EXTERNAL_CONTENT_START}`);
+}
+
+/**
  * Returns the original payload from a string produced by
  * {@link wrapExternalContent}, or null when the text is not wrapped.
  */

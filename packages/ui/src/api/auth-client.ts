@@ -30,6 +30,7 @@ import {
 } from "./client-cloud";
 import { fetchWithCsrf } from "./csrf-client";
 import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
+import { isDesktopLocalApiBaseUrl } from "./desktop-local-api-base";
 import { isPasswordAuthTransportConfidential } from "./password-auth-transport-policy";
 
 // ── Shared response shapes ────────────────────────────────────────────────────
@@ -391,6 +392,10 @@ export async function authLogout(): Promise<AuthLogoutResult> {
  * show a backend failure instead of a misleading credential prompt.
  */
 export async function authMe(): Promise<AuthMeResult> {
+  const requestBase = authBase();
+  const requestToken = getBootConfig().apiToken;
+  const requestIsCurrent = () =>
+    authBase() === requestBase && getBootConfig().apiToken === requestToken;
   // A serverless shared-runtime agent has no independent password/session
   // service, so this gate reflects the canonical Steward account credential.
   // It must not report synthetic success merely because the selected base has
@@ -410,6 +415,7 @@ export async function authMe(): Promise<AuthMeResult> {
         const refreshed = await refreshCloudStewardSession({
           throwOnTransientHttpFailure: true,
         });
+        if (!requestIsCurrent()) return { ok: false, status: 503 };
         token = refreshed?.token?.trim() || undefined;
         if (token) await writeStoredStewardToken(token);
       } catch {
@@ -421,6 +427,7 @@ export async function authMe(): Promise<AuthMeResult> {
         return { ok: false, status: 503, reason: "cloud_unavailable" };
       }
     }
+    if (!requestIsCurrent()) return { ok: false, status: 503 };
     const secondsRemaining = token ? cloudTokenSecsRemaining(token) : null;
     if (
       token &&
@@ -430,6 +437,7 @@ export async function authMe(): Promise<AuthMeResult> {
     ) {
       try {
         const refreshed = await refreshCloudStewardSession();
+        if (!requestIsCurrent()) return { ok: false, status: 503 };
         token = refreshed?.token?.trim() || undefined;
         if (token) await writeStoredStewardToken(token);
       } catch {
@@ -437,8 +445,10 @@ export async function authMe(): Promise<AuthMeResult> {
         // refresh into the same explicit signed-out state as a rejected one.
         token = undefined;
       }
+      if (!requestIsCurrent()) return { ok: false, status: 503 };
       if (!token) {
         await clearStoredStewardToken();
+        if (!requestIsCurrent()) return { ok: false, status: 503 };
         clearSharedCloudAccountBinding();
       }
     }
@@ -474,14 +484,17 @@ export async function authMe(): Promise<AuthMeResult> {
   // LoginView). When the agent does return an authoritative 401,
   // its body lands in `unauthorized` and we map to AuthMeResult.
   try {
-    const viaRpc = isDesktopExternalApiBaseUrl(authBase())
-      ? null
-      : await invokeDesktopBridgeRequest<{
-          identity?: AuthIdentity;
-          session?: AuthSessionInfo;
-          access?: AuthAccessInfo;
-          unauthorized?: { reason: string; access: AuthAccessInfo };
-        }>({ rpcMethod: "getAuthMe", ipcChannel: "agent" });
+    const viaRpc =
+      !isDesktopLocalApiBaseUrl(requestBase) ||
+      isDesktopExternalApiBaseUrl(requestBase)
+        ? null
+        : await invokeDesktopBridgeRequest<{
+            identity?: AuthIdentity;
+            session?: AuthSessionInfo;
+            access?: AuthAccessInfo;
+            unauthorized?: { reason: string; access: AuthAccessInfo };
+          }>({ rpcMethod: "getAuthMe", ipcChannel: "agent" });
+    if (!requestIsCurrent()) return { ok: false, status: 503 };
     if (viaRpc) {
       if (viaRpc.identity && viaRpc.session) {
         return {
@@ -516,19 +529,23 @@ export async function authMe(): Promise<AuthMeResult> {
     /* AgentNotReadyError or any RPC failure → fall through to HTTP */
   }
 
+  // A native response or HTTP failure cannot continue under a new selection.
+  if (!requestIsCurrent()) return { ok: false, status: 503 };
   let res: Response;
   try {
-    res = await fetchWithCsrf(`${authBase()}/api/auth/me`);
+    res = await fetchWithCsrf(`${requestBase}/api/auth/me`);
   } catch {
     return { ok: false, status: 503 };
   }
 
+  if (!requestIsCurrent()) return { ok: false, status: 503 };
   if (res.ok) {
     const body = (await res.json()) as {
       identity: AuthIdentity;
       session: AuthSessionInfo;
       access?: AuthAccessInfo;
     };
+    if (!requestIsCurrent()) return { ok: false, status: 503 };
     return {
       ok: true,
       identity: body.identity,
@@ -546,6 +563,7 @@ export async function authMe(): Promise<AuthMeResult> {
       reason?: string;
       access?: AuthAccessInfo;
     };
+    if (!requestIsCurrent()) return { ok: false, status: 503 };
     const result: AuthMeResult = {
       ok: false,
       status: 401,
@@ -557,12 +575,24 @@ export async function authMe(): Promise<AuthMeResult> {
             : "server_error",
       access: body.access,
     };
+    if (
+      result.reason === "remote_auth_required" &&
+      result.access?.mode === "remote"
+    ) {
+      const pairing = await resolvePairingFallback(requestBase);
+      return requestIsCurrent()
+        ? (pairing ?? result)
+        : { ok: false, status: 503 };
+    }
     if (result.reason !== "server_error" || result.access) return result;
 
     // Some standalone deployments enforce auth in outer middleware before the
     // agent route can return its richer 401 body. The public status contract is
     // authoritative for the supported one-time pairing flow in that case.
-    return (await resolvePairingFallback(authBase())) ?? result;
+    const pairing = await resolvePairingFallback(requestBase);
+    return requestIsCurrent()
+      ? (pairing ?? result)
+      : { ok: false, status: 503 };
   }
 
   if (res.status === 429) {

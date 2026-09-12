@@ -372,7 +372,7 @@ export class CalendarRepository {
 
   async deleteCalendarEventsForProvider(
     agentId: string,
-    provider: LifeOpsCalendarProvider,
+    provider: LifeOpsCalendarProvider | LifeOpsConnectorGrant["provider"],
     calendarId?: string,
     side?: LifeOpsConnectorSide,
   ): Promise<void> {
@@ -428,7 +428,7 @@ export class CalendarRepository {
 
   async deleteCalendarEventByExternalId(
     agentId: string,
-    provider: LifeOpsCalendarProvider,
+    provider: LifeOpsCalendarProvider | LifeOpsConnectorGrant["provider"],
     calendarId: string | null | undefined,
     externalEventId: string,
     side?: LifeOpsConnectorSide,
@@ -482,7 +482,7 @@ export class CalendarRepository {
 
   async pruneCalendarEventsInWindow(
     agentId: string,
-    provider: LifeOpsCalendarProvider,
+    provider: LifeOpsCalendarProvider | LifeOpsConnectorGrant["provider"],
     calendarId: string,
     timeMin: string,
     timeMax: string,
@@ -606,7 +606,7 @@ export class CalendarRepository {
 
   async listCalendarEvents(
     agentId: string,
-    provider: LifeOpsCalendarProvider,
+    provider: LifeOpsCalendarProvider | LifeOpsConnectorGrant["provider"],
     timeMin?: string,
     timeMax?: string,
     side?: LifeOpsConnectorSide,
@@ -639,7 +639,7 @@ export class CalendarRepository {
    */
   async listCalendarEventsEndedAfterCursor(args: {
     agentId: string;
-    provider: LifeOpsCalendarProvider;
+    provider: LifeOpsCalendarProvider | LifeOpsConnectorGrant["provider"];
     side?: LifeOpsConnectorSide;
     cursorEndAt: string | null;
     cursorEventId: string | null;
@@ -705,7 +705,7 @@ export class CalendarRepository {
 
   async getCalendarSyncState(
     agentId: string,
-    provider: LifeOpsCalendarProvider,
+    provider: LifeOpsCalendarProvider | LifeOpsConnectorGrant["provider"],
     calendarId: string,
     side?: LifeOpsConnectorSide,
     grantId?: string,
@@ -729,7 +729,7 @@ export class CalendarRepository {
 
   async deleteCalendarSyncState(
     agentId: string,
-    provider: LifeOpsCalendarProvider,
+    provider: LifeOpsCalendarProvider | LifeOpsConnectorGrant["provider"],
     calendarId?: string,
     side?: LifeOpsConnectorSide,
     grantId?: string,

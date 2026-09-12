@@ -86,6 +86,18 @@ function deployedProofFile(
       rendererBuildId: buildId,
       cloudApiOrigin: apiOrigin,
       cloudEnvironment: "staging",
+      referenceBinding: {
+        runtime: "dedicated",
+        apiBase:
+          "https://123e4567-e89b-42d3-a456-426614174000.cloud-staging.eliza.app",
+      },
+      chatCorrelation: {
+        traceId: "0123456789abcdef0123456789abcdef",
+        serverTiming:
+          "dedicated_auth;dur=1.25, dedicated_ownership;dur=1, dedicated_routing;dur=1, dedicated_proxy_dispatch;dur=1, dedicated_total;dur=4.25",
+        preforward: "total=3;auth=1;mid=1;reserve=1;setup=0",
+        providerRequestIdSha256: "d".repeat(64),
+      },
       outcome: "success",
     },
     latency: {
@@ -201,11 +213,11 @@ describe("staging Cloud live receipt", () => {
     expect(receipt.annotations.historyContinuityPassed).toBe(false);
   });
 
-  test("sets schema v3 and deployedRendererTested only from a closed proof file", () => {
+  test("persists closed correlation in receipt v4 from a validated proof file", () => {
     const receipt = createStagingCloudReceipt(
       args({ "deployed-proof-file": deployedProofFile() }),
     );
-    expect(receipt.schemaVersion).toBe(3);
+    expect(receipt.schemaVersion).toBe(4);
     expect(receipt.annotations).toEqual({
       cloudApiOrigin: "https://api-staging.eliza.app",
       cloudEnvironment: "staging",
@@ -221,6 +233,15 @@ describe("staging Cloud live receipt", () => {
       deploymentIdSha256: "c".repeat(64),
       rendererBuildId: "a".repeat(64),
       rendererManifestCommit: exactSha,
+      runtime: "dedicated",
+      referenceApiBaseSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+      chatCorrelation: {
+        traceId: "0123456789abcdef0123456789abcdef",
+        serverTiming:
+          "dedicated_auth;dur=1.25, dedicated_ownership;dur=1, dedicated_routing;dur=1, dedicated_proxy_dispatch;dur=1, dedicated_total;dur=4.25",
+        preforward: "total=3;auth=1;mid=1;reserve=1;setup=0",
+        providerRequestIdSha256: "d".repeat(64),
+      },
       publicPreflightPassed: true,
       remoteBrowserSmokePassed: true,
       publicPostflightPassed: true,

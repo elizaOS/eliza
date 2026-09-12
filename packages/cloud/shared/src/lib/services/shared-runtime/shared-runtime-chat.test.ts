@@ -9,6 +9,7 @@ process.env.MOCK_REDIS = "1";
 
 import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
+import * as organizationInferenceAdmissionActual from "../organization-inference-admission";
 import type { SharedReminderActionProvenance } from "./run-shared-agent-turn";
 
 let turn: Record<string, unknown>;
@@ -164,6 +165,7 @@ const admitOrganizationInference = mock(
     context?: { metadata?: Record<string, unknown> };
     estimatedInputTokens?: number;
     executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+    atomicProviderBoundary?: boolean;
   }) => {
     if (admissionError) throw admissionError;
     params.executionCtx?.waitUntil(Promise.resolve());
@@ -182,7 +184,9 @@ const admitOrganizationInference = mock(
   },
 );
 mock.module("../organization-inference-admission", () => ({
+  ...organizationInferenceAdmissionActual,
   admitOrganizationInference,
+  InferenceAdmissionUnavailableError: class InferenceAdmissionUnavailableError extends Error {},
 }));
 mock.module("../ai-billing", () => ({
   estimateInputTokens,
@@ -368,15 +372,15 @@ mock.module("ai", () => ({
 }));
 
 // Sibling suites in the same bun process mock ../../cache/client globally with
-// partial doubles (server-wallets-provision-proof exposes only setIfNotExists;
-// resolve-shared-agent substitutes its own get/set), and bun's mock.module
-// patches the process-wide registry — so batch composition decided whether the
-// character-hydration get/set flow here saw a working cache. Pin this suite's
-// own Map-backed double instead. It cannot be built from the real module: a
-// sibling that loaded first has already replaced the registry entry, so an
-// import here returns that sibling's partial mock, not the real exports.
+// Bun's mock.module patches the process-wide registry, so sibling partial
+// doubles can otherwise make behavior depend on batch composition. Preserve
+// the available module surface while pinning this suite's exercised cache
+// operations to its own Map-backed double.
 const localCacheStore = new Map<string, unknown>();
+const cacheClientActualModule = await import("../../cache/client");
+
 mock.module("../../cache/client", () => ({
+  ...cacheClientActualModule,
   NEGATIVE_CACHE_SENTINEL: { __none: true },
   cache: {
     isAvailable: () => true,
@@ -396,11 +400,14 @@ mock.module("../../cache/client", () => ({
       localCacheStore.set(key, "1");
       return true;
     },
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 
 const { InsufficientCreditsError } = await import("../ai-billing");
 const { InferenceAdmissionDispatchMarkError } = await import("../inference-admission-gate");
+const { InferenceAdmissionUnavailableError } = await import("../organization-inference-admission");
 const { personalSharedAgentId } = await import("./personal-shared-agent");
 const { SharedRuntimeChatService, sharedRuntimeChannelId } = await import("./shared-runtime-chat");
 
@@ -625,6 +632,7 @@ describe("SharedRuntimeChatService", () => {
       config: { windowMs: 60_000, maxRequests: 120 },
     });
     const admissionContext = admitOrganizationInference.mock.calls[0]?.[0].context;
+    expect(admitOrganizationInference.mock.calls[0]?.[0].atomicProviderBoundary).toBe(true);
     expect(admissionContext?.metadata).toMatchObject({
       agentId: agent.id,
       channelId: expect.any(String),
@@ -895,7 +903,7 @@ describe("SharedRuntimeChatService", () => {
     expect(enforceOrgRateLimit).toHaveBeenCalledWith(agent.organization_id, "completions", {
       cacheOnly: true,
       executionCtx: h.executionCtx,
-      config: { windowMs: 60_000, maxRequests: 60 },
+      config: undefined,
     });
     expect(getInferenceAdmissionSnapshotCacheOnly).not.toHaveBeenCalled();
     expect(admitOrganizationInference).not.toHaveBeenCalled();
@@ -1232,6 +1240,25 @@ describe("SharedRuntimeChatService", () => {
       cause: new InferenceAdmissionDispatchMarkError("dispatch acknowledgement remained ambiguous"),
     });
     await expect(service.bridge(agent, rpc, harness())).rejects.toThrow("shared turn failed");
+    expect(settleCalls).toEqual([0]);
+    expect(settleUnknownCalls).toBe(0);
+
+    settleCalls.length = 0;
+    turnError = new Error("late balance denial", {
+      cause: new InsufficientCreditsError(0.25, 0),
+    });
+    const denied = await service.bridge(agent, rpc, harness());
+    expect(denied.error?.code).toBe(-32002);
+    expect(settleCalls).toEqual([0]);
+    expect(settleUnknownCalls).toBe(0);
+
+    settleCalls.length = 0;
+    turnError = new Error("late admission outage", {
+      cause: new InferenceAdmissionUnavailableError(),
+    });
+    await expect(service.bridge(agent, rpc, harness())).rejects.toMatchObject({
+      name: "SharedRuntimeCacheWarmingError",
+    });
     expect(settleCalls).toEqual([0]);
     expect(settleUnknownCalls).toBe(0);
 

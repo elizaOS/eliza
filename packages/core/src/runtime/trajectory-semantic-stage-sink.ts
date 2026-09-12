@@ -62,7 +62,24 @@ export function withSemanticStageFanOut(
 		load: (trajectoryId) => inner.load(trajectoryId),
 		list: (opts) => inner.list(opts),
 		recordStage: async (trajectoryId, stage) => {
-			await inner.recordStage(trajectoryId, stage);
+			// File persistence is diagnostic and the JSON recorder already queues
+			// snapshots in trajectory order. Do not put a full-file rewrite on the
+			// user-visible planner path: large model prompts can make one stage file
+			// several megabytes, and slow disks otherwise add seconds after the model
+			// has already answered. `recordStage` mutates/enqueues synchronously before
+			// its first await, while the recorder's terminal `endTrajectory` awaits the
+			// same queue and therefore remains the durability boundary.
+			void inner.recordStage(trajectoryId, stage).catch((error) => {
+				runtime.logger.warn?.(
+					{ error, trajectoryId, stageKind: stage.kind },
+					"[TrajectoryRecorder] failed to persist stage file",
+				);
+				runtime.reportError("TrajectorySemanticStageSink.persistStage", error, {
+					trajectoryId,
+					stageKind: stage.kind,
+					diagnosticOnly: true,
+				});
+			});
 			try {
 				const stepId = getTrajectoryContext()?.trajectoryStepId;
 				if (!stepId) return;

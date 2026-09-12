@@ -480,6 +480,43 @@ function normalizeBlackoutWindow(
   return { label, startLocal, endLocal, ...(daysOfWeek ? { daysOfWeek } : {}) };
 }
 
+function normalizeRequestedBlackoutWindows(
+  value: unknown,
+): LifeOpsMeetingPreferencesBlackout[] {
+  const invalid = (index?: number): never => {
+    throw new ElizaError(
+      "Blackout windows must be an array of labeled HH:MM time ranges with integer weekdays from 0 to 6. No preferences were changed.",
+      {
+        code: "LIFEOPS_BLACKOUT_WINDOWS_INVALID",
+        context: {
+          field: "blackoutWindows",
+          ...(index === undefined ? {} : { index }),
+        },
+      },
+    );
+  };
+  if (!Array.isArray(value)) return invalid();
+  return Array.from(value, (entry, index) => {
+    if (!isRecord(entry) || typeof entry.label !== "string")
+      return invalid(index);
+    if (
+      entry.daysOfWeek !== undefined &&
+      (!Array.isArray(entry.daysOfWeek) ||
+        Array.from(entry.daysOfWeek).some(
+          (day) =>
+            typeof day !== "number" ||
+            !Number.isInteger(day) ||
+            day < 0 ||
+            day > 6,
+        ))
+    ) {
+      return invalid(index);
+    }
+    const normalized = normalizeBlackoutWindow(entry);
+    return normalized ?? invalid(index);
+  });
+}
+
 export function normalizeLifeOpsMeetingPreferencesPatch(
   patch:
     | Record<string, unknown>
@@ -511,10 +548,12 @@ export function normalizeLifeOpsMeetingPreferencesPatch(
   ) {
     out.travelBufferMinutes = Math.floor(patch.travelBufferMinutes);
   }
-  if (Array.isArray(patch.blackoutWindows)) {
-    out.blackoutWindows = patch.blackoutWindows
-      .map(normalizeBlackoutWindow)
-      .filter((w): w is LifeOpsMeetingPreferencesBlackout => w !== null);
+  if (patch.blackoutWindows !== undefined) {
+    // This is a replacement patch, so dropping even one requested member
+    // would silently change owner intent. Validate all entries before writes.
+    out.blackoutWindows = normalizeRequestedBlackoutWindows(
+      patch.blackoutWindows,
+    );
   }
   return out;
 }
@@ -525,7 +564,19 @@ function resolveMeetingPreferences(
   const stored = isRecord(metadata?.meetingPreferences)
     ? metadata.meetingPreferences
     : null;
-  const normalized = normalizeLifeOpsMeetingPreferencesPatch(stored);
+  // Reading legacy metadata is not a new mutation request. Preserve its
+  // existing sanitization without feeding a partially valid replacement back
+  // through the strict write boundary.
+  const { blackoutWindows, ...storedPatch } = stored ?? {};
+  const normalized = normalizeLifeOpsMeetingPreferencesPatch(storedPatch);
+  if (Array.isArray(blackoutWindows)) {
+    normalized.blackoutWindows = blackoutWindows
+      .map(normalizeBlackoutWindow)
+      .filter(
+        (window): window is LifeOpsMeetingPreferencesBlackout =>
+          window !== null,
+      );
+  }
   const updatedAt =
     stored && typeof stored.updatedAt === "string"
       ? normalizeProfileValue(stored.updatedAt)

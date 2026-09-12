@@ -34,6 +34,13 @@ inputs:
     description: "Whether to run the repo postinstall step explicitly"
     required: false
     default: "true"
+  setup-fused-inference:
+    description: >-
+      Whether repo postinstall should provision and verify the desktop fused
+      inference runtime. Generic CI lanes must leave this disabled; only the
+      desktop contract and release build opt in.
+    required: false
+    default: "false"
   cache-bun-install:
     description: >-
       Whether to restore/save the global Bun install cache. Disable this for
@@ -432,6 +439,7 @@ runs:
           sleep 5
         done
       env:
+        ELIZA_SKIP_FUSED_INFERENCE_SETUP: ${{ inputs.setup-fused-inference != 'true' && '1' || '' }}
         # When the system-Python guard above found a usable interpreter,
         # `pythonLocation` is never set (actions/setup-python@v6 was skipped),
         # so prefer the probed binary and only fall back to the downloaded
@@ -495,6 +503,7 @@ runs:
       env:
         SKIP_AVATAR_CLONE: ${{ inputs.skip-avatar-clone == 'true' && '1' || '' }}
         ELIZA_NO_VISION_DEPS: ${{ inputs.no-vision-deps == 'true' && '1' || '' }}
+        ELIZA_SKIP_FUSED_INFERENCE_SETUP: ${{ inputs.setup-fused-inference != 'true' && '1' || '' }}
 
     - name: Ensure workspace + native-plugin symlinks (postinstall safety net)
       # `bun run postinstall` chains `bun scripts/patch-*` steps before

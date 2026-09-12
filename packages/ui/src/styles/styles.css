@@ -1,3 +1,4 @@
+/** Provides shared theme styles and utilities for application and dynamic plugin views. */
 @import "@fontsource/poppins/400.css";
 @import "@fontsource/poppins/500.css";
 @import "@fontsource/poppins/600.css";
@@ -49,6 +50,7 @@ electrobun-wgpu {
 @source "..";
 @source "../../../ui/src";
 @source "../../../../plugins/app-lifeops/src";
+@source "../../../../plugins/plugin-calendar/src";
 @source "../../../../plugins/plugin-maps/src";
 
 /* Memories sits beside a persistent filter rail in short landscape, where the

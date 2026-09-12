@@ -9,6 +9,8 @@ import { describe, expect, it } from "vitest";
 import { BUILTIN_VIEWS } from "./builtin-views.ts";
 
 const SOURCE_ORDER_IDS = [
+  "wallet",
+  "projects",
   "camera",
   "device-control",
   "chat",
@@ -74,6 +76,8 @@ describe("BUILTIN_VIEWS", () => {
       "browser",
       "camera",
       "device-control",
+      "wallet",
+      "projects",
       "character",
       "documents",
       "automations",
@@ -181,11 +185,14 @@ describe("BUILTIN_VIEWS", () => {
     expect(requireView("vault").roleGate).toEqual({ minRole: "OWNER" });
   });
 
-  it("grants agent-surface only on Character", () => {
+  it("grants agent-surface only on instrumented Character and Knowledge views", () => {
     const withGrant = BUILTIN_VIEWS.filter((view) =>
       view.surface?.capabilities?.includes("agent-surface"),
     );
-    expect(withGrant.map((view) => view.id)).toEqual(["character"]);
+    expect(withGrant.map((view) => view.id)).toEqual([
+      "character",
+      "documents",
+    ]);
   });
 
   it("declares scopedActions only on Character", () => {

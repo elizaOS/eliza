@@ -1,3 +1,4 @@
+/** Exercises pendant persistence, revisions, transactions and invalid adapter results with deterministic database seams. */
 import type { PendantSegment } from "@elizaos/shared/contracts/pendant-session-sync";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { describe, expect, it, vi } from "vitest";
@@ -307,4 +308,17 @@ describe("InMemoryPendantSessionRepository", () => {
       "seg-1",
     ]);
   });
+});
+
+it("rejects an incomplete session read instead of reporting no stored session", async () => {
+  const repository = new SqlPendantSessionRepository({
+    adapter: { db: { execute: async () => ({ rows: [null] }) } },
+  });
+  await expect(
+    repository.load({
+      ownerId: "owner-1",
+      agentId: "agent-1",
+      sessionId: "session-1",
+    }),
+  ).rejects.toMatchObject({ code: "SQL_RESULT_INVALID" });
 });

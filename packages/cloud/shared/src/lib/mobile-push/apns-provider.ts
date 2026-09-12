@@ -1,5 +1,6 @@
 /** Sends APNs alerts from Workerd with provider-token authentication and typed rejection results. */
 
+import { logger } from "../utils/logger";
 import type { MobilePushDeliveryResult, MobilePushMessage } from "./types";
 
 const APNS_SANDBOX_ORIGIN = "https://api.sandbox.push.apple.com";
@@ -65,6 +66,44 @@ function pkcs8Bytes(pem: string): Uint8Array {
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
+// Only documented wire reasons may enter logs; unexpected provider text can
+// contain request data. See Apple's Handling notification responses from APNs.
+const APNS_RECEIPT_REASONS = new Set<string>([
+  "BadCollapseId",
+  "BadDeviceToken",
+  "BadExpirationDate",
+  "BadMessageId",
+  "BadPriority",
+  "BadTopic",
+  "DeviceTokenNotForTopic",
+  "DuplicateHeaders",
+  "IdleTimeout",
+  "InvalidPushType",
+  "MissingDeviceToken",
+  "MissingTopic",
+  "PayloadEmpty",
+  "TopicDisallowed",
+  "BadCertificate",
+  "BadCertificateEnvironment",
+  "ExpiredProviderToken",
+  "Forbidden",
+  "InvalidProviderToken",
+  "MissingProviderToken",
+  "UnrelatedKeyIdInToken",
+  "BadEnvironmentKeyIdInToken",
+  "BadPath",
+  "MethodNotAllowed",
+  "ExpiredToken",
+  "Unregistered",
+  "PayloadTooLarge",
+  "TooManyProviderTokenUpdates",
+  "TooManyRequests",
+  "InternalServerError",
+  "ServiceUnavailable",
+  "Shutdown",
+]);
+const APNS_RECEIPT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 export class CloudApnsProvider {
   private cachedToken?: CachedProviderToken;
   private importedKey?: Promise<CryptoKey>;
@@ -74,6 +113,40 @@ export class CloudApnsProvider {
     private readonly config: CloudApnsConfig,
     private readonly request: typeof fetch = fetch,
   ) {}
+
+  /**
+   * Emit the provider receipt needed to prove real APNs acceptance without
+   * logging the device token or notification payload. APNs IDs are provider
+   * receipts, not device identifiers, and let an operator correlate a banner
+   * with Apple's response while status/reason preserve reject classification.
+   */
+  private recordReceipt(
+    result: MobilePushDeliveryResult,
+    payloadBytes: number,
+    apnsId?: string,
+  ): MobilePushDeliveryResult {
+    const receiptId = result.outcome === "accepted" ? result.apnsId : apnsId;
+    const reason = result.outcome === "accepted" ? undefined : result.reason;
+    logger.warn("[CloudApnsProvider] delivery receipt", {
+      src: "cloud-apns",
+      environment: this.config.production ? "production" : "sandbox",
+      topic: this.config.topic,
+      payloadBytes,
+      outcome: result.outcome,
+      ...(result.outcome === "rejected" ? { status: result.status } : {}),
+      ...(reason === undefined
+        ? {}
+        : APNS_RECEIPT_REASONS.has(reason)
+          ? { reason }
+          : { unrecognizedProviderReason: true }),
+      ...(receiptId === undefined
+        ? {}
+        : APNS_RECEIPT_ID.test(receiptId)
+          ? { apnsId: receiptId }
+          : { invalidApnsId: true }),
+    });
+    return result;
+  }
 
   private async providerToken(now: number): Promise<string> {
     if (this.cachedToken && now - this.cachedToken.mintedAt < APNS_PROVIDER_TOKEN_TTL_MS) {
@@ -120,8 +193,12 @@ export class CloudApnsProvider {
         sound: "default",
       },
     });
-    if (new TextEncoder().encode(body).length > APNS_MAX_PAYLOAD_BYTES) {
-      return { outcome: "rejected", status: 413, reason: "PayloadTooLarge" };
+    const payloadBytes = new TextEncoder().encode(body).length;
+    if (payloadBytes > APNS_MAX_PAYLOAD_BYTES) {
+      return this.recordReceipt(
+        { outcome: "rejected", status: 413, reason: "PayloadTooLarge" },
+        payloadBytes,
+      );
     }
     const collapseId = message.collapseKey
       ? base64url(
@@ -143,7 +220,12 @@ export class CloudApnsProvider {
       signal: AbortSignal.timeout(APNS_REQUEST_TIMEOUT_MS),
     });
     const apnsId = response.headers.get("apns-id") ?? undefined;
-    if (response.status === 200) return { outcome: "accepted", ...(apnsId ? { apnsId } : {}) };
+    if (response.status === 200) {
+      return this.recordReceipt(
+        { outcome: "accepted", ...(apnsId ? { apnsId } : {}) },
+        payloadBytes,
+      );
+    }
     let errorBody: { reason?: unknown } | null = null;
     try {
       errorBody = (await response.json()) as { reason?: unknown };
@@ -152,8 +234,16 @@ export class CloudApnsProvider {
     }
     const reason = typeof errorBody?.reason === "string" ? errorBody.reason : undefined;
     if (reason === "Unregistered" || reason === "BadDeviceToken" || reason === "ExpiredToken") {
-      return { outcome: "unregistered", reason };
+      return this.recordReceipt({ outcome: "unregistered", reason }, payloadBytes, apnsId);
     }
-    return { outcome: "rejected", status: response.status, ...(reason ? { reason } : {}) };
+    return this.recordReceipt(
+      {
+        outcome: "rejected",
+        status: response.status,
+        ...(reason ? { reason } : {}),
+      },
+      payloadBytes,
+      apnsId,
+    );
   }
 }

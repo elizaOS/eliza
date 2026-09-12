@@ -40,6 +40,9 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@elizaos/core")>();
 	return {
 		...coreMock,
+		getStreamingContext: actual.getStreamingContext,
+		getTurnActionConstraint: actual.getTurnActionConstraint,
+		setTurnActionConstraint: actual.setTurnActionConstraint,
 		getUserMessageText: actual.getUserMessageText,
 		hardenIncomingUserMessage: actual.hardenIncomingUserMessage,
 		unwrapUserMessageText: actual.unwrapUserMessageText,
@@ -149,16 +152,17 @@ describe("VIEWS — hardened-envelope messages never leak the envelope", () => {
 		expectNoEnvelope(result?.text);
 		// The unwrapped user word — not the envelope remainder — is what echoes.
 		expect(result?.text).toContain('"fnord"');
-		expectNoEnvelope(callback.mock.calls[0]?.[0]?.text);
+		expect(callback).not.toHaveBeenCalled();
 		// Machine-facing target stays one line without semantic shortening.
 		const target = (result?.data as { target?: string })?.target;
 		expect(typeof target).toBe("string");
 		expect(target).not.toContain("\n");
 	});
 
-	it("show: verb scan runs on the payload, not the warning text", async () => {
+	it("show: only the structured target is reported, not the warning text", async () => {
 		const { result, callback } = await runViews(
 			envelopedMessage("open the zorptastic view"),
+			{ action: "show", view: "zorptastic" },
 		);
 
 		expect(result?.success).toBe(false);
@@ -177,7 +181,7 @@ describe("VIEWS — hardened-envelope messages never leak the envelope", () => {
 		expect(result?.success).toBe(true);
 		expectNoEnvelope(result?.text);
 		expect(result?.text).toContain('"quantum ledger"');
-		expectNoEnvelope(callback.mock.calls[0]?.[0]?.text);
+		expect(callback).not.toHaveBeenCalled();
 		const query = (result?.values as { query?: string })?.query;
 		expect(query).toBe("quantum ledger");
 	});

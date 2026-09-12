@@ -76,7 +76,6 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsHealthConnectorProvider,
   LifeOpsInboxChannel,
-  LifeOpsOccurrenceView,
   ManageLifeOpsGmailMessagesRequest,
   ProcessLifeOpsRemindersRequest,
   PurgeLifeOpsGmailImportedDataRequest,
@@ -117,10 +116,9 @@ import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import {
   CalendarCardAccessError,
   CalendarCardAccessStore,
-  type CalendarCardEvent,
-  type CalendarCardPrivacyMode,
   calendarCardApprovalPayload,
   composeDailyCalendarCard,
+  parseCalendarCardRequest,
 } from "../lifeops/calendar-card.js";
 import { probeFullDiskAccess } from "../lifeops/fda-probe.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
@@ -377,23 +375,6 @@ function routeOperation(ctx: LifeOpsRouteContext): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-// Map a scheduled-task occurrence state onto the task item-board status the
-// TodosView renders. The overview returns only active occurrences
-// (visible/pending/snoozed), so the board never sees terminal states; the
-// mapping is exhaustive over LifeOpsOccurrenceState for type safety.
-function occurrenceStateToTodoStatus(
-  state: LifeOpsOccurrenceView["state"],
-): "pending" | "in_progress" | "completed" {
-  switch (state) {
-    case "snoozed":
-      return "in_progress";
-    case "completed":
-      return "completed";
-    default:
-      return "pending";
-  }
 }
 
 function decodeMatchedPathComponent(
@@ -1266,53 +1247,46 @@ export async function handleLifeOpsRoutes(
     const runtime = ctx.state.runtime;
     if (!runtime) return true;
     if (rateLimitRequest(ctx, "calendar_card")) return true;
-    const body = await readJsonBody<{
-      date: string;
-      timeZone: string;
-      privacyMode: CalendarCardPrivacyMode;
-      recipient: string;
-      recipientEntityId?: string;
-      events: CalendarCardEvent[];
-      ttlMs?: number;
-    }>(req, res);
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
+    const parsedRequest = parseCalendarCardRequest(body);
+    if (!parsedRequest.ok) {
+      json(res, { error: parsedRequest.error }, 400);
+      return true;
+    }
+    const cardRequest = parsedRequest.request;
     const authenticatedEntityId = String(
       ctx.state.requestEntityId ?? ctx.state.adminEntityId ?? SELF_ENTITY_ID,
     );
-    const recipientEntityId = String(
-      body.recipientEntityId ?? authenticatedEntityId,
-    );
+    const recipientEntityId =
+      cardRequest.recipientEntityId ?? authenticatedEntityId;
     const recipientCanAuthenticate =
       recipientEntityId === authenticatedEntityId ||
       (await entityHasVerifiedMachineAuthBinding(runtime, recipientEntityId));
-    if (
-      !body.recipient?.trim() ||
-      !Array.isArray(body.events) ||
-      !["full", "times_only", "busy_only"].includes(body.privacyMode) ||
-      !recipientCanAuthenticate
-    ) {
+    if (!recipientCanAuthenticate) {
       json(res, { error: "Invalid calendar card request" }, 400);
       return true;
     }
+    const ttlMs = cardRequest.ttlMs ?? 24 * 60 * 60_000;
     const placeholder = composeDailyCalendarCard({
-      date: body.date,
-      timeZone: body.timeZone,
-      privacyMode: body.privacyMode,
-      events: body.events,
+      date: cardRequest.date,
+      timeZone: cardRequest.timeZone,
+      privacyMode: cardRequest.privacyMode,
+      events: cardRequest.events,
       accessUrl: "https://invalid.local/pending",
     });
     const store = new CalendarCardAccessStore(runtime);
     const issued = await store.issue({
       recipientEntityId,
       html: placeholder.html,
-      ttlMs: body.ttlMs ?? 24 * 60 * 60_000,
+      ttlMs,
       baseUrl: url.origin,
     });
     const composition = composeDailyCalendarCard({
-      date: body.date,
-      timeZone: body.timeZone,
-      privacyMode: body.privacyMode,
-      events: body.events,
+      date: cardRequest.date,
+      timeZone: cardRequest.timeZone,
+      privacyMode: cardRequest.privacyMode,
+      events: cardRequest.events,
       accessUrl: issued.accessUrl,
     });
     if (composition.htmlSha256 !== issued.htmlSha256) {
@@ -1322,7 +1296,7 @@ export async function handleLifeOpsRoutes(
       );
     }
     const payload = calendarCardApprovalPayload({
-      recipient: body.recipient.trim(),
+      recipient: cardRequest.recipient,
       recipientEntityId,
       cardId: issued.cardId,
       composition,
@@ -1336,9 +1310,9 @@ export async function handleLifeOpsRoutes(
         action: "send_message",
         payload,
         channel: "imessage",
-        reason: `Send the private ${body.privacyMode} calendar card for ${body.date}.`,
+        reason: `Send the private ${cardRequest.privacyMode} calendar card for ${cardRequest.date}.`,
         idempotencyKey: `calendar-card:v1:${composition.envelopeSha256}`,
-        expiresAt: new Date(Date.now() + (body.ttlMs ?? 24 * 60 * 60_000)),
+        expiresAt: new Date(Date.now() + ttlMs),
       });
       await queue.surfaceEnqueuedApproval(approval);
     } catch (error) {
@@ -2782,22 +2756,26 @@ export async function handleLifeOpsRoutes(
     });
   }
 
-  // Todos projection over the shared scheduled-task spine. Reuses getOverview()
-  // (the canonical read that projects life_task_definitions/occurrences) and
-  // flattens the owner's active occurrences into a flat task-list DTO the TodosView
-  // renders. No new query path — getOverview owns the computation; this route
-  // only maps occurrence-view fields to { id, title, status, dueDate }.
   if (method === "GET" && pathname === "/api/lifeops/todos") {
     return runRoute(ctx, async (service) => {
-      const overview = await service.getOverview();
-      const todos = overview.owner.occurrences.map((occurrence) => ({
-        id: occurrence.id,
-        title: occurrence.title,
-        status: occurrenceStateToTodoStatus(occurrence.state),
-        dueDate: occurrence.dueAt,
-        progress: occurrence.progress,
-      }));
-      json(res, { todos });
+      json(res, { todos: await service.getTodos() });
+    });
+  }
+
+  const todoTransition = pathname.match(
+    /^\/api\/lifeops\/definitions\/([^/]+)\/(complete|reopen)$/,
+  );
+  if (method === "POST" && todoTransition) {
+    if (rateLimitRequest(ctx, "task_update")) return true;
+    const id = ctx.decodePathComponent(todoTransition[1], res, "definitionId");
+    if (!id) return true;
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        todoTransition[2] === "complete"
+          ? await service.completeTodo(id)
+          : await service.reopenTodo(id),
+      );
     });
   }
 

@@ -15,6 +15,65 @@ import { describe, expect, it } from "vitest";
 import rolesPlugin from "./index";
 
 describe("runtime roles bootstrap CAS", () => {
+  it("never re-grants the canonical owner through the connector-admin whitelist", async () => {
+    // Live 2026-09-06: the owner's Discord id was on the connector-admin
+    // whitelist; every WORLD_JOINED/WORLD_CONNECTED re-ran the sync and
+    // re-granted ADMIN over the OWNER — 6,184 audit rows, a 1.5 MB world
+    // metadata blob, and a stale-revision 500 on the first request after boot.
+    const runtime = new AgentRuntime({
+      character: { name: "roles-cas-owner" } as Character,
+    });
+    const adapter = new InMemoryDatabaseAdapter();
+    await adapter.init();
+    runtime.registerDatabaseAdapter(adapter);
+    const ownerId = stringToUuid("runtime-roles-owner-2") as UUID;
+    const worldId = stringToUuid("runtime-roles-world-2") as UUID;
+    const roomId = stringToUuid("runtime-roles-room-2") as UUID;
+    await adapter.createEntities([
+      {
+        id: ownerId,
+        agentId: runtime.agentId,
+        names: ["Owner"],
+        metadata: { discord: { id: "1284887060825509890" } },
+      },
+    ]);
+    await adapter.createWorlds([
+      { id: worldId, agentId: runtime.agentId, name: "Roles", metadata: {} },
+    ]);
+    await adapter.createRooms([
+      {
+        id: roomId,
+        agentId: runtime.agentId,
+        worldId,
+        source: "discord",
+        type: ChannelType.WORLD,
+      },
+    ]);
+    await adapter.createRoomParticipants([ownerId], roomId);
+    (
+      runtime as unknown as { getSetting: (key: string) => unknown }
+    ).getSetting = (key) =>
+      key === "ELIZA_ADMIN_ENTITY_ID" ? ownerId : undefined;
+    const config = {
+      connectorAdmins: { discord: ["1284887060825509890"] },
+    } as unknown as Record<string, string>;
+    await rolesPlugin.init?.(config, runtime);
+    await rolesPlugin.init?.(config, runtime);
+    const world = (await adapter.getWorldsByIds([worldId]))[0];
+    if (!world) throw new Error("world missing");
+    const metadata = world.metadata as {
+      roles?: Record<string, string>;
+      roleSources?: Record<string, string>;
+    };
+    expect(metadata.roles?.[ownerId]).toBe("OWNER");
+    expect(metadata.roleSources?.[ownerId]).toBe("owner");
+    const audits = await adapter.getLogs({ type: ROLE_WRITE_AUDIT_LOG_TYPE });
+    expect(audits).toHaveLength(1);
+    expect(audits[0]?.body).toMatchObject({
+      metadata: { targetEntityId: ownerId, newRole: "OWNER" },
+    });
+  });
+
   it("commits the configured owner and audit through adapter CAS", async () => {
     const runtime = new AgentRuntime({
       character: { name: "roles-cas" } as Character,

@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  inferenceAuthTailFailureCode,
+  isCloudflarePlacement,
   parseArgs,
   parseAuthServerTiming,
   parseAuthTrace,
@@ -19,6 +21,15 @@ import {
 
 const SHA = "a".repeat(40);
 
+test("Cloudflare placement values retain only documented local and remote colos", () => {
+  assert.equal(isCloudflarePlacement("local-ORD"), true);
+  assert.equal(isCloudflarePlacement("remote-FRA"), true);
+  assert.equal(isCloudflarePlacement("local"), false);
+  assert.equal(isCloudflarePlacement("remote"), false);
+  assert.equal(isCloudflarePlacement("LOCAL-ORD"), false);
+  assert.equal(isCloudflarePlacement(null), false);
+});
+
 function authHeader(phase) {
   return phase === "hit"
     ? "v=1;credential=x_api_key;probe=off;available=available;backend=cloudflare_kv;read=hit;authoritative=not_run;write=not_run;result=authorized_cache"
@@ -31,6 +42,67 @@ function timingHeader(phase, resolveMs = 10) {
     ? shared
     : `${shared}, auth_key_lookup;dur=3, auth_user_org;dur=2, auth_moderation;dur=1`;
 }
+
+function warmTailRecord(traceId) {
+  return JSON.stringify({
+    outcome: "ok",
+    logs: [
+      {
+        message: [
+          "[InferenceAuth] trace",
+          {
+            v: 1,
+            traceId,
+            authSource: "x_api_key",
+            controlledProbe: "off",
+            cacheAvailability: "available",
+            cacheBackend: "cloudflare_kv",
+            cacheRead: "hit",
+            authoritative: "not_run",
+            cacheWrite: "not_run",
+            result: "authorized_cache",
+            timings: {
+              extractMs: 0,
+              cacheAvailabilityMs: 0,
+              cacheReadMs: 1,
+              keyLookupMs: null,
+              userOrgLookupMs: null,
+              moderationMs: null,
+              cacheWriteMs: null,
+              totalMs: 1,
+            },
+          },
+        ],
+      },
+    ],
+  });
+}
+
+test("Tail failure categories preserve diagnostic meaning without raw content", () => {
+  const traceId = "a".repeat(32);
+  const cases = [
+    ["", "missing_auth_records"],
+    [
+      warmTailRecord(traceId) + warmTailRecord(traceId),
+      "duplicate_auth_records",
+    ],
+    ['{"private":"raw-secret', "incomplete_stream"],
+    ['{"private": raw-secret}', "invalid_json"],
+  ];
+  for (const [raw, expected] of cases) {
+    assert.throws(
+      () => sanitizeInferenceAuthTail(raw, [traceId], SHA),
+      (error) => {
+        assert.equal(inferenceAuthTailFailureCode(error), expected);
+        return true;
+      },
+    );
+  }
+  assert.equal(
+    inferenceAuthTailFailureCode(new Error("private-token-or-url")),
+    "unclassified_failure",
+  );
+});
 
 test("parseArgs requires exact HTTPS deployment provenance and sample counts", () => {
   assert.deepEqual(
@@ -175,7 +247,7 @@ test("auth parsers accept only bounded enums and finite auth durations", () => {
 });
 
 test("Worker Tail sanitizer retains only correlated bounded telemetry", () => {
-  const traceId = "0190f2f1-8b5a-7000-8000-000000000001";
+  const traceId = "0190f2f18b5a70008000000000000001";
   const telemetry = {
     v: 1,
     traceId,
@@ -218,7 +290,7 @@ test("Worker Tail sanitizer retains only correlated bounded telemetry", () => {
               "[InferenceAuth] trace",
               {
                 ...telemetry,
-                traceId: "0190f2f1-8b5a-7000-8000-000000000099",
+                traceId: "0190f2f18b5a70008000000000000099",
                 result: "unbounded-private-result",
                 userId: "private-user",
               },
@@ -274,12 +346,32 @@ test("Worker Tail sanitizer retains only correlated bounded telemetry", () => {
   );
   assert.throws(
     () =>
-      sanitizeInferenceAuthTail(
-        raw,
-        ["0190f2f1-8b5a-7000-8000-000000000002"],
-        SHA,
-      ),
+      sanitizeInferenceAuthTail(raw, ["0190f2f18b5a70008000000000000002"], SHA),
     /omitted 1/,
+  );
+});
+
+test("an incomplete origin timing fails with only the missing metric name", async () => {
+  await assert.rejects(
+    probeAuthSample({
+      baseUrl: "https://preview.example",
+      apiKey: "private-key",
+      probeToken: "private-token",
+      deploySha: SHA,
+      phase: "miss",
+      sequence: 0,
+      timeoutMs: 1_000,
+      fetchImpl: async (_url, init) =>
+        new Response("{}", {
+          status: 400,
+          headers: {
+            "X-Eliza-Trace-Id": init.headers["X-Eliza-Trace-Id"],
+            "X-Eliza-Auth-Trace": authHeader("miss"),
+            "Server-Timing": timingHeader("hit"),
+          },
+        }),
+    }),
+    { message: "Missing required authorized_origin timing: auth_key_lookup" },
   );
 });
 
@@ -287,6 +379,7 @@ test("live sample retains timings and correlation but no credential, probe token
   const apiKey = "eliza_private_api_key_material";
   const probeToken = "private_probe_control_token";
   let sentProbeHeader = "";
+  let sentTraceId = "";
   let sentBody = "";
   const record = await probeAuthSample({
     baseUrl: "https://preview.example",
@@ -302,6 +395,7 @@ test("live sample retains timings and correlation but no credential, probe token
     })(),
     fetchImpl: async (_url, init) => {
       sentProbeHeader = init.headers["X-Eliza-Auth-Probe"];
+      sentTraceId = init.headers["X-Eliza-Trace-Id"];
       sentBody = init.body;
       return new Response(null, {
         status: 400,
@@ -317,6 +411,7 @@ test("live sample retains timings and correlation but no credential, probe token
   });
 
   assert.match(sentProbeHeader, /^private_probe_control_token:[0-9a-f]{32}$/);
+  assert.match(sentTraceId, /^[0-9a-f]{32}$/);
   assert.equal(sentBody, "{}");
   assert.equal(record.phase, "miss");
   assert.equal(record.totalMs, 12);
@@ -345,8 +440,12 @@ test("Tail readiness waits for an observed authenticated trace", async () => {
     readTail: () => {
       reads++;
       return traceIds.length > 1
-        ? JSON.stringify({ traceId: traceIds[1] })
-        : "";
+        ? warmTailRecord(traceIds[1])
+        : JSON.stringify({
+            event: {
+              request: { headers: { "x-eliza-trace-id": traceIds[0] } },
+            },
+          });
     },
     fetchImpl: async (_url, init) => {
       traceIds.push(init.headers["X-Eliza-Trace-Id"]);
@@ -379,7 +478,7 @@ test("Tail readiness retries a transient workers.dev propagation response", asyn
     pollsPerAttempt: 1,
     pollIntervalMs: 1,
     sleep: async () => {},
-    readTail: () => observedTraceId,
+    readTail: () => warmTailRecord(observedTraceId),
     fetchImpl: async (_url, init) => {
       requests++;
       if (requests === 1) return new Response(null, { status: 404 });
@@ -522,6 +621,7 @@ test("guard probes retain 401 taxonomy and reject forged probe controls", async 
   });
   assert.equal(invalid.status, 401);
   assert.equal(invalid.auth.result, "rejected");
+  assert.match(invalid.traceId, /^[0-9a-f]{32}$/);
 
   const suspended = await probeAuthGuardSample({
     baseUrl: "https://preview.example",
@@ -534,6 +634,7 @@ test("guard probes retain 401 taxonomy and reject forged probe controls", async 
   });
   assert.equal(suspended.status, 403);
   assert.equal(suspended.auth.result, "suspended");
+  assert.match(suspended.traceId, /^[0-9a-f]{32}$/);
   assert.equal(
     JSON.stringify(suspended).includes("private_probe_control_token"),
     false,

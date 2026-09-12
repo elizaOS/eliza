@@ -31,6 +31,11 @@
       "import": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./runtime-kernel": {
+      "types": "./src/runtime-kernel.ts",
+      "import": "./src/runtime-kernel.ts",
+      "default": "./src/runtime-kernel.ts"
+    },
     "./first-party": {
       "types": "./src/first-party/index.ts",
       "import": "./src/first-party/index.ts",
@@ -44,7 +49,7 @@
   },
   "scripts": {
     "validate": "bun run src/validate-cli.ts",
-    "generate": "bun run src/generate.ts",
+    "generate": "bun run src/generate-cli.ts",
     "generate:first-party": "bun run src/first-party/generate.ts",
     "generate:first-party:check": "bun run src/first-party/generate.ts --check",
     "typecheck": "tsc --noEmit -p tsconfig.json",

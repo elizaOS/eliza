@@ -59,7 +59,8 @@ vi.mock("@elizaos/app-core/services/vault-mirror", () => ({
   sharedVault: {},
 }));
 
-vi.mock("@elizaos/core", () => ({
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
   logger: {
     debug: vi.fn(),
     info: vi.fn(),
@@ -859,6 +860,38 @@ describe("app plugin compatibility routes", () => {
       },
     });
   });
+
+  it.each([
+    [["relationships"], false],
+    [["@elizaos/plugin-relationships"], true],
+    [["relationships", "@elizaos/plugin-relationships"], true],
+  ] as const)(
+    "reports external Relationships activity independently of native features: %j",
+    (names, active) => {
+      const entry = {
+        id: "relationships",
+        name: "Relationships",
+        npmName: "@elizaos/plugin-relationships",
+        description: "",
+        tags: [],
+        kind: "feature",
+        config: {},
+        render: {},
+        resources: {},
+        version: "1.0.0",
+      };
+      mocks.loadRegistry.mockReturnValue({
+        all: [entry],
+        byId: new Map([[entry.id, entry]]),
+      });
+      const response = buildPluginListResponse({
+        plugins: names.map((name) => ({ name })),
+      } as never);
+      expect(
+        response.plugins.find((plugin) => plugin.id === "relationships"),
+      ).toEqual(expect.objectContaining({ isActive: active }));
+    },
+  );
 
   it("does not mark a plugin active from unrelated loaded-name substrings", () => {
     const discordEntry = {

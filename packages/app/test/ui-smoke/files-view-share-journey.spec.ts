@@ -90,7 +90,9 @@ test("files view: share a file (Web Share API invoked with the served url + titl
   const cards = page.getByTestId("file-card");
   await expect(cards).toHaveCount(2, { timeout: 60_000 });
 
-  // The Share control is present (the injected Web Share API made it supported).
+  // The Share control is present in the file's overflow menu (the injected
+  // Web Share API made it supported).
+  await page.getByTestId("file-actions").first().click();
   const shareBtn = page.getByTestId("file-share").first();
   await expect(shareBtn).toBeVisible();
   await shareBtn.click();

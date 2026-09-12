@@ -11,6 +11,7 @@
 // flow. jsdom pinned to a hosted elizacloud origin with the API client mocked.
 
 import { act, renderHook, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { client } from "../api";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
@@ -560,7 +561,7 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
     expect(params.setActionNotice).not.toHaveBeenCalled();
   });
 
-  it("claims a hosted staging return without replacing the localhost backend", async () => {
+  it("claims a hosted staging return once under Strict Mode without replacing the localhost backend", async () => {
     const search =
       "?elizaCloudLogin=complete&elizaCloudLoginSession=staging-return";
     Object.defineProperty(window, "location", {
@@ -591,7 +592,9 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       userId: "user-staging",
     });
 
-    const { result } = renderHook(() => useCloudState(makeParams()));
+    const { result } = renderHook(() => useCloudState(makeParams()), {
+      wrapper: StrictMode,
+    });
 
     await waitFor(() => {
       expect(localStorage.getItem("steward_session_token")).toBe(
@@ -603,6 +606,8 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       "https://api-staging.eliza.app",
       "staging-return",
     );
+    expect(cloudLoginPollDirectSpy).toHaveBeenCalledTimes(1);
+    expect(result.current.elizaCloudLoginBusy).toBe(false);
     expect(setBaseUrlSpy).not.toHaveBeenCalled();
     expect(setTokenSpy).not.toHaveBeenCalled();
   });
@@ -1326,7 +1331,7 @@ describe("useCloudState — pollCloudCredits status snapshot", () => {
       enabled: true,
       connected: true,
       hasApiKey: true,
-      cloudVoiceProxyAvailable: false,
+      cloudVoiceProxyAvailable: true,
     });
     getCloudCreditsSpy.mockResolvedValue({
       authRejected: true,
@@ -1334,14 +1339,27 @@ describe("useCloudState — pollCloudCredits status snapshot", () => {
     });
 
     const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+    let connected = true;
     await act(async () => {
-      await result.current.pollCloudCredits();
+      connected = await result.current.pollCloudCredits();
     });
 
+    expect(connected).toBe(false);
+    expect(result.current.elizaCloudConnected).toBe(false);
+    expect(result.current.elizaCloudVoiceProxyAvailable).toBe(false);
     expect(result.current.elizaCloudAuthRejected).toBe(true);
     expect(result.current.elizaCloudCredits).toBeNull();
     expect(result.current.elizaCloudCreditsLow).toBe(false);
     expect(result.current.elizaCloudCreditsError).toBeNull();
+
+    getCloudCreditsSpy.mockResolvedValue({ balance: 12 });
+    await act(async () => {
+      connected = await result.current.pollCloudCredits();
+    });
+    expect(connected).toBe(true);
+    expect(result.current.elizaCloudConnected).toBe(true);
+    expect(result.current.elizaCloudVoiceProxyAvailable).toBe(true);
+    expect(result.current.elizaCloudAuthRejected).toBe(false);
 
     unmount();
   });
@@ -1361,6 +1379,7 @@ describe("useCloudState — pollCloudCredits status snapshot", () => {
     });
 
     expect(result.current.elizaCloudCreditsError).toBe("credits endpoint down");
+    expect(result.current.elizaCloudConnected).toBe(true);
     expect(result.current.elizaCloudCredits).toBeNull();
     expect(result.current.elizaCloudAuthRejected).toBe(false);
 

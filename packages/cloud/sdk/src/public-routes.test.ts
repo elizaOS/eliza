@@ -15,7 +15,7 @@ class TestTransport {
     method: HttpMethod,
     path: string,
     options?: CloudRequestOptions,
-  ): Promise<TResponse> {
+  ): Promise<TResponse | undefined> {
     this.requests.push({ method, path, options });
     return { method, path, options } as TResponse;
   }
@@ -33,6 +33,16 @@ class TestTransport {
 }
 
 describe("ElizaCloudPublicRoutesClient path building", () => {
+  it("keeps custom transports compatible for data-required routes", async () => {
+    const transport = new TestTransport();
+    const client = new ElizaCloudPublicRoutesClient(transport);
+
+    await expect(client.getApiV1Apps()).resolves.toMatchObject({
+      method: "GET",
+      path: "/api/v1/apps",
+    });
+  });
+
   it("keeps storage object identifiers in typed headers", async () => {
     const transport = new TestTransport();
     const client = new ElizaCloudPublicRoutesClient(transport);

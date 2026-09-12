@@ -222,6 +222,7 @@ export type StartupErrorReason =
   | "backend-unreachable"
   | "agent-timeout"
   | "agent-error"
+  | "agent-stopped"
   | "asset-missing"
   | "unknown";
 
@@ -232,6 +233,9 @@ export interface StartupErrorState {
   detail?: string;
   status?: number;
   path?: string;
+  /** Trusted Cloud management destination for an explicitly stopped agent. */
+  cloudManagementUrl?: string;
+  cloudAgentId?: string;
 }
 
 export interface StartupCoordinatorView {
@@ -750,6 +754,8 @@ export interface AppActions {
   handleChatClear: () => Promise<void>;
   handleStartDraftConversation: () => Promise<void>;
   handleNewConversation: (title?: string) => Promise<void>;
+  /** Restore the active personal conversation; null means recovery is unavailable. */
+  ensureActiveConversation: () => Promise<string | null>;
   setChatPendingImages: Dispatch<SetStateAction<ImageAttachment[]>>;
   handleSelectConversation: (id: string) => Promise<void>;
   /**

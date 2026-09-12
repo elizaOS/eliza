@@ -29,6 +29,16 @@ let moderationReads = 0;
 let assertSessionActive: () => Promise<void>;
 const strongCredentialChecks: Array<Record<string, unknown>> = [];
 const ADMISSION = {
+  authority: {
+    generation: "0",
+    source: "legacy" as const,
+    sourceSubscriptionId: null,
+    sourceRevision: null,
+    projectionRevision: null,
+    catalogVersion: null,
+    effectiveFrom: "2026-01-01T00:00:00.000Z",
+    effectiveUntil: null,
+  },
   subscriptionFunded: false,
   balance: { balanceUsd: 100, balanceAt: 1, balanceRevision: "1" },
   rateLimits: {
@@ -54,7 +64,7 @@ mock.module("../../db/repositories/users", () => ({
 
 mock.module("./admin", () => ({
   adminService: {
-    shouldBlockUser: async () => {
+    shouldBlockUserConsistent: async () => {
       moderationReads++;
       return false;
     },
@@ -65,8 +75,36 @@ mock.module("../steward-sync", () => ({
   syncUserFromSteward: async () => undefined,
 }));
 
+// These cache orchestration tests replace the primary admission transaction;
+// database locking and generation rejection are exercised by the migrated policy suites.
+mock.module("./organization-quota-policy", () => ({
+  readOrganizationQuotaPolicyInTransaction: async () => {
+    throw new Error("Unexpected transaction policy read in auth fixture");
+  },
+  requireOrganizationPolicyBalance: () => {
+    throw new Error("Unexpected balance read in auth fixture");
+  },
+  requireOrganizationResourceLimit: () => {
+    throw new Error("Unexpected resource policy read in auth fixture");
+  },
+  readOrganizationQuotaPolicy: async () => ({
+    authority: ADMISSION.authority,
+    tier: { status: "available", value: ADMISSION.rateLimits },
+  }),
+  requireOrganizationRateTier: (policy: { tier: { value: typeof ADMISSION.rateLimits } }) =>
+    policy.tier.value,
+}));
+mock.module("./organization-policy-admission", () => ({
+  withOrganizationPolicyAdmission: async (
+    _orgId: string,
+    _authority: typeof ADMISSION.authority,
+    action: (policy: typeof ADMISSION) => Promise<unknown>,
+  ) => action(ADMISSION),
+}));
+
 mock.module("./inference-admission-snapshot", () => ({
   loadInferenceAdmissionSnapshot: async () => ADMISSION,
+  inferenceAdmissionSnapshotFromPolicy: () => ADMISSION,
 }));
 mock.module("./inference-credential-revocation", () => ({
   isInferenceStrongRevocationEnabled: () =>
@@ -178,6 +216,36 @@ describe("resolveInferenceSessionAuthContext", () => {
     expect(strongCredentialChecks).toHaveLength(1);
     expect(cacheRead).toHaveBeenCalledTimes(1);
     cacheRead.mockRestore();
+  });
+
+  test("a changed policy rebuilds the combined session cache before retry", async () => {
+    const waited: Promise<unknown>[] = [];
+    const options = {
+      cacheOnly: true,
+      useAuthCache: true,
+      executionCtx: { waitUntil: (promise: Promise<unknown>) => waited.push(promise) },
+    };
+    await resolveInferenceSessionAuthContext(request(), options);
+    await Promise.all(waited);
+    const original = ADMISSION.authority.generation;
+    const originalRpm = ADMISSION.rateLimits.embeddingsRpm;
+    try {
+      ADMISSION.authority.generation = "1";
+      ADMISSION.rateLimits.embeddingsRpm = 7;
+      const stale = await resolveInferenceSessionAuthContext(request(), options);
+      expect(stale.kind).toBe("warming");
+      await Promise.all(waited);
+      const retry = await resolveInferenceSessionAuthContext(request(), options);
+      expect(retry).toMatchObject({
+        kind: "authorized",
+        source: "cache",
+        ctx: { admission: { authority: { generation: "1" }, rateLimits: { embeddingsRpm: 7 } } },
+      });
+      expect(userReads).toBe(2);
+    } finally {
+      ADMISSION.authority.generation = original;
+      ADMISSION.rateLimits.embeddingsRpm = originalRpm;
+    }
   });
 
   test("warm verified session reads the combined cache and never calls users or moderation", async () => {

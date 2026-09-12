@@ -487,6 +487,10 @@ describe("homepage deployment workflow", () => {
       "ELIZA_APP_TELEGRAM_BOT_TOKEN",
       "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
     ] as const;
+    const reusableEnvironmentSecrets = [
+      "ELIZA_APP_TELEGRAM_BOT_TOKEN",
+      "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
+    ] as const;
     const referencedSecrets = [
       ...releaseWorkflow.matchAll(/\bsecrets\.([A-Z0-9_]+)/g),
     ]
@@ -506,12 +510,14 @@ describe("homepage deployment workflow", () => {
     expect(callerSecrets).not.toBe("inherit");
     expect(callerSecrets).toBeTypeOf("object");
     const callerSecretMap = callerSecrets as Record<string, string>;
-    expect(Object.keys(callerSecretMap).sort()).toEqual(expectedCallerSecrets);
+    expect(Object.keys(callerSecretMap).sort()).toEqual(
+      [...expectedCallerSecrets, ...reusableEnvironmentSecrets].sort(),
+    );
     expect(
       Object.keys(
         parsedReleaseWorkflow.on?.workflow_call?.secrets ?? {},
       ).sort(),
-    ).toEqual(expectedCallerSecrets);
+    ).toEqual([...expectedCallerSecrets, ...reusableEnvironmentSecrets].sort());
     for (const name of expectedCallerSecrets) {
       expect(callerSecretMap[name], name).toBe(
         githubExpression(`secrets.${name}`),
@@ -521,20 +527,23 @@ describe("homepage deployment workflow", () => {
         name,
       ).toEqual({ required: false });
     }
-    for (const name of environmentOnlySecrets) {
-      expect(callerSecretMap).not.toHaveProperty(name);
+    expect(callerSecretMap).not.toHaveProperty(
+      "TELEGRAM_IDENTITY_AUTHORITY_SHA256",
+    );
+    expect(parsedReleaseWorkflow.on?.workflow_call?.secrets).not.toHaveProperty(
+      "TELEGRAM_IDENTITY_AUTHORITY_SHA256",
+    );
+    for (const name of reusableEnvironmentSecrets) {
+      // GitHub requires the caller binding to expose the selected Environment
+      // secret in the called job. An empty literal cannot forward repo values.
+      expect(callerSecretMap[name], name).toBe("");
       expect(
-        parsedReleaseWorkflow.on?.workflow_call?.secrets,
-      ).not.toHaveProperty(name);
+        parsedReleaseWorkflow.on?.workflow_call?.secrets?.[name],
+        name,
+      ).toEqual({ required: false });
     }
     expect(releaseWorkflow).not.toContain(
       "secrets.TELEGRAM_IDENTITY_AUTHORITY_SHA256",
-    );
-    expect(releaseWorkflow).not.toContain(
-      "secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN",
-    );
-    expect(releaseWorkflow).not.toContain(
-      "secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
     );
 
     const apiDeploy = parsedReleaseWorkflow.jobs?.["deploy-api"];
@@ -546,14 +555,10 @@ describe("homepage deployment workflow", () => {
       githubExpression("inputs.target_environment"),
     );
     expect(secretPreparation.env?.ELIZA_APP_TELEGRAM_BOT_TOKEN).toBe(
-      githubExpression(
-        "secrets[format('{0}{1}', 'ELIZA_APP_TELEGRAM_', 'BOT_TOKEN')]",
-      ),
+      githubExpression("secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN"),
     );
     expect(secretPreparation.env?.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET).toBe(
-      githubExpression(
-        "secrets[format('{0}{1}', 'ELIZA_APP_TELEGRAM_', 'WEBHOOK_SECRET')]",
-      ),
+      githubExpression("secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET"),
     );
   });
 

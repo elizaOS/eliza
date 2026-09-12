@@ -15,11 +15,11 @@
  */
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   describeCalls,
   successfulActionData,
 } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 const CLOUD_ACCOUNT_STATUS = "CLOUD_ACCOUNT_STATUS";
 const CLOUD_BASE_URL = "https://cloud.test.invalid/api/v1";
@@ -32,7 +32,13 @@ type R = AgentRuntime & {
   };
 };
 
+type CloudAuthBoundary = {
+  authenticateWithApiKey: (input: { apiKey: string }) => unknown;
+  clearAuth: () => void;
+};
+
 let restoreFetch: (() => void) | undefined;
+let cloudAuthBoundary: CloudAuthBoundary | undefined;
 /** True once the balance endpoint was actually served by the mock. */
 let balanceMockHit = false;
 
@@ -107,6 +113,23 @@ export default scenario({
         process.env.ELIZAOS_CLOUD_USE_INFERENCE = "false";
         process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
 
+        const candidate = runtime.getService(
+          "CLOUD_AUTH",
+        ) as Partial<CloudAuthBoundary> | null;
+        if (
+          !candidate ||
+          typeof candidate.authenticateWithApiKey !== "function" ||
+          typeof candidate.clearAuth !== "function"
+        ) {
+          throw new Error(
+            "Eliza Cloud scenario requires the real CLOUD_AUTH service",
+          );
+        }
+        cloudAuthBoundary = candidate as CloudAuthBoundary;
+        cloudAuthBoundary.authenticateWithApiKey({
+          apiKey: "cloud_scenario_key",
+        });
+
         runtime.scenarioModelFixtures?.register(
           {
             name: "elizacloud-stage1",
@@ -159,6 +182,8 @@ export default scenario({
       type: "custom",
       name: "restore-elizacloud-fetch",
       apply: () => {
+        cloudAuthBoundary?.clearAuth();
+        cloudAuthBoundary = undefined;
         restoreFetch?.();
         return undefined;
       },

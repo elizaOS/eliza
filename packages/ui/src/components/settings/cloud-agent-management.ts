@@ -2,6 +2,7 @@
  * Owns the shared cloud-agent management lifecycle used by both settings presentations.
  * Callers provide the management-token boundary and retain their own rendering contracts.
  */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client, ElizaClient } from "../../api";
 import { resolveCloudAgentApiBase } from "../../api/client-cloud";
@@ -10,17 +11,19 @@ import { getBootConfig } from "../../config/boot-config";
 import { useBranding } from "../../config/branding";
 import { useAppSelector } from "../../state";
 import { upsertAndActivateAgentProfile } from "../../state/agent-profiles";
+import { resolveDedicatedAgentId } from "../../state/agent-session-recovery";
 import { clearStalePairCredentialsForAgent } from "../../state/cloud-pair-token";
 import {
   createPersistedActiveServer,
   loadPersistedActiveServer,
   savePersistedActiveServer,
 } from "../../state/persistence";
+import { confirmDesktopAction } from "../../utils/desktop-dialogs";
 
 const DELETE_POLL_TIMEOUT_MS = 60_000;
 const DELETE_POLL_INTERVAL_MS = 1_500;
 const STATUS_POLL_INTERVAL_MS = 3_000;
-const STATUS_POLL_ATTEMPTS = 5;
+const STATUS_POLL_TIMEOUT_MS = 180_000;
 const WAKE_POLL_TIMEOUT_MS = 60_000;
 const WAKE_POLL_INTERVAL_MS = 2_000;
 const NON_RUNNING_STATES = new Set(["stopped", "sleeping", "suspended"]);
@@ -28,11 +31,7 @@ const ERROR_STATES = new Set(["error", "failed"]);
 
 function activeCloudAgentId(): string | null {
   const active = loadPersistedActiveServer();
-  if (active?.kind !== "cloud") return null;
-  const id = active.id?.startsWith("cloud:")
-    ? active.id.slice("cloud:".length)
-    : "";
-  return id && !id.includes("/") ? id : null;
+  return active ? resolveDedicatedAgentId(active) : null;
 }
 
 export function useCloudAgentManagement(getManagementToken: () => string) {
@@ -51,6 +50,8 @@ export function useCloudAgentManagement(getManagementToken: () => string) {
   // The agent currently being woken (resumed + readiness-polled) before we
   // switch to it. Drives the "Waking <name>…" row state.
   const [wakingId, setWakingId] = useState<string | null>(null);
+  const [stoppingId, setStoppingId] = useState<string | null>(null);
+  const mountedRef = useRef(false);
   const refreshRequestIdRef = useRef(0);
   const activeId = useMemo(() => activeCloudAgentId(), []);
 
@@ -88,8 +89,10 @@ export function useCloudAgentManagement(getManagementToken: () => string) {
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     void refresh();
     return () => {
+      mountedRef.current = false;
       // Strict Mode can clean up and restart this effect while the first
       // request is still live. Invalidating its ownership prevents that stale
       // result from updating either an unmounted view or the restarted effect.
@@ -329,16 +332,12 @@ export function useCloudAgentManagement(getManagementToken: () => string) {
 
   const deleteAgent = useCallback(
     async (agent: CloudCompatAgent) => {
-      // Destructive + irreversible — tears down the container and its data.
-      // Confirm first (matches the window.confirm pattern in the other settings
-      // sections: wallet keys, vault profiles, remote plugin hosts).
-      if (
-        !window.confirm(
-          `Delete "${agent.agent_name || agent.agent_id}"? This permanently removes the agent and its data and can't be undone.`,
-        )
-      ) {
-        return;
-      }
+      const confirmed = await confirmDesktopAction({
+        title: "Delete agent",
+        type: "warning",
+        message: `Delete "${agent.agent_name || agent.agent_id}"? This permanently removes the agent and its data and can't be undone.`,
+      });
+      if (!confirmed) return;
       setBusyId(agent.agent_id);
       try {
         const res = await client.deleteCloudCompatAgent(agent.agent_id);
@@ -426,25 +425,43 @@ export function useCloudAgentManagement(getManagementToken: () => string) {
     [editName, activeId, setActionNotice],
   );
 
-  /**
-   * After a suspend/resume the row status lies (it shows the optimistic
-   * transition) until a manual Refresh. Poll the agent's status a few times so
-   * the row reconciles to the real server state as the daemon's job flips it.
-   */
+  /** Keep accepted lifecycle work visible until its requested state is observed. */
   const resyncStatus = useCallback(
-    async (agentId: string) => {
-      for (let attempt = 0; attempt < STATUS_POLL_ATTEMPTS; attempt++) {
+    async (agentId: string, target: "running" | "stopped") => {
+      const deadline = Date.now() + STATUS_POLL_TIMEOUT_MS;
+      while (mountedRef.current && Date.now() < deadline) {
         await new Promise((resolve) =>
           setTimeout(resolve, STATUS_POLL_INTERVAL_MS),
         );
+        if (!mountedRef.current) return;
         const res = await client.getCloudCompatAgentStatus(agentId);
-        if (!res.success) continue;
+        if (!mountedRef.current) return;
+        if (!res.success)
+          throw new Error(
+            "Could not check agent progress. Refresh to check again.",
+          );
         const status = res.data.status.toLowerCase();
-        if (!status) continue;
-        setLocalStatus(agentId, status);
-        // Once the agent reaches a settled (non-transitional) state there is
-        // nothing left to reconcile — stop polling early.
-        if (status === "running" || NON_RUNNING_STATES.has(status)) return;
+        if (
+          status === target ||
+          (target === "stopped" && NON_RUNNING_STATES.has(status))
+        ) {
+          setLocalStatus(agentId, status);
+          return;
+        }
+        if (ERROR_STATES.has(status)) {
+          setLocalStatus(agentId, status);
+          throw new Error(
+            res.data.suspendedReason ||
+              "The agent could not complete this request.",
+          );
+        }
+        // Queued work can still report its original state. Keep the accepted
+        // transition visible until the requested state actually arrives.
+      }
+      if (mountedRef.current) {
+        throw new Error(
+          "The agent is still processing this request. Refresh to check its progress.",
+        );
       }
     },
     [setLocalStatus],
@@ -453,6 +470,7 @@ export function useCloudAgentManagement(getManagementToken: () => string) {
   const suspendAgent = useCallback(
     async (agent: CloudCompatAgent) => {
       setBusyId(agent.agent_id);
+      setStoppingId(agent.agent_id);
       try {
         const res = await client.suspendCloudCompatAgent(agent.agent_id);
         if (!res.success) {
@@ -467,8 +485,9 @@ export function useCloudAgentManagement(getManagementToken: () => string) {
           "success",
           3000,
         );
-        void resyncStatus(agent.agent_id);
+        await resyncStatus(agent.agent_id, "stopped");
       } catch (err) {
+        // error-policy:J4 failed lifecycle progress remains an actionable error.
         setActionNotice(
           err instanceof Error ? err.message : "Failed to shut down agent.",
           "error",
@@ -476,6 +495,7 @@ export function useCloudAgentManagement(getManagementToken: () => string) {
         );
       } finally {
         setBusyId(null);
+        setStoppingId(null);
       }
     },
     [setActionNotice, setLocalStatus, resyncStatus],
@@ -484,6 +504,7 @@ export function useCloudAgentManagement(getManagementToken: () => string) {
   const resumeAgent = useCallback(
     async (agent: CloudCompatAgent) => {
       setBusyId(agent.agent_id);
+      setWakingId(agent.agent_id);
       try {
         const res = await client.resumeCloudCompatAgent(agent.agent_id);
         if (!res.success) {
@@ -495,8 +516,9 @@ export function useCloudAgentManagement(getManagementToken: () => string) {
           "success",
           3000,
         );
-        void resyncStatus(agent.agent_id);
+        await resyncStatus(agent.agent_id, "running");
       } catch (err) {
+        // error-policy:J4 failed lifecycle progress remains an actionable error.
         setActionNotice(
           err instanceof Error ? err.message : "Failed to start agent.",
           "error",
@@ -504,6 +526,7 @@ export function useCloudAgentManagement(getManagementToken: () => string) {
         );
       } finally {
         setBusyId(null);
+        setWakingId(null);
       }
     },
     [setActionNotice, setLocalStatus, resyncStatus],
@@ -525,6 +548,7 @@ export function useCloudAgentManagement(getManagementToken: () => string) {
     editName,
     setEditName,
     wakingId,
+    stoppingId,
     activeId,
     refresh,
     switchTo,

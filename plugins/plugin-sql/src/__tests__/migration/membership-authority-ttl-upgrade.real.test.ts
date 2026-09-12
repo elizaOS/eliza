@@ -1,11 +1,13 @@
 /**
  * Real-PGlite upgrade coverage proving startup replaces the exact pre-#25474
- * membership TTL checks while preserving existing authority rows.
+ * membership TTL checks, preserves authority rows, skips dry runs and settled
+ * restarts, and defers until both authority tables exist.
  */
 import type { UUID } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { plugin as sqlPlugin } from "../../index";
+import { applyMembershipAuthorityTtlConstraints } from "../../membership-authority-ttl-constraints";
 import { DatabaseMigrationService } from "../../migration-service";
 import { connectorAccountsTable } from "../../schema/connectorAccounts";
 import { entityTable } from "../../schema/entity";
@@ -17,9 +19,25 @@ import { type DrizzleDatabase, getDb } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
 interface ConstraintRow {
+  [key: string]: unknown;
+  id: number;
   name: string;
   definition: string;
+  version: string | null;
 }
+
+const constraintQuery = sql`
+  SELECT oid::integer AS id,
+         conname AS name,
+         pg_get_constraintdef(oid) AS definition,
+         obj_description(oid, 'pg_constraint') AS version
+    FROM pg_constraint
+   WHERE conname IN (
+     'membership_authority_scope_current_check',
+     'membership_authority_version_check'
+   )
+   ORDER BY conname
+`;
 
 describe("membership authority TTL constraint upgrade", () => {
   let cleanup: () => Promise<void>;
@@ -121,34 +139,32 @@ describe("membership authority TTL constraint upgrade", () => {
   });
 
   it("replaces same-named legacy checks on restart without deleting or fabricating rows", async () => {
-    const before = await db.execute<ConstraintRow>(sql`
-      SELECT conname AS name, pg_get_constraintdef(oid) AS definition
-        FROM pg_constraint
-       WHERE conname IN (
-         'membership_authority_scope_current_check',
-         'membership_authority_version_check'
-       )
-       ORDER BY conname
-    `);
+    const before = await db.execute<ConstraintRow>(constraintQuery);
     expect(before.rows).toHaveLength(2);
     expect(before.rows.every((row) => !row.definition.includes("24:00:00"))).toBe(true);
+
+    const dryRunService = new DatabaseMigrationService({ databaseBackend: "pglite" });
+    await dryRunService.initializeWithDatabase(db);
+    dryRunService.discoverAndRegisterPluginSchemas([sqlPlugin]);
+    await dryRunService.runAllPluginMigrations({ dryRun: true, verbose: false });
+
+    const afterDryRun = await db.execute<ConstraintRow>(constraintQuery);
+    expect(afterDryRun.rows).toEqual(before.rows);
+    expect((await db.select().from(membershipAuthorityTable))[0]?.validUntil.getTime()).toBe(
+      legacyValidUntil.getTime()
+    );
 
     const migrationService = new DatabaseMigrationService({ databaseBackend: "pglite" });
     await migrationService.initializeWithDatabase(db);
     migrationService.discoverAndRegisterPluginSchemas([sqlPlugin]);
     await migrationService.runAllPluginMigrations({ verbose: false });
 
-    const after = await db.execute<ConstraintRow>(sql`
-      SELECT conname AS name, pg_get_constraintdef(oid) AS definition
-        FROM pg_constraint
-       WHERE conname IN (
-         'membership_authority_scope_current_check',
-         'membership_authority_version_check'
-       )
-       ORDER BY conname
-    `);
+    const after = await db.execute<ConstraintRow>(constraintQuery);
     expect(after.rows).toHaveLength(2);
     expect(after.rows.every((row) => row.definition.includes("24:00:00"))).toBe(true);
+    expect(after.rows.every((row) => row.version === "elizaos:membership-authority-ttl:v1")).toBe(
+      true
+    );
 
     const scopes = await db.select().from(membershipAuthorityScopeTable);
     const memberships = await db.select().from(membershipAuthorityTable);
@@ -189,5 +205,110 @@ describe("membership authority TTL constraint upgrade", () => {
          WHERE canonical_principal_id = ${principalId}
       `)
     ).rejects.toThrow();
+
+    const restartService = new DatabaseMigrationService({ databaseBackend: "pglite" });
+    await restartService.initializeWithDatabase(db);
+    restartService.discoverAndRegisterPluginSchemas([sqlPlugin]);
+    await restartService.runAllPluginMigrations({ verbose: false });
+    expect((await db.execute<ConstraintRow>(constraintQuery)).rows).toEqual(after.rows);
   }, 30_000);
+
+  it("defers without mutation when either authority table is absent", async () => {
+    for (const retainedTable of ["membership_authority", "membership_authority_scopes"] as const) {
+      const setup = await createIsolatedTestDatabase(`membership_ttl_partial_${retainedTable}`);
+      try {
+        const partialDb = getDb(setup.adapter);
+        const partialAccountId = crypto.randomUUID() as UUID;
+        const partialPrincipalId = crypto.randomUUID() as UUID;
+        const droppedTable =
+          retainedTable === "membership_authority"
+            ? "membership_authority_scopes"
+            : "membership_authority";
+        await partialDb.execute(sql.raw(`DROP TABLE ${droppedTable} CASCADE`));
+        await partialDb.insert(connectorAccountsTable).values({
+          id: partialAccountId,
+          agentId: setup.testAgentId,
+          provider: "partial-upgrade-test",
+          accountKey: retainedTable,
+        });
+        const partialScope = {
+          agentId: setup.testAgentId,
+          connectorId: "partial-upgrade-test",
+          connectorAccountId: partialAccountId,
+          externalWorldId: "partial-world",
+          externalRoomId: "partial-room",
+        };
+        if (retainedTable === "membership_authority_scopes") {
+          await partialDb.insert(membershipAuthorityScopeTable).values({
+            ...partialScope,
+            health: "stale",
+            reason: "publisher_not_registered",
+            generation: 0,
+            sourceVersion: -1,
+            observedAt,
+            updatedAt: observedAt,
+          });
+        } else {
+          await partialDb.insert(entityTable).values({
+            id: partialPrincipalId,
+            agentId: setup.testAgentId,
+            names: ["Partial retained principal"],
+          });
+          await partialDb.insert(membershipAuthorityTable).values({
+            ...partialScope,
+            canonicalPrincipalId: partialPrincipalId,
+            state: "active",
+            reason: "reconciled_present",
+            roles: ["member"],
+            permissionSnapshot: { canRead: true },
+            publisherInstanceId: "partial-publisher",
+            publisherGeneration: 0,
+            evidenceMode: "complete_snapshot",
+            generation: 1,
+            sourceVersion: 0,
+            sourceCursor: "partial-cursor",
+            observedAt,
+            validUntil: new Date("2026-08-23T12:00:00.000Z"),
+            createdAt: observedAt,
+            updatedAt: observedAt,
+          });
+        }
+
+        const retainedRowsBefore =
+          retainedTable === "membership_authority"
+            ? await partialDb.select().from(membershipAuthorityTable)
+            : await partialDb.select().from(membershipAuthorityScopeTable);
+        const retainedConstraintsBefore = await partialDb.execute<ConstraintRow>(sql`
+          SELECT constraint_record.oid::integer AS id,
+                 constraint_record.conname AS name,
+                 pg_get_constraintdef(constraint_record.oid) AS definition,
+                 obj_description(constraint_record.oid, 'pg_constraint') AS version
+            FROM pg_constraint AS constraint_record
+            JOIN pg_class AS relation ON relation.oid = constraint_record.conrelid
+           WHERE relation.relname = ${retainedTable}
+           ORDER BY constraint_record.conname
+        `);
+
+        expect(await applyMembershipAuthorityTtlConstraints(partialDb, "pglite")).toBe(false);
+        const retainedRowsAfter =
+          retainedTable === "membership_authority"
+            ? await partialDb.select().from(membershipAuthorityTable)
+            : await partialDb.select().from(membershipAuthorityScopeTable);
+        const retainedConstraintsAfter = await partialDb.execute<ConstraintRow>(sql`
+          SELECT constraint_record.oid::integer AS id,
+                 constraint_record.conname AS name,
+                 pg_get_constraintdef(constraint_record.oid) AS definition,
+                 obj_description(constraint_record.oid, 'pg_constraint') AS version
+            FROM pg_constraint AS constraint_record
+            JOIN pg_class AS relation ON relation.oid = constraint_record.conrelid
+           WHERE relation.relname = ${retainedTable}
+           ORDER BY constraint_record.conname
+        `);
+        expect(retainedRowsAfter).toEqual(retainedRowsBefore);
+        expect(retainedConstraintsAfter.rows).toEqual(retainedConstraintsBefore.rows);
+      } finally {
+        await setup.cleanup();
+      }
+    }
+  }, 60_000);
 });

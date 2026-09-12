@@ -73,9 +73,24 @@ describe("factExtractor.schema", () => {
 					op: "contradict",
 					factId: "fact-1",
 					reason: "Moved to Tokyo",
+					proposedText: "Lives in Tokyo",
 				}).success,
 			).toBe(true);
 		});
+
+		it.each([undefined, "", " \t\n "])(
+			"rejects a contradiction without a nonblank replacement (%j)",
+			(proposedText) => {
+				expect(
+					OpSchema.safeParse({
+						op: "contradict",
+						factId: "fact-1",
+						reason: "The user corrected the notebook color",
+						proposedText,
+					}).success,
+				).toBe(false);
+			},
+		);
 	});
 
 	describe("parseExtractorOutputTolerant", () => {

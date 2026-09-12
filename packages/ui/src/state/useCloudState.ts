@@ -42,6 +42,7 @@ import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import {
   cloudTokenSecsRemaining,
   getCloudAuthToken,
+  hasDirectCloudAccountTransport,
   refreshCloudStewardSession,
   resolveDirectCloudAuthApiBase,
   resolveDirectCloudWebBase,
@@ -428,19 +429,23 @@ function hasCloudLoginBackend(): boolean {
 }
 
 function canPollCloudStatus(): boolean {
-  // A remote client gets models and voice from its paired runtime, whether the
-  // target is immutable at build time or selected during first run. Polling
-  // that runtime's optional Cloud billing integration misclassifies an
-  // unrelated server credential as the client's own authentication state.
-  if (
-    getBuildConfiguredRemoteApiBaseUrl() ||
-    loadPersistedActiveServer()?.kind === "remote"
-  ) {
-    return false;
-  }
-
+  if (getBuildConfiguredRemoteApiBaseUrl()) return false;
   const explicitBase =
     typeof client.getBaseUrl === "function" ? client.getBaseUrl().trim() : "";
+  const activeServer = loadPersistedActiveServer();
+  if (activeServer?.kind === "remote") {
+    // During a switch the client may still point at the previous account or
+    // runtime. Wait until it matches the persisted target before probing.
+    return (
+      explicitBase.replace(/\/+$/, "") ===
+        activeServer.apiBase?.replace(/\/+$/, "") &&
+      hasDirectCloudAccountTransport(client)
+    );
+  }
+  // A managed Dedicated binding still has a separate, trusted account
+  // transport. Its status/credits requests go to the Cloud control plane
+  // with the user's Steward session, never the runtime's billing credential.
+  if (hasDirectCloudAccountTransport(client)) return true;
   if (isCapacitorNativeRuntime() || isElectrobunRuntime()) return true;
   if (explicitBase && isConfiguredCloudSiteBase(explicitBase)) return true;
   return hasCloudLoginBackend() && supportsFullAppShellRoutes(explicitBase);
@@ -620,12 +625,12 @@ export function useCloudState({
       return lastElizaCloudPollConnectedRef.current;
     }
     const enabled = Boolean(cloudStatus.enabled ?? false);
-    const cloudVoiceProxyAvailable = Boolean(
+    let cloudVoiceProxyAvailable = Boolean(
       cloudStatus.cloudVoiceProxyAvailable ?? false,
     );
     const hasPersistedApiKey = Boolean(cloudStatus.hasApiKey);
-    // Trust `connected` from the server snapshot (it already folds in API key + CLOUD_AUTH).
-    const isConnected = Boolean(cloudStatus.connected);
+    // Key presence is provisional until the authenticated credits probe completes.
+    let isConnected = Boolean(cloudStatus.connected);
     if (isConnected && elizaCloudPreferDisconnectedUntilLoginRef.current) {
       publishElizaCloudVoiceSnapshot(setElizaCloudHasPersistedKey, {
         apiConnected: isConnected,
@@ -640,14 +645,6 @@ export function useCloudState({
       elizaCloudPreferDisconnectedUntilLoginRef.current = false;
     }
     setElizaCloudEnabled(enabled);
-    setElizaCloudVoiceProxyAvailable(cloudVoiceProxyAvailable);
-    setElizaCloudConnected(isConnected);
-    publishElizaCloudVoiceSnapshot(setElizaCloudHasPersistedKey, {
-      apiConnected: isConnected,
-      enabled,
-      cloudVoiceProxyAvailable,
-      hasPersistedApiKey,
-    });
     setElizaCloudUserId(cloudStatus.userId ?? null);
     setElizaCloudStatusReason(
       isConnected &&
@@ -679,6 +676,8 @@ export function useCloudState({
         return lastElizaCloudPollConnectedRef.current;
       }
       if (credits?.authRejected) {
+        isConnected = false;
+        cloudVoiceProxyAvailable = false;
         setElizaCloudAuthRejected(true);
         setElizaCloudCreditsError(null);
         setElizaCloudCredits(null);
@@ -715,6 +714,14 @@ export function useCloudState({
       setElizaCloudCreditsError(null);
       setElizaCloudStatusReason(null);
     }
+    setElizaCloudVoiceProxyAvailable(cloudVoiceProxyAvailable);
+    setElizaCloudConnected(isConnected);
+    publishElizaCloudVoiceSnapshot(setElizaCloudHasPersistedKey, {
+      apiConnected: isConnected,
+      enabled,
+      cloudVoiceProxyAvailable,
+      hasPersistedApiKey,
+    });
     lastElizaCloudPollConnectedRef.current = isConnected;
     // Self-manage the recurring poll interval: start when connected, stop when not.
     // A build-pinned remote may verify a deliberate login against the Cloud
@@ -881,7 +888,20 @@ export function useCloudState({
         // resolve without opening a real sign-in, then reload into the same
         // rejected session. Drain only the canonical Cloud credential here;
         // `client` may hold the separate agent bearer needed by the proxy.
-        await clearStoredStewardToken();
+        try {
+          await clearStoredStewardToken();
+        } catch (error) {
+          // error-policy:J4 failed credential removal must leave sign-in retryable.
+          closePrePoppedWindow();
+          elizaCloudLoginBusyRef.current = false;
+          setElizaCloudLoginBusy(false);
+          setElizaCloudLoginError(
+            error instanceof Error
+              ? error.message
+              : "Could not clear the previous Cloud session. Try signing in again.",
+          );
+          throw error;
+        }
       }
       let resolveLoginCompletion: () => void = () => {};
       let loginCompletionResolved = false;
@@ -1570,14 +1590,17 @@ export function useCloudState({
       clearCloudLoginReturnParams();
       return;
     }
-    clearCloudLoginReturnParams();
-    if (elizaCloudLoginBusyRef.current) return;
-
     let cancelled = false;
     const sleep = (ms: number) =>
       new Promise((resolve) => window.setTimeout(resolve, ms));
 
     void (async () => {
+      // Strict Mode replays mount effects before the next microtask. Do not
+      // remove the return marker or claim the one-time CLI token in the
+      // discarded setup: only the surviving effect owns that exchange.
+      await Promise.resolve();
+      if (cancelled || elizaCloudLoginBusyRef.current) return;
+      clearCloudLoginReturnParams();
       elizaCloudLoginBusyRef.current = true;
       setElizaCloudLoginBusy(true);
       setElizaCloudLoginError(null);
@@ -2021,7 +2044,19 @@ export function useCloudState({
         });
         if (disposed) return;
         if (result?.token) {
-          await replaceStoredStewardTokenIfCurrent(storedToken, result.token);
+          const replaced = await replaceStoredStewardTokenIfCurrent(
+            storedToken,
+            result.token,
+          );
+          // Disconnected accounts have no recurring status poll. Recheck the
+          // server after refresh so a recovered session becomes usable in place.
+          if (
+            replaced &&
+            !disposed &&
+            readStoredStewardToken() === result.token
+          ) {
+            await pollCloudCredits();
+          }
         }
       } catch (err: unknown) {
         // error-policy:J4 a pre-emptive refresh or protected persistence
@@ -2047,7 +2082,7 @@ export function useCloudState({
       disposed = true;
       clearInterval(interval);
     };
-  }, [elizaCloudConnected]);
+  }, [elizaCloudConnected, pollCloudCredits]);
 
   // ── Return ─────────────────────────────────────────────────────────
 

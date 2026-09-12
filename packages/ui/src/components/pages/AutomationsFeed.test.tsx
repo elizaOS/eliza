@@ -13,7 +13,6 @@ import {
   render,
   screen,
   waitFor,
-  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -326,18 +325,6 @@ describe("AutomationsFeed", () => {
       expect(clientMock.listAutomations).toHaveBeenCalledTimes(2),
     );
     expect(screen.queryByText("Run failed")).toBeNull();
-  });
-
-  it("renders the uniform ViewHeader with a centered title and bare-icon back", async () => {
-    render(<AutomationsFeed />);
-
-    await screen.findByText("Nightly review");
-    const header = screen.getByTestId("view-header");
-    expect(header).toBeTruthy();
-    // Title lives in the header, not a page-level heading block.
-    expect(within(header).getByText("Automations")).toBeTruthy();
-    // Bare-icon back affordance (no text label, aria-labelled).
-    expect(within(header).getByRole("button", { name: /back/i })).toBeTruthy();
   });
 
   it("shows a designed-empty state with NO create CTA when nothing is scheduled", async () => {

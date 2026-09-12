@@ -56,7 +56,6 @@ test("package test script collects the consolidated homepage coverage suites", (
     "tests/query-client.test.ts",
     "tests/siws-session.test.ts",
     "tests/siws.test.ts",
-    "tests/touch-overlay-size.test.ts",
   ]) {
     assert.match(testScript, new RegExp(`(?:^|\\s)${testFile}(?:\\s|$)`));
   }

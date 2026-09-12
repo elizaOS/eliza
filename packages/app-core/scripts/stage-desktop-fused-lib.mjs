@@ -49,6 +49,12 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  nativeLibraryIntegrityProblems,
+  nativeLibraryInventory,
+  nativeSourceFingerprint,
+} from "./lib/fused-artifact-integrity.mjs";
+import { resolveSetupStateDir } from "./lib/setup-state-dir.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
@@ -131,30 +137,7 @@ function forkCommit() {
     return "unknown";
   }
 }
-function forkDirtyHash() {
-  try {
-    const s = execFileSync(
-      "git",
-      [
-        "-C",
-        forkSrc,
-        "status",
-        "--porcelain",
-        "--untracked-files=no",
-        "--",
-        "tools",
-        "src",
-        "ggml",
-        "common",
-        "CMakeLists.txt",
-      ],
-      { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
-    ).trim();
-    return s ? createHash("sha256").update(s).digest("hex").slice(0, 16) : "";
-  } catch {
-    return "";
-  }
-}
+
 function sha256File(p) {
   try {
     return createHash("sha256").update(readFileSync(p)).digest("hex");
@@ -198,22 +181,6 @@ function parseArgs(argv) {
 
 /** Resolve the state dir the same way @elizaos/core resolveStateDir does, so
  *  the default output dir matches where the runtime searches. */
-function resolveStateDir() {
-  const explicit = process.env.ELIZA_STATE_DIR?.trim();
-  if (explicit) {
-    return path.isAbsolute(explicit)
-      ? explicit
-      : path.join(os.homedir(), explicit);
-  }
-  const ns = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
-  const xdg = process.env.XDG_STATE_HOME?.trim();
-  if (xdg) {
-    return path.isAbsolute(xdg)
-      ? path.join(xdg, ns)
-      : path.join(os.homedir(), xdg, ns);
-  }
-  return path.join(os.homedir(), ".local", "state", ns);
-}
 
 /** Autodetect the best available GPU backend for the host. */
 function detectBackend() {
@@ -351,16 +318,29 @@ const {
 } = parseArgs(process.argv.slice(2));
 
 const stagedOutDir =
-  outOverride || path.join(resolveStateDir(), "local-inference", "lib");
+  outOverride || path.join(resolveSetupStateDir(), "local-inference", "lib");
+if (
+  !existsSync(path.join(forkSrc, ".git")) ||
+  !existsSync(path.join(forkSrc, "CMakeLists.txt"))
+) {
+  die(
+    "Native submodule is not initialized. Run bun install to synchronize the pinned fused source.",
+  );
+}
 const currentFork = forkCommit();
-const currentDirty = forkDirtyHash();
+const currentDirty = nativeSourceFingerprint(forkSrc);
 
 // Shared staleness verdict for --check / --ensure. Returns the reasons the
 // staged fused lib is stale ([] = fresh).
 function stagedStalenessReasons() {
   const stamp = readStamp(stagedOutDir);
   const stagedSha = sha256File(path.join(stagedOutDir, FUSED_LIB_NAME));
-  const reasons = [];
+  const reasons = nativeLibraryIntegrityProblems(stagedOutDir, stamp, {
+    platform: process.platform,
+    arch: process.arch,
+    backend: variant,
+    fusedName: FUSED_LIB_NAME,
+  });
   if (!stagedSha) reasons.push(`staged ${FUSED_LIB_NAME} is missing`);
   if (!stamp) reasons.push("no build stamp (built by an older/raw cmake path)");
   if (stamp && stamp.forkCommit !== currentFork)
@@ -591,6 +571,9 @@ const buildStamp = JSON.stringify(
     forkCommit: currentFork,
     forkDirty: currentDirty,
     backend,
+    platform: process.platform,
+    arch: process.arch,
+    libraries: nativeLibraryInventory(outDir),
     cpuNative: !portableCpu,
     fusedLib: fusedName,
     fusedSha256: sha256File(path.join(outDir, fusedName)),

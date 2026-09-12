@@ -33,7 +33,7 @@
  * bytes are left in place.
  *
  * Pinned versions:
- *   - bun 1.3.14                     validated by Android agent bring-up
+ *   - Bun stable/canary artifacts   android-bun-artifacts.lock.json
  *   - Alpine v3.21                   ships gcc 14.2 → libstdc++.so.6.0.33
  *
  * The ABI-independent `launch.sh` is the packaged production launcher;
@@ -45,6 +45,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  resolvePinnedBunArtifact,
+  stagePinnedBunArtifact,
+} from "./pinned-android-bun.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_CORE_ROOT = path.resolve(__dirname, "..", "..");
@@ -401,14 +405,20 @@ function downloadRetryDelayMs(attempt) {
   return DOWNLOAD_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
 }
 
-async function readFetchAttempt(url, { fetchImpl, readResponse, timeoutMs }) {
+async function readFetchAttempt(
+  url,
+  { fetchImpl, readResponse, timeoutMs, headers },
+) {
   const controller = new AbortController();
   const timeout = setTimeout(() => {
     controller.abort(new Error(`Timed out fetching ${url}`));
   }, timeoutMs);
   timeout.unref?.();
   try {
-    const response = await fetchImpl(url, { signal: controller.signal });
+    const response = await fetchImpl(url, {
+      signal: controller.signal,
+      ...(headers ? { headers } : {}),
+    });
     if (!response.ok) {
       throw new DownloadHttpError(url, response.status);
     }
@@ -427,6 +437,7 @@ async function fetchWithRetry(
     maxAttempts = DOWNLOAD_MAX_ATTEMPTS,
     readResponse,
     timeoutMs = DOWNLOAD_TIMEOUT_MS,
+    headers,
   },
 ) {
   if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
@@ -439,6 +450,7 @@ async function fetchWithRetry(
         fetchImpl,
         readResponse,
         timeoutMs,
+        headers,
       });
     } catch (error) {
       // error-policy:J1 The artifact network boundary retries transient
@@ -676,122 +688,93 @@ function defaultBunCacheDir(channel) {
 }
 
 async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
-  const channelTag = bunChannel === "canary" ? "canary" : `bun-v${BUN_VERSION}`;
+  if (bunArch !== "riscv64") {
+    const artifact = resolvePinnedBunArtifact(bunChannel, bunArch);
+    const configured = firstEnvValue([
+      bunArch === "x64" ? "ELIZA_BUN_X64_FILE" : "ELIZA_BUN_AARCH64_FILE",
+    ]);
+    const sourceFile = configured ? path.resolve(configured.value) : null;
+    return stagePinnedBunArtifact({
+      cacheDir,
+      artifact,
+      sourceFile,
+      sourceProvenance: sourceFile ? provenancePath(sourceFile) : {},
+      download: downloadFile,
+      log,
+    });
+  }
+  // RISC-V continues to use its separate operator-supplied archive/hash contract.
+
   const cacheKey = bunCacheKey(bunChannel);
-  const archCache = path.join(cacheDir, `bun-${bunArch}-${cacheKey}`);
+  const archCache = path.join(cacheDir, `bun-riscv64-${cacheKey}`);
   const bunPath = path.join(archCache, "bun");
   const sourceSha256Path = path.join(archCache, ".source.sha256");
-  const expectedRiscv64Sha256 =
-    bunArch === "riscv64" ? riscv64BunSha256() : null;
-  // Canary cache invalidates after 24h so we pull bug-fix snapshots
-  // automatically without forcing every CI run to re-download.
-  const isFresh = (() => {
-    if (!fs.existsSync(bunPath)) return false;
-    const st = fs.statSync(bunPath);
-    if (st.size <= 1_000_000) return false;
-    if (bunArch === "riscv64") {
-      if (!expectedRiscv64Sha256) return false;
-      if (!fs.existsSync(sourceSha256Path)) return false;
-      const cachedSha256 = fs
-        .readFileSync(sourceSha256Path, "utf8")
-        .trim()
-        .toLowerCase();
-      if (cachedSha256 !== expectedRiscv64Sha256) return false;
-    }
-    if (bunChannel !== "canary") return true;
-    const ageMs = Date.now() - st.mtimeMs;
-    return ageMs < 24 * 60 * 60 * 1000;
-  })();
-  if (isFresh) {
+  const expectedSha256 = riscv64BunSha256();
+  if (!expectedSha256) {
+    throw new Error(
+      "Bun riscv64 artifact hash is required: set ELIZA_BUN_RISCV64_SHA256 to the SHA-256 of bun-linux-riscv64-musl.zip.",
+    );
+  }
+  if (
+    fs.existsSync(bunPath) &&
+    fs.statSync(bunPath).size > 1_000_000 &&
+    fs.existsSync(sourceSha256Path) &&
+    fs.readFileSync(sourceSha256Path, "utf8").trim() === expectedSha256 &&
+    (bunChannel !== "canary" ||
+      Date.now() - fs.statSync(bunPath).mtimeMs < 24 * 60 * 60 * 1000)
+  ) {
     return {
       bunPath,
       source: {
         kind: "cache",
         cache_key: path.basename(archCache),
-        artifact_sha256: expectedRiscv64Sha256,
+        artifact_sha256: expectedSha256,
       },
     };
   }
+  const sourceFile = riscv64BunFilePath();
+  const url = riscv64BunUrl();
+  if (!sourceFile && !url) {
+    throw new Error(
+      "Bun riscv64 artifact not available: set ELIZA_BUN_RISCV64_FILE or ELIZA_BUN_RISCV64_URL to the OS cross-build artifact, or ELIZA_BUN_RISCV64_OPTIONAL=1 for local non-objective builds.",
+    );
+  }
   fs.mkdirSync(archCache, { recursive: true });
   const zipPath = path.join(archCache, "bun.zip");
-  // riscv64 has no upstream Bun release. Allow operators to point at a
-  // self-built canary artifact via a local file or URL; otherwise refuse to
-  // download from a guessed URL and surface a clear pointer at the cross-build
-  // pipeline. We never invent a default URL.
-  let url;
-  let sourceFile;
-  if (bunArch === "riscv64") {
-    sourceFile = riscv64BunFilePath();
-    url = riscv64BunUrl();
-    if (!sourceFile && !url) {
-      throw new Error(
-        "Bun riscv64 artifact not available: upstream Bun has no riscv64-linux-musl release. " +
-          "Set ELIZA_BUN_RISCV64_FILE to a local " +
-          "self-built zip, or set ELIZA_BUN_RISCV64_URL " +
-          "to a hosted zip produced by elizaOS/os packages/os/toolchains/bun-riscv64/build.sh, " +
-          "or set ELIZA_BUN_RISCV64_OPTIONAL=1 for local non-objective builds.",
-      );
-    }
-    if (!expectedRiscv64Sha256) {
-      throw new Error(
-        "Bun riscv64 artifact hash is required: set ELIZA_BUN_RISCV64_SHA256 " +
-          "to the SHA-256 of bun-linux-riscv64-musl.zip.",
-      );
-    }
-  } else {
-    url =
-      bunChannel === "canary"
-        ? `https://github.com/oven-sh/bun/releases/download/canary/bun-linux-${bunArch}-musl.zip`
-        : `https://github.com/oven-sh/bun/releases/download/${channelTag}/bun-linux-${bunArch}-musl.zip`;
-  }
-  const channelLabel = bunChannelLabel(bunChannel);
   if (sourceFile) {
-    if (!fs.existsSync(sourceFile)) {
-      throw new Error(`Bun riscv64 artifact file not found: ${sourceFile}`);
-    }
     log(
-      `Using local ${channelLabel} (${bunArch}-musl) artifact at ${sourceFile}`,
+      `Using local ${bunChannelLabel(bunChannel)} (riscv64-musl) artifact at ${sourceFile}`,
     );
     fs.copyFileSync(sourceFile, zipPath);
   } else {
-    log(`Downloading ${channelLabel} (${bunArch}-musl) from ${url}`);
     await downloadFile(url, zipPath, { log });
   }
-  if (expectedRiscv64Sha256) {
-    const actualSha256 = sha256File(zipPath);
-    if (actualSha256 !== expectedRiscv64Sha256) {
-      fs.rmSync(zipPath, { force: true });
-      throw new Error(
-        `bun-linux-riscv64-musl.zip SHA-256 mismatch: expected ` +
-          `${expectedRiscv64Sha256}, got ${actualSha256}`,
-      );
-    }
+  const actualSha256 = sha256File(zipPath);
+  if (actualSha256 !== expectedSha256) {
+    fs.rmSync(zipPath, { force: true });
+    throw new Error(
+      `bun-linux-riscv64-musl.zip SHA-256 mismatch: expected ${expectedSha256}, got ${actualSha256}`,
+    );
   }
   await run("unzip", ["-q", "-o", zipPath, "-d", archCache]);
-  const extractedDir = path.join(archCache, `bun-linux-${bunArch}-musl`);
+  const extractedDir = path.join(archCache, "bun-linux-riscv64-musl");
   const extractedBun = path.join(extractedDir, "bun");
-  if (!fs.existsSync(extractedBun)) {
+  if (!fs.existsSync(extractedBun))
     throw new Error(`bun zip did not contain bun at ${extractedBun}`);
-  }
   if (fs.existsSync(bunPath)) fs.unlinkSync(bunPath);
   fs.renameSync(extractedBun, bunPath);
   removePathRecursiveSync(extractedDir);
   fs.rmSync(zipPath, { force: true });
   fs.chmodSync(bunPath, 0o755);
-  if (expectedRiscv64Sha256) {
-    fs.writeFileSync(sourceSha256Path, `${expectedRiscv64Sha256}\n`, "utf8");
-  }
+  fs.writeFileSync(sourceSha256Path, `${expectedSha256}\n`, "utf8");
   return {
     bunPath,
     source: {
       kind: sourceFile ? "file" : "url",
       ...(sourceFile ? provenancePath(sourceFile) : {}),
       url: sourceFile ? null : url,
-      artifact_filename:
-        bunArch === "riscv64"
-          ? RISCV64_BUN_ARTIFACT_FILENAME
-          : path.basename(url),
-      artifact_sha256: expectedRiscv64Sha256,
+      artifact_filename: RISCV64_BUN_ARTIFACT_FILENAME,
+      artifact_sha256: expectedSha256,
     },
   };
 }
@@ -1198,6 +1181,87 @@ export function stageSeccompShimForAbi({
   return changes;
 }
 
+/** Stages the complete skill bundle and binds every file to Android payload provenance. */
+export function stageAndroidBundledSkills({
+  distMobileDir,
+  assetsAgentDir,
+  androidMainDir,
+}) {
+  const source = path.join(distMobileDir, "skills");
+  const target = path.join(assetsAgentDir, "skills");
+  fs.readdirSync(source); // Fail before replacing an existing stage if the bundle is absent.
+  fs.rmSync(target, { recursive: true, force: true });
+  let stagedCount = 0;
+  const stagedFiles = [];
+  const visit = (relative) => {
+    for (const entry of fs.readdirSync(path.join(source, relative), {
+      withFileTypes: true,
+    })) {
+      const child = path.join(relative, entry.name);
+      if (entry.isDirectory()) {
+        visit(child);
+        continue;
+      }
+      if (!entry.isFile())
+        throw new Error(`Unsupported bundled skill asset: ${child}`);
+      const src = path.join(source, child);
+      const dst = path.join(target, child);
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      if (copyIfDifferent(src, dst)) stagedCount += 1;
+      stagedFiles.push(
+        fileProvenanceEntry({
+          filePath: dst,
+          relativePath: path.relative(androidMainDir, dst),
+          source: { kind: "mobile-agent-bundle", path: src },
+        }),
+      );
+    }
+  };
+  visit("");
+  if (!stagedFiles.some((entry) => entry.path.endsWith("/SKILL.md")))
+    throw new Error("Mobile agent bundle contains no bundled skills");
+  return { stagedCount, stagedFiles };
+}
+
+/** Stages database payloads and records their actual bytes in Android runtime provenance. */
+export function stageAndroidPgliteAssets({
+  distMobileDir,
+  assetsAgentDir,
+  androidMainDir,
+}) {
+  let stagedCount = 0;
+  const stagedFiles = [];
+  // PGlite runtime artifacts. They are optional because minimal mobile bundles
+  // can run without embedded database extensions.
+  const pgliteAssets = [
+    "pglite.wasm",
+    "initdb.wasm",
+    "pglite.data",
+    "vector.tar.gz",
+    "fuzzystrmatch.tar.gz",
+    "pg_trgm.tar.gz",
+    "plugins-manifest.json",
+  ];
+  for (const name of pgliteAssets) {
+    const src = path.join(distMobileDir, name);
+    if (!fs.existsSync(src)) continue;
+    const dst = path.join(assetsAgentDir, name);
+    if (copyIfDifferent(src, dst)) stagedCount += 1;
+    stagedFiles.push(
+      fileProvenanceEntry({
+        filePath: dst,
+        relativePath: path.relative(androidMainDir, dst),
+        source: {
+          kind: "mobile-agent-bundle",
+          path: src,
+        },
+      }),
+    );
+  }
+
+  return { stagedCount, stagedFiles };
+}
+
 /**
  * Download (if needed) and stage the on-device agent runtime into the
  * Android assets tree. Idempotent — safe to run on every gradle invocation.
@@ -1526,35 +1590,21 @@ export async function stageAndroidAgentRuntime({
     }),
   );
 
-  // PGlite runtime artifacts. They are optional because minimal mobile bundles
-  // can run without embedded database extensions.
-  const pgliteAssets = [
-    "pglite.wasm",
-    "initdb.wasm",
-    "pglite.data",
-    "vector.tar.gz",
-    "fuzzystrmatch.tar.gz",
-    "plugins-manifest.json",
-  ];
-  for (const name of pgliteAssets) {
-    const src = path.join(distMobileDir, name);
-    if (!fs.existsSync(src)) continue;
-    const dst = path.join(assetsAgentDir, name);
-    if (copyIfDifferent(src, dst)) stagedCount += 1;
-    stagedFiles.push(
-      fileProvenanceEntry({
-        filePath: dst,
-        relativePath: path.relative(
-          path.join(androidDir, "app", "src", "main"),
-          dst,
-        ),
-        source: {
-          kind: "mobile-agent-bundle",
-          path: src,
-        },
-      }),
-    );
-  }
+  const skillsStage = stageAndroidBundledSkills({
+    distMobileDir,
+    assetsAgentDir,
+    androidMainDir: path.join(androidDir, "app", "src", "main"),
+  });
+  stagedCount += skillsStage.stagedCount;
+  stagedFiles.push(...skillsStage.stagedFiles);
+
+  const pgliteStage = stageAndroidPgliteAssets({
+    distMobileDir,
+    assetsAgentDir,
+    androidMainDir: path.join(androidDir, "app", "src", "main"),
+  });
+  stagedCount += pgliteStage.stagedCount;
+  stagedFiles.push(...pgliteStage.stagedFiles);
 
   const launchTarget = path.join(assetsAgentDir, "launch.sh");
   if (writeIfChanged(launchTarget, LAUNCH_SCRIPT)) stagedCount += 1;
@@ -1620,9 +1670,12 @@ export async function stageAndroidAgentRuntime({
     claim_boundary:
       "apk_staged_runtime_file_hashes_only_not_android_boot_or_runtime_execution_evidence",
     bun: {
-      version: BUN_VERSION,
+      version: resolvePinnedBunArtifact(bunChannel, "x64").version,
+      revision: resolvePinnedBunArtifact(bunChannel, "x64").revision,
+      architectures: ["x86_64", "arm64-v8a"],
       channel: bunChannel,
-      cache_key: bunCacheKey(bunChannel),
+      artifact_lock:
+        "packages/app-core/scripts/lib/android-bun-artifacts.lock.json",
     },
     alpine: {
       branch: ALPINE_BRANCH,

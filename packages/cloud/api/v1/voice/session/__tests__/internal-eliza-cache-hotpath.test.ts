@@ -62,19 +62,19 @@ test("real cache + canonical coordinator dispatch performs no response-path DB w
       return {
         async fetch(input: RequestInfo | URL, init?: RequestInit) {
           coordinatorCalls.push({ name, input, init });
-          const operation = JSON.parse(String(init?.body)) as {
-            operation?: string;
-            rpc?: { id?: unknown };
+          const envelope = JSON.parse(String(init?.body)) as {
+            operation: string;
+            rpc?: { id?: string | number };
           };
-          return operation.operation === "prewarm"
+          return envelope.operation === "prewarm"
             ? Response.json({ success: true })
             : Response.json({
                 jsonrpc: "2.0",
-                id: operation.rpc?.id ?? "voice-hotpath",
+                id: envelope.rpc?.id,
                 result: {
                   text: "cache only",
-                  messageId: "assistant-message",
-                  userMessageId: "user-message",
+                  messageId: "assistant-cache-only",
+                  userMessageId: "user-cache-only",
                 },
               });
         },
@@ -178,16 +178,16 @@ test("authenticated lifecycle controls cross the real adapter outside RPC params
       return {
         async fetch(input: RequestInfo | URL, init?: RequestInit) {
           coordinatorCalls.push({ input, init });
-          const operation = JSON.parse(String(init?.body)) as {
-            rpc?: { id?: unknown };
+          const envelope = JSON.parse(String(init?.body)) as {
+            rpc?: { id?: string | number };
           };
           return Response.json({
             jsonrpc: "2.0",
-            id: operation.rpc?.id ?? "voice-lifecycle",
+            id: envelope.rpc?.id,
             result: {
-              text: "lifecycle ok",
-              messageId: "assistant-message",
-              userMessageId: "user-message",
+              text: "call opener",
+              messageId: "assistant-call-opener",
+              userMessageId: "user-call-opener",
             },
           });
         },
@@ -238,6 +238,7 @@ test("authenticated lifecycle controls cross the real adapter outside RPC params
   );
 
   expect(response.status).toBe(200);
+  await expect(response.text()).resolves.toContain("call opener");
   expect(coordinatorCalls).toHaveLength(1);
   const envelope = JSON.parse(String(coordinatorCalls[0]?.init?.body));
   expect(envelope).toMatchObject({

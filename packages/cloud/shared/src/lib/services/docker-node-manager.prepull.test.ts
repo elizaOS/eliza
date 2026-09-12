@@ -163,11 +163,13 @@ describe("DockerNodeManager pre-pull recovery", () => {
     expect(commands.filter((command) => command.includes('wait "$pid"'))).toHaveLength(2);
     expect(commands.filter((command) => command.includes("/proc/$pid/cmdline"))).toHaveLength(2);
     expect(
-      commands.filter((command) => command.includes("systemctl kill -s SIGKILL docker.service")),
+      commands.filter((command) =>
+        command.includes("systemctl kill --kill-who=main -s SIGKILL docker.service"),
+      ),
     ).toHaveLength(1);
     expect(
       commands.filter((command) => command.includes("systemctl restart containerd")),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
     expect(commands.join("\n")).not.toContain("systemctl restart docker");
     expect(commands.join("\n")).not.toContain("pkill");
   });

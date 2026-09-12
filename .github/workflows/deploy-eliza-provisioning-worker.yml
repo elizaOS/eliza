@@ -1,6 +1,6 @@
 name: Deploy Eliza Provisioning Worker
 
-run-name: Provisioning worker ${{ inputs.environment || 'staging' }} ${{ inputs.deployment_sha || github.sha }} ${{ inputs.effect_digest || 'manual' }}
+run-name: Provisioning worker ${{ inputs.mode == 'diagnose' && 'diagnostic ' || '' }}${{ inputs.environment || 'staging' }} ${{ inputs.deployment_sha || github.sha }} ${{ inputs.effect_digest || 'manual' }}
 
 # SSHes to the Hetzner provisioning host and deploys one immutable commit,
 # installs the systemd unit shipped at packages/cloud/scripts/admin/eliza-provisioning-worker.service,
@@ -12,6 +12,22 @@ run-name: Provisioning worker ${{ inputs.environment || 'staging' }} ${{ inputs.
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: Deploy, or read a staging worker diagnostic without changing the host
+        required: true
+        default: deploy
+        type: choice
+        options:
+          - deploy
+          - diagnose
+      expected_worker_sha:
+        description: Exact currently deployed worker commit; required only for diagnose
+        required: false
+        type: string
+      target_container_sha256:
+        description: Optional canonical container-name digest from the protected Personal preview
+        required: false
+        type: string
       environment:
         description: 'Target environment (host + secrets resolved from this)'
         required: true
@@ -39,18 +55,30 @@ concurrency:
 # Default to least privilege. Override per-job where needed.
 permissions:
   contents: read
+  actions: read
 
 jobs:
   determine-env:
     name: Determine environment
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     outputs:
       environment: ${{ steps.env.outputs.environment }}
       branch: ${{ steps.env.outputs.branch }}
       deployment_sha: ${{ steps.snapshot.outputs.deployment_sha }}
     steps:
       - id: env
+        env:
+          MODE: ${{ inputs.mode }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+          TRUSTED_REF: ${{ github.ref }}
         run: |
+          set -euo pipefail
+          if [ "$MODE" = diagnose ]; then
+            [ "$TRUSTED_REF" = refs/heads/staging ] && [ "$TARGET_ENVIRONMENT" = staging ] || {
+              echo "::error::Worker diagnostics require staging from refs/heads/staging"
+              exit 1
+            }
+          fi
           # Production is a protected release target. A manual dispatch from
           # any non-main ref must never be able to select production secrets or
           # deploy the current main snapshot while running unreviewed code.
@@ -67,12 +95,15 @@ jobs:
           else
             env="staging"
           fi
-          branch=$([ "$env" = "production" ] && echo "main" || echo "develop")
+          branch=$([ "$env" = "production" ] && echo "main" || echo "staging")
           echo "environment=$env" >> "$GITHUB_OUTPUT"
           echo "branch=$branch"   >> "$GITHUB_OUTPUT"
           echo "Resolved: environment=$env branch=$branch"
       - id: snapshot
         env:
+          MODE: ${{ inputs.mode }}
+          EXPECTED_WORKER_SHA: ${{ inputs.expected_worker_sha }}
+          TARGET_CONTAINER_SHA256: ${{ inputs.target_container_sha256 }}
           BRANCH: ${{ steps.env.outputs.branch }}
           EFFECT_DIGEST: ${{ inputs.effect_digest }}
           GH_TOKEN: ${{ github.token }}
@@ -81,11 +112,30 @@ jobs:
           TARGET_ENVIRONMENT: ${{ steps.env.outputs.environment }}
         run: |
           set -euo pipefail
+          if [ "$MODE" = diagnose ]; then
+            [[ "$EXPECTED_WORKER_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "::error::Diagnostics require an exact lowercase 40-hex expected_worker_sha"
+              exit 1
+            }
+            [ -z "$TARGET_CONTAINER_SHA256" ] || [[ "$TARGET_CONTAINER_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
+              echo "::error::Diagnostics require an empty or lowercase 64-hex target container digest"
+              exit 1
+            }
+            [ -z "$EFFECT_DIGEST" ] && [ -z "$REQUESTED_SHA" ] || {
+              echo "::error::Diagnostics do not accept deployment or reconciler inputs"
+              exit 1
+            }
+            exit 0
+          fi
+          [ -z "$TARGET_CONTAINER_SHA256" ] || {
+            echo "::error::A target container digest is valid only for diagnostics"
+            exit 1
+          }
           if [ "${{ github.event_name }}" = "push" ]; then
             deployment_sha="$PUSH_SHA"
           elif [ -n "$REQUESTED_SHA" ]; then
-            [ "$TARGET_ENVIRONMENT" = "staging" ] || {
-              echo "::error::An exact deployment_sha is permitted only for protected staging deployments"
+            [ "$TARGET_ENVIRONMENT" = "staging" ] || [ -n "$EFFECT_DIGEST" ] || {
+              echo "::error::An exact production deployment_sha requires a reconciled effect"
               exit 1
             }
             [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]] || {
@@ -119,9 +169,53 @@ jobs:
           echo "deployment_sha=$deployment_sha" >> "$GITHUB_OUTPUT"
           echo "Resolved immutable deployment snapshot: $deployment_sha"
 
+  diagnose:
+    name: Read staging worker diagnostic
+    needs: determine-env
+    if: inputs.mode == 'diagnose'
+    runs-on: ubuntu-24.04
+    environment: staging
+    timeout-minutes: 5
+    steps:
+      - name: Checkout reviewed diagnostic source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          submodules: false
+      - name: Prepare reviewed diagnostic
+        id: diagnostic
+        run: |
+          set -euo pipefail
+          source_base64=$(base64 -w0 packages/cloud/scripts/admin/staging-worker-diagnostic.mjs)
+          echo "source_base64=$source_base64" >> "$GITHUB_OUTPUT"
+      - name: Read source-locked worker state
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        env:
+          EXPECTED_WORKER_SHA: ${{ inputs.expected_worker_sha }}
+          TARGET_CONTAINER_SHA256: ${{ inputs.target_container_sha256 }}
+          DIAGNOSTIC_SOURCE_BASE64: ${{ steps.diagnostic.outputs.source_base64 }}
+        with:
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          username: deploy
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          command_timeout: 2m
+          envs: EXPECTED_WORKER_SHA,TARGET_CONTAINER_SHA256,DIAGNOSTIC_SOURCE_BASE64
+          script: |
+            set -euo pipefail
+            [[ "$EXPECTED_WORKER_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
+            [ -z "$TARGET_CONTAINER_SHA256" ] || [[ "$TARGET_CONTAINER_SHA256" =~ ^[0-9a-f]{64}$ ]] || exit 1
+            # Read the existing lock without creating or changing any host file.
+            exec 9</tmp/eliza-provisioning-worker-deploy.lock
+            flock -s -w 30 9 || exit 1
+            printf '%s' "$DIAGNOSTIC_SOURCE_BASE64" | base64 --decode | \
+              /usr/bin/env -i PATH=/usr/bin:/bin \
+              /usr/bin/node --input-type=module - "$EXPECTED_WORKER_SHA" "$TARGET_CONTAINER_SHA256"
+
   deploy:
+    if: inputs.mode != 'diagnose'
     name: Deploy worker to Hetzner host (${{ needs.determine-env.outputs.environment }} @ ${{ needs.determine-env.outputs.deployment_sha }})
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     needs: determine-env
     concurrency:
       group: deploy-eliza-provisioning-worker-mutate-${{ needs.determine-env.outputs.environment }}-${{ format('run-{0}', github.run_id) }}
@@ -133,7 +227,7 @@ jobs:
     # wait for an orphaned prior SSH process, 25m identity-locked health) can
     # then each use their ceiling without the enclosing job becoming the first
     # timeout; the remaining fifteen minutes cover action startup and teardown.
-    timeout-minutes: 125
+    timeout-minutes: 140
     env:
       SYSTEMD_UNIT: eliza-provisioning-worker.service
       BACKUP_SYSTEMD_UNIT: eliza-backup-catalog-worker.service
@@ -149,11 +243,11 @@ jobs:
       # environment variable. Keeping the value here also lets a deploy repair
       # a missing/stale host entry when the GitHub variable inventory is empty.
       HEADSCALE_PUBLIC_URL: ${{ needs.determine-env.outputs.environment == 'production' && 'https://headscale.eliza.app' || 'https://headscale-staging.eliza.app' }}
-      # The container entrypoint may spend up to 120s completing `tailscale up`.
+      # The container entrypoint may spend up to 300s completing `tailscale up`.
       # Keep the control-plane observer above that bound with margin. This must
       # be repository-owned: an old hand-set short host value made the worker
       # abandon pending joins before the entrypoint could finish.
-      VPN_REGISTRATION_TIMEOUT_MS: "180000"
+      VPN_REGISTRATION_TIMEOUT_MS: "360000"
       # Base64 private key used by the daemon to reach dedicated-agent nodes.
       # Keep this in the protected environment instead of relying on a
       # hand-copied file that can drift or disappear when the CP host is rebuilt.
@@ -195,6 +289,12 @@ jobs:
       # remains gated by #16961: flip this variable and the matching committed
       # Worker flag only with the required staging evidence.
       WARM_POOL_ENABLED: ${{ vars.WARM_POOL_ENABLED || 'false' }}
+      # A wedged staging dockerd otherwise traps delete tombstones forever even
+      # while SSH remains healthy. Recovery requires the running daemon to
+      # confirm live restore, restarts only dockerd, proves Docker responsive,
+      # and retries the exact container. Missing proof requires an operator.
+      # Production remains disabled pending separate proof.
+      CONTAINERS_PREPULL_SELF_HEAL_RESTART: ${{ needs.determine-env.outputs.environment == 'staging' && 'true' || 'false' }}
       # The edge Worker forwards the original per-agent host to this daemon.
       # Keep the daemon's parser on the same environment-specific suffix or a
       # staging host (`<uuid>.cloud-staging.eliza.app`) is rejected as malformed.
@@ -310,7 +410,7 @@ jobs:
             require_exact ELIZA_CLOUD_AGENT_BASE_DOMAIN "$ELIZA_CLOUD_AGENT_BASE_DOMAIN" "cloud.eliza.app"
             resolved_headscale_api_url="http://127.0.0.1:8081"
           else
-            require_exact DEPLOY_BRANCH "$DEPLOY_BRANCH" "develop"
+            require_exact DEPLOY_BRANCH "$DEPLOY_BRANCH" "staging"
             require_exact HEADSCALE_PUBLIC_URL "$HEADSCALE_PUBLIC_URL" "https://headscale-staging.eliza.app"
             require_exact ELIZA_CLOUD_AGENT_BASE_DOMAIN "$ELIZA_CLOUD_AGENT_BASE_DOMAIN" "cloud-staging.eliza.app"
             resolved_headscale_api_url="http://127.0.0.1:8080"
@@ -339,13 +439,18 @@ jobs:
         with:
           ref: ${{ needs.determine-env.outputs.deployment_sha }}
           fetch-depth: 1
-          persist-credentials: false
+          # The runner may need to import the immutable generation currently
+          # installed on the host after that feature ref has been rebased.
+          # The checkout credential remains runner-local; only the verified Git
+          # bundle is transferred to Hetzner and checkout removes it post-job.
+          persist-credentials: true
 
       - name: Verify exact migration source
         if: steps.deploy_config.outputs.configured == 'true'
         timeout-minutes: 1
         env:
           EXPECTED_DEPLOY_SHA: ${{ needs.determine-env.outputs.deployment_sha }}
+          DEPLOY_BRANCH: ${{ needs.determine-env.outputs.branch }}
         run: |
           set -euo pipefail
           actual_sha="$(git rev-parse HEAD)"
@@ -412,16 +517,17 @@ jobs:
           done
           exit 1
 
-      - name: Fence current develop SHA before database mutation
+      - name: Fence current branch SHA before database mutation
         if: ${{ steps.deploy_config.outputs.configured == 'true' && inputs.effect_digest != '' }}
         timeout-minutes: 1
         env:
           EXPECTED_DEPLOY_SHA: ${{ needs.determine-env.outputs.deployment_sha }}
+          DEPLOY_BRANCH: ${{ needs.determine-env.outputs.branch }}
         run: |
           set -euo pipefail
-          current_sha="$(git ls-remote origin refs/heads/develop | awk 'NR == 1 { print $1 }')"
+          current_sha="$(git ls-remote origin "refs/heads/$DEPLOY_BRANCH" | awk 'NR == 1 { print $1 }')"
           [ "$current_sha" = "$EXPECTED_DEPLOY_SHA" ] || {
-            echo "::error::Develop advanced before provisioning-worker migration"
+            echo "::error::Deployment branch advanced before provisioning-worker migration"
             exit 1
           }
 
@@ -429,6 +535,7 @@ jobs:
         if: steps.deploy_config.outputs.configured == 'true'
         timeout-minutes: 10
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           # Resolve only from the already-selected protected environment. The
           # value is passed directly to the migrator and is never printed.
           DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
@@ -443,31 +550,52 @@ jobs:
             exit 1
           }
           node packages/shared/scripts/generate-keywords.mjs
+          if [ "$DEPLOY_BRANCH" = main ]; then
+            node packages/cloud/scripts/production-effect-certification.mjs "$DEPLOY_SHA"
+          fi
           bun run db:cloud:migrate
 
-      - name: Recheck current develop SHA before host deployment
+      - name: Recheck current branch SHA before host deployment
         if: ${{ steps.deploy_config.outputs.configured == 'true' && inputs.effect_digest != '' }}
         timeout-minutes: 1
         env:
           EXPECTED_DEPLOY_SHA: ${{ needs.determine-env.outputs.deployment_sha }}
+          DEPLOY_BRANCH: ${{ needs.determine-env.outputs.branch }}
         run: |
           set -euo pipefail
-          current_sha="$(git ls-remote origin refs/heads/develop | awk 'NR == 1 { print $1 }')"
+          current_sha="$(git ls-remote origin "refs/heads/$DEPLOY_BRANCH" | awk 'NR == 1 { print $1 }')"
           [ "$current_sha" = "$EXPECTED_DEPLOY_SHA" ] || {
-            echo "::error::Develop advanced before provisioning-worker host deploy"
+            echo "::error::Deployment branch advanced before provisioning-worker host deploy"
             exit 1
           }
 
+      - name: Verify production staging certification after admission
+        id: production_certification
+        if: ${{ steps.deploy_config.outputs.configured == 'true' && needs.determine-env.outputs.environment == 'production' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ needs.determine-env.outputs.deployment_sha }}
+        run: node packages/cloud/scripts/production-effect-certification.mjs "$SOURCE_SHA"
+
       - name: Ensure host prereqs (Node 24, swap, bunx symlink)
         if: steps.deploy_config.outputs.configured == 'true'
+        env:
+          PRODUCTION_CERTIFICATION_EXPIRES_EPOCH: ${{ steps.production_certification.outputs.expires_epoch }}
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
+          envs: DEPLOY_BRANCH,PRODUCTION_CERTIFICATION_EXPIRES_EPOCH
           host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
           username: deploy
           key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
           command_timeout: 5m
           script: |
             set -euo pipefail
+            if [ "$DEPLOY_BRANCH" = main ]; then
+              [[ "$PRODUCTION_CERTIFICATION_EXPIRES_EPOCH" =~ ^[0-9]+$ ]] && [ "$(date +%s)" -lt "$PRODUCTION_CERTIFICATION_EXPIRES_EPOCH" ] || {
+                echo "::error::Production certification expired before host mutation"
+                exit 1
+              }
+            fi
             # Idempotent safety net for hosts provisioned BEFORE the cloud-init
             # template that pre-installs these. Each block is a no-op if already
             # set up — runs on every deploy so any host drift self-heals.
@@ -501,9 +629,77 @@ jobs:
               ln -sf bun /home/deploy/.bun/bin/bunx
             fi
 
+      - name: Resolve deployed host source
+        id: deployed_source
+        if: steps.deploy_config.outputs.configured == 'true'
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          username: deploy
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          command_timeout: 1m
+          capture_stdout: true
+          script: |
+            set -euo pipefail
+            cd /opt/eliza
+            deployed_sha="$(git rev-parse HEAD)"
+            [[ "$deployed_sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+            echo "ELIZA_DEPLOYED_SHA=$deployed_sha"
+
+      - name: Prepare exact incremental source bundle
+        if: steps.deploy_config.outputs.configured == 'true'
+        timeout-minutes: 5
+        env:
+          DEPLOYED_SOURCE_OUTPUT: ${{ steps.deployed_source.outputs.stdout }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$DEPLOYED_SOURCE_OUTPUT" =~ ELIZA_DEPLOYED_SHA=([0-9a-f]{40}) ]]; then
+            echo "::error::Could not resolve the immutable source currently installed on the provisioning host"
+            exit 1
+          fi
+          deployed_sha="${BASH_REMATCH[1]}"
+          git fetch --no-tags --depth=2048 origin \
+            "$DEPLOY_SHA" "$deployed_sha"
+          if [ "$deployed_sha" = "$DEPLOY_SHA" ]; then
+            # Keep same-SHA retries idempotent: a bundle excluding HEAD itself
+            # is empty and Git refuses to create it, while the installed
+            # generation necessarily already contains its parent.
+            merge_base="$(git rev-parse "$DEPLOY_SHA^")"
+          else
+            merge_base="$(git merge-base "$DEPLOY_SHA" "$deployed_sha")"
+          fi
+          [[ "$merge_base" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error::The deployed source has no bounded common history with the requested source"
+            exit 1
+          }
+          git merge-base --is-ancestor "$merge_base" "$deployed_sha"
+          git bundle create .eliza-provisioning-source.bundle \
+            HEAD "^$merge_base"
+          git bundle verify .eliza-provisioning-source.bundle
+          source_bundle_sha256="$(sha256sum \
+            .eliza-provisioning-source.bundle | awk '{print $1}')"
+          [[ "$source_bundle_sha256" =~ ^[0-9a-f]{64}$ ]] || {
+            echo "::error::Could not hash the exact incremental source bundle"
+            exit 1
+          }
+          echo "SOURCE_BUNDLE_SHA256=$source_bundle_sha256" >> "$GITHUB_ENV"
+
+      - name: Transfer exact incremental source bundle
+        if: steps.deploy_config.outputs.configured == 'true'
+        timeout-minutes: 5
+        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345
+        with:
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          username: deploy
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          source: .eliza-provisioning-source.bundle
+          target: /tmp/eliza-provisioning-transfer-${{ needs.determine-env.outputs.deployment_sha }}
+          overwrite: true
+
       - name: Deploy and restart worker
         if: steps.deploy_config.outputs.configured == 'true'
         env:
+          PRODUCTION_CERTIFICATION_EXPIRES_EPOCH: ${{ steps.production_certification.outputs.expires_epoch }}
           HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
           CONTAINERS_SSH_KEY: ${{ secrets.CONTAINERS_SSH_KEY }}
           SANDBOX_REGISTRY_REDIS_URL: ${{ secrets.SANDBOX_REGISTRY_REDIS_URL }}
@@ -525,7 +721,7 @@ jobs:
           # wait without weakening the preflight's own eight-minute fail-closed
           # fence near the end of this remote script.
           command_timeout: 40m
-          envs: DEPLOY_BRANCH,DEPLOY_SHA,SYSTEMD_UNIT,BACKUP_SYSTEMD_UNIT,SYSTEMD_ENVIRONMENT_HELPER_SHA256,BACKUP_SYSTEMD_UNIT_SHA256,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,VPN_REGISTRATION_TIMEOUT_MS,CONTAINERS_SSH_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,STEWARD_API_URL,STEWARD_PLATFORM_KEYS,AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64,DATABASE_SSL_NO_VERIFY,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,WARM_POOL_ENABLED,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,LEGACY_AGENT_ROUTER_PUBLIC_HOST,AGENT_BACKUP_CATALOG_WORKER_ID,AGENT_BACKUP_R2_ENDPOINT_ALIAS,AGENT_BACKUP_R2_ACCOUNT_ID,AGENT_BACKUP_R2_ENDPOINT,AGENT_BACKUP_R2_BUCKET,AGENT_BACKUP_R2_REGION,AGENT_BACKUP_R2_ACCESS_KEY_ID,AGENT_BACKUP_R2_SECRET_ACCESS_KEY,AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS,AGENT_BACKUP_HETZNER_ACCOUNT_ID,AGENT_BACKUP_HETZNER_ENDPOINT,AGENT_BACKUP_HETZNER_BUCKET,AGENT_BACKUP_HETZNER_REGION,AGENT_BACKUP_HETZNER_ACCESS_KEY_ID,AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY,AGENT_BACKUP_STEWARD_KMS_BASE_URL,AGENT_BACKUP_AGENT_SCHEMA_VERSION,AGENT_BACKUP_RUNTIME_PLUGINS_JSON,AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID,AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT,AGENT_BACKUP_STORAGE_SCOPE,AGENT_BACKUP_SPOOL_MAX_BYTES,AGENT_BACKUP_SPOOL_MIN_FREE_BYTES,AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE,AGENT_BACKUP_CAPTURE_DEADLINE_MS,AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS,AGENT_BACKUP_SCHEDULE_BATCH_SIZE,AGENT_BACKUP_SCHEDULE_LEASE_MS,AGENT_BACKUP_SCHEDULE_RETRY_MS,AGENT_BACKUP_OPERATION_BATCH_SIZE,AGENT_BACKUP_OPERATION_LEASE_MS,AGENT_BACKUP_OPERATION_RETRY_BASE_MS,AGENT_BACKUP_OPERATION_RETRY_MAX_MS,AGENT_BACKUP_GC_BATCH_SIZE,AGENT_BACKUP_GC_LEASE_MS,AGENT_BACKUP_GC_RETRY_BASE_MS,AGENT_BACKUP_GC_RETRY_MAX_MS,AGENT_BACKUP_DELETION_BATCH_SIZE,AGENT_BACKUP_CATALOG_WORKER_INTERVAL_MS,AGENT_BACKUP_CATALOG_WORKER_RETRY_MS,AGENT_BACKUP_CATALOG_WORKER_SHUTDOWN_TIMEOUT_MS
+          envs: PRODUCTION_CERTIFICATION_EXPIRES_EPOCH,DEPLOY_BRANCH,DEPLOY_SHA,SOURCE_BUNDLE_SHA256,SYSTEMD_UNIT,BACKUP_SYSTEMD_UNIT,SYSTEMD_ENVIRONMENT_HELPER_SHA256,BACKUP_SYSTEMD_UNIT_SHA256,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,VPN_REGISTRATION_TIMEOUT_MS,CONTAINERS_SSH_KEY,CONTAINERS_PREPULL_SELF_HEAL_RESTART,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,STEWARD_API_URL,STEWARD_PLATFORM_KEYS,AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64,DATABASE_SSL_NO_VERIFY,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,WARM_POOL_ENABLED,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,LEGACY_AGENT_ROUTER_PUBLIC_HOST,AGENT_BACKUP_CATALOG_WORKER_ID,AGENT_BACKUP_R2_ENDPOINT_ALIAS,AGENT_BACKUP_R2_ACCOUNT_ID,AGENT_BACKUP_R2_ENDPOINT,AGENT_BACKUP_R2_BUCKET,AGENT_BACKUP_R2_REGION,AGENT_BACKUP_R2_ACCESS_KEY_ID,AGENT_BACKUP_R2_SECRET_ACCESS_KEY,AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS,AGENT_BACKUP_HETZNER_ACCOUNT_ID,AGENT_BACKUP_HETZNER_ENDPOINT,AGENT_BACKUP_HETZNER_BUCKET,AGENT_BACKUP_HETZNER_REGION,AGENT_BACKUP_HETZNER_ACCESS_KEY_ID,AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY,AGENT_BACKUP_STEWARD_KMS_BASE_URL,AGENT_BACKUP_AGENT_SCHEMA_VERSION,AGENT_BACKUP_RUNTIME_PLUGINS_JSON,AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID,AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT,AGENT_BACKUP_STORAGE_SCOPE,AGENT_BACKUP_SPOOL_MAX_BYTES,AGENT_BACKUP_SPOOL_MIN_FREE_BYTES,AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE,AGENT_BACKUP_CAPTURE_DEADLINE_MS,AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS,AGENT_BACKUP_SCHEDULE_BATCH_SIZE,AGENT_BACKUP_SCHEDULE_LEASE_MS,AGENT_BACKUP_SCHEDULE_RETRY_MS,AGENT_BACKUP_OPERATION_BATCH_SIZE,AGENT_BACKUP_OPERATION_LEASE_MS,AGENT_BACKUP_OPERATION_RETRY_BASE_MS,AGENT_BACKUP_OPERATION_RETRY_MAX_MS,AGENT_BACKUP_GC_BATCH_SIZE,AGENT_BACKUP_GC_LEASE_MS,AGENT_BACKUP_GC_RETRY_BASE_MS,AGENT_BACKUP_GC_RETRY_MAX_MS,AGENT_BACKUP_DELETION_BATCH_SIZE,AGENT_BACKUP_CATALOG_WORKER_INTERVAL_MS,AGENT_BACKUP_CATALOG_WORKER_RETRY_MS,AGENT_BACKUP_CATALOG_WORKER_SHUTDOWN_TIMEOUT_MS
           script: |
             set -euo pipefail
 
@@ -539,6 +735,12 @@ jobs:
               echo "Timed out waiting for the previous provisioning deploy"
               exit 1
             }
+            if [ "$DEPLOY_BRANCH" = main ]; then
+              [[ "$PRODUCTION_CERTIFICATION_EXPIRES_EPOCH" =~ ^[0-9]+$ ]] && [ "$(date +%s)" -lt "$PRODUCTION_CERTIFICATION_EXPIRES_EPOCH" ] || {
+                echo "::error::Production certification expired before host mutation"
+                exit 1
+              }
+            fi
 
             echo "=== Deploying eliza-provisioning-worker (branch: $DEPLOY_BRANCH sha: $DEPLOY_SHA) ==="
 
@@ -594,10 +796,31 @@ jobs:
             # commit whose submodule SHA was never pushed to the fork kills the
             # whole deploy with `upload-pack: not our ref`. Skip submodule
             # traversal entirely on this path.
-            git -c fetch.recurseSubmodules=no fetch --no-recurse-submodules origin "$DEPLOY_SHA"
+            # The trusted runner transfers only the objects between the
+            # deployed generation's common ancestor and the exact admitted
+            # target. The host verifies the bundle before importing it, so
+            # stale Git credentials or GitHub egress policy are not deployment
+            # dependencies and no repository token crosses the SSH boundary.
+            git remote set-url origin https://github.com/elizaOS/eliza.git
+            SOURCE_BUNDLE_DIRECTORY="/tmp/eliza-provisioning-transfer-$DEPLOY_SHA"
+            SOURCE_BUNDLE="$SOURCE_BUNDLE_DIRECTORY/.eliza-provisioning-source.bundle"
+            [[ "$SOURCE_BUNDLE_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
+              echo "::error::Refusing an incremental source bundle without its runner-side digest"
+              exit 1
+            }
+            actual_source_bundle_sha256="$(sha256sum "$SOURCE_BUNDLE" | awk '{print $1}')"
+            [ "$actual_source_bundle_sha256" = "$SOURCE_BUNDLE_SHA256" ] || {
+              echo "::error::Incremental source bundle differs from the exact runner artifact"
+              exit 1
+            }
+            git bundle verify "$SOURCE_BUNDLE"
+            git -c fetch.recurseSubmodules=no fetch \
+              --no-recurse-submodules "$SOURCE_BUNDLE" HEAD
             git -c submodule.recurse=false checkout --no-recurse-submodules \
               -B "$DEPLOY_BRANCH" "$DEPLOY_SHA"
             test "$(git rev-parse HEAD)" = "$DEPLOY_SHA"
+            rm -f "$SOURCE_BUNDLE"
+            rmdir "$SOURCE_BUNDLE_DIRECTORY"
 
             # The `rm -f bun.lock` above deletes a TRACKED file; when bun.lock
             # is identical between the previous HEAD and the new tip, checkout
@@ -985,6 +1208,7 @@ jobs:
               "HEADSCALE_API_KEY=$HEADSCALE_API_KEY" \
               "VPN_REGISTRATION_TIMEOUT_MS=$VPN_REGISTRATION_TIMEOUT_MS" \
               "CONTAINERS_SSH_KEY=$CONTAINERS_SSH_KEY" \
+              "CONTAINERS_PREPULL_SELF_HEAL_RESTART=$CONTAINERS_PREPULL_SELF_HEAL_RESTART" \
               "SANDBOX_REGISTRY_REDIS_URL=$SANDBOX_REGISTRY_REDIS_URL" \
               "DATABASE_URL=$DATABASE_URL" \
               "STEWARD_API_URL=$STEWARD_API_URL" \

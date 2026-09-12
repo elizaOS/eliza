@@ -44,6 +44,7 @@ import {
   requestDesktopBridge,
 } from "../../utils";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import {
   Dialog,
   DialogContent,
@@ -363,7 +364,8 @@ export function CommandPalette() {
           value={commandQuery}
           onChange={(e) => setState("commandQuery", e.target.value)}
         />
-        <div
+        <Card
+          variant="messageSearch"
           id={listboxId}
           role="listbox"
           aria-label={commandResultsLabel}
@@ -383,7 +385,7 @@ export function CommandPalette() {
           ) : (
             filteredCommands.map((cmd, idx) => (
               <Button
-                variant="selection"
+                variant="searchResult"
                 size="row"
                 align="start"
                 data-state={idx === commandActiveIndex ? "on" : "off"}
@@ -409,7 +411,7 @@ export function CommandPalette() {
               </Button>
             ))
           )}
-        </div>
+        </Card>
       </DialogContent>
     </Dialog>
   );

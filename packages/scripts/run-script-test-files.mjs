@@ -20,6 +20,17 @@ import { fileURLToPath } from "node:url";
 import { runPool } from "./lib/test-task-pool.mjs";
 
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
+const WORKSPACE_FIXTURE_SUITE = "packages/scripts/__tests__/run-all-tests-";
+
+/**
+ * The run-all-tests contract family creates temporary workspace packages and
+ * independently scans the same workspace graph. Process isolation does not
+ * isolate that shared filesystem, so the family runs serially after ordinary
+ * tests release the repository.
+ */
+export function isSerialScriptTest(file) {
+  return file.startsWith(WORKSPACE_FIXTURE_SUITE);
+}
 
 function positiveInteger(
   value,
@@ -172,28 +183,35 @@ export async function runIsolatedScriptTests(options) {
       file,
       path: temporary ? path.join(temporary, `${index}.xml`) : undefined,
     }));
-    const results = await runPool(
-      fragments,
+    const ordinary = fragments.filter(({ file }) => !isSerialScriptTest(file));
+    const serial = fragments.filter(({ file }) => isSerialScriptTest(file));
+    const ordinaryResults = await runPool(
+      ordinary,
       ({ file, path: fragmentPath }) =>
         runOne(file, options, fragmentPath, active),
       options.concurrency,
     );
-    const failures = results
-      .map((result, index) => ({ file: fragments[index].file, result }))
-      .filter(
-        ({ result }) =>
-          !result.ok || result.value.exitCode !== 0 || result.value.timedOut,
-      );
+    const serialResults = await runPool(
+      serial,
+      ({ file, path: fragmentPath }) =>
+        runOne(file, options, fragmentPath, active),
+      1,
+    );
+    const results = [...ordinaryResults, ...serialResults];
+    const failures = results.filter(
+      (result) =>
+        !result.ok || result.value.exitCode !== 0 || result.value.timedOut,
+    );
     for (const failure of failures) {
-      const detail = failure.result.ok
-        ? failure.result.value.timedOut
-          ? "timed out"
-          : `exit ${failure.result.value.exitCode}${failure.result.value.signal ? ` (${failure.result.value.signal})` : ""}`
-        : failure.result.error instanceof Error
-          ? failure.result.error.message
-          : String(failure.result.error);
+      if (!failure.ok) {
+        process.stderr.write(
+          `[script-tests] failed before child completion: ${failure.error instanceof Error ? failure.error.message : String(failure.error)}\n`,
+        );
+        continue;
+      }
+      const { exitCode, file, signal, timedOut } = failure.value;
       process.stderr.write(
-        `[script-tests] failed: ${failure.file} (${detail})\n`,
+        `[script-tests] failed: ${file} (exit=${exitCode} signal=${signal ?? "none"} timedOut=${timedOut})\n`,
       );
     }
     if (failures.length === 0 && options.junit)

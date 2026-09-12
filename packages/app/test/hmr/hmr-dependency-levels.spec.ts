@@ -5,7 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Frame, type Page, test } from "@playwright/test";
 
 // This spec lives at packages/app/test/hmr/, so the repo root is four levels up.
 const repoRoot = path.resolve(
@@ -155,6 +155,34 @@ async function waitForViteClient(page: Page): Promise<void> {
   await page.waitForTimeout(2000);
 }
 
+async function withinLocalOrigin<T>(
+  page: Page,
+  expectedOrigin: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const departure = (frame: Frame): Error | null => {
+    if (frame !== page.mainFrame() || frame.url() === "about:blank")
+      return null;
+    if (new URL(frame.url()).origin === expectedOrigin) return null;
+    return new Error(
+      `HMR fixture left its local origin ${expectedOrigin}: ${frame.url()}`,
+    );
+  };
+  const initialDeparture = departure(page.mainFrame());
+  if (initialDeparture) throw initialDeparture;
+  const { promise: departed, reject } = Promise.withResolvers<never>();
+  const inspect = (frame: Frame) => {
+    const error = departure(frame);
+    if (error) reject(error);
+  };
+  page.on("framenavigated", inspect);
+  try {
+    return await Promise.race([departed, operation()]);
+  } finally {
+    page.off("framenavigated", inspect);
+  }
+}
+
 // Most plugin GUI views are NOT reachable in the dev client's module graph from
 // the "/chat" route: they are served as standalone agent-built bundles loaded by
 // DynamicViewLoader (a separate module graph the app's Vite dev server never
@@ -184,11 +212,43 @@ function isNotInRootGraph(name: string): boolean {
 test.describe("HMR propagation across package dependency levels", () => {
   test.describe.configure({ mode: "serial" });
 
+  test("reports an unexpected main-frame origin immediately", async ({
+    page,
+    baseURL,
+  }) => {
+    if (!baseURL) throw new Error("HMR fixture requires a local baseURL");
+    const expectedOrigin = new URL(baseURL).origin;
+    await expect(
+      withinLocalOrigin(page, expectedOrigin, () =>
+        page.goto("data:text/html,hmr-origin-guard"),
+      ),
+    ).rejects.toThrow(
+      `HMR fixture left its local origin ${expectedOrigin}: data:text/html,hmr-origin-guard`,
+    );
+  });
+
+  test("rejects an already departed page before running an operation", async ({
+    page,
+    baseURL,
+  }) => {
+    if (!baseURL) throw new Error("HMR fixture requires a local baseURL");
+    await page.goto("data:text/html,already-departed");
+    let operated = false;
+    await expect(
+      withinLocalOrigin(page, new URL(baseURL).origin, async () => {
+        operated = true;
+      }),
+    ).rejects.toThrow("HMR fixture left its local origin");
+    expect(operated).toBe(false);
+  });
+
   for (const level of LEVELS) {
     const defineTest = isNotInRootGraph(level.name) ? test.skip : test;
     defineTest(
       `edit at ${level.name} reaches the running dev client`,
-      async ({ page }) => {
+      async ({ page, baseURL }) => {
+        if (!baseURL) throw new Error("HMR fixture requires a local baseURL");
+        const expectedOrigin = new URL(baseURL).origin;
         const abs = path.join(repoRoot, level.file);
         expect(
           fs.existsSync(abs),
@@ -201,8 +261,10 @@ test.describe("HMR propagation across package dependency levels", () => {
         // The hosted root can select the lightweight marketing entry, which
         // intentionally excludes main.tsx and @elizaos/ui. Use a full-app route
         // so every asserted dependency is present in the live client graph.
-        await page.goto("/chat");
-        await waitForViteClient(page);
+        await withinLocalOrigin(page, expectedOrigin, () => page.goto("/chat"));
+        await withinLocalOrigin(page, expectedOrigin, () =>
+          waitForViteClient(page),
+        );
 
         // Clear the execution marker before editing. The changed module sets it
         // again when Vite propagates either an HMR update or a full reload.
@@ -219,25 +281,27 @@ test.describe("HMR propagation across package dependency levels", () => {
             abs,
             `${original}\n(globalThis as typeof globalThis & { __elizaHmrProbe?: string }).__elizaHmrProbe = ${JSON.stringify(marker)};\n`,
           );
-          await expect
-            .poll(
-              () =>
-                page
-                  .evaluate(
-                    () =>
-                      (
-                        globalThis as typeof globalThis & {
-                          __elizaHmrProbe?: string;
-                        }
-                      ).__elizaHmrProbe,
-                  )
-                  .catch(() => undefined),
-              {
-                timeout: 30_000,
-                message: `Expected the edited module ${level.file} to execute in the browser. Captured Vite events: ${JSON.stringify(events)}`,
-              },
-            )
-            .toBe(marker);
+          await withinLocalOrigin(page, expectedOrigin, () =>
+            expect
+              .poll(
+                () =>
+                  page
+                    .evaluate(
+                      () =>
+                        (
+                          globalThis as typeof globalThis & {
+                            __elizaHmrProbe?: string;
+                          }
+                        ).__elizaHmrProbe,
+                    )
+                    .catch(() => undefined),
+                {
+                  timeout: 30_000,
+                  message: `Expected the edited module ${level.file} to execute in the browser. Captured Vite events: ${JSON.stringify(events)}`,
+                },
+              )
+              .toBe(marker),
+          );
         } finally {
           fs.writeFileSync(abs, original);
         }

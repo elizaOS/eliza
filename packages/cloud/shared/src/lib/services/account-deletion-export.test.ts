@@ -1,4 +1,4 @@
-/** Proves encrypted export integrity and lost-response reconciliation. */
+/** Proves encrypted export integrity and lost-response reconciliation with controlled database and object-store boundaries; the adjacent PGlite suite owns real tenant selection. */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { createHash } from "node:crypto";
@@ -251,11 +251,43 @@ describe("account deletion export", () => {
         [2, { id: ORGANIZATION_ID, name: "Fixture organization" }],
         [4, { id: "profile-1", user_id: USER_ID }],
         [6, { id: USER_ID, email: "fixture@example.test" }],
-        [8, { id: "message-1", conversation_id: "conversation-1", content: "portable message" }],
-        [10, { id: "analytics-1", app_id: "app-1", total_requests: 7 }],
-        [12, { id: "audit-1", organization_id: ORGANIZATION_ID, action: "read" }],
+        [8, { id: "registration-1", owner_organization_id: ORGANIZATION_ID }],
+        [10, { id: "buyer-account-1", subscriber_user_id: USER_ID }],
+        [12, { id: "message-1", conversation_id: "conversation-1", content: "portable message" }],
+        [14, { id: "analytics-1", app_id: "app-1", total_requests: 7 }],
+        [16, { id: "audit-1", organization_id: ORGANIZATION_ID, action: "read" }],
+        [
+          18,
+          {
+            organization_id: ORGANIZATION_ID,
+            subscription_id: "subscription-1",
+            generation: 2,
+            failures: 0,
+            next_due_at: NOW.toISOString(),
+          },
+        ],
+        [
+          20,
+          {
+            id: "recovery-1",
+            organization_id: ORGANIZATION_ID,
+            subscription_id: "subscription-1",
+            generation: 2,
+            expected_revision: 1,
+            observed_revision: 2,
+            result_revision: 2,
+            disposition: "applied",
+            identity_digest: "identity-digest",
+            observation_digest: "observation-digest",
+            lease_token: "private-recovery-lease",
+          },
+        ],
+        [22, { id: "notice-1", organization_id: ORGANIZATION_ID, state: "policy_unavailable" }],
+        [24, { id: "attempt-1", organization_id: ORGANIZATION_ID, status: "uncertain" }],
       ]);
-      return { rows: [rowsByCall.get(call)] };
+      const row = rowsByCall.get(call);
+      if (!row) throw new Error("Unexpected export source read; provide a deliberate row fixture");
+      return { rows: [row] };
     });
 
     const bytes = await collectPortableAccountDeletionExport({
@@ -266,15 +298,45 @@ describe("account deletion export", () => {
     });
 
     const artifact = JSON.parse(new TextDecoder().decode(bytes));
-    expect(artifact.tables).toHaveLength(6);
-    expect(artifact.tables.map((table: { table: string }) => table.table)).toEqual([
-      "app_analytics",
-      "conversation_messages",
-      "organizations",
-      "profiles",
-      "secret_audit_log",
-      "users",
-    ]);
+    expect(
+      artifact.tables.find(
+        (table: { table: string }) => table.table === "subscription_reconciliation_scans",
+      ),
+    ).toMatchObject({
+      policy: "portable_subject_data",
+      rows: [
+        {
+          organization_id: ORGANIZATION_ID,
+          subscription_id: "subscription-1",
+          generation: 2,
+          failures: 0,
+          next_due_at: NOW.toISOString(),
+        },
+      ],
+    });
+    expect(
+      artifact.tables.find(
+        (table: { table: string }) => table.table === "subscription_reconciliation_attempts",
+      ),
+    ).toMatchObject({
+      policy: "portable_subject_data",
+      rows: [
+        {
+          id: "recovery-1",
+          organization_id: ORGANIZATION_ID,
+          subscription_id: "subscription-1",
+          generation: 2,
+          expected_revision: 1,
+          observed_revision: 2,
+          result_revision: 2,
+          disposition: "applied",
+          identity_digest: "identity-digest",
+          observation_digest: "observation-digest",
+          lease_token: "[REDACTED_SECURITY_MATERIAL]",
+        },
+      ],
+    });
+    expect(new TextDecoder().decode(bytes)).not.toContain("private-recovery-lease");
     expect(
       artifact.tables.find((table: { table: string }) => table.table === "conversation_messages"),
     ).toMatchObject({
@@ -287,11 +349,26 @@ describe("account deletion export", () => {
     expect(
       artifact.tables.find((table: { table: string }) => table.table === "secret_audit_log"),
     ).toMatchObject({ policy: "retained_security_audit", rows: [{ action: "read" }] });
+    expect(
+      artifact.tables.find(
+        (table: { table: string }) => table.table === "subscription_notice_intents",
+      ),
+    ).toMatchObject({
+      policy: "portable_subject_data",
+      rows: [{ organization_id: ORGANIZATION_ID, state: "policy_unavailable" }],
+    });
+    expect(
+      artifact.tables.find(
+        (table: { table: string }) => table.table === "subscription_notice_attempts",
+      ),
+    ).toMatchObject({
+      policy: "portable_subject_data",
+      rows: [{ organization_id: ORGANIZATION_ID, status: "uncertain" }],
+    });
     expect(transaction).toHaveBeenCalledWith(expect.any(Function), {
       isolationLevel: "repeatable read",
       accessMode: "read only",
     });
-    expect(execute).toHaveBeenCalledTimes(12);
 
     execute.mockReset();
     execute.mockResolvedValueOnce({

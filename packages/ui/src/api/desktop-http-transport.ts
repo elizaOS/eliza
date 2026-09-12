@@ -12,6 +12,7 @@ import {
 import { getElectrobunRendererRpc } from "../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { isDesktopExternalHttpApiBaseUrl } from "./desktop-external-api-base";
+import { nativeHttpResultToResponse } from "./native-http-codec";
 import {
   type AgentRequestTransport,
   bodyToString,
@@ -88,26 +89,7 @@ const desktopHttpTransport: AgentRequestTransport = {
       timeoutMs: context?.timeoutMs,
     })) as DesktopHttpRequestResult;
 
-    // Binary responses (audio, image, etc.) arrive as base64 to avoid UTF-8
-    // corruption through the Electrobun RPC string bridge.
-    if (result.bodyBase64) {
-      const binary = atob(result.bodyBase64);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) {
-        bytes[i] = binary.charCodeAt(i);
-      }
-      return new Response(bytes, {
-        status: result.status,
-        statusText: result.statusText ?? "",
-        headers: result.headers,
-      });
-    }
-
-    return new Response(result.body ?? "", {
-      status: result.status,
-      statusText: result.statusText ?? "",
-      headers: result.headers,
-    });
+    return nativeHttpResultToResponse(result);
   },
 };
 

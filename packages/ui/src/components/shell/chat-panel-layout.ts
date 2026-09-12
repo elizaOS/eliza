@@ -281,8 +281,8 @@ export function isShortLandscapeViewport(
 }
 
 /**
- * Measure the resolved `env(safe-area-inset-top)` in CSS px via a throwaway
- * probe. `env()` can't be read off a custom property as a number, so this reads
+ * Measure the shared safe-area alias in CSS px via a throwaway probe. Nested
+ * `var()` / `env()` values cannot be parsed as a number, so this reads
  * the computed height of an element that uses it. Returns 0 on web / off-notch
  * and in non-DOM environments.
  */
@@ -291,7 +291,7 @@ export function measureSafeAreaInsetTop(): number {
   const probe = document.createElement("div");
   probe.setAttribute("aria-hidden", "true");
   probe.style.cssText =
-    "position:fixed;top:0;left:0;width:0;height:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none;";
+    "position:fixed;top:0;left:0;width:0;height:var(--safe-area-top,env(safe-area-inset-top,0px));visibility:hidden;pointer-events:none;";
   const root = document.documentElement;
   root.appendChild(probe);
   let height = 0;

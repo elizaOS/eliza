@@ -6,6 +6,8 @@
  * root-owned ancestor is allowed), and every candidate cleanup matches
  * device/inode before unlinking. Same-UID
  * processes are therefore inside the runtime installation's trust domain.
+ * Native Android and iOS hosts supply their app sandbox boundary; platform
+ * ancestors retain inode checks while the app-owned boundary remains strict.
  * Windows fails closed because this package has no ACL primitive that can prove
  * the equivalent boundary.
  */
@@ -14,6 +16,7 @@ import { constants } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { UUID } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/shared";
 
 const INSTALLATION_ID_FILENAME = "runtime-installation-id";
 const UUID_PATTERN =
@@ -30,15 +33,23 @@ interface TrustedDirectory {
 }
 
 interface TrustedParentDirectory {
-  handle: FileHandle;
+  handle?: FileHandle;
   path: string;
   stat: FileStat;
+  validation: "descriptor" | "mobile-platform";
 }
 
 interface TrustedLexicalEntry {
   handle?: FileHandle;
   path: string;
   stat: FileStat;
+  validation: "descriptor" | "symlink" | "mobile-platform";
+}
+
+interface MobileStateBoundary {
+  appDataDirectory: string;
+  platformName: "Android" | "iOS";
+  environmentKey: string;
 }
 
 export class RuntimeInstallationIdentityUnsupportedError extends Error {
@@ -118,11 +129,68 @@ function ancestorPaths(directory: string): string[] {
   return paths;
 }
 
+function isSameOrDescendant(candidate: string, directory: string): boolean {
+  const relative = path.relative(directory, candidate);
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
+}
+
+function resolveMobileStateBoundary(
+  stateDirectory: string,
+): MobileStateBoundary | undefined {
+  const platform = readAliasedEnv("ELIZA_PLATFORM")?.trim().toLowerCase();
+  if (platform !== "android" && platform !== "ios") return undefined;
+  const platformName = platform === "android" ? "Android" : "iOS";
+  const environmentKey =
+    platform === "android"
+      ? "ELIZA_ANDROID_APP_DATA_DIR"
+      : "ELIZA_IOS_APP_DATA_DIR";
+  const configured = process.env[environmentKey]?.trim();
+  if (!configured || !path.isAbsolute(configured)) {
+    throw new Error(
+      `${platformName} runtime installation identity requires an absolute ${environmentKey}.`,
+    );
+  }
+  const appDataDirectory = path.resolve(configured);
+  if (!isSameOrDescendant(path.resolve(stateDirectory), appDataDirectory)) {
+    throw new Error(
+      `${platformName} runtime state directory must remain inside ${environmentKey}.`,
+    );
+  }
+  return { appDataDirectory, platformName, environmentKey };
+}
+
+function isMobilePlatformAncestor(
+  entryPath: string,
+  boundary: MobileStateBoundary | undefined,
+): boolean {
+  return (
+    boundary !== undefined &&
+    entryPath !== boundary.appDataDirectory &&
+    isSameOrDescendant(boundary.appDataDirectory, entryPath)
+  );
+}
+
+function assertMobilePlatformAncestorStat(stat: FileStat): void {
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    throw new Error("Mobile app-data ancestor must be a real directory.");
+  }
+}
+
+function isDescriptorParent(
+  entry: TrustedParentDirectory,
+): entry is TrustedParentDirectory & { handle: FileHandle } {
+  return entry.validation === "descriptor" && entry.handle !== undefined;
+}
+
 async function closeAncestors(
   ancestors: TrustedParentDirectory[],
 ): Promise<void> {
   let failure: unknown;
   for (const ancestor of [...ancestors].reverse()) {
+    if (!ancestor.handle) continue;
     try {
       await ancestor.handle.close();
     } catch (error) {
@@ -157,6 +225,7 @@ function assertTrustedSymlinkStat(stat: FileStat): void {
 
 async function openTrustedLexicalChain(
   directory: string,
+  mobileBoundary: MobileStateBoundary | undefined,
 ): Promise<TrustedLexicalEntry[]> {
   const paths = ancestorPaths(directory);
   const trusted: TrustedLexicalEntry[] = [];
@@ -164,11 +233,23 @@ async function openTrustedLexicalChain(
     for (const [index, entryPath] of paths.entries()) {
       const stat = await fs.lstat(entryPath);
       if (stat.isSymbolicLink()) {
-        if (index === paths.length - 1) {
+        if (
+          index === paths.length - 1 ||
+          entryPath === mobileBoundary?.appDataDirectory
+        ) {
           throw new Error("Runtime state parent must be a real directory.");
         }
         assertTrustedSymlinkStat(stat);
-        trusted.push({ path: entryPath, stat });
+        trusted.push({ path: entryPath, stat, validation: "symlink" });
+        continue;
+      }
+      if (isMobilePlatformAncestor(entryPath, mobileBoundary)) {
+        assertMobilePlatformAncestorStat(stat);
+        trusted.push({
+          path: entryPath,
+          stat,
+          validation: "mobile-platform",
+        });
         continue;
       }
       assertTrustedParentDirectoryStat(stat);
@@ -176,7 +257,12 @@ async function openTrustedLexicalChain(
         entryPath,
         constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
       );
-      trusted.push({ path: entryPath, stat, handle });
+      trusted.push({
+        path: entryPath,
+        stat,
+        handle,
+        validation: "descriptor",
+      });
     }
     await revalidateLexicalChain(trusted);
     return trusted;
@@ -194,9 +280,16 @@ async function revalidateLexicalChain(
     if (!sameIdentity(pathStat, ancestor.stat)) {
       throw new Error("Runtime state lexical path changed during validation.");
     }
-    if (!ancestor.handle) {
+    if (ancestor.validation === "mobile-platform") {
+      assertMobilePlatformAncestorStat(pathStat);
+      continue;
+    }
+    if (ancestor.validation === "symlink") {
       assertTrustedSymlinkStat(pathStat);
       continue;
+    }
+    if (!ancestor.handle) {
+      throw new Error("Runtime state lexical descriptor is unavailable.");
     }
     assertTrustedParentDirectoryStat(pathStat);
     const descriptorStat = await ancestor.handle.stat();
@@ -216,10 +309,18 @@ async function revalidateAncestorChain(
 async function revalidateParentPath(
   trusted: TrustedParentDirectory,
 ): Promise<void> {
-  const [pathStat, descriptorStat] = await Promise.all([
-    fs.lstat(trusted.path),
-    trusted.handle.stat(),
-  ]);
+  const pathStat = await fs.lstat(trusted.path);
+  if (trusted.validation === "mobile-platform") {
+    assertMobilePlatformAncestorStat(pathStat);
+    if (!sameIdentity(pathStat, trusted.stat)) {
+      throw new Error("Runtime state parent changed during validation.");
+    }
+    return;
+  }
+  if (!trusted.handle) {
+    throw new Error("Runtime state parent descriptor is unavailable.");
+  }
+  const descriptorStat = await trusted.handle.stat();
   assertTrustedParentDirectoryStat(pathStat);
   assertTrustedParentDirectoryStat(descriptorStat);
   if (
@@ -248,21 +349,39 @@ async function revalidateDirectoryPath(
 async function openTrustedStateDirectory(
   stateDirectory: string,
   lexicalAncestors: TrustedLexicalEntry[],
+  mobileBoundary: MobileStateBoundary | undefined,
 ): Promise<TrustedDirectory> {
   const parentPath = path.dirname(stateDirectory);
   const ancestors: TrustedParentDirectory[] = [];
   try {
     for (const ancestorPath of ancestorPaths(parentPath)) {
       const ancestorStat = await fs.lstat(ancestorPath);
+      if (isMobilePlatformAncestor(ancestorPath, mobileBoundary)) {
+        assertMobilePlatformAncestorStat(ancestorStat);
+        ancestors.push({
+          path: ancestorPath,
+          stat: ancestorStat,
+          validation: "mobile-platform",
+        });
+        continue;
+      }
       assertTrustedParentDirectoryStat(ancestorStat);
       const handle = await fs.open(
         ancestorPath,
         constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
       );
-      ancestors.push({ path: ancestorPath, stat: ancestorStat, handle });
+      ancestors.push({
+        path: ancestorPath,
+        stat: ancestorStat,
+        handle,
+        validation: "descriptor",
+      });
     }
     const parent = ancestors.at(-1);
     if (!parent) throw new Error("Runtime state parent chain is empty.");
+    if (!isDescriptorParent(parent)) {
+      throw new Error("Runtime state parent must have a trusted descriptor.");
+    }
     await revalidateAncestorChain(ancestors);
     try {
       await fs.mkdir(stateDirectory, { mode: 0o700 });
@@ -499,18 +618,43 @@ async function loadOrCreateRuntimeInstallationIdImpl(
   stateDirectory: string,
 ): Promise<UUID> {
   const requestedStateDirectory = path.resolve(stateDirectory);
+  const mobileBoundary = resolveMobileStateBoundary(requestedStateDirectory);
   const requestedParent = path.dirname(requestedStateDirectory);
-  const lexicalAncestors = await openTrustedLexicalChain(requestedParent);
+  const lexicalAncestors = await openTrustedLexicalChain(
+    requestedParent,
+    mobileBoundary,
+  );
   let trustedDirectory: TrustedDirectory;
   let resolvedStateDirectory: string;
   try {
+    // Android may expose the app through the platform-owned /data/user/0
+    // symlink. Containment must compare both paths in the same namespace;
+    // the captured lexical chain continues to detect alias replacement.
+    const resolvedMobileBoundary = mobileBoundary
+      ? {
+          ...mobileBoundary,
+          appDataDirectory: await fs.realpath(mobileBoundary.appDataDirectory),
+        }
+      : undefined;
     resolvedStateDirectory = path.join(
       await fs.realpath(requestedParent),
       path.basename(requestedStateDirectory),
     );
+    if (
+      resolvedMobileBoundary &&
+      !isSameOrDescendant(
+        resolvedStateDirectory,
+        resolvedMobileBoundary.appDataDirectory,
+      )
+    ) {
+      throw new Error(
+        `Resolved ${resolvedMobileBoundary.platformName} runtime state directory escaped ${resolvedMobileBoundary.environmentKey}.`,
+      );
+    }
     trustedDirectory = await openTrustedStateDirectory(
       resolvedStateDirectory,
       lexicalAncestors,
+      resolvedMobileBoundary,
     );
   } catch (error) {
     await closeLexicalAncestors(lexicalAncestors);

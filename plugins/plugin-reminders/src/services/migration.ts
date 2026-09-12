@@ -9,22 +9,21 @@
  * owner's reminder rows in `app_lifeops`, so on first boot we copy them across —
  * once, idempotently, and WITHOUT ever touching the source.
  *
- * Guards (per table, independently):
- *   1. Skip if a durable completion marker for the table exists (the copy ran
- *      once on this database — live 2026-08-16 phantom-rows incident: without
- *      the marker, "skip if target non-empty" re-imported every stale
- *      app_lifeops row on the first restart after an owner cleared their
- *      routines, resurrecting long-deleted reminders).
- *   2. Skip if the source table does not exist (fresh install / already dropped).
- *   3. Skip if the target table is non-empty (plugin already owns live data).
- *   4. Otherwise copy every source row that is not already present in the target
- *      (a doubly-safe NOT EXISTS guard on the primary key).
+ * Existing completion markers and populated owner tables remain authoritative.
+ * Only a fresh import into an empty target is copied and verified; the durable
+ * receipt prevents later owner deletions from replaying stale legacy rows.
  *
- * Every terminal outcome writes the marker, so the copy happens at most once
- * per database. The source table is NEVER dropped or altered.
+ * The older package-local marker also records completed ownership, including
+ * an empty destination. The source table is never dropped or altered.
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import {
+  assertCarveOutProjectionComplete,
+  type CarveOutDatabase,
+  createDrizzleCarveOutDatabase,
+  runCarveOutMigration,
+} from "@elizaos/plugin-sql";
 
 export const REMINDERS_LOG_PREFIX = "[Reminders]";
 export const REMINDERS_MIGRATION_SERVICE_TYPE = "reminders_migration";
@@ -67,16 +66,6 @@ async function sourceTableExists(
   return rows[0]?.present === true || rows[0]?.present === "true";
 }
 
-async function targetTableIsEmpty(
-  exec: SqlExecutor,
-  table: MigratedReminderTable,
-): Promise<boolean> {
-  const rows = await exec(
-    `SELECT NOT EXISTS (SELECT 1 FROM ${TARGET_SCHEMA}.${quoteIdent(table)}) AS empty`,
-  );
-  return rows[0]?.empty === true || rows[0]?.empty === "true";
-}
-
 const MIGRATION_MARKER_TABLE = "reminders_migration_state";
 
 async function ensureMigrationMarkerTable(exec: SqlExecutor): Promise<void> {
@@ -112,6 +101,16 @@ async function writeMigrationMarker(
   );
 }
 
+async function targetTableIsEmpty(
+  exec: SqlExecutor,
+  table: MigratedReminderTable,
+): Promise<boolean> {
+  const rows = await exec(
+    `SELECT NOT EXISTS (SELECT 1 FROM ${TARGET_SCHEMA}.${quoteIdent(table)}) AS empty`,
+  );
+  return rows[0]?.empty === true || rows[0]?.empty === "true";
+}
+
 export async function migrateReminderTable(
   exec: SqlExecutor,
   table: MigratedReminderTable,
@@ -123,6 +122,7 @@ export async function migrateReminderTable(
     await writeMigrationMarker(exec, table);
     return { table, outcome: "source-missing" };
   }
+
   if (!(await targetTableIsEmpty(exec, table))) {
     await writeMigrationMarker(exec, table);
     return { table, outcome: "target-non-empty" };
@@ -138,24 +138,43 @@ export async function migrateReminderTable(
        )
        ON CONFLICT (${quoteIdent("id")}) DO NOTHING`,
   );
+  await assertCarveOutProjectionComplete(exec, {
+    migrationKey: `reminders/${table}/v2`,
+    source: { schema: SOURCE_SCHEMA, table },
+    target: { schema: TARGET_SCHEMA, table },
+    keyColumns: ["id"],
+  });
   await writeMigrationMarker(exec, table);
   return { table, outcome: "copied" };
 }
 
 export async function migrateReminderTables(
-  exec: SqlExecutor,
+  database: CarveOutDatabase,
 ): Promise<TableMigrationResult[]> {
-  await exec(`CREATE SCHEMA IF NOT EXISTS ${TARGET_SCHEMA}`);
-  await ensureMigrationMarkerTable(exec);
+  await database.execute(`CREATE SCHEMA IF NOT EXISTS ${TARGET_SCHEMA}`);
+  await ensureMigrationMarkerTable(database.execute);
   const results: TableMigrationResult[] = [];
   for (const table of MIGRATED_REMINDER_TABLES) {
-    results.push(await migrateReminderTable(exec, table));
+    const receipt = await runCarveOutMigration(database, {
+      key: `reminders/${table}/v2`,
+      previousKeys: [`reminders/${table}/v1`],
+      sourceTables: [{ schema: SOURCE_SCHEMA, table }],
+      run: (execute) => migrateReminderTable(execute, table),
+      outcome: (result) => result.outcome,
+      shouldComplete: (result) => result.outcome !== "source-missing",
+    });
+    results.push(
+      receipt.status === "completed"
+        ? receipt.value
+        : { table, outcome: "already-migrated" },
+    );
   }
   return results;
 }
 
 type RuntimeDb = {
   execute: (query: unknown) => Promise<unknown>;
+  transaction<T>(operation: (transaction: RuntimeDb) => Promise<T>): Promise<T>;
 };
 
 function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb {
@@ -166,25 +185,6 @@ function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb {
     );
   }
   return db;
-}
-
-function extractRows(result: unknown): Array<Record<string, unknown>> {
-  if (Array.isArray(result)) {
-    return result.filter(
-      (row): row is Record<string, unknown> =>
-        typeof row === "object" && row !== null && !Array.isArray(row),
-    );
-  }
-  if (result && typeof result === "object" && "rows" in result) {
-    const rows = (result as { rows: unknown }).rows;
-    if (Array.isArray(rows)) {
-      return rows.filter(
-        (row): row is Record<string, unknown> =>
-          typeof row === "object" && row !== null && !Array.isArray(row),
-      );
-    }
-  }
-  return [];
 }
 
 /**
@@ -207,11 +207,8 @@ export class RemindersMigrationService extends Service {
 
   private async run(): Promise<void> {
     const db = getRuntimeDb(this.runtime);
-    const { sql } = await import("drizzle-orm");
-    const exec: SqlExecutor = async (statement) =>
-      extractRows(await db.execute(sql.raw(statement)));
-
-    const results = await migrateReminderTables(exec);
+    const database = await createDrizzleCarveOutDatabase(db);
+    const results = await migrateReminderTables(database);
     const copied = results.filter((r) => r.outcome === "copied");
     if (copied.length > 0) {
       logger.info(

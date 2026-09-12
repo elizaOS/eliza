@@ -9,7 +9,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
-import { ATOMS, buildInventory } from "./find-duplicate-components.mjs";
+import {
+  ATOMS,
+  buildInventory,
+  isHiddenSourceArtifactDirectory,
+} from "./find-duplicate-components.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../../..");
@@ -424,12 +428,16 @@ const OFF_TOKEN_COLOR =
 const relative = (file) =>
   path.relative(repoRoot, file).replaceAll(path.sep, "/");
 
-function isGovernedSource(file) {
+export function isGovernedSource(file) {
   const rel = relative(file);
   return (
     /^(packages|plugins)\//.test(rel) &&
+    !path.posix.dirname(rel).split("/").some(isHiddenSourceArtifactDirectory) &&
     /\.[jt]sx?$/.test(rel) &&
-    !/(^|\/)(node_modules|dist|build|coverage|generated)(\/|$)/.test(rel) &&
+    !/(^|\/)(node_modules|dist|build|coverage|generated|dist-mobile(?:-[^/]+)?)(\/|$)/.test(
+      rel,
+    ) &&
+    !/(^|\/)packages\/app\/(android|ios|electrobun)(\/|$)/.test(rel) &&
     !/\.(test|spec)\.[jt]sx$/.test(rel) &&
     !/(^|\/)(test|__tests__|__e2e__|__fixtures__|fixtures|stubs|templates)(\/|$)/.test(
       rel,
@@ -441,21 +449,30 @@ function* walk(directory) {
   if (!fs.existsSync(directory)) return;
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     if (
+      (entry.isDirectory() && isHiddenSourceArtifactDirectory(entry.name)) ||
       [
         "node_modules",
         "dist",
         "build",
         "coverage",
         "generated",
+        "dist-mobile",
         "test-results",
         ".git",
+        ".vite",
       ].includes(entry.name) ||
-      entry.name.startsWith(".playwright-artifacts-")
+      entry.name.startsWith(".playwright-artifacts-") ||
+      entry.name.startsWith("dist-mobile-")
     )
       continue;
     const full = path.join(directory, entry.name);
-    if (entry.isDirectory()) yield* walk(full);
-    else if (isGovernedSource(full)) {
+    if (entry.isDirectory()) {
+      const rel = relative(full);
+      if (/^packages\/app\/(android|ios|electrobun)(\/|$)/.test(rel)) {
+        continue;
+      }
+      yield* walk(full);
+    } else if (isGovernedSource(full)) {
       if (/\.[jt]sx$/.test(full)) {
         yield full;
         continue;
@@ -485,25 +502,34 @@ function* walkStylesheets(directory) {
   if (!fs.existsSync(directory)) return;
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     if (
+      (entry.isDirectory() && isHiddenSourceArtifactDirectory(entry.name)) ||
       [
         "node_modules",
         "dist",
         "build",
         "coverage",
         "generated",
+        "dist-mobile",
         "test-results",
         ".git",
+        ".vite",
         "stories",
         "test",
         "__tests__",
         "__e2e__",
       ].includes(entry.name) ||
-      entry.name.startsWith(".playwright-artifacts-")
+      entry.name.startsWith(".playwright-artifacts-") ||
+      entry.name.startsWith("dist-mobile-")
     )
       continue;
     const full = path.join(directory, entry.name);
-    if (entry.isDirectory()) yield* walkStylesheets(full);
-    else if (entry.name.endsWith(".css")) yield full;
+    if (entry.isDirectory()) {
+      const rel = relative(full);
+      if (/^packages\/app\/(android|ios|electrobun)(\/|$)/.test(rel)) {
+        continue;
+      }
+      yield* walkStylesheets(full);
+    } else if (entry.name.endsWith(".css")) yield full;
   }
 }
 
@@ -1087,7 +1113,8 @@ function radiusFamily(utility) {
   if (match[1].startsWith("[")) return "raw";
   if (match[1] === "none") return "none";
   if (["xs", "sm", "md"].includes(match[1])) return "control";
-  if (["lg", "xl", "2xl", "3xl"].includes(match[1])) return "container";
+  if (["lg", "xl", "2xl", "3xl", "search"].includes(match[1]))
+    return "container";
   if (match[1] === "full") return "pill";
   return "raw";
 }

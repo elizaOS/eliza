@@ -9,13 +9,16 @@ import { ElizaError } from "@elizaos/core";
 import type {
   CompleteLifeOpsOccurrenceRequest,
   CreateLifeOpsDefinitionRequest,
+  LifeOpsDefinitionCreationResult,
   LifeOpsDefinitionRecord,
+  LifeOpsDefinitionTransitionResult,
   LifeOpsOccurrence,
   LifeOpsOccurrenceView,
   LifeOpsOwnership,
   LifeOpsReminderPlan,
   LifeOpsReminderStep,
   LifeOpsTaskDefinition,
+  LifeOpsTodoView,
   RecordLifeOpsProgressRequest,
   RecordLifeOpsProgressResult,
   SnoozeLifeOpsOccurrenceRequest,
@@ -26,6 +29,10 @@ import {
   LIFEOPS_DEFINITION_STATUSES,
 } from "../../contracts/index.js";
 import { settleBriefEngagementReward } from "../briefing/engagement-reward.js";
+import {
+  type DefinitionCreationContext,
+  definitionCreationIdentity,
+} from "../definition-creation-identity.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { createLifeOpsTaskDefinition } from "../repository.js";
 import {
@@ -164,9 +171,72 @@ export class DefinitionsDomain {
     return this.deps.getDefinitionRecord(definitionId);
   }
 
+  async getTodos(
+    occurrences: LifeOpsOccurrenceView[],
+  ): Promise<LifeOpsTodoView[]> {
+    const definitions = await listCallerDefinitions(
+      this.ctx.repository,
+      this.ctx,
+      { activeOnly: false },
+    );
+    const unscheduled: LifeOpsTodoView[] = definitions
+      .filter(
+        (definition) =>
+          definition.subjectType === "owner" &&
+          definition.kind === "task" &&
+          definition.cadence.kind === "unscheduled" &&
+          ["active", "completed"].includes(definition.status),
+      )
+      .map((definition) => ({
+        id: definition.id,
+        targetKind: "definition",
+        title: definition.title,
+        status: definition.status === "completed" ? "completed" : "pending",
+        dueDate: null,
+        progress: null,
+      }));
+    return [
+      ...occurrences.map(
+        (occurrence): LifeOpsTodoView => ({
+          id: occurrence.id,
+          targetKind: "occurrence",
+          title: occurrence.title,
+          status:
+            occurrence.state === "completed"
+              ? "completed"
+              : occurrence.state === "snoozed"
+                ? "in_progress"
+                : "pending",
+          dueDate: occurrence.dueAt,
+          progress: occurrence.progress,
+        }),
+      ),
+      ...unscheduled,
+    ];
+  }
+
+  async transitionTodo(
+    definitionId: string,
+    status: "active" | "completed",
+  ): Promise<LifeOpsDefinitionTransitionResult> {
+    const { definition } = await this.deps.getDefinitionRecord(definitionId);
+    if (
+      definition.domain !== "user_lifeops" ||
+      definition.subjectType !== "owner" ||
+      definition.subjectId !== this.ctx.ownerEntityId()
+    )
+      fail(404, "owner todo not found");
+    return this.ctx.repository.transitionUnscheduledTodo(
+      definition,
+      status,
+      nextMutationRevision(definition.updatedAt),
+    );
+  }
+
   async createDefinition(
     request: CreateLifeOpsDefinitionRequest,
-  ): Promise<LifeOpsDefinitionRecord> {
+    context?: DefinitionCreationContext,
+  ): Promise<LifeOpsDefinitionCreationResult> {
     const agentId = this.ctx.agentId();
     const ownership = this.ctx.normalizeOwnership(request.ownership);
     const kind = normalizeEnumValue(
@@ -235,7 +305,45 @@ export class DefinitionsDomain {
           : undefined,
       ),
     });
-    await this.ctx.repository.createDefinition(definition);
+    const operationKey =
+      request.idempotencyKey === undefined
+        ? null
+        : definitionCreationIdentity({
+            agentId,
+            actorId: this.ctx.ownerEntityId(),
+            ownership,
+            key: request.idempotencyKey,
+          });
+    if (operationKey !== null) {
+      const {
+        id: _id,
+        createdAt: _createdAt,
+        updatedAt: _updatedAt,
+        ...creationRequest
+      } = definition;
+      const claim = await this.ctx.repository.claimDefinitionCreation(
+        definition,
+        operationKey,
+        JSON.stringify({
+          definition: {
+            ...creationRequest,
+            originalIntent:
+              context?.originalIntentSource === "message"
+                ? { source: "message" }
+                : { source: "argument", value: creationRequest.originalIntent },
+          },
+          reminderPlan: reminderPlanDraft,
+        }),
+      );
+      if (claim.replayed)
+        return {
+          ...(await this.deps.getDefinitionRecord(claim.definition.id)),
+          idempotency: { key: operationKey, replayed: true },
+        };
+      definition = claim.definition;
+    } else {
+      await this.ctx.repository.createDefinition(definition);
+    }
     const reminderPlan = await this.deps.syncReminderPlan(
       definition,
       reminderPlanDraft,
@@ -275,7 +383,13 @@ export class DefinitionsDomain {
       this.ctx.agentId(),
       definition.id,
     );
+    if (operationKey !== null)
+      await this.ctx.repository.completeDefinitionCreation(
+        definition,
+        operationKey,
+      );
     return {
+      idempotency: { key: operationKey, replayed: false },
       definition,
       reminderPlan,
       performance: computeDefinitionPerformance(
@@ -362,6 +476,22 @@ export class DefinitionsDomain {
             "status",
             LIFEOPS_DEFINITION_STATUSES,
           );
+    if (
+      nextStatus === "completed" &&
+      (nextCadence.kind !== "unscheduled" || current.definition.kind !== "task")
+    ) {
+      fail(400, "completed definition status is only valid for undated todos");
+    }
+    if (
+      request.status !== undefined &&
+      nextStatus !== current.definition.status &&
+      (nextStatus === "completed" || current.definition.status === "completed")
+    ) {
+      fail(
+        400,
+        "use the todo complete or reopen operation to change completion state",
+      );
+    }
     let nextDefinition: LifeOpsTaskDefinition = {
       ...current.definition,
       ...ownership,

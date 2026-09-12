@@ -29,7 +29,29 @@
  *      #10423 reservation semantics on the app-credits path are unchanged).
  */
 
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from "bun:test";
+import { mockNonSubscriberEntitlementLookup } from "./helpers/non-subscriber-entitlement-mock";
+
+// These purchased-credit fixtures have no paid subscription. Keep the real
+// funding selector and reservation path while supplying that repository state.
+let restoreEntitlementLookup: ReturnType<
+  typeof mockNonSubscriberEntitlementLookup
+>;
+beforeEach(() => {
+  restoreEntitlementLookup = mockNonSubscriberEntitlementLookup();
+});
+afterEach(() => {
+  restoreEntitlementLookup();
+});
 
 // Spread the real modules: bun's `mock.module` replaces the registry entry
 // process-wide, so dropping the other real exports would strand later test
@@ -46,6 +68,26 @@ import * as contentModerationActual from "@/lib/services/content-moderation";
 import * as inferenceAuthContextActual from "@/lib/services/inference-auth-context";
 
 const aiActual = require("ai") as Record<string, unknown>;
+
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
+let policyDatabase: typeof import("@/db/client");
+beforeAll(async () => {
+  policyDatabase = await import("@/db/client");
+  const pg = policyDatabase.getPgliteClientForTests();
+  await pg.exec("CREATE TABLE organizations(id uuid PRIMARY KEY)");
+  const { installOrganizationPolicyTestSchema } = await import(
+    "@/db/repositories/organization-policy-test-fixture"
+  );
+  await installOrganizationPolicyTestSchema((query) => pg.exec(query));
+  await pg.query(
+    "INSERT INTO organizations(id,credit_balance) VALUES($1,100)",
+    [ORG],
+  );
+});
+afterAll(async () => {
+  await policyDatabase.closeDatabaseConnectionsForTests();
+});
 
 const ORG = "00000000-0000-4000-8000-0000000000aa";
 const USER = "00000000-0000-4000-8000-0000000000bb";

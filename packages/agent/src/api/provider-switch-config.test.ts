@@ -413,6 +413,33 @@ describe("Cerebras direct-account wiring", () => {
   });
 });
 
+describe("first-run account-pool credential ownership", () => {
+  it.each([
+    ["openrouter", "OPENROUTER_API_KEY"],
+    ["grok", "XAI_API_KEY"],
+  ] as const)(
+    "keeps %s credentials out of raw config and env",
+    async (provider, envKey) => {
+      delete process.env[envKey];
+      const config: Partial<ElizaConfig> = {};
+
+      await applyFirstRunConnectionConfig(config, {
+        kind: "local-provider",
+        provider,
+        apiKey: `secret-${provider}`,
+      });
+
+      const serialized = JSON.stringify(config);
+      expect(serialized).not.toContain(`secret-${provider}`);
+      expect(process.env[envKey]).toBeUndefined();
+      expect(config.serviceRouting?.llmText).toMatchObject({
+        backend: provider,
+        transport: "direct",
+      });
+    },
+  );
+});
+
 describe("applyFirstRunConnectionConfig (Cerebras local provider)", () => {
   const CEREBRAS_ENV = [
     "CEREBRAS_API_KEY",
@@ -432,7 +459,7 @@ describe("applyFirstRunConnectionConfig (Cerebras local provider)", () => {
     for (const key of CEREBRAS_ENV) delete process.env[key];
   });
 
-  it("sets CEREBRAS_API_KEY + the default Gemma CEREBRAS_MODEL and never strays into OpenAI vars", async () => {
+  it("sets CEREBRAS_API_KEY + the default Qwen CEREBRAS_MODEL and never strays into OpenAI vars", async () => {
     const config: Partial<ElizaConfig> = {};
 
     await applyFirstRunConnectionConfig(config, {
@@ -446,9 +473,9 @@ describe("applyFirstRunConnectionConfig (Cerebras local provider)", () => {
     expect(vars?.CEREBRAS_API_KEY).toBe("csk-test-123");
     // Without a valid Cerebras model the OpenAI plugin would fall back to
     // gpt-5* ids that 404 on api.cerebras.ai — this is the load-bearing default.
-    expect(vars?.CEREBRAS_MODEL).toBe("gemma-4-31b");
-    expect(vars?.CEREBRAS_SMALL_MODEL).toBe("gemma-4-31b");
-    expect(vars?.CEREBRAS_LARGE_MODEL).toBe("gemma-4-31b");
+    expect(vars?.CEREBRAS_MODEL).toBe("qwen-3.8-27b");
+    expect(vars?.CEREBRAS_SMALL_MODEL).toBe("qwen-3.8-27b");
+    expect(vars?.CEREBRAS_LARGE_MODEL).toBe("qwen-3.8-27b");
     // Setting any OPENAI_* var here would knock the plugin out of Cerebras
     // mode (isCerebrasMode requires no OPENAI_API_KEY / OPENAI_BASE_URL).
     expect(vars?.OPENAI_API_KEY).toBeUndefined();
@@ -457,7 +484,7 @@ describe("applyFirstRunConnectionConfig (Cerebras local provider)", () => {
     expect(vars?.OPENAI_LARGE_MODEL).toBeUndefined();
     // Same values land in process.env so a hot-reloaded runtime picks them up.
     expect(process.env.CEREBRAS_API_KEY).toBe("csk-test-123");
-    expect(process.env.CEREBRAS_MODEL).toBe("gemma-4-31b");
+    expect(process.env.CEREBRAS_MODEL).toBe("qwen-3.8-27b");
     // The agent routes its text inference at Cerebras.
     expect(config.serviceRouting?.llmText?.backend).toBe("cerebras");
     expect(config.serviceRouting?.llmText?.transport).toBe("direct");

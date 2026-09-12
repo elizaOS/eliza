@@ -15,6 +15,10 @@
 import { beforeEach, expect, mock, test } from "bun:test";
 import * as realResolveSharedAgent from "@/lib/services/shared-runtime/resolve-shared-agent";
 
+const admissionActual = {
+  ...(await import("@/lib/services/organization-inference-admission")),
+};
+
 // ---------------------------------------------------------------------------
 // Route seam: scope resolution is not under test; execution + billing are real.
 // ---------------------------------------------------------------------------
@@ -89,6 +93,7 @@ mock.module("@/lib/services/inference-admission-snapshot", () => ({
   inferenceRateLimitConfig: () => ({ windowMs: 60_000, maxRequests: 120 }),
 }));
 mock.module("@/lib/services/organization-inference-admission", () => ({
+  ...admissionActual,
   admitOrganizationInference: async (params: {
     context: { requestId: string; metadata?: Record<string, unknown> };
   }) => {

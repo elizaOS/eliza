@@ -1,9 +1,11 @@
 /** Production Family Operations adapter over owner-authorized local APIs. */
 
+import { client } from "@elizaos/ui/api";
 import type {
   MonthlyFamilyDraft,
   MonthlyFamilyPacket,
 } from "../../lifeops/family-coordination/index.js";
+import type { FamilyEmailOptions } from "../../lifeops/family-workflows/runtime.js";
 import type { ParentingAgreementView } from "../../lifeops/household/agreement-knowledge.js";
 import type {
   SchoolCalendarRunReview,
@@ -58,12 +60,24 @@ async function agreementContentIdentity(input: {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    credentials: "include",
-    ...init,
-    headers: { "content-type": "application/json", ...init?.headers },
-  });
-  const payload = (await response.json().catch(() => null)) as {
+  const response = await client.rawRequest(
+    path,
+    {
+      ...init,
+      headers: { "content-type": "application/json", ...init?.headers },
+    },
+    {
+      allowNonOk: true,
+      // A workflow's accepted mutation is terminal for this request; polling
+      // it as agent startup could repeat the owner-authorized operation.
+      skipResume: true,
+      // PDF extraction and school discovery can include model work. Keep
+      // those mutations on the same ten-minute budget as a model-backed turn.
+      timeoutMs:
+        init?.method && init.method !== "GET" ? 10 * 60_000 : undefined,
+    },
+  );
+  const payload = (await response.json()) as {
     error?: { message?: string } | string;
   } | null;
   if (!response.ok) {
@@ -106,6 +120,8 @@ function schoolView(
         : "never_run",
     lastCheckedAt: status.lastRun?.updatedAt ?? null,
     sourceUrl: status.config?.landingPageUrl ?? "",
+    schoolLevel: status.config?.schoolLevel ?? "all",
+    updateMode: status.config?.updateMode ?? "review",
     runId: status.lastRun?.runId,
     changes: review?.plan?.changes.flatMap((change) =>
       change.kind === "unchanged"
@@ -148,6 +164,7 @@ function packetView(
           recipientEntityId: persistence.draft.recipientEntityId,
           calendarPrivacyMode: persistence.draft.calendarPrivacyMode,
           body: persistence.draft.body,
+          email: persistence.draft.email,
           approvalId: persistence.approvalId ?? undefined,
         }
       : null,
@@ -198,16 +215,24 @@ async function loadPackets(): Promise<Loadable<FamilyPacketView[]>> {
 
 export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter = {
   async load(): Promise<FamilyOperationsSnapshot> {
-    const [agreements, calendarLinks, school, packets] = await Promise.all([
-      loadSection<ParentingAgreementView[]>(
-        "/api/lifeops/agreements",
-        "agreements",
-      ),
-      loadSection<LinkedCalendarView[]>("/api/lifeops/calendar/links", "links"),
-      loadSchool(),
-      loadPackets(),
-    ]);
-    return { agreements, calendarLinks, school, packets };
+    const [agreements, calendarLinks, school, packets, emailOptions] =
+      await Promise.all([
+        loadSection<ParentingAgreementView[]>(
+          "/api/lifeops/agreements",
+          "agreements",
+        ),
+        loadSection<LinkedCalendarView[]>(
+          "/api/lifeops/calendar/links",
+          "links",
+        ),
+        loadSchool(),
+        loadPackets(),
+        loadSection<FamilyEmailOptions>(
+          "/api/lifeops/family-workflows/email-options",
+          "options",
+        ),
+      ]);
+    return { agreements, calendarLinks, school, packets, emailOptions };
   },
   async uploadAgreement(input) {
     if (input.file.type !== "application/pdf") {
@@ -412,6 +437,12 @@ export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter = {
       body: JSON.stringify({}),
     });
   },
+  async configureSchool(input) {
+    await request("/api/lifeops/family-workflows/school/source", {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
   async approveSchoolDiff(runId) {
     await request("/api/lifeops/family-workflows/school/apply", {
       method: "POST",
@@ -433,7 +464,17 @@ export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter = {
           recipient: input.recipient,
           recipientEntityId: input.recipientEntityId,
           calendarPrivacyMode: input.calendarPrivacyMode,
+          ...(input.email ? { email: input.email } : {}),
         }),
+      },
+    );
+  },
+  async revisePacketDraft(input) {
+    await request(
+      `/api/lifeops/family-workflows/packets/${encodeURIComponent(input.packetId)}/drafts/${input.expectedDraftVersion}/revision`,
+      {
+        method: "POST",
+        body: JSON.stringify({ body: input.body, subject: input.subject }),
       },
     );
   },

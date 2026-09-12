@@ -6,7 +6,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { runTaskWithSmithers } from "../../src/services/smithers-task-runner";
 import type {
   TaskApprovalResult,
@@ -26,6 +26,7 @@ interface FakeOpts {
   malformedApproval?: boolean; // requestApproval returns a result missing `approved`
   throwOnTurnCall?: number; // throw a fatal error on the Nth runTurn call
   hangOnTurnCall?: number;
+  onTurnStarted?: () => void;
   delayOnTurnMs?: number;
   abort?: { controller: AbortController; onCall: number }; // abort + hang on the Nth call
 }
@@ -57,6 +58,7 @@ class FakeExecutor implements TaskStepExecutor {
 
   async runTurn(ctx: TaskStepContext): Promise<TaskTurnResult> {
     this.turnCalls.push(ctx);
+    this.opts.onTurnStarted?.();
     const call = this.turnCalls.length;
     if (this.opts.throwOnTurnCall && call === this.opts.throwOnTurnCall) {
       throw new Error("fatal turn failure");
@@ -287,13 +289,31 @@ describe("runTaskWithSmithers (durable Smithers-backed coding task)", () => {
   it(
     "kills a stalled Smithers task at the configured execution deadline",
     async () => {
-      const fake = new FakeExecutor({ hangOnTurnCall: 1 });
-      await expect(
-        runTaskWithSmithers(spec(), fake, { timeoutMs: 5_000 }),
+      const controller = new AbortController();
+      onTestFinished(() => {
+        controller.abort();
+        vi.useRealTimers();
+      });
+      // Advance the parent deadline only after the real worker enters its
+      // stalled turn; subprocess startup speed is not the timeout contract.
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const started = Promise.withResolvers<void>();
+      const fake = new FakeExecutor({
+        hangOnTurnCall: 1,
+        onTurnStarted: () => started.resolve(),
+      });
+      const outcome = expect(
+        runTaskWithSmithers(spec(), fake, {
+          timeoutMs: 5_000,
+          signal: controller.signal,
+        }),
       ).rejects.toMatchObject({
         name: "ElizaError",
         code: "SMITHERS_TASK_TIMEOUT",
       });
+      await started.promise;
+      await vi.advanceTimersByTimeAsync(5_000);
+      await outcome;
       expect(fake.turnCalls).toHaveLength(1);
       expect(fake.cancellationSignals).toBe(1);
     },

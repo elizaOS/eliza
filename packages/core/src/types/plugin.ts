@@ -836,7 +836,7 @@ export interface ViewCapability {
 export interface ViewScopedActionStep {
 	/** The interact capability this step dispatches. */
 	kind: "agent-fill" | "agent-click" | "agent-focus";
-	/** `useAgentElement` id in the declaring view this step acts on. */
+	/** `useAgentElement` id in the declaring view; may contain `{{param}}` target tokens. */
 	target: string;
 	/**
 	 * Value to fill. Required when `kind === "agent-fill"`, ignored otherwise.
@@ -878,7 +878,7 @@ export interface ViewScopedAction {
 	 */
 	steps: ViewScopedActionStep[];
 	/**
-	 * Action parameter names referenced by `{{param}}` tokens in step values.
+	 * Action parameter names referenced by `{{param}}` tokens in step values or targets.
 	 * Declared so the planner surfaces them and the host can validate presence
 	 * before dispatching. Empty when the action's steps are fully literal.
 	 */
@@ -909,6 +909,8 @@ export interface ViewDeclaration {
 	 * Used as the URL segment: `/api/views/<id>/bundle.js`.
 	 */
 	id: string;
+	/** Built-in fallback only: package that may replace this view at the same id and path. */
+	fallbackFor?: string;
 	/** Display label shown in the view manager and agent responses. */
 	label: string;
 	/** Caller-role requirement enforced at every server/view interaction boundary. */

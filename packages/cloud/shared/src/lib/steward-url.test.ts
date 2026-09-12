@@ -1,7 +1,7 @@
 /** Exercises Steward URL resolution with deterministic browser-host fixtures. */
 import { afterEach, describe, expect, test } from "bun:test";
 import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
-import { resolveBrowserStewardApiUrl } from "./steward-url";
+import { resolveBrowserStewardApiUrl, resolveServerStewardApiUrlFromEnv } from "./steward-url";
 
 const originalLocation = globalThis.location;
 
@@ -39,4 +39,27 @@ describe("resolveBrowserStewardApiUrl", () => {
 
     expect(resolveBrowserStewardApiUrl()).toBe("https://example.pages.dev/steward");
   });
+});
+
+describe("owned server login routing", () => {
+  test("uses the owned service when a legacy upstream remains configured", () => {
+    expect(
+      resolveServerStewardApiUrlFromEnv({
+        LOGIN_API_URL: "https://login.example.test/",
+        STEWARD_API_URL: "https://legacy.example.test",
+      }),
+    ).toBe("https://login.example.test");
+  });
+
+  test.each(["", "not a URL", "ftp://login.example.test", 123])(
+    "rejects invalid authoritative configuration %j without legacy fallback",
+    (value) => {
+      expect(() =>
+        resolveServerStewardApiUrlFromEnv({
+          LOGIN_API_URL: value,
+          STEWARD_API_URL: "https://legacy.example.test",
+        }),
+      ).toThrow(expect.objectContaining({ code: "LOGIN_UPSTREAM_URL_INVALID" }));
+    },
+  );
 });

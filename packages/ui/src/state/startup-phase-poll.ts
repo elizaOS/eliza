@@ -53,7 +53,10 @@ import {
   isPersonalSharedElizaId,
   resolveCloudEnvironmentBase,
 } from "../utils/cloud-agent-base";
-import { isTerminalDedicatedCloudAgentErrorState as classifyTerminalDedicatedCloudAgentErrorState } from "./dedicated-cloud-agent-error";
+import {
+  isTerminalDedicatedCloudAgentErrorState as classifyTerminalDedicatedCloudAgentErrorState,
+  describeStoppedDedicatedCloudAgent,
+} from "./dedicated-cloud-agent-error";
 import {
   asApiLikeError,
   deriveFirstRunResumeFieldsFromConfig,
@@ -176,14 +179,21 @@ export function shouldFallBackToLocalOrigin(args: {
 }): boolean {
   // A structured HTTP status means the server responded — not a wedge.
   if (typeof asApiLikeError(args.error)?.status === "number") return false;
-  // NEVER abandon a dedicated cloud agent base (<id>.cloud.eliza.app) for the
-  // page origin. A connection-level failure there means the agent is still
-  // starting / transiently unreachable — the correct move is to keep polling
-  // IT, not repoint at cloud.eliza.app, which serves no backend. That
-  // repoint is the actual trigger of the "Backend Unreachable / Backend API
-  // routes are unavailable on this origin (404)" crash card: once the base is
-  // the app origin, the next /api/first-run/status 404s and dead-ends startup.
-  if (isDedicatedCloudAgentBase(args.clientBaseUrl)) return false;
+  // NEVER abandon an Eliza Cloud managed base for the page origin. A
+  // connection-level failure there means the Shared adapter, Dedicated agent,
+  // or control plane is transiently unreachable — the correct move is to keep
+  // polling IT, not repoint at cloud.eliza.app, which serves renderer assets
+  // but no same-origin agent backend. That repoint is the actual trigger of
+  // the "Backend Unreachable / Backend API routes are unavailable on this
+  // origin (404)" crash card: once the base is the app origin, the next
+  // /api/status probe 404s and dead-ends startup.
+  if (
+    isDedicatedCloudAgentBase(args.clientBaseUrl) ||
+    isManagedCloudSharedAgentBase(args.clientBaseUrl) ||
+    isElizaCloudControlPlaneAgentlessBase(args.clientBaseUrl)
+  ) {
+    return false;
+  }
   return isRecoverableRemoteBase(args);
 }
 
@@ -644,13 +654,12 @@ export async function runPollingBackend(
     !cancelled.current &&
     effectRunRef.current === effectRunId &&
     !ctx?.persistedActiveServer &&
+    !ctx?.restoredActiveServer &&
     !ctx?.hadPriorFirstRun &&
-    (freshCloudOnlyTarget || (isViteDevUiShell() && isSameOriginProxyBase()))
+    freshCloudOnlyTarget
   ) {
     routeToOfflineFirstRun(
-      freshCloudOnlyTarget
-        ? "fresh cloud-only desktop has no saved agent; opening Cloud sign-in onboarding"
-        : "dev web shell has no saved backend target; skipping same-origin API proxy probe",
+      "fresh cloud-only desktop has no saved agent; opening Cloud sign-in onboarding",
     );
     return;
   }
@@ -1081,6 +1090,18 @@ export async function runPollingBackend(
       return;
     } catch (err) {
       const ae = asApiLikeError(err);
+      const stopped = describeStoppedDedicatedCloudAgent({
+        status: ae?.status,
+        code: ae?.code,
+        clientBaseUrl: client.getBaseUrl(),
+        phase: "starting-backend",
+      });
+      if (stopped) {
+        deps.setStartupError(stopped);
+        deps.setFirstRunLoading(false);
+        dispatch({ type: "AGENT_STOPPED" });
+        return;
+      }
       tracedPollFailures += 1;
       if (tracedPollFailures <= 5 || tracedPollFailures % 10 === 0) {
         const failureMessage =
@@ -1311,16 +1332,18 @@ export async function runPollingBackend(
       if (
         isViteDevUiShell() &&
         !policy.supportsLocalRuntime &&
+        !ctx?.persistedActiveServer &&
+        !ctx?.restoredActiveServer &&
+        !ctx?.hadPriorFirstRun &&
         isSameOriginProxyBase() &&
         (ae?.status === undefined ||
           ae.status === 502 ||
           ae.status === 503 ||
           ae.status === 504)
       ) {
-        // Scope this destructive reset to the dev UI shell (port 2138) only.
-        // On hosted web (cloud.eliza.app) a transient gateway 5xx must NOT
-        // eject an established user to onboarding — it falls through to the
-        // normal retry/backoff loop below instead.
+        // A genuinely fresh renderer without a backend may offer setup.
+        // Never erase an established or detected runtime because its dev
+        // proxy briefly failed during a reload; retry through the normal gate.
         routeToOfflineFirstRun(
           ae?.status === undefined
             ? "same-origin API proxy failed without an HTTP response"

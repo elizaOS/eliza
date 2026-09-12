@@ -145,6 +145,7 @@ export type StartupEvent =
   | { type: "AGENT_RUNNING" }
   | { type: "AGENT_STARTING" }
   | { type: "AGENT_ERROR"; message: string }
+  | { type: "AGENT_STOPPED" }
   | { type: "AGENT_TIMEOUT" }
   | { type: "AGENT_POLL_RETRY" }
   | { type: "CLOUD_AGENT_SELECTION_REQUIRED" }
@@ -168,6 +169,17 @@ export function startupReducer(
 ): StartupState {
   if (event.type === "RESET") {
     return INITIAL_STARTUP_STATE;
+  }
+  if (
+    event.type === "AGENT_STOPPED" &&
+    (state.phase === "polling-backend" || state.phase === "starting-runtime")
+  ) {
+    return {
+      phase: "error",
+      reason: "agent-stopped",
+      message: "Your Dedicated agent is shut down.",
+      timedOut: false,
+    };
   }
 
   switch (state.phase) {

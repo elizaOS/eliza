@@ -7,6 +7,10 @@
 
 import type { ActionResult, ViewType } from "@elizaos/core";
 import { subviewsForView } from "./settings-subviews.js";
+import {
+	CALLER_VIEW_CATALOG_SCOPE,
+	VIEW_CATALOG_SCOPE_CONTEXT,
+} from "./view-catalog-scope.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
 
 function formatViewTable(
@@ -53,7 +57,7 @@ export async function runViewsList({
 	viewType,
 }: RunViewsListInput): Promise<ActionResult> {
 	const views = await client.listViews({ viewType });
-	const text = formatViewTable(views, viewType);
+	const text = `${formatViewTable(views, viewType)}\n\n${VIEW_CATALOG_SCOPE_CONTEXT}`;
 	const viewsWithSubviews = views.map((view) => {
 		const subviews = subviewsForView(view.id);
 		return subviews ? { ...view, subviews } : view;
@@ -67,6 +71,6 @@ export async function runViewsList({
 			viewType: viewType ?? "gui",
 			viewCount: views.length,
 		},
-		data: { views: viewsWithSubviews },
+		data: { views: viewsWithSubviews, catalogScope: CALLER_VIEW_CATALOG_SCOPE },
 	};
 }
