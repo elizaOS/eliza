@@ -1,22 +1,27 @@
 /**
- * @elizaos-plugins/plugin-sigui
+ * @elizaos/plugin-sigui
  *
- * Sigui DePIN AI Security Oracle — ElizaOS Plugin
+ * Sigui DePIN AI Security Oracle — ElizaOS Plugin v2
  *
- * Intercepts transaction calls from ElizaOS agents and evaluates them
- * in real-time using the Sigui Protocol API v2:
- *   - Vision inference (Qwen2-VL-7B on AMD MI300X GPU)
- *   - ZK-Sigui proofs (Groth16 BN128 simulation)
- *   - Dynamic threat blacklist (feedback loop)
- *
- * @module @elizaos-plugins/plugin-sigui
- * @version 3.0.0
+ * @module @elizaos/plugin-sigui
+ * @version 3.1.0
  * @license MIT
  */
 
-import type { Plugin, IAgentRuntime, Memory, State, Action, Provider, ActionExample, HandlerCallback } from "@elizaos/core";
+import type {
+  Plugin,
+  IAgentRuntime,
+  Memory,
+  State,
+  Action,
+  Provider,
+  ActionExample,
+  HandlerCallback,
+  ProviderResult,
+  ProviderExecutionContext,
+} from "@elizaos/core";
 
-// ─── Environment ────────────────────────────────────────────────────────────
+// ─── Config ──────────────────────────────────────────────────────────────────
 
 export interface SiguiConfig {
   SIGUI_API_URL: string;
@@ -26,32 +31,18 @@ export interface SiguiConfig {
 }
 
 export async function validateSiguiConfig(runtime: IAgentRuntime): Promise<SiguiConfig> {
-  const url = runtime.getSetting("SIGUI_API_URL") || process.env.SIGUI_API_URL || "http://127.0.0.1:8000";
+  const url = runtime.getSetting("SIGUI_API_URL") || process.env.SIGUI_API_URL;
   const key = runtime.getSetting("SIGUI_API_KEY") || process.env.SIGUI_API_KEY;
   const requireZk = (runtime.getSetting("SIGUI_REQUIRE_ZK") || process.env.SIGUI_REQUIRE_ZK || "false") === "true";
   const failClosed = (runtime.getSetting("SIGUI_FAIL_CLOSED") || process.env.SIGUI_FAIL_CLOSED || "true") === "true";
-  return { SIGUI_API_URL: url, SIGUI_API_KEY: key, SIGUI_REQUIRE_ZK: requireZk, SIGUI_FAIL_CLOSED: failClosed };
+  return { SIGUI_API_URL: url ?? "http://127.0.0.1:8000", SIGUI_API_KEY: key, SIGUI_REQUIRE_ZK: requireZk, SIGUI_FAIL_CLOSED: failClosed };
 }
 
-// ─── Action: EVALUATE_TRANSACTION_SECURITY ───────────────────────────────────
+// ─── API helper ───────────────────────────────────────────────────────────────
 
-const EVALUATION_TEMPLATE = `
-Extract information about the blockchain transaction from the user's message.
-
-User Message:
-{{message.content.text}}
-
-Extract:
-- action_type: The type of action ('transfer', 'swap', 'approve', 'mint', 'interact'). Default: 'transfer'.
-- destination: The destination address or contract. Default: "0x0000000000000000000000000000000000000000".
-- amount: Numerical amount involved. Default: 0.
-- chain: Blockchain network ('ethereum', 'aptos', 'starknet', 'solana', 'polygon', 'arc'). Default: 'ethereum'.
-`;
-
-async function callSiguiApi(config: SiguiConfig, payload: object): Promise<any> {
+async function callSiguiApi(config: SiguiConfig, payload: object): Promise<Record<string, unknown>> {
   const zkParam = config.SIGUI_REQUIRE_ZK ? "?zk=true" : "";
   const endpoint = `${config.SIGUI_API_URL}/v2/evaluate${zkParam}`;
-
   const response = await fetch(endpoint, {
     method: "POST",
     headers: {
@@ -60,13 +51,11 @@ async function callSiguiApi(config: SiguiConfig, payload: object): Promise<any> 
     },
     body: JSON.stringify(payload),
   });
-
-  if (!response.ok) {
-    throw new Error(`Sigui API returned ${response.status}: ${response.statusText}`);
-  }
-
-  return response.json();
+  if (!response.ok) throw new Error(`Sigui API returned ${response.status}: ${response.statusText}`);
+  return response.json() as Promise<Record<string, unknown>>;
 }
+
+// ─── Action: EVALUATE_TRANSACTION_SECURITY ───────────────────────────────────
 
 export const evaluateTransactionAction: Action = {
   name: "EVALUATE_TRANSACTION_SECURITY",
@@ -74,95 +63,70 @@ export const evaluateTransactionAction: Action = {
   description:
     "Evaluates a blockchain transaction or address using the Sigui Protocol AI Security Oracle (AMD MI300X + ZK proofs) to detect Drain Stars, Mixer Chains, and Rug Pulls before execution.",
 
-  validate: async (runtime: IAgentRuntime, _message: Memory) => {
-    await validateSiguiConfig(runtime);
-    return true;
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
+    const url = runtime.getSetting("SIGUI_API_URL") || process.env.SIGUI_API_URL;
+    // Only route when explicitly configured — avoids posting to loopback on unconfigured agents
+    return !!url;
   },
 
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state?: State,
+    _state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<boolean> => {
+  ): Promise<void> => {
     const config = await validateSiguiConfig(runtime);
 
-    // Naive extraction — in production compose with LLM
-    const text = (message.content as any)?.text || "";
+    const text = (message.content as Record<string, unknown>)?.text as string ?? "";
     const addressMatch = text.match(/0x[a-fA-F0-9]{40}/);
     const amountMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:USDC|ETH|BTC|SOL|APT)/i);
 
     const payload = {
       action_type: "transfer",
-      destination: addressMatch ? addressMatch[0] : "0x0000000000000000000000000000000000000000",
+      destination: addressMatch?.[0] ?? "0x0000000000000000000000000000000000000000",
       amount_usdc: amountMatch ? parseFloat(amountMatch[1]) : 0,
       chain: "ethereum",
     };
 
     try {
       const result = await callSiguiApi(config, payload);
-
-      const decision: string = result.decision || "BLOCK";
-      const riskScore: number = result.risk_score || 1.0;
-      const reason: string = result.reason || "Threat detected by Sigui AI Oracle";
-      const pattern: string = result.pattern || "UNKNOWN";
-      const zkProof: boolean = !!result.zk_proof?.verified;
-
-      const zkBadge = zkProof ? " [ZK-Verified ✓]" : "";
+      const decision = (result.decision as string) ?? "BLOCK";
+      const riskScore = (result.risk_score as number) ?? 1.0;
+      const reason = (result.reason as string) ?? "Threat detected by Sigui AI Oracle";
+      const pattern = (result.pattern as string) ?? "UNKNOWN";
+      const zkVerified = !!(result.zk_proof as Record<string, unknown>)?.verified;
+      const zkBadge = zkVerified ? " [ZK-Verified ✓]" : "";
 
       let responseText: string;
       if (decision === "BLOCK") {
-        responseText = `🚨 **SIGUI SECURITY ALERT — BLOCKED**${zkBadge}\n\nPattern: **${pattern}** | Risk: **${(riskScore * 100).toFixed(0)}%**\n\n${reason}\n\nThis transaction has been blocked by Sigui AI Oracle.`;
+        responseText = `🚨 **SIGUI SECURITY ADVISORY — BLOCK**${zkBadge}\n\nPattern: **${pattern}** | Risk: **${(riskScore * 100).toFixed(0)}%**\n\n${reason}\n\n⚠️ Human review required before executing this transaction.`;
       } else if (decision === "ESCALATE") {
         responseText = `⚠️ **SIGUI WARNING — ESCALATION REQUIRED**${zkBadge}\n\nPattern: **${pattern}** | Risk: **${(riskScore * 100).toFixed(0)}%**\n\nAwaiting human review before proceeding.`;
       } else {
-        responseText = `✅ **SIGUI CLEARED**${zkBadge}\n\nPattern: **${pattern}** | Risk: **${(riskScore * 100).toFixed(0)}%**\n\nTransaction to ${payload.destination.slice(0, 10)}… is safe to execute.`;
+        responseText = `✅ **SIGUI CLEARED**${zkBadge}\n\nPattern: **${pattern}** | Risk: **${(riskScore * 100).toFixed(0)}%**\n\nNo known threat topology detected for ${payload.destination.slice(0, 10)}….`;
       }
 
-      if (callback) callback({ text: responseText, content: result });
-
-      if (decision === "BLOCK" && config.SIGUI_FAIL_CLOSED) {
-        return false;
-      }
-      return true;
-    } catch (error: any) {
+      if (callback) await callback({ text: responseText, content: result as Record<string, unknown> });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : "unknown error";
       if (callback) {
-        callback({
-          text: `❌ Sigui Oracle unreachable: ${error.message}. ${config.SIGUI_FAIL_CLOSED ? "Failing closed for safety." : "Proceeding with caution."}`,
-          content: { error: error.message },
+        await callback({
+          text: `❌ Sigui Oracle unreachable: ${msg}. ${config.SIGUI_FAIL_CLOSED ? "Halting for safety — human review required." : "Proceeding with caution."}`,
+          content: { error: msg },
         });
       }
-      return !config.SIGUI_FAIL_CLOSED;
     }
   },
 
   examples: [
     [
-      {
-        user: "{{user1}}",
-        content: { text: "Send 500 USDC to 0x1234567890123456789012345678901234567890" },
-      },
-      {
-        user: "{{agent}}",
-        content: {
-          text: "Let me verify this address with the Sigui AI Oracle before sending.",
-          action: "EVALUATE_TRANSACTION_SECURITY",
-        },
-      },
+      { user: "{{user1}}", content: { text: "Send 500 USDC to 0x1234567890123456789012345678901234567890" } },
+      { user: "{{agent}}", content: { text: "Let me verify this address with the Sigui AI Oracle before sending.", action: "EVALUATE_TRANSACTION_SECURITY" } },
     ],
     [
-      {
-        user: "{{user1}}",
-        content: { text: "Is 0x000000000000000000000000000000000000dead a safe contract?" },
-      },
-      {
-        user: "{{agent}}",
-        content: {
-          text: "Running a Sigui deep scan to detect honeypots or Drain Stars...",
-          action: "EVALUATE_TRANSACTION_SECURITY",
-        },
-      },
+      { user: "{{user1}}", content: { text: "Is 0x000000000000000000000000000000000000dead a safe contract?" } },
+      { user: "{{agent}}", content: { text: "Running a Sigui deep scan to detect honeypots or Drain Stars...", action: "EVALUATE_TRANSACTION_SECURITY" } },
     ],
   ] as ActionExample[][],
 };
@@ -170,22 +134,30 @@ export const evaluateTransactionAction: Action = {
 // ─── Provider: Threat Intel ──────────────────────────────────────────────────
 
 export const threatIntelProvider: Provider = {
-  get: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<string> => {
+  name: "SIGUI_THREAT_INTEL",
+  description: "Injects live Sigui threat intelligence — recently learned malicious patterns and flagged addresses — into the agent's context.",
+
+  get: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    _state: State,
+    _context?: ProviderExecutionContext
+  ): Promise<ProviderResult> => {
     try {
       const config = await validateSiguiConfig(runtime);
       const resp = await fetch(`${config.SIGUI_API_URL}/api/threat-intel`, {
         headers: config.SIGUI_API_KEY ? { Authorization: `Bearer ${config.SIGUI_API_KEY}` } : {},
       });
-      if (!resp.ok) return "Sigui threat intel unavailable.";
-      const data = await resp.json();
-      const patterns = (data.patterns || []).slice(0, 5);
-      if (patterns.length === 0) return "No active threats detected by Sigui.";
-      const lines = patterns.map(
-        (p: any) => `• ${p.destination?.slice(0, 12)}… — ${p.pattern} (conf: ${(p.confidence * 100).toFixed(0)}%)`
+      if (!resp.ok) return { text: "Sigui threat intel unavailable." };
+      const data = await resp.json() as Record<string, unknown>;
+      const patterns = ((data.patterns as unknown[]) ?? []).slice(0, 5);
+      if (patterns.length === 0) return { text: "No active threats detected by Sigui." };
+      const lines = (patterns as Record<string, unknown>[]).map(
+        (p) => `• ${(p.destination as string)?.slice(0, 12)}… — ${p.pattern} (conf: ${((p.confidence as number) * 100).toFixed(0)}%)`
       );
-      return `**Sigui Live Threat Intel (last ${patterns.length} learned):**\n${lines.join("\n")}`;
+      return { text: `**Sigui Live Threat Intel (last ${patterns.length} learned):**\n${lines.join("\n")}` };
     } catch {
-      return "Sigui threat intel unavailable (oracle offline).";
+      return { text: "Sigui threat intel unavailable (oracle offline)." };
     }
   },
 };
