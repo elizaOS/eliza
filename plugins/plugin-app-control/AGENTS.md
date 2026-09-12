@@ -240,7 +240,12 @@ result is bound in memory to the exact runtime, message, actor, room, request
 text and sender role; caller metadata cannot supply it. Non-navigation decisions
 set the existing deny constraint. Requested/optional destinations still require
 the fresh authorized catalog, with canonical action execution and transport gates.
-Missing, malformed, uncertain, stale or unavailable selections retain the
+A fresh requested client-chat DM decision with navigationOnly=false and a
+VIEWS_SHOW candidate may leave its destination blank: the existing planner
+resolves it from the complete original request and a fresh role-filtered
+id/label/path index. Full descriptions and schemas remain available through
+VIEWS list. This cannot dispatch direct navigation or satisfy a prerequisite.
+Other missing, malformed, uncertain, stale or unavailable selections retain the
 separate live-catalog model classifier. No field handler executes navigation.
 
 Known structured Stage-1 aliases such as `Home` reuse the same canonical target

@@ -291,6 +291,98 @@ describe("same-turn contextual navigation", () => {
 			expect(prompts).toEqual([]);
 		},
 	);
+	it.each(["current", "stale", "optional", "voice", "no-candidate"])(
+		"delegates a destination-free requested decision only with current text-turn evidence: %s",
+		async (variant) => {
+			// Captured Stage-1 decision from the live conditional Notes/Calendar run.
+			const decision = {
+				disposition: variant === "optional" ? "optional" : "requested",
+				viewId: "",
+				singleViewOnly: false,
+				navigationOnly: false,
+				reason:
+					"Navigation destination is conditional on reading the note body and may be Calendar; current view is Notes.",
+			};
+			const ctx = context(
+				'Read the current exact body of "Seeker QA 1914" first. After you have the read result, if it contains "green", open Calendar; otherwise stay on Notes. Tell me the exact body. Do not change any records or turn on voice.',
+				{ disposition: "none", reason: "Fallback retained" },
+			);
+			ctx.runtime.actions.push({
+				name: "VIEWS_SHOW",
+			} as (typeof ctx.runtime.actions)[number]);
+			Object.assign(ctx.message.content, {
+				source: "client_chat",
+				channelType: variant === "voice" ? "VOICE_DM" : "DM",
+			});
+			ctx.messageHandler.plan.candidateActions =
+				variant === "no-candidate"
+					? ["NOTES_LIST"]
+					: ["NOTES_LIST", "VIEWS_SHOW"];
+			ctx.messageHandler.plan.intents = [
+				"read note Seeker QA 1914",
+				"open Calendar if body contains green",
+			];
+			extraViews = [
+				{
+					id: "calendar",
+					label: "Calendar",
+					pluginName: "calendar",
+					available: true,
+					path: "/calendar",
+				},
+				{
+					id: "dev",
+					label: "Developer",
+					pluginName: "developer",
+					available: true,
+					developerOnly: true,
+				},
+			];
+			const result = await runWithField(
+				ctx,
+				decision,
+				variant === "stale"
+					? () => {
+							ctx.message.content.text = "Never mind. Stay here.";
+						}
+					: undefined,
+			);
+			expect(result.errors).toEqual([]);
+			expect(ctx.messageHandler.plan.deterministicToolCall).toBeUndefined();
+			expect(ctx.messageHandler.plan.intents).toEqual([
+				"read note Seeker QA 1914",
+				"open Calendar if body contains green",
+			]);
+			if (variant !== "current") {
+				expect(prompts).toHaveLength(1);
+				expect(result.navigationBlock).toBe("forbidden");
+				return;
+			}
+			expect(prompts).toEqual([]);
+			expect(requestedPaths).toEqual(["/api/views"]);
+			expect(result.navigationBlock).toBeUndefined();
+			expect(ctx.messageHandler.plan.candidateActions).toEqual([
+				"NOTES_LIST",
+				"VIEWS_SHOW",
+			]);
+			const slices = ctx.messageHandler.plan.contextSlices ?? [];
+			const index = slices.find((slice) =>
+				slice.startsWith("Authorized destination index: "),
+			);
+			expect(index).toBeDefined();
+			if (!index) throw new Error("Missing authorized destination index");
+			expect(
+				JSON.parse(index.slice("Authorized destination index: ".length)),
+			).toEqual([
+				{ id: "observatory", label: "Observatory" },
+				{ id: "calendar", label: "Calendar", path: "/calendar" },
+			]);
+			expect(slices.join("\n")).toContain(
+				"read first and navigate only when the result satisfies the condition",
+			);
+			expect(slices.join("\n")).toContain("VIEWS action=list");
+		},
+	);
 	it("validates a Stage-1 requested destination against the live role-filtered catalog without repeating inference", async () => {
 		const ctx = context("Show the observatory and draft the event", {
 			disposition: "none",
@@ -609,16 +701,34 @@ describe("same-turn contextual navigation", () => {
 			expect(result.navigationBlock).toBe("forbidden");
 		},
 	);
-	it.each(["text", "actor", "room", "id", "runtime", "role"])(
-		"rejects a Stage-1 decision after its %s binding changes",
-		async (binding) => {
+	it.each(
+		["text", "actor", "room", "id", "runtime", "role"].flatMap((binding) =>
+			["observatory", ""].map((viewId) => ({ binding, viewId })),
+		),
+	)(
+		"rejects a Stage-1 decision with viewId=$viewId after its $binding binding changes",
+		async ({ binding, viewId }) => {
 			const ctx = context("Show the observatory", {
 				disposition: "forbidden",
 				reason: "fresh decision",
 			});
+			Object.assign(ctx.message.content, {
+				source: "client_chat",
+				channelType: "DM",
+			});
+			ctx.runtime.actions.push({
+				name: "VIEWS_SHOW",
+			} as (typeof ctx.runtime.actions)[number]);
+			ctx.messageHandler.plan.candidateActions = ["VIEWS_SHOW"];
 			const result = await runWithField(
 				ctx,
-				{ disposition: "requested", viewId: "observatory", reason: "old" },
+				{
+					disposition: "requested",
+					viewId,
+					reason: "old",
+					singleViewOnly: false,
+					navigationOnly: false,
+				},
 				() => {
 					if (binding === "text") ctx.message.content.text = "Stay here";
 					if (binding === "actor")

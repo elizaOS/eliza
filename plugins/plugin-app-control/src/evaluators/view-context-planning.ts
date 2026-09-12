@@ -126,10 +126,18 @@ export const viewContinuationField: ResponseHandlerFieldEvaluator<ContextualNavi
 				// decision. Keep denial instead of paying for reclassification.
 				return { disposition: "none", reason: record.reason };
 			}
+			// A same-turn requested decision can leave target selection to the
+			// existing planner. Preserve it only with an explicit non-direct scope;
+			// evaluate() still checks the client, candidate and fresh catalog.
+			const plannerSelectsDestination =
+				record.disposition === "requested" &&
+				!record.viewId.trim() &&
+				record.navigationOnly === false &&
+				typeof record.singleViewOnly === "boolean";
 			if (
 				(record.disposition === "requested" ||
 					record.disposition === "optional") &&
-				record.viewId.trim()
+				(record.viewId.trim() || plannerSelectsDestination)
 			)
 				return {
 					disposition: record.disposition,
@@ -278,10 +286,37 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 				],
 			};
 		getStreamingContext()?.abortSignal?.throwIfAborted();
-		// Stage 1 already made the navigation judgment. Resolve its structured
-		// alias through the same vocabulary as VIEWS, then recheck the fresh
-		// authorized catalog. This never reads intent from user text or grants
-		// access to an absent, unavailable, private or developer-only view.
+		if (
+			intent?.disposition === "requested" &&
+			intent.viewId === "" &&
+			intent.navigationOnly === false &&
+			message.content.source === "client_chat" &&
+			message.content.channelType === "DM" &&
+			messageHandler.plan.candidateActions?.includes("VIEWS_SHOW") &&
+			runtime.actions.some((action) => action.name === "VIEWS_SHOW")
+		) {
+			// Permission is this turn's bound model judgment; destination choice
+			// belongs to the planner that must run for the pending domain work.
+			// This never dispatches navigation or treats a prerequisite as met.
+			setNavigationConstraint(message, "allow", intent.reason);
+			return {
+				requiresTool: true,
+				clearReply: true,
+				clearCandidateActions: true,
+				addCandidateActions: [...messageHandler.plan.candidateActions],
+				addContextSlices: [
+					VIEW_CATALOG_SCOPE_CONTEXT,
+					`Navigation intent: ${JSON.stringify(intent)}. Destination selection is pending; no navigation has executed.`,
+					CONDITIONAL_NAVIGATION_RULE,
+					"Resolve requested destinations in the existing plan from the complete original request and this index. Preserve all domain work, ordering, restrictions and conditions. Use VIEWS_SHOW with an exact authorized id and a unique navigationStepId only when its prerequisites are satisfied. Report success only from actual navigation and domain receipts.",
+					`Authorized destination index: ${JSON.stringify(catalog.map(({ id, label, path }) => ({ id, label, path })))}`,
+					"This index contains every currently authorized destination identity. Descriptions, capabilities and interaction schemas remain available through a fresh VIEWS action=list read (discover VIEWS if needed). Read them before an unfamiliar destination or interaction; never invent a target or parameters.",
+				],
+			};
+		}
+		// Resolve a supplied structured alias through the same vocabulary as
+		// VIEWS, then recheck the fresh authorized catalog. Never infer intent
+		// from user text or accept an unavailable/private/developer-only target.
 		const stagedViewId = intent?.viewId;
 		if (intent && !catalog.some((view) => view.id === stagedViewId)) {
 			const canonicalTarget = resolveCanonicalViewTarget(intent.viewId);
