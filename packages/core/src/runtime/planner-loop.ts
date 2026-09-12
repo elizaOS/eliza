@@ -2421,6 +2421,9 @@ function appendPendingToolQueueFeedbackEvent(
 
 const RESTORE_CONTEXT_TOOL: ToolDefinition = {
 	name: "RESTORE_CONTEXT",
+	// An unflagged tool disables request-wide strictness on Cerebras, including
+	// required turn-scope arguments on the surrounding action tools.
+	strict: true,
 	description:
 		"Read missing context: scope=history restores original dialogue and retrieval diagnostics, scope=providers reads deferred provider bodies, scope=full (default) restores both. Use history for missing corrections or referents; a note-read tool already supplies note bodies. This reads the complete in-memory turn context once, performs no domain action and emits no user reply. Call it alone before planning effects; other calls in the same response will not execute.",
 	parameters: {

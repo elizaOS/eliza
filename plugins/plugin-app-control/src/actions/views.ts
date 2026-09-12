@@ -4023,6 +4023,9 @@ export function createShowViewAction(deps: ViewsActionDeps = {}): Action {
 			?.filter(({ name }) => name === "view" || name === "navigationStepId")
 			.map((parameter) => ({ ...parameter, required: true })),
 		allowAdditionalParameters: false,
+		// This closed child has only required arguments; the polymorphic
+		// parent's opt-out would disable strictness for the entire planner call.
+		toolSchemaStrict: true,
 		validate: (runtime, message, state, options) =>
 			parent.validate(runtime, message, state, navigationOptions(options)),
 		handler: (runtime, message, state, options, callback) =>

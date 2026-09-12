@@ -4,12 +4,13 @@
  * writes or live provider calls run; stored contexts are checked unchanged.
  */
 import { describe, expect, it, vi } from "vitest";
+import { buildPlannerToolsFromActions } from "../../actions/to-tool";
 import { validateSchema } from "../../actions/validate-tool-args";
 import { plannerRequiredPolicy, plannerTemplate } from "../../prompts/planner";
 import { renderMessageHandlerModelInput } from "../../services/message/stage1-input";
 import type { CompletionContextSelection } from "../../types/components";
 import type { ContextObject } from "../../types/context-object";
-import type { ChatMessage } from "../../types/model";
+import type { ChatMessage, ToolDefinition } from "../../types/model";
 import { completionContextFieldEvaluator } from "../builtin-field-evaluators";
 import {
 	COMPLETION_CONTEXT_SCHEMA,
@@ -814,15 +815,20 @@ describe("planner source selection and restoration", () => {
 		const execute = vi.fn(async () => ({ success: true }));
 		await runPlannerLoop({
 			context: full,
-			tools: [
+			tools: buildPlannerToolsFromActions([
 				{
 					name: "NOTES",
 					description: "read",
-					parameters: { type: "object", properties: {} },
+					parameters: [],
 				},
-			],
+			]),
 			runtime: {
 				useModel: async (_type, params) => {
+					// Cerebras enforces strictness request-wide: an unflagged
+					// protocol tool would disable the action's required arguments.
+					for (const tool of params.tools as ToolDefinition[]) {
+						expect(tool.strict).toBe(true);
+					}
 					calls.push(JSON.stringify(params));
 					return calls.length === 1
 						? {
