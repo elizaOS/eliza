@@ -1,0 +1,10 @@
+{
+  "package": "elizaos-plugin-aiworker",
+  "repository": "github:ai-worker227/aiworker-examples",
+  "directory": "elizaos",
+  "kind": "plugin",
+  "description": "aiworker's paid x402 data routes as ElizaOS actions: DeFi yields and protocol snapshots, page-to-Markdown, Base token and wallet checks, Polymarket resolution, odds, history, screener and backtests, fact checks, sourced briefs and headline search. Each call pays its own USDC on Base from the agent's wallet; nothing is settled unless the request succeeds.",
+  "homepage": "https://aiworker.duckdns.org",
+  "version": "0.1.2",
+  "tags": ["data", "x402", "usdc", "base", "defi", "polymarket", "web-scraping", "news"]
+}
