@@ -112,16 +112,7 @@ function getZonedDateParts(date: Date, timeZone: string): LocalDateTimeParts {
   };
 }
 
-function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    timeZoneName: "shortOffset",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).formatToParts(date);
-  const token = parts.find((part) => part.type === "timeZoneName")?.value?.trim() ?? "GMT";
+export function parseOffsetToken(token: string): number {
   if (token === "GMT" || token === "UTC") {
     return 0;
   }
@@ -131,6 +122,19 @@ function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
   }
   const sign = match[1] === "+" ? 1 : -1;
   return sign * (Number(match[2]) * 60 + Number(match[3] ?? "0"));
+}
+
+export function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    timeZoneName: "shortOffset",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const token = parts.find((part) => part.type === "timeZoneName")?.value?.trim() ?? "GMT";
+  return parseOffsetToken(token);
 }
 
 function localPartsToEpochMs(parts: LocalDateTimeParts): number {

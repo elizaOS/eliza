@@ -10,6 +10,7 @@ import {
   formatInstantAsRfc3339InTimeZone,
   getLocalDateKey,
   getTimeZoneOffsetMinutes,
+  parseOffsetToken,
   getWeekdayForLocalDate,
   getZonedDateParts,
 } from "./time.js";
@@ -48,6 +49,14 @@ describe("getTimeZoneOffsetMinutes", () => {
 
   it("parses half-hour offsets (Asia/Kolkata = +05:30)", () => {
     expect(getTimeZoneOffsetMinutes(noonUtcJan, "Asia/Kolkata")).toBe(330);
+  });
+
+  it("parses offset tokens including Unicode minus signs and UTC formats", () => {
+    expect(parseOffsetToken("GMT\u22127")).toBe(-420);
+    expect(parseOffsetToken("UTC-5")).toBe(-300);
+    expect(parseOffsetToken("-07:00")).toBe(-420);
+    expect(parseOffsetToken("GMT+02:00")).toBe(120);
+    expect(parseOffsetToken("GMT-5")).toBe(-300);
   });
 });
 

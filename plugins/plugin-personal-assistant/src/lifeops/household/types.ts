@@ -429,6 +429,22 @@ export function normalizeGrantScopes(
 const RFC3339_INSTANT_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
 
+export function formatTimezoneOffsetToken(value: string): string {
+  if (value === "GMT" || value === "UTC") return "+00:00";
+  const match = /^(?:GMT|UTC)?([+-]|\u2212|\u2013|\u2014)(\d{1,2})(?::?(\d{2}))?$/i.exec(value ?? "");
+  if (!match?.[1] || !match?.[2]) {
+    throw new HouseholdCoordinationError(
+      "Could not resolve the IANA time-zone offset at the supplied instant",
+      "HOUSEHOLD_INVALID_CONTRACT",
+      { value },
+    );
+  }
+  const sign = match[1] === "+" ? "+" : "-";
+  const hours = match[2].padStart(2, "0");
+  const minutes = match[3] ? match[3].padStart(2, "0") : "00";
+  return `${sign}${hours}:${minutes}`;
+}
+
 function timezoneOffsetAt(instant: Date, timezone: string): string {
   const value = new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,
@@ -437,19 +453,7 @@ function timezoneOffsetAt(instant: Date, timezone: string): string {
   })
     .formatToParts(instant)
     .find((part) => part.type === "timeZoneName")?.value;
-  if (value === "GMT" || value === "UTC") return "+00:00";
-  const match = /^(?:GMT|UTC)?([+-]|\u2212|\u2013|\u2014)(\d{1,2})(?::?(\d{2}))?$/i.exec(value ?? "");
-  if (!match?.[1] || !match?.[2]) {
-    throw new HouseholdCoordinationError(
-      "Could not resolve the IANA time-zone offset at the supplied instant",
-      "HOUSEHOLD_INVALID_CONTRACT",
-      { timezone, instant: instant.toISOString() },
-    );
-  }
-  const sign = match[1] === "+" ? "+" : "-";
-  const hours = match[2].padStart(2, "0");
-  const minutes = match[3] ? match[3].padStart(2, "0") : "00";
-  return `${sign}${hours}:${minutes}`;
+  return formatTimezoneOffsetToken(value ?? "");
 }
 
 function localDateTimeAt(

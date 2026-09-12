@@ -41,3 +41,13 @@ describe("LifeOps service helpers sorting", () => {
     expect(sorted[2]?.id).toBe("occ-2");
   });
 });
+
+describe("parseOffsetToken", () => {
+  it("parses offset tokens including Unicode minus signs and UTC formats", () => {
+    expect(parseOffsetToken("GMT\u22127")).toBe(-420);
+    expect(parseOffsetToken("UTC-5")).toBe(-300);
+    expect(parseOffsetToken("-07:00")).toBe(-420);
+    expect(parseOffsetToken("GMT+02:00")).toBe(120);
+    expect(parseOffsetToken("GMT-5")).toBe(-300);
+  });
+});
