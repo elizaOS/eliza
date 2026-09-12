@@ -25,6 +25,9 @@ import os
 import ReplayKit
 import UIKit
 import Vision
+#if canImport(FoundationModels)
+import FoundationModels
+#endif
 
 // MARK: - Bridge plugin
 
@@ -475,31 +478,73 @@ public class ComputerUseBridge: CAPPlugin, CAPBridgedPlugin {
 
     // ── 6. Apple Foundation Models ───────────────────────────────────────────
 
+    // Generates one completion with the system language model. Compiled only
+    // when the SDK can import FoundationModels (Xcode 26+) and executed only
+    // on iOS 26+; every other build or device resolves
+    // `foundation_model_unavailable`. The framework reports no token
+    // accounting, so the result carries `text` and `elapsedMs` only (the TS
+    // contract leaves `tokensIn` / `tokensOut` optional).
     @objc public func foundationModelGenerate(_ call: CAPPluginCall) {
-        guard let prompt = call.getString("prompt") else {
+        guard let prompt = call.getString("prompt"), !prompt.isEmpty else {
             return resolveError(call, code: "internal_error", message: "prompt required")
         }
         guard isFoundationModelAvailable() else {
             return resolveError(call, code: "foundation_model_unavailable",
                                 message: "Apple Foundation Models requires iOS 26+ with Apple Intelligence enabled.")
         }
-        // Real implementation will load the system LanguageModel via the
-        // FoundationModels framework. We surface a clear unavailable error
-        // until the on-device target is validated. The shape below matches
-        // the TS contract so the JS side can already integrate.
-        let _ = prompt
-        let _ = call.getObject("options")
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *) {
+            let options = call.getObject("options") ?? [:]
+            let temperature = options["temperature"] as? Double
+            let maxTokens = options["maxTokens"] as? Int
+            let instruction = options["instruction"] as? String
+            let started = Date()
+            Task { [weak self] in
+                guard let self else { return }
+                do {
+                    let session: LanguageModelSession
+                    if let instruction, !instruction.isEmpty {
+                        session = LanguageModelSession(instructions: instruction)
+                    } else {
+                        session = LanguageModelSession()
+                    }
+                    var generation = GenerationOptions()
+                    if let temperature { generation.temperature = temperature }
+                    if let maxTokens { generation.maximumResponseTokens = maxTokens }
+                    let response = try await session.respond(to: prompt, options: generation)
+                    let elapsedMs = Int(Date().timeIntervalSince(started) * 1000)
+                    call.resolve([
+                        "ok": true,
+                        "data": [
+                            "text": response.content,
+                            "elapsedMs": elapsedMs,
+                        ] as [String: Any],
+                    ])
+                } catch {
+                    // Guardrail refusals, context-window overflow and unsupported
+                    // locales all surface here; the JS side treats any of them as
+                    // "the OS model did not answer" and leaves llama.cpp in charge.
+                    Self.log.error("foundationModelGenerate failed: \(error.localizedDescription, privacy: .public)")
+                    self.resolveError(call, code: "foundation_model_error", message: error.localizedDescription)
+                }
+            }
+            return
+        }
+        #endif
         resolveError(call, code: "foundation_model_unavailable",
-                     message: "Foundation Models adapter is unavailable pending on-device validation.")
+                     message: "This build was compiled without the FoundationModels framework.")
     }
 
     private func isFoundationModelAvailable() -> Bool {
+        #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
-            // The actual API check lives in `FoundationModels.LanguageModel.isAvailable`.
-            // Keep the runtime probe behind that gate; default to false until
-            // the framework is linked.
-            return false
+            // `.unavailable` covers Apple Intelligence off, unsupported device or
+            // region, and the model still downloading.
+            if case .available = SystemLanguageModel.default.availability {
+                return true
+            }
         }
+        #endif
         return false
     }
 

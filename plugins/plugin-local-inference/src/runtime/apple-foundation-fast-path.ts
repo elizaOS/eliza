@@ -185,8 +185,12 @@ export async function generateWithAppleFoundation(
 			...(params.system ? { instruction: params.system } : {}),
 		},
 	});
+	const tokens =
+		result.tokensIn !== undefined && result.tokensOut !== undefined
+			? `${result.tokensIn}->${result.tokensOut} tokens`
+			: `${result.text.length} chars (no token accounting)`;
 	logger.info(
-		`[local-inference] apple-foundation served ${result.tokensIn}->${result.tokensOut} tokens in ${result.elapsedMs}ms`,
+		`[local-inference] apple-foundation served ${tokens} in ${result.elapsedMs}ms`,
 	);
 	return truncateAtStopSequence(
 		result.text,

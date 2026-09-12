@@ -334,6 +334,20 @@ describe("generateWithAppleFoundation", () => {
 		expect(truncateAtStopSequence("plain", ["<end_of_turn>"])).toBe("plain");
 	});
 
+	it("accepts a result without token accounting (FoundationModels reports none)", async () => {
+		const { adapter } = await registerAvailableAdapter(
+			makeBridge({
+				foundationModelGenerate: vi.fn(async () => ({
+					ok: true as const,
+					data: { text: "no counts", elapsedMs: 7 },
+				})),
+			} as Partial<IosComputerUseBridge>),
+		);
+		await expect(
+			generateWithAppleFoundation(adapter, { prompt: "Say hi" }),
+		).resolves.toBe("no counts");
+	});
+
 	it("propagates a bridge failure as an error instead of empty text", async () => {
 		const { adapter } = await registerAvailableAdapter(
 			makeBridge({
