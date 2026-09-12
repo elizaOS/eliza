@@ -1,0 +1,9 @@
+{
+  "package": "elizaos-plugin-agentgate",
+  "repository": "github:teddiesloco/agentgate-x402",
+  "kind": "plugin",
+  "description": "AgentGate x402 — deterministic web scraping (anti-bot bypass), prompt injection firewall, domain intelligence, and AEO auditing. Agents pay autonomously via USDC micropayments on Base L2 and Solana. 8 free trial calls. No API key required.",
+  "homepage": "https://x402.agentsea.vn",
+  "version": "1.0.0",
+  "tags": ["x402", "web-scraping", "prompt-injection", "domain-intel", "agentic-payments", "usdc", "solana", "base", "mcp", "infrastructure"]
+}
