@@ -317,6 +317,118 @@ async function seededPiiSession(): Promise<{
 }
 
 describe("runV5MessageRuntimeStage1", () => {
+	it("repairs conflicting direct-answer intents before dispatching fields or entering the planner", async () => {
+		const quote = "Correction: the mug is violet; keep the yellow notebook.";
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				intents: ["quote the correction"],
+				replyText: quote,
+				facts: ["Unaccepted draft extraction"],
+				extra: { replyEffectStatus: "none" },
+			}),
+			stage1Response({
+				contexts: ["simple"],
+				replyText: quote,
+				extra: { replyEffectStatus: "none" },
+			}),
+		]);
+		const dispatch = vi.spyOn(runtime.responseHandlerFieldRegistry, "dispatch");
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: `Quote this supplied correction exactly: ${quote}`,
+				channelType: ChannelType.DM,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply")
+			expect(result.result.responseContent?.text).toBe(quote);
+		expect(dispatch).toHaveBeenCalledTimes(1);
+		expect(dispatch.mock.calls[0]?.[0].rawParsed.facts).toEqual([]);
+		const calls = useModelCalls(runtime);
+		expect(calls.map(([model]) => model)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+		const [first, repaired] = calls.map(
+			([, params]) =>
+				params as {
+					messages: Array<{ role: string; content: string }>;
+					tools: Array<{ name: string }>;
+					providerOptions: { eliza: { prefixHash: string } };
+				},
+		);
+		expect(repaired.messages.slice(0, first.messages.length)).toEqual(
+			first.messages,
+		);
+		expect(repaired.messages.at(-1)?.content).toContain(quote);
+		expect(repaired.messages.at(-1)?.content).toContain(
+			"Unaccepted draft extraction",
+		);
+		expect(repaired.tools.map(({ name }) => name)).toEqual(["HANDLE_RESPONSE"]);
+		expect(repaired.providerOptions.eliza.prefixHash).toBe(
+			first.providerOptions.eliza.prefixHash,
+		);
+	});
+
+	it("bounds contradictory routing correction and preserves pending-action guards", async () => {
+		const intents = ["open notes", "update the selected note"];
+		const conflict = stage1Response({
+			contexts: ["simple"],
+			intents,
+			replyText: "I will open Notes and update the selected note.",
+			extra: { replyEffectStatus: "none" },
+		});
+		const runtime = makeRuntime([conflict, conflict]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "Open Notes and update the selected note.",
+				channelType: ChannelType.DM,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			stage1DecisionOnly: true,
+		});
+		expect(useModelCalls(runtime).map(([model]) => model)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+		expect(result.messageHandler.plan.intents).toEqual(intents);
+		expect(result.messageHandler.plan.requiresTool).toBe(true);
+		expect(result.messageHandler.plan.reply).toBe("");
+	});
+
+	it("cancels a routing repair before further generation or field dispatch", async () => {
+		const abort = new AbortController();
+		const runtime = makeRuntime([]);
+		runtime.useModel = vi.fn(async () => {
+			abort.abort(new Error("cancelled routing repair"));
+			return stage1Response({
+				contexts: ["simple"],
+				intents: ["describe the supplied text"],
+				replyText: "The supplied text describes a blue mug.",
+				extra: { replyEffectStatus: "none" },
+			});
+		}) as IAgentRuntime["useModel"];
+		const dispatch = vi.spyOn(runtime.responseHandlerFieldRegistry, "dispatch");
+		await expect(
+			runWithStreamingContext({ abortSignal: abort.signal }, () =>
+				runV5MessageRuntimeStage1({
+					runtime,
+					message: makeMessage({ channelType: ChannelType.DM }),
+					state: makeState(),
+					responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+				}),
+			),
+		).rejects.toThrow("cancelled routing repair");
+		expect(useModelCalls(runtime)).toHaveLength(1);
+		expect(dispatch).not.toHaveBeenCalled();
+	});
+
 	it("keeps the system prefix identical when loading a stable provider reference", async () => {
 		const full =
 			"Complete widget syntax: [FORM] with every supported field and option.";
@@ -4098,122 +4210,143 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
-	it("executes pending navigation beside an answered memory question through the real planner", async () => {
-		const priorPreference =
-			"I prefer jasmine tea, specifically the loose-leaf kind.";
-		const pendingReply =
-			"Your favorite tea is jasmine. Home is the destination I am taking you to next.";
-		const state: State = {
-			...makeState(),
-			data: {
-				providers: {
-					RECENT_MESSAGES: {
-						text: `# Conversation Messages\nuser: ${priorPreference}`,
-						providerName: "RECENT_MESSAGES",
-						data: {
-							recentMessages: [
-								{
-									...makeMessage({ text: priorPreference }),
-									id: "00000000-0000-0000-0000-000000000010" as UUID,
-								},
-							],
+	it.each(["pending", "none"])(
+		"executes pending navigation beside an answered memory question after %s routing",
+		async (status) => {
+			const priorPreference =
+				"I prefer jasmine tea, specifically the loose-leaf kind.";
+			const pendingReply =
+				"Your favorite tea is jasmine. Home is the destination I am taking you to next.";
+			const state: State = {
+				...makeState(),
+				data: {
+					providers: {
+						RECENT_MESSAGES: {
+							text: `# Conversation Messages\nuser: ${priorPreference}`,
+							providerName: "RECENT_MESSAGES",
+							data: {
+								recentMessages: [
+									{
+										...makeMessage({ text: priorPreference }),
+										id: "00000000-0000-0000-0000-000000000010" as UUID,
+									},
+								],
+							},
 						},
 					},
 				},
-			},
-		};
-		const answer = "You prefer jasmine tea. Home is now open.";
-		const runtime = makeRuntime([
-			stage1Response({
-				contexts: ["simple"],
-				replyText: pendingReply,
-				extra: { replyEffectStatus: "pending" },
-			}),
-			{
-				text: "",
-				toolCalls: [
-					{
-						id: "navigate-home",
-						name: "UI_ROUTE",
-						arguments: { destination: "home" },
-					},
-				],
-			},
-			JSON.stringify({
+			};
+			const answer = "You prefer jasmine tea. Home is now open.";
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["simple"],
+					replyText: pendingReply,
+					intents: ["go home"],
+					extra: { replyEffectStatus: status },
+				}),
+				...(status === "none"
+					? [
+							stage1Response({
+								contexts: ["general"],
+								intents: ["go home"],
+								candidateActionNames: ["UI_ROUTE"],
+								replyText: pendingReply,
+								extra: { replyEffectStatus: "pending" },
+							}),
+						]
+					: []),
+				{
+					text: "",
+					toolCalls: [
+						{
+							id: "navigate-home",
+							name: "UI_ROUTE",
+							arguments: { destination: "home" },
+						},
+					],
+				},
+				JSON.stringify({
+					success: true,
+					decision: "FINISH",
+					thought: "The requested destination was reached.",
+					messageToUser: answer,
+				}),
+			]);
+			runtime.composeState = vi.fn(async () => state);
+			const navigate = vi.fn<Action["handler"]>(async () => ({
 				success: true,
-				decision: "FINISH",
-				thought: "The requested destination was reached.",
-				messageToUser: answer,
-			}),
-		]);
-		runtime.composeState = vi.fn(async () => state);
-		const navigate = vi.fn<Action["handler"]>(async () => ({
-			success: true,
-			text: "Navigation completed: home.",
-			data: { destination: "home" },
-		}));
-		const shell = vi.fn(async () => ({
-			success: true,
-			text: "Unrelated shell result.",
-		}));
-		runtime.actions = [
-			{
-				name: "UI_ROUTE",
-				description:
-					"Navigate the user interface to the requested destination.",
-				parameters: [
-					{
-						name: "destination",
-						description: "Destination identifier",
-						required: true,
-						schema: { type: "string" },
-					},
-				],
-				validate: async () => true,
-				handler: navigate,
-			},
-			{
-				name: "SHELL",
-				description: "Run a local shell command.",
-				validate: async () => true,
-				handler: shell,
-			},
-		];
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({ text: "What tea do I prefer, and go home." }),
-			state,
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-		});
-		expect(result.kind).toBe("planned_reply");
-		expect(navigate).toHaveBeenCalledTimes(1);
-		expect(navigate.mock.calls[0]?.[3]).toMatchObject({
-			parameters: { destination: "home" },
-		});
-		expect(shell).not.toHaveBeenCalled();
-		const calls = useModelCalls(runtime);
-		expect(calls.map(([model]) => model)).toEqual([
-			ModelType.RESPONSE_HANDLER,
-			ModelType.ACTION_PLANNER,
-			ModelType.RESPONSE_HANDLER,
-		]);
-		// The original user memory, not just the discarded Stage1 answer, must
-		// remain available to both planning and grounded response evaluation.
-		for (const [, modelParams] of calls) {
-			const messages = (modelParams as { messages?: unknown }).messages;
-			expect(JSON.stringify(messages)).toContain(priorPreference);
-		}
-		expect(result.messageHandler.plan.reply).toBe("");
-		const params = calls[1]?.[1] as { tools?: Array<{ name: string }> };
-		expect(params.tools?.map(({ name }) => name)).toEqual(
-			expect.arrayContaining(["UI_ROUTE", "SHELL", "REPLY"]),
-		);
-		expect(JSON.stringify(calls[2]?.[1])).toContain(
-			"Navigation completed: home.",
-		);
-		if (result.kind === "planned_reply")
-			expect(result.result.responseContent?.text).toBe(answer);
-	});
+				text: "Navigation completed: home.",
+				data: { destination: "home" },
+			}));
+			const shell = vi.fn(async () => ({
+				success: true,
+				text: "Unrelated shell result.",
+			}));
+			runtime.actions = [
+				{
+					name: "UI_ROUTE",
+					description:
+						"Navigate the user interface to the requested destination.",
+					parameters: [
+						{
+							name: "destination",
+							description: "Destination identifier",
+							required: true,
+							schema: { type: "string" },
+						},
+					],
+					validate: async () => true,
+					handler: navigate,
+				},
+				{
+					name: "SHELL",
+					description: "Run a local shell command.",
+					validate: async () => true,
+					handler: shell,
+				},
+			];
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "What tea do I prefer, and go home.",
+					channelType: ChannelType.DM,
+				}),
+				state,
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(result.kind).toBe("planned_reply");
+			expect(navigate).toHaveBeenCalledTimes(1);
+			expect(navigate.mock.calls[0]?.[3]).toMatchObject({
+				parameters: { destination: "home" },
+			});
+			expect(shell).not.toHaveBeenCalled();
+			const calls = useModelCalls(runtime);
+			expect(calls.map(([model]) => model)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+				...(status === "none" ? [ModelType.RESPONSE_HANDLER] : []),
+				ModelType.ACTION_PLANNER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+			// The original user memory, not just the discarded Stage1 answer, must
+			// remain available to both planning and grounded response evaluation.
+			for (const [, modelParams] of calls) {
+				const messages = (modelParams as { messages?: unknown }).messages;
+				expect(JSON.stringify(messages)).toContain(priorPreference);
+			}
+			expect(result.messageHandler.plan.reply).toBe("");
+			const params = calls[status === "none" ? 2 : 1]?.[1] as {
+				tools?: Array<{ name: string }>;
+			};
+			expect(params.tools?.map(({ name }) => name)).toEqual(
+				expect.arrayContaining(["UI_ROUTE", "REPLY"]),
+			);
+			expect(JSON.stringify(calls.at(-1)?.[1])).toContain(
+				"Navigation completed: home.",
+			);
+			if (result.kind === "planned_reply")
+				expect(result.result.responseContent?.text).toBe(answer);
+		},
+	);
 
 	it.each(["json", "transcript", "legacy"])(
 		"plans a typed pending reply from the %s envelope",

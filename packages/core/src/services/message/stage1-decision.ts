@@ -54,6 +54,7 @@ import {
 } from "./stage1-completion.js";
 import {
 	getStage1RetryReason,
+	getStage1RoutingRepair,
 	isEmptyStage1Result,
 	parseMessageHandlerModelOutput,
 	readStage1EmptyRetryLimit,
@@ -368,37 +369,64 @@ export async function generateStage1Decision(
 	// permission/disclosure gates before another model call, and never dispatch
 	// its draft, extraction fields, or action candidates. Each provider can be
 	// expanded once; there is no action-planner loop for reading provider text.
+	let routingRepairAttempted = false;
 	while (discoveryEnabled) {
-		const requested = readContextRequests(
-			extractMessageHandlerRawParsed(rawMessageHandler),
-			discovery.available,
-		);
-		if (requested.length === 0) break;
+		const parsedDecision = extractMessageHandlerRawParsed(rawMessageHandler);
+		const requested = readContextRequests(parsedDecision, discovery.available);
+		const routingRepair =
+			requested.length === 0 && !routingRepairAttempted
+				? getStage1RoutingRepair(parsedDecision)
+				: undefined;
+		if (requested.length === 0 && !routingRepair) break;
 		stage1TurnSignal.throwIfAborted();
-		for (const name of requested) loadedContext.add(name);
-		const refreshed = await composeResponseState(
-			args.runtime,
-			args.message,
-			true,
-		);
-		Object.assign(args.state, refreshed);
-		const refreshedContext = await createV5MessageContextObject({
-			...args,
-			userRoles: [senderRole],
-			availableContexts,
-		});
-		Object.assign(context, refreshedContext, { id: context.id });
-		discovery = projectDiscoverableContext(context, args.state, loadedContext);
-		messageHandlerInput = renderMessageHandlerModelInput(
-			args.runtime,
-			discovery.context,
-			availableContexts,
-			{
-				directMessage: directMessageChannel,
-				voiceDirectMessage: voiceDirectMessageChannel,
-				responseHandlerFields: responseHandlerFieldPrompt.rendered,
-			},
-		);
+		if (routingRepair) {
+			// One correction before field processors/effects. If it remains
+			// contradictory, normal pending-intent guards still own routing.
+			routingRepairAttempted = true;
+			messageHandlerInput = {
+				...messageHandlerInput,
+				messages: [
+					...messageHandlerInput.messages,
+					{ role: "user", content: routingRepair },
+				],
+				promptSegments: [
+					...messageHandlerInput.promptSegments,
+					{
+						content: routingRepair,
+						stable: false,
+					},
+				],
+			};
+		} else {
+			for (const name of requested) loadedContext.add(name);
+			const refreshed = await composeResponseState(
+				args.runtime,
+				args.message,
+				true,
+			);
+			Object.assign(args.state, refreshed);
+			const refreshedContext = await createV5MessageContextObject({
+				...args,
+				userRoles: [senderRole],
+				availableContexts,
+			});
+			Object.assign(context, refreshedContext, { id: context.id });
+			discovery = projectDiscoverableContext(
+				context,
+				args.state,
+				loadedContext,
+			);
+			messageHandlerInput = renderMessageHandlerModelInput(
+				args.runtime,
+				discovery.context,
+				availableContexts,
+				{
+					directMessage: directMessageChannel,
+					voiceDirectMessage: voiceDirectMessageChannel,
+					responseHandlerFields: responseHandlerFieldPrompt.rendered,
+				},
+			);
+		}
 		stage1PrefixHashes = computePrefixHashes(
 			messageHandlerInput.promptSegments,
 		);
@@ -436,8 +464,8 @@ export async function generateStage1Decision(
 			),
 		};
 		args.runtime.logger.debug(
-			{ providers: requested },
-			"[message] Expanding requested context before final response decision",
+			{ providers: requested, routingRepair: Boolean(routingRepair) },
+			"[message] Resolving context or routing before final response decision",
 		);
 		stage1TurnSignal.throwIfAborted();
 		rawMessageHandler = (await args.runtime.useModel(

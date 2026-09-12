@@ -160,7 +160,7 @@ export const intentsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 		type: "array",
 		items: { type: "string" },
 		description:
-			"Every requested outcome as a short verb-led intent, including navigation separately from data changes. Lowercase; no punctuation.",
+			"Pending outcomes requiring runtime actions or external state. Use [] when replyText completes the request from supplied context. Keep navigation separate from data changes; omit no actionable clause.",
 	},
 	parse: readCompleteStringHints,
 };
