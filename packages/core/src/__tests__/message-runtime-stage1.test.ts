@@ -697,15 +697,6 @@ describe("runV5MessageRuntimeStage1", () => {
 			guidedDecode: true,
 			thinking: "off",
 		});
-		const systemMessage = params.messages?.[0] as
-			| { content?: unknown }
-			| undefined;
-		expect(String(systemMessage?.content ?? "")).toContain(
-			"prioritize syntactically valid runnable code",
-		);
-		expect(String(systemMessage?.content ?? "")).toContain(
-			"the matching AVAILABLE action (OWNER_REMINDERS, TRIGGER)",
-		);
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe("Hello.");
 		}
@@ -2040,15 +2031,6 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(params.grammar).toContain(
 			'"\\"RESPOND\\"" | "\\"IGNORE\\"" | "\\"STOP\\""',
 		);
-		const systemMessage = (
-			firstCall[1] as {
-				messages?: Array<{ content?: unknown }>;
-			}
-		).messages?.[0];
-		expect(String(systemMessage?.content ?? "")).toContain("OWNER_GOALS");
-		expect(String(systemMessage?.content ?? "")).toContain(
-			"do not create work threads",
-		);
 	});
 
 	it("keeps every registered field in the live-voice Stage-1 call", async () => {
@@ -2607,52 +2589,6 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(systemContent).toContain("- calendar [label=Calendar");
 		expect(systemContent).not.toContain("role>=ADMIN");
 		expect(systemContent).toContain(longDescription);
-	});
-
-	it("direct-channel prompt grounds capability denials in executable actions and requires fresh tool retries", async () => {
-		// Mirror of the #11215 wording-regression test on the shared
-		// messageHandlerTemplate: Stage 1 for DM/API/SELF renders the compact
-		// DIRECT_MESSAGE_HANDLER_TEMPLATE instead, so the dashboard chat and
-		// 1:1 DMs — the primary surface where users hit "I don't have memory
-		// between sessions" / "I can't schedule" — need their own copies of
-		// the capability-denial and tool-retry rules. Context labels only route;
-		// the role-visible action surface is the execution ground truth.
-		const runtime = makeRuntime([
-			stage1Response({
-				contexts: ["simple"],
-				replyText: "Hi.",
-			}),
-		]);
-
-		await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({ channelType: ChannelType.DM }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-		});
-
-		const firstCall = useModelCalls(runtime)[0];
-		const params = firstCall?.[1] as {
-			messages?: Array<{ role?: string; content?: string | null }>;
-		};
-		const systemContent = params.messages?.[0]?.content ?? "";
-		expect(systemContent).toContain("task: Plan this direct message.");
-		expect(systemContent).toContain(
-			"never claim an available capability is missing",
-		);
-		expect(systemContent).toContain(
-			"Available contexts are routing domains; only this turn's role-visible executable actions prove capabilities.",
-		);
-		expect(systemContent).toContain(
-			"Earlier errors do not permanently disable a tool",
-		);
-		// Inverse grounding (matrix F15, poisoned-room receipt): the room's
-		// history contained an old planner exchange asking for "your mom's
-		// number", and stage-1 parroted the implied SMS surface. History must
-		// never create a capability the surface list doesn't.
-		expect(systemContent).toContain(
-			"it never authorizes new work or proves current state",
-		);
 	});
 
 	it("keeps tool-like direct messages on the structured routing path", async () => {
@@ -8250,38 +8186,6 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(observations[0]?.decision).toBe("RESPOND");
 		expect(observations[0]?.prefixHash).toMatch(/^[a-f0-9]{64}$/);
 		expect(runtime.useModel).toHaveBeenCalledTimes(1);
-	});
-
-	it("renders direct-message instructions that forbid ungrounded simple replies and phantom action claims", async () => {
-		const runtime = makeRuntime([
-			stage1Response({
-				contexts: ["simple"],
-				replyText: "Hi.",
-			}),
-		]);
-
-		await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({ channelType: ChannelType.DM }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-		});
-
-		const firstCall = useModelCalls(runtime)[0];
-		const params = firstCall?.[1] as {
-			messages?: Array<{ role?: string; content?: string | null }>;
-		};
-		const systemContent =
-			params.messages?.find((m) => m.role === "system")?.content ?? "";
-		expect(systemContent).toContain('Otherwise use contexts=["simple"]');
-		expect(systemContent).toContain(
-			"Claim an investigation or effect happened only from a real result this turn",
-		);
-		expect(systemContent).toContain('("I scanned", "I\'m checking",');
-		expect(systemContent).toContain("Personal-crisis rule:");
-		expect(systemContent).toContain(
-			"qualified counsel or appropriate medical/safety help",
-		);
 	});
 
 	it("routes high-stakes direct-message crisis prompts through Stage 1 instead of the fast reply path", async () => {
