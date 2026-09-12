@@ -435,15 +435,66 @@ describe("useAgentSessionRecovery", () => {
     expect(mockRunRecovery).not.toHaveBeenCalled();
   });
 
-  it("re-pairs when native SIWE supplies the Cloud token after the initial recovery attempt", async () => {
-    (globalThis as { Capacitor?: unknown }).Capacitor = {
-      isNativePlatform: () => true,
-    };
+  it.each(["native", "cloud-staging.eliza.app"])(
+    "re-pairs on %s when sign-in supplies the Cloud token after the initial recovery attempt",
+    async (host) => {
+      if (host === "native") {
+        (globalThis as { Capacitor?: unknown }).Capacitor = {
+          isNativePlatform: () => true,
+        };
+      } else {
+        setHostname(host);
+      }
+      let cloudToken: string | null = null;
+      mockCloudToken.mockImplementation(() => cloudToken);
+      mockActiveServer.mockReturnValue(cloudServer("agent-1"));
+      mockRunRecovery.mockReturnValue(new Promise(() => {}));
+
+      const statuses: string[] = [];
+      render(
+        <Probe
+          active
+          reason="remote_auth_required"
+          onStatus={(status) => statuses.push(status)}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(mockEnsureCloudSession).toHaveBeenCalledOnce();
+        expect(statuses.at(-1)).toBe(
+          host === "native" ? "cloud-reauth-required" : "idle",
+        );
+      });
+      expect(mockRunRecovery).not.toHaveBeenCalled();
+
+      cloudToken = "steward.jwt.from-native-siwe";
+      act(() => {
+        window.dispatchEvent(new CustomEvent("steward-token-sync"));
+      });
+
+      await waitFor(() => {
+        expect(mockRunRecovery).toHaveBeenCalledTimes(1);
+      });
+      expect(statuses).toContain("recovering");
+      expect(mockRunRecovery.mock.calls[0][0]).toMatchObject({
+        agentId: "agent-1",
+        cloudToken: "steward.jwt.from-native-siwe",
+      });
+    },
+  );
+
+  it("keeps a hosted cookie repair alive when its session publication arrives before refresh completes", async () => {
+    setHostname("cloud-staging.eliza.app");
     let cloudToken: string | null = null;
+    let completeRefresh!: (token: string) => void;
     mockCloudToken.mockImplementation(() => cloudToken);
     mockActiveServer.mockReturnValue(cloudServer("agent-1"));
+    mockEnsureCloudSession.mockReturnValue(
+      new Promise((resolve) => {
+        completeRefresh = resolve;
+      }),
+    );
     mockRunRecovery.mockReturnValue(new Promise(() => {}));
-
     const statuses: string[] = [];
     render(
       <Probe
@@ -452,25 +503,88 @@ describe("useAgentSessionRecovery", () => {
         onStatus={(status) => statuses.push(status)}
       />,
     );
+    await waitFor(() => expect(mockEnsureCloudSession).toHaveBeenCalledOnce());
 
-    await waitFor(() => {
-      expect(statuses.at(-1)).toBe("cloud-reauth-required");
-    });
-    expect(mockRunRecovery).not.toHaveBeenCalled();
-
-    cloudToken = "steward.jwt.from-native-siwe";
     act(() => {
+      cloudToken = "steward.jwt.from-cookie-refresh";
       window.dispatchEvent(new CustomEvent("steward-token-sync"));
     });
+    await act(async () => completeRefresh("steward.jwt.from-cookie-refresh"));
 
-    await waitFor(() => {
-      expect(mockRunRecovery).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockRunRecovery).toHaveBeenCalledOnce());
+    expect(mockRunRecovery.mock.calls[0][0].signal.aborted).toBe(false);
+    expect(statuses.at(-1)).toBe("recovering");
+  });
+
+  it("uses a refreshed hosted session after rejection without retrying the same rejected credential", async () => {
+    setHostname("cloud-staging.eliza.app");
+    let cloudToken = "steward.jwt.before-refresh";
+    let rejectFirstSession!: (result: {
+      ok: false;
+      reason: "unauthorized";
+      message: string;
+    }) => void;
+    const rejected = {
+      ok: false as const,
+      reason: "unauthorized" as const,
+      message: "Session expired",
+    };
+    mockCloudToken.mockImplementation(() => cloudToken);
+    mockActiveServer.mockReturnValue(cloudServer("agent-1"));
+    mockRunRecovery
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          rejectFirstSession = resolve;
+        }),
+      )
+      .mockResolvedValue(rejected);
+    const statuses: string[] = [];
+    render(
+      <Probe
+        active
+        reason="remote_auth_required"
+        onStatus={(status) => statuses.push(status)}
+      />,
+    );
+    await waitFor(() => expect(mockRunRecovery).toHaveBeenCalledOnce());
+    const firstSignal = mockRunRecovery.mock.calls[0][0].signal;
+
+    act(() => {
+      cloudToken = "steward.jwt.after-refresh";
+      window.dispatchEvent(new CustomEvent("steward-token-sync"));
     });
-    expect(statuses).toContain("recovering");
-    expect(mockRunRecovery.mock.calls[0][0]).toMatchObject({
-      agentId: "agent-1",
-      cloudToken: "steward.jwt.from-native-siwe",
+    expect(firstSignal.aborted).toBe(false);
+    await act(async () => rejectFirstSession(rejected));
+    await waitFor(() => expect(mockRunRecovery).toHaveBeenCalledTimes(2));
+    expect(mockRunRecovery.mock.calls[1][0].cloudToken).toBe(cloudToken);
+    await waitFor(() => expect(statuses.at(-1)).toBe("idle"));
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("steward-token-sync"));
     });
+    expect(mockRunRecovery).toHaveBeenCalledTimes(2);
+  });
+
+  it("cancels an in-flight hosted repair when its Cloud session is removed", async () => {
+    setHostname("cloud-staging.eliza.app");
+    let cloudToken: string | null = "steward.jwt.before-logout";
+    mockCloudToken.mockImplementation(() => cloudToken);
+    mockActiveServer.mockReturnValue(cloudServer("agent-1"));
+    mockRunRecovery.mockReturnValue(new Promise(() => {}));
+    render(<Probe active reason="remote_auth_required" onStatus={() => {}} />);
+    await waitFor(() => expect(mockRunRecovery).toHaveBeenCalledOnce());
+    const attempt = mockRunRecovery.mock.calls[0][0];
+
+    act(() => {
+      cloudToken = null;
+      window.dispatchEvent(new CustomEvent("steward-token-sync"));
+    });
+    expect(attempt.signal.aborted).toBe(true);
+    await expect(
+      attempt.commitPairedInProcess("late-agent-bearer"),
+    ).rejects.toThrow("target changed");
+    expect(mockPersistCloudPairApiToken).not.toHaveBeenCalled();
+    expect(mockSetAgentToken).not.toHaveBeenCalled();
   });
 
   it("REGRESSION: returning PWA with no app-origin token but a live Eliza Cloud cookie silently re-pairs instead of dead-ending", async () => {
