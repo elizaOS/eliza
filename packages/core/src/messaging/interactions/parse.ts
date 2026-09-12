@@ -267,10 +267,20 @@ function isValidOpeningMarker(marker: ParsedMarker): boolean {
 function scanRawInteractionRegions(text: string): RawInteractionRegion[] {
 	const regions: RawInteractionRegion[] = [];
 	const active = new Map<MarkerKind, ActiveMarker>();
+	const lines = sourceLines(text);
+	let lineIndex = 0;
 	let cursor = 0;
 	while (cursor < text.length) {
 		const start = text.indexOf("[", cursor);
 		if (start < 0) break;
+		while (lineIndex < lines.length && start >= lines[lineIndex].end) {
+			lineIndex += 1;
+		}
+		const line = lines[lineIndex];
+		if (line?.inFence && start >= line.start) {
+			cursor = line.end;
+			continue;
+		}
 		const scanned = scanMarkerEnd(text, start);
 		if (!scanned) break;
 		if ("nested" in scanned) {
