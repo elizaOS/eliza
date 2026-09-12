@@ -23,6 +23,17 @@ interface OwnershipManifest {
 }
 
 const repositoryRoot = resolve(import.meta.dirname, "../../../..");
+// Every mirror root lives inside the llama.cpp submodule. The plugin test
+// lanes check the repository out with submodules disabled (#31153), so an
+// absent tree there is a lane property rather than a provenance failure; the
+// hash gate runs wherever `bun install` initialised the submodule.
+const llamaCppCheckedOut = existsSync(
+	resolve(
+		repositoryRoot,
+		"plugins/plugin-local-inference/native/llama.cpp/CMakeLists.txt",
+	),
+);
+const describeWithSubmodule = llamaCppCheckedOut ? describe : describe.skip;
 const manifestPath = resolve(
 	repositoryRoot,
 	"plugins/plugin-local-inference/native/copied-source-ownership.json",
@@ -80,7 +91,7 @@ function expectFile(path: string, label: string): void {
 	if (existsSync(path)) expect(statSync(path).isFile(), label).toBe(true);
 }
 
-describe("native copied-source ownership", () => {
+describeWithSubmodule("native copied-source ownership", () => {
 	it("uses a complete, non-overlapping classification schema", () => {
 		expect(manifest.version).toBe(1);
 		const familyNames = new Set<string>();
