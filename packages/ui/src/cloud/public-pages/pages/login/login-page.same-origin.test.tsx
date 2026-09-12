@@ -60,6 +60,14 @@ vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => ({
   readStoredStewardToken: () => null,
   writeStoredStewardToken: () => undefined,
   StewardSessionError: class extends Error {},
+  // The login import graph now reaches `bridge/storage-bridge.ts`, which reads
+  // these three module-scope members at evaluation time. They are stubbed to
+  // mirror the real client's shapes: the token key is the exact localStorage
+  // constant, and the two registrars return their no-op unregister callbacks so
+  // the bridge's module-init `register*` calls resolve without a native store.
+  STEWARD_TOKEN_KEY: "steward_session_token",
+  registerStewardTokenPersistence: () => () => undefined,
+  registerStewardTokenRemoval: () => () => undefined,
 }));
 
 vi.mock("../../lib/steward-session", () => ({
