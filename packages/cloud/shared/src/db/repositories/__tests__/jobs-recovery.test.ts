@@ -5,8 +5,9 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { eq, type SQL } from "drizzle-orm";
+import { eq, type SQL, sql } from "drizzle-orm";
 import { type RuntimeR2Bucket, setRuntimeR2Bucket } from "../../../lib/storage/r2-runtime-binding";
+import { sqlRows } from "../../execute-helpers";
 import { apps } from "../../schemas/apps";
 import { jobExecutionLeases } from "../../schemas/job-execution-leases";
 import { type Job, jobs } from "../../schemas/jobs";
@@ -268,6 +269,66 @@ describe("jobsRepository.recoverStaleJobs", () => {
     await dbWrite.execute("DELETE FROM jobs;");
     await dbWrite.execute("DELETE FROM containers;");
     await dbWrite.execute("DELETE FROM apps;");
+  });
+
+  test("offloads an owned failure from a raw SQL timestamp without changing its UTC day", async () => {
+    const jobId = "00000000-0000-4000-8000-000000031089";
+    const ownerId = "00000000-0000-4000-8000-000000031090";
+    const createdAt = new Date("2020-01-01T23:55:00.000Z");
+    await dbWrite.insert(jobs).values({
+      id: jobId,
+      type: "agent_message",
+      data: { agentId: AGENT_ID },
+      organization_id: ORG_ID,
+      scheduled_for: createdAt,
+      created_at: createdAt,
+    });
+    await repo.claimPendingJobs({
+      type: "agent_message",
+      limit: 1,
+      executionOwnerId: ownerId,
+      executionLeaseMs: 60_000,
+    });
+    // Raw Node/Postgres claim results bypass Drizzle's timestamp decoder.
+    // Cast in SQL to exercise that real driver representation with PGlite.
+    const [rawClaim] = await sqlRows<Job>(
+      dbWrite,
+      sql`
+      SELECT *, created_at::text AS created_at FROM ${jobs} WHERE id = ${jobId}
+    `,
+    );
+    if (!rawClaim) throw new Error("expected the job to be claimed");
+    expect(typeof rawClaim.created_at).toBe("string");
+    const objects = new Map<string, string>();
+    const originalEnv = HEAVY_PAYLOAD_ENV.map((key) => [key, process.env[key]] as const);
+    const failure = "Complete migration failure details. ".repeat(100);
+    setRuntimeR2Bucket(memoryBucket(objects));
+    process.env.SQL_HEAVY_PAYLOAD_STORAGE = "r2";
+    process.env.SQL_HEAVY_PAYLOAD_MIN_BYTES = "1";
+    process.env.SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES = "0";
+    try {
+      await expect(
+        repo.updateForExecution(
+          { ...rawClaim, created_at: new Date(Number.NaN) },
+          { error: failure },
+          ownerId,
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_JOB_CREATED_AT" });
+      expect(objects.size).toBe(0);
+      const updated = await repo.updateForExecution(rawClaim, { error: failure }, ownerId);
+      expect(updated.error).toBe(failure);
+      expect(updated.error_storage).toBe("r2");
+      expect(updated.error_key).toContain(`/2020-01-01/${jobId}/`);
+      expect(await repo.findByIdForWrite(jobId)).toMatchObject({ error: failure });
+      expect(await repo.rejectClaimedExecution(rawClaim, failure, ownerId)).toBe("rejected");
+      expect(await repo.renewExecutionLease(rawClaim, ownerId, 60_000)).toBe("settled");
+    } finally {
+      setRuntimeR2Bucket(null);
+      for (const [key, value] of originalEnv) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 
   test("reconstructs one deterministic APP_DEPLOY job across enqueue replay", async () => {

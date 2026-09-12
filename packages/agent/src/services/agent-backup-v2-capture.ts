@@ -1053,6 +1053,8 @@ function baseStateFileInclude(
   relativePath: string,
   pgliteRelativePath: string | null,
 ): boolean {
+  // Preserve installed-skill state while excluding the downloadable catalog.
+  if (relativePath === "skills/.cache/catalog.json") return false;
   if (
     pgliteRelativePath !== null &&
     (relativePath === pgliteRelativePath ||
