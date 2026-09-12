@@ -2568,6 +2568,19 @@ describe("canonical evaluation of grounded internal receipts", () => {
 		},
 	);
 
+	it.each([
+		"I'll use VIEWS to open that.",
+		'Here is "some quoted text". use VIEWS next.',
+		'Quoted invocation: "functions.VIEWS"',
+		'Quoted control: "<think>use VIEWS</think>"',
+		'"description": "use VIEWS", "eliza_turn_scope": "final"',
+	])(
+		"keeps invocation and control checks outside the quotation exception: %s",
+		(text) => {
+			expect(isUnsafeUserVisibleText(text)).toBe(true);
+		},
+	);
+
 	it("never delivers protocol-shaped JSON or a turn-scope marker as user text, but keeps JSON the user asked for", () => {
 		expect(
 			isUnsafeUserVisibleText('{"plannerCompleted":true,"turnScope":"final"}'),

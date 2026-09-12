@@ -7137,6 +7137,45 @@ describe("tool-turn reply guarantee (#16935)", () => {
 	// serialized tool-call literal as its "reply" — the exact live shape that
 	// ended read-then-summarize turns replyless. The post-pass must spend ONE
 	// extra no-tools model call and ship its grounded prose instead.
+	it.each([
+		'"use VIEWS for layouts or discovery"',
+		"“use VIEWS for layouts or discovery”",
+		"'use VIEWS for layouts or discovery'",
+		"`use VIEWS for layouts or discovery`",
+	])(
+		"delivers an evaluated reference quote without synthesis: %s",
+		async (quote) => {
+			const reply = `The catalog says ${quote}. Home is open.`;
+			const runtime = {
+				useModel: vi.fn().mockResolvedValueOnce({
+					text: "",
+					toolCalls: [{ name: "LOOKUP", arguments: { query: "catalog" } }],
+				}),
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi.fn(async () => ({
+				success: true,
+				text: "Reference read succeeded.",
+			}));
+			const evaluate = vi.fn(async () => ({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "The requested quotation is grounded in the reference.",
+				messageToUser: reply,
+			}));
+			const result = await runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				executeToolCall,
+				evaluate,
+			});
+			expect(result.finalMessage).toBe(reply);
+			expect(runtime.useModel).toHaveBeenCalledTimes(1);
+			expect(executeToolCall).toHaveBeenCalledTimes(1);
+			expect(evaluate).toHaveBeenCalledTimes(1);
+		},
+	);
+
 	it("synthesizes a final reply when tool work finished without a usable message", async () => {
 		const runtime = {
 			useModel: vi

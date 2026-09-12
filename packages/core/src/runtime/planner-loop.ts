@@ -8437,6 +8437,13 @@ export function isUnsafeUserVisibleText(value: string | undefined): boolean {
 	if (/"(?:plannerCompleted|turnScope|eliza_turn_scope)"\s*:/.test(text)) {
 		return true;
 	}
+	// A quoted instruction such as "use VIEWS for layouts" can be requested
+	// reference text. It is not the model proposing a tool invocation. Keep
+	// structural/control checks on the complete text, including quoted spans.
+	if (
+		/\b(?:call|use|invoke)\s+[A-Z][A-Z0-9_]{2,}\b/.test(unquotedReplyText(text))
+	)
+		return true;
 	return [
 		// Models sometimes serialize a namespaced client action as
 		// `call:automation:GET_WORKFLOW{...}`. It is still an invocation, not a
@@ -8447,7 +8454,6 @@ export function isUnsafeUserVisibleText(value: string | undefined): boolean {
 		/"action"\s*:\s*"functions\.[A-Z0-9_]+"/i,
 		/\b(?:tool|function)\s+calls?\b/i,
 		/\b(?:I|we)\s+(?:need|should|must|will)\s+to\s+(?:call|use|invoke|issue|perform)\b/i,
-		/\b(?:call|use|invoke)\s+[A-Z][A-Z0-9_]{2,}\b/,
 		/\b(?:MESSAGE\s+action|action=(?:draft_reply|respond|send_draft|triage|list_inbox))\b/i,
 		/\{\s*"parameters"\s*:/i,
 	].some((pattern) => pattern.test(text));
@@ -8496,14 +8502,17 @@ const IN_FLIGHT_ACTION_CLAIM = [
 	/\b(?:be right back|brb|hang on)\b/i,
 ];
 
-/** Reject imminent work while allowing offers contingent on a new user input. */
-function hasInFlightActionClaim(candidate: string): boolean {
-	// Quoted examples and titles are data, not promises or user-input conditions.
-	// Mask them only for classification; the complete original answer is delivered.
-	const unquoted = candidate.replace(
+/** Mask quoted examples/titles only for prose classification, never delivery. */
+function unquotedReplyText(candidate: string): string {
+	return candidate.replace(
 		/"(?:\\.|[^"\\])*"|“[^”]*”|‘[^’]*’|(?<!\w)'(?:\\.|[^'\\])*'(?!\w)|`[^`]*`/g,
 		(quoted) => " ".repeat(quoted.length),
 	);
+}
+
+/** Reject imminent work while allowing offers contingent on a new user input. */
+function hasInFlightActionClaim(candidate: string): boolean {
+	const unquoted = unquotedReplyText(candidate);
 	if (IN_FLIGHT_ACTION_CLAIM.some((pattern) => pattern.test(unquoted)))
 		return true;
 	const future =
