@@ -300,7 +300,7 @@ describe("shouldProbeExistingLocalInstall (#16242, #30375)", () => {
     );
     expect(
       shouldProbeExistingLocalInstall(
-        "https://develop.eliza-app.pages.dev",
+        "https://staging.eliza-app.pages.dev",
         true,
       ),
     ).toBe(false);
@@ -309,7 +309,7 @@ describe("shouldProbeExistingLocalInstall (#16242, #30375)", () => {
   it("continues probing unbranded Pages and arbitrary Cloud-only hosts", () => {
     expect(
       shouldProbeExistingLocalInstall(
-        "https://develop.eliza-app.pages.dev",
+        "https://staging.eliza-app.pages.dev",
         false,
       ),
     ).toBe(true);
@@ -351,7 +351,7 @@ describe("detectExistingFirstRunConnection — Cloud-origin gate (#16242)", () =
   });
 
   it("skips the probe on an authoritative branded Pages alias (#30375)", async () => {
-    setOrigin("https://develop.eliza-app.pages.dev/");
+    setOrigin("https://staging.eliza-app.pages.dev/");
     const client = makeClient();
     const result = await detectExistingFirstRunConnection({
       client,
@@ -365,7 +365,7 @@ describe("detectExistingFirstRunConnection — Cloud-origin gate (#16242)", () =
 
   it("still probes an unbranded Pages alias and arbitrary Cloud-only host", async () => {
     for (const [origin, cloudOnlyBranding] of [
-      ["https://develop.eliza-app.pages.dev/", false],
+      ["https://staging.eliza-app.pages.dev/", false],
       ["https://agent.example.com/", true],
     ] as const) {
       setOrigin(origin);
