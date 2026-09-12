@@ -1,5 +1,6 @@
 /** Exercises loopback browser and authenticated native Cloud pairing exchanges. */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { parseCloudPairRelaySession } from "@elizaos/shared/contracts";
 import { Hono } from "hono";
 import { AuthenticationError } from "@/lib/api/errors";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -295,10 +296,10 @@ describe("Cloud pairing route", () => {
       agentId: AGENT_ID,
       expectedOrigin: EXPECTED_ORIGIN,
     });
-    await expect(response.json()).resolves.toEqual({
-      message: "Paired successfully",
+    expect(parseCloudPairRelaySession(await response.json())).toEqual({
       apiKey: "agent-api-token",
       agentName: "Native agent",
+      agentId: AGENT_ID,
     });
   });
 
