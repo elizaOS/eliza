@@ -934,7 +934,14 @@ async function runPlannerLoopIterations(
 				plannerOutput.toolCalls[0].name.toUpperCase() === "REPLY" &&
 				!terminalMessageFromToolCalls(
 					plannerOutput.toolCalls,
-					plannerOutput.messageToUser,
+					// An explicitly empty REPLY can release scope while native
+					// prose narrates the protocol. An omitted reply argument keeps
+					// the ordinary native-text fallback and must be evaluated.
+					plannerOutput.messageToUserFromNativeText &&
+						typeof plannerOutput.toolCalls[0].params?.text === "string" &&
+						!plannerOutput.toolCalls[0].params.text.trim()
+						? undefined
+						: plannerOutput.messageToUser,
 				)?.trim();
 			// Treat `messageToUser` as authoritative ONLY when the planner's structured
 			// output carried it as an explicit field. The native-tool-call code path
@@ -1970,11 +1977,9 @@ async function runPlannerLoopIterations(
 			// Loading schemas is planner protocol, not completed user work. The
 			// next model round chooses the newly available operation; there is no
 			// effect for a completion evaluator to judge yet.
-			// A same-response domain call may still be queued under the model's
-			// explicit final declaration. Discovery must not turn that whole batch
-			// into pending work and reject its later grounded FINISH.
-			if (trajectory.plannedQueue.length === 0)
-				lastPlannerExplicitCompleted = false;
+			// Continuing already requires another planner round. Preserve the
+			// model's explicit scope rather than inventing a pending declaration
+			// that would reject a later grounded FINISH after the domain work.
 			continue;
 		}
 		// Explicit catalog inspection with a drained queue is ordinary read work:
@@ -2951,6 +2956,8 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 	thought?: string;
 	toolCalls: PlannerToolCall[];
 	messageToUser?: string;
+	/** Native prose alongside tools is not an explicitly authored reply field. */
+	messageToUserFromNativeText?: boolean;
 	/**
 	 * Lane-appropriate planner completion signal: the JSON lane's top-level
 	 * `completed` boolean, or the folded native `eliza_turn_scope` tool-arg
@@ -3025,6 +3032,8 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 				: controlText
 					? controlText.messageToUser
 					: text,
+		messageToUserFromNativeText:
+			textRecoveredCalls.length === 0 && !controlText,
 		thought: controlText?.thought,
 		completed: merged.completed ?? controlText?.completed,
 		raw: {

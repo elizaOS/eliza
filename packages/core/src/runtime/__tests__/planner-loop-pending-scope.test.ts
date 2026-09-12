@@ -165,11 +165,33 @@ describe("planner-declared pending work", () => {
 		},
 	);
 
-	it("continues planning after a discovery-only batch even when it is labeled final", async () => {
+	it.each(["final", undefined] as const)(
+		"continues after final discovery and accepts the evaluator after a domain call with scope %s",
+		async (domainScope) => {
+			const h = harness({
+				plans: [
+					{ text: "", toolCalls: [call("DISCOVER_TOOLS", "final")] },
+					{ text: "", toolCalls: [call("READ", domainScope)] },
+				],
+				evaluations: [finish("The requested record was read.")],
+			});
+			const result = await h.run();
+			expect(h.executed).toEqual(["DISCOVER_TOOLS", "READ"]);
+			expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
+				ModelType.ACTION_PLANNER,
+				ModelType.ACTION_PLANNER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+			expect(result.finalMessage).toBe("The requested record was read.");
+		},
+	);
+
+	it("preserves explicitly pending scope across discovery and an unscoped domain call", async () => {
 		const h = harness({
 			plans: [
-				{ text: "", toolCalls: [call("DISCOVER_TOOLS", "final")] },
-				{ text: "", toolCalls: [call("READ", "final")] },
+				{ text: "", toolCalls: [call("DISCOVER_TOOLS", "more_work_pending")] },
+				{ text: "", toolCalls: [call("READ")] },
+				{ text: "", toolCalls: [call("REPLY", "final")] },
 			],
 			evaluations: [finish("The requested record was read.")],
 		});
@@ -179,6 +201,7 @@ describe("planner-declared pending work", () => {
 			ModelType.ACTION_PLANNER,
 			ModelType.ACTION_PLANNER,
 			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
 		]);
 		expect(result.finalMessage).toBe("The requested record was read.");
 	});
@@ -879,6 +902,83 @@ describe("canonical evaluation of grounded internal receipts", () => {
 			expect(onModelUsage).toHaveBeenCalledExactlyOnceWith(usage);
 			expect(onEvaluation).toHaveBeenCalledTimes(mixedBatch ? 2 : 1);
 			expect(messageToUser).toHaveBeenCalledExactlyOnceWith(reply);
+		},
+	);
+
+	it("does not treat native prose around an empty scope-release REPLY as a new answer", async () => {
+		const reply = "The calendar event is saved.";
+		const nativeProse =
+			"The evaluator reply already covers everything; no operation remains. Returning REPLY with final scope and no text.";
+		const release = {
+			...call("REPLY", "final"),
+			arguments: { eliza_turn_scope: "final", text: "" },
+		};
+		const h = harness({
+			plans: [
+				{ text: "", toolCalls: [call("CALENDAR", "more_work_pending")] },
+				{ text: nativeProse, toolCalls: [release] },
+			],
+			evaluations: [finish(reply, true, [appliedReceipt.receiptId])],
+			results: [internalCalendarResult()],
+			intents: ["add gym session to calendar"],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["CALENDAR"]);
+		expect(modelCalls(h, ModelType.ACTION_PLANNER)).toBe(2);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
+		expect(result.finalMessage).toBe(reply);
+		expect(result.finalMessage).not.toContain(nativeProse);
+		expect(result.evaluator?.effectReceiptIds).toEqual([
+			appliedReceipt.receiptId,
+		]);
+	});
+
+	it.each([
+		"reply-argument",
+		"json-message",
+		"json-text",
+		"native-control",
+	] as const)(
+		"evaluates a new structured answer instead of treating %s as empty scope release",
+		async (format) => {
+			const candidate = "The event is saved for Tuesday.";
+			const verified = "The calendar event is saved for Tuesday at 7am.";
+			const replyCall = {
+				...call("REPLY", "final"),
+				arguments: {
+					eliza_turn_scope: "final",
+					text: format === "reply-argument" ? candidate : "",
+				},
+			};
+			const envelope = {
+				completed: true,
+				[format === "json-text" ? "text" : "messageToUser"]: candidate,
+				toolCalls: [replyCall],
+			};
+			const h = harness({
+				plans: [
+					{ text: "", toolCalls: [call("CALENDAR", "more_work_pending")] },
+					format === "json-message" || format === "json-text"
+						? JSON.stringify(envelope)
+						: {
+								text:
+									format === "native-control" ? JSON.stringify(envelope) : "",
+								toolCalls: [replyCall],
+							},
+				],
+				evaluations: [
+					finish("The calendar event is saved.", true, [
+						appliedReceipt.receiptId,
+					]),
+					finish(verified, true, [appliedReceipt.receiptId]),
+				],
+				results: [internalCalendarResult()],
+				intents: ["add gym session to calendar"],
+			});
+			const result = await h.run();
+			expect(h.executed).toEqual(["CALENDAR"]);
+			expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(2);
+			expect(result.finalMessage).toBe(verified);
 		},
 	);
 
