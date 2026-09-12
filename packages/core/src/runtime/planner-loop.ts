@@ -865,17 +865,17 @@ async function runPlannerLoopIterations(
 					// This reply-only round can read original context through the
 					// intercepted RESTORE_CONTEXT protocol, never execute an action.
 					allowReplyContextProjection: synthesizingRequiredModelReply,
-					// Force a tool call ONLY while the turn's "use a real tool" requirement
-					// is still unmet. Once a non-terminal tool has executed, relax to
-					// "auto" so the planner is free to synthesize a terminal REPLY from
-					// the result instead of being pushed to re-call a tool every
-					// iteration. "auto" must be EXPLICIT: passing the caller's (undefined)
-					// choice would be a no-op because callPlanner defaults undefined back
-					// to "required".
+					// Require a native call until the requested tool has run. Explicitly
+					// pending chat work also needs a native continuation or scope release:
+					// REPLY/IGNORE/STOP can close the turn without repeating an action.
+					// Bare prose has no native scope field and can trigger redundant
+					// evaluation/synthesis. Other settled turns retain the explicit auto
+					// choice; omitting it would default back to required in callPlanner.
 					toolChoice: synthesizingRequiredModelReply
 						? undefined
 						: requireNonTerminalToolCall
-							? hasExecutedNonTerminalTool(trajectory)
+							? hasExecutedNonTerminalTool(trajectory) &&
+								(codingMode || lastPlannerExplicitCompleted !== false)
 								? "auto"
 								: "required"
 							: params.toolChoice,

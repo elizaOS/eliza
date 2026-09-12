@@ -922,10 +922,23 @@ describe("canonical evaluation of grounded internal receipts", () => {
 			results: [internalCalendarResult()],
 			intents: ["add gym session to calendar"],
 		});
-		const result = await h.run();
+		const result = await h.run({
+			requireNonTerminalToolCall: true,
+			tools: [{ name: "CALENDAR" }, { name: "REPLY" }],
+		});
 		expect(h.executed).toEqual(["CALENDAR"]);
 		expect(modelCalls(h, ModelType.ACTION_PLANNER)).toBe(2);
 		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
+		const plannerRequests = h.useModel.mock.calls
+			.filter(([type]) => type === ModelType.ACTION_PLANNER)
+			.map(([, params]) => params);
+		expect(plannerRequests.map((params) => params.toolChoice)).toEqual([
+			"required",
+			"required",
+		]);
+		expect(plannerRequests[1].tools).toEqual(
+			expect.arrayContaining([expect.objectContaining({ name: "REPLY" })]),
+		);
 		expect(result.finalMessage).toBe(reply);
 		expect(result.finalMessage).not.toContain(nativeProse);
 		expect(result.evaluator?.effectReceiptIds).toEqual([
