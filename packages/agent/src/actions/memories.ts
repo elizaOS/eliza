@@ -21,6 +21,7 @@ import {
   MemoryType as CoreMemoryType,
   ElizaError,
   factClaimsEquivalent,
+  getActionReplyOwner,
   getRelatedEntityIds,
   inflectionTermKeys,
   isActiveMemoryEvidence,
@@ -1006,16 +1007,35 @@ async function doSearch(
     limit !== undefined && offset + items.length < totalMatches
       ? offset + items.length
       : undefined;
-  // The text projection carries enough of each hit for model reasoning; the
-  // complete records remain machine data for state and trajectory consumers.
-  const lines = items.map(
-    (m) =>
-      `- [${m.type}${m.evidenceStatus === "inactive" ? "; INACTIVE source evidence: historical record, not a current fact" : ""}] ${m.id} at ${new Date(m.createdAt).toISOString()}${m.type === "messages" ? ` [author=${m.entityId === runtime.agentId ? "assistant" : "other speaker"}; entityId=${m.entityId}]` : ""}: ${toWellFormedUnicode(m.text)}`,
-  );
+  // The trusted planner consumes structured results, so keep source bodies in
+  // data once. Standalone/text-only callers retain their full text rendering.
+  // Keeping strings structured also lets the model boundary redact credentials
+  // before JSON escaping, without changing any stored source.
+  const plannerOwnsReply = getActionReplyOwner(message.id) === "planner";
+  const records = plannerOwnsReply
+    ? items.map((m) => ({
+        ...m,
+        createdAtIso: new Date(m.createdAt).toISOString(),
+        ...(m.type === "messages"
+          ? {
+              authorRole:
+                m.entityId === runtime.agentId ? "assistant" : "other speaker",
+            }
+          : {}),
+      }))
+    : items;
+  const lines = plannerOwnsReply
+    ? [
+        "Complete source records are in data.memories; text contains the original source wording. Records with evidenceStatus=inactive are historical evidence, not current facts.",
+      ]
+    : items.map(
+        (m) =>
+          `- [${m.type}${m.evidenceStatus === "inactive" ? "; INACTIVE source evidence: historical record, not a current fact" : ""}] ${m.id} at ${new Date(m.createdAt).toISOString()}${m.type === "messages" ? ` [author=${m.entityId === runtime.agentId ? "assistant" : "other speaker"}; entityId=${m.entityId}]` : ""}: ${toWellFormedUnicode(m.text)}`,
+      );
   const renderNote =
     limit === undefined
-      ? `Showing all ${lines.length} match(es) found in the complete scan`
-      : `Showing ${lines.length} match(es) at offset ${offset} of ${totalMatches} found in the complete scan`;
+      ? `Showing all ${items.length} match(es) found in the complete scan`
+      : `Showing ${items.length} match(es) at offset ${offset} of ${totalMatches} found in the complete scan`;
   const continuationNote =
     nextOffset === undefined
       ? []
@@ -1041,7 +1061,7 @@ async function doSearch(
     ].join("\n"),
     values: {
       count: items.length,
-      rendered: lines.length,
+      rendered: items.length,
       totalMatches,
       scanned: scan.scanned,
       offset,
@@ -1051,7 +1071,7 @@ async function doSearch(
     data: {
       actionName: "MEMORY",
       op: "search" as const,
-      memories: items,
+      memories: records,
       totalMatches,
       scanned: scan.scanned,
       offset,
@@ -1062,7 +1082,7 @@ async function doSearch(
       actionName: "MEMORY",
       op: "search" as const,
       totalMatches,
-      rendered: lines.length,
+      rendered: items.length,
       scanned: scan.scanned,
       offset,
       nextOffset: nextOffset ?? null,

@@ -19,6 +19,16 @@ bun run test
 
 See `package.json` for `build`, `lint`, and other scripts.
 
+## Memory search results
+
+Planner-owned `MEMORY action=search` calls return each complete source once in
+`data.memories`, with its exact text, IDs, author, room, timestamps and evidence
+status. The text field explains search scope and pagination. Standalone callers
+retain the complete text rendering as well as structured records. Ownership comes
+from the existing trusted execution context, never model-supplied arguments.
+The normal model-boundary redactor handles source strings before serialization;
+stored records and structured runtime results remain intact.
+
 ## Research tasks
 
 `ResearchTaskExecutor` requires a provider registered for

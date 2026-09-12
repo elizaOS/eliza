@@ -6,11 +6,16 @@
  */
 import type { ActionResult, IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import {
+  composeToolDiagnosticRedactor,
   normalizeActionIdentifier,
   promoteSubactionsToActions,
+  renderActionResultsForModel,
   validateToolArgs,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { runWithActionRoutingContext } from "../../../core/src/runtime/action-routing-context";
+import { actionResultToPlannerToolResult } from "../../../core/src/runtime/planner-loop";
+import { toolMessageContent } from "../../../core/src/runtime/planner-rendering";
 import {
   MAX_MEMORY_ACTION_RESULT_CHARS,
   MAX_MEMORY_PAGE_ITEMS,
@@ -2283,6 +2288,140 @@ describe("MEMORY routing aliases", () => {
 });
 
 describe("MEMORY op:search rendered text", () => {
+  it("keeps complete paginated sources once in planner results and preserves standalone text", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = makeMessage();
+    const exactText = `  SOURCE_COPY_MARKER\r\n"Don’t change this."\\path\t🟣e\u0301\n${"long source ".repeat(250)}\nCorrection: violet, not green.  `;
+    for (const [index, entityId] of [USER_ID, AGENT_ID, USER_ID].entries()) {
+      rows.push({
+        tableName: "messages",
+        memory: {
+          id: crypto.randomUUID() as UUID,
+          agentId: AGENT_ID,
+          entityId,
+          roomId: ROOM_ID,
+          createdAt: index + 1,
+          content: { text: exactText },
+        },
+      });
+    }
+    const params = {
+      action: "search",
+      type: "messages",
+      query: "violet",
+      limit: 2,
+    };
+    const standalone = await runAction(runtime, message, params);
+    expect(standalone.text).toContain(exactText);
+    const frame = {
+      actionName: "MEMORY_SEARCH",
+      modelClass: undefined,
+      messageId: message.id,
+      replyOwner: "planner" as const,
+    };
+    const first = await runWithActionRoutingContext(frame, () =>
+      runAction(runtime, message, params),
+    );
+    const second = await runWithActionRoutingContext(frame, () =>
+      runAction(runtime, message, {
+        ...params,
+        offset: 2,
+        snapshot: String(first.values?.snapshot),
+      }),
+    );
+    expect(first.values).toEqual(standalone.values);
+    expect(first.values).toMatchObject({
+      count: 2,
+      rendered: 2,
+      totalMatches: 3,
+      nextOffset: 2,
+    });
+    expect(second.values).toMatchObject({
+      count: 1,
+      rendered: 1,
+      totalMatches: 3,
+      nextOffset: null,
+    });
+    const originals = structuredClone(rows);
+    const sourceIds = new Set<unknown>();
+    for (const result of [first, second]) {
+      const converted = actionResultToPlannerToolResult(result);
+      const rendered = toolMessageContent(converted);
+      const wire = JSON.parse(rendered);
+      const records = wire.data.memories;
+      expect(wire.data.values).toEqual(result.values);
+      expect(records).toEqual(result.data?.memories);
+      expect(rendered.match(/SOURCE_COPY_MARKER/g)).toHaveLength(
+        records.length,
+      );
+      for (const record of records) {
+        expect(record.text).toBe(exactText);
+        expect(record.createdAtIso).toBe(
+          new Date(record.createdAt).toISOString(),
+        );
+        expect(record.authorRole).toBe(
+          record.entityId === AGENT_ID ? "assistant" : "other speaker",
+        );
+        expect(record.roomId).toBe(ROOM_ID);
+        expect(record.agentId).toBe(AGENT_ID);
+        sourceIds.add(record.id);
+      }
+    }
+    expect(sourceIds).toEqual(new Set(rows.map((row) => row.memory.id)));
+    expect(rows).toEqual(originals);
+    const wrongTurn = await runWithActionRoutingContext(
+      { ...frame, messageId: crypto.randomUUID() },
+      () => runAction(runtime, message, params),
+    );
+    expect(wrongTurn.text).toBe(standalone.text);
+    const spoofed = await runAction(runtime, message, {
+      ...params,
+      replyOwner: "planner",
+    });
+    expect(spoofed.text).toBe(standalone.text);
+  });
+
+  it("redacts structured source credentials without rewriting runtime evidence", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = makeMessage();
+    const knownSecret = 'known-secret-with-"quotes"\nand-a-newline';
+    runtime.redactSecrets = (text) =>
+      text.replaceAll(knownSecret, "[REDACTED]");
+    const text =
+      '{"apiKey":"synthetic-key-value"}\n--token="synthetic-token-value"\n' +
+      knownSecret +
+      '\nRetain the correction: "violet", not green.';
+    seedFact(rows, { text, entityId: USER_ID });
+    const result = await runWithActionRoutingContext(
+      {
+        actionName: "MEMORY_SEARCH",
+        modelClass: undefined,
+        messageId: message.id,
+        replyOwner: "planner",
+      },
+      () =>
+        runAction(runtime, message, {
+          action: "search",
+          type: "facts",
+          query: "violet",
+        }),
+    );
+    const rendered = renderActionResultsForModel([result], {
+      redactText: composeToolDiagnosticRedactor(runtime),
+    }).text;
+    const jsonLine = rendered.split("\n").find((line) => line.startsWith("{"));
+    if (!jsonLine) throw new Error("model result JSON missing");
+    const record = JSON.parse(jsonLine).data.memories[0];
+    expect(record.text).not.toContain("synthetic-key-value");
+    expect(record.text).not.toContain("synthetic-token-value");
+    expect(record.text).not.toContain(knownSecret);
+    expect(record.text).toContain(
+      '[REDACTED]\nRetain the correction: "violet", not green.',
+    );
+    expect(result.data?.memories).toEqual([expect.objectContaining({ text })]);
+    expect(rows[0].memory.content.text).toBe(text);
+  });
+
   it("preserves the complete text of each hit", async () => {
     const { runtime, rows } = makeRuntime();
     const head = "CORRECTION (2026-08-18): the user's earlier claim was ";
