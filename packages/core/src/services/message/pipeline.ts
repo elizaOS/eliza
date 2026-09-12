@@ -1201,7 +1201,9 @@ export async function runV5MessageRuntimeStage1(
 				processMessage: messageHandler.processMessage,
 				plan: {
 					contexts: messageHandler.plan.contexts,
-					replyEffectStatus: messageHandler.plan.replyEffectStatus ?? "none",
+					...(messageHandler.plan.replyEffectStatus !== undefined
+						? { replyEffectStatus: messageHandler.plan.replyEffectStatus }
+						: {}),
 					intents: messageHandler.plan.intents ?? [],
 					...(messageHandler.plan.requiresTool !== undefined
 						? { requiresTool: messageHandler.plan.requiresTool }

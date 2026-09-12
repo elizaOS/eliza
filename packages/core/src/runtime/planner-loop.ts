@@ -829,6 +829,17 @@ async function runPlannerLoopIterations(
 		if (trajectory.plannedQueue.length === 0) {
 			const contextBeforePlanner = trajectory.context;
 			const synthesizingRequiredModelReply = pendingRequiredModelReply;
+			// Resolve Stage 1's draft/tool-candidate contradiction before exposing
+			// an effect to planning. Reuse normal completion evaluation: FINISH
+			// can deliver the draft; CONTINUE must still plan the outstanding work.
+			const initialStageOneReply =
+				iteration === 1 &&
+				!postToolReplySeed &&
+				requireNonTerminalToolCall &&
+				canEvaluateUnexecutedReply &&
+				isPlainObject(stageOnePlan)
+					? getNonEmptyString(stageOnePlan.reply)
+					: undefined;
 			// Providers occasionally 400 with "Failed to generate tool_calls …
 			// tool_choice = 'required'": the model simply failed to emit a call
 			// this sample (Cerebras/gemma, live 2026-08-20 — a casual "surprise
@@ -865,46 +876,55 @@ async function runPlannerLoopIterations(
 				ReturnType<typeof callPlannerWithToolChoiceRetry>
 			>;
 			try {
-				plannerOutput = await callPlannerWithToolChoiceRetry({
-					runtime: params.runtime,
-					context: trajectory.context,
-					trajectory,
-					config,
-					modelType: params.modelType,
-					provider: params.provider,
-					// A successful final-scope action may ask for one natural closing
-					// sentence. That round is synthesis, not planning: remove the tool
-					// catalog entirely so callPlanner cannot default an omitted toolChoice
-					// to "required" and re-run the action. The branch below consumes this
-					// output exactly once, including when a non-compliant provider invents
-					// a tool call despite receiving no tools.
-					tools: synthesizingRequiredModelReply ? undefined : params.tools,
-					// Removing effect tools must not undo Stage-1 source selection.
-					// This reply-only round can read original context through the
-					// intercepted RESTORE_CONTEXT protocol, never execute an action.
-					allowReplyContextProjection: synthesizingRequiredModelReply,
-					// Require a native call until the requested tool has run. Explicitly
-					// pending chat work also needs a native continuation or scope release:
-					// REPLY/IGNORE/STOP can close the turn without repeating an action.
-					// Bare prose has no native scope field and can trigger redundant
-					// evaluation/synthesis. Other settled turns retain the explicit auto
-					// choice; omitting it would default back to required in callPlanner.
-					toolChoice: synthesizingRequiredModelReply
-						? undefined
-						: requireNonTerminalToolCall
-							? hasExecutedNonTerminalTool(trajectory) &&
-								(codingMode || lastPlannerExplicitCompleted !== false)
-								? "auto"
-								: "required"
-							: params.toolChoice,
-					recorder: params.recorder,
-					trajectoryId: params.trajectoryId,
-					cacheConversationId: params.cacheConversationId,
-					parentStageId: params.parentStageId,
-					providerAttributionState: params.providerAttributionState,
-					iteration,
-					onUsage: observePlannerUsage,
-				});
+				plannerOutput = initialStageOneReply
+					? {
+							toolCalls: [],
+							messageToUser: initialStageOneReply,
+							raw: {
+								source: "response-handler",
+								replyText: initialStageOneReply,
+							},
+						}
+					: await callPlannerWithToolChoiceRetry({
+							runtime: params.runtime,
+							context: trajectory.context,
+							trajectory,
+							config,
+							modelType: params.modelType,
+							provider: params.provider,
+							// A successful final-scope action may ask for one natural closing
+							// sentence. That round is synthesis, not planning: remove the tool
+							// catalog entirely so callPlanner cannot default an omitted toolChoice
+							// to "required" and re-run the action. The branch below consumes this
+							// output exactly once, including when a non-compliant provider invents
+							// a tool call despite receiving no tools.
+							tools: synthesizingRequiredModelReply ? undefined : params.tools,
+							// Removing effect tools must not undo Stage-1 source selection.
+							// This reply-only round can read original context through the
+							// intercepted RESTORE_CONTEXT protocol, never execute an action.
+							allowReplyContextProjection: synthesizingRequiredModelReply,
+							// Require a native call until the requested tool has run. Explicitly
+							// pending chat work also needs a native continuation or scope release:
+							// REPLY/IGNORE/STOP can close the turn without repeating an action.
+							// Bare prose has no native scope field and can trigger redundant
+							// evaluation/synthesis. Other settled turns retain the explicit auto
+							// choice; omitting it would default back to required in callPlanner.
+							toolChoice: synthesizingRequiredModelReply
+								? undefined
+								: requireNonTerminalToolCall
+									? hasExecutedNonTerminalTool(trajectory) &&
+										(codingMode || lastPlannerExplicitCompleted !== false)
+										? "auto"
+										: "required"
+									: params.toolChoice,
+							recorder: params.recorder,
+							trajectoryId: params.trajectoryId,
+							cacheConversationId: params.cacheConversationId,
+							parentStageId: params.parentStageId,
+							providerAttributionState: params.providerAttributionState,
+							iteration,
+							onUsage: observePlannerUsage,
+						});
 			} catch (err) {
 				// A context overflow is a terminal integrity boundary even after a
 				// successful action. Relaying the action-owned fallback would hide that
@@ -1355,6 +1375,7 @@ async function runPlannerLoopIterations(
 					trajectory,
 					iteration,
 					message: plannerOutput.messageToUser,
+					fromStageOne: initialStageOneReply !== undefined,
 				});
 				if (
 					trajectory.steps.some((step) => step.toolCall) ||
@@ -3988,11 +4009,18 @@ function appendTerminalPlannerOutputEvent(args: {
 	trajectory: PlannerTrajectory;
 	iteration: number;
 	message?: string;
+	fromStageOne?: boolean;
 }): void {
 	const createdAt = Date.now();
 	const unsafe = isUnsafeUserVisibleText(args.message);
+	const label = args.fromStageOne
+		? "stage_one_reply_proposal"
+		: "terminal_planner_output";
+	const eventId = `${args.fromStageOne ? "stage-one-reply-proposal" : "terminal-planner-output"}:${args.iteration}:${createdAt}`;
 	const content = [
-		"planner_terminal_output:",
+		args.fromStageOne
+			? "stage_one_reply_proposal:"
+			: "planner_terminal_output:",
 		normalizeCompleteText(args.message ?? ""),
 		"",
 		unsafe
@@ -4000,17 +4028,17 @@ function appendTerminalPlannerOutputEvent(args: {
 			: "note: Evaluate whether this user-visible output actually completes the request.",
 	].join("\n");
 	appendPlannerModelFeedbackEvent(args.trajectory, {
-		id: `terminal-planner-output:${args.iteration}:${createdAt}`,
+		id: eventId,
 		type: "segment",
-		source: "planner-loop",
+		source: args.fromStageOne ? "message-service" : "planner-loop",
 		createdAt,
 		metadata: {
 			iteration: args.iteration,
 			unsafe,
 		},
 		segment: {
-			id: `terminal-planner-output:${args.iteration}:${createdAt}`,
-			label: "terminal_planner_output",
+			id: eventId,
+			label,
 			content,
 			stable: false,
 			metadata: {

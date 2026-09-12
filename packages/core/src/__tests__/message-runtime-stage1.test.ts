@@ -4639,16 +4639,6 @@ describe("runV5MessageRuntimeStage1", () => {
 				}),
 				...(replyEffectStatus === "none"
 					? [
-							{
-								text: "",
-								toolCalls: [
-									{
-										id: "preview-finish",
-										name: "REPLY",
-										arguments: { eliza_turn_scope: "final" },
-									},
-								],
-							},
 							JSON.stringify({
 								thought:
 									"The current request requires a preview and separate confirmation, not a saved note.",
@@ -4683,12 +4673,17 @@ describe("runV5MessageRuntimeStage1", () => {
 				replyEffectStatus === "none" ? "planned_reply" : "direct_reply",
 			);
 			expect(useModelCalls(runtime)).toHaveLength(
-				replyEffectStatus === "none" ? 3 : 1,
+				replyEffectStatus === "none" ? 2 : 1,
 			);
 			expect(result.messageHandler.plan.replyEffectStatus).toBe(
 				replyEffectStatus,
 			);
 			expect(handler).not.toHaveBeenCalled();
+			expect(useModelCalls(runtime).map(([type]) => type)).toEqual(
+				replyEffectStatus === "none"
+					? ["RESPONSE_HANDLER", "RESPONSE_HANDLER"]
+					: ["RESPONSE_HANDLER"],
+			);
 			if (result.kind === "direct_reply" || result.kind === "planned_reply")
 				expect(result.result.responseContent?.text).toBe(answer);
 		},
@@ -4703,19 +4698,6 @@ describe("runV5MessageRuntimeStage1", () => {
 				replyText: "Let me check that.",
 				extra: { replyEffectStatus: "none" },
 			}),
-			{
-				text: "",
-				toolCalls: [
-					{
-						id: "premature-reply",
-						name: "REPLY",
-						arguments: {
-							text: "Let me check that.",
-							eliza_turn_scope: "final",
-						},
-					},
-				],
-			},
 			JSON.stringify({
 				thought:
 					"The requested live status has not been read; perform the lookup.",
@@ -4764,7 +4746,6 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(handler).toHaveBeenCalledTimes(1);
 		expect(useModelCalls(runtime).map(([type]) => type)).toEqual([
 			"RESPONSE_HANDLER",
-			"ACTION_PLANNER",
 			"RESPONSE_HANDLER",
 			"ACTION_PLANNER",
 			"RESPONSE_HANDLER",

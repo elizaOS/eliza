@@ -671,7 +671,9 @@ export function messageHandlerFromFieldResult(
 		),
 		intents: declaredIntents,
 		reply: replyText,
-		replyEffectStatus,
+		// Preserve missing status through routing; a parser default is not an
+		// explicit model decision that this reply claims no outstanding work.
+		...(result.replyEffectStatus !== undefined ? { replyEffectStatus } : {}),
 		simple: preemptDirect ? true : !shouldPlan,
 		requiresTool: shouldPlan,
 	};

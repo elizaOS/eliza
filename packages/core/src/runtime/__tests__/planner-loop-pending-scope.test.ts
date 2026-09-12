@@ -152,6 +152,7 @@ describe("planner-declared pending work", () => {
 		async (messageToUser) => {
 			// Recorded live: step-1789215630238-928oz1. The evaluator approved
 			// native REPLY without replacing it, but its thought reached the UI.
+			// The existing Stage-1 draft now reaches that evaluation without planning.
 			const preview =
 				"Here's the draft, not saved:\n\nTitle: History header QA 20260912\nBody: Bring a green folder and a charger.\n\nTell me when to save it; the app stays where it is.";
 			const thought =
@@ -167,7 +168,7 @@ describe("planner-declared pending work", () => {
 					replyEffectStatus: "none",
 					candidateActions: [],
 				},
-				plans: [{ text: "", toolCalls: [call("REPLY", "final", preview)] }],
+				plans: [],
 				evaluations: [
 					JSON.stringify({
 						thought,
@@ -189,7 +190,6 @@ describe("planner-declared pending work", () => {
 			expect(result.evaluator?.decision).toBe("FINISH");
 			expect(h.executed).toEqual([]);
 			expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
-				ModelType.ACTION_PLANNER,
 				ModelType.RESPONSE_HANDLER,
 			]);
 		},
@@ -209,7 +209,7 @@ describe("planner-declared pending work", () => {
 					replyEffectStatus,
 					candidateActions: ["NOTES_CREATE"],
 				},
-				plans: [{ text: "", toolCalls: [call("REPLY", "final")] }],
+				plans: [],
 				evaluations: [finish(preview)],
 			});
 			const result = await h.run({
@@ -221,7 +221,6 @@ describe("planner-declared pending work", () => {
 			expect(result.finalMessage).toBe(preview);
 			expect(h.executed).toEqual([]);
 			expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
-				ModelType.ACTION_PLANNER,
 				ModelType.RESPONSE_HANDLER,
 			]);
 			expect(result.trajectory.evaluatorOutputs).toHaveLength(1);
@@ -237,10 +236,7 @@ describe("planner-declared pending work", () => {
 				replyEffectStatus: "none",
 				candidateActions: ["READ"],
 			},
-			plans: [
-				{ text: "", toolCalls: [call("REPLY", "final")] },
-				{ text: "", toolCalls: [call("READ", "final")] },
-			],
+			plans: [{ text: "", toolCalls: [call("READ", "final")] }],
 			evaluations: [
 				continueWork("The user needs a current read; no read has run yet."),
 				finish("The current note says to bring the purple folder."),
@@ -253,7 +249,6 @@ describe("planner-declared pending work", () => {
 		expect(result.status).toBe("finished");
 		expect(h.executed).toEqual(["READ"]);
 		expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
-			ModelType.ACTION_PLANNER,
 			ModelType.RESPONSE_HANDLER,
 			ModelType.ACTION_PLANNER,
 			ModelType.RESPONSE_HANDLER,
