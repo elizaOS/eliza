@@ -485,6 +485,8 @@ describe("typed lifecycle reads and exact sandbox generations", () => {
           await dbWrite
             .update(agentSandboxes)
             .set({
+              sandbox_id: "sleep-generation-test",
+              container_name: "sleep-generation-test",
               bridge_url: `http://127.0.0.1:${port}`,
               health_url: `http://127.0.0.1:${port}`,
               node_id: "test-node",
