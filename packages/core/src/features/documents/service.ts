@@ -605,6 +605,7 @@ export class DocumentService extends Service {
 		documentId: UUID,
 		directGrantEntityIds: UUID[],
 		accessContext: AccessContext,
+		expectedAccessRevision?: string,
 	): Promise<Memory> {
 		const grants = validateDocumentDirectGrantEntityIds(directGrantEntityIds);
 		const { snapshot, requestContext } =
@@ -612,6 +613,19 @@ export class DocumentService extends Service {
 				documentId,
 				accessContext,
 			);
+		if (
+			expectedAccessRevision !== undefined &&
+			expectedAccessRevision !==
+				(await this.documentAccessRevision(documentId, snapshot))
+		) {
+			throw new ElizaError(
+				"Document access changed. Reload and review the current audience before saving.",
+				{
+					code: "DOCUMENT_GRANT_MUTATION_CONFLICT",
+					context: { documentId },
+				},
+			);
+		}
 		const result = await this.runtime.adapter.updateDocumentDirectGrants({
 			...requestContext,
 			documentId,
@@ -641,6 +655,39 @@ export class DocumentService extends Service {
 			accessContext,
 		);
 		return snapshot.directGrantEntityIds ?? [];
+	}
+
+	/** Returns one authorized audience snapshot with its opaque review revision. */
+	async getDocumentDirectGrantStateWithAccessContext(
+		documentId: UUID,
+		accessContext: AccessContext,
+	): Promise<{ directGrantEntityIds: UUID[]; accessRevision: string }> {
+		const { snapshot } = await this.getDocumentDirectGrantManagementTarget(
+			documentId,
+			accessContext,
+		);
+		return {
+			directGrantEntityIds: snapshot.directGrantEntityIds ?? [],
+			accessRevision: await this.documentAccessRevision(documentId, snapshot),
+		};
+	}
+
+	private async documentAccessRevision(
+		documentId: UUID,
+		snapshot: DocumentMutationSnapshot,
+	): Promise<string> {
+		// Grant updates do not advance the content revision. Bind the complete
+		// authorization snapshot so a grant-only change also invalidates a review.
+		const bytes = new TextEncoder().encode(
+			JSON.stringify([
+				"document-access-review-v1",
+				this.runtime.agentId,
+				documentId,
+				snapshot,
+			]),
+		);
+		const digest = await crypto.subtle.digest("SHA-256", bytes);
+		return `dar1_${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 	}
 
 	private async getDocumentDirectGrantManagementTarget(

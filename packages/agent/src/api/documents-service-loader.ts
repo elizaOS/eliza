@@ -102,7 +102,12 @@ export interface DocumentsServiceLike {
     documentId: UUID,
     directGrantEntityIds: UUID[],
     accessContext: AccessContext,
+    expectedAccessRevision?: string,
   ): Promise<Memory>;
+  getDocumentDirectGrantStateWithAccessContext?(
+    documentId: UUID,
+    accessContext: AccessContext,
+  ): Promise<{ directGrantEntityIds: UUID[]; accessRevision: string }>;
   getDocumentDirectGrantsWithAccessContext?(
     documentId: UUID,
     accessContext: AccessContext,

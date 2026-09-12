@@ -63,6 +63,13 @@ mutation authority and never open `agent-private` documents. Grant replacement
 is atomic, validates every entity against the current agent, and is limited to
 OWNER or a current room ADMIN for `global` and `user-private` documents.
 
+Read `GET /api/documents/:id/access` before editing grants. It returns
+`directGrantEntityIds` and an opaque `accessRevision`. Send that revision as
+`expectedAccessRevision` with the complete desired grant list in PATCH. A
+changed authorization snapshot returns a conflict; reload and review the
+current audience before saving again. A successful PATCH does not return a
+new review revision, so read the current access state before another edit.
+
 ## Configuration
 
 No additional environment variables are required beyond those needed by the document storage service (`@elizaos/agent`). The plugin uses `ELIZA_ADMIN_ENTITY_ID` (read from the agent runtime settings) to identify the owner actor for access control decisions.

@@ -1009,19 +1009,19 @@ export async function handleDocumentsRoutes(
       error(res, "document id must be a valid UUID");
       return true;
     }
-    if (!documentsService.getDocumentDirectGrantsWithAccessContext) {
+    if (!documentsService.getDocumentDirectGrantStateWithAccessContext) {
       error(res, "Canonical document grant authority is unavailable", 503);
       return true;
     }
     try {
-      const directGrantEntityIds =
-        await documentsService.getDocumentDirectGrantsWithAccessContext(
+      const accessState =
+        await documentsService.getDocumentDirectGrantStateWithAccessContext(
           decodedDocumentId.trim() as UUID,
           accessContext,
         );
       json(res, {
         documentId: decodedDocumentId.trim(),
-        directGrantEntityIds,
+        ...accessState,
       });
     } catch (cause) {
       // error-policy:J1 The HTTP boundary translates typed ACL failures without exposing storage details.
@@ -1046,14 +1046,24 @@ export async function handleDocumentsRoutes(
       error(res, "Canonical document grant authority is unavailable", 503);
       return true;
     }
-    const body = await readJsonBody<{ directGrantEntityIds?: unknown }>(
-      req,
-      res,
-      {
-        maxBytes: 128 * 1024,
-      },
-    );
+    const body = await readJsonBody<{
+      directGrantEntityIds?: unknown;
+      expectedAccessRevision?: unknown;
+    }>(req, res, {
+      maxBytes: 128 * 1024,
+    });
     if (!body) return true;
+    if (
+      typeof body.expectedAccessRevision !== "string" ||
+      !/^dar1_[a-f0-9]{64}$/.test(body.expectedAccessRevision)
+    ) {
+      error(
+        res,
+        "Reload document access and provide its reviewed expectedAccessRevision",
+        400,
+      );
+      return true;
+    }
     if (!Array.isArray(body.directGrantEntityIds)) {
       error(res, "directGrantEntityIds must be an array of UUIDs");
       return true;
@@ -1072,6 +1082,7 @@ export async function handleDocumentsRoutes(
           decodedDocumentId.trim() as UUID,
           requestedGrants,
           accessContext,
+          body.expectedAccessRevision,
         );
       // `metadata` is the MemoryMetadata union; only DocumentMetadata carries
       // the grants, so narrow with `in` before reading.

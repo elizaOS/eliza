@@ -57,7 +57,7 @@ const service = vi.hoisted(() => ({
   getDocumentByIdWithAccessContext: vi.fn(),
   getMutableDocumentWithAccessContext: vi.fn(),
   setDocumentDirectGrantsWithAccessContext: vi.fn(),
-  getDocumentDirectGrantsWithAccessContext: vi.fn(),
+  getDocumentDirectGrantStateWithAccessContext: vi.fn(),
   listDocumentFragmentsWithAccessContext: vi.fn(),
   getMemories: vi.fn(),
   updateDocument: vi.fn(),
@@ -120,9 +120,10 @@ describe("canonical document REST reads", () => {
         directGrantEntityIds: [USER_ID],
       },
     });
-    service.getDocumentDirectGrantsWithAccessContext.mockResolvedValue([
-      USER_ID,
-    ]);
+    service.getDocumentDirectGrantStateWithAccessContext.mockResolvedValue({
+      directGrantEntityIds: [USER_ID],
+      accessRevision: `dar1_${"a".repeat(64)}`,
+    });
     service.listDocumentFragmentsWithAccessContext.mockResolvedValue([
       fragment,
     ]);
@@ -214,7 +215,10 @@ describe("canonical document REST reads", () => {
       "PATCH",
       {
         content: "updated bytes",
-        metadata: { directGrantEntityIds: [USER_ID] },
+        metadata: {
+          directGrantEntityIds: [USER_ID],
+          expectedAccessRevision: `dar1_${"a".repeat(64)}`,
+        },
       },
     );
 
@@ -251,11 +255,27 @@ describe("canonical document REST reads", () => {
     expect(service.deleteMemory).not.toHaveBeenCalled();
   });
 
+  it("rejects an audience edit that has no reviewed access revision", async () => {
+    const { ctx, response } = context(
+      `/api/documents/${DOCUMENT_ID}/access`,
+      "PATCH",
+      { directGrantEntityIds: [USER_ID] },
+    );
+    await handleDocumentsRoutes(ctx);
+    expect(response.status).toBe(400);
+    expect(
+      service.setDocumentDirectGrantsWithAccessContext,
+    ).not.toHaveBeenCalled();
+  });
+
   it("replaces direct grants only through the canonical ACL authority", async () => {
     const { ctx, response, getMemoryById } = context(
       `/api/documents/${DOCUMENT_ID}/access`,
       "PATCH",
-      { directGrantEntityIds: [USER_ID] },
+      {
+        directGrantEntityIds: [USER_ID],
+        expectedAccessRevision: `dar1_${"a".repeat(64)}`,
+      },
     );
 
     await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
@@ -268,7 +288,12 @@ describe("canonical document REST reads", () => {
     });
     expect(
       service.setDocumentDirectGrantsWithAccessContext,
-    ).toHaveBeenCalledWith(DOCUMENT_ID, [USER_ID], accessContext);
+    ).toHaveBeenCalledWith(
+      DOCUMENT_ID,
+      [USER_ID],
+      accessContext,
+      `dar1_${"a".repeat(64)}`,
+    );
     expect(service.getMutableDocumentWithAccessContext).not.toHaveBeenCalled();
     expect(getMemoryById).not.toHaveBeenCalled();
   });
@@ -284,9 +309,10 @@ describe("canonical document REST reads", () => {
     expect(response.body).toEqual({
       documentId: DOCUMENT_ID,
       directGrantEntityIds: [USER_ID],
+      accessRevision: `dar1_${"a".repeat(64)}`,
     });
     expect(
-      service.getDocumentDirectGrantsWithAccessContext,
+      service.getDocumentDirectGrantStateWithAccessContext,
     ).toHaveBeenCalledWith(DOCUMENT_ID, accessContext);
     expect(getMemoryById).not.toHaveBeenCalled();
   });
@@ -295,7 +321,10 @@ describe("canonical document REST reads", () => {
     const { ctx, response, getMemoryById } = context(
       `/api/documents/${DOCUMENT_ID}/access`,
       "PATCH",
-      { directGrantEntityIds: "not-an-array" },
+      {
+        directGrantEntityIds: "not-an-array",
+        expectedAccessRevision: `dar1_${"a".repeat(64)}`,
+      },
     );
 
     await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
@@ -316,7 +345,10 @@ describe("canonical document REST reads", () => {
     const { ctx, response, getMemoryById } = context(
       `/api/documents/${DOCUMENT_ID}/access`,
       "PATCH",
-      { directGrantEntityIds: [] },
+      {
+        directGrantEntityIds: [],
+        expectedAccessRevision: `dar1_${"a".repeat(64)}`,
+      },
     );
 
     await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);

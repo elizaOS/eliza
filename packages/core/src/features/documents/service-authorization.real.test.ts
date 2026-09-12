@@ -4,6 +4,7 @@
  * composition across user and agent-tenant boundaries.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { readDocumentMutationSnapshot } from "../../database/document-list-query.ts";
 import { filterByContextGate } from "../../runtime/context-gates.ts";
 import type { AgentRuntime } from "../../runtime.ts";
 import { createTestRuntime } from "../../testing/pglite-runtime.ts";
@@ -124,6 +125,24 @@ beforeAll(async () => {
 	({ runtime, cleanup } = await createTestRuntime({
 		characterName: "DocumentAuthorizationTest",
 	}));
+	// Seed authority when the world is created; connection updates preserve roles.
+	await runtime.ensureWorldExists({
+		id: WORLD_ID,
+		name: "Document authorization",
+		agentId: runtime.agentId,
+		metadata: {
+			roles: {
+				[USER_ID]: "USER",
+				[OTHER_USER_ID]: "USER",
+				[ADMIN_ID]: "ADMIN",
+			},
+			roleSources: {
+				[USER_ID]: "manual",
+				[OTHER_USER_ID]: "manual",
+				[ADMIN_ID]: "manual",
+			},
+		},
+	});
 	await runtime.ensureConnection({
 		entityId: USER_ID,
 		roomId: ROOM_ID,
@@ -157,23 +176,7 @@ beforeAll(async () => {
 		source: "test",
 		type: ChannelType.DM,
 	});
-	await runtime.ensureWorldExists({
-		id: WORLD_ID,
-		name: "Document authorization",
-		agentId: runtime.agentId,
-		metadata: {
-			roles: {
-				[USER_ID]: "USER",
-				[OTHER_USER_ID]: "USER",
-				[ADMIN_ID]: "ADMIN",
-			},
-			roleSources: {
-				[USER_ID]: "manual",
-				[OTHER_USER_ID]: "manual",
-				[ADMIN_ID]: "manual",
-			},
-		},
-	});
+
 	await runtime.adapter.createAgent({
 		id: OTHER_AGENT_ID,
 		name: "Foreign document tenant",
@@ -289,6 +292,11 @@ describe("DocumentService requester authorization", () => {
 				adminContext,
 			),
 		).resolves.toEqual([GRANTEE_ID]);
+		const reviewedAccess =
+			await service.getDocumentDirectGrantStateWithAccessContext(
+				grantDocumentId,
+				adminContext,
+			);
 
 		await expect(
 			runtime.adapter.getDocument({
@@ -344,6 +352,14 @@ describe("DocumentService requester authorization", () => {
 			adminContext,
 		);
 		await expect(
+			service.setDocumentDirectGrantsWithAccessContext(
+				grantDocumentId,
+				[GRANTEE_ID],
+				adminContext,
+				reviewedAccess.accessRevision,
+			),
+		).rejects.toMatchObject({ code: "DOCUMENT_GRANT_MUTATION_CONFLICT" });
+		await expect(
 			runtime.adapter.readDocumentRange?.({
 				agentId: runtime.agentId,
 				documentId: grantDocumentId,
@@ -359,6 +375,12 @@ describe("DocumentService requester authorization", () => {
 			grantDocumentId,
 			[GRANTEE_ID],
 			adminContext,
+			(
+				await service.getDocumentDirectGrantStateWithAccessContext(
+					grantDocumentId,
+					adminContext,
+				)
+			).accessRevision,
 		);
 	});
 
@@ -529,7 +551,12 @@ describe("DocumentService requester authorization", () => {
 					content: "Replacement that must not become visible",
 					message: message(),
 				}),
-			).rejects.toThrow("injected update embedding failure");
+			).rejects.toMatchObject({
+				code: "DOCUMENT_REVISION_PREPARATION_FAILED",
+				cause: expect.objectContaining({
+					message: "injected update embedding failure",
+				}),
+			});
 		} finally {
 			failEmbedding = false;
 		}
@@ -599,6 +626,53 @@ describe("DocumentService requester authorization", () => {
 		await expect(
 			runtime.adapter.getMemoryById(oldFragmentId),
 		).resolves.toBeNull();
+		if (!parent) throw new Error("Replacement parent was not readable");
+		const expected = readDocumentMutationSnapshot(parent);
+		if (!expected)
+			throw new Error("Replacement parent has no mutation snapshot");
+		const rejectedFragmentId = "f4300000-0000-4000-8000-000000000031" as UUID;
+		const oversized = "x".repeat(32 * 1024 * 1024);
+		await expect(
+			runtime.adapter.replaceDocumentRevision({
+				...context,
+				documentId: ATOMIC_UPDATE_DOCUMENT_ID,
+				expected,
+				replacement: {
+					...parent,
+					content: { text: oversized },
+					metadata: { ...parent.metadata, documentRevision: 2 },
+				},
+				fragments: [
+					{
+						...documentFragment(
+							parent,
+							"Unpublished fragment",
+							rejectedFragmentId,
+						),
+						metadata: {
+							...documentFragment(
+								parent,
+								"Unpublished fragment",
+								rejectedFragmentId,
+							).metadata,
+							documentRevision: 2,
+						},
+					},
+				],
+			}),
+		).rejects.toMatchObject({ code: "SQL_JSON_SANITIZE_UNBOUNDED" });
+		await expect(
+			runtime.adapter.getMemoryById(ATOMIC_UPDATE_DOCUMENT_ID),
+		).resolves.toMatchObject({
+			content: { text: "Atomic replacement body" },
+			metadata: { documentRevision: 1 },
+		});
+		await expect(
+			runtime.adapter.getMemoryById(rejectedFragmentId),
+		).resolves.toBeNull();
+		await expect(
+			runtime.adapter.getMemoryById(replacementFragments[0].id as UUID),
+		).resolves.toMatchObject({ content: { text: "Atomic replacement body" } });
 	});
 
 	it("denies same-turn update and delete after room membership is revoked", async () => {
