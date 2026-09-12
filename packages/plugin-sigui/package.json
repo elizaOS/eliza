@@ -1,0 +1,12 @@
+{
+  "name": "@elizaos/plugin-sigui",
+  "version": "3.1.0",
+  "description": "Sigui DePIN AI Security Oracle plugin for ElizaOS agents.",
+  "type": "module",
+  "main": "src/index.ts",
+  "license": "MIT",
+  "author": "Sigui Protocol",
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  }
+}
