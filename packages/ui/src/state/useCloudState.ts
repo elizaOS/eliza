@@ -1590,14 +1590,17 @@ export function useCloudState({
       clearCloudLoginReturnParams();
       return;
     }
-    clearCloudLoginReturnParams();
-    if (elizaCloudLoginBusyRef.current) return;
-
     let cancelled = false;
     const sleep = (ms: number) =>
       new Promise((resolve) => window.setTimeout(resolve, ms));
 
     void (async () => {
+      // Strict Mode replays mount effects before the next microtask. Do not
+      // remove the return marker or claim the one-time CLI token in the
+      // discarded setup: only the surviving effect owns that exchange.
+      await Promise.resolve();
+      if (cancelled || elizaCloudLoginBusyRef.current) return;
+      clearCloudLoginReturnParams();
       elizaCloudLoginBusyRef.current = true;
       setElizaCloudLoginBusy(true);
       setElizaCloudLoginError(null);
