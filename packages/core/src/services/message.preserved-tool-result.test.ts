@@ -550,8 +550,9 @@ describe("planner-loop death after a completed tool", () => {
 			let stageCalls = 0;
 			harness.runtime.registerModel(
 				ModelType.RESPONSE_HANDLER,
-				async () => {
+				async (_runtime, params) => {
 					if (stageCalls++ === 0) return stageOne;
+					expect(JSON.stringify(params)).toContain(completeRequest);
 					throw overflow;
 				},
 				"overflow-test",
@@ -578,7 +579,10 @@ describe("planner-loop death after a completed tool", () => {
 				makeMessage(harness.runtime, completeRequest),
 				harness.callback,
 			);
-			expect(plannerCalls).toBeGreaterThan(0);
+			// A safe Stage-1 draft reaches pre-execution evaluation first. Its
+			// overflow must stop the turn before planning or action dispatch.
+			expect(plannerCalls).toBe(settled ? 1 : 0);
+			expect(stageCalls).toBeGreaterThan(1);
 			expect(actionCalls).toBe(settled ? 1 : 0);
 			expect(harness.callbacks).toContainEqual(
 				expect.objectContaining({

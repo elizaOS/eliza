@@ -80,6 +80,7 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 		expect(keyOrder).toEqual([
 			"shouldRespond",
 			"contexts",
+			"contextRequests",
 			"intents",
 			"completionContext",
 			"replyText",

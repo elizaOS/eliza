@@ -523,7 +523,13 @@ async function runPlannerLoopIterations(
 	if (
 		params.tools !== undefined &&
 		params.tools.length > 0 &&
-		!hasExposedNonTerminalTool(params.tools)
+		!hasExposedNonTerminalTool(params.tools) &&
+		// Discovery is preparatory, not domain execution, but it can still load
+		// the missing capability. An unresolved Stage-1 hint must reach planning
+		// even when its draft looks like a complete answer.
+		!params.tools.some(
+			(tool) => getToolDefinitionName(tool) === DISCOVER_TOOLS_NAME,
+		)
 	) {
 		const stageOneDecline = userSafeCapturedAnswerCandidate(
 			params.stageOneReplyText,

@@ -1200,12 +1200,14 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(plannerParams?.providerOptions?.cerebras?.prompt_cache_key).toMatch(
 			/^v5:/,
 		);
-		expect(evaluatorParams?.providerOptions?.cerebras?.prompt_cache_key).toBe(
-			plannerParams?.providerOptions?.cerebras?.prompt_cache_key,
-		);
-		// Local/model-runner affinity is stable across turns but stage-scoped so
-		// planner and evaluator KV state cannot collide. The shared provider
-		// prefix hash above intentionally remains identical across both stages.
+		expect(
+			evaluatorParams?.providerOptions?.cerebras?.prompt_cache_key,
+		).toMatch(/^v5:conversation:[0-9a-f]{64}$/);
+		expect(
+			evaluatorParams?.providerOptions?.cerebras?.prompt_cache_key,
+		).not.toBe(plannerParams?.providerOptions?.cerebras?.prompt_cache_key);
+		// Planner and evaluator use distinct conversation scopes for local KV
+		// affinity and Cerebras cache routing.
 		expect(plannerParams?.providerOptions?.eliza?.conversationId).toBe(
 			`${ROOM_ID}:planner`,
 		);
