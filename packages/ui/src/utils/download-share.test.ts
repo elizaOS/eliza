@@ -324,6 +324,38 @@ describe("downloadAttachment — <a download> fallback path", () => {
     expect(clickSpy).toHaveBeenCalledTimes(1);
   });
 
+  it("saves through the picker and never fires the anchor fallback", async () => {
+    // Supply the blob directly so the picker branch's success path — the only
+    // path none of the other picker tests exercise — runs end to end:
+    // prefetch → open picker → createWritable → write(blob) → close → return.
+    const blob = new Blob(["hello"], { type: "image/png" });
+    const fetchMock = vi.fn(async () => ({ ok: true, blob: async () => blob }));
+    vi.stubGlobal("fetch", fetchMock);
+    const writable = {
+      write: vi.fn(async () => {}),
+      close: vi.fn(async () => {}),
+    };
+    const handle = { createWritable: vi.fn(async () => writable) };
+    const picker = vi.fn(async () => handle);
+    vi.stubGlobal("window", { showSaveFilePicker: picker });
+
+    await withGlobal("Capacitor", undefined, () =>
+      downloadAttachment("https://example.com/cat.png", "cat.png"),
+    );
+
+    // The chosen-location save runs to completion: picker opens, a writable is
+    // created, the prefetched blob is written, and the stream is closed.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(picker).toHaveBeenCalledWith({ suggestedName: "cat.png" });
+    expect(handle.createWritable).toHaveBeenCalledTimes(1);
+    expect(writable.write).toHaveBeenCalledWith(blob);
+    expect(writable.close).toHaveBeenCalledTimes(1);
+    // A successful save must return before the anchor fallback — guarding the
+    // double-download the picker branch exists to avoid.
+    expect(clickSpy).not.toHaveBeenCalled();
+    expect(removeSpy).not.toHaveBeenCalled();
+  });
+
   it("does not start an anchor download when the user cancels the picker", async () => {
     // Use a string body so the Node-global `Response` constructs its own
     // spec-compliant Blob. A jsdom cross-realm `new Blob([...])` lacks the
