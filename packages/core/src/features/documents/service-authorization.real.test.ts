@@ -330,7 +330,25 @@ describe("DocumentService requester authorization", () => {
 				offset: 0,
 				limit: 1,
 			}),
-		).resolves.toBeNull();
+		).resolves.toMatchObject({ text: "Private grantable body", total: 1 });
+		const guestContext = {
+			requesterEntityId: GRANTEE_ID,
+			role: "GUEST" as const,
+			isOwner: false,
+		};
+		await expect(
+			service.getDocumentByIdWithAccessContext(grantDocumentId, guestContext),
+		).resolves.toMatchObject({
+			id: grantDocumentId,
+			content: { text: "Private grantable body" },
+		});
+		await expect(
+			service.setDocumentDirectGrantsWithAccessContext(
+				grantDocumentId,
+				[],
+				guestContext,
+			),
+		).rejects.toMatchObject({ code: "DOCUMENT_GRANT_MUTATION_FORBIDDEN" });
 		await expect(
 			service.setDocumentDirectGrantsWithAccessContext(grantDocumentId, [], {
 				requesterEntityId: GRANTEE_ID,
@@ -359,6 +377,22 @@ describe("DocumentService requester authorization", () => {
 				reviewedAccess.accessRevision,
 			),
 		).rejects.toMatchObject({ code: "DOCUMENT_GRANT_MUTATION_CONFLICT" });
+		await expect(
+			service.getDocumentByIdWithAccessContext(grantDocumentId, guestContext),
+		).resolves.toBeNull();
+		await expect(
+			runtime.adapter.readDocumentRange?.({
+				agentId: runtime.agentId,
+				documentId: grantDocumentId,
+				requesterEntityId: GRANTEE_ID,
+				requesterRoomIds: [],
+				requesterRole: "GUEST",
+				unit: "line",
+				offset: 0,
+				limit: 1,
+			}),
+		).resolves.toBeNull();
+
 		await expect(
 			runtime.adapter.readDocumentRange?.({
 				agentId: runtime.agentId,

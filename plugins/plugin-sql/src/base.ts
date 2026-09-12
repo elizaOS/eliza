@@ -385,7 +385,6 @@ function documentDirectGrantCondition(
 ): SQL {
   if (
     params.requesterRole === "UNRESOLVED" ||
-    params.requesterRole === "GUEST" ||
     documentRoleHasGlobalVisibility(params.requesterRole)
   ) {
     return sql`false`;
@@ -436,7 +435,10 @@ function documentVisibilityCondition(
   if (params.requesterRole === "GUEST") {
     return sql`(
       ${validAuthorizationMetadata}
-      AND ${metadata}->>'scope' = 'global'
+      AND (
+        ${metadata}->>'scope' = 'global'
+        OR ${documentDirectGrantCondition(params, metadata)}
+      )
     )`;
   }
   return sql`(

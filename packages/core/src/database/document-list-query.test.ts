@@ -245,10 +245,15 @@ describe("document-list capability contract", () => {
 
 		expect(isDocumentVisibleToRequester(granted, userParams)).toBe(true);
 		expect(isDocumentVisibleToRequester(agentOnly, userParams)).toBe(false);
+		const guest = { ...userParams, requesterRole: "GUEST" as const };
+		expect(isDocumentVisibleToRequester(granted, guest)).toBe(true);
+		expect(isDocumentVisibleToRequester(agentOnly, guest)).toBe(false);
+		expect(canRequesterMutateDocument(granted, guest)).toBe(false);
+		expect(canRequesterManageDocumentDirectGrants(granted, guest)).toBe(false);
 		expect(
 			isDocumentVisibleToRequester(granted, {
-				...userParams,
-				requesterRole: "GUEST",
+				...guest,
+				requesterRole: "UNRESOLVED",
 			}),
 		).toBe(false);
 		expect(canRequesterMutateDocument(granted, userParams)).toBe(false);

@@ -477,17 +477,17 @@ export function isDocumentVisibleToRequester(
 	if (documentRoleHasGlobalVisibility(params.requesterRole)) {
 		return true;
 	}
-	if (params.requesterRole === "GUEST") {
-		return (
-			params.requesterRoomIds.includes(snapshot.roomId) &&
-			snapshot.scope === "global"
-		);
-	}
 	if (
 		snapshot.scope !== "agent-private" &&
 		snapshot.directGrantEntityIds?.includes(params.requesterEntityId)
 	) {
 		return true;
+	}
+	if (params.requesterRole === "GUEST") {
+		return (
+			params.requesterRoomIds.includes(snapshot.roomId) &&
+			snapshot.scope === "global"
+		);
 	}
 	if (!params.requesterRoomIds.includes(snapshot.roomId)) return false;
 	if (snapshot.scope === "global") return true;

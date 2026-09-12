@@ -93,8 +93,9 @@ provided by the host route boundary. Missing context returns `401`; the plugin
 never treats an absent caller as owner. Request headers alone are not an
 identity or authorization authority. Preserve the caller's exact role through
 storage authorization: ADMIN is not OWNER, GUEST is not USER, and an unresolved
-role is rejected. Guests may read only global documents in their current rooms
-and may not mutate documents.
+role is rejected. Guests may read global documents in their current rooms and
+non-agent-private documents explicitly granted to their resolved entity identity.
+Direct grants never confer document mutation or sharing authority.
 
 List, facet, search, parent, and fragment REST reads must call the
 access-context-aware `DocumentService` methods. Do not use

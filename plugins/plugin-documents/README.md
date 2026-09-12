@@ -38,7 +38,7 @@ Documents are stored as memories in the runtime's `documents` table and chunked 
 
 | Scope | Who can read/write |
 |-------|--------------------|
-| `global` | Anyone; only OWNER/RUNTIME can write |
+| `global` | Current room participants and privileged agent roles; not public internet |
 | `owner-private` | OWNER and RUNTIME only |
 | `user-private` | Scoped to a specific user entity |
 | `agent-private` | OWNER, AGENT, and RUNTIME |
@@ -48,7 +48,8 @@ host route boundary. A request without that context returns `401`; request
 headers and `ELIZA_ADMIN_ENTITY_ID` never create an authenticated caller. Roles
 remain exact at this boundary: ADMIN is not OWNER, GUEST is not USER, and an
 unresolved role is rejected. Guests may read global documents in rooms where
-they are current members, but cannot read private scopes or mutate documents.
+they are current members, and non-agent-private documents explicitly shared with
+their resolved entity identity. They cannot mutate or re-share documents.
 List, facet, search, single-document, and fragment reads are resolved by
 `DocumentService` with that authenticated context. Routes never fetch a parent
 row, scan the document tables, or rank search results and then attempt to apply
