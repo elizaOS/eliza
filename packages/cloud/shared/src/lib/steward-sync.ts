@@ -890,18 +890,23 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     // #14869's eager new-signup provisioning. `ensureStewardTenant` reads the
     // org first and returns immediately when a tenant already exists, so the
     // healthy-org cost is one indexed read while existing NULL-tenant orgs get
-    // repaired opportunistically without a bulk backfill.
+    // repaired opportunistically without a bulk backfill. On Workers, keep
+    // that repair owned by waitUntil so a stalled tenant endpoint cannot hold
+    // an already-authenticated user's session exchange open.
     if (user.organization_id && !claimedTelegramUser) {
-      try {
-        await ensureStewardTenant(user.organization_id);
-      } catch (error) {
-        // error-policy:J4 tenant provisioning is an opportunistic repair, not
-        // an auth precondition; keep sign-in fail-open and leave an observable
-        // warning so Steward outages do not block returning users.
-        logger.warn(
-          `[StewardSync] Sign-in tenant self-heal failed for org ${user.organization_id}; sign-in proceeds and the next attempt retries: ${describeSyncError(error)}`,
-        );
-      }
+      const organizationId = user.organization_id;
+      await settleOffResponsePath(params.executionCtx, async () => {
+        try {
+          await ensureStewardTenant(organizationId);
+        } catch (error) {
+          // error-policy:J4 tenant provisioning is an opportunistic repair, not
+          // an auth precondition; retain an observable warning and retry on the
+          // next sign-in rather than failing the authenticated session.
+          logger.warn(
+            `[StewardSync] Sign-in tenant self-heal failed for org ${organizationId}; sign-in proceeds and the next attempt retries: ${describeSyncError(error)}`,
+          );
+        }
+      });
     }
 
     return user;

@@ -310,6 +310,38 @@ describe("syncUserFromSteward — eager Steward tenant provisioning (#14645)", (
     expect(result).toMatchObject({ id: "user-existing-1" });
   });
 
+  test("Worker sign-in returns while a missing tenant is repaired, and records a late failure", async () => {
+    getByStewardIdImpl = async () => existingUser;
+    const tenant = deferred<void>();
+    ensureStewardTenantImpl = async (organizationId) => {
+      ensureStewardTenantCalls.push(organizationId);
+      await tenant.promise;
+      throw new Error("Steward tenant request timed out");
+    };
+    const background: Promise<unknown>[] = [];
+    const { syncUserFromSteward } = await import("./steward-sync");
+    const signIn = syncUserFromSteward({
+      ...baseParams,
+      executionCtx: { waitUntil: (promise) => background.push(promise) },
+    });
+    try {
+      const result = await Promise.race([
+        signIn,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 100)),
+      ]);
+      expect(result).toMatchObject({ id: "user-existing-1" });
+      expect(ensureStewardTenantCalls).toEqual(["org-existing-1"]);
+      expect(background).toHaveLength(1);
+    } finally {
+      tenant.resolve();
+      await signIn;
+      await Promise.all(background);
+    }
+    expect(
+      loggerWarnCalls.some((call) => call.message.includes("Steward tenant request timed out")),
+    ).toBe(true);
+  });
+
   test("FAIL-OPEN: existing-user sign-in still succeeds when the tenant heal rejects", async () => {
     getByStewardIdImpl = async () => existingUser;
     ensureStewardTenantImpl = async (organizationId) => {
