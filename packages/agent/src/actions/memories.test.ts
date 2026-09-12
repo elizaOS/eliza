@@ -2014,6 +2014,74 @@ describe("MEMORY op:search complete traversal", () => {
     expect(continuation.data).toMatchObject({
       error: "MEMORY_PAGE_SNAPSHOT_CHANGED",
     });
+    const { retryParameters } = continuation.data as {
+      retryParameters: TestParams;
+    };
+    expect(retryParameters).not.toHaveProperty("snapshot");
+    const restarted = await runAction(runtime, makeMessage(), retryParameters);
+    expect(restarted.success).toBe(true);
+    expect(restarted.values).toMatchObject({
+      totalMatches: 7,
+      offset: 0,
+      nextOffset: 3,
+    });
+    expect(restarted.values?.snapshot).not.toBe(first.values?.snapshot);
+  });
+
+  it("restarts a narrowed search without dropping its author, room or query filters", async () => {
+    const { runtime, rows } = makeRuntime();
+    for (const [index, entityId, text, roomId] of [
+      [1, USER_ID, "Rowan packs a green mug and yellow notebook.", ROOM_ID],
+      [2, AGENT_ID, "Rowan packs a red mug.", ROOM_ID],
+      [3, USER_ID, "Unrelated travel checklist.", ROOM_ID],
+      [4, USER_ID, "Rowan is in another story.", SIBLING_ID],
+    ] as const) {
+      rows.push({
+        tableName: "messages",
+        memory: {
+          id: `00000000-0000-0000-0000-00000000000${index}` as UUID,
+          agentId: AGENT_ID,
+          entityId,
+          roomId,
+          createdAt: index,
+          content: { text },
+        },
+      });
+    }
+    const broad = await runAction(runtime, makeMessage(), {
+      action: "search",
+      limit: 2,
+    });
+    const narrowed = {
+      action: "search",
+      type: "messages",
+      author: "requester",
+      roomId: ROOM_ID,
+      query: "Rowan",
+      limit: 2,
+      offset: 0,
+    };
+    const rejected = await runAction(runtime, makeMessage(), {
+      ...narrowed,
+      snapshot: String(broad.values?.snapshot),
+    });
+    expect(rejected.success).toBe(false);
+    const { retryParameters } = rejected.data as {
+      retryParameters: TestParams;
+    };
+    expect(retryParameters).toEqual(narrowed);
+    const restarted = await runAction(runtime, makeMessage(), retryParameters);
+    expect(restarted.success).toBe(true);
+    expect(restarted.values).toMatchObject({
+      totalMatches: 1,
+      nextOffset: null,
+    });
+    expect(restarted.text).toContain(
+      "Rowan packs a green mug and yellow notebook.",
+    );
+    expect(restarted.text).not.toContain("red mug");
+    expect(restarted.text).not.toContain("Unrelated travel");
+    expect(restarted.text).not.toContain("another story");
   });
 
   it("rejects a continuation when a matched record changes under the same id", async () => {

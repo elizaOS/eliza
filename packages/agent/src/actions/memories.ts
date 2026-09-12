@@ -970,13 +970,27 @@ async function doSearch(
   const snapshot = memoryPageSnapshot(allItems);
   if (requestedSnapshot && requestedSnapshot !== snapshot) {
     return fail(
-      "The ordered memory matches changed after the previous page. Restart this search at offset 0.",
+      "The snapshot does not match this search's ordered results. The records or filters may have changed. Restart at offset 0 WITHOUT snapshot, keeping the intended query, author and other filters. Do not remove filters to reuse an old snapshot. retryParameters contains the fresh search arguments.",
       "MEMORY_PAGE_SNAPSHOT_CHANGED",
+      {
+        retryParameters: {
+          action: "search",
+          ...(type ? { type } : {}),
+          ...(params.author ? { author: params.author } : {}),
+          ...(entityParam.ok && entityParam.id
+            ? { entityId: entityParam.id }
+            : {}),
+          ...(scope.roomId ? { roomId: scope.roomId } : {}),
+          ...(query ? { query } : {}),
+          ...(limit !== undefined ? { limit } : {}),
+          offset: 0,
+        },
+      },
     );
   }
   if (limit === undefined && totalMatches > MAX_MEMORY_PAGE_ITEMS) {
     return fail(
-      `The complete search has ${totalMatches} matches, which exceeds the maximum safe result size of ${MAX_MEMORY_PAGE_ITEMS} records. Retry with limit at most ${MAX_MEMORY_PAGE_ITEMS}.`,
+      `The complete search has ${totalMatches} matches, which exceeds the maximum safe result size of ${MAX_MEMORY_PAGE_ITEMS} records. Retry with limit at most ${MAX_MEMORY_PAGE_ITEMS}. If narrowing the query, author or other filters, start at offset 0 without snapshot; the snapshot below belongs only to the current filters.`,
       "MEMORY_SEARCH_REQUIRES_PAGINATION",
       {
         totalMatches,
@@ -1661,7 +1675,7 @@ export const memoryAction: Action = {
     {
       name: "snapshot",
       description:
-        "search: continuation fingerprint returned by the previous page. Required with a positive offset so changed results reject instead of shifting pages.",
+        "search: continuation fingerprint for the same filters and ordered results. Required with a positive offset. Omit when starting or restarting at offset 0, including after changing query, author, type or roomId.",
       required: false,
       schema: { type: "string" as const, pattern: "^[0-9a-f]{64}$" },
     },
