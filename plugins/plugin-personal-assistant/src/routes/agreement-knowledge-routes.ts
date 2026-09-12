@@ -1,6 +1,6 @@
 /**
- * Owner-authorized HTTP contract for parenting-agreement versions, reviews,
- * pins, and bounded guest grants. The handler translates typed domain failures
+ * Owner HTTP contract for parenting-agreement versions, reviews, pins, and
+ * grants, plus a verified-session guest projection. The handler translates domain failures
  * into stable JSON errors while all authorization remains in the domain
  * service rather than request-provided role headers.
  */
@@ -270,6 +270,32 @@ export async function handleAgreementKnowledgeRoutes(
       );
       ctx.res.setHeader("Content-Length", String(file.bytes.length));
       ctx.res.end(file.bytes);
+      return true;
+    }
+
+    const sharedRead = pathMatch(
+      ctx.pathname,
+      /^\/api\/lifeops\/agreements\/([^/]+)\/shared$/,
+    );
+    if (ctx.method === "GET" && sharedRead) {
+      const principalEntityId = ctx.state.requestEntityId;
+      if (
+        !principalEntityId ||
+        principalEntityId === SELF_ENTITY_ID ||
+        principalEntityId === ctx.state.adminEntityId
+      ) {
+        throw new AgreementKnowledgeError(
+          "A verified guest session is required for the shared agreement view",
+          "AGREEMENT_ACCESS_DENIED",
+        );
+      }
+      const agreement = await service.readFor({
+        artifactId: sharedRead[0] ?? "",
+        principalEntityId: String(principalEntityId),
+      });
+      ctx.res.setHeader("Cache-Control", "private, no-store, max-age=0");
+      ctx.res.setHeader("Referrer-Policy", "no-referrer");
+      ctx.json(ctx.res, { agreement });
       return true;
     }
 

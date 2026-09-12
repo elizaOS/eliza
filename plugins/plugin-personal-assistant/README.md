@@ -247,6 +247,15 @@ Guest views expose approved obligations only. Revoking the relationship-backed
 household grant immediately invalidates every agreement binding that relies on
 it.
 
+A paired guest reads `GET /api/lifeops/agreements/:id/shared` using its machine
+session. The owner must bind that machine identity to a person through
+`POST /api/lifeops/entities/:id/auth-bindings` and explicitly issue the household
+and agreement grants. The shared route derives the person from the verified
+session binding; caller-supplied principal IDs and role headers cannot select
+another reader. It returns approved clauses and limited metadata with no-store
+caching. Original PDF downloads, exports, review history, and mutations remain
+owner-only. Use the normal owner read route for owner requests.
+
 The owner surface is available through `OWNER_AGREEMENT_KNOWLEDGE` and the
 authenticated `/api/lifeops/agreements/*` routes. Grant previews enumerate the
 exact read effects and exclusions before issuance. Active agent/chat pins feed
