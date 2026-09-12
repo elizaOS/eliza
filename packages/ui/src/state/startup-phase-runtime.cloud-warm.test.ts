@@ -146,6 +146,56 @@ describe("runStartingRuntime — managed cloud cold-boot warmup", () => {
     nowSpy.mockRestore();
   });
 
+  it("stops warmup promptly on deliberate shutdown and preserves the selected agent", async () => {
+    persistenceMock.loadPersistedActiveServer.mockReturnValue({
+      id: "cloud:agent-123",
+      kind: "cloud",
+      label: "Eliza Cloud",
+    });
+    clientMock.getBaseUrl.mockReturnValue(
+      "https://agent-123.cloud-staging.eliza.app",
+    );
+    clientMock.listConversations.mockRejectedValue({
+      status: 409,
+      code: "agent_stopped",
+      message: "Stopped",
+    });
+    let statusAborted = false;
+    clientMock.fetch.mockImplementation(
+      (_path, options) =>
+        new Promise((_resolve, reject) => {
+          options.signal.addEventListener("abort", () => {
+            statusAborted = true;
+            reject(new DOMException("Aborted", "AbortError"));
+          });
+        }),
+    );
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    await runStartingRuntime(
+      deps,
+      dispatch,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+      "cloud-managed",
+    );
+    expect(statusAborted).toBe(true);
+    expect(deps.setStartupError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "agent-stopped",
+        cloudManagementUrl: "https://cloud-staging.eliza.app/join",
+      }),
+    );
+    expect(dispatch).toHaveBeenCalledWith({ type: "AGENT_STOPPED" });
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
+    expect(clientMock.startAgent).not.toHaveBeenCalled();
+    expect(persistenceMock.clearPersistedActiveServer).not.toHaveBeenCalled();
+    expect(clientMock.setBaseUrl).not.toHaveBeenCalled();
+    expect(clientMock.setToken).not.toHaveBeenCalled();
+  });
+
   it("dispatches AGENT_RUNNING exactly once when the proxy passthrough is genuinely serving", async () => {
     persistenceMock.loadPersistedActiveServer.mockReturnValue({
       id: "cloud:agent-123",

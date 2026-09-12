@@ -1053,6 +1053,12 @@ function baseStateFileInclude(
   relativePath: string,
   pgliteRelativePath: string | null,
 ): boolean {
+  // Plugin import generations are rebuilt from installed sources on boot.
+  if (
+    relativePath === "plugins/.runtime-imports" ||
+    relativePath.startsWith("plugins/.runtime-imports/")
+  )
+    return false;
   // Preserve installed-skill state while excluding the downloadable catalog.
   if (relativePath === "skills/.cache/catalog.json") return false;
   if (
