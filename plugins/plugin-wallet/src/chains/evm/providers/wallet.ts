@@ -118,6 +118,11 @@ async function getManagedRpcFallbackReason(response: Response): Promise<string |
   return null;
 }
 
+/** Per-chain outcome of a balance read; `unavailable` carries the RPC failure. */
+export type ChainBalanceState =
+  | { readonly status: "ok"; readonly balance: string }
+  | { readonly status: "unavailable"; readonly error: string };
+
 export class WalletProvider {
   private readonly cacheKey = "evm/wallet";
   private _chains: Record<string, Chain>;
@@ -200,7 +205,17 @@ export class WalletProvider {
     return Object.keys(this._chains) as SupportedChain[];
   }
 
-  async getWalletBalances(forceRefresh = false): Promise<Record<SupportedChain, string>> {
+  /**
+   * Read every configured chain's native balance, reporting each chain as
+   * either `ok` or `unavailable`. A chain whose RPC failed is never dropped
+   * from the result and a snapshot with any unavailable chain is never cached:
+   * a cached partial map would tell later readers (the transfer and swap
+   * intent prompts, the wallet provider) that the wallet holds nothing on that
+   * chain until the next forced refresh (#31111).
+   */
+  async getChainBalanceStates(
+    forceRefresh = false
+  ): Promise<Record<SupportedChain, ChainBalanceState>> {
     const cacheKey = path.join(this.cacheKey, "walletBalances");
     const cachedData = forceRefresh
       ? undefined
@@ -208,9 +223,14 @@ export class WalletProvider {
 
     if (cachedData) {
       logger.log(`Returning cached wallet balances`);
-      return cachedData;
+      const states = {} as Record<SupportedChain, ChainBalanceState>;
+      for (const [chainName, balance] of Object.entries(cachedData)) {
+        states[chainName as SupportedChain] = { status: "ok", balance };
+      }
+      return states;
     }
 
+    const states = {} as Record<SupportedChain, ChainBalanceState>;
     const balances = {} as Record<SupportedChain, string>;
     const chainNames = this.getSupportedChains();
 
@@ -221,30 +241,61 @@ export class WalletProvider {
       })
     );
 
-    for (const result of results) {
-      if (result.status === "fulfilled" && result.value.balance !== null) {
-        balances[result.value.chainName] = result.value.balance;
-      } else if (result.status === "rejected") {
-        logger.error(`Error getting balance:`, result.reason);
+    let unavailable = 0;
+    results.forEach((result, index) => {
+      const chainName = chainNames[index];
+      if (result.status === "fulfilled") {
+        states[chainName] = { status: "ok", balance: result.value.balance };
+        balances[chainName] = result.value.balance;
+        return;
+      }
+      unavailable += 1;
+      const error = result.reason instanceof Error ? result.reason.message : String(result.reason);
+      logger.error(`Error getting balance for ${chainName}:`, error);
+      states[chainName] = { status: "unavailable", error };
+    });
+
+    if (unavailable === 0) {
+      await this._runtime.setCache(cacheKey, balances);
+      logger.log("Wallet balances cached");
+    } else {
+      logger.warn(
+        `Wallet balances not cached: ${unavailable} of ${chainNames.length} chains unavailable`
+      );
+    }
+    return states;
+  }
+
+  /**
+   * Native balances for the chains that answered. An unavailable chain is
+   * omitted here; callers that present balances to a model or a person should
+   * use {@link getChainBalanceStates} so the outage is visible rather than
+   * read as an empty wallet. A partial result is never cached.
+   */
+  async getWalletBalances(forceRefresh = false): Promise<Record<SupportedChain, string>> {
+    const states = await this.getChainBalanceStates(forceRefresh);
+    const balances = {} as Record<SupportedChain, string>;
+    for (const [chainName, state] of Object.entries(states)) {
+      if (state.status === "ok") {
+        balances[chainName as SupportedChain] = state.balance;
       }
     }
-
-    await this._runtime.setCache(cacheKey, balances);
-    logger.log("Wallet balances cached");
     return balances;
   }
 
-  async getWalletBalanceForChain(chainName: SupportedChain): Promise<string | null> {
+  /** Native balance for one chain; throws `EVMError(NETWORK_ERROR)` when the RPC fails. */
+  async getWalletBalanceForChain(chainName: SupportedChain): Promise<string> {
+    const client = this.getPublicClient(chainName);
     try {
-      const client = this.getPublicClient(chainName);
       const balance = await client.getBalance({ address: this._account.address });
       return formatUnits(balance, 18);
     } catch (error) {
-      logger.error(
-        `Error getting wallet balance for ${chainName}:`,
-        error instanceof Error ? error.message : String(error)
+      // error-policy:J2 context-adding rethrow; the aggregator reports the chain as unavailable
+      throw new EVMError(
+        EVMErrorCode.NETWORK_ERROR,
+        `Balance read failed for ${chainName}: ${error instanceof Error ? error.message : String(error)}`,
+        error instanceof Error ? error : undefined
       );
-      return null;
     }
   }
 
@@ -612,13 +663,21 @@ class LazyTeeWalletProvider extends WalletProvider {
     return this.teeWallet.getWalletClient(chainName);
   }
 
+  override async getChainBalanceStates(
+    forceRefresh = false
+  ): Promise<Record<SupportedChain, ChainBalanceState>> {
+    await this.ensureInitialized();
+    assertDefined(this.teeWallet, "TEE wallet failed to initialize");
+    return this.teeWallet.getChainBalanceStates(forceRefresh);
+  }
+
   override async getWalletBalances(forceRefresh = false): Promise<Record<SupportedChain, string>> {
     await this.ensureInitialized();
     assertDefined(this.teeWallet, "TEE wallet failed to initialize");
     return this.teeWallet.getWalletBalances(forceRefresh);
   }
 
-  override async getWalletBalanceForChain(chainName: SupportedChain): Promise<string | null> {
+  override async getWalletBalanceForChain(chainName: SupportedChain): Promise<string> {
     await this.ensureInitialized();
     assertDefined(this.teeWallet, "TEE wallet failed to initialize");
     return this.teeWallet.getWalletBalanceForChain(chainName);
@@ -654,6 +713,7 @@ export const evmWalletProvider: Provider = {
                 balance: string;
                 symbol: string;
               }>;
+              unavailableChains?: ReadonlyArray<{ chainName: string; error: string }>;
             }
           | undefined
         >;
@@ -680,15 +740,20 @@ export const evmWalletProvider: Provider = {
 
       const agentName = state?.agentName ?? "The agent";
       const chains = walletData.chains;
-      const balanceText = chains
-        .map((chain) => `${chain.name}: ${chain.balance} ${chain.symbol}`)
-        .join("\n");
+      const unavailableChains = walletData.unavailableChains ?? [];
+      // An unreachable chain is named as such: omitting it would read as an
+      // empty balance on that chain.
+      const balanceText = [
+        ...chains.map((chain) => `${chain.name}: ${chain.balance} ${chain.symbol}`),
+        ...unavailableChains.map((chain) => `${chain.chainName}: balance unavailable (RPC error)`),
+      ].join("\n");
 
       return {
         text: `${agentName}'s EVM Wallet Address: ${walletData.address}\n\nBalances:\n${balanceText}`,
         data: {
           address: walletData.address,
           chains,
+          unavailableChains,
           chainCount: walletData.chains.length,
           displayedChainCount: chains.length,
         },

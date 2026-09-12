@@ -43,7 +43,11 @@ import {
   NATIVE_TOKEN_ADDRESS,
   TX_CONFIRMATION_TIMEOUT_MS,
 } from "../constants";
-import { initWalletProvider, type WalletProvider } from "../providers/wallet";
+import {
+  type ChainBalanceState,
+  initWalletProvider,
+  type WalletProvider,
+} from "../providers/wallet";
 import { swapTemplate } from "../templates";
 import {
   type BebopRoute,
@@ -769,14 +773,18 @@ export async function buildSwapDetails(
   wp: WalletProvider
 ): Promise<SwapParams> {
   const chains = wp.getSupportedChains();
-  const balances = await wp.getWalletBalances();
+  const balances = await wp.getChainBalanceStates();
 
   state = await runtime.composeState(message, ["RECENT_MESSAGES"], true);
   state.supportedChains = chains.join(" | ");
   state.chainBalances = Object.entries(balances)
     .map(([chain, balance]) => {
       const chainConfig = wp.getChainConfigs(chain as SupportedChain);
-      return `${chain}: ${balance} ${chainConfig.nativeCurrency.symbol}`;
+      // Name an unreachable chain so the intent model does not read its
+      // absence as an empty balance (#31111).
+      return balance.status === "ok"
+        ? `${chain}: ${balance.balance} ${chainConfig.nativeCurrency.symbol}`
+        : `${chain}: balance unavailable (RPC error)`;
     })
     .join(", ");
 
@@ -807,7 +815,9 @@ export async function buildSwapDetails(
   // `chain` is an arbitrary lowercased string from the model, so the balance
   // lookup is honestly `string | undefined` (resolveRelativeAmount throws when
   // it is undefined). Validation of the chain itself happens via parseSwapParams.
-  const chainBalance: string | undefined = (balances as Record<string, string | undefined>)[chain];
+  const chainState = (balances as Record<string, ChainBalanceState | undefined>)[chain];
+  const chainBalance: string | undefined =
+    chainState?.status === "ok" ? chainState.balance : undefined;
 
   const amount =
     amountMode === "absolute"
