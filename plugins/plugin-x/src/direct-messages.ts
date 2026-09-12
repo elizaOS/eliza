@@ -14,6 +14,8 @@
  * `pairing` via the core PairingService handshake) before any world state or
  * memory is created for the sender.
  */
+
+import type { MembershipScope } from "@elizaos/core";
 import {
   ChannelType,
   type Content,
@@ -28,6 +30,7 @@ import type { ClientBase } from "./base";
 import type { AuthenticatedTwitterSession } from "./client/auth";
 import { checkTwitterDmAccess, resolveTwitterDmPolicy } from "./dm-policy";
 import { parseTwitterInterval } from "./environment";
+import { XMembershipPublisher, xMembershipPrincipal } from "./membership";
 import type { TwitterClientState } from "./types";
 import { resolveCloudApiKeyForXEndpoint } from "./utils/cloud-credential-boundary";
 import { createMemorySafe, reconcileTwitterWorld } from "./utils/memory";
@@ -107,6 +110,27 @@ export class TwitterDirectMessageClient {
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
   private pollInFlight = false;
   private readonly isDryRun: boolean;
+  /**
+   * Membership-evidence publisher (#24372): observed-only point-query proofs
+   * from DM timeline events into the canonical MembershipService authority.
+   * Degrade-only — a null authority never touches the message path.
+   */
+  private readonly membership = new XMembershipPublisher(this.runtime);
+  /**
+   * Conversation ids whose own-account membership was published this
+   * process, with the publish time — own participation is re-proven after
+   * the evidence TTL lapses (the authority expires evidence at validUntil,
+   * so a lifetime marker would let own proof silently go stale) and after
+   * the scope is degraded (own-leave) so regained access re-proves.
+   */
+  private readonly ownMembershipPublishedAt = new Map<string, number>();
+  /** Evidence validity window requested per own-membership proof (6h). */
+  private static readonly OWN_MEMBERSHIP_TTL_MS = 6 * 60 * 60 * 1_000;
+  /**
+   * True while all membership scopes are degraded after a 401/403 poll
+   * failure; the next successful poll clears it and restores the scopes.
+   */
+  private membershipDegradedForAuth = false;
 
   constructor(
     private readonly client: ClientBase,
@@ -211,14 +235,129 @@ export class TwitterDirectMessageClient {
     if (!this.isRunning || this.pollInFlight) return;
     this.pollInFlight = true;
     try {
+      // Membership evidence (#24372): a successful authenticated poll means
+      // authorization recovered — restore degraded scopes BEFORE processing
+      // new events, so recovery-poll observations publish against a restored
+      // (re-registered) evidence chain instead of being rejected while
+      // unavailable or erased by a post-hoc reset. The flag is only cleared
+      // after restoration succeeds, so a contained restore failure is
+      // retried on the next poll (R3 finding 3, R4 finding 1). With no
+      // bound scopes there is nothing to restore: clear the flag so a later
+      // poll cannot force-restore and reset freshly published evidence
+      // (R4 finding 3 edge).
+      if (this.membershipDegradedForAuth) {
+        if (this.hasBoundMembershipScopes()) {
+          const restored =
+            await this.restoreMembershipScopes("x_auth_recovered");
+          if (!restored) {
+            // Restoration was attempted and failed: keep the degraded
+            // marker so the next poll retries (contained per J4).
+            return;
+          }
+          // Clear own-membership markers so restored scopes re-prove the
+          // account's own participation immediately instead of waiting out
+          // the marker window.
+          this.ownMembershipPublishedAt.clear();
+        }
+        this.membershipDegradedForAuth = false;
+      }
       await this.processNewMessages();
     } catch (error) {
       this.runtime.reportError("XDirectMessages.poll", error, {
         accountId: this.client.accountId,
       });
+      // Membership evidence (#24372): persistent authorization failures
+      // (401/403) mean the account can no longer observe ANY conversation —
+      // degrade every known scope so authorization fails closed instead of
+      // trusting stale evidence. Transient failures (429, 5xx, network) do
+      // NOT write health: the evidence TTL (6h) is the fail-closed
+      // backstop and the next successful poll simply continues renewing.
+      if (isAuthorizationFailure(error)) {
+        this.membershipDegradedForAuth = true;
+        await this.degradeAllMembershipScopes(
+          `x_auth_failed_${errorCodeOf(error) ?? "401"}`,
+        );
+      }
     } finally {
       this.pollInFlight = false;
       this.scheduleNextPoll();
+    }
+  }
+
+  /**
+   * Degrade every membership scope this client has published under (#24372).
+   * Used when the account's authorization fails globally (401/403 on the DM
+   * events endpoint): no conversation remains observable, so all evidence
+   * must fail closed. Degrade-only and failure-contained per J4.
+   */
+  private hasBoundMembershipScopes(): boolean {
+    return this.membership.hasBoundScopes();
+  }
+
+  private async degradeAllMembershipScopes(reason: string): Promise<void> {
+    try {
+      await this.membership.degradeAllScopes(reason);
+    } catch (error) {
+      // error-policy:J4 degrade-only side surface; never break the poll path.
+      logger.debug(
+        {
+          src: "plugin:x",
+          accountId: this.client.accountId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "X DM membership scope degrade-all failed",
+      );
+    }
+  }
+
+  /** Restore all scopes after authorization recovers. Returns false when the
+   * restoration was attempted but failed, so the caller keeps the degraded
+   * marker and retries on the next poll (R4 finding 1: a suppressed restore
+   * failure must not read as recovery). Contained per J4. */
+  private async restoreMembershipScopes(reason: string): Promise<boolean> {
+    try {
+      await this.membership.restoreAllScopes(reason);
+      return true;
+    } catch (error) {
+      // error-policy:J4 degrade-only side surface; never break the poll path.
+      logger.warn(
+        {
+          src: "plugin:x",
+          accountId: this.client.accountId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "X DM membership scope restore-all failed; will retry on next poll",
+      );
+      return false;
+    }
+  }
+
+  /**
+   * Restore one conversation scope after the account itself rejoins it.
+   * Returns false when the restoration was attempted but failed, so the
+   * roster-event caller withholds the cursor advance for this event and the
+   * restore is retried on the next poll (R4 finding 2: publishing past a
+   * failed restore would strand the scope durably unavailable). Contained
+   * per J4: never breaks the roster-event loop.
+   */
+  private async restoreOneMembershipScope(
+    scope: MembershipScope,
+    reason: string,
+  ): Promise<boolean> {
+    try {
+      await this.membership.restoreScope({ scope, reason });
+      return true;
+    } catch (error) {
+      // error-policy:J4 degrade-only side surface; never break the poll path.
+      logger.warn(
+        {
+          src: "plugin:x",
+          accountId: this.client.accountId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "X DM membership scope restore failed; withholding cursor advance for retry",
+      );
+      return false;
     }
   }
 
@@ -256,7 +395,10 @@ export class TwitterDirectMessageClient {
       ],
       "user.fields": ["id", "username", "name"],
       expansions: ["sender_id"],
-      event_types: ["MessageCreate"],
+      // Membership evidence (#24372): join/leave events are roster-observable
+      // facts in the DM timeline; without them participant departures are
+      // invisible and stale active evidence would keep authorizing.
+      event_types: ["MessageCreate", "ParticipantsJoin", "ParticipantsLeave"],
     })) as DirectMessagePage;
 
     const collectEvents = () =>
@@ -307,6 +449,28 @@ export class TwitterDirectMessageClient {
     );
     for (const event of events) {
       if (compareEventIds(event.id, cursor) <= 0) continue;
+      if (
+        event.event_type === "ParticipantsJoin" ||
+        event.event_type === "ParticipantsLeave"
+      ) {
+        // Membership evidence (#24372): observed-only join/leave proofs.
+        // Event-anchored idempotency keys absorb redelivery; a publish
+        // failure must not hold the poll cursor (degrade-only evidence), so
+        // the cursor advances regardless — EXCEPT when an own-account
+        // rejoin's scope restoration failed: publishing or advancing past
+        // it would strand the scope durably unavailable with no retry, so
+        // the cursor is withheld and the event retried next poll (R4
+        // finding 2).
+        const retryable = await this.publishMembershipFromRosterEvent(
+          event as DirectMessageEvent & { id: string },
+          ownUserId,
+        );
+        if (retryable === "retry") {
+          break;
+        }
+        await this.runtime.setCache(cursorKey, event.id);
+        continue;
+      }
       if (event.event_type && event.event_type !== "MessageCreate") {
         await this.runtime.setCache(cursorKey, event.id);
         continue;
@@ -316,6 +480,12 @@ export class TwitterDirectMessageClient {
         event.sender_id === ownUserId ||
         !event.text?.trim()
       ) {
+        // A self-sent message still proves the account's own participation
+        // in the conversation; the sender renewal below is skipped for the
+        // own account there, so publish own membership here.
+        if (event.sender_id && event.dm_conversation_id) {
+          await this.publishOwnMembership(event.dm_conversation_id, ownUserId);
+        }
         await this.runtime.setCache(cursorKey, event.id);
         continue;
       }
@@ -408,6 +578,15 @@ export class TwitterDirectMessageClient {
     }
 
     const conversationId = event.dm_conversation_id ?? senderId;
+    // Membership evidence (#24372): the policy-accepted sender's presence in
+    // this conversation is itself the observation; renew their evidence
+    // before the reply loop runs so an authorization read mid-turn sees it.
+    await this.renewSenderMembership(
+      event,
+      conversationId,
+      ownUserId,
+      username,
+    );
     // DMs and public interactions share the sender's canonical X world. Older
     // connector builds already attached DM rooms to this world, so reusing it
     // also repairs their raw platform-id ownership metadata on the next poll.
@@ -655,6 +834,308 @@ export class TwitterDirectMessageClient {
     return this.client.twitterClient.isAuthenticatedSessionCurrent(session);
   }
 
+  /**
+   * Publish membership evidence for one ParticipantsJoin/ParticipantsLeave
+   * event (#24372). Observed-only per-participant point queries: X's DM
+   * roster events name the participants the event is about, but never prove
+   * the absence of unlisted members, so `participant_ids` never becomes a
+   * completeness claim. The account's own removal degrades the scope (the
+   * account can no longer observe the conversation) instead of revoking its
+   * own membership row. Returns "retry" when an own-rejoin scope restoration
+   * failed and the event must be reprocessed on the next poll (R4 finding
+   * 2); all other failures stay contained and the cursor may advance.
+   */
+  private async publishMembershipFromRosterEvent(
+    event: DirectMessageEvent & { id: string },
+    ownUserId: string,
+  ): Promise<"ok" | "retry"> {
+    try {
+      const conversationId = event.dm_conversation_id?.trim();
+      if (!conversationId) return "ok";
+      const scope = await this.membership.scopeForConversation({
+        conversationId,
+        accountKey: this.client.accountId,
+        ownUserId,
+      });
+      if (!scope) return "ok";
+      const isJoin = event.event_type === "ParticipantsJoin";
+      const participants = (event.participant_ids ?? []).filter(
+        (id) => typeof id === "string" && id.trim(),
+      );
+      // Without participant_ids there is no principal to publish; the event
+      // still advanced the poll cursor, so record the miss for diagnosis
+      // rather than guessing a sender.
+      if (participants.length === 0) {
+        logger.debug(
+          {
+            src: "plugin:x",
+            accountId: this.client.accountId,
+            conversationId,
+            eventType: event.event_type,
+            eventId: event.id,
+          },
+          "X DM roster event carried no participant_ids; no membership evidence published",
+        );
+        return "ok";
+      }
+      const anchoredAt = event.created_at
+        ? Date.parse(event.created_at)
+        : undefined;
+      const worldId = createUniqueUuid(this.runtime, conversationId);
+      const roomId = createUniqueUuid(
+        this.runtime,
+        `x-dm:${this.client.accountId}:${conversationId}`,
+      );
+      const keyFor = (kind: "join" | "left" | "own-left", pid: string) =>
+        membershipObservationKey({
+          kind: kind === "own-left" ? "left" : kind,
+          conversationId,
+          participantId: pid,
+          eventId: event.id,
+        });
+      for (const participantId of participants) {
+        if (!isJoin && participantId === ownUserId) {
+          // The account itself was removed: revoke own membership (honesty —
+          // own active evidence was published, so its removal is published
+          // too) AND degrade the whole scope so authorization fails closed
+          // and backlogged redeliveries cannot resurrect an unobservable
+          // conversation.
+          const { principalId: ownPrincipal } = await xMembershipPrincipal(
+            this.runtime,
+            this.client.accountId,
+            ownUserId,
+          );
+          await this.membership.publishLeave({
+            scope,
+            principalId: ownPrincipal,
+            worldId,
+            roomId,
+            reason: "left",
+            idempotencyKey: keyFor("own-left", ownUserId),
+            eventAnchoredAt: anchoredAt,
+          });
+          await this.membership.degradeScope({
+            scope,
+            health: "unavailable",
+            reason: "own_account_removed_from_conversation",
+          });
+          // Clear the own-membership marker so regained access (re-add) can
+          // re-prove the account in this process.
+          this.ownMembershipPublishedAt.delete(conversationId);
+          continue;
+        }
+        const { principalId } = await xMembershipPrincipal(
+          this.runtime,
+          this.client.accountId,
+          participantId,
+        );
+        const key = keyFor(isJoin ? "join" : "left", participantId);
+        if (isJoin) {
+          // An own-account ParticipantsJoin after an own-leave means the
+          // account rejoined the conversation: restore the degraded scope
+          // BEFORE publishing, or the rejoin evidence lands against a
+          // durably `unavailable` scope and authorization stays failed
+          // closed forever (R3 finding 2). Contained per J4.
+          if (participantId === ownUserId) {
+            const restored = await this.restoreOneMembershipScope(
+              scope,
+              "own_account_rejoined_conversation",
+            );
+            if (!restored) {
+              // Withhold the cursor and reprocess this event next poll:
+              // publishing past a failed restore would strand the scope
+              // durably unavailable (R4 finding 2).
+              return "retry";
+            }
+          }
+          await this.publishOwnMembership(conversationId, ownUserId);
+          await this.membership.publishJoin({
+            scope,
+            principalId,
+            worldId,
+            roomId,
+            roles: ["participant"],
+            // sender_id on a ParticipantsJoin is the INVITER (X data
+            // dictionary), not the joiner — context only, never proof.
+            permissionSnapshot: {
+              observed: true,
+              invitedBy: event.sender_id ?? null,
+            },
+            idempotencyKey: key,
+            eventAnchoredAt: anchoredAt,
+          });
+        } else {
+          await this.membership.publishLeave({
+            scope,
+            principalId,
+            worldId,
+            roomId,
+            reason: "left",
+            idempotencyKey: key,
+            eventAnchoredAt: anchoredAt,
+          });
+        }
+      }
+      return "ok";
+    } catch (error) {
+      // error-policy:J4 Membership evidence is a degrade-only side surface of
+      // the poll path; failures are logged, never propagated into the loop.
+      logger.debug(
+        {
+          src: "plugin:x",
+          accountId: this.client.accountId,
+          eventId: event.id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "X DM membership evidence publish failed",
+      );
+      return "ok";
+    }
+  }
+
+  /**
+   * Prove the account's own participation in a conversation once per process.
+   * The account's ability to read the conversation's DM events is itself the
+   * observation; a ParticipantsJoin carrying the account proves it too, but
+   * 1:1 conversations have no join events, so the first observed event
+   * publishes own membership directly.
+   */
+  private async publishOwnMembership(
+    conversationId: string,
+    ownUserId: string,
+  ): Promise<void> {
+    const publishedAt = this.ownMembershipPublishedAt.get(conversationId);
+    if (
+      publishedAt !== undefined &&
+      Date.now() - publishedAt <
+        TwitterDirectMessageClient.OWN_MEMBERSHIP_TTL_MS
+    ) {
+      return;
+    }
+    try {
+      const scope = await this.membership.scopeForConversation({
+        conversationId,
+        accountKey: this.client.accountId,
+        ownUserId,
+      });
+      if (!scope) return;
+      const { principalId } = await xMembershipPrincipal(
+        this.runtime,
+        this.client.accountId,
+        ownUserId,
+      );
+      const worldId = createUniqueUuid(this.runtime, conversationId);
+      const roomId = createUniqueUuid(
+        this.runtime,
+        `x-dm:${this.client.accountId}:${conversationId}`,
+      );
+      await this.membership.publishJoin({
+        scope,
+        principalId,
+        worldId,
+        roomId,
+        roles: ["participant", "self"],
+        permissionSnapshot: { observed: true, self: true },
+        idempotencyKey: membershipObservationKey({
+          kind: "own",
+          conversationId,
+          participantId: ownUserId,
+          // Anchor the renewal epoch so a TTL-expired re-proof gets a FRESH
+          // journal key: reusing the first epoch's key would collide with
+          // the original entry (different timestamps) and surface as a
+          // non-benign idempotency conflict instead of a clean renewal
+          // (R2 finding 2).
+          eventId: `epoch-${Math.floor(Date.now() / TwitterDirectMessageClient.OWN_MEMBERSHIP_TTL_MS)}`,
+        }),
+        // A restart or forced restoration within the same epoch replays
+        // under the same key with regenerated observedAt/validUntil: the
+        // authority reports an idempotency conflict, and eventAnchoredAt
+        // makes that replay BENIGN (the delta already applied). Any
+        // same-epoch replay necessarily happens while the original proof
+        // is still valid (published-at + 6h always outlives the epoch
+        // boundary), so adopting the durable state is correct (R3 finding 1).
+        eventAnchoredAt:
+          Math.floor(
+            Date.now() / TwitterDirectMessageClient.OWN_MEMBERSHIP_TTL_MS,
+          ) * TwitterDirectMessageClient.OWN_MEMBERSHIP_TTL_MS,
+      });
+      this.ownMembershipPublishedAt.set(conversationId, Date.now());
+    } catch (error) {
+      // error-policy:J4 degrade-only side surface; never break the poll path.
+      logger.debug(
+        {
+          src: "plugin:x",
+          accountId: this.client.accountId,
+          conversationId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "X DM own-membership publish failed",
+      );
+    }
+  }
+
+  /**
+   * Renew the sender's membership evidence after a policy-accepted inbound
+   * message: the sender's presence in the conversation is itself the
+   * observation (#24372). Event-anchored on the DM event id so cursor
+   * redelivery after a crash journals as an idempotent replay.
+   */
+  private async renewSenderMembership(
+    event: DirectMessageEvent & { id: string; sender_id: string },
+    conversationId: string,
+    ownUserId: string,
+    username: string | undefined,
+  ): Promise<void> {
+    try {
+      const scope = await this.membership.scopeForConversation({
+        conversationId,
+        accountKey: this.client.accountId,
+        ownUserId,
+      });
+      if (!scope) return;
+      const { principalId } = await xMembershipPrincipal(
+        this.runtime,
+        this.client.accountId,
+        event.sender_id,
+      );
+      const worldId = createUniqueUuid(this.runtime, conversationId);
+      const roomId = createUniqueUuid(
+        this.runtime,
+        `x-dm:${this.client.accountId}:${conversationId}`,
+      );
+      await this.publishOwnMembership(conversationId, ownUserId);
+      await this.membership.renewSender({
+        scope,
+        principalId,
+        worldId,
+        roomId,
+        roles: ["participant"],
+        permissionSnapshot: { observed: true, username: username ?? null },
+        idempotencyKey: membershipObservationKey({
+          kind: "renew",
+          conversationId,
+          participantId: event.sender_id,
+          eventId: event.id,
+        }),
+        eventAnchoredAt: event.created_at
+          ? Date.parse(event.created_at)
+          : undefined,
+      });
+    } catch (error) {
+      // error-policy:J4 degrade-only side surface; never break the reply path.
+      logger.debug(
+        {
+          src: "plugin:x",
+          accountId: this.client.accountId,
+          conversationId,
+          senderId: event.sender_id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "X DM sender membership renewal failed",
+      );
+    }
+  }
+
   private sessionRotationError(phase: string): ElizaError {
     return new ElizaError(`X credentials rotated ${phase}`, {
       code: "X_AUTH_SESSION_ROTATED",
@@ -690,4 +1171,55 @@ function isExplicitTwitterRejection(error: unknown): boolean {
     status >= 400 &&
     status < 500
   );
+}
+
+/**
+ * Deterministic idempotency key for one DM membership observation (#24372).
+ * Event-anchored keys (join/leave/renew carry the DM event id) make cursor
+ * redelivery after a crash journal as an idempotent replay; the "own" key is
+ * process-stable so the once-per-conversation own-membership publish is also
+ * replay-safe across restarts.
+ */
+function membershipObservationKey(options: {
+  kind: "join" | "left" | "renew" | "own";
+  conversationId: string;
+  participantId: string;
+  eventId?: string;
+}): string {
+  const parts = [
+    "x",
+    options.kind,
+    options.conversationId,
+    options.participantId,
+  ];
+  if (options.eventId) parts.push(options.eventId);
+  const key = parts.join(":");
+  return key.length > 1_000 ? key.slice(0, 1_000) : key;
+}
+
+/** HTTP status embedded in a twitter-api-v2 error shape, when present. */
+function errorCodeOf(error: unknown): number | null {
+  if (!error || typeof error !== "object") return null;
+  const candidate = error as {
+    code?: unknown;
+    status?: unknown;
+    data?: { status?: unknown };
+    response?: { status?: unknown };
+  };
+  const status =
+    candidate.data?.status ??
+    candidate.response?.status ??
+    candidate.status ??
+    candidate.code;
+  return typeof status === "number" && Number.isInteger(status) ? status : null;
+}
+
+/**
+ * Authorization failures (401/403) on the DM events endpoint mean the
+ * account can no longer observe any conversation; 429 and 5xx are transient
+ * and must not degrade scope health (evidence TTL is the backstop).
+ */
+function isAuthorizationFailure(error: unknown): boolean {
+  const status = errorCodeOf(error);
+  return status === 401 || status === 403;
 }
