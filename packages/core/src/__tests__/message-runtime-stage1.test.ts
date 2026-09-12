@@ -7960,7 +7960,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("keeps the complete authorized catalog after an evaluator changes ranking hints", async () => {
+	it.each([
+		"run ls",
+		'Open Calendar and read the note titled "Seeker QA 1914". Tell me its exact contents. Do not create, edit, delete, or save anything, and keep voice off.',
+	])("keeps patched candidates and discovery: %s", async (text) => {
 		const runtime = makeRuntime([
 			stage1Response({
 				thought: "The generic router guessed shell.",
@@ -8024,7 +8027,7 @@ describe("runV5MessageRuntimeStage1", () => {
 
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
-			message: makeMessage({ text: "run ls" }),
+			message: makeMessage({ text }),
 			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});

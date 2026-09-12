@@ -588,6 +588,75 @@ describe("explicit media-ask promotion", () => {
 	});
 });
 
+describe("authoritative candidate patches", () => {
+	it.each([
+		"Open Notes. Do not create, edit, delete, or save anything, and keep voice off.",
+		"Make a short video of ocean waves.",
+		"Remind me in three minutes to check the mail.",
+		"Is the build task done?",
+	])(
+		"does not rerun request-shape fallback after candidate replacement: %s",
+		(messageText) => {
+			const output = parseMessageHandlerOutput(
+				JSON.stringify({
+					shouldRespond: "RESPOND",
+					contexts: ["simple"],
+					candidateActionNames: ["CHECK_RUNTIME"],
+					replyText: "Checking the authorized source.",
+				}),
+			);
+			expect(output).not.toBeNull();
+			if (!output) return;
+			const route = routeMessageHandlerOutput(output, {
+				messageText,
+				candidateActionsClearedByEvaluators: true,
+			});
+			expect(route.type).toBe("planning_needed");
+			expect(route.output.plan.candidateActions).toEqual(["CHECK_RUNTIME"]);
+			if (route.type === "planning_needed")
+				expect(route.contexts).toEqual(["general"]);
+		},
+	);
+
+	it("keeps an evaluator's explicit media candidate", () => {
+		const output = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				contexts: ["media"],
+				candidateActionNames: ["GENERATE_MEDIA"],
+				replyText: "On it.",
+			}),
+		);
+		expect(output).not.toBeNull();
+		if (!output) return;
+		const route = routeMessageHandlerOutput(output, {
+			messageText: "Create an image of a fox.",
+			candidateActionsClearedByEvaluators: true,
+		});
+		expect(route.type).toBe("planning_needed");
+		expect(route.output.plan.candidateActions).toEqual(["GENERATE_MEDIA"]);
+	});
+
+	it("does not promote an authoritative capability denial back into planning", () => {
+		const output = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				contexts: ["simple"],
+				candidateActionNames: [],
+				replyText: "No video generation tools are available here.",
+			}),
+		);
+		expect(output).not.toBeNull();
+		if (!output) return;
+		const route = routeMessageHandlerOutput(output, {
+			messageText: "Generate a video of falling leaves.",
+			candidateActionsClearedByEvaluators: true,
+		});
+		expect(route.type).toBe("final_reply");
+		expect(route.output.plan.candidateActions ?? []).toEqual([]);
+	});
+});
+
 describe("reminder fallback routing", () => {
 	it.each(["simple", "general", "memory"])(
 		"keeps navigation and recall candidates without injecting scheduling for %s context",

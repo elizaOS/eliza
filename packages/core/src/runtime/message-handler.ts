@@ -293,6 +293,9 @@ export function routeMessageHandlerOutput(
 	output: V5MessageHandlerOutput,
 	options?: {
 		addressedToOtherParticipant?: boolean;
+		/** A runtime evaluator replaced the candidate set from richer evidence.
+		 * Text-only fallback must not undo it; semantic sibling routing remains. */
+		candidateActionsClearedByEvaluators?: boolean;
 		/** The user's own message text; enables request-shape promotions the
 		 * stage-1 output alone cannot justify. Optional for compatibility —
 		 * absent, the request-shape promotions simply do not run. */
@@ -336,9 +339,11 @@ export function routeMessageHandlerOutput(
 	// genuinely gated for this surface, the gate-rejection short-circuit
 	// still answers honestly — the layers compose.
 	const messageTextForRouting = options?.messageText ?? "";
-	const isExplicitMediaAsk = EXPLICIT_MEDIA_GENERATION_REQUEST_RE.test(
-		messageTextForRouting,
-	);
+	const allowTextOnlyFallback =
+		options?.candidateActionsClearedByEvaluators !== true;
+	const isExplicitMediaAsk =
+		allowTextOnlyFallback &&
+		EXPLICIT_MEDIA_GENERATION_REQUEST_RE.test(messageTextForRouting);
 	// Seeding is applied ONLY on routes that enter the planner: a simple-path
 	// clarify ("a picture of what exactly?") must stay a final reply, so the
 	// seed never by itself converts a simple turn into planning.
@@ -358,10 +363,11 @@ export function routeMessageHandlerOutput(
 	const isExplicitReminderAsk =
 		EXPLICIT_REMINDER_REQUEST_RE.test(messageTextForRouting) &&
 		(hasReminderPlanningVote ||
-			CAPABILITY_DENIAL_REPLY_RE.test(getMessageHandlerReply(output)));
-	const isExplicitTaskStatusAsk = EXPLICIT_TASK_STATUS_REQUEST_RE.test(
-		messageTextForRouting,
-	);
+			(allowTextOnlyFallback &&
+				CAPABILITY_DENIAL_REPLY_RE.test(getMessageHandlerReply(output))));
+	const isExplicitTaskStatusAsk =
+		allowTextOnlyFallback &&
+		EXPLICIT_TASK_STATUS_REQUEST_RE.test(messageTextForRouting);
 	const seedCandidate = (name: string): void => {
 		if (
 			(output.plan.candidateActions ?? []).some(

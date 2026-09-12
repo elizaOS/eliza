@@ -661,6 +661,8 @@ export async function runV5MessageRuntimeStage1(
 		}
 		const route = routeMessageHandlerOutput(messageHandler, {
 			addressedToOtherParticipant,
+			candidateActionsClearedByEvaluators:
+				responseHandlerEvaluation.candidateActionsClearedByEvaluators,
 			messageText: getUserMessageText(args.message) ?? "",
 		});
 		if (args.stage1DecisionOnly) {
