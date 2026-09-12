@@ -49,6 +49,11 @@ describe("getTimeZoneOffsetMinutes", () => {
     const janNoonUtc = new Date(Date.UTC(2026, 0, 15, 12, 0, 0));
     expect(getTimeZoneOffsetMinutes(janNoonUtc, "America/New_York")).toBe(-300);
   });
+
+  it("handles negative timezone offsets for various timezones", () => {
+    expect(getTimeZoneOffsetMinutes(NOON_UTC, "America/Los_Angeles")).toBe(-420);
+    expect(getTimeZoneOffsetMinutes(NOON_UTC, "America/Chicago")).toBe(-300);
+  });
 });
 
 describe("buildUtcDateFromLocalParts", () => {

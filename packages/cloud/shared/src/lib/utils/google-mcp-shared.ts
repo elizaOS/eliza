@@ -224,7 +224,7 @@ function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
   }).formatToParts(date);
   const token = parts.find((part) => part.type === "timeZoneName")?.value?.trim() ?? "GMT";
   if (token === "GMT" || token === "UTC") return 0;
-  const match = token.match(/^GMT([+-])(\d{1,2})(?::?(\d{2}))?$/i);
+  const match = token.match(/^(?:GMT|UTC)?([+-]|\u2212|\u2013|\u2014)(\d{1,2})(?::?(\d{2}))?$/i);
   if (!match) {
     throw new Error(`unsupported offset token: ${token}`);
   }

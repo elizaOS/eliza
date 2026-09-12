@@ -102,7 +102,7 @@ function offsetMinutes(date: Date, timeZone: string): number {
       .find((part) => part.type === "timeZoneName")
       ?.value.trim() ?? "GMT";
   if (token === "GMT" || token === "UTC") return 0;
-  const match = /^GMT([+-])(\d{1,2})(?::?(\d{2}))?$/.exec(token);
+  const match = /^(?:GMT|UTC)?([+-]|\u2212|\u2013|\u2014)(\d{1,2})(?::?(\d{2}))?$/i.exec(token);
   if (!match) {
     throw new Error(`unsupported timezone offset token: ${token}`);
   }
