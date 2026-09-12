@@ -252,6 +252,39 @@ export default defineConfig({
     ...baseConfig.resolve,
     preserveSymlinks: false,
     alias: [
+      {
+        find: /^@elizaos\/app-core\/api\/compat-route-shared$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "app-core",
+          "src",
+          "api",
+          "compat-route-shared.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/app-core\/api\/auth$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "app-core",
+          "src",
+          "api",
+          "auth.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/app-core\/services\/auth-store$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "app-core",
+          "src",
+          "services",
+          "auth-store.ts",
+        ),
+      },
       // The real agent runtime loads audio-redaction services while this lane
       // boots the OWNER/USER matrix. This specialized alias list replaces the
       // base shared-source aliases, so keep these two package subpaths anchored
