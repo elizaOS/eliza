@@ -1501,6 +1501,47 @@ describe("MEMORY op:delete by query", () => {
     expect(rows[0].memory.content.text).toBe("nubs lives on a boat");
   });
 
+  it("reads the user's words through the external-content envelope (live regression)", async () => {
+    // Connector messages arrive wrapped in the security envelope with the
+    // real text retained in metadata.userPayloadText; the fallback must
+    // query the payload, never the warning banner.
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "The user's favorite tea is oolong.",
+      entityId: USER_ID,
+    });
+    const wrapped = makeMessage({
+      text: "SECURITY NOTICE: The following content is from an EXTERNAL, UNTRUSTED source. forget my favorite tea",
+    });
+    (wrapped.content as { metadata?: Record<string, unknown> }).metadata = {
+      userPayloadText: "forget my favorite tea",
+      externalContentWrapped: true,
+    };
+
+    const result = await runAction(runtime, wrapped, {
+      action: "delete",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(rows).toHaveLength(0);
+  });
+
+  it("returns the missing-target failure, not a verdict, when the implied query misses", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, { text: "nubs lives on a boat", entityId: USER_ID });
+
+    const result = await runAction(
+      runtime,
+      makeMessage({ text: "forget my favorite tea" }),
+      { action: "delete", confirm: true },
+    );
+
+    expect(result.success).toBe(false);
+    expect((result.data as { error: string }).error).toBe("MEMORY_MISSING_ID");
+    expect(rows).toHaveLength(1);
+  });
+
   it("still refuses a target-less delete when the message carries no content terms", async () => {
     const { runtime, rows } = makeRuntime();
     seedFact(rows, { text: "nubs lives on a boat", entityId: USER_ID });

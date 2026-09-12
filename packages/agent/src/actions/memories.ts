@@ -27,6 +27,7 @@ import {
   ModelType,
   readStoredFactKeywords,
   toWellFormedUnicode,
+  unwrapUserMessageText,
   validateUuid,
 } from "@elizaos/core";
 
@@ -1266,7 +1267,10 @@ async function doUpdate(
  * every-term match and ambiguity refusal still guard the delete.
  */
 function deleteQueryFromMessage(message: Memory): string | undefined {
-  const text = message.content.text?.trim();
+  // The user's actual words, not the external-content security envelope that
+  // wraps connector messages: the envelope's warning text matched nothing and
+  // turned a plain "forget my favorite tea" into a hard miss (live 2026-09-12).
+  const text = unwrapUserMessageText(message).trim();
   if (!text || scoreQueryTerms(text).length === 0) return undefined;
   logger.info(
     "[MEMORY] delete carried no query; using the user's message text",
@@ -1282,7 +1286,8 @@ async function doDelete(
   const memoryParam = parseUuidParam(params.memoryId, "memoryId");
   if (!memoryParam.ok) return memoryParam.result;
   const memoryId = memoryParam.id;
-  const query = params.query?.trim() || deleteQueryFromMessage(message);
+  const explicitQuery = params.query?.trim();
+  const query = explicitQuery || deleteQueryFromMessage(message);
   if (!memoryId && !query) {
     return fail(MEMORY_MISSING_TARGET_MESSAGE, "MEMORY_MISSING_ID");
   }
@@ -1335,7 +1340,18 @@ async function doDelete(
   if (!query) {
     return fail(MEMORY_MISSING_TARGET_MESSAGE, "MEMORY_MISSING_ID");
   }
-  return doDeleteByQuery(runtime, message, params, query);
+  const result = await doDeleteByQuery(runtime, message, params, query);
+  // A miss on the implied query is not evidence that nothing is stored; hand
+  // the planner the original ask for an explicit query instead of a verdict.
+  if (
+    !explicitQuery &&
+    !result.success &&
+    (result.data as { error?: unknown } | undefined)?.error ===
+      "MEMORY_NOT_FOUND"
+  ) {
+    return fail(MEMORY_MISSING_TARGET_MESSAGE, "MEMORY_MISSING_ID");
+  }
+  return result;
 }
 
 /**
