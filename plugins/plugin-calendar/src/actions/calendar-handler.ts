@@ -2389,6 +2389,87 @@ function parseDateTimeInZone(value: string, timeZone: string): Date | null {
  * `timeZone` otherwise. Every other combination passes through unchanged and
  * the service keeps validating end-after-start.
  */
+const WEEKDAY_NAMES = [
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+] as const;
+
+const EXPLICIT_DATE_OR_NEXT_WEEK_PATTERN =
+  /\b(?:next|following|after|week|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b|\d{1,2}\/\d{1,2}|\d{4}-\d{2}-\d{2}/i;
+
+function localDateInZone(date: Date, timeZone: string): string {
+  return formatLocalDateTimeInZone(date, timeZone).slice(0, 10);
+}
+
+function shiftLocalDays(local: string, days: number): string {
+  const [datePart, timePart] = local.split("T");
+  const [y, m, d] = datePart.split("-").map(Number);
+  const shifted = new Date(Date.UTC(y, m - 1, d + days));
+  return `${shifted.toISOString().slice(0, 10)}T${timePart ?? "00:00:00"}`;
+}
+
+/**
+ * "move my vet appointment to friday at 4pm", asked late on that same Friday,
+ * arrives from the planner with next Friday's date (live 2026-09-11 22:15 ET):
+ * the model reasons that today's 4pm is over. The user named the weekday the
+ * event already sits on, so the move keeps the event's own day while that day
+ * has not ended; "next friday", a month, or a numeric date is left as sent,
+ * and once the event's day is over the following week is the honest reading.
+ */
+export function snapWeekdayMoveToTargetDay(args: {
+  requestText: string;
+  startAt: string;
+  endAt?: string;
+  target: { startAt: string };
+  timeZone: string;
+  now: Date;
+}): { startAt: string; endAt?: string } {
+  const text = args.requestText.toLowerCase();
+  if (EXPLICIT_DATE_OR_NEXT_WEEK_PATTERN.test(text)) return args;
+  const targetStart = new Date(args.target.startAt);
+  if (Number.isNaN(targetStart.getTime())) return args;
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    timeZone: args.timeZone,
+    weekday: "long",
+  })
+    .format(targetStart)
+    .toLowerCase();
+  if (!WEEKDAY_NAMES.includes(weekday as (typeof WEEKDAY_NAMES)[number]))
+    return args;
+  if (
+    !new RegExp(`\\b${weekday.slice(0, 3)}(?:${weekday.slice(3)})?\\b`).test(
+      text,
+    )
+  )
+    return args;
+  const targetDay = localDateInZone(targetStart, args.timeZone);
+  if (targetDay < localDateInZone(args.now, args.timeZone)) return args;
+  const start = parseDateTimeInZone(args.startAt, args.timeZone);
+  if (!start) return args;
+  const startLocal = formatLocalDateTimeInZone(start, args.timeZone);
+  if (shiftLocalDays(startLocal, -7).slice(0, 10) !== targetDay) return args;
+  const absolute = OFFSET_OR_UTC_SUFFIX_PATTERN.test(args.startAt.trim());
+  const respell = (value: string): string | undefined => {
+    const parsed = parseDateTimeInZone(value, args.timeZone);
+    if (!parsed) return undefined;
+    const local = shiftLocalDays(
+      formatLocalDateTimeInZone(parsed, args.timeZone),
+      -7,
+    );
+    if (!absolute) return local;
+    return parseDateTimeInZone(local, args.timeZone)?.toISOString();
+  };
+  const startAt = respell(args.startAt);
+  if (!startAt) return args;
+  const endAt = args.endAt ? respell(args.endAt) : undefined;
+  return { startAt, ...(args.endAt ? { endAt: endAt ?? args.endAt } : {}) };
+}
+
 export function resolveUpdateTimeRange(args: {
   explicitStart?: string;
   explicitEnd?: string;
@@ -2396,9 +2477,23 @@ export function resolveUpdateTimeRange(args: {
   extractedEnd?: string;
   target: { startAt: string; endAt: string };
   timeZone?: string;
+  requestText?: string;
+  now?: Date;
 }): { startAt?: string; endAt?: string } {
-  const startAt = args.explicitStart ?? args.extractedStart;
-  const endAt = args.explicitEnd ?? args.extractedEnd;
+  let startAt = args.explicitStart ?? args.extractedStart;
+  let endAt = args.explicitEnd ?? args.extractedEnd;
+  if (startAt && args.requestText && args.timeZone?.trim()) {
+    const snapped = snapWeekdayMoveToTargetDay({
+      requestText: args.requestText,
+      startAt,
+      endAt,
+      target: args.target,
+      timeZone: args.timeZone.trim(),
+      now: args.now ?? new Date(),
+    });
+    startAt = snapped.startAt;
+    endAt = snapped.endAt ?? endAt;
+  }
   if (!startAt || endAt) return { startAt, endAt };
   const durationMs =
     Date.parse(args.target.endAt) - Date.parse(args.target.startAt);
@@ -5387,6 +5482,7 @@ const calendarAction: CalendarHandlerAction = {
             extractedEnd: extractedEndAt,
             target: targetEvent,
             timeZone: updateTimeZone,
+            requestText: messageText(message),
           }),
           timeZone: updateTimeZone,
           recurrence: recurrenceUpdate,
