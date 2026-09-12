@@ -301,7 +301,7 @@ export const notesAction: Action = {
     {
       name: "content",
       description:
-        "For create, the complete new note: title on the first line and body on subsequent lines. Copy an explicit user title byte-for-byte, including spaces, capitalization, punctuation, and alphanumeric codes, even when the body is recalled from earlier conversation or generated. Do not reformat the title or substitute the spelling or spacing of a similar prior note. Preserve an explicitly supplied body exactly. Put a newline between title and body; do not join them with a dash into one title. Prefer this single field and omit body. Alternatively, pass only the exact title in content and the requested body in body. For update/delete, this identifies the EXISTING note, not its replacement. On list, pass only a requested topic to filter note text. Omit it for all notes, counts, or recency questions without a topic; use the returned createdAt/updatedAt timestamps to compare recency, not a text filter such as 'most recently updated'.",
+        "For list, pass the requested exact title or topic to search note text. Omit only for all notes, unfiltered counts, or recency comparisons without a title/topic; compare returned createdAt/updatedAt timestamps, never search for 'latest' or 'most recently updated'. For update/delete, identify the EXISTING note, not its replacement. For create, supply the exact title, newline, and body.",
       required: false,
       requiredForSubactions: ["create", "update", "delete"],
       // Strict providers may serialize an omitted optional string as "". The
@@ -315,7 +315,7 @@ export const notesAction: Action = {
     {
       name: "body",
       description:
-        "For create only: optional body when content contains only the title. Omit when content already contains the whole note. For update use replacementContent, not body.",
+        "For create only: optional body when content contains only the title. Prefer the complete note in content: title on the first line and body on subsequent lines, omitting body. Alternatively, pass only the exact title in content and the requested body here. Copy an explicit user title byte-for-byte, including spaces, capitalization, punctuation, and alphanumeric codes, even when the body is recalled from earlier conversation or generated. Do not reformat the title or substitute the spelling or spacing of a similar prior note. Preserve an explicitly supplied body exactly. Put a newline between title and body; do not join them with a dash into one title. For update use replacementContent, not body.",
       subactions: ["create"],
       required: false,
       schema: { type: "string" },
