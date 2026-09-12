@@ -1163,24 +1163,23 @@ export class DocumentService extends Service {
 		};
 	}
 
-	/** Returns pins readable by every current human participant in the destination chat. */
-	async listConversationPins(message: Memory): Promise<Memory[]> {
+	/** Rechecks each candidate against the complete destination audience and rejects changing snapshots. */
+	private async readConversationDocuments(
+		message: Memory,
+		loadCandidates: () => Promise<Memory[]>,
+		changedCode = "DOCUMENT_CONTEXT_CHANGED",
+	): Promise<Memory[]> {
 		const room = await this.runtime.getRoom(message.roomId);
 		if (!room || room.agentId !== this.runtime.agentId) return [];
 		const participants = await this.runtime.getParticipantsForRoom(
 			message.roomId,
 		);
 		if (!participants.includes(message.entityId)) return [];
-		const documents = await this.listAllDocumentsWithRequester(() =>
-			resolveDocumentRequester(this.runtime, message),
-		);
-		const candidates = documents.filter((document) =>
-			isDocumentPinnedForRoom(document, message.roomId),
-		);
+		const candidates = await loadCandidates();
 		const readers = participants.filter(
 			(entityId) => entityId !== this.runtime.agentId,
 		);
-		const pins: Memory[] = [];
+		const visible: Memory[] = [];
 		for (const document of candidates) {
 			const documentId = document.id;
 			if (!documentId) continue;
@@ -1201,14 +1200,14 @@ export class DocumentService extends Service {
 				)
 			) {
 				throw new ElizaError(
-					"Pinned document changed while preparing the reply. Retry with current knowledge.",
+					"Document changed while preparing the reply. Retry with current knowledge.",
 					{
-						code: "DOCUMENT_PIN_CONTEXT_CHANGED",
+						code: changedCode,
 						context: { documentId },
 					},
 				);
 			}
-			pins.push(document);
+			visible.push(document);
 		}
 		const currentParticipants = await this.runtime.getParticipantsForRoom(
 			message.roomId,
@@ -1218,17 +1217,33 @@ export class DocumentService extends Service {
 			participants.some((id) => !currentParticipants.includes(id))
 		) {
 			throw new ElizaError(
-				"Chat participants changed while preparing pinned knowledge. Retry with the current audience.",
+				"Chat participants changed while preparing knowledge. Retry with the current audience.",
 				{
-					code: "DOCUMENT_PIN_CONTEXT_CHANGED",
+					code: changedCode,
 					context: { roomId: message.roomId },
 				},
 			);
 		}
-		return pins;
+		return visible;
 	}
 
-	/** Runs the DOCUMENTS provider's search and inventory reads on one snapshot. */
+	/** Returns pins readable by every current human participant in the destination chat. */
+	async listConversationPins(message: Memory): Promise<Memory[]> {
+		return this.readConversationDocuments(
+			message,
+			async () => {
+				const documents = await this.listAllDocumentsWithRequester(() =>
+					resolveDocumentRequester(this.runtime, message),
+				);
+				return documents.filter((document) =>
+					isDocumentPinnedForRoom(document, message.roomId),
+				);
+			},
+			"DOCUMENT_PIN_CONTEXT_CHANGED",
+		);
+	}
+
+	/** Composes search and inventory only from documents readable by the whole destination audience. */
 	async composeProviderDocuments(message: Memory): Promise<{
 		relevantFragments: StoredDocument[];
 		documents: Memory[];
@@ -1238,17 +1253,30 @@ export class DocumentService extends Service {
 			this.runtime,
 			message,
 		);
-		const [relevantFragments, documents] = await Promise.all([
-			this.searchDocumentsWithRequester(
-				message,
-				undefined,
-				undefined,
-				undefined,
-				undefined,
-				resolveRequester,
-			),
-			this.listAllDocumentsWithRequester(resolveRequester),
-		]);
+		let fragments: StoredDocument[] = [];
+		const documents = await this.readConversationDocuments(
+			message,
+			async () => {
+				const [search, inventory] = await Promise.all([
+					this.searchDocumentsWithRequester(
+						message,
+						undefined,
+						undefined,
+						undefined,
+						undefined,
+						resolveRequester,
+					),
+					this.listAllDocumentsWithRequester(resolveRequester),
+				]);
+				fragments = search;
+				return inventory;
+			},
+		);
+		const visibleIds = new Set(documents.map((document) => document.id));
+		const relevantFragments = fragments.filter((fragment) => {
+			const parentId = fragment.metadata?.documentId;
+			return typeof parentId === "string" && visibleIds.has(parentId as UUID);
+		});
 		return {
 			relevantFragments,
 			documents,

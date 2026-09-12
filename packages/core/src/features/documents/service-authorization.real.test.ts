@@ -123,6 +123,21 @@ function documentFragment(document: Memory, text: string, id: UUID): Memory {
 	};
 }
 
+async function privateConversation(entityId: UUID): Promise<UUID> {
+	const roomId = crypto.randomUUID() as UUID;
+	await runtime.ensureConnection({
+		entityId,
+		roomId,
+		worldId: WORLD_ID,
+		worldName: "Document authorization",
+		userName: "Private reader",
+		name: "Private document conversation",
+		source: "test",
+		type: ChannelType.DM,
+	});
+	return roomId;
+}
+
 beforeAll(async () => {
 	({ runtime, cleanup } = await createTestRuntime({
 		characterName: "DocumentAuthorizationTest",
@@ -521,6 +536,7 @@ describe("DocumentService requester authorization", () => {
 			...message(),
 			id: "f4300000-0000-4000-8000-000000000015" as UUID,
 			entityId: OTHER_USER_ID,
+			roomId: await privateConversation(OTHER_USER_ID),
 			content: {
 				text: "launch knowledge",
 				source: "test",
@@ -572,6 +588,7 @@ describe("DocumentService requester authorization", () => {
 		const request = {
 			...message(),
 			entityId: GRANTEE_ID,
+			roomId: await privateConversation(GRANTEE_ID),
 			content: { text: "What knowledge was shared with me?" },
 		};
 		const selected = filterByContextGate(
@@ -618,6 +635,7 @@ describe("DocumentService requester authorization", () => {
 
 	it("pins independently to chat and agent without changing readers or losing concurrent edits", async () => {
 		const service = new DocumentService(runtime);
+		const pinRoom = await privateConversation(USER_ID);
 		const id = "f4300000-0000-4000-8000-000000000050" as UUID;
 		const otherRoom = "f4300000-0000-4000-8000-000000000051" as UUID;
 		const missingRoom = "f4300000-0000-4000-8000-000000000052" as UUID;
@@ -643,7 +661,7 @@ describe("DocumentService requester authorization", () => {
 		const first = await service.getDocumentPinsWithAccessContext(id, owner);
 		const updated = await service.setDocumentPinsWithAccessContext(
 			id,
-			{ agent: false, roomIds: [ROOM_ID] },
+			{ agent: false, roomIds: [pinRoom] },
 			owner,
 			first.pinRevision,
 		);
@@ -657,7 +675,7 @@ describe("DocumentService requester authorization", () => {
 			(await service.composeProviderDocuments(request)).pinnedDocuments.some(
 				(document) => document.id === id,
 			);
-		expect(await includes(message())).toBe(true);
+		expect(await includes({ ...message(), roomId: pinRoom })).toBe(true);
 		expect(await includes({ ...message(), roomId: otherRoom })).toBe(false);
 		expect(await includes({ ...message(), entityId: OTHER_USER_ID })).toBe(
 			false,
@@ -695,7 +713,7 @@ describe("DocumentService requester authorization", () => {
 		await expect(
 			service.setDocumentPinsWithAccessContext(
 				id,
-				{ agent: false, roomIds: [ROOM_ID, ROOM_ID] },
+				{ agent: false, roomIds: [pinRoom, pinRoom] },
 				owner,
 				current.pinRevision,
 			),
@@ -724,7 +742,7 @@ describe("DocumentService requester authorization", () => {
 			owner,
 			(await service.getDocumentPinsWithAccessContext(id, owner)).pinRevision,
 		);
-		expect(await includes(message())).toBe(false);
+		expect(await includes({ ...message(), roomId: pinRoom })).toBe(false);
 	});
 
 	it("composes ordinary-conversation pins only for the complete chat audience and observes revocation", async () => {
@@ -743,7 +761,7 @@ describe("DocumentService requester authorization", () => {
 		});
 		const original = userPrivateDocument(
 			id,
-			"COMPLETE_CONVERSATION_PIN\nDo not lose the final line.",
+			"Hello COMPLETE_CONVERSATION_PIN\nAUDIENCE_SEARCH_FRAGMENT\nDo not lose the final line.",
 		);
 		original.metadata = {
 			...original.metadata,
@@ -752,8 +770,17 @@ describe("DocumentService requester authorization", () => {
 		};
 		await runtime.createMemories([
 			{ memory: original, tableName: "documents" },
+			{
+				memory: documentFragment(
+					original,
+					"Hello AUDIENCE_SEARCH_FRAGMENT",
+					crypto.randomUUID() as UUID,
+				),
+				tableName: "document_fragments",
+			},
 		]);
 		runtime.registerProvider(pinnedDocumentsProvider);
+		runtime.registerProvider(documentsProvider);
 		const getService = vi
 			.spyOn(runtime, "getService")
 			.mockImplementation((type) =>
@@ -768,18 +795,29 @@ describe("DocumentService requester authorization", () => {
 				channelType: ChannelType.GROUP,
 			},
 		};
-		const compose = async () => {
+		const compose = async (context = "simple") => {
 			const turnRequest = { ...request, id: crypto.randomUUID() as UUID };
 			const names = selectV5PlannerStateProviderNames({
 				runtime,
 				message: turnRequest,
-				selectedContexts: ["simple"],
+				selectedContexts: [context],
 				userRoles: ["USER"],
 			});
 			return runtime.composeState(turnRequest, names, true);
 		};
 		try {
 			expect((await compose()).text).toContain(original.content.text);
+			expect(
+				(
+					await service.composeProviderDocuments(request)
+				).relevantFragments.some(
+					(fragment) =>
+						fragment.content.text === "Hello AUDIENCE_SEARCH_FRAGMENT",
+				),
+			).toBe(true);
+			expect((await compose("knowledge")).text).toContain(
+				original.content.text,
+			);
 			await runtime.ensureConnection({
 				entityId: GRANTEE_ID,
 				roomId,
@@ -791,6 +829,20 @@ describe("DocumentService requester authorization", () => {
 				type: ChannelType.GROUP,
 			});
 			expect((await compose()).text).not.toContain("COMPLETE_CONVERSATION_PIN");
+			expect(
+				(
+					await service.composeProviderDocuments(request)
+				).relevantFragments.some(
+					(fragment) =>
+						fragment.content.text === "Hello AUDIENCE_SEARCH_FRAGMENT",
+				),
+			).toBe(false);
+			expect((await compose("knowledge")).text).not.toContain(
+				"AUDIENCE_SEARCH_FRAGMENT",
+			);
+			expect((await compose("knowledge")).text).not.toContain(
+				"COMPLETE_CONVERSATION_PIN",
+			);
 			const owner = {
 				requesterEntityId: USER_ID,
 				role: "OWNER" as const,
@@ -802,8 +854,33 @@ describe("DocumentService requester authorization", () => {
 				owner,
 			);
 			expect((await compose()).text).toContain(original.content.text);
+			expect(
+				(
+					await service.composeProviderDocuments(request)
+				).relevantFragments.some(
+					(fragment) =>
+						fragment.content.text === "Hello AUDIENCE_SEARCH_FRAGMENT",
+				),
+			).toBe(true);
+			expect((await compose("knowledge")).text).toContain(
+				original.content.text,
+			);
 			await service.setDocumentDirectGrantsWithAccessContext(id, [], owner);
 			expect((await compose()).text).not.toContain("COMPLETE_CONVERSATION_PIN");
+			expect(
+				(
+					await service.composeProviderDocuments(request)
+				).relevantFragments.some(
+					(fragment) =>
+						fragment.content.text === "Hello AUDIENCE_SEARCH_FRAGMENT",
+				),
+			).toBe(false);
+			expect((await compose("knowledge")).text).not.toContain(
+				"AUDIENCE_SEARCH_FRAGMENT",
+			);
+			expect((await compose("knowledge")).text).not.toContain(
+				"COMPLETE_CONVERSATION_PIN",
+			);
 			await service.setDocumentDirectGrantsWithAccessContext(
 				id,
 				[GRANTEE_ID],
@@ -833,10 +910,29 @@ describe("DocumentService requester authorization", () => {
 				await expect(
 					service.listConversationPins(request),
 				).rejects.toMatchObject({ code: "DOCUMENT_PIN_CONTEXT_CHANGED" });
+				await runtime.removeParticipant(OTHER_USER_ID, roomId);
+				joined = false;
+				await expect(
+					service.composeProviderDocuments(request),
+				).rejects.toMatchObject({ code: "DOCUMENT_CONTEXT_CHANGED" });
 			} finally {
 				duringRead.mockRestore();
 			}
 			expect((await compose()).text).not.toContain("COMPLETE_CONVERSATION_PIN");
+			expect(
+				(
+					await service.composeProviderDocuments(request)
+				).relevantFragments.some(
+					(fragment) =>
+						fragment.content.text === "Hello AUDIENCE_SEARCH_FRAGMENT",
+				),
+			).toBe(false);
+			expect((await compose("knowledge")).text).not.toContain(
+				"AUDIENCE_SEARCH_FRAGMENT",
+			);
+			expect((await compose("knowledge")).text).not.toContain(
+				"COMPLETE_CONVERSATION_PIN",
+			);
 		} finally {
 			getService.mockRestore();
 		}
