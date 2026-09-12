@@ -4,12 +4,15 @@
  */
 
 import { ElizaError } from "@elizaos/core";
+import { ZodError } from "zod";
 import type {
   FamilyPacketEmailDelivery,
   FamilyPacketPeriod,
 } from "../lifeops/family-coordination/index.js";
 import { getFamilyWorkflowRuntimeService } from "../lifeops/family-workflows/index.js";
+import { selectedFamilyPacketPeriod } from "../lifeops/family-workflows/period.js";
 import { CONCORD_SCHOOL_CALENDAR_SOURCE } from "../lifeops/school/calendar-workflow.js";
+import { handleFamilyIntakeRoutes } from "./family-intake.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 
 function service(ctx: LifeOpsRouteContext) {
@@ -34,6 +37,7 @@ export async function handleFamilyWorkflowRoutes(
   const runtimeService = service(ctx);
   if (!runtimeService) return true;
   try {
+    if (await handleFamilyIntakeRoutes(ctx)) return true;
     if (
       method === "GET" &&
       pathname === "/api/lifeops/family-workflows/email-options"
@@ -192,12 +196,26 @@ export async function handleFamilyWorkflowRoutes(
       method === "POST" &&
       pathname === "/api/lifeops/family-workflows/packets"
     ) {
-      const body = await readJsonBody<{ period?: FamilyPacketPeriod }>(
-        req,
-        res,
-      );
+      const body = await readJsonBody<{
+        period?: FamilyPacketPeriod;
+        periodKey?: string;
+      }>(req, res);
       if (body === null) return true;
-      json(res, await runtimeService.generatePacket(body.period));
+      if (
+        body.periodKey !== undefined &&
+        (typeof body.periodKey !== "string" || body.period !== undefined)
+      ) {
+        ctx.error(res, "Select one packet month", 400);
+        return true;
+      }
+      json(
+        res,
+        await runtimeService.generatePacket(
+          body.periodKey === undefined
+            ? body.period
+            : selectedFamilyPacketPeriod(body.periodKey),
+        ),
+      );
       return true;
     }
     const packetMatch = pathname.match(
@@ -383,6 +401,40 @@ export async function handleFamilyWorkflowRoutes(
     return true;
   } catch (error) {
     // error-policy:J1 HTTP boundary returns a structured failure.
+    if (error instanceof ZodError) {
+      json(
+        res,
+        {
+          error: {
+            code: "FAMILY_INPUT_INVALID",
+            message: "Review the input fields and try again",
+          },
+        },
+        400,
+      );
+      return true;
+    }
+    if (
+      error instanceof ElizaError &&
+      error.code.startsWith("FAMILY_INTAKE_")
+    ) {
+      const status =
+        error.code.endsWith("CONFLICT") ||
+        error.code === "FAMILY_INTAKE_SOURCE_CHANGED"
+          ? 409
+          : error.code === "FAMILY_INTAKE_OWNER_REQUIRED"
+            ? 403
+            : error.code.endsWith("_UNAVAILABLE")
+              ? 503
+              : 400;
+      json(
+        res,
+        { error: { code: error.code, message: error.message } },
+        status,
+      );
+      return true;
+    }
+
     if (
       error instanceof ElizaError &&
       [

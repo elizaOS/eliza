@@ -19,6 +19,7 @@ import type {
 vi.mock("./adapter.js", () => ({ defaultFamilyOperationsAdapter: {} }));
 
 import { FamilyOperationsView } from "./FamilyOperationsView.js";
+import type { FamilyIntakeAdapter } from "./intake-adapter.js";
 
 afterEach(cleanup);
 
@@ -175,7 +176,108 @@ function pendingEmailSnapshot(): FamilyOperationsSnapshot {
   return data;
 }
 
+function openPacketMonth(month: string) {
+  const input = screen.getByLabelText("Month to prepare") as HTMLInputElement;
+  if (input.value === month) return;
+  fireEvent.change(input, { target: { value: month } });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Open month", exact: true }),
+  );
+}
+
 describe("FamilyOperationsView", () => {
+  it("keeps month intake and packet generation aligned and protects unsaved correspondence", async () => {
+    const months: string[] = [];
+    const intake: FamilyIntakeAdapter = {
+      async decideRequest() {
+        throw new Error("Unexpected request decision in this fixture");
+      },
+      async answerInterview() {
+        throw new Error("Interview writes are outside this fixture.");
+      },
+      async list(period) {
+        months.push(period);
+        return [];
+      },
+      async importSource() {
+        throw new Error("Import is outside this month-navigation test.");
+      },
+      async change() {
+        throw new Error(
+          "Review mutation is outside this month-navigation test.",
+        );
+      },
+      async review() {
+        throw new Error(
+          "Review mutation is outside this month-navigation test.",
+        );
+      },
+    };
+    const local = adapter(pendingEmailSnapshot());
+    render(<FamilyOperationsView adapter={local} intakeAdapter={intake} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Monthly packet" }),
+    );
+    openPacketMonth("2026-10");
+    await waitFor(() => expect(months.at(-1)).toBe("2026-10"));
+    fireEvent.change(screen.getByLabelText("Email or message text"), {
+      target: { value: "Unsaved source stays in October." },
+    });
+    fireEvent.change(screen.getByLabelText("Month to prepare"), {
+      target: { value: "2026-11" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open month", exact: true }),
+    );
+    expect(screen.getByText(/Opening 2026-11 will discard/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+    expect(
+      (screen.getByLabelText("Email or message text") as HTMLTextAreaElement)
+        .value,
+    ).toBe("Unsaved source stays in October.");
+    expect(months.at(-1)).toBe("2026-10");
+    expect(
+      (screen.getByLabelText("Month to prepare") as HTMLInputElement).value,
+    ).toBe("2026-10");
+    fireEvent.change(screen.getByLabelText("Month to prepare"), {
+      target: { value: "2026-11" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open month", exact: true }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Discard edits and open month" }),
+    );
+    await waitFor(() => expect(months.at(-1)).toBe("2026-11"));
+    expect(
+      (screen.getByLabelText("Email or message text") as HTMLTextAreaElement)
+        .value,
+    ).toBe("");
+    expect(
+      screen.queryByRole("button", { name: "Approve and send email" }),
+    ).toBeNull();
+    const generation = Promise.withResolvers<void>();
+    vi.mocked(local.generatePacket).mockReturnValue(generation.promise);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Generate 2026-11 packet" }),
+    );
+    expect(local.generatePacket).toHaveBeenCalledWith("2026-11");
+    expect(
+      (screen.getByLabelText("Month to prepare") as HTMLInputElement).disabled,
+    ).toBe(true);
+    generation.resolve();
+    await waitFor(() =>
+      expect(
+        (screen.getByLabelText("Month to prepare") as HTMLInputElement)
+          .disabled,
+      ).toBe(false),
+    );
+    openPacketMonth("2026-10");
+    expect(
+      await screen.findByRole("button", { name: "Approve and send email" }),
+    ).toBeTruthy();
+  });
+
   it("sends the exact reviewed decision once and renders the persisted provider result", async () => {
     const data = pendingEmailSnapshot();
     const local = adapter(data);
@@ -185,6 +287,7 @@ describe("FamilyOperationsView", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Monthly packet" }),
     );
+    openPacketMonth("2026-10");
     const approve = screen.getByRole("button", {
       name: "Approve and send email",
     });
@@ -227,6 +330,7 @@ describe("FamilyOperationsView", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Monthly packet" }),
     );
+    openPacketMonth("2026-10");
     fireEvent.click(
       screen.getByRole("button", { name: "Approve and send email" }),
     );
@@ -440,6 +544,7 @@ describe("FamilyOperationsView", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Monthly packet" }),
     );
+    openPacketMonth("2026-10");
     const conflict = screen.getByRole("region", { name: "School review" });
     expect(within(conflict).getByText("Pickup is at noon.")).toBeTruthy();
     expect(within(conflict).getByText("Pickup is at 3 PM.")).toBeTruthy();
@@ -491,6 +596,7 @@ describe("FamilyOperationsView", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Monthly packet" }),
     );
+    openPacketMonth("2026-08");
     const download = screen
       .getByRole("link", {
         name: "Download draft record",

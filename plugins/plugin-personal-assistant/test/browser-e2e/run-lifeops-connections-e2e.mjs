@@ -33,9 +33,17 @@ const result = await viteBuild({
       name: "lifeops-production-adapter-stub",
       enforce: "pre",
       resolveId(source, importer) {
+        if (
+          source === "@elizaos/shared" &&
+          importer?.endsWith("/lifeops/time.ts")
+        ) {
+          return join(here, "lifeops-time-host-fixture.ts");
+        }
+        if (source === "./handoff-adapter.js") return adapterStub;
         return source === "./adapter.js" &&
           (importer?.endsWith("LifeOpsConnectionsView.tsx") ||
-            importer?.endsWith("FamilyOperationsView.tsx"))
+            importer?.endsWith("FamilyOperationsView.tsx") ||
+            importer?.endsWith("intake-adapter.ts"))
           ? adapterStub
           : null;
       },
@@ -63,12 +71,20 @@ const styles = buildResult.output
 if (!styles)
   throw new Error("LifeOps fixture omitted production control styles.");
 
-const html = `<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LifeOps no-provider acceptance</title><style>:root{color-scheme:dark;--brand-white:#fdfaf7;--brand-black:#000;--txt:var(--brand-white);--muted:rgba(255,255,255,.56);--bg:var(--brand-black);--card:#121212;--bg-muted:rgba(255,255,255,.06);--bg-accent:var(--brand-black);--accent:#ff6a1f;--accent-muted:#c94400;--accent-foreground:var(--brand-black);--accent-subtle:rgba(255,106,31,.14);--border:rgba(255,255,255,.12);--border-strong:rgba(255,255,255,.22);--status-success:#4ade80;--status-success-bg:rgba(74,222,128,.16);--status-warning:#ff6a1f;--status-warning-bg:rgba(255,106,31,.12);--status-danger:#ff6a1f;--status-danger-bg:rgba(255,106,31,.12);--scrim:rgba(0,0,0,.72)}html,body,#root{width:100%;height:100%;margin:0;background:var(--bg);color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}*{box-sizing:border-box}</style></head><body><div id="root"></div><script>${bundle}</script></body></html>`;
+const html = `<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LifeOps no-provider acceptance</title><style>:root{color-scheme:dark;--brand-white:#fdfaf7;--brand-black:#000;--brand-orange:#ff6a1f;--txt:var(--brand-white);--muted:rgba(255,255,255,.56);--bg:var(--brand-black);--card:#121212;--bg-muted:rgba(255,255,255,.06);--bg-accent:var(--brand-black);--accent:#ff6a1f;--accent-muted:#c94400;--accent-foreground:var(--brand-black);--accent-subtle:rgba(255,106,31,.14);--border:rgba(255,255,255,.12);--border-strong:rgba(255,255,255,.22);--status-success:#4ade80;--status-success-bg:rgba(74,222,128,.16);--status-warning:#ff6a1f;--status-warning-bg:rgba(255,106,31,.12);--status-danger:#ff6a1f;--status-danger-bg:rgba(255,106,31,.12);--scrim:rgba(0,0,0,.72)}html,body,#root{width:100%;height:100%;margin:0;background:var(--bg);color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}*{box-sizing:border-box}</style></head><body><div id="root"></div><script src="/fixture.js"></script></body></html>`;
 const server = Bun.serve({
   hostname: "127.0.0.1",
   port,
   fetch(request) {
     const url = new URL(request.url);
+    if (url.pathname === "/fixture.js") {
+      return new Response(bundle, {
+        headers: {
+          "content-type": "text/javascript; charset=utf-8",
+          "cache-control": "no-store",
+        },
+      });
+    }
     if (url.pathname === "/" || url.pathname === "/index.html") {
       return new Response(
         html.replace("<style>", `<style>${styles}</style><style>`),
@@ -116,6 +132,16 @@ function contrastRatio(foreground, background) {
   return (light + 0.05) / (dark + 0.05);
 }
 
+async function openFamilyMonth(page, month) {
+  const input = page.getByLabel("Month to prepare");
+  if ((await input.inputValue()) === month) return;
+  await input.fill(month);
+  await page.getByRole("button", { name: "Open month", exact: true }).click();
+  await page
+    .getByRole("heading", { name: `Selected correspondence for ${month}` })
+    .waitFor();
+}
+
 const browser = await chromium.launch({ headless: true });
 try {
   const desktop = await browser.newPage({
@@ -123,7 +149,10 @@ try {
     reducedMotion: "reduce",
   });
   const pageErrors = [];
-  desktop.on("pageerror", (error) => pageErrors.push(String(error)));
+  desktop.on("pageerror", (error) => {
+    pageErrors.push(String(error));
+    process.stderr.write(`Browser initialization error: ${error.stack}\n`);
+  });
   await desktop.goto(baseURL);
   await desktop.getByRole("heading", { name: /Bring your inbox/ }).waitFor();
   const initialColors = await desktop
@@ -657,7 +686,12 @@ try {
     faultPage.on("pageerror", (error) => faultErrors.push(String(error)));
     await faultPage.goto(`${baseURL}?${fault.query}`);
     await faultPage
-      .getByRole("heading", { name: /Bring your inbox/ })
+      .getByRole("heading", {
+        name:
+          fault.query === "failure=load"
+            ? "Connections are unavailable"
+            : /Bring your inbox/,
+      })
       .waitFor();
     if (fault.query === "failure=load") {
       await faultPage.getByRole("alert").waitFor();
@@ -700,6 +734,377 @@ try {
   }
 
   for (const width of [1180, 390]) {
+    const context = await browser.newContext({
+      viewport: { width, height: 850 },
+      hasTouch: width === 390,
+      isMobile: width === 390,
+      recordVideo: { dir: outputDir, size: { width, height: 850 } },
+    });
+    const intakePage = await context.newPage();
+    const diagnostics = [];
+    intakePage.on("pageerror", (error) => diagnostics.push(String(error)));
+    const browserLog = [];
+    intakePage.on("console", (message) =>
+      browserLog.push({
+        kind: "console",
+        level: message.type(),
+        text: message.text(),
+      }),
+    );
+    intakePage.on("response", (response) =>
+      browserLog.push({
+        kind: "response",
+        status: response.status(),
+        url: response.url(),
+      }),
+    );
+    intakePage.on("requestfailed", (request) =>
+      browserLog.push({
+        kind: "request-failed",
+        url: request.url(),
+        failure: request.failure(),
+      }),
+    );
+    await intakePage.goto(`${baseURL}?scenario=family-packet`);
+    await intakePage
+      .getByRole("button", { name: "Monthly packet", exact: true })
+      .click();
+    await openFamilyMonth(intakePage, "2026-10");
+    // Expand the app's inner scroller for full-content evidence; interaction recordings retain the normal viewport.
+    async function captureIntake(filename, hoverControl) {
+      const main = intakePage.locator("main");
+      const previousStyle = await main.getAttribute("style");
+      await main.evaluate((element) => {
+        element.style.height = "auto";
+        element.style.overflowY = "visible";
+      });
+      if (hoverControl) {
+        await intakePage.mouse.move(0, 0);
+        await hoverControl.evaluate(async (element) => {
+          await Promise.all(
+            element.getAnimations().map((animation) => animation.finished),
+          );
+        });
+        const resting = await hoverControl.evaluate(
+          (element) => getComputedStyle(element).backgroundColor,
+        );
+        await hoverControl.hover();
+        await hoverControl.evaluate(async (element) => {
+          await Promise.all(
+            element.getAnimations().map((animation) => animation.finished),
+          );
+        });
+        const hovered = await hoverControl.evaluate((element) => ({
+          background: getComputedStyle(element).backgroundColor,
+          foreground: getComputedStyle(element).color,
+        }));
+        assert(
+          relativeLuminance(hovered.background) < relativeLuminance(resting),
+          "intake save hover darkens the orange background",
+        );
+        assert(
+          contrastRatio(hovered.foreground, hovered.background) >= 4.5,
+          "intake save hover retains accessible text contrast",
+        );
+        await writeFile(
+          join(outputDir, "family-intake-hover-colors.json"),
+          JSON.stringify({ resting, hovered }, null, 2),
+        );
+      }
+      await intakePage.screenshot({
+        path: join(outputDir, filename),
+        fullPage: true,
+      });
+      await main.evaluate((element, style) => {
+        if (style === null) element.removeAttribute("style");
+        else element.setAttribute("style", style);
+      }, previousStyle);
+    }
+    const intake = intakePage.getByRole("region", {
+      name: "Selected correspondence",
+    });
+    const sourceText =
+      "Please confirm Friday pickup at three.\nKeep this complete quotation for review.";
+    await intake
+      .getByLabel("Email or message text")
+      .fill("Discard this unimported draft.");
+    await intake.getByRole("button", { name: "Clear unsaved source" }).click();
+    assert(
+      (await intake.getByLabel("Email or message text").inputValue()) === "",
+      `${width}px clearing an unsaved source does not import it`,
+    );
+    await intake.getByLabel("Source title").fill("Synthetic pickup email");
+    await intake.getByLabel("Email or message text").fill(sourceText);
+    await intake.getByRole("button", { name: "Add private source" }).click();
+    await intake
+      .getByRole("alert")
+      .filter({ hasText: "Synthetic connection interrupted" })
+      .waitFor();
+    assert(
+      (await intake.getByLabel("Email or message text").inputValue()) ===
+        sourceText,
+      `${width}px import failure retains complete source`,
+    );
+    await intake.getByRole("button", { name: "Add private source" }).click();
+    await intake
+      .getByRole("heading", { name: "Synthetic pickup email — selected" })
+      .waitFor();
+    await intake.getByRole("button", { name: "Extract proposals" }).click();
+    await intake
+      .getByRole("heading", { name: "Synthetic pickup email — proposed" })
+      .waitFor();
+    const recipient = intake.getByRole("checkbox", {
+      name: /Verified fixture guest/,
+    });
+    assert(
+      !(await recipient.isChecked()),
+      `${width}px extracted facts start private`,
+    );
+    await intake.getByText("Source quotation", { exact: true }).click();
+    assert(
+      (await intake.locator("blockquote").innerText()) === sourceText,
+      `${width}px quotation preserves the entire selected source`,
+    );
+    await captureIntake(`family-intake-proposal-${width}.png`);
+    await intake
+      .getByLabel("Proposed statement")
+      .fill("Discard this unsaved fact edit.");
+    await recipient.check();
+    await intake.getByRole("button", { name: "Discard fact edits" }).click();
+    assert(
+      (await intake.getByLabel("Proposed statement").inputValue()) ===
+        "Confirm Friday pickup." && !(await recipient.isChecked()),
+      `${width}px discard restores the persisted private proposal`,
+    );
+    await recipient.check();
+    await intake.getByRole("button", { name: "Save reviewed facts" }).click();
+    await intake
+      .getByRole("heading", { name: "Synthetic pickup email — reviewed" })
+      .waitFor();
+    assert(
+      await recipient.isChecked(),
+      `${width}px explicitly reviewed recipient survives reload`,
+    );
+    await intake.getByRole("checkbox", { name: "Include this fact" }).uncheck();
+    await intake.getByRole("button", { name: "Save reviewed facts" }).click();
+    await recipient.waitFor({ state: "visible" });
+    await intakePage.waitForFunction(() => {
+      const labels = [...document.querySelectorAll("label")];
+      const label = labels.find((entry) =>
+        entry.textContent.includes("Verified fixture guest"),
+      );
+      return label?.control?.getAttribute("aria-checked") === "false";
+    });
+    assert(
+      !(await intake
+        .getByRole("checkbox", { name: "Include this fact" })
+        .isChecked()),
+      `${width}px excluded proposal stays available for restoration`,
+    );
+    await intake.getByRole("checkbox", { name: "Include this fact" }).check();
+    assert(
+      !(await recipient.isChecked()),
+      `${width}px restoring a fact does not restore prior sharing`,
+    );
+    const save = intake.getByRole("button", { name: "Save reviewed facts" });
+    if (width === 1180) {
+      await save.hover();
+      await captureIntake("family-intake-review-hover.png", save);
+    }
+    await save.click();
+    await intake.getByRole("button", { name: "Withdraw source" }).click();
+    await intake
+      .getByRole("heading", { name: "Synthetic pickup email — withdrawn" })
+      .waitFor();
+    assert(
+      (await intake
+        .getByRole("button", { name: "Save reviewed facts" })
+        .count()) === 0,
+      `${width}px withdrawn source cannot be reviewed without reselection`,
+    );
+    assert(
+      await intakePage.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+      ),
+      `${width}px intake has no horizontal overflow`,
+    );
+    await captureIntake(`family-intake-withdrawn-${width}.png`);
+    assert(
+      diagnostics.length === 0,
+      `${width}px intake has no uncaught browser errors`,
+    );
+    await intake
+      .getByLabel("Email or message text")
+      .fill("Keep this unfinished source in October.");
+    await intakePage.getByLabel("Month to prepare").fill("2026-11");
+    await intakePage
+      .getByRole("button", { name: "Open month", exact: true })
+      .click();
+    await intakePage.getByText(/Opening 2026-11 will discard/).waitFor();
+    await intakePage.getByRole("button", { name: "Keep editing" }).click();
+    assert(
+      (await intake.getByLabel("Email or message text").inputValue()) ===
+        "Keep this unfinished source in October.",
+      `${width}px cancelled month switch preserves unsaved text`,
+    );
+    assert(
+      (await intakePage.getByLabel("Month to prepare").inputValue()) ===
+        "2026-10",
+      `${width}px cancelling a switch restores the displayed active month`,
+    );
+    await intakePage.getByLabel("Month to prepare").fill("2026-11");
+    await intakePage
+      .getByRole("button", { name: "Open month", exact: true })
+      .click();
+    await intakePage
+      .getByRole("button", { name: "Discard edits and open month" })
+      .click();
+    await intakePage
+      .getByRole("heading", { name: "Selected correspondence for 2026-11" })
+      .waitFor();
+    assert(
+      (await intake.getByLabel("Email or message text").inputValue()) === "",
+      `${width}px accepted month switch clears unsaved text`,
+    );
+    assert(
+      await intakePage
+        .getByRole("button", { name: "Generate 2026-11 packet" })
+        .isEnabled(),
+      `${width}px intake and generation use the same selected month`,
+    );
+    assert(
+      (await intakePage.getByText(/Review guest-shareable draft/).count()) ===
+        0,
+      `${width}px another month's packet is not shown as the current packet`,
+    );
+    await openFamilyMonth(intakePage, "2026-10");
+    await intake
+      .getByRole("heading", { name: "Synthetic pickup email — withdrawn" })
+      .waitFor();
+    await captureIntake(`family-intake-month-return-${width}.png`);
+    await intake.getByText("Fill missing information", { exact: true }).click();
+    const interview = intake.getByRole("form", { name: "Owner interview" });
+    const answerText =
+      "Please confirm the appointment transport.\nThis second line is part of my answer.";
+    await interview
+      .getByRole("radio", { name: "I have an update", exact: true })
+      .check();
+    await interview.getByLabel("Your update").fill(answerText);
+    await interview
+      .getByRole("checkbox", { name: "This update needs an answer" })
+      .check();
+    await interview
+      .getByRole("button", { name: "Save private answer" })
+      .click();
+    await intake
+      .getByRole("alert")
+      .filter({ hasText: "Synthetic answer save interrupted" })
+      .waitFor();
+    assert(
+      (await interview.getByLabel("Your update").inputValue()) === answerText,
+      `${width}px failed interview save retains the complete answer`,
+    );
+    await intakePage.getByLabel("Month to prepare").fill("2026-11");
+    await intakePage
+      .getByRole("button", { name: "Open month", exact: true })
+      .click();
+    await intakePage.getByText(/Opening 2026-11 will discard/).waitFor();
+    await intakePage.getByRole("button", { name: "Keep editing" }).click();
+    await interview
+      .getByRole("button", { name: "Save private answer" })
+      .click();
+    await intake
+      .getByRole("heading", { name: "Owner interview answer — reviewed" })
+      .waitFor();
+    const answerReview = intake.locator("article").filter({
+      has: intakePage.getByRole("heading", {
+        name: "Owner interview answer — reviewed",
+      }),
+    });
+    assert(
+      (await answerReview.getByLabel("Proposed statement").inputValue()) ===
+        answerText,
+      `${width}px saved interview preserves the owner's answer`,
+    );
+    assert(
+      !(await answerReview
+        .getByRole("checkbox", { name: /Verified fixture guest/ })
+        .isChecked()),
+      `${width}px interview answer stays private until recipient review`,
+    );
+    assert(
+      (await interview.getByLabel("Your update").count()) === 0,
+      `${width}px successful save clears only the interview draft`,
+    );
+    await captureIntake(`family-interview-saved-${width}.png`);
+    await answerReview.getByText("Resolve request", { exact: true }).click();
+    const reasonText =
+      "Pickup confirmed by the owner.\nKeep the full resolution reason.";
+    await answerReview
+      .getByLabel("What resolved this request?")
+      .fill(reasonText);
+    await answerReview.getByRole("button", { name: "Mark resolved" }).click();
+    await intakePage
+      .getByText("Synthetic resolution save interrupted. Retry your reason.")
+      .waitFor();
+    assert(
+      (await answerReview
+        .getByLabel("What resolved this request?")
+        .inputValue()) === reasonText,
+      `${width}px failed resolution retains its complete reason`,
+    );
+    await answerReview.getByRole("button", { name: "Mark resolved" }).click();
+    await answerReview
+      .getByText(`Resolution: ${reasonText}`, { exact: true })
+      .waitFor();
+    assert(
+      !(await answerReview
+        .getByRole("checkbox", { name: "Awaiting an answer" })
+        .isChecked()),
+      `${width}px resolution refreshes authoritative request state`,
+    );
+    await captureIntake(`family-request-resolved-${width}.png`);
+    await answerReview
+      .locator("summary")
+      .filter({ hasText: /^Reopen request$/ })
+      .click();
+    await answerReview
+      .getByLabel("Why does this need an answer again?")
+      .fill("The pickup arrangement changed.");
+    await answerReview.getByRole("button", { name: "Reopen request" }).click();
+    await answerReview
+      .getByText("Reopened: The pickup arrangement changed.", { exact: true })
+      .waitFor();
+    assert(
+      await answerReview
+        .getByRole("checkbox", { name: "Awaiting an answer" })
+        .isChecked(),
+      `${width}px reopening refreshes authoritative request state`,
+    );
+    await answerReview
+      .getByText("Request decision history", { exact: true })
+      .click();
+    await answerReview.getByText(reasonText, { exact: true }).waitFor();
+    await answerReview
+      .getByText("The pickup arrangement changed.", { exact: true })
+      .waitFor();
+    await captureIntake(`family-request-reopened-${width}.png`);
+
+    await writeFile(
+      join(outputDir, `family-intake-${width}-diagnostics.json`),
+      JSON.stringify(diagnostics, null, 2),
+    );
+    await writeFile(
+      join(outputDir, `family-intake-${width}-browser-log.json`),
+      JSON.stringify(browserLog, null, 2),
+    );
+    const video = intakePage.video();
+    await context.close();
+    if (video)
+      await video.saveAs(join(outputDir, `family-intake-${width}.webm`));
+  }
+
+  for (const width of [1180, 390]) {
     const family = await browser.newPage({
       viewport: { width, height: 850 },
       hasTouch: width === 390,
@@ -711,6 +1116,7 @@ try {
     await family
       .getByRole("button", { name: "Monthly packet", exact: true })
       .click();
+    await openFamilyMonth(family, "2026-10");
     await family.getByText(/Review guest-shareable draft/).click();
     await family.getByRole("button", { name: "Edit email draft" }).click();
     const editor = family.getByRole("group", { name: "Edit saved email" });
@@ -845,6 +1251,7 @@ try {
       await page
         .getByRole("button", { name: "Monthly packet", exact: true })
         .click();
+      await openFamilyMonth(page, "2026-10");
       await page.getByText(/Review guest-shareable draft/).click();
       await page
         .getByRole("button", { name: "Request owner approval" })
@@ -914,6 +1321,7 @@ try {
   await failedEdit
     .getByRole("button", { name: "Monthly packet", exact: true })
     .click();
+  await openFamilyMonth(failedEdit, "2026-10");
   await failedEdit.getByText(/Review guest-shareable draft/).click();
   await failedEdit.getByRole("button", { name: "Edit email draft" }).click();
   await failedEdit

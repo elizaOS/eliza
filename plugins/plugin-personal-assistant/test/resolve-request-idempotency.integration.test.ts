@@ -122,6 +122,7 @@ const CREATE_APPROVAL_REQUESTS_TABLE = `CREATE TABLE approval_requests (
   reconciliation_resolved_by text,
   reconciliation_reason text,
   agent_id uuid NOT NULL,
+  admission_revision integer,
   created_at timestamp with time zone NOT NULL,
   updated_at timestamp with time zone NOT NULL
 )`;
@@ -132,6 +133,8 @@ const CREATE_DISPATCH_CONTROL_TABLE = `CREATE TABLE approval_dispatch_controls (
   revision integer NOT NULL DEFAULT 0,
   paused boolean NOT NULL DEFAULT false,
   operation_id text,
+  google_binding_required boolean NOT NULL DEFAULT false,
+  retired_google_grants jsonb NOT NULL DEFAULT '{}'::jsonb,
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   PRIMARY KEY (agent_id, subject_user_id)
 )`;

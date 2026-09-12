@@ -479,6 +479,10 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
     type: "POST",
     path: "/api/lifeops/family-workflows/email-recipients/confirm",
   },
+  { type: "GET", path: "/api/lifeops/family-workflows/intake" },
+  { type: "POST", path: "/api/lifeops/family-workflows/intake" },
+  { type: "POST", path: "/api/lifeops/family-workflows/intake/import" },
+  { type: "POST", path: "/api/lifeops/family-workflows/intake/interview" },
   { type: "GET", path: "/api/lifeops/family-workflows/packets" },
   { type: "POST", path: "/api/lifeops/family-workflows/packets" },
   // Knowledge-graph: entities + relationships.
@@ -492,6 +496,15 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
 ];
 
 const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
+  { type: "POST", path: "/api/lifeops/family-workflows/intake/:id/extract" },
+  { type: "POST", path: "/api/lifeops/family-workflows/intake/:id/review" },
+  { type: "POST", path: "/api/lifeops/family-workflows/intake/:id/withdraw" },
+  { type: "POST", path: "/api/lifeops/family-workflows/intake/:id/reselect" },
+  {
+    type: "POST",
+    path: "/api/lifeops/family-workflows/intake/:id/request-decision",
+  },
+
   {
     type: "GET",
     path: "/api/lifeops/family-workflows/school/runs/:runId",

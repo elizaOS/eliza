@@ -9,6 +9,17 @@ afterEach(() => {
 });
 
 describe("defaultFamilyOperationsAdapter", () => {
+  it("sends the owner's selected month instead of letting the server choose next month", async () => {
+    const requests: Request[] = [];
+    vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
+      const request = new Request(new URL(path, "http://localhost"), init);
+      requests.push(request);
+      return Response.json({});
+    });
+    await defaultFamilyOperationsAdapter.generatePacket("2028-02");
+    expect(requests[0].method).toBe("POST");
+    expect(await requests[0].json()).toEqual({ periodKey: "2028-02" });
+  });
   it("loads and mutates the mounted family workflow contracts", async () => {
     const calls: string[] = [];
     const fetchMock = vi.fn(async (input: string | URL | Request) => {

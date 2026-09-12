@@ -24,6 +24,9 @@ import {
   withRequiredTransaction,
 } from "../sql.js";
 
+import { validateFamilyIntakeClaim } from "./intake-claims.js";
+import type { FamilyIntakeFactBinding } from "./intake-service.js";
+
 export const FAMILY_PACKET_VERSION = 1 as const;
 
 export const FAMILY_PACKET_SECTIONS = [
@@ -43,13 +46,15 @@ export interface FamilyPacketProvenance {
     | "calendar"
     | "school"
     | "agreement"
-    | "knowledge";
+    | "knowledge"
+    | "correspondence";
   readonly sourceId: string;
   readonly observedAt: string;
   readonly contentSha256: string;
 }
 
 export interface FamilyPacketClaim {
+  readonly intakeBinding?: FamilyIntakeFactBinding;
   readonly claimId: string;
   readonly stableKey: string;
   readonly section: FamilyPacketSection;
@@ -295,6 +300,14 @@ function validateClaim(claim: FamilyPacketClaim): void {
       );
     }
   }
+  if (
+    claim.provenance.some((source) => source.source === "correspondence") &&
+    !claim.intakeBinding
+  )
+    fail(
+      "correspondence requires its reviewed source binding",
+      "FAMILY_INTAKE_BINDING_REQUIRED",
+    );
   if (claim.section === "approved_obligations" && !claim.obligationApprovalId) {
     // Allowed internally, but it can never enter the external draft.
     return;
@@ -420,6 +433,9 @@ export class MonthlyFamilyPacketService {
         .filter(
           (claim) =>
             claim.unanswered === true &&
+            // Correspondence is recollected from its current source review;
+            // a historical packet cannot resurrect a revoked or resolved fact.
+            !claim.intakeBinding &&
             (claim.carryForwardCount ?? 0) === 0 &&
             !currentKeys.has(claim.stableKey),
         )
@@ -468,7 +484,7 @@ export class MonthlyFamilyPacketService {
   }
 
   async createExternalDraft(
-    packet: MonthlyFamilyPacket,
+    requestedPacket: MonthlyFamilyPacket,
     input: {
       recipient: string;
       recipientEntityId: string;
@@ -477,18 +493,21 @@ export class MonthlyFamilyPacketService {
     },
   ): Promise<MonthlyFamilyDraft> {
     await this.ensureSchema();
-    const current = await this.latest(packet.period.key);
+    const current = await this.latest(requestedPacket.period.key);
     if (
       !current ||
-      current.packetId !== packet.packetId ||
-      current.version !== packet.version ||
-      current.contentSha256 !== packet.contentSha256
+      current.packetId !== requestedPacket.packetId ||
+      current.version !== requestedPacket.version ||
+      current.contentSha256 !== requestedPacket.contentSha256
     ) {
       fail(
         "internal packet is stale or tampered",
         "FAMILY_PACKET_INTERNAL_STALE",
       );
     }
+    // Render persisted claims, not caller-supplied fields accompanying a valid
+    // version/hash. Otherwise an altered object could bypass source bindings.
+    const packet = current;
     const recipient = input.recipient.trim();
     const recipientEntityId = input.recipientEntityId.trim();
     if (!recipient || !recipientEntityId)
@@ -542,6 +561,8 @@ export class MonthlyFamilyPacketService {
         });
         continue;
       }
+      if (claim.intakeBinding)
+        await validateFamilyIntakeClaim(this.runtime, claim, recipientEntityId);
       if (claim.section === "approved_obligations") {
         if (!agreements || !claim.agreementArtifactId) {
           transformations.push({
@@ -958,6 +979,12 @@ export class MonthlyFamilyPacketService {
     const agreements = getAgreementKnowledgeService(this.runtime);
     for (const claim of packet.claims) {
       if (!included.has(claim.claimId)) continue;
+      if (claim.intakeBinding)
+        await validateFamilyIntakeClaim(
+          this.runtime,
+          claim,
+          draft.recipientEntityId,
+        );
       if (
         (claim.section === "custody_calendar" ||
           claim.section === "approved_obligations") &&

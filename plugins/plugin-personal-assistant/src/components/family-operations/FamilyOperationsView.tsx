@@ -33,12 +33,16 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
-  useMemo,
   useState,
 } from "react";
 import type { FamilyPacketSection } from "../../lifeops/family-coordination/index.js";
 import { nextFamilyPacketPeriod } from "../../lifeops/family-workflows/period.js";
 import { defaultFamilyOperationsAdapter } from "./adapter.js";
+import { FamilyIntakePanel } from "./FamilyIntakePanel.js";
+import {
+  defaultFamilyIntakeAdapter,
+  type FamilyIntakeAdapter,
+} from "./intake-adapter.js";
 import { PacketDraftEditor } from "./PacketDraftEditor.js";
 import { RecipientSetup } from "./RecipientSetup.js";
 import type {
@@ -927,16 +931,24 @@ function PacketPanel({
   emailOptions,
   adapter,
   refresh,
+  intakeAdapter,
 }: {
   state: FamilyOperationsSnapshot["packets"];
   emailOptions: FamilyOperationsSnapshot["emailOptions"];
   adapter: FamilyOperationsAdapter;
   refresh: () => Promise<void>;
+  intakeAdapter: FamilyIntakeAdapter;
 }) {
-  const currentPeriod = useMemo(
+  const [currentPeriod, setCurrentPeriod] = useState(
     () => nextFamilyPacketPeriod(new Date()).key,
-    [],
   );
+  const [requestedPeriod, setRequestedPeriod] = useState(currentPeriod);
+  const [confirmMonthChange, setConfirmMonthChange] = useState(false);
+  const [intakeEditState, setIntakeEditState] = useState({
+    busy: false,
+    unsaved: false,
+  });
+  const [generating, setGenerating] = useState(false);
   const [recipientKey, setRecipientKey] = useState("");
   const [senderGrantId, setSenderGrantId] = useState("");
   const [subject, setSubject] = useState(
@@ -962,15 +974,50 @@ function PacketPanel({
   const [error, setError] = useState<string | null>(null);
   if (state.status === "unavailable")
     return <Unavailable message={state.message} />;
+  const selectedPackets = state.data.filter(
+    (packet) => packet.periodKey === currentPeriod,
+  );
+  const latestPacket = selectedPackets.reduce<
+    (typeof selectedPackets)[number] | undefined
+  >(
+    (latest, packet) =>
+      !latest || packet.version > latest.version ? packet : latest,
+    undefined,
+  );
+  const missingSections = latestPacket
+    ? latestPacket.sections
+        .filter((section) => section.state === "missing")
+        .map((section) => section.section)
+    : ["custody_calendar", "school", "travel_consent_health", "unanswered"];
+  const validRequestedPeriod = /^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(
+    requestedPeriod,
+  );
+  const openMonth = () => {
+    if (!validRequestedPeriod || intakeEditState.busy || generating) return;
+    setSubject((value) =>
+      value === `Family coordination for ${currentPeriod}`
+        ? `Family coordination for ${requestedPeriod}`
+        : value,
+    );
+    setCurrentPeriod(requestedPeriod);
+    setIntakeEditState({ busy: false, unsaved: false });
+    setConfirmMonthChange(false);
+    setError(null);
+    setNotice(null);
+  };
   const generate = async () => {
+    setGenerating(true);
     try {
       setError(null);
       await adapter.generatePacket(currentPeriod);
       await refresh();
     } catch (cause) {
+      // error-policy:J4 Generation failure remains visible and does not replace saved packets.
       setError(
         cause instanceof Error ? cause.message : "Packet generation failed",
       );
+    } finally {
+      setGenerating(false);
     }
   };
   const createDraft = async (
@@ -1014,10 +1061,87 @@ function PacketPanel({
   const canCreateDraft = Boolean(recipient && sender && subject.trim());
   return (
     <div style={{ display: "grid", gap: 12 }}>
-      <div>
-        <Button onClick={() => void generate()}>
-          Generate {currentPeriod} packet
+      <section aria-label="Packet month" className="space-y-3">
+        <label className="grid gap-2" htmlFor="family-packet-month">
+          Month to prepare
+          <Input
+            id="family-packet-month"
+            type="month"
+            value={requestedPeriod}
+            disabled={intakeEditState.busy || generating}
+            onChange={(event) => {
+              setRequestedPeriod(event.target.value);
+              setConfirmMonthChange(false);
+            }}
+          />
+        </label>
+        <Button
+          variant="accentDarkHover"
+          disabled={
+            !validRequestedPeriod ||
+            requestedPeriod === currentPeriod ||
+            intakeEditState.busy ||
+            generating
+          }
+          onClick={() =>
+            intakeEditState.unsaved ? setConfirmMonthChange(true) : openMonth()
+          }
+        >
+          Open month
         </Button>
+        {confirmMonthChange ? (
+          <div role="alert" className="space-y-3">
+            <p>
+              Opening {requestedPeriod} will discard unsaved correspondence and
+              fact edits. Saved source reviews remain in {currentPeriod}.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setConfirmMonthChange(false);
+                  setRequestedPeriod(currentPeriod);
+                }}
+              >
+                Keep editing
+              </Button>
+              <Button
+                variant="accentDarkHover"
+                disabled={intakeEditState.busy || generating}
+                onClick={openMonth}
+              >
+                Discard edits and open month
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </section>
+      <FamilyIntakePanel
+        key={currentPeriod}
+        period={currentPeriod}
+        adapter={intakeAdapter}
+        emailOptions={emailOptions}
+        onChanged={refresh}
+        onEditStateChange={setIntakeEditState}
+        missingSections={missingSections}
+      />
+      <div>
+        <Button
+          variant="accentDarkHover"
+          disabled={
+            generating || intakeEditState.busy || intakeEditState.unsaved
+          }
+          onClick={() => void generate()}
+        >
+          {generating
+            ? "Generating packet…"
+            : `Generate ${currentPeriod} packet`}
+        </Button>
+        {intakeEditState.unsaved ? (
+          <p>
+            Save or discard correspondence edits before generating the packet.
+          </p>
+        ) : null}
       </div>
       {emailOptions.status === "unavailable" ? (
         <Unavailable message={emailOptions.message} />
@@ -1139,10 +1263,10 @@ function PacketPanel({
           </label>
         </div>
       </Card>
-      {state.data.length === 0 ? (
-        <Empty>No monthly packets have been generated.</Empty>
+      {selectedPackets.length === 0 ? (
+        <Empty>No packet has been generated for {currentPeriod}.</Empty>
       ) : (
-        state.data.map((packet) => (
+        selectedPackets.map((packet) => (
           <Card
             key={`${packet.packetId}:${packet.version}`}
             title={`${packet.periodKey} · version ${packet.version}`}
@@ -1278,11 +1402,13 @@ function PacketPanel({
 }
 
 export interface FamilyOperationsViewProps {
+  intakeAdapter?: FamilyIntakeAdapter;
   adapter?: FamilyOperationsAdapter;
 }
 
 export function FamilyOperationsView({
   adapter = defaultFamilyOperationsAdapter,
+  intakeAdapter = defaultFamilyIntakeAdapter,
 }: FamilyOperationsViewProps) {
   const [tab, setTab] = useState<Tab>("agreements");
   const [snapshot, setSnapshot] = useState<FamilyOperationsSnapshot | null>(
@@ -1312,8 +1438,18 @@ export function FamilyOperationsView({
   return (
     <main
       style={{
+        ...{
+          "--accent": "var(--brand-orange)",
+          "--accent-foreground": "#140c07",
+          "--accent-hover": "#e65a10",
+          "--accent-muted": "#c94400",
+          "--accent-subtle": "rgba(255,106,31,0.08)",
+          "--inverse": "#fdfaf7",
+        },
         width: "100%",
-        height: "100%",
+        // This fullscreen plugin owns its scroller; keep interactive rows above
+        // the shell's measured resting composer rather than behind its overlay.
+        height: "calc(100% - var(--eliza-chat-clearance, 5.25rem))",
         minHeight: 0,
         overflowY: "auto",
         color: "var(--txt)",
@@ -1395,6 +1531,7 @@ export function FamilyOperationsView({
               />
             ) : (
               <PacketPanel
+                intakeAdapter={intakeAdapter}
                 state={snapshot.packets}
                 emailOptions={snapshot.emailOptions}
                 adapter={adapter}

@@ -19,6 +19,7 @@ import type {
   LifeOpsConnectionsAdapter,
   LifeOpsConnectionsSnapshot,
 } from "../../src/components/lifeops-connections/types.js";
+import { createFamilyIntakeFixture } from "./family-intake-fixture.js";
 import { createFamilyPacketFixture } from "./family-packet-fixture.js";
 
 const GRANT_ID = "connector-account:fixture-account";
@@ -442,6 +443,7 @@ if (!root) throw new Error("LifeOps fixture requires #root.");
 createRoot(root).render(
   scenario === "family-packet" ? (
     <FamilyOperationsView
+      intakeAdapter={createFamilyIntakeFixture()}
       adapter={createFamilyPacketFixture(
         failure === "revision",
         failure === "decision",

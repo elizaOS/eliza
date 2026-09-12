@@ -25,6 +25,9 @@ import {
   type MonthlyFamilyPacket,
   MonthlyFamilyPacketService,
 } from "../family-coordination/index.js";
+import { familyIntakeClaim } from "../family-coordination/intake-claims.js";
+import { FamilyIntakeReviewStore } from "../family-coordination/intake-review.js";
+import { getFamilyIntakeService } from "../family-coordination/intake-service.js";
 import {
   getAgreementKnowledgeService,
   HOUSEHOLD_AGREEMENT_KNOWLEDGE_SERVICE,
@@ -384,6 +387,15 @@ export class FamilyWorkflowRuntimeService extends Service {
         commitments: [],
         accountability: [],
       });
+    }
+    const intakeReviews = await new FamilyIntakeReviewStore(
+      this.runtime,
+    ).listThrough(period.key);
+    if (intakeReviews.some((review) => review.status === "reviewed")) {
+      const intake = getFamilyIntakeService(this.runtime);
+      claims.push(
+        ...(await intake.reviewedFacts(period.key)).map(familyIntakeClaim),
+      );
     }
     return claims;
   }

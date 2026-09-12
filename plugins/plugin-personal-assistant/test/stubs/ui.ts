@@ -226,3 +226,8 @@ export function registerOverlayApp(): void {}
 export function getAppBlockerPlugin(): Record<string, unknown> {
   return {};
 }
+
+export {
+  RadioGroup,
+  RadioGroupItem,
+} from "../../../../packages/ui/src/components/ui/radio-group.js";

@@ -490,10 +490,10 @@ export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter = {
       body: JSON.stringify({ runId }),
     });
   },
-  async generatePacket(_periodKey) {
+  async generatePacket(periodKey) {
     await request("/api/lifeops/family-workflows/packets", {
       method: "POST",
-      body: JSON.stringify({}),
+      body: JSON.stringify({ periodKey }),
     });
   },
   async createPacketDraft(input) {
@@ -527,3 +527,5 @@ export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter = {
     );
   },
 };
+
+export { request as familyOperationsRequest };

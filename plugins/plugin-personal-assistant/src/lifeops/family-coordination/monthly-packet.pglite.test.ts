@@ -4,9 +4,9 @@
  * exclusion, and immutable canonical-approval binding.
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -15,6 +15,10 @@ import type {
 } from "../approval-queue.types.js";
 import { collectCalendarClaims } from "../family-workflows/calendar-claims.js";
 import type { RawSqlQuery } from "../sql.js";
+import { familyIntakeClaim } from "./intake-claims.js";
+
+import { FamilyIntakeReviewStore } from "./intake-review.js";
+import { getFamilyIntakeService } from "./intake-service.js";
 import {
   type FamilyPacketClaim,
   type FamilyPacketPeriod,
@@ -141,6 +145,131 @@ describe("MonthlyFamilyPacketService with real PGlite", () => {
   });
 
   afterEach(async () => db.close());
+
+  it("blocks a previously approved correspondence draft after withdrawal", async () => {
+    const owner = randomUUID();
+    const recipient = randomUUID();
+    const documentId = randomUUID();
+    const text = "Please confirm pickup at 3 PM.";
+    const documents = {
+      async getDocumentByIdWithAccessContext(id: UUID): Promise<Memory> {
+        return {
+          id,
+          agentId: runtime.agentId,
+          roomId: runtime.agentId,
+          entityId: owner as UUID,
+          content: { text },
+          metadata: {
+            type: "document",
+            contentType: "text/plain",
+            ingestionState: "ready",
+          },
+        };
+      },
+    };
+    const intakeRuntime = {
+      ...runtime,
+      getSetting: (key: string) =>
+        key === "ELIZA_ADMIN_ENTITY_ID" ? owner : null,
+      getService: (name: string) => (name === "documents" ? documents : null),
+    } as unknown as IAgentRuntime;
+    const packets = new MonthlyFamilyPacketService(intakeRuntime);
+    const intake = getFamilyIntakeService(intakeRuntime);
+    const selected = await intake.select({
+      id: randomUUID(),
+      periodKey: "2026-09",
+      documentId,
+    });
+    const proposed = await intake.propose({
+      id: selected.id,
+      expectedRevision: selected.revision,
+      facts: [
+        {
+          id: randomUUID(),
+          section: "unanswered",
+          statement: text,
+          sourceQuote: text,
+          dates: [],
+          requests: ["Confirm pickup"],
+          commitments: [],
+          accountability: [],
+          urgency: null,
+          unanswered: true,
+          recipientEntityIds: [],
+        },
+      ],
+    });
+    const reviewed = await intake.review({
+      id: selected.id,
+      expectedRevision: proposed.revision,
+      facts: proposed.facts.map((fact) => ({
+        ...fact,
+        recipientEntityIds: [recipient],
+      })),
+    });
+    const sources = await intake.reviewedFacts("2026-09");
+    const claims = sources.map(familyIntakeClaim);
+    const packet = await packets.buildInternal(period("2026-09"), claims);
+    const forgedDraft = await packets.createExternalDraft(
+      {
+        ...packet,
+        claims: packet.claims.map((entry) => ({
+          ...entry,
+          statement: "Fabricated parental consent",
+          intakeBinding: undefined,
+        })),
+      },
+      { ...guestDraft, recipientEntityId: recipient },
+    );
+    expect(forgedDraft.body).toContain(text);
+    expect(forgedDraft.body).not.toContain("Fabricated parental consent");
+    const draft = await packets.createExternalDraft(packet, {
+      ...guestDraft,
+      recipientEntityId: recipient,
+      email: { subject: "September coordination", senderGrantId: "sender-1" },
+    });
+    expect(draft.body).toContain(text);
+    const request = await packets.enqueueDraftApproval({
+      draft,
+      queue: {
+        enqueueTransactional: async (input) => ({
+          request: approval(input),
+          reused: false,
+        }),
+        surfaceEnqueuedApproval: async () => undefined,
+      },
+      requestedBy: owner,
+      subjectUserId: owner,
+      expiresAt: new Date("2026-10-01T00:00:00Z"),
+    });
+    await expect(
+      packets.validateApprovedDraft({ ...request, state: "approved" }),
+    ).resolves.toMatchObject({ bodySha256: draft.bodySha256 });
+    for (const month of ["2026-10", "2027-02"]) {
+      const next = await packets.buildInternal(
+        period(month),
+        (await intake.reviewedFacts(month)).map(familyIntakeClaim),
+      );
+      expect(next.claims).toEqual(claims);
+    }
+    await intake.withdraw(reviewed.id, reviewed.revision);
+    const afterWithdrawal = await packets.buildInternal(
+      period("2027-03"),
+      (await intake.reviewedFacts("2027-03")).map(familyIntakeClaim),
+    );
+    expect(afterWithdrawal.claims).toEqual([]);
+    await expect(
+      packets.validateApprovedDraft({ ...request, state: "approved" }),
+    ).rejects.toMatchObject({ code: "FAMILY_INTAKE_REVIEW_CONFLICT" });
+    await expect(
+      packets.createExternalDraft(packet, {
+        ...guestDraft,
+        recipientEntityId: recipient,
+      }),
+    ).rejects.toMatchObject({ code: "FAMILY_INTAKE_REVIEW_CONFLICT" });
+    const store = new FamilyIntakeReviewStore(intakeRuntime);
+    expect((await store.read(selected.id))?.status).toBe("withdrawn");
+  });
 
   it("includes opted-in school source facts in the external draft without sharing private calendar edits", async () => {
     const event: LifeOpsCalendarEvent = {
