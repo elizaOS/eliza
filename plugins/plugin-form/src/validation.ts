@@ -52,6 +52,11 @@ import {
   MAX_UNTRUSTED_REGEX_PATTERN_LENGTH,
   matchesSafeUntrustedRegexPattern,
 } from "@elizaos/shared/config/config-catalog";
+import {
+  calendarDateComponents,
+  formatCalendarDate,
+  parseCalendarDate,
+} from "./calendar-date";
 import { strictEmailValid } from "./email";
 import type { FormControl, TypeHandler } from "./types";
 
@@ -441,7 +446,20 @@ function validateDate(
 
   if (value instanceof Date) {
     dateValue = value;
-  } else if (typeof value === "string" || typeof value === "number") {
+  } else if (typeof value === "string") {
+    // A string answer must already be the calendar day parseValue resolved
+    // it to. Accepting anything Date() can read would let a year-less or
+    // free-form answer through as a fabricated instant (V8 reads "Sept 15"
+    // as 2001) instead of re-asking.
+    const parts = calendarDateComponents(value.trim());
+    if (!parts) {
+      return {
+        valid: false,
+        error: `${control.label || control.key} must be a valid date (YYYY-MM-DD)`,
+      };
+    }
+    dateValue = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+  } else if (typeof value === "number") {
     dateValue = new Date(value);
   } else {
     return {
@@ -650,12 +668,11 @@ export function parseValue(value: string, control: FormControl): JsonValue {
       return ["true", "yes", "1", "on"].includes(lower);
     }
 
-    case "date": {
-      const timestamp = Date.parse(value);
-      return Number.isFinite(timestamp)
-        ? new Date(timestamp).toISOString()
-        : value;
-    }
+    case "date":
+      // A date answer names a calendar day; never round-trip it through an
+      // instant, which moves the day by the host's UTC offset. Unparseable
+      // input is kept so validation rejects it and the form re-asks.
+      return parseCalendarDate(value) ?? value.trim();
     default:
       // Keep as string for text-like types
       return value;
@@ -708,8 +725,11 @@ export function formatValue(value: JsonValue, control: FormControl): string {
       return value ? "Yes" : "No";
 
     case "date":
-      // Locale-appropriate date format
-      return value instanceof Date ? value.toLocaleDateString() : String(value);
+      // Locale-appropriate date format that names the stored calendar day on
+      // every host timezone
+      return value instanceof Date
+        ? value.toLocaleDateString()
+        : formatCalendarDate(String(value));
 
     case "select":
       // Show option label instead of value
