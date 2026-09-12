@@ -828,6 +828,68 @@ describe("active-provider scoping", () => {
 });
 
 describe("chat save flow", () => {
+  it.each(["small", "large"] as const)(
+    "saves %s after an unavailable pre-save status without prematurely confirming restart",
+    async (target) => {
+      await renderReady();
+      clientMock.updateModelsConfig.mockResolvedValue({
+        kind: "applied",
+        restart: true,
+      });
+      const replacement = deferred<{ state: string; startedAt: number }>();
+      clientMock.getStatus
+        .mockReset()
+        .mockRejectedValueOnce(new Error("status unreachable"))
+        .mockResolvedValueOnce({ state: "running", startedAt: 1 })
+        .mockResolvedValueOnce({ state: "stopped" })
+        .mockReturnValue(replacement.promise);
+
+      act(() => agentButton(`models-${target}-save`).click());
+      expect(clientMock.updateModelsConfig).not.toHaveBeenCalled();
+      act(() => agentButton(`models-${target}-confirm-restart`).click());
+      await waitFor(() =>
+        expect(clientMock.updateModelsConfig).toHaveBeenCalledWith(
+          expect.objectContaining({ target }),
+        ),
+      );
+      expect(await screen.findByText("Restarting agent…")).toBeTruthy();
+      expect(screen.queryByText("Saved")).toBeNull();
+      await waitFor(
+        () => expect(clientMock.getStatus).toHaveBeenCalledTimes(4),
+        {
+          timeout: 3000,
+        },
+      );
+      expect(screen.queryByText("Saved")).toBeNull();
+
+      await act(async () =>
+        replacement.resolve({ state: "running", startedAt: 2 }),
+      );
+      expect(await screen.findByText("Saved")).toBeTruthy();
+      expect(clientMock.updateModelsConfig).toHaveBeenCalledTimes(1);
+      expect(clientMock.restartAgent).not.toHaveBeenCalled();
+    },
+  );
+
+  it("shows a failed write after an unavailable pre-save status", async () => {
+    await renderReady();
+    clientMock.getStatus.mockRejectedValue(new Error("status unreachable"));
+    clientMock.updateModelsConfig.mockRejectedValue(
+      new Error("Settings write denied"),
+    );
+
+    act(() => agentButton("models-small-save").click());
+    act(() => agentButton("models-small-confirm-restart").click());
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Settings write denied",
+    );
+    expect(clientMock.updateModelsConfig).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Saved")).toBeNull();
+    expect(screen.queryByText("Restarting agent…")).toBeNull();
+    expect(clientMock.restartAgent).not.toHaveBeenCalled();
+  });
+
   it("requires an explicit restart confirmation before posting, then polls status", async () => {
     clientMock.updateModelsConfig.mockResolvedValue({
       kind: "applied",
