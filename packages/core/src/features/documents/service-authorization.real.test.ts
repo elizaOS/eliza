@@ -614,6 +614,117 @@ describe("DocumentService requester authorization", () => {
 		}
 	});
 
+	it("pins independently to chat and agent without changing readers or losing concurrent edits", async () => {
+		const service = new DocumentService(runtime);
+		const id = "f4300000-0000-4000-8000-000000000050" as UUID;
+		const otherRoom = "f4300000-0000-4000-8000-000000000051" as UUID;
+		const missingRoom = "f4300000-0000-4000-8000-000000000052" as UUID;
+		await runtime.ensureConnection({
+			entityId: USER_ID,
+			roomId: otherRoom,
+			worldId: WORLD_ID,
+			worldName: "Document authorization",
+			userName: "Document owner",
+			name: "Second document chat",
+			source: "test",
+			type: ChannelType.DM,
+		});
+		const original = userPrivateDocument(id, "CHAT_PIN_COMPLETE_BODY");
+		await runtime.createMemories([
+			{ memory: original, tableName: "documents" },
+		]);
+		const owner = {
+			requesterEntityId: USER_ID,
+			role: "OWNER" as const,
+			isOwner: true,
+		};
+		const first = await service.getDocumentPinsWithAccessContext(id, owner);
+		const updated = await service.setDocumentPinsWithAccessContext(
+			id,
+			{ agent: false, roomIds: [ROOM_ID] },
+			owner,
+			first.pinRevision,
+		);
+		expect(updated.content).toEqual(original.content);
+		expect(updated.metadata).toMatchObject({
+			scope: "user-private",
+			scopedToEntityId: USER_ID,
+			documentRevision: 0,
+		});
+		const includes = async (request: Memory) =>
+			(await service.composeProviderDocuments(request)).pinnedDocuments.some(
+				(document) => document.id === id,
+			);
+		expect(await includes(message())).toBe(true);
+		expect(await includes({ ...message(), roomId: otherRoom })).toBe(false);
+		expect(await includes({ ...message(), entityId: OTHER_USER_ID })).toBe(
+			false,
+		);
+		await expect(
+			service.setDocumentPinsWithAccessContext(
+				id,
+				{ agent: true, roomIds: [] },
+				owner,
+				first.pinRevision,
+			),
+		).rejects.toMatchObject({ code: "DOCUMENT_PIN_CONFLICT" });
+		const snapshot = readDocumentMutationSnapshot(original);
+		if (!snapshot) throw new Error("Invalid pin fixture");
+		await expect(
+			runtime.adapter.compareAndSwapDocument({
+				agentId: runtime.agentId,
+				requesterEntityId: USER_ID,
+				requesterRole: "OWNER",
+				requesterRoomIds: [],
+				documentId: id,
+				expected: snapshot,
+				replacement: original,
+			}),
+		).resolves.toEqual({ status: "conflict" });
+		const current = await service.getDocumentPinsWithAccessContext(id, owner);
+		await expect(
+			service.setDocumentPinsWithAccessContext(
+				id,
+				{ agent: false, roomIds: [missingRoom] },
+				owner,
+				current.pinRevision,
+			),
+		).rejects.toMatchObject({ code: "DOCUMENT_PIN_ROOM_INVALID" });
+		await expect(
+			service.setDocumentPinsWithAccessContext(
+				id,
+				{ agent: false, roomIds: [ROOM_ID, ROOM_ID] },
+				owner,
+				current.pinRevision,
+			),
+		).rejects.toMatchObject({ code: "DOCUMENT_PIN_TARGETS_INVALID" });
+		await expect(
+			service.setDocumentPinsWithAccessContext(
+				id,
+				{ agent: true, roomIds: [] },
+				{ requesterEntityId: GRANTEE_ID, role: "GUEST", isOwner: false },
+				current.pinRevision,
+			),
+		).rejects.toMatchObject({ code: "DOCUMENT_PIN_FORBIDDEN" });
+		await service.setDocumentPinsWithAccessContext(
+			id,
+			{ agent: true, roomIds: [] },
+			owner,
+			current.pinRevision,
+		);
+		expect(await includes({ ...message(), roomId: otherRoom })).toBe(true);
+		expect(await includes({ ...message(), entityId: OTHER_USER_ID })).toBe(
+			false,
+		);
+		await service.setDocumentPinsWithAccessContext(
+			id,
+			{ agent: false, roomIds: [] },
+			owner,
+			(await service.getDocumentPinsWithAccessContext(id, owner)).pinRevision,
+		);
+		expect(await includes(message())).toBe(false);
+	});
+
 	it("keeps the complete old revision when replacement embedding fails", async () => {
 		const embed = async () => {
 			if (failEmbedding) throw new Error("injected update embedding failure");
