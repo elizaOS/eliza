@@ -33,6 +33,66 @@ afterEach(() => {
 });
 
 describe("defaultFamilyOperationsAdapter", () => {
+  it("downloads binary exports through authenticated transport and surfaces integrity failures", async () => {
+    const bytes = new Uint8Array([80, 75, 3, 4, 0, 255]);
+    vi.stubGlobal(
+      "fetch",
+      async (input: string | URL | Request, init?: RequestInit) => {
+        if (
+          new URL(String(input)).origin !== testApiBase ||
+          new Headers(init?.headers).get("authorization") !==
+            "Bearer family-adapter-test-session"
+        )
+          return new Response("Unauthorized", { status: 401 });
+        if (requestPath(input).endsWith("/export") && init?.method === "POST")
+          return new Response(bytes, {
+            headers: { "content-type": "application/zip" },
+          });
+        return new Response(
+          JSON.stringify({
+            error: { message: "Original failed integrity verification" },
+          }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        );
+      },
+    );
+    const archive = await defaultFamilyOperationsAdapter.downloadAgreement(
+      "artifact-one",
+      "export",
+    );
+    expect(new Uint8Array(await archive.arrayBuffer())).toEqual(bytes);
+    await expect(
+      defaultFamilyOperationsAdapter.downloadAgreement(
+        "artifact-one",
+        "original",
+      ),
+    ).rejects.toThrow("Original failed integrity verification");
+  });
+
+  it.each([
+    ["text/html", "<html>Bad gateway</html>", 502],
+    ["text/plain", "Payload too large", 413],
+    ["application/json", "{invalid", 502],
+  ])(
+    "preserves HTTP failures for %s error responses",
+    async (contentType, body, status) => {
+      vi.stubGlobal(
+        "fetch",
+        async () =>
+          new Response(body, {
+            status,
+            headers: { "content-type": contentType },
+          }),
+      );
+      await expect(
+        defaultFamilyOperationsAdapter.downloadAgreement(
+          "artifact-one",
+          "export",
+        ),
+      ).rejects.toThrow(`Download failed (${status})`);
+    },
+  );
+
   it("allows provider-backed mutations to complete beyond the ordinary read timeout", async () => {
     vi.useFakeTimers();
     vi.stubGlobal(

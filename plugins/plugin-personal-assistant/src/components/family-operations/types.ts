@@ -90,6 +90,10 @@ export interface FamilyOperationsSnapshot {
 export interface FamilyOperationsAdapter {
   load(): Promise<FamilyOperationsSnapshot>;
   uploadAgreement(input: AgreementUploadInput): Promise<void>;
+  downloadAgreement(
+    artifactId: string,
+    format: "original" | "export",
+  ): Promise<Blob>;
   decideObligation(
     obligation: ParentingAgreementObligation,
     decision: "approve" | "reject",
