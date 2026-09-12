@@ -68,6 +68,102 @@ function fakeClient(mocks: Record<string, unknown>): ElizaClient {
 
 const FAST = { pollIntervalMs: 1, timeoutMs: 60 };
 
+describe("waitForCloudAgentRunning — resume restoration", () => {
+  it("waits for the accepted restore job before returning a fresh running record", async () => {
+    let restored = false;
+    const getCloudCompatJobStatus = vi
+      .fn()
+      .mockResolvedValueOnce({
+        success: true,
+        data: { status: "in_progress", state: "restoring" },
+      })
+      .mockImplementationOnce(async () => {
+        restored = true;
+        return {
+          success: true,
+          data: { status: "completed", state: "completed" },
+        };
+      });
+    const client = fakeClient({
+      resumeCloudCompatAgent: vi.fn(async () => ({
+        success: true,
+        data: { jobId: "resume-1", status: "pending" },
+      })),
+      getCloudCompatJobStatus,
+      getCloudCompatAgent: vi.fn(async () => ({
+        success: true,
+        data: makeAgent({
+          webUiUrl: restored
+            ? "https://restored.example.test"
+            : "https://not-restored.example.test",
+        }),
+      })),
+    });
+
+    const agent = await waitForCloudAgentRunning(client, {
+      agentId: "agent-1",
+      pollIntervalMs: 1,
+      timeoutMs: 1_000,
+    });
+
+    expect(agent.webUiUrl).toBe("https://restored.example.test");
+    expect(getCloudCompatJobStatus).toHaveBeenCalledWith("resume-1");
+  });
+
+  it("surfaces a failed restore even when the proxy already reports running", async () => {
+    const client = fakeClient({
+      resumeCloudCompatAgent: vi.fn(async () => ({
+        success: true,
+        data: { jobId: "resume-1", status: "pending" },
+      })),
+      getCloudCompatJobStatus: vi.fn(async () => ({
+        success: true,
+        data: { status: "failed", error: "Backup restore failed" },
+      })),
+      getCloudCompatAgent: vi.fn(async () => ({
+        success: true,
+        data: makeAgent(),
+      })),
+    });
+
+    await expect(
+      waitForCloudAgentRunning(client, { agentId: "agent-1", ...FAST }),
+    ).rejects.toMatchObject({
+      phase: "provision-job",
+      jobId: "resume-1",
+      message: "Your cloud agent failed to start: Backup restore failed",
+    });
+  });
+
+  it("honors cancellation while following the accepted resume job", async () => {
+    const controller = new AbortController();
+    const reason = new DOMException("cancelled", "AbortError");
+    const client = fakeClient({
+      resumeCloudCompatAgent: vi.fn(async () => ({
+        success: true,
+        data: { jobId: "resume-1", status: "pending" },
+      })),
+      getCloudCompatJobStatus: vi.fn(async () => {
+        controller.abort(reason);
+        return { success: true, data: { status: "in_progress" } };
+      }),
+      getCloudCompatAgent: vi.fn(async () => ({
+        success: true,
+        data: makeAgent(),
+      })),
+    });
+
+    await expect(
+      waitForCloudAgentRunning(client, {
+        agentId: "agent-1",
+        signal: controller.signal,
+        ...FAST,
+      }),
+    ).rejects.toBe(reason);
+    expect(client.getCloudCompatAgent).not.toHaveBeenCalled();
+  });
+});
+
 describe("waitForCloudAgentRunning — typed non-transient failures", () => {
   it("surfaces a resolved resume rejection instead of entering the status poll", async () => {
     const client = fakeClient({
