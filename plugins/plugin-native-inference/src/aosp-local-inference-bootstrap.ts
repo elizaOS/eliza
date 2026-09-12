@@ -1632,22 +1632,67 @@ function resolveBundledModelPaths(modelsDir: string): {
 /**
  * Per-modelType auto-load gate. We track which model role is currently
  * loaded so a chat handler doesn't try to swap-in the embedding model
- * (and vice versa) on every call. Promise-shaped so two concurrent
- * requests share the single load.
+ * (and vice versa) on every call.
+ *
+ * The fused loader owns ONE native context that holds ONE model at a time, so
+ * every load-swap AND the generate()/embed() that consumes it run through one
+ * serial executor (`runOnContext`) as a single load-plus-use transaction
+ * (#30147). Serializing only the loads is not enough: `ensureXLoaded()`
+ * returning proves the model was resident at that instant, but the native call
+ * runs afterwards, so a concurrent other-role load could still swap the context
+ * mid-call and produce a completion — or persist a vector — against the wrong
+ * GGUF. `withChat`/`withEmbedding` keep the load and the call in the same
+ * critical section; `ensureChatLoaded`/`ensureEmbeddingLoaded` remain for pure
+ * prewarm loads. This is reachable whenever no model is resident — fresh boot
+ * or after any `evict()` — and matters because the embedding handler is
+ * not behind the process-wide inference priority gate, so a memory-indexing
+ * embed and a chat generate genuinely arrive concurrently.
+ *
+ * The one out-of-band way to touch the context is an explicit unload. `evict()`
+ * routes the voice ASR eviction (which frees the chat model's RAM for the cold
+ * ASR load) through the SAME executor, so it too waits behind any in-flight
+ * call instead of unloading the model out from under it. The remaining direct
+ * `loader.unloadModel()` callers are safe by construction rather than through
+ * this executor: the idle unloader defers while a use is in flight
+ * (#11760 in-flight tracking) and teardown runs only after the lifecycle has
+ * quiesced.
  */
 type LoadedRole = "chat" | "embedding" | null;
-function makeLoaderLifecycle(loader: AospLoader): {
+export function makeLoaderLifecycle(loader: AospLoader): {
   ensureChatLoaded(): Promise<void>;
   ensureEmbeddingLoaded(): Promise<void>;
+  withChat<T>(use: () => Promise<T>): Promise<T>;
+  withEmbedding<T>(use: () => Promise<T>): Promise<T>;
+  evict(): Promise<void>;
   markEvicted(): void;
 } {
   let currentRole: LoadedRole = null;
-  let inflight: Promise<void> | null = null;
+  // Serial executor for the single mutable native context. Every transaction —
+  // a role load-swap and/or the native generate()/embed() that consumes it —
+  // runs to completion before the next starts, so a cross-role swap can never
+  // interleave with another role's in-flight call and make it run against the
+  // wrong resident model (#30147). Serializing the load-PLUS-use (not just the
+  // load) is what closes the window: a bare `ensureXLoaded()` returning only
+  // proves the model was resident at that instant; the actual generate()/
+  // embed() must stay inside the SAME critical section or a concurrent
+  // other-role load swaps the context out from under it mid-call and persists a
+  // completion/vector produced against the wrong GGUF.
+  let contextChain: Promise<unknown> = Promise.resolve();
+  function runOnContext<T>(task: () => Promise<T>): Promise<T> {
+    // Run `task` once the prior transaction settles (its outcome is that
+    // caller's concern), then publish this transaction as the new tail.
+    const run = contextChain.then(task, task);
+    contextChain = run.then(
+      () => {},
+      () => {},
+    );
+    return run;
+  }
   const modelsDir = resolveBundledModelsDir();
   let resolved = resolveBundledModelPaths(modelsDir);
-  async function loadRole(role: "chat" | "embedding"): Promise<void> {
-    if (currentRole === role) return;
-    if (inflight) return inflight;
+  async function resolveRoleTarget(
+    role: "chat" | "embedding",
+  ): Promise<string> {
     let target = role === "chat" ? resolved.chat : resolved.embedding;
     if (!target) {
       // The models dir is empty at first boot, so the lifecycle's initial
@@ -1677,63 +1722,104 @@ function makeLoaderLifecycle(loader: AospLoader): {
         resolved.embedding = target;
       }
     }
-    inflight = (async () => {
-      writeAospLlamaDebugLog("bootstrap:loadRole:start", {
-        role,
-        model: path.basename(target),
-      });
-      logger.info(
-        `[aosp-local-inference] Loading bundled ${role} model: ${path.basename(target)}`,
-      );
-      try {
-        await loader.loadModel(buildAospLoadModelArgs(role, target));
-        currentRole = role;
-        writeAospActiveModelState({
-          status: "ready",
-          role,
-          provider: PROVIDER,
-          path: target,
-          loadedAt: new Date().toISOString(),
-        });
-      } catch (err) {
-        // error-policy:J2 context-adding rethrow — record the per-role load failure
-        // in the status sidecar (observable), then rethrow; the role is not marked
-        // ready.
-        writeAospActiveModelState({
-          status: "error",
-          role,
-          provider: PROVIDER,
-          path: target,
-          error: err instanceof Error ? err.message : String(err),
-          updatedAt: new Date().toISOString(),
-        });
-        throw err;
-      }
-      writeAospLlamaDebugLog("bootstrap:loadRole:done", {
-        role,
-        model: path.basename(target),
-      });
-      logger.info(
-        `[aosp-local-inference] Loaded ${role} model (path=${target})`,
-      );
-    })();
+    return target;
+  }
+  async function performRoleLoad(role: "chat" | "embedding"): Promise<void> {
+    const target = await resolveRoleTarget(role);
+    writeAospLlamaDebugLog("bootstrap:loadRole:start", {
+      role,
+      model: path.basename(target),
+    });
+    logger.info(
+      `[aosp-local-inference] Loading bundled ${role} model: ${path.basename(target)}`,
+    );
     try {
-      await inflight;
-    } finally {
-      inflight = null;
+      await loader.loadModel(buildAospLoadModelArgs(role, target));
+      currentRole = role;
+      writeAospActiveModelState({
+        status: "ready",
+        role,
+        provider: PROVIDER,
+        path: target,
+        loadedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      // error-policy:J2 context-adding rethrow — record the per-role load failure
+      // in the status sidecar (observable), then rethrow; the role is not marked
+      // ready.
+      writeAospActiveModelState({
+        status: "error",
+        role,
+        provider: PROVIDER,
+        path: target,
+        error: err instanceof Error ? err.message : String(err),
+        updatedAt: new Date().toISOString(),
+      });
+      throw err;
     }
+    writeAospLlamaDebugLog("bootstrap:loadRole:done", {
+      role,
+      model: path.basename(target),
+    });
+    logger.info(`[aosp-local-inference] Loaded ${role} model (path=${target})`);
+  }
+  // Load `role` into the native context when a different model (or none) is
+  // resident. Runs inside the serial executor so a pure prewarm load never
+  // swaps the context while another role's call is in flight. A concurrent
+  // request for the same role that ran first leaves `currentRole` already set,
+  // so this transaction skips the redundant native load.
+  async function ensureLoaded(role: "chat" | "embedding"): Promise<void> {
+    return runOnContext(async () => {
+      if (currentRole === role) return;
+      await performRoleLoad(role);
+    });
+  }
+  // Run `use` (a native generate()/embed()) as one atomic transaction with the
+  // load that guarantees `role` is resident. Because every other context
+  // mutation — a cross-role load and the serialized `evict()` — runs on this
+  // same executor, nothing swaps or unloads the model between this load and its
+  // call, so the call always runs against its own model even when the opposite
+  // role (or a voice eviction) arrives mid-flight (#30147).
+  async function withRole<T>(
+    role: "chat" | "embedding",
+    use: () => Promise<T>,
+  ): Promise<T> {
+    return runOnContext(async () => {
+      if (currentRole !== role) {
+        await performRoleLoad(role);
+      }
+      return use();
+    });
+  }
+  // Serialized unload for out-of-band eviction (voice handlers free the chat
+  // model to reclaim RAM for the cold ASR/TTS load). Running it on the same
+  // executor is what keeps the load-plus-use invariant true against the unload
+  // door: the unload waits behind any in-flight generate()/embed() instead of
+  // freeing the native context out from under it (#30147). `currentRole` is
+  // cleared inside the same transaction so the next ensure*/with* actually
+  // reloads; a no-op when nothing is resident.
+  async function evict(): Promise<void> {
+    return runOnContext(async () => {
+      if (loader.currentModelPath() !== null) {
+        await loader.unloadModel();
+      }
+      currentRole = null;
+    });
   }
   return {
-    ensureChatLoaded: () => loadRole("chat"),
-    ensureEmbeddingLoaded: () => loadRole("embedding"),
-    // Out-of-band eviction (voice handlers free the chat model directly via
-    // loader.unloadModel() to reclaim RAM for the cold ASR/TTS load). That
-    // bypasses loadRole, so `currentRole` would stay stale ("chat") and the
-    // next ensureChatLoaded() would short-circuit and run generate() against a
-    // null ctx. Resetting `currentRole` here forces the next ensure*Loaded()
-    // to actually reload. Safe to call when no load is in flight; if a load is
-    // mid-flight the clear just means the subsequent ensure reloads, which is
-    // the intended post-eviction behaviour anyway.
+    ensureChatLoaded: () => ensureLoaded("chat"),
+    ensureEmbeddingLoaded: () => ensureLoaded("embedding"),
+    withChat: (use) => withRole("chat", use),
+    withEmbedding: (use) => withRole("embedding", use),
+    evict,
+    // Reset the resident role after an unload that happened OUTSIDE this
+    // executor — the idle unloader frees the model directly via
+    // loader.unloadModel() (gated by #11760 in-flight tracking, so never during
+    // a call). Without this, `currentRole` would stay stale and the next
+    // ensureChatLoaded() would short-circuit and run generate() against a null
+    // ctx. The voice ASR eviction uses `evict()` instead, which clears the role
+    // inside the serial transaction; this hook is for the idle path that cannot
+    // join the executor.
     markEvicted: () => {
       currentRole = null;
     },
@@ -1958,15 +2044,18 @@ export async function generateOnPriorityLane(
         hasGrammar:
           typeof args.grammar === "string" && args.grammar.trim().length > 0,
       });
-      await lifecycle.ensureChatLoaded();
-      writeAospLlamaDebugLog("bootstrap:generate:ensureChat:done");
-      writeAospLlamaDebugLog("bootstrap:generate:start", {
-        promptChars: args.prompt.length,
-        maxTokens: args.maxTokens ?? null,
-        priority,
-        grammarBytes: args.grammar?.trim().length ?? 0,
+      // Keep the chat load and the decode in one native-context transaction so
+      // a concurrent embedding request cannot swap the model mid-generate.
+      return lifecycle.withChat(async () => {
+        writeAospLlamaDebugLog("bootstrap:generate:ensureChat:done");
+        writeAospLlamaDebugLog("bootstrap:generate:start", {
+          promptChars: args.prompt.length,
+          maxTokens: args.maxTokens ?? null,
+          priority,
+          grammarBytes: args.grammar?.trim().length ?? 0,
+        });
+        return loader.generate(args);
       });
-      return loader.generate(args);
     },
   );
 }
@@ -2095,9 +2184,13 @@ function makeEmbeddingHandler(
       }
       return disabledAospEmbeddingVector();
     }
-    await lifecycle.ensureEmbeddingLoaded();
     const text = extractEmbeddingText(params);
-    const result = await loader.embed({ input: text });
+    // Keep the embedding load and the embed() in one native-context transaction
+    // so a concurrent chat generate cannot swap the model mid-embed and persist
+    // a vector produced against the chat GGUF (#30147).
+    const result = await lifecycle.withEmbedding(() =>
+      loader.embed({ input: text }),
+    );
     return result.embedding;
   };
 }
@@ -2864,7 +2957,7 @@ async function transcribeWithAospElizaInference(
   audio: { samples: Float32Array; sampleRate: number },
   signal?: AbortSignal,
   loader?: AospLoader,
-  onEvicted?: () => void,
+  evict?: () => Promise<void>,
 ): Promise<string> {
   assertNotAborted(signal);
   const libPath = resolveElizaInferenceLibPath();
@@ -2881,20 +2974,22 @@ async function transcribeWithAospElizaInference(
   // oom-protect — gets killed mid-load. The chat model auto-reloads on the
   // next TEXT turn (makeGenerateHandler -> lifecycle.ensureChatLoaded), so the
   // eviction is safe; mirrors the cold-TTS eviction in the fused TTS handler.
+  //
+  // The unload is routed through the lifecycle's serial context executor
+  // (`evict`), NOT called on the loader directly: a memory-indexing embed is
+  // not behind the process-wide inference priority gate, so it can be in flight
+  // when a voice turn arrives. Serializing the eviction makes it wait behind
+  // that call instead of unloading the native context out from under it
+  // (#30147). `evict()` also clears the lifecycle's resident role, so the next
+  // text turn reloads instead of short-circuiting on a stale role.
   if (
-    loader &&
+    evict &&
     shouldEvictChatForVoiceLoad() &&
-    typeof loader.currentModelPath === "function" &&
-    loader.currentModelPath() !== null &&
-    typeof loader.unloadModel === "function"
+    typeof loader?.currentModelPath === "function" &&
+    loader.currentModelPath() !== null
   ) {
     try {
-      await loader.unloadModel();
-      // Tell the lifecycle the chat model is gone so the next text turn
-      // actually reloads it (loadRole short-circuits on a stale currentRole
-      // otherwise). Done after the unload succeeds so we never mark evicted
-      // when the model is in fact still resident.
-      onEvicted?.();
+      await evict();
       logger.info(
         "[aosp-local-inference] released chat model before fused ASR load to free memory",
       );
@@ -2989,11 +3084,11 @@ async function transcribeWithAospElizaInference(
 
 export function makeAospTranscriptionHandler(
   loader?: AospLoader,
-  onEvicted?: () => void,
+  evict?: () => Promise<void>,
 ): TranscriptionHandler {
   return async (_runtime, params) => {
     const { signal, ...audio } = extractAospTranscriptionAudio(params);
-    return transcribeWithAospElizaInference(audio, signal, loader, onEvicted);
+    return transcribeWithAospElizaInference(audio, signal, loader, evict);
   };
 }
 
@@ -3618,7 +3713,7 @@ export async function ensureAospLocalInferenceHandlers(
         : modelType === ModelType.TEXT_TO_SPEECH
           ? textToSpeechHandler
           : modelType === ModelType.TRANSCRIPTION
-            ? makeAospTranscriptionHandler(textLoader, lifecycle.markEvicted)
+            ? makeAospTranscriptionHandler(textLoader, lifecycle.evict)
             : makeGenerateHandler(textLoader, lifecycle);
     runtimeWithRegistration.registerModel(
       modelType,
