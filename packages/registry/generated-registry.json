@@ -369,6 +369,50 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@northschema/plugin-xrpl": {
+      "git": {
+        "repo": "nctrnlsoul/plugin-ns-xrpl",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@northschema/plugin-xrpl",
+        "v0": null,
+        "v1": null,
+        "v2": "0.3.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Reads public XRPL ledger state for elizaOS agents. Read-only: no signing, no key material, no transaction submission.",
+      "homepage": "https://github.com/nctrnlsoul/plugin-ns-xrpl#readme",
+      "topics": [
+        "xrpl",
+        "xrp",
+        "ledger",
+        "read-only"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "@ophis/plugin-elizaos": {
       "git": {
         "repo": "ophis-fi/ophis",
