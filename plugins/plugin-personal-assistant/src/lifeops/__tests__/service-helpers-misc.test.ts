@@ -3,6 +3,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { sortOverviewOccurrences } from "../service-helpers-misc.js";
+import { parseOffsetToken } from "../time.js";
 import type { LifeOpsOccurrenceView } from "../types.js";
 
 describe("LifeOps service helpers sorting", () => {
@@ -39,5 +40,17 @@ describe("LifeOps service helpers sorting", () => {
     expect(sorted[0]?.id).toBe("occ-invalid"); // fallback 0 time
     expect(sorted[1]?.id).toBe("occ-1");
     expect(sorted[2]?.id).toBe("occ-2");
+  });
+});
+
+describe("parseOffsetToken", () => {
+  it("parses offset tokens including Unicode minus signs, UTC formats, and historical seconds offsets", () => {
+    expect(parseOffsetToken("GMT\u22127")).toBe(-420);
+    expect(parseOffsetToken("UTC-5")).toBe(-300);
+    expect(parseOffsetToken("-07:00")).toBe(-420);
+    expect(parseOffsetToken("GMT+02:00")).toBe(120);
+    expect(parseOffsetToken("GMT-5")).toBe(-300);
+    expect(parseOffsetToken("GMT-0:44:30")).toBe(-45);
+    expect(parseOffsetToken("GMT-11:19:40")).toBe(-680);
   });
 });

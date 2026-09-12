@@ -83,19 +83,24 @@ export function getZonedDateParts(
   };
 }
 
-export function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
-  const parts = getOffsetFormatter(timeZone).formatToParts(date);
-  const token =
-    parts.find((part) => part.type === "timeZoneName")?.value?.trim() ?? "GMT";
+export function parseOffsetToken(token: string): number {
   if (token === "GMT" || token === "UTC") return 0;
-  const match = token.match(/^GMT([+-])(\d{1,2})(?::?(\d{2}))?$/i);
+  const match = token.match(/^(?:GMT|UTC)?([+-]|\u2212|\u2013|\u2014)(\d{1,2})(?::?(\d{2}))?(?::(\d{2}))?$/i);
   if (!match) {
     throw new Error(`unsupported offset token: ${token}`);
   }
   const sign = match[1] === "+" ? 1 : -1;
   const hours = Number(match[2]);
   const minutes = Number(match[3] ?? "0");
-  return sign * (hours * 60 + minutes);
+  const seconds = Number(match[4] ?? "0");
+  return sign * (hours * 60 + minutes + Math.round(seconds / 60));
+}
+
+export function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
+  const parts = getOffsetFormatter(timeZone).formatToParts(date);
+  const token =
+    parts.find((part) => part.type === "timeZoneName")?.value?.trim() ?? "GMT";
+  return parseOffsetToken(token);
 }
 
 function formatOffsetToken(offsetMinutes: number): string {

@@ -3,7 +3,19 @@
  * clocks, skipped hours, and a skipped calendar date.
  */
 import { describe, expect, it } from "vitest";
-import { resolveLocalHHMMToIso } from "./local-time.js";
+import { parseOffsetToken, resolveLocalHHMMToIso } from "./local-time.js";
+
+describe("parseOffsetToken", () => {
+  it("parses offset tokens including Unicode minus signs, UTC formats, and historical seconds offsets", () => {
+    expect(parseOffsetToken("GMT\u22127")).toBe(-420);
+    expect(parseOffsetToken("UTC-5")).toBe(-300);
+    expect(parseOffsetToken("-07:00")).toBe(-420);
+    expect(parseOffsetToken("GMT+02:00")).toBe(120);
+    expect(parseOffsetToken("GMT-5")).toBe(-300);
+    expect(parseOffsetToken("GMT-0:44:30")).toBe(-45);
+    expect(parseOffsetToken("GMT-11:19:40")).toBe(-680);
+  });
+});
 
 describe("resolveLocalHHMMToIso compatible disambiguation", () => {
   it("moves Santiago's skipped midnight forward by the one-hour gap", () => {

@@ -112,7 +112,22 @@ function getZonedDateParts(date: Date, timeZone: string): LocalDateTimeParts {
   };
 }
 
-function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
+export function parseOffsetToken(token: string): number {
+  if (token === "GMT" || token === "UTC") {
+    return 0;
+  }
+  const match = token.match(/^(?:GMT|UTC)?([+-]|\u2212|\u2013|\u2014)(\d{1,2})(?::?(\d{2}))?(?::(\d{2}))?$/i);
+  if (!match) {
+    throw new Error(`unsupported offset token: ${token}`);
+  }
+  const sign = match[1] === "+" ? 1 : -1;
+  const hours = Number(match[2]);
+  const minutes = Number(match[3] ?? "0");
+  const seconds = Number(match[4] ?? "0");
+  return sign * (hours * 60 + minutes + Math.round(seconds / 60));
+}
+
+export function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone,
     timeZoneName: "shortOffset",
@@ -122,15 +137,7 @@ function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
     hour12: false,
   }).formatToParts(date);
   const token = parts.find((part) => part.type === "timeZoneName")?.value?.trim() ?? "GMT";
-  if (token === "GMT" || token === "UTC") {
-    return 0;
-  }
-  const match = token.match(/^GMT([+-])(\d{1,2})(?::?(\d{2}))?$/i);
-  if (!match) {
-    throw new Error(`unsupported offset token: ${token}`);
-  }
-  const sign = match[1] === "+" ? 1 : -1;
-  return sign * (Number(match[2]) * 60 + Number(match[3] ?? "0"));
+  return parseOffsetToken(token);
 }
 
 function localPartsToEpochMs(parts: LocalDateTimeParts): number {
