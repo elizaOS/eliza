@@ -356,9 +356,6 @@ export async function readFileHandler(
             checkpointByte,
             checkpointLine,
           );
-    if (unit === "line" && window.nextByte !== undefined) {
-      checkpoints.set(window.end, window.nextByte);
-    }
     if (
       unit === "line" &&
       window.total !== undefined &&
@@ -368,6 +365,9 @@ export async function readFileHandler(
         reason: "invalid_param",
         message: `line offset ${offset} exceeds total ${window.total}`,
       });
+    }
+    if (unit === "line" && window.nextByte !== undefined) {
+      checkpoints.set(window.end, window.nextByte);
     }
     const afterRevision = fileRevision(await handle.stat());
     if (afterRevision !== currentRevision)
