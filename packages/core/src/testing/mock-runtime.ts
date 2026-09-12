@@ -29,6 +29,7 @@
  * ```
  */
 
+import { jsonValueEquals } from "../database/cas-values";
 import type { Character, IAgentRuntime, UUID } from "../types";
 
 /** Stable zero-UUID used as the default agent/entity id in unit tests. */
@@ -59,6 +60,9 @@ const MOCK_CHARACTER: Character = {
 export function createMockRuntime(
 	overrides: Partial<IAgentRuntime> = {},
 ): IAgentRuntime {
+	// Shared backing map so the default cache trio behaves like one store
+	// (getCache sees setCache writes; CAS compares against the same snapshot).
+	const cache = new Map<string, unknown>();
 	const base: Partial<IAgentRuntime> = {
 		agentId: MOCK_AGENT_ID,
 		character: MOCK_CHARACTER,
@@ -74,6 +78,27 @@ export function createMockRuntime(
 		// keeps setting-gated code paths on their default branch in unit tests
 		// unless a test overrides specific keys.
 		getSetting: () => null,
+		getCache: async <T>(key: string): Promise<T | undefined> =>
+			cache.get(key) as T | undefined,
+		setCache: async <T>(key: string, value: T): Promise<boolean> => {
+			cache.set(key, value);
+			return true;
+		},
+		deleteCache: async (key: string): Promise<boolean> => cache.delete(key),
+		compareAndSetCache: async <T>(
+			key: string,
+			expected: unknown,
+			replacement: T,
+		): Promise<boolean> => {
+			const stored = cache.get(key);
+			const matches =
+				expected === undefined
+					? stored === undefined
+					: stored !== undefined && jsonValueEquals(stored, expected);
+			if (!matches) return false;
+			cache.set(key, replacement);
+			return true;
+		},
 		...overrides,
 	};
 
