@@ -66,6 +66,7 @@ import { decryptAgentBackupStateData, encryptAgentBackupStateData } from "../cry
 import { ensureAgentSandboxSchema } from "../ensure-agent-sandbox-schema";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
+import { agentComputeStopIntents } from "../schemas/agent-compute-stop-intents";
 import {
   type AgentBackupSnapshotType,
   type AgentBackupStateData,
@@ -636,6 +637,27 @@ export class AgentSandboxesRepository {
       .where(eq(agentSandboxes.id, id))
       .limit(1);
     return r?.organizationId;
+  }
+
+  /** Distinguishes a completed user shutdown from a recoverable billing stop. */
+  async wasStoppedByUser(id: string, orgId: string): Promise<boolean> {
+    const [latest] = await dbWrite
+      .select({ authorization: agentComputeStopIntents.authorization })
+      .from(agentComputeStopIntents)
+      .where(
+        and(
+          eq(agentComputeStopIntents.agent_id, id),
+          eq(agentComputeStopIntents.organization_id, orgId),
+          eq(agentComputeStopIntents.status, "provider_confirmed"),
+          isNotNull(agentComputeStopIntents.provider_confirmed_at),
+        ),
+      )
+      .orderBy(
+        desc(agentComputeStopIntents.provider_confirmed_at),
+        desc(agentComputeStopIntents.id),
+      )
+      .limit(1);
+    return latest?.authorization === "user_request";
   }
 
   async findByIdAndOrg(id: string, orgId: string): Promise<AgentSandbox | undefined> {

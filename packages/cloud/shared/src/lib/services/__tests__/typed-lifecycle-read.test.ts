@@ -131,6 +131,38 @@ afterAll(async () => {
 
 describe("typed lifecycle reads and exact sandbox generations", () => {
   test(
+    "automatic recovery respects only the latest confirmed stop for the exact tenant agent",
+    async () => {
+      const { orgId, userId } = await seedOwner();
+      const sandbox = await seedRunningAgent(orgId, userId);
+      const other = await seedOwner();
+      expect(await agentSandboxesRepository.wasStoppedByUser(sandbox.id, orgId)).toBe(false);
+      await dbWrite.insert(agentComputeStopIntents).values({
+        organization_id: orgId,
+        agent_id: sandbox.id,
+        authorization: "user_request",
+        lifecycle_revision: 1,
+        status: "provider_confirmed",
+        provider_confirmed_at: new Date("2026-09-12T01:00:00Z"),
+      });
+      expect(await agentSandboxesRepository.wasStoppedByUser(sandbox.id, orgId)).toBe(true);
+      expect(await agentSandboxesRepository.wasStoppedByUser(sandbox.id, other.orgId)).toBe(false);
+      const otherAgent = await seedRunningAgent(orgId, userId);
+      expect(await agentSandboxesRepository.wasStoppedByUser(otherAgent.id, orgId)).toBe(false);
+      await dbWrite.insert(agentComputeStopIntents).values({
+        organization_id: orgId,
+        agent_id: sandbox.id,
+        authorization: "billing_request",
+        lifecycle_revision: 2,
+        status: "provider_confirmed",
+        provider_confirmed_at: new Date("2026-09-12T02:00:00Z"),
+      });
+      expect(await agentSandboxesRepository.wasStoppedByUser(sandbox.id, orgId)).toBe(false);
+    },
+    TEST_TIMEOUT,
+  );
+
+  test(
     "shutdown intent survives its own claim and retry but rejects an intervening lifecycle write",
     async () => {
       const { updateAgentLifecycleExecutionFence } = await import(
