@@ -95,6 +95,7 @@
 		"opusscript": "^0.1.1",
 		"prism-media": "1.3.5",
 		"tslib": "^2.6.3",
+		"uuid": "^14.0.0",
 		"undici": "8.10.0",
 		"zod": "^4.4.3"
 	},
@@ -102,6 +103,7 @@
 		"@biomejs/biome": "2.5.8",
 		"@types/fluent-ffmpeg": "^2.1.28",
 		"@types/node": "^25.0.3",
+		"@elizaos/plugin-sql": "workspace:*",
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"typescript": "^6.0.3",
 		"vitest": "^4.1.10"
