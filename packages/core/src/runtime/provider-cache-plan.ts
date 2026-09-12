@@ -6,6 +6,7 @@
  */
 import type { PromptSegment } from "../types/model";
 import type { JsonValue } from "../types/primitives.ts";
+import { hashStableJson } from "./context-hash";
 
 export type CacheTTL = "short" | "long";
 
@@ -36,8 +37,8 @@ export interface ProviderCachePlanArgs {
 	 * — a single conversation always lands on the same KV slot, no matter
 	 * how the prompt evolves turn-to-turn.
 	 *
-	 * Cloud providers ignore it: they already get prefix caching from the
-	 * stable-prefix hash, and don't expose a slot-pinning concept.
+	 * Cerebras also uses it to scope its cache-routing hint to this conversation
+	 * and prefix, rather than funneling unrelated chats through one shared key.
 	 */
 	conversationId?: string;
 }
@@ -73,6 +74,12 @@ export function buildProviderCachePlan(
 	args: ProviderCachePlanArgs,
 ): ProviderCachePlan {
 	const promptCacheKey = buildPromptCacheKey(args.prefixHash);
+	const cerebrasCacheKey = args.conversationId?.trim()
+		? `v5:conversation:${hashStableJson({
+				conversationId: args.conversationId,
+				prefixHash: args.prefixHash,
+			})}`
+		: promptCacheKey;
 	const segmentHashes = args.segmentHashes
 		? [...args.segmentHashes]
 		: undefined;
@@ -119,8 +126,8 @@ export function buildProviderCachePlan(
 	const providerOptions: Record<string, JsonValue | object | undefined> = {
 		eliza: elizaOptions,
 		cerebras: {
-			promptCacheKey,
-			prompt_cache_key: promptCacheKey,
+			promptCacheKey: cerebrasCacheKey,
+			prompt_cache_key: cerebrasCacheKey,
 		},
 		openai: openaiOptions,
 		openrouter: {

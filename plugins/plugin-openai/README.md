@@ -259,6 +259,14 @@ await runtime.useModel(ModelType.TEXT_LARGE, {
 });
 ```
 
+For Cerebras, `providerOptions.cerebras.promptCacheKey` (or `prompt_cache_key`)
+takes precedence over the OpenAI key. Core supplies a conversation-and-prefix
+scoped key when a conversation ID is available, so unrelated chats do not share
+one routing hint merely because their system instructions match. Calls that
+only supply the OpenAI key remain supported. This does not alter prompt text,
+token counts, or permissions; Cerebras still matches actual prompt prefixes and
+controls cache retention. See [Cerebras prompt caching](https://inference-docs.cerebras.ai/capabilities/prompt-caching).
+
 ## Free-form record/map tool arguments
 
 Strict tool schemas encode open maps as reversible key/value entry arrays.
