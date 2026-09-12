@@ -4194,12 +4194,20 @@ describe("runV5MessageRuntimeStage1", () => {
 			ModelType.ACTION_PLANNER,
 		]);
 		const plannerParams = calls[1]?.[1] as {
-			tools?: Array<{ name: string }>;
+			tools?: Array<{ name: string; description?: string }>;
 			messages?: Array<{ content?: string }>;
 		};
-		expect(plannerParams.tools?.map(({ name }) => name)).toEqual(
-			expect.arrayContaining(["SHELL", "BROWSER", "REPLY"]),
+		const toolNames = plannerParams.tools?.map(({ name }) => name);
+		expect(toolNames).toEqual(
+			expect.arrayContaining(["DISCOVER_TOOLS", "REPLY"]),
 		);
+		expect(toolNames).not.toContain("SHELL");
+		expect(toolNames).not.toContain("BROWSER");
+		const discovery = plannerParams.tools?.find(
+			(tool) => tool.name === "DISCOVER_TOOLS",
+		);
+		expect(discovery?.description).toContain("SHELL");
+		expect(discovery?.description).toContain("BROWSER");
 		expect(JSON.stringify(plannerParams.messages)).toContain(
 			"GET_CRYPTO_PRICE",
 		);
