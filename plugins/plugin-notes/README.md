@@ -15,6 +15,14 @@ through the normal runtime update event.
 
 The chat update action identifies the existing note with `content` and takes
 its complete new text in `replacementContent` (label, newline, then body).
+For literal substitutions, supply `textEdit: { field: "title" | "body", oldText,
+newText }` instead of `replacementContent`. The service requires one unique
+case-sensitive literal match in the current field and commits under the existing
+write barrier; every other character and field is preserved. Missing or repeated
+matches, mixed update forms, and edits requiring storage normalization fail
+without writing. No full-note read or model rewrite is needed when the user
+already supplied the exact target and replacement.
+
 `body` is shown only for create calls; legacy update callers using `body` or
 `newText` remain supported. Partial edits must preserve the unchanged label
 and lines in the replacement; the server does not infer or invent them.
