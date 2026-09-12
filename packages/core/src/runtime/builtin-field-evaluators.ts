@@ -186,7 +186,7 @@ export const completionContextFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "completionContext",
 	description:
-		"Exact source selection for planning, execution and completion. Follow history_source_selection; use mode=full, complete=false if its source set is absent or applicable dependencies remain unresolved. This is not a summary or a claim that tool work has completed.",
+		"Exact prior-dialogue selection for planning, execution and completion. Follow history_source_selection; use full/false for a missing source set or unresolved applicable dialogue dependencies. Pending live-record reads do not make dialogue selection incomplete. This is not a summary or completed-tool claim.",
 	descriptionCompressed:
 		"Review all h sources for the FINAL CURRENT REQUEST. Selected/complete=true with sourceSetId retains every applicable fact, standing constraint/correction, referent and referenced pending intent; reviewed empty lists are valid. List each source once across categories; all categories are retained together. No summaries/caps. Full/false is unresolved-context fallback, not N/A: use if applicable context is uncertain, current request needs exhaustive recall, or no source set. Current request/providers remain; future receipts arrive later.",
 	priority: 16,
