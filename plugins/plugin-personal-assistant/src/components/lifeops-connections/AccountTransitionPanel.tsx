@@ -12,6 +12,7 @@ import {
   type AccountHandoffAdapter,
   defaultAccountHandoffAdapter,
 } from "./handoff-adapter.js";
+import { formatHandoffEventDate } from "./handoff-event-date.js";
 import type { LifeOpsConnectionsSnapshot } from "./types.js";
 
 const phases: Record<AccountHandoffRecord["phase"], string> = {
@@ -318,7 +319,7 @@ export function AccountTransitionPanel({
                     }
                   />
                   {event
-                    ? `${event.title} · ${event.startAt}`
+                    ? `${event.title} · ${formatHandoffEventDate(event)}`
                     : `Local event missing; retain the disconnected mapping (${link.localEventId})`}
                 </label>
               ))}
