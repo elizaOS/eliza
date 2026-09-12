@@ -48,7 +48,11 @@ import type { TaskThreadDto } from "../services/orchestrator-task-mapper.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import type { OrchestratorTaskStatus } from "../services/orchestrator-task-types.js";
 import { resolveTaskSpawnWorkdir } from "../services/project-binding.js";
-import { normalizeRepositoryInput } from "../services/repo-input.js";
+import {
+  extractGitHubRepositorySlug,
+  extractRepositoryUrl,
+  normalizeRepositoryInput,
+} from "../services/repo-input.js";
 import {
   runDurableTask,
   type SmithersDurableRunLink,
@@ -3628,12 +3632,7 @@ async function runProvisionWorkspace(
 
   let repo = paramRepo ?? content.repo;
   if (!repo && content.text) {
-    const urlMatch = content.text.match(
-      /https?:\/\/(?:github\.com|gitlab\.com|bitbucket\.org)\/[\w.-]+\/[\w.-]+(?:\.git)?/i,
-    );
-    if (urlMatch) {
-      repo = urlMatch[0];
-    }
+    repo = extractRepositoryUrl(content.text);
   }
 
   const useWorktree = paramUseWorktree ?? content.useWorktree === true;
@@ -4361,10 +4360,8 @@ async function runManageIssues(
   const repo = (params.repo as string) ?? (content.repo as string);
 
   if (!repo) {
-    const urlMatch = text.match(
-      /(?:https?:\/\/github\.com\/)?([a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+)/,
-    );
-    if (!urlMatch) {
+    const slug = extractGitHubRepositorySlug(text);
+    if (!slug) {
       if (callback)
         await callback({
           text: "Please specify a repository (e.g., owner/repo or a GitHub URL).",
@@ -4374,7 +4371,7 @@ async function runManageIssues(
     return (
       (await handleIssueAction(
         workspaceService,
-        urlMatch[1],
+        slug,
         action,
         { ...content, ...params },
         text,
