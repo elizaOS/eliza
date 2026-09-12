@@ -938,6 +938,102 @@ describe("DocumentService requester authorization", () => {
 		}
 	});
 
+	it("rejects search snippets from a revision replaced before audience inventory completes", async () => {
+		const service = new DocumentService(runtime);
+		const roomId = await privateConversation(USER_ID);
+		const id = crypto.randomUUID() as UUID;
+		const original = userPrivateDocument(id, "raceword old source");
+		await runtime.createMemories([
+			{ memory: original, tableName: "documents" },
+			{
+				memory: documentFragment(
+					original,
+					"raceword old source",
+					crypto.randomUUID() as UUID,
+				),
+				tableName: "document_fragments",
+			},
+		]);
+		const snapshot = readDocumentMutationSnapshot(original);
+		if (!snapshot) throw new Error("Revision race fixture is invalid");
+		const ready = Promise.withResolvers<void>();
+		const query = runtime.adapter.queryDocuments.bind(runtime.adapter);
+		const fragments = runtime.adapter.queryDocumentFragments.bind(
+			runtime.adapter,
+		);
+		const inventory = vi
+			.spyOn(runtime.adapter, "queryDocuments")
+			.mockImplementation(async (...args) => {
+				await ready.promise;
+				return query(...args);
+			});
+		let scans = 0;
+		const search = vi
+			.spyOn(runtime.adapter, "queryDocumentFragments")
+			.mockImplementation(async (...args) => {
+				const rows = await fragments(...args);
+				// Both complete scans and their empty continuation probes finish before the write.
+				if (++scans === 4) {
+					const replacement = {
+						...original,
+						content: { text: "raceword revised source" },
+						metadata: {
+							...original.metadata,
+							type: MemoryType.DOCUMENT,
+							documentRevision: 1,
+						},
+					};
+					const mutation = await runtime.adapter.replaceDocumentRevision({
+						agentId: runtime.agentId,
+						documentId: id,
+						requesterEntityId: USER_ID,
+						requesterRole: "USER",
+						requesterRoomIds: [ROOM_ID, roomId],
+						expected: snapshot,
+						replacement,
+						fragments: [
+							documentFragment(
+								replacement,
+								"raceword revised source",
+								crypto.randomUUID() as UUID,
+							),
+						],
+					});
+					expect(mutation.status).toBe("updated");
+					ready.resolve();
+				}
+				return rows;
+			});
+		try {
+			await expect(
+				service.composeProviderDocuments({
+					...message(),
+					roomId,
+					content: { text: "raceword" },
+				}),
+			).rejects.toMatchObject({ code: "DOCUMENT_CONTEXT_CHANGED" });
+		} finally {
+			ready.resolve();
+			inventory.mockRestore();
+			search.mockRestore();
+		}
+		const current = await service.composeProviderDocuments({
+			...message(),
+			roomId,
+			content: { text: "raceword" },
+		});
+		expect(
+			current.relevantFragments.some(
+				(fragment) => fragment.content.text === "raceword revised source",
+			),
+		).toBe(true);
+		expect(
+			current.relevantFragments.some(
+				(fragment) => fragment.content.text === "raceword old source",
+			),
+		).toBe(false);
+	});
+
 	it("keeps the complete old revision when replacement embedding fails", async () => {
 		const embed = async () => {
 			if (failEmbedding) throw new Error("injected update embedding failure");

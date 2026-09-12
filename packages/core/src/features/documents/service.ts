@@ -1272,10 +1272,35 @@ export class DocumentService extends Service {
 				return inventory;
 			},
 		);
-		const visibleIds = new Set(documents.map((document) => document.id));
+		const visible = new Map<string, Memory>();
+		for (const document of documents) {
+			if (document.id) visible.set(document.id, document);
+		}
 		const relevantFragments = fragments.filter((fragment) => {
 			const parentId = fragment.metadata?.documentId;
-			return typeof parentId === "string" && visibleIds.has(parentId as UUID);
+			const parent =
+				typeof parentId === "string" ? visible.get(parentId) : undefined;
+			if (!parent) return false;
+			const snapshot = readDocumentMutationSnapshot(parent);
+			const fragmentRevision = fragment.metadata?.documentRevision;
+			const parentAttempt =
+				parent.metadata && Reflect.get(parent.metadata, "revisionAttemptId");
+			if (
+				!snapshot ||
+				(fragmentRevision === undefined ? 0 : fragmentRevision) !==
+					snapshot.revision ||
+				(parentAttempt !== undefined &&
+					fragment.metadata?.revisionAttemptId !== parentAttempt)
+			) {
+				throw new ElizaError(
+					"Document search and audience review saw different revisions. Retry with current knowledge.",
+					{
+						code: "DOCUMENT_CONTEXT_CHANGED",
+						context: { documentId: parentId },
+					},
+				);
+			}
+			return true;
 		});
 		return {
 			relevantFragments,
