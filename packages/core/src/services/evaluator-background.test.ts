@@ -98,6 +98,91 @@ async function execute(runtime: AgentRuntime, task: Task) {
 }
 
 describe("durable background memory", () => {
+	it.each(["edit", "delete"])(
+		"retires an accepted preference when its contextual proposal is changed by %s",
+		async (change) => {
+			const { runtime, service, message } = await setup();
+			runtime.registerEvaluator(preferenceEvaluator);
+			const proposal: Memory = {
+				...message,
+				id: stringToUuid(`accepted-proposal-${change}`),
+				entityId: runtime.agentId,
+				createdAt: 11,
+				content: {
+					text: "Show full title and body before saving Safety fixture notes.",
+				},
+			};
+			const assent: Memory = {
+				...message,
+				id: stringToUuid(`accepted-assent-${change}`),
+				createdAt: 12,
+				content: { text: "Yes, keep that rule for this conversation." },
+			};
+			await runtime.upsertMemory(proposal, "messages");
+			await runtime.upsertMemory(assent, "messages");
+			runtime.useModel = vi.fn(async () =>
+				JSON.stringify({
+					preferences: {
+						ops: [
+							{
+								op: "add_preference_fact",
+								claim:
+									"For this conversation, show full title and body before saving Safety fixture notes.",
+								keywords: ["notes", "preview"],
+								sourceMessageIds: [assent.id],
+							},
+						],
+					},
+				}),
+			) as AgentRuntime["useModel"];
+			await service.enqueue(assent, state, { phase: "post_turn" });
+			await execute(runtime, await job(runtime));
+			const original = (
+				await runtime.getMemories({
+					tableName: "facts",
+					roomId: message.roomId,
+				})
+			)[0];
+			expect(original.metadata?.extractionSourceRevisions).toHaveProperty(
+				String(proposal.id),
+			);
+			expect(original.entityId).toBe(assent.entityId);
+			if (!proposal.id) throw new Error("Missing proposal id");
+			const patch = {
+				id: proposal.id,
+				content: { text: "Preview every note, regardless of title." },
+			};
+			// This focused harness starts the service without booting a runtime.
+			// Exercise the same service barrier used by RuntimeDataMutations.
+			await service.mutateSourceEvidence(
+				[proposal.id],
+				change === "edit" ? [patch] : undefined,
+				() =>
+					change === "edit"
+						? runtime.adapter.updateMemories([patch])
+						: runtime.adapter.deleteMemories([
+								proposal.id as Memory["entityId"],
+							]),
+			);
+			const retired = await runtime.getMemoryById(
+				String(original.id) as Memory["entityId"],
+			);
+			expect(retired && isActiveMemoryEvidence(retired)).toBe(false);
+			expect(retired?.content).toEqual(original.content);
+			expect(await job(runtime)).toMatchObject({
+				metadata: { reconciliation: true },
+			});
+			expect(runtime.useModel).toHaveBeenCalledTimes(1);
+			// Reprocessing must include the assent again, not just the edited agent row.
+			runtime.useModel = vi.fn(async (_type, params) => {
+				expect(JSON.stringify(params)).toContain(assent.content.text);
+				return JSON.stringify({ preferences: { ops: [] } });
+			}) as AgentRuntime["useModel"];
+			await execute(runtime, await job(runtime));
+			expect(await runtime.getTasksByName("POST_TURN_MEMORY")).toEqual([]);
+			expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		},
+	);
 	it("keeps malformed preference output pending without applying or acknowledging its valid subset", async () => {
 		const { runtime, service, message } = await setup();
 		if (!message.id) throw new Error("Persisted evidence must have an id");

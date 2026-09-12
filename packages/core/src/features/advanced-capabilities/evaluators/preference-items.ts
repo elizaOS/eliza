@@ -75,6 +75,7 @@ import {
 	TRAIT_VALUES,
 	VERBOSITY_VALUES,
 } from "../personality/types.ts";
+import { reconcileFactEvidence } from "./extraction-reconciliation.ts";
 import {
 	type AddDirectiveOp,
 	type AddPreferenceFactOp,
@@ -520,6 +521,7 @@ export const preferenceEvaluator: Evaluator<
 	name: "preferences",
 	resolveOutputWhen: hasNoPersonalExtractionSources,
 	resolveOutput: () => ({ ops: [] }),
+	reconcileEvidence: reconcileFactEvidence,
 	incremental: true,
 	background: true,
 	description:

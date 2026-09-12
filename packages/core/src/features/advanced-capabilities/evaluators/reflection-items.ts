@@ -670,8 +670,9 @@ export function extractionEvidenceMetadata(
 	};
 }
 
-/** Cite only the speaker's selected evidence, never another participant or a
- * historical reference row. This narrowed map is persisted as provenance. */
+/** Cite only the speaker's selected evidence. Supplied agent dialogue remains
+ * reference context, so changing an accepted proposal invalidates the fact.
+ * Other participants' statements never become this user's personal evidence. */
 export function personalExtractionEvidence(
 	message: Memory,
 	extraction: EvaluatorRunOptions["extraction"],
@@ -700,6 +701,24 @@ export function personalExtractionEvidence(
 	return {
 		...extraction,
 		messages: messages.filter((row): row is Memory => Boolean(row)),
+		referenceRevisions: {
+			...extraction.referenceRevisions,
+			...Object.fromEntries(
+				extraction.messages
+					.filter(
+						(row) =>
+							row.id &&
+							row.entityId === message.agentId &&
+							row.roomId === message.roomId &&
+							!ids.includes(row.id) &&
+							Object.hasOwn(extraction.sourceRevisions, row.id),
+					)
+					.map((row) => [
+						String(row.id),
+						extraction.sourceRevisions[String(row.id)],
+					]),
+			),
+		},
 		sourceRevisions: Object.fromEntries(
 			ids.map((id) => [id, extraction.sourceRevisions[id]]),
 		),
