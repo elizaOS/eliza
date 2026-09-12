@@ -18,10 +18,9 @@ import {
   billUsage,
   estimateInputTokens,
   InsufficientCreditsError,
-  recordUsageAnalytics,
   reserveCredits,
 } from "../../ai-billing";
-import { aiBillingRecordsService } from "../../ai-billing-records";
+import { recordSettledInferenceBilling } from "../../ai-billing-settled";
 import { chatSseFrame, normalizeChatSseDonePayload } from "../../chat-sse-frames";
 import type { CreditReconciliationResult, CreditReservation } from "../../credits";
 import {
@@ -370,27 +369,21 @@ export class ActiveSandboxBridge {
                   : undefined,
               );
               const settlement = await settleReservation(billing.totalCost);
-              const usageRecord = await recordUsageAnalytics(billingContext, billing, {
-                type: "chat",
-                content: turn.reply,
-                prompt: text,
+              await recordSettledInferenceBilling({
+                context: billingContext,
+                billing,
+                reconciliation: settlement,
+                idempotencyKey,
+                analytics: { type: "chat", content: turn.reply, prompt: text },
+              }).catch((error) => {
+                // error-policy:J7 the reply is already delivered; the failed ledger
+                // write is logged with the idempotency key so it can be replayed.
+                logger.error("[shared-runtime] AI billing audit record failed", {
+                  error: error instanceof Error ? error.message : String(error),
+                  agentId: rec.id,
+                  idempotencyKey,
+                });
               });
-              if (usageRecord) {
-                await aiBillingRecordsService
-                  .record({
-                    context: billingContext,
-                    billing,
-                    usageRecord,
-                    idempotencyKey,
-                    reconciliation: settlement,
-                  })
-                  .catch((error) => {
-                    logger.error("[shared-runtime] AI billing audit record failed", {
-                      error: error instanceof Error ? error.message : String(error),
-                      agentId: rec.id,
-                    });
-                  });
-              }
             } catch (error) {
               // error-policy:J1 deferred-settlement boundary — the response may
               // already be gone, so the refund is the handling: settle(0) is
@@ -598,27 +591,21 @@ export class ActiveSandboxBridge {
                         : undefined,
                     );
                     const settlement = await settleReservation(billing.totalCost);
-                    const usageRecord = await recordUsageAnalytics(billingContext, billing, {
-                      type: "chat",
-                      content: finalReply,
-                      prompt: text,
+                    await recordSettledInferenceBilling({
+                      context: billingContext,
+                      billing,
+                      reconciliation: settlement,
+                      idempotencyKey,
+                      analytics: { type: "chat", content: finalReply, prompt: text },
+                    }).catch((error) => {
+                      // error-policy:J7 the reply is already delivered; the failed ledger
+                      // write is logged with the idempotency key so it can be replayed.
+                      logger.error("[shared-runtime] AI billing audit record failed", {
+                        error: error instanceof Error ? error.message : String(error),
+                        agentId: rec.id,
+                        idempotencyKey,
+                      });
                     });
-                    if (usageRecord) {
-                      await aiBillingRecordsService
-                        .record({
-                          context: billingContext,
-                          billing,
-                          usageRecord,
-                          idempotencyKey,
-                          reconciliation: settlement,
-                        })
-                        .catch((error) => {
-                          logger.error("[shared-runtime] AI billing audit record failed", {
-                            error: error instanceof Error ? error.message : String(error),
-                            agentId: rec.id,
-                          });
-                        });
-                    }
                   } catch (error) {
                     // error-policy:J1 deferred-settlement boundary — the `done`
                     // frame may already be flushed, so the refund is the
