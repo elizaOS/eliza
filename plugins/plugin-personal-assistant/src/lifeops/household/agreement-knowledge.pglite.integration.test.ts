@@ -12,9 +12,12 @@ import path from "node:path";
 import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import {
   type AgentRuntime,
+  attestAuthenticatedApiDeliveryAudience,
+  ChannelType,
   documentsPluginCore,
   ElizaError,
   type IAgentRuntime,
+  type Memory,
   type Plugin,
   Service,
   ServiceType,
@@ -23,6 +26,7 @@ import {
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { LocalFileStorageService } from "../../../../../packages/agent/src/services/file-storage.js";
+import { composeResponseState } from "../../../../../packages/core/src/services/message/provider-state.js";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
@@ -393,6 +397,103 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     await expect(
       service.listOwnerAgreements({ ownerEntityId: "verified-co-parent" }),
     ).rejects.toMatchObject({ code: "AGREEMENT_ACCESS_DENIED" });
+  });
+
+  it("composes approved pins on ordinary owner turns while preserving room and audience boundaries", async () => {
+    const service = createAgreementKnowledgeService(runtime);
+    const ownerId = crypto.randomUUID() as UUID;
+    const roomId = crypto.randomUUID() as UUID;
+    const otherRoomId = crypto.randomUUID() as UUID;
+    const previousOwner = runtime.getSetting("ELIZA_ADMIN_ENTITY_ID");
+    runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", ownerId);
+    await runtime.createEntity({
+      id: ownerId,
+      names: ["Pin owner"],
+      agentId: runtime.agentId,
+    });
+    for (const id of [roomId, otherRoomId]) {
+      await runtime.createRoom({
+        id,
+        source: "eliza-client",
+        type: ChannelType.DM,
+        worldId: runtime.agentId,
+      });
+      await runtime.addParticipant(ownerId, id);
+      await runtime.addParticipant(runtime.agentId, id);
+    }
+    const compose = async (targetRoomId: UUID) => {
+      const message: Memory = {
+        id: crypto.randomUUID() as UUID,
+        entityId: ownerId,
+        agentId: runtime.agentId,
+        roomId: targetRoomId,
+        content: {
+          text: "What approved agreement obligation applies here?",
+          source: "eliza-client",
+        },
+      };
+      await attestAuthenticatedApiDeliveryAudience(runtime, message, {
+        kind: "owner_session",
+        principalId: ownerId,
+      });
+      return composeResponseState(runtime, message);
+    };
+    let pin = await service.pin({
+      artifactId: artifact.id,
+      targetType: "chat",
+      targetId: roomId,
+      pinnedByEntityId: SELF_ENTITY_ID,
+    });
+    try {
+      const state = await compose(roomId);
+      expect(state.text).toContain(
+        "Share school notices within twenty-four hours.",
+      );
+      expect(state.text).toContain("source pages 4-5");
+      expect(state.text).not.toContain("An unsupported model interpretation.");
+      expect((await compose(otherRoomId)).text).not.toContain(
+        "Share school notices within twenty-four hours.",
+      );
+
+      await service.unpin({
+        pinId: pin.id,
+        unpinnedByEntityId: SELF_ENTITY_ID,
+      });
+      expect((await compose(roomId)).text).not.toContain(
+        "Share school notices within twenty-four hours.",
+      );
+      pin = await service.pin({
+        artifactId: artifact.id,
+        targetType: "agent",
+        targetId: runtime.agentId,
+        pinnedByEntityId: SELF_ENTITY_ID,
+      });
+      expect((await compose(otherRoomId)).text).toContain(
+        "Share school notices within twenty-four hours.",
+      );
+
+      const guestId = crypto.randomUUID() as UUID;
+      await runtime.createEntity({
+        id: guestId,
+        names: ["Other participant"],
+        agentId: runtime.agentId,
+      });
+      await runtime.addParticipant(guestId, roomId);
+      expect((await compose(roomId)).text).not.toContain(
+        "Share school notices within twenty-four hours.",
+      );
+    } finally {
+      await service.unpin({
+        pinId: pin.id,
+        unpinnedByEntityId: SELF_ENTITY_ID,
+      });
+      runtime.setSetting(
+        "ELIZA_ADMIN_ENTITY_ID",
+        typeof previousOwner === "string" || typeof previousOwner === "boolean"
+          ? previousOwner
+          : null,
+      );
+    }
   });
 
   it("requires verified identity plus an exact active household grant", async () => {

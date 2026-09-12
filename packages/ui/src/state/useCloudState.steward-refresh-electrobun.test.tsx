@@ -17,9 +17,21 @@ const clientCloudMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../api/client-cloud", () => ({
+  hasDirectCloudAccountTransport: () => false,
   cloudTokenSecsRemaining: () => 0,
   refreshCloudStewardSession: clientCloudMocks.refreshCloudStewardSession,
   resolveDirectCloudAuthApiBase: () => "https://api.eliza.app",
+}));
+
+vi.mock("../api", () => ({
+  client: {
+    getBaseUrl: () => "",
+    getCloudStatus: async () => ({
+      connected: false,
+      enabled: true,
+      hasApiKey: false,
+    }),
+  },
 }));
 
 vi.mock("../bridge", () => ({
