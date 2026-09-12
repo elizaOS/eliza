@@ -1,0 +1,15 @@
+{
+  "package": "@orkid-labs/plugin-mempalace",
+  "repository": "github:orkid-labs/plugin-mempalace",
+  "kind": "plugin",
+  "description": "Persistent agent memory via MemPalace MCP — store, search, and recall context across sessions. Supports stdio and HTTP/SSE transports.",
+  "homepage": "https://github.com/orkid-labs/plugin-mempalace",
+  "version": "2.0.0",
+  "tags": [
+    "mempalace",
+    "memory",
+    "mcp",
+    "persistent",
+    "context"
+  ]
+}

@@ -414,6 +414,51 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@orkid-labs/plugin-mempalace": {
+      "git": {
+        "repo": "orkid-labs/plugin-mempalace",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@orkid-labs/plugin-mempalace",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Persistent agent memory via MemPalace MCP — store, search, and recall context across sessions. Supports stdio and HTTP/SSE transports.",
+      "homepage": "https://github.com/orkid-labs/plugin-mempalace",
+      "topics": [
+        "mempalace",
+        "memory",
+        "mcp",
+        "persistent",
+        "context"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "@rati-osf/plugin-ruby-high": {
       "git": {
         "repo": "cenetex/plugin-ruby-high",
