@@ -121,6 +121,7 @@ import {
   parseCalendarCardRequest,
 } from "../lifeops/calendar-card.js";
 import { probeFullDiskAccess } from "../lifeops/fda-probe.js";
+import { resolveOwnerTimeZoneFact } from "../lifeops/owner/fact-store.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { entityHasVerifiedMachineAuthBinding } from "./authenticated-entity-principal.js";
@@ -213,6 +214,14 @@ function getFinancesService(ctx: LifeOpsRouteContext): FinancesService | null {
   }
   return new FinancesService(runtime, {
     ownerEntityId: ctx.state.adminEntityId,
+    // Judge bill dueness against the owner's calendar day (#31062). The owner
+    // fact store is the same source reminders/scheduled tasks resolve. We inject
+    // the fact-only resolver (returns `null` on a miss) rather than
+    // `resolveOwnerTimeZone`, whose baked host-zone fallback would mask the miss
+    // and short-circuit the service's own chain; with `null` the service falls
+    // through to the agent TIMEZONE setting and then the host zone, matching the
+    // documented precedence.
+    resolveTimeZone: (now: Date) => resolveOwnerTimeZoneFact(runtime, now),
   });
 }
 
