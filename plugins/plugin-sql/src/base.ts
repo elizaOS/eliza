@@ -7436,6 +7436,63 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return true;
   }
 
+  /**
+   * Compare-and-swap a cache row under an optimistic revision stored inside
+   * the jsonb value (`value.revision`). Rows written before the revision
+   * contract (no numeric `revision` key) count as revision 0. Returns false
+   * when the stored revision does not match the expectation; never throws on
+   * a lost race.
+   */
+  async compareAndSwapCache<T>(
+    key: string,
+    expectedRevision: number | null,
+    nextRevision: number,
+    value: T
+  ): Promise<boolean> {
+    return this.withDatabase(async () => {
+      try {
+        const nextValue = { ...(value as object), revision: nextRevision };
+        if (expectedRevision === null) {
+          // Row must not exist yet: insert-only, any conflict (including a
+          // racing insert) loses. A returning row proves fresh creation.
+          const inserted = await this.db
+            .insert(cacheTable)
+            .values({ key, agentId: this.agentId, value: nextValue })
+            .onConflictDoNothing({
+              target: [cacheTable.key, cacheTable.agentId],
+            })
+            .returning();
+          return inserted.length > 0;
+        }
+        // Row must exist at expectedRevision: conditional update only. An
+        // absent row (deleted between read and swap) updates nothing and
+        // loses — it can never take the unconditional insert arm.
+        const expected = String(expectedRevision);
+        const updated = await this.db
+          .update(cacheTable)
+          .set({ value: nextValue })
+          .where(
+            and(
+              eq(cacheTable.key, key),
+              eq(cacheTable.agentId, this.agentId),
+              sql`CASE WHEN ${cacheTable.value}->>'revision' IS NULL THEN '0' ELSE ${cacheTable.value}->>'revision' END = ${expected}`
+            )
+          )
+          .returning();
+        return updated.length > 0;
+      } catch (error) {
+        // error-policy:J2 context-adding rethrow — a lost race returns false;
+        // only a real query failure reaches this handler and must not read
+        // as a lost race.
+        throw new ElizaError("compareAndSwapCache failed", {
+          code: "DB_UPSERT_FAILED",
+          cause: error,
+          context: { table: "cache", agentId: this.agentId, key },
+        });
+      }
+    });
+  }
+
   async deleteCaches(keys: string[]): Promise<boolean> {
     for (const key of keys) {
       const success = await this.deleteCache(key);

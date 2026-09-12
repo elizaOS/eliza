@@ -246,6 +246,8 @@ interface StoredRelationship {
 interface StoredCacheEntry<T = unknown> {
   value: T;
   expiresAt?: number;
+  /** Optimistic revision for compareAndSwapCache; absent means zero. */
+  revision?: number;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -416,6 +418,9 @@ function compareStoredMemoriesNewestFirst(a: StoredMemory, b: StoredMemory): num
   const bId = typeof b.id === "string" ? b.id : "";
   return compareMemoryIds(bId, aId);
 }
+
+/** Hidden per-storage CAS mutex slot shared by all adapters over one storage. */
+const CACHE_CAS_MUTEX = Symbol.for("elizaos.plugin-inmemorydb.cache-cas-mutex");
 
 export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
@@ -863,6 +868,23 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   private withDocumentMutationLock<T>(operation: () => Promise<T>): Promise<T> {
     const run = this.documentMutationTail.then(operation, operation);
     this.documentMutationTail = run.then(
+      () => undefined,
+      () => undefined
+    );
+    return run;
+  }
+
+  /**
+   * Storage-scoped CAS serialization: adapters may share one IStorage (the
+   * global MemoryStorage singleton), so cross-instance compare-and-swap
+   * must serialize on the storage object, not the adapter. The mutex lives
+   * in a symbol-keyed hidden property on the storage instance.
+   */
+  private withStorageCasLock<T>(operation: () => Promise<T>): Promise<T> {
+    const holders = this.storage as unknown as Record<symbol, Promise<void> | undefined>;
+    const tail = holders[CACHE_CAS_MUTEX] ?? Promise.resolve();
+    const run = tail.then(operation, operation);
+    holders[CACHE_CAS_MUTEX] = run.then(
       () => undefined,
       () => undefined
     );
@@ -2229,13 +2251,28 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   // ── Cache CRUD ────────────────────────────────────────────────────────
 
+  /**
+   * Cache rows are namespaced by the owning agent's id, mirroring the SQL
+   * adapters' composite (key, agent_id) cache primary key: adapters for
+   * different agents sharing one IStorage (the global MemoryStorage
+   * singleton) must never read or overwrite each other's cache rows (#29753
+   * review). All cache CRUD goes through this key; raw keys never touch
+   * storage directly.
+   */
+  private agentScopedCacheKey(key: string): string {
+    return `${this.agentId}:${key}`;
+  }
+
   async getCaches<T>(keys: string[]): Promise<Map<string, T>> {
     const out = new Map<string, T>();
     for (const key of keys) {
-      const entry = await this.storage.get<StoredCacheEntry<T>>(COLLECTIONS.CACHE, key);
+      const entry = await this.storage.get<StoredCacheEntry<T>>(
+        COLLECTIONS.CACHE,
+        this.agentScopedCacheKey(key)
+      );
       if (!entry) continue;
       if (entry.expiresAt && Date.now() > entry.expiresAt) {
-        await this.storage.delete(COLLECTIONS.CACHE, key);
+        await this.storage.delete(COLLECTIONS.CACHE, this.agentScopedCacheKey(key));
         continue;
       }
       out.set(key, entry.value);
@@ -2245,7 +2282,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async setCaches<T>(entries: Array<{ key: string; value: T }>): Promise<boolean> {
     for (const { key, value } of entries) {
-      await this.storage.set(COLLECTIONS.CACHE, key, { value });
+      await this.storage.set(COLLECTIONS.CACHE, this.agentScopedCacheKey(key), { value });
     }
     return true;
   }
@@ -2253,10 +2290,57 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   async deleteCaches(keys: string[]): Promise<boolean> {
     let removed = false;
     for (const key of keys) {
-      const ok = await this.storage.delete(COLLECTIONS.CACHE, key);
+      const ok = await this.storage.delete(COLLECTIONS.CACHE, this.agentScopedCacheKey(key));
       if (ok) removed = true;
     }
     return removed;
+  }
+
+  async compareAndSwapCache<T>(
+    key: string,
+    expectedRevision: number | null,
+    nextRevision: number,
+    value: T
+  ): Promise<boolean> {
+    // Revision lives inside value, mirroring the SQL adapters'
+    // value->>'revision' semantics so rows written by setCaches (plain
+    // values) and by CAS agree across engines. The whole check-then-set is
+    // serialized under a STORAGE-scoped mutex (adapters may share one
+    // MemoryStorage, e.g. the global singleton): two concurrent CAS calls
+    // on the same revision — even through different adapter instances —
+    // can never both succeed.
+    return this.withStorageCasLock(async () => {
+      const entry = await this.storage.get<StoredCacheEntry<T>>(
+        COLLECTIONS.CACHE,
+        this.agentScopedCacheKey(key)
+      );
+      if (entry === null || entry === undefined) {
+        if (expectedRevision !== null) return false;
+        await this.storage.set(COLLECTIONS.CACHE, this.agentScopedCacheKey(key), {
+          value: { ...(value as object), revision: nextRevision } as T,
+          expiresAt: undefined,
+        });
+        return true;
+      }
+      if (entry.expiresAt && Date.now() > entry.expiresAt) {
+        await this.storage.delete(COLLECTIONS.CACHE, this.agentScopedCacheKey(key));
+        if (expectedRevision !== null) return false;
+        await this.storage.set(COLLECTIONS.CACHE, this.agentScopedCacheKey(key), {
+          value: { ...(value as object), revision: nextRevision } as T,
+          expiresAt: undefined,
+        });
+        return true;
+      }
+      const storedValue = entry.value as { revision?: number } | null;
+      const stored =
+        storedValue !== null && typeof storedValue === "object" ? (storedValue.revision ?? 0) : 0;
+      if (stored !== expectedRevision) return false;
+      await this.storage.set(COLLECTIONS.CACHE, this.agentScopedCacheKey(key), {
+        ...entry,
+        value: { ...(value as object), revision: nextRevision } as T,
+      });
+      return true;
+    });
   }
 
   // ── Task CRUD ─────────────────────────────────────────────────────────
