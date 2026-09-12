@@ -2053,20 +2053,38 @@ async function runPlannerLoopIterations(
 			failures,
 			lastPlannerExplicitCompleted,
 		});
-		if (queueAdvance) {
+		// An explicit pending read needs its result interpreted by the next
+		// planner, not a completion verdict before the dependent work is planned.
+		// Never auto-execute queued work, waive a pause, or treat a write as a read.
+		const pendingReadReplan =
+			lastPlannerExplicitCompleted === false &&
+			trajectory.plannedQueue.length === 0 &&
+			failures.length === 0 &&
+			isSettledInternalSuccess(latestResult) &&
+			latestResult.data?.readOnlyOperation === true &&
+			!latestResult.failureProvenance &&
+			(latestResult.effectReceipts?.length ?? 0) === 0 &&
+			!latestUnresolvedFailedNonTerminalToolStep(trajectory);
+		if (queueAdvance || pendingReadReplan) {
 			// Live 2026-09-05: two planned creates (or deletes) paid a full
 			// evaluator call (0.8–1.3 s) between the steps only to pick the call
-			// that was already queued. A step that settled with a committed
-			// receipt is mechanical proof; the terminal evaluation still judges
-			// the whole batch. Failures, pauses, reads and non-internal results
-			// keep their per-step evaluation.
+			// that was already queued. Receipt-based queue advancement and a
+			// pending read's return to planning both preserve the existing final
+			// evaluation path. Neither branch declares the whole request complete.
 			const gateStartedAt = Date.now();
-			const gated: EvaluatorOutput = {
-				success: true,
-				decision: "NEXT_RECOMMENDED",
-				thought: QUEUE_AUTO_ADVANCE_THOUGHT,
-				recommendedToolCallId: queueAdvance.nextToolCallId,
-			};
+			const gated: EvaluatorOutput = queueAdvance
+				? {
+						success: true,
+						decision: "NEXT_RECOMMENDED",
+						thought: QUEUE_AUTO_ADVANCE_THOUGHT,
+						recommendedToolCallId: queueAdvance.nextToolCallId,
+					}
+				: {
+						success: false,
+						decision: "CONTINUE",
+						thought:
+							"The read succeeded. The planner explicitly declared more work pending; replan from the complete result before judging completion.",
+					};
 			trajectory.evaluatorOutputs.push(
 				projectToolDiagnosticValue(
 					gated,
@@ -2088,10 +2106,10 @@ async function runPlannerLoopIterations(
 				startedAt: gateStartedAt,
 				endedAt: Date.now(),
 				output: gated,
-				reason: "queue_auto_advance",
+				reason: queueAdvance ? "queue_auto_advance" : "pending_read_replan",
 				logger: params.runtime.logger,
 			});
-			preferRecommendedToolCall(trajectory, gated);
+			if (queueAdvance) preferRecommendedToolCall(trajectory, gated);
 			continue;
 		}
 

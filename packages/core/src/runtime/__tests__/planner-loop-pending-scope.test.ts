@@ -132,6 +132,182 @@ function harness(args: {
 }
 
 describe("planner-declared pending work", () => {
+	it.each([
+		["read failure", { success: false, error: "Read denied" }],
+		["requested evaluation", { turnComplete: false }],
+		["visible result", { transcriptVisibility: undefined }],
+		["unclassified result", { data: {} }],
+		[
+			"awaiting input",
+			{ data: { readOnlyOperation: true, awaitingUserInput: true } },
+		],
+		[
+			"confirmation",
+			{ data: { readOnlyOperation: true, requiresConfirmation: true } },
+		],
+		[
+			"nested input",
+			{
+				data: { readOnlyOperation: true, values: { awaitingUserInput: true } },
+			},
+		],
+	] as const)("keeps intermediate evaluation for %s", async (_name, patch) => {
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("READ", "more_work_pending")] }],
+			evaluations: [],
+			results: [
+				{
+					success: true,
+					transcriptVisibility: "internal",
+					data: { readOnlyOperation: true },
+					...patch,
+				},
+			],
+		});
+		await expect(h.run()).rejects.toThrow(
+			"Unexpected model call RESPONSE_HANDLER after ACTION_PLANNER,RESPONSE_HANDLER",
+		);
+		expect(h.executed).toEqual(["READ"]);
+	});
+
+	it.each(["final", undefined] as const)(
+		"evaluates a settled read with %s scope",
+		async (scope) => {
+			const h = harness({
+				plans: [{ text: "", toolCalls: [call("READ", scope)] }],
+				evaluations: [finish("The note says green.")],
+				results: [
+					{
+						success: true,
+						transcriptVisibility: "internal",
+						data: { readOnlyOperation: true },
+					},
+				],
+			});
+			expect((await h.run()).finalMessage).toBe("The note says green.");
+			expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
+				ModelType.ACTION_PLANNER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+		},
+	);
+
+	it("does not execute a queued action automatically after a pending read", async () => {
+		const h = harness({
+			plans: [
+				{
+					text: "",
+					toolCalls: [
+						call("READ", "more_work_pending"),
+						call("WRITE", "more_work_pending"),
+					],
+				},
+			],
+			evaluations: [],
+			results: [
+				{
+					success: true,
+					transcriptVisibility: "internal",
+					data: { readOnlyOperation: true },
+				},
+			],
+		});
+		await expect(h.run()).rejects.toThrow(
+			"Unexpected model call RESPONSE_HANDLER after ACTION_PLANNER,RESPONSE_HANDLER",
+		);
+		expect(h.executed).toEqual(["READ"]);
+	});
+
+	it("does not replan a purported read carrying an effect receipt", async () => {
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("READ", "more_work_pending")] }],
+			evaluations: [],
+			results: [
+				{
+					success: true,
+					transcriptVisibility: "internal",
+					data: { readOnlyOperation: true },
+					effectReceipts: [
+						{
+							receiptId: "read-effect",
+							operation: "notes.read",
+							resource: { kind: "note", id: "n" },
+							artifacts: [],
+							idempotency: { key: null, replayed: false },
+							observedAt: "2026-09-12T07:00:00.000Z",
+							outcome: "noop",
+							reason: "Read snapshot",
+						},
+					],
+				},
+			],
+		});
+		await expect(h.run()).rejects.toThrow(
+			"Unexpected model call RESPONSE_HANDLER after ACTION_PLANNER,RESPONSE_HANDLER",
+		);
+		expect(h.executed).toEqual(["READ"]);
+	});
+
+	it("replans a settled preparatory read without intermediate model evaluation", async () => {
+		const body = "Bring a green folder and a charger.";
+		const h = harness({
+			userMessage:
+				"Read the note. Open Calendar only if it contains green. Do not edit records.",
+			plans: [
+				{ text: "", toolCalls: [call("READ", "more_work_pending")] },
+				{ text: "", toolCalls: [call("NAVIGATE", "final")] },
+			],
+			evaluations: [finish(`${body} Calendar is open.`)],
+			results: [
+				{
+					success: true,
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+					data: { readOnlyOperation: true, notes: [{ body }] },
+				},
+				{
+					success: true,
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+					data: { destination: "calendar" },
+				},
+			],
+		});
+		const stages: RecordedStage[] = [];
+		const result = await h.run({
+			recorder: {
+				startTrajectory: () => "pending-read",
+				recordStage: async (_id, stage) => {
+					stages.push(stage);
+				},
+				endTrajectory: async () => undefined,
+				load: async () => null,
+				list: async () => [],
+			},
+			trajectoryId: "pending-read",
+		});
+		expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
+			ModelType.ACTION_PLANNER,
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+		expect(h.executed).toEqual(["READ", "NAVIGATE"]);
+		expect(result.finalMessage).toBe(`${body} Calendar is open.`);
+		const nextPlanner = h.useModel.mock.calls.filter(
+			([type]) => type === ModelType.ACTION_PLANNER,
+		)[1];
+		expect(JSON.stringify(nextPlanner)).toContain(body);
+		expect(JSON.stringify(nextPlanner)).toContain("Do not edit records.");
+		expect(
+			stages.some(
+				(stage) =>
+					stage.evaluation?.gated === true &&
+					stage.evaluation.reason === "pending_read_replan" &&
+					stage.evaluation.decision === "CONTINUE",
+			),
+		).toBe(true);
+	});
+
 	it.each(["final", "more_work_pending"] as const)(
 		"preserves %s scope across discovery and an already queued domain read",
 		async (scope) => {
