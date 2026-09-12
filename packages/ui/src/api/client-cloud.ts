@@ -19,6 +19,7 @@ import {
 } from "../cloud/handoff/cloud-handoff-supervisor";
 import { isRetryableHandoffHttpStatus } from "../cloud/handoff/conversation-handoff";
 import { getBootConfig } from "../config/boot-config";
+import { isLoopbackStagingStewardDevelopment } from "../state/loopback-steward-development";
 import { isTrustedCloudApiBaseUrl } from "../state/runtime-url-trust";
 import {
   buildCloudSharedAgentApiBase,
@@ -604,6 +605,15 @@ function resolveDirectCloudClientApiBase(client: ElizaClient): string | null {
     baseUrl &&
     isDirectCloudSharedAgentBase(baseUrl) &&
     isTrustedLocalCloudPage()
+  ) {
+    return resolveConfiguredDirectCloudApiBase();
+  }
+  // A hosted CLI return authenticates the account without replacing the local
+  // runtime. Its account reads must use that session's configured control plane.
+  if (
+    isLoopbackStagingStewardDevelopment() &&
+    (!baseUrl || isLoopbackCloudAgentBase(baseUrl)) &&
+    readStoredStewardToken()?.trim()
   ) {
     return resolveConfiguredDirectCloudApiBase();
   }
