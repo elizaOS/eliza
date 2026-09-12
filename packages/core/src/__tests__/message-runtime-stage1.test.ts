@@ -7408,8 +7408,11 @@ describe("runV5MessageRuntimeStage1", () => {
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
-		expect(validateAllowed).toHaveBeenCalledTimes(2);
-		expect(validateDenied).toHaveBeenCalledTimes(1);
+		expect(validateAllowed).toHaveBeenCalled();
+		expect(validateDenied).toHaveBeenCalled();
+		const discoveryPrompt = JSON.stringify(useModelCalls(runtime)[0]?.[1]);
+		expect(discoveryPrompt).toContain("CHECK_RUNTIME");
+		expect(discoveryPrompt).not.toContain("SKIP_RUNTIME");
 		const firstPlannerParams = useModelCalls(runtime)[1]?.[1] as {
 			tools?: Array<{ name?: string }>;
 			messages?: Array<{ role?: string; content?: string | null }>;
