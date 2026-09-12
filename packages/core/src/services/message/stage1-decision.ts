@@ -32,7 +32,7 @@ import type { GenerateTextResult } from "../../types/model";
 import { ModelType } from "../../types/model";
 import { ChannelType } from "../../types/primitives";
 import { CODING_SUB_AGENT_CONTEXTS } from "./action-surface.js";
-import type {
+import {
 	listAvailableContextsForRole,
 	resolveStage1SenderRole,
 } from "./addressing.js";
@@ -62,7 +62,11 @@ import {
 	shouldUseStage1PlannerFallback,
 	synthesizePlannerFallbackFromStage1Failure,
 } from "./stage1-generation.js";
-import { renderMessageHandlerModelInput } from "./stage1-input.js";
+import {
+	CONTEXT_CATALOG_REFERENCE,
+	createContextCatalogReference,
+	renderMessageHandlerModelInput,
+} from "./stage1-input.js";
 import {
 	extractMessageHandlerRawParsed,
 	messageHandlerFromFieldResult,
@@ -149,9 +153,21 @@ export async function generateStage1Decision(
 	const loadedContext = new Set<string>();
 	const discoveryEnabled =
 		directMessageChannel && !voiceDirectMessageChannel && !args.codingMode;
+	// A plugin that owns this name retains its ordinary provider-reference
+	// contract; framework catalog discovery must not shadow its requests.
+	let contextCatalogRead = false;
+	let contextCatalog =
+		discoveryEnabled &&
+		Array.isArray(args.runtime.providers) &&
+		!args.runtime.providers.some(
+			(provider) => provider.name === CONTEXT_CATALOG_REFERENCE,
+		)
+			? createContextCatalogReference(args.runtime, availableContexts)
+			: undefined;
 	let discovery = discoveryEnabled
 		? projectDiscoverableContext(context, args.state, loadedContext)
 		: { context, available: new Set<string>() };
+	if (contextCatalog) discovery.available.add(CONTEXT_CATALOG_REFERENCE);
 	let messageHandlerInput = renderMessageHandlerModelInput(
 		args.runtime,
 		discovery.context,
@@ -160,6 +176,7 @@ export async function generateStage1Decision(
 			directMessage: directMessageChannel,
 			voiceDirectMessage: voiceDirectMessageChannel,
 			responseHandlerFields: responseHandlerFieldPrompt.rendered,
+			contextCatalog,
 		},
 	);
 	let stage1PrefixHashes = computePrefixHashes(
@@ -398,7 +415,33 @@ export async function generateStage1Decision(
 				],
 			};
 		} else {
-			for (const name of requested) loadedContext.add(name);
+			for (const name of requested) {
+				if (name === CONTEXT_CATALOG_REFERENCE && contextCatalog) {
+					contextCatalogRead = true;
+					contextCatalog.loaded = true;
+				} else loadedContext.add(name);
+			}
+			if (contextCatalog?.loaded) {
+				// Re-read role-filtered definitions for this read. Never restore an
+				// old catalog after the requester's role or registrations changed.
+				const role = await resolveStage1SenderRole(args.runtime, args.message);
+				const current = listAvailableContextsForRole(
+					args.runtime.contexts,
+					role,
+				);
+				const refreshedCatalog = createContextCatalogReference(
+					args.runtime,
+					current,
+				);
+				if (refreshedCatalog) {
+					contextCatalog = { ...refreshedCatalog, loaded: true };
+				} else {
+					// A small/currently empty catalog or an optimized prompt needs no
+					// deferred representation. Render its complete current definitions.
+					contextCatalog = undefined;
+				}
+				availableContexts = current;
+			}
 			const refreshed = await composeResponseState(
 				args.runtime,
 				args.message,
@@ -416,6 +459,8 @@ export async function generateStage1Decision(
 				args.state,
 				loadedContext,
 			);
+			if (contextCatalog && !contextCatalog.loaded)
+				discovery.available.add(CONTEXT_CATALOG_REFERENCE);
 			messageHandlerInput = renderMessageHandlerModelInput(
 				args.runtime,
 				discovery.context,
@@ -424,6 +469,7 @@ export async function generateStage1Decision(
 					directMessage: directMessageChannel,
 					voiceDirectMessage: voiceDirectMessageChannel,
 					responseHandlerFields: responseHandlerFieldPrompt.rendered,
+					contextCatalog,
 				},
 			);
 		}
@@ -680,6 +726,7 @@ export async function generateStage1Decision(
 		messageHandler,
 		providerDiscoveryEnabled: discoveryEnabled,
 		loadedContextProviders: [...loadedContext],
+		contextCatalogRead,
 		fieldRunResult,
 		inferenceMessageText,
 		parsedResponseHandlerReply,

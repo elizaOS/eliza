@@ -345,6 +345,7 @@ export async function runV5MessageRuntimeStage1(
 			messageHandlerEndedAt,
 			providerDiscoveryEnabled,
 			loadedContextProviders,
+			contextCatalogRead,
 		} = await generateStage1Decision(
 			args,
 			{
@@ -1159,6 +1160,7 @@ export async function runV5MessageRuntimeStage1(
 		);
 		const plannerContext = await createV5MessageContextObject({
 			...args,
+			includeContextCatalog: contextCatalogRead,
 			state: plannerState,
 			selectedContexts,
 			includeTools: true,
@@ -1244,6 +1246,7 @@ export async function runV5MessageRuntimeStage1(
 				);
 				const fresh = await createV5MessageContextObject({
 					...args,
+					includeContextCatalog: contextCatalogRead,
 					state: freshState,
 					selectedContexts,
 					userRoles: [senderRole],
@@ -1331,6 +1334,7 @@ export async function runV5MessageRuntimeStage1(
 			) {
 				const umbrellaContext = await createV5MessageContextObject({
 					...args,
+					includeContextCatalog: contextCatalogRead,
 					state: plannerState,
 					selectedContexts,
 					includeTools: true,

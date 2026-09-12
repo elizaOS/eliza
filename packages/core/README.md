@@ -23,6 +23,13 @@ fail closed.
 - **Plugin system:** `Plugin` objects contribute actions/providers/evaluators/services to the runtime.
 - **Built-in bundle:** Foundational capabilities ship as `basicCapabilities` (and `basicActions` / `basicProviders` / `basicEvaluators` / `basicServices`); there is no `corePlugin` singleton.
 
+For the default direct-text message handler, routing context discovery can show
+every authorized context name while deferring its complete description. The
+handler requests `CONTEXT_CATALOG` through `contextRequests` when it needs those
+descriptions; the runtime refreshes the authorized catalog before processing any
+reply or action. This can add a model call, so compare whole-turn usage. It does
+not trim conversation history or grant access to tools or private data.
+
 ## Computer-use adapter contract
 
 `contracts/computer-use.ts` is the provider-neutral boundary shared by browser

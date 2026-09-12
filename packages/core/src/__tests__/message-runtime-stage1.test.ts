@@ -317,6 +317,176 @@ async function seededPiiSession(): Promise<{
 }
 
 describe("runV5MessageRuntimeStage1", () => {
+	it.each([false, true])(
+		"carries the current catalog into planning and completion with provider restore=%s",
+		async (restore) => {
+			const previous = "Previously authorized context reference. ".repeat(40);
+			const current =
+				"Current complete context reference with exact punctuation. ".repeat(
+					40,
+				);
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["simple"],
+					contextRequests: ["CONTEXT_CATALOG"],
+				}),
+				stage1Response({
+					contexts: ["general"],
+					intents: ["open Home"],
+					candidateActionNames: ["UI_ROUTE"],
+					replyText: "I will open Home.",
+					extra: { replyEffectStatus: "pending" },
+				}),
+				...(restore
+					? [
+							{
+								text: "",
+								toolCalls: [
+									{
+										name: "RESTORE_CONTEXT",
+										arguments: {
+											scope: "providers",
+											reason: "Read current references",
+											eliza_turn_scope: "more_work_pending",
+										},
+									},
+								],
+							},
+						]
+					: []),
+				{
+					text: "",
+					toolCalls: [
+						{
+							name: "UI_ROUTE",
+							arguments: { destination: "home", eliza_turn_scope: "final" },
+						},
+					],
+				},
+				JSON.stringify({
+					success: true,
+					decision: "FINISH",
+					thought: "The reference and navigation receipt are available.",
+					messageToUser: "Home is open.",
+				}),
+			]);
+			const registry = (description: string) =>
+				new ContextRegistry([
+					{ id: "general", description: "General tasks." },
+					{ id: "notes", description },
+				]);
+			runtime.contexts = registry(previous);
+			const state = makeState();
+			if (restore) {
+				const text = "Another complete authorized provider reference. ".repeat(
+					40,
+				);
+				runtime.providers = [{ name: "GUIDE", get: vi.fn() }];
+				state.data.providers = {
+					GUIDE: { text, discoveryText: "context_discovery: GUIDE" },
+				};
+				runtime.composeState = vi.fn(async () => structuredClone(state));
+			}
+			const model = runtime.useModel.bind(runtime);
+			let modelCalls = 0;
+			runtime.useModel = vi.fn(
+				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+					const result = await model(...args);
+					if (++modelCalls === (restore ? 3 : 2))
+						runtime.contexts = registry(current);
+					return result;
+				},
+			) as IAgentRuntime["useModel"];
+			const navigate = vi.fn<Action["handler"]>(async () => ({
+				success: true,
+				text: "Navigation completed: home.",
+				data: { destination: "home" },
+			}));
+			runtime.actions = [
+				{
+					name: "UI_ROUTE",
+					description: "Navigate to a requested destination.",
+					parameters: [
+						{
+							name: "destination",
+							description: "Destination",
+							required: true,
+							schema: { type: "string" },
+						},
+					],
+					validate: async () => true,
+					handler: navigate,
+				},
+			];
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "Read the context catalog, then open Home.",
+					channelType: ChannelType.DM,
+				}),
+				state,
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(result.kind).toBe("planned_reply");
+			expect(navigate).toHaveBeenCalledTimes(1);
+			const calls = useModelCalls(runtime);
+			expect(calls).toHaveLength(restore ? 5 : 4);
+			for (const [, params] of calls.slice(restore ? 3 : 2)) {
+				const wire = JSON.stringify((params as { messages: unknown }).messages);
+				expect(wire).toContain("context_loaded: CONTEXT_CATALOG");
+				expect(wire).toContain(current.trim());
+				expect(wire).not.toContain(previous.trim());
+			}
+		},
+	);
+
+	it.each(["before", "after"])(
+		"keeps a catalog read complete when routing repair happens %s it",
+		async (order) => {
+			const description = "Complete custom routing reference. ".repeat(40);
+			const answer = "The custom reference is available; nothing changed.";
+			const read = stage1Response({
+				contexts: ["simple"],
+				contextRequests: ["CONTEXT_CATALOG"],
+				facts: ["Do not process this intermediate read"],
+			});
+			const conflicting = stage1Response({
+				contexts: ["simple"],
+				intents: ["describe the reference"],
+				replyText: answer,
+				extra: { replyEffectStatus: "none" },
+			});
+			const runtime = makeRuntime([
+				...(order === "before" ? [conflicting, read] : [read, conflicting]),
+				stage1Response({ contexts: ["simple"], replyText: answer }),
+			]);
+			runtime.contexts = new ContextRegistry([
+				{ id: "custom_catalog", description },
+			]);
+			const dispatch = vi.spyOn(
+				runtime.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ channelType: ChannelType.DM }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			const calls = useModelCalls(runtime);
+			expect(calls.map(([type]) => type)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+				ModelType.RESPONSE_HANDLER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+			expect(JSON.stringify(calls.at(-1)?.[1])).toContain(description.trim());
+			expect(dispatch).toHaveBeenCalledTimes(1);
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply")
+				expect(result.result.responseContent?.text).toBe(answer);
+		},
+	);
+
 	it("repairs conflicting direct-answer intents before dispatching fields or entering the planner", async () => {
 		const quote = "Correction: the mug is violet; keep the yellow notebook.";
 		const runtime = makeRuntime([
@@ -428,6 +598,211 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(useModelCalls(runtime)).toHaveLength(1);
 		expect(dispatch).not.toHaveBeenCalled();
 	});
+
+	it("reads the complete context catalog before dispatch without changing the stable prefix", async () => {
+		const description =
+			"Exact routing instructions with punctuation and an alias. ".repeat(30);
+		const runtime = makeRuntime([
+			stage1Response({
+				contextRequests: ["CONTEXT_CATALOG"],
+				contexts: ["simple"],
+				replyText: "Undelivered draft",
+				facts: ["Undelivered extraction"],
+			}),
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "The reference is available.",
+			}),
+		]);
+		runtime.contexts = new ContextRegistry([
+			{ id: "simple", description: "Direct replies." },
+			{
+				id: "custom_catalog",
+				label: "Custom reference",
+				aliases: ["nonstandard_alias"],
+				description,
+			},
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.DM }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		const calls = useModelCalls(runtime).map(
+			([, params]) =>
+				params as {
+					messages: Array<{ role: string; content: string }>;
+					providerOptions: { eliza: { prefixHash: string } };
+				},
+		);
+		expect(calls).toHaveLength(2);
+		expect(calls[0].messages[0]).toEqual(calls[1].messages[0]);
+		expect(calls[0].providerOptions.eliza.prefixHash).toBe(
+			calls[1].providerOptions.eliza.prefixHash,
+		);
+		expect(calls[0].messages[0].content).toContain("simple, custom_catalog");
+		expect(
+			calls[0].messages.map(({ content }) => content).join("\n"),
+		).not.toContain(description);
+		const restored = calls[1].messages.find(
+			({ role }) => role === "user",
+		)?.content;
+		expect(restored).toContain(description.trim());
+		expect(restored).toContain("nonstandard_alias");
+		expect(restored?.indexOf("context_loaded: CONTEXT_CATALOG")).toBeLessThan(
+			restored?.indexOf("message:user:") ?? 0,
+		);
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply")
+			expect(result.result.responseContent?.text).toBe(
+				"The reference is available.",
+			);
+		expect(
+			(runtime.runActionsByMode as ReturnType<typeof vi.fn>).mock.calls.filter(
+				([mode]) => mode === "RESPONSE_HANDLER_BEFORE",
+			),
+		).toHaveLength(1);
+	});
+
+	it("uses current catalog registrations when a catalog read resumes", async () => {
+		const removed = "Removed confidential routing instructions. ".repeat(35);
+		const retained = "Current routing instructions. ".repeat(45);
+		const runtime = makeRuntime([
+			stage1Response({
+				contextRequests: ["CONTEXT_CATALOG"],
+				contexts: ["simple"],
+			}),
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Only the current catalog is available.",
+			}),
+		]);
+		runtime.contexts = new ContextRegistry([
+			{ id: "removed_context", description: removed },
+			{ id: "current_context", description: retained },
+		]);
+		const originalModel = runtime.useModel.bind(runtime);
+		let calls = 0;
+		runtime.useModel = vi.fn(
+			async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+				const result = await originalModel(...args);
+				if (++calls === 1)
+					runtime.contexts = new ContextRegistry([
+						{ id: "current_context", description: retained },
+					]);
+				return result;
+			},
+		) as IAgentRuntime["useModel"];
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.DM }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		const second = useModelCalls(runtime)[1]?.[1] as {
+			messages: Array<{ content: string }>;
+		};
+		const wire = second.messages.map(({ content }) => content).join("\n");
+		expect(wire).toContain(retained.trim());
+		expect(wire).not.toContain(removed.trim());
+		expect(wire).not.toContain("removed_context");
+	});
+
+	it("keeps denied contexts out of both catalog names and full description reads", async () => {
+		const hidden =
+			"Owner-only catalog description, never visible to this requester.";
+		const runtime = makeRuntime([
+			stage1Response({
+				contextRequests: ["CONTEXT_CATALOG"],
+				contexts: ["simple"],
+			}),
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Only authorized references are available.",
+			}),
+		]);
+		runtime.contexts = new ContextRegistry([
+			{
+				id: "public_context",
+				description: "Complete public routing instructions. ".repeat(40),
+			},
+			{
+				id: "owner_only_context",
+				description: hidden,
+				roleGate: { minRole: "OWNER" },
+			},
+		]);
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.DM, source: "test" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		const wire = JSON.stringify(useModelCalls(runtime));
+		expect(wire).not.toContain(hidden);
+		expect(wire).not.toContain("owner_only_context");
+		expect(wire).toContain("public_context");
+		expect(useModelCalls(runtime)).toHaveLength(2);
+	});
+
+	it("rejects a repeated context catalog read before a third model request", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contextRequests: ["CONTEXT_CATALOG"],
+				contexts: ["simple"],
+			}),
+			stage1Response({
+				contextRequests: ["CONTEXT_CATALOG"],
+				contexts: ["simple"],
+			}),
+		]);
+		runtime.contexts = new ContextRegistry([
+			{
+				id: "custom_catalog",
+				description: "Complete context routing reference. ".repeat(40),
+			},
+		]);
+		await expect(
+			runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ channelType: ChannelType.DM }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			}),
+		).rejects.toThrow("Request only context providers");
+		expect(useModelCalls(runtime)).toHaveLength(2);
+	});
+
+	it.each([ChannelType.VOICE_DM, ChannelType.GROUP])(
+		"keeps full catalog descriptions for %s",
+		async (channelType) => {
+			const description =
+				"Complete context routing reference for the full input path. ".repeat(
+					25,
+				);
+			const runtime = makeRuntime([
+				stage1Response({ contexts: ["simple"], replyText: "Hello." }),
+			]);
+			runtime.contexts = new ContextRegistry([
+				{ id: "custom_catalog", description },
+			]);
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ channelType }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+				stage1DecisionOnly: true,
+			});
+			const params = useModelCalls(runtime)[0]?.[1] as {
+				messages: Array<{ content: string }>;
+			};
+			const wire = params.messages.map(({ content }) => content).join("\n");
+			expect(wire).toContain(description.trim());
+			expect(wire).not.toContain("context_discovery: CONTEXT_CATALOG");
+			expect(useModelCalls(runtime)).toHaveLength(1);
+		},
+	);
 
 	it("keeps the system prefix identical when loading a stable provider reference", async () => {
 		const full =
@@ -2649,8 +3024,12 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("preserves the full direct-channel prompt catalog", async () => {
+	it("restores the full long direct-channel catalog on request", async () => {
 		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				contextRequests: ["CONTEXT_CATALOG"],
+			}),
 			stage1Response({
 				contexts: ["simple"],
 				replyText: "Hi.",
@@ -2698,9 +3077,96 @@ describe("runV5MessageRuntimeStage1", () => {
 		};
 		const systemContent = params.messages?.[0]?.content ?? "";
 		expect(systemContent).toContain("task: Plan this direct message.");
-		expect(systemContent).toContain("- calendar [label=Calendar");
+		expect(systemContent).toContain("simple, calendar, terminal");
 		expect(systemContent).not.toContain("role>=ADMIN");
-		expect(systemContent).toContain(longDescription);
+		expect(systemContent).not.toContain(longDescription);
+		const second = useModelCalls(runtime)[1]?.[1] as {
+			messages: Array<{ content: string }>;
+		};
+		const restored = second.messages.map(({ content }) => content).join("\n");
+		expect(restored).toContain("- calendar [label=Calendar");
+		expect(restored).toContain("aliases=shell");
+		expect(restored).toContain(longDescription);
+		expect(useModelCalls(runtime)).toHaveLength(2);
+	});
+
+	it("keeps optimized message-handler catalog instructions complete", async () => {
+		const description = "Operator-owned context description. ".repeat(40);
+		const runtime = makeRuntime([
+			stage1Response({ contexts: ["simple"], replyText: "Hi." }),
+		]);
+		runtime.contexts = new ContextRegistry([
+			{ id: "custom_catalog", description },
+		]);
+		runtime.getService = vi.fn((name: string) =>
+			name === "optimized_prompt"
+				? {
+						getPrompt: () => ({
+							prompt:
+								"Operator instructions.\navailable_contexts:\n{{availableContexts}}",
+						}),
+					}
+				: null,
+		) as IAgentRuntime["getService"];
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.DM }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		const params = useModelCalls(runtime)[0]?.[1] as {
+			messages: Array<{ content: string }>;
+		};
+		const wire = params.messages.map(({ content }) => content).join("\n");
+		expect(wire).toContain("Operator instructions.");
+		expect(wire).toContain(description.trim());
+		expect(wire).not.toContain("context_discovery: CONTEXT_CATALOG");
+	});
+
+	it("preserves a plugin-owned provider that shares the catalog reference name", async () => {
+		const description = "Complete registered routing description. ".repeat(40);
+		const providerText =
+			"Plugin-owned catalog reference content, not the framework routing catalog.";
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				contextRequests: ["CONTEXT_CATALOG"],
+			}),
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Read the plugin reference.",
+			}),
+		]);
+		runtime.contexts = new ContextRegistry([
+			{ id: "custom_catalog", description },
+		]);
+		runtime.providers = [
+			{ name: "CONTEXT_CATALOG", cacheStable: true, get: vi.fn() },
+		];
+		const state = makeState();
+		state.data.providers = {
+			CONTEXT_CATALOG: {
+				text: providerText,
+				discoveryText: "context_discovery: CONTEXT_CATALOG",
+			},
+		};
+		runtime.composeState = vi.fn(async () => structuredClone(state));
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.DM }),
+			state,
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		const calls = useModelCalls(runtime).map(
+			([, params]) => params as { messages: Array<{ content: string }> },
+		);
+		expect(calls).toHaveLength(2);
+		expect(
+			calls[0].messages.map(({ content }) => content).join("\n"),
+		).toContain(description.trim());
+		expect(
+			calls[1].messages.map(({ content }) => content).join("\n"),
+		).toContain(providerText);
 	});
 
 	it("keeps tool-like direct messages on the structured routing path", async () => {

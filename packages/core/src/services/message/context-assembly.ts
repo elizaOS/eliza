@@ -21,6 +21,7 @@ import {
 	collectV5PlannerCandidateActions,
 	type V5PlannerActionSurface,
 } from "./action-surface.js";
+import { createContextCatalogReadEvent } from "./context-catalog.js";
 import {
 	appendPriorDialogueEvents,
 	appendStateProviderEvents,
@@ -37,6 +38,8 @@ export async function createV5MessageContextObject(args: {
 	state: State;
 	selectedContexts?: readonly AgentContext[];
 	includeTools?: boolean;
+	/** A framework catalog reference was requested earlier in this turn. */
+	includeContextCatalog?: boolean;
 	userRoles?: readonly RoleGateRole[];
 	availableContexts?: readonly ContextDefinition[];
 	extraProviderExclusions?: readonly string[];
@@ -81,6 +84,12 @@ export async function createV5MessageContextObject(args: {
 		renderExclusions,
 		args.runtime.providers,
 	);
+
+	if (args.includeContextCatalog) {
+		events.push(
+			await createContextCatalogReadEvent(args.runtime, args.message),
+		);
+	}
 
 	if (hasStructuredRecentMessagesProvider(args.state)) {
 		events.push({

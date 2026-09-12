@@ -31,6 +31,10 @@ import {
 } from "./addressing.js";
 import { createV5MessageContextObject } from "./context-assembly.js";
 import {
+	CONTEXT_CATALOG_REFERENCE,
+	formatAvailableContextsForPrompt,
+} from "./context-catalog.js";
+import {
 	labelHistorySources,
 	shortenHistoryRoleLabels,
 } from "./history-wire.js";
@@ -42,6 +46,42 @@ import {
 export const CODE_SNIPPET_VALIDITY_INSTRUCTION =
 	"For code snippets, prioritize syntactically valid runnable code over impossible formatting constraints. If a tight line count would require invalid syntax, provide a valid version and briefly note the constraint tradeoff.";
 
+export {
+	CONTEXT_CATALOG_REFERENCE,
+	formatAvailableContextsForPrompt,
+} from "./context-catalog.js";
+
+export interface ContextCatalogReference {
+	text: string;
+	notice: string;
+	loaded: boolean;
+}
+
+/** Default direct-text routing can read the complete authorized catalog through
+ * the same pre-effect context-request boundary as provider references. */
+export function createContextCatalogReference(
+	runtime: OptimizedPromptRuntimeLike,
+	contexts: readonly ContextDefinition[],
+): ContextCatalogReference | undefined {
+	if (
+		resolveOptimizedPromptForRuntime(
+			runtime,
+			selectMessageHandlerTask(contexts),
+			messageHandlerTemplate,
+		) !== messageHandlerTemplate
+	)
+		return undefined;
+	const text = formatAvailableContextsForPrompt(contexts);
+	const notice = [
+		contexts.map(({ id }) => id).join(", "),
+		`context_discovery: ${CONTEXT_CATALOG_REFERENCE}`,
+		'All authorized routing-context names are listed above. Full labels, aliases, hierarchy, sensitivity and complete descriptions are available by contextRequests=["CONTEXT_CATALOG"], with contexts=["simple"], empty replyText and no action candidates. Request the catalog when those descriptions are needed to choose or explain a context; use the known names directly when the supplied instructions and live context already determine the route. This reads reference text, never app data or actions. Context names do not confer permission.',
+	].join("\n");
+	return notice.length < text.length
+		? { text, notice, loaded: false }
+		: undefined;
+}
+
 export const VOICE_ENGAGEMENT_RULES = [
 	"- shouldRespond=RESPOND for a completed caller question, request, substantive statement, or conversational continuation.",
 	"- This is a one-to-one conversation: respond naturally to acknowledgements, reactions, and brief follow-ups, including disagreement or requests to clarify your previous reply.",
@@ -49,46 +89,6 @@ export const VOICE_ENGAGEMENT_RULES = [
 	"- shouldRespond=STOP only when the caller explicitly asks the agent to disengage or end the conversation.",
 	"- Do not use IGNORE merely because the answer is brief, uncertain, or requires a tool.",
 ].join("\n");
-
-/**
- * Format the role-filtered context catalog as a compact bullet list for the
- * Stage 1 prompt. Each line includes the id plus compressed metadata that helps
- * Stage 1 pick generously without inventing contexts.
- */
-export function formatAvailableContextsForPrompt(
-	contexts: readonly ContextDefinition[],
-): string {
-	if (contexts.length === 0) {
-		return "(no contexts registered)";
-	}
-	return contexts
-		.map((definition) => {
-			const description = definition.description?.trim();
-			// Authorization has already filtered this catalog. Cache policy and
-			// enforcement metadata do not help the model select a task context.
-			const metadata = [
-				definition.label && definition.label !== definition.id
-					? `label=${definition.label}`
-					: undefined,
-				definition.aliases?.length
-					? `aliases=${definition.aliases.join(",")}`
-					: undefined,
-				definition.parent
-					? `parent=${definition.parent}`
-					: definition.parents?.length
-						? `parents=${definition.parents.join(",")}`
-						: undefined,
-				definition.sensitivity
-					? `sensitivity=${definition.sensitivity}`
-					: undefined,
-			].filter(Boolean);
-			const suffix = metadata.length > 0 ? ` [${metadata.join("; ")}]` : "";
-			return description
-				? `- ${definition.id}${suffix}: ${description}`
-				: `- ${definition.id}${suffix}`;
-		})
-		.join("\n");
-}
 
 export function formatRoleGateForPrompt(
 	roleGate: ContextDefinition["roleGate"],
@@ -136,6 +136,7 @@ export function renderMessageHandlerInstructions(
 		directMessage?: boolean;
 		voiceDirectMessage?: boolean;
 		responseHandlerFields?: string;
+		contextCatalog?: ContextCatalogReference;
 	},
 ): string {
 	const baseline = resolveOptimizedPromptForRuntime(
@@ -147,7 +148,9 @@ export function renderMessageHandlerInstructions(
 		state: {
 			agentName: runtime.character.name?.trim() || "the agent",
 			directMessage: options?.directMessage ? "true" : "",
-			availableContexts: formatAvailableContextsForPrompt(availableContexts),
+			availableContexts:
+				options?.contextCatalog?.notice ??
+				formatAvailableContextsForPrompt(availableContexts),
 			handleResponseToolName: HANDLE_RESPONSE_TOOL_NAME,
 		},
 		template: baseline,
@@ -184,6 +187,7 @@ export function renderMessageHandlerModelInput(
 		voiceDirectMessage?: boolean;
 		groupTriage?: boolean;
 		responseHandlerFields?: string;
+		contextCatalog?: ContextCatalogReference;
 	},
 ): {
 	messages: ChatMessage[];
@@ -246,6 +250,15 @@ export function renderMessageHandlerModelInput(
 				]
 			: []),
 		...dynamicProviderSegments,
+		...(options?.contextCatalog?.loaded
+			? [
+					{
+						id: "context-catalog-read",
+						content: `context_loaded: ${CONTEXT_CATALOG_REFERENCE}\nThe complete requested reference follows; do not request it again.\n${options.contextCatalog.text}`,
+						stable: false,
+					},
+				]
+			: []),
 		...turnTailSegments,
 	];
 	const stableWireSegments = [
