@@ -215,7 +215,9 @@ artifacts and failure behavior; do not substitute mocked success for the system
 under test.
 
 Contextual navigation preserves the entire original request and keeps domain
-operations in the planner. Planner-owned VIEWS steps pass
+operations in the planner. Both destination selection and its planner handoff
+use the complete authorized view/capability reference with interaction parameter
+schemas deferred; VIEWS list restores those schemas through a fresh authorized read. Planner-owned VIEWS steps pass
 `navigationIntent=planner-step` and a `navigationStepId`; each target is resolved
 against the current catalog, preserving registration, availability, and role
 gates. Navigation receipts remain separate from event, note, or task effects.

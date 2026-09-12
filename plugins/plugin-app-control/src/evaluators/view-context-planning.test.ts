@@ -384,79 +384,124 @@ describe("same-turn contextual navigation", () => {
 		},
 	);
 
-	it("defers interaction schemas in the navigation handoff and reads them completely from the live catalog", async () => {
-		const description = `${"Keep every user constraint. ".repeat(1200)}END`;
-		const capability = {
-			id: "save-observation",
-			description: "Save a telescope observation only with explicit approval.",
-			params: {
-				content: { type: "string", description, required: true },
-				confirm: {
-					type: "boolean",
-					description: "Explicit user approval",
-					enum: [true],
-					required: true,
-				},
-			},
-		};
-		extraViews = [
-			{
-				id: "observations",
-				label: "Observations",
-				pluginName: "astronomy",
-				available: true,
-				capabilities: [capability],
-			},
-		];
-		const ctx = context("Open Observations without changing records", {});
-		const result = await runWithField(ctx, {
-			disposition: "requested",
-			viewId: "observations",
-			reason: "explicit",
-		});
-		expect(result.errors).toEqual([]);
-		expect(result.navigationBlock).toBeUndefined();
-		const handoff = ctx.messageHandler.plan.contextSlices?.join("\n") ?? "";
-		expect(handoff).toContain(capability.id);
-		expect(handoff).toContain(capability.description);
-		expect(handoff).toContain('"paramsDeferred":true');
-		expect(handoff).toContain("complete current schema with VIEWS action=list");
-		expect(handoff).not.toContain(description);
-		expect(prompts).toEqual([]);
-		const listed = await runViewsList({ client: createViewsClient() });
-		expect(listed.success).toBe(true);
-		expect(listed.data).toMatchObject({
-			views: expect.arrayContaining([
-				expect.objectContaining({
-					id: "observations",
-					capabilities: [capability],
-				}),
-			]),
-		});
-		// Explicit discovery must see fresh schemas, not a stored projected copy.
-		extraViews[0].capabilities = [
-			{
-				...capability,
+	it.each([true, false])(
+		"defers interaction schemas before navigation while discovery stays complete (Stage 1 target=%s)",
+		async (stageOneTarget) => {
+			const description = `${"Keep every user constraint. ".repeat(1200)}END`;
+			const capability = {
+				id: "save-observation",
+				description:
+					"Save a telescope observation only with explicit approval.",
 				params: {
-					...capability.params,
-					content: {
-						...capability.params.content,
-						description: `${description} updated`,
+					content: { type: "string", description, required: true },
+					confirm: {
+						type: "boolean",
+						description: "Explicit user approval",
+						enum: [true],
+						required: true,
 					},
 				},
-			},
-		];
-		const refreshed = await runViewsList({ client: createViewsClient() });
-		expect(refreshed.data).toMatchObject({
-			views: expect.arrayContaining([
-				expect.objectContaining({
+			};
+			extraViews = [
+				{
 					id: "observations",
-					capabilities: extraViews[0].capabilities,
-				}),
-			]),
-		});
-		expect(requestedPaths).toEqual(["/api/views", "/api/views", "/api/views"]);
-	});
+					label: "Observations",
+					pluginName: "astronomy",
+					available: true,
+					capabilities: [capability],
+				},
+			];
+			const decision = {
+				disposition: "requested",
+				viewId: "observations",
+				reason: "explicit",
+			};
+			const ctx = context(
+				"Open Observations without changing records",
+				decision,
+			);
+			const result = stageOneTarget
+				? await runWithField(ctx, decision)
+				: await run(ctx);
+			expect(result.errors).toEqual([]);
+			expect(result.navigationBlock).toBeUndefined();
+			const handoff = ctx.messageHandler.plan.contextSlices?.join("\n") ?? "";
+			expect(handoff).toContain(capability.id);
+			expect(handoff).toContain(capability.description);
+			expect(handoff).toContain('"paramsDeferred":true');
+			expect(handoff).toContain(
+				"complete current schema with VIEWS action=list",
+			);
+			expect(handoff).not.toContain(description);
+			if (stageOneTarget) expect(prompts).toEqual([]);
+			else {
+				expect(prompts).toHaveLength(1);
+				const catalogLine = prompts[0]
+					.split("\n")
+					.find((line) => line.startsWith("Authorized live catalog: "));
+				if (!catalogLine)
+					throw new Error("Missing authorized catalog reference");
+				const modelCatalog = JSON.parse(
+					catalogLine.slice("Authorized live catalog: ".length),
+				);
+				expect(modelCatalog.map((view: ViewSummary) => view.id)).toEqual([
+					"observatory",
+					"observations",
+				]);
+				expect(modelCatalog[1]).toEqual({
+					...extraViews[0],
+					capabilities: [
+						{
+							id: capability.id,
+							description: capability.description,
+							paramsDeferred: true,
+						},
+					],
+				});
+				expect(prompts[0]).not.toContain(description);
+				expect(prompts[0]).toContain(
+					"complete current schema with VIEWS action=list",
+				);
+			}
+			const listed = await runViewsList({ client: createViewsClient() });
+			expect(listed.success).toBe(true);
+			expect(listed.data).toMatchObject({
+				views: expect.arrayContaining([
+					expect.objectContaining({
+						id: "observations",
+						capabilities: [capability],
+					}),
+				]),
+			});
+			// Explicit discovery must see fresh schemas, not a stored projected copy.
+			extraViews[0].capabilities = [
+				{
+					...capability,
+					params: {
+						...capability.params,
+						content: {
+							...capability.params.content,
+							description: `${description} updated`,
+						},
+					},
+				},
+			];
+			const refreshed = await runViewsList({ client: createViewsClient() });
+			expect(refreshed.data).toMatchObject({
+				views: expect.arrayContaining([
+					expect.objectContaining({
+						id: "observations",
+						capabilities: extraViews[0].capabilities,
+					}),
+				]),
+			});
+			expect(requestedPaths).toEqual([
+				"/api/views",
+				"/api/views",
+				"/api/views",
+			]);
+		},
+	);
 	it.each(["home", "Home", "chat"])(
 		"reuses a model-selected %s target through the canonical catalog alias without another call",
 		async (viewId) => {
