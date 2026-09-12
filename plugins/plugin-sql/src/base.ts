@@ -1725,8 +1725,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       // Build a condition to match any of the names
       const nameConditions = names.map((name) => sql`${name} = ANY(${entityTable.names})`);
 
+      // Alias snake_case driver columns to the camelCase Entity DTO keys.
+      // `db.execute` returns raw driver rows (e.g. `agent_id`), so a bare
+      // `SELECT *` would leave the required `agentId` field undefined. This
+      // mirrors the document-list query's `agent_id AS "agentId"` precedent.
       const query = sql`
-        SELECT * FROM ${entityTable}
+        SELECT
+          ${entityTable.id} AS "id",
+          ${entityTable.agentId} AS "agentId",
+          ${entityTable.names} AS "names",
+          ${entityTable.metadata} AS "metadata"
+        FROM ${entityTable}
         WHERE ${entityTable.agentId} = ${agentId}
         AND (${sql.join(nameConditions, sql` OR `)})
       `;
@@ -1774,9 +1783,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         }));
       }
 
-      // Otherwise, search for entities with names containing the query (case-insensitive)
+      // Otherwise, search for entities with names containing the query (case-insensitive).
+      // Alias snake_case driver columns to the camelCase Entity DTO keys so the
+      // required `agentId` survives `db.execute`, matching the empty-query
+      // Drizzle-builder branch above and the document-list query precedent.
       const searchQuery = sql`
-        SELECT * FROM ${entityTable}
+        SELECT
+          ${entityTable.id} AS "id",
+          ${entityTable.agentId} AS "agentId",
+          ${entityTable.names} AS "names",
+          ${entityTable.metadata} AS "metadata"
+        FROM ${entityTable}
         WHERE ${entityTable.agentId} = ${agentId}
         AND EXISTS (
           SELECT 1 FROM unnest(${entityTable.names}) AS name
