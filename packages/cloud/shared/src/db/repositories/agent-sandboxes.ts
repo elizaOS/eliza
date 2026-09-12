@@ -66,6 +66,7 @@ import { decryptAgentBackupStateData, encryptAgentBackupStateData } from "../cry
 import { ensureAgentSandboxSchema } from "../ensure-agent-sandbox-schema";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
+import { agentComputeStopIntents } from "../schemas/agent-compute-stop-intents";
 import {
   type AgentBackupSnapshotType,
   type AgentBackupStateData,
@@ -636,6 +637,27 @@ export class AgentSandboxesRepository {
       .where(eq(agentSandboxes.id, id))
       .limit(1);
     return r?.organizationId;
+  }
+
+  /** Distinguishes a completed user shutdown from a recoverable billing stop. */
+  async wasStoppedByUser(id: string, orgId: string): Promise<boolean> {
+    const [latest] = await dbWrite
+      .select({ authorization: agentComputeStopIntents.authorization })
+      .from(agentComputeStopIntents)
+      .where(
+        and(
+          eq(agentComputeStopIntents.agent_id, id),
+          eq(agentComputeStopIntents.organization_id, orgId),
+          eq(agentComputeStopIntents.status, "provider_confirmed"),
+          isNotNull(agentComputeStopIntents.provider_confirmed_at),
+        ),
+      )
+      .orderBy(
+        desc(agentComputeStopIntents.provider_confirmed_at),
+        desc(agentComputeStopIntents.id),
+      )
+      .limit(1);
+    return latest?.authorization === "user_request";
   }
 
   async findByIdAndOrg(id: string, orgId: string): Promise<AgentSandbox | undefined> {
@@ -1514,7 +1536,23 @@ export class AgentSandboxesRepository {
         // every write, including raw SQL writers, so no timestamp-precision
         // or same-millisecond ABA window exists (#17249 fence class).
         eq(agentSandboxes.lifecycle_revision, expectedRunningGeneration.lifecycleRevision),
+        hasNoProvisioningOwnerJob([...EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES]),
       );
+      // Enqueue takes this same lock before capturing the lifecycle revision.
+      // A probe must either commit first or yield to the accepted operation;
+      // otherwise a harmless heartbeat can supersede a queued user shutdown.
+      return dbWrite.transaction(async (tx) => {
+        await configureElizaLifecycleTransaction(tx);
+        await tx.execute(
+          elizaProvisionAdvisoryLockSql(expectedRunningGeneration.organizationId, id),
+        );
+        const [updated] = await tx
+          .update(agentSandboxes)
+          .set(updateData)
+          .where(and(...predicates))
+          .returning();
+        return updated;
+      });
     }
     const [r] = await dbWrite
       .update(agentSandboxes)

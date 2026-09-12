@@ -291,7 +291,8 @@ export async function runAgentSessionRecovery(
       res.status === 402 ||
       res.status === 403 ||
       res.status === 404 ||
-      data.data?.status === "error";
+      data.data?.status === "error" ||
+      data.data?.status === "stopped";
     if (requiresCloudManagement) {
       // These responses prove the account/agent needs attention, not that the
       // Cloud bearer is invalid. Preserve Cloud auth and route the user to the
