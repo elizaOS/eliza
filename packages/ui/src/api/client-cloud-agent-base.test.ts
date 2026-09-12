@@ -308,13 +308,20 @@ describe("cloud-agent-base helpers", () => {
         true,
       ),
     ).toBe(true);
+    expect(
+      isTrustedHostedCloudOnboardingBase(
+        "https://staging.eliza-app.pages.dev",
+        true,
+      ),
+    ).toBe(true);
   });
 
   it("rejects unbranded, insecure, self-hosted, and lookalike Pages bases", () => {
     for (const [base, cloudOnlyBranding] of [
+      ["https://staging.eliza-app.pages.dev", false],
       ["https://develop.eliza-app.pages.dev", false],
-      ["http://develop.eliza-app.pages.dev", true],
-      ["https://develop.eliza-app.pages.dev:8443", true],
+      ["http://staging.eliza-app.pages.dev", true],
+      ["https://staging.eliza-app.pages.dev:8443", true],
       ["https://eliza-app.pages.dev", true],
       ["https://preview.eliza-app.pages.dev", true],
       ["https://pr-30375.preview.eliza-app.pages.dev", true],
@@ -322,7 +329,7 @@ describe("cloud-agent-base helpers", () => {
       ["https://other-project.pages.dev", true],
       ["https://evil-eliza-app.pages.dev", true],
       ["https://eliza-app.pages.dev.evil.example", true],
-      ["https://develop.eliza-app.pages.dev/api/v1/eliza/agents/agent", true],
+      ["https://staging.eliza-app.pages.dev/api/v1/eliza/agents/agent", true],
     ] as const) {
       expect(isTrustedHostedCloudOnboardingBase(base, cloudOnlyBranding)).toBe(
         false,

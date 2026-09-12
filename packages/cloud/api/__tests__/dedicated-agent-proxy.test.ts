@@ -38,6 +38,7 @@ let creditGateResult: { allowed: boolean; balance: number; error?: string } = {
   balance: 100,
 };
 let enqueueCalls = 0;
+let wasStoppedByUser = false;
 type BrowserClaim =
   | {
       status: "claimed";
@@ -78,6 +79,7 @@ mock.module("@/db/repositories/agent-sandboxes", () => ({
   ...agentSandboxesActual,
   agentSandboxesRepository: {
     ...agentSandboxesActual.agentSandboxesRepository,
+    wasStoppedByUser: async () => wasStoppedByUser,
     findByIdAndOrg: async () => {
       sandboxDbCacheContexts.push(hasDbCacheContext());
       if (sandboxLookupError) throw sandboxLookupError;
@@ -257,6 +259,7 @@ beforeEach(() => {
   sandboxLookupError = null;
   creditGateResult = { allowed: true, balance: 100 };
   enqueueCalls = 0;
+  wasStoppedByUser = false;
   browserClaimResult = { status: "invalid" };
   browserClaimError = null;
   browserClaimCalls.length = 0;
@@ -1307,6 +1310,32 @@ describe("dedicated-agent-proxy — unified auth", () => {
         error: "sandbox lookup failed",
       },
     });
+    expect(captured).toBeNull();
+  });
+
+  test("an open app cannot restart an agent shut down by its user", async () => {
+    authResult = { user: { id: "u1", organization_id: "org1" } };
+    sandboxResult = { ...runningDedicated, status: "stopped" };
+    wasStoppedByUser = true;
+    const request = makeRequest(
+      "cloud-token",
+      "https://app-staging.elizacloud.ai",
+    );
+    const response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      code: "agent_stopped",
+      data: { status: "stopped" },
+    });
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "https://app-staging.elizacloud.ai",
+    );
+    expect(enqueueCalls).toBe(0);
     expect(captured).toBeNull();
   });
 

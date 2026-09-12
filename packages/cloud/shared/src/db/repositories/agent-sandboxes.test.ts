@@ -313,6 +313,7 @@ describe("AgentSandboxesRepository", () => {
 
   test("heartbeat writeback is fenced to the exact running generation and loses to deletion", async () => {
     capturedWhere = undefined;
+    useTransactionMock = true;
 
     const { AgentSandboxesRepository } = await import("./agent-sandboxes");
 

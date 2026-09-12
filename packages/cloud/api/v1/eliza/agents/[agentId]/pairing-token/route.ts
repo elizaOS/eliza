@@ -266,6 +266,27 @@ async function __hono_POST(
     }
 
     if (sandbox.status !== "running") {
+      if (
+        sandbox.status === "stopped" &&
+        (await agentSandboxesRepository.wasStoppedByUser(
+          agentId,
+          user.organization_id,
+        ))
+      ) {
+        return applyCorsHeaders(
+          Response.json(
+            {
+              success: false,
+              code: "agent_stopped",
+              error:
+                "This agent is shut down. Start it from Cloud settings when you are ready.",
+              data: { status: "stopped" },
+            },
+            { status: 409 },
+          ),
+          CORS_METHODS,
+        );
+      }
       // Agent is pending/provisioning/stopped/disconnected — kick off (or
       // detect in-flight) provisioning and tell the client to retry.
       let jobId: string | undefined;

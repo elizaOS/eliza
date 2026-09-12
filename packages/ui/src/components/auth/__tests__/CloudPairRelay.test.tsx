@@ -407,7 +407,13 @@ describe("CloudPairRelay", () => {
       resolveCloudHostedAgentUrl({
         hostname: "app-staging.elizacloud.ai",
       }),
-    ).toBe("https://cloud-staging.eliza.app/cloud/agents");
+    ).toBe("https://cloud-staging.eliza.app/join");
+    expect(
+      resolveCloudHostedAgentUrl({ hostname: "cloud-staging.eliza.app" }),
+    ).toBe("https://cloud-staging.eliza.app/join");
+    expect(resolveCloudHostedAgentUrl({ hostname: "cloud.eliza.app" })).toBe(
+      "https://cloud.eliza.app/join",
+    );
   });
 });
 

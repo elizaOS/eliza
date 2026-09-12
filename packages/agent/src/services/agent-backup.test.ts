@@ -103,6 +103,15 @@ async function writeFixtureState(
     path.join(root, "skills", "active.json"),
     '{"skills":[]}\n',
   );
+  await fs.mkdir(path.join(root, "skills", ".cache"), { recursive: true });
+  await fs.writeFile(
+    path.join(root, "skills", ".cache", "catalog.json"),
+    "downloadable catalog",
+  );
+  await fs.writeFile(
+    path.join(root, "skills", ".cache", "lock.json"),
+    '{"installed":"pinned"}',
+  );
   // Re-downloadable model weights / caches must never enter stateFiles (#17920).
   await fs.mkdir(path.join(root, "models"), { recursive: true });
   await fs.writeFile(
@@ -198,6 +207,8 @@ describe("agent backup manifest", () => {
     expect(pgliteFilePaths).not.toContain("eliza-pglite.lock");
     expect(pgliteFilePaths).not.toContain("pg_stat_tmp/stats.tmp");
     expect(stateFilePaths).toContain("skills/active.json");
+    expect(stateFilePaths).toContain("skills/.cache/lock.json");
+    expect(stateFilePaths).not.toContain("skills/.cache/catalog.json");
     expect(stateFilePaths).not.toContain("pglite/pgdata.bin");
     // #17920: models + cache trees are excluded from the stateFiles manifest.
     expect(stateFilePaths).not.toContain("models/openai.json");
@@ -539,6 +550,49 @@ describe("source-side snapshot budget (#17172 §1)", () => {
     const snapshot = await createAgentSnapshot(runtime(), config);
     expect(snapshot.manifest.components.media.files.length).toBeGreaterThan(0);
   });
+
+  test.each(["bytes", "files"] as const)(
+    "generated plugin imports do not exhaust the %s budget or discard plugin state",
+    async (limit) => {
+      const { root } = await fixtureRoot();
+      const generated = path.join(
+        root,
+        "plugins",
+        ".runtime-imports",
+        "plugin",
+      );
+      await fs.mkdir(generated, { recursive: true });
+      if (limit === "bytes") {
+        await fs.writeFile(
+          path.join(generated, "bundle.js"),
+          Buffer.alloc(128 * 1024),
+        );
+      } else {
+        await Promise.all(
+          Array.from({ length: 40 }, (_, i) =>
+            fs.writeFile(path.join(generated, `${i}.js`), "cache"),
+          ),
+        );
+      }
+      const retainedPath = "plugins/.runtime-imports-user.json";
+      await fs.writeFile(
+        path.join(root, retainedPath),
+        "user-owned plugin settings",
+      );
+      const snapshot = await createAgentSnapshot(runtime(), config, {
+        maxRawBytes: 64 * 1024,
+        maxFiles: 30,
+      });
+      const files = snapshot.manifest.components.stateFiles.files;
+      expect(
+        files.some((file) => file.path.startsWith("plugins/.runtime-imports/")),
+      ).toBe(false);
+      expect(
+        files.find((file) => file.path === retainedPath)?.bytesBase64,
+      ).toBe(Buffer.from("user-owned plugin settings").toString("base64"));
+      expect(await fs.readdir(generated)).not.toHaveLength(0);
+    },
+  );
 
   test("charges the in-memory character and legacy config projections", async () => {
     await fixtureRoot();

@@ -1,6 +1,36 @@
 /** Classifies the terminal dedicated-agent proxy failure that requires choosing another Cloud agent. */
 
-import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
+import {
+  dedicatedCloudAgentIdFromBase,
+  isDedicatedCloudAgentBase,
+  resolveCloudEnvironmentBase,
+} from "../utils/cloud-agent-base";
+import type { StartupErrorState } from "./types";
+
+/** A deliberate shutdown needs management, not warmup or a new agent selection. */
+export function describeStoppedDedicatedCloudAgent(args: {
+  status?: number;
+  code?: string;
+  clientBaseUrl: string;
+  phase: StartupErrorState["phase"];
+}): StartupErrorState | null {
+  if (
+    args.status !== 409 ||
+    args.code !== "agent_stopped" ||
+    !isDedicatedCloudAgentBase(args.clientBaseUrl)
+  ) {
+    return null;
+  }
+  return {
+    reason: "agent-stopped",
+    phase: args.phase,
+    status: 409,
+    message: "Your Dedicated agent is shut down.",
+    cloudAgentId:
+      dedicatedCloudAgentIdFromBase(args.clientBaseUrl) ?? undefined,
+    cloudManagementUrl: `${resolveCloudEnvironmentBase({ apiBase: args.clientBaseUrl })}/join`,
+  };
+}
 
 const LEGACY_ERROR_STATE_FRAGMENT = "Agent is in an error state";
 const CONTROL_PLANE_STATES = new Set([

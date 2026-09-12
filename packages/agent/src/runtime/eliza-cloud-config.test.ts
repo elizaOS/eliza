@@ -842,6 +842,29 @@ describe("unsigned Cloud inference fallback (#20045)", () => {
 });
 
 describe("provisioned cloud container topology (#9887)", () => {
+  it("keeps managed launch credentials when restoring an older Cloud config", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    process.env.ELIZAOS_CLOUD_API_KEY = "current-managed-key";
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api-staging.eliza.app/api/v1";
+    const config: ElizaConfig = {
+      cloud: {
+        enabled: true,
+        apiKey: "revoked-snapshot-key",
+        baseUrl: "https://api-staging.elizacloud.ai/api/v1",
+        agentId: "agent-test",
+      },
+    } as ElizaConfig;
+
+    applyCloudConfigToEnv(config);
+
+    expect(config.cloud?.apiKey).toBe("current-managed-key");
+    expect(config.cloud?.baseUrl).toBe("https://api-staging.eliza.app/api/v1");
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe("current-managed-key");
+    expect(process.env.ELIZAOS_CLOUD_BASE_URL).toBe(
+      "https://api-staging.eliza.app/api/v1",
+    );
+  });
+
   it("repairs a cloud-provisioned config that lost canonical routing fields", () => {
     process.env.ELIZA_CLOUD_PROVISIONED = "1";
     process.env.ELIZAOS_CLOUD_SMALL_MODEL = "small-test";
