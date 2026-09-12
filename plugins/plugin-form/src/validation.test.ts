@@ -20,6 +20,7 @@ import type { FormControl, ValidationResult } from "./types";
 import {
   MAX_CONTROL_PATTERN_INPUT_LENGTH,
   MAX_CONTROL_PATTERN_LENGTH,
+  formatValue,
   testControlPattern,
   validateField,
 } from "./validation";
@@ -298,6 +299,40 @@ describe("control-pattern execution deadline (out of process)", () => {
         PER_CASE_BUDGET_MS,
       );
       expect(entry.builtinMs, entry.name).toBeLessThan(PER_CASE_BUDGET_MS);
+    }
+  });
+});
+
+describe("formatValue boolean rendering", () => {
+  const booleanControl = (): FormControl => ({
+    key: "agree",
+    label: "Agree",
+    type: "boolean",
+  });
+
+  it.each([
+    [true, "Yes"],
+    [false, "No"],
+    ["true", "Yes"],
+    ["false", "No"],
+    ["yes", "Yes"],
+    ["no", "No"],
+    ["1", "Yes"],
+    ["0", "No"],
+    ["on", "Yes"],
+    ["off", "No"],
+    ["TRUE", "Yes"],
+    ["FALSE", "No"],
+  ])("renders %s as %s", (value: boolean | string, expected: string) => {
+    expect(formatValue(value, booleanControl())).toBe(expected);
+  });
+
+  it("agrees with validateField: every accepted string boolean renders its meaning", () => {
+    for (const value of ["true", "false", "yes", "no", "1", "0", "on", "off"]) {
+      expect(validateField(value, booleanControl()).valid).toBe(true);
+      const rendered = formatValue(value, booleanControl());
+      const falsy = ["false", "no", "0", "off"];
+      expect(rendered).toBe(falsy.includes(value.toLowerCase()) ? "No" : "Yes");
     }
   });
 });
