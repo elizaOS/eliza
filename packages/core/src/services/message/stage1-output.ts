@@ -8,6 +8,7 @@ import { ElizaError } from "../../errors";
 import {
 	normalizeReplyEffectStatus,
 	normalizeTopics,
+	readCompleteStringHints,
 } from "../../runtime/builtin-field-evaluators";
 import type { CandidateActionBackstopRule } from "../../runtime/candidate-action-backstop";
 import { parseCompletionContextSelection } from "../../runtime/completion-context";
@@ -31,7 +32,6 @@ import { canonicalPlannerControlActionName } from "./action-identifiers.js";
 import {
 	getMessageHandlerCandidateActions,
 	messageHandlerStageOneReplyContexts,
-	stringArrayProperty,
 } from "./action-surface.js";
 import {
 	looksLikeCodingWorkRequest,
@@ -204,7 +204,23 @@ export function normalizeRawParsedForFieldRegistry(
 	if (normalized.topics === undefined) {
 		normalized.topics = Array.isArray(extract?.topics) ? extract.topics : [];
 	}
+	// Reject malformed scope before any plugin field can perform work.
+	normalized.intents = requireCompleteIntents(normalized.intents);
 	return normalized;
+}
+
+function requireCompleteIntents(value: unknown): string[] {
+	const intents = readCompleteStringHints(value);
+	if (intents === null) {
+		throw new ElizaError(
+			"HANDLE_RESPONSE intents must be an array of strings",
+			{
+				code: "INVALID_MESSAGE_HANDLER_INTENTS",
+				context: { field: "intents" },
+			},
+		);
+	}
+	return intents;
 }
 
 /**
@@ -320,7 +336,10 @@ export function messageHandlerFromFieldResult(
 	const replyEffectStatus = normalizeReplyEffectStatus(
 		result.replyEffectStatus,
 	);
-	const declaredIntents = stringArrayProperty(result.intents);
+	const declaredIntents = requireCompleteIntents(result.intents);
+	const actionableIntents = declaredIntents.filter(
+		(intent) => intent.trim().length > 0,
+	);
 	const modelRequiresTool = result.requiresTool === true;
 	const hasRunnableCandidateAction = candidateActionsContainRunnableAction(
 		candidateActions,
@@ -376,7 +395,7 @@ export function messageHandlerFromFieldResult(
 			stageOneCandidateActions: rawCandidateActions,
 			stageOneReplyEffectStatus:
 				result.replyEffectStatus === undefined ? undefined : replyEffectStatus,
-			stageOneIntents: declaredIntents,
+			stageOneIntents: actionableIntents,
 		})
 			? []
 			: directCurrentInference.names;
@@ -485,7 +504,7 @@ export function messageHandlerFromFieldResult(
 	const unservedDeclaredIntent =
 		!preemptDirect &&
 		!subAgentCompletionRelay &&
-		declaredIntents.length > 0 &&
+		actionableIntents.length > 0 &&
 		initialPlanningContexts.length === 0 &&
 		validCandidateCount === 0 &&
 		replyEffectStatus !== "non_applied";

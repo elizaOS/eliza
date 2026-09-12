@@ -8048,6 +8048,128 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(checkHandler).toHaveBeenCalledTimes(1);
 	});
 
+	it("preserves long and repeated native intents through field dispatch into planning", async () => {
+		const intents = [
+			"delete the owner reminder Handler instruction QA 20260911 2155 by its ID and confirm the deletion",
+			" Keep the case-sensitive label Handler QA unchanged! ",
+			" Keep the case-sensitive label Handler QA unchanged! ",
+		];
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["general"],
+				intents,
+				candidateActionNames: ["CHECK_RUNTIME"],
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{ id: "intent-check", name: "CHECK_RUNTIME", arguments: {} },
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "The requested check completed.",
+				messageToUser: "Checked.",
+			}),
+		]);
+		const handler = vi.fn(async () => ({ success: true, text: "Checked." }));
+		runtime.actions = [
+			{
+				name: "CHECK_RUNTIME",
+				description: "Check the runtime.",
+				contexts: ["general"],
+				validate: async () => true,
+				handler,
+			},
+		] as IAgentRuntime["actions"];
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("planned_reply");
+		const planner = useModelCalls(runtime)[1]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		expect(
+			planner.messages?.map((entry) => entry.content ?? "").join("\n"),
+		).toContain(`"intents":${JSON.stringify(intents)}`);
+		expect(handler).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not turn a long actionable intent into a simple completed reply", async () => {
+		const intent =
+			"inspect the current runtime configuration and report whether the original owner settings are still applied";
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				intents: [intent],
+				replyText: "Everything is checked.",
+			}),
+			JSON.stringify({
+				thought: "No inspection tool is available.",
+				toolCalls: [],
+				messageToUser:
+					"I cannot inspect the current configuration with the available tools.",
+			}),
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("planned_reply");
+		expect(useModelCalls(runtime)[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
+	});
+
+	it("keeps blank native intent entries from forcing an unnecessary planner call", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				intents: ["", "  "],
+				replyText: "Hello.",
+			}),
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+	});
+
+	it("rejects malformed native intents before field handlers can perform work", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				extra: { intents: ["check runtime", 42], testEffect: true },
+			}),
+		]);
+		const handle = vi.fn(async () => undefined);
+		runtime.responseHandlerFieldRegistry.register({
+			name: "testEffect",
+			description: "Test field effect.",
+			priority: 1,
+			schema: { type: "boolean" },
+			parse: (value) => value === true,
+			handle,
+		});
+		await expect(
+			runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			}),
+		).rejects.toMatchObject({ code: "INVALID_MESSAGE_HANDLER_INTENTS" });
+		expect(handle).not.toHaveBeenCalled();
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+	});
+
 	it("dispatches response-handler field preemption before planner routing", async () => {
 		const runtime = makeRuntime([
 			stage1Response({

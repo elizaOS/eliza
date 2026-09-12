@@ -14,6 +14,7 @@ import type { AgentContext } from "../types/contexts";
 import {
 	normalizeReplyEffectStatus,
 	normalizeTopics,
+	readCompleteStringHints,
 } from "./builtin-field-evaluators";
 import { parseCompletionContextSelection } from "./completion-context";
 import { parseJsonObject, stripJsonStructuralJunkReply } from "./json-output";
@@ -197,14 +198,6 @@ function parseMessageHandlerFieldTranscript(
 		thought: "",
 		...(extract ? { extract } : {}),
 	};
-}
-
-function readCompleteStringHints(raw: unknown): string[] | null {
-	if (raw === undefined || raw === null) return [];
-	if (!Array.isArray(raw) || raw.some((item) => typeof item !== "string")) {
-		return null;
-	}
-	return [...raw];
 }
 
 function parseExtract(raw: unknown): MessageHandlerExtract | undefined {

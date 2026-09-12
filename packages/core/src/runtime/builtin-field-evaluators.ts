@@ -32,7 +32,6 @@ import type {
 	ReplyEffectStatus,
 } from "../types/components";
 import type { JSONSchema } from "../types/model";
-import { trimEndCharacters } from "../utils/string-boundaries";
 import {
 	COMPLETION_CONTEXT_SCHEMA,
 	parseCompletionContextSelection,
@@ -141,6 +140,15 @@ export const contextsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 // intents — priority 15. NEW field.
 // ---------------------------------------------------------------------------
 
+/** Validate ordered model hints without rewriting their text or dropping outcomes. */
+export function readCompleteStringHints(raw: unknown): string[] | null {
+	if (raw === undefined || raw === null) return [];
+	if (!Array.isArray(raw) || raw.some((item) => typeof item !== "string")) {
+		return null;
+	}
+	return [...raw];
+}
+
 export const intentsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	name: "intents",
 	description:
@@ -154,25 +162,7 @@ export const intentsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 		description:
 			"Every requested outcome as a short verb-led intent, including navigation separately from data changes. Lowercase; no punctuation.",
 	},
-	parse(value) {
-		if (!Array.isArray(value)) return [];
-		const seen = new Set<string>();
-		const result: string[] = [];
-		for (const item of value) {
-			const normalized = trimEndCharacters(
-				String(item ?? "")
-					.trim()
-					.toLowerCase(),
-				".!?",
-			);
-			if (!normalized || normalized.length > 80) continue;
-			const key = normalized;
-			if (seen.has(key)) continue;
-			seen.add(key);
-			result.push(normalized);
-		}
-		return result;
-	},
+	parse: readCompleteStringHints,
 };
 
 export const contextRequestsFieldEvaluator: ResponseHandlerFieldEvaluator<
