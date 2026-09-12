@@ -373,6 +373,106 @@ describe("CloudAgentsSection lifecycle (suspend/resume)", () => {
     );
   });
 
+  it("keeps queued shutdown visible beyond the old polling window until stopped", async () => {
+    clientMock.suspendCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: { jobId: "job-s", status: "queued", message: "Suspend enqueued" },
+    });
+    let polls = 0;
+    clientMock.getCloudCompatAgentStatus.mockImplementation(async () =>
+      statusResponse(++polls < 7 ? "running" : "stopped"),
+    );
+    await renderWithAgents([agent({ status: "running" })]);
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        fireEvent.click(
+          screen.getByRole("button", { name: "Shut down Old Name" }),
+        );
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(18_000);
+      });
+      expect(
+        screen.getByTestId("cloud-agent-status-agent-1").textContent,
+      ).toContain("Shutting down");
+      expect(
+        screen
+          .getByRole("button", { name: "Rename Old Name" })
+          .hasAttribute("disabled"),
+      ).toBe(true);
+      expect(
+        screen.queryByRole("button", { name: "Start Old Name" }),
+      ).toBeNull();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3_000);
+      });
+      expect(screen.getByTestId("cloud-agent-status-agent-1").textContent).toBe(
+        "Stopped",
+      );
+      expect(
+        screen
+          .getByRole("button", { name: "Start Old Name" })
+          .hasAttribute("disabled"),
+      ).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("surfaces a failed status poll instead of losing the async error", async () => {
+    clientMock.suspendCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: { jobId: "job-s", status: "queued", message: "Suspend enqueued" },
+    });
+    clientMock.getCloudCompatAgentStatus.mockRejectedValue(
+      new Error("Status service unavailable"),
+    );
+    await renderWithAgents([agent({ status: "running" })]);
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        fireEvent.click(
+          screen.getByRole("button", { name: "Shut down Old Name" }),
+        );
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3_000);
+      });
+      expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+        "Status service unavailable",
+        "error",
+        expect.any(Number),
+      );
+      expect(
+        screen
+          .getByRole("button", { name: "Rename Old Name" })
+          .hasAttribute("disabled"),
+      ).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("recognizes a managed Dedicated remote as active and protects it from deletion", async () => {
+    persistenceMock.loadPersistedActiveServer.mockReturnValue({
+      kind: "remote",
+      id: "remote:dedicated",
+      apiBase: "https://api-staging.eliza.app/api/v1/eliza/agents/agent-1",
+      label: "Old Name",
+    });
+    await renderWithAgents([agent({ status: "running" })]);
+    expect(screen.getByText("Active · this device")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Use", exact: true }),
+    ).toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: "Delete Old Name" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
   it("surfaces an error when suspend fails (e.g. 404 with no direct path)", async () => {
     clientMock.suspendCloudCompatAgent.mockResolvedValue({
       success: false,
@@ -433,12 +533,12 @@ describe("CloudAgentsSection lifecycle (suspend/resume)", () => {
       screen.getByLabelText("Shut down Old Name", { selector: "button" }),
     );
     await waitFor(() =>
-      expect(screen.getByTestId("cloud-agent-status-agent-1").textContent).toBe(
-        "Stopping",
-      ),
+      expect(
+        screen.getByTestId("cloud-agent-status-agent-1").textContent,
+      ).toContain("Shutting down"),
     );
 
-    // The fire-and-forget poll reconciles the row to the real server state
+    // The lifecycle poll reconciles the row to the real server state
     // without a manual Refresh.
     await waitFor(
       () =>
