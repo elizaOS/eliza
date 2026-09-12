@@ -692,6 +692,21 @@ async function resumeAndRespond(
 
   let jobId: string | undefined;
   let alreadyInProgress = false;
+  if (
+    sandbox.status === "stopped" &&
+    (await agentSandboxesRepository.wasStoppedByUser(agentId, orgId))
+  ) {
+    return Response.json(
+      {
+        success: false,
+        code: "agent_stopped",
+        error:
+          "This agent is shut down. Start it from Cloud settings when you are ready.",
+        data: { status: "stopped" },
+      },
+      { status: 409 },
+    );
+  }
   if (RESUMABLE_STATUSES.has(sandbox.status)) {
     // A suspended / zero-balance org must NOT get free compute by hitting its
     // own agent subdomain. Gate the auto-resume on credits, mirroring the
