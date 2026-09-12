@@ -197,7 +197,6 @@ const {
   mcpOrgRateLimitRedisKey,
   rateLimitExceededPayload,
   rateLimitExceededResponse,
-  OrgRateLimitCacheNotReadyError,
   withRateLimit,
 } = await import("./rate-limit");
 
@@ -290,7 +289,7 @@ describe("enforceOrgRateLimit lease (#9899 Tier-3)", () => {
     expect(tierReads).toBe(0);
   });
 
-  test("cache-only mode uses the cached tier and Durable Object without Redis", async () => {
+  test("Worker mode uses the primary tier and Durable Object without Redis", async () => {
     process.env.REDIS_RATE_LIMITING = "false";
     const org = uid();
     expect(
@@ -299,7 +298,7 @@ describe("enforceOrgRateLimit lease (#9899 Tier-3)", () => {
         executionCtx: { waitUntil: () => undefined },
       }),
     ).toBeNull();
-    expect(tierReads).toBe(1);
+    expect(tierReads).toBe(0);
     expect(admissionChecks).toBe(1);
     expect(admissionRequests).toEqual([
       {
@@ -312,18 +311,17 @@ describe("enforceOrgRateLimit lease (#9899 Tier-3)", () => {
     expect(redisChecks).toBe(0);
   });
 
-  test("cache-only mode surfaces warming without contacting Redis", async () => {
+  test("a cold auxiliary tier does not reject a current primary-policy decision", async () => {
     tierCacheResolution = { kind: "warming", cacheRead: "miss" };
-    const result = enforceOrgRateLimit(uid(), "completions", {
-      cacheOnly: true,
-      executionCtx: { waitUntil: () => undefined },
-    });
-    await expect(result).rejects.toBeInstanceOf(OrgRateLimitCacheNotReadyError);
-    await expect(result).rejects.toMatchObject({
-      state: "warming",
-      cacheRead: "invalid",
-    });
-    expect(admissionChecks).toBe(0);
+    await expect(
+      enforceOrgRateLimit(uid(), "completions", {
+        cacheOnly: true,
+        executionCtx: { waitUntil: () => undefined },
+      }),
+    ).resolves.toBeNull();
+    expect(admissionRequests[0]?.maxRequests).toBe(policyRpm);
+    expect(admissionChecks).toBe(1);
+    expect(tierReads).toBe(0);
     expect(redisChecks).toBe(0);
   });
 
@@ -447,7 +445,7 @@ describe("enforceOrgRateLimit lease (#9899 Tier-3)", () => {
     expect(redisChecks).toBe(0);
     expect(admissionChecks).toBe(0);
   });
-  test("stale cache-only stamp warms current observations and retry uses the changed policy", async () => {
+  test("without a supplied observation the first request uses changed primary policy", async () => {
     policyAuthority = { ...initialAuthority, generation: "2" };
     policyRpm = 3;
     const org = uid();
@@ -456,16 +454,12 @@ describe("enforceOrgRateLimit lease (#9899 Tier-3)", () => {
       cacheOnly: true,
       executionCtx: { waitUntil: (work: Promise<unknown>) => background.push(work) },
     };
-    await expect(enforceOrgRateLimit(org, "completions", options)).rejects.toMatchObject({
-      state: "warming",
-      cacheRead: "invalid",
-    });
-    expect(admissionChecks).toBe(0);
+    await expect(enforceOrgRateLimit(org, "completions", options)).resolves.toBeNull();
+    expect(admissionChecks).toBe(1);
     expect(redisChecks).toBe(0);
     await Promise.all(background);
-    expect(regenerations).toBe(1);
-    expect(snapshotWarms).toBe(1);
-    expect(await enforceOrgRateLimit(org, "completions", options)).toBeNull();
+    expect(regenerations).toBe(0);
+    expect(snapshotWarms).toBe(0);
     expect(admissionRequests.map((request) => request.maxRequests)).toEqual([3]);
   });
 
