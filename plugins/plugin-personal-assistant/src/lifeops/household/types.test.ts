@@ -10,5 +10,6 @@ describe("formatTimezoneOffsetToken", () => {
     expect(formatTimezoneOffsetToken("GMT-5")).toBe("-05:00");
     expect(formatTimezoneOffsetToken("GMT-00:44:30")).toBe("-00:45");
     expect(formatTimezoneOffsetToken("GMT+00:19:32")).toBe("+00:20");
+    expect(formatTimezoneOffsetToken("GMT-09:59:36")).toBe("-10:00");
   });
 });

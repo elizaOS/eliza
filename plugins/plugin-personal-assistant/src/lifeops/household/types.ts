@@ -440,12 +440,10 @@ export function formatTimezoneOffsetToken(value: string): string {
     );
   }
   const sign = match[1] === "+" ? "+" : "-";
-  const hoursNum = Number(match[2]);
-  let minutesNum = Number(match[3] ?? "0");
-  const secondsNum = Number(match[4] ?? "0");
-  minutesNum += Math.round(secondsNum / 60);
-  const hours = String(hoursNum).padStart(2, "0");
-  const minutes = String(minutesNum).padStart(2, "0");
+  const totalSeconds = Number(match[2]) * 3600 + Number(match[3] ?? "0") * 60 + Number(match[4] ?? "0");
+  const totalMinutes = Math.round(totalSeconds / 60);
+  const hours = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
+  const minutes = String(totalMinutes % 60).padStart(2, "0");
   return `${sign}${hours}:${minutes}`;
 }
 
@@ -467,10 +465,12 @@ function timezoneOffsetAt(instant: Date, timezone: string): string {
   try {
     return formatTimezoneOffsetToken(value);
   } catch (err) {
+    // error-policy:J2
     throw new HouseholdCoordinationError(
       "Could not resolve the IANA time-zone offset at the supplied instant",
       "HOUSEHOLD_INVALID_CONTRACT",
       { timezone, instant: instant.toISOString() },
+      err,
     );
   }
 }
