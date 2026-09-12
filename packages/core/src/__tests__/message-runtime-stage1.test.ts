@@ -1896,8 +1896,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		).toBe(true);
 		const systemContent = String(params.messages?.[0]?.content ?? "");
 		expect(systemContent).toContain("voice engagement rules:");
+		expect(systemContent).toContain("Plan this direct message");
+		expect(systemContent).not.toContain("response_precedence:");
 		expect(systemContent).toContain(
-			"shouldRespond=IGNORE for content-free acknowledgements, non-speech/noise",
+			"shouldRespond=IGNORE only for non-speech/noise",
 		);
 		expect(systemContent).toContain("### facts");
 	});
@@ -2918,12 +2920,17 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(plannerUserContent).toContain(
 			'"candidateActions":["TASKS_SPAWN_AGENT"]',
 		);
+		// Progressive surface: the explicit candidate's family is exposed, FILE
+		// stays discoverable, and the discovery tool is not reported as a parent.
 		expect(plannerUserContent).toContain(
-			'"tierAParents":["FILE","TASKS_SPAWN_AGENT"]',
+			'"tierAParents":["TASKS_SPAWN_AGENT"]',
+		);
+		expect(plannerUserContent).toContain(
+			'"discoveryToolName":"DISCOVER_TOOLS"',
 		);
 	});
 
-	it("executes an umbrella action directly when the planner supplies its dispatcher enum", async () => {
+	it("keeps the complete umbrella dispatcher and its children when duplicate child schemas exceed the estimated budget", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				thought: "A coding task should be delegated.",
@@ -2972,7 +2979,10 @@ describe("runV5MessageRuntimeStage1", () => {
 						name: "action",
 						description: "Task operation",
 						required: false,
-						schema: { type: "string", enum: ["create", "spawn_agent"] },
+						schema: {
+							type: "string",
+							enum: ["create", "spawn_agent", "archive"],
+						},
 					},
 					{
 						name: "task",
@@ -2981,7 +2991,7 @@ describe("runV5MessageRuntimeStage1", () => {
 						schema: { type: "string" },
 					},
 				],
-				subActions: ["TASKS_SPAWN_AGENT"],
+				subActions: ["TASKS_SPAWN_AGENT", "TASKS_ARCHIVE"],
 				examples: [],
 				validate: async () => true,
 				handler: parentHandler,
@@ -2998,6 +3008,14 @@ describe("runV5MessageRuntimeStage1", () => {
 						schema: { type: "string" },
 					},
 				],
+				examples: [],
+				validate: async () => true,
+				handler: childHandler,
+			},
+			{
+				name: "TASKS_ARCHIVE",
+				description: `Archive a task. ${"Complete child instruction. ".repeat(6000)}`,
+				parameters: [],
 				examples: [],
 				validate: async () => true,
 				handler: childHandler,
@@ -3020,6 +3038,20 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(result.kind).toBe("planned_reply");
 		expect(parentHandler).toHaveBeenCalledTimes(1);
 		expect(childHandler).not.toHaveBeenCalled();
+		const plannerInput = useModelCalls(runtime).find(
+			(call) => call[0] === ModelType.ACTION_PLANNER,
+		)?.[1] as { tools: Array<{ name: string; parameters: unknown }> };
+		expect(plannerInput.tools.map((tool) => tool.name)).toContain("TASKS");
+		// An estimate is diagnostic, not permission to discard authorized tools:
+		// the oversized child stays on the surface beside its umbrella.
+		expect(plannerInput.tools.map((tool) => tool.name)).toContain(
+			"TASKS_ARCHIVE",
+		);
+		expect(
+			JSON.stringify(
+				plannerInput.tools.find((tool) => tool.name === "TASKS")?.parameters,
+			),
+		).toContain("spawn_agent");
 		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
 			ModelType.RESPONSE_HANDLER,
 			ModelType.ACTION_PLANNER,
@@ -7828,7 +7860,14 @@ describe("runV5MessageRuntimeStage1", () => {
 		};
 		const toolNames = plannerParams.tools?.map((tool) => tool.name) ?? [];
 		expect(toolNames).toContain("CHECK_RUNTIME");
-		expect(toolNames).toContain("SHELL");
+		// The progressive surface exposes Stage 1's families and keeps every other
+		// authorized action discoverable: the complete catalog rides in
+		// DISCOVER_TOOLS, so a ranking hint still cannot remove SHELL.
+		expect(toolNames).toContain("DISCOVER_TOOLS");
+		const discoveryTool = plannerParams.tools?.find(
+			(tool) => tool.name === "DISCOVER_TOOLS",
+		) as { description?: string } | undefined;
+		expect(discoveryTool?.description ?? "").toContain("SHELL");
 		expect(
 			plannerParams.messages
 				?.map((entry) => String(entry.content ?? ""))
@@ -8893,17 +8932,20 @@ describe("verified read actions own the turn's single user-facing message", () =
 		expect(calendarHandler).toHaveBeenCalledTimes(1);
 		expect(distractorHandler).not.toHaveBeenCalled();
 		// Stage-1 hints do not authorize catalog removal: the planner receives
-		// every eligible action and its tool call determines which one executes.
+		// the selected family directly and every other eligible action through
+		// DISCOVER_TOOLS, whose catalog lists them; its tool call determines
+		// which one executes.
 		const plannerParams = calls[1]?.[1] as {
-			tools?: Array<{ name: string }>;
+			tools?: Array<{ name: string; description?: string }>;
 		};
 		expect(plannerParams.tools?.map((tool) => tool.name)).toEqual(
-			expect.arrayContaining([
-				"CALENDAR",
-				"SCHEDULED_HOUSEHOLD_DISTRACTOR",
-				"WEEKLY_BRIEF_DISTRACTOR",
-			]),
+			expect.arrayContaining(["CALENDAR", "DISCOVER_TOOLS"]),
 		);
+		const discoveryCatalog =
+			plannerParams.tools?.find((tool) => tool.name === "DISCOVER_TOOLS")
+				?.description ?? "";
+		expect(discoveryCatalog).toContain("SCHEDULED_HOUSEHOLD_DISTRACTOR");
+		expect(discoveryCatalog).toContain("WEEKLY_BRIEF_DISTRACTOR");
 		expect(result.kind).toBe("planned_reply");
 		expect(result.messageHandler.plan.deterministicToolCall).toBeUndefined();
 		if (result.kind === "planned_reply") {

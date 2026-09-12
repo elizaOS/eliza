@@ -11,6 +11,7 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { asRecord, readViewInteractionClientId } from "@elizaos/shared";
 import {
   BROWSER_SERVICE_TYPE,
   type BrowserService,
@@ -824,6 +825,27 @@ export const browserAction: Action = {
       | undefined;
     const messageText = getMessageText(message);
     const subaction = inferBrowserSubaction(params, messageText);
+    const nativePage =
+      asRecord(message.content.metadata)?.uiBrowserSurface === "native";
+
+    if (
+      nativePage &&
+      (subaction === "autofill-login" || subaction === "wait-for-url")
+    ) {
+      return {
+        success: false,
+        transcriptVisibility: "internal",
+        text: "This operation is not supported on the requesting native Browser. No Mac browser operation was dispatched.",
+      };
+    }
+
+    if (subaction === "get" && params?.url?.trim()) {
+      return {
+        success: false,
+        transcriptVisibility: "internal",
+        text: "BROWSER action=get reads an element on the current page and does not accept url. No read was dispatched. First use action=navigate with the requested url, wait for its result, then use action=get with selector and no url.",
+      };
+    }
 
     if (subaction === "autofill-login") {
       const { executeBrowserAutofillLogin } = await import(
@@ -878,11 +900,19 @@ export const browserAction: Action = {
       runtime.getService<BrowserService>(BROWSER_SERVICE_TYPE);
 
     try {
+      const nativeClientId = nativePage
+        ? readViewInteractionClientId(message)
+        : undefined;
+      if (nativePage && (!nativeClientId || !browserService)) {
+        throw new Error(
+          "The requesting native Browser client is unavailable; cannot substitute the Mac page.",
+        );
+      }
       logger.info(
         `[BROWSER] ${command.subaction} via target=${params?.target ?? "auto"} (workspace mode=${getBrowserWorkspaceMode(process.env)})`,
       );
       const result = browserService
-        ? await browserService.execute(command, params?.target)
+        ? await browserService.execute(command, params?.target, nativeClientId)
         : await executeBrowserWorkspaceCommand(command);
       const ownsTerminalReply = browserCommandOwnsTerminalReply(command);
       if (!ownsTerminalReply) {
@@ -1110,7 +1140,7 @@ export const browserAction: Action = {
     {
       name: "url",
       description:
-        "Website URL for open or navigate, grounded in the user's requested website or observed page links. Do not invent a URL from an Eliza app navigation command; app screens use VIEWS.",
+        "Website URL for open or navigate, grounded in the user's requested website or observed page links. Not accepted by get: navigate first, then read the current page without url. Do not invent a URL from an Eliza app navigation command; app screens use VIEWS.",
       required: false,
       schema: { type: "string" as const },
     },

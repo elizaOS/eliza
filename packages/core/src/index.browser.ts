@@ -126,6 +126,7 @@ export * from "./prompts";
 export * from "./recent-messages-state";
 export * from "./roles";
 export * from "./runtime";
+export { actionGateRejection } from "./runtime/action-gate";
 export { warnOnUnmatchedActionRolePolicyKeys } from "./runtime/action-role-policy";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";

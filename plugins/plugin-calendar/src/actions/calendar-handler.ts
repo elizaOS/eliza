@@ -1151,19 +1151,38 @@ async function finalizeCalendarPlan(args: {
  * "cancel my zorblax checkup" arrived with it set, on a solo event with no
  * attendees. The built-in calendar has no mail path and rejects the flag with a
  * 400, so a plain cancel died on a field the user never asked for and the reply
- * claimed the event could not be found (live capture 2026-08-14).
+ * claimed the event could not be found (live capture 2026-08-14). The same 400
+ * killed "move my vet appointment to 4pm" once the event carried a fabricated
+ * guest (live capture 2026-09-10), so the built-in provider never receives the
+ * flag: the change lands and the completed reply says nobody was emailed
+ * (see builtInNotifyNote).
  *
  * Same shape as the recurrenceScope guard beside it: honor the flag only when
  * the resolved target can actually act on it. Notifying nobody is a no-op, not
  * a conflict.
  */
-function shouldNotifyAttendees(
+export function shouldNotifyAttendees(
   details: Record<string, unknown> | undefined,
-  targetEvent: { attendees?: unknown } | undefined,
+  targetEvent: { provider?: unknown; attendees?: unknown } | undefined,
 ): boolean {
   if (detailBoolean(details, "notifyAttendees") !== true) return false;
+  if (targetEvent?.provider === ELIZA_CALENDAR_PROVIDER) return false;
   const attendees = targetEvent?.attendees;
   return Array.isArray(attendees) && attendees.length > 0;
+}
+
+/**
+ * Completed-reply fact for a built-in calendar mutation that asked for
+ * attendee notifications on an event with guests: the change is stored, but
+ * nobody was emailed, and the reply must not imply otherwise.
+ */
+export function builtInNotifyNote(
+  details: Record<string, unknown> | undefined,
+  targetEvent: { attendees: readonly unknown[] },
+): string {
+  if (detailBoolean(details, "notifyAttendees") !== true) return "";
+  if (targetEvent.attendees.length === 0) return "";
+  return " The built-in calendar can't email attendees, so nobody was notified.";
 }
 
 function buildCalendarServiceErrorFallback(
@@ -1178,11 +1197,6 @@ function buildCalendarServiceErrorFallback(
   // calendar has no recurrence engine. The generic copy invited a retry that
   // can only fail again ("couldn't add that weekly standup … try again." —
   // live capture), so name the boundary and the one action that lifts it.
-  // Reached only when the event really does have attendees; a spurious flag on
-  // a solo event is dropped before the service call (see shouldNotifyAttendees).
-  if (error.code === "ELIZA_CALENDAR_ATTENDEE_NOTIFICATIONS_UNSUPPORTED") {
-    return "The built-in calendar can't email the other attendees, so I left that one alone. Connect Google Calendar and I'll send the update, or say go ahead without notifying anyone.";
-  }
   if (error.code === "ELIZA_CALENDAR_RECURRENCE_UNSUPPORTED") {
     return "Repeating events need a connected calendar — the built-in one only holds single events. Connect Google Calendar and I'll set up the recurring one, or I can add a single event now.";
   }
@@ -2310,6 +2324,193 @@ function chooseSuggestedCreateEventMinute(args: {
  * the planner used `start`); every create read accepts both spellings so a
  * valid planner time is executed instead of re-extracted from prose.
  */
+const OFFSET_OR_UTC_SUFFIX_PATTERN = /(?:Z|[+-]\d{2}:?\d{2})$/i;
+
+/** Wall-clock `YYYY-MM-DDTHH:mm:ss` of `date` in `timeZone`. */
+function formatLocalDateTimeInZone(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(date);
+  const read = (type: string): string =>
+    parts.find((part) => part.type === type)?.value ?? "00";
+  return `${read("year")}-${read("month")}-${read("day")}T${read("hour")}:${read("minute")}:${read("second")}`;
+}
+
+/**
+ * Absolute instant of a planner datetime. Strings carrying `Z` or an offset
+ * are absolute already; a bare local datetime is read in `timeZone` (one
+ * correction pass handles the zone's offset at that wall-clock time).
+ */
+function parseDateTimeInZone(value: string, timeZone: string): Date | null {
+  const trimmed = value.trim();
+  if (OFFSET_OR_UTC_SUFFIX_PATTERN.test(trimmed)) {
+    const absolute = new Date(trimmed);
+    return Number.isFinite(absolute.getTime()) ? absolute : null;
+  }
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(
+      trimmed,
+    );
+  if (!match) return null;
+  const [, y, mo, d, h = "0", mi = "0", sec = "0"] = match;
+  const asUtc = Date.UTC(
+    Number(y),
+    Number(mo) - 1,
+    Number(d),
+    Number(h),
+    Number(mi),
+    Number(sec),
+  );
+  let guess = new Date(asUtc);
+  for (let pass = 0; pass < 2; pass += 1) {
+    const local = formatLocalDateTimeInZone(guess, timeZone);
+    const localAsUtc = Date.parse(`${local}Z`);
+    if (!Number.isFinite(localAsUtc)) return null;
+    const drift = localAsUtc - asUtc;
+    if (drift === 0) break;
+    guess = new Date(guess.getTime() - drift);
+  }
+  return Number.isFinite(guess.getTime()) ? guess : null;
+}
+
+/**
+ * Time range for an update. A new start without a new end keeps the event's
+ * current duration (live 2026-09-10: "move my dentist appointment to friday at
+ * 4pm" arrived as `start` only, the stored 3–4 pm event kept its 4 pm end, and
+ * the service rejected the zero-length range). The derived end is spelled like
+ * the start it follows: absolute for `Z`/offset starts, wall-clock in
+ * `timeZone` otherwise. Every other combination passes through unchanged and
+ * the service keeps validating end-after-start.
+ */
+const WEEKDAY_NAMES = [
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+] as const;
+
+const EXPLICIT_DATE_OR_NEXT_WEEK_PATTERN =
+  /\b(?:next|following|after|week|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b|\d{1,2}\/\d{1,2}|\d{4}-\d{2}-\d{2}/i;
+
+function localDateInZone(date: Date, timeZone: string): string {
+  return formatLocalDateTimeInZone(date, timeZone).slice(0, 10);
+}
+
+function shiftLocalDays(local: string, days: number): string {
+  const [datePart, timePart] = local.split("T");
+  const [y, m, d] = datePart.split("-").map(Number);
+  const shifted = new Date(Date.UTC(y, m - 1, d + days));
+  return `${shifted.toISOString().slice(0, 10)}T${timePart ?? "00:00:00"}`;
+}
+
+/**
+ * "move my vet appointment to friday at 4pm", asked late on that same Friday,
+ * arrives from the planner with next Friday's date (live 2026-09-11 22:15 ET):
+ * the model reasons that today's 4pm is over. The user named the weekday the
+ * event already sits on, so the move keeps the event's own day while that day
+ * has not ended; "next friday", a month, or a numeric date is left as sent,
+ * and once the event's day is over the following week is the honest reading.
+ */
+export function snapWeekdayMoveToTargetDay(args: {
+  requestText: string;
+  startAt: string;
+  endAt?: string;
+  target: { startAt: string };
+  timeZone: string;
+  now: Date;
+}): { startAt: string; endAt?: string } {
+  const text = args.requestText.toLowerCase();
+  if (EXPLICIT_DATE_OR_NEXT_WEEK_PATTERN.test(text)) return args;
+  const targetStart = new Date(args.target.startAt);
+  if (Number.isNaN(targetStart.getTime())) return args;
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    timeZone: args.timeZone,
+    weekday: "long",
+  })
+    .format(targetStart)
+    .toLowerCase();
+  if (!WEEKDAY_NAMES.includes(weekday as (typeof WEEKDAY_NAMES)[number]))
+    return args;
+  if (
+    !new RegExp(`\\b${weekday.slice(0, 3)}(?:${weekday.slice(3)})?\\b`).test(
+      text,
+    )
+  )
+    return args;
+  const targetDay = localDateInZone(targetStart, args.timeZone);
+  if (targetDay < localDateInZone(args.now, args.timeZone)) return args;
+  const start = parseDateTimeInZone(args.startAt, args.timeZone);
+  if (!start) return args;
+  const startLocal = formatLocalDateTimeInZone(start, args.timeZone);
+  if (shiftLocalDays(startLocal, -7).slice(0, 10) !== targetDay) return args;
+  const absolute = OFFSET_OR_UTC_SUFFIX_PATTERN.test(args.startAt.trim());
+  const respell = (value: string): string | undefined => {
+    const parsed = parseDateTimeInZone(value, args.timeZone);
+    if (!parsed) return undefined;
+    const local = shiftLocalDays(
+      formatLocalDateTimeInZone(parsed, args.timeZone),
+      -7,
+    );
+    if (!absolute) return local;
+    return parseDateTimeInZone(local, args.timeZone)?.toISOString();
+  };
+  const startAt = respell(args.startAt);
+  if (!startAt) return args;
+  const endAt = args.endAt ? respell(args.endAt) : undefined;
+  return { startAt, ...(args.endAt ? { endAt: endAt ?? args.endAt } : {}) };
+}
+
+export function resolveUpdateTimeRange(args: {
+  explicitStart?: string;
+  explicitEnd?: string;
+  extractedStart?: string;
+  extractedEnd?: string;
+  target: { startAt: string; endAt: string };
+  timeZone?: string;
+  requestText?: string;
+  now?: Date;
+}): { startAt?: string; endAt?: string } {
+  let startAt = args.explicitStart ?? args.extractedStart;
+  let endAt = args.explicitEnd ?? args.extractedEnd;
+  if (startAt && args.requestText && args.timeZone?.trim()) {
+    const snapped = snapWeekdayMoveToTargetDay({
+      requestText: args.requestText,
+      startAt,
+      endAt,
+      target: args.target,
+      timeZone: args.timeZone.trim(),
+      now: args.now ?? new Date(),
+    });
+    startAt = snapped.startAt;
+    endAt = snapped.endAt ?? endAt;
+  }
+  if (!startAt || endAt) return { startAt, endAt };
+  const durationMs =
+    Date.parse(args.target.endAt) - Date.parse(args.target.startAt);
+  if (!Number.isFinite(durationMs) || durationMs <= 0)
+    return { startAt, endAt };
+  const timeZone = args.timeZone?.trim() || "UTC";
+  const start = parseDateTimeInZone(startAt, timeZone);
+  if (!start) return { startAt, endAt };
+  const end = new Date(start.getTime() + durationMs);
+  return {
+    startAt,
+    endAt: OFFSET_OR_UTC_SUFFIX_PATTERN.test(startAt.trim())
+      ? end.toISOString()
+      : formatLocalDateTimeInZone(end, timeZone),
+  };
+}
+
 function createStartDetail(
   details: Record<string, unknown> | undefined,
 ): string | undefined {
@@ -3177,6 +3378,30 @@ function resolveCreateEventDurationMinutes(args: {
  * never planner/assistant prose or time-of-day window phrases, which appear in
  * one-shot asks ("dentist tomorrow in the morning") and must not open the gate.
  */
+const TRAVEL_INTENT_PATTERN =
+  /\b(?:travel(?:ing|led)?|commut(?:e|ing)|driv(?:e|ing)|traffic|transit|leav(?:e|ing) from|depart(?:ing)? from|coming from|get(?:ting)? there|how long (?:to get|does it take)|buffer|on the way|from (?:home|work|the office|my (?:house|place|office)))\b/i;
+
+/**
+ * Whether the user's own words ask for travel time or name a departure place.
+ * A planner-supplied origin address is honored only when this holds or the
+ * text literally contains that origin.
+ */
+export function intentStatesTravel(
+  originAddress: string | undefined,
+  ...texts: ReadonlyArray<string | null | undefined>
+): boolean {
+  const joined = texts
+    .filter((text): text is string => typeof text === "string")
+    .join("\n")
+    .trim();
+  if (!joined) return false;
+  if (TRAVEL_INTENT_PATTERN.test(joined)) return true;
+  const origin = originAddress?.trim().toLowerCase();
+  return Boolean(
+    origin && origin.length >= 3 && joined.toLowerCase().includes(origin),
+  );
+}
+
 export function intentStatesRecurrence(
   ...texts: ReadonlyArray<string | null | undefined>
 ): boolean {
@@ -3195,7 +3420,8 @@ type CreateEventRequestBuildArgs = {
    * structured details, and assistant/system history must never authorize an
    * RRULE the current user did not request.
    */
-  recurrenceGuardTexts?: ReadonlyArray<string | null | undefined>;
+  /** The user's current authoritative text: model-authored recurrence and travel fields are honored only when it states them. */
+  authorizingUserTexts?: ReadonlyArray<string | null | undefined>;
 };
 
 type CreateEventRequestBuildResult = {
@@ -3317,11 +3543,23 @@ export function buildCreateEventRequest(
     explicitDuration !== undefined || extractedDuration !== undefined
       ? durationMinutes
       : fallbackDuration;
-  const travelIntent =
-    injectedDeps?.travelBuffer?.resolveTravelIntent({
-      details: args.details,
-      extractedDetails: args.extractedDetails,
-    }) ?? null;
+  // Travel buffers are model-authored too: the outer planner stamped
+  // `travelOriginAddress: "Eliza Calendar"` onto a plain "add an optometrist
+  // appointment friday at 3pm" (live 2026-09-12), and the buffer prep then
+  // failed the whole create for want of a destination. Honor an origin only
+  // when the user's own words ask for travel time or name the departure place.
+  const plannerTravelOrigin =
+    detailString(args.details, "travelOriginAddress") ??
+    detailString(args.extractedDetails, "travelOriginAddress");
+  const travelIntent = intentStatesTravel(
+    plannerTravelOrigin,
+    ...(args.authorizingUserTexts ?? []),
+  )
+    ? (injectedDeps?.travelBuffer?.resolveTravelIntent({
+        details: args.details,
+        extractedDetails: args.extractedDetails,
+      }) ?? null)
+    : null;
 
   const explicitRecurrence = detailRecurrenceLines(args.details);
   // The extraction model routinely infers weekly recurrence from
@@ -3335,7 +3573,7 @@ export function buildCreateEventRequest(
   // authoritative user text so planner disagreement cannot create recurrence.
   const extractedRecurrence = detailRecurrenceLines(args.extractedDetails);
   const recurrence = selectUserAuthorizedRecurrence(
-    args.recurrenceGuardTexts ?? [],
+    args.authorizingUserTexts ?? [],
     args.preferExtractedDetails
       ? [
           extractedRecurrence,
@@ -3912,6 +4150,21 @@ export function formatCalendarSearchResults(
   return lines.join("\n");
 }
 
+/**
+ * Reserved documentation and testing domains (RFC 2606 / RFC 6761) never
+ * receive mail. The planner fabricates guests such as "sam@example.com" for
+ * asks that named nobody ("add a vet appointment friday at 3pm" — live capture
+ * 2026-09-10); the follow-up "move it to 4pm" then carried `notifyAttendees`
+ * and the built-in calendar 400'd over a guest the user never mentioned.
+ */
+const PLACEHOLDER_EMAIL_DOMAIN =
+  /(?:^|\.)(?:example\.(?:com|net|org)|example|test|invalid|localhost)$/i;
+
+export function attendeeEmailAccepted(email: string): boolean {
+  if (!basicEmailValid(email)) return false;
+  return !PLACEHOLDER_EMAIL_DOMAIN.test(email.slice(email.indexOf("@") + 1));
+}
+
 export function normalizeCalendarAttendees(
   details: Record<string, unknown> | undefined,
 ): CreateLifeOpsCalendarEventAttendee[] | undefined {
@@ -3923,7 +4176,7 @@ export function normalizeCalendarAttendees(
     attendees.map((attendee) => {
       if (typeof attendee === "string") {
         const email = attendee.trim();
-        return basicEmailValid(email) ? { email } : null;
+        return attendeeEmailAccepted(email) ? { email } : null;
       }
       if (
         !attendee ||
@@ -3934,7 +4187,8 @@ export function normalizeCalendarAttendees(
       }
       const record = attendee as Record<string, unknown>;
       const email =
-        typeof record.email === "string" && basicEmailValid(record.email.trim())
+        typeof record.email === "string" &&
+        attendeeEmailAccepted(record.email.trim())
           ? record.email.trim()
           : null;
       if (!email) {
@@ -4736,7 +4990,7 @@ const calendarAction: CalendarHandlerAction = {
           extractedDetails,
           explicitTitle,
           inferredTitle,
-          recurrenceGuardTexts: [messageText(message)],
+          authorizingUserTexts: [messageText(message)],
           // The outer planner identifies CALENDAR and supplies hints; this
           // domain-specific extraction has the authoritative calendar context,
           // timezone, and local-date anchors needed to normalize wall time.
@@ -5151,8 +5405,11 @@ const calendarAction: CalendarHandlerAction = {
           resolvedCalendarId = targetEvent.calendarId;
         }
         const newTitle = detailString(details, "newTitle") ?? explicitTitle;
-        const explicitStartAtForUpdate = detailString(details, "startAt");
-        const explicitEndAtForUpdate = detailString(details, "endAt");
+        // The schema advertises `start`/`end` beside `startAt`/`endAt`; the
+        // create path accepts both, and an update must too (live 2026-09-10
+        // the planner's `start` was ignored and the time was re-extracted).
+        const explicitStartAtForUpdate = createStartDetail(details);
+        const explicitEndAtForUpdate = createEndDetail(details);
         const extractedForUpdate = targetEvent
           ? await inferUpdateEventDetails(
               runtime,
@@ -5234,6 +5491,11 @@ const calendarAction: CalendarHandlerAction = {
             "CALENDAR_MUTATION_TARGET_BINDING_REQUIRED",
           );
         }
+        const updateTimeZone =
+          detailString(details, "timeZone") ??
+          extractedTimeZoneForUpdate ??
+          targetEvent?.timezone ??
+          undefined;
         const updateRequest = {
           side: targetEvent.side,
           grantId,
@@ -5250,13 +5512,16 @@ const calendarAction: CalendarHandlerAction = {
             extractedForUpdate,
             "location",
           ),
-          startAt: explicitStartAtForUpdate ?? extractedStartAt,
-          endAt: explicitEndAtForUpdate ?? extractedEndAt,
-          timeZone:
-            detailString(details, "timeZone") ??
-            extractedTimeZoneForUpdate ??
-            targetEvent?.timezone ??
-            undefined,
+          ...resolveUpdateTimeRange({
+            explicitStart: explicitStartAtForUpdate,
+            explicitEnd: explicitEndAtForUpdate,
+            extractedStart: extractedStartAt,
+            extractedEnd: extractedEndAt,
+            target: targetEvent,
+            timeZone: updateTimeZone,
+            requestText: messageText(message),
+          }),
+          timeZone: updateTimeZone,
           recurrence: recurrenceUpdate,
           // Honor a scope only when the target recurs or the update itself
           // introduces a recurrence rule — the planner emits junk scopes.
@@ -5289,7 +5554,7 @@ const calendarAction: CalendarHandlerAction = {
           const fallback = `Updated “${updatedEvent.title}” for ${formatCalendarEventDateTime(
             updatedEvent,
             { includeTimeZoneName: true },
-          )}.`;
+          )}.${builtInNotifyNote(details, targetEvent)}`;
           return respond({
             success: true,
             text: await renderReply("update_event_completed", fallback, {
@@ -5557,7 +5822,7 @@ const calendarAction: CalendarHandlerAction = {
             expectedProviderVersion,
             idempotencyKey,
           });
-          const fallback = `Deleted “${targetEvent.title}” from your calendar.`;
+          const fallback = `Deleted “${targetEvent.title}” from your calendar.${builtInNotifyNote(details, targetEvent)}`;
           return respond({
             success: true,
             text: await renderReply("delete_event_completed", fallback, {
@@ -5677,7 +5942,9 @@ const calendarAction: CalendarHandlerAction = {
       const label = baseResolved.label;
       const hasExplicitWindow = baseResolved.explicitWindow;
       const feed = await service.getCalendarFeed(INTERNAL_URL, {
-        includeHiddenCalendars: true,
+        includeHiddenCalendars:
+          detailBoolean(details, "includeHiddenCalendars") ??
+          subaction === "search_events",
         mode: connectorModeDetail(details),
         side: connectorSideDetail(details),
         grantId: connectorGrantIdDetail(details),
@@ -6066,7 +6333,7 @@ const calendarAction: CalendarHandlerAction = {
       name: "calendarId",
       aliases: ["calendar_id", "calendarid"],
       description:
-        "Optional; leave unset. Reads cover all connected calendars automatically and event creation targets the built-in calendar.",
+        "Optional; leave unset. Agenda reads use the selected Calendar feed; searches cover connected calendars. Use details.includeHiddenCalendars to explicitly change that scope. Event creation targets the built-in calendar.",
       required: false,
       schema: { type: "string" as const },
     },

@@ -134,6 +134,22 @@ Drizzle tables in the `browser` PostgreSQL schema (applied by elizaOS `plugin-sq
 
 ## Registering a custom browser target
 
+### Native app connected to a remote runtime
+
+On Capacitor clients, `uiBrowserSurface: "native"` identifies the Browser
+implementation; it does not grant authority or supply tools. The host binds
+`BrowserService.setNativeClientTransport` to its authenticated, client-targeted view
+interaction transport, including when the plugin starts after the API server.
+The ordinary BROWSER action and its OWNER/domain policies remain in use.
+
+Native open/navigate/show target the client's existing shell navigation channel,
+not the Mac tab store. Show Browser before reading its native page. Native `snapshot` and `get` text/title/URL
+read the requesting client's mounted page, never a substitute Mac document.
+Snapshots report truncation; native reads are limited to visible page text and
+exclude form values. Native click/fill/script/upload and other unsupported
+commands fail explicitly rather than being replayed on the Mac. This is not a
+claim of complete native browser automation parity.
+
 Any plugin can extend the browser dispatch surface at runtime:
 
 ```ts

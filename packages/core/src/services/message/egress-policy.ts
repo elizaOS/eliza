@@ -38,12 +38,24 @@ import {
 	replyClaimsCompletedSideEffect,
 	replyClaimsEmptyTrackedWorkState,
 } from "./side-effect-claims.ts";
+import {
+	groundedCurrentTimeReply,
+	statedTimeIsUngrounded,
+} from "./time-observations";
 
 export type PlannedReplyClaimKind =
 	| "completed_side_effect"
 	| "financial_completion"
 	| "financial_holding"
+	| "stated_time"
 	| "empty_tracked_state";
+
+/** Rejection kinds whose correction must see the complete provider evidence. */
+const PROVIDER_EVIDENCE_KINDS: ReadonlySet<string> = new Set([
+	"financial_holding",
+	"financial_completion",
+	"stated_time",
+]);
 
 export function appliedEffectReceiptIdsForReply(
 	reply: string,
@@ -184,6 +196,15 @@ export function evaluatePlannedReplyEgress(args: {
 	if (financialHoldingIsUngrounded(args)) {
 		return { verdict: "reject", kind: "financial_holding" };
 	}
+	if (
+		statedTimeIsUngrounded({
+			reply,
+			request: args.request,
+			providers: args.providers,
+		})
+	) {
+		return { verdict: "reject", kind: "stated_time" };
+	}
 	if (replyClaimsCompletedSideEffect(reply)) {
 		if (
 			plannedReplyHasClaimGroundingReceipt({
@@ -251,12 +272,29 @@ export async function resolvePlannedReplyEgress(args: {
 			),
 		};
 	}
+	const reason =
+		decision.verdict === "reject" ? decision.kind : "missing_reply";
+	if (reason === "stated_time") {
+		// The provider's own rendering is the complete answer to "what time is
+		// it"; no model is needed to restate it, and a second model pass could
+		// invent a second date.
+		const grounded = groundedCurrentTimeReply(args.providers);
+		if (grounded) return { text: grounded, effectReceiptIds: [] };
+	}
 	const text = JSON.stringify({
 		request: args.message.content,
 		rejectedReply: args.reply,
-		reason: decision.verdict === "reject" ? decision.kind : "missing_reply",
+		reason,
 		results: renderActionResultsForModel([...args.actionResults]).text,
-		providers: args.providers,
+		// Complete provider evidence is what grounds a corrected quantity. A
+		// side-effect, empty-state or missing-reply correction is grounded by
+		// the settled results and their receipts alone; the provider map is the
+		// turn's entire composed context (live 2026-09-11 05:35Z: ~380K chars of
+		// room history rode along on a completed_side_effect recovery and the
+		// rewrite request exceeded the provider's context limit, failing the turn).
+		...(PROVIDER_EVIDENCE_KINDS.has(reason)
+			? { providers: args.providers }
+			: {}),
 	});
 	const rewritten = await rewriteActionCallbackInCharacter({
 		runtime: args.runtime,

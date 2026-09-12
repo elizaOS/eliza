@@ -208,6 +208,9 @@ export class ExperienceService extends Service {
 			sourceMessageIds: experience.sourceMessageIds
 				? [...experience.sourceMessageIds]
 				: undefined,
+			sourceMessageRevisions: experience.sourceMessageRevisions
+				? { ...experience.sourceMessageRevisions }
+				: undefined,
 			relatedExperiences: experience.relatedExperiences
 				? [...experience.relatedExperiences]
 				: undefined,
@@ -348,6 +351,20 @@ export class ExperienceService extends Service {
 					? rawData.correctedBelief
 					: undefined,
 			sourceMessageIds: this.asOptionalUuidArray(rawData?.sourceMessageIds),
+			sourceMessageRevisions:
+				rawData?.sourceMessageRevisions &&
+				typeof rawData.sourceMessageRevisions === "object" &&
+				!Array.isArray(rawData.sourceMessageRevisions)
+					? Object.fromEntries(
+							Object.entries(rawData.sourceMessageRevisions).filter(
+								([, revision]) => typeof revision === "string",
+							),
+						)
+					: undefined,
+			extractionEvidenceId:
+				typeof rawData?.extractionEvidenceId === "string"
+					? rawData.extractionEvidenceId
+					: undefined,
 			sourceRoomId:
 				typeof rawData?.sourceRoomId === "string"
 					? (rawData.sourceRoomId as UUID)
@@ -453,6 +470,12 @@ export class ExperienceService extends Service {
 		if (experience.sourceMessageIds !== undefined) {
 			data.sourceMessageIds = experience.sourceMessageIds;
 		}
+		if (experience.sourceMessageRevisions !== undefined) {
+			data.sourceMessageRevisions = { ...experience.sourceMessageRevisions };
+		}
+		if (experience.extractionEvidenceId !== undefined) {
+			data.extractionEvidenceId = experience.extractionEvidenceId;
+		}
 		if (experience.sourceRoomId !== undefined) {
 			data.sourceRoomId = experience.sourceRoomId;
 		}
@@ -529,6 +552,29 @@ export class ExperienceService extends Service {
 	async recordExperience(
 		experienceData: Partial<Experience>,
 	): Promise<Experience> {
+		if (experienceData.id) {
+			const cached = this.experiences.get(experienceData.id);
+			if (cached) return this.cloneExperience(cached);
+			// A preceding write can commit before its caller receives success.
+			// Reuse the durable row on replay, including after a service restart.
+			const stored = await this.runtime.getMemoryById(experienceData.id);
+			if (stored) {
+				const existing = this.parseExperienceMemory(stored);
+				if (
+					!existing ||
+					stored.content.type !== "experience" ||
+					stored.agentId !== this.runtime.agentId ||
+					existing.agentId !== this.runtime.agentId ||
+					existing.id !== experienceData.id
+				) {
+					throw new ElizaError("Experience ID belongs to a different record", {
+						code: "EXPERIENCE_ID_CONFLICT",
+					});
+				}
+				this.setExperience(existing);
+				return this.cloneExperience(existing);
+			}
+		}
 		const now = Date.now();
 		const context = experienceData.context || "";
 		const action = experienceData.action || "";
@@ -556,7 +602,7 @@ export class ExperienceService extends Service {
 		});
 
 		const experience: Experience = {
-			id: uuidv4() as UUID,
+			id: experienceData.id ?? (uuidv4() as UUID),
 			agentId: this.runtime.agentId,
 			type,
 			outcome: experienceData.outcome || OutcomeType.NEUTRAL,
@@ -589,6 +635,10 @@ export class ExperienceService extends Service {
 			sourceMessageIds: experienceData.sourceMessageIds
 				? [...experienceData.sourceMessageIds]
 				: undefined,
+			sourceMessageRevisions: experienceData.sourceMessageRevisions
+				? { ...experienceData.sourceMessageRevisions }
+				: undefined,
+			extractionEvidenceId: experienceData.extractionEvidenceId,
 			sourceRoomId: experienceData.sourceRoomId,
 			sourceTriggerMessageId: experienceData.sourceTriggerMessageId,
 			sourceTrajectoryId: experienceData.sourceTrajectoryId,

@@ -66,7 +66,7 @@ import type {
 	MessageHandlerResult,
 } from "../../types/components";
 import type { ContextEvent } from "../../types/context-object";
-import type { GenerateTextParams } from "../../types/model";
+import { type GenerateTextParams, ModelType } from "../../types/model";
 import type { JsonValue } from "../../types/primitives";
 import { ChannelType } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
@@ -111,6 +111,7 @@ import {
 } from "./egress-policy.js";
 import {
 	buildV5ExecutorContext,
+	collectBudgetedStageOneCandidateActions,
 	collectPlannerTools,
 	collectPreviousActionResults,
 	executeV5PlannedToolCall,
@@ -150,6 +151,7 @@ import {
 	uniqueActionNames,
 } from "./stage1-reply-policy.js";
 import { subAgentCompletionRelayBody } from "./task-completion-relay.js";
+import { createPlannerToolDiscoveryAction } from "./tool-discovery.js";
 import { recordFactsAndRelationshipsStage } from "./trajectory-stages.js";
 import { detachPostDeliverySideEffect } from "./turn-session.js";
 
@@ -1025,10 +1027,56 @@ export async function runV5MessageRuntimeStage1(
 					deterministicPlanSelection.name,
 				)
 			: undefined;
+		// Stage 1 has already interpreted the request. Load its complete action
+		// families first, while keeping every other authorized family explicitly
+		// discoverable. An unresolved hint retains the full surface.
+		const selectedActionFamilies =
+			args.codingMode === true || deterministicPlanSelection
+				? []
+				: collectBudgetedStageOneCandidateActions({
+						actions: plannerCandidateActions,
+						candidateActions: getMessageHandlerCandidateActions(messageHandler),
+						contexts: selectedContexts,
+					});
+		const progressiveActions =
+			selectedActionFamilies.length > 0 &&
+			selectedActionFamilies.length < plannerCandidateActions.length
+				? selectedActionFamilies
+				: undefined;
+		if (progressiveActions) {
+			progressiveActions.push(
+				createPlannerToolDiscoveryAction(
+					plannerCandidateActions,
+					(discoveredActions) => {
+						const existingNames = new Set(
+							exposedPlannerActions.map((action) => action.name),
+						);
+						for (const action of discoveredActions) {
+							if (!existingNames.has(action.name)) {
+								exposedPlannerActions.push(action);
+								existingNames.add(action.name);
+							}
+						}
+						// The planner loop holds this array for the lifetime of the turn.
+						// Update it in place so the next model call sees the loaded schemas.
+						const expandedTools = collectPlannerTools(
+							plannerContextWithDecision,
+							exposedPlannerActions,
+							{
+								canonicalFamilies: true,
+								candidateActions:
+									getMessageHandlerCandidateActions(messageHandler),
+							},
+						);
+						plannerTools.splice(0, plannerTools.length, ...expandedTools);
+					},
+				),
+			);
+		}
 		const actionSurface = buildV5PlannerActionSurface({
 			actions: deterministicSurfaceAction
 				? [deterministicSurfaceAction]
-				: plannerCandidateActions,
+				: (progressiveActions ?? plannerCandidateActions),
 			forceFullSurface: args.codingMode === true,
 			codingActionProfile,
 			message: args.message,
@@ -1043,7 +1091,24 @@ export async function runV5MessageRuntimeStage1(
 			reportError: args.runtime.reportError.bind(args.runtime),
 			localizedExamples: localizedExamples ?? undefined,
 		});
-		const exposedPlannerActions = plannerCandidateActions.filter((action) =>
+		if (progressiveActions) {
+			// The discovery tool is planner protocol, not a capability family; keep
+			// it out of the tier-A parent summary rendered into the planner context.
+			actionSurface.summary.tierAParents =
+				actionSurface.summary.tierAParents.filter(
+					(name) =>
+						normalizeActionIdentifier(name) !==
+						normalizeActionIdentifier("DISCOVER_TOOLS"),
+				);
+		}
+		if (progressiveActions) {
+			actionSurface.summary.discoverableActionCount =
+				plannerCandidateActions.length;
+			actionSurface.summary.discoveryToolName = "DISCOVER_TOOLS";
+		}
+		const exposedPlannerActions = (
+			progressiveActions ?? plannerCandidateActions
+		).filter((action) =>
 			actionSurface.exposedActionNames.has(
 				normalizeActionIdentifier(action.name),
 			),
@@ -1092,9 +1157,8 @@ export async function runV5MessageRuntimeStage1(
 						: {}),
 					candidateActions: getMessageHandlerCandidateActions(messageHandler),
 					parentActionHints: getMessageHandlerParentActionHints(messageHandler),
-					...(responseHandlerContextSlices.length > 0
-						? { contextSlices: responseHandlerContextSlices }
-						: {}),
+					// The complete slices already live in this event's content.
+					// Repeating them in metadata doubles the planner/evaluator input.
 					...(messageHandler.plan.reply !== undefined
 						? { reply: messageHandler.plan.reply }
 						: {}),
@@ -1141,6 +1205,10 @@ export async function runV5MessageRuntimeStage1(
 				candidateActions: getMessageHandlerCandidateActions(messageHandler),
 			},
 		);
+		// No dispatch-budget preflight: the planner receives every authorized
+		// action the progressive surface exposes plus DISCOVER_TOOLS, and the model
+		// transport rejects at its real input boundary. An estimate is diagnostic,
+		// not permission to discard authorized tools (message-runtime-umbrella-budget).
 		const budgetedPlannerContextWithDecision = plannerContextWithDecision;
 		const plannerProviderAttributionState = plannerState;
 		const benchmarkForcingToolCall = isBenchmarkForcingToolCall(args.message);

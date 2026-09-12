@@ -71,6 +71,30 @@ async function consume(request: ReturnType<typeof handleTextSmall>): Promise<voi
 }
 
 describe("rate-limit cooldown at the HTTP boundary", () => {
+  it("preserves each credential's hold when A/B calls share an endpoint and model", async () => {
+    const agent = runtime();
+    const invoke = (credential: string) => {
+      vi.stubEnv("OPENAI_API_KEY", credential);
+      return handleTextSmall(agent, {
+        prompt: "Complete shared-endpoint credential isolation probe",
+        model: "qwen-3.8-27b",
+        stream: false,
+      });
+    };
+    await expect(invoke("credential-A-fixture")).rejects.toMatchObject({ statusCode: 429 });
+    await expect(invoke("credential-B-fixture")).rejects.toMatchObject({ statusCode: 429 });
+    expect(requests).toBe(2);
+    await expect(invoke("credential-A-fixture")).rejects.toMatchObject({
+      name: "ProviderRateLimitCooldownError",
+      statusCode: 429,
+    });
+    await expect(invoke("credential-B-fixture")).rejects.toMatchObject({
+      name: "ProviderRateLimitCooldownError",
+      statusCode: 429,
+    });
+    expect(requests).toBe(2);
+  });
+
   it.each([
     { firstStream: true, nextStream: true },
     { firstStream: true, nextStream: false },

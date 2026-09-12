@@ -22,7 +22,6 @@ import {
   ChannelType,
   type Content,
   createMessageMemory,
-  drainRoomPostDeliveryTasks,
   ElizaError,
   EventType,
   emitInferenceTiming,
@@ -60,6 +59,7 @@ import {
   toWellFormedUnicode,
   trackPostDeliveryTask,
   type UUID,
+  withRoomDeliverySettlement,
 } from "@elizaos/core";
 import type {
   ChatFailureKind,
@@ -1651,7 +1651,7 @@ function listResponseActions(
     .filter((action) => action.length > 0);
 }
 
-function isIntentionalNoResponseResult(
+export function isIntentionalNoResponseResult(
   result:
     | {
         didRespond?: boolean;
@@ -2723,6 +2723,17 @@ async function generateChatResponseWithTiming(
     // Inbound event consumers may persist correlation state or apply
     // turn-shaping policy. Generation cannot safely continue when that
     // prerequisite fails.
+    // Stamp the request trace before trajectory listeners mint their own ID.
+    // Preserve an existing originating trace on forwarded messages.
+    const requestTraceId = getInferenceTimer()?.traceId;
+    const originatingTraceId = asRecord(message.metadata)?.traceId;
+    if (
+      requestTraceId &&
+      !(typeof originatingTraceId === "string" && originatingTraceId.trim())
+    ) {
+      message.metadata ??= { type: "message" };
+      (message.metadata as { traceId?: string }).traceId = requestTraceId;
+    }
     if (typeof runtime.emitEvent === "function") {
       await timeInferenceSpan("chat:ingress:received-event", () =>
         runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
@@ -3571,21 +3582,24 @@ export async function generateChatResponse(
   const runOwned = async (
     roomHandlerLease: RoomHandlerLease,
   ): Promise<ChatGenerationResult> => {
-    try {
-      const result = await generateOwnedChatResponse(
-        runtime,
-        message,
-        agentName,
-        {
-          ...opts,
-          roomHandlerLease,
-        },
-      );
-      await opts?.onReplyReady?.(result);
-      return result;
-    } finally {
-      await drainRoomPostDeliveryTasks(runtime, message.roomId);
-    }
+    return withRoomDeliverySettlement(
+      runtime,
+      message.roomId,
+      roomHandlerLease,
+      async () => {
+        const result = await generateOwnedChatResponse(
+          runtime,
+          message,
+          agentName,
+          {
+            ...opts,
+            roomHandlerLease,
+          },
+        );
+        await opts?.onReplyReady?.(result);
+        return result;
+      },
+    );
   };
 
   const inheritedLease = runtime.roomHandlerQueue.currentLease(message.roomId);

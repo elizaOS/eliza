@@ -629,7 +629,7 @@ describe("EvaluatorService", () => {
 			const result = await new EvaluatorService(runtime).run(makeMessage());
 
 			expect(processed).toEqual(["ok"]);
-			expect(result.processedEvaluators).toEqual(["throws", "ok"]);
+			expect(result.processedEvaluators).toEqual(["ok"]);
 			expect(result.errors).toEqual(
 				expect.arrayContaining([
 					expect.objectContaining({

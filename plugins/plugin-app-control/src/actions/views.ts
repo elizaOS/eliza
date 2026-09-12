@@ -1098,10 +1098,9 @@ function resolveViewCapability({
 		);
 		if (currentExact) return currentExact;
 		if (exactCandidates.length === 1) return exactCandidates[0];
-		// An explicit capability without an explicit view may resolve only by its
-		// declared id. Letting fuzzy scoring reinterpret an unknown capability on
-		// the foreground view can turn a Calendar request into a Notes mutation.
-		if (!requestedView) return null;
+		// Explicit planner choices resolve by declared id only. Message-text
+		// scoring must never turn an unknown UI interaction into a record write.
+		return null;
 	}
 
 	const sourceText = [actionToken ?? text, explicitCapability]
@@ -2790,7 +2789,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			{
 				name: "capability",
 				description:
-					"Declared capability to invoke on the view (interact mode), e.g. 'create-note', 'get-notes', 'set-flashlight', 'click-button', 'get-state', 'refresh', or 'focus-element'. Use semantic capabilities for domain record mutations and native device controls; agent-fill/agent-click are only for deliberate form-control interaction, not record creation, updates, or deletion.",
+					"Exact capability id declared by the target view (interact mode), or a standard agent-surface operation such as agent-click with params.id from the view's controls/scoped steps. Never invent a capability name. Use semantic capabilities for domain record mutations and native device controls; agent-fill/agent-click are only for deliberate form-control interaction, not record creation, updates, or deletion.",
 				required: false,
 				schema: { type: "string" },
 			},
@@ -3372,24 +3371,6 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 										},
 									};
 								}
-								// Generated action labels may be a unique semantic alias for
-								// a declared catalog capability. Keep the view target fixed so
-								// this cannot dispatch across an unrelated surface.
-								const alias = resolveViewCapability({
-									views,
-									text: `${capability} ${text}`,
-									options: {
-										...actionOptions,
-										capability: undefined,
-										view: viewId,
-									},
-									viewType,
-									currentViewId: viewId,
-								});
-								if (alias?.view.id === resolvedView.id) {
-									resolvedCapability = alias;
-									capability = alias.capability.id;
-								}
 							}
 						}
 						if (!resolvedCapability && !standardCapability) {
@@ -3447,8 +3428,13 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							// interaction failure below).
 							return {
 								success: false,
-								text: `Cannot invoke capability "${capability}" on view "${viewId}": the view catalog does not declare that capability.`,
+								text: `Cannot invoke capability "${capability}" on view "${viewId}": the view catalog does not declare that capability. No interaction was dispatched. Choose a declared capability or use the exact agent-surface steps from a scoped action; step.kind is the capability and step.target is params.id.`,
 								transcriptVisibility: "internal",
+								data: {
+									viewId,
+									capabilities: resolvedView?.capabilities ?? [],
+									scopedActions: resolvedView?.scopedActions ?? [],
+								},
 							};
 						}
 						if (!resolvedCapability && standardCapability)

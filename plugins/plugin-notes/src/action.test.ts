@@ -109,6 +109,40 @@ function execute(
 }
 
 describe("promoted Notes execution", () => {
+  it("exposes complete replacement content separately from the create-only body", async () => {
+    const update = notesPlugin.actions?.find(
+      (action) => action.name === "NOTES_UPDATE",
+    );
+    expect(
+      update?.parameters?.map((parameter) => parameter.name),
+    ).not.toContain("body");
+    expect(
+      update?.parameters?.find(
+        (parameter) => parameter.name === "replacementContent",
+      ),
+    ).toMatchObject({
+      required: true,
+      aliases: ["body", "newText"],
+    });
+    const runtime = await executorHarness();
+    await execute(runtime, {
+      name: "NOTES_CREATE",
+      params: { content: "Packing list\nCharger" },
+    });
+    const result = await execute(runtime, {
+      name: "NOTES_UPDATE",
+      params: {
+        content: "Packing list",
+        replacementContent: "Packing list\nCharger and water",
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(result.data?.note).toMatchObject({
+      title: "Packing list",
+      body: "Charger and water",
+    });
+  });
+
   it("creates, lists, updates, and deletes through the registered children", async () => {
     const runtime = await executorHarness();
     const created = await execute(runtime, {
@@ -257,8 +291,12 @@ describe("promoted Notes execution", () => {
     ["NOTES_CREATE", { content: "" }, "content"],
     ["NOTES_UPDATE", { body: "Replacement" }, "content"],
     ["NOTES_UPDATE", { content: "" }, "content"],
-    ["NOTES_UPDATE", { content: "Existing note" }, "body"],
-    ["NOTES_UPDATE", { content: "Existing note", body: "" }, "body"],
+    ["NOTES_UPDATE", { content: "Existing note" }, "replacementContent"],
+    [
+      "NOTES_UPDATE",
+      { content: "Existing note", body: "" },
+      "replacementContent",
+    ],
     ["NOTES_DELETE", {}, "content"],
     ["NOTES_DELETE", { content: "" }, "content"],
   ])(

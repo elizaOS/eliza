@@ -37,6 +37,9 @@ export const NATIVE_TOOL_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
  */
 export const HANDLE_RESPONSE_TOOL_NAME = "HANDLE_RESPONSE" as const;
 
+/** Reserved planner protocol for loading authorized schemas without domain effects. */
+export const DISCOVER_TOOLS_NAME = "DISCOVER_TOOLS" as const;
+
 /** Shared should-respond contract for static and registry-composed schemas. */
 export const SHOULD_RESPOND_SCHEMA_DESCRIPTION =
 	"RESPOND=reply/run actions when the current message addresses you, assigns you work, clearly continues a question you asked, or needs a concrete correction or action specifically from you. A question broadcast to a group is not by itself a reason to interrupt; apply any ambient-turn policy in the prompt. IGNORE=silent for acknowledgements/reactions, side chatter, feeds, or messages directed to other people. STOP=explicit user stop.";

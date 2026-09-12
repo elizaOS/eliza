@@ -65,6 +65,7 @@ export * from "./providers/setup-progress";
 export * from "./providers/skill-eligibility";
 export * from "./roles";
 export * from "./runtime";
+export { actionGateRejection } from "./runtime/action-gate";
 export * from "./runtime/rlm";
 export * from "./runtime/system-prompt";
 export * from "./schemas/character";

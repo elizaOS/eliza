@@ -14,6 +14,7 @@ import {
 	DEFAULT_SUBACTION_KEYS,
 	readSubaction,
 } from "../actions/subaction-dispatch";
+import { DISCOVER_TOOLS_NAME } from "../actions/to-tool";
 import { ElizaError } from "../errors";
 import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { logger } from "../logger";
@@ -385,7 +386,8 @@ async function runPlannerLoopIterations(
 	// Tool success proves execution, not fulfillment of the user's intent.
 	// Evaluate even a single declared intent: a final-scope call can still
 	// target the wrong resource or surface.
-	const declaredIntentCount = declaredIntentsFromContext(plannerContext).length;
+	const declaredIntents = declaredIntentsFromContext(plannerContext);
+	const declaredIntentCount = declaredIntents.length;
 	const requiresIntentEvaluation = declaredIntentCount > 0;
 	// Diagnostic projection for every context/event copy of tool-call
 	// arguments: runtime-known secrets composed with the shared tool-shape
@@ -2003,6 +2005,16 @@ async function runPlannerLoopIterations(
 		});
 
 		const latestResult = trajectory.steps[trajectory.steps.length - 1]?.result;
+		if (
+			toolCall.name === DISCOVER_TOOLS_NAME &&
+			latestResult?.success === true
+		) {
+			// Loading schemas is planner protocol, not completed user work. The
+			// next model round chooses the newly available operation; there is no
+			// effect for a completion evaluator to judge yet.
+			lastPlannerExplicitCompleted = false;
+			continue;
+		}
 		if (latestResult?.replyFailure) {
 			// The action already settled. A failed presentation is not an action
 			// failure and must never trigger model rescue, tool replay, or another
@@ -2042,6 +2054,16 @@ async function runPlannerLoopIterations(
 							trajectory,
 						),
 			};
+		}
+
+		if (
+			declaredIntentCount === 1 &&
+			latestResult?.success === true &&
+			latestResult.turnComplete === true &&
+			latestResult.verifiedUserFacing === true &&
+			trajectory.plannedQueue.length > 0
+		) {
+			dropRedundantQueuedCalls(trajectory, toolCall.name, iteration);
 		}
 
 		// Coding mode: keep executing the rest of this model-emitted tool-call
@@ -2148,7 +2170,12 @@ async function runPlannerLoopIterations(
 				declaredIntentCount,
 			}) ??
 			(requiresIntentEvaluation
-				? null
+				? tryVerifiedIntentGate({
+						trajectory,
+						failures,
+						lastPlannerExplicitCompleted,
+						declaredIntents,
+					})
 				: tryGateEvaluator({
 						trajectory,
 						failures,
@@ -2406,6 +2433,55 @@ function appendPlannerToolStepToModelHistory(
 	trajectory.modelHistory.push(
 		...trajectoryStepsToMessages([step], { redactText }),
 	);
+}
+
+/**
+ * A verified, turn-completing result fulfils the single declared intent; any
+ * remaining queued calls of the same action are the planner's hedge (live
+ * 2026-09-12: `MEMORY_DELETE {confirm}` then `MEMORY_DELETE {confirm, query}`
+ * in one response — the first succeeded through the action's own fallback and
+ * the second found nothing left, dragging in an evaluator round, a replan and
+ * three rate-limited retries). They leave the queue as skipped evidence so the
+ * queue-drained gates can settle the turn on the verified result.
+ */
+function dropRedundantQueuedCalls(
+	trajectory: PlannerTrajectory,
+	actionName: string,
+	iteration: number,
+): number {
+	const key = actionName.trim().toUpperCase();
+	const dropped = trajectory.plannedQueue.filter(
+		(queued) => queued.name.trim().toUpperCase() === key,
+	);
+	if (dropped.length === 0) return 0;
+	const kept = trajectory.plannedQueue.filter(
+		(queued) => queued.name.trim().toUpperCase() !== key,
+	);
+	trajectory.plannedQueue.splice(0, trajectory.plannedQueue.length, ...kept);
+	const droppedIds = new Set(dropped.map((queued) => queued.id ?? queued.name));
+	trajectory.context = appendContextEvent(
+		{
+			...trajectory.context,
+			plannedQueue: (trajectory.context.plannedQueue ?? []).map((entry) =>
+				entry.status === "queued" && droppedIds.has(entry.id ?? entry.name)
+					? { ...entry, status: "skipped" as const }
+					: entry,
+			),
+		},
+		{
+			id: `queue-drop:${iteration}`,
+			type: "planned_tool_call",
+			source: "planner-loop",
+			createdAt: Date.now(),
+			metadata: {
+				iteration,
+				name: actionName,
+				droppedToolCallIds: [...droppedIds],
+				reason: "redundant_after_verified_completion",
+			},
+		},
+	);
+	return dropped.length;
 }
 
 function appendPendingToolQueueFeedbackEvent(
@@ -3313,16 +3389,41 @@ async function dispatchPlannerModelCall(params: {
 	// receive no ambient timeout, so a stalled generation would hang silently
 	// (live: 63s, only the messageHandler stage recorded). Bound that single
 	// call; non-coding turns keep their exact prior behavior.
-	const raw =
-		params.trajectory.codingMode === true
-			? await dispatchWithCodingCallTimeout({
-					dispatch: invokeUseModel,
-					ambientSignal: streamingContext?.abortSignal,
-					timeoutMs: resolveCodingPlannerCallTimeoutMs(),
-					iteration: params.iteration,
-					logger: params.runtime.logger,
-				})
-			: await invokeUseModel();
+	let raw: string | GenerateTextResult;
+	try {
+		raw =
+			params.trajectory.codingMode === true
+				? await dispatchWithCodingCallTimeout({
+						dispatch: invokeUseModel,
+						ambientSignal: streamingContext?.abortSignal,
+						timeoutMs: resolveCodingPlannerCallTimeoutMs(),
+						iteration: params.iteration,
+						logger: params.runtime.logger,
+					})
+				: await invokeUseModel();
+	} catch (error) {
+		// error-policy:J2 record the attempted input before propagating the
+		// provider failure. A rejected request has no generated response, but
+		// losing its messages/tools makes context-overflow diagnosis impossible.
+		await recordPlannerStage({
+			runtime: params.runtime,
+			recorder: params.recorder,
+			trajectoryId: params.trajectoryId,
+			parentStageId: params.parentStageId,
+			iteration: params.iteration ?? 1,
+			modelType,
+			provider: params.provider,
+			modelParams,
+			raw: "",
+			startedAt,
+			endedAt: Date.now(),
+			segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
+			prefixHash,
+			logger: params.runtime.logger,
+			providerAttributionState: params.providerAttributionState,
+		});
+		throw error;
+	}
 	const endedAt = Date.now();
 
 	const parsed = parsePlannerOutput(raw);
@@ -3512,7 +3613,7 @@ async function recordPlannerStage(args: {
 		providerOptions?: Record<string, unknown>;
 	};
 	raw: string | GenerateTextResult;
-	parsed: ReturnType<typeof parsePlannerOutput>;
+	parsed?: ReturnType<typeof parsePlannerOutput>;
 	startedAt: number;
 	endedAt: number;
 	segmentHashes: string[];
@@ -3526,7 +3627,7 @@ async function recordPlannerStage(args: {
 		const responseText =
 			typeof args.raw === "string" ? args.raw : args.raw.text;
 		const usage = extractUsage(args.raw);
-		const finishReason = extractFinishReason(args.raw);
+		const finishReason = args.parsed ? extractFinishReason(args.raw) : "error";
 		const modelName = extractModelName(args.raw);
 		// Record the model's native declarations before execution-only parsing
 		// strips reserved control arguments. Otherwise traces lose the very
@@ -3536,7 +3637,7 @@ async function recordPlannerStage(args: {
 				? []
 				: normalizeToolCalls(args.raw.toolCalls);
 		const recordedCalls =
-			nativeCalls.length > 0 ? nativeCalls : args.parsed.toolCalls;
+			nativeCalls.length > 0 ? nativeCalls : (args.parsed?.toolCalls ?? []);
 		// Flatten `messages` only to locate provider spans; the flattened form is
 		// not persisted — `messages` is the canonical record and spans index into
 		// `flattenTrajectoryMessages(messages)` reconstructed at read time.
@@ -5109,14 +5210,19 @@ function hasExposedNonTerminalTool(
 		Array.isArray(tools) &&
 		tools.some((tool) => {
 			const name = getToolDefinitionName(tool);
-			return Boolean(name && !isTerminalToolCall({ name }));
+			return Boolean(
+				name && name !== DISCOVER_TOOLS_NAME && !isTerminalToolCall({ name }),
+			);
 		})
 	);
 }
 
 function hasExecutedNonTerminalTool(trajectory: PlannerTrajectory): boolean {
 	return trajectory.steps.some(
-		(step) => step.toolCall && !isTerminalToolCall(step.toolCall),
+		(step) =>
+			step.toolCall &&
+			step.toolCall.name !== DISCOVER_TOOLS_NAME &&
+			!isTerminalToolCall(step.toolCall),
 	);
 }
 
@@ -6660,6 +6766,7 @@ function hasSuccessfulNonTerminalToolStep(
 	return [...trajectory.archivedSteps, ...trajectory.steps].some(
 		(step) =>
 			step.toolCall !== undefined &&
+			step.toolCall.name !== DISCOVER_TOOLS_NAME &&
 			!isTerminalToolCall(step.toolCall) &&
 			step.result?.success === true,
 	);
@@ -7816,8 +7923,160 @@ type GatedEvaluatorDecision = {
 		| "action_terminal_result"
 		| "action_terminal_failure"
 		| "post_tool_model_reply"
-		| "sub_planner_evaluator_finish";
+		| "sub_planner_evaluator_finish"
+		| "verified_intent_result";
 };
+
+export const VERIFIED_INTENT_GATED_EVALUATOR_THOUGHT =
+	"Gated FINISH: the single declared intent is fulfilled by the sole verified action-owned result (its own user-facing text names the intent's content and it carries an applied receipt); evaluator LLM call skipped.";
+
+const INTENT_STOP_WORDS = new Set([
+	"a",
+	"an",
+	"the",
+	"my",
+	"your",
+	"our",
+	"me",
+	"you",
+	"i",
+	"we",
+	"it",
+	"its",
+	"is",
+	"are",
+	"was",
+	"be",
+	"to",
+	"of",
+	"in",
+	"on",
+	"at",
+	"for",
+	"and",
+	"or",
+	"that",
+	"this",
+	"with",
+	"about",
+	"from",
+	"into",
+	"as",
+	"so",
+	"up",
+	"now",
+	"please",
+	"remember",
+	"recall",
+	"forget",
+	"note",
+	"save",
+	"store",
+	"set",
+	"create",
+	"make",
+	"add",
+	"remove",
+	"delete",
+	"cancel",
+	"update",
+	"change",
+	"move",
+	"reschedule",
+	"put",
+	"get",
+	"do",
+	"did",
+	"have",
+	"has",
+	"user",
+	"users",
+	"again",
+	"then",
+	"just",
+	"also",
+]);
+
+function intentContentTokens(text: string): string[] {
+	return text
+		.toLowerCase()
+		.split(/[^\p{L}\p{N}]+/u)
+		.filter((token) => token.length >= 2 && !INTENT_STOP_WORDS.has(token));
+}
+
+/**
+ * Deterministic fulfillment check: every content word of the declared intent
+ * that survives stop-word removal must appear in the action-owned reply
+ * (60% coverage, at least one word). "remember favorite tea is matcha" →
+ * "Saved: your favorite tea is matcha." matches; "forget my favorite tea" →
+ * "Forgot: your dog is named Rex." does not, and the evaluator still runs.
+ */
+export function intentFulfilledByResultText(
+	intent: string,
+	resultText: string,
+): boolean {
+	const intentTokens = [...new Set(intentContentTokens(intent))];
+	if (intentTokens.length === 0) return false;
+	const resultTokens = new Set(intentContentTokens(resultText));
+	const matched = intentTokens.filter((token) =>
+		resultTokens.has(token),
+	).length;
+	return matched >= 1 && matched / intentTokens.length >= 0.6;
+}
+
+/**
+ * Intent-aware sibling of {@link tryGateEvaluator}. Stage 1 declared exactly
+ * one intent and the sole executed tool completed it on its own terms:
+ * `success`, `turnComplete`, `verifiedUserFacing`, a safe `userFacingText`
+ * that names the intent's content, and an applied effect receipt. The
+ * evaluator would re-read that same result to author prose (live VPS:
+ * 1.3–2.5 s and ~15K prompt tokens per memory turn, and it rephrased
+ * "Forgot: your favorite tea…" into slang). Anything else — several intents,
+ * pending work, a failure, no receipt, or text that does not cover the
+ * intent — still evaluates.
+ */
+function tryVerifiedIntentGate(args: {
+	trajectory: PlannerTrajectory;
+	failures: readonly FailureLike[];
+	lastPlannerExplicitCompleted: boolean | undefined;
+	declaredIntents: readonly string[];
+}): GatedEvaluatorDecision | null {
+	const { trajectory, failures } = args;
+	if (args.declaredIntents.length !== 1) return null;
+	if (args.lastPlannerExplicitCompleted === false) return null;
+	if (trajectory.plannedQueue.length > 0) return null;
+	if (failures.length > 0) return null;
+	if (completedToolStepCount(trajectory) !== 1) return null;
+	if (latestUnresolvedFailedNonTerminalToolStep(trajectory)) return null;
+	const latestStep = trajectory.steps[trajectory.steps.length - 1];
+	const result = latestStep?.result;
+	if (!latestStep?.toolCall || !result) return null;
+	if (result.success !== true) return null;
+	if (result.turnComplete !== true || result.verifiedUserFacing !== true)
+		return null;
+	if (
+		hasAwaitingUserInputMarker(result) ||
+		hasRequiresConfirmationMarker(result)
+	)
+		return null;
+	const applied = (result.effectReceipts ?? []).some(
+		(receipt) => receipt?.outcome === "applied",
+	);
+	if (!applied) return null;
+	const message = result.userFacingText?.trim();
+	if (!message || isUnsafeUserVisibleText(message)) return null;
+	if (!intentFulfilledByResultText(args.declaredIntents[0], message))
+		return null;
+	return {
+		reason: "verified_intent_result",
+		output: {
+			success: true,
+			decision: "FINISH",
+			thought: VERIFIED_INTENT_GATED_EVALUATOR_THOUGHT,
+			messageToUser: message,
+		},
+	};
+}
 
 export const SUB_PLANNER_VERDICT_GATED_EVALUATOR_THOUGHT =
 	"Gated FINISH: the umbrella action's sub-planner evaluator already judged these results against the declared intents; second evaluator LLM call skipped.";

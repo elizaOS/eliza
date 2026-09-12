@@ -141,6 +141,8 @@ export interface Experience {
 
 	// Provenance for review and evidence replay
 	sourceMessageIds?: UUID[]; // Conversation messages used as extraction evidence
+	sourceMessageRevisions?: Record<string, string>; // Exact revisions used by an incremental extraction
+	extractionEvidenceId?: string; // Stable operation batch identity retained across retries
 	sourceRoomId?: UUID; // Room where the evidence was observed
 	sourceTriggerMessageId?: UUID; // Agent message that triggered extraction
 	sourceTrajectoryId?: string; // Full trajectory, when available

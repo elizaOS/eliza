@@ -144,7 +144,7 @@ export async function generateStage1Decision(
 		context,
 		availableContexts,
 		{
-			directMessage: directMessageChannel && !voiceDirectMessageChannel,
+			directMessage: directMessageChannel,
 			voiceDirectMessage: voiceDirectMessageChannel,
 			responseHandlerFields: responseHandlerFieldPrompt.rendered,
 		},

@@ -190,6 +190,10 @@ describe("same-turn contextual navigation", () => {
 		expect(ctx.messageHandler.plan.contextSlices?.join("\n")).toContain(
 			'"viewId":"observatory"',
 		);
+		const handoff = ctx.messageHandler.plan.contextSlices?.join("\n") ?? "";
+		expect(handoff).toContain("Selected authorized destination:");
+		expect(handoff).toContain("VIEWS action=list or action=search");
+		expect(handoff).not.toContain("Authorized live catalog:");
 		expect(requestedPaths).toEqual(["/api/views"]);
 		expect(prompts[0]).not.toContain("Restricted account details");
 		expect(prompts[0]).not.toContain('"id":"offline"');

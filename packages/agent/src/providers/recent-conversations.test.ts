@@ -23,6 +23,7 @@ const buildCrossWorldConversationAccessContext = vi.fn(
     const agentRoomSet = new Set(agentRooms);
     return {
       requesterEntityId: message.entityId,
+      role: "OWNER" as const,
       authorizedRoomIds: Array.from(new Set(requesterRooms)).filter((roomId) =>
         agentRoomSet.has(roomId),
       ),
@@ -53,6 +54,7 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 const { recentConversationsProvider } = await import(
   "./recent-conversations.ts"
 );
+const { memoryAction } = await import("../actions/memories.ts");
 
 const ROOM_ID = "00000000-0000-0000-0000-0000000000c1" as UUID;
 const ALIAS_ROOM_ID = "00000000-0000-0000-0000-0000000000c2" as UUID;
@@ -79,6 +81,7 @@ function plainMessage(): Memory {
 function makeRuntime(overrides: Record<string, unknown> = {}): IAgentRuntime {
   return {
     agentId: AGENT_ID,
+    actions: [memoryAction],
     character: { name: "Test Agent" },
     getRoom: vi.fn(async () => ({
       id: ROOM_ID,
@@ -117,7 +120,7 @@ describe("recentConversationsProvider", () => {
     expect(recentConversationsProvider.alwaysInResponseState).toBe(true);
   });
 
-  it("keeps eager message bodies and declares a retrieval manifest", async () => {
+  it("declares complete recall instructions without eagerly replaying message bodies", async () => {
     const runtime = makeRuntime();
 
     const result = await recentConversationsProvider.get(
@@ -126,7 +129,11 @@ describe("recentConversationsProvider", () => {
       EMPTY_STATE,
     );
 
-    expect(result.text).toContain("hello there");
+    expect(result.text).not.toContain("hello there");
+    expect(result.text).toContain("MEMORY action=search, type=messages");
+    expect(result.text).toContain("nextOffset/snapshot");
+    expect(result.text).toContain("select the memory context");
+    expect(result.text).toBe(result.overflowText);
     expect(result.overflowText).toContain(
       `[discord] general roomId=${ROOM_ID}`,
     );
@@ -143,7 +150,7 @@ describe("recentConversationsProvider", () => {
     "We need to talk",
     "What did I say elsewhere?",
   ])(
-    "preserves authorized history without a recall keyword: %s",
+    "keeps the explicit recall contract independent of recall keywords: %s",
     async (text) => {
       const runtime = makeRuntime();
 
@@ -153,7 +160,8 @@ describe("recentConversationsProvider", () => {
         EMPTY_STATE,
       );
 
-      expect(result.text).toContain("hello there");
+      expect(result.text).not.toContain("hello there");
+      expect(result.text).toContain("Full message bodies remain stored");
       expect(result.overflowText).toContain(
         `[discord] general roomId=${ROOM_ID}`,
       );
@@ -181,14 +189,14 @@ describe("recentConversationsProvider", () => {
       wrapped("what time is it right now?"),
       EMPTY_STATE,
     );
-    expect(plain.text).toContain("hello there");
+    expect(plain.text).toContain(`roomId=${ROOM_ID}`);
 
     const recall = await recentConversationsProvider.get(
       makeRuntime(),
       wrapped("what did we say about this earlier?"),
       EMPTY_STATE,
     );
-    expect(recall.text).toContain("hello there");
+    expect(recall.text).toBe(plain.text);
   });
 
   it("preserves history for requests inside a document-augmentation wrapper", async () => {
@@ -216,17 +224,17 @@ describe("recentConversationsProvider", () => {
       augmented("what time is it right now?"),
       EMPTY_STATE,
     );
-    expect(plain.text).toContain("hello there");
+    expect(plain.text).toContain(`roomId=${ROOM_ID}`);
 
     const recall = await recentConversationsProvider.get(
       makeRuntime(),
       augmented("what did we say about this earlier?"),
       EMPTY_STATE,
     );
-    expect(recall.text).toContain("hello there");
+    expect(recall.text).toBe(plain.text);
   });
 
-  it("expands linked aliases into complete eager context and a body-free manifest", async () => {
+  it("indexes every authorized linked-alias room without cross-room transcript replay", async () => {
     getVerifiedRelatedEntityIds.mockResolvedValue([ENTITY_ID, ALIAS_ENTITY_ID]);
     const completeTexts = Array.from(
       { length: 15 },
@@ -296,7 +304,7 @@ describe("recentConversationsProvider", () => {
     expect(result.overflowText).toContain("discord");
     expect(result.overflowText).toContain("telegram");
     for (const text of completeTexts) {
-      expect(result.text).toContain(text);
+      expect(result.text).not.toContain(text);
       expect(result.overflowText).not.toContain(text);
     }
   });
@@ -331,7 +339,8 @@ describe("recentConversationsProvider", () => {
       accessContext: expect.any(Object),
     });
     expect(result.overflowText).toContain(`roomId=${ALIAS_ROOM_ID}`);
-    expect(result.text).toContain("remote-only context");
+    expect(result.text).not.toContain("remote-only context");
+    expect(result.text).not.toContain(`roomId=${ROOM_ID}`);
   });
 
   it("collapses connector record-of-send echoes per room while keeping distinct repeated turns", async () => {
@@ -383,6 +392,7 @@ describe("recentConversationsProvider", () => {
       },
     ] as Memory[];
     const runtime = makeRuntime({
+      actions: [],
       getRoomsForParticipants: vi.fn(async () => [ROOM_ID, otherRoom]),
       getRoomsForParticipant: vi.fn(async () => [ROOM_ID, otherRoom]),
       getMemoriesByRoomIds: vi.fn(async () => rows),
@@ -406,6 +416,7 @@ describe("recentConversationsProvider", () => {
 
   it("keeps safe attachment recall while excluding capability URLs", async () => {
     const runtime = makeRuntime({
+      actions: [],
       getMemoriesByRoomIds: vi.fn(async () => [
         {
           ...message(),
@@ -434,10 +445,52 @@ describe("recentConversationsProvider", () => {
     expect(result.text ?? "").toContain("receipt.png");
     expect(result.text ?? "").toContain("dinner reservation");
     expect(result.text ?? "").not.toContain("private.example");
-    expect(result.overflowText).not.toContain("receipt.png");
+    expect(result.overflowText).toBeUndefined();
     expect(result.values?.recentConversationCount).toBe(1);
     expect(result.data?.rooms).toHaveLength(1);
     expect(JSON.stringify(result.data)).not.toContain("private.example");
+  });
+
+  it.each(
+    (
+      [
+        [],
+        [{ ...memoryAction, private: true }],
+        [{ ...memoryAction, roleGate: { noneOf: ["OWNER"] } }],
+        [{ ...memoryAction, contextGate: { noneOf: ["memory"] } }],
+      ] satisfies IAgentRuntime["actions"][]
+    ).map((actions) => ({ actions })),
+  )(
+    "preserves complete inline history when registered recall cannot run: %j",
+    async ({ actions }) => {
+      const completeBody = `Beginning ${"full historical evidence ".repeat(1_000)} ending`;
+      const runtime = makeRuntime({
+        actions,
+        getMemoriesByRoomIds: vi.fn(async () => [
+          { ...message(), content: { text: completeBody } },
+        ]),
+      });
+      const result = await recentConversationsProvider.get(
+        runtime,
+        message(),
+        EMPTY_STATE,
+      );
+      expect(result.text).toContain(completeBody);
+      expect(result.overflowText).toBeUndefined();
+    },
+  );
+
+  it("uses the registered promoted search action when no umbrella is installed", async () => {
+    const runtime = makeRuntime({
+      actions: [{ ...memoryAction, name: "MEMORY_SEARCH" }],
+    });
+    const result = await recentConversationsProvider.get(
+      runtime,
+      message(),
+      EMPTY_STATE,
+    );
+    expect(result.text).toContain("Read with MEMORY_SEARCH, type=messages");
+    expect(result.text).not.toContain("hello there");
   });
 
   it("denies group disclosure before identity or room-history queries", async () => {

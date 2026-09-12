@@ -22,7 +22,12 @@
  * error) on rooms with very deep fact history.
  */
 
-import type { FactMetadata, Memory, MemoryMetadata } from "../types/memory";
+import type {
+	CustomMetadata,
+	FactMetadata,
+	Memory,
+	MemoryMetadata,
+} from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";
 
 const DEDUPE_CANDIDATE_POOL = 120;
@@ -97,7 +102,52 @@ export function mergeStrongerFactMetadata(
 ): MemoryMetadata | null {
 	const kept = readFactMetadata(existing);
 	const next = readFactMetadata(incoming);
-	const upgrades: FactMetadata = {};
+	const upgrades: FactMetadata & CustomMetadata = {};
+	const incomingEvidence = (incoming.metadata as CustomMetadata | undefined)
+		?.extractionEvidenceIds;
+	if (Array.isArray(incomingEvidence)) {
+		const keptMetadata = existing.metadata as CustomMetadata | undefined;
+		const keptEvidence = Array.isArray(keptMetadata?.extractionEvidenceIds)
+			? keptMetadata.extractionEvidenceIds
+			: [];
+		const evidenceIds = [
+			...new Set(
+				[...keptEvidence, ...incomingEvidence].filter(
+					(id): id is string => typeof id === "string",
+				),
+			),
+		];
+		if (evidenceIds.length !== keptEvidence.length)
+			upgrades.extractionEvidenceIds = evidenceIds;
+		const incomingRevisions = (incoming.metadata as CustomMetadata)
+			.extractionSourceRevisions;
+		const keptRevisions = keptMetadata?.extractionSourceRevisions;
+		if (
+			incomingRevisions &&
+			typeof incomingRevisions === "object" &&
+			!Array.isArray(incomingRevisions)
+		) {
+			upgrades.extractionSourceRevisions = {
+				...(keptRevisions &&
+				typeof keptRevisions === "object" &&
+				!Array.isArray(keptRevisions)
+					? keptRevisions
+					: {}),
+				...incomingRevisions,
+			};
+		}
+	}
+
+	// Historical backfill can rediscover rows processed before revision receipts
+	// existed. Attach provenance, but do not treat old evidence as reconfirmation.
+	if (
+		(incoming.metadata as CustomMetadata | undefined)?.extractionBackfill ===
+		true
+	) {
+		return Object.keys(upgrades).length === 0
+			? null
+			: ({ ...existing.metadata, ...upgrades } as MemoryMetadata);
+	}
 
 	if (
 		typeof next.confidence === "number" &&

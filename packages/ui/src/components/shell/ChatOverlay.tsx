@@ -789,7 +789,7 @@ const REALTIME_COMPOSER_LABEL: Record<RealtimeVoiceStatus, string> = {
   listening: "Listening…",
   transcribing: "Hearing you…",
   thinking: "Thinking…",
-  speaking: "Speaking…",
+  speaking: "Speaking · mic paused",
   interrupting: "Stopping…",
 };
 
@@ -856,6 +856,7 @@ function ComposerRealtimeVoiceActivity({
   needsAudioUnlock,
   onUnlockAudio,
   paused,
+  microphoneMuted,
   reduceMotion,
   status,
   transcript,
@@ -865,6 +866,7 @@ function ComposerRealtimeVoiceActivity({
   needsAudioUnlock: boolean;
   onUnlockAudio: () => void;
   paused: boolean;
+  microphoneMuted: boolean;
   reduceMotion: boolean;
   status: RealtimeVoiceStatus;
   transcript: string;
@@ -875,12 +877,23 @@ function ComposerRealtimeVoiceActivity({
       ? "Voice paused"
       : connecting
         ? "Connecting…"
-        : REALTIME_COMPOSER_LABEL[status];
+        : microphoneMuted &&
+            (status === "listening" || status === "transcribing")
+          ? "Microphone muted"
+          : REALTIME_COMPOSER_LABEL[status];
   const liveTranscript =
-    !error && !paused && !connecting ? transcript.trim() : "";
+    !error &&
+    !paused &&
+    !connecting &&
+    !microphoneMuted &&
+    (status === "listening" || status === "transcribing")
+      ? transcript.trim()
+      : "";
   const visualPhase: RealtimeVoiceVisualPhase = error
     ? "error"
-    : paused
+    : paused ||
+        (microphoneMuted &&
+          (status === "listening" || status === "transcribing"))
       ? "paused"
       : connecting
         ? "connecting"
@@ -6827,6 +6840,7 @@ export function ChatOverlay({
                         needsAudioUnlock={needsAudioUnlock}
                         onUnlockAudio={unlockAudio}
                         paused={realtimeVoice.paused}
+                        microphoneMuted={realtimeVoice.microphoneMuted}
                         reduceMotion={reduce}
                         status={realtimeVoice.status}
                         transcript={transcript}
@@ -6971,12 +6985,20 @@ export function ChatOverlay({
                           }
                         >
                           <SoftButton
-                            icon={realtimeVoice.microphoneMuted ? MicOff : Mic}
-                            label={
-                              realtimeVoice.microphoneMuted
-                                ? "unmute microphone"
-                                : "mute microphone"
+                            icon={
+                              realtimeVoice.microphoneMuted ||
+                              realtimeVoice.status === "speaking"
+                                ? MicOff
+                                : Mic
                             }
+                            label={
+                              realtimeVoice.status === "speaking"
+                                ? "Microphone paused while speaking"
+                                : realtimeVoice.microphoneMuted
+                                  ? "unmute microphone"
+                                  : "mute microphone"
+                            }
+                            disabled={realtimeVoice.status === "speaking"}
                             active={realtimeVoice.microphoneMuted}
                             pressed={realtimeVoice.microphoneMuted}
                             onClick={realtimeVoice.toggleMicrophoneMute}

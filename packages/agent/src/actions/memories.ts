@@ -27,6 +27,7 @@ import {
   ModelType,
   readStoredFactKeywords,
   toWellFormedUnicode,
+  unwrapUserMessageText,
   validateUuid,
 } from "@elizaos/core";
 
@@ -128,8 +129,53 @@ const SEARCH_QUERY_STOP_WORDS = new Set([
   "user",
   "users",
   "named",
+  // Imperatives and memory verbs the planner copies from the user's sentence
+  // ("remember that my favorite tea is yerba" → forget-by-query, live
+  // 2026-09-10): they never appear in the stored fact, and delete needs every
+  // remaining term to match, so one such word sank an otherwise exact hit.
+  "remember",
+  "remembered",
+  "forget",
+  "forgot",
+  "recall",
+  "note",
+  "noted",
+  "save",
+  "saved",
+  "store",
+  "stored",
+  "please",
+  "know",
+  "knew",
+  "said",
+  "told",
+  "mentioned",
   "called",
 ]);
+
+/**
+ * A sentence the user can see verbatim for a completed memory mutation. Stored
+ * facts are third person ("User's favorite tea is yerba."); the reply speaks to
+ * the user. With `verifiedUserFacing` + `turnComplete` the planner loop skips
+ * its post-tool evaluator round (1.3–2.5 s, ~15K tokens on the VPS) for a
+ * single-tool turn and delivers this line as the reply.
+ */
+export function memoryUserFacingLine(verb: string, factText: string): string {
+  const cleaned = toWellFormedUnicode(factText).replace(/\s+/g, " ").trim();
+  // Only possessives are rewritten ("user's" / "my" → "your"); subject rewrites
+  // would need verb agreement ("the user prefers" → "you prefer") and are left
+  // as-is, so a first-person "I" keeps its capital.
+  const spoken = cleaned
+    .replace(/^(?:the )?user'?s\b/i, "your")
+    .replace(/\bthe user'?s\b/gi, "your")
+    .replace(/\bmy\b/gi, "your");
+  const body =
+    spoken && !/^I\b/.test(spoken)
+      ? spoken.charAt(0).toLowerCase() + spoken.slice(1)
+      : spoken;
+  const terminated = /[.!?]$/.test(body) ? body : `${body}.`;
+  return body ? `${verb}: ${terminated}` : `${verb}.`;
+}
 
 function fail(
   text: string,
@@ -443,6 +489,9 @@ async function upgradeStageFact(
     success: true,
     transcriptVisibility: "internal",
     text: `Stored memory ${stageFact.id}.`,
+    userFacingText: memoryUserFacingLine("Saved", next.text),
+    verifiedUserFacing: true,
+    turnComplete: true,
     values: {
       memoryId: stageFact.id,
       kind: next.kind ?? null,
@@ -563,6 +612,9 @@ async function doCreate(
     success: true,
     transcriptVisibility: "internal",
     text: `Stored memory ${memoryId}.`,
+    userFacingText: memoryUserFacingLine("Saved", text),
+    verifiedUserFacing: true,
+    turnComplete: true,
     values: { memoryId, kind: kind ?? null, tagCount: tags.length },
     effectReceipts: [
       memoryMutationReceipt({
@@ -1177,6 +1229,9 @@ async function doUpdate(
     success: true,
     transcriptVisibility: "internal",
     text: `Updated ${updatedIds.length} memory record(s).`,
+    userFacingText: memoryUserFacingLine("Updated", updatedText),
+    verifiedUserFacing: true,
+    turnComplete: true,
     values: { memoryId: primaryMemoryId, updatedCount: updatedIds.length },
     effectReceipts: updatedIds.map((id) =>
       memoryMutationReceipt({
@@ -1203,6 +1258,35 @@ async function doUpdate(
   };
 }
 
+/**
+ * The planner sometimes dispatches a forget with `confirm` alone ("forget my
+ * favorite tea" → `{"confirm": true}`, live 2026-09-11), which cost a failed
+ * step, an evaluator round and a second planner call (~3 s) before it quoted
+ * the message. The query contract is the user's own words from this message,
+ * so use them directly when the message carries content terms; the same
+ * every-term match and ambiguity refusal still guard the delete.
+ */
+const MENTION_TOKEN_PATTERN =
+  /<@!?\d{6,}>|@?[\p{L}\p{N}_.-]+\s*\(@\d{6,}\)|\(@\d{6,}\)/gu;
+
+function deleteQueryFromMessage(message: Memory): string | undefined {
+  // The user's actual words, not the external-content security envelope that
+  // wraps connector messages: the envelope's warning text matched nothing and
+  // turned a plain "forget my favorite tea" into a hard miss (live 2026-09-12).
+  // Drop platform mention tokens ("Eliza (@1490833…)" / "<@1490833…>"): they
+  // are addressing, not content, and their name and id would have to match
+  // the stored fact for the every-term rule (live 2026-09-12, harness room).
+  const text = unwrapUserMessageText(message)
+    .replace(MENTION_TOKEN_PATTERN, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text || scoreQueryTerms(text).length === 0) return undefined;
+  logger.info(
+    "[MEMORY] delete carried no query; using the user's message text",
+  );
+  return text;
+}
+
 async function doDelete(
   runtime: IAgentRuntime,
   message: Memory,
@@ -1211,7 +1295,8 @@ async function doDelete(
   const memoryParam = parseUuidParam(params.memoryId, "memoryId");
   if (!memoryParam.ok) return memoryParam.result;
   const memoryId = memoryParam.id;
-  const query = params.query?.trim();
+  const explicitQuery = params.query?.trim();
+  const query = explicitQuery || deleteQueryFromMessage(message);
   if (!memoryId && !query) {
     return fail(MEMORY_MISSING_TARGET_MESSAGE, "MEMORY_MISSING_ID");
   }
@@ -1235,6 +1320,9 @@ async function doDelete(
       success: true,
       transcriptVisibility: "internal",
       text: `Forgot memory ${memoryId}: ${toWellFormedUnicode(existing.content.text ?? "")}`,
+      userFacingText: memoryUserFacingLine("Forgot", forgottenText),
+      verifiedUserFacing: true,
+      turnComplete: true,
       values: { memoryId },
       effectReceipts: [
         memoryMutationReceipt({
@@ -1261,7 +1349,18 @@ async function doDelete(
   if (!query) {
     return fail(MEMORY_MISSING_TARGET_MESSAGE, "MEMORY_MISSING_ID");
   }
-  return doDeleteByQuery(runtime, message, params, query);
+  const result = await doDeleteByQuery(runtime, message, params, query);
+  // A miss on the implied query is not evidence that nothing is stored; hand
+  // the planner the original ask for an explicit query instead of a verdict.
+  if (
+    !explicitQuery &&
+    !result.success &&
+    (result.data as { error?: unknown } | undefined)?.error ===
+      "MEMORY_NOT_FOUND"
+  ) {
+    return fail(MEMORY_MISSING_TARGET_MESSAGE, "MEMORY_MISSING_ID");
+  }
+  return result;
 }
 
 /**
@@ -1403,6 +1502,9 @@ async function doDeleteByQuery(
     success: true,
     transcriptVisibility: "internal",
     text: `Forgot ${deleted.length} memory record(s) matching "${query}": ${toWellFormedUnicode(deleted[0]?.text ?? "")}`,
+    userFacingText: memoryUserFacingLine("Forgot", forgottenTexts.join("; ")),
+    verifiedUserFacing: true,
+    turnComplete: true,
     values: { deletedCount: deleted.length },
     effectReceipts: deleted.map((item) =>
       memoryMutationReceipt({
@@ -1526,7 +1628,7 @@ export const memoryAction: Action = {
     {
       name: "text",
       description:
-        "create: REQUIRED — the content to remember, as a complete sentence (never leave it empty and never put it in query). update: complete replacement text for the existing record; preserve every unrelated fact. When correcting saved knowledge, search the subject and reconcile all affected records before reporting completion.",
+        'create: REQUIRED — the content to remember, as a complete third-person sentence about the user ("The user\'s favorite tea is matcha." — not "my", not their name; never leave it empty and never put it in query). update: complete replacement text for the existing record; preserve every unrelated fact. When correcting saved knowledge, search the subject and reconcile all affected records before reporting completion.',
       required: false,
       requiredForSubactions: ["create", "update"],
       schema: { type: "string" as const },
