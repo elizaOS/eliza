@@ -463,9 +463,7 @@ describe("CloudAgentsSection lifecycle (suspend/resume)", () => {
     });
     await renderWithAgents([agent({ status: "running" })]);
     expect(screen.getByText("Active · this device")).toBeTruthy();
-    expect(
-      screen.queryByRole("button", { name: "Use", exact: true }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Use$/ })).toBeNull();
     expect(
       screen
         .getByRole("button", { name: "Delete Old Name" })
