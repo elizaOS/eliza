@@ -96,10 +96,14 @@ export interface PreferenceExtractorOutput {
  * the model can emit e.g. `trait: "verbosity", value: "warm"` — that op drops
  * with a logged issue instead of silently writing a nonsense trait.
  *
- * Returns null only when the envelope itself is not `{ ops: array }`.
+ * Incremental callers require the whole section: dropping an operation would
+ * acknowledge its source evidence without applying it. Legacy callers retain
+ * tolerant parsing. Returns null for an invalid envelope or incomplete strict
+ * section.
  */
 export function parsePreferenceOutputTolerant(
 	output: unknown,
+	options?: { requireComplete?: boolean },
 ): PreferenceExtractorOutput | null {
 	const envelope = z.object({ ops: z.array(z.unknown()) }).safeParse(output);
 	if (!envelope.success) return null;
@@ -127,8 +131,11 @@ export function parsePreferenceOutputTolerant(
 	if (issues.length > 0) {
 		logger.warn(
 			{ src: "preferences", count: issues.length, issues },
-			"dropped malformed preference op(s)",
+			options?.requireComplete
+				? "rejected incomplete preference section"
+				: "dropped malformed preference op(s)",
 		);
+		if (options?.requireComplete) return null;
 	}
 	return { ops };
 }

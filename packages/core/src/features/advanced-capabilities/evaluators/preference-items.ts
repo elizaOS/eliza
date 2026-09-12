@@ -130,7 +130,11 @@ const preferenceOpsSchema: JSONSchema = {
 						type: "string",
 						enum: [...VERBOSITY_VALUES, ...TONE_VALUES, ...FORMALITY_VALUES],
 					},
-					confidence: { type: "number" },
+					confidence: {
+						type: "number",
+						description:
+							"Required for set_trait and add_directive; honest confidence from 0 to 1.",
+					},
 					sourceMessageIds: { type: "array", items: { type: "string" } },
 					evidence: { type: "string" },
 					text: { type: "string" },
@@ -556,7 +560,7 @@ Rules:
 - Only the speaker's own expressed preferences. Not the agent's suggestions, not hypotheticals, not third parties.
 - In incremental extraction, EVERY operation must include sourceMessageIds citing selected new message IDs authored by this speaker. Never cite reference messages or other speakers. Omit unsupported operations.
 - New evidence must come from this speaker's newly selected messages. Historical reference text and known preferences are context only; do not reinforce them just because they appear.
-- confidence 0-1, honest; slot ops below 0.8 are discarded.
+${prepared.slot ? "- set_trait and add_directive require numeric confidence from 0 to 1; never omit it. Slot ops below 0.8 are discarded. Confidence is unused for retract_trait.\n" : ""}- Confidence is optional for add_preference_fact; when present it must be an honest number from 0 to 1.
 - No preference expressed -> {"ops":[]}.
 - Never emit anything about muting, ignoring, or when ${agentName} may reply.
 
@@ -570,10 +574,11 @@ ${formatKnownPreferences(prepared.knownPreferenceFacts)}
 ${recentMessagesSection(shared, prepared.recentMessages)}`;
 	},
 	parse(output, context) {
-		// Tolerant, op-by-op — drops are logged inside
-		// parsePreferenceOutputTolerant (this parse contract has no
-		// runtime/logger). Null only when the envelope isn't { ops: [...] }.
-		const parsed = parsePreferenceOutputTolerant(output);
+		// Incremental progress covers the complete evidence batch. Reject a
+		// partially valid section before staging or effects so it remains work.
+		const parsed = parsePreferenceOutputTolerant(output, {
+			requireComplete: Boolean(context?.options.extraction),
+		});
 		if (parsed && context)
 			assertPersonalExtractionOperations(
 				context.message,

@@ -1,6 +1,7 @@
 /** Durable handoff and room ownership through real runtime/task/cache adapters. */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
+import { preferenceEvaluator } from "../features/advanced-capabilities/evaluators/preference-items";
 import {
 	factMemoryEvaluator,
 	relationshipEvaluator,
@@ -97,6 +98,59 @@ async function execute(runtime: AgentRuntime, task: Task) {
 }
 
 describe("durable background memory", () => {
+	it("keeps malformed preference output pending without applying or acknowledging its valid subset", async () => {
+		const { runtime, service, message } = await setup();
+		if (!message.id) throw new Error("Persisted evidence must have an id");
+		runtime.registerEvaluator(preferenceEvaluator);
+		const valid = {
+			op: "add_preference_fact",
+			claim: "Prefers complete note previews before saving",
+			keywords: ["notes", "preview"],
+			sourceMessageIds: [message.id],
+		};
+		// Captured live failure shape: add_directive omitted required confidence.
+		runtime.useModel = vi.fn(async () =>
+			JSON.stringify({
+				preferences: {
+					ops: [
+						valid,
+						{
+							op: "add_directive",
+							text: "Wait for separate confirmation before saving.",
+							sourceMessageIds: [message.id],
+						},
+					],
+				},
+			}),
+		) as AgentRuntime["useModel"];
+		await service.enqueue(message, state, { phase: "post_turn" });
+		expect(runtime.useModel).not.toHaveBeenCalled();
+		const task = await job(runtime);
+		await expect(execute(runtime, task)).rejects.toThrow(
+			"Background memory remains pending",
+		);
+		expect(await runtime.getTask(task.id)).not.toBeNull();
+		expect(
+			await runtime.getMemories({ tableName: "facts", roomId: message.roomId }),
+		).toEqual([]);
+
+		// A later valid worker attempt must still receive the original evidence.
+		runtime.useModel = vi.fn(async (_type, params) => {
+			expect(JSON.stringify(params)).toContain(message.content.text);
+			return JSON.stringify({ preferences: { ops: [valid] } });
+		}) as AgentRuntime["useModel"];
+		await execute(runtime, await job(runtime));
+		expect(await runtime.getTask(task.id)).toBeNull();
+		const facts = await runtime.getMemories({
+			tableName: "facts",
+			roomId: message.roomId,
+		});
+		expect(facts.map((fact) => fact.content.text)).toEqual([valid.claim]);
+		expect(facts[0].metadata?.extractionSourceRevisions).toHaveProperty(
+			message.id,
+		);
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+	});
 	it.each([undefined, "current_message"] as const)(
 		"supplies the complete future trigger and receipts only when their evidence page is selected (legacy scope %s)",
 		async (inputScope) => {
