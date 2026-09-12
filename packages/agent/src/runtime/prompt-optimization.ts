@@ -57,6 +57,7 @@ import {
 import {
   applyActiveViewAwareness,
   getActiveViewContext,
+  renderActiveViewContextBlock,
 } from "./view-action-affinity.ts";
 
 // ---------------------------------------------------------------------------
@@ -1001,11 +1002,10 @@ export function serializeCompactorMessagesForModel(
 }
 
 /**
- * Inject the Active View awareness block into the *current* (last) user
- * message. Using findIndex (first user) broke multi-turn planners: turn 2+
- * either rewrote history or hit the idempotent early-return on a prior turn's
- * already-annotated message, so the live user turn never received the block
- * and deterministic fixtures looking at latestUserText failed closed (#17918).
+ * Append the fresh view snapshot to the last user message. Keeping the original
+ * content first preserves the reusable planner prefix as feedback grows. Each
+ * dispatch starts from the caller's unchanged messages; never strip headings
+ * from them, since a quoted Active View block can be original source evidence.
  */
 function applyActiveViewAwarenessToMessages(
   messages: CompactorMessage[],
@@ -1021,8 +1021,10 @@ function applyActiveViewAwarenessToMessages(
   if (userMessageIndex === -1) return messages;
 
   const message = messages[userMessageIndex];
-  const awareContent = applyActiveViewAwareness(message.content, view);
-  if (awareContent === message.content) return messages;
+  if (!view) return messages;
+  const block = renderActiveViewContextBlock(view);
+  const awareContent =
+    message.content.length > 0 ? `${message.content}\n\n${block}` : block;
 
   const rewritten = [...messages];
   rewritten[userMessageIndex] = { ...message, content: awareContent };
