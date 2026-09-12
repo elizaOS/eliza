@@ -14,6 +14,7 @@
  * the stored parent document under the database isolation context. On start it
  * also migrates the legacy `knowledge` partition into the document partitions.
  */
+
 import { existsSync, statSync } from "node:fs";
 import { filterByAccessContext } from "../../access-control/filter";
 import {
@@ -62,6 +63,12 @@ import {
 	preparePreChunkedFragmentMemories,
 	processFragmentsSynchronously,
 } from "./document-processor.ts";
+import {
+	type DocumentPinTargets,
+	documentPinTargets,
+	isDocumentPinnedForRoom,
+	validateDocumentPinTargets,
+} from "./pinning.ts";
 import { embedRecallQuery } from "./recall-embed.ts";
 import type {
 	AddDocumentOptions,
@@ -601,6 +608,94 @@ export class DocumentService extends Service {
 			: null;
 	}
 
+	async getDocumentPinsWithAccessContext(
+		documentId: UUID,
+		accessContext: AccessContext,
+	): Promise<{ targets: DocumentPinTargets; pinRevision: string }> {
+		if (accessContext.role !== "OWNER")
+			throw new ElizaError("Only the owner can manage document pins", {
+				code: "DOCUMENT_PIN_FORBIDDEN",
+			});
+		const document = await this.getDocumentByIdWithAccessContext(
+			documentId,
+			accessContext,
+		);
+		const snapshot = document && readDocumentMutationSnapshot(document);
+		if (!document || !snapshot)
+			throw new ElizaError("Document is unavailable", {
+				code: "DOCUMENT_PIN_NOT_FOUND",
+				context: { documentId },
+			});
+		return {
+			targets: documentPinTargets(document),
+			pinRevision: await this.documentAccessRevision(documentId, snapshot),
+		};
+	}
+
+	async setDocumentPinsWithAccessContext(
+		documentId: UUID,
+		targets: DocumentPinTargets,
+		accessContext: AccessContext,
+		expectedPinRevision: string,
+	): Promise<Memory> {
+		if (accessContext.role !== "OWNER")
+			throw new ElizaError("Only the owner can manage document pins", {
+				code: "DOCUMENT_PIN_FORBIDDEN",
+			});
+		const validated = validateDocumentPinTargets(targets);
+		const rooms = await this.runtime.adapter.getRoomsByIds(validated.roomIds);
+		if (
+			rooms.length !== validated.roomIds.length ||
+			rooms.some((room) => room.agentId !== this.runtime.agentId)
+		)
+			throw new ElizaError("A selected chat is not available to this agent", {
+				code: "DOCUMENT_PIN_ROOM_INVALID",
+			});
+		const document = await this.getDocumentByIdWithAccessContext(
+			documentId,
+			accessContext,
+		);
+		const snapshot = document && readDocumentMutationSnapshot(document);
+		if (!document || !snapshot)
+			throw new ElizaError("Document is unavailable", {
+				code: "DOCUMENT_PIN_NOT_FOUND",
+				context: { documentId },
+			});
+		if (
+			expectedPinRevision !==
+			(await this.documentAccessRevision(documentId, snapshot))
+		)
+			throw new ElizaError("Pins changed. Reload and review before saving", {
+				code: "DOCUMENT_PIN_CONFLICT",
+			});
+		const result = await this.runtime.adapter.compareAndSwapDocument({
+			agentId: this.runtime.agentId,
+			documentId,
+			requesterEntityId: accessContext.requesterEntityId,
+			requesterRole: "OWNER",
+			requesterRoomIds: [],
+			expected: snapshot,
+			replacement: {
+				...document,
+				metadata: {
+					...document.metadata,
+					type: MemoryType.DOCUMENT,
+					pinned: false,
+					pinTargets: {
+						agent: validated.agent,
+						roomIds: validated.roomIds,
+					},
+				},
+			},
+		});
+		if (result.status !== "updated")
+			throw new ElizaError("Pins changed before saving. Reload and review", {
+				code: "DOCUMENT_PIN_CONFLICT",
+				context: { documentId, status: result.status },
+			});
+		return result.document;
+	}
+
 	async setDocumentDirectGrantsWithAccessContext(
 		documentId: UUID,
 		directGrantEntityIds: UUID[],
@@ -1096,7 +1191,8 @@ export class DocumentService extends Service {
 					| DocumentMemoryMetadata
 					| undefined;
 				return (
-					metadata?.type === MemoryType.DOCUMENT && metadata.pinned === true
+					metadata?.type === MemoryType.DOCUMENT &&
+					isDocumentPinnedForRoom(document, message.roomId)
 				);
 			}),
 		};
