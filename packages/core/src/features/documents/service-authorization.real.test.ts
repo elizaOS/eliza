@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { readDocumentMutationSnapshot } from "../../database/document-list-query.ts";
 import { filterByContextGate } from "../../runtime/context-gates.ts";
 import type { AgentRuntime } from "../../runtime.ts";
+import { selectV5PlannerStateProviderNames } from "../../services/message/provider-state.ts";
 import { createTestRuntime } from "../../testing/pglite-runtime.ts";
 import { runWithTrajectoryContext } from "../../trajectory-context.ts";
 import {
@@ -20,6 +21,7 @@ import {
 	type UUID,
 } from "../../types/index.ts";
 import { documentAction } from "./actions.ts";
+import { pinnedDocumentsProvider } from "./pinned-provider.ts";
 import { documentsProvider } from "./provider.ts";
 import { DocumentService } from "./service.ts";
 
@@ -723,6 +725,121 @@ describe("DocumentService requester authorization", () => {
 			(await service.getDocumentPinsWithAccessContext(id, owner)).pinRevision,
 		);
 		expect(await includes(message())).toBe(false);
+	});
+
+	it("composes ordinary-conversation pins only for the complete chat audience and observes revocation", async () => {
+		const service = new DocumentService(runtime);
+		const roomId = "f4300000-0000-4000-8000-000000000060" as UUID;
+		const id = "f4300000-0000-4000-8000-000000000061" as UUID;
+		await runtime.ensureConnection({
+			entityId: USER_ID,
+			roomId,
+			worldId: WORLD_ID,
+			worldName: "Document authorization",
+			userName: "Document owner",
+			name: "Conversation pins",
+			source: "test",
+			type: ChannelType.GROUP,
+		});
+		const original = userPrivateDocument(
+			id,
+			"COMPLETE_CONVERSATION_PIN\nDo not lose the final line.",
+		);
+		original.metadata = {
+			...original.metadata,
+			type: MemoryType.DOCUMENT,
+			pinTargets: { agent: true, roomIds: [] },
+		};
+		await runtime.createMemories([
+			{ memory: original, tableName: "documents" },
+		]);
+		runtime.registerProvider(pinnedDocumentsProvider);
+		const getService = vi
+			.spyOn(runtime, "getService")
+			.mockImplementation((type) =>
+				type === DocumentService.serviceType ? service : null,
+			);
+		const request = {
+			...message(),
+			roomId,
+			content: {
+				text: "Hello",
+				source: "test",
+				channelType: ChannelType.GROUP,
+			},
+		};
+		const compose = async () => {
+			const turnRequest = { ...request, id: crypto.randomUUID() as UUID };
+			const names = selectV5PlannerStateProviderNames({
+				runtime,
+				message: turnRequest,
+				selectedContexts: ["simple"],
+				userRoles: ["USER"],
+			});
+			return runtime.composeState(turnRequest, names, true);
+		};
+		try {
+			expect((await compose()).text).toContain(original.content.text);
+			await runtime.ensureConnection({
+				entityId: GRANTEE_ID,
+				roomId,
+				worldId: WORLD_ID,
+				worldName: "Document authorization",
+				userName: "Guest",
+				name: "Guest",
+				source: "test",
+				type: ChannelType.GROUP,
+			});
+			expect((await compose()).text).not.toContain("COMPLETE_CONVERSATION_PIN");
+			const owner = {
+				requesterEntityId: USER_ID,
+				role: "OWNER" as const,
+				isOwner: true,
+			};
+			await service.setDocumentDirectGrantsWithAccessContext(
+				id,
+				[GRANTEE_ID],
+				owner,
+			);
+			expect((await compose()).text).toContain(original.content.text);
+			await service.setDocumentDirectGrantsWithAccessContext(id, [], owner);
+			expect((await compose()).text).not.toContain("COMPLETE_CONVERSATION_PIN");
+			await service.setDocumentDirectGrantsWithAccessContext(
+				id,
+				[GRANTEE_ID],
+				owner,
+			);
+			const read = service.getDocumentById.bind(service);
+			let joined = false;
+			const duringRead = vi
+				.spyOn(service, "getDocumentById")
+				.mockImplementation(async (...args) => {
+					if (!joined) {
+						joined = true;
+						await runtime.ensureConnection({
+							entityId: OTHER_USER_ID,
+							roomId,
+							worldId: WORLD_ID,
+							worldName: "Document authorization",
+							userName: "New participant",
+							name: "New participant",
+							source: "test",
+							type: ChannelType.GROUP,
+						});
+					}
+					return read(...args);
+				});
+			try {
+				await expect(
+					service.listConversationPins(request),
+				).rejects.toMatchObject({ code: "DOCUMENT_PIN_CONTEXT_CHANGED" });
+			} finally {
+				duringRead.mockRestore();
+			}
+			expect((await compose()).text).not.toContain("COMPLETE_CONVERSATION_PIN");
+		} finally {
+			getService.mockRestore();
+		}
 	});
 
 	it("keeps the complete old revision when replacement embedding fails", async () => {

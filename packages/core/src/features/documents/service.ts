@@ -22,6 +22,7 @@ import {
 	canRequesterMutateDocument,
 	DOCUMENT_LIST_MAX_LIMIT,
 	DOCUMENT_LIST_MAX_OFFSET,
+	documentMutationSnapshotMatches,
 	documentRoleHasGlobalVisibility,
 	isDocumentVisibleToRequester,
 	queryDocumentsWithCapability,
@@ -1160,6 +1161,71 @@ export class DocumentService extends Service {
 				? { availableNextCursor: stored.availableNextCursor }
 				: {}),
 		};
+	}
+
+	/** Returns pins readable by every current human participant in the destination chat. */
+	async listConversationPins(message: Memory): Promise<Memory[]> {
+		const room = await this.runtime.getRoom(message.roomId);
+		if (!room || room.agentId !== this.runtime.agentId) return [];
+		const participants = await this.runtime.getParticipantsForRoom(
+			message.roomId,
+		);
+		if (!participants.includes(message.entityId)) return [];
+		const documents = await this.listAllDocumentsWithRequester(() =>
+			resolveDocumentRequester(this.runtime, message),
+		);
+		const candidates = documents.filter((document) =>
+			isDocumentPinnedForRoom(document, message.roomId),
+		);
+		const readers = participants.filter(
+			(entityId) => entityId !== this.runtime.agentId,
+		);
+		const pins: Memory[] = [];
+		for (const document of candidates) {
+			const documentId = document.id;
+			if (!documentId) continue;
+			const reads = await Promise.all(
+				readers.map((entityId) =>
+					this.getDocumentById(documentId, { ...message, entityId }),
+				),
+			);
+			if (reads.some((read) => read === null)) continue;
+			const snapshot = readDocumentMutationSnapshot(document);
+			if (
+				!snapshot ||
+				reads.some(
+					(read) =>
+						read !== null &&
+						(!documentMutationSnapshotMatches(read, snapshot) ||
+							read.content.text !== document.content.text),
+				)
+			) {
+				throw new ElizaError(
+					"Pinned document changed while preparing the reply. Retry with current knowledge.",
+					{
+						code: "DOCUMENT_PIN_CONTEXT_CHANGED",
+						context: { documentId },
+					},
+				);
+			}
+			pins.push(document);
+		}
+		const currentParticipants = await this.runtime.getParticipantsForRoom(
+			message.roomId,
+		);
+		if (
+			participants.length !== currentParticipants.length ||
+			participants.some((id) => !currentParticipants.includes(id))
+		) {
+			throw new ElizaError(
+				"Chat participants changed while preparing pinned knowledge. Retry with the current audience.",
+				{
+					code: "DOCUMENT_PIN_CONTEXT_CHANGED",
+					context: { roomId: message.roomId },
+				},
+			);
+		}
+		return pins;
 	}
 
 	/** Runs the DOCUMENTS provider's search and inventory reads on one snapshot. */
