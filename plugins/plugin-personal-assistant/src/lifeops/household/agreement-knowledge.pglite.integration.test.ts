@@ -29,8 +29,10 @@ import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.js";
+import { executeRawSql, sqlQuote } from "../sql.js";
 import {
   AgreementKnowledgeError,
+  AgreementKnowledgeRepository,
   createAgreementKnowledgeService,
   type ParentingAgreementArtifact,
 } from "./agreement-knowledge.js";
@@ -70,6 +72,7 @@ class AgreementTestPdfService extends Service {
         height: 792,
         method: "native" as const,
         nativeText: text,
+        nativePositionedText: [],
         ocrText: null,
         visionText: null,
         text,
@@ -85,6 +88,26 @@ class AgreementTestPdfService extends Service {
 
 function pdf(label: string): Buffer {
   return Buffer.from(`%PDF-1.7\n${label}\n%%EOF\n`, "utf8");
+}
+
+function readStoredZip(bytes: Buffer): Map<string, Buffer> {
+  // Independently read ZIP local records rather than using the archive writer.
+  const files = new Map<string, Buffer>();
+  let offset = 0;
+  while (bytes.readUInt32LE(offset) === 0x04034b50) {
+    if (bytes.readUInt16LE(offset + 8) !== 0)
+      throw new Error("Unsupported ZIP method");
+    const size = bytes.readUInt32LE(offset + 18);
+    const nameSize = bytes.readUInt16LE(offset + 26);
+    const extraSize = bytes.readUInt16LE(offset + 28);
+    const start = offset + 30 + nameSize + extraSize;
+    const name = bytes
+      .subarray(offset + 30, offset + 30 + nameSize)
+      .toString("utf8");
+    files.set(name, bytes.subarray(start, start + size));
+    offset = start + size;
+  }
+  return files;
 }
 
 describe("parenting-agreement knowledge — real PGlite", () => {
@@ -489,6 +512,265 @@ describe("parenting-agreement knowledge — real PGlite", () => {
           : null,
       );
     }
+  });
+
+  it("persists pin provenance atomically and rolls back when the audit ledger rejects it", async () => {
+    const service = createAgreementKnowledgeService(runtime);
+    const targetId = crypto.randomUUID();
+    const pin = await service.pin({
+      artifactId: artifact.id,
+      targetType: "chat",
+      targetId,
+      pinnedByEntityId: SELF_ENTITY_ID,
+    });
+    const events = await executeRawSql(
+      runtime,
+      `SELECT inputs_json, decision_json FROM app_lifeops.life_audit_events
+       WHERE agent_id = ${sqlQuote(runtime.agentId)}
+         AND owner_type = 'parenting_agreement'
+         AND owner_id = ${sqlQuote(artifact.id)}
+         AND event_type = 'agreement_pinned'
+         AND decision_json::jsonb->>'id' = ${sqlQuote(pin.id)}`,
+    );
+    expect(events).toHaveLength(1);
+    expect(JSON.parse(String(events[0].inputs_json))).toMatchObject({
+      actorEntityId: SELF_ENTITY_ID,
+      source: {
+        id: artifact.id,
+        version: artifact.version,
+        content_sha256: artifact.contentSha256,
+      },
+    });
+    expect(JSON.parse(String(events[0].decision_json))).toMatchObject({
+      id: pin.id,
+      target_id: targetId,
+      unpinned_at: null,
+    });
+    await service.unpin({ pinId: pin.id, unpinnedByEntityId: SELF_ENTITY_ID });
+    await executeRawSql(
+      runtime,
+      `CREATE FUNCTION app_lifeops.reject_agreement_audit_test()
+      RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+        RAISE EXCEPTION 'audit persistence unavailable';
+      END $$`,
+    );
+    await executeRawSql(
+      runtime,
+      `CREATE TRIGGER reject_agreement_audit_test
+      BEFORE INSERT ON app_lifeops.life_audit_events FOR EACH ROW
+      WHEN (NEW.event_type = 'agreement_pinned')
+      EXECUTE FUNCTION app_lifeops.reject_agreement_audit_test()`,
+    );
+    const rejectedTarget = crypto.randomUUID();
+    try {
+      await expect(
+        service.pin({
+          artifactId: artifact.id,
+          targetType: "chat",
+          targetId: rejectedTarget,
+          pinnedByEntityId: SELF_ENTITY_ID,
+        }),
+      ).rejects.toThrow();
+      const pins = await service.listPins({
+        artifactId: artifact.id,
+        ownerEntityId: SELF_ENTITY_ID,
+      });
+      expect(pins.some((item) => item.targetId === rejectedTarget)).toBe(false);
+    } finally {
+      await executeRawSql(
+        runtime,
+        "DROP TRIGGER reject_agreement_audit_test ON app_lifeops.life_audit_events",
+      );
+      await executeRawSql(
+        runtime,
+        "DROP FUNCTION app_lifeops.reject_agreement_audit_test()",
+      );
+    }
+  });
+
+  it("exports verified originals and complete persisted provenance without granting guest export access", async () => {
+    const service = createAgreementKnowledgeService(runtime);
+    const original = await service.readOwnerPdf({
+      artifactId: artifact.id,
+      ownerEntityId: SELF_ENTITY_ID,
+    });
+    const exported = await service.exportOwnerAgreement({
+      artifactId: artifact.id,
+      ownerEntityId: SELF_ENTITY_ID,
+    });
+    const files = readStoredZip(exported.bytes);
+    expect(files.get("original.pdf")).toEqual(original.bytes);
+    const manifestBytes = files.get("manifest.json");
+    if (!manifestBytes) throw new Error("Export manifest missing");
+    const manifest = JSON.parse(manifestBytes.toString("utf8"));
+    expect(manifest.artifact).toEqual(artifact);
+    const agreement = (
+      await service.listOwnerAgreements({ ownerEntityId: SELF_ENTITY_ID })
+    ).find((item) => item.artifact.id === artifact.id);
+    if (!agreement) throw new Error("Source agreement missing");
+    expect(manifest.obligations).toEqual(
+      expect.arrayContaining(agreement.obligations),
+    );
+    expect(
+      manifest.extraction.document.pages.every(
+        (page: { text: string }) =>
+          page.text === original.bytes.toString("utf8"),
+      ),
+    ).toBe(true);
+    expect(
+      manifest.pins.some(
+        (pin: { unpinnedAt: string | null }) => pin.unpinnedAt !== null,
+      ),
+    ).toBe(true);
+    const sums = files.get("SHA256SUMS")?.toString("utf8");
+    for (const name of ["original.pdf", "manifest.json"]) {
+      const file = files.get(name);
+      if (!file) throw new Error(`Missing exported ${name}`);
+      expect(sums).toContain(
+        `${crypto.createHash("sha256").update(file).digest("hex")}  ${name}\n`,
+      );
+    }
+    const events = await executeRawSql(
+      runtime,
+      `SELECT decision_json FROM app_lifeops.life_audit_events WHERE agent_id = ${sqlQuote(runtime.agentId)} AND id = ${sqlQuote(manifest.exportId)}`,
+    );
+    expect(events).toHaveLength(1);
+    expect(JSON.parse(String(events[0].decision_json))).toEqual({
+      manifestSha256: crypto
+        .createHash("sha256")
+        .update(manifestBytes)
+        .digest("hex"),
+      archiveSha256: crypto
+        .createHash("sha256")
+        .update(exported.bytes)
+        .digest("hex"),
+    });
+    await expect(
+      service.exportOwnerAgreement({
+        artifactId: artifact.id,
+        ownerEntityId: "verified-co-parent",
+      }),
+    ).rejects.toMatchObject({ code: "AGREEMENT_ACCESS_DENIED" });
+  });
+
+  it("refuses missing or corrupted originals without recording a prepared export", async () => {
+    const service = createAgreementKnowledgeService(runtime);
+    const file = path.join(mediaStateDir, "media", artifact.mediaFileName);
+    const original = fs.readFileSync(file);
+    const countExports = () =>
+      executeRawSql(
+        runtime,
+        `SELECT id FROM app_lifeops.life_audit_events WHERE agent_id = ${sqlQuote(runtime.agentId)} AND owner_id = ${sqlQuote(artifact.id)} AND event_type = 'agreement_export_prepared' ORDER BY id`,
+      );
+    const before = await countExports();
+    try {
+      fs.writeFileSync(file, Buffer.alloc(original.length, 0));
+      await expect(
+        service.exportOwnerAgreement({
+          artifactId: artifact.id,
+          ownerEntityId: SELF_ENTITY_ID,
+        }),
+      ).rejects.toMatchObject({ code: "AGREEMENT_INVALID_CONTRACT" });
+      fs.unlinkSync(file);
+      await expect(
+        service.exportOwnerAgreement({
+          artifactId: artifact.id,
+          ownerEntityId: SELF_ENTITY_ID,
+        }),
+      ).rejects.toMatchObject({ code: "AGREEMENT_STORAGE_UNAVAILABLE" });
+      expect(await countExports()).toEqual(before);
+    } finally {
+      fs.writeFileSync(file, original);
+    }
+  });
+
+  it("detects altered extraction metadata and identifies legacy history explicitly", async () => {
+    const service = createAgreementKnowledgeService(runtime);
+    const source = await service.createAgreementVersion({
+      agreementKey: "export-provenance-test",
+      title: "Export provenance",
+      originalFilename: "provenance.pdf",
+      mimeType: "application/pdf",
+      bytes: pdf("export provenance"),
+      uploadedByEntityId: SELF_ENTITY_ID,
+    });
+    await executeRawSql(
+      runtime,
+      `UPDATE memories SET metadata = metadata - 'agreementExtractionJson' WHERE id = ${sqlQuote(source.documentId)} AND agent_id = ${sqlQuote(runtime.agentId)}`,
+    );
+    await expect(
+      service.exportOwnerAgreement({
+        artifactId: source.id,
+        ownerEntityId: SELF_ENTITY_ID,
+      }),
+    ).rejects.toMatchObject({ code: "AGREEMENT_INVALID_CONTRACT" });
+    // Simulate the actual legacy schema state: no extraction map and no ingestion event.
+    await executeRawSql(
+      runtime,
+      `DELETE FROM app_lifeops.life_audit_events WHERE agent_id = ${sqlQuote(runtime.agentId)} AND owner_id = ${sqlQuote(source.id)} AND event_type = 'agreement_ingested'`,
+    );
+    const exported = await service.exportOwnerAgreement({
+      artifactId: source.id,
+      ownerEntityId: SELF_ENTITY_ID,
+    });
+    const bytes = readStoredZip(exported.bytes).get("manifest.json");
+    if (!bytes) throw new Error("Export manifest missing");
+    const manifest = JSON.parse(bytes.toString("utf8"));
+    expect(manifest.extraction).toMatchObject({ status: "unavailable" });
+    expect(manifest.auditCoverage.status).toBe("partial_legacy_history");
+    expect(manifest.audit).toEqual([]);
+    expect(manifest.obligations).toEqual([]);
+  });
+
+  it("keeps concurrent pin transitions and their audit evidence in the same export snapshot", async () => {
+    const service = createAgreementKnowledgeService(runtime);
+    const repository = new AgreementKnowledgeRepository(
+      runtime,
+      runtime.agentId,
+    );
+    const targetId = crypto.randomUUID();
+    const mutate = async () => {
+      for (let iteration = 0; iteration < 8; iteration += 1) {
+        const pin = await service.pin({
+          artifactId: artifact.id,
+          targetType: "chat",
+          targetId,
+          pinnedByEntityId: SELF_ENTITY_ID,
+        });
+        await service.unpin({
+          pinId: pin.id,
+          unpinnedByEntityId: SELF_ENTITY_ID,
+        });
+      }
+    };
+    const observe = async () => {
+      for (let iteration = 0; iteration < 16; iteration += 1) {
+        const snapshot = await repository.readExportSnapshot(artifact.id);
+        const pin = snapshot.pins.find((item) => item.targetId === targetId);
+        if (!pin) continue;
+        const transitions = snapshot.audit
+          .filter(
+            (event) =>
+              event.event_type ===
+              (pin.unpinnedAt ? "agreement_unpinned" : "agreement_pinned"),
+          )
+          .map((event) => JSON.parse(String(event.decision_json)));
+        expect(transitions).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              id: pin.id,
+              pinned_at: pin.pinnedAt,
+              unpinned_at: pin.unpinnedAt,
+            }),
+          ]),
+        );
+      }
+    };
+    await Promise.all([mutate(), observe()]);
+    const final = await repository.readExportSnapshot(artifact.id);
+    expect(
+      final.pins.find((item) => item.targetId === targetId)?.unpinnedAt,
+    ).toBeTruthy();
   });
 
   it("requires verified identity plus an exact active household grant", async () => {

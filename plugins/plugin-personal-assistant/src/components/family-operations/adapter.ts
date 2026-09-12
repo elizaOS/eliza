@@ -234,6 +234,27 @@ export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter = {
       ]);
     return { agreements, calendarLinks, school, packets, emailOptions };
   },
+  async downloadAgreement(artifactId, format) {
+    const response = await client.rawRequest(
+      `/api/lifeops/agreements/${encodeURIComponent(artifactId)}/${format === "export" ? "export" : "download"}`,
+      { method: format === "export" ? "POST" : "GET" },
+      { allowNonOk: true, skipResume: true, timeoutMs: 10 * 60_000 },
+    );
+    if (!response.ok) {
+      const payload = await response.json();
+      const message =
+        typeof payload?.error === "string"
+          ? payload.error
+          : payload?.error?.message;
+      throw new Error(
+        typeof message === "string"
+          ? message
+          : `Download failed (${response.status})`,
+      );
+    }
+    return response.blob();
+  },
+
   async uploadAgreement(input) {
     if (input.file.type !== "application/pdf") {
       throw new Error("Agreement must be a PDF.");

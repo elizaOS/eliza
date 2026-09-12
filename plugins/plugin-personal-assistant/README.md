@@ -232,7 +232,7 @@ for every page with native text plus rendered-page vision transcription for
 images or text-empty pages. One failed page fails ingestion; partial content is
 never published as a complete owner-private `DocumentService` record. LifeOps
 persists the media SHA-256, handle, document id, byte size, MIME type, filename,
-parser-derived page count, complete extracted text, and version chain; it does
+parser-derived page count, complete extracted text and page map, and version chain; it does
 not create another permanent file store.
 
 Owner- or agent-extracted obligations begin as `proposed` and must carry an
@@ -252,6 +252,21 @@ authenticated `/api/lifeops/agreements/*` routes. Grant previews enumerate the
 exact read effects and exclusions before issuance. Active agent/chat pins feed
 only approved, page-cited obligations into owner planner context; uploading a
 PDF remains on the document/API surface so chat actions never invent bytes.
+
+Owners can download the original PDF or export one agreement version from the
+Agreement view. `POST /api/lifeops/agreements/:id/export` returns a ZIP containing
+`original.pdf`, `manifest.json`, and `SHA256SUMS`. Verify both files independently
+with `sha256sum -c SHA256SUMS`. The versioned manifest includes all obligation
+states and citations, current and inactive pin/grant records, linked household
+grant expiry/revocation records, and the canonical agreement audit history from
+one database snapshot. Original byte length and SHA-256 must match before export.
+
+Agreement ingestion, review, pin, and grant transitions commit atomically with
+`life_audit_events`. Export preparation records the manifest and archive hashes;
+it does not assert that the browser received or saved the download. Legacy
+versions explicitly identify missing extraction page maps and partial audit
+history. Export never reconstructs unrecorded past activity. This agreement
+archive does not replace workspace-wide export or deletion workflows.
 
 ## Default packs
 

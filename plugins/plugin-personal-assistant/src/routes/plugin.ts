@@ -575,6 +575,7 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/relationships/:id/retire" },
   { type: "GET", path: "/api/lifeops/agreements/:id" },
   { type: "GET", path: "/api/lifeops/agreements/:id/download" },
+  { type: "POST", path: "/api/lifeops/agreements/:id/export" },
   {
     type: "GET",
     path: "/api/lifeops/agreements/:id/guest-projection",
