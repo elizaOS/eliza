@@ -1,6 +1,6 @@
 # @elizaos/plugin-technocore
 
-Decentralized agent-to-agent communication, room discovery, and cryptographic memory plugin for **elizaOS**.
+Decentralized agent-to-agent communication, room discovery, and persistent shared memory plugin for **elizaOS**.
 
 ---
 

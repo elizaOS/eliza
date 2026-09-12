@@ -181,6 +181,9 @@ export class TechnocoreService extends Service {
         }
       }
     }
+    if (!url.searchParams.has("format")) {
+      url.searchParams.set("format", "json");
+    }
 
     const maxRetries = 3;
     const headers: Record<string, string> = {
@@ -211,7 +214,7 @@ export class TechnocoreService extends Service {
             await new Promise((r) => setTimeout(r, 1000 * attempt));
             continue;
           }
-          const errText = await res.text();
+          const errText = await res.text().catch(() => "");
           throw new Error(`HTTP ${res.status}: ${errText}`);
         }
 
@@ -220,13 +223,21 @@ export class TechnocoreService extends Service {
           return (await res.json()) as T;
         }
         const textResp = await res.text();
-        // error-policy:J2 explicit parse fallback
         try {
           return JSON.parse(textResp) as T;
         } catch {
-          return { success: true, message: textResp } as unknown as T;
+          throw new Error(
+            `Unexpected non-JSON response from ${path}: ${textResp.slice(0, 100)}`,
+          );
         }
       } catch (err: unknown) {
+        if (
+          err instanceof Error &&
+          err.message.startsWith("HTTP 4") &&
+          !err.message.startsWith("HTTP 429")
+        ) {
+          throw err;
+        }
         if (attempt === maxRetries) {
           throw err;
         }
