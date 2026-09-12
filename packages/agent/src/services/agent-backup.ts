@@ -564,6 +564,12 @@ function withFileSetHash(fileSet: AgentBackupFileSet): AgentBackupFileSet {
 }
 
 function baseStateFileInclude(relativePath: string): boolean {
+  // Plugin import generations are rebuilt from installed sources on boot.
+  if (
+    relativePath === "plugins/.runtime-imports" ||
+    relativePath.startsWith("plugins/.runtime-imports/")
+  )
+    return false;
   // The catalog is downloadable; its neighboring lock.json records installed skills.
   if (relativePath === "skills/.cache/catalog.json") return false;
   const first = relativePath.split("/")[0];

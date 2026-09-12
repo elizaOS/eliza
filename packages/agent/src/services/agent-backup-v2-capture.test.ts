@@ -867,6 +867,20 @@ describe("streamAgentBackupV2Capture", () => {
         path.join(root, "skills", ".cache", "lock.json"),
         '{"installed":"pinned"}',
       );
+      await fs.promises.mkdir(
+        path.join(root, "plugins", ".runtime-imports", "plugin"),
+        {
+          recursive: true,
+        },
+      );
+      await fs.promises.writeFile(
+        path.join(root, "plugins", ".runtime-imports", "plugin", "bundle.js"),
+        "generated import cache",
+      );
+      await fs.promises.writeFile(
+        path.join(root, "plugins", ".runtime-imports-user.json"),
+        "user-owned plugin settings",
+      );
       for (const [relativePath, value] of [
         ["a-plain", "hyphen"],
         ["a/nested", "nested"],
@@ -952,6 +966,7 @@ describe("streamAgentBackupV2Capture", () => {
         "a/nested",
         "file-2",
         "file_1",
+        "plugins/.runtime-imports-user.json",
         "skills/.cache/lock.json",
         "z",
         "ä",
