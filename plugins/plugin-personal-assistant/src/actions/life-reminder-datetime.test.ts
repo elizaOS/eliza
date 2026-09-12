@@ -2514,6 +2514,75 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
     serviceState.ownerEntityIds.length = 0;
   });
 
+  it.each([400, 503])(
+    "stops when pending-draft classification fails with provider status %s, without another extraction or save",
+    async (statusCode) => {
+      const failure = Object.assign(
+        new Error(
+          statusCode === 400
+            ? "Bad Request: Please reduce the length of the messages or completion. Current length is 139000 while limit is 131072"
+            : "Provider unavailable",
+        ),
+        { name: "AI_APICallError", statusCode },
+      );
+      let calls = 0;
+      const runtime = makeRuntime(() => {
+        if (calls++ === 0) throw failure;
+        return taskPlanJson({
+          requestKind: "reminder",
+          title: "New preview",
+          cadenceKind: "once",
+          dueWeekday: 5,
+          timeOfDay: "17:00",
+        });
+      });
+      const draft = {
+        operation: "create_definition",
+        createdAt: Date.now(),
+        sourceMessageId: "prior-preview",
+        intent: "Preview an earlier reminder",
+        request: {
+          title: "Earlier preview",
+          kind: "task",
+          cadence: { kind: "once", dueAt: "2026-09-26T16:00:00.000Z" },
+        },
+      };
+      const state = {
+        values: {},
+        text: "",
+        data: {
+          actionResults: [
+            {
+              success: false,
+              data: { lifeDraft: draft, saved: false, deferred: true },
+            },
+          ],
+        },
+      } as unknown as State;
+      await expect(
+        runLifeOperationHandler(
+          runtime,
+          makeMessage(
+            'Preview a reminder called "New preview" for Friday at 5pm. Do not save it.',
+          ),
+          state,
+          {
+            parameters: { action: "create_reminder", title: "New preview" },
+          } as HandlerOptions,
+        ),
+      ).rejects.toBe(failure);
+      expect(runtime.useModel).toHaveBeenCalledTimes(1);
+      expect(serviceState.createCalls).toEqual([]);
+      expect(serviceState.goalCreateCalls).toEqual([]);
+      expect(state.data.actionResults).toEqual([
+        {
+          success: false,
+          data: { lifeDraft: draft, saved: false, deferred: true },
+        },
+      ]);
+    },
+  );
+
   it.each([
     "remind me friday at 5pm to call mom",
     "remind me friday at 5pm to call mom. Do not create other reminders.",

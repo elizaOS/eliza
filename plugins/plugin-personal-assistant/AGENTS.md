@@ -180,3 +180,5 @@ its action handler is active. Direct/background callers and withheld result
 payloads keep standalone rendering. Deferred replies are internal evidence,
 never unavailable status or canned user prose; preserve receipts, clarification
 states, permission rechecks, final-context restoration and reply-only recovery.
+
+Deferred-draft follow-up classification propagates model failures to action settlement. A provider error is not an unrelated-message verdict and must not start another extraction or replace the pending draft. Valid classifier abstention retains the existing follow-up rules.
