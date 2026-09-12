@@ -1444,6 +1444,204 @@ describe("canonical evaluation of grounded internal receipts", () => {
 		expect(result.finalMessage).toBe("Added it and noted it.");
 	});
 
+	const deliveredNavigation = {
+		effect: "view_navigation",
+		status: "delivered",
+		viewId: "notes",
+		label: "Notes",
+		path: "/notes",
+		stepId: "notes-step",
+		handoffId: "navigation-handoff",
+	};
+	const navigationResult: PlannerToolResult = {
+		success: true,
+		transcriptVisibility: "internal",
+		modelReplyRequired: true,
+		turnComplete: false,
+		data: { navigation: deliveredNavigation },
+	};
+	const navigationCall = {
+		...call("VIEWS_SHOW", "final"),
+		arguments: {
+			eliza_turn_scope: "final",
+			view: "notes",
+			navigationStepId: "notes-step",
+		},
+	};
+
+	it.each([true, false])(
+		"advances a delivered navigation to its queued read and still evaluates the whole outcome (read success=%s)",
+		async (readSuccess) => {
+			const h = harness({
+				userMessage:
+					"Open Notes and read Seeker QA1914 without changing any records.",
+				plans: [
+					{
+						text: "",
+						toolCalls: [navigationCall, call("NOTES_LIST", "final")],
+					},
+				],
+				results: [
+					navigationResult,
+					{
+						success: readSuccess,
+						transcriptVisibility: "internal",
+						modelReplyRequired: true,
+						data: {
+							note: readSuccess ? "Bring a green folder and a charger." : null,
+						},
+						...(readSuccess ? {} : { error: "Note store unavailable" }),
+					},
+				],
+				evaluations: [
+					finish(
+						readSuccess
+							? "Notes is open. Bring a green folder and a charger."
+							: "Notes opened, but the note read failed.",
+						readSuccess,
+					),
+				],
+				intents: ["open Notes", "read Seeker QA1914"],
+			});
+			const result = await h.run();
+			expect(h.executed).toEqual(["VIEWS_SHOW", "NOTES_LIST"]);
+			expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
+			expect(result.trajectory.evaluatorOutputs[0]).toMatchObject({
+				decision: "NEXT_RECOMMENDED",
+			});
+			const prompt = evaluationPromptOf(h);
+			expect(prompt).toContain("navigation-handoff");
+			expect(prompt).toContain("read Seeker QA1914");
+			expect(prompt).toContain(
+				readSuccess
+					? "Bring a green folder and a charger."
+					: "Note store unavailable",
+			);
+			expect(result.evaluator?.success).toBe(readSuccess);
+		},
+	);
+
+	it.each([
+		[
+			"accepted only",
+			{
+				...navigationResult,
+				data: { navigation: { ...deliveredNavigation, status: "accepted" } },
+			},
+		],
+		[
+			"wrong destination",
+			{
+				...navigationResult,
+				data: {
+					navigation: {
+						...deliveredNavigation,
+						viewId: "calendar",
+						label: "Calendar",
+					},
+				},
+			},
+		],
+		[
+			"wrong step",
+			{
+				...navigationResult,
+				data: { navigation: { ...deliveredNavigation, stepId: "other-step" } },
+			},
+		],
+		[
+			"missing handoff",
+			{
+				...navigationResult,
+				data: { navigation: { ...deliveredNavigation, handoffId: "" } },
+			},
+		],
+		[
+			"missing path",
+			{
+				...navigationResult,
+				data: { navigation: { ...deliveredNavigation, path: "" } },
+			},
+		],
+		["failed navigation", { ...navigationResult, success: false }],
+		[
+			"awaiting input",
+			{
+				...navigationResult,
+				data: { navigation: deliveredNavigation, awaitingUserInput: true },
+			},
+		],
+		[
+			"awaiting confirmation",
+			{
+				...navigationResult,
+				data: { navigation: deliveredNavigation, requiresConfirmation: true },
+			},
+		],
+	] as const)(
+		"evaluates %s before executing another queued action",
+		async (_name, firstResult) => {
+			const h = harness({
+				plans: [
+					{
+						text: "",
+						toolCalls: [navigationCall, call("NOTES_LIST", "final")],
+					},
+				],
+				results: [firstResult],
+				evaluations: [
+					finish(
+						"The navigation needs attention; no note read was performed.",
+						false,
+					),
+				],
+			});
+			await h.run();
+			expect(h.executed).toEqual(["VIEWS_SHOW"]);
+			expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
+		},
+	);
+
+	it("does not use navigation queue advancement to release explicitly pending work", async () => {
+		const h = harness({
+			plans: [
+				{
+					text: "",
+					toolCalls: [
+						{
+							...navigationCall,
+							arguments: {
+								...navigationCall.arguments,
+								eliza_turn_scope: "more_work_pending",
+							},
+						},
+						call("NOTES_LIST", "more_work_pending"),
+					],
+				},
+				{ text: "", toolCalls: [call("REPLY", "final")] },
+			],
+			results: [
+				navigationResult,
+				{
+					success: true,
+					transcriptVisibility: "internal",
+					data: { note: "Read the requested note." },
+				},
+			],
+			evaluations: [finish("Notes opened and the note was read.")],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["VIEWS_SHOW", "NOTES_LIST"]);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
+		expect(modelCalls(h, ModelType.ACTION_PLANNER)).toBe(2);
+		expect(result.trajectory.evaluatorOutputs).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ decision: "CONTINUE", success: false }),
+			]),
+		);
+		expect(result.finalMessage).toBe("Notes opened and the note was read.");
+	});
+
 	it("advances a planned batch after a committed receipt without an intermediate evaluator call", async () => {
 		// Live 2026-09-05 23:53: two planned creates paid a full evaluator call
 		// between the steps (809 ms) only to pick the call already queued.

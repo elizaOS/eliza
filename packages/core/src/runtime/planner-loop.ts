@@ -7975,13 +7975,56 @@ function committedReceiptIdsForGate(
 }
 
 export const QUEUE_AUTO_ADVANCE_THOUGHT =
-	"Planned batch step settled with a committed receipt; executing the next queued call without an intermediate evaluation.";
+	"Planned batch step settled with a confirmed effect receipt; executing the next queued call without an intermediate evaluation.";
+
+/** A delivered, matching navigation can advance a queue without completing the turn. */
+function hasDeliveredQueuedNavigation(
+	step: PlannerTrajectory["steps"][number],
+): boolean {
+	const { toolCall, result } = step;
+	if (
+		toolCall?.name !== "VIEWS_SHOW" ||
+		result?.success !== true ||
+		result.transcriptVisibility !== "internal" ||
+		result.modelReplyRequired !== true ||
+		hasAwaitingUserInputMarker(result) ||
+		hasRequiresConfirmationMarker(result) ||
+		(result.effectReceipts?.length ?? 0) > 0
+	)
+		return false;
+	const navigation = result.data?.navigation;
+	if (!isPlainObject(navigation)) return false;
+	const view = toolCall.params?.view;
+	const stepId = toolCall.params?.navigationStepId;
+	if (
+		typeof view !== "string" ||
+		!view.trim() ||
+		typeof stepId !== "string" ||
+		!stepId.trim()
+	)
+		return false;
+	return (
+		navigation.effect === "view_navigation" &&
+		navigation.status === "delivered" &&
+		navigation.stepId === stepId &&
+		typeof navigation.handoffId === "string" &&
+		navigation.handoffId.trim().length > 0 &&
+		typeof navigation.path === "string" &&
+		navigation.path.trim().length > 0 &&
+		[navigation.viewId, navigation.label].some(
+			(value) =>
+				typeof value === "string" &&
+				value.trim().toLowerCase() === view.trim().toLowerCase(),
+		)
+	);
+}
 
 /**
  * Inside a planner batch, advance to the next queued call without an evaluator
  * call when the step just executed settled with at least one committed
- * mutation receipt. A read-only step, a failure, a pause, a non-internal
- * result, or a terminal queued call (REPLY) keeps the per-step evaluation.
+ * mutation receipt or a matching delivered navigation. Navigation's required
+ * model reply remains owned by the final evaluator. Reads, failures, pauses,
+ * non-internal results and terminal queued calls keep per-step evaluation.
  */
 function selectQueueAutoAdvance(args: {
 	trajectory: PlannerTrajectory;
@@ -7990,13 +8033,19 @@ function selectQueueAutoAdvance(args: {
 }): { nextToolCallId: string } | null {
 	const { trajectory, failures } = args;
 	if (trajectory.plannedQueue.length === 0 || failures.length > 0) return null;
-	if (args.lastPlannerExplicitCompleted === false) return null;
 	if (latestUnresolvedFailedNonTerminalToolStep(trajectory)) return null;
 	const latestStep = trajectory.steps[trajectory.steps.length - 1];
 	const result = latestStep?.result;
-	if (!latestStep?.toolCall || !isSettledInternalSuccess(result)) return null;
-	const committed = committedReceiptIdsForGate(result);
-	if (!committed || committed.length === 0) return null;
+	if (!latestStep?.toolCall) return null;
+	const deliveredNavigation =
+		typeof args.lastPlannerExplicitCompleted === "boolean" &&
+		hasDeliveredQueuedNavigation(latestStep);
+	if (!deliveredNavigation) {
+		if (args.lastPlannerExplicitCompleted === false) return null;
+		if (!isSettledInternalSuccess(result)) return null;
+		const committed = committedReceiptIdsForGate(result);
+		if (!committed || committed.length === 0) return null;
+	}
 	const next = trajectory.plannedQueue[0];
 	if (!next || isTerminalToolCall(next)) return null;
 	return { nextToolCallId: next.id ?? next.name };
