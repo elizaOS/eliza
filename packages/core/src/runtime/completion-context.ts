@@ -13,6 +13,8 @@ import type {
 import type { JSONSchema } from "../types/model";
 import { hashStableJson } from "./context-hash";
 
+const SOURCE_ID_PATTERN = /^h[1-9]\d*$/;
+
 /** One stable policy for source selection; the dynamic tail supplies only its binding. */
 export const COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS = `history_source_selection:
 Review all [hN] user and assistant sources, selecting ONLY those needed to plan, execute and answer the FINAL CURRENT REQUEST. complete=true certifies this relevance review, not selecting every message or completing future tool work.
@@ -49,10 +51,22 @@ export const COMPLETION_CONTEXT_SCHEMA: JSONSchema = {
 			description:
 				"True only after reviewing all labeled prior user and assistant sources and including every applicable constraint, correction, referent and referenced pending intent. It certifies this source selection, not completion of future tool work.",
 		},
-		relevantSourceIds: { type: "array", items: { type: "string" } },
-		constraintSourceIds: { type: "array", items: { type: "string" } },
-		referentSourceIds: { type: "array", items: { type: "string" } },
-		pendingIntentSourceIds: { type: "array", items: { type: "string" } },
+		relevantSourceIds: {
+			type: "array",
+			items: { type: "string", pattern: SOURCE_ID_PATTERN.source },
+		},
+		constraintSourceIds: {
+			type: "array",
+			items: { type: "string", pattern: SOURCE_ID_PATTERN.source },
+		},
+		referentSourceIds: {
+			type: "array",
+			items: { type: "string", pattern: SOURCE_ID_PATTERN.source },
+		},
+		pendingIntentSourceIds: {
+			type: "array",
+			items: { type: "string", pattern: SOURCE_ID_PATTERN.source },
+		},
 	},
 	required: [
 		"mode",
@@ -135,7 +149,7 @@ export function parseCompletionContextSelection(
 		const ids = record[key];
 		if (
 			!Array.isArray(ids) ||
-			ids.some((id) => typeof id !== "string" || !/^h[1-9]\d*$/.test(id)) ||
+			ids.some((id) => typeof id !== "string" || !SOURCE_ID_PATTERN.test(id)) ||
 			new Set(ids).size !== ids.length
 		)
 			return undefined;

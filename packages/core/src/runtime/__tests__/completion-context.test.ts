@@ -143,6 +143,43 @@ function trajectory(context: ContextObject): PlannerTrajectory {
 
 describe("source-bound completion relevance", () => {
 	it.each([
+		"relevantSourceIds",
+		"constraintSourceIds",
+		"referentSourceIds",
+		"pendingIntentSourceIds",
+	] as const)(
+		"declares the runtime source-ID contract for %s without dropping invalid sources",
+		(field) => {
+			const context = historyContext();
+			const before = structuredClone(context);
+			for (const id of ["", " ", "h0", "h01", "h-1", "h1extra"]) {
+				const malformed = { ...selection(context), [field]: [id] };
+				const errors: string[] = [];
+				validateSchema(
+					COMPLETION_CONTEXT_SCHEMA,
+					malformed,
+					"selection",
+					errors,
+				);
+				expect(errors, JSON.stringify({ field, id })).not.toEqual([]);
+				expect(parseCompletionContextSelection(malformed)).toBeUndefined();
+				const fallback = selectCompletionContext(
+					withSelection(context, malformed),
+				);
+				expect(fallback.applied).toBe(false);
+				expect(fallback.context).toEqual(withSelection(context, malformed));
+			}
+			for (const ids of [[], ["h1"], ["h1", "h123456789"]]) {
+				const valid = { ...selection(context), [field]: ids };
+				const errors: string[] = [];
+				validateSchema(COMPLETION_CONTEXT_SCHEMA, valid, "selection", errors);
+				expect(errors).toEqual([]);
+				expect(parseCompletionContextSelection(valid)?.[field]).toEqual(ids);
+			}
+			expect(context).toEqual(before);
+		},
+	);
+	it.each([
 		["relevant_prior_dialogue", "selected"],
 		["all_prior_dialogue", "full"],
 		["selected", "selected"],
