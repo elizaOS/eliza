@@ -1514,7 +1514,23 @@ export class AgentSandboxesRepository {
         // every write, including raw SQL writers, so no timestamp-precision
         // or same-millisecond ABA window exists (#17249 fence class).
         eq(agentSandboxes.lifecycle_revision, expectedRunningGeneration.lifecycleRevision),
+        hasNoProvisioningOwnerJob([...EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES]),
       );
+      // Enqueue takes this same lock before capturing the lifecycle revision.
+      // A probe must either commit first or yield to the accepted operation;
+      // otherwise a harmless heartbeat can supersede a queued user shutdown.
+      return dbWrite.transaction(async (tx) => {
+        await configureElizaLifecycleTransaction(tx);
+        await tx.execute(
+          elizaProvisionAdvisoryLockSql(expectedRunningGeneration.organizationId, id),
+        );
+        const [updated] = await tx
+          .update(agentSandboxes)
+          .set(updateData)
+          .where(and(...predicates))
+          .returning();
+        return updated;
+      });
     }
     const [r] = await dbWrite
       .update(agentSandboxes)

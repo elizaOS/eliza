@@ -19,6 +19,7 @@ process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
 import { agentBackupObjects } from "../../../db/schemas/agent-backup-catalog";
+import { agentComputeStopIntents } from "../../../db/schemas/agent-compute-stop-intents";
 import { agentNodeIncarnationHistories } from "../../../db/schemas/agent-node-incarnation-histories";
 import {
   type AgentSandbox,
@@ -113,6 +114,7 @@ beforeAll(async () => {
     agentSandboxBackups,
     agentBackupCatalogAuthorities,
     agentBackupObjects,
+    agentComputeStopIntents,
     apiKeys,
     generations,
     usageRecords,
@@ -128,6 +130,170 @@ afterAll(async () => {
 });
 
 describe("typed lifecycle reads and exact sandbox generations", () => {
+  test(
+    "shutdown intent survives its own claim and retry but rejects an intervening lifecycle write",
+    async () => {
+      const { updateAgentLifecycleExecutionFence } = await import(
+        "../../../db/repositories/agent-lifecycle-execution-fence"
+      );
+      const { orgId, userId } = await seedOwner();
+      const sandbox = await seedRunningAgent(orgId, userId);
+      const [job] = await dbWrite
+        .insert(jobs)
+        .values({
+          type: "agent_suspend",
+          status: "in_progress",
+          agent_id: sandbox.id,
+          organization_id: orgId,
+          user_id: userId,
+          data: {
+            agentId: sandbox.id,
+            organizationId: orgId,
+            userId,
+            lifecycleRevision: sandbox.lifecycle_revision,
+          },
+        })
+        .returning();
+      const [intent] = await dbWrite
+        .insert(agentComputeStopIntents)
+        .values({
+          organization_id: orgId,
+          agent_id: sandbox.id,
+          job_id: job.id,
+          authorization: "user_request",
+          lifecycle_revision: sandbox.lifecycle_revision,
+        })
+        .returning();
+      const generation = "f35b93df-ad0d-480c-bf72-1e8fcb55de42";
+      const transition = (action: "claim" | "release") =>
+        dbWrite.transaction((tx) =>
+          updateAgentLifecycleExecutionFence(tx, job, generation, action),
+        );
+      const readIntent = async () =>
+        (
+          await dbWrite
+            .select()
+            .from(agentComputeStopIntents)
+            .where(eq(agentComputeStopIntents.id, intent.id))
+        )[0];
+      await transition("claim");
+      expect((await readIntent()).lifecycle_revision).toBe(sandbox.lifecycle_revision + 1);
+      await transition("release");
+      expect((await readIntent()).lifecycle_revision).toBe(sandbox.lifecycle_revision + 2);
+      await transition("claim");
+      const admitted = await readIntent();
+      expect(admitted.lifecycle_revision).toBe(sandbox.lifecycle_revision + 3);
+      // Repeating the same claim is idempotent and cannot manufacture authority.
+      await transition("claim");
+      expect((await readIntent()).lifecycle_revision).toBe(admitted.lifecycle_revision);
+      const { ProvisioningJobService } = await import("../provisioning-jobs");
+      const replay = await new ProvisioningJobService().enqueueAgentSuspendOnce({
+        agentId: sandbox.id,
+        organizationId: orgId,
+        userId,
+        authorization: "user_request",
+        expectedLifecycleRevision: sandbox.lifecycle_revision,
+      });
+      expect(replay.created).toBe(false);
+      expect(replay.job.id).toBe(job.id);
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ error_count: 1 })
+        .where(eq(agentSandboxes.id, sandbox.id));
+      await transition("release");
+      expect((await readIntent()).lifecycle_revision).toBe(admitted.lifecycle_revision);
+      const result = await new ElizaSandboxService().executeSuspend(
+        sandbox.id,
+        orgId,
+        job.id,
+        "user_request",
+        admitted.lifecycle_revision,
+      );
+      expect(result).toMatchObject({
+        success: true,
+        containerStopped: false,
+        skipped: true,
+        reason: "lifecycle_changed",
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  test(
+    "a healthy probe preserves the generation of an accepted shutdown until its worker quiesces",
+    async () => {
+      const { orgId, userId } = await seedOwner();
+      const sandbox = await seedRunningAgent(orgId, userId);
+      let stopJobId: string | undefined;
+      const server = Bun.serve({
+        hostname: "127.0.0.1",
+        port: 0,
+        fetch: async () => {
+          if (!stopJobId) {
+            const [job] = await dbWrite
+              .insert(jobs)
+              .values({
+                type: "agent_suspend",
+                status: "pending",
+                organization_id: orgId,
+                user_id: userId,
+                agent_id: sandbox.id,
+                data: { agentId: sandbox.id, organizationId: orgId, userId },
+              })
+              .returning();
+            stopJobId = job.id;
+          }
+          return new Response("ok");
+        },
+      });
+      try {
+        const [observed] = await dbWrite
+          .update(agentSandboxes)
+          .set({
+            bridge_url: `http://127.0.0.1:${server.port}`,
+            health_url: `http://127.0.0.1:${server.port}`,
+            node_id: "test-node",
+            bridge_port: server.port,
+            headscale_ip: "127.0.0.1",
+            last_heartbeat_at: new Date(),
+          })
+          .where(eq(agentSandboxes.id, sandbox.id))
+          .returning();
+        const service = new ElizaSandboxService();
+        expect(await service.heartbeat(sandbox.id, orgId)).toBe(false);
+        expect(
+          (await agentSandboxesRepository.findByIdAndOrg(sandbox.id, orgId))?.lifecycle_revision,
+        ).toBe(observed.lifecycle_revision);
+        if (!stopJobId) throw new Error("probe did not enqueue shutdown");
+
+        await dbWrite
+          .update(jobs)
+          .set({
+            status: "completed",
+            execution_generation: "f35b93df-ad0d-480c-bf72-1e8fcb55de42",
+            execution_quiesced_at: null,
+          })
+          .where(eq(jobs.id, stopJobId));
+        expect(await service.heartbeat(sandbox.id, orgId)).toBe(false);
+        expect(
+          (await agentSandboxesRepository.findByIdAndOrg(sandbox.id, orgId))?.lifecycle_revision,
+        ).toBe(observed.lifecycle_revision);
+
+        await dbWrite
+          .update(jobs)
+          .set({ execution_quiesced_at: new Date() })
+          .where(eq(jobs.id, stopJobId));
+        expect(await service.heartbeat(sandbox.id, orgId)).toBe(true);
+        expect(
+          (await agentSandboxesRepository.findByIdAndOrg(sandbox.id, orgId))?.lifecycle_revision,
+        ).toBe(observed.lifecycle_revision + 1);
+      } finally {
+        server.stop(true);
+      }
+    },
+    TEST_TIMEOUT,
+  );
+
   test(
     "a locked lifecycle read maps timestamps to Dates for the warm-claim gate",
     async () => {

@@ -632,6 +632,11 @@ function resolveDirectCloudClientApiBase(client: ElizaClient): string | null {
   return null;
 }
 
+/** Account reads use the trusted Cloud control plane instead of the agent. */
+export function hasDirectCloudAccountTransport(client: ElizaClient): boolean {
+  return resolveDirectCloudClientApiBase(client) !== null;
+}
+
 /**
  * Resolve the Cloud auth bearer token. Per DECISIONS.md D3 the Cloud
  * connection is unified on Steward across every target (hosted web AND
