@@ -170,6 +170,7 @@ export {
 	__resetDefaultMessageRefStoreForTests,
 	__resetDefaultTriageServiceForTests,
 	BaseMessageAdapter,
+	draftConsentDigest,
 	draftFollowupAction,
 	draftReplyAction,
 	getDefaultMessageRefStore,
