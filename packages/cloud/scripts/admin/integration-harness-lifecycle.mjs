@@ -24,6 +24,59 @@ import { DatabaseSync } from "node:sqlite";
 
 const DEFAULT_PORT_MIN = 20_000;
 const DEFAULT_PORT_MAX = 60_999;
+// A lease proves that nothing listens on a port, not that the kernel will not
+// hand it to an outbound socket as its source port before the server binds.
+// Linux draws those from net.ipv4.ip_local_port_range (32768-60999 by default),
+// so random candidates must stay below that floor or workerd fails its bind
+// with EADDRINUSE after the harness opened its migration connections.
+const IANA_EPHEMERAL_PORT_MIN = 49_152;
+const LOCAL_PORT_RANGE_PATH = "/proc/sys/net/ipv4/ip_local_port_range";
+
+function readLocalPortRange() {
+  let text;
+  try {
+    text = readFileSync(LOCAL_PORT_RANGE_PATH, "utf8");
+  } catch {
+    // error-policy:J3 hosts without procfs (macOS, Windows) report no range
+    // and the caller applies the IANA default instead of a fake value.
+    return null;
+  }
+  const parts = text.trim().split(/\s+/);
+  if (parts.length !== 2) return null;
+  const [min, max] = parts.map((value) =>
+    /^\d+$/.test(value) ? Number(value) : Number.NaN,
+  );
+  if (
+    !Number.isInteger(min) ||
+    !Number.isInteger(max) ||
+    min < 1 ||
+    max < min
+  ) {
+    return null;
+  }
+  return { min, max };
+}
+
+/** Lowest port the kernel may assign to an outbound socket on this host. */
+export function ephemeralPortFloor(readRange = readLocalPortRange) {
+  const range = readRange();
+  return range ? range.min : IANA_EPHEMERAL_PORT_MIN;
+}
+
+/** Random-lease candidates: the configured range clipped below the ephemeral floor. */
+export function candidatePortRange({
+  min = DEFAULT_PORT_MIN,
+  max = DEFAULT_PORT_MAX,
+  ephemeralMin = ephemeralPortFloor(),
+} = {}) {
+  const upper = Math.min(max, ephemeralMin - 1);
+  if (upper < min) {
+    throw new Error(
+      `[cloud-integration] no lease-able ports: ${min}-${max} lies entirely at or above the ephemeral floor ${ephemeralMin}`,
+    );
+  }
+  return { min, max: upper };
+}
 const DEFAULT_STARTUP_TIMEOUT_MS = 90_000;
 const DEFAULT_STOP_TIMEOUT_MS = 10_000;
 const OWNER_FILE = ".cloud-integration-owner.json";
@@ -264,8 +317,9 @@ export async function acquirePortLease({
     return lease;
   }
 
+  const candidates = candidatePortRange();
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const port = randomInt(DEFAULT_PORT_MIN, DEFAULT_PORT_MAX + 1);
+    const port = randomInt(candidates.min, candidates.max + 1);
     const lease = await tryAcquirePortLease({
       host,
       port,
