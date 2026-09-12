@@ -5,7 +5,13 @@
  * gate is exercised deterministically — no live homeserver.
  */
 import { EventEmitter } from "node:events";
-import { type Content, EventType, type HandlerCallback, type IAgentRuntime } from "@elizaos/core";
+import {
+  type Content,
+  createUniqueUuid,
+  EventType,
+  type HandlerCallback,
+  type IAgentRuntime,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
 // The vitest @elizaos/core shim (packages/scripts/vitest/shims) is a curated subset
@@ -316,6 +322,39 @@ describe("Matrix service hardening", () => {
     );
   });
 
+  it("persists the inbound message with the same authority-compatible room key the connector read fallback uses", async () => {
+    // Write/read contract: dispatchToAgent persists via
+    // matrixMessageToMemory (account-scoped matrixScopedUuid) and the
+    // connector's stored-memory fallback (readMessagesForTarget) reads by
+    // the SAME derivation. A v0 createUniqueUuid write key would make
+    // every stored message invisible to the reader — this round-trip pins
+    // both derivations to identical bytes.
+    const { runtime, service, state } = createService();
+    await callDispatch(service, state, createMatrixMessage(), createMatrixRoom());
+
+    const written = vi.mocked(runtime.createMemory).mock.calls[0]?.[0];
+    expect(written).toBeDefined();
+    const writtenRoomId = written?.roomId;
+
+    // Derive the reader's expected key independently: the production
+    // matrixScopedUuid (createUniqueUuid base + v5/8 nibble re-stamp)
+    // over `work:!ops:example`.
+    const base = createUniqueUuid(runtime, "work:!ops:example");
+    const expectedReaderKey = `${base.slice(0, 14)}5${base.slice(15, 19)}8${base.slice(20)}`;
+    expect(writtenRoomId).toBe(expectedReaderKey);
+
+    // And the version nibble is RFC 4122-valid (the canonical membership
+    // authority rejects version-0 ids) while remaining deterministic.
+    expect(writtenRoomId?.[14]).toBe("5");
+    expect(writtenRoomId?.[19]).toBe("8");
+    expect(writtenRoomId).toBe(
+      (() => {
+        const again = createUniqueUuid(runtime, "work:!ops:example");
+        return `${again.slice(0, 14)}5${again.slice(15, 19)}8${again.slice(20)}`;
+      })()
+    );
+  });
+
   it("runs the agent and round-trips the reply when auto-reply is on and passive mode is off", async () => {
     // Auto-reply ON requires BOTH the gate set true AND passive connectors explicitly disabled.
     const { runtime, service, state } = createService(
@@ -610,5 +649,36 @@ describe("Matrix service hardening", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("leaveRoom terminates the membership scope before reporting success", async () => {
+    const { service, state } = createService();
+    const markScopeUnavailable = vi.fn().mockResolvedValue(undefined);
+    Object.assign(state, { membershipAuthority: { markScopeUnavailable } });
+    (state.client as { leave: ReturnType<typeof vi.fn> }).leave = vi
+      .fn()
+      .mockResolvedValue(undefined);
+
+    await service.leaveRoom("!ops:example");
+
+    expect(state.client.leave).toHaveBeenCalledWith("!ops:example");
+    // The homeserver confirmed the leave: the scope must be tombstoned NOW,
+    // not left authorizing until an SDK membership event arrives.
+    expect(markScopeUnavailable).toHaveBeenCalledWith({
+      roomId: "!ops:example",
+      reason: "bot_left_explicit",
+    });
+  });
+
+  it("leaveRoom propagates the leave error without terminating the scope", async () => {
+    const { service, state } = createService();
+    const markScopeUnavailable = vi.fn().mockResolvedValue(undefined);
+    Object.assign(state, { membershipAuthority: { markScopeUnavailable } });
+    (state.client as { leave: ReturnType<typeof vi.fn> }).leave = vi
+      .fn()
+      .mockRejectedValue(new Error("homeserver 403"));
+
+    await expect(service.leaveRoom("!ops:example")).rejects.toThrow("homeserver 403");
+    expect(markScopeUnavailable).not.toHaveBeenCalled();
   });
 });
