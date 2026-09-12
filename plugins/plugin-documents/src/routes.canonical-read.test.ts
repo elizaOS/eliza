@@ -53,6 +53,8 @@ const fragment: Memory = {
 };
 
 const service = vi.hoisted(() => ({
+  getDocumentPinsWithAccessContext: vi.fn(),
+  setDocumentPinsWithAccessContext: vi.fn(),
   listAllDocumentsWithAccessContext: vi.fn(),
   getDocumentByIdWithAccessContext: vi.fn(),
   getMutableDocumentWithAccessContext: vi.fn(),
@@ -108,6 +110,65 @@ function context(
 }
 
 describe("canonical document REST reads", () => {
+  it("enforces owner pin management and passes only reviewed placements to canonical storage", async () => {
+    const denied = context(`/api/documents/${DOCUMENT_ID}/pins`);
+    await handleDocumentsRoutes(denied.ctx);
+    expect(denied.response.status).toBe(403);
+    expect(service.getDocumentPinsWithAccessContext).not.toHaveBeenCalled();
+    const owner = {
+      requesterEntityId: USER_ID,
+      role: "OWNER" as const,
+      isOwner: true,
+    };
+    const revision = `dar1_${"a".repeat(64)}`;
+    service.getDocumentPinsWithAccessContext.mockResolvedValue({
+      targets: { agent: false, roomIds: [ROOM_ID] },
+      pinRevision: revision,
+    });
+    const read = context(`/api/documents/${DOCUMENT_ID}/pins`);
+    read.ctx.accessContext = owner;
+    await handleDocumentsRoutes(read.ctx);
+    expect(read.response.body).toEqual({
+      documentId: DOCUMENT_ID,
+      targets: { agent: false, roomIds: [ROOM_ID] },
+      pinRevision: revision,
+    });
+    const missingReview = context(
+      `/api/documents/${DOCUMENT_ID}/pins`,
+      "PATCH",
+      { agent: true, roomIds: [] },
+    );
+    missingReview.ctx.accessContext = owner;
+    await handleDocumentsRoutes(missingReview.ctx);
+    expect(missingReview.response.status).toBe(400);
+    expect(service.setDocumentPinsWithAccessContext).not.toHaveBeenCalled();
+    const write = context(`/api/documents/${DOCUMENT_ID}/pins`, "PATCH", {
+      agent: true,
+      roomIds: [ROOM_ID],
+      expectedPinRevision: revision,
+    });
+    write.ctx.accessContext = owner;
+    service.setDocumentPinsWithAccessContext.mockResolvedValue(document);
+    await handleDocumentsRoutes(write.ctx);
+    expect(write.response.status).toBe(200);
+    expect(service.setDocumentPinsWithAccessContext).toHaveBeenCalledWith(
+      DOCUMENT_ID,
+      { agent: true, roomIds: [ROOM_ID] },
+      owner,
+      revision,
+    );
+    service.setDocumentPinsWithAccessContext.mockRejectedValueOnce(
+      new ElizaError("Reload pins", { code: "DOCUMENT_PIN_CONFLICT" }),
+    );
+    const stale = context(`/api/documents/${DOCUMENT_ID}/pins`, "PATCH", {
+      agent: false,
+      roomIds: [],
+      expectedPinRevision: revision,
+    });
+    stale.ctx.accessContext = owner;
+    await handleDocumentsRoutes(stale.ctx);
+    expect(stale.response.status).toBe(409);
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     service.getDocumentByIdWithAccessContext.mockResolvedValue(document);

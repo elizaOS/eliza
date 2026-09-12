@@ -32,6 +32,8 @@ Documents are stored as memories in the runtime's `documents` table and chunked 
 | PATCH  | `/api/documents/:id` | Update document text (only for non-bundled, non-character, text-backed documents) |
 | PATCH  | `/api/documents/:id/access` | Replace explicit entity read grants (OWNER or current room ADMIN) |
 | GET    | `/api/documents/:id/access` | Read explicit entity grants under the same management authority |
+| GET    | `/api/documents/:id/pins` | Read agent and chat pin placements with their review revision (OWNER) |
+| PATCH  | `/api/documents/:id/pins` | Save reviewed agent and chat pin placements without changing read access (OWNER) |
 | DELETE | `/api/documents/:id` | Delete document and all its fragments |
 
 ## Document scopes
@@ -98,3 +100,9 @@ from `@elizaos/ui`.
 - Image uploads are converted to text descriptions when `includeImageDescriptions: true` is set in metadata (requires a vision model). Without a generated description, the stored text explicitly records that text extraction or image description was unavailable.
 - Bundled documents (seeded by the runtime) and character documents (from character source files) cannot be edited or deleted through this API.
 - Bulk upload is capped at 100 documents per request; individual upload bodies are capped at 32 MB.
+
+## Document pins
+
+The document detail view offers separate reader and pin editors. Pin placement is owner-managed and independent of read permissions: an agent pin applies across its chats, while individual chat pins persist independently. Every save requires the opaque revision returned by the pin read; stale writes return 409 and require a new read and review. The editor preserves saved chat identities missing from the current conversation directory and displays an error if either inventory cannot be loaded.
+
+Core owns persistence and response-context admission. Its automatic pin provider includes a document only when every current chat participant can read it; participant or document changes during preparation require retry. Pinning does not publish a document on the internet or change its readers.

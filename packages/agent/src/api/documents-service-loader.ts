@@ -47,6 +47,19 @@ export type DocumentAddedFrom =
 export type DocumentSearchMode = "hybrid" | "vector" | "keyword";
 
 export interface DocumentsServiceLike {
+  getDocumentPinsWithAccessContext?(
+    documentId: UUID,
+    accessContext: AccessContext,
+  ): Promise<{
+    targets: { agent: boolean; roomIds: UUID[] };
+    pinRevision: string;
+  }>;
+  setDocumentPinsWithAccessContext?(
+    documentId: UUID,
+    targets: { agent: boolean; roomIds: UUID[] },
+    accessContext: AccessContext,
+    expectedPinRevision: string,
+  ): Promise<Memory>;
   addDocument(options: {
     agentId?: UUID;
     worldId: UUID;

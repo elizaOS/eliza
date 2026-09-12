@@ -601,6 +601,17 @@ declare module "./client-base" {
       directGrantEntityIds: string[];
       accessRevision: string;
     }>;
+    getDocumentPins(
+      documentId: string,
+    ): Promise<{
+      documentId: string;
+      targets: { agent: boolean; roomIds: string[] };
+      pinRevision: string;
+    }>;
+    updateDocumentPins(
+      documentId: string,
+      data: { agent: boolean; roomIds: string[]; expectedPinRevision: string },
+    ): Promise<{ ok: true; documentId: string }>;
     updateDocumentAccess(
       documentId: string,
       data: {
@@ -1515,6 +1526,24 @@ ElizaClient.prototype.getDocumentAccess = async function (
   documentId,
 ) {
   return this.fetch(`/api/documents/${encodeURIComponent(documentId)}/access`);
+};
+
+ElizaClient.prototype.getDocumentPins = async function (
+  this: ElizaClient,
+  documentId,
+) {
+  return this.fetch(`/api/documents/${encodeURIComponent(documentId)}/pins`);
+};
+
+ElizaClient.prototype.updateDocumentPins = async function (
+  this: ElizaClient,
+  documentId,
+  data,
+) {
+  return this.fetch(`/api/documents/${encodeURIComponent(documentId)}/pins`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 };
 
 ElizaClient.prototype.updateDocumentAccess = async function (

@@ -996,6 +996,88 @@ export async function handleDocumentsRoutes(
     return true;
   }
 
+  const docPinsMatch = /^\/api\/documents\/([^/]+)\/pins$/.exec(pathname);
+  if ((method === "GET" || method === "PATCH") && docPinsMatch) {
+    if (accessContext.role !== "OWNER") {
+      error(res, "Only the owner can manage document pins", 403);
+      return true;
+    }
+    const id = decodeMatchedPathComponent(ctx, docPinsMatch[1], "document id");
+    if (!id) return true;
+    if (!isUuidValue(id)) {
+      error(res, "document id must be a valid UUID");
+      return true;
+    }
+    try {
+      if (method === "GET") {
+        if (!documentsService.getDocumentPinsWithAccessContext) {
+          error(res, "Document pin authority is unavailable", 503);
+          return true;
+        }
+        const state = await documentsService.getDocumentPinsWithAccessContext(
+          id as UUID,
+          accessContext,
+        );
+        json(res, { documentId: id, ...state });
+      } else {
+        if (!documentsService.setDocumentPinsWithAccessContext) {
+          error(res, "Document pin authority is unavailable", 503);
+          return true;
+        }
+        const body = await readJsonBody<{
+          agent?: unknown;
+          roomIds?: unknown;
+          expectedPinRevision?: unknown;
+        }>(req, res, { maxBytes: 128 * 1024 });
+        if (!body) return true;
+        if (
+          typeof body.agent !== "boolean" ||
+          !Array.isArray(body.roomIds) ||
+          typeof body.expectedPinRevision !== "string" ||
+          !/^dar1_[a-f0-9]{64}$/.test(body.expectedPinRevision)
+        ) {
+          error(
+            res,
+            "Provide an agent pin, chat identifiers and the reviewed pin revision",
+            400,
+          );
+          return true;
+        }
+        const roomIds: UUID[] = [];
+        for (const roomId of body.roomIds) {
+          if (!isUuidValue(roomId)) {
+            error(res, "Chat identifiers must be valid UUIDs", 400);
+            return true;
+          }
+          roomIds.push(roomId.trim() as UUID);
+        }
+        await documentsService.setDocumentPinsWithAccessContext(
+          id as UUID,
+          { agent: body.agent, roomIds },
+          accessContext,
+          body.expectedPinRevision,
+        );
+        json(res, { ok: true, documentId: id });
+      }
+    } catch (cause) {
+      // error-policy:J1 Translate typed pin failures at the authenticated HTTP boundary.
+      if (!(cause instanceof ElizaError)) throw cause;
+      const status =
+        cause.code === "DOCUMENT_PIN_NOT_FOUND"
+          ? 404
+          : cause.code === "DOCUMENT_PIN_FORBIDDEN"
+            ? 403
+            : cause.code === "DOCUMENT_PIN_CONFLICT"
+              ? 409
+              : cause.code === "DOCUMENT_PIN_ROOM_INVALID" ||
+                  cause.code === "DOCUMENT_PIN_TARGETS_INVALID"
+                ? 400
+                : 500;
+      error(res, cause.message, status);
+    }
+    return true;
+  }
+
   const docIdMatch = /^\/api\/documents\/([^/]+)$/.exec(pathname);
   const docAccessMatch = /^\/api\/documents\/([^/]+)\/access$/.exec(pathname);
   if (method === "GET" && docAccessMatch) {
