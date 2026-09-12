@@ -344,6 +344,37 @@ describe("buildPlugin (shared driver, issue #10200)", () => {
     ).rejects.toThrow();
   });
 
+  test("a missing required rename source aborts instead of publishing an incomplete build", async () => {
+    makeFixture({ src: "export const ok = 1;\n" });
+    await expect(
+      buildPlugin({
+        name: "@elizaos/fixture-plugin",
+        targets: [
+          {
+            label: "Node",
+            entry: "src/index.ts",
+            outSubdir: "node",
+            target: "node",
+            format: "esm",
+            renames: [["missing.js", "required.js"]],
+          },
+        ],
+      }),
+    ).rejects.toThrow();
+    expect(existsSync(distPath("node", "required.js"))).toBe(false);
+  });
+
+  test("a missing required flatten source aborts instead of silently skipping the step", async () => {
+    makeFixture({ tsconfig: false });
+    await expect(
+      buildPlugin({
+        name: "@elizaos/fixture-plugin",
+        targets: [],
+        flatten: [{ from: "required-tree" }],
+      }),
+    ).rejects.toThrow();
+  });
+
   test("dtsTolerant swallows a failed declaration emit and warns, keeping JS outputs", async () => {
     // No tsconfig present → tsc fails (TS5058, missing project) → tolerant mode
     // must warn + continue rather than abort. Spy on console.warn to prove the

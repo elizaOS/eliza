@@ -1,12 +1,8 @@
 #!/usr/bin/env bun
 /**
- * Shared plugin build driver (issue #9626, TL;DR #2). The model-provider and
- * connector plugins each hand-rolled the same Bun.build + tsc-d.ts + d.ts-alias
- * algorithm with minor per-package variation (which targets, minify, whether a
- * dist clean runs, and the exact declaration-alias shims). This collapses that
- * orchestration to one place; each plugin's `build.ts` becomes a small,
- * declarative `buildPlugin({...})` call that lists only what it actually differs
- * on. The emitted `dist/` is byte-identical to the previous hand-rolled build.
+ * Orchestrates plugin bundles and required publication artifacts from declarative package build files.
+ * Every configured move, declaration, shim, and copy is part of the published package contract, so a
+ * failed or missing step aborts instead of reporting success with an incomplete `dist/` tree.
  */
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, readdir, rename, writeFile } from "node:fs/promises";
@@ -203,14 +199,10 @@ export async function buildPlugin(config: BuildPluginConfig): Promise<void> {
       throw new Error(`${t.label} build failed`);
     }
     for (const [from, to] of t.renames ?? []) {
-      try {
-        await rename(
-          join(distDir, t.outSubdir, from),
-          join(distDir, t.outSubdir, to),
-        );
-      } catch (e) {
-        console.warn(`${t.label} rename step warning:`, e);
-      }
+      await rename(
+        join(distDir, t.outSubdir, from),
+        join(distDir, t.outSubdir, to),
+      );
     }
     console.log(
       `✅ ${t.label} complete in ${((Date.now() - start) / 1000).toFixed(2)}s`,
@@ -219,7 +211,6 @@ export async function buildPlugin(config: BuildPluginConfig): Promise<void> {
 
   for (const f of config.flatten ?? []) {
     const fromDir = join(distDir, f.from);
-    if (!existsSync(fromDir)) continue;
     const toDir = join(distDir, f.to ?? ".");
     console.log(`📂 Flattening dist/${f.from} → dist/${f.to ?? "."}…`);
     await moveTreeContents(fromDir, toDir);

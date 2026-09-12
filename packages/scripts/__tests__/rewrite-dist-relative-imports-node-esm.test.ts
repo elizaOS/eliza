@@ -62,8 +62,19 @@ describe("rewrite-dist-relative-imports-node-esm", () => {
       [
         'import { display } from "./actions/display-text.ts";',
         'const modulePromise = import("./ui/widget.tsx");',
+        'const attributedPromise = import("./feature.ts", { with: { type: "json" } });',
+        "const escapedPromise = import('./quo\\'te.ts');",
+        "const templatePromise = import(`./foo\\$" + "{bar}.ts`);",
+        `const guidance = 'Read from "./actions/display-text" for help.';`,
         "export { display, modulePromise };",
       ].join("\n"),
+    );
+    write(root, "packages/example/dist/feature.js", "export default {};\n");
+    write(root, "packages/example/dist/quo'te.js", "export default {};\n");
+    write(
+      root,
+      "packages/example/dist/foo$" + "{bar}.js",
+      "export default {};\n",
     );
 
     const result = spawnSync("node", [scriptPath, "packages/example"], {
@@ -97,5 +108,11 @@ describe("rewrite-dist-relative-imports-node-esm", () => {
       'import { display } from "./actions/display-text.js";',
     );
     expect(runtime).toContain('import("./ui/widget.js")');
+    expect(runtime).toContain(
+      'import("./feature.js", { with: { type: "json" } })',
+    );
+    expect(runtime).toContain("import('./quo\\'te.js')");
+    expect(runtime).toContain("import(`./foo\\$" + "{bar}.js`)");
+    expect(runtime).toContain('Read from "./actions/display-text" for help.');
   });
 });

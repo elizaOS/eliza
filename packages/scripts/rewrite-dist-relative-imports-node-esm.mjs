@@ -3,6 +3,7 @@
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { findWorkspaceRoot } from "./lib/repo-root.mjs";
+import { rewriteModuleSpecifiers } from "./lib/rewrite-module-specifiers.mjs";
 
 const workspaceRoot = findWorkspaceRoot(process.cwd());
 const packageDir = process.argv[2]
@@ -111,27 +112,15 @@ async function rewriteFile(filePath) {
     }
     throw error;
   }
-  const importPattern =
-    /(\b(?:from|import)\s*\(?\s*["'])(\.{1,2}\/[^"']+)(["']\)?)/g;
+  const rewritten = await rewriteModuleSpecifiers(
+    source,
+    filePath,
+    (specifier) => resolveRelativeSpecifier(filePath, specifier),
+  );
 
-  let changed = false;
-  let output = "";
-  let lastIndex = 0;
-  for (const match of source.matchAll(importPattern)) {
-    const [full, prefix, specifier, suffix] = match;
-    const replacement = await resolveRelativeSpecifier(filePath, specifier);
-    output += source.slice(lastIndex, match.index);
-    output += `${prefix}${replacement}${suffix}`;
-    lastIndex = match.index + full.length;
-    if (replacement !== specifier) {
-      changed = true;
-    }
-  }
-  output += source.slice(lastIndex);
-
-  if (changed) {
+  if (rewritten.changed) {
     try {
-      await writeFile(filePath, output, "utf8");
+      await writeFile(filePath, rewritten.source, "utf8");
     } catch (error) {
       if (error?.code === "ENOENT") {
         return false;
@@ -139,7 +128,7 @@ async function rewriteFile(filePath) {
       throw error;
     }
   }
-  return changed;
+  return rewritten.changed;
 }
 
 if (!(await exists(distDir))) {
