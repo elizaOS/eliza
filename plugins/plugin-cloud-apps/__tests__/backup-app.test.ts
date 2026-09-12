@@ -111,4 +111,34 @@ describe("BACKUP_APP", () => {
     expect(res.success).toBe(false);
     expect(res.data).toMatchObject({ reason: "not_found" });
   });
+
+  it("REGRESSION (#29907): a stale/foreign UUID reference → graceful not_found, not an uncaught CloudApiError", async () => {
+    // BACKUP_APP calls resolveApp OUTSIDE any try/catch, so before the fix a
+    // getApp 404 on a stale planner-carried / pasted UUID escaped the handler
+    // as an uncaught action error. resolveApp must now fall through to the
+    // which-app reply instead of propagating.
+    const STALE_UUID = "99999999-9999-4999-8999-999999999999";
+    setGetApp((id) => {
+      expect(id).toBe(STALE_UUID);
+      return Promise.reject(
+        Object.assign(new Error("HTTP 404"), {
+          name: "CloudApiError",
+          statusCode: 404,
+          errorBody: { success: false, error: "HTTP 404" },
+        }),
+      );
+    });
+    const cb = captureCallback();
+    const res = await backupAppAction.handler(
+      keyedRuntime(),
+      makeMessage(`back up ${STALE_UUID}`),
+      undefined,
+      { app: STALE_UUID },
+      cb.callback,
+    );
+    expect(res.success).toBe(false);
+    expect(res.data).toMatchObject({ reason: "not_found" });
+    // The which-app reply lists the org's current app, never the stale id.
+    expect(res.userFacingText).toContain("Acme Bot");
+  });
 });
