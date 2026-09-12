@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -13,7 +14,10 @@ import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, test } from "vitest";
 import {
   createBatches,
+  createBunTestInvocation,
+  createRunnerBatches,
   createVitestInvocation,
+  isBunRuntimeTest,
   mergeAgentJunit,
   parseAgentTestArgs,
   positiveInteger,
@@ -47,7 +51,7 @@ function runFakeBatches(
     const inventory = new Map([
       [path.join(root, "src"), ["a.test.ts", "b.test.ts", "c.test.ts", "excluded.live.test.ts", "not-a-test.ts"]],
       [path.join(root, "test"), ["crash-restart-supervisor.test.ts"]],
-      [path.join(root, "scripts"), []],
+      [path.join(root, "scripts"), ["mobile-workspace-entry.test.mjs", "mobile-workspace-entry.mjs"]],
     ]);
     const readDirectory = fs.readdirSync;
     const stat = fs.statSync;
@@ -57,6 +61,7 @@ function runFakeBatches(
       : stat(file, ...rest);
     const children = new Map();
     const spawned = [];
+    const runners = [];
     const killed = [];
     childProcess.spawn = (command, childArgs) => {
       const child = new EventEmitter();
@@ -76,7 +81,11 @@ function runFakeBatches(
         return true;
       };
       children.set(child.pid, child);
-      spawned.push(childArgs.slice(5).map((file) => file.split(path.sep).join("/")));
+      const isBunTest = childArgs[0] === "test";
+      runners.push(isBunTest ? "bun test" : childArgs.slice(0, 3).join(" "));
+      spawned.push((isBunTest ? childArgs.slice(1) : childArgs.slice(5))
+        .filter((arg) => !arg.startsWith("--"))
+        .map((file) => file.split(path.sep).join("/")));
       if (options.signal && spawned.length === 2) {
         queueMicrotask(() => {
           process.emit(options.signal);
@@ -95,7 +104,7 @@ function runFakeBatches(
       return true;
     };
     process.on("exit", () => console.log("FAKE_BATCH_RECEIPT=" + JSON.stringify({
-      spawned, killed, active: children.size,
+      spawned, runners, killed, active: children.size,
       listeners: [process.listenerCount("SIGINT"), process.listenerCount("SIGTERM")],
     })));
     syncBuiltinESMExports();
@@ -133,6 +142,7 @@ function runFakeBatches(
     receiptLine.slice("FAKE_BATCH_RECEIPT=".length),
   ) as {
     spawned: string[][];
+    runners: string[];
     killed: { pid: number; signal: string }[];
     active: number;
     listeners: number[];
@@ -192,6 +202,7 @@ describe("agent Vitest batch orchestration", () => {
     "src/*.test.ts",
     "src/excluded.live.test.ts",
     "src/not-a-test.ts",
+    "scripts/mobile-workspace-entry.mjs",
     "test/crash-restart-supervisor.test.ts",
     "../ui/src/a.test.ts",
     path.join(path.dirname(packageRoot), "ui/src/a.test.ts"),
@@ -212,6 +223,13 @@ describe("agent Vitest batch orchestration", () => {
       ["src/a.test.ts"],
       ["src/b.test.ts"],
       ["src/c.test.ts"],
+      ["scripts/mobile-workspace-entry.test.mjs"],
+    ]);
+    expect(result.receipt.runners).toEqual([
+      "x vitest run",
+      "x vitest run",
+      "x vitest run",
+      "bun test",
     ]);
   });
 
@@ -265,6 +283,24 @@ describe("agent Vitest batch orchestration", () => {
     },
   );
 
+  test("runs a Bun-runtime script test as its own bun test batch beside Vitest batches", () => {
+    // batchSize 2 would pair the files if the .mjs test were a Vitest file;
+    // it must stay alone under `bun test`, which the orchestrator's evidence
+    // guard then sees through the single wrapper command (#31149).
+    const result = runFakeBatches(
+      ["scripts/mobile-workspace-entry.test.mjs", "src/a.test.ts"],
+      { batchSize: 2 },
+    );
+    expect(result.status).toBe(0);
+    expect(result.receipt.spawned).toEqual([
+      ["src/a.test.ts"],
+      ["scripts/mobile-workspace-entry.test.mjs"],
+    ]);
+    expect(result.receipt.runners).toEqual(["x vitest run", "bun test"]);
+    expect(result.receipt.active).toBe(0);
+    expect(result.receipt.listeners).toEqual([0, 0]);
+  });
+
   test("ordinary test failure does not cancel queued siblings", () => {
     const result = runFakeBatches([], { failFirst: true });
     expect(result.status).toBe(1);
@@ -272,6 +308,7 @@ describe("agent Vitest batch orchestration", () => {
       ["src/a.test.ts"],
       ["src/b.test.ts"],
       ["src/c.test.ts"],
+      ["scripts/mobile-workspace-entry.test.mjs"],
     ]);
     expect(result.receipt.killed).toEqual([]);
     expect(result.receipt.listeners).toEqual([0, 0]);
@@ -316,6 +353,91 @@ describe("agent Vitest batch orchestration", () => {
       expect(existsSync(destination)).toBe(false);
     }
     expect(() => mergeAgentJunit([], destination)).toThrow();
+  });
+
+  test("classifies only scripts/*.test.mjs as Bun-runtime tests and isolates each one", () => {
+    expect(isBunRuntimeTest("scripts/mobile-workspace-entry.test.mjs")).toBe(
+      true,
+    );
+    for (const file of [
+      "scripts/mobile-workspace-entry.mjs",
+      "scripts/run-vitest-batches.test.ts",
+      "src/entry.test.mjs",
+      "test/entry.test.mjs",
+    ]) {
+      expect(isBunRuntimeTest(file)).toBe(false);
+    }
+    expect(
+      createRunnerBatches(
+        [
+          "scripts/z.test.mjs",
+          "src/a.test.ts",
+          "src/b.test.ts",
+          "src/c.test.ts",
+        ],
+        2,
+      ),
+    ).toEqual([
+      { runner: "vitest", files: ["src/a.test.ts", "src/b.test.ts"] },
+      { runner: "vitest", files: ["src/c.test.ts"] },
+      { runner: "bun", files: ["scripts/z.test.mjs"] },
+    ]);
+  });
+
+  test("builds a shell-free bun test invocation that emits JUnit only when asked", () => {
+    expect(
+      createBunTestInvocation(
+        "C:/Bun/bun.exe",
+        ["scripts/mobile-workspace-entry.test.mjs"],
+        "C:/tmp/0.xml",
+      ),
+    ).toEqual({
+      command: "C:/Bun/bun.exe",
+      args: [
+        "test",
+        "--reporter=junit",
+        "--reporter-outfile=C:/tmp/0.xml",
+        "scripts/mobile-workspace-entry.test.mjs",
+      ],
+    });
+    expect(
+      createBunTestInvocation("/usr/bin/bun", ["scripts/x.test.mjs"], undefined)
+        .args,
+    ).toEqual(["test", "scripts/x.test.mjs"]);
+  });
+
+  test("merges a Bun fragment, which omits the errors count, with Vitest fragments", () => {
+    const bunFragment = path.join(fixtureRoot, "bun-fragment.xml");
+    writeFileSync(
+      bunFragment,
+      `<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="bun test" tests="2" assertions="0" failures="0" skipped="0" time="0.2">
+  <testsuite name="scripts/mobile-workspace-entry.test.mjs" file="scripts/mobile-workspace-entry.test.mjs" tests="2" assertions="0" failures="0" skipped="0" time="0.1">
+    <testcase name="one" classname="" time="0.05" file="scripts/mobile-workspace-entry.test.mjs" line="13" assertions="0" />
+    <testcase name="two" classname="" time="0.05" file="scripts/mobile-workspace-entry.test.mjs" line="20" assertions="0" />
+  </testsuite>
+</testsuites>
+`,
+    );
+    const vitestFragment = path.join(fixtureRoot, "vitest-fragment.xml");
+    writeFileSync(
+      vitestFragment,
+      `<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="vitest tests" tests="1" failures="0" errors="0" time="0.1">
+  <testsuite name="src/a.test.ts" timestamp="2026-09-12T00:00:00.000Z" hostname="ci" tests="1" failures="0" errors="0" skipped="0" time="0.1">
+    <testcase classname="src/a.test.ts" name="a" time="0.1" />
+  </testsuite>
+</testsuites>
+`,
+    );
+    const merged = path.join(fixtureRoot, "merged", "report.xml");
+    mergeAgentJunit([vitestFragment, bunFragment], merged);
+    const report = readFileSync(merged, "utf8");
+    expect(report).toMatch(
+      /<testsuites tests="3" failures="0" errors="0" skipped="0">/,
+    );
+    expect(report).toContain('name="scripts/mobile-workspace-entry.test.mjs"');
+    expect(report).toContain('name="src/a.test.ts"');
   });
 
   test("keeps sorted file membership isolated and complete", () => {
