@@ -4614,13 +4614,21 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
-	it.each(["none", "non_applied"] as const)(
-		"delivers a note preview without executing its future candidate action (%s)",
-		async (replyEffectStatus) => {
+	it.each(
+		(["none", "non_applied"] as const).flatMap((replyEffectStatus) =>
+			[
+				"Say the word and I'll save it.",
+				"Reply “save it” and I’ll create it.",
+			].map((confirmation) => ({ replyEffectStatus, confirmation })),
+		),
+	)(
+		"delivers a note preview without executing its future candidate action ($replyEffectStatus / $confirmation)",
+		async ({ replyEffectStatus, confirmation }) => {
 			// Captured from the complete-history framing probe: the model retained
 			// the accepted standing rule and asked for confirmation before saving.
 			const answer =
-				"Per our standing rule, here's the proposed note before saving:\n\nTitle: Safety fixture 20260912\nBody: Only a preview until approved.\n\nSay the word and I'll save it.";
+				"Per our standing rule, here's the proposed note before saving:\n\nTitle: Safety fixture 20260912\nBody: Only a preview until approved.\n\n" +
+				confirmation;
 			const runtime = makeRuntime([
 				stage1Response({
 					contexts: ["notes"],
@@ -4685,6 +4693,87 @@ describe("runV5MessageRuntimeStage1", () => {
 				expect(result.result.responseContent?.text).toBe(answer);
 		},
 	);
+
+	it("keeps unexecuted work pending when completion evaluation rejects the proposed reply", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["general"],
+				intents: ["read the live status"],
+				candidateActionNames: ["LOOKUP"],
+				replyText: "Let me check that.",
+				extra: { replyEffectStatus: "none" },
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "premature-reply",
+						name: "REPLY",
+						arguments: {
+							text: "Let me check that.",
+							eliza_turn_scope: "final",
+						},
+					},
+				],
+			},
+			JSON.stringify({
+				thought:
+					"The requested live status has not been read; perform the lookup.",
+				success: false,
+				decision: "CONTINUE",
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "live-status",
+						name: "LOOKUP",
+						arguments: { eliza_turn_scope: "final" },
+					},
+				],
+			},
+			JSON.stringify({
+				thought: "The lookup returned the requested current status.",
+				success: true,
+				decision: "FINISH",
+				messageToUser: "The live status is ready.",
+			}),
+		]);
+		const handler = vi.fn(async () => ({
+			success: true,
+			text: "status=ready",
+			data: { status: "ready" },
+		}));
+		runtime.actions = [
+			{
+				name: "LOOKUP",
+				description: "Read the live status.",
+				validate: async () => true,
+				handler,
+			},
+		];
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "Read the live status and tell me whether it is ready.",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("planned_reply");
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(useModelCalls(runtime).map(([type]) => type)).toEqual([
+			"RESPONSE_HANDLER",
+			"ACTION_PLANNER",
+			"RESPONSE_HANDLER",
+			"ACTION_PLANNER",
+			"RESPONSE_HANDLER",
+		]);
+		if (result.kind === "planned_reply")
+			expect(result.result.responseContent?.text).toBe(
+				"The live status is ready.",
+			);
+	});
 
 	it.each([
 		{ status: "non_applied", reply: "", requiresTool: false },

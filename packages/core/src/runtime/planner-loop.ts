@@ -554,6 +554,10 @@ async function runPlannerLoopIterations(
 	// proposal against the complete request before demanding a tool. This lets
 	// previews and confirmation questions reach normal intent evaluation; its
 	// CONTINUE verdict still preserves work that actually remains outstanding.
+	// Eligibility for evaluation is not permission to deliver the draft. The
+	// direct-answer rescue heuristic can reject a conditional offer such as
+	// "Reply save it and I'll create it" as imminent work. Do not let that
+	// wording prevent the evaluator from judging whether execution must wait.
 	const canEvaluateUnexecutedReply =
 		!codingMode &&
 		requiresIntentEvaluation &&
@@ -561,7 +565,8 @@ async function runPlannerLoopIterations(
 		(stageOnePlan.replyEffectStatus === "none" ||
 			stageOnePlan.replyEffectStatus === "non_applied") &&
 		typeof stageOnePlan.reply === "string" &&
-		userSafeCapturedAnswerCandidate(stageOnePlan.reply) !== undefined;
+		stageOnePlan.reply.trim().length > 0 &&
+		!isUnsafeUserVisibleText(stageOnePlan.reply);
 	// Per-turn required-tool miss budget (see
 	// PlannerLoopParams.requiredToolMissBudgetOverride). Honored ONLY when a
 	// shape-guarded Stage-1 answer is available to finish with: the reduced
@@ -1224,10 +1229,18 @@ async function runPlannerLoopIterations(
 				// STOP/IGNORE without REPLY remain deliberate silence.
 				plannerOutput = {
 					...plannerOutput,
-					messageToUser: terminalMessageFromToolCalls(
-						plannerOutput.toolCalls,
-						plannerOutput.messageToUser,
-					),
+					messageToUser:
+						terminalMessageFromToolCalls(
+							plannerOutput.toolCalls,
+							plannerOutput.messageToUser,
+						) ??
+						// A textless pre-execution REPLY proposes the existing draft
+						// for evaluation. It does not approve delivery or an effect.
+						(canEvaluateUnexecutedReply &&
+						!hasExecutedNonTerminalTool(trajectory) &&
+						isPlainObject(stageOnePlan)
+							? getNonEmptyString(stageOnePlan.reply)
+							: undefined),
 					toolCalls: [],
 				};
 			}
