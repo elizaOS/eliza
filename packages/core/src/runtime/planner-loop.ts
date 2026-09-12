@@ -2056,6 +2056,16 @@ async function runPlannerLoopIterations(
 			};
 		}
 
+		if (
+			declaredIntentCount === 1 &&
+			latestResult?.success === true &&
+			latestResult.turnComplete === true &&
+			latestResult.verifiedUserFacing === true &&
+			trajectory.plannedQueue.length > 0
+		) {
+			dropRedundantQueuedCalls(trajectory, toolCall.name, iteration);
+		}
+
 		// Coding mode: keep executing the rest of this model-emitted tool-call
 		// batch before evaluating/re-planning. Terminal calls already returned
 		// above, so anything still queued is non-terminal build work (more FILE
@@ -2423,6 +2433,55 @@ function appendPlannerToolStepToModelHistory(
 	trajectory.modelHistory.push(
 		...trajectoryStepsToMessages([step], { redactText }),
 	);
+}
+
+/**
+ * A verified, turn-completing result fulfils the single declared intent; any
+ * remaining queued calls of the same action are the planner's hedge (live
+ * 2026-09-12: `MEMORY_DELETE {confirm}` then `MEMORY_DELETE {confirm, query}`
+ * in one response — the first succeeded through the action's own fallback and
+ * the second found nothing left, dragging in an evaluator round, a replan and
+ * three rate-limited retries). They leave the queue as skipped evidence so the
+ * queue-drained gates can settle the turn on the verified result.
+ */
+function dropRedundantQueuedCalls(
+	trajectory: PlannerTrajectory,
+	actionName: string,
+	iteration: number,
+): number {
+	const key = actionName.trim().toUpperCase();
+	const dropped = trajectory.plannedQueue.filter(
+		(queued) => queued.name.trim().toUpperCase() === key,
+	);
+	if (dropped.length === 0) return 0;
+	const kept = trajectory.plannedQueue.filter(
+		(queued) => queued.name.trim().toUpperCase() !== key,
+	);
+	trajectory.plannedQueue.splice(0, trajectory.plannedQueue.length, ...kept);
+	const droppedIds = new Set(dropped.map((queued) => queued.id ?? queued.name));
+	trajectory.context = appendContextEvent(
+		{
+			...trajectory.context,
+			plannedQueue: (trajectory.context.plannedQueue ?? []).map((entry) =>
+				entry.status === "queued" && droppedIds.has(entry.id ?? entry.name)
+					? { ...entry, status: "skipped" as const }
+					: entry,
+			),
+		},
+		{
+			id: `queue-drop:${iteration}`,
+			type: "planned_tool_call",
+			source: "planner-loop",
+			createdAt: Date.now(),
+			metadata: {
+				iteration,
+				name: actionName,
+				droppedToolCallIds: [...droppedIds],
+				reason: "redundant_after_verified_completion",
+			},
+		},
+	);
+	return dropped.length;
 }
 
 function appendPendingToolQueueFeedbackEvent(

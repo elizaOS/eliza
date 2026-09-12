@@ -7524,6 +7524,67 @@ describe("verified intent gate", () => {
 		expect(result.evaluator?.thought).toContain("single declared intent");
 	});
 
+	it("drops a same-action hedge call once the first result verifies the single intent (live regression)", async () => {
+		// Live 2026-09-12: the planner emitted MEMORY_DELETE {confirm} and
+		// MEMORY_DELETE {confirm, query} in one response; the first succeeded
+		// through the action's fallback and the second found nothing left.
+		const runtime = {
+			useModel: nativePlannerOnce({
+				toolCalls: [
+					{
+						id: "delete-1",
+						name: "MEMORY_DELETE",
+						arguments: { confirm: true, eliza_turn_scope: "final" },
+					},
+					{
+						id: "delete-2",
+						name: "MEMORY_DELETE",
+						arguments: {
+							confirm: true,
+							query: "favorite tea is oolong",
+							eliza_turn_scope: "final",
+						},
+					},
+				],
+			}),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: 'Forgot 1 memory record(s) matching "favorite tea".',
+			userFacingText: "Forgot: your favorite tea is oolong.",
+			verifiedUserFacing: true,
+			turnComplete: true,
+			effectReceipts: [
+				{
+					...receipt,
+					operation: "memory.delete",
+					receiptId: "memory-receipt-2",
+				},
+			],
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "evaluator ran",
+			messageToUser: "Forgot it.",
+		}));
+		const result = await runPlannerLoop({
+			runtime,
+			context: intentContext(["forget favorite tea"]),
+			executeToolCall,
+			evaluate,
+		});
+		expect(executeToolCall).toHaveBeenCalledTimes(1);
+		expect(evaluate).not.toHaveBeenCalled();
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe("Forgot: your favorite tea is oolong.");
+		expect(
+			result.trajectory.context.plannedQueue?.find(
+				(entry) => entry.id === "delete-2",
+			)?.status,
+		).toBe("skipped");
+	});
+
 	it("still evaluates when the verified text does not cover the declared intent", async () => {
 		const { runtime, executeToolCall, evaluate } = harness(
 			"Forgot: your dog is named Rex.",
