@@ -64,7 +64,7 @@ import {
 	resolvePlannerActionName,
 	resolveRuntimeAction,
 } from "./action-identifiers.js";
-import { mergeAgentContexts } from "./action-surface.js";
+import { actionNameTokenKey, mergeAgentContexts } from "./action-surface.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
 import { uiViewActionPriority } from "./provider-state.js";
 
@@ -629,6 +629,21 @@ export function collectBudgetedStageOneCandidateActions(args: {
 	const selectedNames = new Set<string>();
 	for (const candidateName of args.candidateActions) {
 		const direct = resolveRuntimeAction(actionLookup, candidateName);
+		// Progressive planning can discover the actual registered operation. A
+		// guessed parent for an unregistered hint can expose unrelated schemas
+		// (NOTES_GET -> VIEWS) even beside the correctly selected child.
+		if (!direct && args.deferUnselectedContexts) {
+			// Preserve admission's unambiguous reversed-name resolution without
+			// guessing a different operation or family from overlapping words.
+			const tokenKey = actionNameTokenKey(candidateName);
+			const matches = args.actions.filter(
+				(action) => actionNameTokenKey(action.name) === tokenKey,
+			);
+			if (matches.length === 1) {
+				selectedNames.add(normalizeActionIdentifier(matches[0].name));
+			}
+			continue;
+		}
 		const resolved = direct
 			? [direct]
 			: parentAliasesForCandidateAction(candidateName)

@@ -847,13 +847,11 @@ describe("v5 tiered action surface", () => {
 			// original hints are unknown. Preserve that admitted family; navigation
 			// and unrelated families remain discoverable instead of forcing them
 			// all into the native schema list.
-			if (!candidateActionNames.includes("MISSING_CAPABILITY")) {
-				expect(tools).toContain("VIEWS");
-			}
+			expect(tools).not.toContain("VIEWS");
 			expect(tools).not.toContain("UNRELATED");
 			expect(tools).toContain("DISCOVER_TOOLS");
-			expect(availableActionsSection(runtime)).toContain('"name":"VIEWS"');
-			expect(availableActionsSection(runtime)).toContain('"name":"UNRELATED"');
+			expect(availableActionsSection(runtime)).toContain('"VIEWS":[]');
+			expect(availableActionsSection(runtime)).toContain('"UNRELATED":[]');
 			expect(tools).not.toContain("MISSING_CAPABILITY");
 			expect(tools).not.toContain("PRIVATE_CALENDAR_REPAIR");
 			expect(tools).not.toContain("CALENDAR_ADMIN_ONLY");
@@ -965,62 +963,78 @@ describe("v5 tiered action surface", () => {
 		expect(availableActionsSection(runtime)).toContain('"name":"MESSAGE"');
 	});
 
-	it("loads a missing family and executes it through the normal planner and executor", async () => {
-		const handler = vi.fn(async () => ({
-			success: true,
-			text: "Calendar event read",
-			data: { title: "Demo" },
-		}));
-		const runtime = makeRuntime({
-			actions: [
-				makeAction({ name: "VIEWS", contexts: ["general"] }),
-				makeAction({
-					name: "CALENDAR",
-					contexts: ["general"],
-					subActions: ["READ_EVENT"],
-				}),
-				makeAction({ name: "READ_EVENT", contexts: ["general"], handler }),
-			],
-			responses: [
-				stage1Response({
-					contexts: ["general"],
-					candidateActionNames: ["VIEWS"],
-					intents: ["continue the next step"],
-				}),
-				plannerToolResponse("DISCOVER_TOOLS", {
-					names: ["CALENDAR"],
-					eliza_turn_scope: "more_work_pending",
-				}),
-				plannerToolResponse("REPLY", {
-					text: "Done.",
-					eliza_turn_scope: "final",
-				}),
-				plannerToolResponse("READ_EVENT", { eliza_turn_scope: "final" }),
-				finishEvaluatorResponse("Your calendar event is Demo."),
-			],
-		});
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage("Please do that next"),
-			state: makeState(),
-			responseId: RESPONSE_ID,
-		});
-		const plannerCalls = getCalls(runtime).filter(
-			(call) => call.modelType === ModelType.ACTION_PLANNER,
-		);
-		expect(plannerCalls).toHaveLength(3);
-		expect(
-			getCalls(runtime).filter(
-				(call) => call.modelType === ModelType.RESPONSE_HANDLER,
-			),
-		).toHaveLength(2);
-		const first = plannerCalls[0].params as { tools: Array<{ name: string }> };
-		const second = plannerCalls[1].params as { tools: Array<{ name: string }> };
-		expect(first.tools.map((tool) => tool.name)).not.toContain("READ_EVENT");
-		expect(second.tools.map((tool) => tool.name)).toContain("READ_EVENT");
-		expect(handler).toHaveBeenCalledOnce();
-		expect(result.kind).toBe("planned_reply");
-	});
+	it.each(["VIEWS", "MISSING_CAPABILITY", "NOTES_GET"])(
+		"loads a missing family after %s and executes it through the normal planner and executor",
+		async (candidate) => {
+			const handler = vi.fn(async () => ({
+				success: true,
+				text: "Calendar event read",
+				data: { title: "Demo" },
+			}));
+			const runtime = makeRuntime({
+				actions: [
+					makeAction({ name: "VIEWS", contexts: ["general"] }),
+					makeAction({
+						name: "CALENDAR",
+						contexts: ["general"],
+						subActions: ["READ_EVENT"],
+					}),
+					makeAction({ name: "READ_EVENT", contexts: ["general"], handler }),
+				],
+				responses: [
+					stage1Response({
+						contexts: ["general"],
+						candidateActionNames: [candidate],
+						intents: ["continue the next step"],
+					}),
+					plannerToolResponse("DISCOVER_TOOLS", {
+						names: ["CALENDAR"],
+						eliza_turn_scope: "more_work_pending",
+					}),
+					...(candidate === "VIEWS"
+						? [
+								plannerToolResponse("REPLY", {
+									text: "Done.",
+									eliza_turn_scope: "final",
+								}),
+							]
+						: []),
+					plannerToolResponse("READ_EVENT", { eliza_turn_scope: "final" }),
+					finishEvaluatorResponse("Your calendar event is Demo."),
+				],
+			});
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage("Please do that next"),
+				state: makeState(),
+				responseId: RESPONSE_ID,
+			});
+			const plannerCalls = getCalls(runtime).filter(
+				(call) => call.modelType === ModelType.ACTION_PLANNER,
+			);
+			expect(plannerCalls).toHaveLength(candidate === "VIEWS" ? 3 : 2);
+			expect(
+				getCalls(runtime).filter(
+					(call) => call.modelType === ModelType.RESPONSE_HANDLER,
+				),
+			).toHaveLength(2);
+			const first = plannerCalls[0].params as {
+				tools: Array<{ name: string }>;
+			};
+			const second = plannerCalls[1].params as {
+				tools: Array<{ name: string }>;
+			};
+			expect(first.tools.map((tool) => tool.name)).toContain("DISCOVER_TOOLS");
+			if (candidate !== "VIEWS") {
+				expect(first.tools.map((tool) => tool.name)).not.toContain("VIEWS");
+				expect(first.tools.map((tool) => tool.name)).not.toContain("CALENDAR");
+			}
+			expect(first.tools.map((tool) => tool.name)).not.toContain("READ_EVENT");
+			expect(second.tools.map((tool) => tool.name)).toContain("READ_EVENT");
+			expect(handler).toHaveBeenCalledOnce();
+			expect(result.kind).toBe("planned_reply");
+		},
+	);
 
 	it("does not let focused-view metadata widen action context admission", async () => {
 		const health = makeAction({

@@ -17,6 +17,75 @@ const runtime = {} as IAgentRuntime;
 const message = {} as Memory;
 
 describe("planner tool discovery", () => {
+	it.each([
+		["VIEWS_SHOW", "CALENDAR_SHOW", "NOTES_LIST", "NOTES_GET"],
+		["VIEWS_SHOW", "NOTES_LIST", "READ_UNKNOWN_RECORD"],
+	])(
+		"defers unregistered hints instead of guessing a broad tool: %j",
+		async (...candidates) => {
+			const actions: Action[] = [
+				{
+					name: "VIEWS",
+					description: "Layouts and view capabilities",
+					similes: ["SPLIT_VIEWS"],
+					subActions: ["VIEWS_SHOW"],
+					toolSchemaStrict: false,
+				},
+				{
+					name: "VIEWS_SHOW",
+					description: "Open one view",
+					toolSchemaStrict: true,
+				},
+				{
+					name: "NOTES_LIST",
+					description: "Read notes",
+					toolSchemaStrict: true,
+				},
+			];
+			const select = (names: string[]) =>
+				collectBudgetedStageOneCandidateActions({
+					actions,
+					candidateActions: names,
+					contexts: [],
+					deferUnselectedContexts: true,
+				});
+			const initial = select(candidates);
+			expect(initial.map((a) => a.name)).toEqual(["VIEWS_SHOW", "NOTES_LIST"]);
+			expect(
+				buildPlannerToolsFromActions(initial).every(
+					(tool) => tool.strict === true,
+				),
+			).toBe(true);
+			// Registered names and declared aliases still carry their actual contract.
+			expect(select(["VIEWS", "NOTES_LIST"])).toEqual(actions);
+			expect(select(["SPLIT_VIEWS", "NOTES_LIST"])).toEqual(actions);
+			expect(select(["LIST_NOTES"])).toEqual([actions[2]]);
+			// Unknown-only hints are resolved through the same complete discovery catalog.
+			expect(select(["CALENDAR_SHOW", "NOTES_GET"])).toEqual([]);
+			let loaded: Action[] = [];
+			const discovery = createPlannerToolDiscoveryAction(actions, (next) => {
+				loaded = next;
+			});
+			const result = await discovery.handler?.(runtime, message, undefined, {
+				parameters: { names: ["VIEWS"] },
+			});
+			expect(result?.success).toBe(true);
+			expect(loaded).toEqual(actions.slice(0, 2));
+		},
+	);
+	it("does not guess between ambiguous reordered action names", () => {
+		expect(
+			collectBudgetedStageOneCandidateActions({
+				actions: [
+					{ name: "GET_CURRENT_NOTE", description: "First operation" },
+					{ name: "NOTE_GET_CURRENT", description: "Second operation" },
+				],
+				candidateActions: ["CURRENT_NOTE_GET"],
+				contexts: [],
+				deferUnselectedContexts: true,
+			}),
+		).toEqual([]);
+	});
 	it("starts with exact child hints, retaining other operations through explicit discovery", async () => {
 		const actions: Action[] = [
 			{

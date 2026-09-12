@@ -1050,8 +1050,8 @@ export async function runV5MessageRuntimeStage1(
 			: undefined;
 		// Stage 1 has already interpreted the request. Load its exact operations
 		// (or complete families for parent hints), keeping other operations explicitly
-		// discoverable. Only an entirely unresolved selection retains the full
-		// surface; an unknown hint must not discard the known families. A reply
+		// discoverable. An entirely unresolved selection starts with discovery;
+		// an unknown hint must not discard or broaden the known families. A reply
 		// sent to planning only to verify an applied claim, with no action hints,
 		// starts with discovery instead of loading every domain schema. Grounding
 		// and full-context restoration still run through the normal planner.
@@ -1081,7 +1081,7 @@ export async function runV5MessageRuntimeStage1(
 			args.codingMode !== true &&
 			!deterministicPlanSelection &&
 			(requestsToolDiscovery ||
-				selectedActionFamilies.length > 0 ||
+				stageOneCandidates.length > 0 ||
 				verifyReplyWithoutActionHints) &&
 			(requestsToolDiscovery ||
 				selectedActionFamilies.length < plannerCandidateActions.length)
