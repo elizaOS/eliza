@@ -233,6 +233,27 @@ export async function handleAgreementKnowledgeRoutes(
       return true;
     }
 
+    const artifactExport = pathMatch(
+      ctx.pathname,
+      /^\/api\/lifeops\/agreements\/([^/]+)\/export$/,
+    );
+    if (ctx.method === "POST" && artifactExport) {
+      const file = await service.exportOwnerAgreement({
+        artifactId: artifactExport[0] ?? "",
+        ownerEntityId: SELF_ENTITY_ID,
+      });
+      ctx.res.statusCode = 200;
+      ctx.res.setHeader("Content-Type", file.mimeType);
+      ctx.res.setHeader("Cache-Control", "no-store");
+      ctx.res.setHeader(
+        "Content-Disposition",
+        `attachment; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
+      );
+      ctx.res.setHeader("Content-Length", String(file.bytes.length));
+      ctx.res.end(file.bytes);
+      return true;
+    }
+
     const artifactDownload = pathMatch(
       ctx.pathname,
       /^\/api\/lifeops\/agreements\/([^/]+)\/download$/,

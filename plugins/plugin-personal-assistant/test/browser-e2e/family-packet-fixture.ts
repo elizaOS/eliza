@@ -166,6 +166,7 @@ export function createFamilyPacketFixture(
       };
     },
     uploadAgreement: unsupported,
+    downloadAgreement: unsupported,
     decideObligation: unsupported,
     async listPins() {
       return [];

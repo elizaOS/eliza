@@ -1,5 +1,6 @@
 /** Exercises transaction-current quota policy, real override mutations and storage reservations against migrated PGlite rows. */
 import { afterAll, beforeAll, expect, setDefaultTimeout, spyOn, test } from "bun:test";
+import type { OrganizationInferenceAdmissionParams } from "../../lib/services/organization-inference-admission";
 import { createBillingSnapshotFixture } from "./account-billing-snapshot-test-fixture";
 
 process.env.DATABASE_URL = "pglite://memory";
@@ -390,11 +391,9 @@ test("the primary limiter converts a stale embedded policy to warming and consum
     consume.mockRestore();
   }
 });
-test("a stale standalone tier cache hydrates without a supplied config and the retry uses current authority", async () => {
+test("a stale standalone tier cache cannot delay or override the locked primary rate policy", async () => {
   const { recalculateOrgTier } = await import("../../lib/services/org-rate-limits");
-  const { enforceOrgRateLimit, OrgRateLimitCacheNotReadyError } = await import(
-    "../../lib/middleware/rate-limit"
-  );
+  const { enforceOrgRateLimit } = await import("../../lib/middleware/rate-limit");
   const gate = await import("../../lib/services/inference-admission-gate");
   const consume = spyOn(gate, "consumeInferenceRateLimit").mockResolvedValue({
     allowed: true,
@@ -413,15 +412,98 @@ test("a stale standalone tier cache hydrates without a supplied config and the r
         cacheOnly: true,
         executionCtx: { waitUntil: (promise) => background.push(promise) },
       }),
-    ).rejects.toBeInstanceOf(OrgRateLimitCacheNotReadyError);
-    expect(consume).not.toHaveBeenCalled();
-    await Promise.all(background);
-    await expect(enforceOrgRateLimit(ORG, "standard", { cacheOnly: true })).resolves.toBeNull();
+    ).resolves.toBeNull();
     expect(consume).toHaveBeenCalledWith(
       expect.objectContaining({ organizationId: ORG, endpointType: "standard", maxRequests: 3 }),
     );
   } finally {
+    await Promise.all(background);
     consume.mockRestore();
+  }
+});
+test("Worker funding uses the primary balance when its projection is absent or overstated", async () => {
+  const { runWithCloudBindingsAsync } = await import("../../lib/runtime/cloud-bindings");
+  const { readOrgBalanceHint, writeOrgBalanceHint } = await import(
+    "../../lib/services/inference-auth-cache"
+  );
+  const { admitOrganizationInference } = await import(
+    "../../lib/services/organization-inference-admission"
+  );
+  const organizationId = "61000000-0000-4000-8000-000000000005";
+  const pg = database.getPgliteClientForTests();
+  await pg.exec(`
+    INSERT INTO organizations(id,credit_balance,balance_revision,balance_decrease_revision,settings,is_active,account_lifecycle_state)
+    VALUES('${organizationId}',2,9,0,'{}',true,'active');
+    INSERT INTO credit_transactions(id,organization_id,amount,type,metadata)
+    VALUES(gen_random_uuid(),'${organizationId}',2,'credit','{}');
+  `);
+  expect(await readOrgBalanceHint(organizationId)).toBeNull();
+  const dispatched: Array<{ balanceUsd: number; balanceRevision: string }> = [];
+  const background: Promise<unknown>[] = [];
+  try {
+    await runWithCloudBindingsAsync(
+      {
+        INFERENCE_OPTIMISTIC_BILLING: "true",
+        INFERENCE_DEFERRED_ADMISSION: "true",
+        INFERENCE_BILLING_LEDGER: "db",
+        INFERENCE_ADMISSION_GATES: {
+          getByName: (name: string) => {
+            expect(name).toBe(organizationId);
+            return {
+              fetch: async (request: Request) => {
+                const body = (await request.json()) as {
+                  balanceUsd: number;
+                  balanceRevision: string;
+                  estimatedCostUsd: number;
+                };
+                dispatched.push(body);
+                return Response.json({
+                  admitted: true,
+                  dispatched: true,
+                  availableUsd: body.balanceUsd,
+                  requiredUsd: body.estimatedCostUsd,
+                });
+              },
+            };
+          },
+        },
+      },
+      async () => {
+        const params: OrganizationInferenceAdmissionParams = {
+          context: {
+            organizationId,
+            userId: "63000000-0000-4000-8000-000000000001",
+            requestId: "cold-primary-balance",
+            model: "test-model",
+            provider: "openai",
+            billingSource: "openai",
+          },
+          flatCost: { totalCost: 0.25, baseTotalCost: 0.25, platformMarkup: 0 },
+          estimatedInputTokens: 0,
+          estimatedOutputTokens: 0,
+          executionCtx: { waitUntil: (work: Promise<unknown>) => background.push(work) },
+          atomicProviderBoundary: true,
+        };
+        const funded = await admitOrganizationInference(params);
+        await funded.markProviderDispatched?.();
+        expect(dispatched).toEqual([
+          expect.objectContaining({ balanceUsd: 2, balanceRevision: "9" }),
+        ]);
+        await writeOrgBalanceHint(organizationId, 100, Date.now(), "9");
+        await pg.exec(
+          `UPDATE organizations SET credit_balance=0,balance_revision=10 WHERE id='${organizationId}'`,
+        );
+        await expect(
+          admitOrganizationInference({
+            ...params,
+            context: { ...params.context, requestId: "overstated-cached-balance" },
+          }),
+        ).rejects.toMatchObject({ name: "InsufficientCreditsError", available: 0 });
+        expect(dispatched).toHaveLength(1);
+      },
+    );
+  } finally {
+    await Promise.all(background);
   }
 });
 test("same-revision projection corruption cannot grant policy", async () => {

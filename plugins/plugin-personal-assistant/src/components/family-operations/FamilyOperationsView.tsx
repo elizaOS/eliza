@@ -269,6 +269,9 @@ function AgreementPanel({
   refresh: () => Promise<void>;
 }) {
   const [selectedId, setSelectedId] = useState("");
+  const [downloading, setDownloading] = useState<"original" | "export" | null>(
+    null,
+  );
   const [reason, setReason] = useState("");
   const [targetType, setTargetType] = useState<"agent" | "chat">("agent");
   const [targetId, setTargetId] = useState("");
@@ -311,6 +314,41 @@ function AgreementPanel({
       await refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The request failed");
+    }
+  };
+
+  const download = async (format: "original" | "export") => {
+    if (!selected || downloading) return;
+    setDownloading(format);
+    setError(null);
+    setNotice(null);
+    try {
+      const blob = await adapter.downloadAgreement(
+        selected.artifact.id,
+        format,
+      );
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download =
+        format === "original"
+          ? selected.artifact.originalFilename
+          : `agreement-${selected.artifact.id}-v${selected.artifact.version}.zip`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      // Allow the browser to consume the object URL before releasing it.
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setNotice(
+        format === "original"
+          ? "Original PDF download started."
+          : "Agreement export download started. The archive includes the original, provenance, and checksums.",
+      );
+    } catch (cause) {
+      // error-policy:J1 Download failures remain visible in the owner workspace.
+      setError(cause instanceof Error ? cause.message : "Download failed");
+    } finally {
+      setDownloading(null);
     }
   };
 
@@ -376,6 +414,28 @@ function AgreementPanel({
             </dd>
           </div>
         </dl>
+        <div
+          style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 16 }}
+        >
+          <Button
+            variant="accentDarkHover"
+            disabled={downloading !== null}
+            onClick={() => void download("original")}
+          >
+            {downloading === "original"
+              ? "Preparing PDF…"
+              : "Download original PDF"}
+          </Button>
+          <Button
+            variant="accentDarkHover"
+            disabled={downloading !== null}
+            onClick={() => void download("export")}
+          >
+            {downloading === "export"
+              ? "Preparing export…"
+              : "Export agreement"}
+          </Button>
+        </div>
       </Card>
 
       <Card

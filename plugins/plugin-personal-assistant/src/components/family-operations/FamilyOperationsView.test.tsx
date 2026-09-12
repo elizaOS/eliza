@@ -132,6 +132,7 @@ function adapter(data = snapshot()): FamilyOperationsAdapter {
     approveSchoolDiff: vi.fn(async () => undefined),
     generatePacket: vi.fn(async () => undefined),
     uploadAgreement: vi.fn(async () => undefined),
+    downloadAgreement: vi.fn(async () => new Blob()),
     createPacketDraft: vi.fn(async () => undefined),
     revisePacketDraft: vi.fn(async () => undefined),
     requestPacketApproval: vi.fn(async () => undefined),
@@ -383,6 +384,39 @@ describe("FamilyOperationsView", () => {
     );
     expect(local.runSchoolWorkflow).not.toHaveBeenCalled();
   });
+  it("shows export preparation and recovers visibly when the original cannot be verified", async () => {
+    const local = adapter();
+    let fail: (reason: Error) => void = () => {
+      throw new Error("Download has not started");
+    };
+    local.downloadAgreement = () =>
+      new Promise<Blob>((_resolve, reject) => {
+        fail = reject;
+      });
+    render(<FamilyOperationsView adapter={local} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Export agreement" }),
+    );
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Preparing export…",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    fail(new Error("Original failed integrity verification"));
+    expect(
+      await screen.findByText("Original failed integrity verification"),
+    ).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Export agreement",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+  });
+
   it("requires a review reason and delegates approval to the canonical adapter", async () => {
     const local = adapter();
     render(<FamilyOperationsView adapter={local} />);

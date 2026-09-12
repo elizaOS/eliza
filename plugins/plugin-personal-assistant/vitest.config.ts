@@ -83,6 +83,9 @@ const agentSourceJsToTsPlugin = {
     if (source === "@elizaos/agent/api/connector-account-routes") {
       return path.join(agentSourceRoot, "api", "connector-account-routes.ts");
     }
+    if (source === "@elizaos/agent/api/zip-utils") {
+      return path.join(agentSourceRoot, "api", "zip-utils.ts");
+    }
     if (source === "@elizaos/agent/api/server-helpers") {
       return path.join(agentSourceRoot, "api", "server-helpers.ts");
     }
@@ -466,6 +469,10 @@ export default defineConfig({
       // The owner-scope invariant test exercises the real chat-surface and
       // trust-fallback owner derivations; anchor both to source ahead of the
       // bare `@elizaos/agent` stub alias below.
+      {
+        find: /^@elizaos\/agent\/api\/zip-utils$/,
+        replacement: path.join(agentSourceRoot, "api", "zip-utils.ts"),
+      },
       {
         find: /^@elizaos\/agent\/api\/client-chat-admin$/,
         replacement: path.join(agentSourceRoot, "api", "client-chat-admin.ts"),

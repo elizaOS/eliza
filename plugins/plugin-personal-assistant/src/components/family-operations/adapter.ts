@@ -288,6 +288,35 @@ export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter = {
       ]);
     return { agreements, calendarLinks, school, packets, emailOptions };
   },
+  async downloadAgreement(artifactId, format) {
+    const response = await client.rawRequest(
+      `/api/lifeops/agreements/${encodeURIComponent(artifactId)}/${format === "export" ? "export" : "download"}`,
+      { method: format === "export" ? "POST" : "GET" },
+      { allowNonOk: true, skipResume: true, timeoutMs: 10 * 60_000 },
+    );
+    if (!response.ok) {
+      const failureMessage = `Download failed (${response.status})`;
+      const mediaType = response.headers
+        .get("content-type")
+        ?.split(";", 1)[0]
+        ?.trim()
+        .toLowerCase();
+      if (mediaType !== "application/json" && !mediaType?.endsWith("+json")) {
+        throw new Error(failureMessage);
+      }
+      const payload = await response.json().catch((cause) => {
+        // error-policy:J1 Invalid proxy error bodies retain the HTTP failure.
+        throw new Error(failureMessage, { cause });
+      });
+      const message =
+        typeof payload?.error === "string"
+          ? payload.error
+          : payload?.error?.message;
+      throw new Error(typeof message === "string" ? message : failureMessage);
+    }
+    return response.blob();
+  },
+
   async uploadAgreement(input) {
     if (input.file.type !== "application/pdf") {
       throw new Error("Agreement must be a PDF.");

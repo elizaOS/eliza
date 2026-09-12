@@ -11,6 +11,7 @@ import {
   KNOWLEDGE_GRAPH_SERVICE,
   resolveKnowledgeGraphService,
 } from "@elizaos/agent";
+import { createZipArchive } from "@elizaos/agent/api/zip-utils";
 import {
   DocumentService,
   ElizaError,
@@ -22,6 +23,7 @@ import {
 } from "@elizaos/core";
 import type { PdfCompleteDocument, PdfService } from "@elizaos/plugin-pdf";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { z } from "zod";
 import {
   executeRawSql,
   executeRawSqlTx,
@@ -32,6 +34,7 @@ import {
   toText,
   withTransaction,
 } from "../sql.js";
+import { agreementMutationSql } from "./agreement-audit.js";
 import {
   getHouseholdCoordinationService,
   HOUSEHOLD_COORDINATION_SERVICE,
@@ -42,6 +45,35 @@ import {
   HouseholdCoordinationError,
   normalizeHouseholdIdentifier,
 } from "./types.js";
+
+const agreementExtractionSchema = z.strictObject({
+  complete: z.literal(true),
+  pageCount: z.number().int().positive(),
+  text: z.string(),
+  pages: z.array(
+    z.strictObject({
+      pageNumber: z.number().int().positive(),
+      width: z.number().nonnegative(),
+      height: z.number().nonnegative(),
+      method: z.enum(["native", "native+vision", "vision", "blank"]),
+      nativeText: z.string(),
+      nativePositionedText: z.array(
+        z.strictObject({
+          page: z.number().int().positive(),
+          text: z.string(),
+          x: z.number(),
+          y: z.number(),
+          width: z.number(),
+          height: z.number(),
+        }),
+      ),
+      ocrText: z.string().nullable(),
+      visionText: z.string().nullable(),
+      text: z.string(),
+      hasVisualContent: z.boolean(),
+    }),
+  ),
+});
 
 export const HOUSEHOLD_AGREEMENT_KNOWLEDGE_SERVICE =
   "lifeops_household_agreement_knowledge";
@@ -351,7 +383,124 @@ export class AgreementKnowledgeRepository {
     private readonly agentId: string,
   ) {}
 
-  async insertArtifact(input: Omit<ParentingAgreementArtifact, "version">) {
+  /** All mutable export records are read from one PostgreSQL statement snapshot. */
+  async readExportSnapshot(artifactId: string) {
+    const scoped = `agent_id = ${sqlQuote(this.agentId)}`;
+    const artifact = sqlQuote(artifactId);
+    const linkedHouseholdGrants = `SELECT household_grant_id FROM app_lifeops.life_household_knowledge_grants
+      WHERE ${scoped} AND artifact_id = ${artifact}
+      UNION SELECT decision_json::jsonb->>'household_grant_id' FROM app_lifeops.life_audit_events
+      WHERE ${scoped} AND owner_type = 'parenting_agreement' AND owner_id = ${artifact}
+        AND event_type IN ('agreement_granted', 'agreement_revoked')`;
+    const queries = [
+      ["artifact", "life_household_agreement_artifacts", `id = ${artifact}`],
+      [
+        "obligation",
+        "life_household_agreement_obligations",
+        `artifact_id = ${artifact}`,
+      ],
+      ["pin", "life_household_knowledge_pins", `artifact_id = ${artifact}`],
+      ["grant", "life_household_knowledge_grants", `artifact_id = ${artifact}`],
+      [
+        "householdGrant",
+        "life_household_access_grants",
+        `id IN (${linkedHouseholdGrants})`,
+      ],
+      [
+        "householdAudit",
+        "life_audit_events",
+        `owner_type = 'household_grant' AND owner_id IN (${linkedHouseholdGrants})`,
+      ],
+      [
+        "audit",
+        "life_audit_events",
+        `owner_type = 'parenting_agreement' AND owner_id = ${artifact}`,
+      ],
+    ];
+    const rows = await executeRawSql(
+      this.runtime,
+      queries
+        .map(
+          ([kind, table, condition]) =>
+            `SELECT ${sqlQuote(kind)} AS kind, to_jsonb(record)::text AS payload
+       FROM app_lifeops.${table} AS record WHERE ${scoped} AND ${condition}`,
+        )
+        .join(" UNION ALL "),
+    );
+    const records = rows.map((row) => {
+      try {
+        return {
+          kind: requiredText(row.kind, "kind"),
+          row: z
+            .record(z.string(), z.json())
+            .parse(JSON.parse(requiredText(row.payload, "payload"))),
+        };
+      } catch (error) {
+        // error-policy:J2 A corrupt snapshot cannot become a partial export.
+        throw new AgreementKnowledgeError(
+          "Agreement export snapshot is invalid",
+          "AGREEMENT_INVALID_CONTRACT",
+          { artifactId },
+          error,
+        );
+      }
+    });
+    const source = records.find((record) => record.kind === "artifact");
+    if (!source)
+      throw new AgreementKnowledgeError(
+        "Parenting-agreement artifact was not found",
+        "AGREEMENT_ARTIFACT_NOT_FOUND",
+        { artifactId },
+      );
+    const ofKind = (kind: string) =>
+      records
+        .filter((record) => record.kind === kind)
+        .map((record) => record.row)
+        .sort((left, right) => String(left.id).localeCompare(String(right.id)));
+    return {
+      artifact: artifactFromRow(source.row),
+      obligations: ofKind("obligation").map(obligationFromRow),
+      pins: ofKind("pin").map(pinFromRow),
+      grants: ofKind("grant").map(grantFromRow),
+      householdGrants: ofKind("householdGrant"),
+      householdGrantAudit: ofKind("householdAudit"),
+      audit: ofKind("audit").sort(
+        (left, right) =>
+          String(left.created_at).localeCompare(String(right.created_at)) ||
+          String(left.id).localeCompare(String(right.id)),
+      ),
+    };
+  }
+
+  async recordExport(input: {
+    artifact: ParentingAgreementArtifact;
+    exportId: string;
+    ownerEntityId: string;
+    createdAt: string;
+    manifestSha256: string;
+    archiveSha256: string;
+  }) {
+    const rows = await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_audit_events (
+      id, agent_id, event_type, owner_type, owner_id, reason, inputs_json, decision_json, actor, created_at
+    ) VALUES (${sqlQuote(input.exportId)}, ${sqlQuote(this.agentId)}, 'agreement_export_prepared', 'parenting_agreement', ${sqlQuote(input.artifact.id)},
+      'Verified archive prepared for owner download; client receipt is not asserted',
+      ${sqlQuote(JSON.stringify({ schemaVersion: 1, actorEntityId: input.ownerEntityId, source: { id: input.artifact.id, version: input.artifact.version, content_sha256: input.artifact.contentSha256 } }))},
+      ${sqlQuote(JSON.stringify({ manifestSha256: input.manifestSha256, archiveSha256: input.archiveSha256 }))}, 'owner', ${sqlQuote(input.createdAt)}) RETURNING id`,
+    );
+    if (rows.length !== 1)
+      throw new AgreementKnowledgeError(
+        "Agreement export audit was not persisted",
+        "AGREEMENT_INVALID_CONTRACT",
+      );
+  }
+
+  async insertArtifact(
+    input: Omit<ParentingAgreementArtifact, "version"> & {
+      extractionSha256: string;
+    },
+  ) {
     return await withTransaction(this.runtime, async (tx) => {
       const previousRows = await executeRawSqlTx(
         tx,
@@ -376,7 +525,8 @@ export class AgreementKnowledgeRepository {
       const version = (previous?.version ?? 0) + 1;
       const rows = await executeRawSqlTx(
         tx,
-        `INSERT INTO app_lifeops.life_household_agreement_artifacts (
+        agreementMutationSql(
+          `INSERT INTO app_lifeops.life_household_agreement_artifacts (
            id, agent_id, household_id, agreement_key, version,
            supersedes_artifact_id, title, original_filename, document_id, media_url,
            media_file_name, content_sha256, mime_type, byte_size, page_count,
@@ -392,6 +542,15 @@ export class AgreementKnowledgeRepository {
            ${sqlInteger(input.byteSize)}, ${sqlInteger(input.pageCount)},
            ${sqlQuote(input.uploadedByEntityId)}, ${sqlQuote(input.createdAt)}
          ) RETURNING *`,
+          {
+            agentId: this.agentId,
+            kind: "agreement_ingested",
+            actorEntityId: input.uploadedByEntityId,
+            createdAt: input.createdAt,
+            artifactRow: true,
+            extractionSha256: input.extractionSha256,
+          },
+        ),
       );
       const row = rows[0];
       if (!row) {
@@ -449,7 +608,8 @@ export class AgreementKnowledgeRepository {
   ): Promise<ParentingAgreementObligation> {
     const rows = await executeRawSql(
       this.runtime,
-      `INSERT INTO app_lifeops.life_household_agreement_obligations (
+      agreementMutationSql(
+        `INSERT INTO app_lifeops.life_household_agreement_obligations (
          id, agent_id, artifact_id, title, obligation_text, page_start,
          page_end, citation_text, status, proposed_by_entity_id,
          decided_by_entity_id, decision_reason, decided_at, created_at, updated_at
@@ -462,6 +622,13 @@ export class AgreementKnowledgeRepository {
          ${sqlQuote(obligation.proposedByEntityId)}, NULL, NULL, NULL,
          ${sqlQuote(obligation.createdAt)}, ${sqlQuote(obligation.updatedAt)}
        ) RETURNING *`,
+        {
+          agentId: this.agentId,
+          kind: "agreement_obligation_proposed",
+          actorEntityId: obligation.proposedByEntityId,
+          createdAt: obligation.createdAt,
+        },
+      ),
     );
     const row = rows[0];
     if (!row) {
@@ -482,7 +649,8 @@ export class AgreementKnowledgeRepository {
   }): Promise<ParentingAgreementObligation> {
     const rows = await executeRawSql(
       this.runtime,
-      `UPDATE app_lifeops.life_household_agreement_obligations
+      agreementMutationSql(
+        `UPDATE app_lifeops.life_household_agreement_obligations
           SET status = ${sqlQuote(input.status)},
               decided_by_entity_id = ${sqlQuote(input.decidedByEntityId)},
               decision_reason = ${sqlQuote(input.decisionReason)},
@@ -492,6 +660,13 @@ export class AgreementKnowledgeRepository {
           AND id = ${sqlQuote(input.obligationId)}
           AND status = 'proposed'
       RETURNING *`,
+        {
+          agentId: this.agentId,
+          kind: "agreement_obligation_decided",
+          actorEntityId: input.decidedByEntityId,
+          createdAt: input.decidedAt,
+        },
+      ),
     );
     const row = rows[0];
     if (!row) {
@@ -537,7 +712,8 @@ export class AgreementKnowledgeRepository {
     const id = `hkpin_${crypto.randomUUID()}`;
     const rows = await executeRawSql(
       this.runtime,
-      `INSERT INTO app_lifeops.life_household_knowledge_pins (
+      agreementMutationSql(
+        `INSERT INTO app_lifeops.life_household_knowledge_pins (
          id, agent_id, artifact_id, target_type, target_id,
          pinned_by_entity_id, pinned_at, unpinned_at
        ) VALUES (
@@ -550,6 +726,13 @@ export class AgreementKnowledgeRepository {
                      pinned_at = EXCLUDED.pinned_at,
                      unpinned_at = NULL
        RETURNING *`,
+        {
+          agentId: this.agentId,
+          kind: "agreement_pinned",
+          actorEntityId: input.pinnedByEntityId,
+          createdAt: input.pinnedAt,
+        },
+      ),
     );
     const row = rows[0];
     if (!row) {
@@ -599,16 +782,25 @@ export class AgreementKnowledgeRepository {
 
   async removePin(input: {
     pinId: string;
+    unpinnedByEntityId: string;
     unpinnedAt: string;
   }): Promise<HouseholdKnowledgePin> {
     const rows = await executeRawSql(
       this.runtime,
-      `UPDATE app_lifeops.life_household_knowledge_pins
+      agreementMutationSql(
+        `UPDATE app_lifeops.life_household_knowledge_pins
           SET unpinned_at = ${sqlQuote(input.unpinnedAt)}
         WHERE agent_id = ${sqlQuote(this.agentId)}
           AND id = ${sqlQuote(input.pinId)}
           AND unpinned_at IS NULL
       RETURNING *`,
+        {
+          agentId: this.agentId,
+          kind: "agreement_unpinned",
+          actorEntityId: input.unpinnedByEntityId,
+          createdAt: input.unpinnedAt,
+        },
+      ),
     );
     const row = rows[0];
     if (!row) {
@@ -624,7 +816,8 @@ export class AgreementKnowledgeRepository {
   async upsertGrant(input: HouseholdKnowledgeGrant) {
     const rows = await executeRawSql(
       this.runtime,
-      `INSERT INTO app_lifeops.life_household_knowledge_grants (
+      agreementMutationSql(
+        `INSERT INTO app_lifeops.life_household_knowledge_grants (
          id, agent_id, household_id, artifact_id, principal_entity_id,
          household_grant_id, issued_by_entity_id, revoked_at,
          revoked_by_entity_id, revocation_reason, created_at, updated_at
@@ -643,6 +836,13 @@ export class AgreementKnowledgeRepository {
                      revocation_reason = NULL,
                      updated_at = EXCLUDED.updated_at
        RETURNING *`,
+        {
+          agentId: this.agentId,
+          kind: "agreement_granted",
+          actorEntityId: input.issuedByEntityId,
+          createdAt: input.updatedAt,
+        },
+      ),
     );
     const row = rows[0];
     if (!row) {
@@ -690,7 +890,8 @@ export class AgreementKnowledgeRepository {
   }): Promise<HouseholdKnowledgeGrant> {
     const rows = await executeRawSql(
       this.runtime,
-      `UPDATE app_lifeops.life_household_knowledge_grants
+      agreementMutationSql(
+        `UPDATE app_lifeops.life_household_knowledge_grants
           SET revoked_at = ${sqlQuote(input.revokedAt)},
               revoked_by_entity_id = ${sqlQuote(input.revokedByEntityId)},
               revocation_reason = ${sqlQuote(input.reason)},
@@ -699,6 +900,13 @@ export class AgreementKnowledgeRepository {
           AND id = ${sqlQuote(input.grantId)}
           AND revoked_at IS NULL
       RETURNING *`,
+        {
+          agentId: this.agentId,
+          kind: "agreement_revoked",
+          actorEntityId: input.revokedByEntityId,
+          createdAt: input.revokedAt,
+        },
+      ),
     );
     const row = rows[0];
     if (!row) {
@@ -953,6 +1161,11 @@ export class AgreementKnowledgeService {
       );
     }
     const pageCount = extracted.pageCount;
+    const extractionJson = JSON.stringify(extracted);
+    const extractionSha256 = crypto
+      .createHash("sha256")
+      .update(extractionJson)
+      .digest("hex");
     const artifactId = `hag_${crypto.randomUUID()}`;
     const stored = await fileStorage.storePrivate(bytes, "application/pdf");
     if (
@@ -999,6 +1212,7 @@ export class AgreementKnowledgeService {
         mediaFileName: stored.fileName,
         agreementKey,
         householdId,
+        agreementExtractionJson: extractionJson,
       },
     });
     return await this.deps.repository.insertArtifact({
@@ -1017,6 +1231,7 @@ export class AgreementKnowledgeService {
       byteSize: stored.size,
       pageCount,
       uploadedByEntityId: input.uploadedByEntityId,
+      extractionSha256,
       createdAt: this.now().toISOString(),
     });
   }
@@ -1054,6 +1269,181 @@ export class AgreementKnowledgeService {
       bytes,
       mimeType: artifact.mimeType,
       fileName: artifact.originalFilename,
+    };
+  }
+
+  async exportOwnerAgreement(input: {
+    artifactId: string;
+    ownerEntityId: string;
+  }): Promise<{ bytes: Buffer; mimeType: string; fileName: string }> {
+    this.requireOwner(input.ownerEntityId);
+    // Verify immutable bytes before recording a prepared export. Mutable review,
+    // pin, and grant state is subsequently captured in a single SQL snapshot.
+    const original = await this.readOwnerPdf(input);
+    const snapshot = await this.deps.repository.readExportSnapshot(
+      input.artifactId,
+    );
+    const documents = this.deps.documents();
+    if (!documents)
+      throw new AgreementKnowledgeError(
+        "Agreement document service is unavailable",
+        "AGREEMENT_STORAGE_UNAVAILABLE",
+      );
+    const document = await documents.getDocumentById(
+      snapshot.artifact.documentId as UUID,
+    );
+    if (!document)
+      throw new AgreementKnowledgeError(
+        "Agreement extraction document is unavailable",
+        "AGREEMENT_STORAGE_UNAVAILABLE",
+        { artifactId: input.artifactId },
+      );
+    const extractionJson =
+      document.metadata && "agreementExtractionJson" in document.metadata
+        ? document.metadata.agreementExtractionJson
+        : undefined;
+    let extractionBytes: Buffer | null = null;
+    let extraction:
+      | {
+          status: "available";
+          path: "extraction.json";
+          sha256: string;
+          pageCount: number;
+        }
+      | { status: "unavailable"; reason: string };
+    const ingestion = snapshot.audit.find(
+      (event) => event.event_type === "agreement_ingested",
+    );
+    let recordedExtractionSha256: string | null = null;
+    if (ingestion) {
+      try {
+        const inputs = z
+          .object({ extractionSha256: z.string().regex(/^[a-f0-9]{64}$/) })
+          .parse(
+            JSON.parse(requiredText(ingestion.inputs_json, "inputs_json")),
+          );
+        recordedExtractionSha256 = inputs.extractionSha256;
+      } catch (error) {
+        // error-policy:J2 Recorded ingestion provenance must remain verifiable.
+        throw new AgreementKnowledgeError(
+          "Agreement ingestion provenance is invalid",
+          "AGREEMENT_INVALID_CONTRACT",
+          { artifactId: input.artifactId },
+          error,
+        );
+      }
+    }
+    if (
+      recordedExtractionSha256 &&
+      (typeof extractionJson !== "string" ||
+        crypto.createHash("sha256").update(extractionJson).digest("hex") !==
+          recordedExtractionSha256)
+    ) {
+      throw new AgreementKnowledgeError(
+        "Agreement extraction failed integrity verification",
+        "AGREEMENT_INVALID_CONTRACT",
+        { artifactId: input.artifactId },
+      );
+    }
+    if (extractionJson === undefined) {
+      extraction = {
+        status: "unavailable",
+        reason:
+          "This version predates persisted extraction page maps; no historical extraction has been reconstructed.",
+      };
+    } else {
+      try {
+        if (typeof extractionJson !== "string")
+          throw new Error("Extraction metadata is not serialized JSON");
+        const parsed = agreementExtractionSchema.parse(
+          JSON.parse(extractionJson),
+        );
+        if (
+          parsed.pageCount !== snapshot.artifact.pageCount ||
+          parsed.pages.length !== parsed.pageCount ||
+          parsed.pages.some((page, index) => page.pageNumber !== index + 1)
+        )
+          throw new Error("Extraction page map is incomplete");
+        // Export the exact serialized bytes bound at ingestion. Re-encoding
+        // the validated object could change key order and invalidate that hash.
+        extractionBytes = Buffer.from(extractionJson, "utf8");
+        extraction = {
+          status: "available",
+          path: "extraction.json",
+          sha256: crypto
+            .createHash("sha256")
+            .update(extractionBytes)
+            .digest("hex"),
+          pageCount: parsed.pageCount,
+        };
+      } catch (error) {
+        // error-policy:J2 Invalid saved provenance must fail export visibly.
+        throw new AgreementKnowledgeError(
+          "Agreement extraction provenance is invalid",
+          "AGREEMENT_INVALID_CONTRACT",
+          { artifactId: input.artifactId },
+          error,
+        );
+      }
+    }
+    const exportId = `agreement_export_${crypto.randomUUID()}`;
+    const createdAt = this.now().toISOString();
+    const manifest = Buffer.from(
+      `${JSON.stringify(
+        {
+          schema: "elizaos.agreement-export",
+          schemaVersion: 1,
+          exportId,
+          createdAt,
+          original: {
+            path: "original.pdf",
+            sha256: snapshot.artifact.contentSha256,
+            byteSize: snapshot.artifact.byteSize,
+          },
+          ...snapshot,
+          extraction,
+          auditCoverage: {
+            status: snapshot.audit.some(
+              (event) => event.event_type === "agreement_ingested",
+            )
+              ? "recorded_from_ingestion"
+              : "partial_legacy_history",
+            scope:
+              "Persisted agreement events through the database snapshot. Earlier unrecorded activity is unavailable. This export preparation is recorded after archive construction; successful client receipt is not asserted.",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    const manifestSha256 = crypto
+      .createHash("sha256")
+      .update(manifest)
+      .digest("hex");
+    const bytes = createZipArchive([
+      { name: "original.pdf", data: original.bytes },
+      { name: "manifest.json", data: manifest },
+      ...(extractionBytes
+        ? [{ name: "extraction.json", data: extractionBytes }]
+        : []),
+      {
+        name: "SHA256SUMS",
+        data: `${snapshot.artifact.contentSha256}  original.pdf\n${manifestSha256}  manifest.json\n${extraction.status === "available" ? `${extraction.sha256}  extraction.json\n` : ""}`,
+      },
+    ]);
+    await this.deps.repository.recordExport({
+      artifact: snapshot.artifact,
+      exportId,
+      ownerEntityId: input.ownerEntityId,
+      createdAt,
+      manifestSha256,
+      archiveSha256: crypto.createHash("sha256").update(bytes).digest("hex"),
+    });
+    return {
+      bytes,
+      mimeType: "application/zip",
+      fileName: `agreement-${snapshot.artifact.id}-v${snapshot.artifact.version}.zip`,
     };
   }
 
@@ -1152,6 +1542,7 @@ export class AgreementKnowledgeService {
     this.requireOwner(input.unpinnedByEntityId);
     return await this.deps.repository.removePin({
       pinId: normalizeHouseholdIdentifier(input.pinId, "pinId"),
+      unpinnedByEntityId: input.unpinnedByEntityId,
       unpinnedAt: this.now().toISOString(),
     });
   }
