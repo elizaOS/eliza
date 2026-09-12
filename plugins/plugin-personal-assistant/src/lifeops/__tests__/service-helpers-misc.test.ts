@@ -3,6 +3,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { sortOverviewOccurrences } from "../service-helpers-misc.js";
+import { parseOffsetToken } from "../time.js";
 import type { LifeOpsOccurrenceView } from "../types.js";
 
 describe("LifeOps service helpers sorting", () => {

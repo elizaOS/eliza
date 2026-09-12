@@ -97,12 +97,15 @@ function localParts(date: Date, timeZone: string): LocalMinuteParts {
 
 export function parseOffsetToken(token: string): number {
   if (token === "GMT" || token === "UTC") return 0;
-  const match = /^(?:GMT|UTC)?([+-]|\u2212|\u2013|\u2014)(\d{1,2})(?::?(\d{2}))?$/i.exec(token);
+  const match = /^(?:GMT|UTC)?([+-]|\u2212|\u2013|\u2014)(\d{1,2})(?::?(\d{2}))?(?::(\d{2}))?$/i.exec(token);
   if (!match) {
     throw new Error(`unsupported timezone offset token: ${token}`);
   }
   const sign = match[1] === "+" ? 1 : -1;
-  return sign * (Number(match[2]) * 60 + Number(match[3] ?? "0"));
+  const hours = Number(match[2]);
+  const minutes = Number(match[3] ?? "0");
+  const seconds = Number(match[4] ?? "0");
+  return sign * (hours * 60 + minutes + Math.round(seconds / 60));
 }
 
 function offsetMinutes(date: Date, timeZone: string): number {
