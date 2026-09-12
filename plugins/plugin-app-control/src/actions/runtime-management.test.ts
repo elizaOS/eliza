@@ -1,6 +1,10 @@
 /** Semantic action coverage for owner-gated Devices & Runtimes operations. */
 
 import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
+import {
+	RUNTIME_MANAGEMENT_OPERATIONS,
+	RUNTIME_MANAGEMENT_OWNER_APPROVAL_EXEMPT_OPERATIONS,
+} from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
 	createRuntimeManagementAction,
@@ -16,6 +20,51 @@ function callback(): HandlerCallback {
 }
 
 describe("RUNTIMES action", () => {
+	it("requires confirmation for the exact complement of exempt operations", async () => {
+		const confirmationRequired: Array<
+			(typeof RUNTIME_MANAGEMENT_OPERATIONS)[number]
+		> = [];
+		for (const op of RUNTIME_MANAGEMENT_OPERATIONS) {
+			const manageRuntime: RuntimeManagementFn = vi.fn(async (request) => ({
+				ok: true,
+				op: request.op,
+			}));
+			const result = await createRuntimeManagementAction({
+				manageRuntime,
+			}).handler(
+				runtime,
+				message,
+				undefined,
+				{
+					op,
+					targetId: "target-1",
+					runtimeId: "runtime-1",
+					target: "user@example.test",
+					sshPort: 22,
+					remoteApiPort: 2138,
+					expectedFingerprint: "SHA256:verified",
+					identityFile: "/tmp/id_ed25519",
+					apiBase: "http://runtime.example.test",
+					sessionId: "session-1",
+					code: "123456",
+					managedNetwork: false,
+					platform: "linux",
+				},
+				callback(),
+			);
+			if (result?.values?.awaitingConfirmation === true) {
+				confirmationRequired.push(op);
+			}
+		}
+
+		expect(confirmationRequired).toEqual(
+			RUNTIME_MANAGEMENT_OPERATIONS.filter(
+				(operation) =>
+					!RUNTIME_MANAGEMENT_OWNER_APPROVAL_EXEMPT_OPERATIONS.has(operation),
+			),
+		);
+	});
+
 	it("is owner-gated and exposes no secret parameter", () => {
 		const action = createRuntimeManagementAction();
 		expect(action.roleGate).toEqual({ minRole: "OWNER" });

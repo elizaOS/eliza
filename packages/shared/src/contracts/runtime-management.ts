@@ -23,6 +23,9 @@ export const RUNTIME_MANAGEMENT_OPERATIONS = [
 export type RuntimeManagementOperation =
   (typeof RUNTIME_MANAGEMENT_OPERATIONS)[number];
 
+export const RUNTIME_MANAGEMENT_OWNER_APPROVAL_EXEMPT_OPERATIONS: ReadonlySet<RuntimeManagementOperation> =
+  new Set(["list", "inspect_ssh"]);
+
 export interface RuntimeManagementRequest {
   op: RuntimeManagementOperation;
   targetId?: string;
