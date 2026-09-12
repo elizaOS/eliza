@@ -159,13 +159,17 @@ describe("AgentWeb fallback", () => {
         };
       }
       if (url.endsWith("/api/agent/start")) {
-        return { json: async () => ({ status: { state: "running" } }) };
+        return {
+          ok: true,
+          json: async () => ({ status: { state: "running" } }),
+        };
       }
       if (url.endsWith("/api/agent/stop")) {
-        return { json: async () => ({ ok: true }) };
+        return { ok: true, json: async () => ({ ok: true }) };
       }
       if (url.endsWith("/api/status")) {
         return {
+          ok: true,
           status: 200,
           statusText: "OK",
           headers: new Headers(),
@@ -302,6 +306,119 @@ describe("AgentWeb fallback", () => {
       server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  });
+
+  it("returns an error AgentStatus when start() gets a 503 the server cannot boot", async () => {
+    setWindow({
+      __ELIZAOS_APP_BOOT_CONFIG__: { apiBase: "https://agent.example" },
+    } as Partial<Window>);
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 503,
+      statusText: "Service Unavailable",
+      json: async () => ({
+        error:
+          "Agent runtime is not available and this server cannot boot one on demand",
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(new AgentWeb().start()).resolves.toEqual({
+      state: "error",
+      agentName: null,
+      port: null,
+      startedAt: null,
+      error:
+        "Agent runtime is not available and this server cannot boot one on demand",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns an error AgentStatus when getStatus() gets a 500 error body", async () => {
+    setWindow({
+      __ELIZAOS_APP_BOOT_CONFIG__: { apiBase: "https://agent.example" },
+    } as Partial<Window>);
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 500,
+      statusText: "Internal Server Error",
+      json: async () => ({ error: "boom" }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(new AgentWeb().getStatus()).resolves.toEqual({
+      state: "error",
+      agentName: null,
+      port: null,
+      startedAt: null,
+      error: "boom",
+    });
+  });
+
+  it("falls back to statusText when an error response has no JSON error field", async () => {
+    setWindow({
+      __ELIZAOS_APP_BOOT_CONFIG__: { apiBase: "https://agent.example" },
+    } as Partial<Window>);
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 502,
+      statusText: "Bad Gateway",
+      json: async () => {
+        throw new Error("not json");
+      },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(new AgentWeb().start()).resolves.toEqual({
+      state: "error",
+      agentName: null,
+      port: null,
+      startedAt: null,
+      error: "Bad Gateway",
+    });
+  });
+
+  it("reports stop() failure as { ok: false } instead of the raw error body", async () => {
+    setWindow({
+      __ELIZAOS_APP_BOOT_CONFIG__: { apiBase: "https://agent.example" },
+    } as Partial<Window>);
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 500,
+      statusText: "Internal Server Error",
+      json: async () => ({ error: "stop failed" }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(new AgentWeb().stop()).resolves.toEqual({ ok: false });
+  });
+
+  it("returns the parsed status on a successful start() and getStatus()", async () => {
+    setWindow({
+      __ELIZAOS_APP_BOOT_CONFIG__: { apiBase: "https://agent.example" },
+    } as Partial<Window>);
+    const runningStatus = {
+      state: "running",
+      agentName: "Eliza",
+      port: 31337,
+      startedAt: 1700000000000,
+      error: null,
+    };
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/api/agent/start")) {
+        return { ok: true, json: async () => ({ status: runningStatus }) };
+      }
+      if (url.endsWith("/api/status")) {
+        return { ok: true, json: async () => runningStatus };
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const agent = new AgentWeb();
+    await expect(agent.start()).resolves.toEqual(runningStatus);
+    await expect(agent.getStatus()).resolves.toEqual(runningStatus);
   });
 
   it("fails closed for local-agent IPC base in the web fallback", async () => {
