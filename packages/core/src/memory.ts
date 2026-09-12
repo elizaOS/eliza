@@ -127,3 +127,7 @@ export function isFragmentMemory(
 export function getMemoryText(memory: Memory, defaultValue = ""): string {
 	return memory.content.text ?? defaultValue;
 }
+
+// Re-exported so the segmentation primitive ships on the same module path as
+// the other memory helpers (`src/memory` is a module, not a directory barrel).
+export * from "./memory/content-segmentation";

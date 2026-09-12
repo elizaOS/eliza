@@ -85,7 +85,8 @@ export class NeonConnectionManager {
    */
   public async withIsolationContext<T>(
     entityId: UUID | null,
-    callback: (tx: NeonDatabase) => Promise<T>
+    callback: (tx: NeonDatabase) => Promise<T>,
+    options?: { isolationLevel?: "repeatable read" }
   ): Promise<T> {
     const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === "true";
 
@@ -106,7 +107,7 @@ export class NeonConnectionManager {
       }
 
       return await callback(tx as NeonDatabase);
-    });
+    }, options);
   }
 
   /**

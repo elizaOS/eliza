@@ -755,7 +755,103 @@ export interface AgentRunSummaryResult {
  *
  * See DATABASE_BATCH_API.md for the full design rationale and migration guide.
  */
+/**
+ * Field identity of natively segmented large content on a memory row. The
+ * `attachment.text` variant binds to one exact attachment id on the parent so
+ * owner-bound locators resolve the direct parent instead of scanning a room.
+ */
+export type MemoryContentField =
+	| { kind: "content.text" }
+	| { kind: "attachment.text"; attachmentId: string };
+
+/** Bounded segmentation descriptor carried on the parent memory's metadata. */
+export interface MemoryContentSegmentationDescriptor {
+	v: 1;
+	field: MemoryContentField;
+	encoding: "utf-8";
+	segmentBytes: number;
+	totalBytes: number;
+	totalSha256: string;
+	segmentCount: number;
+	/** Immutable generation identity; changes only on full replacement. */
+	generation: string;
+	/** Opaque public revision identifying the immutable generation. */
+	revision: string;
+}
+
+/**
+ * Authorized byte-window read over segmented memory content (#25140). The
+ * adapter authorizes the parent, validates `expectedRevision` against the
+ * stored generation, and returns only the segments intersecting the window —
+ * never the whole parent content and never an embedding join.
+ */
+export interface MemoryContentPageParams {
+	memoryId: UUID;
+	field: MemoryContentField;
+	byteStart: number;
+	byteLimit?: number;
+	/** Required for continuation pages; rejects stale generations. */
+	expectedRevision?: string;
+	/**
+	 * Authorization for the parent memory. When supplied, the adapter pushes the
+	 * same room/scope conditions as `getMemories` into the page-read query, so
+	 * every page reauthorizes; when omitted, the read trusts the caller's
+	 * transport boundary exactly like `getMemoryById` does.
+	 */
+	accessContext?: AccessContext;
+}
+
+/** Result of a native memory content page read. */
+export interface MemoryContentPageResult {
+	/** Page text: bytes `[start,end)` of the segmented source. */
+	text: string;
+	start: number;
+	end: number;
+	total: number;
+	/** Digest of the page bytes and of the complete source. */
+	sliceSha256: string;
+	sourceSha256: string;
+	/** Revision of the generation this page was served from. */
+	revision: string;
+	/** True only when `end === total` of the current generation. */
+	completeness: "partial-recoverable" | "complete";
+}
+
+/** Explicit, authorized conversion of one legacy inline field to native segments. */
+export interface MemoryContentReindexParams {
+	memoryId: UUID;
+	field: MemoryContentField;
+	accessContext: AccessContext;
+	/** Caller-declared work bound; the adapter rejects before fetching source bytes. */
+	maxSourceBytes: number;
+}
+
+/** Auditable receipt for one bounded legacy-field conversion. */
+export interface MemoryContentReindexResult {
+	memoryId: UUID;
+	field: MemoryContentField;
+	totalBytes: number;
+	segmentCount: number;
+	sourceSha256: string;
+	revision: string;
+}
+
 export interface IDatabaseAdapter<DB extends object = object> {
+	/**
+	 * Bounded native paging over segmented large MESSAGE/ATTACHMENT content
+	 * (#25140). Optional capability: adapters that implement it publish
+	 * immutable non-overlapping UTF-8 source segments atomically with the
+	 * bounded parent descriptor and serve authorized byte-window reads from
+	 * them. Readers MUST fail closed with a typed reindex-required error for
+	 * legacy large unsegmented rows rather than materializing the parent.
+	 */
+	readonly memoryContentPageCapability?: 1;
+	getMemoryContentPage?(
+		params: MemoryContentPageParams,
+	): Promise<MemoryContentPageResult | null>;
+	reindexMemoryContent?(
+		params: MemoryContentReindexParams,
+	): Promise<MemoryContentReindexResult>;
 	/** Database instance */
 	db: DB;
 

@@ -15,12 +15,18 @@
  */
 
 import { createHash } from "node:crypto";
+import { buildAccessContext } from "../../access-context.ts";
 import { ElizaError } from "../../errors.ts";
 import {
 	fetchRemoteMedia,
 	MediaFetchError,
 	readResponseWithLimit,
 } from "../../media/fetch.ts";
+import {
+	hasMemoryContentPageCapability,
+	isSegmentedContentMarker,
+	parseSegmentedContentMarker,
+} from "../../memory/content-segmentation.ts";
 import {
 	linkShareOwnText,
 	looksLikeBareLinkShare,
@@ -707,6 +713,186 @@ function readStringParam(
 	return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+/**
+ * #25140 review R4: the inline text of a segmented attachment is only the
+ * bounded published marker — an internal storage descriptor, never attachment
+ * text. Before save_as_document persists anything, reassemble the authorized
+ * source bytes via paged reads. A marker that cannot be reassembled (no
+ * paging capability, no owning stored message, or a typed page-read failure)
+ * produces an explicit save failure instead of saving the descriptor as the
+ * document's content. Non-segmented records pass through untouched.
+ */
+async function reassembleSegmentedAttachmentContent(
+	runtime: IAgentRuntime,
+	message: Memory,
+	records: AttachmentRecord[],
+	callback?: HandlerCallback,
+): Promise<
+	| { records: AttachmentRecord[]; failure?: undefined }
+	| { records?: undefined; failure: ActionResult }
+> {
+	if (!records.some((record) => isSegmentedContentMarker(record.content))) {
+		return { records };
+	}
+
+	const saveFailure = async (
+		text: string,
+		error: string,
+	): Promise<{ failure: ActionResult }> => {
+		// The failure text is this turn's sole delivery (the action suppresses
+		// post-action continuation), so it must complete before the handler
+		// resolves — await, never fire-and-forget.
+		await callback?.({
+			text,
+			actions: ["ATTACHMENT_SAVE_AS_DOCUMENT_FAILED"],
+			source: message.content.source,
+		});
+		return {
+			failure: {
+				success: false,
+				text,
+				userFacingText: text,
+				verifiedUserFacing: true,
+				error,
+				data: {
+					actionName: "ATTACHMENT",
+					action: "save_as_document",
+					error,
+				},
+			},
+		};
+	};
+
+	const pageCapable = hasMemoryContentPageCapability(runtime)
+		? runtime.getMemoryContentPage
+		: null;
+	if (!pageCapable) {
+		return await saveFailure(
+			"This attachment is stored in segmented form and the current database cannot reassemble it, so it cannot be saved as a document.",
+			"ATTACHMENT_SAVE_REASSEMBLY_UNAVAILABLE",
+		);
+	}
+
+	// error-policy:J4 access-context resolution failure degrades reassembly to
+	// requester-only authority — never unrestricted — and is reported so the
+	// degrade is observable (RECENT_ERRORS + ERROR_REPORTED), not silent; the
+	// page read itself surfaces any residual failure through its typed errors.
+	const accessContext = await buildAccessContext(runtime, message).catch(
+		(error) => {
+			runtime.reportError("ATTACHMENT.saveSegmented.accessContext", error, {
+				attachmentIds: records.map((record) => record.attachment.id),
+			});
+			return {
+				requesterEntityId: message.entityId as UUID,
+			};
+		},
+	);
+
+	const reassembled: AttachmentRecord[] = [];
+	for (const record of records) {
+		if (!isSegmentedContentMarker(record.content)) {
+			reassembled.push(record);
+			continue;
+		}
+		const ownerMessageId = record.attachment._messageId;
+		const attachmentId = record.attachment.id;
+		if (!ownerMessageId) {
+			return await saveFailure(
+				"The segmented attachment has no owning stored message to reassemble from, so it cannot be saved as a document.",
+				"ATTACHMENT_PAGE_OWNER_UNRESOLVED",
+			);
+		}
+		const parts: string[] = [];
+		let offset = 0;
+		let total = Number.POSITIVE_INFINITY;
+		// #25140 review R4 integrity fence: the record's inline marker carries
+		// the published descriptor (revision, total bytes, source digest). The
+		// first page MUST be served from that exact generation — adopting
+		// whatever generation the store happens to return could silently save
+		// a newer rewrite of the attachment. Later pages must hold the same
+		// generation and a coherent window; the whole is verified against the
+		// descriptor digest before the document is written.
+		const descriptor = parseSegmentedContentMarker(record.content);
+		if (!descriptor) {
+			return await saveFailure(
+				"The segmented attachment's storage descriptor is malformed, so it cannot be saved as a document.",
+				"ATTACHMENT_SAVE_DESCRIPTOR_INVALID",
+			);
+		}
+		// 4096 pages at the 256 KiB ceiling bounds reassembly at 1 GiB — far
+		// above any real attachment while guaranteeing termination.
+		for (let guard = 0; offset < total; guard += 1) {
+			if (guard >= 4096) {
+				return await saveFailure(
+					"Reassembling this attachment exceeded the bounded page budget, so it cannot be saved as a document.",
+					"ATTACHMENT_SAVE_REASSEMBLY_FAILED",
+				);
+			}
+			let page: Awaited<ReturnType<NonNullable<typeof pageCapable>>>;
+			try {
+				page = await pageCapable.call(runtime, {
+					memoryId: ownerMessageId,
+					field: { kind: "attachment.text", attachmentId },
+					byteStart: offset,
+					// The marker's revision fences the FIRST page too: a
+					// newer generation must fail loudly, not save silently.
+					expectedRevision: descriptor.revision,
+					accessContext,
+				});
+			} catch (error) {
+				// error-policy:J1 the action boundary translates typed paging
+				// failures (stale revision, reindex required, drift) into a
+				// structured save failure.
+				if (error instanceof ElizaError) {
+					return await saveFailure(
+						error.message,
+						error.code ?? "ATTACHMENT_SAVE_REASSEMBLY_FAILED",
+					);
+				}
+				throw error;
+			}
+			if (!page || page.text === undefined) {
+				return await saveFailure(
+					"The segmented attachment could not be reassembled from storage, so it cannot be saved as a document.",
+					"ATTACHMENT_SAVE_REASSEMBLY_FAILED",
+				);
+			}
+			if (
+				!Number.isSafeInteger(page.start) ||
+				!Number.isSafeInteger(page.end) ||
+				page.start !== offset ||
+				page.end <= page.start ||
+				page.end > page.total ||
+				page.total !== descriptor.totalBytes ||
+				page.revision !== descriptor.revision ||
+				page.sourceSha256 !== descriptor.totalSha256
+			) {
+				return await saveFailure(
+					"The segmented attachment's stored pages did not match its published descriptor, so it cannot be saved as a document.",
+					"ATTACHMENT_SAVE_REASSEMBLY_INCONSISTENT",
+				);
+			}
+			parts.push(page.text);
+			offset = page.end;
+			total = page.total;
+		}
+		const reassembledText = parts.join("");
+		const reassembledBytes = Buffer.from(reassembledText, "utf8");
+		if (
+			reassembledBytes.length !== descriptor.totalBytes ||
+			createHash("sha256").update(reassembledBytes).digest("hex") !==
+				descriptor.totalSha256
+		) {
+			return await saveFailure(
+				"The reassembled attachment content did not match its published digest, so it cannot be saved as a document.",
+				"ATTACHMENT_SAVE_REASSEMBLY_DIGEST_MISMATCH",
+			);
+		}
+		reassembled.push({ ...record, content: reassembledText });
+	}
+	return { records: reassembled };
+}
+
 async function saveAttachmentAsDocument(params: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -996,22 +1182,251 @@ export const readAttachmentAction: Action = {
 			if (!hasContent && (await transcribeMediaOnDemand(runtime, records))) {
 				hasContent = hasReadableContent(records);
 			}
-			const completeStoredContent = hasContent
-				? contentForRecords(records)
-				: "";
 			if (action === "save_as_document") {
+				// #25140 review R4: a segmented attachment's inline text is a
+				// storage descriptor, never saveable document content —
+				// reassemble the authorized source first, or fail explicitly.
+				const reassembled = await reassembleSegmentedAttachmentContent(
+					runtime,
+					messageWithParams,
+					records,
+					callback,
+				);
+				if (reassembled.failure) {
+					return reassembled.failure;
+				}
+				const savedRecords = reassembled.records ?? records;
 				return await saveAttachmentAsDocument({
 					runtime,
 					message: messageWithParams,
-					records,
-					content: completeStoredContent,
+					records: savedRecords,
+					content: hasContent ? contentForRecords(savedRecords) : "",
 					actionParams: params,
 					callback,
 				});
 			}
 
-			const pagedRecords = pageAttachmentRecords(records, params);
 			const expectedRevision = readStringParam(params, "expectedRevision");
+
+			// #25140: when an adapter with native content paging is present and a
+			// record's inline text is a published segmented-content marker, serve
+			// the page from the segment store via the owner-bound descriptor
+			// (`attachment.text:<id>` on the owning memory) instead of paging the
+			// marker string. The owning message id is the direct parent — no room
+			// scan and no source-sized materialization.
+			const pageCapable = hasMemoryContentPageCapability(runtime)
+				? runtime.getMemoryContentPage
+				: null;
+			// #25140 review R4 r2/r3: detect the marker on the ORIGINAL record
+			// content and dispatch BEFORE inline pagination — pageAttachmentRecords
+			// validates offset against the MARKER's byte length, so a legitimate
+			// continuation offset past the marker would throw INVALID_OFFSET before
+			// native paging is reached, and a small limit could truncate the prefix
+			// into the inline answer path.
+			const segmentedRecord =
+				records.length === 1 && isSegmentedContentMarker(records[0].content)
+					? records[0]
+					: null;
+			// #25140 review R4: the inline text of a segmented record is an
+			// internal storage descriptor, never attachment content. When it
+			// cannot be paged (capability absent or wrong capability shape),
+			// fail explicitly — do not fall through and serve the descriptor
+			// string to the model or the user.
+			if (segmentedRecord && !pageCapable) {
+				return {
+					success: false,
+					text: "This attachment is stored in segmented form and the current database cannot page it, so it can't be read directly.",
+					error: "ATTACHMENT_SEGMENTED_READ_UNAVAILABLE",
+					data: {
+						actionName: "ATTACHMENT",
+						action: "read",
+						error: "segmented_read_unavailable",
+						attachmentId: segmentedRecord.attachment.id,
+					},
+					promptData: {
+						actionName: "ATTACHMENT",
+						action: "read",
+						error: "segmented_read_unavailable",
+						attachmentId: segmentedRecord.attachment.id,
+					},
+				};
+			}
+			if (pageCapable && segmentedRecord) {
+				const ownerMessageId = segmentedRecord.attachment._messageId;
+				const attachmentId = segmentedRecord.attachment.id;
+				const offset = readNonnegativeInteger(params, "offset", 0);
+				if (!ownerMessageId) {
+					return {
+						success: false,
+						text: "The segmented attachment has no owning stored message to page from.",
+						error: "ATTACHMENT_PAGE_OWNER_UNRESOLVED",
+						data: {
+							actionName: "ATTACHMENT",
+							action: "read",
+							error: "owner_unresolved",
+							attachmentId,
+						},
+						promptData: {
+							actionName: "ATTACHMENT",
+							action: "read",
+							error: "owner_unresolved",
+							attachmentId,
+						},
+					};
+				}
+				if (offset > 0 && !expectedRevision) {
+					return {
+						success: false,
+						text: "An attachment revision is required to continue reading.",
+						error: "ATTACHMENT_READ_EXPECTED_REVISION_REQUIRED",
+						data: {
+							actionName: "ATTACHMENT",
+							action: "read",
+							error: "expected_revision_required",
+						},
+						promptData: {
+							actionName: "ATTACHMENT",
+							action: "read",
+							error: "expected_revision_required",
+						},
+					};
+				}
+				const limit = readOptionalPositiveInteger(params, "limit");
+				let page: Awaited<ReturnType<NonNullable<typeof pageCapable>>>;
+				// #25140 review R2: reauthorize every page at the storage
+				// boundary with the requester's access context; resolution
+				// failure degrades to requester-only authority, never
+				// unrestricted.
+				const accessContext = await buildAccessContext(
+					runtime,
+					messageWithParams,
+				).catch(() => ({
+					requesterEntityId: messageWithParams.entityId as UUID,
+				}));
+				try {
+					page = await pageCapable.call(runtime, {
+						memoryId: ownerMessageId,
+						field: { kind: "attachment.text", attachmentId },
+						byteStart: offset,
+						...(limit === undefined ? {} : { byteLimit: limit }),
+						...(expectedRevision === undefined ? {} : { expectedRevision }),
+						accessContext,
+					});
+				} catch (error) {
+					// error-policy:J1 the action boundary translates typed paging
+					// failures (stale revision, reindex required, drift) into
+					// structured user-visible replies.
+					if (error instanceof ElizaError) {
+						return {
+							success: false,
+							text: error.message,
+							error: error.code,
+							data: {
+								actionName: "ATTACHMENT",
+								action: "read",
+								error: error.code,
+								attachmentId,
+								...(error.context?.currentRevision !== undefined
+									? {
+											currentRevision: error.context.currentRevision,
+										}
+									: {}),
+							},
+							promptData: {
+								actionName: "ATTACHMENT",
+								action: "read",
+								error: error.code,
+								attachmentId,
+							},
+						};
+					}
+					throw error;
+				}
+				if (page) {
+					const readView: ReadView = {
+						reference: buildContentReference({
+							kind: "attachment",
+							ref: `attachment:${attachmentId}`,
+							revision: page.revision,
+						}),
+						slice: buildReadSlice({
+							range: {
+								unit: "byte",
+								start: page.start,
+								end: page.end,
+								total: page.total,
+							},
+							completeness: page.completeness,
+							revision: page.revision,
+							sliceSha256: page.sliceSha256,
+							sourceSha256: page.sourceSha256,
+						}),
+					};
+					const visibleText = await answerAttachmentRequest({
+						runtime,
+						message: messageWithParams,
+						content: page.text,
+						fallbackText: `Read "${titleForRecord(segmentedRecord)}" page but couldn't put an answer together — ask me something specific about it.`,
+					});
+					if (callback) {
+						await callback({
+							text: visibleText,
+							actions: ["ATTACHMENT_READ_SUCCESS"],
+							source: messageWithParams.content.source,
+						});
+					}
+					return {
+						success: true,
+						text: page.text,
+						transcriptVisibility: "internal",
+						userFacingText: visibleText,
+						verifiedUserFacing: true,
+						turnComplete: true,
+						data: {
+							actionName: "ATTACHMENT",
+							action: "read",
+							attachmentId,
+							attachmentIds: [attachmentId],
+							readView,
+						},
+						promptData: {
+							actionName: "ATTACHMENT",
+							action: "read",
+							attachmentId,
+							readView,
+						},
+					};
+				}
+				// page === null with a segmented record: the adapter found no
+				// authorized parent row (revoked access, room move, concurrent
+				// cleanup). The marker is an internal descriptor, so fail
+				// explicitly — never fall through to serving it inline.
+				// (#25140 review R4 r2)
+				if (segmentedRecord) {
+					return {
+						success: false,
+						text: "The segmented attachment is no longer available from storage, so it can't be read directly.",
+						error: "ATTACHMENT_SEGMENTED_PAGE_UNAVAILABLE",
+						data: {
+							actionName: "ATTACHMENT",
+							action: "read",
+							error: "segmented_page_unavailable",
+							attachmentId: segmentedRecord.attachment.id,
+						},
+						promptData: {
+							actionName: "ATTACHMENT",
+							action: "read",
+							error: "segmented_page_unavailable",
+							attachmentId: segmentedRecord.attachment.id,
+						},
+					};
+				}
+				// page === null: descriptor absent with small inline — fall
+				// through to the inline paging path below.
+			}
+			// Inline pagination runs only after the segmented native-paging
+			// branch had its chance to return (#25140 R4 r3).
+			const pagedRecords = pageAttachmentRecords(records, params);
 			if (
 				pagedRecords.some((record) => record.readView.slice.range.start > 0) &&
 				!expectedRevision
