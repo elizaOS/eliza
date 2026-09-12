@@ -60,12 +60,20 @@ export default function LoopbackCloudLoginSection() {
         );
       }
       const requested = sanitizeLoginReturnTo(searchParams.get("returnTo"));
-      const returnTo = new URL(requested || "/chat", window.location.origin);
+      const returnTo = new URL(
+        requested || "/settings#cloud-overview",
+        window.location.origin,
+      );
       // Public auth pages cannot consume the app's CLI completion marker.
-      if (/^\/(?:login|join|auth)(?:\/|$)/.test(returnTo.pathname)) {
-        returnTo.pathname = "/chat";
+      // Account switching also removed the selected agent: offer the signed-in
+      // account's agents before returning to a chat with no Cloud target.
+      if (
+        /^\/(?:login|join|auth)(?:\/|$)/.test(returnTo.pathname) ||
+        (switchAccount && ["/", "/chat"].includes(returnTo.pathname))
+      ) {
+        returnTo.pathname = "/settings";
         returnTo.search = "";
-        returnTo.hash = "";
+        returnTo.hash = "cloud-overview";
       }
       returnTo.searchParams.set("elizaCloudLogin", "complete");
       returnTo.searchParams.set("elizaCloudLoginSession", session.sessionId);
