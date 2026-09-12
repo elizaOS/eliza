@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   start: vi.fn(),
   switchAccount: vi.fn(),
   assign: vi.fn(),
+  clearBinding: vi.fn(),
 }));
 vi.mock("../../../../api", () => ({
   client: { cloudLoginDirect: mocks.start },
@@ -23,11 +24,21 @@ vi.mock("../../../../api/client-cloud", () => ({
   resolveDirectCloudWebBase: () => "https://staging.eliza.app",
 }));
 vi.mock("../../../sso-bridge/sso-bridge", () => ({
-  prepareSsoAccountSwitch: mocks.switchAccount,
+  signOutFromSsoBridgedHost: mocks.switchAccount,
 }));
 vi.mock("../../../shell/CloudI18nProvider", () => ({
   useCloudT: () => (_key: string, opts: { defaultValue: string }) =>
     opts.defaultValue,
+}));
+
+vi.mock("../../../../state/shared-cloud-account-binding", () => ({
+  clearManagedCloudAccountBinding: mocks.clearBinding,
+}));
+vi.mock("../../../../state/cloud-pair-token", () => ({
+  clearCloudPairApiToken: vi.fn(),
+}));
+vi.mock("../../../../state/persistence", () => ({
+  savePersistedFirstRunComplete: vi.fn(),
 }));
 
 import LoopbackCloudLoginSection from "./loopback-cloud-login-section";
@@ -94,6 +105,7 @@ it("preserves a safe app destination and performs explicit account switching on 
   await begin("/login?switchAccount=1&returnTo=%2Fsettings%23cloud-overview");
   await waitFor(() => expect(mocks.assign).toHaveBeenCalledOnce());
   expect(mocks.switchAccount).toHaveBeenCalledOnce();
+  expect(mocks.clearBinding).toHaveBeenCalledOnce();
   const login = new URL(mocks.assign.mock.calls[0][0]);
   expect(login.pathname).toBe("/login");
   expect(login.searchParams.get("switchAccount")).toBe("1");
@@ -112,6 +124,7 @@ it("keeps the previous account intact when teardown cannot complete", async () =
     "Session teardown unavailable",
   );
   expect(mocks.start).not.toHaveBeenCalled();
+  expect(mocks.clearBinding).not.toHaveBeenCalled();
   expect(mocks.assign).not.toHaveBeenCalled();
 });
 

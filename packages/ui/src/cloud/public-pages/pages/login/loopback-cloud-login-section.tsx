@@ -21,10 +21,22 @@ export default function LoopbackCloudLoginSection() {
     try {
       const switchAccount = searchParams.get("switchAccount") === "1";
       if (switchAccount) {
-        const { prepareSsoAccountSwitch } = await import(
+        const { signOutFromSsoBridgedHost } = await import(
           "../../../sso-bridge/sso-bridge"
         );
-        await prepareSsoAccountSwitch();
+        await signOutFromSsoBridgedHost();
+        const { clearManagedCloudAccountBinding } = await import(
+          "../../../../state/shared-cloud-account-binding"
+        );
+        const { clearCloudPairApiToken } = await import(
+          "../../../../state/cloud-pair-token"
+        );
+        const { savePersistedFirstRunComplete } = await import(
+          "../../../../state/persistence"
+        );
+        await clearManagedCloudAccountBinding();
+        clearCloudPairApiToken();
+        savePersistedFirstRunComplete(false);
       }
       const { client } = await import("../../../../api");
       const { resolveDirectCloudWebBase } = await import(
