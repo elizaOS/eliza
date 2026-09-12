@@ -392,24 +392,26 @@ function dedicatedAdoptionConfirmationText(
   }
   const disposition =
     quote.stateDisposition === "verified_backup_present"
-      ? "restore its reviewed backup"
+      ? "Your verified backup will be restored."
       : quote.stateDisposition === "fresh_boot_no_verified_backup"
-        ? "start fresh because no verified backup is available"
-        : "keep its current state without a reviewed restore";
+        ? "This starts fresh; no verified backup is available."
+        : "Your current data stays. No verified Cloud backup is available.";
   const changed =
     reason === "quote_changed"
-      ? "The agent or hosting quote changed while you were reviewing it. Please review the updated terms.\n\n"
+      ? "The hosting details changed. Please review them again.\n\n"
       : "";
   return [
     `${changed}Use your existing Dedicated agent?`,
     "",
-    `Current status: ${quote.status}.`,
-    `Hosting: $${quote.hourlyRateUsd.toFixed(2)}/hour ($${quote.dailyRateUsd.toFixed(2)}/day).`,
-    `Balance: $${quote.balanceUsd.toFixed(2)}; minimum required: $${quote.minimumBalanceUsd.toFixed(2)} (${quote.minimumRunwayDays} days of runway); deficit: $${quote.deficitUsd.toFixed(2)}.`,
-    `This action ${quote.startsCompute ? "starts Dedicated compute" : "does not start new compute"} and will ${disposition}.`,
+    `$${quote.dailyRateUsd.toFixed(2)}/day ($${quote.hourlyRateUsd.toFixed(2)}/hour).`,
+    `Balance: $${quote.balanceUsd.toFixed(2)}; $${quote.minimumBalanceUsd.toFixed(2)} required.`,
+    ...(quote.deficitUsd > 0
+      ? [`Add $${quote.deficitUsd.toFixed(2)} to start.`]
+      : []),
+    disposition,
     "",
     "[CHOICE:first-run id=dedicated-adoption]",
-    `${FIRST_RUN_ACTION_PREFIX}dedicated-adoption:confirm=Confirm and continue`,
+    `${FIRST_RUN_ACTION_PREFIX}dedicated-adoption:confirm=${quote.startsCompute ? "Start Dedicated" : "Connect"}`,
     `${FIRST_RUN_ACTION_PREFIX}dedicated-adoption:cancel=Not now`,
     "[/CHOICE]",
   ].join("\n");
