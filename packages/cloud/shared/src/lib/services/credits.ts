@@ -2168,24 +2168,28 @@ export class CreditsService {
     if (params.preserveInferenceBalanceHint) {
       try {
         // The actual affiliate debit may exceed the estimate held by the
-        // Durable Object. Publish the committed lower ceiling before the
-        // authoritative read so a concurrent lease cannot spend that delta.
+        // Durable Object. Publish the committed lower ceiling first so a
+        // concurrent lease cannot spend that delta before the revision advances.
         await params.inferenceBalanceFence?.lowerCommittedBalance(
           outcome.newBalance,
           outcome.balanceRevision,
         );
         await lowerOrgBalanceHint(params.organizationId, outcome.newBalance, Date.now());
         const balanceAt = Date.now();
-        const snapshot = await this.getOrganizationBalanceSnapshot(params.organizationId);
+        // The atomic debit transaction already returned the authoritative
+        // post-debit balance and revision; publish that result directly rather
+        // than issuing a redundant balance snapshot read on the settlement path,
+        // exactly as the direct deferred settler (republishOrgBalanceHintAfterDebit)
+        // already does with its committed debit result.
         await params.inferenceBalanceFence?.publishAuthoritativeBalance(
-          snapshot.balanceUsd,
-          snapshot.revision,
+          outcome.newBalance,
+          outcome.balanceRevision,
         );
         await republishOrgBalanceHint(
           params.organizationId,
-          snapshot.balanceUsd,
+          outcome.newBalance,
           balanceAt,
-          snapshot.revision,
+          outcome.balanceRevision,
         );
       } catch (cause) {
         // error-policy:J2 preserve the failed publication after invalidating its cache projection.
