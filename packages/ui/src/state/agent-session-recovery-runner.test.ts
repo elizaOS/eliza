@@ -457,6 +457,13 @@ describe("runAgentSessionRecovery", () => {
     [402, { error: "Insufficient credits" }],
     [404, { error: "Agent not found" }],
     [
+      409,
+      {
+        error: "Start this agent from Cloud settings",
+        data: { status: "stopped" },
+      },
+    ],
+    [
       500,
       {
         error: "Agent is in an error state",

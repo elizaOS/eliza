@@ -42,6 +42,7 @@ import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import {
   cloudTokenSecsRemaining,
   getCloudAuthToken,
+  hasDirectCloudAccountTransport,
   refreshCloudStewardSession,
   resolveDirectCloudAuthApiBase,
   resolveDirectCloudWebBase,
@@ -428,19 +429,23 @@ function hasCloudLoginBackend(): boolean {
 }
 
 function canPollCloudStatus(): boolean {
-  // A remote client gets models and voice from its paired runtime, whether the
-  // target is immutable at build time or selected during first run. Polling
-  // that runtime's optional Cloud billing integration misclassifies an
-  // unrelated server credential as the client's own authentication state.
-  if (
-    getBuildConfiguredRemoteApiBaseUrl() ||
-    loadPersistedActiveServer()?.kind === "remote"
-  ) {
-    return false;
-  }
-
+  if (getBuildConfiguredRemoteApiBaseUrl()) return false;
   const explicitBase =
     typeof client.getBaseUrl === "function" ? client.getBaseUrl().trim() : "";
+  const activeServer = loadPersistedActiveServer();
+  if (activeServer?.kind === "remote") {
+    // During a switch the client may still point at the previous account or
+    // runtime. Wait until it matches the persisted target before probing.
+    return (
+      explicitBase.replace(/\/+$/, "") ===
+        activeServer.apiBase?.replace(/\/+$/, "") &&
+      hasDirectCloudAccountTransport(client)
+    );
+  }
+  // A managed Dedicated binding still has a separate, trusted account
+  // transport. Its status/credits requests go to the Cloud control plane
+  // with the user's Steward session, never the runtime's billing credential.
+  if (hasDirectCloudAccountTransport(client)) return true;
   if (isCapacitorNativeRuntime() || isElectrobunRuntime()) return true;
   if (explicitBase && isConfiguredCloudSiteBase(explicitBase)) return true;
   return hasCloudLoginBackend() && supportsFullAppShellRoutes(explicitBase);
@@ -1585,14 +1590,17 @@ export function useCloudState({
       clearCloudLoginReturnParams();
       return;
     }
-    clearCloudLoginReturnParams();
-    if (elizaCloudLoginBusyRef.current) return;
-
     let cancelled = false;
     const sleep = (ms: number) =>
       new Promise((resolve) => window.setTimeout(resolve, ms));
 
     void (async () => {
+      // Strict Mode replays mount effects before the next microtask. Do not
+      // remove the return marker or claim the one-time CLI token in the
+      // discarded setup: only the surviving effect owns that exchange.
+      await Promise.resolve();
+      if (cancelled || elizaCloudLoginBusyRef.current) return;
+      clearCloudLoginReturnParams();
       elizaCloudLoginBusyRef.current = true;
       setElizaCloudLoginBusy(true);
       setElizaCloudLoginError(null);

@@ -7,6 +7,7 @@ const requireAuthOrApiKeyWithOrg = mock(async () => ({
   user: { id: "user-1", organization_id: "org-1" },
 }));
 const findByIdAndOrg = mock();
+const wasStoppedByUser = mock(async () => false);
 const generateToken = mock(async () => "pair-token");
 const enqueueAgentProvisionOnce = mock();
 const checkProvisioningWorkerHealth = mock(async () => ({ ok: true }));
@@ -19,6 +20,7 @@ mock.module("@/lib/auth", () => ({
 mock.module("@/db/repositories/agent-sandboxes", () => ({
   agentSandboxesRepository: {
     findByIdAndOrg,
+    wasStoppedByUser,
   },
 }));
 
@@ -120,6 +122,8 @@ describe("eliza agent pairing token route", () => {
   beforeEach(() => {
     requireAuthOrApiKeyWithOrg.mockClear();
     findByIdAndOrg.mockReset();
+    wasStoppedByUser.mockReset();
+    wasStoppedByUser.mockResolvedValue(false);
     generateToken.mockClear();
     enqueueAgentProvisionOnce.mockClear();
     checkProvisioningWorkerHealth.mockClear();
@@ -353,6 +357,22 @@ describe("eliza agent pairing token route", () => {
       success: false,
       code: "AGENT_WEB_UI_NOT_READY",
     });
+    expect(generateToken).not.toHaveBeenCalled();
+  });
+
+  test("session repair does not restart an agent explicitly shut down by its user", async () => {
+    findByIdAndOrg.mockResolvedValue({
+      ...runningSandbox("dedicated-lazy"),
+      status: "stopped",
+    });
+    wasStoppedByUser.mockResolvedValue(true);
+    const response = await postPairingToken();
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      code: "agent_stopped",
+      data: { status: "stopped" },
+    });
+    expect(enqueueAgentProvisionOnce).not.toHaveBeenCalled();
     expect(generateToken).not.toHaveBeenCalled();
   });
 

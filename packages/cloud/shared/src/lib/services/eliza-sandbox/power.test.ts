@@ -657,7 +657,7 @@ describe("ElizaSandboxService sleep refuses an unproven fallback backup (#17180 
 
       expect(result.success).toBe(false);
       expect(result.containerRemoved).toBe(false);
-      expect(result.error).toContain("Refusing to deactivate on an unproven backup");
+      expect(result.error).toContain("Refusing to stop without a current backup");
       expect(provider.stopForDeletion).not.toHaveBeenCalled();
       expect(provider.stopForReplacement).not.toHaveBeenCalled();
       expect(updateSpy).not.toHaveBeenCalled();
@@ -716,8 +716,7 @@ describe("ElizaSandboxService sleep", () => {
       expect(result).toEqual({
         success: false,
         containerRemoved: false,
-        error:
-          "Unable to create or find a durable backup before deactivation; agent was left running.",
+        error: expect.stringContaining("Refusing to stop without a current backup"),
       });
       expect(provider.stopForDeletion).not.toHaveBeenCalled();
       expect(createBackupSpy).not.toHaveBeenCalled();
