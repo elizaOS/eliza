@@ -671,6 +671,7 @@ function createEphemeralReplyMessageService(
     | "missing_capability"
     | "persistence_error"
     | "planner_exhaustion"
+    | "context_overflow"
     | "generation_timeout" = "rate_limited",
 ): NonNullable<AgentRuntime["messageService"]> {
   return {
@@ -3070,6 +3071,7 @@ describe("conversation stream SSE contract (#10712)", () => {
     "missing_capability",
     "persistence_error",
     "planner_exhaustion",
+    "context_overflow",
     "generation_timeout",
   ] as const)(
     "preserves the %s discriminator in the direct chat DTO",
@@ -3078,6 +3080,7 @@ describe("conversation stream SSE contract (#10712)", () => {
       | "missing_capability"
       | "persistence_error"
       | "planner_exhaustion"
+      | "context_overflow"
       | "generation_timeout") => {
       const { ctx, record } = createCtx(
         createEphemeralReplyMessageService(failureKind),
@@ -3090,9 +3093,11 @@ describe("conversation stream SSE contract (#10712)", () => {
       );
       expect(done).toMatchObject({
         type: "done",
+        fullText: "Temporary provider failure.",
         assistantEphemeral: true,
         failureKind,
       });
+      expect(done).not.toHaveProperty("messageId");
       expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
     },
   );
