@@ -158,11 +158,16 @@ async function runExecInContainer(
     let stderr = "";
     const timeout = setTimeout(() => proc.kill("SIGKILL"), timeoutMs ?? 30_000);
 
-    proc.stdout.on("data", (data: Buffer) => {
-      stdout += data.toString();
+    // Preserve code points split across OS pipe chunks before accumulating,
+    // matching the host shell path in shell-execution-router.ts.
+    proc.stdout.setEncoding("utf8");
+    proc.stderr.setEncoding("utf8");
+
+    proc.stdout.on("data", (data: string) => {
+      stdout += data;
     });
-    proc.stderr.on("data", (data: Buffer) => {
-      stderr += data.toString();
+    proc.stderr.on("data", (data: string) => {
+      stderr += data;
     });
 
     if (stdin) {
