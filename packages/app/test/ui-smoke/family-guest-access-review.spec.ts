@@ -205,6 +205,12 @@ for (const width of [1280, 390]) {
       name: "Allow access",
       exact: true,
     });
+    await expect(choice).toBeVisible();
+    const choiceBox = await choice.boundingBox();
+    if (!choiceBox)
+      throw new Error("Guest permission control has no rendered geometry");
+    expect(choiceBox.height).toBeGreaterThanOrEqual(44);
+    expect(choiceBox.width).toBeGreaterThanOrEqual(44);
     await choice.selectOption("permission-alex");
     await page
       .getByRole("button", { name: "Preview permission", exact: true })

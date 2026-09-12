@@ -7,12 +7,6 @@ import type {
 } from "../../lifeops/household/agreement-knowledge.js";
 import type { FamilyOperationsAdapter, Loadable } from "./types.js";
 
-const choiceStyle = {
-  minHeight: 44,
-  minWidth: 0,
-  outlineColor: "var(--accent)",
-};
-
 type Result =
   | { kind: "preview"; preview: AgreementGuestGrantPreview }
   | { kind: "options"; options: AgreementGuestAccessOptions };
@@ -141,7 +135,8 @@ export function AgreementGuestAccessPanel({
                 <NativeSelect
                   id="family-guest-permission"
                   aria-label="Verified guest permission"
-                  style={choiceStyle}
+                  presentation="touch"
+                  className="min-w-0 keyboard-focus-surface"
                   disabled={busy}
                   value={choice?.householdGrantId ?? ""}
                   onChange={(event) => {
@@ -276,7 +271,8 @@ export function AgreementGuestAccessPanel({
                   <NativeSelect
                     id="family-existing-guest-access"
                     aria-label="Existing guest access"
-                    style={choiceStyle}
+                    presentation="touch"
+                    className="min-w-0 keyboard-focus-surface"
                     disabled={busy}
                     value={revocable?.grantId ?? ""}
                     onChange={(event) => setRevokeId(event.target.value)}
