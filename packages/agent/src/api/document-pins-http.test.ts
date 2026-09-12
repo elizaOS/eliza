@@ -1,4 +1,4 @@
-/** Exercises production pin HTTP routes and real PGlite persistence with an isolated owner token; synthetic document seeding excludes upload/model acceptance. */
+/** Exercises production pin HTTP routes and real PGlite persistence with an isolated owner token; synthetic fixtures include real text uploads but exclude PDF/model acceptance. */
 import { randomBytes, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -110,20 +110,18 @@ function request(
   body?: object,
   authenticated = true,
   extraHeaders: Record<string, string> = {},
+  pathname = `/api/documents/${documentId}/pins`,
 ) {
-  return fetch(
-    `http://127.0.0.1:${server.port}/api/documents/${documentId}/pins`,
-    {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-        "x-forwarded-for": "203.0.113.10",
-        ...(authenticated ? { Authorization: `Bearer ${token}` } : {}),
-        ...extraHeaders,
-      },
-      ...(body ? { body: JSON.stringify(body) } : {}),
+  return fetch(`http://127.0.0.1:${server.port}${pathname}`, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      "x-forwarded-for": "203.0.113.10",
+      ...(authenticated ? { Authorization: `Bearer ${token}` } : {}),
+      ...extraHeaders,
     },
-  );
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
 }
 
 it("persists reviewed pin placements and rejects stale or unauthenticated changes", async () => {
@@ -187,4 +185,102 @@ it("persists reviewed pin placements and rejects stale or unauthenticated change
   const cleared = await request();
   expect(cleared.status).toBe(200);
   expect((await cleared.json()).targets).toEqual({ agent: false, roomIds: [] });
+}, 120_000);
+
+it("defaults chat-origin text uploads to chat participants and preserves explicit private uploads", async () => {
+  const guest = randomUUID() as UUID;
+  const otherRoom = randomUUID() as UUID;
+  await fixture.runtime.ensureConnection({
+    entityId: guest,
+    roomId: room,
+    worldId: world,
+    worldName: "Synthetic pin HTTP",
+    userName: "Guest",
+    name: "Guest",
+    source: "test",
+    type: ChannelType.GROUP,
+  });
+  await fixture.runtime.ensureConnection({
+    entityId: guest,
+    roomId: otherRoom,
+    worldId: world,
+    worldName: "Synthetic pin HTTP",
+    userName: "Guest",
+    name: "Another chat",
+    source: "test",
+    type: ChannelType.GROUP,
+  });
+  const body = {
+    roomId: room,
+    addedFrom: "chat",
+    filename: "chat-upload.txt",
+    contentType: "text/plain",
+    content: "Synthetic chat upload with complete final sentence.",
+  };
+  const upload = await request("POST", body, true, {}, "/api/documents");
+  expect(upload.status).toBe(200);
+  const uploaded = await upload.json();
+  const reader = {
+    agentId: fixture.runtime.agentId,
+    requesterEntityId: guest,
+    requesterRole: "GUEST" as const,
+    requesterRoomIds: [room, otherRoom],
+  };
+  expect(
+    (
+      await fixture.runtime.adapter.getDocument({
+        ...reader,
+        documentId: uploaded.documentId,
+      })
+    )?.content.text,
+  ).toBe(body.content);
+  const repeat = await request("POST", body, true, {}, "/api/documents");
+  expect(repeat.status).toBe(200);
+  expect((await repeat.json()).documentId).toBe(uploaded.documentId);
+  const privateUpload = await request(
+    "POST",
+    { ...body, scope: "owner-private" },
+    true,
+    {},
+    "/api/documents",
+  );
+  expect(privateUpload.status).toBe(200);
+  const privateDocument = await privateUpload.json();
+  expect(privateDocument.documentId).not.toBe(uploaded.documentId);
+  expect(
+    await fixture.runtime.adapter.getDocument({
+      ...reader,
+      documentId: privateDocument.documentId,
+    }),
+  ).toBeNull();
+  expect(
+    (
+      await request(
+        "POST",
+        { ...body, audience: "chat", scope: "owner-private" },
+        true,
+        {},
+        "/api/documents",
+      )
+    ).status,
+  ).toBe(400);
+  expect(
+    (
+      await request(
+        "POST",
+        { ...body, roomId: otherRoom },
+        true,
+        {},
+        "/api/documents",
+      )
+    ).status,
+  ).toBe(403);
+  await fixture.runtime.removeParticipant(guest, room);
+  expect(
+    await fixture.runtime.adapter.getDocument({
+      ...reader,
+      requesterRoomIds: [otherRoom],
+      documentId: uploaded.documentId,
+    }),
+  ).toBeNull();
 }, 120_000);

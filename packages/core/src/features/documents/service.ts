@@ -1579,6 +1579,61 @@ export class DocumentService extends Service {
 		);
 	}
 
+	/** Validates the human author and room used for an explicitly chat-scoped ingestion. */
+	private async assertChatDocumentOrigin(
+		options: Pick<
+			AddDocumentOptions,
+			| "agentId"
+			| "worldId"
+			| "roomId"
+			| "entityId"
+			| "scope"
+			| "scopedToEntityId"
+			| "addedBy"
+		>,
+	): Promise<"OWNER" | "ADMIN" | "USER"> {
+		const room = await this.runtime.getRoom(options.roomId);
+		const participants = await this.runtime.getParticipantsForRoom(
+			options.roomId,
+		);
+		const author = options.addedBy ?? options.entityId;
+		if (
+			(options.agentId !== undefined &&
+				options.agentId !== this.runtime.agentId) ||
+			!room ||
+			room.agentId !== this.runtime.agentId ||
+			room.worldId !== options.worldId ||
+			author !== options.entityId ||
+			author === this.runtime.agentId ||
+			!participants.includes(author) ||
+			(options.scope !== undefined && options.scope !== "global") ||
+			options.scopedToEntityId !== undefined
+		) {
+			throw new ElizaError(
+				"Chat sharing requires the author's current chat and its participant audience",
+				{ code: "DOCUMENT_CHAT_SHARING_FORBIDDEN" },
+			);
+		}
+		const requester = await resolveDocumentRequester(this.runtime, {
+			agentId: this.runtime.agentId,
+			entityId: author,
+			roomId: options.roomId,
+			worldId: options.worldId,
+			content: { text: "" },
+		});
+		if (
+			requester.role !== "OWNER" &&
+			requester.role !== "ADMIN" &&
+			requester.role !== "USER"
+		) {
+			throw new ElizaError(
+				"This chat identity cannot create shared knowledge",
+				{ code: "DOCUMENT_CHAT_SHARING_FORBIDDEN" },
+			);
+		}
+		return requester.role;
+	}
+
 	async addDocument(options: AddDocumentOptions): Promise<{
 		clientDocumentId: string;
 		storedDocumentMemoryId: UUID;
@@ -1589,9 +1644,41 @@ export class DocumentService extends Service {
 		requireDocumentScopeUuid(options.roomId, "roomId");
 		requireDocumentScopeUuid(options.entityId, "entityId");
 
+		if (options.audience === "chat") {
+			const addedByRole = await this.assertChatDocumentOrigin(options);
+			if (
+				options.directGrantEntityIds?.length ||
+				options.metadata?.directGrantEntityIds !== undefined ||
+				options.metadata?.share !== undefined ||
+				(options.metadata?.scope !== undefined &&
+					options.metadata.scope !== "global") ||
+				options.metadata?.scopedToEntityId !== undefined ||
+				options.pinned === true ||
+				options.metadata?.pinned === true ||
+				options.metadata?.pinTargets !== undefined
+			) {
+				throw new ElizaError(
+					"Review additional readers separately from chat sharing",
+					{ code: "DOCUMENT_CHAT_SHARING_INVALID" },
+				);
+			}
+			options = {
+				...options,
+				scope: "global",
+				addedFrom: "chat",
+				addedBy: options.entityId,
+				addedByRole,
+			};
+		}
+
 		const contentBasedId = generateContentBasedId(options.content, agentId, {
 			includeFilename: options.originalFilename,
 			contentType: options.contentType,
+			...(options.audience === "chat"
+				? {
+						namespace: `chat:${options.roomId.toLowerCase()}:${options.entityId.toLowerCase()}`,
+					}
+				: {}),
 		}) as UUID;
 
 		logger.info(
@@ -1605,6 +1692,18 @@ export class DocumentService extends Service {
 				existingDocument.metadata?.type === MemoryType.CUSTOM)
 		) {
 			const snapshot = readDocumentMutationSnapshot(existingDocument);
+			if (
+				options.audience === "chat" &&
+				(!snapshot ||
+					snapshot.scope !== "global" ||
+					snapshot.roomId !== options.roomId ||
+					snapshot.directGrantEntityIds?.length)
+			) {
+				throw new ElizaError(
+					"This document's readers changed. Review its current sharing before uploading it again",
+					{ code: "DOCUMENT_CHAT_SHARING_CHANGED" },
+				);
+			}
 			if (!snapshot) {
 				const metadata = existingDocument.metadata as
 					| Record<string, unknown>
@@ -1690,6 +1789,7 @@ export class DocumentService extends Service {
 		roomId,
 		entityId,
 		scope,
+		audience,
 		scopedToEntityId,
 		addedBy,
 		addedByRole,
@@ -1966,6 +2066,17 @@ export class DocumentService extends Service {
 					);
 				}
 
+				if (audience === "chat") {
+					await this.assertChatDocumentOrigin({
+						agentId,
+						roomId,
+						worldId,
+						entityId,
+						scope,
+						scopedToEntityId,
+						addedBy,
+					});
+				}
 				const completed = await this.runtime.adapter.compareAndSwapDocument({
 					...this.ingestionMutationContext(),
 					documentId: clientDocumentId,

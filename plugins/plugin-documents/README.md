@@ -73,6 +73,27 @@ changed authorization snapshot returns a conflict; reload and review the
 current audience before saving again. A successful PATCH does not return a
 new review revision, so read the current access state before another edit.
 
+## Sharing knowledge from a chat
+
+A text upload with `addedFrom: "chat"` and no explicit private scope shares with
+current participants of its `roomId`. Clients can request the same behavior
+with `audience: "chat"`. The authenticated author must be a current member of
+that chat with OWNER, ADMIN, or USER authority; guest access remains read-only.
+An explicit private scope preserves private storage instead of applying the
+chat default. Combining an explicit chat audience with a private scope is an
+invalid request.
+
+Chat sharing uses the existing room-scoped `global` storage policy. It does not
+publish to the internet, add direct readers, or pin the document. Membership
+changes affect subsequent reads. Existing role rules still govern edits;
+sharing a document does not grant participants permission to modify it.
+
+Repeated uploads of the same text and filename by the same author in the same
+chat reuse the document. Private copies and copies in other chats keep separate
+document identities. If its reader policy has changed, a repeated chat upload
+returns a conflict and requires reviewing the current policy. The service
+checks the author's membership again before completing ingestion.
+
 ## Configuration
 
 No additional environment variables are required beyond those needed by the document storage service (`@elizaos/agent`). The plugin uses `ELIZA_ADMIN_ENTITY_ID` (read from the agent runtime settings) to identify the owner actor for access control decisions.

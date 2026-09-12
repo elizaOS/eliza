@@ -70,6 +70,7 @@ export interface DocumentsServiceLike {
     originalFilename: string;
     content: string;
     metadata?: Record<string, unknown>;
+    audience?: "chat";
     scope?: DocumentVisibilityScope;
     scopedToEntityId?: UUID;
     addedBy?: UUID;

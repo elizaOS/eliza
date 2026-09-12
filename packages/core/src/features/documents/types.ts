@@ -160,6 +160,8 @@ export interface AddDocumentOptions {
 	contentType: string;
 	originalFilename: string;
 	content: string;
+	/** Chat uploads are visible only through the canonical room membership policy. */
+	audience?: "chat";
 	scope?: DocumentVisibilityScope;
 	scopedToEntityId?: UUID;
 	/** Read-only entity grants that remain valid independently of room membership. */

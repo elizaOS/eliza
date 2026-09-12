@@ -140,6 +140,7 @@ function parseKnowledgeFacet(
     : undefined;
 }
 type DocumentUploadBody = {
+  audience?: unknown;
   content: string;
   filename: string;
   contentType?: unknown;
@@ -1341,6 +1342,45 @@ export async function handleDocumentsRoutes(
     fragmentCount: number;
     warnings?: string[];
   }> {
+    const metadata = asRecord(document.metadata);
+    const requestedAddedFrom = document.addedFrom ?? metadata?.addedFrom;
+    if (document.audience !== undefined && document.audience !== "chat") {
+      throw new ElizaError("Unsupported document audience", {
+        code: "DOCUMENT_CHAT_SHARING_INVALID",
+      });
+    }
+    const chatAudience =
+      document.audience === "chat" ||
+      (requestedAddedFrom === "chat" &&
+        document.scope === undefined &&
+        metadata?.scope === undefined &&
+        document.scopedToEntityId === undefined &&
+        metadata?.scopedToEntityId === undefined);
+    if (chatAudience) {
+      if (
+        (document.scope !== undefined && document.scope !== "global") ||
+        (metadata?.scope !== undefined && metadata.scope !== "global") ||
+        document.scopedToEntityId !== undefined ||
+        metadata?.scopedToEntityId !== undefined
+      ) {
+        throw new ElizaError(
+          "Choose either chat sharing or an explicit private scope",
+          { code: "DOCUMENT_CHAT_SHARING_INVALID" },
+        );
+      }
+      if (
+        !runtime ||
+        !["OWNER", "ADMIN", "USER"].includes(actor.role) ||
+        !(await runtime.getParticipantsForRoom(location.roomId)).includes(
+          actor.entityId,
+        )
+      ) {
+        throw new ElizaError(
+          "Chat sharing requires a current authorized participant",
+          { code: "DOCUMENT_CHAT_SHARING_FORBIDDEN" },
+        );
+      }
+    }
     let content = document.content;
     // Capture the bytes exactly as uploaded before any content rewrite (e.g.
     // image → description text), so the linked original-bytes file is faithful.
@@ -1399,7 +1439,13 @@ export async function handleDocumentsRoutes(
       isTextBackedContentType(contentType) ||
       hasTextBackedFilename(document.filename);
 
-    const uploadFilters = filtersFromUploadBody(document, actor);
+    const uploadFilters = chatAudience
+      ? {
+          scope: "global" as const,
+          scopedToEntityId: undefined,
+          error: undefined,
+        }
+      : filtersFromUploadBody(document, actor);
     if (uploadFilters.error) {
       throw new Error(uploadFilters.error);
     }
@@ -1409,16 +1455,12 @@ export async function handleDocumentsRoutes(
       uploadFilters.scope === "user-private"
         ? (scopedToEntityId ?? actor.entityId)
         : actor.entityId;
-    const metadata = asRecord(document.metadata);
-    const requestedAddedFrom =
-      typeof document.addedFrom === "string" && document.addedFrom.trim()
-        ? document.addedFrom.trim()
-        : typeof metadata?.addedFrom === "string" && metadata.addedFrom.trim()
-          ? metadata.addedFrom.trim()
+    const addedFrom: DocumentAddedFrom =
+      requestedAddedFrom === "chat"
+        ? "chat"
+        : requestedAddedFrom === "import"
+          ? "import"
           : "upload";
-    const addedFrom = (
-      requestedAddedFrom === "import" ? "import" : "upload"
-    ) as DocumentAddedFrom;
     const source = addedFrom;
 
     // Persist the ORIGINAL uploaded bytes (content-addressed) and link them on
@@ -1458,6 +1500,7 @@ export async function handleDocumentsRoutes(
     }
 
     const result = await service.addDocument({
+      ...(chatAudience ? { audience: "chat" as const } : {}),
       agentId,
       worldId,
       roomId,
@@ -1543,6 +1586,22 @@ export async function handleDocumentsRoutes(
         location.value,
       );
     } catch (err) {
+      // error-policy:J1 Map canonical chat audience failures at the upload boundary.
+      if (
+        err instanceof ElizaError &&
+        err.code.startsWith("DOCUMENT_CHAT_SHARING_")
+      ) {
+        error(
+          res,
+          err.message,
+          err.code === "DOCUMENT_CHAT_SHARING_CHANGED"
+            ? 409
+            : err.code === "DOCUMENT_CHAT_SHARING_INVALID"
+              ? 400
+              : 403,
+        );
+        return true;
+      }
       const message = err instanceof Error ? err.message : String(err);
       error(
         res,
