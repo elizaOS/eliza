@@ -44,6 +44,29 @@ describe("ttsDebug", () => {
     );
   });
 
+  it("renders a shared (non-cyclic) diagnostic value in full at every site", () => {
+    const shared = { voice: "alloy" };
+    ttsDebug("play:start", { a: shared, b: shared, list: [shared, shared] });
+
+    expect(info).toHaveBeenCalledWith(
+      '[eliza][tts] play:start {"a":{"voice":"alloy"},"b":{"voice":"alloy"},"list":[{"voice":"alloy"},{"voice":"alloy"}]}',
+    );
+  });
+
+  it("bounds a diamond-shaped shared detail instead of expanding it exponentially", () => {
+    // 17 distinct objects, 2^16 paths: the line must stay bounded and keep
+    // its phase instead of growing past the serializer's limits.
+    let level: Record<string, unknown> = { leaf: true };
+    for (let i = 0; i < 16; i++) level = { l: level, r: level };
+    ttsDebug("play:start", { payload: level });
+
+    expect(info).toHaveBeenCalledTimes(1);
+    const line = info.mock.calls[0][0] as string;
+    expect(line.startsWith("[eliza][tts] play:start {")).toBe(true);
+    expect(line).toContain('"[Truncated]"');
+    expect(line.length).toBeLessThan(2_000_000);
+  });
+
   it("keeps the no-detail log form", () => {
     ttsDebug("play:end");
 

@@ -227,18 +227,46 @@ export function stringifyForModel(value: unknown): string {
 	return serialized;
 }
 
-/** Serialize diagnostic context without allowing hostile or cyclic values to mask the original event. */
+/**
+ * Object nodes one diagnostic serialization may emit before collapsing to
+ * "[Truncated]". Diagnostic payloads are small; the ceiling exists for shared
+ * graphs, which are otherwise re-expanded once per path.
+ */
+const MAX_DIAGNOSTIC_NODES = 50_000;
+
+/**
+ * Serialize diagnostic context without allowing hostile, cyclic, or
+ * exponentially shared values to mask the original event.
+ */
 export function stringifyForDiagnostics(value: unknown): string {
 	if (typeof value === "string") return value;
-	const seen = new WeakSet<object>();
+	// The replacer sees each value with its holder as `this`, so the open
+	// ancestor chain is the stack of holders above the current one. Popping
+	// back to the holder before the check makes only a reference to an open
+	// ancestor circular; an object reached twice through different paths
+	// (a DAG) serializes in full at every site.
+	const ancestors: object[] = [];
+	// A shared object is emitted once per path, which is exponential in the
+	// sharing depth; past the node ceiling every further value collapses to a
+	// marker so the diagnostic can neither exhaust the heap nor overflow the
+	// string limit and mask the event it describes.
+	let remainingNodes = MAX_DIAGNOSTIC_NODES;
 	try {
 		const serialized = JSON.stringify(
 			value,
-			(_key, nestedValue: unknown) => {
+			function replacer(this: unknown, _key, nestedValue: unknown) {
 				if (typeof nestedValue === "bigint") return `${nestedValue}n`;
 				if (nestedValue && typeof nestedValue === "object") {
-					if (seen.has(nestedValue)) return "[Circular]";
-					seen.add(nestedValue);
+					while (
+						ancestors.length > 0 &&
+						ancestors[ancestors.length - 1] !== this
+					) {
+						ancestors.pop();
+					}
+					if (ancestors.includes(nestedValue)) return "[Circular]";
+					if (remainingNodes <= 0) return "[Truncated]";
+					remainingNodes -= 1;
+					ancestors.push(nestedValue);
 				}
 				return nestedValue;
 			},
