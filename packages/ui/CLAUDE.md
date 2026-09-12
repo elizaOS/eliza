@@ -360,3 +360,5 @@ The fetch boundary applies standard RequestInit overrides and observes caller
 cancellation; cancellation cannot undo native side effects already dispatched.
 Native stream failures propagate without replay. Buffered compatibility is
 selected only before dispatch when streaming events are unavailable.
+
+The local developer tab relay reads synchronous, conversation-owned transcript snapshots and flushes final rows before settling the send. Relayed temporary and rekeyed rows use the canonical conversation overlay registry so history refresh preserves unsaved failures and honors later removals. Never infer ownership from the current React render or copy another conversation's rows during a switch.

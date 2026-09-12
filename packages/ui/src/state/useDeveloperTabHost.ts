@@ -23,14 +23,19 @@ export function useDeveloperTabHost(): void {
     status: s.agentStatus,
   }));
   const { chatSending } = useChatComposer();
-  const { conversationMessages, setConversationMessages } =
-    useConversationMessages();
-  const live = useRef({ state, chatSending, setConversationMessages });
-  live.current = { state, chatSending, setConversationMessages };
+  const {
+    conversationMessages,
+    getConversationMessagesSnapshot,
+    applyConversationMessageStream,
+  } = useConversationMessages();
+  const live = useRef({ state, chatSending });
+  live.current = { state, chatSending };
   const bridge = useRef<DeveloperTabBridge | null>(null);
   useEffect(() => {
     if (
       !import.meta.env.DEV ||
+      !getConversationMessagesSnapshot ||
+      !applyConversationMessageStream ||
       typeof BroadcastChannel === "undefined" ||
       !["127.0.0.1", "localhost", "[::1]"].includes(window.location.hostname)
     )
@@ -57,6 +62,7 @@ export function useDeveloperTabHost(): void {
               path: pathForTab(live.current.state.tab),
               conversationId: live.current.state.conversationId,
             }),
+            messageSnapshot: getConversationMessagesSnapshot,
             send: async (text, conversationId, requestId) => {
               if (
                 live.current.chatSending ||
@@ -71,20 +77,7 @@ export function useDeveloperTabHost(): void {
               });
             },
             stop: () => live.current.state.stop(),
-            messages: (conversationId, changed, removed) => {
-              if (live.current.state.conversationId !== conversationId) return;
-              live.current.setConversationMessages((previous) => {
-                const rows = new Map(
-                  previous
-                    .filter((row) => !removed.includes(row.id))
-                    .map((row) => [row.id, row]),
-                );
-                for (const row of changed) rows.set(row.id, row);
-                return [...rows.values()].sort(
-                  (a, b) => a.timestamp - b.timestamp,
-                );
-              });
-            },
+            messages: applyConversationMessageStream,
             settled: (conversationId) =>
               dispatchConversationResync({ conversationId }),
           },
@@ -102,9 +95,14 @@ export function useDeveloperTabHost(): void {
       bridge.current?.close();
       bridge.current = null;
     };
-  }, [authority]);
+  }, [
+    authority,
+    getConversationMessagesSnapshot,
+    applyConversationMessageStream,
+  ]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: rendered transcript changes trigger a fresh owner-checked snapshot, never relay a possibly stale render array.
   useEffect(() => {
-    bridge.current?.stream(conversationMessages);
+    bridge.current?.stream();
   }, [conversationMessages]);
 }
 

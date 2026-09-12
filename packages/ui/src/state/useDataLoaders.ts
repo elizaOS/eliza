@@ -1193,6 +1193,55 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     [conversationMessagesRef],
   );
 
+  const getConversationMessagesSnapshot = useCallback(
+    (conversationId: string): ConversationMessage[] | undefined => {
+      if (
+        activeConversationIdRef.current !== conversationId ||
+        visibleConversationMessagesOwnerRef.current !== conversationId ||
+        visibleConversationMessagesContentOwnerRef.current !== conversationId
+      )
+        return undefined;
+      return conversationMessagesRef.current;
+    },
+    [activeConversationIdRef, conversationMessagesRef],
+  );
+
+  const applyConversationMessageStream = useCallback(
+    (
+      conversationId: string,
+      changed: ConversationMessage[],
+      removed: string[],
+    ) => {
+      const previous = getConversationMessagesSnapshot(conversationId);
+      if (!previous) return;
+      const removedIds = new Set(removed);
+      const rows = new Map(
+        previous
+          .filter((row) => !removedIds.has(row.id))
+          .map((row) => [row.id, row]),
+      );
+      for (const row of changed) rows.set(row.id, row);
+      setConversationMessages(
+        [...rows.values()].sort((a, b) => a.timestamp - b.timestamp),
+      );
+      // Relayed optimistic and ephemeral rows need the same history-refresh
+      // protection as locally sent rows. Durable history is not an overlay.
+      registerConversationMessageOverlay(
+        conversationId,
+        changed.flatMap((row) => {
+          const lineage = localConversationMessageLineage(row);
+          return lineage ? [lineage] : [];
+        }),
+        changed,
+      );
+    },
+    [
+      getConversationMessagesSnapshot,
+      registerConversationMessageOverlay,
+      setConversationMessages,
+    ],
+  );
+
   const isConversationMessagesOwnershipCurrent = useCallback(
     (conversationId: string | null, generation: number): boolean =>
       visibleConversationMessagesOwnerRef.current === conversationId &&
@@ -2179,6 +2228,8 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     isConversationMessagesOwnershipCurrent,
     getConversationMessagesOwnershipGeneration,
     registerConversationMessageOverlay,
+    getConversationMessagesSnapshot,
+    applyConversationMessageStream,
     applyConversationMessageOverlayModification,
     removeConversationMessageStateMessages,
     discardConversationMessageState,

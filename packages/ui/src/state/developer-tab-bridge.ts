@@ -70,6 +70,7 @@ interface Host {
   id: string;
   developer: boolean;
   snapshot(): Omit<DeveloperAppPeer, "id">;
+  messageSnapshot(conversationId: string): ConversationMessage[] | undefined;
   send(text: string, conversationId: string, requestId: string): Promise<void>;
   stop(): void;
   messages(
@@ -187,8 +188,10 @@ export class DeveloperTabBridge {
       });
   }
   /** Diff actual renderer rows, including optimistic-to-durable ID replacement. */
-  stream(messages: ConversationMessage[]) {
+  stream() {
     if (!this.running) return;
+    const messages = this.host.messageSnapshot(this.running.conversationId);
+    if (!messages) return;
     const next = new Map(messages.map((message) => [message.id, message]));
     const changed = messages.filter(
       (message) => this.previousMessages.get(message.id) !== message,
@@ -303,10 +306,12 @@ export class DeveloperTabBridge {
       .send(text, conversationId, id)
       .then(
         () => {
+          this.stream();
           this.post({ kind: "done", target: source, id, error: "" });
         },
         (error: unknown) => {
           // error-policy:J4 relay the canonical sender failure; never retry a possibly effectful turn.
+          this.stream();
           this.post({
             kind: "done",
             target: source,

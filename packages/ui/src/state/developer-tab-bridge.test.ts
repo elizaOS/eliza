@@ -38,14 +38,18 @@ class TestChannel {
 function mount(id: string, developer: boolean, scope?: string) {
   const channel = new TestChannel(scope);
   let finish: () => void = () => {};
+  let fail: (error: Error) => void = () => {};
+  let messages: ConversationMessage[] | undefined;
   const host = {
     id,
     developer,
     snapshot: () => ({ path: "/notes", conversationId: "conv" }),
+    messageSnapshot: vi.fn(() => messages),
     send: vi.fn(
       (_text: string, _conversationId: string, _requestId: string) =>
-        new Promise<void>((resolve) => {
+        new Promise<void>((resolve, reject) => {
           finish = resolve;
+          fail = reject;
         }),
     ),
     stop: vi.fn(),
@@ -54,7 +58,20 @@ function mount(id: string, developer: boolean, scope?: string) {
   };
   const bridge = new DeveloperTabBridge(channel, host);
   bridges.push(bridge);
-  return { bridge, host, channel, finish: () => finish() };
+  return {
+    bridge,
+    host,
+    channel,
+    finish: () => finish(),
+    fail: (error: Error) => fail(error),
+    setMessages: (rows: ConversationMessage[] | undefined) => {
+      messages = rows;
+    },
+    stream: (rows: ConversationMessage[]) => {
+      messages = rows;
+      bridge.stream();
+    },
+  };
 }
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
@@ -106,11 +123,11 @@ describe("developer app-tab relay", () => {
       text: "hello",
       timestamp: 1,
     };
-    app.bridge.stream([user]);
-    app.bridge.stream([user]);
+    app.stream([user]);
+    app.stream([user]);
     expect(dev.host.messages).toHaveBeenCalledTimes(1);
     const durable = { ...user, id: "durable-user" };
-    app.bridge.stream([durable]);
+    app.stream([durable]);
     expect(dev.host.messages).toHaveBeenLastCalledWith(
       "conv",
       [durable],
@@ -130,6 +147,55 @@ describe("developer app-tab relay", () => {
     expect(other.host.stop).not.toHaveBeenCalled();
     app.finish();
     await promise;
+  });
+
+  it.each([false, true])(
+    "flushes a final ephemeral reply before settlement even without another render (sender rejects: %s)",
+    async (rejects) => {
+      const app = mount("app", false);
+      const dev = mount("dev", true);
+      const promise = dev.bridge.send("app", "hello", "conv");
+      const expected = rejects
+        ? expect(promise).rejects.toThrow("stream failed")
+        : promise;
+      const reply: ConversationMessage = {
+        id: "temp-final",
+        clientRenderId: "temp-final",
+        role: "assistant",
+        text: "The model context is too large; nothing was changed.",
+        timestamp: 2,
+      };
+      app.setMessages([reply]);
+      // The sender commits synchronously, then resolves before React's stream effect.
+      if (rejects) app.fail(new Error("stream failed"));
+      else app.finish();
+      await expected;
+      expect(app.host.messageSnapshot).toHaveBeenCalledWith("conv");
+      expect(dev.host.messages).toHaveBeenCalledExactlyOnceWith(
+        "conv",
+        [reply],
+        [],
+      );
+      expect(app.channel.sent.map((m) => m.kind).slice(-2)).toEqual([
+        "messages",
+        "done",
+      ]);
+      expect(dev.host.messages.mock.invocationCallOrder[0]).toBeLessThan(
+        dev.host.settled.mock.invocationCallOrder[0],
+      );
+    },
+  );
+
+  it("does not flush a transcript whose conversation ownership was released", async () => {
+    const app = mount("app", false);
+    const dev = mount("dev", true);
+    const promise = dev.bridge.send("app", "hello", "conv");
+    app.setMessages(undefined);
+    app.finish();
+    await promise;
+    expect(app.host.messageSnapshot).toHaveBeenCalledWith("conv");
+    expect(dev.host.messages).not.toHaveBeenCalled();
+    expect(dev.host.settled).toHaveBeenCalledExactlyOnceWith("conv");
   });
 
   it("rejects on target close with an uncertain-outcome warning instead of replaying", async () => {
