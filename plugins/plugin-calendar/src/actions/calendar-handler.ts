@@ -3378,6 +3378,30 @@ function resolveCreateEventDurationMinutes(args: {
  * never planner/assistant prose or time-of-day window phrases, which appear in
  * one-shot asks ("dentist tomorrow in the morning") and must not open the gate.
  */
+const TRAVEL_INTENT_PATTERN =
+  /\b(?:travel(?:ing|led)?|commut(?:e|ing)|driv(?:e|ing)|traffic|transit|leav(?:e|ing) from|depart(?:ing)? from|coming from|get(?:ting)? there|how long (?:to get|does it take)|buffer|on the way|from (?:home|work|the office|my (?:house|place|office)))\b/i;
+
+/**
+ * Whether the user's own words ask for travel time or name a departure place.
+ * A planner-supplied origin address is honored only when this holds or the
+ * text literally contains that origin.
+ */
+export function intentStatesTravel(
+  originAddress: string | undefined,
+  ...texts: ReadonlyArray<string | null | undefined>
+): boolean {
+  const joined = texts
+    .filter((text): text is string => typeof text === "string")
+    .join("\n")
+    .trim();
+  if (!joined) return false;
+  if (TRAVEL_INTENT_PATTERN.test(joined)) return true;
+  const origin = originAddress?.trim().toLowerCase();
+  return Boolean(
+    origin && origin.length >= 3 && joined.toLowerCase().includes(origin),
+  );
+}
+
 export function intentStatesRecurrence(
   ...texts: ReadonlyArray<string | null | undefined>
 ): boolean {
@@ -3396,7 +3420,8 @@ type CreateEventRequestBuildArgs = {
    * structured details, and assistant/system history must never authorize an
    * RRULE the current user did not request.
    */
-  recurrenceGuardTexts?: ReadonlyArray<string | null | undefined>;
+  /** The user's current authoritative text: model-authored recurrence and travel fields are honored only when it states them. */
+  authorizingUserTexts?: ReadonlyArray<string | null | undefined>;
 };
 
 type CreateEventRequestBuildResult = {
@@ -3518,11 +3543,23 @@ export function buildCreateEventRequest(
     explicitDuration !== undefined || extractedDuration !== undefined
       ? durationMinutes
       : fallbackDuration;
-  const travelIntent =
-    injectedDeps?.travelBuffer?.resolveTravelIntent({
-      details: args.details,
-      extractedDetails: args.extractedDetails,
-    }) ?? null;
+  // Travel buffers are model-authored too: the outer planner stamped
+  // `travelOriginAddress: "Eliza Calendar"` onto a plain "add an optometrist
+  // appointment friday at 3pm" (live 2026-09-12), and the buffer prep then
+  // failed the whole create for want of a destination. Honor an origin only
+  // when the user's own words ask for travel time or name the departure place.
+  const plannerTravelOrigin =
+    detailString(args.details, "travelOriginAddress") ??
+    detailString(args.extractedDetails, "travelOriginAddress");
+  const travelIntent = intentStatesTravel(
+    plannerTravelOrigin,
+    ...(args.authorizingUserTexts ?? []),
+  )
+    ? (injectedDeps?.travelBuffer?.resolveTravelIntent({
+        details: args.details,
+        extractedDetails: args.extractedDetails,
+      }) ?? null)
+    : null;
 
   const explicitRecurrence = detailRecurrenceLines(args.details);
   // The extraction model routinely infers weekly recurrence from
@@ -3536,7 +3573,7 @@ export function buildCreateEventRequest(
   // authoritative user text so planner disagreement cannot create recurrence.
   const extractedRecurrence = detailRecurrenceLines(args.extractedDetails);
   const recurrence = selectUserAuthorizedRecurrence(
-    args.recurrenceGuardTexts ?? [],
+    args.authorizingUserTexts ?? [],
     args.preferExtractedDetails
       ? [
           extractedRecurrence,
@@ -4953,7 +4990,7 @@ const calendarAction: CalendarHandlerAction = {
           extractedDetails,
           explicitTitle,
           inferredTitle,
-          recurrenceGuardTexts: [messageText(message)],
+          authorizingUserTexts: [messageText(message)],
           // The outer planner identifies CALENDAR and supplies hints; this
           // domain-specific extraction has the authoritative calendar context,
           // timezone, and local-date anchors needed to normalize wall time.
