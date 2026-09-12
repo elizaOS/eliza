@@ -267,6 +267,6 @@ can validate nested structured plans through the same tool schema rules, includi
 when called directly. Use the public barrel; wildcard deep implementation paths
 may have declarations without a corresponding bundled runtime entry.
 
-The shared visible-output boundary rejects raw non-printing control characters in final display text rather than deleting them from damaged prose. Tabs, line breaks, Unicode and escaped JSON data remain valid. Settled effects retain their receipts and existing reply-only recovery; malformed presentation never authorizes effect replay.
+The shared visible-output boundary rejects raw non-printing control characters in final display text rather than deleting them from damaged prose. Tabs, line breaks, Unicode and escaped JSON data remain valid. Settled effects retain their receipts and existing reply-only recovery; malformed presentation never authorizes effect replay. Within the non-coding planner, a successful internal result with modelReplyRequired uses the same no-tools reply guarantee when its evaluator returns FINISH without a message. Missing presentation alone must not restart action planning; pending-work and failure checks still apply.
 
 Provider adapters may render unsupported source-ID pattern constraints as description guidance on the wire. Inspect the actual request before claiming native enforcement; valid ID shape is not proof of correct relevance selection or request coverage.

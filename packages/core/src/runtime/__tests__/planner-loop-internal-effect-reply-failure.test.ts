@@ -9,6 +9,7 @@ import { subPlannerResultToPlannerToolResult } from "../../services/message";
 import type { Action, IAgentRuntime } from "../../types";
 import { ModelType } from "../../types/model";
 import { settleActionHandler } from "../action-handler-settlement";
+import { runEvaluator } from "../evaluator";
 import {
 	actionResultToPlannerToolResult,
 	runPlannerLoop,
@@ -31,56 +32,120 @@ const receipt = {
 };
 
 describe("internal applied effect followed by evaluator reply failure", () => {
-	it("recovers a damaged evaluator reply without repeating the committed effect", async () => {
-		const events = new Set(["event-1", "untouched-event"]);
-		const damaged = "The event\u001c\u001d is deleted.";
-		const clean =
-			"The selected event was deleted. The other event is unchanged.";
-		const useModel = vi
-			.fn<PlannerRuntime["useModel"]>()
-			.mockResolvedValueOnce({
-				text: "",
-				toolCalls: [
-					{
-						id: "delete-1",
-						name: "DELETE",
-						arguments: { eliza_turn_scope: "final" },
-					},
-				],
-			})
-			.mockResolvedValueOnce(
-				JSON.stringify({
-					thought: "The deletion receipt confirms completion.",
-					success: true,
-					decision: "FINISH",
-					messageToUser: damaged,
-				}),
-			)
-			.mockResolvedValueOnce(JSON.stringify({ messageToUser: clean }));
-		const executeToolCall = vi.fn(async () => {
-			expect(events.delete("event-1")).toBe(true);
-			return actionResultToPlannerToolResult({
-				success: true,
-				transcriptVisibility: "internal",
-				effectReceipts: [receipt],
-				data: { deleted: true, remaining: [...events] },
+	it.each([true, undefined])(
+		"retains missing-reply continuation outside the non-coding planner (codingMode=%s)",
+		async (codingMode) => {
+			const result = await runEvaluator({
+				runtime: {
+					useModel: async () =>
+						JSON.stringify({
+							thought: "The deletion receipt confirms completion.",
+							success: true,
+							decision: "FINISH",
+						}),
+				},
+				context: { id: "legacy-or-coding-evaluator", events: [] },
+				trajectory: {
+					context: { id: "legacy-or-coding-evaluator", events: [] },
+					codingMode,
+					steps: [
+						{
+							toolCall: { id: "delete-1", name: "DELETE", params: {} },
+							result: actionResultToPlannerToolResult({
+								success: true,
+								transcriptVisibility: "internal",
+								modelReplyRequired: true,
+								effectReceipts: [receipt],
+								data: { deleted: true },
+							}),
+						},
+					],
+					archivedSteps: [],
+					plannedQueue: [],
+					evaluatorOutputs: [],
+				},
 			});
-		});
-		const result = await runPlannerLoop({
-			runtime: { useModel },
-			context: { id: "damaged-evaluator-reply" },
-			tools: [{ name: "DELETE", description: "Delete the selected event" }],
-			executeToolCall,
-		});
-		expect(result.finalMessage).toBe(clean);
-		expect(executeToolCall).toHaveBeenCalledOnce();
-		expect(useModel).toHaveBeenCalledTimes(3);
-		expect(useModel.mock.calls[2][1]).not.toHaveProperty("tools");
-		expect(result.trajectory.steps[0].result?.effectReceipts).toEqual([
-			receipt,
-		]);
-		expect([...events]).toEqual(["untouched-event"]);
-	});
+			expect(result.decision).toBe("CONTINUE");
+			expect(result.success).toBe(false);
+			expect(result.messageToUser).toBeUndefined();
+		},
+	);
+	it.each(["damaged", "omitted"])(
+		"recovers an evaluator reply that is %s without replanning or repeating the committed effect",
+		async (variant) => {
+			const events = new Set(["event-1", "untouched-event"]);
+			const damaged = "The event\u001c\u001d is deleted.";
+			const clean =
+				"The selected event was deleted. The other event is unchanged.";
+			const useModel = vi
+				.fn<PlannerRuntime["useModel"]>()
+				.mockResolvedValue(
+					JSON.stringify({
+						thought: "The recorded deletion is complete.",
+						success: true,
+						decision: "FINISH",
+						messageToUser: clean,
+					}),
+				)
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "delete-1",
+							name: "DELETE",
+							arguments: { eliza_turn_scope: "final" },
+						},
+					],
+				})
+				.mockResolvedValueOnce(
+					JSON.stringify({
+						thought: "The deletion receipt confirms completion.",
+						success: true,
+						decision: "FINISH",
+						...(variant === "damaged" ? { messageToUser: damaged } : {}),
+					}),
+				)
+				.mockResolvedValueOnce(JSON.stringify({ messageToUser: clean }));
+			const executeToolCall = vi.fn(async () => {
+				expect(events.delete("event-1")).toBe(true);
+				return actionResultToPlannerToolResult({
+					success: true,
+					transcriptVisibility: "internal",
+					...(variant === "omitted" ? { modelReplyRequired: true } : {}),
+					effectReceipts: [receipt],
+					data: { deleted: true, remaining: [...events] },
+				});
+			});
+			const result = await runPlannerLoop({
+				runtime: { useModel },
+				context: {
+					id: "damaged-evaluator-reply",
+					events:
+						variant === "omitted"
+							? [
+									{
+										id: "handler",
+										type: "message_handler",
+										metadata: {
+											plan: { intents: ["delete the selected event"] },
+										},
+									},
+								]
+							: [],
+				},
+				tools: [{ name: "DELETE", description: "Delete the selected event" }],
+				executeToolCall,
+			});
+			expect(result.finalMessage).toBe(clean);
+			expect(executeToolCall).toHaveBeenCalledOnce();
+			expect(useModel).toHaveBeenCalledTimes(3);
+			expect(useModel.mock.calls[2][1]).not.toHaveProperty("tools");
+			expect(result.trajectory.steps[0].result?.effectReceipts).toEqual([
+				receipt,
+			]);
+			expect([...events]).toEqual(["untouched-event"]);
+		},
+	);
 	it("preserves an earlier mutation when a later read precedes reply failure", async () => {
 		const events = new Set(["event-1", "untouched-event"]);
 		const useModel = vi

@@ -1319,6 +1319,15 @@ function repairFinishedToolTurnWithoutUserMessage(
 	const latestResult = latestStep?.result;
 	if (latestResult?.success !== true) return output;
 	if (latestResult.userFacingText?.trim()) return output;
+	// Internal results explicitly delegate presentation to the planner's
+	// no-tools reply guarantee. Replanning here adds another evaluation and
+	// exposes already-settled work to ordinary action selection again.
+	if (
+		trajectory.codingMode === false &&
+		latestResult.transcriptVisibility === "internal" &&
+		latestResult.modelReplyRequired === true
+	)
+		return output;
 	return {
 		...output,
 		success: false,
