@@ -359,8 +359,9 @@ describe("downloadAttachment — <a download> fallback path", () => {
   it("does not start an anchor download when the user cancels the picker", async () => {
     // Use a string body so the Node-global `Response` constructs its own
     // spec-compliant Blob. A jsdom cross-realm `new Blob([...])` lacks the
-    // `.stream()` undici `Response.blob()` requires, which would make the
-    // prefetch throw before the picker ever opens and silently reroute this
+    // `.stream()` undici's `Response` requires to read a `Blob` body, so
+    // `new Response(new Blob([...]))` throws (`object.stream is not a
+    // function`) before the picker ever opens and silently reroutes this
     // scenario through the anchor path — masking the picker-cancel contract.
     const fetchMock = vi.fn(async () => new Response("hello"));
     vi.stubGlobal("fetch", fetchMock);
