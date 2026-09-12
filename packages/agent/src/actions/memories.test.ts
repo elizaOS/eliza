@@ -1662,9 +1662,13 @@ describe("MEMORY op:search complete traversal", () => {
     expect(result.text).not.toContain("private.example");
   });
 
-  it("distinguishes assistant restatements from original speaker messages", async () => {
+  it("distinguishes requester originals, assistant restatements and other speakers", async () => {
     const { runtime, rows } = makeRuntime();
-    for (const [index, entityId] of [USER_ID, AGENT_ID].entries()) {
+    for (const [index, entityId] of [
+      USER_ID,
+      AGENT_ID,
+      OTHER_USER_ID,
+    ].entries()) {
       rows.push({
         tableName: "messages",
         memory: {
@@ -1683,9 +1687,7 @@ describe("MEMORY op:search complete traversal", () => {
       query: "burgundy",
     });
     expect(result.text).toContain(`[author=assistant; entityId=${AGENT_ID}]`);
-    expect(result.text).toContain(
-      `[author=other speaker; entityId=${USER_ID}]`,
-    );
+    expect(result.text).toContain(`[author=requester; entityId=${USER_ID}]`);
     const original = await runAction(runtime, makeMessage(), {
       action: "search",
       type: "messages",
@@ -1693,10 +1695,11 @@ describe("MEMORY op:search complete traversal", () => {
       entityId: USER_ID,
     });
     expect(original.text).not.toContain("[author=assistant;");
-    expect(original.text).toContain(
-      `[author=other speaker; entityId=${USER_ID}]`,
+    expect(original.text).toContain(`[author=requester; entityId=${USER_ID}]`);
+    expect(result.text).toContain(
+      `[author=other speaker; entityId=${OTHER_USER_ID}]`,
     );
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(3);
   });
 
   it("resolves requester and assistant authors from the current turn without widening scope", async () => {
@@ -1726,6 +1729,7 @@ describe("MEMORY op:search complete traversal", () => {
       });
       expect(result.success).toBe(true);
       expect(result.text).toContain(`entityId=${entityId}`);
+      expect(result.text).toContain(`[author=${author}; entityId=${entityId}]`);
       for (const other of [USER_ID, AGENT_ID, thirdParty].filter(
         (id) => id !== entityId,
       )) {
@@ -1740,6 +1744,7 @@ describe("MEMORY op:search complete traversal", () => {
     });
     expect(third.success).toBe(true);
     expect(third.text).toContain(`entityId=${thirdParty}`);
+    expect(third.text).toContain(`[author=requester; entityId=${thirdParty}]`);
     expect(third.text).not.toContain(`entityId=${USER_ID}`);
     expect(rows).toHaveLength(3);
   });
@@ -2360,7 +2365,7 @@ describe("MEMORY op:search rendered text", () => {
           new Date(record.createdAt).toISOString(),
         );
         expect(record.authorRole).toBe(
-          record.entityId === AGENT_ID ? "assistant" : "other speaker",
+          record.entityId === AGENT_ID ? "assistant" : "requester",
         );
         expect(record.roomId).toBe(ROOM_ID);
         expect(record.agentId).toBe(AGENT_ID);

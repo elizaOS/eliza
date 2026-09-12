@@ -1012,14 +1012,19 @@ async function doSearch(
   // Keeping strings structured also lets the model boundary redact credentials
   // before JSON escaping, without changing any stored source.
   const plannerOwnsReply = getActionReplyOwner(message.id) === "planner";
+  const authorRole = (entityId: string | null): string => {
+    if (entityId === runtime.agentId) return "assistant";
+    return entityId !== null && entityId === message.entityId
+      ? "requester"
+      : "other speaker";
+  };
   const records = plannerOwnsReply
     ? items.map((m) => ({
         ...m,
         createdAtIso: new Date(m.createdAt).toISOString(),
         ...(m.type === "messages"
           ? {
-              authorRole:
-                m.entityId === runtime.agentId ? "assistant" : "other speaker",
+              authorRole: authorRole(m.entityId),
             }
           : {}),
       }))
@@ -1030,7 +1035,7 @@ async function doSearch(
       ]
     : items.map(
         (m) =>
-          `- [${m.type}${m.evidenceStatus === "inactive" ? "; INACTIVE source evidence: historical record, not a current fact" : ""}] ${m.id} at ${new Date(m.createdAt).toISOString()}${m.type === "messages" ? ` [author=${m.entityId === runtime.agentId ? "assistant" : "other speaker"}; entityId=${m.entityId}]` : ""}: ${toWellFormedUnicode(m.text)}`,
+          `- [${m.type}${m.evidenceStatus === "inactive" ? "; INACTIVE source evidence: historical record, not a current fact" : ""}] ${m.id} at ${new Date(m.createdAt).toISOString()}${m.type === "messages" ? ` [author=${authorRole(m.entityId)}; entityId=${m.entityId}]` : ""}: ${toWellFormedUnicode(m.text)}`,
       );
   const renderNote =
     limit === undefined
