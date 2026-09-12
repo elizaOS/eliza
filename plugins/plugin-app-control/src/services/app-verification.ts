@@ -354,6 +354,9 @@ async function runTests(
 	filter: string | undefined,
 ): Promise<CheckResult> {
 	const start = nowMs();
+	if (filter && /[\0\r\n"&|<>()^%!]/u.test(filter)) {
+		throw new Error("Test filter contains shell metacharacters");
+	}
 	const { file, args } = packageScriptCommand(pm, "test");
 	const fullArgs = filter ? [...args, "--", filter] : args;
 	const opts: ExecFileOptions = {

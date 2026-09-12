@@ -8,25 +8,22 @@ import { AppVerificationService } from "../app-verification.js";
 const describeWindows = process.platform === "win32" ? describe : describe.skip;
 
 const noopRuntime = { getSetting: () => undefined } as unknown as IAgentRuntime;
+const stateDir = mkdtempSync(path.join(tmpdir(), "app-verify-state-"));
+const previousStateDir = process.env.ELIZA_STATE_DIR;
+process.env.ELIZA_STATE_DIR = stateDir;
+const service = new AppVerificationService(noopRuntime);
+
+afterAll(async () => {
+	await service.cleanup();
+	rmSync(stateDir, { recursive: true, force: true });
+	if (previousStateDir === undefined) {
+		delete process.env.ELIZA_STATE_DIR;
+	} else {
+		process.env.ELIZA_STATE_DIR = previousStateDir;
+	}
+});
 
 describeWindows("AppVerificationService Windows package-manager shims", () => {
-	const stateDir = mkdtempSync(
-		path.join(tmpdir(), "app-verify-windows-state-"),
-	);
-	const previousStateDir = process.env.ELIZA_STATE_DIR;
-	process.env.ELIZA_STATE_DIR = stateDir;
-	const service = new AppVerificationService(noopRuntime);
-
-	afterAll(async () => {
-		await service.cleanup();
-		rmSync(stateDir, { recursive: true, force: true });
-		if (previousStateDir === undefined) {
-			delete process.env.ELIZA_STATE_DIR;
-		} else {
-			process.env.ELIZA_STATE_DIR = previousStateDir;
-		}
-	});
-
 	it("runs the real npm test check through the Windows shim", async () => {
 		const workdir = mkdtempSync(
 			path.join(tmpdir(), "app-verify-windows-test-"),
@@ -61,6 +58,36 @@ describeWindows("AppVerificationService Windows package-manager shims", () => {
 			expect(result.checks).toEqual([
 				expect.objectContaining({ kind: "test", passed: true }),
 			]);
+		} finally {
+			rmSync(workdir, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("AppVerificationService test filter validation", () => {
+	it("rejects shell metacharacters before launching the test command", async () => {
+		const workdir = mkdtempSync(path.join(tmpdir(), "app-verify-filter-test-"));
+		writeFileSync(
+			path.join(workdir, "package.json"),
+			JSON.stringify({
+				name: "filter-validation-fixture",
+				version: "0.0.0",
+				private: true,
+			}),
+			"utf8",
+		);
+
+		try {
+			await expect(
+				service.verifyProject({
+					workdir,
+					checks: [{ kind: "test", filter: "unit & echo injected" }],
+					projectKind: "plugin",
+					requireStructuredProof: false,
+					runId: "test-filter-validation",
+					packageManager: "npm",
+				}),
+			).rejects.toThrow("Test filter contains shell metacharacters");
 		} finally {
 			rmSync(workdir, { recursive: true, force: true });
 		}
