@@ -299,13 +299,16 @@ describe("v5 planner loop skeleton", () => {
 			"attachments/memory/snippets do not replace explicit current run/check/fetch/inspect/build/deploy/verify/look up now",
 		);
 		expect(plannerTemplate).toContain(
-			"MUST call the matching exposed life-management/scheduling tool before any terminal answer",
+			"require the matching exposed tool before reporting completion",
 		);
 		expect(plannerTemplate).toContain(
-			"Never declare the capability missing because a specific name above is absent",
+			"Match its name, routing hint and description, not a fixed required name",
 		);
 		expect(plannerTemplate).toContain(
-			"A tool-owned conflict, clarification, preview, confirmation request, or fail-closed no-op is still a tool result",
+			"an operation that always commits is not a preview operation",
+		);
+		expect(plannerTemplate).toContain(
+			"outstanding separate confirmation forbids the effect even when a matching tool exists",
 		);
 		expect(plannerTemplate).toContain(
 			"messageToUser alone cannot save, schedule, send, update, remember, or complete anything",

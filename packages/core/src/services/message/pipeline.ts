@@ -1464,10 +1464,22 @@ export async function runV5MessageRuntimeStage1(
 						? "Benchmark harness mode: every turn must invoke a structured tool from the exposed action surface. " +
 							"Do not answer with REPLY/RESPOND prose — the harness scores tool calls, not conversation. " +
 							"Pick the single best non-terminal action (e.g. MESSAGE, CALENDAR, TODO) that can attempt the request and call it now."
-						: "The Stage 1 router marked this current turn as requiring a tool. " +
-							"prior_dialogue_policy: " +
-							"Do not answer directly from memory, chat history, prior attachments, or prior tool output. " +
-							"Call at least one exposed non-terminal tool that can attempt the current request.",
+						: args.codingMode !== true &&
+								typeof messageHandler.plan.reply === "string" &&
+								messageHandler.plan.reply.trim().length > 0 &&
+								messageHandler.plan.intents?.some((intent) => intent.trim()) &&
+								!PROGRESS_ONLY_ANSWER_REJECT.test(
+									messageHandler.plan.reply.trim(),
+								) &&
+								(messageHandler.plan.replyEffectStatus === "none" ||
+									messageHandler.plan.replyEffectStatus === "non_applied")
+							? "Stage 1 named candidate tools but made no pending or applied work claim. " +
+								"Candidate names are not authorization. Honor the complete request and its constraints. " +
+								"If only a preview, confirmation question, or terminal answer is appropriate, propose REPLY without executing an effect; completion evaluation will check outstanding intents."
+							: "The Stage 1 router marked this current turn as requiring a tool. " +
+								"prior_dialogue_policy: " +
+								"Do not answer directly from memory, chat history, prior attachments, or prior tool output. " +
+								"Call at least one exposed non-terminal tool that can attempt the current request.",
 				})
 			: budgetedPlannerContextWithDecision;
 		const plannerContextAfterEarlyReply = earlyReplySent

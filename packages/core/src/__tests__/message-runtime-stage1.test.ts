@@ -4614,6 +4614,109 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
+	it.each(["none", "non_applied"] as const)(
+		"delivers a note preview without executing its future candidate action (%s)",
+		async (replyEffectStatus) => {
+			// Captured from the complete-history framing probe: the model retained
+			// the accepted standing rule and asked for confirmation before saving.
+			const answer =
+				"Per our standing rule, here's the proposed note before saving:\n\nTitle: Safety fixture 20260912\nBody: Only a preview until approved.\n\nSay the word and I'll save it.";
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["notes"],
+					intents: ["preview proposed Safety fixture note for approval"],
+					candidateActionNames: ["NOTES_CREATE"],
+					replyText: answer,
+					extra: { replyEffectStatus },
+				}),
+				...(replyEffectStatus === "none"
+					? [
+							{
+								text: "",
+								toolCalls: [
+									{
+										id: "preview-finish",
+										name: "REPLY",
+										arguments: { eliza_turn_scope: "final" },
+									},
+								],
+							},
+							JSON.stringify({
+								thought:
+									"The current request requires a preview and separate confirmation, not a saved note.",
+								success: true,
+								decision: "FINISH",
+								messageToUser: answer,
+							}),
+						]
+					: []),
+			]);
+			const handler = vi.fn(async () => ({
+				success: true,
+				text: "must not create before confirmation",
+			}));
+			runtime.actions = [
+				{
+					name: "NOTES_CREATE",
+					description: "Create a saved note.",
+					validate: async () => true,
+					handler,
+				},
+			];
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: 'Create one note titled "Safety fixture 20260912" with the exact body "Only a preview until approved."',
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(result.kind).toBe(
+				replyEffectStatus === "none" ? "planned_reply" : "direct_reply",
+			);
+			expect(useModelCalls(runtime)).toHaveLength(
+				replyEffectStatus === "none" ? 3 : 1,
+			);
+			expect(result.messageHandler.plan.replyEffectStatus).toBe(
+				replyEffectStatus,
+			);
+			expect(handler).not.toHaveBeenCalled();
+			if (result.kind === "direct_reply" || result.kind === "planned_reply")
+				expect(result.result.responseContent?.text).toBe(answer);
+		},
+	);
+
+	it.each([
+		{ status: "non_applied", reply: "", requiresTool: false },
+		{
+			status: "non_applied",
+			reply: "Checking another item.",
+			requiresTool: true,
+		},
+		{ status: "pending", reply: "Opening Notes next.", requiresTool: false },
+		{ status: "applied", reply: "I saved your note.", requiresTool: false },
+		{ status: "none", reply: "Let me check that.", requiresTool: false },
+	])(
+		"retains normal planning for nonterminal or conflicting status: $status / $requiresTool / $reply",
+		({ status, reply, requiresTool }) => {
+			const envelope = stage1Response({
+				contexts: ["notes"],
+				intents: ["requested note work"],
+				candidateActionNames: ["NOTES_CREATE"],
+				replyText: reply,
+				extra: { replyEffectStatus: status, requiresTool },
+			});
+			const result = messageHandlerFromFieldResult(
+				envelope.toolCalls[0].arguments,
+				undefined,
+				{ actions: [{ name: "NOTES_CREATE" }] },
+			);
+			expect(result.plan.simple).toBe(false);
+			expect(result.plan.requiresTool).toBe(true);
+			expect(result.plan.candidateActions).toContain("NOTES_CREATE");
+		},
+	);
+
 	it("delivers an unsubmitted form directly without inferred view tools", async () => {
 		const answer =
 			'[FORM]\n{"title":"Project","fields":[{"name":"project_name","type":"text","label":"Project name","required":true},{"name":"due_date","type":"date","label":"Due date","required":true}]}\n[/FORM]';

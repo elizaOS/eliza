@@ -630,13 +630,24 @@ export function messageHandlerFromFieldResult(
 			candidateActions: runnableCandidateActions,
 			contexts: routedContexts,
 		});
+	// The field contract defines non_applied as a terminal outcome with no
+	// remaining work, including a preview awaiting confirmation. Candidate
+	// names describe possible capabilities; they must not reopen that outcome.
+	// Explicit requiresTool and missing prose still need normal planning.
+	const terminalNonAppliedReply =
+		replyEffectStatus === "non_applied" &&
+		!modelRequiresTool &&
+		replyTextRaw.trim().length > 0;
 	const shouldPlan =
 		!preemptDirect &&
 		requestedPlanning &&
+		!terminalNonAppliedReply &&
 		!preferCompleteDirectReply &&
 		!preferInlineCodeSnippetDirectReply;
 	const finalContexts =
-		preferCompleteDirectReply || preferInlineCodeSnippetDirectReply
+		terminalNonAppliedReply ||
+		preferCompleteDirectReply ||
+		preferInlineCodeSnippetDirectReply
 			? [SIMPLE_CONTEXT_ID]
 			: shouldPlan && initialPlanningContexts.length === 0
 				? Array.from(
@@ -665,6 +676,7 @@ export function messageHandlerFromFieldResult(
 		requiresTool: shouldPlan,
 	};
 	if (
+		!terminalNonAppliedReply &&
 		!preferCompleteDirectReply &&
 		!preferInlineCodeSnippetDirectReply &&
 		effectiveCandidateActions.length > 0

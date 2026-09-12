@@ -65,6 +65,11 @@ function harness(args: {
 	results?: PlannerToolResult[];
 	intents?: string[];
 	userMessage?: string;
+	stageOnePlan?: {
+		reply: string;
+		replyEffectStatus: "none" | "non_applied" | "pending" | "applied";
+		candidateActions?: string[];
+	};
 }) {
 	let plannerIndex = 0;
 	let evaluatorIndex = 0;
@@ -116,9 +121,11 @@ function harness(args: {
 					{
 						id: "handler",
 						type: "message_handler",
+						...(args.stageOnePlan ? { source: "message-service" } : {}),
 						metadata: {
 							plan: {
 								intents: args.intents ?? ["read record", "open destination"],
+								...args.stageOnePlan,
 							},
 						},
 					},
@@ -132,6 +139,103 @@ function harness(args: {
 }
 
 describe("planner-declared pending work", () => {
+	it.each(["none", "non_applied"] as const)(
+		"evaluates a proposed preview before forcing an action (%s)",
+		async (replyEffectStatus) => {
+			const preview =
+				"Title: Preview QA\nBody: Wait for confirmation before saving.";
+			const h = harness({
+				userMessage:
+					"Preview this note; wait for my separate confirmation before saving.",
+				intents: ["preview note for approval"],
+				stageOnePlan: {
+					reply: preview,
+					replyEffectStatus,
+					candidateActions: ["NOTES_CREATE"],
+				},
+				plans: [{ text: "", toolCalls: [call("REPLY", "final")] }],
+				evaluations: [finish(preview)],
+			});
+			const result = await h.run({
+				tools: [{ name: "NOTES_CREATE" }, { name: "REPLY" }],
+				requireNonTerminalToolCall: true,
+				stageOneReplyText: preview,
+			});
+			expect(result.status).toBe("finished");
+			expect(result.finalMessage).toBe(preview);
+			expect(h.executed).toEqual([]);
+			expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
+				ModelType.ACTION_PLANNER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+			expect(result.trajectory.evaluatorOutputs).toHaveLength(1);
+		},
+	);
+
+	it("continues required work when evaluation rejects a pre-tool answer", async () => {
+		const h = harness({
+			userMessage: "Read the current note before answering; do not change it.",
+			intents: ["read current note"],
+			stageOnePlan: {
+				reply: "I can answer about the note.",
+				replyEffectStatus: "none",
+				candidateActions: ["READ"],
+			},
+			plans: [
+				{ text: "", toolCalls: [call("REPLY", "final")] },
+				{ text: "", toolCalls: [call("READ", "final")] },
+			],
+			evaluations: [
+				continueWork("The user needs a current read; no read has run yet."),
+				finish("The current note says to bring the purple folder."),
+			],
+		});
+		const result = await h.run({
+			tools: [{ name: "READ" }, { name: "REPLY" }],
+			requireNonTerminalToolCall: true,
+		});
+		expect(result.status).toBe("finished");
+		expect(h.executed).toEqual(["READ"]);
+		expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+		expect(result.trajectory.evaluatorOutputs.map((e) => e.decision)).toEqual([
+			"CONTINUE",
+			"FINISH",
+		]);
+	});
+
+	it.each(["pending", "applied", "none"] as const)(
+		"keeps the required-tool gate for work claims or absent answers (%s)",
+		async (replyEffectStatus) => {
+			const h = harness({
+				stageOnePlan: {
+					reply: replyEffectStatus === "none" ? "" : "Requested work.",
+					replyEffectStatus,
+					candidateActions: ["READ"],
+				},
+				plans: [
+					{ text: "", toolCalls: [call("REPLY", "final")] },
+					{ text: "", toolCalls: [call("READ", "final")] },
+				],
+				evaluations: [finish("Read completed.")],
+			});
+			await h.run({
+				tools: [{ name: "READ" }, { name: "REPLY" }],
+				requireNonTerminalToolCall: true,
+			});
+			expect(h.executed).toEqual(["READ"]);
+			expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
+				ModelType.ACTION_PLANNER,
+				ModelType.ACTION_PLANNER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+		},
+	);
+
 	it.each([
 		["read failure", { success: false, error: "Read denied" }],
 		["requested evaluation", { turnComplete: false }],

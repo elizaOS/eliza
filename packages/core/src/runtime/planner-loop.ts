@@ -549,6 +549,19 @@ async function runPlannerLoopIterations(
 	const stageOneAnswerText = requireNonTerminalToolCall
 		? userSafeCapturedAnswerCandidate(params.stageOneReplyText)
 		: undefined;
+	// A candidate tool is not permission to act. If Stage 1 supplied an answer
+	// without a work claim and the planner proposes to finish, judge that
+	// proposal against the complete request before demanding a tool. This lets
+	// previews and confirmation questions reach normal intent evaluation; its
+	// CONTINUE verdict still preserves work that actually remains outstanding.
+	const canEvaluateUnexecutedReply =
+		!codingMode &&
+		requiresIntentEvaluation &&
+		isPlainObject(stageOnePlan) &&
+		(stageOnePlan.replyEffectStatus === "none" ||
+			stageOnePlan.replyEffectStatus === "non_applied") &&
+		typeof stageOnePlan.reply === "string" &&
+		userSafeCapturedAnswerCandidate(stageOnePlan.reply) !== undefined;
 	// Per-turn required-tool miss budget (see
 	// PlannerLoopParams.requiredToolMissBudgetOverride). Honored ONLY when a
 	// shape-guarded Stage-1 answer is available to finish with: the reduced
@@ -1198,7 +1211,8 @@ async function runPlannerLoopIterations(
 			if (
 				!codingDrainQueue &&
 				requiresIntentEvaluation &&
-				hasExecutedNonTerminalTool(trajectory) &&
+				(hasExecutedNonTerminalTool(trajectory) ||
+					canEvaluateUnexecutedReply) &&
 				plannerOutput.toolCalls.every(isTerminalToolCall) &&
 				plannerOutput.toolCalls.some(
 					(call) => call.name.toUpperCase() === "REPLY",
@@ -1221,6 +1235,7 @@ async function runPlannerLoopIterations(
 			if (plannerOutput.toolCalls.length === 0) {
 				if (
 					requireNonTerminalToolCall &&
+					!canEvaluateUnexecutedReply &&
 					!hasExecutedNonTerminalTool(trajectory)
 				) {
 					// Prefer the planner's EXPLICIT messageToUser refusal. When the
@@ -1328,7 +1343,10 @@ async function runPlannerLoopIterations(
 					iteration,
 					message: plannerOutput.messageToUser,
 				});
-				if (trajectory.steps.some((step) => step.toolCall)) {
+				if (
+					trajectory.steps.some((step) => step.toolCall) ||
+					canEvaluateUnexecutedReply
+				) {
 					// Coding mode: the model emitted a final text summary AFTER
 					// executing build tools — it's signalling completion. Finish with
 					// that message instead of running the chat completion-evaluator,

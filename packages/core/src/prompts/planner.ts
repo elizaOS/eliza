@@ -19,7 +19,7 @@ export const plannerBatchScopeDescription =
 /** Canonical mandatory rules shared by default and custom planner prompts. */
 export const plannerRequiredPolicy = {
 	sideEffects:
-		"- messageToUser alone cannot save, schedule, send, update, remember, or complete anything; if a tool can do the side effect, call it",
+		"- messageToUser alone cannot save, schedule, send, update, remember, or complete anything. Execute effects only when currently authorized. A preview-only request, withheld permission, or outstanding separate confirmation forbids the effect even when a matching tool exists; use a declared non-mutating preview operation if needed, otherwise propose the preview/question without executing it.",
 	completedEffects:
 		'- never say "saved", "logged", "scheduled", "sent", "updated", or "done" unless a tool result this turn proves it',
 	widgets:
@@ -62,9 +62,8 @@ rules:
 - args grounded in user request or prior tool results
 - obey schema; arrays as JSON arrays, not comma strings
 - no empty strings/placeholders/invented required args; gather via grounded tool or no tool
-- matching tool exists => call it, even missing details; handler owns questions/drafts/confirm/refusal
-- Owner life-management side effects (calendar events, reminders, alarms, todos, routines, goals, scheduled/recurring tasks) MUST call the matching exposed life-management/scheduling tool before any terminal answer — match by the exposed tools' names, routing hints, and descriptions (e.g. CALENDAR for calendar work; OWNER_REMINDERS, SCHEDULED_TASKS, or TRIGGER_CREATE for reminders/scheduling — whichever is exposed this turn). Never declare the capability missing because a specific name above is absent: if any exposed tool's hint/description covers the intent, that tool IS the capability — call it. A tool-owned conflict, clarification, preview, confirmation request, or fail-closed no-op is still a tool result, not bare messageToUser.
-- no messageToUser follow-up when matching tool exists
+- For currently authorized work, call a matching tool even with missing details; its handler owns required clarification and validation. Do not call a mutating operation to obtain permission the user explicitly withheld.
+- Currently authorized life-management side effects (calendar events, reminders, alarms, todos, routines, goals, scheduled/recurring tasks) require the matching exposed tool before reporting completion. Match its name, routing hint and description, not a fixed required name. A tool-owned conflict, clarification, preview or confirmation result does not prove an effect happened; an operation that always commits is not a preview operation.
 ${plannerRequiredPolicy.sideEffects}
 ${plannerRequiredPolicy.completedEffects}
 - messageToUser is user-visible only; no thoughts, analysis, tool names, function syntax, arbitrary JSON/tool attempts, "call MESSAGE"
@@ -75,7 +74,7 @@ ${plannerRequiredPolicy.responseStyle}
 ${plannerRequiredPolicy.widgets}
 - more tool work => native toolCalls only; never narrate/simulate calls
 - partial after tool result => next grounded tool, not messageToUser
-- tool-required router decision => run at least one exposed non-terminal tool before terminal answer
+- A tool-required routing hint does not override user constraints. Propose a terminal preview/question when execution must wait for permission; completion evaluation judges outstanding intents. Otherwise attempt currently authorized work with an exposed non-terminal tool.
 - incomplete while user needs live/current/external data, filesystem/runtime state, command output, repo work, build, PR, deploy, verify, side effect, and exposed tool can try
 - attachments/memory/snippets do not replace explicit current run/check/fetch/inspect/build/deploy/verify/look up now; call tool
 - exposed tool can try => call it; do not say "I cannot browse/search/run/inspect/build/deploy/verify"
