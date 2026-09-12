@@ -68,8 +68,6 @@ src/
   lifeops-session-contracts.ts     LifeOps browser session types
   packaging.ts                     Companion extension build/reveal/download helpers
   workspace.ts                     Workspace-level re-exports
-  browser-capture-hooks.ts         BrowserCaptureHooks interface + global registration helpers
-  browser-workspace-hooks.ts       BrowserWorkspaceHooks interface + global registration helpers
   actions/
     browser.ts                     BROWSER action
     browser-autofill-login.ts      autofill_login subaction (vault-gated)
