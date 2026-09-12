@@ -675,9 +675,19 @@ export function useModelConfiguration(
     ) => {
       setSaveState(group, { phase: "saving" });
       try {
-        const before = group === "coding" ? null : await client.getStatus();
-        const previousStartedAt =
-          typeof before?.startedAt === "number" ? before.startedAt : null;
+        let previousStartedAt: number | null = null;
+        if (group !== "coding") {
+          try {
+            const before = await client.getStatus();
+            previousStartedAt =
+              typeof before.startedAt === "number" ? before.startedAt : null;
+          } catch {
+            // error-policy:J4 an unavailable status leaves the old runtime
+            // identity unknown; saving still proceeds, and restart confirmation
+            // requires the existing post-save not-running-to-running transition.
+            previousStartedAt = null;
+          }
+        }
         const result = await client.updateModelsConfig(request);
         if (disposedRef.current) return;
         if (result.kind === "invalid") {
