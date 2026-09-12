@@ -398,6 +398,7 @@ function AgreementPanel({
           style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 16 }}
         >
           <Button
+            variant="accentDarkHover"
             disabled={downloading !== null}
             onClick={() => void download("original")}
           >
@@ -406,6 +407,7 @@ function AgreementPanel({
               : "Download original PDF"}
           </Button>
           <Button
+            variant="accentDarkHover"
             disabled={downloading !== null}
             onClick={() => void download("export")}
           >

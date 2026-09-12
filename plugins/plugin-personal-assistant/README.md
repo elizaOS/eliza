@@ -255,8 +255,10 @@ PDF remains on the document/API surface so chat actions never invent bytes.
 
 Owners can download the original PDF or export one agreement version from the
 Agreement view. `POST /api/lifeops/agreements/:id/export` returns a ZIP containing
-`original.pdf`, `manifest.json`, and `SHA256SUMS`. Verify both files independently
-with `sha256sum -c SHA256SUMS`. The versioned manifest includes all obligation
+`original.pdf`, `manifest.json`, `SHA256SUMS`, and the exact saved
+`extraction.json` when available. Verify the files independently with
+`sha256sum -c SHA256SUMS`; the extraction hash also matches its ingestion audit
+event. The versioned manifest includes all obligation
 states and citations, current and inactive pin/grant records, linked household
 grant expiry/revocation records, and the canonical agreement audit history from
 one database snapshot. Original byte length and SHA-256 must match before export.

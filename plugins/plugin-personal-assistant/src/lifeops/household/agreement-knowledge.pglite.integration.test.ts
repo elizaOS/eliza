@@ -611,8 +611,19 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     expect(manifest.obligations).toEqual(
       expect.arrayContaining(agreement.obligations),
     );
+    const extractionBytes = files.get("extraction.json");
+    if (!extractionBytes) throw new Error("Saved extraction missing");
+    const extraction = JSON.parse(extractionBytes.toString("utf8"));
+    const ingestion = manifest.audit.find(
+      (event: { event_type: string }) =>
+        event.event_type === "agreement_ingested",
+    );
+    if (!ingestion) throw new Error("Ingestion audit missing");
     expect(
-      manifest.extraction.document.pages.every(
+      crypto.createHash("sha256").update(extractionBytes).digest("hex"),
+    ).toBe(JSON.parse(ingestion.inputs_json).extractionSha256);
+    expect(
+      extraction.pages.every(
         (page: { text: string }) =>
           page.text === original.bytes.toString("utf8"),
       ),
@@ -623,7 +634,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       ),
     ).toBe(true);
     const sums = files.get("SHA256SUMS")?.toString("utf8");
-    for (const name of ["original.pdf", "manifest.json"]) {
+    for (const name of ["original.pdf", "manifest.json", "extraction.json"]) {
       const file = files.get(name);
       if (!file) throw new Error(`Missing exported ${name}`);
       expect(sums).toContain(

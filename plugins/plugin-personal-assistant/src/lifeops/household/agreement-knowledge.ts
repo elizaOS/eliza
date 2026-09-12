@@ -1285,10 +1285,13 @@ export class AgreementKnowledgeService {
       document.metadata && "agreementExtractionJson" in document.metadata
         ? document.metadata.agreementExtractionJson
         : undefined;
+    let extractionBytes: Buffer | null = null;
     let extraction:
       | {
           status: "available";
-          document: z.infer<typeof agreementExtractionSchema>;
+          path: "extraction.json";
+          sha256: string;
+          pageCount: number;
         }
       | { status: "unavailable"; reason: string };
     const ingestion = snapshot.audit.find(
@@ -1344,7 +1347,18 @@ export class AgreementKnowledgeService {
           parsed.pages.some((page, index) => page.pageNumber !== index + 1)
         )
           throw new Error("Extraction page map is incomplete");
-        extraction = { status: "available", document: parsed };
+        // Export the exact serialized bytes bound at ingestion. Re-encoding
+        // the validated object could change key order and invalidate that hash.
+        extractionBytes = Buffer.from(extractionJson, "utf8");
+        extraction = {
+          status: "available",
+          path: "extraction.json",
+          sha256: crypto
+            .createHash("sha256")
+            .update(extractionBytes)
+            .digest("hex"),
+          pageCount: parsed.pageCount,
+        };
       } catch (error) {
         // error-policy:J2 Invalid saved provenance must fail export visibly.
         throw new AgreementKnowledgeError(
@@ -1393,9 +1407,12 @@ export class AgreementKnowledgeService {
     const bytes = createZipArchive([
       { name: "original.pdf", data: original.bytes },
       { name: "manifest.json", data: manifest },
+      ...(extractionBytes
+        ? [{ name: "extraction.json", data: extractionBytes }]
+        : []),
       {
         name: "SHA256SUMS",
-        data: `${snapshot.artifact.contentSha256}  original.pdf\n${manifestSha256}  manifest.json\n`,
+        data: `${snapshot.artifact.contentSha256}  original.pdf\n${manifestSha256}  manifest.json\n${extraction.status === "available" ? `${extraction.sha256}  extraction.json\n` : ""}`,
       },
     ]);
     await this.deps.repository.recordExport({
