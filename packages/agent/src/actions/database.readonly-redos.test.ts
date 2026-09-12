@@ -14,7 +14,7 @@ describe("DATABASE read-only SQL guard", () => {
     expect(result).toEqual({
       ok: false,
       reason:
-        '"DELETE" is a mutation keyword. Set allowWrites:true to execute mutations.',
+        "Block comments between identifier characters are not allowed in read-only mode.",
     });
   });
 

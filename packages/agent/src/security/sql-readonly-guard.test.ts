@@ -341,11 +341,23 @@ describe("checkReadOnly", () => {
     });
   });
 
-  it("still sees a mutation after a closed block comment splits the keyword", () => {
+  it("rejects a closed block comment that splits an identifier", () => {
     expect(checkReadOnly("DE/* */LETE FROM memories")).toEqual({
       ok: false,
       reason:
-        '"DELETE" is a mutation keyword. Set allowWrites:true to execute mutations.',
+        "Block comments between identifier characters are not allowed in read-only mode.",
+    });
+  });
+
+  it.each([
+    "DELETE/**/FROM memories",
+    "DROP/**/TABLE memories",
+    "SELECT/**/pg_sleep(10)",
+  ])("rejects a block comment used as a token separator in %s", (sql) => {
+    expect(checkReadOnly(sql)).toEqual({
+      ok: false,
+      reason:
+        "Block comments between identifier characters are not allowed in read-only mode.",
     });
   });
 });
