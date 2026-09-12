@@ -5,7 +5,7 @@
  * of available/recent documents (via `listDocuments`), rendering snippets and
  * document IDs the agent can cite or follow up to read. Returns an
  * empty/unavailable payload when no `DocumentService` is registered. Gated to the
- * exact `documents` and `knowledge` contexts and a minimum `USER` role, with
+ * exact `documents` and `knowledge` contexts for resolved roles, with
  * per-turn cache scope.
  */
 
@@ -89,7 +89,7 @@ export const documentsProvider: Provider = {
 	contextGate: { anyOf: ["documents", "knowledge"] },
 	cacheStable: false,
 	cacheScope: "turn",
-	roleGate: { minRole: "USER" },
+	roleGate: { minRole: "GUEST" },
 
 	get: async (runtime: IAgentRuntime, message: Memory) => {
 		const service = runtime.getService<DocumentService>(

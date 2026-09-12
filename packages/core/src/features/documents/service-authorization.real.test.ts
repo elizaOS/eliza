@@ -543,6 +543,77 @@ describe("DocumentService requester authorization", () => {
 		}
 	});
 
+	it("composes only explicitly shared guest knowledge and removes it after revocation", async () => {
+		const service = new DocumentService(runtime);
+		const shared = userPrivateDocument(
+			"f4300000-0000-4000-8000-000000000040" as UUID,
+			"GUEST_SHARED_PIN_COMPLETE_BODY",
+		);
+		const hidden = userPrivateDocument(
+			"f4300000-0000-4000-8000-000000000041" as UUID,
+			"GUEST_HIDDEN_PIN_BODY",
+		);
+		shared.metadata = {
+			...shared.metadata,
+			type: MemoryType.DOCUMENT,
+			pinned: true,
+		};
+		hidden.metadata = {
+			...hidden.metadata,
+			type: MemoryType.DOCUMENT,
+			pinned: true,
+		};
+		await runtime.createMemories([
+			{ memory: shared, tableName: "documents" },
+			{ memory: hidden, tableName: "documents" },
+		]);
+		const request = {
+			...message(),
+			entityId: GRANTEE_ID,
+			content: { text: "What knowledge was shared with me?" },
+		};
+		const selected = filterByContextGate(
+			[documentsProvider],
+			["knowledge"],
+			["GUEST"],
+		);
+		expect(selected).toHaveLength(1);
+		const provider = selected[0];
+		const sharedId = shared.id;
+		if (!provider || !sharedId)
+			throw new Error("Guest provider fixture is incomplete");
+		const getService = vi.spyOn(runtime, "getService").mockReturnValue(service);
+		const admin = {
+			requesterEntityId: ADMIN_ID,
+			role: "ADMIN" as const,
+			isOwner: false,
+		};
+		try {
+			const before = await provider.get(runtime, request, {} as State);
+			expect(before.text).not.toContain("GUEST_SHARED_PIN_COMPLETE_BODY");
+			await service.setDocumentDirectGrantsWithAccessContext(
+				sharedId,
+				[GRANTEE_ID],
+				admin,
+			);
+			const after = await provider.get(runtime, request, {} as State);
+			expect(after.text).toContain("GUEST_SHARED_PIN_COMPLETE_BODY");
+			expect(after.text).not.toContain("GUEST_HIDDEN_PIN_BODY");
+			expect(after.values?.pinnedDocumentIds).toContain(shared.id);
+			await service.setDocumentDirectGrantsWithAccessContext(
+				sharedId,
+				[],
+				admin,
+			);
+			const revoked = await provider.get(runtime, request, {} as State);
+			expect(revoked.text).not.toContain("GUEST_SHARED_PIN_COMPLETE_BODY");
+			expect(revoked.text).not.toContain("GUEST_HIDDEN_PIN_BODY");
+			expect(revoked.values?.pinnedDocumentIds).not.toContain(shared.id);
+		} finally {
+			getService.mockRestore();
+		}
+	});
+
 	it("keeps the complete old revision when replacement embedding fails", async () => {
 		const embed = async () => {
 			if (failEmbedding) throw new Error("injected update embedding failure");
