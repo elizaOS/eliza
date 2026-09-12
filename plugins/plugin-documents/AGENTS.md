@@ -27,6 +27,8 @@ Repo-wide conventions (logger-only, ESM, naming, architecture rules, git workflo
 | PATCH  | `/api/documents/:id` | Update document text content (re-fragments) |
 | PATCH  | `/api/documents/:id/access` | Replace bounded direct entity read grants (OWNER or room ADMIN) |
 | GET    | `/api/documents/:id/access` | Read direct grants through the same management authority |
+| GET    | `/api/documents/:id/pins` | Read agent and chat pin placements with their review revision (OWNER) |
+| PATCH  | `/api/documents/:id/pins` | Save reviewed agent and chat pin placements without changing read access (OWNER) |
 | DELETE | `/api/documents/:id` | Delete document and all its fragments |
 
 **Actions:** none registered here. `OWNER_DOCUMENTS` is registered by
@@ -78,7 +80,7 @@ bun run --cwd plugins/plugin-documents test                # vitest run (unit te
 bun run --cwd plugins/plugin-documents test:e2e:manual     # vitest run live e2e tests
 ```
 
-No `lint` or `typecheck` scripts — use repo-root commands for those.
+No package `lint` script is defined; use the repository lint gate.
 
 ## Config / env vars
 
@@ -147,3 +149,9 @@ the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
 under test.
+
+## Document pins
+
+The document detail view offers separate reader and pin editors. Pin placement is owner-managed and independent of read permissions: an agent pin applies across its chats, while individual chat pins persist independently. Every save requires the opaque revision returned by the pin read; stale writes return 409 and require a new read and review. The editor preserves saved chat identities missing from the current conversation directory and displays an error if either inventory cannot be loaded.
+
+Core owns persistence and response-context admission. Its automatic pin provider includes a document only when every current chat participant can read it; participant or document changes during preparation require retry. Pinning does not publish a document on the internet or change its readers.
