@@ -601,9 +601,7 @@ declare module "./client-base" {
       directGrantEntityIds: string[];
       accessRevision: string;
     }>;
-    getDocumentPins(
-      documentId: string,
-    ): Promise<{
+    getDocumentPins(documentId: string): Promise<{
       documentId: string;
       targets: { agent: boolean; roomIds: string[] };
       pinRevision: string;
