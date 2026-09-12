@@ -3,6 +3,7 @@
  * through the primary and read-intent cloud database boundaries.
  */
 import { randomUUID } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, inArray, lt, type SQL, sql } from "drizzle-orm";
 import {
   assertAdminCanaryImageJobData,
@@ -409,7 +410,19 @@ async function prepareJobPayload<T extends Partial<Job> | Partial<NewJob>>(
     };
   }
 
-  const createdAt = data.created_at ?? context.created_at ?? new Date();
+  // Raw claim queries bypass Drizzle's timestamp decoder. Decode using the
+  // column's UTC semantics before deriving immutable object-storage keys.
+  const rawCreatedAt = data.created_at ?? context.created_at ?? new Date();
+  const createdAt =
+    typeof rawCreatedAt === "string"
+      ? jobs.created_at.mapFromDriverValue(rawCreatedAt)
+      : rawCreatedAt;
+  if (!(createdAt instanceof Date) || !Number.isFinite(createdAt.getTime())) {
+    throw new ElizaError("Job creation timestamp is invalid", {
+      code: "INVALID_JOB_CREATED_AT",
+      context: { jobId: context.id },
+    });
+  }
   const forceInlineData = data.data_storage === "inline";
   const forceInlineResult = data.result_storage === "inline";
   const forceInlineError = data.error_storage === "inline";
