@@ -437,16 +437,17 @@ function timezoneOffsetAt(instant: Date, timezone: string): string {
   })
     .formatToParts(instant)
     .find((part) => part.type === "timeZoneName")?.value;
-  if (value === "GMT") return "+00:00";
-  const match = /^GMT([+-]\d{2}:\d{2})$/.exec(value ?? "");
-  if (!match?.[1]) {
+  if (value === "GMT" || value === "UTC") return "+00:00";
+  const match = /^(?:GMT|UTC)?([+-]|\u2212|\u2013|\u2014)(\d{2}:\d{2})$/i.exec(value ?? "");
+  if (!match?.[1] || !match?.[2]) {
     throw new HouseholdCoordinationError(
       "Could not resolve the IANA time-zone offset at the supplied instant",
       "HOUSEHOLD_INVALID_CONTRACT",
       { timezone, instant: instant.toISOString() },
     );
   }
-  return match[1];
+  const sign = match[1] === "+" ? "+" : "-";
+  return `${sign}${match[2]}`;
 }
 
 function localDateTimeAt(
