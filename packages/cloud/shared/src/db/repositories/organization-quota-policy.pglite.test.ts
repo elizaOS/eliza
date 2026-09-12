@@ -45,6 +45,37 @@ beforeAll(async () => {
 afterAll(async () => {
   await database.closeDatabaseConnectionsForTests();
 });
+test("optional policy rows stay tenant-scoped and missing authority fails closed", async () => {
+  const pg = database.getPgliteClientForTests();
+  const target = "61000000-0000-4000-8000-000000000003";
+  const other = "61000000-0000-4000-8000-000000000004";
+  await pg.exec(`
+    INSERT INTO organizations(id,credit_balance,balance_revision,balance_decrease_revision,settings,is_active,account_lifecycle_state)
+    VALUES('${target}',100,1,0,'{}',true,'active'),('${other}',100,1,0,'{}',true,'active');
+    INSERT INTO credit_transactions(id,organization_id,amount,type,metadata)
+    VALUES(gen_random_uuid(),'${target}',100,'credit','{}'),(gen_random_uuid(),'${other}',100,'credit','{}');
+  `);
+  const before = await policy.readOrganizationQuotaPolicy(target);
+  await pg.exec(`
+    INSERT INTO org_rate_limit_overrides(organization_id,completions_rpm) VALUES('${other}',71);
+    INSERT INTO organization_config(organization_id,settings) VALUES('${other}','{"max_containers":3}');
+    INSERT INTO org_storage_quota(organization_id,bytes_used,bytes_limit,limit_override_authorized)
+    VALUES('${other}',0,13,true);
+  `);
+  const after = await policy.readOrganizationQuotaPolicy(target);
+  expect(after).toEqual({ ...before, observedAt: after.observedAt });
+  const overridden = await policy.readOrganizationQuotaPolicy(other);
+  expect(policy.requireOrganizationRateTier(overridden).completionsRpm).toBe(71);
+  expect(policy.requireOrganizationResourceLimit(overridden, "containers")).toBe(3n);
+  expect(policy.requireOrganizationResourceLimit(overridden, "storage")).toBe(13n);
+  await pg.exec(
+    `DELETE FROM organization_subscription_authorities WHERE organization_id='${other}'`,
+  );
+  await expect(policy.readOrganizationQuotaPolicy(other)).rejects.toMatchObject({
+    code: "ORGANIZATION_POLICY_UNAVAILABLE",
+    context: { organizationId: other, reason: "missing_account_authority" },
+  });
+});
 test("subscriber RPM survives balance spending and unapproved resource ceilings remain unavailable", async () => {
   const before = await policy.readOrganizationQuotaPolicy(ORG);
   await database
