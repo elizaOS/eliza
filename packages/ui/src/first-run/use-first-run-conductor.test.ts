@@ -2028,12 +2028,13 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
       turn,
       "first-run:dedicated-adoption",
     );
-    expect(confirmationTurn.text).toContain("$0.01/hour ($0.24/day)");
-    expect(confirmationTurn.text).toContain("Current status: error");
+    expect(confirmationTurn.text).toContain("$0.24/day ($0.01/hour)");
     expect(confirmationTurn.text).toContain("Balance: $115.54");
-    expect(confirmationTurn.text).toContain("3 days of runway");
-    expect(confirmationTurn.text).toContain("starts Dedicated compute");
-    expect(confirmationTurn.text).toContain("restore its reviewed backup");
+    expect(confirmationTurn.text).toContain("$0.72 required");
+    expect(confirmationTurn.text).toContain("confirm=Start Dedicated");
+    expect(confirmationTurn.text).toContain(
+      "Your verified backup will be restored",
+    );
     expect(confirmationTurn.text).not.toContain(quoteId);
     expect(confirmationTurn.text).not.toContain(dedicatedAgentId);
     expect(spies.completeFirstRun).not.toHaveBeenCalled();
