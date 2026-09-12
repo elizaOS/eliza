@@ -300,3 +300,22 @@ describe("deriveAgentReady", () => {
     ).toBe(false);
   });
 });
+
+it.each(["polling-backend", "starting-runtime"] as const)(
+  "keeps a stopped agent actionable from %s and retries session restoration",
+  (phase) => {
+    const stopped = startupReducer(
+      { phase, target: "cloud-managed", attempts: 0 },
+      { type: "AGENT_STOPPED" },
+    );
+    expect(stopped).toEqual({
+      phase: "error",
+      reason: "agent-stopped",
+      message: "Your Dedicated agent is shut down.",
+      timedOut: false,
+    });
+    expect(startupReducer(stopped, { type: "RETRY" })).toEqual({
+      phase: "restoring-session",
+    });
+  },
+);
