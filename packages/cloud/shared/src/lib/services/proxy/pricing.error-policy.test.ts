@@ -16,6 +16,7 @@ import {
   getServiceMethodCost,
   invalidateServicePricingCache,
   PricingNotFoundError,
+  requireServiceMethodCost,
 } from "./pricing";
 
 const SERVICE_ID = "pricing-error-policy-test-service";
@@ -104,5 +105,64 @@ describe("calculateBatchCost — failure propagation", () => {
 
     // Two calls at the $0.001 fallback each.
     expect(total).toBeCloseTo(0.002, 12);
+  });
+});
+
+describe("requireServiceMethodCost — fail-closed mixed-unit lookups (#22956)", () => {
+  test("an EMPTY catalogue throws PricingNotFoundError, never the $0.001 fallback", async () => {
+    listByServiceSpy.mockResolvedValue([] as never);
+
+    // The per-call fallback is unit-unsafe for storage: reused as a per-byte
+    // leg it overcharges by orders of magnitude ($0.001 x bytes).
+    await expect(requireServiceMethodCost("storage", "put_per_byte")).rejects.toBeInstanceOf(
+      PricingNotFoundError,
+    );
+  });
+
+  test("a PARTIAL catalogue throws PricingNotFoundError for the missing method", async () => {
+    // Flat per-request row present, per-byte row absent.
+    listByServiceSpy.mockResolvedValue([{ method: "put", cost: "0.0001" }] as never);
+
+    await expect(requireServiceMethodCost("storage", "put_per_byte")).rejects.toBeInstanceOf(
+      PricingNotFoundError,
+    );
+    // The present row still resolves with its exact stored decimal.
+    await expect(requireServiceMethodCost("storage", "put")).resolves.toBeCloseTo(0.0001, 12);
+  });
+
+  test("a seeded zero row resolves to 0 (free), staying distinct from a missing row", async () => {
+    listByServiceSpy.mockResolvedValue([{ method: "delete", cost: "0" }] as never);
+
+    await expect(requireServiceMethodCost("storage", "delete")).resolves.toBe(0);
+  });
+
+  test("a non-finite stored price throws, never returns NaN as a cost", async () => {
+    listByServiceSpy.mockResolvedValue([{ method: "get", cost: "not-a-number" }] as never);
+
+    await expect(requireServiceMethodCost("storage", "get")).rejects.toThrow(/Invalid pricing/);
+  });
+
+  test("the generic getServiceMethodCost fallback contract is unchanged for single-unit services", async () => {
+    listByServiceSpy.mockResolvedValue([] as never);
+
+    // The designed $0.001 undercharge survives ONLY on the generic lookup;
+    // mixed-unit callers must have migrated to requireServiceMethodCost.
+    await expect(getServiceMethodCost("evm-rpc", "eth_getBalance")).resolves.toBe(0.001);
+  });
+
+  test("the empty catalogue is still not cached by the fail-closed lookup (self-heals)", async () => {
+    listByServiceSpy
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([{ method: "get", cost: "0.00005" }] as never);
+
+    await expect(requireServiceMethodCost("storage", "get")).rejects.toBeInstanceOf(
+      PricingNotFoundError,
+    );
+    // Because the empty map was never cached, the next call re-reads the
+    // repository and picks up the seeded row without process restart.
+    await expect(requireServiceMethodCost("storage", "get")).resolves.toBeCloseTo(0.00005, 12);
+
+    expect(listByServiceSpy).toHaveBeenCalledTimes(2);
+    expect(cacheSetSpy).not.toHaveBeenCalledWith(expect.anything(), {}, expect.anything());
   });
 });

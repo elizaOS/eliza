@@ -17,7 +17,7 @@ const ensureNativeStorageQuotaReconciled = mock(async () => {
   events.push("reconcile");
 });
 const listObjects = mock();
-const getServiceMethodCost = mock(async () => 0.0001);
+const requireServiceMethodCost = mock(async () => 0.0001);
 const executeNativeStorageList = mock();
 const deductCredits = mock(async () => {
   events.push("charge");
@@ -39,6 +39,15 @@ class TestNativeStorageReadError extends Error {
     super(message);
   }
 }
+class TestPricingNotFoundError extends Error {
+  constructor(
+    public readonly serviceId: string,
+    public readonly method: string,
+  ) {
+    super(`Pricing not found for service ${serviceId}, method ${method}`);
+    this.name = "PricingNotFoundError";
+  }
+}
 mock.module("@/lib/services/storage/native-storage-read", () => ({
   executeNativeStorageList,
   NativeStorageReadError: TestNativeStorageReadError,
@@ -54,7 +63,10 @@ mock.module("@/api-app/lib/paid-route-standing", () => ({
     appScopeId: null,
   }),
 }));
-mock.module("@/lib/services/proxy/pricing", () => ({ getServiceMethodCost }));
+mock.module("@/lib/services/proxy/pricing", () => ({
+  requireServiceMethodCost,
+  PricingNotFoundError: TestPricingNotFoundError,
+}));
 mock.module("@/lib/services/credits", () => ({
   creditsService: { deductCredits },
 }));
@@ -75,7 +87,7 @@ beforeEach(() => {
   ensureNativeStorageQuotaReconciled.mockClear();
   listObjects.mockReset();
   deductCredits.mockClear();
-  getServiceMethodCost.mockClear();
+  requireServiceMethodCost.mockClear();
   listObjects.mockResolvedValue([
     {
       logical_key: "voice/message.ogg",
@@ -158,6 +170,35 @@ test("rejects a logical prefix in URL before billing or provider authority", asy
   );
   expect(response.status).toBe(400);
   expect(executeNativeStorageList).not.toHaveBeenCalled();
-  expect(getServiceMethodCost).not.toHaveBeenCalled();
+  expect(requireServiceMethodCost).not.toHaveBeenCalled();
+  expect(deductCredits).not.toHaveBeenCalled();
+});
+
+test("fail-closed pricing: a missing catalogue refuses LIST with 503 before any debit or provider list", async () => {
+  requireServiceMethodCost.mockReset();
+  requireServiceMethodCost.mockRejectedValue(
+    new TestPricingNotFoundError("storage", "list"),
+  );
+
+  const response = await app.request(
+    "/api/v1/apis/storage/list",
+    {
+      headers: {
+        "X-Storage-Prefix": "voice",
+        "X-Storage-Recursive": "true",
+        "Idempotency-Key": "list-pricing-1",
+      },
+    },
+    { BLOB: { list: mock() } },
+  );
+
+  expect(response.status).toBe(503);
+  expect(response.headers.get("Retry-After")).toBe("30");
+  const body = (await response.json()) as { error?: string; code?: string };
+  expect(body.code).toBe("pricing_unavailable");
+  expect(body.error).toBe(
+    "Storage pricing is unavailable; the operation was not billed or executed",
+  );
+  expect(executeNativeStorageList).not.toHaveBeenCalled();
   expect(deductCredits).not.toHaveBeenCalled();
 });

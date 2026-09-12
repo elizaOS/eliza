@@ -16,7 +16,7 @@ const EXPIRES = new Date(Date.now() + 5 * 60_000);
 
 const requireUserOrApiKeyWithOrg = mock();
 const executeNativeStoragePresign = mock();
-const getServiceMethodCost = mock();
+const requireServiceMethodCost = mock();
 const mintStorageReadCapabilityUrl = mock();
 
 class TestNativeStorageReadError extends Error {
@@ -29,6 +29,15 @@ class TestNativeStorageReadError extends Error {
 }
 class TestStorageReadCapabilityConfigurationError extends Error {
   readonly code = "CONFIGURATION";
+}
+class TestPricingNotFoundError extends Error {
+  constructor(
+    public readonly serviceId: string,
+    public readonly method: string,
+  ) {
+    super(`Pricing not found for service ${serviceId}, method ${method}`);
+    this.name = "PricingNotFoundError";
+  }
 }
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
@@ -47,7 +56,10 @@ mock.module("@/lib/services/storage/native-storage-read", () => ({
   executeNativeStoragePresign,
   NativeStorageReadError: TestNativeStorageReadError,
 }));
-mock.module("@/lib/services/proxy/pricing", () => ({ getServiceMethodCost }));
+mock.module("@/lib/services/proxy/pricing", () => ({
+  requireServiceMethodCost,
+  PricingNotFoundError: TestPricingNotFoundError,
+}));
 mock.module("@/api-app/storage-read-capability", () => ({
   mintStorageReadCapabilityUrl,
   validateStorageReadCapabilityConfiguration: (
@@ -69,13 +81,13 @@ beforeEach(() => {
   requireUserOrApiKeyWithOrg.mockReset();
   requirePaidRouteStanding.mockClear();
   executeNativeStoragePresign.mockReset();
-  getServiceMethodCost.mockReset();
+  requireServiceMethodCost.mockReset();
   mintStorageReadCapabilityUrl.mockReset();
   requireUserOrApiKeyWithOrg.mockResolvedValue({
     id: USER,
     organization_id: ORG,
   });
-  getServiceMethodCost.mockResolvedValue(0.0002);
+  requireServiceMethodCost.mockResolvedValue(0.0002);
   executeNativeStoragePresign.mockResolvedValue({
     operation: {
       id: RECEIPT,
@@ -144,7 +156,7 @@ test("malformed requests stop before pricing, provider, or receipt authority", a
     { BLOB: { head: mock() }, R2_PUBLIC_HOST: "https://blob.example" },
   );
   expect(response.status).toBe(400);
-  expect(getServiceMethodCost).not.toHaveBeenCalled();
+  expect(requireServiceMethodCost).not.toHaveBeenCalled();
   expect(executeNativeStoragePresign).not.toHaveBeenCalled();
   expect(mintStorageReadCapabilityUrl).not.toHaveBeenCalled();
 });
@@ -164,7 +176,39 @@ test("missing signer authority stops before pricing, provider, or settlement", a
     { BLOB: { head: mock() }, R2_PUBLIC_HOST: "https://blob.example" },
   );
   expect(response.status).toBe(503);
-  expect(getServiceMethodCost).not.toHaveBeenCalled();
+  expect(requireServiceMethodCost).not.toHaveBeenCalled();
+  expect(executeNativeStoragePresign).not.toHaveBeenCalled();
+  expect(mintStorageReadCapabilityUrl).not.toHaveBeenCalled();
+});
+
+test("fail-closed pricing: a missing catalogue refuses PRESIGN with 503 before any debit or capability mint", async () => {
+  requireServiceMethodCost.mockReset();
+  requireServiceMethodCost.mockRejectedValue(
+    new TestPricingNotFoundError("storage", "presign"),
+  );
+
+  const response = await app.request(
+    ROUTE_PATH,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "Idempotency-Key": "presign-pricing-1",
+        "X-Storage-Object-Key": "private/voice.ogg",
+      },
+      body: JSON.stringify({ operation: "get", expiresIn: 300 }),
+    },
+    {
+      BLOB: { head: mock() },
+      R2_PUBLIC_HOST: "https://blob.example",
+      STORAGE_READ_SIGNING_SECRETS: "active-secret-that-is-long-enough",
+    },
+  );
+
+  expect(response.status).toBe(503);
+  expect(response.headers.get("Retry-After")).toBe("30");
+  const body = (await response.json()) as { error?: string; code?: string };
+  expect(body.code).toBe("pricing_unavailable");
   expect(executeNativeStoragePresign).not.toHaveBeenCalled();
   expect(mintStorageReadCapabilityUrl).not.toHaveBeenCalled();
 });
@@ -197,7 +241,7 @@ test("standing denial suppresses pricing, R2 access, settlement, and capability 
 
   expect(response.status).not.toBe(200);
   expect(requirePaidRouteStanding).toHaveBeenCalledTimes(1);
-  expect(getServiceMethodCost).not.toHaveBeenCalled();
+  expect(requireServiceMethodCost).not.toHaveBeenCalled();
   expect(executeNativeStoragePresign).not.toHaveBeenCalled();
   expect(mintStorageReadCapabilityUrl).not.toHaveBeenCalled();
 });
