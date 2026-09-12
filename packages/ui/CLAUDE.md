@@ -362,3 +362,5 @@ Native stream failures propagate without replay. Buffered compatibility is
 selected only before dispatch when streaming events are unavailable.
 
 Chat JSONL rendering may ignore only redundant closing braces following a complete valid patch object. Do not synthesize missing values, repair truncated input, consume trailing prose, or alter stored message/trajectory bytes. The same parser and existing prototype-pollution checks serve all chat surfaces.
+
+The local developer tab relay reads synchronous, conversation-owned transcript snapshots and flushes final rows before settling the send. Relayed temporary and rekeyed rows use the canonical conversation overlay registry so history refresh preserves unsaved failures and honors later removals. Never infer ownership from the current React render or copy another conversation's rows during a switch.
