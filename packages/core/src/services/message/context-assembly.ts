@@ -38,6 +38,8 @@ export async function createV5MessageContextObject(args: {
 	state: State;
 	selectedContexts?: readonly AgentContext[];
 	includeTools?: boolean;
+	/** Per-turn routing catalog for the response handler, which has no action tools. */
+	includeActionDiscovery?: boolean;
 	userRoles?: readonly RoleGateRole[];
 	availableContexts?: readonly ContextDefinition[];
 	extraProviderExclusions?: readonly string[];
@@ -248,6 +250,38 @@ export async function createV5MessageContextObject(args: {
 			stable: false,
 			content:
 				'trigger_automation_policy: The final message:user below is a scheduled automation of yours firing, not a person talking to you. Its "Do this now:" clause is the instruction you must carry out on this turn, and whatever you reply is delivered to the user as the automation\'s output. Produce that output: if the instruction is to remind, the reply IS the reminder addressed to the user — phrase it in your voice so it reads as a reminder arriving (lead with something like "reminder:" or equivalent), never a bare echo of the item text alone; if it is to check or report something, run the needed tools and reply with the result. Never reply with an acknowledgement of the instruction itself ("noted.", "got it", "will do") — the user never sees the instruction, so an acknowledgement reaches them as a bare non-sequitur.',
+		});
+	}
+
+	if (args.includeActionDiscovery) {
+		const actions = await collectV5PlannerCandidateActions({
+			runtime: args.runtime,
+			message: args.message,
+			state: args.state,
+			selectedContexts: args.selectedContexts,
+			userRoles: args.userRoles,
+			discoverActions: true,
+		});
+		// This is a discovery projection, not an execution tool surface. Retain
+		// every authorized name and complete description; Stage 2 supplies the
+		// native parameter schemas and rechecks authorization before execution.
+		events.push({
+			id: "available-actions",
+			type: "segment",
+			source: "message-service",
+			segment: {
+				id: "available-actions",
+				label: "available_actions",
+				stable: false,
+				content: JSON.stringify(
+					actions.map((action) => ({
+						name: action.name,
+						description: action.description,
+						contexts: action.contexts,
+						similes: action.similes,
+					})),
+				),
+			},
 		});
 	}
 
