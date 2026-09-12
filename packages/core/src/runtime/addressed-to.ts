@@ -259,9 +259,11 @@ export async function resolveAddressedTargets(
 			if (!id) continue;
 			for (const name of entityNames(entity)) {
 				const norm = normalize(name.replace(/^@/, ""));
-				if (norm) {
-					byName.set(norm, id);
-				}
+				if (!norm) continue;
+				// Stripping '@' collapses '@name' and 'name' into one key; never
+				// let a participant overwrite a key already bound to the agent.
+				if (byName.get(norm) === runtime.agentId) continue;
+				byName.set(norm, id);
 			}
 		}
 		for (const name of names) {
