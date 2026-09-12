@@ -228,8 +228,8 @@ requests with their staging bytes in the runtime's canonical private
 Commit requires every ordered chunk and verifies the reassembled byte length
 and optional whole-file SHA-256 before immutable storage. The server—not the
 form—parses the page count. `PdfService.extractCompleteDocument` then accounts
-for every page with native text plus rendered-page vision transcription for
-images or text-empty pages. One failed page fails ingestion; partial content is
+for every page with native text plus rendered-page vision transcription of
+every page. One failed page fails ingestion; partial content is
 never published as a complete owner-private `DocumentService` record. LifeOps
 persists the media SHA-256, handle, document id, byte size, MIME type, filename,
 parser-derived page count, complete extracted text and page map, and version chain; it does
@@ -246,6 +246,18 @@ have a verified identity, and both grants must remain unrevoked and unexpired.
 Guest views expose approved obligations only. Revoking the relationship-backed
 household grant immediately invalidates every agreement binding that relies on
 it.
+
+The owner permission selector reads
+`GET /api/lifeops/agreements/:id/guest-options`. It lists verified people with
+active `knowledge.read` permissions in the agreement's household, retaining the
+exact household grant behind each named choice. Expired, revoked, wrong-scope,
+and other-household permissions are excluded. Existing agreement bindings stay
+available for owner removal even when their underlying permission is inactive.
+Changing the selected person or permission invalidates the preview. Enabling
+access revalidates the exact permission in the domain, and the UI confirms the
+saved binding by reading it back; uncertain writes require refresh before retry.
+The selector does not create identities, verify contacts, or issue household
+permissions implicitly.
 
 A paired guest reads `GET /api/lifeops/agreements/:id/shared` using its machine
 session. The owner must bind that machine identity to a person through

@@ -47,6 +47,31 @@ export function createFamilyPacketFixture(
     ).join("");
   }
   const pins: Awaited<ReturnType<FamilyOperationsAdapter["listPins"]>> = [];
+  const guestGrants: Awaited<
+    ReturnType<FamilyOperationsAdapter["issueGrant"]>
+  >[] = [];
+  const guestChoices: Awaited<
+    ReturnType<FamilyOperationsAdapter["listGuestAccessOptions"]>
+  >["candidates"] = [
+    {
+      principalEntityId: "fixture-guest",
+      householdGrantId: "fixture-permission-alex",
+      displayName: "Alex",
+      identityLabel: "email: alex@example.test",
+      role: "co_parent",
+      expiresAt: null,
+      issuedAt: "2026-09-20T12:00:00Z",
+    },
+    {
+      principalEntityId: "fixture-caregiver",
+      householdGrantId: "fixture-permission-sam",
+      displayName: "Sam",
+      identityLabel: "email: sam@example.test",
+      role: "caregiver",
+      expiresAt: null,
+      issuedAt: "2026-09-20T12:00:00Z",
+    },
+  ];
   return {
     async decidePacketApproval(input) {
       const draft = packet.draft;
@@ -214,9 +239,87 @@ export function createFamilyPacketFixture(
       pin.unpinnedAt = "2026-09-20T12:01:00Z";
       return { ...pin };
     },
-    previewGrant: unsupported,
-    issueGrant: unsupported,
-    revokeGrant: unsupported,
+    async listGuestAccessOptions(artifactId) {
+      return {
+        candidates: guestChoices.map((item) => ({ ...item })),
+        grants: guestGrants
+          .filter(
+            (item) => item.artifactId === artifactId && item.revokedAt === null,
+          )
+          .map((item) => ({
+            grantId: item.id,
+            principalEntityId: item.principalEntityId,
+            householdGrantId: item.householdGrantId,
+            displayName:
+              guestChoices.find(
+                (choice) => choice.principalEntityId === item.principalEntityId,
+              )?.displayName ?? null,
+            issuedAt: item.createdAt,
+            canRead: true,
+            denial: null,
+          })),
+      };
+    },
+    async previewGrant(input) {
+      const allowed =
+        input.artifactId === "fixture-agreement" &&
+        guestChoices.some(
+          (item) =>
+            item.householdGrantId === input.householdGrantId &&
+            item.principalEntityId === input.principalEntityId,
+        );
+      return {
+        ...input,
+        allowed,
+        effects: ["read_artifact_metadata", "read_approved_obligations"],
+        exclusions: [
+          "read_proposed_or_rejected_obligations",
+          "mutate_agreement",
+          "inherit_access_from_pin",
+        ],
+        denial: allowed
+          ? null
+          : {
+              code: "AGREEMENT_ACCESS_DENIED",
+              message: "No matching synthetic guest permission.",
+            },
+      };
+    },
+    async issueGrant(input) {
+      if (
+        input.artifactId !== "fixture-agreement" ||
+        !guestChoices.some(
+          (item) =>
+            item.householdGrantId === input.householdGrantId &&
+            item.principalEntityId === input.principalEntityId,
+        )
+      )
+        throw new Error("Unrecognized synthetic guest permission");
+      const grant = {
+        ...input,
+        id: `fixture-guest-grant-${guestGrants.length}`,
+        agentId: "fixture-agent",
+        householdId: "default",
+        issuedByEntityId: "self",
+        revokedAt: null,
+        revokedByEntityId: null,
+        revocationReason: null,
+        createdAt: "2026-09-20T12:00:00Z",
+        updatedAt: "2026-09-20T12:00:00Z",
+      };
+      guestGrants.push(grant);
+      document.documentElement.dataset.familyGuestTarget =
+        input.principalEntityId;
+      return { ...grant };
+    },
+    async revokeGrant(grantId, reason) {
+      const grant = guestGrants.find((item) => item.id === grantId);
+      if (!grant) throw new Error("Unknown synthetic guest grant");
+      grant.revokedAt = "2026-09-20T12:01:00Z";
+      grant.revokedByEntityId = "self";
+      grant.revocationReason = reason;
+      return { ...grant };
+    },
     resolveCalendarConflict: unsupported,
     disconnectCalendar: unsupported,
     runSchoolWorkflow: unsupported,

@@ -466,6 +466,13 @@ export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter = {
     });
     return response.pin;
   },
+  async listGuestAccessOptions(artifactId) {
+    return request<
+      Awaited<ReturnType<FamilyOperationsAdapter["listGuestAccessOptions"]>>
+    >(
+      `/api/lifeops/agreements/${encodeURIComponent(artifactId)}/guest-options`,
+    );
+  },
   async previewGrant(input) {
     const response = await request<{
       preview: Awaited<ReturnType<FamilyOperationsAdapter["previewGrant"]>>;

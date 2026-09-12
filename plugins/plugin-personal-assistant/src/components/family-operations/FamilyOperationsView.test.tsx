@@ -96,6 +96,44 @@ function snapshot(): FamilyOperationsSnapshot {
   };
 }
 
+function guestOptions(): Awaited<
+  ReturnType<FamilyOperationsAdapter["listGuestAccessOptions"]>
+> {
+  return {
+    candidates: [
+      {
+        principalEntityId: "guest-1",
+        householdGrantId: "grant-1",
+        displayName: "Alex",
+        identityLabel: "email: alex@example.test",
+        role: "co_parent",
+        expiresAt: null,
+        issuedAt: "2026-09-12T12:00:00Z",
+      },
+      {
+        principalEntityId: "guest-2",
+        householdGrantId: "grant-2",
+        displayName: "Sam",
+        identityLabel: "email: sam@example.test",
+        role: "caregiver",
+        expiresAt: null,
+        issuedAt: "2026-09-12T12:00:00Z",
+      },
+    ],
+    grants: [
+      {
+        grantId: "guest-grant-1",
+        principalEntityId: "guest-1",
+        householdGrantId: "grant-1",
+        displayName: "Alex",
+        issuedAt: "2026-09-12T12:00:00Z",
+        canRead: true,
+        denial: null,
+      },
+    ],
+  };
+}
+
 function adapter(data = snapshot()): FamilyOperationsAdapter {
   return {
     load: vi.fn(async () => data),
@@ -111,6 +149,7 @@ function adapter(data = snapshot()): FamilyOperationsAdapter {
     listPins: vi.fn(async () => []),
     pin: vi.fn(),
     unpin: vi.fn(),
+    listGuestAccessOptions: vi.fn(async () => guestOptions()),
     previewGrant: vi.fn(async () => ({
       allowed: false,
       artifactId: "artifact-1",
@@ -191,6 +230,135 @@ function openPacketMonth(month: string) {
 }
 
 describe("FamilyOperationsView", () => {
+  it("recovers guest choices from an unavailable permission inventory", async () => {
+    const local = adapter();
+    local.listGuestAccessOptions = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Permission inventory unavailable"))
+      .mockResolvedValue(guestOptions());
+    render(<FamilyOperationsView adapter={local} />);
+    await screen.findByText("Permission inventory unavailable");
+    expect(screen.queryByRole("button", { name: "Allow access" })).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Refresh guest permissions" }),
+    );
+    await screen.findByLabelText("Verified guest permission");
+    expect(screen.queryByText("Permission inventory unavailable")).toBeNull();
+  });
+
+  it("rejects an allowed preview for a different permission", async () => {
+    const local = adapter();
+    const denied = await local.previewGrant({
+      artifactId: "artifact-1",
+      principalEntityId: "guest-1",
+      householdGrantId: "grant-1",
+    });
+    local.previewGrant = async () => ({
+      ...denied,
+      allowed: true,
+      denial: null,
+      householdGrantId: "different-permission",
+    });
+    render(<FamilyOperationsView adapter={local} />);
+    fireEvent.change(
+      await screen.findByLabelText("Verified guest permission"),
+      { target: { value: "grant-1" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Preview permission" }));
+    await screen.findByText(
+      "The permission preview did not match your selection. Refresh guest permissions before continuing.",
+    );
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Allow access",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(local.issueGrant).not.toHaveBeenCalled();
+  });
+
+  it("requires refresh when sharing readback has a different underlying permission", async () => {
+    const local = adapter();
+    const denied = await local.previewGrant({
+      artifactId: "artifact-1",
+      principalEntityId: "guest-1",
+      householdGrantId: "grant-1",
+    });
+    local.previewGrant = async (input) => ({
+      ...denied,
+      ...input,
+      allowed: true,
+      denial: null,
+    });
+    local.issueGrant = async (input) => ({
+      ...input,
+      id: "guest-grant-1",
+      agentId: "fixture-agent",
+      householdId: "default",
+      issuedByEntityId: "self",
+      revokedAt: null,
+      revokedByEntityId: null,
+      revocationReason: null,
+      createdAt: "2026-09-12T12:00:00Z",
+      updatedAt: "2026-09-12T12:00:00Z",
+    });
+    const wrong = guestOptions();
+    wrong.grants[0].householdGrantId = "another-permission";
+    local.listGuestAccessOptions = vi
+      .fn()
+      .mockResolvedValueOnce(guestOptions())
+      .mockResolvedValue(wrong);
+    render(<FamilyOperationsView adapter={local} />);
+    fireEvent.change(
+      await screen.findByLabelText("Verified guest permission"),
+      { target: { value: "grant-1" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Preview permission" }));
+    await screen.findByText("Ready to grant");
+    fireEvent.click(screen.getByRole("button", { name: "Allow access" }));
+    await screen.findByText(
+      "Sharing could not be confirmed. Refresh guest permissions before retrying.",
+    );
+    expect(screen.queryByText("Guest access enabled.")).toBeNull();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Preview permission",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+  });
+
+  it("requires a new permission preview after the guest selection changes", async () => {
+    const local = adapter();
+    const denied = await local.previewGrant({
+      artifactId: "artifact-1",
+      principalEntityId: "guest-1",
+      householdGrantId: "grant-1",
+    });
+    local.previewGrant = async (input) => ({
+      ...denied,
+      ...input,
+      allowed: true,
+      denial: null,
+    });
+    render(<FamilyOperationsView adapter={local} />);
+    fireEvent.change(
+      await screen.findByLabelText("Verified guest permission"),
+      { target: { value: "grant-1" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Preview permission" }));
+    const issue = screen.getByRole("button", {
+      name: "Allow access",
+    }) as HTMLButtonElement;
+    await waitFor(() => expect(issue.disabled).toBe(false));
+    fireEvent.change(screen.getByLabelText("Verified guest permission"), {
+      target: { value: "grant-2" },
+    });
+    expect(issue.disabled).toBe(true);
+  });
+
   it("disables pinning when destinations fail and recovers on refresh", async () => {
     const local = adapter();
     const available = await local.listPinTargets();
@@ -544,12 +712,14 @@ describe("FamilyOperationsView", () => {
   it("requires an explicit reason before revoking a guest grant", async () => {
     const local = adapter();
     render(<FamilyOperationsView adapter={local} />);
-    const revoke = await screen.findByRole("button", { name: "Revoke grant" });
-    expect((revoke as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText("Grant ID"), {
+    const existing = await screen.findByLabelText("Existing guest access");
+    expect(screen.queryByRole("button", { name: "Remove access" })).toBeNull();
+    fireEvent.change(existing, {
       target: { value: "guest-grant-1" },
     });
-    fireEvent.change(screen.getByLabelText("Revocation reason"), {
+    const revoke = await screen.findByRole("button", { name: "Remove access" });
+    expect((revoke as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Reason for removing access"), {
       target: { value: "Access is no longer needed." },
     });
     fireEvent.click(revoke);

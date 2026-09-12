@@ -10,6 +10,7 @@ import type {
   FamilyEmailOptions,
 } from "../../lifeops/family-workflows/runtime.js";
 import type {
+  AgreementGuestAccessOptions,
   AgreementGuestGrantPreview,
   AgreementPinTargets,
   HouseholdKnowledgeGrant,
@@ -137,6 +138,9 @@ export interface FamilyOperationsAdapter {
     targetId: string;
   }): Promise<HouseholdKnowledgePin>;
   unpin(pinId: string): Promise<HouseholdKnowledgePin>;
+  listGuestAccessOptions(
+    artifactId: string,
+  ): Promise<AgreementGuestAccessOptions>;
   previewGrant(input: {
     artifactId: string;
     principalEntityId: string;

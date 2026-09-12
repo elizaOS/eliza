@@ -1086,11 +1086,24 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       expect(payload.agreement.obligations[0]).not.toHaveProperty(
         "decisionReason",
       );
+      const ownerOptions = await fetch(`${base}/guest-options`);
+      expect(ownerOptions.status, await ownerOptions.clone().text()).toBe(200);
+      expect(ownerOptions.headers.get("cache-control")).toContain("no-store");
+      expect((await ownerOptions.json()).grants).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            grantId: grant.id,
+            principalEntityId: "verified-co-parent",
+            canRead: true,
+          }),
+        ]),
+      );
       for (const [suffix, method] of [
         ["", "GET"],
         ["/download", "GET"],
         ["/export", "POST"],
         ["/guest-projection?principalEntityId=self", "GET"],
+        ["/guest-options", "GET"],
       ]) {
         expect(
           (await fetch(`${base}${suffix}`, { method, headers })).status,
@@ -1197,6 +1210,127 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       runtime.services.set(ServiceType.PDF, previous);
     }
   });
+  it("lists only verified scoped permissions and retains unavailable bindings for owner revocation", async () => {
+    const service = createAgreementKnowledgeService(runtime);
+    const source = await service.createAgreementVersion({
+      agreementKey: "guest-choice-contract",
+      title: "Guest choice contract",
+      originalFilename: "guest-choices.pdf",
+      mimeType: "application/pdf",
+      bytes: pdf("guest choice filtering"),
+      uploadedByEntityId: SELF_ENTITY_ID,
+    });
+    const input = {
+      principalEntityId: "verified-co-parent",
+      role: "co_parent" as const,
+      subjectEntityIds: ["child-one"],
+      issuedByEntityId: SELF_ENTITY_ID,
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    };
+    const active = await household.issueGrant({
+      ...input,
+      scopes: ["knowledge.read"],
+    });
+    const calendar = await household.issueGrant({
+      ...input,
+      scopes: ["calendar.freebusy"],
+    });
+    const expired = await household.issueGrant({
+      ...input,
+      scopes: ["knowledge.read"],
+    });
+    await executeRawSql(
+      runtime,
+      `UPDATE app_lifeops.life_household_access_grants SET expires_at = '2000-01-01T00:00:00.000Z' WHERE agent_id = ${sqlQuote(runtime.agentId)} AND id = ${sqlQuote(expired.id)}`,
+    );
+    const unverified = await household.issueGrant({
+      ...input,
+      principalEntityId: "unverified-guest",
+      role: "caregiver",
+      scopes: ["knowledge.read"],
+    });
+    const otherHousehold = `other-choices-${crypto.randomUUID()}`;
+    await household.bindRole({
+      householdId: otherHousehold,
+      entityId: input.principalEntityId,
+      role: input.role,
+      subjectEntityIds: input.subjectEntityIds,
+      evidence: "Separate synthetic household",
+      boundByEntityId: SELF_ENTITY_ID,
+    });
+    const other = await household.issueGrant({
+      ...input,
+      householdId: otherHousehold,
+      scopes: ["knowledge.read"],
+    });
+    const options = await service.listGuestAccessOptions({
+      artifactId: source.id,
+      ownerEntityId: SELF_ENTITY_ID,
+    });
+    expect(options.candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          householdGrantId: active.id,
+          principalEntityId: input.principalEntityId,
+          displayName: "Verified Co-parent",
+        }),
+      ]),
+    );
+    const ids = options.candidates.map((item) => item.householdGrantId);
+    for (const excluded of [calendar, expired, unverified, other])
+      expect(ids).not.toContain(excluded.id);
+    const binding = await service.grantGuestRead({
+      artifactId: source.id,
+      principalEntityId: input.principalEntityId,
+      householdGrantId: active.id,
+      issuedByEntityId: SELF_ENTITY_ID,
+    });
+    await household.revokeGrant({
+      grantId: active.id,
+      revokedByEntityId: SELF_ENTITY_ID,
+      reason: "Permission removed after selection",
+    });
+    const after = await service.listGuestAccessOptions({
+      artifactId: source.id,
+      ownerEntityId: SELF_ENTITY_ID,
+    });
+    expect(after.candidates.map((item) => item.householdGrantId)).not.toContain(
+      active.id,
+    );
+    expect(after.grants).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ grantId: binding.id, canRead: false }),
+      ]),
+    );
+    await expect(
+      service.grantGuestRead({
+        artifactId: source.id,
+        principalEntityId: input.principalEntityId,
+        householdGrantId: active.id,
+        issuedByEntityId: SELF_ENTITY_ID,
+      }),
+    ).rejects.toMatchObject({ code: "HOUSEHOLD_GRANT_REVOKED" });
+    await service.revokeGuestRead({
+      grantId: binding.id,
+      revokedByEntityId: SELF_ENTITY_ID,
+      reason: "Remove unavailable resource binding",
+    });
+    expect(
+      (
+        await service.listGuestAccessOptions({
+          artifactId: source.id,
+          ownerEntityId: SELF_ENTITY_ID,
+        })
+      ).grants,
+    ).toEqual([]);
+    await expect(
+      service.listGuestAccessOptions({
+        artifactId: source.id,
+        ownerEntityId: input.principalEntityId,
+      }),
+    ).rejects.toMatchObject({ code: "AGREEMENT_ACCESS_DENIED" });
+  });
+
   it("rejects a previously listed conversation after the agent leaves it", async () => {
     const service = createAgreementKnowledgeService(runtime);
     const roomId = crypto.randomUUID() as UUID;

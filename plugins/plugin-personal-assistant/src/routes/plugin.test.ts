@@ -280,6 +280,7 @@ describe("LifeOps raw route owner/admin gate", () => {
       ["GET", "/api/lifeops/agreements"],
       ["GET", "/api/lifeops/agreements/:id"],
       ["GET", "/api/lifeops/agreements/:id/guest-projection"],
+      ["GET", "/api/lifeops/agreements/:id/guest-options"],
       ["GET", "/api/lifeops/agreements/:id/download"],
       ["POST", "/api/lifeops/agreements/:id/obligations"],
       ["GET", "/api/lifeops/agreements/:id/pins"],

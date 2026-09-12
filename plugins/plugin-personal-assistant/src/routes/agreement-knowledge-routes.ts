@@ -307,6 +307,23 @@ export async function handleAgreementKnowledgeRoutes(
       return true;
     }
 
+    const guestOptions = pathMatch(
+      ctx.pathname,
+      /^\/api\/lifeops\/agreements\/([^/]+)\/guest-options$/,
+    );
+    if (ctx.method === "GET" && guestOptions) {
+      ctx.res.setHeader("Cache-Control", "private, no-store, max-age=0");
+      ctx.res.setHeader("Referrer-Policy", "no-referrer");
+      ctx.json(
+        ctx.res,
+        await service.listGuestAccessOptions({
+          artifactId: guestOptions[0] ?? "",
+          ownerEntityId: SELF_ENTITY_ID,
+        }),
+      );
+      return true;
+    }
+
     const artifactRead = pathMatch(
       ctx.pathname,
       /^\/api\/lifeops\/agreements\/([^/]+)$/,

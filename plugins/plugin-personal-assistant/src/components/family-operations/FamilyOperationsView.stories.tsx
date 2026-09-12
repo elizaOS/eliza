@@ -28,6 +28,7 @@ const adapter = {
   listPins: async () => [],
   pin: async () => null,
   unpin: async () => null,
+  listGuestAccessOptions: async () => ({ candidates: [], grants: [] }),
   previewGrant: async () => null,
   issueGrant: async () => null,
   revokeGrant: async () => null,

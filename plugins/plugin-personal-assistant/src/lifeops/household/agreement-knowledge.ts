@@ -44,6 +44,7 @@ import {
 import {
   DEFAULT_HOUSEHOLD_ID,
   HouseholdCoordinationError,
+  type HouseholdRole,
   normalizeHouseholdIdentifier,
 } from "./types.js";
 
@@ -109,6 +110,28 @@ export type KnowledgePinTargetType = "agent" | "chat";
 export interface AgreementPinTargets {
   agent: { id: string; name: string | null };
   chats: Array<{ id: string; name: string | null; source: string }>;
+}
+
+/** Owner-visible choices retain exact permission identities behind human-readable labels. */
+export interface AgreementGuestAccessOptions {
+  candidates: Array<{
+    principalEntityId: string;
+    householdGrantId: string;
+    displayName: string | null;
+    identityLabel: string;
+    role: HouseholdRole;
+    expiresAt: string | null;
+    issuedAt: string;
+  }>;
+  grants: Array<{
+    grantId: string;
+    principalEntityId: string;
+    householdGrantId: string;
+    displayName: string | null;
+    issuedAt: string;
+    canRead: boolean;
+    denial: string | null;
+  }>;
 }
 
 export interface ParentingAgreementArtifact {
@@ -1608,6 +1631,61 @@ export class AgreementKnowledgeService {
       unpinnedByEntityId: input.unpinnedByEntityId,
       unpinnedAt: this.now().toISOString(),
     });
+  }
+
+  async listGuestAccessOptions(input: {
+    artifactId: string;
+    ownerEntityId: string;
+  }): Promise<AgreementGuestAccessOptions> {
+    this.requireOwner(input.ownerEntityId);
+    const artifact = await this.requireArtifact(input.artifactId);
+    const options: AgreementGuestAccessOptions = { candidates: [], grants: [] };
+    const householdGrants = await this.deps.household.listActiveGrantsForOwner({
+      householdId: artifact.householdId,
+      ownerEntityId: input.ownerEntityId,
+      scope: "knowledge.read",
+    });
+    for (const grant of householdGrants) {
+      if (grant.principalEntityId === SELF_ENTITY_ID) continue;
+      const principal = await this.deps.entityStore.get(
+        grant.principalEntityId,
+      );
+      const identity = principal?.identities.find((item) => item.verified);
+      if (!principal || !identity) continue;
+      options.candidates.push({
+        principalEntityId: grant.principalEntityId,
+        householdGrantId: grant.id,
+        displayName: principal.preferredName || null,
+        identityLabel: `${identity.platform}: ${identity.handle}`,
+        role: grant.role,
+        expiresAt: grant.expiresAt,
+        issuedAt: grant.createdAt,
+      });
+    }
+    for (const grant of await this.deps.repository.listArtifactGrants(
+      artifact.id,
+    )) {
+      if (grant.revokedAt) continue;
+      const principal = await this.deps.entityStore.get(
+        grant.principalEntityId,
+      );
+      const preview = await this.previewGuestRead({
+        artifactId: artifact.id,
+        principalEntityId: grant.principalEntityId,
+        householdGrantId: grant.householdGrantId,
+        ownerEntityId: input.ownerEntityId,
+      });
+      options.grants.push({
+        grantId: grant.id,
+        principalEntityId: grant.principalEntityId,
+        householdGrantId: grant.householdGrantId,
+        displayName: principal?.preferredName || null,
+        issuedAt: grant.createdAt,
+        canRead: preview.allowed,
+        denial: preview.denial?.message ?? null,
+      });
+    }
+    return options;
   }
 
   async previewGuestRead(input: {

@@ -38,6 +38,7 @@ import {
 } from "react";
 import type { FamilyPacketSection } from "../../lifeops/family-coordination/index.js";
 import { nextFamilyPacketPeriod } from "../../lifeops/family-workflows/period.js";
+import { AgreementGuestAccessPanel } from "./AgreementGuestAccessPanel.js";
 import { defaultFamilyOperationsAdapter } from "./adapter.js";
 import { FamilyIntakePanel } from "./FamilyIntakePanel.js";
 import {
@@ -280,13 +281,6 @@ function AgreementPanel({
   const pinLoadRequest = useRef(0);
   const [targets, setTargets] = useState<Loadable<
     Awaited<ReturnType<FamilyOperationsAdapter["listPinTargets"]>>
-  > | null>(null);
-  const [principalEntityId, setPrincipalEntityId] = useState("");
-  const [householdGrantId, setHouseholdGrantId] = useState("");
-  const [revokeGrantId, setRevokeGrantId] = useState("");
-  const [revokeReason, setRevokeReason] = useState("");
-  const [preview, setPreview] = useState<Awaited<
-    ReturnType<FamilyOperationsAdapter["previewGrant"]>
   > | null>(null);
   const [pins, setPins] = useState<
     Awaited<ReturnType<FamilyOperationsAdapter["listPins"]>>
@@ -694,134 +688,13 @@ function AgreementPanel({
 
       <Card
         title="Guest access"
-        detail="Preview the exact effects before issuing a bounded read grant to a verified guest."
+        detail="Choose a verified guest and preview the limited access before enabling it."
       >
-        <div style={{ display: "grid", gap: 9 }}>
-          <label htmlFor="family-guest-entity-id">
-            <span>Guest entity ID</span>
-            <Input
-              id="family-guest-entity-id"
-              value={principalEntityId}
-              onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                setPrincipalEntityId(event.target.value)
-              }
-            />
-          </label>
-          <label htmlFor="family-household-grant-id">
-            <span>Household grant ID</span>
-            <Input
-              id="family-household-grant-id"
-              value={householdGrantId}
-              onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                setHouseholdGrantId(event.target.value)
-              }
-            />
-          </label>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Button
-              variant="outline"
-              disabled={!principalEntityId || !householdGrantId}
-              onClick={() =>
-                void act(
-                  async () =>
-                    setPreview(
-                      await adapter.previewGrant({
-                        artifactId: selected.artifact.id,
-                        principalEntityId,
-                        householdGrantId,
-                      }),
-                    ),
-                  "Preview ready.",
-                )
-              }
-            >
-              Preview permission
-            </Button>
-            <Button
-              disabled={!preview?.allowed}
-              onClick={() =>
-                void act(
-                  () =>
-                    adapter.issueGrant({
-                      artifactId: selected.artifact.id,
-                      principalEntityId,
-                      householdGrantId,
-                    }),
-                  "Guest grant issued.",
-                )
-              }
-            >
-              Issue grant
-            </Button>
-          </div>
-          {preview ? (
-            <div
-              role="status"
-              style={{
-                border: "1px solid var(--border)",
-                borderRadius: 12,
-                padding: 12,
-              }}
-            >
-              <strong>
-                {preview.allowed ? "Ready to grant" : "Cannot grant"}
-              </strong>
-              <p>
-                {preview.denial?.message ??
-                  "Guest can read artifact metadata and approved obligations only."}
-              </p>
-              <small>
-                Pins do not grant access. Proposed and rejected obligations
-                remain private.
-              </small>
-            </div>
-          ) : null}
-          <div
-            style={{
-              borderTop: "1px solid var(--border)",
-              display: "grid",
-              gap: 9,
-              marginTop: 8,
-              paddingTop: 16,
-            }}
-          >
-            <strong>Revoke an existing grant</strong>
-            <label htmlFor="family-revoke-grant-id">
-              <span>Grant ID</span>
-              <Input
-                id="family-revoke-grant-id"
-                value={revokeGrantId}
-                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                  setRevokeGrantId(event.target.value)
-                }
-              />
-            </label>
-            <label htmlFor="family-revoke-reason">
-              <span>Revocation reason</span>
-              <Input
-                id="family-revoke-reason"
-                value={revokeReason}
-                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                  setRevokeReason(event.target.value)
-                }
-              />
-            </label>
-            <div>
-              <Button
-                variant="outline"
-                disabled={!revokeGrantId.trim() || !revokeReason.trim()}
-                onClick={() =>
-                  void act(
-                    () => adapter.revokeGrant(revokeGrantId, revokeReason),
-                    "Guest grant revoked.",
-                  )
-                }
-              >
-                Revoke grant
-              </Button>
-            </div>
-          </div>
-        </div>
+        <AgreementGuestAccessPanel
+          key={selected.artifact.id}
+          artifactId={selected.artifact.id}
+          adapter={adapter}
+        />
       </Card>
       {error ? <Unavailable message={error} /> : null}
       {notice ? <p role="status">{notice}</p> : null}

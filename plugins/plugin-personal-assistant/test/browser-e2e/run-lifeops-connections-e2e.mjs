@@ -71,6 +71,12 @@ const styles = buildResult.output
 if (!styles)
   throw new Error("LifeOps fixture omitted production control styles.");
 
+const emittedAssets = new Map(
+  buildResult.output
+    .filter((entry) => entry.type === "asset")
+    .map((entry) => [`/${entry.fileName}`, entry.source]),
+);
+
 const html = `<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LifeOps no-provider acceptance</title><style>:root{color-scheme:dark;--brand-white:#fdfaf7;--brand-black:#000;--brand-orange:#ff6a1f;--txt:var(--brand-white);--muted:rgba(255,255,255,.56);--bg:var(--brand-black);--card:#121212;--bg-muted:rgba(255,255,255,.06);--bg-accent:var(--brand-black);--accent:#ff6a1f;--accent-muted:#c94400;--accent-foreground:var(--brand-black);--accent-subtle:rgba(255,106,31,.14);--border:rgba(255,255,255,.12);--border-strong:rgba(255,255,255,.22);--status-success:#4ade80;--status-success-bg:rgba(74,222,128,.16);--status-warning:#ff6a1f;--status-warning-bg:rgba(255,106,31,.12);--status-danger:#ff6a1f;--status-danger-bg:rgba(255,106,31,.12);--scrim:rgba(0,0,0,.72)}html,body,#root{width:100%;height:100%;margin:0;background:var(--bg);color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}*{box-sizing:border-box}</style></head><body><div id="root"></div><script src="/fixture.js"></script></body></html>`;
 const server = Bun.serve({
   hostname: "127.0.0.1",
@@ -95,6 +101,19 @@ const server = Bun.serve({
           },
         },
       );
+    }
+    const asset = emittedAssets.get(url.pathname);
+    if (asset !== undefined) {
+      return new Response(asset, {
+        headers: {
+          "content-type": url.pathname.endsWith(".woff2")
+            ? "font/woff2"
+            : url.pathname.endsWith(".woff")
+              ? "font/woff"
+              : "application/octet-stream",
+          "cache-control": "no-store",
+        },
+      });
     }
     return new Response("Not found", { status: 404 });
   },
@@ -1144,7 +1163,11 @@ try {
       `${width}px named chat selection submits the resolved conversation identity`,
     );
     const clipped = await family.evaluate(() =>
-      [...document.querySelectorAll("main section, main button, main input")]
+      [
+        ...document.querySelectorAll(
+          "main section, main button, main input, main select",
+        ),
+      ]
         .filter((element) => {
           const rect = element.getBoundingClientRect();
           return (
@@ -1170,6 +1193,50 @@ try {
       path: join(outputDir, `family-agreement-${width}.png`),
       animations: "disabled",
     });
+    const guestChoice = family.getByLabel("Verified guest permission");
+    await guestChoice.selectOption("fixture-permission-alex");
+    await family
+      .getByRole("button", { name: "Preview permission", exact: true })
+      .click();
+    await family.getByText("Ready to grant", { exact: true }).waitFor();
+    await guestChoice.selectOption("fixture-permission-sam");
+    assert(
+      await family
+        .getByRole("button", { name: "Allow access", exact: true })
+        .isDisabled(),
+      `${width}px changing guest retires the prior permission preview`,
+    );
+    await family
+      .getByRole("button", { name: "Preview permission", exact: true })
+      .click();
+    await family.getByText("Ready to grant", { exact: true }).waitFor();
+    await family
+      .getByRole("button", { name: "Allow access", exact: true })
+      .click();
+    await family.getByText("Guest access enabled.", { exact: true }).waitFor();
+    assert(
+      (await family
+        .locator("html")
+        .getAttribute("data-family-guest-target")) === "fixture-caregiver",
+      `${width}px named guest sharing uses the previewed person`,
+    );
+    await family
+      .getByLabel("Existing guest access")
+      .selectOption("fixture-guest-grant-0");
+    await family
+      .getByLabel("Reason for removing access")
+      .fill("Synthetic review complete.");
+    await family.screenshot({
+      path: join(outputDir, `family-guest-${width}.png`),
+      animations: "disabled",
+    });
+    await family
+      .getByRole("button", { name: "Remove access", exact: true })
+      .click();
+    await family.getByText("Guest access removed.", { exact: true }).waitFor();
+    await family
+      .getByText("No guest access to remove.", { exact: true })
+      .waitFor();
     await family
       .getByRole("button", { name: "Monthly packet", exact: true })
       .click();
