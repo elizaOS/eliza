@@ -1,4 +1,4 @@
-/** Synthetic browser state for editing monthly email; no method can call a live provider. */
+/** Synthetic agreement and monthly-email browser state; no method can call a live provider. */
 import type {
   FamilyOperationsAdapter,
   FamilyOperationsSnapshot,
@@ -32,7 +32,33 @@ export function createFamilyPacketFixture(
   return {
     async load(): Promise<FamilyOperationsSnapshot> {
       return {
-        agreements: { status: "ready", data: [] },
+        agreements: {
+          status: "ready",
+          data: [
+            {
+              artifact: {
+                id: "fixture-agreement",
+                agentId: "fixture-agent",
+                householdId: "default",
+                agreementKey: "synthetic-plan",
+                version: 1,
+                supersedesArtifactId: null,
+                title: "Synthetic parenting plan",
+                originalFilename: "synthetic-plan.pdf",
+                documentId: "fixture-document",
+                mediaUrl: "/api/media/fixture.pdf",
+                mediaFileName: "fixture.pdf",
+                contentSha256: "a".repeat(64),
+                mimeType: "application/pdf",
+                byteSize: 2048,
+                pageCount: 3,
+                uploadedByEntityId: "self",
+                createdAt: "2026-09-20T12:00:00Z",
+              },
+              obligations: [],
+            },
+          ],
+        },
         calendarLinks: { status: "ready", data: [] },
         school: {
           status: "unavailable",
@@ -84,7 +110,9 @@ export function createFamilyPacketFixture(
     },
     uploadAgreement: unsupported,
     decideObligation: unsupported,
-    listPins: unsupported,
+    async listPins() {
+      return [];
+    },
     pin: unsupported,
     unpin: unsupported,
     previewGrant: unsupported,

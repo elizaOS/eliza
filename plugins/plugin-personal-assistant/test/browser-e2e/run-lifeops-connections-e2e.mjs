@@ -597,6 +597,36 @@ try {
     const familyErrors = [];
     family.on("pageerror", (error) => familyErrors.push(String(error)));
     await family.goto(`${baseURL}?scenario=family-packet`);
+    const pinTarget = family.getByRole("textbox", { name: "Pin target ID" });
+    await pinTarget.fill("fixture-acceptance-chat");
+    await pinTarget.scrollIntoViewIfNeeded();
+    const clipped = await family.evaluate(() =>
+      [...document.querySelectorAll("main section, main button, main input")]
+        .filter((element) => {
+          const rect = element.getBoundingClientRect();
+          return (
+            rect.width > 0 &&
+            (rect.left < -1 || rect.right > window.innerWidth + 1)
+          );
+        })
+        .map(
+          (element) => element.getAttribute("aria-label") || element.tagName,
+        ),
+    );
+    assert(
+      clipped.length === 0,
+      `${width}px populated agreement keeps cards and controls within the viewport: ${clipped.join(", ")}`,
+    );
+    assert(
+      await family
+        .getByRole("button", { name: "Pin", exact: true })
+        .isEnabled(),
+      `${width}px pin form accepts a target without requiring horizontal scrolling`,
+    );
+    await family.screenshot({
+      path: join(outputDir, `family-agreement-${width}.png`),
+      animations: "disabled",
+    });
     await family
       .getByRole("button", { name: "Monthly packet", exact: true })
       .click();
