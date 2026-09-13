@@ -525,7 +525,7 @@ import {
 import {
   DEFAULT_REPLAY_LIMIT,
   parseEventCursor,
-  selectReplayEvents,
+  selectReplay,
 } from "./ws-event-replay.ts";
 import { runtimeRoutesNeedX402Validation } from "./x402-route-validation.ts";
 
@@ -4652,12 +4652,15 @@ export async function startApiServer(opts?: {
             pendingRestartReasons: state.pendingRestartReasons,
           }),
         );
-        const replay = selectReplayEvents(
+        const replay = selectReplay(
           state.eventBuffer,
           replayCursor,
           DEFAULT_REPLAY_LIMIT,
         );
-        for (const event of replay) {
+        if (replay.gap) {
+          ws.send(JSON.stringify(replay.gap));
+        }
+        for (const event of replay.events) {
           ws.send(JSON.stringify(event));
         }
       } catch (err) {
