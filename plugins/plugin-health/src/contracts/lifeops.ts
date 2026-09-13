@@ -6,15 +6,19 @@
  * the connector-degradation types. Consumed across the screen-time, scheduling,
  * and connector layers.
  */
-// The passive-signal source vocabulary is owned by `@elizaos/shared`; health
-// imports and re-exports the canonical const/type/guard so its reliability
-// tables and the PA telemetry mapper agree on one definition instead of
-// drifting copies.
+// The passive-signal source, audit-event and owner-type vocabularies are owned
+// by `@elizaos/shared`; health imports and re-exports the canonical
+// const/type/guard so its reliability tables and the PA telemetry mapper agree
+// on one definition instead of drifting copies.
 import {
   isBuiltinActivitySignalSource,
   LIFEOPS_ACTIVITY_SIGNAL_SOURCES,
+  LIFEOPS_AUDIT_EVENT_TYPES,
+  LIFEOPS_OWNER_TYPES,
   type LifeOpsActivitySignalSource,
   type LifeOpsActivitySignalSourceName,
+  type LifeOpsAuditEventType,
+  type LifeOpsOwnerType,
 } from "@elizaos/shared";
 import type { LifeOpsConnectorDegradation } from "./lifeops-connector-degradation.js";
 
@@ -26,8 +30,12 @@ export { LIFEOPS_CONNECTOR_DEGRADATION_AXES } from "./lifeops-connector-degradat
 export {
   isBuiltinActivitySignalSource,
   LIFEOPS_ACTIVITY_SIGNAL_SOURCES,
+  LIFEOPS_AUDIT_EVENT_TYPES,
+  LIFEOPS_OWNER_TYPES,
   type LifeOpsActivitySignalSource,
   type LifeOpsActivitySignalSourceName,
+  type LifeOpsAuditEventType,
+  type LifeOpsOwnerType,
 };
 
 export const LIFEOPS_TIME_WINDOW_NAMES = [
@@ -507,58 +515,6 @@ export const LIFEOPS_REMINDER_PREFERENCE_SOURCES = [
 ] as const;
 export type LifeOpsReminderPreferenceSource =
   (typeof LIFEOPS_REMINDER_PREFERENCE_SOURCES)[number];
-
-export const LIFEOPS_OWNER_TYPES = [
-  "definition",
-  "occurrence",
-  "goal",
-  "workflow",
-  "calendar_event",
-  "gmail_message",
-  "connector",
-  "channel_policy",
-  "browser_session",
-  "circadian_state",
-] as const;
-export type LifeOpsOwnerType = (typeof LIFEOPS_OWNER_TYPES)[number];
-
-export const LIFEOPS_AUDIT_EVENT_TYPES = [
-  "definition_created",
-  "definition_updated",
-  "definition_deleted",
-  "occurrence_generated",
-  "occurrence_completed",
-  "occurrence_skipped",
-  "occurrence_snoozed",
-  "goal_created",
-  "goal_updated",
-  "goal_deleted",
-  "goal_reviewed",
-  "calendar_event_created",
-  "calendar_event_updated",
-  "calendar_event_deleted",
-  "gmail_triage_synced",
-  "gmail_reply_drafted",
-  "gmail_reply_sent",
-  "gmail_message_sent",
-  "reminder_due",
-  "reminder_delivered",
-  "reminder_blocked",
-  "reminder_escalation_started",
-  "reminder_escalation_resolved",
-  "workflow_created",
-  "workflow_updated",
-  "workflow_run",
-  "connector_grant_updated",
-  "channel_policy_updated",
-  "browser_session_created",
-  "browser_session_updated",
-  "x_post_sent",
-  "seeding_offered",
-  "circadian_event_emitted",
-  "manual_override_accepted",
-] as const;
-export type LifeOpsAuditEventType = (typeof LIFEOPS_AUDIT_EVENT_TYPES)[number];
 
 export const LIFEOPS_ACTORS = [
   "agent",
