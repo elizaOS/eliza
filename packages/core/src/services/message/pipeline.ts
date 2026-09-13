@@ -122,6 +122,7 @@ import {
 	isOwnerLifeManagementToolCandidate,
 	isTextScoredBenchmarkTurn,
 	selectV5PlannerStateProviderNames,
+	EVALUATOR_STAGE_PROVIDER_EXCLUSIONS,
 } from "./provider-state.js";
 import {
 	createV5ReplyStrategyResult,
@@ -1182,6 +1183,26 @@ export async function runV5MessageRuntimeStage1(
 			plannerContext,
 			plannerDecisionEvent,
 		);
+		// The evaluator reads the same composed state without the providers its
+		// template never uses; rendering only, the providers were run once above.
+		const evaluatorContextWithDecision = appendContextEvent(
+			await createV5MessageContextObject({
+				...args,
+				state: plannerState,
+				selectedContexts,
+				includeTools: true,
+				userRoles: [senderRole],
+				availableContexts,
+				preselectedActions: exposedPlannerActions,
+				actionSurface,
+				ambientTurn,
+				extraProviderExclusions: [
+					...ambientTurnProviderExclusions(args.runtime, args.message),
+					...EVALUATOR_STAGE_PROVIDER_EXCLUSIONS,
+				],
+			}),
+			plannerDecisionEvent,
+		);
 		const runtimeWithOptionalServices = args.runtime as typeof args.runtime & {
 			getService?: (service: string) => unknown;
 		};
@@ -1601,6 +1622,7 @@ export async function runV5MessageRuntimeStage1(
 				runPlannerLoop({
 					runtime: plannerRuntime,
 					context: loopContext,
+					evaluatorContext: evaluatorContextWithDecision,
 					codingMode: args.codingMode === true,
 					config: args.plannerLoopConfig,
 					tools: plannerTools.length > 0 ? plannerTools : undefined,

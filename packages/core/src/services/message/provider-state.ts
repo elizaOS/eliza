@@ -92,6 +92,17 @@ export const MODEL_CONTEXT_PROVIDER_EXCLUSION_SET = new Set<string>(
 
 export const AMBIENT_TURN_PROVIDER_EXCLUSIONS = ["RECENT_ERRORS"] as const;
 
+/**
+ * Providers the evaluator's template never relies on. The evaluator judges
+ * tool results against the request and the dialogue; the room roster and the
+ * platform user record only add ~7K characters to every evaluator call
+ * (audit 2026-09-13: evaluator user message byte-identical to the planner's).
+ */
+export const EVALUATOR_STAGE_PROVIDER_EXCLUSIONS = [
+	"ENTITIES",
+	"PLATFORM_USER_CONTEXT",
+] as const;
+
 export function ambientTurnProviderExclusions(
 	runtime: IAgentRuntime,
 	message: Memory,

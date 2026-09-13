@@ -431,19 +431,28 @@ async function runPlannerLoopIterations(
 			"postToolReplySeed requires a successful result with modelReplyRequired",
 		);
 	}
-	const trajectoryContext = postToolReplySeed
-		? appendContextEvent(plannerContext, {
+	const postToolReplyEvent: ContextEvent | undefined = postToolReplySeed
+		? {
 				id: "post-tool-model-reply",
 				type: "instruction",
 				source: "planner-loop",
 				createdAt: Date.now(),
 				content:
 					"The tool result in this turn is already settled and complete. Write the final user-facing reply in the agent's natural voice from that result. Do not describe the work as starting, opening now, pending, or still in progress. If the result provides a link object, include it as a Markdown link using its label and href. Do not expose internal IDs or raw tool data.",
-			})
+			}
+		: undefined;
+	const trajectoryContext = postToolReplyEvent
+		? appendContextEvent(plannerContext, postToolReplyEvent)
 		: plannerContext;
+	const evaluatorBaseContext = params.evaluatorContext
+		? postToolReplyEvent
+			? appendContextEvent(params.evaluatorContext, postToolReplyEvent)
+			: params.evaluatorContext
+		: undefined;
 	const trajectory: PlannerTrajectory = {
 		context: trajectoryContext,
 		modelBaseContext: trajectoryContext,
+		...(evaluatorBaseContext ? { evaluatorBaseContext } : {}),
 		codingMode,
 		steps: postToolReplySeed
 			? [
@@ -1488,6 +1497,34 @@ async function runPlannerLoopIterations(
 								terminalMessageWithFailureAuthority(
 									trajectory,
 									missingInputWidgetRelay,
+								),
+								trajectory,
+							),
+						};
+					}
+
+					const settledFailureClarification =
+						deterministicSettledFailureClarificationRelay(
+							trajectory,
+							plannerOutput.messageToUser,
+						);
+					if (settledFailureClarification) {
+						params.runtime.logger?.warn?.(
+							{ iteration },
+							"[planner-loop] evaluator continued after a settled non-retryable failure and a planner clarification; finishing with the question",
+						);
+						return {
+							status: "finished",
+							trajectory,
+							evaluator: { ...evaluator, success: false, decision: "FINISH" },
+							finalMessage: userSafeFinalMessage(
+								terminalMessageWithFailureAuthority(
+									trajectory,
+									settledFailureClarification,
+									userSafeFailureReport(
+										settledFailureClarification,
+										trajectory,
+									),
 								),
 								trajectory,
 							),
@@ -7209,6 +7246,33 @@ function deterministicEvaluatorProtocolFailureRelay(
 			: undefined;
 	}
 	return deterministicSuccessfulToolRelay(trajectory);
+}
+
+/**
+ * After a settled, non-retryable tool failure (a calendar not-found no-op:
+ * success:false, data.retryable:false) the planner's clarifying question is
+ * the turn's honest end. The evaluator kept answering CONTINUE to that
+ * question until the terminal-only limit errored the turn and the user got
+ * the planner-exhaustion apology instead of the question (live 2026-09-12,
+ * tj-00000f20dab904: 5 planner + 5 evaluator calls, ~220K tokens).
+ */
+function deterministicSettledFailureClarificationRelay(
+	trajectory: PlannerTrajectory,
+	plannerMessage: string | undefined,
+): string | undefined {
+	for (let index = trajectory.steps.length - 1; index >= 0; index--) {
+		const step = trajectory.steps[index];
+		if (!step?.toolCall || isTerminalToolCall(step.toolCall) || !step.result)
+			continue;
+		if (step.result.success !== false) return undefined;
+		if (
+			(step.result.data as { retryable?: unknown } | undefined)?.retryable !==
+			false
+		)
+			return undefined;
+		return userSafeClarificationReplyCandidate(plannerMessage);
+	}
+	return undefined;
 }
 
 function deterministicTerminalContinuationLimitRelay(

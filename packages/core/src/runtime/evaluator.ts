@@ -787,7 +787,9 @@ function renderEvaluatorModelInput(params: {
 	cacheKeySegments: PromptSegment[];
 } {
 	const renderedContext = renderContextObject(
-		params.trajectory.modelBaseContext ?? params.context,
+		params.trajectory.evaluatorBaseContext ??
+			params.trajectory.modelBaseContext ??
+			params.context,
 	);
 	const template = params.template ?? evaluatorTemplate;
 	const instructions = (
