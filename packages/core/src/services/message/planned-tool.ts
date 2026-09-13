@@ -543,7 +543,6 @@ export function collectPlannerTools(
 	options: {
 		expandSubActions?: boolean;
 		canonicalFamilies?: boolean;
-		candidateActions?: readonly string[];
 	} = {},
 ): ToolDefinition[] {
 	const hasAnyAction = context.events.some(
@@ -558,7 +557,7 @@ export function collectPlannerTools(
 	const actions = narrowedActions ?? collectActionsFromContext(context);
 	const tierAParents = readTierAParentsFromContext(context);
 	const wireActions = options.canonicalFamilies
-		? collectCanonicalPlannerActions(actions, options.candidateActions ?? [])
+		? collectCanonicalPlannerActions(actions)
 		: actions;
 	const actionTools = buildPlannerToolsFromTieredActions(wireActions, {
 		tierAParents,
@@ -621,20 +620,22 @@ export function collectPlannerTools(
 
 /**
  * Represents generated aliases once through their complete authorized umbrella.
- * Independent child actions and explicitly requested aliases remain direct. The
- * caller retains every original context action for execution and trajectories.
+ * Independent child actions remain direct, as does an alias whose umbrella is
+ * absent, incomplete, or lossy for it. A Stage-1 candidate alias gets no
+ * exemption: its umbrella is always loaded beside it
+ * (collectBudgetedStageOneCandidateActions), so a direct alias tool repeated
+ * the umbrella's complete parameter schema on every planner round (live
+ * 2026-09-13, one calendar move: CALENDAR 23,471 chars plus
+ * CALENDAR_SEARCH_EVENTS 12,786 and CALENDAR_UPDATE_EVENT 13,232, the same
+ * `details` schema three times). The umbrella's alias contract (~750 chars)
+ * still names the candidate with its pinned discriminator, and the caller
+ * retains every original context action for execution and trajectories.
  */
 export function collectCanonicalPlannerActions(
 	actions: readonly Action[],
-	candidateActions: readonly string[],
 ): Action[] {
-	const lookup = buildRuntimeActionLookup({ actions });
-	const directCandidates = new Set(
-		candidateActions.map((name) => resolveRuntimeAction(lookup, name)?.name),
-	);
 	const authorized = new Map(actions.map((action) => [action.name, action]));
 	return actions.filter((action) => {
-		if (directCandidates.has(action.name)) return true;
 		const parentName = promotedSubactionParent(action);
 		if (!parentName) return true;
 		const parent = authorized.get(parentName);

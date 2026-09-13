@@ -12,6 +12,7 @@ import type { V5MessageRuntimeInput } from "./turn-input.js";
 
 export type { V5MessageRuntimeInput } from "./turn-input.js";
 
+import { promotedSubactionParent } from "../../actions/promote-subactions";
 import { ElizaError } from "../../errors";
 import { runShouldRespondInjectionGate } from "../../features/trust/should-respond-risk-gate";
 import { timeInferenceSpan } from "../../inference-timing";
@@ -1066,8 +1067,6 @@ export async function runV5MessageRuntimeStage1(
 							exposedPlannerActions,
 							{
 								canonicalFamilies: true,
-								candidateActions:
-									getMessageHandlerCandidateActions(messageHandler),
 							},
 						);
 						plannerTools.splice(0, plannerTools.length, ...expandedTools);
@@ -1224,7 +1223,6 @@ export async function runV5MessageRuntimeStage1(
 			undefined,
 			{
 				canonicalFamilies: true,
-				candidateActions: getMessageHandlerCandidateActions(messageHandler),
 			},
 		);
 		// No dispatch-budget preflight: the planner receives every authorized
@@ -1275,9 +1273,20 @@ export async function runV5MessageRuntimeStage1(
 			// exposed and runnable.
 			if (exposedActionMatches(plannerToolActions, normalized)) return true;
 			const resolved = resolveRuntimeAction(stageOneActionLookup, name);
+			if (resolved === undefined) return false;
+			if (plannerToolNames.has(normalizeActionIdentifier(resolved.name))) {
+				return true;
+			}
+			// The canonical surface represents a promoted alias through its
+			// umbrella's alias contract instead of a second native tool
+			// (collectCanonicalPlannerActions), so a Stage-1 hint naming
+			// CALENDAR_UPDATE_EVENT still names an exposed, runnable operation while
+			// CALENDAR is on the wire. Reading it as unresolvable would silently drop
+			// hard-tool enforcement for exactly the turns Stage 1 routed precisely.
+			const umbrella = promotedSubactionParent(resolved);
 			return (
-				resolved !== undefined &&
-				plannerToolNames.has(normalizeActionIdentifier(resolved.name))
+				umbrella !== undefined &&
+				plannerToolNames.has(normalizeActionIdentifier(umbrella))
 			);
 		};
 		const stageOneNamedAToolForThisTurn =
