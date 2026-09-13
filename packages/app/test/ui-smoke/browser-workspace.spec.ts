@@ -317,6 +317,43 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await resetBrowserWorkspaceTabs(request);
+  // Focusing an empty composer deliberately stays collapsed. This geometry
+  // case needs a restored thread to exercise the expanded overlay.
+  const conversation = {
+    id: "browser-geometry-thread",
+    roomId: "browser-geometry-room",
+    title: "Browser review",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  const threadText = "The browser review is ready to continue.";
+  await page.route("**/api/conversations", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await route.fulfill({ json: { conversations: [conversation] } });
+  });
+  await page.route(`**/api/conversations/${conversation.id}`, async (route) => {
+    if (!["GET", "PATCH"].includes(route.request().method()))
+      return route.fallback();
+    await route.fulfill({ json: { conversation } });
+  });
+  await page.route(
+    `**/api/conversations/${conversation.id}/messages**`,
+    async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      await route.fulfill({
+        json: {
+          messages: [
+            {
+              id: "browser-review-message",
+              role: "assistant",
+              text: threadText,
+              timestamp: Date.now(),
+            },
+          ],
+        },
+      });
+    },
+  );
   await openAppPath(page, "/browser");
   const browserWorkspaceView = page.getByTestId("browser-workspace-view");
   await expect(browserWorkspaceView).toBeVisible({ timeout: 60_000 });
@@ -486,6 +523,9 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
   await composer.focus();
   const chatOverlay = page.getByTestId("chat-overlay");
   await expect(chatOverlay).toHaveAttribute("data-open", "true");
+  await expect(
+    chatOverlay.getByText(threadText, { exact: true }),
+  ).toBeVisible();
   const expandedGeometry = await page.evaluate(() => {
     const surface = document.querySelector<HTMLElement>(
       '[data-testid="browser-workspace-surface-panel"]',
