@@ -1,6 +1,23 @@
 // Wires hosted Eliza agent native planner guards behavior for cloud runtime services.
+import type { IAgentRuntime } from "@elizaos/core";
 import { parseJSONObjectFromText } from "@elizaos/core";
 import type { ParsedNativePlannerDecision } from "../types";
+
+/**
+ * Read a setting that bounds a loop, falling back whenever the configured value
+ * is not a usable positive count.
+ *
+ * `getSetting(key) ?? "2"` only covers an ABSENT setting. A setting present but
+ * empty (`FOO=` in an env file), non-numeric, zero or negative still reaches
+ * `parseInt` and yields NaN or 0 -- and every comparison against NaN is false,
+ * so a loop bounded by it does not error, it silently does not run. Matches the
+ * guard `numberSetting` in ../providers/actions.ts already applies.
+ */
+export function positiveIntSetting(runtime: IAgentRuntime, key: string, fallback: number): number {
+  const raw = runtime.getSetting?.(key);
+  const value = typeof raw === "string" ? Number(raw) : raw;
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : fallback;
+}
 
 const BUILT_IN_RESPONSE_ACTIONS = new Set(["REPLY", "NONE"]);
 

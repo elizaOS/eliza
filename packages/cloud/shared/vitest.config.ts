@@ -50,6 +50,7 @@ export default defineConfig({
       "src/lib/services/email.port.test.ts",
       "src/lib/services/docker-node-manager.surrogate-safe.test.ts",
       "src/lib/services/affiliate-billing-attribution.test.ts",
+      "src/lib/eliza/plugin-cloud-bootstrap/utils/native-planner-settings.test.ts",
     ],
     environment: "node",
     // PGlite's WASM worker outlives Vitest's fork shutdown grace even after
