@@ -51,8 +51,15 @@ export interface AppleFoundationAdapter {
  */
 export function createAppleFoundationAdapter(
 	getBridge: () => IosComputerUseBridge | null,
+	options: {
+		/**
+		 * Result of a probe the caller has already awaited. Seeds `available()`
+		 * so the first call is deterministic and the device is not probed twice.
+		 */
+		readonly knownAvailable?: boolean;
+	} = {},
 ): AppleFoundationAdapter {
-	let probedAvailable: boolean | null = null;
+	let probedAvailable: boolean | null = options.knownAvailable ?? null;
 	let probing: Promise<boolean> | null = null;
 
 	async function probe(): Promise<boolean> {

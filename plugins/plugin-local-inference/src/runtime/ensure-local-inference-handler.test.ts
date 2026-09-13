@@ -120,6 +120,10 @@ vi.mock("../services/voice", () => ({
 	})),
 }));
 
+import {
+	_resetAppleFoundationAdapterForTests,
+	registerAppleFoundationAdapter,
+} from "../backends/apple-foundation";
 import { resolveLocalInferenceLoadArgs } from "../services/active-model";
 import { probeHardware } from "../services/hardware";
 import { installRouterHandler } from "../services/router-handler";
@@ -435,6 +439,53 @@ describe("ensureLocalInferenceHandler", () => {
 				topP: 0.9,
 			}),
 		);
+	});
+
+	it("serves an eligible TEXT_SMALL call from a registered Apple Foundation adapter (#31118)", async () => {
+		const { registrations, runtime } = makeRuntime();
+		engineState.hasLoadedModel.mockReturnValue(true);
+		const generate = vi.fn(async () => ({
+			text: "from apple",
+			tokensIn: 2,
+			tokensOut: 2,
+			elapsedMs: 5,
+		}));
+		registerAppleFoundationAdapter({
+			name: "apple-foundation",
+			available: () => true,
+			generate,
+		});
+		try {
+			await ensureLocalInferenceHandler(runtime);
+			const small = findRegisteredHandler(registrations, ModelType.TEXT_SMALL);
+			await expect(
+				small(runtime, { prompt: "Say hi", maxTokens: 16 }),
+			).resolves.toBe("from apple");
+			expect(generate).toHaveBeenCalledWith({
+				prompt: "Say hi",
+				options: { maxTokens: 16 },
+			});
+			expect(engineState.generate).not.toHaveBeenCalled();
+
+			// The planner shares the TEXT_SMALL slot but never takes the fast path.
+			const planner = findRegisteredHandler(
+				registrations,
+				ModelType.ACTION_PLANNER,
+			);
+			await planner(runtime, { prompt: "plan", maxTokens: 16 });
+			expect(engineState.generate).toHaveBeenCalledTimes(1);
+
+			// A streaming request stays on llama.cpp too.
+			await small(runtime, {
+				prompt: "Say hi",
+				stream: true,
+				onStreamChunk: () => undefined,
+			});
+			expect(engineState.generate).toHaveBeenCalledTimes(2);
+			expect(generate).toHaveBeenCalledTimes(1);
+		} finally {
+			_resetAppleFoundationAdapterForTests();
+		}
 	});
 
 	it("uses the complete native tool history when prompt segments are also present", async () => {
