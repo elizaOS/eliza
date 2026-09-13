@@ -1661,12 +1661,13 @@ export class FormService extends Service {
     for (const control of form.controls) {
       if (!control.required) continue;
 
+      // Only a filled field satisfies a required control. A field whose
+      // external activation is still pending, or whose value is uncertain,
+      // has no committed value yet; treating either as filled let the
+      // session flip to ready and submit while the required value was still
+      // in flight, and skipping a required control is refused upstream.
       const fieldState = session.fields[control.key];
-      if (
-        !fieldState ||
-        fieldState.status === "empty" ||
-        fieldState.status === "invalid"
-      ) {
+      if (fieldState?.status !== "filled") {
         return false;
       }
     }
