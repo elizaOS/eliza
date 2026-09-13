@@ -35,17 +35,36 @@ import type {
 // Fetch Utilities
 // ============================================================================
 
-/** Fetch with an AbortController-based timeout (default 30s). */
+/**
+ * Fetch with an AbortController-based timeout (default 30s).
+ *
+ * A caller-supplied `init.signal` is chained rather than discarded: replacing
+ * it outright would silently drop cancellation, so a caller that aborts its
+ * own request would keep waiting for the full timeout. This mirrors
+ * `fetchWithTimeoutGuard` in `api/server-helpers-fetch.ts`.
+ */
 export function fetchWithTimeout(
   url: string,
   init: RequestInit,
   timeoutMs = 30_000,
 ): Promise<Response> {
   const controller = new AbortController();
+  const upstreamSignal = init.signal;
+  const onUpstreamAbort = () => controller.abort();
+
+  if (upstreamSignal) {
+    if (upstreamSignal.aborted) {
+      controller.abort();
+    } else {
+      upstreamSignal.addEventListener("abort", onUpstreamAbort, { once: true });
+    }
+  }
+
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...init, signal: controller.signal }).finally(() =>
-    clearTimeout(timer),
-  );
+  return fetch(url, { ...init, signal: controller.signal }).finally(() => {
+    clearTimeout(timer);
+    upstreamSignal?.removeEventListener("abort", onUpstreamAbort);
+  });
 }
 
 async function withProviderErrorBoundary<T>(
