@@ -11,6 +11,11 @@ import type {
   ApprovalQueue,
   ApprovalRequest,
 } from "../approval-queue.types.js";
+import {
+  beginFamilyWorkspaceOperation,
+  settleFamilyWorkspaceOperation,
+  withActiveFamilyWorkspaceTransaction,
+} from "../family-workflows/workspace-operation-store.js";
 import { getAgreementKnowledgeService } from "../household/agreement-knowledge.js";
 import {
   executeRawSql,
@@ -449,9 +454,14 @@ export class MonthlyFamilyPacketService {
       contentSha256,
       createdAt: this.now().toISOString(),
     };
-    await executeRawSql(
+    await withActiveFamilyWorkspaceTransaction(
       this.runtime,
-      `INSERT INTO app_lifeops.life_family_packets (agent_id,packet_id,period_key,internal_version,content_sha256,packet_json,created_at) VALUES (${sqlQuote(this.runtime.agentId)},${sqlQuote(packetId)},${sqlQuote(period.key)},${version},${sqlQuote(contentSha256)},${sqlQuote(JSON.stringify(packet))},${sqlQuote(packet.createdAt)})`,
+      ["app_lifeops.life_family_packets"],
+      (tx) =>
+        executeRawSqlTx(
+          tx,
+          `INSERT INTO app_lifeops.life_family_packets (agent_id,packet_id,period_key,internal_version,content_sha256,packet_json,created_at) VALUES (${sqlQuote(this.runtime.agentId)},${sqlQuote(packetId)},${sqlQuote(period.key)},${version},${sqlQuote(contentSha256)},${sqlQuote(JSON.stringify(packet))},${sqlQuote(packet.createdAt)})`,
+        ),
     );
     return packet;
   }
@@ -662,9 +672,14 @@ export class MonthlyFamilyPacketService {
       createdAt: this.now().toISOString(),
       email: input.email ?? null,
     };
-    await executeRawSql(
+    await withActiveFamilyWorkspaceTransaction(
       this.runtime,
-      `INSERT INTO app_lifeops.life_family_packet_drafts (agent_id,packet_id,internal_version,draft_version,recipient,recipient_entity_id,calendar_privacy_mode,included_claim_ids_json,body,body_sha256,transformations_json,created_at,email_json) VALUES (${sqlQuote(this.runtime.agentId)},${sqlQuote(packet.packetId)},${packet.version},${draftVersion},${sqlQuote(recipient)},${sqlQuote(recipientEntityId)},${sqlQuote(input.calendarPrivacyMode)},${sqlQuote(JSON.stringify(draft.includedClaimIds))},${sqlQuote(body)},${sqlQuote(draft.bodySha256)},${sqlQuote(JSON.stringify(transformations))},${sqlQuote(draft.createdAt)},${draft.email ? sqlQuote(JSON.stringify(draft.email)) : "NULL"})`,
+      ["app_lifeops.life_family_packet_drafts"],
+      (tx) =>
+        executeRawSqlTx(
+          tx,
+          `INSERT INTO app_lifeops.life_family_packet_drafts (agent_id,packet_id,internal_version,draft_version,recipient,recipient_entity_id,calendar_privacy_mode,included_claim_ids_json,body,body_sha256,transformations_json,created_at,email_json) VALUES (${sqlQuote(this.runtime.agentId)},${sqlQuote(packet.packetId)},${packet.version},${draftVersion},${sqlQuote(recipient)},${sqlQuote(recipientEntityId)},${sqlQuote(input.calendarPrivacyMode)},${sqlQuote(JSON.stringify(draft.includedClaimIds))},${sqlQuote(body)},${sqlQuote(draft.bodySha256)},${sqlQuote(JSON.stringify(transformations))},${sqlQuote(draft.createdAt)},${draft.email ? sqlQuote(JSON.stringify(draft.email)) : "NULL"})`,
+        ),
     );
     return draft;
   }
@@ -732,28 +747,35 @@ export class MonthlyFamilyPacketService {
         },
       ],
     };
-    await withRequiredTransaction(this.runtime, async (tx) => {
-      // Serialize edits on the persisted packet before checking the current draft.
-      const packets = await executeRawSqlTx(
-        tx,
-        `SELECT internal_version FROM app_lifeops.life_family_packets WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND packet_id=${sqlQuote(input.packetId)} ORDER BY internal_version DESC LIMIT 1 FOR UPDATE`,
-      );
-      if (toNumber(packets[0]?.internal_version) !== previous.internalVersion)
-        fail("Packet changed while editing", "FAMILY_PACKET_INTERNAL_STALE");
-      const versions = await executeRawSqlTx(
-        tx,
-        `SELECT MAX(draft_version) AS version FROM app_lifeops.life_family_packet_drafts WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND packet_id=${sqlQuote(input.packetId)}`,
-      );
-      if (toNumber(versions[0]?.version) !== input.expectedDraftVersion)
-        fail(
-          "Another draft was saved; reload before editing",
-          "FAMILY_PACKET_DRAFT_STALE",
+    await withActiveFamilyWorkspaceTransaction(
+      this.runtime,
+      [
+        "app_lifeops.life_family_packets",
+        "app_lifeops.life_family_packet_drafts",
+      ],
+      async (tx) => {
+        // Serialize edits on the persisted packet before checking the current draft.
+        const packets = await executeRawSqlTx(
+          tx,
+          `SELECT internal_version FROM app_lifeops.life_family_packets WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND packet_id=${sqlQuote(input.packetId)} ORDER BY internal_version DESC LIMIT 1 FOR UPDATE`,
         );
-      await executeRawSqlTx(
-        tx,
-        `INSERT INTO app_lifeops.life_family_packet_drafts (agent_id,packet_id,internal_version,draft_version,recipient,recipient_entity_id,calendar_privacy_mode,included_claim_ids_json,body,body_sha256,transformations_json,created_at,email_json) VALUES (${sqlQuote(this.runtime.agentId)},${sqlQuote(draft.packetId)},${draft.internalVersion},${draft.draftVersion},${sqlQuote(draft.recipient)},${sqlQuote(draft.recipientEntityId)},${sqlQuote(draft.calendarPrivacyMode)},${sqlQuote(JSON.stringify(draft.includedClaimIds))},${sqlQuote(draft.body)},${sqlQuote(draft.bodySha256)},${sqlQuote(JSON.stringify(draft.transformations))},${sqlQuote(draft.createdAt)},${sqlQuote(JSON.stringify(draft.email))})`,
-      );
-    });
+        if (toNumber(packets[0]?.internal_version) !== previous.internalVersion)
+          fail("Packet changed while editing", "FAMILY_PACKET_INTERNAL_STALE");
+        const versions = await executeRawSqlTx(
+          tx,
+          `SELECT MAX(draft_version) AS version FROM app_lifeops.life_family_packet_drafts WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND packet_id=${sqlQuote(input.packetId)}`,
+        );
+        if (toNumber(versions[0]?.version) !== input.expectedDraftVersion)
+          fail(
+            "Another draft was saved; reload before editing",
+            "FAMILY_PACKET_DRAFT_STALE",
+          );
+        await executeRawSqlTx(
+          tx,
+          `INSERT INTO app_lifeops.life_family_packet_drafts (agent_id,packet_id,internal_version,draft_version,recipient,recipient_entity_id,calendar_privacy_mode,included_claim_ids_json,body,body_sha256,transformations_json,created_at,email_json) VALUES (${sqlQuote(this.runtime.agentId)},${sqlQuote(draft.packetId)},${draft.internalVersion},${draft.draftVersion},${sqlQuote(draft.recipient)},${sqlQuote(draft.recipientEntityId)},${sqlQuote(draft.calendarPrivacyMode)},${sqlQuote(JSON.stringify(draft.includedClaimIds))},${sqlQuote(draft.body)},${sqlQuote(draft.bodySha256)},${sqlQuote(JSON.stringify(draft.transformations))},${sqlQuote(draft.createdAt)},${sqlQuote(JSON.stringify(draft.email))})`,
+        );
+      },
+    );
     return draft;
   }
 
@@ -790,6 +812,13 @@ export class MonthlyFamilyPacketService {
     );
     if (toNumber(latestRows[0]?.version) !== draft.draftVersion)
       fail("draft approval is stale", "FAMILY_PACKET_DRAFT_STALE");
+    const operationId = await beginFamilyWorkspaceOperation(this.runtime, {
+      kind: "family-packet-approval",
+      packetId: draft.packetId,
+      draftVersion: draft.draftVersion,
+    });
+    // The claim spans canonical approval persistence and reminder surfacing.
+    // An uncertain failure retains it for reconciliation before deletion.
     const request = await withRequiredTransaction(this.runtime, async (tx) => {
       const enqueued = await args.queue.enqueueTransactional(
         {
@@ -836,6 +865,7 @@ export class MonthlyFamilyPacketService {
       return approval;
     });
     await args.queue.surfaceEnqueuedApproval(request);
+    await settleFamilyWorkspaceOperation(this.runtime, operationId);
     return request;
   }
 
