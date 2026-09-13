@@ -389,13 +389,13 @@ describe("createFamilyOperationsAdapter", () => {
   it("routes queries, binary chunk uploads, and workflow mutations through the authenticated client transport", async () => {
     const fetchCalls: Array<{ path: string; init?: RequestInit }> = [];
     const mockClient: FamilyOperationsApiClient = {
-      fetch: vi.fn(async (path: string, init?: RequestInit) => {
+      fetch: vi.fn(async <T>(path: string, init?: RequestInit): Promise<T> => {
         fetchCalls.push({ path, init });
         if (path === "/api/lifeops/agreements") {
-          return { agreements: [] } as any;
+          return { agreements: [] } as unknown as T;
         }
         if (path === "/api/lifeops/calendar/links") {
-          return { links: [] } as any;
+          return { links: [] } as unknown as T;
         }
         if (path === "/api/lifeops/family-workflows/school/status") {
           return {
@@ -410,13 +410,15 @@ describe("createFamilyOperationsAdapter", () => {
               state: "applied",
               updatedAt: "2026-09-01T00:00:00Z",
             },
-          } as any;
+          } as unknown as T;
         }
         if (path === "/api/lifeops/family-workflows/school/runs/school-run-1") {
           return {
-            plan: { changes: [{ kind: "add", event: { title: "Orientation" } }] },
+            plan: {
+              changes: [{ kind: "add", event: { title: "Orientation" } }],
+            },
             errorMessage: null,
-          } as any;
+          } as unknown as T;
         }
         if (path === "/api/lifeops/family-workflows/packets") {
           return {
@@ -437,10 +439,10 @@ describe("createFamilyOperationsAdapter", () => {
               },
             ],
             packetStates: [],
-          } as any;
+          } as unknown as T;
         }
         if (path === "/api/lifeops/family-workflows/email-options") {
-          return { options: { recipients: [] } } as any;
+          return { options: { recipients: [] } } as unknown as T;
         }
         if (path === "/api/lifeops/agreement-uploads") {
           return {
@@ -453,34 +455,39 @@ describe("createFamilyOperationsAdapter", () => {
               receivedBytes: 0,
               status: "uploading",
             },
-          } as any;
+          } as unknown as T;
         }
         if (path.includes("/chunks/")) {
-          return { upload: {} } as any;
+          return { upload: {} } as unknown as T;
         }
         if (path.endsWith("/commit")) {
-          return { upload: { status: "complete" } } as any;
+          return { upload: { status: "complete" } } as unknown as T;
         }
         if (path.includes("/obligations/")) {
-          return { obligation: { id: "ob-1", status: "accepted" } } as any;
+          return {
+            obligation: { id: "ob-1", status: "accepted" },
+          } as unknown as T;
         }
         if (path.endsWith("/pins")) {
-          if (init?.method === "POST") return { pin: { id: "pin-1" } } as any;
-          return { pins: [] } as any;
+          if (init?.method === "POST")
+            return { pin: { id: "pin-1" } } as unknown as T;
+          return { pins: [] } as unknown as T;
         }
         if (path.includes("/pins/")) {
-          return { pin: { id: "pin-1" } } as any;
+          return { pin: { id: "pin-1" } } as unknown as T;
         }
         if (path.endsWith("/grants/preview")) {
-          return { preview: { canGrant: true } } as any;
+          return { preview: { canGrant: true } } as unknown as T;
         }
         if (path.endsWith("/grants")) {
-          return { grant: { id: "grant-1" } } as any;
+          return { grant: { id: "grant-1" } } as unknown as T;
         }
         if (path.includes("/grants/") && path.endsWith("/revoke")) {
-          return { grant: { id: "grant-1", status: "revoked" } } as any;
+          return {
+            grant: { id: "grant-1", status: "revoked" },
+          } as unknown as T;
         }
-        return {} as any;
+        return {} as unknown as T;
       }),
     };
 
@@ -518,22 +525,26 @@ describe("createFamilyOperationsAdapter", () => {
       expect(chunkCall.init?.headers).toHaveProperty("x-chunk-sha256");
     }
 
-    await adapter.decideObligation({ id: "ob-1" } as any, "accept", "aligned");
+    await adapter.decideObligation(
+      { id: "ob-1" } as never,
+      "accept",
+      "aligned",
+    );
     await adapter.listPins("artifact-1");
     await adapter.pin({
       artifactId: "artifact-1",
       target: "parenting_time",
       label: "Weekend",
-    } as any);
+    } as never);
     await adapter.unpin("pin-1");
     await adapter.previewGrant({
       artifactId: "artifact-1",
       recipient: "partner",
-    } as any);
+    } as never);
     await adapter.issueGrant({
       artifactId: "artifact-1",
       recipient: "partner",
-    } as any);
+    } as never);
     await adapter.revokeGrant("grant-1", "outdated");
     await adapter.resolveCalendarConflict(
       "link-1",
@@ -544,7 +555,7 @@ describe("createFamilyOperationsAdapter", () => {
     await adapter.runSchoolWorkflow();
     await adapter.configureSchool({
       landingPageUrl: "https://school.example/calendar",
-    } as any);
+    } as never);
     await adapter.approveSchoolDiff("school-run-1");
     await adapter.generatePacket("2026-09");
     await adapter.createPacketDraft({

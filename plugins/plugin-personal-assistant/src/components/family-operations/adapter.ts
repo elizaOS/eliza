@@ -61,7 +61,6 @@ async function agreementContentIdentity(input: {
   return sha256Hex(new TextEncoder().encode(canonical).buffer);
 }
 
-
 function schoolView(
   status: SchoolCalendarWorkflowStatus,
   review: SchoolCalendarRunReview | null,
@@ -138,7 +137,10 @@ export function createFamilyOperationsAdapter(
     return apiClient.fetch<T>(path, init);
   }
 
-  async function loadSection<T>(path: string, key: string): Promise<Loadable<T>> {
+  async function loadSection<T>(
+    path: string,
+    key: string,
+  ): Promise<Loadable<T>> {
     try {
       const payload = await request<Record<string, T>>(path);
       return { status: "ready", data: payload[key] as T };
@@ -194,275 +196,284 @@ export function createFamilyOperationsAdapter(
 
   return {
     async load(): Promise<FamilyOperationsSnapshot> {
-    const [agreements, calendarLinks, school, packets, emailOptions] =
-      await Promise.all([
-        loadSection<ParentingAgreementView[]>(
-          "/api/lifeops/agreements",
-          "agreements",
-        ),
-        loadSection<LinkedCalendarView[]>(
-          "/api/lifeops/calendar/links",
-          "links",
-        ),
-        loadSchool(),
-        loadPackets(),
-        loadSection<FamilyEmailOptions>(
-          "/api/lifeops/family-workflows/email-options",
-          "options",
-        ),
-      ]);
-    return { agreements, calendarLinks, school, packets, emailOptions };
-  },
-  async uploadAgreement(input) {
-    if (input.file.type !== "application/pdf") {
-      throw new Error("Agreement must be a PDF.");
-    }
-    if (input.file.size < 1) {
-      throw new Error("Agreement PDF must not be empty.");
-    }
-    const signature = new Uint8Array(
-      await input.file.slice(0, 5).arrayBuffer(),
-    );
-    if (new TextDecoder("ascii").decode(signature) !== "%PDF-") {
-      throw new Error("Agreement PDF signature is invalid.");
-    }
-
-    const resumeKey = `lifeops:agreement-upload:${input.file.name}:${input.file.size}:${input.file.lastModified}:${input.agreementKey}:${input.title}`;
-    let upload: AgreementUploadState | null = null;
-    const savedUploadId = sessionStorage.getItem(resumeKey);
-    if (savedUploadId) {
-      try {
-        const response = await request<{ upload: AgreementUploadState }>(
-          `/api/lifeops/agreement-uploads/${encodeURIComponent(savedUploadId)}`,
-        );
-        upload = response.upload;
-      } catch {
-        sessionStorage.removeItem(resumeKey);
+      const [agreements, calendarLinks, school, packets, emailOptions] =
+        await Promise.all([
+          loadSection<ParentingAgreementView[]>(
+            "/api/lifeops/agreements",
+            "agreements",
+          ),
+          loadSection<LinkedCalendarView[]>(
+            "/api/lifeops/calendar/links",
+            "links",
+          ),
+          loadSchool(),
+          loadPackets(),
+          loadSection<FamilyEmailOptions>(
+            "/api/lifeops/family-workflows/email-options",
+            "options",
+          ),
+        ]);
+      return { agreements, calendarLinks, school, packets, emailOptions };
+    },
+    async uploadAgreement(input) {
+      if (input.file.type !== "application/pdf") {
+        throw new Error("Agreement must be a PDF.");
       }
-    }
-    if (!upload) {
-      const response = await request<{ upload: AgreementUploadState }>(
-        "/api/lifeops/agreement-uploads",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            agreementKey: input.agreementKey,
-            title: input.title,
-            originalFilename: input.file.name,
-            mimeType: input.file.type,
-            sizeBytes: input.file.size,
-          }),
-        },
+      if (input.file.size < 1) {
+        throw new Error("Agreement PDF must not be empty.");
+      }
+      const signature = new Uint8Array(
+        await input.file.slice(0, 5).arrayBuffer(),
       );
-      upload = response.upload;
-      sessionStorage.setItem(resumeKey, upload.uploadId);
-    }
+      if (new TextDecoder("ascii").decode(signature) !== "%PDF-") {
+        throw new Error("Agreement PDF signature is invalid.");
+      }
 
-    if (upload.status === "complete") {
-      sessionStorage.removeItem(resumeKey);
-      return;
-    }
-
-    const received = new Map(
-      upload.receivedChunks.map((chunk) => [chunk.index, chunk]),
-    );
-    const verifiedChunks: Array<{
-      index: number;
-      size: number;
-      sha256: string;
-    }> = [];
-    let uploadedBytes = 0;
-    input.onProgress?.({
-      uploadedBytes,
-      totalBytes: input.file.size,
-      phase: "uploading",
-    });
-    for (let index = 0; index < upload.chunkCount; index += 1) {
-      const start = index * upload.chunkSizeBytes;
-      const end = Math.min(start + upload.chunkSizeBytes, input.file.size);
-      const bytes = await input.file.slice(start, end).arrayBuffer();
-      const sha256 = await sha256Hex(bytes);
-      const recorded = received.get(index);
-      if (recorded) {
-        if (recorded.size !== bytes.byteLength || recorded.sha256 !== sha256) {
-          sessionStorage.removeItem(resumeKey);
-          throw new Error(
-            "The selected PDF no longer matches the resumable upload. Retry to start a new verified upload.",
+      const resumeKey = `lifeops:agreement-upload:${input.file.name}:${input.file.size}:${input.file.lastModified}:${input.agreementKey}:${input.title}`;
+      let upload: AgreementUploadState | null = null;
+      const savedUploadId = sessionStorage.getItem(resumeKey);
+      if (savedUploadId) {
+        try {
+          const response = await request<{ upload: AgreementUploadState }>(
+            `/api/lifeops/agreement-uploads/${encodeURIComponent(savedUploadId)}`,
           );
+          upload = response.upload;
+        } catch {
+          sessionStorage.removeItem(resumeKey);
         }
-      } else {
-        await request<{ upload: AgreementUploadState }>(
-          `/api/lifeops/agreement-uploads/${encodeURIComponent(upload.uploadId)}/chunks/${index}`,
+      }
+      if (!upload) {
+        const response = await request<{ upload: AgreementUploadState }>(
+          "/api/lifeops/agreement-uploads",
           {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/octet-stream",
-              "x-chunk-sha256": sha256,
-            },
-            body: bytes,
+            method: "POST",
+            body: JSON.stringify({
+              agreementKey: input.agreementKey,
+              title: input.title,
+              originalFilename: input.file.name,
+              mimeType: input.file.type,
+              sizeBytes: input.file.size,
+            }),
           },
         );
+        upload = response.upload;
+        sessionStorage.setItem(resumeKey, upload.uploadId);
       }
-      verifiedChunks.push({ index, size: bytes.byteLength, sha256 });
-      uploadedBytes += bytes.byteLength;
+
+      if (upload.status === "complete") {
+        sessionStorage.removeItem(resumeKey);
+        return;
+      }
+
+      const received = new Map(
+        upload.receivedChunks.map((chunk) => [chunk.index, chunk]),
+      );
+      const verifiedChunks: Array<{
+        index: number;
+        size: number;
+        sha256: string;
+      }> = [];
+      let uploadedBytes = 0;
       input.onProgress?.({
         uploadedBytes,
         totalBytes: input.file.size,
         phase: "uploading",
       });
-    }
-    input.onProgress?.({
-      uploadedBytes: input.file.size,
-      totalBytes: input.file.size,
-      phase: "processing",
-    });
-    const contentIdentity = await agreementContentIdentity({
-      sizeBytes: input.file.size,
-      chunkSizeBytes: upload.chunkSizeBytes,
-      chunks: verifiedChunks,
-    });
-    await request(
-      `/api/lifeops/agreement-uploads/${encodeURIComponent(upload.uploadId)}/commit`,
-      { method: "POST", body: JSON.stringify({ contentIdentity }) },
-    );
-    sessionStorage.removeItem(resumeKey);
-  },
-  async decideObligation(obligation, decision, reason) {
-    const response = await request<{ obligation: typeof obligation }>(
-      `/api/lifeops/agreements/obligations/${encodeURIComponent(obligation.id)}/decision`,
-      { method: "POST", body: JSON.stringify({ decision, reason }) },
-    );
-    return response.obligation;
-  },
-  async listPins(artifactId) {
-    const response = await request<{
-      pins: Awaited<ReturnType<FamilyOperationsAdapter["listPins"]>>;
-    }>(`/api/lifeops/agreements/${encodeURIComponent(artifactId)}/pins`);
-    return response.pins;
-  },
-  async pin(input) {
-    const response = await request<{
-      pin: Awaited<ReturnType<FamilyOperationsAdapter["pin"]>>;
-    }>(`/api/lifeops/agreements/${encodeURIComponent(input.artifactId)}/pins`, {
-      method: "POST",
-      body: JSON.stringify(input),
-    });
-    return response.pin;
-  },
-  async unpin(pinId) {
-    const response = await request<{
-      pin: Awaited<ReturnType<FamilyOperationsAdapter["unpin"]>>;
-    }>(`/api/lifeops/agreements/pins/${encodeURIComponent(pinId)}`, {
-      method: "DELETE",
-    });
-    return response.pin;
-  },
-  async previewGrant(input) {
-    const response = await request<{
-      preview: Awaited<ReturnType<FamilyOperationsAdapter["previewGrant"]>>;
-    }>("/api/lifeops/agreements/grants/preview", {
-      method: "POST",
-      body: JSON.stringify(input),
-    });
-    return response.preview;
-  },
-  async issueGrant(input) {
-    const response = await request<{
-      grant: Awaited<ReturnType<FamilyOperationsAdapter["issueGrant"]>>;
-    }>("/api/lifeops/agreements/grants", {
-      method: "POST",
-      body: JSON.stringify(input),
-    });
-    return response.grant;
-  },
-  async revokeGrant(grantId, reason) {
-    const response = await request<{
-      grant: Awaited<ReturnType<FamilyOperationsAdapter["revokeGrant"]>>;
-    }>(`/api/lifeops/agreements/grants/${encodeURIComponent(grantId)}/revoke`, {
-      method: "POST",
-      body: JSON.stringify({ reason }),
-    });
-    return response.grant;
-  },
-  async resolveCalendarConflict(linkId, resolution, expectedUpdatedAt) {
-    await request(
-      `/api/lifeops/calendar/links/${encodeURIComponent(linkId)}/resolve`,
-      {
+      for (let index = 0; index < upload.chunkCount; index += 1) {
+        const start = index * upload.chunkSizeBytes;
+        const end = Math.min(start + upload.chunkSizeBytes, input.file.size);
+        const bytes = await input.file.slice(start, end).arrayBuffer();
+        const sha256 = await sha256Hex(bytes);
+        const recorded = received.get(index);
+        if (recorded) {
+          if (
+            recorded.size !== bytes.byteLength ||
+            recorded.sha256 !== sha256
+          ) {
+            sessionStorage.removeItem(resumeKey);
+            throw new Error(
+              "The selected PDF no longer matches the resumable upload. Retry to start a new verified upload.",
+            );
+          }
+        } else {
+          await request<{ upload: AgreementUploadState }>(
+            `/api/lifeops/agreement-uploads/${encodeURIComponent(upload.uploadId)}/chunks/${index}`,
+            {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/octet-stream",
+                "x-chunk-sha256": sha256,
+              },
+              body: bytes,
+            },
+          );
+        }
+        verifiedChunks.push({ index, size: bytes.byteLength, sha256 });
+        uploadedBytes += bytes.byteLength;
+        input.onProgress?.({
+          uploadedBytes,
+          totalBytes: input.file.size,
+          phase: "uploading",
+        });
+      }
+      input.onProgress?.({
+        uploadedBytes: input.file.size,
+        totalBytes: input.file.size,
+        phase: "processing",
+      });
+      const contentIdentity = await agreementContentIdentity({
+        sizeBytes: input.file.size,
+        chunkSizeBytes: upload.chunkSizeBytes,
+        chunks: verifiedChunks,
+      });
+      await request(
+        `/api/lifeops/agreement-uploads/${encodeURIComponent(upload.uploadId)}/commit`,
+        { method: "POST", body: JSON.stringify({ contentIdentity }) },
+      );
+      sessionStorage.removeItem(resumeKey);
+    },
+    async decideObligation(obligation, decision, reason) {
+      const response = await request<{ obligation: typeof obligation }>(
+        `/api/lifeops/agreements/obligations/${encodeURIComponent(obligation.id)}/decision`,
+        { method: "POST", body: JSON.stringify({ decision, reason }) },
+      );
+      return response.obligation;
+    },
+    async listPins(artifactId) {
+      const response = await request<{
+        pins: Awaited<ReturnType<FamilyOperationsAdapter["listPins"]>>;
+      }>(`/api/lifeops/agreements/${encodeURIComponent(artifactId)}/pins`);
+      return response.pins;
+    },
+    async pin(input) {
+      const response = await request<{
+        pin: Awaited<ReturnType<FamilyOperationsAdapter["pin"]>>;
+      }>(
+        `/api/lifeops/agreements/${encodeURIComponent(input.artifactId)}/pins`,
+        {
+          method: "POST",
+          body: JSON.stringify(input),
+        },
+      );
+      return response.pin;
+    },
+    async unpin(pinId) {
+      const response = await request<{
+        pin: Awaited<ReturnType<FamilyOperationsAdapter["unpin"]>>;
+      }>(`/api/lifeops/agreements/pins/${encodeURIComponent(pinId)}`, {
+        method: "DELETE",
+      });
+      return response.pin;
+    },
+    async previewGrant(input) {
+      const response = await request<{
+        preview: Awaited<ReturnType<FamilyOperationsAdapter["previewGrant"]>>;
+      }>("/api/lifeops/agreements/grants/preview", {
         method: "POST",
-        body: JSON.stringify({
-          strategy: resolution,
-          expectedUpdatedAt,
-          idempotencyKey: crypto.randomUUID(),
-        }),
-      },
-    );
-  },
-  async disconnectCalendar(linkId, expectedUpdatedAt) {
-    await request(
-      `/api/lifeops/calendar/links/${encodeURIComponent(linkId)}/disconnect`,
-      {
+        body: JSON.stringify(input),
+      });
+      return response.preview;
+    },
+    async issueGrant(input) {
+      const response = await request<{
+        grant: Awaited<ReturnType<FamilyOperationsAdapter["issueGrant"]>>;
+      }>("/api/lifeops/agreements/grants", {
         method: "POST",
-        body: JSON.stringify({
-          retainEvents: true,
-          expectedUpdatedAt,
-          idempotencyKey: crypto.randomUUID(),
-        }),
-      },
-    );
-  },
-  async runSchoolWorkflow() {
-    await request("/api/lifeops/family-workflows/school/run", {
-      method: "POST",
-      body: JSON.stringify({}),
-    });
-  },
-  async configureSchool(input) {
-    await request("/api/lifeops/family-workflows/school/source", {
-      method: "PUT",
-      body: JSON.stringify(input),
-    });
-  },
-  async approveSchoolDiff(runId) {
-    await request("/api/lifeops/family-workflows/school/apply", {
-      method: "POST",
-      body: JSON.stringify({ runId }),
-    });
-  },
-  async generatePacket(_periodKey) {
-    await request("/api/lifeops/family-workflows/packets", {
-      method: "POST",
-      body: JSON.stringify({}),
-    });
-  },
-  async createPacketDraft(input) {
-    await request(
-      `/api/lifeops/family-workflows/packets/${encodeURIComponent(input.packetId)}/drafts`,
-      {
+        body: JSON.stringify(input),
+      });
+      return response.grant;
+    },
+    async revokeGrant(grantId, reason) {
+      const response = await request<{
+        grant: Awaited<ReturnType<FamilyOperationsAdapter["revokeGrant"]>>;
+      }>(
+        `/api/lifeops/agreements/grants/${encodeURIComponent(grantId)}/revoke`,
+        {
+          method: "POST",
+          body: JSON.stringify({ reason }),
+        },
+      );
+      return response.grant;
+    },
+    async resolveCalendarConflict(linkId, resolution, expectedUpdatedAt) {
+      await request(
+        `/api/lifeops/calendar/links/${encodeURIComponent(linkId)}/resolve`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            strategy: resolution,
+            expectedUpdatedAt,
+            idempotencyKey: crypto.randomUUID(),
+          }),
+        },
+      );
+    },
+    async disconnectCalendar(linkId, expectedUpdatedAt) {
+      await request(
+        `/api/lifeops/calendar/links/${encodeURIComponent(linkId)}/disconnect`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            retainEvents: true,
+            expectedUpdatedAt,
+            idempotencyKey: crypto.randomUUID(),
+          }),
+        },
+      );
+    },
+    async runSchoolWorkflow() {
+      await request("/api/lifeops/family-workflows/school/run", {
         method: "POST",
-        body: JSON.stringify({
-          recipient: input.recipient,
-          recipientEntityId: input.recipientEntityId,
-          calendarPrivacyMode: input.calendarPrivacyMode,
-          ...(input.email ? { email: input.email } : {}),
-        }),
-      },
-    );
-  },
-  async revisePacketDraft(input) {
-    await request(
-      `/api/lifeops/family-workflows/packets/${encodeURIComponent(input.packetId)}/drafts/${input.expectedDraftVersion}/revision`,
-      {
+        body: JSON.stringify({}),
+      });
+    },
+    async configureSchool(input) {
+      await request("/api/lifeops/family-workflows/school/source", {
+        method: "PUT",
+        body: JSON.stringify(input),
+      });
+    },
+    async approveSchoolDiff(runId) {
+      await request("/api/lifeops/family-workflows/school/apply", {
         method: "POST",
-        body: JSON.stringify({ body: input.body, subject: input.subject }),
-      },
-    );
-  },
-  async requestPacketApproval(packetId, draftVersion) {
-    await request(
-      `/api/lifeops/family-workflows/packets/${encodeURIComponent(packetId)}/drafts/${draftVersion}/approval`,
-      { method: "POST", body: JSON.stringify({}) },
-    );
-  },
+        body: JSON.stringify({ runId }),
+      });
+    },
+    async generatePacket(_periodKey) {
+      await request("/api/lifeops/family-workflows/packets", {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+    },
+    async createPacketDraft(input) {
+      await request(
+        `/api/lifeops/family-workflows/packets/${encodeURIComponent(input.packetId)}/drafts`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            recipient: input.recipient,
+            recipientEntityId: input.recipientEntityId,
+            calendarPrivacyMode: input.calendarPrivacyMode,
+            ...(input.email ? { email: input.email } : {}),
+          }),
+        },
+      );
+    },
+    async revisePacketDraft(input) {
+      await request(
+        `/api/lifeops/family-workflows/packets/${encodeURIComponent(input.packetId)}/drafts/${input.expectedDraftVersion}/revision`,
+        {
+          method: "POST",
+          body: JSON.stringify({ body: input.body, subject: input.subject }),
+        },
+      );
+    },
+    async requestPacketApproval(packetId, draftVersion) {
+      await request(
+        `/api/lifeops/family-workflows/packets/${encodeURIComponent(packetId)}/drafts/${draftVersion}/approval`,
+        { method: "POST", body: JSON.stringify({}) },
+      );
+    },
   };
 }
 
