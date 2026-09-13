@@ -1,5 +1,7 @@
 /** Cross-platform messaging helpers shared by channel plugins. */
 
+import { formatError } from "./format-error";
+
 // ============================================================================
 // Chat Type Normalization
 // ============================================================================
@@ -599,7 +601,7 @@ export function logTypingFailure(params: {
 }): void {
 	const action = params.action ? ` action=${params.action}` : "";
 	params.log(
-		`${params.channel} typing${action} failed${formatTargetSuffix(params.target)}: ${String(params.error)}`,
+		`${params.channel} typing${action} failed${formatTargetSuffix(params.target)}: ${formatError(params.error)}`,
 	);
 }
 
@@ -615,6 +617,6 @@ export function logAckFailure(params: {
 	error: unknown;
 }): void {
 	params.log(
-		`${params.channel} ack cleanup failed${formatTargetSuffix(params.target)}: ${String(params.error)}`,
+		`${params.channel} ack cleanup failed${formatTargetSuffix(params.target)}: ${formatError(params.error)}`,
 	);
 }
