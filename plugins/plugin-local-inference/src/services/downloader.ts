@@ -731,6 +731,7 @@ export class Downloader {
 				if (
 					job &&
 					typeof job.modelId === "string" &&
+					typeof job.updatedAt === "string" &&
 					(job.state === "completed" ||
 						job.state === "failed" ||
 						job.state === "cancelled")
