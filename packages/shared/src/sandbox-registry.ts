@@ -4,13 +4,22 @@
  * resolve `agent_id -> server URL` and forward inbound platform messages to
  * THIS container.
  *
- * It writes two Redis keys with a short TTL; a periodic heartbeat refreshes the
- * TTL while the container is alive, and `unregister()` deletes them on graceful
- * shutdown if they still point at this container. If the container crashes, the
- * keys expire naturally and the gateways stop routing to a dead address.
+ * It writes one TTL-backed route trio atomically through a single Redis EVAL
+ * for both REST and TCP. A periodic heartbeat refreshes the TTL while this
+ * generation still owns the trio, and `unregister()` deletes the keys on
+ * graceful shutdown if they still belong to this generation. If the container
+ * crashes, the keys expire naturally and the gateways stop routing to a dead
+ * address. Refresh fails closed with `SANDBOX_REGISTRY_OWNERSHIP_LOST` when
+ * the trio is missing, expired, or owned by another generation — a heartbeat
+ * cannot recreate an absent trio. Durable recovery after complete expiry is
+ * tracked in #24767.
  *
- *   server:<serverName>:url = <serverUrl>   (resolver address)
- *   agent:<agentId>:server  = <serverName>  (agent -> server pointer)
+ *   server:<serverName>:url            = <serverUrl>   (public resolver address)
+ *   agent:<agentId>:server             = <serverName>  (public agent -> server pointer)
+ *   server:<serverName>:registration   = <generation>  (private runtime-generation fence)
+ *
+ * Gateways read only the public pair. The generation fence is a lifecycle
+ * key, not part of the resolver view.
  *
  * Two transports are supported, selected by the URL scheme so the same registry
  * works before and after the managed Redis is migrated off Upstash:
@@ -79,8 +88,10 @@ export interface SandboxRegistryConfig {
   serverName: string;
   serverUrl: string;
   /**
-   * TTL for both Redis keys in seconds. Keep this at least 3x the heartbeat
-   * interval so one missed tick does not expire a healthy container.
+   * TTL for the three Redis keys in seconds. Keep this at least 3x the
+   * heartbeat interval so one missed tick does not expire a healthy
+   * container. This lifetime is writer-specific to `SandboxRegistry`; other
+   * registry writers do not share it.
    */
   ttlSeconds: number;
 }
@@ -307,8 +318,9 @@ export class SandboxRegistry {
    * Execute one or more commands over a native RESP/TCP connection and return
    * the per-command replies (AUTH/SELECT preamble replies are stripped). One
    * short-lived connection per call keeps the lifecycle trivial — the registry
-   * only writes twice per heartbeat (every 30s), so connection churn is
-   * negligible and there is no socket to leak if the container is killed.
+   * only writes the trio once per heartbeat (every 30s) via one EVAL, so
+   * connection churn is negligible and there is no socket to leak if the
+   * container is killed.
    */
   private async tcpExec(commands: string[][]): Promise<unknown[]> {
     const url = new URL(this.config.redisUrl);
