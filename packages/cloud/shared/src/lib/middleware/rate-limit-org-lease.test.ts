@@ -67,16 +67,18 @@ function policyFixture(): OrganizationQuotaPolicy {
     },
   };
 }
+async function withFixturePolicy<T>(
+  _org: string,
+  _expected: OrganizationPolicyStamp | undefined,
+  operation: (policy: OrganizationQuotaPolicy) => Promise<T>,
+): Promise<T> {
+  policyReads++;
+  return operation(policyFixture());
+}
 mock.module("../services/organization-policy-admission", () => ({
   ...policyAdmissionActual,
-  withOrganizationPolicyAdmission: async <T>(
-    _org: string,
-    _expected: OrganizationPolicyStamp | undefined,
-    operation: (policy: OrganizationQuotaPolicy) => Promise<T>,
-  ) => {
-    policyReads++;
-    return operation(policyFixture());
-  },
+  withOrganizationPolicyAdmission: withFixturePolicy,
+  withOrganizationPolicyReadAdmission: withFixturePolicy,
 }));
 
 let redisChecks = 0;
