@@ -89,8 +89,10 @@ describe("complete action surface", () => {
 		if (!music || !email) throw new Error("missing catalog parent");
 		const musicResult = resultFor(music, 1);
 		const emailResult = resultFor(email, 1);
-		musicResult.rank = 2;
-		emailResult.rank = 1;
+		// Rank order must oppose the alphabetical fallback (EMAIL < MUSIC), or
+		// this assertion holds with the rank tiebreaker deleted and pins nothing.
+		musicResult.rank = 1;
+		emailResult.rank = 2;
 
 		const surface = tierActionResults({
 			catalog,
@@ -99,7 +101,7 @@ describe("complete action surface", () => {
 
 		expect(
 			surface.tierAParents.slice(0, 2).map((parent) => parent.name),
-		).toEqual(["EMAIL", "MUSIC"]);
+		).toEqual(["MUSIC", "EMAIL"]);
 	});
 
 	it("ignores legacy parent, child, threshold, and candidate caps", () => {
