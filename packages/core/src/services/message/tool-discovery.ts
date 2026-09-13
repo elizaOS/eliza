@@ -95,9 +95,11 @@ export function createPlannerToolDiscoveryAction(
 					: catalog;
 				return {
 					success: true,
-					turnComplete: false,
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
 					text: "Complete authorized catalog descriptions. Select exact names to load schemas; no domain work was performed.",
 					data: {
+						readOnlyOperation: true,
 						catalog: completeCatalog.parents.map((parent) => ({
 							name: parent.name,
 							description: parent.description,
@@ -135,9 +137,13 @@ export function createPlannerToolDiscoveryAction(
 			onDiscover(selected);
 			return {
 				success: true,
-				turnComplete: false,
+				transcriptVisibility: "internal",
+				modelReplyRequired: true,
 				text: "Tool schemas loaded. Only schema discovery ran; no domain action or data mutation ran. Continue with any requested domain work.",
-				data: { loadedTools: selected.map((action) => action.name) },
+				data: {
+					readOnlyOperation: true,
+					loadedTools: selected.map((action) => action.name),
+				},
 			};
 		},
 		examples: [],

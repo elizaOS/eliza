@@ -1049,7 +1049,7 @@ export async function runV5MessageRuntimeStage1(
 				)
 			: undefined;
 		// Stage 1 has already interpreted the request. Load its exact operations
-		// (or complete families for parent hints), keeping other operations explicitly
+		// (or complete families for parent-only hints), keeping other operations explicitly
 		// discoverable. An entirely unresolved selection starts with discovery;
 		// an unknown hint must not discard or broaden the known families. A reply
 		// sent to planning only to verify an applied claim, with no action hints,
@@ -1068,6 +1068,7 @@ export async function runV5MessageRuntimeStage1(
 						candidateActions: stageOneCandidates,
 						contexts: selectedContexts,
 						deferUnselectedContexts: true,
+						deferParentHints: true,
 					});
 		// Discovery is planner protocol, registered below rather than in
 		// runtime.actions. An explicit request must keep it even when no domain

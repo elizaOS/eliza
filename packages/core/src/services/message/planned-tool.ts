@@ -622,6 +622,10 @@ export function collectBudgetedStageOneCandidateActions(args: {
 	contexts: readonly AgentContext[];
 	/** The progressive lane offers unselected operations through discovery. */
 	deferUnselectedContexts?: boolean;
+	/** Initial hints may name both a family and a specific operation. Keep the
+	 * operation inline and the family discoverable; explicit discovery never
+	 * uses this projection. */
+	deferParentHints?: boolean;
 }): Action[] {
 	if (args.candidateActions.length === 0) return [];
 
@@ -658,10 +662,27 @@ export function collectBudgetedStageOneCandidateActions(args: {
 		}
 	}
 	if (selectedNames.size === 0) return [];
+	if (args.deferUnselectedContexts && args.deferParentHints) {
+		const hintedNames = new Set(selectedNames);
+		for (const parent of args.actions) {
+			if (
+				parent.subActions?.some((child) =>
+					hintedNames.has(
+						normalizeActionIdentifier(
+							typeof child === "string" ? child : child.name,
+						),
+					),
+				)
+			) {
+				selectedNames.delete(normalizeActionIdentifier(parent.name));
+			}
+		}
+	}
 	// Legacy budget fallback has no discovery guarantee and keeps the whole
 	// family. Progressive planning keeps exact child hints; unselected siblings
 	// and their parent stay in DISCOVER_TOOLS, including for compound follow-ups.
-	// An explicitly selected parent still expands its complete authorized family.
+	// A parent still selected after the initial hint projection expands its
+	// complete authorized family. Explicit discovery retains every named parent.
 	for (const parent of args.deferUnselectedContexts ? [] : args.actions) {
 		if (
 			parent.subActions?.some((child) =>

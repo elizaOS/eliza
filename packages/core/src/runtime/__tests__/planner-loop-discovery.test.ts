@@ -1,7 +1,10 @@
 /** Catalog inspection must finish from its actual read without licensing
  * unrelated domain claims or repeated discovery calls. */
 import { describe, expect, it, vi } from "vitest";
+import { createPlannerToolDiscoveryAction } from "../../services/message/tool-discovery";
+import type { Memory } from "../../types/memory";
 import { ModelType } from "../../types/model";
+import type { IAgentRuntime } from "../../types/runtime";
 import { runPlannerLoop } from "../planner-loop";
 import type { PlannerRuntime } from "../planner-types";
 
@@ -29,6 +32,64 @@ function call(name: string, text?: string) {
 }
 
 describe("explicit catalog-only requests", () => {
+	it.each([[], ["READ"]])(
+		"replans after settled preparatory discovery %j without judging completion early",
+		async (...names) => {
+			const discovery = createPlannerToolDiscoveryAction(
+				[{ name: "READ", description: "Read current records" }],
+				() => {},
+			);
+			const discoveryResult = await discovery.handler?.(
+				{} as IAgentRuntime,
+				{} as Memory,
+				undefined,
+				{ parameters: { names } },
+			);
+			if (!discoveryResult) throw new Error("Missing actual discovery result");
+			let planned = 0;
+			const useModel = vi.fn<PlannerRuntime["useModel"]>(async (type) => {
+				if (type === ModelType.ACTION_PLANNER) {
+					const next = call(++planned === 1 ? "DISCOVER_TOOLS" : "READ");
+					if (planned === 1)
+						next.toolCalls[0].arguments.eliza_turn_scope = "more_work_pending";
+					return next;
+				}
+				expect(planned).toBe(2);
+				return JSON.stringify({
+					decision: "FINISH",
+					success: true,
+					thought: "Live read completed.",
+					messageToUser: "Current count: 3.",
+				});
+			});
+			const executed: string[] = [];
+			const result = await runPlannerLoop({
+				runtime: { useModel },
+				context: { id: "preparatory-discovery", events: [] },
+				tools: [discover, read],
+				executeToolCall: async ({ name }) => {
+					executed.push(name);
+					return name === "DISCOVER_TOOLS"
+						? discoveryResult
+						: {
+								success: true,
+								transcriptVisibility: "internal",
+								modelReplyRequired: true,
+								data: { readOnlyOperation: true, count: 3 },
+							};
+				},
+			});
+			expect(useModel.mock.calls.map(([type]) => type)).toEqual([
+				ModelType.ACTION_PLANNER,
+				ModelType.ACTION_PLANNER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+			expect(executed).toEqual(["DISCOVER_TOOLS", "READ"]);
+			expect(result.finalMessage ?? result.evaluator?.messageToUser).toBe(
+				"Current count: 3.",
+			);
+		},
+	);
 	it.each([
 		{ domainTools: true, candidates: ["DISCOVER_TOOLS"] },
 		{ domainTools: false, candidates: ["DISCOVER_TOOLS"] },

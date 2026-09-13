@@ -21,6 +21,82 @@ const runtime = {} as IAgentRuntime;
 const message = {} as Memory;
 
 describe("planner tool discovery", () => {
+	it("defers a parent beside an exact child but loads its complete contract on discovery", async () => {
+		const actions: Action[] = [
+			{
+				name: "VIEWS",
+				description: "Layouts and arbitrary view capabilities",
+				subActions: ["VIEWS_SHOW"],
+				toolSchemaStrict: false,
+				allowAdditionalParameters: true,
+				parameters: [
+					{
+						name: "params",
+						description: "Complete capability arguments",
+						required: false,
+						schema: { type: "object", additionalProperties: true },
+					},
+				],
+			},
+			{
+				name: "VIEWS_SHOW",
+				description: "Open one view",
+				toolSchemaStrict: true,
+			},
+			{ name: "NOTES_LIST", description: "Read notes", toolSchemaStrict: true },
+		];
+		const initial = collectBudgetedStageOneCandidateActions({
+			actions,
+			candidateActions: ["VIEWS", "VIEWS_SHOW", "NOTES_LIST"],
+			contexts: [],
+			deferUnselectedContexts: true,
+			deferParentHints: true,
+		});
+		expect(initial).toEqual(actions.slice(1));
+		const context: ContextObject = {
+			id: "turn",
+			events: initial.map((tool) => ({ id: tool.name, type: "tool", tool })),
+		};
+		const tools = collectPlannerTools(context, initial);
+		expect(tools.map((tool) => tool.name)).toEqual([
+			"VIEWS_SHOW",
+			"NOTES_LIST",
+			"REPLY",
+			"IGNORE",
+			"STOP",
+		]);
+		expect(tools.every((tool) => tool.strict === true)).toBe(true);
+		const before = structuredClone(tools);
+		const discovery = createPlannerToolDiscoveryAction(actions, (loaded) => {
+			appendDiscoveredPlannerTools(context, tools, loaded);
+		});
+		const result = await discovery.handler?.(runtime, message, undefined, {
+			parameters: { names: ["VIEWS", "VIEWS_SHOW"] },
+		});
+		expect(result?.success).toBe(true);
+		expect(tools).toEqual([
+			...before,
+			...buildPlannerToolsFromActions([actions[0]]),
+		]);
+		// A parent-only hint still requests the full family immediately. The
+		// projection is not applied to legacy callers without discovery either.
+		for (const options of [
+			{ candidateActions: ["VIEWS"], deferUnselectedContexts: true },
+			{
+				candidateActions: ["VIEWS", "VIEWS_SHOW"],
+				deferUnselectedContexts: false,
+			},
+		]) {
+			expect(
+				collectBudgetedStageOneCandidateActions({
+					actions,
+					contexts: [],
+					deferParentHints: true,
+					...options,
+				}),
+			).toEqual(actions.slice(0, 2));
+		}
+	});
 	it.each([
 		["VIEWS_SHOW", "CALENDAR_SHOW", "NOTES_LIST", "NOTES_GET"],
 		["VIEWS_SHOW", "NOTES_LIST", "READ_UNKNOWN_RECORD"],
