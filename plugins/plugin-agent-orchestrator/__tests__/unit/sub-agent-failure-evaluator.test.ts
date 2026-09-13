@@ -184,4 +184,95 @@ describe("subAgentFailureResponseEvaluator", () => {
     const result = subAgentFailureResponseEvaluator.evaluate(context);
     expect(result.reply).toBe("Couldn't finish that task. Want me to retry?");
   });
+
+  // Regressions for #29852: the router's error narration is unedited content, so
+  // a reason clause frequently already ends in sentence punctuation. The reply
+  // template must contribute exactly one terminator — never doubling the one the
+  // reason already carries — and must preserve `!`/`?` rather than overriding it.
+  it("does not double a period when the reason already ends in one (#29852)", () => {
+    const context = makeContext({
+      text: "[sub-agent: text-my-ex (claude) — error]\nACP session failed: registration request timed out.",
+    });
+    const result = subAgentFailureResponseEvaluator.evaluate(context);
+    expect(result.reply).toBe(
+      `Couldn't finish the "text-my-ex" task — ACP session failed: registration request timed out. Want me to retry?`,
+    );
+    expect(result.reply).not.toContain("..");
+  });
+
+  it("does not double when the reason ends in a horizontal ellipsis (#29852)", () => {
+    const context = makeContext({
+      text: "[sub-agent: text-my-ex (claude) — error]\nWorkspace provisioning timed out…",
+    });
+    const result = subAgentFailureResponseEvaluator.evaluate(context);
+    expect(result.reply).toBe(
+      `Couldn't finish the "text-my-ex" task — Workspace provisioning timed out… Want me to retry?`,
+    );
+    expect(result.reply).not.toContain("….");
+  });
+
+  // The terminator class also carries the fullwidth/ideographic stops so a
+  // sub-agent narrating in a language that uses them is not doubled. Each stop
+  // is pinned independently: dropping any one member from SENTENCE_TERMINATOR
+  // must turn one of these red, otherwise a later "simplify this regex" cleanup
+  // could silently reintroduce the #29852 doubling for CJK narration.
+  it.each([
+    ["。", "ACP session failed: 接続がタイムアウトしました。"],
+    ["！", "Sub-agent crashed: プロセスが異常終了しました！"],
+    ["？", "Provisioning check: ワークスペースは完了しましたか？"],
+  ])(
+    "does not double when the reason already ends in the '%s' stop (#29852)",
+    (stop, reason) => {
+      const context = makeContext({
+        text: `[sub-agent: text-my-ex (claude) — error]\n${reason}`,
+      });
+      const result = subAgentFailureResponseEvaluator.evaluate(context);
+      expect(result.reply).toBe(
+        `Couldn't finish the "text-my-ex" task — ${reason} Want me to retry?`,
+      );
+      expect(result.reply).not.toContain(`${stop}.`);
+    },
+  );
+
+  it("preserves a reason's own '!' terminator without appending a period", () => {
+    const context = makeContext({
+      text: "[sub-agent: text-my-ex (claude) — error]\nSub-agent process crashed unexpectedly!",
+    });
+    const result = subAgentFailureResponseEvaluator.evaluate(context);
+    expect(result.reply).toBe(
+      `Couldn't finish the "text-my-ex" task — Sub-agent process crashed unexpectedly! Want me to retry?`,
+    );
+    expect(result.reply).not.toContain("!.");
+  });
+
+  it("preserves a reason's own '?' terminator without appending a period", () => {
+    const context = makeContext({
+      text: "[sub-agent: text-my-ex (claude) — error]\nDid the workspace ever finish provisioning?",
+    });
+    const result = subAgentFailureResponseEvaluator.evaluate(context);
+    expect(result.reply).toBe(
+      `Couldn't finish the "text-my-ex" task — Did the workspace ever finish provisioning? Want me to retry?`,
+    );
+    expect(result.reply).not.toContain("?.");
+  });
+
+  it("adds exactly one terminator to a reason with no trailing punctuation", () => {
+    const context = makeContext({
+      text: "[sub-agent: text-my-ex (claude) — error]\nState recovery budget exhausted after 3 attempts",
+    });
+    const result = subAgentFailureResponseEvaluator.evaluate(context);
+    expect(result.reply).toBe(
+      `Couldn't finish the "text-my-ex" task — State recovery budget exhausted after 3 attempts. Want me to retry?`,
+    );
+  });
+
+  it("terminates the empty-reason path with exactly one period", () => {
+    const context = makeContext({
+      text: "[internal-code-9931]",
+      metadata: { subAgentLabel: undefined },
+    });
+    const result = subAgentFailureResponseEvaluator.evaluate(context);
+    expect(result.reply).toBe("Couldn't finish that task. Want me to retry?");
+    expect(result.reply).not.toContain("..");
+  });
 });
