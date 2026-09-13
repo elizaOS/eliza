@@ -6,6 +6,7 @@
  * a canned-response stub runtime, no live model.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { promoteSubactionsToActions } from "../actions/promote-subactions";
 import { _resetActionRolePolicyCacheForTests } from "../runtime/action-role-policy";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
@@ -382,6 +383,73 @@ describe("v5 tiered action surface", () => {
 		await runV5MessageRuntimeStage1({
 			runtime,
 			message: makeMessage("Hello."),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+		expect(handler).toHaveBeenCalledTimes(1);
+	});
+
+	it("lists an umbrella once in discovery and leaves its promoted sub-actions to the planner (live regression)", async () => {
+		// Live 2026-09-12: the full catalog (380 entries, 273 promoted virtuals
+		// each repeating its parent's description) was 235K characters per
+		// Stage-1 call. Discovery routes by family; the parent carries the
+		// complete description and Stage 2 expands the sub-actions.
+		const handler = vi.fn(async () => ({
+			success: true,
+			text: "Ledger updated.",
+		}));
+		const parent: Action = {
+			...makeAction({
+				name: "HOUSEHOLD_LEDGER",
+				description:
+					"Household ledger entries. Create or delete a shared expense.",
+				contexts: ["household"],
+				roleGate: { minRole: "OWNER" },
+				handler,
+			}),
+			parameters: [
+				{
+					name: "action",
+					description: "Operation to perform.",
+					required: true,
+					schema: { type: "string", enum: ["create", "delete"] },
+				},
+			],
+		};
+		const promoted = promoteSubactionsToActions(parent);
+		expect(promoted.map((action) => action.name)).toEqual([
+			"HOUSEHOLD_LEDGER",
+			"HOUSEHOLD_LEDGER_CREATE",
+			"HOUSEHOLD_LEDGER_DELETE",
+		]);
+		const runtime = makeRuntime({
+			actions: [...promoted],
+			responses: [
+				{
+					...stage1Response({
+						contexts: ["household"],
+						candidateActionNames: [parent.name],
+						replyEffectStatus: "pending",
+					}),
+					inspectInput(params) {
+						const input = JSON.stringify(params);
+						expect(input).toContain("available_actions");
+						expect(input).toContain("HOUSEHOLD_LEDGER");
+						expect(input).toContain(parent.description);
+						expect(input).not.toContain("HOUSEHOLD_LEDGER_CREATE");
+						expect(input).not.toContain("HOUSEHOLD_LEDGER_DELETE");
+					},
+				},
+				plannerToolResponse(parent.name, { action: "create" }),
+				finishEvaluatorResponse("Ledger updated."),
+			],
+		});
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: {
+				...makeMessage("Add a shared expense for groceries to the ledger."),
+				entityId: AGENT_ID,
+			},
 			state: makeState(),
 			responseId: RESPONSE_ID,
 		});

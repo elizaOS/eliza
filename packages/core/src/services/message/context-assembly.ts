@@ -1,6 +1,7 @@
 /** Assembles message context from ordered dialogue, selected providers, and the authorized action surface. */
 
 import { v4 } from "uuid";
+import { isPromotedSubactionVirtual } from "../../actions/promote-subactions";
 import { actionToTool, CORE_PLANNER_TERMINALS } from "../../actions/to-tool";
 import { canActionRun } from "../../runtime/action-gate";
 import { createContextObject } from "../../runtime/context-object";
@@ -263,8 +264,16 @@ export async function createV5MessageContextObject(args: {
 			discoverActions: true,
 		});
 		// This is a discovery projection, not an execution tool surface. Retain
-		// every authorized name and complete description; Stage 2 supplies the
-		// native parameter schemas and rechecks authorization before execution.
+		// every authorized umbrella's name and complete description; Stage 2
+		// supplies the native parameter schemas and rechecks authorization before
+		// execution. Promoted sub-actions are represented by their parent: each
+		// virtual repeats the parent's description with a suffix, and on a full
+		// catalog (380 entries, 273 of them promoted) that repetition was 235K
+		// characters (~58K tokens) per Stage-1 call, 2–3× the whole prompt
+		// (live 2026-09-12). Stage 1 routes by family; the planner expands it.
+		const discoverable = actions.filter(
+			(action) => !isPromotedSubactionVirtual(action),
+		);
 		events.push({
 			id: "available-actions",
 			type: "segment",
@@ -274,7 +283,7 @@ export async function createV5MessageContextObject(args: {
 				label: "available_actions",
 				stable: false,
 				content: JSON.stringify(
-					actions.map((action) => ({
+					discoverable.map((action) => ({
 						name: action.name,
 						description: action.description,
 						contexts: action.contexts,
