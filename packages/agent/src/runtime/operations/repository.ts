@@ -22,7 +22,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { logger } from "@elizaos/core";
+import { logger, readEnvNumber } from "@elizaos/core";
 import { readJsonFile, writeJsonAtomic } from "@elizaos/core/atomic-json";
 import { formatError } from "@elizaos/shared";
 import { resolveStateDir } from "../../config/paths.ts";
@@ -38,13 +38,6 @@ const IDEMPOTENCY_RETENTION_MS = 24 * 60 * 60 * 1000;
 
 const DEFAULT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const DEFAULT_MAX_RECORDS = 200;
-
-function readEnvNumber(name: string, fallback: number): number {
-  const raw = process.env[name];
-  if (!raw) return fallback;
-  const n = Number(raw);
-  return Number.isFinite(n) && n >= 0 ? n : fallback;
-}
 
 export interface FilesystemRuntimeOperationRepositoryOptions {
   /** Override the retention window for terminal ops. */
@@ -113,10 +106,18 @@ export class FilesystemRuntimeOperationRepository
     this.dir = operationsDirFor(stateDir);
     this.retentionMs =
       opts.retentionMs ??
-      readEnvNumber("ELIZA_RUNTIME_OPS_RETENTION_MS", DEFAULT_RETENTION_MS);
+      readEnvNumber("ELIZA_RUNTIME_OPS_RETENTION_MS", {
+        defaultValue: DEFAULT_RETENTION_MS,
+        min: 0,
+      }) ??
+      DEFAULT_RETENTION_MS;
     this.maxRecords =
       opts.maxRecords ??
-      readEnvNumber("ELIZA_RUNTIME_OPS_MAX_RECORDS", DEFAULT_MAX_RECORDS);
+      readEnvNumber("ELIZA_RUNTIME_OPS_MAX_RECORDS", {
+        defaultValue: DEFAULT_MAX_RECORDS,
+        min: 0,
+      }) ??
+      DEFAULT_MAX_RECORDS;
   }
 
   private hydrate(): Promise<void> {
