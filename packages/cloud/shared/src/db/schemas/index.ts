@@ -23,6 +23,7 @@ export * from "./agent-backup-catalog";
 export * from "./agent-backup-restore-history";
 export * from "./agent-backup-restore-v3-candidates";
 export * from "./agent-budgets";
+export * from "./agent-compute-funding";
 export * from "./agent-compute-stop-intents";
 export * from "./agent-events";
 export * from "./agent-identities";
