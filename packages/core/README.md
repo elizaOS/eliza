@@ -25,6 +25,12 @@ fail closed.
 - **Plugin system:** `Plugin` objects contribute actions/providers/evaluators/services to the runtime.
 - **Built-in bundle:** Foundational capabilities ship as `basicCapabilities` (and `basicActions` / `basicProviders` / `basicEvaluators` / `basicServices`); there is no `corePlugin` singleton.
 
+`resolveActionArgs` treats a required empty array as missing unless its
+`SubactionSpec.allowEmptyArrays` names that parameter. This opt-in preserves
+an explicitly supplied or extracted `[]` through argument resolution; it never
+defaults an omitted or null value to an empty list. The owning action must still
+validate element types, permissions and domain constraints.
+
 ## Computer-use adapter contract
 
 `contracts/computer-use.ts` is the provider-neutral boundary shared by browser

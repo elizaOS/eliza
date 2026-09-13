@@ -32,6 +32,7 @@ import {
   handleRuntimeModeRemoteForward,
   isAllowedHost,
   isAuthorized,
+  isCredentialedCorsOrigin,
   loadEffectiveElizaConfig,
   loadElizaConfig,
   normalizeWsClientId,
@@ -56,7 +57,8 @@ import { resolveLinkedAccountsInConfig } from "@elizaos/shared/contracts/first-r
 import { resetDefaultAccountPoolAfterCredentialReset } from "../services/account-pool";
 import { AuthStore } from "../services/auth-store";
 import { handleAccountPoolStatusRoute } from "./account-pool-status-routes";
-import { findActiveSession } from "./auth/sessions";
+import { readCookie, resolveSessionTokenRole } from "./auth";
+import { findActiveSession, SESSION_COOKIE_NAME } from "./auth/sessions";
 import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
@@ -1140,6 +1142,20 @@ export async function startApiServer(
       });
     },
     authorizeWebSocket: async (request, url) => {
+      const cookie = readCookie(request, SESSION_COOKIE_NAME);
+      const origin =
+        typeof request.headers.origin === "string"
+          ? request.headers.origin
+          : undefined;
+      // Ambient browser credentials require the narrower credentialed-origin
+      // policy; wildcard/cloud CORS reachability alone does not authorize them.
+      if (cookie && isCredentialedCorsOrigin(origin)) {
+        const session = await resolveSessionTokenRole(cookie, {
+          state: compatState,
+          scope: "appCore.webSocketCookieAuth",
+        });
+        if (session?.role === "OWNER") return true;
+      }
       const sessionToken =
         url.searchParams.get("token")?.trim() ||
         url.searchParams.get("apiKey")?.trim() ||

@@ -275,6 +275,12 @@ saved binding by reading it back; uncertain writes require refresh before retry.
 The selector does not create identities, verify contacts, or issue household
 permissions implicitly.
 
+A knowledge-only household grant may explicitly supply `subjectEntityIds: []`.
+Omitting the field remains an invalid action request. The canonical scope
+expansion includes basic `household.visibility` with `knowledge.read`; it adds
+no calendar authority. Non-owner calendar grants still require at least one
+subject from the principal's household relationship.
+
 A paired guest reads `GET /api/lifeops/agreements/:id/shared` using its machine
 session. The owner must bind that machine identity to a person through
 `POST /api/lifeops/entities/:id/auth-bindings` and explicitly issue the household
