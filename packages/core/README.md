@@ -400,8 +400,9 @@ Actions define specific tasks or capabilities the agent can perform. Each action
 Actions enable the agent to respond intelligently and perform operations based on user input or internal triggers.
 
 Before routing, the response handler receives an `available_actions` discovery
-catalog containing every eligible umbrella action's name, complete description,
-contexts, and aliases; promoted sub-actions are represented by their parent,
+catalog containing every eligible umbrella action's name and complete
+description; aliases resolve server-side, contexts come from
+`available_contexts`, and promoted sub-actions are represented by their parent,
 since each virtual repeats the parent's description and Stage 1 routes by
 family. Discovery checks the current actor, delivery audience, connector
 policy, and action validation under the action's declared routing contexts. This

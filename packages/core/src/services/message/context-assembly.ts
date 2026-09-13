@@ -305,12 +305,15 @@ export async function createV5MessageContextObject(args: {
 				id: "available-actions",
 				label: "available_actions",
 				stable: false,
+				// Aliases and declared contexts are omitted: every consumer of
+				// `similes` (exposedActionMatches, resolveRuntimeAction, reply
+				// policy, sub-planner) reads runtime.actions, and Stage 1 receives
+				// available_contexts separately. On the 73-action guest catalog they
+				// were 14.6K of 39.8K characters (~4.6K tokens) per turn (2026-09-13).
 				content: JSON.stringify(
 					discoverable.map((action) => ({
 						name: action.name,
 						description: action.description,
-						contexts: action.contexts,
-						similes: action.similes,
 					})),
 				),
 			},

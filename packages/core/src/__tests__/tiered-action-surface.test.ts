@@ -456,6 +456,48 @@ describe("v5 tiered action surface", () => {
 		expect(handler).toHaveBeenCalledTimes(1);
 	});
 
+	it("resolves an alias named by Stage 1 server-side, so discovery carries no similes", async () => {
+		const handler = vi.fn(async () => ({ success: true, text: "Role bound." }));
+		const action = makeAction({
+			name: "HOUSEHOLD_ROLE",
+			description: "Bind or unbind a household role.",
+			similes: ["BIND_HOUSEHOLD_ROLE_ALIAS"],
+			contexts: ["household"],
+			roleGate: { minRole: "OWNER" },
+			handler,
+		});
+		const runtime = makeRuntime({
+			actions: [action],
+			responses: [
+				{
+					...stage1Response({
+						contexts: ["household"],
+						candidateActionNames: ["BIND_HOUSEHOLD_ROLE_ALIAS"],
+						replyEffectStatus: "pending",
+					}),
+					inspectInput(params) {
+						const input = JSON.stringify(params);
+						expect(input).toContain("HOUSEHOLD_ROLE");
+						expect(input).toContain(action.description);
+						expect(input).not.toContain("BIND_HOUSEHOLD_ROLE_ALIAS");
+					},
+				},
+				plannerToolResponse(action.name),
+				finishEvaluatorResponse("Role bound."),
+			],
+		});
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: {
+				...makeMessage("Bind the synthetic guest as a caregiver."),
+				entityId: AGENT_ID,
+			},
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+		expect(handler).toHaveBeenCalledTimes(1);
+	});
+
 	it("does not disclose owner-only, private, or invalid actions during guest discovery", async () => {
 		const handler = vi.fn(async () => ({ success: true }));
 		const actions = [
