@@ -318,8 +318,8 @@ export function inferDirectCurrentRequestCandidateInference(
 }
 
 /**
- * Keep answered simple turns out of planning when only inferred view or owner
- * metadata suggests a tool. Surface-word and owner matches also require the
+ * Keep terminal non-applied replies out of metadata-inferred planning. Other
+ * answered simple turns may suppress inferred view or owner matches with the
  * model's explicit no-effect classification and no declared intent; legacy
  * incomplete envelopes remain conservative. Model-selected actions and
  * pending/applied effects keep their normal planning and verification paths.
@@ -333,13 +333,13 @@ export function shouldSuppressInferredCandidateEscalation(args: {
 	stageOneIntents: readonly string[];
 }): boolean {
 	if (
+		args.stageOneReplyEffectStatus !== "non_applied" &&
 		args.inference.kind !== "view-capability" &&
 		!(
 			(args.inference.kind === "view-surface" ||
 				args.inference.kind === "owner-goals" ||
 				args.inference.kind === "owner-scheduled-admin") &&
-			(args.stageOneReplyEffectStatus === "none" ||
-				args.stageOneReplyEffectStatus === "non_applied") &&
+			args.stageOneReplyEffectStatus === "none" &&
 			args.stageOneIntents.length === 0
 		)
 	) {

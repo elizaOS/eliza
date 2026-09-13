@@ -4689,6 +4689,47 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
+	it("does not reopen a terminal literal preview through coding-action inference", async () => {
+		// Real app trace baf8d639e28445998130c99d97ffd7e4: the model returned a
+		// complete non_applied preview, then metadata inference injected TASKS.
+		const body =
+			'Row 1: {"mode":"read-only"}.\nRow 2: keep  two spaces; don\'t normalize—OK!\n';
+		const reply = `Draft is here, unsaved:\n\n${body}\nGive me a separate go and I'll save it exactly like this.`;
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				intents: [],
+				candidateActionNames: [],
+				replyText: reply,
+				extra: { replyEffectStatus: "non_applied" },
+			}),
+		]);
+		const handler = vi.fn(async () => ({ success: true }));
+		runtime.actions = [
+			{
+				name: "TASKS",
+				description: "Delegate coding work.",
+				validate: async () => true,
+				handler,
+			},
+		];
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: `Preview a proposed note titled "Safety fixture 20260913 preview contract" with the EXACT body between the markers below. Preserve every character, including the final newline. Ask for a separate confirmation before saving. Do not create or modify any record or change the page.\nBEGIN BODY\n${body}END BODY`,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		expect(handler).not.toHaveBeenCalled();
+		expect(useModelCalls(runtime).map(([type]) => type)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+		]);
+		if (result.kind === "direct_reply")
+			expect(result.result.responseContent?.text).toBe(reply);
+	});
+
 	it("keeps unexecuted work pending when completion evaluation rejects the proposed reply", async () => {
 		const runtime = makeRuntime([
 			stage1Response({

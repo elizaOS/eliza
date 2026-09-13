@@ -1179,8 +1179,8 @@ function evaluatorEnvelopeProtocolError(
  * Each pattern is conservative: it targets a parenthetical / inline
  * annotation that the LLM appends as metadata, not the surrounding
  * natural language. The replacement either drops the parenthetical
- * entirely or substitutes a neutral phrase, then collapses any
- * doubled whitespace.
+ * entirely or substitutes a neutral phrase. Unrelated reply whitespace and
+ * punctuation remain intact, including literal text and code indentation.
  */
 // Orchestrator auto-generated task labels always have at least two
 // hyphen-separated word segments before the trailing index (e.g.
@@ -1232,10 +1232,6 @@ function sanitizeMessageToUser(text: string): string {
 	for (const { pattern, replacement } of INTERNAL_MECHANIC_PATTERNS) {
 		cleaned = cleaned.replace(pattern, replacement);
 	}
-	// Collapse multiple spaces introduced by the substitutions and
-	// trim trailing space before punctuation (", ." -> ".").
-	cleaned = cleaned.replace(/[ \t]{2,}/g, " ");
-	cleaned = cleaned.replace(/\s+([.,!?:;])/g, "$1");
 	return cleaned.trim();
 }
 

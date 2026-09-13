@@ -241,18 +241,23 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 const NAVIGATION_REPLY_RULE =
 	"For UI navigation, name the destination. When visualContinuation.navigationOnly=true, draft a concise destination confirmation to deliver IF navigation succeeds, without progress or waiting language; the runtime holds it for the confirming receipt. Do not claim any record was read or changed. ";
 
+const EXACT_REPLY_TEXT_RULE =
+	" When quoting or previewing text requested verbatim or exactly, copy every character, including punctuation, repeated spaces and line breaks. Put explanations outside that text.";
+
 export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
 	name: "replyText",
 	description:
 		NAVIGATION_REPLY_RULE +
-		'RESPOND requires a user-facing reply: simple context carries the complete answer; other tool/planner work gets a brief acknowledgment followed by the planner\'s grounded result. IGNORE uses "". No internal reasoning or capability refusal on the planning path. Let available tools attempt the work; only when none can attempt it, use RESPOND with simple context and explain the limitation.',
+		'RESPOND requires a user-facing reply: simple context carries the complete answer; other tool/planner work gets a brief acknowledgment followed by the planner\'s grounded result. IGNORE uses "". No internal reasoning or capability refusal on the planning path. Let available tools attempt the work; only when none can attempt it, use RESPOND with simple context and explain the limitation.' +
+		EXACT_REPLY_TEXT_RULE,
 	descriptionCompressed:
 		"User-facing reply. simple=whole answer; navigationOnly=destination confirmation held for successful navigation; other planning=brief ack, never a refusal; IGNORE=empty string.",
 	priority: 20,
 	schema: {
 		type: "string",
 		description:
-			"User-facing reply. Simple=whole answer. navigationOnly=concise destination confirmation held until navigation succeeds, without progress language or record-read/change claims. Other planning=brief ack. Never refuse on planning path. Plain text unless channel supports markdown.",
+			"User-facing reply. Simple=whole answer. navigationOnly=concise destination confirmation held until navigation succeeds, without progress language or record-read/change claims. Other planning=brief ack. Never refuse on planning path. Plain text unless channel supports markdown." +
+			EXACT_REPLY_TEXT_RULE,
 	},
 	parse(value) {
 		if (typeof value !== "string") return "";
@@ -280,7 +285,7 @@ export const replyEffectStatusFieldEvaluator: ResponseHandlerFieldEvaluator<Repl
 	{
 		name: "replyEffectStatus",
 		description:
-			'Classify replyText\'s current-request work claims in any language, including indirect wording ("on the books", "quedó listo"). pending=promised, ongoing or unfinished work, including live lookup/navigation even alongside an answered recall question. applied=claimed newly completed external change (save/send/schedule/payment/booking/device action/delegation), never execution proof. non_applied=terminal failure, unavailable, cancelled, declined or preview-only outcome with no work remaining. none=answer/explanation/question/conditional offer with no new work claim; recalling advice, quoting past actions or reporting existing facts alone is none. A new saved reminder is applied; recall plus promised navigation is pending.',
+			'Classify replyText\'s current-request work claims in any language, including indirect wording ("on the books", "quedó listo"). pending=work still to perform this turn, including live lookup/navigation even alongside an answered recall question. applied=claimed newly completed external change (save/send/schedule/payment/booking/device action/delegation), never execution proof. non_applied=terminal failure, unavailable, cancelled, declined, or an action preview/clarification/conditional offer awaiting a later user answer. A proposed save awaiting separate confirmation is non_applied, not none or pending; if other work remains to perform this turn, use pending. none=answer/explanation/general question with no current action decision; recalling advice, quoting past actions or reporting existing facts alone is none. A new saved reminder is applied; recall plus promised navigation is pending.',
 		descriptionCompressed:
 			"Current-request work status in replyText: pending work (including lookup/navigation), claimed new applied change, terminal non_applied outcome, or none. Recall of earlier advice/actions alone is none; wording and language do not determine routing.",
 		priority: 25,
@@ -288,7 +293,7 @@ export const replyEffectStatusFieldEvaluator: ResponseHandlerFieldEvaluator<Repl
 			type: "string",
 			enum: ["none", "applied", "non_applied", "pending"],
 			description:
-				"Classify work for the current request: pending=promised unfinished work, including lookup/navigation beside an answer; applied=claimed newly completed external change, not execution proof; non_applied=terminal failed/unavailable/cancelled/declined/preview outcome with no work remaining; none=answer, explanation, question, or conditional offer without a new work claim. Recalling earlier advice, past completed actions, or existing facts alone is none, not applied.",
+				"Classify current-request work: pending=unfinished work to perform this turn, including lookup/navigation beside an answer; applied=claimed newly completed external change, not execution proof; non_applied=terminal failed/unavailable/cancelled/declined outcome or an action preview/clarification/conditional offer awaiting a later user answer. A save awaiting separate confirmation is non_applied; other work still to perform this turn is pending. none=answer, explanation or general question without a current action decision. Recalling earlier advice, past actions or existing facts alone is none.",
 		},
 		parse: normalizeReplyEffectStatus,
 	};
