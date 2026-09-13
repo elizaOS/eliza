@@ -5,7 +5,7 @@
 
 import { toWellFormedUnicode } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { truncateMessageForDisplay } from "./browser-wallet-consent-format";
+import { formatAddressForDisplay, truncateMessageForDisplay } from "./browser-wallet-consent-format";
 
 function isWellFormed(value: string): boolean {
   if (!value) return true;
@@ -97,5 +97,19 @@ describe("truncateMessageForDisplay well-formed", () => {
     const out = truncateMessageForDisplay(lone, 240);
     expect(isWellFormed(out)).toBe(true);
     expect(out).toContain("more chars");
+  });
+});
+
+describe("formatAddressForDisplay surrogate safety", () => {
+  it("preserves well-formed Unicode when address ends or starts on surrogate pairs", () => {
+    const addressWithSurrogates = "0x123🚀567890abcdef🚀xyz";
+    const formatted = formatAddressForDisplay(addressWithSurrogates);
+    expect(formatted.isWellFormed()).toBe(true);
+    expect(formatted).toContain("…");
+  });
+
+  it("handles unknown or empty address gracefully", () => {
+    expect(formatAddressForDisplay("")).toBe("(unknown)");
+    expect(formatAddressForDisplay("0x123456")).toBe("0x123456");
   });
 });
