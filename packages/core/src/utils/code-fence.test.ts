@@ -8,7 +8,12 @@ describe("unwrapWholeCodeFence", () => {
 		expect(unwrapWholeCodeFence('```json\n{"ok":true}\n```', ["json"])).toBe(
 			'{"ok":true}',
 		);
+		expect(
+			unwrapWholeCodeFence('```json \r\n{"ok":true}\r\n```', ["json"]),
+		).toBe('{"ok":true}');
 		expect(unwrapWholeCodeFence("```ts\n{}\n```", ["json"])).toBeNull();
+		expect(unwrapWholeCodeFence("```json5\n{}\n```", ["json"])).toBeNull();
+		expect(unwrapWholeCodeFence("```json-schema\n{}\n```", ["json"])).toBeNull();
 	});
 
 	it("keeps compact unlabeled bodies distinct from language labels", () => {
