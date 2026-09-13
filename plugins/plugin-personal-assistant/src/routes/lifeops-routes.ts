@@ -123,6 +123,7 @@ import {
 import { probeFullDiskAccess } from "../lifeops/fda-probe.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
+import { handleAccountHandoffRoutes } from "./account-handoff.js";
 import { entityHasVerifiedMachineAuthBinding } from "./authenticated-entity-principal.js";
 import { handleFamilyWorkflowRoutes } from "./family-workflows.js";
 
@@ -260,6 +261,9 @@ const LIFEOPS_RATE_LIMITS = {
   // credentials or initiate consent flows.
   oauth_init: { maxRequests: 5, windowMs: 60_000 },
   connector_write: { maxRequests: 10, windowMs: 60_000 },
+  // A saved account switch takes multiple revision-checked checkpoints; it
+  // must not exhaust the budget for starting new connector consent flows.
+  account_handoff_advance: { maxRequests: 30, windowMs: 60_000 },
   // Generic outbound messaging (X DMs, iMessage, Telegram). Tighter
   // than the default to limit blast radius.
   outbound_message: { maxRequests: 5, windowMs: 60_000 },
@@ -1350,6 +1354,8 @@ export async function handleLifeOpsRoutes(
     typeof value.reconcileLinkedCalendar === "function" &&
     "resolveLinkedCalendarConflict" in value &&
     typeof value.resolveLinkedCalendarConflict === "function" &&
+    "rebindLinkedCalendar" in value &&
+    typeof value.rebindLinkedCalendar === "function" &&
     "disconnectLinkedCalendar" in value &&
     typeof value.disconnectLinkedCalendar === "function" &&
     "reconcileLinkedCalendarProviderChanges" in value &&
@@ -1367,6 +1373,23 @@ export async function handleLifeOpsRoutes(
     return gateway;
   };
 
+  if (
+    ctx.pathname === "/api/lifeops/account-handoffs" ||
+    ctx.pathname.startsWith("/api/lifeops/account-handoffs/")
+  ) {
+    if (
+      rateLimitRequest(
+        ctx,
+        ctx.method === "GET"
+          ? "default"
+          : ctx.method === "POST" && ctx.pathname.endsWith("/advance")
+            ? "account_handoff_advance"
+            : "connector_write",
+      )
+    )
+      return true;
+    if (await handleAccountHandoffRoutes(ctx)) return true;
+  }
   if (await handleFamilyWorkflowRoutes(ctx)) return true;
 
   // Calendar routes are owned by @elizaos/plugin-calendar; the path -> service
@@ -1397,6 +1420,8 @@ export async function handleLifeOpsRoutes(
           mutationGateway().cancel(requestUrl, request),
         linkCalendar: (requestUrl, request) =>
           mutationGateway().linkCalendar(requestUrl, request),
+        updateLinkedCalendarControl: (requestUrl, request) =>
+          mutationGateway().updateLinkedCalendarControl(requestUrl, request),
         reconcileLinkedCalendar: (requestUrl, linkId, request) =>
           mutationGateway().reconcileLinkedCalendar(
             requestUrl,
@@ -1409,6 +1434,8 @@ export async function handleLifeOpsRoutes(
             linkId,
             request,
           ),
+        rebindLinkedCalendar: (requestUrl, linkId, request) =>
+          mutationGateway().rebindLinkedCalendar(requestUrl, linkId, request),
         disconnectLinkedCalendar: (requestUrl, linkId, request) =>
           mutationGateway().disconnectLinkedCalendar(
             requestUrl,

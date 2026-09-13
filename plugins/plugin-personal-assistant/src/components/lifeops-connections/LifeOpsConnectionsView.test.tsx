@@ -19,7 +19,9 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import type { AccountHandoffRecord } from "../../lifeops/account-handoff-store.js";
+import type { AccountHandoffAdapter } from "./handoff-adapter.js";
 import type {
   LifeOpsConnectionsAdapter,
   LifeOpsConnectionsSnapshot,
@@ -34,6 +36,11 @@ import {
   reviewAccountTransition,
 } from "./account-transition.js";
 import { LifeOpsConnectionsView } from "./LifeOpsConnectionsView.js";
+
+// jsdom has no layout scroll implementation; the browser suite verifies visibility.
+beforeAll(() => {
+  Element.prototype.scrollIntoView = vi.fn();
+});
 
 const GRANT_ID = "connector-account:account-1";
 const CONNECTOR_ACCOUNT_ID = "account-1";
@@ -224,6 +231,15 @@ function snapshot(): LifeOpsConnectionsSnapshot {
 
 function adapter(): LifeOpsConnectionsAdapter {
   return {
+    getLinkedCalendarControl: vi.fn(async () => ({
+      revision: 0,
+      paused: true,
+      destination: null,
+      pendingDispatch: null,
+    })),
+    updateLinkedCalendarControl: vi.fn(async () => {
+      throw new Error("Sync mutation must be configured by this test.");
+    }),
     load: vi.fn(async () => snapshot()),
     connectGoogle: vi.fn(async () => undefined),
     disconnectGoogle: vi.fn(async () => undefined),
@@ -448,6 +464,31 @@ describe("LifeOpsConnectionsView", () => {
     );
   });
 
+  it("does not offer account setup from a failed initial inventory and recovers on retry", async () => {
+    const localAdapter = adapter();
+    vi.mocked(localAdapter.load)
+      .mockRejectedValueOnce(new Error("Failed to fetch"))
+      .mockResolvedValueOnce(snapshot());
+    render(<LifeOpsConnectionsView adapter={localAdapter} />);
+
+    await screen.findByRole("alert");
+    expect(screen.queryByText("No Google account is connected.")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Continue to Google" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Seed selected context" }),
+    ).toBeNull();
+    expect(localAdapter.connectGoogle).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    await screen.findByText("owner@example.test");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Connect another Google account" }),
+    ).toBeTruthy();
+  });
+
   it("supports an Apple-only bounded seed without fabricating a Google grant", async () => {
     const localAdapter = adapter();
     const apple = calendar("apple_calendar");
@@ -592,6 +633,28 @@ describe("account replacement", () => {
     ).toBe(true);
   });
 
+  it.each([
+    { identityEmail: " OWNER@example.test " },
+    { connectorAccountId: CONNECTOR_ACCOUNT_ID },
+  ])(
+    "does not disconnect duplicate connections to the same account: %j",
+    async (identity) => {
+      const state = replacementSnapshot();
+      const replacement = state.googleAccounts.find(
+        (account) => account.grant?.id === selection.replacementGrantId,
+      );
+      if (!replacement?.grant) throw new Error("fixture requires replacement");
+      replacement.grant = { ...replacement.grant, ...identity };
+      const local = adapter();
+      local.load = vi.fn(async () => state);
+      await expect(retireReplacedAccount(local, selection)).rejects.toThrow(
+        "same Google account",
+      );
+      expect(local.disconnectGoogle).not.toHaveBeenCalled();
+      expect(local.purgeImportedData).not.toHaveBeenCalled();
+    },
+  );
+
   it("preserves calendar selections when disconnect fails", async () => {
     const state = replacementSnapshot();
     const before = structuredClone(state);
@@ -618,21 +681,74 @@ describe("account replacement", () => {
     expect(local.purgeImportedData).not.toHaveBeenCalled();
   });
 
-  it("requires review of the two selected identities before disconnecting from the UI", async () => {
+  it("saves exact choices and advances the saved review instead of directly disconnecting", async () => {
     const state = replacementSnapshot();
     const local = adapter();
     local.load = vi.fn(async () => state);
-    local.disconnectGoogle = vi.fn(async (id) => {
-      state.googleAccounts = state.googleAccounts.filter(
-        (account) => account.grant?.id !== id,
-      );
-    });
-    render(<LifeOpsConnectionsView adapter={local} />);
+    let saved: AccountHandoffRecord | null = null;
+    const api: AccountHandoffAdapter = {
+      getActiveLifeOpsAccountHandoff: vi.fn(async () => ({ handoff: saved })),
+      getLifeOpsHandoffCalendarEntries: vi.fn(async () => ({ entries: [] })),
+      getLifeOpsHandoffRetirementCandidates: vi.fn(async () => ({
+        candidates: [],
+      })),
+      getLifeOpsFamilyEmailOptions: vi.fn(async () => ({
+        options: {
+          accounts: [],
+          recipients: [
+            { entityId: "self", name: "Self", address: "self@example.test" },
+          ],
+        },
+      })),
+      createLifeOpsAccountHandoff: vi.fn(async (choices) => {
+        saved = {
+          operationId: choices.operationId,
+          revision: 3,
+          phase: "reviewed",
+          receipt: {},
+          review: {
+            previous: {
+              grantId: GRANT_ID,
+              connectorAccountId: CONNECTOR_ACCOUNT_ID,
+              email: "owner@example.test",
+            },
+            replacement: {
+              grantId: "replacement",
+              connectorAccountId: "real-account",
+              email: "real@example.test",
+            },
+            readCalendars: [],
+            writeCalendar: null,
+            calendarLinks: [],
+            messageDestinations: choices.messageDestinations,
+            importedData: choices.importedData,
+            retireApprovalIds: choices.retireApprovalIds,
+          },
+        };
+        return { handoff: saved };
+      }),
+      getLifeOpsAccountHandoff: vi.fn(async () => {
+        if (!saved) throw new Error("No review");
+        return { handoff: saved };
+      }),
+      cancelLifeOpsAccountHandoff: vi.fn(async () => {
+        throw new Error("Not exercised");
+      }),
+      advanceLifeOpsAccountHandoff: vi.fn(async (id, revision) => {
+        if (!saved || saved.operationId !== id || saved.revision !== revision)
+          throw new Error("Stale review");
+        saved = { ...saved, phase: "pausing", revision: revision + 1 };
+        throw new Error("Response lost. Refresh saved progress.");
+      }),
+    };
+    render(<LifeOpsConnectionsView adapter={local} handoffAdapter={api} />);
     fireEvent.click(
       await screen.findByRole("button", { name: "Replace an account" }),
     );
     fireEvent.change(
-      screen.getByRole("combobox", { name: "Test account to disconnect" }),
+      await screen.findByRole("combobox", {
+        name: "Test account to disconnect",
+      }),
       { target: { value: GRANT_ID } },
     );
     fireEvent.change(
@@ -640,17 +756,47 @@ describe("account replacement", () => {
       { target: { value: "replacement" } },
     );
     fireEvent.click(
-      screen.getByRole("button", { name: "Check replacement connection" }),
+      screen.getByRole("button", { name: "Load account details" }),
     );
-    const confirm = await screen.findByRole("button", {
-      name: "Disconnect reviewed test account",
+    fireEvent.change(
+      await screen.findByRole("combobox", {
+        name: "Verified monthly email recipient",
+      }),
+      { target: { value: "self" } },
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save choices for review" }),
+    );
+    const start = await screen.findByRole("button", {
+      name: "Start reviewed account switch",
     });
-    expect(local.disconnectGoogle).not.toHaveBeenCalled();
-    fireEvent.click(confirm);
-    await screen.findByText(
-      /Test account disconnected. Review the real recipient/,
+    expect(api.createLifeOpsAccountHandoff).toHaveBeenCalledWith(
+      expect.objectContaining({
+        previousGrantId: GRANT_ID,
+        replacementGrantId: "replacement",
+        writeCalendarId: null,
+        importedData: "retain",
+        messageDestinations: [
+          {
+            channel: "email",
+            connectorAccountId: "real-account",
+            recipientId: "self@example.test",
+            recipientEntityId: "self",
+          },
+        ],
+      }),
     );
-    expect(local.disconnectGoogle).toHaveBeenCalledExactlyOnceWith(GRANT_ID);
+    expect(api.advanceLifeOpsAccountHandoff).not.toHaveBeenCalled();
+    fireEvent.click(start);
+    await screen.findByText("Response lost. Refresh saved progress.");
+    expect(local.disconnectGoogle).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Refresh saved progress" }),
+    );
+    await screen.findByText("Pausing scheduled delivery");
+    expect(api.advanceLifeOpsAccountHandoff).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Cancel review" })).toBeNull();
+    expect(api.getLifeOpsAccountHandoff).toHaveBeenCalled();
   });
 
   it("does not retire an account when replacement health deteriorates after review", async () => {

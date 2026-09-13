@@ -125,6 +125,8 @@ describe("document list query (real SQL parity)", () => {
   async function seedInMemory(documents: Memory[]): Promise<InMemoryDatabaseAdapter> {
     const inMemory = new InMemoryDatabaseAdapter();
     await inMemory.initialize();
+    // Mirror SQL setup so isolation reads compare the same room membership.
+    await inMemory.createRoomParticipants([REQUESTER_ID, OTHER_ENTITY_ID], roomId);
     await inMemory.createMemories(documents.map((memory) => ({ memory, tableName: "documents" })));
     return inMemory;
   }
@@ -391,6 +393,85 @@ describe("document list query (real SQL parity)", () => {
         offset: 0,
       })
     );
+  });
+
+  it("shares only the selected document with a guest and removes every read path on revocation", async () => {
+    const shared = document(71, { metadata: { scope: "owner-private" } });
+    const privateSibling = document(72, { metadata: { scope: "owner-private" } });
+    const fragment = document(73, {
+      metadata: {
+        type: MemoryType.FRAGMENT,
+        documentId: shared.id,
+        documentRevision: 0,
+        position: 0,
+      },
+    });
+    await seedSql([shared, privateSibling]);
+    const inMemory = await seedInMemory([shared, privateSibling]);
+    await inMemory.createEntities([{ id: DIRECT_GRANTEE_ID, agentId, names: ["Guest"] }]);
+    const owner = {
+      agentId,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [] as UUID[],
+      requesterRole: "OWNER" as const,
+    };
+    const guest = {
+      ...owner,
+      requesterEntityId: DIRECT_GRANTEE_ID,
+      requesterRole: "GUEST" as const,
+    };
+    for (const store of [adapter, inMemory]) {
+      await store.createMemories([{ memory: fragment, tableName: "document_fragments" }]);
+      const list = () => store.queryDocuments({ ...guest, limit: 10, offset: 0 });
+      const get = () => store.getDocument({ ...guest, documentId: shared.id! });
+      const fragments = () =>
+        store.queryDocumentFragments({ ...guest, documentId: shared.id!, limit: 10 });
+      expect((await list()).documents).toEqual([]);
+      const grant = await store.updateDocumentDirectGrants({
+        ...owner,
+        documentId: shared.id!,
+        expected: readDocumentMutationSnapshot(shared)!,
+        directGrantEntityIds: [DIRECT_GRANTEE_ID],
+      });
+      expect(grant.status).toBe("updated");
+      const visible = await list();
+      expect(ids(visible.documents)).toEqual([shared.id]);
+      expect(visible.totalVisible).toBe(1);
+      expect(await get()).toMatchObject({ id: shared.id });
+      expect(ids(await fragments())).toEqual([fragment.id]);
+      const current = await get();
+      const expected = readDocumentMutationSnapshot(current!)!;
+      await expect(
+        store.updateDocumentDirectGrants({
+          ...guest,
+          documentId: shared.id!,
+          expected,
+          directGrantEntityIds: [OTHER_ENTITY_ID],
+        })
+      ).resolves.toEqual({ status: "forbidden" });
+      expect(
+        await store.getDocument({ ...guest, requesterRole: "UNRESOLVED", documentId: shared.id! })
+      ).toBeNull();
+      expect(
+        await store.getDocument({
+          ...guest,
+          requesterEntityId: OTHER_ENTITY_ID,
+          documentId: shared.id!,
+        })
+      ).toBeNull();
+      await expect(
+        store.updateDocumentDirectGrants({
+          ...owner,
+          documentId: shared.id!,
+          expected,
+          directGrantEntityIds: [],
+        })
+      ).resolves.toMatchObject({ status: "updated" });
+      expect((await list()).documents).toEqual([]);
+      expect((await list()).totalVisible).toBe(0);
+      expect(await get()).toBeNull();
+      expect(await fragments()).toEqual([]);
+    }
   });
 
   it("filters fragment pages by exact authorized parent before pagination", async () => {

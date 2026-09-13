@@ -345,11 +345,17 @@ export class GoogleDomain {
   }
 
   public async deleteCalendarReminderPlansForEvents(
-    _eventIds: string[],
+    eventIds: string[],
   ): Promise<void> {
-    // Implemented by withCalendar; this no-op fallback keeps withGoogle
-    // independently usable in unit tests that compose only connector status
-    // methods.
+    if (eventIds.length === 0) return;
+    const plans = await this.ctx.repository.listReminderPlansForOwners(
+      this.ctx.agentId(),
+      "calendar_event",
+      eventIds,
+    );
+    for (const plan of plans) {
+      await this.ctx.repository.deleteReminderPlan(this.ctx.agentId(), plan.id);
+    }
   }
 
   public async requireGoogleCalendarGrant(

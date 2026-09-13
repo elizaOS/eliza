@@ -435,12 +435,15 @@ async function ensureWriteAccess(
 	message: Memory,
 	scope: DocumentVisibilityScope,
 	scopedToEntityId?: UUID,
+	chatAudience = false,
 ): Promise<string | null> {
 	const requesterRole = (await resolveDocumentRequesterRole(runtime, message))
 		.role;
-	if (requesterRole === "UNRESOLVED" || requesterRole === "GUEST") {
+	if (requesterRole === "UNRESOLVED") {
 		return "A verified user identity is required to write documents.";
 	}
+	if (requesterRole === "GUEST") return "Guest document access is read-only.";
+	if (chatAudience) return null;
 	if (scope === "global" || scope === "owner-private") {
 		return (await hasRoleAccess(runtime, message, "OWNER"))
 			? null
@@ -983,13 +986,18 @@ async function handleWrite(
 		});
 	}
 
-	const scope = getScope(runtime, message, params);
+	const chatAudience =
+		(!params.scope || params.scope === "all-visible") &&
+		!params.scopedToEntityId &&
+		message.entityId !== runtime.agentId;
+	const scope = chatAudience ? "global" : getScope(runtime, message, params);
 	const scopedToEntityId = getScopedToEntityId(runtime, message, scope, params);
 	const accessError = await ensureWriteAccess(
 		runtime,
 		message,
 		scope,
 		scopedToEntityId,
+		chatAudience,
 	);
 	if (accessError) {
 		return result(false, accessError, "write", {
@@ -1012,6 +1020,7 @@ async function handleWrite(
 	const tags = Array.isArray(params.tags) ? params.tags : [];
 	const stored = await service.addDocument({
 		...addOptions,
+		...(chatAudience ? { audience: "chat" as const } : {}),
 		clientDocumentId: "" as UUID,
 		contentType: "text/plain",
 		originalFilename: filename,
@@ -1031,7 +1040,9 @@ async function handleWrite(
 	});
 
 	// Return persistence evidence to the planner; the model owns the reply.
-	const response = `Saved "${title}" to your documents.`;
+	const response = chatAudience
+		? `Saved "${title}" for participants in this chat.`
+		: `Saved "${title}" to your documents.`;
 
 	return result(true, response, "write", {
 		values: {
@@ -1040,7 +1051,12 @@ async function handleWrite(
 			title,
 			scope,
 		},
-		data: { documentId: stored.clientDocumentId, filename, scope },
+		data: {
+			documentId: stored.clientDocumentId,
+			filename,
+			scope,
+			...(chatAudience ? { audience: "chat" } : {}),
+		},
 	});
 }
 
@@ -1542,7 +1558,7 @@ export const documentAction: Action = {
 		{
 			name: "scope",
 			description:
-				"Visibility scope. For list/search, use all-visible unless the user explicitly names global, owner-private, user-private, or agent-private; phrases such as 'my documents' mean all documents visible to the requester. For newly-created documents, select the requested visibility scope.",
+				"Visibility scope. For list/search, use all-visible unless the user explicitly names global, owner-private, user-private, or agent-private; phrases such as 'my documents' mean all documents visible to the requester. New text documents default to the current chat participants. Select a private scope only when requested. The global storage scope means room membership, never public internet publication.",
 			required: false,
 			schema: {
 				type: "string",

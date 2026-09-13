@@ -18,10 +18,14 @@ import {
   parseJsonArray,
   parseJsonValue,
   sqlQuote,
+  type TransactionalDb,
   toNumber,
   toText,
   withRequiredTransaction,
 } from "../sql.js";
+
+import { validateFamilyIntakeClaim } from "./intake-claims.js";
+import type { FamilyIntakeFactBinding } from "./intake-service.js";
 
 export const FAMILY_PACKET_VERSION = 1 as const;
 
@@ -42,13 +46,15 @@ export interface FamilyPacketProvenance {
     | "calendar"
     | "school"
     | "agreement"
-    | "knowledge";
+    | "knowledge"
+    | "correspondence";
   readonly sourceId: string;
   readonly observedAt: string;
   readonly contentSha256: string;
 }
 
 export interface FamilyPacketClaim {
+  readonly intakeBinding?: FamilyIntakeFactBinding;
   readonly claimId: string;
   readonly stableKey: string;
   readonly section: FamilyPacketSection;
@@ -294,6 +300,14 @@ function validateClaim(claim: FamilyPacketClaim): void {
       );
     }
   }
+  if (
+    claim.provenance.some((source) => source.source === "correspondence") &&
+    !claim.intakeBinding
+  )
+    fail(
+      "correspondence requires its reviewed source binding",
+      "FAMILY_INTAKE_BINDING_REQUIRED",
+    );
   if (claim.section === "approved_obligations" && !claim.obligationApprovalId) {
     // Allowed internally, but it can never enter the external draft.
     return;
@@ -344,6 +358,14 @@ function parsePacket(row: Record<string, unknown>): MonthlyFamilyPacket {
   return parseJsonValue<MonthlyFamilyPacket>(row.packet_json, null as never);
 }
 
+/** Serialize packet and draft publication, including the first version with no row to lock. */
+async function lockPacketPublication(tx: TransactionalDb): Promise<void> {
+  await executeRawSqlTx(
+    tx,
+    "LOCK TABLE app_lifeops.life_family_packets IN SHARE ROW EXCLUSIVE MODE",
+  );
+}
+
 export class MonthlyFamilyPacketService {
   private initialized = false;
 
@@ -392,16 +414,6 @@ export class MonthlyFamilyPacketService {
     return rows[0] ? parsePacket(rows[0]) : null;
   }
 
-  private async previous(
-    periodKey: string,
-  ): Promise<MonthlyFamilyPacket | null> {
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT packet_json FROM app_lifeops.life_family_packets WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND period_key < ${sqlQuote(periodKey)} ORDER BY period_key DESC, internal_version DESC LIMIT 1`,
-    );
-    return rows[0] ? parsePacket(rows[0]) : null;
-  }
-
   async buildInternal(
     period: FamilyPacketPeriod,
     incoming: readonly FamilyPacketClaim[],
@@ -409,55 +421,70 @@ export class MonthlyFamilyPacketService {
     await this.ensureSchema();
     validatePeriod(period);
     incoming.forEach(validateClaim);
-    const prior = await this.previous(period.key);
-    const currentKeys = new Set(incoming.map((claim) => claim.stableKey));
-    const carried = (prior?.claims ?? [])
-      .filter(
-        (claim) =>
-          claim.unanswered === true &&
-          (claim.carryForwardCount ?? 0) === 0 &&
-          !currentKeys.has(claim.stableKey),
-      )
-      .map(
-        (claim): FamilyPacketClaim => ({
-          ...claim,
-          claimId: `${claim.claimId}:carry:${period.key}`,
-          carryForwardCount: 1,
-          carriedFromClaimId: claim.claimId,
-        }),
+    return await withRequiredTransaction(this.runtime, async (tx) => {
+      await lockPacketPublication(tx);
+      const priorRows = await executeRawSqlTx(
+        tx,
+        `SELECT packet_json FROM app_lifeops.life_family_packets WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND period_key < ${sqlQuote(period.key)} ORDER BY period_key DESC, internal_version DESC LIMIT 1`,
       );
-    const claims = [...incoming, ...carried].sort((a, b) =>
-      a.claimId.localeCompare(b.claimId),
-    );
-    const core = {
-      schemaVersion: FAMILY_PACKET_VERSION,
-      agentId: this.runtime.agentId,
-      period,
-      claims,
-      sections: summarizeSections(claims),
-    };
-    const contentSha256 = sha256(stable(core));
-    const latest = await this.latest(period.key);
-    if (latest?.contentSha256 === contentSha256) return latest;
-    const version = (latest?.version ?? 0) + 1;
-    const packetId =
-      latest?.packetId ?? `family-packet:${this.runtime.agentId}:${period.key}`;
-    const packet: MonthlyFamilyPacket = {
-      ...core,
-      packetId,
-      version,
-      contentSha256,
-      createdAt: this.now().toISOString(),
-    };
-    await executeRawSql(
-      this.runtime,
-      `INSERT INTO app_lifeops.life_family_packets (agent_id,packet_id,period_key,internal_version,content_sha256,packet_json,created_at) VALUES (${sqlQuote(this.runtime.agentId)},${sqlQuote(packetId)},${sqlQuote(period.key)},${version},${sqlQuote(contentSha256)},${sqlQuote(JSON.stringify(packet))},${sqlQuote(packet.createdAt)})`,
-    );
-    return packet;
+      const prior = priorRows[0] ? parsePacket(priorRows[0]) : null;
+      const currentKeys = new Set(incoming.map((claim) => claim.stableKey));
+      const carried = (prior?.claims ?? [])
+        .filter(
+          (claim) =>
+            claim.unanswered === true &&
+            // Correspondence is recollected from its current source review;
+            // a historical packet cannot resurrect a revoked or resolved fact.
+            !claim.intakeBinding &&
+            (claim.carryForwardCount ?? 0) === 0 &&
+            !currentKeys.has(claim.stableKey),
+        )
+        .map(
+          (claim): FamilyPacketClaim => ({
+            ...claim,
+            claimId: `${claim.claimId}:carry:${period.key}`,
+            carryForwardCount: 1,
+            carriedFromClaimId: claim.claimId,
+          }),
+        );
+      const claims = [...incoming, ...carried].sort((a, b) =>
+        a.claimId.localeCompare(b.claimId),
+      );
+      const core = {
+        schemaVersion: FAMILY_PACKET_VERSION,
+        agentId: this.runtime.agentId,
+        period,
+        claims,
+        sections: summarizeSections(claims),
+      };
+      const contentSha256 = sha256(stable(core));
+      const latestRows = await executeRawSqlTx(
+        tx,
+        `SELECT packet_json FROM app_lifeops.life_family_packets WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND period_key=${sqlQuote(period.key)} ORDER BY internal_version DESC LIMIT 1`,
+      );
+      const latest = latestRows[0] ? parsePacket(latestRows[0]) : null;
+      if (latest?.contentSha256 === contentSha256) return latest;
+      const version = (latest?.version ?? 0) + 1;
+      const packetId =
+        latest?.packetId ??
+        `family-packet:${this.runtime.agentId}:${period.key}`;
+      const packet: MonthlyFamilyPacket = {
+        ...core,
+        packetId,
+        version,
+        contentSha256,
+        createdAt: this.now().toISOString(),
+      };
+      await executeRawSqlTx(
+        tx,
+        `INSERT INTO app_lifeops.life_family_packets (agent_id,packet_id,period_key,internal_version,content_sha256,packet_json,created_at) VALUES (${sqlQuote(this.runtime.agentId)},${sqlQuote(packetId)},${sqlQuote(period.key)},${version},${sqlQuote(contentSha256)},${sqlQuote(JSON.stringify(packet))},${sqlQuote(packet.createdAt)})`,
+      );
+      return packet;
+    });
   }
 
   async createExternalDraft(
-    packet: MonthlyFamilyPacket,
+    requestedPacket: MonthlyFamilyPacket,
     input: {
       recipient: string;
       recipientEntityId: string;
@@ -466,18 +493,21 @@ export class MonthlyFamilyPacketService {
     },
   ): Promise<MonthlyFamilyDraft> {
     await this.ensureSchema();
-    const current = await this.latest(packet.period.key);
+    const current = await this.latest(requestedPacket.period.key);
     if (
       !current ||
-      current.packetId !== packet.packetId ||
-      current.version !== packet.version ||
-      current.contentSha256 !== packet.contentSha256
+      current.packetId !== requestedPacket.packetId ||
+      current.version !== requestedPacket.version ||
+      current.contentSha256 !== requestedPacket.contentSha256
     ) {
       fail(
         "internal packet is stale or tampered",
         "FAMILY_PACKET_INTERNAL_STALE",
       );
     }
+    // Render persisted claims, not caller-supplied fields accompanying a valid
+    // version/hash. Otherwise an altered object could bypass source bindings.
+    const packet = current;
     const recipient = input.recipient.trim();
     const recipientEntityId = input.recipientEntityId.trim();
     if (!recipient || !recipientEntityId)
@@ -531,6 +561,8 @@ export class MonthlyFamilyPacketService {
         });
         continue;
       }
+      if (claim.intakeBinding)
+        await validateFamilyIntakeClaim(this.runtime, claim, recipientEntityId);
       if (claim.section === "approved_obligations") {
         if (!agreements || !claim.agreementArtifactId) {
           transformations.push({
@@ -643,30 +675,47 @@ export class MonthlyFamilyPacketService {
       if (body.includes(claim.statement))
         fail("owner-only content leaked", "FAMILY_PACKET_PRIVACY_LEAK");
     }
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT COALESCE(MAX(draft_version),0) AS version FROM app_lifeops.life_family_packet_drafts WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND packet_id=${sqlQuote(packet.packetId)}`,
-    );
-    const draftVersion = toNumber(rows[0]?.version) + 1;
-    const draft: MonthlyFamilyDraft = {
-      packetId: packet.packetId,
-      internalVersion: packet.version,
-      draftVersion,
-      recipient,
-      recipientEntityId,
-      calendarPrivacyMode: input.calendarPrivacyMode,
-      includedClaimIds: shareable.map((claim) => claim.claimId),
-      body,
-      bodySha256: sha256(body),
-      transformations,
-      createdAt: this.now().toISOString(),
-      email: input.email ?? null,
-    };
-    await executeRawSql(
-      this.runtime,
-      `INSERT INTO app_lifeops.life_family_packet_drafts (agent_id,packet_id,internal_version,draft_version,recipient,recipient_entity_id,calendar_privacy_mode,included_claim_ids_json,body,body_sha256,transformations_json,created_at,email_json) VALUES (${sqlQuote(this.runtime.agentId)},${sqlQuote(packet.packetId)},${packet.version},${draftVersion},${sqlQuote(recipient)},${sqlQuote(recipientEntityId)},${sqlQuote(input.calendarPrivacyMode)},${sqlQuote(JSON.stringify(draft.includedClaimIds))},${sqlQuote(body)},${sqlQuote(draft.bodySha256)},${sqlQuote(JSON.stringify(transformations))},${sqlQuote(draft.createdAt)},${draft.email ? sqlQuote(JSON.stringify(draft.email)) : "NULL"})`,
-    );
-    return draft;
+    return await withRequiredTransaction(this.runtime, async (tx) => {
+      await lockPacketPublication(tx);
+      const latestPackets = await executeRawSqlTx(
+        tx,
+        `SELECT packet_json FROM app_lifeops.life_family_packets WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND packet_id=${sqlQuote(packet.packetId)} ORDER BY internal_version DESC LIMIT 1`,
+      );
+      const latest = latestPackets[0] ? parsePacket(latestPackets[0]) : null;
+      if (
+        !latest ||
+        latest.version !== packet.version ||
+        latest.contentSha256 !== packet.contentSha256
+      )
+        fail(
+          "Packet changed while preparing the draft",
+          "FAMILY_PACKET_INTERNAL_STALE",
+        );
+      const rows = await executeRawSqlTx(
+        tx,
+        `SELECT COALESCE(MAX(draft_version),0) AS version FROM app_lifeops.life_family_packet_drafts WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND packet_id=${sqlQuote(packet.packetId)}`,
+      );
+      const draftVersion = toNumber(rows[0]?.version) + 1;
+      const draft: MonthlyFamilyDraft = {
+        packetId: packet.packetId,
+        internalVersion: packet.version,
+        draftVersion,
+        recipient,
+        recipientEntityId,
+        calendarPrivacyMode: input.calendarPrivacyMode,
+        includedClaimIds: shareable.map((claim) => claim.claimId),
+        body,
+        bodySha256: sha256(body),
+        transformations,
+        createdAt: this.now().toISOString(),
+        email: input.email ?? null,
+      };
+      await executeRawSqlTx(
+        tx,
+        `INSERT INTO app_lifeops.life_family_packet_drafts (agent_id,packet_id,internal_version,draft_version,recipient,recipient_entity_id,calendar_privacy_mode,included_claim_ids_json,body,body_sha256,transformations_json,created_at,email_json) VALUES (${sqlQuote(this.runtime.agentId)},${sqlQuote(packet.packetId)},${packet.version},${draftVersion},${sqlQuote(recipient)},${sqlQuote(recipientEntityId)},${sqlQuote(input.calendarPrivacyMode)},${sqlQuote(JSON.stringify(draft.includedClaimIds))},${sqlQuote(body)},${sqlQuote(draft.bodySha256)},${sqlQuote(JSON.stringify(transformations))},${sqlQuote(draft.createdAt)},${draft.email ? sqlQuote(JSON.stringify(draft.email)) : "NULL"})`,
+      );
+      return draft;
+    });
   }
 
   async reviseDraft(input: {
@@ -733,7 +782,8 @@ export class MonthlyFamilyPacketService {
       ],
     };
     await withRequiredTransaction(this.runtime, async (tx) => {
-      // Serialize edits on the persisted packet before checking the current draft.
+      await lockPacketPublication(tx);
+      // Read the current versions after every publisher has acquired the same lock.
       const packets = await executeRawSqlTx(
         tx,
         `SELECT internal_version FROM app_lifeops.life_family_packets WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND packet_id=${sqlQuote(input.packetId)} ORDER BY internal_version DESC LIMIT 1 FOR UPDATE`,
@@ -784,13 +834,23 @@ export class MonthlyFamilyPacketService {
     ) {
       fail("draft is missing or tampered", "FAMILY_PACKET_DRAFT_TAMPERED");
     }
-    const latestRows = await executeRawSql(
-      this.runtime,
-      `SELECT MAX(draft_version) AS version FROM app_lifeops.life_family_packet_drafts WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND packet_id=${sqlQuote(draft.packetId)}`,
-    );
-    if (toNumber(latestRows[0]?.version) !== draft.draftVersion)
-      fail("draft approval is stale", "FAMILY_PACKET_DRAFT_STALE");
     const request = await withRequiredTransaction(this.runtime, async (tx) => {
+      await lockPacketPublication(tx);
+      const packets = await executeRawSqlTx(
+        tx,
+        `SELECT internal_version FROM app_lifeops.life_family_packets WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND packet_id=${sqlQuote(draft.packetId)} ORDER BY internal_version DESC LIMIT 1`,
+      );
+      if (toNumber(packets[0]?.internal_version) !== draft.internalVersion)
+        fail(
+          "The source packet changed. Review a new draft before approval or delivery.",
+          "FAMILY_PACKET_INTERNAL_STALE",
+        );
+      const latestRows = await executeRawSqlTx(
+        tx,
+        `SELECT MAX(draft_version) AS version FROM app_lifeops.life_family_packet_drafts WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND packet_id=${sqlQuote(draft.packetId)}`,
+      );
+      if (toNumber(latestRows[0]?.version) !== draft.draftVersion)
+        fail("draft approval is stale", "FAMILY_PACKET_DRAFT_STALE");
       const enqueued = await args.queue.enqueueTransactional(
         {
           requestedBy: args.requestedBy,
@@ -851,6 +911,24 @@ export class MonthlyFamilyPacketService {
         "approval is not an approved message",
         "FAMILY_PACKET_APPROVAL_INVALID",
       );
+    return this.validateBoundDraft(request);
+  }
+
+  async validateDraftForDecision(
+    request: ApprovalRequest,
+  ): Promise<MonthlyFamilyDraft> {
+    if (!["pending", "approved", "retryable"].includes(request.state))
+      fail(
+        "Approval cannot accept a new decision",
+        "FAMILY_PACKET_APPROVAL_INVALID",
+      );
+    await this.ensureSchema();
+    return this.validateBoundDraft(request);
+  }
+
+  private async validateBoundDraft(
+    request: ApprovalRequest,
+  ): Promise<MonthlyFamilyDraft> {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT packet_id,draft_version,draft_sha256 FROM app_lifeops.life_family_packet_approvals WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND approval_id=${sqlQuote(request.id)} LIMIT 1`,
@@ -875,6 +953,12 @@ export class MonthlyFamilyPacketService {
         request.payload.familyPacketId !== draft.packetId)
     )
       fail("approved payload was tampered", "FAMILY_PACKET_APPROVAL_TAMPERED");
+    const latestPacket = await this.read(draft.packetId);
+    if (!latestPacket || latestPacket.version !== draft.internalVersion)
+      fail(
+        "The source packet changed. Review a new draft before approval or delivery.",
+        "FAMILY_PACKET_INTERNAL_STALE",
+      );
     const latestRows = await executeRawSql(
       this.runtime,
       `SELECT MAX(draft_version) AS version FROM app_lifeops.life_family_packet_drafts WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND packet_id=${sqlQuote(draft.packetId)}`,
@@ -895,6 +979,12 @@ export class MonthlyFamilyPacketService {
     const agreements = getAgreementKnowledgeService(this.runtime);
     for (const claim of packet.claims) {
       if (!included.has(claim.claimId)) continue;
+      if (claim.intakeBinding)
+        await validateFamilyIntakeClaim(
+          this.runtime,
+          claim,
+          draft.recipientEntityId,
+        );
       if (
         (claim.section === "custody_calendar" ||
           claim.section === "approved_obligations") &&
@@ -972,11 +1062,22 @@ export class MonthlyFamilyPacketService {
     };
   }
 
-  async readLatestDraft(packetId: string): Promise<MonthlyFamilyDraft | null> {
+  async readLatestDraft(
+    packetId: string,
+    internalVersion?: number,
+  ): Promise<MonthlyFamilyDraft | null> {
+    if (
+      internalVersion !== undefined &&
+      (!Number.isSafeInteger(internalVersion) || internalVersion < 1)
+    )
+      fail(
+        "Packet version must be a positive integer",
+        "FAMILY_PACKET_VERSION_INVALID",
+      );
     await this.ensureSchema();
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT draft_version FROM app_lifeops.life_family_packet_drafts WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND packet_id=${sqlQuote(packetId)} ORDER BY draft_version DESC LIMIT 1`,
+      `SELECT draft_version FROM app_lifeops.life_family_packet_drafts WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND packet_id=${sqlQuote(packetId)}${internalVersion === undefined ? "" : ` AND internal_version=${internalVersion}`} ORDER BY draft_version DESC LIMIT 1`,
     );
     return rows[0]
       ? this.readDraft(packetId, toNumber(rows[0].draft_version))

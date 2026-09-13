@@ -1,6 +1,6 @@
 # Molecular component duplicate inventory
 
-Scanned 912 maintained React files. 103 exported compositions have a recognized molecular role and at least two atomic dependencies.
+Scanned 923 maintained React files. 108 exported compositions have a recognized molecular role and at least two atomic dependencies.
 
 Clusters share both a role and an atomic dependency signature. Detection creates a review queue; this committed report contains only final dispositions based on product behavior, state ownership, and responsive layout.
 
@@ -24,12 +24,12 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 | dialog | button, dialog | 3 | distinct-domain-compositions |
 | dialog | button, dialog, input | 3 | distinct-domain-compositions |
 | form | button, input | 3 | distinct-domain-compositions |
+| form | button, input, textarea | 3 | distinct-domain-compositions |
 | list | badge, button, card | 3 | distinct-domain-compositions |
 | panel | button, card, input | 3 | distinct-domain-compositions |
 | card | badge, button, card, checkbox, dialog, spinner | 2 | distinct-domain-compositions |
 | card | button, input | 2 | distinct-domain-compositions |
 | dialog | alert, button, card | 2 | distinct-domain-compositions |
-| form | button, input, textarea | 2 | distinct-domain-compositions |
 | panel | button, input | 2 | distinct-domain-compositions |
 | row | button, card, statusDot | 2 | distinct-domain-compositions |
 
@@ -68,6 +68,14 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 - Fingerprint: `sha256:fcf873875a506f36121cec3f220e955971468c53d28e938874b7b2890cdeccf6`
 - Decision: **distinct-domain-compositions**. Trigger configuration, tag editing and login share generic controls but not a domain lifecycle. Login performs provider discovery, credential challenges and session handoff; trigger configuration edits scheduling state; tag editing emits a list of strings. Each composes the canonical Button and Input primitives.
 
+### form: button + input + textarea
+
+- `CockpitNewSessionForm` in `packages/ui/src/components/cockpit/CockpitNewSessionForm.tsx:64`
+- `AgreementProposalEditor` in `plugins/plugin-personal-assistant/src/components/family-operations/AgreementProposalEditor.tsx:6`
+- `PacketDraftEditor` in `plugins/plugin-personal-assistant/src/components/family-operations/PacketDraftEditor.tsx:6`
+- Fingerprint: `sha256:37d6191bc5906dd75f77c0fa0c8b1a0db01057621e86408b9e2fef230f3962c4`
+- Decision: **distinct-domain-compositions**. Session creation owns model, mode, and initial prompt selection. Family email revision owns immutable draft versions and stale approval rejection. Agreement correction owns literal page citations, unapproved proposals, and recovery of a saved proposal without resubmitting it. These distinct domain transitions share canonical field and button atoms, not one form lifecycle.
+
 ### list: badge + button + card
 
 - `CredentialsList` in `packages/ui/src/cloud/organization/credentials-list.tsx:78`
@@ -104,13 +112,6 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 - `InviteMemberDialog` in `packages/ui/src/cloud/organization/invite-member-dialog.tsx:66`
 - Fingerprint: `sha256:6691c91cff13e2f52c953d92dbc15729b0939294fd4a3bad4d7609b488acf564`
 - Decision: **distinct-domain-compositions**. The dialogs share canonical feedback and surface atoms while retaining unrelated validation, confirmation, and completion lifecycles.
-
-### form: button + input + textarea
-
-- `CockpitNewSessionForm` in `packages/ui/src/components/cockpit/CockpitNewSessionForm.tsx:64`
-- `PacketDraftEditor` in `plugins/plugin-personal-assistant/src/components/family-operations/PacketDraftEditor.tsx:6`
-- Fingerprint: `sha256:173f0f898a7384e9d1d418903e0385ae1fd1845d178512241aeed07f627e216f`
-- Decision: **distinct-domain-compositions**. Session creation owns model, mode, and initial prompt selection. Family email revision owns immutable draft versions, stale approval rejection, and preservation of unsaved edits. Their shared field and button behavior remains in canonical atoms.
 
 ### panel: button + input
 

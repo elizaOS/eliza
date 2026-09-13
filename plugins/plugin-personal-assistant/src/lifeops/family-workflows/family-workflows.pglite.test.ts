@@ -330,12 +330,14 @@ describe("FamilyWorkflowRuntimeService with real PGlite", () => {
     };
 
     await route("/api/lifeops/family-workflows/packets/packet%2F1/drafts", {
+      expectedPacketVersion: 1,
       recipient: "+15551234567",
       recipientEntityId: "guest-1",
       calendarPrivacyMode: "busy_only",
     });
     expect(status).toBe(201);
     expect(createDraft).toHaveBeenCalledWith("packet/1", {
+      expectedPacketVersion: 1,
       recipient: "+15551234567",
       recipientEntityId: "guest-1",
       calendarPrivacyMode: "busy_only",
@@ -435,5 +437,30 @@ describe("FamilyWorkflowRuntimeService with real PGlite", () => {
     });
     expect(run).toHaveBeenCalledWith("scheduled");
     expect(result).toMatchObject({ ok: true });
+  });
+  it("rejects a stale reviewed packet before recipient checks or draft persistence", async () => {
+    const { service } = makeService();
+    const period = {
+      key: "2026-09",
+      startsOn: "2026-09-01",
+      endsOnExclusive: "2026-10-01",
+      timeZone: "America/New_York",
+    };
+    const first = await service.packets.buildInternal(period, [baseClaim()]);
+    const changed = await service.packets.buildInternal(period, [
+      { ...baseClaim(), statement: "Pickup changed to 4 PM." },
+    ]);
+    expect(changed.version).toBeGreaterThan(first.version);
+    await expect(
+      service.createDraft(first.packetId, {
+        expectedPacketVersion: first.version,
+        recipient: "owner@example.test",
+        recipientEntityId: "owner-test",
+        calendarPrivacyMode: "busy_only",
+      }),
+    ).rejects.toMatchObject({ code: "FAMILY_PACKET_VERSION_STALE" });
+    await expect(
+      service.packets.readLatestDraft(first.packetId),
+    ).resolves.toBeNull();
   });
 });

@@ -271,9 +271,10 @@ export function generateContentBasedId(
 	options?: {
 		includeFilename?: string;
 		contentType?: string;
+		namespace?: string;
 	},
 ): string {
-	const { includeFilename, contentType } = options || {};
+	const { includeFilename, contentType, namespace } = options || {};
 
 	let contentForHashing: string;
 
@@ -293,9 +294,18 @@ export function generateContentBasedId(
 		.replace(/\r/g, "\n")
 		.trim();
 
-	const componentsToHash = [agentId, contentForHashing, includeFilename || ""]
-		.filter(Boolean)
-		.join("::");
+	const componentsToHash =
+		namespace === undefined
+			? [agentId, contentForHashing, includeFilename || ""]
+					.filter(Boolean)
+					.join("::")
+			: JSON.stringify([
+					"document-scope-v1",
+					namespace,
+					agentId,
+					contentForHashing,
+					includeFilename ?? "",
+				]);
 
 	const hash = createHash("sha256").update(componentsToHash).digest("hex");
 

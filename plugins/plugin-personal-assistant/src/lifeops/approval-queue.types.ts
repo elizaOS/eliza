@@ -531,7 +531,10 @@ export interface ApprovalExecutionCapability {
   reconcileExecution(
     reconciliation: ApprovalExecutionReconciliation,
   ): Promise<ApprovalRequest>;
-  /** Terminally invalidate a pending or approved request without dispatch. */
+  /**
+   * Retire pending, approved, or confirmed-undelivered retryable requests.
+   * Executing and uncertain deliveries require reconciliation, not expiry.
+   */
   markExpired(id: string, subjectUserId: string): Promise<ApprovalRequest>;
   removePending(id: string, subjectUserId: string): Promise<void>;
   purgeExpired(now: Date): Promise<ReadonlyArray<string>>;

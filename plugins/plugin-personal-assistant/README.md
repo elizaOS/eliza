@@ -228,8 +228,8 @@ requests with their staging bytes in the runtime's canonical private
 Commit requires every ordered chunk and verifies the reassembled byte length
 and optional whole-file SHA-256 before immutable storage. The server—not the
 form—parses the page count. `PdfService.extractCompleteDocument` then accounts
-for every page with native text plus rendered-page vision transcription for
-images or text-empty pages. One failed page fails ingestion; partial content is
+for every page with native text plus rendered-page vision transcription of
+every page. One failed page fails ingestion; partial content is
 never published as a complete owner-private `DocumentService` record. LifeOps
 persists the media SHA-256, handle, document id, byte size, MIME type, filename,
 parser-derived page count, complete extracted text and page map, and version chain; it does
@@ -240,12 +240,45 @@ in-range page citation plus the cited source text. Only the owner can make the t
 `approved` or `rejected` decision. Agent and chat pins are independent
 discovery records and never confer access.
 
+Owners choose **Prepare review** on an uploaded agreement, or request
+`OWNER_AGREEMENT_KNOWLEDGE` with `prepare_review`. The owner-only
+`POST /api/lifeops/agreements/:id/review` verifies the original PDF and saved
+extraction against their ingestion hashes, sends complete page evidence to the
+model, and validates every proposed citation against its claimed pages. Invalid
+or incomplete output saves nothing. Generation creates unapproved proposals;
+approval, pinning, sharing, scheduling, and delivery remain separate operations.
+
+The proposal batch and its completion record commit atomically. Concurrent
+requests and retries recover the first committed review, including later owner
+decisions; `GET /api/lifeops/agreements/:id/review` restores it after reload.
+A saved empty result is explicitly identified and does not certify that the PDF
+contains no commitments. Owners must still inspect the original source for
+omissions and interpretation errors. Each immutable agreement version has one
+prepared review; failed attempts can be retried without partial proposals.
+
+Review generation uses the canonical trajectory recorder when capture is
+enabled, binding the model call to the artifact and source hashes. Existing
+chat steps retain their context; direct owner requests get a standalone
+trajectory. Reading or retrying a prepared review does not repeat generation.
+
 The owner is the only implicit reader. A guest read requires a resource grant
 bound to one exact household grant with `knowledge.read`; the guest entity must
 have a verified identity, and both grants must remain unrevoked and unexpired.
 Guest views expose approved obligations only. Revoking the relationship-backed
 household grant immediately invalidates every agreement binding that relies on
 it.
+
+The owner permission selector reads
+`GET /api/lifeops/agreements/:id/guest-options`. It lists verified people with
+active `knowledge.read` permissions in the agreement's household, retaining the
+exact household grant behind each named choice. Expired, revoked, wrong-scope,
+and other-household permissions are excluded. Existing agreement bindings stay
+available for owner removal even when their underlying permission is inactive.
+Changing the selected person or permission invalidates the preview. Enabling
+access revalidates the exact permission in the domain, and the UI confirms the
+saved binding by reading it back; uncertain writes require refresh before retry.
+The selector does not create identities, verify contacts, or issue household
+permissions implicitly.
 
 A knowledge-only household grant may explicitly supply `subjectEntityIds: []`.
 Omitting the field remains an invalid action request. The canonical scope
@@ -441,6 +474,13 @@ internals; it consumes the plugin's public exports only. See
 - Prompt-content lint rules: `scripts/lint-default-packs.mjs`.
 - Health domain: `plugins/plugin-health/README.md`.
 - REST routes: `src/routes/`.
+
+Owner review corrections use the same complete-source citation validation as
+model-generated proposals. The Family Operations editor and owner action
+`add_proposal` save an unapproved correction through the existing obligations
+route. Identical corrections to the same immutable artifact recover the same
+record and its current decision, including after restart or a lost response.
+Saving a correction does not prepare a model review, approve, pin or share it.
 
 ### Family workspace export
 

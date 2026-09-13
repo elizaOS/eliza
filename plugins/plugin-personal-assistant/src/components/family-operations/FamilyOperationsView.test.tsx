@@ -19,6 +19,7 @@ import type {
 vi.mock("./adapter.js", () => ({ defaultFamilyOperationsAdapter: {} }));
 
 import { FamilyOperationsView } from "./FamilyOperationsView.js";
+import type { FamilyIntakeAdapter } from "./intake-adapter.js";
 
 afterEach(cleanup);
 
@@ -95,17 +96,67 @@ function snapshot(): FamilyOperationsSnapshot {
   };
 }
 
+function guestOptions(): Awaited<
+  ReturnType<FamilyOperationsAdapter["listGuestAccessOptions"]>
+> {
+  return {
+    candidates: [
+      {
+        principalEntityId: "guest-1",
+        householdGrantId: "grant-1",
+        displayName: "Alex",
+        identityLabel: "email: alex@example.test",
+        role: "co_parent",
+        expiresAt: null,
+        issuedAt: "2026-09-12T12:00:00Z",
+      },
+      {
+        principalEntityId: "guest-2",
+        householdGrantId: "grant-2",
+        displayName: "Sam",
+        identityLabel: "email: sam@example.test",
+        role: "caregiver",
+        expiresAt: null,
+        issuedAt: "2026-09-12T12:00:00Z",
+      },
+    ],
+    grants: [
+      {
+        grantId: "guest-grant-1",
+        principalEntityId: "guest-1",
+        householdGrantId: "grant-1",
+        displayName: "Alex",
+        issuedAt: "2026-09-12T12:00:00Z",
+        canRead: true,
+        denial: null,
+      },
+    ],
+  };
+}
+
 function adapter(data = snapshot()): FamilyOperationsAdapter {
   return {
     load: vi.fn(async () => data),
+    readAgreementReview: vi.fn(async () => null),
+    addAgreementProposal: async () => {
+      throw new Error("Owner correction is unavailable in this fixture");
+    },
+    prepareAgreementReview: vi.fn(async () => {
+      throw new Error("Review generation is not configured in this fixture");
+    }),
     decideObligation: vi.fn(async (obligation, decision, reason) => ({
       ...obligation,
       status: decision === "approve" ? "approved" : "rejected",
       decisionReason: reason,
     })),
+    listPinTargets: async () => ({
+      agent: { id: "fixture-agent", name: "Family assistant" },
+      chats: [{ id: "fixture-chat", name: "Family planning", source: "test" }],
+    }),
     listPins: vi.fn(async () => []),
     pin: vi.fn(),
     unpin: vi.fn(),
+    listGuestAccessOptions: vi.fn(async () => guestOptions()),
     previewGrant: vi.fn(async () => ({
       allowed: false,
       artifactId: "artifact-1",
@@ -138,10 +189,496 @@ function adapter(data = snapshot()): FamilyOperationsAdapter {
     createPacketDraft: vi.fn(async () => undefined),
     revisePacketDraft: vi.fn(async () => undefined),
     requestPacketApproval: vi.fn(async () => undefined),
+    decidePacketApproval: vi.fn(async () => undefined),
   } as FamilyOperationsAdapter;
 }
 
+function pendingEmailSnapshot(): FamilyOperationsSnapshot {
+  const data = snapshot();
+  data.packets = {
+    status: "ready",
+    data: [
+      {
+        packetId: "decision-packet",
+        periodKey: "2026-10",
+        version: 1,
+        createdAt: "2026-09-10T12:00:00Z",
+        status: "complete",
+        sections: [],
+        claims: [],
+        draft: {
+          draftVersion: 1,
+          recipient: "guest@example.test",
+          recipientEntityId: "guest-1",
+          calendarPrivacyMode: "busy_only",
+          body: "Synthetic reviewed email.",
+          bodySha256: "d".repeat(64),
+          email: { subject: "Review", senderGrantId: "sender-1" },
+          approvalId: "approval-1",
+          approval: {
+            id: "approval-1",
+            state: "pending",
+            providerAccepted: null,
+            providerMessageId: null,
+            error: null,
+            updatedAt: "2026-09-10T12:00:00Z",
+          },
+        },
+      },
+    ],
+  };
+  return data;
+}
+
+function openPacketMonth(month: string) {
+  const input = screen.getByLabelText("Month to prepare") as HTMLInputElement;
+  if (input.value === month) return;
+  fireEvent.change(input, { target: { value: month } });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Open month", exact: true }),
+  );
+}
+
 describe("FamilyOperationsView", () => {
+  it("keeps the decision reason and approval gate specific to each proposed clause", async () => {
+    const data = snapshot();
+    if (data.agreements.status !== "ready")
+      throw new Error("Expected agreement fixture");
+    const source = data.agreements.data[0];
+    source.obligations.push({
+      ...source.obligations[0],
+      id: "travel-clause",
+      title: "Travel notice",
+    });
+    const local = adapter(data);
+    render(<FamilyOperationsView adapter={local} />);
+    const school = (await screen.findByText("School notice")).closest(
+      "article",
+    );
+    const travel = screen.getByText("Travel notice").closest("article");
+    if (!school || !travel) throw new Error("Expected both proposal cards");
+    fireEvent.change(within(school).getByLabelText("Decision reason"), {
+      target: { value: "Checked the school notice clause." },
+    });
+    expect(
+      (within(travel).getByLabelText("Decision reason") as HTMLInputElement)
+        .value,
+    ).toBe("");
+    expect(
+      (
+        within(travel).getByRole("button", {
+          name: "Approve",
+          exact: true,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    fireEvent.click(
+      within(school).getByRole("button", { name: "Approve", exact: true }),
+    );
+    await waitFor(() =>
+      expect(local.decideObligation).toHaveBeenCalledTimes(1),
+    );
+    expect(local.decideObligation).toHaveBeenCalledWith(
+      source.obligations[0],
+      "approve",
+      "Checked the school notice clause.",
+    );
+    expect(
+      (within(travel).getByLabelText("Decision reason") as HTMLInputElement)
+        .value,
+    ).toBe("");
+  });
+
+  it("keeps a prepared review retryable when the parent agreement refresh fails", async () => {
+    const transport = adapter();
+    vi.mocked(transport.prepareAgreementReview).mockResolvedValue({
+      artifactId: "artifact-1",
+      generatedAt: "2026-09-13T00:00:00Z",
+      explanation: "Synthetic review successfully persisted.",
+      outcome: "no_proposals",
+      obligations: [],
+    });
+    vi.mocked(transport.load)
+      .mockResolvedValueOnce(snapshot())
+      .mockRejectedValueOnce(new Error("Agreement refresh unavailable"))
+      .mockResolvedValue(snapshot());
+    render(<FamilyOperationsView adapter={transport} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Prepare review" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getAllByText("Agreement refresh unavailable").length,
+      ).toBeGreaterThan(0),
+    );
+    expect(
+      screen.queryByText("Synthetic review successfully persisted."),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Prepare review" }));
+    await screen.findByText("Synthetic review successfully persisted.");
+  });
+
+  it("recovers guest choices from an unavailable permission inventory", async () => {
+    const local = adapter();
+    local.listGuestAccessOptions = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Permission inventory unavailable"))
+      .mockResolvedValue(guestOptions());
+    render(<FamilyOperationsView adapter={local} />);
+    await screen.findByText("Permission inventory unavailable");
+    expect(screen.queryByRole("button", { name: "Allow access" })).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Refresh guest permissions" }),
+    );
+    await screen.findByLabelText("Verified guest permission");
+    expect(screen.queryByText("Permission inventory unavailable")).toBeNull();
+  });
+
+  it("rejects an allowed preview for a different permission", async () => {
+    const local = adapter();
+    const denied = await local.previewGrant({
+      artifactId: "artifact-1",
+      principalEntityId: "guest-1",
+      householdGrantId: "grant-1",
+    });
+    local.previewGrant = async () => ({
+      ...denied,
+      allowed: true,
+      denial: null,
+      householdGrantId: "different-permission",
+    });
+    render(<FamilyOperationsView adapter={local} />);
+    fireEvent.change(
+      await screen.findByLabelText("Verified guest permission"),
+      { target: { value: "grant-1" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Preview permission" }));
+    await screen.findByText(
+      "The permission preview did not match your selection. Refresh guest permissions before continuing.",
+    );
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Allow access",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(local.issueGrant).not.toHaveBeenCalled();
+  });
+
+  it("requires refresh when sharing readback has a different underlying permission", async () => {
+    const local = adapter();
+    const denied = await local.previewGrant({
+      artifactId: "artifact-1",
+      principalEntityId: "guest-1",
+      householdGrantId: "grant-1",
+    });
+    local.previewGrant = async (input) => ({
+      ...denied,
+      ...input,
+      allowed: true,
+      denial: null,
+    });
+    local.issueGrant = async (input) => ({
+      ...input,
+      id: "guest-grant-1",
+      agentId: "fixture-agent",
+      householdId: "default",
+      issuedByEntityId: "self",
+      revokedAt: null,
+      revokedByEntityId: null,
+      revocationReason: null,
+      createdAt: "2026-09-12T12:00:00Z",
+      updatedAt: "2026-09-12T12:00:00Z",
+    });
+    const wrong = guestOptions();
+    wrong.grants[0].householdGrantId = "another-permission";
+    local.listGuestAccessOptions = vi
+      .fn()
+      .mockResolvedValueOnce(guestOptions())
+      .mockResolvedValue(wrong);
+    render(<FamilyOperationsView adapter={local} />);
+    fireEvent.change(
+      await screen.findByLabelText("Verified guest permission"),
+      { target: { value: "grant-1" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Preview permission" }));
+    await screen.findByText("Ready to grant");
+    fireEvent.click(screen.getByRole("button", { name: "Allow access" }));
+    await screen.findByText(
+      "Sharing could not be confirmed. Refresh guest permissions before retrying.",
+    );
+    expect(screen.queryByText("Guest access enabled.")).toBeNull();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Preview permission",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+  });
+
+  it("requires a new permission preview after the guest selection changes", async () => {
+    const local = adapter();
+    const denied = await local.previewGrant({
+      artifactId: "artifact-1",
+      principalEntityId: "guest-1",
+      householdGrantId: "grant-1",
+    });
+    local.previewGrant = async (input) => ({
+      ...denied,
+      ...input,
+      allowed: true,
+      denial: null,
+    });
+    render(<FamilyOperationsView adapter={local} />);
+    fireEvent.change(
+      await screen.findByLabelText("Verified guest permission"),
+      { target: { value: "grant-1" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Preview permission" }));
+    const issue = screen.getByRole("button", {
+      name: "Allow access",
+    }) as HTMLButtonElement;
+    await waitFor(() => expect(issue.disabled).toBe(false));
+    fireEvent.change(screen.getByLabelText("Verified guest permission"), {
+      target: { value: "grant-2" },
+    });
+    expect(issue.disabled).toBe(true);
+  });
+
+  it("disables pinning when destinations fail and recovers on refresh", async () => {
+    const local = adapter();
+    const available = await local.listPinTargets();
+    local.listPinTargets = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Conversations are unavailable"))
+      .mockResolvedValue(available);
+    render(<FamilyOperationsView adapter={local} />);
+    await screen.findByText("Conversations are unavailable");
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Pin",
+          exact: true,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Refresh destinations" }),
+    );
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "Pin",
+            exact: true,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+    expect(screen.queryByText("Conversations are unavailable")).toBeNull();
+  });
+
+  it.each([true, false])(
+    "confirms a pin only when it can be read back (saved=%s)",
+    async (saved) => {
+      const local = adapter();
+      const pins: Awaited<ReturnType<FamilyOperationsAdapter["listPins"]>> = [];
+      local.listPins = async () => pins;
+      local.pin = async (input) => {
+        const result = {
+          ...input,
+          id: "confirmed-pin",
+          agentId: "fixture-agent",
+          pinnedByEntityId: "self",
+          pinnedAt: "2026-09-12T12:00:00Z",
+          unpinnedAt: null,
+        };
+        if (saved) pins.push(result);
+        return result;
+      };
+      render(<FamilyOperationsView adapter={local} />);
+      const button = await screen.findByRole("button", {
+        name: "Pin",
+        exact: true,
+      });
+      await waitFor(() =>
+        expect((button as HTMLButtonElement).disabled).toBe(false),
+      );
+      fireEvent.click(button);
+      if (saved) {
+        await screen.findByText("Pin saved.");
+        expect(screen.getByText("This agent: Family assistant")).toBeTruthy();
+      } else {
+        await screen.findByText(
+          "The pin could not be confirmed. Refresh destinations before retrying.",
+        );
+        expect(screen.queryByText("Pin saved.")).toBeNull();
+      }
+    },
+  );
+
+  it("keeps month intake and packet generation aligned and protects unsaved correspondence", async () => {
+    const months: string[] = [];
+    const intake: FamilyIntakeAdapter = {
+      async decideRequest() {
+        throw new Error("Unexpected request decision in this fixture");
+      },
+      async answerInterview() {
+        throw new Error("Interview writes are outside this fixture.");
+      },
+      async list(period) {
+        months.push(period);
+        return [];
+      },
+      async importSource() {
+        throw new Error("Import is outside this month-navigation test.");
+      },
+      async change() {
+        throw new Error(
+          "Review mutation is outside this month-navigation test.",
+        );
+      },
+      async review() {
+        throw new Error(
+          "Review mutation is outside this month-navigation test.",
+        );
+      },
+    };
+    const local = adapter(pendingEmailSnapshot());
+    render(<FamilyOperationsView adapter={local} intakeAdapter={intake} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Monthly packet" }),
+    );
+    openPacketMonth("2026-10");
+    await waitFor(() => expect(months.at(-1)).toBe("2026-10"));
+    fireEvent.change(screen.getByLabelText("Email or message text"), {
+      target: { value: "Unsaved source stays in October." },
+    });
+    fireEvent.change(screen.getByLabelText("Month to prepare"), {
+      target: { value: "2026-11" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open month", exact: true }),
+    );
+    expect(screen.getByText(/Opening 2026-11 will discard/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+    expect(
+      (screen.getByLabelText("Email or message text") as HTMLTextAreaElement)
+        .value,
+    ).toBe("Unsaved source stays in October.");
+    expect(months.at(-1)).toBe("2026-10");
+    expect(
+      (screen.getByLabelText("Month to prepare") as HTMLInputElement).value,
+    ).toBe("2026-10");
+    fireEvent.change(screen.getByLabelText("Month to prepare"), {
+      target: { value: "2026-11" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open month", exact: true }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Discard edits and open month" }),
+    );
+    await waitFor(() => expect(months.at(-1)).toBe("2026-11"));
+    expect(
+      (screen.getByLabelText("Email or message text") as HTMLTextAreaElement)
+        .value,
+    ).toBe("");
+    expect(
+      screen.queryByRole("button", { name: "Approve and send email" }),
+    ).toBeNull();
+    const generation = Promise.withResolvers<void>();
+    vi.mocked(local.generatePacket).mockReturnValue(generation.promise);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Generate 2026-11 packet" }),
+    );
+    expect(local.generatePacket).toHaveBeenCalledWith("2026-11");
+    expect(
+      (screen.getByLabelText("Month to prepare") as HTMLInputElement).disabled,
+    ).toBe(true);
+    generation.resolve();
+    await waitFor(() =>
+      expect(
+        (screen.getByLabelText("Month to prepare") as HTMLInputElement)
+          .disabled,
+      ).toBe(false),
+    );
+    openPacketMonth("2026-10");
+    expect(
+      await screen.findByRole("button", { name: "Approve and send email" }),
+    ).toBeTruthy();
+  });
+
+  it("sends the exact reviewed decision once and renders the persisted provider result", async () => {
+    const data = pendingEmailSnapshot();
+    const local = adapter(data);
+    const pending = Promise.withResolvers<void>();
+    vi.mocked(local.decidePacketApproval).mockReturnValue(pending.promise);
+    render(<FamilyOperationsView adapter={local} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Monthly packet" }),
+    );
+    openPacketMonth("2026-10");
+    const approve = screen.getByRole("button", {
+      name: "Approve and send email",
+    });
+    fireEvent.click(approve);
+    fireEvent.click(approve);
+    expect(local.decidePacketApproval).toHaveBeenCalledTimes(1);
+    expect(local.decidePacketApproval).toHaveBeenCalledWith({
+      packetId: "decision-packet",
+      draftVersion: 1,
+      approvalId: "approval-1",
+      bodySha256: "d".repeat(64),
+      decision: "approve",
+    });
+    if (data.packets.status !== "ready")
+      throw new Error("Packet fixture unavailable");
+    const approval = data.packets.data[0].draft?.approval;
+    if (!approval) throw new Error("Approval fixture unavailable");
+    approval.state = "done";
+    approval.providerAccepted = true;
+    approval.providerMessageId = "provider-message";
+    pending.resolve();
+    await screen.findByText("Accepted by the email provider.");
+    expect(
+      screen.queryByRole("button", { name: "Approve and send email" }),
+    ).toBeNull();
+  });
+
+  it("shows an unknown delivery outcome without offering a blind retry", async () => {
+    const data = pendingEmailSnapshot();
+    const local = adapter(data);
+    vi.mocked(local.decidePacketApproval).mockImplementation(async () => {
+      if (data.packets.status !== "ready")
+        throw new Error("Packet fixture unavailable");
+      const approval = data.packets.data[0].draft?.approval;
+      if (!approval) throw new Error("Approval fixture unavailable");
+      approval.state = "reconciliation_required";
+      throw new Error("Delivery acknowledgement was lost.");
+    });
+    render(<FamilyOperationsView adapter={local} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Monthly packet" }),
+    );
+    openPacketMonth("2026-10");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Approve and send email" }),
+    );
+    await screen.findByText(
+      "Delivery outcome is unknown. Verify the provider record before retrying.",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Approve and send email" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Retry reviewed email" }),
+    ).toBeNull();
+    expect(local.decidePacketApproval).toHaveBeenCalledTimes(1);
+  });
+
   it("blocks duplicate workspace exports while preparing and restores the control after a denied request", async () => {
     const local = adapter();
     let rejectExport: (error: Error) => void = () => {
@@ -299,12 +836,14 @@ describe("FamilyOperationsView", () => {
   it("requires an explicit reason before revoking a guest grant", async () => {
     const local = adapter();
     render(<FamilyOperationsView adapter={local} />);
-    const revoke = await screen.findByRole("button", { name: "Revoke grant" });
-    expect((revoke as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText("Grant ID"), {
+    const existing = await screen.findByLabelText("Existing guest access");
+    expect(screen.queryByRole("button", { name: "Remove access" })).toBeNull();
+    fireEvent.change(existing, {
       target: { value: "guest-grant-1" },
     });
-    fireEvent.change(screen.getByLabelText("Revocation reason"), {
+    const revoke = await screen.findByRole("button", { name: "Remove access" });
+    expect((revoke as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Reason for removing access"), {
       target: { value: "Access is no longer needed." },
     });
     fireEvent.click(revoke);
@@ -373,6 +912,56 @@ describe("FamilyOperationsView", () => {
     await waitFor(() => expect(local.uploadAgreement).toHaveBeenCalled());
   });
 
+  it("keeps missing sections distinct from conflicting sources during packet review", async () => {
+    const data = snapshot();
+    data.packets = {
+      status: "ready",
+      data: [
+        {
+          packetId: "review-packet",
+          periodKey: "2026-10",
+          version: 1,
+          createdAt: "2026-09-10T12:00:00Z",
+          status: "contradictory",
+          sections: [
+            {
+              section: "school",
+              state: "contradictory",
+              claimIds: ["school-a", "school-b"],
+              contradictoryKeys: ["pickup"],
+            },
+            {
+              section: "approved_obligations",
+              state: "missing",
+              claimIds: [],
+              contradictoryKeys: [],
+            },
+          ],
+          claims: [
+            { id: "school-a", section: "school", text: "Pickup is at noon." },
+            { id: "school-b", section: "school", text: "Pickup is at 3 PM." },
+          ],
+        },
+      ],
+    };
+    render(<FamilyOperationsView adapter={adapter(data)} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Monthly packet" }),
+    );
+    openPacketMonth("2026-10");
+    const conflict = screen.getByRole("region", { name: "School review" });
+    expect(within(conflict).getByText("Pickup is at noon.")).toBeTruthy();
+    expect(within(conflict).getByText("Pickup is at 3 PM.")).toBeTruthy();
+    const missing = screen.getByRole("region", {
+      name: "Agreement obligations review",
+    });
+    expect(
+      within(missing).getByText(/No source material is recorded/),
+    ).toBeTruthy();
+    expect(within(missing).queryByText(/These sources disagree/)).toBeNull();
+    expect(screen.getAllByText("Pickup is at noon.")).toHaveLength(1);
+  });
+
   it("creates, reviews, and requests approval for an immutable packet draft", async () => {
     const data = snapshot();
     data.packets = {
@@ -384,16 +973,19 @@ describe("FamilyOperationsView", () => {
           version: 1,
           createdAt: "2026-08-30T12:00:00.000Z",
           status: "complete",
+          sections: [],
           claims: [
             { id: "claim-1", section: "school", text: "No school." },
             {
               id: "private-claim",
-              section: "owner",
+              section: "travel_consent_health",
               text: "Private owner note omitted by the disclosure policy.",
             },
           ],
           draft: {
             draftVersion: 2,
+            bodySha256: "d".repeat(64),
+            approval: null,
             recipient: "guest@example.com",
             recipientEntityId: "guest-1",
             calendarPrivacyMode: "busy_only",
@@ -408,6 +1000,7 @@ describe("FamilyOperationsView", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Monthly packet" }),
     );
+    openPacketMonth("2026-08");
     const download = screen
       .getByRole("link", {
         name: "Download draft record",
@@ -429,6 +1022,7 @@ describe("FamilyOperationsView", () => {
     await waitFor(() =>
       expect(local.createPacketDraft).toHaveBeenCalledWith({
         packetId: "packet/1",
+        expectedPacketVersion: 1,
         recipient: "guest@example.com",
         recipientEntityId: "guest-1",
         calendarPrivacyMode: "busy_only",

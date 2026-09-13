@@ -224,6 +224,8 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 		}));
 		const runtime = {
 			agentId,
+			getRoom: async () => ({ agentId }),
+			getParticipantsForRoom: async () => [agentId],
 			adapter: {
 				documentListQueryCapability: 4,
 				queryDocuments: queryDocumentsMock,
