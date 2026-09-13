@@ -129,6 +129,7 @@ export interface FamilyOperationsAdapter {
     address: string;
   }): Promise<FamilyRecipientContact & { address: string }>;
   load(): Promise<FamilyOperationsSnapshot>;
+  downloadWorkspace(): Promise<Blob>;
   uploadAgreement(input: AgreementUploadInput): Promise<void>;
   readAgreementReview(
     artifactId: string,

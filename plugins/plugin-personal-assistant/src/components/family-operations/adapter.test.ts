@@ -128,12 +128,25 @@ describe("defaultFamilyOperationsAdapter", () => {
       "export",
     );
     expect(new Uint8Array(await archive.arrayBuffer())).toEqual(bytes);
+    const workspace = await defaultFamilyOperationsAdapter.downloadWorkspace();
+    expect(new Uint8Array(await workspace.arrayBuffer())).toEqual(bytes);
     await expect(
       defaultFamilyOperationsAdapter.downloadAgreement(
         "artifact-one",
         "original",
       ),
     ).rejects.toThrow("Original failed integrity verification");
+  });
+
+  it("rejects a successful HTTP response that is not a workspace archive", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response("{}", { headers: { "content-type": "application/json" } }),
+    );
+    await expect(
+      defaultFamilyOperationsAdapter.downloadWorkspace(),
+    ).rejects.toThrow("The server did not return a workspace archive.");
   });
 
   it.each([

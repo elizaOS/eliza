@@ -470,3 +470,17 @@ model-generated proposals. The Family Operations editor and owner action
 route. Identical corrections to the same immutable artifact recover the same
 record and its current decision, including after restart or a lost response.
 Saving a correction does not prepare a model review, approve, pin or share it.
+
+### Family workspace export
+
+The owner-only `POST /api/lifeops/family-workflows/export` downloads a ZIP with
+all family agreement versions, retained school PDFs, monthly packet versions
+and drafts, their approval records, and stored provider/school mutation receipts.
+Each member has a SHA-256 checksum. Agreement archives preserve their existing
+source/extraction and review/access provenance; packet and workflow records use
+one database statement snapshot. The manifest records this component-snapshot
+boundary and explicitly identifies uninitialized historical record stores.
+Missing or changed retained PDF bytes fail export rather than producing a
+healthy-looking partial archive. Connection credentials and executor lease
+tokens are excluded. Export records preparation, not receipt by the client,
+and does not revoke access or delete data.

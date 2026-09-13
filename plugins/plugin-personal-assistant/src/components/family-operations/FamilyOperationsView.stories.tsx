@@ -27,6 +27,9 @@ const adapter = {
   prepareAgreementReview: async () => {
     throw new Error("Review generation is not available in this story");
   },
+  downloadWorkspace: async () => {
+    throw new Error("This preview has no stored workspace to export.");
+  },
   decideObligation: async (obligation: never) => obligation,
   listPinTargets: async () => ({
     agent: { id: "fixture-agent", name: "Family assistant" },

@@ -20,6 +20,7 @@ import {
   documentsPluginCore,
   ElizaError,
   type IAgentRuntime,
+  type IFileStorageService,
   type Memory,
   ModelType,
   type Plugin,
@@ -31,13 +32,19 @@ import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { tryHandleRuntimePluginRoute } from "../../../../../packages/agent/src/api/runtime-plugin-routes.ts";
 import { LocalFileStorageService } from "../../../../../packages/agent/src/services/file-storage.js";
-import { createMachineSession } from "../../../../../packages/app-core/src/api/auth/sessions.ts";
+import {
+  createBrowserSession,
+  createMachineSession,
+} from "../../../../../packages/app-core/src/api/auth/sessions.ts";
 import { composeResponseState } from "../../../../../packages/core/src/services/message/provider-state.js";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.js";
 import { bindMachineAuthIdentityToEntity } from "../../routes/authenticated-entity-principal.js";
+import { MonthlyFamilyPacketService } from "../family-coordination/monthly-packet.js";
+import { exportFamilyWorkspace } from "../family-workflows/workspace-export.js";
+import { SchoolCalendarWorkflow } from "../school/calendar-workflow.js";
 import { executeRawSql, sqlQuote } from "../sql.js";
 import {
   AgreementKnowledgeError,
@@ -616,6 +623,198 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     }
   });
 
+  it("exports the owner workspace with real packet records and verified nested source archives while denying guests", async () => {
+    const packets = new MonthlyFamilyPacketService(runtime);
+    const packet = await packets.buildInternal(
+      {
+        key: "2026-11",
+        startsOn: "2026-11-01",
+        endsOnExclusive: "2026-12-01",
+        timeZone: "UTC",
+      },
+      [
+        {
+          claimId: "workspace-export-question",
+          stableKey: "workspace-export-question",
+          section: "unanswered",
+          statement: "Confirm the synthetic library pickup date.",
+          visibility: "owner_only",
+          provenance: [
+            {
+              source: "knowledge",
+              sourceId: artifact.id,
+              observedAt: artifact.createdAt,
+              contentSha256: artifact.contentSha256,
+            },
+          ],
+          dates: [],
+          requests: ["Confirm the pickup date"],
+          urgency: null,
+          commitments: [],
+          accountability: [],
+          unanswered: true,
+        },
+      ],
+    );
+    await expect(
+      exportFamilyWorkspace(runtime, "unverified-guest"),
+    ).rejects.toMatchObject({ code: "AGREEMENT_ACCESS_DENIED" });
+    const exported = await exportFamilyWorkspace(runtime, SELF_ENTITY_ID);
+    const files = readStoredZip(exported.bytes);
+    const manifestBytes = files.get("manifest.json");
+    const sums = files.get("SHA256SUMS");
+    if (!manifestBytes || !sums)
+      throw new Error("Workspace archive is incomplete");
+    const manifest = JSON.parse(manifestBytes.toString("utf8"));
+    const packetRow = manifest.records.packets.find(
+      (row: { packet_id: string }) => row.packet_id === packet.packetId,
+    );
+    expect(JSON.parse(packetRow.packet_json)).toEqual(packet);
+    const source = manifest.sourceArchives.find(
+      (row: { artifactId: string }) => row.artifactId === artifact.id,
+    );
+    const nested = files.get(source.path);
+    if (!nested) throw new Error("Workspace source archive is missing");
+    expect(crypto.createHash("sha256").update(nested).digest("hex")).toBe(
+      source.archiveSha256,
+    );
+    const original = readStoredZip(nested).get("original.pdf");
+    if (!original) throw new Error("Original source bytes are missing");
+    expect(crypto.createHash("sha256").update(original).digest("hex")).toBe(
+      artifact.contentSha256,
+    );
+    for (const line of sums.toString("utf8").trim().split("\n")) {
+      const [digest, name] = line.split("  ");
+      const bytes = files.get(name);
+      if (!bytes) throw new Error("Checksummed workspace member is missing");
+      expect(crypto.createHash("sha256").update(bytes).digest("hex")).toBe(
+        digest,
+      );
+    }
+    const audit = await executeRawSql(
+      runtime,
+      `SELECT decision_json FROM app_lifeops.life_audit_events WHERE agent_id=${sqlQuote(runtime.agentId)} AND id=${sqlQuote(manifest.exportId)}`,
+    );
+    expect(JSON.parse(String(audit[0].decision_json))).toEqual({
+      manifestSha256: crypto
+        .createHash("sha256")
+        .update(manifestBytes)
+        .digest("hex"),
+      archiveSha256: crypto
+        .createHash("sha256")
+        .update(exported.bytes)
+        .digest("hex"),
+    });
+  });
+
+  it("exports retained school bytes without executor leases or another agent's records and fails on missing source bytes", async () => {
+    await new SchoolCalendarWorkflow(runtime).ensureSchema();
+    const storage = runtime.getService<IFileStorageService>(
+      ServiceType.REMOTE_FILES,
+    );
+    if (!storage) throw new Error("Canonical file storage is unavailable");
+    const bytes = pdf(
+      "Synthetic retained school calendar for workspace export",
+    );
+    const stored = await storage.store(bytes, "application/pdf");
+    const runId = crypto.randomUUID();
+    const foreignId = crypto.randomUUID();
+    const at = new Date().toISOString();
+    for (const [agentId, sourceId] of [
+      [runtime.agentId, "workspace-school"],
+      [foreignId, "other-agent-private-school"],
+    ]) {
+      await executeRawSql(
+        runtime,
+        `INSERT INTO app_lifeops.life_school_calendar_runs (agent_id,run_id,source_id,state,trigger_kind,content_sha256,media_url,apply_lease_token,created_at,updated_at) VALUES (${sqlQuote(agentId)},${sqlQuote(runId)},${sqlQuote(sourceId)},'unchanged','manual',${sqlQuote(stored.hash)},${sqlQuote(stored.url)},'internal-executor-lease-canary',${sqlQuote(at)},${sqlQuote(at)})`,
+      );
+    }
+    const exported = readStoredZip(
+      (await exportFamilyWorkspace(runtime, SELF_ENTITY_ID)).bytes,
+    );
+    expect(exported.get(`school/${stored.hash}.pdf`)).toEqual(bytes);
+    const manifest = exported.get("manifest.json");
+    if (!manifest) throw new Error("Workspace manifest is missing");
+    expect(manifest.toString("utf8")).not.toContain(
+      "internal-executor-lease-canary",
+    );
+    expect(manifest.toString("utf8")).not.toContain(
+      "other-agent-private-school",
+    );
+    const auditCount = async () =>
+      executeRawSql(
+        runtime,
+        `SELECT count(*)::integer AS count FROM app_lifeops.life_audit_events WHERE agent_id=${sqlQuote(runtime.agentId)} AND event_type='family_workspace_export_prepared'`,
+      );
+    const before = await auditCount();
+    try {
+      await storage.delete(stored.url.replace("/api/media/", ""));
+      await expect(
+        exportFamilyWorkspace(runtime, SELF_ENTITY_ID),
+      ).rejects.toMatchObject({ code: "FAMILY_EXPORT_SOURCE_INTEGRITY" });
+      expect(await auditCount()).toEqual(before);
+    } finally {
+      await storage.store(bytes, "application/pdf");
+    }
+  });
+
+  it("preserves packet-bound stored delivery receipts without including unrelated approval payloads", async () => {
+    const packet = await new MonthlyFamilyPacketService(runtime).latest(
+      "2026-11",
+    );
+    if (!packet) throw new Error("Workspace test packet is unavailable");
+    const approvalId = crypto.randomUUID();
+    const unrelatedId = crypto.randomUUID();
+    const body = "Synthetic packet delivery record for export verification.";
+    const bodyHash = crypto.createHash("sha256").update(body).digest("hex");
+    const at = new Date().toISOString();
+    // Historical provider evidence is a database fixture; this test sends no message.
+    const receipt = {
+      provider: "fixture-provider",
+      messageId: "stored-message-receipt",
+      acceptedAt: at,
+    };
+    for (const [id, content] of [
+      [approvalId, body],
+      [unrelatedId, "unrelated-approval-body-canary"],
+    ]) {
+      await executeRawSql(
+        runtime,
+        `INSERT INTO approval_requests (id,agent_id,state,requested_by,subject_user_id,action,payload,channel,reason,expires_at,provider_receipt) VALUES (${sqlQuote(id)},${sqlQuote(runtime.agentId)},'executed','self','self','send_message',${sqlQuote(JSON.stringify({ action: "send_message", recipient: "+15555550101", body: content }))}::jsonb,'imessage','Synthetic historical fixture','2099-01-01T00:00:00Z',${sqlQuote(JSON.stringify(receipt))}::jsonb)`,
+      );
+    }
+    await executeRawSql(
+      runtime,
+      `INSERT INTO app_lifeops.life_family_packet_drafts (agent_id,packet_id,internal_version,draft_version,recipient,body,body_sha256,transformations_json,created_at) VALUES (${sqlQuote(runtime.agentId)},${sqlQuote(packet.packetId)},${packet.version},1,'+15555550101',${sqlQuote(body)},${sqlQuote(bodyHash)},'[]',${sqlQuote(at)})`,
+    );
+    await executeRawSql(
+      runtime,
+      `INSERT INTO app_lifeops.life_family_packet_approvals (agent_id,packet_id,draft_version,draft_sha256,approval_id,created_at) VALUES (${sqlQuote(runtime.agentId)},${sqlQuote(packet.packetId)},1,${sqlQuote(bodyHash)},${sqlQuote(approvalId)},${sqlQuote(at)})`,
+    );
+    const manifestBytes = readStoredZip(
+      (await exportFamilyWorkspace(runtime, SELF_ENTITY_ID)).bytes,
+    ).get("manifest.json");
+    if (!manifestBytes) throw new Error("Workspace manifest is unavailable");
+    const manifest = JSON.parse(manifestBytes.toString("utf8"));
+    expect(manifest.records.approvals).toEqual([
+      expect.objectContaining({
+        id: approvalId,
+        state: "executed",
+        provider_receipt: receipt,
+      }),
+    ]);
+    expect(manifest.records.drafts).toEqual([
+      expect.objectContaining({
+        packet_id: packet.packetId,
+        body,
+        body_sha256: bodyHash,
+      }),
+    ]);
+    expect(manifestBytes.toString("utf8")).not.toContain(
+      "unrelated-approval-body-canary",
+    );
+  });
+
   it("exports verified originals and complete persisted provenance without granting guest export access", async () => {
     const service = createAgreementKnowledgeService(runtime);
     const original = await service.readOwnerPdf({
@@ -1024,6 +1223,21 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       identityId,
       scopes: [],
     });
+    const ownerIdentityId = crypto.randomUUID();
+    await auth.createIdentity({
+      id: ownerIdentityId,
+      kind: "owner",
+      displayName: "synthetic export owner",
+      createdAt: Date.now(),
+      passwordHash: null,
+      cloudUserId: null,
+    });
+    const { session: ownerSession } = await createBrowserSession(auth, {
+      identityId: ownerIdentityId,
+      ip: null,
+      userAgent: null,
+      rememberDevice: false,
+    });
     const service = createAgreementKnowledgeService(runtime);
     const server = createServer(async (req, res) => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -1055,6 +1269,33 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       "x-eliza-entity-id": "self",
     };
     try {
+      const workspaceUrl = `http://127.0.0.1:${address.port}/api/lifeops/family-workflows/export`;
+      expect(
+        (await fetch(workspaceUrl, { method: "POST", headers })).status,
+      ).toBe(403);
+      const workspace = await fetch(workspaceUrl, {
+        method: "POST",
+        headers: { ...headers, Authorization: `Bearer ${ownerSession.id}` },
+      });
+      expect(workspace.status, await workspace.clone().text()).toBe(200);
+      expect(workspace.headers.get("content-type")).toBe("application/zip");
+      expect(workspace.headers.get("cache-control")).toContain("no-store");
+      const workspaceFiles = readStoredZip(
+        Buffer.from(await workspace.arrayBuffer()),
+      );
+      const workspaceManifest = workspaceFiles.get("manifest.json");
+      if (!workspaceManifest)
+        throw new Error("HTTP workspace archive is incomplete");
+      expect(
+        JSON.parse(workspaceManifest.toString("utf8")).sourceArchives,
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            artifactId: artifact.id,
+            contentSha256: artifact.contentSha256,
+          }),
+        ]),
+      );
       const unbound = await fetch(`${base}/shared?principalEntityId=self`, {
         headers,
       });
@@ -1124,6 +1365,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         server.close((error) => (error ? reject(error) : resolve())),
       );
       await auth.revokeSession(session.id);
+      await auth.revokeSession(ownerSession.id);
     }
   });
 

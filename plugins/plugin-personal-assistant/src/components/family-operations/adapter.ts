@@ -228,6 +228,42 @@ async function loadPackets(): Promise<Loadable<FamilyPacketView[]>> {
   }
 }
 
+async function downloadFile(
+  path: string,
+  method: "GET" | "POST",
+): Promise<Blob> {
+  const response = await client.rawRequest(
+    path,
+    { method },
+    {
+      allowNonOk: true,
+      skipResume: true,
+      timeoutMs: 10 * 60_000,
+    },
+  );
+  if (!response.ok) {
+    const failureMessage = `Download failed (${response.status})`;
+    const mediaType = response.headers
+      .get("content-type")
+      ?.split(";", 1)[0]
+      ?.trim()
+      .toLowerCase();
+    if (mediaType !== "application/json" && !mediaType?.endsWith("+json")) {
+      throw new Error(failureMessage);
+    }
+    const payload = await response.json().catch((cause) => {
+      // error-policy:J1 Invalid proxy error bodies retain the HTTP failure.
+      throw new Error(failureMessage, { cause });
+    });
+    const message =
+      typeof payload?.error === "string"
+        ? payload.error
+        : payload?.error?.message;
+    throw new Error(typeof message === "string" ? message : failureMessage);
+  }
+  return response.blob();
+}
+
 export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter = {
   async decidePacketApproval(input) {
     const response = await request<{
@@ -289,32 +325,19 @@ export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter = {
     return { agreements, calendarLinks, school, packets, emailOptions };
   },
   async downloadAgreement(artifactId, format) {
-    const response = await client.rawRequest(
+    return downloadFile(
       `/api/lifeops/agreements/${encodeURIComponent(artifactId)}/${format === "export" ? "export" : "download"}`,
-      { method: format === "export" ? "POST" : "GET" },
-      { allowNonOk: true, skipResume: true, timeoutMs: 10 * 60_000 },
+      format === "export" ? "POST" : "GET",
     );
-    if (!response.ok) {
-      const failureMessage = `Download failed (${response.status})`;
-      const mediaType = response.headers
-        .get("content-type")
-        ?.split(";", 1)[0]
-        ?.trim()
-        .toLowerCase();
-      if (mediaType !== "application/json" && !mediaType?.endsWith("+json")) {
-        throw new Error(failureMessage);
-      }
-      const payload = await response.json().catch((cause) => {
-        // error-policy:J1 Invalid proxy error bodies retain the HTTP failure.
-        throw new Error(failureMessage, { cause });
-      });
-      const message =
-        typeof payload?.error === "string"
-          ? payload.error
-          : payload?.error?.message;
-      throw new Error(typeof message === "string" ? message : failureMessage);
-    }
-    return response.blob();
+  },
+  async downloadWorkspace() {
+    const blob = await downloadFile(
+      "/api/lifeops/family-workflows/export",
+      "POST",
+    );
+    if (blob.type !== "application/zip")
+      throw new Error("The server did not return a workspace archive.");
+    return blob;
   },
 
   async uploadAgreement(input) {

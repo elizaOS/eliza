@@ -1372,6 +1372,34 @@ export function FamilyOperationsView({
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
+  const exportWorkspace = async () => {
+    if (exporting) return;
+    setExporting(true);
+    setExportError(null);
+    setExportNotice(null);
+    try {
+      const blob = await adapter.downloadWorkspace();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "family-workspace.zip";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setExportNotice("Workspace download started.");
+    } catch (cause) {
+      // error-policy:J1 A failed export remains visible and can be retried.
+      setExportError(
+        cause instanceof Error ? cause.message : "Workspace export failed",
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
   const refresh = useCallback(
     async (requireAgreementReview = false) => {
       setLoading(true);
@@ -1451,6 +1479,17 @@ export function FamilyOperationsView({
             Review the parenting agreement, calendar synchronization, school
             dates, and monthly coordination email.
           </p>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={loading || exporting}
+            onClick={() => void exportWorkspace()}
+            style={{ marginTop: 12 }}
+          >
+            {exporting ? "Preparing workspace export…" : "Export workspace"}
+          </Button>
+          {exportError ? <Unavailable message={exportError} /> : null}
+          {exportNotice ? <p role="status">{exportNotice}</p> : null}
         </header>
         <nav
           aria-label="Family Operations sections"
