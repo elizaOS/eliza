@@ -1586,6 +1586,52 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       __ELIZA_APP_API_BASE__?: string;
     };
     host.__ELIZA_APP_API_BASE__ = window.location.origin;
+    // The renderer's direct-cloud client resolves its API base from the boot
+    // config's `cloudApiBase`, whose default is production api.eliza.app.
+    // Without an explicit loopback target, any flow that opens the cloud
+    // sign-in surface POSTs the REAL /api/auth/cli-session from a 127.0.0.1
+    // origin — production CORS-correctly refuses it, the console-diagnostics
+    // guard fails, and the lane makes a live call to production. The
+    // production resolver (client-cloud.ts resolveConfiguredDirectCloudApiBase)
+    // accepts a loopback cloudApiBase only from a loopback-rendered page, so
+    // pinning it here cannot leak outside local harnesses. Registered after
+    // spec-level injections, this merge also survives them.
+    const bootHost = window as typeof window & {
+      __ELIZAOS_APP_BOOT_CONFIG__?: Record<string, unknown>;
+    };
+    const existingBootConfig = bootHost.__ELIZAOS_APP_BOOT_CONFIG__ ?? {};
+    bootHost.__ELIZAOS_APP_BOOT_CONFIG__ = {
+      ...existingBootConfig,
+      cloudApiBase: existingBootConfig.cloudApiBase ?? window.location.origin,
+    };
+  });
+
+  // Cloud CLI-session pairing, routed at the loopback cloud base pinned above.
+  // POST creates a pending session; GET polls it. The pending stub keeps the
+  // flow inert (no authenticated token ever lands), matching what production
+  // looks like before the user acts. Specs that drive cloud login for real
+  // register their own handlers later, which take precedence over these.
+  await page.route("**/api/auth/cli-session", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ sessionId: "ui-smoke-cli-session" }),
+    });
+  });
+  await page.route("**/api/auth/cli-session/**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "pending" }),
+    });
   });
 
   let notesRevision = 4;
