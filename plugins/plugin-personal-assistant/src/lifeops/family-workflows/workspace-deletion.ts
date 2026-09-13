@@ -4,6 +4,8 @@
  * survives interruption before file and backup cleanup. Shared records are retained.
  */
 import { createHash, randomUUID } from "node:crypto";
+import { resolveStateDir } from "@elizaos/agent/config/paths";
+import { withAgentBackupAuthority } from "@elizaos/agent/services/agent-backup-authority";
 import {
   ElizaError,
   type IAgentRuntime,
@@ -33,6 +35,8 @@ const deletionJob = z.strictObject({
   startedAt: z.string().datetime(),
   state: z.enum(["purge_pending", "backup_pending"]),
   backupRetention: retention,
+  backupGeneration: z.string().uuid(),
+  backupOperationId: z.string().min(1),
   files: z.array(z.strictObject({ fileName: z.string().min(1), sha256 })),
   databaseRowsRemoved: z.number().int().nonnegative(),
   retained: z.array(
@@ -86,56 +90,96 @@ export async function beginFamilyWorkspaceDeletion(
   const backupRetention = retention.parse(input.backupRetention);
   await ensureStore(runtime);
   try {
-    return await withReviewedFamilyDeletionDatabase(
-      runtime,
-      input,
-      async (tx, snapshot) => {
-        const files = snapshot.records
-          .filter((record) => record.kind === "agreements")
-          .map((record) => ({
-            fileName: z.string().min(1).parse(record.identity.media_file_name),
-            sha256: sha256.parse(record.identity.content_sha256),
-          }));
-        if (files.length) {
-          const documentIds = snapshot.records
-            .filter((record) => record.kind === "agreements")
-            .map((record) => z.string().parse(record.identity.document_id));
-          const shared = await executeRawSqlTx(
-            tx,
-            `SELECT 1 FROM app_lifeops.life_household_agreement_artifacts WHERE agent_id<>${sqlQuote(runtime.agentId)} AND (media_file_name IN (${files.map((file) => sqlQuote(file.fileName)).join(",")}) OR document_id IN (${documentIds.map(sqlQuote).join(",")})) LIMIT 1`,
-          );
-          if (shared.length)
+    return await withAgentBackupAuthority(
+      resolveStateDir(),
+      async (authority) => {
+        const existing = await readFamilyDeletionJob(
+          runtime,
+          input.ownerEntityId,
+        );
+        if (existing) {
+          if (
+            existing.reviewedSha256 !== input.expectedSha256 ||
+            existing.backupRetention !== backupRetention
+          )
             throw new ElizaError(
-              "[FamilyDeletion] A source is still referenced by another workspace",
-              { code: "FAMILY_DELETION_SHARED_SOURCE" },
+              "[FamilyDeletion] A different reviewed deletion is already pending",
+              { code: "FAMILY_DELETION_PREVIEW_STALE" },
             );
+          return existing;
         }
-        const retained = new Map<string, number>();
-        for (const record of snapshot.records) {
-          if (record.classification !== "owned")
-            retained.set(record.kind, (retained.get(record.kind) ?? 0) + 1);
+        const pending = await authority.pendingRetirement(runtime.agentId);
+        if (pending?.operationId.startsWith("family-workspace:")) {
+          // A canonical absent journal proves the prior atomic transaction did not commit.
+          // Keep its old snapshots retired, then allow a newly reviewed attempt.
+          await authority.completeRetirement(
+            runtime.agentId,
+            pending.operationId,
+            pending.generation,
+          );
         }
-        await fenceFamilyWorkspace(tx, runtime.agentId);
-        const databaseRowsRemoved = await purgeReviewedFamilyDatabaseRows(
-          tx,
-          snapshot,
+        return withReviewedFamilyDeletionDatabase(
+          runtime,
+          input,
+          async (tx, snapshot) => {
+            const files = snapshot.records
+              .filter((record) => record.kind === "agreements")
+              .map((record) => ({
+                fileName: z
+                  .string()
+                  .min(1)
+                  .parse(record.identity.media_file_name),
+                sha256: sha256.parse(record.identity.content_sha256),
+              }));
+            if (files.length) {
+              const documentIds = snapshot.records
+                .filter((record) => record.kind === "agreements")
+                .map((record) => z.string().parse(record.identity.document_id));
+              const shared = await executeRawSqlTx(
+                tx,
+                `SELECT 1 FROM app_lifeops.life_household_agreement_artifacts WHERE agent_id<>${sqlQuote(runtime.agentId)} AND (media_file_name IN (${files.map((file) => sqlQuote(file.fileName)).join(",")}) OR document_id IN (${documentIds.map(sqlQuote).join(",")})) LIMIT 1`,
+              );
+              if (shared.length)
+                throw new ElizaError(
+                  "[FamilyDeletion] A source is still referenced by another workspace",
+                  { code: "FAMILY_DELETION_SHARED_SOURCE" },
+                );
+            }
+            const retained = new Map<string, number>();
+            for (const record of snapshot.records) {
+              if (record.classification !== "owned")
+                retained.set(record.kind, (retained.get(record.kind) ?? 0) + 1);
+            }
+            const backupOperationId = `family-workspace:${snapshot.sha256}`;
+            const backupGeneration = await authority.retire(
+              runtime.agentId,
+              backupOperationId,
+            );
+            await fenceFamilyWorkspace(tx, runtime.agentId);
+            const databaseRowsRemoved = await purgeReviewedFamilyDatabaseRows(
+              tx,
+              snapshot,
+            );
+            const job: FamilyDeletionJob = {
+              id: randomUUID(),
+              agentId: runtime.agentId,
+              reviewedSha256: snapshot.sha256,
+              startedAt: new Date().toISOString(),
+              state: "purge_pending",
+              backupRetention,
+              backupGeneration,
+              backupOperationId,
+              files,
+              databaseRowsRemoved,
+              retained: [...retained].map(([kind, count]) => ({ kind, count })),
+            };
+            await executeRawSqlTx(
+              tx,
+              `INSERT INTO ${table} (agent_id,job_json) VALUES (${sqlQuote(runtime.agentId)},${sqlQuote(JSON.stringify(job))}::jsonb)`,
+            );
+            return job;
+          },
         );
-        const job: FamilyDeletionJob = {
-          id: randomUUID(),
-          agentId: runtime.agentId,
-          reviewedSha256: snapshot.sha256,
-          startedAt: new Date().toISOString(),
-          state: "purge_pending",
-          backupRetention,
-          files,
-          databaseRowsRemoved,
-          retained: [...retained].map(([kind, count]) => ({ kind, count })),
-        };
-        await executeRawSqlTx(
-          tx,
-          `INSERT INTO ${table} (agent_id,job_json) VALUES (${sqlQuote(runtime.agentId)},${sqlQuote(JSON.stringify(job))}::jsonb)`,
-        );
-        return job;
       },
     );
   } catch (cause) {
@@ -154,6 +198,44 @@ export async function purgeFamilyWorkspaceFiles(
   ownerEntityId: string,
 ): Promise<FamilyDeletionJob> {
   requireOwner(ownerEntityId);
+  return withAgentBackupAuthority(resolveStateDir(), async (authority) => {
+    const job = await readFamilyDeletionJob(runtime, ownerEntityId);
+    if (!job)
+      throw new ElizaError("[FamilyDeletion] No deletion is pending", {
+        code: "FAMILY_DELETION_NOT_FOUND",
+      });
+    const pending = await authority.pendingRetirement(runtime.agentId);
+    if (
+      pending?.generation !== job.backupGeneration ||
+      pending.operationId !== job.backupOperationId
+    ) {
+      if (
+        job.state === "backup_pending" &&
+        (await authority.generation(runtime.agentId)) === job.backupGeneration
+      )
+        return job;
+      throw new ElizaError(
+        "[FamilyDeletion] Backup authority does not match the deletion journal",
+        { code: "FAMILY_DELETION_BACKUP_MISMATCH" },
+      );
+    }
+    const updated = await purgeFamilyWorkspaceFilesLocked(
+      runtime,
+      ownerEntityId,
+    );
+    await authority.completeRetirement(
+      runtime.agentId,
+      job.backupOperationId,
+      job.backupGeneration,
+    );
+    return updated;
+  });
+}
+
+async function purgeFamilyWorkspaceFilesLocked(
+  runtime: IAgentRuntime,
+  ownerEntityId: string,
+): Promise<FamilyDeletionJob> {
   const storage = runtime.getService<IFileStorageService>(
     ServiceType.REMOTE_FILES,
   );

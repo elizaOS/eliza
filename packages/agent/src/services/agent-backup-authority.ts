@@ -165,7 +165,11 @@ export async function withAgentBackupAuthority<T>(
     async retire(agentId, operationId) {
       z.string().min(1).parse(operationId);
       const record = await readRecord(agentId);
-      if (record?.operationId === operationId) return record.generation;
+      if (record?.operationId === operationId) {
+        if (record.phase === "ready")
+          await writeRecord({ ...record, phase: "pending" });
+        return record.generation;
+      }
       if (record?.phase === "pending")
         throw new ElizaError(
           "[AgentBackup] Another deletion must be reconciled first",

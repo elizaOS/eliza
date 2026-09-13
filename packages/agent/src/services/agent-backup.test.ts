@@ -239,6 +239,26 @@ describe("agent backup manifest", () => {
         );
       }
       const current = await createAgentSnapshot(runtime, {} as never);
+      await withAgentBackupAuthority(root, async (authority) => {
+        expect(await authority.retire(runtime.agentId, "family-delete-1")).toBe(
+          generation,
+        );
+      });
+      await expect(
+        createAgentSnapshot(runtime, {} as never),
+      ).rejects.toMatchObject({ code: "AGENT_BACKUP_RETIREMENT_PENDING" });
+      await expect(
+        restoreAgentSnapshot(runtime, current),
+      ).rejects.toMatchObject({
+        code: "AGENT_BACKUP_RETIREMENT_PENDING",
+      });
+      await withAgentBackupAuthority(root, (authority) =>
+        authority.completeRetirement(
+          runtime.agentId,
+          "family-delete-1",
+          generation,
+        ),
+      );
       const malicious = structuredClone(current);
       malicious.manifest.components.stateFiles.files.push({
         path: ".backup-authority/operation.lock",

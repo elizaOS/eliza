@@ -11,6 +11,7 @@ import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { resolveKnowledgeGraphService } from "@elizaos/agent";
+import { withAgentBackupAuthority } from "@elizaos/agent/services/agent-backup-authority";
 import { AuthStore } from "@elizaos/app-core/services/auth-store";
 import {
   type AgentRuntime,
@@ -3471,6 +3472,166 @@ describe("parenting-agreement knowledge — real PGlite", () => {
 });
 
 describe("reviewed workspace deletion — real database and disk", () => {
+  it("authorizes owner HTTP deletion and exposes stale, pending, and retry states", async () => {
+    const mediaDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "family-delete-http-"),
+    );
+    process.env.ELIZA_STATE_DIR = mediaDir;
+    const result = await createLifeOpsTestRuntime({
+      plugins: [fileStoragePlugin, documentsPluginCore],
+    });
+    const runtime = result.runtime;
+    const server = createServer(async (req, res) => {
+      const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      const handled = await tryHandleRuntimePluginRoute({
+        req,
+        res,
+        url,
+        pathname: url.pathname,
+        method: req.method ?? "GET",
+        runtime,
+        isAuthorized: () => true,
+      });
+      if (!handled && !res.headersSent) {
+        res.statusCode = 404;
+        res.end("not found");
+      }
+    });
+    try {
+      runtime.services.set(ServiceType.PDF, [
+        new AgreementTestPdfService(runtime),
+      ]);
+      const graph = resolveKnowledgeGraphService(runtime);
+      if (!graph) throw new Error("Real graph unavailable");
+      await graph.getEntityStore(runtime.agentId).ensureSelf();
+      await new CalendarCardAccessStore(runtime).ensureSchema();
+      await new SchoolCalendarWorkflow(runtime).ensureSchema();
+      await new MonthlyFamilyPacketService(runtime).list();
+      const service = createAgreementKnowledgeService(runtime);
+      const source = await service.createAgreementVersion({
+        agreementKey: "http-delete",
+        title: "HTTP deletion fixture",
+        originalFilename: "http.pdf",
+        mimeType: "application/pdf",
+        bytes: pdf("HTTP deletion source"),
+        uploadedByEntityId: SELF_ENTITY_ID,
+      });
+      const db = (
+        runtime as AgentRuntime & {
+          adapter: { db: ConstructorParameters<typeof AuthStore>[0] };
+        }
+      ).adapter.db;
+      const auth = new AuthStore(db);
+      const ownerId = crypto.randomUUID();
+      const guestId = crypto.randomUUID();
+      for (const identity of [
+        { id: ownerId, kind: "owner" as const },
+        { id: guestId, kind: "machine" as const },
+      ]) {
+        await auth.createIdentity({
+          ...identity,
+          displayName: "Deletion fixture",
+          createdAt: Date.now(),
+          passwordHash: null,
+          cloudUserId: null,
+        });
+      }
+      const { session: owner } = await createBrowserSession(auth, {
+        identityId: ownerId,
+        ip: null,
+        userAgent: null,
+        rememberDevice: false,
+      });
+      const { session: guest } = await createMachineSession(auth, {
+        identityId: guestId,
+        scopes: [],
+      });
+      server.listen(0, "127.0.0.1");
+      await once(server, "listening");
+      const address = server.address();
+      if (!address || typeof address === "string")
+        throw new Error("Missing HTTP address");
+      const base = `http://127.0.0.1:${address.port}/api/lifeops/family-workflows/deletion`;
+      const headers = {
+        Host: "deletion.example.test",
+        "x-forwarded-for": "203.0.113.20",
+        Authorization: `Bearer ${owner.id}`,
+        "Content-Type": "application/json",
+      };
+      for (const [suffix, method] of [
+        ["", "GET"],
+        ["/preview", "GET"],
+        ["", "POST"],
+        ["/resume", "POST"],
+      ]) {
+        const denied = await fetch(`${base}${suffix}`, {
+          method,
+          headers: {
+            ...headers,
+            Authorization: `Bearer ${guest.id}`,
+            "x-eliza-entity-id": "self",
+          },
+        });
+        expect(denied.status, await denied.text()).toBe(403);
+      }
+      const previewResponse = await fetch(`${base}/preview`, { headers });
+      expect(previewResponse.status).toBe(200);
+      const preview = await previewResponse.json();
+      const stale = await fetch(base, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          expectedSha256: "0".repeat(64),
+          backupRetention: "immediate",
+        }),
+      });
+      expect(stale.status, await stale.clone().text()).toBe(409);
+      expect(await stale.json()).toMatchObject({
+        code: "FAMILY_DELETION_PREVIEW_STALE",
+      });
+      const started = await fetch(base, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          expectedSha256: preview.sha256,
+          backupRetention: "immediate",
+        }),
+      });
+      expect(started.status, await started.clone().text()).toBe(202);
+      const { job } = await started.json();
+      expect(job.state).toBe("backup_pending");
+      const status = await fetch(base, { headers });
+      expect(status.headers.get("cache-control")).toBe("no-store");
+      expect(await status.json()).toEqual({ job });
+      const resumed = await fetch(`${base}/resume`, {
+        method: "POST",
+        headers,
+      });
+      expect(resumed.status, await resumed.clone().text()).toBe(202);
+      expect(await resumed.json()).toEqual({ job });
+      const storage = runtime.getService<IFileStorageService>(
+        ServiceType.REMOTE_FILES,
+      );
+      if (!storage) throw new Error("Missing real file storage");
+      expect(await storage.readPrivate(source.mediaFileName)).toBeNull();
+      await expect(
+        service.readOwnerPdf({
+          artifactId: source.id,
+          ownerEntityId: SELF_ENTITY_ID,
+        }),
+      ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    } finally {
+      server.closeAllConnections();
+      if (server.listening)
+        await new Promise<void>((resolve, reject) =>
+          server.close((error) => (error ? reject(error) : resolve())),
+        );
+      await result.cleanup();
+      delete process.env.ELIZA_STATE_DIR;
+      fs.rmSync(mediaDir, { recursive: true, force: true });
+    }
+  });
+
   it("atomically removes private database projections and journals remaining files", async () => {
     const mediaDir = fs.mkdtempSync(path.join(os.tmpdir(), "family-delete-"));
     process.env.ELIZA_STATE_DIR = mediaDir;
@@ -3583,6 +3744,11 @@ describe("reviewed workspace deletion — real database and disk", () => {
         ),
       ).not.toBeNull();
       expect(await readFamilyDeletionJob(runtime, SELF_ENTITY_ID)).toBeNull();
+      await expect(
+        withAgentBackupAuthority(mediaDir, (authority) =>
+          authority.generation(runtime.agentId),
+        ),
+      ).rejects.toMatchObject({ code: "AGENT_BACKUP_RETIREMENT_PENDING" });
       await executeRawSql(
         runtime,
         "DROP TRIGGER reject_delete_journal ON app_lifeops.life_family_workspace_deletions",
@@ -3601,6 +3767,21 @@ describe("reviewed workspace deletion — real database and disk", () => {
         sha256: first.contentSha256,
       });
       expect(await readFamilyDeletionJob(runtime, SELF_ENTITY_ID)).toEqual(job);
+      expect(
+        await beginFamilyWorkspaceDeletion(runtime, {
+          ownerEntityId: SELF_ENTITY_ID,
+          expectedSha256: preview.sha256,
+          backupRetention: "immediate",
+        }),
+      ).toEqual(job);
+      expect(
+        await withAgentBackupAuthority(mediaDir, (authority) =>
+          authority.pendingRetirement(runtime.agentId),
+        ),
+      ).toEqual({
+        operationId: job.backupOperationId,
+        generation: job.backupGeneration,
+      });
       expect(
         await documents.getDocumentByIdWithAccessContext(
           first.documentId as UUID,
@@ -3668,8 +3849,18 @@ describe("reviewed workspace deletion — real database and disk", () => {
       expect(
         (await readFamilyDeletionJob(runtime, SELF_ENTITY_ID))?.state,
       ).toBe("purge_pending");
+      await expect(
+        withAgentBackupAuthority(mediaDir, (authority) =>
+          authority.generation(runtime.agentId),
+        ),
+      ).rejects.toMatchObject({ code: "AGENT_BACKUP_RETIREMENT_PENDING" });
       const cleaned = await purgeFamilyWorkspaceFiles(runtime, SELF_ENTITY_ID);
       expect(cleaned.state).toBe("backup_pending");
+      expect(
+        await withAgentBackupAuthority(mediaDir, (authority) =>
+          authority.generation(runtime.agentId),
+        ),
+      ).toBe(job.backupGeneration);
       expect(await purgeFamilyWorkspaceFiles(runtime, SELF_ENTITY_ID)).toEqual(
         cleaned,
       );
