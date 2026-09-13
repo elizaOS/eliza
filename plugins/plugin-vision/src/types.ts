@@ -148,6 +148,20 @@ export interface EnhancedSceneDescription extends SceneDescription {
   screenCapture?: ScreenCapture;
   screenAnalysis?: {
     fullScreenOCR?: string;
+    /**
+     * Present when trailing OCR bounding-box blocks were dropped so the frame
+     * would fit the worker transfer buffer. The recognized text in
+     * `fullScreenOCR` is still complete; only per-block box metadata was
+     * omitted. Consumers should surface this as a partial state.
+     */
+    ocrTruncation?: { totalBlocks: number; omittedBlocks: number };
+    /**
+     * Present when the recognized text alone exceeded the transfer buffer, so
+     * OCR is unavailable for the frame rather than shown as a truncated prefix.
+     * `fullScreenOCR` is absent in this case; consumers must render an explicit
+     * unavailable/size-error state, never a partial value presented as complete.
+     */
+    ocrSizeError?: { textBytes: number; capacity: number };
     activeTile?: TileAnalysis;
     gridSummary?: string;
     focusedApp?: string;

@@ -272,6 +272,20 @@ export const visionProvider: Provider = {
 
           const enhanced = sceneDescription as EnhancedSceneDescription;
           if (enhanced?.screenAnalysis) {
+            // Overflow is surfaced explicitly: a text-only overflow is an
+            // unavailable/size-error state (no prefix shown), and a
+            // blocks-dropped result is flagged as partial while the recognized
+            // text stays complete. Neither is passed off as complete perception.
+            if (enhanced.screenAnalysis.ocrSizeError) {
+              const { textBytes, capacity } =
+                enhanced.screenAnalysis.ocrSizeError;
+              perceptionText += `\n\nScreen OCR unavailable: the recognized text (${textBytes} bytes) exceeded the ${capacity}-byte OCR transfer buffer, so no partial text is shown for this frame.`;
+            } else if (enhanced.screenAnalysis.ocrTruncation) {
+              const { totalBlocks, omittedBlocks } =
+                enhanced.screenAnalysis.ocrTruncation;
+              perceptionText += `\n\nScreen OCR note: ${omittedBlocks} of ${totalBlocks} text bounding-box regions were omitted to fit the transfer buffer; the recognized text shown is complete.`;
+            }
+
             const tileAnalysis = enhanced.screenAnalysis.activeTile;
             if (tileAnalysis) {
               if (tileAnalysis.summary) {
