@@ -485,6 +485,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		"edited",
 		"deleted",
 		"duplicated",
+		"restored-occurrence",
 		"cache-failure",
 		"disabled",
 	])(
@@ -508,6 +509,12 @@ describe("runV5MessageRuntimeStage1", () => {
 					"Current replacement: keep all records unchanged.";
 			if (mode === "deleted") rows.splice(0, 1);
 			if (mode === "duplicated") rows.push(structuredClone(rows[0]));
+			if (mode === "restored-occurrence")
+				rows.splice(2, 0, {
+					...structuredClone(rows[1]),
+					id: "00000000-0000-0000-0000-000000000098" as UUID,
+					createdAt: 2.5,
+				});
 			if (mode === "cache-failure")
 				runtime.getCache = async () => {
 					throw new Error("Checkpoint unavailable");
