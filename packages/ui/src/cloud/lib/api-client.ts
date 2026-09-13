@@ -98,10 +98,19 @@ export class ApiError extends Error {
   }
 }
 
+function usesLoopbackCliAccountTransport(): boolean {
+  // Offline development also advertises staging sign-in. Its cookie-backed
+  // local Cloud API remains authoritative until a CLI Cloud key is claimed.
+  return (
+    isLoopbackStagingStewardDevelopment() &&
+    normalizeCloudApiKeyToken(readStewardToken()) !== null
+  );
+}
+
 function getApiBaseUrl(): string {
   // The local agent does not own account APIs. The launcher fixes this
   // loopback lane to staging; never infer its authority from a selected agent.
-  if (isLoopbackStagingStewardDevelopment())
+  if (usesLoopbackCliAccountTransport())
     return STAGING_DIRECT_CLOUD_API_BASE_URL;
   // Native/Electrobun: the dashboard's WebView origin (`https://localhost`,
   // `file:`, …) fronts the embedded LOCAL agent, not Eliza Cloud, so a
@@ -134,7 +143,7 @@ function resolveApiUrl(path: string): string {
         return path;
       }
       if (
-        isLoopbackStagingStewardDevelopment() &&
+        usesLoopbackCliAccountTransport() &&
         parsed.origin === STAGING_DIRECT_CLOUD_API_BASE_URL
       ) {
         return path;
@@ -455,7 +464,7 @@ export async function apiFetch(
   init: ApiRequestInit = {},
 ): Promise<Response> {
   const { json, body, skipAuth, headers: rawHeaders, ...rest } = init;
-  const loopbackCloud = isLoopbackStagingStewardDevelopment();
+  const loopbackCloud = usesLoopbackCliAccountTransport();
 
   const headers = new Headers(rawHeaders);
   if (json !== undefined) {
