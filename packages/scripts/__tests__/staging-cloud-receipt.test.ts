@@ -5,7 +5,10 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createCloudLiveContinuityEvidence } from "../../app/test/cloud-live-continuity-contract";
+import {
+  createCloudLiveContinuityEvidence,
+  parseCloudLiveContinuityEvidence,
+} from "../../app/test/cloud-live-continuity-contract";
 import {
   createDeployedRendererProof,
   DEPLOYED_BROWSER_SMOKE_SCHEMA,
@@ -164,6 +167,20 @@ function deployedProofFile(
 }
 
 describe("staging Cloud live receipt", () => {
+  test("builds the deployed proof from the closed continuity contract", () => {
+    const evidence = continuity();
+    // The contract injects the schema version and lane; the proof builder
+    // rejects anything but this exact closed record.
+    expect(evidence).toMatchObject({
+      schemaVersion: 2,
+      lane: "app-live-e2e-cloud-staging",
+      forbiddenAgentMutationCount: 0,
+      cleanupDisposition: "no-test-owned-agent",
+      conversationHistoryDisposition: "preserved",
+    });
+    expect(parseCloudLiveContinuityEvidence(evidence)).toEqual(evidence);
+  });
+
   test("binds successful evidence to the exact SHA, run, duration, and fixed annotations", () => {
     expect(createStagingCloudReceipt(args())).toEqual({
       schemaVersion: 2,
