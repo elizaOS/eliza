@@ -33,6 +33,28 @@ import {
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
 import { MODEL_CONTEXT_PROVIDER_EXCLUSIONS } from "./provider-state.js";
 
+/**
+ * Operator override for the rendered dialogue window (`PRIOR_DIALOGUE_MAX_MESSAGES`,
+ * `PRIOR_DIALOGUE_MAX_CHARS`); unset or non-numeric values keep the defaults.
+ */
+function priorDialogueBudgetFromSettings(runtime: IAgentRuntime): {
+	maxMessages?: number;
+	maxChars?: number;
+} {
+	const read = (key: string): number | undefined => {
+		const raw = runtime.getSetting?.(key);
+		const value =
+			typeof raw === "number" ? raw : Number.parseInt(String(raw ?? ""), 10);
+		return Number.isFinite(value) && value > 0 ? value : undefined;
+	};
+	const maxMessages = read("PRIOR_DIALOGUE_MAX_MESSAGES");
+	const maxChars = read("PRIOR_DIALOGUE_MAX_CHARS");
+	return {
+		...(maxMessages !== undefined ? { maxMessages } : {}),
+		...(maxChars !== undefined ? { maxChars } : {}),
+	};
+}
+
 export async function createV5MessageContextObject(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -109,6 +131,7 @@ export async function createV5MessageContextObject(args: {
 		// the stale-answer hazard, so the planner's window is bounded and
 		// excludes tool-derived own answers structurally.
 		includeOwnReplies: true,
+		...priorDialogueBudgetFromSettings(args.runtime),
 		...(args.includeTools
 			? {
 					excludeToolDerivedOwnReplies: true,

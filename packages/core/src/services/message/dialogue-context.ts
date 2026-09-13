@@ -112,6 +112,36 @@ export function verifiedCrossRoomContent(memory: Memory): string {
  * small enough to keep the stale-answer surface and token cost bounded.
  */
 export const PLANNER_MAX_OWN_REPLY_TURNS = 4;
+/** Default newest-first window: enough for a live thread, not a room's history. */
+export const PRIOR_DIALOGUE_MAX_MESSAGES = 60;
+export const PRIOR_DIALOGUE_MAX_CHARS = 30_000;
+
+/**
+ * Trim `dialogue` (oldest first) in place to the newest rows that fit both
+ * limits; returns how many rows were dropped. A row's cost is its rendered
+ * text length, so one pasted wall of text cannot evict an entire thread by
+ * count alone, and a thread of one-liners is not cut short by characters.
+ */
+export function applyPriorDialogueBudget(
+	dialogue: Memory[],
+	budget: { maxMessages: number; maxChars: number },
+): number {
+	const maxMessages = Math.max(1, Math.floor(budget.maxMessages));
+	const maxChars = Math.max(1, Math.floor(budget.maxChars));
+	let kept = 0;
+	let chars = 0;
+	for (let index = dialogue.length - 1; index >= 0; index--) {
+		const text = getUserMessageText(dialogue[index]) ?? "";
+		if (kept >= maxMessages || (kept > 0 && chars + text.length > maxChars)) {
+			const omitted = index + 1;
+			dialogue.splice(0, omitted);
+			return omitted;
+		}
+		kept++;
+		chars += text.length;
+	}
+	return 0;
+}
 
 /**
  * Structural marker for an assistant memory whose text is a tool-derived
@@ -135,6 +165,15 @@ export function appendPriorDialogueEvents(
 		 */
 		excludeToolDerivedOwnReplies?: boolean;
 		maxOwnReplies?: number;
+		/**
+		 * Newest-first budget for the rendered window. RECENT_MESSAGES supplies
+		 * the complete room transcript; rendering all of it re-read 400+ rows
+		 * (~140K characters, ~35K tokens) on every Stage-1 call of a busy room
+		 * (live 2026-09-13) and tripped the provider's per-minute token limit.
+		 * Older rows stay in memory search; a note tells the model they exist.
+		 */
+		maxMessages?: number;
+		maxChars?: number;
 	},
 ): void {
 	const includeOwnReplies = options?.includeOwnReplies ?? false;
@@ -223,6 +262,24 @@ export function appendPriorDialogueEvents(
 				dialogue.splice(index, 1);
 			}
 		}
+	}
+	const omitted = applyPriorDialogueBudget(dialogue, {
+		maxMessages: options?.maxMessages ?? PRIOR_DIALOGUE_MAX_MESSAGES,
+		maxChars: options?.maxChars ?? PRIOR_DIALOGUE_MAX_CHARS,
+	});
+	if (omitted > 0) {
+		events.push({
+			id: "prior-dialogue-window",
+			type: "segment",
+			source: "prior-dialogue",
+			createdAt: dialogue[0]?.createdAt,
+			segment: {
+				id: "prior-dialogue-window",
+				label: "system",
+				content: `prior_dialogue_window: ${omitted} earlier message(s) in this room are not shown. Use memory search for anything older than the messages below; never guess at omitted history.`,
+				stable: false,
+			},
+		});
 	}
 	for (const memory of dialogue) {
 		const text = getUserMessageText(memory);
