@@ -1064,6 +1064,11 @@ export class EvaluatorService extends BaseService {
 				),
 			);
 		} finally {
+			// A backlog of cached/staged jobs can resolve entirely in microtasks.
+			// Admit socket/timer events before the scheduler starts another job so
+			// incoming chat can reach the foreground queue checked above. Keep this
+			// worker owned during the yield, including failed-output replay.
+			await new Promise<void>((resolve) => setTimeout(resolve, 0));
 			this.backgroundRunning = false;
 		}
 	}

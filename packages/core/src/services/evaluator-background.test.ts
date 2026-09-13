@@ -168,6 +168,47 @@ async function retentionScope(runtime: AgentRuntime, message: Memory) {
 }
 
 describe("durable background memory", () => {
+	it.each([false, true])(
+		"admits foreground events between immediately resolved memory jobs, including failures: %s",
+		async (fails) => {
+			const { runtime, service, message } = await setup();
+			const release = deferred<void>();
+			let foreground: Promise<void> | undefined;
+			let timer: ReturnType<typeof setTimeout> | undefined;
+			const process = vi.fn(async () => {
+				// Like a ready socket/timer event: Promise continuations alone do
+				// not admit this event while the scheduler drains its task batch.
+				timer = setTimeout(() => {
+					foreground = runtime.roomHandlerQueue.withLease(
+						message.roomId,
+						() => release.promise,
+					);
+				}, 0);
+				if (fails) throw new Error("Processor still needs recovery");
+			});
+			runtime.registerEvaluator(evaluator(process));
+			runtime.useModel = vi.fn(
+				async () => '{"memory":{"ok":true}}',
+			) as AgentRuntime["useModel"];
+			await service.enqueue(message, state, { phase: "post_turn" });
+			const task = await job(runtime);
+			try {
+				if (fails) await expect(execute(runtime, task)).rejects.toThrow();
+				else await execute(runtime, task);
+				expect(foreground).toBeDefined();
+				expect(runtime.roomHandlerQueue.pendingTotal()).toBeGreaterThan(0);
+				expect(await execute(runtime, task)).toEqual({ preserveTask: true });
+				expect(process).toHaveBeenCalledTimes(1);
+				expect(runtime.useModel).toHaveBeenCalledTimes(1);
+				if (fails) expect(await runtime.getTask(task.id)).not.toBeNull();
+				else expect(await runtime.getTask(task.id)).toBeNull();
+			} finally {
+				if (timer !== undefined) clearTimeout(timer);
+				release.resolve();
+				await foreground;
+			}
+		},
+	);
 	it.each([relationshipEvaluator, identityEvaluator, successEvaluator])(
 		"holds $name source reconciliation before inference without acknowledging the evidence",
 		async (entry) => {

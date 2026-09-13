@@ -231,6 +231,12 @@ conversation rendering and authorized recall. Already processed provider prose
 is not copied wholesale into the extraction prompt; declared providers, existing
 facts, delivered action results and the pending evidence remain available.
 
+The background worker yields to the event loop between jobs, including failed
+staged-output replays. Cached database work can otherwise keep an entire task
+batch in promise continuations and delay incoming network requests before they
+reach the foreground room queue. The existing foreground and worker ownership
+gates still apply; yielding does not acknowledge evidence or discard pending work.
+
 When smaller, incremental shared transcripts name each speaker ID once and use
 explicit top-level `entityRef` fields. Message IDs and nested content remain
 literal; replacing references from the supplied dictionary reconstructs every
