@@ -26,6 +26,7 @@ interface Harness {
     speakerKey: string;
     samples: number;
     purpose: AsrSubmissionPurpose;
+    generation: number;
   }>;
   confirmed: ConfirmedSegmentEvent[];
 }
@@ -36,8 +37,13 @@ function harness(
   const manager = new SpeakerStreamManager(config);
   const submissions: Harness["submissions"] = [];
   const confirmed: ConfirmedSegmentEvent[] = [];
-  manager.onSegmentReady = (speakerKey, _name, audio, purpose) => {
-    submissions.push({ speakerKey, samples: audio.length, purpose });
+  manager.onSegmentReady = (speakerKey, _name, audio, purpose, generation) => {
+    submissions.push({
+      speakerKey,
+      samples: audio.length,
+      purpose,
+      generation,
+    });
   };
   manager.onSegmentConfirmed = (event) => {
     confirmed.push(event);
@@ -65,7 +71,7 @@ describe("SpeakerStreamManager", () => {
     h.manager.feedAudio("a", seconds(1.5));
     vi.advanceTimersByTime(2000);
     expect(h.submissions).toEqual([
-      { speakerKey: "a", samples: 2.5 * SR, purpose: "interim" },
+      { speakerKey: "a", samples: 2.5 * SR, purpose: "interim", generation: 0 },
     ]);
 
     // In-flight — no double submission
@@ -206,7 +212,7 @@ describe("SpeakerStreamManager", () => {
     h.manager.feedAudio("a", seconds(1)); // below cadence minimum
     vi.advanceTimersByTime(16_000); // > 15s idle
     expect(h.submissions).toEqual([
-      { speakerKey: "a", samples: SR, purpose: "final" },
+      { speakerKey: "a", samples: SR, purpose: "final", generation: 0 },
     ]);
 
     h.manager.handleTranscriptionResult("a", "short final remark");
@@ -253,6 +259,93 @@ describe("SpeakerStreamManager", () => {
     );
     expect(h.confirmed).toHaveLength(0);
     expect(h.manager.getPendingSnapshot("a")).toBeNull();
+  });
+
+  describe("reset while a request is in flight, then the same speaker resubmits (#27871)", () => {
+    /**
+     * Drives the race from the issue: the orphaned generation-0 request is
+     * still outstanding when the speaker is flushed and then feeds fresh audio,
+     * so a generation-1 submission is in flight by the time the old response
+     * lands. Returns the generations the harness saw for each submission.
+     */
+    async function raceHarness() {
+      const h = harness();
+      h.manager.addSpeaker("a", "Alice");
+      h.manager.feedAudio("a", seconds(2));
+      vi.advanceTimersByTime(2000);
+      expect(h.submissions).toHaveLength(1);
+
+      await h.manager.flushSpeaker("a");
+
+      h.manager.feedAudio("a", seconds(2));
+      vi.advanceTimersByTime(2000);
+      expect(h.submissions).toHaveLength(2);
+      const [orphan, live] = h.submissions;
+      return { h, orphan, live };
+    }
+
+    it("discards the orphaned response even though a newer submission is outstanding", async () => {
+      const { h, orphan, live } = await raceHarness();
+
+      for (let i = 0; i < 2; i += 1) {
+        h.manager.handleTranscriptionResult(
+          "a",
+          "stale text from old context",
+          2.0,
+          [seg("stale text from old context", 0, 2.0)],
+          orphan.generation,
+        );
+      }
+
+      expect(h.confirmed.map((c) => c.text)).not.toContain(
+        "stale text from old context",
+      );
+      expect(h.manager.getPendingSnapshot("a")).toBeNull();
+      // The reset advanced the generation, which is what told the two apart.
+      expect(live.generation).toBeGreaterThan(orphan.generation);
+    });
+
+    it("still confirms the live submission's response normally", async () => {
+      const { h, orphan, live } = await raceHarness();
+
+      h.manager.handleTranscriptionResult(
+        "a",
+        "stale text from old context",
+        2.0,
+        [seg("stale text from old context", 0, 2.0)],
+        orphan.generation,
+      );
+      for (let i = 0; i < 2; i += 1) {
+        h.manager.handleTranscriptionResult(
+          "a",
+          "fresh words after the handoff",
+          2.0,
+          [seg("fresh words after the handoff", 0, 2.0)],
+          live.generation,
+        );
+      }
+
+      expect(h.confirmed.map((c) => c.text)).toEqual([
+        "fresh words after the handoff",
+      ]);
+    });
+
+    it("keeps the live request in flight so the cadence cannot double-submit", async () => {
+      const { h, orphan } = await raceHarness();
+
+      h.manager.handleTranscriptionResult(
+        "a",
+        "stale text from old context",
+        2.0,
+        [seg("stale text from old context", 0, 2.0)],
+        orphan.generation,
+      );
+
+      // The live generation-1 request has not answered; another interval must
+      // not start a concurrent submission for the same speaker.
+      vi.advanceTimersByTime(2000);
+      expect(h.submissions).toHaveLength(2);
+    });
   });
 
   it("speaker-change flush emits the forming transcript immediately", async () => {

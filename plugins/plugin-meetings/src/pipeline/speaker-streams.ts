@@ -106,13 +106,20 @@ export class SpeakerStreamManager {
   private readonly sampleRate: number;
   private readonly now: () => number;
 
-  /** Called when unconfirmed audio needs transcription. */
+  /**
+   * Called when unconfirmed audio needs transcription. `generation` is the
+   * speaker buffer's generation at submission time; the consumer must hand it
+   * back to {@link handleTranscriptionResult} so a response that outlives a
+   * reset is matched to the submission it answers, not to whichever request
+   * is current when it lands.
+   */
   onSegmentReady:
     | ((
         speakerKey: string,
         speakerName: string,
         audio: Float32Array,
         purpose: AsrSubmissionPurpose,
+        generation: number,
       ) => void)
     | null = null;
 
@@ -192,16 +199,22 @@ export class SpeakerStreamManager {
     transcript: string,
     segmentEndSec?: number,
     segments?: ReadonlyArray<AsrSegment>,
+    generation?: number,
   ): void {
     const buffer = this.buffers.get(speakerKey);
     if (!buffer) return;
 
-    buffer.inFlight = false;
-
-    // Discard stale responses: buffer was fully reset while this request was
-    // in flight — accepting it would poison lastTranscript with old text.
-    const submitGen = this.submitGeneration.get(speakerKey);
+    // Discard stale responses: the buffer was fully reset while this request
+    // was in flight — accepting it would poison lastTranscript with old text.
+    // The generation echoed by the caller identifies the submission that this
+    // response answers. A reset does not cancel the orphaned request, and the
+    // same speaker may already have a newer submission outstanding, so the
+    // per-speaker record of the latest submission cannot stand in for it.
+    // Bail before touching inFlight: that flag belongs to the live request.
+    const submitGen = generation ?? this.submitGeneration.get(speakerKey);
     if (submitGen !== undefined && submitGen < buffer.generation) return;
+
+    buffer.inFlight = false;
 
     if (!transcript || transcript.trim().length === 0) {
       if (buffer.idleSubmitted) this.fullReset(buffer);
@@ -525,6 +538,7 @@ export class SpeakerStreamManager {
         buffer.speakerName,
         combined,
         purpose,
+        buffer.generation,
       );
     } catch (err) {
       buffer.inFlight = false;
