@@ -747,8 +747,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         (c) =>
           c.entityId === component.entityId &&
           c.type === component.type &&
-          c.worldId === component.worldId &&
-          c.sourceEntityId === component.sourceEntityId
+          (c.worldId ?? null) === (component.worldId ?? null) &&
+          (c.sourceEntityId ?? null) === (component.sourceEntityId ?? null)
       );
 
       const existing = naturalKey[0];
@@ -802,8 +802,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         (c) =>
           c.entityId === key.entityId &&
           c.type === key.type &&
-          c.worldId === (key.worldId ?? null) &&
-          c.sourceEntityId === (key.sourceEntityId ?? null)
+          (c.worldId ?? null) === (key.worldId ?? null) &&
+          (c.sourceEntityId ?? null) === (key.sourceEntityId ?? null)
       );
       result.push(matches[0] ?? null);
     }
