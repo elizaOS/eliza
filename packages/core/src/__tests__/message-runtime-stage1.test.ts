@@ -702,6 +702,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		"multiple",
 		"no-match",
 		"repeat",
+		"repeat-id",
 		"edited",
 		"revoked",
 		"disabled",
@@ -747,7 +748,9 @@ describe("runV5MessageRuntimeStage1", () => {
 					if (calls > 3) throw new Error("Unexpected search loop");
 					const input = args[1] as { messages: Array<{ content: string }> };
 					const text = input.messages.map((m) => m.content).join("\n");
-					const reading = calls === 1 || (mode === "repeat" && calls === 2);
+					const reading =
+						calls === 1 ||
+						(["repeat", "repeat-id"].includes(mode) && calls === 2);
 					if (calls === 1 && mode !== "disabled")
 						expect(text).not.toContain(rows[1].content.text);
 					if (calls > 1) {
@@ -757,7 +760,7 @@ describe("runV5MessageRuntimeStage1", () => {
 						if (mode === "edited")
 							expect(text).toContain("Current label is cranberry.");
 						if (
-							["matching", "multiple", "repeat"].includes(mode) &&
+							["matching", "multiple", "repeat", "repeat-id"].includes(mode) &&
 							calls === 2
 						) {
 							expect(text).toContain("context_loaded: history:h2");
@@ -768,15 +771,17 @@ describe("runV5MessageRuntimeStage1", () => {
 					return stage1Response({
 						contexts: ["simple"],
 						contextRequests: reading
-							? mode === "multiple"
-								? [
-										"history:search:BLUEBERRY",
-										"history:search:Acknowledged",
-										"history:search:OLD LITERAL",
-									]
-								: [
-										`history:search:${mode === "no-match" ? "does-not-occur" : mode === "empty" ? "   " : "OLD LITERAL"}`,
-									]
+							? mode === "repeat-id" && calls === 2
+								? ["history:h2"]
+								: mode === "multiple"
+									? [
+											"history:search:BLUEBERRY",
+											"history:search:Acknowledged",
+											"history:search:OLD LITERAL",
+										]
+									: [
+											`history:search:${mode === "no-match" ? "does-not-occur" : mode === "empty" ? "   " : "OLD LITERAL"}`,
+										]
 							: [],
 						replyText: reading
 							? "Never deliver this draft."
@@ -819,7 +824,7 @@ describe("runV5MessageRuntimeStage1", () => {
 						"I have read the originals; nothing changed.",
 					);
 				expect(dispatch).toHaveBeenCalledTimes(1);
-				expect(calls).toBe(mode === "repeat" ? 3 : 2);
+				expect(calls).toBe(["repeat", "repeat-id"].includes(mode) ? 3 : 2);
 			}
 			expect(rows).toEqual(before);
 		},
@@ -928,7 +933,7 @@ describe("runV5MessageRuntimeStage1", () => {
 					responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 				}),
 			).rejects.toThrow("Request only context providers");
-			expect(count).toBe(mode === "unknown" ? 1 : 2);
+			expect(count).toBe(mode === "unknown" ? 1 : 3);
 			expect(dispatch).not.toHaveBeenCalled();
 		},
 	);

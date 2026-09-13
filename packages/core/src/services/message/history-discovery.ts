@@ -81,9 +81,9 @@ export function historyReferences(
 		...completionContextSources(context)
 			// A model may explicitly reread a retained original already inline.
 			// Resolve it through the same fresh authorization/source checks once;
-			// only a repeated explicit read is a no-progress request.
-			.sources.filter((source) => !projection.loadedSourceIds.has(source.id))
-			.map((source) => `${HISTORY_REFERENCE_PREFIX}${source.id}`),
+			// a repeated explicit read restores full history instead of failing
+			// as an unknown provider or entering an unbounded read loop.
+			.sources.map((source) => `${HISTORY_REFERENCE_PREFIX}${source.id}`),
 	]);
 }
 
@@ -130,7 +130,15 @@ export function requestedHistory(
 	const requested = explicit.filter((name) =>
 		name.startsWith(HISTORY_REFERENCE_PREFIX),
 	);
-	if (requested.includes(ALL_HISTORY_REFERENCE)) return [ALL_HISTORY_REFERENCE];
+	if (
+		requested.includes(ALL_HISTORY_REFERENCE) ||
+		requested.some((name) =>
+			projection.loadedSourceIds.has(
+				name.slice(HISTORY_REFERENCE_PREFIX.length),
+			),
+		)
+	)
+		return [ALL_HISTORY_REFERENCE];
 	if (explicit.length > 0 && requested.length === 0) return [];
 	if (
 		!selection ||
