@@ -10,6 +10,7 @@ import {
 } from "../../runtime/history-retention.ts";
 import type { ContextObject } from "../../types/context-object.ts";
 import type { JSONSchema, PromptSegment } from "../../types/model.ts";
+import { readContextRequests } from "./context-discovery.ts";
 
 /** Match source-selection semantics to the supplied originals and available reads. */
 export function withReviewedHistorySelection(schema: JSONSchema): JSONSchema {
@@ -37,6 +38,7 @@ export function withReviewedHistorySelection(schema: JSONSchema): JSONSchema {
 
 export const HISTORY_REFERENCE_PREFIX = "history:";
 export const ALL_HISTORY_REFERENCE = "history:all";
+const HISTORY_SEARCH_PREFIX = "history:search:";
 
 export interface HistoryDiscovery {
 	sourceSetId: string;
@@ -83,6 +85,32 @@ export function historyReferences(
 			.sources.filter((source) => !projection.loadedSourceIds.has(source.id))
 			.map((source) => `${HISTORY_REFERENCE_PREFIX}${source.id}`),
 	]);
+}
+
+/** Admit literal queries only while the optional source-bound history index is
+ * active. Execution still follows fresh authorization and source checks. */
+export function readHistoryContextRequests(
+	context: ContextObject,
+	projection: HistoryDiscovery | undefined,
+	raw: Record<string, unknown> | null,
+	available: ReadonlySet<string>,
+): string[] {
+	const references = new Set(available);
+	if (
+		projection &&
+		Array.isArray(raw?.contextRequests) &&
+		projection.sourceSetId === completionContextSources(context).sourceSetId
+	) {
+		for (const name of raw.contextRequests) {
+			if (
+				typeof name === "string" &&
+				name.startsWith(HISTORY_SEARCH_PREFIX) &&
+				name.slice(HISTORY_SEARCH_PREFIX.length).trim()
+			)
+				references.add(name);
+		}
+	}
+	return readContextRequests(raw, references);
 }
 
 /** An explicit provider request is handled first. Otherwise an incomplete
@@ -142,26 +170,40 @@ export function loadHistoryReferences(
 	projection: HistoryDiscovery | undefined,
 	requested: readonly string[],
 ): HistoryDiscovery | undefined {
-	if (
-		!projection ||
-		requested.includes(ALL_HISTORY_REFERENCE) ||
-		completionContextSources(context).sourceSetId !== projection.sourceSetId
-	)
+	if (!projection || requested.includes(ALL_HISTORY_REFERENCE))
 		return undefined;
+	const bound = completionContextSources(context);
+	if (bound.sourceSetId !== projection.sourceSetId) return undefined;
+	const loadedSourceIds = new Set(projection.loadedSourceIds);
+	let searched = false;
+	let searchAddedSource = false;
+	for (const name of requested) {
+		if (name.startsWith(HISTORY_SEARCH_PREFIX)) {
+			searched = true;
+			const query = name.slice(HISTORY_SEARCH_PREFIX.length).toLowerCase();
+			const matches = bound.sources.filter((source) =>
+				source.event.segment.content.toLowerCase().includes(query),
+			);
+			searchAddedSource ||= matches.some(
+				(source) => !projection.loadedSourceIds.has(source.id),
+			);
+			for (const source of matches) loadedSourceIds.add(source.id);
+		} else if (name.startsWith(HISTORY_REFERENCE_PREFIX)) {
+			loadedSourceIds.add(name.slice(HISTORY_REFERENCE_PREFIX.length));
+		}
+	}
+	// Queries in one read form a union, including overlaps. A failed or
+	// no-progress search cannot prove absence or sustain another query loop.
+	if (searched && !searchAddedSource) return undefined;
 	return {
 		...projection,
-		loadedSourceIds: new Set([
-			...projection.loadedSourceIds,
-			...requested
-				.filter((name) => name.startsWith(HISTORY_REFERENCE_PREFIX))
-				.map((name) => name.slice(HISTORY_REFERENCE_PREFIX.length)),
-		]),
+		loadedSourceIds,
 	};
 }
 
 export const REVIEWED_HISTORY_SELECTION_INSTRUCTIONS = `history_source_selection:
 The supplied original history contains retained standing constraints and unfinished work, every new unreviewed source, and the complete current exchange. Other reviewed originals remain in this authorized conversation; the current-turn boundary gives the complete reference index. A prior retention review is model judgment, not proof every future dependency is supplied. No original is deleted, rewritten or summarized.
-Read a needed missing original through contextRequests=["history:hN", ...]. Use contextRequests=["history:all"] when you cannot identify it, interpretation is uncertain, or the request requires exhaustive conversation coverage. Leave replyText and action candidates empty while reading; no draft, extraction or effect from a read decision executes. A ban on app/storage tools does not forbid reading these same conversation originals. Never infer omitted content or permission. Already loaded IDs need not be requested again.
+Read a needed missing original through contextRequests=["history:hN", ...] only when its ID is known; never guess numbered sources. To locate an original by remembered wording, use contextRequests=["history:search:literal phrase", ...]. Each query is a case-insensitive literal substring, not a semantic query or regular expression; all matching complete originals are supplied. Choose distinctive words likely in the original. Queries in one read form a union. A search that adds no originals restores full history, not an absence claim. Use contextRequests=["history:all"] when literal lookup cannot resolve the dependency, interpretation is uncertain, or the request requires exhaustive conversation coverage. Leave replyText and action candidates empty while reading; no draft, extraction or effect from a read decision executes. A ban on app/storage tools does not forbid reading these same conversation originals. Never infer omitted content or permission. Already loaded IDs need not be requested again.
 After resolving dependencies, select applicable supplied originals in completionContext: factual background, standing constraints/corrections, referents and referenced unfinished work. Their complete union remains available without a cap. relevant_prior_dialogue with complete=true means this request's dependencies are resolved from supplied originals, not that unseen originals were reviewed. Copy completion_source_set exactly. Incomplete or full-history selection restores every original before delivery or effects. Current request, system/provider constraints and tool receipts remain complete. This decision cannot rewrite the retention checkpoint.`;
 
 export function historyReferenceNotice(
@@ -169,7 +211,7 @@ export function historyReferenceNotice(
 	projection?: HistoryDiscovery,
 ): string {
 	if (!projection) return "";
-	return `\nComplete original history index: h1 through h${completionContextSources(context).sources.length}, inclusive, in chronological order. Each ID identifies one complete original source. Shown or context_loaded sources are already supplied; any other original can be read through contextRequests=["history:hN"]. "history:all" restores all originals. Ranges and wildcards are not request names.`;
+	return `\nComplete original history index: h1 through h${completionContextSources(context).sources.length}, inclusive, in chronological order. Each ID identifies one complete original source. Shown or context_loaded sources are already supplied; read a known ID through contextRequests=["history:hN"], or locate originals with ["history:search:literal phrase"]. Never guess IDs. "history:all" restores all originals. Ranges and wildcards are not request names.`;
 }
 
 export function loadedHistorySegments(

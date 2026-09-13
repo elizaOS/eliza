@@ -39,10 +39,7 @@ import {
 	resolveStage1SenderRole,
 } from "./addressing.js";
 import { createV5MessageContextObject } from "./context-assembly.js";
-import {
-	projectDiscoverableContext,
-	readContextRequests,
-} from "./context-discovery.js";
+import { projectDiscoverableContext } from "./context-discovery.js";
 import {
 	getActionInferenceMessageText,
 	isSubAgentCompletionArtifact,
@@ -54,6 +51,7 @@ import {
 	historyReferences,
 	loadHistoryReferences,
 	projectReviewedHistory,
+	readHistoryContextRequests,
 	requestedHistory,
 	withReviewedHistorySelection,
 } from "./history-discovery.js";
@@ -448,7 +446,12 @@ export async function generateStage1Decision(
 	let routingRepairAttempted = false;
 	while (discoveryEnabled) {
 		const parsedDecision = extractMessageHandlerRawParsed(rawMessageHandler);
-		const explicit = readContextRequests(parsedDecision, discovery.available);
+		const explicit = readHistoryContextRequests(
+			context,
+			history,
+			parsedDecision,
+			discovery.available,
+		);
 		const historyRequested = requestedHistory(
 			context,
 			history,

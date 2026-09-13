@@ -412,69 +412,72 @@ async function seededPiiSession(): Promise<{
 }
 
 describe("runV5MessageRuntimeStage1", () => {
-	it("refreshes role-gated field prompts and processing after a history read", async () => {
-		const { runtime, message, state, rows, world } =
-			await reviewedHistoryFixture("ADMIN");
-		expect(await resolveStage1SenderRole(runtime, message)).toBe("ADMIN");
-		const handle = vi.fn();
-		runtime.responseHandlerFieldRegistry.register({
-			name: "adminFixture",
-			description: "Private admin-only fixture instructions.",
-			schema: { type: "string" },
-			priority: 1,
-			shouldRun: ({ senderRole }) => senderRole === "ADMIN",
-			handle,
-		});
-		runtime.composeState = async () => {
-			world.metadata.roles[message.entityId] = "GUEST";
-			return structuredClone(state);
-		};
-		let calls = 0;
-		runtime.useModel = vi.fn(
-			async (...args: Parameters<IAgentRuntime["useModel"]>) => {
-				calls++;
-				const input = args[1] as { messages: Array<{ content: string }> };
-				const text = input.messages.map((m) => m.content).join("\n");
-				if (calls === 1)
-					expect(text).toContain("Private admin-only fixture instructions.");
-				else {
-					expect(text).not.toContain(
-						"Private admin-only fixture instructions.",
-					);
-					expect(text).toContain(rows[1].content.text?.trim());
-				}
-				return stage1Response({
-					contexts: ["simple"],
-					contextRequests: calls === 1 ? ["history:h2"] : [],
-					replyText: calls === 1 ? "" : "Hey.",
-					extra: {
-						replyEffectStatus: "none",
-						adminFixture: "must never process",
-						completionContext: {
-							sourceSetId: text.match(
-								/completion_source_set: ([a-f0-9]{64})/,
-							)?.[1],
-							mode: "relevant_prior_dialogue",
-							complete: true,
-							relevantSourceIds: [],
-							constraintSourceIds: [],
-							referentSourceIds: [],
-							pendingIntentSourceIds: [],
+	it.each(["history:h2", "history:search:blueberry"])(
+		"refreshes role-gated field prompts and processing after %s",
+		async (reference) => {
+			const { runtime, message, state, rows, world } =
+				await reviewedHistoryFixture("ADMIN");
+			expect(await resolveStage1SenderRole(runtime, message)).toBe("ADMIN");
+			const handle = vi.fn();
+			runtime.responseHandlerFieldRegistry.register({
+				name: "adminFixture",
+				description: "Private admin-only fixture instructions.",
+				schema: { type: "string" },
+				priority: 1,
+				shouldRun: ({ senderRole }) => senderRole === "ADMIN",
+				handle,
+			});
+			runtime.composeState = async () => {
+				world.metadata.roles[message.entityId] = "GUEST";
+				return structuredClone(state);
+			};
+			let calls = 0;
+			runtime.useModel = vi.fn(
+				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+					calls++;
+					const input = args[1] as { messages: Array<{ content: string }> };
+					const text = input.messages.map((m) => m.content).join("\n");
+					if (calls === 1)
+						expect(text).toContain("Private admin-only fixture instructions.");
+					else {
+						expect(text).not.toContain(
+							"Private admin-only fixture instructions.",
+						);
+						expect(text).toContain(rows[1].content.text?.trim());
+					}
+					return stage1Response({
+						contexts: ["simple"],
+						contextRequests: calls === 1 ? [reference] : [],
+						replyText: calls === 1 ? "" : "Hey.",
+						extra: {
+							replyEffectStatus: "none",
+							adminFixture: "must never process",
+							completionContext: {
+								sourceSetId: text.match(
+									/completion_source_set: ([a-f0-9]{64})/,
+								)?.[1],
+								mode: "relevant_prior_dialogue",
+								complete: true,
+								relevantSourceIds: [],
+								constraintSourceIds: [],
+								referentSourceIds: [],
+								pendingIntentSourceIds: [],
+							},
 						},
-					},
-				});
-			},
-		) as IAgentRuntime["useModel"];
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message,
-			state,
-			responseId: message.id as UUID,
-		});
-		expect(result.kind).toBe("direct_reply");
-		expect(calls).toBe(2);
-		expect(handle).not.toHaveBeenCalled();
-	});
+					});
+				},
+			) as IAgentRuntime["useModel"];
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state,
+				responseId: message.id as UUID,
+			});
+			expect(result.kind).toBe("direct_reply");
+			expect(calls).toBe(2);
+			expect(handle).not.toHaveBeenCalled();
+		},
+	);
 	it.each([
 		"absent",
 		"malformed",
@@ -684,6 +687,134 @@ describe("runV5MessageRuntimeStage1", () => {
 					([actionMode]) => actionMode === "RESPONSE_HANDLER_BEFORE",
 				),
 			).toHaveLength(1);
+		},
+	);
+
+	it.each([
+		"matching",
+		"multiple",
+		"no-match",
+		"repeat",
+		"edited",
+		"revoked",
+		"disabled",
+		"empty",
+	])(
+		"searches complete authorized originals before processing a reply: %s",
+		async (mode) => {
+			const { runtime, message, rows, state } = await reviewedHistoryFixture();
+			const before = structuredClone(rows);
+			const dispatch = vi.spyOn(
+				runtime.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			if (mode === "disabled") Object.assign(runtime, { evaluators: [] });
+			if (mode === "edited" || mode === "revoked") {
+				runtime.composeState = async () => {
+					const fresh = structuredClone(state);
+					fresh.data.providers = {
+						RECENT_MESSAGES: {
+							data: {
+								recentMessages:
+									mode === "revoked"
+										? rows.filter((row) => row.id !== rows[1].id)
+										: rows.map((row, i) =>
+												i === 1
+													? {
+															...row,
+															content: { text: "Current label is cranberry." },
+														}
+													: row,
+											),
+							},
+						},
+					};
+					return fresh;
+				};
+			}
+			let calls = 0;
+			runtime.useModel = vi.fn(
+				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+					calls++;
+					expect(dispatch).not.toHaveBeenCalled();
+					if (calls > 3) throw new Error("Unexpected search loop");
+					const input = args[1] as { messages: Array<{ content: string }> };
+					const text = input.messages.map((m) => m.content).join("\n");
+					const reading = calls === 1 || (mode === "repeat" && calls === 2);
+					if (calls === 1 && mode !== "disabled")
+						expect(text).not.toContain(rows[1].content.text);
+					if (calls > 1) {
+						if (mode === "revoked" || mode === "edited")
+							expect(text).not.toContain(rows[1].content.text);
+						else expect(text).toContain(rows[1].content.text);
+						if (mode === "edited")
+							expect(text).toContain("Current label is cranberry.");
+						if (
+							["matching", "multiple", "repeat"].includes(mode) &&
+							calls === 2
+						) {
+							expect(text).toContain("context_loaded: history:h2");
+							expect(text).toContain("context_loaded: history:h3");
+						} else
+							expect(text).not.toContain("Complete original history index:");
+					}
+					return stage1Response({
+						contexts: ["simple"],
+						contextRequests: reading
+							? mode === "multiple"
+								? [
+										"history:search:BLUEBERRY",
+										"history:search:Acknowledged",
+										"history:search:OLD LITERAL",
+									]
+								: [
+										`history:search:${mode === "no-match" ? "does-not-occur" : mode === "empty" ? "   " : "OLD LITERAL"}`,
+									]
+							: [],
+						replyText: reading
+							? "Never deliver this draft."
+							: "I have read the originals; nothing changed.",
+						facts: reading ? ["Never extract this draft fact."] : [],
+						extra: {
+							replyEffectStatus: "non_applied",
+							completionContext: {
+								mode: "relevant_prior_dialogue",
+								sourceSetId: text.match(
+									/completion_source_set: ([a-f0-9]{64})/,
+								)?.[1],
+								complete: true,
+								relevantSourceIds: [],
+								constraintSourceIds: ["h1"],
+								referentSourceIds: [],
+								pendingIntentSourceIds: [],
+							},
+						},
+					});
+				},
+			) as IAgentRuntime["useModel"];
+			const result = runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state,
+				responseId: message.id as UUID,
+			});
+			if (mode === "disabled" || mode === "empty") {
+				await expect(result).rejects.toMatchObject({
+					code: "CONTEXT_DISCOVERY_INVALID_REQUEST",
+				});
+				expect(dispatch).not.toHaveBeenCalled();
+				expect(calls).toBe(1);
+			} else {
+				const response = await result;
+				expect(response.kind).toBe("direct_reply");
+				if (response.kind === "direct_reply")
+					expect(response.result.responseContent?.text).toBe(
+						"I have read the originals; nothing changed.",
+					);
+				expect(dispatch).toHaveBeenCalledTimes(1);
+				expect(calls).toBe(mode === "repeat" ? 3 : 2);
+			}
+			expect(rows).toEqual(before);
 		},
 	);
 
