@@ -1,5 +1,5 @@
 /** Covers the vision context-augmenter registry and `augmentVisionRequest`. Deterministic. */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	augmentVisionRequest,
 	getVisionContextAugmenter,
@@ -74,5 +74,35 @@ describe("augmentVisionRequest", () => {
 		const request = { image: IMAGE, prompt: "survive" };
 		await expect(augmentVisionRequest(request)).resolves.toBeUndefined();
 		expect(request.prompt).toBe("survive");
+	});
+});
+
+/**
+ * The package ships this module in both `dist/index.js` (the IMAGE_DESCRIPTION
+ * reader) and the `services` subpath (where plugin-vision registers). A
+ * registration through one module instance must be visible to a second,
+ * independently evaluated instance; `vi.resetModules()` produces that instance.
+ */
+describe("registry is shared across module instances", () => {
+	it("augments through an instance other than the one that registered", async () => {
+		const first = await import("./augmenter");
+		const augmenter: VisionContextAugmenter = {
+			name: "cross-bundle",
+			async augmentImagePrompt({ basePrompt }) {
+				return { prompt: `${basePrompt ?? ""} [ocr: hello]`, fused: {} };
+			},
+		};
+		first.registerVisionContextAugmenter(augmenter);
+
+		vi.resetModules();
+		const second = await import("./augmenter");
+		expect(second).not.toBe(first);
+		expect(second.getVisionContextAugmenter()).toBe(augmenter);
+		const request = { image: IMAGE, prompt: "Describe" };
+		await second.augmentVisionRequest(request);
+		expect(request.prompt).toBe("Describe [ocr: hello]");
+
+		second.registerVisionContextAugmenter(null);
+		expect(first.getVisionContextAugmenter()).toBeNull();
 	});
 });
