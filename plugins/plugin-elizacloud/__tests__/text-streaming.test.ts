@@ -58,6 +58,7 @@ import {
   accumulateToolCallDeltas,
   buildStreamAbortSignal,
   finalizeStreamedToolCalls,
+  generateNativeChatCompletion,
   handleResponseHandler,
   handleTextSmall,
   lowestIndexToolCallArgs,
@@ -66,6 +67,7 @@ import {
   resolveTextTimeoutMs,
   streamNativeChatCompletion,
 } from "../src/models/text";
+import type { ModelUsageEventPayload } from "../src/utils/events";
 
 function fakeRuntime(): IAgentRuntime {
   return {
@@ -73,6 +75,25 @@ function fakeRuntime(): IAgentRuntime {
     getSetting: () => undefined,
     emitEvent: vi.fn(),
   } as unknown as IAgentRuntime;
+}
+
+/**
+ * Runtime whose `emitEvent` records every MODEL_USED payload so a test can
+ * assert the token attribution the cloud handler actually emitted (#27732).
+ */
+function recordingRuntime(): {
+  runtime: IAgentRuntime;
+  events: ModelUsageEventPayload[];
+} {
+  const events: ModelUsageEventPayload[] = [];
+  const runtime = {
+    character: { name: "Eliza", bio: [] },
+    getSetting: () => undefined,
+    emitEvent: (_type: string, payload: ModelUsageEventPayload) => {
+      events.push(payload);
+    },
+  } as unknown as IAgentRuntime;
+  return { runtime, events };
 }
 
 const enc = new TextEncoder();
@@ -1109,6 +1130,108 @@ describe("streamNativeChatCompletion — forced HANDLE_RESPONSE reply envelope",
     extractor.flush();
 
     expect(visible.join("")).toBe("hello");
+  });
+});
+
+/**
+ * Regression guard for #27732: the native `/chat/completions` metering sites
+ * used to pass the raw `convertNativeUsage()` object (promptTokens/
+ * completionTokens naming) straight into emitModelUsageEvent, which reads
+ * inputTokens/outputTokens. Those keys never matched, so the emitted MODEL_USED
+ * payload always reported `tokens.prompt = tokens.completion = 0` for the
+ * primary cloud text path (only `tokens.total` survived). These tests assert
+ * the emitted payload carries the gateway-reported prompt/completion counts for
+ * all three native sites: buffered generateNativeChatCompletion, the streaming
+ * usage-only frame, and the non-SSE buffered fallback in
+ * streamNativeChatCompletion.
+ */
+describe("native MODEL_USED token attribution (#27732)", () => {
+  beforeEach(() => {
+    transport.reset();
+    nextResponse = null;
+    requestRaw.mockClear();
+    delete process.env.ELIZAOS_CLOUD_NATIVE_CONCURRENCY;
+    delete process.env.ELIZAOS_CLOUD_STREAMING;
+    __resetNativeChatLimiterForTests();
+  });
+  afterEach(() => {
+    delete process.env.ELIZAOS_CLOUD_STREAMING;
+    __resetNativeChatLimiterForTests();
+  });
+
+  function usageEvents(events: ModelUsageEventPayload[]): ModelUsageEventPayload[] {
+    return events.filter((e) => e.source === "elizacloud" && e.type != null);
+  }
+
+  it("buffered generateNativeChatCompletion emits gateway prompt/completion counts", async () => {
+    nextResponse = new Response(
+      JSON.stringify({
+        choices: [{ index: 0, message: { content: "hello" }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    );
+    const { runtime, events } = recordingRuntime();
+
+    await generateNativeChatCompletion(runtime, "TEXT_LARGE" as never, nativeParams(), {
+      modelName: "zai-glm-4.7",
+      prompt: "hi",
+    });
+
+    const emitted = usageEvents(events);
+    expect(emitted).toHaveLength(1);
+    // The bug reported prompt=0/completion=0; only total survived.
+    expect(emitted[0].tokens).toEqual({ prompt: 100, completion: 50, total: 150 });
+  });
+
+  it("streaming usage-only frame emits gateway prompt/completion counts", async () => {
+    nextResponse = sseResponse([
+      dataFrame(contentDelta("Hello")),
+      dataFrame(contentDelta(" world")),
+      dataFrame(finishFrame("stop")),
+      dataFrame({
+        choices: [],
+        usage: { prompt_tokens: 7, completion_tokens: 11, total_tokens: 18 },
+      }),
+      DONE_FRAME,
+    ]);
+    const { runtime, events } = recordingRuntime();
+
+    const result = await streamNativeChatCompletion(
+      runtime,
+      "RESPONSE_HANDLER" as never,
+      nativeParams(),
+      { modelName: "gpt-oss-120b", prompt: "hi" }
+    );
+    // The emit happens in the generator's finally, so drain the stream first.
+    await readStream(result);
+
+    const emitted = usageEvents(events);
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0].tokens).toEqual({ prompt: 7, completion: 11, total: 18 });
+  });
+
+  it("non-SSE buffered fallback emits gateway prompt/completion counts", async () => {
+    nextResponse = new Response(
+      JSON.stringify({
+        choices: [{ index: 0, message: { content: "buffered reply" }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 40, completion_tokens: 8, total_tokens: 48 },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    );
+    const { runtime, events } = recordingRuntime();
+
+    const result = await streamNativeChatCompletion(
+      runtime,
+      "RESPONSE_HANDLER" as never,
+      nativeParams(),
+      { modelName: "gpt-oss-120b", prompt: "hi" }
+    );
+    await readStream(result);
+
+    const emitted = usageEvents(events);
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0].tokens).toEqual({ prompt: 40, completion: 8, total: 48 });
   });
 });
 
