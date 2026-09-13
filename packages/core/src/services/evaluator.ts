@@ -77,6 +77,7 @@ import {
 	getRoomTranscript,
 	ROOM_TRANSCRIPT_HEADING,
 } from "./evaluator-transcript.ts";
+import { encodeEvaluatorTranscript } from "./evaluator-transcript-encoding.ts";
 
 type PreparedEntry = {
 	evaluator: RegisteredEvaluator;
@@ -327,7 +328,7 @@ function buildPrompt(params: {
 				: incremental
 					? // Compact JSON preserves every selected field without paying for
 						// per-record indentation across a historical backfill.
-						JSON.stringify(
+						encodeEvaluatorTranscript(
 							params.roomTranscript.map((record) => ({
 								id: record.id,
 								entityId: record.entityId,

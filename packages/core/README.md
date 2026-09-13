@@ -231,6 +231,11 @@ conversation rendering and authorized recall. Already processed provider prose
 is not copied wholesale into the extraction prompt; declared providers, existing
 facts, delivered action results and the pending evidence remain available.
 
+When smaller, incremental shared transcripts name each speaker ID once and use
+explicit top-level `entityRef` fields. Message IDs and nested content remain
+literal; replacing references from the supplied dictionary reconstructs every
+original record. Small inputs or a colliding source field keep the full format.
+
 Progress is isolated by agent, room, speaker and evaluator. Validated output is
 durably staged before effects and reused after failure; the checkpoint advances
 only after all processors succeed. Personal facts, preferences and long-term

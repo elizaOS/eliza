@@ -327,9 +327,7 @@ describe("durable background memory", () => {
 			prompts[1].lastIndexOf("sourceSetId:"),
 		);
 		expect(reviewSection).toContain(proposal.content.text);
-		expect(reviewSection).toContain(
-			`complete shared original message ${greeting.id}`,
-		);
+		expect(reviewSection).toContain(`${greeting.id}`);
 		expect(reviewSection).not.toContain(greeting.content.text);
 		expect(reviewSection).not.toContain(reply.content.text);
 		expect(reviewSection).not.toContain(message.content.text);

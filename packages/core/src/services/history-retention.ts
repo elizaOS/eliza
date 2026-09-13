@@ -92,7 +92,7 @@ function retentionPromptSegments({
 			const messageId = source.event.id.replace(/^history:/, "");
 			return shared?.roomTranscriptRendered &&
 				prepared.selectedMessageIds.has(messageId)
-				? `[${source.id}] complete shared original message ${messageId}`
+				? `[${source.id}] ${messageId}`
 				: `[${source.id} original message ${messageId}]\n${source.event.segment.content}`;
 		})
 		.join("\n\n");
