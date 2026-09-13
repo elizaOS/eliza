@@ -17,7 +17,10 @@ import { warmInferenceAdmissionSnapshot } from "../services/inference-admission-
 import { isHotPathCachesEnabled } from "../services/inference-hot-path-caches";
 import type { EndpointType, OrgRateLimitConfig } from "../services/org-rate-limits";
 import { type OrgTierCacheExecutionContext, recalculateOrgTier } from "../services/org-rate-limits";
-import { withOrganizationPolicyAdmission } from "../services/organization-policy-admission";
+import {
+  withOrganizationPolicyAdmission,
+  withOrganizationPolicyReadAdmission,
+} from "../services/organization-policy-admission";
 import {
   isOrganizationPolicyStamp,
   sameOrganizationPolicyStamp,
@@ -459,7 +462,10 @@ export async function enforceOrgRateLimit(
   } = {},
 ): Promise<Response | null> {
   try {
-    return await withOrganizationPolicyAdmission(
+    const admitOrganizationPolicy = options.cacheOnly
+      ? withOrganizationPolicyReadAdmission
+      : withOrganizationPolicyAdmission;
+    return await admitOrganizationPolicy(
       organizationId,
       options.config?.authority,
       async (policy) => {

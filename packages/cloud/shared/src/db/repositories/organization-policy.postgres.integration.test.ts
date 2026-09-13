@@ -59,6 +59,99 @@ describe.skipIf(!databaseUrl)("organization policy primary transaction fences", 
       await writer.end();
     }
   });
+  test("parallel inference policy readers overlap while a policy writer waits and invalidates their stamp", async () => {
+    const { withOrganizationPolicyReadAdmission } = await import(
+      "../../lib/services/organization-policy-admission"
+    );
+    const { requireOrganizationRateTier } = await import(
+      "../../lib/services/organization-quota-policy"
+    );
+    const { orgRateLimitOverridesRepository } = await import("./org-rate-limit-overrides");
+    const entered = [barrier(), barrier()];
+    const release = barrier();
+    const readers = entered.map((ready) =>
+      withOrganizationPolicyReadAdmission(ORG, undefined, async (policy) => {
+        ready.resolve();
+        await release.promise;
+        return policy.authority;
+      }),
+    );
+    let mutation: Promise<unknown> | undefined;
+    try {
+      // Both callbacks must be reached before either releases its transaction.
+      // Exclusive reader locks cannot pass this boundary.
+      await Promise.race([
+        Promise.all(entered.map((ready) => ready.promise)),
+        Bun.sleep(3000).then(() => {
+          throw new Error("Concurrent inference readers serialized behind one another");
+        }),
+      ]);
+      let mutationFinished = false;
+      mutation = orgRateLimitOverridesRepository
+        .upsert({ organization_id: ORG, completions_rpm: 12 }, "admin:postgres-test")
+        .then(() => {
+          mutationFinished = true;
+        });
+      await waitForOrganizationLock();
+      expect(mutationFinished).toBe(false);
+      release.resolve();
+      const stamps = await Promise.all(readers);
+      await mutation;
+      expect(stamps[0]).toEqual(stamps[1]);
+      await expect(
+        withOrganizationPolicyReadAdmission(ORG, stamps[0], async () => "dispatched"),
+      ).rejects.toMatchObject({ code: "ORGANIZATION_POLICY_STALE" });
+      expect(
+        await withOrganizationPolicyReadAdmission(
+          ORG,
+          undefined,
+          async (policy) => requireOrganizationRateTier(policy).completionsRpm,
+        ),
+      ).toBe(12);
+    } finally {
+      release.resolve();
+      await Promise.allSettled(readers);
+      await mutation;
+    }
+  }, 30000);
+  test("an inference reader still fences credit updates and exclusive resource admission", async () => {
+    const { sql } = await import("drizzle-orm");
+    const { withOrganizationPolicyReadAdmission, withOrganizationPolicyAdmission } = await import(
+      "../../lib/services/organization-policy-admission"
+    );
+    for (const operation of ["credit", "resource"] as const) {
+      const entered = barrier(),
+        release = barrier();
+      const reader = withOrganizationPolicyReadAdmission(ORG, undefined, async () => {
+        entered.resolve();
+        await release.promise;
+      });
+      let mutation: Promise<unknown> | undefined;
+      try {
+        await entered.promise;
+        let finished = false;
+        mutation = (
+          operation === "credit"
+            ? database.dbWrite.execute(
+                sql`UPDATE organizations SET credit_balance=credit_balance-1 WHERE id=${ORG}`,
+              )
+            : withOrganizationPolicyAdmission(ORG, undefined, async () => "resource admitted")
+        ).then(() => {
+          finished = true;
+        });
+        await waitForOrganizationLock();
+        expect(finished).toBe(false);
+        release.resolve();
+        await reader;
+        await mutation;
+        expect(finished).toBe(true);
+      } finally {
+        release.resolve();
+        await reader;
+        await mutation;
+      }
+    }
+  }, 30000);
   test("a paused old cache publication cannot overtake a newer committed policy warmer", async () => {
     const { cache } = await import("../../lib/cache/client");
     const { isInferenceAdmissionSnapshot } = await import(
