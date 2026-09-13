@@ -48,6 +48,11 @@ import {
   withReviewedFamilyDeletionDatabase,
 } from "../family-workflows/deletion-database-snapshot.js";
 import { exportFamilyWorkspace } from "../family-workflows/workspace-export.js";
+import {
+  ensureFamilyWorkspaceOperationStore,
+  fenceFamilyWorkspace,
+  settleFamilyWorkspaceOperation,
+} from "../family-workflows/workspace-operation-store.js";
 import { SchoolCalendarWorkflow } from "../school/calendar-workflow.js";
 import { executeRawSql, executeRawSqlTx, sqlQuote } from "../sql.js";
 import {
@@ -1584,6 +1589,17 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       expect(
         await runtime.getMemoryById(persisted.documentId as UUID),
       ).not.toBeNull();
+      // Source reads above reconcile the injected lost acknowledgement before
+      // this synthetic test operation is settled. Uninspected claims stay open.
+      const claims = await executeRawSql(
+        runtime,
+        `SELECT operation_id FROM app_lifeops.life_family_workspace_operations WHERE agent_id=${sqlQuote(runtime.agentId)}`,
+      );
+      expect(claims).toHaveLength(1);
+      await settleFamilyWorkspaceOperation(
+        runtime,
+        String(claims[0].operation_id),
+      );
     },
   );
 
@@ -1655,6 +1671,17 @@ describe("parenting-agreement knowledge — real PGlite", () => {
           String(row.id) as UUID,
           { requesterEntityId: runtime.agentId, role: "OWNER" },
         );
+      // The real document delete has now completed the compensation that the
+      // injected outage interrupted; only then may its operation claim settle.
+      const claims = await executeRawSql(
+        runtime,
+        `SELECT operation_id FROM app_lifeops.life_family_workspace_operations WHERE agent_id=${sqlQuote(runtime.agentId)}`,
+      );
+      expect(claims).toHaveLength(1);
+      await settleFamilyWorkspaceOperation(
+        runtime,
+        String(claims[0].operation_id),
+      );
     }
   });
   it("rejects a reviewed deletion after new versions or pins and rolls back failed revocation", async () => {
@@ -2187,5 +2214,191 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     expect(
       (await previewFamilyDeletionDatabase(runtime, SELF_ENTITY_ID)).sha256,
     ).toBe(settled.sha256);
+  });
+  it("keeps a durable claim when settlement fails after a real artifact commit", async () => {
+    const bytes = pdf("committed source with interrupted operation settlement");
+    const key = "operation-settlement-outage";
+    await executeRawSql(
+      runtime,
+      `CREATE FUNCTION app_lifeops.reject_operation_settlement() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced operation settlement outage'; END; $$`,
+    );
+    await executeRawSql(
+      runtime,
+      `CREATE TRIGGER reject_operation_settlement BEFORE DELETE ON app_lifeops.life_family_workspace_operations FOR EACH ROW EXECUTE FUNCTION app_lifeops.reject_operation_settlement()`,
+    );
+    try {
+      const service = createAgreementKnowledgeService(runtime);
+      await expect(
+        service.createAgreementVersion({
+          agreementKey: key,
+          title: "Settlement outage",
+          originalFilename: "settlement.pdf",
+          mimeType: "application/pdf",
+          bytes,
+          uploadedByEntityId: SELF_ENTITY_ID,
+        }),
+      ).rejects.toMatchObject({
+        code: "AGREEMENT_INGESTION_RECONCILIATION_REQUIRED",
+      });
+      const view = (
+        await service.listOwnerAgreements({ ownerEntityId: SELF_ENTITY_ID })
+      ).find((item) => item.artifact.agreementKey === key);
+      if (!view) throw new Error("The fault must follow a persisted artifact");
+      expect(
+        (
+          await service.readOwnerPdf({
+            artifactId: view.artifact.id,
+            ownerEntityId: SELF_ENTITY_ID,
+          })
+        ).bytes,
+      ).toEqual(bytes);
+      expect(
+        await runtime.getMemoryById(view.artifact.documentId as UUID),
+      ).not.toBeNull();
+      const preview = await previewFamilyDeletionDatabase(
+        runtime,
+        SELF_ENTITY_ID,
+      );
+      expect(
+        preview.records.filter((row) => row.kind === "workspaceOperations"),
+      ).toHaveLength(1);
+      let entered = false;
+      await expect(
+        withReviewedFamilyDeletionDatabase(
+          runtime,
+          { ownerEntityId: SELF_ENTITY_ID, expectedSha256: preview.sha256 },
+          async () => {
+            entered = true;
+          },
+        ),
+      ).rejects.toMatchObject({ code: "FAMILY_DELETION_WORK_UNSETTLED" });
+      expect(entered).toBe(false);
+    } finally {
+      await executeRawSql(
+        runtime,
+        "DROP TRIGGER reject_operation_settlement ON app_lifeops.life_family_workspace_operations",
+      );
+      await executeRawSql(
+        runtime,
+        "DROP FUNCTION app_lifeops.reject_operation_settlement()",
+      );
+      const claims = await executeRawSql(
+        runtime,
+        `SELECT operation_id FROM app_lifeops.life_family_workspace_operations WHERE agent_id=${sqlQuote(runtime.agentId)}`,
+      );
+      expect(claims).toHaveLength(1);
+      const operationId = String(claims[0].operation_id);
+      await settleFamilyWorkspaceOperation(runtime, operationId);
+      await expect(
+        settleFamilyWorkspaceOperation(runtime, operationId),
+      ).rejects.toMatchObject({ code: "FAMILY_OPERATION_SETTLEMENT_UNKNOWN" });
+    }
+  });
+
+  it("holds deletion behind real in-flight ingestion and durably fences subsequent uploads", async () => {
+    const storage = runtime.getService<IFileStorageService>(
+      ServiceType.REMOTE_FILES,
+    );
+    if (!storage) throw new Error("Canonical storage is unavailable");
+    const original = storage.storePrivate.bind(storage);
+    let entered!: () => void;
+    let release!: () => void;
+    const enteredStorage = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const resumeStorage = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    storage.storePrivate = async (...args) => {
+      const stored = await original(...args);
+      entered();
+      await resumeStorage;
+      return stored;
+    };
+    const input = {
+      agreementKey: "fenced-ingestion",
+      title: "Fenced upload",
+      originalFilename: "fenced.pdf",
+      mimeType: "application/pdf",
+      bytes: pdf("in-flight source before durable fence"),
+      uploadedByEntityId: SELF_ENTITY_ID,
+    };
+    const uploading =
+      createAgreementKnowledgeService(runtime).createAgreementVersion(input);
+    try {
+      await Promise.race([
+        enteredStorage,
+        uploading.then(() => {
+          throw new Error("Upload bypassed the storage barrier");
+        }),
+      ]);
+      const inFlight = await previewFamilyDeletionDatabase(
+        runtime,
+        SELF_ENTITY_ID,
+      );
+      expect(
+        inFlight.records.some(
+          (row) => row.kind === "workspaceOperations" && row.unsettled,
+        ),
+      ).toBe(true);
+      let fenced = false;
+      await expect(
+        withReviewedFamilyDeletionDatabase(
+          runtime,
+          { ownerEntityId: SELF_ENTITY_ID, expectedSha256: inFlight.sha256 },
+          async (tx) => {
+            fenced = true;
+            await fenceFamilyWorkspace(tx, runtime.agentId);
+          },
+        ),
+      ).rejects.toMatchObject({ code: "FAMILY_DELETION_WORK_UNSETTLED" });
+      expect(fenced).toBe(false);
+    } finally {
+      release();
+      storage.storePrivate = original;
+    }
+    const artifact = await uploading;
+    expect(
+      (
+        await createAgreementKnowledgeService(runtime).readOwnerPdf({
+          artifactId: artifact.id,
+          ownerEntityId: SELF_ENTITY_ID,
+        })
+      ).bytes,
+    ).toEqual(input.bytes);
+    const settled = await previewFamilyDeletionDatabase(
+      runtime,
+      SELF_ENTITY_ID,
+    );
+    expect(
+      settled.records.filter((row) => row.kind === "workspaceOperations"),
+    ).toEqual([]);
+    await withReviewedFamilyDeletionDatabase(
+      runtime,
+      { ownerEntityId: SELF_ENTITY_ID, expectedSha256: settled.sha256 },
+      (tx) => fenceFamilyWorkspace(tx, runtime.agentId),
+    );
+    const media = path.join(mediaStateDir, "media");
+    const files = fs.readdirSync(media).sort();
+    const documents = await executeRawSql(
+      runtime,
+      `SELECT id FROM memories WHERE agent_id=${sqlQuote(runtime.agentId)} AND type IN ('documents','document_fragments') ORDER BY id`,
+    );
+    // Reinitialization must preserve the durable fence rather than reopening it.
+    await ensureFamilyWorkspaceOperationStore(runtime);
+    await expect(
+      createAgreementKnowledgeService(runtime).createAgreementVersion({
+        ...input,
+        agreementKey: "after-fence",
+        bytes: pdf("must not be ingested after deletion begins"),
+      }),
+    ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    expect(fs.readdirSync(media).sort()).toEqual(files);
+    expect(
+      await executeRawSql(
+        runtime,
+        `SELECT id FROM memories WHERE agent_id=${sqlQuote(runtime.agentId)} AND type IN ('documents','document_fragments') ORDER BY id`,
+      ),
+    ).toEqual(documents);
   });
 });

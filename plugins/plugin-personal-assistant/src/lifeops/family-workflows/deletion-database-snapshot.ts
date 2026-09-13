@@ -17,6 +17,9 @@ import {
   withTransaction,
 } from "../sql.js";
 
+import { ensureFamilyWorkflowRunStore } from "./run-store.js";
+import { ensureFamilyWorkspaceOperationStore } from "./workspace-operation-store.js";
+
 interface DependencySource {
   kind: string;
   table: string;
@@ -26,8 +29,6 @@ interface DependencySource {
   unsettledPredicate?: string;
   requires?: readonly string[];
 }
-
-import { ensureFamilyWorkflowRunStore } from "./run-store.js";
 
 const agreementTable = "app_lifeops.life_household_agreement_artifacts";
 const taskTable = "app_scheduling.life_scheduled_tasks";
@@ -39,6 +40,17 @@ const familyDocument = `(metadata->>'source' = 'lifeops.parenting-agreement' OR 
   (SELECT document_id FROM ${agreementTable} WHERE agent_id = $AGENT))`;
 
 const sources: readonly DependencySource[] = [
+  {
+    kind: "workspaceLifecycle",
+    table: "app_lifeops.life_family_workspace_state",
+    fields: ["agent_id", "state", "updated_at"],
+  },
+  {
+    kind: "workspaceOperations",
+    table: "app_lifeops.life_family_workspace_operations",
+    fields: ["operation_id", "kind", "started_at"],
+    unsettledPredicate: "true",
+  },
   {
     kind: "agreements",
     table: agreementTable,
@@ -375,6 +387,7 @@ export async function previewFamilyDeletionDatabase(
   requireOwner(ownerEntityId);
   // An agent that has never run its monthly task still has a deletable workspace.
   await ensureFamilyWorkflowRunStore(runtime);
+  await ensureFamilyWorkspaceOperationStore(runtime);
   return withTransaction(runtime, async (tx) =>
     capture(tx, runtime.agentId, await availability(tx)),
   );

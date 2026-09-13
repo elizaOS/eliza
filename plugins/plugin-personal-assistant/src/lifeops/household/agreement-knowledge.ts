@@ -75,6 +75,11 @@ const agreementExtractionSchema = z.strictObject({
   ),
 });
 
+import {
+  beginFamilyWorkspaceOperation,
+  settleFamilyWorkspaceOperation,
+} from "../family-workflows/workspace-operation-store.js";
+
 export const HOUSEHOLD_AGREEMENT_KNOWLEDGE_SERVICE =
   "lifeops_household_agreement_knowledge";
 
@@ -1020,6 +1025,27 @@ export class AgreementKnowledgeService {
     }
   }
 
+  private async settleIngestionOperation(
+    operationId: string,
+    priorFailure?: unknown,
+  ): Promise<void> {
+    try {
+      await settleFamilyWorkspaceOperation(this.deps.runtime, operationId);
+    } catch (cause) {
+      // error-policy:J2 A failed settlement cannot be reported as a completed upload.
+      const failure = new AgreementKnowledgeError(
+        "The ingestion operation could not be settled. Reconcile its claim before deletion or retry.",
+        "AGREEMENT_INGESTION_RECONCILIATION_REQUIRED",
+        { operationId },
+        priorFailure === undefined
+          ? cause
+          : new AggregateError([priorFailure, cause]),
+      );
+      this.deps.runtime.reportError("AgreementKnowledge.ingestion", failure);
+      throw failure;
+    }
+  }
+
   private async requireArtifact(id: string) {
     const artifact = await this.deps.repository.getArtifact(
       normalizeHouseholdIdentifier(id, "artifactId"),
@@ -1121,6 +1147,10 @@ export class AgreementKnowledgeService {
         },
       );
     }
+    const operationId = await beginFamilyWorkspaceOperation(
+      this.deps.runtime,
+      "agreement-upload",
+    );
     let extracted: PdfCompleteDocument;
     try {
       const ocr = await resolveAgreementOcr();
@@ -1138,6 +1168,8 @@ export class AgreementKnowledgeService {
           : undefined,
       });
     } catch (error) {
+      // error-policy:J2 Extraction has settled without creating persistent sources.
+      await this.settleIngestionOperation(operationId, error);
       throw new AgreementKnowledgeError(
         `The complete parenting-agreement PDF could not be extracted: ${error instanceof Error ? error.message : String(error)}`,
         "AGREEMENT_INVALID_CONTRACT",
@@ -1205,7 +1237,7 @@ export class AgreementKnowledgeService {
         },
       });
       documentId = document.storedDocumentMemoryId;
-      return await this.deps.repository.insertArtifact({
+      const artifact = await this.deps.repository.insertArtifact({
         id: artifactId,
         agentId: this.deps.agentId,
         householdId,
@@ -1224,6 +1256,8 @@ export class AgreementKnowledgeService {
         extractionSha256,
         createdAt: this.now().toISOString(),
       });
+      await this.settleIngestionOperation(operationId);
+      return artifact;
     } catch (error) {
       // error-policy:J2 Roll back only this attempt; preserve committed or uncertain sources.
       if (documentId) {
@@ -1235,7 +1269,12 @@ export class AgreementKnowledgeService {
           const failure = new AgreementKnowledgeError(
             "Upload persistence could not be reconciled. Inspect the artifact before retrying or deleting its sources.",
             "AGREEMENT_INGESTION_RECONCILIATION_REQUIRED",
-            { artifactId, documentId, mediaFileName: stored.fileName },
+            {
+              artifactId,
+              documentId,
+              mediaFileName: stored.fileName,
+              operationId,
+            },
             new AggregateError([error, reconciliationError]),
           );
           this.deps.runtime.reportError(
@@ -1248,7 +1287,12 @@ export class AgreementKnowledgeService {
           const failure = new AgreementKnowledgeError(
             "The agreement was persisted but the upload did not finish normally. Review the existing version before retrying.",
             "AGREEMENT_INGESTION_RECONCILIATION_REQUIRED",
-            { artifactId, documentId, mediaFileName: stored.fileName },
+            {
+              artifactId,
+              documentId,
+              mediaFileName: stored.fileName,
+              operationId,
+            },
             error,
           );
           this.deps.runtime.reportError(
@@ -1279,7 +1323,12 @@ export class AgreementKnowledgeService {
         const failure = new AgreementKnowledgeError(
           "The upload failed and its private-source cleanup is incomplete. Resolve the reported storage failures before retrying.",
           "AGREEMENT_INGESTION_CLEANUP_FAILED",
-          { artifactId, documentId, mediaFileName: stored.fileName },
+          {
+            artifactId,
+            documentId,
+            mediaFileName: stored.fileName,
+            operationId,
+          },
           new AggregateError([
             error,
             ...failures.map((result) => result.reason),
@@ -1288,6 +1337,7 @@ export class AgreementKnowledgeService {
         this.deps.runtime.reportError("AgreementKnowledge.ingestion", failure);
         throw failure;
       }
+      await this.settleIngestionOperation(operationId, error);
       throw error;
     }
   }
