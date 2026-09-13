@@ -1468,9 +1468,30 @@ async function doDeleteByQuery(
       .trim()
       .toLowerCase();
   const distinctTexts = new Set(matched.map(normalize));
+  // One durable fact plus the observation rows that shadow it (the facts
+  // stage's `current` rows for the same claim, including relationship echoes)
+  // is one memory to the user. Live 2026-09-13 "forget my favorite color"
+  // matched "The user's favorite color is teal." and the echo
+  // "user favorite_color teal"; the planner resent the same query and the
+  // turn died on the repeated-failure limit.
+  const factKindOf = (c: MemoryCandidate): "durable" | "current" | null => {
+    if (c.type !== "facts") return null;
+    const meta = metadataRecord(c.memory);
+    if (meta.kind === "current") return "current";
+    if (meta.kind === "durable") return "durable";
+    return meta.source === STAGE_FACT_SOURCE ? "current" : null;
+  };
+  const durableMatches = matched.filter((c) => factKindOf(c) === "durable");
+  const shadowsOfOneDurableFact =
+    durableMatches.length === 1 &&
+    matched.every(
+      (c) =>
+        c.memory.entityId === durableMatches[0]?.memory.entityId &&
+        (factKindOf(c) === "durable" || factKindOf(c) === "current"),
+    );
   // Retrieval matches do not establish that distinct texts express the same
   // claim, even when their records share an author. Let the planner select ids.
-  if (distinctTexts.size > 1) {
+  if (distinctTexts.size > 1 && !shadowsOfOneDurableFact) {
     const candidates = matched.map((c) => toListItem(c.memory, c.type));
     const lines = candidates.map(
       (m) => `- [${m.type}] ${m.id}: ${toWellFormedUnicode(m.text)}`,

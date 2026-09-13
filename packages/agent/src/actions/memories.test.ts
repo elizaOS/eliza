@@ -595,6 +595,73 @@ describe("MEMORY op:delete by query scope", () => {
     });
   });
 
+  it("forgets a durable fact together with the observation rows that shadow it", async () => {
+    const { runtime, rows } = makeRuntime();
+    const durableId = seedFact(rows, {
+      text: "The user's favorite color is teal.",
+      entityId: USER_ID,
+      metadata: {
+        source: "MEMORY",
+        kind: "durable",
+        messageId: "msg-color",
+      },
+    });
+    const echoId = seedFact(rows, {
+      text: "user favorite_color teal",
+      entityId: USER_ID,
+      metadata: {
+        source: "facts_and_relationships_stage",
+        kind: "current",
+        messageId: "msg-color",
+      },
+    });
+    const keptId = seedFact(rows, {
+      text: "The user's favorite tea is assam.",
+      entityId: USER_ID,
+      metadata: { source: "MEMORY", kind: "durable", messageId: "msg-tea" },
+    });
+    const message = makeMessage();
+    message.content.text = "forget my favorite color";
+
+    const result = await runAction(runtime, message, {
+      action: "delete",
+      query: "favorite color",
+      confirm: true,
+    });
+
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(rows.map((row) => row.memory.id)).toEqual([keptId]);
+    expect(rows.map((row) => row.memory.id)).not.toContain(durableId);
+    expect(rows.map((row) => row.memory.id)).not.toContain(echoId);
+  });
+
+  it("still asks for an id when two durable facts match the query", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "The user's favorite color is teal.",
+      entityId: USER_ID,
+      metadata: { source: "MEMORY", kind: "durable", messageId: "msg-a" },
+    });
+    seedFact(rows, {
+      text: "The user's favorite color for cars is black.",
+      entityId: USER_ID,
+      metadata: { source: "MEMORY", kind: "durable", messageId: "msg-b" },
+    });
+    const before = structuredClone(rows);
+    const message = makeMessage();
+    message.content.text = "forget my favorite color";
+
+    const result = await runAction(runtime, message, {
+      action: "delete",
+      query: "favorite color",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({ error: "MEMORY_AMBIGUOUS_QUERY" });
+    expect(rows).toEqual(before);
+  });
+
   it("deletes only the explicit id and preserves unrelated facts from the same source message", async () => {
     const { runtime, rows } = makeRuntime();
     const id = seedFact(rows, {
