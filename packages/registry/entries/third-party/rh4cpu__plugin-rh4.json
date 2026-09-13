@@ -1,0 +1,16 @@
+{
+  "package": "@rh4cpu/plugin-rh4",
+  "repository": "github:giupy997/chipc",
+  "kind": "plugin",
+  "directory": "eliza/plugin-rh4",
+  "description": "Give an agent a real processor: mint, power and read RH-4 chips \u2014 gate-level 8-bit CPUs (2,368 NAND gates) executing on-chain on Robinhood Chain. Each tick engraves one byte of the agent's choosing in the event log: a tamper-proof logbook. Every transaction is simulated before signing; read-only without a key.",
+  "homepage": "https://rh4cpu.tech",
+  "version": "0.1.2",
+  "tags": [
+    "blockchain",
+    "evm",
+    "onchain-cpu",
+    "mining",
+    "robinhood-chain"
+  ]
+}
