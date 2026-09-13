@@ -14,6 +14,7 @@ import {
   type CreateNoteInput,
   NOTES_SCHEMA_VERSION,
   type NotesDocument,
+  STICKY_COLORS,
   type StickyColor,
   type StickyNote,
   type UpdateNoteInput,
@@ -150,14 +151,19 @@ export function parseEntityId(value: unknown, field = "id"): string {
   return id;
 }
 
+export function isStickyColor(value: unknown): value is StickyColor {
+  return (
+    typeof value === "string" &&
+    (STICKY_COLORS as readonly string[]).includes(value)
+  );
+}
+
 export function parseStickyColor(value: unknown, field = "color"): StickyColor {
-  if (
-    value === "yellow" ||
-    value === "green" ||
-    value === "rose" ||
-    value === "slate"
-  ) {
-    return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if ((STICKY_COLORS as readonly string[]).includes(normalized)) {
+      return normalized as StickyColor;
+    }
   }
   throw validationError(
     `${field} must be yellow, green, rose, or slate.`,
