@@ -54,6 +54,7 @@ import {
 } from "../bridge";
 import { isAppModeHost } from "../cloud/app-mode/app-mode";
 import { publishCloudAuthComplete } from "../cloud/auth/cloud-auth-complete-signal";
+import { sanitizeLoginReturnTo } from "../cloud/public-pages/lib/login-return-to";
 import { signOutFromSsoBridgedHost } from "../cloud/sso-bridge/sso-bridge";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { dispatchElizaCloudStatusUpdated } from "../events";
@@ -228,6 +229,7 @@ function clearCloudLoginReturnParams(): void {
     for (const key of [
       ELIZA_CLOUD_LOGIN_COMPLETE_PARAM,
       ELIZA_CLOUD_LOGIN_SESSION_PARAM,
+      "elizaCloudLoginReturnTo",
     ]) {
       if (url.searchParams.has(key)) {
         url.searchParams.delete(key);
@@ -1590,6 +1592,15 @@ export function useCloudState({
       clearCloudLoginReturnParams();
       return;
     }
+    const requestedReturn = sanitizeLoginReturnTo(
+      new URL(window.location.href).searchParams.get("elizaCloudLoginReturnTo"),
+    );
+    const accountReturn =
+      isLoopbackStagingStewardDevelopment() &&
+      requestedReturn &&
+      /^\/cloud(?:\/|[?#]|$)/.test(requestedReturn)
+        ? requestedReturn
+        : null;
     let cancelled = false;
     const sleep = (ms: number) =>
       new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -1645,6 +1656,7 @@ export function useCloudState({
             closeActiveCloudLoginPopup();
             closeReturnedAuthTabIfOpenerStillExists();
             void closeExternalBrowser();
+            if (accountReturn) window.location.replace(accountReturn);
             return;
           }
 
