@@ -81,6 +81,8 @@ function statusFor(error: AgreementKnowledgeError): number {
     case "AGREEMENT_OBLIGATION_CONFLICT":
     case "AGREEMENT_DUPLICATE_CONTENT":
       return 409;
+    case "AGREEMENT_INGESTION_RECONCILIATION_REQUIRED":
+    case "AGREEMENT_INGESTION_CLEANUP_FAILED":
     case "AGREEMENT_STORAGE_UNAVAILABLE":
       return 503;
     default:
