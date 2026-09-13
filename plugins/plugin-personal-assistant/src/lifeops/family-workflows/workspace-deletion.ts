@@ -21,29 +21,18 @@ import {
   withTransaction,
 } from "../sql.js";
 import {
+  familyDeletionJobSchema as deletionJob,
+  type FamilyDeletionJob,
+  familyBackupRetentionSchema as retention,
+} from "./deletion-contracts.js";
+import {
   purgeReviewedFamilyDatabaseRows,
   withReviewedFamilyDeletionDatabase,
 } from "./deletion-database-snapshot.js";
 import { fenceFamilyWorkspace } from "./workspace-operation-store.js";
 
-const sha256 = z.string().regex(/^[a-f0-9]{64}$/);
-const retention = z.enum(["immediate", "7-days", "30-days"]);
-const deletionJob = z.strictObject({
-  id: z.string().uuid(),
-  agentId: z.string().min(1),
-  reviewedSha256: sha256,
-  startedAt: z.string().datetime(),
-  state: z.enum(["purge_pending", "backup_pending"]),
-  backupRetention: retention,
-  backupGeneration: z.string().uuid(),
-  backupOperationId: z.string().min(1),
-  files: z.array(z.strictObject({ fileName: z.string().min(1), sha256 })),
-  databaseRowsRemoved: z.number().int().nonnegative(),
-  retained: z.array(
-    z.strictObject({ kind: z.string(), count: z.number().int().positive() }),
-  ),
-});
-export type FamilyDeletionJob = z.infer<typeof deletionJob>;
+export type { FamilyDeletionJob } from "./deletion-contracts.js";
+
 const table = "app_lifeops.life_family_workspace_deletions";
 
 function requireOwner(ownerEntityId: string) {
@@ -129,7 +118,9 @@ export async function beginFamilyWorkspaceDeletion(
                   .string()
                   .min(1)
                   .parse(record.identity.media_file_name),
-                sha256: sha256.parse(record.identity.content_sha256),
+                sha256: deletionJob.shape.reviewedSha256.parse(
+                  record.identity.content_sha256,
+                ),
               }));
             if (files.length) {
               const documentIds = snapshot.records
@@ -219,10 +210,7 @@ export async function purgeFamilyWorkspaceFiles(
         { code: "FAMILY_DELETION_BACKUP_MISMATCH" },
       );
     }
-    const updated = await purgeFamilyWorkspaceFilesLocked(
-      runtime,
-      ownerEntityId,
-    );
+    const updated = await purgeFamilyWorkspaceFilesLocked(runtime);
     await authority.completeRetirement(
       runtime.agentId,
       job.backupOperationId,
@@ -234,7 +222,6 @@ export async function purgeFamilyWorkspaceFiles(
 
 async function purgeFamilyWorkspaceFilesLocked(
   runtime: IAgentRuntime,
-  ownerEntityId: string,
 ): Promise<FamilyDeletionJob> {
   const storage = runtime.getService<IFileStorageService>(
     ServiceType.REMOTE_FILES,
