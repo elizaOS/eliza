@@ -99,6 +99,65 @@ describe("advancedContactsProvider", () => {
 		);
 	});
 
+	it("bounds concurrent entity lookups while still naming every contact (#30896)", async () => {
+		const contactCount = 64;
+		const mockContacts = Array.from({ length: contactCount }, (_unused, i) => ({
+			entityId: `entity-${i}` as UUID,
+			categories: [i % 2 === 0 ? "friend" : "colleague"],
+			tags: [],
+			customFields: {},
+			preferences: {},
+			lastModified: 1000 + i,
+		}));
+		const relationshipsService = {
+			searchContacts: vi.fn().mockResolvedValue(mockContacts),
+		};
+
+		let inFlight = 0;
+		let peakInFlight = 0;
+		const releases: Array<() => void> = [];
+		const runtime = {
+			getService: vi.fn().mockReturnValue(relationshipsService),
+			getEntityById: vi.fn(async (id: string) => {
+				inFlight += 1;
+				peakInFlight = Math.max(peakInFlight, inFlight);
+				await new Promise<void>((resolve) => {
+					releases.push(resolve);
+				});
+				inFlight -= 1;
+				return { names: [`Name ${id}`] };
+			}),
+			logger: { warn: vi.fn(), error: vi.fn() },
+			reportError: vi.fn(),
+		} as unknown as IAgentRuntime;
+
+		const pending = advancedContactsProvider.get(
+			runtime,
+			dummyMessage,
+			dummyState,
+		);
+
+		// Drain the gate until every lookup has been admitted and released.
+		let released = 0;
+		while (released < contactCount) {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			while (releases.length > 0) {
+				releases.shift()?.();
+				released += 1;
+			}
+		}
+		const result = await pending;
+
+		expect(runtime.getEntityById).toHaveBeenCalledTimes(contactCount);
+		expect(peakInFlight).toBe(8);
+		expect(result.values?.contactCount).toBe(contactCount);
+		expect(result.values?.friend).toBe(contactCount / 2);
+		expect(result.values?.colleague).toBe(contactCount / 2);
+		for (let i = 0; i < contactCount; i += 1) {
+			expect(result.text).toContain(`Name entity-${i}`);
+		}
+	});
+
 	it("reports error and degrades cleanly when searchContacts throws", async () => {
 		const relationshipsService = {
 			searchContacts: vi.fn().mockRejectedValue(new Error("Database offline")),

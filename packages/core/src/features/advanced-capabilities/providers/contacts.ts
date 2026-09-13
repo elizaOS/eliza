@@ -14,9 +14,18 @@ import type {
 	ProviderResult,
 	State,
 } from "../../../types/index.ts";
+import { mapWithConcurrency } from "../../../utils/bounded-map.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("CONTACTS");
+
+/**
+ * Upper bound on simultaneous entity lookups while resolving contact names.
+ * The contact list is the user's whole relationship set, so resolving every
+ * contact through one `Promise.all` would admit as many concurrent database
+ * reads as there are contacts (#30896).
+ */
+const MAX_CONCURRENT_ENTITY_LOOKUPS = 8;
 
 export const advancedContactsProvider: Provider = {
 	name: spec.name,
@@ -55,8 +64,10 @@ export const advancedContactsProvider: Provider = {
 			}
 
 			// Get entity details and categorize
-			const contactDetails = await Promise.all(
-				contacts.map(async (contact) => {
+			const contactDetails = await mapWithConcurrency(
+				contacts,
+				MAX_CONCURRENT_ENTITY_LOOKUPS,
+				async (contact) => {
 					const entity = await runtime.getEntityById(contact.entityId);
 					const displayName =
 						typeof contact.customFields.displayName === "string"
@@ -70,7 +81,7 @@ export const advancedContactsProvider: Provider = {
 						preferences: contact.preferences,
 						lastModified: contact.lastModified,
 					};
-				}),
+				},
 			);
 
 			// Group by category
