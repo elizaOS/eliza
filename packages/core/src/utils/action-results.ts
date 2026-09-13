@@ -65,10 +65,17 @@ export function estimateActionResultTokens(text: string): number {
 }
 
 export function getActionResultActionName(result: ActionResult): string {
-	const actionNameValue = result.data?.actionName;
-	return typeof actionNameValue === "string" && actionNameValue.trim()
-		? actionNameValue.trim()
-		: "Unknown Action";
+	const record = result as unknown as Record<string, unknown>;
+	const candidates = [
+		result.data?.actionName,
+		result.data?.action,
+		record.actionName,
+		record.action,
+	];
+	const found = candidates.find(
+		(val): val is string => typeof val === "string" && val.trim().length > 0,
+	);
+	return found ? found.trim() : "Unknown Action";
 }
 
 export function stringifyActionResultError(
