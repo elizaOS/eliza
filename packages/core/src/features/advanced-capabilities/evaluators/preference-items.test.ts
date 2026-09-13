@@ -10,6 +10,7 @@
  * (in-memory FakeRuntime).
  */
 import { describe, expect, it, vi } from "vitest";
+import { validateSchema } from "../../../actions/validate-tool-args.ts";
 import { logger } from "../../../logger.ts";
 import type {
 	EvaluatorProcessorContext,
@@ -877,4 +878,51 @@ describe("preferenceEvaluator gates and prompt", () => {
 		expect(prompt).not.toContain("add_directive");
 		expect(prompt).toContain("add_preference_fact");
 	});
+});
+
+describe("preference wire operation requirements", () => {
+	const cases = [
+		{
+			op: {
+				op: "set_trait",
+				trait: "verbosity",
+				value: "terse",
+				confidence: 0.9,
+			},
+			required: ["trait", "value", "confidence"],
+		},
+		{
+			op: { op: "add_directive", text: "No emojis", confidence: 0.9 },
+			required: ["text", "confidence"],
+		},
+		{
+			op: { op: "add_preference_fact", claim: "Prefers morning check-ins" },
+			required: ["claim"],
+		},
+		{ op: { op: "retract_trait", trait: "verbosity" }, required: ["trait"] },
+	];
+	for (const entry of cases) {
+		it(`requires parser fields for ${entry.op.op} before dispatch`, () => {
+			const schema = preferenceEvaluator.schema;
+			if (!schema) throw new Error("Missing preference schema");
+			const output = { ops: [entry.op] };
+			const errors: string[] = [];
+			validateSchema(schema, output, "", errors);
+			expect(errors).toEqual([]);
+			expect(
+				parsePreferenceOutputTolerant(output, { requireComplete: true }),
+			).not.toBeNull();
+			for (const field of entry.required) {
+				const incomplete: Record<string, unknown> = { ...entry.op };
+				delete incomplete[field];
+				const invalid = { ops: [incomplete] };
+				const missing: string[] = [];
+				validateSchema(schema, invalid, "", missing);
+				expect(missing.length).toBeGreaterThan(0);
+				expect(
+					parsePreferenceOutputTolerant(invalid, { requireComplete: true }),
+				).toBeNull();
+			}
+		});
+	}
 });

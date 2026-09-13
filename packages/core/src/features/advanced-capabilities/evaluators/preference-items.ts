@@ -105,51 +105,80 @@ import {
 // via ranked retrieval.
 const SLOT_CONFIDENCE_THRESHOLD = 0.8;
 
+const preferenceEvidenceProperties: Record<string, JSONSchema> = {
+	sourceMessageIds: { type: "array", items: { type: "string" } },
+	evidence: { type: "string" },
+};
+
+const preferenceConfidenceSchema: JSONSchema = {
+	type: "number",
+	description: "Honest confidence from 0 to 1.",
+};
+
 const preferenceOpsSchema: JSONSchema = {
 	type: "object",
 	properties: {
 		ops: {
 			type: "array",
 			items: {
-				type: "object",
-				properties: {
-					op: {
-						type: "string",
-						enum: [
-							"set_trait",
-							"add_directive",
-							"add_preference_fact",
-							"retract_trait",
-						],
+				// Each operation advertises the fields its parser requires. A flat
+				// optional-field object permits outputs that repeatedly fail parsing.
+				anyOf: [
+					{
+						type: "object",
+						properties: {
+							...preferenceEvidenceProperties,
+							op: { type: "string", enum: ["set_trait"] },
+							trait: { type: "string", enum: [...TRAIT_VALUES] },
+							// Trait/value pairing remains validated by the parser.
+							value: {
+								type: "string",
+								enum: [
+									...VERBOSITY_VALUES,
+									...TONE_VALUES,
+									...FORMALITY_VALUES,
+								],
+							},
+							confidence: preferenceConfidenceSchema,
+						},
+						required: ["op", "trait", "value", "confidence"],
+						additionalProperties: false,
 					},
-					trait: { type: "string", enum: [...TRAIT_VALUES] },
-					// One flat enum across all three traits: a per-trait value union
-					// is not expressible under the strict structured-output invariants
-					// (see reflection-items.ts header). Trait/value pairing is
-					// validated in parsePreferenceOutputTolerant instead.
-					value: {
-						type: "string",
-						enum: [...VERBOSITY_VALUES, ...TONE_VALUES, ...FORMALITY_VALUES],
+					{
+						type: "object",
+						properties: {
+							...preferenceEvidenceProperties,
+							op: { type: "string", enum: ["add_directive"] },
+							text: { type: "string" },
+							confidence: preferenceConfidenceSchema,
+						},
+						required: ["op", "text", "confidence"],
+						additionalProperties: false,
 					},
-					confidence: {
-						type: "number",
-						description:
-							"Required for set_trait and add_directive; honest confidence from 0 to 1.",
+					{
+						type: "object",
+						properties: {
+							...preferenceEvidenceProperties,
+							op: { type: "string", enum: ["add_preference_fact"] },
+							claim: { type: "string" },
+							keywords: { type: "array", items: { type: "string" } },
+							confidence: preferenceConfidenceSchema,
+						},
+						required: ["op", "claim"],
+						additionalProperties: false,
 					},
-					sourceMessageIds: { type: "array", items: { type: "string" } },
-					evidence: { type: "string" },
-					text: { type: "string" },
-					claim: { type: "string" },
-					// No maxItems: strict structured-output validators reject array
-					// length constraints — the 16-keyword cap is enforced in code.
-					keywords: {
-						type: "array",
-						items: { type: "string" },
+					{
+						type: "object",
+						properties: {
+							...preferenceEvidenceProperties,
+							op: { type: "string", enum: ["retract_trait"] },
+							trait: { type: "string", enum: [...TRAIT_VALUES] },
+							reason: { type: "string" },
+						},
+						required: ["op", "trait"],
+						additionalProperties: false,
 					},
-					reason: { type: "string" },
-				},
-				required: ["op"],
-				additionalProperties: false,
+				],
 			},
 		},
 	},
