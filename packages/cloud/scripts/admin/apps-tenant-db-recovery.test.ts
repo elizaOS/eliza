@@ -7,7 +7,7 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import {
   mkdirSync,
   mkdtempSync,
@@ -18,16 +18,19 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  assertChecksumCoverage,
   assertDirectTarget,
   assertNoGlobalRoleCollisions,
-  assertRestoreDrillExecutionEnabled,
+  assertProbesCoverArchiveRoles,
   assertRestoreTargetIdentity,
+  buildClaimExclusivitySql,
   buildIsolationChecks,
   evaluateObjectives,
   executeDrill,
-  guardedConsumeTargetIdentitySql,
+  guardedConsumeAuthoritySql,
   guardPsqlScript,
   isCrossTenantDenial,
+  makeGlobalsIdempotent,
   parseBackupManifest,
   parseBackupSidecar,
   parseChecksumFile,
@@ -43,6 +46,14 @@ import {
   targetDatabaseDsn,
   verifyChecksums,
 } from "./apps-tenant-db-recovery";
+import {
+  assertRecoveryPointConsistency,
+  MAX_CAPABILITY_TTL_MS,
+  mintRestoreCapability,
+  parseRestoreCapability,
+  serializeRestoreCapability,
+  verifyRestoreCapability,
+} from "./restore-capability";
 
 const SIDECAR = {
   schema_version: 1,
@@ -55,13 +66,13 @@ const SIDECAR = {
   cipher: "aes-256-cbc-pbkdf2-210000",
 };
 
-describe("restore drill containment", () => {
-  test("refuses execution before any destructive collaborator can run", () => {
+describe("restore drill authority gating", () => {
+  test("execution requires a capability before any destructive collaborator runs", () => {
+    // No signing key in the environment: the drill refuses before touching
+    // psql or reading any file — the #23482 unconditional disable is gone;
+    // authority is now capability-gated instead of disabled outright.
     expect(() => executeDrill({} as never)).toThrow(
-      expect.objectContaining({ code: "RESTORE_DRILL_DISABLED" }),
-    );
-    expect(() => assertRestoreDrillExecutionEnabled()).toThrow(
-      RecoveryDrillError,
+      expect.objectContaining({ code: "MISSING_SIGNING_KEY" }),
     );
   });
 });
@@ -198,29 +209,158 @@ describe("restore target authority", () => {
     ).not.toThrow();
   });
 
+  test("archive-owned roles do not collide on an idempotent retry", () => {
+    // Remnants of a failed run of the SAME drill (twin settings match the
+    // capability) must not block the retry. Roles the archive does NOT
+    // define are irrelevant — the drill never creates them, so their
+    // presence on the target cannot collide with the restore.
+    const globals = ["CREATE ROLE tenant_a;", ""].join("\n");
+    expect(() =>
+      assertNoGlobalRoleCollisions(globals, ["tenant_a"], ["tenant_a"]),
+    ).not.toThrow();
+    expect(() =>
+      assertNoGlobalRoleCollisions(
+        globals,
+        ["tenant_a", "tenant_b"],
+        ["tenant_a"],
+      ),
+    ).not.toThrow();
+    // A pre-existing role that the archive itself defines and that is NOT
+    // exempted as archive-owned still refuses (direct-call contract).
+    expect(() =>
+      assertNoGlobalRoleCollisions(
+        ["CREATE ROLE postgres;", ""].join("\n"),
+        ["postgres"],
+        ["tenant_a"],
+      ),
+    ).toThrow(expect.objectContaining({ code: "REFUSED_NONEMPTY_TARGET" }));
+  });
+
+  test("makeGlobalsIdempotent rewrites CREATE ROLE into conditional DO blocks", () => {
+    const globals = [
+      "CREATE ROLE tenant_a;",
+      "ALTER ROLE tenant_a WITH LOGIN;",
+      "CREATE ROLE tenant_b;",
+      "",
+    ].join("\n");
+    const idempotent = makeGlobalsIdempotent(globals);
+    expect(idempotent).toContain("IF NOT EXISTS");
+    expect(idempotent).not.toMatch(/(^|\n)CREATE ROLE tenant_a;/);
+    expect(idempotent).not.toMatch(/(^|\n)CREATE ROLE tenant_b;/);
+    // ALTER ROLE is already idempotent and must pass through untouched.
+    expect(idempotent).toContain("ALTER ROLE tenant_a WITH LOGIN;");
+    // Role names arrive as quoted literals inside the DO block.
+    expect(idempotent).toContain("rolname = 'tenant_a'");
+  });
+
   test("parses the server role inventory and refuses malformed output", () => {
     expect(
       parseRestoreTargetAuthority(
         JSON.stringify({
           target_id: targetId,
+          capability: "v1.eliza.restore|...",
           existing_roles: ["restore_admin"],
         }),
       ),
-    ).toEqual({ targetId, existingRoles: ["restore_admin"] });
+    ).toEqual({
+      targetId,
+      capability: "v1.eliza.restore|...",
+      existingRoles: ["restore_admin"],
+    });
     expect(() => parseRestoreTargetAuthority("not-json")).toThrow(
       RecoveryDrillError,
     );
+    // Missing the capability twin is malformed: authority is incomplete.
+    expect(() =>
+      parseRestoreTargetAuthority(
+        JSON.stringify({ target_id: targetId, existing_roles: [] }),
+      ),
+    ).toThrow(RecoveryDrillError);
   });
 
   test("guards one exact session before any supplied SQL", () => {
-    const guarded = guardPsqlScript("CREATE TABLE data(id int);\n");
+    const expiresAt = Date.now() + 3_600_000;
+    const guarded = guardPsqlScript("CREATE TABLE data(id int);\n", expiresAt);
     expect(guarded).not.toContain("\\quit");
     expect(guarded).toContain(
-      "RAISE EXCEPTION 'restore target identity mismatch'",
+      "RAISE EXCEPTION 'restore target authority mismatch'",
     );
     expect(guarded.indexOf("current_setting")).toBeLessThan(
       guarded.indexOf("CREATE TABLE"),
     );
+    // Both twin settings are checked: target id AND capability envelope.
+    expect(guarded).toContain("eliza.restore_target_id");
+    expect(guarded).toContain("eliza.restore_capability");
+    // The server-clock expiry check is embedded in the same guard block,
+    // before any supplied SQL, and exactly once (#23453 review r8).
+    expect(guarded).toContain(
+      "restore capability has expired on the server clock",
+    );
+    expect(guarded.indexOf("eliza_capability_live")).toBeLessThan(
+      guarded.indexOf("CREATE TABLE"),
+    );
+    expect(guarded.split("eliza_capability_live").length - 1).toBe(2);
+  });
+
+  test("every guarded script class carries the expiry guard exactly once", () => {
+    // #23453 review r8: guard composition is construction-only — every
+    // destructive session's script embeds the twin-settings + expiry guards
+    // exactly once. A double-wrapped script (the old guardedPsqlFile
+    // re-wrap) or an unwrapped one is detectable by these counts.
+    const expiresAt = Date.now() + 3_600_000;
+    const minted = mintRestoreCapability({
+      signingKey: CAP_KEY,
+      targetId: CAP_TARGET_ID,
+      archiveSha256: CAP_ARCHIVE_SHA,
+      expiresAtEpochMs: expiresAt,
+    });
+    const scripts: Record<string, string> = {
+      claim: buildClaimExclusivitySql(minted),
+      globals: guardPsqlScript(
+        makeGlobalsIdempotent("CREATE ROLE tenant_a;\n"),
+        expiresAt,
+      ),
+      consume: guardedConsumeAuthoritySql(expiresAt),
+      drop: guardPsqlScript(
+        ['DROP DATABASE IF EXISTS "db";', 'CREATE DATABASE "db";', ""].join(
+          "\n",
+        ),
+        expiresAt,
+      ),
+      // The two remaining session classes are guarded inline in executeDrill;
+      // representative raw SQL pins their composition through the same
+      // guardPsqlScript path (pg_restore output / ownership handoff).
+      restore: guardPsqlScript("-- pg_restore extracted SQL\n", expiresAt),
+      handoff: guardPsqlScript(
+        'ALTER DATABASE "db" OWNER TO "tenant_a";\n',
+        expiresAt,
+      ),
+    };
+    const bodyMarkers: Record<string, string> = {
+      claim: "pg_advisory_xact_lock",
+      globals: "IF NOT EXISTS",
+      consume: "ALTER SYSTEM RESET",
+      drop: "DROP DATABASE",
+      restore: "pg_restore extracted",
+      handoff: "OWNER TO",
+    };
+    for (const [name, script] of Object.entries(scripts)) {
+      // Twin-settings guard once: one gset assignment + one \if read.
+      expect(script.split("eliza_restore_target_ok").length - 1, name).toBe(2);
+      // Expiry guard once: the variable is set and read inside one block.
+      expect(script.split("eliza_capability_live").length - 1, name).toBe(2);
+      // Guard block precedes the class's own first body statement.
+      const guardEnd = script.indexOf("restore capability has expired");
+      const bodyStart = script.indexOf(bodyMarkers[name]);
+      expect(guardEnd, name).toBeGreaterThanOrEqual(0);
+      expect(bodyStart, name).toBeGreaterThanOrEqual(0);
+      expect(guardEnd, name).toBeLessThan(bodyStart);
+    }
+    // Double-wrapping is detectable: guardPsqlScript applied to an already
+    // guarded script doubles both markers.
+    const doubleWrapped = guardPsqlScript(scripts.globals, expiresAt);
+    expect(doubleWrapped.split("eliza_restore_target_ok").length - 1).toBe(4);
+    expect(doubleWrapped.split("eliza_capability_live").length - 1).toBe(4);
   });
 
   test("quotes tenant identifiers and targets the restored database", () => {
@@ -233,12 +373,14 @@ describe("restore target authority", () => {
     ).toBe("postgresql://restore:pw@127.0.0.1:5433/tenant%2Fa%20b");
   });
 
-  test("consuming the nonce re-verifies inside the same guard, then resets and reloads", () => {
-    const script = guardedConsumeTargetIdentitySql();
+  test("consuming the authority re-verifies inside the same guard, then resets and reloads", () => {
+    const expiresAt = Date.now() + 3_600_000;
+    const script = guardedConsumeAuthoritySql(expiresAt);
     // Same guard as every other destructive statement — a mismatched setting
     // raises before ALTER SYSTEM is ever reached.
-    expect(script.startsWith(guardPsqlScript(""))).toBe(true);
+    expect(script.startsWith(guardPsqlScript("", expiresAt))).toBe(true);
     expect(script).toContain("ALTER SYSTEM RESET eliza.restore_target_id;");
+    expect(script).toContain("ALTER SYSTEM RESET eliza.restore_capability;");
     expect(script).toContain("SELECT pg_reload_conf();");
     expect(script.indexOf("current_setting")).toBeLessThan(
       script.indexOf("ALTER SYSTEM RESET"),
@@ -446,16 +588,25 @@ describe("root-sourced backup environment", () => {
 });
 
 describe("buildIsolationChecks", () => {
-  test("plans one own-connect plus pairwise cross-reject probes", () => {
+  test("plans a linear proof: one own-connect per tenant plus one cross-reject sample", () => {
     const checks = buildIsolationChecks([
       { dumpId: "a".repeat(12), databaseName: "t1" },
       { dumpId: "b".repeat(12), databaseName: "t2" },
       { dumpId: "c".repeat(12), databaseName: "t3" },
     ]);
     expect(checks.filter((c) => c.kind === "own-connect")).toHaveLength(3);
-    expect(checks.filter((c) => c.kind === "cross-reject")).toHaveLength(6);
+    expect(checks.filter((c) => c.kind === "cross-reject")).toHaveLength(1);
+    expect(checks).toHaveLength(4); // linear, not n*(n-1)+n
     // Reports reference dump ids only — tenant names never appear in checks.
     expect(JSON.stringify(checks)).not.toContain("t1");
+  });
+
+  test("degrades to own-connect-only when a single tenant is restored", () => {
+    const checks = buildIsolationChecks([
+      { dumpId: "a".repeat(12), databaseName: "t1" },
+    ]);
+    expect(checks).toHaveLength(1);
+    expect(checks[0].kind).toBe("own-connect");
   });
 });
 
@@ -513,9 +664,11 @@ describe("parseCliArgs", () => {
       "--set-dir",
       "/tmp/set",
       "--target-dsn",
-      "postgresql://p:x@127.0.0.1:5433/postgres",
+      "postgresql://p:***@127.0.0.1:5433/postgres",
       "--target-id",
       "drill-11111111-2222-4333-8444-555555555555",
+      "--capability-file",
+      "/tmp/cap.txt",
       "--pooler-endpoint",
       "127.0.0.1:6432",
       "--tenant-probes-file",
@@ -526,6 +679,7 @@ describe("parseCliArgs", () => {
     expect(options.rpoHours).toBe(26);
     expect(options.rtoMinutes).toBe(60);
     expect(options.output).toBeUndefined();
+    expect(options.capabilityFile).toBe("/tmp/cap.txt");
   });
 
   test("rejects missing required flags and non-positive objectives", () => {
@@ -544,5 +698,248 @@ describe("parseCliArgs", () => {
         "0",
       ]),
     ).toThrow(expect.objectContaining({ code: "INVALID_ARGS" }));
+  });
+});
+
+const CAP_TARGET_ID = "drill-11111111-2222-4333-8444-555555555555";
+const CAP_ARCHIVE_SHA = "b".repeat(64);
+const CAP_KEY = "test-signing-key";
+
+function wellFormedCapabilityEnvelope(
+  issuedAtEpochMs: number,
+  expiresAtEpochMs: number,
+  signatureHex: string,
+): string {
+  return `v1.eliza.restore|${CAP_TARGET_ID}|${CAP_ARCHIVE_SHA}|${issuedAtEpochMs}|${expiresAtEpochMs}|${signatureHex}`;
+}
+
+describe("restore capability (#23453)", () => {
+  test("round-trips mint -> serialize -> parse -> verify", () => {
+    const minted = mintRestoreCapability({
+      signingKey: CAP_KEY,
+      targetId: CAP_TARGET_ID,
+      archiveSha256: CAP_ARCHIVE_SHA,
+      expiresAtEpochMs: Date.now() + 3_600_000,
+    });
+    const parsed = parseRestoreCapability(serializeRestoreCapability(minted));
+    expect(parsed.targetId).toBe(CAP_TARGET_ID);
+    expect(parsed.archiveSha256).toBe(CAP_ARCHIVE_SHA);
+    expect(() =>
+      verifyRestoreCapability(parsed, CAP_KEY, Date.now()),
+    ).not.toThrow();
+  });
+
+  test("refuses a tampered signature (substitution)", () => {
+    const minted = mintRestoreCapability({
+      signingKey: CAP_KEY,
+      targetId: CAP_TARGET_ID,
+      archiveSha256: CAP_ARCHIVE_SHA,
+      expiresAtEpochMs: Date.now() + 3_600_000,
+    });
+    const flipped =
+      ("0" === minted.signature.slice(0, 1) ? "1" : "0") +
+      minted.signature.slice(1);
+    const tampered = parseRestoreCapability(
+      wellFormedCapabilityEnvelope(
+        minted.issuedAtEpochMs,
+        minted.expiresAtEpochMs,
+        flipped,
+      ),
+    );
+    expect(() =>
+      verifyRestoreCapability(tampered, CAP_KEY, Date.now()),
+    ).toThrow(
+      expect.objectContaining({ code: "REFUSED_CAPABILITY_SIGNATURE" }),
+    );
+  });
+
+  test("refuses an expired capability and one with a beyond-ceiling TTL", () => {
+    const minted = mintRestoreCapability({
+      signingKey: CAP_KEY,
+      targetId: CAP_TARGET_ID,
+      archiveSha256: CAP_ARCHIVE_SHA,
+      expiresAtEpochMs: Date.now() + 60_000,
+    });
+    expect(() =>
+      verifyRestoreCapability(minted, CAP_KEY, Date.now() + 120_000),
+    ).toThrow(expect.objectContaining({ code: "CAPABILITY_EXPIRED" }));
+    expect(() =>
+      mintRestoreCapability({
+        signingKey: CAP_KEY,
+        targetId: CAP_TARGET_ID,
+        archiveSha256: CAP_ARCHIVE_SHA,
+        expiresAtEpochMs: Date.now() + MAX_CAPABILITY_TTL_MS + 60_000,
+      }),
+    ).toThrow(expect.objectContaining({ code: "INVALID_CAPABILITY" }));
+  });
+
+  test("refuses a re-signed capability binding a different archive (cross-key substitution)", () => {
+    // Attacker with their own key pins a DIFFERENT archive to our target id.
+    const attacker = mintRestoreCapability({
+      signingKey: "attacker-key",
+      targetId: CAP_TARGET_ID,
+      archiveSha256: "c".repeat(64),
+      expiresAtEpochMs: Date.now() + 3_600_000,
+    });
+    expect(() =>
+      verifyRestoreCapability(attacker, CAP_KEY, Date.now()),
+    ).toThrow(
+      expect.objectContaining({ code: "REFUSED_CAPABILITY_SIGNATURE" }),
+    );
+  });
+
+  test("rejects malformed envelopes outright", () => {
+    expect(() => parseRestoreCapability("garbage")).toThrow(
+      expect.objectContaining({ code: "INVALID_CAPABILITY" }),
+    );
+    expect(() =>
+      parseRestoreCapability(
+        `v1.eliza.restore|not-a-target|aa|1|1|${"0".repeat(128)}`,
+      ),
+    ).toThrow(expect.objectContaining({ code: "INVALID_CAPABILITY" }));
+  });
+
+  test("refuses a signed capability whose lifetime exceeds the ceiling", () => {
+    // Even a correctly-signed grant cannot claim a span beyond the TTL
+    // ceiling: the ceiling is proven from the signed bytes.
+    const minted = mintRestoreCapability({
+      signingKey: CAP_KEY,
+      targetId: CAP_TARGET_ID,
+      archiveSha256: CAP_ARCHIVE_SHA,
+      expiresAtEpochMs: Date.now() + 60_000,
+    });
+    const stretched = {
+      ...minted,
+      expiresAtEpochMs: minted.issuedAtEpochMs + MAX_CAPABILITY_TTL_MS + 1,
+      payload: `v1.eliza.restore|${CAP_TARGET_ID}|${CAP_ARCHIVE_SHA}|${minted.issuedAtEpochMs}|${minted.issuedAtEpochMs + MAX_CAPABILITY_TTL_MS + 1}`,
+    };
+    // Re-sign so only the lifetime check can refuse it.
+    stretched.signature = createHmac("sha256", CAP_KEY)
+      .update(stretched.payload, "utf-8")
+      .digest("hex");
+    expect(() =>
+      verifyRestoreCapability(stretched, CAP_KEY, Date.now()),
+    ).toThrow(expect.objectContaining({ code: "INVALID_CAPABILITY" }));
+  });
+
+  test("refuses a capability whose issuedAt is in the future", () => {
+    const minted = mintRestoreCapability({
+      signingKey: CAP_KEY,
+      targetId: CAP_TARGET_ID,
+      archiveSha256: CAP_ARCHIVE_SHA,
+      expiresAtEpochMs: Date.now() + 60_000,
+    });
+    expect(() =>
+      verifyRestoreCapability(
+        minted,
+        CAP_KEY,
+        minted.issuedAtEpochMs - 120_000,
+      ),
+    ).toThrow(expect.objectContaining({ code: "INVALID_CAPABILITY" }));
+  });
+});
+
+describe("authenticated recovery point (#23453)", () => {
+  test("accepts a sidecar/manifest pair within the freshness window", () => {
+    const t0 = new Date("2026-08-25T00:00:00Z");
+    expect(() =>
+      assertRecoveryPointConsistency({
+        sidecarCreatedAt: t0,
+        manifestCreatedAt: new Date(t0.getTime() + 30_000),
+        nowEpochMs: t0.getTime() + 3_600_000,
+      }),
+    ).not.toThrow();
+  });
+
+  test("refuses a stale sidecar (cannot understate data loss)", () => {
+    const t0 = new Date("2026-08-25T00:00:00Z");
+    expect(() =>
+      assertRecoveryPointConsistency({
+        sidecarCreatedAt: t0,
+        manifestCreatedAt: new Date(t0.getTime() + 3_600_000),
+        nowEpochMs: t0.getTime() + 3_600_000,
+      }),
+    ).toThrow(expect.objectContaining({ code: "REFUSED_RECOVERY_POINT" }));
+  });
+
+  test("refuses a future-dated manifest beyond the window", () => {
+    const t0 = new Date("2026-08-25T00:00:00Z");
+    expect(() =>
+      assertRecoveryPointConsistency({
+        sidecarCreatedAt: t0,
+        manifestCreatedAt: new Date(t0.getTime() + 10 * 60_000),
+        nowEpochMs: t0.getTime(),
+      }),
+    ).toThrow(expect.objectContaining({ code: "REFUSED_RECOVERY_POINT" }));
+  });
+
+  test("refuses unparseable timestamps instead of passing by NaN comparison", () => {
+    // Math.abs(NaN) > WINDOW and NaN > now are both false, so an Invalid
+    // Date on either side must be rejected explicitly (#23453 review r8).
+    const t0 = new Date("2026-08-25T00:00:00Z");
+    expect(() =>
+      assertRecoveryPointConsistency({
+        sidecarCreatedAt: new Date("not-a-timestamp"),
+        manifestCreatedAt: t0,
+        nowEpochMs: t0.getTime() + 3_600_000,
+      }),
+    ).toThrow(expect.objectContaining({ code: "REFUSED_RECOVERY_POINT" }));
+    expect(() =>
+      assertRecoveryPointConsistency({
+        sidecarCreatedAt: t0,
+        manifestCreatedAt: new Date("not-a-timestamp"),
+        nowEpochMs: t0.getTime() + 3_600_000,
+      }),
+    ).toThrow(expect.objectContaining({ code: "REFUSED_RECOVERY_POINT" }));
+  });
+});
+
+describe("capability claim exclusivity (#23453)", () => {
+  test("claims under the advisory lock and refuses nothing for the same capability", () => {
+    const minted = mintRestoreCapability({
+      signingKey: CAP_KEY,
+      targetId: CAP_TARGET_ID,
+      archiveSha256: CAP_ARCHIVE_SHA,
+      expiresAtEpochMs: Date.now() + 3_600_000,
+    });
+    const sql = buildClaimExclusivitySql(minted);
+    expect(sql).toContain("pg_advisory_xact_lock");
+    expect(sql).toContain("eliza_restore_drill_claim");
+    expect(sql).toContain(
+      "RAISE EXCEPTION 'a different restore capability already claims this target'",
+    );
+    // Guarded: settings check precedes the transaction.
+    expect(sql.indexOf("current_setting")).toBeLessThan(sql.indexOf("BEGIN;"));
+  });
+});
+
+describe("authenticated archive coverage (#23453)", () => {
+  test("refuses checksums that omit any consumed artifact", () => {
+    const good = [
+      { sha256: "a".repeat(64), file: "manifest.json" },
+      { sha256: "b".repeat(64), file: "globals.sql" },
+      { sha256: "c".repeat(64), file: "dbmap.tsv" },
+      { sha256: "d".repeat(64), file: "dumps/aaaaaaaaaaaa.dump" },
+    ];
+    expect(() => assertChecksumCoverage(good, ["aaaaaaaaaaaa"])).not.toThrow();
+    for (const drop of [0, 1, 2, 3]) {
+      const missing = good.filter((_, i) => i !== drop);
+      expect(() => assertChecksumCoverage(missing, ["aaaaaaaaaaaa"])).toThrow(
+        expect.objectContaining({ code: "INVALID_METADATA" }),
+      );
+    }
+  });
+
+  test("refuses probe roles absent from the archive globals", () => {
+    const probes = [
+      { dumpId: "aaaaaaaaaaaa", role: "tenant_a", passwordEnv: "PW_A" },
+    ];
+    expect(() =>
+      assertProbesCoverArchiveRoles(probes, ["tenant_a"]),
+    ).not.toThrow();
+    // A tampered probes file naming an attacker-chosen role is refused.
+    expect(() => assertProbesCoverArchiveRoles(probes, ["tenant_b"])).toThrow(
+      expect.objectContaining({ code: "INVALID_PROBE_METADATA" }),
+    );
   });
 });
