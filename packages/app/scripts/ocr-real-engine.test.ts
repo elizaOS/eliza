@@ -140,15 +140,18 @@ describe("real OCR blank-vs-unreadable classification", () => {
   }, 90_000);
 
   it("does not call a populated mobile launcher blank when the first OCR pass is weak", async () => {
+    // The capture is the launcher grid, so it is audited under the launcher
+    // policy (builtin-views). The file is the historical rolodex baseline,
+    // whose own policy has since become the unavailable-view fallback.
     const auditDir = join(dir, "launcher-audit");
     const viewportDir = join(auditDir, "mobile-portrait");
     mkdirSync(viewportDir, { recursive: true });
-    copyFileSync(LAUNCHER_CAPTURE, join(viewportDir, "builtin-rolodex.png"));
+    copyFileSync(LAUNCHER_CAPTURE, join(viewportDir, "builtin-views.png"));
     writeFileSync(
       join(auditDir, "report.json"),
       JSON.stringify([
         {
-          slug: "builtin-rolodex",
+          slug: "builtin-views",
           viewport: "mobile-portrait",
           viewType: "gui",
           verdict: "good",
@@ -181,8 +184,11 @@ describe("real OCR blank-vs-unreadable classification", () => {
       true,
     );
     expect(entry.pixelBlank).toBe(false);
+    // Glyph salad over the icon labels can clear the confidence floor by a
+    // point; it is a manual check, never a fabricated missing-label regression.
     expect(entry.ocrVerdict).toBe("needs-eyeball");
     expect(entry.regression).toBe(false);
+    expect(entry.reasons.join(" ")).toMatch(/OCR inconclusive/);
     expect(entry.reasons.join(" ")).not.toMatch(/pixels are blank/i);
   }, 90_000);
 
