@@ -68,6 +68,22 @@ describe("truncateWellFormed", () => {
 		const malformed = `x\uD83D`;
 		expect(truncateWellFormed(`${malformed}yz`, 2)).toBe(malformed);
 	});
+
+	it("yields empty rather than a lone high half when a 1-unit budget meets an astral first character", () => {
+		// The back-off has nowhere to go: cutting at 1 would split the pair, and
+		// the only boundary below it is 0. Every other boundary can retreat one
+		// code unit, so this is the single case where a caller loses the
+		// character outright instead of shortening it — callers that render the
+		// result (an avatar initial, a badge) must handle "" themselves.
+		expect(truncateWellFormed("\u{1F680}x", 1)).toBe("");
+		expect(truncateWellFormed("\u{1F680}", 1)).toBe("");
+		expect(isWellFormed(truncateWellFormed("\u{1F680}x", 1))).toBe(true);
+	});
+
+	it("still backs off at a 1-unit budget when the text is ASCII-led", () => {
+		// Guards the boundary above: a 1-unit budget is not itself special.
+		expect(truncateWellFormed("a\u{1F680}", 1)).toBe("a");
+	});
 });
 
 describe("tailWellFormed", () => {
@@ -94,6 +110,19 @@ describe("tailWellFormed", () => {
 		expect(tailWellFormed("abc", Number.NaN)).toBe("");
 		expect(tailWellFormed("abc", Number.POSITIVE_INFINITY)).toBe("");
 		expect(tailWellFormed("abc", Number.NEGATIVE_INFINITY)).toBe("");
+	});
+
+	it("yields empty rather than a lone low half when a 1-unit budget meets an astral last character", () => {
+		// The tail-side dual: advancing past the split pair runs off the end of
+		// the string, so the whole character is dropped rather than the orphaned
+		// low half being emitted.
+		expect(tailWellFormed("x\u{1F680}", 1)).toBe("");
+		expect(tailWellFormed("\u{1F680}", 1)).toBe("");
+		expect(isWellFormed(tailWellFormed("x\u{1F680}", 1))).toBe(true);
+	});
+
+	it("still advances at a 1-unit budget when the text is ASCII-tailed", () => {
+		expect(tailWellFormed("\u{1F680}a", 1)).toBe("a");
 	});
 });
 
