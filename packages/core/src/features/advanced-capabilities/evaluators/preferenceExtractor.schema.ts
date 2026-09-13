@@ -30,9 +30,20 @@ const TRAIT_VALUE_SETS: Record<PersonalityTrait, ReadonlySet<string>> = {
 	formality: new Set<string>(FORMALITY_VALUES),
 };
 
+// New model requests require scope. Optional parsing preserves previously
+// staged outputs and direct legacy callers without rewriting their replay IDs.
+export const PREFERENCE_SCOPES = [
+	"across_conversations",
+	"conversation",
+	"task",
+	"uncertain",
+] as const;
+const preferenceScope = z.enum(PREFERENCE_SCOPES).optional();
+
 const SetTraitOpSchema = z.object({
 	op: z.literal("set_trait"),
 	sourceMessageIds: z.array(z.string().min(1)).optional(),
+	scope: preferenceScope,
 	trait: PreferenceTraitEnum,
 	value: z.string().min(1),
 	confidence: z.number().min(0).max(1),
@@ -42,6 +53,7 @@ const SetTraitOpSchema = z.object({
 const AddDirectiveOpSchema = z.object({
 	op: z.literal("add_directive"),
 	sourceMessageIds: z.array(z.string().min(1)).optional(),
+	scope: preferenceScope,
 	text: z.string().trim().min(1).transform(toWellFormedUnicode),
 	confidence: z.number().min(0).max(1),
 	evidence: z.string().optional(),
@@ -50,6 +62,7 @@ const AddDirectiveOpSchema = z.object({
 const AddPreferenceFactOpSchema = z.object({
 	op: z.literal("add_preference_fact"),
 	sourceMessageIds: z.array(z.string().min(1)).optional(),
+	scope: preferenceScope,
 	claim: z.string().min(1),
 	// Every supplied keyword is preserved through prompt parsing. Storage may
 	// separately normalize its index representation without changing the claim.
@@ -61,6 +74,7 @@ const AddPreferenceFactOpSchema = z.object({
 const RetractTraitOpSchema = z.object({
 	op: z.literal("retract_trait"),
 	sourceMessageIds: z.array(z.string().min(1)).optional(),
+	scope: preferenceScope,
 	trait: PreferenceTraitEnum,
 	reason: z.string().optional(),
 });

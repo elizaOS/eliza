@@ -149,7 +149,11 @@ export interface Evaluator<TOutput = JsonValue, TPrepared = unknown> {
 	promptSegments?(context: EvaluatorPromptContext<TPrepared>): PromptSegment[];
 	parse?(
 		output: unknown,
-		context?: EvaluatorPromptContext<TPrepared>,
+		context?: EvaluatorPromptContext<TPrepared> & {
+			/** Runtime provenance lets evolved parsers enforce new model contracts
+			 * without changing already-staged replay or direct legacy callers. */
+			outputSource?: "model" | "staged" | "resolved";
+		},
 	): TOutput | null;
 	processors?: Array<EvaluatorProcessor<TOutput, TPrepared>>;
 	/** Derive a source-bound checkpoint after all processors succeed. The service

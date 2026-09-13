@@ -25,7 +25,11 @@ import {
 import { stringToUuid } from "../utils";
 import { isActiveMemoryEvidence } from "../utils/extraction-evidence";
 import { EvaluatorService } from "./evaluator";
-import { getEvaluatorProgressState } from "./evaluator-progress";
+import {
+	getEvaluatorProgressState,
+	prepareEvaluatorProgress,
+	stageEvaluatorOutput,
+} from "./evaluator-progress";
 import {
 	historyRetentionContext,
 	historyRetentionEvaluator,
@@ -772,7 +776,7 @@ describe("durable background memory", () => {
 				...message,
 				id: stringToUuid(`accepted-assent-${change}`),
 				createdAt: 12,
-				content: { text: "Yes, keep that rule for this conversation." },
+				content: { text: "Yes, keep that rule for future conversations too." },
 			};
 			await runtime.upsertMemory(proposal, "messages");
 			await runtime.upsertMemory(assent, "messages");
@@ -782,8 +786,9 @@ describe("durable background memory", () => {
 						ops: [
 							{
 								op: "add_preference_fact",
+								scope: "across_conversations",
 								claim:
-									"For this conversation, show full title and body before saving Safety fixture notes.",
+									"Show full title and body before saving Safety fixture notes in future conversations.",
 								keywords: ["notes", "preview"],
 								sourceMessageIds: [assent.id],
 							},
@@ -839,12 +844,89 @@ describe("durable background memory", () => {
 			expect(runtime.useModel).toHaveBeenCalledTimes(1);
 		},
 	);
+	it.each(["model", "staged"] as const)(
+		"enforces preference scope for %s output without breaking legacy recovery",
+		async (source) => {
+			const { runtime, service, message } = await setup();
+			message.content.text = "I prefer morning check-ins.";
+			await runtime.upsertMemory(message, "messages");
+			runtime.registerEvaluator(preferenceEvaluator);
+			const legacy = {
+				ops: [
+					{
+						op: "add_preference_fact",
+						claim: "Prefers morning check-ins",
+						sourceMessageIds: [message.id],
+					},
+				],
+			};
+			runtime.useModel = vi.fn(async () =>
+				JSON.stringify({ preferences: legacy }),
+			) as AgentRuntime["useModel"];
+			await service.enqueue(message, state, { phase: "post_turn" });
+			const task = await job(runtime);
+			if (source === "staged") {
+				// Simulate an output durably validated by the pre-scope contract.
+				const snapshots = await prepareEvaluatorProgress(
+					runtime,
+					message,
+					[preferenceEvaluator.name],
+					await runtime.getMemories({
+						tableName: "messages",
+						roomId: message.roomId,
+						unique: false,
+					}),
+				);
+				const snapshot = snapshots.get(preferenceEvaluator.name);
+				if (!snapshot) throw new Error("Missing extraction snapshot");
+				await stageEvaluatorOutput(runtime, snapshot, legacy);
+				await EvaluatorService.start(runtime);
+				await execute(runtime, task);
+				expect(runtime.useModel).not.toHaveBeenCalled();
+				expect(await runtime.getTask(task.id)).toBeNull();
+				expect(
+					(
+						await runtime.getMemories({
+							tableName: "facts",
+							roomId: message.roomId,
+						})
+					).map((row) => row.content.text),
+				).toEqual([legacy.ops[0].claim]);
+			} else {
+				await expect(execute(runtime, task)).rejects.toThrow(
+					"Background memory remains pending",
+				);
+				expect(
+					await runtime.getMemories({
+						tableName: "facts",
+						roomId: message.roomId,
+					}),
+				).toEqual([]);
+				expect(await runtime.getTask(task.id)).not.toBeNull();
+				const snapshots = await prepareEvaluatorProgress(
+					runtime,
+					message,
+					[preferenceEvaluator.name],
+					await runtime.getMemories({
+						tableName: "messages",
+						roomId: message.roomId,
+						unique: false,
+					}),
+				);
+				expect(
+					snapshots.get(preferenceEvaluator.name)?.pendingOutput,
+				).toBeUndefined();
+				expect(runtime.useModel).toHaveBeenCalledOnce();
+			}
+		},
+	);
 	it("keeps malformed preference output pending without applying or acknowledging its valid subset", async () => {
 		const { runtime, service, message } = await setup();
 		if (!message.id) throw new Error("Persisted evidence must have an id");
 		runtime.registerEvaluator(preferenceEvaluator);
 		const valid = {
 			op: "add_preference_fact",
+			scope: "across_conversations",
 			claim: "Prefers complete note previews before saving",
 			keywords: ["notes", "preview"],
 			sourceMessageIds: [message.id],

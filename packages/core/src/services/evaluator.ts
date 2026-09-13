@@ -1392,6 +1392,12 @@ export class EvaluatorService extends BaseService {
 			try {
 				parsed = evaluator.parse
 					? evaluator.parse(rawSection, {
+							outputSource:
+								entry.progress?.pendingOutput !== undefined
+									? "staged"
+									: entry.resolvedOutput !== undefined
+										? "resolved"
+										: "model",
 							runtime: this.runtime,
 							message: entry.message,
 							options: entry.options,

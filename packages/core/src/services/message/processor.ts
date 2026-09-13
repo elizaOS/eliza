@@ -20,7 +20,11 @@ import { TurnAbortedError } from "../../runtime/turn-controller";
 import { getStreamingContext } from "../../streaming-context";
 import { getTrajectoryContext } from "../../trajectory-context";
 import { withEvaluatorStep } from "../../trajectory-utils";
-import type { ActionResult, HandlerCallback } from "../../types/components";
+import type {
+	ActionResult,
+	HandlerCallback,
+	MessageHandlerExtract,
+} from "../../types/components";
 import type { Room } from "../../types/environment";
 import { EventType } from "../../types/events";
 import type { Memory } from "../../types/memory";
@@ -598,6 +602,7 @@ export class MessageProcessor {
 		let _usedV5Runtime = false;
 		let stage1DecidedRespond = false;
 		let stage1RiskGateApplied = false;
+		let stage1Extract: MessageHandlerExtract | undefined;
 		const earlyReplyMessages: Memory[] = [];
 		const persistedEarlyReplyIds = new Set<string>();
 		const voiceResponseHandlerFastPath = isVoiceChannelMessage(message);
@@ -815,6 +820,7 @@ export class MessageProcessor {
 					),
 				]);
 				stage1RiskGateApplied = outcome.kind !== "terminal";
+				stage1Extract = outcome.messageHandler.extract;
 				const routedContexts = outcome.messageHandler.plan.contexts;
 				routedDecision =
 					routedContexts.length > 0
@@ -1512,6 +1518,7 @@ export class MessageProcessor {
 			message,
 			state,
 			responseContent,
+			stage1Extract,
 		);
 		// Delivery settlement precedes the durable enqueue. The foreground trajectory
 		// waits for enqueueing and ordered legacy/hooks; TaskService owns subsequent
