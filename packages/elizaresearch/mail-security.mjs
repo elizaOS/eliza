@@ -86,12 +86,23 @@ function checkSpf(txt) {
       detail: "the SPF record does not authorize Google Workspace senders",
     };
   }
-  // Evaluation stops at the first matching mechanism, so only the LAST one
-  // decides the fate of an otherwise-unmatched sender. Matching "~all"
-  // anywhere would pass a record like "... ~all include:evil.com +all",
-  // whose real terminal mechanism authorizes the whole internet.
-  const terminal = mechanisms.at(-1)?.toLowerCase() ?? "";
-  if (terminal !== "~all" && terminal !== "-all") {
+  // Evaluation is first-match (RFC 7208 s4.6.2/s5.1): the FIRST `all`
+  // mechanism decides every otherwise-unmatched sender, and anything after
+  // it is dead weight. A permissive `+all` (or a bare `all`, which means
+  // `+all`) authorizes the whole internet at the point it appears, so
+  // inspecting only the terminal token would pass a wide-open record like
+  // "v=spf1 +all include:_spf.google.com ~all". Require that the first `all`
+  // exists, is `~all` or `-all`, and is the terminal mechanism.
+  const firstAllIndex = mechanisms.findIndex((mechanism) =>
+    /^[+\-~?]?all$/iu.test(mechanism),
+  );
+  const firstAll =
+    firstAllIndex === -1 ? "" : mechanisms[firstAllIndex].toLowerCase();
+  if (
+    firstAllIndex === -1 ||
+    firstAllIndex !== mechanisms.length - 1 ||
+    (firstAll !== "~all" && firstAll !== "-all")
+  ) {
     return {
       id: "spf",
       ok: false,
