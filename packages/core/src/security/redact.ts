@@ -145,6 +145,14 @@ const SENSITIVE_KEY_SUBSTRINGS: readonly string[] = [
 	"auth_key",
 	"credential",
 	"authorization",
+	// Present in the leaf logger's list but previously absent here, so a value
+	// under one of these names reached a sink unmasked whenever its text was
+	// pattern-inert. A webhook URL is a full post credential (Discord/Slack).
+	"webhook",
+	"sessionkey",
+	"session_key",
+	"connectionstring",
+	"connection_string",
 ];
 
 // Exact telemetry/schema controls whose names contain "token" but whose
@@ -184,6 +192,20 @@ export function isSensitiveKeyName(key: string): boolean {
 		return false;
 	}
 	if (SENSITIVE_KEY_SUBSTRINGS.some((needle) => lower.includes(needle))) {
+		return true;
+	}
+	// Bare and suffixed credential names (`jwt`, `SESSION_JWT`, `x-bearer`,
+	// `sessionCookie`). These are too generic for substring matching, so a word
+	// boundary carries the rule: it masks `jwt` while leaving `jwtIssuedAt`
+	// visible. Mirrors the leaf logger's isSensitiveLogKey, whose doc on this
+	// predicate already claims that parity. `auth`, `session` and `dsn` are
+	// deliberately excluded: this predicate also governs non-log call sites
+	// where those names are structural containers, and their credential-shaped
+	// values are already caught by redactSensitiveText.
+	if (
+		/(?:^|[_\-. ])(jwt|bearer|cookie)$/i.test(key) ||
+		/[a-z](Jwt|Bearer|Cookie)$/.test(key)
+	) {
 		return true;
 	}
 	if (lower.includes("token") && !lower.includes("tokenid")) {

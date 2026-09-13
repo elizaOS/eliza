@@ -585,6 +585,47 @@ describe("isSensitiveKeyName", () => {
 		expect(isSensitiveKeyName("accessTokens")).toBe(true);
 	});
 
+	it("flags the credential names the leaf logger masks by name", () => {
+		// These reached a sink unmasked whenever their text was pattern-inert:
+		// an opaque bearer token, a cookie header, a Discord webhook URL. The
+		// leaf logger's isSensitiveLogKey has masked all of them by name, and the
+		// doc on this predicate already claims that parity.
+		for (const key of [
+			"jwt",
+			"JWT",
+			"accessJwt",
+			"SESSION_JWT",
+			"bearer",
+			"x-bearer",
+			"cookie",
+			"sessionCookie",
+			"webhook",
+			"webhookUrl",
+			"DISCORD_WEBHOOK",
+			"sessionKey",
+			"session_key",
+			"connectionString",
+			"CONNECTION_STRING",
+		]) {
+			expect(isSensitiveKeyName(key), key).toBe(true);
+		}
+	});
+
+	it("keeps the boundary so credential lookalikes stay visible", () => {
+		// A word boundary is what separates `jwt` from `jwtIssuedAt`; without it
+		// this predicate would start masking timing and count fields.
+		for (const key of [
+			"jwtIssuedAt",
+			"jwtExpiresAt",
+			"bearerScheme",
+			"cookieCount",
+			"cookiesAccepted",
+			"primaryKey",
+		]) {
+			expect(isSensitiveKeyName(key), key).toBe(false);
+		}
+	});
+
 	it("flags the closed concat key set without catching key lookalikes", () => {
 		// master/encryption concatenations had no word boundary for the substring
 		// rules, so pattern-inert values under them leaked; the closed suffix set
