@@ -82,6 +82,10 @@ import {
   isPendingAdminCanaryCutoverAudit,
 } from "./admin-canary-image";
 import {
+  executeAgentComputeLeaseJob,
+  readAgentComputeLeaseJobData,
+} from "./agent-compute-lease-jobs";
+import {
   AppCacheInvalidationRetryError,
   dispatchAppCacheInvalidationJob,
   enqueueAppCacheInvalidation,
@@ -4779,6 +4783,9 @@ export class ProvisioningJobService {
     let identity: { agentId: string; organizationId: string };
     try {
       switch (job.type) {
+        case JOB_TYPES.AGENT_COMPUTE_LEASE:
+          identity = readAgentComputeLeaseJobData(job);
+          break;
         case JOB_TYPES.AGENT_PROVISION:
           identity = readAgentProvisionJobData(job);
           break;
@@ -5081,6 +5088,16 @@ export class ProvisioningJobService {
 
   private async executeJobDispatch(job: Job): Promise<void> {
     switch (job.type) {
+      case JOB_TYPES.AGENT_COMPUTE_LEASE: {
+        const result = await executeAgentComputeLeaseJob(job, () =>
+          this.assertExecutionMutationLease(job),
+        );
+        await this.settleClaimedExecution(job, "completed", {
+          result,
+          completed_at: new Date(),
+        });
+        break;
+      }
       case JOB_TYPES.AGENT_PROVISION:
         await this.executeAgentProvision(job);
         break;

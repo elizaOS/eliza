@@ -2,6 +2,8 @@
 
 import Decimal from "decimal.js";
 import { and, eq, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import { settleFundedAgentBillingInTransaction } from "../../lib/services/agent-compute-billing";
+import { creditsService } from "../../lib/services/credits";
 import type { DbTransaction } from "../client";
 import { dbRead, dbWrite } from "../helpers";
 import {
@@ -415,6 +417,7 @@ export class AgentBillingRepository {
           last_backup_at: agentSandboxes.last_backup_at,
           last_billed_at: agentSandboxes.last_billed_at,
           created_at: agentSandboxes.created_at,
+          lifecycle_revision: agentSandboxes.lifecycle_revision,
         })
         .from(agentSandboxes)
         .where(
@@ -474,6 +477,29 @@ export class AgentBillingRepository {
         periodEnd: input.now,
       });
       const chargeDecimal = settled.amount;
+      const funded = await settleFundedAgentBillingInTransaction(
+        tx,
+        input,
+        settled,
+        periodStart,
+        claimedSandbox.lifecycle_revision,
+        options.forceLifecycleSettlement ?? false,
+      );
+      if (funded) {
+        if (funded.status === "billed" && options.runAuthority) {
+          await recordAgentBillingRunItemInTransaction(tx, options.runAuthority, {
+            sandboxId: input.sandboxId,
+            organizationId: input.organizationId,
+            agentName: input.agentName,
+            action: "billed",
+            amountDecimal: funded.amountDecimal,
+            newBalanceDecimal: funded.newBalanceDecimal,
+            transactionId: funded.transactionId,
+            completedAt: new Date(),
+          });
+        }
+        return funded;
+      }
       const charge = chargeDecimal.toNumber();
       const effectiveHourlyRate = chargeDecimal
         .mul(60 * 60 * 1000)
@@ -587,7 +613,12 @@ export class AgentBillingRepository {
         amountDecimal: chargeDecimal.toFixed(6),
       };
     };
-    return existingTx ? settle(existingTx) : await dbWrite.transaction(settle);
+    if (existingTx) return settle(existingTx);
+    const result = await dbWrite.transaction(settle);
+    if (result.status === "billed") {
+      await creditsService.invalidateCreditCaches(input.organizationId);
+    }
+    return result;
   }
 }
 

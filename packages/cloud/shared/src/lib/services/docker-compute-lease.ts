@@ -6,6 +6,11 @@
  */
 
 import { createHash } from "node:crypto";
+import {
+  AGENT_COMPUTE_AUTH_CLOCK_SKEW_MS,
+  AGENT_COMPUTE_FUNDING_WINDOW_MS,
+  AGENT_COMPUTE_STOP_MARGIN_MS,
+} from "./agent-compute-policy";
 import { shellQuote } from "./docker-sandbox-utils";
 import type { DockerSSHClient } from "./docker-ssh";
 
@@ -39,7 +44,9 @@ import time
 ROOT = Path(sys.argv[1])
 ID = re.compile(r"[0-9a-f]{64}\Z")
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\Z")
-STOP_MARGIN_MS = 60000
+STOP_MARGIN_MS = ${AGENT_COMPUTE_STOP_MARGIN_MS}
+MAX_FUNDING_WINDOW_MS = ${AGENT_COMPUTE_FUNDING_WINDOW_MS}
+AUTH_CLOCK_SKEW_MS = ${AGENT_COMPUTE_AUTH_CLOCK_SKEW_MS}
 BOOT_ID = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
 
 def require(condition, code):
@@ -138,8 +145,9 @@ def grant(authorization):
             require(not expired(old), 'funding_expired')
             return old
         now = wall_ms()
-        require(abs(authorization['issuedAtMs'] - now) <= 10000, 'stale_authorization_or_clock_skew')
-        require(0 < authorization['paidUntilMs'] - now <= 7200000, 'invalid_funding_horizon')
+        require(abs(authorization['issuedAtMs'] - now) <= AUTH_CLOCK_SKEW_MS, 'stale_authorization_or_clock_skew')
+        require(0 < authorization['paidUntilMs'] - authorization['issuedAtMs'] <= MAX_FUNDING_WINDOW_MS, 'invalid_funding_horizon')
+        require(0 < authorization['paidUntilMs'] - now <= MAX_FUNDING_WINDOW_MS + AUTH_CLOCK_SKEW_MS, 'invalid_funding_horizon')
         require(authorization['paidUntilMs'] - now > 2 * STOP_MARGIN_MS, 'insufficient_paid_time')
         state = inspect(container_id, authorization)
         require(state is not None, 'container_absent')
@@ -147,7 +155,7 @@ def grant(authorization):
         if old is None:
             require(authorization['previousFundingId'] is None, 'previous_funding_mismatch')
             require(not state['running'], 'initial_container_must_be_stopped')
-            require(authorization['paidFromMs'] <= now, 'funding_not_started')
+            require(authorization['paidFromMs'] <= authorization['issuedAtMs'], 'funding_not_started')
         else:
             previous = old['authorization']
             require(authorization['previousFundingId'] == previous['fundingId'], 'previous_funding_mismatch')
@@ -157,10 +165,10 @@ def grant(authorization):
             require(authorization['paidUntilMs'] > previous['paidUntilMs'], 'funding_cannot_shorten')
             if expired(old):
                 require(not state['running'], 'expired_container_must_be_stopped')
-                require(authorization['paidFromMs'] <= now, 'funding_not_started')
+                require(authorization['paidFromMs'] <= authorization['issuedAtMs'], 'funding_not_started')
             else:
                 # A rolling reservation must cover the remaining old lease before its funds are released.
-                require(authorization['paidFromMs'] <= min(now, previous['paidUntilMs']), 'funding_interval_has_gap')
+                require(authorization['paidFromMs'] <= min(authorization['issuedAtMs'], previous['paidUntilMs']), 'funding_interval_has_gap')
                 expires_boot = min(expires_boot, old['expiresBootNs'] +
                     (authorization['paidUntilMs'] - previous['paidUntilMs']) * 1000000)
         history_path = ROOT / 'grants' / (authorization['fundingId'] + '.json')

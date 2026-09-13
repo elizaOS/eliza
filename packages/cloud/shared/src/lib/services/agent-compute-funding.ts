@@ -4,16 +4,28 @@ import { ElizaError } from "@elizaos/core";
 import { and, eq, isNull } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { readPostLockDatabaseNow } from "../../db/repositories/primary-database-clock";
-import { agentComputeFunding } from "../../db/schemas/agent-compute-funding";
+import {
+  microsToMoney,
+  moneyToMicros,
+} from "../../db/repositories/subscription-funding-reservations";
+import {
+  type AgentComputeFunding,
+  agentComputeFunding,
+} from "../../db/schemas/agent-compute-funding";
 import { agentSandboxes, CONTAINER_BACKED_EXECUTION_TIERS } from "../../db/schemas/agent-sandboxes";
 import { billingFundingReservations } from "../../db/schemas/billing-funding-reservations";
 import { organizations } from "../../db/schemas/organizations";
 import { AGENT_PRICING } from "../constants/agent-pricing";
+import {
+  AGENT_COMPUTE_FUNDING_WINDOW_MS,
+  AGENT_COMPUTE_STOP_MARGIN_MS,
+} from "./agent-compute-policy";
+import type { DockerComputeAuthorization } from "./docker-compute-lease";
 import { subscriptionFundingService } from "./subscription-funding";
 
-const FUNDING_WINDOW_MS = 60 * 60 * 1_000;
 export const AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED = "AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED";
 export const AGENT_COMPUTE_FUNDING_EXPIRED = "AGENT_COMPUTE_FUNDING_EXPIRED";
+export const AGENT_COMPUTE_FUNDING_UNCONFIRMED = "AGENT_COMPUTE_FUNDING_UNCONFIRMED";
 
 interface FundingAgentIdentity {
   agentId: string;
@@ -21,11 +33,21 @@ interface FundingAgentIdentity {
   lifecycleRevision: number;
 }
 
+interface FundingProviderIdentity extends FundingAgentIdentity {
+  fundingId: string;
+  nodeId: string;
+  containerId: string;
+}
+
 function reject(code: string, message: string, identity: FundingAgentIdentity): never {
   throw new ElizaError(message, { code, context: { ...identity }, severity: "fatal" });
 }
 
-async function lockProvisioningAgent(tx: DbTransaction, identity: FundingAgentIdentity) {
+async function lockFundingAgent(
+  tx: DbTransaction,
+  identity: FundingAgentIdentity,
+  statuses: readonly ("provisioning" | "running")[],
+) {
   const [agent] = await tx
     .select({
       id: agentSandboxes.id,
@@ -35,6 +57,7 @@ async function lockProvisioningAgent(tx: DbTransaction, identity: FundingAgentId
       pool_status: agentSandboxes.pool_status,
       deleted_at: agentSandboxes.deleted_at,
       deletion_attempt_id: agentSandboxes.deletion_attempt_id,
+      node_id: agentSandboxes.node_id,
     })
     .from(agentSandboxes)
     .where(
@@ -49,7 +72,7 @@ async function lockProvisioningAgent(tx: DbTransaction, identity: FundingAgentId
     !Number.isSafeInteger(identity.lifecycleRevision) ||
     identity.lifecycleRevision < 0 ||
     agent.lifecycle_revision !== identity.lifecycleRevision ||
-    agent.status !== "provisioning" ||
+    !(statuses as readonly string[]).includes(agent.status) ||
     agent.pool_status !== null ||
     agent.deleted_at !== null ||
     agent.deletion_attempt_id !== null ||
@@ -57,7 +80,7 @@ async function lockProvisioningAgent(tx: DbTransaction, identity: FundingAgentId
   ) {
     reject(
       AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED,
-      "Dedicated provisioning authority changed before funding",
+      "Dedicated lifecycle authority changed before funding",
       identity,
     );
   }
@@ -90,7 +113,7 @@ async function lockProvisioningAgent(tx: DbTransaction, identity: FundingAgentId
 export class AgentComputeFundingService {
   /** The caller commits this reservation with provisioning admission, then invalidates credit caches if a cash debit occurred. */
   async reserveInTransaction(tx: DbTransaction, identity: FundingAgentIdentity) {
-    await lockProvisioningAgent(tx, identity);
+    await lockFundingAgent(tx, identity, ["provisioning"]);
     const now = await readPostLockDatabaseNow(tx);
     const [existing] = await tx
       .select()
@@ -122,21 +145,37 @@ export class AgentComputeFundingService {
       }
       return { window: existing, replayed: true, purchasedCreditDebited: false };
     }
+    return this.createWindowInTransaction(tx, identity, now, null);
+  }
+
+  private async createWindowInTransaction(
+    tx: DbTransaction,
+    identity: FundingAgentIdentity,
+    periodStart: Date,
+    previous: AgentComputeFunding | null,
+  ) {
     const id = crypto.randomUUID();
+    const hourlyRate = previous?.hourly_rate ?? AGENT_PRICING.RUNNING_HOURLY_RATE.toFixed(6);
+    const amount = microsToMoney(
+      (moneyToMicros(hourlyRate, "hourlyRate") * BigInt(AGENT_COMPUTE_FUNDING_WINDOW_MS) +
+        3_599_999n) /
+        3_600_000n,
+    );
+    const expiresAt = new Date(periodStart.getTime() + AGENT_COMPUTE_FUNDING_WINDOW_MS);
     const reserved = await subscriptionFundingService.reserveInTransaction(tx, {
       organizationId: identity.organizationId,
       logicalOperationId: `compute.${identity.agentId}.${id}`,
       operation: "managed_agent_compute",
-      amount: AGENT_PRICING.RUNNING_HOURLY_RATE.toFixed(6),
+      amount,
       description: "Dedicated runtime funding reservation",
-      reservationTtlMs: FUNDING_WINDOW_MS,
+      expiresAt,
       metadata: { agent_id: identity.agentId, compute_funding_id: id },
     });
     const fundedAt = await readPostLockDatabaseNow(tx);
     const periodEnd = new Date(
-      Math.min(fundedAt.getTime() + FUNDING_WINDOW_MS, reserved.reservation.expires_at.getTime()),
+      Math.min(expiresAt.getTime(), reserved.reservation.expires_at.getTime()),
     );
-    if (periodEnd <= fundedAt) {
+    if (periodEnd.getTime() - fundedAt.getTime() <= 2 * AGENT_COMPUTE_STOP_MARGIN_MS) {
       reject(AGENT_COMPUTE_FUNDING_EXPIRED, "Dedicated funding expired before admission", identity);
     }
     const [window] = await tx
@@ -146,9 +185,13 @@ export class AgentComputeFundingService {
         organization_id: identity.organizationId,
         agent_id: identity.agentId,
         funding_reservation_id: reserved.reservation.id,
-        period_start: fundedAt,
+        previous_funding_id: previous?.id ?? null,
+        period_start: periodStart,
         period_end: periodEnd,
-        hourly_rate: AGENT_PRICING.RUNNING_HOURLY_RATE.toFixed(6),
+        hourly_rate: hourlyRate,
+        provider_node_id: previous?.provider_node_id ?? null,
+        provider_container_id: previous?.provider_container_id ?? null,
+        provider_bound_at: previous ? fundedAt : null,
       })
       .returning();
     if (!window)
@@ -161,21 +204,14 @@ export class AgentComputeFundingService {
   }
 
   /** Pins the paid interval to the immutable Docker id, never a reusable container name. */
-  async bindProviderInTransaction(
-    tx: DbTransaction,
-    input: FundingAgentIdentity & {
-      fundingId: string;
-      nodeId: string;
-      containerId: string;
-    },
-  ) {
+  async bindProviderInTransaction(tx: DbTransaction, input: FundingProviderIdentity) {
     if (
       !/^[0-9a-f]{64}$/.test(input.containerId) ||
       !/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(input.nodeId)
     ) {
       reject(AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED, "Invalid Dedicated provider identity", input);
     }
-    await lockProvisioningAgent(tx, input);
+    await lockFundingAgent(tx, input, ["provisioning"]);
     const [window] = await tx
       .select()
       .from(agentComputeFunding)
@@ -233,6 +269,247 @@ export class AgentComputeFundingService {
     if (!bound)
       reject(AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED, "Dedicated provider binding failed", input);
     return bound;
+  }
+
+  private async readBoundWindowInTransaction(tx: DbTransaction, input: FundingProviderIdentity) {
+    const agent = await lockFundingAgent(tx, input, ["provisioning", "running"]);
+    const [window] = await tx
+      .select()
+      .from(agentComputeFunding)
+      .where(
+        and(
+          eq(agentComputeFunding.id, input.fundingId),
+          eq(agentComputeFunding.agent_id, input.agentId),
+          eq(agentComputeFunding.organization_id, input.organizationId),
+          isNull(agentComputeFunding.settled_at),
+        ),
+      )
+      .for("update");
+    const now = await readPostLockDatabaseNow(tx);
+    if (
+      !window ||
+      window.provider_node_id !== input.nodeId ||
+      window.provider_container_id !== input.containerId ||
+      (agent.status === "running" && agent.node_id !== input.nodeId)
+    ) {
+      reject(AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED, "Dedicated provider funding changed", input);
+    }
+    if (window.period_end.getTime() - now.getTime() <= AGENT_COMPUTE_STOP_MARGIN_MS) {
+      reject(
+        AGENT_COMPUTE_FUNDING_EXPIRED,
+        "Dedicated host funding reached its stop deadline",
+        input,
+      );
+    }
+    const [reservation] = await tx
+      .select({ status: billingFundingReservations.status })
+      .from(billingFundingReservations)
+      .where(
+        and(
+          eq(billingFundingReservations.id, window.funding_reservation_id),
+          eq(billingFundingReservations.organization_id, input.organizationId),
+        ),
+      );
+    if (reservation?.status !== "reserved") {
+      reject(AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED, "Dedicated funds are no longer held", input);
+    }
+    return { window, now };
+  }
+
+  /** Return only after the outer transaction commits; host admission must never use an uncommitted binding. */
+  async authorizeHostInTransaction(
+    tx: DbTransaction,
+    input: FundingProviderIdentity,
+  ): Promise<DockerComputeAuthorization> {
+    const { window, now } = await this.readBoundWindowInTransaction(tx, input);
+    return {
+      agentId: input.agentId,
+      organizationId: input.organizationId,
+      containerId: input.containerId,
+      fundingId: window.id,
+      previousFundingId: window.previous_funding_id,
+      issuedAtMs: now.getTime(),
+      paidFromMs: window.period_start.getTime(),
+      paidUntilMs: window.period_end.getTime(),
+    };
+  }
+
+  /** The provider calls this only after verifying the matching grant response over its pinned SSH connection. */
+  async confirmHostLeaseInTransaction(tx: DbTransaction, input: FundingProviderIdentity) {
+    const { window, now } = await this.readBoundWindowInTransaction(tx, input);
+    if (window.host_lease_confirmed_at !== null) return window;
+    const [confirmed] = await tx
+      .update(agentComputeFunding)
+      .set({ host_lease_confirmed_at: now })
+      .where(
+        and(
+          eq(agentComputeFunding.id, window.id),
+          eq(agentComputeFunding.organization_id, input.organizationId),
+        ),
+      )
+      .returning();
+    if (!confirmed) {
+      reject(AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED, "Dedicated host confirmation failed", input);
+    }
+    return confirmed;
+  }
+
+  /**
+   * Exchanges a hold using the existing billing meter's exact amount and cutoff.
+   * The savepoint preserves the previous hold even when an outer billing caller
+   * catches insufficient funding to enqueue a stop. Ledger/usage receipts belong
+   * in the same outer transaction; invalidate changed credit caches after commit.
+   */
+  async renewInTransaction(
+    tx: DbTransaction,
+    input: FundingAgentIdentity & {
+      fundingId: string;
+      settledThrough: Date;
+      actualAmount: string;
+    },
+  ) {
+    const agent = await lockFundingAgent(tx, input, ["running"]);
+    const actualMicros = moneyToMicros(input.actualAmount, "actualAmount");
+    const [current] = await tx
+      .select()
+      .from(agentComputeFunding)
+      .where(
+        and(
+          eq(agentComputeFunding.agent_id, input.agentId),
+          eq(agentComputeFunding.organization_id, input.organizationId),
+          isNull(agentComputeFunding.settled_at),
+        ),
+      )
+      .for("update");
+    if (!current || current.provider_node_id !== agent.node_id || !current.provider_container_id) {
+      reject(AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED, "Dedicated renewal provider changed", input);
+    }
+    const [previous] = await tx
+      .select()
+      .from(agentComputeFunding)
+      .where(
+        and(
+          eq(agentComputeFunding.id, input.fundingId),
+          eq(agentComputeFunding.agent_id, input.agentId),
+          eq(agentComputeFunding.organization_id, input.organizationId),
+        ),
+      )
+      .for("update");
+    const now = await readPostLockDatabaseNow(tx);
+    if (
+      !previous ||
+      !(input.settledThrough instanceof Date) ||
+      !Number.isFinite(input.settledThrough.getTime()) ||
+      input.settledThrough <= previous.period_start ||
+      input.settledThrough > now ||
+      input.settledThrough >= previous.period_end ||
+      (current.id !== previous.id && current.previous_funding_id !== previous.id)
+    ) {
+      reject(
+        AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED,
+        "Dedicated renewal cutoff or predecessor changed",
+        input,
+      );
+    }
+    const settlePrevious = (transaction: DbTransaction) =>
+      subscriptionFundingService.settleInTransaction(transaction, {
+        organizationId: input.organizationId,
+        logicalOperationId: `compute.${input.agentId}.${previous.id}`,
+        operation: "managed_agent_compute",
+        actualAmount: input.actualAmount,
+        occurredAt: input.settledThrough,
+        metadata: { agent_id: input.agentId, compute_funding_id: previous.id },
+      });
+    if (current.id !== previous.id) {
+      if (previous.settled_through?.getTime() !== input.settledThrough.getTime()) {
+        reject(
+          AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED,
+          "Dedicated renewal replay cutoff changed",
+          input,
+        );
+      }
+      return tx.transaction(async (nested) => {
+        const settlement = await settlePrevious(nested);
+        if (!settlement.replayed) {
+          reject(
+            AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED,
+            "Dedicated renewal lost its settled predecessor",
+            input,
+          );
+        }
+        return {
+          window: current,
+          settlement,
+          replayed: true,
+          purchasedCreditDebited: false,
+          purchasedCreditRefunded: false,
+        };
+      });
+    }
+    if (!previous.host_lease_confirmed_at) {
+      reject(
+        AGENT_COMPUTE_FUNDING_UNCONFIRMED,
+        "Confirm the existing host grant before renewing it",
+        input,
+      );
+    }
+    if (previous.period_end <= now) {
+      reject(
+        AGENT_COMPUTE_FUNDING_EXPIRED,
+        "Expired Dedicated funding requires provider reconciliation",
+        input,
+      );
+    }
+    const [reservation] = await tx
+      .select()
+      .from(billingFundingReservations)
+      .where(
+        and(
+          eq(billingFundingReservations.id, previous.funding_reservation_id),
+          eq(billingFundingReservations.organization_id, input.organizationId),
+        ),
+      );
+    if (
+      !reservation ||
+      reservation.status !== "reserved" ||
+      actualMicros > moneyToMicros(reservation.reserved_amount, "reservedAmount")
+    ) {
+      reject(
+        AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED,
+        "Dedicated usage exceeds its held funding",
+        input,
+      );
+    }
+    return tx.transaction(async (nested) => {
+      const settlement = await settlePrevious(nested);
+      await nested
+        .update(agentComputeFunding)
+        .set({ settled_at: now, settled_through: input.settledThrough })
+        .where(
+          and(
+            eq(agentComputeFunding.id, previous.id),
+            eq(agentComputeFunding.organization_id, input.organizationId),
+          ),
+        );
+      const replacement = await this.createWindowInTransaction(
+        nested,
+        input,
+        input.settledThrough,
+        previous,
+      );
+      if (replacement.window.period_end <= previous.period_end) {
+        reject(
+          AGENT_COMPUTE_FUNDING_EXPIRED,
+          "Replacement funding does not extend the existing host lease",
+          input,
+        );
+      }
+      return {
+        ...replacement,
+        settlement,
+        purchasedCreditRefunded: settlement.purchasedCreditRefunded,
+      };
+    });
   }
 }
 

@@ -1,12 +1,23 @@
-/** Verifies that real funding reservations commit or roll back with work admission, and concurrent reservations cannot overspend an organization. */
+/** Verifies transactional funding admission and renewal on PGlite or an explicitly selected, empty loopback PostgreSQL test database. */
 
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { sql } from "drizzle-orm";
+import { getTableConfig } from "drizzle-orm/pg-core";
 import { createBillingSnapshotFixture } from "../../db/repositories/account-billing-snapshot-test-fixture";
 
-process.env.DATABASE_URL = "pglite://memory";
-process.env.TEST_DATABASE_URL = "pglite://memory";
+const postgresTestUrl = process.env.COMPUTE_FUNDING_POSTGRES_TEST_URL;
+if (postgresTestUrl) {
+  const target = new URL(postgresTestUrl);
+  if (
+    !["127.0.0.1", "localhost", "[::1]"].includes(target.hostname) ||
+    !/^\/dedicated_compute_test_[a-z0-9]+$/.test(target.pathname)
+  ) {
+    throw new Error("Funding tests require an isolated loopback dedicated_compute_test_ database");
+  }
+}
+process.env.DATABASE_URL = postgresTestUrl ?? "pglite://memory";
+process.env.TEST_DATABASE_URL = process.env.DATABASE_URL;
 process.env.ENVIRONMENT = "local";
 
 const organizationId = "61000000-0000-4000-8000-000000000002";
@@ -15,13 +26,49 @@ const subscriptionId = "62000000-0000-4000-8000-000000000001";
 let client: typeof import("../../db/client");
 let helpers: typeof import("../../db/helpers");
 let funding: typeof import("./subscription-funding");
+let postgresPool: import("pg").Pool | undefined;
+let fixture: {
+  exec(query: string): Promise<void>;
+  query<T extends Record<string, unknown> = Record<string, unknown>>(
+    query: string,
+    parameters?: unknown[],
+  ): Promise<{ rows: T[] }>;
+};
 
 beforeAll(async () => {
   client = await import("../../db/client");
   helpers = await import("../../db/helpers");
   funding = await import("./subscription-funding");
-  await createBillingSnapshotFixture((query) => client.getPgliteClientForTests().exec(query), "");
-  await client.getPgliteClientForTests().exec(`
+  if (postgresTestUrl) {
+    const { Pool } = await import("pg");
+    const pool = new Pool({ connectionString: postgresTestUrl, max: 4 });
+    postgresPool = pool;
+    fixture = {
+      async exec(query) {
+        await pool.query(query);
+      },
+      async query<T extends Record<string, unknown>>(query: string, parameters?: unknown[]) {
+        return pool.query<T>(query, parameters);
+      },
+    };
+    const tables = await fixture.query(
+      "SELECT count(*)::integer AS count FROM information_schema.tables WHERE table_schema='public'",
+    );
+    if (tables.rows[0]?.count !== 0)
+      throw new Error("PostgreSQL funding test database must be empty");
+  } else {
+    const pglite = client.getPgliteClientForTests();
+    fixture = {
+      async exec(query) {
+        await pglite.exec(query);
+      },
+      async query<T extends Record<string, unknown>>(query: string, parameters?: unknown[]) {
+        return pglite.query<T>(query, parameters);
+      },
+    };
+  }
+  await createBillingSnapshotFixture((query) => fixture.exec(query), "");
+  await fixture.exec(`
     ALTER TABLE credit_transactions ALTER COLUMN id SET DEFAULT gen_random_uuid();
     ALTER TABLE credit_transactions ADD COLUMN user_id uuid;
     ALTER TABLE credit_transactions ADD COLUMN description text;
@@ -32,8 +79,9 @@ beforeAll(async () => {
       settings, is_active, auto_top_up_enabled, account_lifecycle_state)
     VALUES ('${organizationId}', '10.000001', 1, 0, '{}', true, false, 'active');
   `);
-  await client.getPgliteClientForTests().exec(`
+  await fixture.exec(`
     ALTER TABLE agent_sandboxes ADD CONSTRAINT agent_sandboxes_id_organization_unique UNIQUE(id, organization_id);
+    ALTER TABLE agent_sandboxes ADD COLUMN IF NOT EXISTS node_id text;
     INSERT INTO agent_sandboxes(id,organization_id,status,execution_tier,lifecycle_revision)
     VALUES ('63000000-0000-4000-8000-000000000001','${organizationId}','provisioning','dedicated-always',1);
   `);
@@ -41,9 +89,43 @@ beforeAll(async () => {
     new URL("../../db/migrations/0387_agent_compute_funding.sql", import.meta.url),
     "utf8",
   );
-  await client.getPgliteClientForTests().exec(computeMigration);
+  await fixture.exec(computeMigration);
   // The generated migration must also be safe when recovery repeats it.
-  await client.getPgliteClientForTests().exec(computeMigration);
+  await fixture.exec(computeMigration);
+  const legacyBillingMigration = await readFile(
+    new URL("../../db/migrations/0265_compute_billing_recovery.sql", import.meta.url),
+    "utf8",
+  );
+  const legacyReceiptTable = legacyBillingMigration.match(
+    /CREATE TABLE agent_billing_records \([\s\S]*?\n\);/,
+  );
+  if (!legacyReceiptTable) throw new Error("Missing canonical legacy billing receipt DDL");
+  await fixture.exec(legacyReceiptTable[0]);
+  const receiptMigration = await readFile(
+    new URL("../../db/migrations/0388_agent_compute_funded_receipts.sql", import.meta.url),
+    "utf8",
+  );
+  await fixture.exec(receiptMigration);
+  await fixture.exec(receiptMigration);
+  await fixture.exec(
+    await readFile(
+      new URL("../../db/migrations/0274_agent_billing_run_receipts.sql", import.meta.url),
+      "utf8",
+    ),
+  );
+  const baseline = await readFile(
+    new URL("../../db/migrations/0000_last_reavers.sql", import.meta.url),
+    "utf8",
+  );
+  const jobsDDL = baseline.match(/CREATE TABLE "jobs" \([\s\S]*?\n\);/);
+  if (!jobsDDL) throw new Error("Missing canonical jobs DDL");
+  await fixture.exec(jobsDDL[0]);
+  const { jobs } = await import("../../db/schemas/jobs");
+  for (const column of getTableConfig(jobs).columns) {
+    await fixture.exec(
+      `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS "${column.name}" ${column.getSQLType()}`,
+    );
+  }
   const { subscriptionAuthorityRepository: authority } = await import(
     "../../db/repositories/subscription-authority"
   );
@@ -74,7 +156,7 @@ beforeAll(async () => {
     sourceSubscriptionRevision: advanced.subscription.lifecycle_revision,
     expectedProjectionRevision: 1,
   });
-  await client.getPgliteClientForTests().query(
+  await fixture.query(
     `UPDATE subscription_allowance_periods SET subscription_revision=$1,
       period_start=$2,period_end=$3,expires_at=$3 WHERE organization_id=$4`,
     [advanced.subscription.lifecycle_revision, periodStart, periodEnd, allowanceOrganizationId],
@@ -83,6 +165,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await client.closeDatabaseConnectionsForTests();
+  await postgresPool?.end();
 });
 
 function input(logicalOperationId: string, amount: string) {
@@ -98,7 +181,7 @@ function input(logicalOperationId: string, amount: string) {
 
 async function state() {
   return (
-    await client.getPgliteClientForTests().query<{
+    await fixture.query<{
       balance: string;
       reservations: number;
       debits: number;
@@ -167,7 +250,7 @@ test("concurrent compute admissions reserve once, reject overspending, and repla
 test("a rejected mixed-source admission returns both paid allowance and purchased credit atomically", async () => {
   const readPaidState = async () =>
     (
-      await client.getPgliteClientForTests().query(
+      await fixture.query(
         `SELECT o.credit_balance::text, p.available_amount::text, p.reserved_amount::text,
           (SELECT count(*)::integer FROM billing_funding_reservations WHERE organization_id=$1) AS reservations,
           (SELECT count(*)::integer FROM credit_transactions WHERE organization_id=$1) AS debits
@@ -262,9 +345,7 @@ test("Dedicated funding rolls back with rejected lifecycle admission and binds r
     }),
   ).rejects.toThrow("Lifecycle admission rejected");
   expect(await state()).toEqual(before);
-  expect(
-    (await client.getPgliteClientForTests().query("SELECT * FROM agent_compute_funding")).rows,
-  ).toHaveLength(0);
+  expect((await fixture.query("SELECT * FROM agent_compute_funding")).rows).toHaveLength(0);
   await expect(
     helpers.writeTransaction((tx) =>
       compute.reserveInTransaction(tx, { ...identity, lifecycleRevision: 2 }),
@@ -283,7 +364,7 @@ test("Dedicated funding rolls back with rejected lifecycle admission and binds r
   expect(first.window.id).toBe(retry.window.id);
   expect([first.replayed, retry.replayed].sort()).toEqual([false, true]);
   const fundedState = await state();
-  expect(fundedState).toEqual({ balance: "3.240001", reservations: 3, debits: 4 });
+  expect(fundedState).toEqual({ balance: "3.230001", reservations: 3, debits: 4 });
   const provider = {
     ...identity,
     fundingId: first.window.id,
@@ -304,20 +385,18 @@ test("Dedicated funding rolls back with rejected lifecycle admission and binds r
   ).rejects.toMatchObject({ code: AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED });
   expect(await state()).toEqual(fundedState);
   await expect(
-    client
-      .getPgliteClientForTests()
-      .query("UPDATE agent_compute_funding SET settled_at=now() WHERE id=$1", [bound.id]),
+    fixture.query("UPDATE agent_compute_funding SET settled_at=now() WHERE id=$1", [bound.id]),
   ).rejects.toThrow("agent_compute_funding_settlement_check");
-  await client
-    .getPgliteClientForTests()
-    .query("UPDATE organizations SET paid_work_fenced_at=now() WHERE id=$1", [organizationId]);
+  await fixture.query("UPDATE organizations SET paid_work_fenced_at=now() WHERE id=$1", [
+    organizationId,
+  ]);
   await expect(
     helpers.writeTransaction((tx) => compute.reserveInTransaction(tx, identity)),
   ).rejects.toMatchObject({ code: AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED });
   expect(await state()).toEqual(fundedState);
-  await client
-    .getPgliteClientForTests()
-    .query("UPDATE organizations SET paid_work_fenced_at=NULL WHERE id=$1", [organizationId]);
+  await fixture.query("UPDATE organizations SET paid_work_fenced_at=NULL WHERE id=$1", [
+    organizationId,
+  ]);
 });
 
 test("unfunded, Shared and expired Dedicated admissions cannot create another debit", async () => {
@@ -333,12 +412,12 @@ test("unfunded, Shared and expired Dedicated admissions cannot create another de
   };
   const unfundedOrg = "61000000-0000-4000-8000-000000000003";
   const unfundedAgent = "63000000-0000-4000-8000-000000000002";
-  await client.getPgliteClientForTests().query(
+  await fixture.query(
     `INSERT INTO organizations(id,credit_balance,balance_revision,balance_decrease_revision,settings,is_active,auto_top_up_enabled,account_lifecycle_state)
     VALUES ($1,'0.000000',1,0,'{}',true,false,'active')`,
     [unfundedOrg],
   );
-  await client.getPgliteClientForTests().query(
+  await fixture.query(
     `INSERT INTO agent_sandboxes(id,organization_id,status,execution_tier,lifecycle_revision)
     VALUES ($1,$2,'provisioning','dedicated-always',1)`,
     [unfundedAgent, unfundedOrg],
@@ -354,32 +433,451 @@ test("unfunded, Shared and expired Dedicated admissions cannot create another de
     ),
   ).rejects.toMatchObject({ code: funding.SUBSCRIPTION_FUNDING_INSUFFICIENT });
   expect(await state()).toEqual(before);
-  await client
-    .getPgliteClientForTests()
-    .query("UPDATE agent_sandboxes SET execution_tier='shared' WHERE id=$1", [identity.agentId]);
+  await fixture.query("UPDATE agent_sandboxes SET execution_tier='shared' WHERE id=$1", [
+    identity.agentId,
+  ]);
   await expect(
     helpers.writeTransaction((tx) => compute.reserveInTransaction(tx, identity)),
   ).rejects.toMatchObject({ code: AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED });
-  await client
-    .getPgliteClientForTests()
-    .query("UPDATE agent_sandboxes SET execution_tier='dedicated-always' WHERE id=$1", [
-      identity.agentId,
-    ]);
+  await fixture.query("UPDATE agent_sandboxes SET execution_tier='dedicated-always' WHERE id=$1", [
+    identity.agentId,
+  ]);
   await expect(
-    client
-      .getPgliteClientForTests()
-      .query("UPDATE agent_compute_funding SET hourly_rate='NaN' WHERE agent_id=$1", [
-        identity.agentId,
-      ]),
+    fixture.query("UPDATE agent_compute_funding SET hourly_rate='NaN' WHERE agent_id=$1", [
+      identity.agentId,
+    ]),
   ).rejects.toThrow("agent_compute_funding_period_check");
-  await client
-    .getPgliteClientForTests()
-    .query(
-      "UPDATE agent_compute_funding SET period_start=now()-interval '2 hours',period_end=now()-interval '1 hour' WHERE agent_id=$1",
-      [identity.agentId],
-    );
+  await fixture.query(
+    "UPDATE agent_compute_funding SET period_start=now()-interval '2 hours',period_end=now()-interval '1 hour' WHERE agent_id=$1",
+    [identity.agentId],
+  );
   await expect(
     helpers.writeTransaction((tx) => compute.reserveInTransaction(tx, identity)),
   ).rejects.toMatchObject({ code: AGENT_COMPUTE_FUNDING_EXPIRED });
   expect(await state()).toEqual(before);
+});
+
+async function runningFundedAgent(org: string, agentId: string) {
+  const { agentComputeFundingService: compute } = await import("./agent-compute-funding");
+  await fixture.query(
+    `INSERT INTO agent_sandboxes(id,organization_id,status,execution_tier,lifecycle_revision)
+      VALUES ($1,$2,'provisioning','dedicated-always',1)`,
+    [agentId, org],
+  );
+  const identity = { agentId, organizationId: org, lifecycleRevision: 1 };
+  const reserved = await helpers.writeTransaction((tx) =>
+    compute.reserveInTransaction(tx, identity),
+  );
+  const provider = {
+    ...identity,
+    fundingId: reserved.window.id,
+    nodeId: "renewal-test-node",
+    containerId: "c".repeat(64),
+  };
+  await helpers.writeTransaction((tx) => compute.bindProviderInTransaction(tx, provider));
+  const authorization = await helpers.writeTransaction((tx) =>
+    compute.authorizeHostInTransaction(tx, provider),
+  );
+  expect(authorization.previousFundingId).toBeNull();
+  expect(authorization.containerId).toBe(provider.containerId);
+  expect(authorization.paidUntilMs - authorization.paidFromMs).toBe(2 * 60 * 60_000);
+  await helpers.writeTransaction((tx) => compute.confirmHostLeaseInTransaction(tx, provider));
+  await fixture.query("UPDATE agent_sandboxes SET status='running',node_id=$2 WHERE id=$1", [
+    agentId,
+    provider.nodeId,
+  ]);
+  // Advance this fixture's paid interval while retaining a full two-hour hold.
+  // The meter supplies one hour of actual usage; no fake provider or credit service is substituted.
+  await fixture.query(
+    "UPDATE agent_compute_funding SET period_start=clock_timestamp()-interval '1 hour',period_end=clock_timestamp()+interval '1 hour' WHERE id=$1",
+    [reserved.window.id],
+  );
+  return { compute, identity, provider, reserved };
+}
+
+async function renewalState(org: string) {
+  const [balance, windows, reservations, allocations, ledger] = await Promise.all([
+    fixture.query("SELECT credit_balance::text FROM organizations WHERE id=$1", [org]),
+    fixture.query("SELECT * FROM agent_compute_funding WHERE organization_id=$1 ORDER BY id", [
+      org,
+    ]),
+    fixture.query(
+      "SELECT * FROM billing_funding_reservations WHERE organization_id=$1 ORDER BY id",
+      [org],
+    ),
+    fixture.query(
+      "SELECT * FROM billing_funding_allocations WHERE organization_id=$1 ORDER BY id",
+      [org],
+    ),
+    fixture.query("SELECT * FROM credit_transactions WHERE organization_id=$1 ORDER BY id", [org]),
+  ]);
+  return {
+    balance: balance.rows,
+    windows: windows.rows,
+    reservations: reservations.rows,
+    allocations: allocations.rows,
+    ledger: ledger.rows,
+  };
+}
+
+test("concurrent renewals exchange one hold, preserve source accounting, and require a host acknowledgement", async () => {
+  const org = "61000000-0000-4000-8000-000000000004";
+  await fixture.query(
+    `INSERT INTO organizations(id,credit_balance,balance_revision,balance_decrease_revision,settings,is_active,auto_top_up_enabled,account_lifecycle_state)
+      VALUES ($1,'1.000000',1,0,'{}',true,false,'active')`,
+    [org],
+  );
+  const { compute, identity, provider, reserved } = await runningFundedAgent(
+    org,
+    "63000000-0000-4000-8000-000000000004",
+  );
+  const request = {
+    ...identity,
+    fundingId: reserved.window.id,
+    settledThrough: new Date(),
+    actualAmount: "0.010000",
+  };
+  const [first, replay] = await Promise.all([
+    helpers.writeTransaction((tx) => compute.renewInTransaction(tx, request)),
+    helpers.writeTransaction((tx) => compute.renewInTransaction(tx, request)),
+  ]);
+  expect(first.window.id).toBe(replay.window.id);
+  expect([first.replayed, replay.replayed].sort()).toEqual([false, true]);
+  expect(first.window.previous_funding_id).toBe(reserved.window.id);
+  expect(first.window.provider_container_id).toBe(provider.containerId);
+  expect(first.window.host_lease_confirmed_at).toBeNull();
+  const after = await renewalState(org);
+  expect(after.balance).toEqual([{ credit_balance: "0.970000" }]);
+  expect(after.windows).toHaveLength(2);
+  expect(after.reservations).toHaveLength(2);
+  expect(after.ledger).toHaveLength(3);
+  expect(
+    after.allocations
+      .map((row) => ({
+        reserved: row.reserved_amount,
+        finalized: row.finalized_amount,
+        released: row.released_amount,
+      }))
+      .sort((a, b) => String(a.finalized).localeCompare(String(b.finalized))),
+  ).toEqual([
+    { reserved: "0.020000", finalized: "0.000000", released: "0.000000" },
+    { reserved: "0.020000", finalized: "0.010000", released: "0.010000" },
+  ]);
+  await helpers.writeTransaction(async (tx) => {
+    await expect(
+      compute.renewInTransaction(tx, { ...request, actualAmount: "0.009000" }),
+    ).rejects.toMatchObject({ code: "SUBSCRIPTION_FUNDING_CONFLICT" });
+  });
+  expect(await renewalState(org)).toEqual(after);
+  await expect(
+    helpers.writeTransaction((tx) =>
+      compute.renewInTransaction(tx, {
+        ...request,
+        fundingId: first.window.id,
+        settledThrough: new Date(),
+      }),
+    ),
+  ).rejects.toMatchObject({ code: "AGENT_COMPUTE_FUNDING_UNCONFIRMED" });
+  const newProvider = { ...provider, fundingId: first.window.id };
+  const authorization = await helpers.writeTransaction((tx) =>
+    compute.authorizeHostInTransaction(tx, newProvider),
+  );
+  expect(authorization.previousFundingId).toBe(reserved.window.id);
+  expect(authorization.paidFromMs).toBe(request.settledThrough.getTime());
+  await helpers.writeTransaction((tx) => compute.confirmHostLeaseInTransaction(tx, newProvider));
+  await expect(
+    helpers.writeTransaction((tx) => compute.authorizeHostInTransaction(tx, provider)),
+  ).rejects.toMatchObject({ code: "AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED" });
+});
+
+test("a caught failed renewal rolls back its allowance settlement, cash refund, and successor before the outer transaction commits", async () => {
+  // Leave exactly half a cent of paid allowance and 1.5 cents of cash for this agent.
+  await helpers.writeTransaction(async (tx) => {
+    await funding.subscriptionFundingService.reserveInTransaction(tx, {
+      ...input("compute:renewal-allowance-buffer", "24.995001"),
+      organizationId: allowanceOrganizationId,
+    });
+    await funding.subscriptionFundingService.reserveInTransaction(tx, {
+      ...input("compute:renewal-cash-buffer", "9.985001"),
+      organizationId: allowanceOrganizationId,
+      operation: "unclassified",
+    });
+  });
+  const { compute, identity, reserved } = await runningFundedAgent(
+    allowanceOrganizationId,
+    "63000000-0000-4000-8000-000000000005",
+  );
+  const before = await renewalState(allowanceOrganizationId);
+  const allowanceBefore = (
+    await fixture.query("SELECT * FROM subscription_allowance_periods WHERE organization_id=$1", [
+      allowanceOrganizationId,
+    ])
+  ).rows;
+  expect(before.balance).toEqual([{ credit_balance: "0.000000" }]);
+  await helpers.writeTransaction(async (tx) => {
+    await expect(
+      compute.renewInTransaction(tx, {
+        ...identity,
+        fundingId: reserved.window.id,
+        settledThrough: new Date(),
+        actualAmount: "0.010000",
+      }),
+    ).rejects.toMatchObject({ code: funding.SUBSCRIPTION_FUNDING_INSUFFICIENT });
+    // Prove the outer transaction remains usable after the rejected exchange.
+    await tx.execute(
+      sql`UPDATE organizations SET settings='{"renewal_stop_needed":true}'::jsonb WHERE id=${allowanceOrganizationId}`,
+    );
+  });
+  expect(await renewalState(allowanceOrganizationId)).toEqual(before);
+  expect(
+    (
+      await fixture.query("SELECT * FROM subscription_allowance_periods WHERE organization_id=$1", [
+        allowanceOrganizationId,
+      ])
+    ).rows,
+  ).toEqual(allowanceBefore);
+  expect(
+    (
+      await fixture.query("SELECT settings FROM organizations WHERE id=$1", [
+        allowanceOrganizationId,
+      ])
+    ).rows,
+  ).toEqual([{ settings: { renewal_stop_needed: true } }]);
+});
+
+test("a usage receipt must match one finalized funding source, its exact amount, tenant and metered period", async () => {
+  const org = "61000000-0000-4000-8000-000000000004";
+  const agentId = "63000000-0000-4000-8000-000000000004";
+  const windows = (
+    await fixture.query<{ id: string; settled_at: Date | null }>(
+      "SELECT id,settled_at FROM agent_compute_funding WHERE organization_id=$1",
+      [org],
+    )
+  ).rows;
+  const settled = windows.find((window) => window.settled_at !== null);
+  const open = windows.find((window) => window.settled_at === null);
+  if (!settled || !open) throw new Error("Missing real completed renewal fixture");
+  const insert = (fundingId: string, amount: string, receiptOrg = org) =>
+    fixture.query(
+      `INSERT INTO agent_billing_records(organization_id,sandbox_id,sandbox_status,billing_period_start,billing_period_end,hourly_rate,amount,compute_funding_id)
+      SELECT $1,$2,'running',date_trunc('milliseconds',period_start),COALESCE(settled_through,period_end),hourly_rate,$3,id
+      FROM agent_compute_funding WHERE id=$4`,
+      [receiptOrg, agentId, amount, fundingId],
+    );
+  const before = await renewalState(org);
+  await expect(insert(open.id, "0.010000")).rejects.toThrow("agent billing receipt must match");
+  await expect(insert(settled.id, "0.009000")).rejects.toThrow("agent billing receipt must match");
+  await expect(insert(settled.id, "0.010000", organizationId)).rejects.toThrow(
+    "agent billing receipt must match",
+  );
+  await expect(
+    fixture.query(
+      `INSERT INTO agent_billing_records(organization_id,sandbox_id,sandbox_status,billing_period_start,billing_period_end,hourly_rate,amount,compute_funding_id)
+      SELECT organization_id,agent_id,'running',date_trunc('milliseconds',period_start),settled_through+interval '1 second',hourly_rate,'0.010000',id
+      FROM agent_compute_funding WHERE id=$1`,
+      [settled.id],
+    ),
+  ).rejects.toThrow("agent billing receipt must match");
+  await expect(
+    fixture.query(
+      `INSERT INTO agent_billing_records(organization_id,sandbox_id,sandbox_status,billing_period_start,billing_period_end,hourly_rate,amount,compute_funding_id,credit_transaction_id)
+      SELECT organization_id,agent_id,'running',date_trunc('milliseconds',period_start),settled_through,hourly_rate,'0.010000',id,
+        (SELECT id FROM credit_transactions WHERE organization_id=$2 LIMIT 1)
+      FROM agent_compute_funding WHERE id=$1`,
+      [settled.id, org],
+    ),
+  ).rejects.toThrow("agent_billing_records_funding_source_check");
+  await insert(settled.id, "0.010000");
+  await expect(insert(settled.id, "0.010000")).rejects.toThrow(
+    "agent_billing_records_compute_funding_idx",
+  );
+  expect(
+    (
+      await fixture.query(
+        "SELECT amount::text,credit_transaction_id,compute_funding_id FROM agent_billing_records WHERE organization_id=$1",
+        [org],
+      )
+    ).rows,
+  ).toEqual([{ amount: "0.010000", credit_transaction_id: null, compute_funding_id: settled.id }]);
+  expect(await renewalState(org)).toEqual(before);
+});
+
+async function billableFundedAgent(suffix: string, balance: string) {
+  const org = `61000000-0000-4000-8000-${suffix}`;
+  const agentId = `63000000-0000-4000-8000-${suffix}`;
+  const userId = `64000000-0000-4000-8000-${suffix}`;
+  await fixture.query("INSERT INTO users(id) VALUES($1)", [userId]);
+  await fixture.query(
+    `INSERT INTO organizations(id,credit_balance,balance_revision,balance_decrease_revision,settings,is_active,auto_top_up_enabled,account_lifecycle_state)
+    VALUES ($1,$2,1,0,'{}',true,false,'active')`,
+    [org, balance],
+  );
+  const funded = await runningFundedAgent(org, agentId);
+  await fixture.query(
+    `UPDATE agent_compute_funding SET period_start=date_trunc('milliseconds',period_start) WHERE id=$1`,
+    [funded.provider.fundingId],
+  );
+  await fixture.query(
+    `UPDATE agent_sandboxes SET user_id=$2,agent_name='Funded test',billing_status='active',total_billed=0,
+    last_billed_at=(SELECT period_start FROM agent_compute_funding WHERE id=$3),created_at=now()-interval '2 hours' WHERE id=$1`,
+    [agentId, userId, funded.provider.fundingId],
+  );
+  await fixture.query(
+    `INSERT INTO compute_billing_rate_segments(id,organization_id,workload_kind,workload_id,lifecycle_revision,billing_state,rate_per_hour,effective_at)
+    SELECT gen_random_uuid(),$1,'agent',$2,1,'running','0.01',period_start FROM agent_compute_funding WHERE id=$3`,
+    [org, agentId, funded.provider.fundingId],
+  );
+  const { agentBillingRunRepository } = await import("../../db/repositories/agent-billing-runs");
+  const run = await agentBillingRunRepository.startOrLoad({
+    invocationKey: `manual:prepaid:${suffix}`,
+    triggerKind: "manual",
+    schedule: null,
+    scheduledAt: null,
+    leaseDurationMs: 300_000,
+  });
+  if (!run.leaseToken) throw new Error("Billing test did not claim its run");
+  const { agentBillingRepository } = await import("../../db/repositories/agent-billing");
+  const cutoff = await fixture.query<{ cutoff: Date }>(
+    "SELECT period_start+interval '1 hour' AS cutoff FROM agent_compute_funding WHERE id=$1",
+    [funded.provider.fundingId],
+  );
+  return {
+    ...funded,
+    org,
+    agentId,
+    agentBillingRepository,
+    input: {
+      runId: run.run.id,
+      leaseToken: run.leaseToken,
+      sandboxId: agentId,
+      organizationId: org,
+      userId,
+      agentName: "Funded test",
+      hourlyRate: 99,
+      billingDescription: "Must use the canonical meter",
+      lowCreditWarningAmount: 0.1,
+      now: cutoff.rows[0]!.cutoff,
+    },
+  };
+}
+
+test("the real hourly biller settles a funded hour once and commits its receipt with one renewal job", async () => {
+  const { org, agentId, provider, input, agentBillingRepository } = await billableFundedAgent(
+    "000000000010",
+    "1.000000",
+  );
+  const outcomes = await Promise.all([
+    agentBillingRepository.recordHourlyBilling(input),
+    agentBillingRepository.recordHourlyBilling(input),
+  ]);
+  expect(outcomes.map((value) => value.status).sort()).toEqual([
+    "already_billed_recently",
+    "billed",
+  ]);
+  const billed = outcomes.find((value) => value.status === "billed");
+  expect(billed).toMatchObject({
+    amountDecimal: "0.010000",
+    newBalance: 0.97,
+    transactionId: `compute-funding:${provider.fundingId}`,
+  });
+  const after = await renewalState(org);
+  expect(after.ledger).toHaveLength(3); // initial hold, unused remainder refund, replacement hold; no usage cash debit.
+  expect(after.windows).toHaveLength(2);
+  const receipts = await fixture.query(
+    "SELECT compute_funding_id,credit_transaction_id,amount::text FROM agent_billing_records WHERE sandbox_id=$1",
+    [agentId],
+  );
+  expect(receipts.rows).toEqual([
+    { compute_funding_id: provider.fundingId, credit_transaction_id: null, amount: "0.010000" },
+  ]);
+  const jobs = await fixture.query("SELECT * FROM jobs WHERE agent_id=$1", [agentId]);
+  expect(jobs.rows).toHaveLength(1);
+  const { readAgentComputeLeaseJobData } = await import("./agent-compute-lease-jobs");
+  const job = jobs.rows[0] as unknown as import("../../db/schemas/jobs").Job;
+  expect(readAgentComputeLeaseJobData(job)).toEqual({
+    agentId,
+    organizationId: org,
+    fundingId: job.id,
+    lifecycleRevision: 1,
+  });
+  expect(job.type).toBe("agent_compute_lease");
+  expect(job.status).toBe("pending");
+  expect(() => readAgentComputeLeaseJobData({ ...job, organization_id: organizationId })).toThrow(
+    "identity changed",
+  );
+  const runItems = await fixture.query(
+    "SELECT action,amount::text,new_balance::text,transaction_id FROM agent_billing_run_items WHERE run_id=$1",
+    [input.runId],
+  );
+  expect(runItems.rows).toEqual([
+    {
+      action: "billed",
+      amount: "0.010000",
+      new_balance: "0.970000",
+      transaction_id: `compute-funding:${provider.fundingId}`,
+    },
+  ]);
+});
+
+test("failed durable job delivery rolls back the hourly funding exchange, receipt and billing cursor", async () => {
+  const { org, agentId, input, agentBillingRepository } = await billableFundedAgent(
+    "000000000011",
+    "1.000000",
+  );
+  const before = await renewalState(org);
+  const cursor = await fixture.query(
+    "SELECT last_billed_at,total_billed::text FROM agent_sandboxes WHERE id=$1",
+    [agentId],
+  );
+  // Real database failure after settlement: no service is mocked and the outer transaction must undo every financial write.
+  await fixture.exec(`CREATE FUNCTION reject_test_renewal_job() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+    IF NEW.agent_id='${agentId}' THEN RAISE EXCEPTION 'test renewal job unavailable'; END IF; RETURN NEW; END $$;
+    CREATE TRIGGER reject_test_renewal_job BEFORE INSERT ON jobs FOR EACH ROW EXECUTE FUNCTION reject_test_renewal_job();`);
+  try {
+    await expect(agentBillingRepository.recordHourlyBilling(input)).rejects.toThrow();
+    expect(await renewalState(org)).toEqual(before);
+    expect(
+      (
+        await fixture.query(
+          "SELECT last_billed_at,total_billed::text FROM agent_sandboxes WHERE id=$1",
+          [agentId],
+        )
+      ).rows,
+    ).toEqual(cursor.rows);
+    expect(
+      (await fixture.query("SELECT id FROM agent_billing_records WHERE sandbox_id=$1", [agentId]))
+        .rows,
+    ).toHaveLength(0);
+    expect(
+      (await fixture.query("SELECT id FROM agent_billing_run_items WHERE run_id=$1", [input.runId]))
+        .rows,
+    ).toHaveLength(0);
+  } finally {
+    await fixture.exec(
+      "DROP TRIGGER reject_test_renewal_job ON jobs; DROP FUNCTION reject_test_renewal_job();",
+    );
+  }
+  expect(await agentBillingRepository.recordHourlyBilling(input)).toMatchObject({
+    status: "billed",
+    amountDecimal: "0.010000",
+  });
+});
+
+test("an unfundable hourly renewal keeps its existing hold and returns the canonical shutdown outcome", async () => {
+  const { org, agentId, input, agentBillingRepository } = await billableFundedAgent(
+    "000000000012",
+    "0.020000",
+  );
+  const before = await renewalState(org);
+  expect(await agentBillingRepository.recordHourlyBilling(input)).toEqual({
+    status: "insufficient_credits",
+  });
+  expect(await renewalState(org)).toEqual(before);
+  expect(
+    (await fixture.query("SELECT id FROM jobs WHERE agent_id=$1", [agentId])).rows,
+  ).toHaveLength(0);
+  expect(
+    (await fixture.query("SELECT id FROM agent_billing_records WHERE sandbox_id=$1", [agentId]))
+      .rows,
+  ).toHaveLength(0);
 });
