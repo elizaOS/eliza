@@ -318,15 +318,159 @@ describe("Headscale protected workflow contract", () => {
   });
 
   test("emits only closed remote failure categories", () => {
-    const step = namedStep(workflow, "Inspect or converge Headscale control plane");
+    const step = namedStep(
+      workflow,
+      "Inspect or converge Headscale control plane",
+    );
     const run = String(step.run ?? "");
 
-    expect(run).toContain(
-      "grep -hEo 'category=(headscale|cp-router)-[a-z0-9-]+'",
-    );
+    expect(run).toContain("grep -hEo 'category=(");
     expect(run).toContain('safe_category="headscale-remote-failed"');
     expect(run).toContain("raw-output=suppressed");
     expect(run).not.toContain('cat "$arm_stdout"');
     expect(run).not.toContain('cat "$arm_stderr"');
   });
+
+  /**
+   * Runs the workflow's own failure-classification block against synthetic
+   * captures. The block reads only the two capture files, so it executes
+   * faithfully without a host, credentials, or the surrounding step.
+   */
+  function classify(stdout: string, stderr: string): string {
+    const run = String(
+      namedStep(workflow, "Inspect or converge Headscale control plane").run ??
+        "",
+    );
+    const start = run.indexOf('if [ "$arm_status" -ne 0 ]; then');
+    const end = run.indexOf('exit "$arm_status"', start);
+    expect(start, "classification block not found").toBeGreaterThan(-1);
+    expect(end, "classification block not terminated").toBeGreaterThan(start);
+    const block = `${run.slice(start, end)}fi\n`;
+
+    const root = mkdtempSync(join(tmpdir(), "headscale-classify-"));
+    tempRoots.push(root);
+    const outPath = join(root, "stdout");
+    const errPath = join(root, "stderr");
+    writeFileSync(outPath, stdout);
+    writeFileSync(errPath, stderr);
+    const result = spawnSync("bash", ["-c", `set -euo pipefail\n${block}`], {
+      encoding: "utf8",
+      env: {
+        PATH: process.env.PATH ?? "",
+        arm_status: "1",
+        arm_stdout: outPath,
+        arm_stderr: errPath,
+      },
+    });
+    return `${result.stdout}${result.stderr}`;
+  }
+
+  test("classifies a failing run by its failure category, not its last progress token", () => {
+    // `report_headscale_unit_state` prints immediately before the health
+    // failure exits, so the newest category on a health failure is the state
+    // reporter rather than the failure itself.
+    expect(
+      classify(
+        [
+          "headscale local health failed (category=headscale-local-health-failed; attempts=30)",
+          "headscale-unit-state category=headscale-unit-state active=failed",
+        ].join("\n"),
+        "",
+      ),
+    ).toContain("category=headscale-local-health-failed;");
+
+    // The cp-router block ends by announcing success; anything failing after
+    // it must not be reported as that success.
+    expect(
+      classify(
+        [
+          "CP router live identity and canonical control URL verified (category=cp-router-visible)",
+          "env file /etc/eliza.env not found on host",
+        ].join("\n"),
+        "",
+      ),
+    ).toContain("category=headscale-remote-failed;");
+
+    // A self-classifying failure is still reported exactly.
+    expect(
+      classify(
+        "CP router forced reauthentication failed (category=cp-router-reauth-failed)",
+        "",
+      ),
+    ).toContain("category=cp-router-reauth-failed;");
+
+    // No category anywhere falls back rather than inventing one.
+    expect(classify("ssh: connection reset by peer", "")).toContain(
+      "category=headscale-remote-failed;",
+    );
+  });
+
+  test("never emits captured remote output, whatever it contains", () => {
+    const secret = "sentinel-headscale-preauth-key-value";
+    for (const [stdout, stderr] of [
+      [`tailscale up --authkey=${secret} failed`, ""],
+      [`authkey=${secret} (category=cp-router-reauth-failed) aborted`, ""],
+      ["", `${secret} refused (category=cp-router-key-failed)`],
+    ]) {
+      expect(classify(stdout, stderr), stdout || stderr).not.toContain(secret);
+    }
+  });
+
+  test("accepts exactly the categories the remote script exits on", () => {
+    const remote = renderRemoteScript();
+    const lines = remote.split("\n");
+    const exiting = new Set<string>();
+    for (let index = 0; index < lines.length; index += 1) {
+      // A category is a failure category when the statement printing it also
+      // terminates the script; `headscale-local-health-failed` reports unit
+      // state first, so look a couple of lines ahead.
+      const window = lines.slice(index, index + 3).join(" ");
+      for (const match of lines[index].matchAll(/category=([a-z0-9-]+)/g)) {
+        if (/\bexit 1\b/.test(window)) exiting.add(match[1]);
+      }
+    }
+    expect(exiting.size).toBeGreaterThan(0);
+
+    const run = String(
+      namedStep(workflow, "Inspect or converge Headscale control plane").run ??
+        "",
+    );
+    const pattern = run.match(/grep -hEo 'category=\((.+)\)'/)?.[1] ?? "";
+    expect(pattern, "classifier alternation not found").not.toBe("");
+    const accepted = new Set(
+      splitTopLevel(pattern).flatMap((alternative) =>
+        expandAlternation(alternative),
+      ),
+    );
+    // Every category the script exits on is classifiable, and the workflow
+    // accepts nothing the script never exits on.
+    expect([...accepted].sort()).toEqual([...exiting].sort());
+  });
 });
+
+/** Splits a grep alternation on the `|`s that sit outside any group. */
+function splitTopLevel(pattern: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const character of pattern) {
+    if (character === "(") depth += 1;
+    if (character === ")") depth -= 1;
+    if (character === "|" && depth === 0) {
+      parts.push(current);
+      current = "";
+      continue;
+    }
+    current += character;
+  }
+  parts.push(current);
+  return parts;
+}
+
+/** Expands a single `a-(b|c)-d` grep alternative into concrete tokens. */
+function expandAlternation(pattern: string): string[] {
+  const group = pattern.match(/^(.*)\(([^)]*)\)(.*)$/);
+  if (!group) return [pattern];
+  const [, prefix, choices, suffix] = group;
+  return choices.split("|").map((choice) => `${prefix}${choice}${suffix}`);
+}
