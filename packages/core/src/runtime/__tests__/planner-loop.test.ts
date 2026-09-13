@@ -7585,6 +7585,62 @@ describe("verified intent gate", () => {
 		).toBe("skipped");
 	});
 
+	it("keeps a same-action call whose arguments differ (two facts are two pieces of work)", async () => {
+		const runtime = {
+			useModel: nativePlannerOnce({
+				toolCalls: [
+					{
+						id: "create-1",
+						name: "MEMORY_CREATE",
+						arguments: {
+							text: "User's favorite tea is matcha.",
+							eliza_turn_scope: "final",
+						},
+					},
+					{
+						id: "create-2",
+						name: "MEMORY_CREATE",
+						arguments: {
+							text: "User's dog is named Biscuit.",
+							eliza_turn_scope: "final",
+						},
+					},
+				],
+			}),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: "Stored memory.",
+			userFacingText: "Saved.",
+			verifiedUserFacing: true,
+			turnComplete: true,
+			effectReceipts: [receipt],
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "evaluator ran",
+			messageToUser: "Saved both.",
+		}));
+		const result = await runPlannerLoop({
+			runtime,
+			context: intentContext(["remember two things"]),
+			executeToolCall,
+			evaluate,
+		});
+		// The differing call is real work: it stays queued for the evaluator's
+		// NEXT_RECOMMENDED instead of being skipped, and the verified-intent gate
+		// cannot settle a turn with a non-empty queue, so the evaluator runs.
+		expect(executeToolCall).toHaveBeenCalledTimes(1);
+		expect(evaluate).toHaveBeenCalled();
+		expect(
+			result.trajectory.context.plannedQueue?.find(
+				(entry) => entry.id === "create-2",
+			)?.status,
+		).toBe("queued");
+		expect(result.status).toBe("finished");
+	});
+
 	it("still evaluates when the verified text does not cover the declared intent", async () => {
 		const { runtime, executeToolCall, evaluate } = harness(
 			"Forgot: your dog is named Rex.",

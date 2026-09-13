@@ -2063,7 +2063,7 @@ async function runPlannerLoopIterations(
 			latestResult.verifiedUserFacing === true &&
 			trajectory.plannedQueue.length > 0
 		) {
-			dropRedundantQueuedCalls(trajectory, toolCall.name, iteration);
+			dropRedundantQueuedCalls(trajectory, toolCall, iteration);
 		}
 
 		// Coding mode: keep executing the rest of this model-emitted tool-call
@@ -2444,19 +2444,47 @@ function appendPlannerToolStepToModelHistory(
  * three rate-limited retries). They leave the queue as skipped evidence so the
  * queue-drained gates can settle the turn on the verified result.
  */
+function comparableToolParams(
+	params: Record<string, unknown> | undefined,
+): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (const [key, value] of Object.entries(params ?? {})) {
+		if (key === "eliza_turn_scope" || value === undefined) continue;
+		out[key] = JSON.stringify(value);
+	}
+	return out;
+}
+
+/** True when every entry of `a` appears with the same value in `b`. */
+function paramsSubset(
+	a: Record<string, string>,
+	b: Record<string, string>,
+): boolean {
+	return Object.entries(a).every(([key, value]) => b[key] === value);
+}
+
 function dropRedundantQueuedCalls(
 	trajectory: PlannerTrajectory,
-	actionName: string,
+	executed: PlannerToolCall,
 	iteration: number,
 ): number {
+	const actionName = executed.name;
 	const key = actionName.trim().toUpperCase();
-	const dropped = trajectory.plannedQueue.filter(
-		(queued) => queued.name.trim().toUpperCase() === key,
-	);
+	const executedParams = comparableToolParams(executed.params);
+	// Only a hedge is redundant: same action, and one call's operative
+	// arguments contained in the other's ({confirm} against {confirm, query}).
+	// Distinct arguments are distinct work ("remember X" and "remember Y").
+	const isHedge = (queued: PlannerToolCall): boolean => {
+		if (queued.name.trim().toUpperCase() !== key) return false;
+		const queuedParams = comparableToolParams(queued.params);
+		return (
+			paramsSubset(queuedParams, executedParams) ||
+			paramsSubset(executedParams, queuedParams)
+		);
+	};
+	const dropped = trajectory.plannedQueue.filter(isHedge);
 	if (dropped.length === 0) return 0;
-	const kept = trajectory.plannedQueue.filter(
-		(queued) => queued.name.trim().toUpperCase() !== key,
-	);
+	const kept = trajectory.plannedQueue.filter((queued) => !isHedge(queued));
 	trajectory.plannedQueue.splice(0, trajectory.plannedQueue.length, ...kept);
 	const droppedIds = new Set(dropped.map((queued) => queued.id ?? queued.name));
 	trajectory.context = appendContextEvent(
