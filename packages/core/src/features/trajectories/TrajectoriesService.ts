@@ -77,6 +77,7 @@ type TrajectorySqlExecutor = (sqlText: string) => Promise<TrajectorySqlResult>;
 // ============================================================================
 
 export interface TrajectoryListOptions {
+	roomId?: string;
 	limit?: number;
 	offset?: number;
 	status?: "active" | "completed" | "error" | "timeout" | "terminated";
@@ -3179,6 +3180,11 @@ export class TrajectoriesService extends Service {
 		const whereClauses: string[] = [
 			`agent_id = ${sqlLiteral(this.runtime.agentId)}`,
 		];
+		if (options.roomId) {
+			whereClauses.push(
+				`metadata_json->>'roomId' = ${sqlLiteral(options.roomId)}`,
+			);
+		}
 		if (options.status) {
 			whereClauses.push(`status = ${sqlLiteral(options.status)}`);
 		}

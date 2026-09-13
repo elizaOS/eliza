@@ -105,6 +105,7 @@ interface ResolvedRoomContext {
 
 interface TrajectoriesServiceLike {
 	listTrajectories?: (options: {
+		roomId?: string;
 		limit?: number;
 		offset?: number;
 		source?: string;
@@ -457,6 +458,7 @@ export async function tryHandleTrajectoryReadRoutes(options: {
 			const result = await service.listTrajectories({
 				limit,
 				offset,
+				roomId: url.searchParams.get("roomId") || undefined,
 				source: url.searchParams.get("source") || undefined,
 				status: url.searchParams.get("status") || undefined,
 				scenarioId: url.searchParams.get("scenarioId") || undefined,

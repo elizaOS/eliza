@@ -1857,6 +1857,11 @@ function buildTrajectoryWhereClauses(
   agentId: string,
 ): string[] {
   const whereClauses: string[] = [`agent_id = ${sqlQuote(agentId)}`];
+  if (options.roomId) {
+    whereClauses.push(
+      `COALESCE(metadata_json::jsonb, metadata::jsonb)->>'roomId' = ${sqlQuote(options.roomId)}`,
+    );
+  }
   if (options.source) {
     whereClauses.push(`source = ${sqlQuote(options.source)}`);
   }

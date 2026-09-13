@@ -434,7 +434,7 @@ export function DeveloperReplyDetails({
       (typeof summaryRecord?.metadata?.messageId === "string"
         ? summaryRecord.metadata.messageId
         : undefined),
-    enabled: open && (!summaryRecord || tab === "trajectories"),
+    enabled: open,
   });
   const record =
     summaryRecord ??
@@ -472,13 +472,15 @@ export function DeveloperReplyDetails({
             (record.totalPromptTokens > 0 || record.totalCompletionTokens > 0)
               ? `${count(record.totalPromptTokens)} tokens in · ${count(record.totalCompletionTokens)} out`
               : !record
-                ? history.loading
-                  ? "Loading token counts…"
-                  : history.error
-                    ? "Token counts couldn’t load"
-                    : history.runs.length
-                      ? "No foreground counts"
-                      : "No recorded run"
+                ? !messageId
+                  ? "No linked run"
+                  : history.loading
+                    ? "Loading token counts…"
+                    : history.error
+                      ? "Token counts couldn’t load"
+                      : history.runs.length
+                        ? "No foreground counts"
+                        : "No recorded run"
                 : record.status === "active"
                   ? "Usage pending"
                   : record.llmCallCount === 0
@@ -773,18 +775,13 @@ function DeveloperPanel({ section }: { section: "chat" | "settings" }) {
     }
   }, [state.activeConversationId, conversationMessages, section]);
   const messages = useMemo(() => {
-    let requestId: string | undefined;
     return conversationMessages
       .filter((message) => message.transcriptVisibility !== "internal")
       .map((message) => {
-        if (message.role === "user") requestId = message.id;
-        // Explicit reply linkage is authoritative even when its user message
-        // has scrolled out of the loaded transcript. Every lookup stays scoped
-        // to this room; only legacy replies without linkage use adjacency.
+        // Only recorded reply ownership can attach request costs. Adjacent
+        // assistant rows may instead be unsolicited background notifications.
         const messageId =
-          message.role === "assistant"
-            ? message.replyToMessageId || requestId
-            : undefined;
+          message.role === "assistant" ? message.replyToMessageId : undefined;
         const record =
           message.role === "assistant" && messageId
             ? telemetry.rows.find(
