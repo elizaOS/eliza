@@ -24,7 +24,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "HSM-backed secrets + multi-chain signing for elizaOS agents via 1Claw — vault access and EVM/Solana/BTC/XRP/Cardano/Tron signing without the agent ever holding private keys; optional Shroud TEE LLM proxy.",
+      "description": "HSM-backed secrets + multi-chain signing for elizaOS agents via 1Claw \u2014 vault access and EVM/Solana/BTC/XRP/Cardano/Tron signing without the agent ever holding private keys; optional Shroud TEE LLM proxy.",
       "homepage": "https://github.com/1clawAI/1claw-elizaos-plugin",
       "topics": [
         "security",
@@ -69,7 +69,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "AgentRadar trust for elizaOS — a VERIFY_AGENT action and trust provider that check a wallet/agent's on-chain trust score (ERC-8004 reputation + scam database + static analysis) before your agent interacts with or pays it.",
+      "description": "AgentRadar trust for elizaOS \u2014 a VERIFY_AGENT action and trust provider that check a wallet/agent's on-chain trust score (ERC-8004 reputation + scam database + static analysis) before your agent interacts with or pays it.",
       "homepage": "https://github.com/Bichev/agentradar-integrations/tree/main/eliza-plugin-agentradar",
       "topics": [
         "trust",
@@ -258,7 +258,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "WaaP wallet plugin for ElizaOS — 2-of-2 MPC signing for EVM and Sui, with native 2FA and server-enforced spending policies; the agent never holds private keys.",
+      "description": "WaaP wallet plugin for ElizaOS \u2014 2-of-2 MPC signing for EVM and Sui, with native 2FA and server-enforced spending policies; the agent never holds private keys.",
       "homepage": "https://github.com/holonym-foundation/eliza-plugin-waap",
       "topics": [
         "wallet",
@@ -304,7 +304,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "Clawbal — on-chain AI chatrooms on Solana with PnL tracking, token launching, and leaderboards.",
+      "description": "Clawbal \u2014 on-chain AI chatrooms on Solana with PnL tracking, token launching, and leaderboards.",
       "homepage": "https://github.com/IQCoreTeam/milady-clawbal",
       "topics": [
         "solana",
@@ -349,7 +349,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "ElizaOS LLM plugin for LMX Cloud — pay per call in USDC via x402 on Base (no API key).",
+      "description": "ElizaOS LLM plugin for LMX Cloud \u2014 pay per call in USDC via x402 on Base (no API key).",
       "homepage": "https://lmxcloud.io",
       "topics": [
         "lmxcloud",
@@ -514,7 +514,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "Live crypto market data for trading agents — liquidations, long/short positioning, open interest, funding rates, SOL/BTC prices via Pyth, and SPL token rug-risk checks. Paid per-call in USDC via x402 on Solana ($0.001-$0.01/call), no API keys or subscriptions. Built-in per-call spend cap.",
+      "description": "Live crypto market data for trading agents \u2014 liquidations, long/short positioning, open interest, funding rates, SOL/BTC prices via Pyth, and SPL token rug-risk checks. Paid per-call in USDC via x402 on Solana ($0.001-$0.01/call), no API keys or subscriptions. Built-in per-call spend cap.",
       "homepage": "https://github.com/seekdaseek/plugin-agentfeed",
       "topics": [
         "market-data",
@@ -607,7 +607,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "Music, video, and image generation from Suede AI, paid for per call by the agent's own wallet over x402 — USDC on Base, no service API key. Registers GENERATE_MUSIC_SUEDE, GENERATE_VIDEO_SUEDE, and GENERATE_IMAGE_SUEDE, and exports a SuedeClient that answers the 402 challenge by signing an EIP-3009 TransferWithAuthorization with viem.",
+      "description": "Music, video, and image generation from Suede AI, paid for per call by the agent's own wallet over x402 \u2014 USDC on Base, no service API key. Registers GENERATE_MUSIC_SUEDE, GENERATE_VIDEO_SUEDE, and GENERATE_IMAGE_SUEDE, and exports a SuedeClient that answers the 402 challenge by signing an EIP-3009 TransferWithAuthorization with viem.",
       "homepage": "https://suedeai.ai",
       "topics": [
         "x402",
@@ -655,7 +655,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "The Colony social plugin for elizaOS agents — post, reply, DM, vote, react, search, follow, manage sub-colonies, and run autonomously on thecolony.cc, the AI-agent-only social network.",
+      "description": "The Colony social plugin for elizaOS agents \u2014 post, reply, DM, vote, react, search, follow, manage sub-colonies, and run autonomously on thecolony.cc, the AI-agent-only social network.",
       "homepage": "https://thecolony.cc",
       "topics": [
         "thecolony",
@@ -701,7 +701,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "Multi-venue perpetual funding-rate data & cross-exchange funding-arbitrage for elizaOS agents — across 20+ exchanges incl. Hyperliquid HIP-3 sub-DEXes. Free FUNDING_SCREENER; paid FUNDING_ARB + FUNDING_SPREAD settle per-call over x402 (auto-pay in USDC on Base).",
+      "description": "Multi-venue perpetual funding-rate data & cross-exchange funding-arbitrage for elizaOS agents \u2014 across 20+ exchanges incl. Hyperliquid HIP-3 sub-DEXes. Free FUNDING_SCREENER; paid FUNDING_ARB + FUNDING_SPREAD settle per-call over x402 (auto-pay in USDC on Base).",
       "homepage": "https://usenami.io",
       "topics": [
         "funding-rate",
@@ -749,7 +749,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "Keyless CEX/DEX perp order signing for elizaOS agents — HMAC/EIP-712 signatures are computed inside an AWS Nitro Enclave, so the venue API key never enters the agent process. Covers 6 venues: Binance, OKX, Asterdex, KuCoin, Bybit, Hyperliquid.",
+      "description": "Keyless CEX/DEX perp order signing for elizaOS agents \u2014 HMAC/EIP-712 signatures are computed inside an AWS Nitro Enclave, so the venue API key never enters the agent process. Covers 6 venues: Binance, OKX, Asterdex, KuCoin, Bybit, Hyperliquid.",
       "homepage": "https://usenami.io/signer",
       "topics": [
         "trading",
@@ -796,7 +796,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "ValuePacket payment protocol adapter — let your ElizaOS agent pay and get paid by other AI agents across any framework using on-chain payment channels with EIP-712 signed micropayments.",
+      "description": "ValuePacket payment protocol adapter \u2014 let your ElizaOS agent pay and get paid by other AI agents across any framework using on-chain payment channels with EIP-712 signed micropayments.",
       "homepage": "https://github.com/KryptosAI/ValuePacket",
       "topics": [
         "payment",
@@ -1022,7 +1022,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "Captures elizaOS action runs as rollout-wire/v1 training records (DPO/PPO JSONL) for fine-tuning via evomerge. No sandbox layer — elizaOS Bun Worker isolation already covers that.",
+      "description": "Captures elizaOS action runs as rollout-wire/v1 training records (DPO/PPO JSONL) for fine-tuning via evomerge. No sandbox layer \u2014 elizaOS Bun Worker isolation already covers that.",
       "homepage": "https://github.com/WasmAgent/wasmagent-js/tree/main/packages/eliza-rollout-plugin",
       "topics": [
         "training-data",
@@ -1161,7 +1161,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "XYNQ decentralized inference for ElizaOS — OpenAI-compatible models, live GPU mesh status, USDC worker earnings, and Solana credit top-ups.",
+      "description": "XYNQ decentralized inference for ElizaOS \u2014 OpenAI-compatible models, live GPU mesh status, USDC worker earnings, and Solana credit top-ups.",
       "homepage": "https://github.com/visionsXBT/xynq/tree/main/plugin-eliza",
       "topics": [
         "llm",
@@ -1300,7 +1300,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "15 x402 pay-per-call APIs on Base for ElizaOS agents — stock prices, B2B enrichment, web search, crypto funding rates, SEO analysis, NLP, SSL/DNS checks and more. Agents pay USDC per call with no API keys.",
+      "description": "15 x402 pay-per-call APIs on Base for ElizaOS agents \u2014 stock prices, B2B enrichment, web search, crypto funding rates, SEO analysis, NLP, SSL/DNS checks and more. Agents pay USDC per call with no API keys.",
       "homepage": "https://klymax402.com",
       "topics": [
         "x402",
@@ -1449,7 +1449,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "An automated, independent second opinion an agent calls before a high-stakes action: one API call returns approve/concerns/reject and the agent weighs it and decides — no human in the loop, never blocks, degrades to a no-op if unavailable. Plus free proof verification (BIP-340 schnorr vs a published key), verified 100% locally with zero network calls when the caller supplies the full proof event — the independent check an agent can't self-issue.",
+      "description": "An automated, independent second opinion an agent calls before a high-stakes action: one API call returns approve/concerns/reject and the agent weighs it and decides \u2014 no human in the loop, never blocks, degrades to a no-op if unavailable. Plus free proof verification (BIP-340 schnorr vs a published key), verified 100% locally with zero network calls when the caller supplies the full proof event \u2014 the independent check an agent can't self-issue.",
       "homepage": "https://api.babyblueviper.com/install",
       "topics": [
         "verification",
@@ -1495,7 +1495,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "Live tennis scores, upcoming fixtures, and player search for elizaOS agents via the Live Tennis API — ATP, WTA, Challenger, ITF and juniors. FREE-tier endpoints only, with honest per-action tier errors.",
+      "description": "Live tennis scores, upcoming fixtures, and player search for elizaOS agents via the Live Tennis API \u2014 ATP, WTA, Challenger, ITF and juniors. FREE-tier endpoints only, with honest per-action tier errors.",
       "homepage": "https://livetennisapi.com",
       "topics": [
         "tennis",
@@ -1633,7 +1633,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "ElizaOS plugin for Reddit integration — search, engage, and manage Reddit interactions autonomously",
+      "description": "ElizaOS plugin for Reddit integration \u2014 search, engage, and manage Reddit interactions autonomously",
       "homepage": null,
       "topics": [
         "reddit",
@@ -1676,7 +1676,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "Pre-trade rug/honeypot guard for Base tokens — real buy/sell simulation plus liquidity and ownership checks, pay-per-call over x402 (USDC on Base). No accounts, no API keys; free daily trial.",
+      "description": "Pre-trade rug/honeypot guard for Base tokens \u2014 real buy/sell simulation plus liquidity and ownership checks, pay-per-call over x402 (USDC on Base). No accounts, no API keys; free daily trial.",
       "homepage": "https://true402.dev",
       "topics": [
         "x402",
@@ -1700,6 +1700,58 @@
       "kind": "plugin",
       "registryKind": "plugin",
       "directory": null
+    },
+    "elizaos-plugin-x402-scraper": {
+      "git": {
+        "repo": "ami-guru/x402-scraper-engine",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-x402-scraper",
+        "v0": null,
+        "v1": null,
+        "v2": "1.4.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "HTTP 402 Web Scraper, Edge Llama-3 Digest, Security Audit & Twitter Intelligence for ElizaOS agents on Base L2. No API keys, zero setup; includes 2-call free trial grace tier.",
+      "homepage": "https://x402-scraper-engine.gejoe-tt.workers.dev",
+      "topics": [
+        "x402",
+        "web-scraper",
+        "llama3",
+        "ai-digest",
+        "base",
+        "usdc",
+        "micropayments",
+        "twitter-search",
+        "security-audit",
+        "search",
+        "crypto-intelligence",
+        "agentic-payments"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "integrations/elizaos"
     },
     "elizaos-plugin-yieldsignal": {
       "git": {
@@ -1868,7 +1920,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "ElizaOS plugin for GBLIN on Base — a gasless treasury rail for AI agents. Routes surplus agent capital into the MEV-protected GBLIN index (cbBTC/WETH/USDC, mint/redeem at NAV — managed crypto exposure, not a USDC substitute) and JIT-swaps back to USDC for x402 invoices. GBLIN is a discoverable ERC-8004 agent (#59286) on Base.",
+      "description": "ElizaOS plugin for GBLIN on Base \u2014 a gasless treasury rail for AI agents. Routes surplus agent capital into the MEV-protected GBLIN index (cbBTC/WETH/USDC, mint/redeem at NAV \u2014 managed crypto exposure, not a USDC substitute) and JIT-swaps back to USDC for x402 invoices. GBLIN is a discoverable ERC-8004 agent (#59286) on Base.",
       "homepage": "https://gblin.digital/agents",
       "topics": [
         "gblin",
@@ -1921,7 +1973,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "Pulse Network paid data for agents: free catalog search across the x402 fleet (finance, crypto, macro, travel, sports, health, legal), pre-trade token safety scans, and pay-per-call fetches — USDC on Base, no API keys. Quote-first: every paid call previews its exact price, asset, and recipient and executes only on a content-bound user confirmation, under a per-call cap, a daily budget, and an execute-once ledger.",
+      "description": "Pulse Network paid data for agents: free catalog search across the x402 fleet (finance, crypto, macro, travel, sports, health, legal), pre-trade token safety scans, and pay-per-call fetches \u2014 USDC on Base, no API keys. Quote-first: every paid call previews its exact price, asset, and recipient and executes only on a content-bound user confirmation, under a per-call cap, a daily budget, and an execute-once ledger.",
       "homepage": "https://pulse.theaslangroupllc.com",
       "topics": [
         "x402",
@@ -1969,7 +2021,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "Pre-action Solana token verification via Raven — signed, scope-bounded on-chain evidence receipts (checks performed, checks NOT performed, coverage gaps, ed25519 signature). Reports evidence, not a safe/unsafe verdict.",
+      "description": "Pre-action Solana token verification via Raven \u2014 signed, scope-bounded on-chain evidence receipts (checks performed, checks NOT performed, coverage gaps, ed25519 signature). Reports evidence, not a safe/unsafe verdict.",
       "homepage": "https://ravenattest.com",
       "topics": [
         "solana",
@@ -2061,7 +2113,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "Run a crime family in The Syndicate: a deterministic, turn-based city driven by three real-world data feeds — live TCG card prices, real Chicago weather, and on-chain-committed sports stat lines. Each syndicate runs its own city; humans and agents compete on one shared leaderboard.",
+      "description": "Run a crime family in The Syndicate: a deterministic, turn-based city driven by three real-world data feeds \u2014 live TCG card prices, real Chicago weather, and on-chain-committed sports stat lines. Each syndicate runs its own city; humans and agents compete on one shared leaderboard.",
       "homepage": "https://play.the-undesirables.com",
       "topics": [
         "game",
@@ -2195,7 +2247,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "Real-time wallet risk check for elizaOS agents — a CHECK_ADDRESS_RISK action that cross-references an address's active ERC20 approvals with a live exploit threat feed BEFORE the agent acts (risk score 0-100, revoke-first findings). Pay-per-query via x402 (~$0.01 USDC on Base); stateless, no API key. Built-in per-query spend cap.",
+      "description": "Real-time wallet risk check for elizaOS agents \u2014 a CHECK_ADDRESS_RISK action that cross-references an address's active ERC20 approvals with a live exploit threat feed BEFORE the agent acts (risk score 0-100, revoke-first findings). Pay-per-query via x402 (~$0.01 USDC on Base); stateless, no API key. Built-in per-query spend cap.",
       "homepage": "https://wallettriage.com",
       "topics": [
         "security",
@@ -2244,7 +2296,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "Paid alpha data endpoints via x402 protocol — token safety, whale tracking, yield strategies, governance, sentiment.",
+      "description": "Paid alpha data endpoints via x402 protocol \u2014 token safety, whale tracking, yield strategies, governance, sentiment.",
       "homepage": "https://github.com/sna4an/plugin-x402-alpha-data",
       "topics": [
         "x402",
@@ -2294,7 +2346,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "Exposes the x402-endpoints catalogue (28 paid data endpoints: official EU/global registries — GLEIF, VIES, BODACC, EUR-Lex, Companies House, EPO, sanctions, CVE, FDA — plus crypto pre-trade data) as native ElizaOS actions, billed per call via x402 (USDC on Base mainnet).",
+      "description": "Exposes the x402-endpoints catalogue (28 paid data endpoints: official EU/global registries \u2014 GLEIF, VIES, BODACC, EUR-Lex, Companies House, EPO, sanctions, CVE, FDA \u2014 plus crypto pre-trade data) as native ElizaOS actions, billed per call via x402 (USDC on Base mainnet).",
       "homepage": "https://github.com/digitalweb33333-creator/plugin-x402-endpoints",
       "topics": [
         "x402",
