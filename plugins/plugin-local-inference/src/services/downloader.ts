@@ -561,6 +561,76 @@ async function promoteCompletePartial(
 	return { path: finalPath, sizeBytes, sha256 };
 }
 
+/**
+ * Start offset a 206 Partial Content response actually covers, from its
+ * Content-Range header (`bytes <start>-<end>/<size>`). Returns null when the
+ * header is missing or malformed, which a resume must treat as "not honored":
+ * RFC 7233 requires Content-Range on every 206, and the header, not the status
+ * code, states which bytes were sent (#30939).
+ */
+export function contentRangeStart(
+	header: string | string[] | undefined,
+): number | null {
+	const value = Array.isArray(header) ? header[0] : header;
+	if (typeof value !== "string") return null;
+	const match = /^bytes\s+(\d+)-(\d+)\/(?:\d+|\*)$/i.exec(value.trim());
+	if (!match) return null;
+	const start = Number.parseInt(match[1], 10);
+	return Number.isFinite(start) ? start : null;
+}
+
+type ResumeDecision = "continue" | "restart" | "refetch";
+
+/**
+ * What to do with the response to a `Range: bytes=<startByte>-` request.
+ * `continue` appends the body to the partial: a 206 whose Content-Range starts
+ * at the partial, or a 206 without a usable Content-Range, which is trusted
+ * the way it always was. `restart` truncates and writes the body from byte
+ * zero, which is only safe when the body actually starts there: a 200 (the
+ * whole entity) or a 206 reporting `bytes 0-`. `refetch` covers every other
+ * 206: its start is neither the partial nor zero, so the body cannot be
+ * placed and must be discarded in favour of a fresh unranged request.
+ */
+function resumeDecision(
+	response: {
+		statusCode: number;
+		headers: Record<string, string | string[] | undefined>;
+	},
+	startByte: number,
+): ResumeDecision {
+	if (startByte <= 0) return "continue";
+	if (response.statusCode !== 206) return "restart";
+	const start = contentRangeStart(response.headers["content-range"]);
+	if (start === null || start === startByte) return "continue";
+	return start === 0 ? "restart" : "refetch";
+}
+
+/** Release a response body without reading it into the staging file. */
+async function discardBody(body: AsyncIterable<Buffer>): Promise<void> {
+	const iterator = body[Symbol.asyncIterator]();
+	await iterator.return?.();
+}
+
+/**
+ * An unranged request must yield the whole entity. A 206 that still reports
+ * a non-zero start is an origin defect this downloader cannot place, so it
+ * fails closed instead of writing the bytes at offset zero.
+ */
+function assertWholeEntity(
+	response: {
+		statusCode: number;
+		headers: Record<string, string | string[] | undefined>;
+	},
+	remotePath: string,
+): void {
+	if (response.statusCode !== 206) return;
+	const start = contentRangeStart(response.headers["content-range"]);
+	if (start === null || start === 0) return;
+	throw new Error(
+		`Model hub answered an unranged request for ${remotePath} with bytes from offset ${start}`,
+	);
+}
+
 export class Downloader {
 	private readonly active = new Map<string, ActiveJob>();
 	private readonly terminal = new Map<string, DownloadJob>();
@@ -1169,14 +1239,26 @@ export class Downloader {
 					headers.range = `bytes=${startByte}-`;
 				}
 
-				const { response } = await this.requestHubFile({
+				let { response } = await this.requestHubFile({
 					catalogEntry,
 					remotePath: catalogEntry.ggufFile,
 					headers,
 					signal: record.abortController.signal,
 				});
 				let effectiveStartByte = startByte;
-				if (effectiveStartByte > 0 && response.statusCode !== 206) {
+				const decision = resumeDecision(response, effectiveStartByte);
+				if (decision === "refetch") {
+					await discardBody(response.body);
+					delete headers.range;
+					({ response } = await this.requestHubFile({
+						catalogEntry,
+						remotePath: catalogEntry.ggufFile,
+						headers,
+						signal: record.abortController.signal,
+					}));
+					assertWholeEntity(response, catalogEntry.ggufFile);
+				}
+				if (decision !== "continue") {
 					effectiveStartByte = 0;
 					record.job.received = 0;
 				}
@@ -1588,13 +1670,25 @@ export class Downloader {
 					headers.range = `bytes=${startByte}-`;
 				}
 
-				const { response } = await this.requestHubFile({
+				let { response } = await this.requestHubFile({
 					catalogEntry,
 					remotePath,
 					headers,
 					signal: record.abortController.signal,
 				});
-				if (startByte > 0 && response.statusCode !== 206) {
+				const decision = resumeDecision(response, startByte);
+				if (decision === "refetch") {
+					await discardBody(response.body);
+					delete headers.range;
+					({ response } = await this.requestHubFile({
+						catalogEntry,
+						remotePath,
+						headers,
+						signal: record.abortController.signal,
+					}));
+					assertWholeEntity(response, remotePath);
+				}
+				if (decision !== "continue") {
 					startByte = 0;
 					record.job.received = baseBytes;
 				}
