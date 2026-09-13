@@ -609,6 +609,7 @@ try {
       recordVideo: { dir: join(outputDir, `deletion-${width}-video`) },
     });
     const page = await context.newPage();
+    await page.clock.setFixedTime(new Date("2026-09-13T13:00:00.000Z"));
     const errors = [];
     page.on("pageerror", (error) => errors.push(String(error)));
     await page.goto(`${baseURL}?scenario=family-deletion`);
@@ -692,6 +693,53 @@ try {
     );
     await page.screenshot({
       path: join(outputDir, `deletion-backup-pending-${width}.png`),
+      fullPage: true,
+    });
+    await page.getByRole("button", { name: "Review backup copies" }).click();
+    const confirmBackups = page.getByRole("button", {
+      name: "Confirm reviewed backup cleanup",
+    });
+    assert(
+      await confirmBackups.isDisabled(),
+      "whole archive removal needs separate acknowledgement",
+    );
+    await page.getByText("Review all 1 backup copies").click();
+    await page
+      .getByRole("checkbox", { name: /I reviewed every backup/ })
+      .check();
+    await confirmBackups.scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: join(outputDir, `deletion-archive-review-${width}.png`),
+      fullPage: true,
+    });
+    await confirmBackups.click();
+    const retryBackups = page.getByRole("button", {
+      name: "Retry backup cleanup",
+    });
+    assert(
+      await retryBackups.isDisabled(),
+      "retention deadline prevents early archive removal",
+    );
+    await page.screenshot({
+      path: join(outputDir, `deletion-archive-retained-${width}.png`),
+      fullPage: true,
+    });
+    await page.clock.setFixedTime(new Date("2026-09-21T13:00:00.000Z"));
+    await page.getByRole("button", { name: "Refresh deletion status" }).click();
+    await retryBackups.click();
+    await page
+      .getByRole("alert")
+      .filter({ hasText: "Backup cleanup acknowledgement lost" })
+      .waitFor();
+    await page.getByRole("button", { name: "Refresh deletion status" }).click();
+    await page
+      .getByText(
+        "Workspace deletion is complete. Referenced provider records remain with their providers.",
+        { exact: true },
+      )
+      .waitFor();
+    await page.screenshot({
+      path: join(outputDir, `deletion-archive-complete-${width}.png`),
       fullPage: true,
     });
     const overflow = await page.evaluate(
