@@ -1,0 +1,5 @@
+# Allow bubblewrap user namespaces only on the explicitly provisioned disposable CI runner.
+# The native installer and scenario launcher never alter AppArmor or global sysctls.
+profile eliza-stability-bwrap /usr/bin/bwrap flags=(unconfined) {
+  userns,
+}

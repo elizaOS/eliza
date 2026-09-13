@@ -4,7 +4,58 @@
  * own it; failed startup waits for teardown before exposing the error.
  */
 import type { ChildProcess } from "node:child_process";
+import { createConnection } from "node:net";
 import { ElizaError } from "@elizaos/core/errors";
+
+/** Only a refused TCP connection proves the former loopback listener is absent. */
+export async function authorityPortClosed(
+  authorityUrl: string,
+): Promise<boolean> {
+  const url = new URL(authorityUrl);
+  if (url.hostname !== "127.0.0.1" || !url.port) {
+    throw new ElizaError(
+      "Authority closure probe requires explicit IPv4 loopback",
+      {
+        code: "STABILITY_AUTHORITY_PROBE_INVALID",
+      },
+    );
+  }
+  return new Promise<boolean>((resolve, reject) => {
+    const socket = createConnection({
+      host: url.hostname,
+      port: Number(url.port),
+    });
+    let settled = false;
+    const finish = (error: Error | undefined, closed: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      socket.destroy();
+      if (error) reject(error);
+      else resolve(closed);
+    };
+    const deadline = setTimeout(() => {
+      finish(
+        new ElizaError("Authority TCP closure probe exceeded one second", {
+          code: "STABILITY_AUTHORITY_PROBE_TIMEOUT",
+        }),
+        false,
+      );
+    }, 1_000);
+    socket.once("connect", () => finish(undefined, false));
+    socket.once("error", (error: NodeJS.ErrnoException) => {
+      if (error.code === "ECONNREFUSED") finish(undefined, true);
+      else
+        finish(
+          new ElizaError("Authority TCP closure could not be established", {
+            code: "STABILITY_AUTHORITY_PROBE_FAILED",
+            cause: error,
+          }),
+          false,
+        );
+    });
+  });
+}
 
 function exited(child: ChildProcess): boolean {
   return child.exitCode !== null || child.signalCode !== null || !child.pid;

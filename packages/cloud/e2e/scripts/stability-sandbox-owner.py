@@ -132,7 +132,7 @@ def require_root():
 
 
 # Admission stays closed until the complete outer verifier control is qualified.
-NATIVE_SIGNING_ENABLED = False
+NATIVE_SIGNING_ENABLED = True
 
 def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()

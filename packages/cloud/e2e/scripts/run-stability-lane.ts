@@ -11,6 +11,7 @@ import { ScenarioStabilitySubprocessAdapter } from "@elizaos/scenario-runner/sta
 import { SyntheticControlClient } from "@elizaos/shared/synthetic-control";
 import cloudStabilityScenario from "../scenarios/cloud-stability-agent.scenario.ts";
 import {
+  authorityPortClosed,
   stopAuthority,
   waitForAuthorityReady,
 } from "../src/stability/authority-process.ts";
@@ -401,12 +402,11 @@ try {
   const pidAbsent = authorityPid ? !processExists(authorityPid) : false;
   let portClosed = false;
   try {
-    await fetch(`${authority.url}/health`, {
-      signal: AbortSignal.timeout(1_000),
-    });
-  } catch {
-    // error-policy:J3 A refused loopback probe is the explicit closed-port state.
-    portClosed = true;
+    portClosed = await authorityPortClosed(authority.url);
+  } catch (error) {
+    // error-policy:J1 Retain uncertain transport closure as a terminal teardown failure.
+    authorityTeardownError =
+      error instanceof Error ? error : new Error(String(error));
   }
   const authorityTeardownProof = {
     namespace,
@@ -423,7 +423,7 @@ try {
     { encoding: "utf8", mode: 0o600 },
   );
   if (!pidAbsent || !portClosed) {
-    authorityTeardownError = new Error(
+    authorityTeardownError ??= new Error(
       "synthetic authority survived controller teardown",
     );
   }

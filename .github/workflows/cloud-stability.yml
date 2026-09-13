@@ -39,7 +39,7 @@ concurrency:
 jobs:
   deterministic-keyless:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 252
     env:
       CI: "true"
       NODE_ENV: test
@@ -55,38 +55,68 @@ jobs:
       HCLOUD_TOKEN: ""
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        timeout-minutes: 5
         with:
           persist-credentials: false
       - uses: ./.github/actions/cloud-setup-test-env
-      - name: Establish Linux scenario containment boundary
+        timeout-minutes: 20
+      - name: Build and install source-bound native authority
+        id: native
+        timeout-minutes: 10
+        shell: bash
         run: |
+          set -euo pipefail
           sudo apt-get update
-          sudo apt-get install --yes acl bubblewrap iptables
+          sudo apt-get install --yes --no-install-recommends \
+            acl bubblewrap iptables clang-18 libbpf-dev libelf-dev zlib1g-dev \
+            "linux-tools-$(uname -r)"
+          # Explicit disposable-runner prerequisite; no global AppArmor/sysctl relaxation.
+          profile=/etc/apparmor.d/eliza-stability-bwrap
+          source_profile=packages/cloud/e2e/scripts/native-stability-bwrap.apparmor
+          if sudo test -e "$profile" || sudo test -L "$profile"; then
+            sudo test ! -L "$profile"
+            test "$(sudo stat -c '%u:%a:%F' "$profile")" = '0:644:regular file'
+            sudo cmp --silent "$source_profile" "$profile"
+          else
+            sudo install --owner=root --group=root --mode=0644 "$source_profile" "$profile"
+          fi
+          sudo apparmor_parser --replace "$profile"
           sudo -n /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
-            /bin/bash packages/cloud/e2e/scripts/stability-linux-sandbox.sh setup
+            /usr/bin/python3 -I -S packages/cloud/e2e/scripts/install-native-stability.py \
+            --source-root "$GITHUB_WORKSPACE/packages/cloud/e2e/scripts" \
+            > "$RUNNER_TEMP/native-install.json"
+          native_root="$(python3 -c 'import json,re,sys; p=json.load(open(sys.argv[1]))["installedRoot"]; assert re.fullmatch(r"/opt/eliza-native-[A-Za-z0-9_]+",p); print(p)' "$RUNNER_TEMP/native-install.json")"
+          echo "root=$native_root" >> "$GITHUB_OUTPUT"
           echo "ELIZA_STABILITY_LINUX_SANDBOX=1" >> "$GITHUB_ENV"
       - name: Prove Linux containment against adversarial escapes
+        # Four 1290s lifecycle controls plus 1980s restricted-guardian/recovery control, 65s descriptors, 300s FIFO, 100s parsers/admission and 75s runner startup.
+        timeout-minutes: 128
         run: bun run --cwd packages/cloud/e2e test:containment
       - name: Run exact-three keyless AgentRuntime scenario
+        # Three 600s attempts plus 600s failed-attempt cleanup each; 1440s guardian-backed native preflight/authority/report boundary.
+        timeout-minutes: 84
         run: >-
           bun run --cwd packages/cloud/e2e stability:keyless --
+          --native-root "${{ steps.native.outputs.root }}"
           --run-id cloud-pr-${{ github.run_id }}-${{ github.run_attempt }}
           --output ${{ github.workspace }}/artifacts/cloud-stability/pr
       - name: Upload deterministic trajectories and ledgers
         if: always()
+        timeout-minutes: 5
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: cloud-stability-keyless-${{ github.run_attempt }}
           path: |
             artifacts/cloud-stability/pr
             packages/cloud/e2e/.logs
+            ${{ runner.temp }}/native-install.json
           retention-days: 14
           include-hidden-files: true
           if-no-files-found: error
 
   real-model-mock-services:
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 252
     env:
       CI: "true"
       NODE_ENV: test
@@ -102,19 +132,45 @@ jobs:
       HCLOUD_TOKEN: ""
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        timeout-minutes: 5
         with:
           persist-credentials: false
       - uses: ./.github/actions/cloud-setup-test-env
-      - name: Establish Linux scenario containment boundary
+        timeout-minutes: 20
+      - name: Build and install source-bound native authority
+        id: native
+        timeout-minutes: 10
+        shell: bash
         run: |
+          set -euo pipefail
           sudo apt-get update
-          sudo apt-get install --yes acl bubblewrap iptables
+          sudo apt-get install --yes --no-install-recommends \
+            acl bubblewrap iptables clang-18 libbpf-dev libelf-dev zlib1g-dev \
+            "linux-tools-$(uname -r)"
+          # Explicit disposable-runner prerequisite; no global AppArmor/sysctl relaxation.
+          profile=/etc/apparmor.d/eliza-stability-bwrap
+          source_profile=packages/cloud/e2e/scripts/native-stability-bwrap.apparmor
+          if sudo test -e "$profile" || sudo test -L "$profile"; then
+            sudo test ! -L "$profile"
+            test "$(sudo stat -c '%u:%a:%F' "$profile")" = '0:644:regular file'
+            sudo cmp --silent "$source_profile" "$profile"
+          else
+            sudo install --owner=root --group=root --mode=0644 "$source_profile" "$profile"
+          fi
+          sudo apparmor_parser --replace "$profile"
           sudo -n /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
-            /bin/bash packages/cloud/e2e/scripts/stability-linux-sandbox.sh setup
+            /usr/bin/python3 -I -S packages/cloud/e2e/scripts/install-native-stability.py \
+            --source-root "$GITHUB_WORKSPACE/packages/cloud/e2e/scripts" \
+            > "$RUNNER_TEMP/native-install.json"
+          native_root="$(python3 -c 'import json,re,sys; p=json.load(open(sys.argv[1]))["installedRoot"]; assert re.fullmatch(r"/opt/eliza-native-[A-Za-z0-9_]+",p); print(p)' "$RUNNER_TEMP/native-install.json")"
+          echo "root=$native_root" >> "$GITHUB_OUTPUT"
           echo "ELIZA_STABILITY_LINUX_SANDBOX=1" >> "$GITHUB_ENV"
       - name: Prove Linux containment against adversarial escapes
+        # Four 1290s lifecycle controls plus 1980s restricted-guardian/recovery control, 65s descriptors, 300s FIFO, 100s parsers/admission and 75s runner startup.
+        timeout-minutes: 128
         run: bun run --cwd packages/cloud/e2e test:containment
       - name: Run exact-three real-model scenario over mock services
+        timeout-minutes: 84
         env:
           OPENAI_API_KEY: ${{ inputs.provider == 'openai' && secrets.OPENAI_API_KEY || '' }}
           ANTHROPIC_API_KEY: ${{ inputs.provider == 'anthropic' && secrets.ANTHROPIC_API_KEY || '' }}
@@ -131,16 +187,19 @@ jobs:
             args+=(--model "$STABILITY_MODEL")
           fi
           bun run --cwd packages/cloud/e2e stability:real -- "${args[@]}" \
+            --native-root "${{ steps.native.outputs.root }}" \
             --run-id "cloud-real-${{ github.run_id }}-${{ github.run_attempt }}" \
             --output "$GITHUB_WORKSPACE/artifacts/cloud-stability/real"
       - name: Upload real-model trajectories and mock-service ledgers
         if: always()
+        timeout-minutes: 5
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: cloud-stability-real-${{ github.run_attempt }}
           path: |
             artifacts/cloud-stability/real
             packages/cloud/e2e/.logs
+            ${{ runner.temp }}/native-install.json
           retention-days: 30
           include-hidden-files: true
           if-no-files-found: error
