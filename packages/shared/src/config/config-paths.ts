@@ -1,5 +1,5 @@
 /**
- * Dot-notation config path parsing and safe get/set/unset on nested config
+ * Dot-notation config path parsing and safe get/set/has/unset on nested config
  * objects. Prototype-pollution keys (`__proto__`, `prototype`, `constructor`)
  * are rejected so untrusted override paths cannot walk into the prototype chain.
  */
@@ -95,6 +95,12 @@ export function parseConfigPath(raw: string): {
   path?: string[];
   error?: string;
 } {
+  if (typeof raw !== "string") {
+    return {
+      ok: false,
+      error: "Path must be a string.",
+    };
+  }
   const trimmed = raw.trim();
   if (!trimmed || trimmed.length > MAX_CONFIG_PATH_LENGTH) {
     return {
@@ -228,4 +234,40 @@ export function getConfigValueAtPath(root: PathNode, path: string[]): unknown {
     cursor = next.value;
   }
   return cursor;
+}
+
+/**
+ * Check whether an own data property exists at the given path on root.
+ * Returns true even when the leaf value is explicitly `undefined`.
+ * Throws ElizaError when encountering prototype pollution keys or unsafe nodes.
+ */
+export function hasConfigValueAtPath(root: PathNode, path: string[]): boolean {
+  assertSafePath(path);
+  if (!isSafePathNode(root)) {
+    throw unsafeConfigPath({ reason: "root-prototype" });
+  }
+  let cursor: unknown = root;
+  for (let idx = 0; idx < path.length; idx += 1) {
+    const key = path[idx];
+    if (typeof cursor !== "object" || cursor === null) {
+      return false;
+    }
+    if (!isSafePathNode(cursor)) {
+      throw unsafeConfigPath({ key, reason: "nested-prototype" });
+    }
+    const next = ownDataValue(cursor, key);
+    if (!next.found) return false;
+    if (idx === path.length - 1) {
+      return true;
+    }
+    if (
+      typeof next.value === "object" &&
+      next.value !== null &&
+      !isSafePathNode(next.value)
+    ) {
+      throw unsafeConfigPath({ key, reason: "nested-prototype" });
+    }
+    cursor = next.value;
+  }
+  return false;
 }
