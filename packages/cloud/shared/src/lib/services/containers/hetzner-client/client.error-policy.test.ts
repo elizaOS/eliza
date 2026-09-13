@@ -52,6 +52,15 @@ const fakeSsh = { exec: execMock, execStdin: execStdinMock, execStream: mock(asy
 const getClient = mock(() => fakeSsh);
 const findByNodeId = mock(async (_id: string): Promise<unknown> => null);
 const incrementAllocated = mock(async (_id: string): Promise<void> => {});
+const reserveExactNodeAllocation = mock(
+  async (): Promise<unknown> => ({
+    node_record_id: "20000000-0000-4000-8000-000000000001",
+    node_id: "node-create",
+    allocated_count: 1,
+    capacity: 4,
+  }),
+);
+const releaseExactNodeAllocation = mock(async (): Promise<boolean> => true);
 const getAvailableNode = mock(async (): Promise<unknown> => null);
 const getUsedDockerHostPorts = mock(async (): Promise<Set<number>> => new Set());
 const ensureRegistryAccess = mock(async (): Promise<void> => {});
@@ -85,6 +94,8 @@ mock.module("../../../../db/repositories/docker-nodes", () => ({
     ...realDockerNodesRepo.dockerNodesRepository,
     findByNodeId,
     incrementAllocated,
+    reserveExactNodeAllocation,
+    releaseExactNodeAllocation,
   },
 }));
 
@@ -158,12 +169,17 @@ const ROW = {
   updated_at: new Date("2026-08-20T12:00:00.000Z"),
 };
 
+const NODE_RECORD_ID = "20000000-0000-4000-8000-000000000001";
+
 const NODE = {
+  id: NODE_RECORD_ID,
   node_id: "node-create",
   hostname: "10.0.0.2",
   ssh_port: 22,
   ssh_user: "root",
   host_key_fingerprint: null,
+  node_incarnation: "30000000-0000-4000-8000-000000000001",
+  current_node_history_id: "40000000-0000-4000-8000-000000000001",
 };
 
 const NEW_CONTAINER_INPUT: CreateContainerInput = {
@@ -224,6 +240,8 @@ beforeEach(() => {
     getClient,
     findByNodeId,
     incrementAllocated,
+    reserveExactNodeAllocation,
+    releaseExactNodeAllocation,
     getAvailableNode,
     getUsedDockerHostPorts,
     ensureRegistryAccess,
@@ -234,6 +252,13 @@ beforeEach(() => {
   }
   findById.mockResolvedValue(ROW);
   listByOrganization.mockResolvedValue([]);
+  reserveExactNodeAllocation.mockResolvedValue({
+    node_record_id: NODE_RECORD_ID,
+    node_id: NODE.node_id,
+    allocated_count: 1,
+    capacity: 4,
+  });
+  releaseExactNodeAllocation.mockResolvedValue(true);
   deleteRow.mockResolvedValue(undefined);
   tryReleaseNodeSlot.mockResolvedValue(undefined);
   updateRow.mockResolvedValue(null);
@@ -415,6 +440,164 @@ describe("createContainer — stdin-only environment transport", () => {
     expect(execStdinMock).not.toHaveBeenCalled();
     expect(updateRow).not.toHaveBeenCalled();
     expect(updateStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe("createContainer — reservation precedes node-side work and releases only after cleanup", () => {
+  /**
+   * Drives a create that reaches `docker start` and then fails while persisting
+   * the result, which is the case where the container exists and the slot is
+   * held. `update` is called once to mark the row building and once to persist
+   * the created container, so the second call is the failure point.
+   */
+  /** Admits a fresh create intent on the fixture node. */
+  function beginCreate(): void {
+    getAvailableNode.mockResolvedValue(NODE);
+    createWithProjectIntentAndQuotaCheck.mockResolvedValue({
+      container: ROW,
+      created: true,
+    });
+  }
+
+  function failAfterContainerStarted(): void {
+    let updateCalls = 0;
+    updateRow.mockImplementation(async () => {
+      updateCalls += 1;
+      if (updateCalls >= 2) throw new Error("metadata persist failed after start");
+      return ROW;
+    });
+  }
+
+  test("a refused reservation performs no node-side work at all", async () => {
+    beginCreate();
+    reserveExactNodeAllocation.mockResolvedValue(null);
+
+    await expect(
+      getHetznerContainersClient().createContainer(NEW_CONTAINER_INPUT),
+    ).rejects.toMatchObject({ code: "no_capacity" });
+
+    // No command reached the node, and no slot was released that was never
+    // taken. The SSH client factory is constructed before the reservation by
+    // design, so only actual node-side effects are asserted here.
+    expect(execMock).not.toHaveBeenCalled();
+    expect(execStdinMock).not.toHaveBeenCalled();
+    expect(releaseExactNodeAllocation).not.toHaveBeenCalled();
+  });
+
+  test("a failure after docker start removes the container before releasing the slot", async () => {
+    beginCreate();
+    const order: string[] = [];
+    execMock.mockImplementation(async (command: string) => {
+      if (command.startsWith("docker rm")) order.push("rm");
+      return "";
+    });
+    releaseExactNodeAllocation.mockImplementation(async () => {
+      order.push("release");
+      return true;
+    });
+    failAfterContainerStarted();
+
+    await expect(
+      getHetznerContainersClient().createContainer(NEW_CONTAINER_INPUT),
+    ).rejects.toBeTruthy();
+
+    expect(order).toEqual(["rm", "release"]);
+  });
+
+  test("a removal that fails while the exact name is absent still releases the slot", async () => {
+    beginCreate();
+    execMock.mockImplementation(async (command: string) => {
+      // `docker rm` fails even when there was nothing to remove, so absence is
+      // settled by asking for the exact name.
+      if (command.startsWith("docker rm")) throw new Error("No such container");
+      if (command.startsWith("docker ps")) return "";
+      return "";
+    });
+    failAfterContainerStarted();
+
+    await expect(
+      getHetznerContainersClient().createContainer(NEW_CONTAINER_INPUT),
+    ).rejects.toBeTruthy();
+
+    expect(releaseExactNodeAllocation).toHaveBeenCalledTimes(1);
+  });
+
+  test("a failure before docker create releases the slot instead of retaining it", async () => {
+    beginCreate();
+    // The image pull fails, so no container was ever submitted to the node.
+    execMock.mockImplementation(async (command: string) => {
+      if (command.startsWith("docker pull")) throw new Error("registry unavailable");
+      return "";
+    });
+
+    await expect(
+      getHetznerContainersClient().createContainer(NEW_CONTAINER_INPUT),
+    ).rejects.toBeTruthy();
+
+    // A create that never ran cannot have left a container, so removal is not
+    // awaited and the slot goes straight back.
+    expect(releaseExactNodeAllocation).toHaveBeenCalledTimes(1);
+    expect(execMock.mock.calls.some(([command]) => String(command).startsWith("docker rm"))).toBe(
+      false,
+    );
+  });
+
+  test("a create followed by unproven cleanup keeps a reconcilable placement intent", async () => {
+    beginCreate();
+    execMock.mockImplementation(async (command: string) => {
+      if (command.startsWith("docker rm")) throw new Error("ssh teardown unavailable");
+      if (command.startsWith("docker ps")) throw new Error("inventory unreadable");
+      return "";
+    });
+    const persisted: Array<Record<string, unknown>> = [];
+    let updateCalls = 0;
+    updateRow.mockImplementation(
+      async (_id: string, _org: string, data: Record<string, unknown>) => {
+        updateCalls += 1;
+        if (updateCalls === 1) persisted.push(data);
+        if (updateCalls >= 2) throw new Error("metadata persist failed after start");
+        return ROW;
+      },
+    );
+
+    await expect(
+      getHetznerContainersClient().createContainer(NEW_CONTAINER_INPUT),
+    ).rejects.toBeTruthy();
+
+    // The slot stays counted, and the row written before the node-side work names
+    // the exact occurrence so a reconciler can find both the container and the
+    // reservation it is holding.
+    expect(releaseExactNodeAllocation).not.toHaveBeenCalled();
+    const intent = persisted[0];
+    expect(intent?.node_id).toBe(NODE.node_id);
+    expect(intent?.metadata).toMatchObject({
+      nodeId: NODE.node_id,
+      containerName: expect.any(String),
+      placementIntent: {
+        nodeRecordId: NODE_RECORD_ID,
+        nodeIncarnation: NODE.node_incarnation,
+        nodeHistoryId: NODE.current_node_history_id,
+        reservationHeld: true,
+      },
+    });
+  });
+
+  test("a failed release still fails the intent and surfaces the original error", async () => {
+    beginCreate();
+    releaseExactNodeAllocation.mockRejectedValue(new Error("release unavailable"));
+    const statuses: string[] = [];
+    updateStatus.mockImplementation(async (_id: string, status: string) => {
+      statuses.push(status);
+      return undefined;
+    });
+    failAfterContainerStarted();
+
+    await expect(
+      getHetznerContainersClient().createContainer(NEW_CONTAINER_INPUT),
+    ).rejects.toMatchObject({ code: "container_create_failed" });
+
+    // The release failure neither skipped the status update nor masked the cause.
+    expect(statuses).toContain("failed");
   });
 });
 

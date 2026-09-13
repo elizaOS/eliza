@@ -7,7 +7,8 @@ import {
   reconcileAllocatedWorkloadsOnNodeWithDatabase,
 } from "../../lib/services/docker-node-workload-queries";
 import { logger } from "../../lib/utils/logger";
-import { dbRead, dbWrite } from "../helpers";
+import type { DbTransaction } from "../client";
+import { dbRead, dbWrite, writeTransaction } from "../helpers";
 import {
   type DockerNode,
   type DockerNodeFleetKind,
@@ -53,6 +54,14 @@ export interface RobotSourceAuthorityRegistration {
   status: DockerNodeStatus;
   hostKeyFingerprint: string;
   metadata: Record<string, unknown>;
+}
+
+/** Receipt for one counted slot taken on an exact node occurrence. */
+export interface DockerNodeAllocationReservation {
+  node_record_id: string;
+  node_id: string;
+  allocated_count: number;
+  capacity: number;
 }
 
 const DOCKER_NODE_IDENTITY_FIELDS = [
@@ -558,6 +567,104 @@ export class DockerNodesRepository {
         updated_at: new Date(),
       })
       .where(eq(dockerNodes.node_id, nodeId));
+  }
+
+  /**
+   * Takes one counted slot on a node the caller already selected.
+   *
+   * `incrementAllocated` is a blind increment by the reusable node handle, so a
+   * placement that selected a node and then performed its remote effect could
+   * count a slot on a node that had been cordoned, replaced, or filled in the
+   * meantime. This form makes the reservation a compare-and-set bound to the
+   * exact occurrence the caller selected: same record, same handle, same
+   * incarnation and history generation, still enabled, healthy, placeable, not
+   * provisional capacity, and below the ceiling. A refusal means the placement
+   * must not proceed on this node.
+   *
+   * `nodeIncarnation` and `nodeHistoryId` are accepted as null for rows that have
+   * no attested occurrence yet; the predicate then requires that none appeared
+   * since selection.
+   */
+  async reserveExactNodeAllocation(
+    input: {
+      nodeRecordId: string;
+      nodeId: string;
+      nodeIncarnation: string | null;
+      nodeHistoryId: string | null;
+    },
+    transaction?: DbTransaction,
+  ): Promise<DockerNodeAllocationReservation | null> {
+    const reserve = async (tx: DbTransaction) => {
+      const [reserved] = await tx
+        .update(dockerNodes)
+        .set({
+          allocated_count: sql`${dockerNodes.allocated_count} + 1`,
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(dockerNodes.id, input.nodeRecordId),
+            eq(dockerNodes.node_id, input.nodeId),
+            sql`${dockerNodes.node_incarnation} IS NOT DISTINCT FROM ${input.nodeIncarnation}::uuid`,
+            sql`${dockerNodes.current_node_history_id} IS NOT DISTINCT FROM ${input.nodeHistoryId}::uuid`,
+            eq(dockerNodes.enabled, true),
+            eq(dockerNodes.status, "healthy"),
+            eq(dockerNodes.placement_state, PLACEABLE_NODE_STATE),
+            sql`COALESCE(${dockerNodes.metadata}->>'capacityProvisional', 'false') <> 'true'`,
+            sql`${dockerNodes.allocated_count} < ${dockerNodes.capacity}`,
+          ),
+        )
+        .returning({
+          node_record_id: dockerNodes.id,
+          node_id: dockerNodes.node_id,
+          allocated_count: dockerNodes.allocated_count,
+          capacity: dockerNodes.capacity,
+        });
+      return reserved ?? null;
+    };
+    if (transaction) return reserve(transaction);
+    return writeTransaction(reserve);
+  }
+
+  /**
+   * Returns one counted slot to the exact occurrence that took it.
+   *
+   * `decrementAllocated` releases by the reusable node handle, so a rollback
+   * after a record replacement would reduce the replacement's count. Matching the
+   * same occurrence the reservation matched keeps a release from touching a node
+   * it never reserved on; a `false` return means the row moved or the count was
+   * already zero, which the caller must record rather than ignore.
+   */
+  async releaseExactNodeAllocation(
+    input: {
+      nodeRecordId: string;
+      nodeId: string;
+      nodeIncarnation: string | null;
+      nodeHistoryId: string | null;
+    },
+    transaction?: DbTransaction,
+  ): Promise<boolean> {
+    const release = async (tx: DbTransaction) => {
+      const [released] = await tx
+        .update(dockerNodes)
+        .set({
+          allocated_count: sql`${dockerNodes.allocated_count} - 1`,
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(dockerNodes.id, input.nodeRecordId),
+            eq(dockerNodes.node_id, input.nodeId),
+            sql`${dockerNodes.node_incarnation} IS NOT DISTINCT FROM ${input.nodeIncarnation}::uuid`,
+            sql`${dockerNodes.current_node_history_id} IS NOT DISTINCT FROM ${input.nodeHistoryId}::uuid`,
+            sql`${dockerNodes.allocated_count} > 0`,
+          ),
+        )
+        .returning({ node_record_id: dockerNodes.id });
+      return released !== undefined;
+    };
+    if (transaction) return release(transaction);
+    return writeTransaction(release);
   }
 
   async incrementAllocated(nodeId: string): Promise<void> {

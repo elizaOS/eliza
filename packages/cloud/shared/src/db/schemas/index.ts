@@ -25,6 +25,7 @@ export * from "./agent-backup-restore-v3-candidates";
 export * from "./agent-budgets";
 export * from "./agent-compute-stop-intents";
 export * from "./agent-events";
+export * from "./agent-failover";
 export * from "./agent-identities";
 export * from "./agent-node-incarnation-histories";
 export * from "./agent-pairing-tokens";

@@ -90,6 +90,31 @@ function validateContainerEnvironment(environment: Readonly<Record<string, strin
   }
 }
 
+/**
+ * Name-exact absence proof for a container on a node.
+ *
+ * `docker rm` fails both when teardown fails and when there was never a
+ * container, so its error cannot decide whether a reserved slot may be released.
+ * Asking for the exact name returns success either way and empty output only
+ * when nothing by that name exists.
+ */
+async function isContainerAbsentByName(
+  ssh: { exec(command: string, timeoutMs?: number): Promise<string> },
+  containerName: string,
+): Promise<boolean> {
+  try {
+    const listed = await ssh.exec(
+      `docker ps -a --filter ${shellQuote(`name=^/${containerName}$`)} --format '{{.ID}}'`,
+      15_000,
+    );
+    return listed.trim() === "";
+  } catch {
+    // error-policy:J4 an unreadable inventory is reported as "not proven absent",
+    // which retains the reservation instead of releasing a slot that may be in use.
+    return false;
+  }
+}
+
 export class HetznerContainersClient {
   // ----------------------------------------------------------------------
   // CRUD
@@ -223,7 +248,13 @@ export class HetznerContainersClient {
       throw new HetznerClientError("no_capacity", "No Hetzner-Docker capacity available");
     }
 
-    // 4. SSH into the node, pull the image, create + start the container.
+    // 4. Reserve the slot before touching the node. Selecting a node and then
+    // pulling/creating/starting it is a window in which the node can be cordoned
+    // or replaced; a count taken after `docker start` both leaves that window
+    // open and under-counts a container that is already running if the process
+    // dies in between. The reservation is a compare-and-set on the exact
+    // occurrence, so a node that moved is refused instead of used.
+    // 5. SSH into the node, pull the image, create + start the container.
     const ssh = DockerSSHClient.getClient(
       node.hostname,
       node.ssh_port ?? 22,
@@ -242,9 +273,59 @@ export class HetznerContainersClient {
         : undefined;
     let bootstrapStats: { fileCount: number; totalBytes: number } | null = null;
 
+    // The slot is taken here, after every preparation that can throw and
+    // immediately before the first node-side effect, so nothing between the
+    // reservation and the cleanup protocol can leak it.
+    const reservation = await dockerNodesRepository.reserveExactNodeAllocation({
+      nodeRecordId: node.id,
+      nodeId: node.node_id,
+      nodeIncarnation: node.node_incarnation ?? null,
+      nodeHistoryId: node.current_node_history_id ?? null,
+    });
+    if (!reservation) {
+      // Nothing ran on the node; fail the intent without touching any slot.
+      await containersRepository
+        .updateStatus(
+          row.id,
+          "failed",
+          "Selected Docker node is no longer placeable at its exact occurrence",
+        )
+        .catch((statusErr) => {
+          logger.error("[hetzner-client] failed to record placement refusal", {
+            containerId: row.id,
+            error: statusErr instanceof Error ? statusErr.message : String(statusErr),
+          });
+        });
+      throw new HetznerClientError(
+        "no_capacity",
+        "Selected Docker node is no longer placeable at its exact occurrence",
+      );
+    }
+
+    let createAttempted = false;
+
     try {
+      // The placement intent is persisted before any node-side effect: if the
+      // create fails and the container cannot be proven gone, this is what lets a
+      // reconciler tie the retained reservation to the exact node occurrence.
       await containersRepository.update(row.id, input.organizationId, {
         status: "building",
+        node_id: node.node_id,
+        metadata: {
+          provider: "hetzner-docker",
+          nodeId: node.node_id,
+          hostname: node.hostname,
+          containerName,
+          image: input.image,
+          hostPort: 0,
+          placementIntent: {
+            nodeRecordId: node.id,
+            nodeIncarnation: node.node_incarnation ?? null,
+            nodeHistoryId: node.current_node_history_id ?? null,
+            containerName,
+            reservationHeld: true,
+          },
+        },
         deployment_log: `Pulling image ${input.image} on ${node.node_id}...`,
       });
       await ensureRegistryAccess(ssh, input.image);
@@ -309,6 +390,7 @@ export class HetznerContainersClient {
 
         try {
           await ssh.exec(buildEnsureNetworkCmd(DEFAULT_NODE_NETWORK), 30_000);
+          createAttempted = true;
           await ssh.execStdin(createTransport.command, createTransport.input, 60_000);
           break;
         } catch (error) {
@@ -333,7 +415,6 @@ export class HetznerContainersClient {
         throw new HetznerClientError("container_create_failed", "Failed to allocate host port");
       }
       await ssh.exec(`docker start ${shellQuote(containerName)}`, 60_000);
-      await dockerNodesRepository.incrementAllocated(node.node_id);
 
       const meta: HetznerContainerMetadata = {
         provider: "hetzner-docker",
@@ -383,18 +464,85 @@ export class HetznerContainersClient {
         nodeId: node.node_id,
         error: message,
       });
-      // Best-effort deletion of the half-created Docker container. Leave the
-      // Hetzner Cloud volume intact; it may contain data if this is a
-      // redeploy and the container start failed after attach. Operators can
-      // retry because the volume is found by label on the next attempt.
+      // Order matters: the container is removed first and the slot is released
+      // only once its absence is proven. Releasing first would hand the slot to
+      // another workload while a started container may still be running, which
+      // overcommits the node. Leave the Hetzner Cloud volume intact; it may
+      // contain data if this is a redeploy. Operators can retry because the
+      // volume is found by label on the next attempt.
       // error-policy:J6 teardown-only; a cleanup failure is logged, never masks
       // the create error rethrown below.
-      await ssh.exec(`docker rm -f ${shellQuote(containerName)}`, 30_000).catch((rmErr) =>
-        logger.warn(`[hetzner-client] cleanup rm failed for ${containerName}`, {
-          error: rmErr instanceof Error ? rmErr.message : String(rmErr),
-        }),
-      );
-      await containersRepository.updateStatus(row.id, "failed", message);
+      // A failure before the create command was submitted cannot have left a
+      // container behind, so the slot is simply given back rather than waiting on
+      // a removal that would report "No such container" and look unproven.
+      let containerRemoved = !createAttempted;
+      if (createAttempted) {
+        try {
+          await ssh.exec(`docker rm -f ${shellQuote(containerName)}`, 30_000);
+          containerRemoved = true;
+        } catch (rmErr) {
+          // `docker rm` also fails when there was nothing to remove, so absence is
+          // settled by asking the exact name rather than by the error text.
+          containerRemoved = await isContainerAbsentByName(ssh, containerName);
+          if (!containerRemoved) {
+            logger.warn(`[hetzner-client] cleanup rm failed for ${containerName}`, {
+              error: rmErr instanceof Error ? rmErr.message : String(rmErr),
+            });
+          }
+        }
+      }
+
+      if (containerRemoved) {
+        try {
+          const released = await dockerNodesRepository.releaseExactNodeAllocation({
+            nodeRecordId: node.id,
+            nodeId: node.node_id,
+            nodeIncarnation: node.node_incarnation ?? null,
+            nodeHistoryId: node.current_node_history_id ?? null,
+          });
+          if (!released) {
+            logger.warn(
+              "[hetzner-client] capacity release lost its exact node occurrence; allocation may need recount",
+              { containerId: row.id, nodeId: node.node_id, nodeRecordId: node.id },
+            );
+          }
+        } catch (releaseErr) {
+          // A failed release must not skip the status update or mask the create
+          // failure; the retained slot is the safe direction and is reported.
+          logger.error(
+            "[hetzner-client] failed to release the reserved slot; capacity retained for reconciliation",
+            {
+              containerId: row.id,
+              nodeId: node.node_id,
+              nodeRecordId: node.id,
+              error: releaseErr instanceof Error ? releaseErr.message : String(releaseErr),
+            },
+          );
+        }
+      } else {
+        // Absence is unproven, so the slot stays counted. The row's locator
+        // already names the node and container, so the cleanup can be finished
+        // and the slot released by a later reconciliation.
+        logger.error(
+          "[hetzner-client] container removal unproven; retaining the reservation until cleanup is proven",
+          {
+            containerId: row.id,
+            nodeId: node.node_id,
+            nodeRecordId: node.id,
+            nodeIncarnation: node.node_incarnation ?? null,
+            nodeHistoryId: node.current_node_history_id ?? null,
+            containerName,
+            createAttempted,
+          },
+        );
+      }
+
+      await containersRepository.updateStatus(row.id, "failed", message).catch((statusErr) => {
+        logger.error("[hetzner-client] failed to mark the intent failed", {
+          containerId: row.id,
+          error: statusErr instanceof Error ? statusErr.message : String(statusErr),
+        });
+      });
       throw new HetznerClientError("container_create_failed", message, err);
     }
   }

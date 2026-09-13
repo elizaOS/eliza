@@ -240,7 +240,17 @@ function replacementCreateConfig(
   };
 }
 
+function stubExactPlacementReservation(): void {
+  spyOn(dockerNodesRepository, "reserveExactNodeAllocation").mockResolvedValue({
+    node_record_id: NODE.id,
+    node_id: NODE.node_id,
+    allocated_count: 1,
+    capacity: NODE.capacity,
+  });
+}
+
 function replacementProvider(options?: { now?: () => number }): DockerSandboxProvider {
+  stubExactPlacementReservation();
   spyOn(dockerNodesRepository, "findByIdOnPrimary").mockResolvedValue(NODE);
   return new DockerSandboxProvider({
     replacementVpnSettleDelay: async () => {},
@@ -1708,6 +1718,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
 
     spyOn(dockerNodeManager, "getAvailableNode").mockResolvedValue(NODE);
     spyOn(dockerPortAllocation, "getUsedDockerHostPorts").mockResolvedValue(new Set());
+    stubExactPlacementReservation();
     spyOn(dockerNodesRepository, "incrementAllocated").mockResolvedValue();
     spyOn(stewardTenantConfig, "ensureStewardTenant").mockResolvedValue({
       tenantId: "tenant-test",

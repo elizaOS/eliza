@@ -353,6 +353,25 @@
     "0366_agent_backup_admission_enrollment_source_indexes",
     "0367_agent_backup_admission_enrollment_watermark_guard",
     "0368_agent_backup_admission_enrollment_source_stamp",
-    "0369_agent_backup_admission_recovery_cursor"
+    "0369_agent_backup_admission_recovery_cursor",
+    "0370_agent_sandbox_replacement_restore_locator",
+    "0371_agent_vault_key_seed_receipts_per_replacement",
+    "0372_agent_backup_restore_exact_image_authority",
+    "0373_subscription_authority",
+    "0374_subscription_funding_transaction_uniqueness",
+    "0375_voice_clone_idempotency",
+    "0376_outreachr_delegations",
+    "0377_agent_backup_restore_v3_candidates",
+    "0378_agent_backup_restore_v3_candidate_guards",
+    "0379_subscription_account_authority",
+    "0380_organization_policy_authority",
+    "0381_app_billing_registration",
+    "0382_subscription_notice_intents",
+    "0383_subscription_cancellation_result",
+    "0384_subscription_cancellation_undo",
+    "0385_subscription_reconciliation",
+    "0386_agent_heartbeat_lifecycle_revision",
+    "0387_agent_failover_records",
+    "0388_agent_failover_guards"
   ]
 }

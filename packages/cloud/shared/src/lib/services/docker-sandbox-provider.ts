@@ -3218,9 +3218,9 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
 
     // 2. Select target node via DockerNodeManager (least-loaded, DB-backed).
-    // getAvailableNode + incrementAllocated + getUsedDockerHostPorts are three sequential
-    // DB round-trips without a transaction boundary; the UNIQUE port index and
-    // retry logic provide safety against concurrent capacity changes.
+    // Selection, the exact-occurrence reservation below, and port inventory are
+    // separate round-trips; the reservation is a compare-and-set, so a node that
+    // changed between selection and reservation is refused rather than counted.
     // The ceiling admitted here is the same value applied to `docker create`
     // below, so a node can never be accepted against one number and loaded with
     // another. Zero means the operator disabled ceilings entirely, which opts
@@ -3282,12 +3282,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       sshPort = dbNode.ssh_port ?? DEFAULT_SSH_PORT;
       sshUser = dbNode.ssh_user ?? DEFAULT_SSH_USERNAME;
       hostKeyFingerprint = dbNode.host_key_fingerprint ?? undefined;
-      // Replacement intent persists the capacity reservation and placement in
-      // one service transaction. Ordinary creates retain provider-owned
-      // accounting because they have no durable replacement fence.
-      if (providerManagesCapacity) {
-        await dockerNodesRepository.incrementAllocated(nodeId);
-      }
     } else {
       const registeredNodes = await dockerNodesRepository.findAll();
       if (registeredNodes.length > 0) {
@@ -3416,13 +3410,8 @@ export class DockerSandboxProvider implements SandboxProvider {
         logger.info(`[docker-sandbox] Headscale VPN enabled for ${agentId}`);
       } catch (err) {
         if (headscaleRouteRequired) {
-          if (dbNode && providerManagesCapacity) {
-            await dockerNodesRepository.decrementAllocated(nodeId).catch((rollbackErr) => {
-              logger.warn(
-                `[docker-sandbox] Failed to decrement allocated_count after Headscale preparation failure for node ${nodeId}: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`,
-              );
-            });
-          }
+          // Nothing to release here: the capacity reservation is taken after this
+          // block, so a failure leaves no slot held.
           throw err;
         }
         // error-policy:J4 optional local Headscale setup has an explicit
@@ -3516,7 +3505,9 @@ export class DockerSandboxProvider implements SandboxProvider {
     };
 
     // 6. SSH to node, ensure volume dir, pull image, register in Steward,
-    // then create/start the container. Pass hostKeyFingerprint so pooled
+    // then create/start the container. The capacity reservation immediately
+    // above is the last thing taken before any node-side effect, so every
+    // failure from here on rolls back a slot that was actually held. Pass hostKeyFingerprint so pooled
     // clients pin the key when available.
     const ssh = DockerSSHClient.getClient(hostname, sshPort, hostKeyFingerprint, sshUser);
     const cleanupNode: DockerNodeConnection = {
@@ -3527,6 +3518,37 @@ export class DockerSandboxProvider implements SandboxProvider {
       host_key_fingerprint: hostKeyFingerprint ?? null,
     };
     let stewardRegistrationCreated = false;
+
+    // Replacement intent persists the capacity reservation and placement in
+    // one service transaction, so it needs nothing here. An ordinary create
+    // reserves its slot as a compare-and-set bound to the exact occurrence it
+    // selected: a blind increment by node handle could count against a node
+    // that was cordoned, replaced, or filled between selection and this point,
+    // which is how a placement escapes a cordon and lands as an orphan.
+    if (dbNode && providerManagesCapacity) {
+      const reservation = await dockerNodesRepository.reserveExactNodeAllocation({
+        nodeRecordId: dbNode.id,
+        nodeId: dbNode.node_id,
+        nodeIncarnation: dbNode.node_incarnation ?? null,
+        nodeHistoryId: dbNode.current_node_history_id ?? null,
+      });
+      if (!reservation) {
+        throw new ElizaError(
+          "Selected Docker node is no longer placeable at its exact occurrence; refusing to create the container",
+          {
+            code: "DOCKER_PLACEMENT_RESERVATION_LOST",
+            context: {
+              nodeRecordId: dbNode.id,
+              nodeId: dbNode.node_id,
+              nodeIncarnation: dbNode.node_incarnation ?? null,
+              nodeHistoryId: dbNode.current_node_history_id ?? null,
+              agentId,
+            },
+            severity: "ephemeral",
+          },
+        );
+      }
+    }
 
     try {
       // Ensure volume directory exists
@@ -3968,11 +3990,27 @@ export class DockerSandboxProvider implements SandboxProvider {
       // VPN identity are absent. An unresolved cleanup retains the allocation
       // and escapes above with a durable locator.
       if (dbNode && providerManagesCapacity) {
-        await dockerNodesRepository.decrementAllocated(nodeId).catch((rollbackErr) => {
-          logger.error(
-            `[docker-sandbox] Failed to roll back allocation for node ${nodeId}; capacity slot leaked: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`,
-          );
-        });
+        await dockerNodesRepository
+          .releaseExactNodeAllocation({
+            nodeRecordId: dbNode.id,
+            nodeId: dbNode.node_id,
+            nodeIncarnation: dbNode.node_incarnation ?? null,
+            nodeHistoryId: dbNode.current_node_history_id ?? null,
+          })
+          .then((released) => {
+            if (!released) {
+              // A refusal means the node row moved or the count was already zero;
+              // silent success here would leave the fleet over-committed.
+              logger.error(
+                `[docker-sandbox] Capacity release lost the exact node occurrence for ${nodeId}; allocation needs recount`,
+              );
+            }
+          })
+          .catch((rollbackErr) => {
+            logger.error(
+              `[docker-sandbox] Failed to release allocation for node ${nodeId}; capacity slot leaked: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`,
+            );
+          });
       }
       throw new Error(
         `[docker-sandbox] Failed to create container on ${nodeId}: ${err instanceof Error ? err.message : String(err)}`,
@@ -4334,13 +4372,27 @@ export class DockerSandboxProvider implements SandboxProvider {
       await this.retireReplacementCandidateOnNode(cleanupLocator, cleanupNode);
       this.containers.delete(containerName);
       if (dbNode && providerManagesCapacity) {
-        await dockerNodesRepository.decrementAllocated(nodeId).catch((rollbackError) => {
-          // error-policy:J6 best-effort teardown — the candidate is already absent;
-          // capacity reconciliation remains observable while the original failure surfaces.
-          logger.error(
-            `[docker-sandbox] Failed to roll back allocation for node ${nodeId} after unroutable candidate cleanup: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
-          );
-        });
+        await dockerNodesRepository
+          .releaseExactNodeAllocation({
+            nodeRecordId: dbNode.id,
+            nodeId: dbNode.node_id,
+            nodeIncarnation: dbNode.node_incarnation ?? null,
+            nodeHistoryId: dbNode.current_node_history_id ?? null,
+          })
+          .then((released) => {
+            if (!released) {
+              // A refusal means the node row moved or the count was already zero;
+              // silent success here would leave the fleet over-committed.
+              logger.error(
+                `[docker-sandbox] Capacity release lost the exact node occurrence for ${nodeId}; allocation needs recount`,
+              );
+            }
+          })
+          .catch((rollbackErr) => {
+            logger.error(
+              `[docker-sandbox] Failed to release allocation for node ${nodeId}; capacity slot leaked: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`,
+            );
+          });
       }
       throw new Error(errorMessage);
     }
