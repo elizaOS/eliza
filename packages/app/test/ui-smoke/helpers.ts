@@ -3155,6 +3155,39 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       });
     },
   );
+  // The email approval form loads its sender accounts and recipients with the
+  // other sections; an owner with no Google grant and no verified contacts is
+  // the healthy empty state.
+  await page.route(
+    "**/api/lifeops/family-workflows/email-options",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ options: { accounts: [], recipients: [] } }),
+      });
+    },
+  );
+  // "Export workspace" downloads a zip archive; the adapter rejects any other
+  // content type, so answer with an empty (end-of-central-directory only) zip.
+  await page.route("**/api/lifeops/family-workflows/export", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/zip",
+      headers: {
+        "content-disposition": 'attachment; filename="family-workspace.zip"',
+      },
+      body: Buffer.from("504b0506" + "00".repeat(18), "hex"),
+    });
+  });
 
   // TodosView fetches GET /api/lifeops/todos; the **-suffixed pattern tolerates
   // any future query string while leaving non-GET methods on the real API.
@@ -3597,26 +3630,29 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
   // smoke server has no native inference or secrets backends, so expose their
   // real healthy-empty envelopes instead of leaking its generic 501 response
   // into otherwise unrelated route and interaction coverage.
-  await page.route("**/api/local-inference/voice-models/preferences", async (route) => {
-    const method = route.request().method();
-    if (method !== "GET" && method !== "POST") {
-      await route.fallback();
-      return;
-    }
-    const preferences = {
-      autoUpdateOnWifi: true,
-      autoUpdateOnCellular: false,
-      autoUpdateOnMetered: false,
-      quietHours: [{ start: "22:00", end: "08:00" }],
-    };
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(
-        method === "GET" ? { preferences } : { ok: true, preferences },
-      ),
-    });
-  });
+  await page.route(
+    "**/api/local-inference/voice-models/preferences",
+    async (route) => {
+      const method = route.request().method();
+      if (method !== "GET" && method !== "POST") {
+        await route.fallback();
+        return;
+      }
+      const preferences = {
+        autoUpdateOnWifi: true,
+        autoUpdateOnCellular: false,
+        autoUpdateOnMetered: false,
+        quietHours: [{ start: "22:00", end: "08:00" }],
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          method === "GET" ? { preferences } : { ok: true, preferences },
+        ),
+      });
+    },
+  );
 
   await page.route("**/api/local-inference/voice-models", async (route) => {
     if (route.request().method() !== "GET") {
