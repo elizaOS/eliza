@@ -440,6 +440,12 @@ returns their complete result to planning without an intermediate completion
 model call. Failures, pauses, final completion and execution checks remain on
 their normal paths.
 
+`promoteSubactionsToActions` accepts an authored `parameters` override for each
+operation. Promotion still pins its discriminator and delegates through the
+parent's handler and gates; the parent and other operations retain their
+original contracts. Use this for operation-specific nested schemas whose
+fields cannot be described by top-level parameter applicability alone.
+
 **Private actions.** Set `private: true` on an action to reserve it for the agent's own autonomous loop. A private action is never exposed to the planner — and is rejected by the executor as a defense-in-depth backstop — on user-driven turns; it can only be selected and run when the triggering message is an autonomous self-prompt (`content.metadata.isAutonomous === true`, the marker the autonomy service stamps). Use this for self-initiated capabilities the agent should decide to invoke on its own — e.g. minting a coin or opening a position — rather than ones a user can trigger on demand. The gate lives in `src/runtime/private-action-gate.ts`.
 
 ### Providers

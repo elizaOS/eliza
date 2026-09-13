@@ -243,3 +243,25 @@ export const CALENDAR_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
   },
   additionalProperties: false,
 };
+
+/** The next-event reader consumes only calendar selection and timezone.
+ * Keep every accepted spelling of those fields; mutation and range arguments
+ * remain on the complete CALENDAR contract and their corresponding operations. */
+export const CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema =
+  {
+    type: "object",
+    properties: Object.fromEntries(
+      Object.entries(CALENDAR_DETAILS_PARAMETER_SCHEMA.properties ?? {}).filter(
+        ([key]) =>
+          [
+            "calendarId",
+            "calendarid",
+            "calendar_id",
+            "timeZone",
+            "timezone",
+            "time_zone",
+          ].includes(key),
+      ),
+    ),
+    additionalProperties: false,
+  };

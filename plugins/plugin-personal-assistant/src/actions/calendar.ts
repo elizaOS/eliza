@@ -22,6 +22,7 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  PromoteSubactionsOptions,
   State,
 } from "@elizaos/core";
 import {
@@ -44,7 +45,10 @@ import {
   isElizaCalendarGrant,
   isMicrosoftCalendarGrantId,
 } from "@elizaos/plugin-calendar";
-import { CALENDAR_DETAILS_PARAMETER_SCHEMA } from "@elizaos/plugin-calendar/calendar-action-schema";
+import {
+  CALENDAR_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
+} from "@elizaos/plugin-calendar/calendar-action-schema";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
@@ -2059,4 +2063,23 @@ export const calendarAction: Action & {
       },
     ],
   ] as ActionExample[][],
+};
+
+/** Author the read contract at the domain boundary; promotion still owns
+ * discriminator pinning, delegation and the inherited authorization gates. */
+export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
+  overrides: {
+    next_event: {
+      parameters: calendarAction.parameters?.map((parameter) =>
+        parameter.name === "details"
+          ? {
+              ...parameter,
+              description:
+                "Optional exact calendar selection and IANA timezone for the next-event read. Omit unknown values; the configured timezone and selected calendar feed are the defaults.",
+              schema: CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
+            }
+          : parameter,
+      ),
+    },
+  },
 };

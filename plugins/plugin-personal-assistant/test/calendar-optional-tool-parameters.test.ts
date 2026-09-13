@@ -10,7 +10,10 @@ import { buildPlannerToolsFromActions } from "../../../packages/core/src/actions
 import { validateToolArgs } from "../../../packages/core/src/actions/validate-tool-args.js";
 import { createCalendarActionRunner } from "../../plugin-calendar/src/actions/calendar-handler.js";
 import { __INTERNAL_normalizeNativeToolsForCall as normalizeNativeToolsForCall } from "../../plugin-openai/models/text.js";
-import { calendarAction } from "../src/actions/calendar.js";
+import {
+  calendarAction,
+  calendarActionPromotionOptions,
+} from "../src/actions/calendar.js";
 import { resolveCreateEventTravelIntent } from "../src/travel-time/calendar-create.js";
 
 const domainCalendarAction = createCalendarActionRunner({
@@ -26,7 +29,10 @@ describe.each([
   it.each([false, true])(
     "keeps optional detail fields optional after provider normalization (Cerebras: %s)",
     (cerebrasMode) => {
-      const family = promoteSubactionsToActions(parent);
+      const family = promoteSubactionsToActions(
+        parent,
+        parent === calendarAction ? calendarActionPromotionOptions : {},
+      );
       expect(family.length).toBeGreaterThan(1);
       const normalized = normalizeNativeToolsForCall(
         buildPlannerToolsFromActions(family),
@@ -44,9 +50,23 @@ describe.each([
         if (
           action.parameters?.some((parameter) => parameter.name === "details")
         ) {
-          expect(details?.properties?.travelOriginAddress).toMatchObject({
-            type: "string",
-          });
+          if (
+            parent === calendarAction &&
+            action.name === "CALENDAR_NEXT_EVENT"
+          ) {
+            expect(Object.keys(details?.properties ?? {})).toEqual([
+              "calendarId",
+              "calendarid",
+              "calendar_id",
+              "timeZone",
+              "timezone",
+              "time_zone",
+            ]);
+          } else {
+            expect(details?.properties?.travelOriginAddress).toMatchObject({
+              type: "string",
+            });
+          }
           expect(details?.required ?? []).toEqual([]);
         }
       }
@@ -109,4 +129,38 @@ describe.each([
       }).valid,
     ).toBe(false);
   });
+});
+
+it("retains every calendar and timezone spelling for next-event reads and the complete parent contract", () => {
+  const family = promoteSubactionsToActions(
+    calendarAction,
+    calendarActionPromotionOptions,
+  );
+  const next = family.find((action) => action.name === "CALENDAR_NEXT_EVENT");
+  if (!next) throw new Error("Missing next-event action");
+  for (const calendarKey of ["calendarId", "calendarid", "calendar_id"]) {
+    for (const timezoneKey of ["timeZone", "timezone", "time_zone"]) {
+      const args = {
+        details: {
+          [calendarKey]: "cal_actual",
+          [timezoneKey]: "America/New_York",
+        },
+      };
+      expect(validateToolArgs(next, args)).toMatchObject({ valid: true, args });
+    }
+  }
+  expect(validateToolArgs(next, {}).valid).toBe(true);
+  expect(validateToolArgs(next, { details: { timeZone: 7 } }).valid).toBe(
+    false,
+  );
+  const readSchema = next.parameters?.find(
+    (parameter) => parameter.name === "details",
+  )?.schema;
+  const parentSchema = family[0].parameters?.find(
+    (parameter) => parameter.name === "details",
+  )?.schema;
+  expect(parentSchema?.properties?.recurrence).toBeDefined();
+  expect(readSchema?.properties?.recurrence).toBeUndefined();
+  expect(next.roleGate).toEqual(calendarAction.roleGate);
+  expect(next.disclosureGate).toEqual(calendarAction.disclosureGate);
 });
