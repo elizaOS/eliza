@@ -110,6 +110,7 @@ export function createFamilyPacketFixture(
     },
     uploadAgreement: unsupported,
     downloadAgreement: unsupported,
+    downloadWorkspace: unsupported,
     decideObligation: unsupported,
     async listPins() {
       return [];
