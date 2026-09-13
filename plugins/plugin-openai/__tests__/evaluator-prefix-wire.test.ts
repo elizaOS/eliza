@@ -122,7 +122,13 @@ it.each([
         vi.stubEnv("OPENAI_SMALL_MODEL", "gpt-4o-mini");
       }
       const runtime = new AgentRuntime({
-        character: { name: "EvaluatorWire", bio: "test", settings: {} },
+        // The 140K-char message and the repeated schema are the point of this
+        // wire test; keep them above the post-turn input budget's default.
+        character: {
+          name: "EvaluatorWire",
+          bio: "test",
+          settings: { POST_TURN_EVALUATOR_MAX_PROMPT_TOKENS: "1000000" },
+        },
         adapter: new InMemoryDatabaseAdapter(),
         logLevel: "fatal",
       });
