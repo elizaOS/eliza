@@ -193,6 +193,11 @@ export function createFamilyPacketFixture(
     },
     uploadAgreement: unsupported,
     downloadAgreement: unsupported,
+    readAgreementReview: async () => null,
+    addAgreementProposal: async () => {
+      throw new Error("Owner correction is unavailable in this fixture");
+    },
+    prepareAgreementReview: unsupported,
     decideObligation: unsupported,
     async listPinTargets() {
       return {

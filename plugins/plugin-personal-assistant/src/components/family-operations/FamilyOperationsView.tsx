@@ -20,13 +20,11 @@ import {
 } from "@elizaos/ui";
 import {
   CalendarSync,
-  Check,
   FileCheck2,
   GraduationCap,
   RefreshCw,
   ShieldCheck,
   UsersRound,
-  X,
 } from "lucide-react";
 import {
   type ChangeEvent,
@@ -39,6 +37,9 @@ import {
 import type { FamilyPacketSection } from "../../lifeops/family-coordination/index.js";
 import { nextFamilyPacketPeriod } from "../../lifeops/family-workflows/period.js";
 import { AgreementGuestAccessPanel } from "./AgreementGuestAccessPanel.js";
+import { AgreementObligationReview } from "./AgreementObligationReview.js";
+import { AgreementProposalEditor } from "./AgreementProposalEditor.js";
+import { AgreementReviewPanel } from "./AgreementReviewPanel.js";
 import { defaultFamilyOperationsAdapter } from "./adapter.js";
 import { FamilyIntakePanel } from "./FamilyIntakePanel.js";
 import {
@@ -266,16 +267,17 @@ function AgreementPanel({
   state,
   adapter,
   refresh,
+  refreshReview,
 }: {
   state: FamilyOperationsSnapshot["agreements"];
   adapter: FamilyOperationsAdapter;
   refresh: () => Promise<void>;
+  refreshReview: () => Promise<void>;
 }) {
   const [selectedId, setSelectedId] = useState("");
   const [downloading, setDownloading] = useState<"original" | "export" | null>(
     null,
   );
-  const [reason, setReason] = useState("");
   const [targetType, setTargetType] = useState<"agent" | "chat">("agent");
   const [targetId, setTargetId] = useState("");
   const pinLoadRequest = useRef(0);
@@ -457,6 +459,7 @@ function AgreementPanel({
           style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 16 }}
         >
           <Button
+            className="min-h-11"
             variant="accentDarkHover"
             disabled={downloading !== null}
             onClick={() => void download("original")}
@@ -466,6 +469,7 @@ function AgreementPanel({
               : "Download original PDF"}
           </Button>
           <Button
+            className="min-h-11"
             variant="accentDarkHover"
             disabled={downloading !== null}
             onClick={() => void download("export")}
@@ -481,94 +485,30 @@ function AgreementPanel({
         title="Reviewed obligations"
         detail="Proposals do not become active until you approve them against the cited PDF pages."
       >
+        <AgreementReviewPanel
+          key={selected.artifact.id}
+          artifactId={selected.artifact.id}
+          adapter={adapter}
+          onPrepared={refreshReview}
+        />
+        <AgreementProposalEditor
+          key={selected.artifact.id}
+          artifactId={selected.artifact.id}
+          pageCount={selected.artifact.pageCount}
+          adapter={adapter}
+          onSaved={refreshReview}
+        />
         {selected.obligations.length === 0 ? (
           <Empty>No reviewed obligations yet.</Empty>
         ) : (
           <div style={{ display: "grid", gap: 12 }}>
             {selected.obligations.map((obligation) => (
-              <article
+              <AgreementObligationReview
                 key={obligation.id}
-                style={{
-                  border: "1px solid var(--border)",
-                  borderRadius: 12,
-                  padding: 14,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <strong>{obligation.title}</strong>
-                  <span>{obligation.status}</span>
-                </div>
-                <p>{obligation.obligationText}</p>
-                <blockquote
-                  style={{
-                    margin: "10px 0",
-                    paddingLeft: 12,
-                    borderLeft: "3px solid var(--accent)",
-                    color: "var(--muted)",
-                  }}
-                >
-                  Pages {obligation.pageStart}–{obligation.pageEnd}:{" "}
-                  {obligation.citationText}
-                </blockquote>
-                {obligation.status === "proposed" ? (
-                  <div style={{ display: "grid", gap: 9 }}>
-                    <label htmlFor={`decision-reason-${obligation.id}`}>
-                      <span style={{ display: "block", marginBottom: 6 }}>
-                        Decision reason
-                      </span>
-                      <Input
-                        id={`decision-reason-${obligation.id}`}
-                        value={reason}
-                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                          setReason(event.target.value)
-                        }
-                      />
-                    </label>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <Button
-                        disabled={!reason.trim()}
-                        onClick={() =>
-                          void act(
-                            () =>
-                              adapter.decideObligation(
-                                obligation,
-                                "approve",
-                                reason,
-                              ),
-                            "Obligation approved.",
-                          )
-                        }
-                      >
-                        <Check size={16} /> Approve
-                      </Button>
-                      <Button
-                        variant="outline"
-                        disabled={!reason.trim()}
-                        onClick={() =>
-                          void act(
-                            () =>
-                              adapter.decideObligation(
-                                obligation,
-                                "reject",
-                                reason,
-                              ),
-                            "Obligation rejected.",
-                          )
-                        }
-                      >
-                        <X size={16} /> Reject
-                      </Button>
-                    </div>
-                  </div>
-                ) : null}
-              </article>
+                obligation={obligation}
+                adapter={adapter}
+                onDecided={refreshReview}
+              />
             ))}
           </div>
         )}
@@ -624,6 +564,7 @@ function AgreementPanel({
             </Select>
           )}
           <Button
+            className="min-h-11"
             disabled={!pinTarget}
             onClick={() =>
               void act(async () => {
@@ -654,7 +595,11 @@ function AgreementPanel({
             Pin
           </Button>
         </div>
-        <Button variant="outline" onClick={() => void loadPinTargets()}>
+        <Button
+          className="min-h-11 mt-3"
+          variant="outline"
+          onClick={() => void loadPinTargets()}
+        >
           Refresh destinations
         </Button>
         <ul style={{ padding: 0, listStyle: "none", display: "grid", gap: 8 }}>
@@ -670,6 +615,7 @@ function AgreementPanel({
             >
               <span>{pinLabel(pin)}</span>
               <Button
+                className="min-h-11"
                 variant="outline"
                 size="sm"
                 onClick={() =>
@@ -1426,21 +1372,29 @@ export function FamilyOperationsView({
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setSnapshot(await adapter.load());
-    } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Family Operations could not load",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [adapter]);
+  const refresh = useCallback(
+    async (requireAgreementReview = false) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const next = await adapter.load();
+        if (requireAgreementReview && next.agreements.status === "unavailable")
+          throw new Error(next.agreements.message);
+        setSnapshot(next);
+      } catch (cause) {
+        // error-policy:J4 Keep the prior view with an explicit refresh failure; review preparation must also observe the failure.
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Family Operations could not load",
+        );
+        if (requireAgreementReview) throw cause;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [adapter],
+  );
   useEffect(() => {
     void refresh();
   }, [refresh]);
@@ -1532,6 +1486,7 @@ export function FamilyOperationsView({
                 state={snapshot.agreements}
                 adapter={adapter}
                 refresh={refresh}
+                refreshReview={() => refresh(true)}
               />
             ) : tab === "calendar" ? (
               <CalendarPanel

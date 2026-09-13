@@ -37,6 +37,13 @@ import {
 } from "../sql.js";
 import { agreementMutationSql } from "./agreement-audit.js";
 import {
+  type AgreementReviewProposal,
+  type AgreementReviewSource,
+  type GeneratedAgreementReview,
+  generateAgreementReview,
+  validateAgreementReviewProposal,
+} from "./agreement-review.js";
+import {
   getHouseholdCoordinationService,
   HOUSEHOLD_COORDINATION_SERVICE,
   type HouseholdCoordinationService,
@@ -170,6 +177,41 @@ export interface ParentingAgreementObligation {
   decidedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+const preparedReviewSchema = z.strictObject({
+  artifactId: z.string(),
+  sourceSha256: z.string(),
+  extractionSha256: z.string(),
+  generatedAt: z.string(),
+  explanation: z.string().min(1),
+  obligationIds: z.array(z.string()),
+});
+
+type PreparedReviewRecord = z.infer<typeof preparedReviewSchema>;
+
+function preparedReviewFromJson(value: unknown): PreparedReviewRecord {
+  try {
+    return preparedReviewSchema.parse(
+      JSON.parse(requiredText(value, "decision_json")),
+    );
+  } catch (cause) {
+    // error-policy:J2 A corrupt durable review is unavailable, not a reason to regenerate it.
+    throw new AgreementKnowledgeError(
+      "Prepared agreement review is invalid",
+      "AGREEMENT_INVALID_CONTRACT",
+      undefined,
+      cause,
+    );
+  }
+}
+
+export interface PreparedAgreementReview {
+  artifactId: string;
+  generatedAt: string;
+  explanation: string;
+  outcome: "proposals" | "no_proposals";
+  obligations: ParentingAgreementObligation[];
 }
 
 export interface HouseholdKnowledgePin {
@@ -633,13 +675,11 @@ export class AgreementKnowledgeRepository {
     return rows[0] ? artifactFromRow(rows[0]) : null;
   }
 
-  async insertObligation(
+  private obligationInsertSql(
     obligation: ParentingAgreementObligation,
-  ): Promise<ParentingAgreementObligation> {
-    const rows = await executeRawSql(
-      this.runtime,
-      agreementMutationSql(
-        `INSERT INTO app_lifeops.life_household_agreement_obligations (
+  ): string {
+    return agreementMutationSql(
+      `INSERT INTO app_lifeops.life_household_agreement_obligations (
          id, agent_id, artifact_id, title, obligation_text, page_start,
          page_end, citation_text, status, proposed_by_entity_id,
          decided_by_entity_id, decision_reason, decided_at, created_at, updated_at
@@ -652,13 +692,21 @@ export class AgreementKnowledgeRepository {
          ${sqlQuote(obligation.proposedByEntityId)}, NULL, NULL, NULL,
          ${sqlQuote(obligation.createdAt)}, ${sqlQuote(obligation.updatedAt)}
        ) RETURNING *`,
-        {
-          agentId: this.agentId,
-          kind: "agreement_obligation_proposed",
-          actorEntityId: obligation.proposedByEntityId,
-          createdAt: obligation.createdAt,
-        },
-      ),
+      {
+        agentId: this.agentId,
+        kind: "agreement_obligation_proposed",
+        actorEntityId: obligation.proposedByEntityId,
+        createdAt: obligation.createdAt,
+      },
+    );
+  }
+
+  async insertObligation(
+    obligation: ParentingAgreementObligation,
+  ): Promise<ParentingAgreementObligation> {
+    const rows = await executeRawSql(
+      this.runtime,
+      this.obligationInsertSql(obligation),
     );
     const row = rows[0];
     if (!row) {
@@ -668,6 +716,131 @@ export class AgreementKnowledgeRepository {
       );
     }
     return obligationFromRow(row);
+  }
+
+  /** Serializes correction retries with other review writes without resetting a saved decision. */
+  async insertOwnerProposalOnce(
+    obligation: ParentingAgreementObligation,
+  ): Promise<{ obligation: ParentingAgreementObligation; created: boolean }> {
+    return withTransaction(this.runtime, async (tx) => {
+      const artifacts = await executeRawSqlTx(
+        tx,
+        `SELECT id FROM app_lifeops.life_household_agreement_artifacts
+         WHERE agent_id = ${sqlQuote(this.agentId)} AND id = ${sqlQuote(obligation.artifactId)} FOR UPDATE`,
+      );
+      if (artifacts.length !== 1)
+        throw new AgreementKnowledgeError(
+          "Agreement source is unavailable",
+          "AGREEMENT_ARTIFACT_NOT_FOUND",
+        );
+      const existing = await executeRawSqlTx(
+        tx,
+        `SELECT * FROM app_lifeops.life_household_agreement_obligations
+         WHERE agent_id = ${sqlQuote(this.agentId)} AND artifact_id = ${sqlQuote(obligation.artifactId)} AND id = ${sqlQuote(obligation.id)}`,
+      );
+      if (existing[0])
+        return { obligation: obligationFromRow(existing[0]), created: false };
+      const inserted = await executeRawSqlTx(
+        tx,
+        this.obligationInsertSql(obligation),
+      );
+      if (inserted.length !== 1 || !inserted[0])
+        throw new AgreementKnowledgeError(
+          "Owner proposal did not persist",
+          "AGREEMENT_STORAGE_UNAVAILABLE",
+        );
+      return { obligation: obligationFromRow(inserted[0]), created: true };
+    });
+  }
+
+  async readPreparedReview(
+    artifactId: string,
+  ): Promise<PreparedReviewRecord | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT decision_json FROM app_lifeops.life_audit_events
+      WHERE agent_id = ${sqlQuote(this.agentId)} AND owner_type = 'parenting_agreement'
+        AND owner_id = ${sqlQuote(artifactId)} AND event_type = 'agreement_review_prepared'`,
+    );
+    if (rows.length === 0) return null;
+    if (rows.length !== 1)
+      throw new AgreementKnowledgeError(
+        "Agreement has conflicting prepared review records",
+        "AGREEMENT_INVALID_CONTRACT",
+      );
+    return preparedReviewFromJson(rows[0]?.decision_json);
+  }
+
+  async commitPreparedReview(
+    record: PreparedReviewRecord,
+    obligations: ParentingAgreementObligation[],
+  ): Promise<PreparedReviewRecord> {
+    if (
+      record.obligationIds.length !== obligations.length ||
+      obligations.some(
+        (item, index) =>
+          item.id !== record.obligationIds[index] ||
+          item.artifactId !== record.artifactId ||
+          item.agentId !== this.agentId ||
+          item.status !== "proposed",
+      )
+    ) {
+      throw new AgreementKnowledgeError(
+        "Prepared review batch does not match its source or proposal identities",
+        "AGREEMENT_INVALID_CONTRACT",
+      );
+    }
+    return withTransaction(this.runtime, async (tx) => {
+      const artifacts = await executeRawSqlTx(
+        tx,
+        `SELECT id FROM app_lifeops.life_household_agreement_artifacts
+        WHERE agent_id = ${sqlQuote(this.agentId)} AND id = ${sqlQuote(record.artifactId)} FOR UPDATE`,
+      );
+      if (artifacts.length !== 1)
+        throw new AgreementKnowledgeError(
+          "Agreement source is unavailable",
+          "AGREEMENT_ARTIFACT_NOT_FOUND",
+        );
+      const existing = await executeRawSqlTx(
+        tx,
+        `SELECT decision_json FROM app_lifeops.life_audit_events
+        WHERE agent_id = ${sqlQuote(this.agentId)} AND owner_type = 'parenting_agreement'
+          AND owner_id = ${sqlQuote(record.artifactId)} AND event_type = 'agreement_review_prepared'`,
+      );
+      if (existing.length === 1)
+        return preparedReviewFromJson(existing[0]?.decision_json);
+      if (existing.length > 1)
+        throw new AgreementKnowledgeError(
+          "Agreement has conflicting prepared review records",
+          "AGREEMENT_INVALID_CONTRACT",
+        );
+      for (const obligation of obligations) {
+        const inserted = await executeRawSqlTx(
+          tx,
+          this.obligationInsertSql(obligation),
+        );
+        if (inserted.length !== 1)
+          throw new AgreementKnowledgeError(
+            "Review proposal did not persist",
+            "AGREEMENT_STORAGE_UNAVAILABLE",
+          );
+      }
+      const saved = await executeRawSqlTx(
+        tx,
+        `INSERT INTO app_lifeops.life_audit_events
+        (id, agent_id, event_type, owner_type, owner_id, reason, inputs_json, decision_json, actor, created_at)
+        VALUES (${sqlQuote(`agreement_review_${crypto.randomUUID()}`)}, ${sqlQuote(this.agentId)}, 'agreement_review_prepared',
+          'parenting_agreement', ${sqlQuote(record.artifactId)}, 'Unapproved cited proposals prepared for owner review',
+          ${sqlQuote(JSON.stringify({ sourceSha256: record.sourceSha256, extractionSha256: record.extractionSha256 }))},
+          ${sqlQuote(JSON.stringify(record))}, 'owner', ${sqlQuote(record.generatedAt)}) RETURNING id`,
+      );
+      if (saved.length !== 1)
+        throw new AgreementKnowledgeError(
+          "Prepared review did not persist",
+          "AGREEMENT_STORAGE_UNAVAILABLE",
+        );
+      return record;
+    });
   }
 
   async decideObligation(input: {
@@ -1005,6 +1178,10 @@ function requirePositiveInteger(value: number, field: string): number {
 
 export class AgreementKnowledgeService {
   private readonly now: () => Date;
+  private readonly reviewInFlight = new Map<
+    string,
+    Promise<PreparedAgreementReview>
+  >();
 
   constructor(
     private readonly deps: {
@@ -1034,6 +1211,174 @@ export class AgreementKnowledgeService {
 
   listApprovedObligations(): Promise<ParentingAgreementObligation[]> {
     return this.deps.repository.listApprovedObligations();
+  }
+
+  async prepareOwnerReview(input: {
+    artifactId: string;
+    ownerEntityId: string;
+  }): Promise<PreparedAgreementReview> {
+    this.requireOwner(input.ownerEntityId);
+    const artifactId = normalizeHouseholdIdentifier(
+      input.artifactId,
+      "artifactId",
+    );
+    const pending = this.reviewInFlight.get(artifactId);
+    if (pending) return pending;
+    const work = this.prepareOwnerReviewOnce(artifactId);
+    this.reviewInFlight.set(artifactId, work);
+    try {
+      return await work;
+    } finally {
+      if (this.reviewInFlight.get(artifactId) === work)
+        this.reviewInFlight.delete(artifactId);
+    }
+  }
+
+  async readOwnerReview(input: {
+    artifactId: string;
+    ownerEntityId: string;
+  }): Promise<PreparedAgreementReview | null> {
+    this.requireOwner(input.ownerEntityId);
+    const artifact = await this.requireArtifact(input.artifactId);
+    const record = await this.deps.repository.readPreparedReview(artifact.id);
+    if (!record) return null;
+    return this.preparedReviewResult(
+      await this.reviewSource(artifact.id),
+      record,
+    );
+  }
+
+  private async reviewSource(
+    artifactId: string,
+  ): Promise<AgreementReviewSource> {
+    const snapshot = await this.deps.repository.readExportSnapshot(artifactId);
+    await this.readOwnerPdf({ artifactId, ownerEntityId: SELF_ENTITY_ID });
+    const documents = this.deps.documents();
+    if (!documents)
+      throw new AgreementKnowledgeError(
+        "Agreement document service is unavailable",
+        "AGREEMENT_STORAGE_UNAVAILABLE",
+      );
+    const document = await documents.getDocumentById(
+      snapshot.artifact.documentId as UUID,
+    );
+    const raw =
+      document?.metadata && "agreementExtractionJson" in document.metadata
+        ? document.metadata.agreementExtractionJson
+        : undefined;
+    const ingestion = snapshot.audit.find(
+      (event) => event.event_type === "agreement_ingested",
+    );
+    try {
+      if (typeof raw !== "string" || !ingestion)
+        throw new Error("Complete recorded extraction is required");
+      const provenance = z
+        .object({ extractionSha256: z.string().regex(/^[a-f0-9]{64}$/) })
+        .parse(JSON.parse(requiredText(ingestion.inputs_json, "inputs_json")));
+      const extractionSha256 = crypto
+        .createHash("sha256")
+        .update(raw)
+        .digest("hex");
+      if (extractionSha256 !== provenance.extractionSha256)
+        throw new Error("Extraction hash differs from ingestion provenance");
+      const extraction = agreementExtractionSchema.parse(JSON.parse(raw));
+      if (
+        extraction.pageCount !== snapshot.artifact.pageCount ||
+        extraction.pages.length !== extraction.pageCount ||
+        extraction.pages.some((page, index) => page.pageNumber !== index + 1)
+      )
+        throw new Error("Extraction page map is incomplete");
+      return {
+        artifactId,
+        sourceSha256: snapshot.artifact.contentSha256,
+        extractionSha256,
+        extraction,
+      };
+    } catch (cause) {
+      // error-policy:J2 Refuse unverifiable source evidence before model dispatch.
+      throw new AgreementKnowledgeError(
+        "Agreement review requires a complete, integrity-verified extraction",
+        "AGREEMENT_INVALID_CONTRACT",
+        { artifactId },
+        cause,
+      );
+    }
+  }
+
+  private async prepareOwnerReviewOnce(
+    artifactId: string,
+  ): Promise<PreparedAgreementReview> {
+    const source = await this.reviewSource(artifactId);
+    let record = await this.deps.repository.readPreparedReview(artifactId);
+    if (!record) {
+      const generated: GeneratedAgreementReview = await generateAgreementReview(
+        this.deps.runtime,
+        source,
+      );
+      const generatedAt = this.now().toISOString();
+      const obligations: ParentingAgreementObligation[] =
+        generated.proposals.map((proposal) => ({
+          ...proposal,
+          id: `haob_${crypto.randomUUID()}`,
+          agentId: this.deps.agentId,
+          artifactId,
+          status: "proposed",
+          proposedByEntityId: this.deps.agentId,
+          decidedByEntityId: null,
+          decisionReason: null,
+          decidedAt: null,
+          createdAt: generatedAt,
+          updatedAt: generatedAt,
+        }));
+      record = await this.deps.repository.commitPreparedReview(
+        {
+          artifactId,
+          sourceSha256: source.sourceSha256,
+          extractionSha256: source.extractionSha256,
+          generatedAt,
+          explanation: generated.explanation,
+          obligationIds: obligations.map((obligation) => obligation.id),
+        },
+        obligations,
+      );
+    }
+    return this.preparedReviewResult(source, record);
+  }
+
+  private async preparedReviewResult(
+    source: AgreementReviewSource,
+    record: PreparedReviewRecord,
+  ): Promise<PreparedAgreementReview> {
+    const artifactId = source.artifactId;
+    if (
+      record.artifactId !== artifactId ||
+      record.sourceSha256 !== source.sourceSha256 ||
+      record.extractionSha256 !== source.extractionSha256
+    ) {
+      throw new AgreementKnowledgeError(
+        "Prepared review does not match this immutable source",
+        "AGREEMENT_INVALID_CONTRACT",
+        { artifactId },
+      );
+    }
+    const all = await this.deps.repository.listObligations(artifactId);
+    const obligations = record.obligationIds.map((id) => {
+      const obligation = all.find((item) => item.id === id);
+      if (!obligation)
+        throw new AgreementKnowledgeError(
+          "Prepared review obligation is unavailable",
+          "AGREEMENT_STORAGE_UNAVAILABLE",
+          { artifactId, obligationId: id },
+        );
+      return obligation;
+    });
+    return {
+      artifactId,
+      generatedAt: record.generatedAt,
+      explanation: record.explanation,
+      outcome: obligations.length ? "proposals" : "no_proposals",
+      obligations,
+    };
   }
 
   private requireOwnerOrAgent(actorEntityId: string): void {
@@ -1475,6 +1820,50 @@ export class AgreementKnowledgeService {
       mimeType: "application/zip",
       fileName: `agreement-${snapshot.artifact.id}-v${snapshot.artifact.version}.zip`,
     };
+  }
+
+  /** Adds an owner correction as an unapproved proposal; identical retries recover its current decision. */
+  async addOwnerReviewProposal(input: {
+    artifactId: string;
+    ownerEntityId: string;
+    proposal: AgreementReviewProposal;
+  }): Promise<{ obligation: ParentingAgreementObligation; created: boolean }> {
+    this.requireOwner(input.ownerEntityId);
+    const artifactId = normalizeHouseholdIdentifier(
+      input.artifactId,
+      "artifactId",
+    );
+    const source = await this.reviewSource(artifactId);
+    const proposal = validateAgreementReviewProposal(input.proposal, source);
+    const identity = crypto
+      .createHash("sha256")
+      .update(
+        JSON.stringify([
+          "owner-agreement-proposal-v1",
+          this.deps.agentId,
+          artifactId,
+          proposal.title,
+          proposal.obligationText,
+          proposal.pageStart,
+          proposal.pageEnd,
+          proposal.citationText,
+        ]),
+      )
+      .digest("hex");
+    const now = this.now().toISOString();
+    return this.deps.repository.insertOwnerProposalOnce({
+      ...proposal,
+      id: `haob_owner_${identity}`,
+      agentId: this.deps.agentId,
+      artifactId,
+      status: "proposed",
+      proposedByEntityId: SELF_ENTITY_ID,
+      decidedByEntityId: null,
+      decisionReason: null,
+      decidedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    });
   }
 
   async proposeObligation(input: {

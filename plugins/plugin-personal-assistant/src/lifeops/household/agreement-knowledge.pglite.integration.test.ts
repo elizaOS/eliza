@@ -21,6 +21,7 @@ import {
   ElizaError,
   type IAgentRuntime,
   type Memory,
+  ModelType,
   type Plugin,
   Service,
   ServiceType,
@@ -1393,4 +1394,329 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       ).resolves.toEqual([]);
     },
   );
+  it("validates owner corrections, commits concurrent retries once, and preserves a decision across restart", async () => {
+    const service = createAgreementKnowledgeService(runtime);
+    const citation = "Share school notices within 24 hours.";
+    const source = await service.createAgreementVersion({
+      agreementKey: "owner-review-correction",
+      title: "Owner correction",
+      originalFilename: "owner-review.pdf",
+      mimeType: "application/pdf",
+      bytes: pdf(citation),
+      uploadedByEntityId: SELF_ENTITY_ID,
+    });
+    const input = {
+      artifactId: source.id,
+      ownerEntityId: SELF_ENTITY_ID,
+      proposal: {
+        title: "School notices",
+        obligationText: citation,
+        citationText: citation,
+        pageStart: 1,
+        pageEnd: 1,
+      },
+    };
+    await expect(
+      service.addOwnerReviewProposal({
+        ...input,
+        ownerEntityId: "verified-co-parent",
+      }),
+    ).rejects.toMatchObject({ code: "AGREEMENT_ACCESS_DENIED" });
+    await expect(
+      service.addOwnerReviewProposal({
+        ...input,
+        proposal: { ...input.proposal, citationText: "Silence is consent." },
+      }),
+    ).rejects.toMatchObject({ code: "AGREEMENT_REVIEW_CITATION_INVALID" });
+    await expect(
+      service.readFor({
+        artifactId: source.id,
+        principalEntityId: SELF_ENTITY_ID,
+      }),
+    ).resolves.toMatchObject({ obligations: [] });
+    const second = createAgreementKnowledgeService(runtime);
+    const receipts = await Promise.all([
+      service.addOwnerReviewProposal(input),
+      second.addOwnerReviewProposal(input),
+    ]);
+    expect(receipts.filter((receipt) => receipt.created)).toHaveLength(1);
+    expect(receipts[0]?.obligation.id).toBe(receipts[1]?.obligation.id);
+    const obligation = receipts[0]?.obligation;
+    if (!obligation) throw new Error("Expected saved owner proposal");
+    expect(obligation.status).toBe("proposed");
+    await expect(
+      service.listPins({
+        artifactId: source.id,
+        ownerEntityId: SELF_ENTITY_ID,
+      }),
+    ).resolves.toEqual([]);
+    await service.decideObligation({
+      obligationId: obligation.id,
+      decision: "approve",
+      decidedByEntityId: SELF_ENTITY_ID,
+      reason: "Checked the original quote",
+    });
+    const restarted = createAgreementKnowledgeService(runtime);
+    await expect(
+      restarted.addOwnerReviewProposal(input),
+    ).resolves.toMatchObject({
+      created: false,
+      obligation: {
+        id: obligation.id,
+        status: "approved",
+        decisionReason: "Checked the original quote",
+      },
+    });
+    const readback = await restarted.readFor({
+      artifactId: source.id,
+      principalEntityId: SELF_ENTITY_ID,
+    });
+    expect(readback.obligations).toHaveLength(1);
+    expect(readback.obligations[0]?.status).toBe("approved");
+    await expect(
+      restarted.readOwnerReview({
+        artifactId: source.id,
+        ownerEntityId: SELF_ENTITY_ID,
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it("prepares cited proposals once, preserves owner decisions across restart, and never activates them implicitly", async () => {
+    const service = createAgreementKnowledgeService(runtime);
+    const citation = "Each parent must share school notices within 24 hours.";
+    const source = await service.createAgreementVersion({
+      agreementKey: "review-generation-retry",
+      title: "Review generation",
+      originalFilename: "review.pdf",
+      mimeType: "application/pdf",
+      bytes: pdf(citation),
+      uploadedByEntityId: SELF_ENTITY_ID,
+    });
+    let calls = 0;
+    runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async (_runtime, params) => {
+        calls += 1;
+        expect(typeof params.prompt).toBe("string");
+        expect(params.prompt).toContain(citation);
+        expect(params.prompt).toContain('"pageNumber":12');
+        return JSON.stringify({
+          complete: true,
+          reviewedPages: Array.from({ length: 12 }, (_, index) => index + 1),
+          explanation:
+            "School notice requirement identified in the synthetic source.",
+          proposals: [
+            {
+              title: "Share school notices",
+              obligationText: citation,
+              pageStart: 1,
+              pageEnd: 1,
+              citationText: citation,
+            },
+          ],
+        });
+      },
+      "agreement-review-test",
+      100001,
+    );
+    const input = { artifactId: source.id, ownerEntityId: SELF_ENTITY_ID };
+    await expect(service.readOwnerReview(input)).resolves.toBeNull();
+    await expect(
+      service.prepareOwnerReview({
+        ...input,
+        ownerEntityId: "verified-co-parent",
+      }),
+    ).rejects.toMatchObject({ code: "AGREEMENT_ACCESS_DENIED" });
+    expect(calls).toBe(0);
+    const [first, concurrent] = await Promise.all([
+      service.prepareOwnerReview(input),
+      service.prepareOwnerReview(input),
+    ]);
+    expect(concurrent).toEqual(first);
+    expect(calls).toBe(1);
+    expect(first.obligations).toHaveLength(1);
+    expect(first.obligations[0]?.status).toBe("proposed");
+    await expect(service.listPins(input)).resolves.toEqual([]);
+    const obligation = first.obligations[0];
+    if (!obligation) throw new Error("Expected persisted proposal");
+    await service.decideObligation({
+      obligationId: obligation.id,
+      decision: "reject",
+      decidedByEntityId: SELF_ENTITY_ID,
+      reason: "Owner rejected this synthetic proposal",
+    });
+    const restarted = createAgreementKnowledgeService(runtime);
+    const replay = await restarted.prepareOwnerReview(input);
+    expect(calls).toBe(1);
+    expect(
+      replay.obligations.map((item) => ({ id: item.id, status: item.status })),
+    ).toEqual([{ id: obligation.id, status: "rejected" }]);
+    expect(
+      (
+        await restarted.readFor({
+          artifactId: source.id,
+          principalEntityId: SELF_ENTITY_ID,
+        })
+      ).obligations,
+    ).toHaveLength(1);
+  });
+
+  it("rejects a fabricated model citation without committing a partial review and allows a valid retry", async () => {
+    const service = createAgreementKnowledgeService(runtime);
+    const source = await service.createAgreementVersion({
+      agreementKey: "review-invalid-citation",
+      title: "Citation rejection",
+      originalFilename: "citation.pdf",
+      mimeType: "application/pdf",
+      bytes: pdf("A travel request remains unresolved until answered."),
+      uploadedByEntityId: SELF_ENTITY_ID,
+    });
+    runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async () =>
+        JSON.stringify({
+          complete: true,
+          reviewedPages: Array.from({ length: 12 }, (_, index) => index + 1),
+          explanation: "Invalid output fixture",
+          proposals: [
+            {
+              title: "Await travel response",
+              obligationText:
+                "A travel request remains unresolved until answered.",
+              pageStart: 1,
+              pageEnd: 1,
+              citationText:
+                "A travel request remains unresolved until answered.",
+            },
+            {
+              title: "Travel",
+              obligationText: "Silence is consent",
+              pageStart: 1,
+              pageEnd: 1,
+              citationText: "Silence is consent",
+            },
+          ],
+        }),
+      "agreement-review-test",
+      100002,
+    );
+    const input = { artifactId: source.id, ownerEntityId: SELF_ENTITY_ID };
+    await expect(service.prepareOwnerReview(input)).rejects.toMatchObject({
+      code: "AGREEMENT_REVIEW_CITATION_INVALID",
+    });
+    await expect(service.readOwnerReview(input)).resolves.toBeNull();
+    expect(
+      (
+        await service.readFor({
+          artifactId: source.id,
+          principalEntityId: SELF_ENTITY_ID,
+        })
+      ).obligations,
+    ).toEqual([]);
+    runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async () =>
+        JSON.stringify({
+          complete: true,
+          reviewedPages: Array.from({ length: 12 }, (_, index) => index + 1),
+          explanation:
+            "No clear commitments identified; owner review remains necessary.",
+          proposals: [],
+        }),
+      "agreement-review-test",
+      100003,
+    );
+    const empty = await service.prepareOwnerReview(input);
+    expect(empty.outcome).toBe("no_proposals");
+    const restarted = createAgreementKnowledgeService(runtime);
+    await expect(restarted.readOwnerReview(input)).resolves.toEqual(empty);
+  });
+  it("commits one review across service instances and rolls back the entire batch when its audit fails", async () => {
+    const service = createAgreementKnowledgeService(runtime);
+    const citation = "Each parent must acknowledge receipt of school notices.";
+    const source = await service.createAgreementVersion({
+      agreementKey: "review-transaction-recovery",
+      title: "Transactional review",
+      originalFilename: "transaction.pdf",
+      mimeType: "application/pdf",
+      bytes: pdf(citation),
+      uploadedByEntityId: SELF_ENTITY_ID,
+    });
+    let calls = 0;
+    runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async () => {
+        calls += 1;
+        return JSON.stringify({
+          complete: true,
+          reviewedPages: Array.from({ length: 12 }, (_, index) => index + 1),
+          explanation: "Synthetic notice receipt requirement.",
+          proposals: [
+            {
+              title: "Acknowledge notice",
+              obligationText: citation,
+              citationText: citation,
+              pageStart: 1,
+              pageEnd: 1,
+            },
+          ],
+        });
+      },
+      "agreement-review-test",
+      100004,
+    );
+    const input = { artifactId: source.id, ownerEntityId: SELF_ENTITY_ID };
+    await executeRawSql(
+      runtime,
+      `CREATE FUNCTION app_lifeops.reject_prepared_review_test() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN RAISE EXCEPTION 'Prepared review audit unavailable'; END $$`,
+    );
+    await executeRawSql(
+      runtime,
+      `CREATE TRIGGER reject_prepared_review_test BEFORE INSERT ON app_lifeops.life_audit_events
+      FOR EACH ROW WHEN (NEW.event_type = 'agreement_review_prepared') EXECUTE FUNCTION app_lifeops.reject_prepared_review_test()`,
+    );
+    try {
+      await expect(service.prepareOwnerReview(input)).rejects.toThrow();
+      await expect(service.readOwnerReview(input)).resolves.toBeNull();
+      const readback = await service.readFor({
+        artifactId: source.id,
+        principalEntityId: SELF_ENTITY_ID,
+      });
+      expect(readback.obligations).toEqual([]);
+      const audit = await executeRawSql(
+        runtime,
+        `SELECT id FROM app_lifeops.life_audit_events
+        WHERE owner_id = '${source.id}' AND event_type = 'agreement_obligation_proposed'`,
+      );
+      expect(audit).toEqual([]);
+    } finally {
+      await executeRawSql(
+        runtime,
+        "DROP TRIGGER reject_prepared_review_test ON app_lifeops.life_audit_events",
+      );
+      await executeRawSql(
+        runtime,
+        "DROP FUNCTION app_lifeops.reject_prepared_review_test()",
+      );
+    }
+    const second = createAgreementKnowledgeService(runtime);
+    const [first, concurrent] = await Promise.all([
+      service.prepareOwnerReview(input),
+      second.prepareOwnerReview(input),
+    ]);
+    expect(first).toEqual(concurrent);
+    expect(first.obligations).toHaveLength(1);
+    expect(calls).toBeGreaterThanOrEqual(2);
+    const readback = await service.readFor({
+      artifactId: source.id,
+      principalEntityId: SELF_ENTITY_ID,
+    });
+    expect(readback.obligations.map((item) => item.id)).toEqual(
+      first.obligations.map((item) => item.id),
+    );
+    await expect(
+      createAgreementKnowledgeService(runtime).readOwnerReview(input),
+    ).resolves.toEqual(first);
+  });
 });

@@ -33,6 +33,62 @@ afterEach(() => {
 });
 
 describe("defaultFamilyOperationsAdapter", () => {
+  it("recovers a prepared agreement review through the authenticated selected API and preserves validation failures", async () => {
+    const review = {
+      artifactId: "artifact/one",
+      outcome: "no_proposals",
+      generatedAt: "2026-09-13T00:00:00Z",
+      explanation: "Synthetic review",
+      obligations: [],
+    };
+    let prepared = false;
+    let unavailable = false;
+    vi.stubGlobal(
+      "fetch",
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const request = new Request(input, init);
+        if (
+          new URL(request.url).origin !== testApiBase ||
+          request.headers.get("authorization") !==
+            "Bearer family-adapter-test-session"
+        )
+          return Response.json({ error: "Unauthorized" }, { status: 401 });
+        if (
+          requestPath(input) !== "/api/lifeops/agreements/artifact%2Fone/review"
+        )
+          return Response.json(
+            { error: "Wrong artifact route" },
+            { status: 404 },
+          );
+        if (unavailable)
+          return Response.json(
+            {
+              error: {
+                message: "Citation does not match source pages",
+                code: "AGREEMENT_REVIEW_CITATION_INVALID",
+              },
+            },
+            { status: 422 },
+          );
+        if (request.method === "POST") prepared = true;
+        return Response.json({ review: prepared ? review : null });
+      },
+    );
+    await expect(
+      defaultFamilyOperationsAdapter.readAgreementReview("artifact/one"),
+    ).resolves.toBeNull();
+    await expect(
+      defaultFamilyOperationsAdapter.prepareAgreementReview("artifact/one"),
+    ).resolves.toEqual(review);
+    await expect(
+      defaultFamilyOperationsAdapter.readAgreementReview("artifact/one"),
+    ).resolves.toEqual(review);
+    unavailable = true;
+    await expect(
+      defaultFamilyOperationsAdapter.prepareAgreementReview("artifact/one"),
+    ).rejects.toThrow("Citation does not match source pages");
+  });
+
   it("sends the owner's selected month instead of letting the server choose next month", async () => {
     const requests: Request[] = [];
     vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {

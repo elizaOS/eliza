@@ -281,6 +281,8 @@ describe("LifeOps raw route owner/admin gate", () => {
       ["GET", "/api/lifeops/agreements/:id"],
       ["GET", "/api/lifeops/agreements/:id/guest-projection"],
       ["GET", "/api/lifeops/agreements/:id/guest-options"],
+      ["GET", "/api/lifeops/agreements/:id/review"],
+      ["POST", "/api/lifeops/agreements/:id/review"],
       ["GET", "/api/lifeops/agreements/:id/download"],
       ["POST", "/api/lifeops/agreements/:id/obligations"],
       ["GET", "/api/lifeops/agreements/:id/pins"],
@@ -346,6 +348,8 @@ describe("LifeOps raw route owner/admin gate", () => {
       "POST",
       "/api/lifeops/family-workflows/packets/:packetId/drafts/:draftVersion/revision",
     ],
+    ["GET", "/api/lifeops/agreements/:id/review"],
+    ["POST", "/api/lifeops/agreements/:id/review"],
   ] as const)(
     "denies unauthenticated %s %s before accessing family data",
     async (method, path) => {

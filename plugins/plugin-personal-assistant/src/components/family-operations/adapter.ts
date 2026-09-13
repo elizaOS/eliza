@@ -431,6 +431,32 @@ export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter = {
     );
     sessionStorage.removeItem(resumeKey);
   },
+  async readAgreementReview(artifactId) {
+    const response = await request<{
+      review: Awaited<
+        ReturnType<FamilyOperationsAdapter["readAgreementReview"]>
+      >;
+    }>(`/api/lifeops/agreements/${encodeURIComponent(artifactId)}/review`);
+    return response.review;
+  },
+  async prepareAgreementReview(artifactId) {
+    const response = await request<{
+      review: Awaited<
+        ReturnType<FamilyOperationsAdapter["prepareAgreementReview"]>
+      >;
+    }>(`/api/lifeops/agreements/${encodeURIComponent(artifactId)}/review`, {
+      method: "POST",
+    });
+    return response.review;
+  },
+  async addAgreementProposal(artifactId, proposal) {
+    return request<
+      Awaited<ReturnType<FamilyOperationsAdapter["addAgreementProposal"]>>
+    >(`/api/lifeops/agreements/${encodeURIComponent(artifactId)}/obligations`, {
+      method: "POST",
+      body: JSON.stringify(proposal),
+    });
+  },
   async decideObligation(obligation, decision, reason) {
     const response = await request<{ obligation: typeof obligation }>(
       `/api/lifeops/agreements/obligations/${encodeURIComponent(obligation.id)}/decision`,

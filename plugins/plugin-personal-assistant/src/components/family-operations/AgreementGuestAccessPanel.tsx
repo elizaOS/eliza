@@ -173,6 +173,7 @@ export function AgreementGuestAccessPanel({
           )}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <Button
+              className="min-h-11"
               variant="outline"
               disabled={busy || needsRefresh || !choice}
               onClick={() =>
@@ -201,6 +202,7 @@ export function AgreementGuestAccessPanel({
               Preview permission
             </Button>
             <Button
+              className="min-h-11"
               disabled={busy || needsRefresh || !allowed}
               onClick={() =>
                 void run(
@@ -310,6 +312,7 @@ export function AgreementGuestAccessPanel({
                 </label>
                 <div>
                   <Button
+                    className="min-h-11"
                     variant="outline"
                     disabled={
                       busy || needsRefresh || !revocable || !reason.trim()
@@ -348,7 +351,12 @@ export function AgreementGuestAccessPanel({
         </>
       )}
       <div>
-        <Button variant="outline" disabled={busy} onClick={() => void reload()}>
+        <Button
+          className="min-h-11"
+          variant="outline"
+          disabled={busy}
+          onClick={() => void reload()}
+        >
           Refresh guest permissions
         </Button>
       </div>

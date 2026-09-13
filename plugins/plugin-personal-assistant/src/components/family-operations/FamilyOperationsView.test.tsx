@@ -137,6 +137,13 @@ function guestOptions(): Awaited<
 function adapter(data = snapshot()): FamilyOperationsAdapter {
   return {
     load: vi.fn(async () => data),
+    readAgreementReview: vi.fn(async () => null),
+    addAgreementProposal: async () => {
+      throw new Error("Owner correction is unavailable in this fixture");
+    },
+    prepareAgreementReview: vi.fn(async () => {
+      throw new Error("Review generation is not configured in this fixture");
+    }),
     decideObligation: vi.fn(async (obligation, decision, reason) => ({
       ...obligation,
       status: decision === "approve" ? "approved" : "rejected",
@@ -230,6 +237,84 @@ function openPacketMonth(month: string) {
 }
 
 describe("FamilyOperationsView", () => {
+  it("keeps the decision reason and approval gate specific to each proposed clause", async () => {
+    const data = snapshot();
+    if (data.agreements.status !== "ready")
+      throw new Error("Expected agreement fixture");
+    const source = data.agreements.data[0];
+    source.obligations.push({
+      ...source.obligations[0],
+      id: "travel-clause",
+      title: "Travel notice",
+    });
+    const local = adapter(data);
+    render(<FamilyOperationsView adapter={local} />);
+    const school = (await screen.findByText("School notice")).closest(
+      "article",
+    );
+    const travel = screen.getByText("Travel notice").closest("article");
+    if (!school || !travel) throw new Error("Expected both proposal cards");
+    fireEvent.change(within(school).getByLabelText("Decision reason"), {
+      target: { value: "Checked the school notice clause." },
+    });
+    expect(
+      (within(travel).getByLabelText("Decision reason") as HTMLInputElement)
+        .value,
+    ).toBe("");
+    expect(
+      (
+        within(travel).getByRole("button", {
+          name: "Approve",
+          exact: true,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    fireEvent.click(
+      within(school).getByRole("button", { name: "Approve", exact: true }),
+    );
+    await waitFor(() =>
+      expect(local.decideObligation).toHaveBeenCalledTimes(1),
+    );
+    expect(local.decideObligation).toHaveBeenCalledWith(
+      source.obligations[0],
+      "approve",
+      "Checked the school notice clause.",
+    );
+    expect(
+      (within(travel).getByLabelText("Decision reason") as HTMLInputElement)
+        .value,
+    ).toBe("");
+  });
+
+  it("keeps a prepared review retryable when the parent agreement refresh fails", async () => {
+    const transport = adapter();
+    vi.mocked(transport.prepareAgreementReview).mockResolvedValue({
+      artifactId: "artifact-1",
+      generatedAt: "2026-09-13T00:00:00Z",
+      explanation: "Synthetic review successfully persisted.",
+      outcome: "no_proposals",
+      obligations: [],
+    });
+    vi.mocked(transport.load)
+      .mockResolvedValueOnce(snapshot())
+      .mockRejectedValueOnce(new Error("Agreement refresh unavailable"))
+      .mockResolvedValue(snapshot());
+    render(<FamilyOperationsView adapter={transport} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Prepare review" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getAllByText("Agreement refresh unavailable").length,
+      ).toBeGreaterThan(0),
+    );
+    expect(
+      screen.queryByText("Synthetic review successfully persisted."),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Prepare review" }));
+    await screen.findByText("Synthetic review successfully persisted.");
+  });
+
   it("recovers guest choices from an unavailable permission inventory", async () => {
     const local = adapter();
     local.listGuestAccessOptions = vi

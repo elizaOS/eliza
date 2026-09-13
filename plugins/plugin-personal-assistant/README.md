@@ -240,6 +240,22 @@ in-range page citation plus the cited source text. Only the owner can make the t
 `approved` or `rejected` decision. Agent and chat pins are independent
 discovery records and never confer access.
 
+Owners choose **Prepare review** on an uploaded agreement, or request
+`OWNER_AGREEMENT_KNOWLEDGE` with `prepare_review`. The owner-only
+`POST /api/lifeops/agreements/:id/review` verifies the original PDF and saved
+extraction against their ingestion hashes, sends complete page evidence to the
+model, and validates every proposed citation against its claimed pages. Invalid
+or incomplete output saves nothing. Generation creates unapproved proposals;
+approval, pinning, sharing, scheduling, and delivery remain separate operations.
+
+The proposal batch and its completion record commit atomically. Concurrent
+requests and retries recover the first committed review, including later owner
+decisions; `GET /api/lifeops/agreements/:id/review` restores it after reload.
+A saved empty result is explicitly identified and does not certify that the PDF
+contains no commitments. Owners must still inspect the original source for
+omissions and interpretation errors. Each immutable agreement version has one
+prepared review; failed attempts can be retried without partial proposals.
+
 The owner is the only implicit reader. A guest read requires a resource grant
 bound to one exact household grant with `knowledge.read`; the guest entity must
 have a verified identity, and both grants must remain unrevoked and unexpired.
@@ -447,3 +463,10 @@ internals; it consumes the plugin's public exports only. See
 - Prompt-content lint rules: `scripts/lint-default-packs.mjs`.
 - Health domain: `plugins/plugin-health/README.md`.
 - REST routes: `src/routes/`.
+
+Owner review corrections use the same complete-source citation validation as
+model-generated proposals. The Family Operations editor and owner action
+`add_proposal` save an unapproved correction through the existing obligations
+route. Identical corrections to the same immutable artifact recover the same
+record and its current decision, including after restart or a lost response.
+Saving a correction does not prepare a model review, approve, pin or share it.

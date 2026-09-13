@@ -20,6 +20,13 @@ const adapter = {
     packets: { status: "ready", data: [] },
     emailOptions: { status: "ready", data: { accounts: [], recipients: [] } },
   }),
+  readAgreementReview: async () => null,
+  addAgreementProposal: async () => {
+    throw new Error("Owner correction is unavailable in this fixture");
+  },
+  prepareAgreementReview: async () => {
+    throw new Error("Review generation is not available in this story");
+  },
   decideObligation: async (obligation: never) => obligation,
   listPinTargets: async () => ({
     agent: { id: "fixture-agent", name: "Family assistant" },

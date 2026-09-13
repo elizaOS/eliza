@@ -17,6 +17,7 @@ import type {
   HouseholdKnowledgePin,
   ParentingAgreementObligation,
   ParentingAgreementView,
+  PreparedAgreementReview,
 } from "../../lifeops/household/agreement-knowledge.js";
 
 export type Loadable<T> =
@@ -105,6 +106,14 @@ export interface FamilyRecipientContact {
   name: string;
 }
 
+export interface OwnerAgreementProposalInput {
+  title: string;
+  obligationText: string;
+  citationText: string;
+  pageStart: number;
+  pageEnd: number;
+}
+
 export interface FamilyOperationsAdapter {
   decidePacketApproval(input: {
     packetId: string;
@@ -121,6 +130,14 @@ export interface FamilyOperationsAdapter {
   }): Promise<FamilyRecipientContact & { address: string }>;
   load(): Promise<FamilyOperationsSnapshot>;
   uploadAgreement(input: AgreementUploadInput): Promise<void>;
+  readAgreementReview(
+    artifactId: string,
+  ): Promise<PreparedAgreementReview | null>;
+  prepareAgreementReview(artifactId: string): Promise<PreparedAgreementReview>;
+  addAgreementProposal(
+    artifactId: string,
+    proposal: OwnerAgreementProposalInput,
+  ): Promise<{ obligation: ParentingAgreementObligation; created: boolean }>;
   downloadAgreement(
     artifactId: string,
     format: "original" | "export",
