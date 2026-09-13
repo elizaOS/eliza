@@ -29,6 +29,7 @@ import {
 import type { PdfService } from "@elizaos/plugin-pdf";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { tryHandleRuntimePluginRoute } from "../../../../../packages/agent/src/api/runtime-plugin-routes.ts";
 import { LocalFileStorageService } from "../../../../../packages/agent/src/services/file-storage.js";
 import {
@@ -49,6 +50,7 @@ import {
 } from "../family-workflows/deletion-database-snapshot.js";
 import { exportFamilyWorkspace } from "../family-workflows/workspace-export.js";
 import {
+  beginFamilyWorkspaceOperation,
   ensureFamilyWorkspaceOperationStore,
   fenceFamilyWorkspace,
   settleFamilyWorkspaceOperation,
@@ -69,6 +71,8 @@ import {
 import {
   acceptAgreementChunk,
   beginAgreementUpload,
+  commitAgreementUpload,
+  readAgreementUpload,
 } from "./agreement-upload-session.js";
 import {
   getHouseholdCoordinationService,
@@ -2219,6 +2223,226 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       (await previewFamilyDeletionDatabase(runtime, SELF_ENTITY_ID)).sha256,
     ).toBe(settled.sha256);
   });
+  it("holds durable admission through staged chunk persistence and real artifact commit", async () => {
+    const bytes = pdf(
+      "staged mutation guarded across private persistence and ingestion",
+    );
+    const hash = crypto.createHash("sha256").update(bytes).digest("hex");
+    const upload = await beginAgreementUpload(runtime, {
+      agreementKey: "guarded-staging",
+      title: "Guarded staging",
+      originalFilename: "guarded.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: bytes.length,
+    });
+    const storage = runtime.getService<IFileStorageService>(
+      ServiceType.REMOTE_FILES,
+    );
+    if (!storage) throw new Error("Canonical storage is unavailable");
+    const original = storage.storePrivate.bind(storage);
+    let entered!: () => void;
+    let release!: () => void;
+    const enteredStorage = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    storage.storePrivate = async (...args) => {
+      const stored = await original(...args);
+      entered();
+      await released;
+      return stored;
+    };
+    const writing = acceptAgreementChunk({
+      runtime,
+      uploadId: upload.uploadId,
+      index: 0,
+      bytes,
+      sha256: hash,
+    });
+    try {
+      await Promise.race([
+        enteredStorage,
+        writing.then(() => {
+          throw new Error("Chunk bypassed storage barrier");
+        }),
+      ]);
+      await expect(
+        beginFamilyWorkspaceOperation(runtime, {
+          kind: "agreement-upload-chunk",
+          uploadId: upload.uploadId,
+          index: 0,
+          contentSha256: hash,
+        }),
+      ).rejects.toMatchObject({ code: "FAMILY_OPERATION_UNSETTLED" });
+      const preview = await previewFamilyDeletionDatabase(
+        runtime,
+        SELF_ENTITY_ID,
+      );
+      let enteredDeletion = false;
+      await expect(
+        withReviewedFamilyDeletionDatabase(
+          runtime,
+          { ownerEntityId: SELF_ENTITY_ID, expectedSha256: preview.sha256 },
+          async () => {
+            enteredDeletion = true;
+          },
+        ),
+      ).rejects.toMatchObject({ code: "FAMILY_DELETION_WORK_UNSETTLED" });
+      expect(enteredDeletion).toBe(false);
+    } finally {
+      release();
+      storage.storePrivate = original;
+    }
+    const staged = await writing;
+    const service = createAgreementKnowledgeService(runtime);
+    const identity = crypto
+      .createHash("sha256")
+      .update(
+        [
+          "agreement-upload-content-v1",
+          String(bytes.length),
+          String(staged.chunkSizeBytes),
+          `0:${bytes.length}:${hash}`,
+        ].join("\n"),
+      )
+      .digest("hex");
+    const committed = await commitAgreementUpload({
+      runtime,
+      uploadId: upload.uploadId,
+      contentIdentity: identity,
+      createArtifact: async ({ bytes: assembled }) => {
+        const preview = await previewFamilyDeletionDatabase(
+          runtime,
+          SELF_ENTITY_ID,
+        );
+        let enteredDeletion = false;
+        await expect(
+          withReviewedFamilyDeletionDatabase(
+            runtime,
+            { ownerEntityId: SELF_ENTITY_ID, expectedSha256: preview.sha256 },
+            async () => {
+              enteredDeletion = true;
+            },
+          ),
+        ).rejects.toMatchObject({ code: "FAMILY_DELETION_WORK_UNSETTLED" });
+        expect(enteredDeletion).toBe(false);
+        return service.createAgreementVersion({
+          agreementKey: "guarded-staging",
+          title: "Guarded staging",
+          originalFilename: "guarded.pdf",
+          mimeType: "application/pdf",
+          bytes: assembled,
+          uploadedByEntityId: SELF_ENTITY_ID,
+        });
+      },
+      readArtifact: async (id) => {
+        const artifact = await new AgreementKnowledgeRepository(
+          runtime,
+          runtime.agentId,
+        ).getArtifact(id);
+        if (!artifact) throw new Error("Expected a committed artifact");
+        return artifact;
+      },
+    });
+    expect(
+      (
+        await service.readOwnerPdf({
+          artifactId: committed.artifact.id,
+          ownerEntityId: SELF_ENTITY_ID,
+        })
+      ).bytes,
+    ).toEqual(bytes);
+    expect(await storage.readPrivate(staged.chunks[0].fileName)).toBeNull();
+    expect(
+      (
+        await previewFamilyDeletionDatabase(runtime, SELF_ENTITY_ID)
+      ).records.filter((row) => row.kind === "workspaceOperations"),
+    ).toEqual([]);
+    expect(
+      await runtime.deleteCache(
+        `lifeops:agreement-upload:v1:${upload.uploadId}`,
+      ),
+    ).toBe(true);
+  });
+
+  it.each(["lost-ack", "wrong-metadata"] as const)(
+    "retains an uncertain private chunk claim after %s and rejects a second admission",
+    async (fault) => {
+      const bytes = pdf(
+        "private chunk acknowledgement lost before manifest write",
+      );
+      const hash = crypto.createHash("sha256").update(bytes).digest("hex");
+      const upload = await beginAgreementUpload(runtime, {
+        agreementKey: "uncertain-staging",
+        title: "Uncertain staging",
+        originalFilename: "uncertain.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: bytes.length,
+      });
+      const storage = runtime.getService<IFileStorageService>(
+        ServiceType.REMOTE_FILES,
+      );
+      if (!storage) throw new Error("Canonical storage is unavailable");
+      const original = storage.storePrivate.bind(storage);
+      storage.storePrivate = async (...args) => {
+        const stored = await original(...args);
+        if (fault === "wrong-metadata")
+          return { ...stored, hash: "0".repeat(64) };
+        throw new Error("Lost chunk acknowledgement");
+      };
+      const input = {
+        runtime,
+        uploadId: upload.uploadId,
+        index: 0,
+        bytes,
+        sha256: hash,
+      };
+      try {
+        await expect(acceptAgreementChunk(input)).rejects.toMatchObject({
+          code: "AGREEMENT_INGESTION_RECONCILIATION_REQUIRED",
+          context: {
+            target: { uploadId: upload.uploadId, contentSha256: hash },
+          },
+        });
+        storage.storePrivate = original;
+        const files = fs.readdirSync(path.join(mediaStateDir, "media")).sort();
+        await expect(acceptAgreementChunk(input)).rejects.toMatchObject({
+          code: "FAMILY_OPERATION_UNSETTLED",
+        });
+        expect(
+          fs.readdirSync(path.join(mediaStateDir, "media")).sort(),
+        ).toEqual(files);
+      } finally {
+        storage.storePrivate = original;
+        const names = fs
+          .readdirSync(path.join(mediaStateDir, "media"))
+          .filter((name) => name.startsWith(`${hash}.`));
+        expect(names).toHaveLength(1);
+        for (const name of names) {
+          expect(await storage.readPrivate(name)).toEqual(bytes);
+          expect(await storage.deletePrivate(name)).toBe(true);
+          expect(await storage.readPrivate(name)).toBeNull();
+        }
+        const claims = await executeRawSql(
+          runtime,
+          `SELECT operation_id FROM app_lifeops.life_family_workspace_operations WHERE agent_id=${sqlQuote(runtime.agentId)} AND target_json->>'uploadId'=${sqlQuote(upload.uploadId)}`,
+        );
+        expect(claims).toHaveLength(1);
+        await settleFamilyWorkspaceOperation(
+          runtime,
+          String(claims[0].operation_id),
+        );
+        expect(
+          await runtime.deleteCache(
+            `lifeops:agreement-upload:v1:${upload.uploadId}`,
+          ),
+        ).toBe(true);
+      }
+    },
+  );
+
   it("includes staged private upload dependencies and rejects a preview after its manifest changes", async () => {
     const bytes = pdf("staged source awaiting owner completion");
     const manifest = await beginAgreementUpload(runtime, {
@@ -2341,12 +2565,15 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       );
       if (!claim)
         throw new Error("The uncertain private write must retain its claim");
-      expect(claim.identity.content_sha256).toBe(contentSha256);
+      const target = z
+        .object({ artifactId: z.string(), contentSha256: z.string() })
+        .parse(claim.identity.target_json);
+      expect(target.contentSha256).toBe(contentSha256);
       expect(
         await new AgreementKnowledgeRepository(
           runtime,
           runtime.agentId,
-        ).getArtifact(String(claim.identity.artifact_id)),
+        ).getArtifact(target.artifactId),
       ).toBeNull();
       const privateFile = fs
         .readdirSync(path.join(mediaStateDir, "media"))
@@ -2546,6 +2773,42 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         })
       ).bytes,
     ).toEqual(input.bytes);
+    const pendingUpload = await beginAgreementUpload(runtime, {
+      agreementKey: "pending-at-fence",
+      title: "Pending",
+      originalFilename: "pending.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: input.bytes.length,
+    });
+    const readyUpload = await beginAgreementUpload(runtime, {
+      agreementKey: "ready-at-fence",
+      title: "Ready",
+      originalFilename: "ready.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: input.bytes.length,
+    });
+    const readyHash = crypto
+      .createHash("sha256")
+      .update(input.bytes)
+      .digest("hex");
+    await acceptAgreementChunk({
+      runtime,
+      uploadId: readyUpload.uploadId,
+      index: 0,
+      bytes: input.bytes,
+      sha256: readyHash,
+    });
+    const readyIdentity = crypto
+      .createHash("sha256")
+      .update(
+        [
+          "agreement-upload-content-v1",
+          String(input.bytes.length),
+          String(readyUpload.chunkSizeBytes),
+          `0:${input.bytes.length}:${readyHash}`,
+        ].join("\n"),
+      )
+      .digest("hex");
     const settled = await previewFamilyDeletionDatabase(
       runtime,
       SELF_ENTITY_ID,
@@ -2566,6 +2829,43 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     );
     // Reinitialization must preserve the durable fence rather than reopening it.
     await ensureFamilyWorkspaceOperationStore(runtime);
+    await expect(
+      beginAgreementUpload(runtime, {
+        agreementKey: "after-fence",
+        title: "After fence",
+        originalFilename: "after.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: input.bytes.length,
+      }),
+    ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    await expect(
+      acceptAgreementChunk({
+        runtime,
+        uploadId: pendingUpload.uploadId,
+        index: 0,
+        bytes: input.bytes,
+        sha256: crypto.createHash("sha256").update(input.bytes).digest("hex"),
+      }),
+    ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    let commitDispatched = false;
+    await expect(
+      commitAgreementUpload({
+        runtime,
+        uploadId: readyUpload.uploadId,
+        contentIdentity: readyIdentity,
+        createArtifact: async () => {
+          commitDispatched = true;
+          throw new Error("Commit must not dispatch after the fence");
+        },
+        readArtifact: async () => {
+          throw new Error("Unexpected artifact read");
+        },
+      }),
+    ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    expect(commitDispatched).toBe(false);
+    expect(
+      (await readAgreementUpload(runtime, readyUpload.uploadId)).status,
+    ).toBe("uploading");
     await expect(
       createAgreementKnowledgeService(runtime).createAgreementVersion({
         ...input,

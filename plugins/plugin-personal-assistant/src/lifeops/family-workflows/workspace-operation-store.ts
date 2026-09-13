@@ -15,6 +15,35 @@ import {
   withTransaction,
 } from "../sql.js";
 
+const sha256 = z.string().regex(/^[0-9a-f]{64}$/);
+const uploadId = z.string().regex(/^hagu_[0-9a-f-]{36}$/);
+const operationTarget = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("agreement-upload"),
+      artifactId: z.string().regex(/^hag_[0-9a-f-]{36}$/),
+      contentSha256: sha256,
+    })
+    .strict(),
+  z.object({ kind: z.literal("agreement-upload-begin"), uploadId }).strict(),
+  z
+    .object({
+      kind: z.literal("agreement-upload-chunk"),
+      uploadId,
+      index: z.number().int().nonnegative(),
+      contentSha256: sha256,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("agreement-upload-commit"),
+      uploadId,
+      contentIdentity: sha256,
+    })
+    .strict(),
+]);
+export type FamilyWorkspaceOperationTarget = z.infer<typeof operationTarget>;
+
 const operations = "app_lifeops.life_family_workspace_operations";
 const lifecycle = "app_lifeops.life_family_workspace_state";
 const schema = [
@@ -27,7 +56,7 @@ const schema = [
   `CREATE TABLE IF NOT EXISTS ${operations} (
     agent_id TEXT NOT NULL, operation_id TEXT NOT NULL,
     kind TEXT NOT NULL, started_at TEXT NOT NULL,
-    artifact_id TEXT NOT NULL, content_sha256 TEXT NOT NULL,
+    target_json JSONB NOT NULL,
     PRIMARY KEY (agent_id, operation_id)
   )`,
 ] as const;
@@ -46,16 +75,9 @@ export async function ensureFamilyWorkspaceOperationStore(
 
 export async function beginFamilyWorkspaceOperation(
   runtime: IAgentRuntime,
-  kind: "agreement-upload",
-  target: { artifactId: string; contentSha256: string },
+  target: FamilyWorkspaceOperationTarget,
 ): Promise<string> {
-  const identity = z
-    .object({
-      artifactId: z.string().regex(/^hag_[0-9a-f-]{36}$/),
-      contentSha256: z.string().regex(/^[0-9a-f]{64}$/),
-    })
-    .strict()
-    .parse(target);
+  const identity = operationTarget.parse(target);
   await ensureFamilyWorkspaceOperationStore(runtime);
   return withTransaction(runtime, async (tx) => {
     // Match deletion's sorted table-lock order before taking the tenant row lock.
@@ -74,11 +96,30 @@ export async function beginFamilyWorkspaceOperation(
           code: "FAMILY_WORKSPACE_FENCED",
         },
       );
+    if ("uploadId" in identity) {
+      const unfinished = await executeRawSqlTx(
+        tx,
+        `SELECT operation_id FROM ${operations} WHERE agent_id=${sqlQuote(runtime.agentId)} AND target_json->>'uploadId'=${sqlQuote(identity.uploadId)}`,
+      );
+      if (unfinished.length)
+        throw new ElizaError(
+          "[FamilyWorkspace] This upload has unfinished work; wait for it or reconcile its claim before retrying",
+          {
+            code: "FAMILY_OPERATION_UNSETTLED",
+            context: {
+              uploadId: identity.uploadId,
+              operationIds: unfinished.map((row) =>
+                z.string().parse(row.operation_id),
+              ),
+            },
+          },
+        );
+    }
     const id = randomUUID();
     await executeRawSqlTx(
       tx,
-      `INSERT INTO ${operations} (agent_id,operation_id,kind,started_at,artifact_id,content_sha256)
-       VALUES (${sqlQuote(runtime.agentId)},${sqlQuote(id)},${sqlQuote(kind)},${sqlQuote(new Date().toISOString())},${sqlQuote(identity.artifactId)},${sqlQuote(identity.contentSha256)})`,
+      `INSERT INTO ${operations} (agent_id,operation_id,kind,started_at,target_json)
+       VALUES (${sqlQuote(runtime.agentId)},${sqlQuote(id)},${sqlQuote(identity.kind)},${sqlQuote(new Date().toISOString())},${sqlQuote(JSON.stringify(identity))}::jsonb)`,
     );
     return id;
   });

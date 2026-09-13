@@ -1148,11 +1148,11 @@ export class AgreementKnowledgeService {
       );
     }
     const artifactId = `hag_${crypto.randomUUID()}`;
-    const operationId = await beginFamilyWorkspaceOperation(
-      this.deps.runtime,
-      "agreement-upload",
-      { artifactId, contentSha256: expectedSha256 },
-    );
+    const operationId = await beginFamilyWorkspaceOperation(this.deps.runtime, {
+      kind: "agreement-upload",
+      artifactId,
+      contentSha256: expectedSha256,
+    });
     let extracted: PdfCompleteDocument;
     try {
       const ocr = await resolveAgreementOcr();

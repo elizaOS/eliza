@@ -4,9 +4,10 @@
  * owner actor selection, and machine-readable HTTP translation are real.
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { ElizaError, type IAgentRuntime, ServiceType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import { beginFamilyWorkspaceOperation } from "../lifeops/family-workflows/workspace-operation-store.js";
 import { AgreementKnowledgeError } from "../lifeops/household/agreement-knowledge.js";
 import { AGREEMENT_UPLOAD_METADATA_BYTES } from "../lifeops/household/agreement-upload-limits.js";
 import {
@@ -15,6 +16,11 @@ import {
 } from "../lifeops/household/agreement-upload-session.js";
 import { handleAgreementKnowledgeRoutes } from "./agreement-knowledge-routes.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
+
+vi.mock("../lifeops/family-workflows/workspace-operation-store.js", () => ({
+  beginFamilyWorkspaceOperation: vi.fn(async () => randomUUID()),
+  settleFamilyWorkspaceOperation: vi.fn(async () => undefined),
+}));
 
 function context(input: {
   method: string;
@@ -61,72 +67,80 @@ function context(input: {
 }
 
 describe("agreement knowledge routes", () => {
-  it("returns a fenced upload commit as a conflict instead of an internal server failure", async () => {
-    const bytes = Buffer.from("%PDF-synthetic route-boundary bytes");
-    const sha = createHash("sha256").update(bytes).digest("hex");
-    const body = { contentIdentity: "" };
-    const harness = context({
-      method: "POST",
-      pathname: "/api/lifeops/agreement-uploads/pending/commit",
-      body,
-      fileStorage: {
-        storePrivate: async () => ({
-          hash: sha,
-          fileName: "route-boundary-chunk",
-          size: bytes.length,
-          mimeType: "application/octet-stream",
-        }),
-        readPrivate: async () => bytes,
-      },
-      agreements: {
-        createAgreementVersion: async () => {
-          throw new ElizaError("Workspace deletion has begun", {
-            code: "FAMILY_WORKSPACE_FENCED",
-          });
+  it.each(["FAMILY_WORKSPACE_FENCED", "FAMILY_OPERATION_UNSETTLED"])(
+    "returns %s upload admission failures as conflicts",
+    async (code) => {
+      const bytes = Buffer.from("%PDF-synthetic route-boundary bytes");
+      const sha = createHash("sha256").update(bytes).digest("hex");
+      const body = { contentIdentity: "" };
+      const harness = context({
+        method: "POST",
+        pathname: "/api/lifeops/agreement-uploads/pending/commit",
+        body,
+        fileStorage: {
+          storePrivate: async () => ({
+            hash: sha,
+            fileName: `${sha}.private.bin`,
+            size: bytes.length,
+            mimeType: "application/octet-stream",
+          }),
+          readPrivate: async () => bytes,
         },
-      },
-    });
-    const manifest = await beginAgreementUpload(harness.runtime, {
-      agreementKey: "fenced",
-      title: "Fenced",
-      originalFilename: "fenced.pdf",
-      mimeType: "application/pdf",
-      sizeBytes: bytes.length,
-    });
-    await acceptAgreementChunk({
-      runtime: harness.runtime,
-      uploadId: manifest.uploadId,
-      index: 0,
-      bytes,
-      sha256: sha,
-    });
-    body.contentIdentity = createHash("sha256")
-      .update(
-        [
-          "agreement-upload-content-v1",
-          String(bytes.length),
-          String(manifest.chunkSizeBytes),
-          `0:${bytes.length}:${sha}`,
-        ].join("\n"),
-      )
-      .digest("hex");
-    harness.ctx.pathname = `/api/lifeops/agreement-uploads/${manifest.uploadId}/commit`;
-    harness.ctx.url = new URL(`http://localhost${harness.ctx.pathname}`);
-    await handleAgreementKnowledgeRoutes(harness.ctx);
-    expect(harness.responses).toEqual([
-      {
-        status: 409,
-        data: {
-          error: {
-            code: "FAMILY_WORKSPACE_FENCED",
-            message: "Workspace deletion has begun",
-            context: undefined,
+        agreements: {
+          createAgreementVersion: async () => {
+            throw new ElizaError("Workspace deletion has begun", {
+              code,
+            });
           },
         },
-      },
-    ]);
-    expect(harness.runtime.reportError).not.toHaveBeenCalled();
-  });
+      });
+      const manifest = await beginAgreementUpload(harness.runtime, {
+        agreementKey: "fenced",
+        title: "Fenced",
+        originalFilename: "fenced.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: bytes.length,
+      });
+      await acceptAgreementChunk({
+        runtime: harness.runtime,
+        uploadId: manifest.uploadId,
+        index: 0,
+        bytes,
+        sha256: sha,
+      });
+      body.contentIdentity = createHash("sha256")
+        .update(
+          [
+            "agreement-upload-content-v1",
+            String(bytes.length),
+            String(manifest.chunkSizeBytes),
+            `0:${bytes.length}:${sha}`,
+          ].join("\n"),
+        )
+        .digest("hex");
+      harness.ctx.pathname = `/api/lifeops/agreement-uploads/${manifest.uploadId}/commit`;
+      harness.ctx.url = new URL(`http://localhost${harness.ctx.pathname}`);
+      vi.mocked(beginFamilyWorkspaceOperation).mockRejectedValueOnce(
+        new ElizaError("Workspace deletion has begun", {
+          code,
+        }),
+      );
+      await handleAgreementKnowledgeRoutes(harness.ctx);
+      expect(harness.responses).toEqual([
+        {
+          status: 409,
+          data: {
+            error: {
+              code,
+              message: "Workspace deletion has begun",
+              context: undefined,
+            },
+          },
+        },
+      ]);
+      expect(harness.runtime.reportError).not.toHaveBeenCalled();
+    },
+  );
 
   it("derives shared reads from the gated session rather than a supplied principal", async () => {
     const readFor = vi.fn(async () => ({ obligations: [] }));
