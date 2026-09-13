@@ -6168,21 +6168,15 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(renderedPrompt).toContain(
 			"supplied authorized dialogue; do not assume they represent every stored record",
 		);
-		expect(renderedPrompt).toContain("memory context (set requiresTool)");
 		expect(renderedPrompt).toContain(
 			"Never answer an exhaustive stored-record count from rendered dialogue or facts alone",
 		);
 	});
 
 	it("distinguishes supplied dialogue from exhaustive stored records and preserves memory-search routing", async () => {
-		// Rendered-prompt + route-decision pin for the tj-69d82bb89ebb69 fix.
-		// With a role-visible `memory` context registered, the Stage 1 user
-		// message must declare the visible dialogue a bounded window of a longer
-		// stored conversation and must NOT claim "there is no separate
-		// chat-history search tool" — that claim is false on this surface and
-		// the model obeys it verbatim. The memory vote then promotes to the
-		// planner (the tool path) instead of shipping a window-bounded denial as
-		// a direct reply.
+		// Native response fields must retain a pending search without requiring
+		// the retired model-facing requiresTool field. This checks routing, not
+		// a fabricated search result or model judgment about the instructions.
 		const registry = new ContextRegistry([
 			{
 				id: "general",
@@ -6198,21 +6192,12 @@ describe("runV5MessageRuntimeStage1", () => {
 		]);
 		const runtime = makeRuntime([
 			stage1Response({
-				thought: "History count needs the stored record.",
 				contexts: ["memory"],
+				intents: ["count stored messages mentioning bitcoin"],
+				candidateActionNames: ["MEMORY"],
 				replyText: "Let me check the stored history.",
-				extra: { requiresTool: true },
+				extra: { replyEffectStatus: "pending" },
 			}),
-			{
-				text: "",
-				toolCalls: [
-					{
-						id: "reply-1",
-						name: "REPLY",
-						arguments: { text: "You mentioned bitcoin 4 times." },
-					},
-				],
-			},
 		]);
 		(runtime as { contexts?: ContextRegistry }).contexts = registry;
 		runtime.actions = [makeMemorySearchAction()];
@@ -6224,6 +6209,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
+			stage1DecisionOnly: true,
 		});
 
 		const params = useModelCalls(runtime)[0]?.[1] as {
@@ -6235,7 +6221,6 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(fullPrompt).toContain(
 			"supplied authorized dialogue; do not assume they represent every stored record",
 		);
-		expect(fullPrompt).toContain("memory context (set requiresTool)");
 		// No contradictory capability text anywhere in the rendered prompt —
 		// system message included. The denial sentence and its "no chat-history
 		// search" qualifier must both be absent when the search surface exists.
@@ -6243,13 +6228,14 @@ describe("runV5MessageRuntimeStage1", () => {
 			"there is no separate chat-history search tool",
 		);
 		expect(fullPrompt).not.toContain("no chat-history search");
-		// Route decision: the memory vote reaches the planner (tool path).
-		expect(result.kind).toBe("planned_reply");
-		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent?.text).toBe(
-				"You mentioned bitcoin 4 times.",
-			);
-		}
+		expect(result.messageHandler.plan.requiresTool).toBe(true);
+		expect(result.messageHandler.plan.intents).toEqual([
+			"count stored messages mentioning bitcoin",
+		]);
+		expect(result.messageHandler.plan.replyEffectStatus).toBe("pending");
+		expect(useModelCalls(runtime).map(([model]) => model)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+		]);
 	});
 
 	it("keeps the honest no-search denial when no memory context is registered", async () => {
@@ -6286,7 +6272,6 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(fullPrompt).not.toContain(
 			"supplied authorized dialogue; do not assume they represent every stored record",
 		);
-		expect(fullPrompt).not.toContain("memory context (set requiresTool)");
 		expect(fullPrompt).not.toContain("search it with MEMORY op:search");
 		// Route decision: honest denial ships directly — no planner escalation,
 		// so exactly one model call (Stage 1 only) is made.
@@ -7014,7 +6999,6 @@ describe("runV5MessageRuntimeStage1", () => {
 			?.map((message) => message.content ?? "")
 			.join("\n");
 		expect(prompt).toContain("there is no separate chat-history search tool");
-		expect(prompt).not.toContain("memory context (set requiresTool)");
 		expect(prompt).not.toContain("search it with MEMORY op:search");
 		expect(prompt).not.toContain(
 			"available_contexts lists a memory or recall context",
@@ -7061,7 +7045,6 @@ describe("runV5MessageRuntimeStage1", () => {
 			?.map((message) => message.content ?? "")
 			.join("\n");
 		expect(prompt).toContain("there is no separate chat-history search tool");
-		expect(prompt).not.toContain("memory context (set requiresTool)");
 		expect(prompt).not.toContain("search it with MEMORY op:search");
 		// Route decision: a role-hidden action is not an executable surface for
 		// this caller — no planner escalation, one Stage 1 call only.
