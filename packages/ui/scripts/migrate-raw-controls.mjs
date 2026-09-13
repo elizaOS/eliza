@@ -141,4 +141,8 @@ if (
   process.stdout.write(
     `${write ? "Migrated" : "Would migrate"} ${changed.length} files\n${changed.join("\n")}\n`,
   );
+  // `:check` (no --write) is the gate half of this script: exit non-zero when
+  // work is pending so it can actually fail a build, matching format:check and
+  // generate:first-party:check. Writing runs still report and exit 0.
+  if (!write && changed.length > 0) process.exitCode = 1;
 }

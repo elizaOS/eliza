@@ -16,6 +16,7 @@ export {
   registerOverlayApp,
   resolveAppBranding,
 } from "@elizaos/shared";
+export { Spinner, StatusBadge } from "@elizaos/ui";
 export {
   type AppRunSummary,
   type AppSessionJsonValue,
@@ -23,6 +24,7 @@ export {
 } from "@elizaos/ui/api";
 export * from "@elizaos/ui/browser";
 export { ErrorBoundary } from "@elizaos/ui/browser";
+export { Button } from "@elizaos/ui/button";
 export {
   SurfaceCard,
   SurfaceEmptyState,
@@ -38,10 +40,7 @@ export {
   toneForViewerAttachment,
 } from "@elizaos/ui/components/apps/extensions/surface.helpers";
 export { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-export { Button } from "@elizaos/ui/components/ui/button";
-export { Input } from "@elizaos/ui/components/ui/input";
-export { Spinner } from "@elizaos/ui/components/ui/spinner";
-export { StatusBadge } from "@elizaos/ui/components/ui/status-badge";
+export { Input } from "@elizaos/ui/input";
 export {
   type IosRuntimeConfig,
   resolveIosRuntimeConfig,
