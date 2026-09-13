@@ -283,6 +283,68 @@ describe("startCloudAgentHandoff — dedicated migration target", () => {
       expect.anything(),
     );
   });
+
+  it("never switches onto a control-plane shared REST base that the record advertises as its web UI", async () => {
+    // The sibling cases all stop earlier: `webUiUrl: null` means the record
+    // carries no dedicated URL at all, so `hasDedicatedUrl` rejects them before
+    // the base is ever classified. Here the record *does* advertise a URL and
+    // reports a dedicated tier, so `!agent`, `execution_tier`, `hasDedicatedUrl`
+    // and the `status !== "running"` checks all pass -- and the URL it
+    // advertises is the control-plane shared REST adapter, which is exactly
+    // what `isDirectCloudSharedAgentBase(base) && !isLocalDedicatedProxy`
+    // exists to refuse. The mock answers the whole switch path, so without that
+    // guard the handoff completes onto a base that hosts no dedicated runtime.
+    const dedicatedId = "00000000-0000-4000-8000-000000000003";
+    const cloudApiBase = DEFAULT_DIRECT_CLOUD_API_BASE_URL;
+    const sharedRestBase = `${cloudApiBase}/api/v1/eliza/agents/${dedicatedId}`;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === sharedRestBase) {
+        return {
+          status: 200,
+          json: async () => ({
+            success: true,
+            data: {
+              id: dedicatedId,
+              status: "running",
+              executionTier: "dedicated",
+              webUiUrl: sharedRestBase,
+            },
+          }),
+        };
+      }
+      if (url === `${sharedRestBase}/api/health`) {
+        return { status: 200, json: async () => ({ ready: true }) };
+      }
+      if (url.endsWith("/messages")) {
+        return { status: 200, json: async () => ({ messages: [] }) };
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { client } = fakeClient({});
+    const onSwitch = vi.fn();
+    const result = await client.startCloudAgentHandoff({
+      agentId: "shared-1",
+      sharedApiBase: SHARED_BASE,
+      conversationId: "shared-1",
+      dedicatedAgentId: dedicatedId,
+      cloudApiBase,
+      authToken: "tok",
+      onSwitch,
+      intervalMs: 1,
+      timeoutMs: 20,
+      log: () => {},
+    });
+
+    expect(result.status).toBe("timed-out");
+    expect(onSwitch).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      `${sharedRestBase}/api/health`,
+      expect.anything(),
+    );
+  });
 });
 
 describe("startCloudAgentHandoff — proxy-readiness gate (#15901)", () => {
