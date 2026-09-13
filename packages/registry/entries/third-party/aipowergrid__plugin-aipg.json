@@ -1,0 +1,17 @@
+{
+  "package": "@aipowergrid/plugin-aipg",
+  "repository": "github:AIPowerGrid/grid-provider-integrations",
+  "kind": "plugin",
+  "description": "AI Power Grid text, image, video, and music generation for elizaOS agents through remote community-operated workers.",
+  "homepage": "https://github.com/AIPowerGrid/grid-provider-integrations/tree/main/elizaos-aipg",
+  "version": "0.1.0",
+  "directory": "elizaos-aipg",
+  "tags": [
+    "model-provider",
+    "text-generation",
+    "image-generation",
+    "video-generation",
+    "music-generation",
+    "remote-inference"
+  ]
+}
