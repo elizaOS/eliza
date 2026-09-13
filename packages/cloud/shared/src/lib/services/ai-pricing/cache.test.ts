@@ -480,3 +480,107 @@ test("canonical token pricing rejects an incomplete required rate instead of fab
     })),
   ).rejects.toThrow("invalid or incomplete token rates");
 });
+
+// The text-pricing cache has three age bands — fresh, stale-but-servable, and
+// expired — and both boundaries decide what a caller is billed at. Neither was
+// pinned: moving TEXT_PRICING_FRESH_TTL_MS or TEXT_PRICING_HARD_TTL_SECONDS,
+// or relaxing either `>=` to `>`, left this suite green. Each boundary is
+// asserted from both sides, one millisecond apart, through the public API.
+const TTL_EPOCH = 1_700_000_000_000;
+const STALE_RATES = { inputUnitPrice: 0.000009, outputUnitPrice: 0.000009 };
+
+function seedTextPricingAt(now: ReturnType<typeof spyOn<DateConstructor, "now">>) {
+  now.mockReturnValue(TTL_EPOCH);
+}
+
+test("text pricing serves from cache below the fresh TTL and reloads at it", async () => {
+  __clearPersistedPricingCache();
+  stubColdDurableCache();
+  const now = spyOn(Date, "now").mockReturnValue(TTL_EPOCH);
+
+  for (const [ageMs, expectedLoads] of [
+    [59_999, 0],
+    [60_000, 1],
+  ] as const) {
+    const key = `token-fresh-${ageMs}`;
+    seedTextPricingAt(now);
+    await getCachedTextPricingRates(
+      key,
+      { input: true, output: true },
+      mock(async () => TOKEN_RATES),
+      {},
+    );
+
+    now.mockReturnValue(TTL_EPOCH + ageMs);
+    const loader = mock(async () => TOKEN_RATES);
+    await expect(
+      getCachedTextPricingRates(key, { input: true, output: true }, loader, {}),
+    ).resolves.toEqual(TOKEN_RATES);
+    expect(loader).toHaveBeenCalledTimes(expectedLoads);
+  }
+});
+
+test("only stale worker reads schedule background hydration", async () => {
+  __clearPersistedPricingCache();
+  stubColdDurableCache();
+  const now = spyOn(Date, "now").mockReturnValue(TTL_EPOCH);
+
+  for (const [ageMs, expectedBackground] of [
+    [59_999, 0],
+    [60_000, 1],
+  ] as const) {
+    const key = `token-hydration-${ageMs}`;
+    seedTextPricingAt(now);
+    await getCachedTextPricingRates(
+      key,
+      { input: true, output: true },
+      mock(async () => TOKEN_RATES),
+      {},
+    );
+
+    now.mockReturnValue(TTL_EPOCH + ageMs);
+    const background: Promise<unknown>[] = [];
+    await expect(
+      getCachedTextPricingRates(
+        key,
+        { input: true, output: true },
+        mock(async () => TOKEN_RATES),
+        workerOptions(background),
+      ),
+    ).resolves.toEqual(TOKEN_RATES);
+    expect(background).toHaveLength(expectedBackground);
+  }
+});
+
+test("stale-but-bounded rates are served from cache while expired rates reload", async () => {
+  __clearPersistedPricingCache();
+  stubColdDurableCache();
+  const now = spyOn(Date, "now").mockReturnValue(TTL_EPOCH);
+
+  // Distinguishes a stale serve from an eviction: only a reload can return the
+  // NEW rates, so the boundary is observable in the billed value itself.
+  for (const [ageMs, expected] of [
+    [899_999, TOKEN_RATES],
+    [900_000, STALE_RATES],
+  ] as const) {
+    const key = `token-hard-${ageMs}`;
+    seedTextPricingAt(now);
+    await getCachedTextPricingRates(
+      key,
+      { input: true, output: true },
+      mock(async () => TOKEN_RATES),
+      {},
+    );
+
+    now.mockReturnValue(TTL_EPOCH + ageMs);
+    const background: Promise<unknown>[] = [];
+    await expect(
+      getCachedTextPricingRates(
+        key,
+        { input: true, output: true },
+        mock(async () => STALE_RATES),
+        workerOptions(background),
+      ),
+    ).resolves.toEqual(expected);
+  }
+});
