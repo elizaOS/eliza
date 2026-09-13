@@ -5,7 +5,7 @@
  * TTL matches the 2-minute webhook signature validity window.
  */
 
-import { count, eq, gt, lt } from "drizzle-orm";
+import { count, eq, gt, lt, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
 import { idempotencyKeys } from "../../db/schemas/idempotency-keys";
 import { logger } from "./logger";
@@ -53,7 +53,13 @@ export async function tryClaimForProcessing(key: string, source = "unknown"): Pr
     const rows = await dbWrite
       .insert(idempotencyKeys)
       .values({ key, source, expires_at })
-      .onConflictDoNothing({ target: idempotencyKeys.key })
+      .onConflictDoUpdate({
+        target: idempotencyKeys.key,
+        set: { source, expires_at },
+        // Reclaim keys whose TTL has passed: a crashed claimer must not block
+        // retries until the cleanup cron runs. Live keys stay claimed.
+        where: sql`${idempotencyKeys.expires_at} < now()`,
+      })
       .returning({ key: idempotencyKeys.key });
 
     // length === 1 means we inserted (claimed), 0 means key already exists (conflict)
