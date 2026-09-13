@@ -8,7 +8,6 @@
  */
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import {
-  appendFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -21,6 +20,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "@elizaos/core";
+import { appendJsonlRecord } from "@elizaos/shared";
 
 const STORE_DIR = "account-pool";
 const KEY_FILE = "consumer-keys.json";
@@ -835,10 +835,9 @@ export async function recordAccountPoolConsumerUsage(
       // record plus small aggregate files. The async queue and cross-process lock
       // serialize this low-volume local broker path and prevent ledger races.
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
-      appendFileSync(file, `${JSON.stringify(record)}\n`, {
-        flag: "a",
-        mode: 0o600,
-      });
+      // Isolates a line torn by an interrupted earlier append; otherwise this
+      // record would land on that line and the admission reader would lose it.
+      appendJsonlRecord(file, record, { mode: 0o600 });
 
       const totals = readTotalsFile();
       const day = dayStamp(record.ts);
