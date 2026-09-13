@@ -182,6 +182,30 @@ describe("convertToTelegramButtons", () => {
   });
 });
 
+describe("convertMarkdownToTelegram — sentinel forgery", () => {
+  const NUL = String.fromCharCode(0);
+  const sentinel = (index: number) => `${NUL}${index}${NUL}`;
+
+  it("does not resolve an out-of-range sentinel to the word undefined", () => {
+    const out = convertMarkdownToTelegram(`hello ${sentinel(9999)} world`);
+    expect(out).not.toContain("undefined");
+    expect(out).not.toContain(NUL);
+  });
+
+  it("does not let incoming text forge a stored replacement", () => {
+    const out = convertMarkdownToTelegram(`\`secret\` then ${sentinel(0)}`);
+    // The code span must appear once — where the author wrote it.
+    expect(out.match(/secret/g)).toHaveLength(1);
+    expect(out).not.toContain(NUL);
+  });
+
+  it("still resolves its own nested sentinels", () => {
+    expect(convertMarkdownToTelegram("**bold** and `code`")).toBe(
+      "*bold* and `code`",
+    );
+  });
+});
+
 describe("cleanText", () => {
   it("strips NULL sentinels and handles nullish input", () => {
     const NUL = String.fromCharCode(0);
