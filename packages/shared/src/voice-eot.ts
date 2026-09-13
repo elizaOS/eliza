@@ -148,6 +148,18 @@ const QUESTION_TAGS = [
 ];
 
 /**
+ * Whether `text` ends with `word` as a whole final word: either the whole text
+ * is the word, or the word is preceded by whitespace. A bare suffix test would
+ * let "right" match "alright", "copyright" and "outright", and "correct" match
+ * "incorrect", scoring an ordinary statement as a completed question tag.
+ */
+function endsWithWord(text: string, word: string): boolean {
+  if (text === word) return true;
+  if (!text.endsWith(word)) return false;
+  return /\s/.test(text.charAt(text.length - word.length - 1));
+}
+
+/**
  * Probability in [0,1] that `transcript` is a COMPLETE turn (the speaker is
  * done). High → commit; low → the utterance trails off, keep listening.
  *
@@ -179,7 +191,7 @@ export function scoreEndOfTurnHeuristic(transcript: string): number {
 
   const lower = text.toLowerCase();
   for (const tag of QUESTION_TAGS) {
-    if (lower.endsWith(tag)) return 0.85;
+    if (endsWithWord(lower, tag)) return 0.85;
   }
 
   const words = lower
