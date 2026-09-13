@@ -12,6 +12,7 @@
  * inbox / draft ops delegate to the triage actions in features/messaging/triage.
  */
 
+import { buildAccessContext } from "../../../access-context.ts";
 import { searchCanonicalConversationMemories } from "../../../access-control/provenance-envelope.ts";
 import { getConnectorAccountManager } from "../../../connectors/account-manager.ts";
 import { createUniqueUuid, findEntityByName } from "../../../entities.ts";
@@ -19,6 +20,10 @@ import { ElizaError } from "../../../errors.ts";
 import { getActionSpec } from "../../../generated/spec-helpers.ts";
 import { getVerifiedRelatedEntityIds } from "../../../identity-clusters.ts";
 import { logger } from "../../../logger.ts";
+import {
+	hasMemoryContentPageCapability,
+	isSegmentedContentMarker,
+} from "../../../memory/content-segmentation.ts";
 import { authorizeManageServerDestination } from "../../../messaging/manage-server-authorization.ts";
 import {
 	deterministicOwnerEntityId,
@@ -3500,6 +3505,132 @@ async function handleReadStoredMemory(
 	}
 
 	const sourceText = stored.content.text ?? "";
+
+	// #25140: when the adapter exposes native content paging, serve the read
+	// from the segmented store — a bounded page, never the source-sized
+	// parent. Falls through to the inline path only when the adapter reports
+	// the field has no descriptor AND the inline value fits a bounded page.
+	const pageCapable = hasMemoryContentPageCapability(runtime)
+		? runtime.getMemoryContentPage
+		: null;
+	// #25140 review R4: a segmented-content marker is an internal storage
+	// descriptor, never message text. Without the paging capability there is
+	// no legitimate way to read the source, so fail explicitly instead of
+	// paging/serving the descriptor string.
+	if (!pageCapable && isSegmentedContentMarker(sourceText)) {
+		return memoryReadFailure(
+			"MESSAGE_MEMORY_SEGMENTED_READ_UNAVAILABLE",
+			"This stored message is kept in segmented form and the current database cannot page it, so it can't be read directly.",
+		);
+	}
+	if (pageCapable) {
+		const offset = safeMemoryReadInteger(
+			numberParam(params.offset),
+			"offset",
+			0,
+		);
+		const limit = safeMemoryReadInteger(numberParam(params.limit), "limit");
+		if (
+			offset === undefined ||
+			(params.limit !== undefined && limit === undefined)
+		) {
+			return memoryReadFailure(
+				"MESSAGE_MEMORY_INVALID_RANGE",
+				"Stored-message offset must be a nonnegative safe integer and limit must be a positive safe integer when supplied.",
+			);
+		}
+		const expectedRevision = textParam(params.expectedRevision);
+		if (offset > 0 && !expectedRevision) {
+			return memoryReadFailure(
+				"MESSAGE_MEMORY_EXPECTED_REVISION_REQUIRED",
+				"Stored-message continuation requires expectedRevision.",
+			);
+		}
+		let page: Awaited<ReturnType<NonNullable<typeof pageCapable>>>;
+		// #25140 review R2: reauthorize every page at the storage boundary with
+		// the requester's access context (room membership + scope ladder), not
+		// just the action-layer same-room check above. Resolution failure
+		// degrades to requester-only authority, never unrestricted.
+		const accessContext = await buildAccessContext(runtime, message).catch(
+			() => ({
+				requesterEntityId: message.entityId as UUID,
+			}),
+		);
+		try {
+			page = await pageCapable.call(runtime, {
+				memoryId: memoryRef as UUID,
+				field: { kind: "content.text" },
+				byteStart: offset,
+				...(limit === undefined ? {} : { byteLimit: limit }),
+				...(expectedRevision === undefined ? {} : { expectedRevision }),
+				accessContext,
+			});
+		} catch (error) {
+			// error-policy:J1 the action boundary translates typed paging
+			// failures into structured user-visible replies.
+			if (error instanceof ElizaError) {
+				return memoryReadFailure(
+					error.code ?? "MESSAGE_MEMORY_PAGE_FAILED",
+					error.message,
+					{ currentRevision: error.context?.currentRevision },
+				);
+			}
+			runtime.reportError("MESSAGE.readStoredMemory.page", error, {
+				memoryId: memoryRef,
+			});
+			return memoryReadFailure(
+				"MESSAGE_MEMORY_AUTHORIZATION_UNAVAILABLE",
+				"Stored-message paged read is unavailable.",
+			);
+		}
+		if (page) {
+			const readView = {
+				reference: buildContentReference({
+					kind: "memory",
+					ref: `memory:${memoryRef}`,
+					revision: page.revision,
+				}),
+				slice: buildReadSlice({
+					range: {
+						unit: "byte",
+						start: page.start,
+						end: page.end,
+						total: page.total,
+					},
+					completeness: page.completeness,
+					revision: page.revision,
+					sliceSha256: page.sliceSha256,
+					sourceSha256: page.sourceSha256,
+				}),
+			};
+			const metadata = {
+				actionName: "MESSAGE",
+				operation: "read_channel",
+				messageRef: readView.reference.ref,
+				readView,
+			};
+			return {
+				success: true,
+				text: page.text,
+				values: { success: true, readView },
+				data: metadata,
+				promptData: metadata,
+			};
+		}
+		// page === null with a segmented marker source: the adapter found no
+		// authorized parent row (revoked access, concurrent cleanup). The
+		// marker is an internal descriptor — fail explicitly rather than
+		// continue below and return it as action text. (#25140 review R4 r2)
+		if (page === null && isSegmentedContentMarker(sourceText)) {
+			return memoryReadFailure(
+				"MESSAGE_MEMORY_SEGMENTED_PAGE_UNAVAILABLE",
+				"This stored message's segmented content is no longer available from storage, so it can't be read directly.",
+			);
+		}
+		// page === null: no descriptor and inline fits — continue below on the
+		// marker-free inline value.
+	}
+
 	const bytes = new TextEncoder().encode(sourceText);
 	if (offset > bytes.length || !isUtf8Boundary(bytes, offset)) {
 		return memoryReadFailure(
