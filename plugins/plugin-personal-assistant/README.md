@@ -256,6 +256,11 @@ contains no commitments. Owners must still inspect the original source for
 omissions and interpretation errors. Each immutable agreement version has one
 prepared review; failed attempts can be retried without partial proposals.
 
+Review generation uses the canonical trajectory recorder when capture is
+enabled, binding the model call to the artifact and source hashes. Existing
+chat steps retain their context; direct owner requests get a standalone
+trajectory. Reading or retrying a prepared review does not repeat generation.
+
 The owner is the only implicit reader. A guest read requires a resource grant
 bound to one exact household grant with `knowledge.read`; the guest entity must
 have a verified identity, and both grants must remain unrevoked and unexpired.

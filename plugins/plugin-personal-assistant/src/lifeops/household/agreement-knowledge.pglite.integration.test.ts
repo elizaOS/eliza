@@ -37,6 +37,7 @@ import {
   createMachineSession,
 } from "../../../../../packages/app-core/src/api/auth/sessions.ts";
 import { composeResponseState } from "../../../../../packages/core/src/services/message/provider-state.js";
+import { TrajectoriesService } from "../../../../../packages/core/src/services/trajectories.ts";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
@@ -1724,6 +1725,14 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("prepares cited proposals once, preserves owner decisions across restart, and never activates them implicitly", async () => {
+    runtime.setSetting("ELIZA_TRAJECTORY_LOGGING", "1");
+    if (!runtime.getService("trajectories"))
+      await runtime.registerService(TrajectoriesService);
+    await runtime.getServiceLoadPromise("trajectories");
+    const trajectories =
+      runtime.getService<TrajectoriesService>("trajectories");
+    if (!trajectories) throw new Error("Trajectory service unavailable");
+    expect(trajectories.isEnabled()).toBe(true);
     const service = createAgreementKnowledgeService(runtime);
     const citation = "Each parent must share school notices within 24 hours.";
     const source = await service.createAgreementVersion({
@@ -1735,6 +1744,8 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       uploadedByEntityId: SELF_ENTITY_ID,
     });
     let calls = 0;
+    let modelPrompt = "";
+    let modelOutput = "";
     runtime.registerModel(
       ModelType.TEXT_LARGE,
       async (_runtime, params) => {
@@ -1742,7 +1753,8 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         expect(typeof params.prompt).toBe("string");
         expect(params.prompt).toContain(citation);
         expect(params.prompt).toContain('"pageNumber":12');
-        return JSON.stringify({
+        modelPrompt = String(params.prompt);
+        modelOutput = JSON.stringify({
           complete: true,
           reviewedPages: Array.from({ length: 12 }, (_, index) => index + 1),
           explanation:
@@ -1757,6 +1769,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
             },
           ],
         });
+        return modelOutput;
       },
       "agreement-review-test",
       100001,
@@ -1778,6 +1791,23 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     expect(calls).toBe(1);
     expect(first.obligations).toHaveLength(1);
     expect(first.obligations[0]?.status).toBe("proposed");
+    const recorded = (
+      await trajectories.listTrajectories({
+        source: "lifeops.agreement-review",
+      })
+    ).trajectories.filter((row) => row.metadata.artifactId === source.id);
+    expect(recorded).toHaveLength(1);
+    const entry = recorded[0];
+    if (!entry)
+      throw new Error("Owner review has no recorded model trajectory");
+    const detail = await trajectories.getTrajectoryDetail(entry.id);
+    if (!detail) throw new Error("Owner review trajectory cannot be read");
+    expect(entry.status).toBe("completed");
+    const modelCalls = detail.steps.flatMap((step) => step.llmCalls);
+    expect(modelCalls).toHaveLength(1);
+    expect(modelCalls[0]?.userPrompt).toBe(modelPrompt);
+    expect(modelCalls[0]?.response).toBe(modelOutput);
+
     await expect(service.listPins(input)).resolves.toEqual([]);
     const obligation = first.obligations[0];
     if (!obligation) throw new Error("Expected persisted proposal");
@@ -1790,6 +1820,13 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     const restarted = createAgreementKnowledgeService(runtime);
     const replay = await restarted.prepareOwnerReview(input);
     expect(calls).toBe(1);
+    expect(
+      (
+        await trajectories.listTrajectories({
+          source: "lifeops.agreement-review",
+        })
+      ).trajectories.filter((row) => row.metadata.artifactId === source.id),
+    ).toHaveLength(1);
     expect(
       replay.obligations.map((item) => ({ id: item.id, status: item.status })),
     ).toEqual([{ id: obligation.id, status: "rejected" }]);

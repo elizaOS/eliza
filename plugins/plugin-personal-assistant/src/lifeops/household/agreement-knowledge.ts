@@ -21,6 +21,7 @@ import {
   Service,
   ServiceType,
   type UUID,
+  withStandaloneTrajectory,
 } from "@elizaos/core";
 import type { PdfCompleteDocument, PdfService } from "@elizaos/plugin-pdf";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
@@ -1311,10 +1312,19 @@ export class AgreementKnowledgeService {
     const source = await this.reviewSource(artifactId);
     let record = await this.deps.repository.readPreparedReview(artifactId);
     if (!record) {
-      const generated: GeneratedAgreementReview = await generateAgreementReview(
-        this.deps.runtime,
-        source,
-      );
+      const generated: GeneratedAgreementReview =
+        await withStandaloneTrajectory(
+          this.deps.runtime,
+          {
+            source: "lifeops.agreement-review",
+            metadata: {
+              artifactId,
+              sourceSha256: source.sourceSha256,
+              extractionSha256: source.extractionSha256,
+            },
+          },
+          () => generateAgreementReview(this.deps.runtime, source),
+        );
       const generatedAt = this.now().toISOString();
       const obligations: ParentingAgreementObligation[] =
         generated.proposals.map((proposal) => ({
