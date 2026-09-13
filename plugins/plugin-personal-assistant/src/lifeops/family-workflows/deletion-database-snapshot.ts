@@ -23,6 +23,7 @@ interface DependencySource {
   fields: readonly string[];
   classification?: "referenced" | "mixed" | "unclassified";
   predicate?: string;
+  unsettledPredicate?: string;
   requires?: readonly string[];
 }
 
@@ -132,16 +133,20 @@ const sources: readonly DependencySource[] = [
   },
   {
     kind: "workflowRuns",
+    unsettledPredicate: "state = 'running' OR lease_token IS NOT NULL",
     table: "app_lifeops.life_family_workflow_runs",
     fields: ["period_key", "run_id", "state"],
   },
   {
     kind: "schoolSources",
+    unsettledPredicate: "lease_token IS NOT NULL",
     table: "app_lifeops.life_school_calendar_sources",
     fields: ["source_id", "last_content_sha256", "last_media_url"],
   },
   {
     kind: "schoolRuns",
+    unsettledPredicate:
+      "state IN ('running', 'applying') OR apply_lease_token IS NOT NULL",
     table: "app_lifeops.life_school_calendar_runs",
     fields: ["run_id", "source_id", "state", "content_sha256", "media_url"],
   },
@@ -152,6 +157,7 @@ const sources: readonly DependencySource[] = [
   },
   {
     kind: "schoolMutations",
+    unsettledPredicate: "state = 'executing' OR lease_token IS NOT NULL",
     table: "app_lifeops.life_school_calendar_apply_operations",
     fields: ["run_id", "operation_index", "event_key", "kind", "state"],
   },
@@ -171,6 +177,7 @@ const sources: readonly DependencySource[] = [
   },
   {
     kind: "approvals",
+    unsettledPredicate: "state IN ('executing', 'reconciliation_required')",
     table: "approval_requests",
     fields: ["id", "state", "action", "channel", "expires_at"],
     requires: [packetApprovalTable, householdApprovalTable],
@@ -244,6 +251,7 @@ export interface FamilyDeletionDatabaseSnapshot {
   readonly records: ReadonlyArray<{
     kind: string;
     classification: "owned" | "referenced" | "mixed" | "unclassified";
+    unsettled: boolean;
     sha256: string;
     identity: z.infer<typeof rowSchema>;
   }>;
@@ -298,7 +306,7 @@ async function capture(
   const queries = present.map(
     (
       source,
-    ) => `SELECT ${sqlQuote(source.kind)} AS kind, to_jsonb(record)::text AS payload
+    ) => `SELECT ${sqlQuote(source.kind)} AS kind, to_jsonb(record)::text AS payload, (${source.unsettledPredicate ?? "false"}) AS unsettled
     FROM ${source.table} AS record WHERE agent_id::text = ${sqlQuote(agentId)}
     ${source.predicate ? `AND (${source.predicate.replaceAll("$AGENT", sqlQuote(agentId))})` : ""}`,
   );
@@ -344,6 +352,7 @@ async function capture(
         kind: source.kind,
         classification: source.classification ?? ("owned" as const),
         identity,
+        unsettled: z.boolean().parse(row.unsettled),
         sha256: digest(payload),
       };
     })
@@ -413,6 +422,22 @@ export async function withReviewedFamilyDeletionDatabase<T>(
         "[FamilyDeletion] Dependencies changed; review the workspace again",
         { code: "FAMILY_DELETION_PREVIEW_STALE" },
       );
+    const unsettled = snapshot.records.filter((record) => record.unsettled);
+    if (unsettled.length)
+      throw new ElizaError(
+        "[FamilyDeletion] Finish or reconcile in-flight work before deleting the workspace",
+        {
+          code: "FAMILY_DELETION_WORK_UNSETTLED",
+          context: {
+            records: unsettled.map(({ kind, identity }) => ({
+              kind,
+              identity,
+            })),
+          },
+        },
+      );
+    // Lease expiry does not cancel an external request. Keep its ownership and
+    // receipts until the executor has completed or explicitly reconciled it.
     return revoke(tx, snapshot);
   });
 }

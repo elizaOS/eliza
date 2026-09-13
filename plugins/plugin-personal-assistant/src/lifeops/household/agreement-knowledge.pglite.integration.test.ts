@@ -745,6 +745,10 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       ).rejects.toMatchObject({ code: "FAMILY_EXPORT_SOURCE_INTEGRITY" });
       expect(await auditCount()).toEqual(before);
     } finally {
+      await executeRawSql(
+        runtime,
+        `UPDATE app_lifeops.life_school_calendar_runs SET apply_lease_token = NULL WHERE run_id = ${sqlQuote(runId)}`,
+      );
       await storage.store(bytes, "application/pdf");
     }
   });
@@ -1988,6 +1992,107 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     });
     expect(entered).toBe(false);
   });
+  it("blocks reviewed deletion while school writes or family message receipts remain unresolved", async () => {
+    await new CalendarCardAccessStore(runtime).ensureSchema();
+    const agent = sqlQuote(runtime.agentId);
+    const source = sqlQuote(crypto.randomUUID());
+    const run = sqlQuote(crypto.randomUUID());
+    const at = sqlQuote(new Date().toISOString());
+    await executeRawSql(
+      runtime,
+      `INSERT INTO app_lifeops.life_school_calendar_sources
+      (agent_id,source_id,config_json,created_at,updated_at) VALUES (${agent},${source},'{}',${at},${at})`,
+    );
+    await executeRawSql(
+      runtime,
+      `INSERT INTO app_lifeops.life_school_calendar_runs
+      (agent_id,run_id,source_id,state,trigger_kind,created_at,updated_at) VALUES (${agent},${run},${source},'awaiting_approval','manual',${at},${at})`,
+    );
+    await executeRawSql(
+      runtime,
+      `INSERT INTO app_lifeops.life_school_calendar_apply_operations
+      (agent_id,run_id,operation_index,event_key,kind,change_json,state,created_at,updated_at)
+      VALUES (${agent},${run},0,'deletion-guard-event','create','{}','pending',${at},${at})`,
+    );
+    const cases = [
+      {
+        table: "app_lifeops.life_school_calendar_sources",
+        where: `source_id=${source}`,
+        busy: "lease_token='private-lease',lease_expires_at='2000-01-01T00:00:00Z'",
+        idle: "lease_token=NULL,lease_expires_at=NULL",
+        kind: "schoolSources",
+      },
+      {
+        table: "app_lifeops.life_school_calendar_runs",
+        where: `run_id=${run}`,
+        busy: "state='applying'",
+        idle: "state='awaiting_approval'",
+        kind: "schoolRuns",
+      },
+      {
+        table: "app_lifeops.life_school_calendar_apply_operations",
+        where: `run_id=${run}`,
+        busy: "state='executing'",
+        idle: "state='pending'",
+        kind: "schoolMutations",
+      },
+      {
+        table: "approval_requests",
+        where:
+          "id::text IN (SELECT approval_id FROM app_lifeops.life_family_packet_approvals)",
+        busy: "state='reconciliation_required'",
+        idle: "state='executed'",
+        kind: "approvals",
+      },
+    ];
+    for (const candidate of cases) {
+      await executeRawSql(
+        runtime,
+        `UPDATE ${candidate.table} SET ${candidate.busy} WHERE agent_id::text=${agent} AND ${candidate.where}`,
+      );
+      try {
+        const preview = await previewFamilyDeletionDatabase(
+          runtime,
+          SELF_ENTITY_ID,
+        );
+        expect(
+          preview.records.some(
+            (record) => record.kind === candidate.kind && record.unsettled,
+          ),
+        ).toBe(true);
+        expect(JSON.stringify(preview)).not.toContain("private-lease");
+        let entered = false;
+        await expect(
+          withReviewedFamilyDeletionDatabase(
+            runtime,
+            { ownerEntityId: SELF_ENTITY_ID, expectedSha256: preview.sha256 },
+            async () => {
+              entered = true;
+            },
+          ),
+        ).rejects.toMatchObject({ code: "FAMILY_DELETION_WORK_UNSETTLED" });
+        expect(entered).toBe(false);
+      } finally {
+        await executeRawSql(
+          runtime,
+          `UPDATE ${candidate.table} SET ${candidate.idle} WHERE agent_id::text=${agent} AND ${candidate.where}`,
+        );
+      }
+    }
+    const settled = await previewFamilyDeletionDatabase(
+      runtime,
+      SELF_ENTITY_ID,
+    );
+    let entered = false;
+    await withReviewedFamilyDeletionDatabase(
+      runtime,
+      { ownerEntityId: SELF_ENTITY_ID, expectedSha256: settled.sha256 },
+      async () => {
+        entered = true;
+      },
+    );
+    expect(entered).toBe(true);
+  });
   it("fingerprints private workflow lease changes without disclosing tokens and rolls back failed workspace revocation", async () => {
     await new CalendarCardAccessStore(runtime).ensureSchema();
     await previewFamilyDeletionDatabase(runtime, SELF_ENTITY_ID);
@@ -2032,6 +2137,44 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       withReviewedFamilyDeletionDatabase(
         runtime,
         { ownerEntityId: SELF_ENTITY_ID, expectedSha256: changed.sha256 },
+        async () => {
+          entered = true;
+        },
+      ),
+    ).rejects.toMatchObject({ code: "FAMILY_DELETION_WORK_UNSETTLED" });
+    expect(entered).toBe(false);
+    // Expiry cannot prove a provider request stopped. Only a settled executor
+    // releases the lease; a fresh review is then required before revocation.
+    await executeRawSql(
+      runtime,
+      `UPDATE app_lifeops.life_family_workflow_runs SET lease_expires_at = '2000-01-01T00:00:00Z' WHERE agent_id = ${sqlQuote(runtime.agentId)} AND period_key = ${sqlQuote(period)}`,
+    );
+    const expired = await previewFamilyDeletionDatabase(
+      runtime,
+      SELF_ENTITY_ID,
+    );
+    await expect(
+      withReviewedFamilyDeletionDatabase(
+        runtime,
+        { ownerEntityId: SELF_ENTITY_ID, expectedSha256: expired.sha256 },
+        async () => {
+          entered = true;
+        },
+      ),
+    ).rejects.toMatchObject({ code: "FAMILY_DELETION_WORK_UNSETTLED" });
+    expect(entered).toBe(false);
+    await executeRawSql(
+      runtime,
+      `UPDATE app_lifeops.life_family_workflow_runs SET state = 'completed', lease_token = NULL, lease_expires_at = NULL WHERE agent_id = ${sqlQuote(runtime.agentId)} AND period_key = ${sqlQuote(period)}`,
+    );
+    const settled = await previewFamilyDeletionDatabase(
+      runtime,
+      SELF_ENTITY_ID,
+    );
+    await expect(
+      withReviewedFamilyDeletionDatabase(
+        runtime,
+        { ownerEntityId: SELF_ENTITY_ID, expectedSha256: settled.sha256 },
         async (tx) => {
           await executeRawSqlTx(
             tx,
@@ -2043,6 +2186,6 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     ).rejects.toThrow("Revocation transaction failed");
     expect(
       (await previewFamilyDeletionDatabase(runtime, SELF_ENTITY_ID)).sha256,
-    ).toBe(changed.sha256);
+    ).toBe(settled.sha256);
   });
 });
