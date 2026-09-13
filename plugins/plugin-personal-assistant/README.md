@@ -462,3 +462,18 @@ Missing or changed retained PDF bytes fail export rather than producing a
 healthy-looking partial archive. Connection credentials and executor lease
 tokens are excluded. Export records preparation, not receipt by the client,
 and does not revoke access or delete data.
+
+
+Family lifecycle admission wraps the canonical scheduling SQL stores. It resolves
+monthly tasks, grant warnings, and family approval reminders through typed task
+metadata and persisted domain references. Canonical approval payloads retain that
+classification before a household approval link is acknowledged. The deletion
+snapshot uses the same predicates and includes those tasks and their history.
+Task mutations inspect both stored and proposed metadata inside the transaction;
+removing a family marker cannot evade an active deletion fence. Unrelated tasks
+and approvals remain usable, and history maintenance preserves fenced family
+records. Scheduled family execution holds a durable operation through final
+receipt persistence. A rejected execution retains its claim for reconciliation;
+typed domain errors remain unchanged for callers and diagnostics record the
+operation identity. These internal guards do not themselves expose a delete
+endpoint or establish a backup-retention policy.
