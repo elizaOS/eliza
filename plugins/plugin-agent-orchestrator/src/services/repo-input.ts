@@ -5,9 +5,12 @@
  * - owner/repo
  * - github.com/owner/repo
  * - https://github.com/owner/repo
+ * - https://gitlab.com/group/subgroup/repo (nested GitLab groups)
  *
  * Bare owner/repo inputs default to GitHub because the coding workspace
- * flows in this plugin are GitHub-centric.
+ * flows in this plugin are GitHub-centric. GitLab paths keep every group
+ * segment: dropping one rewrites the input into a different, valid-looking
+ * repository that every downstream guard accepts (#31116).
  *
  * @module services/repo-input
  */
@@ -37,13 +40,46 @@ function toHttpsCloneUrl(host: string, owner: string, repo: string): string {
   return `https://${host}/${owner}/${repo}.git`;
 }
 
+/**
+ * Split a known-host path into `[ownerPath, repoName]`, or `null` when the
+ * path does not name a repository. GitHub and Bitbucket nest exactly one
+ * level, so anything after `owner/repo` is a sub-resource (`/pull/5`,
+ * `/issues/12`) and is dropped. GitLab nests groups arbitrarily and separates
+ * sub-resources with a literal `-` segment (`group/sub/repo/-/issues/3`), so
+ * every segment before the first `-` belongs to the repository path.
+ */
+function splitRepositoryPath(
+  host: string,
+  segments: readonly string[],
+): [string, string] | null {
+  const scoped =
+    host === "gitlab.com"
+      ? segments.slice(
+          0,
+          segments.indexOf("-") === -1
+            ? segments.length
+            : segments.indexOf("-"),
+        )
+      : segments.slice(0, 2);
+  if (scoped.length < 2) return null;
+  const repoName = stripGitSuffix(scoped[scoped.length - 1]);
+  if (!repoName) return null;
+  return [scoped.slice(0, -1).join("/"), repoName];
+}
+
+function cloneUrlForKnownHost(host: string, pathname: string): string | null {
+  const split = splitRepositoryPath(host, normalizePathSegments(pathname));
+  return split ? toHttpsCloneUrl(host, split[0], split[1]) : null;
+}
+
 export function normalizeRepositoryInput(repo: string): string {
   const trimmed = repo.trim();
   if (!trimmed) return trimmed;
 
   // Preserve SSH-style clone URLs; they are already explicit and may be
-  // intentionally configured to bypass HTTPS auth.
-  if (/^[^@\s]+@[^:\s]+:[^/\s]+\/[^/\s]+(?:\.git)?$/i.test(trimmed)) {
+  // intentionally configured to bypass HTTPS auth. The path may nest
+  // (GitLab subgroups), so accept one or more `segment/` before the repo.
+  if (/^[^@\s]+@[^:\s]+:(?:[^/\s]+\/)+[^/\s]+(?:\.git)?$/i.test(trimmed)) {
     return trimmed;
   }
 
@@ -57,12 +93,8 @@ export function normalizeRepositoryInput(repo: string): string {
       const parsed = new URL(withoutTrailingSlash);
       const host = parsed.hostname.toLowerCase();
       if (KNOWN_GIT_HOSTS.has(host)) {
-        const segments = normalizePathSegments(parsed.pathname);
-        if (segments.length >= 2) {
-          const owner = segments[0];
-          const repoName = stripGitSuffix(segments[1]);
-          return toHttpsCloneUrl(host, owner, repoName);
-        }
+        const cloneUrl = cloneUrlForKnownHost(host, parsed.pathname);
+        if (cloneUrl) return cloneUrl;
       }
     } catch {
       // error-policy:J3 untrusted repo input; URL parse failure → pass raw through to downstream assertSafeGitRemote validation
@@ -72,14 +104,14 @@ export function normalizeRepositoryInput(repo: string): string {
   }
 
   const hostMatch = withoutTrailingSlash.match(
-    /^(github\.com|gitlab\.com|bitbucket\.org)\/([^/]+)\/([^/]+?)(?:\.git)?$/i,
+    /^(github\.com|gitlab\.com|bitbucket\.org)\/(.+)$/i,
   );
   if (hostMatch) {
-    return toHttpsCloneUrl(
+    const cloneUrl = cloneUrlForKnownHost(
       hostMatch[1].toLowerCase(),
       hostMatch[2],
-      stripGitSuffix(hostMatch[3]),
     );
+    if (cloneUrl) return cloneUrl;
   }
 
   const shorthandMatch = withoutTrailingSlash.match(
@@ -94,6 +126,56 @@ export function normalizeRepositoryInput(repo: string): string {
   }
 
   return withoutTrailingSlash;
+}
+
+const FREE_TEXT_REPOSITORY_URL =
+  /https?:\/\/(?:www\.)?(?:github\.com|gitlab\.com|bitbucket\.org)\/[\w.-]+(?:\/[\w.-]+)+/i;
+
+/**
+ * Find the first supported-host repository URL in free text, keeping every
+ * path segment so {@link normalizeRepositoryInput} can decide which are the
+ * repository and which are a sub-resource. Trailing sentence punctuation is
+ * not part of the URL. Returns `undefined` when no supported URL is present.
+ */
+export function extractRepositoryUrl(text: string): string | undefined {
+  const match = text.match(FREE_TEXT_REPOSITORY_URL);
+  if (!match) return undefined;
+  const url = match[0].replace(/[.,;:!?)]+$/u, "");
+  return url || undefined;
+}
+
+const GITHUB_SLUG = "[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+?";
+// An explicit GitHub reference: a URL, the documented `github.com/owner/repo`
+// shorthand, or an SSH remote. The host anchors it, so prose cannot match.
+const EXPLICIT_GITHUB_REPOSITORY = new RegExp(
+  `(?:https?:\\/\\/)?(?:[\\w.-]+@)?(?:www\\.)?github\\.com[/:](${GITHUB_SLUG})(?:\\.git)?(?![\\w-]|\\.\\w)`,
+  "i",
+);
+// A bare `owner/repo` is only a repository when the sentence presents it as
+// one ("in acme/widgets", "repo acme/widgets"). Without that cue the same
+// shape is ordinary prose ("and/or", "24/7", "login/logout") and must not
+// silence the "which repository?" clarification.
+const CUED_GITHUB_SLUG = new RegExp(
+  `\\b(?:repo(?:sitory)?|project|in|on|for|of|from|at|to)[:\\s]+(${GITHUB_SLUG})(?:\\.git)?(?![\\w-]|\\.\\w)`,
+  "i",
+);
+
+/**
+ * Extract an `owner/repo` GitHub slug from free text for the issue actions.
+ * An explicit GitHub URL, `github.com/` shorthand, or SSH remote always wins;
+ * a bare slug counts only when a repository cue word precedes it. Returns
+ * `undefined` otherwise so the caller asks for the repository.
+ */
+export function extractGitHubRepositorySlug(text: string): string | undefined {
+  const explicit = text.match(EXPLICIT_GITHUB_REPOSITORY);
+  if (explicit) return stripGitSuffix(explicit[1]);
+  const cued = text.match(CUED_GITHUB_SLUG);
+  if (!cued) return undefined;
+  const slug = stripGitSuffix(cued[1]);
+  const [owner, name] = slug.split("/");
+  // Purely numeric pairs ("24/7", "1/2") are never repositories.
+  if (/^\d+$/.test(owner) && /^\d+$/.test(name)) return undefined;
+  return slug;
 }
 
 /** Thrown by {@link assertSafeGitRemote} when a repo string is unsafe to hand
