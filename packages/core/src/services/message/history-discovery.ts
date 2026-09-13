@@ -77,11 +77,10 @@ export function historyReferences(
 	return new Set([
 		ALL_HISTORY_REFERENCE,
 		...completionContextSources(context)
-			.sources.filter(
-				(source) =>
-					!projection.visibleEventIds.has(source.event.id) &&
-					!projection.loadedSourceIds.has(source.id),
-			)
+			// A model may explicitly reread a retained original already inline.
+			// Resolve it through the same fresh authorization/source checks once;
+			// only a repeated explicit read is a no-progress request.
+			.sources.filter((source) => !projection.loadedSourceIds.has(source.id))
 			.map((source) => `${HISTORY_REFERENCE_PREFIX}${source.id}`),
 	]);
 }

@@ -687,7 +687,60 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
-	it.each(["unknown", "repeat"])(
+	it("rereads an inline retained original before processing draft fields", async () => {
+		const { runtime, message, rows, state } = await reviewedHistoryFixture();
+		const before = structuredClone(rows);
+		const dispatch = vi.spyOn(runtime.responseHandlerFieldRegistry, "dispatch");
+		let calls = 0;
+		runtime.useModel = vi.fn(
+			async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+				calls++;
+				expect(dispatch).not.toHaveBeenCalled();
+				const input = args[1] as { messages: Array<{ content: string }> };
+				const text = input.messages.map((m) => m.content).join("\n");
+				expect(text).toContain(rows[0].content.text);
+				if (calls === 2) {
+					expect(text).toContain("context_loaded: history:h1");
+					expect(text).not.toContain(rows[1].content.text?.trim());
+				}
+				return stage1Response({
+					contexts: ["simple"],
+					contextRequests: calls === 1 ? ["history:h1"] : [],
+					replyText:
+						calls === 1 ? "Do not deliver this draft." : "I will wait.",
+					facts: calls === 1 ? ["Do not extract this draft fact."] : [],
+					extra: {
+						replyEffectStatus: "non_applied",
+						completionContext: {
+							mode: "relevant_prior_dialogue",
+							sourceSetId: text.match(
+								/completion_source_set: ([a-f0-9]{64})/,
+							)?.[1],
+							complete: true,
+							relevantSourceIds: [],
+							constraintSourceIds: ["h1"],
+							referentSourceIds: [],
+							pendingIntentSourceIds: [],
+						},
+					},
+				});
+			},
+		) as IAgentRuntime["useModel"];
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state,
+			responseId: message.id as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply")
+			expect(result.result.responseContent?.text).toBe("I will wait.");
+		expect(calls).toBe(2);
+		expect(dispatch).toHaveBeenCalledTimes(1);
+		expect(rows).toEqual(before);
+	});
+
+	it.each(["unknown", "repeat", "retained-repeat"])(
 		"rejects %s history reads before draft fields or actions",
 		async (mode) => {
 			const { runtime, message, state } = await reviewedHistoryFixture();
@@ -709,7 +762,11 @@ describe("runV5MessageRuntimeStage1", () => {
 						contexts: ["simple"],
 						replyText: "Must never deliver.",
 						contextRequests: [
-							mode === "unknown" ? "history:h9999" : "history:h2",
+							mode === "unknown"
+								? "history:h9999"
+								: mode === "retained-repeat"
+									? "history:h1"
+									: "history:h2",
 						],
 						extra: {
 							completionContext: {
