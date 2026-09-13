@@ -93,6 +93,7 @@ function extractionOptions(
 	runtime: IAgentRuntime,
 ): NonNullable<EvaluatorRunOptions["extraction"]> {
 	return {
+		progressState: snapshot.progressState,
 		isBackfill: snapshot.isBackfill,
 		remainingSourceCount: snapshot.remainingSourceCount,
 		referenceRevisions: snapshot.referenceRevisions,
@@ -1427,8 +1428,22 @@ export class EvaluatorService extends BaseService {
 					errors,
 				});
 				if (errors.length === errorsBefore) {
-					if (entry.progress)
-						await commitEvaluatorProgress(this.runtime, entry.progress);
+					if (entry.progress) {
+						const progressState = evaluator.progressState?.({
+							runtime: this.runtime,
+							message: entry.message,
+							state,
+							options: entry.options,
+							prepared,
+							output: parsed,
+							evaluatorName: evaluator.name,
+						});
+						await commitEvaluatorProgress(
+							this.runtime,
+							entry.progress,
+							progressState,
+						);
+					}
 					processedEvaluators.push(evaluator.name);
 				}
 			} catch (error) {

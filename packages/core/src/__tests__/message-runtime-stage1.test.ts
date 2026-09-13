@@ -16,6 +16,10 @@ import type { CandidateActionBackstopRule } from "../runtime/candidate-action-ba
 import { ContextRegistry } from "../runtime/context-registry";
 import { registerDirectActionRoutingRule } from "../runtime/direct-action-routing";
 import { effectDeliveryBindingProvesApplication } from "../runtime/effect-delivery";
+import {
+	applyHistoryRetentionReview,
+	prepareHistoryRetention,
+} from "../runtime/history-retention";
 import { HANDLED_STEP_FALLBACK_MESSAGE } from "../runtime/planner-loop";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
@@ -26,12 +30,22 @@ import {
 	PseudonymSession,
 } from "../security/index.js";
 import {
+	commitEvaluatorProgress,
+	prepareEvaluatorProgress,
+	stageEvaluatorOutput,
+} from "../services/evaluator-progress";
+import {
+	historyRetentionContext,
+	historyRetentionEvaluator,
+} from "../services/history-retention";
+import {
 	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 	messageContinuesAfterRecentAgentCorrection,
 	messageHandlerFromFieldResult,
 	resolveZeroDeliveryRecovery,
 	runV5MessageRuntimeStage1,
 } from "../services/message";
+import { resolveStage1SenderRole } from "../services/message/addressing";
 import { runWithStreamingContext } from "../streaming-context";
 import { runWithTrajectoryContext } from "../trajectory-context";
 import {
@@ -266,6 +280,87 @@ function makeRuntime(
 	} as IAgentRuntime;
 }
 
+async function reviewedHistoryFixture(initialRole?: "ADMIN" | "GUEST") {
+	const runtime = makeRuntime([]);
+	const message = makeMessage({ channelType: ChannelType.DM, text: "hi" });
+	message.createdAt = 20;
+	const world = {
+		id: "00000000-0000-0000-0000-000000000091" as UUID,
+		agentId: runtime.agentId,
+		metadata: { roles: { [message.entityId]: initialRole ?? "GUEST" } },
+	};
+	if (initialRole) {
+		runtime.getRoom = async () => ({
+			id: message.roomId,
+			agentId: runtime.agentId,
+			worldId: world.id,
+			source: "test",
+			type: ChannelType.DM,
+		});
+		runtime.getWorld = async () => world;
+	}
+	const rows: Memory[] = [
+		"Never change my records without my explicit request.",
+		"The old literal label was blueberry  :  first.\n",
+		"Acknowledged the old literal label.",
+		"hello from the previous exchange",
+		"Hey from the previous exchange.",
+	].map((text, i) => ({
+		...message,
+		id: `00000000-0000-0000-0000-00000000001${i}` as UUID,
+		createdAt: i + 1,
+		entityId: i === 2 || i === 4 ? runtime.agentId : message.entityId,
+		content: { text },
+	}));
+	const cache = new Map<string, unknown>();
+	runtime.getCache = async <T>(key: string) =>
+		structuredClone(cache.get(key)) as T | undefined;
+	runtime.setCache = async <T>(key: string, value: T) => {
+		cache.set(key, structuredClone(value));
+		return true;
+	};
+	runtime.getMemories = vi.fn(async () => structuredClone(rows));
+	Object.assign(runtime, { evaluators: [historyRetentionEvaluator] });
+	const scope = {
+		agentId: runtime.agentId,
+		roomId: message.roomId,
+		entityId: message.entityId,
+		roles: [await resolveStage1SenderRole(runtime, message)],
+	};
+	const prepared = prepareHistoryRetention(
+		historyRetentionContext(runtime, message, rows),
+		scope,
+		null,
+		"fixture-reviewed-originals",
+		rows.length,
+	);
+	const checkpoint = applyHistoryRetentionReview(prepared, {
+		sourceSetId: prepared.sourceSetId,
+		complete: true,
+		retainSourceIds: ["h1"],
+		deferSourceIds: ["h2", "h3", "h4", "h5"],
+		uncertainSourceIds: [],
+		dependencyGroups: [],
+	});
+	const progress = (
+		await prepareEvaluatorProgress(
+			runtime,
+			rows[3],
+			[historyRetentionEvaluator.name],
+			rows,
+		)
+	).get(historyRetentionEvaluator.name);
+	if (!progress) throw new Error("Missing fixture journal");
+	await stageEvaluatorOutput(runtime, progress, { fixture: true });
+	await commitEvaluatorProgress(runtime, progress, { ...checkpoint });
+	const state = makeState();
+	state.data.providers = {
+		RECENT_MESSAGES: { data: { recentMessages: rows } },
+	};
+	runtime.composeState = vi.fn(async () => structuredClone(state));
+	return { runtime, message, rows, cache, state, world };
+}
+
 function makeMemorySearchAction(minRole: "USER" | "OWNER" = "USER"): Action {
 	return {
 		name: "MEMORY",
@@ -317,6 +412,331 @@ async function seededPiiSession(): Promise<{
 }
 
 describe("runV5MessageRuntimeStage1", () => {
+	it("refreshes role-gated field prompts and processing after a history read", async () => {
+		const { runtime, message, state, rows, world } =
+			await reviewedHistoryFixture("ADMIN");
+		expect(await resolveStage1SenderRole(runtime, message)).toBe("ADMIN");
+		const handle = vi.fn();
+		runtime.responseHandlerFieldRegistry.register({
+			name: "adminFixture",
+			description: "Private admin-only fixture instructions.",
+			schema: { type: "string" },
+			priority: 1,
+			shouldRun: ({ senderRole }) => senderRole === "ADMIN",
+			handle,
+		});
+		runtime.composeState = async () => {
+			world.metadata.roles[message.entityId] = "GUEST";
+			return structuredClone(state);
+		};
+		let calls = 0;
+		runtime.useModel = vi.fn(
+			async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+				calls++;
+				const input = args[1] as { messages: Array<{ content: string }> };
+				const text = input.messages.map((m) => m.content).join("\n");
+				if (calls === 1)
+					expect(text).toContain("Private admin-only fixture instructions.");
+				else {
+					expect(text).not.toContain(
+						"Private admin-only fixture instructions.",
+					);
+					expect(text).toContain(rows[1].content.text?.trim());
+				}
+				return stage1Response({
+					contexts: ["simple"],
+					contextRequests: calls === 1 ? ["history:h2"] : [],
+					replyText: calls === 1 ? "" : "Hey.",
+					extra: {
+						replyEffectStatus: "none",
+						adminFixture: "must never process",
+						completionContext: {
+							sourceSetId: text.match(
+								/completion_source_set: ([a-f0-9]{64})/,
+							)?.[1],
+							mode: "relevant_prior_dialogue",
+							complete: true,
+							relevantSourceIds: [],
+							constraintSourceIds: [],
+							referentSourceIds: [],
+							pendingIntentSourceIds: [],
+						},
+					},
+				});
+			},
+		) as IAgentRuntime["useModel"];
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state,
+			responseId: message.id as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		expect(calls).toBe(2);
+		expect(handle).not.toHaveBeenCalled();
+	});
+	it.each([
+		"absent",
+		"malformed",
+		"wrong-scope",
+		"edited",
+		"deleted",
+		"duplicated",
+		"cache-failure",
+		"disabled",
+	])(
+		"keeps complete history when a retention checkpoint cannot apply: %s",
+		async (mode) => {
+			const { runtime, message, rows, cache, state } =
+				await reviewedHistoryFixture();
+			const literal = rows[1].content.text;
+			if (mode === "absent") cache.clear();
+			if (mode === "malformed" || mode === "wrong-scope") {
+				for (const [key, value] of cache) {
+					const record = value as { progressState: Record<string, unknown> };
+					record.progressState[
+						mode === "malformed" ? "reviewedCount" : "scopeHash"
+					] = mode === "malformed" ? -1 : "foreign";
+					cache.set(key, record);
+				}
+			}
+			if (mode === "edited")
+				rows[0].content.text =
+					"Current replacement: keep all records unchanged.";
+			if (mode === "deleted") rows.splice(0, 1);
+			if (mode === "duplicated") rows.push(structuredClone(rows[0]));
+			if (mode === "cache-failure")
+				runtime.getCache = async () => {
+					throw new Error("Checkpoint unavailable");
+				};
+			if (mode === "disabled") Object.assign(runtime, { evaluators: [] });
+			runtime.useModel = vi.fn(
+				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+					const input = args[1] as { messages: Array<{ content: string }> };
+					const text = input.messages.map((m) => m.content).join("\n");
+					expect(text).toContain(literal?.trim());
+					expect(text).not.toContain("Complete original history index:");
+					return stage1Response({
+						contexts: ["simple"],
+						replyText: "Hey.",
+						extra: { replyEffectStatus: "none" },
+					});
+				},
+			) as IAgentRuntime["useModel"];
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state,
+				responseId: message.id as UUID,
+			});
+			expect(result.kind).toBe("direct_reply");
+			expect(runtime.useModel).toHaveBeenCalledTimes(1);
+			if (mode === "cache-failure")
+				expect(runtime.reportError).toHaveBeenCalledWith(
+					"MessageService.historyRetention",
+					expect.any(Error),
+					expect.any(Object),
+				);
+		},
+	);
+
+	it.each([
+		"hi",
+		"explicit",
+		"selected",
+		"full",
+		"missing-binding",
+		"revoked",
+		"edited",
+		"new-source",
+		"collision",
+	])(
+		"uses committed history with pre-effect original reads: %s",
+		async (mode) => {
+			const { runtime, message, rows, state } = await reviewedHistoryFixture();
+			const dispatch = vi.spyOn(
+				runtime.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			const before = structuredClone(rows);
+			if (mode === "new-source")
+				rows.push({
+					...message,
+					id: "00000000-0000-0000-0000-000000000099" as UUID,
+					createdAt: 6,
+					content: { text: "New unreviewed rule: do not send emails." },
+				});
+			if (mode === "collision")
+				runtime.providers = [{ name: "history:custom", get: vi.fn() }];
+			if (mode === "revoked" || mode === "edited")
+				runtime.composeState = vi.fn(async () => {
+					const fresh = structuredClone(state);
+					const current =
+						mode === "revoked"
+							? rows.filter((row) => row.id !== rows[1].id)
+							: rows.map((row, i) =>
+									i === 1
+										? {
+												...row,
+												content: {
+													text: "The authorized replacement is cranberry.",
+												},
+											}
+										: row,
+								);
+					fresh.data.providers = {
+						RECENT_MESSAGES: { data: { recentMessages: current } },
+					};
+					return fresh;
+				});
+			let calls = 0;
+			runtime.useModel = vi.fn(
+				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+					if (++calls > 2) throw new Error("Unexpected extra history decision");
+					const input = args[1] as { messages: Array<{ content: string }> };
+					const text = input.messages.map((m) => m.content).join("\n");
+					const sourceSetId =
+						text.match(/completion_source_set: ([a-f0-9]{64})/)?.[1] ?? "";
+					const reading =
+						calls === 1 && !["hi", "new-source", "collision"].includes(mode);
+					return stage1Response({
+						contexts: ["simple"],
+						replyText: reading
+							? "Never deliver this ungrounded draft."
+							: "The authorized answer is ready.",
+						facts: reading ? ["Never extract this draft fact."] : [],
+						contextRequests:
+							reading && ["explicit", "revoked", "edited"].includes(mode)
+								? ["history:h2"]
+								: [],
+						extra: {
+							replyEffectStatus: "none",
+							completionContext: {
+								mode:
+									reading && mode === "full"
+										? "all_prior_dialogue"
+										: "relevant_prior_dialogue",
+								sourceSetId:
+									reading && mode === "missing-binding" ? "" : sourceSetId,
+								complete: true,
+								relevantSourceIds: reading && mode === "selected" ? ["h2"] : [],
+								constraintSourceIds: ["h1"],
+								referentSourceIds: [],
+								pendingIntentSourceIds: [],
+							},
+						},
+					});
+				},
+			) as IAgentRuntime["useModel"];
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state,
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply")
+				expect(result.result.responseContent?.text).toBe(
+					"The authorized answer is ready.",
+				);
+			const inputs = useModelCalls(runtime).map(
+				([, params]) =>
+					params as { messages: Array<{ content: string; role: string }> },
+			);
+			const first = inputs[0].messages.map((m) => m.content).join("\n");
+			expect(first).toContain(rows[0].content.text);
+			if (mode !== "new-source")
+				expect(first).toContain(before[4].content.text);
+			if (mode === "collision")
+				expect(first).toContain(before[1].content.text?.trim());
+			else {
+				expect(first).not.toContain(before[1].content.text?.trim());
+				expect(first).not.toContain(
+					"there is no separate chat-history search tool on this turn",
+				);
+			}
+			if (mode === "new-source")
+				expect(first).toContain("New unreviewed rule: do not send emails.");
+			if (["hi", "new-source", "collision"].includes(mode))
+				expect(calls).toBe(1);
+			else {
+				expect(calls).toBe(2);
+				const second = inputs[1].messages.map((m) => m.content).join("\n");
+				if (mode === "revoked")
+					expect(second).not.toContain(before[1].content.text?.trim());
+				else if (mode === "edited") {
+					expect(second).toContain("The authorized replacement is cranberry.");
+					expect(second).not.toContain(before[1].content.text?.trim());
+				} else expect(second).toContain(before[1].content.text?.trim());
+				if (mode === "explicit" || mode === "selected")
+					expect(inputs[1].messages[0]).toEqual(inputs[0].messages[0]);
+			}
+			expect(dispatch).toHaveBeenCalledTimes(1);
+			expect(
+				useModelCalls(runtime).every(
+					([type]) => type === ModelType.RESPONSE_HANDLER,
+				),
+			).toBe(true);
+			expect(
+				(
+					runtime.runActionsByMode as ReturnType<typeof vi.fn>
+				).mock.calls.filter(
+					([actionMode]) => actionMode === "RESPONSE_HANDLER_BEFORE",
+				),
+			).toHaveLength(1);
+		},
+	);
+
+	it.each(["unknown", "repeat"])(
+		"rejects %s history reads before draft fields or actions",
+		async (mode) => {
+			const { runtime, message, state } = await reviewedHistoryFixture();
+			const dispatch = vi.spyOn(
+				runtime.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			let count = 0;
+			runtime.useModel = vi.fn(
+				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+					count++;
+					const input = args[1] as { messages: Array<{ content: string }> };
+					const sourceSetId =
+						input.messages
+							.map((m) => m.content)
+							.join("\n")
+							.match(/completion_source_set: ([a-f0-9]{64})/)?.[1] ?? "";
+					return stage1Response({
+						contexts: ["simple"],
+						replyText: "Must never deliver.",
+						contextRequests: [
+							mode === "unknown" ? "history:h9999" : "history:h2",
+						],
+						extra: {
+							completionContext: {
+								mode: "relevant_prior_dialogue",
+								sourceSetId,
+								complete: true,
+								relevantSourceIds: [],
+								constraintSourceIds: [],
+								referentSourceIds: [],
+								pendingIntentSourceIds: [],
+							},
+						},
+					});
+				},
+			) as IAgentRuntime["useModel"];
+			await expect(
+				runV5MessageRuntimeStage1({
+					runtime,
+					message,
+					state,
+					responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+				}),
+			).rejects.toThrow("Request only context providers");
+			expect(count).toBe(mode === "unknown" ? 1 : 2);
+			expect(dispatch).not.toHaveBeenCalled();
+		},
+	);
 	it.each([false, true])(
 		"carries the current catalog into planning and completion with provider restore=%s",
 		async (restore) => {

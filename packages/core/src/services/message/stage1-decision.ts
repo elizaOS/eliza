@@ -31,6 +31,8 @@ import type { MessageHandlerResult } from "../../types/components";
 import type { GenerateTextResult } from "../../types/model";
 import { ModelType } from "../../types/model";
 import { ChannelType } from "../../types/primitives";
+import { getEvaluatorProgressState } from "../evaluator-progress.ts";
+import { HISTORY_RETENTION_EVALUATOR } from "../history-retention.ts";
 import { CODING_SUB_AGENT_CONTEXTS } from "./action-surface.js";
 import {
 	listAvailableContextsForRole,
@@ -46,6 +48,15 @@ import {
 	isSubAgentCompletionArtifact,
 	resolveContinuationInferenceMessageText,
 } from "./dialogue-context.js";
+import {
+	HISTORY_REFERENCE_PREFIX,
+	type HistoryDiscovery,
+	historyReferences,
+	loadHistoryReferences,
+	projectReviewedHistory,
+	requestedHistory,
+	withReviewedHistorySelection,
+} from "./history-discovery.js";
 import { composeResponseState } from "./provider-state.js";
 import {
 	getStage1FinishReason,
@@ -144,7 +155,7 @@ export async function generateStage1Decision(
 	};
 	const selectedResponseHandlerFields =
 		args.runtime.responseHandlerFieldRegistry.list();
-	const responseHandlerFieldPrompt =
+	let responseHandlerFieldPrompt =
 		await args.runtime.responseHandlerFieldRegistry.composePromptSlices(
 			responseHandlerFieldContext,
 		);
@@ -153,6 +164,49 @@ export async function generateStage1Decision(
 	const loadedContext = new Set<string>();
 	const discoveryEnabled =
 		directMessageChannel && !voiceDirectMessageChannel && !args.codingMode;
+	let history: HistoryDiscovery | undefined;
+	if (
+		discoveryEnabled &&
+		args.runtime.evaluators?.some(
+			(evaluator) => evaluator.name === HISTORY_RETENTION_EVALUATOR,
+		) &&
+		!args.runtime.providers?.some((provider) =>
+			provider.name.startsWith(HISTORY_REFERENCE_PREFIX),
+		)
+	) {
+		const started = performance.now();
+		try {
+			const checkpoint = await getEvaluatorProgressState(
+				args.runtime,
+				args.message,
+				HISTORY_RETENTION_EVALUATOR,
+			);
+			history = projectReviewedHistory(
+				context,
+				{
+					agentId: args.runtime.agentId,
+					roomId: args.message.roomId,
+					entityId: args.message.entityId,
+					roles: [senderRole],
+				},
+				checkpoint,
+			);
+		} catch (error) {
+			// error-policy:J4 Report the optional index failure and render complete
+			// original history instead; no unavailable source is treated as absent.
+			args.runtime.reportError("MessageService.historyRetention", error, {
+				roomId: args.message.roomId,
+			});
+		}
+		recordInferenceSpan(
+			"message:history-checkpoint",
+			performance.now() - started,
+			{
+				applied: !!history,
+				retainedSourceCount: history?.visibleEventIds.size ?? 0,
+			},
+		);
+	}
 	// A plugin that owns this name retains its ordinary provider-reference
 	// contract; framework catalog discovery must not shadow its requests.
 	let contextCatalogRead = false;
@@ -168,6 +222,8 @@ export async function generateStage1Decision(
 		? projectDiscoverableContext(context, args.state, loadedContext)
 		: { context, available: new Set<string>() };
 	if (contextCatalog) discovery.available.add(CONTEXT_CATALOG_REFERENCE);
+	for (const reference of historyReferences(context, history))
+		discovery.available.add(reference);
 	let messageHandlerInput = renderMessageHandlerModelInput(
 		args.runtime,
 		discovery.context,
@@ -177,6 +233,7 @@ export async function generateStage1Decision(
 			voiceDirectMessage: voiceDirectMessageChannel,
 			responseHandlerFields: responseHandlerFieldPrompt.rendered,
 			contextCatalog,
+			history,
 		},
 	);
 	let stage1PrefixHashes = computePrefixHashes(
@@ -199,7 +256,9 @@ export async function generateStage1Decision(
 			parameters: voiceDirectMessageChannel
 				? responseHandlerSchema
 				: withRequiredCompletionSourceIdentity(
-						responseHandlerSchema,
+						history
+							? withReviewedHistorySelection(responseHandlerSchema)
+							: responseHandlerSchema,
 						discovery.context,
 					),
 			description:
@@ -389,7 +448,14 @@ export async function generateStage1Decision(
 	let routingRepairAttempted = false;
 	while (discoveryEnabled) {
 		const parsedDecision = extractMessageHandlerRawParsed(rawMessageHandler);
-		const requested = readContextRequests(parsedDecision, discovery.available);
+		const explicit = readContextRequests(parsedDecision, discovery.available);
+		const historyRequested = requestedHistory(
+			context,
+			history,
+			parsedDecision,
+			explicit,
+		);
+		const requested = [...new Set([...explicit, ...historyRequested])];
 		const routingRepair =
 			requested.length === 0 && !routingRepairAttempted
 				? getStage1RoutingRepair(parsedDecision)
@@ -415,7 +481,9 @@ export async function generateStage1Decision(
 				],
 			};
 		} else {
+			const contextReadStartedAt = performance.now();
 			for (const name of requested) {
+				if (history && name.startsWith(HISTORY_REFERENCE_PREFIX)) continue;
 				if (name === CONTEXT_CATALOG_REFERENCE && contextCatalog) {
 					contextCatalogRead = true;
 					contextCatalog.loaded = true;
@@ -448,12 +516,51 @@ export async function generateStage1Decision(
 				true,
 			);
 			Object.assign(args.state, refreshed);
+			if (history) {
+				const currentRole = await resolveStage1SenderRole(
+					args.runtime,
+					args.message,
+				);
+				if (currentRole !== senderRole) {
+					senderRole = currentRole;
+					availableContexts = listAvailableContextsForRole(
+						args.runtime.contexts,
+						currentRole,
+					);
+					responseHandlerFieldPrompt =
+						await args.runtime.responseHandlerFieldRegistry.composePromptSlices(
+							{
+								...responseHandlerFieldContext,
+								senderRole: currentRole as ResponseHandlerSenderRole,
+							},
+						);
+					if (contextCatalog) {
+						const freshCatalog = createContextCatalogReference(
+							args.runtime,
+							availableContexts,
+						);
+						contextCatalog = freshCatalog
+							? { ...freshCatalog, loaded: contextCatalog.loaded }
+							: undefined;
+					}
+				}
+				if (
+					history.scope.roles.length !== 1 ||
+					history.scope.roles[0] !== currentRole ||
+					args.runtime.providers?.some((provider) =>
+						provider.name.startsWith(HISTORY_REFERENCE_PREFIX),
+					)
+				)
+					history = undefined;
+			}
 			const refreshedContext = await createV5MessageContextObject({
 				...args,
 				userRoles: [senderRole],
 				availableContexts,
 			});
 			Object.assign(context, refreshedContext, { id: context.id });
+			if (history)
+				history = loadHistoryReferences(context, history, historyRequested);
 			discovery = projectDiscoverableContext(
 				context,
 				args.state,
@@ -461,6 +568,17 @@ export async function generateStage1Decision(
 			);
 			if (contextCatalog && !contextCatalog.loaded)
 				discovery.available.add(CONTEXT_CATALOG_REFERENCE);
+			for (const reference of historyReferences(context, history))
+				discovery.available.add(reference);
+			if (historyRequested.length)
+				recordInferenceSpan(
+					"message:history-reference-read",
+					performance.now() - contextReadStartedAt,
+					{
+						requestedCount: historyRequested.length,
+						fullRestoration: !history,
+					},
+				);
 			messageHandlerInput = renderMessageHandlerModelInput(
 				args.runtime,
 				discovery.context,
@@ -470,6 +588,7 @@ export async function generateStage1Decision(
 					voiceDirectMessage: voiceDirectMessageChannel,
 					responseHandlerFields: responseHandlerFieldPrompt.rendered,
 					contextCatalog,
+					history,
 				},
 			);
 		}

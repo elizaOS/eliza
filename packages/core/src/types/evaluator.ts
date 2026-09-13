@@ -37,6 +37,9 @@ export interface EvaluatorRunOptions {
 	 * Processors must make replay of evidenceId idempotent before opting in.
 	 */
 	extraction?: {
+		/** Evaluator-owned state from the last successful progress commit. Never
+		 * model evidence by itself; consumers must validate its source binding. */
+		progressState?: JsonValue;
 		isBackfill: boolean;
 		remainingSourceCount?: number;
 		referenceRevisions?: Record<string, string>;
@@ -149,6 +152,12 @@ export interface Evaluator<TOutput = JsonValue, TPrepared = unknown> {
 		context?: EvaluatorPromptContext<TPrepared>,
 	): TOutput | null;
 	processors?: Array<EvaluatorProcessor<TOutput, TPrepared>>;
+	/** Derive a source-bound checkpoint after all processors succeed. The service
+	 * commits it with the evidence watermark, not as a separate reducer write.
+	 * Must be pure and replay-safe. Only incremental evaluators receive this hook. */
+	progressState?(
+		context: EvaluatorProcessorContext<TOutput, TPrepared>,
+	): JsonValue;
 }
 
 /**

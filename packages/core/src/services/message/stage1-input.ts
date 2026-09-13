@@ -29,11 +29,20 @@ import {
 	listAvailableContextsForRole,
 	resolveStage1SenderRole,
 } from "./addressing.js";
-import { createV5MessageContextObject } from "./context-assembly.js";
+import {
+	buildCurrentTurnBoundary,
+	createV5MessageContextObject,
+} from "./context-assembly.js";
 import {
 	CONTEXT_CATALOG_REFERENCE,
 	formatAvailableContextsForPrompt,
 } from "./context-catalog.js";
+import {
+	type HistoryDiscovery,
+	historyReferenceNotice,
+	loadedHistorySegments,
+	REVIEWED_HISTORY_SELECTION_INSTRUCTIONS,
+} from "./history-discovery.js";
 import {
 	labelHistorySources,
 	shortenHistoryRoleLabels,
@@ -188,6 +197,7 @@ export function renderMessageHandlerModelInput(
 		groupTriage?: boolean;
 		responseHandlerFields?: string;
 		contextCatalog?: ContextCatalogReference;
+		history?: HistoryDiscovery;
 	},
 ): {
 	messages: ChatMessage[];
@@ -200,6 +210,13 @@ export function renderMessageHandlerModelInput(
 	const completionSourceIds = new Map(
 		completionSources?.sources.map(({ id, event }) => [event.id, id]),
 	);
+	const history =
+		options?.directMessage &&
+		!options.voiceDirectMessage &&
+		!options.groupTriage &&
+		options.history?.sourceSetId === completionSources?.sourceSetId
+			? options.history
+			: undefined;
 	const instructions = renderMessageHandlerInstructions(
 		runtime,
 		availableContexts,
@@ -211,15 +228,30 @@ export function renderMessageHandlerModelInput(
 	const dynamicSegments = rendered.promptSegments.filter(
 		(segment) => !segment.stable,
 	);
-	const currentTurnBoundary = dynamicSegments.filter(
-		(segment) => segment.id === "current-turn-boundary",
-	);
+	const currentTurnBoundary = dynamicSegments
+		.filter((segment) => segment.id === "current-turn-boundary")
+		.map((segment) =>
+			history
+				? {
+						...segment,
+						content: buildCurrentTurnBoundary({
+							hasMemoryRecallSurface: false,
+							hasOriginalReferences: true,
+						}),
+					}
+				: segment,
+		);
 	const remainingDynamicSegments = dynamicSegments.filter(
 		(segment) => segment.id !== "current-turn-boundary",
 	);
 	const priorDialogueSegments = labelHistorySources(
 		remainingDynamicSegments.filter(
-			(segment) => segment.label?.startsWith("prior_message:") === true,
+			(segment) =>
+				segment.label?.startsWith("prior_message:") === true &&
+				(!history ||
+					!segment.id ||
+					!completionSourceIds.has(segment.id) ||
+					history.visibleEventIds.has(segment.id)),
 		),
 		completionSourceIds,
 	);
@@ -244,7 +276,7 @@ export function renderMessageHandlerModelInput(
 		...(completionSources?.sources.length
 			? [
 					{
-						content: `completion_source_set: ${completionSources.sourceSetId}\nThe [hN] labels above belong to this source set. Return completionContext according to history_source_selection.`,
+						content: `completion_source_set: ${completionSources.sourceSetId}\nThe [hN] labels above belong to this source set. Return completionContext according to history_source_selection.${historyReferenceNotice(context, history)}`,
 						stable: false,
 					},
 				]
@@ -259,13 +291,21 @@ export function renderMessageHandlerModelInput(
 					},
 				]
 			: []),
+		...loadedHistorySegments(context, history),
 		...turnTailSegments,
 	];
 	const stableWireSegments = [
 		...stableSegments,
 		{ content: `message_handler_stage:\n${instructions}`, stable: true },
 		...(completionSources?.sources.length
-			? [{ content: COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS, stable: true }]
+			? [
+					{
+						content: history
+							? REVIEWED_HISTORY_SELECTION_INSTRUCTIONS
+							: COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS,
+						stable: true,
+					},
+				]
 			: []),
 	];
 	const promptSegments = normalizePromptSegments([

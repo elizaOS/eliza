@@ -16,6 +16,7 @@ import type {
 	EvaluatorEvidenceReconciliation,
 	EvaluatorRunOptions,
 	IAgentRuntime,
+	JsonValue,
 	Memory,
 	UUID,
 } from "../types/index.ts";
@@ -42,6 +43,7 @@ export function assertExtractionSourcesUnchanged(
 }
 
 export interface EvaluatorProgressSnapshot {
+	progressState?: JsonValue;
 	messages: Memory[];
 	isBackfill: boolean;
 	triggerMessage: Memory;
@@ -83,6 +85,7 @@ interface EvidenceBatch {
 interface ProgressRecord {
 	scope: ProgressScope;
 	completed: Record<string, string>;
+	progressState?: JsonValue;
 	pending?: EvidenceBatch & { output: unknown; inputBinding?: string };
 	/** Initial evidence retains migration semantics through every backfill batch. */
 	backfillRevisions?: Record<string, string>;
@@ -99,6 +102,37 @@ const snapshotState = new WeakMap<
 		batch: EvidenceBatch;
 	}
 >();
+
+function progressScope(
+	runtime: IAgentRuntime,
+	message: Pick<Memory, "roomId" | "entityId">,
+	evaluatorName: string,
+): ProgressScope {
+	return {
+		agentId: runtime.agentId,
+		roomId: message.roomId,
+		entityId: message.entityId,
+		evaluatorName,
+		version: EXTRACTION_VERSION,
+	};
+}
+
+/** Read committed evaluator state only. Pending model output is never exposed
+ * as a usable foreground checkpoint. Callers still validate current sources. */
+export async function getEvaluatorProgressState(
+	runtime: IAgentRuntime,
+	message: Pick<Memory, "roomId" | "entityId">,
+	evaluatorName: string,
+): Promise<JsonValue | undefined> {
+	const scope = progressScope(runtime, message, evaluatorName);
+	const record = readRecord(
+		await runtime.getCache<unknown>(
+			`evaluator-progress:${hashStableJson(scope)}`,
+		),
+		scope,
+	);
+	return structuredClone(record?.progressState);
+}
 
 function sourceMemory(
 	memory: Memory,
@@ -332,13 +366,7 @@ export async function hasEvaluatorSourceProgress(
 	sourceIds: readonly string[],
 ): Promise<boolean> {
 	for (const evaluatorName of evaluatorNames) {
-		const scope: ProgressScope = {
-			agentId: runtime.agentId,
-			roomId: message.roomId,
-			entityId: message.entityId,
-			evaluatorName,
-			version: EXTRACTION_VERSION,
-		};
+		const scope = progressScope(runtime, message, evaluatorName);
 		const record = readRecord(
 			await runtime.getCache<unknown>(
 				`evaluator-progress:${hashStableJson(scope)}`,
@@ -520,7 +548,11 @@ export async function prepareEvaluatorProgress(
 					...changedIds,
 					...outcome.reprocessSourceIds,
 				]);
-				const { pending: _retired, ...retained } = record;
+				const {
+					pending: _retired,
+					progressState: _invalidatedState,
+					...retained
+				} = record;
 				const reconciled: ProgressRecord = {
 					...retained,
 					completed: Object.fromEntries(
@@ -637,6 +669,7 @@ export async function prepareEvaluatorProgress(
 				structuredClone(sources.get(id) as Memory),
 			),
 			isBackfill: batch.isBackfill,
+			progressState: structuredClone(record?.progressState),
 			triggerMessage: structuredClone(
 				sources.get(batch.triggerMessageId) as Memory,
 			),
@@ -784,6 +817,7 @@ export async function stageEvaluatorOutput(
 	}
 	const record: ProgressRecord = {
 		scope: state.scope,
+		progressState: structuredClone(state.expected?.progressState),
 		...(state.expected?.lastReconciliationId
 			? { lastReconciliationId: state.expected.lastReconciliationId }
 			: {}),
@@ -809,6 +843,7 @@ export async function stageEvaluatorOutput(
 export async function commitEvaluatorProgress(
 	runtime: IAgentRuntime,
 	snapshot: EvaluatorProgressSnapshot,
+	progressState?: JsonValue,
 ): Promise<void> {
 	const state = requireSnapshot(runtime, snapshot);
 	await assertCurrent(runtime, state);
@@ -822,6 +857,11 @@ export async function commitEvaluatorProgress(
 	await assertSourcesCurrent(runtime, state);
 	const record: ProgressRecord = {
 		scope: state.scope,
+		progressState: structuredClone(
+			progressState === undefined
+				? state.expected.progressState
+				: progressState,
+		),
 		...(state.expected?.lastReconciliationId
 			? { lastReconciliationId: state.expected.lastReconciliationId }
 			: {}),

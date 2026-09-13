@@ -8,8 +8,13 @@ import {
 } from "../features/advanced-capabilities/evaluators/reflection-items";
 import { AgentRuntime } from "../runtime";
 import {
+	validateHistoryRetention,
+	visibleHistoryEventIds,
+} from "../runtime/history-retention";
+import {
 	ChannelType,
 	type Character,
+	type EvaluatorProcessorContext,
 	type Memory,
 	type RegisteredEvaluator,
 	type State,
@@ -18,6 +23,13 @@ import {
 import { stringToUuid } from "../utils";
 import { isActiveMemoryEvidence } from "../utils/extraction-evidence";
 import { EvaluatorService } from "./evaluator";
+import { getEvaluatorProgressState } from "./evaluator-progress";
+import {
+	historyRetentionContext,
+	historyRetentionEvaluator,
+} from "./history-retention";
+import { resolveStage1SenderRole } from "./message/addressing";
+import { createV5MessageContextObject } from "./message/context-assembly";
 
 const state: State = { values: {}, data: {}, text: "" };
 const turn: Memory = {
@@ -94,10 +106,421 @@ async function job(
 async function execute(runtime: AgentRuntime, task: Task) {
 	const worker = runtime.getTaskWorker("POST_TURN_MEMORY");
 	if (!worker) throw new Error("Memory worker not registered");
-	return worker.execute(runtime, {}, task);
+	try {
+		return await worker.execute(runtime, {}, task);
+	} catch (error) {
+		if (
+			error instanceof Error &&
+			"context" in error &&
+			error.context &&
+			typeof error.context === "object" &&
+			"errors" in error.context
+		) {
+			error.message += `: ${JSON.stringify(error.context.errors)}`;
+		}
+		throw error;
+	}
+}
+
+function retentionAnswer(
+	prompt: string,
+	retain: string[],
+	references: string[] = [],
+) {
+	const sourceSetId = prompt.match(/sourceSetId: ([a-f0-9]{64})/)?.[1];
+	if (!sourceSetId)
+		throw new Error("Missing retention binding in actual prompt");
+	const candidates = [
+		...prompt.matchAll(/^\[(h\d+)(?:\]| original message )/gm),
+	].map((match) => match[1]);
+	return JSON.stringify({
+		historyRetention: {
+			sourceSetId,
+			complete: true,
+			retainSourceIds: retain,
+			deferSourceIds: candidates.filter((id) => !retain.includes(id)),
+			uncertainSourceIds: [],
+			dependencyGroups: [],
+			referenceMessageIds: references,
+		},
+	});
+}
+
+function retentionPrompt(params: unknown): string {
+	const input = params as { messages: Array<{ content: string }> };
+	return input.messages.map((message) => message.content).join("\n");
+}
+
+async function retentionScope(runtime: AgentRuntime, message: Memory) {
+	return {
+		agentId: runtime.agentId,
+		roomId: message.roomId,
+		entityId: message.entityId,
+		roles: [await resolveStage1SenderRole(runtime, message)],
+	};
 }
 
 describe("durable background memory", () => {
+	it("reviews retained and new originals in the worker and produces a checkpoint matching actual foreground context", async () => {
+		const { runtime, service, message } = await setup();
+		const proposal: Memory = {
+			...message,
+			id: stringToUuid("retention-proposal"),
+			createdAt: 11,
+			entityId: runtime.agentId,
+			content: { text: "I will preview Safety fixture notes before saving." },
+		};
+		const assent: Memory = {
+			...message,
+			id: stringToUuid("retention-assent"),
+			createdAt: 12,
+			content: { text: "Yes. Keep that rule for this conversation." },
+		};
+		await runtime.upsertMemory(proposal, "messages");
+		await runtime.upsertMemory(assent, "messages");
+		runtime.registerEvaluator(historyRetentionEvaluator);
+		const prompts: string[] = [];
+		runtime.useModel = vi.fn(async (_type, params) => {
+			const prompt = retentionPrompt(params);
+			prompts.push(prompt);
+			return retentionAnswer(prompt, ["h2", "h3"]);
+		}) as AgentRuntime["useModel"];
+		await service.enqueue(assent, state, { phase: "post_turn" });
+		await execute(runtime, await job(runtime));
+		const first = await getEvaluatorProgressState(
+			runtime,
+			assent,
+			historyRetentionEvaluator.name,
+		);
+		expect(first).toMatchObject({
+			reviewedCount: 3,
+			retainedEventIds: [`history:${proposal.id}`, `history:${assent.id}`],
+		});
+		const greeting: Memory = {
+			...message,
+			id: stringToUuid("retention-hi"),
+			createdAt: 13,
+			content: { text: "hello from retention fixture" },
+		};
+		const reply: Memory = {
+			...message,
+			id: stringToUuid("retention-hey"),
+			createdAt: 14,
+			entityId: runtime.agentId,
+			content: { text: "Hey from retention fixture." },
+		};
+		await runtime.upsertMemory(greeting, "messages");
+		await runtime.upsertMemory(reply, "messages");
+		await service.enqueue(greeting, state, {
+			phase: "post_turn",
+			responses: [reply],
+			semanticSignal: false,
+		});
+		await execute(runtime, await job(runtime));
+		const checkpoint = await getEvaluatorProgressState(
+			runtime,
+			greeting,
+			historyRetentionEvaluator.name,
+		);
+		const rows = await runtime.getMemories({
+			tableName: "messages",
+			roomId: message.roomId,
+			unique: false,
+		});
+		const next: Memory = {
+			...message,
+			id: stringToUuid("retention-next"),
+			createdAt: 15,
+			content: { text: "Open Notes." },
+		};
+		const foreground = await createV5MessageContextObject({
+			runtime,
+			message: next,
+			includeTools: false,
+			state: {
+				values: {},
+				text: "",
+				data: {
+					providers: { RECENT_MESSAGES: { data: { recentMessages: rows } } },
+				},
+			},
+		});
+		const scope = await retentionScope(runtime, greeting);
+		expect(validateHistoryRetention(foreground, scope, checkpoint)).toEqual(
+			checkpoint,
+		);
+		expect(checkpoint).toMatchObject({ reviewedCount: 5 });
+		expect(visibleHistoryEventIds(foreground, scope, checkpoint)).toEqual(
+			new Set([
+				`history:${proposal.id}`,
+				`history:${assent.id}`,
+				`history:${greeting.id}`,
+				`history:${reply.id}`,
+			]),
+		);
+		const reviewSection = prompts[1].slice(
+			prompts[1].lastIndexOf("sourceSetId:"),
+		);
+		expect(reviewSection).toContain(proposal.content.text);
+		expect(reviewSection).toContain(
+			`complete shared original message ${greeting.id}`,
+		);
+		expect(reviewSection).not.toContain(greeting.content.text);
+		expect(reviewSection).not.toContain(reply.content.text);
+		expect(reviewSection).not.toContain(message.content.text);
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		expect(
+			await runtime.getMemories({
+				tableName: "messages",
+				roomId: message.roomId,
+				unique: false,
+			}),
+		).toEqual(rows);
+	});
+
+	it.each(["edit", "delete"])(
+		"invalidates retention and re-reviews complete originals after source %s",
+		async (change) => {
+			const { runtime, service, message } = await setup();
+			const next: Memory = {
+				...message,
+				id: stringToUuid(`retention-change-${change}`),
+				createdAt: 20,
+				content: { text: "I prefer exact quotations." },
+			};
+			await runtime.upsertMemory(next, "messages");
+			runtime.registerEvaluator(historyRetentionEvaluator);
+			runtime.useModel = vi.fn(async (_type, params) =>
+				retentionAnswer(retentionPrompt(params), ["h1"]),
+			) as AgentRuntime["useModel"];
+			await service.enqueue(next, state, { phase: "post_turn" });
+			await execute(runtime, await job(runtime));
+			expect(
+				await getEvaluatorProgressState(
+					runtime,
+					next,
+					historyRetentionEvaluator.name,
+				),
+			).toMatchObject({ reviewedCount: 2 });
+			if (!message.id) throw new Error("Missing fixture identity");
+			const patch = {
+				id: message.id,
+				content: { text: "Correction: I live in Lisbon." },
+			};
+			await service.mutateSourceEvidence(
+				[message.id],
+				change === "edit" ? [patch] : undefined,
+				() =>
+					change === "edit"
+						? runtime.updateMemory(patch)
+						: runtime.deleteMemory(patch.id),
+			);
+			expect(
+				await getEvaluatorProgressState(
+					runtime,
+					next,
+					historyRetentionEvaluator.name,
+				),
+			).toBeUndefined();
+			await execute(runtime, await job(runtime));
+			const cp = await getEvaluatorProgressState(
+				runtime,
+				next,
+				historyRetentionEvaluator.name,
+			);
+			const rows = await runtime.getMemories({
+				tableName: "messages",
+				roomId: message.roomId,
+				unique: false,
+			});
+			expect(
+				validateHistoryRetention(
+					historyRetentionContext(runtime, next, rows),
+					await retentionScope(runtime, next),
+					cp,
+				),
+			).toEqual(cp);
+			expect(cp).toMatchObject({ reviewedCount: change === "edit" ? 2 : 1 });
+			expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		},
+	);
+
+	it("retains a formerly deferred original read through existing background reference pagination", async () => {
+		const { runtime, service, message } = await setup();
+		runtime.registerEvaluator(historyRetentionEvaluator);
+		runtime.useModel = vi.fn(async (_type, params) =>
+			retentionAnswer(retentionPrompt(params), []),
+		) as AgentRuntime["useModel"];
+		await service.enqueue(message, state, { phase: "post_turn" });
+		await execute(runtime, await job(runtime));
+		const next: Memory = {
+			...message,
+			id: stringToUuid("retention-reference"),
+			createdAt: 20,
+			content: { text: "Keep following that earlier rule." },
+		};
+		await runtime.upsertMemory(next, "messages");
+		let read = false;
+		runtime.useModel = vi.fn(async (_type, params) => {
+			if (!read) {
+				read = true;
+				return JSON.stringify({ restoreContextBefore: next.id });
+			}
+			return retentionAnswer(
+				retentionPrompt(params),
+				["h2"],
+				[String(message.id)],
+			);
+		}) as AgentRuntime["useModel"];
+		await service.enqueue(next, state, { phase: "post_turn" });
+		await execute(runtime, await job(runtime));
+		expect(
+			await getEvaluatorProgressState(
+				runtime,
+				next,
+				historyRetentionEvaluator.name,
+			),
+		).toMatchObject({
+			reviewedCount: 2,
+			retainedEventIds: [`history:${message.id}`, `history:${next.id}`],
+		});
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+	});
+
+	it.each(["incomplete", "unknown-reference", "missing-source"])(
+		"keeps invalid retention %s pending without hiding originals",
+		async (invalid) => {
+			const { runtime, service, message } = await setup();
+			runtime.registerEvaluator(historyRetentionEvaluator);
+			runtime.useModel = vi.fn(async (_type, params) => {
+				const output = JSON.parse(
+					retentionAnswer(retentionPrompt(params), ["h1"]),
+				);
+				if (invalid === "incomplete") output.historyRetention.complete = false;
+				if (invalid === "unknown-reference")
+					output.historyRetention.referenceMessageIds = [String(message.id)];
+				if (invalid === "missing-source")
+					output.historyRetention.retainSourceIds = [];
+				return JSON.stringify(output);
+			}) as AgentRuntime["useModel"];
+			await service.enqueue(message, state, { phase: "post_turn" });
+			await expect(execute(runtime, await job(runtime))).rejects.toThrow(
+				"Background memory remains pending",
+			);
+			expect(
+				await getEvaluatorProgressState(
+					runtime,
+					message,
+					historyRetentionEvaluator.name,
+				),
+			).toBeUndefined();
+			if (!message.id) throw new Error("Fixture source has no ID");
+			expect(await runtime.getMemoryById(message.id)).toMatchObject({
+				content: message.content,
+			});
+			expect(runtime.useModel).toHaveBeenCalledOnce();
+		},
+	);
+
+	it("rejects a retention decision if original source bytes change during background inference", async () => {
+		const { runtime, service, message } = await setup();
+		runtime.registerEvaluator(historyRetentionEvaluator);
+		const started = deferred<string>();
+		const response = deferred<string>();
+		runtime.useModel = vi.fn(async (_type, params) => {
+			started.resolve(retentionPrompt(params));
+			return response.promise;
+		}) as AgentRuntime["useModel"];
+		await service.enqueue(message, state, { phase: "post_turn" });
+		const running = execute(runtime, await job(runtime));
+		const prompt = await started.promise;
+		if (!message.id) throw new Error("Missing original identity");
+		await runtime.adapter.updateMemories([
+			{ id: message.id, content: { text: "I moved to Lisbon." } },
+		]);
+		response.resolve(retentionAnswer(prompt, ["h1"]));
+		await expect(running).rejects.toThrow(
+			"Memory candidates changed during background inference",
+		);
+		expect(
+			await getEvaluatorProgressState(
+				runtime,
+				message,
+				historyRetentionEvaluator.name,
+			),
+		).toBeUndefined();
+		expect(await runtime.getMemoryById(message.id)).toMatchObject({
+			content: { text: "I moved to Lisbon." },
+		});
+	});
+	it("commits derived state with progress and replays a failed commit without another model call", async () => {
+		const { runtime, service, message } = await setup();
+		const entry = evaluator();
+		const reduce = vi.fn(({ options }: EvaluatorProcessorContext) => {
+			const extraction = options.extraction;
+			if (!extraction) throw new Error("Fixture requires incremental evidence");
+			return {
+				previous: extraction.progressState ?? null,
+				sourceIds: extraction.messages.map((source) => String(source.id)),
+			};
+		});
+		entry.progressState = reduce;
+		runtime.registerEvaluator(entry);
+		runtime.useModel = vi.fn(async () =>
+			JSON.stringify({ memory: { ok: true } }),
+		) as AgentRuntime["useModel"];
+		const write = runtime.setCache.bind(runtime);
+		let failCommit = true;
+		vi.spyOn(runtime, "setCache").mockImplementation(async (key, value) => {
+			if (
+				failCommit &&
+				key.startsWith("evaluator-progress:") &&
+				value &&
+				typeof value === "object" &&
+				"progressState" in value &&
+				value.progressState &&
+				!("pending" in value)
+			) {
+				failCommit = false;
+				return false;
+			}
+			return write(key, value);
+		});
+		await service.enqueue(message, state, { phase: "post_turn" });
+		const task = await job(runtime);
+		await expect(execute(runtime, task)).rejects.toBeInstanceOf(Error);
+		expect(
+			await getEvaluatorProgressState(runtime, message, entry.name),
+		).toBeUndefined();
+		await execute(runtime, task);
+		expect(runtime.useModel).toHaveBeenCalledOnce();
+		expect(
+			await getEvaluatorProgressState(runtime, message, entry.name),
+		).toEqual({ previous: null, sourceIds: [message.id] });
+		expect(reduce).toHaveBeenCalledTimes(2);
+		expect(
+			await getEvaluatorProgressState(
+				runtime,
+				{ ...message, entityId: runtime.agentId },
+				entry.name,
+			),
+		).toBeUndefined();
+		const next: Memory = {
+			...message,
+			id: stringToUuid("progress-state-followup"),
+			createdAt: 20,
+			content: { text: "And I like tea." },
+		};
+		await runtime.upsertMemory(next, "messages");
+		await service.enqueue(next, state, { phase: "post_turn" });
+		await execute(runtime, await job(runtime));
+		expect(
+			await getEvaluatorProgressState(runtime, message, entry.name),
+		).toEqual({
+			previous: { previous: null, sourceIds: [message.id] },
+			sourceIds: [next.id],
+		});
+	});
 	it.each(["edit", "delete"])(
 		"retires an accepted preference when its contextual proposal is changed by %s",
 		async (change) => {
