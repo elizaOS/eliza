@@ -669,6 +669,46 @@ describe("redactLogArgs (log-sink redaction, not opt-in)", () => {
 		cyclic.self = cyclic;
 		const [out] = redactLogArgs([cyclic]) as [Record<string, unknown>];
 		expect(out.name).toBe("x");
+		// A genuine cycle is cut with a marker that cannot be read as a
+		// credential mask.
+		expect(out.self).toBe("[circular]");
+	});
+
+	it("renders an object referenced twice in one call at both sites", () => {
+		const shared = { provider: "openai", model: "gpt-4o" };
+		const [, ctx] = redactLogArgs([
+			"model call",
+			{ requested: shared, resolved: shared, list: [shared, shared] },
+		]) as [string, Record<string, unknown>];
+		expect(ctx.requested).toEqual(shared);
+		expect(ctx.resolved).toEqual(shared);
+		expect(ctx.list).toEqual([shared, shared]);
+		expect(JSON.stringify(ctx)).not.toContain("[REDACTED]");
+	});
+
+	it("renders a shared Error at both sites and still scrubs its message", () => {
+		const err = new Error("token sk-abcdefghijklmnop1234 rejected");
+		const [ctx] = redactLogArgs([{ first: err, second: err }]) as [
+			Record<string, Error>,
+		];
+		expect(ctx.first).toBeInstanceOf(Error);
+		expect(ctx.second).toBeInstanceOf(Error);
+		expect(ctx.second.message).toBe(ctx.first.message);
+		expect(ctx.second.message).not.toContain("sk-abcdefghijklmnop1234");
+	});
+
+	it("distinguishes a sibling reference from a cycle inside one walk", () => {
+		// `leaf` appears under two siblings and, separately, inside a true cycle:
+		// the sibling copies are rendered in full, the self-reference is cut.
+		const leaf = { id: "leaf" };
+		const loop: Record<string, unknown> = { leaf };
+		loop.back = loop;
+		const [ctx] = redactLogArgs([{ a: leaf, b: leaf, loop }]) as [
+			Record<string, unknown>,
+		];
+		expect(ctx.a).toEqual(leaf);
+		expect(ctx.b).toEqual(leaf);
+		expect(ctx.loop).toEqual({ leaf, back: "[circular]" });
 	});
 
 	it("drops a hostile own toJSON so serialization cannot reconstitute secrets", () => {
