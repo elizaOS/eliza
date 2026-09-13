@@ -44,7 +44,11 @@ import { bindMachineAuthIdentityToEntity } from "../../routes/authenticated-enti
 import { MonthlyFamilyPacketService } from "../family-coordination/monthly-packet.js";
 import { exportFamilyWorkspace } from "../family-workflows/workspace-export.js";
 import { SchoolCalendarWorkflow } from "../school/calendar-workflow.js";
-import { executeRawSql, sqlQuote } from "../sql.js";
+import { executeRawSql, executeRawSqlTx, sqlQuote } from "../sql.js";
+import {
+  previewAgreementDeletion,
+  withReviewedAgreementDeletion,
+} from "./agreement-deletion-snapshot.js";
 import {
   AgreementKnowledgeError,
   AgreementKnowledgeRepository,
@@ -1643,5 +1647,88 @@ describe("parenting-agreement knowledge — real PGlite", () => {
           { requesterEntityId: runtime.agentId, role: "OWNER" },
         );
     }
+  });
+  it("rejects a reviewed deletion after new versions or pins and rolls back failed revocation", async () => {
+    const service = createAgreementKnowledgeService(runtime);
+    const input = {
+      agreementKey: "deletion-snapshot-family",
+      title: "Deletion snapshot fixture",
+      originalFilename: "deletion.pdf",
+      mimeType: "application/pdf",
+      bytes: pdf("deletion v1"),
+      uploadedByEntityId: SELF_ENTITY_ID,
+    };
+    const first = await service.createAgreementVersion(input);
+    const selection = {
+      householdId: first.householdId,
+      agreementKey: first.agreementKey,
+    };
+    const request = { ownerEntityId: SELF_ENTITY_ID, selection };
+    const reviewed = await previewAgreementDeletion(runtime, request);
+    let entered = false;
+    const observe = async () => {
+      entered = true;
+    };
+    await expect(
+      previewAgreementDeletion(runtime, {
+        ...request,
+        ownerEntityId: "verified-co-parent",
+      }),
+    ).rejects.toMatchObject({ code: "AGREEMENT_ACCESS_DENIED" });
+    await service.createAgreementVersion({
+      ...input,
+      bytes: pdf("deletion v2"),
+    });
+    await expect(
+      withReviewedAgreementDeletion(
+        runtime,
+        { ...request, expectedSha256: reviewed.sha256 },
+        observe,
+      ),
+    ).rejects.toMatchObject({ code: "AGREEMENT_DELETION_PREVIEW_STALE" });
+    expect(entered).toBe(false);
+    const afterVersion = await previewAgreementDeletion(runtime, request);
+    await service.pin({
+      artifactId: first.id,
+      targetType: "agent",
+      targetId: runtime.agentId,
+      pinnedByEntityId: SELF_ENTITY_ID,
+    });
+    await expect(
+      withReviewedAgreementDeletion(
+        runtime,
+        { ...request, expectedSha256: afterVersion.sha256 },
+        observe,
+      ),
+    ).rejects.toMatchObject({ code: "AGREEMENT_DELETION_PREVIEW_STALE" });
+    expect(entered).toBe(false);
+    const afterPin = await previewAgreementDeletion(runtime, request);
+    // An unrelated agreement must not invalidate the reviewed selection.
+    await service.createAgreementVersion({
+      ...input,
+      agreementKey: "unrelated-deletion-family",
+      bytes: pdf("unrelated"),
+    });
+    await expect(
+      withReviewedAgreementDeletion(
+        runtime,
+        { ...request, expectedSha256: afterPin.sha256 },
+        async (tx) => {
+          await executeRawSqlTx(
+            tx,
+            `UPDATE app_lifeops.life_household_knowledge_pins SET unpinned_at = '2026-09-13T00:00:00Z' WHERE agent_id = ${sqlQuote(runtime.agentId)} AND artifact_id = ${sqlQuote(first.id)}`,
+          );
+          throw new Error("Synthetic revocation failure");
+        },
+      ),
+    ).rejects.toThrow("Synthetic revocation failure");
+    const afterFailure = await previewAgreementDeletion(runtime, request);
+    expect(afterFailure.sha256).toBe(afterPin.sha256);
+    await withReviewedAgreementDeletion(
+      runtime,
+      { ...request, expectedSha256: afterFailure.sha256 },
+      observe,
+    );
+    expect(entered).toBe(true);
   });
 });
