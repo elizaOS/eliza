@@ -41,6 +41,14 @@ const familyDocument = `(metadata->>'source' = 'lifeops.parenting-agreement' OR 
 
 const sources: readonly DependencySource[] = [
   {
+    kind: "agreementUploads",
+    table: "cache",
+    fields: ["key"],
+    predicate: "key LIKE 'lifeops:agreement-upload:v1:%'",
+    unsettledPredicate:
+      "(value->>'status') IS DISTINCT FROM 'uploading' AND (value->>'status') IS DISTINCT FROM 'complete'",
+  },
+  {
     kind: "workspaceLifecycle",
     table: "app_lifeops.life_family_workspace_state",
     fields: ["agent_id", "state", "updated_at"],

@@ -67,6 +67,10 @@ import {
   type ParentingAgreementArtifact,
 } from "./agreement-knowledge.js";
 import {
+  acceptAgreementChunk,
+  beginAgreementUpload,
+} from "./agreement-upload-session.js";
+import {
   getHouseholdCoordinationService,
   type HouseholdCoordinationService,
 } from "./service.js";
@@ -2215,6 +2219,87 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       (await previewFamilyDeletionDatabase(runtime, SELF_ENTITY_ID)).sha256,
     ).toBe(settled.sha256);
   });
+  it("includes staged private upload dependencies and rejects a preview after its manifest changes", async () => {
+    const bytes = pdf("staged source awaiting owner completion");
+    const manifest = await beginAgreementUpload(runtime, {
+      agreementKey: "staged-deletion-preview",
+      title: "Private staged title",
+      originalFilename: "staged.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: bytes.length,
+    });
+    const cacheKey = `lifeops:agreement-upload:v1:${manifest.uploadId}`;
+    const storage = runtime.getService<IFileStorageService>(
+      ServiceType.REMOTE_FILES,
+    );
+    if (!storage) throw new Error("Canonical storage is unavailable");
+    const uploaded = await acceptAgreementChunk({
+      runtime,
+      uploadId: manifest.uploadId,
+      index: 0,
+      bytes,
+      sha256: crypto.createHash("sha256").update(bytes).digest("hex"),
+    });
+    try {
+      expect(await storage.readPrivate(uploaded.chunks[0].fileName)).toEqual(
+        bytes,
+      );
+      const before = await previewFamilyDeletionDatabase(
+        runtime,
+        SELF_ENTITY_ID,
+      );
+      const dependency = before.records.find(
+        (record) =>
+          record.kind === "agreementUploads" &&
+          record.identity.key === cacheKey,
+      );
+      expect(dependency?.classification).toBe("owned");
+      expect(JSON.stringify(before)).not.toContain(uploaded.chunks[0].fileName);
+      expect(JSON.stringify(before)).not.toContain(manifest.title);
+      await runtime.setCache(cacheKey, { ...uploaded, status: "committing" });
+      let entered = false;
+      await expect(
+        withReviewedFamilyDeletionDatabase(
+          runtime,
+          {
+            ownerEntityId: SELF_ENTITY_ID,
+            expectedSha256: before.sha256,
+          },
+          async () => {
+            entered = true;
+          },
+        ),
+      ).rejects.toMatchObject({ code: "FAMILY_DELETION_PREVIEW_STALE" });
+      expect(entered).toBe(false);
+      const committing = await previewFamilyDeletionDatabase(
+        runtime,
+        SELF_ENTITY_ID,
+      );
+      await expect(
+        withReviewedFamilyDeletionDatabase(
+          runtime,
+          {
+            ownerEntityId: SELF_ENTITY_ID,
+            expectedSha256: committing.sha256,
+          },
+          async () => {
+            entered = true;
+          },
+        ),
+      ).rejects.toMatchObject({ code: "FAMILY_DELETION_WORK_UNSETTLED" });
+      expect(entered).toBe(false);
+      expect(await storage.readPrivate(uploaded.chunks[0].fileName)).toEqual(
+        bytes,
+      );
+    } finally {
+      for (const chunk of uploaded.chunks) {
+        expect(await storage.deletePrivate(chunk.fileName)).toBe(true);
+        expect(await storage.readPrivate(chunk.fileName)).toBeNull();
+      }
+      expect(await runtime.deleteCache(cacheKey)).toBe(true);
+    }
+  });
+
   it("correlates an unacknowledged private write with the durable claim before reconciliation", async () => {
     const storage = runtime.getService<IFileStorageService>(
       ServiceType.REMOTE_FILES,
