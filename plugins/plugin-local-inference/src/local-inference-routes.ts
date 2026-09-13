@@ -711,6 +711,24 @@ async function ensureDefaultAssignment(model: CatalogModel): Promise<void> {
 	await assignModel(model, false);
 }
 
+/**
+ * Start offset a 206 Partial Content response actually covers, from its
+ * Content-Range header (`bytes <start>-<end>/<size>`). Returns null when the
+ * header is missing or malformed, which a resume must treat as "not honored":
+ * RFC 7233 requires Content-Range on every 206, and the header, not the status
+ * code, states which bytes were sent.
+ */
+function contentRangeStart(
+	header: string | string[] | undefined,
+): number | null {
+	const value = Array.isArray(header) ? header[0] : header;
+	if (typeof value !== "string") return null;
+	const match = /^bytes\s+(\d+)-(\d+)\/(?:\d+|\*)$/i.exec(value.trim());
+	if (!match) return null;
+	const start = Number.parseInt(match[1], 10);
+	return Number.isFinite(start) ? start : null;
+}
+
 async function downloadModel(
 	model: CatalogModel,
 	record: DownloadJob,
@@ -745,16 +763,33 @@ async function downloadModel(
 		if (statusCode < 200 || statusCode >= 300) {
 			throw new Error(`HTTP ${statusCode} ${response.statusMessage ?? ""}`);
 		}
+		// A Range request the origin did not honor comes back as 200 with the
+		// whole file (CDN redirect targets, gated repos, and mirrors do this), or
+		// as a 206 whose Content-Range starts at byte zero (proxies that clamp the
+		// requested offset). Appending either body to the stale partial produces
+		// a corrupt GGUF whose first four bytes still read "GGUF", so the magic
+		// check below cannot catch it. Only a 206 whose Content-Range starts
+		// exactly at the local partial length continues the file; anything else
+		// restarts from byte zero, as services/downloader.ts does.
+		let startByte = existingPartial;
+		if (
+			startByte > 0 &&
+			(statusCode !== 206 ||
+				contentRangeStart(response.headers["content-range"]) !== startByte)
+		) {
+			startByte = 0;
+			record.received = 0;
+		}
 		const contentLength = Number.parseInt(
 			String(response.headers["content-length"] ?? "0"),
 			10,
 		);
 		if (Number.isFinite(contentLength) && contentLength > 0) {
-			record.total = existingPartial + contentLength;
+			record.total = startByte + contentLength;
 		}
 
 		const stream = fs.createWriteStream(partialPath, {
-			flags: existingPartial > 0 ? "a" : "w",
+			flags: startByte > 0 ? "a" : "w",
 		});
 		let lastSampleAt = Date.now();
 		let lastSampleBytes = record.received;
