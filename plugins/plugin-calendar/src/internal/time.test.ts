@@ -52,7 +52,9 @@ describe("getTimeZoneOffsetMinutes", () => {
   });
 
   it("handles negative timezone offsets for various timezones", () => {
-    expect(getTimeZoneOffsetMinutes(NOON_UTC, "America/Los_Angeles")).toBe(-420);
+    expect(getTimeZoneOffsetMinutes(NOON_UTC, "America/Los_Angeles")).toBe(
+      -420,
+    );
     expect(getTimeZoneOffsetMinutes(NOON_UTC, "America/Chicago")).toBe(-300);
   });
 

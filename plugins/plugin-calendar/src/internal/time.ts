@@ -78,7 +78,9 @@ export function getZonedDateParts(
 
 export function parseOffsetToken(token: string): number {
   if (token === "GMT" || token === "UTC") return 0;
-  const match = token.match(/^(?:GMT|UTC)?([+-]|\u2212|\u2013|\u2014)(\d{1,2})(?::?(\d{2}))?(?::(\d{2}))?$/i);
+  const match = token.match(
+    /^(?:GMT|UTC)?([+-]|\u2212|\u2013|\u2014)(\d{1,2})(?::?(\d{2}))?(?::(\d{2}))?$/i,
+  );
   if (!match) {
     throw new Error(`unsupported offset token: ${token}`);
   }

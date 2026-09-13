@@ -10,9 +10,9 @@ import {
   formatInstantAsRfc3339InTimeZone,
   getLocalDateKey,
   getTimeZoneOffsetMinutes,
-  parseOffsetToken,
   getWeekdayForLocalDate,
   getZonedDateParts,
+  parseOffsetToken,
 } from "./time.js";
 
 // #8795 — every sleep/bedtime/circadian computation in plugin-health rests on
@@ -59,7 +59,12 @@ describe("getTimeZoneOffsetMinutes", () => {
     expect(parseOffsetToken("GMT-5")).toBe(-300);
     expect(parseOffsetToken("GMT-0:44:30")).toBe(-44.5);
     expect(parseOffsetToken("GMT-11:19:40")).toBeCloseTo(-679.6667, 3);
-    expect(getTimeZoneOffsetMinutes(new Date("1970-01-01T00:00:00Z"), "Africa/Monrovia")).toBe(-44.5);
+    expect(
+      getTimeZoneOffsetMinutes(
+        new Date("1970-01-01T00:00:00Z"),
+        "Africa/Monrovia",
+      ),
+    ).toBe(-44.5);
   });
 });
 
@@ -151,6 +156,15 @@ describe("formatInstantAsRfc3339InTimeZone", () => {
     expect(formatInstantAsRfc3339InTimeZone(noonUtcJan, "UTC")).toBe(
       "2026-01-15T12:00:00+00:00",
     );
+  });
+
+  it("formats historical seconds-bearing offsets by rounding to whole minutes (-00:45 for Monrovia 1970)", () => {
+    expect(
+      formatInstantAsRfc3339InTimeZone(
+        "1970-01-01T00:00:00Z",
+        "Africa/Monrovia",
+      ),
+    ).toBe("1969-12-31T23:15:30-00:45");
   });
 
   it("throws on an invalid datetime rather than emitting NaN", () => {

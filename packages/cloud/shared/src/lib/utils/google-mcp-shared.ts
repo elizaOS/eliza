@@ -215,7 +215,9 @@ function getZonedDateParts(
 
 export function parseOffsetToken(token: string): number {
   if (token === "GMT" || token === "UTC") return 0;
-  const match = token.match(/^(?:GMT|UTC)?([+-]|\u2212|\u2013|\u2014)(\d{1,2})(?::?(\d{2}))?(?::(\d{2}))?$/i);
+  const match = token.match(
+    /^(?:GMT|UTC)?([+-]|\u2212|\u2013|\u2014)(\d{1,2})(?::?(\d{2}))?(?::(\d{2}))?$/i,
+  );
   if (!match) {
     throw new Error(`unsupported offset token: ${token}`);
   }
@@ -239,15 +241,20 @@ export function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
   return parseOffsetToken(token);
 }
 
+/**
+ * Formats an offset in minutes into an RFC 3339 offset token (`±HH:MM`).
+ * Seconds-bearing historical offsets (e.g. GMT-0:44:30 -> -44.5 min) are rounded to
+ * the nearest whole minute (-00:45) as RFC 3339 cannot represent sub-minute offsets.
+ * Re-parsing a formatted token for historical seconds-bearing zones may drift by up to 30s.
+ */
 function formatOffsetToken(offsetMinutes: number): string {
   const sign = offsetMinutes >= 0 ? "+" : "-";
   const absolute = Math.abs(offsetMinutes);
-  const hours = Math.trunc(absolute / 60)
+  const rounded = Math.round(absolute);
+  const hours = Math.floor(rounded / 60)
     .toString()
     .padStart(2, "0");
-  const minutes = Math.trunc(absolute % 60)
-    .toString()
-    .padStart(2, "0");
+  const minutes = (rounded % 60).toString().padStart(2, "0");
   return `${sign}${hours}:${minutes}`;
 }
 

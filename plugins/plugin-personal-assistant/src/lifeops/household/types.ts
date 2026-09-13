@@ -437,7 +437,10 @@ const RFC3339_INSTANT_PATTERN =
  */
 export function formatTimezoneOffsetToken(value: string): string {
   if (value === "GMT" || value === "UTC") return "+00:00";
-  const match = /^(?:GMT|UTC)?([+-]|\u2212|\u2013|\u2014)(\d{1,2})(?::?(\d{2}))?(?::(\d{2}))?$/i.exec(value ?? "");
+  const match =
+    /^(?:GMT|UTC)?([+-]|\u2212|\u2013|\u2014)(\d{1,2})(?::?(\d{2}))?(?::(\d{2}))?$/i.exec(
+      value ?? "",
+    );
   if (!match?.[1] || !match?.[2]) {
     throw new HouseholdCoordinationError(
       "Could not resolve the IANA time-zone offset at the supplied instant",
@@ -446,7 +449,10 @@ export function formatTimezoneOffsetToken(value: string): string {
     );
   }
   const sign = match[1] === "+" ? "+" : "-";
-  const totalSeconds = Number(match[2]) * 3600 + Number(match[3] ?? "0") * 60 + Number(match[4] ?? "0");
+  const totalSeconds =
+    Number(match[2]) * 3600 +
+    Number(match[3] ?? "0") * 60 +
+    Number(match[4] ?? "0");
   const totalMinutes = Math.round(totalSeconds / 60);
   const hours = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
   const minutes = String(totalMinutes % 60).padStart(2, "0");
