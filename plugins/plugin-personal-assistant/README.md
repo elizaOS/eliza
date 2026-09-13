@@ -435,3 +435,17 @@ internals; it consumes the plugin's public exports only. See
 - Prompt-content lint rules: `scripts/lint-default-packs.mjs`.
 - Health domain: `plugins/plugin-health/README.md`.
 - REST routes: `src/routes/`.
+
+### Family workspace export
+
+The owner-only `POST /api/lifeops/family-workflows/export` downloads a ZIP with
+all family agreement versions, retained school PDFs, monthly packet versions
+and drafts, their approval records, and stored provider/school mutation receipts.
+Each member has a SHA-256 checksum. Agreement archives preserve their existing
+source/extraction and review/access provenance; packet and workflow records use
+one database statement snapshot. The manifest records this component-snapshot
+boundary and explicitly identifies uninitialized historical record stores.
+Missing or changed retained PDF bytes fail export rather than producing a
+healthy-looking partial archive. Connection credentials and executor lease
+tokens are excluded. Export records preparation, not receipt by the client,
+and does not revoke access or delete data.
