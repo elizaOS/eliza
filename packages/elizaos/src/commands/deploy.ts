@@ -277,10 +277,26 @@ async function cloudRequest<T>(
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const text = await response.text();
-  const parsed = text ? JSON.parse(text) : {};
+  let parsed: unknown;
+  try {
+    parsed = text ? JSON.parse(text) : {};
+  } catch (err) {
+    if (!response.ok) {
+      // A gateway/proxy error page is not JSON; keep the status-aware
+      // diagnostics instead of surfacing a raw JSON SyntaxError.
+      parsed = undefined;
+    } else {
+      const reason = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `${method} ${routePath} returned invalid JSON: ${reason}`,
+      );
+    }
+  }
   if (!response.ok) {
+    const summary =
+      parsed === undefined ? "response body was not JSON" : jsonSummary(parsed);
     throw new Error(
-      `${method} ${routePath} failed (${response.status}): ${jsonSummary(parsed)}`,
+      `${method} ${routePath} failed (${response.status}): ${summary}`,
     );
   }
   return parsed as T;
