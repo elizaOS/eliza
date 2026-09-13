@@ -17,11 +17,16 @@ import {
 	stringifyForDiagnostics,
 	stringifyForModel,
 } from "../runtime/json-output.ts";
+import { estimateModelInputTokens } from "../runtime/model-input-budget.ts";
 import { renderActionResultsForModel } from "../runtime/planner-rendering.ts";
 import { buildProviderCachePlan } from "../runtime/provider-cache-plan.ts";
 import { isMobilePlatform } from "../runtime-env.ts";
 import { renderStoredEnvelopesForPrompt } from "../security/external-content";
-import { setTrajectoryPurpose } from "../trajectory-context.ts";
+import {
+	getTrajectoryContext,
+	setTrajectoryPurpose,
+} from "../trajectory-context.ts";
+import { resolveTrajectoryLogger } from "../trajectory-utils.ts";
 import type {
 	ActionResult,
 	EvaluatorRunContext,
@@ -39,6 +44,7 @@ import type {
 import { EventType, ModelType } from "../types/index.ts";
 import { ChannelType } from "../types/primitives.ts";
 import { Service as BaseService } from "../types/service.ts";
+import { getUserMessageText } from "../utils/message-text.ts";
 import { isObjectRecord as isRecord } from "../utils/type-guards.ts";
 import {
 	toWellFormedUnicode,
@@ -58,6 +64,7 @@ import {
 	getRoomTranscript,
 	ROOM_TRANSCRIPT_HEADING,
 } from "./evaluator-transcript.ts";
+import { applyPriorDialogueBudget } from "./message/dialogue-context.ts";
 
 type PreparedEntry = {
 	evaluator: RegisteredEvaluator;
@@ -143,6 +150,130 @@ function hasProviderConversationBlock(state: State): boolean {
 		typeof recent.text === "string" &&
 		recent.text.includes(CONVERSATION_MESSAGES_HEADER_PREFIX)
 	);
+}
+
+const POST_TURN_EVALUATOR_MAX_PROMPT_TOKENS_SETTING =
+	"POST_TURN_EVALUATOR_MAX_PROMPT_TOKENS";
+/** Under the 131,072-token window the live post-turn model rejected at 137K and 151K prompt tokens (2026-09-13). */
+const POST_TURN_EVALUATOR_MAX_PROMPT_TOKENS_DEFAULT = 60_000;
+const POST_TURN_EVALUATOR_TRIM_PASSES = 3;
+/** Inverse of estimateTokensFromChars with headroom so one pass normally lands under budget. */
+const POST_TURN_EVALUATOR_CHARS_PER_TOKEN = 3.5 * 1.1;
+const POST_TURN_EVALUATOR_SKIP_REASON = "input_budget_exceeded";
+const POST_TURN_EVALUATOR_SKIP_ERROR =
+	"Post-turn evaluator skipped: estimated prompt exceeds POST_TURN_EVALUATOR_MAX_PROMPT_TOKENS";
+/** One rendered RECENT_MESSAGES row starts `HH:MM (relative time) [entityId] `. */
+const CONVERSATION_ROW_START = /^\d{2}:\d{2} \([^()\n]*\) \[[^\]\n]+\] /gm;
+/** Sections the RECENT_MESSAGES provider appends after its conversation block. */
+const CONVERSATION_BLOCK_END =
+	/\n\n# (?:Received Message|Focus your response|Recent conversations across verified accounts)\n/;
+
+function positiveIntegerSetting(
+	runtime: IAgentRuntime,
+	key: string,
+	fallback: number,
+): number {
+	const value = runtime.getSetting(key);
+	const parsed =
+		typeof value === "number"
+			? value
+			: typeof value === "string"
+				? Number.parseInt(value, 10)
+				: Number.NaN;
+	return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : fallback;
+}
+
+function estimatePromptTokens(
+	rendered: RenderedEvaluatorPrompt,
+	schema: JSONSchema,
+): number {
+	return estimateModelInputTokens({
+		messages: [{ role: "user", content: rendered.prompt }],
+		responseSchema: schema,
+	});
+}
+
+type ConversationBlockTrim = {
+	text: string;
+	omittedRows: number;
+};
+
+/**
+ * Drops the oldest rows of the RECENT_MESSAGES conversation block in `text`
+ * (formatMessages renders newest first, so the oldest rows close the block)
+ * until at least `dropChars` are gone; the newest row always stays. Null when
+ * there is no block or nothing to drop.
+ */
+function trimConversationBlock(
+	text: string,
+	dropChars: number,
+): ConversationBlockTrim | null {
+	const headerAt = text.indexOf(CONVERSATION_MESSAGES_HEADER_PREFIX);
+	const headerEnd = headerAt >= 0 ? text.indexOf("\n", headerAt) : -1;
+	if (headerEnd < 0) return null;
+	const bodyStart = headerEnd + 1;
+	const endMatch = CONVERSATION_BLOCK_END.exec(text.slice(bodyStart));
+	const bodyEnd = endMatch ? bodyStart + endMatch.index : text.length;
+	const body = text.slice(bodyStart, bodyEnd);
+	const rowStarts = Array.from(
+		body.matchAll(CONVERSATION_ROW_START),
+		(match) => match.index ?? 0,
+	);
+	if (rowStarts.length < 2) return null;
+	const droppedChars = (kept: number): number =>
+		kept < rowStarts.length ? body.length - (rowStarts[kept] ?? 0) : 0;
+	let kept = rowStarts.length;
+	while (kept > 1 && droppedChars(kept) < dropChars) kept--;
+	if (kept === rowStarts.length) return null;
+	const omittedRows = rowStarts.length - kept;
+	const note = `[${omittedRows} older message(s) omitted for the post-turn evaluator input budget]\n`;
+	return {
+		omittedRows,
+		text: `${text.slice(0, bodyStart)}${body.slice(0, rowStarts[kept] ?? 0)}${note}${text.slice(bodyEnd)}`,
+	};
+}
+
+function trimProviderConversation(
+	state: State,
+	dropChars: number,
+): { state: State; omittedRows: number } | null {
+	const providers = state.data.providers;
+	const recent = providers?.RECENT_MESSAGES;
+	if (typeof recent?.text !== "string") return null;
+	const provider = trimConversationBlock(recent.text, dropChars);
+	const shared = trimConversationBlock(state.text, dropChars);
+	if (!provider || !shared) return null;
+	return {
+		omittedRows: shared.omittedRows,
+		state: {
+			...state,
+			text: shared.text,
+			data: {
+				...state.data,
+				providers: {
+					...providers,
+					RECENT_MESSAGES: { ...recent, text: provider.text },
+				},
+			},
+		},
+	};
+}
+
+function trimTranscript(
+	roomTranscript: Memory[] | null,
+	dropChars: number,
+): { roomTranscript: Memory[]; omittedRows: number } | null {
+	if (!roomTranscript || roomTranscript.length < 2) return null;
+	const rows = [...roomTranscript];
+	const totalChars = rows.reduce(
+		(total, row) => total + getUserMessageText(row).length,
+		0,
+	);
+	const omittedRows = applyPriorDialogueBudget(rows, {
+		maxMessages: rows.length - 1,
+		maxChars: Math.max(1, totalChars - dropChars),
+	});
+	return omittedRows > 0 ? { roomTranscript: rows, omittedRows } : null;
 }
 
 function mergeStates(base: State | undefined, providerState: State): State {
@@ -243,6 +374,8 @@ function buildPrompt(params: {
 	active: PreparedEntry[];
 	options: EvaluatorRunOptions;
 	schema: JSONSchema;
+	/** Oldest conversation rows dropped by the input budget, if any. */
+	transcriptOmittedRows?: number;
 }): RenderedEvaluatorPrompt {
 	const { runtime, message, state, active, options } = params;
 	const incremental = active.every((entry) => entry.progress !== undefined);
@@ -266,6 +399,9 @@ function buildPrompt(params: {
 	// second, plainer copy (live 2026-09-06: three copies per call, 107K tokens,
 	// the provider limit reachable as the room grows).
 	const providerConversationRendered = hasProviderConversationBlock(state);
+	const omittedNote = params.transcriptOmittedRows
+		? `${params.transcriptOmittedRows} older message(s) omitted for the post-turn evaluator input budget`
+		: "";
 	// The merged evaluator prompt uses complete model projections while the
 	// complete ActionResults remain available on state for evaluator code.
 	const sharedParts = {
@@ -283,7 +419,7 @@ function buildPrompt(params: {
 		// A failed transcript read leaves sections on their own copies so the
 		// failure isolates per evaluator exactly as before.
 		roomTranscript: providerConversationRendered
-			? `rendered once below in Provider context under "${CONVERSATION_MESSAGES_HEADER_PREFIX}N retained)" (complete, deduped, oldest first)`
+			? `rendered once below in Provider context under "${CONVERSATION_MESSAGES_HEADER_PREFIX}N retained)" (${omittedNote || "complete, deduped, oldest first"})`
 			: params.roomTranscript === null
 				? "(unavailable this turn)"
 				: incremental
@@ -310,7 +446,7 @@ function buildPrompt(params: {
 								},
 							})),
 						)
-					: formatRecentMessages(params.roomTranscript),
+					: `${omittedNote ? `(${omittedNote})\n` : ""}${formatRecentMessages(params.roomTranscript)}`,
 	};
 	const shared = {
 		roomTranscriptRendered:
@@ -451,6 +587,75 @@ function buildPrompt(params: {
 		// Automatic cloud prefix reuse needs ordered text, not an account-gated
 		// routing hint. Keep canonical local metadata without enabling new hints.
 		providerOptions: { eliza: plan.providerOptions.eliza },
+	};
+}
+
+type BudgetedEvaluatorPrompt = {
+	rendered: RenderedEvaluatorPrompt;
+	estimatedPromptTokens: number;
+	budgetTokens: number;
+	omittedRows: number;
+	skip: boolean;
+};
+
+/**
+ * Estimates the merged prompt before dispatch. Over budget, the oldest shared
+ * conversation rows are dropped (newest first kept, current turn untouched)
+ * and the prompt re-rendered; still over budget means the call is skipped.
+ */
+function applyPostTurnInputBudget(
+	params: Parameters<typeof buildPrompt>[0] & {
+		rendered: RenderedEvaluatorPrompt;
+		/** Incremental evidence is the extraction contract; only complete-history batches trim. */
+		trimmable: boolean;
+	},
+): BudgetedEvaluatorPrompt {
+	const { rendered: initial, trimmable, ...promptInput } = params;
+	const budgetTokens = positiveIntegerSetting(
+		promptInput.runtime,
+		POST_TURN_EVALUATOR_MAX_PROMPT_TOKENS_SETTING,
+		POST_TURN_EVALUATOR_MAX_PROMPT_TOKENS_DEFAULT,
+	);
+	let rendered = initial;
+	let estimatedPromptTokens =
+		promptInput.active.length > 0
+			? estimatePromptTokens(rendered, promptInput.schema)
+			: 0;
+	let state = promptInput.state;
+	let roomTranscript = promptInput.roomTranscript;
+	let omittedRows = 0;
+	for (
+		let pass = 0;
+		trimmable &&
+		pass < POST_TURN_EVALUATOR_TRIM_PASSES &&
+		estimatedPromptTokens > budgetTokens;
+		pass++
+	) {
+		const dropChars = Math.ceil(
+			(estimatedPromptTokens - budgetTokens) *
+				POST_TURN_EVALUATOR_CHARS_PER_TOKEN,
+		);
+		const trimmed = hasProviderConversationBlock(state)
+			? trimProviderConversation(state, dropChars)
+			: trimTranscript(roomTranscript, dropChars);
+		if (!trimmed) break;
+		if ("state" in trimmed) state = trimmed.state;
+		else roomTranscript = trimmed.roomTranscript;
+		omittedRows += trimmed.omittedRows;
+		rendered = buildPrompt({
+			...promptInput,
+			state,
+			roomTranscript,
+			transcriptOmittedRows: omittedRows,
+		});
+		estimatedPromptTokens = estimatePromptTokens(rendered, promptInput.schema);
+	}
+	return {
+		rendered,
+		estimatedPromptTokens,
+		budgetTokens,
+		omittedRows,
+		skip: estimatedPromptTokens > budgetTokens,
 	};
 }
 
@@ -1025,6 +1230,51 @@ export class EvaluatorService extends BaseService {
 		}
 	}
 
+	/** Logs the skipped model call and settles the post_turn trajectory step as gated. */
+	private recordInputBudgetSkip(budgeted: BudgetedEvaluatorPrompt): void {
+		const details = {
+			reason: POST_TURN_EVALUATOR_SKIP_REASON,
+			estimatedPromptTokens: budgeted.estimatedPromptTokens,
+			budgetTokens: budgeted.budgetTokens,
+			omittedRows: budgeted.omittedRows,
+		};
+		this.runtime.logger.warn(
+			{ src: "service:evaluator", agentId: this.runtime.agentId, ...details },
+			POST_TURN_EVALUATOR_SKIP_ERROR,
+		);
+		const context = getTrajectoryContext();
+		const trajectoryId = context?.trajectoryId?.trim();
+		const stepId = context?.trajectoryStepId?.trim();
+		if (!trajectoryId || !stepId) return;
+		try {
+			resolveTrajectoryLogger(this.runtime)?.completeStep?.(
+				trajectoryId,
+				stepId,
+				{
+					actionType: "evaluator",
+					actionName: "post_turn",
+					parameters: details,
+					success: true,
+					result: {
+						success: true,
+						data: { ...details, gated: true, llmCallSkipped: true },
+					},
+				},
+			);
+		} catch (error) {
+			// error-policy:J7 trajectory settlement is diagnostic; the skip stands.
+			this.runtime.reportError(
+				"EvaluatorService.recordInputBudgetSkip",
+				error,
+				{
+					trajectoryId,
+					stepId,
+					diagnosticOnly: true,
+				},
+			);
+		}
+	}
+
 	private skippedResult(params?: {
 		activeEvaluators?: string[];
 		processedEvaluators?: string[];
@@ -1243,7 +1493,7 @@ export class EvaluatorService extends BaseService {
 				)
 			: legacyRoomTranscript;
 		const schema = buildMergedSchema(freshEntries);
-		const rendered = buildPrompt({
+		const promptInput = {
 			runtime: this.runtime,
 			message,
 			state: composedState,
@@ -1251,7 +1501,28 @@ export class EvaluatorService extends BaseService {
 			active: freshEntries,
 			options,
 			schema,
+		};
+		const budgeted = applyPostTurnInputBudget({
+			...promptInput,
+			rendered: buildPrompt(promptInput),
+			trimmable: progress === undefined,
 		});
+		const rendered = budgeted.rendered;
+		if (budgeted.skip) {
+			this.recordInputBudgetSkip(budgeted);
+			if (
+				preparedEntries.every(
+					(entry) => entry.progress?.pendingOutput === undefined,
+				)
+			) {
+				return this.skippedResult({
+					activeEvaluators: preparedEntries.map(
+						({ evaluator }) => evaluator.name,
+					),
+					errors,
+				});
+			}
+		}
 
 		const evaluatorId =
 			uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
@@ -1271,8 +1542,9 @@ export class EvaluatorService extends BaseService {
 				}),
 			);
 
-		const { output, error } =
-			freshEntries.length > 0
+		const { output, error } = budgeted.skip
+			? { output: null, error: POST_TURN_EVALUATOR_SKIP_ERROR }
+			: freshEntries.length > 0
 				? await this.readEvaluatorOutput({
 						evaluatorId,
 						rendered,
