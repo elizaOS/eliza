@@ -4,7 +4,7 @@
  * helpers so identical context prefixes hash identically across runs — the basis
  * for prompt-cache reuse and trajectory prefix matching.
  */
-import { createHash } from "../utils/crypto-compat";
+import { sha256Hex } from "../utils/crypto-compat";
 
 export type StableJsonValue =
 	| string
@@ -36,7 +36,7 @@ export interface PrefixHash {
 }
 
 export function hashString(value: string): string {
-	return createHash("sha256").update(value).digest("hex");
+	return sha256Hex(value);
 }
 
 function stableStringifyValue(value: unknown, seen: WeakSet<object>): string {
