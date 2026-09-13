@@ -762,6 +762,11 @@ function claimQuoteContext(
 const UNCERTAIN_EMPTY_CLAIM_LEAD_PATTERN =
 	/\bi\s+(?:cannot|can\s+not|can['’]t|do\s+not|don['’]t|am\s+not\s+able\s+to)\s+(?:say|conclude|confirm|verify|establish|assert|tell)(?:\s+(?:for\s+(?:certain|sure)|with\s+confidence))?\s+(?:that\s+)?$/i;
 
+// A negated mutation of existing records does not assert an empty collection.
+// Keep the exception within its own clause so a later absence claim still runs.
+const NO_RECORD_CHANGE_CLAUSE =
+	/\b(?:no|zero)\s+(?:(?:existing|saved|new)\s+)?(?:notes?|tasks?|todos?|records?|settings|reminders?|events?)(?:\s*(?:,|and|or)\s*(?:(?:existing|saved|new)\s+)?(?:notes?|tasks?|todos?|records?|settings|reminders?|events?))*\s+(?:were|was|are|is|have\s+been|has\s+been)\s+(?:changed|modified|edited|deleted|removed|updated|overwritten)\b/gi;
+
 /**
  * True when a reply ASSERTS that the user's tracked work (tasks, todos,
  * reminders, habits, goals, notes, day log) is empty or unavailable. On a path
@@ -773,7 +778,9 @@ const UNCERTAIN_EMPTY_CLAIM_LEAD_PATTERN =
  * is empty is not a claim about looked-up state.
  */
 export function replyClaimsEmptyTrackedWorkState(reply: string): boolean {
-	const text = reply.trim();
+	const text = reply
+		.trim()
+		.replace(NO_RECORD_CHANGE_CLAUSE, (clause) => " ".repeat(clause.length));
 	const { projection, spans } = claimQuoteContext(text);
 	if (!text.trim()) return false;
 	for (const pattern of EMPTY_TRACKED_STATE_CLAIM_PATTERNS) {

@@ -248,7 +248,7 @@ export async function generateStage1Decision(
 	let stage1PrefixHash =
 		stableStage1PrefixHashes[stableStage1PrefixHashes.length - 1]?.hash ??
 		hashString(`stage1:${stage1SystemContent}`);
-	const messageHandlerTools = [
+	const createMessageHandlerTools = () => [
 		createHandleResponseTool({
 			directMessage: directMessageChannel,
 			parameters: voiceDirectMessageChannel
@@ -263,6 +263,7 @@ export async function generateStage1Decision(
 				"Stage 1: populate registered response-handler fields once before action tools. Empty values for non-applicable fields.",
 		}),
 	];
+	let messageHandlerTools = createMessageHandlerTools();
 	const messageHandlerProviderOptions = withModelInputBudgetProviderOptions(
 		cacheProviderOptions({
 			prefixHash: stage1PrefixHash,
@@ -611,8 +612,12 @@ export async function generateStage1Decision(
 				? String(args.message.roomId)
 				: undefined,
 		});
+		// Full restoration returns to the ordinary selection contract. Keep the
+		// actual tool schema aligned with the newly rendered history policy.
+		messageHandlerTools = createMessageHandlerTools();
 		stage1ModelParams = {
 			...stage1ModelParams,
+			tools: messageHandlerTools,
 			messages: messageHandlerInput.messages,
 			promptSegments: messageHandlerInput.promptSegments,
 			providerOptions: withModelInputBudgetProviderOptions(

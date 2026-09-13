@@ -54,7 +54,7 @@ import {
 } from "../types/action-reply";
 import type { Action } from "../types/components";
 import type { Memory } from "../types/memory";
-import { ModelType } from "../types/model";
+import { type JSONSchema, ModelType } from "../types/model";
 import { ChannelType, type UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
@@ -555,6 +555,8 @@ describe("runV5MessageRuntimeStage1", () => {
 		"explicit",
 		"selected",
 		"full",
+		"all-read",
+		"incomplete",
 		"missing-binding",
 		"revoked",
 		"edited",
@@ -616,9 +618,11 @@ describe("runV5MessageRuntimeStage1", () => {
 							: "The authorized answer is ready.",
 						facts: reading ? ["Never extract this draft fact."] : [],
 						contextRequests:
-							reading && ["explicit", "revoked", "edited"].includes(mode)
-								? ["history:h2"]
-								: [],
+							reading && mode === "all-read"
+								? ["history:all"]
+								: reading && ["explicit", "revoked", "edited"].includes(mode)
+									? ["history:h2"]
+									: [],
 						extra: {
 							replyEffectStatus: "none",
 							completionContext: {
@@ -628,7 +632,7 @@ describe("runV5MessageRuntimeStage1", () => {
 										: "relevant_prior_dialogue",
 								sourceSetId:
 									reading && mode === "missing-binding" ? "" : sourceSetId,
-								complete: true,
+								complete: !(reading && mode === "incomplete"),
 								relevantSourceIds: reading && mode === "selected" ? ["h2"] : [],
 								constraintSourceIds: ["h1"],
 								referentSourceIds: [],
@@ -654,6 +658,16 @@ describe("runV5MessageRuntimeStage1", () => {
 					params as { messages: Array<{ content: string; role: string }> },
 			);
 			const first = inputs[0].messages.map((m) => m.content).join("\n");
+			const modeSchema = (index: number) => {
+				const params = useModelCalls(runtime)[index][1] as {
+					tools: Array<{ parameters: JSONSchema }>;
+				};
+				return params.tools[0].parameters.properties?.completionContext
+					?.properties?.mode?.enum;
+			};
+			if (mode === "collision")
+				expect(modeSchema(0)).toContain("all_prior_dialogue");
+			else expect(modeSchema(0)).toEqual(["relevant_prior_dialogue"]);
 			expect(first).toContain(rows[0].content.text);
 			if (mode !== "new-source")
 				expect(first).toContain(before[4].content.text);
@@ -672,6 +686,18 @@ describe("runV5MessageRuntimeStage1", () => {
 			else {
 				expect(calls).toBe(2);
 				const second = inputs[1].messages.map((m) => m.content).join("\n");
+				if (
+					[
+						"full",
+						"all-read",
+						"incomplete",
+						"missing-binding",
+						"revoked",
+						"edited",
+					].includes(mode)
+				)
+					expect(modeSchema(1)).toContain("all_prior_dialogue");
+				else expect(modeSchema(1)).toEqual(["relevant_prior_dialogue"]);
 				if (mode === "revoked")
 					expect(second).not.toContain(before[1].content.text?.trim());
 				else if (mode === "edited") {
@@ -5229,6 +5255,43 @@ describe("runV5MessageRuntimeStage1", () => {
 			});
 			expect(result.kind).toBe("direct_reply");
 			expect(useModelCalls(runtime)).toHaveLength(1);
+			if (result.kind === "direct_reply")
+				expect(result.result.responseContent?.text).toBe(answer);
+		},
+	);
+
+	it.each(["none", "non_applied"] as const)(
+		"repairs a %s cancellation without entering the action planner",
+		async (status) => {
+			const answer =
+				"I will not save that note. A fresh create request is required.";
+			const runtime = makeRuntime(
+				[
+					stage1Response({
+						contexts: ["simple"],
+						intents: [],
+						replyText:
+							"Cancelled. The Safety fixture history QA note won't be saved unless you send a fresh create request.",
+						extra: { replyEffectStatus: status },
+					}),
+					JSON.stringify({ response: answer, effectReceiptIds: [] }),
+				],
+				undefined,
+				[...BUILTIN_RESPONSE_HANDLER_EVALUATORS],
+			);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "Cancel the Safety fixture history QA note request. Do not save it, even if I repeat the old approval phrase; require a new explicit create request first.",
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(result.kind).toBe("direct_reply");
+			expect(useModelCalls(runtime).map(([type]) => type)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+				ModelType.TEXT_SMALL,
+			]);
 			if (result.kind === "direct_reply")
 				expect(result.result.responseContent?.text).toBe(answer);
 		},

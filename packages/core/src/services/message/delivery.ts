@@ -472,7 +472,7 @@ export async function rewriteActionCallbackInCharacter(args: {
 		})}`,
 		...(args.groundingFailure
 			? [
-					`Final validation requirement: the prior draft failed ${args.groundingFailure}. Correct that failure; repeating its wording will be rejected again. Use the supplied context for conversational facts and the results for tool outcomes. An unstarted edit can be declined prospectively; do not say you cancelled a note, event, or edit without the matching cancellation receipt.`,
+					`Final validation requirement: the prior draft failed ${args.groundingFailure}. Correct that failure; repeating its wording will be rejected again. Use the supplied context for conversational facts and the results for tool outcomes. An unstarted edit can be declined prospectively; do not say you cancelled a note, event, or edit without the matching cancellation receipt. For an unstarted request, omit bare completion openers such as "Cancelled." even when the user requested that wording; state only that you will not perform the work.`,
 				]
 			: []),
 	].join("\n");

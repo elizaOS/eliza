@@ -46,6 +46,28 @@ const CLAIM_EVALUATOR_NAME = "core.simple_completed_side_effect_claim";
 const EMPTY_CLAIM_EVALUATOR_NAME = "core.simple_empty_tracked_state_claim";
 const DIRECT_ROUTE_EVALUATOR_NAME = "core.direct_registered_capability_request";
 
+describe("no-change reply validation", () => {
+	it.each([
+		"Understood. I will not perform that edit. No notes or saved settings were changed.",
+		"No saved notes and existing records have been edited.",
+	])(
+		"does not turn a no-change acknowledgement into an empty-list claim: %s",
+		(reply) => {
+			expect(replyClaimsEmptyTrackedWorkState(reply)).toBe(false);
+			expect(
+				evaluatePlannedReplyEgress({ reply, actionResults: [], actions: [] }),
+			).toEqual({ verdict: "allow" });
+			for (const separator of [". ", "; ", ", but "]) {
+				expect(
+					replyClaimsEmptyTrackedWorkState(
+						`${reply.replace(/\.$/, "")}${separator}no tasks saved today.`,
+					),
+				).toBe(true);
+			}
+		},
+	);
+});
+
 // The byte-exact fabricated empty-day reply from #17058 run 729acaf2: a recap
 // ask routed contexts=["simple"] and invented an absent day with no read tool.
 const FABRICATED_EMPTY_DAY_REPLY =
@@ -342,6 +364,27 @@ describe("replyClaimsCompletedSideEffect", () => {
 });
 
 describe(CLAIM_EVALUATOR_NAME, () => {
+	it.each(["none", "non_applied"] as const)(
+		"keeps explicit %s claims in reply-only validation",
+		async (status) => {
+			for (const reply of [
+				"Cancelled. The Safety fixture history QA note won't be saved unless you send a fresh create request.",
+				"Saved your note.",
+			]) {
+				const handler = simpleReplyHandler(reply);
+				handler.plan.replyEffectStatus = status;
+				expect(await getClaimEvaluator().shouldRun(makeContext(handler))).toBe(
+					false,
+				);
+				// A terminal no-effect decision cannot authorize tools to make its prose
+				// true. Contradictory wording still fails egress and needs reply repair.
+				expect(
+					evaluatePlannedReplyEgress({ reply, actionResults: [], actions: [] }),
+				).toMatchObject({ verdict: "reject", kind: "completed_side_effect" });
+			}
+		},
+	);
+
 	it.each([
 		"Your reminder is ready for tomorrow.",
 		"You’ll get a nudge tomorrow at 9.",
