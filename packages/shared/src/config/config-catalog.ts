@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Plugin config catalog & registry — reverse-engineered from vercel-labs/json-render.
  *
@@ -326,8 +327,11 @@ export function interpolateString(
   template: string,
   context: Record<string, unknown>,
 ): string {
+  const wellFormed = toWellFormedUnicode(template);
   const safeTemplate =
-    template.length > 100_000 ? template.slice(0, 100_000) : template;
+    wellFormed.length > 100_000
+      ? truncateWellFormed(wellFormed, 100_000)
+      : wellFormed;
   return safeTemplate.replace(/\{\{([^}]{1,1024})\}\}/g, (_, path) => {
     const value = getByPath(
       context,
