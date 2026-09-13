@@ -336,7 +336,7 @@ export async function createV5MessageContextObject(args: {
 		message: {
 			id: args.message.id,
 			role: "user",
-			content: currentMessageContentForContext(args.message),
+			content: currentMessageContentForContext(args.message, args.runtime),
 			metadata: {
 				roomId: args.message.roomId,
 				entityId: args.message.entityId,

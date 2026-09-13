@@ -5,10 +5,14 @@ import { OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS } from "../../security/trust
 import type { ContextEvent } from "../../types/context-object";
 import type { Memory } from "../../types/memory";
 import { MESSAGE_SOURCE_SUB_AGENT } from "../../types/message-source";
+import type { Media } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
 import type { State } from "../../types/state";
 import { extractUserText, getUserMessageText } from "../../utils/message-text";
-import { toWellFormedUnicode } from "../../utils/well-formed";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../utils/well-formed";
 import {
 	isToolDerivedAssistantContent,
 	resolveExplicitContinuationRequestText,
@@ -89,9 +93,100 @@ export function priorDialogueContent(text: string, speaker?: string): string {
 	return `${speaker}: ${text}`;
 }
 
-export function verifiedCrossRoomContent(memory: Memory): string {
+export const ATTACHMENT_TEXT_MAX_CHARS = 4_000;
+export const ATTACHMENTS_TOTAL_MAX_CHARS = 12_000;
+
+export type AttachmentTextCaps = {
+	perAttachment: number;
+	total: number;
+};
+
+function positiveIntegerSetting(
+	runtime: Pick<IAgentRuntime, "getSetting"> | undefined,
+	key: string,
+	fallback: number,
+): number {
+	const value =
+		typeof runtime?.getSetting === "function"
+			? runtime.getSetting(key)
+			: undefined;
+	const parsed =
+		typeof value === "number"
+			? value
+			: typeof value === "string"
+				? Number.parseInt(value, 10)
+				: Number.NaN;
+	return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : fallback;
+}
+
+/** Render-time caps for inlined attachment text; stored attachments stay complete. */
+export function attachmentTextCaps(
+	runtime?: Pick<IAgentRuntime, "getSetting">,
+): AttachmentTextCaps {
+	return {
+		perAttachment: positiveIntegerSetting(
+			runtime,
+			"ATTACHMENT_TEXT_MAX_CHARS",
+			ATTACHMENT_TEXT_MAX_CHARS,
+		),
+		total: positiveIntegerSetting(
+			runtime,
+			"ATTACHMENTS_TOTAL_MAX_CHARS",
+			ATTACHMENTS_TOTAL_MAX_CHARS,
+		),
+	};
+}
+
+function truncateHead(text: string, maxChars: number): string {
+	if (text.length <= maxChars) return text;
+	const head = truncateWellFormed(text, maxChars);
+	return `${head}${head ? " " : ""}[truncated ${text.length - head.length} chars]`;
+}
+
+/**
+ * Caps each attachment's `text` and `description` at `perAttachment`
+ * characters and the message's inlined attachment text at `total`,
+ * head-preserving with a `[truncated N chars]` marker. Returns the input
+ * array when nothing changes.
+ */
+export function capAttachmentsForContext(
+	attachments: Media[] | undefined,
+	caps: AttachmentTextCaps,
+): Media[] | undefined {
+	if (!attachments?.length) return attachments;
+	let remaining = Math.max(0, caps.total);
+	let changed = false;
+	const capField = (value: string | undefined): string | undefined => {
+		if (!value) return value;
+		const limit = Math.min(caps.perAttachment, remaining);
+		remaining -= Math.min(value.length, limit);
+		return truncateHead(value, limit);
+	};
+	const capped = attachments.map((attachment) => {
+		const text = capField(attachment.text);
+		const description = capField(attachment.description);
+		if (text === attachment.text && description === attachment.description) {
+			return attachment;
+		}
+		changed = true;
+		return {
+			...attachment,
+			...(text === undefined ? {} : { text }),
+			...(description === undefined ? {} : { description }),
+		};
+	});
+	return changed ? capped : attachments;
+}
+
+export function verifiedCrossRoomContent(
+	memory: Memory,
+	caps?: AttachmentTextCaps,
+): string {
 	const text = getUserMessageText(memory);
-	const attachmentText = (memory.content.attachments ?? [])
+	const attachments = caps
+		? capAttachmentsForContext(memory.content.attachments, caps)
+		: memory.content.attachments;
+	const attachmentText = (attachments ?? [])
 		.map((attachment) => {
 			const label =
 				attachment.filename ??
@@ -316,6 +411,7 @@ export function appendPriorDialogueEvents(
 		Array.isArray((data as { recentInteractions?: unknown }).recentInteractions)
 			? (data as { recentInteractions: unknown[] }).recentInteractions
 			: [];
+	const attachmentCaps = attachmentTextCaps(runtime);
 	for (const candidate of recentInteractions) {
 		if (!candidate || typeof candidate !== "object") continue;
 		const memory = candidate as Memory;
@@ -330,7 +426,7 @@ export function appendPriorDialogueEvents(
 		) {
 			continue;
 		}
-		const content = verifiedCrossRoomContent(memory);
+		const content = verifiedCrossRoomContent(memory, attachmentCaps);
 		if (!content || looksLikePriorDialogueArtifact(content)) continue;
 		const isOwnReply = memory.entityId === runtime.agentId;
 		const speakerName = isOwnReply
@@ -361,21 +457,28 @@ export function appendPriorDialogueEvents(
 
 export function currentMessageContentForContext(
 	message: Memory,
+	runtime?: Pick<IAgentRuntime, "getSetting">,
 ): Memory["content"] {
 	const currentText = getUserMessageText(message);
 	const content = message.content;
-	if (
-		!currentText ||
-		!content ||
-		typeof content !== "object" ||
-		typeof content.text !== "string" ||
-		content.text === currentText
-	) {
+	if (!content || typeof content !== "object") return content;
+	const attachments = capAttachmentsForContext(
+		content.attachments,
+		attachmentTextCaps(runtime),
+	);
+	const text =
+		currentText &&
+		typeof content.text === "string" &&
+		content.text !== currentText
+			? currentText
+			: content.text;
+	if (text === content.text && attachments === content.attachments) {
 		return content;
 	}
 	return {
 		...content,
-		text: currentText,
+		text,
+		...(attachments === content.attachments ? {} : { attachments }),
 	};
 }
 
