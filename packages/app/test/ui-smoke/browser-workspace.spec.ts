@@ -119,13 +119,14 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
   const foldControl = browserWorkspaceView.getByTestId(
     "browser-workspace-tab-fold-control",
   );
-  await expect(goButton).toBeVisible({ timeout: 120_000 });
   await expect(foldControl).toBeVisible({ timeout: 120_000 });
   const compactToolbar = await mobileMoreButton.isVisible();
   if (compactToolbar) {
+    await expect(goButton).toBeHidden();
     await expect(newTabButton).toBeHidden();
     await expect(closeAllButton).toBeHidden();
   } else {
+    await expect(goButton).toBeVisible({ timeout: 120_000 });
     await expect(newTabButton).toBeVisible({ timeout: 120_000 });
     await expect(closeAllButton).toBeVisible({ timeout: 120_000 });
   }
@@ -241,7 +242,8 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
   await addressInput.fill("");
   await addressInput.pressSequentially("example.com");
   await expect(addressInput).toHaveValue("example.com");
-  await goButton.click();
+  if (compactToolbar) await addressInput.press("Enter");
+  else await goButton.click();
 
   // The new tab is now the active one; the fold control names it and counts 1.
   await expect(
@@ -276,7 +278,8 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
 
   await addressInput.fill("docs.elizaos.ai");
   await expect(addressInput).toHaveValue("docs.elizaos.ai");
-  await goButton.click();
+  if (compactToolbar) await addressInput.press("Enter");
+  else await goButton.click();
   await expect(addressInput).toHaveValue("https://docs.elizaos.ai/");
 
   // Shell navigation plus browser back/forward preserves the folded browser
