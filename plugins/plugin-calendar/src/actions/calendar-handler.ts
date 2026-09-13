@@ -2399,8 +2399,19 @@ const WEEKDAY_NAMES = [
   "saturday",
 ] as const;
 
+const WEEKDAY_MENTION_PATTERNS: Record<(typeof WEEKDAY_NAMES)[number], RegExp> =
+  {
+    sunday: /\bsun(?:day)?\b/i,
+    monday: /\bmon(?:day)?\b/i,
+    tuesday: /\btue(?:s|sday)?\b/i,
+    wednesday: /\bwed(?:s|nesday)?\b/i,
+    thursday: /\bthu(?:r|rs|rsday)?\b/i,
+    friday: /\bfri(?:day)?\b/i,
+    saturday: /\bsat(?:urday)?\b/i,
+  };
+
 const EXPLICIT_DATE_OR_NEXT_WEEK_PATTERN =
-  /\b(?:next|following|after|week|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b|\d{1,2}\/\d{1,2}|\d{4}-\d{2}-\d{2}/i;
+  /\b(?:next|following)\b|\bweek from\b|\bthe (?:\w+ )?after\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b|\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\b|\d{1,2}\/\d{1,2}|\d{4}-\d{2}-\d{2}/i;
 
 function localDateInZone(date: Date, timeZone: string): string {
   return formatLocalDateTimeInZone(date, timeZone).slice(0, 10);
@@ -2439,14 +2450,9 @@ export function snapWeekdayMoveToTargetDay(args: {
   })
     .format(targetStart)
     .toLowerCase();
-  if (!WEEKDAY_NAMES.includes(weekday as (typeof WEEKDAY_NAMES)[number]))
-    return args;
-  if (
-    !new RegExp(`\\b${weekday.slice(0, 3)}(?:${weekday.slice(3)})?\\b`).test(
-      text,
-    )
-  )
-    return args;
+  const weekdayName = WEEKDAY_NAMES.find((name) => name === weekday);
+  if (!weekdayName) return args;
+  if (!WEEKDAY_MENTION_PATTERNS[weekdayName].test(text)) return args;
   const targetDay = localDateInZone(targetStart, args.timeZone);
   if (targetDay < localDateInZone(args.now, args.timeZone)) return args;
   const start = parseDateTimeInZone(args.startAt, args.timeZone);
@@ -3379,7 +3385,7 @@ function resolveCreateEventDurationMinutes(args: {
  * one-shot asks ("dentist tomorrow in the morning") and must not open the gate.
  */
 const TRAVEL_INTENT_PATTERN =
-  /\b(?:travel(?:ing|led)?|commut(?:e|ing)|driv(?:e|ing)|traffic|transit|leav(?:e|ing) from|depart(?:ing)? from|coming from|get(?:ting)? there|how long (?:to get|does it take)|buffer|on the way|from (?:home|work|the office|my (?:house|place|office)))\b/i;
+  /\b(?:travel(?:ing)? time|commut(?:e|ing)|driv(?:e|ing) time|(?:driving|travel(?:ing)?|commut(?:e|ing)|leav(?:e|ing)|depart(?:ing)?|coming) from|how long (?:to get|does it take)|time to get there|on (?:my|the) way)\b/i;
 
 /**
  * Whether the user's own words ask for travel time or name a departure place.
@@ -3551,15 +3557,21 @@ export function buildCreateEventRequest(
   const plannerTravelOrigin =
     detailString(args.details, "travelOriginAddress") ??
     detailString(args.extractedDetails, "travelOriginAddress");
-  const travelIntent = intentStatesTravel(
-    plannerTravelOrigin,
-    ...(args.authorizingUserTexts ?? []),
-  )
-    ? (injectedDeps?.travelBuffer?.resolveTravelIntent({
-        details: args.details,
-        extractedDetails: args.extractedDetails,
-      }) ?? null)
-    : null;
+  // A buffer needs a destination; without a location the prep can only fail.
+  const travelDestination =
+    detailString(args.details, "location") ??
+    detailString(args.extractedDetails, "location");
+  const travelIntent =
+    travelDestination &&
+    intentStatesTravel(
+      plannerTravelOrigin,
+      ...(args.authorizingUserTexts ?? []),
+    )
+      ? (injectedDeps?.travelBuffer?.resolveTravelIntent({
+          details: args.details,
+          extractedDetails: args.extractedDetails,
+        }) ?? null)
+      : null;
 
   const explicitRecurrence = detailRecurrenceLines(args.details);
   // The extraction model routinely infers weekly recurrence from
@@ -5520,6 +5532,7 @@ const calendarAction: CalendarHandlerAction = {
             target: targetEvent,
             timeZone: updateTimeZone,
             requestText: messageText(message),
+            now: new Date(calendarMessageObservedAt(message)),
           }),
           timeZone: updateTimeZone,
           recurrence: recurrenceUpdate,

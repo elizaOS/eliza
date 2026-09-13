@@ -21,6 +21,13 @@ describe("intentStatesTravel", () => {
     expect(intentStatesTravel("123 Main St", "dentist tomorrow at 3pm")).toBe(
       false,
     );
+    // Bare travel vocabulary is not a travel-time request.
+    expect(intentStatesTravel("the depot", "add a driving lesson at 3pm")).toBe(
+      false,
+    );
+    expect(intentStatesTravel("home", "book the transit strike briefing")).toBe(
+      false,
+    );
     expect(intentStatesTravel(undefined, "")).toBe(false);
   });
 
