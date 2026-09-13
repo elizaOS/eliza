@@ -42,6 +42,7 @@ import {
 } from "../../api/direct-cloud-endpoints";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config";
+import { isLoopbackStagingStewardDevelopment } from "../../state/loopback-steward-development";
 import { normalizeCloudApiKeyToken } from "./cloud-api-key-token";
 import { decodeJwtPayload } from "./jwt";
 
@@ -98,6 +99,10 @@ export class ApiError extends Error {
 }
 
 function getApiBaseUrl(): string {
+  // The local agent does not own account APIs. The launcher fixes this
+  // loopback lane to staging; never infer its authority from a selected agent.
+  if (isLoopbackStagingStewardDevelopment())
+    return STAGING_DIRECT_CLOUD_API_BASE_URL;
   // Native/Electrobun: the dashboard's WebView origin (`https://localhost`,
   // `file:`, …) fronts the embedded LOCAL agent, not Eliza Cloud, so a
   // same-origin `/api/*` call would hit the wrong backend. Resolve to the single
@@ -126,6 +131,12 @@ function resolveApiUrl(path: string): string {
       // absolute URL still throws, on native exactly as on web, so this never
       // opens a general cross-origin bridge.
       if (isNativeCloudRuntime() && isAllowlistedCloudApiHost(parsed)) {
+        return path;
+      }
+      if (
+        isLoopbackStagingStewardDevelopment() &&
+        parsed.origin === STAGING_DIRECT_CLOUD_API_BASE_URL
+      ) {
         return path;
       }
       if (parsed.origin !== window.location.origin) {
@@ -444,6 +455,7 @@ export async function apiFetch(
   init: ApiRequestInit = {},
 ): Promise<Response> {
   const { json, body, skipAuth, headers: rawHeaders, ...rest } = init;
+  const loopbackCloud = isLoopbackStagingStewardDevelopment();
 
   const headers = new Headers(rawHeaders);
   if (json !== undefined) {
@@ -461,6 +473,7 @@ export async function apiFetch(
   const method = (rest.method ?? "GET").toUpperCase();
   if (
     !isNativeCloudRuntime() &&
+    !loopbackCloud &&
     STATE_CHANGING_METHODS.has(method) &&
     !headers.has(CSRF_HEADER_NAME)
   ) {
@@ -501,7 +514,7 @@ export async function apiFetch(
   } else {
     res = await fetch(url, {
       ...rest,
-      credentials: "include",
+      credentials: loopbackCloud ? "omit" : "include",
       headers,
       body: requestBody,
     });

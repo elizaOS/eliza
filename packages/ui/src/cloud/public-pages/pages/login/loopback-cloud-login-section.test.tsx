@@ -124,6 +124,19 @@ it("retains an explicit chat return when the existing agent binding is preserved
   expect(returnTo.pathname).toBe("/chat");
 });
 
+it.each(["/cloud/billing", "/cloud/agents?filter=idle#agent"])(
+  "claims a CLI return before entering the authenticated account route %s",
+  async (path) => {
+    await begin(`/login?returnTo=${encodeURIComponent(path)}`);
+    await waitFor(() => expect(mocks.assign).toHaveBeenCalledOnce());
+    const handoff = new URL(mocks.assign.mock.calls[0][0]);
+    const returnTo = new URL(requiredReturnTo(handoff));
+    expect(returnTo.pathname).toBe("/settings");
+    expect(returnTo.searchParams.get("elizaCloudLoginReturnTo")).toBe(path);
+    expect(returnTo.searchParams.get("elizaCloudLoginSession")).toBe(sessionId);
+  },
+);
+
 it("preserves a safe app destination and performs explicit account switching on both origins", async () => {
   await begin("/login?switchAccount=1&returnTo=%2Fsettings%23cloud-overview");
   await waitFor(() => expect(mocks.assign).toHaveBeenCalledOnce());
