@@ -1,0 +1,10 @@
+{
+  "package": "@lurrielcode/plugin-qubic",
+  "repository": "github:lurrielcode/plugin-qubic",
+  "kind": "plugin",
+  "description": "Qubic plugin for ElizaOS — wallet, balance, QU transfers, Qearn, QSWAP, OTC escrow, and contract query/invoke.",
+  "homepage": "https://github.com/lurrielcode/plugin-qubic",
+  "version": "0.1.19",
+  "directory": "plugin-qubic",
+  "tags": ["qubic", "blockchain", "wallet", "defi", "escrow"]
+}
