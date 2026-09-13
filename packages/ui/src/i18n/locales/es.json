@@ -3027,7 +3027,7 @@
   "header.CloudCreditsBalanc": "Saldo de créditos en la nube",
   "header.companionMode": "Modo acompañante",
   "header.elizaCloudAuthRejected": "Clave de Eliza Cloud no válida",
-  "header.MobileNavigationDescription": "Cambia entre secciones de {{appName}} desde el panel de navegación móvil.",
+  "header.MobileNavigationDescription": "Cambia entre secciones desde el panel de navegación móvil.",
   "header.nativeMode": "Modo nativo",
   "triggerform.cronFieldOrder": "minuto hora día mes díasemana",
   "triggerform.cronSchedule": "Programa cron",
