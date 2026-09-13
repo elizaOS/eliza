@@ -8,7 +8,7 @@
  * (`touch` / `mood_changed`), and `pong`; the host sends `SET_MOOD`,
  * `GET_STATUS`, and `ping`.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, truncateWellFormed } from "@elizaos/core";
 
 /** First frame the device sends after accepting the socket. */
 export interface WelcomeFrame {
@@ -69,7 +69,7 @@ function nonEmptyString(value: unknown): string | undefined {
 function badFrame(reason: string, raw: string): ElizaError {
   return new ElizaError(`companion device sent an invalid frame: ${reason}`, {
     code: "COMPANION_BAD_FRAME",
-    context: { reason, raw: raw.slice(0, 256) },
+    context: { reason, raw: truncateWellFormed(raw, 256) },
   });
 }
 
@@ -86,7 +86,7 @@ export function parseDeviceFrame(raw: string): DeviceFrame {
     // error-policy:J2 wrap the untyped JSON.parse failure as a typed frame error.
     throw new ElizaError("companion device sent malformed JSON", {
       code: "COMPANION_BAD_FRAME",
-      context: { raw: raw.slice(0, 256) },
+      context: { raw: truncateWellFormed(raw, 256) },
       cause: error,
     });
   }
