@@ -18,7 +18,7 @@ function memoryAt(index: number): Memory {
       `00000000-0000-4000-8001-${String(index).padStart(12, "0")}` as UUID,
     agentId: "00000000-0000-0000-0000-000000000002" as UUID,
     roomId: ROOM_ID,
-    content: { text: `complete memory ${index}`, source: "discord" },
+    content: { text: `complete memory ${index}`, source: "memory" },
     createdAt: index,
   };
 }
