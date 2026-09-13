@@ -8,6 +8,7 @@ import {
 	relationshipEvaluator,
 	successEvaluator,
 } from "../features/advanced-capabilities/evaluators/reflection-items";
+import { createAdvancedMemoryPlugin } from "../features/advanced-memory/index";
 import { AgentRuntime } from "../runtime";
 import {
 	validateHistoryRetention,
@@ -441,7 +442,40 @@ describe("durable background memory", () => {
 		}
 	});
 
-	it("reviews retained and new originals in the worker and produces a checkpoint matching actual foreground context", async () => {
+	it.each([
+		[ChannelType.DM, true],
+		[ChannelType.API, true],
+		[ChannelType.SELF, true],
+		[ChannelType.GROUP, false],
+		[ChannelType.VOICE_DM, false],
+		[ChannelType.VOICE_GROUP, false],
+	] as const)(
+		"indexes only supported direct-text sources: %s",
+		async (channelType, enabled) => {
+			const { runtime, service, message } = await setup();
+			await runtime.registerPlugin(createAdvancedMemoryPlugin());
+			const source = {
+				...message,
+				content: { ...message.content, channelType },
+			};
+			await runtime.upsertMemory(source, "messages");
+			runtime.useModel = vi.fn(async (_type, params) =>
+				retentionAnswer(retentionPrompt(params), ["h1"]),
+			) as AgentRuntime["useModel"];
+			await service.enqueue(source, state, { phase: "post_turn" });
+			await execute(runtime, await job(runtime));
+			expect(runtime.useModel).toHaveBeenCalledTimes(enabled ? 1 : 0);
+			if (enabled) {
+				expect(
+					await getEvaluatorProgressState(runtime, source, "historyRetention"),
+				).toMatchObject({ reviewedCount: 1 });
+			}
+			if (!source.id) throw new Error("Persisted source ID required");
+			expect(await runtime.getMemoryById(source.id)).toMatchObject(source);
+		},
+	);
+
+	it("registers history review through advanced memory and produces a worker checkpoint matching foreground context", async () => {
 		const { runtime, service, message } = await setup();
 		const proposal: Memory = {
 			...message,
@@ -458,7 +492,7 @@ describe("durable background memory", () => {
 		};
 		await runtime.upsertMemory(proposal, "messages");
 		await runtime.upsertMemory(assent, "messages");
-		runtime.registerEvaluator(historyRetentionEvaluator);
+		await runtime.registerPlugin(createAdvancedMemoryPlugin());
 		const prompts: string[] = [];
 		runtime.useModel = vi.fn(async (_type, params) => {
 			const prompt = retentionPrompt(params);

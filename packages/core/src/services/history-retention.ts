@@ -18,6 +18,7 @@ import {
 import type { ContextEvent, ContextObject } from "../types/context-object.ts";
 import type { Evaluator, EvaluatorPromptContext } from "../types/evaluator.ts";
 import type { Memory } from "../types/memory.ts";
+import { ChannelType } from "../types/primitives.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
 import { isPlainObject } from "../utils/type-guards.ts";
 import { canonicalEvaluatorMessages } from "./evaluator-transcript.ts";
@@ -137,10 +138,21 @@ export const historyRetentionEvaluator: Evaluator<
 		],
 	},
 	async shouldRun({ runtime, message, options }) {
+		if (
+			!options.extraction ||
+			!message.id ||
+			message.entityId === runtime.agentId
+		)
+			return false;
+		// The foreground projection is direct-text only. Older stored messages
+		// may omit channelType, so use their authoritative room in that case.
+		const channelType =
+			message.content.channelType ??
+			(await runtime.getRoom(message.roomId))?.type;
 		return (
-			!!options.extraction &&
-			!!message.id &&
-			message.entityId !== runtime.agentId
+			channelType === ChannelType.DM ||
+			channelType === ChannelType.API ||
+			channelType === ChannelType.SELF
 		);
 	},
 	async prepare({ runtime, message, options }) {
