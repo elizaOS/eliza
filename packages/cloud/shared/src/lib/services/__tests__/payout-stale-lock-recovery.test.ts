@@ -487,6 +487,71 @@ describe("payout stale-lock recovery (#10553)", () => {
   );
 
   test(
+    "(d3) a CONFIRMED on-chain failure clears the broadcast hash and is deliberately re-queued",
+    async () => {
+      if (!pgliteReady) return;
+      const id = await seedRedemption({ status: "approved" });
+
+      // The counterpart to (d). There the confirmation THREW, so the outcome
+      // was unknown and the hash had to be kept. Here the receipt arrives and
+      // reports a revert: the outcome is KNOWN, an ERC-20 transfer that
+      // reverted moved no tokens, and retrying therefore cannot double-pay.
+      waitReceiptMock.mockImplementation(async () => ({
+        status: "reverted" as const,
+      }));
+
+      await service.processBatch();
+
+      const row = await readRedemption(id);
+      expect(row.status).toBe("approved");
+      expect(row.failure_reason).toBe("Transaction reverted");
+      expect(row.tx_hash).toBeNull();
+      // markFailed clears the hash ON PURPOSE. This is the one place the
+      // "a recorded hash is never re-broadcast" rule is relaxed, and it is
+      // relaxed only because the transaction is confirmed to have moved
+      // nothing. Keeping the hash here would strand every reverted payout.
+      expect(row.broadcast_tx_hash).toBeNull();
+      expect(Number(row.retry_count)).toBe(1);
+      expect(sendRawTxMock.mock.calls.length).toBe(1);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "(d4) the re-queued row is paid out by the next batch, and pays exactly once",
+    async () => {
+      if (!pgliteReady) return;
+      const id = await seedRedemption({ status: "approved" });
+
+      waitReceiptMock.mockImplementation(async () => ({
+        status: "reverted" as const,
+      }));
+      await service.processBatch();
+      expect((await readRedemption(id)).status).toBe("approved");
+
+      // Same row, next batch, healthy chain.
+      waitReceiptMock.mockImplementation(async () => ({
+        status: "success" as const,
+      }));
+      await service.processBatch();
+
+      const row = await readRedemption(id);
+      expect(row.status).toBe("completed");
+      expect(row.tx_hash).toBe(BROADCAST_HASH);
+      // Two broadcasts, one payout: the first reverted and transferred nothing.
+      // Asserting the count makes the deliberate re-broadcast explicit rather
+      // than something a reader has to infer from the status.
+      expect(sendRawTxMock.mock.calls.length).toBe(2);
+      const ledger = await dbWrite.execute(
+        `SELECT count(*)::int AS n FROM redeemable_earnings_ledger
+         WHERE redemption_id = '${id}' AND entry_type = 'redemption';`,
+      );
+      expect((ledger.rows[0] as { n: number }).n).toBe(1);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
     "(e) a FRESH 'processing' row (within LOCK_TIMEOUT) is left alone for the live worker",
     async () => {
       if (!pgliteReady) return;
