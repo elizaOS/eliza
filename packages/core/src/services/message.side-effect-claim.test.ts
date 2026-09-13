@@ -389,6 +389,32 @@ describe(CLAIM_EVALUATOR_NAME, () => {
 		expect(await evaluator.shouldRun(makeContext(nonSimple))).toBe(false);
 	});
 
+	it("preserves the real historical-quotation reply without authorizing a new effect", async () => {
+		// Full-app run step-1789282849432-005r4s: the correct Stage-1 reply
+		// was cleared, causing two restoration calls and failed reply recovery.
+		const reply =
+			'No, the fictional rule is not active now: it was revoked, and the assistant acknowledged that revocation. The original assistant sentence was exactly: "I set it: for any future note, I would show its title and body before saving." That was the stated setup of the fictional rule, not a note action. The later revocation ended it. This explanation only; no real rule was established, and nothing was saved, edited, navigated, or turned on.';
+		const handler = simpleReplyHandler(reply);
+		handler.plan.replyEffectStatus = "none";
+		const evaluator = getClaimEvaluator();
+		expect(await evaluator.shouldRun(makeContext(handler))).toBe(false);
+		expect(handler.plan.reply).toBe(reply);
+		expect(
+			evaluatePlannedReplyEgress({ reply, actionResults: [], actions: [] }),
+		).toEqual({ verdict: "allow" });
+
+		// Semantic applied status remains authoritative even with quoted prose.
+		handler.plan.replyEffectStatus = "applied";
+		expect(await evaluator.shouldRun(makeContext(handler))).toBe(true);
+		expect(
+			evaluatePlannedReplyEgress({
+				reply: `${reply} I saved your note.`,
+				actionResults: [],
+				actions: [],
+			}),
+		).toMatchObject({ verdict: "reject", kind: "completed_side_effect" });
+	});
+
 	// Ordered before the rule-registration case: the backstop registry is
 	// WeakMap-keyed on the shared real runtime, so this must observe the
 	// pre-registration state.

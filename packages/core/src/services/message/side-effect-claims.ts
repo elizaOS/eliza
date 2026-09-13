@@ -644,9 +644,27 @@ function localeReplyClaimsCompletedSideEffect(text: string): boolean {
 }
 
 export function replyClaimsCompletedSideEffect(reply: string): boolean {
-	const text = reply.trim();
+	const original = reply.trim();
+	// An explicitly introduced example or original quotation reports wording,
+	// not a new effect. Keep the original reply intact; inspect only assertions
+	// outside those spans. Unframed quotes and quoted tool results still count.
+	const { spans } = claimQuoteContext(original, true);
+	let text = original;
+	for (let i = spans.length - 1; i >= 0; i--) {
+		const span = spans[i];
+		if (span.example) {
+			text =
+				text.slice(0, span.start) +
+				// Keep a clause boundary so a following "Added todo" or "Done"
+				// assertion cannot inherit the quotation's framing.
+				" ".repeat(span.end - span.start - 1) +
+				"." +
+				text.slice(span.end);
+		}
+	}
 	if (!text) return false;
-	if (!SIDE_EFFECT_SUBJECT_NOUN_PATTERN.test(text)) {
+	// Quoted wording can still name the object of an outside assertion.
+	if (!SIDE_EFFECT_SUBJECT_NOUN_PATTERN.test(original)) {
 		return localeReplyClaimsCompletedSideEffect(text);
 	}
 	if (stateSideEffectClaimHasLocalSubject(text)) return true;
@@ -711,7 +729,10 @@ const CONDITIONAL_EMPTY_CLAIM_LEAD_PATTERN =
 // Classify quotes once, retaining asserted reported results. Only explicit
 // examples/wording are exempt; the projection prevents a quoted conditional
 // from changing the grammar of a later unquoted assertion.
-function emptyClaimQuoteContext(text: string): {
+function claimQuoteContext(
+	text: string,
+	includeOriginalWording = false,
+): {
 	projection: string;
 	spans: { start: number; end: number; example: boolean }[];
 } {
@@ -719,10 +740,15 @@ function emptyClaimQuoteContext(text: string): {
 	const projection = text.replace(
 		/"(?:\\[^\r\n]|[^"\\\r\n])*"|“(?:\\[^\r\n]|[^”\\\r\n])*”|‘(?:\\[^\r\n]|[^’\\\r\n])*’|`(?:\\[^\r\n]|[^`\\\r\n])*`|(?<![\p{L}\p{N}])'(?:\\[^\r\n]|[^'\\\r\n])*'(?![\p{L}\p{N}])/gu,
 		(quote: string, offset: number) => {
+			const prefix = text.slice(0, offset);
 			const example =
 				/(?:\bfor\s+example[, :] *|\b(?:the\s+)?(?:example|phrase|wording)(?:\s+(?:says|asks|reads))?\s*:?\s*)$/i.test(
-					text.slice(0, offset),
-				);
+					prefix,
+				) ||
+				(includeOriginalWording &&
+					/\b(?:original|earlier|previous)\s+(?:(?:assistant|user)(?:['’]s)?\s+)?(?:line|sentence|message|reply|statement|wording)(?:,\s*quoted\s+exactly,)?\s+(?:was|read|said)(?:\s+exactly)?\s*:?\s*$/i.test(
+						prefix,
+					));
 			spans.push({ start: offset, end: offset + quote.length, example });
 			return quote.replace(/[^\r\n]/g, " ");
 		},
@@ -748,7 +774,7 @@ const UNCERTAIN_EMPTY_CLAIM_LEAD_PATTERN =
  */
 export function replyClaimsEmptyTrackedWorkState(reply: string): boolean {
 	const text = reply.trim();
-	const { projection, spans } = emptyClaimQuoteContext(text);
+	const { projection, spans } = claimQuoteContext(text);
 	if (!text.trim()) return false;
 	for (const pattern of EMPTY_TRACKED_STATE_CLAIM_PATTERNS) {
 		let quoteIndex = 0;
