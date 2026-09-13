@@ -9,7 +9,10 @@ import {
   spyOn,
   test,
 } from "bun:test";
-import { PERSONAL_SHARED_FAILURE_REPLY } from "@elizaos/cloud-services-common/personal-shared-failure";
+import {
+  PERSONAL_SHARED_FAILURE_REPLY,
+  PERSONAL_SHARED_NO_RESPONSE_REPLY,
+} from "@elizaos/cloud-services-common/personal-shared-failure";
 import { __resetTelegramIdentityAttestationCacheForTests } from "@elizaos/cloud-services-common/telegram-connector";
 import { Hono } from "hono";
 import { logger } from "@/lib/utils/logger";
@@ -879,39 +882,74 @@ describe("Personal Shared Telegram edge", () => {
     },
   );
 
-  test("reopens a rejected fallback send without claiming ambiguous delivery", async () => {
-    const ledger = namespace();
-    const turn = mock(
-      async () =>
-        new Response("terminal", {
-          status: 500,
-          headers: { "X-Eliza-Retryable": "false" },
-        }),
+  test.each([
+    ["group", telegramGroupRequest()],
+    ["membership", telegramMembershipRequest()],
+  ])("keeps a completed empty %s update silent", async (_name, request) => {
+    const turn = mock(async () =>
+      Response.json({
+        data: { reply: "", responded: false, responseReason: "no_response" },
+      }),
     );
-    let rejectFallback = true;
-    let acceptedFallbacks = 0;
-    globalThis.fetch = mock(async (input, init) => {
+    const sentTexts: string[] = [];
+    globalThis.fetch = mock(async (_input, init) => {
       const body = JSON.parse(String(init?.body ?? "{}")) as { text?: string };
-      if (String(input).endsWith("/sendMessage") && body.text) {
-        if (rejectFallback) {
-          rejectFallback = false;
-          return Response.json({
-            ok: false,
-            error_code: 400,
-            description: "provider rejected message",
-          });
-        }
-        acceptedFallbacks += 1;
-        return Response.json({ ok: true, result: { message_id: 9007 } });
-      }
+      if (body.text) sentTexts.push(body.text);
       return Response.json({ ok: true, result: true });
     }) as unknown as typeof fetch;
-
-    expect((await run(ledger, turn, telegramRequest(81617))).status).toBe(500);
-    expect((await run(ledger, turn, telegramRequest(81617))).status).toBe(200);
-    expect(turn).toHaveBeenCalledTimes(2);
-    expect(acceptedFallbacks).toBe(1);
+    expect((await run(namespace(), turn, request)).status).toBe(200);
+    expect(sentTexts).toEqual([]);
   });
+
+  test.each([false, true])(
+    "reopens a rejected fallback without ambiguous delivery (completed=%j)",
+    async (completed) => {
+      const ledger = namespace();
+      const turn = mock(async () =>
+        completed
+          ? Response.json({
+              data: {
+                reply: "",
+                responded: false,
+                responseReason: "no_response",
+              },
+            })
+          : new Response("terminal", {
+              status: 500,
+              headers: { "X-Eliza-Retryable": "false" },
+            }),
+      );
+      let rejectFallback = true;
+      let acceptedFallbacks = 0;
+      globalThis.fetch = mock(async (input, init) => {
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          text?: string;
+        };
+        if (String(input).endsWith("/sendMessage") && body.text) {
+          if (rejectFallback) {
+            rejectFallback = false;
+            return Response.json({
+              ok: false,
+              error_code: 400,
+              description: "provider rejected message",
+            });
+          }
+          acceptedFallbacks += 1;
+          return Response.json({ ok: true, result: { message_id: 9007 } });
+        }
+        return Response.json({ ok: true, result: true });
+      }) as unknown as typeof fetch;
+
+      expect((await run(ledger, turn, telegramRequest(81617))).status).toBe(
+        500,
+      );
+      expect((await run(ledger, turn, telegramRequest(81617))).status).toBe(
+        200,
+      );
+      expect(turn).toHaveBeenCalledTimes(2);
+      expect(acceptedFallbacks).toBe(1);
+    },
+  );
 
   test("refuses replay when fallback acceptance becomes ambiguous", async () => {
     const ledger = namespace();
@@ -984,11 +1022,37 @@ describe("Personal Shared Telegram edge", () => {
   });
 
   test.each([
-    ["malformed JSON", () => new Response("not json")],
-    ["missing reply", () => Response.json({ data: {} })],
+    [
+      "malformed JSON",
+      () => new Response("not json"),
+      PERSONAL_SHARED_FAILURE_REPLY,
+    ],
+    [
+      "missing reply",
+      () => Response.json({ data: {} }),
+      PERSONAL_SHARED_FAILURE_REPLY,
+    ],
+    [
+      "empty reply",
+      () => Response.json({ data: { reply: "" } }),
+      PERSONAL_SHARED_NO_RESPONSE_REPLY,
+    ],
+    [
+      "blank reply",
+      () => Response.json({ data: { reply: " \n\t" } }),
+      PERSONAL_SHARED_NO_RESPONSE_REPLY,
+    ],
+    [
+      "explicit no-response terminal",
+      () =>
+        Response.json({
+          data: { reply: "", responded: false, responseReason: "no_response" },
+        }),
+      PERSONAL_SHARED_NO_RESPONSE_REPLY,
+    ],
   ])(
     "delivers one fallback for a successful turn with %s",
-    async (_name, response) => {
+    async (_name, response, expectedReply) => {
       const ledger = namespace();
       const turn = mock(async () => response());
       const sentTexts: string[] = [];
@@ -1010,7 +1074,37 @@ describe("Personal Shared Telegram edge", () => {
         200,
       );
       expect(turn).toHaveBeenCalledTimes(1);
-      expect(sentTexts).toEqual([PERSONAL_SHARED_FAILURE_REPLY]);
+      expect(sentTexts).toEqual([expectedReply]);
+    },
+  );
+
+  test.each(["", " \n\t"])(
+    "delivers media-only private reply %j once",
+    async (reply) => {
+      const ledger = namespace();
+      const mediaUrl = "https://cdn.example/artifact.png";
+      const turn = mock(async () =>
+        Response.json({ data: { reply, mediaUrls: [mediaUrl] } }),
+      );
+      const sentTexts: string[] = [];
+      globalThis.fetch = mock(async (_input, init) => {
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          text?: string;
+        };
+        if (body.text) sentTexts.push(body.text);
+        return Response.json({
+          ok: true,
+          result: body.text ? { message_id: 9012 } : true,
+        });
+      }) as unknown as typeof fetch;
+      expect((await run(ledger, turn, telegramRequest(81640))).status).toBe(
+        200,
+      );
+      expect((await run(ledger, turn, telegramRequest(81640))).status).toBe(
+        200,
+      );
+      expect(turn).toHaveBeenCalledTimes(1);
+      expect(sentTexts).toEqual([mediaUrl]);
     },
   );
 

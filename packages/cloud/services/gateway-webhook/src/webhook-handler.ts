@@ -5,8 +5,9 @@ import {
   truncateWellFormed,
 } from "@elizaos/cloud-services-common";
 import {
-  PERSONAL_SHARED_FAILURE_REPLY,
   type PersonalSharedFailureMetadata,
+  personalSharedFailureReply,
+  personalSharedNoResponseFailure,
   readPersonalSharedFailureMetadata,
 } from "@elizaos/cloud-services-common/personal-shared-failure";
 import {
@@ -188,19 +189,19 @@ function parseGroupDeliveryDirective(
 
 function parsePersonalSharedMediaUrls(
   data: Record<string, unknown> | null,
+  preserveAll = false,
 ): string[] {
   if (!Array.isArray(data?.mediaUrls)) return [];
-  return data.mediaUrls
-    .flatMap((value) => {
-      if (typeof value !== "string") return [];
-      try {
-        const url = new URL(value.trim());
-        return url.protocol === "https:" ? [url.toString()] : [];
-      } catch {
-        return [];
-      }
-    })
-    .slice(0, 4);
+  const urls = data.mediaUrls.flatMap((value) => {
+    if (typeof value !== "string") return [];
+    try {
+      const url = new URL(value.trim());
+      return url.protocol === "https:" ? [url.toString()] : [];
+    } catch {
+      return [];
+    }
+  });
+  return preserveAll ? [...new Set(urls)] : urls.slice(0, 4);
 }
 
 interface MessageTraceContext {
@@ -906,7 +907,7 @@ async function processMessage(
           adapter,
           config,
           event,
-          PERSONAL_SHARED_FAILURE_REPLY,
+          personalSharedFailureReply(error.failure),
           deliveryHooks,
         );
         return;
@@ -1475,7 +1476,24 @@ async function sendPersonalSharedReply(
       "personal Shared chat returned no reply",
     );
   }
-  const replyMediaUrls = parsePersonalSharedMediaUrls(data);
+  const replyMediaUrls = parsePersonalSharedMediaUrls(
+    data,
+    adapter.platform === "telegram" &&
+      event.chatType === "private" &&
+      !event.membershipChange,
+  );
+  if (
+    adapter.platform === "telegram" &&
+    event.chatType === "private" &&
+    !event.membershipChange &&
+    reply.trim().length === 0 &&
+    replyMediaUrls.length === 0
+  ) {
+    throw new PersonalSharedPreEgressError(
+      "personal Shared private turn completed without a reply",
+      { failure: personalSharedNoResponseFailure() },
+    );
+  }
   const replyText = reply
     .split("\n")
     .filter((line) => !replyMediaUrls.includes(line.trim()))
@@ -1484,7 +1502,15 @@ async function sendPersonalSharedReply(
   // Empty is the agent's deliberate shouldRespond=no result. Membership
   // changes and stale turns intentionally take this path with no authority
   // token because there will be no provider egress to authorize.
-  if (reply.length === 0) {
+  if (
+    reply.length === 0 &&
+    !(
+      adapter.platform === "telegram" &&
+      event.chatType === "private" &&
+      !event.membershipChange &&
+      replyMediaUrls.length > 0
+    )
+  ) {
     return {
       cloudMs,
       cloudAttempts: attemptResult.attempts,
