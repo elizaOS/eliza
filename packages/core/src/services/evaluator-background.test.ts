@@ -226,6 +226,125 @@ describe("durable background memory", () => {
 		});
 	});
 
+	it.each(["headers", "cooldown"])(
+		"waits for %s retry deadlines across scheduler restart and delivery replay",
+		async (kind) => {
+			const { runtime, service, message } = await setup();
+			const process = vi.fn(async () => undefined);
+			runtime.registerEvaluator(evaluator(process));
+			let now = Date.now() + 10_000;
+			const deadline = now + 60_000;
+			const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+			let attempts = 0;
+			runtime.useModel = vi.fn(async () => {
+				attempts++;
+				if (now < deadline)
+					throw Object.assign(new Error("Provider rate limited"), {
+						statusCode: 429,
+						...(kind === "headers"
+							? { responseHeaders: { "retry-after": "60" } }
+							: { retryAfterMs: deadline - now }),
+					});
+				return '{"memory":{"ok":true}}';
+			}) as AgentRuntime["useModel"];
+			const createScheduler = () =>
+				new TaskService(runtime, {
+					now: () => now,
+					setInterval: () => {
+						throw new Error("Manual ticks only");
+					},
+					clearInterval: () => undefined,
+				});
+			try {
+				await service.enqueue(message, state, { phase: "post_turn" });
+				const initial = await job(runtime);
+				await expect(
+					createScheduler().executeTaskById(initial.id),
+				).rejects.toThrow();
+				expect((await job(runtime)).metadata).toMatchObject({
+					failureCount: 1,
+					updateInterval: 60_000,
+					baseInterval: 1_000,
+				});
+				now += 31_000;
+				await service.enqueue(message, state, {
+					phase: "post_turn",
+					didRespond: true,
+				});
+				await EvaluatorService.start(runtime);
+				const restarted = createScheduler();
+				await restarted.runDueTasks();
+				expect(attempts).toBe(1);
+				expect(process).not.toHaveBeenCalled();
+				now = deadline - 1;
+				await restarted.runDueTasks();
+				expect(attempts).toBe(1);
+				now = deadline;
+				await restarted.runDueTasks();
+				expect(attempts).toBe(2);
+				expect(process).toHaveBeenCalledTimes(1);
+				expect(await runtime.getTask(initial.id)).toBeNull();
+				if (!message.id) throw new Error("Persisted source identity required");
+				expect((await runtime.getMemoryById(message.id))?.content).toEqual(
+					message.content,
+				);
+			} finally {
+				clock.mockRestore();
+			}
+		},
+	);
+
+	it("commits staged output while a fresh extraction lane waits for quota", async () => {
+		const { runtime, service, message } = await setup();
+		let now = Date.now() + 10000;
+		const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+		const saved = vi.fn(async () => {
+			if (saved.mock.calls.length === 1) throw new Error("Reducer unavailable");
+		});
+		const fresh = vi.fn(async () => undefined);
+		runtime.registerEvaluator(evaluator(saved));
+		let calls = 0;
+		runtime.useModel = vi.fn(async () => {
+			calls++;
+			if (calls === 1) return '{"memory":{"ok":true}}';
+			if (calls === 2)
+				throw Object.assign(new Error("Rate limited"), {
+					statusCode: 429,
+					responseHeaders: { "retry-after": "60" },
+				});
+			return '{"other":{"ok":true}}';
+		}) as AgentRuntime["useModel"];
+		const scheduler = new TaskService(runtime, {
+			now: () => now,
+			setInterval: () => {
+				throw new Error("Manual ticks only");
+			},
+			clearInterval: () => undefined,
+		});
+		try {
+			await service.enqueue(message, state, { phase: "post_turn" });
+			const task = await job(runtime);
+			await expect(scheduler.executeTaskById(task.id)).rejects.toThrow();
+			runtime.registerEvaluator({ ...evaluator(fresh), name: "other" });
+			now += 2000;
+			await expect(scheduler.runDueTasks()).rejects.toThrow();
+			expect(saved).toHaveBeenCalledTimes(2);
+			expect(fresh).not.toHaveBeenCalled();
+			expect((await job(runtime)).metadata).toMatchObject({
+				failureCount: 2,
+				updateInterval: 60000,
+			});
+			now += 60000;
+			await scheduler.runDueTasks();
+			expect(calls).toBe(3);
+			expect(saved).toHaveBeenCalledTimes(2);
+			expect(fresh).toHaveBeenCalledTimes(1);
+			expect(await runtime.getTask(task.id)).toBeNull();
+		} finally {
+			clock.mockRestore();
+		}
+	});
+
 	it("reviews retained and new originals in the worker and produces a checkpoint matching actual foreground context", async () => {
 		const { runtime, service, message } = await setup();
 		const proposal: Memory = {

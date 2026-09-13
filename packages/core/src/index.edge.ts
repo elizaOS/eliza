@@ -131,3 +131,8 @@ export * from "./validation";
 export const isBrowser = false;
 export const isNode = false;
 export const isEdge = true;
+
+export {
+	isPermanentQuotaError,
+	providerRetryAfterMs,
+} from "./utils/model-retry";

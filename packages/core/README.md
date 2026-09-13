@@ -382,6 +382,14 @@ The **task system** is the single place for *when* scheduled work runs. Only tas
 
 The implementation lives in `src/services/task.ts` and `src/services/task-scheduler.ts`.
 
+Repeat-task failures may carry an `ElizaError.retryAt` epoch-millisecond deadline.
+The existing scheduler persists the later of that deadline and its normal backoff,
+including early-run tolerance, then restores the base cadence on success. Failure
+counts and operator pause policies still apply. Background evaluators preserve
+structural temporary-provider retry timing through their result errors; malformed
+hints and explicit credit exhaustion keep the ordinary failure policy. A provider
+cooldown must not spend all memory-job retries before the provider window resets.
+
 ### Autonomy
 
 The autonomy service lets the agent "think" and act on a schedule without user messages. It uses the **prompt batcher** with the **task system** for scheduling: when `enableAutonomy` is true, a recurring section is registered with `think("autonomy", ...)`. A BATCHER_DRAIN task for the autonomy affinity determines when the section drains; results are delivered to `onResult`, which runs the same post-LLM steps as the message pipeline (actions, memory, evaluators) via an execution facade.

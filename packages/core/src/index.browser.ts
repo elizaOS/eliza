@@ -330,3 +330,8 @@ export const serverHealth = {
 // Rollup can satisfy the named import without falling back to the
 // virtual module replacement plugin.
 export * from "./cloud-routing";
+
+export {
+	isPermanentQuotaError,
+	providerRetryAfterMs,
+} from "./utils/model-retry";

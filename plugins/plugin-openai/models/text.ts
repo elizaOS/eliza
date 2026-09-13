@@ -23,6 +23,7 @@ import {
   ElizaError,
   getInferenceTimer,
   getTrajectoryContext,
+  isPermanentQuotaError,
   JSON_SCHEMA_ARRAY_KEYWORDS,
   JSON_SCHEMA_MAP_KEYWORDS,
   JSON_SCHEMA_MIXED_MAP_KEYWORDS,
@@ -33,6 +34,7 @@ import {
   MAX_WELL_FORMED_DEPTH,
   ModelType,
   normalizeSchemaForCerebras,
+  providerRetryAfterMs,
   recordLlmCall,
   resolveEffectiveSystemPrompt,
   sanitizeFunctionNameForCerebras,
@@ -2251,7 +2253,7 @@ function noteRateLimitCooldown(
   const status =
     (error as { statusCode?: number; status?: number } | undefined)?.statusCode ??
     (error as { status?: number } | undefined)?.status;
-  if (status !== 429) return;
+  if (status !== 429 || isPermanentQuotaError(error)) return;
   const retryAfterMs = providerRetryAfterMs(error);
   if (retryAfterMs === undefined || retryAfterMs <= TRANSIENT_LANE_MAX_BACKOFF_MS) return;
   // The cooldown is a timestamp, not an awaited retry. Preserve the provider's
@@ -2268,65 +2270,9 @@ function noteRateLimitCooldown(
 /** Longest wait the transient lanes will spend on one retry (see waitForTransientRetry). */
 const TRANSIENT_LANE_MAX_BACKOFF_MS = 3000;
 
-/**
- * Read the provider's retry delay once for both retry admission and cooldowns.
- * The millisecond header takes precedence over Retry-After seconds/date, matching
- * the SDK transport contract. Invalid values fall through to the other header;
- * missing or invalid hints leave the bounded exponential policy in control.
- */
-function providerRetryAfterMs(error: unknown): number | undefined {
-  const headers = (error as { responseHeaders?: unknown } | undefined)?.responseHeaders;
-  if (!headers || typeof headers !== "object") return undefined;
-  let milliseconds: string | undefined;
-  let secondsOrDate: string | undefined;
-  for (const [key, value] of Object.entries(headers as Record<string, unknown>)) {
-    const raw = Array.isArray(value) ? value[0] : value;
-    if (typeof raw !== "string" || raw.trim().length === 0) continue;
-    if (key.toLowerCase() === "retry-after-ms") milliseconds = raw.trim();
-    if (key.toLowerCase() === "retry-after") secondsOrDate = raw.trim();
-  }
-  const explicitMilliseconds = milliseconds === undefined ? Number.NaN : Number(milliseconds);
-  if (Number.isFinite(explicitMilliseconds) && explicitMilliseconds >= 0)
-    return explicitMilliseconds;
-  if (secondsOrDate === undefined) return undefined;
-  const seconds = Number(secondsOrDate);
-  if (Number.isFinite(seconds))
-    return seconds >= 0 && Number.isFinite(seconds * 1000) ? seconds * 1000 : undefined;
-  const at = Date.parse(secondsOrDate);
-  return Number.isFinite(at) ? Math.max(0, at - Date.now()) : undefined;
-}
-
 function providerRetryOutlastsTransientLane(error: unknown): boolean {
   const retryAfterMs = providerRetryAfterMs(error);
   return retryAfterMs !== undefined && retryAfterMs > TRANSIENT_LANE_MAX_BACKOFF_MS;
-}
-
-function isPermanentQuotaError(error: unknown): boolean {
-  const codes = new Set(["insufficient_quota", "credit_balance_exhausted"]);
-  const inspect = (value: unknown): boolean => {
-    if (typeof value !== "object" || value === null) return false;
-    const record = value as Record<string, unknown>;
-    return (
-      (typeof record.code === "string" && codes.has(record.code)) ||
-      (typeof record.type === "string" && codes.has(record.type)) ||
-      (typeof record.error === "object" &&
-        record.error !== null &&
-        ["code", "type"].some((key) => {
-          const field = (record.error as Record<string, unknown>)[key];
-          return typeof field === "string" && codes.has(field);
-        }))
-    );
-  };
-  if (typeof error !== "object" || error === null) return false;
-  const record = error as Record<string, unknown>;
-  if (inspect(record) || inspect(record.data)) return true;
-  if (typeof record.responseBody !== "string") return false;
-  try {
-    return inspect(JSON.parse(record.responseBody));
-  } catch {
-    // error-policy:J3 malformed provider bodies cannot establish permanent quota exhaustion.
-    return false;
-  }
 }
 
 function isTransientProviderError(error: unknown): boolean {

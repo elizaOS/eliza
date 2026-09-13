@@ -177,6 +177,8 @@ export interface EvaluatorRunResult {
 	errors: Array<{
 		evaluatorName: string;
 		processorName?: string;
+		/** Provider retry deadline, retained without transporting raw errors/secrets. */
+		retryAt?: number;
 		error: string;
 	}>;
 }

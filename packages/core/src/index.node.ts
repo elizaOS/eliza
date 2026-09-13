@@ -543,3 +543,8 @@ export * from "./validation";
 // Node-specific exports
 export const isBrowser = false;
 export const isNode = true;
+
+export {
+	isPermanentQuotaError,
+	providerRetryAfterMs,
+} from "./utils/model-retry";

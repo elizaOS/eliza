@@ -50,6 +50,7 @@ import type {
 import { EventType, ModelType } from "../types/index.ts";
 import { ChannelType } from "../types/primitives.ts";
 import { Service as BaseService } from "../types/service.ts";
+import { providerRateLimitRetryAt } from "../utils/model-retry";
 import { isObjectRecord as isRecord } from "../utils/type-guards.ts";
 import {
 	toWellFormedUnicode,
@@ -1052,6 +1053,10 @@ export class EvaluatorService extends BaseService {
 							throw new ElizaError("Background memory remains pending", {
 								code: "EVALUATOR_JOB_PENDING",
 								context: { errors: result.errors },
+								retryAt: Math.max(
+									0,
+									...result.errors.map((entry) => entry.retryAt ?? 0),
+								),
 							});
 						if (result.hasMoreEvidence) return undefined;
 						return this.finishBackgroundTask(task);
@@ -1313,7 +1318,11 @@ export class EvaluatorService extends BaseService {
 		evaluatorId: string;
 		rendered: RenderedEvaluatorPrompt;
 		schema: JSONSchema;
-	}): Promise<{ output: Record<string, unknown> | null; error?: string }> {
+	}): Promise<{
+		output: Record<string, unknown> | null;
+		error?: string;
+		retryAt?: number;
+	}> {
 		const { evaluatorId, rendered, schema } = params;
 		try {
 			const raw = await generateEvaluationOutput({
@@ -1332,6 +1341,7 @@ export class EvaluatorService extends BaseService {
 		} catch (error) {
 			// error-policy:J1 Evaluator execution returns an explicit failed
 			// result and emits its completion failure.
+			const retryAt = providerRateLimitRetryAt(error);
 			const messageText =
 				error instanceof Error ? error.message : String(error);
 			await this.emitEvaluatorCompleted(
@@ -1345,7 +1355,7 @@ export class EvaluatorService extends BaseService {
 				// owner recovery work after the chat/action already completed.
 				diagnosticOnly: true,
 			});
-			return { output: null, error: messageText };
+			return { output: null, error: messageText, retryAt };
 		}
 	}
 
@@ -1575,6 +1585,7 @@ export class EvaluatorService extends BaseService {
 		preparedEntries: PreparedEntry[];
 		errors: EvaluatorRunResult["errors"];
 		error: string;
+		retryAt?: number;
 	}): EvaluatorRunResult {
 		return {
 			skipped: false,
@@ -1588,6 +1599,7 @@ export class EvaluatorService extends BaseService {
 				{
 					evaluatorName: "post_turn",
 					error: params.error,
+					retryAt: params.retryAt,
 				},
 			],
 		};
@@ -2000,13 +2012,13 @@ ${JSON.stringify(references)}`
 				}),
 			);
 
-		let { output, error } = rendered
+		let { output, error, retryAt } = rendered
 			? await this.readEvaluatorOutput({
 					evaluatorId,
 					rendered,
 					schema,
 				})
-			: { output: {}, error: undefined };
+			: { output: {}, error: undefined, retryAt: undefined };
 
 		while (
 			background &&
@@ -2104,7 +2116,7 @@ ${JSON.stringify(references)}`
 				options,
 				schema,
 			});
-			({ output, error } = await this.readEvaluatorOutput({
+			({ output, error, retryAt } = await this.readEvaluatorOutput({
 				evaluatorId,
 				rendered,
 				schema,
@@ -2122,12 +2134,14 @@ ${JSON.stringify(references)}`
 				preparedEntries,
 				errors,
 				error: error ?? "Evaluator model returned no output",
+				retryAt,
 			});
 		}
 		if (!output)
 			errors.push({
 				evaluatorName: "post_turn",
 				error: error ?? "Evaluator model returned no output",
+				retryAt,
 			});
 
 		const { processedEvaluators, results } = await this.inRoom(
