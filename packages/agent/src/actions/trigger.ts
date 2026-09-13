@@ -425,8 +425,13 @@ async function resolveTriggerRef(
     }
   }
   const rawId = readString(params.taskId);
+  // A non-uuid taskId is the planner naming the trigger ("Email landlord
+  // (nubs)", live 2026-09-13): resolve it as a display-name fragment instead of
+  // failing and costing a replan with the id copied from the failure text.
   const querySource =
-    readString(params.displayName) ?? readString(params.instructions);
+    readString(params.displayName) ??
+    readString(params.instructions) ??
+    (rawId && !readUuid(params.taskId) ? rawId : undefined);
   const query = querySource?.toLowerCase().replace(/^trigger:\s*/, "");
 
   const tasks = await runtime.getTasks({

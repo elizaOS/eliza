@@ -313,6 +313,46 @@ describe("TRIGGER create — prompt-kind reminders", () => {
   });
 });
 
+describe("TRIGGER delete — target resolution", () => {
+  it("resolves a display name passed as taskId instead of failing the delete (live regression)", async () => {
+    // Live 2026-09-13: the planner sent {action:"delete", taskId:"Email landlord (nubs)"};
+    // the miss cost a replan and the failure text became the delivered reply.
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const created = await create(runtime, {
+      instructions: "email the landlord",
+      delaySeconds: 3600,
+    });
+    expect(created?.success).toBe(true);
+    const stored = createdTasks[0];
+    const task = {
+      ...stored,
+      id: stringToUuid("created-1"),
+      tags: stored.tags ?? [],
+    } as unknown as Task;
+    (
+      runtime.getTasks as unknown as { mockResolvedValue: (v: Task[]) => void }
+    ).mockResolvedValue([task]);
+    (runtime as unknown as { deleteTask: unknown }).deleteTask = vi.fn(
+      async () => undefined,
+    );
+    const displayName = String(stored.metadata.trigger?.displayName ?? "");
+    expect(displayName).not.toBe("");
+
+    const result = await triggerAction.handler(
+      runtime,
+      makeMessage("delete the landlord trigger"),
+      undefined,
+      { parameters: { action: "delete", taskId: displayName } },
+    );
+
+    expect(result?.success).toBe(true);
+    expect(
+      (runtime as unknown as { deleteTask: { mock: { calls: unknown[][] } } })
+        .deleteTask.mock.calls[0]?.[0],
+    ).toBe(task.id);
+  });
+});
+
 describe("TRIGGER create — recurrence wins over sprayed one-shot fields", () => {
   it("creates a recurring cron reminder from cronExpression alone with autonomy off", async () => {
     const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
