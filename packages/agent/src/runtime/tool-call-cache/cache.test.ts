@@ -733,3 +733,99 @@ describe("ToolCallCache", () => {
     expect(desc.cacheable).toBe(false);
   });
 });
+
+describe("ToolCallCache over a damaged disk tier", () => {
+  const descriptor: CacheableToolDescriptor = {
+    name: "web_search",
+    version: "1",
+    ttlMs: 1_000,
+    cacheable: true,
+  };
+  const args = { q: "hello" };
+
+  function poison(bytes: string): string {
+    const file = path.join(
+      tempRoot,
+      buildCacheKey(descriptor.name, args).slice(0, 2),
+      `${buildCacheKey(descriptor.name, args)}.json`,
+    );
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, bytes, "utf8");
+    return file;
+  }
+
+  it("runs the tool instead of failing the call when the row is truncated", async () => {
+    poison('{"key":"abc","output":{"a":1');
+    const cache = makeCache(() => 0);
+    let calls = 0;
+
+    // The lookup happens synchronously before the executor, so a throw from the
+    // disk tier does not degrade to a miss — it means the tool never runs.
+    const output = await cache.run(descriptor, args, async () => {
+      calls += 1;
+      return "fresh";
+    });
+
+    expect(output).toBe("fresh");
+    expect(calls).toBe(1);
+  });
+
+  it("self-heals the poisoned key rather than failing it on every later call", async () => {
+    const file = poison("{oops");
+    const cache = makeCache(() => 0);
+    let calls = 0;
+    const run = () =>
+      cache.run(descriptor, args, async () => {
+        calls += 1;
+        return "fresh";
+      });
+
+    expect(await run()).toBe("fresh");
+    expect(await run()).toBe("fresh");
+
+    // Second call was a hit, so the bad row was replaced, not merely skipped.
+    expect(calls).toBe(1);
+    expect(existsSync(file)).toBe(true);
+    expect(JSON.parse(readFileSync(file, "utf8")).output).toBe("fresh");
+  });
+
+  it("keeps a successful tool result when the disk write fails", async () => {
+    // Occupy the row path with a directory so the publish cannot succeed. The
+    // write happens in `run`'s `.then`, i.e. after the tool already returned,
+    // so a raised fs error would throw away a result the caller had earned.
+    const key = buildCacheKey(descriptor.name, args);
+    const file = path.join(tempRoot, key.slice(0, 2), `${key}.json`);
+    mkdirSync(file, { recursive: true });
+    writeFileSync(path.join(file, "occupied"), "x", "utf8");
+    const cache = makeCache(() => 0);
+
+    await expect(
+      cache.run(descriptor, args, async () => "fresh"),
+    ).resolves.toBe("fresh");
+  });
+
+  it("does not serve a row that carries no expiry as if it never expires", async () => {
+    const key = buildCacheKey(descriptor.name, args);
+    poison(
+      JSON.stringify({
+        key,
+        toolName: descriptor.name,
+        toolVersion: descriptor.version,
+        cachedAt: 0,
+        output: "STALE",
+      }),
+    );
+    // A clock far past any plausible TTL: nothing written by this cache could
+    // still be live here.
+    const cache = makeCache(() => 1e15);
+    let calls = 0;
+
+    const output = await cache.run(descriptor, args, async () => {
+      calls += 1;
+      return "fresh";
+    });
+
+    expect(output).toBe("fresh");
+    expect(calls).toBe(1);
+  });
+});
