@@ -41,7 +41,12 @@ import {
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.js";
 import { bindMachineAuthIdentityToEntity } from "../../routes/authenticated-entity-principal.js";
+import { CalendarCardAccessStore } from "../calendar-card.js";
 import { MonthlyFamilyPacketService } from "../family-coordination/monthly-packet.js";
+import {
+  previewFamilyDeletionDatabase,
+  withReviewedFamilyDeletionDatabase,
+} from "../family-workflows/deletion-database-snapshot.js";
 import { exportFamilyWorkspace } from "../family-workflows/workspace-export.js";
 import { SchoolCalendarWorkflow } from "../school/calendar-workflow.js";
 import { executeRawSql, executeRawSqlTx, sqlQuote } from "../sql.js";
@@ -1898,5 +1903,146 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         );
       }
     }
+  });
+  it("reviews all agreement families and derived documents without including another agent", async () => {
+    await new CalendarCardAccessStore(runtime).ensureSchema();
+    const service = createAgreementKnowledgeService(runtime);
+    const first = await service.createAgreementVersion({
+      agreementKey: "workspace-snapshot-first",
+      title: "Workspace first",
+      originalFilename: "workspace-first.pdf",
+      mimeType: "application/pdf",
+      bytes: pdf("workspace database first"),
+      uploadedByEntityId: SELF_ENTITY_ID,
+    });
+    const before = await previewFamilyDeletionDatabase(runtime, SELF_ENTITY_ID);
+    expect(
+      before.records
+        .filter((row) => row.kind === "agreements")
+        .map((row) => row.identity.id),
+    ).toContain(first.id);
+    expect(
+      before.records
+        .filter((row) => row.kind === "documents")
+        .map((row) => row.identity.id),
+    ).toContain(first.documentId);
+    expect(before.records.some((row) => row.kind === "documentFragments")).toBe(
+      true,
+    );
+    await expect(
+      previewFamilyDeletionDatabase(runtime, "verified-co-parent"),
+    ).rejects.toMatchObject({ code: "FAMILY_DELETION_ACCESS_DENIED" });
+    const second = await service.createAgreementVersion({
+      agreementKey: "workspace-snapshot-second",
+      title: "Workspace second",
+      originalFilename: "workspace-second.pdf",
+      mimeType: "application/pdf",
+      bytes: pdf("workspace database second"),
+      uploadedByEntityId: SELF_ENTITY_ID,
+    });
+    const expanded = await previewFamilyDeletionDatabase(
+      runtime,
+      SELF_ENTITY_ID,
+    );
+    expect(expanded.sha256).not.toBe(before.sha256);
+    expect(
+      expanded.records
+        .filter((row) => row.kind === "agreements")
+        .map((row) => row.identity.id),
+    ).toEqual(expect.arrayContaining([first.id, second.id]));
+    const foreignId = `hag_${crypto.randomUUID()}`;
+    const storage = runtime.getService<IFileStorageService>(
+      ServiceType.REMOTE_FILES,
+    );
+    if (!storage) throw new Error("Real private file storage unavailable");
+    const foreignFile = await storage.storePrivate(
+      pdf("independent foreign workspace PDF"),
+      "application/pdf",
+    );
+    await executeRawSql(
+      runtime,
+      `INSERT INTO app_lifeops.life_household_agreement_artifacts SELECT (jsonb_populate_record(NULL::app_lifeops.life_household_agreement_artifacts, to_jsonb(source) || jsonb_build_object('id', ${sqlQuote(foreignId)}, 'agent_id', ${sqlQuote(crypto.randomUUID())}, 'document_id', ${sqlQuote(crypto.randomUUID())}, 'media_file_name', ${sqlQuote(foreignFile.fileName)}, 'content_sha256', ${sqlQuote(foreignFile.hash)}, 'byte_size', ${foreignFile.size}))).* FROM app_lifeops.life_household_agreement_artifacts source WHERE id = ${sqlQuote(first.id)}`,
+    );
+    const afterForeign = await previewFamilyDeletionDatabase(
+      runtime,
+      SELF_ENTITY_ID,
+    );
+    expect(afterForeign.unavailable).toEqual([]);
+    expect(afterForeign.sha256).toBe(expanded.sha256);
+    expect(
+      afterForeign.records
+        .filter((row) => row.kind === "agreements")
+        .map((row) => row.identity.id),
+    ).not.toContain(foreignId);
+    let entered = false;
+    await expect(
+      withReviewedFamilyDeletionDatabase(
+        runtime,
+        { ownerEntityId: SELF_ENTITY_ID, expectedSha256: before.sha256 },
+        async () => {
+          entered = true;
+        },
+      ),
+    ).rejects.toMatchObject({
+      code: "FAMILY_DELETION_PREVIEW_STALE",
+    });
+    expect(entered).toBe(false);
+  });
+  it("fingerprints private workflow lease changes without disclosing tokens and rolls back failed workspace revocation", async () => {
+    await new CalendarCardAccessStore(runtime).ensureSchema();
+    await previewFamilyDeletionDatabase(runtime, SELF_ENTITY_ID);
+    const period = "2042-03";
+    const lease = crypto.randomUUID();
+    await executeRawSql(
+      runtime,
+      `INSERT INTO app_lifeops.life_family_workflow_runs
+      (agent_id, period_key, run_id, state, trigger_kind, lease_token, lease_expires_at, created_at, updated_at)
+      VALUES (${sqlQuote(runtime.agentId)}, ${sqlQuote(period)}, 'database-preview-run', 'running', 'manual', ${sqlQuote(lease)}, '2042-03-01T00:10:00Z', '2042-03-01T00:00:00Z', '2042-03-01T00:00:00Z')`,
+    );
+    const before = await previewFamilyDeletionDatabase(runtime, SELF_ENTITY_ID);
+    expect(before.unavailable).toEqual([]);
+    expect(
+      before.records.find(
+        (row) =>
+          row.kind === "workflowRuns" && row.identity.period_key === period,
+      ),
+    ).toBeDefined();
+    expect(JSON.stringify(before)).not.toContain(lease);
+    await executeRawSql(
+      runtime,
+      `UPDATE app_lifeops.life_family_workflow_runs SET lease_token = ${sqlQuote(crypto.randomUUID())} WHERE agent_id = ${sqlQuote(runtime.agentId)} AND period_key = ${sqlQuote(period)}`,
+    );
+    const changed = await previewFamilyDeletionDatabase(
+      runtime,
+      SELF_ENTITY_ID,
+    );
+    expect(changed.sha256).not.toBe(before.sha256);
+    let entered = false;
+    await expect(
+      withReviewedFamilyDeletionDatabase(
+        runtime,
+        { ownerEntityId: SELF_ENTITY_ID, expectedSha256: before.sha256 },
+        async () => {
+          entered = true;
+        },
+      ),
+    ).rejects.toMatchObject({ code: "FAMILY_DELETION_PREVIEW_STALE" });
+    expect(entered).toBe(false);
+    await expect(
+      withReviewedFamilyDeletionDatabase(
+        runtime,
+        { ownerEntityId: SELF_ENTITY_ID, expectedSha256: changed.sha256 },
+        async (tx) => {
+          await executeRawSqlTx(
+            tx,
+            `UPDATE app_lifeops.life_family_workflow_runs SET state = 'failed' WHERE agent_id = ${sqlQuote(runtime.agentId)} AND period_key = ${sqlQuote(period)}`,
+          );
+          throw new Error("Revocation transaction failed");
+        },
+      ),
+    ).rejects.toThrow("Revocation transaction failed");
+    expect(
+      (await previewFamilyDeletionDatabase(runtime, SELF_ENTITY_ID)).sha256,
+    ).toBe(changed.sha256);
   });
 });
