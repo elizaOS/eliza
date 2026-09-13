@@ -15,7 +15,10 @@ export const INITIAL_AGENT_BACKUP_GENERATION = "initial";
 const generationRecord = z.strictObject({
   agentId: z.string().min(1),
   generation: z.string().uuid(),
+  operationId: z.string().min(1),
+  phase: z.enum(["pending", "ready"]),
 });
+type GenerationRecord = z.infer<typeof generationRecord>;
 
 export function isBackupAuthorityPath(relativePath: string): boolean {
   const normalized = relativePath.replaceAll("\\", "/");
@@ -34,7 +37,15 @@ async function syncDirectory(directory: string): Promise<void> {
 export interface AgentBackupAuthority {
   generation(agentId: string): Promise<string>;
   /** Retires earlier snapshots even if subsequent destructive work is uncertain. */
-  retire(agentId: string): Promise<string>;
+  retire(agentId: string, operationId: string): Promise<string>;
+  pendingRetirement(
+    agentId: string,
+  ): Promise<{ operationId: string; generation: string } | null>;
+  completeRetirement(
+    agentId: string,
+    operationId: string,
+    generation: string,
+  ): Promise<void>;
 }
 
 /** All users of a state directory share this process-independent exclusive claim. */
@@ -79,67 +90,104 @@ export async function withAgentBackupAuthority<T>(
       `${createHash("sha256").update(agentId).digest("hex")}.json`,
     );
   };
+  const readRecord = async (
+    agentId: string,
+  ): Promise<GenerationRecord | null> => {
+    const filePath = generationPath(agentId);
+    let handle: Awaited<ReturnType<typeof fs.open>>;
+    try {
+      handle = await fs.open(
+        filePath,
+        constants.O_RDONLY | constants.O_NOFOLLOW,
+      );
+    } catch (cause) {
+      // error-policy:J4 Absence is the explicit legacy generation; other I/O failures remain errors.
+      if (cause instanceof Error && "code" in cause && cause.code === "ENOENT")
+        return null;
+      throw cause;
+    }
+    try {
+      if (!(await handle.stat()).isFile())
+        throw new ElizaError("[AgentBackup] Generation is not a regular file", {
+          code: "AGENT_BACKUP_AUTHORITY_INVALID",
+        });
+      const value = generationRecord.parse(
+        JSON.parse(await handle.readFile("utf8")),
+      );
+      if (value.agentId !== agentId)
+        throw new ElizaError(
+          "[AgentBackup] Backup generation belongs to another agent",
+          { code: "AGENT_BACKUP_AUTHORITY_INVALID" },
+        );
+      return value;
+    } catch (cause) {
+      // error-policy:J2 Corrupt authority cannot be treated as an initial generation.
+      if (cause instanceof ElizaError) throw cause;
+      throw new ElizaError(
+        "[AgentBackup] Backup authority is unreadable; reconcile it before continuing",
+        { code: "AGENT_BACKUP_AUTHORITY_INVALID", cause },
+      );
+    } finally {
+      await handle.close();
+    }
+  };
+  const writeRecord = async (record: GenerationRecord): Promise<void> => {
+    const destination = generationPath(record.agentId);
+    const temporary = path.join(directory, `${randomUUID()}.pending`);
+    const handle = await fs.open(temporary, "wx", 0o600);
+    try {
+      await handle.writeFile(JSON.stringify(record));
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    await fs.rename(temporary, destination);
+    await syncDirectory(directory);
+  };
   const authority: AgentBackupAuthority = {
     async generation(agentId) {
-      const filePath = generationPath(agentId);
-      let handle: Awaited<ReturnType<typeof fs.open>>;
-      try {
-        handle = await fs.open(
-          filePath,
-          constants.O_RDONLY | constants.O_NOFOLLOW,
-        );
-      } catch (cause) {
-        // error-policy:J4 Absence is the explicit legacy generation; other I/O failures remain errors.
-        if (
-          cause instanceof Error &&
-          "code" in cause &&
-          cause.code === "ENOENT"
-        )
-          return INITIAL_AGENT_BACKUP_GENERATION;
-        throw cause;
-      }
-      try {
-        if (!(await handle.stat()).isFile())
-          throw new ElizaError(
-            "[AgentBackup] Generation is not a regular file",
-            { code: "AGENT_BACKUP_AUTHORITY_INVALID" },
-          );
-        const value = generationRecord.parse(
-          JSON.parse(await handle.readFile("utf8")),
-        );
-        if (value.agentId !== agentId)
-          throw new ElizaError(
-            "[AgentBackup] Backup generation belongs to another agent",
-            { code: "AGENT_BACKUP_AUTHORITY_INVALID" },
-          );
-        return value.generation;
-      } catch (cause) {
-        // error-policy:J2 Corrupt authority cannot be treated as an initial generation.
-        if (cause instanceof ElizaError) throw cause;
+      const record = await readRecord(agentId);
+      if (record?.phase === "pending")
         throw new ElizaError(
-          "[AgentBackup] Backup authority is unreadable; reconcile it before continuing",
-          { code: "AGENT_BACKUP_AUTHORITY_INVALID", cause },
+          "[AgentBackup] Data deletion is incomplete; reconcile primary cleanup before creating or restoring snapshots",
+          { code: "AGENT_BACKUP_RETIREMENT_PENDING" },
         );
-      } finally {
-        await handle.close();
-      }
+      return record === null
+        ? INITIAL_AGENT_BACKUP_GENERATION
+        : record.generation;
     },
-    async retire(agentId) {
-      const destination = generationPath(agentId);
-      // Validate existing authority before replacing it; corruption needs reconciliation.
-      await authority.generation(agentId);
+    async pendingRetirement(agentId) {
+      const record = await readRecord(agentId);
+      return record?.phase === "pending"
+        ? { operationId: record.operationId, generation: record.generation }
+        : null;
+    },
+    async retire(agentId, operationId) {
+      z.string().min(1).parse(operationId);
+      const record = await readRecord(agentId);
+      if (record?.operationId === operationId) return record.generation;
+      if (record?.phase === "pending")
+        throw new ElizaError(
+          "[AgentBackup] Another deletion must be reconciled first",
+          { code: "AGENT_BACKUP_RETIREMENT_PENDING" },
+        );
       const generation = randomUUID();
-      const temporary = path.join(directory, `${generation}.pending`);
-      const handle = await fs.open(temporary, "wx", 0o600);
-      try {
-        await handle.writeFile(JSON.stringify({ agentId, generation }));
-        await handle.sync();
-      } finally {
-        await handle.close();
-      }
-      await fs.rename(temporary, destination);
-      await syncDirectory(directory);
+      await writeRecord({ agentId, generation, operationId, phase: "pending" });
       return generation;
+    },
+    async completeRetirement(agentId, operationId, generation) {
+      const record = await readRecord(agentId);
+      if (
+        !record ||
+        record.operationId !== operationId ||
+        record.generation !== generation
+      )
+        throw new ElizaError(
+          "[AgentBackup] Cleanup acknowledgement does not match the pending deletion",
+          { code: "AGENT_BACKUP_RETIREMENT_MISMATCH" },
+        );
+      if (record.phase === "ready") return;
+      await writeRecord({ ...record, phase: "ready" });
     },
   };
   let outcome: { ok: true; value: T } | { ok: false; error: unknown };

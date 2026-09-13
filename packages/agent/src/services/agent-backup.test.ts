@@ -189,9 +189,47 @@ describe("agent backup manifest", () => {
       const legacy = structuredClone(old);
       delete legacy.manifest.restoreGeneration;
       const generation = await withAgentBackupAuthority(root, (authority) =>
-        authority.retire(runtime.agentId),
+        authority.retire(runtime.agentId, "family-delete-1"),
       );
+      await expect(
+        createAgentSnapshot(runtime, {} as never),
+      ).rejects.toMatchObject({ code: "AGENT_BACKUP_RETIREMENT_PENDING" });
+      await expect(restoreAgentSnapshot(runtime, old)).rejects.toMatchObject({
+        code: "AGENT_BACKUP_RETIREMENT_PENDING",
+      });
+      await withAgentBackupAuthority(root, async (authority) => {
+        expect(await authority.pendingRetirement(runtime.agentId)).toEqual({
+          operationId: "family-delete-1",
+          generation,
+        });
+        expect(await authority.retire(runtime.agentId, "family-delete-1")).toBe(
+          generation,
+        );
+        await expect(
+          authority.retire(runtime.agentId, "another-delete"),
+        ).rejects.toMatchObject({ code: "AGENT_BACKUP_RETIREMENT_PENDING" });
+        await expect(
+          authority.completeRetirement(
+            runtime.agentId,
+            "another-delete",
+            generation,
+          ),
+        ).rejects.toMatchObject({ code: "AGENT_BACKUP_RETIREMENT_MISMATCH" });
+        expect(await authority.generation("unrelated-agent")).toBe("initial");
+      });
       await fs.writeFile(path.join(pgliteDir, "pgdata.bin"), "after deletion");
+      await withAgentBackupAuthority(root, async (authority) => {
+        await authority.completeRetirement(
+          runtime.agentId,
+          "family-delete-1",
+          generation,
+        );
+        await authority.completeRetirement(
+          runtime.agentId,
+          "family-delete-1",
+          generation,
+        );
+      });
       for (const snapshot of [old, legacy]) {
         await expect(
           restoreAgentSnapshot(runtime, snapshot),

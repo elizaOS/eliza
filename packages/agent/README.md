@@ -35,6 +35,13 @@ stored but cannot restore that agent; this is a restore restriction, not proof
 that retained backup bytes have been purged. The domain must separately expose
 and execute its backup retention policy.
 
+Retirement remains pending until the domain verifies primary cleanup and calls
+`completeRetirement` with the matching operation ID and generation. Pending
+retirement blocks both capture and restore, including after a process restart.
+Retries of the same operation reuse its generation; a different operation cannot
+take over pending cleanup. The domain can inspect `pendingRetirement` to
+reconcile an uncertain transaction before retrying or acknowledging completion.
+
 New snapshots record the current generation. Legacy snapshots belong to the
 initial generation and remain restorable until that generation is retired.
 Authority files are excluded from capture and state pruning, and restore
