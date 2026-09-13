@@ -222,7 +222,7 @@ export function generateUniqueUsername(
   let suffix = 2;
   let candidate = `${truncatedBase}-${suffix}`;
 
-  while (existingUsernames.has(candidate) && suffix < 10000) {
+  while (existingUsernames.has(candidate) && suffix < 1000) {
     suffix++;
     candidate = `${truncatedBase}-${suffix}`;
   }
