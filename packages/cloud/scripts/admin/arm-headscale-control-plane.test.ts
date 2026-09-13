@@ -184,6 +184,23 @@ describe("Headscale control-plane self-enrollment", () => {
     expect(remote).toContain("(.Self.TailscaleIPs // []) | length > 0");
   });
 
+  test("reports the enrolled node's ACL tags after the durable identity proof", () => {
+    const remote = renderRemoteScript();
+
+    // The preauth key is the sole tag authority (the client no longer sends
+    // --advertise-tags), so an untagged join still enrolls and still counts as
+    // one node. Assert the observation exists and lands after the count check.
+    const durableProof = remote.indexOf("cp-router-durable-proof-failed");
+    const tagProbe = remote.indexOf("FINAL_NODE_TAGS=");
+    const visible = remote.indexOf("category=cp-router-visible");
+    expect(durableProof).toBeGreaterThan(-1);
+    expect(tagProbe).toBeGreaterThan(durableProof);
+    expect(visible).toBeGreaterThan(tagProbe);
+    expect(remote).toContain("category=cp-router-tag-verified");
+    expect(remote).toContain("category=cp-router-tag-unverified");
+    expect(remote).toContain("FINAL_NODE_TAGS");
+  });
+
   test("does not emit forced reauthentication when router enrollment is skipped", () => {
     const remote = renderRemoteScript(["--skip-cp-router"]);
 

@@ -1222,10 +1222,29 @@ FINAL_NODE_COUNT=$(sudo headscale nodes list -o json 2>/dev/null \\
   | jq -r --arg h "$CP_ROUTER_HOST" '[.[] | select(.name == $h)] | length')
 [ "$FINAL_NODE_COUNT" -eq 1 ] \\
   || { echo "CP router durable identity proof failed (category=cp-router-durable-proof-failed)"; exit 1; }
+# The node's tag has a single unverified path: the preauth key is minted with
+# --tags tag:eliza-proxy and the client no longer sends --advertise-tags. An
+# untagged join still enrolls and still counts as 1 above, but every ACL rule
+# with src: ["tag:eliza-proxy"] stops matching and the router silently cannot
+# reach agents. Report the observed tags so that failure is visible in the log
+# instead of hiding behind cp-router-visible. Advisory rather than fatal: the
+# field names below are not confirmed against this deployment's headscale
+# build, and a wrong guess must not fail a deploy that is actually healthy.
+FINAL_NODE_TAGS=$(sudo headscale nodes list -o json 2>/dev/null \\
+  | jq -r --arg h "$CP_ROUTER_HOST" '
+      [ .[] | select(.name == $h)
+        | (.validTags // .valid_tags // []) + (.forcedTags // .forced_tags // [])
+      ] | flatten | unique | join(",")' 2>/dev/null || true)
+case ",$FINAL_NODE_TAGS," in
+  *,tag:eliza-proxy,*)
+    echo "CP router ACL tag verified (category=cp-router-tag-verified)" ;;
+  *)
+    echo "CP router ACL tag not observed on the enrolled node (category=cp-router-tag-unverified): tags=[$FINAL_NODE_TAGS]" ;;
+esac
 echo "CP router live identity and canonical control URL verified (category=cp-router-visible)"
 unset NODE_ROWS NODE_COUNT STATUS_JSON PREFS_JSON LOCAL_IDENTITY_READY CONTROL_URL_MATCH \\
   CONTROL_URL TUNNEL_UID PREAUTH_KEY STALE_NODE_ID FINAL_STATUS_JSON FINAL_PREFS_JSON \\
-  FINAL_CONTROL_URL FINAL_NODE_COUNT
+  FINAL_CONTROL_URL FINAL_NODE_COUNT FINAL_NODE_TAGS
 `;
 
 const legacyVhostInspectionRemote = `
