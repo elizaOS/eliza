@@ -296,6 +296,25 @@ export async function injectFullCapabilityHost(page: Page): Promise<void> {
 // network boundary (the single `persistFirstRun` funnel in first-run-finish.ts).
 export interface OnboardingRouteState {
   firstRunPosts: unknown[];
+  /**
+   * Bodies of every `PUT /api/config` the page issued. Remote adoption completes
+   * first-run on the host with a `meta.firstRunComplete` patch (see
+   * `adopt-remote-first-run.ts`) instead of `POST /api/first-run`, so the
+   * first-run status route derives completion from both writes.
+   */
+  configWrites: Record<string, unknown>[];
+}
+
+/** True once a config write carried the host first-run completion marker. */
+export function hostFirstRunCompleted(state: OnboardingRouteState): boolean {
+  return state.configWrites.some((write) => {
+    const meta = write.meta;
+    return (
+      typeof meta === "object" &&
+      meta !== null &&
+      (meta as { firstRunComplete?: unknown }).firstRunComplete === true
+    );
+  });
 }
 
 async function routeFirstRunIncomplete(
@@ -328,7 +347,7 @@ async function routeFirstRunIncomplete(
       return;
     }
     await fulfillJson(route, {
-      complete: state.firstRunPosts.length > 0,
+      complete: state.firstRunPosts.length > 0 || hostFirstRunCompleted(state),
       cloudProvisioned: false,
     });
   });
@@ -349,22 +368,32 @@ async function routeFirstRunIncomplete(
 export async function installHomeRoutes(
   page: Page,
 ): Promise<OnboardingRouteState> {
-  const state: OnboardingRouteState = { firstRunPosts: [] };
+  const state: OnboardingRouteState = { firstRunPosts: [], configWrites: [] };
   await installDefaultAppRoutes(page);
   await routeFirstRunIncomplete(page, state);
 
+  const homeConfig = {
+    cloud: { enabled: false },
+    media: {},
+    plugins: { entries: {} },
+    ui: { avatarIndex: 1 },
+    wallet: {},
+  };
   await page.route("**/api/config", async (route) => {
-    if (route.request().method() !== "GET") {
+    const method = route.request().method();
+    if (method === "PUT") {
+      // The real route merges the patch into the host config; the harness only
+      // needs the completion marker to become visible to /api/first-run/status.
+      const patch = route.request().postDataJSON() as Record<string, unknown>;
+      state.configWrites.push(patch);
+      await fulfillJson(route, { ...homeConfig, ...patch });
+      return;
+    }
+    if (method !== "GET") {
       await route.fallback();
       return;
     }
-    await fulfillJson(route, {
-      cloud: { enabled: false },
-      media: {},
-      plugins: { entries: {} },
-      ui: { avatarIndex: 1 },
-      wallet: {},
-    });
+    await fulfillJson(route, homeConfig);
   });
 
   await page.route("**/api/stream/settings", async (route) => {
@@ -998,7 +1027,7 @@ export async function completeOnboardingToHome(
   page: Page,
   click: (locator: Locator) => Promise<void>,
   opts: { state: OnboardingRouteState; tutorial?: "start" | "skip" } = {
-    state: { firstRunPosts: [] },
+    state: { firstRunPosts: [], configWrites: [] },
   },
 ): Promise<{ surface: Locator }> {
   const { state, tutorial = "skip" } = opts;
@@ -1342,6 +1371,24 @@ export async function connectRemoteFirstRunToHome(
   const apiBase =
     opts.apiBase ??
     (await page.evaluate(() => window.location.origin.toString()));
+
+  // Adoption probes the host before writing its completion marker and refuses
+  // one that is not running and able to respond; the default smoke status
+  // omits `canRespond`, so present the adopted host as ready. Later routes win.
+  await page.route("**/api/status", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, {
+      state: "running",
+      canRespond: true,
+      agentName: "Playwright Smoke",
+      model: "ui-smoke",
+      startedAt: Date.now() - 60_000,
+      uptime: 60_000,
+    });
+  });
 
   await page.evaluate((gatewayUrl) => {
     document.dispatchEvent(
