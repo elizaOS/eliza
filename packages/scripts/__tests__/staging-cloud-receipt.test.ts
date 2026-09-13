@@ -6,6 +6,10 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  createCloudLiveContinuityEvidence,
+  parseCloudLiveContinuityEvidence,
+} from "../../app/test/cloud-live-continuity-contract";
+import {
   createDeployedRendererProof,
   DEPLOYED_BROWSER_SMOKE_SCHEMA,
   PAGES_AUTHORITY_SCHEMA,
@@ -39,6 +43,44 @@ function args(overrides: Record<string, string> = {}): string[] {
     `--${name}`,
     value,
   ]);
+}
+
+function continuity() {
+  return createCloudLiveContinuityEvidence({
+    challengeTurnCount: 1,
+    noAdditionalChatSendAfterChallenge: true,
+    personalIdentityEndpointPassed: true,
+    reload: {
+      historyGetSucceeded: true,
+      challengeUserLinePresent: true,
+      challengeAssistantLinePresent: true,
+    },
+    freshContext: {
+      historyGetSucceeded: true,
+      challengeUserLinePresent: true,
+      challengeAssistantLinePresent: true,
+      createdWithoutStorageState: true,
+      serviceWorkersBlocked: true,
+    },
+    bindingReuse: {
+      personalIdentityReused: true,
+      runtimeBindingReused: true,
+      apiBaseReused: true,
+    },
+    dedicatedMutationProof: {
+      approvalGrantedCount: 1,
+      confirmationClickCount: 0,
+      confirmationKind: "none",
+      adoptionConfirmationPostCount: 0,
+      activationPostCount: 0,
+      cutoverPostCount: 0,
+      forbiddenAgentMutationCount: 0,
+      approvalBindingPresent: false,
+      lifecycleBindingMismatchCount: 0,
+    },
+    cleanupDisposition: "no-test-owned-agent",
+    conversationHistoryDisposition: "preserved",
+  });
 }
 
 function deployedProofFile(
@@ -108,21 +150,7 @@ function deployedProofFile(
         "composer-send-click-to-settled-valid-assistant-turn: starts immediately before the UI send click; ends after the same fresh non-empty assistant row settles and passes the liveness contract; not first-token latency",
       firstTurnLatencyMs: overrides.latency ?? 12345,
     },
-    continuity: {
-      schemaVersion: 1,
-      lane: "app-live-e2e-cloud-staging",
-      challengeTurnCount: 1,
-      noAdditionalChatSendAfterChallenge: true,
-      personalIdentityEndpointPassed: true,
-      reloadHistoryPassed: true,
-      freshContextHistoryPassed: true,
-      personalIdentityReused: true,
-      runtimeBindingReused: true,
-      apiBaseReused: true,
-      forbiddenAgentMutationCount: 0,
-      cleanupDisposition: "no-test-owned-agent",
-      conversationHistoryDisposition: "preserved",
-    },
+    continuity: continuity(),
     postflight: {
       schema: PAGES_PUBLIC_CHECK_SCHEMA,
       phase: "postflight",
@@ -139,6 +167,20 @@ function deployedProofFile(
 }
 
 describe("staging Cloud live receipt", () => {
+  test("builds the deployed proof from the closed continuity contract", () => {
+    const evidence = continuity();
+    // The contract injects the schema version and lane; the proof builder
+    // rejects anything but this exact closed record.
+    expect(evidence).toMatchObject({
+      schemaVersion: 2,
+      lane: "app-live-e2e-cloud-staging",
+      forbiddenAgentMutationCount: 0,
+      cleanupDisposition: "no-test-owned-agent",
+      conversationHistoryDisposition: "preserved",
+    });
+    expect(parseCloudLiveContinuityEvidence(evidence)).toEqual(evidence);
+  });
+
   test("binds successful evidence to the exact SHA, run, duration, and fixed annotations", () => {
     expect(createStagingCloudReceipt(args())).toEqual({
       schemaVersion: 2,
