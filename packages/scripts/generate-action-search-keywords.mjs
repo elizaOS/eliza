@@ -1486,7 +1486,13 @@ for (const [stem, record] of [...actionsByStem.entries()].sort(([a], [b]) =>
         descriptions: record.descriptions,
       }),
     ];
-    const deduped = limitTerms(dedupeTerms(terms), LOCALE_LIMIT);
+    // Same pinning the base list gets: committed locale terms survive the
+    // regen instead of being re-scored away at LOCALE_LIMIT.
+    const deduped = limitTermsPinned(
+      dedupeTerms(arrayValue(existing[locale])),
+      dedupeTerms(terms),
+      LOCALE_LIMIT,
+    );
     localeEntries[locale] =
       deduped.length > 0 ? deduped : [...(FALLBACK_LOCALE_TERMS[locale] ?? [])];
   }
@@ -1600,7 +1606,12 @@ function buildLocaleTerms({ base, locale, names, similes, descriptions }) {
   for (const identifier of [...names, ...similes]) {
     terms.push(...translatePhrase(identifierToPhrase(identifier), locale));
   }
-  for (const term of base.slice(0, 64)) {
+  // Translate every base term, not a positional prefix of them. base is
+  // sorted alphabetically and already capped at BASE_LIMIT, so slicing it
+  // made translation coverage depend on a term's position in the alphabet:
+  // adding one base term could push another past the window and silently
+  // drop its localized forms on the next regen.
+  for (const term of base) {
     terms.push(...translatePhrase(term, locale));
   }
   for (const description of descriptions) {
@@ -1698,16 +1709,6 @@ function limitTermsPinned(pinnedTerms, terms, limit) {
   return [...pinned, ...fill].sort((left, right) =>
     normalizeTerm(left).localeCompare(normalizeTerm(right)),
   );
-}
-
-function limitTerms(terms, limit) {
-  return terms
-    .filter((term) => term.length <= 96)
-    .sort((left, right) => scoreTerm(right) - scoreTerm(left))
-    .slice(0, limit)
-    .sort((left, right) =>
-      normalizeTerm(left).localeCompare(normalizeTerm(right)),
-    );
 }
 
 function scoreTerm(term) {
