@@ -40,12 +40,18 @@ export interface ScenarioStabilityExecutionBudgets {
   maxToolCalls: number;
 }
 
+export interface ScenarioStabilityNativeReference {
+  schema: "eliza.stability.native-reference.v1";
+  attestationSha256: string;
+}
+
 export interface ScenarioStabilityExecutionEvidence {
   trajectory: readonly unknown[];
   toolReceipts: readonly unknown[];
   stateTransitions: readonly unknown[];
   providerReceipts: readonly unknown[];
   judgeVerdicts: readonly unknown[];
+  native?: ScenarioStabilityNativeReference;
 }
 
 export interface ScenarioStabilityAttemptExecution {
@@ -384,6 +390,19 @@ function validateExecutionShape(
       `attempt evidence.${key}`,
     );
   }
+  if (execution.evidence.native !== undefined) {
+    const native = execution.evidence.native;
+    if (
+      !native ||
+      typeof native !== "object" ||
+      Array.isArray(native) ||
+      Object.keys(native).length !== 2 ||
+      native.schema !== "eliza.stability.native-reference.v1" ||
+      typeof native.attestationSha256 !== "string" ||
+      !/^[a-f0-9]{64}$/.test(native.attestationSha256)
+    )
+      throw new Error("attempt native artifact reference is invalid");
+  }
   assertScenarioStabilityBoundedJson(execution.stateDiff, "attempt stateDiff");
   if (
     execution.error !== undefined &&
@@ -631,7 +650,11 @@ export function assertScenarioStabilityExecutedCellCoherence(
     );
   }
   for (const attempt of cell.attempts) {
-    const violation = budgetViolation(attempt, budgets);
+    const violation =
+      budgetViolation(attempt, budgets) ??
+      (attempt.durationMs > budgets.timeoutMs
+        ? `durationMs ${attempt.durationMs} exceeds its stability budget ${budgets.timeoutMs}`
+        : null);
     if (attempt.passed && violation) {
       throw new ElizaError(
         "Passing stability attempt exceeds its execution budget",
@@ -742,7 +765,7 @@ export async function executeScenarioStability(input: {
     )) {
       const { attemptId, outputDir } = attempt;
       const controller = new AbortController();
-      const startedAt = Date.now();
+      const startedAt = performance.now();
       let execution: ScenarioStabilityAttemptExecution | undefined;
       let failureClassification: ScenarioStabilityFailureClassification | null =
         null;
@@ -794,7 +817,12 @@ export async function executeScenarioStability(input: {
               outputDir,
               signal: teardownController.signal,
             }),
-            input.budgets.timeoutMs,
+            execution?.passed
+              ? Math.max(
+                  0,
+                  input.budgets.timeoutMs - (performance.now() - startedAt),
+                )
+              : input.budgets.timeoutMs,
             teardownController,
             "attempt teardown",
           );
@@ -817,13 +845,21 @@ export async function executeScenarioStability(input: {
           teardownController.abort();
         }
       }
+      const durationMs = Math.ceil(performance.now() - startedAt);
+      if (execution?.passed && durationMs > input.budgets.timeoutMs) {
+        failureClassification = "harness-failure";
+        execution = failedExecution(
+          `attempt total duration ${durationMs}ms exceeded ${input.budgets.timeoutMs}ms`,
+          execution,
+        );
+      }
       const result = execution ?? failedExecution("attempt produced no result");
       attempts.push({
         ...result,
         attemptNumber: attempt.attemptNumber,
         attemptId,
         outputDir,
-        durationMs: Date.now() - startedAt,
+        durationMs,
         failureClassification,
       });
     }

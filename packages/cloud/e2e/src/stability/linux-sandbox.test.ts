@@ -10,7 +10,7 @@ import {
   existsSync,
   mkdtempSync,
   openSync,
-  readFileSync,
+  realpathSync,
   writeFileSync,
 } from "node:fs";
 import {
@@ -55,39 +55,6 @@ function resolveRepositoryRoot(start: string): string {
 }
 
 const repoRoot = resolveRepositoryRoot(import.meta.dirname);
-const sandboxLauncherPath = path.join(
-  repoRoot,
-  "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
-);
-
-test("sandbox launcher resolves from the Cloud e2e workspace root", () => {
-  const packageManifestPath = path.join(
-    repoRoot,
-    "packages/cloud/e2e/package.json",
-  );
-  expect(
-    (
-      JSON.parse(readFileSync(packageManifestPath, "utf8")) as {
-        name?: unknown;
-      }
-    ).name,
-  ).toBe("@elizaos/cloud-e2e");
-  expect(existsSync(sandboxLauncherPath)).toBe(true);
-  const launcher = readFileSync(sandboxLauncherPath, "utf8");
-  expect(launcher).toContain(
-    '/usr/bin/setpriv --reuid "$uid" --regid "$gid" --clear-groups --',
-  );
-  expect(launcher).toContain('/usr/bin/setfacl -n -m "u:');
-  expect(launcher).toContain(':--x,m::--x"');
-  expect(launcher).toContain("/usr/bin/setfacl --set-file=-");
-  expect(launcher).toContain(
-    "/usr/bin/bwrap --die-with-parent --new-session --unshare-user",
-  );
-  expect(launcher).toContain(
-    '--setenv ELIZA_STABILITY_SANDBOX_HOST_UID "$uid"',
-  );
-  expect(launcher).toContain("--uid 0 --gid 0 --cap-drop ALL --seccomp 3");
-});
 
 test("credential-minimal child environment rejects ambient runner secrets", () => {
   const environment = scenarioChildEnvironment(
@@ -121,18 +88,24 @@ test("loopback allowlist rejects non-loopback and implicit ports", () => {
   );
 });
 
-test("sandbox launch has no unprivileged fallback when sudo is absent", async () => {
-  const launch = sandboxCommand({
-    enabled: true,
-    allowedPorts: "4311",
-    repoRoot: "/repo",
-    outputDir: "/output",
-    environmentPath: "/output/.sandbox-environment-test.bin",
-    callerHome: "/home/caller",
-    callerUid: 1000,
-    runtime: "/runtime",
-    args: [],
-  });
+test("sandbox launch fails closed when host authority is unavailable", async () => {
+  const createLaunch = () =>
+    sandboxCommand({
+      enabled: true,
+      allowedPorts: "4311",
+      repoRoot: "/repo",
+      outputDir: "/output",
+      environmentPath: "/output/.sandbox-environment-test.bin",
+      callerHome: "/home/caller",
+      callerUid: 1000,
+      runtime: "/runtime",
+      args: [],
+    });
+  if (process.platform !== "linux") {
+    expect(createLaunch).toThrow("Sandbox supervisor identity requires Linux");
+    return;
+  }
+  const launch = createLaunch();
   const child = spawn(launch.command, launch.args, {
     env: { PATH: "/definitely-no-sudo" },
     stdio: "ignore",
@@ -143,9 +116,80 @@ test("sandbox launch has no unprivileged fallback when sudo is absent", async ()
   expect(error.code).toBe("ENOENT");
 });
 
+for (const platform of ["darwin", "linux"]) {
+  for (const mode of ["real-llm", "deterministic-mock"]) {
+    for (const flag of [undefined, "0", "1"]) {
+      test(`admission ${platform} ${mode} ${flag ?? "unset"} preserves its launch boundary`, () => {
+        const child = spawnSync(
+          process.execPath,
+          [
+            "--conditions=eliza-source",
+            "-e",
+            `
+        import { linuxSandboxEnabled, sandboxCommand } from ${JSON.stringify(path.join(import.meta.dirname, "linux-sandbox.ts"))};
+        import { spawnSync } from "node:child_process";
+        Object.defineProperty(process, "platform", { value: ${JSON.stringify(platform)} });
+        const enabled = linuxSandboxEnabled(${JSON.stringify(mode)});
+        if (enabled) process.stdout.write("boundary-required");
+        else {
+          const launch = sandboxCommand({ enabled, runtime: process.execPath,
+            args: ["-e", "process.stdout.write('uncontained-launch')"] });
+          const child = spawnSync(launch.command, launch.args, { encoding: "utf8" });
+          process.stdout.write(child.stdout);
+        }
+      `,
+          ],
+          {
+            encoding: "utf8",
+            env: {
+              PATH: process.env.PATH,
+              ...(flag === undefined
+                ? {}
+                : { ELIZA_STABILITY_LINUX_SANDBOX: flag }),
+            },
+          },
+        );
+        if (platform === "linux" && flag === "1") {
+          expect(child.status).toBe(0);
+          expect(child.stdout).toBe("boundary-required");
+        } else if (mode === "deterministic-mock" && flag === undefined) {
+          expect(child.status).toBe(0);
+          expect(child.stdout).toBe("uncontained-launch");
+        } else {
+          expect(child.status).not.toBe(0);
+          expect(child.stdout).toBe("");
+        }
+      });
+    }
+  }
+}
+
 const hostedLinux =
   process.platform === "linux" &&
   process.env.ELIZA_STABILITY_LINUX_SANDBOX === "1";
+
+test.skipIf(!hostedLinux)(
+  "descriptor admission closes inherited sockets before exec and rejects invalid handles",
+  () => {
+    const result = spawnSync(
+      "sudo",
+      [
+        "-n",
+        "/usr/bin/python3",
+        "-I",
+        "-S",
+        path.join(
+          repoRoot,
+          "packages/cloud/e2e/scripts/stability-sandbox-exec.test.py",
+        ),
+      ],
+      { encoding: "utf8", timeout: 60_000, killSignal: "SIGKILL" },
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.status, result.stderr).toBe(0);
+  },
+  65_000,
+);
 
 async function createPrivateAttempt(prefix: string) {
   const outputRoot = await mkdtemp(path.join(tmpdir(), prefix));
@@ -268,8 +312,27 @@ test.skipIf(!hostedLinux)(
       await writeFile(
         probe,
         `
-import { readFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { closeSync, fstatSync, openSync, readFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+let nativeProbeSequence = 0;
+const runNative = (command, args) => new Promise((resolve, reject) => {
+  const prefix = import.meta.dir + "/native-probe-" + (++nativeProbeSequence);
+  const stdoutFd = openSync(prefix + ".stdout", "w", 0o600);
+  const stderrFd = openSync(prefix + ".stderr", "w", 0o600);
+  let child;
+  try {
+    child = spawn(command, args, { stdio: ["ignore", stdoutFd, stderrFd] });
+  } finally {
+    closeSync(stdoutFd);
+    closeSync(stderrFd);
+  }
+  child.once("error", reject);
+  child.once("close", (status, signal) => resolve({
+    status, signal,
+    stdout: readFileSync(prefix + ".stdout", "utf8"),
+    stderr: readFileSync(prefix + ".stderr", "utf8"),
+  }));
+});
 import { connect } from "node:net";
 import { createSocket } from "node:dgram";
 const tcp = (host, port) => new Promise((resolve) => {
@@ -325,17 +388,17 @@ const syscallPython = [
   "    return {'result': result, 'errno': ctypes.get_errno()}",
   "print(json.dumps({'socketpairResult': socketpair_result, 'socketpairErrno': socketpair_errno, 'socketpairReconnect': socketpair_reconnect, 'x32Socketpair': denied(0x40000000 | 53, socket.AF_UNIX, socket.SOCK_DGRAM, 0, fds), 'ioUringSetup': denied(425, 1, 0), 'ioUringEnter': denied(426, -1, 0, 0, 0, 0, 0), 'ioUringRegister': denied(427, -1, 0, 0, 0)}))",
 ].join("\\n");
-const syscallProbe = spawnSync("python3", ["-c", syscallPython], { encoding: "utf8" });
+const syscallProbe = await runNative("/usr/bin/python3", ["-c", syscallPython]);
 const syscallResult = syscallProbe.status === 0
   ? JSON.parse(syscallProbe.stdout)
-  : { probeError: syscallProbe.stderr };
+  : { probeError: syscallProbe.stderr, error: syscallProbe.error?.message, signal: syscallProbe.signal };
 let procReadable = false;
 try { readFileSync("/proc/" + process.env.PROBE_PARENT_PID + "/environ"); procReadable = true; } catch {}
 let fdSecretReadable = false;
-try { fdSecretReadable = readFileSync(3, "utf8").includes("fd-secret"); } catch {}
+try { if (fstatSync(3).isFile()) fdSecretReadable = readFileSync(3, "utf8").includes("fd-secret"); } catch {}
 let hostTmpReadable = false;
 try { hostTmpReadable = readFileSync(process.env.PROBE_HOST_TMP_PATH, "utf8") === "must-be-masked"; } catch {}
-const rawProbeAvailable = spawnSync("python3", ["--version"]).status === 0;
+const rawProbeAvailable = (await runNative("/usr/bin/python3", ["--version"])).status === 0;
 console.log(JSON.stringify({
   secretPresent: process.env.PROBE_PARENT_CREDENTIAL !== undefined,
   procReadable,
@@ -351,14 +414,15 @@ console.log(JSON.stringify({
   dnsUdp: await udp("udp4", "8.8.8.8", 53),
   ipv6Udp: await udp("udp6", "::1", Number(process.env.PROBE_BLOCKED_IPV6_PORT)),
   rawProbeAvailable,
-  rawIpv4: spawnSync("python3", ["-c", "import socket; socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)"]).status === 0,
-  rawIpv6: spawnSync("python3", ["-c", "import socket; socket.socket(socket.AF_INET6, socket.SOCK_RAW, socket.IPPROTO_RAW)"]).status === 0,
+  rawIpv4: (await runNative("/usr/bin/python3", ["-c", "import socket; socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)"])).status === 0,
+  rawIpv6: (await runNative("/usr/bin/python3", ["-c", "import socket; socket.socket(socket.AF_INET6, socket.SOCK_RAW, socket.IPPROTO_RAW)"])).status === 0,
   filesystemUnix: await unix(process.env.PROBE_FILESYSTEM_UNIX),
   abstractUnix: await unix("\\0" + process.env.PROBE_ABSTRACT_UNIX_NAME),
   syscallResult,
 }));
 `,
-        { mode: 0o600 },
+        // Executable input is readable within the private attempt directory.
+        { mode: 0o444 },
       );
       process.env.PROBE_PARENT_CREDENTIAL = "must-not-cross-boundary";
       const launch = sandboxCommand({
@@ -412,13 +476,12 @@ console.log(JSON.stringify({
       const result = JSON.parse(stdout.trim()) as Record<string, unknown>;
       expect(result.uid).toBe(0);
       expect(result.hostUid).not.toBe(process.getuid?.());
-      expect({ ...result, uid: undefined, hostUid: undefined }).toEqual({
+      const { uid: _uid, hostUid: _hostUid, ...observed } = result;
+      expect(observed).toEqual({
         secretPresent: false,
         procReadable: false,
         fdSecretReadable: false,
         hostTmpReadable: false,
-        uid: undefined,
-        hostUid: undefined,
         allowed: true,
         blockedLoopback: false,
         blockedIpv6: false,
@@ -502,7 +565,7 @@ console.log(JSON.stringify({
           "/proc",
           "--ro-bind",
           "/dev/null",
-          "/usr/sbin/iptables",
+          realpathSync("/usr/sbin/iptables"),
           "/bin/bash",
           setupScript,
           "setup",
@@ -673,7 +736,8 @@ writeFileSync(process.env.TEARDOWN_READY_PATH, JSON.stringify({
 }));
 setInterval(() => {}, 1000);
 `,
-        { mode: 0o600 },
+        // Executable input is readable within the private attempt directory.
+        { mode: 0o444 },
       );
       const environmentPath = await writeSandboxEnvironment(
         directory,
@@ -724,7 +788,7 @@ setInterval(() => {}, 1000);
       expect(ready.uid).toBe(0);
       expect(ready.hostUid).not.toBe(process.getuid?.());
       expect(
-        spawnSync("sudo", ["-n", "kill", "-TERM", `-${child.pid}`], {
+        spawnSync("sudo", ["-n", "kill", "-TERM", "--", `-${child.pid}`], {
           stdio: "ignore",
         }).status,
       ).toBe(0);
@@ -763,6 +827,47 @@ setInterval(() => {}, 1000);
       expectAclRestored(outputRoot, outputRootAcl);
       await rm(outputRoot, { recursive: true, force: true });
     }
+  },
+  30_000,
+);
+
+test.skipIf(!hostedLinux)(
+  "capability admission exercises the real launcher and rejects unavailable firewall authority",
+  () => {
+    const setupScript = path.join(
+      repoRoot,
+      "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
+    );
+    const admitted = spawnSync(
+      "sudo",
+      ["-n", "/bin/bash", setupScript, "setup"],
+      { encoding: "utf8" },
+    );
+    expect(admitted.status).toBe(0);
+    expect(admitted.stdout.trim()).toBe("ready");
+    const denied = spawnSync(
+      "sudo",
+      [
+        "-n",
+        "/usr/bin/setpriv",
+        "--bounding-set=-net_admin",
+        "/bin/bash",
+        setupScript,
+        "setup",
+      ],
+      { encoding: "utf8" },
+    );
+    expect(denied.status).not.toBe(0);
+    expect(denied.stdout).not.toContain("ready");
+    expect(denied.stderr).toContain("required kernel capability probe failed");
+    const residue = spawnSync(
+      "sudo",
+      ["-n", "/bin/sh", "-c", "iptables-save; ip6tables-save; getent passwd"],
+      { encoding: "utf8" },
+    );
+    expect(residue.status).toBe(0);
+    expect(residue.stdout).not.toContain("ELIZA_SBX_");
+    expect(residue.stdout).not.toContain("eliza-sbx-");
   },
   30_000,
 );

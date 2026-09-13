@@ -4,6 +4,7 @@
  */
 
 import { isIP } from "node:net";
+import { ElizaError } from "@elizaos/core/errors";
 
 export interface StabilityParentNetworkEntry {
   origin: string;
@@ -35,6 +36,7 @@ export function createLoopbackOnlyFetch(
   nativeFetch: typeof globalThis.fetch,
   ledger: StabilityParentNetworkEntry[],
 ): typeof globalThis.fetch {
+  const nativePreconnect = nativeFetch.preconnect;
   return Object.assign(
     async (
       input: Parameters<typeof nativeFetch>[0],
@@ -73,6 +75,29 @@ export function createLoopbackOnlyFetch(
       }
       return response;
     },
-    { preconnect: nativeFetch.preconnect },
+    {
+      preconnect:
+        typeof nativePreconnect === "function"
+          ? (...args: Parameters<typeof nativePreconnect>) => {
+              const url = new URL(args[0]);
+              const allowed = isLoopbackHostname(url.hostname);
+              ledger.push({
+                origin: url.origin,
+                method: "PRECONNECT",
+                allowed,
+              });
+              if (!allowed) {
+                throw new ElizaError(
+                  `unexpected preconnect egress blocked: ${url.origin}`,
+                  {
+                    code: "STABILITY_PARENT_PRECONNECT_DENIED",
+                    context: { origin: url.origin },
+                  },
+                );
+              }
+              return nativePreconnect.apply(nativeFetch, args);
+            }
+          : nativePreconnect,
+    },
   );
 }

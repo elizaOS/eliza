@@ -1,10 +1,18 @@
 /**
  * Exercises the production stability process-group adapter with real child
  * processes and an injected deterministic control-session boundary. No child
- * process or environment transport is mocked.
+ * process or environment transport is mocked. Native lease controls inject the
+ * external acceptance decision; real cryptographic ownership is tested by the
+ * Cloud guardian integration.
  */
 
-import { mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { SyntheticControlSession } from "@elizaos/shared/synthetic-control";
@@ -166,6 +174,349 @@ describe("scenario stability subprocess adapter", () => {
     roots.push(value);
     return value;
   }
+
+  it.each(["accepted", "rejected"] as const)(
+    "requires the independent native lease to be %s after real FD4 delivery",
+    async (mode) => {
+      const outputRoot = root();
+      const manifest = {
+        version: 1 as const,
+        namespace: "native-lease",
+        manifestId: "native-lease-world",
+        domains: {},
+      };
+      let delivered = 0;
+      let cancelled = 0;
+      const adapter = new ScenarioStabilitySubprocessAdapter({
+        command: process.execPath,
+        args: () => [
+          "-e",
+          `{
+          const fs = require("node:fs");
+          const admission = JSON.parse(fs.readFileSync(4, "utf8"));
+          fs.closeSync(4);
+          fs.writeFileSync(admission.marker, admission.value, { flag: "wx" });
+        }
+` + CHILD_SCRIPT,
+        ],
+        cwd: outputRoot,
+        modelMode: {
+          kind: "deterministic-mock",
+          fixtureManifestFingerprint: "f".repeat(64),
+        },
+        syntheticControl: {
+          controlUrl: "http://127.0.0.1:43191",
+          controlToken: "owned-lease-token",
+          manifest,
+        },
+        openSession: async () =>
+          ({
+            manifest,
+            generation: 1,
+            execute: async () => ({ manifest }),
+            close: async () => undefined,
+          }) as unknown as SyntheticControlSession,
+        nativeAdmission: {
+          async prepare(input) {
+            const marker = path.join(
+              input.outputDir,
+              "native-bootstrap-received",
+            );
+            let timer: ReturnType<typeof setInterval>;
+            let rejectPending: (error: Error) => void;
+            const completion = new Promise<{
+              schema: "eliza.stability.native-reference.v1";
+              attestationSha256: string;
+            }>((resolve, reject) => {
+              rejectPending = reject;
+              timer = setInterval(() => {
+                if (!existsSync(marker)) return;
+                clearInterval(timer);
+                if (readFileSync(marker, "utf8") !== input.attemptId) {
+                  reject(
+                    new Error("Native bootstrap bytes changed during delivery"),
+                  );
+                  return;
+                }
+                delivered += 1;
+                if (mode === "rejected")
+                  reject(new Error("owned native persistence rejected"));
+                else
+                  resolve({
+                    schema: "eliza.stability.native-reference.v1",
+                    attestationSha256: "a".repeat(64),
+                  });
+              }, 10);
+            });
+            return {
+              bootstrap: JSON.stringify({ marker, value: input.attemptId }),
+              completion,
+              async cancel() {
+                clearInterval(timer);
+                rejectPending(new Error("owned lease cancelled"));
+                cancelled += 1;
+              },
+            };
+          },
+        },
+      });
+      const report = await executeScenarioStability({
+        plan: createScenarioStabilityPlan({
+          runId: "native-lease-" + mode,
+          outputRoot,
+        }),
+        targets: [
+          {
+            scenarioId: "owned-native-lease",
+            model: { provider: "deterministic", model: "strict-fixtures" },
+          },
+        ],
+        budgets: {
+          timeoutMs: 5000,
+          maxInputTokens: 10,
+          maxOutputTokens: 10,
+          maxToolCalls: 2,
+        },
+        adapter,
+      });
+      expect(delivered).toBe(3);
+      expect(cancelled).toBe(3);
+      expect(report.status).toBe(mode === "accepted" ? "passed" : "failed");
+      for (const attempt of report.cells[0].attempts) {
+        expect(attempt.passed).toBe(mode === "accepted");
+        if (mode === "accepted")
+          expect(attempt.evidence.native?.attestationSha256).toBe(
+            "a".repeat(64),
+          );
+        else expect(attempt.evidence.native).toBeUndefined();
+      }
+    },
+  );
+
+  it("blocks the next attempt while timed-out teardown still owns its session", async () => {
+    const outputRoot = root();
+    const manifest = {
+      version: 1 as const,
+      namespace: "pending-cleanup",
+      manifestId: "pending-cleanup",
+      domains: {},
+    };
+    let opened = 0;
+    let closed = 0;
+    let release!: () => void;
+    const barrier = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const adapter = new ScenarioStabilitySubprocessAdapter({
+      command: process.execPath,
+      args: () => ["-e", CHILD_SCRIPT],
+      cwd: outputRoot,
+      modelMode: {
+        kind: "deterministic-mock",
+        fixtureManifestFingerprint: "f".repeat(64),
+      },
+      syntheticControl: {
+        controlUrl: "http://127.0.0.1:43191",
+        controlToken: "owned-pending-cleanup",
+        manifest,
+      },
+      openSession: async () =>
+        ({
+          manifest,
+          generation: ++opened,
+          execute: async () => ({ manifest }),
+          close: async () => {
+            closed += 1;
+            await barrier;
+          },
+        }) as unknown as SyntheticControlSession,
+    });
+    let report:
+      | Awaited<ReturnType<typeof executeScenarioStability>>
+      | undefined;
+    let openedWhileBlocked = 0;
+    let closedWhileBlocked = 0;
+    try {
+      report = await executeScenarioStability({
+        plan: createScenarioStabilityPlan({
+          runId: "pending-cleanup",
+          outputRoot,
+        }),
+        targets: [
+          {
+            scenarioId: "owned-child",
+            model: { provider: "deterministic", model: "strict-fixtures" },
+          },
+        ],
+        budgets: {
+          timeoutMs: 500,
+          maxInputTokens: 10,
+          maxOutputTokens: 10,
+          maxToolCalls: 2,
+        },
+        adapter,
+      });
+      openedWhileBlocked = opened;
+      closedWhileBlocked = closed;
+    } finally {
+      release();
+      if (report)
+        for (const attempt of report.cells[0].attempts)
+          await adapter.terminate({
+            target: report.cells[0],
+            attemptNumber: attempt.attemptNumber,
+            attemptId: attempt.attemptId,
+            outputDir: attempt.outputDir,
+            signal: AbortSignal.abort(),
+          });
+    }
+    expect(openedWhileBlocked).toBe(1);
+    expect(closedWhileBlocked).toBe(1);
+    expect(report?.cells[0].attempts[1].error).toContain(
+      "teardown is in progress",
+    );
+    expect(report?.cells[0].attempts[2].error).toContain(
+      "teardown is in progress",
+    );
+  });
+
+  it.each(["session", "native lease"] as const)(
+    "owns a %s that arrives after execution has timed out",
+    async (acquisition) => {
+      const outputRoot = root();
+      const manifest = {
+        version: 1 as const,
+        namespace: "late-session",
+        manifestId: "late-session",
+        domains: {},
+      };
+      let opened = 0,
+        created = 0,
+        closed = 0,
+        childCommands = 0;
+      let leaseCreated = 0,
+        leaseCancelled = 0;
+      let release!: () => void;
+      const barrier = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const opening: Promise<void>[] = [];
+      const adapter = new ScenarioStabilitySubprocessAdapter({
+        command: process.execPath,
+        args: () => {
+          childCommands += 1;
+          return ["-e", CHILD_SCRIPT];
+        },
+        cwd: outputRoot,
+        modelMode: {
+          kind: "deterministic-mock",
+          fixtureManifestFingerprint: "f".repeat(64),
+        },
+        syntheticControl: {
+          controlUrl: "http://127.0.0.1:43191",
+          controlToken: "owned-late-session",
+          manifest,
+        },
+        nativeAdmission:
+          acquisition === "native lease"
+            ? {
+                async prepare() {
+                  const ready = barrier.then(() => {
+                    leaseCreated += 1;
+                  });
+                  opening.push(ready);
+                  await ready;
+                  return {
+                    bootstrap: "{}",
+                    completion: Promise.resolve({
+                      schema: "eliza.stability.native-reference.v1" as const,
+                      attestationSha256: "a".repeat(64),
+                    }),
+                    async cancel() {
+                      leaseCancelled += 1;
+                    },
+                  };
+                },
+              }
+            : undefined,
+        openSession: async () => {
+          const generation = ++opened;
+          if (acquisition === "session") {
+            const ready = barrier.then(() => undefined);
+            opening.push(ready);
+            await ready;
+          }
+          created += 1;
+          return {
+            manifest,
+            generation,
+            execute: async () => ({ manifest }),
+            close: async () => {
+              closed += 1;
+            },
+          } as unknown as SyntheticControlSession;
+        },
+      });
+      let report:
+        | Awaited<ReturnType<typeof executeScenarioStability>>
+        | undefined;
+      let automaticallyClosed = 0;
+      try {
+        report = await executeScenarioStability({
+          plan: createScenarioStabilityPlan({
+            runId: "late-session",
+            outputRoot,
+          }),
+          targets: [
+            {
+              scenarioId: "owned-child",
+              model: { provider: "deterministic", model: "strict-fixtures" },
+            },
+          ],
+          budgets: {
+            timeoutMs: 100,
+            maxInputTokens: 10,
+            maxOutputTokens: 10,
+            maxToolCalls: 2,
+          },
+          adapter,
+        });
+        const pending = adapter.terminate({
+          target: report.cells[0],
+          attemptNumber: report.cells[0].attempts[0].attemptNumber,
+          attemptId: report.cells[0].attempts[0].attemptId,
+          outputDir: report.cells[0].attempts[0].outputDir,
+          signal: AbortSignal.abort(),
+        });
+        release();
+        await pending;
+        await Promise.all(opening);
+        await Promise.resolve();
+        automaticallyClosed = closed;
+      } finally {
+        release();
+        await Promise.all(opening);
+        await Promise.resolve();
+        if (report)
+          for (const attempt of report.cells[0].attempts)
+            await adapter.terminate({
+              target: report.cells[0],
+              attemptNumber: attempt.attemptNumber,
+              attemptId: attempt.attemptId,
+              outputDir: attempt.outputDir,
+              signal: AbortSignal.abort(),
+            });
+      }
+      expect(opened).toBe(1);
+      expect(created).toBe(1);
+      expect(automaticallyClosed).toBe(1);
+      expect(childCommands).toBe(0);
+      if (acquisition === "native lease") {
+        expect(leaseCreated).toBe(1);
+        expect(leaseCancelled).toBe(1);
+      }
+    },
+  );
 
   it("runs exactly three isolated keyless process groups over one exact manifest", async () => {
     process.env.OPENAI_API_KEY = "ambient-credential-must-not-cross";

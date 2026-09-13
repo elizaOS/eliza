@@ -149,3 +149,14 @@ remains blocking unless an authorized repository secret produced a trajectory.
 - No real cloud creds are needed; everything is local.
 - Do not modify cloud-api / cloud-frontend source from inside this package.
   When a test exposes a real bug, surface it as a follow-up.
+
+### Native stability duration
+
+The native lane defaults to 600,000 ms and rejects larger selected budgets before
+allocation. Explicit shorter durations are preserved. The total success budget
+includes both complete identity scans and native cleanup; slow or timed-out work
+never becomes a passed report. Cancellation has a separately bounded cleanup
+window, with retained reservations and adapter quarantine on unproven cleanup.
+This accounts for measured metadata inspection exceeding 100 seconds on an
+isolated Linux target without omitting scans or changing the payload CPU limit.
+The nonnative fixture default remains 15,000 ms.

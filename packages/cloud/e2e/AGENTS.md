@@ -59,6 +59,17 @@ bun run cloud:login:test-wallet --base <local-stack-url>
 
 ### Exact-three agent stability lane
 
+Native attempts default to a declared 600,000 ms total duration and reject larger
+selected durations before resource acquisition. Explicit shorter budgets remain
+unchanged. This includes pre-admission inspection, scenario execution, native
+sealing, and successful cleanup; the report verifier still rejects success over
+the selected budget. Complete UID/GID metadata inspection can require over 100
+seconds on the supported isolated Linux target. Preparation and collection use
+the remaining selected deadline, while cancellation gets a separately bounded
+cleanup window of the same duration. Cleanup failure retains the reservation and
+quarantines the adapter. The payload CPU limit and all filesystem/network checks
+remain unchanged. The nonnative fixture lane retains its 15,000 ms default.
+
 `stability:keyless` boots the canonical mock Cloud stack once per isolated
 attempt, runs a real `AgentRuntime`, and requires attempts 1, 2, and 3 to pass.
 The scenario sends a real owner message, executes `OWNER_REMINDERS`, fires the

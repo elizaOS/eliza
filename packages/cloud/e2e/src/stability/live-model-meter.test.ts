@@ -201,7 +201,7 @@ describe("live model usage meter", () => {
       reserve(anthropic),
       "text/event-stream",
       Buffer.from(
-        'data: {"type":"message_start","message":{"usage":{"input_tokens":2,"cache_creation_input_tokens":3,"cache_read_input_tokens":4,"output_tokens":0}}}\n\ndata: {"type":"message_delta","usage":{"output_tokens":4}}\n\n',
+        'data: {"type":"message_start","message":{"usage":{"input_tokens":2,"cache_creation_input_tokens":3,"cache_read_input_tokens":4,"output_tokens":0}}}\n\ndata: {"type":"message_delta","usage":{"output_tokens":4}}\n\ndata: {"type":"message_stop"}\n\n',
       ),
     );
     expect(anthropic.snapshot()).toMatchObject({
@@ -291,7 +291,7 @@ describe("live model usage meter", () => {
       reserve(meter),
       "text/event-stream",
       Buffer.from(
-        'data: {"type":"message_start","message":{"usage":{"input_tokens":0,"cache_read_input_tokens":19,"output_tokens":0}}}\n\ndata: {"type":"message_delta","usage":{"output_tokens":3}}\n\n',
+        'data: {"type":"message_start","message":{"usage":{"input_tokens":0,"cache_read_input_tokens":19,"output_tokens":0}}}\n\ndata: {"type":"message_delta","usage":{"output_tokens":3}}\n\ndata: {"type":"message_stop"}\n\n',
       ),
     );
     expect(meter.snapshot()).toMatchObject({
@@ -1079,7 +1079,7 @@ describe("live model usage meter", () => {
       expectedModel: EXPECTED_MODEL,
       budgets: { maxInputTokens: 20_000, maxOutputTokens: 5, maxRequests: 2 },
       fetchUpstream: async (_url, init) => {
-        const rawBody = String(init.body);
+        const rawBody = await new Response(init.body).text();
         forwardedBodies.push(rawBody);
         const body = JSON.parse(rawBody) as {
           max_output_tokens: number;
@@ -1202,7 +1202,9 @@ describe("live model usage meter", () => {
           maxRequests: 1,
         },
         fetchUpstream: async (_url, init) => {
-          forwarded = JSON.parse(String(init.body)) as Record<string, unknown>;
+          forwarded = JSON.parse(
+            await new Response(init.body).text(),
+          ) as Record<string, unknown>;
           return Response.json({
             usage:
               provider === "openai"
@@ -1361,4 +1363,199 @@ describe("live model usage meter", () => {
       }),
     ]);
   });
+});
+
+describe("complete Anthropic stream accounting", () => {
+  const start =
+    'event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":25,"output_tokens":1}}}\n\n';
+  const delta =
+    'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":7}}\n\n';
+  const stop = 'event: message_stop\ndata: {"type":"message_stop"}\n\n';
+  const providerError =
+    'event: error\ndata: {"type":"error","error":{"type":"overloaded_error","message":"fixture unavailable"}}\n\n';
+  test.each(
+    (
+      [
+        ["premature end", start, 502],
+        ["missing final usage", start + stop, 502],
+        ["usage after premature completion", start + stop + delta + stop, 502],
+        ["missing completion", start + delta, 502],
+        [
+          "decreased initial usage",
+          start +
+            'data: {"type":"message_delta","usage":{"output_tokens":0}}\n\n' +
+            stop,
+          502,
+        ],
+        [
+          "provider error",
+          start + delta + providerError,
+          502,
+          "STABILITY_MODEL_PROVIDER_ERROR",
+        ],
+        ["complete response", start + delta + stop, 200],
+      ] as const
+    ).map(([name, stream, expectedStatus, failure]) => ({
+      name,
+      stream,
+      expectedStatus,
+      expectedFailure: failure ?? ("STABILITY_MODEL_USAGE_MALFORMED" as const),
+    })),
+  )(
+    "real HTTP proxy handles $name",
+    async ({ stream, expectedStatus, expectedFailure }) => {
+      const upstream = Bun.serve({
+        hostname: "127.0.0.1",
+        port: 0,
+        fetch: () =>
+          new Response(stream, {
+            headers: { "content-type": "text/event-stream" },
+          }),
+      });
+      const proxy = await startLiveModelEgressProxy({
+        provider: "anthropic",
+        expectedModel: EXPECTED_MODEL,
+        budgets: {
+          maxInputTokens: 20000,
+          maxOutputTokens: 100,
+          maxRequests: 2,
+        },
+        upstreamOrigin: `http://127.0.0.1:${upstream.port}`,
+      });
+      try {
+        const response = await fetch(`${proxy.url}/messages`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            model: EXPECTED_MODEL,
+            messages: [{ role: "user", content: "ordinary request" }],
+            max_tokens: 20,
+            stream: true,
+          }),
+        });
+        const body = await response.text();
+        expect(response.status).toBe(expectedStatus);
+        if (expectedStatus === 200) {
+          expect(body).toBe(stream);
+          expect(proxy.snapshot()).toMatchObject({
+            inputTokens: 25,
+            outputTokens: 7,
+            failures: [],
+          });
+        } else {
+          expect(JSON.parse(body).error.code).toBe(expectedFailure);
+          expect(proxy.snapshot().failures[0]?.code).toBe(expectedFailure);
+        }
+      } finally {
+        await proxy.stop();
+        upstream.stop(true);
+      }
+    },
+  );
+});
+
+describe("complete OpenAI stream accounting", () => {
+  const chatUsage =
+    'data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":25,"completion_tokens":7}}\n\n';
+  const done = "data: [DONE]\n\n";
+  test.each([
+    ["chat without completion", "/chat/completions", chatUsage, 502],
+    [
+      "named error event",
+      "/chat/completions",
+      chatUsage +
+        'event: error\ndata: {"message":"fixture unavailable"}\n\n' +
+        done,
+      502,
+    ],
+    [
+      "chat followed by error",
+      "/chat/completions",
+      chatUsage +
+        'data: {"error":{"message":"fixture unavailable"}}\n\n' +
+        done,
+      502,
+    ],
+    [
+      "failed response",
+      "/responses",
+      'data: {"type":"response.failed","response":{"status":"failed","usage":{"input_tokens":25,"output_tokens":7}}}\n\n',
+      502,
+    ],
+    [
+      "incomplete response",
+      "/responses",
+      'data: {"type":"response.incomplete","response":{"status":"incomplete","usage":{"input_tokens":25,"output_tokens":7}}}\n\n',
+      502,
+    ],
+    ["complete chat", "/chat/completions", chatUsage + done, 200],
+    [
+      "complete response",
+      "/responses",
+      'data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":25,"output_tokens":7}}}\n\n',
+      200,
+    ],
+  ] as const)(
+    "real HTTP proxy handles %s",
+    async (_name, route, stream, expectedStatus) => {
+      const upstream = Bun.serve({
+        hostname: "127.0.0.1",
+        port: 0,
+        fetch: () =>
+          new Response(stream, {
+            headers: { "content-type": "text/event-stream" },
+          }),
+      });
+      const proxy = await startLiveModelEgressProxy({
+        provider: "openai",
+        expectedModel: EXPECTED_MODEL,
+        budgets: {
+          maxInputTokens: 20000,
+          maxOutputTokens: 100,
+          maxRequests: 2,
+        },
+        upstreamOrigin: `http://127.0.0.1:${upstream.port}`,
+      });
+      try {
+        const requestBody =
+          route === "/responses"
+            ? {
+                model: EXPECTED_MODEL,
+                input: "ordinary request",
+                max_output_tokens: 20,
+                stream: true,
+              }
+            : {
+                model: EXPECTED_MODEL,
+                messages: [{ role: "user", content: "ordinary request" }],
+                max_completion_tokens: 20,
+                stream: true,
+                stream_options: { include_usage: true },
+              };
+        const response = await fetch(`${proxy.url}${route}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(requestBody),
+        });
+        const body = await response.text();
+        expect(response.status).toBe(expectedStatus);
+        if (expectedStatus === 200) {
+          expect(body).toBe(stream);
+          expect(proxy.snapshot()).toMatchObject({
+            inputTokens: 25,
+            outputTokens: 7,
+            failures: [],
+          });
+        } else {
+          expect(JSON.parse(body).error.code).toMatch(
+            /^STABILITY_MODEL_(USAGE_MALFORMED|PROVIDER_ERROR)$/,
+          );
+          expect(proxy.snapshot().failures).not.toHaveLength(0);
+        }
+      } finally {
+        await proxy.stop();
+        upstream.stop(true);
+      }
+    },
+  );
 });

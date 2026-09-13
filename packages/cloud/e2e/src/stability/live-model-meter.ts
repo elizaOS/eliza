@@ -179,32 +179,160 @@ function parseSseUsage(
 ): ProviderUsage | null {
   let inputTokens: number | undefined;
   let outputTokens: number | undefined;
+  let openAiFinished = false;
+  let openAiResponses = false;
+  let anthropicOutputFloor = 0;
+  let anthropicStarted = false;
+  let anthropicFinished = false;
+  let eventName = "";
   for (const line of bytes.toString("utf8").split(/\r?\n/)) {
+    if (line === "") {
+      eventName = "";
+      continue;
+    }
+    if (line.startsWith("event:")) {
+      eventName = line.slice(6).trim();
+      continue;
+    }
     if (!line.startsWith("data:")) continue;
+    if (eventName === "error") {
+      throw new StabilityModelMeterError(
+        "STABILITY_MODEL_PROVIDER_ERROR",
+        "Provider stream emitted an error event",
+      );
+    }
     const data = line.slice(5).trim();
-    if (!data || data === "[DONE]") continue;
+    if (!data) continue;
+    if (data === "[DONE]") {
+      if (provider === "openai") {
+        if (
+          (openAiResponses && !openAiFinished) ||
+          inputTokens === undefined ||
+          outputTokens === undefined
+        ) {
+          throw new StabilityModelMeterError(
+            "STABILITY_MODEL_USAGE_MALFORMED",
+            "OpenAI stream stopped before final response usage",
+          );
+        }
+        openAiFinished = true;
+      }
+      continue;
+    }
     const payload = parseJson(Buffer.from(data));
     if (provider === "openai") {
+      const root = asRecord(payload);
+      if (
+        root?.error !== undefined ||
+        root?.type === "error" ||
+        root?.type === "response.failed" ||
+        root?.type === "response.incomplete"
+      ) {
+        throw new StabilityModelMeterError(
+          "STABILITY_MODEL_PROVIDER_ERROR",
+          "OpenAI stream reported a failed or incomplete response",
+        );
+      }
+      if (openAiFinished) {
+        throw new StabilityModelMeterError(
+          "STABILITY_MODEL_USAGE_MALFORMED",
+          "OpenAI stream continued after completion",
+        );
+      }
+      if (typeof root?.type === "string" && root.type.startsWith("response.")) {
+        openAiResponses = true;
+        if (root.type !== "response.completed") continue;
+        const response = asRecord(root.response);
+        if (response?.status !== undefined && response.status !== "completed") {
+          throw new StabilityModelMeterError(
+            "STABILITY_MODEL_PROVIDER_ERROR",
+            "OpenAI terminal response is not completed",
+          );
+        }
+        openAiFinished = true;
+      }
       const usage = usageFromRecord(provider, payload);
-      if (!usage) continue;
+      if (!usage) {
+        if (openAiFinished) {
+          throw new StabilityModelMeterError(
+            "STABILITY_MODEL_USAGE_MALFORMED",
+            "OpenAI completed response omitted final usage",
+          );
+        }
+        continue;
+      }
       inputTokens = usage.inputTokens;
       outputTokens = usage.outputTokens;
       continue;
     }
     const root = asRecord(payload);
-    const message = asRecord(root?.message);
-    const usage = asRecord(root?.usage) ?? asRecord(message?.usage);
-    if (!usage) continue;
-    if (usage.input_tokens !== undefined) {
-      inputTokens = anthropicInputTokens(usage);
+    if (root?.type === "error" || anthropicFinished) {
+      throw new StabilityModelMeterError(
+        "STABILITY_MODEL_USAGE_MALFORMED",
+        "Anthropic stream failed or continued after completion",
+      );
     }
-    if (usage.output_tokens !== undefined) {
-      outputTokens = parseCount(
+    if (root?.type === "message_start") {
+      const usage = asRecord(asRecord(root.message)?.usage);
+      if (anthropicStarted || !usage) {
+        throw new StabilityModelMeterError(
+          "STABILITY_MODEL_USAGE_MALFORMED",
+          "Anthropic stream must start one message with input usage",
+        );
+      }
+      inputTokens = anthropicInputTokens(usage);
+      anthropicOutputFloor = parseCount(
+        usage.output_tokens,
+        "initial output token usage",
+        false,
+      );
+      anthropicStarted = true;
+    } else if (root?.type === "message_delta") {
+      const usage = asRecord(root.usage);
+      if (!anthropicStarted || !usage) {
+        throw new StabilityModelMeterError(
+          "STABILITY_MODEL_USAGE_MALFORMED",
+          "Anthropic stream usage must follow its message start",
+        );
+      }
+      if (usage.input_tokens !== undefined) {
+        inputTokens = anthropicInputTokens(usage);
+      }
+      const cumulativeOutput = parseCount(
         usage.output_tokens,
         "output token usage",
         false,
       );
+      if (cumulativeOutput < (outputTokens ?? anthropicOutputFloor)) {
+        throw new StabilityModelMeterError(
+          "STABILITY_MODEL_USAGE_MALFORMED",
+          "Anthropic cumulative output usage decreased",
+        );
+      }
+      outputTokens = cumulativeOutput;
+    } else if (root?.type === "message_stop") {
+      if (!anthropicStarted || outputTokens === undefined) {
+        throw new StabilityModelMeterError(
+          "STABILITY_MODEL_USAGE_MALFORMED",
+          "Anthropic stream stopped before final usage",
+        );
+      }
+      anthropicFinished = true;
     }
+  }
+  if (provider === "openai" && !openAiFinished) {
+    throw new StabilityModelMeterError(
+      "STABILITY_MODEL_USAGE_MALFORMED",
+      "OpenAI stream ended before its completion marker",
+    );
+  }
+  // Initial message usage is provisional; only a completed message with a
+  // cumulative usage delta can support the retained accounting receipt.
+  if (provider === "anthropic" && !anthropicFinished) {
+    throw new StabilityModelMeterError(
+      "STABILITY_MODEL_USAGE_MALFORMED",
+      "Anthropic stream ended before final usage and message completion",
+    );
   }
   if (inputTokens === undefined || outputTokens === undefined) return null;
   return { inputTokens, outputTokens };
@@ -1270,7 +1398,7 @@ export async function startLiveModelEgressProxy(options: {
           upstream = await fetchUpstream(`${origin}${request.url ?? "/"}`, {
             method: request.method,
             headers: upstreamHeaders,
-            body: forwardBody,
+            body: new Uint8Array(forwardBody),
             signal: AbortSignal.timeout(timeoutMs),
             redirect: "manual",
           });
