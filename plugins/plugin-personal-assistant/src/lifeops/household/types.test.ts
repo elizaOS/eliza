@@ -1,3 +1,6 @@
+/**
+ * Tests for timezone offset token formatting contracts in household types.
+ */
 import { describe, expect, it } from "vitest";
 import { formatTimezoneOffsetToken } from "./types.js";
 

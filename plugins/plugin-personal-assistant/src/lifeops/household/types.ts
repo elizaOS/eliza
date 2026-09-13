@@ -477,7 +477,7 @@ function timezoneOffsetAt(instant: Date, timezone: string): string {
   try {
     return formatTimezoneOffsetToken(value);
   } catch (err) {
-    // error-policy:J2
+    // error-policy:J2 propagate formatting error as HouseholdCoordinationError
     throw new HouseholdCoordinationError(
       "Could not resolve the IANA time-zone offset at the supplied instant",
       "HOUSEHOLD_INVALID_CONTRACT",

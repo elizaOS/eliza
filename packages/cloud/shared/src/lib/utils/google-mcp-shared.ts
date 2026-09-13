@@ -175,44 +175,6 @@ function hasExplicitDateTimeOffset(dateTime: string): boolean {
   return /(?:[zZ]|[+-]\d{2}:\d{2})$/.test(dateTime);
 }
 
-function getZonedDateParts(
-  date: Date,
-  timeZone: string,
-): {
-  year: number;
-  month: number;
-  day: number;
-  hour: number;
-  minute: number;
-  second: number;
-} {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    hour12: false,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).formatToParts(date);
-  const read = (type: Intl.DateTimeFormatPartTypes) => {
-    const value = parts.find((part) => part.type === type)?.value;
-    if (!value) {
-      throw new Error(`missing zoned date part: ${type}`);
-    }
-    return Number(value);
-  };
-  return {
-    year: read("year"),
-    month: read("month"),
-    day: read("day"),
-    hour: read("hour"),
-    minute: read("minute"),
-    second: read("second"),
-  };
-}
-
 export function parseOffsetToken(token: string): number {
   if (token === "GMT" || token === "UTC") return 0;
   const match = token.match(
@@ -263,18 +225,16 @@ function formatInstantAsRfc3339InTimeZone(dateTime: string, timeZone: string): s
   if (!Number.isFinite(date.getTime())) {
     throw new Error(`Invalid datetime: ${dateTime}`);
   }
-  const parts = getZonedDateParts(date, timeZone);
-  const offset = getTimeZoneOffsetMinutes(date, timeZone);
-  return (
-    [
-      `${parts.year.toString().padStart(4, "0")}-${parts.month
-        .toString()
-        .padStart(2, "0")}-${parts.day.toString().padStart(2, "0")}`,
-      `${parts.hour.toString().padStart(2, "0")}:${parts.minute
-        .toString()
-        .padStart(2, "0")}:${parts.second.toString().padStart(2, "0")}`,
-    ].join("T") + formatOffsetToken(offset)
-  );
+  const exactOffsetMinutes = getTimeZoneOffsetMinutes(date, timeZone);
+  const roundedOffsetMinutes = Math.round(exactOffsetMinutes);
+  const localDate = new Date(date.getTime() + roundedOffsetMinutes * 60_000);
+  const year = localDate.getUTCFullYear().toString().padStart(4, "0");
+  const month = (localDate.getUTCMonth() + 1).toString().padStart(2, "0");
+  const day = localDate.getUTCDate().toString().padStart(2, "0");
+  const hour = localDate.getUTCHours().toString().padStart(2, "0");
+  const minute = localDate.getUTCMinutes().toString().padStart(2, "0");
+  const second = localDate.getUTCSeconds().toString().padStart(2, "0");
+  return `${year}-${month}-${day}T${hour}:${minute}:${second}${formatOffsetToken(roundedOffsetMinutes)}`;
 }
 
 export function applyTimeZone(

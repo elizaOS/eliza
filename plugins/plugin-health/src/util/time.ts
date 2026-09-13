@@ -212,18 +212,16 @@ export function formatInstantAsRfc3339InTimeZone(
       `invalid datetime for timezone conversion: ${String(value)}`,
     );
   }
-  const parts = getZonedDateParts(date, timeZone);
-  const offset = getTimeZoneOffsetMinutes(date, timeZone);
-  return (
-    [
-      `${parts.year.toString().padStart(4, "0")}-${parts.month
-        .toString()
-        .padStart(2, "0")}-${parts.day.toString().padStart(2, "0")}`,
-      `${parts.hour.toString().padStart(2, "0")}:${parts.minute
-        .toString()
-        .padStart(2, "0")}:${parts.second.toString().padStart(2, "0")}`,
-    ].join("T") + formatOffsetToken(offset)
-  );
+  const exactOffsetMinutes = getTimeZoneOffsetMinutes(date, timeZone);
+  const roundedOffsetMinutes = Math.round(exactOffsetMinutes);
+  const localDate = new Date(date.getTime() + roundedOffsetMinutes * 60_000);
+  const year = localDate.getUTCFullYear().toString().padStart(4, "0");
+  const month = (localDate.getUTCMonth() + 1).toString().padStart(2, "0");
+  const day = localDate.getUTCDate().toString().padStart(2, "0");
+  const hour = localDate.getUTCHours().toString().padStart(2, "0");
+  const minute = localDate.getUTCMinutes().toString().padStart(2, "0");
+  const second = localDate.getUTCSeconds().toString().padStart(2, "0");
+  return `${year}-${month}-${day}T${hour}:${minute}:${second}${formatOffsetToken(roundedOffsetMinutes)}`;
 }
 
 export function addDaysToLocalDate(

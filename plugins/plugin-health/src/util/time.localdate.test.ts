@@ -158,13 +158,14 @@ describe("formatInstantAsRfc3339InTimeZone", () => {
     );
   });
 
-  it("formats historical seconds-bearing offsets by rounding to whole minutes (-00:45 for Monrovia 1970)", () => {
-    expect(
-      formatInstantAsRfc3339InTimeZone(
-        "1970-01-01T00:00:00Z",
-        "Africa/Monrovia",
-      ),
-    ).toBe("1969-12-31T23:15:30-00:45");
+  it("formats historical seconds-bearing offsets by rounding to whole minutes and preserving instant round-trip (-00:44 for Monrovia 1970)", () => {
+    const input = "1970-01-01T00:00:00Z";
+    const formatted = formatInstantAsRfc3339InTimeZone(
+      input,
+      "Africa/Monrovia",
+    );
+    expect(formatted).toBe("1969-12-31T23:16:00-00:44");
+    expect(Date.parse(formatted)).toBe(Date.parse(input));
   });
 
   it("throws on an invalid datetime rather than emitting NaN", () => {
