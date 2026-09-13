@@ -419,7 +419,12 @@ async function startGenericFlow(args: {
   };
 
   const timer = setTimeout(() => {
-    const err = new Error("OAuth flow timed out after 5 minutes");
+    // Derive the window from the constant so the message cannot drift from
+    // the actual timer again (it previously said 5 minutes for a 15-minute
+    // timeout and reached the UI verbatim through FlowState.error).
+    const err = new Error(
+      `OAuth flow timed out after ${FLOW_TIMEOUT_MS / 60_000} minutes`,
+    );
     try {
       vendor.cancel("timeout");
     } catch (cancelErr) {
