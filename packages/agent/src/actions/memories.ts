@@ -168,7 +168,7 @@ export function memoryUserFacingLine(verb: string, factText: string): string {
   const spoken = cleaned
     .replace(/^(?:the )?user'?s\b/i, "your")
     .replace(/\bthe user'?s\b/gi, "your")
-    .replace(/\bmy\b/gi, "your");
+    .replace(/^my\b/i, "your");
   const body =
     spoken && !/^I\b/.test(spoken)
       ? spoken.charAt(0).toLowerCase() + spoken.slice(1)
@@ -1266,20 +1266,40 @@ async function doUpdate(
  * so use them directly when the message carries content terms; the same
  * every-term match and ambiguity refusal still guard the delete.
  */
-const MENTION_TOKEN_PATTERN =
-  /<@!?\d{6,}>|@?[\p{L}\p{N}_.-]+\s*\(@\d{6,}\)|\(@\d{6,}\)/gu;
+const LEADING_ADDRESSING_PREFIX =
+  /^\s*(?:<@!?\d+>\s*|@\S+\s+|[^()\n]{0,80}\(@\d+\)\s*)/u;
+const MENTION_MARKER_PATTERN = /<@!?\d{6,}>|\(@\d{6,}\)/gu;
 
-function deleteQueryFromMessage(message: Memory): string | undefined {
+function deleteQueryFromMessage(
+  runtime: IAgentRuntime,
+  message: Memory,
+): string | undefined {
   // The user's actual words, not the external-content security envelope that
   // wraps connector messages: the envelope's warning text matched nothing and
   // turned a plain "forget my favorite tea" into a hard miss (live 2026-09-12).
   // Drop platform mention tokens ("Eliza (@1490833…)" / "<@1490833…>"): they
   // are addressing, not content, and their name and id would have to match
   // the stored fact for the every-term rule (live 2026-09-12, harness room).
-  const text = unwrapUserMessageText(message)
-    .replace(MENTION_TOKEN_PATTERN, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const raw = unwrapUserMessageText(message);
+  const addressed = MENTION_MARKER_PATTERN.test(raw);
+  MENTION_MARKER_PATTERN.lastIndex = 0;
+  let text = raw
+    .replace(LEADING_ADDRESSING_PREFIX, "")
+    .replace(MENTION_MARKER_PATTERN, " ");
+  if (addressed) {
+    // The agent's own name next to a mention marker is addressing too.
+    for (const word of (runtime.character?.name ?? "").split(/\s+/)) {
+      if (word.length >= 2)
+        text = text.replace(
+          new RegExp(
+            `\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+            "gi",
+          ),
+          " ",
+        );
+    }
+  }
+  text = text.replace(/\s+/g, " ").trim();
   if (!text || scoreQueryTerms(text).length === 0) return undefined;
   logger.info(
     "[MEMORY] delete carried no query; using the user's message text",
@@ -1296,7 +1316,7 @@ async function doDelete(
   if (!memoryParam.ok) return memoryParam.result;
   const memoryId = memoryParam.id;
   const explicitQuery = params.query?.trim();
-  const query = explicitQuery || deleteQueryFromMessage(message);
+  const query = explicitQuery || deleteQueryFromMessage(runtime, message);
   if (!memoryId && !query) {
     return fail(MEMORY_MISSING_TARGET_MESSAGE, "MEMORY_MISSING_ID");
   }
@@ -1350,6 +1370,27 @@ async function doDelete(
     return fail(MEMORY_MISSING_TARGET_MESSAGE, "MEMORY_MISSING_ID");
   }
   const result = await doDeleteByQuery(runtime, message, params, query);
+  // A planner-invented query ("favorite tea is matcha" for a stored genmaicha,
+  // live 2026-09-13) misses twice before the user's own words are tried; try
+  // them once here, under the same single-match rule, before reporting a miss.
+  if (
+    explicitQuery &&
+    !result.success &&
+    (result.data as { error?: unknown } | undefined)?.error ===
+      "MEMORY_NOT_FOUND"
+  ) {
+    const implied = deleteQueryFromMessage(runtime, message);
+    if (implied && implied.toLowerCase() !== explicitQuery.toLowerCase()) {
+      const retried = await doDeleteByQuery(runtime, message, params, implied);
+      if (retried.success) {
+        return {
+          ...retried,
+          data: { ...(retried.data ?? {}), retriedWithMessageText: true },
+        };
+      }
+    }
+    return result;
+  }
   // A miss on the implied query is not evidence that nothing is stored; hand
   // the planner the original ask for an explicit query instead of a verdict.
   if (

@@ -1548,6 +1548,29 @@ describe("MEMORY op:delete by query", () => {
     expect(rows).toHaveLength(0);
   });
 
+  it("retries a planner-invented query with the user's own words before reporting a miss (live regression)", async () => {
+    // Live 2026-09-13: the planner queried "favorite tea is matcha" for a
+    // stored genmaicha fact twice before the message-text fallback ran.
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "The user's favorite tea is genmaicha.",
+      entityId: USER_ID,
+    });
+
+    const result = await runAction(
+      runtime,
+      makeMessage({ text: "forget my favorite tea" }),
+      { action: "delete", query: "favorite tea is matcha", confirm: true },
+    );
+
+    expect(result.success).toBe(true);
+    expect(
+      (result.data as { retriedWithMessageText?: boolean })
+        .retriedWithMessageText,
+    ).toBe(true);
+    expect(rows).toHaveLength(0);
+  });
+
   it("returns the missing-target failure, not a verdict, when the implied query misses", async () => {
     const { runtime, rows } = makeRuntime();
     seedFact(rows, { text: "nubs lives on a boat", entityId: USER_ID });
@@ -2396,7 +2419,7 @@ describe("MEMORY results own a verified user-facing line", () => {
       "Saved: your favorite tea is genmaicha.",
     );
     expect(memoryUserFacingLine("Saved", "I like my coffee black")).toBe(
-      "Saved: I like your coffee black.",
+      "Saved: I like my coffee black.",
     );
     expect(memoryUserFacingLine("Forgot", "   ")).toBe("Forgot.");
   });
