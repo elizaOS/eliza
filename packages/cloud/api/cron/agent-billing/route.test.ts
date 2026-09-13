@@ -556,7 +556,7 @@ describe("agent billing cron waifu lifecycle callbacks", () => {
       expect(recordHourlyBilling).toHaveBeenCalledTimes(1);
       expect(enqueueAgentSuspendOnce).not.toHaveBeenCalled();
       expect(sendContainerShutdownWarningEmail).not.toHaveBeenCalled();
-      expect(commitShutdownWarningForRun).not.toHaveBeenCalled();
+      expect(enqueueAgentUnfundedStopForRun).not.toHaveBeenCalled();
       expect(webhookFetch).not.toHaveBeenCalled();
     });
     for (const priorStatus of ["running", "stopped"]) {
