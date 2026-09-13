@@ -247,6 +247,12 @@ Guest views expose approved obligations only. Revoking the relationship-backed
 household grant immediately invalidates every agreement binding that relies on
 it.
 
+A knowledge-only household grant may explicitly supply `subjectEntityIds: []`.
+Omitting the field remains an invalid action request. The canonical scope
+expansion includes basic `household.visibility` with `knowledge.read`; it adds
+no calendar authority. Non-owner calendar grants still require at least one
+subject from the principal's household relationship.
+
 A paired guest reads `GET /api/lifeops/agreements/:id/shared` using its machine
 session. The owner must bind that machine identity to a person through
 `POST /api/lifeops/entities/:id/auth-bindings` and explicitly issue the household
