@@ -291,6 +291,7 @@ function buildTrajectoryParams(
   const params = new URLSearchParams();
   setTruthyNumberParam(params, "limit", options?.limit);
   setTruthyNumberParam(params, "offset", options?.offset);
+  setTruthyStringParam(params, "roomId", options?.roomId);
   setTruthyStringParam(params, "source", options?.source);
   setTruthyStringParam(params, "scenarioId", options?.scenarioId);
   setTruthyStringParam(params, "batchId", options?.batchId);

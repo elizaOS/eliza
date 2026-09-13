@@ -55,10 +55,16 @@ export function useDeveloperTrajectories(
         controller.signal.aborted
       )
         return;
+      // The chat needs its own foreground summaries. Global background runs
+      // must not evict them, including on a fresh page load. The advanced
+      // inspector keeps its independent global pagination.
+      if (!loadInspection && !roomId) return;
       inFlight = true;
       try {
         const result = await client.getTrajectories(
-          { limit: 50, offset },
+          loadInspection
+            ? { limit: 50, offset }
+            : { limit: 50, offset: 0, roomId, source: "client_chat" },
           { signal: controller.signal },
         );
         if (controller.signal.aborted) return;

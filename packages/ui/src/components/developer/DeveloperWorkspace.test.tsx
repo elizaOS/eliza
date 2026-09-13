@@ -150,6 +150,7 @@ beforeEach(() => {
       role: "assistant",
       text: "You are on Notes.",
       timestamp: 1001,
+      replyToMessageId: "user-1",
     },
   );
   appState.agentStatus.canRespond = true;
@@ -559,6 +560,83 @@ describe("developer workspace", () => {
       expect.anything(),
     );
     expect(screen.getByText(/Background memory · 1 model call/)).toBeTruthy();
+  });
+
+  it("never gives an unlinked notification the previous reply's usage", async () => {
+    messageFixtures.push({
+      id: "notice",
+      role: "assistant",
+      text: "Background recovery notice",
+      timestamp: 2000,
+    });
+    render(
+      <DeveloperWorkspace>
+        <p>App</p>
+      </DeveloperWorkspace>,
+    );
+    await flush();
+    expect(screen.getAllByText(/100 tokens in/)).toHaveLength(1);
+    const notice = screen.getAllByRole("article", { name: "Eliza" }).at(-1);
+    if (!notice) throw new Error("Missing notification fixture");
+    expect(within(notice).queryByText(/tokens in/)).toBeNull();
+    fireEvent.click(within(notice).getByRole("button", { name: "Inspect" }));
+    await flush();
+    expect(screen.getByText("No linked run")).toBeTruthy();
+    expect(mocks.list.mock.calls.some(([options]) => options.search)).toBe(
+      false,
+    );
+  });
+
+  it("keeps chat summaries visible when background runs fill the global page", async () => {
+    const noise = Array.from({ length: 50 }, (_, index) => ({
+      ...record,
+      id: `background-${index}`,
+      source: "background_memory",
+    }));
+    mocks.list.mockImplementation(async (options) => ({
+      trajectories:
+        options.source === "client_chat" && options.roomId === "room-1"
+          ? [record]
+          : noise,
+      total: 51,
+    }));
+    render(
+      <DeveloperWorkspace>
+        <p>App</p>
+      </DeveloperWorkspace>,
+    );
+    await flush();
+    expect(screen.getByText(/100 tokens in · 20 out/)).toBeTruthy();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000);
+    });
+    expect(screen.getByText(/100 tokens in · 20 out/)).toBeTruthy();
+    expect(mocks.list).toHaveBeenCalledTimes(3);
+    expect(mocks.list).toHaveBeenLastCalledWith(
+      { limit: 50, offset: 0, source: "client_chat", roomId: "room-1" },
+      expect.anything(),
+    );
+    expect(mocks.detail).not.toHaveBeenCalled();
+  });
+
+  it("uses global pagination only in the advanced inspector", async () => {
+    const { result, rerender } = renderHook(
+      ({ inspect }) => useDeveloperTrajectories("room-1", false, inspect),
+      { initialProps: { inspect: true } },
+    );
+    await flush();
+    act(() => result.current.setOffset(50));
+    await flush();
+    expect(mocks.list).toHaveBeenLastCalledWith(
+      { limit: 50, offset: 50 },
+      expect.anything(),
+    );
+    rerender({ inspect: false });
+    await flush();
+    expect(mocks.list).toHaveBeenLastCalledWith(
+      { limit: 50, offset: 0, source: "client_chat", roomId: "room-1" },
+      expect.anything(),
+    );
   });
 
   it("polls small evidence, caches settled runs, pauses and resumes without discarding inspection", async () => {
