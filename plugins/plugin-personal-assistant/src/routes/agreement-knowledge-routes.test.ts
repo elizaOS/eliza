@@ -16,6 +16,7 @@ function context(input: {
   pathname: string;
   body?: unknown;
   agreements: Record<string, unknown>;
+  requestEntityId?: string;
 }) {
   const responses: Array<{ data: unknown; status: number }> = [];
   const cache = new Map<string, unknown>();
@@ -30,11 +31,15 @@ function context(input: {
   } as unknown as IAgentRuntime;
   const ctx = {
     req: {},
-    res: {},
+    res: { setHeader: vi.fn() },
     method: input.method,
     pathname: input.pathname,
     url: new URL(`http://localhost${input.pathname}`),
-    state: { runtime, adminEntityId: "self" },
+    state: {
+      runtime,
+      adminEntityId: "self",
+      requestEntityId: input.requestEntityId,
+    },
     json: (_res: unknown, data: unknown, status = 200) => {
       responses.push({ data, status });
     },
@@ -46,6 +51,68 @@ function context(input: {
 }
 
 describe("agreement knowledge routes", () => {
+  it("derives shared reads from the gated session rather than a supplied principal", async () => {
+    const readFor = vi.fn(async () => ({ obligations: [] }));
+    const harness = context({
+      method: "GET",
+      pathname:
+        "/api/lifeops/agreements/document/shared?principalEntityId=self",
+      requestEntityId: "bound-guest",
+      agreements: { readFor },
+    });
+    harness.ctx.pathname = harness.ctx.url.pathname;
+    await handleAgreementKnowledgeRoutes(harness.ctx);
+    expect(readFor).toHaveBeenCalledWith({
+      artifactId: "document",
+      principalEntityId: "bound-guest",
+    });
+    expect(harness.responses[0]).toMatchObject({ status: 200 });
+    expect(harness.ctx.res.setHeader).toHaveBeenCalledWith(
+      "Cache-Control",
+      "private, no-store, max-age=0",
+    );
+  });
+
+  it.each([undefined, "self"])(
+    "rejects a shared read without a distinct guest principal (%s)",
+    async (requestEntityId) => {
+      const readFor = vi.fn();
+      const harness = context({
+        method: "GET",
+        pathname: "/api/lifeops/agreements/document/shared",
+        requestEntityId,
+        agreements: { readFor },
+      });
+      await handleAgreementKnowledgeRoutes(harness.ctx);
+      expect(readFor).not.toHaveBeenCalled();
+      expect(harness.responses[0]).toMatchObject({
+        status: 403,
+        data: { error: { code: "AGREEMENT_ACCESS_DENIED" } },
+      });
+    },
+  );
+
+  it("preserves a revoked grant denial on the shared HTTP read", async () => {
+    const harness = context({
+      method: "GET",
+      pathname: "/api/lifeops/agreements/document/shared",
+      requestEntityId: "bound-guest",
+      agreements: {
+        readFor: async () => {
+          throw new AgreementKnowledgeError(
+            "Grant revoked",
+            "AGREEMENT_ACCESS_DENIED",
+          );
+        },
+      },
+    });
+    await handleAgreementKnowledgeRoutes(harness.ctx);
+    expect(harness.responses[0]).toMatchObject({
+      status: 403,
+      data: { error: { code: "AGREEMENT_ACCESS_DENIED" } },
+    });
+  });
+
   it("creates a resumable owner upload without trusting a page count", async () => {
     const harness = context({
       method: "POST",

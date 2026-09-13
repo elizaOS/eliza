@@ -232,8 +232,15 @@ for every page with native text plus rendered-page vision transcription for
 images or text-empty pages. One failed page fails ingestion; partial content is
 never published as a complete owner-private `DocumentService` record. LifeOps
 persists the media SHA-256, handle, document id, byte size, MIME type, filename,
-parser-derived page count, complete extracted text, and version chain; it does
+parser-derived page count, complete extracted text and page map, and version chain; it does
 not create another permanent file store.
+
+Each immutable agreement owns a distinct document ingestion identity. If artifact
+persistence rejects the upload, ingestion removes that attempt's document,
+derived fragments, and private PDF through the canonical services. A failed
+commit observation preserves the sources for reconciliation; an incomplete
+cleanup returns an explicit storage error and reports the affected artifact
+and source handles to runtime diagnostics.
 
 Owner- or agent-extracted obligations begin as `proposed` and must carry an
 in-range page citation plus the cited source text. Only the owner can make the terminal
@@ -247,11 +254,43 @@ Guest views expose approved obligations only. Revoking the relationship-backed
 household grant immediately invalidates every agreement binding that relies on
 it.
 
+A knowledge-only household grant may explicitly supply `subjectEntityIds: []`.
+Omitting the field remains an invalid action request. The canonical scope
+expansion includes basic `household.visibility` with `knowledge.read`; it adds
+no calendar authority. Non-owner calendar grants still require at least one
+subject from the principal's household relationship.
+
+A paired guest reads `GET /api/lifeops/agreements/:id/shared` using its machine
+session. The owner must bind that machine identity to a person through
+`POST /api/lifeops/entities/:id/auth-bindings` and explicitly issue the household
+and agreement grants. The shared route derives the person from the verified
+session binding; caller-supplied principal IDs and role headers cannot select
+another reader. It returns approved clauses and limited metadata with no-store
+caching. Original PDF downloads, exports, review history, and mutations remain
+owner-only. Use the normal owner read route for owner requests.
+
 The owner surface is available through `OWNER_AGREEMENT_KNOWLEDGE` and the
 authenticated `/api/lifeops/agreements/*` routes. Grant previews enumerate the
 exact read effects and exclusions before issuance. Active agent/chat pins feed
 only approved, page-cited obligations into owner planner context; uploading a
 PDF remains on the document/API surface so chat actions never invent bytes.
+
+Owners can download the original PDF or export one agreement version from the
+Agreement view. `POST /api/lifeops/agreements/:id/export` returns a ZIP containing
+`original.pdf`, `manifest.json`, `SHA256SUMS`, and the exact saved
+`extraction.json` when available. Verify the files independently with
+`sha256sum -c SHA256SUMS`; the extraction hash also matches its ingestion audit
+event. The versioned manifest includes all obligation
+states and citations, current and inactive pin/grant records, linked household
+grant expiry/revocation records, and the canonical agreement audit history from
+one database snapshot. Original byte length and SHA-256 must match before export.
+
+Agreement ingestion, review, pin, and grant transitions commit atomically with
+`life_audit_events`. Export preparation records the manifest and archive hashes;
+it does not assert that the browser received or saved the download. Legacy
+versions explicitly identify missing extraction page maps and partial audit
+history. Export never reconstructs unrecorded past activity. This agreement
+archive does not replace workspace-wide export or deletion workflows.
 
 ## Default packs
 
@@ -409,3 +448,17 @@ internals; it consumes the plugin's public exports only. See
 - Prompt-content lint rules: `scripts/lint-default-packs.mjs`.
 - Health domain: `plugins/plugin-health/README.md`.
 - REST routes: `src/routes/`.
+
+### Family workspace export
+
+The owner-only `POST /api/lifeops/family-workflows/export` downloads a ZIP with
+all family agreement versions, retained school PDFs, monthly packet versions
+and drafts, their approval records, and stored provider/school mutation receipts.
+Each member has a SHA-256 checksum. Agreement archives preserve their existing
+source/extraction and review/access provenance; packet and workflow records use
+one database statement snapshot. The manifest records this component-snapshot
+boundary and explicitly identifies uninitialized historical record stores.
+Missing or changed retained PDF bytes fail export rather than producing a
+healthy-looking partial archive. Connection credentials and executor lease
+tokens are excluded. Export records preparation, not receipt by the client,
+and does not revoke access or delete data.

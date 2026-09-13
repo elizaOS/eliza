@@ -2,7 +2,7 @@
  * Rate-limit policies for public callers and organization inference.
  *
  * Worker inference consumes exact per-organization windows from a Durable
- * Object after cache-only tier resolution. Non-Worker production surfaces keep
+ * Object using the locked primary policy. Non-Worker production surfaces keep
  * Redis compatibility, while local development uses an in-memory fallback.
  */
 
@@ -16,12 +16,11 @@ import {
 import { warmInferenceAdmissionSnapshot } from "../services/inference-admission-snapshot";
 import { isHotPathCachesEnabled } from "../services/inference-hot-path-caches";
 import type { EndpointType, OrgRateLimitConfig } from "../services/org-rate-limits";
+import { type OrgTierCacheExecutionContext, recalculateOrgTier } from "../services/org-rate-limits";
 import {
-  getOrgRpmForEndpointCacheOnly,
-  type OrgTierCacheExecutionContext,
-  recalculateOrgTier,
-} from "../services/org-rate-limits";
-import { withOrganizationPolicyAdmission } from "../services/organization-policy-admission";
+  withOrganizationPolicyAdmission,
+  withOrganizationPolicyReadAdmission,
+} from "../services/organization-policy-admission";
 import {
   isOrganizationPolicyStamp,
   sameOrganizationPolicyStamp,
@@ -463,7 +462,10 @@ export async function enforceOrgRateLimit(
   } = {},
 ): Promise<Response | null> {
   try {
-    return await withOrganizationPolicyAdmission(
+    const admitOrganizationPolicy = options.cacheOnly
+      ? withOrganizationPolicyReadAdmission
+      : withOrganizationPolicyAdmission;
+    return await admitOrganizationPolicy(
       organizationId,
       options.config?.authority,
       async (policy) => {
@@ -473,19 +475,15 @@ export async function enforceOrgRateLimit(
           authority: policy.authority,
         };
         if (options.cacheOnly) {
-          const config = options.config
-            ? options.config
-            : await getOrgRpmForEndpointCacheOnly(organizationId, endpointType, {
-                executionCtx: options.executionCtx,
-              });
-          if ("kind" in config && config.kind !== "ready") {
-            throw new OrgRateLimitCacheNotReadyError(config.kind, config.cacheRead);
-          }
-          const cachedConfig = "kind" in config ? config.config : config;
+          // A supplied observation must still agree with current authority.
+          // With no observation, the locked primary read already owns the
+          // decision; a separate cold tier projection cannot make it safer.
+          const cachedConfig = options.config;
           if (
-            !isOrganizationPolicyStamp(cachedConfig.authority) ||
-            !sameOrganizationPolicyStamp(cachedConfig.authority, policy.authority) ||
-            cachedConfig.maxRequests !== authoritativeConfig.maxRequests
+            cachedConfig &&
+            (!isOrganizationPolicyStamp(cachedConfig.authority) ||
+              !sameOrganizationPolicyStamp(cachedConfig.authority, policy.authority) ||
+              cachedConfig.maxRequests !== authoritativeConfig.maxRequests)
           )
             throw new OrgRateLimitCacheNotReadyError("warming", "invalid");
           const { windowMs, maxRequests } = authoritativeConfig;

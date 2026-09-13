@@ -249,6 +249,9 @@ function AgreementPanel({
   refresh: () => Promise<void>;
 }) {
   const [selectedId, setSelectedId] = useState("");
+  const [downloading, setDownloading] = useState<"original" | "export" | null>(
+    null,
+  );
   const [reason, setReason] = useState("");
   const [targetType, setTargetType] = useState<"agent" | "chat">("agent");
   const [targetId, setTargetId] = useState("");
@@ -291,6 +294,41 @@ function AgreementPanel({
       await refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The request failed");
+    }
+  };
+
+  const download = async (format: "original" | "export") => {
+    if (!selected || downloading) return;
+    setDownloading(format);
+    setError(null);
+    setNotice(null);
+    try {
+      const blob = await adapter.downloadAgreement(
+        selected.artifact.id,
+        format,
+      );
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download =
+        format === "original"
+          ? selected.artifact.originalFilename
+          : `agreement-${selected.artifact.id}-v${selected.artifact.version}.zip`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      // Allow the browser to consume the object URL before releasing it.
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setNotice(
+        format === "original"
+          ? "Original PDF download started."
+          : "Agreement export download started. The archive includes the original, provenance, and checksums.",
+      );
+    } catch (cause) {
+      // error-policy:J1 Download failures remain visible in the owner workspace.
+      setError(cause instanceof Error ? cause.message : "Download failed");
+    } finally {
+      setDownloading(null);
     }
   };
 
@@ -356,6 +394,28 @@ function AgreementPanel({
             </dd>
           </div>
         </dl>
+        <div
+          style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 16 }}
+        >
+          <Button
+            variant="accentDarkHover"
+            disabled={downloading !== null}
+            onClick={() => void download("original")}
+          >
+            {downloading === "original"
+              ? "Preparing PDF…"
+              : "Download original PDF"}
+          </Button>
+          <Button
+            variant="accentDarkHover"
+            disabled={downloading !== null}
+            onClick={() => void download("export")}
+          >
+            {downloading === "export"
+              ? "Preparing export…"
+              : "Export agreement"}
+          </Button>
+        </div>
       </Card>
 
       <Card
@@ -1221,6 +1281,34 @@ export function FamilyOperationsView({
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
+  const exportWorkspace = async () => {
+    if (exporting) return;
+    setExporting(true);
+    setExportError(null);
+    setExportNotice(null);
+    try {
+      const blob = await adapter.downloadWorkspace();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "family-workspace.zip";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setExportNotice("Workspace download started.");
+    } catch (cause) {
+      // error-policy:J1 A failed export remains visible and can be retried.
+      setExportError(
+        cause instanceof Error ? cause.message : "Workspace export failed",
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -1282,6 +1370,17 @@ export function FamilyOperationsView({
             Review the parenting agreement, calendar synchronization, school
             dates, and monthly coordination email.
           </p>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={loading || exporting}
+            onClick={() => void exportWorkspace()}
+            style={{ marginTop: 12 }}
+          >
+            {exporting ? "Preparing workspace export…" : "Export workspace"}
+          </Button>
+          {exportError ? <Unavailable message={exportError} /> : null}
+          {exportNotice ? <p role="status">{exportNotice}</p> : null}
         </header>
         <nav
           aria-label="Family Operations sections"

@@ -92,6 +92,7 @@ const SUBACTIONS: SubactionsMap<HouseholdOwnerSubaction> = {
       "subjectEntityIds",
       "scopes",
     ],
+    allowEmptyArrays: ["subjectEntityIds"],
     optional: ["expiresAt"],
   },
   revoke_grant: {

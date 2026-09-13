@@ -6,6 +6,7 @@ import { readPrimaryOrganizationSubscription } from "../../db/repositories/accou
 import { deriveSubscriptionEntitlementValues } from "../../db/repositories/subscription-entitlements";
 import {
   billingSubscriptionRevisions,
+  billingSubscriptions,
   organizationSubscriptionAuthorities,
 } from "../../db/schemas/billing-subscriptions";
 import { creditTransactions } from "../../db/schemas/credit-transactions";
@@ -154,6 +155,27 @@ export async function readOrganizationQuotaPolicyInTransaction(
         bytes_limit: orgStorageQuota.bytes_limit,
         limit_override_authorized: orgStorageQuota.limit_override_authorized,
       },
+      // Correlated selectors preserve one policy row per organization. The
+      // legacy branch still rejects any persisted subscription, including a
+      // terminal one, and uses the same qualifying credits as the rate policy.
+      legacyHasSubscription: sql<
+        boolean | null
+      >`CASE WHEN ${organizationSubscriptionAuthorities.state} = 'none' THEN EXISTS (
+        SELECT 1 FROM ${billingSubscriptions}
+        WHERE ${billingSubscriptions.organization_id} = ${organizations.id}
+      ) END`,
+      legacyCreditTotal: sql<
+        string | null
+      >`CASE WHEN ${organizationSubscriptionAuthorities.state} = 'none' THEN (
+        SELECT COALESCE(SUM(${creditTransactions.amount}),0)::text
+        FROM ${creditTransactions}
+        WHERE ${creditTransactions.organization_id} = ${organizations.id}
+          AND ${creditTransactions.type} = 'credit'
+          AND COALESCE(${creditTransactions.metadata}->>'type','') NOT IN (${sql.join(
+            ORG_TIER_EXCLUDED_CREDIT_METADATA_TYPES.map((value) => sql`${value}`),
+            sql`,`,
+          )})
+      ) END`,
     })
     .from(organizations)
     .leftJoin(
@@ -184,23 +206,11 @@ export async function readOrganizationQuotaPolicyInTransaction(
       : { status: "unavailable" as const, code: "invalid_balance" },
   };
   if (association.state === "none") {
-    const subscription = await readPrimaryOrganizationSubscription(tx, organizationId);
-    if (subscription.state !== "none")
+    if (inputs.legacyHasSubscription !== false)
       return unavailable(organizationId, "legacy_association_conflict");
-    const [credits] = await tx
-      .select({ total: sql<string>`COALESCE(SUM(${creditTransactions.amount}),0)::text` })
-      .from(creditTransactions)
-      .where(
-        and(
-          eq(creditTransactions.organization_id, organizationId),
-          eq(creditTransactions.type, "credit"),
-          sql`COALESCE(${creditTransactions.metadata}->>'type','') NOT IN (${sql.join(
-            ORG_TIER_EXCLUDED_CREDIT_METADATA_TYPES.map((value) => sql`${value}`),
-            sql`,`,
-          )})`,
-        ),
-      );
-    if (!credits) return unavailable(organizationId, "missing_legacy_selector");
+    if (inputs.legacyCreditTotal === null)
+      return unavailable(organizationId, "missing_legacy_selector");
+    const creditTotal = inputs.legacyCreditTotal;
     const [clock] = await tx
       .select({ now: sql<Date>`clock_timestamp()` })
       .from(organizations)
@@ -222,10 +232,10 @@ export async function readOrganizationQuotaPolicyInTransaction(
       },
       tier: observe(
         () =>
-          resolveOrgTierFromSourceValues(organizationId, credits.total, override ?? undefined)
+          resolveOrgTierFromSourceValues(organizationId, creditTotal, override ?? undefined)
             .tierData,
       ),
-      tierSourceCreditTotal: credits.total,
+      tierSourceCreditTotal: creditTotal,
       subscriptionFunded: false,
       limits: {
         characters: resource(() =>

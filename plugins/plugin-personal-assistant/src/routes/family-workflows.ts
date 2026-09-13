@@ -3,11 +3,13 @@
  * family packet generation, review, drafting, and canonical approval enqueue.
  */
 
+import { SELF_ENTITY_ID } from "@elizaos/shared";
 import type {
   FamilyPacketEmailDelivery,
   FamilyPacketPeriod,
 } from "../lifeops/family-coordination/index.js";
 import { getFamilyWorkflowRuntimeService } from "../lifeops/family-workflows/index.js";
+import { exportFamilyWorkspace } from "../lifeops/family-workflows/workspace-export.js";
 import { CONCORD_SCHOOL_CALENDAR_SOURCE } from "../lifeops/school/calendar-workflow.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 
@@ -33,6 +35,24 @@ export async function handleFamilyWorkflowRoutes(
   const runtimeService = service(ctx);
   if (!runtimeService) return true;
   try {
+    if (
+      method === "POST" &&
+      pathname === "/api/lifeops/family-workflows/export"
+    ) {
+      const runtime = ctx.state.runtime;
+      if (!runtime) throw new Error("Agent runtime is unavailable");
+      const file = await exportFamilyWorkspace(runtime, SELF_ENTITY_ID);
+      res.statusCode = 200;
+      res.setHeader("Content-Type", file.mimeType);
+      res.setHeader("Cache-Control", "no-store");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
+      );
+      res.setHeader("Content-Length", String(file.bytes.length));
+      res.end(file.bytes);
+      return true;
+    }
     if (
       method === "GET" &&
       pathname === "/api/lifeops/family-workflows/email-options"
