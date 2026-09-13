@@ -27,7 +27,7 @@ import {
 import { getNotesService } from "./service.js";
 import { parseNoteContent } from "./validation.js";
 
-const NOTES_OPS = ["create", "list", "update", "delete"] as const;
+const NOTES_OPS = ["create", "list", "get", "update", "delete"] as const;
 type NotesOp = (typeof NOTES_OPS)[number];
 
 function readParams(options?: HandlerOptions): Record<string, unknown> {
@@ -160,11 +160,11 @@ export const notesAction: Action = {
     "UPDATE_NOTE",
   ],
   description:
-    "Durable notes the user can write and read back. action=create writes a note from one content field; action=list reads them, narrowed by content when supplied; action=update applies a literal textEdit or replaces the complete note; action=delete removes one found by its text. The first line is the note's label and later lines are its body. Prefer textEdit for an exact substitution: the service preserves every other character without needing the model to read and rewrite the note. NOTES changes data, not the visible view: an explicit request to also open Notes needs its own navigation action (prefer VIEWS_SHOW when available).",
+    "Durable notes the user can write and read back. action=create writes a note from one content field; action=get reads one exact noteId; action=list reads/searches note text; action=update applies a literal textEdit or replaces the complete note; action=delete removes one found by its text. The first line is the note's label and later lines are its body. Prefer textEdit for an exact substitution: the service preserves every other character without needing the model to read and rewrite the note. NOTES changes data, not the visible view: an explicit request to also open Notes needs its own navigation action (prefer VIEWS_SHOW when available).",
   descriptionCompressed:
     "notes: create, list/search, update by exact textEdit or complete replacementContent, delete; opening the Notes view separately uses VIEWS_SHOW when available, otherwise VIEWS",
   routingHint:
-    "writing something down for later with no time attached ('make a note', 'note to self', 'write down that …', 'jot this down', 'remember that …') -> NOTES_CREATE with content. ANY read over the user's notes -> NOTES_LIST. For a specific topic ('search my notes for X', 'find my note about X', 'do i have a note on X', 'what did my note say about X'), pass content=X so unrelated personal notes are not exposed; omit content when the owner asks for all notes, counts, or a recency comparison without a topic. Recency is determined from returned createdAt/updatedAt fields, never by searching for words such as 'latest' or 'most recently updated'. A notes search is NEVER a document search: never route it to SEARCH_DOCUMENTS, DOCUMENT, FILES or DATABASE, which do not index notes and will answer 'nothing found' for a note that exists. REMOVING one ('delete the note about X', 'forget the note about X', 'remove my note on X') -> NOTES_DELETE with content=the identifying text. CHANGING one -> NOTES_UPDATE with content identifying the existing note. For a literal substitution use textEdit with field, oldText and newText; no full-note read or rewrite is needed. For a general rewrite use replacementContent with the complete updated note, preserving the existing first-line label and all unedited lines. Deleting and updating are NOT reads: never answer a removal or change request with NOTES_LIST. RECALLING A FACT the user once asked you to note ('who is alex again', 'what did i say about X') is answered from the SAVED_NOTES context block, which is the same store; when that block reports notes it did not show, call NOTES_LIST before answering. A memory search that returns nothing is not evidence a note does not exist — MEMORY does not index notes. A note is NOT a todo and NOT a calendar event: anything with a date or time block -> CALENDAR, anything that should ping the user at a time -> TRIGGER. Never hand-write SQL through DATABASE to store or read a note.",
+    "writing something down for later with no time attached ('make a note', 'note to self', 'write down that …', 'jot this down', 'remember that …') -> NOTES_CREATE with content. ANY read over the user's notes -> NOTES_LIST. For an exact note ID use NOTES_GET with noteId and omit content; content searches titles/bodies, not IDs. For a specific topic ('search my notes for X', 'find my note about X', 'do i have a note on X', 'what did my note say about X'), pass content=X so unrelated personal notes are not exposed; omit content when the owner asks for all notes, counts, or a recency comparison without a topic. Recency is determined from returned createdAt/updatedAt fields, never by searching for words such as 'latest' or 'most recently updated'. A notes search is NEVER a document search: never route it to SEARCH_DOCUMENTS, DOCUMENT, FILES or DATABASE, which do not index notes and will answer 'nothing found' for a note that exists. REMOVING one ('delete the note about X', 'forget the note about X', 'remove my note on X') -> NOTES_DELETE with content=the identifying text. CHANGING one -> NOTES_UPDATE with content identifying the existing note. For a literal substitution use textEdit with field, oldText and newText; no full-note read or rewrite is needed. For a general rewrite use replacementContent with the complete updated note, preserving the existing first-line label and all unedited lines. Deleting and updating are NOT reads: never answer a removal or change request with NOTES_LIST. RECALLING A FACT the user once asked you to note ('who is alex again', 'what did i say about X') is answered from the SAVED_NOTES context block, which is the same store; when that block reports notes it did not show, call NOTES_LIST before answering. A memory search that returns nothing is not evidence a note does not exist — MEMORY does not index notes. A note is NOT a todo and NOT a calendar event: anything with a date or time block -> CALENDAR, anything that should ping the user at a time -> TRIGGER. Never hand-write SQL through DATABASE to store or read a note.",
   // Notes are stored per agent rather than per sender. Only the owner may see
   // or mutate that personal store, including through direct tool execution.
   roleGate: { minRole: "OWNER" },
@@ -182,33 +182,47 @@ export const notesAction: Action = {
       // error-policy:J3 an unrecognised operation is untrusted planner input;
       // it becomes an explicit invalid result, never a fake-valid default.
       return failure(
-        `I can create, list, update, or delete a note — I don't have a "${parsed.requested}" one.`,
+        `I can create, get, list, update, or delete a note — I don't have a "${parsed.requested}" one.`,
         "NOTES_UNKNOWN_OP",
       );
     }
     const op: NotesOp = parsed?.op ?? "list";
     const service = getNotesService(runtime);
 
-    if (op === "list") {
-      const notes = service.listNotes();
+    if (op === "list" || op === "get") {
+      const noteId = readString(params.noteId);
       const topic =
         readString(params.content) ??
         readString(params.query) ??
         readString(params.text);
+      if ((op === "get" || params.noteId !== undefined) && !noteId) {
+        return failure("Supply a nonempty exact note ID.", "NOTES_INVALID_ID");
+      }
+      if (noteId && topic) {
+        return failure(
+          "Use noteId for an exact ID lookup or content for a text search, not both.",
+          "NOTES_CONFLICTING_LOOKUP",
+        );
+      }
+      const notes = service.listNotes();
       const normalizedTopic = topic?.toLocaleLowerCase();
-      const matches = normalizedTopic
-        ? notes.filter((note) =>
-            `${note.title}\n${note.body}`
-              .toLocaleLowerCase()
-              .includes(normalizedTopic),
-          )
-        : notes;
+      const matches = noteId
+        ? notes.filter((note) => note.id === noteId)
+        : normalizedTopic
+          ? notes.filter((note) =>
+              `${note.title}\n${note.body}`
+                .toLocaleLowerCase()
+                .includes(normalizedTopic),
+            )
+          : notes;
       return committed({
         op,
         readOnlyOperation: true,
         count: matches.length,
         total: notes.length,
-        filterApplied: topic !== undefined,
+        filterApplied: noteId !== undefined || topic !== undefined,
+        lookupMode: noteId ? "exact_id" : topic ? "text" : "all",
+        ...(noteId ? { requestedNoteId: noteId } : {}),
         ...(topic ? { topic } : {}),
         notes: matches,
       });
@@ -311,14 +325,25 @@ export const notesAction: Action = {
     {
       name: "content",
       description:
-        "For list, pass the requested exact title or topic to search note text. Omit only for all notes, unfiltered counts, or recency comparisons without a title/topic; compare returned createdAt/updatedAt timestamps, never search for 'latest' or 'most recently updated'. For update/delete, identify the EXISTING note, not its replacement. For create, supply the exact title, newline, and body.",
+        "For list, pass a title or topic to search note text; use noteId instead for an exact ID. Omit only for all notes, unfiltered counts, or recency comparisons without a title/topic; compare returned createdAt/updatedAt timestamps, never search for 'latest' or 'most recently updated'. For update/delete, identify the EXISTING note, not its replacement. For create, supply the exact title, newline, and body.",
       required: false,
+      subactions: ["create", "list", "update", "delete"],
       requiredForSubactions: ["create", "update", "delete"],
       // Strict providers may serialize an omitted optional string as "". The
       // empty string is never valid note content (minLength is 1), so normalize
       // that provider sentinel back to omission before schema validation. This
       // lets an unfiltered list/count reach the authoritative NotesService
       // instead of failing and inviting a model-authored estimate.
+      modelOmissionSentinels: [""],
+      schema: { type: "string", minLength: 1 },
+    },
+    {
+      name: "noteId",
+      description:
+        "Read one note by its exact, case-sensitive ID. Required for get; optional instead of content for list. A text search cannot establish whether an ID exists.",
+      subactions: ["list", "get"],
+      required: false,
+      requiredForSubactions: ["get"],
       modelOmissionSentinels: [""],
       schema: { type: "string", minLength: 1 },
     },

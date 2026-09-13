@@ -149,7 +149,7 @@ describe("SAVED_NOTES provider", () => {
     ).toEqual([notesProvider]);
   });
 
-  it("indexes exact labels and count while retaining complete bodies for context reads", async () => {
+  it("indexes current IDs and labels while retaining complete bodies for context reads", async () => {
     const body = "Exact body\n  spacing and punctuation!?";
     const service = await serviceWithNotes([
       `Lookup label\n${body}`,
@@ -165,10 +165,29 @@ describe("SAVED_NOTES provider", () => {
     expect(result.discoveryText).toContain('"Second label"');
     expect(result.discoveryText).toContain("Exact note count: 2");
     expect(result.discoveryText).not.toContain("Exact body");
+    const identities = service
+      .listNotes()
+      .map(({ id, title }) => ({ id, title }));
+    expect(
+      result.discoveryText
+        ?.split("\n")
+        .filter((line) => line.startsWith("- "))
+        .map((line) => JSON.parse(line.slice(2))),
+    ).toEqual(identities);
+    for (const { id } of identities) expect(result.text).toContain(id);
     expect(result.text).toContain(JSON.stringify(`Lookup label\n${body}`));
     expect(
       service.listNotes().find((note) => note.title === "Lookup label")?.body,
     ).toBe(body);
+    await service.deleteNote(identities[0].id);
+    const after = await notesProvider.get(
+      runtime,
+      recallMessage(runtime, "read my notes"),
+      EMPTY_STATE,
+    );
+    expect(after.discoveryText).not.toContain(identities[0].id);
+    expect(after.discoveryText).toContain(identities[1].id);
+    expect(after.discoveryText).toContain("Exact note count: 1");
   });
 
   it("surfaces a saved note through composeState so recall does not depend on memory search", async () => {

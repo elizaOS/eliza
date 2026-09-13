@@ -45,3 +45,17 @@ Microsoft, Apple, and ICS calendar data from its own services.
 bun run --cwd plugins/plugin-notes typecheck
 bun run --cwd plugins/plugin-notes test
 ```
+
+Read a specific saved ID with `NOTES_GET { noteId }`; IDs match exactly and
+case-sensitively. Use `content` for title/body search, or neither field to list
+all notes. Mixed ID and text filters fail explicitly. Read results record
+`lookupMode` (`exact_id`, `text`, or `all`) so an empty text search is not
+mistaken for proof that an ID is absent. Reads do not mutate notes.
+The `NOTES_GET_NOTE` retrieval hint resolves to `NOTES_GET`. This promoted
+operation requires noteId and has no text-search field. Both reads use the
+existing Notes service; `NOTES_LIST { noteId }` also retains exact-ID support.
+
+The fresh saved-note discovery index retains every current ID and title. It
+supports exact-ID existence and count checks without exposing note bodies.
+Full context retains IDs in note order alongside unchanged complete content;
+body retrieval still requires the full reference or an exact read.

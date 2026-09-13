@@ -21,6 +21,7 @@ import {
   type PlannerToolCall,
   runPlannerLoop,
 } from "../../../packages/core/src/runtime/planner-loop.js";
+import { collectBudgetedStageOneCandidateActions } from "../../../packages/core/src/services/message/planned-tool.js";
 import { notesAction } from "./action.js";
 import { notesPlugin } from "./plugin.js";
 import {
@@ -113,6 +114,77 @@ function execute(
 }
 
 describe("promoted Notes execution", () => {
+  it("reads exact IDs without substituting matching text or exposing other notes", async () => {
+    const runtime = await executorHarness();
+    const created = await run(runtime, {
+      action: "create",
+      content: "Exact read fixture\nComplete original body",
+    });
+    const id = created.data?.noteId;
+    expect(typeof id).toBe("string");
+    await run(runtime, {
+      action: "create",
+      content: `Decoy\n${id}\nnote_missing_qa`,
+    });
+    const before = getNotesService(runtime).listNotes();
+    const selected = collectBudgetedStageOneCandidateActions({
+      actions: runtime.actions,
+      candidateActions: ["NOTES_GET", "NOTES_GET_NOTE"],
+      contexts: ["notes"],
+      deferUnselectedContexts: true,
+      deferParentHints: true,
+    });
+    expect(selected.map((action) => action.name)).toEqual(["NOTES_GET"]);
+    const found = await execute(runtime, {
+      name: selected[0].name,
+      params: { noteId: id },
+    });
+    expect(found).toMatchObject({
+      success: true,
+      data: {
+        lookupMode: "exact_id",
+        requestedNoteId: id,
+        count: 1,
+        notes: [created.data?.note],
+      },
+    });
+    const missingId = await execute(runtime, {
+      name: "NOTES_GET",
+      params: {},
+    });
+    expect(missingId.success).toBe(false);
+    expect(missingId.data).not.toHaveProperty("notes");
+    const absent = await execute(runtime, {
+      name: "NOTES_LIST",
+      params: { noteId: "note_missing_qa" },
+    });
+    expect(absent).toMatchObject({
+      success: true,
+      data: { lookupMode: "exact_id", count: 0, notes: [] },
+    });
+    const text = await execute(runtime, {
+      name: "NOTES_LIST",
+      params: { content: "note_missing_qa" },
+    });
+    expect(text).toMatchObject({
+      success: true,
+      data: { lookupMode: "text", count: 1 },
+    });
+    const conflict = await execute(runtime, {
+      name: "NOTES_LIST",
+      params: { noteId: id, content: "Decoy" },
+    });
+    expect(conflict).toMatchObject({ success: false });
+    const denied = await execute(
+      runtime,
+      { name: "NOTES_GET", params: { noteId: id } },
+      ["NONE"],
+    );
+    expect(denied.success).toBe(false);
+    expect(denied.data).not.toHaveProperty("notes");
+    expect(getNotesService(runtime).listNotes()).toEqual(before);
+  });
+
   it("exposes complete replacement content separately from the create-only body", async () => {
     const update = notesPlugin.actions?.find(
       (action) => action.name === "NOTES_UPDATE",
