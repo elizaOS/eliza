@@ -1633,6 +1633,126 @@ describe("MEMORY op:delete by query", () => {
 });
 
 describe("MEMORY op:search complete traversal", () => {
+  it("matches literal source text without normalizing it and preserves other filters", async () => {
+    const { runtime, rows } = makeRuntime();
+    const query = "  Blue mug,\nnot green 🟣  ";
+    const source = `Earlier words. ${query} Later words.`;
+    const original = seedFact(rows, { text: source, entityId: USER_ID });
+    for (const text of [
+      "Blue mug, not green 🟣",
+      "  blue mug,\nnot green 🟣  ",
+      "The green mug was blue.",
+    ])
+      seedFact(rows, { text, entityId: USER_ID });
+    seedFact(rows, { text: source, entityId: OTHER_USER_ID });
+    seedFact(rows, {
+      text: source,
+      entityId: USER_ID,
+      roomId: "cccccccc-cccc-cccc-cccc-cccccccccccc" as UUID,
+    });
+    const before = structuredClone(rows);
+    const parameters = {
+      action: "search",
+      author: "any",
+      type: "facts",
+      entityId: USER_ID,
+      roomId: ROOM_ID,
+      query,
+    };
+    const literal = await runAction(runtime, makeMessage(), {
+      ...parameters,
+      queryMode: "literal",
+    });
+    expect(literal.success).toBe(true);
+    expect(literal.data).toMatchObject({
+      memories: [{ id: original, text: source }],
+      totalMatches: 1,
+    });
+    expect(literal.text).toContain("queryMode=literal");
+    const legacy = await runAction(runtime, makeMessage(), parameters);
+    expect(legacy.values?.totalMatches).toBe(4);
+    expect(
+      await runAction(runtime, makeMessage(), {
+        ...parameters,
+        queryMode: "keywords",
+      }),
+    ).toEqual(legacy);
+    expect(rows).toEqual(before);
+  });
+
+  it("retains every literal match across pages and preserves the mode on snapshot recovery", async () => {
+    const { runtime, rows } = makeRuntime();
+    const query = "Mug is blue, not green.";
+    const expected = new Set<string>();
+    for (let index = 0; index < 7; index++) {
+      expected.add(
+        seedFact(rows, { text: `${index}: ${query}`, entityId: USER_ID }),
+      );
+    }
+    seedFact(rows, { text: "Green mug; blue notebook.", entityId: USER_ID });
+    const parameters = {
+      action: "search",
+      author: "any",
+      query,
+      queryMode: "literal",
+      limit: 3,
+    };
+    const first = await runAction(runtime, makeMessage(), parameters);
+    const snapshot = String(first.values?.snapshot);
+    const results = [first];
+    for (const offset of [3, 6]) {
+      results.push(
+        await runAction(runtime, makeMessage(), {
+          ...parameters,
+          snapshot,
+          offset,
+        }),
+      );
+    }
+    expect(results.every((result) => result.success)).toBe(true);
+    expect(
+      new Set(
+        results.flatMap((result) =>
+          (result.data as { memories: { id: string }[] }).memories.map(
+            (row) => row.id,
+          ),
+        ),
+      ),
+    ).toEqual(expected);
+    expect(results[2].values?.nextOffset).toBeNull();
+    seedFact(rows, { text: query, entityId: USER_ID });
+    const stale = await runAction(runtime, makeMessage(), {
+      ...parameters,
+      snapshot,
+      offset: 3,
+    });
+    expect(stale.success).toBe(false);
+    expect(stale.data).toMatchObject({
+      error: "MEMORY_PAGE_SNAPSHOT_CHANGED",
+      retryParameters: { queryMode: "literal", query, offset: 0 },
+    });
+  });
+
+  it.each<TestParams>([
+    { queryMode: "regex", query: "mug" },
+    { queryMode: "literal" },
+    { queryMode: "literal", query: "" },
+    { queryMode: "literal", query: 42 },
+  ])(
+    "rejects invalid search modes instead of broadening the query: %j",
+    async (parameters) => {
+      const { runtime, rows } = makeRuntime();
+      seedFact(rows, { text: "Mug is blue.", entityId: USER_ID });
+      const before = structuredClone(rows);
+      const result = await runAction(runtime, makeMessage(), {
+        action: "search",
+        ...parameters,
+      });
+      expect(result.success).toBe(false);
+      expect(rows).toEqual(before);
+    },
+  );
+
   it("finds attachment descriptions without exposing capability URLs", async () => {
     const { runtime, rows } = makeRuntime();
     seedFact(rows, { text: "", entityId: USER_ID });

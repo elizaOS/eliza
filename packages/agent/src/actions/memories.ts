@@ -41,6 +41,7 @@ type MemoryOp = (typeof MEMORY_OPS)[number];
 
 const MEMORY_TYPES = ["messages", "memories", "facts", "documents"] as const;
 type MemoryType = (typeof MEMORY_TYPES)[number];
+type MemoryQueryMode = "keywords" | "literal";
 const FORGET_BY_QUERY_TABLES: readonly MemoryType[] = ["facts", "memories"];
 
 const UUID_SCHEMA_PATTERN =
@@ -58,6 +59,7 @@ interface MemoryParams {
   author?: "requester" | "assistant" | "any";
   roomId?: string;
   query?: string;
+  queryMode?: MemoryQueryMode;
   limit?: number;
   offset?: number;
   snapshot?: string;
@@ -796,6 +798,7 @@ async function collectCandidates(
     entityId?: UUID;
     roomId?: UUID;
     query?: string;
+    queryMode?: MemoryQueryMode;
   },
 ): Promise<CandidateScan> {
   const tables: readonly MemoryType[] =
@@ -827,12 +830,15 @@ async function collectCandidates(
   if (scope.query) {
     const query = scope.query;
     filtered = filtered.filter((c) => {
-      return scoreText(searchableMemoryText(c.memory), query) > 0;
+      const text = searchableMemoryText(c.memory);
+      return scope.queryMode === "literal"
+        ? text.includes(query)
+        : scoreText(text, query) > 0;
     });
   }
 
   filtered.sort((a, b) => {
-    if (scope.query) {
+    if (scope.query && scope.queryMode !== "literal") {
       const leftText = searchableMemoryText(a.memory);
       const rightText = searchableMemoryText(b.memory);
       const relevance =
@@ -850,9 +856,11 @@ function describeSearchScope(scope: {
   entityId?: UUID;
   roomId?: UUID;
   query?: string;
+  queryMode?: MemoryQueryMode;
 }): string {
   const parts: string[] = [];
   if (scope.query) parts.push(`query="${scope.query}"`);
+  if (scope.queryMode === "literal") parts.push("queryMode=literal");
   if (scope.type) parts.push(`type=${scope.type}`);
   if (scope.entityId) parts.push(`entityId=${scope.entityId}`);
   if (scope.roomId) parts.push(`roomId=${scope.roomId}`);
@@ -869,6 +877,25 @@ async function doSearch(
   message: Memory,
   params: MemoryParams,
 ): Promise<ActionResult> {
+  if (
+    params.queryMode !== undefined &&
+    params.queryMode !== "keywords" &&
+    params.queryMode !== "literal"
+  ) {
+    return fail(
+      "queryMode must be keywords or literal.",
+      "MEMORY_INVALID_QUERY_MODE",
+    );
+  }
+  if (
+    params.queryMode === "literal" &&
+    (typeof params.query !== "string" || params.query.length === 0)
+  ) {
+    return fail(
+      "Literal search requires a nonempty query copied exactly from the requested text.",
+      "MEMORY_LITERAL_QUERY_REQUIRED",
+    );
+  }
   const author = params.author === "any" ? undefined : params.author;
   const type =
     author !== undefined
@@ -933,7 +960,8 @@ async function doSearch(
       `ignored invalid roomId "${params.roomId?.trim()}" (searched all rooms)`,
     );
   }
-  const query = params.query?.trim();
+  const query =
+    params.queryMode === "literal" ? params.query : params.query?.trim();
   const limit = params.limit;
   const offset = params.offset ?? 0;
   const requestedSnapshot = params.snapshot?.trim();
@@ -962,6 +990,7 @@ async function doSearch(
     entityId: authorId ?? (entityParam.ok ? entityParam.id : undefined),
     roomId: roomParam.ok ? roomParam.id : undefined,
     query,
+    queryMode: params.queryMode,
   };
   const scan = await collectCandidates(runtime, scope);
 
@@ -984,6 +1013,7 @@ async function doSearch(
             : {}),
           ...(scope.roomId ? { roomId: scope.roomId } : {}),
           ...(query ? { query } : {}),
+          ...(params.queryMode === "literal" ? { queryMode: "literal" } : {}),
           ...(limit !== undefined ? { limit } : {}),
           offset: 0,
         },
@@ -1684,6 +1714,14 @@ export const memoryAction: Action = {
         'search: ranked keyword matching, not an all-words filter. Prefer a distinctive subject or name; combining unrelated topics broadens matches and can require pagination. update/delete: the memory to change or forget, quoted in the user\'s own words from this message (never paraphrase: "like my coffee with oat milk", not "prefer oat milk"). Either a valid memoryId or a nonempty query is required. memoryId alone selects one exact record and takes precedence when both are supplied.',
       required: false,
       schema: { type: "string" as const },
+    },
+    {
+      name: "queryMode",
+      description:
+        "search: literal finds a case-sensitive substring of source text, preserving punctuation, whitespace and Unicode. Use literal for an exact quotation; copy only its text into query, without adding quote delimiters. keywords (default) ranks related terms for conceptual recall. Literal searches require a nonempty query and still honor every other filter and pagination.",
+      required: false,
+      subactions: ["search"],
+      schema: { type: "string" as const, enum: ["keywords", "literal"] },
     },
     {
       name: "limit",

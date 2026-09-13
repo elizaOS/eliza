@@ -244,6 +244,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
             "entityId",
             "roomId",
             "query",
+            "queryMode",
             "limit",
             "offset",
             "snapshot",

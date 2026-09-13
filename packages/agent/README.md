@@ -35,6 +35,12 @@ or `any` for no author restriction. `any` preserves other type, entity and room
 filters, including searches for facts or another speaker. Legacy direct
 `MEMORY action=search` callers may still omit `author` for unfiltered searches.
 
+For an exact quotation, `queryMode=literal` matches the supplied `query` as a
+case-sensitive substring of source text, including punctuation, whitespace and
+Unicode. It preserves all other filters and returns every match through the same
+pagination contract. Omitted `queryMode` or `keywords` keeps ranked keyword
+recall. Literal queries cannot be empty, and invalid modes fail explicitly.
+
 ## Research tasks
 
 `ResearchTaskExecutor` requires a provider registered for

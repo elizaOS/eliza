@@ -257,7 +257,26 @@ describe("promoted MEMORY tool contracts", () => {
       validateToolArgs(search, { author: "everyone", query: "Mira" }).valid,
     ).toBe(false);
     expect(
+      validateToolArgs(search, {
+        author: "requester",
+        query: "Mira",
+        queryMode: "literal",
+      }).valid,
+    ).toBe(true);
+    expect(
+      validateToolArgs(search, {
+        author: "requester",
+        query: "Mira",
+        queryMode: "regex",
+      }).valid,
+    ).toBe(false);
+    expect(
       actionNamed("MEMORY_DELETE").parameters?.some((p) => p.name === "author"),
+    ).toBe(false);
+    expect(
+      actionNamed("MEMORY_DELETE").parameters?.some(
+        (p) => p.name === "queryMode",
+      ),
     ).toBe(false);
   });
 
