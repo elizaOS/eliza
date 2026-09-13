@@ -1509,6 +1509,26 @@ function normalizeCalendarDetails(
   return normalized;
 }
 
+const SCHEDULE_TOKEN_PATTERN =
+  /^\s*(?:(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)|(?:next\s+)?(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*|today|tomorrow|tonight|noon|midnight|\d{4}-\d{2}-\d{2}(?:t\d{2}:\d{2}(?::\d{2})?)?)\s*$/i;
+
+/**
+ * "move my appointment to friday at 4pm" arrived as {location: "4pm",
+ * travel_origin: "friday"} with no start at all (live 2026-09-13); the update
+ * "succeeded" by writing "4pm" into the event's location and the evaluator had
+ * to notice and reissue the call. A value that is only a clock time, weekday
+ * or date is a schedule the planner misfiled, never a place or a note.
+ */
+export function looksLikeScheduleToken(value: string): boolean {
+  return SCHEDULE_TOKEN_PATTERN.test(value);
+}
+
+function withoutScheduleToken(value: string | undefined): string | undefined {
+  return value !== undefined && looksLikeScheduleToken(value)
+    ? undefined
+    : value;
+}
+
 /** Blank model placeholders are omissions; clearing is a distinct operation. */
 function calendarUpdateTextField(
   details: Record<string, unknown> | undefined,
@@ -1516,7 +1536,9 @@ function calendarUpdateTextField(
   field: "description" | "location",
 ): string | undefined {
   for (const source of [details, extracted]) {
-    const value = detailString(source, field);
+    const raw = detailString(source, field);
+    const value =
+      raw !== undefined && looksLikeScheduleToken(raw) ? undefined : raw;
     const clear =
       Array.isArray(source?.clearFields) && source.clearFields.includes(field);
     if (clear && value !== undefined) {
@@ -3637,7 +3659,7 @@ export function buildCreateEventRequest(
         pickCreateEventStringField(args, "description") ??
         args.fallbackRequest?.description,
       location:
-        pickCreateEventStringField(args, "location") ??
+        withoutScheduleToken(pickCreateEventStringField(args, "location")) ??
         args.fallbackRequest?.location,
       startAt: resolvedStartAt,
       endAt: rawEndAt ?? args.fallbackRequest?.endAt,
