@@ -253,7 +253,11 @@ function formatExtraValue(value: unknown): string {
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean")
     return String(value);
-  if (value instanceof Error) return value.message;
+  if (value instanceof Error) {
+    return value.name && value.name !== "Error"
+      ? `${value.name}: ${value.message}`
+      : value.message;
+  }
   return safeStringify(value);
 }
 
