@@ -229,4 +229,100 @@ describe("confirmation utilities", () => {
 		expect(llmConfirmedFlagIsAuthoritative(1)).toBe(false);
 		expect(llmConfirmedFlagIsAuthoritative({})).toBe(false);
 	});
+
+	it("falls back to valid userId when entityId is missing and handles two-turn flow", async () => {
+		const runtime = createMockRuntime();
+		const callback = vi.fn();
+		const message1 = {
+			userId: "legacy-user-456",
+			content: { text: "delete resource" },
+		} as unknown as Memory;
+
+		const decision1 = await requireConfirmation({
+			runtime,
+			message: message1,
+			actionName: "DELETE_RESOURCE",
+			pendingKey: "res:1",
+			prompt: "Delete resource 1?",
+			callback,
+		});
+
+		expect(decision1.status).toBe("pending");
+		expect(callback).toHaveBeenCalledWith({
+			text: "Delete resource 1?",
+			source: undefined,
+		});
+		expect(
+			runtime.cacheStore.has(
+				"confirmation:legacy-user-456:DELETE_RESOURCE:res:1",
+			),
+		).toBe(true);
+
+		const message2 = {
+			userId: "legacy-user-456",
+			content: { text: "yes" },
+		} as unknown as Memory;
+
+		const decision2 = await requireConfirmation({
+			runtime,
+			message: message2,
+			actionName: "DELETE_RESOURCE",
+			pendingKey: "res:1",
+			prompt: "Delete resource 1?",
+		});
+
+		expect(decision2.status).toBe("confirmed");
+		expect(
+			runtime.cacheStore.has(
+				"confirmation:legacy-user-456:DELETE_RESOURCE:res:1",
+			),
+		).toBe(false);
+	});
+
+	it("throws ElizaError when both entityId and userId are missing or blank", async () => {
+		const runtime = createMockRuntime();
+		const emptyMessage = {
+			content: { text: "delete resource" },
+		} as unknown as Memory;
+
+		await expect(
+			requireConfirmation({
+				runtime,
+				message: emptyMessage,
+				actionName: "DELETE_RESOURCE",
+				pendingKey: "res:1",
+				prompt: "Delete resource 1?",
+			}),
+		).rejects.toThrow("A valid non-empty entityId or userId is required");
+
+		expect(runtime.cacheStore.size).toBe(0);
+	});
+
+	it("prioritizes entityId over userId when both are present", async () => {
+		const runtime = createMockRuntime();
+		const message = {
+			entityId: "canonical-entity-123",
+			userId: "legacy-user-456",
+			content: { text: "delete resource" },
+		} as unknown as Memory;
+
+		await requireConfirmation({
+			runtime,
+			message,
+			actionName: "DELETE_RESOURCE",
+			pendingKey: "res:1",
+			prompt: "Delete resource 1?",
+		});
+
+		expect(
+			runtime.cacheStore.has(
+				"confirmation:canonical-entity-123:DELETE_RESOURCE:res:1",
+			),
+		).toBe(true);
+		expect(
+			runtime.cacheStore.has(
+				"confirmation:legacy-user-456:DELETE_RESOURCE:res:1",
+			),
+		).toBe(false);
+	});
 });
