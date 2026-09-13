@@ -73,6 +73,7 @@ import {
   FAMILY_MONTHLY_SYSTEM_OPERATION,
   getFamilyWorkflowRuntimeService,
 } from "../family-workflows/index.js";
+import { withFamilyScheduledExecution } from "../family-workflows/scheduled-execution.js";
 import { resolveGlobalPauseStore } from "../global-pause/store.js";
 import { registerHouseholdGrantExpiryWarningGate } from "../household/grant-expiry-warning.js";
 import { HouseholdCoordinationRepository } from "../household/repository.js";
@@ -1214,6 +1215,8 @@ function buildLifeOpsRunnerDeps(
 
   return {
     store: stores.store,
+    executionBoundary: (task, execute) =>
+      withFamilyScheduledExecution(opts.runtime, task, execute),
     logStore: stores.logStore,
     gates,
     completionChecks,
@@ -1277,6 +1280,9 @@ export function createRuntimeScheduledTaskRunner(
       ? { hostCapabilities: deps.hostCapabilities }
       : {}),
     dispatcher: deps.dispatcher,
+    ...(deps.executionBoundary
+      ? { executionBoundary: deps.executionBoundary }
+      : {}),
   });
 }
 

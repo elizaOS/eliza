@@ -20,6 +20,12 @@ const uploadId = z.string().regex(/^hagu_[0-9a-f-]{36}$/);
 const operationTarget = z.discriminatedUnion("kind", [
   z
     .object({
+      kind: z.literal("family-scheduled-execution"),
+      taskId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
       kind: z.literal("agreement-upload"),
       artifactId: z.string().regex(/^hag_[0-9a-f-]{36}$/),
       contentSha256: sha256,

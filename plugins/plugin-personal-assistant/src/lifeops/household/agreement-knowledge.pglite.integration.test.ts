@@ -27,6 +27,10 @@ import {
   type UUID,
 } from "@elizaos/core";
 import type { PdfService } from "@elizaos/plugin-pdf";
+import {
+  getScheduledTaskRunner,
+  registerScheduledTaskChannelDispatcher,
+} from "@elizaos/plugin-scheduling";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -156,6 +160,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   let artifact: ParentingAgreementArtifact;
   let guestHouseholdGrantId: string;
   let mediaStateDir: string;
+  let syntheticSchedulerDispatches = 0;
 
   beforeAll(async () => {
     mediaStateDir = fs.mkdtempSync(
@@ -2702,6 +2707,159 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     }
   });
 
+  it("holds durable deletion admission through real scheduler dispatch and receipt persistence", async () => {
+    let entered!: () => void;
+    let release!: () => void;
+    const dispatched = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const resume = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    registerScheduledTaskChannelDispatcher(runtime, {
+      channelKey: "family_fence_test",
+      async dispatch() {
+        syntheticSchedulerDispatches += 1;
+        entered();
+        await resume;
+        return { ok: true, channelKey: "family_fence_test" };
+      },
+    });
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+    });
+    const task = await runner.schedule({
+      kind: "recap",
+      promptInstructions: "Synthetic family boundary check",
+      trigger: { kind: "manual" },
+      priority: "medium",
+      respectsGlobalPause: false,
+      source: "plugin",
+      createdBy: runtime.agentId,
+      ownerVisible: true,
+      metadata: { systemOperation: "family.monthlyCoordination" },
+      output: { destination: "channel", target: "family_fence_test:local" },
+    });
+    const firing = runner.fireWithResult(task.taskId);
+    try {
+      await Promise.race([
+        dispatched,
+        firing.then(() => {
+          throw new Error("Family dispatch bypassed the barrier");
+        }),
+      ]);
+      const active = await previewFamilyDeletionDatabase(
+        runtime,
+        SELF_ENTITY_ID,
+      );
+      expect(
+        active.records.some(
+          (row) => row.kind === "workspaceOperations" && row.unsettled,
+        ),
+      ).toBe(true);
+      await expect(
+        withReviewedFamilyDeletionDatabase(
+          runtime,
+          { ownerEntityId: SELF_ENTITY_ID, expectedSha256: active.sha256 },
+          (tx) => fenceFamilyWorkspace(tx, runtime.agentId),
+        ),
+      ).rejects.toMatchObject({ code: "FAMILY_DELETION_WORK_UNSETTLED" });
+    } finally {
+      release();
+    }
+    expect((await firing).kind).toBe("fired");
+    const persisted = (await runner.list()).find(
+      (row) => row.taskId === task.taskId,
+    );
+    expect(persisted?.metadata?.lastDispatchResult).toMatchObject({
+      ok: true,
+      channelKey: "family_fence_test",
+    });
+    expect(
+      await executeRawSql(
+        runtime,
+        `SELECT operation_id FROM app_lifeops.life_family_workspace_operations WHERE agent_id=${sqlQuote(runtime.agentId)} AND target_json->>'taskId'=${sqlQuote(task.taskId)}`,
+      ),
+    ).toEqual([]);
+  });
+
+  it("retains scheduled execution admission when final receipt persistence fails", async () => {
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+    });
+    const task = await runner.schedule({
+      kind: "recap",
+      promptInstructions: "Synthetic receipt failure check",
+      trigger: { kind: "manual" },
+      priority: "medium",
+      respectsGlobalPause: false,
+      source: "plugin",
+      createdBy: runtime.agentId,
+      ownerVisible: true,
+      metadata: { systemOperation: "family.monthlyCoordination" },
+      output: { destination: "channel", target: "family_fence_test:local" },
+    });
+    await executeRawSql(
+      runtime,
+      `CREATE FUNCTION app_scheduling.reject_family_receipt_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+      IF NEW.id = ${sqlQuote(task.taskId)} AND NEW.metadata_json::jsonb ? 'lastDispatchResult' THEN RAISE EXCEPTION 'receipt unavailable'; END IF;
+      RETURN NEW; END $$`,
+    );
+    await executeRawSql(
+      runtime,
+      `CREATE TRIGGER reject_family_receipt_test BEFORE UPDATE ON app_scheduling.life_scheduled_tasks FOR EACH ROW EXECUTE FUNCTION app_scheduling.reject_family_receipt_test()`,
+    );
+    const before = syntheticSchedulerDispatches;
+    try {
+      await expect(runner.fireWithResult(task.taskId)).rejects.toMatchObject({
+        code: "FAMILY_OPERATION_RECONCILIATION_REQUIRED",
+      });
+      expect(syntheticSchedulerDispatches).toBe(before + 1);
+      const active = await previewFamilyDeletionDatabase(
+        runtime,
+        SELF_ENTITY_ID,
+      );
+      await expect(
+        withReviewedFamilyDeletionDatabase(
+          runtime,
+          { ownerEntityId: SELF_ENTITY_ID, expectedSha256: active.sha256 },
+          (tx) => fenceFamilyWorkspace(tx, runtime.agentId),
+        ),
+      ).rejects.toMatchObject({ code: "FAMILY_DELETION_WORK_UNSETTLED" });
+      expect(
+        (await runner.list()).find((row) => row.taskId === task.taskId)
+          ?.metadata?.lastDispatchResult,
+      ).toBeUndefined();
+    } finally {
+      await executeRawSql(
+        runtime,
+        "DROP TRIGGER reject_family_receipt_test ON app_scheduling.life_scheduled_tasks",
+      );
+      await executeRawSql(
+        runtime,
+        "DROP FUNCTION app_scheduling.reject_family_receipt_test()",
+      );
+    }
+    // Fixture-only reconciliation: the synthetic dispatcher completed once and
+    // the rejected attempt has returned; dismiss its task before clearing its claim.
+    await runner.apply(task.taskId, "dismiss", {
+      reason: "Synthetic receipt failure reconciled",
+    });
+    expect(
+      (await runner.list()).find((row) => row.taskId === task.taskId)?.state
+        .status,
+    ).toBe("dismissed");
+    const claims = await executeRawSql(
+      runtime,
+      `SELECT operation_id FROM app_lifeops.life_family_workspace_operations WHERE agent_id=${sqlQuote(runtime.agentId)} AND target_json->>'taskId'=${sqlQuote(task.taskId)}`,
+    );
+    expect(claims).toHaveLength(1);
+    await settleFamilyWorkspaceOperation(
+      runtime,
+      z.string().parse(claims[0].operation_id),
+    );
+  });
+
   it("holds deletion behind real in-flight ingestion and durably fences subsequent uploads", async () => {
     const storage = runtime.getService<IFileStorageService>(
       ServiceType.REMOTE_FILES,
@@ -2837,6 +2995,28 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       householdGrantId: householdGrant.id,
       issuedByEntityId: SELF_ENTITY_ID,
     });
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+    });
+    const taskInput = {
+      kind: "recap" as const,
+      promptInstructions: "Synthetic execution boundary check",
+      trigger: { kind: "manual" as const },
+      priority: "medium" as const,
+      respectsGlobalPause: false,
+      source: "plugin" as const,
+      createdBy: runtime.agentId,
+      ownerVisible: true,
+      output: {
+        destination: "channel" as const,
+        target: "family_fence_test:local",
+      },
+    };
+    const familyTask = await runner.schedule({
+      ...taskInput,
+      metadata: { systemOperation: "family.monthlyCoordination" },
+    });
+    const unrelatedTask = await runner.schedule(taskInput);
     const settled = await previewFamilyDeletionDatabase(
       runtime,
       SELF_ENTITY_ID,
@@ -2920,6 +3100,16 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     expect(
       (await previewFamilyDeletionDatabase(runtime, SELF_ENTITY_ID)).sha256,
     ).toBe(beforeReview.sha256);
+    await expect(
+      runner.fireWithResult(familyTask.taskId),
+    ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    expect(
+      (await runner.list()).find((row) => row.taskId === familyTask.taskId)
+        ?.state.status,
+    ).toBe("scheduled");
+    expect((await runner.fireWithResult(unrelatedTask.taskId)).kind).toBe(
+      "fired",
+    );
     const media = path.join(mediaStateDir, "media");
     const files = fs.readdirSync(media).sort();
     const documents = await executeRawSql(
