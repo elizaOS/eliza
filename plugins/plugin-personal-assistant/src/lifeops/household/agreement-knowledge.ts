@@ -78,6 +78,7 @@ const agreementExtractionSchema = z.strictObject({
 import {
   beginFamilyWorkspaceOperation,
   settleFamilyWorkspaceOperation,
+  withActiveFamilyWorkspaceTransaction,
 } from "../family-workflows/workspace-operation-store.js";
 
 export const HOUSEHOLD_AGREEMENT_KNOWLEDGE_SERVICE =
@@ -389,6 +390,19 @@ export class AgreementKnowledgeRepository {
     private readonly agentId: string,
   ) {}
 
+  private async executeReviewMutation(statement: string) {
+    return withActiveFamilyWorkspaceTransaction(
+      this.runtime,
+      [
+        "app_lifeops.life_audit_events",
+        "app_lifeops.life_household_agreement_artifacts",
+        "app_lifeops.life_household_agreement_obligations",
+        "app_lifeops.life_household_knowledge_pins",
+      ],
+      (tx) => executeRawSqlTx(tx, statement),
+    );
+  }
+
   /** All mutable export records are read from one PostgreSQL statement snapshot. */
   async readExportSnapshot(artifactId: string) {
     const scoped = `agent_id = ${sqlQuote(this.agentId)}`;
@@ -612,8 +626,7 @@ export class AgreementKnowledgeRepository {
   async insertObligation(
     obligation: ParentingAgreementObligation,
   ): Promise<ParentingAgreementObligation> {
-    const rows = await executeRawSql(
-      this.runtime,
+    const rows = await this.executeReviewMutation(
       agreementMutationSql(
         `INSERT INTO app_lifeops.life_household_agreement_obligations (
          id, agent_id, artifact_id, title, obligation_text, page_start,
@@ -653,8 +666,7 @@ export class AgreementKnowledgeRepository {
     decisionReason: string;
     decidedAt: string;
   }): Promise<ParentingAgreementObligation> {
-    const rows = await executeRawSql(
-      this.runtime,
+    const rows = await this.executeReviewMutation(
       agreementMutationSql(
         `UPDATE app_lifeops.life_household_agreement_obligations
           SET status = ${sqlQuote(input.status)},
@@ -716,8 +728,7 @@ export class AgreementKnowledgeRepository {
     pinnedAt: string;
   }): Promise<HouseholdKnowledgePin> {
     const id = `hkpin_${crypto.randomUUID()}`;
-    const rows = await executeRawSql(
-      this.runtime,
+    const rows = await this.executeReviewMutation(
       agreementMutationSql(
         `INSERT INTO app_lifeops.life_household_knowledge_pins (
          id, agent_id, artifact_id, target_type, target_id,
@@ -791,8 +802,7 @@ export class AgreementKnowledgeRepository {
     unpinnedByEntityId: string;
     unpinnedAt: string;
   }): Promise<HouseholdKnowledgePin> {
-    const rows = await executeRawSql(
-      this.runtime,
+    const rows = await this.executeReviewMutation(
       agreementMutationSql(
         `UPDATE app_lifeops.life_household_knowledge_pins
           SET unpinned_at = ${sqlQuote(input.unpinnedAt)}

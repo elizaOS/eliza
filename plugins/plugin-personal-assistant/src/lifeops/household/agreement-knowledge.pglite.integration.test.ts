@@ -1,7 +1,7 @@
 /**
  * Real-PGlite behavioral coverage for immutable agreement knowledge. The
  * runtime uses the production graph, household authorization, migrations, and
- * content-addressed file service; only PDF fixture bytes are synthetic.
+ * content-addressed file service, with deterministic PDF extraction and provider fixtures.
  */
 
 import crypto from "node:crypto";
@@ -2809,6 +2809,21 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         ].join("\n"),
       )
       .digest("hex");
+    const service = createAgreementKnowledgeService(runtime);
+    const proposed = await service.proposeObligation({
+      artifactId: artifact.id,
+      title: "Review before deletion",
+      obligationText: "Preserve the recorded review decision.",
+      pageStart: 1,
+      citationText: "in-flight source before durable fence",
+      proposedByEntityId: SELF_ENTITY_ID,
+    });
+    const pinned = await service.pin({
+      artifactId: artifact.id,
+      targetType: "agent",
+      targetId: runtime.agentId,
+      pinnedByEntityId: SELF_ENTITY_ID,
+    });
     const settled = await previewFamilyDeletionDatabase(
       runtime,
       SELF_ENTITY_ID,
@@ -2821,6 +2836,45 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       { ownerEntityId: SELF_ENTITY_ID, expectedSha256: settled.sha256 },
       (tx) => fenceFamilyWorkspace(tx, runtime.agentId),
     );
+    const beforeReview = await previewFamilyDeletionDatabase(
+      runtime,
+      SELF_ENTITY_ID,
+    );
+    await expect(
+      service.proposeObligation({
+        artifactId: artifact.id,
+        title: "Too late",
+        obligationText: "No new review work after deletion starts.",
+        pageStart: 1,
+        citationText: "in-flight source before durable fence",
+        proposedByEntityId: SELF_ENTITY_ID,
+      }),
+    ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    await expect(
+      service.decideObligation({
+        obligationId: proposed.id,
+        decision: "approve",
+        decidedByEntityId: SELF_ENTITY_ID,
+        reason: "Too late",
+      }),
+    ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    await expect(
+      service.pin({
+        artifactId: artifact.id,
+        targetType: "agent",
+        targetId: runtime.agentId,
+        pinnedByEntityId: SELF_ENTITY_ID,
+      }),
+    ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    await expect(
+      service.unpin({
+        pinId: pinned.id,
+        unpinnedByEntityId: SELF_ENTITY_ID,
+      }),
+    ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    expect(
+      (await previewFamilyDeletionDatabase(runtime, SELF_ENTITY_ID)).sha256,
+    ).toBe(beforeReview.sha256);
     const media = path.join(mediaStateDir, "media");
     const files = fs.readdirSync(media).sort();
     const documents = await executeRawSql(

@@ -73,6 +73,41 @@ export async function ensureFamilyWorkspaceOperationStore(
   );
 }
 
+/**
+ * Run database-only family mutations while holding admission through commit.
+ * Callers supply every table touched by their callback, including audit writes,
+ * so the sorted table-lock order matches the reviewed deletion transaction.
+ */
+export async function withActiveFamilyWorkspaceTransaction<T>(
+  runtime: IAgentRuntime,
+  tables: readonly string[],
+  mutate: (tx: TransactionalDb) => Promise<T>,
+): Promise<T> {
+  const names = z
+    .array(z.string().regex(/^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)?$/))
+    .parse(tables);
+  await ensureFamilyWorkspaceOperationStore(runtime);
+  return withTransaction(runtime, async (tx) => {
+    const locked = [...new Set([...names, lifecycle])].sort();
+    await executeRawSqlTx(
+      tx,
+      `LOCK TABLE ${locked.join(", ")} IN ROW EXCLUSIVE MODE`,
+    );
+    const rows = await executeRawSqlTx(
+      tx,
+      `SELECT state FROM ${lifecycle} WHERE agent_id=${sqlQuote(runtime.agentId)} FOR SHARE`,
+    );
+    if (rows.length !== 1 || rows[0].state !== "active")
+      throw new ElizaError(
+        "[FamilyWorkspace] Deletion has fenced new family work",
+        {
+          code: "FAMILY_WORKSPACE_FENCED",
+        },
+      );
+    return mutate(tx);
+  });
+}
+
 export async function beginFamilyWorkspaceOperation(
   runtime: IAgentRuntime,
   target: FamilyWorkspaceOperationTarget,
