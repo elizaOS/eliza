@@ -29,6 +29,13 @@ const releaseWorkflow = readFileSync(
   resolve(repoRoot, ".github/workflows/cloud-cf-release.yml"),
   "utf8",
 ).replaceAll("\r\n", "\n");
+const auditWorkflow = readFileSync(
+  resolve(
+    repoRoot,
+    ".github/workflows/production-railway-database-authority-audit.yml",
+  ),
+  "utf8",
+).replaceAll("\r\n", "\n");
 const sourceSha = "a".repeat(40);
 const treeSha = "b".repeat(40);
 const workflowSha256 = "c".repeat(64);
@@ -453,6 +460,9 @@ describe("Cloud CF workflow staging certification gate", () => {
       2,
     );
     expect(authorize).toContain("Destroy private bounded-recovery evidence");
+    expect(authorize).toContain("shred -f -u --");
+    expect(auditWorkflow).toContain("Destroy private audit evidence");
+    expect(auditWorkflow).toContain("shred -f -u --");
     expect(release).toContain("environment == 'production'");
     expect(release).toContain("group: cloud-cf-release-v6-");
     expect(release).toContain("cancel-in-progress: false");
