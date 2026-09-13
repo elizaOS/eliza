@@ -1505,6 +1505,64 @@ describe("App navigate-view event wiring", () => {
     },
   );
 
+  it.each([
+    "restoring-session",
+    "polling-backend",
+    "pairing-required",
+    "error",
+    "starting-runtime",
+    "ready",
+  ])(
+    "keeps authenticated account management available during agent %s",
+    async (phase) => {
+      registerAppShellPage({
+        id: "cloud",
+        pluginId: "@elizaos/ui",
+        label: "Cloud",
+        path: "/cloud",
+        pathPatterns: ["/cloud/*"],
+        surface: { capabilities: ["navigate"] },
+        Component: () => <div data-testid="managed-cloud-page" />,
+      });
+      cloudSessionState.authenticated = true;
+      authStatusMock.phase = "unauthenticated";
+      appState.startupPhase = phase;
+      appState.backendConnectionState = "disconnected";
+      appState.tab = "cloud";
+      window.history.replaceState(null, "", "/cloud/agents");
+
+      render(<App />);
+
+      await screen.findByTestId("managed-cloud-page");
+      expect(appState.retryStartup).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { authenticated: false, owner: "@elizaos/ui" },
+    { authenticated: true, owner: "@elizaos/plugin-elizacloud" },
+  ])(
+    "keeps agent startup gates for $owner with Cloud auth=$authenticated",
+    ({ authenticated, owner }) => {
+      registerAppShellPage({
+        id: "cloud",
+        pluginId: owner,
+        label: "Cloud",
+        path: "/cloud",
+        pathPatterns: ["/cloud/*"],
+        Component: () => <div data-testid="managed-cloud-page" />,
+      });
+      cloudSessionState.authenticated = authenticated;
+      appState.startupPhase = "polling-backend";
+      appState.tab = "cloud";
+      window.history.replaceState(null, "", "/cloud/agents");
+
+      render(<App />);
+
+      expect(screen.queryByTestId("managed-cloud-page")).toBeNull();
+    },
+  );
+
   it("gives an in-process wallet page a live agent-surface registry", async () => {
     registerAppShellPage({
       id: "wallet.inventory",
