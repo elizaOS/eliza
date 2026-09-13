@@ -36,6 +36,9 @@ export function createPlannerToolDiscoveryAction(
 	);
 	return {
 		name: DISCOVER_TOOLS_NAME,
+		// Names and children only: the routing hints repeated a 14.9K-character
+		// catalog in every planner round (audit 2026-09-13); a loaded family
+		// carries its complete description on the next round.
 		description:
 			"Load complete tool schemas from the authorized catalog below when an exposed tool does not cover an intent. " +
 			"Pass one or more exact parent or child names. All authorized operations of each selected family become callable on the next planner round. " +
@@ -43,7 +46,6 @@ export function createPlannerToolDiscoveryAction(
 			JSON.stringify(
 				catalog.parents.map((parent) => ({
 					name: parent.name,
-					description: parent.routingHint || parent.description,
 					children: parent.childNames,
 				})),
 			),
