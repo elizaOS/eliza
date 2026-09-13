@@ -74,10 +74,14 @@ export function checkRateLimit(
   const cutoff = now - config.windowMs;
   entry.timestamps = entry.timestamps.filter((t) => t > cutoff);
 
+  if (config.maxRequests <= 0 || !Number.isFinite(config.maxRequests)) {
+    return { allowed: false, retryAfterMs: Math.max(config.windowMs, 0) };
+  }
+
   if (entry.timestamps.length >= config.maxRequests) {
     const oldestInWindow = entry.timestamps[0];
     if (oldestInWindow === undefined) {
-      return { allowed: true, retryAfterMs: 0 };
+      return { allowed: false, retryAfterMs: Math.max(config.windowMs, 0) };
     }
     const retryAfterMs = oldestInWindow + config.windowMs - now;
     return { allowed: false, retryAfterMs: Math.max(retryAfterMs, 0) };
