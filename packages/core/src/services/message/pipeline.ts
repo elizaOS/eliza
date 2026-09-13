@@ -31,6 +31,8 @@ import { appendContextEvent } from "../../runtime/context-object";
 import { type EvaluatorEffects, runEvaluator } from "../../runtime/evaluator";
 import {
 	type FactsAndRelationshipsRunResult,
+	type FactsStageExecutedTool,
+	planNamesMemoryMutation,
 	runFactsAndRelationshipsStage,
 } from "../../runtime/facts-and-relationships";
 import { getLocalizedExamplesProvider } from "../../runtime/localized-examples-provider";
@@ -327,6 +329,9 @@ export async function runV5MessageRuntimeStage1(
 		error?: unknown;
 	} | null> = Promise.resolve(null);
 	let settledFactsOutcome: Awaited<typeof factsTask> | undefined;
+	let releaseFactsStage:
+		| ((executedTools: readonly FactsStageExecutedTool[]) => void)
+		| undefined;
 	let messageHandlerStageTask: Promise<void> = Promise.resolve();
 	try {
 		const {
@@ -392,13 +397,26 @@ export async function runV5MessageRuntimeStage1(
 			((messageHandler.extract.facts?.length ?? 0) > 0 ||
 				(messageHandler.extract.relationships?.length ?? 0) > 0)
 		) {
-			const startedAt = Date.now();
-			factsTask = runFactsAndRelationshipsStage({
-				runtime: args.runtime,
-				message: args.message,
-				state: args.state,
-				extract: messageHandler.extract,
-			})
+			let startedAt = Date.now();
+			const extract = messageHandler.extract;
+			// A plan naming a MEMORY create/update waits for that tool's result so
+			// a stored fact covering the whole message can skip the model call.
+			const executedToolsGate = planNamesMemoryMutation(messageHandler.plan)
+				? new Promise<readonly FactsStageExecutedTool[]>((resolve) => {
+						releaseFactsStage = resolve;
+					})
+				: Promise.resolve<readonly FactsStageExecutedTool[]>([]);
+			factsTask = executedToolsGate
+				.then((executedTools) => {
+					startedAt = Date.now();
+					return runFactsAndRelationshipsStage({
+						runtime: args.runtime,
+						message: args.message,
+						state: args.state,
+						extract,
+						executedTools,
+					});
+				})
 				.then((result) => ({ startedAt, endedAt: Date.now(), result }))
 				.catch((error) => {
 					// error-policy:J7 Facts persistence is detached from reply delivery;
@@ -1776,6 +1794,7 @@ export async function runV5MessageRuntimeStage1(
 						invokeDeterministicToolCall,
 					)
 				: await invokePlannerLoop(plannerContextAfterEarlyReply);
+			releaseFactsStage?.(settledPlannerToolResults);
 			getStreamingContext()?.abortSignal?.throwIfAborted();
 		} catch (error) {
 			// Cancellation belongs to the interrupted-turn boundary, even after preliminary delivery.
@@ -2015,6 +2034,8 @@ export async function runV5MessageRuntimeStage1(
 		endStatus = isProviderContextOverflowFailure(err) ? "finished" : "errored";
 		throw err;
 	} finally {
+		// A turn that never reached the planner still runs the stage as before.
+		releaseFactsStage?.([]);
 		// Trajectory persistence is diagnostic work. Preserve stage ordering in
 		// its own task without adding filesystem latency to the user-visible turn.
 		const finalizeTrajectory = async (waitForFacts: boolean) => {

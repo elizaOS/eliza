@@ -262,6 +262,9 @@ export interface RecordedFactsAndRelationshipsStage {
 	};
 	written: { facts: number; relationships: number };
 	thought: string;
+	/** Mirrors the gated evaluation stage: a deterministic gate answered without a model call. */
+	llmCallSkipped?: boolean;
+	reason?: string;
 }
 
 export interface RecordedCacheStage {
