@@ -1081,6 +1081,42 @@ export async function queryAccountPoolConsumerUsage(
   return result;
 }
 
+/**
+ * Is one parsed usage-log line a usable {@link AccountPoolConsumerUsageRecord}?
+ *
+ * Every numeric field checked here is one that {@link addRecordToBucket} or
+ * {@link recordedConsumerDayTokens} goes on to *accumulate or compare*, which
+ * is where a missing field stops being loud and starts being silently wrong.
+ * `totalTokens` is the sharpest: the day total is a `reduce` of it straight
+ * into the admission comparison, so a single record without it makes `used`
+ * `NaN`, and `NaN > quota` is `false` — the quota gate would admit a consumer
+ * that is already over its limit, permanently.
+ */
+function isUsageRecord(
+  parsed: unknown,
+): parsed is AccountPoolConsumerUsageRecord {
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return false;
+  }
+  const row = parsed as Partial<AccountPoolConsumerUsageRecord>;
+  const usage = row.usage as
+    | Partial<AccountPoolConsumerUsage>
+    | undefined
+    | null;
+  if (typeof usage !== "object" || usage === null) return false;
+  return (
+    typeof row.consumerId === "string" &&
+    Number.isFinite(row.ts) &&
+    Number.isFinite(row.totalTokens) &&
+    Number.isFinite(row.latencyMs) &&
+    Number.isFinite(row.status) &&
+    Number.isFinite(usage.input_tokens) &&
+    Number.isFinite(usage.output_tokens) &&
+    Number.isFinite(usage.cache_read_input_tokens) &&
+    Number.isFinite(usage.cache_creation_input_tokens)
+  );
+}
+
 function readUsageRecords(
   query: AccountPoolConsumerUsageQuery,
 ): AccountPoolConsumerUsageRecord[] {
@@ -1095,7 +1131,19 @@ function readUsageRecords(
     const raw = readFileSync(path.join(dir, fileName), "utf8");
     for (const line of raw.split("\n")) {
       if (!line.trim()) continue;
-      const parsed = JSON.parse(line) as AccountPoolConsumerUsageRecord;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        // error-policy:J3 the log is append-only and this reader runs on the
+        // admission path, so an append interrupted before its newline must not
+        // become a permanent outage: every later call would re-read the same
+        // partial line and throw again. One unreadable line is skipped, the
+        // rest of the ledger is still counted, and the record is left in place
+        // rather than rewritten — this is an audit log, not a cache.
+        continue;
+      }
+      if (!isUsageRecord(parsed)) continue;
       if (query.consumerId && parsed.consumerId !== query.consumerId) continue;
       if (parsed.ts < start || parsed.ts >= end) continue;
       out.push(parsed);
