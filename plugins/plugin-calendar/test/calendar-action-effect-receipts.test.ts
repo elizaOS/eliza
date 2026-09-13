@@ -393,8 +393,8 @@ describe("CALENDAR effect receipt settlement", () => {
                 }
               : subaction === "create_event"
                 ? {
-                    startAt: ELIZA_EVENT.startAt,
-                    endAt: ELIZA_EVENT.endAt,
+                    start: ELIZA_EVENT.startAt,
+                    end: ELIZA_EVENT.endAt,
                     timeZone: "UTC",
                   }
                 : {
@@ -535,8 +535,8 @@ describe("CALENDAR effect receipt settlement", () => {
         title: "School pickup",
         details: {
           calendarId: "  Default  ",
-          startAt: "2026-07-28T22:00:00.000Z",
-          endAt: "2026-07-28T22:30:00.000Z",
+          start: "2026-07-28T22:00:00.000Z",
+          end: "2026-07-28T22:30:00.000Z",
           timeZone: "UTC",
         },
       },
@@ -614,8 +614,8 @@ describe("CALENDAR effect receipt settlement", () => {
         subaction: "create_event",
         title: "Eat a sandwich",
         details: {
-          startAt: ELIZA_EVENT.startAt,
-          endAt: ELIZA_EVENT.endAt,
+          start: ELIZA_EVENT.startAt,
+          end: ELIZA_EVENT.endAt,
           timeZone: "UTC",
         },
       },
@@ -706,7 +706,7 @@ describe("CALENDAR effect receipt settlement", () => {
           subaction: "create_event",
           title: "Full QA Event",
           details: {
-            startAt: "tomorrow at 4 PM",
+            start: "tomorrow at 4 PM",
             durationMinutes: 30,
             timeZone: "America/New_York",
           },
@@ -1055,8 +1055,8 @@ describe("CALENDAR effect receipt settlement", () => {
           subaction: "create_event",
           title: "Demo",
           details: {
-            startAt: "2026-08-05T09:00:00Z",
-            endAt: "2026-08-05T10:00:00Z",
+            start: "2026-08-05T09:00:00Z",
+            end: "2026-08-05T10:00:00Z",
             timeZone: "America/Los_Angeles",
           },
         },
@@ -1125,8 +1125,8 @@ describe("CALENDAR effect receipt settlement", () => {
         subaction: "create_event",
         title: "School pickup",
         details: {
-          startAt: "2026-07-28T22:00:00.000Z",
-          endAt: "2026-07-28T22:30:00.000Z",
+          start: "2026-07-28T22:00:00.000Z",
+          end: "2026-07-28T22:30:00.000Z",
           timeZone: "UTC",
         },
       },
@@ -1262,7 +1262,6 @@ describe("CALENDAR effect receipt settlement", () => {
       parameters: {
         subaction: "feed",
         details: {
-          mode: "read",
           side: "owner",
           grantId: "primary",
           calendarId: "default",
@@ -1396,9 +1395,8 @@ describe("CALENDAR effect receipt settlement", () => {
       parameters: {
         subaction: "feed",
         details: {
-          calendar_id: ",calendar_id:",
+          calendarId: ",calendarId:",
           grantId: "grantId",
-          mode: "mode",
           side: "side",
           timeZone: "timeZone",
         },
@@ -1412,7 +1410,6 @@ describe("CALENDAR effect receipt settlement", () => {
       expect.objectContaining({
         calendarId: undefined,
         grantId: undefined,
-        mode: undefined,
         side: undefined,
       }),
     );
@@ -1478,8 +1475,8 @@ describe("CALENDAR effect receipt settlement", () => {
         details: {
           title: "title",
           location: "location",
-          startAt: ELIZA_EVENT.startAt,
-          endAt: ELIZA_EVENT.endAt,
+          start: ELIZA_EVENT.startAt,
+          end: ELIZA_EVENT.endAt,
           timeZone: "UTC",
         },
       },
@@ -1512,7 +1509,7 @@ describe("CALENDAR effect receipt settlement", () => {
       actor: message("whats on my calendar tomorrow"),
       parameters: {
         subaction: "feed",
-        details: { mode: "definitely-junk", timeZone: "UTC" },
+        details: { grantId: "definitely-junk", timeZone: "UTC" },
       },
       delivered: [],
       reportError,
@@ -1537,7 +1534,7 @@ describe("CALENDAR effect receipt settlement", () => {
         status: 400,
         code: "CALENDAR_SERVICE_400",
         detail: "mode must be one of: local, remote, cloud_managed",
-        mode: "definitely-junk",
+        grantId: "definitely-junk",
         timeZone: "UTC",
       }),
     );

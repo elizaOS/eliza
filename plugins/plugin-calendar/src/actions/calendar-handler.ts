@@ -44,7 +44,10 @@ import {
   textStatesExplicitRecurrence,
 } from "@elizaos/shared";
 import { isAppleCalendarGrant } from "../apple-calendar.js";
-import { CALENDAR_DETAILS_PARAMETER_SCHEMA } from "../calendar-action-schema.js";
+import {
+  CALENDAR_DETAIL_ALIASES,
+  CALENDAR_DETAILS_PARAMETER_SCHEMA,
+} from "../calendar-action-schema.js";
 import { normalizeCalendarDateTimeInTimeZone } from "../internal/calendar-normalize.js";
 import {
   CALENDAR_TIME_ZONE_ALIASES,
@@ -412,59 +415,9 @@ const WEEKDAY_NAME_PATTERN = new RegExp(
   `\\b(?:(this|next)\\s+)?(${WEEKDAY_NAMES_SORTED.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`,
   "i",
 );
-const CALENDAR_DETAIL_ALIASES = {
-  calendarId: ["calendarid", "calendar_id"],
-  timeMin: ["timemin", "time_min"],
-  timeMax: ["timemax", "time_max"],
-  timeZone: ["timezone", "time_zone"],
-  forceSync: ["forcesync", "force_sync"],
-  windowDays: ["windowdays", "window_days"],
-  startAt: ["startat", "start_at", "start", "start_time", "starttime"],
-  endAt: ["endat", "end_at", "end", "end_time", "endtime"],
-  durationMinutes: ["durationminutes", "duration_minutes"],
-  windowPreset: ["windowpreset", "window_preset"],
-  eventId: [
-    "eventid",
-    "event_id",
-    "externaleventid",
-    "external_event_id",
-    "googleeventid",
-    "google_event_id",
-  ],
-  newTitle: ["newtitle", "new_title", "renameto", "rename_to"],
-  oldTitle: ["oldtitle", "old_title"],
-  description: ["desc", "summary", "body"],
-  location: ["place", "venue"],
-  recurrence: [
-    "rrule",
-    "recurrencerule",
-    "recurrence_rule",
-    "repeat",
-    "repeats",
-    "repeatrule",
-    "repeat_rule",
-  ],
-  recurrenceScope: [
-    "recurrencescope",
-    "recurrence_scope",
-    "applyto",
-    "apply_to",
-    "editscope",
-    "edit_scope",
-  ],
-  travelOriginAddress: [
-    "traveloriginaddress",
-    "travel_origin_address",
-    "travelorigin",
-    "travel_origin",
-    "originaddress",
-    "origin_address",
-    "departureaddress",
-    "departure_address",
-    "fromaddress",
-    "from_address",
-  ],
-} as const;
+// Accepted alternate spellings for planner details live beside the
+// planner-facing schema (calendar-action-schema.ts: CALENDAR_DETAIL_ALIASES)
+// so the two surfaces are reviewed together.
 
 /** Deterministic "just this occurrence" phrasing across mutation requests. */
 const RECURRENCE_SCOPE_INSTANCE_PATTERN =
@@ -1437,7 +1390,7 @@ function dedupeCalendarQueries(queries: Array<string | undefined>): string[] {
   return [...new Set(normalized)];
 }
 
-function normalizeCalendarDetails(
+export function normalizeCalendarDetails(
   details: Record<string, unknown> | undefined,
   paramsTitleCandidates: Array<string | undefined> = [],
 ): Record<string, unknown> | undefined {
@@ -6388,10 +6341,10 @@ const calendarAction: CalendarHandlerAction = {
     {
       name: "details",
       description:
-        "Optional structured calendar fields such as time bounds, timezone, calendar id, create-event timing, location, attendees, " +
-        "start/end datetimes must be RFC 3339 with a numeric offset matching timeZone (use Z only for UTC); " +
-        'recurrence (RFC 5545 RRULE line(s) like "RRULE:FREQ=WEEKLY;BYDAY=MO" for repeating events), and recurrenceScope ' +
-        '("instance" for one occurrence, "this_and_following" to split at the selected occurrence, "series" for the whole series).',
+        "Structured calendar fields; only the declared keys are accepted, so omit anything the user did not state. " +
+        "feed/search_events: timeMin/timeMax with timeZone. create_event: start (plus end or durationMinutes) and timeZone; location, description, recurrence and attendees only when the user gives them. " +
+        "update_event/delete_event: locate the target with eventId, oldTitle or query (plus date); the new time goes in start/end and a rename in newTitle. " +
+        "Every wall-clock value is local (no Z, no offset) in timeZone; recurrenceScope is instance, this_and_following or series.",
       required: false,
       schema: CALENDAR_DETAILS_PARAMETER_SCHEMA,
     },
