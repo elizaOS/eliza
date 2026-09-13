@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Pure URL normalizer for Eliza Cloud site/API base URLs. No host-layer deps.
  */
@@ -108,8 +109,9 @@ function trimApiPath(pathname: string): string {
 }
 
 function normalizeMalformedCandidate(candidate: string): string {
+  const wellFormed = toWellFormedUnicode(candidate);
   const truncated =
-    candidate.length > 8192 ? candidate.slice(0, 8192) : candidate;
+    wellFormed.length > 8192 ? truncateWellFormed(wellFormed, 8192) : wellFormed;
   const withoutFragment = truncated.split("#", 1)[0] ?? "";
   const withoutQuery = withoutFragment.split("?", 1)[0] ?? "";
   const withoutApiPath = withoutQuery.replace(/\/api\/v1\/?$/i, "");

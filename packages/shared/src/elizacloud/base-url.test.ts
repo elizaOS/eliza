@@ -71,6 +71,13 @@ describe("Eliza Cloud base URL normalization", () => {
     ).toBe("https://127.999.999.999:8080");
   });
 
+
+  it("preserves surrogate pair integrity when malformed candidate exceeds 8192 chars", () => {
+    const raw = "http://bad.domain.example.com/" + "A".repeat(8160) + "🚀" + "/api/v1";
+    const out = normalizeCloudSiteUrl(raw);
+    expect(out.isWellFormed()).toBe(true);
+  });
+
   it("prefers isolated env override over raw URL", () => {
     process.env.ELIZAOS_CLOUD_BASE_URL =
       "http://env.example.com:8080/api/v1?debug=1";
