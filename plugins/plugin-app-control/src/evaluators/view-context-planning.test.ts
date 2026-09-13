@@ -12,7 +12,9 @@ import {
 	runWithStreamingContext,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { canActionRun } from "../../../../packages/core/src/runtime/action-gate.js";
 import { navigationDispatchBlock } from "../actions/navigation-execution.js";
+import { createShowViewAction } from "../actions/views.js";
 import {
 	createViewsClient,
 	type ViewSummary,
@@ -147,6 +149,47 @@ describe("same-turn contextual navigation", () => {
 			};
 		});
 	}
+	it.each([true, false])(
+		"routes a selected navigation from system context without bypassing available contexts: general=%s",
+		async (generalAvailable) => {
+			const ctx = context("Return to Observatory", {});
+			const action = createShowViewAction();
+			ctx.runtime.actions.push(action);
+			ctx.availableContexts = [
+				{ id: "system", description: "System operations" },
+				...(generalAvailable
+					? [{ id: "general", description: "General app operations" }]
+					: []),
+			] as typeof ctx.availableContexts;
+			Object.assign(ctx.message.content, {
+				source: "client_chat",
+				channelType: "DM",
+			});
+			Object.assign(ctx.messageHandler.plan, {
+				contexts: ["system"],
+				candidateActions: ["VIEWS_SHOW"],
+				parentActionHints: [],
+				intents: ["open Observatory"],
+			});
+			await runWithField(ctx, {
+				disposition: "requested",
+				viewId: "observatory",
+				reason: "Return to one view",
+				singleViewOnly: true,
+				navigationOnly: true,
+			});
+			const gate = {
+				activeContexts: ctx.messageHandler.plan.contexts ?? [],
+				userRoles: ctx.userRoles,
+				message: ctx.message,
+			};
+			expect(canActionRun(action, gate)).toBe(generalAvailable);
+			expect(canActionRun({ ...action, private: true }, gate)).toBe(false);
+			expect(
+				canActionRun({ ...action, roleGate: { minRole: "OWNER" } }, gate),
+			).toBe(false);
+		},
+	);
 	it.each([
 		{ navigationOnly: true, expected: true },
 		{ navigationOnly: false, expected: false },

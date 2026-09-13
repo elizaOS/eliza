@@ -152,15 +152,15 @@ export function readCompleteStringHints(raw: unknown): string[] | null {
 export const intentsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	name: "intents",
 	description:
-		'Short verb phrases covering every explicit outcome requiring runtime actions or external state in this turn. Keep navigation and data changes as separate intents: "open notes and update a note" requires both. Do not discard one clause because another is more substantive. Use [] for ordinary conversation, explanations, or answers fully supplied by replyText; a nonempty intent list requires the planner even if contexts says simple.',
+		'Short verb phrases covering every explicit outcome requiring runtime actions or external state in this turn. Keep navigation and data changes separate: "open notes and update a note" requires both. Opening one view still has one navigation intent, even when replyText drafts its confirmation; no action has executed yet. Use [] only for text-only conversation or answers complete from supplied context. Describe the requested work; the runtime chooses direct execution or planning.',
 	descriptionCompressed:
-		"One verb phrase per requested runtime action, navigation separately from edits. Empty for text-only conversation; nonempty requires planning. Omit no actionable clause.",
+		"One verb phrase per requested runtime action, navigation separately from edits. A held confirmation does not complete navigation: retain its intent. Empty only for text-only answers. Runtime chooses execution or planning.",
 	priority: 15,
 	schema: {
 		type: "array",
 		items: { type: "string" },
 		description:
-			"Pending outcomes requiring runtime actions or external state. Use [] when replyText completes the request from supplied context. Keep navigation separate from data changes; omit no actionable clause.",
+			"Pending runtime outcomes, including navigation even when replyText drafts its confirmation. One intent per requested operation; keep navigation separate from data changes. [] only for answers complete without execution.",
 	},
 	parse: readCompleteStringHints,
 };

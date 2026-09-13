@@ -63,6 +63,8 @@ export const viewContinuationField: ResponseHandlerFieldEvaluator<ContextualNavi
 			CONDITIONAL_NAVIGATION_RULE,
 		schema: {
 			type: "object",
+			description:
+				"Navigation decision for the current request. Reply text never changes the view. Requested navigation requires an intent, a navigation action candidate and replyEffectStatus=pending until execution; a held confirmation is not execution proof. Preserve applicable earlier restrictions.",
 			additionalProperties: false,
 			properties: {
 				disposition: {
@@ -74,8 +76,16 @@ export const viewContinuationField: ResponseHandlerFieldEvaluator<ContextualNavi
 					description:
 						"Required nonempty destination ID for requested/optional navigation. Use the known shell ID or destination name for runtime catalog validation; Home=chat. Never leave this blank while requesting navigation. Empty only for none/forbidden/unresolved.",
 				},
-				singleViewOnly: { type: "boolean" },
-				navigationOnly: { type: "boolean" },
+				singleViewOnly: {
+					type: "boolean",
+					description:
+						"True only when all requested UI operations open one known view; false for layouts, multiple destinations, discovery, inspection or controls.",
+				},
+				navigationOnly: {
+					type: "boolean",
+					description:
+						"True only when opening that view completes the whole request. False if a read, condition, edit, recall/question or other operation remains. True still requires one navigation intent and VIEWS_SHOW; it never means navigation already happened.",
+				},
 				reason: { type: "string" },
 			},
 			required: [
@@ -416,6 +426,11 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 			clearReply: true,
 			...(directNavigation
 				? {
+						// The typed decision selects an app-navigation operation even
+						// when Stage 1 labels Home as "system". Add its general app
+						// context through the normal role-filtered patch runner; keep
+						// all selected contexts and canonical executor gates.
+						addContexts: ["general"],
 						deterministicToolCall: {
 							name: "VIEWS_SHOW",
 							params: {
