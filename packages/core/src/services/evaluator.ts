@@ -761,9 +761,6 @@ export class EvaluatorService extends BaseService {
 					entityId: message.entityId,
 					tags: ["queue", "repeat"],
 					metadata: {
-						updateInterval: 1000,
-						baseInterval: 1000,
-						maxFailures: 5,
 						messageId: message.id,
 						responseIds: (options.responses ?? [])
 							.map((response) => response.id)
@@ -781,7 +778,18 @@ export class EvaluatorService extends BaseService {
 					await this.runtime.updateTask(id, {
 						metadata: { ...existing.metadata, ...task.metadata },
 					});
-				else await this.runtime.createTask(task);
+				else
+					await this.runtime.createTask({
+						...task,
+						// Scheduling defaults belong to creation only. Delivery replay
+						// must preserve the scheduler's retry delay and operator policy.
+						metadata: {
+							updateInterval: 1000,
+							baseInterval: 1000,
+							maxFailures: 5,
+							...task.metadata,
+						},
+					});
 			}
 		}
 	}
@@ -861,9 +869,6 @@ export class EvaluatorService extends BaseService {
 							entityId,
 							tags: ["queue", "repeat"],
 							metadata: {
-								updateInterval: 1000,
-								baseInterval: 1000,
-								maxFailures: 5,
 								reconciliation: true,
 								reconciliationRevision: uuidv4(),
 								messageId: trigger.id,
@@ -875,7 +880,18 @@ export class EvaluatorService extends BaseService {
 							await this.runtime.updateTask(id, {
 								metadata: { ...existing.metadata, ...task.metadata },
 							});
-						else await this.runtime.createTask(task);
+						else
+							await this.runtime.createTask({
+								...task,
+								// Source reconciliation updates evidence without resetting
+								// backoff on an already pending extraction job.
+								metadata: {
+									updateInterval: 1000,
+									baseInterval: 1000,
+									maxFailures: 5,
+									...task.metadata,
+								},
+							});
 						intents.push(task);
 					}
 				}

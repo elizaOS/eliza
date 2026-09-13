@@ -30,6 +30,7 @@ import {
 } from "./history-retention";
 import { resolveStage1SenderRole } from "./message/addressing";
 import { createV5MessageContextObject } from "./message/context-assembly";
+import { TaskService } from "./task";
 
 const state: State = { values: {}, data: {}, text: "" };
 const turn: Memory = {
@@ -161,6 +162,70 @@ async function retentionScope(runtime: AgentRuntime, message: Memory) {
 }
 
 describe("durable background memory", () => {
+	it("keeps scheduler backoff when delivery re-enqueues a rate-limited memory job", async () => {
+		const { runtime, service, message } = await setup();
+		if (!message.id) throw new Error("Persisted source identity required");
+		const process = vi.fn(async () => undefined);
+		runtime.registerEvaluator(evaluator(process));
+		// Same provider failure recorded in the real cold-review experiment. The
+		// scheduler, evaluator, journal and task store below are the real services.
+		const quota = new Error(
+			"Too Many Requests: Tokens per minute limit exceeded - too many tokens processed.",
+		);
+		let attempts = 0;
+		runtime.useModel = vi.fn(async () => {
+			if (++attempts <= 2) throw quota;
+			return '{"memory":{"ok":true}}';
+		}) as AgentRuntime["useModel"];
+		let now = Date.now() + 10_000;
+		const scheduler = new TaskService(runtime, {
+			now: () => now,
+			setInterval: () => {
+				throw new Error("Test drives public scheduler ticks");
+			},
+			clearInterval: () => undefined,
+		});
+		await service.enqueue(message, state, { phase: "post_turn" });
+		const initial = await job(runtime);
+		await expect(scheduler.executeTaskById(initial.id)).rejects.toThrow();
+		now += 2_000;
+		await expect(scheduler.executeTaskById(initial.id)).rejects.toThrow();
+		const failed = await job(runtime);
+		expect(failed.metadata).toMatchObject({
+			failureCount: 2,
+			updateInterval: 4_000,
+		});
+		expect(process).not.toHaveBeenCalled();
+
+		// Delivery/restart replay updates receipts without forgiving the quota
+		// failure or bringing the next model request forward.
+		await service.enqueue(message, state, {
+			phase: "post_turn",
+			didRespond: true,
+		});
+		const replayed = await job(runtime);
+		expect(replayed.metadata).toMatchObject({
+			updateInterval: failed.metadata?.updateInterval,
+			baseInterval: failed.metadata?.baseInterval,
+			updatedAt: failed.metadata?.updatedAt,
+			failureCount: 2,
+			lastError: failed.metadata?.lastError,
+			didRespond: true,
+		});
+		await EvaluatorService.start(runtime);
+		now += 1_000;
+		await scheduler.runDueTasks();
+		expect(attempts).toBe(2);
+		now += 3_000;
+		await scheduler.runDueTasks();
+		expect(attempts).toBe(3);
+		expect(process).toHaveBeenCalledTimes(1);
+		expect(await runtime.getTask(initial.id)).toBeNull();
+		expect(await runtime.getMemoryById(message.id)).toMatchObject({
+			content: message.content,
+		});
+	});
+
 	it("reviews retained and new originals in the worker and produces a checkpoint matching actual foreground context", async () => {
 		const { runtime, service, message } = await setup();
 		const proposal: Memory = {
@@ -1458,6 +1523,19 @@ describe("durable background memory", () => {
 				embedding: [1, 0, 0],
 			});
 			expect(await runtime.getTasksByName("POST_TURN_MEMORY")).toHaveLength(0);
+			await service.enqueue(message, state, { phase: "post_turn" });
+			const pending = await job(runtime);
+			const retryPolicy = {
+				updateInterval: 60_000,
+				baseInterval: 15_000,
+				failureCount: 2,
+				maxFailures: 0,
+				updatedAt: Date.now(),
+				lastError: "Provider quota remains unavailable",
+			};
+			await runtime.updateTask(pending.id, {
+				metadata: { ...pending.metadata, ...retryPolicy },
+			});
 			city = "Paris";
 			await runtime.roomHandlerQueue.withLease(message.roomId, async () => {
 				if (operation === "delete")
@@ -1480,6 +1558,7 @@ describe("durable background memory", () => {
 			expect(retired && isActiveMemoryEvidence(retired)).toBe(false);
 			expect(retired?.content).toEqual(oldFact.content);
 			const task = await job(runtime);
+			expect(task.metadata).toMatchObject(retryPolicy);
 			// Resume using a new service instance, as on restart.
 			await EvaluatorService.start(runtime);
 			await execute(runtime, task);
