@@ -14,6 +14,7 @@ import {
   normalizeCloudApiSendTarget,
   normalizeE164,
   normalizeWhatsAppTarget,
+  resolveWhatsAppSystemLocation,
 } from "./normalize.ts";
 
 /**
@@ -166,4 +167,14 @@ describe("text chunking", () => {
     expect(chunks.every((chunk) => chunk.length <= 10)).toBe(true);
     expect(chunks.join("")).toBe(text);
   });
+
+  it("preserves surrogate integrity when chatId without chatName contains astral characters", () => {
+    const loc = resolveWhatsAppSystemLocation({
+      chatType: "group",
+      chatId: "1234567🚀99",
+    });
+    expect(loc.isWellFormed()).toBe(true);
+    expect(loc).toBe("WhatsApp group:1234567");
+  });
+
 });
