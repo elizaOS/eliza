@@ -11,7 +11,10 @@
 
 import { ElizaError } from "@elizaos/core";
 import { writeTransaction } from "../../db/helpers";
-import { lockOrganizationPolicy } from "../../db/repositories/organization-policy-generation";
+import {
+  lockOrganizationPolicy,
+  lockOrganizationPolicyForRead,
+} from "../../db/repositories/organization-policy-generation";
 import { calculateCost, normalizeModelName } from "../pricing";
 import { createCreditReservationSettler } from "../utils/credit-reservation";
 import { logger } from "../utils/logger";
@@ -72,7 +75,10 @@ import {
   type InferenceCredentialCheck,
   InferenceCredentialRevokedError,
 } from "./inference-credential-revocation";
-import { withOrganizationPolicyAdmission } from "./organization-policy-admission";
+import {
+  withOrganizationPolicyAdmission,
+  withOrganizationPolicyReadAdmission,
+} from "./organization-policy-admission";
 import { sameOrganizationPolicyStamp } from "./organization-policy-stamp";
 import {
   type OrganizationQuotaPolicy,
@@ -334,8 +340,10 @@ export async function admitOrganizationInference(
 ): Promise<OrganizationInferenceAdmission> {
   // KV/LRU entries are observations, never a CAS fence. Compare policy under
   // the same organization lock that serializes entitlement and override writes.
+  const workerHotPath = typeof params.executionCtx?.waitUntil === "function";
+  const lockPolicy = workerHotPath ? lockOrganizationPolicyForRead : lockOrganizationPolicy;
   const authoritativePolicy = await writeTransaction(async (tx) => {
-    await lockOrganizationPolicy(tx, params.context.organizationId);
+    await lockPolicy(tx, params.context.organizationId);
     return readOrganizationQuotaPolicyInTransaction(tx, params.context.organizationId);
   });
   if (
@@ -360,6 +368,9 @@ export async function admitOrganizationInference(
   }
   const admission = await admitWithFundingPolicy(params, authoritativePolicy);
   const previousDispatch = admission.markProviderDispatched;
+  const admitDispatch = workerHotPath
+    ? withOrganizationPolicyReadAdmission
+    : withOrganizationPolicyAdmission;
   let dispatched = false;
   let dispatch: Promise<void> | undefined;
   return {
@@ -367,7 +378,7 @@ export async function admitOrganizationInference(
     markProviderDispatched: () => {
       if (dispatched) return Promise.resolve();
       if (dispatch) return dispatch;
-      dispatch = withOrganizationPolicyAdmission(
+      dispatch = admitDispatch(
         params.context.organizationId,
         authoritativePolicy.authority,
         async (current) => {
