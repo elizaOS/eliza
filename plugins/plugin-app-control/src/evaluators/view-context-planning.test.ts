@@ -187,8 +187,75 @@ describe("same-turn contextual navigation", () => {
 					: undefined,
 			);
 			expect(prompts).toEqual([]);
+			expect(
+				ctx.messageHandler.plan.contextSlices?.some((slice) =>
+					slice.startsWith("Authorized destination index: "),
+				),
+			).toBe(!expected);
 		},
 	);
+	it("gives a compound planner the fresh authorized destination index without dispatching a proposed target", async () => {
+		extraViews = [
+			{
+				id: "calendar",
+				label: "Calendar",
+				path: "/calendar",
+				pluginName: "calendar",
+				available: true,
+			},
+			{
+				id: "dev",
+				label: "Private debugger",
+				path: "/dev",
+				pluginName: "dev",
+				available: true,
+				developerOnly: true,
+			},
+		];
+		const text =
+			"Read the live count, then open Calendar only if it is three; otherwise stay here. Do not change records.";
+		const ctx = context(text, {});
+		ctx.runtime.actions.push({
+			name: "VIEWS_SHOW",
+		} as (typeof ctx.runtime.actions)[number]);
+		Object.assign(ctx.message.content, {
+			source: "client_chat",
+			channelType: "DM",
+		});
+		Object.assign(ctx.messageHandler.plan, {
+			candidateActions: ["CALENDAR", "VIEWS_SHOW"],
+			intents: ["read live count", "conditionally open Calendar"],
+		});
+		const result = await runWithField(ctx, {
+			disposition: "requested",
+			viewId: "observatory",
+			reason: "Conditional navigation after the read",
+			singleViewOnly: false,
+			navigationOnly: false,
+		});
+		expect(result.errors).toEqual([]);
+		expect(prompts).toEqual([]);
+		expect(requestedPaths).toEqual(["/api/views"]);
+		expect(ctx.message.content.text).toBe(text);
+		expect(ctx.messageHandler.plan.deterministicToolCall).toBeUndefined();
+		expect(ctx.messageHandler.plan.candidateActions).toEqual([
+			"CALENDAR",
+			"VIEWS_SHOW",
+		]);
+		const slices = ctx.messageHandler.plan.contextSlices ?? [];
+		const index = slices.find((slice) =>
+			slice.startsWith("Authorized destination index: "),
+		);
+		if (!index) throw new Error("Missing authorized destination index");
+		expect(
+			JSON.parse(index.slice("Authorized destination index: ".length)),
+		).toEqual([
+			{ id: "observatory", label: "Observatory" },
+			{ id: "calendar", label: "Calendar", path: "/calendar" },
+		]);
+		expect(slices.join("\n")).not.toContain("Private debugger");
+		expect(slices.join("\n")).not.toContain("Restricted account details");
+	});
 	it.each([
 		"domain",
 		"question",
@@ -838,9 +905,10 @@ describe("same-turn contextual navigation", () => {
 			'"viewId":"observatory"',
 		);
 		const handoff = ctx.messageHandler.plan.contextSlices?.join("\n") ?? "";
-		expect(handoff).toContain("Selected authorized destination:");
+		expect(handoff).toContain("Proposed authorized destination:");
 		expect(handoff).not.toContain("paramsDeferred");
-		expect(handoff).toContain("VIEWS action=list or action=search");
+		expect(handoff).toContain("Authorized destination index:");
+		expect(handoff).toContain("fresh VIEWS action=list read");
 		expect(handoff).not.toContain("Authorized live catalog:");
 		expect(requestedPaths).toEqual(["/api/views"]);
 		expect(prompts[0]).not.toContain("Restricted account details");

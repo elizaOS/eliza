@@ -227,12 +227,26 @@ describe("planner tool discovery", () => {
 				(actions) => {
 					loaded = actions;
 				},
-				admit,
+				(names) =>
+					admit(
+						names.length > 0
+							? names
+							: actualRuntime.actions.map((action) => action.name),
+					),
 			);
 			const invoke = (names: string[]) =>
 				discovery.handler?.(actualRuntime, turn, undefined, {
 					parameters: { names },
 				});
+			const catalogRead = await invoke([]);
+			expect(catalogRead?.success).toBe(true);
+			const entries = catalogRead?.data?.catalog;
+			if (!Array.isArray(entries)) throw new Error("Missing discovery catalog");
+			const catalogNames = entries.map((entry: { name: string }) => entry.name);
+			expect(catalogNames.includes("NOTES")).toBe(role === "ADMIN");
+			for (const name of ["PRIVATE_NOTES", "BLOCKED_NOTES", "DISABLED_NOTES"])
+				expect(catalogNames).not.toContain(name);
+			expect(loaded).toEqual([]);
 			expect((await invoke(["NOTES"]))?.success).toBe(role === "ADMIN");
 			expect(loaded.map((action) => action.name)).toEqual(
 				role === "ADMIN" ? ["NOTES", "NOTES_READ"] : [],

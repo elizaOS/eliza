@@ -19,6 +19,7 @@ import {
 export function createPlannerToolDiscoveryAction(
 	authorizedActions: readonly Action[],
 	onDiscover: (actions: Action[]) => void,
+	/** Resolve named operations; [] requests fresh admission of the full catalog. */
 	resolveAdditionalActions?: (names: string[]) => Promise<Action[]>,
 ): Action {
 	const actionsByName = new Map(
@@ -32,21 +33,25 @@ export function createPlannerToolDiscoveryAction(
 			},
 		);
 	}
-	const catalog = buildActionCatalog(
-		authorizedActions.map((action) => ({
-			...action,
-			subActions: action.subActions?.filter((child) =>
-				actionsByName.has(typeof child === "string" ? child : child.name),
-			),
-		})),
-	);
+	const catalogFor = (actions: readonly Action[]) => {
+		const names = new Set(actions.map((action) => action.name));
+		return buildActionCatalog(
+			actions.map((action) => ({
+				...action,
+				subActions: action.subActions?.filter((child) =>
+					names.has(typeof child === "string" ? child : child.name),
+				),
+			})),
+		);
+	};
+	const catalog = catalogFor(authorizedActions);
 	return {
 		name: DISCOVER_TOOLS_NAME,
 		description:
 			"Load complete tool schemas from the authorized name index below when an exposed tool does not cover an intent. " +
 			"Pass exact child names to load those operations, or parent names to load their complete authorized families. Pass names=[] to read the complete family descriptions and routing hints if the names alone are ambiguous. " +
 			(resolveAdditionalActions
-				? "The catalog lists families admitted for the current routing contexts. Other exact registered names may be requested; the same permission, context, account-policy and availability checks must admit them before loading. "
+				? "The inline index lists families admitted for the current routing contexts. If the needed domain is absent or its name is unknown, names=[] reads a fresh catalog across routing contexts. Other exact registered names may also be requested; the same permission, context, account-policy and availability checks must admit them before loading. "
 				: "") +
 			"Discovery does not execute the requested work; continue with the loaded tools. Do not claim a capability is unavailable before checking this catalog.\n" +
 			"Index maps each exact family name to its exact child names (an empty list means no children):\n" +
@@ -81,13 +86,19 @@ export function createPlannerToolDiscoveryAction(
 						"Select exact names from the authorized discovery catalog. No tools were loaded.",
 				};
 			}
-			if (names.length === 0)
+			if (names.length === 0) {
+				// A mistaken Stage-1 domain must not make another authorized
+				// domain undiscoverable. This explicit read refreshes admission;
+				// it neither loads schemas nor changes execution permission.
+				const completeCatalog = resolveAdditionalActions
+					? catalogFor(await resolveAdditionalActions([]))
+					: catalog;
 				return {
 					success: true,
 					turnComplete: false,
 					text: "Complete authorized catalog descriptions. Select exact names to load schemas; no domain work was performed.",
 					data: {
-						catalog: catalog.parents.map((parent) => ({
+						catalog: completeCatalog.parents.map((parent) => ({
 							name: parent.name,
 							description: parent.description,
 							routingHint: parent.routingHint,
@@ -95,6 +106,7 @@ export function createPlannerToolDiscoveryAction(
 						})),
 					},
 				};
+			}
 			// Stage 1 can omit a domain even when the planner explicitly requests
 			// its family. Reuse canonical candidate admission with that exact name;
 			// never turn routing context into a permanent capability denial.

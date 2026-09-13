@@ -1115,7 +1115,10 @@ export async function runV5MessageRuntimeStage1(
 							message: args.message,
 							state: plannerState,
 							selectedContexts,
-							candidateActions: names,
+							candidateActions:
+								names.length > 0
+									? names
+									: args.runtime.actions.map((action) => action.name),
 							userRoles: [senderRole],
 						}),
 				),
