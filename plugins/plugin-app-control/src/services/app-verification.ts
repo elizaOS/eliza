@@ -354,6 +354,9 @@ async function runTests(
 	filter: string | undefined,
 ): Promise<CheckResult> {
 	const start = nowMs();
+	if (filter && /[\0\r\n"&|<>()^%!]/u.test(filter)) {
+		throw new Error("Test filter contains shell metacharacters");
+	}
 	const { file, args } = packageScriptCommand(pm, "test");
 	const fullArgs = filter ? [...args, "--", filter] : args;
 	const opts: ExecFileOptions = {
@@ -361,6 +364,9 @@ async function runTests(
 		timeout: TIMEOUTS.test,
 		maxBuffer: EXEC_BUFFER,
 		env: nonInteractiveEnv(),
+		// npm resolves to npm.cmd on Windows. Without a shell, execFile cannot
+		// resolve the package-manager shim and the verification test never runs.
+		shell: process.platform === "win32",
 	};
 	let stdout = "";
 	let stderr = "";
