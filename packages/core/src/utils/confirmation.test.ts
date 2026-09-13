@@ -4,6 +4,8 @@
  * multilingual confirmation, and rejection of model-supplied authorization flags.
  */
 import { describe, expect, it, vi } from "vitest";
+import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter.js";
+import { AgentRuntime } from "../runtime.js";
 import type { Memory } from "../types/memory.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import {
@@ -228,5 +230,60 @@ describe("confirmation utilities", () => {
 		expect(llmConfirmedFlagIsAuthoritative("true")).toBe(false);
 		expect(llmConfirmedFlagIsAuthoritative(1)).toBe(false);
 		expect(llmConfirmedFlagIsAuthoritative({})).toBe(false);
+	});
+
+	it("guarantees single-winner for concurrent affirmatives with real InMemoryDatabaseAdapter", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		const runtime = {
+			getCache: async <T>(key: string) => {
+				const m = await adapter.getCaches<T>([key]);
+				return m.get(key);
+			},
+			setCache: async (key: string, value: unknown) => {
+				return adapter.setCaches([{ key, value }]);
+			},
+			deleteCache: async (key: string) => {
+				return adapter.deleteCaches([key]);
+			},
+		} as unknown as IAgentRuntime;
+
+		const message: Memory = {
+			entityId: "user-race-real",
+			content: { text: "delete database", source: "discord" },
+		} as unknown as Memory;
+
+		// 1. Initial request -> pending
+		await requireConfirmation({
+			runtime,
+			message,
+			actionName: "DELETE_DB",
+			prompt: "Confirm delete?",
+		});
+
+		// 2. Two concurrent confirmations racing on real adapter
+		const confirmMsg: Memory = {
+			entityId: "user-race-real",
+			content: { text: "yes", source: "discord" },
+		} as unknown as Memory;
+
+		const [res1, res2] = await Promise.all([
+			requireConfirmation({
+				runtime,
+				message: confirmMsg,
+				actionName: "DELETE_DB",
+				prompt: "Confirm delete?",
+			}),
+			requireConfirmation({
+				runtime,
+				message: confirmMsg,
+				actionName: "DELETE_DB",
+				prompt: "Confirm delete?",
+			}),
+		]);
+
+		const confirmedCount = [res1.status, res2.status].filter(
+			(s) => s === "confirmed",
+		).length;
+		expect(confirmedCount).toBe(1);
 	});
 });

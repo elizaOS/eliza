@@ -126,6 +126,9 @@ describe("InMemoryDatabaseAdapter", () => {
 		await expect(adapter.deleteCaches(["missing", "first"])).resolves.toBe(
 			true,
 		);
+		await expect(adapter.deleteCaches(["missing"])).resolves.toBe(
+			false,
+		);
 		await expect(adapter.getCaches(["first", "second"])).resolves.toEqual(
 			new Map([["second", { count: 2, labels: ["other"] }]]),
 		);

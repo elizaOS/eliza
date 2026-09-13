@@ -1149,8 +1149,8 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
         return false;
       }
 
-      await Promise.all(keys.map((key) => compat.deleteCache(key)));
-      return true;
+      const results = await Promise.all(keys.map((key) => compat.deleteCache(key)));
+      return results.some(Boolean);
     },
     addedMethods,
   );
