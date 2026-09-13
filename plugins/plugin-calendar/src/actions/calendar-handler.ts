@@ -1185,6 +1185,27 @@ export function builtInNotifyNote(
   return " The built-in calendar can't email attendees, so nobody was notified.";
 }
 
+/**
+ * A provider rejection of one planner-supplied argument is a malformed call,
+ * not a failed operation: naming the argument lets the planner loop treat the
+ * corrected retry (same target, that field dropped) as superseding the
+ * failure, so the retry's own success text reaches the user instead of the
+ * first attempt's failure (live 2026-09-11: "move my vet appointment" with a
+ * junk notifyAttendees was retried and applied, yet the turn reported failure).
+ */
+export function rejectedArgumentForCalendarServiceError(
+  code: string | undefined,
+): string | undefined {
+  switch (code) {
+    case "ELIZA_CALENDAR_ATTENDEE_NOTIFICATIONS_UNSUPPORTED":
+      return "details.notifyAttendees";
+    case "ELIZA_CALENDAR_RECURRENCE_UNSUPPORTED":
+      return "details.recurrence";
+    default:
+      return undefined;
+  }
+}
+
 function buildCalendarServiceErrorFallback(
   error: CalendarServiceError,
   intent: string,
@@ -6253,12 +6274,28 @@ const calendarAction: CalendarHandlerAction = {
           grantId: detailString(details, "grantId") ?? "unset",
         });
         const fallback = buildCalendarServiceErrorFallback(error, intent);
+        const rejectedArgument = rejectedArgumentForCalendarServiceError(
+          error.code,
+        );
         return respond({
           success: false,
           text: await renderReply("service_error", fallback, {
             status: error.status,
             subaction,
           }),
+          data: {
+            actionName: "CALENDAR",
+            subaction,
+            error: error.code ?? `CALENDAR_SERVICE_${error.status}`,
+            ...(rejectedArgument
+              ? {
+                  parameterErrors: [
+                    { path: rejectedArgument, message: error.message },
+                  ],
+                  invalidParameterNames: [rejectedArgument],
+                }
+              : {}),
+          },
           effectReceipt: calendarFailedReceipt({
             message,
             operation: `calendar.${subaction}`,
