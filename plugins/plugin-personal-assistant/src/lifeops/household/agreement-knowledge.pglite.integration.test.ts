@@ -55,7 +55,10 @@ import {
   withReviewedFamilyDeletionDatabase,
 } from "../family-workflows/deletion-database-snapshot.js";
 import {
+  admitFamilyBackupCleanup,
   beginFamilyWorkspaceDeletion,
+  previewFamilyBackupCleanup,
+  purgeFamilyBackupCleanup,
   purgeFamilyWorkspaceFiles,
   readFamilyDeletionJob,
 } from "../family-workflows/workspace-deletion.js";
@@ -3563,6 +3566,9 @@ describe("reviewed workspace deletion — real database and disk", () => {
         ["/preview", "GET"],
         ["", "POST"],
         ["/resume", "POST"],
+        ["/backups/preview", "GET"],
+        ["/backups", "POST"],
+        ["/backups/resume", "POST"],
       ]) {
         const denied = await fetch(`${base}${suffix}`, {
           method,
@@ -3609,6 +3615,38 @@ describe("reviewed workspace deletion — real database and disk", () => {
       });
       expect(resumed.status, await resumed.clone().text()).toBe(202);
       expect(await resumed.json()).toEqual({ job });
+      const backupResponse = await fetch(`${base}/backups/preview`, {
+        headers,
+      });
+      expect(backupResponse.status).toBe(200);
+      expect(backupResponse.headers.get("cache-control")).toBe("no-store");
+      const backupReview = await backupResponse.json();
+      const unacknowledged = await fetch(`${base}/backups`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ expectedSha256: backupReview.sha256 }),
+      });
+      expect(unacknowledged.status).toBe(400);
+      expect(
+        (await readFamilyDeletionJob(runtime, SELF_ENTITY_ID))?.state,
+      ).toBe("backup_pending");
+      const completed = await fetch(`${base}/backups`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          expectedSha256: backupReview.sha256,
+          acknowledgeWholeArchiveHistory: true,
+        }),
+      });
+      expect(completed.status, await completed.clone().text()).toBe(200);
+      const complete = await completed.json();
+      expect(complete.job.state).toBe("complete");
+      const replay = await fetch(`${base}/backups/resume`, {
+        method: "POST",
+        headers,
+      });
+      expect(replay.status, await replay.clone().text()).toBe(200);
+      expect(await replay.json()).toEqual(complete);
       const storage = runtime.getService<IFileStorageService>(
         ServiceType.REMOTE_FILES,
       );
@@ -3864,6 +3902,67 @@ describe("reviewed workspace deletion — real database and disk", () => {
       expect(await purgeFamilyWorkspaceFiles(runtime, SELF_ENTITY_ID)).toEqual(
         cleaned,
       );
+      expect(await storage.readPrivate(foreignFile.fileName)).toEqual(
+        foreignBytes,
+      );
+      await expect(
+        previewFamilyBackupCleanup(runtime, "guest"),
+      ).rejects.toMatchObject({ code: "FAMILY_DELETION_ACCESS_DENIED" });
+      await expect(
+        purgeFamilyBackupCleanup(runtime, SELF_ENTITY_ID),
+      ).rejects.toMatchObject({
+        code: "FAMILY_DELETION_BACKUP_REVIEW_REQUIRED",
+      });
+      const backupReview = await previewFamilyBackupCleanup(
+        runtime,
+        SELF_ENTITY_ID,
+      );
+      await executeRawSql(
+        runtime,
+        "CREATE FUNCTION app_lifeops.reject_backup_admission() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'backup admission unavailable'; END; $$",
+      );
+      await executeRawSql(
+        runtime,
+        "CREATE TRIGGER reject_backup_admission BEFORE UPDATE ON app_lifeops.life_family_workspace_deletions FOR EACH ROW EXECUTE FUNCTION app_lifeops.reject_backup_admission()",
+      );
+      await expect(
+        admitFamilyBackupCleanup(runtime, {
+          ownerEntityId: SELF_ENTITY_ID,
+          expectedSha256: backupReview.sha256,
+          acknowledgeWholeArchiveHistory: true,
+        }),
+      ).rejects.toThrow();
+      expect(
+        (await readFamilyDeletionJob(runtime, SELF_ENTITY_ID))?.backupCleanup,
+      ).toBeUndefined();
+      await expect(
+        purgeFamilyBackupCleanup(runtime, SELF_ENTITY_ID),
+      ).rejects.toMatchObject({
+        code: "FAMILY_DELETION_BACKUP_REVIEW_REQUIRED",
+      });
+      await executeRawSql(
+        runtime,
+        "DROP TRIGGER reject_backup_admission ON app_lifeops.life_family_workspace_deletions",
+      );
+      const admission = await admitFamilyBackupCleanup(runtime, {
+        ownerEntityId: SELF_ENTITY_ID,
+        expectedSha256: backupReview.sha256,
+        acknowledgeWholeArchiveHistory: true,
+      });
+      expect(
+        (await readFamilyDeletionJob(runtime, SELF_ENTITY_ID))?.backupCleanup,
+      ).toEqual(admission.backupCleanup);
+      const complete = await purgeFamilyBackupCleanup(runtime, SELF_ENTITY_ID);
+      expect(complete.state).toBe("complete");
+      expect(await purgeFamilyBackupCleanup(runtime, SELF_ENTITY_ID)).toEqual(
+        complete,
+      );
+      expect(
+        await executeRawSql(
+          runtime,
+          `SELECT state FROM app_lifeops.life_family_workspace_state WHERE agent_id=${sqlQuote(runtime.agentId)}`,
+        ),
+      ).toEqual([{ state: "deleted" }]);
       expect(await storage.readPrivate(foreignFile.fileName)).toEqual(
         foreignBytes,
       );
