@@ -73,6 +73,34 @@ function step(name: string): WorkflowStep {
   return found;
 }
 
+/**
+ * Executes the protected deploy-source guard so the environment/ref pairing and
+ * the operation matrix are covered by behaviour rather than by matching the
+ * step's text. `retire-legacy-vhost-and-converge` is destructive, so its
+ * staging-only and reviewed-SHA constraints are the ones worth running.
+ */
+function runProtectedDeploySource(options: {
+  environment: string;
+  operation: string;
+  githubRef: string;
+  reviewedSha?: string;
+}) {
+  return spawnSync(
+    "bash",
+    ["-c", step("Validate protected deploy source").run],
+    {
+      encoding: "utf8",
+      env: {
+        PATH: process.env.PATH ?? "",
+        GITHUB_REF: options.githubRef,
+        TARGET_ENVIRONMENT: options.environment,
+        TARGET_OPERATION: options.operation,
+        TARGET_REVIEWED_LEGACY_VHOST_SHA256: options.reviewedSha ?? "",
+      },
+    },
+  );
+}
+
 function expectBashSyntax(source: string) {
   const syntax = spawnSync("bash", ["-n"], {
     encoding: "utf8",
@@ -556,6 +584,122 @@ describe("protected Headscale arm workflow", () => {
     expect(controlPlaneRunbookSource).toContain("-f environment=production");
     expect(controlPlaneRunbookSource).not.toContain("-f headscale_api_url=");
     expect(controlPlaneRunbookSource).not.toContain("-f listen_addr=");
+  });
+
+  test("executes the protected deploy-source guard's environment and operation matrix", () => {
+    const reviewed = "a".repeat(64);
+
+    // Admitted: each environment from its canonical ref, plus the two reviewed
+    // staging legacy-vhost operations.
+    for (const admitted of [
+      {
+        environment: "staging",
+        operation: "converge",
+        githubRef: "refs/heads/develop",
+      },
+      {
+        environment: "production",
+        operation: "converge",
+        githubRef: "refs/heads/main",
+      },
+      {
+        environment: "staging",
+        operation: "inspect-legacy-vhost",
+        githubRef: "refs/heads/develop",
+      },
+      {
+        environment: "staging",
+        operation: "retire-legacy-vhost-and-converge",
+        githubRef: "refs/heads/develop",
+        reviewedSha: reviewed,
+      },
+    ]) {
+      const result = runProtectedDeploySource(admitted);
+      expect(result.status, JSON.stringify(admitted)).toBe(0);
+    }
+
+    for (const rejected of [
+      // Cross ref/environment pairings.
+      {
+        environment: "staging",
+        operation: "converge",
+        githubRef: "refs/heads/main",
+      },
+      {
+        environment: "production",
+        operation: "converge",
+        githubRef: "refs/heads/develop",
+      },
+      {
+        environment: "staging",
+        operation: "converge",
+        githubRef: "refs/heads/feature/x",
+      },
+      // Unsupported selections.
+      {
+        environment: "sandbox",
+        operation: "converge",
+        githubRef: "refs/heads/develop",
+      },
+      {
+        environment: "staging",
+        operation: "destroy",
+        githubRef: "refs/heads/develop",
+      },
+      // The destructive retirement is staging-only...
+      {
+        environment: "production",
+        operation: "retire-legacy-vhost-and-converge",
+        githubRef: "refs/heads/main",
+        reviewedSha: reviewed,
+      },
+      // ...and requires the exact reviewed digest.
+      {
+        environment: "staging",
+        operation: "retire-legacy-vhost-and-converge",
+        githubRef: "refs/heads/develop",
+      },
+      {
+        environment: "staging",
+        operation: "retire-legacy-vhost-and-converge",
+        githubRef: "refs/heads/develop",
+        reviewedSha: "A".repeat(64),
+      },
+      {
+        environment: "staging",
+        operation: "retire-legacy-vhost-and-converge",
+        githubRef: "refs/heads/develop",
+        reviewedSha: "a".repeat(63),
+      },
+      // A reviewed digest is meaningful only for retirement.
+      {
+        environment: "staging",
+        operation: "converge",
+        githubRef: "refs/heads/develop",
+        reviewedSha: reviewed,
+      },
+      {
+        environment: "staging",
+        operation: "inspect-legacy-vhost",
+        githubRef: "refs/heads/develop",
+        reviewedSha: reviewed,
+      },
+      // inspect-legacy-vhost is registered for staging only.
+      {
+        environment: "production",
+        operation: "inspect-legacy-vhost",
+        githubRef: "refs/heads/main",
+      },
+    ]) {
+      const result = runProtectedDeploySource(rejected);
+      expect(result.status, JSON.stringify(rejected)).toBe(1);
+      // This workflow annotates on stdout (plain `echo`), unlike the Cloud
+      // deploy guard which redirects to stderr — assert across both streams.
+      expect(
+        `${result.stdout}${result.stderr}`,
+        JSON.stringify(rejected),
+      ).toContain("::error::");
+    }
   });
 
   test("pins staging and production deploys to their canonical branch SHA", () => {
