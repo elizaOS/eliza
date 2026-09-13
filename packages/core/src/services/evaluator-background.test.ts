@@ -4,7 +4,9 @@ import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { preferenceEvaluator } from "../features/advanced-capabilities/evaluators/preference-items";
 import {
 	factMemoryEvaluator,
+	identityEvaluator,
 	relationshipEvaluator,
+	successEvaluator,
 } from "../features/advanced-capabilities/evaluators/reflection-items";
 import { AgentRuntime } from "../runtime";
 import {
@@ -162,6 +164,55 @@ async function retentionScope(runtime: AgentRuntime, message: Memory) {
 }
 
 describe("durable background memory", () => {
+	it.each([relationshipEvaluator, identityEvaluator, successEvaluator])(
+		"holds $name source reconciliation before inference without acknowledging the evidence",
+		async (entry) => {
+			for (const mutation of ["edit", "delete"]) {
+				const { runtime, service, message } = await setup();
+				runtime.registerEvaluator(entry);
+				const output = {
+					relationships: { relationships: [] },
+					identities: { identities: [] },
+					success: { completed: true, reason: "Answered." },
+				};
+				const model = vi.fn(async () => JSON.stringify(output));
+				runtime.useModel = model as AgentRuntime["useModel"];
+				const options = { phase: "post_turn" as const, didRespond: true };
+				const initial = await service.run(message, state, options);
+				expect(initial.errors).toEqual([]);
+				expect(initial.processedEvaluators).toContain(entry.name);
+				const next = {
+					...message,
+					id: stringToUuid(`reconciliation-${entry.name}-${mutation}`),
+					createdAt: 20,
+					content: { text: "hi" },
+				};
+				await runtime.upsertMemory(next, "messages");
+				if (mutation === "edit")
+					await runtime.updateMemory({
+						id: message.id as NonNullable<Memory["id"]>,
+						content: { text: "Correction: I live in Paris." },
+					});
+				else
+					await runtime.deleteMemory(message.id as NonNullable<Memory["id"]>);
+				model.mockClear();
+				// Repeating the scan must retain the hold, not acknowledge it as an
+				// empty successful extraction or ask the model again.
+				for (let scan = 0; scan < 2; scan++) {
+					const result = await service.run(next, state, options);
+					expect(result.processedEvaluators).toEqual([]);
+					expect(result.errors).toEqual([
+						expect.objectContaining({
+							evaluatorName: entry.name,
+							error: expect.stringContaining("require reconciliation"),
+						}),
+					]);
+					expect(model).not.toHaveBeenCalled();
+				}
+			}
+		},
+	);
+
 	it("keeps scheduler backoff when delivery re-enqueues a rate-limited memory job", async () => {
 		const { runtime, service, message } = await setup();
 		if (!message.id) throw new Error("Persisted source identity required");

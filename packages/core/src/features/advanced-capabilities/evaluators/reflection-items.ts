@@ -1525,6 +1525,7 @@ export const relationshipEvaluator: Evaluator<
 	providers: ["CONVERSATION_PROXIMITY"],
 	schema: relationshipSchema,
 	async shouldRun({ message, options }) {
+		assertExtractionSourcesUnchanged(options.extraction);
 		return canEvaluateMessage(message, options);
 	},
 	async prepare({ runtime, message, options }) {
@@ -1604,6 +1605,7 @@ export const identityEvaluator: Evaluator<
 	priority: EvaluatorPriority.REFLECTION_IDENTITY,
 	schema: identitySchema,
 	async shouldRun({ message, options }) {
+		assertExtractionSourcesUnchanged(options.extraction);
 		return canEvaluateMessage(message, options);
 	},
 	async prepare({ runtime, message, options }) {
@@ -1687,6 +1689,7 @@ export const successEvaluator: Evaluator<SuccessOutput, SuccessPrepared> = {
 	priority: EvaluatorPriority.REFLECTION_SUCCESS,
 	schema: successSchema,
 	async shouldRun({ message, options }) {
+		assertExtractionSourcesUnchanged(options.extraction);
 		return canEvaluateMessage(message, options);
 	},
 	async prepare({ runtime, message, state, options }) {
