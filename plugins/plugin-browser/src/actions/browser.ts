@@ -12,6 +12,7 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { asRecord, readViewInteractionClientId } from "@elizaos/shared";
+import LinkifyIt from "linkify-it";
 import {
   BROWSER_SERVICE_TYPE,
   type BrowserService,
@@ -173,9 +174,31 @@ function getMessageText(message: Memory | undefined): string {
   return typeof content?.text === "string" ? content.text : "";
 }
 
+const browserMessageLinks = new LinkifyIt({
+  fuzzyLink: false,
+  fuzzyEmail: false,
+  fuzzyIP: false,
+});
+
 function extractFirstUrl(value: string): string | null {
-  const match = value.match(/https?:\/\/[^\s<>"'`]+/i);
-  return match?.[0] ?? null;
+  const candidate = /https?:\/\/[^\s<>"'`]+/i.exec(value);
+  if (!candidate) return null;
+  const before = value[candidate.index - 1];
+  const after = value[candidate.index + candidate[0].length];
+  if (before && /["'`]/.test(before) && after === before) {
+    return candidate[0];
+  }
+  // Prose punctuation is not part of the destination. Keep the matched URL
+  // bytes; quoted literals and explicit url arguments bypass linkification.
+  // Never skip the first HTTP(S) candidate in favor of a later destination.
+  return (
+    browserMessageLinks
+      .match(value)
+      ?.find(
+        (link) =>
+          link.index === candidate.index && /^https?:$/i.test(link.schema),
+      )?.raw ?? candidate[0]
+  );
 }
 
 function inferBrowserSubaction(
@@ -1091,6 +1114,7 @@ export const browserAction: Action = {
     },
     {
       name: "pattern",
+      subactions: ["wait_for_url"],
       description:
         "For action=wait_for_url: substring or /regex/ to match the tab URL (e.g. callback?code=, or /\\/done$/).",
       required: false,
@@ -1098,6 +1122,7 @@ export const browserAction: Action = {
     },
     {
       name: "pollIntervalMs",
+      subactions: ["wait_for_url"],
       description: "For action=wait_for_url: poll cadence in ms. Default 2000.",
       required: false,
       schema: { type: "number" as const },
@@ -1114,6 +1139,7 @@ export const browserAction: Action = {
     },
     {
       name: "domain",
+      subactions: ["autofill_login"],
       description:
         "Required for action=autofill_login: registrable hostname, e.g. github.com.",
       required: false,
@@ -1121,12 +1147,14 @@ export const browserAction: Action = {
     },
     {
       name: "username",
+      subactions: ["autofill_login"],
       description: "For autofill-login: saved login username; omit for latest.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "submit",
+      subactions: ["autofill_login"],
       description: "For autofill-login: submit after filling. Default false.",
       required: false,
       schema: { type: "boolean" as const },

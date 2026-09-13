@@ -39,6 +39,17 @@ Browser automation and companion bridge plugin for elizaOS. Adds the `BROWSER` a
 
 **MANAGE_BROWSER_BRIDGE** — Manages the Chrome, Firefox, and Safari companion extension. Subactions: `install` (build + reveal + open manager), `reveal_folder` (open the build folder in Finder/Explorer), `open_manager` (the selected browser's extension manager), `refresh` (report the complete paired-companion inventory, exact count, and settings). Owner-only.
 
+Promoted Browser operations expose login fields (`domain`, `username`, `submit`)
+only for `BROWSER_AUTOFILL_LOGIN`, and URL-wait fields (`pattern`,
+`pollIntervalMs`) only for `BROWSER_WAIT_FOR_URL`. These fields belong to the
+specialized handlers, not ordinary workspace commands. The parent `BROWSER`
+retains every parameter, and target selection, vault authorization and URL-wait
+validation still run in the shared handlers.
+
+When a model omits `url`, the dispatcher recognizes the first explicit HTTP(S)
+link in the current message using standard linkification boundaries. Sentence
+punctuation is excluded; explicit `url` arguments retain their exact value.
+
 ### Browser targets
 
 The plugin uses a pluggable target registry in `BrowserService`. Targets are selected automatically by availability and score:
