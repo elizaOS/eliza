@@ -3906,7 +3906,10 @@ describe("runV5MessageRuntimeStage1", () => {
 			]);
 			const result = await runV5MessageRuntimeStage1({
 				runtime,
-				message: makeMessage(),
+				// See the STOP lexicon: a terminal STOP needs a stop-shaped message.
+				message: makeMessage(
+					shouldRespond === "STOP" ? { text: "please stop, be quiet" } : {},
+				),
 				state: makeState(),
 				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
@@ -7978,7 +7981,11 @@ describe("runV5MessageRuntimeStage1", () => {
 
 			const result = await runV5MessageRuntimeStage1({
 				runtime,
-				message: makeMessage(),
+				// STOP is terminal only for an actual disengage request; a STOP
+				// verdict on an ordinary message routes on (live misfires 2026-09-11/12).
+				message: makeMessage(
+					action === "STOP" ? { text: "ok stop, leave me alone" } : {},
+				),
 				state: makeState(),
 				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
