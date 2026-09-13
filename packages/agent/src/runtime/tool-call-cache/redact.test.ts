@@ -61,6 +61,55 @@ describe("defaultPrivacyRedactor", () => {
     expect(out).toContain("<REDACTED:aws-access-key>");
   });
 
+  // Shapes @elizaos/core already redacts via DEFAULT_REDACT_PATTERNS. Before
+  // these were added here, each one reached disk verbatim.
+  //
+  // The sample values are assembled from fragments so this file never contains
+  // a literal that GitHub's push protection recognises as a live credential.
+  const sample = (...parts: string[]): string => parts.join("");
+
+  it.each([
+    [
+      "AWS temporary access key",
+      sample("ASIA", "IOSFODNN7EXAMPLE"),
+      "aws-access-key",
+    ],
+    [
+      "AWS bearer credential id",
+      sample("ABIA", "IOSFODNN7EXAMPLE"),
+      "aws-access-key",
+    ],
+    [
+      "AWS context credential id",
+      sample("ACCA", "IOSFODNN7EXAMPLE"),
+      "aws-access-key",
+    ],
+    [
+      "GitHub fine-grained token",
+      sample("github", "_pat_", "11ABCDEFG0abcdefghij_ABCDEFGHIJKLMNOP"),
+      "github-token",
+    ],
+    [
+      "Slack bot token",
+      sample("xox", "b-", "123456789012-1234567890123-AbCdEfGhIjKlMnOpQrSt"),
+      "slack-token",
+    ],
+    [
+      "Google OAuth access token",
+      sample("ya29", ".", "a0AfH6SMBabcdefghijklmnop"),
+      "google-oauth-token",
+    ],
+  ])("redacts a %s", (_name, secret, label) => {
+    const out = defaultPrivacyRedactor(`token ${secret}`) as string;
+    expect(out).toContain(`<REDACTED:${label}>`);
+    expect(out).not.toContain(secret);
+  });
+
+  it("does not fold ordinary prose into the AWS credential shape", () => {
+    const prose = "Asia and the Pacific region ACCA membership notes";
+    expect(defaultPrivacyRedactor(prose)).toBe(prose);
+  });
+
   it("redacts geographic coordinates (JSON coords object)", () => {
     const out = defaultPrivacyRedactor(
       '{"coords":{"latitude":37.7749,"longitude":-122.4194}}',
