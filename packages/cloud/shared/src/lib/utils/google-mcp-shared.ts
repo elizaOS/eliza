@@ -223,7 +223,7 @@ export function parseOffsetToken(token: string): number {
   const hours = Number(match[2]);
   const minutes = Number(match[3] ?? "0");
   const seconds = Number(match[4] ?? "0");
-  return sign * (hours * 60 + minutes + Math.round(seconds / 60));
+  return sign * (hours * 60 + minutes + seconds / 60);
 }
 
 export function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {

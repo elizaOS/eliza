@@ -100,7 +100,7 @@ describe("parseOffsetToken", () => {
     expect(parseOffsetToken("-07:00")).toBe(-420);
     expect(parseOffsetToken("GMT+02:00")).toBe(120);
     expect(parseOffsetToken("GMT-5")).toBe(-300);
-    expect(parseOffsetToken("GMT-0:44:30")).toBe(-45);
-    expect(parseOffsetToken("GMT-11:19:40")).toBe(-680);
+    expect(parseOffsetToken("GMT-0:44:30")).toBe(-44.5);
+    expect(parseOffsetToken("GMT-11:19:40")).toBeCloseTo(-679.6667, 3);
   });
 });

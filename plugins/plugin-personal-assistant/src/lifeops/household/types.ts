@@ -429,6 +429,12 @@ export function normalizeGrantScopes(
 const RFC3339_INSTANT_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
 
+/**
+ * Formats an IANA timezone offset token into an RFC 3339 compatible ±HH:MM string.
+ * Note: RFC 3339 numeric offsets support minute resolution (±HH:MM), so any
+ * historical seconds component is rounded to the nearest whole minute for formatting.
+ * For exact arithmetic offset resolution, use `parseOffsetToken` which returns fractional minutes.
+ */
 export function formatTimezoneOffsetToken(value: string): string {
   if (value === "GMT" || value === "UTC") return "+00:00";
   const match = /^(?:GMT|UTC)?([+-]|\u2212|\u2013|\u2014)(\d{1,2})(?::?(\d{2}))?(?::(\d{2}))?$/i.exec(value ?? "");
