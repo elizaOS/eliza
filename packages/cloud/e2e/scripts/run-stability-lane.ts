@@ -7,9 +7,13 @@ import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { ScenarioStabilitySubprocessAdapter } from "@elizaos/scenario-runner";
+import { ScenarioStabilitySubprocessAdapter } from "@elizaos/scenario-runner/stability-subprocess-adapter";
 import { SyntheticControlClient } from "@elizaos/shared/synthetic-control";
 import cloudStabilityScenario from "../scenarios/cloud-stability-agent.scenario.ts";
+import {
+  stopAuthority,
+  waitForAuthorityReady,
+} from "../src/stability/authority-process.ts";
 import { authorityChildEnvironment } from "../src/stability/cloud-stability-environment.ts";
 import {
   type CloudStabilityMode,
@@ -17,6 +21,14 @@ import {
   parseCloudStabilityManifest,
   runCloudStabilityLane,
 } from "../src/stability/cloud-stability-runner.ts";
+import {
+  assertLinuxSandboxCapabilities,
+  linuxSandboxEnabled,
+  NATIVE_STABILITY_TIMEOUT_MS,
+} from "../src/stability/linux-sandbox.ts";
+import { createCloudNativeAdmission } from "../src/stability/native-admission.ts";
+import type { NativeVerifierContext } from "../src/stability/native-attestation-channel.ts";
+import { readNativeAuthority } from "../src/stability/native-authority.ts";
 
 const repoRoot = path.resolve(import.meta.dirname, "../../../..");
 const syntheticWorld = {
@@ -71,102 +83,8 @@ async function startAuthority(
       env: authorityChildEnvironment(process.env, namespace, token),
     },
   );
-  let stdout = "";
-  let stderr = "";
-  child.stderr?.on("data", (chunk: Buffer) => {
-    stderr += chunk.toString("utf8");
-    if (Buffer.byteLength(stderr) > 256 * 1024)
-      signalAuthorityGroup(child, "SIGKILL");
-  });
-  const ready = await new Promise<{ type: string; url: string }>(
-    (resolve, reject) => {
-      const timeout = setTimeout(() => {
-        signalAuthorityGroup(child, "SIGKILL");
-        reject(
-          new Error("synthetic authority did not become ready in 15 seconds"),
-        );
-      }, 15_000);
-      child.once("error", reject);
-      child.once("close", (code) => {
-        clearTimeout(timeout);
-        reject(
-          new Error(
-            `synthetic authority exited before ready (${String(code)}): ${stderr.slice(0, 2_000)}`,
-          ),
-        );
-      });
-      child.stdout?.on("data", (chunk: Buffer) => {
-        stdout += chunk.toString("utf8");
-        if (Buffer.byteLength(stdout) > 4_096) {
-          signalAuthorityGroup(child, "SIGKILL");
-          clearTimeout(timeout);
-          reject(
-            new Error("synthetic authority ready record exceeded 4096 bytes"),
-          );
-          return;
-        }
-        const newline = stdout.indexOf("\n");
-        if (newline < 0) return;
-        clearTimeout(timeout);
-        try {
-          resolve(
-            JSON.parse(stdout.slice(0, newline)) as {
-              type: string;
-              url: string;
-            },
-          );
-        } catch (error) {
-          // error-policy:J2 Invalid authority output is a controller failure with cause.
-          reject(
-            new Error("synthetic authority emitted invalid ready JSON", {
-              cause: error,
-            }),
-          );
-        }
-      });
-    },
-  );
-  if (ready.type !== "ready" || !ready.url.startsWith("http://127.0.0.1:")) {
-    signalAuthorityGroup(child, "SIGKILL");
-    throw new Error("synthetic authority emitted a non-loopback ready record");
-  }
-  return { child, url: ready.url };
-}
-
-function signalAuthorityGroup(
-  child: ReturnType<typeof spawn>,
-  signal: NodeJS.Signals,
-): void {
-  if (!child.pid) return;
-  try {
-    child.kill(signal);
-  } catch (error) {
-    // error-policy:J6 ESRCH proves the authority process group is absent.
-    if (
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      error.code === "ESRCH"
-    )
-      return;
-    throw error;
-  }
-}
-
-async function stopAuthority(child: ReturnType<typeof spawn>): Promise<void> {
-  if (child.exitCode !== null) return;
-  signalAuthorityGroup(child, "SIGTERM");
-  const close = new Promise<boolean>((resolve) =>
-    child.once("close", () => resolve(true)),
-  );
-  const wait = (milliseconds: number) =>
-    new Promise<boolean>((resolve) =>
-      setTimeout(() => resolve(false), milliseconds),
-    );
-  if (await Promise.race([close, wait(5_000)])) return;
-  signalAuthorityGroup(child, "SIGKILL");
-  if (await Promise.race([close, wait(5_000)])) return;
-  throw new Error("synthetic authority process survived SIGKILL");
+  const url = await waitForAuthorityReady(child);
+  return { child, url };
 }
 
 function installAuthoritySignalCleanup(
@@ -267,6 +185,21 @@ function realModel(mode: CloudStabilityMode): {
 }
 
 const mode = modeOption();
+const nativeRoot = option("native-root");
+if (!linuxSandboxEnabled(mode) || !nativeRoot)
+  throw new Error(
+    "Cloud stability acceptance requires Linux containment and --native-root pointing to the root-installed observer build",
+  );
+const nativeAuthority = readNativeAuthority(repoRoot, nativeRoot);
+const nativeTrust = new Map<string, NativeVerifierContext>();
+assertLinuxSandboxCapabilities(
+  repoRoot,
+  mode,
+  path.join(
+    path.dirname(nativeAuthority.ownerScript),
+    "stability-linux-sandbox.sh",
+  ),
+);
 const selected = realModel(mode);
 const runId =
   option("run-id") ??
@@ -317,13 +250,20 @@ try {
             selected.modelMode.fixtureManifestFingerprint,
         }
       : {}),
-    timeoutMs: 240_000,
+    timeoutMs: NATIVE_STABILITY_TIMEOUT_MS,
     maxInputTokens: 100_000,
     maxOutputTokens: 50_000,
     maxModelRequests: 16,
     maxToolCalls: 50,
   });
   const adapter = new ScenarioStabilitySubprocessAdapter({
+    nativeAdmission: createCloudNativeAdmission({
+      manifest,
+      authority: nativeAuthority.context,
+      nativeBundle: nativeAuthority.nativeBundle,
+      ownerScript: nativeAuthority.ownerScript,
+      trusted: nativeTrust,
+    }),
     command: process.execPath,
     args: () => [
       "--conditions=eliza-source",
@@ -356,7 +296,12 @@ try {
       timeoutMs: 15_000,
     },
   });
-  report = await runCloudStabilityLane({ manifest, outputRoot, adapter });
+  report = await runCloudStabilityLane({
+    manifest,
+    outputRoot,
+    adapter,
+    verification: { nativeTrust },
+  });
 
   const health = await client.command({ type: "health" });
   const acquired = await client.command(

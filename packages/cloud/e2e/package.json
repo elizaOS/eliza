@@ -8,15 +8,15 @@
     "test:headed": "bun --conditions=eliza-source playwright test --headed",
     "test:ui": "bun --conditions=eliza-source playwright test --ui",
     "test:mock-llm": "bun test src/fixtures/mock-llm.test.ts",
-    "test:containment": "bun test src/stability/linux-sandbox.test.ts",
+    "test:containment": "bun test src/stability/linux-sandbox.test.ts src/stability/fifo-process.test.ts src/stability/native-attestation-channel.test.ts",
     "stability:keyless": "bun --conditions=eliza-source scripts/run-stability-lane.ts --mode deterministic-mock",
     "stability:real": "bun --conditions=eliza-source scripts/run-stability-lane.ts --mode real-llm",
-    "stability:verify": "bun --conditions=eliza-source scripts/verify-stability-artifacts.ts",
-    "test:stability": "bun --conditions=eliza-source test src/stability/cloud-stability-runner.test.ts src/stability/live-model-meter.test.ts src/stability/parent-network-guard.test.ts src/stability/stability-network-guard.test.ts src/stability/stack-partial-cleanup.test.ts src/stability/stability-scenario-child.test.ts src/stability/authority-controller-cleanup.test.ts",
+    "test:stability": "bun --conditions=eliza-source test src/stability/cloud-stability-runner.test.ts src/stability/live-model-meter.test.ts src/stability/parent-network-guard.test.ts src/stability/stability-network-guard.test.ts src/stability/stack-partial-cleanup.test.ts src/stability/stability-scenario-child.test.ts src/stability/authority-controller-cleanup.test.ts src/stability/authority-process.test.ts",
     "domains:ledger": "bun scripts/domain-purchase-ledger.ts",
     "format": "bunx @biomejs/biome format --write package.json",
     "format:check": "bunx @biomejs/biome format package.json",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "stability:verify": "bun --conditions=eliza-source scripts/verify-stability-artifacts.ts"
   },
   "dependencies": {
     "@elizaos/cloud-shared": "workspace:*",

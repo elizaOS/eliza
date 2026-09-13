@@ -14,6 +14,7 @@ import type {
   ScenarioStabilityExecutionAdapter,
 } from "./stability-executor.ts";
 import {
+  assertScenarioStabilityExecutedCellCoherence,
   executeScenarioStability,
   SCENARIO_STABILITY_MAX_JSON_STRING_BYTES,
 } from "./stability-executor.ts";
@@ -58,6 +59,80 @@ describe("scenario stability executor", () => {
     roots.push(root);
     return createScenarioStabilityPlan({ runId, outputRoot: root });
   }
+
+  it("uses monotonic elapsed time and rejects resealed over-duration passes", async () => {
+    const originalNow = Date.now;
+    let wall = originalNow();
+    Date.now = () => (wall += 900_000);
+    try {
+      const report = await executeScenarioStability({
+        plan: plan("wall-clock-jump"),
+        targets: [
+          {
+            scenarioId: "clock",
+            model: { provider: "fixture", model: "clock" },
+          },
+        ],
+        budgets: {
+          timeoutMs: 1000,
+          maxInputTokens: 100,
+          maxOutputTokens: 100,
+          maxToolCalls: 3,
+        },
+        adapter: {
+          execute: async () => passingExecution(),
+          terminate: async () => {},
+        },
+      });
+      expect(report.cells[0].strictPassed).toBe(true);
+      expect(report.cells[0].attempts.every((a) => a.durationMs < 1000)).toBe(
+        true,
+      );
+      const retained = structuredClone(report.cells[0]);
+      retained.attempts[0].durationMs = 1001;
+      expect(() =>
+        assertScenarioStabilityExecutedCellCoherence(retained, report.budgets),
+      ).toThrow("execution budget");
+    } finally {
+      Date.now = originalNow;
+    }
+  });
+
+  it("includes successful teardown in the selected total attempt budget", async () => {
+    let terminations = 0;
+    const report = await executeScenarioStability({
+      plan: plan("total-deadline"),
+      targets: [
+        {
+          scenarioId: "slow-close",
+          model: { provider: "fixture", model: "clock" },
+        },
+      ],
+      budgets: {
+        timeoutMs: 120,
+        maxInputTokens: 100,
+        maxOutputTokens: 100,
+        maxToolCalls: 3,
+      },
+      adapter: {
+        execute: async () => {
+          await new Promise((r) => setTimeout(r, 80));
+          return passingExecution();
+        },
+        terminate: async () => {
+          terminations++;
+          await new Promise((r) => setTimeout(r, 80));
+        },
+      },
+    });
+    expect(terminations).toBe(3);
+    expect(report.cells[0].passedAttempts).toBe(0);
+    expect(
+      report.cells[0].attempts.every(
+        (a) => a.failureClassification === "harness-failure",
+      ),
+    ).toBe(true);
+  });
 
   it("runs all three attempts with unique identities and requires three of three", async () => {
     const executed: string[] = [];

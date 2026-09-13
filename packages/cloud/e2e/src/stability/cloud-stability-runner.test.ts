@@ -19,10 +19,19 @@ import {
   type CloudStabilityManifest,
   canonicalCloudStabilityJson,
   canonicalCloudStabilitySha256,
+  runCloudStabilityLane as executeLane,
   parseCloudStabilityManifest,
-  runCloudStabilityLane,
-  verifyCloudStabilityArtifacts,
+  verifyCloudStabilityArtifacts as verifyNativeBundle,
 } from "./cloud-stability-runner.ts";
+
+// This injected adapter owns report integrity, not native execution. Its explicit
+// inspection mode cannot produce an authenticated native result.
+function runCloudStabilityLane(input: Parameters<typeof executeLane>[0]) {
+  return executeLane({ ...input, verification: { integrityOnly: true } });
+}
+function verifyCloudStabilityArtifacts(outputRoot: string) {
+  return verifyNativeBundle(outputRoot, { integrityOnly: true });
+}
 
 const directories: string[] = [];
 const manifest: CloudStabilityManifest = {
@@ -178,6 +187,13 @@ describe("Cloud stability manifest", () => {
     expect((await verifyCloudStabilityArtifacts(outputRoot)).report).toEqual(
       report,
     );
+    expect(
+      (await verifyCloudStabilityArtifacts(outputRoot)).nativeAuthenticated,
+    ).toBe(false);
+    await expect(verifyNativeBundle(outputRoot)).rejects.toThrow(
+      "mandatory native evidence",
+    );
+
     await expect(
       runCloudStabilityLane({ manifest, outputRoot, adapter }),
     ).rejects.toThrow();
@@ -576,97 +592,6 @@ describe("retained execution authority", () => {
     );
   });
 
-  test.each(["inputTokens", "outputTokens", "toolCalls"] as const)(
-    "rejects resealed passed %s beyond the producer budget",
-    async (field) => {
-      const limit =
-        field === "toolCalls"
-          ? manifest.maxToolCalls
-          : field === "inputTokens"
-            ? manifest.maxInputTokens
-            : manifest.maxOutputTokens;
-      const outputRoot = await mkdtemp(
-        path.join(tmpdir(), "cloud-budget-tamper-"),
-      );
-      const controlRoot = await mkdtemp(
-        path.join(tmpdir(), "cloud-budget-control-"),
-      );
-      directories.push(outputRoot, controlRoot);
-      const adapter = {
-        async execute() {
-          return execution("b".repeat(64), true);
-        },
-        async terminate() {},
-      };
-      const report = await runCloudStabilityLane({
-        manifest,
-        outputRoot,
-        adapter,
-      });
-      const control = await runCloudStabilityLane({
-        manifest,
-        outputRoot: controlRoot,
-        adapter: {
-          ...adapter,
-          async execute(input) {
-            return {
-              ...execution("b".repeat(64), true),
-              [field]: input.attemptNumber === 1 ? limit + 1 : 1,
-            };
-          },
-        },
-      });
-      expect(control.status).toBe("failed");
-      expect(control.cells[0].attempts[0].passed).toBe(false);
-      await expect(
-        verifyCloudStabilityArtifacts(controlRoot),
-      ).resolves.toMatchObject({ report: control });
-      report.cells[0].attempts[0][field] = limit + 1;
-      await resealCloudStabilityReport(outputRoot, report);
-      await expect(verifyCloudStabilityArtifacts(outputRoot)).rejects.toThrow(
-        /budget/,
-      );
-    },
-  );
-
-  test.skipIf(process.platform === "win32")(
-    "CLI promptly rejects a FIFO artifact without waiting for a writer",
-    async () => {
-      const outputRoot = await mkdtemp(
-        path.join(tmpdir(), "cloud-fifo-artifact-"),
-      );
-      directories.push(outputRoot);
-      await runCloudStabilityLane({
-        manifest,
-        outputRoot,
-        adapter: {
-          async execute() {
-            return execution("b".repeat(64), true);
-          },
-          async terminate() {},
-        },
-      });
-      const reportPath = path.join(outputRoot, "stability.json");
-      await rm(reportPath);
-      execFileSync("mkfifo", [reportPath]);
-      const child = spawnSync(
-        process.execPath,
-        [
-          "--conditions=eliza-source",
-          path.resolve(
-            import.meta.dir,
-            "../../scripts/verify-stability-artifacts.ts",
-          ),
-          "--output",
-          outputRoot,
-        ],
-        { encoding: "utf8", timeout: 3000 },
-      );
-      expect(child.error).toBeUndefined();
-      expect(child.status).toBe(1);
-      expect(child.stderr).toMatch(/regular file/);
-    },
-  );
   test("retains metering failures in the exact-three focus report", async () => {
     const outputRoot = await mkdtemp(
       path.join(tmpdir(), "cloud-stability-metering-test-"),
@@ -721,4 +646,120 @@ describe("retained execution authority", () => {
     );
     expect(report.cells[0]?.attempts).toHaveLength(3);
   });
+  test.each(["inputTokens", "outputTokens", "toolCalls"] as const)(
+    "rejects resealed passed %s beyond the producer budget",
+    async (field) => {
+      const limit =
+        field === "toolCalls"
+          ? manifest.maxToolCalls
+          : field === "inputTokens"
+            ? manifest.maxInputTokens
+            : manifest.maxOutputTokens;
+      const outputRoot = await mkdtemp(
+        path.join(tmpdir(), "cloud-budget-tamper-"),
+      );
+      const controlRoot = await mkdtemp(
+        path.join(tmpdir(), "cloud-budget-control-"),
+      );
+      directories.push(outputRoot, controlRoot);
+      const adapter = {
+        async execute() {
+          return execution("b".repeat(64), true);
+        },
+        async terminate() {},
+      };
+      const report = await runCloudStabilityLane({
+        manifest,
+        outputRoot,
+        adapter,
+      });
+      const control = await runCloudStabilityLane({
+        manifest,
+        outputRoot: controlRoot,
+        adapter: {
+          ...adapter,
+          async execute(input) {
+            return {
+              ...execution("b".repeat(64), true),
+              [field]: input.attemptNumber === 1 ? limit + 1 : 1,
+            };
+          },
+        },
+      });
+      expect(control.status).toBe("failed");
+      expect(control.cells[0].attempts[0].passed).toBe(false);
+      await expect(
+        verifyCloudStabilityArtifacts(controlRoot),
+      ).resolves.toMatchObject({ report: control });
+      report.cells[0].attempts[0][field] = limit + 1;
+      await resealCloudStabilityReport(outputRoot, report);
+      await expect(verifyCloudStabilityArtifacts(outputRoot)).rejects.toThrow(
+        /budget/,
+      );
+    },
+  );
+
+  test("rejects a resealed report with a different model request budget", async () => {
+    const outputRoot = await mkdtemp(
+      path.join(tmpdir(), "cloud-request-budget-"),
+    );
+    directories.push(outputRoot);
+    await runCloudStabilityLane({
+      manifest,
+      outputRoot,
+      adapter: {
+        async execute() {
+          return execution("b".repeat(64), true);
+        },
+        async terminate() {},
+      },
+    });
+    const report = JSON.parse(
+      await readFile(path.join(outputRoot, "stability.json"), "utf8"),
+    );
+    report.budgets.maxModelRequests = manifest.maxModelRequests + 1;
+    await resealCloudStabilityReport(outputRoot, report);
+    await expect(verifyCloudStabilityArtifacts(outputRoot)).rejects.toThrow(
+      /manifest/,
+    );
+  });
+
+  test.skipIf(process.platform === "win32")(
+    "CLI promptly rejects a FIFO artifact without waiting for a writer",
+    async () => {
+      const outputRoot = await mkdtemp(
+        path.join(tmpdir(), "cloud-fifo-artifact-"),
+      );
+      directories.push(outputRoot);
+      await runCloudStabilityLane({
+        manifest,
+        outputRoot,
+        adapter: {
+          async execute() {
+            return execution("b".repeat(64), true);
+          },
+          async terminate() {},
+        },
+      });
+      const reportPath = path.join(outputRoot, "stability.json");
+      await rm(reportPath);
+      execFileSync("mkfifo", [reportPath]);
+      const child = spawnSync(
+        process.execPath,
+        [
+          "--conditions=eliza-source",
+          path.resolve(
+            import.meta.dir,
+            "../../scripts/verify-stability-artifacts.ts",
+          ),
+          "--output",
+          outputRoot,
+        ],
+        { encoding: "utf8", timeout: 3000 },
+      );
+      expect(child.error).toBeUndefined();
+      expect(child.status).toBe(1);
+      expect(child.stderr).toMatch(/regular file/);
+    },
+  );
 });

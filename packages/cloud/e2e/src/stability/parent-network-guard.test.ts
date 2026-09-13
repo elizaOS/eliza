@@ -125,3 +125,23 @@ describe("stability parent network guard", () => {
     ]);
   });
 });
+
+test("preconnection uses the same admission boundary before reaching transport", () => {
+  const ledger: StabilityParentNetworkEntry[] = [];
+  const connections: string[] = [];
+  const transport = Object.assign(async () => Response.json({}), {
+    preconnect: (url: Parameters<typeof fetch.preconnect>[0]) => {
+      connections.push(String(url));
+    },
+  }) as typeof fetch;
+  const guarded = createLoopbackOnlyFetch(transport, ledger);
+  guarded.preconnect("http://127.0.0.1:43123");
+  expect(() => guarded.preconnect("https://remote.invalid")).toThrow(
+    "unexpected preconnect egress blocked",
+  );
+  expect(connections).toEqual(["http://127.0.0.1:43123"]);
+  expect(ledger).toEqual([
+    { origin: "http://127.0.0.1:43123", method: "PRECONNECT", allowed: true },
+    { origin: "https://remote.invalid", method: "PRECONNECT", allowed: false },
+  ]);
+});

@@ -4,9 +4,25 @@
  * only explicit loopback ports and a credential-minimal environment cross in.
  */
 
+import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
 import { writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
+import { ElizaError } from "@elizaos/core/errors";
+import type { NativeBootstrap } from "./native-bootstrap.ts";
+
+/** Includes complete pre-admission and release scans in the native lane budget. */
+export const NATIVE_STABILITY_TIMEOUT_MS = 600_000;
 
 const admittedSourceNames = new Set([
   "ANTHROPIC_BASE_URL",
@@ -47,16 +63,153 @@ function assertEnvironmentEntry(name: string, value: string | undefined): void {
 }
 
 export function linuxSandboxEnabled(mode: string): boolean {
-  const enabled = process.env.ELIZA_STABILITY_LINUX_SANDBOX === "1";
-  if (process.platform === "linux" && mode === "real-llm" && !enabled) {
-    throw new Error(
-      "real-model stability on Linux requires ELIZA_STABILITY_LINUX_SANDBOX=1",
+  const setting = process.env.ELIZA_STABILITY_LINUX_SANDBOX;
+  const enabled = setting === "1";
+  if (setting && !enabled) {
+    throw new ElizaError("ELIZA_STABILITY_LINUX_SANDBOX must be exactly 1", {
+      code: "STABILITY_SANDBOX_CONFIGURATION_INVALID",
+    });
+  }
+  if (mode === "real-llm" && (process.platform !== "linux" || !enabled)) {
+    throw new ElizaError(
+      "Real-model stability requires Linux containment with ELIZA_STABILITY_LINUX_SANDBOX=1",
+      {
+        code: "STABILITY_SANDBOX_REQUIRED",
+        context: { platform: process.platform },
+      },
     );
   }
-  if (process.env.ELIZA_STABILITY_LINUX_SANDBOX && !enabled) {
-    throw new Error("ELIZA_STABILITY_LINUX_SANDBOX must be exactly 1");
+  if (enabled && process.platform !== "linux") {
+    throw new ElizaError("Linux containment is unavailable on this platform", {
+      code: "STABILITY_SANDBOX_UNSUPPORTED",
+      context: { platform: process.platform },
+    });
   }
   return process.platform === "linux" && enabled;
+}
+
+/** Admits the lane only after the actual privileged launcher proves its kernel prerequisites. */
+export function assertLinuxSandboxCapabilities(
+  repoRoot: string,
+  mode: string,
+  installedLauncher?: string,
+): void {
+  if (!linuxSandboxEnabled(mode)) return;
+  const captureRoot = mkdtempSync(
+    path.join(os.tmpdir(), "eliza-sandbox-capability-"),
+  );
+  const stdoutPath = path.join(captureRoot, "stdout.log");
+  const stderrPath = path.join(captureRoot, "stderr.log");
+  const descriptors: number[] = [];
+  let primary: unknown;
+  try {
+    for (const target of [stdoutPath, stderrPath]) {
+      const fd = openSync(
+        target,
+        constants.O_WRONLY |
+          constants.O_CREAT |
+          constants.O_EXCL |
+          constants.O_NOFOLLOW,
+        0o600,
+      );
+      descriptors.push(fd);
+      if (!fstatSync(fd).isFile()) {
+        throw new ElizaError("Capability capture is not a regular owned log", {
+          code: "STABILITY_SANDBOX_CAPTURE_INVALID",
+        });
+      }
+    }
+    const probe = spawnSync(
+      "sudo",
+      [
+        "-n",
+        "/usr/bin/timeout",
+        "--signal=TERM",
+        "--kill-after=5s",
+        "60s",
+        "/bin/bash",
+        installedLauncher ??
+          path.join(
+            repoRoot,
+            "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
+          ),
+        "setup",
+      ],
+      {
+        encoding: "utf8",
+        env: { PATH: "/usr/sbin:/usr/bin:/sbin:/bin" },
+        stdio: ["ignore", descriptors[0], descriptors[1]],
+        timeout: 75_000,
+        killSignal: "SIGKILL",
+      },
+    );
+    const stdout = readFileSync(stdoutPath, "utf8");
+    const stderr = readFileSync(stderrPath, "utf8");
+    if (probe.error || probe.status !== 0 || stdout.trim() !== "ready") {
+      throw new ElizaError(
+        "Linux containment prerequisites are unavailable; configure the documented kernel permissions before running stability",
+        {
+          code: "STABILITY_SANDBOX_CAPABILITY_UNAVAILABLE",
+          cause: probe.error,
+          context: {
+            exitCode: probe.status,
+            signal: probe.signal,
+            diagnostic: stderr,
+          },
+        },
+      );
+    }
+  } catch (error) {
+    // error-policy:J2 Preserve the admission failure alongside any teardown failure.
+    primary = error;
+  }
+  const cleanupErrors: unknown[] = [];
+  for (const fd of descriptors) {
+    try {
+      closeSync(fd);
+    } catch (error) {
+      // error-policy:J2 Report every owned descriptor cleanup failure at this boundary.
+      cleanupErrors.push(error);
+    }
+  }
+  try {
+    rmSync(captureRoot, { recursive: true });
+  } catch (error) {
+    // error-policy:J2 A retained capture directory is a failed cleanup, never success.
+    cleanupErrors.push(error);
+  }
+  if (cleanupErrors.length > 0)
+    throw new ElizaError("Containment capability capture cleanup failed", {
+      code: "STABILITY_SANDBOX_CAPTURE_CLEANUP_FAILED",
+      cause: new AggregateError(
+        primary === undefined ? cleanupErrors : [primary, ...cleanupErrors],
+      ),
+    });
+  if (primary !== undefined) throw primary;
+}
+
+function supervisorIdentity(): string {
+  if (process.platform !== "linux" || typeof process.geteuid !== "function") {
+    throw new ElizaError("Sandbox supervisor identity requires Linux", {
+      code: "STABILITY_SANDBOX_SUPERVISOR_UNAVAILABLE",
+    });
+  }
+  const record = readFileSync("/proc/self/stat", "utf8");
+  const fields = record
+    .substring(record.lastIndexOf(") ") + 2)
+    .trim()
+    .split(/\s+/u);
+  const startTicks = Number(fields[19]);
+  if (!Number.isSafeInteger(startTicks) || startTicks <= 0) {
+    throw new ElizaError("Sandbox supervisor start identity is unavailable", {
+      code: "STABILITY_SANDBOX_SUPERVISOR_UNAVAILABLE",
+    });
+  }
+  return JSON.stringify({
+    pid: process.pid,
+    uid: process.geteuid(),
+    startTicks,
+  });
 }
 
 export function scenarioChildEnvironment(
@@ -121,6 +274,7 @@ export function loopbackPorts(urls: string[]): string {
 
 export function sandboxCommand(options: {
   enabled: boolean;
+  nativeAdmission?: NativeBootstrap;
   allowedPorts: string;
   repoRoot: string;
   outputDir: string;
@@ -142,11 +296,23 @@ export function sandboxCommand(options: {
       "-i",
       "PATH=/usr/sbin:/usr/bin:/sbin:/bin",
       "/bin/bash",
-      path.join(
-        options.repoRoot,
-        "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
-      ),
-      "run",
+      options.nativeAdmission
+        ? path.join(
+            path.dirname(options.nativeAdmission.ownerScript),
+            "stability-linux-sandbox.sh",
+          )
+        : path.join(
+            options.repoRoot,
+            "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
+          ),
+      options.nativeAdmission ? "run-native" : "run",
+      supervisorIdentity(),
+      ...(options.nativeAdmission
+        ? [
+            options.nativeAdmission.nativeBundle,
+            JSON.stringify(options.nativeAdmission.request),
+          ]
+        : []),
       options.allowedPorts,
       options.repoRoot,
       options.outputDir,

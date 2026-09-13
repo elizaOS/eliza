@@ -191,8 +191,11 @@ test.each([
         import.meta.dirname,
         "../../scripts/stability-network-guard.mjs",
       );
+      const port = target.port;
+      if (port === undefined)
+        throw new Error("Owned listener omitted its bound port");
       const child = Bun.spawn(
-        [process.execPath, "--preload", guard, "-e", script(target.port)],
+        [process.execPath, "--preload", guard, "-e", script(port)],
         {
           cwd: directory,
           env: {
@@ -207,7 +210,7 @@ test.each([
       expect(targetCalls).toBe(0);
       expect(JSON.parse((await readFile(ledger, "utf8")).trim())).toMatchObject(
         {
-          origin: expectedOrigin(target.port),
+          origin: expectedOrigin(port),
           allowed: false,
         },
       );

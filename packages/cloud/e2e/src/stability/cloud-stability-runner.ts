@@ -10,9 +10,13 @@ import { link, mkdir, open, rmdir, unlink } from "node:fs/promises";
 import path from "node:path";
 import { ElizaError } from "@elizaos/core";
 import {
+  createScenarioStabilityPlan,
+  type ScenarioStabilityFailureClassification,
+  type ScenarioStabilityTier,
+} from "@elizaos/scenario-runner/stability";
+import {
   assertScenarioStabilityBoundedJson,
   assertScenarioStabilityExecutedCellCoherence,
-  createScenarioStabilityPlan,
   deriveScenarioStabilityExecutionAttemptIdentities,
   deriveScenarioStabilityFailureClusters,
   deriveScenarioStabilityFocusList,
@@ -22,11 +26,14 @@ import {
   type ScenarioStabilityExecutionBudgets,
   type ScenarioStabilityExecutionReport,
   type ScenarioStabilityExecutionTarget,
-  type ScenarioStabilityFailureClassification,
-  type ScenarioStabilityTier,
   scenarioStabilityExecutionPlanFingerprint,
-} from "@elizaos/scenario-runner";
+} from "@elizaos/scenario-runner/stability-executor";
 import { canonicalJsonString } from "@elizaos/shared/canonical-json";
+import {
+  type NativeArtifactBytes,
+  type NativeVerifierContext,
+  verifyNativeArtifacts,
+} from "./native-attestation-channel.ts";
 
 export type CloudStabilityMode = "deterministic-mock" | "real-llm";
 
@@ -274,6 +281,7 @@ export interface RunCloudStabilityLaneInput {
   manifest: CloudStabilityManifest;
   outputRoot: string;
   adapter: ScenarioStabilityExecutionAdapter;
+  verification?: CloudStabilityVerificationOptions;
 }
 
 export interface CloudStabilityArtifactManifest extends CloudStabilityManifest {
@@ -281,10 +289,17 @@ export interface CloudStabilityArtifactManifest extends CloudStabilityManifest {
   reportSha256: string;
 }
 
+export interface CloudStabilityVerificationOptions {
+  nativeTrust?: ReadonlyMap<string, NativeVerifierContext>;
+  /** Explicit archived/unit integrity inspection; never native-qualified. */
+  integrityOnly?: true;
+}
+
 export interface VerifiedCloudStabilityArtifacts {
   report: ScenarioStabilityExecutionReport;
   manifest: CloudStabilityArtifactManifest;
   reportSha256: string;
+  nativeAuthenticated: boolean;
 }
 
 async function readBoundedArtifact(
@@ -450,6 +465,7 @@ function parseExecutionBudgets(
     "timeoutMs",
     "maxInputTokens",
     "maxOutputTokens",
+    "maxModelRequests",
     "maxToolCalls",
   ]);
   return {
@@ -461,6 +477,10 @@ function parseExecutionBudgets(
     maxOutputTokens: positiveInteger(
       record.maxOutputTokens,
       "report maxOutputTokens",
+    ),
+    maxModelRequests: positiveInteger(
+      record.maxModelRequests,
+      "report maxModelRequests",
     ),
     maxToolCalls: nonNegativeInteger(
       record.maxToolCalls,
@@ -722,6 +742,7 @@ function parseCloudStabilityExecutionReport(
     budgets.timeoutMs !== manifest.timeoutMs ||
     budgets.maxInputTokens !== manifest.maxInputTokens ||
     budgets.maxOutputTokens !== manifest.maxOutputTokens ||
+    budgets.maxModelRequests !== manifest.maxModelRequests ||
     budgets.maxToolCalls !== manifest.maxToolCalls ||
     planFingerprint !== scenarioStabilityExecutionPlanFingerprint(plan) ||
     cell.attempts.some((attempt, index) => {
@@ -788,9 +809,152 @@ function parseArtifactManifest(value: unknown): CloudStabilityArtifactManifest {
   return { ...manifest, manifestSha256, reportSha256 };
 }
 
+/** Pins every path component under the trusted run root before reading native files. */
+async function readNativeAttempt(outputRoot: string, attemptDirectory: string) {
+  if (process.platform !== "linux")
+    throw new ElizaError(
+      "Native artifact verification requires Linux descriptor paths",
+      { code: "STABILITY_NATIVE_ATTESTATION_INVALID" },
+    );
+  const relative = path.relative(outputRoot, attemptDirectory);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative))
+    throw new ElizaError("Native attempt directory escapes the admitted run", {
+      code: "STABILITY_NATIVE_ATTESTATION_INVALID",
+    });
+  const flags =
+    fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW;
+  const handles = [await open(outputRoot, flags)];
+  let primary: unknown;
+  let result: (NativeArtifactBytes & { attestation: Buffer }) | undefined;
+  try {
+    for (const component of [...relative.split(path.sep), "native"])
+      handles.push(
+        await open(
+          `/proc/self/fd/${handles[handles.length - 1].fd}/${component}`,
+          flags,
+        ),
+      );
+    const directory = `/proc/self/fd/${handles[handles.length - 1].fd}`;
+    const names = [
+      "attestation.json",
+      "ledger.jsonl",
+      "journal.jsonl",
+      "counters.json",
+      "drain.json",
+      "producer-ids.txt",
+      "monitor-ids.txt",
+      "build.json",
+    ] as const;
+    const values: Buffer[] = [];
+    for (const name of names)
+      values.push(
+        await readBoundedArtifact(
+          path.join(directory, name),
+          name === "ledger.jsonl"
+            ? 64 * 1024 * 1024
+            : CLOUD_STABILITY_MAX_CANONICAL_BYTES,
+        ),
+      );
+    result = {
+      attestation: values[0],
+      ledger: values[1],
+      journal: values[2],
+      counters: values[3],
+      drain: values[4],
+      producerInventory: values[5],
+      monitorInventory: values[6],
+      build: values[7],
+    };
+  } catch (error) {
+    // error-policy:J2 Preserve read rejection if descriptor teardown also fails.
+    primary = error;
+  }
+  const settled = await Promise.allSettled(
+    handles.reverse().map((handle) => handle.close()),
+  );
+  const failures = settled.flatMap((result) =>
+    result.status === "rejected" ? [result.reason] : [],
+  );
+  if (failures.length)
+    throw new AggregateError(
+      primary === undefined ? failures : [primary, ...failures],
+      "Native artifact read and descriptor cleanup failed",
+    );
+  if (primary !== undefined) throw primary;
+  if (!result)
+    throw new ElizaError("Native artifact read did not complete", {
+      code: "STABILITY_NATIVE_ATTESTATION_INVALID",
+    });
+  return result;
+}
+
+async function verifyNativeReport(
+  report: ScenarioStabilityExecutionReport,
+  manifest: CloudStabilityArtifactManifest,
+  outputRoot: string,
+  trusted: ReadonlyMap<string, NativeVerifierContext> | undefined,
+): Promise<boolean> {
+  let allAuthenticated = true;
+  for (const cell of report.cells)
+    for (const attempt of cell.attempts) {
+      const reference = attempt.evidence.native;
+      if (!reference) {
+        if (attempt.passed)
+          throw new ElizaError(
+            "Passing Cloud attempt omitted mandatory native evidence",
+            { code: "STABILITY_NATIVE_ATTESTATION_INVALID" },
+          );
+        allAuthenticated = false;
+        continue;
+      }
+      const context = trusted?.get(attempt.attemptId);
+      if (!context)
+        throw new ElizaError(
+          "Native evidence has no independently retained terminal authority",
+          { code: "STABILITY_NATIVE_ATTESTATION_INVALID" },
+        );
+      const expected = {
+        attemptId: attempt.attemptId,
+        runId: manifest.runId,
+        scenarioFingerprint: manifest.scenarioFingerprint,
+        worldFingerprint: manifest.worldFingerprint,
+        timeoutMs: manifest.timeoutMs,
+        maxInputTokens: manifest.maxInputTokens,
+        maxOutputTokens: manifest.maxOutputTokens,
+        maxModelRequests: manifest.maxModelRequests,
+        maxToolCalls: manifest.maxToolCalls,
+      };
+      if (
+        Object.entries(expected).some(
+          ([name, value]) => context.expected[name] !== value,
+        )
+      )
+        throw new ElizaError(
+          "Native trusted context differs from the canonical attempt",
+          { code: "STABILITY_NATIVE_ATTESTATION_INVALID" },
+        );
+      const bytes = await readNativeAttempt(outputRoot, attempt.outputDir);
+      if (
+        createHash("sha256").update(bytes.attestation).digest("hex") !==
+        reference.attestationSha256
+      )
+        throw new ElizaError(
+          "Native report reference differs from retained signature bytes",
+          { code: "STABILITY_NATIVE_ATTESTATION_INVALID" },
+        );
+      verifyNativeArtifacts(
+        context,
+        parseCanonicalArtifact(bytes.attestation, "native attestation"),
+        bytes,
+      );
+    }
+  return allAuthenticated;
+}
+
 async function verifyCloudStabilityArtifactsAt(
   outputRoot: string,
   planOutputRoot: string,
+  options: CloudStabilityVerificationOptions = {},
 ): Promise<VerifiedCloudStabilityArtifacts> {
   const [reportBytes, checksumBytes, manifestBytes] = await Promise.all([
     readBoundedArtifact(
@@ -826,14 +990,24 @@ async function verifyCloudStabilityArtifactsAt(
     manifest,
     planOutputRoot,
   );
-  return { report, manifest, reportSha256 };
+  const nativeAuthenticated =
+    options.integrityOnly === true
+      ? false
+      : await verifyNativeReport(
+          report,
+          manifest,
+          planOutputRoot,
+          options.nativeTrust,
+        );
+  return { report, manifest, reportSha256, nativeAuthenticated };
 }
 
 /** Verifies retained report bytes, sidecar, manifest, and output-path authority. */
 export async function verifyCloudStabilityArtifacts(
   outputRoot: string,
+  options: CloudStabilityVerificationOptions = {},
 ): Promise<VerifiedCloudStabilityArtifacts> {
-  return verifyCloudStabilityArtifactsAt(outputRoot, outputRoot);
+  return verifyCloudStabilityArtifactsAt(outputRoot, outputRoot, options);
 }
 
 async function removeStagedBundle(stagingRoot: string): Promise<void> {
@@ -859,6 +1033,7 @@ async function persistCloudStabilityArtifacts(
   outputRoot: string,
   report: ScenarioStabilityExecutionReport,
   manifest: CloudStabilityManifest,
+  options: CloudStabilityVerificationOptions,
 ): Promise<void> {
   await mkdir(outputRoot, { recursive: true, mode: 0o700 });
   const reportBytes = canonicalCloudStabilityJson(report);
@@ -898,7 +1073,7 @@ async function persistCloudStabilityArtifacts(
       canonicalCloudStabilityJson(artifactManifest),
     );
     await syncDirectory(stagingRoot);
-    await verifyCloudStabilityArtifactsAt(stagingRoot, outputRoot);
+    await verifyCloudStabilityArtifactsAt(stagingRoot, outputRoot, options);
 
     // The manifest is the commit marker: it is linked last, and no link may
     // replace a prior artifact generation. Readers either verify all three or
@@ -912,7 +1087,7 @@ async function persistCloudStabilityArtifacts(
       promoted.push(name);
     }
     await syncDirectory(outputRoot);
-    await verifyCloudStabilityArtifacts(outputRoot);
+    await verifyCloudStabilityArtifacts(outputRoot, options);
     await removeStagedBundle(stagingRoot);
     await syncDirectory(outputRoot);
   } catch (error) {
@@ -971,6 +1146,11 @@ export async function runCloudStabilityLane(
     },
     adapter: input.adapter,
   });
-  await persistCloudStabilityArtifacts(input.outputRoot, report, manifest);
+  await persistCloudStabilityArtifacts(
+    input.outputRoot,
+    report,
+    manifest,
+    input.verification ?? {},
+  );
   return report;
 }

@@ -31,6 +31,7 @@ import {
   type ScenarioStabilityAttemptExecution,
   type ScenarioStabilityExecutionAdapter,
   type ScenarioStabilityExecutionTarget,
+  type ScenarioStabilityNativeReference,
 } from "./stability-executor.ts";
 import { openScenarioSyntheticWorld } from "./synthetic-control.ts";
 
@@ -65,7 +66,19 @@ export type ScenarioStabilityModelMode =
       credentialValue: string;
     };
 
+/** Trusted host lease; bootstrap contains public admission context, never signing keys. */
+export interface ScenarioStabilityNativeAdmission {
+  bootstrap: string;
+  completion: Promise<ScenarioStabilityNativeReference>;
+  cancel(): Promise<void>;
+}
+
 export interface ScenarioStabilitySubprocessAdapterOptions {
+  nativeAdmission?: {
+    prepare(
+      input: Parameters<ScenarioStabilityExecutionAdapter["execute"]>[0],
+    ): Promise<ScenarioStabilityNativeAdmission>;
+  };
   command: string;
   args(input: {
     target: ScenarioStabilityExecutionTarget;
@@ -86,9 +99,11 @@ export interface ScenarioStabilitySubprocessAdapterOptions {
 }
 
 interface AttemptBoundary {
-  session: SyntheticControlSession;
+  session: SyntheticControlSession | null;
+  preparation: Promise<void>;
   child: ChildProcess | null;
   processGroupId: number | null;
+  native: ScenarioStabilityNativeAdmission | null;
 }
 
 interface DirectoryIdentity {
@@ -508,6 +523,7 @@ export class ScenarioStabilitySubprocessAdapter
   readonly #boundaries = new Map<string, AttemptBoundary>();
   readonly #openSession: typeof openScenarioSyntheticWorld;
   #quarantine: Error | null = null;
+  readonly #teardowns = new Map<string, Promise<void>>();
 
   constructor(readonly options: ScenarioStabilitySubprocessAdapterOptions) {
     validateOptions(options);
@@ -517,6 +533,8 @@ export class ScenarioStabilitySubprocessAdapter
   async execute(
     input: Parameters<ScenarioStabilityExecutionAdapter["execute"]>[0],
   ): Promise<ScenarioStabilityAttemptExecution> {
+    if (this.#teardowns.size > 0)
+      throw new Error("stability subprocess teardown is in progress");
     if (this.#quarantine) {
       throw new Error(
         "stability subprocess adapter is quarantined after an unproven teardown",
@@ -524,40 +542,62 @@ export class ScenarioStabilitySubprocessAdapter
       );
     }
     if (input.signal.aborted) throw input.signal.reason;
-    const outputIdentities = await ensureIsolatedDirectory(
-      input.outputDir,
-      this.options.cwd,
-    );
-    const session = await this.#openSession({
-      controlUrl: this.options.syntheticControl.controlUrl,
-      controlToken: this.options.syntheticControl.controlToken,
-      manifest: this.options.syntheticControl.manifest,
-      timeoutMs: this.options.syntheticControl.timeoutMs,
-      owner: input.attemptId,
+    if (this.#boundaries.has(input.attemptId))
+      throw new Error("stability attempt already owns a process boundary");
+    let finishPreparation!: () => void;
+    const preparation = new Promise<void>((resolve) => {
+      finishPreparation = resolve;
     });
     const boundary: AttemptBoundary = {
-      session,
+      session: null,
+      preparation,
       child: null,
       processGroupId: null,
+      native: null,
     };
     this.#boundaries.set(input.attemptId, boundary);
-    const initialStateHash = await authorityInitialStateHash(session);
-    const attestationKey =
-      this.options.modelMode.kind === "real-llm"
-        ? randomBytes(32).toString("hex")
-        : undefined;
-    const bootstrap =
-      this.options.modelMode.kind === "real-llm" && attestationKey
-        ? JSON.stringify({
-            version: 1,
-            credentialEnvironment: this.options.modelMode.credentialEnv,
-            credentialValue: this.options.modelMode.credentialValue,
-            meterAttestationKey: attestationKey,
-          })
-        : "";
-    if (Buffer.byteLength(bootstrap) > MAX_REAL_MODEL_BOOTSTRAP_BYTES) {
-      throw new Error("real-model bootstrap exceeds its byte limit");
+    let prepared: Awaited<
+      ReturnType<ScenarioStabilitySubprocessAdapter["prepareBoundary"]>
+    >;
+    try {
+      prepared = await this.prepareBoundary(input, boundary);
+    } finally {
+      finishPreparation();
     }
+    const {
+      outputIdentities,
+      session,
+      initialStateHash,
+      attestationKey,
+      bootstrap,
+      native,
+    } = prepared;
+    let nativeFailure: Error | null = null;
+    // Observe immediately, including failure before spawn, while preserving its outcome.
+    const nativeCompletion = native?.completion.then(
+      (reference) => ({ reference }),
+      (cause) => {
+        nativeFailure =
+          cause instanceof Error
+            ? cause
+            : new Error("Native admission failed", { cause });
+        if (boundary.processGroupId !== null) {
+          try {
+            signalProcessGroup(boundary.processGroupId, "SIGKILL");
+          } catch (cleanupError) {
+            // error-policy:J2 The native failure and failed child termination remain authoritative.
+            nativeFailure = new AggregateError(
+              [nativeFailure, cleanupError],
+              "Native admission and process termination failed",
+            );
+          }
+        }
+        return { error: nativeFailure };
+      },
+    );
+    if (native && Buffer.byteLength(native.bootstrap) > 65536)
+      throw new Error("native admission bootstrap exceeds its byte limit");
+    if (input.signal.aborted) throw input.signal.reason;
     const child = spawn(
       this.options.command,
       this.options.args({
@@ -569,7 +609,9 @@ export class ScenarioStabilitySubprocessAdapter
         cwd: this.options.cwd,
         detached: true,
         shell: false,
-        stdio: ["ignore", "pipe", "pipe", "pipe"],
+        stdio: native
+          ? ["ignore", "pipe", "pipe", "pipe", "pipe"]
+          : ["ignore", "pipe", "pipe", "pipe"],
         env: childEnvironment(this.options, input, session, initialStateHash),
       },
     );
@@ -602,6 +644,17 @@ export class ScenarioStabilitySubprocessAdapter
     } else {
       bootstrapPipe.on("error", stopForOutputFailure);
       bootstrapPipe.end(bootstrap);
+    }
+    if (native) {
+      const nativePipe = child.stdio[4];
+      if (!(nativePipe instanceof Writable)) {
+        stopForOutputFailure(
+          new Error("stability subprocess omitted native admission pipe"),
+        );
+      } else {
+        nativePipe.on("error", stopForOutputFailure);
+        nativePipe.end(native.bootstrap);
+      }
     }
     child.stdout?.on("data", (chunk: Buffer) => {
       try {
@@ -648,6 +701,7 @@ export class ScenarioStabilitySubprocessAdapter
       sanitizedStderr(this.options, stderr, attestationKey),
     );
     if (outputFailure) throw outputFailure;
+    if (nativeFailure) throw nativeFailure;
     if (exitCode !== 0) {
       const excerpt = new TextDecoder()
         .decode(await fs.readFile(stderrArtifact.path))
@@ -667,6 +721,13 @@ export class ScenarioStabilitySubprocessAdapter
       throw new Error("stability subprocess returned invalid JSON", { cause });
     }
     const execution = parseScenarioStabilityAttemptExecution(parsed);
+    if (execution.evidence.native)
+      throw new Error(
+        "Subprocess cannot establish native attestation authority",
+      );
+    const nativeOutcome = await nativeCompletion;
+    if (nativeOutcome && "error" in nativeOutcome) throw nativeOutcome.error;
+    const nativeReference = nativeOutcome?.reference;
     if (execution.initialStateHash !== initialStateHash) {
       throw new Error(
         "subprocess initial state hash does not match synthetic authority snapshot",
@@ -844,7 +905,8 @@ export class ScenarioStabilitySubprocessAdapter
           meteringFailures?.length === 0);
       const successEnvelopeBindingValid =
         execution.passed === false ||
-        (requestEnvelopes?.length === requestCount &&
+        (requestEnvelopes !== null &&
+          requestEnvelopes.length === requestCount &&
           requestEnvelopes.every(
             (value) =>
               (value as Record<string, unknown>).accepted === true &&
@@ -911,16 +973,83 @@ export class ScenarioStabilitySubprocessAdapter
       ...execution,
       evidence: {
         ...execution.evidence,
+        ...(nativeReference ? { native: nativeReference } : {}),
         providerReceipts: [...execution.evidence.providerReceipts, receipt],
       },
     });
   }
 
-  async terminate(
+  private async prepareBoundary(
+    input: Parameters<ScenarioStabilityExecutionAdapter["execute"]>[0],
+    boundary: AttemptBoundary,
+  ) {
+    const outputIdentities = await ensureIsolatedDirectory(
+      input.outputDir,
+      this.options.cwd,
+    );
+    if (input.signal.aborted) throw input.signal.reason;
+    const session = await this.#openSession({
+      controlUrl: this.options.syntheticControl.controlUrl,
+      controlToken: this.options.syntheticControl.controlToken,
+      manifest: this.options.syntheticControl.manifest,
+      timeoutMs: this.options.syntheticControl.timeoutMs,
+      owner: input.attemptId,
+    });
+    boundary.session = session;
+    if (input.signal.aborted) throw input.signal.reason;
+    const initialStateHash = await authorityInitialStateHash(session);
+    if (input.signal.aborted) throw input.signal.reason;
+    const attestationKey =
+      this.options.modelMode.kind === "real-llm"
+        ? randomBytes(32).toString("hex")
+        : undefined;
+    const bootstrap =
+      this.options.modelMode.kind === "real-llm" && attestationKey
+        ? JSON.stringify({
+            version: 1,
+            credentialEnvironment: this.options.modelMode.credentialEnv,
+            credentialValue: this.options.modelMode.credentialValue,
+            meterAttestationKey: attestationKey,
+          })
+        : "";
+    if (Buffer.byteLength(bootstrap) > MAX_REAL_MODEL_BOOTSTRAP_BYTES) {
+      throw new Error("real-model bootstrap exceeds its byte limit");
+    }
+    const native = this.options.nativeAdmission
+      ? await this.options.nativeAdmission.prepare(input)
+      : null;
+    boundary.native = native;
+    return {
+      outputIdentities,
+      session,
+      initialStateHash,
+      attestationKey,
+      bootstrap,
+      native,
+    };
+  }
+
+  terminate(
+    input: Parameters<ScenarioStabilityExecutionAdapter["terminate"]>[0],
+  ): Promise<void> {
+    const existing = this.#teardowns.get(input.attemptId);
+    if (existing) return existing;
+    const work = Promise.resolve()
+      .then(() => this.#terminateBoundary(input))
+      .finally(() => {
+        if (this.#teardowns.get(input.attemptId) === work)
+          this.#teardowns.delete(input.attemptId);
+      });
+    this.#teardowns.set(input.attemptId, work);
+    return work;
+  }
+
+  async #terminateBoundary(
     input: Parameters<ScenarioStabilityExecutionAdapter["terminate"]>[0],
   ): Promise<void> {
     const boundary = this.#boundaries.get(input.attemptId);
     if (!boundary) return;
+    await boundary.preparation;
     const failures: Error[] = [];
     try {
       signalProcessGroup(boundary.processGroupId, "SIGTERM");
@@ -944,7 +1073,17 @@ export class ScenarioStabilitySubprocessAdapter
       );
     }
     try {
-      await boundary.session.close();
+      await boundary.native?.cancel();
+    } catch (cause) {
+      // error-policy:J2 Native channel disposal is independent of child and world cleanup.
+      failures.push(
+        cause instanceof Error
+          ? cause
+          : new Error("Native admission cleanup failed", { cause }),
+      );
+    }
+    try {
+      if (boundary.session) await boundary.session.close();
     } catch (error) {
       // error-policy:J2 A failed authority reset is retained alongside any process cleanup failure.
       failures.push(

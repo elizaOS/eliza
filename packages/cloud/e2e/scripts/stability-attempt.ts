@@ -4,7 +4,7 @@
  * a real AgentRuntime, and emits retained runtime/action/durable evidence.
  */
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createHash, createHmac } from "node:crypto";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -14,6 +14,7 @@ import { canonicalJsonString } from "@elizaos/shared/canonical-json";
 import cloudStabilityScenario from "../scenarios/cloud-stability-agent.scenario.ts";
 import { startCloudStack } from "../src/fixtures/stack.ts";
 import { canonicalCloudStabilitySha256 } from "../src/stability/cloud-stability-runner.ts";
+import { runFifoProcess } from "../src/stability/fifo-process.ts";
 import {
   linuxSandboxEnabled,
   loopbackPorts,
@@ -26,11 +27,13 @@ import {
   type StabilityModelProvider,
   startLiveModelEgressProxy,
 } from "../src/stability/live-model-meter.ts";
+import { readNativeBootstrap } from "../src/stability/native-bootstrap.ts";
 import {
   createLoopbackOnlyFetch,
   type StabilityParentNetworkEntry,
 } from "../src/stability/parent-network-guard.ts";
 import { readRealModelBootstrap } from "../src/stability/real-model-bootstrap.ts";
+import { createScenarioProcessGroup } from "../src/stability/scenario-process-group.ts";
 
 const required = (name: string): string => {
   const value = process.env[name];
@@ -129,6 +132,9 @@ const providerRoute = providerRoutes[provider];
 if (mode === "real-llm" && !providerRoute) {
   throw new Error(`unsupported real-model provider ${provider}`);
 }
+const nativeAdmission = sandboxEnabled
+  ? await readNativeBootstrap()
+  : undefined;
 const realModelBootstrap =
   mode === "real-llm" ? await readRealModelBootstrap() : undefined;
 if (
@@ -230,68 +236,9 @@ async function startMockAuditProxy(
   };
 }
 
-function processGroupExists(pid: number): boolean {
-  if (sandboxEnabled) {
-    return (
-      spawnSync("sudo", ["-n", "kill", "-0", `-${pid}`], {
-        stdio: "ignore",
-      }).status === 0
-    );
-  }
-  try {
-    process.kill(-pid, 0);
-    return true;
-  } catch (error) {
-    // error-policy:J1 ESRCH is the explicit absent process-group state.
-    if (
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      error.code === "ESRCH"
-    ) {
-      return false;
-    }
-    throw error;
-  }
-}
-
-function signalGroup(pid: number, signal: NodeJS.Signals): void {
-  if (sandboxEnabled) {
-    const result = spawnSync("sudo", ["-n", "kill", `-${signal}`, `-${pid}`], {
-      stdio: "ignore",
-    });
-    if (result.status === 0 || !processGroupExists(pid)) return;
-    throw new Error(`privileged scenario process-group ${signal} failed`);
-  }
-  try {
-    process.kill(-pid, signal);
-  } catch (error) {
-    // error-policy:J6 ESRCH proves teardown is already complete.
-    if (
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      error.code === "ESRCH"
-    )
-      return;
-    throw error;
-  }
-}
-
-async function terminateGroup(pid: number): Promise<void> {
-  signalGroup(pid, "SIGTERM");
-  const deadline = Date.now() + 5_000;
-  while (Date.now() < deadline && processGroupExists(pid)) {
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  if (processGroupExists(pid)) signalGroup(pid, "SIGKILL");
-  const killDeadline = Date.now() + 5_000;
-  while (Date.now() < killDeadline && processGroupExists(pid)) {
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  if (processGroupExists(pid))
-    throw new Error("scenario CLI process group survived SIGKILL");
-}
+const processGroup = createScenarioProcessGroup(sandboxEnabled);
+const signalGroup = processGroup.signal;
+const terminateGroup = processGroup.terminate;
 
 const stack = await startCloudStack({
   frontend: false,
@@ -410,6 +357,7 @@ try {
     : undefined;
   const launch = sandboxCommand({
     enabled: sandboxEnabled,
+    nativeAdmission,
     allowedPorts: loopbackPorts([
       cloudApiProxy.url,
       stack.urls.controlPlane,
@@ -425,45 +373,74 @@ try {
     runtime: process.execPath,
     args,
   });
-  const child = spawn(launch.command, launch.args, {
-    cwd: repoRoot,
-    detached: true,
-    shell: false,
-    stdio: ["ignore", "pipe", "pipe"],
-    env: sandboxEnabled ? { PATH: process.env.PATH } : childEnvironment,
-  });
-  if (!child.pid) throw new Error("scenario CLI omitted its process-group id");
-  const childProcessGroupId = child.pid;
-  child.stdout?.on("data", (chunk: Buffer) => {
-    cliStdout += chunk.toString("utf8");
-    if (Buffer.byteLength(cliStdout) > 8 * 1024 * 1024) {
-      signalGroup(childProcessGroupId, "SIGKILL");
+  if (sandboxEnabled) {
+    const cancellation = new AbortController();
+    const cancel = () => cancellation.abort();
+    process.once("SIGTERM", cancel);
+    process.once("SIGINT", cancel);
+    try {
+      const captured = await runFifoProcess({
+        command: launch.command,
+        args: launch.args,
+        cwd: repoRoot,
+        env: { PATH: process.env.PATH },
+        timeoutMs: 180_000,
+        stdoutLimitBytes: 8 * 1024 * 1024,
+        stderrLimitBytes: 2 * 1024 * 1024,
+        signalGroup,
+        terminateGroup,
+        signal: cancellation.signal,
+      });
+      cliStdout = captured.stdout;
+      cliStderr = captured.stderr;
+      cliCode = captured.code;
+      cliClosedAt = captured.closedAt;
+    } finally {
+      process.removeListener("SIGTERM", cancel);
+      process.removeListener("SIGINT", cancel);
     }
-  });
-  child.stderr?.on("data", (chunk: Buffer) => {
-    cliStderr += chunk.toString("utf8");
-    if (Buffer.byteLength(cliStderr) > 2 * 1024 * 1024) {
-      signalGroup(childProcessGroupId, "SIGKILL");
-    }
-  });
-  let escalation: NodeJS.Timeout | undefined;
-  const timeout = setTimeout(() => {
-    signalGroup(childProcessGroupId, "SIGTERM");
-    escalation = setTimeout(
-      () => signalGroup(childProcessGroupId, "SIGKILL"),
-      5_000,
-    );
-    escalation.unref();
-  }, 180_000);
-  timeout.unref();
-  cliCode = await new Promise<number | null>((resolve, reject) => {
-    child.once("error", reject);
-    child.once("close", resolve);
-  });
-  cliClosedAt = Date.now();
-  clearTimeout(timeout);
-  if (escalation) clearTimeout(escalation);
-  await terminateGroup(childProcessGroupId);
+  } else {
+    const child = spawn(launch.command, launch.args, {
+      cwd: repoRoot,
+      detached: true,
+      shell: false,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: sandboxEnabled ? { PATH: process.env.PATH } : childEnvironment,
+    });
+    if (!child.pid)
+      throw new Error("scenario CLI omitted its process-group id");
+    const childProcessGroupId = child.pid;
+    child.stdout?.on("data", (chunk: Buffer) => {
+      cliStdout += chunk.toString("utf8");
+      if (Buffer.byteLength(cliStdout) > 8 * 1024 * 1024) {
+        signalGroup(childProcessGroupId, "SIGKILL");
+      }
+    });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      cliStderr += chunk.toString("utf8");
+      if (Buffer.byteLength(cliStderr) > 2 * 1024 * 1024) {
+        signalGroup(childProcessGroupId, "SIGKILL");
+      }
+    });
+    let escalation: NodeJS.Timeout | undefined;
+    const timeout = setTimeout(() => {
+      signalGroup(childProcessGroupId, "SIGTERM");
+      escalation = setTimeout(
+        () => signalGroup(childProcessGroupId, "SIGKILL"),
+        5_000,
+      );
+      escalation.unref();
+    }, 180_000);
+    timeout.unref();
+    cliCode = await new Promise<number | null>((resolve, reject) => {
+      child.once("error", reject);
+      child.once("close", resolve);
+    });
+    cliClosedAt = Date.now();
+    clearTimeout(timeout);
+    if (escalation) clearTimeout(escalation);
+    await terminateGroup(childProcessGroupId);
+  }
 } finally {
   if (sandboxEnvironmentPath) {
     // error-policy:J6 The privileged launcher normally consumes this file; forced teardown removes a pre-exec remainder.
