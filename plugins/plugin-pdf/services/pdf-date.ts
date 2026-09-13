@@ -25,7 +25,11 @@ function clampInt(value: string | undefined, min: number, max: number, fallback:
  * (`Date.UTC(10, …)` is 1910; `setUTCFullYear(10, …)` is year 10).
  */
 export function parsePdfSpecDate(value: string): Date | undefined {
-  const matches = PDF_SPEC_DATE_REGEX.exec(value);
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  const matches = PDF_SPEC_DATE_REGEX.exec(trimmed);
   if (!matches) {
     return undefined;
   }
