@@ -81,7 +81,7 @@ describe("WalletProvider local chain and cache behavior", () => {
     expect(setCache).not.toHaveBeenCalled();
   });
 
-  it("force-refreshes every chain in parallel and caches only successful balances", async () => {
+  it("force-refreshes every chain in parallel and caches a complete snapshot", async () => {
     const rt = runtime();
     const getCache = vi.spyOn(rt, "getCache");
     const setCache = vi.spyOn(rt, "setCache").mockResolvedValue(true);
@@ -91,14 +91,105 @@ describe("WalletProvider local chain and cache behavior", () => {
     });
     const getBalance = vi
       .spyOn(provider, "getWalletBalanceForChain")
-      .mockImplementation(async (chain) => (chain === "mainnet" ? "1.25" : null));
+      .mockImplementation(async (chain) => (chain === "mainnet" ? "1.25" : "0.5"));
 
     await expect(provider.getWalletBalances(true)).resolves.toEqual({
       mainnet: "1.25",
+      optimism: "0.5",
     });
     expect(getCache).not.toHaveBeenCalled();
     expect(getBalance).toHaveBeenCalledTimes(2);
-    expect(setCache).toHaveBeenCalledWith("evm/wallet/walletBalances", { mainnet: "1.25" });
+    expect(setCache).toHaveBeenCalledWith("evm/wallet/walletBalances", {
+      mainnet: "1.25",
+      optimism: "0.5",
+    });
+  });
+
+  it("refuses a cached map that is missing a configured chain and refreshes from RPC (#31111)", async () => {
+    const rt = runtime();
+    // The poisoned map from #31111: written while optimism's RPC was down.
+    vi.spyOn(rt, "getCache").mockResolvedValue({ mainnet: "5" });
+    const deleteCache = vi.spyOn(rt, "deleteCache").mockResolvedValue(true);
+    const setCache = vi.spyOn(rt, "setCache").mockResolvedValue(true);
+    const provider = new WalletProvider(generatePrivateKey(), rt, {
+      mainnet,
+      optimism,
+    });
+    const getBalance = vi
+      .spyOn(provider, "getWalletBalanceForChain")
+      .mockImplementation(async (chain) => (chain === "mainnet" ? "5" : "0.5"));
+
+    // Default (non-forced) read: the truncated entry must not be served.
+    await expect(provider.getChainBalanceStates()).resolves.toEqual({
+      mainnet: { status: "ok", balance: "5" },
+      optimism: { status: "ok", balance: "0.5" },
+    });
+    expect(deleteCache).toHaveBeenCalledWith("evm/wallet/walletBalances");
+    expect(getBalance).toHaveBeenCalledTimes(2);
+    expect(setCache).toHaveBeenCalledWith("evm/wallet/walletBalances", {
+      mainnet: "5",
+      optimism: "0.5",
+    });
+  });
+
+  it("clears an older snapshot when a live refresh has an unavailable chain", async () => {
+    const rt = runtime();
+    vi.spyOn(rt, "getCache").mockResolvedValue({ mainnet: "4", optimism: "0.4" });
+    const deleteCache = vi.spyOn(rt, "deleteCache").mockResolvedValue(true);
+    const setCache = vi.spyOn(rt, "setCache").mockResolvedValue(true);
+    const provider = new WalletProvider(generatePrivateKey(), rt, {
+      mainnet,
+      optimism,
+    });
+    vi.spyOn(provider, "getWalletBalanceForChain").mockImplementation(async (chain) => {
+      if (chain === "optimism") throw new Error("503 Service Unavailable");
+      return "5";
+    });
+
+    const states = await provider.getChainBalanceStates(true);
+    expect(states.optimism).toEqual({ status: "unavailable", error: "503 Service Unavailable" });
+    expect(deleteCache).toHaveBeenCalledWith("evm/wallet/walletBalances");
+    expect(setCache).not.toHaveBeenCalled();
+  });
+
+  it("reports an unreachable chain as unavailable and never caches the partial snapshot (#31111)", async () => {
+    const rt = runtime();
+    const setCache = vi.spyOn(rt, "setCache").mockResolvedValue(true);
+    vi.spyOn(rt, "getCache").mockResolvedValue(undefined);
+    vi.spyOn(rt, "deleteCache").mockResolvedValue(true);
+    const provider = new WalletProvider(generatePrivateKey(), rt, {
+      mainnet,
+      optimism,
+    });
+    let optimismDown = true;
+    vi.spyOn(provider, "getWalletBalanceForChain").mockImplementation(async (chain) => {
+      if (chain === "optimism" && optimismDown) {
+        throw new Error("HTTP request failed: 503 Service Unavailable");
+      }
+      return chain === "mainnet" ? "5" : "0.5";
+    });
+
+    await expect(provider.getChainBalanceStates()).resolves.toEqual({
+      mainnet: { status: "ok", balance: "5" },
+      optimism: {
+        status: "unavailable",
+        error: "HTTP request failed: 503 Service Unavailable",
+      },
+    });
+    // The balances view omits the chain but a partial map is never cached.
+    await expect(provider.getWalletBalances()).resolves.toEqual({ mainnet: "5" });
+    expect(setCache).not.toHaveBeenCalled();
+
+    // Once the RPC answers again the next read sees it (no stale "absent").
+    optimismDown = false;
+    await expect(provider.getWalletBalances()).resolves.toEqual({
+      mainnet: "5",
+      optimism: "0.5",
+    });
+    expect(setCache).toHaveBeenCalledWith("evm/wallet/walletBalances", {
+      mainnet: "5",
+      optimism: "0.5",
+    });
   });
 
   it("creates a configured local provider from runtime settings", async () => {
