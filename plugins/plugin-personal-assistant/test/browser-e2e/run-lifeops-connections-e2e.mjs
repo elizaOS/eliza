@@ -122,7 +122,11 @@ function contrastRatio(foreground, background) {
   return (light + 0.05) / (dark + 0.05);
 }
 
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({
+  headless: true,
+  // Recorded walkthroughs need readable pauses between the same asserted actions.
+  slowMo: process.env.ELIZA_LIFEOPS_E2E_RECORD_SLOW === "1" ? 750 : 0,
+});
 try {
   const desktop = await browser.newPage({
     viewport: { width: 1280, height: 900 },
