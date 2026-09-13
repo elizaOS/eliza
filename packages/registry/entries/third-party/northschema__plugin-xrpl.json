@@ -1,0 +1,9 @@
+{
+  "package": "@northschema/plugin-xrpl",
+  "repository": "github:nctrnlsoul/plugin-ns-xrpl",
+  "kind": "plugin",
+  "description": "Reads public XRPL ledger state for elizaOS agents. Read-only: no signing, no key material, no transaction submission.",
+  "homepage": "https://github.com/nctrnlsoul/plugin-ns-xrpl#readme",
+  "version": "0.3.0",
+  "tags": ["xrpl", "xrp", "ledger", "read-only"]
+}
