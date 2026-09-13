@@ -901,8 +901,32 @@ function formatEntityNames(names: string[]): string {
 	return renderedNames;
 }
 
+/**
+ * Presentation projection of entity metadata for the "People in the Room"
+ * block. Image URLs are never useful to a text model, and connectors store
+ * the same name/username/id three times (top level, `default`, `<source>`);
+ * on the live room that was 5.9K characters in every Stage-1, planner and
+ * evaluator call (2026-09-13). Everything else (bio, roles, ids) stays.
+ */
 export function formatEntityMetadata(metadata: unknown): string {
-	return stableStringify(metadata);
+	return stableStringify(projectEntityDisplayMetadata(metadata));
+}
+
+const ENTITY_METADATA_OMITTED_KEYS = new Set([
+	"avatarUrl",
+	"avatar",
+	"originalId",
+]);
+
+export function projectEntityDisplayMetadata(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(projectEntityDisplayMetadata);
+	if (!value || typeof value !== "object") return value;
+	const out: Record<string, unknown> = {};
+	for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+		if (ENTITY_METADATA_OMITTED_KEYS.has(key) || key === "default") continue;
+		out[key] = projectEntityDisplayMetadata(entry);
+	}
+	return out;
 }
 
 export function formatEntities({ entities }: { entities: Entity[] }) {
