@@ -23,6 +23,10 @@ import type { NativeBootstrap } from "./native-bootstrap.ts";
 
 /** Includes complete pre-admission and release scans in the native lane budget. */
 export const NATIVE_STABILITY_TIMEOUT_MS = 600_000;
+// The setup probe uses the same guardian allocation/cleanup path as an attempt.
+const NATIVE_CAPABILITY_STOP_GRACE_MS = NATIVE_STABILITY_TIMEOUT_MS + 5_000;
+const NATIVE_CAPABILITY_PARENT_TIMEOUT_MS =
+  NATIVE_STABILITY_TIMEOUT_MS + NATIVE_CAPABILITY_STOP_GRACE_MS + 10_000;
 
 const admittedSourceNames = new Set([
   "ANTHROPIC_BASE_URL",
@@ -125,8 +129,8 @@ export function assertLinuxSandboxCapabilities(
         "-n",
         "/usr/bin/timeout",
         "--signal=TERM",
-        "--kill-after=5s",
-        "60s",
+        `--kill-after=${NATIVE_CAPABILITY_STOP_GRACE_MS / 1_000}s`,
+        `${NATIVE_STABILITY_TIMEOUT_MS / 1_000}s`,
         "/bin/bash",
         installedLauncher ??
           path.join(
@@ -139,7 +143,7 @@ export function assertLinuxSandboxCapabilities(
         encoding: "utf8",
         env: { PATH: "/usr/sbin:/usr/bin:/sbin:/bin" },
         stdio: ["ignore", descriptors[0], descriptors[1]],
-        timeout: 75_000,
+        timeout: NATIVE_CAPABILITY_PARENT_TIMEOUT_MS,
         killSignal: "SIGKILL",
       },
     );

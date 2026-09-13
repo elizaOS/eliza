@@ -160,3 +160,43 @@ window, with retained reservations and adapter quarantine on unproven cleanup.
 This accounts for measured metadata inspection exceeding 100 seconds on an
 isolated Linux target without omitting scans or changing the payload CPU limit.
 The nonnative fixture default remains 15,000 ms.
+
+### Native authority installation
+
+Run `scripts/install-native-stability.py --source-root <checkout>/packages/cloud/e2e/scripts`
+with the trusted setup process's root authority before starting a scenario, then
+pass its returned `installedRoot` through `--native-root` to `stability:keyless`
+or `stability:real`. The installer creates a unique private directory under
+`/opt`; it never overwrites an existing installation or changes kernel/security
+policy. The reviewed checkout is the trusted build input. Its root path may use
+a canonicalized alias such as `/tmp`, but source files and the `native-ledger`
+subdirectory cannot be symlinks. Sources, actual compiler/tool binaries, kernel
+BTF, generated header and build outputs are hashed in the retained receipt.
+
+The supported target requires x86_64 Linux, systemd, cgroup v2, at least two
+online CPUs, kernel BTF, clang-18, the kernel's packaged bpftool, libbpf/libelf/zlib
+development packages, and the existing bubblewrap/iptables/ACL boundary. The
+host must already permit bubblewrap user namespaces under its security policy.
+The executed native controls use Ubuntu's 6.8.0-134-generic kernel; a distribution
+or hosted-runner label alone does not establish hook compatibility. Mandatory
+hook attachment, quiescence, counters and authenticated cleanup must succeed on
+the actual running kernel. A successful build receipt is not scenario proof.
+
+Both central Cloud stability jobs install this authority and pass its path to
+the exact-three lane. Each execution step allows three 600-second attempts with
+up to 600 seconds of cancellation cleanup apiece, plus a 1,440-second native
+preflight and outer authority/report boundary. The native preflight itself runs
+the same guardian-backed allocation and full
+identity inspection, allowing 600 seconds of work and 600 seconds of cancellation
+cleanup plus process-control grace. It runs once in the CLI, without a duplicate
+workflow probe. The job also has explicit checkout, setup, native build,
+containment-test and artifact-upload windows; these limits do not change
+the report's selected per-attempt success budget.
+
+The serial containment step allows 128 minutes: four lifecycle/capability controls
+at 1,290 seconds each, a 1,980-second restricted-guardian control including
+separate full-authority recovery, the 65-second descriptor control, fifteen FIFO
+controls at 20 seconds each, and 175 seconds for parsers, admission and startup. Its unsigned kernel fixtures
+never stand in for authenticated native scenario acceptance. The full job bound
+is 252 minutes including the 84-minute exact-three lane and setup/artifacts.
+These are worst-case cancellation bounds, not measured execution times.

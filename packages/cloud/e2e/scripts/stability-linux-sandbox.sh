@@ -174,7 +174,7 @@ setup() {
     probe_uid="$(/usr/bin/id -u nobody)"
     [ "$probe_uid" -ne 0 ] || die "capability probe owner must be non-root"
     probe_dir="$(/usr/bin/mktemp -d /var/tmp/eliza-stability-capability.XXXXXX)"
-    trap '/bin/rm -rf -- "$probe_dir"' EXIT
+    # Failed ownership teardown must retain its output for exact-owner recovery.
     /bin/chown "$probe_uid" "$probe_dir"
     /bin/chmod 0700 "$probe_dir"
     /usr/bin/install -m 0600 -o "$probe_uid" /dev/null "$probe_dir/.sandbox-environment-probe.bin"
@@ -190,6 +190,7 @@ except OSError as error:
 else:
     raise AssertionError("seccomp capability unavailable")
 ' 2>&1 | /bin/cat >&2; then
+      /bin/rm -rf -- "$probe_dir"
       exit 0
     else
       probe_status=$?

@@ -1643,6 +1643,8 @@ async function verifyPackedEdgeContract(): Promise<void> {
 		await execFileAsync(
 			resolveTscBin(),
 			[
+				// This external consumer uses explicit options, never an ambient temporary-directory project.
+				"--ignoreConfig",
 				"--noEmit",
 				"--module",
 				"NodeNext",

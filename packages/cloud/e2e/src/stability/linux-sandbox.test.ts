@@ -1,35 +1,37 @@
 /**
  * Proves the Linux stability sandbox rejects credential, process, descriptor,
  * and kernel-network escapes while preserving declared mock-proxy access.
+ * Real guardian/FIFO fixtures remain explicitly unsigned; authenticated native
+ * scenario acceptance belongs to the canonical adapter and verifier lane.
  */
 
 import { expect, test } from "bun:test";
 import { spawn, spawnSync } from "node:child_process";
-import {
-  closeSync,
-  existsSync,
-  mkdtempSync,
-  openSync,
-  realpathSync,
-  writeFileSync,
-} from "node:fs";
+import { createSocket } from "node:dgram";
+import { once } from "node:events";
+import { existsSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import {
   chmod,
+  copyFile,
   mkdir,
   mkdtemp,
   readFile,
   rm,
   writeFile,
 } from "node:fs/promises";
-import { createServer } from "node:net";
-import { tmpdir } from "node:os";
+import { createConnection, createServer } from "node:net";
+import { networkInterfaces, tmpdir } from "node:os";
 import path from "node:path";
 import {
+  NATIVE_STABILITY_TIMEOUT_MS,
+  assertLinuxSandboxCapabilities,
   loopbackPorts,
   sandboxCommand,
   scenarioChildEnvironment,
   writeSandboxEnvironment,
 } from "./linux-sandbox.ts";
+import { runFifoProcess } from "./fifo-process.ts";
+import { createScenarioProcessGroup } from "./scenario-process-group.ts";
 
 function resolveRepositoryRoot(start: string): string {
   let candidate = path.resolve(start);
@@ -55,6 +57,338 @@ function resolveRepositoryRoot(start: string): string {
 }
 
 const repoRoot = resolveRepositoryRoot(import.meta.dirname);
+const kernelFixtureTimeoutMs = 2 * NATIVE_STABILITY_TIMEOUT_MS + 60_000;
+const fixtureReceiptPrefix = "ELIZA_KERNEL_FIXTURE_TERMINAL=";
+let kernelFixtureUnproven = false;
+
+/** Calls the real guardian as an explicitly unsigned kernel fixture, never a native acceptance token. */
+async function runKernelFixture(
+  launch: ReturnType<typeof sandboxCommand>,
+  sentinelPath?: string,
+  forceReadyPath?: string,
+) {
+  if (kernelFixtureUnproven)
+    throw new Error(
+      "Prior kernel fixture cleanup is unproven; refusing another owner",
+    );
+  kernelFixtureUnproven = true;
+  const runIndex = launch.args.indexOf("run");
+  if (runIndex < 1)
+    throw new Error(
+      "Kernel fixture requires the production supervisor argument contract",
+    );
+  const script = launch.args[runIndex - 1];
+  const supervisor = launch.args[runIndex + 1];
+  if (typeof script !== "string" || typeof supervisor !== "string") {
+    throw new Error(
+      "Kernel fixture omitted the launcher or original supervisor identity",
+    );
+  }
+  const argumentsJson = JSON.stringify(launch.args.slice(runIndex + 2));
+  const driver = `import importlib.util,json,os,pathlib,sys,signal,time,select
+script,arguments,supervisor,sentinel,force_ready=sys.argv[1:]
+helper=pathlib.Path(script).with_name('stability-sandbox-owner.py')
+spec=importlib.util.spec_from_file_location('owned_kernel_fixture',helper)
+module=importlib.util.module_from_spec(spec)
+sys.modules[spec.name]=module
+spec.loader.exec_module(module)
+module.require_root()
+if sentinel:
+ fd=os.open(sentinel,os.O_RDONLY|os.O_NOFOLLOW)
+ if fd!=3:
+  os.dup2(fd,3)
+  os.close(fd)
+ os.set_inheritable(3,True)
+if force_ready:
+ prior=set(pathlib.Path('/run').glob('eliza-stability-owner-*'))
+ reader,writer=os.pipe()
+ pid=os.fork()
+ if pid==0:
+  os.close(reader)
+  os.write(writer,module.canonical(module.process_identity(os.getpid())))
+  os.close(writer)
+  try:
+   module.controller(script,json.loads(arguments),json.loads(supervisor),True)
+  finally:
+   os._exit(70)
+ os.close(writer)
+ pidfd=os.pidfd_open(pid)
+ reaped=False
+ try:
+  poller=select.poll();poller.register(reader,select.POLLIN|select.POLLHUP)
+  if not poller.poll(5000):raise RuntimeError('fixture controller identity deadline')
+  identity=json.loads(os.read(reader,4096));os.close(reader)
+  deadline=time.monotonic()+600
+  while not pathlib.Path(force_ready).exists():
+   if time.monotonic()>=deadline:raise RuntimeError('forced fixture readiness deadline')
+   if os.waitpid(pid,os.WNOHANG)[0]:
+    reaped=True
+    raise RuntimeError('controller exited before payload readiness')
+   time.sleep(.05)
+  owners=[]
+  for directory in set(pathlib.Path('/run').glob('eliza-stability-owner-*'))-prior:
+   rows=module.Journal(directory).read()
+   if any(row['event']=='owner-started' and row['data']['controllerIdentity']==identity for row in rows):owners.append(directory)
+  if len(owners)!=1:raise RuntimeError('forced fixture owner identity is not unique')
+  directory=owners[0]
+  rows=module.Journal(directory).read()
+  names=next(row['data']['units'] for row in rows if row['event']=='owner-started')
+  signal.pidfd_send_signal(pidfd,signal.SIGTERM)
+  _,status=os.waitpid(pid,0);reaped=True
+  if not os.WIFSIGNALED(status) or os.WTERMSIG(status)!=signal.SIGTERM:raise RuntimeError('controller did not die by owned TERM')
+  deadline=time.monotonic()+610
+  while True:
+   rows=module.Journal(directory).read()
+   if rows and rows[-1]['event']=='cleanup-verified':break
+   if time.monotonic()>=deadline:raise RuntimeError('forced fixture cleanup deadline')
+   time.sleep(.1)
+  while True:
+   states={}
+   for key,unit in names.items():
+    remaining=deadline-time.monotonic()
+    if remaining<=0:raise RuntimeError('owned manager terminal deadline')
+    text=module.command(['/usr/bin/systemctl','show',unit,'--property=LoadState,ActiveState,SubState,ControlGroup,Job,MainPID,ControlPID'],timeout=min(10,remaining)).stdout.decode('utf-8',errors='strict')
+    fields=dict(line.split('=',1) for line in text.splitlines() if '=' in line)
+    if not {'LoadState','ActiveState','SubState','ControlGroup','Job'}<=fields.keys():raise RuntimeError('manager omitted terminal state')
+    if key in ('guardian','collector') and not {'MainPID','ControlPID'}<=fields.keys():raise RuntimeError('manager omitted service process state')
+    states[key]=fields
+   if all(v['ActiveState'] in ('inactive','failed') and not v['ControlGroup'] and not v['Job'] and v.get('MainPID','0')=='0' and v.get('ControlPID','0')=='0' for v in states.values()):break
+   time.sleep(.1)
+  result={'directory':str(directory),'units':names,'controllerSignal':'SIGTERM','controllerIdentity':identity,'nativeLedgerQualified':False,'observedUnitStates':states}
+ finally:
+  if not reaped:
+   signal.pidfd_send_signal(pidfd,signal.SIGKILL)
+   os.waitpid(pid,0)
+  os.close(pidfd)
+else:
+ result=module.controller(script,json.loads(arguments),json.loads(supervisor),True)
+ if result['terminal']['nativeLedgerQualified'] is not False:
+  raise RuntimeError('kernel fixture must remain explicitly unsigned')
+records=module.Journal(result['directory']).read()
+result['identity']=next(row['data'] for row in records if row['event']=='identity-intent')
+result['cleanupEvent']=records[-1]['event']
+print(${JSON.stringify(fixtureReceiptPrefix)}+json.dumps(result),file=sys.stderr,flush=True)
+`;
+  const group = createScenarioProcessGroup(true);
+  const captured = await runFifoProcess({
+    command: "sudo",
+    args: [
+      "-n",
+      "/usr/bin/python3",
+      "-I",
+      "-S",
+      "-c",
+      driver,
+      script,
+      argumentsJson,
+      supervisor,
+      sentinelPath ?? "",
+      forceReadyPath ?? "",
+    ],
+    cwd: repoRoot,
+    env: { PATH: process.env.PATH },
+    timeoutMs: kernelFixtureTimeoutMs,
+    stdoutLimitBytes: 1024 * 1024,
+    stderrLimitBytes: 1024 * 1024,
+    signalGroup: group.signal,
+    terminateGroup: group.terminate,
+  });
+  if (captured.code !== 0)
+    throw new Error(`Kernel fixture controller failed: ${captured.stderr}`);
+  const lines = captured.stderr.split("\n");
+  const receipts = lines.filter((line) =>
+    line.startsWith(fixtureReceiptPrefix),
+  );
+  const [receiptLine] = receipts;
+  if (receipts.length !== 1 || typeof receiptLine !== "string")
+    throw new Error("Kernel fixture omitted its unique terminal receipt");
+  const receipt: unknown = JSON.parse(
+    receiptLine.slice(fixtureReceiptPrefix.length),
+  );
+  if (!receipt || typeof receipt !== "object" || !("directory" in receipt)) {
+    throw new Error("Kernel fixture omitted its terminal lifecycle result");
+  }
+  let lifecycleCode: number;
+  if (forceReadyPath) {
+    if (
+      !("controllerSignal" in receipt) ||
+      receipt.controllerSignal !== "SIGTERM" ||
+      !("nativeLedgerQualified" in receipt) ||
+      receipt.nativeLedgerQualified !== false
+    ) {
+      throw new Error(
+        "Forced fixture omitted actual controller death evidence",
+      );
+    }
+    lifecycleCode = 128 + 15;
+  } else {
+    if (!("terminal" in receipt))
+      throw new Error("Kernel fixture omitted its terminal");
+    const terminal = receipt.terminal;
+    if (
+      !terminal ||
+      typeof terminal !== "object" ||
+      !("nativeLedgerQualified" in terminal) ||
+      terminal.nativeLedgerQualified !== false ||
+      !("lifecycleCode" in terminal) ||
+      typeof terminal.lifecycleCode !== "number" ||
+      !Number.isSafeInteger(terminal.lifecycleCode)
+    )
+      throw new Error(
+        "Kernel fixture returned an invalid unsigned lifecycle result",
+      );
+    lifecycleCode = terminal.lifecycleCode;
+  }
+  if (
+    !("identity" in receipt) ||
+    !receipt.identity ||
+    typeof receipt.identity !== "object" ||
+    !("uid" in receipt.identity) ||
+    typeof receipt.identity.uid !== "number" ||
+    !Number.isSafeInteger(receipt.identity.uid) ||
+    receipt.identity.uid <= 0 ||
+    !("cleanupEvent" in receipt) ||
+    receipt.cleanupEvent !== "cleanup-verified"
+  ) {
+    throw new Error(
+      "Kernel fixture omitted its owned identity or verified cleanup",
+    );
+  }
+  kernelFixtureUnproven = false;
+  return {
+    ...captured,
+    code: lifecycleCode,
+    hostUid: receipt.identity.uid,
+    stderr: lines
+      .filter((line) => !line.startsWith(fixtureReceiptPrefix))
+      .join("\n")
+      .trim(),
+    receipt,
+  };
+}
+
+/** Uses admitted FIFO streams for root setup probes under the same descriptor barrier. */
+async function runSetupProbe(args: string[], timeoutMs = 30_000) {
+  const group = createScenarioProcessGroup(true);
+  const result = await runFifoProcess({
+    command: "sudo",
+    args,
+    cwd: repoRoot,
+    env: { PATH: process.env.PATH },
+    timeoutMs,
+    stdoutLimitBytes: 1024 * 1024,
+    stderrLimitBytes: 1024 * 1024,
+    signalGroup: group.signal,
+    terminateGroup: group.terminate,
+  });
+  return { ...result, status: result.code };
+}
+
+/** Real host endpoints distinguish denied egress from an unreachable destination. */
+async function startOwnedNetworkProbes() {
+  const host = Object.values(networkInterfaces())
+    .flat()
+    .find(
+      (address) => address?.family === "IPv4" && !address.internal,
+    )?.address;
+  if (!host)
+    throw new Error(
+      "Containment proof requires an owned non-loopback IPv4 interface",
+    );
+  const arrivals = { tcp: 0, udp: 0, dns: 0 };
+  const tcp = createServer((socket) => {
+    arrivals.tcp++;
+    socket.end("owned-network-probe");
+  });
+  const udp = createSocket("udp4");
+  const dns = createSocket("udp4");
+  const bound = new Set<"tcp" | "udp" | "dns">();
+  const close = async () => {
+    await Promise.all([
+      ...(bound.has("tcp")
+        ? [
+            new Promise<void>((resolve, reject) =>
+              tcp.close((error) => (error ? reject(error) : resolve())),
+            ),
+          ]
+        : []),
+      ...(bound.has("udp")
+        ? [new Promise<void>((resolve) => udp.close(resolve))]
+        : []),
+      ...(bound.has("dns")
+        ? [new Promise<void>((resolve) => dns.close(resolve))]
+        : []),
+    ]);
+  };
+  for (const [name, socket] of [
+    ["udp", udp],
+    ["dns", dns],
+  ] as const) {
+    socket.on("message", (message, remote) => {
+      arrivals[name]++;
+      socket.send(message, remote.port, remote.address);
+    });
+  }
+  try {
+    const readiness = [
+      once(tcp, "listening").then(() => bound.add("tcp")),
+      once(udp, "listening").then(() => bound.add("udp")),
+      once(dns, "listening").then(() => bound.add("dns")),
+    ];
+    tcp.listen(0, host);
+    udp.bind(0, host);
+    dns.bind(0, host);
+    const starts = await Promise.allSettled(readiness);
+    for (const result of starts)
+      if (result.status === "rejected") throw result.reason;
+    const address = tcp.address();
+    if (!address || typeof address === "string")
+      throw new Error("Owned TCP listener did not bind");
+    const client = createConnection({ host, port: address.port });
+    const response = once(client, "data", {
+      signal: AbortSignal.timeout(2_000),
+    });
+    try {
+      await response;
+    } finally {
+      client.destroy();
+    }
+    for (const socket of [udp, dns]) {
+      const probe = createSocket("udp4");
+      const reply = once(probe, "message", {
+        signal: AbortSignal.timeout(2_000),
+      });
+      try {
+        probe.send(Buffer.from("owned-readiness"), socket.address().port, host);
+        await reply;
+      } finally {
+        probe.close();
+      }
+    }
+    return {
+      host,
+      tcpPort: address.port,
+      udpPort: udp.address().port,
+      // A DNS wire query targets an owned ephemeral listener; UDP denial is independent of destination port.
+      dnsPort: dns.address().port,
+      arrivals,
+      baseline: { ...arrivals },
+      close,
+    };
+  } catch (error) {
+    // error-policy:J2 Preserve readiness failure after closing this test's listeners.
+    try {
+      await close();
+    } catch (cleanupError) {
+      // error-policy:J2 Retain both setup and owned-listener teardown failures.
+      throw new AggregateError(
+        [error, cleanupError],
+        "Owned network fixture setup and cleanup failed",
+      );
+    }
+    throw error;
+  }
+}
 
 test("credential-minimal child environment rejects ambient runner secrets", () => {
   const environment = scenarioChildEnvironment(
@@ -224,6 +558,7 @@ function expectAclRestored(directory: string, expected: string) {
 test.skipIf(!hostedLinux)(
   "kernel boundary blocks proc, fd, network, AF_UNIX, socketpair, and io_uring escapes",
   async () => {
+    let cleanupVerified = false;
     const {
       attempt: directory,
       attemptAcl,
@@ -248,6 +583,7 @@ test.skipIf(!hostedLinux)(
     );
     const datagramReadyPath = path.join(directory, "host-dgram-ready");
     const abstractUnixPath = `\0eliza-stability-${process.pid}-${Date.now()}`;
+    const ownedNetwork = await startOwnedNetworkProbes();
     const datagramServer = spawn(
       "python3",
       [
@@ -347,7 +683,7 @@ const unix = (path) => new Promise((resolve) => {
   socket.once("connect", () => { clearTimeout(timer); socket.destroy(); resolve(true); });
   socket.once("error", () => { clearTimeout(timer); resolve(false); });
 });
-const udp = (family, host, port) => new Promise((resolve) => {
+const udp = (family, host, port, payload = Buffer.from("escape")) => new Promise((resolve) => {
   const socket = createSocket(family);
   let settled = false;
   const finish = (value) => {
@@ -359,7 +695,7 @@ const udp = (family, host, port) => new Promise((resolve) => {
   const timer = setTimeout(() => finish(true), 750);
   socket.once("error", () => { clearTimeout(timer); finish(false); });
   socket.connect(port, host, () => {
-    socket.send(Buffer.from("escape"), (error) => {
+    socket.send(payload, (error) => {
       if (error) { clearTimeout(timer); finish(false); }
     });
   });
@@ -409,9 +745,9 @@ console.log(JSON.stringify({
   allowed: await tcp("127.0.0.1", Number(process.env.PROBE_ALLOWED_PORT)),
   blockedLoopback: await tcp("127.0.0.1", Number(process.env.PROBE_BLOCKED_PORT)),
   blockedIpv6: await tcp("::1", Number(process.env.PROBE_BLOCKED_IPV6_PORT)),
-  externalTcp: await tcp("1.1.1.1", 443),
-  externalUdp: await udp("udp4", "1.1.1.1", 123),
-  dnsUdp: await udp("udp4", "8.8.8.8", 53),
+  externalTcp: await tcp(process.env.PROBE_OWNED_HOST, Number(process.env.PROBE_OWNED_TCP_PORT)),
+  externalUdp: await udp("udp4", process.env.PROBE_OWNED_HOST, Number(process.env.PROBE_OWNED_UDP_PORT)),
+  dnsUdp: await udp("udp4", process.env.PROBE_OWNED_HOST, Number(process.env.PROBE_OWNED_DNS_PORT), Buffer.from("123401000001000000000000056f776e656407696e76616c69640000010001", "hex")),
   ipv6Udp: await udp("udp6", "::1", Number(process.env.PROBE_BLOCKED_IPV6_PORT)),
   rawProbeAvailable,
   rawIpv4: (await runNative("/usr/bin/python3", ["-c", "import socket; socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)"])).status === 0,
@@ -437,6 +773,10 @@ console.log(JSON.stringify({
             PROBE_ALLOWED_PORT: String(allowedPort),
             PROBE_BLOCKED_PORT: String(blockedPort),
             PROBE_BLOCKED_IPV6_PORT: String(blockedIpv6Port),
+            PROBE_OWNED_HOST: ownedNetwork.host,
+            PROBE_OWNED_TCP_PORT: String(ownedNetwork.tcpPort),
+            PROBE_OWNED_UDP_PORT: String(ownedNetwork.udpPort),
+            PROBE_OWNED_DNS_PORT: String(ownedNetwork.dnsPort),
             PROBE_FILESYSTEM_UNIX: filesystemUnixPath,
             PROBE_FILESYSTEM_UNIX_DGRAM: filesystemUnixDatagramPath,
             PROBE_HOST_TMP_PATH: hostTmpMarkerPath,
@@ -451,31 +791,21 @@ console.log(JSON.stringify({
       const sentinelDirectory = mkdtempSync(path.join(tmpdir(), "sandbox-fd-"));
       const sentinelPath = path.join(sentinelDirectory, "sentinel");
       writeFileSync(sentinelPath, "fd-secret", { mode: 0o600 });
-      const sentinelFd = openSync(sentinelPath, "r");
-      const child = spawn(launch.command, launch.args, {
-        cwd: repoRoot,
-        env: { PATH: process.env.PATH },
-        stdio: ["ignore", "pipe", "pipe", sentinelFd],
-      });
-      closeSync(sentinelFd);
-      let stdout = "";
-      let stderr = "";
-      child.stdout?.on("data", (chunk: Buffer) => {
-        stdout += chunk.toString("utf8");
-      });
-      child.stderr?.on("data", (chunk: Buffer) => {
-        stderr += chunk.toString("utf8");
-      });
-      const code = await new Promise<number | null>((resolve, reject) => {
-        child.once("error", reject);
-        child.once("close", resolve);
-      });
-      await rm(sentinelDirectory, { recursive: true, force: true });
+      let captured: Awaited<ReturnType<typeof runKernelFixture>>;
+      try {
+        captured = await runKernelFixture(launch, sentinelPath);
+        cleanupVerified = true;
+      } finally {
+        await rm(sentinelDirectory, { recursive: true, force: true });
+      }
+      const { stdout, stderr, code } = captured;
       expect(stderr).toBe("");
       expect(code).toBe(0);
+      expect(ownedNetwork.arrivals).toEqual(ownedNetwork.baseline);
       const result = JSON.parse(stdout.trim()) as Record<string, unknown>;
       expect(result.uid).toBe(0);
       expect(result.hostUid).not.toBe(process.getuid?.());
+      expect(result.hostUid).toBe(captured.hostUid);
       const { uid: _uid, hostUid: _hostUid, ...observed } = result;
       expect(observed).toEqual({
         secretPresent: false,
@@ -528,8 +858,7 @@ console.log(JSON.stringify({
         repoRoot,
         "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
       );
-      const missingBwrap = spawnSync(
-        "sudo",
+      const missingBwrap = await runSetupProbe(
         [
           "-n",
           "/usr/bin/bwrap",
@@ -547,12 +876,11 @@ console.log(JSON.stringify({
           setupScript,
           "setup",
         ],
-        { encoding: "utf8" },
+        30_000,
       );
       expect(missingBwrap.status).not.toBe(0);
       expect(missingBwrap.stderr).toContain("missing required command: bwrap");
-      const missingIptables = spawnSync(
-        "sudo",
+      const missingIptables = await runSetupProbe(
         [
           "-n",
           "/usr/bin/bwrap",
@@ -570,7 +898,7 @@ console.log(JSON.stringify({
           setupScript,
           "setup",
         ],
-        { encoding: "utf8" },
+        30_000,
       );
       expect(missingIptables.status).not.toBe(0);
       expect(missingIptables.stderr).toContain(
@@ -583,112 +911,106 @@ console.log(JSON.stringify({
       blockedIpv6.close();
       filesystemUnix.close();
       abstractUnix.close();
+      await ownedNetwork.close();
       datagramServer.kill("SIGKILL");
       await rm(hostTmpDirectory, { recursive: true, force: true });
       expectAclRestored(directory, attemptAcl);
       expectAclRestored(outputRoot, outputRootAcl);
-      await rm(outputRoot, { recursive: true, force: true });
+      if (cleanupVerified)
+        await rm(outputRoot, { recursive: true, force: true });
     }
   },
-  30_000,
+  kernelFixtureTimeoutMs + 30_000,
 );
 
 test.skipIf(!hostedLinux)(
   "early bwrap failure removes the sandbox identity and kernel state",
   async () => {
+    let cleanupVerified = false;
     const {
       attempt: directory,
       attemptAcl,
       outputRoot,
       outputRootAcl,
     } = await createPrivateAttempt("cloud-sandbox-early-failure-");
-    const fakeBwrapPath = path.join(directory, "failing-bwrap");
-    await writeFile(fakeBwrapPath, "#!/bin/sh\n/bin/sleep 1\nexit 91\n", {
-      mode: 0o755,
-    });
-    const environmentPath = await writeSandboxEnvironment(
-      directory,
-      scenarioChildEnvironment(process.env, {}),
+    const fixtureRoot = await mkdtemp(
+      path.join(tmpdir(), "cloud-bwrap-failure-launcher-"),
     );
-    const launch = sandboxCommand({
-      enabled: true,
-      allowedPorts: "9",
-      repoRoot,
-      outputDir: directory,
-      environmentPath,
-      callerHome: process.env.HOME ?? "",
-      callerUid: process.getuid?.() ?? 0,
-      runtime: "/bin/true",
-      args: [],
-    });
-    const child = spawn(
-      launch.command,
-      [
-        "-n",
-        "/usr/bin/bwrap",
-        "--bind",
-        "/",
-        "/",
-        "--dev-bind",
-        "/dev",
-        "/dev",
-        "--proc",
-        "/proc",
-        "--ro-bind",
-        fakeBwrapPath,
-        "/usr/bin/bwrap",
-        ...launch.args.slice(1),
-      ],
-      {
-        cwd: repoRoot,
-        env: { PATH: process.env.PATH },
-        stdio: ["ignore", "pipe", "pipe"],
-      },
-    );
-    let stdout = "";
-    let stderr = "";
-    child.stdout?.on("data", (chunk: Buffer) => {
-      stdout += chunk.toString("utf8");
-    });
-    child.stderr?.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString("utf8");
-    });
     try {
-      let sandboxUid: number | undefined;
-      const identityDeadline = Date.now() + 5_000;
-      while (sandboxUid === undefined && Date.now() < identityDeadline) {
-        const passwd = spawnSync("getent", ["passwd"], { encoding: "utf8" });
-        if (passwd.status !== 0) throw new Error("getent passwd failed");
-        const record = passwd.stdout
-          .split("\n")
-          .find((line) => line.startsWith("eliza-sbx-"));
-        if (record) sandboxUid = Number(record.split(":")[2]);
-        if (sandboxUid === undefined) await Bun.sleep(10);
+      const fakeBwrapPath = path.join(fixtureRoot, "failing-bwrap");
+      await writeFile(fakeBwrapPath, "#!/bin/sh\nexit 91\n", { mode: 0o755 });
+      const scripts = path.join(repoRoot, "packages/cloud/e2e/scripts");
+      for (const name of [
+        "stability-sandbox-owner.py",
+        "stability-sandbox-identity.py",
+        "stability-sandbox-exec.py",
+        "stability-native-attestation.py",
+      ]) {
+        await copyFile(path.join(scripts, name), path.join(fixtureRoot, name));
       }
-      const code = await new Promise<number | null>((resolve, reject) => {
-        child.once("error", reject);
-        child.once("close", resolve);
+      const original = await readFile(
+        path.join(scripts, "stability-linux-sandbox.sh"),
+        "utf8",
+      );
+      const invocation = "/usr/bin/bwrap --die-with-parent";
+      if (
+        original.split(invocation).length !== 2 ||
+        !/^\/[A-Za-z0-9_./-]+$/.test(fakeBwrapPath)
+      ) {
+        throw new Error(
+          "Owned external-command failure injection does not match the launcher",
+        );
+      }
+      // The guardian creates its own systemd namespace; an outer mount cannot inject its bwrap failure.
+      // Only this fixture copy replaces that external command. Identity, firewall and cleanup code stay real.
+      const fixtureScript = path.join(
+        fixtureRoot,
+        "stability-linux-sandbox.sh",
+      );
+      await writeFile(
+        fixtureScript,
+        original.replace(invocation, `${fakeBwrapPath} --die-with-parent`),
+        { mode: 0o500 },
+      );
+      const environmentPath = await writeSandboxEnvironment(
+        directory,
+        scenarioChildEnvironment(process.env, {}),
+      );
+      const launch = sandboxCommand({
+        enabled: true,
+        allowedPorts: "9",
+        repoRoot,
+        outputDir: directory,
+        environmentPath,
+        callerHome: process.env.HOME ?? "",
+        callerUid: process.getuid?.() ?? 0,
+        runtime: "/bin/true",
+        args: [],
       });
-      expect(Number.isSafeInteger(sandboxUid)).toBe(true);
-      expect(stdout).toBe("");
-      expect(stderr).not.toContain("unbound variable");
-      expect(code).toBe(91);
+      const runIndex = launch.args.indexOf("run");
+      if (runIndex < 1)
+        throw new Error("Production launcher did not identify its script");
+      launch.args[runIndex - 1] = fixtureScript;
+      const result = await runKernelFixture(launch);
+      cleanupVerified = true;
+      expect(result.stdout).toBe("");
+      expect(result.stderr).not.toContain("unbound variable");
+      expect(result.code).toBe(91);
       expect(existsSync(environmentPath)).toBe(false);
       expect(
-        spawnSync("pgrep", ["-u", String(sandboxUid)], {
-          stdio: "ignore",
-        }).status,
-      ).not.toBe(0);
+        spawnSync("pgrep", ["-u", String(result.hostUid)], { stdio: "ignore" })
+          .status,
+      ).toBe(1);
       expect(
-        spawnSync("getent", ["passwd", String(sandboxUid)], {
+        spawnSync("getent", ["passwd", String(result.hostUid)], {
           stdio: "ignore",
         }).status,
-      ).not.toBe(0);
+      ).toBe(2);
       const accessControl = spawnSync("getfacl", ["-R", directory], {
         encoding: "utf8",
       });
       expect(accessControl.status).toBe(0);
-      expect(accessControl.stdout).not.toContain(`user:${sandboxUid}:`);
+      expect(accessControl.stdout).not.toContain(`user:${result.hostUid}:`);
       const firewall = spawnSync(
         "sudo",
         ["-n", "sh", "-c", "iptables-save; ip6tables-save"],
@@ -699,16 +1021,19 @@ test.skipIf(!hostedLinux)(
       expectAclRestored(directory, attemptAcl);
       expectAclRestored(outputRoot, outputRootAcl);
     } finally {
-      child.kill("SIGKILL");
-      await rm(outputRoot, { recursive: true, force: true });
+      if (cleanupVerified)
+        await rm(fixtureRoot, { recursive: true, force: true });
+      if (cleanupVerified)
+        await rm(outputRoot, { recursive: true, force: true });
     }
   },
-  30_000,
+  kernelFixtureTimeoutMs + 30_000,
 );
 
 test.skipIf(!hostedLinux)(
   "forced teardown kills signal-resistant descendants and removes kernel state",
   async () => {
+    let cleanupVerified = false;
     const {
       attempt: directory,
       attemptAcl,
@@ -722,18 +1047,21 @@ test.skipIf(!hostedLinux)(
         probePath,
         `
 import { spawn } from "node:child_process";
-import { writeFileSync } from "node:fs";
-const descendant = spawn(process.execPath, ["-e", "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)"], {
+import { writeFileSync, renameSync } from "node:fs";
+import { once } from "node:events";
+const descendant = spawn(process.execPath, ["-e", "process.on('SIGTERM', () => {}); process.stdout.write('ready'); setInterval(() => {}, 1000)"], {
   detached: false,
-  stdio: "ignore",
+  stdio: ["ignore", "pipe", "ignore"],
 });
 process.on("SIGTERM", () => {});
-writeFileSync(process.env.TEARDOWN_READY_PATH, JSON.stringify({
+await once(descendant.stdout, "data", { signal: AbortSignal.timeout(10000) });
+writeFileSync(process.env.TEARDOWN_READY_PATH + ".pending", JSON.stringify({
   uid: process.getuid?.(),
   hostUid: Number(process.env.ELIZA_STABILITY_SANDBOX_HOST_UID),
   pid: process.pid,
   descendantPid: descendant.pid,
 }));
+renameSync(process.env.TEARDOWN_READY_PATH + ".pending", process.env.TEARDOWN_READY_PATH);
 setInterval(() => {}, 1000);
 `,
         // Executable input is readable within the private attempt directory.
@@ -756,60 +1084,29 @@ setInterval(() => {}, 1000);
         runtime: process.execPath,
         args: [probePath],
       });
-      const child = spawn(launch.command, launch.args, {
-        cwd: repoRoot,
-        detached: true,
-        env: { PATH: process.env.PATH },
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-      if (!child.pid) throw new Error("sandbox teardown probe omitted PGID");
-      let ready:
-        | { uid: number; hostUid: number; pid: number; descendantPid: number }
-        | undefined;
-      const readyDeadline = Date.now() + 15_000;
-      while (!ready && Date.now() < readyDeadline) {
-        try {
-          ready = JSON.parse(await readFile(readyPath, "utf8")) as typeof ready;
-        } catch (error) {
-          // error-policy:J3 The ready file is untrusted until an atomic complete JSON write is observed.
-          if (
-            !error ||
-            typeof error !== "object" ||
-            !("code" in error) ||
-            error.code !== "ENOENT"
-          ) {
-            throw error;
-          }
-          await Bun.sleep(25);
-        }
-      }
-      if (!ready)
-        throw new Error("sandbox teardown probe did not become ready");
+      const captured = await runKernelFixture(launch, undefined, readyPath);
+      cleanupVerified = true;
+      const ready: {
+        uid: number;
+        hostUid: number;
+        pid: number;
+        descendantPid: number;
+      } = JSON.parse(await readFile(readyPath, "utf8"));
       expect(ready.uid).toBe(0);
-      expect(ready.hostUid).not.toBe(process.getuid?.());
-      expect(
-        spawnSync("sudo", ["-n", "kill", "-TERM", "--", `-${child.pid}`], {
-          stdio: "ignore",
-        }).status,
-      ).toBe(0);
-      const closed = await Promise.race([
-        new Promise<boolean>((resolve, reject) => {
-          child.once("error", reject);
-          child.once("close", () => resolve(true));
-        }),
-        Bun.sleep(10_000).then(() => false),
-      ]);
-      expect(closed).toBe(true);
+      expect(ready.hostUid).toBe(captured.hostUid);
+      expect(captured.code).toBe(143);
       expect(
         spawnSync("pgrep", ["-u", String(ready.hostUid)], {
           stdio: "ignore",
+          timeout: 5_000,
         }).status,
-      ).not.toBe(0);
+      ).toBe(1);
       expect(
         spawnSync("getent", ["passwd", String(ready.hostUid)], {
           stdio: "ignore",
+          timeout: 5_000,
         }).status,
-      ).not.toBe(0);
+      ).toBe(2);
       const accessControl = spawnSync("getfacl", ["-R", directory], {
         encoding: "utf8",
       });
@@ -825,49 +1122,72 @@ setInterval(() => {}, 1000);
     } finally {
       expectAclRestored(directory, attemptAcl);
       expectAclRestored(outputRoot, outputRootAcl);
-      await rm(outputRoot, { recursive: true, force: true });
+      if (cleanupVerified)
+        await rm(outputRoot, { recursive: true, force: true });
     }
   },
-  30_000,
+  kernelFixtureTimeoutMs + 30_000,
 );
 
 test.skipIf(!hostedLinux)(
-  "capability admission exercises the real launcher and rejects unavailable firewall authority",
+  "capability admission exercises the real guardian-backed launcher",
   () => {
+    if (kernelFixtureUnproven)
+      throw new Error(
+        "Prior kernel fixture cleanup is unproven; refusing capability allocation",
+      );
+    kernelFixtureUnproven = true;
+    assertLinuxSandboxCapabilities(
+      repoRoot,
+      "deterministic-mock",
+      path.join(
+        repoRoot,
+        "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
+      ),
+    );
+    kernelFixtureUnproven = false;
+  },
+  kernelFixtureTimeoutMs + 30_000,
+);
+
+test.skipIf(!hostedLinux)(
+  "capability admission rejects unavailable guardian firewall authority",
+  async () => {
     const setupScript = path.join(
       repoRoot,
       "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
     );
-    const admitted = spawnSync(
-      "sudo",
-      ["-n", "/bin/bash", setupScript, "setup"],
-      { encoding: "utf8" },
-    );
-    expect(admitted.status).toBe(0);
-    expect(admitted.stdout.trim()).toBe("ready");
-    const denied = spawnSync(
-      "sudo",
+    if (kernelFixtureUnproven)
+      throw new Error(
+        "Prior kernel fixture cleanup is unproven; refusing capability allocation",
+      );
+    kernelFixtureUnproven = true;
+    const denied = await runSetupProbe(
       [
         "-n",
-        "/usr/bin/setpriv",
-        "--bounding-set=-net_admin",
-        "/bin/bash",
-        setupScript,
-        "setup",
+        "/usr/bin/python3",
+        "-I",
+        "-S",
+        path.join(
+          repoRoot,
+          "packages/cloud/e2e/scripts/stability-sandbox-capability.test.py",
+        ),
+        path.dirname(setupScript),
       ],
-      { encoding: "utf8" },
+      3 * NATIVE_STABILITY_TIMEOUT_MS + 150_000,
     );
-    expect(denied.status).not.toBe(0);
-    expect(denied.stdout).not.toContain("ready");
-    expect(denied.stderr).toContain("required kernel capability probe failed");
-    const residue = spawnSync(
-      "sudo",
-      ["-n", "/bin/sh", "-c", "iptables-save; ip6tables-save; getent passwd"],
-      { encoding: "utf8" },
-    );
-    expect(residue.status).toBe(0);
-    expect(residue.stdout).not.toContain("ELIZA_SBX_");
-    expect(residue.stdout).not.toContain("eliza-sbx-");
+    // This helper passes only after an actual restricted guardian rejection and
+    // separate full-authority recovery; it never reports native qualification.
+    expect(denied.status).toBe(0);
+    const receipt: unknown = JSON.parse(denied.stdout);
+    expect(receipt).toMatchObject({
+      passed: true,
+      nativeQualified: false,
+      setupStatus: 1,
+      cleanupErrors: [],
+      fixtureRootAbsent: true,
+    });
+    kernelFixtureUnproven = false;
   },
-  30_000,
+  3 * NATIVE_STABILITY_TIMEOUT_MS + 180_000,
 );

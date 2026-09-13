@@ -2,7 +2,47 @@
 import { expect, test } from "bun:test";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { stopAuthority, waitForAuthorityReady } from "./authority-process.ts";
+import { createServer, type Socket } from "node:net";
+import {
+  authorityPortClosed,
+  stopAuthority,
+  waitForAuthorityReady,
+} from "./authority-process.ts";
+
+test("an open TCP listener that never answers HTTP cannot prove authority closure", async () => {
+  const sockets = new Set<Socket>();
+  let accepted = 0;
+  let receivedBytes = 0;
+  const server = createServer((socket) => {
+    accepted++;
+    sockets.add(socket);
+    socket.on("data", (bytes) => {
+      receivedBytes += bytes.length;
+    });
+    socket.once("close", () => sockets.delete(socket));
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  if (!address || typeof address === "string")
+    throw new Error("TCP fixture did not bind");
+  const url = `http://127.0.0.1:${address.port}`;
+  try {
+    const connection = once(server, "connection");
+    expect(await authorityPortClosed(url)).toBe(false);
+    await connection;
+    expect(server.listening).toBe(true);
+    expect(accepted).toBe(1);
+    expect(receivedBytes).toBe(0);
+  } finally {
+    for (const socket of sockets) socket.destroy();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
+  expect(receivedBytes).toBe(0);
+  expect(await authorityPortClosed(url)).toBe(true);
+});
 
 for (const record of ["not-json", JSON.stringify({ type: "ready", url: 42 })]) {
   test(`invalid readiness stops its owned child before rejecting: ${record}`, async () => {
