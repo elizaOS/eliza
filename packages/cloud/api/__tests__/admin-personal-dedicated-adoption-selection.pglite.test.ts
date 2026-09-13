@@ -814,7 +814,9 @@ describe("admin personal Dedicated adoption selection", () => {
       dedicated_agent_id: RETAINED,
       inventory_fingerprint: preview.inventoryFingerprint,
       candidate_count: 2,
+      rereviewed_by_user_id: ADMIN,
     });
+    expect(refreshed?.rereviewed_at).toBeInstanceOf(Date);
     expect(
       await resolvePersonalDedicatedAdoption({
         organizationId: ORG_A,
@@ -859,6 +861,122 @@ describe("admin personal Dedicated adoption selection", () => {
     ).toMatchObject({ state: "available", agent: { id: STALE } });
     expect(await dbWrite.select().from(agentSandboxes)).toHaveLength(3);
     expect(await dbWrite.select().from(jobs)).toHaveLength(0);
+  });
+
+  test("re-reviews a sole remaining candidate after a duplicate is deleted and records the actor", async () => {
+    const original = await seedStaleSelection();
+    expect(original.candidate_count).toBe(2);
+    expect(original.rereviewed_by_user_id).toBeNull();
+    expect(original.rereviewed_at).toBeNull();
+    // The other duplicate is deleted: the inventory is no longer ambiguous,
+    // but the stale receipt still names a two-candidate fingerprint, so the
+    // resolver fails closed until an operator reconciles it (#30050).
+    await dbWrite.delete(agentSandboxes).where(eq(agentSandboxes.id, STALE));
+    expect(
+      await resolvePersonalDedicatedAdoption({
+        organizationId: ORG_A,
+        userId: USER_A,
+        sourceAgentId: SOURCE_A,
+      }),
+    ).toEqual({ state: "unavailable" });
+
+    const preview = await rereviewPreview();
+    expect(preview).toMatchObject({
+      receiptFingerprint: original.inventory_fingerprint,
+      previousRetainedAgentId: RETAINED,
+      retainedAgentId: RETAINED,
+      candidateCount: 1,
+      replacesTarget: false,
+    });
+    const response = await post(rereviewRequestBody(RETAINED, false, preview));
+    expect(response.status).toBe(200);
+    const [refreshed] = await dbWrite
+      .select()
+      .from(personalDedicatedAdoptionSelections);
+    expect(refreshed).toMatchObject({
+      id: original.id,
+      selected_by_user_id: original.selected_by_user_id,
+      selected_at: original.selected_at,
+      created_at: original.created_at,
+      dedicated_agent_id: RETAINED,
+      inventory_fingerprint: preview.inventoryFingerprint,
+      candidate_count: 1,
+      rereviewed_by_user_id: ADMIN,
+    });
+    if (!refreshed?.rereviewed_at) throw new Error("rereviewed_at missing");
+    expect(refreshed.updated_at.getTime()).toBe(
+      refreshed.rereviewed_at.getTime(),
+    );
+    expect(
+      await resolvePersonalDedicatedAdoption({
+        organizationId: ORG_A,
+        userId: USER_A,
+        sourceAgentId: SOURCE_A,
+      }),
+    ).toMatchObject({ state: "available", agent: { id: RETAINED } });
+    expect(await dbWrite.select().from(agentSandboxes)).toHaveLength(1);
+    expect(await dbWrite.select().from(jobs)).toHaveLength(0);
+  });
+
+  test("re-review can move a stale receipt onto the sole survivor when the retained row was deleted", async () => {
+    const original = await seedStaleSelection();
+    await dbWrite.delete(agentSandboxes).where(eq(agentSandboxes.id, RETAINED));
+
+    // The original target is gone, so naming it is still a 404 ...
+    const stale = await post(rereviewRequestBody(RETAINED, true));
+    expect(stale.status).toBe(404);
+    // ... and naming the sole survivor reconciles the receipt onto it.
+    const preview = await rereviewPreview(STALE);
+    expect(preview).toMatchObject({
+      previousRetainedAgentId: RETAINED,
+      retainedAgentId: STALE,
+      candidateCount: 1,
+      replacesTarget: true,
+    });
+    const response = await post(rereviewRequestBody(STALE, false, preview));
+    expect(response.status).toBe(200);
+    const [moved] = await dbWrite
+      .select()
+      .from(personalDedicatedAdoptionSelections);
+    expect(moved).toMatchObject({
+      id: original.id,
+      selected_by_user_id: original.selected_by_user_id,
+      dedicated_agent_id: STALE,
+      candidate_count: 1,
+      rereviewed_by_user_id: ADMIN,
+    });
+    expect(
+      await resolvePersonalDedicatedAdoption({
+        organizationId: ORG_A,
+        userId: USER_A,
+        sourceAgentId: SOURCE_A,
+      }),
+    ).toMatchObject({ state: "available", agent: { id: STALE } });
+    expect(await dbWrite.select().from(jobs)).toHaveLength(0);
+  });
+
+  test("the synthetic local admin re-reviews with a null actor but a recorded time", async () => {
+    const original = await seedStaleSelection();
+    await dbWrite.delete(agentSandboxes).where(eq(agentSandboxes.id, STALE));
+    adminIdentity = {
+      id: "00000000-0000-4000-8000-000000000001",
+      email: "local-dev-admin@localhost",
+      organization_id: ORG_B,
+      organization: { id: ORG_B, name: "Admin Org", is_active: true },
+    };
+    const preview = await rereviewPreview();
+    const response = await post(rereviewRequestBody(RETAINED, false, preview));
+    expect(response.status).toBe(200);
+    const [refreshed] = await dbWrite
+      .select()
+      .from(personalDedicatedAdoptionSelections);
+    expect(refreshed).toMatchObject({
+      id: original.id,
+      selected_by_user_id: ADMIN,
+      candidate_count: 1,
+      rereviewed_by_user_id: null,
+    });
+    expect(refreshed?.rereviewed_at).toBeInstanceOf(Date);
   });
 
   test("rejects re-review when the named target is deleted or ineligible", async () => {

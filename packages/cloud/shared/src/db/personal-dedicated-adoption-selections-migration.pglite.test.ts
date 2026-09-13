@@ -1,4 +1,7 @@
-/** Executes the Dedicated adoption migration on its real predecessor authority using PGlite. */
+/**
+ * Executes the Dedicated adoption migration and its re-review follow-up on the
+ * real predecessor authority using PGlite.
+ */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -18,6 +21,10 @@ const authorityMigration = readFileSync(
 );
 const adoptionMigration = readFileSync(
   new URL("./migrations/0329_personal_dedicated_adoption_selections.sql", import.meta.url),
+  "utf8",
+);
+const rereviewMigration = readFileSync(
+  new URL("./migrations/0386_personal_dedicated_selection_rereview.sql", import.meta.url),
   "utf8",
 );
 
@@ -40,6 +47,7 @@ beforeAll(async () => {
   `);
   await database.exec(authorityMigration);
   await database.exec(adoptionMigration);
+  await database.exec(rereviewMigration);
 }, 60_000);
 
 afterAll(async () => {
@@ -76,6 +84,8 @@ describe("personal Dedicated adoption selection migration", () => {
       "selected_at",
       "created_at",
       "updated_at",
+      "rereviewed_by_user_id",
+      "rereviewed_at",
     ]);
 
     const triggerEvents = await database.query<{ event_manipulation: string }>(`
@@ -133,6 +143,67 @@ describe("personal Dedicated adoption selection migration", () => {
       SELECT count(*)::text AS count FROM agent_sandbox_backups WHERE id = '${BACKUP}'
     `);
     expect(backups.rows).toEqual([{ count: "1" }]);
+  });
+
+  test("a re-review may record a sole remaining candidate while zero stays rejected", async () => {
+    const REREVIEW_AGENT = "30000000-0000-4000-8000-000000000009";
+    await database.exec(`
+      INSERT INTO agent_sandboxes (id) VALUES ('${REREVIEW_AGENT}');
+      INSERT INTO personal_dedicated_adoption_selections (
+        organization_id, user_id, source_agent_id, dedicated_agent_id,
+        selected_by_user_id, selection_reason, state_disposition, activation_kind,
+        inventory_fingerprint, candidate_count
+      ) VALUES (
+        '${ORGANIZATION}', '${USER}', 'personal:rereview-count', '${REREVIEW_AGENT}',
+        '${ACTOR}', 'duplicate_owned_dedicated_inventory',
+        'fresh_boot_no_verified_backup', 'fresh_boot', '${HASH}', 2
+      )
+    `);
+    await database.exec(`
+      UPDATE personal_dedicated_adoption_selections
+      SET candidate_count = 1, rereviewed_by_user_id = '${ACTOR}', rereviewed_at = now()
+      WHERE dedicated_agent_id = '${REREVIEW_AGENT}'
+    `);
+    await expect(
+      database.exec(`
+        UPDATE personal_dedicated_adoption_selections
+        SET candidate_count = 0
+        WHERE dedicated_agent_id = '${REREVIEW_AGENT}'
+      `),
+    ).rejects.toThrow(/candidate_count_check/);
+    await expect(
+      database.exec(`
+        UPDATE personal_dedicated_adoption_selections
+        SET rereviewed_at = NULL
+        WHERE dedicated_agent_id = '${REREVIEW_AGENT}'
+      `),
+    ).rejects.toThrow(/rereview_audit_check/);
+
+    // The re-reviewing actor is a nullable audit reference like the original
+    // selector: deleting that user clears the actor but keeps the receipt.
+    const REREVIEWER = "20000000-0000-4000-8000-000000000003";
+    await database.exec(`
+      INSERT INTO users (id) VALUES ('${REREVIEWER}');
+      UPDATE personal_dedicated_adoption_selections
+      SET rereviewed_by_user_id = '${REREVIEWER}'
+      WHERE dedicated_agent_id = '${REREVIEW_AGENT}';
+      DELETE FROM users WHERE id = '${REREVIEWER}';
+    `);
+    const receipt = await database.query<{
+      candidate_count: number;
+      rereviewed_by_user_id: string | null;
+      rereviewed_at: string | null;
+      selected_by_user_id: string | null;
+    }>(`
+      SELECT candidate_count, rereviewed_by_user_id, rereviewed_at, selected_by_user_id
+      FROM personal_dedicated_adoption_selections
+      WHERE dedicated_agent_id = '${REREVIEW_AGENT}'
+    `);
+    expect(receipt.rows).toHaveLength(1);
+    expect(receipt.rows[0].candidate_count).toBe(1);
+    expect(receipt.rows[0].rereviewed_by_user_id).toBeNull();
+    expect(receipt.rows[0].rereviewed_at).not.toBeNull();
+    expect(receipt.rows[0].selected_by_user_id).toBe(ACTOR);
   });
 
   test("preserves selection and upgrade tombstones after target deletion", async () => {
