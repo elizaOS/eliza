@@ -106,8 +106,8 @@ function inferCodeFromStatus(status: number): ApiErrorCode {
 
 export function safeUnknownErrorMessage(error: unknown): string {
   if (error instanceof Error && !isInfrastructureError(error)) {
-    const status = inferStatusFromLegacyError(error);
-    if (status < 500) return error.message;
+    const status = error instanceof ApiError ? error.status : inferStatusFromLegacyError(error);
+    if (status >= 400 && status < 500) return error.message;
   }
   return "An unexpected error occurred";
 }
@@ -125,6 +125,8 @@ function isInfrastructureError(error: Error): boolean {
   if (typeof code === "string" && /^[0-9A-Z]{5}$/.test(code)) return true;
   const message = error.message.toLowerCase();
   return (
+    message.includes("password authentication failed") ||
+    message.includes("authentication failed for user") ||
     message.startsWith("failed query:") ||
     message.includes("\nselect ") ||
     message.includes("\ninsert ") ||
@@ -144,12 +146,6 @@ function inferStatusFromLegacyError(error: Error): number {
   if (error.name === "ForbiddenError" || error.name === "AccessDeniedError") return 403;
   if (error.name === "NotFoundError") return 404;
   if (error.name === "RateLimitError") return 429;
-  if (
-    message.includes("password authentication failed") ||
-    message.includes("authentication failed for user")
-  ) {
-    return 500;
-  }
   if (
     message.includes("invalid api key") ||
     message.includes("invalid token") ||

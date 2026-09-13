@@ -501,7 +501,7 @@ describe("ElizaSandboxService Worker agent-router fetch", () => {
     );
 
     expect(requests).toHaveLength(1);
-    expect(requests[0]?.url).toBe("http://100.64.0.10:23816/api/agents?limit=1");
+    expect(requests[0]?.url).toBe("http://100.64.0.10:18923/api/agents?limit=1");
     expect(requests[0]?.headers.get("authorization")).toBe("Bearer agent-token");
     expect(requests[0]?.headers.has("x-forwarded-host")).toBe(false);
     expect(requests[0]?.headers.has("x-forwarded-proto")).toBe(false);
