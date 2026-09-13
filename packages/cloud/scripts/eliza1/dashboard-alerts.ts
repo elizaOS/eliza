@@ -124,8 +124,8 @@ async function loadDashboardInputs(
             date_trunc('day', created_at) AS timestamp,
             count(*)::int AS total_requests,
             coalesce(sum(input_cost + output_cost), 0)::numeric AS total_cost,
-            coalesce(sum(input_tokens), 0)::int AS input_tokens,
-            coalesce(sum(output_tokens), 0)::int AS output_tokens,
+            coalesce(sum(input_tokens), 0)::bigint AS input_tokens,
+            coalesce(sum(output_tokens), 0)::bigint AS output_tokens,
             coalesce(
               count(*) FILTER (WHERE is_successful = true)::float /
               nullif(count(*)::float, 0),
