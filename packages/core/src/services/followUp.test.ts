@@ -82,6 +82,8 @@ function makeHarness() {
 	const insights: Array<{ entity: { id: UUID }; daysSinceContact: number }> =
 		[];
 	const analytics = new Map<UUID, { strength: number }>();
+	const batchEntityReads: UUID[][] = [];
+	const singleEntityReads: UUID[] = [];
 	// Forces the storage adapter's atomic pending-task transition to refuse,
 	// mimicking a concurrent claim winning the race before completeFollowUp.
 	const refusedTransitions = new Set<string>();
@@ -134,7 +136,17 @@ function makeHarness() {
 			workers.delete(name);
 		},
 		getServiceLoadPromise: async () => relationshipsService,
-		getEntityById: async (id: UUID) => entities.get(id) ?? null,
+		getEntityById: async (id: UUID) => {
+			singleEntityReads.push(id);
+			return entities.get(id) ?? null;
+		},
+		getEntitiesByIds: async (ids: UUID[]) => {
+			batchEntityReads.push([...ids]);
+			return ids.flatMap((id) => {
+				const entity = entities.get(id);
+				return entity ? [entity] : [];
+			});
+		},
 		createMemory: async (memory: unknown, table?: string) => {
 			memories.push({ memory, table });
 		},
@@ -187,6 +199,9 @@ function makeHarness() {
 		contacts,
 		insights,
 		analytics,
+		batchEntityReads,
+		singleEntityReads,
+		relationshipsService,
 		refusedTransitions,
 		addEntity,
 		addContact,
@@ -683,6 +698,55 @@ describe("getFollowUpSuggestions", () => {
 		expect(suggestions.map((suggestion) => suggestion.entityId)).toEqual([
 			CONTACT_A,
 		]);
+	});
+
+	it("reads candidate entities in one batch and analyzes at most four at a time", async () => {
+		const harness = makeHarness();
+		const candidates: UUID[] = [];
+		for (let i = 0; i < 12; i++) {
+			const id =
+				`${i.toString(16).padStart(8, "0")}-0000-4000-8000-00000000000f` as UUID;
+			candidates.push(id);
+			qualifyCandidate(harness, id, { days: 30, strength: 50 });
+		}
+		let inFlight = 0;
+		let peak = 0;
+		const releases: Array<() => void> = [];
+		const original = harness.relationshipsService.analyzeRelationship;
+		harness.relationshipsService.analyzeRelationship = async (
+			agentId: UUID,
+			id: UUID,
+		) => {
+			inFlight += 1;
+			peak = Math.max(peak, inFlight);
+			await new Promise<void>((resolve) => releases.push(resolve));
+			inFlight -= 1;
+			return original(agentId, id);
+		};
+		const service = await startService(harness);
+
+		const pending = service.getFollowUpSuggestions();
+		for (let i = 0; i < 10 && inFlight < 4; i++) await Promise.resolve();
+		expect(harness.batchEntityReads).toEqual([candidates]);
+		expect(harness.singleEntityReads).toEqual([]);
+		expect(inFlight).toBe(4);
+
+		// Release one analysis at a time; each release admits the next.
+		let released = 0;
+		while (released < 12) {
+			const release = releases.shift();
+			if (release) {
+				release();
+				released += 1;
+			}
+			await vi.advanceTimersByTimeAsync(0);
+		}
+		const suggestions = await pending;
+
+		expect(peak).toBe(4);
+		expect(suggestions.map((s) => s.entityId).sort()).toEqual(
+			[...candidates].sort(),
+		);
 	});
 
 	it("skips candidates whose entity record is gone", async () => {
