@@ -26,7 +26,13 @@ export type ActionSearchKeywordSource = {
 	terms: string[];
 };
 
-const CONTEXT_KEYWORD_STEMS: Record<string, readonly string[]> = {
+/**
+ * Keyword stems consulted for each declared agent context.
+ *
+ * Exported so tests can assert every stem still resolves to keyword data;
+ * a stem with no backing entry silently contributes nothing at runtime.
+ */
+export const CONTEXT_KEYWORD_STEMS: Record<string, readonly string[]> = {
 	admin: ["contextSignal.admin"],
 	agent_internal: ["contextSignal.agent_internal"],
 	automation: [

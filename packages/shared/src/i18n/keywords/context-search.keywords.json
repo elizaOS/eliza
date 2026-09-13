@@ -364,6 +364,29 @@
       "vi": ["ký ức", "ky uc", "nhớ", "nho", "ghi nhớ", "ghi nho"],
       "zh-CN": ["记忆", "记住", "回忆", "长期记忆"]
     },
+    "contextSignal.messaging.strong": {
+      "base": [
+        "message",
+        "messages",
+        "chat",
+        "conversation",
+        "dm",
+        "direct message"
+      ],
+      "es": [
+        "mensaje",
+        "mensajes",
+        "chat",
+        "conversación",
+        "conversacion",
+        "dm"
+      ],
+      "ko": ["메시지", "메세지", "대화", "쪽지", "디엠", "dm"],
+      "pt": ["mensagem", "mensagens", "chat", "conversa", "dm"],
+      "tl": ["mensahe", "mga mensahe", "usapan", "dm"],
+      "vi": ["tin nhắn", "tin nhan", "nhắn tin", "cuộc trò chuyện", "dm"],
+      "zh-CN": ["消息", "私信", "对话"]
+    },
     "contextSignal.payments.strong": {
       "base": [
         "payment",
