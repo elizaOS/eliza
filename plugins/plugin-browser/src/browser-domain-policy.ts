@@ -4,10 +4,9 @@
  * Host plugins register {@link BrowserDomainPolicy} implementations that gate
  * side-effecting browser commands by target domain before dispatch, and gate
  * workspace form submissions at the exact moment the resolved submit URL is
- * known. The registry lives on a `globalThis` symbol (mirroring
- * `browser-capture-hooks.ts`) so both the `BrowserService` dispatcher and the
- * module-level workspace form path consult one source of truth without an
- * import edge back into the service.
+ * known. The registry lives on a `globalThis` symbol so both the
+ * `BrowserService` dispatcher and the module-level workspace form path consult
+ * one source of truth without an import edge back into the service.
  *
  * Evaluation is fail-closed: a policy that throws counts as a block, the first
  * non-allow decision wins, and the built-in allowlist policy treats an
