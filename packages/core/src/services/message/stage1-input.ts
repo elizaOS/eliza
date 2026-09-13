@@ -44,8 +44,10 @@ export const VOICE_ENGAGEMENT_RULES = [
 
 /**
  * Format the role-filtered context catalog as a compact bullet list for the
- * Stage 1 prompt. Each line includes the id plus compressed metadata that helps
- * Stage 1 pick generously without inventing contexts.
+ * Stage 1 prompt: one `- id: description` line per context. The catalog is
+ * already role-filtered, and the former label/alias/parent/gate/sensitivity/
+ * cache suffix had no reader (3.3K chars per Stage-1 call on the 43-context
+ * owner catalog, live 2026-09-13).
  */
 export function formatAvailableContextsForPrompt(
 	contexts: readonly ContextDefinition[],
@@ -56,51 +58,11 @@ export function formatAvailableContextsForPrompt(
 	return contexts
 		.map((definition) => {
 			const description = definition.description?.trim();
-			const metadata = [
-				definition.label && definition.label !== definition.id
-					? `label=${definition.label}`
-					: undefined,
-				definition.aliases?.length
-					? `aliases=${definition.aliases.join(",")}`
-					: undefined,
-				definition.parent
-					? `parent=${definition.parent}`
-					: definition.parents?.length
-						? `parents=${definition.parents.join(",")}`
-						: undefined,
-				definition.roleGate
-					? formatRoleGateForPrompt(definition.roleGate)
-					: undefined,
-				definition.sensitivity
-					? `sensitivity=${definition.sensitivity}`
-					: undefined,
-				definition.cacheScope ? `cache=${definition.cacheScope}` : undefined,
-			].filter(Boolean);
-			const suffix = metadata.length > 0 ? ` [${metadata.join("; ")}]` : "";
 			return description
-				? `- ${definition.id}${suffix}: ${description}`
-				: `- ${definition.id}${suffix}`;
+				? `- ${definition.id}: ${description}`
+				: `- ${definition.id}`;
 		})
 		.join("\n");
-}
-
-export function formatRoleGateForPrompt(
-	roleGate: ContextDefinition["roleGate"],
-): string | undefined {
-	if (!roleGate) {
-		return undefined;
-	}
-	if (roleGate.minRole) {
-		return `role>=${roleGate.minRole}`;
-	}
-	const anyOf = [...(roleGate.roles ?? []), ...(roleGate.anyOf ?? [])];
-	if (anyOf.length > 0) {
-		return `role=${anyOf.join("|")}`;
-	}
-	if (roleGate.allOf?.length) {
-		return `role_all=${roleGate.allOf.join("+")}`;
-	}
-	return undefined;
 }
 
 /**

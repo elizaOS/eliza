@@ -14,7 +14,7 @@
 import type { JSONSchema } from "../types/model";
 
 export const plannerBatchScopeDescription =
-	'"final" means all requested actions are in this queue; their results need not be known yet. The evaluator verifies results and composes the answer. "more_work_pending" means these results must ground a later action (e.g. read an ID before updating). Queued actions and writing the final answer do not require another batch.';
+	'"final" means every tool call this turn needs is in this queue; results need not be known yet, the evaluator verifies them and writes the answer. "more_work_pending" means a LATER tool call in this turn must read these results first (e.g. read an ID before updating). Use "final" whenever the only thing left after these calls is answering the user: the reply is never a reason for "more_work_pending".';
 
 export const plannerTemplate = `task: Plan next native tool calls.
 

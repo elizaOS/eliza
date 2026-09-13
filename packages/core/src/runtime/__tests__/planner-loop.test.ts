@@ -5361,13 +5361,15 @@ describe("v5 planner loop skeleton", () => {
 		];
 		const injected = withTurnScopeToolArg(tools);
 
-		expect(
-			injected?.[0]?.parameters?.properties?.[TURN_SCOPE_ARG],
-		).toMatchObject({
+		// Minimal per-tool schema: the batch-scope explanation is stated once in
+		// the planner instructions, never repeated on every exposed tool.
+		expect(injected?.[0]?.parameters?.properties?.[TURN_SCOPE_ARG]).toEqual({
 			type: "string",
 			enum: [TURN_SCOPE_FINAL, TURN_SCOPE_MORE_WORK_PENDING],
-			description: expect.stringContaining(plannerBatchScopeDescription),
 		});
+		expect(plannerTemplate).toContain(
+			"every tool requires the reserved arg `eliza_turn_scope`",
+		);
 		// JSON and native planning must agree: verifying this queue's results
 		// is not a request for a later action batch. Contradictory instructions
 		// caused a live read + navigation to repeat planning after both finished.

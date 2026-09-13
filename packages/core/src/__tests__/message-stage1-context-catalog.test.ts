@@ -160,15 +160,30 @@ const FIXTURE_CONTEXTS: readonly ContextDefinition[] = [
 ];
 
 describe("formatAvailableContextsForPrompt", () => {
-	it("renders id, metadata, and description per line", () => {
+	it("renders one id: description line per context", () => {
 		const block = formatAvailableContextsForPrompt(FIXTURE_CONTEXTS);
-		expect(block).toContain("- general [label=General]: Normal conversation.");
-		expect(block).toContain(
-			"- calendar [label=Calendar; role>=ADMIN]: Manage calendar events.",
-		);
-		expect(block).toContain(
-			"- memory [label=Memory; role>=USER]: Long-term agent memory.",
-		);
+		expect(block).toContain("- general: Normal conversation.");
+		expect(block).toContain("- calendar: Manage calendar events.");
+		expect(block).toContain("- memory: Long-term agent memory.");
+	});
+
+	it("omits label, alias, parent, gate, sensitivity, and cache metadata", () => {
+		// The catalog is role-filtered before it renders; the bracketed suffix
+		// had no reader and cost ~3.3K chars per Stage-1 call (2026-09-13).
+		const block = formatAvailableContextsForPrompt([
+			{
+				id: "terminal",
+				label: "Terminal",
+				aliases: ["shell"],
+				parent: "code",
+				description: "Execute shell commands.",
+				roleGate: { minRole: "OWNER" },
+				sensitivity: "private",
+				cacheScope: "turn",
+			},
+			{ id: "wallet", parents: ["finance"], roleGate: { anyOf: ["OWNER"] } },
+		]);
+		expect(block).toBe("- terminal: Execute shell commands.\n- wallet");
 	});
 
 	it("falls back to a placeholder when no contexts are registered", () => {
@@ -195,9 +210,9 @@ describe("formatAvailableContextsForPrompt", () => {
 		// The complete description always renders; the compressed hint never
 		// substitutes for it in model-facing context (prompt-integrity).
 		expect(block).toContain(
-			"- tasks [label=Tasks]: The complete long-form routing description.",
+			"- tasks: The complete long-form routing description.",
 		);
-		expect(block).toContain("- general [label=General]: Normal conversation.");
+		expect(block).toContain("- general: Normal conversation.");
 		expect(block).not.toContain("reminders/habits/todos");
 	});
 });
@@ -233,8 +248,8 @@ describe("Stage 1 prompt — available contexts catalog", () => {
 		)?.[1];
 		expect(catalog).toBeDefined();
 		// `general` (no gate) and `memory` (USER) are visible to USER role.
-		expect(catalog).toContain("- general ");
-		expect(catalog).toContain("- memory ");
+		expect(catalog).toContain("- general:");
+		expect(catalog).toContain("- memory:");
 		// `wallet` (OWNER-only) and `calendar` (ADMIN-only) must NOT appear.
 		expect(catalog).not.toMatch(/^- wallet\b/m);
 		expect(catalog).not.toMatch(/^- calendar\b/m);
