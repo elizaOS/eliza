@@ -324,22 +324,65 @@ describe("downloadAttachment — <a download> fallback path", () => {
     expect(clickSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("does not start an anchor download when the user cancels the picker", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response(new Blob(["hello"]))),
-    );
-    vi.stubGlobal("window", {
-      showSaveFilePicker: vi.fn(async () => {
-        throw new DOMException("The user aborted a request", "AbortError");
-      }),
-    });
+  it("saves through the picker and never fires the anchor fallback", async () => {
+    // Supply the blob directly so the picker branch's success path — the only
+    // path none of the other picker tests exercise — runs end to end:
+    // prefetch → open picker → createWritable → write(blob) → close → return.
+    const blob = new Blob(["hello"], { type: "image/png" });
+    const fetchMock = vi.fn(async () => ({ ok: true, blob: async () => blob }));
+    vi.stubGlobal("fetch", fetchMock);
+    const writable = {
+      write: vi.fn(async () => {}),
+      close: vi.fn(async () => {}),
+    };
+    const handle = { createWritable: vi.fn(async () => writable) };
+    const picker = vi.fn(async () => handle);
+    vi.stubGlobal("window", { showSaveFilePicker: picker });
 
     await withGlobal("Capacitor", undefined, () =>
       downloadAttachment("https://example.com/cat.png", "cat.png"),
     );
 
+    // The chosen-location save runs to completion: picker opens, a writable is
+    // created, the prefetched blob is written, and the stream is closed.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(picker).toHaveBeenCalledWith({ suggestedName: "cat.png" });
+    expect(handle.createWritable).toHaveBeenCalledTimes(1);
+    expect(writable.write).toHaveBeenCalledWith(blob);
+    expect(writable.close).toHaveBeenCalledTimes(1);
+    // A successful save must return before the anchor fallback — guarding the
+    // double-download the picker branch exists to avoid.
     expect(clickSpy).not.toHaveBeenCalled();
+    expect(removeSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not start an anchor download when the user cancels the picker", async () => {
+    // Use a string body so the Node-global `Response` constructs its own
+    // spec-compliant Blob. A jsdom cross-realm `new Blob([...])` lacks the
+    // `.stream()` undici's `Response` requires to read a `Blob` body, so
+    // `new Response(new Blob([...]))` throws (`object.stream is not a
+    // function`) before the picker ever opens and silently reroutes this
+    // scenario through the anchor path — masking the picker-cancel contract.
+    const fetchMock = vi.fn(async () => new Response("hello"));
+    vi.stubGlobal("fetch", fetchMock);
+    const picker = vi.fn(async () => {
+      throw new DOMException("The user aborted a request", "AbortError");
+    });
+    vi.stubGlobal("window", { showSaveFilePicker: picker });
+
+    await withGlobal("Capacitor", undefined, () =>
+      downloadAttachment("https://example.com/cat.png", "cat.png"),
+    );
+
+    // The prefetch must succeed and the picker must actually open before the
+    // user cancels it — this is what distinguishes picker-cancel from a
+    // prefetch failure (the `pickerOpened` gate in download-share.ts).
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(picker).toHaveBeenCalledTimes(1);
+    expect(picker).toHaveBeenCalledWith({ suggestedName: "cat.png" });
+    // A cancelled picker must return early, never firing the anchor fallback.
+    expect(clickSpy).not.toHaveBeenCalled();
+    expect(removeSpy).not.toHaveBeenCalled();
   });
 });
 
