@@ -1,9 +1,13 @@
 /**
- * Runs the agent Vitest suite in bounded parallel, process-isolated batches.
- * The file selection mirrors vitest.config.ts while one-file batches prevent
- * leaked module state and open handles from crossing test boundaries.
- * Positional arguments select exact eligible files; interruption stops queued work.
- * Requested JUnit evidence includes every batch and is reconciled before publication.
+ * Runs the agent test suite in bounded parallel, process-isolated batches.
+ * Vitest files are selected as vitest.config.ts does, one file per batch so
+ * leaked module state and open handles cannot cross test boundaries; the
+ * Bun-runtime `scripts/*.test.mjs` regressions need `Bun.build`, so each runs
+ * alone through `bun test`. Positional arguments select exact eligible files
+ * of either kind; interruption stops queued work.
+ * Requested JUnit evidence includes every batch of both kinds and is reconciled
+ * before publication, which is what lets the package `test` script stay a
+ * single wrapper command the orchestrator's evidence guard can classify.
  */
 import { spawn } from "node:child_process";
 import {
@@ -26,6 +30,18 @@ const packageRoot = path.resolve(
   "..",
 );
 const roots = ["src", "test", "scripts"];
+
+// Bun-runtime tests sit beside the scripts they exercise and need `Bun.build`,
+// which a Vitest worker does not provide, so they never join a Vitest batch.
+const BUN_TEST_PATTERN = /\.test\.mjs$/;
+const BUN_TEST_ROOT = "scripts/";
+
+export function isBunRuntimeTest(relativePath) {
+  return (
+    relativePath.startsWith(BUN_TEST_ROOT) &&
+    BUN_TEST_PATTERN.test(relativePath)
+  );
+}
 
 const excludedPatterns = [
   /\.e2e\.test\.[cm]?tsx?$/,
@@ -54,7 +70,9 @@ function walk(relativeDir, out) {
       continue;
     }
     if (!stat.isFile()) continue;
-    if (!/\.test\.[cm]?tsx?$/.test(entry)) continue;
+    if (!/\.test\.[cm]?tsx?$/.test(entry) && !isBunRuntimeTest(relativePath)) {
+      continue;
+    }
     if (excludedPatterns.some((pattern) => pattern.test(relativePath))) {
       continue;
     }
@@ -101,6 +119,22 @@ export function createBatches(files, batchSize) {
     batches.push(files.slice(start, start + batchSize));
   }
   return batches;
+}
+
+/**
+ * Vitest files fill batches of `batchSize`; every Bun-runtime test is its own
+ * batch because it runs under a different executable and reporter.
+ */
+export function createRunnerBatches(files, batchSize) {
+  const vitestFiles = files.filter((file) => !isBunRuntimeTest(file));
+  const bunFiles = files.filter((file) => isBunRuntimeTest(file));
+  return [
+    ...createBatches(vitestFiles, batchSize).map((batch) => ({
+      runner: "vitest",
+      files: batch,
+    })),
+    ...bunFiles.map((file) => ({ runner: "bun", files: [file] })),
+  ];
 }
 
 function isFile(filePath) {
@@ -235,6 +269,19 @@ export function createVitestInvocation(bunExecutable, batch, fragmentPath) {
   };
 }
 
+export function createBunTestInvocation(bunExecutable, batch, fragmentPath) {
+  return {
+    command: bunExecutable,
+    args: [
+      "test",
+      ...(fragmentPath
+        ? ["--reporter=junit", `--reporter-outfile=${fragmentPath}`]
+        : []),
+      ...batch,
+    ],
+  };
+}
+
 function terminate(child, signal = "SIGTERM") {
   if (!child.pid) return;
   if (process.platform === "win32") {
@@ -252,11 +299,10 @@ function terminate(child, signal = "SIGTERM") {
 function runBatch(batch, nodeOptions, active, bunExecutable, fragmentPath) {
   return new Promise((resolve) => {
     const startedAt = performance.now();
-    const invocation = createVitestInvocation(
-      bunExecutable,
-      batch,
-      fragmentPath,
-    );
+    const invocation =
+      batch.runner === "bun"
+        ? createBunTestInvocation(bunExecutable, batch.files, fragmentPath)
+        : createVitestInvocation(bunExecutable, batch.files, fragmentPath);
     const child = spawn(invocation.command, invocation.args, {
       cwd: packageRoot,
       detached: process.platform !== "win32",
@@ -327,7 +373,7 @@ async function main() {
   const nodeOptions = inheritedNodeOptions.includes("--max-old-space-size")
     ? inheritedNodeOptions
     : `${inheritedNodeOptions} --max-old-space-size=8192`.trim();
-  const batches = createBatches(files, batchSize);
+  const batches = createRunnerBatches(files, batchSize);
   const fragmentDirectory = reporterOutfile
     ? mkdtempSync(path.join(tmpdir(), "eliza-agent-junit-"))
     : undefined;
@@ -370,7 +416,7 @@ async function main() {
         );
         completed += 1;
         if (verbose || result.status !== 0) {
-          const label = `[agent-test] batch ${index + 1}/${batches.length}: ${batch.join(", ")}`;
+          const label = `[agent-test] batch ${index + 1}/${batches.length}: ${batch.files.join(", ")}`;
           process.stdout.write(`${label}\n${result.stdout}`);
           process.stderr.write(result.stderr);
         } else if (completed % 25 === 0 || completed === batches.length) {
@@ -395,7 +441,7 @@ async function main() {
       for (const failure of failures) {
         if (failure.error) {
           console.error(
-            `[agent-test] ${failure.batch.join(", ")}: ${failure.error instanceof Error ? failure.error.message : String(failure.error)}`,
+            `[agent-test] ${failure.batch.files.join(", ")}: ${failure.error instanceof Error ? failure.error.message : String(failure.error)}`,
           );
         }
       }
