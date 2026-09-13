@@ -2,9 +2,9 @@
   "package": "elizaos-plugin-coinrailz",
   "repository": "github:tdnupe3/elizaos-plugin-coinrailz",
   "kind": "plugin",
-  "description": "Agent Treasury + Payments: non-custodial USDC yield on Solana (Kamino, ~3.4% APY) and Base (ERC-4626 routing via Aave/Compound/Morpho), plus 65 live x402 pay-per-call services for inference, IoT data, satellite imagery, and execution.",
+  "description": "Agent Treasury + Payments: non-custodial USDC yield on Solana and Base, plus 80 live x402 pay-per-call services for data, inference, compliance, IoT, and execution.",
   "homepage": "https://coinrailz.com",
-  "version": "2.1.0",
+  "version": "2.6.2",
   "tags": [
     "payments",
     "x402",
