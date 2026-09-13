@@ -3110,7 +3110,7 @@ describe("view management actions", () => {
 			},
 			callback,
 		);
-		const selectDateResult = await action.handler(
+		const selectedCalendarReadResult = await action.handler(
 			runtime as never,
 			message(
 				"<contextual_documents>create calendar examples</contextual_documents><user_request>select 2026-08-09 in the calendar</user_request>",
@@ -3211,7 +3211,10 @@ describe("view management actions", () => {
 			text: expect.stringContaining('Cannot invoke capability "list-events"'),
 		});
 		expect(updateNamedEventResult?.success).toBe(true);
-		expect(selectDateResult?.success).toBe(true);
+		expect(selectedCalendarReadResult?.success).toBe(true);
+		expect(selectedCalendarReadResult?.values?.capability).toBe(
+			"get-calendar-state",
+		);
 		expect(readNamedEventResult?.success).toBe(true);
 		expect(globalThis.fetch).toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
@@ -3409,8 +3412,7 @@ describe("view management actions", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
-					capability: "select-calendar-date",
-					params: { date: "2026-08-09" },
+					capability: "get-calendar-state",
 					timeoutMs: 5_000,
 					viewType: "gui",
 				}),

@@ -1212,6 +1212,10 @@ function correctCapabilityOperationFamily(
 		};
 	}
 
+	// A selected read must never become a write or UI mutation because a
+	// prerequisite, prohibition or later step contains another operation verb.
+	if (selectedFamily === "read") return { kind: "capability", capability };
+
 	// Preserve the planner's explicit selection when its family has any
 	// token support in the request. This prevents rewriting an explicit
 	// delete-note to get-note just because the request also contained
@@ -1226,14 +1230,13 @@ function correctCapabilityOperationFamily(
 
 	// The selected capability's family has NO token support in the
 	// request — a potential mismatch. Before correcting, enforce the
-	// asymmetric-risk rule: never lexically escalate read→delete.
-	// Silently upgrading a read into a destructive action destroys data;
-	// a missed correction on a non-destructive family is at worst a
-	// retryable action.
+	// asymmetric-risk rule: never lexically escalate into delete.
+	// Surrounding tokens cannot authorize destructive escalation; the
+	// planner must select that operation itself.
 	const requestedFamily = [...requestedFamilies][0];
 	const correctedIsDestructive = requestedFamily === "delete";
 	if (correctedIsDestructive && !selectedIsDestructive) {
-		// Read→delete (or create/update/select→delete) escalation is
+		// Create/update/select→delete escalation is
 		// prohibited. Return the original capability unchanged rather
 		// than guessing destructive intent from lexical tokens.
 		return { kind: "capability", capability };
