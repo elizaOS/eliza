@@ -1491,6 +1491,262 @@ describe("trajectory capture -> DB -> viewer", () => {
   );
 
   it.each(["public", "installed"] as const)(
+    "%s child start preserves prior model bytes without resending unrelated captures",
+    async (mode) => {
+      const target = sharedDatabaseRuntime(crypto.randomUUID());
+      const baseDb = (target as unknown as { adapter: { db: TestRuntimeDb } })
+        .adapter.db;
+      const statements: string[] = [];
+      let recording = false;
+      (target as unknown as { adapter: { db: TestRuntimeDb } }).adapter = {
+        db: {
+          execute: baseDb.execute.bind(baseDb),
+          transaction: <T>(callback: (tx: TestSqlExecutor) => Promise<T>) =>
+            baseDb.transaction((tx) =>
+              callback({
+                execute: (query) => {
+                  if (recording) statements.push(sqlText(query));
+                  return tx.execute(query);
+                },
+              }),
+            ),
+        },
+      };
+      const { logger } = await databaseLogger(mode, target.agentId, target);
+      try {
+        const id = await logger.startTrajectory(target.agentId);
+        const root = logger.startStep(id);
+        const prior = logger.startStep(id, { parentStepId: root });
+        const text = "  Complete unrelated capture: α 'quoted'\n".repeat(4096);
+        logger.logLlmCall(llmCall(prior, "test", "prior-complete-call", text));
+        await flushTrajectoryWrites(target, id);
+        const before = await loadTrajectoryById(target, id);
+        recording = true;
+        const child = logger.startStep(id, { parentStepId: root });
+        await flushTrajectoryWrites(target, id);
+        recording = false;
+        const after = await loadTrajectoryById(target, id);
+        expect(after?.steps.find((step) => step.stepId === prior)).toEqual(
+          before?.steps.find((step) => step.stepId === prior),
+        );
+        expect(
+          after?.steps.find((step) => step.stepId === prior)?.llmCalls[0]
+            ?.response,
+        ).toBe(text);
+        expect(
+          after?.steps.find((step) => step.stepId === root)?.childSteps,
+        ).toEqual([prior, child]);
+        expect(
+          after?.steps.find((step) => step.stepId === child)?.parentStepId,
+        ).toBe(root);
+        expect(after?.metrics.llmCallCount).toBe(1);
+        const bytes = statements.reduce(
+          (total, query) => total + Buffer.byteLength(query),
+          0,
+        );
+        expect(
+          statements.some((query) =>
+            query.includes("Complete unrelated capture:"),
+          ),
+          `Child write resent prior model payload; ${bytes} SQL bytes across ${statements.length} statements`,
+        ).toBe(false);
+        await logger.endTrajectory(id, "completed");
+      } finally {
+        recording = false;
+        await logger.stop();
+      }
+    },
+  );
+
+  it.each(["public", "installed"] as const)(
+    "%s child-start conflict retries from current persisted parent links",
+    async (mode) => {
+      const gated = transactionGatedRuntime(crypto.randomUUID());
+      const owner = await databaseLogger(
+        mode,
+        gated.runtime.agentId,
+        gated.runtime,
+      );
+      const concurrent = await databaseLogger(mode, gated.runtime.agentId);
+      try {
+        const id = await owner.logger.startTrajectory(gated.runtime.agentId);
+        const root = owner.logger.startStep(id);
+        await flushTrajectoryWrites(gated.runtime, id);
+        gated.transactions.count = 0;
+        gated.gate.arm();
+        const child = owner.logger.startStep(id, { parentStepId: root });
+        await gated.gate.entered;
+        const otherChild = concurrent.logger.startStep(id, {
+          parentStepId: root,
+        });
+        await flushTrajectoryWrites(concurrent.runtime, id);
+        gated.gate.release();
+        await flushTrajectoryWrites(gated.runtime, id);
+        const after = await loadTrajectoryById(gated.runtime, id);
+        expect(after?.steps.map((step) => step.stepId)).toEqual([
+          root,
+          otherChild,
+          child,
+        ]);
+        expect(
+          after?.steps.find((step) => step.stepId === root)?.childSteps,
+        ).toEqual([otherChild, child]);
+        expect(gated.transactions.count).toBe(2);
+        await owner.logger.endTrajectory(id, "completed");
+      } finally {
+        gated.gate.release();
+        await owner.logger.stop();
+        await concurrent.logger.stop();
+      }
+    },
+  );
+
+  it.each(["public", "installed"] as const)(
+    "%s child-start contention fails explicitly without partial links",
+    async (mode) => {
+      const target = sharedDatabaseRuntime(crypto.randomUUID());
+      const concurrent = sharedDatabaseRuntime(target.agentId);
+      const baseDb = (target as unknown as { adapter: { db: TestRuntimeDb } })
+        .adapter.db;
+      let conflictId: string | undefined;
+      let attempts = 0;
+      (target as unknown as { adapter: { db: TestRuntimeDb } }).adapter = {
+        db: {
+          execute: baseDb.execute.bind(baseDb),
+          transaction: async <T>(
+            callback: (tx: TestSqlExecutor) => Promise<T>,
+          ) => {
+            if (conflictId) {
+              attempts += 1;
+              await executeRawSql(
+                concurrent,
+                `UPDATE trajectories SET updated_at = CAST(updated_at AS TIMESTAMPTZ) + INTERVAL '1 millisecond' WHERE id = '${conflictId}'`,
+              );
+            }
+            return baseDb.transaction(callback);
+          },
+        },
+      };
+      const { logger } = await databaseLogger(mode, target.agentId, target);
+      let id: string | undefined;
+      try {
+        id = await logger.startTrajectory(target.agentId);
+        const root = logger.startStep(id);
+        await flushTrajectoryWrites(target, id);
+        const before = await loadTrajectoryById(target, id);
+        conflictId = id;
+        logger.startStep(id, { parentStepId: root });
+        await expect(flushTrajectoryWrites(target, id)).rejects.toMatchObject({
+          code: "TRAJECTORY_WRITE_CONFLICT",
+        });
+        expect(attempts).toBe(3);
+        expect((await loadTrajectoryById(target, id))?.steps).toEqual(
+          before?.steps,
+        );
+        expect(target.reportError).toHaveBeenCalledWith(
+          "TrajectoryStorage.write",
+          expect.objectContaining({ code: "TRAJECTORY_WRITE_CONFLICT" }),
+          expect.objectContaining({ diagnosticOnly: true }),
+        );
+      } finally {
+        conflictId = undefined;
+        if (id) await logger.endTrajectory(id, "completed");
+        await logger.stop();
+      }
+    },
+  );
+
+  it.each(
+    (["public", "installed"] as const).flatMap((mode) =>
+      (["terminal", "deleted", "other-agent"] as const).map((change) => ({
+        mode,
+        change,
+      })),
+    ),
+  )(
+    "$mode child start rejects a $change parent changed during persistence",
+    async ({ mode, change }) => {
+      const gated = transactionGatedRuntime(crypto.randomUUID());
+      const { logger } = await databaseLogger(
+        mode,
+        gated.runtime.agentId,
+        gated.runtime,
+      );
+      let before: Awaited<ReturnType<typeof loadTrajectoryById>> = null;
+      let id: string | undefined;
+      try {
+        id = await logger.startTrajectory(gated.runtime.agentId);
+        const root = logger.startStep(id);
+        await flushTrajectoryWrites(gated.runtime, id);
+        before = await loadTrajectoryById(gated.runtime, id);
+        gated.gate.arm();
+        const child = logger.startStep(id, { parentStepId: root });
+        await gated.gate.entered;
+        if (change === "deleted") {
+          await executeRawSql(
+            gated.runtime,
+            `DELETE FROM trajectories WHERE id = '${id}'`,
+          );
+        } else if (change === "terminal") {
+          if (!before) throw new Error("Missing parent fixture");
+          await saveTrajectory(
+            sharedDatabaseRuntime(gated.runtime.agentId),
+            { ...before, status: "completed", endTime: Date.now() },
+            { changedStepIds: [], requireActiveExisting: true },
+          );
+        } else {
+          const foreignAgentId = crypto.randomUUID();
+          await executeRawSql(
+            gated.runtime,
+            `UPDATE trajectories SET agent_id = '${foreignAgentId}' WHERE id = '${id}'`,
+          );
+        }
+        gated.gate.release();
+        await expect(
+          flushTrajectoryWrites(gated.runtime, id),
+        ).rejects.toMatchObject({
+          code:
+            change === "deleted"
+              ? "TRAJECTORY_PARENT_NOT_FOUND"
+              : change === "terminal"
+                ? "TRAJECTORY_OWNER_CLOSED"
+                : "TRAJECTORY_AGENT_OWNERSHIP_CONFLICT",
+        });
+        const after = await loadTrajectoryById(gated.runtime, id);
+        if (change === "deleted" || change === "other-agent") {
+          expect(after).toBeNull();
+        } else {
+          expect(after?.status).toBe("completed");
+          expect(after?.steps).toEqual(before?.steps);
+        }
+        expect(
+          extractRows(
+            await executeRawSql(
+              gated.runtime,
+              `SELECT id FROM trajectory_steps WHERE id = '${child}'`,
+            ),
+          ),
+        ).toEqual([]);
+      } finally {
+        gated.gate.release();
+        // Restore this isolated fixture after asserting the failed write; then
+        // drain a successful owner settlement before shutting down the logger.
+        if (before && id) {
+          if (change === "other-agent") {
+            await executeRawSql(
+              gated.runtime,
+              `UPDATE trajectories SET agent_id = '${gated.runtime.agentId}' WHERE id = '${id}'`,
+            );
+          }
+          await saveTrajectory(gated.runtime, before);
+          await logger.endTrajectory(id, "completed");
+        }
+        await logger.stop();
+      }
+    },
+  );
+
+  it.each(["public", "installed"] as const)(
     "%s logger batches adjacent child starts with exact serial persistence equivalence",
     async (mode) => {
       const counted = transactionGatedRuntime(crypto.randomUUID());
