@@ -98,17 +98,39 @@ function listUnsubscribeOptions(value: string | null): {
   httpUrl: string | null;
   mailto: string | null;
 } {
+  let httpsUrl: string | null = null;
   let httpUrl: string | null = null;
   let mailto: string | null = null;
   for (const entry of listUnsubscribeEntries(value)) {
-    if (!httpUrl && /^https?:\/\//i.test(entry)) {
+    if (!httpsUrl && /^https:\/\//i.test(entry)) {
+      httpsUrl = entry;
+    } else if (!httpUrl && /^http:\/\//i.test(entry)) {
       httpUrl = entry;
     }
     if (!mailto && /^mailto:/i.test(entry)) {
       mailto = entry;
     }
   }
-  return { httpUrl, mailto };
+  // RFC 8058 §2 requires an https target for the one-click POST, so prefer a
+  // compliant https entry over a cleartext http one when a sender publishes
+  // both; the executor then dispatches to the secure URL.
+  return { httpUrl: httpsUrl ?? httpUrl, mailto };
+}
+
+function isOneClickPost(value: string | null): boolean {
+  if (!value) return false;
+  // RFC 8058 §2 fixes the `List-Unsubscribe-Post` header field to the single
+  // key/value pair `List-Unsubscribe=One-Click`. Parse the normalized value as
+  // that exact pair instead of substring-matching `one-click`, so a malformed
+  // marker such as `List-Unsubscribe=Not-One-Click` (or any header that merely
+  // contains the token) cannot promote an untrusted sender to a state-changing
+  // POST with a fabricated one-click body.
+  const pair = value.trim();
+  const eq = pair.indexOf("=");
+  if (eq < 0) return false;
+  const key = pair.slice(0, eq).trim();
+  const val = pair.slice(eq + 1).trim();
+  return /^List-Unsubscribe$/i.test(key) && /^One-Click$/i.test(val);
 }
 
 function unsubscribeMethod(args: {
@@ -116,12 +138,26 @@ function unsubscribeMethod(args: {
   listUnsubscribePost: string | null;
 }): EmailSubscriptionSender["unsubscribeMethod"] {
   const options = listUnsubscribeOptions(args.listUnsubscribe);
-  if (options.mailto) return "mailto";
-  if (!options.httpUrl) return "manual_only";
-  if (/one-click/i.test(args.listUnsubscribePost ?? "")) {
-    return "http_one_click";
+  // Classification must mirror the executor's HTTP-first preference in
+  // `unsubscribeEmailSender` (it dispatches `unsubscribeHttpUrl` before
+  // `unsubscribeMailto`). RFC 8058 §2 recommends senders publish BOTH a
+  // mailto and an https target with `List-Unsubscribe-Post:
+  // List-Unsubscribe=One-Click`; classifying that common case as "mailto"
+  // desynced the summary and the recorded method from the request actually
+  // sent, firing an HTTP GET instead of the required one-click POST. Any http
+  // target (including cleartext) still routes through an HTTP method so the
+  // summary never disagrees with the executor's URL-first dispatch.
+  if (options.httpUrl) {
+    // RFC 8058 §2 mandates an https URI for one-click. A cleartext http target
+    // is downgraded to an HTTP GET so unsubscribe credentials are never POSTed
+    // over an unencrypted transport.
+    return isOneClickPost(args.listUnsubscribePost) &&
+      /^https:\/\//i.test(options.httpUrl)
+      ? "http_one_click"
+      : "http_get";
   }
-  return "http_get";
+  if (options.mailto) return "mailto";
+  return "manual_only";
 }
 
 function parseMailtoUnsubscribe(value: string): {
