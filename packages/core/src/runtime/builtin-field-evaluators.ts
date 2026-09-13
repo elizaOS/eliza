@@ -110,9 +110,9 @@ export const shouldRespondFieldEvaluator: ResponseHandlerFieldEvaluator<
 export const contextsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	name: "contexts",
 	description:
-		'Routing tags from available_contexts. Use ["simple"] only for direct replies needing no tool/action/provider. Requests to inspect visible controls, displayed content, or current application values require the view read/inspection tools and are never simple: a route or section label does not supply its contents. Owner goals/habits/routines/todos/reminders are never simple; route to tasks/OWNER_* actions. Empty invalid when shouldRespond=RESPOND.',
+		'Routing tags from available_contexts; RESPOND requires at least one. Use ["simple"] for a complete reply from supplied context with no pending runtime work. Opening a known view requires navigation only. Inspecting visible controls, displayed contents or current app values requires their read/inspection action: a route/section label alone is not those contents. Owner goal/habit/routine/todo/reminder record work routes to tasks/OWNER_* actions; discussion or supplied-history recall does not request a live record operation.',
 	descriptionCompressed:
-		'Ids from available_contexts. ["simple"]=direct reply, no tools; visible controls/content/current values require view inspection, never infer them from a route; personal goals/habits/reminders route to tasks/actions.',
+		'Ids from available_contexts. ["simple"]=complete supplied-context reply, no pending work; opening a view needs navigation only, inspecting contents/current values needs a read; owner record operations route to tasks/OWNER_* actions, discussion and supplied-history recall do not.',
 	priority: 10,
 	schema: {
 		type: "array",
