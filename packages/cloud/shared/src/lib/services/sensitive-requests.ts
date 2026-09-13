@@ -142,6 +142,22 @@ export interface SensitiveRequestsServiceDeps {
     fields: Record<string, string>;
     actor?: SensitiveRequestActor;
   }) => Promise<void>;
+  /**
+   * Optional sink for lifecycle events (`emit` below). **The exported
+   * `sensitiveRequestsService` singleton is constructed with no deps, so this
+   * is `undefined` in production and `emit` is a silent no-op** — every
+   * `/v1/sensitive-requests` route uses that singleton, so no
+   * sensitive-request event is dispatched by anything we ship today.
+   *
+   * The only caller that supplies one is
+   * `sensitive-request-hosted-page-e2e.test.ts`, which wires
+   * `createSensitiveCallbackBus` here itself; that bus module
+   * (`sensitive-callback-bus.ts`) has no production importer at all.
+   *
+   * Callers who need to observe the lifecycle must poll the request through
+   * the API. If a dispatcher was meant to be wired here, that wiring is
+   * missing rather than disabled — see the note on `emit`.
+   */
   dispatchEvent?: (params: {
     event: SensitiveRequestEvent;
     request: SensitiveRequestPublicView;
@@ -756,6 +772,12 @@ export class SensitiveRequestsService {
     });
   }
 
+  /**
+   * Fan a lifecycle event out to `dispatchEvent`. Returns immediately when no
+   * dispatcher was injected — which is the case for the exported singleton,
+   * and therefore for every route. Kept optional deliberately: the service
+   * must not require an event sink to mint, authorize or fulfil a request.
+   */
   private async emit(event: SensitiveRequestEvent, request: DbSensitiveRequest): Promise<void> {
     if (!this.dispatchEvent) return;
     await this.dispatchEvent({
