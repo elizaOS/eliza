@@ -35,6 +35,69 @@ describe("extractAndParseJSONObjectFromText", () => {
 		).toEqual({ ok: true });
 	});
 
+	it("keeps a ``` inside a JSON string value as data (#30736)", () => {
+		// Valid JSON that JSON.parse accepts. An unanchored fence match captured
+		// the bare `bun test` between the two runs of backticks and failed.
+		const text = '{"text":"Run ```bun test``` first","ok":true}';
+		expect(extractAndParseJSONObjectFromText(text)).toEqual(JSON.parse(text));
+	});
+
+	it("extracts a fenced block from prose when a string value holds a code block (#30736)", () => {
+		// The reply envelope: a JSON.stringify'd {thought, text} whose text
+		// field carries a fenced snippet, wrapped in a ```json fence with prose
+		// on both sides. The inner fence sits after an escaped \n, never at the
+		// start of a line, so only the real closing fence ends the block.
+		const value = {
+			thought: "answer with the command",
+			text: "Run this:\n```bash\nbun test\n```",
+		};
+		const text = `Sure:\n\`\`\`json\n${JSON.stringify(value)}\n\`\`\`\nHope that helps!`;
+		expect(extractAndParseJSONObjectFromText(text)).toEqual(value);
+	});
+
+	it("extracts a whole-value fence when a string value holds a code block (#30736)", () => {
+		const value = { text: "Run this:\n```bash\nbun test\n```" };
+		expect(
+			extractAndParseJSONObjectFromText(
+				`\`\`\`json\n${JSON.stringify(value)}\n\`\`\``,
+			),
+		).toEqual(value);
+	});
+
+	it("extracts JSON from a ```json5 fenced block, with LF or CRLF endings", () => {
+		expect(
+			extractAndParseJSONObjectFromText("```json5\n{ ok: true, }\n```"),
+		).toEqual({ ok: true });
+		expect(
+			extractAndParseJSONObjectFromText("```JSON5\r\n[1, 2, 3]\r\n```"),
+		).toEqual([1, 2, 3]);
+		expect(
+			extractAndParseJSONObjectFromText(
+				"note:\r\n```json5\r\n{ ok: true, }\r\n```\r\nend",
+			),
+		).toEqual({ ok: true });
+	});
+
+	it("extracts a compact whole-value fence", () => {
+		expect(extractAndParseJSONObjectFromText('```{"a":1}```')).toEqual({
+			a: 1,
+		});
+	});
+
+	it("uses the first fenced block when prose carries several", () => {
+		expect(
+			extractAndParseJSONObjectFromText(
+				'first:\n```json\n{"n":1}\n```\nsecond:\n```json\n{"n":2}\n```',
+			),
+		).toEqual({ n: 1 });
+	});
+
+	it("reports the fenced content's error when the fenced block is invalid", () => {
+		expect(() =>
+			extractAndParseJSONObjectFromText("see:\n```json\n{not json\n```"),
+		).toThrow(/Failed to parse/);
+	});
+
 	it("accepts JSON5 leniency (unquoted keys, single quotes, trailing comma)", () => {
 		expect(extractAndParseJSONObjectFromText("{ a: 1, b: 'two', }")).toEqual({
 			a: 1,
