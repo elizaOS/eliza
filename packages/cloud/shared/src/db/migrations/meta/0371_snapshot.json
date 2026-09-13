@@ -1,6 +1,6 @@
 {
-  "id": "adba79ba-a843-477c-ad67-7ae09a25a538",
-  "prevId": "99eebd38-4d85-48f7-b822-4901575a80e3",
+  "id": "19d6aa1e-0d69-422c-8621-060a81004fc7",
+  "prevId": "adba79ba-a843-477c-ad67-7ae09a25a538",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -7986,7 +7986,13 @@
           "name": "credit_transaction_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "compute_funding_id": {
+          "name": "compute_funding_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -7997,6 +8003,22 @@
         }
       },
       "indexes": {
+        "agent_billing_records_compute_funding_idx": {
+          "name": "agent_billing_records_compute_funding_idx",
+          "columns": [
+            {
+              "expression": "compute_funding_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"agent_billing_records\".\"compute_funding_id\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "agent_billing_records_tenant_period_unique": {
           "name": "agent_billing_records_tenant_period_unique",
           "columns": [
@@ -8020,9 +8042,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "agent_billing_records_sandbox_period_end_idx": {
           "name": "agent_billing_records_sandbox_period_end_idx",
@@ -8041,45 +8063,66 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "agent_billing_records_organization_id_organizations_id_fk": {
           "name": "agent_billing_records_organization_id_organizations_id_fk",
           "tableFrom": "agent_billing_records",
+          "tableTo": "organizations",
           "columnsFrom": [
             "organization_id"
           ],
-          "tableTo": "organizations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "agent_billing_records_compute_funding_tenant_fk": {
+          "name": "agent_billing_records_compute_funding_tenant_fk",
+          "tableFrom": "agent_billing_records",
+          "tableTo": "agent_compute_funding",
+          "columnsFrom": [
+            "compute_funding_id",
+            "sandbox_id",
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id",
+            "agent_id",
+            "organization_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "agent_billing_records_credit_transaction_tenant_fk": {
           "name": "agent_billing_records_credit_transaction_tenant_fk",
           "tableFrom": "agent_billing_records",
+          "tableTo": "credit_transactions",
           "columnsFrom": [
             "credit_transaction_id",
             "organization_id"
           ],
-          "tableTo": "credit_transactions",
           "columnsTo": [
             "id",
             "organization_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "agent_billing_records_funding_source_check": {
+          "name": "agent_billing_records_funding_source_check",
+          "value": "num_nonnulls(\"agent_billing_records\".\"credit_transaction_id\", \"agent_billing_records\".\"compute_funding_id\") = 1"
+        },
         "agent_billing_records_positive_period_check": {
           "name": "agent_billing_records_positive_period_check",
           "value": "\"agent_billing_records\".\"billing_period_end\" > \"agent_billing_records\".\"billing_period_start\""
@@ -56723,9 +56766,9 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "agent_compute_funding_reservation_idx": {
           "name": "agent_compute_funding_reservation_idx",
@@ -56738,9 +56781,9 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "agent_compute_funding_open_agent_idx": {
           "name": "agent_compute_funding_open_agent_idx",
@@ -56753,10 +56796,10 @@
             }
           ],
           "isUnique": true,
-          "where": "\"agent_compute_funding\".\"settled_at\" IS NULL",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"agent_compute_funding\".\"settled_at\" IS NULL",
+          "concurrently": false
         },
         "agent_compute_funding_expiry_idx": {
           "name": "agent_compute_funding_expiry_idx",
@@ -56769,71 +56812,71 @@
             }
           ],
           "isUnique": false,
-          "where": "\"agent_compute_funding\".\"settled_at\" IS NULL",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"agent_compute_funding\".\"settled_at\" IS NULL",
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "agent_compute_funding_predecessor_fk": {
           "name": "agent_compute_funding_predecessor_fk",
           "tableFrom": "agent_compute_funding",
-          "tableTo": "agent_compute_funding",
           "columnsFrom": [
             "previous_funding_id",
             "agent_id",
             "organization_id"
           ],
+          "tableTo": "agent_compute_funding",
           "columnsTo": [
             "id",
             "agent_id",
             "organization_id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
         "agent_compute_funding_agent_tenant_fk": {
           "name": "agent_compute_funding_agent_tenant_fk",
           "tableFrom": "agent_compute_funding",
-          "tableTo": "agent_sandboxes",
           "columnsFrom": [
             "agent_id",
             "organization_id"
           ],
+          "tableTo": "agent_sandboxes",
           "columnsTo": [
             "id",
             "organization_id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
         "agent_compute_funding_reservation_tenant_fk": {
           "name": "agent_compute_funding_reservation_tenant_fk",
           "tableFrom": "agent_compute_funding",
-          "tableTo": "billing_funding_reservations",
           "columnsFrom": [
             "funding_reservation_id",
             "organization_id"
           ],
+          "tableTo": "billing_funding_reservations",
           "columnsTo": [
             "id",
             "organization_id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "agent_compute_funding_identity_unique": {
           "name": "agent_compute_funding_identity_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "id",
             "agent_id",
             "organization_id"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},

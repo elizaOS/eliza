@@ -1,5 +1,5 @@
 /**
- * Defines immutable managed-agent debit receipts and durable billing-run envelopes.
+ * Defines immutable managed-agent usage receipts and durable billing-run envelopes.
  */
 
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
@@ -18,6 +18,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { agentComputeFunding } from "./agent-compute-funding";
 import { creditTransactions } from "./credit-transactions";
 import { organizations } from "./organizations";
 
@@ -46,10 +47,27 @@ export const agentBillingRecords = pgTable(
       >()
       .default([])
       .notNull(),
-    credit_transaction_id: uuid("credit_transaction_id").notNull(),
+    credit_transaction_id: uuid("credit_transaction_id"),
+    compute_funding_id: uuid("compute_funding_id"),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    compute_funding_tenant_fk: foreignKey({
+      columns: [table.compute_funding_id, table.sandbox_id, table.organization_id],
+      foreignColumns: [
+        agentComputeFunding.id,
+        agentComputeFunding.agent_id,
+        agentComputeFunding.organization_id,
+      ],
+      name: "agent_billing_records_compute_funding_tenant_fk",
+    }).onDelete("restrict"),
+    compute_funding_unique: uniqueIndex("agent_billing_records_compute_funding_idx")
+      .on(table.compute_funding_id)
+      .where(sql`${table.compute_funding_id} IS NOT NULL`),
+    funding_source_check: check(
+      "agent_billing_records_funding_source_check",
+      sql`num_nonnulls(${table.credit_transaction_id}, ${table.compute_funding_id}) = 1`,
+    ),
     credit_transaction_tenant_fk: foreignKey({
       columns: [table.credit_transaction_id, table.organization_id],
       foreignColumns: [creditTransactions.id, creditTransactions.organization_id],

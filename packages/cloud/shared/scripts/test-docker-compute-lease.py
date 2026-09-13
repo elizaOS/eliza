@@ -98,6 +98,12 @@ def main():
         assert refreshed == first, "A newly authorized retry extended the paid interval"
         rejected("grant", {**auth, "paidUntilMs": auth["paidUntilMs"] + 1}, "funding_replay_conflict")
         rejected("grant", {**auth, "containerId": other_id}, "funding_replay_conflict")
+        database_now = time.time_ns() // 1000000 + 5000
+        skewed = {**auth, "containerId": other_id, "fundingId": str(uuid.uuid4()),
+            "issuedAtMs": database_now, "paidFromMs": database_now,
+            "paidUntilMs": database_now + 7200000}
+        accepted("grant", skewed)
+        assertions.append("two_hour_grant_with_bounded_database_clock_skew")
         accepted("start", start)
         assert running(container_id) and not running(other_id)
         assert checked("docker", "inspect", "--format", "{{.HostConfig.RestartPolicy.Name}}", container_id) == "no"

@@ -9,6 +9,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -22,17 +23,32 @@ export const agentComputeFunding = pgTable(
     organization_id: uuid("organization_id").notNull(),
     agent_id: uuid("agent_id").notNull(),
     funding_reservation_id: uuid("funding_reservation_id").notNull(),
+    previous_funding_id: uuid("previous_funding_id"),
     period_start: timestamp("period_start", { withTimezone: true }).notNull(),
     period_end: timestamp("period_end", { withTimezone: true }).notNull(),
     hourly_rate: numeric("hourly_rate", { precision: 16, scale: 6 }).notNull(),
     provider_node_id: text("provider_node_id"),
     provider_container_id: text("provider_container_id"),
     provider_bound_at: timestamp("provider_bound_at", { withTimezone: true }),
+    host_lease_confirmed_at: timestamp("host_lease_confirmed_at", { withTimezone: true }),
     settled_through: timestamp("settled_through", { withTimezone: true }),
     settled_at: timestamp("settled_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    identity_unique: unique("agent_compute_funding_identity_unique").on(
+      table.id,
+      table.agent_id,
+      table.organization_id,
+    ),
+    predecessor_fk: foreignKey({
+      columns: [table.previous_funding_id, table.agent_id, table.organization_id],
+      foreignColumns: [table.id, table.agent_id, table.organization_id],
+      name: "agent_compute_funding_predecessor_fk",
+    }).onDelete("restrict"),
+    predecessor_unique: uniqueIndex("agent_compute_funding_predecessor_idx").on(
+      table.previous_funding_id,
+    ),
     agent_tenant_fk: foreignKey({
       columns: [table.agent_id, table.organization_id],
       foreignColumns: [agentSandboxes.id, agentSandboxes.organization_id],
@@ -62,6 +78,13 @@ export const agentComputeFunding = pgTable(
       sql`num_nonnulls(${table.provider_node_id}, ${table.provider_container_id}, ${table.provider_bound_at}) IN (0, 3)
         AND (${table.provider_container_id} IS NULL OR ${table.provider_container_id} ~ '^[0-9a-f]{64}$')
         AND (${table.provider_node_id} IS NULL OR length(${table.provider_node_id}) > 0)`,
+    ),
+    host_confirmation_check: check(
+      "agent_compute_funding_host_confirmation_check",
+      sql`${table.host_lease_confirmed_at} IS NULL OR
+        (${table.provider_bound_at} IS NOT NULL
+          AND ${table.host_lease_confirmed_at} >= ${table.provider_bound_at}
+          AND ${table.host_lease_confirmed_at} < ${table.period_end})`,
     ),
     settlement_check: check(
       "agent_compute_funding_settlement_check",
