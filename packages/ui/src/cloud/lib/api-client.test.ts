@@ -160,6 +160,27 @@ describe("cloud api-client transport bridge", () => {
       }
       expect(capacitorMocks.request).not.toHaveBeenCalled();
     });
+    it("preserves the same-origin cookie authority before a CLI key is claimed", async () => {
+      await writeStoredStewardToken(STEWARD_TOKEN);
+      const request = vi.spyOn(globalThis, "fetch").mockImplementation(
+        async () =>
+          new Response("{}", {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+      );
+      await api("/api/v1/user");
+      expect(request).toHaveBeenCalledWith(
+        "/api/v1/user",
+        expect.objectContaining({
+          credentials: "include",
+        }),
+      );
+      await expectCrossOriginThrow(
+        api("https://api-staging.eliza.app/api/v1/user"),
+      );
+      expect(request).toHaveBeenCalledTimes(1);
+    });
     it.each([
       "https://api.eliza.app/api/v1/user",
       "https://evil.example/api/v1/user",
