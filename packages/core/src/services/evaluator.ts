@@ -69,6 +69,7 @@ import {
 	evaluatorSourceRevision,
 	hasEvaluatorSourceProgress,
 	prepareEvaluatorProgress,
+	prepareEvaluatorProgressForTranscript,
 	stageEvaluatorOutput,
 } from "./evaluator-progress.ts";
 import { requireIncrementalSourceCitations } from "./evaluator-schema.ts";
@@ -1713,35 +1714,37 @@ export class EvaluatorService extends BaseService {
 						(left.createdAt ?? 0) - (right.createdAt ?? 0) ||
 						String(left.id).localeCompare(String(right.id)),
 				);
+				const preparedSources = Promise.resolve().then(() =>
+					prepareEvaluatorProgressForTranscript(
+						this.runtime,
+						message,
+						transcript,
+					),
+				);
 				const progress = new Map<string, EvaluatorProgressSnapshot>();
 				const progressErrors: EvaluatorRunResult["errors"] = [];
 				await Promise.all(
 					incremental.map(async (evaluator) => {
 						const reconcileEvidence = evaluator.reconcileEvidence;
 						try {
-							const snapshots = await prepareEvaluatorProgress(
-								this.runtime,
-								message,
-								[evaluator.name],
-								transcript,
-								{
-									...(background
-										? { maxEvidenceBytes: this.evidenceBatchBytes() }
-										: {}),
-									...(reconcileEvidence
-										? {
-												reconcile: (reconciliation) =>
-													reconcileEvidence({
-														runtime: this.runtime,
-														message,
-														state,
-														options,
-														reconciliation,
-													}),
-											}
-										: {}),
-								},
-							);
+							const prepareProgress = await preparedSources;
+							const snapshots = await prepareProgress([evaluator.name], {
+								...(background
+									? { maxEvidenceBytes: this.evidenceBatchBytes() }
+									: {}),
+								...(reconcileEvidence
+									? {
+											reconcile: (reconciliation) =>
+												reconcileEvidence({
+													runtime: this.runtime,
+													message,
+													state,
+													options,
+													reconciliation,
+												}),
+										}
+									: {}),
+							});
 							for (const [name, snapshot] of snapshots)
 								progress.set(name, snapshot);
 						} catch (error) {

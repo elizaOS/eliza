@@ -6,6 +6,7 @@ import {
 	bindEvaluatorReferenceEvidence,
 	commitEvaluatorProgress,
 	type EvaluatorProgressSnapshot,
+	prepareEvaluatorProgressForTranscript,
 	prepareEvaluatorProgress as prepareProgress,
 	stageEvaluatorOutput,
 } from "./evaluator-progress.ts";
@@ -997,5 +998,72 @@ describe("incremental evaluator progress", () => {
 			"source database unavailable",
 		);
 		expect(store.size).toBe(0);
+	});
+});
+
+describe("shared evaluator source snapshots", () => {
+	it("captures originals once while isolating extractor outputs and checkpoints", async () => {
+		const h = runtimeWith();
+		const a = memory("a", "original instruction");
+		const b = memory("b", "current request");
+		const rows = [a, b];
+		authoritativeRows.get(h.runtime)?.(rows);
+		const prepare = prepareEvaluatorProgressForTranscript(h.runtime, b, rows);
+		a.content.text = "later caller mutation";
+		const facts = selected(await prepare(["facts"]));
+		facts.messages[0].content.text = "extractor-local mutation";
+		const preferences = selected(await prepare(["preferences"]), "preferences");
+		expect(preferences.messages.map((m) => m.content.text)).toEqual([
+			"original instruction",
+			"current request",
+		]);
+		await stageEvaluatorOutput(h.runtime, preferences, { ops: [] });
+		await commitEvaluatorProgress(h.runtime, preferences);
+		expect(selected(await prepare(["facts"])).messages).toHaveLength(2);
+		expect(
+			selected(await prepare(["preferences"]), "preferences").messages,
+		).toEqual([]);
+	});
+
+	it("keeps authoritative stale-source rejection when the store changes after capture", async () => {
+		const h = runtimeWith();
+		const a = memory("a", "source");
+		authoritativeRows.get(h.runtime)?.([a]);
+		const prepare = prepareEvaluatorProgressForTranscript(h.runtime, a, [a]);
+		const facts = selected(await prepare(["facts"]));
+		authoritativeRows.get(h.runtime)?.([{ ...a, content: { text: "edited" } }]);
+		await expect(
+			stageEvaluatorOutput(h.runtime, facts, { ops: [] }),
+		).rejects.toMatchObject({
+			code: "EVALUATOR_PROGRESS_STALE_EVIDENCE",
+		});
+		expect(h.store.size).toBe(0);
+	});
+
+	it("does not let one reconciliation mutate another extractor's source identities", async () => {
+		const h = runtimeWith();
+		const a = memory("a", "original");
+		for (const name of ["facts", "preferences"]) {
+			const snapshot = selected(
+				await prepareEvaluatorProgress(h.runtime, a, [name], [a]),
+				name,
+			);
+			await stageEvaluatorOutput(h.runtime, snapshot, { ops: [] });
+			await commitEvaluatorProgress(h.runtime, snapshot);
+		}
+		const edited = { ...a, content: { text: "edited" } };
+		authoritativeRows.get(h.runtime)?.([edited]);
+		const prepare = prepareEvaluatorProgressForTranscript(h.runtime, edited, [
+			edited,
+		]);
+		await prepare(["facts"], {
+			reconcile: async (plan) => {
+				delete plan.currentSourceRevisions.a;
+				return { reprocessSourceIds: [] };
+			},
+		});
+		const other = selected(await prepare(["preferences"]), "preferences");
+		expect(other.messages.map((m) => m.content.text)).toEqual(["edited"]);
+		expect(other.changedMessageIds).toEqual(["a"]);
 	});
 });

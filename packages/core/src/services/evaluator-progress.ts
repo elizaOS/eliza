@@ -387,29 +387,28 @@ export async function hasEvaluatorSourceProgress(
 	return false;
 }
 
-/** All new/edited records and explicit removals, independently per extractor. */
-export async function prepareEvaluatorProgress(
+interface EvaluatorProgressOptions {
+	maxEvidenceBytes?: number;
+	/** Reconcile stored effects without admitting a model batch or requiring a surviving trigger. */
+	reconcileOnly?: boolean;
+	reconcile?: (
+		plan: EvaluatorEvidenceReconciliation,
+	) => Promise<{ reprocessSourceIds: string[] }>;
+}
+
+/** Capture one complete immutable source snapshot for independent extractors
+ * in the same leased batch. Reusing it avoids repeated cloning/fingerprinting;
+ * it never caches a transcript across batches or shares evaluator checkpoints. */
+export function prepareEvaluatorProgressForTranscript(
 	runtime: IAgentRuntime,
-	message: Memory,
-	evaluatorNames: readonly string[],
+	triggerMessage: Memory,
 	completeMessages: readonly Memory[],
-	options: {
-		maxEvidenceBytes?: number;
-		/** Reconcile stored effects without admitting a model batch or requiring a surviving trigger. */
-		reconcileOnly?: boolean;
-		reconcile?: (
-			plan: EvaluatorEvidenceReconciliation,
-		) => Promise<{ reprocessSourceIds: string[] }>;
-	} = {},
-): Promise<Map<string, EvaluatorProgressSnapshot>> {
-	if (
-		options.maxEvidenceBytes !== undefined &&
-		(!Number.isSafeInteger(options.maxEvidenceBytes) ||
-			options.maxEvidenceBytes <= 0)
-	)
-		throw new ElizaError("Evidence batch size must be a positive byte count", {
-			code: "EVALUATOR_BATCH_LIMIT_INVALID",
-		});
+) {
+	const message = {
+		id: triggerMessage.id,
+		roomId: triggerMessage.roomId,
+		entityId: triggerMessage.entityId,
+	};
 	if (!message.id || !message.roomId || !message.entityId || !runtime.agentId) {
 		throw new ElizaError(
 			"Incremental extraction requires a persisted trigger and owner scope",
@@ -434,6 +433,52 @@ export async function prepareEvaluatorProgress(
 	const retainedRevisions = Object.fromEntries(
 		[...sources].map(([id, source]) => [id, evaluatorSourceRevision(source)]),
 	);
+	const boundMessage = { ...message, id: message.id };
+	return (
+		evaluatorNames: readonly string[],
+		options: EvaluatorProgressOptions = {},
+	) =>
+		prepareProgressFromSources(
+			runtime,
+			boundMessage,
+			evaluatorNames,
+			sources,
+			retainedRevisions,
+			options,
+		);
+}
+
+/** All new/edited records and explicit removals, independently per extractor. */
+export async function prepareEvaluatorProgress(
+	runtime: IAgentRuntime,
+	message: Memory,
+	evaluatorNames: readonly string[],
+	completeMessages: readonly Memory[],
+	options: EvaluatorProgressOptions = {},
+): Promise<Map<string, EvaluatorProgressSnapshot>> {
+	return prepareEvaluatorProgressForTranscript(
+		runtime,
+		message,
+		completeMessages,
+	)(evaluatorNames, options);
+}
+
+async function prepareProgressFromSources(
+	runtime: IAgentRuntime,
+	message: Pick<Memory, "roomId" | "entityId"> & { id: UUID },
+	evaluatorNames: readonly string[],
+	sources: ReadonlyMap<string, Memory>,
+	retainedRevisions: Record<string, string>,
+	options: EvaluatorProgressOptions,
+): Promise<Map<string, EvaluatorProgressSnapshot>> {
+	if (
+		options.maxEvidenceBytes !== undefined &&
+		(!Number.isSafeInteger(options.maxEvidenceBytes) ||
+			options.maxEvidenceBytes <= 0)
+	)
+		throw new ElizaError("Evidence batch size must be a positive byte count", {
+			code: "EVALUATOR_BATCH_LIMIT_INVALID",
+		});
 	const trigger = sources.get(message.id);
 	if (
 		!options.reconcileOnly &&
@@ -507,7 +552,7 @@ export async function prepareEvaluatorProgress(
 					id,
 					changedMessageIds,
 					removedMessageIds,
-					currentSourceRevisions: retainedRevisions,
+					currentSourceRevisions: { ...retainedRevisions },
 					...(record.pending
 						? { pendingEvidenceId: record.pending.evidenceId }
 						: {}),
@@ -652,7 +697,7 @@ export async function prepareEvaluatorProgress(
 				sourceRevisions,
 				changedMessageIds,
 				removedMessageIds,
-				retainedRevisions,
+				retainedRevisions: { ...retainedRevisions },
 				...(deferred.length
 					? { deferredRevisions: revisionsOf(deferred) }
 					: {}),

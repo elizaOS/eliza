@@ -231,6 +231,11 @@ conversation rendering and authorized recall. Already processed provider prose
 is not copied wholesale into the extraction prompt; declared providers, existing
 facts, delivered action results and the pending evidence remain available.
 
+Within one room-lease batch, incremental extractors share one complete cloned
+and fingerprinted source snapshot. Each keeps independent progress, output and
+reconciliation data; staging and commit still recheck authoritative sources.
+The snapshot is never reused across batches or room scopes.
+
 The background worker yields to the event loop between jobs, including failed
 staged-output replays. Cached database work can otherwise keep an entire task
 batch in promise continuations and delay incoming network requests before they
