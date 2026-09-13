@@ -48,7 +48,13 @@ const sources: readonly DependencySource[] = [
   {
     kind: "workspaceOperations",
     table: "app_lifeops.life_family_workspace_operations",
-    fields: ["operation_id", "kind", "started_at"],
+    fields: [
+      "operation_id",
+      "kind",
+      "started_at",
+      "artifact_id",
+      "content_sha256",
+    ],
     unsettledPredicate: "true",
   },
   {

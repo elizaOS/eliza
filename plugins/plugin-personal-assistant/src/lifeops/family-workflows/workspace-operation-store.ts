@@ -27,6 +27,7 @@ const schema = [
   `CREATE TABLE IF NOT EXISTS ${operations} (
     agent_id TEXT NOT NULL, operation_id TEXT NOT NULL,
     kind TEXT NOT NULL, started_at TEXT NOT NULL,
+    artifact_id TEXT NOT NULL, content_sha256 TEXT NOT NULL,
     PRIMARY KEY (agent_id, operation_id)
   )`,
 ] as const;
@@ -46,7 +47,15 @@ export async function ensureFamilyWorkspaceOperationStore(
 export async function beginFamilyWorkspaceOperation(
   runtime: IAgentRuntime,
   kind: "agreement-upload",
+  target: { artifactId: string; contentSha256: string },
 ): Promise<string> {
+  const identity = z
+    .object({
+      artifactId: z.string().regex(/^hag_[0-9a-f-]{36}$/),
+      contentSha256: z.string().regex(/^[0-9a-f]{64}$/),
+    })
+    .strict()
+    .parse(target);
   await ensureFamilyWorkspaceOperationStore(runtime);
   return withTransaction(runtime, async (tx) => {
     // Match deletion's sorted table-lock order before taking the tenant row lock.
@@ -68,8 +77,8 @@ export async function beginFamilyWorkspaceOperation(
     const id = randomUUID();
     await executeRawSqlTx(
       tx,
-      `INSERT INTO ${operations} (agent_id,operation_id,kind,started_at)
-       VALUES (${sqlQuote(runtime.agentId)},${sqlQuote(id)},${sqlQuote(kind)},${sqlQuote(new Date().toISOString())})`,
+      `INSERT INTO ${operations} (agent_id,operation_id,kind,started_at,artifact_id,content_sha256)
+       VALUES (${sqlQuote(runtime.agentId)},${sqlQuote(id)},${sqlQuote(kind)},${sqlQuote(new Date().toISOString())},${sqlQuote(identity.artifactId)},${sqlQuote(identity.contentSha256)})`,
     );
     return id;
   });

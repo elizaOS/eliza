@@ -2215,6 +2215,101 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       (await previewFamilyDeletionDatabase(runtime, SELF_ENTITY_ID)).sha256,
     ).toBe(settled.sha256);
   });
+  it("correlates an unacknowledged private write with the durable claim before reconciliation", async () => {
+    const storage = runtime.getService<IFileStorageService>(
+      ServiceType.REMOTE_FILES,
+    );
+    if (!storage) throw new Error("Canonical storage is unavailable");
+    const original = storage.storePrivate.bind(storage);
+    const bytes = pdf(
+      "private write committed before the acknowledgement was lost",
+    );
+    const contentSha256 = crypto
+      .createHash("sha256")
+      .update(bytes)
+      .digest("hex");
+    storage.storePrivate = async (...args) => {
+      await original(...args);
+      throw new Error("Lost private-write acknowledgement");
+    };
+    const service = createAgreementKnowledgeService(runtime);
+    try {
+      await expect(
+        service.createAgreementVersion({
+          agreementKey: "private-write-ack-loss",
+          title: "Interrupted private write",
+          originalFilename: "interrupted.pdf",
+          mimeType: "application/pdf",
+          bytes,
+          uploadedByEntityId: SELF_ENTITY_ID,
+        }),
+      ).rejects.toMatchObject({
+        code: "AGREEMENT_INGESTION_RECONCILIATION_REQUIRED",
+        context: { contentSha256 },
+      });
+      const preview = await previewFamilyDeletionDatabase(
+        runtime,
+        SELF_ENTITY_ID,
+      );
+      const claim = preview.records.find(
+        (row) => row.kind === "workspaceOperations",
+      );
+      if (!claim)
+        throw new Error("The uncertain private write must retain its claim");
+      expect(claim.identity.content_sha256).toBe(contentSha256);
+      expect(
+        await new AgreementKnowledgeRepository(
+          runtime,
+          runtime.agentId,
+        ).getArtifact(String(claim.identity.artifact_id)),
+      ).toBeNull();
+      const privateFile = fs
+        .readdirSync(path.join(mediaStateDir, "media"))
+        .find((name) => name.startsWith(`${contentSha256}.`));
+      if (!privateFile)
+        throw new Error("The storage fault must follow a real private write");
+      expect(
+        fs.readFileSync(path.join(mediaStateDir, "media", privateFile)),
+      ).toEqual(bytes);
+      let entered = false;
+      await expect(
+        withReviewedFamilyDeletionDatabase(
+          runtime,
+          {
+            ownerEntityId: SELF_ENTITY_ID,
+            expectedSha256: preview.sha256,
+          },
+          async () => {
+            entered = true;
+          },
+        ),
+      ).rejects.toMatchObject({ code: "FAMILY_DELETION_WORK_UNSETTLED" });
+      expect(entered).toBe(false);
+    } finally {
+      storage.storePrivate = original;
+      // The synthetic fault has settled; inspect and remove its unique source before releasing the claim.
+      const names = fs
+        .readdirSync(path.join(mediaStateDir, "media"))
+        .filter((name) => name.startsWith(`${contentSha256}.`));
+      for (const name of names) {
+        expect(
+          fs.readFileSync(path.join(mediaStateDir, "media", name)),
+        ).toEqual(bytes);
+        expect(await storage.deletePrivate(name)).toBe(true);
+        expect(await storage.readPrivate(name)).toBeNull();
+      }
+      const claims = await executeRawSql(
+        runtime,
+        `SELECT operation_id FROM app_lifeops.life_family_workspace_operations WHERE agent_id=${sqlQuote(runtime.agentId)}`,
+      );
+      expect(claims).toHaveLength(1);
+      await settleFamilyWorkspaceOperation(
+        runtime,
+        String(claims[0].operation_id),
+      );
+    }
+  });
+
   it("keeps a durable claim when settlement fails after a real artifact commit", async () => {
     const bytes = pdf("committed source with interrupted operation settlement");
     const key = "operation-settlement-outage";

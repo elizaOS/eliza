@@ -1147,9 +1147,11 @@ export class AgreementKnowledgeService {
         },
       );
     }
+    const artifactId = `hag_${crypto.randomUUID()}`;
     const operationId = await beginFamilyWorkspaceOperation(
       this.deps.runtime,
       "agreement-upload",
+      { artifactId, contentSha256: expectedSha256 },
     );
     let extracted: PdfCompleteDocument;
     try {
@@ -1183,8 +1185,20 @@ export class AgreementKnowledgeService {
       .createHash("sha256")
       .update(extractionJson)
       .digest("hex");
-    const artifactId = `hag_${crypto.randomUUID()}`;
-    const stored = await fileStorage.storePrivate(bytes, "application/pdf");
+    let stored: Awaited<ReturnType<IFileStorageService["storePrivate"]>>;
+    try {
+      stored = await fileStorage.storePrivate(bytes, "application/pdf");
+    } catch (cause) {
+      // error-policy:J2 A lost acknowledgement may follow a durable write; retain its claim and source.
+      const failure = new AgreementKnowledgeError(
+        "Private PDF persistence could not be confirmed. Reconcile the source identity before retrying or deleting its claim.",
+        "AGREEMENT_INGESTION_RECONCILIATION_REQUIRED",
+        { operationId, artifactId, contentSha256: expectedSha256 },
+        cause,
+      );
+      this.deps.runtime.reportError("AgreementKnowledge.ingestion", failure);
+      throw failure;
+    }
     let documentId: UUID | null = null;
     try {
       if (
