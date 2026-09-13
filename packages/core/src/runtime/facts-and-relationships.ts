@@ -44,6 +44,7 @@ import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 import { isSyntheticConversationArtifactMemory } from "../utils/synthetic-conversation-artifact";
+import { isObjectRecord } from "../utils/type-guards";
 import { parseJsonObject } from "./json-output";
 import { buildCanonicalSystemPrompt } from "./system-prompt";
 
@@ -1073,13 +1074,52 @@ function resolveRelationshipEntityId(
 	) {
 		return runtime.agentId;
 	}
+	// The author's own display name for this message outranks any room entity
+	// that shares the alias: two harness identities both carried "nubs-e2e" and
+	// the fact landed under the one that had not spoken (live 2026-09-13).
+	if (
+		messageAuthorNames(message).some(
+			(name) => normalizeForComparison(name) === normalized,
+		)
+	) {
+		return message.entityId;
+	}
+	const matches = new Set<UUID>();
 	for (const entity of entities) {
 		if (!entity.id) continue;
-		for (const name of entity.names) {
-			if (normalizeForComparison(name) === normalized) return entity.id;
+		if (
+			entity.names.some((name) => normalizeForComparison(name) === normalized)
+		) {
+			matches.add(entity.id);
 		}
 	}
+	if (matches.size === 1) return [...matches][0];
+	// Several participants share the alias: the speaker wins when present;
+	// otherwise the subject stays unresolved rather than crediting a bystander.
+	if (matches.has(message.entityId)) return message.entityId;
 	return undefined;
+}
+
+/** Display names the connector recorded for the message author. */
+function messageAuthorNames(message: Memory): string[] {
+	const names: string[] = [];
+	const push = (value: unknown): void => {
+		if (typeof value === "string" && value.trim().length > 0) {
+			names.push(value);
+		}
+	};
+	const metadata: unknown = message.metadata;
+	if (isObjectRecord(metadata)) {
+		push(metadata.entityName);
+		push(metadata.entityUserName);
+	}
+	const content: unknown = message.content;
+	if (isObjectRecord(content)) {
+		push(content.name);
+		push(content.userName);
+		push(content.username);
+	}
+	return names;
 }
 
 function asUuidOrNull(value: string): UUID | null {
