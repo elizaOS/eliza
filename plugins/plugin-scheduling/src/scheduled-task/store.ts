@@ -726,10 +726,16 @@ export function createSchedulingSqlScheduledTaskLogStore(
       return rows.map(parseScheduledTaskLogRow);
     },
     async rollupOlderThan(args) {
+      if (args.taskIds?.length === 0) return { rolledUp: 0, deletedRaw: 0 };
+      const taskScope =
+        args.taskIds === undefined
+          ? ""
+          : `AND task_id IN (${args.taskIds.map((id) => sqlQuote(id)).join(",")})`;
       const rows = await executeSql(
         `SELECT *
            FROM ${LOG_TABLE}
           WHERE agent_id = ${sqlQuote(agentId)}
+            ${taskScope}
             AND rolled_up = FALSE
             AND transition <> 'scheduled'
             AND NOT (
@@ -768,6 +774,7 @@ export function createSchedulingSqlScheduledTaskLogStore(
       await executeSql(
         `DELETE FROM ${LOG_TABLE}
           WHERE agent_id = ${sqlQuote(agentId)}
+            ${taskScope}
             AND rolled_up = FALSE
             AND transition <> 'scheduled'
             AND NOT (

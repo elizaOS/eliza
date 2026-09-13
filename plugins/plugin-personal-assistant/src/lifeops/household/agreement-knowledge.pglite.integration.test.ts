@@ -78,6 +78,8 @@ import {
   commitAgreementUpload,
   readAgreementUpload,
 } from "./agreement-upload-session.js";
+import { ensureHouseholdGrantExpiryWarning } from "./grant-expiry-warning.js";
+import { HouseholdCoordinationRepository } from "./repository.js";
 import {
   getHouseholdCoordinationService,
   type HouseholdCoordinationService,
@@ -2707,6 +2709,85 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     }
   });
 
+  it("includes a real warning task whose durable grant link was not acknowledged", async () => {
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+    });
+    await executeRawSql(
+      runtime,
+      `CREATE FUNCTION app_lifeops.reject_warning_link_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+      IF NEW.scheduled_task_id IS NOT NULL THEN RAISE EXCEPTION 'warning link unavailable'; END IF;
+      RETURN NEW; END $$`,
+    );
+    await executeRawSql(
+      runtime,
+      `CREATE TRIGGER reject_warning_link_test BEFORE UPDATE ON app_lifeops.life_household_grant_expiry_warning_claims FOR EACH ROW EXECUTE FUNCTION app_lifeops.reject_warning_link_test()`,
+    );
+    let grant: Awaited<ReturnType<HouseholdCoordinationService["issueGrant"]>>;
+    try {
+      grant = await household.issueGrant({
+        principalEntityId: "verified-co-parent",
+        role: "co_parent",
+        subjectEntityIds: ["child-one"],
+        scopes: ["knowledge.read"],
+        issuedByEntityId: SELF_ENTITY_ID,
+        expiresAt: "2099-01-01T00:00:00.000Z",
+      });
+    } finally {
+      await executeRawSql(
+        runtime,
+        "DROP TRIGGER reject_warning_link_test ON app_lifeops.life_household_grant_expiry_warning_claims",
+      );
+      await executeRawSql(
+        runtime,
+        "DROP FUNCTION app_lifeops.reject_warning_link_test()",
+      );
+    }
+    const repository = new HouseholdCoordinationRepository(
+      runtime,
+      runtime.agentId,
+    );
+    const identityMatches = (
+      task: Awaited<ReturnType<typeof runner.list>>[number],
+    ) => {
+      const identity = task.metadata?.householdGrantExpiryWarning;
+      return (
+        typeof identity === "object" &&
+        identity !== null &&
+        "grantId" in identity &&
+        identity.grantId === grant.id
+      );
+    };
+    const warnings = (await runner.list()).filter(identityMatches);
+    expect(warnings).toHaveLength(1);
+    expect(await repository.getGrantExpiryWarningTaskId(grant.id)).toBeNull();
+    const preview = await previewFamilyDeletionDatabase(
+      runtime,
+      SELF_ENTITY_ID,
+    );
+    try {
+      expect(
+        preview.records.some(
+          (row) =>
+            row.kind === "scheduledTasks" &&
+            row.identity.id === warnings[0].taskId,
+        ),
+      ).toBe(true);
+    } finally {
+      // Repair this actual pending intent through the canonical idempotent path.
+      await ensureHouseholdGrantExpiryWarning({
+        grant,
+        repository,
+        scheduledTasks: runner,
+        now: new Date(),
+      });
+    }
+    expect(await repository.getGrantExpiryWarningTaskId(grant.id)).toBe(
+      warnings[0].taskId,
+    );
+    expect((await runner.list()).filter(identityMatches)).toHaveLength(1);
+  });
+
   it("holds durable deletion admission through real scheduler dispatch and receipt persistence", async () => {
     let entered!: () => void;
     let release!: () => void;
@@ -3012,6 +3093,22 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         target: "family_fence_test:local",
       },
     };
+    const warningRepository = new HouseholdCoordinationRepository(
+      runtime,
+      runtime.agentId,
+    );
+    const warningGrant = await household.issueGrant({
+      principalEntityId: "verified-co-parent",
+      role: "co_parent",
+      subjectEntityIds: ["child-one"],
+      scopes: ["knowledge.read"],
+      issuedByEntityId: SELF_ENTITY_ID,
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
+    const warningTaskId = await warningRepository.getGrantExpiryWarningTaskId(
+      warningGrant.id,
+    );
+    if (!warningTaskId) throw new Error("Real expiry warning was not linked");
     const familyTask = await runner.schedule({
       ...taskInput,
       metadata: { systemOperation: "family.monthlyCoordination" },
@@ -3095,6 +3192,43 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         grantId: householdGrant.id,
         revokedByEntityId: SELF_ENTITY_ID,
         reason: "Too late",
+      }),
+    ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    const mutationTime = "2098-12-31T00:00:00.000Z";
+    await expect(
+      warningRepository.markGrantExpiryWarningCancelled(
+        warningGrant.id,
+        mutationTime,
+      ),
+    ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    await expect(
+      warningRepository.completeGrantExpiryWarningClaim({
+        grantId: warningGrant.id,
+        attemptToken: "late-retry",
+        scheduledTaskId: warningTaskId,
+        warningAt: mutationTime,
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        completedAt: mutationTime,
+      }),
+    ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    await expect(
+      warningRepository.releaseGrantExpiryWarningClaim({
+        grantId: warningGrant.id,
+        attemptToken: "late-retry",
+        releasedAt: mutationTime,
+      }),
+    ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    await expect(
+      warningRepository.completeGrantExpiryWarningCancellation({
+        grantId: warningGrant.id,
+        completedAt: mutationTime,
+      }),
+    ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    await expect(
+      warningRepository.recordGrantExpiryWarningCancellationFailure({
+        grantId: warningGrant.id,
+        failedAt: mutationTime,
+        error: "Synthetic delayed failure",
       }),
     ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
     expect(

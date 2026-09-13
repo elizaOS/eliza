@@ -16,8 +16,12 @@ import {
   type TransactionalDb,
   withTransaction,
 } from "../sql.js";
-
 import { ensureFamilyWorkflowRunStore } from "./run-store.js";
+import {
+  FAMILY_SCHEDULING_REFERENCE_TABLES,
+  familyApprovalIdsSql,
+  familyScheduledTaskPredicate,
+} from "./scheduled-identity.js";
 import { ensureFamilyWorkspaceOperationStore } from "./workspace-operation-store.js";
 
 interface DependencySource {
@@ -34,8 +38,7 @@ const agreementTable = "app_lifeops.life_household_agreement_artifacts";
 const taskTable = "app_scheduling.life_scheduled_tasks";
 const packetApprovalTable = "app_lifeops.life_family_packet_approvals";
 const householdApprovalTable = "app_lifeops.life_household_proposal_approvals";
-const warningTable = "app_lifeops.life_household_grant_expiry_warning_claims";
-const familyTask = `(metadata_json::jsonb->>'systemOperation' = 'family.monthlyCoordination' OR id IN (SELECT scheduled_task_id FROM ${warningTable} WHERE agent_id = $AGENT))`;
+const familyTask = familyScheduledTaskPredicate("$AGENT");
 const familyDocument = `(metadata->>'source' = 'lifeops.parenting-agreement' OR id::text IN
   (SELECT document_id FROM ${agreementTable} WHERE agent_id = $AGENT))`;
 
@@ -183,7 +186,7 @@ const sources: readonly DependencySource[] = [
   },
   {
     kind: "scheduledTasks",
-    requires: [warningTable],
+    requires: [...FAMILY_SCHEDULING_REFERENCE_TABLES],
     table: taskTable,
     fields: ["id", "kind", "version", "next_fire_at"],
     predicate: familyTask,
@@ -192,7 +195,7 @@ const sources: readonly DependencySource[] = [
     kind: "scheduledTaskHistory",
     table: "app_scheduling.life_scheduled_task_log",
     fields: ["id", "task_id", "transition", "occurred_at"],
-    requires: [taskTable, warningTable],
+    requires: [taskTable, ...FAMILY_SCHEDULING_REFERENCE_TABLES],
     predicate: `task_id IN (SELECT id FROM ${taskTable} WHERE agent_id = $AGENT AND ${familyTask})`,
   },
   {
@@ -201,7 +204,7 @@ const sources: readonly DependencySource[] = [
     table: "approval_requests",
     fields: ["id", "state", "action", "channel", "expires_at"],
     requires: [packetApprovalTable, householdApprovalTable],
-    predicate: `id::text IN (SELECT approval_id FROM ${packetApprovalTable} WHERE agent_id = $AGENT UNION SELECT approval_request_id FROM ${householdApprovalTable} WHERE agent_id = $AGENT)`,
+    predicate: `id::text IN (${familyApprovalIdsSql("$AGENT")})`,
   },
   {
     kind: "documents",

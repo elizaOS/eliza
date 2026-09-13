@@ -69,14 +69,65 @@ const schema = [
 
 export async function ensureFamilyWorkspaceOperationStore(
   runtime: IAgentRuntime,
+  agentId = runtime.agentId,
 ) {
   for (const statement of schema) await executeRawSql(runtime, statement);
   await executeRawSql(
     runtime,
     `INSERT INTO ${lifecycle} (agent_id,state,updated_at)
-     VALUES (${sqlQuote(runtime.agentId)},'active',${sqlQuote(new Date().toISOString())})
+     VALUES (${sqlQuote(agentId)},'active',${sqlQuote(new Date().toISOString())})
      ON CONFLICT (agent_id) DO NOTHING`,
   );
+}
+
+export type FamilyWorkspaceState = "active" | "revoking" | "deleted";
+
+export function assertFamilyWorkspaceActive(state: FamilyWorkspaceState): void {
+  if (state !== "active")
+    throw new ElizaError(
+      "[FamilyWorkspace] Deletion has fenced new family work",
+      { code: "FAMILY_WORKSPACE_FENCED" },
+    );
+}
+
+/** Inspect state and mutate canonical stores under a shared, ordered lock inventory. */
+export async function withFamilyWorkspaceStateTransaction<T>(
+  runtime: IAgentRuntime,
+  tables: readonly string[],
+  mutate: (tx: TransactionalDb, state: FamilyWorkspaceState) => Promise<T>,
+  options: {
+    agentId?: string;
+    lockMode?: "ROW EXCLUSIVE" | "SHARE ROW EXCLUSIVE";
+  } = {},
+): Promise<T> {
+  const names = z
+    .array(z.string().regex(/^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)?$/))
+    .parse(tables);
+  const agentId = options.agentId ?? runtime.agentId;
+  const lockMode = z
+    .enum(["ROW EXCLUSIVE", "SHARE ROW EXCLUSIVE"])
+    .parse(options.lockMode ?? "ROW EXCLUSIVE");
+  await ensureFamilyWorkspaceOperationStore(runtime, agentId);
+  return withTransaction(runtime, async (tx) => {
+    const locked = [...new Set([...names, lifecycle])].sort();
+    await executeRawSqlTx(
+      tx,
+      `LOCK TABLE ${locked.join(", ")} IN ${lockMode} MODE`,
+    );
+    const rows = await executeRawSqlTx(
+      tx,
+      `SELECT state FROM ${lifecycle} WHERE agent_id=${sqlQuote(agentId)} FOR SHARE`,
+    );
+    if (rows.length !== 1)
+      throw new ElizaError(
+        "[FamilyWorkspace] Workspace lifecycle state is unavailable",
+        { code: "FAMILY_WORKSPACE_UNAVAILABLE" },
+      );
+    return mutate(
+      tx,
+      z.enum(["active", "revoking", "deleted"]).parse(rows[0].state),
+    );
+  });
 }
 
 /**
@@ -88,81 +139,77 @@ export async function withActiveFamilyWorkspaceTransaction<T>(
   runtime: IAgentRuntime,
   tables: readonly string[],
   mutate: (tx: TransactionalDb) => Promise<T>,
+  agentId = runtime.agentId,
 ): Promise<T> {
-  const names = z
-    .array(z.string().regex(/^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)?$/))
-    .parse(tables);
-  await ensureFamilyWorkspaceOperationStore(runtime);
-  return withTransaction(runtime, async (tx) => {
-    const locked = [...new Set([...names, lifecycle])].sort();
-    await executeRawSqlTx(
-      tx,
-      `LOCK TABLE ${locked.join(", ")} IN ROW EXCLUSIVE MODE`,
+  return withFamilyWorkspaceStateTransaction(
+    runtime,
+    tables,
+    (tx, state) => {
+      assertFamilyWorkspaceActive(state);
+      return mutate(tx);
+    },
+    { agentId },
+  );
+}
+
+/** Caller holds the operation and lifecycle table locks in canonical order. */
+export async function beginFamilyWorkspaceOperationTx(
+  tx: TransactionalDb,
+  agentId: string,
+  target: FamilyWorkspaceOperationTarget,
+): Promise<string> {
+  const identity = operationTarget.parse(target);
+  const rows = await executeRawSqlTx(
+    tx,
+    `SELECT state FROM ${lifecycle} WHERE agent_id=${sqlQuote(agentId)} FOR UPDATE`,
+  );
+  if (rows.length !== 1 || rows[0].state !== "active")
+    throw new ElizaError(
+      "[FamilyWorkspace] Deletion has fenced new family work",
+      {
+        code: "FAMILY_WORKSPACE_FENCED",
+      },
     );
-    const rows = await executeRawSqlTx(
+  if ("uploadId" in identity) {
+    const unfinished = await executeRawSqlTx(
       tx,
-      `SELECT state FROM ${lifecycle} WHERE agent_id=${sqlQuote(runtime.agentId)} FOR SHARE`,
+      `SELECT operation_id FROM ${operations} WHERE agent_id=${sqlQuote(agentId)} AND target_json->>'uploadId'=${sqlQuote(identity.uploadId)}`,
     );
-    if (rows.length !== 1 || rows[0].state !== "active")
+    if (unfinished.length)
       throw new ElizaError(
-        "[FamilyWorkspace] Deletion has fenced new family work",
+        "[FamilyWorkspace] This upload has unfinished work; wait for it or reconcile its claim before retrying",
         {
-          code: "FAMILY_WORKSPACE_FENCED",
+          code: "FAMILY_OPERATION_UNSETTLED",
+          context: {
+            uploadId: identity.uploadId,
+            operationIds: unfinished.map((row) =>
+              z.string().parse(row.operation_id),
+            ),
+          },
         },
       );
-    return mutate(tx);
-  });
+  }
+  const id = randomUUID();
+  await executeRawSqlTx(
+    tx,
+    `INSERT INTO ${operations} (agent_id,operation_id,kind,started_at,target_json)
+     VALUES (${sqlQuote(agentId)},${sqlQuote(id)},${sqlQuote(identity.kind)},${sqlQuote(new Date().toISOString())},${sqlQuote(JSON.stringify(identity))}::jsonb)`,
+  );
+  return id;
 }
 
 export async function beginFamilyWorkspaceOperation(
   runtime: IAgentRuntime,
   target: FamilyWorkspaceOperationTarget,
+  agentId = runtime.agentId,
 ): Promise<string> {
-  const identity = operationTarget.parse(target);
-  await ensureFamilyWorkspaceOperationStore(runtime);
+  await ensureFamilyWorkspaceOperationStore(runtime, agentId);
   return withTransaction(runtime, async (tx) => {
-    // Match deletion's sorted table-lock order before taking the tenant row lock.
     await executeRawSqlTx(
       tx,
       `LOCK TABLE ${operations}, ${lifecycle} IN ROW EXCLUSIVE MODE`,
     );
-    const rows = await executeRawSqlTx(
-      tx,
-      `SELECT state FROM ${lifecycle} WHERE agent_id=${sqlQuote(runtime.agentId)} FOR UPDATE`,
-    );
-    if (rows.length !== 1 || rows[0].state !== "active")
-      throw new ElizaError(
-        "[FamilyWorkspace] Deletion has fenced new family work",
-        {
-          code: "FAMILY_WORKSPACE_FENCED",
-        },
-      );
-    if ("uploadId" in identity) {
-      const unfinished = await executeRawSqlTx(
-        tx,
-        `SELECT operation_id FROM ${operations} WHERE agent_id=${sqlQuote(runtime.agentId)} AND target_json->>'uploadId'=${sqlQuote(identity.uploadId)}`,
-      );
-      if (unfinished.length)
-        throw new ElizaError(
-          "[FamilyWorkspace] This upload has unfinished work; wait for it or reconcile its claim before retrying",
-          {
-            code: "FAMILY_OPERATION_UNSETTLED",
-            context: {
-              uploadId: identity.uploadId,
-              operationIds: unfinished.map((row) =>
-                z.string().parse(row.operation_id),
-              ),
-            },
-          },
-        );
-    }
-    const id = randomUUID();
-    await executeRawSqlTx(
-      tx,
-      `INSERT INTO ${operations} (agent_id,operation_id,kind,started_at,target_json)
-       VALUES (${sqlQuote(runtime.agentId)},${sqlQuote(id)},${sqlQuote(identity.kind)},${sqlQuote(new Date().toISOString())},${sqlQuote(JSON.stringify(identity))}::jsonb)`,
-    );
-    return id;
+    return beginFamilyWorkspaceOperationTx(tx, agentId, target);
   });
 }
 
@@ -170,11 +217,12 @@ export async function beginFamilyWorkspaceOperation(
 export async function settleFamilyWorkspaceOperation(
   runtime: IAgentRuntime,
   operationId: string,
+  agentId = runtime.agentId,
 ): Promise<void> {
   const id = z.uuid().parse(operationId);
   const rows = await executeRawSql(
     runtime,
-    `DELETE FROM ${operations} WHERE agent_id=${sqlQuote(runtime.agentId)}
+    `DELETE FROM ${operations} WHERE agent_id=${sqlQuote(agentId)}
      AND operation_id=${sqlQuote(id)} RETURNING operation_id`,
   );
   if (rows.length !== 1)
