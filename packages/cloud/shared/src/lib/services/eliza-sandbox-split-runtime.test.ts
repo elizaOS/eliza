@@ -56,6 +56,7 @@ test("snapshot reaches the authenticated bridge while health reaches the web lis
       for (const path of [
         foreign.url.toString() + "api/snapshot",
         `//127.0.0.1:${foreign.port}/api/snapshot`,
+        `/x/..//127.0.0.1:${foreign.port}/api/snapshot`,
       ]) {
         await expect(transport.fetchAgentApi(rec, path)).rejects.toMatchObject({
           code: "AGENT_API_PATH_ORIGIN_MISMATCH",

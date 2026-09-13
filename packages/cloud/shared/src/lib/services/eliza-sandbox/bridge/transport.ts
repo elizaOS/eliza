@@ -188,7 +188,7 @@ export class SandboxTransport {
     if (workerTarget) return workerTarget;
 
     const route = new URL(path, "https://agent-route.invalid/");
-    if (route.origin !== "https://agent-route.invalid") {
+    if (route.origin !== "https://agent-route.invalid" || route.pathname.startsWith("//")) {
       throw new ElizaError("Agent API path must be relative to the agent origin", {
         code: "AGENT_API_PATH_ORIGIN_MISMATCH",
         context: { boundary: "sandbox-agent-api" },
