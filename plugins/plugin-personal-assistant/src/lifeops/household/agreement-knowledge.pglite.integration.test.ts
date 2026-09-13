@@ -1731,4 +1731,172 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     );
     expect(entered).toBe(true);
   });
+  it("invalidates deletion when a referenced packet or draft appears without treating prose as a dependency", async () => {
+    const service = createAgreementKnowledgeService(runtime);
+    const source = await service.createAgreementVersion({
+      agreementKey: "packet-deletion-family",
+      title: "Packet dependency fixture",
+      originalFilename: "packet-dependency.pdf",
+      mimeType: "application/pdf",
+      bytes: pdf("packet deletion source"),
+      uploadedByEntityId: SELF_ENTITY_ID,
+    });
+    const request = {
+      ownerEntityId: SELF_ENTITY_ID,
+      selection: {
+        householdId: source.householdId,
+        agreementKey: source.agreementKey,
+      },
+    };
+    const before = await previewAgreementDeletion(runtime, request);
+    const packets = new MonthlyFamilyPacketService(runtime);
+    const packet = await packets.buildInternal(
+      {
+        key: "2030-01",
+        startsOn: "2030-01-01",
+        endsOnExclusive: "2030-02-01",
+        timeZone: "UTC",
+      },
+      [
+        {
+          claimId: "typed-agreement-dependency",
+          stableKey: "typed-agreement-dependency",
+          section: "unanswered",
+          statement: "Review a source-dependent question.",
+          visibility: "owner_only",
+          provenance: [
+            {
+              source: "knowledge",
+              sourceId: source.id,
+              observedAt: source.createdAt,
+              contentSha256: source.contentSha256,
+            },
+          ],
+          dates: [],
+          requests: [],
+          urgency: null,
+          commitments: [],
+          accountability: [],
+        },
+      ],
+    );
+    let revoked = false;
+    const revoke = async () => {
+      revoked = true;
+    };
+    await expect(
+      withReviewedAgreementDeletion(
+        runtime,
+        { ...request, expectedSha256: before.sha256 },
+        revoke,
+      ),
+    ).rejects.toMatchObject({ code: "AGREEMENT_DELETION_PREVIEW_STALE" });
+    expect(revoked).toBe(false);
+    const withPacket = await previewAgreementDeletion(runtime, request);
+    await packets.createExternalDraft(packet, {
+      recipient: "Synthetic reviewer",
+      recipientEntityId: "verified-co-parent",
+      calendarPrivacyMode: "busy_only",
+    });
+    await expect(
+      withReviewedAgreementDeletion(
+        runtime,
+        { ...request, expectedSha256: withPacket.sha256 },
+        revoke,
+      ),
+    ).rejects.toMatchObject({ code: "AGREEMENT_DELETION_PREVIEW_STALE" });
+    expect(revoked).toBe(false);
+    const withDraft = await previewAgreementDeletion(runtime, request);
+    const unrelated = await packets.buildInternal(
+      {
+        key: "2030-02",
+        startsOn: "2030-02-01",
+        endsOnExclusive: "2030-03-01",
+        timeZone: "UTC",
+      },
+      [
+        {
+          claimId: "unrelated-prose",
+          stableKey: "unrelated-prose",
+          section: "unanswered",
+          statement: `This unrelated text mentions ${source.id}.`,
+          visibility: "owner_only",
+          provenance: [
+            {
+              source: "knowledge",
+              sourceId: "unrelated-record",
+              observedAt: source.createdAt,
+              contentSha256: source.contentSha256,
+            },
+          ],
+          dates: [],
+          requests: [],
+          urgency: null,
+          commitments: [],
+          accountability: [],
+        },
+      ],
+    );
+    await withReviewedAgreementDeletion(
+      runtime,
+      { ...request, expectedSha256: withDraft.sha256 },
+      revoke,
+    );
+    expect(revoked).toBe(true);
+    await executeRawSql(
+      runtime,
+      "ALTER TABLE app_lifeops.life_family_packet_drafts RENAME TO deletion_test_unavailable_drafts",
+    );
+    let incomplete: Awaited<ReturnType<typeof previewAgreementDeletion>>;
+    try {
+      incomplete = await previewAgreementDeletion(runtime, request);
+      await expect(
+        withReviewedAgreementDeletion(
+          runtime,
+          { ...request, expectedSha256: incomplete.sha256 },
+          revoke,
+        ),
+      ).rejects.toMatchObject({
+        code: "AGREEMENT_DELETION_DEPENDENCIES_UNAVAILABLE",
+      });
+    } finally {
+      await executeRawSql(
+        runtime,
+        "ALTER TABLE app_lifeops.deletion_test_unavailable_drafts RENAME TO life_family_packet_drafts",
+      );
+    }
+    await expect(
+      withReviewedAgreementDeletion(
+        runtime,
+        { ...request, expectedSha256: incomplete.sha256 },
+        revoke,
+      ),
+    ).rejects.toMatchObject({ code: "AGREEMENT_DELETION_PREVIEW_STALE" });
+
+    for (const invalid of [
+      "{}",
+      JSON.stringify({
+        claims: [
+          { provenance: [{ source: "unrecognized", sourceId: source.id }] },
+        ],
+      }),
+    ]) {
+      await executeRawSql(
+        runtime,
+        `UPDATE app_lifeops.life_family_packets SET packet_json = ${sqlQuote(invalid)} WHERE agent_id = ${sqlQuote(runtime.agentId)} AND packet_id = ${sqlQuote(unrelated.packetId)}`,
+      );
+      try {
+        await expect(
+          previewAgreementDeletion(runtime, request),
+        ).rejects.toMatchObject({
+          code: "AGREEMENT_DELETION_SNAPSHOT_INVALID",
+        });
+      } finally {
+        await executeRawSql(
+          runtime,
+          `UPDATE app_lifeops.life_family_packets SET packet_json = ${sqlQuote(JSON.stringify(unrelated))} WHERE agent_id = ${sqlQuote(runtime.agentId)} AND packet_id = ${sqlQuote(unrelated.packetId)}`,
+        );
+      }
+    }
+  });
 });
