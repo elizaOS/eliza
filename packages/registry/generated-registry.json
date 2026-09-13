@@ -208,7 +208,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "aiworker's paid x402 data routes as ElizaOS actions: DeFi yields and protocol snapshots, page-to-Markdown, Base token safety gate and wallet checks, Polymarket resolution, odds, history, screener and backtests, fact checks, sourced briefs, headline search and cited deep research. Each call pays its own USDC on Base from the agent's wallet, bounded by AIWORKER_MAX_PRICE_USD at signing time; settlement follows the server's rule (its routes settle on a 200 under the authorization flow, or before work where the 402 says so) and the hash is returned on every result for reconciliation.",
+      "description": "Earn USDC answering real support bounties, or run your own bounty board, over x402 pay-per-call. No account or API key: the wallet is the identity, a human approves the winning answer, and the submitting wallet is paid 85% automatically on Base or Solana.",
       "homepage": "https://deskcrew.io/agents",
       "topics": [
         "x402",
@@ -1398,7 +1398,7 @@
         "v1": false,
         "v2": true
       },
-      "description": "aiworker's paid x402 data routes as ElizaOS actions: DeFi yields and protocol snapshots, page-to-Markdown, Base token and wallet checks, Polymarket resolution, odds, history, screener and backtests, fact checks, sourced briefs and headline search. Each call pays its own USDC on Base from the agent's wallet; nothing is settled unless the request succeeds.",
+      "description": "aiworker's paid x402 data routes as ElizaOS actions: DeFi yields and protocol snapshots, page-to-Markdown, Base token safety gate and wallet checks, Polymarket resolution, odds, history, screener and backtests, fact checks, sourced briefs, headline search and cited deep research. Each call pays its own USDC on Base from the agent's wallet, bounded by AIWORKER_MAX_PRICE_USD at signing time; settlement follows the server's rule (its routes settle on a 200 under the authorization flow, or before work where the 402 says so) and the hash is returned on every result for reconciliation.",
       "homepage": "https://aiworker.duckdns.org",
       "topics": [
         "data",
