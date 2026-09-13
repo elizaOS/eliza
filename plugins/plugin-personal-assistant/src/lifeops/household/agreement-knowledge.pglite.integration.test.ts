@@ -2824,6 +2824,19 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       targetId: runtime.agentId,
       pinnedByEntityId: SELF_ENTITY_ID,
     });
+    const householdGrant = await household.issueGrant({
+      principalEntityId: "verified-co-parent",
+      role: "co_parent",
+      subjectEntityIds: ["child-one"],
+      scopes: ["knowledge.read"],
+      issuedByEntityId: SELF_ENTITY_ID,
+    });
+    const resourceGrant = await service.grantGuestRead({
+      artifactId: artifact.id,
+      principalEntityId: "verified-co-parent",
+      householdGrantId: householdGrant.id,
+      issuedByEntityId: SELF_ENTITY_ID,
+    });
     const settled = await previewFamilyDeletionDatabase(
       runtime,
       SELF_ENTITY_ID,
@@ -2870,6 +2883,38 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       service.unpin({
         pinId: pinned.id,
         unpinnedByEntityId: SELF_ENTITY_ID,
+      }),
+    ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    await expect(
+      service.grantGuestRead({
+        artifactId: artifact.id,
+        principalEntityId: "verified-co-parent",
+        householdGrantId: householdGrant.id,
+        issuedByEntityId: SELF_ENTITY_ID,
+      }),
+    ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    await expect(
+      service.revokeGuestRead({
+        grantId: resourceGrant.id,
+        revokedByEntityId: SELF_ENTITY_ID,
+        reason: "Too late",
+      }),
+    ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    await expect(
+      household.issueGrant({
+        principalEntityId: "verified-co-parent",
+        role: "co_parent",
+        subjectEntityIds: ["child-one"],
+        scopes: ["knowledge.read"],
+        issuedByEntityId: SELF_ENTITY_ID,
+        expiresAt: "2099-01-01T00:00:00.000Z",
+      }),
+    ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    await expect(
+      household.revokeGrant({
+        grantId: householdGrant.id,
+        revokedByEntityId: SELF_ENTITY_ID,
+        reason: "Too late",
       }),
     ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
     expect(

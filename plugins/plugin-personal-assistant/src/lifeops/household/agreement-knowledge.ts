@@ -390,7 +390,7 @@ export class AgreementKnowledgeRepository {
     private readonly agentId: string,
   ) {}
 
-  private async executeReviewMutation(statement: string) {
+  private async executeAgreementMutation(statement: string) {
     return withActiveFamilyWorkspaceTransaction(
       this.runtime,
       [
@@ -398,6 +398,7 @@ export class AgreementKnowledgeRepository {
         "app_lifeops.life_household_agreement_artifacts",
         "app_lifeops.life_household_agreement_obligations",
         "app_lifeops.life_household_knowledge_pins",
+        "app_lifeops.life_household_knowledge_grants",
       ],
       (tx) => executeRawSqlTx(tx, statement),
     );
@@ -626,7 +627,7 @@ export class AgreementKnowledgeRepository {
   async insertObligation(
     obligation: ParentingAgreementObligation,
   ): Promise<ParentingAgreementObligation> {
-    const rows = await this.executeReviewMutation(
+    const rows = await this.executeAgreementMutation(
       agreementMutationSql(
         `INSERT INTO app_lifeops.life_household_agreement_obligations (
          id, agent_id, artifact_id, title, obligation_text, page_start,
@@ -666,7 +667,7 @@ export class AgreementKnowledgeRepository {
     decisionReason: string;
     decidedAt: string;
   }): Promise<ParentingAgreementObligation> {
-    const rows = await this.executeReviewMutation(
+    const rows = await this.executeAgreementMutation(
       agreementMutationSql(
         `UPDATE app_lifeops.life_household_agreement_obligations
           SET status = ${sqlQuote(input.status)},
@@ -728,7 +729,7 @@ export class AgreementKnowledgeRepository {
     pinnedAt: string;
   }): Promise<HouseholdKnowledgePin> {
     const id = `hkpin_${crypto.randomUUID()}`;
-    const rows = await this.executeReviewMutation(
+    const rows = await this.executeAgreementMutation(
       agreementMutationSql(
         `INSERT INTO app_lifeops.life_household_knowledge_pins (
          id, agent_id, artifact_id, target_type, target_id,
@@ -802,7 +803,7 @@ export class AgreementKnowledgeRepository {
     unpinnedByEntityId: string;
     unpinnedAt: string;
   }): Promise<HouseholdKnowledgePin> {
-    const rows = await this.executeReviewMutation(
+    const rows = await this.executeAgreementMutation(
       agreementMutationSql(
         `UPDATE app_lifeops.life_household_knowledge_pins
           SET unpinned_at = ${sqlQuote(input.unpinnedAt)}
@@ -830,8 +831,7 @@ export class AgreementKnowledgeRepository {
   }
 
   async upsertGrant(input: HouseholdKnowledgeGrant) {
-    const rows = await executeRawSql(
-      this.runtime,
+    const rows = await this.executeAgreementMutation(
       agreementMutationSql(
         `INSERT INTO app_lifeops.life_household_knowledge_grants (
          id, agent_id, household_id, artifact_id, principal_entity_id,
@@ -904,8 +904,7 @@ export class AgreementKnowledgeRepository {
     reason: string;
     revokedAt: string;
   }): Promise<HouseholdKnowledgeGrant> {
-    const rows = await executeRawSql(
-      this.runtime,
+    const rows = await this.executeAgreementMutation(
       agreementMutationSql(
         `UPDATE app_lifeops.life_household_knowledge_grants
           SET revoked_at = ${sqlQuote(input.revokedAt)},
