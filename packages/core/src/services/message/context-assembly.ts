@@ -47,7 +47,10 @@ function priorDialogueBudgetFromSettings(runtime: IAgentRuntime): {
 			typeof raw === "number" ? raw : Number.parseInt(String(raw ?? ""), 10);
 		return Number.isFinite(value) && value > 0 ? value : undefined;
 	};
-	const maxMessages = read("PRIOR_DIALOGUE_MAX_MESSAGES");
+	// CONVERSATION_LENGTH is the operator's stated window (the live unit sets
+	// 15); it never reached the v5 prompts before the window budget existed.
+	const maxMessages =
+		read("PRIOR_DIALOGUE_MAX_MESSAGES") ?? read("CONVERSATION_LENGTH");
 	const maxChars = read("PRIOR_DIALOGUE_MAX_CHARS");
 	return {
 		...(maxMessages !== undefined ? { maxMessages } : {}),
