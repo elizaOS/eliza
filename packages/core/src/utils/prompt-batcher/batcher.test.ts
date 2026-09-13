@@ -5,6 +5,7 @@
  * (no real model calls).
  */
 import { describe, expect, test } from "vitest";
+import { isElizaError } from "../../errors.ts";
 import type { Memory } from "../../types/memory";
 import type { UUID } from "../../types/primitives";
 import type {
@@ -359,5 +360,38 @@ describe("PromptBatcher recurring loop and cache behavior", () => {
 		expect(stale?.fields.value).toContain("old context");
 		expect(dispatcher.calls).toHaveLength(2);
 		expect(batcher.getStats().totalCacheHits).toBe(1);
+	});
+
+	test("rejects empty or whitespace section ID with ElizaError", async () => {
+		const { runtime } = makeRuntime();
+		const dispatcher = makeDispatcher();
+		const batcher = new PromptBatcher(runtime, dispatcher as never, SETTINGS);
+
+		await expect(
+			batcher.addSection({
+				id: "",
+				frequency: "once",
+				preamble: "Test",
+				contextBuilder: () => "ctx",
+				schema: [{ field: "v", type: "string", required: true }],
+			}),
+		).rejects.toThrowError(/PromptSection id must be a non-empty string/);
+
+		try {
+			await batcher.addSection({
+				id: "   ",
+				frequency: "once",
+				preamble: "Test",
+				contextBuilder: () => "ctx",
+				schema: [{ field: "v", type: "string", required: true }],
+			});
+			expect.unreachable("should have rejected");
+		} catch (err) {
+			expect(isElizaError(err)).toBe(true);
+			if (isElizaError(err)) {
+				expect(err.code).toBe("INVALID_SECTION_ID");
+				expect(err.context).toEqual({ id: "   " });
+			}
+		}
 	});
 });
