@@ -34,6 +34,11 @@ describe("isAutonomousTurn", () => {
 		expect(
 			isAutonomousTurn({ content: { metadata: { isAutonomous: 1 } } } as never),
 		).toBe(false);
+		expect(
+			isAutonomousTurn({
+				content: { metadata: { isAutonomous: "true" } },
+			} as never),
+		).toBe(false);
 	});
 
 	it("false for non-object metadata", () => {
@@ -45,6 +50,7 @@ describe("isAutonomousTurn", () => {
 
 describe("privateActionAllowedOnTurn", () => {
 	it("allows non-private always", () => {
+		expect(privateActionAllowedOnTurn({}, { content: {} } as never)).toBe(true);
 		expect(privateActionAllowedOnTurn({ private: false }, undefined)).toBe(
 			true,
 		);
@@ -56,8 +62,12 @@ describe("privateActionAllowedOnTurn", () => {
 	it("allows private only on autonomous", () => {
 		const auto = { content: { metadata: { isAutonomous: true } } } as never;
 		const user = { content: { metadata: { isAutonomous: false } } } as never;
+		const plainUser = { content: {} } as never;
 		expect(privateActionAllowedOnTurn({ private: true }, auto)).toBe(true);
 		expect(privateActionAllowedOnTurn({ private: true }, user)).toBe(false);
+		expect(privateActionAllowedOnTurn({ private: true }, plainUser)).toBe(
+			false,
+		);
 		expect(privateActionAllowedOnTurn({ private: true }, undefined)).toBe(
 			false,
 		);
