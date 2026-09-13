@@ -113,32 +113,35 @@ describe("processFleetUpgradeCycle shared image-change capacity", () => {
 });
 
 describe("warm-pool image rollout admission", () => {
-  test("only a completed zero-failure pre-pull authorizes rollout", () => {
-    expect(prePullAllowsPoolImageRollout(null)).toBe(false);
-    expect(
-      prePullAllowsPoolImageRollout({
-        attempted: 2,
-        failed: 1,
-        configuredImage,
-        targetDigest,
-      }),
-    ).toBe(false);
-    expect(
-      prePullAllowsPoolImageRollout({
-        attempted: 0,
-        failed: 0,
-        configuredImage,
-        targetDigest: null,
-      }),
-    ).toBe(false);
-    expect(
-      prePullAllowsPoolImageRollout({
-        attempted: 0,
-        failed: 0,
-        configuredImage,
-        targetDigest,
-      }),
-    ).toBe(false);
+  // One case per clause of the admission conjunction. The digest clause needs
+  // `attempted > 0` to isolate it: a summary that is both zero-attempt and
+  // undigested is refused by the attempt clause alone, so it cannot tell you
+  // whether the digest clause still exists.
+  const refusedCases = [
+    ["the pre-pull is disabled", null],
+    [
+      "no node was attempted",
+      { attempted: 0, failed: 0, configuredImage, targetDigest },
+    ],
+    [
+      "a node failed to pre-pull",
+      { attempted: 2, failed: 1, configuredImage, targetDigest },
+    ],
+    [
+      "the digest never resolved despite attempted nodes",
+      { attempted: 1, failed: 0, configuredImage, targetDigest: null },
+    ],
+    [
+      "the sweep neither attempted nor resolved",
+      { attempted: 0, failed: 0, configuredImage, targetDigest: null },
+    ],
+  ] as const;
+
+  test.each(refusedCases)("refuses rollout when %s", (_name, summary) => {
+    expect(prePullAllowsPoolImageRollout(summary)).toBe(false);
+  });
+
+  test("authorizes rollout only for an attempted, zero-failure, digested sweep", () => {
     expect(
       prePullAllowsPoolImageRollout({
         attempted: 1,
@@ -147,6 +150,26 @@ describe("warm-pool image rollout admission", () => {
         targetDigest,
       }),
     ).toBe(true);
+  });
+
+  test("an undigested summary would re-resolve the tag rather than skip", async () => {
+    // Why the digest clause is load-bearing rather than redundant with the
+    // rollout's own `!targetDigest` guard: the rollout falls back to
+    // `resolveImageDigest(configuredImage)` when the summary carries no digest,
+    // so admitting one would resolve a *fresh* digest at a later moment — the
+    // mutable-tag fallback the caller comment says must never happen once the
+    // sweep knows an immutable target.
+    const resolveImageDigest = mock(async () => null);
+    __setDepsForTests({
+      containersEnv: { defaultAgentImage: () => configuredImage },
+      resolveImageDigest,
+    } as never);
+    const summary = await processPoolImageRolloutCycle({
+      configuredImage,
+      targetDigest: null,
+    });
+    expect(resolveImageDigest).toHaveBeenCalledWith(configuredImage);
+    expect(summary.action).toBe("skipped_no_digest");
   });
 
   test("passes one resolved immutable digest into the manager and exposes counts", async () => {
