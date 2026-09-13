@@ -29,6 +29,12 @@ from the existing trusted execution context, never model-supplied arguments.
 The normal model-boundary redactor handles source strings before serialization;
 stored records and structured runtime results remain intact.
 
+The promoted `MEMORY_SEARCH` tool requires an explicit `author` choice:
+`requester` for the current user's messages, `assistant` for the agent's replies,
+or `any` for no author restriction. `any` preserves other type, entity and room
+filters, including searches for facts or another speaker. Legacy direct
+`MEMORY action=search` callers may still omit `author` for unfiltered searches.
+
 ## Research tasks
 
 `ResearchTaskExecutor` requires a provider registered for

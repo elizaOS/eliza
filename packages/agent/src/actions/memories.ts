@@ -55,7 +55,7 @@ interface MemoryParams {
   tags?: string[];
   type?: MemoryType;
   entityId?: string;
-  author?: "requester" | "assistant";
+  author?: "requester" | "assistant" | "any";
   roomId?: string;
   query?: string;
   limit?: number;
@@ -869,17 +869,18 @@ async function doSearch(
   message: Memory,
   params: MemoryParams,
 ): Promise<ActionResult> {
+  const author = params.author === "any" ? undefined : params.author;
   const type =
-    params.author !== undefined
+    author !== undefined
       ? "messages"
       : params.type && MEMORY_TYPES.includes(params.type)
         ? params.type
         : undefined;
   let authorId: UUID | undefined;
-  if (params.author !== undefined) {
-    if (params.author !== "requester" && params.author !== "assistant") {
+  if (author !== undefined) {
+    if (author !== "requester" && author !== "assistant") {
       return fail(
-        "author must be requester or assistant.",
+        "author must be requester, assistant, or any.",
         "MEMORY_INVALID_AUTHOR",
       );
     }
@@ -890,7 +891,7 @@ async function doSearch(
       );
     }
     const resolved = parseUuidParam(
-      params.author === "requester" ? message.entityId : runtime.agentId,
+      author === "requester" ? message.entityId : runtime.agentId,
       "author",
     );
     if (!resolved.ok || !resolved.id) {
@@ -1649,9 +1650,13 @@ export const memoryAction: Action = {
     {
       name: "author",
       description:
-        "search: messages by requester (the person making this request) or assistant (your own replies). Use requester for my original statements or corrections; the runtime resolves the author without copying UUIDs. Defaults type to messages and searches stored rooms within existing access scope.",
+        "search: choose requester for the current user's original statements or corrections, assistant for your own replies, or any for no author restriction. Requester/assistant resolve the author from this turn and imply type=messages. Use any for other record types or an explicit other entityId. Existing access, type, entityId, and roomId filters still apply.",
       required: false,
-      schema: { type: "string" as const, enum: ["requester", "assistant"] },
+      requiredForSubactions: ["search"],
+      schema: {
+        type: "string" as const,
+        enum: ["requester", "assistant", "any"],
+      },
     },
     // entityId/roomId carry no schema `pattern` on purpose (matrix F16): a
     // planner-copied UUID arrives mangled often enough (live: a dropped hex

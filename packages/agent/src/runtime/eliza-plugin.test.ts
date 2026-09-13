@@ -224,8 +224,10 @@ describe("promoted MEMORY tool contracts", () => {
       validateToolArgs(actionNamed("MEMORY_DELETE"), { memoryId }).valid,
     ).toBe(false);
     expect(
-      validateToolArgs(actionNamed("MEMORY_SEARCH"), { query: "Silver Heron" })
-        .valid,
+      validateToolArgs(actionNamed("MEMORY_SEARCH"), {
+        query: "Silver Heron",
+        author: "any",
+      }).valid,
     ).toBe(true);
     expect(
       actionNamed("MEMORY").parameters?.find((p) => p.name === "text")
@@ -233,13 +235,23 @@ describe("promoted MEMORY tool contracts", () => {
     ).toBe(false);
   });
 
-  it("exposes caller-relative authorship on the promoted search tool", () => {
+  it("requires explicit authorship on the registered search tool", () => {
     const search = actionNamed("MEMORY_SEARCH");
-    expect(search.parameters?.find((p) => p.name === "author")?.schema).toEqual(
-      { type: "string", enum: ["requester", "assistant"] },
-    );
+    // An omitted scope must not execute a broad search when the user asked
+    // for their original statements rather than assistant restatements.
     expect(
-      validateToolArgs(search, { author: "requester", query: "Mira" }).valid,
+      validateToolArgs(search, { query: "Mira", limit: 10 }).errors,
+    ).toContain("Missing required argument 'author'");
+    for (const author of ["requester", "assistant", "any"]) {
+      expect(validateToolArgs(search, { author, query: "Mira" }).valid).toBe(
+        true,
+      );
+    }
+    expect(
+      validateToolArgs(actionNamed("MEMORY"), {
+        action: "search",
+        query: "Mira",
+      }).valid,
     ).toBe(true);
     expect(
       validateToolArgs(search, { author: "everyone", query: "Mira" }).valid,

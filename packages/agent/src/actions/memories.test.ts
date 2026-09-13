@@ -1749,6 +1749,46 @@ describe("MEMORY op:search complete traversal", () => {
     expect(rows).toHaveLength(3);
   });
 
+  it("keeps explicit any searches equivalent to legacy unfiltered calls and preserves other filters", async () => {
+    const { runtime, rows } = makeRuntime();
+    for (const [index, entityId] of [
+      USER_ID,
+      AGENT_ID,
+      OTHER_USER_ID,
+    ].entries()) {
+      rows.push({
+        tableName: "messages",
+        memory: {
+          id: crypto.randomUUID() as UUID,
+          agentId: AGENT_ID,
+          entityId,
+          roomId: ROOM_ID,
+          createdAt: index + 1,
+          content: { text: "Mira correction: burgundy charger" },
+        } as Memory,
+      });
+    }
+    seedFact(rows, { text: "Mira likes burgundy.", entityId: USER_ID });
+    const before = structuredClone(rows);
+    const filterCases: TestParams[] = [
+      {},
+      { type: "facts" },
+      { type: "messages" },
+      { type: "messages", entityId: OTHER_USER_ID, roomId: ROOM_ID },
+    ];
+    for (const filters of filterCases) {
+      const parameters = { action: "search", query: "Mira", ...filters };
+      const legacy = await runAction(runtime, makeMessage(), parameters);
+      const explicit = await runAction(runtime, makeMessage(), {
+        ...parameters,
+        author: "any",
+      });
+      expect(legacy.success).toBe(true);
+      expect(explicit).toEqual(legacy);
+    }
+    expect(rows).toEqual(before);
+  });
+
   it("rejects ambiguous or unavailable author filters instead of searching everyone", async () => {
     const { runtime } = makeRuntime();
     const invalidFilters: TestParams[] = [
