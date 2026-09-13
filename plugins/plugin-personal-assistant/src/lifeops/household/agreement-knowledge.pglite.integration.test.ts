@@ -53,6 +53,11 @@ import {
   previewFamilyDeletionDatabase,
   withReviewedFamilyDeletionDatabase,
 } from "../family-workflows/deletion-database-snapshot.js";
+import {
+  beginFamilyWorkspaceDeletion,
+  purgeFamilyWorkspaceFiles,
+  readFamilyDeletionJob,
+} from "../family-workflows/workspace-deletion.js";
 import { exportFamilyWorkspace } from "../family-workflows/workspace-export.js";
 import {
   beginFamilyWorkspaceOperation,
@@ -3462,5 +3467,219 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         `SELECT id FROM memories WHERE agent_id=${sqlQuote(runtime.agentId)} AND type IN ('documents','document_fragments') ORDER BY id`,
       ),
     ).toEqual(documents);
+  });
+});
+
+describe("reviewed workspace deletion — real database and disk", () => {
+  it("atomically removes private database projections and journals remaining files", async () => {
+    const mediaDir = fs.mkdtempSync(path.join(os.tmpdir(), "family-delete-"));
+    process.env.ELIZA_STATE_DIR = mediaDir;
+    const result = await createLifeOpsTestRuntime({
+      plugins: [fileStoragePlugin, documentsPluginCore],
+    });
+    const runtime = result.runtime;
+    try {
+      runtime.services.set(ServiceType.PDF, [
+        new AgreementTestPdfService(runtime),
+      ]);
+      const graph = resolveKnowledgeGraphService(runtime);
+      if (!graph) throw new Error("Real graph unavailable");
+      await graph.getEntityStore(runtime.agentId).ensureSelf();
+      await new CalendarCardAccessStore(runtime).ensureSchema();
+      await new SchoolCalendarWorkflow(runtime).ensureSchema();
+      await new MonthlyFamilyPacketService(runtime).list();
+      const service = createAgreementKnowledgeService(runtime);
+      const bytes = pdf("synthetic source to delete");
+      const first = await service.createAgreementVersion({
+        agreementKey: "delete-atomic",
+        title: "Delete atomic",
+        originalFilename: "atomic.pdf",
+        mimeType: "application/pdf",
+        bytes,
+        uploadedByEntityId: SELF_ENTITY_ID,
+      });
+      const storage = runtime.getService<IFileStorageService>(
+        ServiceType.REMOTE_FILES,
+      );
+      const documents = runtime.getService<DocumentService>(
+        DocumentService.serviceType,
+      );
+      if (!storage || !documents)
+        throw new Error("Real document and file services required");
+      const context = {
+        requesterEntityId: runtime.agentId,
+        role: "OWNER" as const,
+      };
+      expect(
+        await documents.getDocumentByIdWithAccessContext(
+          first.documentId as UUID,
+          context,
+        ),
+      ).not.toBeNull();
+      const foreignId = `hag_${crypto.randomUUID()}`;
+      await executeRawSql(
+        runtime,
+        `INSERT INTO app_lifeops.life_household_agreement_artifacts SELECT (jsonb_populate_record(NULL::app_lifeops.life_household_agreement_artifacts, to_jsonb(source) || ${sqlQuote(JSON.stringify({ id: foreignId, agent_id: "foreign-workspace" }))}::jsonb)).* FROM app_lifeops.life_household_agreement_artifacts source WHERE id=${sqlQuote(first.id)}`,
+      );
+      const preview = await previewFamilyDeletionDatabase(
+        runtime,
+        SELF_ENTITY_ID,
+      );
+      expect(preview.unavailable).toEqual([]);
+      await expect(
+        beginFamilyWorkspaceDeletion(runtime, {
+          ownerEntityId: "guest",
+          expectedSha256: preview.sha256,
+          backupRetention: "immediate",
+        }),
+      ).rejects.toMatchObject({ code: "FAMILY_DELETION_ACCESS_DENIED" });
+      await expect(
+        beginFamilyWorkspaceDeletion(runtime, {
+          ownerEntityId: SELF_ENTITY_ID,
+          expectedSha256: preview.sha256,
+          backupRetention: "immediate",
+        }),
+      ).rejects.toMatchObject({ code: "FAMILY_DELETION_SHARED_SOURCE" });
+      const foreignBytes = pdf("independent foreign source");
+      const foreignFile = await storage.storePrivate(
+        foreignBytes,
+        "application/pdf",
+      );
+      await executeRawSql(
+        runtime,
+        `UPDATE app_lifeops.life_household_agreement_artifacts SET media_file_name=${sqlQuote(foreignFile.fileName)}, document_id=${sqlQuote(crypto.randomUUID())}, content_sha256=${sqlQuote(crypto.createHash("sha256").update(foreignBytes).digest("hex"))} WHERE id=${sqlQuote(foreignId)}`,
+      );
+      await readFamilyDeletionJob(runtime, SELF_ENTITY_ID);
+      await executeRawSql(
+        runtime,
+        `CREATE FUNCTION app_lifeops.reject_delete_journal() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'journal storage unavailable'; END; $$`,
+      );
+      await executeRawSql(
+        runtime,
+        `CREATE TRIGGER reject_delete_journal BEFORE INSERT ON app_lifeops.life_family_workspace_deletions FOR EACH ROW EXECUTE FUNCTION app_lifeops.reject_delete_journal()`,
+      );
+      await expect(
+        beginFamilyWorkspaceDeletion(runtime, {
+          ownerEntityId: SELF_ENTITY_ID,
+          expectedSha256: preview.sha256,
+          backupRetention: "immediate",
+        }),
+      ).rejects.toMatchObject({
+        code: "FAMILY_DELETION_TRANSACTION_FAILED",
+        cause: { cause: { message: "journal storage unavailable" } },
+      });
+      expect(
+        (
+          await service.readOwnerPdf({
+            artifactId: first.id,
+            ownerEntityId: SELF_ENTITY_ID,
+          })
+        ).bytes,
+      ).toEqual(bytes);
+      expect(
+        await documents.getDocumentByIdWithAccessContext(
+          first.documentId as UUID,
+          context,
+        ),
+      ).not.toBeNull();
+      expect(await readFamilyDeletionJob(runtime, SELF_ENTITY_ID)).toBeNull();
+      await executeRawSql(
+        runtime,
+        "DROP TRIGGER reject_delete_journal ON app_lifeops.life_family_workspace_deletions",
+      );
+      await executeRawSql(
+        runtime,
+        "DROP FUNCTION app_lifeops.reject_delete_journal()",
+      );
+      const job = await beginFamilyWorkspaceDeletion(runtime, {
+        ownerEntityId: SELF_ENTITY_ID,
+        expectedSha256: preview.sha256,
+        backupRetention: "immediate",
+      });
+      expect(job.files).toContainEqual({
+        fileName: first.mediaFileName,
+        sha256: first.contentSha256,
+      });
+      expect(await readFamilyDeletionJob(runtime, SELF_ENTITY_ID)).toEqual(job);
+      expect(
+        await documents.getDocumentByIdWithAccessContext(
+          first.documentId as UUID,
+          context,
+        ),
+      ).toBeNull();
+      expect(
+        await executeRawSql(
+          runtime,
+          `SELECT id FROM app_lifeops.life_household_agreement_artifacts WHERE agent_id=${sqlQuote(runtime.agentId)}`,
+        ),
+      ).toEqual([]);
+      expect(
+        await executeRawSql(
+          runtime,
+          `SELECT id FROM app_lifeops.life_household_agreement_artifacts WHERE id=${sqlQuote(foreignId)}`,
+        ),
+      ).toEqual([{ id: foreignId }]);
+      expect(await storage.readPrivate(first.mediaFileName)).toEqual(bytes);
+      await expect(
+        service.readOwnerPdf({
+          artifactId: first.id,
+          ownerEntityId: SELF_ENTITY_ID,
+        }),
+      ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+      const originalDelete = storage.deletePrivate.bind(storage);
+      const privatePath = path.join(mediaDir, "media", first.mediaFileName);
+      const changedBytes = Buffer.alloc(bytes.length, 0);
+      try {
+        fs.writeFileSync(privatePath, changedBytes);
+        await expect(
+          purgeFamilyWorkspaceFiles(runtime, SELF_ENTITY_ID),
+        ).rejects.toMatchObject({ code: "FAMILY_DELETION_FILE_CHANGED" });
+        expect(fs.readFileSync(privatePath)).toEqual(changedBytes);
+        expect(await readFamilyDeletionJob(runtime, SELF_ENTITY_ID)).toEqual(
+          job,
+        );
+      } finally {
+        fs.writeFileSync(privatePath, bytes);
+      }
+      storage.deletePrivate = async () => true;
+      try {
+        await expect(
+          purgeFamilyWorkspaceFiles(runtime, SELF_ENTITY_ID),
+        ).rejects.toMatchObject({ code: "FAMILY_DELETION_FILE_PURGE_FAILED" });
+        expect(await storage.readPrivate(first.mediaFileName)).toEqual(bytes);
+        expect(await readFamilyDeletionJob(runtime, SELF_ENTITY_ID)).toEqual(
+          job,
+        );
+      } finally {
+        storage.deletePrivate = originalDelete;
+      }
+      storage.deletePrivate = async (fileName) => {
+        await originalDelete(fileName);
+        throw new Error("Lost private-delete acknowledgement");
+      };
+      try {
+        await expect(
+          purgeFamilyWorkspaceFiles(runtime, SELF_ENTITY_ID),
+        ).rejects.toMatchObject({ code: "FAMILY_DELETION_FILE_PURGE_FAILED" });
+      } finally {
+        storage.deletePrivate = originalDelete;
+      }
+      expect(await storage.readPrivate(first.mediaFileName)).toBeNull();
+      expect(
+        (await readFamilyDeletionJob(runtime, SELF_ENTITY_ID))?.state,
+      ).toBe("purge_pending");
+      const cleaned = await purgeFamilyWorkspaceFiles(runtime, SELF_ENTITY_ID);
+      expect(cleaned.state).toBe("backup_pending");
+      expect(await purgeFamilyWorkspaceFiles(runtime, SELF_ENTITY_ID)).toEqual(
+        cleaned,
+      );
+      expect(await storage.readPrivate(foreignFile.fileName)).toEqual(
+        foreignBytes,
+      );
+    } finally {
+      await result.cleanup();
+      delete process.env.ELIZA_STATE_DIR;
+      fs.rmSync(mediaDir, { recursive: true, force: true });
+    }
   });
 });
