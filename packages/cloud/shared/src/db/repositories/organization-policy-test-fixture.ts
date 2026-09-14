@@ -44,6 +44,7 @@ export async function installOrganizationPolicyTestSchema(
     "0387_agent_compute_funding.sql",
     "0389_agent_compute_stop_receipts.sql",
     "0390_agent_compute_runtime_readiness.sql",
+    "0392_agent_compute_retirement_backup.sql",
   ]) {
     const migration = await readFile(new URL(`../migrations/${name}`, import.meta.url), "utf8");
     // The fixture's connection search_path owns all of its tables. Generated

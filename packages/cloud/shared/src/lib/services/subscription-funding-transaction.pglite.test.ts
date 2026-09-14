@@ -119,6 +119,12 @@ beforeAll(async () => {
   );
   await fixture.exec(subjectMigration);
   await fixture.exec(subjectMigration);
+  const retirementMigration = await readFile(
+    new URL("../../db/migrations/0392_agent_compute_retirement_backup.sql", import.meta.url),
+    "utf8",
+  );
+  await fixture.exec(retirementMigration);
+  await fixture.exec(retirementMigration);
   const legacyBillingMigration = await readFile(
     new URL("../../db/migrations/0265_compute_billing_recovery.sql", import.meta.url),
     "utf8",
@@ -2062,8 +2068,20 @@ if (postgresTestUrl) {
 
 if (sshFixturePath) {
   async function runPaidContainerScenario(
-    scenario: "worker" | "sleep" | "shutdown" | "restart" | "deletion" | "warm",
+    scenario:
+      | "worker"
+      | "sleep"
+      | "billing-sleep"
+      | "billing-topup"
+      | "billing-stale"
+      | "shutdown"
+      | "restart"
+      | "deletion"
+      | "warm",
   ) {
+    const billingScenario =
+      scenario === "billing-sleep" || scenario === "billing-topup" || scenario === "billing-stale";
+    const sleepScenario = scenario === "sleep" || billingScenario;
     const target = z
       .object({
         hostname: z.ipv4(),
@@ -2083,17 +2101,23 @@ if (sshFixturePath) {
     const rootSSH = guard.dockerComputeRootSSH(ssh, target.username);
     const docker = target.username === "root" ? "docker" : "sudo --non-interactive docker";
     const suffix =
-      scenario === "worker"
-        ? "000000000041"
-        : scenario === "sleep"
-          ? "000000000042"
-          : scenario === "shutdown"
-            ? "000000000043"
-            : scenario === "restart"
-              ? "000000000044"
-              : scenario === "deletion"
-                ? "000000000045"
-                : "000000000046";
+      scenario === "billing-topup"
+        ? "000000000048"
+        : scenario === "billing-stale"
+          ? "000000000049"
+          : scenario === "billing-sleep"
+            ? "000000000047"
+            : scenario === "worker"
+              ? "000000000041"
+              : sleepScenario
+                ? "000000000042"
+                : scenario === "shutdown"
+                  ? "000000000043"
+                  : scenario === "restart"
+                    ? "000000000044"
+                    : scenario === "deletion"
+                      ? "000000000045"
+                      : "000000000046";
     const agentId = `63000000-0000-4000-8000-${suffix}`;
     const org = `61000000-0000-4000-8000-${suffix}`;
     const name = `agent-${agentId}`;
@@ -2112,6 +2136,8 @@ if (sshFixturePath) {
     let containerId: string | undefined;
     const ownedContainerIds: string[] = [];
     let ownsGuard = false;
+    let ownsBillingRevisionTrigger = false;
+    let ownsBillingIntentTable = false;
     let originalRunning: string[] = [];
     let releaseRestore = () => {};
     const firstRestoreBlocked = new Promise<void>((resolve) => {
@@ -2223,10 +2249,14 @@ if (sshFixturePath) {
         "INSERT INTO docker_nodes(id,node_id,hostname,ssh_port,ssh_user,host_key_fingerprint) VALUES(gen_random_uuid(),$1,$2,$3,$4,$5)",
         [nodeId, target.hostname, target.port, target.username, target.hostKeyFingerprint],
       );
-      const { compute, provider } = await billableFundedAgent(suffix, "1.000000", {
-        nodeId,
-        containerId,
-      });
+      const { compute, provider } = await billableFundedAgent(
+        suffix,
+        billingScenario ? "0.300000" : "1.000000",
+        {
+          nodeId,
+          containerId,
+        },
+      );
       await fixture.query(
         "UPDATE agent_sandboxes SET status='provisioning',sandbox_id=$2,container_name=$2,bridge_port=2138,web_ui_port=2138,environment_revision=1,database_status='ready',database_uri='postgres://fixture.invalid/retained',environment_vars=$3,quota_admission_scope='trusted_internal' WHERE id=$1",
         [agentId, name, JSON.stringify({ ELIZA_API_TOKEN: token })],
@@ -2400,9 +2430,51 @@ if (sshFixturePath) {
         }
         const sleepProvider = new DockerSandboxProvider();
         const service = new ElizaSandboxService(sleepProvider);
-        const finalStatus = scenario === "sleep" ? "sleeping" : "stopped";
-        const retire = () =>
-          scenario === "sleep"
+        let billingJobId: string | undefined;
+        if (billingScenario) {
+          const migration = (name: string) =>
+            readFile(new URL(`../../db/migrations/${name}`, import.meta.url), "utf8");
+          const recovery = await migration("0265_compute_billing_recovery.sql");
+          const intentDDL = recovery.match(
+            /CREATE TABLE agent_compute_stop_intents \([\s\S]*?\n\);/,
+          );
+          if (!intentDDL) throw new Error("Missing canonical stop intent DDL");
+          await fixture.exec(intentDDL[0]);
+          ownsBillingIntentTable = true;
+          for (const statement of (
+            await migration("0334_billing_cancel_intent_authority.sql")
+          ).split("--> statement-breakpoint")) {
+            if (statement.includes('"agent_compute_stop_intents"')) await fixture.exec(statement);
+          }
+          // Exercise the real revision trigger: this stop changes the generation
+          // before the second removal transaction and before a crash retry.
+          await fixture.exec(await migration("0189_agent_sandbox_lifecycle_revision_scope.sql"));
+          ownsBillingRevisionTrigger = true;
+          const suspended = await new ProvisioningJobService().enqueueAgentSuspendOnce({
+            agentId,
+            organizationId: org,
+            userId: `64000000-0000-4000-8000-${suffix}`,
+            authorization: "billing_request",
+          });
+          billingJobId = suspended.job.id;
+        }
+        const finalStatus = sleepScenario ? "sleeping" : "stopped";
+        const retire = async () => {
+          if (billingJobId) {
+            const { rows } = await fixture.query<{ lifecycle_revision: number }>(
+              "SELECT lifecycle_revision FROM agent_compute_stop_intents WHERE job_id=$1",
+              [billingJobId],
+            );
+            const result = await service.executeSuspend(
+              agentId,
+              org,
+              billingJobId,
+              "billing_request",
+              Number(rows[0]!.lifecycle_revision),
+            );
+            return { ...result, containerRemoved: result.containerStopped };
+          }
+          return sleepScenario
             ? service.executeSleep(agentId, org)
             : scenario === "shutdown"
               ? service.shutdown(agentId, org)
@@ -2415,6 +2487,7 @@ if (sshFixturePath) {
                         retireFailedWarmClaimForRetry: import("./eliza-sandbox/lifecycle/warm-claim").SandboxWarmClaim["retireFailedWarmClaimForRetry"];
                       }
                     ).retireFailedWarmClaimForRetry(agentId, org);
+        };
         if (scenario === "restart")
           await fixture.query(
             "UPDATE agent_sandboxes SET claimed_at=now(),warm_claim_credential_state='ready' WHERE id=$1",
@@ -2440,6 +2513,12 @@ if (sshFixturePath) {
           expect(
             (await ssh.exec(`${docker} exec ${containerId} cat /tmp/worker-marker`)).trim(),
           ).toBe(marker);
+          if (scenario === "billing-topup") {
+            await fixture.query(
+              "UPDATE organizations SET credit_balance=credit_balance+1 WHERE id=$1",
+              [org],
+            );
+          }
           return {
             stateData: state,
             sizeBytes: JSON.stringify(state).length,
@@ -2510,6 +2589,30 @@ if (sshFixturePath) {
             )
           ).rows[0];
         try {
+          if (scenario === "billing-topup") {
+            expect(await retire()).toMatchObject({
+              success: true,
+              skipped: true,
+              reason: "billing_recovered",
+              containerStopped: false,
+            });
+            expect(remove).not.toHaveBeenCalled();
+            expect(
+              (
+                await ssh.exec(`${docker} inspect --format '{{.State.Running}}' ${containerId}`)
+              ).trim(),
+            ).toBe("true");
+            expect(persist).not.toHaveBeenCalled();
+            expect(
+              (
+                await fixture.query(
+                  "SELECT status,last_error FROM agent_compute_stop_intents WHERE job_id=$1",
+                  [billingJobId],
+                )
+              ).rows,
+            ).toEqual([{ status: "superseded", last_error: "billing_recovered" }]);
+            return;
+          }
           expect(await retire()).toMatchObject({
             success: false,
             error:
@@ -2517,7 +2620,7 @@ if (sshFixturePath) {
                 ? "Failed to retire the previous warm-claim container"
                 : scenario === "deletion"
                   ? "Failed to delete sandbox"
-                  : scenario === "sleep"
+                  : sleepScenario
                     ? "Removal transport unavailable after committed paid stop"
                     : "Failed to prove the previous sandbox stopped",
           });
@@ -2553,11 +2656,60 @@ if (sshFixturePath) {
             provider_stop_receipt: expect.any(Object),
           });
           expect(stopped.reservations[0]?.status).toBe("finalized");
+          if (scenario === "billing-stale") {
+            const removals = remove.mock.calls.length;
+            await fixture.query(
+              "UPDATE agent_sandboxes SET environment_revision=environment_revision+1 WHERE id=$1",
+              [agentId],
+            );
+            expect(await retire()).toMatchObject({
+              success: true,
+              skipped: true,
+              reason: "lifecycle_changed",
+              containerStopped: false,
+            });
+            expect(remove.mock.calls).toHaveLength(removals);
+            expect(
+              (
+                await ssh.exec(`${docker} inspect --format '{{.State.Running}}' ${containerId}`)
+              ).trim(),
+            ).toBe("false");
+            expect((await agentSandboxesRepository.getBackupById(backupId))?.state_data).toEqual(
+              state,
+            );
+            return;
+          }
+          if (sleepScenario) {
+            // A restorable backup alone cannot authorize deleting a retained
+            // container: its latest writes may have happened after that backup.
+            const removals = remove.mock.calls.length;
+            await fixture.query(
+              "UPDATE agent_compute_funding SET retirement_backup_id=NULL WHERE id=$1",
+              [provider.fundingId],
+            );
+            expect(await retire()).toMatchObject({
+              success: false,
+              containerRemoved: false,
+              error: "Stopped Dedicated state has no backup bound to its paid stop",
+            });
+            expect(remove.mock.calls).toHaveLength(removals);
+            expect(
+              (
+                await ssh.exec(`${docker} inspect --format '{{.State.Running}}' ${containerId}`)
+              ).trim(),
+            ).toBe("false");
+            // Restore the exact attestation originally committed with this stop;
+            // a later invocation must recover without another live capture.
+            await fixture.query(
+              "UPDATE agent_compute_funding SET retirement_backup_id=$2 WHERE id=$1",
+              [provider.fundingId, backupId],
+            );
+          }
           expect(
             (
               await fixture.query(
-                "SELECT o.credit_balance+a.total_billed=1.000000 AS reconciled FROM organizations o JOIN agent_sandboxes a ON a.organization_id=o.id WHERE a.id=$1",
-                [agentId],
+                "SELECT o.credit_balance+a.total_billed=$2::numeric AS reconciled FROM organizations o JOIN agent_sandboxes a ON a.organization_id=o.id WHERE a.id=$1",
+                [agentId, billingScenario ? "0.300000" : "1.000000"],
               )
             ).rows[0]?.reconciled,
           ).toBe(true);
@@ -2748,7 +2900,7 @@ if (sshFixturePath) {
             }
           } else {
             expect(await retire()).toMatchObject(
-              scenario === "sleep"
+              sleepScenario
                 ? { success: true, containerRemoved: true, backupId }
                 : { success: true },
             );
@@ -2815,6 +2967,12 @@ if (sshFixturePath) {
         await ssh.disconnect();
         await DockerSSHClient.disconnectAll();
         await rm(directory, { recursive: true, force: true });
+        if (ownsBillingRevisionTrigger) {
+          await fixture.exec(
+            'DROP TRIGGER agent_sandboxes_lifecycle_revision_trigger ON "agent_sandboxes"',
+          );
+        }
+        if (ownsBillingIntentTable) await fixture.exec("DROP TABLE agent_compute_stop_intents");
       }
     }
   }
@@ -2823,6 +2981,23 @@ if (sshFixturePath) {
     () => runPaidContainerScenario("worker"),
     300_000,
   );
+  test(
+    "billing retirement preserves runtime when a top-up wins the locked recheck",
+    () => runPaidContainerScenario("billing-topup"),
+    180_000,
+  );
+  test(
+    "billing retirement cannot delete a later configuration generation",
+    () => runPaidContainerScenario("billing-stale"),
+    180_000,
+  );
+
+  test(
+    "unfunded Dedicated suspension reclaims compute from its bound backup across removal failure and rollback",
+    () => runPaidContainerScenario("billing-sleep"),
+    180_000,
+  );
+
   test(
     "paid sleep commits backup and refund before removal and retries a post-removal database rollback",
     () => runPaidContainerScenario("sleep"),

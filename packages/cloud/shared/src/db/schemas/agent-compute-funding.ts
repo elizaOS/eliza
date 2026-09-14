@@ -41,11 +41,17 @@ export const agentComputeFunding = pgTable(
       bootId: string;
       stoppedAtMs: number;
     }>(),
+    /** Fresh capture committed with this exact stop; required before retained compute can be removed. */
+    retirement_backup_id: uuid("retirement_backup_id"),
     settled_through: timestamp("settled_through", { withTimezone: true }),
     settled_at: timestamp("settled_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    retirement_backup_check: check(
+      "agent_compute_funding_retirement_backup_check",
+      sql`${table.retirement_backup_id} IS NULL OR (${table.settled_at} IS NOT NULL AND ${table.provider_stopped_at} IS NOT NULL)`,
+    ),
     stop_receipt_check: check(
       "agent_compute_funding_stop_receipt_check",
       sql`num_nonnulls(${table.provider_stopped_at}, ${table.provider_stop_receipt}) IN (0, 2)
