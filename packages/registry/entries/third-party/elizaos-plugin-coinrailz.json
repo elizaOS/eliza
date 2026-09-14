@@ -4,7 +4,7 @@
   "kind": "plugin",
   "description": "Agent Treasury + Payments: non-custodial USDC yield on Solana and Base, plus 80 live x402 pay-per-call services for data, inference, compliance, IoT, and execution.",
   "homepage": "https://coinrailz.com",
-  "version": "2.6.2",
+  "version": "2.6.3",
   "tags": [
     "payments",
     "x402",
