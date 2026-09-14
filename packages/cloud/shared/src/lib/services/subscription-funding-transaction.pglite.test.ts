@@ -113,6 +113,12 @@ beforeAll(async () => {
   );
   await fixture.exec(readinessMigration);
   await fixture.exec(readinessMigration);
+  const subjectMigration = await readFile(
+    new URL("../../db/migrations/0391_agent_compute_subjects.sql", import.meta.url),
+    "utf8",
+  );
+  await fixture.exec(subjectMigration);
+  await fixture.exec(subjectMigration);
   const legacyBillingMigration = await readFile(
     new URL("../../db/migrations/0265_compute_billing_recovery.sql", import.meta.url),
     "utf8",
@@ -1011,6 +1017,173 @@ test("stopped runtime refunds its unused hold atomically, including for an inact
   expect(await renewalState(org)).toEqual(after);
 });
 
+test("paid agent deletion retains settled financial history and rejects open funding or identity reuse", async () => {
+  const { org, agentId, identity, provider, input } = await billableFundedAgent(
+    "000000000050",
+    "1.000000",
+  );
+  const before = await renewalState(org);
+  // Reconstruct the populated pre-migration FK, then apply the real backfill.
+  const migration = await readFile(
+    new URL("../../db/migrations/0391_agent_compute_subjects.sql", import.meta.url),
+    "utf8",
+  );
+  await fixture.exec(`BEGIN;
+    ALTER TABLE agent_compute_funding DROP CONSTRAINT agent_compute_funding_agent_tenant_fk;
+    ALTER TABLE agent_compute_funding ADD CONSTRAINT agent_compute_funding_agent_tenant_fk FOREIGN KEY(agent_id,organization_id) REFERENCES agent_sandboxes(id,organization_id) ON DELETE RESTRICT;
+    DELETE FROM agent_compute_subjects WHERE agent_id='${agentId}';
+    ${migration}
+    COMMIT;`);
+  expect(
+    (
+      await fixture.query(
+        "SELECT organization_id,retired_at FROM agent_compute_subjects WHERE agent_id=$1",
+        [agentId],
+      )
+    ).rows,
+  ).toEqual([{ organization_id: org, retired_at: null }]);
+  expect(await renewalState(org)).toEqual(before);
+  await expect(fixture.query("DELETE FROM agent_sandboxes WHERE id=$1", [agentId])).rejects.toThrow(
+    "Unsettled compute",
+  );
+  await expect(
+    fixture.query("UPDATE agent_sandboxes SET organization_id=$2 WHERE id=$1", [
+      agentId,
+      organizationId,
+    ]),
+  ).rejects.toThrow("identity is immutable");
+  await expect(
+    fixture.query("UPDATE agent_compute_funding SET agent_id=$2 WHERE id=$1", [
+      provider.fundingId,
+      crypto.randomUUID(),
+    ]),
+  ).rejects.toThrow("identity is immutable");
+  expect(await renewalState(org)).toEqual(before);
+  const { settleStoppedAgentComputeInTransaction } = await import("./agent-compute-stop");
+  const receipt = await stopReceiptFor(provider.fundingId, input.now);
+  await helpers.writeTransaction((tx) =>
+    settleStoppedAgentComputeInTransaction(
+      tx,
+      { ...identity, fundingId: provider.fundingId },
+      receipt,
+    ),
+  );
+  const settled = await renewalState(org);
+  const receipts = (
+    await fixture.query("SELECT * FROM agent_billing_records WHERE sandbox_id=$1", [agentId])
+  ).rows;
+  expect(receipts).toHaveLength(1);
+  // Applying the migration again must preserve the existing funding identities.
+  await fixture.exec(
+    await readFile(
+      new URL("../../db/migrations/0391_agent_compute_subjects.sql", import.meta.url),
+      "utf8",
+    ),
+  );
+  await expect(
+    helpers.writeTransaction(async (tx) => {
+      await tx.execute(sql`DELETE FROM agent_sandboxes WHERE id=${agentId}`);
+      throw new Error("delete commit failed");
+    }),
+  ).rejects.toThrow("delete commit failed");
+  expect(
+    (
+      await fixture.query("SELECT retired_at FROM agent_compute_subjects WHERE agent_id=$1", [
+        agentId,
+      ])
+    ).rows,
+  ).toEqual([{ retired_at: null }]);
+  await fixture.query("DELETE FROM agent_sandboxes WHERE id=$1", [agentId]);
+  expect(
+    (await fixture.query("SELECT id FROM agent_sandboxes WHERE id=$1", [agentId])).rows,
+  ).toHaveLength(0);
+  expect(
+    (
+      await fixture.query("SELECT retired_at FROM agent_compute_subjects WHERE agent_id=$1", [
+        agentId,
+      ])
+    ).rows,
+  ).toEqual([{ retired_at: expect.any(Date) }]);
+  expect(await renewalState(org)).toEqual(settled);
+  expect(
+    (await fixture.query("SELECT * FROM agent_billing_records WHERE sandbox_id=$1", [agentId]))
+      .rows,
+  ).toEqual(receipts);
+  await expect(
+    fixture.query(
+      "INSERT INTO agent_sandboxes(id,organization_id,status,execution_tier,lifecycle_revision) VALUES($1,$2,'provisioning','dedicated-always',1)",
+      [agentId, org],
+    ),
+  ).rejects.toThrow("cannot be reused");
+  await expect(
+    fixture.query(
+      "INSERT INTO agent_sandboxes(id,organization_id,status,execution_tier,lifecycle_revision) VALUES($1,$2,'provisioning','dedicated-always',1)",
+      [agentId, organizationId],
+    ),
+  ).rejects.toThrow("cannot be reused");
+});
+
+test("paid agent deletion refunds an unallocated hold before removing its operational row", async () => {
+  const agentId = crypto.randomUUID();
+  await fixture.query(
+    "INSERT INTO agent_sandboxes(id,organization_id,status,execution_tier,lifecycle_revision,environment_revision) VALUES($1,$2,'provisioning','dedicated-always',1,1)",
+    [agentId, organizationId],
+  );
+  const before = (
+    await fixture.query("SELECT credit_balance::text FROM organizations WHERE id=$1", [
+      organizationId,
+    ])
+  ).rows;
+  const { agentComputeFundingService } = await import("./agent-compute-funding");
+  const current = (
+    await fixture.query("SELECT lifecycle_revision FROM agent_sandboxes WHERE id=$1", [agentId])
+  ).rows[0]!;
+  const held = await helpers.writeTransaction((tx) =>
+    agentComputeFundingService.reserveInTransaction(tx, {
+      agentId,
+      organizationId,
+      lifecycleRevision: Number(current.lifecycle_revision),
+    }),
+  );
+  await fixture.query("UPDATE agent_sandboxes SET status='error' WHERE id=$1", [agentId]);
+  const { ElizaSandboxService } = await import("./eliza-sandbox");
+  const { SandboxDeletion } = await import("./eliza-sandbox/lifecycle/deletion");
+  const deletion = new SandboxDeletion(
+    new ElizaSandboxService() as unknown as import("./eliza-sandbox/lifecycle/deletion").SandboxDeletionHost,
+  );
+  const prepared = await deletion.prepareAgentDelete(agentId, organizationId, "user_request");
+  expect(prepared.ok).toBe(true);
+  if (!prepared.ok) throw new Error(prepared.error);
+  expect(
+    (
+      await fixture.query("SELECT credit_balance::text FROM organizations WHERE id=$1", [
+        organizationId,
+      ])
+    ).rows,
+  ).toEqual(before);
+  expect(
+    (
+      await fixture.query(
+        "SELECT settled_at,provider_container_id,host_lease_confirmed_at FROM agent_compute_funding WHERE id=$1",
+        [held.window.id],
+      )
+    ).rows,
+  ).toEqual([
+    { settled_at: expect.any(Date), provider_container_id: null, host_lease_confirmed_at: null },
+  ]);
+  expect(await deletion.commitAgentRowDelete(agentId, organizationId, prepared)).toMatchObject({
+    success: true,
+    rowDeleted: true,
+  });
+  expect(
+    (
+      await fixture.query("SELECT retired_at FROM agent_compute_subjects WHERE agent_id=$1", [
+        agentId,
+      ])
+    ).rows,
+  ).toEqual([{ retired_at: expect.any(Date) }]);
+});
+
 test("a delayed expiry reconciliation bills only through the durable host stop time", async () => {
   const { org, agentId, identity, provider } = await billableFundedAgent(
     "000000000021",
@@ -1663,8 +1836,84 @@ test("provision completion commits readiness with running state and rejects stal
   expect((await renewalState(org)).balance).toEqual(before.balance);
 });
 
+if (postgresTestUrl) {
+  test("paid agent deletion serializes against concurrent funding in both commit orders", async () => {
+    if (!postgresPool) throw new Error("PostgreSQL concurrency requires the isolated pool");
+    for (const fundingFirst of [true, false]) {
+      const agentId = crypto.randomUUID();
+      const operation = `compute.concurrent-delete.${agentId}`;
+      await fixture.query(
+        "INSERT INTO agent_sandboxes(id,organization_id,status,execution_tier,lifecycle_revision) VALUES($1,$2,'provisioning','dedicated-always',1)",
+        [agentId, organizationId],
+      );
+      const held = await helpers.writeTransaction((tx) =>
+        funding.subscriptionFundingService.reserveInTransaction(tx, input(operation, "0.020000")),
+      );
+      const first = await postgresPool.connect();
+      const second = await postgresPool.connect();
+      let pending: Promise<{ ok: boolean; error?: unknown }> | undefined;
+      try {
+        await first.query("BEGIN");
+        await second.query("BEGIN");
+        const {
+          rows: [{ pid }],
+        } = await second.query("SELECT pg_backend_pid() AS pid");
+        const insert = (connection: typeof first) =>
+          connection.query(
+            "INSERT INTO agent_compute_funding(id,agent_id,organization_id,funding_reservation_id,period_start,period_end,hourly_rate) VALUES(gen_random_uuid(),$1,$2,$3,now(),now()+interval '2 hours',0.01)",
+            [agentId, organizationId, held.reservation.id],
+          );
+        const remove = (connection: typeof first) =>
+          connection.query("DELETE FROM agent_sandboxes WHERE id=$1", [agentId]);
+        await (fundingFirst ? insert(first) : remove(first));
+        pending = (fundingFirst ? remove(second) : insert(second)).then(
+          () => ({ ok: true }),
+          (error) => ({ ok: false, error }),
+        );
+        let waiting = false;
+        for (let attempt = 0; attempt < 100; attempt++) {
+          const activity = await fixture.query(
+            "SELECT wait_event_type FROM pg_stat_activity WHERE pid=$1",
+            [pid],
+          );
+          if (activity.rows[0]?.wait_event_type === "Lock") {
+            waiting = true;
+            break;
+          }
+          await Bun.sleep(20);
+        }
+        expect(waiting).toBe(true);
+        await first.query("COMMIT");
+        const outcome = await pending;
+        expect(outcome.ok).toBe(false);
+        expect(outcome.error).toMatchObject({
+          message: fundingFirst
+            ? "Unsettled compute must be stopped before agent deletion"
+            : "Compute funding requires a live tenant agent",
+        });
+        await second.query("ROLLBACK");
+        expect(
+          (await fixture.query("SELECT id FROM agent_sandboxes WHERE id=$1", [agentId])).rows,
+        ).toHaveLength(fundingFirst ? 1 : 0);
+        expect(
+          (await fixture.query("SELECT id FROM agent_compute_funding WHERE agent_id=$1", [agentId]))
+            .rows,
+        ).toHaveLength(fundingFirst ? 1 : 0);
+      } finally {
+        await first.query("ROLLBACK");
+        await second.query("ROLLBACK");
+        await pending;
+        first.release();
+        second.release();
+      }
+    }
+  });
+}
+
 if (sshFixturePath) {
-  async function runPaidContainerScenario(scenario: "worker" | "sleep" | "shutdown" | "restart") {
+  async function runPaidContainerScenario(
+    scenario: "worker" | "sleep" | "shutdown" | "restart" | "deletion",
+  ) {
     const target = z
       .object({
         hostname: z.ipv4(),
@@ -1690,7 +1939,9 @@ if (sshFixturePath) {
           ? "000000000042"
           : scenario === "shutdown"
             ? "000000000043"
-            : "000000000044";
+            : scenario === "restart"
+              ? "000000000044"
+              : "000000000045";
     const agentId = `63000000-0000-4000-8000-${suffix}`;
     const org = `61000000-0000-4000-8000-${suffix}`;
     const name = `agent-${agentId}`;
@@ -1949,7 +2200,7 @@ if (sshFixturePath) {
         ).toBe(startedAt);
       } else {
         await fixture.query(
-          "UPDATE agent_sandboxes SET status='running',bridge_url=$2,health_url=$3 WHERE id=$1",
+          "UPDATE agent_sandboxes SET status='running',bridge_url=$2,health_url=$3,deletion_previous_status='running',deletion_previous_billing_status='active' WHERE id=$1",
           [agentId, `http://${target.hostname}:2138`, `http://${target.hostname}:2138/api`],
         );
         await fixture.query(
@@ -1987,6 +2238,14 @@ if (sshFixturePath) {
               nodeId,
             ])
           ).rows[0]?.allocated_count;
+        if (scenario === "deletion") {
+          const { apiKeys } = await import("../../db/schemas/api-keys");
+          await fixture.exec(
+            `CREATE TABLE IF NOT EXISTS api_keys (${getTableConfig(apiKeys)
+              .columns.map((column) => `"${column.name}" ${column.getSQLType()}`)
+              .join(", ")})`,
+          );
+        }
         const sleepProvider = new DockerSandboxProvider();
         const service = new ElizaSandboxService(sleepProvider);
         const finalStatus = scenario === "sleep" ? "sleeping" : "stopped";
@@ -1995,7 +2254,9 @@ if (sshFixturePath) {
             ? service.executeSleep(agentId, org)
             : scenario === "shutdown"
               ? service.shutdown(agentId, org)
-              : service.executeRestart(agentId, org);
+              : scenario === "restart"
+                ? service.executeRestart(agentId, org)
+                : service.deleteAgent(agentId, org, { authorization: "user_request" });
         if (scenario === "restart")
           await fixture.query(
             "UPDATE agent_sandboxes SET claimed_at=now(),warm_claim_credential_state='ready' WHERE id=$1",
@@ -2055,7 +2316,10 @@ if (sshFixturePath) {
             .where(sql`id=${id} AND organization_id=${owner}`);
           return { backupId, lifecycleRevision: saved[0]!.lifecycleRevision };
         });
-        const remove = spyOn(sleepProvider, "stopForReplacement");
+        const remove =
+          scenario === "deletion"
+            ? spyOn(sleepProvider, "stopForDeletion")
+            : spyOn(sleepProvider, "stopForReplacement");
         remove.mockRejectedValueOnce(
           new Error("Removal transport unavailable after committed paid stop"),
         );
@@ -2070,12 +2334,14 @@ if (sshFixturePath) {
           expect(await retire()).toMatchObject({
             success: false,
             error:
-              scenario === "sleep"
-                ? "Removal transport unavailable after committed paid stop"
-                : "Failed to prove the previous sandbox stopped",
+              scenario === "deletion"
+                ? "Failed to delete sandbox"
+                : scenario === "sleep"
+                  ? "Removal transport unavailable after committed paid stop"
+                  : "Failed to prove the previous sandbox stopped",
           });
           expect(await canonical()).toEqual({
-            status: "stopped",
+            status: scenario === "deletion" ? "deletion_pending" : "stopped",
             sandbox_id: name,
             last_backup_at: expect.any(Date),
           });
@@ -2093,7 +2359,13 @@ if (sshFixturePath) {
             ).rows,
           ).toEqual([{ state_data: state }]);
           const stopped = await renewalState(org);
-          expect(await allocated()).toBe(1);
+          expect(await allocated()).toBe(scenario === "deletion" ? 2 : 1);
+          if (scenario === "deletion") {
+            expect(await service.cancelAgentDeletion(agentId, org)).toMatchObject({
+              success: false,
+              error: "Agent deletion does not have a reversible running-state receipt",
+            });
+          }
           expect(stopped.windows).toHaveLength(1);
           expect(stopped.windows[0]).toMatchObject({
             settled_at: expect.any(Date),
@@ -2111,7 +2383,9 @@ if (sshFixturePath) {
           // Fail after Docker deletion, in the second transaction. The first
           // transaction's refund and backup must remain committed and retryable.
           await fixture.exec(
-            `CREATE FUNCTION reject_sleep_fixture() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.status='${finalStatus}' AND NEW.sandbox_id IS NULL THEN RAISE EXCEPTION 'forced final sleep rollback'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_sleep_fixture BEFORE UPDATE ON agent_sandboxes FOR EACH ROW EXECUTE FUNCTION reject_sleep_fixture()`,
+            scenario === "deletion"
+              ? `CREATE FUNCTION reject_sleep_fixture() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced final sleep rollback'; END $$; CREATE TRIGGER reject_sleep_fixture BEFORE DELETE ON agent_sandboxes FOR EACH ROW EXECUTE FUNCTION reject_sleep_fixture()`
+              : `CREATE FUNCTION reject_sleep_fixture() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.status='${finalStatus}' AND NEW.sandbox_id IS NULL THEN RAISE EXCEPTION 'forced final sleep rollback'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_sleep_fixture BEFORE UPDATE ON agent_sandboxes FOR EACH ROW EXECUTE FUNCTION reject_sleep_fixture()`,
           );
           const finalFailure = await retire().then(
             () => null,
@@ -2127,14 +2401,40 @@ if (sshFixturePath) {
           expect(comparableMoney(await renewalState(org))).toEqual(comparableMoney(stopped));
           expect(await allocated()).toBe(1);
           expect(await canonical()).toEqual({
-            status: "stopped",
+            status: scenario === "deletion" ? "deletion_pending" : "stopped",
             sandbox_id: name,
             last_backup_at: expect.any(Date),
           });
           await fixture.exec(
             "DROP TRIGGER reject_sleep_fixture ON agent_sandboxes; DROP FUNCTION reject_sleep_fixture()",
           );
-          if (scenario === "restart") {
+          if (scenario === "deletion") {
+            expect(await retire()).toMatchObject({ success: true, rowDeleted: true });
+            expect(await canonical()).toBeUndefined();
+            expect(comparableMoney(await renewalState(org))).toEqual(comparableMoney(stopped));
+            expect(await allocated()).toBe(1);
+            expect(
+              (
+                await fixture.query(
+                  "SELECT sandbox_record_id,recovery_organization_id,state_data FROM agent_sandbox_backups WHERE id=$1",
+                  [backupId],
+                )
+              ).rows,
+            ).toEqual([
+              { sandbox_record_id: null, recovery_organization_id: org, state_data: state },
+            ]);
+            expect(
+              (
+                await fixture.query(
+                  "SELECT retired_at FROM agent_compute_subjects WHERE agent_id=$1",
+                  [agentId],
+                )
+              ).rows,
+            ).toEqual([{ retired_at: expect.any(Date) }]);
+            expect(await retire()).toMatchObject({ success: false });
+            expect(comparableMoney(await renewalState(org))).toEqual(comparableMoney(stopped));
+            expect(await allocated()).toBe(1);
+          } else if (scenario === "restart") {
             const { SandboxTransport } = await import("./eliza-sandbox/bridge/transport");
             const endpoint = spyOn(
               SandboxTransport.prototype,
@@ -2340,6 +2640,12 @@ if (sshFixturePath) {
   test(
     "paid restart commits the old refund then funds and restores a new container",
     () => runPaidContainerScenario("restart"),
+    180_000,
+  );
+
+  test(
+    "paid deletion commits stop and refund before removal and retains recovery and financial history across retries",
+    () => runPaidContainerScenario("deletion"),
     180_000,
   );
 
