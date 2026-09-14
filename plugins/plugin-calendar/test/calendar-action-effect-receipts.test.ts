@@ -232,34 +232,6 @@ function expectInternalHandoff(
   }
 }
 
-/**
- * A settled built-in mutation whose applied result provably matches the
- * user's own words stays internal but carries the verified reply the planner
- * loop delivers without an evaluator call (the MEMORY "Saved: …" shape).
- */
-function expectVerifiedHandoff(
-  delivered: Content[],
-  result: Awaited<ReturnType<typeof execute>>,
-): void {
-  expect(delivered).toEqual([]);
-  expect(result).toMatchObject({
-    success: true,
-    transcriptVisibility: "internal",
-    turnComplete: true,
-    verifiedUserFacing: true,
-    userFacingEffectReceiptIds: [result.effectReceipts?.[0]?.receiptId],
-    data: {
-      replyContext: {
-        domain: "calendar",
-        facts: result.userFacingText,
-      },
-    },
-  });
-  expect(result.effectReceipts).toHaveLength(1);
-  expect(result).not.toHaveProperty("text");
-  expect(result).not.toHaveProperty("replyFailure");
-}
-
 describe("CALENDAR effect receipt settlement", () => {
   it.each([
     ["feed", undefined, false],
@@ -1009,11 +981,7 @@ describe("CALENDAR effect receipt settlement", () => {
       success: true,
       data: { approvalRequired: false, deleted: true },
     });
-    // The user's words name the deleted title, so the receipt is self-verified.
-    expectVerifiedHandoff(delivered, result);
-    expect(result.userFacingText).toMatch(
-      /^Deleted “Eat a sandwich” \(tomorrow, Tuesday, Jul 28(?:, 2026)? at 10pm UTC\) from your calendar\.$/,
-    );
+    expectInternalHandoff(delivered, result);
   });
 
   it("uses timezone-grounded calendar extraction instead of a contradictory outer-planner instant", async () => {
