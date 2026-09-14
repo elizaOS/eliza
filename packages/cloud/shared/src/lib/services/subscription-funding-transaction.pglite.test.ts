@@ -682,6 +682,84 @@ test("a caught failed renewal rolls back its allowance settlement, cash refund, 
   ).toEqual([{ settings: { renewal_stop_needed: true } }]);
 });
 
+test.each(["canceled", "expired"] as const)(
+  "subscription %s state sends funded billing to the stop path without releasing its existing hold",
+  async (state) => {
+    const { subscriptionAuthorityRepository: authority } = await import(
+      "../../db/repositories/subscription-authority"
+    );
+    const { subscriptionEntitlementsRepository: entitlements } = await import(
+      "../../db/repositories/subscription-entitlements"
+    );
+    const { agentBillingRepository } = await import("../../db/repositories/agent-billing");
+    const current = await authority.findById(allowanceOrganizationId, subscriptionId);
+    if (!current) throw new Error("Missing paid subscription fixture");
+    const { id, organization_id, lifecycle_revision, created_at, updated_at, ...values } = current;
+    const agentId = "63000000-0000-4000-8000-000000000005";
+    const before = await renewalState(allowanceOrganizationId);
+    const rollback = new Error("Roll back unavailable subscription fixture");
+    await expect(
+      helpers.writeTransaction(async (tx) => {
+        // Cash is sufficient: subscription authority, rather than an empty wallet,
+        // must cause this renewal denial. The whole scenario rolls back below.
+        await tx.execute(sql`UPDATE organizations SET credit_balance='1.000000'
+        WHERE id=${allowanceOrganizationId}`);
+        await tx.execute(sql`UPDATE agent_sandboxes SET billing_status='active',total_billed=0,
+        last_billed_at=(SELECT period_start FROM agent_compute_funding WHERE agent_id=${agentId} AND settled_at IS NULL)
+        WHERE id=${agentId} AND organization_id=${allowanceOrganizationId}`);
+        await tx.execute(sql`INSERT INTO compute_billing_rate_segments(id,organization_id,workload_kind,workload_id,lifecycle_revision,billing_state,rate_per_hour,effective_at)
+        SELECT gen_random_uuid(),organization_id,'agent',agent_id,1,'running','0.01',period_start
+        FROM agent_compute_funding WHERE agent_id=${agentId} AND organization_id=${allowanceOrganizationId} AND settled_at IS NULL`);
+        const projection = await tx.execute<{ projection_revision: number }>(sql`
+          SELECT projection_revision::integer AS projection_revision FROM organization_entitlements WHERE organization_id=${allowanceOrganizationId}`);
+        const advanced = await authority.advanceInTransaction(tx, {
+          organizationId: allowanceOrganizationId,
+          subscriptionId,
+          expectedRevision: lifecycle_revision,
+          source: "webhook",
+          observation: "authoritative_provider_retrieval",
+          values: {
+            ...values,
+            ...(state === "canceled"
+              ? { status: "canceled" as const, canceled_at: new Date(), ended_at: new Date() }
+              : { current_period_end: new Date(Date.now() - 1_000) }),
+            provider_object_digest: "d".repeat(64),
+          },
+        });
+        await entitlements.rebuildInTransaction(tx, {
+          organizationId: allowanceOrganizationId,
+          sourceSubscriptionId: subscriptionId,
+          sourceSubscriptionRevision: advanced.subscription.lifecycle_revision,
+          expectedProjectionRevision: projection.rows[0]!.projection_revision,
+        });
+        const readHeldFunding = () =>
+          tx.execute(sql`SELECT
+        (SELECT jsonb_agg(to_jsonb(f) ORDER BY f.id) FROM agent_compute_funding f WHERE organization_id=${allowanceOrganizationId}) AS windows,
+        (SELECT jsonb_agg(to_jsonb(r) ORDER BY r.id) FROM billing_funding_reservations r WHERE organization_id=${allowanceOrganizationId}) AS reservations,
+        (SELECT jsonb_agg(to_jsonb(a) ORDER BY a.id) FROM billing_funding_allocations a WHERE organization_id=${allowanceOrganizationId}) AS allocations,
+        (SELECT jsonb_agg(to_jsonb(c) ORDER BY c.id) FROM credit_transactions c WHERE organization_id=${allowanceOrganizationId}) AS ledger,
+        (SELECT credit_balance FROM organizations WHERE id=${allowanceOrganizationId}) AS balance`);
+        const held = await readHeldFunding();
+        const result =
+          await agentBillingRepository.settleAccruedBillingBeforeLifecycleInTransaction(
+            tx,
+            agentId,
+            allowanceOrganizationId,
+            new Date(),
+            "billing_recovery",
+          );
+        expect(result).toEqual({ status: "insufficient_credits" });
+        expect((await readHeldFunding()).rows).toEqual(held.rows);
+        const jobs = await tx.execute(sql`SELECT id FROM jobs WHERE agent_id=${agentId}`);
+        expect(jobs.rows).toEqual([]);
+        throw rollback;
+      }),
+    ).rejects.toBe(rollback);
+    expect(await renewalState(allowanceOrganizationId)).toEqual(before);
+    expect(await authority.findById(allowanceOrganizationId, subscriptionId)).toEqual(current);
+  },
+);
+
 test("a usage receipt must match one finalized funding source, its exact amount, tenant and metered period", async () => {
   const org = "61000000-0000-4000-8000-000000000004";
   const agentId = "63000000-0000-4000-8000-000000000004";
