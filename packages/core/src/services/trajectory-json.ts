@@ -50,6 +50,25 @@ function reserveContainer(state: SanitizationState): JsonValue | undefined {
 	return undefined;
 }
 
+/**
+ * Records one own entry on a null-prototype accumulator. A plain
+ * `output[key] = value` would invoke the `__proto__` setter for a key
+ * `JSON.parse` produced as an own data property, dropping it from the recorded
+ * trajectory and re-parenting the sanitized object to caller-controlled data.
+ */
+function defineOwnEntry(
+	target: Record<string, JsonValue>,
+	key: string,
+	value: JsonValue,
+): void {
+	Object.defineProperty(target, key, {
+		configurable: true,
+		enumerable: true,
+		value,
+		writable: true,
+	});
+}
+
 function reserveObjectKey(state: SanitizationState, key: string): boolean {
 	return reserveBytes(
 		state,
@@ -118,7 +137,7 @@ function sanitizeTrajectoryJsonValueInternal(
 		const containerMarker = reserveContainer(state);
 		if (containerMarker !== undefined) return containerMarker;
 		state.seen.add(value);
-		const output: Record<string, JsonValue> = {};
+		const output = Object.create(null) as Record<string, JsonValue>;
 		for (const [keyValue, entry] of value.entries()) {
 			const key = String(keyValue);
 			reserveObjectKey(state, key);
@@ -127,9 +146,10 @@ function sanitizeTrajectoryJsonValueInternal(
 				state,
 				depth + 1,
 			);
-			if (sanitized !== undefined) output[key] = sanitized;
+			if (sanitized !== undefined) defineOwnEntry(output, key, sanitized);
 		}
 		state.seen.delete(value);
+		Object.setPrototypeOf(output, Object.prototype);
 		return output;
 	}
 	if (value instanceof Set) {
@@ -180,7 +200,7 @@ function sanitizeTrajectoryJsonValueInternal(
 				? {}
 				: normalizedScalar(String(value), state);
 		}
-		const output: Record<string, JsonValue> = {};
+		const output = Object.create(null) as Record<string, JsonValue>;
 		for (const [key, entry] of entries) {
 			reserveObjectKey(state, key);
 			const sanitized = sanitizeTrajectoryJsonValueInternal(
@@ -188,9 +208,10 @@ function sanitizeTrajectoryJsonValueInternal(
 				state,
 				depth + 1,
 			);
-			if (sanitized !== undefined) output[key] = sanitized;
+			if (sanitized !== undefined) defineOwnEntry(output, key, sanitized);
 		}
 		state.seen.delete(value);
+		Object.setPrototypeOf(output, Object.prototype);
 		return output;
 	}
 	return normalizedScalar(String(value), state);
