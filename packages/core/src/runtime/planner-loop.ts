@@ -1896,6 +1896,7 @@ async function runPlannerLoopIterations(
 			const unavailable = splitUnavailableToolCalls(
 				nonTerminalCalls,
 				params.tools,
+				trajectory.context,
 			);
 			if (unavailable.invalid.length > 0) {
 				params.runtime.logger?.warn?.(
@@ -7870,12 +7871,44 @@ function exposedToolNameSet(
 function splitUnavailableToolCalls(
 	toolCalls: PlannerToolCall[],
 	tools: ToolDefinition[] | undefined,
+	context: ContextObject,
 ): { valid: PlannerToolCall[]; invalid: PlannerToolCall[] } {
 	const exposed = exposedToolNameSet(tools);
 	if (!exposed) return { valid: toolCalls, invalid: [] };
+	// Nested planners publish each canonical schema once. Accept legacy similes
+	// only from that already-gated child surface, never the global action registry.
+	// Normalize before availability/replay checks so an alias is the same operation.
+	const aliases = new Map<string, string>();
+	if (
+		typeof context.metadata?.subPlannerParentAction === "string" &&
+		context.metadata.subPlannerParentAction.length > 0
+	) {
+		for (const event of context.events) {
+			if (
+				event.type !== "tool" ||
+				event.source !== "sub-planner" ||
+				!("tool" in event)
+			)
+				continue;
+			const tool = event.tool as ContextObjectTool;
+			if (
+				tool.metadata?.parentAction !== context.metadata.subPlannerParentAction
+			)
+				continue;
+			if (!exposed.has(tool.name.toUpperCase())) continue;
+			for (const alias of tool.action?.similes ?? []) {
+				if (typeof alias !== "string" || !alias.trim()) continue;
+				aliases.set(normalizePlannerToolName(alias), tool.name);
+			}
+		}
+	}
 	const valid: PlannerToolCall[] = [];
 	const invalid: PlannerToolCall[] = [];
 	for (const toolCall of toolCalls) {
+		if (!exposed.has(toolCall.name.toUpperCase())) {
+			const canonical = aliases.get(normalizePlannerToolName(toolCall.name));
+			if (canonical) toolCall.name = canonical;
+		}
 		if (exposed.has(toolCall.name.toUpperCase())) {
 			valid.push(toolCall);
 		} else {
