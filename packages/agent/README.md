@@ -371,3 +371,9 @@ replays, not additional live-model trials. Comparing an older consumer requires
 an independently pinned compatible harness; this command does not emulate old
 production behavior. Semantic success and cache/latency improvement remain
 separate claims.
+
+Action relevance checks use the same prepared multilingual keyword predicates
+as complete match collection, but stop once any strong or weak term matches.
+Negative checks still inspect every available source. They do not cache
+permission decisions, remove history, change vocabulary, or alter the complete
+match collector used by consumers that need every match.
