@@ -538,6 +538,12 @@ Experience retrieval orders candidates by semantic similarity, then quality for 
 
 Foreground history uses compact source labels and exact-repeat references without discarding stored or model-readable conversation evidence. Settled-result reply-only rounds use a smaller default instruction set, preserve original-context restoration, and cannot execute tools again. Custom prompt policies and ordinary planning remain intact.
 
+Reply-only recovery captures reuse the same exact-repeat encoding when the
+original context enables it. Every dialogue occurrence remains recoverable;
+current instructions, providers, tool results and pending work stay complete.
+The persisted recovery string includes its reference anchors and legend, so a
+later retry does not depend on an in-memory lookup. Legacy captures remain valid.
+
 The optional `historyRetention` evaluator reviews original dialogue through the existing background memory worker. Its committed source-bound checkpoint lets direct text chat keep standing constraints, unfinished work, new messages and the current exchange in the first request, while other originals remain available through `history:hN` and `history:all` context reads. Reads complete before a reply or action is processed; changed sources or authorization restore full current context. Stored messages remain unchanged. The advanced-memory plugin registers this evaluator when the existing advancedMemory feature is enabled; it remains excluded from the basic bundle. Group and voice sources do not schedule history review. A missing or invalid index keeps complete authorized history while the existing worker builds a committed checkpoint. Initial review consumes model quota separately from foreground replies; measure that cost when enabling advanced memory.
 
 While reviewed history is projected, Stage 1 selects supplied originals with `relevant_prior_dialogue` and requests more history through `contextRequests`, including `history:all`. Incomplete selections and legacy full-mode outputs still restore originals safely. Full restoration reinstates the normal model schema and history policy; no read decision executes a draft or effect.

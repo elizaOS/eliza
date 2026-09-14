@@ -1,10 +1,13 @@
 /** Tests final reply grounding and recovery against real evaluator parsing and receipt validation. */
 import { describe, expect, it, vi } from "vitest";
+import { renderContextObject, segmentBlock } from "../runtime/context-renderer";
 import { parseEvaluatorOutput } from "../runtime/evaluator";
+import type { PlannerTrajectory } from "../runtime/planner-types";
 import { createMockRuntime } from "../testing/mock-runtime";
 import { type ActionResult, type Memory, ModelType } from "../types";
 import { applyGroundedActionReply } from "../types/action-reply";
 import { resolvePlannedReplyEgress } from "./message";
+import { capturePlannerReplyRecovery } from "./message/egress-policy";
 
 const message: Memory = {
 	id: "00000000-0000-4000-8000-000000000001",
@@ -62,6 +65,98 @@ const withdrawnEditReply =
 	"I will not perform that edit. QA note B says silver thermos. The requested update failed because the target note was not found; neither existing note changed.";
 
 describe("model-backed final reply recovery", () => {
+	it("reuses lossless history references in durable recovery without dropping corrections or replaying effects", async () => {
+		const repeated =
+			"Standing rule: show the full title and wait for separate approval.\n".repeat(
+				40,
+			);
+		const history = [
+			repeated,
+			"Correction: the charger is burgundy, previously teal.",
+			repeated,
+		];
+		const trajectory: PlannerTrajectory = {
+			context: {
+				id: "recovery-context",
+				metadata: { historyReferenceEncoding: true },
+				events: [
+					{ id: "policy", type: "provider", name: "PRIVACY", text: repeated },
+					...history.map((content, index) => ({
+						id: `history-${index}`,
+						type: "segment" as const,
+						source: "prior-dialogue",
+						segment: {
+							id: `history-${index}`,
+							label: "prior_message:user",
+							content,
+							stable: false,
+						},
+					})),
+					{
+						id: "current",
+						type: "message",
+						message: { role: "user", content: message.content },
+					},
+					{
+						id: "effect",
+						type: "tool_result",
+						metadata: { result: savedNote },
+					},
+				],
+			},
+			steps: [],
+			archivedSteps: [],
+			plannedQueue: [{ name: "CALENDAR_READ" }],
+			evaluatorOutputs: [],
+		};
+		const before = structuredClone(trajectory);
+		const reply =
+			"The Picnic note was saved. The calendar read is still pending.";
+		const useModel = vi.fn(async () =>
+			JSON.stringify({ response: reply, effectReceiptIds: ["note-proof"] }),
+		);
+		const processActions = vi.fn();
+		const runtime = createMockRuntime({ useModel, processActions });
+		const recovery = capturePlannerReplyRecovery(runtime, message, trajectory);
+		const original = renderContextObject(trajectory.context)
+			.promptSegments.map(segmentBlock)
+			.join("\n\n");
+		expect(recovery.context.length).toBeLessThan(original.length);
+		// Independently expand the recorded backward reference and its anchor.
+		const expanded = recovery.context
+			.replace(/^History encoding:.*\n\n/m, "")
+			.replace("prior_message:user:\n[h1]\n", "prior_message:user:\n")
+			.replace(
+				"prior_message:user:\n[h3; same_text_as=h1]",
+				`prior_message:user:\n${history[0]}`,
+			);
+		expect(expanded).toBe(original);
+		expect(trajectory).toEqual(before);
+		expect(recovery.pendingToolCalls).toEqual(trajectory.plannedQueue);
+		// Persist/reload the capture before using the real reply-only boundary.
+		await expect(
+			resolvePlannedReplyEgress({
+				runtime,
+				message,
+				reply: "",
+				actionResults: [savedNote],
+				recovery: JSON.parse(JSON.stringify(recovery)),
+			}),
+		).resolves.toEqual({ text: reply, effectReceiptIds: ["note-proof"] });
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(useModel).toHaveBeenCalledWith(
+			ModelType.TEXT_SMALL,
+			expect.objectContaining({
+				prompt: expect.stringContaining("same_text_as=h1"),
+			}),
+		);
+		expect(processActions).not.toHaveBeenCalled();
+		// Voice/group/legacy contexts without the explicit encoding contract stay unchanged.
+		trajectory.context.metadata = {};
+		expect(
+			capturePlannerReplyRecovery(runtime, message, trajectory).context,
+		).toBe(original);
+	});
 	it("accepts withdrawn intent and a pre-write rejection without mutation proof or another call", async () => {
 		const runtime = createMockRuntime({ useModel: vi.fn() });
 		await expect(

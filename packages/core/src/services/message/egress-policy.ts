@@ -42,6 +42,7 @@ import { isObjectRecord as isRecord } from "../../utils/type-guards";
 import { resolveCallbackActionName } from "./action-identifiers.js";
 import { rewriteActionCallbackInCharacter } from "./delivery.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
+import { referenceRepeatedHistory } from "./history-wire";
 import {
 	replyClaimsCompletedSideEffect,
 	replyClaimsEmptyTrackedWorkState,
@@ -63,8 +64,11 @@ export function capturePlannerReplyRecovery(
 		redactText,
 	) as ContextObject;
 	return {
-		context: renderContextObject(context)
-			.promptSegments.map(segmentBlock)
+		context: referenceRepeatedHistory(
+			context,
+			renderContextObject(context).promptSegments,
+		)
+			.map(segmentBlock)
 			.join("\n\n"),
 		pendingToolCalls: projectCompleteToolValueForModel(
 			trajectory.plannedQueue,
