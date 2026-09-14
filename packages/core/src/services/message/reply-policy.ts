@@ -111,6 +111,7 @@ export interface StructuredToolEffect {
 	effect: string;
 	status: string;
 	label?: string;
+	viewId?: string;
 }
 
 export function structuredEffectFromToolResult(
@@ -130,10 +131,11 @@ export function structuredEffectFromToolResult(
 	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
 		return undefined;
 	}
-	const { effect, status, label } = parsed as {
+	const { effect, status, label, viewId } = parsed as {
 		effect?: unknown;
 		status?: unknown;
 		label?: unknown;
+		viewId?: unknown;
 	};
 	if (typeof effect !== "string" || effect.trim().length === 0) {
 		return undefined;
@@ -146,6 +148,11 @@ export function structuredEffectFromToolResult(
 		status: status.trim(),
 		...(typeof label === "string" && label.trim().length > 0
 			? { label: label.trim() }
+			: {}),
+		...(effect.trim() === "view_navigation" &&
+		typeof viewId === "string" &&
+		viewId.trim().length > 0
+			? { viewId: viewId.trim() }
 			: {}),
 	};
 }
@@ -164,8 +171,15 @@ export function replyNamesStructuredEffectDestination(
 	const normalizedLabel = normalize(effect.label);
 	return (
 		normalizedReply.length > 0 &&
-		normalizedLabel.length > 0 &&
-		normalizedReply.includes(normalizedLabel)
+		((normalizedLabel.length > 0 &&
+			normalizedReply.includes(normalizedLabel)) ||
+			// A delivered view has a canonical identity as well as its display
+			// label (for example chat / Home). Use only that receipt's identity,
+			// not guessed aliases or request text, and match complete words.
+			(effect.status === "delivered" &&
+				!!effect.viewId &&
+				normalize(effect.viewId).length > 0 &&
+				` ${normalizedReply} `.includes(` ${normalize(effect.viewId)} `)))
 	);
 }
 

@@ -2801,6 +2801,59 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		},
 	);
 
+	it("reuses the delivered view's canonical name when its display label differs", async () => {
+		const draft = "Back in the chat view.";
+		const text = await runDeterministicViewsTurn(
+			{
+				success: true,
+				text: JSON.stringify({
+					effect: "view_navigation",
+					status: "delivered",
+					viewId: "chat",
+					label: "Home",
+				}),
+				transcriptVisibility: "internal",
+				modelReplyRequired: true,
+			},
+			{ stageOneReply: draft, stageOneEffectStatus: "pending" },
+		);
+		expect(text).toBe(draft);
+	});
+
+	it.each([
+		{ status: "accepted", viewId: "chat", reply: "Back in the chat view." },
+		{ status: "delivered", viewId: "notes", reply: "Back in the chat view." },
+		{ status: "delivered", viewId: "chat", reply: "Chatter is open." },
+		{
+			status: "delivered",
+			viewId: "chat",
+			reply: "Chat is open. I saved your note.",
+		},
+	])(
+		"keeps reply synthesis for ungrounded canonical-name prose: %j",
+		async ({ status, viewId, reply }) => {
+			const text = await runDeterministicViewsTurn(
+				{
+					success: true,
+					text: JSON.stringify({
+						effect: "view_navigation",
+						status,
+						viewId,
+						label: "Home",
+					}),
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+				},
+				{
+					stageOneReply: reply,
+					stageOneEffectStatus: "pending",
+					postToolReply: "The navigation request returned its current status.",
+				},
+			);
+			expect(text).toBe("The navigation request returned its current status.");
+		},
+	);
+
 	it("uses a model reply for a deterministic success without a reportable result", async () => {
 		const text = await runDeterministicViewsTurn({ success: true });
 		expect(text).toBe("The action did not return a confirmed result.");
