@@ -421,6 +421,77 @@ describe("shared-rest-adapter — messages", () => {
     );
   });
 
+  test("POST forwards the bridge degraded flag so REST callers can see a fallback turn", async () => {
+    // The no-shared-model branch is the only producer of `degraded: true`
+    // (run-shared-agent-turn.ts). Dropping it here left REST clients unable to
+    // distinguish a real answer from the "temporarily unavailable" placeholder,
+    // because that placeholder is delivered as an ordinary 200 with reply text.
+    coordinateSharedBridge.mockResolvedValue({
+      jsonrpc: "2.0",
+      id: "degraded",
+      result: {
+        text: "Nova is temporarily unavailable (no shared model configured).",
+        degraded: true,
+      },
+    });
+    const out = await sharedRestMessageSend(
+      SHARED_AGENT,
+      AGENT,
+      "2+2?",
+      "Eliza",
+      EXECUTION_CTX,
+      NAMESPACE,
+    );
+    expect(out).toEqual({
+      text: "Nova is temporarily unavailable (no shared model configured).",
+      agentName: "Eliza",
+      degraded: true,
+    });
+  });
+
+  test("POST forwards a healthy turn's degraded:false rather than omitting it", async () => {
+    // `false` must survive as `false`. Emitting the field only when true would
+    // make "healthy" and "field dropped" indistinguishable to a caller, which
+    // is the exact ambiguity this flag exists to remove.
+    coordinateSharedBridge.mockResolvedValue({
+      jsonrpc: "2.0",
+      id: "healthy",
+      result: { text: "four", degraded: false },
+    });
+    const out = await sharedRestMessageSend(
+      SHARED_AGENT,
+      AGENT,
+      "2+2?",
+      "Eliza",
+      EXECUTION_CTX,
+      NAMESPACE,
+    );
+    expect(out).toEqual({ text: "four", agentName: "Eliza", degraded: false });
+    expect(Object.hasOwn(out, "degraded")).toBe(true);
+  });
+
+  test("POST omits degraded when the bridge did not report it", async () => {
+    // Absence is forwarded as absence, never coerced to false: a bridge that
+    // stops sending the flag is a contract change, not a healthy turn.
+    for (const degraded of [undefined, "true", 1, null]) {
+      coordinateSharedBridge.mockResolvedValueOnce({
+        jsonrpc: "2.0",
+        id: "unreported",
+        result: { text: "four", ...(degraded === undefined ? {} : { degraded }) },
+      });
+      const out = await sharedRestMessageSend(
+        SHARED_AGENT,
+        AGENT,
+        "2+2?",
+        "Eliza",
+        EXECUTION_CTX,
+        NAMESPACE,
+      );
+      expect(out).toEqual({ text: "four", agentName: "Eliza" });
+      expect(Object.hasOwn(out, "degraded")).toBe(false);
+    }
+  });
+
   test("POST rejects impossible provider timing from the untrusted bridge", async () => {
     const warn = spyOn(logger, "warn").mockImplementation(() => undefined);
     const impossibleReceipts = [
