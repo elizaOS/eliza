@@ -3,6 +3,7 @@
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { createHmac } from "node:crypto";
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
 
 const runningSandbox = {
   id: "123e4567-e89b-12d3-a456-426614174000",
@@ -592,7 +593,10 @@ describe("agent billing cron waifu lifecycle callbacks", () => {
         expect(recordHourlyBilling).toHaveBeenCalledWith(
           expect.objectContaining({
             sandboxId: runningSandbox.id,
-            hourlyRate: priorStatus === "running" ? 0.01 : 0.0025,
+            hourlyRate:
+              priorStatus === "running"
+                ? AGENT_PRICING.RUNNING_HOURLY_RATE
+                : AGENT_PRICING.IDLE_HOURLY_RATE,
             billingDescription:
               priorStatus === "running"
                 ? "Eliza agent hosting (running): Waifu Agent"

@@ -185,7 +185,10 @@ async function postCreate(
   return app.fetch(
     new Request("https://api.example.test/api/v1/eliza/agents", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Eliza-Dedicated-Price": "dedicated-compute-v1:USD:0.150000:0.300000",
+      },
       body: JSON.stringify(body),
     }),
     options.env ?? {},

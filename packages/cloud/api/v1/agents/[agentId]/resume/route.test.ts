@@ -164,7 +164,7 @@ describe("service agent resume route", () => {
       success: false,
       code: "insufficient_credits",
       error: "Insufficient credits",
-      requiredBalance: 0.1,
+      requiredBalance: 0.3,
       currentBalance: 0,
     });
     expect(checkAgentCreditGate).toHaveBeenCalledWith("agent-org");

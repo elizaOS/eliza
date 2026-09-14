@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 import { ApiError } from "@/lib/api/cloud-worker-errors";
+import { InsufficientCreditsError } from "@/lib/services/credits";
 import { __mcpProxyHopTestHooks } from "../mcp/proxy/[mcpId]/proxy-body-budget";
 
 const requireGenerativeRouteCaller = mock();
@@ -35,18 +36,6 @@ mock.module("@/lib/services/affiliates", () => ({
 const containersGetById = mock();
 mock.module("@/lib/services/containers", () => ({
   containersService: { getById: containersGetById },
-}));
-
-class InsufficientCreditsError extends Error {
-  constructor(
-    public readonly required: number,
-    public readonly available: number,
-  ) {
-    super("Insufficient credits");
-  }
-}
-mock.module("@/lib/services/credits", () => ({
-  InsufficientCreditsError,
 }));
 
 const settle = mock(async () => null);
