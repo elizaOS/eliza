@@ -5,6 +5,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { renderMessageHandlerStablePrefix } from "../services/message";
+import type { Action } from "../types/components";
 import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
@@ -20,7 +21,20 @@ function makeState(): State {
 	};
 }
 
-function makeRuntime(): IAgentRuntime {
+function makeAction(name: string, description: string): Action {
+	return {
+		name,
+		description,
+		similes: [],
+		examples: [],
+		parameters: [],
+		contexts: ["general"],
+		validate: async () => true,
+		handler: async () => ({ success: true, text: `${name} completed` }),
+	} as Action;
+}
+
+function makeRuntime(opts: { actions?: Action[] } = {}): IAgentRuntime {
 	return {
 		agentId: AGENT_ID,
 		character: {
@@ -28,8 +42,12 @@ function makeRuntime(): IAgentRuntime {
 			system: "You are concise and helpful.",
 			bio: "I help with calendars.",
 		},
-		actions: [],
+		actions: opts.actions ?? [],
 		providers: [],
+		// Action discovery runs the execution gates, which read the room and
+		// report gate failures.
+		getRoom: vi.fn(async () => null),
+		reportError: vi.fn(),
 		// Stage-1 triage reads the reply-bypass channel settings before it can
 		// decide which providers an ambient turn excludes, so a runtime without
 		// `getSetting` cannot render the prefix at all.
@@ -92,6 +110,28 @@ describe("renderMessageHandlerStablePrefix", () => {
 		const runtime = makeRuntime();
 		const prefix = await renderMessageHandlerStablePrefix(runtime, ROOM_ID);
 		expect(prefix).not.toContain("# Message Directions");
+	});
+
+	it("carries the available_actions catalog for the agent's OWNER-role sender", async () => {
+		// The live Stage-1 system message renders the discovery catalog as a
+		// stable segment ahead of the stage instructions; the pre-warm must match
+		// it byte for byte or the KV prefix diverges at the first catalog byte.
+		const runtime = makeRuntime({
+			actions: [makeAction("CALENDAR", "Calendar reads and writes.")],
+		});
+		const prefix = await renderMessageHandlerStablePrefix(runtime, ROOM_ID);
+		expect(prefix).toContain(
+			"available_actions:\nCALENDAR: Calendar reads and writes.",
+		);
+		expect(prefix.indexOf("available_actions:")).toBeLessThan(
+			prefix.indexOf("message_handler_stage:"),
+		);
+	});
+
+	it("renders the empty-catalog placeholder when nothing is discoverable", async () => {
+		const runtime = makeRuntime();
+		const prefix = await renderMessageHandlerStablePrefix(runtime, ROOM_ID);
+		expect(prefix).toContain("available_actions:\n(no actions available)");
 	});
 
 	it("calls composeState once per render (so providers are sampled)", async () => {

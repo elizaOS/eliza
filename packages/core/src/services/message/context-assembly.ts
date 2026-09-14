@@ -58,6 +58,34 @@ function priorDialogueBudgetFromSettings(runtime: IAgentRuntime): {
 	};
 }
 
+/**
+ * Render the Stage-1 discovery catalog as one `NAME: description` line per
+ * action. The JSON array it replaces spent 2.8K of its 35K characters on keys
+ * and quoting for the 107-entry owner catalog (live 2026-09-14) and turned
+ * every quote and newline inside a description into an escape sequence. The
+ * line form carries the same names and the same complete descriptions; a
+ * newline run inside a description collapses to one space so each catalog
+ * line stays one action. Stage-1 output never parses this text: the
+ * `candidateActionNames` it emits are names, resolved server-side against
+ * runtime.actions (action-surface.ts).
+ */
+export function formatAvailableActionsForPrompt(
+	actions: readonly Pick<Action, "name" | "description">[],
+): string {
+	if (actions.length === 0) {
+		return "(no actions available)";
+	}
+	return actions
+		.map((action) => {
+			const description = (action.description ?? "").replace(
+				/[ \t]*\r?\n[ \t\r\n]*/g,
+				" ",
+			);
+			return description ? `${action.name}: ${description}` : action.name;
+		})
+		.join("\n");
+}
+
 export async function createV5MessageContextObject(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -307,18 +335,22 @@ export async function createV5MessageContextObject(args: {
 			segment: {
 				id: "available-actions",
 				label: "available_actions",
-				stable: false,
+				// The catalog depends on the sender's role and the room's gates, not
+				// on the turn: it was byte-identical across five consecutive owner
+				// turns (35K of the 47K user-message characters, live 2026-09-14)
+				// while it sat after the dialogue in the uncached user message.
+				// Stable segments render in the system message ahead of the stage
+				// instructions (renderMessageHandlerModelInput), where the provider
+				// prompt cache covers them; the catalog is trusted content, so it
+				// never needed to follow the untrusted dialogue. A role or gate
+				// change simply produces a different (still cacheable) prefix.
+				stable: true,
 				// Aliases and declared contexts are omitted: every consumer of
 				// `similes` (exposedActionMatches, resolveRuntimeAction, reply
 				// policy, sub-planner) reads runtime.actions, and Stage 1 receives
 				// available_contexts separately. On the 73-action guest catalog they
 				// were 14.6K of 39.8K characters (~4.6K tokens) per turn (2026-09-13).
-				content: JSON.stringify(
-					discoverable.map((action) => ({
-						name: action.name,
-						description: action.description,
-					})),
-				),
+				content: formatAvailableActionsForPrompt(discoverable),
 			},
 		});
 	}

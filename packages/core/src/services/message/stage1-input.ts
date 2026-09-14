@@ -209,7 +209,9 @@ export function renderMessageHandlerModelInput(
 /**
  * Render only the *stable* part of the Stage-1 (`HANDLE_RESPONSE`) model
  * input for a given room — the system prompt + tool/action schema block +
- * the stable provider blocks. This is the prefix that does NOT depend on
+ * the `available_actions` discovery catalog (rendered for the agent's own
+ * OWNER-role sender, the single-owner voice device) + the stable provider
+ * blocks. This is the prefix that does NOT depend on
  * the user's turn, so it is the exact text the local-inference KV cache
  * should be pre-warmed with the instant a voice session opens or VAD
  * detects speech onset (item I1/C1 of the voice swarm).
@@ -253,6 +255,10 @@ export async function renderMessageHandlerStablePrefix(
 		runtime,
 		message: syntheticMessage,
 		state,
+		// The discovery catalog is a stable segment of the live Stage-1 system
+		// message (context-assembly.ts); the pre-warm renders it through the
+		// same gates so the prefix stays byte-identical to the live render.
+		includeActionDiscovery: true,
 		userRoles: [senderRole],
 		availableContexts,
 		extraProviderExclusions: ambientTurnProviderExclusions(

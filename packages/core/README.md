@@ -405,8 +405,10 @@ description; aliases resolve server-side, contexts come from
 `available_contexts`, and promoted sub-actions are represented by their parent,
 since each virtual repeats the parent's description and Stage 1 routes by
 family. Discovery checks the current actor, delivery audience, connector
-policy, and action validation under the action's declared routing contexts. This
-catalog is rebuilt for each turn and is not part of the shared prompt cache.
+policy, and action validation under the action's declared routing contexts. The
+catalog renders one `NAME: description` line per action inside the stable system
+prefix (it depends on the sender's role and the room's gates, not on the turn),
+so provider prompt caches cover it; the gates are re-evaluated on every turn.
 The planner then receives native tools with parameter schemas and checks
 authorization again before executing; discovering an action does not execute it.
 

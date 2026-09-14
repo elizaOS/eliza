@@ -456,6 +456,66 @@ describe("v5 tiered action surface", () => {
 		expect(handler).toHaveBeenCalledTimes(1);
 	});
 
+	it("renders discovery as NAME: description lines inside the stable system prefix", async () => {
+		// Live 2026-09-14: the JSON catalog was 35K of the 47K-character Stage-1
+		// user message, byte-identical across turns but uncached because it
+		// followed the dialogue. It now renders one line per action (complete
+		// description, newlines collapsed, no JSON quoting) as a stable segment
+		// ahead of the stage instructions, where the prompt cache covers it.
+		const handler = vi.fn(async () => ({ success: true, text: "Role bound." }));
+		const action = makeAction({
+			name: "HOUSEHOLD_ROLE",
+			description:
+				'Bind or unbind a household role.\n  bind — assign a "caregiver" role.',
+			contexts: ["household"],
+			roleGate: { minRole: "OWNER" },
+			handler,
+		});
+		const runtime = makeRuntime({
+			actions: [action],
+			responses: [
+				{
+					...stage1Response({
+						contexts: ["household"],
+						candidateActionNames: [action.name],
+						replyEffectStatus: "pending",
+					}),
+					inspectInput(params) {
+						const { messages } = params as {
+							messages?: Array<{ role?: string; content?: string }>;
+						};
+						const system =
+							messages?.find((message) => message.role === "system")?.content ??
+							"";
+						const user =
+							messages?.find((message) => message.role === "user")?.content ??
+							"";
+						expect(system).toContain(
+							'available_actions:\nHOUSEHOLD_ROLE: Bind or unbind a household role. bind — assign a "caregiver" role.',
+						);
+						expect(system).not.toContain('{"name":"HOUSEHOLD_ROLE"');
+						expect(system.indexOf("available_actions:")).toBeLessThan(
+							system.indexOf("message_handler_stage:"),
+						);
+						expect(user).not.toContain("available_actions:");
+					},
+				},
+				plannerToolResponse(action.name),
+				finishEvaluatorResponse("Role bound."),
+			],
+		});
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: {
+				...makeMessage("Bind the synthetic guest as a caregiver."),
+				entityId: AGENT_ID,
+			},
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+		expect(handler).toHaveBeenCalledTimes(1);
+	});
+
 	it("resolves an alias named by Stage 1 server-side, so discovery carries no similes", async () => {
 		const handler = vi.fn(async () => ({ success: true, text: "Role bound." }));
 		const action = makeAction({
