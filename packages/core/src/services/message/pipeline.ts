@@ -69,7 +69,7 @@ import type {
 	MessageHandlerResult,
 } from "../../types/components";
 import type { ContextEvent } from "../../types/context-object";
-import { type GenerateTextParams, ModelType } from "../../types/model";
+import type { GenerateTextParams } from "../../types/model";
 import type { JsonValue } from "../../types/primitives";
 import { ChannelType } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";

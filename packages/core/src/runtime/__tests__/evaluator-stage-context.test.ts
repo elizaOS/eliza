@@ -4,8 +4,8 @@
  * base context renders exactly as before.
  */
 import { describe, expect, it, vi } from "vitest";
-import type { ContextObject } from "../../types/context-object";
 import { EVALUATOR_STAGE_PROVIDER_EXCLUSIONS } from "../../services/message/provider-state";
+import type { ContextObject } from "../../types/context-object";
 import { runEvaluator } from "../evaluator";
 
 function context(id: string, providers: string[]): ContextObject {
