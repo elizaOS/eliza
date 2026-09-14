@@ -772,6 +772,9 @@ describe("runV5MessageRuntimeStage1", () => {
 					calls++;
 					expect(dispatch).not.toHaveBeenCalled();
 					if (calls > 3) throw new Error("Unexpected search loop");
+					const requestSchema = (
+						args[1] as { tools: Array<{ parameters: JSONSchema }> }
+					).tools[0].parameters.properties?.contextRequests;
 					const input = args[1] as { messages: Array<{ content: string }> };
 					const text = input.messages.map((m) => m.content).join("\n");
 					const reading =
@@ -793,6 +796,15 @@ describe("runV5MessageRuntimeStage1", () => {
 							expect(text).toContain("context_loaded: history:h3");
 						} else
 							expect(text).not.toContain("Complete original history index:");
+					}
+					if (text.includes("Complete original history index:")) {
+						// Literal search remains open while deferred originals exist.
+						expect(requestSchema?.enum).toBeUndefined();
+						expect(requestSchema?.items).toEqual({ type: "string" });
+					} else {
+						// This fixture has no deferred providers. After full restoration,
+						// the native contract must not invite another invalid history read.
+						expect(requestSchema?.enum).toEqual([[]]);
 					}
 					return stage1Response({
 						contexts: ["simple"],

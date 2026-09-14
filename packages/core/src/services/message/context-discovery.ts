@@ -3,7 +3,42 @@
  * never executes actions, dispatches a draft, or changes the source context. */
 import { ElizaError } from "../../errors";
 import type { ContextEvent, ContextObject } from "../../types/context-object";
+import type { JSONSchema } from "../../types/model";
 import type { State } from "../../types/state";
+
+/** Match native reference choices to the validator when every legal name is
+ * enumerable. Callers with literal history search must retain the open schema. */
+export function withAvailableContextRequests(
+	schema: JSONSchema,
+	available: ReadonlySet<string>,
+): JSONSchema {
+	const requests = schema.properties?.contextRequests;
+	const items = requests?.items;
+	if (
+		requests?.type !== "array" ||
+		requests.enum !== undefined ||
+		!items ||
+		Array.isArray(items) ||
+		items.type !== "string"
+	)
+		return schema;
+	const names = [...available].filter(
+		(name) =>
+			!Array.isArray(items.enum) || items.enum.some((value) => value === name),
+	);
+	return {
+		...schema,
+		properties: {
+			...schema.properties,
+			contextRequests: {
+				...requests,
+				...(names.length
+					? { items: { ...items, enum: names } }
+					: { enum: [[]] }),
+			},
+		},
+	};
+}
 
 export function projectDiscoverableContext(
 	context: ContextObject,

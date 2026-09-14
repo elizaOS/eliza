@@ -39,7 +39,10 @@ import {
 	resolveStage1SenderRole,
 } from "./addressing.js";
 import { createV5MessageContextObject } from "./context-assembly.js";
-import { projectDiscoverableContext } from "./context-discovery.js";
+import {
+	projectDiscoverableContext,
+	withAvailableContextRequests,
+} from "./context-discovery.js";
 import {
 	getActionInferenceMessageText,
 	isSubAgentCompletionArtifact,
@@ -248,21 +251,30 @@ export async function generateStage1Decision(
 	let stage1PrefixHash =
 		stableStage1PrefixHashes[stableStage1PrefixHashes.length - 1]?.hash ??
 		hashString(`stage1:${stage1SystemContent}`);
-	const createMessageHandlerTools = () => [
-		createHandleResponseTool({
-			directMessage: directMessageChannel,
-			parameters: voiceDirectMessageChannel
-				? responseHandlerSchema
-				: withRequiredCompletionSourceIdentity(
-						history
-							? withReviewedHistorySelection(responseHandlerSchema)
-							: responseHandlerSchema,
-						discovery.context,
-					),
-			description:
-				"Stage 1: populate registered response-handler fields once before action tools. Empty values for non-applicable fields.",
-		}),
-	];
+	const createMessageHandlerTools = () => {
+		const referenceSchema =
+			discoveryEnabled && !history
+				? withAvailableContextRequests(
+						responseHandlerSchema,
+						discovery.available,
+					)
+				: responseHandlerSchema;
+		return [
+			createHandleResponseTool({
+				directMessage: directMessageChannel,
+				parameters: voiceDirectMessageChannel
+					? referenceSchema
+					: withRequiredCompletionSourceIdentity(
+							history
+								? withReviewedHistorySelection(referenceSchema)
+								: referenceSchema,
+							discovery.context,
+						),
+				description:
+					"Stage 1: populate registered response-handler fields once before action tools. Empty values for non-applicable fields.",
+			}),
+		];
+	};
 	let messageHandlerTools = createMessageHandlerTools();
 	const messageHandlerProviderOptions = withModelInputBudgetProviderOptions(
 		cacheProviderOptions({
