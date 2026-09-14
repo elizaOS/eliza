@@ -4,6 +4,7 @@
  * composition across user and agent-tenant boundaries.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { setEntityRoleCas } from "../../roles.ts";
 import { filterByContextGate } from "../../runtime/context-gates.ts";
 import type { AgentRuntime } from "../../runtime.ts";
 import { createTestRuntime } from "../../testing/pglite-runtime.ts";
@@ -157,23 +158,19 @@ beforeAll(async () => {
 		source: "test",
 		type: ChannelType.DM,
 	});
-	await runtime.ensureWorldExists({
-		id: WORLD_ID,
-		name: "Document authorization",
-		agentId: runtime.agentId,
-		metadata: {
-			roles: {
-				[USER_ID]: "USER",
-				[OTHER_USER_ID]: "USER",
-				[ADMIN_ID]: "ADMIN",
-			},
-			roleSources: {
-				[USER_ID]: "manual",
-				[OTHER_USER_ID]: "manual",
-				[ADMIN_ID]: "manual",
-			},
-		},
-	});
+	// Role maps are protected authority state: legacy world upserts cannot
+	// grant access after ensureConnection has created the world.
+	for (const [entityId, role] of [
+		[USER_ID, "USER"],
+		[OTHER_USER_ID, "USER"],
+		[ADMIN_ID, "ADMIN"],
+	] as const) {
+		const grant = await setEntityRoleCas(runtime, message(), entityId, role, {
+			worldId: WORLD_ID,
+			source: "manual",
+		});
+		expect(grant.status).toBe("committed");
+	}
 	await runtime.adapter.createAgent({
 		id: OTHER_AGENT_ID,
 		name: "Foreign document tenant",
@@ -529,7 +526,12 @@ describe("DocumentService requester authorization", () => {
 					content: "Replacement that must not become visible",
 					message: message(),
 				}),
-			).rejects.toThrow("injected update embedding failure");
+			).rejects.toMatchObject({
+				code: "DOCUMENT_REVISION_PREPARATION_FAILED",
+				cause: expect.objectContaining({
+					message: "injected update embedding failure",
+				}),
+			});
 		} finally {
 			failEmbedding = false;
 		}

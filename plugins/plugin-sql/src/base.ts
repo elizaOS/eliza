@@ -4107,7 +4107,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   ): Promise<void> {
     // Ensure we always pass a JSON string to the SQL bind parameter; if we pass an
     // object directly PG sees `[object Object]` and fails the `::jsonb` cast.
-    const contentToInsert = serializeJsonb(memory.content);
+    const contentToInsert = serializeJsonb(memory.content, {
+      documentText: tableName === "documents",
+    });
 
     const metadataToInsert = serializeJsonb(memory.metadata ?? {});
 
