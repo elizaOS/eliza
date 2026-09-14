@@ -287,7 +287,11 @@ export interface SandboxProvider {
    * cannot prove the old workload is no longer running; abandoning an
    * unreachable container would create two live agents after the node returns.
    */
-  stopForReplacement?(sandboxId: string): Promise<void>;
+  stopForReplacement?(
+    sandboxId: string,
+    /** A lifecycle caller that transactionally recounts capacity owns its release. */
+    options?: { readonly releaseCapacity?: false },
+  ): Promise<void>;
   /**
    * Reclaims a replacement candidate from its durable placement record. This
    * bypasses sandbox-id lookup because the routed agent row may still point at

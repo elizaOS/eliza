@@ -23,6 +23,7 @@ import { settleAgentBringUpBilling } from "../../agent-compute-provision";
 import { startFundedAgentInTransaction } from "../../agent-compute-start";
 import { hasOpenAgentComputeFunding, stopFundedAgentInTransaction } from "../../agent-compute-stop";
 import { creditsService } from "../../credits";
+import { reconcileAllocatedWorkloadsOnNodeWithDatabase } from "../../docker-node-workload-queries";
 import type { SandboxHandle, SandboxProvider } from "../../sandbox-provider-types";
 import { isContainerBackedExecutionTier } from "../../sandbox-provider-types";
 import {
@@ -70,7 +71,10 @@ export interface SandboxPowerHost {
   persistSnapshotWithinTransaction(
     ...args: Parameters<SandboxBackup["persistSnapshotWithinTransaction"]>
   ): ReturnType<SandboxBackup["persistSnapshotWithinTransaction"]>;
-  runBoundedSandboxStopForReplacement(sandboxId: string): Promise<BoundedSandboxStopResult>;
+  runBoundedSandboxStopForReplacement(
+    sandboxId: string,
+    options?: Parameters<NonNullable<SandboxProvider["stopForReplacement"]>>[1],
+  ): Promise<BoundedSandboxStopResult>;
   revalidateContainerBackedLifecycleGeneration(
     ...args: Parameters<SandboxLifecycleAuthority["revalidateContainerBackedLifecycleGeneration"]>
   ): ReturnType<SandboxLifecycleAuthority["revalidateContainerBackedLifecycleGeneration"]>;
@@ -1303,92 +1307,126 @@ export class SandboxPower {
       }
     }
 
-    // The backup is intentionally captured without holding a database lock.
-    // Revalidate the database-owned generation under the advisory/row locks,
-    // then keep those locks through absence proof and the locator clear.
-    const sleepCommit = await dbWrite.transaction(async (tx) => {
-      await this.host.lockLifecycle(tx, agentId, orgId);
-      const current = await this.host.getAgentForLifecycleMutation(tx, agentId, orgId);
-      if (!current) {
-        return {
-          success: false as const,
-          containerRemoved: false,
-          error: "Agent not found",
-        };
-      }
-      const tierRejection = containerBackedServiceRejection(current, "sleep");
-      if (tierRejection) {
-        return {
-          success: false as const,
-          containerRemoved: false,
-          error: tierRejection,
-        };
-      }
-      if (current.deletion_attempt_id || this.host.isAwaitingDeletion(current.status)) {
-        return {
-          success: false as const,
-          containerRemoved: false,
-          error: "Agent not found",
-        };
-      }
-      if (this.host.getReplacementCleanupLocator(current)) {
-        return {
-          success: false as const,
-          containerRemoved: false,
-          error: "Agent replacement cleanup is still pending",
-        };
-      }
-      if (
-        current.status === "provisioning" ||
-        (await this.host.hasActiveReplacementJobTx(tx, agentId, orgId))
-      ) {
-        return {
-          success: false as const,
-          containerRemoved: false,
-          error: "Agent provisioning is in progress",
-        };
-      }
-
-      if (!snapshotCaptureStillCanonical(current, rec)) {
-        return {
-          success: false as const,
-          containerRemoved: false,
-          error: "Agent lifecycle changed while sleep was prepared",
-        };
-      }
-      let commitLifecycleRevision = current.lifecycle_revision;
-      if (pendingSleepSnapshot) {
-        const persisted = await this.host.persistSnapshotWithinTransaction(
-          tx,
-          current.id,
-          current.organization_id,
-          "pre-shutdown",
-          pendingSleepSnapshot.stateData,
-          pendingSleepSnapshot.sizeBytes,
-        );
-        backupId = persisted.backupId;
-        commitLifecycleRevision = persisted.lifecycleRevision;
-      }
-      if (!current.sandbox_id && (current.node_id || current.container_name)) {
-        return {
-          success: false as const,
-          containerRemoved: false,
-          error: "Sandbox locator is incomplete; compute was left unchanged",
-        };
-      }
-
-      if (current.sandbox_id) {
-        const stop = await this.host.runBoundedSandboxStopForReplacement(current.sandbox_id);
-        if (stop) {
+    // A prepaid stop and its backup/refund must commit before removal can
+    // destroy the host receipt or release the node. The second phase locks
+    // that exact stopped generation again before clearing its placement.
+    const prepaidProvider =
+      (await this.host.getProvider()).computeFundingCapability === "host-lease-v1";
+    const commitSleepPhase = (expected: AgentSandbox) =>
+      dbWrite.transaction(async (tx) => {
+        await this.host.lockLifecycle(tx, agentId, orgId);
+        const current = await this.host.getAgentForLifecycleMutation(tx, agentId, orgId);
+        if (!current) {
           return {
             success: false as const,
             containerRemoved: false,
-            error: stop.error instanceof Error ? stop.error.message : String(stop.error),
+            error: "Agent not found",
           };
         }
-      }
+        const tierRejection = containerBackedServiceRejection(current, "sleep");
+        if (tierRejection) {
+          return {
+            success: false as const,
+            containerRemoved: false,
+            error: tierRejection,
+          };
+        }
+        if (current.deletion_attempt_id || this.host.isAwaitingDeletion(current.status)) {
+          return {
+            success: false as const,
+            containerRemoved: false,
+            error: "Agent not found",
+          };
+        }
+        if (this.host.getReplacementCleanupLocator(current)) {
+          return {
+            success: false as const,
+            containerRemoved: false,
+            error: "Agent replacement cleanup is still pending",
+          };
+        }
+        if (
+          current.status === "provisioning" ||
+          (await this.host.hasActiveReplacementJobTx(tx, agentId, orgId))
+        ) {
+          return {
+            success: false as const,
+            containerRemoved: false,
+            error: "Agent provisioning is in progress",
+          };
+        }
 
-      const cleared = await tx.execute<{ id: string }>(sql`
+        if (
+          !snapshotCaptureStillCanonical(current, expected) ||
+          current.lifecycle_job_id !== expected.lifecycle_job_id ||
+          current.lifecycle_execution_generation !== expected.lifecycle_execution_generation
+        ) {
+          return {
+            success: false as const,
+            containerRemoved: false,
+            error: "Agent lifecycle changed while sleep was prepared",
+          };
+        }
+        let commitLifecycleRevision = current.lifecycle_revision;
+        if (pendingSleepSnapshot) {
+          const persisted = await this.host.persistSnapshotWithinTransaction(
+            tx,
+            current.id,
+            current.organization_id,
+            "pre-shutdown",
+            pendingSleepSnapshot.stateData,
+            pendingSleepSnapshot.sizeBytes,
+          );
+          backupId = persisted.backupId;
+          commitLifecycleRevision = persisted.lifecycleRevision;
+        }
+        if (!current.sandbox_id && (current.node_id || current.container_name)) {
+          return {
+            success: false as const,
+            containerRemoved: false,
+            error: "Sandbox locator is incomplete; compute was left unchanged",
+          };
+        }
+
+        if (prepaidProvider && (await hasOpenAgentComputeFunding(tx, agentId, orgId))) {
+          const funding = await stopFundedAgentInTransaction(tx, {
+            agentId,
+            organizationId: orgId,
+            lifecycleRevision: commitLifecycleRevision,
+          });
+          if (!funding) throw new Error("Sleep lost its paid stop authority");
+          const [stopped] = await tx
+            .update(agentSandboxes)
+            .set({ status: "stopped", updated_at: new Date() })
+            .where(and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.organization_id, orgId)))
+            .returning();
+          if (!stopped) throw new Error("Sleep lost its stopped generation");
+          if (current.node_id)
+            await reconcileAllocatedWorkloadsOnNodeWithDatabase(tx, current.node_id);
+          return {
+            success: true as const,
+            containerRemoved: false,
+            fundedRetirement: stopped,
+            funding,
+          };
+        }
+
+        if (current.sandbox_id) {
+          const stop = prepaidProvider
+            ? await this.host.runBoundedSandboxStopForReplacement(current.sandbox_id, {
+                releaseCapacity: false,
+              })
+            : await this.host.runBoundedSandboxStopForReplacement(current.sandbox_id);
+          if (stop) {
+            return {
+              success: false as const,
+              containerRemoved: false,
+              error: stop.error instanceof Error ? stop.error.message : String(stop.error),
+            };
+          }
+        }
+
+        const cleared = await tx.execute<{ id: string }>(sql`
         UPDATE ${agentSandboxes}
         SET
           status = 'sleeping',
@@ -1413,15 +1451,27 @@ export class SandboxPower {
           AND lifecycle_revision = ${commitLifecycleRevision}
         RETURNING id
       `);
-      if (cleared.rows.length !== 1) {
-        throw new Error("Sleep lost its lifecycle generation CAS");
-      }
-      return {
-        success: true as const,
-        containerRemoved: true,
-      };
-    });
+        if (cleared.rows.length !== 1) {
+          throw new Error("Sleep lost its lifecycle generation CAS");
+        }
+        if (prepaidProvider && current.node_id)
+          await reconcileAllocatedWorkloadsOnNodeWithDatabase(tx, current.node_id);
+        return {
+          success: true as const,
+          containerRemoved: true,
+        };
+      });
+    let sleepCommit = await commitSleepPhase(rec);
     if (!sleepCommit.success) return sleepCommit;
+    if ("fundedRetirement" in sleepCommit && sleepCommit.fundedRetirement) {
+      rec = sleepCommit.fundedRetirement;
+      pendingSleepSnapshot = undefined;
+      if (sleepCommit.funding.purchasedCreditRefunded)
+        await creditsService.invalidateCreditCaches(orgId);
+      sleepCommit = await commitSleepPhase(rec);
+      if (!sleepCommit.success) return sleepCommit;
+      if (!sleepCommit.containerRemoved) throw new Error("Sleep paid retirement did not converge");
+    }
 
     await agentSandboxesRepository.pruneBackups(rec.id, MAX_BACKUPS).catch((error) => {
       logger.warn("[agent-sandbox] Backup pruning failed after sleep", {
