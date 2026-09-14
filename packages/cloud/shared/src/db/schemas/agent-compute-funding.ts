@@ -14,7 +14,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { agentSandboxes } from "./agent-sandboxes";
+import { agentComputeSubjects } from "./agent-compute-subjects";
 import { billingFundingReservations } from "./billing-funding-reservations";
 
 export const agentComputeFunding = pgTable(
@@ -71,7 +71,7 @@ export const agentComputeFunding = pgTable(
     ),
     agent_tenant_fk: foreignKey({
       columns: [table.agent_id, table.organization_id],
-      foreignColumns: [agentSandboxes.id, agentSandboxes.organization_id],
+      foreignColumns: [agentComputeSubjects.agent_id, agentComputeSubjects.organization_id],
       name: "agent_compute_funding_agent_tenant_fk",
     }).onDelete("restrict"),
     reservation_tenant_fk: foreignKey({
