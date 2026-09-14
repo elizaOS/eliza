@@ -1,6 +1,7 @@
 /** Foreground reads of reviewed original dialogue before reply processing or
  * effects. Original context events remain intact; only Stage-1 rendering changes. */
 import {
+	collectCompletionContextSources,
 	completionContextSources,
 	parseCompletionContextSelection,
 } from "../../runtime/completion-context.ts";
@@ -78,19 +79,16 @@ export function historyReferences(
 	context: ContextObject,
 	projection?: HistoryDiscovery,
 ): Set<string> {
-	if (
-		!projection ||
-		projection.sourceSetId !== completionContextSources(context).sourceSetId
-	)
-		return new Set();
+	if (!projection) return new Set();
+	const bound = completionContextSources(context);
+	if (projection.sourceSetId !== bound.sourceSetId) return new Set();
 	return new Set([
 		ALL_HISTORY_REFERENCE,
-		...completionContextSources(context)
-			// A model may explicitly reread a retained original already inline.
-			// Resolve it through the same fresh authorization/source checks once;
-			// a repeated explicit read restores full history instead of failing
-			// as an unknown provider or entering an unbounded read loop.
-			.sources.map((source) => `${HISTORY_REFERENCE_PREFIX}${source.id}`),
+		// A model may explicitly reread a retained original already inline.
+		// Resolve it through the same fresh authorization/source checks once;
+		// a repeated explicit read restores full history instead of failing
+		// as an unknown provider or entering an unbounded read loop.
+		...bound.sources.map((source) => `${HISTORY_REFERENCE_PREFIX}${source.id}`),
 	]);
 }
 
@@ -226,7 +224,7 @@ export function historyReferenceNotice(
 	projection?: HistoryDiscovery,
 ): string {
 	if (!projection) return "";
-	return `\nComplete original history index: h1 through h${completionContextSources(context).sources.length}, inclusive, in chronological order. Each ID identifies one complete original source. Shown or context_loaded sources are already supplied; read a known ID through contextRequests=["history:hN"], or locate originals with ["history:search:literal phrase"]. Never guess IDs. "history:all" restores all originals. Ranges and wildcards are not request names.`;
+	return `\nComplete original history index: h1 through h${collectCompletionContextSources(context).length}, inclusive, in chronological order. Each ID identifies one complete original source. Shown or context_loaded sources are already supplied; read a known ID through contextRequests=["history:hN"], or locate originals with ["history:search:literal phrase"]. Never guess IDs. "history:all" restores all originals. Ranges and wildcards are not request names.`;
 }
 
 export function loadedHistorySegments(
@@ -234,8 +232,8 @@ export function loadedHistorySegments(
 	projection?: HistoryDiscovery,
 ): PromptSegment[] {
 	if (!projection) return [];
-	return completionContextSources(context)
-		.sources.filter((source) => projection.loadedSourceIds.has(source.id))
+	return collectCompletionContextSources(context)
+		.filter((source) => projection.loadedSourceIds.has(source.id))
 		.map((source) => ({
 			id: `history-read:${source.event.id}`,
 			stable: false,

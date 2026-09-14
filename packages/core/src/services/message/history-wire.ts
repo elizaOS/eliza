@@ -4,7 +4,7 @@
  * original contexts remain unchanged for selection, restoration and persistence.
  * Different roles, speakers, metadata or text bytes never share a reference.
  */
-import { completionContextSources } from "../../runtime/completion-context";
+import { collectCompletionContextSources } from "../../runtime/completion-context";
 import type {
 	ContextObject,
 	ContextObjectPromptSegment,
@@ -162,7 +162,7 @@ export function referenceRepeatedHistory(
 ): ContextObjectPromptSegment[] {
 	if (original.metadata?.historyReferenceEncoding !== true) return segments;
 	const sourceIds = new Map(
-		completionContextSources(original).sources.map(({ id, event }) => [
+		collectCompletionContextSources(original).map(({ id, event }) => [
 			event.id,
 			id,
 		]),

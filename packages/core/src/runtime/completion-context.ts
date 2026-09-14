@@ -93,7 +93,7 @@ export function withRequiredCompletionSourceIdentity(
 	if (
 		!completion ||
 		identity?.type !== "string" ||
-		completionContextSources(context).sources.length === 0
+		collectCompletionContextSources(context).length === 0
 	)
 		return schema;
 	return {
@@ -165,11 +165,11 @@ export function parseCompletionContextSelection(
 	};
 }
 
-/** Compact IDs are bound to the exact turn, room, identities and source bytes. */
-export function completionContextSources(context: ContextObject): {
-	sourceSetId: string;
-	sources: Array<{ id: string; event: ContextSegmentEvent }>;
-} {
+/** Collect complete, unambiguous sources in order. Callers needing only entries
+ * need not compute a turn-bound hash; selection still uses completionContextSources. */
+export function collectCompletionContextSources(
+	context: ContextObject,
+): Array<{ id: string; event: ContextSegmentEvent }> {
 	const sources: Array<{ id: string; event: ContextSegmentEvent }> = [];
 	for (const event of context.events ?? []) {
 		if (
@@ -201,6 +201,15 @@ export function completionContextSources(context: ContextObject): {
 	// receives no selectable surface and therefore keeps the full context.
 	if (new Set(sources.map(({ event }) => event.id)).size !== sources.length)
 		sources.length = 0;
+	return sources;
+}
+
+/** Compact IDs are bound to the exact turn, room, identities and source bytes. */
+export function completionContextSources(context: ContextObject): {
+	sourceSetId: string;
+	sources: Array<{ id: string; event: ContextSegmentEvent }>;
+} {
+	const sources = collectCompletionContextSources(context);
 	return {
 		sourceSetId: hashStableJson({
 			contextId: context.id,

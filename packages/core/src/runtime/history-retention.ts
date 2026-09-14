@@ -3,7 +3,7 @@
  * Persistence belongs to the existing incremental evaluator journal. */
 import { ElizaError } from "../errors.ts";
 import type { ContextObject } from "../types/context-object.ts";
-import { completionContextSources } from "./completion-context.ts";
+import { collectCompletionContextSources } from "./completion-context.ts";
 import { hashStableJson } from "./context-hash.ts";
 
 export type HistoryRetentionScope = {
@@ -12,7 +12,7 @@ export type HistoryRetentionScope = {
 	entityId: string;
 	roles: string[];
 };
-type Source = ReturnType<typeof completionContextSources>["sources"][number];
+type Source = ReturnType<typeof collectCompletionContextSources>[number];
 export type HistoryRetentionCheckpoint = {
 	version: 1;
 	scopeHash: string;
@@ -101,7 +101,7 @@ export function validateHistoryRetention(
 	)
 		return null;
 	if (context.metadata?.roomId !== scope.roomId) return null;
-	const sources = completionContextSources(context).sources;
+	const sources = collectCompletionContextSources(context);
 	// The selector deliberately returns no IDs for duplicate/ambiguous dialogue.
 	// An empty saved prefix must not turn that failure into an empty projection.
 	if (
@@ -130,7 +130,7 @@ export function prepareHistoryRetention(
 		context.metadata?.roomId === scope.roomId && evidenceId.length > 0,
 		"Wrong room or missing evidence",
 	);
-	const sources = completionContextSources(context).sources;
+	const sources = collectCompletionContextSources(context);
 	requireValue(
 		Number.isSafeInteger(reviewEnd) &&
 			reviewEnd >= 0 &&
@@ -224,7 +224,7 @@ export function visibleHistoryEventIds(
 ): Set<string> | null {
 	const cp = validateHistoryRetention(context, scope, stored);
 	if (!cp) return null; // full original rendering
-	const sources = completionContextSources(context).sources;
+	const sources = collectCompletionContextSources(context);
 	const result = new Set(cp.retainedEventIds);
 	let start = sources.length - 1;
 	while (
