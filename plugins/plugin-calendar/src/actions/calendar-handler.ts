@@ -2499,7 +2499,12 @@ export function resolveUpdateTimeRange(args: {
   now?: Date;
 }): { startAt?: string; endAt?: string } {
   let startAt = args.explicitStart ?? args.extractedStart;
-  let endAt = args.explicitEnd ?? args.extractedEnd;
+  // An end pairs only with the start it was produced beside: the planner's
+  // new start next to the extractor's old end put the start after the end
+  // (live 2026-09-14, CALENDAR_EVENT_RANGE_INVALID on a plain move). With no
+  // paired end the stored duration carries over below.
+  let endAt =
+    args.explicitEnd ?? (args.explicitStart ? undefined : args.extractedEnd);
   if (startAt && args.requestText && args.timeZone?.trim()) {
     const snapped = snapWeekdayMoveToTargetDay({
       requestText: args.requestText,
@@ -2511,6 +2516,11 @@ export function resolveUpdateTimeRange(args: {
     });
     startAt = snapped.startAt;
     endAt = snapped.endAt ?? endAt;
+  }
+  if (startAt && endAt && !endFollowsStart(startAt, endAt, args.timeZone)) {
+    // A model-authored end that does not follow the start is not a range the
+    // user asked for; the stored duration decides the end instead.
+    endAt = undefined;
   }
   if (!startAt || endAt) return { startAt, endAt };
   const durationMs =
@@ -2527,6 +2537,18 @@ export function resolveUpdateTimeRange(args: {
       ? end.toISOString()
       : formatLocalDateTimeInZone(end, timeZone),
   };
+}
+
+function endFollowsStart(
+  startAt: string,
+  endAt: string,
+  timeZone: string | undefined,
+): boolean {
+  const zone = timeZone?.trim() || "UTC";
+  const start = parseDateTimeInZone(startAt, zone);
+  const end = parseDateTimeInZone(endAt, zone);
+  if (!start || !end) return true;
+  return end.getTime() > start.getTime();
 }
 
 function createStartDetail(

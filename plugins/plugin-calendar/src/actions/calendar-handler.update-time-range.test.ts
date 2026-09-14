@@ -20,6 +20,43 @@ describe("resolveUpdateTimeRange", () => {
     ).toEqual({ startAt: "2026-09-11T16:00:00", endAt: "2026-09-11T17:00:00" });
   });
 
+  it("ignores the extractor's end beside the planner's start and keeps the duration (live regression)", () => {
+    // 2026-09-14: "move my chiropractor appointment to friday at 4pm" arrived
+    // with the planner's start 16:00 and no end; the re-extraction supplied
+    // the event's old 16:00 end and the service rejected end <= start.
+    expect(
+      resolveUpdateTimeRange({
+        explicitStart: "2026-09-11T16:00:00",
+        extractedStart: "2026-09-11T16:00:00",
+        extractedEnd: "2026-09-11T16:00:00",
+        target,
+        timeZone: "America/New_York",
+      }),
+    ).toEqual({ startAt: "2026-09-11T16:00:00", endAt: "2026-09-11T17:00:00" });
+  });
+
+  it("derives the end from the stored duration when an explicit end does not follow the start", () => {
+    expect(
+      resolveUpdateTimeRange({
+        explicitStart: "2026-09-11T16:00:00",
+        explicitEnd: "2026-09-11T15:30:00",
+        target,
+        timeZone: "America/New_York",
+      }),
+    ).toEqual({ startAt: "2026-09-11T16:00:00", endAt: "2026-09-11T17:00:00" });
+  });
+
+  it("still pairs an extracted end with an extracted start", () => {
+    expect(
+      resolveUpdateTimeRange({
+        extractedStart: "2026-09-11T16:00:00",
+        extractedEnd: "2026-09-11T16:45:00",
+        target,
+        timeZone: "America/New_York",
+      }),
+    ).toEqual({ startAt: "2026-09-11T16:00:00", endAt: "2026-09-11T16:45:00" });
+  });
+
   it("spells the derived end absolutely for an absolute start", () => {
     expect(
       resolveUpdateTimeRange({
