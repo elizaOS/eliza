@@ -4,6 +4,7 @@
  * composition across user and agent-tenant boundaries.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { setEntityRoleCas } from "../../roles.ts";
 import { filterByContextGate } from "../../runtime/context-gates.ts";
 import type { AgentRuntime } from "../../runtime.ts";
 import { createTestRuntime } from "../../testing/pglite-runtime.ts";
@@ -157,23 +158,19 @@ beforeAll(async () => {
 		source: "test",
 		type: ChannelType.DM,
 	});
-	await runtime.ensureWorldExists({
-		id: WORLD_ID,
-		name: "Document authorization",
-		agentId: runtime.agentId,
-		metadata: {
-			roles: {
-				[USER_ID]: "USER",
-				[OTHER_USER_ID]: "USER",
-				[ADMIN_ID]: "ADMIN",
-			},
-			roleSources: {
-				[USER_ID]: "manual",
-				[OTHER_USER_ID]: "manual",
-				[ADMIN_ID]: "manual",
-			},
-		},
-	});
+	// Role maps are protected authority state: legacy world upserts cannot
+	// grant access after ensureConnection has created the world.
+	for (const [entityId, role] of [
+		[USER_ID, "USER"],
+		[OTHER_USER_ID, "USER"],
+		[ADMIN_ID, "ADMIN"],
+	] as const) {
+		const grant = await setEntityRoleCas(runtime, message(), entityId, role, {
+			worldId: WORLD_ID,
+			source: "manual",
+		});
+		expect(grant.status).toBe("committed");
+	}
 	await runtime.adapter.createAgent({
 		id: OTHER_AGENT_ID,
 		name: "Foreign document tenant",
@@ -362,6 +359,51 @@ describe("DocumentService requester authorization", () => {
 		);
 	});
 
+	it("preserves large source text through update and existing-document upsert", async () => {
+		const id = "f4300000-0000-4000-8000-000000000031" as UUID;
+		const source = 'original "🌍\n'.repeat(200_000);
+		const document = userPrivateDocument(id, source);
+		await runtime.createMemory(document, "documents");
+		await runtime.updateMemory({ ...document, id });
+		expect((await runtime.getMemoryById(id))?.content.text).toBe(source);
+		const updated = `${source}\nNEW-END`;
+		await runtime.adapter.upsertMemories([
+			{
+				memory: { ...document, content: { text: updated } },
+				tableName: "documents",
+			},
+		]);
+		expect((await runtime.getMemoryById(id))?.content.text).toBe(updated);
+	});
+
+	it("keeps ordinary memory and non-source document fields under the JSON budget on update", async () => {
+		const documentId = "f4300000-0000-4000-8000-000000000032" as UUID;
+		const messageId = "f4300000-0000-4000-8000-000000000033" as UUID;
+		const content = { text: "unchanged" };
+		const oversized = "x".repeat(2 * 1024 * 1024);
+		await runtime.createMemory(
+			userPrivateDocument(documentId, content.text),
+			"documents",
+		);
+		await runtime.createMemory(
+			{ ...message(), id: messageId, content },
+			"messages",
+		);
+		for (const update of [
+			{ id: messageId, content: { text: oversized } },
+			{ id: documentId, content: { text: "new", nested: { text: oversized } } },
+			{ id: documentId, content: { text: "new", title: oversized } },
+			{ id: documentId, content: { text: "invalid\0source" } },
+		]) {
+			await expect(runtime.updateMemory(update)).rejects.toMatchObject({
+				code: "DB_UPDATE_FAILED",
+			});
+			expect((await runtime.getMemoryById(update.id))?.content).toEqual(
+				content,
+			);
+		}
+	});
+
 	it("reads a late page from a 10 MiB PGLite document without returning a source-sized projection", async () => {
 		const ordinaryLine = `${"x".repeat(1_023)}\n`;
 		const lateLine = `${"LATE-EVIDENCE".padEnd(1_023, "z")}\n`;
@@ -529,7 +571,12 @@ describe("DocumentService requester authorization", () => {
 					content: "Replacement that must not become visible",
 					message: message(),
 				}),
-			).rejects.toThrow("injected update embedding failure");
+			).rejects.toMatchObject({
+				code: "DOCUMENT_REVISION_PREPARATION_FAILED",
+				cause: expect.objectContaining({
+					message: "injected update embedding failure",
+				}),
+			});
 		} finally {
 			failEmbedding = false;
 		}

@@ -4107,7 +4107,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   ): Promise<void> {
     // Ensure we always pass a JSON string to the SQL bind parameter; if we pass an
     // object directly PG sees `[object Object]` and fails the `::jsonb` cast.
-    const contentToInsert = serializeJsonb(memory.content);
+    const contentToInsert = serializeJsonb(memory.content, {
+      documentText: tableName === "documents",
+    });
 
     const metadataToInsert = serializeJsonb(memory.metadata ?? {});
 
@@ -4190,7 +4192,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         await this.db.transaction(async (tx) => {
           // Update memory content if provided
           if (memory.content) {
-            const contentToUpdate = serializeJsonb(memory.content);
+            // The stored row owns its content policy; caller-supplied metadata
+            // cannot turn ordinary memories into unbounded document sources.
+            // Lock the row so its identity/type stays fixed through this write.
+            const [existing] = await tx
+              .select({ type: memoryTable.type })
+              .from(memoryTable)
+              .where(eq(memoryTable.id, memory.id))
+              .for("update");
+            const contentToUpdate = serializeJsonb(memory.content, {
+              documentText: existing?.type === "documents",
+            });
 
             const metadataToUpdate = serializeJsonb(memory.metadata ?? {});
 

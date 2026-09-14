@@ -19,6 +19,21 @@ const pending: FamilyDeletionJob = {
   retained: [{ kind: "providerCalendar", count: 1 }],
 };
 const adapter: FamilyDeletionAdapter = {
+  previewBackups: async () => ({
+    jobId: pending.id,
+    generation: pending.backupGeneration,
+    notBefore: "2026-09-20T12:00:00.000Z",
+    sha256: "d".repeat(64),
+    archives: [],
+  }),
+  admitBackups: async () => ({
+    ...pending,
+    state: "backup_pending",
+    backupCleanup: await adapter.previewBackups(),
+  }),
+  resumeBackups: async () => {
+    throw new Error("Synthetic retained backups are not due yet");
+  },
   status: async () => null,
   preview: async () => ({
     agentId: "story-agent",
