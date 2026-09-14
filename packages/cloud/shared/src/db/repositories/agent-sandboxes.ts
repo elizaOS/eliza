@@ -391,18 +391,24 @@ function warmPoolGenerationConditions(expected: WarmPoolRuntimeGeneration): SQL[
 /** Keep generic and restore-fenced provisioning transitions byte-equivalent. */
 function provisioningAdmissionUpdatePayload() {
   const permanentProvisionFailure = sql`${agentSandboxes.status} = 'error' AND ${agentSandboxes.error_message} LIKE 'Provisioning permanently failed%'`;
+  // Stop retains the retired locator while the agent is off. Once explicit
+  // provisioning is admitted, keeping that node would count the new
+  // `provisioning` row against its own freed slot before placement can run.
+  // Recovery data stays on the row; unresolved and sleeping generations keep
+  // their existing handle semantics.
+  const retiredPlacement = sql`${agentSandboxes.status} = 'stopped' OR (${permanentProvisionFailure})`;
   return {
     status: "provisioning" as const,
     updated_at: new Date(),
     error_message: null,
-    sandbox_id: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.sandbox_id} END`,
-    bridge_url: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.bridge_url} END`,
-    health_url: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.health_url} END`,
-    node_id: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.node_id} END`,
-    container_name: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.container_name} END`,
-    bridge_port: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.bridge_port} END`,
-    web_ui_port: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.web_ui_port} END`,
-    headscale_ip: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.headscale_ip} END`,
+    sandbox_id: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.sandbox_id} END`,
+    bridge_url: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.bridge_url} END`,
+    health_url: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.health_url} END`,
+    node_id: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.node_id} END`,
+    container_name: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.container_name} END`,
+    bridge_port: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.bridge_port} END`,
+    web_ui_port: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.web_ui_port} END`,
+    headscale_ip: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.headscale_ip} END`,
   };
 }
 

@@ -74,6 +74,8 @@ export async function collectV5PlannerCandidateActions(args: {
 	state: State;
 	selectedContexts?: readonly AgentContext[];
 	candidateActions?: readonly string[];
+	/** Discover routable actions before Stage 1 has selected their contexts. */
+	discoverActions?: boolean;
 	userRoles?: readonly RoleGateRole[];
 	/** Out-param: normalized names and reasons for EXPLICIT stage-1 candidates
 	 * rejected by the owner-exclusive disclosure gate.
@@ -280,7 +282,15 @@ export async function collectV5PlannerCandidateActions(args: {
 				.map(({ action }) => action)
 		: allRuntimeActions;
 	for (const action of baseRuntimeActions) {
-		await appendIfAllowed(action, undefined, args.selectedContexts);
+		// Discovery uses the same declared contexts as an explicit candidate hint.
+		// Role, disclosure, private-action, connector, and validation gates still run.
+		await appendIfAllowed(
+			action,
+			undefined,
+			args.discoverActions
+				? mergeAgentContexts(args.selectedContexts, action.contexts)
+				: args.selectedContexts,
+		);
 	}
 
 	const explicitCandidateActions = Array.isArray(args.candidateActions)

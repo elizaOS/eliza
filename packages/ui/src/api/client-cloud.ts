@@ -4164,17 +4164,13 @@ function isTerminalFailedCloudAgent(agent: CloudCompatAgent): boolean {
 }
 
 /**
- * Wait for a dedicated cloud agent to report `running` on the control plane,
- * kicking a resume first so a stopped/suspended container actually boots.
+ * Resume a dedicated cloud agent, await its accepted restore job, then return
+ * the fresh running record so callers bind its current URLs.
  *
- * The resume kick is best-effort: an agent already starting answers with an
- * idempotent "already in progress" envelope, and the dedicated-agent proxy
- * auto-resumes on first request anyway — the poll below is the source of
- * truth. Transient poll errors are tolerated (the timeout bounds them).
- *
- * Resolves with the FRESH agent record (post-wake URLs), so callers bind the
- * base the running container actually reports, not the stale list entry.
- * Throws on failed/deletion statuses and on timeout.
+ * A running row enables proxy reachability before backup restoration finishes.
+ * The admitted job is therefore the readiness authority when available;
+ * already-running and lost-response compatibility paths use the bounded status
+ * poll. Both waits share one deadline and preserve cancellation and typed errors.
  */
 export async function waitForCloudAgentRunning(
   client: ElizaClient,
@@ -4235,6 +4231,18 @@ export async function waitForCloudAgentRunning(
       agentId,
       controlPlaneCode:
         failure.controlPlaneCode ?? "CLOUD_AGENT_RESUME_REJECTED",
+    });
+  }
+
+  const resumeJobId = resume?.data?.jobId;
+  if (typeof resumeJobId === "string" && resumeJobId.trim()) {
+    await waitForCloudProvisionJob(client, {
+      agentId,
+      jobId: resumeJobId,
+      pollIntervalMs,
+      timeoutMs: Math.max(1, timeoutMs - (Date.now() - startedAt)),
+      onProgress,
+      signal: options.signal,
     });
   }
 

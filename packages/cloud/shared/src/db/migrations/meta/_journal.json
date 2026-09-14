@@ -2589,7 +2589,14 @@
       "idx": 369,
       "version": "7",
       "when": 1796083200013,
-      "tag": "0386_ai_billing_records_nullable_usage_record",
+      "tag": "0386_agent_heartbeat_lifecycle_revision",
+      "breakpoints": true
+    },
+    {
+      "idx": 370,
+      "version": "7",
+      "when": 1796083200014,
+      "tag": "0387_ai_billing_records_nullable_usage_record",
       "breakpoints": true
     }
   ]

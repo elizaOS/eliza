@@ -57,6 +57,7 @@ function makeState(): State {
 
 interface CannedResponse {
 	body: unknown;
+	inspectInput?: (params: unknown) => void;
 }
 
 function createResponseHandlerFieldRegistry(): ResponseHandlerFieldRegistry {
@@ -120,7 +121,9 @@ function makeRuntime(opts: {
 				if (queue.length === 0) {
 					throw new Error(`Unexpected useModel call: ${String(modelType)}`);
 				}
-				return queue.shift()?.body;
+				const response = queue.shift();
+				response?.inspectInput?.(params);
+				return response?.body;
 			},
 		),
 		logger: {
@@ -320,6 +323,126 @@ describe("v5 tiered action surface", () => {
 			process.env.ACTION_ROLE_POLICY = originalActionRolePolicy;
 		}
 		_resetActionRolePolicyCacheForTests();
+	});
+
+	it("discovers a custom owner action before routing and executes it through the planner", async () => {
+		const handler = vi.fn(async () => ({ success: true, text: "Role bound." }));
+		const description = `${"Complete domain guidance. ".repeat(1500)} Bind the requested household role.`;
+		const action = makeAction({
+			name: "HOUSEHOLD_COORDINATION_BIND_ROLE",
+			description,
+			contexts: ["household"],
+			roleGate: { minRole: "OWNER" },
+			handler,
+		});
+		const runtime = makeRuntime({
+			actions: [action],
+			responses: [
+				{
+					...stage1Response({
+						contexts: ["household"],
+						candidateActionNames: [action.name],
+						replyEffectStatus: "pending",
+					}),
+					inspectInput(params) {
+						const input = JSON.stringify(params);
+						expect(input).toContain("available_actions");
+						expect(input).toContain(action.name);
+						expect(input).toContain(description);
+						expect(handler).not.toHaveBeenCalled();
+					},
+				},
+				plannerToolResponse(action.name),
+				finishEvaluatorResponse("Role bound."),
+				{
+					...stage1Response({
+						contexts: ["simple"],
+						replyText: "Hello.",
+						replyEffectStatus: "none",
+					}),
+					inspectInput(params) {
+						const input = JSON.stringify(params);
+						expect(input).not.toContain(action.name);
+						expect(input).not.toContain(description);
+					},
+				},
+			],
+		});
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: {
+				...makeMessage("Bind the synthetic guest as a caregiver."),
+				entityId: AGENT_ID,
+			},
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(plannerToolNames(runtime)).toContain(action.name);
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("Hello."),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+		expect(handler).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not disclose owner-only, private, or invalid actions during guest discovery", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const actions = [
+			makeAction({
+				name: "CONFIDENTIAL_OWNER_OPERATION",
+				roleGate: { minRole: "OWNER" },
+				handler,
+			}),
+			{
+				...makeAction({ name: "AUTONOMOUS_PRIVATE_OPERATION", handler }),
+				private: true,
+			},
+			{
+				...makeAction({ name: "OWNER_AUDIENCE_OPERATION", handler }),
+				disclosureGate: { require: "owner_exclusive" as const },
+			},
+			makeAction({
+				name: "CONTEXT_DENIED_OPERATION",
+				contexts: ["household"],
+				contextGate: { noneOf: ["household"] },
+				handler,
+			}),
+			makeAction({
+				name: "UNAVAILABLE_DOMAIN_OPERATION",
+				validate: async () => false,
+				handler,
+			}),
+		];
+		const runtime = makeRuntime({
+			actions,
+			responses: [
+				{
+					...stage1Response({
+						contexts: ["simple"],
+						replyText: "Hello.",
+						replyEffectStatus: "none",
+					}),
+					inspectInput(params) {
+						const input = JSON.stringify(params);
+						for (const action of actions)
+							expect(input).not.toContain(action.name);
+					},
+				},
+			],
+		});
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("Hello."),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+		expect(handler).not.toHaveBeenCalled();
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+		]);
 	});
 
 	it.each(["none", " NONE "])(

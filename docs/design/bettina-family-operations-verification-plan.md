@@ -64,7 +64,7 @@ Node executable or a manual download.
 
 | Requirements | Automated proof | Local/live proof |
 | --- | --- | --- |
-| KNOW-1–KNOW-4 | Real media-store plus PGlite ingestion tests retain exact original bytes, binary/content hashes, page maps and immutable version lineage; failed byte storage rolls back metadata. Resumable-upload tests cover out-of-order chunks, exact replay, missing ranges, per-chunk and whole-file hash mismatch, and a document above the former 20 MiB ceiling. Complete-extraction tests cover native, image-bearing, text-empty, and verified-blank pages and reject one-page OCR/vision failure without partial success. | Upload born-digital, scanned, and mixed PDFs through the app; interrupt and resume one upload; restart, download and hash identical bytes; confirm early, middle, and final page canaries are searchable with their extraction method. |
+| KNOW-1–KNOW-4 | Real media-store plus PGlite ingestion tests retain exact original bytes, binary/content hashes, page maps and immutable version lineage; failed byte storage rolls back metadata, and rejected document/fragment/artifact writes remove only that upload's private sources. Concurrent duplicate rejection must preserve the winning version; uncertain commits preserve sources for reconciliation, and incomplete cleanup remains an explicit failure. Resumable-upload tests cover out-of-order chunks, exact replay, missing ranges, per-chunk and whole-file hash mismatch, and a document above the former 20 MiB ceiling. Complete-extraction tests cover native, image-bearing, text-empty, and verified-blank pages and reject one-page OCR/vision failure without partial success. | Upload born-digital, scanned, and mixed PDFs through the app; interrupt and resume one upload; restart, download and hash identical bytes; confirm early, middle, and final page canaries are searchable with their extraction method. |
 | KNOW-5–KNOW-7 | Obligation lifecycle tests validate page/source citations and proposed/approved/rejected transitions. Pin tests prove only approved obligations are active and raw-PDF activation warns. | Review obligations in the UI and inspect agent context with and without each pin. |
 | KNOW-8 | Manifest export test re-hashes original bytes, citations, obligations, pins, grants and audit entries. | Download and inspect the export. |
 | ACL-1–ACL-3 | Agent/chat/household pin-target tests include cross-room denial and prove pinning never grants access. | Change a chat pin and show no recipient permissions changed. |
@@ -87,7 +87,7 @@ Node executable or a manual download.
 | SCH-1–SCH-4 | Workflow route/UI tests create a typed monthly 09:00 America/New_York task and support `Run now`. Discovery tests begin at the stable landing page and record resolved PDF URL, redirects and response metadata. | Create the workflow from chat/UI without CLI or database edits. |
 | SCH-5–SCH-7 | SSRF, DNS-rebinding, redirect, MIME/signature, size and timeout rejection. Exact byte hash and retained artifact tests. Equal hash records a successful no-op. | Fetch the current Concord source and record its public URL and SHA-256. |
 | SCH-8–SCH-12 | Two-column geometry fixtures cover page citations, child scope, ambiguous quarantine, stable event keys and semantic add/update/cancel/unchanged diff. Metadata-only byte changes produce no calendar mutation. | Inspect the complete first-import proposal and a changed-source proposal. |
-| SCH-13–SCH-16 | Ownership and approval tests ensure only workflow-managed events change; concurrent runs use one lease; crash/restart is idempotent; run history reports actionable states. | Approve first import, rerun unchanged, restart and rerun. Verify unrelated event remains untouched. |
+| SCH-13–SCH-16 | Automatic-mode tests apply validated imports and revisions without per-run approval. Review-mode tests require approval of the exact changed plan. Both modes preserve ambiguity quarantine and event ownership; concurrent runs use one lease, crash/restart is idempotent, and run history reports actionable states. | Inspect the selected automatic mode, run an import and changed revision, rerun unchanged, then restart and rerun. Verify unrelated events remain untouched. Separately select review mode and prove a changed plan waits for approval. |
 | SCH-17 | Corpus/source inventory assertion excludes expenses and financial data. | Inspect resulting event set. |
 
 ### Coordination packet and drafting
@@ -101,7 +101,7 @@ Node executable or a manual download.
 
 | Requirements | Automated proof | Local/live proof |
 | --- | --- | --- |
-| APPROVAL-1–APPROVAL-7 | Policy-table tests key decisions by verified recipient role, disclosed data classes and effect, not connector. Exact envelope/body/attachment bytes are hash-bound; stale/tampered payloads fail; atomic claim, restart, duplicate and unknown outcomes are covered. | Approve one exact calendar mutation and one exact family message; alter each proposal and prove reapproval is required. |
+| APPROVAL-1–APPROVAL-7 | Policy-table tests key decisions by verified recipient role, disclosed data classes and effect, not connector. Validated workflow-owned school changes follow the selected automatic/review mode. Exact envelope/body/attachment bytes are hash-bound; stale/tampered payloads fail; atomic claim, restart, duplicate and unknown outcomes are covered. | Approve one exact calendar mutation outside automatic school synchronization and one exact family message; alter each proposal and prove reapproval is required. Verify automatic school synchronization cannot modify unrelated events. |
 | IMSG-1–IMSG-3 | Linux runtime may use the reviewed authenticated Blooio edge; native Messages remains macOS-only. Status tests distinguish configured, authenticated, webhook-ready, inbound-ready and last successful delivery. | Read back the actual selected transport and safe owner-only DM policy. |
 | IMSG-4–IMSG-7 | Deterministic card renderer golden tests, privacy-redaction modes, exact-byte approval, expiring identity-bound link, wrong-identity/expiry/replay denial, cleanup and privacy-safe metadata tests. Ordinary pre-auth media routes cannot read the card. | Inspect card, message preview, lock screen and authenticated destination link. |
 | IMSG-8 | Real dispatch test requires a provider receipt/readback; local adapter success cannot fabricate delivery. | Approved outbound plus inbound reply round-trip with signature, replay, tamper and unauthorized-sender rejection. |
@@ -134,8 +134,11 @@ manifest rather than assuming a script exists.
 4. Owner uses Eliza Calendar without Google.
 5. Owner connects the Google test calendar and proves bidirectional CRUD,
    conflict, duplicate notification, unknown outcome and disconnect behavior.
-6. Owner creates and manually runs the Concord workflow, approves the first
-   import, reruns the same bytes as a no-op, then reviews a changed fixture.
+6. Owner creates the Concord workflow in the selected automatic mode, runs a
+   validated first import and changed revision without per-run approval, then
+   reruns identical bytes as a recorded no-op. Verify unrelated events remain
+   unchanged and ambiguous sources stay quarantined. Separately select review
+   mode and prove a changed plan waits for exact-plan approval.
 7. Owner generates a monthly packet and neutral draft with no expense data.
 8. Owner reviews the exact recipient/disclosure/card envelope and sends through
    the configured iMessage edge; the recipient replies and the same thread is
