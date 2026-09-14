@@ -684,7 +684,7 @@ async function runPlannerLoopIterations(
 				trajectory,
 				preferredFinalMessageFromToolOrModel(
 					trajectory,
-					evaluator.messageToUser,
+					evaluatorFinishProse(trajectory, evaluator),
 					evaluator.success === false
 						? failedToolFallbackMessage(trajectory)
 						: undefined,
@@ -1161,7 +1161,7 @@ async function runPlannerLoopIterations(
 									trajectory,
 									preferredFinalMessageFromToolOrModel(
 										trajectory,
-										evaluator.messageToUser,
+										evaluatorFinishProse(trajectory, evaluator),
 										evaluator.success === false
 											? failedToolFallbackMessage(trajectory)
 											: undefined,
@@ -1451,7 +1451,11 @@ async function runPlannerLoopIterations(
 									trajectory,
 									preferredFinalMessageFromToolOrModel(
 										trajectory,
-										evaluator.messageToUser ?? plannerOutput.messageToUser,
+										evaluatorFinishProse(trajectory, {
+											success: evaluator.success,
+											messageToUser:
+												evaluator.messageToUser ?? plannerOutput.messageToUser,
+										}),
 									),
 									// Same structural failure acknowledgment as the post-tool
 									// FINISH path: success:false licenses the evaluator's own
@@ -2438,7 +2442,7 @@ async function runPlannerLoopIterations(
 						trajectory,
 						preferredFinalMessageFromToolOrModel(
 							trajectory,
-							evaluator.messageToUser,
+							evaluatorFinishProse(trajectory, evaluator),
 							evaluator.success === false
 								? failedToolFallbackMessage(trajectory)
 								: undefined,
@@ -7738,6 +7742,20 @@ export function singleVerifiedUserFacingToolResultText(
 		}
 	}
 
+	const text =
+		singleVerifiedUserFacingToolResult(trajectory)?.userFacingText?.trim();
+	return text || undefined;
+}
+
+/**
+ * The one successful tool result that opted into `verifiedUserFacing`, with
+ * no later failed non-terminal step and (when it carries receipts) applied
+ * user-facing effect proof; undefined when the opt-in is ambiguous.
+ */
+function singleVerifiedUserFacingToolResult(
+	trajectory: PlannerTrajectory,
+): PlannerToolResult | undefined {
+	const steps = allTrajectorySteps(trajectory);
 	const successfulToolSteps = steps.filter(
 		(step) => step.toolCall && step.result?.success === true,
 	);
@@ -7763,8 +7781,31 @@ export function singleVerifiedUserFacingToolResultText(
 	) {
 		return undefined;
 	}
-	const text = result.userFacingText?.trim();
-	return text || undefined;
+	return result;
+}
+
+/**
+ * The evaluator's FINISH prose, or undefined when it has nothing to add: a
+ * single verified tool result that completed the turn (`turnComplete`) IS
+ * the reply, and a `success:false` FINISH after it only restates the outcome
+ * the tool already stated. Live 2026-09-14: the attachment action posted
+ * "I couldn't generate a readable description for that image." through its
+ * own callback, the evaluator finished with success:false and "I couldn't
+ * read that image, so I have no description to give…", and the user got both
+ * as two messages. Prose after a success verdict still combines with the
+ * verified text (a second intent answered from context).
+ */
+function evaluatorFinishProse(
+	trajectory: PlannerTrajectory,
+	evaluator: { success?: boolean; messageToUser?: unknown },
+): unknown {
+	if (
+		evaluator.success === false &&
+		singleVerifiedUserFacingToolResult(trajectory)?.turnComplete === true
+	) {
+		return undefined;
+	}
+	return evaluator.messageToUser;
 }
 
 /**
