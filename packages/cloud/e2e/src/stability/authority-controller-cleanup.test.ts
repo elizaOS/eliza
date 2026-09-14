@@ -1,12 +1,14 @@
 /**
- * Interrupts the real stability controller after its authority is ready and
- * proves the owned authority PID and loopback listener disappear.
+ * Interrupts the production authority owner with a real synthetic authority,
+ * independently of native scenario admission, and proves PID and TCP closure.
  */
 
 import { expect, test } from "bun:test";
+import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { authorityPortClosed, stopAuthority } from "./authority-process.ts";
 
 function processExists(pid: number): boolean {
   try {
@@ -30,37 +32,52 @@ test("controller interruption removes its synthetic authority PID and port", asy
     path.join(tmpdir(), "cloud-stability-authority-cleanup-"),
   );
   const readyPath = path.join(directory, "authority-ready.json");
-  const child = Bun.spawn(
-    [
-      process.execPath,
-      "--conditions=eliza-source",
-      path.resolve(import.meta.dirname, "../../scripts/run-stability-lane.ts"),
-      "--mode",
-      "deterministic-mock",
-      "--run-id",
-      "cloud-stability-authority-interrupt",
-      "--output",
-      path.join(directory, "artifacts"),
-    ],
+  const repoRoot = path.resolve(import.meta.dirname, "../../../../..");
+  const ownerPath = path.join(import.meta.dirname, "authority-process.ts");
+  const source = `
+    import { writeFile, rename } from "node:fs/promises";
+    import { startAuthority, installAuthoritySignalCleanup } from ${JSON.stringify(ownerPath)};
+    const authority = await startAuthority(${JSON.stringify(repoRoot)}, "authority-interruption", "owned-fixture-control-token");
+    installAuthoritySignalCleanup(authority.child);
+    await writeFile(${JSON.stringify(readyPath + ".pending")}, JSON.stringify({pid:authority.child.pid,url:authority.url}), {mode:0o600,flag:"wx"});
+    await rename(${JSON.stringify(readyPath + ".pending")}, ${JSON.stringify(readyPath)});
+    setInterval(() => {}, 1000);
+  `;
+  const child = spawn(
+    process.execPath,
+    ["--conditions=eliza-source", "--eval", source],
     {
-      cwd: path.resolve(import.meta.dirname, "../../../../.."),
-      env: {
-        PATH: process.env.PATH,
-        TMPDIR: process.env.TMPDIR,
-        ELIZA_STABILITY_AUTHORITY_TEST_READY_PATH: readyPath,
-      },
-      stdout: "ignore",
-      stderr: "ignore",
+      cwd: repoRoot,
+      env: { PATH: process.env.PATH, TMPDIR: process.env.TMPDIR },
+      stdio: ["ignore", "ignore", "pipe"],
     },
   );
+  let diagnostics = "";
+  child.stderr?.on("data", (chunk: Buffer) => {
+    diagnostics += chunk.toString("utf8");
+  });
   try {
     let authority: { pid: number; url: string } | undefined;
-    for (let attempt = 0; attempt < 800; attempt += 1) {
+    const deadline = performance.now() + 20_000;
+    while (performance.now() < deadline) {
+      if (child.exitCode !== null || child.signalCode !== null)
+        throw new Error(
+          `Authority controller exited before readiness: ${diagnostics}`,
+        );
       try {
-        authority = JSON.parse(await readFile(readyPath, "utf8")) as {
-          pid: number;
-          url: string;
-        };
+        const value: unknown = JSON.parse(await readFile(readyPath, "utf8"));
+        if (
+          !value ||
+          typeof value !== "object" ||
+          !("pid" in value) ||
+          typeof value.pid !== "number" ||
+          !Number.isSafeInteger(value.pid) ||
+          value.pid <= 0 ||
+          !("url" in value) ||
+          typeof value.url !== "string"
+        )
+          throw new Error("Authority controller emitted invalid readiness");
+        authority = { pid: value.pid, url: value.url };
         break;
       } catch (error) {
         // error-policy:J3 ENOENT is the bounded not-ready state for this test seam.
@@ -74,27 +91,18 @@ test("controller interruption removes its synthetic authority PID and port", asy
       }
       await Bun.sleep(25);
     }
-    expect(authority).toBeDefined();
-    process.kill(child.pid, "SIGTERM");
-    const exitCode = await Promise.race([
-      child.exited,
-      Bun.sleep(15_000).then(() => "timeout" as const),
-    ]);
-    expect(exitCode).not.toBe("timeout");
-    for (
-      let attempt = 0;
-      attempt < 200 && processExists(authority?.pid as number);
-      attempt += 1
-    )
-      await Bun.sleep(25);
-    expect(processExists(authority?.pid as number)).toBe(false);
-    await expect(
-      fetch(`${authority?.url}/health`, {
-        signal: AbortSignal.timeout(500),
-      }),
-    ).rejects.toThrow();
+    if (!authority)
+      throw new Error(
+        `Authority controller never became ready: ${diagnostics}`,
+      );
+    expect(processExists(authority.pid)).toBe(true);
+    expect(await authorityPortClosed(authority.url)).toBe(false);
+    await stopAuthority(child);
+    expect(child.signalCode).toBe("SIGTERM");
+    expect(processExists(authority.pid)).toBe(false);
+    expect(await authorityPortClosed(authority.url)).toBe(true);
   } finally {
-    if (child.exitCode === null) child.kill("SIGKILL");
+    await stopAuthority(child);
     await rm(directory, { recursive: true, force: true });
   }
 }, 45_000);

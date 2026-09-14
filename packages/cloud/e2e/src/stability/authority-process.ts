@@ -3,9 +3,11 @@
  * A rejected ready record never transfers a live child to a caller that cannot
  * own it; failed startup waits for teardown before exposing the error.
  */
-import type { ChildProcess } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { createConnection } from "node:net";
+import path from "node:path";
 import { ElizaError } from "@elizaos/core/errors";
+import { authorityChildEnvironment } from "./cloud-stability-environment.ts";
 
 /** Only a refused TCP connection proves the former loopback listener is absent. */
 export async function authorityPortClosed(
@@ -193,4 +195,69 @@ export async function waitForAuthorityReady(
     }
     throw error;
   }
+}
+
+/** Transfers a ready loopback authority child to its controller; startup failure tears it down. */
+export async function startAuthority(
+  repoRoot: string,
+  namespace: string,
+  token: string,
+): Promise<{
+  child: ReturnType<typeof spawn>;
+  url: string;
+}> {
+  const child = spawn(
+    process.execPath,
+    [
+      "--conditions=eliza-source",
+      path.join(
+        repoRoot,
+        "packages/cloud/test-mocks/test/fixtures/synthetic-control-authority.ts",
+      ),
+    ],
+    {
+      cwd: repoRoot,
+      detached: false,
+      shell: false,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: authorityChildEnvironment(process.env, namespace, token),
+    },
+  );
+  const url = await waitForAuthorityReady(child);
+  return { child, url };
+}
+
+/** Stops the owned authority before restoring the controller's original signal semantics. */
+export function installAuthoritySignalCleanup(
+  child: ReturnType<typeof spawn>,
+): () => void {
+  let handling = false;
+  const handlers = new Map<NodeJS.Signals, () => void>();
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    const handler = (): void => {
+      if (handling) return;
+      handling = true;
+      const reraise = (): void => {
+        for (const [registeredSignal, registeredHandler] of handlers) {
+          process.removeListener(registeredSignal, registeredHandler);
+        }
+        process.kill(process.pid, signal);
+      };
+      void stopAuthority(child).then(reraise, (error: unknown) => {
+        // error-policy:J1 Signal cleanup reports the bounded teardown failure before preserving signal semantics.
+        const message = error instanceof Error ? error.message : String(error);
+        process.stderr.write(
+          `[cloud-stability] authority signal cleanup failed: ${message.slice(0, 1_000)}\n`,
+        );
+        reraise();
+      });
+    };
+    handlers.set(signal, handler);
+    process.once(signal, handler);
+  }
+  return () => {
+    for (const [signal, handler] of handlers) {
+      process.removeListener(signal, handler);
+    }
+  };
 }
