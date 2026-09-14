@@ -1,8 +1,10 @@
 name = "elizaresearch"
+main = "study-contact.mjs"
 compatibility_date = "2026-08-01"
 
 [assets]
 directory = "."
+binding = "ASSETS"
 
 [[routes]]
 pattern = "elizaresearch.ai"

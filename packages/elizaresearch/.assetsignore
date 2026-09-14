@@ -1,5 +1,6 @@
-.wrangler
+# Operational files that must not be served as public static assets.
+*.mjs
+*.toml
+*.json
+*.md
 node_modules
-README.md
-package.json
-wrangler.toml

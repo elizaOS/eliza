@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#ff5800" />
+<title>Senior Independence Study — Eliza Research</title>
+<meta name="description" content="Eliza Research is a nonprofit-backed research study on senior independence. Check that we're really us, see what taking part involves, and how the study works for senior living communities." />
+<meta property="og:title" content="Senior Independence Study — Eliza Research" />
+<meta property="og:description" content="A nonprofit-backed research study on what would help seniors stay independent for longer. Research only — nothing for sale." />
+<meta property="og:url" content="https://elizaresearch.ai/study/" />
+<meta property="og:type" content="website" />
+<meta property="og:image" content="https://elizaresearch.ai/assets/og.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="canonical" href="https://elizaresearch.ai/study/" />
+<link rel="icon" type="image/svg+xml" href="/assets/logo_orange_nobg.svg" />
+<style>
+  @font-face {
+    font-family: "Geist";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url("/assets/geist-sans-latin.woff2") format("woff2");
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face {
+    font-family: "Geist";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url("/assets/geist-sans-latin-ext.woff2") format("woff2");
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  }
+  :root {
+    --orange: #ff5800;
+    --orange-bright: #ff7a30;
+    --orange-deep: #b23d00;
+    --black: #0d0b0a;
+    --ink: #111111;
+    --bg: #ffffff;
+    --muted: #4d4a48;
+    --muted-dark: #c9c2be;
+    --line: #e6e3e1;
+    --line-dark: #332b26;
+    --hero-ink: #351208;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; background: var(--black); }
+  body {
+    font-family: "Geist", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+  h1, h2, h3 { text-wrap: balance; }
+  p { text-wrap: pretty; }
+  a { color: var(--orange-deep); }
+  ::selection { background: var(--orange); color: white; }
+  input, select, textarea, button { font: inherit; }
+
+  .wrap { max-width: 1200px; margin-inline: auto; padding-inline: clamp(1.375rem, 4vw, 3rem); }
+  .eyebrow { font-size: 0.9rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+  .link-underline { font-weight: 700; text-decoration: none; border-bottom: 2px solid currentColor; padding-bottom: 2px; }
+  .pill {
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.6rem;
+    border-radius: 999px; font-weight: 700; text-decoration: none;
+    padding: 1rem 2rem; font-size: clamp(1.1rem, 1.5vw, 1.25rem);
+  }
+
+  /* ---------- nav ---------- */
+  nav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1.1rem clamp(1.375rem, 4vw, 3rem);
+    color: white; background: var(--orange);
+  }
+  nav .mark { display: inline-flex; min-height: 44px; align-items: center; gap: 0.7rem; font-weight: 800; font-size: 1.05rem; letter-spacing: -0.01em; text-decoration: none; color: white; }
+  nav .mark img { width: 32px; height: 32px; display: block; }
+  nav .links { display: flex; gap: 1.75rem; align-items: center; }
+  nav .links a { display: inline-flex; min-height: 44px; align-items: center; text-decoration: none; font-weight: 600; font-size: 0.95rem; color: white; }
+  nav .links a.contact { color: var(--orange); background: white; border-radius: 999px; padding: 0.7rem 1.4rem; font-weight: 700; min-height: 0; }
+  @media (max-width: 760px) { nav .links a:not(.contact) { display: none; } }
+
+  /* ---------- hero ---------- */
+  header.hero { background: var(--orange); color: white; padding-block: clamp(1.5rem, 4vh, 3.25rem) clamp(2.5rem, 6vh, 4.5rem); }
+  .hero .badge {
+    display: inline-flex; align-items: center; background: var(--black); color: white;
+    border-radius: 999px; padding: 0.55rem 1.2rem; font-weight: 700; font-size: 0.95rem;
+  }
+  .hero h1 {
+    margin-top: 1.6rem; font-size: clamp(2.6rem, 7.5vw, 5.25rem);
+    font-weight: 850; letter-spacing: -0.03em; line-height: 1.03; max-width: 13ch;
+  }
+  .hero .tag {
+    margin-top: 1.4rem; font-size: clamp(1.1rem, 1.8vw, 1.375rem);
+    font-weight: 500; line-height: 1.55; max-width: 52ch; color: var(--hero-ink);
+  }
+  .fork { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; margin-top: 2.5rem; max-width: 900px; }
+  @media (max-width: 760px) { .fork { grid-template-columns: 1fr; gap: 0.9rem; } }
+  .fork a { display: block; border-radius: 1.25rem; padding: clamp(1.25rem, 2vw, 1.75rem) clamp(1.25rem, 2vw, 1.9rem); text-decoration: none; }
+  .fork .fork-title { margin-top: 0.5rem; font-size: clamp(1.15rem, 1.8vw, 1.3rem); font-weight: 750; letter-spacing: -0.015em; line-height: 1.35; }
+  .fork .fork-sub { margin-top: 0.4rem; font-size: 1rem; line-height: 1.5; }
+  .fork .light { background: white; }
+  .fork .light .eyebrow { color: var(--orange-deep); }
+  .fork .light .fork-title { color: var(--ink); }
+  .fork .light .fork-sub { color: var(--muted); }
+  .fork .dark { background: var(--black); }
+  .fork .dark .eyebrow { color: var(--orange-bright); }
+  .fork .dark .fork-title { color: #f5f2f0; }
+  .fork .dark .fork-sub { color: var(--muted-dark); }
+
+  /* ---------- trust bar ---------- */
+  .trust { background: var(--bg); border-bottom: 1px solid var(--line); }
+  .trust .wrap { display: flex; align-items: center; gap: 0.8rem; padding-block: 1.4rem; }
+  .trust img { width: 26px; height: 26px; flex-shrink: 0; }
+  .trust p { font-size: 1.05rem; font-weight: 600; }
+
+  /* ---------- shared section rhythm ---------- */
+  section { background: var(--bg); padding-block: clamp(3.25rem, 8vh, 6rem); }
+  section.bordered { border-top: 1px solid var(--line); }
+  h2 { font-size: clamp(2rem, 4.5vw, 3rem); font-weight: 830; letter-spacing: -0.028em; }
+  .card { border: 1px solid var(--line); border-radius: 1.25rem; padding: clamp(1.375rem, 2.5vw, 2.125rem) clamp(1.375rem, 2.5vw, 2.375rem); }
+
+  /* ---------- who we talk to ---------- */
+  .personas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2rem; margin-top: 2.75rem; }
+  @media (max-width: 900px) { .personas { grid-template-columns: 1fr; gap: 1rem; } }
+  .personas h3 { margin-top: 0.9rem; font-size: clamp(1.2rem, 1.8vw, 1.375rem); font-weight: 750; letter-spacing: -0.015em; }
+  .personas p { margin-top: 0.6rem; font-size: 1.05rem; color: var(--muted); }
+  .personas a { display: inline-block; margin-top: 0.9rem; font-size: 1.05rem; }
+
+  /* ---------- for you ---------- */
+  .contact-row { display: flex; align-items: center; flex-wrap: wrap; gap: 1.1rem 1.5rem; margin-top: 1.75rem; }
+  @media (max-width: 600px) { .contact-row { flex-direction: column; align-items: stretch; text-align: center; } }
+  .pill.solid-black { background: var(--black); color: white; }
+  .pill.solid-orange { background: var(--orange); color: white; }
+  .two-col { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2.5rem; }
+  @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; gap: 1.1rem; } }
+  .checklist { display: flex; flex-direction: column; gap: 0.9rem; margin-top: 1.1rem; }
+  .checklist .item { display: flex; align-items: flex-start; gap: 0.75rem; }
+  .checklist .item svg { flex-shrink: 0; margin-top: 2px; }
+  .checklist .item p { font-size: 1.1rem; line-height: 1.55; }
+
+  /* ---------- research ---------- */
+  .statement {
+    font-size: clamp(1.5rem, 3vw, 2.5rem); font-weight: 640; letter-spacing: -0.02em;
+    line-height: 1.25; max-width: 32ch; margin-inline: auto; text-align: center;
+  }
+  .statement em { font-style: normal; color: var(--orange-deep); }
+  .stats { display: flex; justify-content: center; flex-wrap: wrap; gap: clamp(2rem, 6vw, 6rem); margin-top: clamp(2.5rem, 6vh, 4rem); text-align: center; }
+  .stats > div { max-width: 320px; }
+  .stats .big { font-size: clamp(2.6rem, 4.5vw, 3.5rem); font-weight: 830; letter-spacing: -0.028em; color: var(--orange-deep); line-height: 1.1; }
+  .stats p { margin-top: 0.7rem; font-size: 1.05rem; color: var(--muted); }
+  .question-card { margin-top: clamp(2.5rem, 6vh, 4rem); max-width: 880px; margin-inline: auto; }
+  .question-card .q { margin-top: 0.75rem; font-size: clamp(1.2rem, 2vw, 1.5rem); font-weight: 640; letter-spacing: -0.015em; line-height: 1.35; }
+  .question-card .a { margin-top: 0.85rem; font-size: 1.05rem; color: var(--muted); }
+
+  /* ---------- team ---------- */
+  .bios { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2.5rem; margin-top: 3rem; }
+  @media (max-width: 900px) { .bios { grid-template-columns: 1fr; gap: 1.25rem; margin-top: 1.75rem; } }
+  .bio-head { display: flex; align-items: center; gap: 1.1rem; }
+  .bio-head img { width: clamp(68px, 8vw, 88px); height: clamp(68px, 8vw, 88px); border-radius: 999px; object-fit: cover; flex-shrink: 0; }
+  .bio-head h3 { font-size: clamp(1.25rem, 2vw, 1.5rem); font-weight: 780; letter-spacing: -0.015em; }
+  .bio-head .role { margin-top: 0.25rem; font-size: 1.02rem; font-weight: 700; color: var(--orange-deep); }
+  .bios .about { margin-top: 0.9rem; font-size: 1.05rem; color: var(--muted); }
+
+  /* ---------- communities (dark) ---------- */
+  .communities { background: var(--black); color: #f5f2f0; padding-block: clamp(3.25rem, 9vh, 6.5rem); }
+  .communities .eyebrow { color: var(--orange-bright); }
+  .communities .lede { margin-top: 1.1rem; font-size: clamp(1.05rem, 1.6vw, 1.2rem); color: var(--muted-dark); line-height: 1.65; max-width: 58ch; }
+  .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(1.6rem, 4vw, 3.5rem); margin-top: clamp(1.75rem, 6vh, 4.5rem); }
+  @media (max-width: 900px) { .steps { grid-template-columns: 1fr; } }
+  .steps .num { font-size: 1.25rem; font-weight: 800; color: var(--orange-bright); }
+  .steps h3 { margin-top: 0.75rem; font-size: clamp(1.25rem, 2vw, 1.45rem); font-weight: 750; letter-spacing: -0.015em; }
+  .steps p { margin-top: 0.85rem; font-size: 1.05rem; color: var(--muted-dark); }
+  .community-detail { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(2rem, 5vw, 4.5rem); margin-top: clamp(2rem, 7vh, 5rem); align-items: start; }
+  @media (max-width: 900px) { .community-detail { grid-template-columns: 1fr; } }
+  .communities .checklist .item p { color: #f5f2f0; font-size: 1.1rem; }
+  .communities .cta-row { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem 1.5rem; margin-top: 1.6rem; }
+  .communities a.more { color: var(--orange-bright); font-size: 1.1rem; }
+
+  /* ---------- FAQ ---------- */
+  .faq-group { margin-top: 1.75rem; }
+  .faq-group .eyebrow { color: var(--orange-deep); }
+  .faq-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2.5rem 4.5rem; margin-top: 1.5rem; }
+  @media (max-width: 900px) { .faq-grid { grid-template-columns: 1fr; gap: 1.75rem; } }
+  .faq-grid h3 { font-size: clamp(1.1rem, 1.6vw, 1.3rem); font-weight: 750; letter-spacing: -0.01em; }
+  .faq-grid p { margin-top: 0.6rem; font-size: 1.1rem; color: var(--muted); }
+
+  /* ---------- footer ---------- */
+  footer { background: var(--black); color: #f5f2f0; padding-block: clamp(3.25rem, 8vh, 5.5rem) 2.5rem; }
+  .footer-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(2rem, 5vw, 4.5rem); align-items: center; }
+  @media (max-width: 900px) { .footer-grid { grid-template-columns: 1fr; } }
+  footer .big { font-size: clamp(2.1rem, 4vw, 3.25rem); font-weight: 820; letter-spacing: -0.025em; line-height: 1.1; }
+  footer .sub { margin-top: 1.1rem; font-size: clamp(1.02rem, 1.5vw, 1.2rem); color: var(--muted-dark); line-height: 1.6; }
+  footer .booking { margin-top: 1.4rem; font-size: 1.05rem; color: var(--muted-dark); }
+  footer .booking a { color: var(--orange-bright); }
+  .form-card { background: white; border-radius: 1.25rem; padding: clamp(1.375rem, 2.5vw, 2.125rem); color: var(--ink); }
+  .form-card h3 { font-size: clamp(1.25rem, 2vw, 1.5rem); font-weight: 750; letter-spacing: -0.015em; }
+  .form-card label { display: block; margin-top: 1.05rem; font-size: 1rem; font-weight: 700; }
+  .form-card input, .form-card select, .form-card textarea {
+    display: block; width: 100%; margin-top: 0.5rem;
+    border: 1.5px solid var(--line); border-radius: 0.75rem;
+    padding: 0.875rem 1rem; font-size: 1.05rem; line-height: 1.4;
+    color: var(--ink); background: white;
+  }
+  .form-card select {
+    appearance: none; -webkit-appearance: none; padding-right: 2.75rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M6 9l6 6 6-6' stroke='%234d4a48' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 1rem center;
+  }
+  .form-card textarea { resize: vertical; }
+  .form-card button {
+    margin-top: 1.5rem; width: 100%; background: var(--orange); color: white;
+    border: none; border-radius: 999px; padding: 1rem 2rem;
+    font-weight: 700; font-size: 1.2rem; cursor: pointer;
+  }
+  .form-card button:hover { background: #e04e00; }
+  .form-card button[disabled] { opacity: 0.6; cursor: wait; }
+  .form-card .note { margin-top: 0.75rem; font-size: 0.9rem; color: var(--muted); line-height: 1.5; }
+  .form-card .form-status { margin-top: 1rem; font-size: 1.05rem; font-weight: 600; line-height: 1.5; display: none; }
+  .form-card .form-status.error { display: block; color: #a63232; }
+  .form-card .form-done { display: none; }
+  .form-card.sent form { display: none; }
+  .form-card.sent .form-done { display: block; }
+  .form-card .form-done p { margin-top: 0.9rem; font-size: 1.1rem; line-height: 1.6; }
+  .hp-field { position: absolute; left: -9999px; top: -9999px; }
+  footer .legal {
+    margin-top: clamp(2.5rem, 6vh, 3.5rem); display: flex; flex-wrap: wrap; gap: 1rem 2rem;
+    justify-content: space-between; align-items: center;
+    font-size: 0.95rem; color: #a89f9a; border-top: 1px solid var(--line-dark); padding-top: 1.75rem;
+  }
+  footer .legal a { color: var(--orange-bright); text-decoration: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<nav aria-label="Main">
+  <a class="mark" href="https://elizaresearch.ai/"><img src="/assets/logo_white_nobg.svg" alt="" />Eliza&nbsp;Research</a>
+  <div class="links">
+    <a href="#for-you">Seniors &amp; caregivers</a>
+    <a href="#communities">Senior living communities</a>
+    <a href="#team">Who we are</a>
+    <a class="contact" href="#contact">Contact us</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="badge">Nonprofit-backed research study</span>
+    <h1>Supporting senior independence.</h1>
+    <p class="tag">We're a small, nonprofit-backed team of technologists studying what would help seniors stay independent for longer. This is research only — we aren't selling software or a product.</p>
+    <div class="fork">
+      <a class="light" href="#for-you">
+        <span class="eyebrow">For seniors and family caregivers</span>
+        <p class="fork-title">I'm 65+, or I help care for someone who is&nbsp;→</p>
+        <p class="fork-sub">Check that it's really us, and see what taking part involves.</p>
+      </a>
+      <a class="dark" href="#communities">
+        <span class="eyebrow">For senior living communities</span>
+        <p class="fork-title">I lead or work at a senior living community&nbsp;→</p>
+        <p class="fork-sub">See how the study works, what it asks of you, and what you receive.</p>
+      </a>
+    </div>
+  </div>
+</header>
+
+<div class="trust">
+  <div class="wrap">
+    <img src="/assets/logo_orange_nobg.svg" alt="" />
+    <p>Run with the <a class="link-underline" rel="noopener noreferrer" href="https://ownyourdata.foundation/">Own Your Data Foundation</a>, a 501(c)(3) nonprofit</p>
+  </div>
+</div>
+
+<section>
+  <div class="wrap">
+    <h2>Who we're talking to</h2>
+    <p style="margin-top: 1rem; font-size: 1.15rem; color: var(--muted); max-width: 66ch;">The work of staying independent is shared, so our interviews are too. We speak with three groups and every participant is paid for their time.</p>
+    <div class="personas">
+      <div class="card">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#b23d00" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"></circle><path d="M4.5 21c0-4 3.4-7 7.5-7s7.5 3 7.5 7"></path></svg>
+        <h3>Seniors</h3>
+        <p>Adults 65 and older — especially independent-living residents who manage much of their own lives but lean on others for complex tasks.</p>
+        <a class="link-underline" href="#for-you">See more ↓</a>
+      </div>
+      <div class="card">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#b23d00" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-8-5.2-8-10.8A4.4 4.4 0 0 1 12 7a4.4 4.4 0 0 1 8 3.2C20 15.8 12 21 12 21z"></path></svg>
+        <h3>Family caregivers</h3>
+        <p>Spouses, adult children, and family members who coordinate appointments, rides, bills, and follow-ups for someone they love.</p>
+        <a class="link-underline" href="#for-you">See more ↓</a>
+      </div>
+      <div class="card">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#b23d00" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="1.5"></rect><path d="M9 21v-4h6v4M8 7.5h2M14 7.5h2M8 12h2M14 12h2"></path></svg>
+        <h3>Community staff &amp; leadership</h3>
+        <p>Leaders and staff at senior living communities who help residents sort out everyday problems.</p>
+        <a class="link-underline" href="#communities">See more ↓</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="for-you" class="bordered">
+  <div class="wrap">
+    <span class="eyebrow" style="color: var(--orange-deep);">For seniors and family caregivers</span>
+    <h2 style="margin-top: 0.75rem;">Heard from us? This is us.</h2>
+    <p style="margin-top: 1.25rem; font-size: clamp(1.1rem, 1.7vw, 1.25rem); max-width: 62ch;">If you or a family member received a flyer, a call, or an email about our study — you're in the right place, and we're glad you're checking. We interview both seniors and the family members who help them coordinate — spouses and adult children included. Call, text, or email us any time; questions are always welcome.</p>
+    <div class="contact-row">
+      <a class="pill solid-black" href="tel:3473917236">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+        Call or text (347) 391-7236
+      </a>
+      <a class="link-underline" style="font-size: 1.15rem;" href="#contact">or send us an email ↓</a>
+    </div>
+    <div class="two-col" style="margin-top: 3rem;">
+      <div class="card">
+        <h3 style="font-size: clamp(1.2rem, 1.8vw, 1.375rem); font-weight: 750; letter-spacing: -0.015em;">What taking part involves</h3>
+        <div class="checklist">
+          <div class="item">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#ff5800"></circle><path d="M7 12.5l3.2 3.2L17 9" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            <p>One conversation, 30–60 minutes, about the everyday tasks you handle yourself and the ones where you lean on others</p>
+          </div>
+          <div class="item">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#ff5800"></circle><path d="M7 12.5l3.2 3.2L17 9" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            <p>Interviews offered in person, by phone, or video</p>
+          </div>
+          <div class="item">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#ff5800"></circle><path d="M7 12.5l3.2 3.2L17 9" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            <p>You're paid $50 for your time</p>
+          </div>
+          <div class="item">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#ff5800"></circle><path d="M7 12.5l3.2 3.2L17 9" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            <p>Nothing to buy, and no computer skills needed</p>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h3 style="font-size: clamp(1.2rem, 1.8vw, 1.375rem); font-weight: 750; letter-spacing: -0.015em;">Your privacy</h3>
+        <div class="checklist">
+          <div class="item">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#b23d00" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            <p>Nothing is recorded without your permission, and your name is never published</p>
+          </div>
+          <div class="item">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#b23d00" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            <p>We don't ask for medical records, and we don't collect sensitive or private information</p>
+          </div>
+          <div class="item">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#b23d00" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            <p>You control what you share and can skip any question</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="research" class="bordered">
+  <div class="wrap">
+    <p class="statement">Staying independent in later life takes a lot of <em>invisible work</em>. Families coordinate appointments, rides, services, and follow-ups. Even in a well-run community, someone has to connect the dots.</p>
+    <div class="stats">
+      <div>
+        <p class="big">51M</p>
+        <p>Americans care for someone 50+, providing an average of 26 hours of unpaid support per week.</p>
+      </div>
+      <div>
+        <p class="big">Our aim</p>
+        <p>Help older adults stay independent for longer — because independence is closely tied to control, wellbeing, and quality of life.</p>
+      </div>
+    </div>
+    <div class="card question-card">
+      <span class="eyebrow" style="color: var(--orange-deep);">The question behind the study</span>
+      <p class="q">Where do seniors rely on others to manage everyday life — and what could help them stay in control while easing the load on families and staff?</p>
+      <p class="a">We're studying where that coordination work piles up, where current tools fall short, and what would let seniors increase their independence.</p>
+    </div>
+  </div>
+</section>
+
+<section id="team" class="bordered">
+  <div class="wrap">
+    <h2>Who we are</h2>
+    <p style="margin-top: 1.25rem; font-size: 1.15rem; color: var(--muted); max-width: 68ch;">We're a small team of technologists conducting this study with the <a class="link-underline" rel="noopener noreferrer" href="https://ownyourdata.foundation/">Own Your Data Foundation</a>, a 501(c)(3) nonprofit focused on helping people use technology safely and with greater control over their data and digital lives.</p>
+    <div class="bios">
+      <div class="card">
+        <div class="bio-head">
+          <img src="/assets/camilla.jpg" alt="Camilla Castro" />
+          <div>
+            <h3>Camilla Castro</h3>
+            <p class="role">Research &amp; Product Lead</p>
+          </div>
+        </div>
+        <p class="about">Product leader focused on turning complex systems into simple, useful experiences. Previously led large-scale product initiatives, including work across business and healthcare use cases.</p>
+      </div>
+      <div class="card">
+        <div class="bio-head">
+          <img src="/assets/shaw.jpg" alt="Shaw Walters" />
+          <div>
+            <h3>Shaw Walters</h3>
+            <p class="role">Founder &amp; Technical Lead</p>
+          </div>
+        </div>
+        <p class="about">AI researcher and engineer; creator of elizaOS, an open-source agentic operating system designed to help software act on a person's behalf while giving them greater control over their data.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="communities" class="communities">
+  <div class="wrap">
+    <span class="eyebrow">For senior living communities</span>
+    <h2 style="margin-top: 0.75rem; color: #f5f2f0;">If we've reached out to your community</h2>
+    <p class="lede">We're recruiting a small number of senior living communities into the study, at no cost to you — we cover everything, including participant payments. How it works:</p>
+    <div class="steps">
+      <div>
+        <p class="num">01</p>
+        <h3>Intro call</h3>
+        <p>30 minutes with community leadership to understand your community and confirm fit.</p>
+      </div>
+      <div>
+        <p class="num">02</p>
+        <h3>Interviews</h3>
+        <p>30–60 minute conversations with a small group of residents, family members, staff, and leadership, focused on tasks residents find hard to manage on their own.</p>
+      </div>
+      <div>
+        <p class="num">03</p>
+        <h3>We handle the rest</h3>
+        <p>We manage scheduling, interviewing, and synthesis. Your staff mostly help us identify appropriate residents, families, and staff to speak with.</p>
+      </div>
+    </div>
+    <div class="community-detail">
+      <div>
+        <span class="eyebrow">What your community receives</span>
+        <div class="checklist" style="margin-top: 1.1rem;">
+          <div class="item">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6" stroke="#ff7a30" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            <p>A free, community-specific report on where residents, families, and staff carry hidden coordination work</p>
+          </div>
+          <div class="item">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6" stroke="#ff7a30" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            <p>Anonymized patterns from other participating communities</p>
+          </div>
+          <div class="item">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6" stroke="#ff7a30" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            <p>Where current services and technology stop short, and where residents could realistically do more on their own</p>
+          </div>
+          <div class="item">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6" stroke="#ff7a30" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            <p>A 30–60 minute findings meeting with your leadership team</p>
+          </div>
+        </div>
+      </div>
+      <div>
+        <span class="eyebrow">Privacy and logistics</span>
+        <div class="checklist" style="margin-top: 1.1rem;">
+          <div class="item">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ff7a30" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            <p>Interviews are recorded only with participant permission</p>
+          </div>
+          <div class="item">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ff7a30" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            <p>Your community and residents aren't publicly identified without permission</p>
+          </div>
+          <div class="item">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ff7a30" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            <p>No access to medical records or community systems is required</p>
+          </div>
+          <div class="item">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ff7a30" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            <p>Any future collaboration is optional and separate from this research</p>
+          </div>
+        </div>
+        <div class="cta-row">
+          <a class="pill solid-orange" rel="noopener noreferrer" href="https://calendar.app.google/CazVzgzyQWVkAumn8">Find 30 minutes to talk</a>
+          <a class="link-underline more" href="#contact">or send us an email ↓</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Common questions</h2>
+    <div class="faq-group">
+      <span class="eyebrow">For seniors and family caregivers</span>
+      <div class="faq-grid">
+        <div>
+          <h3>Is this a product pilot or sales pitch?</h3>
+          <p>No. This is user research on technology use and independence. You're not being asked to purchase, pilot, or commit to anything.</p>
+        </div>
+        <div>
+          <h3>Is this medical research or medical advice?</h3>
+          <p>No. We study technology use, coordination, and independence. We don't provide medical care or advice, and we never ask for medical records.</p>
+        </div>
+        <div>
+          <h3>What information are you collecting?</h3>
+          <p>Your experiences coordinating everyday life and using technology. Findings go into anonymized cross-community research; your name is never published.</p>
+        </div>
+        <div>
+          <h3>Will I have to share sensitive information?</h3>
+          <p>You may describe tasks you find difficult, and some sessions include watching how you use your devices to complete tasks. You control what you show and can skip anything.</p>
+        </div>
+      </div>
+    </div>
+    <div class="faq-group" style="margin-top: 3rem;">
+      <span class="eyebrow">For communities</span>
+      <div class="faq-grid">
+        <div>
+          <h3>How much work is required from our staff?</h3>
+          <p>Mostly helping us identify appropriate residents, family members, and staff. Wherever possible we handle scheduling and coordination directly.</p>
+        </div>
+        <div>
+          <h3>What will you use this information for?</h3>
+          <p>To understand where better tools could support resident independence and reduce coordination work. Findings go into your community's report and, in anonymized form, into cross-community research.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer id="contact">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div>
+        <p class="big">Questions welcome.</p>
+        <p class="sub">Whether you heard from us and want to double-check, are curious about the research, or lead a community we should talk to — call, text, or email us any time.</p>
+        <p style="margin-top: 1.75rem;"><a class="pill solid-orange" href="tel:3473917236">Call or text (347) 391-7236</a></p>
+        <p class="booking">Representing a community? <a class="link-underline" rel="noopener noreferrer" href="https://calendar.app.google/CazVzgzyQWVkAumn8">Find 30 minutes to talk</a></p>
+      </div>
+      <div class="form-card" id="form-card">
+        <form id="study-contact-form" novalidate>
+          <h3>Send us an email</h3>
+          <label for="f-name">Your name</label>
+          <input id="f-name" name="name" type="text" autocomplete="name" required />
+          <label for="f-contact">Phone or email — however you prefer we reach you</label>
+          <input id="f-contact" name="contact" type="text" autocomplete="email" required />
+          <label for="f-role">I'm reaching out as</label>
+          <select id="f-role" name="role">
+            <option>A senior</option>
+            <option>A family member</option>
+            <option>A community representative</option>
+            <option>Something else</option>
+          </select>
+          <label for="f-message">Your message</label>
+          <textarea id="f-message" name="message" rows="4" required></textarea>
+          <div class="hp-field" aria-hidden="true">
+            <label for="f-website">Leave this field empty</label>
+            <input id="f-website" name="website" type="text" tabindex="-1" autocomplete="off" />
+          </div>
+          <button type="submit" id="f-submit">Send email</button>
+          <p class="note">Spam-protected. We never share or publish your details.</p>
+          <p class="form-status" id="form-status" role="alert"></p>
+        </form>
+        <div class="form-done">
+          <h3>Thank you — we got your message.</h3>
+          <p>We'll get back to you soon. If it's easier, you can always call or text us at <a href="tel:3473917236" style="font-weight: 700;">(347) 391-7236</a>.</p>
+        </div>
+      </div>
+    </div>
+    <div class="legal">
+      <span>© 2026 Eliza Research · <a href="https://elizaresearch.ai/">elizaresearch.ai</a></span>
+      <span>Not medical research · No sales · Run with the <a rel="noopener noreferrer" href="https://ownyourdata.foundation/">Own Your Data Foundation</a>, a 501(c)(3) nonprofit</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+// Submits the contact form to the study-contact Worker endpoint without a page
+// navigation, so visitors keep their place and see the confirmation inline.
+// The endpoint address never appears in this page; delivery happens server-side.
+(() => {
+  const form = document.getElementById("study-contact-form");
+  const card = document.getElementById("form-card");
+  const status = document.getElementById("form-status");
+  const submit = document.getElementById("f-submit");
+  const FALLBACK = "Something went wrong and your message was not sent. Please try again, or call or text us at (347) 391-7236.";
+
+  function showError(message) {
+    status.textContent = message;
+    status.classList.add("error");
+  }
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    status.classList.remove("error");
+
+    const payload = {
+      name: form.name.value.trim(),
+      contact: form.contact.value.trim(),
+      role: form.role.value,
+      message: form.message.value.trim(),
+      website: form.website.value,
+    };
+    if (!payload.name || !payload.contact || !payload.message) {
+      showError("Please fill in your name, how to reach you, and a message.");
+      return;
+    }
+
+    submit.disabled = true;
+    try {
+      const response = await fetch("/api/study-contact", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await response.json().catch(() => null);
+      if (response.ok && body && body.ok) {
+        card.classList.add("sent");
+      } else {
+        showError((body && body.error) || FALLBACK);
+      }
+    } catch {
+      // error-policy:J4 — network failure becomes a visible error state with a
+      // phone fallback; the visitor is never left on a silent dead end.
+      showError(FALLBACK);
+    } finally {
+      submit.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>
