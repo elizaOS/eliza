@@ -40,7 +40,14 @@ export async function installOrganizationPolicyTestSchema(
   await execute(
     "CREATE UNIQUE INDEX IF NOT EXISTS policy_fixture_agent_identity ON agent_sandboxes(id,organization_id)",
   );
-  for (const name of ["0387_agent_compute_funding.sql", "0389_agent_compute_stop_receipts.sql"]) {
-    await execute(await readFile(new URL(`../migrations/${name}`, import.meta.url), "utf8"));
+  for (const name of [
+    "0387_agent_compute_funding.sql",
+    "0389_agent_compute_stop_receipts.sql",
+    "0390_agent_compute_runtime_readiness.sql",
+  ]) {
+    const migration = await readFile(new URL(`../migrations/${name}`, import.meta.url), "utf8");
+    // The fixture's connection search_path owns all of its tables. Generated
+    // public-qualified foreign keys must resolve there too, including self references.
+    await execute(migration.replaceAll('"public".', ""));
   }
 }

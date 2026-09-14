@@ -229,9 +229,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
       );
     `);
     await installOrganizationPolicyTestSchema(async (query) => {
-      // Generated foreign keys name public explicitly. Keep every migrated
-      // relation inside this suite's isolated schema, including self references.
-      await setupClient!.query(query.replaceAll('"public".', `"${schemaName}".`));
+      await setupClient!.query(query);
     });
     const noticeMigration = await readFile(
       new URL("../migrations/0382_subscription_notice_intents.sql", import.meta.url),
