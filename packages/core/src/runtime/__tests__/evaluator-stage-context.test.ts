@@ -5,6 +5,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import type { ContextObject } from "../../types/context-object";
+import { EVALUATOR_STAGE_PROVIDER_EXCLUSIONS } from "../../services/message/provider-state";
 import { runEvaluator } from "../evaluator";
 
 function context(id: string, providers: string[]): ContextObject {
@@ -107,5 +108,25 @@ describe("evaluator stage context", () => {
 		});
 		const rendered = evaluatorUserMessage(runtime);
 		expect(rendered).toContain("ENTITIES block");
+	});
+});
+
+describe("evaluator stage provider exclusions", () => {
+	it("leaves out the blocks that describe what a reply may do, not whether a tool result satisfied the request", () => {
+		expect(EVALUATOR_STAGE_PROVIDER_EXCLUSIONS).toEqual(
+			expect.arrayContaining([
+				"ENTITIES",
+				"PLATFORM_USER_CONTEXT",
+				"uiWidgets",
+				"recent-conversations",
+				"relevant-conversations",
+				"CHANNEL_TOPICS",
+				"firstRun",
+			]),
+		);
+		// The dialogue, facts and the live time stay in.
+		for (const kept of ["RECENT_MESSAGES", "FACTS", "CURRENT_TIME"]) {
+			expect(EVALUATOR_STAGE_PROVIDER_EXCLUSIONS).not.toContain(kept);
+		}
 	});
 });
