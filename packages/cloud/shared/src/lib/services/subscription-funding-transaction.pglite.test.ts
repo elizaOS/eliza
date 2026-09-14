@@ -1095,6 +1095,96 @@ test("paid lease recovery cannot authorize an unreconciled legacy lifecycle tran
   expect(after.reservations).toHaveLength(2);
 });
 
+test("real provision rejects zero funds before provider allocation and cancels an unbound admission once", async () => {
+  const org = "61000000-0000-4000-8000-000000000032";
+  const agentId = "63000000-0000-4000-8000-000000000032";
+  await fixture.query(
+    `INSERT INTO organizations(id,credit_balance,balance_revision,balance_decrease_revision,settings,is_active,auto_top_up_enabled,account_lifecycle_state)
+    VALUES($1,'0.000000',1,0,'{}',true,false,'active')`,
+    [org],
+  );
+  await fixture.query(
+    `INSERT INTO agent_sandboxes(id,organization_id,status,execution_tier,lifecycle_revision,environment_revision,agent_config,billing_status,total_billed)
+    VALUES($1,$2,'pending','dedicated-always',1,1,'{}','active',0)`,
+    [agentId, org],
+  );
+  const { ElizaSandboxService } = await import("./eliza-sandbox");
+  const { DockerSandboxProvider } = await import("./docker-sandbox-provider");
+  const service = new ElizaSandboxService(new DockerSandboxProvider());
+  const rejected = await service.provision(agentId, org);
+  expect(rejected.success).toBe(false);
+  expect(rejected.failureCause).toMatchObject({ code: funding.SUBSCRIPTION_FUNDING_INSUFFICIENT });
+  expect(
+    (await fixture.query("SELECT * FROM agent_compute_funding WHERE agent_id=$1", [agentId])).rows,
+  ).toHaveLength(0);
+  expect(
+    (
+      await fixture.query(
+        "SELECT status,database_uri,node_id,sandbox_id FROM agent_sandboxes WHERE id=$1",
+        [agentId],
+      )
+    ).rows[0],
+  ).toEqual({ status: "error", database_uri: null, node_id: null, sandbox_id: null });
+  await fixture.query("UPDATE organizations SET credit_balance=1 WHERE id=$1", [org]);
+  await fixture.query("UPDATE agent_sandboxes SET status='provisioning' WHERE id=$1", [agentId]);
+  const { agentSandboxesRepository } = await import("../../db/repositories/agent-sandboxes");
+  const { reserveProvisionCompute, reconcileFailedProvisionCompute } = await import(
+    "./agent-compute-provision"
+  );
+  const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, org);
+  if (!rec) throw new Error("Missing provision fixture");
+  const paid = await reserveProvisionCompute(rec);
+  expect(paid.window.provider_container_id).toBeNull();
+  expect(
+    (await fixture.query("SELECT credit_balance::text FROM organizations WHERE id=$1", [org]))
+      .rows[0],
+  ).toEqual({ credit_balance: "0.980000" });
+  const { cancelUnboundAgentComputeInTransaction } = await import("./agent-compute-stop");
+  const identity = {
+    agentId,
+    organizationId: org,
+    lifecycleRevision: paid.agent.lifecycle_revision,
+    fundingId: paid.window.id,
+  };
+  await expect(
+    helpers.writeTransaction(async (tx) => {
+      await cancelUnboundAgentComputeInTransaction(tx, identity);
+      throw new Error("Rollback unbound refund");
+    }),
+  ).rejects.toThrow("Rollback unbound refund");
+  expect(
+    (await fixture.query("SELECT credit_balance::text FROM organizations WHERE id=$1", [org]))
+      .rows[0],
+  ).toEqual({ credit_balance: "0.980000" });
+  expect(await reconcileFailedProvisionCompute(agentId, org, paid.window.id)).toMatchObject({
+    replayed: false,
+    purchasedCreditRefunded: true,
+  });
+  expect(await reconcileFailedProvisionCompute(agentId, org, paid.window.id)).toBeNull();
+  expect(
+    (await fixture.query("SELECT credit_balance::text FROM organizations WHERE id=$1", [org]))
+      .rows[0],
+  ).toEqual({ credit_balance: "1.000000" });
+  const { agentComputeFundingService: compute } = await import("./agent-compute-funding");
+  await expect(
+    helpers.writeTransaction((tx) =>
+      compute.bindProviderInTransaction(tx, {
+        ...identity,
+        nodeId: "late-provider",
+        containerId: "f".repeat(64),
+      }),
+    ),
+  ).rejects.toMatchObject({ code: "AGENT_COMPUTE_FUNDING_EXPIRED" });
+  expect(
+    (
+      await fixture.query(
+        "SELECT count(*)::int AS n FROM credit_transactions WHERE organization_id=$1",
+        [org],
+      )
+    ).rows[0]?.n,
+  ).toBe(2);
+});
+
 if (sshFixturePath) {
   test("real Docker stop survives a PostgreSQL rollback and app suspension refunds once", async () => {
     const target = z
@@ -1121,6 +1211,7 @@ if (sshFixturePath) {
     const agentId = "63000000-0000-4000-8000-000000000030";
     const marker = crypto.randomUUID();
     let containerId: string | undefined;
+    let initialContainerId: string | undefined;
     let ownsGuard = false;
     let originalRunning: string[] = [];
     const docker = target.username === "root" ? "docker" : "sudo --non-interactive docker";
@@ -1157,6 +1248,147 @@ if (sshFixturePath) {
         "INSERT INTO docker_nodes(id,node_id,hostname,ssh_port,ssh_user,host_key_fingerprint) VALUES(gen_random_uuid(),$1,$2,$3,$4,$5)",
         [nodeId, target.hostname, target.port, target.username, target.hostKeyFingerprint],
       );
+      const initialOrg = "61000000-0000-4000-8000-000000000040";
+      const initialAgent = "63000000-0000-4000-8000-000000000040";
+      const initialName = `agent-${initialAgent}`;
+      await fixture.query(
+        `INSERT INTO organizations(id,credit_balance,balance_revision,balance_decrease_revision,settings,is_active,auto_top_up_enabled,account_lifecycle_state)
+        VALUES($1,'1.000000',1,0,'{}',true,false,'active')`,
+        [initialOrg],
+      );
+      await fixture.query(
+        `INSERT INTO agent_sandboxes(id,organization_id,status,execution_tier,lifecycle_revision,environment_revision,billing_status,total_billed)
+        VALUES($1,$2,'provisioning','dedicated-always',1,1,'active',0)`,
+        [initialAgent, initialOrg],
+      );
+      const { agentSandboxesRepository } = await import("../../db/repositories/agent-sandboxes");
+      const { reserveProvisionCompute, startProvisionCompute, reconcileFailedProvisionCompute } =
+        await import("./agent-compute-provision");
+      const initialRecord = await agentSandboxesRepository.findByIdAndOrg(initialAgent, initialOrg);
+      if (!initialRecord) throw new Error("Missing initial provision fixture");
+      const initialFunding = await reserveProvisionCompute(initialRecord);
+      // Real provider allocation is downstream of the committed purchase hold.
+      initialContainerId = (
+        await ssh.exec(
+          [
+            `${docker} create --pull=never --network=none --memory=128m --cpus=0.2 --pids-limit=64 --env PORT=2138`,
+            "--cap-drop=ALL --security-opt=no-new-privileges --user=65534:65534 --restart=no",
+            `--name ${initialName} --label ai.elizaos.managed-by=eliza-cloud --label ai.elizaos.container-class=test`,
+            `--label ai.elizaos.agent-id=${initialAgent} --label ai.elizaos.org-id=${initialOrg}`,
+            `--entrypoint node ${shellQuote(target.image)} -e ${shellQuote("require('http').createServer((q,r)=>r.end('{}')).listen(2138,'127.0.0.1')")}`,
+          ].join(" "),
+        )
+      ).trim();
+      expect(initialContainerId).toMatch(/^[a-f0-9]{64}$/);
+      const attemptId = crypto.randomUUID();
+      await fixture.query(
+        `UPDATE agent_sandboxes SET replacement_cleanup_sandbox_id=$2,replacement_cleanup_container_name=$2,
+        replacement_cleanup_node_id=$3,replacement_cleanup_container_id=$4,replacement_cleanup_attempt_id=$5 WHERE id=$1`,
+        [initialAgent, initialName, nodeId, initialContainerId, attemptId],
+      );
+      await fixture.query(
+        `INSERT INTO compute_billing_rate_segments(id,organization_id,workload_kind,workload_id,lifecycle_revision,billing_state,rate_per_hour,effective_at)
+        VALUES(gen_random_uuid(),$1,'agent',$2,1,'not_billable',0,$3)`,
+        [initialOrg, initialAgent, initialFunding.window.period_start],
+      );
+      const initialHandle = {
+        sandboxId: initialName,
+        bridgeUrl: `http://${target.hostname}:2138`,
+        healthUrl: `http://${target.hostname}:2138/api`,
+        metadata: {
+          provider: "docker" as const,
+          nodeId,
+          hostname: target.hostname,
+          containerName: initialName,
+          bridgePort: 2138,
+          webUiPort: 2138,
+          agentId: initialAgent,
+          volumePath: `/data/agents/${initialAgent}`,
+          dockerImage: target.image,
+          imageDigest: target.image,
+          replacementAttemptId: attemptId,
+          containerId: initialContainerId,
+        },
+      };
+      await expect(
+        startProvisionCompute(initialRecord, initialFunding.window.id, {
+          ...initialHandle,
+          metadata: { ...initialHandle.metadata, replacementAttemptId: crypto.randomUUID() },
+        }),
+      ).rejects.toMatchObject({ code: "AGENT_COMPUTE_PROVISION_AUTHORITY_CHANGED" });
+      expect(
+        (
+          await ssh.exec(`${docker} inspect --format '{{.State.Running}}' ${initialContainerId}`)
+        ).trim(),
+      ).toBe("false");
+      await fixture.exec(`CREATE FUNCTION reject_initial_start_meter() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+        IF NEW.workload_id='${initialAgent}' AND NEW.billing_state='running' THEN RAISE EXCEPTION 'forced initial start writeback rollback'; END IF;
+        RETURN NEW; END $$;
+        CREATE TRIGGER reject_initial_start_meter BEFORE INSERT ON compute_billing_rate_segments FOR EACH ROW EXECUTE FUNCTION reject_initial_start_meter();`);
+      ownsGuard = true;
+      await expect(
+        startProvisionCompute(initialRecord, initialFunding.window.id, initialHandle),
+      ).rejects.toMatchObject({ cause: { message: "forced initial start writeback rollback" } });
+      expect(
+        (
+          await ssh.exec(`${docker} inspect --format '{{.State.Running}}' ${initialContainerId}`)
+        ).trim(),
+      ).toBe("true");
+      expect(
+        (
+          await fixture.query(
+            "SELECT provider_container_id,host_lease_confirmed_at FROM agent_compute_funding WHERE id=$1",
+            [initialFunding.window.id],
+          )
+        ).rows[0],
+      ).toEqual({ provider_container_id: initialContainerId, host_lease_confirmed_at: null });
+      await fixture.exec(
+        "DROP TRIGGER reject_initial_start_meter ON compute_billing_rate_segments; DROP FUNCTION reject_initial_start_meter()",
+      );
+      const initialStart = (
+        await ssh.exec(`${docker} inspect --format '{{.State.StartedAt}}' ${initialContainerId}`)
+      ).trim();
+      await startProvisionCompute(initialRecord, initialFunding.window.id, initialHandle);
+      expect(
+        (
+          await ssh.exec(`${docker} inspect --format '{{.State.StartedAt}}' ${initialContainerId}`)
+        ).trim(),
+      ).toBe(initialStart);
+      expect(
+        (
+          await fixture.query(
+            "SELECT count(*)::int AS n FROM credit_transactions WHERE organization_id=$1",
+            [initialOrg],
+          )
+        ).rows[0]?.n,
+      ).toBe(1);
+      expect(
+        (
+          await fixture.query(
+            "SELECT count(*)::int AS n FROM compute_billing_rate_segments WHERE workload_id=$1 AND billing_state='running'",
+            [initialAgent],
+          )
+        ).rows[0]?.n,
+      ).toBe(1);
+      expect(
+        await reconcileFailedProvisionCompute(initialAgent, initialOrg, initialFunding.window.id),
+      ).toMatchObject({ replayed: false, purchasedCreditRefunded: true });
+      expect(
+        await reconcileFailedProvisionCompute(initialAgent, initialOrg, initialFunding.window.id),
+      ).toBeNull();
+      expect(
+        (
+          await ssh.exec(`${docker} inspect --format '{{.State.Running}}' ${initialContainerId}`)
+        ).trim(),
+      ).toBe("false");
+      expect(
+        (
+          await fixture.query(
+            "SELECT o.credit_balance+a.total_billed=1.000000 AS reconciled FROM organizations o JOIN agent_sandboxes a ON a.organization_id=o.id WHERE a.id=$1",
+            [initialAgent],
+          )
+        ).rows[0]?.reconciled,
+      ).toBe(true);
       const { compute, identity, provider } = await billableFundedAgent(
         "000000000030",
         "1.000000",
@@ -1321,6 +1553,7 @@ if (sshFixturePath) {
       ).toBe(marker);
     } finally {
       try {
+        if (initialContainerId) await ssh.exec(`${docker} rm -f ${shellQuote(initialContainerId)}`);
         if (containerId) await ssh.exec(`${docker} rm -f ${shellQuote(containerId)}`);
         if (ownsGuard) {
           const digest = createHash("sha256")
@@ -1328,7 +1561,7 @@ if (sshFixturePath) {
             .digest("hex");
           await rootSSH.execStdin(
             "python3 -",
-            `import json, pathlib, shutil, subprocess\nroot=pathlib.Path('/var/lib/eliza/compute-leases')\nunit=pathlib.Path('/etc/systemd/system/eliza-compute-guard.service')\nif unit.exists():\n assert 'guard-${digest}.py' in unit.read_text(), 'foreign_guard_preserved'\nif root.exists():\n for p in root.glob('*.json'):\n  assert json.loads(p.read_text())['authorization']['containerId']==${JSON.stringify(containerId)}, 'foreign_lease_preserved'\nif unit.exists():\n subprocess.run(['systemctl','disable','--now',unit.name],check=True,capture_output=True)\n unit.unlink()\n subprocess.run(['systemctl','daemon-reload'],check=True,capture_output=True)\nif root.exists(): shutil.rmtree(root)\nassert not root.exists() and not unit.exists()\n`,
+            `import json, pathlib, shutil, subprocess\nroot=pathlib.Path('/var/lib/eliza/compute-leases')\nunit=pathlib.Path('/etc/systemd/system/eliza-compute-guard.service')\nif unit.exists():\n assert 'guard-${digest}.py' in unit.read_text(), 'foreign_guard_preserved'\nif root.exists():\n for p in root.glob('*.json'):\n  assert json.loads(p.read_text())['authorization']['containerId'] in ${JSON.stringify([containerId, initialContainerId ?? ""])}, 'foreign_lease_preserved'\nif unit.exists():\n subprocess.run(['systemctl','disable','--now',unit.name],check=True,capture_output=True)\n unit.unlink()\n subprocess.run(['systemctl','daemon-reload'],check=True,capture_output=True)\nif root.exists(): shutil.rmtree(root)\nassert not root.exists() and not unit.exists()\n`,
           );
         }
         expect(

@@ -16,6 +16,12 @@ import {
   WARM_POOL_ORG_ID,
 } from "../../../../db/schemas/agent-sandboxes";
 import { logger } from "../../../utils/logger";
+import {
+  reconcileFailedProvisionCompute,
+  reserveProvisionCompute,
+  restartProvisionCompute,
+  startProvisionCompute,
+} from "../../agent-compute-provision";
 import { decryptAgentEnvVars } from "../../agent-env-crypto";
 import type { DockerSandboxMetadata } from "../../docker-sandbox-provider";
 import { prepareManagedElizaEnvironment } from "../../managed-eliza-env";
@@ -276,8 +282,25 @@ export class SandboxProvision {
       }
     }
 
+    let computeFundingId: string | undefined;
+    let retainComputeFunding = false;
     // biome-ignore format: keep the existing provision body stable while this guard owns fence cleanup.
     try {
+    const provisionProvider = await this.host.getProvider();
+    const isWarmPoolProvision =
+      rec.organization_id === WARM_POOL_ORG_ID && rec.pool_status === "unclaimed";
+    if (provisionProvider.computeFundingCapability === "host-lease-v1" && !isWarmPoolProvision) {
+      try {
+        const funding = await reserveProvisionCompute(rec);
+        computeFundingId = funding.window.id;
+        rec = funding.agent;
+      } catch (error) {
+        // error-policy:J1 no provider allocation has occurred; return payment/admission failure.
+        const message = error instanceof Error ? error.message : String(error);
+        await this.markError(rec, message);
+        return { success: false, sandboxRecord: await agentSandboxesRepository.findById(rec.id), error: message, failureCause: error };
+      }
+    }
     // 1. Database
     let dbUri = rec.database_uri;
     if (rec.database_status !== "ready" || !dbUri) {
@@ -302,8 +325,6 @@ export class SandboxProvision {
       rec.claimed_at !== null &&
       (rec.warm_claim_credential_state === "pending" ||
         rec.warm_claim_credential_state === "attested");
-    const isWarmPoolProvision =
-      rec.organization_id === WARM_POOL_ORG_ID && rec.pool_status === "unclaimed";
     const containerLaunch = resolveSandboxContainerLaunchConfig(rec.agent_config);
     const provisioningRetryHandle =
       previousStatus === "provisioning" ? this.buildProvisioningRetryHandle(rec) : null;
@@ -391,6 +412,7 @@ export class SandboxProvision {
       try {
         const retryHandle = attempt === 1 ? provisioningRetryHandle : null;
         if (retryHandle) {
+          if (computeFundingId) await restartProvisionCompute(rec, computeFundingId);
           handle = retryHandle;
           healthContext = { kind: "canonical" };
           logger.info(
@@ -412,7 +434,8 @@ export class SandboxProvision {
           // the caller did NOT supply one do we inject the managed URL as
           // DATABASE_URL — the normal managed-agent path, byte-identical to before.
           const dbEnv = computeManagedAgentDbEnv(callerEnv, dbUri);
-          handle = await (await this.host.getProvider()).create({
+          const fundingId = computeFundingId;
+          handle = await provisionProvider.create({
             agentId: rec.id,
             agentName: rec.agent_name ?? "CloudAgent",
             organizationId: rec.organization_id,
@@ -432,6 +455,7 @@ export class SandboxProvision {
             snapshotId: rec.snapshot_id ?? undefined,
             dockerImage: provisionDockerImage,
             container: containerLaunch,
+            ...(fundingId ? { startFundedContainer: (created: SandboxHandle) => startProvisionCompute(rec, fundingId, created) } : {}),
             ...this.host.replacementCleanupCallbacks(rec.id, rec.organization_id, {
               status: "provisioning",
               environmentRevision: rec.environment_revision,
@@ -632,7 +656,9 @@ export class SandboxProvision {
         // free dedicated compute forever. The service-key resume/restart routes
         // already reactivate; do it here so ALL provision paths re-enter billing.
         // Idempotent + exempt-guarded (ne billing_status 'exempt').
-        await agentBillingRepository.reactivateSandboxBillingAfterFunding(rec.id, new Date());
+        if (!computeFundingId) {
+          await agentBillingRepository.reactivateSandboxBillingAfterFunding(rec.id, new Date());
+        }
 
         // 5. Restore from backup (reconstructs incrementals back to a full).
         //
@@ -857,6 +883,7 @@ export class SandboxProvision {
           sandboxId: handle.sandboxId,
           attempt,
         });
+        retainComputeFunding = true;
         return {
           success: true,
           sandboxRecord: completed,
@@ -879,6 +906,7 @@ export class SandboxProvision {
         // recovers. Preserve the (pending/provisioning) row so the reconciler
         // and job retry both have something to act on.
         if (err instanceof SandboxReachabilityUnresolvedError) {
+          retainComputeFunding = true;
           logger.warn(
             "[agent-sandbox] Managed reachability remains unresolved; leaving container in place for retry/reconciliation",
             { agentId: rec.id, sandboxId: handle.sandboxId, attempt },
@@ -938,7 +966,7 @@ export class SandboxProvision {
           msg.toLowerCase().includes("duplicate");
         lastErrorRetryable = isUniqueConstraintError;
 
-        if (isUniqueConstraintError && attempt < MAX_PROVISION_ATTEMPTS) {
+        if (isUniqueConstraintError && !computeFundingId && attempt < MAX_PROVISION_ATTEMPTS) {
           logger.info("[agent-sandbox] Port collision detected, retrying", {
             attempt,
             nextAttempt: attempt + 1,
@@ -968,8 +996,14 @@ export class SandboxProvision {
         : { failureCause: lastFailureCause }),
     };
     } finally {
-      if (reviewedAdmissionFence) {
-        await releaseReviewedProvisionAdmissionFence(reviewedAdmissionFence);
+      try {
+        if (computeFundingId && !retainComputeFunding) {
+          await reconcileFailedProvisionCompute(rec.id, rec.organization_id, computeFundingId);
+        }
+      } finally {
+        if (reviewedAdmissionFence) {
+          await releaseReviewedProvisionAdmissionFence(reviewedAdmissionFence);
+        }
       }
     }
   }

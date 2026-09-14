@@ -79,6 +79,7 @@ export async function startFundedAgentInTransaction(
     fundingId: string;
     nodeId: string;
     containerId: string;
+    placement?: "retained" | "replacement";
   },
 ) {
   const authorization = await agentComputeFundingService.authorizeHostInTransaction(tx, input);
@@ -92,12 +93,17 @@ export async function startFundedAgentInTransaction(
       ),
     )
     .limit(1);
-  if (
-    !agent ||
-    !agent.container_name ||
-    agent.sandbox_id !== agent.container_name ||
-    agent.node_id !== input.nodeId
-  ) {
+  const replacement = input.placement === "replacement";
+  const containerName = replacement
+    ? agent?.replacement_cleanup_container_name
+    : agent?.container_name;
+  const placementMatches = replacement
+    ? agent?.status === "provisioning" &&
+      agent.replacement_cleanup_node_id === input.nodeId &&
+      agent.replacement_cleanup_container_id === input.containerId &&
+      agent.replacement_cleanup_sandbox_id === containerName
+    : agent?.sandbox_id === containerName && agent?.node_id === input.nodeId;
+  if (!agent || !containerName || !placementMatches) {
     throw new ElizaError("Dedicated retained container placement changed", {
       code: "AGENT_COMPUTE_START_AUTHORITY_CHANGED",
     });
@@ -126,7 +132,7 @@ export async function startFundedAgentInTransaction(
           ),
         ),
       );
-    if (placement.name !== `/${agent.container_name}`)
+    if (placement.name !== `/${containerName}`)
       throw new ElizaError("Dedicated retained Docker identity changed", {
         code: "AGENT_COMPUTE_START_AUTHORITY_CHANGED",
       });
