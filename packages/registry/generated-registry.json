@@ -1701,6 +1701,58 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "elizaos-plugin-x402-scraper": {
+      "git": {
+        "repo": "ami-guru/x402-scraper-engine",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-x402-scraper",
+        "v0": null,
+        "v1": null,
+        "v2": "1.4.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "HTTP 402 Web Scraper, Edge Llama-3 Digest, Security Audit & Twitter Intelligence for ElizaOS agents on Base L2. No API keys, zero setup; includes 2-call free trial grace tier.",
+      "homepage": "https://x402-scraper-engine.gejoe-tt.workers.dev",
+      "topics": [
+        "x402",
+        "web-scraper",
+        "llama3",
+        "ai-digest",
+        "base",
+        "usdc",
+        "micropayments",
+        "twitter-search",
+        "security-audit",
+        "search",
+        "crypto-intelligence",
+        "agentic-payments"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "integrations/elizaos"
+    },
     "elizaos-plugin-yieldsignal": {
       "git": {
         "repo": "Stakemate369/plugin-yieldsignal",
