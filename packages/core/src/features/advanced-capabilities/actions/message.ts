@@ -578,7 +578,9 @@ function buildQueryContext(
 	};
 }
 
-function selectConnectorForOp(
+// Exported for unit-test coverage of the account-resolution rules; not part
+// of the public runtime surface.
+export function selectConnectorForOp(
 	connectors: ConnectorWithHooks[],
 	source: string | undefined,
 	currentSource: string | undefined,
@@ -602,7 +604,30 @@ function selectConnectorForOp(
 			)
 		: [];
 	const explicitMatches = selectAccountConnectors(sourceMatches, accountId);
-	if (source && explicitMatches.length > 1) {
+	// A connector service registers a legacy source-level route beside one
+	// route per account (plugin-discord service.ts: registerConnector(undefined)
+	// then registerConnector(accountId)). With a single account that is two
+	// connectors aliasing "discord", and a turn that names no account — the
+	// owner API room carries no connector envelope — has nothing to
+	// disambiguate (live 2026-09-14: "read the last 3 messages in #general"
+	// failed as SOURCE_AMBIGUOUS). Only distinct accounts are ambiguous; the
+	// account-scoped route wins over the unscoped one.
+	const distinctAccountIds = new Set(
+		explicitMatches.flatMap((connector) =>
+			connectorAccountIds(connector).map(normalizeComparable),
+		),
+	);
+	const resolvedMatches =
+		explicitMatches.length > 1 && distinctAccountIds.size <= 1
+			? [
+					explicitMatches.find(
+						(connector) => connectorAccountIds(connector).length > 0,
+					) ?? explicitMatches[0],
+				].filter((connector): connector is ConnectorWithHooks =>
+					Boolean(connector),
+				)
+			: explicitMatches;
+	if (source && resolvedMatches.length > 1) {
 		return {
 			error: opFailure(
 				op,
@@ -611,7 +636,7 @@ function selectConnectorForOp(
 			),
 		};
 	}
-	const explicit = explicitMatches[0];
+	const explicit = resolvedMatches[0];
 	const sourceExists = sourceMatches.length > 0;
 	if (source && !explicit) {
 		return {
