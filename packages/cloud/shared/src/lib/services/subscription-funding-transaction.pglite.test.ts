@@ -2311,6 +2311,9 @@ if (sshFixturePath) {
       | "billing-topup"
       | "billing-held"
       | "billing-stale"
+      | "user-suspend"
+      | "user-suspend-stale"
+      | "user-suspend-backup-failure"
       | "shutdown"
       | "restart"
       | "deletion"
@@ -2321,7 +2324,12 @@ if (sshFixturePath) {
       scenario === "billing-topup" ||
       scenario === "billing-held" ||
       scenario === "billing-stale";
-    const sleepScenario = scenario === "sleep" || billingScenario;
+    const userStopScenario =
+      scenario === "user-suspend" ||
+      scenario === "user-suspend-stale" ||
+      scenario === "user-suspend-backup-failure";
+    const stopIntentScenario = billingScenario || userStopScenario;
+    const sleepScenario = scenario === "sleep" || stopIntentScenario;
     const target = z
       .object({
         hostname: z.ipv4(),
@@ -2341,25 +2349,31 @@ if (sshFixturePath) {
     const rootSSH = guard.dockerComputeRootSSH(ssh, target.username);
     const docker = target.username === "root" ? "docker" : "sudo --non-interactive docker";
     const suffix =
-      scenario === "billing-held"
-        ? "000000000064"
-        : scenario === "billing-topup"
-          ? "000000000048"
-          : scenario === "billing-stale"
-            ? "000000000049"
-            : scenario === "billing-sleep"
-              ? "000000000047"
-              : scenario === "worker"
-                ? "000000000041"
-                : sleepScenario
-                  ? "000000000042"
-                  : scenario === "shutdown"
-                    ? "000000000043"
-                    : scenario === "restart"
-                      ? "000000000044"
-                      : scenario === "deletion"
-                        ? "000000000045"
-                        : "000000000046";
+      scenario === "user-suspend-backup-failure"
+        ? "000000000067"
+        : scenario === "user-suspend-stale"
+          ? "000000000066"
+          : scenario === "user-suspend"
+            ? "000000000065"
+            : scenario === "billing-held"
+              ? "000000000064"
+              : scenario === "billing-topup"
+                ? "000000000048"
+                : scenario === "billing-stale"
+                  ? "000000000049"
+                  : scenario === "billing-sleep"
+                    ? "000000000047"
+                    : scenario === "worker"
+                      ? "000000000041"
+                      : sleepScenario
+                        ? "000000000042"
+                        : scenario === "shutdown"
+                          ? "000000000043"
+                          : scenario === "restart"
+                            ? "000000000044"
+                            : scenario === "deletion"
+                              ? "000000000045"
+                              : "000000000046";
     const agentId = `63000000-0000-4000-8000-${suffix}`;
     const org = `61000000-0000-4000-8000-${suffix}`;
     const name = `agent-${agentId}`;
@@ -2681,7 +2695,7 @@ if (sshFixturePath) {
         const sleepProvider = new DockerSandboxProvider();
         const service = new ElizaSandboxService(sleepProvider);
         let billingJobId: string | undefined;
-        if (billingScenario) {
+        if (stopIntentScenario) {
           const migration = (name: string) =>
             readFile(new URL(`../../db/migrations/${name}`, import.meta.url), "utf8");
           const recovery = await migration("0265_compute_billing_recovery.sql");
@@ -2714,7 +2728,7 @@ if (sshFixturePath) {
             agentId,
             organizationId: org,
             userId: `64000000-0000-4000-8000-${suffix}`,
-            authorization: "billing_request",
+            authorization: userStopScenario ? "user_request" : "billing_request",
           });
           billingJobId = suspended.job.id;
         }
@@ -2729,6 +2743,7 @@ if (sshFixturePath) {
               agentId,
               org,
               billingJobId,
+              // A stale queue hint must not override the persisted user intent.
               "billing_request",
               Number(rows[0]!.lifecycle_revision),
             );
@@ -2773,6 +2788,9 @@ if (sshFixturePath) {
           expect(
             (await ssh.exec(`${docker} exec ${containerId} cat /tmp/worker-marker`)).trim(),
           ).toBe(marker);
+          if (scenario === "user-suspend-backup-failure") {
+            throw new Error("user-stop capture unavailable");
+          }
           if (scenario === "billing-topup") {
             await fixture.query(
               "UPDATE organizations SET credit_balance=credit_balance+1 WHERE id=$1",
@@ -2849,6 +2867,23 @@ if (sshFixturePath) {
             )
           ).rows[0];
         try {
+          if (scenario === "user-suspend-backup-failure") {
+            const before = await renewalState(org);
+            expect(await retire()).toMatchObject({
+              success: false,
+              containerStopped: false,
+              error: expect.stringContaining("user-stop capture unavailable"),
+            });
+            expect(remove).not.toHaveBeenCalled();
+            expect(persist).not.toHaveBeenCalled();
+            expect(await renewalState(org)).toEqual(before);
+            expect(
+              (
+                await ssh.exec(`${docker} inspect --format '{{.State.Running}}' ${containerId}`)
+              ).trim(),
+            ).toBe("true");
+            return;
+          }
           if (scenario === "billing-topup" || scenario === "billing-held") {
             expect(await retire()).toMatchObject({
               success: true,
@@ -2920,7 +2955,7 @@ if (sshFixturePath) {
             provider_stop_receipt: expect.any(Object),
           });
           expect(stopped.reservations[0]?.status).toBe("finalized");
-          if (scenario === "billing-stale") {
+          if (scenario === "billing-stale" || scenario === "user-suspend-stale") {
             const removals = remove.mock.calls.length;
             await fixture.query(
               "UPDATE agent_sandboxes SET environment_revision=environment_revision+1 WHERE id=$1",
@@ -3258,6 +3293,24 @@ if (sshFixturePath) {
   test(
     "billing retirement cannot delete a later configuration generation",
     () => runPaidContainerScenario("billing-stale"),
+    180_000,
+  );
+
+  test(
+    "funded user suspension releases compute with a current backup and one refund across retries",
+    () => runPaidContainerScenario("user-suspend"),
+    180_000,
+  );
+
+  test(
+    "funded user suspension preserves a later configuration generation",
+    () => runPaidContainerScenario("user-suspend-stale"),
+    180_000,
+  );
+
+  test(
+    "funded user suspension leaves paid runtime and funds intact when backup capture fails",
+    () => runPaidContainerScenario("user-suspend-backup-failure"),
     180_000,
   );
 

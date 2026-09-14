@@ -454,11 +454,11 @@ export class SandboxPower {
   }
 
   /**
-   * Daemon-side handler for `agent_suspend`. Funded runtime is revoked and
-   * stopped in place before unused funds are refunded; its complete container
-   * state remains on the host. Legacy runtime requires a current backup before
-   * replacement stop removes it. Both paths clear live URLs and retain the
-   * sandbox identity and tenant database for their corresponding resume path.
+   * Daemon-side handler for `agent_suspend`. Intent-bound prepaid stops capture
+   * current state and release compute through the sleep lifecycle. Low-level
+   * reconciliation without an intent can still stop in place before refunding;
+   * it retains the full container when no current backup authorizes removal.
+   * Legacy runtime requires a current backup before replacement stop removes it.
    */
   async executeSuspend(
     agentId: string,
@@ -565,7 +565,6 @@ export class SandboxPower {
       hasOpenAgentComputeFunding(tx, agentId, orgId),
     );
     if (
-      authorization === "billing_request" &&
       expectedLifecycleRevision !== undefined &&
       (await this.host.getProvider()).computeFundingCapability === "host-lease-v1"
     ) {
@@ -580,7 +579,7 @@ export class SandboxPower {
         )
         .limit(1);
       if (latest) {
-        const sleep = await this.executeSleepWithBillingAuthority(agentId, orgId, {
+        const sleep = await this.executeSleepWithStopAuthority(agentId, orgId, {
           jobId,
           lifecycleRevision: expectedLifecycleRevision,
         });
@@ -593,7 +592,7 @@ export class SandboxPower {
         };
       }
     }
-    // Prepaid suspension stops in place. Retaining the complete container and
+    // Low-level prepaid reconciliation stops in place. Retaining the container and
     // volume lets expiry stop unpaid CPU even when live capture is unavailable.
     // Legacy replacement stop removes the container and still needs its backup.
     if (snapshotSource.status !== "stopped" && !fundedSource) {
@@ -1329,13 +1328,16 @@ export class SandboxPower {
     backupId?: string;
     error?: string;
   }> {
-    return this.executeSleepWithBillingAuthority(agentId, orgId);
+    return this.executeSleepWithStopAuthority(agentId, orgId);
   }
 
-  private async executeSleepWithBillingAuthority(
+  private async executeSleepWithStopAuthority(
     agentId: string,
     orgId: string,
-    billingAuthority?: { jobId: string; lifecycleRevision: number },
+    stopAuthority?: {
+      jobId: string;
+      lifecycleRevision: number;
+    },
   ): Promise<{
     success: boolean;
     containerRemoved: boolean;
@@ -1529,7 +1531,7 @@ export class SandboxPower {
           };
         }
         let commitLifecycleRevision = current.lifecycle_revision;
-        const [billingIntent] = billingAuthority
+        const [stopIntent] = stopAuthority
           ? await tx
               .select()
               .from(agentComputeStopIntents)
@@ -1537,27 +1539,23 @@ export class SandboxPower {
                 and(
                   eq(agentComputeStopIntents.agent_id, agentId),
                   eq(agentComputeStopIntents.organization_id, orgId),
-                  eq(agentComputeStopIntents.job_id, billingAuthority.jobId),
+                  eq(agentComputeStopIntents.job_id, stopAuthority.jobId),
                 ),
               )
               .limit(1)
               .for("update")
           : [];
-        if (billingAuthority) {
-          if (
-            !billingIntent ||
-            billingIntent.authorization !== "billing_request" ||
-            billingIntent.lifecycle_revision !== billingAuthority.lifecycleRevision
-          ) {
+        if (stopAuthority) {
+          if (!stopIntent || stopIntent.lifecycle_revision !== stopAuthority.lifecycleRevision) {
             return {
               success: false as const,
               containerRemoved: false,
-              error: "Paid retirement lost its billing stop intent",
+              error: "Paid retirement lost its stop intent",
             };
           }
           if (
-            billingIntent.status === "superseded" ||
-            current.lifecycle_revision !== billingAuthority.lifecycleRevision
+            stopIntent.status === "superseded" ||
+            current.lifecycle_revision !== stopAuthority.lifecycleRevision
           ) {
             return {
               success: true as const,
@@ -1566,7 +1564,9 @@ export class SandboxPower {
               reason: "lifecycle_changed" as const,
             };
           }
-          if (current.status === "running") {
+          // A queued billing stop can become a user stop before execution.
+          // The locked intent owns that decision, not the original job hint.
+          if (stopIntent.authorization === "billing_request" && current.status === "running") {
             const now = new Date();
             const settlement =
               await agentBillingRepository.settleAccruedBillingBeforeLifecycleInTransaction(
@@ -1581,7 +1581,7 @@ export class SandboxPower {
                 !(await deferFundedAgentStopInTransaction(tx, {
                   agentId,
                   organizationId: orgId,
-                  jobId: billingAuthority.jobId,
+                  jobId: stopAuthority.jobId,
                   stopAfter: settlement.stopAfter,
                 }))
               ) {
@@ -1603,7 +1603,7 @@ export class SandboxPower {
                   superseded_at: now,
                   updated_at: now,
                 })
-                .where(eq(agentComputeStopIntents.id, billingIntent.id));
+                .where(eq(agentComputeStopIntents.id, stopIntent.id));
               await tx
                 .update(agentSandboxes)
                 .set({
@@ -1668,15 +1668,15 @@ export class SandboxPower {
             .where(and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.organization_id, orgId)))
             .returning();
           if (!stopped) throw new Error("Sleep lost its stopped generation");
-          if (billingIntent && billingAuthority) {
+          if (stopIntent && stopAuthority) {
             // This stop advances the row's revision itself. Carry that exact
             // committed generation into the existing bound intent for crash retry;
             // later resume or configuration writes still invalidate it.
             await tx
               .update(agentComputeStopIntents)
               .set({ lifecycle_revision: stopped.lifecycle_revision, updated_at: new Date() })
-              .where(eq(agentComputeStopIntents.id, billingIntent.id));
-            billingAuthority.lifecycleRevision = stopped.lifecycle_revision;
+              .where(eq(agentComputeStopIntents.id, stopIntent.id));
+            stopAuthority.lifecycleRevision = stopped.lifecycle_revision;
           }
           if (current.node_id)
             await reconcileAllocatedWorkloadsOnNodeWithDatabase(tx, current.node_id);
@@ -1718,16 +1718,16 @@ export class SandboxPower {
           }
         }
         if (current.sandbox_id) {
-          if (billingIntent) {
+          if (stopIntent) {
             await tx
               .update(agentComputeStopIntents)
               .set({
                 status: "dispatching",
-                attempts: billingIntent.attempts + 1,
+                attempts: stopIntent.attempts + 1,
                 provider_started_at: new Date(),
                 updated_at: new Date(),
               })
-              .where(eq(agentComputeStopIntents.id, billingIntent.id));
+              .where(eq(agentComputeStopIntents.id, stopIntent.id));
           }
           const stop = prepaidProvider
             ? await this.host.runBoundedSandboxStopForReplacement(current.sandbox_id, {
@@ -1735,16 +1735,16 @@ export class SandboxPower {
               })
             : await this.host.runBoundedSandboxStopForReplacement(current.sandbox_id);
           if (stop) {
-            if (billingIntent) {
+            if (stopIntent) {
               await tx
                 .update(agentComputeStopIntents)
                 .set({
-                  status: billingIntent.attempts + 1 >= 3 ? "terminal_attention" : "retry",
+                  status: stopIntent.attempts + 1 >= 3 ? "terminal_attention" : "retry",
                   last_error: stop.error instanceof Error ? stop.error.message : String(stop.error),
                   next_attempt_at: new Date(Date.now() + 5 * 60 * 1000),
                   updated_at: new Date(),
                 })
-                .where(eq(agentComputeStopIntents.id, billingIntent.id));
+                .where(eq(agentComputeStopIntents.id, stopIntent.id));
             }
             return {
               success: false as const,
@@ -1784,7 +1784,7 @@ export class SandboxPower {
         }
         if (prepaidProvider && current.node_id)
           await reconcileAllocatedWorkloadsOnNodeWithDatabase(tx, current.node_id);
-        if (billingIntent) {
+        if (stopIntent) {
           const now = new Date();
           await tx
             .update(agentComputeStopIntents)
@@ -1796,7 +1796,7 @@ export class SandboxPower {
               last_error: null,
               updated_at: now,
             })
-            .where(eq(agentComputeStopIntents.id, billingIntent.id));
+            .where(eq(agentComputeStopIntents.id, stopIntent.id));
           await tx
             .update(agentSandboxes)
             .set({
