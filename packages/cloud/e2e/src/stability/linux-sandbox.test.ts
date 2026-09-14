@@ -211,6 +211,7 @@ print(${JSON.stringify(fixtureReceiptPrefix)}+json.dumps(result),file=sys.stderr
     args: [
       "-n",
       "/usr/bin/python3",
+      "-B",
       "-I",
       "-S",
       "-c",
