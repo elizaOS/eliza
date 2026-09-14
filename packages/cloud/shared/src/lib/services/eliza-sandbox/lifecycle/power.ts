@@ -563,6 +563,35 @@ export class SandboxPower {
     const fundedSource = await dbWrite.transaction((tx) =>
       hasOpenAgentComputeFunding(tx, agentId, orgId),
     );
+    if (
+      authorization === "billing_request" &&
+      expectedLifecycleRevision !== undefined &&
+      (await this.host.getProvider()).computeFundingCapability === "host-lease-v1"
+    ) {
+      const [latest] = await dbWrite
+        .select({ id: agentComputeFunding.id })
+        .from(agentComputeFunding)
+        .where(
+          and(
+            eq(agentComputeFunding.agent_id, agentId),
+            eq(agentComputeFunding.organization_id, orgId),
+          ),
+        )
+        .limit(1);
+      if (latest) {
+        const sleep = await this.executeSleepWithBillingAuthority(agentId, orgId, {
+          jobId,
+          lifecycleRevision: expectedLifecycleRevision,
+        });
+        return {
+          success: sleep.success,
+          containerStopped: sleep.containerRemoved,
+          backupId: sleep.backupId,
+          error: sleep.error,
+          ...(sleep.skipped ? { skipped: true as const, reason: sleep.reason } : {}),
+        };
+      }
+    }
     // Prepaid suspension stops in place. Retaining the complete container and
     // volume lets expiry stop unpaid CPU even when live capture is unavailable.
     // Legacy replacement stop removes the container and still needs its backup.
@@ -1281,6 +1310,21 @@ export class SandboxPower {
     backupId?: string;
     error?: string;
   }> {
+    return this.executeSleepWithBillingAuthority(agentId, orgId);
+  }
+
+  private async executeSleepWithBillingAuthority(
+    agentId: string,
+    orgId: string,
+    billingAuthority?: { jobId: string; lifecycleRevision: number },
+  ): Promise<{
+    success: boolean;
+    containerRemoved: boolean;
+    backupId?: string;
+    error?: string;
+    skipped?: true;
+    reason?: "lifecycle_changed" | "stop_intent_superseded" | "billing_recovered";
+  }> {
     // Primary read: replica lag must not turn a real sleep into a no-op.
     let rec = await this.host.getAgentForWrite(agentId, orgId);
     if (!rec) return { success: false, containerRemoved: false, error: "Agent not found" };
@@ -1319,6 +1363,37 @@ export class SandboxPower {
 
     // 1. Durable backup before compute is freed.
     let backupId: string | undefined;
+    const prepaidProvider =
+      (await this.host.getProvider()).computeFundingCapability === "host-lease-v1";
+    let paidRetirement: { fundingId: string; backupId: string } | undefined;
+    if (prepaidProvider && rec.status === "stopped" && rec.sandbox_id) {
+      const [latest] = await dbWrite
+        .select()
+        .from(agentComputeFunding)
+        .where(
+          and(
+            eq(agentComputeFunding.agent_id, agentId),
+            eq(agentComputeFunding.organization_id, orgId),
+          ),
+        )
+        .orderBy(desc(agentComputeFunding.period_start), desc(agentComputeFunding.id))
+        .limit(1);
+      if (latest) {
+        if (
+          !latest.settled_at ||
+          !latest.provider_stopped_at ||
+          !latest.retirement_backup_id ||
+          latest.provider_node_id !== rec.node_id
+        ) {
+          return {
+            success: false,
+            containerRemoved: false,
+            error: "Stopped Dedicated state has no backup bound to its paid stop",
+          };
+        }
+        paidRetirement = { fundingId: latest.id, backupId: latest.retirement_backup_id };
+      }
+    }
     let pendingSleepSnapshot: { stateData: AgentBackupStateData; sizeBytes: number } | undefined;
     if (rec.status !== "stopped" && rec.sandbox_id) {
       const capture = await this.prepareSuspendBackupGate(rec);
@@ -1328,11 +1403,12 @@ export class SandboxPower {
       if (capture.outcome === "proceed") pendingSleepSnapshot = capture.pendingSnapshot;
     }
     if (!backupId && !pendingSleepSnapshot) {
-      // Already stopped compute has no new writes to capture. Its durable
-      // backup still needs the same restorability proof used by wake.
+      // A paid stop may have retained writes newer than the last periodic
+      // backup. Only its transaction-bound capture authorizes removal.
       const gate = await runWakeRestoreIntegrityGate({
         sandboxRecordId: rec.id,
         agentName: rec.agent_name,
+        requestedBackupId: paidRetirement?.backupId,
       });
       if (!gate.ok) {
         logger.error("[agent-sandbox] Sleep aborted: no restorable backup proven", {
@@ -1344,6 +1420,13 @@ export class SandboxPower {
           success: false,
           containerRemoved: false,
           error: `Refusing to deactivate on an unproven backup; agent was left running. ${formatWakeRestoreIntegrityError(gate.failure)}`,
+        };
+      }
+      if (paidRetirement && gate.verification === "disabled") {
+        return {
+          success: false,
+          containerRemoved: false,
+          error: "Paid retirement requires backup integrity verification",
         };
       }
       if (gate.backupId) {
@@ -1371,8 +1454,6 @@ export class SandboxPower {
     // A prepaid stop and its backup/refund must commit before removal can
     // destroy the host receipt or release the node. The second phase locks
     // that exact stopped generation again before clearing its placement.
-    const prepaidProvider =
-      (await this.host.getProvider()).computeFundingCapability === "host-lease-v1";
     const commitSleepPhase = (expected: AgentSandbox) =>
       dbWrite.transaction(async (tx) => {
         await this.host.lockLifecycle(tx, agentId, orgId);
@@ -1429,6 +1510,83 @@ export class SandboxPower {
           };
         }
         let commitLifecycleRevision = current.lifecycle_revision;
+        const [billingIntent] = billingAuthority
+          ? await tx
+              .select()
+              .from(agentComputeStopIntents)
+              .where(
+                and(
+                  eq(agentComputeStopIntents.agent_id, agentId),
+                  eq(agentComputeStopIntents.organization_id, orgId),
+                  eq(agentComputeStopIntents.job_id, billingAuthority.jobId),
+                ),
+              )
+              .limit(1)
+              .for("update")
+          : [];
+        if (billingAuthority) {
+          if (
+            !billingIntent ||
+            billingIntent.authorization !== "billing_request" ||
+            billingIntent.lifecycle_revision !== billingAuthority.lifecycleRevision
+          ) {
+            return {
+              success: false as const,
+              containerRemoved: false,
+              error: "Paid retirement lost its billing stop intent",
+            };
+          }
+          if (
+            billingIntent.status === "superseded" ||
+            current.lifecycle_revision !== billingAuthority.lifecycleRevision
+          ) {
+            return {
+              success: true as const,
+              containerRemoved: false,
+              skipped: true as const,
+              reason: "lifecycle_changed" as const,
+            };
+          }
+          if (current.status === "running") {
+            const now = new Date();
+            const settlement =
+              await agentBillingRepository.settleAccruedBillingBeforeLifecycleInTransaction(
+                tx,
+                agentId,
+                orgId,
+                now,
+                "billing_recovery",
+              );
+            if (settlement.status !== "insufficient_credits") {
+              await tx
+                .update(agentComputeStopIntents)
+                .set({
+                  status: "superseded",
+                  last_error: "billing_recovered",
+                  superseded_at: now,
+                  updated_at: now,
+                })
+                .where(eq(agentComputeStopIntents.id, billingIntent.id));
+              await tx
+                .update(agentSandboxes)
+                .set({
+                  billing_status: "active",
+                  scheduled_shutdown_at: null,
+                  shutdown_warning_sent_at: null,
+                  updated_at: now,
+                })
+                .where(
+                  and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.organization_id, orgId)),
+                );
+              return {
+                success: true as const,
+                containerRemoved: false,
+                skipped: true as const,
+                reason: "billing_recovered" as const,
+              };
+            }
+          }
+        }
         if (pendingSleepSnapshot) {
           const persisted = await this.host.persistSnapshotWithinTransaction(
             tx,
@@ -1456,12 +1614,33 @@ export class SandboxPower {
             lifecycleRevision: commitLifecycleRevision,
           });
           if (!funding) throw new Error("Sleep lost its paid stop authority");
+          if (!backupId) throw new Error("Sleep lost its current backup before paid retirement");
+          await tx
+            .update(agentComputeFunding)
+            .set({ retirement_backup_id: backupId })
+            .where(
+              and(
+                eq(agentComputeFunding.id, funding.fundingId),
+                eq(agentComputeFunding.organization_id, orgId),
+              ),
+            );
+          paidRetirement = { fundingId: funding.fundingId, backupId };
           const [stopped] = await tx
             .update(agentSandboxes)
             .set({ status: "stopped", updated_at: new Date() })
             .where(and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.organization_id, orgId)))
             .returning();
           if (!stopped) throw new Error("Sleep lost its stopped generation");
+          if (billingIntent && billingAuthority) {
+            // This stop advances the row's revision itself. Carry that exact
+            // committed generation into the existing bound intent for crash retry;
+            // later resume or configuration writes still invalidate it.
+            await tx
+              .update(agentComputeStopIntents)
+              .set({ lifecycle_revision: stopped.lifecycle_revision, updated_at: new Date() })
+              .where(eq(agentComputeStopIntents.id, billingIntent.id));
+            billingAuthority.lifecycleRevision = stopped.lifecycle_revision;
+          }
           if (current.node_id)
             await reconcileAllocatedWorkloadsOnNodeWithDatabase(tx, current.node_id);
           return {
@@ -1472,13 +1651,64 @@ export class SandboxPower {
           };
         }
 
+        if (prepaidProvider && current.sandbox_id) {
+          const [latest] = await tx
+            .select()
+            .from(agentComputeFunding)
+            .where(
+              and(
+                eq(agentComputeFunding.agent_id, agentId),
+                eq(agentComputeFunding.organization_id, orgId),
+              ),
+            )
+            .orderBy(desc(agentComputeFunding.period_start), desc(agentComputeFunding.id))
+            .limit(1)
+            .for("update");
+          if (
+            latest &&
+            (!paidRetirement ||
+              latest.id !== paidRetirement.fundingId ||
+              latest.retirement_backup_id !== paidRetirement.backupId ||
+              !latest.settled_at ||
+              !latest.provider_stopped_at ||
+              latest.provider_node_id !== current.node_id)
+          ) {
+            return {
+              success: false as const,
+              containerRemoved: false,
+              error: "Paid retirement backup authority changed",
+            };
+          }
+        }
         if (current.sandbox_id) {
+          if (billingIntent) {
+            await tx
+              .update(agentComputeStopIntents)
+              .set({
+                status: "dispatching",
+                attempts: billingIntent.attempts + 1,
+                provider_started_at: new Date(),
+                updated_at: new Date(),
+              })
+              .where(eq(agentComputeStopIntents.id, billingIntent.id));
+          }
           const stop = prepaidProvider
             ? await this.host.runBoundedSandboxStopForReplacement(current.sandbox_id, {
                 releaseCapacity: false,
               })
             : await this.host.runBoundedSandboxStopForReplacement(current.sandbox_id);
           if (stop) {
+            if (billingIntent) {
+              await tx
+                .update(agentComputeStopIntents)
+                .set({
+                  status: billingIntent.attempts + 1 >= 3 ? "terminal_attention" : "retry",
+                  last_error: stop.error instanceof Error ? stop.error.message : String(stop.error),
+                  next_attempt_at: new Date(Date.now() + 5 * 60 * 1000),
+                  updated_at: new Date(),
+                })
+                .where(eq(agentComputeStopIntents.id, billingIntent.id));
+            }
             return {
               success: false as const,
               containerRemoved: false,
@@ -1517,6 +1747,28 @@ export class SandboxPower {
         }
         if (prepaidProvider && current.node_id)
           await reconcileAllocatedWorkloadsOnNodeWithDatabase(tx, current.node_id);
+        if (billingIntent) {
+          const now = new Date();
+          await tx
+            .update(agentComputeStopIntents)
+            .set({
+              status: "provider_confirmed",
+              provider_confirmed_at: now,
+              retained_backup_billing: false,
+              retained_backup_rate_per_hour: null,
+              last_error: null,
+              updated_at: now,
+            })
+            .where(eq(agentComputeStopIntents.id, billingIntent.id));
+          await tx
+            .update(agentSandboxes)
+            .set({
+              billing_status: "suspended",
+              scheduled_shutdown_at: null,
+              shutdown_warning_sent_at: null,
+            })
+            .where(and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.organization_id, orgId)));
+        }
         return {
           success: true as const,
           containerRemoved: true,
@@ -1524,13 +1776,27 @@ export class SandboxPower {
       });
     let sleepCommit = await commitSleepPhase(rec);
     if (!sleepCommit.success) return sleepCommit;
+    if ("skipped" in sleepCommit && sleepCommit.skipped) return sleepCommit;
     if ("fundedRetirement" in sleepCommit && sleepCommit.fundedRetirement) {
       rec = sleepCommit.fundedRetirement;
       pendingSleepSnapshot = undefined;
       if (sleepCommit.funding.purchasedCreditRefunded)
         await creditsService.invalidateCreditCaches(orgId);
+      const verified = await runWakeRestoreIntegrityGate({
+        sandboxRecordId: rec.id,
+        agentName: rec.agent_name,
+        requestedBackupId: backupId,
+      });
+      if (!verified.ok || verified.verification === "disabled" || verified.backupId !== backupId) {
+        return {
+          success: false,
+          containerRemoved: false,
+          error: "Paid retirement backup failed integrity verification",
+        };
+      }
       sleepCommit = await commitSleepPhase(rec);
       if (!sleepCommit.success) return sleepCommit;
+      if ("skipped" in sleepCommit && sleepCommit.skipped) return sleepCommit;
       if (!sleepCommit.containerRemoved) throw new Error("Sleep paid retirement did not converge");
     }
 
