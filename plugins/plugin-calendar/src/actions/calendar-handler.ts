@@ -5263,8 +5263,15 @@ const calendarAction: CalendarHandlerAction = {
           // A self-verified receipt completes the turn on the action's own
           // terms (the MEMORY shape): the runtime's verified-intent gate
           // delivers `userFacingText` verbatim and skips the evaluator call.
+          // `text` carries the same sentence: the personal-assistant wrapper
+          // (completeLifeOpsEffect) treats a result with user-facing text as
+          // user-facing and requires the action's exact text, then binds the
+          // receipt and delivers it once (live 2026-09-14: without `text` the
+          // wrapper threw after the mutation had applied, the planner retried,
+          // and the user was told the calendar refused the change).
           ...(verifiedReply
             ? {
+                text: verifiedReply,
                 turnComplete: true,
                 verifiedUserFacing: true,
                 userFacingText: verifiedReply,

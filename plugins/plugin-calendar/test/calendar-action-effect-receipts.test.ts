@@ -256,7 +256,8 @@ function expectVerifiedHandoff(
     },
   });
   expect(result.effectReceipts).toHaveLength(1);
-  expect(result).not.toHaveProperty("text");
+  // The verified sentence is also the exact text the lifeops wrapper canonicalizes.
+  expect(result.text).toBe(result.userFacingText);
   expect(result).not.toHaveProperty("replyFailure");
 }
 

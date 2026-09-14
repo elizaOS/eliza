@@ -194,7 +194,8 @@ function expectVerified(result: ActionResult, sentence: string): void {
     userFacingText: sentence,
     userFacingEffectReceiptIds: [result.effectReceipts?.[0]?.receiptId],
   });
-  expect(result).not.toHaveProperty("text");
+  // The verified sentence is also the exact text the lifeops wrapper canonicalizes.
+  expect(result.text).toBe(sentence);
   expect(replyFacts(result)).toBe(sentence);
 }
 
