@@ -6914,7 +6914,7 @@ export function ChatOverlay({
                                       : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
                                     : booting
                                       ? `Message ${agentName} — waking up…`
-                                      : "Hey Eliza…"
+                                      : viewChatBinding?.placeholder ?? "Hey Eliza…"
                         }
                         aria-label="message"
                         data-testid="chat-composer-textarea"
