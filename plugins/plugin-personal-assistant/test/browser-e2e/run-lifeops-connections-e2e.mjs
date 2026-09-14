@@ -33,6 +33,12 @@ const result = await viteBuild({
       name: "lifeops-production-adapter-stub",
       enforce: "pre",
       resolveId(source, importer) {
+        if (
+          source === "./deletion-adapter.js" &&
+          importer?.endsWith("FamilyDeletionPanel.tsx")
+        ) {
+          return adapterStub;
+        }
         return source === "./adapter.js" &&
           (importer?.endsWith("LifeOpsConnectionsView.tsx") ||
             importer?.endsWith("FamilyOperationsView.tsx"))
@@ -116,14 +122,21 @@ function contrastRatio(foreground, background) {
   return (light + 0.05) / (dark + 0.05);
 }
 
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({
+  headless: true,
+  // Recorded walkthroughs need readable pauses between the same asserted actions.
+  slowMo: process.env.ELIZA_LIFEOPS_E2E_RECORD_SLOW === "1" ? 750 : 0,
+});
 try {
   const desktop = await browser.newPage({
     viewport: { width: 1280, height: 900 },
     reducedMotion: "reduce",
   });
   const pageErrors = [];
-  desktop.on("pageerror", (error) => pageErrors.push(String(error)));
+  desktop.on("pageerror", (error) => {
+    pageErrors.push(String(error));
+    process.stderr.write(`Browser startup error: ${String(error)}\n`);
+  });
   await desktop.goto(baseURL);
   await desktop.getByRole("heading", { name: /Bring your inbox/ }).waitFor();
   const initialColors = await desktop
@@ -589,6 +602,107 @@ try {
   }
 
   for (const width of [1180, 390]) {
+    const context = await browser.newContext({
+      viewport: { width, height: 850 },
+      isMobile: width === 390,
+      hasTouch: width === 390,
+      recordVideo: { dir: join(outputDir, `deletion-${width}-video`) },
+    });
+    const page = await context.newPage();
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(String(error)));
+    await page.goto(`${baseURL}?scenario=family-deletion`);
+    await page
+      .getByRole("button", { name: "Review workspace deletion" })
+      .click();
+    const confirm = page.getByRole("button", {
+      name: "Delete reviewed workspace",
+    });
+    await confirm.waitFor();
+    assert(
+      await confirm.isDisabled(),
+      "deletion requires review and retention selection",
+    );
+    await page.getByText(/Review all 2 affected records/).click();
+    await page.getByRole("button", { name: "After 7 days" }).click();
+    await page.getByRole("checkbox").check();
+    await confirm.scrollIntoViewIfNeeded();
+    await page.mouse.move(0, 0);
+    assert(
+      await page.getByRole("button").evaluateAll((buttons) =>
+        buttons.every((button) => {
+          const bounds = button.getBoundingClientRect();
+          return bounds.height >= 44 && bounds.width >= 44;
+        }),
+      ),
+      `deletion ${width}px buttons meet the 44px touch target`,
+    );
+    await page.screenshot({
+      path: join(outputDir, `deletion-review-${width}.png`),
+      fullPage: true,
+      animations: "disabled",
+    });
+    await confirm.hover();
+    await page.screenshot({
+      path: join(outputDir, `deletion-review-hover-${width}.png`),
+      fullPage: true,
+      animations: "disabled",
+    });
+    await confirm.click();
+    await page
+      .getByRole("alert")
+      .filter({ hasText: "Workspace changed" })
+      .waitFor();
+    assert((await confirm.count()) === 0, "stale review cannot be resubmitted");
+    await page.getByRole("button", { name: "Refresh deletion status" }).click();
+    await page.getByRole("checkbox").waitFor();
+    assert(
+      !(await page.getByRole("checkbox").isChecked()),
+      "new snapshot needs new review acknowledgement",
+    );
+    await page.getByRole("checkbox").check();
+    await confirm.click();
+    await page
+      .getByText("Access is revoked. Primary-file cleanup is still pending.")
+      .waitFor();
+    await page.screenshot({
+      path: join(outputDir, `deletion-primary-pending-${width}.png`),
+      fullPage: true,
+    });
+    await page.reload();
+    await page
+      .getByRole("button", { name: "Review workspace deletion" })
+      .click();
+    await page.getByRole("button", { name: "Retry primary cleanup" }).click();
+    await page
+      .getByRole("alert")
+      .filter({ hasText: "Cleanup response was interrupted" })
+      .waitFor();
+    await page.getByRole("button", { name: "Refresh deletion status" }).click();
+    await page
+      .getByText(
+        "Primary cleanup is verified. Backup cleanup is pending; deletion is not complete.",
+      )
+      .waitFor();
+    assert(
+      (await page
+        .getByRole("button", { name: "Retry primary cleanup" })
+        .count()) === 0,
+      "verified primary cleanup is not repeated",
+    );
+    await page.screenshot({
+      path: join(outputDir, `deletion-backup-pending-${width}.png`),
+      fullPage: true,
+    });
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth > innerWidth + 1,
+    );
+    assert(!overflow, `deletion review fits ${width}px viewport`);
+    assert(errors.length === 0, `deletion ${width}px flow has no page errors`);
+    await context.close();
+  }
+
+  for (const width of [1180, 390]) {
     const family = await browser.newPage({
       viewport: { width, height: 850 },
       hasTouch: width === 390,
@@ -597,6 +711,36 @@ try {
     const familyErrors = [];
     family.on("pageerror", (error) => familyErrors.push(String(error)));
     await family.goto(`${baseURL}?scenario=family-packet`);
+    const pinTarget = family.getByRole("textbox", { name: "Pin target ID" });
+    await pinTarget.fill("fixture-acceptance-chat");
+    await pinTarget.scrollIntoViewIfNeeded();
+    const clipped = await family.evaluate(() =>
+      [...document.querySelectorAll("main section, main button, main input")]
+        .filter((element) => {
+          const rect = element.getBoundingClientRect();
+          return (
+            rect.width > 0 &&
+            (rect.left < -1 || rect.right > window.innerWidth + 1)
+          );
+        })
+        .map(
+          (element) => element.getAttribute("aria-label") || element.tagName,
+        ),
+    );
+    assert(
+      clipped.length === 0,
+      `${width}px populated agreement keeps cards and controls within the viewport: ${clipped.join(", ")}`,
+    );
+    assert(
+      await family
+        .getByRole("button", { name: "Pin", exact: true })
+        .isEnabled(),
+      `${width}px pin form accepts a target without requiring horizontal scrolling`,
+    );
+    await family.screenshot({
+      path: join(outputDir, `family-agreement-${width}.png`),
+      animations: "disabled",
+    });
     await family
       .getByRole("button", { name: "Monthly packet", exact: true })
       .click();

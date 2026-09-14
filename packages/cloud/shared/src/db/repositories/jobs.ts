@@ -2,7 +2,9 @@
  * Persists background-job state, execution generations, and renewable leases
  * through the primary and read-intent cloud database boundaries.
  */
+
 import { randomUUID } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, inArray, lt, type SQL, sql } from "drizzle-orm";
 import {
   assertAdminCanaryImageJobData,
@@ -30,6 +32,7 @@ import { agentSandboxes } from "../schemas/agent-sandboxes";
 import { jobExecutionLeases } from "../schemas/job-execution-leases";
 import type { Job, NewJob } from "../schemas/jobs";
 import { jobs } from "../schemas/jobs";
+import { updateAgentLifecycleExecutionFence } from "./agent-lifecycle-execution-fence";
 import { cutoverResumeWindowAllows, msWindowTimestampMatch } from "./job-timestamp-fence";
 
 export {
@@ -409,7 +412,19 @@ async function prepareJobPayload<T extends Partial<Job> | Partial<NewJob>>(
     };
   }
 
-  const createdAt = data.created_at ?? context.created_at ?? new Date();
+  // Raw claim queries bypass Drizzle's timestamp decoder. Decode using the
+  // column's UTC semantics before deriving immutable object-storage keys.
+  const rawCreatedAt = data.created_at ?? context.created_at ?? new Date();
+  const createdAt =
+    typeof rawCreatedAt === "string"
+      ? jobs.created_at.mapFromDriverValue(rawCreatedAt)
+      : rawCreatedAt;
+  if (!(createdAt instanceof Date) || !Number.isFinite(createdAt.getTime())) {
+    throw new ElizaError("Job creation timestamp is invalid", {
+      code: "INVALID_JOB_CREATED_AT",
+      context: { jobId: context.id },
+    });
+  }
   const forceInlineData = data.data_storage === "inline";
   const forceInlineResult = data.result_storage === "inline";
   const forceInlineError = data.error_storage === "inline";
@@ -1462,20 +1477,12 @@ export class JobsRepository {
           );
       }
       if (hasAgentLifecycleFence(params.job) && params.job.execution_generation) {
-        await tx
-          .update(agentSandboxes)
-          .set({
-            lifecycle_job_id: null,
-            lifecycle_execution_generation: null,
-          })
-          .where(
-            and(
-              eq(agentSandboxes.id, params.job.agent_id),
-              eq(agentSandboxes.organization_id, params.job.organization_id),
-              eq(agentSandboxes.lifecycle_job_id, params.job.id),
-              eq(agentSandboxes.lifecycle_execution_generation, params.job.execution_generation),
-            ),
-          );
+        await updateAgentLifecycleExecutionFence(
+          tx,
+          params.job,
+          params.job.execution_generation,
+          "release",
+        );
       }
       // `incrementAttempt` hands `hydrateJob(updated)` to its writeback AND to
       // its caller, and the post-commit hook reads fields an offloaded row does
@@ -1705,20 +1712,7 @@ export class JobsRepository {
         );
 
       if (hasAgentLifecycleFence(claimedJob)) {
-        await tx
-          .update(agentSandboxes)
-          .set({
-            lifecycle_job_id: null,
-            lifecycle_execution_generation: null,
-          })
-          .where(
-            and(
-              eq(agentSandboxes.id, claimedJob.agent_id),
-              eq(agentSandboxes.organization_id, claimedJob.organization_id),
-              eq(agentSandboxes.lifecycle_job_id, claimedJob.id),
-              eq(agentSandboxes.lifecycle_execution_generation, generation),
-            ),
-          );
+        await updateAgentLifecycleExecutionFence(tx, claimedJob, generation, "release");
       }
       return true;
     });
@@ -1868,20 +1862,7 @@ export class JobsRepository {
       }
 
       if (hasAgentLifecycleFence(job) && expectedExecutionGeneration) {
-        await tx
-          .update(agentSandboxes)
-          .set({
-            lifecycle_job_id: null,
-            lifecycle_execution_generation: null,
-          })
-          .where(
-            and(
-              eq(agentSandboxes.id, job.agent_id),
-              eq(agentSandboxes.organization_id, job.organization_id),
-              eq(agentSandboxes.lifecycle_job_id, job.id),
-              eq(agentSandboxes.lifecycle_execution_generation, expectedExecutionGeneration),
-            ),
-          );
+        await updateAgentLifecycleExecutionFence(tx, job, expectedExecutionGeneration, "release");
       }
 
       return result;
@@ -2022,20 +2003,7 @@ export class JobsRepository {
           );
       }
       if (hasAgentLifecycleFence(claimedJob)) {
-        await tx
-          .update(agentSandboxes)
-          .set({
-            lifecycle_job_id: null,
-            lifecycle_execution_generation: null,
-          })
-          .where(
-            and(
-              eq(agentSandboxes.id, claimedJob.agent_id),
-              eq(agentSandboxes.organization_id, claimedJob.organization_id),
-              eq(agentSandboxes.lifecycle_job_id, claimedJob.id),
-              eq(agentSandboxes.lifecycle_execution_generation, generation),
-            ),
-          );
+        await updateAgentLifecycleExecutionFence(tx, claimedJob, generation, "release");
       }
       return row;
     });

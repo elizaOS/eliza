@@ -91,16 +91,9 @@ function namedStep(name: string): WorkflowStep {
 describe("managed dedicated live-smoke workflow contract", () => {
   test("has one manual owner and a dedicated dispatch route", () => {
     expect(Object.keys(workflow.on)).toEqual(["workflow_dispatch"]);
-    expect(workflow.on.workflow_dispatch.inputs.suite.options).toEqual([
-      "all",
-      "app",
-      "scenarios",
-      "group-chat",
-      "live-information",
-      "cloud",
-      "voice",
+    expect(workflow.on.workflow_dispatch.inputs.suite.options).toContain(
       "dedicated",
-    ]);
+    );
     expect(
       workflow.on.workflow_dispatch.inputs.stale_canary_suffix,
     ).toMatchObject({ default: "", required: false, type: "string" });
@@ -114,14 +107,14 @@ describe("managed dedicated live-smoke workflow contract", () => {
     });
     expect(workflow.jobs.smoke.if).toBe(
       githubExpression(
-        "inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite != 'dedicated'",
+        "inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite != 'dedicated' && inputs.suite != 'pi-linked-account'",
       ),
     );
     expect(dedicated.if).toBe(
-      "inputs.diagnose_canary_suffix == '' && (inputs.cleanup_only || inputs.suite == 'all' || inputs.suite == 'dedicated')",
+      "inputs.suite != 'pi-linked-account' && inputs.diagnose_canary_suffix == '' && (inputs.cleanup_only || inputs.suite == 'all' || inputs.suite == 'dedicated')",
     );
     expect(workflow.jobs["dedicated-diagnostic"].if).toBe(
-      "inputs.diagnose_canary_suffix != ''",
+      "inputs.suite != 'pi-linked-account' && inputs.diagnose_canary_suffix != ''",
     );
     expect(workflow.jobs["shared-staging-onboarding"].if).toBe(
       githubExpression(

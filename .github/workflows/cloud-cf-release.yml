@@ -52,11 +52,9 @@ on:
         required: false
         type: string
         default: ""
-    # Keep caller-scope secrets explicit. Telegram's live credentials are
-    # declared so the workflow can reference their fixed names, but the caller
-    # deliberately does not forward them. The entry workflow proves the
-    # environment-specific runtime authority; deploy-api resolves the values
-    # from its own protected Environment for atomic Worker publication.
+    # Keep caller-scope secrets explicit. The entry workflow proves the
+    # environment-specific runtime authority; deploy-api's protected
+    # Environment supplies the credentials for atomic Worker publication.
     secrets:
       ANTHROPIC_API_KEY:
         required: false
@@ -1404,8 +1402,8 @@ jobs:
           # The edge Telegram route needs both values in the Worker. They are
           # required and replaced atomically with the exact attested source;
           # activation is still a separate protected, live-proven rollout.
-          # These fixed names are resolved directly in this job's protected
-          # Environment and are never forwarded through workflow_call. A
+          # These fixed names are resolved in this job's protected Environment
+          # through explicit caller secret expressions. A
           # computed secrets[] key is evaluated without these Environment
           # values in a reusable workflow and silently becomes blank.
           ELIZA_APP_TELEGRAM_BOT_TOKEN: ${{ secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN }}

@@ -856,6 +856,31 @@ describe("streamAgentBackupV2Capture", () => {
     try {
       await fs.promises.mkdir(pglite, { recursive: true });
       await fs.promises.mkdir(path.join(root, "a"), { recursive: true });
+      await fs.promises.mkdir(path.join(root, "skills", ".cache"), {
+        recursive: true,
+      });
+      await fs.promises.writeFile(
+        path.join(root, "skills", ".cache", "catalog.json"),
+        "downloadable catalog",
+      );
+      await fs.promises.writeFile(
+        path.join(root, "skills", ".cache", "lock.json"),
+        '{"installed":"pinned"}',
+      );
+      await fs.promises.mkdir(
+        path.join(root, "plugins", ".runtime-imports", "plugin"),
+        {
+          recursive: true,
+        },
+      );
+      await fs.promises.writeFile(
+        path.join(root, "plugins", ".runtime-imports", "plugin", "bundle.js"),
+        "generated import cache",
+      );
+      await fs.promises.writeFile(
+        path.join(root, "plugins", ".runtime-imports-user.json"),
+        "user-owned plugin settings",
+      );
       for (const [relativePath, value] of [
         ["a-plain", "hyphen"],
         ["a/nested", "nested"],
@@ -935,7 +960,17 @@ describe("streamAgentBackupV2Capture", () => {
         records
           .filter((record) => record.kind === "data")
           .map((record) => record.entry?.path),
-      ).toEqual(["B", "a-plain", "a/nested", "file-2", "file_1", "z", "ä"]);
+      ).toEqual([
+        "B",
+        "a-plain",
+        "a/nested",
+        "file-2",
+        "file_1",
+        "plugins/.runtime-imports-user.json",
+        "skills/.cache/lock.json",
+        "z",
+        "ä",
+      ]);
     } finally {
       if (previousStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
       else process.env.ELIZA_STATE_DIR = previousStateDir;

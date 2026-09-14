@@ -13,6 +13,30 @@ const API_BASE = `https://${DEDICATED_ID}.cloud.eliza.app`;
 describe("bindDirectCloudLoginToPersonalAgent", () => {
   beforeEach(() => localStorage.clear());
 
+  it("leaves fresh activation to visible onboarding after authentication", async () => {
+    const client = {
+      getPersonalSharedEliza: vi.fn(async () => ({
+        personalElizaId: PERSONAL_ID,
+        activeAgentId: PERSONAL_ID,
+        agentName: "Eliza",
+        apiBase: "https://api.eliza.app/api/v1/eliza/personal",
+        runtime: "shared" as const,
+      })),
+      setBaseUrl: vi.fn(),
+      setToken: vi.fn(),
+    };
+    await expect(
+      bindDirectCloudLoginToPersonalAgent({
+        client,
+        cloudApiBase: "https://api.eliza.app",
+        token: "signed-in-token",
+      }),
+    ).resolves.toBeUndefined();
+    expect(loadPersistedActiveServer()).toBeNull();
+    expect(client.setBaseUrl).not.toHaveBeenCalled();
+    expect(client.setToken).not.toHaveBeenCalled();
+  });
+
   it("replaces a stale staging target and repoints the live client", async () => {
     localStorage.setItem(
       "elizaos:active-server",
@@ -25,7 +49,7 @@ describe("bindDirectCloudLoginToPersonalAgent", () => {
       }),
     );
     const client = {
-      ensurePersonalDedicatedEliza: vi.fn(async () => ({
+      getPersonalSharedEliza: vi.fn(async () => ({
         personalElizaId: PERSONAL_ID,
         activeAgentId: DEDICATED_ID,
         agentName: "Eliza",

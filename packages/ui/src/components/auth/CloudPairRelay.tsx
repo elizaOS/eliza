@@ -298,6 +298,14 @@ export function resolveCloudHostedAgentUrl(
   const classified = classifyElizaHostname(hostname);
   const environment = classified.environment ?? "production";
   const base = ELIZA_DOMAIN_CONTRACTS[environment].cloudAppOrigin;
+  // The app's agent-auth gate also covers dashboard URLs. Re-enter the join
+  // flow so an expired agent session can sign in and pair again.
+  if (
+    classified.role === "cloud-app" ||
+    classified.role === "legacy-cloud-app"
+  ) {
+    return `${base}/join`;
+  }
   const agentId = classified.agentId ?? "";
   const agentPath =
     agentId &&

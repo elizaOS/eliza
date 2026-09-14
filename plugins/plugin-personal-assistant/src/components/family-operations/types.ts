@@ -89,7 +89,12 @@ export interface FamilyOperationsSnapshot {
 
 export interface FamilyOperationsAdapter {
   load(): Promise<FamilyOperationsSnapshot>;
+  downloadWorkspace(): Promise<Blob>;
   uploadAgreement(input: AgreementUploadInput): Promise<void>;
+  downloadAgreement(
+    artifactId: string,
+    format: "original" | "export",
+  ): Promise<Blob>;
   decideObligation(
     obligation: ParentingAgreementObligation,
     decision: "approve" | "reject",

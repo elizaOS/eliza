@@ -6,7 +6,10 @@
  * `StartupShell` views; rendered by `StartupShell` when `view.kind === "error"`.
  */
 
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Power } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { client } from "../../api";
+import { waitForCloudAgentRunning } from "../../api/client-cloud";
 import { useBranding } from "../../config/branding";
 import { type BugReportDraft, useOptionalBugReport } from "../../hooks";
 import { startFreshFirstRunReload } from "../../platform";
@@ -36,6 +39,10 @@ function startupReasonLabel(
     case "agent-error":
       return t("startupfailureview.AgentError", {
         defaultValue: "Your agent couldn't start",
+      });
+    case "agent-stopped":
+      return t("startupfailureview.AgentStopped", {
+        defaultValue: "Your agent is shut down",
       });
     case "asset-missing":
       return t("startupfailureview.AssetMissing", {
@@ -88,6 +95,35 @@ export function StartupFailureView({
   const bugReport = useOptionalBugReport();
   const reasonLabel = startupReasonLabel(t, error.reason);
   const startupDraft = buildStartupBugReportDraft(reasonLabel, error);
+  const stopped = error.reason === "agent-stopped";
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
+  const startAttempt = useRef<AbortController | null>(null);
+  useEffect(() => () => startAttempt.current?.abort(), []);
+  const startAgent = async () => {
+    if (!error.cloudAgentId || startAttempt.current) return;
+    const attempt = new AbortController();
+    startAttempt.current = attempt;
+    setStarting(true);
+    setStartError(null);
+    try {
+      await waitForCloudAgentRunning(client, {
+        agentId: error.cloudAgentId,
+        signal: attempt.signal,
+      });
+      if (!attempt.signal.aborted) onRetry();
+    } catch (cause) {
+      // error-policy:J4 keep the stopped agent and expose the failed start for retry.
+      if (!attempt.signal.aborted) {
+        setStartError(cause instanceof Error ? cause.message : String(cause));
+      }
+    } finally {
+      if (!attempt.signal.aborted) {
+        startAttempt.current = null;
+        setStarting(false);
+      }
+    }
+  };
 
   return (
     <Card asChild variant="sandboxFrame" className={SCREEN_SHELL_CLASS}>
@@ -101,7 +137,7 @@ export function StartupFailureView({
             <div className="flex flex-col gap-4">
               <Badge
                 asChild
-                variant="statusDanger"
+                variant={stopped ? "statusMuted" : "statusDanger"}
                 size="providerMark"
                 aria-label={reasonLabel}
                 className="size-9"
@@ -109,10 +145,16 @@ export function StartupFailureView({
                 title={reasonLabel}
               >
                 <span>
-                  <AlertCircle className="size-5" aria-hidden />
+                  {stopped ? (
+                    <Power className="size-5" aria-hidden />
+                  ) : (
+                    <AlertCircle className="size-5" aria-hidden />
+                  )}
                 </span>
               </Badge>
-              <h1 className="text-xl font-semibold leading-tight text-destructive">
+              <h1
+                className={`text-xl font-semibold leading-tight ${stopped ? "text-txt" : "text-destructive"}`}
+              >
                 {reasonLabel}
               </h1>
             </div>
@@ -123,39 +165,95 @@ export function StartupFailureView({
               the bug-report draft) so a user staring at an offline phone learns
               what actually went wrong. */}
             <p className="text-sm leading-relaxed text-txt">
-              {t("startupfailureview.TryAgainDescription", {
-                defaultValue:
-                  "Try again in a moment. If this keeps happening, the details below can help diagnose the problem.",
-              })}
+              {stopped
+                ? t("startupfailureview.StoppedDescription", {
+                    defaultValue: "Start your Dedicated agent to continue.",
+                  })
+                : t("startupfailureview.TryAgainDescription", {
+                    defaultValue:
+                      "Try again in a moment. If this keeps happening, the details below can help diagnose the problem.",
+                  })}
             </p>
-            <Card
-              asChild
-              surface="backgroundSubtle"
-              border="subtle"
-              className="group"
-            >
-              <details>
-                <Button
-                  asChild
-                  variant="disclosureMuted"
-                  size="content"
-                  className="cursor-pointer px-3 py-2 font-semibold"
-                >
-                  <summary>
-                    {t("startupfailureview.TechnicalDetails", {
-                      defaultValue: "Technical details",
-                    })}
-                  </summary>
-                </Button>
-                <Card asChild variant="topDivider">
-                  <pre className="max-h-60 overflow-auto p-3 text-xs leading-relaxed text-muted whitespace-pre-wrap break-words">
-                    {[error.message, error.detail].filter(Boolean).join("\n\n")}
-                  </pre>
-                </Card>
-              </details>
-            </Card>
+            {!stopped ? (
+              <Card
+                asChild
+                surface="backgroundSubtle"
+                border="subtle"
+                className="group"
+              >
+                <details>
+                  <Button
+                    asChild
+                    variant="disclosureMuted"
+                    size="content"
+                    className="cursor-pointer px-3 py-2 font-semibold"
+                  >
+                    <summary>
+                      {t("startupfailureview.TechnicalDetails", {
+                        defaultValue: "Technical details",
+                      })}
+                    </summary>
+                  </Button>
+                  <Card asChild variant="topDivider">
+                    <pre className="max-h-60 overflow-auto p-3 text-xs leading-relaxed text-muted whitespace-pre-wrap break-words">
+                      {[error.message, error.detail]
+                        .filter(Boolean)
+                        .join("\n\n")}
+                    </pre>
+                  </Card>
+                </details>
+              </Card>
+            ) : null}
+            {starting ? (
+              <p role="status">
+                {t("startupfailureview.StartingAgent", {
+                  defaultValue:
+                    "Starting your agent. This may take a few minutes.",
+                })}
+              </p>
+            ) : null}
+            {startError ? (
+              <p role="alert" className="text-sm text-destructive">
+                {startError}
+              </p>
+            ) : null}
 
             <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center">
+              {stopped && error.cloudAgentId ? (
+                <Button
+                  variant="default"
+                  size="lg"
+                  disabled={starting}
+                  onClick={() => void startAgent()}
+                  className="w-full sm:w-auto sm:min-w-[11rem]"
+                >
+                  {starting
+                    ? t("startupfailureview.Starting", {
+                        defaultValue: "Starting…",
+                      })
+                    : t("startupfailureview.StartAgent", {
+                        defaultValue: "Start agent",
+                      })}
+                </Button>
+              ) : null}
+              {stopped && startError && error.cloudManagementUrl ? (
+                <Button
+                  asChild
+                  variant="default"
+                  size="lg"
+                  className="w-full sm:w-auto sm:min-w-[11rem]"
+                >
+                  <a
+                    href={error.cloudManagementUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {t("startupfailureview.OpenCloud", {
+                      defaultValue: "Open Eliza Cloud",
+                    })}
+                  </a>
+                </Button>
+              ) : null}
               {error.reason === "backend-unreachable" ? (
                 <Button
                   variant="default"
@@ -171,16 +269,23 @@ export function StartupFailureView({
               ) : null}
               <Button
                 variant={
-                  error.reason === "backend-unreachable" ? "outline" : "default"
+                  error.reason === "backend-unreachable" || stopped
+                    ? "outline"
+                    : "default"
                 }
                 size="lg"
                 onClick={onRetry}
+                disabled={starting}
                 className="w-full sm:w-auto sm:min-w-[11rem]"
                 data-testid="startup-retry"
               >
-                {t("startupfailureview.RetryStartup")}
+                {stopped
+                  ? t("startupfailureview.RetryConnection", {
+                      defaultValue: "Retry connection",
+                    })
+                  : t("startupfailureview.RetryStartup")}
               </Button>
-              {bugReport ? (
+              {bugReport && !stopped ? (
                 <Button
                   variant="outline"
                   size="lg"

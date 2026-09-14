@@ -334,6 +334,7 @@ describe("LifeOps raw route owner/admin gate", () => {
   });
 
   it.each([
+    ["POST", "/api/lifeops/agreements/:id/export"],
     ["GET", "/api/lifeops/family-workflows/email-options"],
     [
       "POST",

@@ -3064,6 +3064,17 @@ function AppContent() {
     ? resolvedDynamicPage
     : null;
   const { authenticated: cloudAuthenticated } = useSessionAuth();
+  // Account management is authorized by the Cloud session, independently of
+  // the selected agent. Keep its wake/recovery controls reachable while that
+  // agent is asleep, disconnected, or awaiting pairing.
+  const authenticatedAccountPage = authenticatedCloudDashboardOwnsRoute(
+    findVisibleAppShellPageForRoute(
+      navigationPath,
+      enabledKinds,
+      managedCloudRuntime,
+    ),
+    cloudAuthenticated,
+  );
   const screenBackgroundPolicy = useActiveScreenBackgroundPolicy({
     tab,
     navigationPath,
@@ -3598,7 +3609,10 @@ function AppContent() {
     );
   }
 
-  if (!isShellPaintableNow || bootstrapGateHolds) {
+  if (
+    !authenticatedAccountPage &&
+    (!isShellPaintableNow || bootstrapGateHolds)
+  ) {
     return (
       <BugReportProvider value={bugReport}>
         <StartupScreen />
@@ -3615,6 +3629,7 @@ function AppContent() {
   // primes the probe (primeAuthStatusProbe) so it overlaps backend polling /
   // hydration instead of serializing an extra round-trip after first paint.
   if (
+    !authenticatedAccountPage &&
     isShellPaintableNow &&
     !isPopout &&
     topLevelAuthGateOwnsSurface(

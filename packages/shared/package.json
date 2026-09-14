@@ -634,6 +634,16 @@
       "default": "./dist/crypto/token-encryption.js"
     },
     "./*.css": "./dist/*.css",
+    "./db/raw-sql": {
+      "types": "./dist/db/raw-sql.d.ts",
+      "eliza-source": {
+        "types": "./src/db/raw-sql.ts",
+        "import": "./src/db/raw-sql.ts",
+        "default": "./src/db/raw-sql.ts"
+      },
+      "import": "./dist/db/raw-sql.js",
+      "default": "./dist/db/raw-sql.js"
+    },
     "./*": {
       "types": "./dist/*.d.ts",
       "import": "./dist/*.js",

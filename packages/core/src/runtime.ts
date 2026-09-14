@@ -256,7 +256,6 @@ export {
 
 import { RuntimeConnectorRegistry } from "./runtime/connector-registry.js";
 
-const environmentSettings: RuntimeSettings = {};
 const DEFAULT_SERVICE_START_SHUTDOWN_TIMEOUT_MS = 1_000;
 const DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS = 500;
 const DEFAULT_FAST_ROOM_DRAIN_TIMEOUT_MS = 500;
@@ -744,7 +743,7 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 		this.companionUrl = opts.companionUrl;
 		this.fetch = (opts.fetch as typeof fetch) ?? this.fetch;
-		this.settings = opts.settings ?? environmentSettings;
+		this.settings = { ...opts.settings };
 		const enableAutonomyFromSettings =
 			this.character.settings?.ENABLE_AUTONOMY === true ||
 			this.character.settings?.ENABLE_AUTONOMY === "true";

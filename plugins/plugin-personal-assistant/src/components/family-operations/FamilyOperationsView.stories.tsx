@@ -16,6 +16,9 @@ const adapter = {
     packets: { status: "ready", data: [] },
     emailOptions: { status: "ready", data: { accounts: [], recipients: [] } },
   }),
+  downloadWorkspace: async () => {
+    throw new Error("This preview has no stored workspace to export.");
+  },
   decideObligation: async (obligation: never) => obligation,
   listPins: async () => [],
   pin: async () => null,

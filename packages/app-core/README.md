@@ -41,6 +41,14 @@ bun run --cwd packages/app-core lint         # Biome
 
 This package supplies host integration to the `packages/app` shell and app-facing plugins. It targets Node `>=24`, with `react`/`react-dom`/`three` as peer dependencies and the `@elizaos/capacitor-*` mobile bridges as optional dependencies.
 
+On the self-hosted dashboard, an owner browser session can authenticate a
+WebSocket without exposing its HttpOnly session cookie to JavaScript. Cookie
+admission uses the canonical session store, requires an owner identity and a
+credentialed browser origin, and checks expiry and revocation on each new
+connection. Broad cloud or wildcard-bind CORS reachability does not grant
+cookie access. Explicit bearer and paired-device authentication retain their
+existing transport contracts.
+
 ## Isolated local development
 
 Give each concurrent instance distinct `ELIZA_UI_PORT`, `ELIZA_API_PORT`,

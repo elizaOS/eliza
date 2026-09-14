@@ -1340,9 +1340,9 @@ export function ChatOverlay({
   /**
    * True while in-chat first-run onboarding is active (`firstRunComplete ===
    * false` upstream). The overlay stays at the shared HALF chat detent while it
-   * owns an onboarding choice. Once external Cloud sign-in starts it minimizes
-   * to the regular compact composer so the browser is unobstructed and retry is
-   * recoverable; successful authentication opens the same conversation at FULL.
+   * owns an onboarding choice. During external Cloud sign-in the transparent
+   * desktop host minimizes so the browser is unobstructed; the regular app
+   * keeps its sign-in actions visible. Successful authentication opens FULL.
    * There is never a separate desktop web chat.
    */
   firstRunOpen?: boolean;
@@ -1646,7 +1646,8 @@ export function ChatOverlay({
     const activeMessage = selectSemanticNewestFirstRunMessage(messages);
     return (
       activeMessage?.id === "first-run:cloud-login-waiting" &&
-      activeMessage.content.startsWith("Waiting for sign-in in the browser")
+      (activeMessage.content.startsWith("Waiting for sign-in in the browser") ||
+        activeMessage.content.startsWith("Finish signing in to continue here."))
     );
   }, [firstRunOpen, messages]);
   // Live handle to the active conversation id for the send path's draft clear,
@@ -1680,7 +1681,8 @@ export function ChatOverlay({
   // the existing compact composer so Safari remains readable and clickable
   // during sign-in. Do not use the internal handle-only `pill` mode here: that
   // is a drag affordance, not a user-facing idle surface.
-  const pinnedOpen = firstRunOpen && !cloudLoginWaiting;
+  const minimizeForCloudLogin = cloudLoginWaiting && fillHostAtHalf;
+  const pinnedOpen = firstRunOpen && !minimizeForCloudLogin;
   const [mode, setMode] = React.useState<ChatMode>(
     pinnedOpen ? "half" : initialMode,
   );
@@ -4004,7 +4006,7 @@ export function ChatOverlay({
   React.useEffect(() => {
     const was = wasFirstRunOpenRef.current;
     wasFirstRunOpenRef.current = firstRunOpen;
-    if (cloudLoginWaiting) {
+    if (minimizeForCloudLogin) {
       setFreeH(null);
       setMode("input");
       setMaximized(false);
@@ -4030,7 +4032,7 @@ export function ChatOverlay({
       setMaximized(false);
     }
   }, [
-    cloudLoginWaiting,
+    minimizeForCloudLogin,
     firstRunOpen,
     goToDetent,
     onFirstRunReleaseHandled,
@@ -6904,15 +6906,17 @@ export function ChatOverlay({
                               ? "Sign in to get started"
                               : firstRunOpen
                                 ? firstRunComposerPlaceholder
-                                : noProviderConfigured
-                                  ? "Connect a model provider in Settings to chat"
-                                  : modelBlocksSend
-                                    ? modelStatus?.kind === "downloading"
-                                      ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
-                                      : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
-                                    : booting
-                                      ? `Message ${agentName} — waking up…`
-                                      : "Hey Eliza…"
+                                : viewChatBinding?.placeholder
+                                  ? viewChatBinding.placeholder
+                                  : noProviderConfigured
+                                    ? "Connect a model provider in Settings to chat"
+                                    : modelBlocksSend
+                                      ? modelStatus?.kind === "downloading"
+                                        ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
+                                        : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
+                                      : booting
+                                        ? `Message ${agentName} — waking up…`
+                                        : "Hey Eliza…"
                         }
                         aria-label="message"
                         data-testid="chat-composer-textarea"

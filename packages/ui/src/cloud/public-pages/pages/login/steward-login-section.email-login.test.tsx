@@ -245,6 +245,41 @@ describe("StewardLoginSection email magic-link companion code", () => {
     expect(screen.queryByLabelText("Six-digit code")).toBeNull();
   });
 
+  it("keeps local code verification in control while polling observes a consumed code", async () => {
+    let finishVerify!: (value: { token: string; refreshToken: string }) => void;
+    emailLoginSpies.verify.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishVerify = resolve;
+        }),
+    );
+    emailLoginSpies.poll.mockResolvedValue("consumed");
+    sessionSpies.recoverEmail.mockResolvedValue(null);
+    renderSection("/login?returnTo=%2Fjoin");
+    await startEmailLogin();
+    fireEvent.change(screen.getByLabelText("Six-digit code"), {
+      target: { value: "123456" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Verify code/i }));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+    expect(sessionSpies.recoverEmail).not.toHaveBeenCalled();
+    expect(screen.queryByText("Link approved")).toBeNull();
+
+    await act(async () => {
+      finishVerify({ token: "session-token", refreshToken: "refresh-token" });
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("location-path").textContent).toBe("/join"),
+    );
+    expect(sessionSpies.sync).toHaveBeenCalledWith(
+      "session-token",
+      "refresh-token",
+    );
+  });
+
   it("aborts an abandoned challenge's recovery and never hands it to a later email", async () => {
     emailLoginSpies.poll.mockResolvedValue("consumed");
     const pendingRecoveries: Array<(value: { ok: true } | null) => void> = [];

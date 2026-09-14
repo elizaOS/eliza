@@ -3,6 +3,11 @@
  * contracts with deterministic provider records and public HTTP responses.
  */
 import { describe, expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createCloudLiveContinuityEvidence } from "../../../app/test/cloud-live-continuity-contract";
 import {
   createDeployedRendererProof,
   DEPLOYED_BROWSER_SMOKE_SCHEMA,
@@ -161,21 +166,41 @@ function latency() {
 }
 
 function continuity() {
-  return {
-    schemaVersion: 1,
-    lane: "app-live-e2e-cloud-staging",
+  return createCloudLiveContinuityEvidence({
     challengeTurnCount: 1,
     noAdditionalChatSendAfterChallenge: true,
     personalIdentityEndpointPassed: true,
-    reloadHistoryPassed: true,
-    freshContextHistoryPassed: true,
-    personalIdentityReused: true,
-    runtimeBindingReused: true,
-    apiBaseReused: true,
-    forbiddenAgentMutationCount: 0,
+    reload: {
+      historyGetSucceeded: true,
+      challengeUserLinePresent: true,
+      challengeAssistantLinePresent: true,
+    },
+    freshContext: {
+      historyGetSucceeded: true,
+      challengeUserLinePresent: true,
+      challengeAssistantLinePresent: true,
+      createdWithoutStorageState: true,
+      serviceWorkersBlocked: true,
+    },
+    bindingReuse: {
+      personalIdentityReused: true,
+      runtimeBindingReused: true,
+      apiBaseReused: true,
+    },
+    dedicatedMutationProof: {
+      approvalGrantedCount: 1,
+      confirmationClickCount: 0,
+      confirmationKind: "none",
+      adoptionConfirmationPostCount: 0,
+      activationPostCount: 0,
+      cutoverPostCount: 0,
+      forbiddenAgentMutationCount: 0,
+      approvalBindingPresent: false,
+      lifecycleBindingMismatchCount: 0,
+    },
     cleanupDisposition: "no-test-owned-agent",
     conversationHistoryDisposition: "preserved",
-  };
+  });
 }
 
 describe("Pages deployment authority", () => {
@@ -365,6 +390,59 @@ describe("deployed renderer proof", () => {
       remoteSmoke().chatCorrelation,
     );
     expect(proof.continuity.forbiddenAgentMutationCount).toBe(0);
+  });
+
+  test("combines the browser producer's current evidence through the Node release CLI", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "eliza-pages-proof-"));
+    try {
+      const inputs = {
+        authority: authority(),
+        preflight: await publicCheck("preflight"),
+        "remote-smoke": remoteSmoke(),
+        latency: latency(),
+        continuity: continuity(),
+        postflight: await publicCheck("postflight"),
+      };
+      const args = [
+        new URL("../pages-deployment-authority.mjs", import.meta.url).pathname,
+        "combine",
+      ];
+      for (const [name, value] of Object.entries(inputs)) {
+        const path = join(directory, `${name}.json`);
+        await writeFile(path, JSON.stringify(value));
+        args.push(`--${name}`, path);
+      }
+      const output = join(directory, "proof.json");
+      args.push("--output", output);
+      execFileSync("node", args, { timeout: 10_000, stdio: "pipe" });
+      const proof = parseDeployedRendererProof(
+        JSON.parse(await readFile(output, "utf8")),
+      );
+      expect(proof.continuity).toEqual(inputs.continuity);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("keeps continuity validation closed and enforces lifecycle approval binding", async () => {
+    const inputs = {
+      authority: authority(),
+      preflight: await publicCheck("preflight"),
+      remoteSmoke: remoteSmoke(),
+      latency: latency(),
+      postflight: await publicCheck("postflight"),
+    };
+    for (const invalid of [
+      { ...continuity(), schemaVersion: 1 },
+      { ...continuity(), credential: "must-not-be-published" },
+      { ...continuity(), reloadHistoryPassed: false },
+      { ...continuity(), dedicatedLifecycleBindingMismatchCount: 1 },
+      { ...continuity(), dedicatedCutoverPostCount: 1 },
+    ]) {
+      expect(() =>
+        createDeployedRendererProof({ ...inputs, continuity: invalid }),
+      ).toThrow();
+    }
   });
 
   test("rejects unsafe or unvalidated browser correlation fields", async () => {
