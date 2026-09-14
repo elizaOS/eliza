@@ -62,6 +62,17 @@ describe.each([
               "timezone",
               "time_zone",
             ]);
+          } else if (
+            parent === calendarAction &&
+            ["CALENDAR_FEED", "CALENDAR_SEARCH_EVENTS"].includes(action.name)
+          ) {
+            expect(details?.properties?.timeMin).toMatchObject({
+              type: "string",
+            });
+            expect(details?.properties?.includeHiddenCalendars).toMatchObject({
+              type: "boolean",
+            });
+            expect(details?.properties?.travelOriginAddress).toBeUndefined();
           } else {
             expect(details?.properties?.travelOriginAddress).toMatchObject({
               type: "string",
@@ -164,3 +175,76 @@ it("retains every calendar and timezone spelling for next-event reads and the co
   expect(next.roleGate).toEqual(calendarAction.roleGate);
   expect(next.disclosureGate).toEqual(calendarAction.disclosureGate);
 });
+
+it.each(["feed", "search_events"])(
+  "preserves %s read scope, range and aliases without mutation details",
+  (operation) => {
+    const family = promoteSubactionsToActions(
+      calendarAction,
+      calendarActionPromotionOptions,
+    );
+    const read = family.find(
+      (action) => action.name === `CALENDAR_${operation.toUpperCase()}`,
+    );
+    if (!read) throw new Error("Missing read action");
+    for (const suffix of [0, 1, 2]) {
+      const details = {
+        [["calendarId", "calendarid", "calendar_id"][suffix]]: "primary",
+        [["timeMin", "timemin", "time_min"][suffix]]:
+          "2026-09-13T00:00:00-04:00",
+        [["timeMax", "timemax", "time_max"][suffix]]:
+          "2026-09-14T00:00:00-04:00",
+        [["timeZone", "timezone", "time_zone"][suffix]]: "America/New_York",
+        [["forceSync", "forcesync", "force_sync"][suffix]]: true,
+        [["windowDays", "windowdays", "window_days"][suffix]]: 60,
+        mode: "local",
+        side: "owner",
+        grantId: "eliza-calendar",
+        includeHiddenCalendars: false,
+        label: "requested day",
+      };
+      expect(validateToolArgs(read, { details })).toMatchObject({
+        valid: true,
+        args: { details },
+      });
+    }
+    expect(validateToolArgs(read, {}).valid).toBe(true);
+    expect(
+      validateToolArgs(read, { details: { includeHiddenCalendars: "true" } })
+        .valid,
+    ).toBe(false);
+    expect(read.roleGate).toEqual(calendarAction.roleGate);
+    expect(read.disclosureGate).toEqual(calendarAction.disclosureGate);
+    const full = calendarAction.parameters?.find(
+      (parameter) => parameter.name === "details",
+    )?.schema;
+    for (const action of family.filter((action) =>
+      [
+        "CALENDAR",
+        "CALENDAR_CREATE_EVENT",
+        "CALENDAR_UPDATE_EVENT",
+        "CALENDAR_DELETE_EVENT",
+        "CALENDAR_TRIP_WINDOW",
+      ].includes(action.name),
+    )) {
+      expect(
+        action.parameters?.find((parameter) => parameter.name === "details")
+          ?.schema,
+      ).toEqual(full);
+    }
+    if (operation === "search_events") {
+      for (const key of ["query", "oldTitle", "oldtitle", "old_title"]) {
+        expect(
+          validateToolArgs(read, { details: { [key]: "Dentist" } }).valid,
+        ).toBe(true);
+      }
+      expect(
+        validateToolArgs(read, {
+          query: "Dentist",
+          queries: ["Dentist"],
+          details: { queries: ["Dentist"] },
+        }).valid,
+      ).toBe(true);
+    }
+  },
+);

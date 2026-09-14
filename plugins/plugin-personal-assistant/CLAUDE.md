@@ -200,3 +200,5 @@ the host language footer, while preserving the original message/model context.
 Any remaining substantive text, including a short time such as 9pm, requires the
 normal draft classifier. Expired confirmations invalidate the draft and return
 awaitingUserInput so the planner can explain the required restatement directly.
+
+Calendar feed and event-search promoted tools use operation-specific details schemas authored in the calendar leaf module. Preserve all consumed range, timezone, calendar/connector selection, refresh and search-query aliases, plus original optionality and owner gates. Parent, trip and mutation schemas retain their full contracts; never narrow them by applying a read-only schema globally.

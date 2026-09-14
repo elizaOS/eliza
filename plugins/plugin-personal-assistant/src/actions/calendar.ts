@@ -47,7 +47,9 @@ import {
 } from "@elizaos/plugin-calendar";
 import {
   CALENDAR_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA,
 } from "@elizaos/plugin-calendar/calendar-action-schema";
 import type {
   LifeOpsCalendarEvent,
@@ -2069,6 +2071,28 @@ export const calendarAction: Action & {
  * discriminator pinning, delegation and the inherited authorization gates. */
 export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
   overrides: {
+    ...Object.fromEntries(
+      (
+        [
+          ["feed", CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA],
+          ["search_events", CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA],
+        ] as const
+      ).map(([name, schema]) => [
+        name,
+        {
+          parameters: calendarAction.parameters?.map((parameter) =>
+            parameter.name === "details"
+              ? {
+                  ...parameter,
+                  description:
+                    "Optional calendar read bounds, IANA timezone, exact connector/calendar scope and refresh controls. Omit unknown values. Feed reads use selected calendars; searches include hidden calendars unless explicitly restricted.",
+                  schema,
+                }
+              : parameter,
+          ),
+        },
+      ]),
+    ),
     next_event: {
       parameters: calendarAction.parameters?.map((parameter) =>
         parameter.name === "details"

@@ -265,3 +265,57 @@ export const CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema
     ),
     additionalProperties: false,
   };
+
+// Feed/search consume the same window and connector scope. Keep every accepted
+// spelling; event edits, recurrence and travel creation belong to other actions.
+const CALENDAR_READ_DETAIL_KEYS = [
+  "calendarId",
+  "calendarid",
+  "calendar_id",
+  "timeMin",
+  "timemin",
+  "time_min",
+  "timeMax",
+  "timemax",
+  "time_max",
+  "timeZone",
+  "timezone",
+  "time_zone",
+  "forceSync",
+  "forcesync",
+  "force_sync",
+  "windowDays",
+  "windowdays",
+  "window_days",
+  "label",
+  "mode",
+  "side",
+  "grantId",
+  "includeHiddenCalendars",
+] as const;
+
+export const CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
+  type: "object",
+  properties: Object.fromEntries(
+    Object.entries(CALENDAR_DETAILS_PARAMETER_SCHEMA.properties ?? {}).filter(
+      ([key]) => CALENDAR_READ_DETAIL_KEYS.some((name) => name === key),
+    ),
+  ),
+  additionalProperties: false,
+};
+
+export const CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
+  type: "object",
+  properties: {
+    ...CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA.properties,
+    ...Object.fromEntries(
+      Object.entries(CALENDAR_DETAILS_PARAMETER_SCHEMA.properties ?? {}).filter(
+        ([key]) =>
+          ["query", "queries", "oldTitle", "oldtitle", "old_title"].includes(
+            key,
+          ),
+      ),
+    ),
+  },
+  additionalProperties: false,
+};
