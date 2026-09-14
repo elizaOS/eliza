@@ -1261,6 +1261,14 @@ export class ElizaSandboxService {
       (async (): Promise<null | { error: unknown }> => {
         try {
           const provider = await this.getProvider();
+          if (options?.expectedRuntime) {
+            if (!provider.stopObservedRuntime)
+              throw new ElizaError("Provider cannot stop the exact prepared runtime", {
+                code: "SANDBOX_EXACT_STOP_UNSUPPORTED",
+              });
+            await provider.stopObservedRuntime(sandboxId, options.expectedRuntime);
+            return null;
+          }
           if (!provider.stopForReplacement) {
             throw new Error("Sandbox provider cannot prove workload absence before replacement");
           }

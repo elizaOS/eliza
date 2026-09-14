@@ -8,6 +8,7 @@ import {
   check,
   index,
   integer,
+  jsonb,
   numeric,
   pgTable,
   text,
@@ -43,6 +44,10 @@ export const agentComputeStopIntents = pgTable(
       .default("billing_request"),
     status: text("status").$type<AgentComputeStopIntentStatus>().notNull().default("pending"),
     job_id: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
+    prepared_backup:
+      jsonb("prepared_backup").$type<
+        import("../../lib/services/eliza-sandbox/backup/prepared-stop").PreparedStopBackup
+      >(),
     attempts: integer("attempts").notNull().default(0),
     last_error: text("last_error"),
     next_attempt_at: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
@@ -79,6 +84,10 @@ export const agentComputeStopIntents = pgTable(
       "agent_compute_stop_intents_retained_backup_billing_check",
       sql`(${table.retained_backup_billing} = true AND ${table.retained_backup_rate_per_hour} > 0)
         OR (${table.retained_backup_billing} = false AND ${table.retained_backup_rate_per_hour} IS NULL)`,
+    ),
+    prepared_backup_object: check(
+      "agent_compute_stop_intents_prepared_backup_object",
+      sql`${table.prepared_backup} IS NULL OR jsonb_typeof(${table.prepared_backup}) = 'object'`,
     ),
     attempts_check: check("agent_compute_stop_intents_attempts_check", sql`${table.attempts} >= 0`),
   }),

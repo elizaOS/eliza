@@ -5312,6 +5312,20 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
   }
 
+  async stopObservedRuntime(
+    sandboxId: string,
+    identity: import("./sandbox-runtime-observation").SandboxRuntimeIdentity,
+  ) {
+    await this.stopWithPolicy(sandboxId, false, false, undefined, identity);
+  }
+
+  async observeRuntime(
+    input: import("./sandbox-runtime-observation").SandboxRuntimeObservationRequest,
+  ) {
+    const { observeDockerRuntime } = await import("./docker-runtime-observation");
+    return observeDockerRuntime(input);
+  }
+
   async stopForDeletion(
     sandboxId: string,
     locator?: SandboxDeletionLocator,
@@ -5344,11 +5358,25 @@ export class DockerSandboxProvider implements SandboxProvider {
     allowUnreachableAbandon: boolean,
     releaseCapacity: boolean,
     deletionLocator?: SandboxDeletionLocator,
+    expectedRuntime?: import("./sandbox-runtime-observation").SandboxRuntimeIdentity,
   ): Promise<SandboxDeletionStopOutcome> {
     const meta = deletionLocator
       ? await this.teardownMetaFromDeletionLocator(sandboxId, deletionLocator)
       : await this.resolveContainerForTeardown(sandboxId);
 
+    if (
+      expectedRuntime &&
+      (meta.agentId !== expectedRuntime.agentId ||
+        meta.nodeId !== expectedRuntime.nodeId ||
+        meta.containerName !== expectedRuntime.containerName ||
+        meta.hostname !== expectedRuntime.hostname ||
+        meta.sshPort !== expectedRuntime.sshPort ||
+        meta.sshUser !== expectedRuntime.sshUser ||
+        meta.hostKeyFingerprint !== expectedRuntime.hostKeyFingerprint)
+    )
+      throw new ElizaError("Resolved teardown authority differs from prepared runtime", {
+        code: "SANDBOX_RUNTIME_IDENTITY_MISMATCH",
+      });
     logger.info(
       `[docker-sandbox] Stopping container ${meta.containerName} on ${meta.nodeId} (${meta.hostname})`,
     );
@@ -5382,20 +5410,27 @@ export class DockerSandboxProvider implements SandboxProvider {
       // the SSH channel timeout; only Docker's explicit no-such-object result
       // authorizes the short-circuit.
       try {
-        const target = shellQuote(meta.containerName);
-        const probeScript = [
-          `probe_output=$(timeout -k 2s 8s docker container inspect --format '{{.Id}}' ${target} 2>&1)`,
-          "probe_rc=$?",
-          "if [ \"$probe_rc\" -eq 0 ]; then printf 'present\\n'",
-          "elif [ \"$probe_rc\" -eq 124 ]; then printf 'unknown\\n'",
-          "elif printf '%s' \"$probe_output\" | grep -Eqi 'no such (object|container)'; then printf 'absent\\n'",
-          "else printf 'unknown\\n'; fi",
-        ].join("; ");
-        exactAbsenceProven =
-          (
-            await ssh.exec(`sh -lc ${shellQuote(probeScript)}`, TEARDOWN_ABSENCE_PROBE_TIMEOUT_MS)
-          ).trim() === "absent";
+        if (expectedRuntime) {
+          const { stopDockerRuntime } = await import("./docker-runtime-observation");
+          await stopDockerRuntime(expectedRuntime);
+          exactAbsenceProven = true;
+        } else {
+          const target = shellQuote(meta.containerName);
+          const probeScript = [
+            `probe_output=$(timeout -k 2s 8s docker container inspect --format '{{.Id}}' ${target} 2>&1)`,
+            "probe_rc=$?",
+            "if [ \"$probe_rc\" -eq 0 ]; then printf 'present\\n'",
+            "elif [ \"$probe_rc\" -eq 124 ]; then printf 'unknown\\n'",
+            "elif printf '%s' \"$probe_output\" | grep -Eqi 'no such (object|container)'; then printf 'absent\\n'",
+            "else printf 'unknown\\n'; fi",
+          ].join("; ");
+          exactAbsenceProven =
+            (
+              await ssh.exec(`sh -lc ${shellQuote(probeScript)}`, TEARDOWN_ABSENCE_PROBE_TIMEOUT_MS)
+            ).trim() === "absent";
+        }
       } catch (probeError) {
+        if (expectedRuntime) throw probeError;
         // error-policy:J7 the authoritative stop/rm pair below still owns the
         // mutation verdict; this read-only optimization may safely be unavailable.
         logger.warn("[docker-sandbox] Exact pre-delete absence probe unavailable", {

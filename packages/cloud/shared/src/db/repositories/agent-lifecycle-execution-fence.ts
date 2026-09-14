@@ -1,5 +1,10 @@
 /** Keeps a stop intent current across its own worker ownership bookkeeping. */
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import {
+  parsePreparedStopBackup,
+  preparedStopMatches,
+  preparedStopSource,
+} from "../../lib/services/eliza-sandbox/backup/prepared-stop";
 import type { DbTransaction } from "../client";
 import { agentComputeStopIntents } from "../schemas/agent-compute-stop-intents";
 import { agentSandboxes } from "../schemas/agent-sandboxes";
@@ -17,18 +22,19 @@ export async function updateAgentLifecycleExecutionFence(
     eq(agentSandboxes.id, job.agent_id),
     eq(agentSandboxes.organization_id, job.organization_id),
   );
-  const [before] = await tx
-    .select({
-      id: agentSandboxes.id,
-      revision: agentSandboxes.lifecycle_revision,
-      jobId: agentSandboxes.lifecycle_job_id,
-      generation: agentSandboxes.lifecycle_execution_generation,
-    })
+  const [sourceBefore] = await tx
+    .select()
     .from(agentSandboxes)
     .where(identity)
     .for("update")
     .limit(1);
-  if (!before) return undefined;
+  if (!sourceBefore) return undefined;
+  const before = {
+    id: sourceBefore.id,
+    revision: sourceBefore.lifecycle_revision,
+    jobId: sourceBefore.lifecycle_job_id,
+    generation: sourceBefore.lifecycle_execution_generation,
+  };
   if (action === "claim" && before.jobId === job.id && before.generation === executionGeneration) {
     return { id: before.id };
   }
@@ -59,9 +65,38 @@ export async function updateAgentLifecycleExecutionFence(
     // This transaction changes only the two execution-owner columns. Carry
     // forward an intent that matched BEFORE that write; an already stale
     // intent must remain stale. Include release so a retry keeps its authority.
+    const [intent] = await tx
+      .select()
+      .from(agentComputeStopIntents)
+      .where(
+        and(
+          eq(agentComputeStopIntents.agent_id, job.agent_id),
+          eq(agentComputeStopIntents.organization_id, job.organization_id),
+          eq(agentComputeStopIntents.job_id, job.id),
+          eq(agentComputeStopIntents.lifecycle_revision, before.revision),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    const proof = intent?.prepared_backup
+      ? parsePreparedStopBackup(intent.prepared_backup)
+      : undefined;
+    const carried =
+      proof && preparedStopMatches(proof, sourceBefore, intent!.id, job.id)
+        ? {
+            ...proof,
+            source: {
+              ...preparedStopSource(sourceBefore),
+              lifecycle_revision: updated.revision,
+              lifecycle_job_id: action === "claim" ? job.id : null,
+              lifecycle_execution_generation: action === "claim" ? executionGeneration : null,
+            },
+          }
+        : undefined;
     await tx
       .update(agentComputeStopIntents)
       .set({
+        ...(carried ? { prepared_backup: carried } : {}),
         lifecycle_revision: updated.revision,
         updated_at: sql`NOW()`,
       })
