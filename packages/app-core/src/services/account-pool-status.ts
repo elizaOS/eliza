@@ -10,7 +10,6 @@
 
 import { createHash, randomBytes } from "node:crypto";
 import {
-  appendFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -19,6 +18,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { logger, resolveStateDir } from "@elizaos/core";
+import { appendJsonlRecord } from "@elizaos/shared";
 import type { LinkedAccountConfig } from "@elizaos/shared/contracts/service-routing";
 import {
   type AccountPool,
@@ -344,10 +344,9 @@ function appendSnapshot(status: InternalPoolStatus): void {
   };
   const file = snapshotFile();
   ensureDir(file);
-  appendFileSync(file, `${JSON.stringify(snapshot)}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
+  // Isolates a line torn by an interrupted earlier append so the next snapshot
+  // stays on its own readable line; the reader skips invalid tails (J3).
+  appendJsonlRecord(file, snapshot, { mode: 0o600 });
   const lines = readFileSync(file, "utf8").split("\n").filter(Boolean);
   const max = snapshotMaxLines();
   if (lines.length > max) {

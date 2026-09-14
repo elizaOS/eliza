@@ -15,13 +15,14 @@
  * file — which outlives the session — can never leak the model key the
  * sub-agent echoed to stdout.
  */
-import { appendFile, mkdir, rename, stat } from "node:fs/promises";
+import { mkdir, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
   isTrajectoryRecordingEnabled,
   redactSensitiveText,
   resolveTrajectoryDir,
 } from "@elizaos/core";
+import { appendJsonlRecordAsync } from "@elizaos/shared";
 
 // Rotate the per-session stdout log when it crosses this byte threshold. Chosen
 // to match the orchestrator audit log's cap (audit.ts:17): a sub-agent can emit
@@ -68,11 +69,13 @@ export async function appendSubagentStdout(
   // here would be a durable on-disk leak. redactSensitiveText is core's canonical
   // value-shape redactor (security/redact.ts) — the same pattern set the log sink
   // and runtime.redactSecrets apply, so a leaked key shape is masked everywhere.
-  const record = JSON.stringify({
+  const record = {
     ts: new Date().toISOString(),
     text: redactSensitiveText(text),
-  });
-  await appendFile(path, `${record}\n`, "utf8");
+  };
+  // Isolates a line torn by an interrupted earlier append so the next chunk
+  // stays on its own readable line.
+  await appendJsonlRecordAsync(path, record);
   return path;
 }
 

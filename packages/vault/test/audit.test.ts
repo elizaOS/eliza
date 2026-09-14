@@ -93,4 +93,29 @@ describe("AuditLog", () => {
       expect.anything(),
     );
   });
+
+  it("isolates a crash-torn previous line so the next record stays readable", async () => {
+    // Simulate a crash between a record and its newline: the file ends with a
+    // JSON fragment and no trailing LF. A naive append would glue the next
+    // record onto that line and line-oriented readers would drop both.
+    await fs.mkdir(path.dirname(auditFilePath), { recursive: true });
+    await fs.writeFile(auditFilePath, '{"action":"set","key":"k1","ts":1');
+    const audit = new AuditLog(auditFilePath);
+
+    await audit.record({
+      action: "remove",
+      key: "k1",
+      caller: "cli",
+      ts: 2,
+    });
+
+    const content = await fs.readFile(auditFilePath, "utf8");
+    const [torn, intact] = content.split("\n");
+    expect(content.endsWith("\n")).toBe(true);
+    expect(() => JSON.parse(torn ?? "")).toThrow();
+    const parsed = JSON.parse(intact ?? "");
+    expect(parsed.action).toBe("remove");
+    expect(parsed.key).toBe("k1");
+    expect(parsed.ts).toBe(2);
+  });
 });

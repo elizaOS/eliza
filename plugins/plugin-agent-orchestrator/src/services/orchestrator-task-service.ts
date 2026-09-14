@@ -19,14 +19,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import {
-  appendFile,
-  mkdir,
-  readdir,
-  readFile,
-  rm,
-  stat,
-} from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import {
@@ -44,6 +37,7 @@ import {
   toWellFormedUnicode,
   type UUID,
 } from "@elizaos/core";
+import { appendJsonlRecordAsync } from "@elizaos/shared";
 import {
   detectTaskType,
   generateDefaultAcceptanceCriteria,
@@ -3024,14 +3018,16 @@ export class OrchestratorTaskService extends Service {
     if (!trajectoryPath) return;
     try {
       await mkdir(dirname(trajectoryPath), { recursive: true });
-      const line = `${JSON.stringify({
+      const line = {
         kind: "completion_evidence_bundle",
         taskId,
         sessionId,
         recordedAt: nowIso(),
         bundle,
-      })}\n`;
-      await appendFile(trajectoryPath, line, "utf8");
+      };
+      // Isolates a line torn by an interrupted earlier append so the next
+      // completion-evidence bundle stays on its own readable line.
+      await appendJsonlRecordAsync(trajectoryPath, line);
       await this.store.addEvent({
         id: randomUUID(),
         taskId,

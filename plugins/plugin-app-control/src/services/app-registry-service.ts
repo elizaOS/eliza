@@ -28,6 +28,7 @@ import {
 	type AppIsolation,
 	type AppPermissionsView,
 	type AppTrust,
+	appendJsonlRecordAsync,
 	type ElizaCuratedAppDefinition,
 	RECOGNISED_PERMISSION_NAMESPACES,
 	type RecognisedPermissionNamespace,
@@ -259,7 +260,9 @@ async function appendAuditLine(
 	line: Record<string, unknown>,
 ): Promise<void> {
 	await ensureDir(path.dirname(file));
-	await fs.appendFile(file, `${JSON.stringify(line)}\n`, "utf8");
+	// Isolates a line torn by an interrupted earlier append so the next audit
+	// event stays on its own readable line.
+	await appendJsonlRecordAsync(file, line);
 }
 
 async function readGrants(file: string): Promise<PersistedGrantsShape> {

@@ -4,10 +4,11 @@
  * log self-rotates once it crosses a byte cap so a long-lived runtime cannot
  * grow it unbounded.
  */
-import { appendFile, mkdir, rename, stat } from "node:fs/promises";
+import { mkdir, rename, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
+import { appendJsonlRecordAsync } from "@elizaos/shared";
 
 // Rotate the NDJSON audit log when it crosses this byte threshold. Without a
 // cap, a long-lived runtime appends one line per spawn/send/cancel forever and
@@ -73,7 +74,9 @@ export async function appendAuditLine(
 ): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await rotateIfTooLarge(path);
-  await appendFile(path, `${JSON.stringify(payload)}\n`, "utf8");
+  // Isolates a line torn by an interrupted earlier append so this decision
+  // stays readable on its own line of the NDJSON audit trail.
+  await appendJsonlRecordAsync(path, payload);
 }
 
 async function rotateIfTooLarge(path: string): Promise<void> {

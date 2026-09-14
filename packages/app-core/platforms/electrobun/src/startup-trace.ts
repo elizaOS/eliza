@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { appendJsonlRecord } from "@elizaos/shared";
 import { getBrandConfig } from "./brand-config";
 
 export const STARTUP_TRACE_PHASES = [
@@ -100,7 +101,9 @@ function writeJsonAtomic(filePath: string, value: StartupTraceState): void {
 
 function appendJsonLine(filePath: string, value: StartupTraceState): void {
   ensureParentDir(filePath);
-  fs.appendFileSync(filePath, `${JSON.stringify(value)}\n`, "utf8");
+  // Isolates a line torn by an interrupted earlier append so the next startup
+  // phase stays on its own readable line.
+  appendJsonlRecord(filePath, value);
 }
 
 function writeStartupTraceDebugLine(

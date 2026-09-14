@@ -4,8 +4,9 @@
  * metadata redacted and user-agents truncated, the JSONL write still happens
  * (and the store error rethrows) when the store fails, the store write is still
  * attempted when the log path can't be created, and the log rotates once it
- * hits the size limit. Uses a real temp `ELIZA_STATE_DIR` and a fake in-memory
- * auth store.
+ * hit the size limit, and a crash-torn previous line is isolated so the next
+ * event remains readable. Uses a real temp `ELIZA_STATE_DIR` and a fake
+ * in-memory auth store.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -222,6 +223,48 @@ describe("auth audit emitter", () => {
       original,
     );
     expect(readJsonLines(logPath)).toHaveLength(1);
+    expect(store.events).toHaveLength(1);
+  });
+
+  it("isolates a crash-torn previous line so the next event stays readable", async () => {
+    const store = new FakeAuditStore();
+    const authDir = path.join(stateDir, "auth");
+    fs.mkdirSync(authDir, { recursive: true });
+    const logPath = path.join(authDir, AUDIT_LOG_FILENAME);
+    // Crash between a record and its newline leaves a JSON fragment at EOF
+    // with no trailing LF; a plain append would glue the new event onto that
+    // line and the operator's line-oriented reader would drop both.
+    fs.writeFileSync(
+      logPath,
+      '{"id":"torn","action":"bootstrap.exchange","ts":1',
+    );
+
+    await appendAuditEvent(
+      {
+        actorIdentityId: "identity-4",
+        ip: "198.51.100.4",
+        userAgent: "agent",
+        action: "machine-token.create",
+        outcome: "success",
+        metadata: {},
+      },
+      {
+        store: asAuthStore(store),
+        env,
+        now: () => 500_000,
+      },
+    );
+
+    const content = fs.readFileSync(logPath, "utf8");
+    const [torn, intact] = content.split("\n");
+    expect(content.endsWith("\n")).toBe(true);
+    expect(() => JSON.parse(torn ?? "")).toThrow();
+    const parsed = JSON.parse(intact ?? "");
+    expect(parsed).toMatchObject({
+      ts: 500_000,
+      action: "machine-token.create",
+      outcome: "success",
+    });
     expect(store.events).toHaveLength(1);
   });
 });

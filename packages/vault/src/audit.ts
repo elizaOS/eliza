@@ -7,6 +7,7 @@
 
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
+import { appendJsonlRecordAsync } from "@elizaos/shared";
 import type { AuditRecord, VaultLogger } from "./types.js";
 
 /**
@@ -23,10 +24,11 @@ export class AuditLog {
     entry: Omit<AuditRecord, "ts"> & { ts?: number },
   ): Promise<void> {
     const record: AuditRecord = { ts: entry.ts ?? Date.now(), ...entry };
-    const line = `${JSON.stringify(record)}\n`;
     try {
       await fs.mkdir(dirname(this.path), { recursive: true });
-      await fs.appendFile(this.path, line, { mode: 0o600 });
+      // Isolates a line torn by an interrupted earlier append so the next
+      // operation still lands on a readable JSONL line.
+      await appendJsonlRecordAsync(this.path, record, { mode: 0o600 });
     } catch (err) {
       // error-policy:J7 diagnostics-must-not-kill-the-loop — vault access without
       // an audit trail is unsafe, so a failed audit append is warned AND

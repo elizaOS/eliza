@@ -67,6 +67,7 @@ import {
 	toWellFormedUnicode,
 	truncateWellFormed,
 } from "@elizaos/core";
+import { appendJsonlRecord } from "@elizaos/shared";
 import { androidAliasSibling, installMobileFsShim } from "../shared/fs-shim.ts";
 import {
 	createStdioBridge,
@@ -384,7 +385,9 @@ export async function runAndroidBridgeCli(): Promise<void> {
 					startupTraceId: process.env.ELIZA_STARTUP_TRACE_ID ?? "",
 				},
 			};
-			nodeFs.appendFileSync(file, `${JSON.stringify(record)}\n`);
+			// Isolates a line torn by an interrupted earlier append so the next
+			// fatal breadcrumb lands on its own readable JSONL line.
+			appendJsonlRecord(file, record);
 		} catch {
 			// error-policy:J7 diagnostics-must-not-kill-the-loop — the breadcrumb
 			// writer can never take down the agent it is documenting; the fatal

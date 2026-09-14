@@ -6,3 +6,7 @@ export {
   resolvePlatform,
 } from "../../../packages/shared/src/runtime-env.js";
 export { readAliasedEnv } from "../../../packages/shared/src/utils/env.js";
+export {
+  appendJsonlRecord,
+  appendJsonlRecordAsync,
+} from "../../../packages/shared/src/utils/jsonl-append.js";

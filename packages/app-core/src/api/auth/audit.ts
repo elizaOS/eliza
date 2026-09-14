@@ -19,7 +19,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import type { RuntimeEnvRecord } from "@elizaos/shared";
+import { appendJsonlRecordAsync, type RuntimeEnvRecord } from "@elizaos/shared";
 import type { AuthStore } from "../../services/auth-store";
 import { resolveElizaStateDir } from "../../services/cloud-jwks-store";
 
@@ -115,10 +115,9 @@ interface JsonLine {
 async function appendJsonLine(filePath: string, line: JsonLine): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true, mode: 0o700 });
   await rotateIfNeeded(filePath);
-  await fs.appendFile(filePath, `${JSON.stringify(line)}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
+  // Isolates a line torn by an interrupted earlier append so this event stays
+  // readable on its own line of the operator's JSONL audit trail.
+  await appendJsonlRecordAsync(filePath, line, { mode: 0o600 });
 }
 
 /**
