@@ -31,6 +31,25 @@ describe("intentStatesTravel", () => {
     expect(intentStatesTravel(undefined, "")).toBe(false);
   });
 
+  it("rejects an origin the planner copied out of the event title", () => {
+    // Live 2026-09-14: travelOriginAddress "Barber" on "add a barber
+    // appointment friday at 3pm to my calendar" passed the containment test
+    // and the create was refused for want of a Routes API key.
+    expect(
+      intentStatesTravel(
+        "Barber",
+        "add a barber appointment friday at 3pm to my calendar",
+      ),
+    ).toBe(false);
+    expect(intentStatesTravel("dentist", "dentist at 3pm friday")).toBe(false);
+    expect(
+      intentStatesTravel("123 Main St", "dentist at 3pm from 123 Main St"),
+    ).toBe(true);
+    expect(
+      intentStatesTravel("the (old) office", "leaving the (old) office at 2"),
+    ).toBe(true);
+  });
+
   it("keeps travel when the user asks for it or names the departure place", () => {
     expect(
       intentStatesTravel(

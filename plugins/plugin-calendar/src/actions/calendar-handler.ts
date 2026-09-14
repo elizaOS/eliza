@@ -1476,6 +1476,22 @@ export function looksLikeScheduleToken(value: string): boolean {
   return SCHEDULE_TOKEN_PATTERN.test(value);
 }
 
+/** A location that merely repeats the event title is planner debris, not a place. */
+function withoutTitleEcho(
+  value: string | undefined,
+  title: string | undefined,
+): string | undefined {
+  if (value === undefined || title === undefined) return value;
+  const normalizedValue = value.trim().toLowerCase();
+  const normalizedTitle = title.trim().toLowerCase();
+  if (!normalizedValue || !normalizedTitle) return value;
+  return normalizedValue === normalizedTitle ||
+    normalizedTitle.startsWith(`${normalizedValue} `) ||
+    normalizedTitle.endsWith(` ${normalizedValue}`)
+    ? undefined
+    : value;
+}
+
 function withoutScheduleToken(value: string | undefined): string | undefined {
   return value !== undefined && looksLikeScheduleToken(value)
     ? undefined
@@ -3398,10 +3414,20 @@ export function intentStatesTravel(
     .trim();
   if (!joined) return false;
   if (TRAVEL_INTENT_PATTERN.test(joined)) return true;
-  const origin = originAddress?.trim().toLowerCase();
-  return Boolean(
-    origin && origin.length >= 3 && joined.toLowerCase().includes(origin),
-  );
+  const origin = originAddress?.trim();
+  if (!origin || origin.length < 3) return false;
+  // The origin must appear as a departure place in the user's words. A bare
+  // containment test accepted "Barber" copied from the event title on
+  // "add a barber appointment friday at 3pm" (live 2026-09-14) and the
+  // travel-buffer prep then refused the whole create.
+  return new RegExp(
+    `\\b(?:from|leaving|departing|starting at)\\s+${escapeRegExp(origin)}`,
+    "i",
+  ).test(joined);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 export function intentStatesRecurrence(
@@ -3612,8 +3638,10 @@ export function buildCreateEventRequest(
         pickCreateEventStringField(args, "description") ??
         args.fallbackRequest?.description,
       location:
-        withoutScheduleToken(pickCreateEventStringField(args, "location")) ??
-        args.fallbackRequest?.location,
+        withoutTitleEcho(
+          withoutScheduleToken(pickCreateEventStringField(args, "location")),
+          title,
+        ) ?? args.fallbackRequest?.location,
       startAt: resolvedStartAt,
       endAt: rawEndAt ?? args.fallbackRequest?.endAt,
       timeZone:
