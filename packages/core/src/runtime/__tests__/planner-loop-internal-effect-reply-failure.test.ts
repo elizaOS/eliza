@@ -56,7 +56,7 @@ describe("internal applied effect followed by evaluator reply failure", () => {
 			});
 			const useModel = vi
 				.fn<PlannerRuntime["useModel"]>()
-				.mockResolvedValue(finish)
+				.mockRejectedValue(new Error("Reply recovery fixture exhausted"))
 				.mockResolvedValueOnce({
 					text: "",
 					toolCalls: [
@@ -100,17 +100,38 @@ describe("internal applied effect followed by evaluator reply failure", () => {
 						},
 					],
 				})
-				.mockResolvedValueOnce(finish)
-				.mockResolvedValueOnce({
-					text: "",
-					toolCalls: [
-						{
-							id: "release-1",
-							name: "REPLY",
-							arguments: { eliza_turn_scope: "final" },
-						},
-					],
-				});
+				.mockResolvedValueOnce(
+					variant === "unscoped"
+						? {
+								text: "",
+								toolCalls: [
+									{
+										id: "scoped-reply-1",
+										name: "REPLY",
+										arguments: {
+											eliza_turn_scope: "final",
+											text: reply,
+											effectReceiptIds: [receipt.receiptId],
+										},
+									},
+								],
+							}
+						: finish,
+				)
+				.mockResolvedValueOnce(
+					variant === "unscoped"
+						? finish
+						: {
+								text: "",
+								toolCalls: [
+									{
+										id: "release-1",
+										name: "REPLY",
+										arguments: { eliza_turn_scope: "final" },
+									},
+								],
+							},
+				);
 			const executeToolCall = vi.fn(async () => {
 				expect(events.delete("event-1")).toBe(true);
 				return actionResultToPlannerToolResult({
@@ -170,10 +191,9 @@ describe("internal applied effect followed by evaluator reply failure", () => {
 				ModelType.ACTION_PLANNER,
 				ModelType.RESPONSE_HANDLER,
 				ModelType.ACTION_PLANNER,
+				...(variant === "unscoped" ? [ModelType.ACTION_PLANNER] : []),
 				...(variant === "final" ? [] : [ModelType.RESPONSE_HANDLER]),
-				...(["pending", "unscoped"].includes(variant)
-					? [ModelType.ACTION_PLANNER]
-					: []),
+				...(variant === "pending" ? [ModelType.ACTION_PLANNER] : []),
 			]);
 			expect(result.evaluator?.effectReceiptIds).toEqual([receipt.receiptId]);
 			if (variant === "final")
@@ -230,14 +250,7 @@ describe("internal applied effect followed by evaluator reply failure", () => {
 				"The selected event was deleted. The other event is unchanged.";
 			const useModel = vi
 				.fn<PlannerRuntime["useModel"]>()
-				.mockResolvedValue(
-					JSON.stringify({
-						thought: "The recorded deletion is complete.",
-						success: true,
-						decision: "FINISH",
-						messageToUser: clean,
-					}),
-				)
+				.mockRejectedValue(new Error("Reply recovery fixture exhausted"))
 				.mockResolvedValueOnce({
 					text: "",
 					toolCalls: [
