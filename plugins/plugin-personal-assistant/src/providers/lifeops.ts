@@ -53,6 +53,7 @@ import {
   redactTextForEgress,
 } from "../lifeops/privacy-egress.js";
 import { LifeOpsService } from "../lifeops/service.js";
+import { formatConnectorDegradationLines } from "./lifeops-connector-lines.js";
 
 const INTERNAL_URL = new URL("http://127.0.0.1/");
 
@@ -98,15 +99,13 @@ async function summarizeConnectorDegradation(
       }
     }),
   );
-  const lines: string[] = [];
-  for (const { contribution, status } of statuses) {
-    if (status.state === "ok") continue;
-    const detail = status.message ? `: ${status.message}` : "";
-    lines.push(
-      `Connector ${contribution.describe.label} ${status.state}${detail}`,
-    );
-  }
-  return lines;
+  return formatConnectorDegradationLines(
+    statuses.map(({ contribution, status }) => ({
+      label: contribution.describe.label,
+      state: status.state,
+      message: status.message,
+    })),
+  );
 }
 
 export function normalizeGoalTitle(title: string): string {
