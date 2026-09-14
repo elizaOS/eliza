@@ -1688,3 +1688,92 @@ describe("planner-supplied event ids the connector cannot resolve", () => {
     expect(updateCalendarEvent).not.toHaveBeenCalled();
   });
 });
+
+describe("planner debris on a plain move", () => {
+  // Live 2026-09-14: "move my tailor appointment to friday at 4pm" arrived
+  // with recurrence RRULE:FREQ=WEEKLY;BYDAY=FR, location "primary" and
+  // description "Tailor Appointment"; the built-in calendar refused the
+  // recurrence and the whole move failed.
+  it("drops a model recurrence, a calendar-id location and a title-echo description", async () => {
+    const updatedEvent: LifeOpsCalendarEvent = {
+      ...ELIZA_EVENT,
+      startAt: "2026-07-28T23:00:00.000Z",
+      endAt: "2026-07-28T23:30:00.000Z",
+      metadata: { etag: '"eliza-2"', version: 2 },
+    };
+    const getCalendarFeed = vi.fn(
+      async (_url: URL, request?: Record<string, unknown>) => {
+        requireOrderedCalendarWindow(request);
+        return feed([ELIZA_EVENT]);
+      },
+    );
+    const updateCalendarEvent = vi.fn(async () => updatedEvent);
+    const service = { getCalendarFeed, updateCalendarEvent };
+    const action = createCalendarActionRunner(deps());
+
+    const result = await execute({
+      action,
+      service,
+      // The description repeats the title the user named, so it is an echo.
+      actor: message("move eat a sandwich to 7pm"),
+      parameters: {
+        subaction: "update_event",
+        query: "Eat a sandwich",
+        details: {
+          start: "2026-07-28T19:00:00",
+          end: "2026-07-28T19:30:00",
+          recurrence: "RRULE:FREQ=WEEKLY;BYDAY=TU",
+          location: "primary",
+          description: "Eat a sandwich",
+        },
+      },
+      delivered: [],
+    });
+
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(updateCalendarEvent).toHaveBeenCalledOnce();
+    const request = updateCalendarEvent.mock.calls[0]?.[1] as Record<
+      string,
+      unknown
+    >;
+    expect(request.eventId).toBe(ELIZA_EVENT.externalId);
+    expect(request.recurrence).toBeUndefined();
+    expect(request.location).toBeUndefined();
+    expect(request.description).toBeUndefined();
+  });
+
+  it("keeps a recurrence the user asked for on an update", async () => {
+    const updatedEvent: LifeOpsCalendarEvent = {
+      ...ELIZA_EVENT,
+      metadata: { etag: '"eliza-2"', version: 2 },
+    };
+    const getCalendarFeed = vi.fn(
+      async (_url: URL, request?: Record<string, unknown>) => {
+        requireOrderedCalendarWindow(request);
+        return feed([ELIZA_EVENT]);
+      },
+    );
+    const updateCalendarEvent = vi.fn(async () => updatedEvent);
+    const service = { getCalendarFeed, updateCalendarEvent };
+    const action = createCalendarActionRunner(deps());
+
+    const result = await execute({
+      action,
+      service,
+      actor: message("make my sandwich repeat every week"),
+      parameters: {
+        subaction: "update_event",
+        query: "Eat a sandwich",
+        details: { recurrence: "RRULE:FREQ=WEEKLY;BYDAY=TU" },
+      },
+      delivered: [],
+    });
+
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    const request = updateCalendarEvent.mock.calls[0]?.[1] as Record<
+      string,
+      unknown
+    >;
+    expect(request.recurrence).toEqual(["RRULE:FREQ=WEEKLY;BYDAY=TU"]);
+  });
+});

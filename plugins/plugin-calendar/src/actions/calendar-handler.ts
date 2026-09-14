@@ -1521,16 +1521,33 @@ function withoutScheduleToken(value: string | undefined): string | undefined {
     : value;
 }
 
-/** Blank model placeholders are omissions; clearing is a distinct operation. */
+/** Connector calendar ids the planner writes into place and note fields. */
+const CALENDAR_ID_TOKEN_PATTERN = /^(?:primary|default)$/i;
+
+/**
+ * Blank model placeholders are omissions; clearing is a distinct operation.
+ * A schedule token, a calendar id, or an echo of the user's own event noun in
+ * a place or note field is planner debris (live 2026-09-14: location
+ * "primary", description "Tailor Appointment" on a plain move).
+ */
 function calendarUpdateTextField(
   details: Record<string, unknown> | undefined,
   extracted: Record<string, unknown>,
   field: "description" | "location",
+  guards: {
+    title: string | undefined;
+    userTexts: ReadonlyArray<string | null | undefined>;
+  },
 ): string | undefined {
   for (const source of [details, extracted]) {
     const raw = detailString(source, field);
     const value =
-      raw !== undefined && looksLikeScheduleToken(raw) ? undefined : raw;
+      raw !== undefined &&
+      (looksLikeScheduleToken(raw) ||
+        CALENDAR_ID_TOKEN_PATTERN.test(raw.trim()) ||
+        isTitleEchoLocation(raw, guards.title, guards.userTexts))
+        ? undefined
+        : raw;
     const clear =
       Array.isArray(source?.clearFields) && source.clearFields.includes(field);
     if (clear && value !== undefined) {
@@ -5921,9 +5938,17 @@ const calendarAction: CalendarHandlerAction = {
           extractedForUpdate,
           "timeZone",
         );
-        const recurrenceUpdate =
-          detailRecurrenceLines(details) ??
-          detailRecurrenceLines(extractedForUpdate);
+        // Every recurrence source here is model-authored: the planner stamped
+        // RRULE:FREQ=WEEKLY;BYDAY=FR onto "move my tailor appointment to
+        // friday at 4pm" (live 2026-09-14) and the built-in calendar refused
+        // the whole move. The create path's user-text gate decides here too.
+        const recurrenceUpdate = selectUserAuthorizedRecurrence(
+          [messageText(message)],
+          [
+            detailRecurrenceLines(details),
+            detailRecurrenceLines(extractedForUpdate),
+          ],
+        );
         let recurrenceScopeForUpdate = resolveRecurrenceScopeIntent({
           details,
           fallbackDetails: extractedForUpdate,
@@ -6001,11 +6026,19 @@ const calendarAction: CalendarHandlerAction = {
             details,
             extractedForUpdate,
             "description",
+            {
+              title: newTitle ?? targetEvent.title,
+              userTexts: [messageText(message)],
+            },
           ),
           location: calendarUpdateTextField(
             details,
             extractedForUpdate,
             "location",
+            {
+              title: newTitle ?? targetEvent.title,
+              userTexts: [messageText(message)],
+            },
           ),
           ...resolveUpdateTimeRange({
             explicitStart: explicitStartAtForUpdate,
