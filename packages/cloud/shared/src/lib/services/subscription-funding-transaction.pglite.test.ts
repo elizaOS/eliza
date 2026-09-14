@@ -1185,6 +1185,100 @@ test("real provision rejects zero funds before provider allocation and cancels a
   ).toBe(2);
 });
 
+test("expired provisioning survives a lost worker, rolls back refunds atomically and fences stale callbacks", async () => {
+  const org = "61000000-0000-4000-8000-000000000033";
+  const agentId = "63000000-0000-4000-8000-000000000033";
+  await fixture.query(
+    `INSERT INTO organizations(id,credit_balance,balance_revision,balance_decrease_revision,settings,is_active,auto_top_up_enabled,account_lifecycle_state)
+    VALUES($1,'1.000000',1,0,'{}',true,false,'active')`,
+    [org],
+  );
+  await fixture.query(
+    `INSERT INTO agent_sandboxes(id,organization_id,status,execution_tier,lifecycle_revision,environment_revision,billing_status,total_billed)
+    VALUES($1,$2,'provisioning','dedicated-always',1,1,'active',0)`,
+    [agentId, org],
+  );
+  const { agentSandboxesRepository } = await import("../../db/repositories/agent-sandboxes");
+  const { reserveProvisionCompute } = await import("./agent-compute-provision");
+  const { reconcileExpiredAgentCompute } = await import("./agent-compute-recovery");
+  const record = await agentSandboxesRepository.findByIdAndOrg(agentId, org);
+  if (!record) throw new Error("Missing expired provision fixture");
+  const funded = await reserveProvisionCompute(record);
+  const identity = { agentId, organizationId: org, fundingId: funded.window.id };
+  expect(await reconcileExpiredAgentCompute(identity)).toBeNull();
+  expect(await reconcileExpiredAgentCompute({ ...identity, organizationId })).toBeNull();
+  // The worker disappears without entering its finally block. Only persisted
+  // funding, not an in-memory job result, is available to the next process.
+  await fixture.query("UPDATE agent_compute_funding SET period_end=clock_timestamp() WHERE id=$1", [
+    funded.window.id,
+  ]);
+  await expect(reserveProvisionCompute(funded.agent)).rejects.toMatchObject({
+    code: "AGENT_COMPUTE_FUNDING_EXPIRED",
+  });
+  await fixture.exec(`CREATE FUNCTION reject_expired_status() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+    IF NEW.id='${agentId}' AND NEW.status='error' THEN RAISE EXCEPTION 'forced expired recovery rollback'; END IF;
+    RETURN NEW; END $$;
+    CREATE TRIGGER reject_expired_status BEFORE UPDATE ON agent_sandboxes FOR EACH ROW EXECUTE FUNCTION reject_expired_status();`);
+  await expect(reconcileExpiredAgentCompute(identity)).rejects.toMatchObject({
+    cause: { message: "forced expired recovery rollback" },
+  });
+  expect(
+    (await fixture.query("SELECT credit_balance::text FROM organizations WHERE id=$1", [org]))
+      .rows[0],
+  ).toEqual({ credit_balance: "0.980000" });
+  expect(
+    (
+      await fixture.query("SELECT settled_at FROM agent_compute_funding WHERE id=$1", [
+        funded.window.id,
+      ])
+    ).rows[0],
+  ).toEqual({ settled_at: null });
+  await fixture.exec(
+    "DROP TRIGGER reject_expired_status ON agent_sandboxes; DROP FUNCTION reject_expired_status()",
+  );
+  expect(await reconcileExpiredAgentCompute(identity)).toMatchObject({
+    replayed: false,
+    purchasedCreditRefunded: true,
+  });
+  expect(await reconcileExpiredAgentCompute(identity)).toBeNull();
+  expect(
+    (await fixture.query("SELECT status FROM agent_sandboxes WHERE id=$1", [agentId])).rows[0],
+  ).toEqual({ status: "error" });
+  expect(
+    (await fixture.query("SELECT credit_balance::text FROM organizations WHERE id=$1", [org]))
+      .rows[0],
+  ).toEqual({ credit_balance: "1.000000" });
+  await fixture.query("UPDATE agent_sandboxes SET status='provisioning' WHERE id=$1", [agentId]);
+  const retry = await agentSandboxesRepository.findByIdAndOrg(agentId, org);
+  if (!retry) throw new Error("Missing expired retry fixture");
+  const next = await reserveProvisionCompute(retry);
+  expect(next.window.id).not.toBe(funded.window.id);
+  expect(await reconcileExpiredAgentCompute(identity)).toBeNull();
+  const { agentComputeFundingService } = await import("./agent-compute-funding");
+  await expect(
+    helpers.writeTransaction((tx) =>
+      agentComputeFundingService.bindProviderInTransaction(tx, {
+        ...identity,
+        lifecycleRevision: next.agent.lifecycle_revision,
+        nodeId: "late-provider",
+        containerId: "f".repeat(64),
+      }),
+    ),
+  ).rejects.toMatchObject({ code: "AGENT_COMPUTE_FUNDING_EXPIRED" });
+  expect(
+    (await fixture.query("SELECT credit_balance::text FROM organizations WHERE id=$1", [org]))
+      .rows[0],
+  ).toEqual({ credit_balance: "0.980000" });
+  expect(
+    (
+      await fixture.query(
+        "SELECT count(*)::int AS n FROM credit_transactions WHERE organization_id=$1",
+        [org],
+      )
+    ).rows[0]?.n,
+  ).toBe(3);
+});
+
 if (sshFixturePath) {
   test("real Docker stop survives a PostgreSQL rollback and app suspension refunds once", async () => {
     const target = z
@@ -1262,11 +1356,19 @@ if (sshFixturePath) {
         [initialAgent, initialOrg],
       );
       const { agentSandboxesRepository } = await import("../../db/repositories/agent-sandboxes");
-      const { reserveProvisionCompute, startProvisionCompute, reconcileFailedProvisionCompute } =
-        await import("./agent-compute-provision");
+      const { reserveProvisionCompute, startProvisionCompute } = await import(
+        "./agent-compute-provision"
+      );
       const initialRecord = await agentSandboxesRepository.findByIdAndOrg(initialAgent, initialOrg);
       if (!initialRecord) throw new Error("Missing initial provision fixture");
       const initialFunding = await reserveProvisionCompute(initialRecord);
+      // Shorten the paid fixture BEFORE any host grant, retaining the full hold.
+      // This exercises real expiry without changing the database or host clock.
+      const initialExpiry = new Date(Date.now() + 180_000);
+      await fixture.query("UPDATE agent_compute_funding SET period_end=$2 WHERE id=$1", [
+        initialFunding.window.id,
+        initialExpiry,
+      ]);
       // Real provider allocation is downstream of the committed purchase hold.
       initialContainerId = (
         await ssh.exec(
@@ -1370,12 +1472,33 @@ if (sshFixturePath) {
           )
         ).rows[0]?.n,
       ).toBe(1);
+      const { reconcileExpiredAgentCompute } = await import("./agent-compute-recovery");
+      const expiredIdentity = {
+        agentId: initialAgent,
+        organizationId: initialOrg,
+        fundingId: initialFunding.window.id,
+      };
+      expect(await reconcileExpiredAgentCompute(expiredIdentity)).toBeNull();
+      await Bun.sleep(Math.max(0, initialExpiry.getTime() - Date.now() + 100));
+      // Host expiry must stop compute even while no control-plane reconciliation runs.
       expect(
-        await reconcileFailedProvisionCompute(initialAgent, initialOrg, initialFunding.window.id),
-      ).toMatchObject({ replayed: false, purchasedCreditRefunded: true });
+        (
+          await ssh.exec(`${docker} inspect --format '{{.State.Running}}' ${initialContainerId}`)
+        ).trim(),
+      ).toBe("false");
+      expect(await reconcileExpiredAgentCompute(expiredIdentity)).toMatchObject({
+        replayed: false,
+        purchasedCreditRefunded: true,
+      });
+      expect(await reconcileExpiredAgentCompute(expiredIdentity)).toBeNull();
       expect(
-        await reconcileFailedProvisionCompute(initialAgent, initialOrg, initialFunding.window.id),
-      ).toBeNull();
+        (
+          await fixture.query(
+            "SELECT status,replacement_cleanup_container_id FROM agent_sandboxes WHERE id=$1",
+            [initialAgent],
+          )
+        ).rows[0],
+      ).toEqual({ status: "error", replacement_cleanup_container_id: initialContainerId });
       expect(
         (
           await ssh.exec(`${docker} inspect --format '{{.State.Running}}' ${initialContainerId}`)
@@ -1576,5 +1699,5 @@ if (sshFixturePath) {
         await ssh.disconnect();
       }
     }
-  }, 180_000);
+  }, 360_000);
 }

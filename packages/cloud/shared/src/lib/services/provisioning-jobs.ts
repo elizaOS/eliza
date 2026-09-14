@@ -6764,6 +6764,11 @@ export class ProvisioningJobService {
     return { total, recovered, unresolved, failed };
   }
 
+  async reconcileExpiredAgentCompute() {
+    const { reconcileExpiredAgentComputeBatch } = await import("./agent-compute-recovery");
+    return reconcileExpiredAgentComputeBatch();
+  }
+
   /**
    * Re-arm stuck `deletion_failed` sandboxes (and orphaned `deletion_pending`
    * rows whose agent_delete job was lost mid-claim) so a delete that failed or
