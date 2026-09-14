@@ -1476,20 +1476,43 @@ export function looksLikeScheduleToken(value: string): boolean {
   return SCHEDULE_TOKEN_PATTERN.test(value);
 }
 
-/** A location that merely repeats the event title is planner debris, not a place. */
+/**
+ * A location that merely repeats the event title is planner debris, not a
+ * place — but only when the title is the user's own noun phrase ("add a barber
+ * appointment" → title "Barber", location "Barber", live 2026-09-14). A title
+ * the user never said (a literal the planner authored) says nothing about the
+ * location beside it, so both stay as sent.
+ */
+export function isTitleEchoLocation(
+  value: string | undefined,
+  title: string | undefined,
+  userTexts: ReadonlyArray<string | null | undefined>,
+): boolean {
+  if (value === undefined || title === undefined) return false;
+  const normalizedValue = value.trim().toLowerCase();
+  const normalizedTitle = title.trim().toLowerCase();
+  if (!normalizedValue || !normalizedTitle) return false;
+  const echoes =
+    normalizedValue === normalizedTitle ||
+    normalizedTitle.startsWith(`${normalizedValue} `) ||
+    normalizedTitle.endsWith(` ${normalizedValue}`);
+  if (!echoes) return false;
+  const spoken = userTexts
+    .filter((text): text is string => typeof text === "string")
+    .join("\n")
+    .toLowerCase();
+  return normalizedValue
+    .split(/\s+/)
+    .filter((word) => word.length >= 3)
+    .every((word) => spoken.includes(word));
+}
+
 function withoutTitleEcho(
   value: string | undefined,
   title: string | undefined,
+  userTexts: ReadonlyArray<string | null | undefined>,
 ): string | undefined {
-  if (value === undefined || title === undefined) return value;
-  const normalizedValue = value.trim().toLowerCase();
-  const normalizedTitle = title.trim().toLowerCase();
-  if (!normalizedValue || !normalizedTitle) return value;
-  return normalizedValue === normalizedTitle ||
-    normalizedTitle.startsWith(`${normalizedValue} `) ||
-    normalizedTitle.endsWith(` ${normalizedValue}`)
-    ? undefined
-    : value;
+  return isTitleEchoLocation(value, title, userTexts) ? undefined : value;
 }
 
 function withoutScheduleToken(value: string | undefined): string | undefined {
@@ -3663,6 +3686,7 @@ export function buildCreateEventRequest(
         withoutTitleEcho(
           withoutScheduleToken(pickCreateEventStringField(args, "location")),
           title,
+          args.authorizingUserTexts ?? [],
         ) ?? args.fallbackRequest?.location,
       startAt: resolvedStartAt,
       endAt: rawEndAt ?? args.fallbackRequest?.endAt,
