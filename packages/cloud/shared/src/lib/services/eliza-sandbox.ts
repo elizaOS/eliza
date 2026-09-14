@@ -253,6 +253,7 @@ export class ElizaSandboxService {
     pushState: (...args) => this.pushState(...args),
   });
   readonly #warmClaim = new SandboxWarmClaim({
+    getProvider: (...args) => this.getProvider(...args),
     fetchAgentApi: (...args) => this.fetchAgentApi(...args),
     lockLifecycle: (...args) => this.lockLifecycle(...args),
     getAgentForLifecycleMutation: (...args) => this.getAgentForLifecycleMutation(...args),
