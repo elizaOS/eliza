@@ -746,7 +746,9 @@ describe("ElizaSandboxService.executeResume", () => {
     sandboxTransactions.implementation = async (fn) => {
       const tx = {
         execute: async () => ({ rows: [] }),
-        select: () => ({ from: () => ({ where: () => ({ limit: async () => [] }) }) }),
+        select: () => ({
+          from: () => ({ where: () => ({ orderBy: () => ({ limit: async () => [] }) }) }),
+        }),
       };
       return fn(tx);
     };

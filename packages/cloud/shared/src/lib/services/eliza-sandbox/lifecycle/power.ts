@@ -1,7 +1,7 @@
 /** Owns sandbox power operations while preserving the host’s lifecycle transactions, provider instance, and backup authority. */
 
 import { ElizaError } from "@elizaos/core";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { dbWrite } from "../../../../db/helpers";
 import { agentBillingRepository } from "../../../../db/repositories/agent-billing";
 import {
@@ -958,11 +958,81 @@ export class SandboxPower {
     return { success: true, containerStarted: true, reprovisioned: true };
   }
 
+  /** Admit a verified stopped placement only after wake validated its restore source. */
+  private async prepareRetainedWake(expected: AgentSandbox): Promise<AgentSandbox> {
+    return dbWrite.transaction(async (tx) => {
+      await this.host.lockLifecycle(tx, expected.id, expected.organization_id);
+      const current = await this.host.getAgentForLifecycleMutation(
+        tx,
+        expected.id,
+        expected.organization_id,
+      );
+      if (
+        !current ||
+        current.status !== "stopped" ||
+        current.deleted_at ||
+        current.deletion_attempt_id ||
+        current.pool_status !== null ||
+        current.execution_tier !== expected.execution_tier ||
+        current.lifecycle_revision !== expected.lifecycle_revision ||
+        current.environment_revision !== expected.environment_revision ||
+        current.lifecycle_job_id !== expected.lifecycle_job_id ||
+        current.lifecycle_execution_generation !== expected.lifecycle_execution_generation ||
+        this.host.getReplacementCleanupLocator(current)
+      ) {
+        throw new ElizaError("Dedicated stopped restore authority changed", {
+          code: "AGENT_COMPUTE_RESUME_AUTHORITY_CHANGED",
+        });
+      }
+      const [latest] = await tx
+        .select()
+        .from(agentComputeFunding)
+        .where(
+          and(
+            eq(agentComputeFunding.agent_id, current.id),
+            eq(agentComputeFunding.organization_id, current.organization_id),
+          ),
+        )
+        .orderBy(desc(agentComputeFunding.period_start), desc(agentComputeFunding.id))
+        .limit(1);
+      if (!latest) return current;
+      if (
+        !latest.settled_at ||
+        !latest.provider_stop_receipt ||
+        !latest.provider_container_id ||
+        latest.provider_node_id !== current.node_id ||
+        !current.sandbox_id ||
+        current.container_name !== current.sandbox_id
+      ) {
+        throw new ElizaError("Dedicated stopped restore requires a verified retained stop", {
+          code: "AGENT_COMPUTE_RESUME_AUTHORITY_CHANGED",
+        });
+      }
+      // Generic stopped admission clears retired placement; this verified paid
+      // instance instead enters provisioning with its exact retained locator.
+      const [admitted] = await tx
+        .update(agentSandboxes)
+        .set({ status: "provisioning", updated_at: new Date() })
+        .where(
+          and(
+            eq(agentSandboxes.id, current.id),
+            eq(agentSandboxes.organization_id, current.organization_id),
+          ),
+        )
+        .returning();
+      if (!admitted)
+        throw new ElizaError("Dedicated stopped restore admission failed", {
+          code: "AGENT_COMPUTE_RESUME_AUTHORITY_CHANGED",
+        });
+      return admitted;
+    });
+  }
+
   private async executeFundedResume(agentId: string, orgId: string) {
     const admission = await dbWrite.transaction(async (tx) => {
       await this.host.lockLifecycle(tx, agentId, orgId);
       const [fundingHistory] = await tx
-        .select({ id: agentComputeFunding.id })
+        .select()
         .from(agentComputeFunding)
         .where(
           and(
@@ -970,6 +1040,7 @@ export class SandboxPower {
             eq(agentComputeFunding.organization_id, orgId),
           ),
         )
+        .orderBy(desc(agentComputeFunding.period_start), desc(agentComputeFunding.id))
         .limit(1);
       if (!fundingHistory) return null;
       const rec = await this.host.getAgentForLifecycleMutation(tx, agentId, orgId);
@@ -985,7 +1056,8 @@ export class SandboxPower {
       }
       // An error may represent a failed backup application after early
       // adoption. A plain Docker resume would expose that partial runtime.
-      if (rec.status === "error") return { restoreRequired: true as const };
+      if (rec.status === "error" || !fundingHistory.runtime_ready_at)
+        return { restoreRequired: true as const };
       if (!rec.bridge_port || !rec.web_ui_port)
         throw new ElizaError("Dedicated resume is missing retained ports", {
           code: "AGENT_COMPUTE_RESUME_AUTHORITY_CHANGED",
@@ -1490,6 +1562,10 @@ export class SandboxPower {
         reprovisioned: false,
         error: "Insufficient credits to settle accrued agent compute charges",
       };
+    }
+
+    if (rec.status === "stopped" && provider.computeFundingCapability === "host-lease-v1") {
+      rec = await this.prepareRetainedWake(rec);
     }
 
     if (!gate) {

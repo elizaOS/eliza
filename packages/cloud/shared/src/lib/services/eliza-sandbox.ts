@@ -3106,6 +3106,10 @@ export class ElizaSandboxService {
     rec = probeSource;
 
     const provider = await this.getProvider();
+    // Paid provisioning may be midway through restoring application state.
+    // Health alone must not publish it; the owning provision job completes it.
+    if (provider.computeFundingCapability === "host-lease-v1") return "unresolved";
+
     const handle: SandboxHandle = {
       sandboxId: probeSource.sandbox_id,
       bridgeUrl: rec.bridge_url ?? "",

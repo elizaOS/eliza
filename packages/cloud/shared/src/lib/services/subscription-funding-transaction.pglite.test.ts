@@ -105,6 +105,12 @@ beforeAll(async () => {
   );
   await fixture.exec(stopMigration);
   await fixture.exec(stopMigration);
+  const readinessMigration = await readFile(
+    new URL("../../db/migrations/0390_agent_compute_runtime_readiness.sql", import.meta.url),
+    "utf8",
+  );
+  await fixture.exec(readinessMigration);
+  await fixture.exec(readinessMigration);
   const legacyBillingMigration = await readFile(
     new URL("../../db/migrations/0265_compute_billing_recovery.sql", import.meta.url),
     "utf8",
@@ -506,7 +512,7 @@ async function runningFundedAgent(
   // Advance this fixture's paid interval while retaining a full two-hour hold.
   // The meter supplies one hour of actual usage; no fake provider or credit service is substituted.
   await fixture.query(
-    "UPDATE agent_compute_funding SET period_start=clock_timestamp()-interval '1 hour',period_end=clock_timestamp()+interval '1 hour' WHERE id=$1",
+    "UPDATE agent_compute_funding SET runtime_ready_at=clock_timestamp(),period_start=clock_timestamp()-interval '1 hour',period_end=clock_timestamp()+interval '1 hour' WHERE id=$1",
     [reserved.window.id],
   );
   return { compute, identity, provider, reserved };
@@ -1579,6 +1585,76 @@ test("failed-restore admission keeps its paid container and requires a verified 
   expect(await renewalState(org)).toEqual(once);
 });
 
+test("provision completion commits readiness with running state and rejects stale or rolled-back publication", async () => {
+  const { org, agentId, provider } = await billableFundedAgent("000000000037", "1.000000");
+  const { agentSandboxesRepository } = await import("../../db/repositories/agent-sandboxes");
+  const { completeProvisionCompute, reserveProvisionCompute } = await import(
+    "./agent-compute-provision"
+  );
+  const name = `agent-${agentId}`;
+  const handle = {
+    sandboxId: name,
+    bridgeUrl: "http://192.0.2.1:2138",
+    healthUrl: "http://192.0.2.1:2138/api",
+    metadata: {
+      provider: "docker",
+      nodeId: provider.nodeId,
+      containerId: provider.containerId,
+      containerName: name,
+      hostname: "192.0.2.1",
+    },
+  };
+  await fixture.query(
+    "UPDATE agent_sandboxes SET status='provisioning',sandbox_id=$2,container_name=$2,bridge_url=$3,health_url=$4,bridge_port=2138,web_ui_port=2138 WHERE id=$1",
+    [agentId, name, handle.bridgeUrl, handle.healthUrl],
+  );
+  await fixture.query("UPDATE agent_compute_funding SET runtime_ready_at=NULL WHERE id=$1", [
+    provider.fundingId,
+  ]);
+  const capture = (await agentSandboxesRepository.findByIdAndOrg(agentId, org))!;
+  const before = await renewalState(org);
+  await expect(
+    completeProvisionCompute(
+      { ...capture, environment_revision: capture.environment_revision + 1 },
+      provider.fundingId,
+      handle,
+    ),
+  ).rejects.toMatchObject({ code: "AGENT_COMPUTE_PROVISION_AUTHORITY_CHANGED" });
+  await expect(
+    completeProvisionCompute(capture, provider.fundingId, {
+      ...handle,
+      metadata: { ...handle.metadata, containerId: "d".repeat(64) },
+    }),
+  ).rejects.toMatchObject({ code: "AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED" });
+  expect(await renewalState(org)).toEqual(before);
+  await fixture.exec(`CREATE FUNCTION reject_ready_publication() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+    IF NEW.id='${agentId}' AND NEW.status='running' THEN RAISE EXCEPTION 'forced readiness publication rollback'; END IF;
+    RETURN NEW; END $$;
+    CREATE TRIGGER reject_ready_publication BEFORE UPDATE ON agent_sandboxes FOR EACH ROW EXECUTE FUNCTION reject_ready_publication();`);
+  try {
+    await expect(
+      completeProvisionCompute(capture, provider.fundingId, handle),
+    ).rejects.toMatchObject({ cause: { message: "forced readiness publication rollback" } });
+    expect(await renewalState(org)).toEqual(before);
+    expect((await agentSandboxesRepository.findByIdAndOrg(agentId, org))?.status).toBe(
+      "provisioning",
+    );
+  } finally {
+    await fixture.exec(
+      "DROP TRIGGER reject_ready_publication ON agent_sandboxes; DROP FUNCTION reject_ready_publication()",
+    );
+  }
+  expect((await completeProvisionCompute(capture, provider.fundingId, handle)).status).toBe(
+    "running",
+  );
+  expect((await renewalState(org)).windows[0]?.runtime_ready_at).toBeInstanceOf(Date);
+  await fixture.query("UPDATE agent_sandboxes SET status='provisioning' WHERE id=$1", [agentId]);
+  const retry = (await agentSandboxesRepository.findByIdAndOrg(agentId, org))!;
+  await reserveProvisionCompute(retry);
+  expect((await renewalState(org)).windows[0]?.runtime_ready_at).toBeNull();
+  expect((await renewalState(org)).balance).toEqual(before.balance);
+});
+
 if (sshFixturePath) {
   test("real Docker stop survives a PostgreSQL rollback and app suspension refunds once", async () => {
     const target = z
@@ -1999,6 +2075,14 @@ if (sshFixturePath) {
             return new Response("unauthorized", { status: 401 });
           const body = await request.text();
           expect(JSON.parse(body)).toEqual(restorePayload);
+          const restoring = await agentSandboxesRepository.findByIdAndOrg(agentId, org);
+          expect(restoring?.status).toBe("provisioning");
+          const pendingFunding = await fixture.query(
+            "SELECT runtime_ready_at FROM agent_compute_funding WHERE agent_id=$1 AND settled_at IS NULL",
+            [agentId],
+          );
+          expect(pendingFunding.rows).toEqual([{ runtime_ready_at: null }]);
+          expect(await retryService.reconcileStuckProvisioning(agentId, org)).toBe("unresolved");
           restoreRequests++;
           if (restoreRequests === 1)
             return new Response("transient restore failure", { status: 500 });
@@ -2073,6 +2157,9 @@ if (sshFixturePath) {
         expect(
           (await ssh.exec(`${docker} cp ${containerId}:/tmp/stop-marker - | tar -xO`)).trim(),
         ).toBe(marker);
+        // A reconciler may leave an interrupted restore stopped. Its durable
+        // readiness remains absent, so resume must restore the same placement.
+        await fixture.query("UPDATE agent_sandboxes SET status='stopped' WHERE id=$1", [agentId]);
         const beforeRejectedBackup = await renewalState(org);
         storedById.mockResolvedValueOnce(undefined);
         const rejectedBackup = await retryService.executeWake(agentId, org, {
@@ -2081,6 +2168,9 @@ if (sshFixturePath) {
         expect(rejectedBackup.success).toBe(false);
         expect(rejectedBackup.integrityFailure?.kind).toBe("backup-not-found");
         expect(await renewalState(org)).toEqual(beforeRejectedBackup);
+        expect((await agentSandboxesRepository.findByIdAndOrg(agentId, org))?.status).toBe(
+          "stopped",
+        );
         expect(restoreRequests).toBe(1);
         await fixture.query("UPDATE organizations SET credit_balance=0 WHERE id=$1", [org]);
         const unpaidBefore = await renewalState(org);
@@ -2097,6 +2187,7 @@ if (sshFixturePath) {
         expect(
           (await ssh.exec(`${docker} inspect --format '{{.State.Running}}' ${containerId}`)).trim(),
         ).toBe("false");
+        await fixture.query("UPDATE agent_sandboxes SET status='stopped' WHERE id=$1", [agentId]);
         await fixture.query("UPDATE organizations SET credit_balance=1 WHERE id=$1", [org]);
         expect((await retryService.executeResume(agentId, org)).success).toBe(true);
         expect(creates).toBe(0);
@@ -2113,6 +2204,8 @@ if (sshFixturePath) {
         expect(restoredRec.container_name).toBe(name);
         const restoredFunding = (await renewalState(org)).windows;
         expect(restoredFunding).toHaveLength(3);
+        const readyFunding = restoredFunding.find((window) => window.settled_at === null);
+        expect(readyFunding?.runtime_ready_at).toBeInstanceOf(Date);
       } finally {
         endpoint.mockRestore();
         ensure.mockRestore();

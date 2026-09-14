@@ -131,6 +131,13 @@ export class AgentComputeFundingService {
       .limit(1)
       .for("update");
     if (!latest) return null;
+    if (admission === "resume" && !latest.runtime_ready_at) {
+      reject(
+        AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED,
+        "Dedicated provisioning must complete before plain resume",
+        identity,
+      );
+    }
     if (!latest.provider_container_id || latest.provider_node_id !== agent.node_id) {
       reject(
         AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED,
@@ -261,6 +268,7 @@ export class AgentComputeFundingService {
         provider_node_id: previous?.provider_node_id ?? null,
         provider_container_id: previous?.provider_container_id ?? null,
         provider_bound_at: previous ? fundedAt : null,
+        runtime_ready_at: previous?.runtime_ready_at ?? null,
       })
       .returning();
     if (!window)
