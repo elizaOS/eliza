@@ -22,15 +22,16 @@ import {
 import { createConnection, createServer } from "node:net";
 import { networkInterfaces, tmpdir } from "node:os";
 import path from "node:path";
+import { runFifoProcess } from "./fifo-process.ts";
 import {
-  NATIVE_STABILITY_TIMEOUT_MS,
   assertLinuxSandboxCapabilities,
+  assertSandboxReadableSource,
   loopbackPorts,
+  NATIVE_STABILITY_TIMEOUT_MS,
   sandboxCommand,
   scenarioChildEnvironment,
   writeSandboxEnvironment,
 } from "./linux-sandbox.ts";
-import { runFifoProcess } from "./fifo-process.ts";
 import { createScenarioProcessGroup } from "./scenario-process-group.ts";
 
 function resolveRepositoryRoot(start: string): string {
@@ -60,6 +61,41 @@ const repoRoot = resolveRepositoryRoot(import.meta.dirname);
 const kernelFixtureTimeoutMs = 2 * NATIVE_STABILITY_TIMEOUT_MS + 60_000;
 const fixtureReceiptPrefix = "ELIZA_KERNEL_FIXTURE_TERMINAL=";
 let kernelFixtureUnproven = false;
+
+test("private source ancestors reject before privileged capability allocation", async () => {
+  const directory = await mkdtemp(path.join("/tmp", "private-sandbox-source-"));
+  const source = path.join(directory, "source");
+  const marker = path.join(directory, "unexpected-dispatch");
+  const launcher = path.join(directory, "sentinel-launcher");
+  const previous = process.env.ELIZA_STABILITY_LINUX_SANDBOX;
+  try {
+    await mkdir(source, { mode: 0o755 });
+    await writeFile(launcher, `#!/bin/sh\ntouch '${marker}'\n`, {
+      mode: 0o755,
+    });
+    expect(() => assertSandboxReadableSource(source)).toThrow(
+      "sandbox-readable source workspace",
+    );
+    if (process.platform === "linux") {
+      process.env.ELIZA_STABILITY_LINUX_SANDBOX = "1";
+      expect(() =>
+        assertLinuxSandboxCapabilities(source, "deterministic-mock", launcher),
+      ).toThrow("sandbox-readable source workspace");
+      expect(existsSync(marker)).toBe(false);
+    }
+    await chmod(directory, 0o755);
+    assertSandboxReadableSource(source);
+    await chmod(source, 0o700);
+    expect(() => assertSandboxReadableSource(source)).toThrow(
+      "sandbox-readable source workspace",
+    );
+  } finally {
+    if (previous === undefined)
+      delete process.env.ELIZA_STABILITY_LINUX_SANDBOX;
+    else process.env.ELIZA_STABILITY_LINUX_SANDBOX = previous;
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 /** Calls the real guardian as an explicitly unsigned kernel fixture, never a native acceptance token. */
 async function runKernelFixture(
@@ -1021,8 +1057,10 @@ test.skipIf(!hostedLinux)(
       expectAclRestored(directory, attemptAcl);
       expectAclRestored(outputRoot, outputRootAcl);
     } finally {
-      if (cleanupVerified)
+      if (cleanupVerified) {
+        await chmod(fixtureRoot, 0o700);
         await rm(fixtureRoot, { recursive: true, force: true });
+      }
       if (cleanupVerified)
         await rm(outputRoot, { recursive: true, force: true });
     }

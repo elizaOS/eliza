@@ -29,6 +29,15 @@ Per-test the harness:
 - injects an `eliza-test-session` cookie signed with `PLAYWRIGHT_TEST_AUTH_SECRET`
 - exposes `stack.mocks.hetzner.store` and `stack.urls.controlPlane` for assertions
 
+### Linux stability source workspace
+
+Native stability requires a credential-free, sandbox-readable checkout: its root
+must permit other-user read/search and every ancestor must permit search. Private
+home or temporary directories are rejected before privileged setup. Stage the
+reviewed checkout in a dedicated readable workspace; do not loosen home permissions
+or remove credential masks. Preserve source, dependency links, and build identity
+when staging, and keep provider credentials outside the checkout.
+
 ### Real wallet login (no DB seeding)
 
 `seedTestUser` inserts rows directly and never runs the login flow. To exercise

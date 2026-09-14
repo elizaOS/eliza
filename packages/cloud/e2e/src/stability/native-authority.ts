@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { ElizaError } from "@elizaos/core/errors";
 import { canonicalJsonString } from "@elizaos/shared/canonical-json";
+import { assertSandboxReadableSource } from "./linux-sandbox.ts";
 import type { NativeExpectedContext } from "./native-attestation-channel.ts";
 
 export const NATIVE_AUTHORITY_VALIDATOR = String.raw`import os,sys,stat,json,hashlib
@@ -117,6 +118,7 @@ export function readNativeAuthority(
   nativeBundle: string;
   context: NativeExpectedContext;
 } {
+  assertSandboxReadableSource(repoRoot);
   if (
     !path.isAbsolute(installedRoot) ||
     path.resolve(installedRoot) !== installedRoot ||
