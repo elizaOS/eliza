@@ -5,7 +5,7 @@ models, active agent profiles, and built-in settings.
 
 ## Purpose / role
 
-This opt-in plugin registers its app and view actions, one model-assisted
+This opt-in plugin registers its app and view actions, one main-response no-navigation field and one model-assisted
 pre-planner navigation evaluator, no natural-language shortcuts or deterministic
 response-handler evaluators, three providers,
 and four services. Dashboard operations use authenticated
@@ -232,3 +232,8 @@ observe cancellation. Show/open outcomes and alternate-mode denials use
 `delivered` requires the matching completed-action handoff receipt, while missing,
 negative, or malformed delivery remains explicit. Stable handoff IDs scope replay
 to the same message, actor, client, step, and destination.
+
+The main response may supply a none/forbidden visual-continuation judgment. It is
+consumed once for the same runtime, message, actor, room, request text and role;
+it only keeps navigation denied. Missing, malformed, uncertain or stale judgments
+retain the live-catalog classifier. Domain work and reply text remain unchanged.

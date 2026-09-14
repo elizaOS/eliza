@@ -6,8 +6,11 @@
 import {
 	ElizaError,
 	getStreamingContext,
+	type IAgentRuntime,
+	type Memory,
 	ModelType,
 	type ResponseHandlerEvaluator,
+	type ResponseHandlerFieldEvaluator,
 	runWithSuppressedModelStream,
 	satisfiesRoleGate,
 } from "@elizaos/core";
@@ -21,6 +24,78 @@ export type ContextualNavigationIntent =
 	| { disposition: "none"; reason: string }
 	| { disposition: "forbidden"; reason: string }
 	| { disposition: "requested" | "optional"; viewId: string; reason: string };
+
+type NoNavigationIntent = { disposition: "none" | "forbidden"; reason: string };
+
+// A main-response judgment is single-use and belongs only to its original turn.
+// Never persist it, accept it from client metadata, or reuse it as permission.
+const noNavigationIntents = new WeakMap<
+	Memory,
+	{
+		runtime: IAgentRuntime;
+		messageId: Memory["id"];
+		roomId: Memory["roomId"];
+		actorId: Memory["entityId"];
+		text: string;
+		senderRole: string;
+		intent: NoNavigationIntent;
+	}
+>();
+
+export const viewContinuationField: ResponseHandlerFieldEvaluator<NoNavigationIntent> =
+	{
+		name: "visualContinuation",
+		priority: 60,
+		description:
+			"Classify visual continuation for the complete current request and all applicable earlier constraints. Use none for conversation or questions answerable without changing views, forbidden only when changing views is prohibited, and unresolved for any requested or potentially useful navigation, destination selection, layout, inspection, ambiguity or uncertainty. A domain noun alone does not request navigation. A prohibition on data edits does not prohibit an explicitly requested view change. Conditional navigation remains unresolved until its prerequisite is checked. Preserve every domain operation, compound request, destination and multilingual constraint for the existing planner; this field never executes or authorizes navigation.",
+		schema: {
+			type: "object",
+			additionalProperties: false,
+			properties: {
+				disposition: {
+					type: "string",
+					enum: ["none", "forbidden", "unresolved"],
+				},
+				reason: { type: "string" },
+			},
+			required: ["disposition", "reason"],
+		},
+		shouldRun({ runtime, message }) {
+			noNavigationIntents.delete(message);
+			return (
+				!messageHasNoViewSurface(message) &&
+				runtime.actions.some((action) => action.name === "VIEWS") &&
+				userRequestMessageText(message).trim().length > 0
+			);
+		},
+		parse(value) {
+			if (!value || typeof value !== "object" || Array.isArray(value))
+				return null;
+			const record = value as Record<string, unknown>;
+			if (
+				Object.keys(record).some(
+					(key) => key !== "disposition" && key !== "reason",
+				) ||
+				(record.disposition !== "none" && record.disposition !== "forbidden") ||
+				typeof record.reason !== "string" ||
+				!record.reason.trim()
+			)
+				return null;
+			return { disposition: record.disposition, reason: record.reason };
+		},
+		handle({ runtime, message, senderRole, value, turnSignal }) {
+			turnSignal.throwIfAborted();
+			noNavigationIntents.set(message, {
+				runtime,
+				messageId: message.id,
+				roomId: message.roomId,
+				actorId: message.entityId,
+				text: userRequestMessageText(message),
+				senderRole,
+				intent: value,
+			});
+		},
+	};
 
 const WHOLE_CODE_FENCE = /^```(?:json)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/i;
 
@@ -95,6 +170,27 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 			"deny",
 			"Visual continuation selection is unresolved",
 		);
+		const staged = noNavigationIntents.get(message);
+		noNavigationIntents.delete(message);
+		getStreamingContext()?.abortSignal?.throwIfAborted();
+		if (
+			staged &&
+			staged.runtime === runtime &&
+			staged.messageId === message.id &&
+			staged.roomId === message.roomId &&
+			staged.actorId === message.entityId &&
+			staged.text === userRequestMessageText(message) &&
+			userRoles?.some((role) => role === staged.senderRole)
+		) {
+			setNavigationConstraint(message, "deny", staged.intent.reason);
+			return {
+				debug: ["Reused main-response no-navigation decision"],
+				addContextSlices: [
+					VIEW_CATALOG_SCOPE_CONTEXT,
+					`Navigation intent: ${JSON.stringify(staged.intent)}. Preserve every domain operation; do not navigate when forbidden.`,
+				],
+			};
+		}
 		const catalog = (await createViewsClient().listViews()).filter(
 			(view) =>
 				view.available &&

@@ -7,6 +7,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
 	type ResponseHandlerEvaluatorContext,
+	ResponseHandlerFieldRegistry,
 	runResponseHandlerEvaluators,
 	runWithStreamingContext,
 } from "@elizaos/core";
@@ -14,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	parseContextualNavigationIntent,
 	viewContextPlanningEvaluator,
+	viewContinuationField,
 } from "./view-context-planning.js";
 
 let server: Server;
@@ -245,4 +247,148 @@ describe("same-turn contextual navigation", () => {
 			expect(prompts).toEqual([]);
 		});
 	}
+});
+
+async function classifyMainResponse(
+	ctx: ResponseHandlerEvaluatorContext,
+	value: unknown,
+) {
+	const fields = new ResponseHandlerFieldRegistry();
+	fields.register(viewContinuationField);
+	return fields.dispatch({
+		runtime: ctx.runtime,
+		message: ctx.message,
+		state: ctx.state,
+		senderRole: "USER",
+		turnSignal: new AbortController().signal,
+		rawParsed: { visualContinuation: value },
+	});
+}
+
+describe("main-response no-navigation reuse", () => {
+	it.each(["none", "forbidden"])(
+		"preserves reply and domain work for %s without another model or catalog call",
+		async (disposition) => {
+			const ctx = context(
+				"Tell me the saved marker without changing screens.",
+				{
+					disposition: "requested",
+					viewId: "observatory",
+					reason: "unused fallback",
+				},
+			);
+			await classifyMainResponse(ctx, {
+				disposition,
+				reason: "Stay in this conversation",
+			});
+			const result = await run(ctx);
+			expect(result.errors).toEqual([]);
+			expect(prompts).toEqual([]);
+			expect(requestedPaths).toEqual([]);
+			expect(ctx.messageHandler.plan.reply).toBe("premature response");
+			expect(ctx.messageHandler.plan.candidateActions).toEqual(["CALENDAR"]);
+		},
+	);
+	it.each([
+		null,
+		{},
+		{ disposition: "unresolved", reason: "Need catalog" },
+		{ disposition: "requested", reason: "Open a view" },
+		{ disposition: "none", reason: 42 },
+	])(
+		"falls back to live navigation classification for incomplete or unresolved fields: %j",
+		async (value) => {
+			const ctx = context("Open Observatory", {
+				disposition: "requested",
+				viewId: "observatory",
+				reason: "Explicit destination",
+			});
+			await classifyMainResponse(ctx, value);
+			const result = await run(ctx);
+			expect(result.errors).toEqual([]);
+			expect(prompts).toHaveLength(1);
+			expect(requestedPaths).toContain("/api/views");
+			expect(ctx.messageHandler.plan.candidateActions).toContain("VIEWS");
+		},
+	);
+	it.each(["text", "room", "actor", "id", "role", "runtime"])(
+		"rejects reused classification when %s changes",
+		async (changed) => {
+			const ctx = context("Answer here", {
+				disposition: "none",
+				reason: "Fallback",
+			});
+			await classifyMainResponse(ctx, {
+				disposition: "none",
+				reason: "Original request",
+			});
+			if (changed === "text") ctx.message.content.text = "Now open Observatory";
+			if (changed === "room")
+				ctx.message.roomId = "changed-room" as typeof ctx.message.roomId;
+			if (changed === "actor")
+				ctx.message.entityId = "changed-actor" as typeof ctx.message.entityId;
+			if (changed === "id")
+				ctx.message.id = "changed-id" as typeof ctx.message.id;
+			if (changed === "role") ctx.userRoles = ["ADMIN"];
+			if (changed === "runtime") ctx.runtime = { ...ctx.runtime };
+			await run(ctx);
+			expect(prompts).toHaveLength(1);
+		},
+	);
+	it("observes cancellation before consuming a no-navigation decision", async () => {
+		const ctx = context("Stay here", {
+			disposition: "none",
+			reason: "Fallback",
+		});
+		await classifyMainResponse(ctx, {
+			disposition: "none",
+			reason: "Stay here",
+		});
+		const controller = new AbortController();
+		controller.abort();
+		const result = await runWithStreamingContext(
+			{ messageId: ctx.message.id, abortSignal: controller.signal },
+			() =>
+				runResponseHandlerEvaluators({
+					...ctx,
+					evaluators: [viewContextPlanningEvaluator],
+				}),
+		);
+		expect(result.errors).toHaveLength(1);
+		expect(prompts).toEqual([]);
+		expect(requestedPaths).toEqual([]);
+	});
+	it("keeps the complete no-navigation reason and long request unchanged", async () => {
+		const text = `${"Preserve my full history. ".repeat(1000)}画面を変えないでください。`;
+		const reason = `${"No navigation is authorized. ".repeat(1000)}終わり`;
+		const ctx = context(text, { disposition: "none", reason: "Fallback" });
+		await classifyMainResponse(ctx, { disposition: "forbidden", reason });
+		await run(ctx);
+		expect(ctx.message.content.text).toBe(text);
+		expect(ctx.messageHandler.plan.contextSlices?.join("\n")).toContain(
+			JSON.stringify(reason),
+		);
+		expect(prompts).toEqual([]);
+	});
+
+	it("consumes a classification once and clears it before malformed redispatch", async () => {
+		const ctx = context("Answer here", {
+			disposition: "none",
+			reason: "Fallback",
+		});
+		await classifyMainResponse(ctx, {
+			disposition: "none",
+			reason: "Original request",
+		});
+		await run(ctx);
+		await run(ctx);
+		expect(prompts).toHaveLength(1);
+		await classifyMainResponse(ctx, {
+			disposition: "none",
+			reason: "New attempt",
+		});
+		await classifyMainResponse(ctx, null);
+		await run(ctx);
+		expect(prompts).toHaveLength(2);
+	});
 });
