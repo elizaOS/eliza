@@ -94,7 +94,7 @@ import {
 } from "../services/voice/ffi-bindings";
 import { extractRequestedKokoroVoiceId } from "../services/voice/requested-voice.js";
 import {
-	generateWithAppleFoundation,
+	attemptAppleFoundationFastPath,
 	resolveAppleFoundationFastPath,
 } from "./apple-foundation-fast-path";
 import { DEFAULT_MODELS_DIR } from "./embedding-manager-support";
@@ -476,10 +476,15 @@ function makeHandler(
 		// iOS 26 opportunistic fast path: a registered, available Apple
 		// Foundation adapter serves plain short TEXT_SMALL / TEXT_COMPLETION
 		// calls; everything else (planner, structured, streaming, long prompts)
-		// stays on llama.cpp below.
+		// stays on llama.cpp below, and so does a call the OS model refuses.
 		const appleFoundation = resolveAppleFoundationFastPath(modelType, params);
 		if (appleFoundation) {
-			return generateWithAppleFoundation(appleFoundation, params);
+			const attempt = await attemptAppleFoundationFastPath(
+				runtime,
+				appleFoundation,
+				params,
+			);
+			if (attempt.served) return attempt.text;
 		}
 
 		const loader = getLoader(runtime);

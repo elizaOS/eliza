@@ -3,12 +3,13 @@
  * registration against a fake iOS bridge, per-call eligibility, the env kill
  * switch, and the parameter mapping onto the bridge's generate call.
  */
-import { ModelType } from "@elizaos/core";
+import { ElizaError, ModelType } from "@elizaos/core";
 import type { IosComputerUseBridge } from "@elizaos/plugin-computeruse/mobile/ios-bridge";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
 	_resetAppleFoundationAdapterForTests,
+	APPLE_FOUNDATION_GENERATE_FAILED,
 	createAppleFoundationAdapter,
 	getAppleFoundationAdapter,
 	registerAppleFoundationAdapter,
@@ -16,6 +17,8 @@ import {
 import {
 	APPLE_FOUNDATION_FAST_PATH_ENV,
 	APPLE_FOUNDATION_MAX_PROMPT_CHARS,
+	APPLE_FOUNDATION_REPORT_SCOPE,
+	attemptAppleFoundationFastPath,
 	generateWithAppleFoundation,
 	resolveAppleFoundationFastPath,
 	resolveIosComputerUseBridge,
@@ -348,18 +351,174 @@ describe("generateWithAppleFoundation", () => {
 		).resolves.toBe("no counts");
 	});
 
-	it("propagates a bridge failure as an error instead of empty text", async () => {
+	it("propagates a bridge failure as a typed error carrying the bridge code", async () => {
 		const { adapter } = await registerAvailableAdapter(
 			makeBridge({
 				foundationModelGenerate: vi.fn(async () => ({
 					ok: false as const,
-					code: "model_unavailable",
-					message: "Apple Intelligence is off",
+					code: "foundation_model_error",
+					message: "guardrail refused the prompt",
 				})),
 			} as Partial<IosComputerUseBridge>),
 		);
+		const failure = await generateWithAppleFoundation(adapter, {
+			prompt: "Say hi",
+		}).catch((error: unknown) => error);
+		expect(failure).toBeInstanceOf(ElizaError);
+		expect((failure as ElizaError).code).toBe(APPLE_FOUNDATION_GENERATE_FAILED);
+		expect((failure as ElizaError).context).toEqual({
+			bridgeCode: "foundation_model_error",
+			bridgeMessage: "guardrail refused the prompt",
+		});
+	});
+});
+
+describe("attemptAppleFoundationFastPath", () => {
+	afterEach(() => {
+		_resetAppleFoundationAdapterForTests();
+	});
+
+	function makeRuntime() {
+		return { reportError: vi.fn() };
+	}
+
+	function probeAnswering(foundationModel: boolean) {
+		return vi.fn(async () => ({
+			ok: true as const,
+			data: {
+				platform: "ios",
+				osVersion: "26.0",
+				capabilities: {
+					replayKitForeground: false,
+					broadcastExtension: false,
+					visionOcr: false,
+					appIntents: false,
+					accessibilityRead: false,
+					foundationModel,
+				},
+			},
+		}));
+	}
+
+	it("returns the completion when the bridge serves the call", async () => {
+		const { adapter } = await registerAvailableAdapter();
+		const runtime = makeRuntime();
 		await expect(
-			generateWithAppleFoundation(adapter, { prompt: "Say hi" }),
-		).rejects.toThrow(/model_unavailable/);
+			attemptAppleFoundationFastPath(runtime, adapter, { prompt: "Say hi" }),
+		).resolves.toEqual({ served: true, text: "from apple" });
+		expect(runtime.reportError).not.toHaveBeenCalled();
+	});
+
+	it("hands a refused call back to llama.cpp, reports it, and keeps the adapter available", async () => {
+		const { adapter } = await registerAvailableAdapter(
+			makeBridge({
+				foundationModelGenerate: vi.fn(async () => ({
+					ok: false as const,
+					code: "foundation_model_error",
+					message: "guardrail refused the prompt",
+				})),
+			} as Partial<IosComputerUseBridge>),
+		);
+		const runtime = makeRuntime();
+		await expect(
+			attemptAppleFoundationFastPath(runtime, adapter, { prompt: "Say hi" }),
+		).resolves.toEqual({ served: false, bridgeCode: "foundation_model_error" });
+		expect(runtime.reportError).toHaveBeenCalledTimes(1);
+		const [scope, error, context] = runtime.reportError.mock.calls[0];
+		expect(scope).toBe(APPLE_FOUNDATION_REPORT_SCOPE);
+		expect(error).toBeInstanceOf(ElizaError);
+		expect(context).toEqual({
+			bridgeCode: "foundation_model_error",
+			promptChars: 6,
+			fallback: "llama.cpp",
+		});
+		expect(adapter.available()).toBe(true);
+	});
+
+	it("drops the cached availability when the bridge reports the model unavailable", async () => {
+		const bridge = makeBridge({
+			probe: probeAnswering(false),
+			foundationModelGenerate: vi.fn(async () => ({
+				ok: false as const,
+				code: "foundation_model_unavailable",
+				message: "Apple Intelligence is off",
+			})),
+		} as Partial<IosComputerUseBridge>);
+		// Boot seeded the adapter from an earlier probe that said yes.
+		const adapter = createAppleFoundationAdapter(() => bridge, {
+			knownAvailable: true,
+		});
+		expect(adapter.available()).toBe(true);
+		const runtime = makeRuntime();
+		await expect(
+			attemptAppleFoundationFastPath(runtime, adapter, { prompt: "Say hi" }),
+		).resolves.toEqual({
+			served: false,
+			bridgeCode: "foundation_model_unavailable",
+		});
+		// The seed is gone: the next check re-probes and the fast path stays off
+		// while the bridge keeps answering no.
+		expect(adapter.available()).toBe(false);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(bridge.probe).toHaveBeenCalledTimes(1);
+		expect(adapter.available()).toBe(false);
+	});
+
+	it("re-arms after a later probe answers yes again", async () => {
+		const bridge = makeBridge({
+			probe: probeAnswering(true),
+			foundationModelGenerate: vi.fn(async () => ({
+				ok: false as const,
+				code: "foundation_model_unavailable",
+				message: "model still loading",
+			})),
+		} as Partial<IosComputerUseBridge>);
+		const adapter = createAppleFoundationAdapter(() => bridge, {
+			knownAvailable: true,
+		});
+		await attemptAppleFoundationFastPath(makeRuntime(), adapter, {
+			prompt: "Say hi",
+		});
+		expect(adapter.available()).toBe(false);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(adapter.available()).toBe(true);
+	});
+
+	it("keeps an abort as a rejection and does not report it", async () => {
+		const { adapter } = await registerAvailableAdapter(
+			makeBridge({
+				foundationModelGenerate: vi.fn(async () => {
+					throw new DOMException("Aborted", "AbortError");
+				}),
+			} as Partial<IosComputerUseBridge>),
+		);
+		const runtime = makeRuntime();
+		await expect(
+			attemptAppleFoundationFastPath(runtime, adapter, { prompt: "Say hi" }),
+		).rejects.toMatchObject({ name: "AbortError" });
+		expect(runtime.reportError).not.toHaveBeenCalled();
+		expect(adapter.available()).toBe(true);
+	});
+
+	it("treats a bridge failure under an already-aborted signal as cancellation", async () => {
+		const { adapter } = await registerAvailableAdapter(
+			makeBridge({
+				foundationModelGenerate: vi.fn(async () => ({
+					ok: false as const,
+					code: "foundation_model_error",
+					message: "cut off",
+				})),
+			} as Partial<IosComputerUseBridge>),
+		);
+		const controller = new AbortController();
+		controller.abort();
+		const runtime = makeRuntime();
+		await expect(
+			attemptAppleFoundationFastPath(runtime, adapter, {
+				prompt: "Say hi",
+				signal: controller.signal,
+			}),
+		).rejects.toBeInstanceOf(ElizaError);
+		expect(runtime.reportError).not.toHaveBeenCalled();
 	});
 });

@@ -10,6 +10,7 @@ import {
 	type Service,
 	type ServiceClass,
 } from "@elizaos/core";
+import type { IosComputerUseBridge } from "@elizaos/plugin-computeruse/mobile/ios-bridge";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const modeState = vi.hoisted(() => ({ mode: "local" }));
@@ -122,6 +123,7 @@ vi.mock("../services/voice", () => ({
 
 import {
 	_resetAppleFoundationAdapterForTests,
+	createAppleFoundationAdapter,
 	registerAppleFoundationAdapter,
 } from "../backends/apple-foundation";
 import { resolveLocalInferenceLoadArgs } from "../services/active-model";
@@ -149,6 +151,7 @@ function makeRuntime(): {
 	let runtime!: AgentRuntime;
 	runtime = {
 		agentId: "agent-test",
+		reportError: vi.fn(),
 		getModel: vi.fn(() => undefined),
 		getSetting: vi.fn((key: string) =>
 			key === "ELIZA_RUNTIME_MODE" ? modeState.mode : undefined,
@@ -454,6 +457,7 @@ describe("ensureLocalInferenceHandler", () => {
 			name: "apple-foundation",
 			available: () => true,
 			generate,
+			invalidateAvailability: () => undefined,
 		});
 		try {
 			await ensureLocalInferenceHandler(runtime);
@@ -483,6 +487,68 @@ describe("ensureLocalInferenceHandler", () => {
 			});
 			expect(engineState.generate).toHaveBeenCalledTimes(2);
 			expect(generate).toHaveBeenCalledTimes(1);
+		} finally {
+			_resetAppleFoundationAdapterForTests();
+		}
+	});
+
+	it("falls through to llama.cpp when the Apple Foundation bridge refuses the call (#31130)", async () => {
+		const { registrations, runtime } = makeRuntime();
+		engineState.hasLoadedModel.mockReturnValue(true);
+		const foundationModelGenerate = vi.fn(async () => ({
+			ok: false as const,
+			code: "foundation_model_error",
+			message: "guardrail refused the prompt",
+		}));
+		const adapter = createAppleFoundationAdapter(
+			() => ({ foundationModelGenerate }) as unknown as IosComputerUseBridge,
+			{ knownAvailable: true },
+		);
+		registerAppleFoundationAdapter(adapter);
+		try {
+			await ensureLocalInferenceHandler(runtime);
+			const small = findRegisteredHandler(registrations, ModelType.TEXT_SMALL);
+			await expect(
+				small(runtime, { prompt: "Say hi", maxTokens: 16 }),
+			).resolves.toBe("ok");
+			expect(foundationModelGenerate).toHaveBeenCalledTimes(1);
+			expect(engineState.generate).toHaveBeenCalledTimes(1);
+			expect(runtime.reportError).toHaveBeenCalledWith(
+				"local-inference.apple-foundation",
+				expect.any(Error),
+				expect.objectContaining({
+					bridgeCode: "foundation_model_error",
+					fallback: "llama.cpp",
+				}),
+			);
+			// A refusal is per call; the adapter stays available for the next one.
+			expect(adapter.available()).toBe(true);
+		} finally {
+			_resetAppleFoundationAdapterForTests();
+		}
+	});
+
+	it("keeps an aborted Apple Foundation call as a rejection instead of retrying on llama.cpp (#31130)", async () => {
+		const { registrations, runtime } = makeRuntime();
+		engineState.hasLoadedModel.mockReturnValue(true);
+		const adapter = createAppleFoundationAdapter(
+			() =>
+				({
+					foundationModelGenerate: vi.fn(async () => {
+						throw new DOMException("Aborted", "AbortError");
+					}),
+				}) as unknown as IosComputerUseBridge,
+			{ knownAvailable: true },
+		);
+		registerAppleFoundationAdapter(adapter);
+		try {
+			await ensureLocalInferenceHandler(runtime);
+			const small = findRegisteredHandler(registrations, ModelType.TEXT_SMALL);
+			await expect(
+				small(runtime, { prompt: "Say hi", maxTokens: 16 }),
+			).rejects.toMatchObject({ name: "AbortError" });
+			expect(engineState.generate).not.toHaveBeenCalled();
+			expect(runtime.reportError).not.toHaveBeenCalled();
 		} finally {
 			_resetAppleFoundationAdapterForTests();
 		}

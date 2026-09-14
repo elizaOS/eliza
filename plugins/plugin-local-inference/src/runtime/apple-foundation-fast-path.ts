@@ -8,13 +8,23 @@
  * (`TEXT_SMALL` / `TEXT_COMPLETION`). Planner and response-handler model types
  * share the TEXT_SMALL slot but depend on llama.cpp's structured decoding
  * (grammar, skeletons, span samplers, streaming), which the out-of-process OS
- * model cannot honour, so they never take this path. `ELIZA_APPLE_FOUNDATION_FAST_PATH=0`
- * disables it without touching the registration.
+ * model cannot honour, so they never take this path. A call the OS model
+ * refuses or fails (guardrail, context window, locale, model unloaded) is
+ * served by llama.cpp instead of failing the model call; only cancellation
+ * rejects. `ELIZA_APPLE_FOUNDATION_FAST_PATH=0` disables the path without
+ * touching the registration.
  */
-import { type GenerateTextParams, logger, ModelType } from "@elizaos/core";
+import {
+	ElizaError,
+	type GenerateTextParams,
+	type IAgentRuntime,
+	logger,
+	ModelType,
+} from "@elizaos/core";
 import type { IosComputerUseBridge } from "@elizaos/plugin-computeruse/mobile/ios-bridge";
 
 import {
+	APPLE_FOUNDATION_GENERATE_FAILED,
 	type AppleFoundationAdapter,
 	createAppleFoundationAdapter,
 	getAppleFoundationAdapter,
@@ -196,6 +206,65 @@ export async function generateWithAppleFoundation(
 		result.text,
 		mergeElizaTurnStopSequences(params.stopSequences),
 	);
+}
+
+export type AppleFoundationAttempt =
+	| { readonly served: true; readonly text: string }
+	| { readonly served: false; readonly bridgeCode: string | null };
+
+/** Scope under which a fallen-back OS-model call is reported through `runtime.reportError`. */
+export const APPLE_FOUNDATION_REPORT_SCOPE = "local-inference.apple-foundation";
+
+/**
+ * Try one eligible call on the OS model. `served: false` tells the handler
+ * that llama.cpp, the owned backend, must serve the call: the adapter is
+ * opportunistic, so a refused or failed generation is a routing outcome, not
+ * a failed model call. Cancellation is the exception and rethrows unchanged.
+ * A `foundation_model_unavailable` answer also drops the adapter's cached
+ * availability so later calls re-probe instead of paying a failed bridge
+ * round-trip each time.
+ */
+export async function attemptAppleFoundationFastPath(
+	runtime: Pick<IAgentRuntime, "reportError">,
+	adapter: AppleFoundationAdapter,
+	params: GenerateTextParams,
+): Promise<AppleFoundationAttempt> {
+	try {
+		return {
+			served: true,
+			text: await generateWithAppleFoundation(adapter, params),
+		};
+	} catch (error) {
+		// error-policy:J4 user-facing degrade: a bridge or adapter failure
+		// becomes the visibly distinct "served by llama.cpp" outcome and is
+		// reported through runtime.reportError; an abort keeps its rejection.
+		if (isAbortError(error) || params.signal?.aborted) throw error;
+		const bridgeCode = readBridgeCode(error);
+		if (bridgeCode === "foundation_model_unavailable") {
+			adapter.invalidateAvailability();
+		}
+		runtime.reportError(APPLE_FOUNDATION_REPORT_SCOPE, error, {
+			bridgeCode,
+			promptChars: (params.prompt ?? "").length,
+			fallback: "llama.cpp",
+		});
+		return { served: false, bridgeCode };
+	}
+}
+
+function isAbortError(error: unknown): boolean {
+	return error instanceof Error && error.name === "AbortError";
+}
+
+function readBridgeCode(error: unknown): string | null {
+	if (
+		!(error instanceof ElizaError) ||
+		error.code !== APPLE_FOUNDATION_GENERATE_FAILED
+	) {
+		return null;
+	}
+	const code = error.context?.bridgeCode;
+	return typeof code === "string" ? code : null;
 }
 
 /** The text before the earliest occurrence of any stop sequence (the text itself when none occurs). */
