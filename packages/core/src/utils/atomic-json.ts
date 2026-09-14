@@ -12,6 +12,12 @@
  *   - parent directory created with mkdir recursive
  *
  * On failure, the temp file is best-effort removed.
+ *
+ * Values that JSON cannot represent are rejected with a TypeError instead of
+ * being written: top-level `undefined` is rejected before any filesystem side
+ * effect, and any value `JSON.stringify` cannot render aborts the write before
+ * the target is touched, so a rejected write can never corrupt the file with a
+ * literal `undefined` body.
  */
 
 import fs from "node:fs";
@@ -62,6 +68,9 @@ function tmpPathFor(filePath: string): string {
 
 function serialize(value: unknown, opts: NormalizedWriteOptions): string {
 	const body = JSON.stringify(value, null, opts.indent);
+	if (body === undefined) {
+		throw new TypeError(`Cannot serialize ${typeof value} to JSON`);
+	}
 	return opts.trailingNewline ? `${body}\n` : body;
 }
 
@@ -98,6 +107,9 @@ export async function writeJsonAtomic(
 	opts?: WriteJsonAtomicOptions,
 ): Promise<void> {
 	assertFilePath(filePath);
+	if (value === undefined) {
+		throw new TypeError("Cannot serialize undefined to JSON");
+	}
 	await serializeAsyncWrite(filePath, async () => {
 		const o = normalizeOptions(opts);
 		if (!o.skipMkdir) {
@@ -138,6 +150,9 @@ export function writeJsonAtomicSync(
 	opts?: WriteJsonAtomicOptions,
 ): void {
 	assertFilePath(filePath);
+	if (value === undefined) {
+		throw new TypeError("Cannot serialize undefined to JSON");
+	}
 	const o = normalizeOptions(opts);
 	if (!o.skipMkdir) {
 		fs.mkdirSync(path.dirname(filePath), {
