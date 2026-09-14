@@ -2,7 +2,9 @@
 
 import { afterAll, beforeAll, expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { sql } from "drizzle-orm";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { z } from "zod";
@@ -145,6 +147,12 @@ beforeAll(async () => {
       `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS "${column.name}" ${column.getSQLType()}`,
     );
   }
+  await fixture.exec(
+    await readFile(
+      new URL("../../db/migrations/0184_job_execution_leases.sql", import.meta.url),
+      "utf8",
+    ),
+  );
   const { subscriptionAuthorityRepository: authority } = await import(
     "../../db/repositories/subscription-authority"
   );
@@ -1656,6 +1664,301 @@ test("provision completion commits readiness with running state and rejects stal
 });
 
 if (sshFixturePath) {
+  test("worker death during restore retains paid state and a restarted worker completes the same job", async () => {
+    const target = z
+      .object({
+        hostname: z.ipv4(),
+        port: z.number().int().min(1).max(65535),
+        username: z.string().regex(/^[a-z_][a-z0-9_-]*$/),
+        hostKeyFingerprint: z.string().regex(/^SHA256:[A-Za-z0-9+/]+$/),
+        image: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+      })
+      .strict()
+      .parse(JSON.parse(await readFile(sshFixturePath, "utf8")));
+    const { DockerSSHClient } = await import("./docker-ssh");
+    const { shellQuote } = await import("./docker-sandbox-utils");
+    const guard = await import("./docker-compute-lease");
+    const { ProvisioningJobService } = await import("./provisioning-jobs");
+    const { JOB_TYPES } = await import("./provisioning-job-types");
+    const ssh = new DockerSSHClient(target);
+    const rootSSH = guard.dockerComputeRootSSH(ssh, target.username);
+    const docker = target.username === "root" ? "docker" : "sudo --non-interactive docker";
+    const agentId = "63000000-0000-4000-8000-000000000041";
+    const org = "61000000-0000-4000-8000-000000000041";
+    const name = `agent-${agentId}`;
+    const nodeId = `worker-test-${crypto.randomUUID()}`;
+    const backupId = crypto.randomUUID();
+    const jobId = crypto.randomUUID();
+    const marker = crypto.randomUUID();
+    const token = `test-${crypto.randomUUID()}`;
+    const state = {
+      memories: [],
+      config: { checkpoint: marker },
+      workspaceFiles: { "saved.txt": marker },
+    };
+    const directory = await mkdtemp(join(tmpdir(), "eliza-paid-worker-"));
+    const children: ReturnType<typeof Bun.spawn>[] = [];
+    let containerId: string | undefined;
+    let ownsGuard = false;
+    let originalRunning: string[] = [];
+    let releaseRestore = () => {};
+    const firstRestoreBlocked = new Promise<void>((resolve) => {
+      releaseRestore = resolve;
+    });
+    let sawRestore = () => {};
+    const firstRestore = new Promise<void>((resolve) => {
+      sawRestore = resolve;
+    });
+    let restoreRequests = 0;
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      idleTimeout: 120,
+      async fetch(request) {
+        if (request.headers.get("authorization") !== `Bearer ${token}`)
+          return new Response("unauthorized", { status: 401 });
+        const body = await request.text();
+        expect(JSON.parse(body)).toEqual(state);
+        restoreRequests++;
+        if (restoreRequests === 1) {
+          sawRestore();
+          await firstRestoreBlocked;
+          return Response.json({ ok: true });
+        }
+        await rootSSH.execStdin(
+          `${docker} exec -i ${containerId} node -e ${shellQuote("let b='';process.stdin.on('data',x=>b+=x);process.stdin.on('end',()=>require('fs').writeFileSync('/tmp/worker-restored-state.json',b))")}`,
+          body,
+        );
+        return Response.json({ ok: true });
+      },
+    });
+    const spawnWorker = async (recover: boolean) => {
+      const configPath = join(directory, `${recover ? "replacement" : "initial"}.json`);
+      const logPath = join(directory, `${recover ? "replacement" : "initial"}.log`);
+      await writeFile(
+        configPath,
+        JSON.stringify({
+          agentId,
+          organizationId: org,
+          backupId,
+          token,
+          restoreUrl: server.url.toString(),
+          recover,
+          state,
+        }),
+        { mode: 0o600 },
+      );
+      await writeFile(logPath, "", { mode: 0o600 });
+      const child = Bun.spawn(
+        [
+          process.execPath,
+          new URL("./eliza-sandbox/test-support/paid-restore-worker.ts", import.meta.url).pathname,
+        ],
+        {
+          env: { ...process.env, NODE_ENV: "test", COMPUTE_FUNDING_WORKER_FIXTURE: configPath },
+          stdout: Bun.file(logPath),
+          stderr: Bun.file(logPath),
+        },
+      );
+      children.push(child);
+      return { child, logPath };
+    };
+    const jobState = async () =>
+      (
+        await fixture.query(
+          "SELECT status,execution_generation,execution_interruptions,attempts FROM jobs WHERE id=$1",
+          [jobId],
+        )
+      ).rows[0];
+    const readyState = async () =>
+      (
+        await fixture.query(
+          "SELECT a.status,f.runtime_ready_at FROM agent_sandboxes a JOIN agent_compute_funding f ON f.agent_id=a.id AND f.settled_at IS NULL WHERE a.id=$1",
+          [agentId],
+        )
+      ).rows[0];
+    await ssh.connect();
+    try {
+      originalRunning = (await ssh.exec(`${docker} ps -q --no-trunc`))
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .sort();
+      await rootSSH.execStdin(
+        "python3 -",
+        "from pathlib import Path\nassert not Path('/var/lib/eliza/compute-leases').exists()\nassert not Path('/etc/systemd/system/eliza-compute-guard.service').exists()\n",
+      );
+      containerId = (
+        await ssh.exec(
+          [
+            `${docker} create --pull=never --network=none --memory=128m --cpus=0.2 --pids-limit=64 --env PORT=2138`,
+            `--health-interval=1s --health-timeout=5s --health-retries=10 --health-cmd ${shellQuote(`node -e "fetch('http://127.0.0.1:2138/api/health').then(r=>process.exit(r.ok?0:1))"`)}`,
+            "--cap-drop=ALL --security-opt=no-new-privileges --user=65534:65534 --restart=no",
+            `--name ${name} --label ai.elizaos.managed-by=eliza-cloud --label ai.elizaos.container-class=test --label ai.elizaos.agent-id=${agentId} --label ai.elizaos.org-id=${org}`,
+            `--entrypoint node ${shellQuote(target.image)} -e ${shellQuote("require('http').createServer((q,r)=>r.end(JSON.stringify({ok:true}))).listen(2138,'127.0.0.1')")}`,
+          ].join(" "),
+        )
+      ).trim();
+      expect(containerId).toMatch(/^[a-f0-9]{64}$/);
+      const { dockerNodes } = await import("../../db/schemas/docker-nodes");
+      await fixture.exec(
+        `CREATE TABLE IF NOT EXISTS docker_nodes (${getTableConfig(dockerNodes)
+          .columns.map((column) => `"${column.name}" ${column.getSQLType()}`)
+          .join(", ")})`,
+      );
+      await fixture.query(
+        "INSERT INTO docker_nodes(id,node_id,hostname,ssh_port,ssh_user,host_key_fingerprint) VALUES(gen_random_uuid(),$1,$2,$3,$4,$5)",
+        [nodeId, target.hostname, target.port, target.username, target.hostKeyFingerprint],
+      );
+      const { compute, provider } = await billableFundedAgent("000000000041", "1.000000", {
+        nodeId,
+        containerId,
+      });
+      await fixture.query(
+        "UPDATE agent_sandboxes SET status='provisioning',sandbox_id=$2,container_name=$2,bridge_port=2138,web_ui_port=2138,environment_revision=1,database_status='ready',database_uri='postgres://fixture.invalid/retained',environment_vars=$3,quota_admission_scope='trusted_internal' WHERE id=$1",
+        [agentId, name, JSON.stringify({ ELIZA_API_TOKEN: token })],
+      );
+      await fixture.query("UPDATE agent_compute_funding SET runtime_ready_at=NULL WHERE id=$1", [
+        provider.fundingId,
+      ]);
+      const authorization = await helpers.writeTransaction((tx) =>
+        compute.authorizeHostInTransaction(tx, provider),
+      );
+      ownsGuard = true;
+      await guard.installDockerComputeGuard(rootSSH);
+      await guard.grantDockerComputeLease(rootSSH, authorization);
+      await guard.startDockerComputeLease(rootSSH, authorization);
+      await ssh.exec(
+        `${docker} exec ${containerId} /bin/sh -c ${shellQuote(`printf '%s' '${marker}' > /tmp/worker-marker`)}`,
+      );
+      const startedAt = (
+        await ssh.exec(`${docker} inspect --format '{{.State.StartedAt}}' ${containerId}`)
+      ).trim();
+      await fixture.query(
+        "INSERT INTO jobs(id,type,status,data,organization_id,agent_id,data_storage,result_storage,error_storage,execution_interruptions,retryable_requeues,attempts,max_attempts,scheduled_for) VALUES($1,$2,'pending',$3,$4,$5,'inline','inline','inline',0,0,0,3,now())",
+        [
+          jobId,
+          JOB_TYPES.AGENT_WAKE,
+          JSON.stringify({
+            agentId,
+            organizationId: org,
+            userId: "64000000-0000-4000-8000-000000000041",
+            restoreBackupId: backupId,
+          }),
+          org,
+          agentId,
+        ],
+      );
+      const initial = await spawnWorker(false);
+      // If the worker fails before restore, emit its bounded fixture-only log.
+      await Promise.race([
+        firstRestore,
+        initial.child.exited.then(async () => {
+          throw new Error(
+            `Worker exited before restore: ${(await readFile(initial.logPath, "utf8")).slice(-8000)}`,
+          );
+        }),
+        Bun.sleep(60_000).then(() => {
+          throw new Error("Worker did not reach restore within 60 seconds");
+        }),
+      ]);
+      expect(await readyState()).toEqual({ status: "provisioning", runtime_ready_at: null });
+      const claimed = await jobState();
+      expect(claimed).toMatchObject({
+        status: "in_progress",
+        execution_interruptions: 0,
+        attempts: 0,
+      });
+      expect(claimed?.execution_generation).toBeString();
+      const paidBeforeKill = await renewalState(org);
+      expect(paidBeforeKill.windows).toHaveLength(1);
+      expect(paidBeforeKill.reservations).toHaveLength(1);
+      initial.child.kill("SIGKILL");
+      await initial.child.exited;
+      releaseRestore();
+      expect(await jobState()).toEqual(claimed);
+      expect(await readyState()).toEqual({ status: "provisioning", runtime_ready_at: null });
+      expect(await renewalState(org)).toEqual(paidBeforeKill);
+      const recovery = new ProvisioningJobService();
+      await recovery.recoverInterruptedJobsOnStartup(new Date(), [JOB_TYPES.AGENT_WAKE]);
+      expect(await jobState()).toEqual(claimed);
+      const lease = (
+        await fixture.query<{ wait_ms: number }>(
+          "SELECT GREATEST(0, EXTRACT(EPOCH FROM (expires_at+interval '30 seconds'-clock_timestamp()))*1000)::integer AS wait_ms FROM job_execution_leases WHERE job_id=$1",
+          [jobId],
+        )
+      ).rows[0];
+      if (!lease) throw new Error("Claimed worker lease is missing");
+      expect(lease.wait_ms).toBeGreaterThan(30_000);
+      process.stdout.write(
+        `Waiting ${lease.wait_ms}ms for actual dead-worker lease expiry and takeover grace\n`,
+      );
+      await Bun.sleep(lease.wait_ms + 250);
+      const replacement = await spawnWorker(true);
+      const exit = await replacement.child.exited;
+      if (exit !== 0)
+        throw new Error(
+          `Replacement failed: ${(await readFile(replacement.logPath, "utf8")).slice(-8000)}`,
+        );
+      expect(exit).toBe(0);
+      const completed = await jobState();
+      expect(completed).toMatchObject({
+        status: "completed",
+        execution_interruptions: 1,
+        attempts: 0,
+      });
+      expect(completed?.execution_generation).not.toBe(claimed?.execution_generation);
+      expect(await readyState()).toEqual({ status: "running", runtime_ready_at: expect.any(Date) });
+      const paidAfter = await renewalState(org);
+      expect({ ...paidAfter, windows: [] }).toEqual({ ...paidBeforeKill, windows: [] });
+      expect(paidAfter.windows).toHaveLength(1);
+      expect(paidAfter.windows[0]).toMatchObject({
+        id: provider.fundingId,
+        provider_container_id: containerId,
+      });
+      expect({ ...paidAfter.windows[0], runtime_ready_at: null }).toEqual(
+        paidBeforeKill.windows[0],
+      );
+      expect(restoreRequests).toBe(2);
+      expect((await ssh.exec(`${docker} exec ${containerId} cat /tmp/worker-marker`)).trim()).toBe(
+        marker,
+      );
+      expect(
+        JSON.parse(
+          await ssh.exec(`${docker} exec ${containerId} cat /tmp/worker-restored-state.json`),
+        ),
+      ).toEqual(state);
+      expect(
+        (await ssh.exec(`${docker} inspect --format '{{.State.StartedAt}}' ${containerId}`)).trim(),
+      ).toBe(startedAt);
+    } finally {
+      releaseRestore();
+      for (const child of children) {
+        if (child.exitCode === null) child.kill("SIGKILL");
+        await child.exited;
+      }
+      await server.stop(true);
+      try {
+        if (containerId) await ssh.exec(`${docker} rm -f ${shellQuote(containerId)}`);
+        if (ownsGuard) {
+          const digest = createHash("sha256")
+            .update(guard.DOCKER_COMPUTE_GUARD_PROGRAM)
+            .digest("hex");
+          await rootSSH.execStdin(
+            "python3 -",
+            `import json, pathlib, shutil, subprocess\nroot=pathlib.Path('/var/lib/eliza/compute-leases')\nunit=pathlib.Path('/etc/systemd/system/eliza-compute-guard.service')\nif unit.exists():\n assert 'guard-${digest}.py' in unit.read_text(), 'foreign_guard_preserved'\nif root.exists():\n for p in root.glob('*.json'):\n  assert json.loads(p.read_text())['authorization']['containerId'] == ${JSON.stringify(containerId)}, 'foreign_lease_preserved'\nif unit.exists():\n subprocess.run(['systemctl','disable','--now',unit.name],check=True,capture_output=True)\n unit.unlink()\n subprocess.run(['systemctl','daemon-reload'],check=True,capture_output=True)\nif root.exists(): shutil.rmtree(root)\nassert not root.exists() and not unit.exists()\n`,
+          );
+        }
+        expect(
+          (await ssh.exec(`${docker} ps -q --no-trunc`)).trim().split("\n").filter(Boolean).sort(),
+        ).toEqual(originalRunning);
+      } finally {
+        await ssh.disconnect();
+        await DockerSSHClient.disconnectAll();
+        await rm(directory, { recursive: true, force: true });
+      }
+    }
+  }, 300_000);
   test("real Docker stop survives a PostgreSQL rollback and app suspension refunds once", async () => {
     const target = z
       .object({
@@ -1715,7 +2018,7 @@ if (sshFixturePath) {
       const columns = getTableConfig(dockerNodes).columns.map(
         (column) => `"${column.name}" ${column.getSQLType()}`,
       );
-      await fixture.exec(`CREATE TABLE docker_nodes (${columns.join(", ")})`);
+      await fixture.exec(`CREATE TABLE IF NOT EXISTS docker_nodes (${columns.join(", ")})`);
       await fixture.query(
         "INSERT INTO docker_nodes(id,node_id,hostname,ssh_port,ssh_user,host_key_fingerprint) VALUES(gen_random_uuid(),$1,$2,$3,$4,$5)",
         [nodeId, target.hostname, target.port, target.username, target.hostKeyFingerprint],
