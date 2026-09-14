@@ -97,9 +97,12 @@ describe("ElizaSandboxService provision — from-backup override (#15603 B6)", (
         if (opts.createError) throw opts.createError;
         return {
           sandboxId: "agent-e06bb509",
-          bridgeUrl: "https://runtime.example",
+          bridgeUrl: "http://100.64.0.20:21060",
           healthUrl: "https://runtime.example/health",
           metadata: {
+            provider: "docker",
+            hostname: "100.64.0.20",
+            headscaleIp: "100.64.0.20",
             nodeId: "node-1",
             containerName: "agent-e06bb509",
             bridgePort: 21060,
@@ -113,10 +116,10 @@ describe("ElizaSandboxService provision — from-backup override (#15603 B6)", (
     };
     globalThis.fetch = mock(async (input: RequestInfo | URL) => {
       const url = fetchUrl(input);
-      if (url === "https://runtime.example/api/agents") {
+      if (url === "http://100.64.0.20:21060/api/agents") {
         return Response.json({ error: "Not found" }, { status: 404 });
       }
-      if (url === "https://runtime.example/api/restore" && opts.restoreHttpStatus) {
+      if (url === "http://100.64.0.20:21060/api/restore" && opts.restoreHttpStatus) {
         return Response.json({ error: "restore rejected" }, { status: opts.restoreHttpStatus });
       }
       return Response.json({ ok: true });
@@ -499,6 +502,7 @@ describe("ElizaSandboxService provision — node attribution guard (C1b)", () =>
         provider: "docker",
         nodeId: "node-1",
         hostname: "host-1",
+        headscaleIp: "100.64.0.20",
         containerName: "agent-e06bb509",
         bridgePort: 21060,
         webUiPort: 3000,
