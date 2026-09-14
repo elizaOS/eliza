@@ -75,6 +75,7 @@ function buildStore() {
 		entities: new Map<string, StubEntity>(),
 		emitted: [] as Array<{ event: string; payload: Record<string, unknown> }>,
 		relationships: [] as RelationshipRow[],
+		batchReads: [] as string[][],
 	};
 }
 
@@ -149,6 +150,13 @@ function buildRuntime(store: Store) {
 		},
 		async getEntityById(id: string) {
 			return store.entities.get(id) ?? null;
+		},
+		async getEntitiesByIds(ids: string[]) {
+			store.batchReads.push([...ids]);
+			return ids.flatMap((id) => {
+				const entity = store.entities.get(id);
+				return entity ? [entity] : [];
+			});
 		},
 		async createEntity(entity: StubEntity) {
 			store.entities.set(entity.id, entity);
@@ -633,6 +641,96 @@ describe("RelationshipsService.searchContacts", () => {
 	it("returns nothing for a searchTerm that matches no candidate", async () => {
 		const { service } = await seed();
 		expect(await service.searchContacts({ searchTerm: "zzz" })).toEqual([]);
+	});
+
+	it("resolves searchTerm candidates through one batched entity read", async () => {
+		const store = buildStore();
+		store.entities.set(ENTITY_A, {
+			id: ENTITY_A,
+			names: ["Ada Lovelace"],
+			agentId: AGENT_ID,
+			components: [],
+		});
+		const service = makeService(store);
+		await service.addContact(ENTITY_A, ["friend"]);
+		await service.addContact(ENTITY_B, ["colleague"]);
+		await service.addContact(ENTITY_C, ["family"]);
+		store.batchReads.length = 0;
+
+		const hits = await service.searchContacts({ searchTerm: "lovelace" });
+
+		expect(hits.map((c) => c.entityId)).toEqual([ENTITY_A]);
+		// Every candidate contact goes into a single read; contacts whose
+		// entity row is missing simply do not match.
+		expect(store.batchReads).toHaveLength(1);
+		expect([...store.batchReads[0]].sort()).toEqual(
+			[ENTITY_A, ENTITY_B, ENTITY_C].sort(),
+		);
+	});
+});
+
+describe("RelationshipsService insight admission", () => {
+	it("reads counterparts in one batch and analyzes at most four relationships at a time", async () => {
+		const store = buildStore();
+		const counterparts: UUID[] = [];
+		for (let i = 0; i < 12; i++) {
+			const id =
+				`${i.toString(16).padStart(8, "0")}-0000-4000-8000-000000000000` as UUID;
+			counterparts.push(id);
+			store.entities.set(id, {
+				id,
+				names: [`Contact ${i}`],
+				agentId: AGENT_ID,
+				components: [],
+			});
+			store.relationships.push(
+				confirmedLink(
+					`rel-${i}`,
+					i % 2 === 0 ? ENTITY_A : id,
+					i % 2 === 0 ? id : ENTITY_A,
+				),
+			);
+		}
+		const service = makeService(store);
+
+		let inFlight = 0;
+		let peak = 0;
+		const releases: Array<() => void> = [];
+		const analyze = vi
+			.spyOn(service, "analyzeRelationship")
+			.mockImplementation(async () => {
+				inFlight += 1;
+				peak = Math.max(peak, inFlight);
+				await new Promise<void>((resolve) => releases.push(resolve));
+				inFlight -= 1;
+				return {
+					strength: 80,
+					lastInteractionAt: new Date(Date.now() - 40 * DAY).toISOString(),
+				} as Awaited<ReturnType<RelationshipsService["analyzeRelationship"]>>;
+			});
+
+		const pending = service.getRelationshipInsights(ENTITY_A);
+		// Let the batched entity read and the first admissions settle.
+		for (let i = 0; i < 10 && inFlight < 4; i++) await Promise.resolve();
+		expect(store.batchReads).toEqual([counterparts]);
+		expect(inFlight).toBe(4);
+
+		// Release one analysis at a time; each release admits the next.
+		let released = 0;
+		while (released < 12) {
+			const release = releases.shift();
+			if (release) {
+				release();
+				released += 1;
+			}
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		}
+		const insights = await pending;
+
+		expect(analyze).toHaveBeenCalledTimes(12);
+		expect(peak).toBe(4);
+		expect(insights.strongestRelationships).toHaveLength(12);
+		expect(insights.needsAttention).toHaveLength(12);
 	});
 });
 

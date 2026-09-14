@@ -15,9 +15,18 @@ import type {
 	ProviderResult,
 	State,
 } from "../../../types/index.ts";
+import { mapWithConcurrency } from "../../../utils/bounded-map.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("FOLLOW_UPS");
+
+/**
+ * Upper bound on simultaneous entity lookups while resolving follow-up
+ * contact names. The follow-up list is data-driven, so resolving every unique
+ * contact through one `Promise.all` would admit as many concurrent database
+ * reads as there are contacts.
+ */
+const MAX_CONCURRENT_ENTITY_LOOKUPS = 8;
 
 export const followUpsProvider: Provider = {
 	name: spec.name,
@@ -62,8 +71,10 @@ export const followUpsProvider: Provider = {
 			const contactIds = Array.from(
 				new Set(upcomingFollowUps.map((f) => f.contact.entityId)),
 			);
-			const entities = await Promise.all(
-				contactIds.map((id) => runtime.getEntityById(id)),
+			const entities = await mapWithConcurrency(
+				contactIds,
+				MAX_CONCURRENT_ENTITY_LOOKUPS,
+				(id) => runtime.getEntityById(id),
 			);
 			const entityNames = new Map<string, string>();
 			for (let i = 0; i < contactIds.length; i += 1) {

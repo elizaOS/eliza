@@ -99,6 +99,11 @@ function runtime(
 			const found = byId.get(String(id));
 			return found ? structuredClone(found) : null;
 		},
+		getEntitiesByIds: async (ids: UUID[]) =>
+			ids.flatMap((id) => {
+				const found = byId.get(String(id));
+				return found ? [structuredClone(found)] : [];
+			}),
 		getMemories: async () => [],
 		useModel: async () => modelResult,
 		...overrides,

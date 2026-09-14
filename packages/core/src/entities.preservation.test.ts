@@ -84,6 +84,7 @@ function runtime(
 		],
 		getRelationships: async () => relationships,
 		getEntityById: async () => null,
+		getEntitiesByIds: async () => [],
 		getMemories: async () => [],
 		useModel: async () => modelResult,
 	} as unknown as IAgentRuntime;
@@ -463,6 +464,7 @@ describe("adversarial: contextual binding containment", () => {
 			getEntitiesForRoom: async () => entities,
 			getRelationships: async () => [],
 			getEntityById: async () => null,
+			getEntitiesByIds: async () => [],
 			getMemories: async () => [],
 			useModel: async () => modelResult,
 		} as unknown as IAgentRuntime;

@@ -117,6 +117,13 @@ describe("RelationshipsService.getRelationshipInsights ordering", () => {
 			async getEntityById(id: UUID) {
 				return { id, names: [String(id)], agentId: AGENT_ID };
 			},
+			async getEntitiesByIds(ids: UUID[]) {
+				return ids.map((id) => ({
+					id,
+					names: [String(id)],
+					agentId: AGENT_ID,
+				}));
+			},
 			async getRoomsForParticipant() {
 				return [ROOM];
 			},
@@ -160,6 +167,9 @@ describe("RelationshipsService.listOverdueFollowups ordering", () => {
 			},
 			async getEntityById() {
 				return null;
+			},
+			async getEntitiesByIds() {
+				return [];
 			},
 		};
 

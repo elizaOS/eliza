@@ -23,6 +23,7 @@ import { asUUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
 import { stringToUuid } from "../utils";
+import { mapWithConcurrency } from "../utils/bounded-map.ts";
 import { UnionFind } from "../utils/union-find";
 import {
 	createNativeRelationshipsGraphService,
@@ -32,6 +33,14 @@ import {
 	type RelationshipsGraphSnapshot,
 	type RelationshipsPersonDetail,
 } from "./relationships-graph-builder";
+
+/**
+ * Upper bound on simultaneous relationship analyses. Each analysis re-reads
+ * the pair's relationships, both participants' room lists, and every message
+ * in their shared rooms, so admitting one analysis per relationship would
+ * multiply that load by the size of the contact graph.
+ */
+const MAX_CONCURRENT_RELATIONSHIP_ANALYSES = 4;
 
 /**
  * Handles on these platforms are enrichment (phone/email/website) — they
@@ -1146,12 +1155,18 @@ export class RelationshipsService extends Service {
 		// If searchTerm is provided, further filter by entity names
 		if (criteria.searchTerm) {
 			const searchTermLower = criteria.searchTerm.toLowerCase();
-			const entities = await Promise.all(
-				results.map((contact) => this.runtime.getEntityById(contact.entityId)),
+			// One batched read: the candidate list is every contact, so a
+			// per-contact lookup would fan out one database read per contact.
+			const entityById = new Map(
+				(
+					await this.runtime.getEntitiesByIds(
+						results.map((contact) => contact.entityId),
+					)
+				).map((entity) => [entity.id, entity] as const),
 			);
 			const filteredResults: ContactInfo[] = [];
 			for (let i = 0; i < results.length; i++) {
-				const entity = entities[i];
+				const entity = entityById.get(results[i].entityId);
 				const entityNames = entity?.names ?? [];
 				const displayName = getContactDisplayName(results[i])?.toLowerCase();
 				if (
@@ -1363,17 +1378,25 @@ export class RelationshipsService extends Service {
 		const targets = relationships.map((rel) =>
 			rel.sourceEntityId === entityId ? rel.targetEntityId : rel.sourceEntityId,
 		);
-		const entities = await Promise.all(
-			targets.map((target) => this.runtime.getEntityById(target)),
+		// Entities come from one batched read. Each analysis then loads the pair's
+		// shared-room history, so the analyses are admitted a few at a time
+		// instead of all at once; the relationship list is data-driven and can
+		// be as long as the entity's whole contact graph.
+		const entityById = new Map(
+			(targets.length > 0
+				? await this.runtime.getEntitiesByIds(targets)
+				: []
+			).map((entity) => [entity.id, entity] as const),
 		);
-		const analyticsResults = await Promise.all(
-			targets.map((target, index) =>
-				entities[index] ? this.analyzeRelationship(entityId, target) : null,
-			),
+		const analyzed = targets.filter((target) => entityById.has(target));
+		const analyticsResults = await mapWithConcurrency(
+			analyzed,
+			MAX_CONCURRENT_RELATIONSHIP_ANALYSES,
+			(target) => this.analyzeRelationship(entityId, target),
 		);
 
-		for (let i = 0; i < relationships.length; i++) {
-			const entity = entities[i];
+		for (let i = 0; i < analyzed.length; i++) {
+			const entity = entityById.get(analyzed[i]);
 			const analytics = analyticsResults[i];
 			if (!entity || !analytics) continue;
 

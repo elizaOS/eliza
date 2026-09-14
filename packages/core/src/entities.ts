@@ -560,15 +560,22 @@ export async function findEntityByName(
 	const relationships = await runtime.getRelationships({
 		entityIds: [message.entityId],
 	});
-	const relationshipEntities = await Promise.all(
-		relationships.map(async (rel) => {
-			const entityId =
+	// One batched read for every counterpart: a per-relationship
+	// `getEntityById` fan-out admits as many concurrent database reads as the
+	// sender has relationships.
+	const counterpartIds = [
+		...new Set(
+			relationships.map((rel) =>
 				rel.sourceEntityId === message.entityId
 					? rel.targetEntityId
-					: rel.sourceEntityId;
-			return runtime.getEntityById(entityId);
-		}),
-	);
+					: rel.sourceEntityId,
+			),
+		),
+	];
+	const relationshipEntities =
+		counterpartIds.length > 0
+			? await runtime.getEntitiesByIds(counterpartIds)
+			: [];
 
 	const filteredEntities = await Promise.all(
 		entitiesInRoom.map((entity) =>
@@ -576,11 +583,9 @@ export async function findEntityByName(
 		),
 	);
 	const filteredRelationshipEntities = await Promise.all(
-		relationshipEntities
-			.filter((entity): entity is Entity => entity !== null)
-			.map((entity) =>
-				withVisibleComponents(runtime, world, entity, message.entityId),
-			),
+		relationshipEntities.map((entity) =>
+			withVisibleComponents(runtime, world, entity, message.entityId),
+		),
 	);
 
 	const allEntities = uniqueEntitiesById([

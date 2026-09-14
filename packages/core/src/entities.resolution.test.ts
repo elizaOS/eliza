@@ -115,6 +115,11 @@ function runtime(
 			const found = byId.get(id);
 			return found ? structuredClone(found) : null;
 		},
+		getEntitiesByIds: async (ids: UUID[]) =>
+			ids.flatMap((id) => {
+				const found = byId.get(id);
+				return found ? [structuredClone(found)] : [];
+			}),
 		getMemories: async () => [],
 		useModel: async (_type: unknown, params: { prompt?: string }) => {
 			if (typeof params?.prompt === "string") prompts.push(params.prompt);
@@ -136,6 +141,55 @@ describe("findEntityByName referent and candidate containment", () => {
 		expect(prompt).toContain("tell Alice Smith to call me");
 		expect(prompt).toContain("00000000-0000-0000-0000-0000000000aa");
 		expect(prompt).toContain("Eliza");
+	});
+
+	it("reads every relationship counterpart through one batched lookup", async () => {
+		const batchCalls: UUID[][] = [];
+		const singleCalls: UUID[] = [];
+		const base = runtime({});
+		const found = await findEntityByName(
+			runtime({
+				getRelationships: async () =>
+					[
+						{
+							id: "00000000-0000-0000-0000-0000000000r1",
+							sourceEntityId: BOB,
+							targetEntityId: ALICE,
+							agentId: AGENT,
+							tags: ["knows"],
+						},
+						{
+							id: "00000000-0000-0000-0000-0000000000r2",
+							sourceEntityId: STRANGER,
+							targetEntityId: BOB,
+							agentId: AGENT,
+							tags: ["knows"],
+						},
+						{
+							id: "00000000-0000-0000-0000-0000000000r3",
+							sourceEntityId: BOB,
+							targetEntityId: ALICE,
+							agentId: AGENT,
+							tags: ["met"],
+						},
+					] as Relationship[],
+				getEntitiesByIds: async (ids: UUID[]) => {
+					batchCalls.push([...ids]);
+					return base.getEntitiesByIds(ids);
+				},
+				getEntityById: async (id: UUID) => {
+					singleCalls.push(id);
+					return base.getEntityById(id);
+				},
+			}),
+			message("Alice Smith"),
+			state,
+		);
+		expect(found?.id).toBe(ALICE);
+		// Three relationships name two distinct counterparts: one read, deduped,
+		// and no per-relationship lookup.
+		expect(batchCalls).toEqual([[ALICE, STRANGER]]);
+		expect(singleCalls).toEqual([]);
 	});
 
 	it("does not return the sole room entity when the referent names a relationship contact", async () => {
