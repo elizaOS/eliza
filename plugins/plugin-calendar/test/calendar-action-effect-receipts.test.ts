@@ -1573,3 +1573,118 @@ describe("CALENDAR effect receipt settlement", () => {
     );
   });
 });
+
+describe("planner-supplied event ids the connector cannot resolve", () => {
+  // Live 2026-09-14: the planner invented eventId "primary-00024" beside
+  // query "barber appointment"; the connector lookup failed with "Google
+  // Calendar is not connected" and the move was refused.
+  const notConnected = () => {
+    throw new CalendarServiceError(
+      409,
+      "Google Calendar is not connected.",
+      "CALENDAR_SERVICE_409",
+    );
+  };
+
+  it("moves the event named by the query when the event id is rejected", async () => {
+    const updatedEvent: LifeOpsCalendarEvent = {
+      ...ELIZA_EVENT,
+      startAt: "2026-07-28T23:00:00.000Z",
+      endAt: "2026-07-28T23:30:00.000Z",
+      metadata: { etag: '"eliza-2"', version: 2 },
+    };
+    const getCalendarFeed = vi.fn(
+      async (_url: URL, request?: Record<string, unknown>) => {
+        requireOrderedCalendarWindow(request);
+        return feed([ELIZA_EVENT]);
+      },
+    );
+    const getConditionalCalendarMutationTarget = vi.fn(notConnected);
+    const updateCalendarEvent = vi.fn(async () => updatedEvent);
+    const service = {
+      getCalendarFeed,
+      getConditionalCalendarMutationTarget,
+      updateCalendarEvent,
+    };
+    const action = createCalendarActionRunner(deps());
+
+    const result = await execute({
+      action,
+      service,
+      actor: message("move my sandwich to 7pm"),
+      parameters: {
+        subaction: "update_event",
+        query: "Eat a sandwich",
+        details: { eventId: "primary-00024", start: "2026-07-28T19:00:00" },
+      },
+      delivered: [],
+    });
+
+    expect(getConditionalCalendarMutationTarget).toHaveBeenCalledOnce();
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(updateCalendarEvent).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({ eventId: ELIZA_EVENT.externalId }),
+    );
+  });
+
+  it("deletes the event named by the query when the event id is rejected", async () => {
+    const getCalendarFeed = vi.fn(
+      async (_url: URL, request?: Record<string, unknown>) => {
+        requireOrderedCalendarWindow(request);
+        return feed([ELIZA_EVENT]);
+      },
+    );
+    const getConditionalCalendarMutationTarget = vi.fn(notConnected);
+    const deleteCalendarEvent = vi.fn(async () => undefined);
+    const service = {
+      getCalendarFeed,
+      getConditionalCalendarMutationTarget,
+      deleteCalendarEvent,
+    };
+    const action = createCalendarActionRunner(deps());
+
+    const result = await execute({
+      action,
+      service,
+      actor: message("cancel my sandwich"),
+      parameters: {
+        subaction: "delete_event",
+        query: "Eat a sandwich",
+        details: { eventId: "primary-00024" },
+      },
+      delivered: [],
+    });
+
+    expect(getConditionalCalendarMutationTarget).toHaveBeenCalledOnce();
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(deleteCalendarEvent).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({ eventId: ELIZA_EVENT.externalId }),
+    );
+  });
+
+  it("still fails when a rejected event id comes without any title to fall back on", async () => {
+    const getConditionalCalendarMutationTarget = vi.fn(notConnected);
+    const updateCalendarEvent = vi.fn();
+    const service = {
+      getConditionalCalendarMutationTarget,
+      updateCalendarEvent,
+    };
+    const action = createCalendarActionRunner(deps());
+
+    const result = await execute({
+      action,
+      service,
+      actor: message("move it to 7pm"),
+      parameters: {
+        subaction: "update_event",
+        details: { eventId: "primary-00024", start: "2026-07-28T19:00:00" },
+      },
+      delivered: [],
+    });
+
+    expect(result.success).toBe(false);
+    expect(updateCalendarEvent).not.toHaveBeenCalled();
+  });
+});

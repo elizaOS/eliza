@@ -5711,6 +5711,29 @@ const calendarAction: CalendarHandlerAction = {
         let resolvedEventId = explicitEventId;
         let resolvedCalendarId = calendarIdDetail(details);
         let targetEvent: LifeOpsCalendarEvent | null = null;
+        // A planner-supplied event id the connector cannot resolve is debris
+        // when the request also names the event (live 2026-09-14: eventId
+        // "primary-00024" beside query "barber appointment" ended the move in
+        // "Google Calendar is not connected"); the title lookup takes over.
+        if (resolvedEventId && searchQueries[0]) {
+          try {
+            targetEvent = await service.getConditionalCalendarMutationTarget(
+              INTERNAL_URL,
+              {
+                mode: connectorModeDetail(details),
+                side: connectorSideDetail(details),
+                grantId: connectorGrantIdDetail(details),
+                calendarId: resolvedCalendarId,
+                eventId: resolvedEventId,
+              },
+            );
+            resolvedCalendarId = targetEvent.calendarId;
+          } catch (error) {
+            if (!(error instanceof CalendarServiceError)) throw error;
+            targetEvent = null;
+            resolvedEventId = undefined;
+          }
+        }
         if (!resolvedEventId) {
           const titleHint = searchQueries[0];
           if (!titleHint) {
@@ -6103,7 +6126,28 @@ const calendarAction: CalendarHandlerAction = {
           details,
           text: `${messageText(message)} ${intent}`,
         });
-        if (!explicitEventId) {
+        // Same rule as the update path: an event id the connector rejects
+        // yields to the title lookup when the request names the event.
+        let eventIdForDelete = explicitEventId;
+        if (explicitEventId && (searchQueries[0] ?? explicitTitle)) {
+          try {
+            targetEvent = await service.getConditionalCalendarMutationTarget(
+              INTERNAL_URL,
+              {
+                mode: connectorModeDetail(details),
+                side: connectorSideDetail(details),
+                grantId: connectorGrantIdDetail(details),
+                calendarId: calendarIdDetail(details),
+                eventId: explicitEventId,
+              },
+            );
+          } catch (error) {
+            if (!(error instanceof CalendarServiceError)) throw error;
+            targetEvent = null;
+            eventIdForDelete = undefined;
+          }
+        }
+        if (!eventIdForDelete) {
           // A structured deletion title identifies the target too; unlike an
           // update title, it cannot mean a requested rename. Keep explicit
           // query precedence and the existing unique-match checks below.
@@ -6216,7 +6260,7 @@ const calendarAction: CalendarHandlerAction = {
             });
           }
           targetEvent = candidates[0] ?? null;
-        } else {
+        } else if (!targetEvent) {
           targetEvent = await service.getConditionalCalendarMutationTarget(
             INTERNAL_URL,
             {
@@ -6224,7 +6268,7 @@ const calendarAction: CalendarHandlerAction = {
               side: connectorSideDetail(details),
               grantId: connectorGrantIdDetail(details),
               calendarId: calendarIdDetail(details),
-              eventId: explicitEventId,
+              eventId: eventIdForDelete,
             },
           );
         }
