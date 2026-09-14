@@ -66,6 +66,35 @@ beforeEach(() => {
 });
 
 describe("AppsService inference cache-only lookup", () => {
+  test("the eviction before shared deletion actually clears this isolate's row", async () => {
+    // The companion test above pins the eviction AFTER the fenced delete. This
+    // one pins the one BEFORE it, which is otherwise removable with every
+    // suite green: without it the local LRU keeps serving the stale row for
+    // the whole time the shared delete is in flight.
+    const stale = app({ review_status: "draft" });
+    const fresh = { ...stale, review_status: "approved" } as App;
+    appRows.set(stale.id, fresh);
+    await cache.set(CacheKeys.app.byId(stale.id), stale, CacheTTL.app.byId);
+    expect((await appsService.getById(stale.id))?.review_status).toBe("draft");
+    expect(appReads).toBe(0);
+
+    let releaseFence = () => {};
+    cacheFenceGate = new Promise<void>((resolve) => {
+      releaseFence = resolve;
+    });
+    const invalidation = appsService.invalidateCache(stale.id);
+
+    // Hold the shared delete and remove the shared row by hand. The local LRU
+    // is now the only place the stale row could still come from, so a read
+    // that still answers "draft" proves the first eviction did not happen.
+    await cache.del(CacheKeys.app.byId(stale.id));
+    expect((await appsService.getById(stale.id))?.review_status).toBe("approved");
+    expect(appReads).toBe(1);
+
+    releaseFence();
+    await invalidation;
+  });
+
   test("async invalidation clears a stale row repopulated while shared deletion waits", async () => {
     const stale = app({ review_status: "draft" });
     const fresh = { ...stale, review_status: "approved" } as App;
