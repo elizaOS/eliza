@@ -2605,6 +2605,13 @@
       "when": 1796083200015,
       "tag": "0388_agent_compute_funded_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 372,
+      "version": "7",
+      "when": 1796083200016,
+      "tag": "0389_agent_compute_stop_receipts",
+      "breakpoints": true
     }
   ]
 }

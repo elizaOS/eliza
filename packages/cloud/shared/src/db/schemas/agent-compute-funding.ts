@@ -5,6 +5,7 @@ import {
   check,
   foreignKey,
   index,
+  jsonb,
   numeric,
   pgTable,
   text,
@@ -31,11 +32,28 @@ export const agentComputeFunding = pgTable(
     provider_container_id: text("provider_container_id"),
     provider_bound_at: timestamp("provider_bound_at", { withTimezone: true }),
     host_lease_confirmed_at: timestamp("host_lease_confirmed_at", { withTimezone: true }),
+    provider_stopped_at: timestamp("provider_stopped_at", { withTimezone: true }),
+    provider_stop_receipt: jsonb("provider_stop_receipt").$type<{
+      containerId: string;
+      fundingId: string;
+      bootId: string;
+      stoppedAtMs: number;
+    }>(),
     settled_through: timestamp("settled_through", { withTimezone: true }),
     settled_at: timestamp("settled_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    stop_receipt_check: check(
+      "agent_compute_funding_stop_receipt_check",
+      sql`num_nonnulls(${table.provider_stopped_at}, ${table.provider_stop_receipt}) IN (0, 2)
+        AND (${table.provider_stopped_at} IS NULL OR (${table.settled_at} IS NOT NULL
+          AND jsonb_typeof(${table.provider_stop_receipt}) = 'object'
+          AND ((${table.provider_stop_receipt}->>'fundingId' = ${table.id}::text
+            AND ${table.provider_stop_receipt}->>'containerId' = ${table.provider_container_id}
+            AND jsonb_typeof(${table.provider_stop_receipt}->'stoppedAtMs') = 'number'
+            AND jsonb_typeof(${table.provider_stop_receipt}->'bootId') = 'string') IS TRUE)))`,
+    ),
     identity_unique: unique("agent_compute_funding_identity_unique").on(
       table.id,
       table.agent_id,

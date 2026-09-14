@@ -1,12 +1,19 @@
-/** Verifies transactional funding admission and renewal on PGlite or an explicitly selected, empty loopback PostgreSQL test database. */
+/** Verifies funding admission, renewal and stop refunds on PGlite or empty loopback PostgreSQL. An explicit SSH fixture adds real Docker rollback/retry proof on a host without an existing compute guard. */
 
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { sql } from "drizzle-orm";
 import { getTableConfig } from "drizzle-orm/pg-core";
+import { z } from "zod";
 import { createBillingSnapshotFixture } from "../../db/repositories/account-billing-snapshot-test-fixture";
 
 const postgresTestUrl = process.env.COMPUTE_FUNDING_POSTGRES_TEST_URL;
+const sshFixturePath = process.env.COMPUTE_FUNDING_SSH_FIXTURE;
+if (sshFixturePath && !postgresTestUrl) {
+  throw new Error("The real SSH suspend test requires isolated PostgreSQL");
+}
+
 if (postgresTestUrl) {
   const target = new URL(postgresTestUrl);
   if (
@@ -92,6 +99,12 @@ beforeAll(async () => {
   await fixture.exec(computeMigration);
   // The generated migration must also be safe when recovery repeats it.
   await fixture.exec(computeMigration);
+  const stopMigration = await readFile(
+    new URL("../../db/migrations/0389_agent_compute_stop_receipts.sql", import.meta.url),
+    "utf8",
+  );
+  await fixture.exec(stopMigration);
+  await fixture.exec(stopMigration);
   const legacyBillingMigration = await readFile(
     new URL("../../db/migrations/0265_compute_billing_recovery.sql", import.meta.url),
     "utf8",
@@ -457,7 +470,11 @@ test("unfunded, Shared and expired Dedicated admissions cannot create another de
   expect(await state()).toEqual(before);
 });
 
-async function runningFundedAgent(org: string, agentId: string) {
+async function runningFundedAgent(
+  org: string,
+  agentId: string,
+  providerTarget?: { nodeId: string; containerId: string },
+) {
   const { agentComputeFundingService: compute } = await import("./agent-compute-funding");
   await fixture.query(
     `INSERT INTO agent_sandboxes(id,organization_id,status,execution_tier,lifecycle_revision)
@@ -471,8 +488,8 @@ async function runningFundedAgent(org: string, agentId: string) {
   const provider = {
     ...identity,
     fundingId: reserved.window.id,
-    nodeId: "renewal-test-node",
-    containerId: "c".repeat(64),
+    nodeId: providerTarget?.nodeId ?? "renewal-test-node",
+    containerId: providerTarget?.containerId ?? "c".repeat(64),
   };
   await helpers.writeTransaction((tx) => compute.bindProviderInTransaction(tx, provider));
   const authorization = await helpers.writeTransaction((tx) =>
@@ -702,7 +719,11 @@ test("a usage receipt must match one finalized funding source, its exact amount,
   expect(await renewalState(org)).toEqual(before);
 });
 
-async function billableFundedAgent(suffix: string, balance: string) {
+async function billableFundedAgent(
+  suffix: string,
+  balance: string,
+  providerTarget?: { nodeId: string; containerId: string },
+) {
   const org = `61000000-0000-4000-8000-${suffix}`;
   const agentId = `63000000-0000-4000-8000-${suffix}`;
   const userId = `64000000-0000-4000-8000-${suffix}`;
@@ -712,7 +733,7 @@ async function billableFundedAgent(suffix: string, balance: string) {
     VALUES ($1,$2,1,0,'{}',true,false,'active')`,
     [org, balance],
   );
-  const funded = await runningFundedAgent(org, agentId);
+  const funded = await runningFundedAgent(org, agentId, providerTarget);
   await fixture.query(
     `UPDATE agent_compute_funding SET period_start=date_trunc('milliseconds',period_start) WHERE id=$1`,
     [funded.provider.fundingId],
@@ -881,3 +902,365 @@ test("an unfundable hourly renewal keeps its existing hold and returns the canon
       .rows,
   ).toHaveLength(0);
 });
+
+async function stopReceiptFor(fundingId: string, stoppedAt: Date) {
+  const { rows } = await fixture.query<{
+    id: string;
+    agent_id: string;
+    organization_id: string;
+    provider_container_id: string;
+    previous_funding_id: string | null;
+    period_start: Date;
+    period_end: Date;
+  }>("SELECT * FROM agent_compute_funding WHERE id=$1", [fundingId]);
+  const window = rows[0]!;
+  return {
+    authorization: {
+      agentId: window.agent_id,
+      organizationId: window.organization_id,
+      containerId: window.provider_container_id,
+      fundingId: window.id,
+      previousFundingId: window.previous_funding_id,
+      issuedAtMs: Date.now(),
+      paidFromMs: window.period_start.getTime(),
+      paidUntilMs: window.period_end.getTime(),
+    },
+    bootId: crypto.randomUUID(),
+    expired: true,
+    stoppedAtMs: stoppedAt.getTime(),
+  };
+}
+
+test("stopped runtime refunds its unused hold atomically, including for an inactive account, without replaying the refund", async () => {
+  const { org, agentId, identity, provider, input } = await billableFundedAgent(
+    "000000000020",
+    "1.000000",
+  );
+  const { settleStoppedAgentComputeInTransaction: settle } = await import("./agent-compute-stop");
+  const receipt = await stopReceiptFor(provider.fundingId, input.now);
+  const request = { ...identity, fundingId: provider.fundingId };
+  const before = await renewalState(org);
+  await expect(
+    helpers.writeTransaction((tx) => settle(tx, request, { ...receipt, expired: false })),
+  ).rejects.toThrow();
+  await expect(
+    helpers.writeTransaction((tx) =>
+      settle(tx, request, {
+        ...receipt,
+        authorization: { ...receipt.authorization, containerId: "e".repeat(64) },
+      }),
+    ),
+  ).rejects.toThrow();
+  expect(await renewalState(org)).toEqual(before);
+  await expect(
+    helpers.writeTransaction(async (tx) => {
+      await settle(tx, request, receipt);
+      throw new Error("stop writeback failed");
+    }),
+  ).rejects.toThrow("stop writeback failed");
+  expect(await renewalState(org)).toEqual(before);
+  expect(
+    (await fixture.query("SELECT id FROM agent_billing_records WHERE sandbox_id=$1", [agentId]))
+      .rows,
+  ).toHaveLength(0);
+  await fixture.query(
+    "UPDATE organizations SET is_active=false,paid_work_fenced_at=now() WHERE id=$1",
+    [org],
+  );
+  expect(await helpers.writeTransaction((tx) => settle(tx, request, receipt))).toMatchObject({
+    replayed: false,
+    purchasedCreditRefunded: true,
+  });
+  const after = await renewalState(org);
+  expect(after.balance).toEqual([{ credit_balance: "0.990000" }]);
+  expect(after.ledger).toHaveLength(2);
+  expect(
+    (
+      await fixture.query(
+        "SELECT amount::text,compute_funding_id,credit_transaction_id FROM agent_billing_records WHERE sandbox_id=$1",
+        [agentId],
+      )
+    ).rows,
+  ).toEqual([
+    { amount: "0.010000", compute_funding_id: provider.fundingId, credit_transaction_id: null },
+  ]);
+  expect(await helpers.writeTransaction((tx) => settle(tx, request, receipt))).toMatchObject({
+    replayed: true,
+    purchasedCreditRefunded: false,
+  });
+  expect(await renewalState(org)).toEqual(after);
+  await expect(
+    helpers.writeTransaction((tx) =>
+      settle(tx, request, { ...receipt, stoppedAtMs: receipt.stoppedAtMs + 1 }),
+    ),
+  ).rejects.toThrow();
+  expect(await renewalState(org)).toEqual(after);
+});
+
+test("a delayed expiry reconciliation bills only through the durable host stop time", async () => {
+  const { org, agentId, identity, provider } = await billableFundedAgent(
+    "000000000021",
+    "1.000000",
+  );
+  await fixture.query(
+    `UPDATE agent_compute_funding SET period_end=period_start+interval '30 minutes',
+    provider_bound_at=period_start,host_lease_confirmed_at=period_start WHERE id=$1`,
+    [provider.fundingId],
+  );
+  const { rows } = await fixture.query<{ stopped_at: Date }>(
+    "SELECT period_end-interval '1 minute' AS stopped_at FROM agent_compute_funding WHERE id=$1",
+    [provider.fundingId],
+  );
+  const receipt = await stopReceiptFor(provider.fundingId, rows[0]!.stopped_at);
+  const { settleStoppedAgentComputeInTransaction: settle } = await import("./agent-compute-stop");
+  await helpers.writeTransaction((tx) =>
+    settle(tx, { ...identity, fundingId: provider.fundingId }, receipt),
+  );
+  expect((await renewalState(org)).balance).toEqual([{ credit_balance: "0.995167" }]);
+  expect(
+    (
+      await fixture.query(
+        "SELECT amount::text,billing_period_end FROM agent_billing_records WHERE sandbox_id=$1",
+        [agentId],
+      )
+    ).rows,
+  ).toEqual([{ amount: "0.004833", billing_period_end: rows[0]!.stopped_at }]);
+});
+
+test("revoking an undelivered successor after its predecessor stopped releases the whole unused window", async () => {
+  const { org, agentId, identity, input, agentBillingRepository } = await billableFundedAgent(
+    "000000000022",
+    "1.000000",
+  );
+  await agentBillingRepository.recordHourlyBilling(input);
+  const { rows } = await fixture.query<{ id: string; period_start: Date }>(
+    "SELECT id,period_start FROM agent_compute_funding WHERE agent_id=$1 AND settled_at IS NULL",
+    [agentId],
+  );
+  const current = rows[0]!;
+  const receipt = await stopReceiptFor(current.id, new Date(current.period_start.getTime() - 1));
+  const { settleStoppedAgentComputeInTransaction: settle } = await import("./agent-compute-stop");
+  await helpers.writeTransaction((tx) =>
+    settle(tx, { ...identity, fundingId: current.id }, receipt),
+  );
+  expect((await renewalState(org)).balance).toEqual([{ credit_balance: "0.990000" }]);
+  expect(
+    (
+      await fixture.query("SELECT id FROM agent_billing_records WHERE compute_funding_id=$1", [
+        current.id,
+      ])
+    ).rows,
+  ).toHaveLength(0);
+  const stopped = await fixture.query(
+    "SELECT provider_stop_receipt,settled_at IS NOT NULL AS settled FROM agent_compute_funding WHERE id=$1",
+    [current.id],
+  );
+  expect(stopped.rows[0]).toMatchObject({
+    settled: true,
+    provider_stop_receipt: { fundingId: current.id, stoppedAtMs: receipt.stoppedAtMs },
+  });
+});
+
+test("paid lease recovery cannot authorize an unreconciled legacy lifecycle transition", async () => {
+  const { org, agentId, input, agentBillingRepository } = await billableFundedAgent(
+    "000000000031",
+    "1.000000",
+  );
+  const before = await renewalState(org);
+  await expect(
+    helpers.writeTransaction((tx) =>
+      agentBillingRepository.settleAccruedBillingBeforeLifecycleInTransaction(
+        tx,
+        agentId,
+        org,
+        input.now,
+      ),
+    ),
+  ).rejects.toMatchObject({ code: "AGENT_COMPUTE_BILLING_RECONCILIATION_REQUIRED" });
+  expect(await renewalState(org)).toEqual(before);
+  expect(
+    await helpers.writeTransaction((tx) =>
+      agentBillingRepository.settleAccruedBillingBeforeLifecycleInTransaction(
+        tx,
+        agentId,
+        org,
+        input.now,
+        "billing_recovery",
+      ),
+    ),
+  ).toMatchObject({ status: "billed" });
+  const after = await renewalState(org);
+  expect(after.balance).toEqual([{ credit_balance: "0.970000" }]);
+  expect(after.windows).toHaveLength(2);
+  expect(after.reservations).toHaveLength(2);
+});
+
+if (sshFixturePath) {
+  test("real Docker stop survives a PostgreSQL rollback and app suspension refunds once", async () => {
+    const target = z
+      .object({
+        hostname: z.ipv4(),
+        port: z.number().int().min(1).max(65535),
+        username: z.string().regex(/^[a-z_][a-z0-9_-]*$/),
+        hostKeyFingerprint: z.string().regex(/^SHA256:[A-Za-z0-9+/]+$/),
+        image: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+      })
+      .strict()
+      .parse(JSON.parse(await readFile(sshFixturePath, "utf8")));
+    const { DockerSSHClient } = await import("./docker-ssh");
+    const { shellQuote } = await import("./docker-sandbox-utils");
+    const guard = await import("./docker-compute-lease");
+    const { stopFundedAgentInTransaction, settleStoppedAgentComputeInTransaction } = await import(
+      "./agent-compute-stop"
+    );
+    const ssh = new DockerSSHClient(target);
+    const rootSSH = guard.dockerComputeRootSSH(ssh, target.username);
+    const name = `eliza-compute-stop-integration-${crypto.randomUUID()}`;
+    const nodeId = `stop-test-${crypto.randomUUID()}`;
+    const org = "61000000-0000-4000-8000-000000000030";
+    const agentId = "63000000-0000-4000-8000-000000000030";
+    const marker = crypto.randomUUID();
+    let containerId: string | undefined;
+    let ownsGuard = false;
+    let originalRunning: string[] = [];
+    const docker = target.username === "root" ? "docker" : "sudo --non-interactive docker";
+    await ssh.connect();
+    try {
+      originalRunning = (await ssh.exec(`${docker} ps -q --no-trunc`))
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .sort();
+      await rootSSH.execStdin(
+        "python3 -",
+        `from pathlib import Path\nassert not Path('/var/lib/eliza/compute-leases').exists()\nassert not Path('/etc/systemd/system/eliza-compute-guard.service').exists()\n`,
+      );
+      containerId = (
+        await ssh.exec(
+          [
+            `${docker} create --pull=never --network=none --memory=64m --cpus=0.2 --pids-limit=32`,
+            "--cap-drop=ALL --security-opt=no-new-privileges --user=65534:65534 --restart=no",
+            `--name ${shellQuote(name)} --label ai.elizaos.managed-by=eliza-cloud --label ai.elizaos.container-class=test`,
+            `--label ai.elizaos.agent-id=${agentId} --label ai.elizaos.org-id=${org}`,
+            `--entrypoint /bin/sh ${shellQuote(target.image)} -c 'exec sleep 600'`,
+          ].join(" "),
+        )
+      ).trim();
+      expect(containerId).toMatch(/^[a-f0-9]{64}$/);
+      const { dockerNodes } = await import("../../db/schemas/docker-nodes");
+      const columns = getTableConfig(dockerNodes).columns.map(
+        (column) => `"${column.name}" ${column.getSQLType()}`,
+      );
+      await fixture.exec(`CREATE TABLE docker_nodes (${columns.join(", ")})`);
+      await fixture.query(
+        "INSERT INTO docker_nodes(id,node_id,hostname,ssh_port,ssh_user,host_key_fingerprint) VALUES(gen_random_uuid(),$1,$2,$3,$4,$5)",
+        [nodeId, target.hostname, target.port, target.username, target.hostKeyFingerprint],
+      );
+      const { compute, identity, provider } = await billableFundedAgent(
+        "000000000030",
+        "1.000000",
+        { nodeId, containerId },
+      );
+      await fixture.query("UPDATE agent_sandboxes SET sandbox_id=$2 WHERE id=$1", [
+        agentId,
+        `docker://${nodeId}/${name}`,
+      ]);
+      const authorization = await helpers.writeTransaction((tx) =>
+        compute.authorizeHostInTransaction(tx, provider),
+      );
+      ownsGuard = true;
+      await guard.installDockerComputeGuard(rootSSH);
+      await guard.grantDockerComputeLease(rootSSH, authorization);
+      await guard.startDockerComputeLease(rootSSH, authorization);
+      await ssh.exec(
+        `${docker} exec ${containerId} /bin/sh -c ${shellQuote(`printf '%s' '${marker}' > /tmp/stop-marker`)}`,
+      );
+      const before = await renewalState(org);
+      await expect(
+        helpers.writeTransaction(async (tx) => {
+          await stopFundedAgentInTransaction(tx, identity);
+          throw new Error("Forced outer PostgreSQL rollback after real Docker stop");
+        }),
+      ).rejects.toThrow("Forced outer PostgreSQL rollback");
+      expect(await renewalState(org)).toEqual(before);
+      expect(
+        (await ssh.exec(`${docker} inspect --format '{{.State.Running}}' ${containerId}`)).trim(),
+      ).toBe("false");
+      const { elizaSandboxService } = await import("./eliza-sandbox");
+      expect(
+        await elizaSandboxService.executeSuspend(agentId, org, crypto.randomUUID(), "user_request"),
+      ).toMatchObject({ success: true, containerStopped: true });
+      const settled = await fixture.query<{
+        provider_stop_receipt: { bootId: string; stoppedAtMs: number };
+        settled: boolean;
+      }>(
+        "SELECT provider_stop_receipt,settled_at IS NOT NULL AS settled FROM agent_compute_funding WHERE id=$1",
+        [provider.fundingId],
+      );
+      expect(settled.rows[0]?.settled).toBe(true);
+      const totals = await fixture.query(
+        `SELECT a.status,a.sandbox_id,a.billing_status,
+        (SELECT count(*)::int FROM credit_transactions WHERE organization_id=$2) AS ledger_count,
+        (SELECT count(*)::int FROM agent_billing_records WHERE sandbox_id=$1) AS receipt_count,
+        (o.credit_balance+a.total_billed)=1.000000 AS reconciled
+        FROM agent_sandboxes a JOIN organizations o ON o.id=a.organization_id WHERE a.id=$1`,
+        [agentId, org],
+      );
+      expect(totals.rows[0]).toMatchObject({
+        status: "stopped",
+        sandbox_id: `docker://${nodeId}/${name}`,
+        ledger_count: 2,
+        receipt_count: 1,
+        reconciled: true,
+      });
+      const after = await renewalState(org);
+      const receipt = {
+        authorization,
+        expired: true as const,
+        ...settled.rows[0]!.provider_stop_receipt,
+      };
+      expect(
+        await helpers.writeTransaction((tx) =>
+          settleStoppedAgentComputeInTransaction(
+            tx,
+            { ...identity, fundingId: provider.fundingId },
+            receipt,
+          ),
+        ),
+      ).toMatchObject({ replayed: true, purchasedCreditRefunded: false });
+      expect(await renewalState(org)).toEqual(after);
+      expect(
+        (await ssh.exec(`${docker} cp ${containerId}:/tmp/stop-marker - | tar -xO`)).trim(),
+      ).toBe(marker);
+      await expect(
+        guard.grantDockerComputeLease(rootSSH, { ...authorization, issuedAtMs: Date.now() }),
+      ).rejects.toThrow("funding_revoked");
+      expect(
+        (await ssh.exec(`${docker} inspect --format '{{.State.Running}}' ${containerId}`)).trim(),
+      ).toBe("false");
+    } finally {
+      try {
+        if (containerId) await ssh.exec(`${docker} rm -f ${shellQuote(containerId)}`);
+        if (ownsGuard) {
+          const digest = createHash("sha256")
+            .update(guard.DOCKER_COMPUTE_GUARD_PROGRAM)
+            .digest("hex");
+          await rootSSH.execStdin(
+            "python3 -",
+            `import json, pathlib, shutil, subprocess\nroot=pathlib.Path('/var/lib/eliza/compute-leases')\nunit=pathlib.Path('/etc/systemd/system/eliza-compute-guard.service')\nif unit.exists():\n assert 'guard-${digest}.py' in unit.read_text(), 'foreign_guard_preserved'\nif root.exists():\n for p in root.glob('*.json'):\n  assert json.loads(p.read_text())['authorization']['containerId']==${JSON.stringify(containerId)}, 'foreign_lease_preserved'\nif unit.exists():\n subprocess.run(['systemctl','disable','--now',unit.name],check=True,capture_output=True)\n unit.unlink()\n subprocess.run(['systemctl','daemon-reload'],check=True,capture_output=True)\nif root.exists(): shutil.rmtree(root)\nassert not root.exists() and not unit.exists()\n`,
+          );
+        }
+        expect(
+          (
+            await ssh.exec(`${docker} ps -a --filter name=${shellQuote(name)} --format '{{.ID}}'`)
+          ).trim(),
+        ).toBe("");
+        expect(
+          (await ssh.exec(`${docker} ps -q --no-trunc`)).trim().split("\n").filter(Boolean).sort(),
+        ).toEqual(originalRunning);
+      } finally {
+        await ssh.disconnect();
+      }
+    }
+  }, 180_000);
+}

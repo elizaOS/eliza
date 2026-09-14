@@ -16,6 +16,21 @@ import type { DockerSSHClient } from "./docker-ssh";
 
 const CONTROL_ROOT = "/var/lib/eliza/compute-leases";
 
+/** The guard owns root-only files; deployment users use their existing noninteractive sudo authority. */
+export function dockerComputeRootSSH(
+  ssh: Pick<DockerSSHClient, "execStdin">,
+  sshUsername: string,
+): Pick<DockerSSHClient, "execStdin"> {
+  return {
+    execStdin: (command, input, timeoutMs) =>
+      ssh.execStdin(
+        sshUsername === "root" ? command : `sudo --non-interactive ${command}`,
+        input,
+        timeoutMs,
+      ),
+  };
+}
+
 export interface DockerComputeAuthorization {
   agentId: string;
   organizationId: string;
@@ -139,6 +154,7 @@ def grant(authorization):
     healthy()
     container_id = authorization['containerId']
     with lock(container_id) as path:
+        require(read(ROOT / 'revocations' / (authorization['fundingId'] + '.json')) is None, 'funding_revoked')
         old = read(path)
         if old is not None and old['authorization']['fundingId'] == authorization['fundingId']:
             require(same_grant(old['authorization'], authorization), 'funding_replay_conflict')
@@ -205,6 +221,44 @@ def stop(path, lease):
         write(ROOT / 'receipts' / (lease['authorization']['fundingId'] + '.json'), lease)
     return lease
 
+def revoke(authorization):
+    validate(authorization)
+    container_id = authorization['containerId']
+    with lock(container_id) as path:
+        previous = read(path)
+        tombstone_path = ROOT / 'revocations' / (authorization['fundingId'] + '.json')
+        tombstone = read(tombstone_path)
+        if tombstone is not None:
+            require(same_grant(tombstone, authorization), 'revocation_replay_conflict')
+        history = read(ROOT / 'grants' / (authorization['fundingId'] + '.json'))
+        require(history is None or same_grant(history, authorization), 'revocation_replay_conflict')
+        if previous is not None:
+            old = previous['authorization']
+            require(old['agentId'] == authorization['agentId'] and
+                old['organizationId'] == authorization['organizationId'], 'funding_owner_changed')
+            require(old['fundingId'] in (authorization['fundingId'], authorization['previousFundingId']),
+                'revocation_funding_superseded')
+            if old['fundingId'] == authorization['fundingId']:
+                require(same_grant(old, authorization), 'revocation_replay_conflict')
+        # Revoke even when a committed renewal has not reached the host yet.
+        # The tombstone precedes Docker effects and forbids its delayed grant.
+        state = inspect(container_id, authorization)
+        if previous is not None:
+            write(ROOT / 'revocations' / (previous['authorization']['fundingId'] + '.json'), previous['authorization'])
+        write(tombstone_path, authorization)
+        if previous is not None and previous['authorization']['fundingId'] == authorization['fundingId']:
+            lease = previous
+            lease['expired'] = True
+        else:
+            prior_stop = (previous['stoppedAtMs'] if previous is not None
+                and previous['bootId'] == BOOT_ID and (state is None or not state['running']) else None)
+            lease = {'authorization': authorization, 'bootId': BOOT_ID, 'expiresBootNs': boot_ns(),
+                'expired': True, 'stoppedAtMs': prior_stop}
+        write(path, lease)
+        stopped = stop(path, lease)
+        write(ROOT / 'receipts' / (authorization['fundingId'] + '.json'), stopped)
+        return stopped
+
 def start(request):
     require(set(request) == {'containerId', 'fundingId'}, 'invalid_start_request')
     healthy()
@@ -261,6 +315,8 @@ def main():
         print(json.dumps(grant(json.load(sys.stdin))))
     elif operation == 'start':
         print(json.dumps(start(json.load(sys.stdin))))
+    elif operation == 'revoke':
+        print(json.dumps(revoke(json.load(sys.stdin))))
     else:
         raise RuntimeError('unknown_operation')
 
@@ -283,7 +339,7 @@ root.mkdir(mode=0o700, parents=True, exist_ok=True)
 assert root.stat().st_uid == 0 and root.stat().st_mode & 0o077 == 0, 'unsafe_control_directory'
 lock = (root / 'install.lock').open('a')
 fcntl.flock(lock, fcntl.LOCK_EX)
-for name in ('grants', 'receipts'):
+for name in ('grants', 'receipts', 'revocations'):
     (root / name).mkdir(mode=0o700, exist_ok=True)
 program = sys.stdin.buffer.read()
 assert hashlib.sha256(program).hexdigest() == sys.argv[2], 'program_digest_mismatch'
@@ -348,7 +404,19 @@ export async function startDockerComputeLease(
 ) {
   return ssh.execStdin(
     `python3 ${shellQuote(GUARD_PATH)} ${shellQuote(CONTROL_ROOT)} start`,
-    JSON.stringify(identity),
+    JSON.stringify({ containerId: identity.containerId, fundingId: identity.fundingId }),
+    60_000,
+  );
+}
+
+/** Persists a terminal funding tombstone and proves the exact container stopped; never removes its state. */
+export async function revokeDockerComputeLease(
+  ssh: Pick<DockerSSHClient, "execStdin">,
+  authorization: DockerComputeAuthorization,
+) {
+  return ssh.execStdin(
+    `python3 ${shellQuote(GUARD_PATH)} ${shellQuote(CONTROL_ROOT)} revoke`,
+    JSON.stringify(authorization),
     60_000,
   );
 }

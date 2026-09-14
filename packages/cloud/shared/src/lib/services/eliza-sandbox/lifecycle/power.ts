@@ -16,6 +16,8 @@ import {
 } from "../../../../db/schemas/agent-sandboxes";
 import { AGENT_PRICING } from "../../../constants/agent-pricing";
 import { logger } from "../../../utils/logger";
+import { hasOpenAgentComputeFunding, stopFundedAgentInTransaction } from "../../agent-compute-stop";
+import { creditsService } from "../../credits";
 import { isContainerBackedExecutionTier } from "../../sandbox-provider-types";
 import {
   formatWakeRestoreIntegrityError,
@@ -379,12 +381,11 @@ export class SandboxPower {
   }
 
   /**
-   * Daemon-side handler for the `agent_suspend` job. Proves a durable backup
-   * (see `prepareSuspendBackupGate`), calls the provider's absence-proof
-   * replacement stop, flips the DB row to `stopped`, and clears bridge/health
-   * URLs — but keeps `sandbox_id` and the per-tenant managed DB so a
-   * subsequent `agent_resume` re-provisions against the retained state.
-   * Replaces the Worker-callable `shutdown()` path which cannot reach SSH.
+   * Daemon-side handler for `agent_suspend`. Funded runtime is revoked and
+   * stopped in place before unused funds are refunded; its complete container
+   * state remains on the host. Legacy runtime requires a current backup before
+   * replacement stop removes it. Both paths clear live URLs and retain the
+   * sandbox identity and tenant database for their corresponding resume path.
    */
   async executeSuspend(
     agentId: string,
@@ -487,7 +488,13 @@ export class SandboxPower {
     let suspendBackupId: string | undefined;
     let backupCapturedFresh = false;
     let pendingSuspendSnapshot: { stateData: AgentBackupStateData; sizeBytes: number } | undefined;
-    if (snapshotSource.status !== "stopped") {
+    const fundedSource = await dbWrite.transaction((tx) =>
+      hasOpenAgentComputeFunding(tx, agentId, orgId),
+    );
+    // Prepaid suspension stops in place. Retaining the complete container and
+    // volume lets expiry stop unpaid CPU even when live capture is unavailable.
+    // Legacy replacement stop removes the container and still needs its backup.
+    if (snapshotSource.status !== "stopped" && !fundedSource) {
       const revalidated = await this.host.revalidateContainerBackedLifecycleGeneration(
         snapshotSource,
         "suspend",
@@ -620,7 +627,17 @@ export class SandboxPower {
           reason: "lifecycle_changed",
         } as const;
       }
-      if (effectiveAuthorization === "billing_request") {
+      if ((await hasOpenAgentComputeFunding(tx, agentId, orgId)) !== fundedSource) {
+        return {
+          success: false,
+          containerStopped: false,
+          error: "Agent funding changed before stop",
+        } as const;
+      }
+      if (
+        effectiveAuthorization === "billing_request" &&
+        (!fundedSource || rec.status === "running")
+      ) {
         const fundedAt = new Date();
         const settlement =
           await agentBillingRepository.settleAccruedBillingBeforeLifecycleInTransaction(
@@ -628,6 +645,7 @@ export class SandboxPower {
             agentId,
             orgId,
             fundedAt,
+            "billing_recovery",
           );
         if (settlement.status !== "insufficient_credits") {
           await tx
@@ -657,13 +675,36 @@ export class SandboxPower {
         }
       }
 
+      let fundedStop: Awaited<ReturnType<typeof stopFundedAgentInTransaction>> = null;
+      if (fundedSource) {
+        if (!snapshotCaptureStillCanonical(rec, snapshotSource)) {
+          return {
+            success: false,
+            containerStopped: false,
+            error: "Agent lifecycle changed before funded stop",
+          } as const;
+        }
+        fundedStop = await stopFundedAgentInTransaction(tx, {
+          agentId,
+          organizationId: orgId,
+          lifecycleRevision: rec.lifecycle_revision,
+        });
+        if (!fundedStop) {
+          return {
+            success: false,
+            containerStopped: false,
+            error: "Agent funding changed before stop",
+          } as const;
+        }
+      }
+
       // A stopped sandbox with a durable backup remains billable storage. A
       // billing stop queued before a top-up must therefore settle and observe
       // the restored funding above before this physical-state fast path can
       // suspend billing permanently. Explicit user stops remain unconditional.
       if (rec.status === "stopped") {
         const confirmedAt = new Date();
-        if (effectiveAuthorization === "user_request") {
+        if (effectiveAuthorization === "user_request" && !fundedStop) {
           await agentBillingRepository.settleAccruedBillingBeforeLifecycleInTransaction(
             tx,
             agentId,
@@ -737,7 +778,7 @@ export class SandboxPower {
           })
           .where(eq(agentComputeStopIntents.id, stopIntent.id));
       }
-      if (rec.sandbox_id) {
+      if (rec.sandbox_id && !fundedStop) {
         const stop = await this.host.runBoundedSandboxStopForReplacement(rec.sandbox_id);
         if (stop) {
           if (stopIntent) {
@@ -764,7 +805,7 @@ export class SandboxPower {
       }
 
       const confirmedAt = new Date();
-      if (effectiveAuthorization === "user_request") {
+      if (effectiveAuthorization === "user_request" && !fundedStop) {
         await agentBillingRepository.settleAccruedBillingBeforeLifecycleInTransaction(
           tx,
           agentId,
@@ -803,6 +844,7 @@ export class SandboxPower {
       }
       return { success: true, containerStopped, backupId: suspendBackupId } as const;
     });
+    if (result.success && fundedSource) await creditsService.invalidateCreditCaches(orgId);
     if (result.success && backupCapturedFresh) {
       // error-policy:J6 pruning is retention housekeeping after the suspend
       // committed; its failure is logged, never surfaced as a suspend failure.
