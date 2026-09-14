@@ -5495,6 +5495,7 @@ export async function handleConversationRoutes(
         }
 
         const endActiveChatTurn = beginActiveChatTurn(state);
+        const responseLease = runtimeTurnLease;
         let replySent = false;
         const deliverResult = async (
           result: ChatGenerationResult,
@@ -5519,7 +5520,7 @@ export async function handleConversationRoutes(
               result,
               resolvedText,
               channelType,
-              runtimeTurnLease,
+              responseLease,
               messageToStore.id,
             );
             assertConversationConnectionRuntime(
@@ -5537,7 +5538,7 @@ export async function handleConversationRoutes(
                 result.actionCallbackHistory,
                 turnStartedAt,
                 persistedAssistantId,
-                runtimeTurnLease,
+                responseLease,
               );
             }
             assertConversationConnectionRuntime(
