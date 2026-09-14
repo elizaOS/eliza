@@ -441,6 +441,49 @@ describe("local inference downloader status", () => {
 		expect(job?.error).toBe("network reset");
 	});
 
+	it("skips terminal jobs whose updatedAt is not a string so snapshot sorting cannot crash", () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const statusDir = path.join(root, "local-inference");
+		fs.mkdirSync(statusDir, { recursive: true });
+		fs.writeFileSync(
+			path.join(statusDir, "download-status.json"),
+			JSON.stringify({
+				version: 1,
+				jobs: [
+					{
+						jobId: "job-1",
+						modelId: "eliza-1-2b",
+						state: "failed",
+						received: 64,
+						total: 128,
+						bytesPerSec: 0,
+						etaMs: null,
+						startedAt: "2026-05-08T00:00:00.000Z",
+						// updatedAt deliberately missing (legacy/corrupt record)
+						error: "network reset",
+					},
+					{
+						jobId: "job-2",
+						modelId: "eliza-1-2b-vision",
+						state: "completed",
+						received: 64,
+						total: 128,
+						bytesPerSec: 0,
+						etaMs: null,
+						startedAt: "2026-05-08T00:00:00.000Z",
+						updatedAt: 12345, // non-string (corrupt record)
+					},
+				],
+			}),
+			"utf8",
+		);
+
+		const jobs = new Downloader().snapshot();
+
+		expect(jobs).toHaveLength(0);
+	});
+
 	it("installs Eliza-1 manifest bundles with embedded-draft-head MTP metadata", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
 		process.env.ELIZA_STATE_DIR = root;
