@@ -8,8 +8,9 @@ ARG AGENT_DIR=packages/agent
 ARG APP_DIR=packages/app
 ARG APP_ENTRYPOINT=packages/agent/dist/bin.js
 # Native embeddings require bun:ffi; use the pinned Bun runtime for the agent.
+# Ignore development source aliases and load the built runtime package exports.
 # APP_CMD_START remains an explicit operator override.
-ARG APP_CMD_START="bun packages/agent/dist/bin.js start"
+ARG APP_CMD_START="bun --tsconfig-override /app/${APP_CORE_DIR}/deploy/tsx-runtime-tsconfig.json ${APP_ENTRYPOINT} start"
 ARG APP_PORT=2138
 ARG APP_API_BIND=127.0.0.1
 ARG OCI_SOURCE=""
@@ -281,4 +282,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
   CMD sh -lc 'port="${PORT:-${APP_PORT:-${ELIZA_PORT:-2138}}}"; code="$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${port}/api/health")" && [ "$code" = "200" -o "$code" = "401" ]'
 
 ENTRYPOINT ["sh", "-lc", "exec sh \"./${APP_CORE_DIR:-packages/app-core}/scripts/docker-entrypoint.sh\" \"$@\"", "--"]
-CMD ["sh", "-lc", "exec ${APP_CMD_START:-bun ${APP_ENTRYPOINT} start}"]
+CMD ["sh", "-lc", "exec ${APP_CMD_START:-bun --tsconfig-override /app/${APP_CORE_DIR}/deploy/tsx-runtime-tsconfig.json ${APP_ENTRYPOINT} start}"]
