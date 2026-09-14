@@ -26,8 +26,10 @@
 import type { AgentExecutionTier } from "@elizaos/cloud-sdk";
 import {
   AGENT_PRICING,
+  DEDICATED_COMPUTE_PRICE_HEADER,
   formatHourlyRate,
   formatUSD,
+  getDedicatedComputePriceAcceptance,
 } from "@elizaos/cloud-sdk/browser-contracts";
 import {
   AlertDialog,
@@ -256,7 +258,18 @@ export function ElizaAgentActions({
       const { status: httpStatus, data } = await apiWithStatus<{
         data?: { jobId?: string };
         error?: string;
-      }>(url, { method, json });
+      }>(url, {
+        method,
+        json,
+        ...(isDedicated && ["resume", "wake", "provision"].includes(action)
+          ? {
+              headers: {
+                [DEDICATED_COMPUTE_PRICE_HEADER]:
+                  getDedicatedComputePriceAcceptance(),
+              },
+            }
+          : {}),
+      });
       const jobId = data?.data?.jobId;
 
       // 409 — operation already in flight; attach to the existing job when the
