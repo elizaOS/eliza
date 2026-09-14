@@ -32,7 +32,7 @@ function call(name: string, text?: string) {
 }
 
 describe("explicit catalog-only requests", () => {
-	it.each([[], ["READ"]])(
+	it.each([[], ["READ"], ["UNAVAILABLE_READ"]])(
 		"replans after settled preparatory discovery %j without judging completion early",
 		async (...names) => {
 			const discovery = createPlannerToolDiscoveryAction(
@@ -85,6 +85,7 @@ describe("explicit catalog-only requests", () => {
 				ModelType.RESPONSE_HANDLER,
 			]);
 			expect(executed).toEqual(["DISCOVER_TOOLS", "READ"]);
+			expect(result.trajectory.steps[0]?.result).toEqual(discoveryResult);
 			expect(result.finalMessage ?? result.evaluator?.messageToUser).toBe(
 				"Current count: 3.",
 			);

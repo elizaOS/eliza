@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { buildPlannerToolsFromActions } from "../../actions/to-tool";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
+import { documentAction } from "../../features/documents/actions";
 import { AgentRuntime } from "../../runtime";
 import type { Action } from "../../types/components";
 import type { ContextObject } from "../../types/context-object";
@@ -21,6 +22,50 @@ const runtime = {} as IAgentRuntime;
 const message = {} as Memory;
 
 describe("planner tool discovery", () => {
+	it.each(["USER", "GUEST"] as const)(
+		"admits observed document hints through canonical role gates for %s",
+		async (role) => {
+			const actualRuntime = new AgentRuntime({
+				character: { name: "Document admission", bio: "test" },
+				adapter: new InMemoryDatabaseAdapter(),
+				logLevel: "fatal",
+			});
+			actualRuntime.actions.length = 0;
+			actualRuntime.actions.push({
+				name: "DOCUMENT",
+				similes: documentAction.similes,
+				description: "Stored documents",
+				contexts: ["documents"],
+				contextGate: { anyOf: ["documents"] },
+				roleGate: { minRole: "USER" },
+			});
+			for (const hint of [
+				"DOCUMENTS_READ",
+				"DOCUMENTS_SEARCH",
+				"DOCS_READ",
+				"DOCS_SEARCH",
+			]) {
+				const admitted = await collectV5PlannerCandidateActions({
+					runtime: actualRuntime,
+					message,
+					state: { values: {}, data: {}, text: "" },
+					selectedContexts: ["documents"],
+					candidateActions: [hint],
+					userRoles: [role],
+				});
+				const initial = collectBudgetedStageOneCandidateActions({
+					actions: admitted,
+					candidateActions: [hint],
+					contexts: ["documents"],
+					deferUnselectedContexts: true,
+				});
+				expect(initial.map((action) => action.name)).toEqual(
+					role === "USER" ? ["DOCUMENT"] : [],
+				);
+			}
+		},
+	);
+
 	it("defers a parent beside an exact child but loads its complete contract on discovery", async () => {
 		const actions: Action[] = [
 			{

@@ -1170,9 +1170,14 @@ describe("canonical evaluation of grounded internal receipts", () => {
 		return JSON.stringify(request?.messages);
 	};
 
-	it.each([false, true])(
-		"reuses the verified evaluator reply for scope-only REPLY (mixed batch: %s)",
-		async (mixedBatch) => {
+	it.each([
+		{ mixedBatch: false, replyCount: 1 },
+		{ mixedBatch: true, replyCount: 1 },
+		{ mixedBatch: false, replyCount: 2 },
+		{ mixedBatch: true, replyCount: 2 },
+	])(
+		"reuses the verified evaluator reply for scope-only REPLY %j",
+		async ({ mixedBatch, replyCount }) => {
 			const reply = "Tu sesión de gimnasio está en el calendario.";
 			const response = finish(reply, true, [appliedReceipt.receiptId]);
 			const usage = { promptTokens: 1400, completionTokens: 84 };
@@ -1185,7 +1190,13 @@ describe("canonical evaluation of grounded internal receipts", () => {
 							...(mixedBatch ? [call("NAVIGATE", "final")] : []),
 						],
 					},
-					{ text: "", toolCalls: [call("REPLY", "final")] },
+					{
+						text: "",
+						toolCalls: Array.from({ length: replyCount }, (_, index) => ({
+							...call("REPLY", "final"),
+							id: `reply-${index}`,
+						})),
+					},
 				],
 				evaluations: [
 					...(mixedBatch

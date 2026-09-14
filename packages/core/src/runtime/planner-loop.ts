@@ -1009,6 +1009,16 @@ async function runPlannerLoopIterations(
 			// context replacement. The existing final-message/receipt authority
 			// still owns delivery. Replacing an existing answer needs evaluation;
 			// missing presentation instead needs its own model-selected proof.
+			// Providers may repeat the same empty scope-only REPLY in one batch.
+			// These declarations introduce no answer, receipt, or domain operation.
+			const scopeOnlyReplyBatch =
+				plannerOutput.completed === true &&
+				plannerOutput.toolCalls.length > 0 &&
+				plannerOutput.toolCalls.every(
+					(call) =>
+						call.name.toUpperCase() === "REPLY" &&
+						Object.keys(call.params ?? {}).length === 0,
+				);
 			const pendingFinishEvidenceUnchanged =
 				!codingDrainQueue &&
 				pendingScopeRejectedFinish?.iteration === iteration - 1 &&
@@ -1016,7 +1026,7 @@ async function runPlannerLoopIterations(
 				trajectory.context === contextBeforePlanner &&
 				failures.length === 0 &&
 				!latestUnresolvedFailedNonTerminalToolStep(trajectory) &&
-				plannerOutput.toolCalls.length === 1 &&
+				(plannerOutput.toolCalls.length === 1 || scopeOnlyReplyBatch) &&
 				plannerOutput.toolCalls[0].name.toUpperCase() === "REPLY";
 			const requestsRejectedFinishRelease =
 				pendingFinishEvidenceUnchanged &&
@@ -2177,6 +2187,19 @@ async function runPlannerLoopIterations(
 							trajectory,
 						),
 			};
+		}
+		if (
+			toolCall.name === DISCOVER_TOOLS_NAME &&
+			!discoveryWasRequested &&
+			latestResult?.success === false &&
+			latestResult.data?.readOnlyOperation === true &&
+			!hasAwaitingUserInputMarker(latestResult) &&
+			!hasRequiresConfirmationMarker(latestResult)
+		) {
+			// An unavailable schema name has no domain effect to evaluate. Feed
+			// the recorded error back to the planner so it can select an admitted
+			// name; keep the failure and normal iteration budgets intact.
+			continue;
 		}
 
 		// Coding mode: keep executing the rest of this model-emitted tool-call
