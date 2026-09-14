@@ -1543,56 +1543,150 @@ export function isTitleEchoLocation(
     .every((word) => spoken.includes(word));
 }
 
-function withoutTitleEcho(
+/** Connector calendar ids the planner writes into place and note fields. */
+const CALENDAR_ID_TOKEN_PATTERN = /^(?:primary|default)$/i;
+
+/** Model spellings of "no value" that arrive as strings (location "N/A" on a plain move, live 2026-09-14). */
+const PLACEHOLDER_TOKEN_PATTERN =
+  /^(?:n\/?a|none|null|nil|undefined|unknown|unset|unspecified|tbd|tba|-+|—|–|not\s+(?:specified|provided|applicable|given|set|available))\.?$/i;
+
+export function looksLikePlaceholderToken(value: string): boolean {
+  return PLACEHOLDER_TOKEN_PATTERN.test(value.trim());
+}
+
+const CONTENT_WORD_MIN_LENGTH = 3;
+
+function rawWords(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/[^a-z0-9'’]+/)
+    .map((word) => word.replace(/^['’]+|['’]+$/g, ""))
+    .filter((word) => word.length > 0);
+}
+
+function contentWords(text: string): string[] {
+  return rawWords(text).filter(
+    (word) => word.length >= CONTENT_WORD_MIN_LENGTH,
+  );
+}
+
+/** Exact match, or a prefix either way once both words are content-length ("ave"/"avenue", "chiro"/"chiropractor"). */
+function wordsAgree(a: string, b: string): boolean {
+  return (
+    a === b ||
+    (a.length >= CONTENT_WORD_MIN_LENGTH &&
+      b.length >= CONTENT_WORD_MIN_LENGTH &&
+      (a.startsWith(b) || b.startsWith(a)))
+  );
+}
+
+/**
+ * A place or note the user never said is planner-invented: "move my tailor
+ * appointment to friday at 4pm" arrived with location "123 Main st", and the
+ * chiropractor move with location "chiro" (live 2026-09-14). A value is the
+ * user's when at least one of its words — beyond schedule tokens and the
+ * event's own title words — appears in their text. With no user text to check
+ * against (a programmatic caller) nothing is judged.
+ */
+export function isUngroundedTextField(
+  value: string | undefined,
+  title: string | undefined,
+  userTexts: ReadonlyArray<string | null | undefined>,
+): boolean {
+  if (value === undefined) return false;
+  const spoken = userTexts
+    .filter((text): text is string => typeof text === "string")
+    .flatMap(rawWords);
+  if (spoken.length === 0) return false;
+  const titleWords = contentWords(title ?? "");
+  const valueWords = contentWords(value);
+  const residual = (valueWords.length > 0 ? valueWords : rawWords(value)).filter(
+    (word) =>
+      !looksLikeScheduleToken(word) &&
+      !titleWords.some((titleWord) => wordsAgree(word, titleWord)),
+  );
+  if (residual.length === 0) return true;
+  return !residual.some((word) =>
+    spoken.some((spokenWord) => wordsAgree(word, spokenWord)),
+  );
+}
+
+const CLEAR_FIELD_NOUN: Record<"description" | "location", string> = {
+  location: "(?:location|place|address|venue)",
+  description: "(?:description|notes?|details?|memo|comments?)",
+};
+
+/**
+ * The user's own words asking that a place or note be removed. The planner
+ * emits clearFields on plain moves ("move my chiropractor appointment to
+ * friday at 4pm" arrived with clearFields ["location"], live 2026-09-14), so
+ * a clear the request never states is dropped like any other debris.
+ */
+export function userRequestsFieldClear(
+  field: "description" | "location",
+  requestText: string | undefined,
+): boolean {
+  if (!requestText) return false;
+  const noun = CLEAR_FIELD_NOUN[field];
+  const pattern = new RegExp(
+    `\\b(?:remove|clear|delete|drop|erase|strip|scrap|wipe|forget|get\\s+rid\\s+of|take\\s+(?:out|off|away))\\s+(?:the\\s+|its\\s+|my\\s+|that\\s+|any\\s+|all\\s+)?(?:(?:old|current|existing|whole)\\s+)?${noun}\\b` +
+      `|\\b(?:no|without(?:\\s+(?:a|an|the|any))?)\\s+${noun}\\b` +
+      `|\\b${noun}\\s+(?:(?:should|to)\\s+be\\s+|is\\s+|set\\s+to\\s+|to\\s+)?(?:removed|cleared|deleted|gone|blank|empty|none|nothing)\\b`,
+    "i",
+  );
+  return pattern.test(requestText);
+}
+
+/**
+ * A schedule token, a calendar id, a placeholder, an echo of the event's own
+ * noun, or a value the user never said in a place or note field is planner
+ * debris, never the user's request.
+ */
+function withoutTextFieldDebris(
   value: string | undefined,
   title: string | undefined,
   userTexts: ReadonlyArray<string | null | undefined>,
 ): string | undefined {
-  return isTitleEchoLocation(value, title, userTexts) ? undefined : value;
-}
-
-function withoutScheduleToken(value: string | undefined): string | undefined {
-  return value !== undefined && looksLikeScheduleToken(value)
+  if (value === undefined) return undefined;
+  return looksLikeScheduleToken(value) ||
+    looksLikePlaceholderToken(value) ||
+    CALENDAR_ID_TOKEN_PATTERN.test(value.trim()) ||
+    isTitleEchoLocation(value, title, userTexts) ||
+    isUngroundedTextField(value, title, userTexts)
     ? undefined
     : value;
 }
 
-/** Connector calendar ids the planner writes into place and note fields. */
-const CALENDAR_ID_TOKEN_PATTERN = /^(?:primary|default)$/i;
-
 /**
- * Blank model placeholders are omissions; clearing is a distinct operation.
- * A schedule token, a calendar id, or an echo of the user's own event noun in
- * a place or note field is planner debris (live 2026-09-14: location
- * "primary", description "Tailor Appointment" on a plain move).
+ * Blank model placeholders are omissions; clearing is a distinct operation
+ * that only the user's current words authorize, and a replacement beside an
+ * authorized clear is debris (the built-in calendar rejected "chiro" +
+ * clearFields ["location"] as a field conflict and the turn spent a retry,
+ * live 2026-09-14).
  */
-function calendarUpdateTextField(
+export function calendarUpdateTextField(
   details: Record<string, unknown> | undefined,
   extracted: Record<string, unknown>,
   field: "description" | "location",
   guards: {
     title: string | undefined;
+    /** The user's current message: the only text that can authorize a clear. */
+    requestText: string | undefined;
+    /** Current and earlier user text that can ground a place or note. */
     userTexts: ReadonlyArray<string | null | undefined>;
   },
 ): string | undefined {
+  const clearRequested = userRequestsFieldClear(field, guards.requestText);
   for (const source of [details, extracted]) {
-    const raw = detailString(source, field);
-    const value =
-      raw !== undefined &&
-      (looksLikeScheduleToken(raw) ||
-        CALENDAR_ID_TOKEN_PATTERN.test(raw.trim()) ||
-        isTitleEchoLocation(raw, guards.title, guards.userTexts))
-        ? undefined
-        : raw;
+    const value = withoutTextFieldDebris(
+      detailString(source, field),
+      guards.title,
+      guards.userTexts,
+    );
     const clear =
-      Array.isArray(source?.clearFields) && source.clearFields.includes(field);
-    if (clear && value !== undefined) {
-      throw new CalendarServiceError(
-        400,
-        `An event update cannot both replace and clear ${field}.`,
-        "CALENDAR_UPDATE_FIELD_CONFLICT",
-      );
-    }
+      clearRequested &&
+      Array.isArray(source?.clearFields) &&
+      source.clearFields.includes(field);
     if (clear) return "";
     if (value !== undefined) return value;
   }
@@ -1659,6 +1753,27 @@ function planningConversationLines(state: State | undefined): string[] {
     .map((line) => parseStateLine(line))
     .filter((line) => line.role.length > 0 && line.text.length > 0)
     .map((line) => `${line.role}: ${line.text}`);
+}
+
+/**
+ * Earlier lines the user wrote, so a place they named before still grounds
+ * this turn's field ("move it to the office I mentioned"). The agent's own
+ * lines are excluded: its earlier reply must not ground its own invention.
+ */
+function priorUserTexts(
+  runtime: IAgentRuntime,
+  state: State | undefined,
+): string[] {
+  const agentName = runtime.character?.name?.trim().toLowerCase();
+  return planningConversationLines(state)
+    .map((line) => parseStateLine(line))
+    .filter(
+      (line) =>
+        line.text.length > 0 &&
+        !["assistant", "agent", "system"].includes(line.role) &&
+        line.role !== agentName,
+    )
+    .map((line) => line.text);
 }
 
 function resolveCalendarIntentInput(
@@ -3891,6 +4006,8 @@ type CreateEventRequestBuildArgs = {
    */
   /** The user's current authoritative text: model-authored recurrence and travel fields are honored only when it states them. */
   authorizingUserTexts?: ReadonlyArray<string | null | undefined>;
+  /** Current and earlier user text that can ground a place or note; defaults to authorizingUserTexts. */
+  groundingUserTexts?: ReadonlyArray<string | null | undefined>;
 };
 
 type CreateEventRequestBuildResult = {
@@ -4076,13 +4193,16 @@ export function buildCreateEventRequest(
         sanitizeCalendarId(args.fallbackRequest?.calendarId),
       title: title ?? "",
       description:
-        pickCreateEventStringField(args, "description") ??
-        args.fallbackRequest?.description,
-      location:
-        withoutTitleEcho(
-          withoutScheduleToken(pickCreateEventStringField(args, "location")),
+        withoutTextFieldDebris(
+          pickCreateEventStringField(args, "description"),
           title,
-          args.authorizingUserTexts ?? [],
+          args.groundingUserTexts ?? args.authorizingUserTexts ?? [],
+        ) ?? args.fallbackRequest?.description,
+      location:
+        withoutTextFieldDebris(
+          pickCreateEventStringField(args, "location"),
+          title,
+          args.groundingUserTexts ?? args.authorizingUserTexts ?? [],
         ) ?? args.fallbackRequest?.location,
       startAt: resolvedStartAt,
       endAt: rawEndAt ?? args.fallbackRequest?.endAt,
@@ -5497,6 +5617,10 @@ const calendarAction: CalendarHandlerAction = {
           explicitTitle,
           inferredTitle,
           authorizingUserTexts: [messageText(message)],
+          groundingUserTexts: [
+            messageText(message),
+            ...priorUserTexts(runtime, state),
+          ],
           // The outer planner identifies CALENDAR and supplies hints; this
           // domain-specific extraction has the authoritative calendar context,
           // timezone, and local-date anchors needed to normalize wall time.
@@ -6053,6 +6177,11 @@ const calendarAction: CalendarHandlerAction = {
           extractedTimeZoneForUpdate ??
           targetEvent?.timezone ??
           undefined;
+        const updateTextFieldGuards = {
+          title: newTitle ?? targetEvent.title,
+          requestText: messageText(message),
+          userTexts: [messageText(message), ...priorUserTexts(runtime, state)],
+        };
         const updateRequest = {
           side: targetEvent.side,
           grantId,
@@ -6063,19 +6192,13 @@ const calendarAction: CalendarHandlerAction = {
             details,
             extractedForUpdate,
             "description",
-            {
-              title: newTitle ?? targetEvent.title,
-              userTexts: [messageText(message)],
-            },
+            updateTextFieldGuards,
           ),
           location: calendarUpdateTextField(
             details,
             extractedForUpdate,
             "location",
-            {
-              title: newTitle ?? targetEvent.title,
-              userTexts: [messageText(message)],
-            },
+            updateTextFieldGuards,
           ),
           ...resolveUpdateTimeRange({
             explicitStart: explicitStartAtForUpdate,
