@@ -278,8 +278,8 @@ export async function createV5MessageContextObject(args: {
 			userRoles: args.userRoles,
 			discoverActions: true,
 		});
-		// Every name remains visible. Full reference text and schemas are read
-		// through the existing permission-checked planner discovery protocol.
+		// Stage 1 receives complete authorized definitions so unfamiliar names
+		// cannot hide capabilities before the planner can request their schemas.
 		const fullCatalog = JSON.stringify(
 			actions.map((action) => ({
 				name: action.name,
@@ -288,10 +288,6 @@ export async function createV5MessageContextObject(args: {
 				similes: action.similes,
 			})),
 		);
-		const index = [
-			JSON.stringify(actions.map((action) => action.name)),
-			"All currently authorized action names are listed above. For a known operation, name its exact action in candidateActionNames. When descriptions or aliases are needed to identify or explain a capability, select DISCOVER_TOOLS and a non-simple context: the planner can read complete descriptions with names=[] and load complete schemas by exact name. Do not infer that an unfamiliar name means a capability is absent. Discovery is reference reading, never execution or permission. A conversational reply needs no discovery.",
-		].join("\n");
 		events.push({
 			id: "available-actions",
 			type: "segment",
@@ -300,11 +296,7 @@ export async function createV5MessageContextObject(args: {
 				id: "available-actions",
 				label: "available_actions",
 				stable: false,
-				content:
-					args.includeActionDiscovery === "index" &&
-					index.length < fullCatalog.length
-						? index
-						: fullCatalog,
+				content: fullCatalog,
 			},
 		});
 	}

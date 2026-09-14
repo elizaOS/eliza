@@ -1,7 +1,7 @@
 /**
  * Exercises the evaluator's model wire input with deterministic provider output.
  * The complete turn and native tool history remain unchanged in storage while
- * completion excludes only known planner diagnostics and JSON indentation.
+ * completion retains every routing diagnostic and removes only JSON indentation.
  */
 import { describe, expect, it, vi } from "vitest";
 import type { ContextObject } from "../../types/context-object";
@@ -245,8 +245,8 @@ describe("foreground evaluator context", () => {
 			]) {
 				expect(wire).toContain(phrase);
 			}
-			expect(wire).not.toContain("UNRELATED_CATALOG_ENTRY");
-			expect(wire).toContain("planner_retrieval_diagnostics");
+			expect(wire).toContain("UNRELATED_CATALOG_ENTRY");
+			expect(wire).toContain("queryTokens");
 			expect(messages.at(-1)).toEqual(feedback);
 			const original = modelHistory.find((message) => message.role === "tool");
 			const projected = messages.find((message) => message.role === "tool");

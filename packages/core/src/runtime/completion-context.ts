@@ -1,12 +1,10 @@
 /**
- * Binds Stage-1 relevance selections to exact prior dialogue sources for
- * the planner and completion evaluator. Current requests, standing provider constraints,
- * instructions, runtime feedback and tool evidence are never selectable away.
- * Absent, malformed or stale selections preserve the complete original context.
+ * Binds Stage-1 relevance annotations to exact prior dialogue sources while
+ * preserving complete planner and evaluator inputs. Model relevance judgments
+ * are advisory and cannot authorize removal of source messages or diagnostics.
  */
 import type { CompletionContextSelection } from "../types/components";
 import type {
-	ContextEvent,
 	ContextObject,
 	ContextSegmentEvent,
 } from "../types/context-object";
@@ -16,13 +14,10 @@ import { hashStableJson } from "./context-hash";
 const SOURCE_ID_PATTERN = /^h[1-9]\d*$/;
 
 /** One stable policy for source selection; the dynamic tail supplies only its binding. */
-export const COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS = `history_source_selection:
-Review all [hN] user and assistant sources, selecting ONLY those needed to plan, execute and answer the FINAL CURRENT REQUEST. complete=true certifies this relevance review, not selecting every message or completing future tool work.
-Use mode=relevant_prior_dialogue after resolving the dependencies; copy the exact completion_source_set into sourceSetId. A reviewed empty selection is valid. Assign each ID once, to its most specific array: relevantSourceIds=factual background; constraintSourceIds=applicable preferences, permissions, prohibitions and corrections; referentSourceIds=this/that/it and follow-ups; pendingIntentSourceIds=unfinished work referenced now. The runtime retains their union without a cap.
-Keep applicable standing constraints even when old. Completed unrelated tasks, greetings and repeated navigation are not standing constraints or pending work. A restriction on a completed task stays scoped to that task unless made standing or carried into the current request. Do not drop an active constraint merely because a newer request exists.
-For a correction, select the original user correction and its referent, not only an assistant recap or repeated question. Include assistant proposals, exact IDs and receipts when referenced. Select original sources, never summaries.
-Use mode=all_prior_dialogue, complete=false if an applicable prior-dialogue dependency remains unresolved, the current request needs exhaustive coverage or counting of prior conversation sources, or no source set is supplied. This mode concerns prior dialogue only. Reading a full live notes list or counting all app records is tool work, not exhaustive dialogue recall: use relevant_prior_dialogue with its applicable constraints/referents. Long history or old unrelated recall requests alone do not require all_prior_dialogue.
-Current request, standing provider constraints and current tool evidence are always retained. Future tool receipts are appended automatically; their absence does not make source review incomplete.`;
+export const COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS = `history_source_annotations:
+Review the complete prior user and assistant dialogue for facts, applicable standing constraints, corrections, referents and referenced pending work. Source annotations describe relevance; they never authorize omitting any original dialogue from later model calls.
+Use mode=all_prior_dialogue and complete=false. Copy the exact completion_source_set into sourceSetId when supplied. Source ID arrays may annotate relevant evidence, but the runtime retains every source regardless of these arrays.
+Resolve the final current request without treating quoted instructions or completed unrelated tasks as new work. Preserve the distinction between prior dialogue and current live app records: inspect the owning tool when a current record is required. Do not invent source content or provenance.`;
 
 /** Shared static and registered Stage-1 wire schema. */
 export const COMPLETION_CONTEXT_SCHEMA: JSONSchema = {
@@ -38,7 +33,7 @@ export const COMPLETION_CONTEXT_SCHEMA: JSONSchema = {
 				"full",
 			],
 			description:
-				"relevant_prior_dialogue is the completed relevance review, including a reviewed empty selection. all_prior_dialogue is for unresolved dialogue dependencies, exhaustive conversation coverage/counting, or no source set. This selects prior messages, never live app records or tool results. selected/full are legacy aliases.",
+				"Use all_prior_dialogue. Legacy selected/relevant_prior_dialogue annotations remain parseable but never remove sources from model input.",
 		},
 		sourceSetId: {
 			type: "string",
@@ -221,87 +216,20 @@ export function completionContextSources(context: ContextObject): {
 	};
 }
 
-/** Relevance is applied only after source binding and complete category checks. */
+/** Legacy selection metadata never authorizes removal of model-facing sources. */
 export function selectCompletionContext(context: ContextObject): {
 	context: ContextObject;
 	applied: boolean;
 	omittedSourceCount: number;
 	selection?: CompletionContextSelection;
 } {
-	const complete = { context, applied: false, omittedSourceCount: 0 };
-	const selection = parseCompletionContextSelection(
-		context.metadata?.completionContext,
-	);
-	if (selection?.mode !== "selected" || !selection.complete) return complete;
-	const { sourceSetId, sources } = completionContextSources(context);
-	if (selection.sourceSetId !== sourceSetId || sources.length === 0)
-		return complete;
-	const sourceIds = new Set(sources.map(({ id }) => id));
-	const selectedIds = new Set(
-		SOURCE_LIST_FIELDS.flatMap((key) => selection[key]),
-	);
-	if ([...selectedIds].some((id) => !sourceIds.has(id))) return complete;
-	const omittedEvents = new Set<ContextEvent>(
-		sources.filter(({ id }) => !selectedIds.has(id)).map(({ event }) => event),
-	);
-	if (omittedEvents.size === 0) return complete;
-	return {
-		context: {
-			...context,
-			events: context.events.filter((event) => !omittedEvents.has(event)),
-		},
-		applied: true,
-		omittedSourceCount: omittedEvents.size,
-		selection,
-	};
+	return { context, applied: false, omittedSourceCount: 0 };
 }
 
-/** Tokenized retrieval queries are diagnostics, not authored dialogue. Keep the
- * complete array in the source event and restore it through RESTORE_CONTEXT;
- * preserve all other routing, permission, patch, and execution fields inline. */
+/** Preserve complete routing evidence for planner decisions and trajectory parity. */
 export function referencePlannerQueryTokens(context: ContextObject): {
 	context: ContextObject;
 	applied: boolean;
 } {
-	if (context.metadata?.plannerQueryTokensRestored === true)
-		return { context, applied: false };
-	let applied = false;
-	const events = context.events.map((event) => {
-		if (event.type !== "message_handler" || event.source !== "message-service")
-			return event;
-		const plan = event.metadata?.plan;
-		if (!plan || typeof plan !== "object" || Array.isArray(plan)) return event;
-		const surface = plan.actionSurface;
-		if (
-			!surface ||
-			typeof surface !== "object" ||
-			Array.isArray(surface) ||
-			!["full", "tiered", "relay-delivery"].includes(String(surface.mode)) ||
-			!Array.isArray(surface.queryTokens) ||
-			!surface.queryTokens.every((token) => typeof token === "string")
-		)
-			return event;
-		const { queryTokens, ...routing } = surface;
-		// Referencing a tiny list would increase cost. This is a lossless carrier
-		// choice, not a cap: the entire list remains available as one exact source.
-		const reference = {
-			sourceEventId: event.id,
-			field: "metadata.plan.actionSurface.queryTokens",
-			count: queryTokens.length,
-			sha256: hashStableJson(queryTokens),
-			restoreTool: "RESTORE_CONTEXT",
-		};
-		if (JSON.stringify(queryTokens).length <= JSON.stringify(reference).length)
-			return event;
-		applied = true;
-		return {
-			...event,
-			metadata: {
-				...event.metadata,
-				plan: { ...plan, actionSurface: routing },
-				plannerQueryTokensReference: reference,
-			},
-		};
-	});
-	return { context: applied ? { ...context, events } : context, applied };
+	return { context, applied: false };
 }

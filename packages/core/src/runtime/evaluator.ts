@@ -21,7 +21,6 @@ import {
 	runWithStreamingContext,
 } from "../streaming-context";
 import type { EvaluationResult } from "../types/components";
-import type { ContextEvent } from "../types/context-object";
 import {
 	type ChatMessage,
 	getModelFallbackChain,
@@ -840,9 +839,7 @@ function renderEvaluatorModelInput(params: {
 		params.trajectory.modelBaseContext ?? params.context,
 	);
 	const deferred = projectDeferredProviders(completion.context);
-	const renderedContext = renderContextObject(
-		projectEvaluatorContext(deferred.context),
-	);
+	const renderedContext = renderContextObject(deferred.context);
 	renderedContext.promptSegments = referenceRepeatedHistory(
 		params.trajectory.modelBaseContext ?? params.context,
 		renderedContext.promptSegments,
@@ -945,74 +942,6 @@ function renderEvaluatorModelInput(params: {
 		completionSelectionApplied:
 			completion.applied || deferred.available.length > 0,
 	};
-}
-
-const ACTION_SURFACE_DIAGNOSTIC_FIELDS = new Set([
-	"mode",
-	"candidateActionCount",
-	"discoverableActionCount",
-	"discoveryToolName",
-	"catalogParentCount",
-	"exposedActionCount",
-	"tierAParents",
-	"tierAChildrenByParent",
-	"tierBParents",
-	"omittedParentCount",
-	"omittedParentNamesPreview",
-	"actionSurfaceHash",
-	"warnings",
-	"queryTokens",
-	"candidateActions",
-	"parentActionHints",
-	"codingActionProfile",
-	"fallback",
-]);
-
-/**
- * The evaluator judges outcomes and can return CONTINUE for more planning. Its
- * input therefore does not need the message service's retrieval catalog
- * diagnostics. Preserve the source event and every semantic field; unknown
- * producers or future catalog fields keep the complete representation.
- */
-function projectEvaluatorContext(context: ContextObject): ContextObject {
-	const events = (context.events ?? []).map((event): ContextEvent => {
-		if (
-			event.type !== "message_handler" ||
-			event.source !== "message-service"
-		) {
-			return event;
-		}
-		const plan = event.metadata?.plan;
-		if (!plan || typeof plan !== "object" || Array.isArray(plan)) return event;
-		const surface = plan.actionSurface;
-		if (
-			!surface ||
-			typeof surface !== "object" ||
-			Array.isArray(surface) ||
-			(surface.mode !== "full" &&
-				surface.mode !== "tiered" &&
-				surface.mode !== "relay-delivery") ||
-			Object.keys(surface).some(
-				(key) => !ACTION_SURFACE_DIAGNOSTIC_FIELDS.has(key),
-			)
-		) {
-			return event;
-		}
-		const { actionSurface: _catalogDiagnostics, ...completionPlan } = plan;
-		return {
-			...event,
-			metadata: {
-				...event.metadata,
-				plan: completionPlan,
-				evaluatorProjection: {
-					sourceEventId: event.id,
-					omittedFields: ["metadata.plan.actionSurface"],
-					reason: "planner_retrieval_diagnostics",
-				},
-			},
-		};
-	});
-	return { ...context, events };
 }
 
 export function parseEvaluatorOutput(
