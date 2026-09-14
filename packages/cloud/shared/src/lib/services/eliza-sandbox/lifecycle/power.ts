@@ -569,7 +569,7 @@ export class SandboxPower {
       (await this.host.getProvider()).computeFundingCapability === "host-lease-v1"
     ) {
       const [latest] = await dbWrite
-        .select({ id: agentComputeFunding.id })
+        .select({ retirementBackupId: agentComputeFunding.retirement_backup_id })
         .from(agentComputeFunding)
         .where(
           and(
@@ -577,8 +577,20 @@ export class SandboxPower {
             eq(agentComputeFunding.organization_id, orgId),
           ),
         )
+        .orderBy(desc(agentComputeFunding.period_start), desc(agentComputeFunding.id))
         .limit(1);
-      if (latest) {
+      // Paid retirement is a funding-state decision, not a funding-history one.
+      // Settled windows persist forever, so routing on row existence would send
+      // every post-funded agent into the sleep lifecycle, which refuses the two
+      // states expiry reconciliation deliberately produces (stopped in place
+      // without a retirement binding, and running with no open window) that the
+      // in-place and stopped fast paths below settle and confirm. Route only an
+      // open window, or a stopped record whose latest window is retirement-bound
+      // (the unfunded reclaim-from-backup crash-retry path).
+      if (
+        fundedSource ||
+        (snapshotSource.status === "stopped" && latest?.retirementBackupId != null)
+      ) {
         const sleep = await this.executeSleepWithStopAuthority(agentId, orgId, {
           jobId,
           lifecycleRevision: expectedLifecycleRevision,

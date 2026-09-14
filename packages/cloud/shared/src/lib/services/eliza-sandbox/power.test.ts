@@ -17,9 +17,11 @@ import { customSandbox, fetchUrl } from "./test-support/fixtures.js";
 import { afterAll, afterEach, beforeAll, beforeEach } from "bun:test";
 import { encryptField } from "../../../db/crypto/field-crypto";
 import { resetKmsClientForTests } from "../../../db/crypto/kms-client";
+import * as computeStop from "../agent-compute-stop";
 import {
   installSandboxBillingSimulation,
   installSandboxDatabaseSimulation,
+  sandboxDirectReads,
   sandboxTransactions,
 } from "./test-support/database.js";
 import { KMS_TEST_COORDS, KMS_TEST_ORG } from "./test-support/kms.js";
@@ -989,6 +991,264 @@ describe("ElizaSandboxService deletion-state guards (resume/wake/restart)", () =
       findSpy.mockRestore();
       shutdownSpy.mockRestore();
       provisionSpy.mockRestore();
+    }
+  });
+});
+
+// executeSuspend's paid-retirement routing must be a funding-STATE decision.
+// Settled funding rows persist for the life of the agent, so routing on row
+// existence sent every post-funded user suspend into the sleep lifecycle,
+// which refuses the two states expiry reconciliation deliberately produces
+// (#31312 follow-up): stopped in place without a retirement binding, and
+// running with no open window. These fixtures drive the real executeSuspend
+// body over the simulated database; funded ownership and settlement remain
+// covered by the PostgreSQL/SSH suite.
+describe("ElizaSandboxService.executeSuspend retirement routing is funding-state-bound", () => {
+  const JOB = "aaaaaaaa-aaaa-4aaa-8aaa-000000000001";
+
+  function suspendRecord(status: AgentSandbox["status"]): AgentSandbox {
+    return { ...customSandbox(), status };
+  }
+
+  function stopIntentRow() {
+    return {
+      id: "bbbbbbbb-bbbb-4bbb-8bbb-000000000002",
+      authorization: "user_request",
+      status: "pending",
+      last_error: null,
+      lifecycle_revision: 0,
+      attempts: 0,
+    };
+  }
+
+  function suspendTx(updates: Array<Record<string, unknown>>) {
+    const chain = {
+      from: () => chain,
+      where: () => chain,
+      for: () => chain,
+      limit: async () => [stopIntentRow()],
+    };
+    return {
+      select: () => chain,
+      update: () => ({
+        set: (values: Record<string, unknown>) => {
+          updates.push(values);
+          return { where: async () => undefined };
+        },
+      }),
+      execute: async () => ({ rows: [] }),
+    };
+  }
+
+  async function suspendHarness(opts: {
+    status: AgentSandbox["status"];
+    retirementBackupId: string | null;
+    fundingRowExists?: boolean;
+    sleep?: { success: boolean; containerRemoved: boolean; backupId?: string };
+  }) {
+    const { ElizaSandboxService } = await import("../eliza-sandbox.ts?actual");
+    const rec = suspendRecord(opts.status);
+    const provider: SandboxProvider = {
+      create: mock(async () => ({
+        sandboxId: rec.sandbox_id as string,
+        bridgeUrl: "https://runtime.example",
+        healthUrl: "https://runtime.example/health",
+      })),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+      computeFundingCapability: "host-lease-v1",
+    };
+    const svc = new ElizaSandboxService(provider);
+    const updates: Array<Record<string, unknown>> = [];
+    sandboxTransactions.implementation = async (fn) =>
+      fn(suspendTx(updates) as unknown as Parameters<typeof fn>[0]);
+    sandboxDirectReads.select = () => {
+      const chain = {
+        from: () => chain,
+        where: () => chain,
+        orderBy: () => chain,
+        limit: async () =>
+          opts.fundingRowExists === false ? [] : [{ retirementBackupId: opts.retirementBackupId }],
+      };
+      return chain;
+    };
+    const spies = [
+      spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(rec),
+      spyOn(
+        svc as unknown as { lockLifecycle: (...args: unknown[]) => Promise<void> },
+        "lockLifecycle",
+      ).mockResolvedValue(undefined),
+      spyOn(
+        svc as unknown as {
+          getAgentForLifecycleMutation: (...args: unknown[]) => Promise<AgentSandbox>;
+        },
+        "getAgentForLifecycleMutation",
+      ).mockResolvedValue(rec),
+      spyOn(
+        svc as unknown as { hasActiveProvisionJobTx: (...args: unknown[]) => Promise<boolean> },
+        "hasActiveProvisionJobTx",
+      ).mockResolvedValue(false),
+      spyOn(
+        svc as unknown as { getReplacementCleanupLocator: (...args: unknown[]) => unknown },
+        "getReplacementCleanupLocator",
+      ).mockReturnValue(undefined),
+      spyOn(
+        svc as unknown as {
+          revalidateContainerBackedLifecycleGeneration: (
+            ...args: unknown[]
+          ) => Promise<AgentSandbox>;
+        },
+        "revalidateContainerBackedLifecycleGeneration",
+      ).mockResolvedValue(rec),
+    ];
+    const stopForReplacement = spyOn(
+      svc as unknown as {
+        runBoundedSandboxStopForReplacement: (...args: unknown[]) => Promise<undefined>;
+      },
+      "runBoundedSandboxStopForReplacement",
+    ).mockResolvedValue(undefined);
+    const backupGate = spyOn(SandboxPower.prototype, "prepareSuspendBackupGate").mockResolvedValue({
+      outcome: "proceed",
+      backupId: "cccccccc-cccc-4ccc-8ccc-000000000003",
+      capturedFresh: false,
+    });
+    const sleepSpy = spyOn(
+      SandboxPower.prototype as unknown as {
+        executeSleepWithStopAuthority: (...args: unknown[]) => Promise<unknown>;
+      },
+      "executeSleepWithStopAuthority",
+    );
+    if (opts.sleep) {
+      sleepSpy.mockResolvedValue(opts.sleep);
+    } else {
+      sleepSpy.mockImplementation(async () => {
+        throw new Error("suspend was routed into paid retirement");
+      });
+    }
+    return {
+      svc,
+      rec,
+      updates,
+      sleepSpy,
+      stopForReplacement,
+      restore() {
+        sandboxTransactions.implementation = null;
+        sandboxDirectReads.select = null;
+        sleepSpy.mockRestore();
+        backupGate.mockRestore();
+        stopForReplacement.mockRestore();
+        for (const spy of spies) spy.mockRestore();
+      },
+    };
+  }
+
+  test("user suspend of an expiry-stopped, unbacked agent confirms through the stopped fast path", async () => {
+    // Settled window, no retirement binding: the state low-level expiry
+    // reconciliation leaves behind after stopping unpaid CPU in place.
+    const h = await suspendHarness({ status: "stopped", retirementBackupId: null });
+    billing.settleLifecycleBillingInTransactionSpy.mockClear();
+    try {
+      const result = await h.svc.executeSuspend(
+        h.rec.id,
+        h.rec.organization_id,
+        JOB,
+        "user_request",
+        0,
+      );
+      expect(result).toEqual({ success: true, containerStopped: true });
+      expect(h.sleepSpy).not.toHaveBeenCalled();
+      expect(billing.settleLifecycleBillingInTransactionSpy).toHaveBeenCalled();
+      expect(h.updates).toContainEqual(expect.objectContaining({ status: "provider_confirmed" }));
+    } finally {
+      h.restore();
+    }
+  });
+
+  test("user suspend of a running agent with only settled funding stops in place", async () => {
+    const h = await suspendHarness({ status: "running", retirementBackupId: null });
+    billing.settleLifecycleBillingInTransactionSpy.mockClear();
+    try {
+      const result = await h.svc.executeSuspend(
+        h.rec.id,
+        h.rec.organization_id,
+        JOB,
+        "user_request",
+        0,
+      );
+      expect(result).toEqual({
+        success: true,
+        containerStopped: true,
+        backupId: "cccccccc-cccc-4ccc-8ccc-000000000003",
+      });
+      expect(h.sleepSpy).not.toHaveBeenCalled();
+      expect(h.stopForReplacement).toHaveBeenCalledWith(h.rec.sandbox_id);
+      expect(billing.settleLifecycleBillingInTransactionSpy).toHaveBeenCalled();
+      expect(h.updates).toContainEqual(expect.objectContaining({ status: "provider_confirmed" }));
+    } finally {
+      h.restore();
+    }
+  });
+
+  test("a stopped agent whose latest window is retirement-bound still routes to paid retirement", async () => {
+    const h = await suspendHarness({
+      status: "stopped",
+      retirementBackupId: "dddddddd-dddd-4ddd-8ddd-000000000004",
+      sleep: { success: true, containerRemoved: false, backupId: "b-reclaim" },
+    });
+    try {
+      const result = await h.svc.executeSuspend(
+        h.rec.id,
+        h.rec.organization_id,
+        JOB,
+        "user_request",
+        0,
+      );
+      expect(result).toEqual({
+        success: true,
+        containerStopped: false,
+        backupId: "b-reclaim",
+      });
+      expect(h.sleepSpy).toHaveBeenCalledTimes(1);
+      expect(h.stopForReplacement).not.toHaveBeenCalled();
+    } finally {
+      h.restore();
+    }
+  });
+
+  test("an open funding window still routes to paid retirement", async () => {
+    const h = await suspendHarness({
+      status: "running",
+      retirementBackupId: null,
+      sleep: { success: true, containerRemoved: false, backupId: "b-funded" },
+    });
+    const funded = computeStop.hasOpenAgentComputeFunding as unknown as {
+      mockResolvedValue: (value: boolean) => void;
+    };
+    const credits = spyOn(
+      (await import("../credits")).creditsService,
+      "invalidateCreditCaches",
+    ).mockResolvedValue(undefined);
+    funded.mockResolvedValue(true);
+    try {
+      const result = await h.svc.executeSuspend(
+        h.rec.id,
+        h.rec.organization_id,
+        JOB,
+        "user_request",
+        0,
+      );
+      expect(result).toEqual({
+        success: true,
+        containerStopped: false,
+        backupId: "b-funded",
+      });
+      expect(h.sleepSpy).toHaveBeenCalledTimes(1);
+      expect(h.stopForReplacement).not.toHaveBeenCalled();
+    } finally {
+      funded.mockResolvedValue(false);
+      credits.mockRestore();
+      h.restore();
     }
   });
 });
