@@ -18,6 +18,41 @@ import {
   startDockerComputeLease,
 } from "./docker-compute-lease";
 import { DockerSSHClient } from "./docker-ssh";
+import type { SandboxHandle } from "./sandbox-provider-types";
+
+/** Rebuild ingress from the verified retained placement, including when a failure cleared its URLs. */
+export function fundedRuntimeHandle(
+  started: Awaited<ReturnType<typeof startFundedAgentInTransaction>>,
+): SandboxHandle {
+  const { agent, node, window, containerPort } = started;
+  if (!agent.bridge_port || !agent.web_ui_port || !agent.container_name)
+    throw new ElizaError("Dedicated retained ingress is incomplete", {
+      code: "AGENT_COMPUTE_START_AUTHORITY_CHANGED",
+    });
+  const host = agent.headscale_ip || node.hostname;
+  const urlHost = host.includes(":") ? `[${host}]` : host;
+  return {
+    sandboxId: agent.container_name,
+    bridgeUrl: `http://${urlHost}:${agent.headscale_ip ? containerPort : agent.bridge_port}`,
+    healthUrl: `http://${urlHost}:${agent.headscale_ip ? containerPort : agent.web_ui_port}/api`,
+    metadata: {
+      provider: "docker",
+      nodeId: node.node_id,
+      hostname: node.hostname,
+      containerName: agent.container_name,
+      containerId: window.provider_container_id!,
+      agentId: agent.id,
+      bridgePort: agent.bridge_port,
+      webUiPort: agent.web_ui_port,
+      nodeSshPort: node.ssh_port,
+      nodeSshUser: node.ssh_user,
+      nodeHostKeyFingerprint: node.host_key_fingerprint,
+      imageDigest: agent.image_digest,
+      dockerImage: agent.docker_image,
+      ...(agent.headscale_ip ? { headscaleIp: agent.headscale_ip } : {}),
+    },
+  };
+}
 
 /** The caller already holds the agent row lock and has verified this timestamp over pinned SSH. */
 export async function recordFundedComputeStartInTransaction(
