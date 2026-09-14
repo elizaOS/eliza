@@ -1184,6 +1184,77 @@ test("paid agent deletion refunds an unallocated hold before removing its operat
   ).toEqual([{ retired_at: expect.any(Date) }]);
 });
 
+test("paid warm retry refunds an unallocated hold before clearing its failed claim", async () => {
+  const agentId = crypto.randomUUID();
+  await fixture.query(
+    "INSERT INTO agent_sandboxes(id,organization_id,status,execution_tier,lifecycle_revision,environment_revision) VALUES($1,$2,'provisioning','dedicated-always',1,1)",
+    [agentId, organizationId],
+  );
+  const before = (
+    await fixture.query("SELECT credit_balance::text FROM organizations WHERE id=$1", [
+      organizationId,
+    ])
+  ).rows;
+  const { agentComputeFundingService } = await import("./agent-compute-funding");
+  const current = (
+    await fixture.query("SELECT lifecycle_revision FROM agent_sandboxes WHERE id=$1", [agentId])
+  ).rows[0]!;
+  const held = await helpers.writeTransaction((tx) =>
+    agentComputeFundingService.reserveInTransaction(tx, {
+      agentId,
+      organizationId,
+      lifecycleRevision: Number(current.lifecycle_revision),
+    }),
+  );
+  await fixture.query(
+    "UPDATE agent_sandboxes SET status='error',claimed_at=now(),warm_claim_credential_state='failed',warm_claim_cleanup_completed_at=now() WHERE id=$1",
+    [agentId],
+  );
+  const { ElizaSandboxService } = await import("./eliza-sandbox");
+  const { DockerSandboxProvider } = await import("./docker-sandbox-provider");
+  const service = new ElizaSandboxService(new DockerSandboxProvider()) as unknown as {
+    retireFailedWarmClaimForRetry: import("./eliza-sandbox/lifecycle/warm-claim").SandboxWarmClaim["retireFailedWarmClaimForRetry"];
+  };
+  expect(await service.retireFailedWarmClaimForRetry(agentId, organizationId)).toEqual({
+    success: true,
+  });
+  expect(
+    (
+      await fixture.query("SELECT credit_balance::text FROM organizations WHERE id=$1", [
+        organizationId,
+      ])
+    ).rows,
+  ).toEqual(before);
+  expect(
+    (
+      await fixture.query(
+        "SELECT status,claimed_at,sandbox_id,warm_claim_credential_state FROM agent_sandboxes WHERE id=$1",
+        [agentId],
+      )
+    ).rows,
+  ).toEqual([
+    { status: "stopped", claimed_at: null, sandbox_id: null, warm_claim_credential_state: null },
+  ]);
+  expect(
+    (
+      await fixture.query(
+        "SELECT settled_at,provider_container_id FROM agent_compute_funding WHERE id=$1",
+        [held.window.id],
+      )
+    ).rows,
+  ).toEqual([{ settled_at: expect.any(Date), provider_container_id: null }]);
+  expect(await service.retireFailedWarmClaimForRetry(agentId, organizationId)).toMatchObject({
+    success: false,
+  });
+  expect(
+    (
+      await fixture.query("SELECT credit_balance::text FROM organizations WHERE id=$1", [
+        organizationId,
+      ])
+    ).rows,
+  ).toEqual(before);
+});
+
 test("a delayed expiry reconciliation bills only through the durable host stop time", async () => {
   const { org, agentId, identity, provider } = await billableFundedAgent(
     "000000000021",
@@ -1912,7 +1983,7 @@ if (postgresTestUrl) {
 
 if (sshFixturePath) {
   async function runPaidContainerScenario(
-    scenario: "worker" | "sleep" | "shutdown" | "restart" | "deletion",
+    scenario: "worker" | "sleep" | "shutdown" | "restart" | "deletion" | "warm",
   ) {
     const target = z
       .object({
@@ -1941,7 +2012,9 @@ if (sshFixturePath) {
             ? "000000000043"
             : scenario === "restart"
               ? "000000000044"
-              : "000000000045";
+              : scenario === "deletion"
+                ? "000000000045"
+                : "000000000046";
     const agentId = `63000000-0000-4000-8000-${suffix}`;
     const org = `61000000-0000-4000-8000-${suffix}`;
     const name = `agent-${agentId}`;
@@ -2256,7 +2329,13 @@ if (sshFixturePath) {
               ? service.shutdown(agentId, org)
               : scenario === "restart"
                 ? service.executeRestart(agentId, org)
-                : service.deleteAgent(agentId, org, { authorization: "user_request" });
+                : scenario === "deletion"
+                  ? service.deleteAgent(agentId, org, { authorization: "user_request" })
+                  : (
+                      service as unknown as {
+                        retireFailedWarmClaimForRetry: import("./eliza-sandbox/lifecycle/warm-claim").SandboxWarmClaim["retireFailedWarmClaimForRetry"];
+                      }
+                    ).retireFailedWarmClaimForRetry(agentId, org);
         if (scenario === "restart")
           await fixture.query(
             "UPDATE agent_sandboxes SET claimed_at=now(),warm_claim_credential_state='ready' WHERE id=$1",
@@ -2316,6 +2395,27 @@ if (sshFixturePath) {
             .where(sql`id=${id} AND organization_id=${owner}`);
           return { backupId, lifecycleRevision: saved[0]!.lifecycleRevision };
         });
+        if (scenario === "warm") {
+          await fixture.query(
+            "UPDATE agent_sandboxes SET status='error',claimed_at=now(),warm_claim_credential_state='failed',warm_claim_cleanup_completed_at=now() WHERE id=$1",
+            [agentId],
+          );
+          // A retained backup is already present; failed-claim cleanup must keep it.
+          await helpers.writeTransaction((tx) =>
+            (
+              service as unknown as {
+                persistSnapshotWithinTransaction: import("./eliza-sandbox/backup/service").SandboxBackup["persistSnapshotWithinTransaction"];
+              }
+            ).persistSnapshotWithinTransaction(
+              tx,
+              agentId,
+              org,
+              "pre-shutdown",
+              state,
+              JSON.stringify(state).length,
+            ),
+          );
+        }
         const remove =
           scenario === "deletion"
             ? spyOn(sleepProvider, "stopForDeletion")
@@ -2334,11 +2434,13 @@ if (sshFixturePath) {
           expect(await retire()).toMatchObject({
             success: false,
             error:
-              scenario === "deletion"
-                ? "Failed to delete sandbox"
-                : scenario === "sleep"
-                  ? "Removal transport unavailable after committed paid stop"
-                  : "Failed to prove the previous sandbox stopped",
+              scenario === "warm"
+                ? "Failed to retire the previous warm-claim container"
+                : scenario === "deletion"
+                  ? "Failed to delete sandbox"
+                  : scenario === "sleep"
+                    ? "Removal transport unavailable after committed paid stop"
+                    : "Failed to prove the previous sandbox stopped",
           });
           expect(await canonical()).toEqual({
             status: scenario === "deletion" ? "deletion_pending" : "stopped",
@@ -2581,7 +2683,24 @@ if (sshFixturePath) {
             expect((await agentSandboxesRepository.getBackupById(backupId))?.state_data).toEqual(
               state,
             );
-            expect(await retire()).toMatchObject({ success: true });
+            expect(await retire()).toMatchObject({ success: scenario !== "warm" });
+            if (scenario === "warm") {
+              expect(
+                (
+                  await fixture.query(
+                    "SELECT claimed_at,warm_claim_credential_state,warm_claim_cleanup_completed_at FROM agent_sandboxes WHERE id=$1",
+                    [agentId],
+                  )
+                ).rows,
+              ).toEqual([
+                {
+                  claimed_at: null,
+                  warm_claim_credential_state: null,
+                  warm_claim_cleanup_completed_at: null,
+                },
+              ]);
+              expect(capture).not.toHaveBeenCalled();
+            }
             expect(comparableMoney(await renewalState(org))).toEqual(comparableMoney(stopped));
             expect(await allocated()).toBe(1);
           }
@@ -2646,6 +2765,12 @@ if (sshFixturePath) {
   test(
     "paid deletion commits stop and refund before removal and retains recovery and financial history across retries",
     () => runPaidContainerScenario("deletion"),
+    180_000,
+  );
+
+  test(
+    "paid warm retry commits refund before removal and preserves backup and sibling capacity across rollback",
+    () => runPaidContainerScenario("warm"),
     180_000,
   );
 
