@@ -27,12 +27,14 @@ import {
   CONTAINER_BACKED_EXECUTION_TIERS,
 } from "../../db/schemas/agent-sandboxes";
 import { apiKeys } from "../../db/schemas/api-keys";
+import { computeBillingRateSegments } from "../../db/schemas/compute-billing-rate-segments";
 import { containerComputeStopIntents } from "../../db/schemas/compute-stop-intents";
 import { containers } from "../../db/schemas/containers";
 import { creditTransactions } from "../../db/schemas/credit-transactions";
 import { organizations } from "../../db/schemas/organizations";
 import { userCharacters } from "../../db/schemas/user-characters";
 import { users } from "../../db/schemas/users";
+import { AGENT_PRICING } from "../constants/agent-pricing";
 import { provisioningJobService } from "./provisioning-jobs";
 
 const { activeBillingService } = await import("./active-billing");
@@ -56,6 +58,7 @@ beforeAll(async () => {
     agentSandboxes,
     containers,
     creditTransactions,
+    computeBillingRateSegments,
   };
   const { apply } = await pushSchema(schema as never, dbWrite as never);
   await apply();
@@ -128,6 +131,7 @@ beforeEach(async () => {
   await dbWrite.delete(agentComputeStopIntents);
   await dbWrite.delete(creditTransactions);
   await dbWrite.delete(containers);
+  await dbWrite.delete(computeBillingRateSegments);
   await dbWrite.delete(agentSandboxes);
   await dbWrite.delete(apiKeys);
   await dbWrite.delete(userCharacters);
@@ -202,6 +206,29 @@ async function seedAgent(
       container_name: `agent-${crypto.randomUUID()}`,
     })
     .returning();
+  const state =
+    poolStatus !== null || executionTier === "shared"
+      ? "exempt"
+      : ["running", "deletion_pending", "deletion_failed"].includes(status)
+        ? "running"
+        : status === "stopped" && lastBackupAt !== null
+          ? "backup"
+          : "not_billable";
+  const rate =
+    state === "running"
+      ? AGENT_PRICING.RUNNING_HOURLY_RATE
+      : state === "backup"
+        ? AGENT_PRICING.IDLE_HOURLY_RATE
+        : 0;
+  await dbWrite.insert(computeBillingRateSegments).values({
+    organization_id: organizationId,
+    workload_kind: "agent",
+    workload_id: row.id,
+    lifecycle_revision: lifecycleRevision,
+    billing_state: state,
+    rate_per_hour: rate.toFixed(6),
+    effective_at: new Date("2026-08-20T00:00:00.000Z"),
+  });
   return row.id;
 }
 
@@ -284,24 +311,34 @@ describe("active billing warm-pool authority", () => {
         .where(eq(agentSandboxes.id, agentId));
       expect(await activeBillingService.listActiveResources(organizationId)).toEqual([]);
     }
+    // Recovery metadata cannot authorize a rate transition after confirmed stop.
     await dbWrite
       .update(agentSandboxes)
-      .set({ last_backup_at: new Date() })
+      .set({ last_backup_at: new Date(), deletion_previous_status: "running" })
       .where(eq(agentSandboxes.id, agentId));
-    expect(await activeBillingService.listActiveResources(organizationId)).toMatchObject([
-      {
-        resourceId: agentId,
-        unitPrice: 0.0025,
-        metadata: { billableReason: "idle_snapshot_storage" },
-      },
-    ]);
+    expect(await activeBillingService.listActiveResources(organizationId)).toEqual([]);
+
+    // These subjects already own persisted billable history before deletion is requested.
+    const backedUpId = await seedAgent({ status: "stopped", lastBackupAt: new Date() });
+    const runningId = await seedAgent({ status: "running" });
     await dbWrite
       .update(agentSandboxes)
-      .set({ deletion_previous_status: "running", last_backup_at: null })
-      .where(eq(agentSandboxes.id, agentId));
-    expect(await activeBillingService.listActiveResources(organizationId)).toMatchObject([
-      { resourceId: agentId, unitPrice: 0.01, metadata: { billableReason: "running_agent" } },
-    ]);
+      .set({ status: "deletion_pending", deletion_previous_status: "stopped" })
+      .where(eq(agentSandboxes.id, backedUpId));
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ status: "deletion_failed", deletion_previous_status: "running" })
+      .where(eq(agentSandboxes.id, runningId));
+    const resources = await activeBillingService.listActiveResources(organizationId);
+    expect(resources.find((resource) => resource.resourceId === backedUpId)).toMatchObject({
+      unitPrice: 0.0025,
+      metadata: { billableReason: "idle_snapshot_storage" },
+    });
+    expect(resources.find((resource) => resource.resourceId === runningId)).toMatchObject({
+      unitPrice: AGENT_PRICING.RUNNING_HOURLY_RATE,
+      metadata: { billableReason: "running_agent" },
+    });
+    expect(resources.map((resource) => resource.resourceId)).not.toContain(agentId);
   });
 
   test("pool capacity cannot be cancelled or mutated through the billing surface", async () => {

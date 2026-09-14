@@ -6,10 +6,23 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { and, desc, eq, inArray, isNotNull, isNull, ne, or } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  getTableColumns,
+  getTableName,
+  inArray,
+  isNotNull,
+  isNull,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import { type Database, dbRead, dbWrite } from "../../db/client";
 import { agentComputeStopIntents } from "../../db/schemas/agent-compute-stop-intents";
 import { agentSandboxes, CONTAINER_BACKED_EXECUTION_TIERS } from "../../db/schemas/agent-sandboxes";
+import { computeBillingRateSegments } from "../../db/schemas/compute-billing-rate-segments";
 import { containerComputeStopIntents } from "../../db/schemas/compute-stop-intents";
 import { containers, TERMINAL_CONTAINER_STATUS } from "../../db/schemas/containers";
 import { creditTransactions } from "../../db/schemas/credit-transactions";
@@ -166,6 +179,8 @@ class ActiveBillingService {
      */
     database: Pick<Database, "select"> = dbRead,
   ): Promise<ActiveBillableResource[]> {
+    const agentIdentity = sql`${sql.identifier(getTableName(agentSandboxes))}.${sql.identifier(agentSandboxes.id.name)}`;
+    const agentOrganization = sql`${sql.identifier(getTableName(agentSandboxes))}.${sql.identifier(agentSandboxes.organization_id.name)}`;
     const [containerRows, agentRows] = await Promise.all([
       database
         .select()
@@ -178,7 +193,27 @@ class ActiveBillingService {
           ),
         ),
       database
-        .select()
+        .select({
+          ...getTableColumns(agentSandboxes),
+          canonicalBillingState: sql<string | null>`(
+            SELECT ${computeBillingRateSegments.billing_state}
+            FROM ${computeBillingRateSegments}
+            WHERE ${computeBillingRateSegments.organization_id} = ${agentOrganization}
+              AND ${computeBillingRateSegments.workload_kind} = 'agent'
+              AND ${computeBillingRateSegments.workload_id} = ${agentIdentity}
+            ORDER BY ${computeBillingRateSegments.effective_at} DESC, ${computeBillingRateSegments.id} DESC
+            LIMIT 1
+          )`,
+          canonicalRate: sql<string | null>`(
+            SELECT ${computeBillingRateSegments.rate_per_hour}::text
+            FROM ${computeBillingRateSegments}
+            WHERE ${computeBillingRateSegments.organization_id} = ${agentOrganization}
+              AND ${computeBillingRateSegments.workload_kind} = 'agent'
+              AND ${computeBillingRateSegments.workload_id} = ${agentIdentity}
+            ORDER BY ${computeBillingRateSegments.effective_at} DESC, ${computeBillingRateSegments.id} DESC
+            LIMIT 1
+          )`,
+        })
         .from(agentSandboxes)
         .where(
           and(
@@ -241,49 +276,74 @@ class ActiveBillingService {
       };
     });
 
-    const agentResources = agentRows.map((agent): ActiveBillableResource => {
-      const isRunning =
-        agent.status === "running" ||
-        (["deletion_pending", "deletion_failed"].includes(agent.status) &&
-          agent.deletion_previous_status !== "stopped");
-      const unitPrice = isRunning
+    const agentResources = agentRows.flatMap((agent): ActiveBillableResource[] => {
+      const deleting = ["deletion_pending", "deletion_failed"].includes(agent.status);
+      let isRunning = agent.status === "running";
+      let unitPrice: number = isRunning
         ? AGENT_PRICING.RUNNING_HOURLY_RATE
         : AGENT_PRICING.IDLE_HOURLY_RATE;
+      if (deleting) {
+        if (agent.canonicalBillingState === null || agent.canonicalRate === null) {
+          throw new ElizaError("Deletion billing requires the current compute rate history", {
+            code: "ACTIVE_BILLING_RATE_AUTHORITY_UNAVAILABLE",
+            context: { organizationId, agentId: agent.id },
+          });
+        }
+        const rate = parseActiveBillingNonNegativeNumber(
+          agent.canonicalRate,
+          "agent_sandbox.canonical_rate",
+        );
+        if (["not_billable", "exempt"].includes(agent.canonicalBillingState) && rate === 0)
+          return [];
+        if (!["running", "backup"].includes(agent.canonicalBillingState) || rate <= 0) {
+          throw new ElizaError("Deletion billing has inconsistent compute rate authority", {
+            code: "ACTIVE_BILLING_RATE_AUTHORITY_INVALID",
+            context: { organizationId, agentId: agent.id },
+          });
+        }
+        isRunning = agent.canonicalBillingState === "running";
+        unitPrice = rate;
+      }
       const estimatedNext = agent.last_billed_at
         ? addMs(agent.last_billed_at, 60 * 60 * 1000)
         : null;
 
-      return {
-        resourceType: "agent_sandbox",
-        resourceId: agent.id,
-        name: agent.agent_name ?? agent.id,
-        status: agent.status,
-        billingStatus: agent.billing_status,
-        lifecycleRevision: agent.lifecycle_revision,
-        unitPrice,
-        billingInterval: "hour",
-        lastBilledAt: iso(agent.last_billed_at),
-        nextBillingAt: null,
-        estimatedNextBillingAt: iso(estimatedNext),
-        totalBilled: parseActiveBillingNonNegativeNumber(
-          agent.total_billed,
-          "agent_sandbox.total_billed",
-        ),
-        cancelEndpoint: cancelEndpoint("agent_sandbox", agent.id),
-        cancelAction: "stop_compute",
-        metadata: {
-          characterId: agent.character_id,
-          sandboxId: agent.sandbox_id,
-          bridgeUrl: agent.bridge_url,
-          hourlyRate:
-            agent.hourly_rate === null || agent.hourly_rate === undefined
-              ? unitPrice
-              : parseActiveBillingNonNegativeNumber(agent.hourly_rate, "agent_sandbox.hourly_rate"),
-          lastBackupAt: iso(agent.last_backup_at),
-          scheduledShutdownAt: iso(agent.scheduled_shutdown_at),
-          billableReason: isRunning ? "running_agent" : "idle_snapshot_storage",
+      return [
+        {
+          resourceType: "agent_sandbox",
+          resourceId: agent.id,
+          name: agent.agent_name ?? agent.id,
+          status: agent.status,
+          billingStatus: agent.billing_status,
+          lifecycleRevision: agent.lifecycle_revision,
+          unitPrice,
+          billingInterval: "hour",
+          lastBilledAt: iso(agent.last_billed_at),
+          nextBillingAt: null,
+          estimatedNextBillingAt: iso(estimatedNext),
+          totalBilled: parseActiveBillingNonNegativeNumber(
+            agent.total_billed,
+            "agent_sandbox.total_billed",
+          ),
+          cancelEndpoint: cancelEndpoint("agent_sandbox", agent.id),
+          cancelAction: "stop_compute",
+          metadata: {
+            characterId: agent.character_id,
+            sandboxId: agent.sandbox_id,
+            bridgeUrl: agent.bridge_url,
+            hourlyRate:
+              agent.hourly_rate === null || agent.hourly_rate === undefined
+                ? unitPrice
+                : parseActiveBillingNonNegativeNumber(
+                    agent.hourly_rate,
+                    "agent_sandbox.hourly_rate",
+                  ),
+            lastBackupAt: iso(agent.last_backup_at),
+            scheduledShutdownAt: iso(agent.scheduled_shutdown_at),
+            billableReason: isRunning ? "running_agent" : "idle_snapshot_storage",
+          },
         },
-      };
+      ];
     });
 
     return [...containerResources, ...agentResources].sort(
