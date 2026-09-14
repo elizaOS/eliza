@@ -1373,7 +1373,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     const getAutoscaler = spyOn(nodeAutoscaler, "getNodeAutoscaler");
     const internals = provider as unknown as {
       provisionAutoscaledNodeForAgent: (
-        input: { image: string; platform?: string },
+        input: { image: string; platform?: string; requiredMemoryMb: number },
         tracker: { causes: unknown[] },
       ) => Promise<DockerNode | null>;
     };
@@ -1387,7 +1387,10 @@ describe("DockerSandboxProvider replacement cleanup", () => {
       } as never);
       const failedTracker = { causes: [] as unknown[] };
       await expect(
-        internals.provisionAutoscaledNodeForAgent({ image: "eliza-agent:test" }, failedTracker),
+        internals.provisionAutoscaledNodeForAgent(
+          { image: "eliza-agent:test", requiredMemoryMb: 6144 },
+          failedTracker,
+        ),
       ).resolves.toBeNull();
       expect(failedTracker.causes).toEqual([provisionFailure]);
 
@@ -1397,11 +1400,31 @@ describe("DockerSandboxProvider replacement cleanup", () => {
           hostname: "192.0.2.50",
         }),
       } as never);
+      const findNode = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(NODE);
+      const ready = spyOn(dockerNodeManager, "ensureNodeReady").mockResolvedValue(true);
+      const readyTracker = { causes: [] as unknown[] };
+      await expect(
+        internals.provisionAutoscaledNodeForAgent(
+          { image: "eliza-agent:test", platform: "linux/amd64", requiredMemoryMb: 6144 },
+          readyTracker,
+        ),
+      ).resolves.toBe(NODE);
+      expect(ready).toHaveBeenCalledWith(NODE, {
+        requiredPlatform: "linux/amd64",
+        requiredMemoryMb: 6144,
+      });
+      expect(readyTracker.causes).toEqual([]);
+      findNode.mockRestore();
+      ready.mockRestore();
+
       let nowCalls = 0;
       spyOn(Date, "now").mockImplementation(() => (nowCalls++ === 0 ? 0 : 300_000));
       const timeoutTracker = { causes: [] as unknown[] };
       await expect(
-        internals.provisionAutoscaledNodeForAgent({ image: "eliza-agent:test" }, timeoutTracker),
+        internals.provisionAutoscaledNodeForAgent(
+          { image: "eliza-agent:test", requiredMemoryMb: 6144 },
+          timeoutTracker,
+        ),
       ).resolves.toBeNull();
       expect(timeoutTracker.causes).toHaveLength(1);
       expect(timeoutTracker.causes[0]).toMatchObject({
