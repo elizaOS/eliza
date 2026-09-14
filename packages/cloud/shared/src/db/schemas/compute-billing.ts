@@ -35,6 +35,10 @@ export const agentBillingRecords = pgTable(
     billing_period_end: timestamp("billing_period_end", { withTimezone: true }).notNull(),
     hourly_rate: numeric("hourly_rate", { precision: 16, scale: 6 }).notNull(),
     amount: numeric("amount", { precision: 16, scale: 6 }).notNull(),
+    /** Portion of the total due to the activation minimum, separate from metered rate segments. */
+    minimum_charge_amount: numeric("minimum_charge_amount", { precision: 16, scale: 6 })
+      .notNull()
+      .default("0.000000"),
     rate_segments: jsonb("rate_segments")
       .$type<
         Array<{
@@ -52,6 +56,11 @@ export const agentBillingRecords = pgTable(
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    minimum_charge_check: check(
+      "agent_billing_records_minimum_charge_check",
+      sql`${table.minimum_charge_amount} >= 0 AND ${table.minimum_charge_amount} <= ${table.amount}
+        AND ${table.minimum_charge_amount} <> 'NaN'::numeric`,
+    ),
     compute_funding_tenant_fk: foreignKey({
       columns: [table.compute_funding_id, table.sandbox_id, table.organization_id],
       foreignColumns: [

@@ -2619,6 +2619,15 @@ export class ProvisioningJobService {
         // Do not rewrite the claimed job envelope. An executor may
         // already hold its hydrated snapshot and settlement CAS; the
         // locked intent is the monotonic authority boundary.
+        if (billingJob.status === "pending") {
+          const [immediate] = await tx
+            .update(jobs)
+            .set({ scheduled_for: now, updated_at: now })
+            .where(and(eq(jobs.id, billingJob.id), eq(jobs.status, "pending")))
+            .returning();
+          if (!immediate) throw new Error("Promoted user stop lost its pending job");
+          return immediate;
+        }
         return billingJob;
       },
       validateSandbox: validateTarget,

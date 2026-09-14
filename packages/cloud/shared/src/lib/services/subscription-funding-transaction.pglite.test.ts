@@ -125,6 +125,12 @@ beforeAll(async () => {
   );
   await fixture.exec(retirementMigration);
   await fixture.exec(retirementMigration);
+  const minimumMigration = await readFile(
+    new URL("../../db/migrations/0393_agent_compute_activation_minimum.sql", import.meta.url),
+    "utf8",
+  );
+  await fixture.exec(minimumMigration);
+  await fixture.exec(minimumMigration);
   const legacyBillingMigration = await readFile(
     new URL("../../db/migrations/0265_compute_billing_recovery.sql", import.meta.url),
     "utf8",
@@ -139,6 +145,12 @@ beforeAll(async () => {
     "utf8",
   );
   await fixture.exec(receiptMigration);
+  const minimumReceiptMigration = await readFile(
+    new URL("../../db/migrations/0394_agent_billing_activation_minimum.sql", import.meta.url),
+    "utf8",
+  );
+  await fixture.exec(minimumReceiptMigration);
+  await fixture.exec(minimumReceiptMigration);
   await fixture.exec(receiptMigration);
   await fixture.exec(
     await readFile(
@@ -989,15 +1001,21 @@ test("failed durable job delivery rolls back the hourly funding exchange, receip
   });
 });
 
-test("an unfundable hourly renewal keeps its existing hold and returns the canonical shutdown outcome", async () => {
+test("an unfundable hourly renewal preserves its confirmed paid time and existing hold", async () => {
   const { org, agentId, input, agentBillingRepository } = await billableFundedAgent(
     "000000000012",
     "0.300000",
   );
   const before = await renewalState(org);
-  expect(await agentBillingRepository.recordHourlyBilling(input)).toEqual({
-    status: "insufficient_credits",
+  const outcome = await agentBillingRepository.recordHourlyBilling(input);
+  expect(outcome).toEqual({
+    status: "funded_until",
+    fundedUntil: expect.any(Date),
+    stopAfter: expect.any(Date),
   });
+  if (outcome.status !== "funded_until") throw new Error("Existing paid window was not preserved");
+  expect(outcome.fundedUntil.getTime() - outcome.stopAfter.getTime()).toBe(120_000);
+  expect(outcome.stopAfter.getTime()).toBeGreaterThan(Date.now());
   expect(await renewalState(org)).toEqual(before);
   expect(
     (await fixture.query("SELECT id FROM jobs WHERE agent_id=$1", [agentId])).rows,
@@ -1006,6 +1024,72 @@ test("an unfundable hourly renewal keeps its existing hold and returns the canon
     (await fixture.query("SELECT id FROM agent_billing_records WHERE sandbox_id=$1", [agentId]))
       .rows,
   ).toHaveLength(0);
+});
+
+test("a paid-window stop is scheduled once and an explicit user stop makes it immediate", async () => {
+  const { org, agentId, input } = await billableFundedAgent("000000000063", "0.300000");
+  const migration = (name: string) =>
+    readFile(new URL(`../../db/migrations/${name}`, import.meta.url), "utf8");
+  const intentDDL = (await migration("0265_compute_billing_recovery.sql")).match(
+    /CREATE TABLE agent_compute_stop_intents \([\s\S]*?\n\);/,
+  );
+  if (!intentDDL) throw new Error("Missing canonical stop intent DDL");
+  await fixture.exec(intentDDL[0]);
+  try {
+    for (const statement of (await migration("0334_billing_cancel_intent_authority.sql")).split(
+      "--> statement-breakpoint",
+    )) {
+      if (statement.includes('"agent_compute_stop_intents"')) await fixture.exec(statement);
+    }
+    const { enqueueAgentUnfundedStopForRun } = await import("./agent-unfunded-stop");
+    const before = await renewalState(org);
+    expect(await enqueueAgentUnfundedStopForRun(input)).toMatchObject({
+      action: "skipped",
+      detail_code: "existing_runtime_funded",
+    });
+    expect(await renewalState(org)).toEqual(before);
+    const readStop = () =>
+      fixture.query<{
+        id: string;
+        scheduled_for: Date;
+        authorization: string;
+        next_attempt_at: Date;
+      }>(
+        "SELECT j.id,j.scheduled_for,i.authorization,i.next_attempt_at FROM jobs j JOIN agent_compute_stop_intents i ON i.job_id=j.id WHERE j.agent_id=$1",
+        [agentId],
+      );
+    const pending = (await readStop()).rows;
+    expect(pending).toHaveLength(1);
+    expect(pending[0]!.scheduled_for.getTime()).toBeGreaterThan(Date.now());
+    expect(pending[0]!.scheduled_for).toEqual(pending[0]!.next_attempt_at);
+    await enqueueAgentUnfundedStopForRun(input);
+    expect((await readStop()).rows).toEqual(pending);
+    const { ProvisioningJobService } = await import("./provisioning-jobs");
+    const promoted = await new ProvisioningJobService().enqueueAgentSuspendOnce({
+      agentId,
+      organizationId: org,
+      userId: input.userId,
+      authorization: "user_request",
+    });
+    expect(promoted.job.id).toBe(pending[0]!.id);
+    const immediate = (await readStop()).rows[0]!;
+    expect(immediate.authorization).toBe("user_request");
+    expect(immediate.scheduled_for.getTime()).toBeLessThanOrEqual(Date.now());
+    const { deferFundedAgentStopInTransaction } = await import("./agent-compute-stop-schedule");
+    expect(
+      await helpers.writeTransaction((tx) =>
+        deferFundedAgentStopInTransaction(tx, {
+          agentId,
+          organizationId: org,
+          jobId: immediate.id,
+          stopAfter: pending[0]!.scheduled_for,
+        }),
+      ),
+    ).toBe(false);
+    expect((await readStop()).rows[0]!.scheduled_for).toEqual(immediate.scheduled_for);
+  } finally {
+    await fixture.exec("DROP TABLE agent_compute_stop_intents");
+  }
 });
 
 async function stopReceiptFor(fundingId: string, stoppedAt: Date) {
@@ -1036,11 +1120,106 @@ async function stopReceiptFor(fundingId: string, stoppedAt: Date) {
   };
 }
 
-test("stopped runtime refunds its unused hold atomically, including for an inactive account, without replaying the refund", async () => {
+test("a successful short activation collects its minimum once and records the usage separately", async () => {
+  const { org, agentId, identity, provider } = await billableFundedAgent(
+    "000000000060",
+    "1.000000",
+  );
+  const { rows } = await fixture.query<{ period_start: Date }>(
+    "SELECT period_start FROM agent_compute_funding WHERE id=$1",
+    [provider.fundingId],
+  );
+  const stoppedAt = new Date(rows[0]!.period_start.getTime() + 60_000);
+  const receipt = await stopReceiptFor(provider.fundingId, stoppedAt);
+  const { settleStoppedAgentComputeInTransaction: settle } = await import("./agent-compute-stop");
+  const request = { ...identity, fundingId: provider.fundingId };
+  expect(await helpers.writeTransaction((tx) => settle(tx, request, receipt))).toMatchObject({
+    replayed: false,
+    purchasedCreditRefunded: false,
+  });
+  expect((await renewalState(org)).balance).toEqual([{ credit_balance: "0.700000" }]);
+  expect(
+    (
+      await fixture.query(
+        "SELECT amount::text,minimum_charge_amount::text,total_billed::text FROM agent_billing_records r JOIN agent_sandboxes a ON a.id=r.sandbox_id WHERE a.id=$1",
+        [agentId],
+      )
+    ).rows,
+  ).toEqual([{ amount: "0.300000", minimum_charge_amount: "0.297500", total_billed: "0.300000" }]);
+  const before = await renewalState(org);
+  expect(await helpers.writeTransaction((tx) => settle(tx, request, receipt))).toMatchObject({
+    replayed: true,
+  });
+  expect(await renewalState(org)).toEqual(before);
+});
+
+test("hourly renewal carries only the unpaid activation minimum into the stop receipt", async () => {
+  const { org, agentId, identity, input, agentBillingRepository } = await billableFundedAgent(
+    "000000000061",
+    "1.000000",
+  );
+  expect(await agentBillingRepository.recordHourlyBilling(input)).toMatchObject({
+    status: "billed",
+    amountDecimal: "0.150000",
+  });
+  const { rows } = await fixture.query<{ id: string; minimum_charge_remaining: string }>(
+    "SELECT id,minimum_charge_remaining::text FROM agent_compute_funding WHERE agent_id=$1 AND settled_at IS NULL",
+    [agentId],
+  );
+  expect(rows[0]!.minimum_charge_remaining).toBe("0.150000");
+  const receipt = await stopReceiptFor(rows[0]!.id, new Date(input.now.getTime() + 1_000));
+  const { settleStoppedAgentComputeInTransaction: settle } = await import("./agent-compute-stop");
+  await helpers.writeTransaction((tx) =>
+    settle(tx, { ...identity, fundingId: rows[0]!.id }, receipt),
+  );
+  expect((await renewalState(org)).balance).toEqual([{ credit_balance: "0.700000" }]);
+  expect(
+    (await fixture.query("SELECT total_billed::text FROM agent_sandboxes WHERE id=$1", [agentId]))
+      .rows,
+  ).toEqual([{ total_billed: "0.300000" }]);
+  expect(
+    (
+      await fixture.query(
+        "SELECT sum(amount)::text AS charged FROM agent_billing_records WHERE sandbox_id=$1",
+        [agentId],
+      )
+    ).rows,
+  ).toEqual([{ charged: "0.300000" }]);
+});
+
+test("an activation that never becomes ready does not collect the minimum charge", async () => {
+  const { org, agentId, identity, provider, input } = await billableFundedAgent(
+    "000000000062",
+    "1.000000",
+  );
+  await fixture.query("UPDATE agent_compute_funding SET runtime_ready_at=NULL WHERE id=$1", [
+    provider.fundingId,
+  ]);
+  const receipt = await stopReceiptFor(provider.fundingId, input.now);
+  const { settleStoppedAgentComputeInTransaction: settle } = await import("./agent-compute-stop");
+  await helpers.writeTransaction((tx) =>
+    settle(tx, { ...identity, fundingId: provider.fundingId }, receipt),
+  );
+  expect((await renewalState(org)).balance).toEqual([{ credit_balance: "0.850000" }]);
+  expect(
+    (
+      await fixture.query(
+        "SELECT amount::text,minimum_charge_amount::text FROM agent_billing_records WHERE sandbox_id=$1",
+        [agentId],
+      )
+    ).rows,
+  ).toEqual([{ amount: "0.150000", minimum_charge_amount: "0.000000" }]);
+});
+
+test("legacy stopped runtime refunds its unused hold atomically, including for an inactive account, without replaying the refund", async () => {
   const { org, agentId, identity, provider, input } = await billableFundedAgent(
     "000000000020",
     "1.000000",
   );
+  // Migrated windows retain the original tariff and have no new activation minimum.
+  await fixture.query("UPDATE agent_compute_funding SET minimum_charge_remaining=0 WHERE id=$1", [
+    provider.fundingId,
+  ]);
   const { settleStoppedAgentComputeInTransaction: settle } = await import("./agent-compute-stop");
   const receipt = await stopReceiptFor(provider.fundingId, input.now);
   const request = { ...identity, fundingId: provider.fundingId };
@@ -1340,7 +1519,7 @@ test("paid warm retry refunds an unallocated hold before clearing its failed cla
   ).toEqual(before);
 });
 
-test("a delayed expiry reconciliation bills only through the durable host stop time", async () => {
+test("delayed expiry separates the activation minimum from runtime ending at the durable stop", async () => {
   const { org, agentId, identity, provider } = await billableFundedAgent(
     "000000000021",
     "1.000000",
@@ -1359,15 +1538,21 @@ test("a delayed expiry reconciliation bills only through the durable host stop t
   await helpers.writeTransaction((tx) =>
     settle(tx, { ...identity, fundingId: provider.fundingId }, receipt),
   );
-  expect((await renewalState(org)).balance).toEqual([{ credit_balance: "0.927500" }]);
+  expect((await renewalState(org)).balance).toEqual([{ credit_balance: "0.700000" }]);
   expect(
     (
       await fixture.query(
-        "SELECT amount::text,billing_period_end FROM agent_billing_records WHERE sandbox_id=$1",
+        "SELECT amount::text,minimum_charge_amount::text,billing_period_end FROM agent_billing_records WHERE sandbox_id=$1",
         [agentId],
       )
     ).rows,
-  ).toEqual([{ amount: "0.072500", billing_period_end: rows[0]!.stopped_at }]);
+  ).toEqual([
+    {
+      amount: "0.300000",
+      minimum_charge_amount: "0.227500",
+      billing_period_end: rows[0]!.stopped_at,
+    },
+  ]);
 });
 
 test("revoking an undelivered successor after its predecessor stopped releases the whole unused window", async () => {
@@ -2073,6 +2258,7 @@ if (sshFixturePath) {
       | "sleep"
       | "billing-sleep"
       | "billing-topup"
+      | "billing-held"
       | "billing-stale"
       | "shutdown"
       | "restart"
@@ -2080,7 +2266,10 @@ if (sshFixturePath) {
       | "warm",
   ) {
     const billingScenario =
-      scenario === "billing-sleep" || scenario === "billing-topup" || scenario === "billing-stale";
+      scenario === "billing-sleep" ||
+      scenario === "billing-topup" ||
+      scenario === "billing-held" ||
+      scenario === "billing-stale";
     const sleepScenario = scenario === "sleep" || billingScenario;
     const target = z
       .object({
@@ -2101,23 +2290,25 @@ if (sshFixturePath) {
     const rootSSH = guard.dockerComputeRootSSH(ssh, target.username);
     const docker = target.username === "root" ? "docker" : "sudo --non-interactive docker";
     const suffix =
-      scenario === "billing-topup"
-        ? "000000000048"
-        : scenario === "billing-stale"
-          ? "000000000049"
-          : scenario === "billing-sleep"
-            ? "000000000047"
-            : scenario === "worker"
-              ? "000000000041"
-              : sleepScenario
-                ? "000000000042"
-                : scenario === "shutdown"
-                  ? "000000000043"
-                  : scenario === "restart"
-                    ? "000000000044"
-                    : scenario === "deletion"
-                      ? "000000000045"
-                      : "000000000046";
+      scenario === "billing-held"
+        ? "000000000064"
+        : scenario === "billing-topup"
+          ? "000000000048"
+          : scenario === "billing-stale"
+            ? "000000000049"
+            : scenario === "billing-sleep"
+              ? "000000000047"
+              : scenario === "worker"
+                ? "000000000041"
+                : sleepScenario
+                  ? "000000000042"
+                  : scenario === "shutdown"
+                    ? "000000000043"
+                    : scenario === "restart"
+                      ? "000000000044"
+                      : scenario === "deletion"
+                        ? "000000000045"
+                        : "000000000046";
     const agentId = `63000000-0000-4000-8000-${suffix}`;
     const org = `61000000-0000-4000-8000-${suffix}`;
     const name = `agent-${agentId}`;
@@ -2257,6 +2448,14 @@ if (sshFixturePath) {
           containerId,
         },
       );
+      if (scenario === "billing-sleep" || scenario === "billing-stale") {
+        // Start with enough paid time for the real host's admission margin,
+        // then let this same lease reach retirement naturally below.
+        await fixture.query(
+          "UPDATE agent_compute_funding SET period_end=clock_timestamp()+interval '150 seconds' WHERE id=$1",
+          [provider.fundingId],
+        );
+      }
       await fixture.query(
         "UPDATE agent_sandboxes SET status='provisioning',sandbox_id=$2,container_name=$2,bridge_port=2138,web_ui_port=2138,environment_revision=1,database_status='ready',database_uri='postgres://fixture.invalid/retained',environment_vars=$3,quota_admission_scope='trusted_internal' WHERE id=$1",
         [agentId, name, JSON.stringify({ ELIZA_API_TOKEN: token })],
@@ -2450,6 +2649,16 @@ if (sshFixturePath) {
           // before the second removal transaction and before a crash retry.
           await fixture.exec(await migration("0189_agent_sandbox_lifecycle_revision_scope.sql"));
           ownsBillingRevisionTrigger = true;
+          if (scenario === "billing-sleep" || scenario === "billing-stale") {
+            const { AGENT_COMPUTE_RETIREMENT_LEAD_MS } = await import("./agent-compute-policy");
+            const { rows } = await fixture.query<{ wait_ms: number }>(
+              "SELECT GREATEST(0, EXTRACT(EPOCH FROM (period_end-clock_timestamp()))*1000-$2)::float8 AS wait_ms FROM agent_compute_funding WHERE id=$1",
+              [provider.fundingId, AGENT_COMPUTE_RETIREMENT_LEAD_MS],
+            );
+            const waitMs = rows[0]!.wait_ms;
+            expect(waitMs).toBeLessThanOrEqual(30_000);
+            await Bun.sleep(Math.ceil(waitMs) + 50);
+          }
           const suspended = await new ProvisioningJobService().enqueueAgentSuspendOnce({
             agentId,
             organizationId: org,
@@ -2589,7 +2798,7 @@ if (sshFixturePath) {
             )
           ).rows[0];
         try {
-          if (scenario === "billing-topup") {
+          if (scenario === "billing-topup" || scenario === "billing-held") {
             expect(await retire()).toMatchObject({
               success: true,
               skipped: true,
@@ -2610,7 +2819,11 @@ if (sshFixturePath) {
                   [billingJobId],
                 )
               ).rows,
-            ).toEqual([{ status: "superseded", last_error: "billing_recovered" }]);
+            ).toEqual([
+              scenario === "billing-topup"
+                ? { status: "superseded", last_error: "billing_recovered" }
+                : { status: "retry", last_error: "existing_runtime_funded" },
+            ]);
             return;
           }
           expect(await retire()).toMatchObject({
@@ -2980,6 +3193,11 @@ if (sshFixturePath) {
     "worker death during restore retains paid state and a restarted worker completes the same job",
     () => runPaidContainerScenario("worker"),
     300_000,
+  );
+  test(
+    "billing retirement preserves confirmed paid runtime when only renewal cash is exhausted",
+    () => runPaidContainerScenario("billing-held"),
+    180_000,
   );
   test(
     "billing retirement preserves runtime when a top-up wins the locked recheck",

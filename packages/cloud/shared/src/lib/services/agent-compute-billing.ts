@@ -6,6 +6,7 @@ import type { DbTransaction } from "../../db/client";
 import type { AgentHourlyBillingInput } from "../../db/repositories/agent-billing";
 import { parseOrgCreditBalance } from "../../db/repositories/agent-billing-numeric";
 import type { settleComputeRateSegments } from "../../db/repositories/compute-billing-segments";
+import { readPostLockDatabaseNow } from "../../db/repositories/primary-database-clock";
 import { agentComputeFunding } from "../../db/schemas/agent-compute-funding";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { agentBillingRecords } from "../../db/schemas/compute-billing";
@@ -16,6 +17,7 @@ import {
   agentComputeFundingService,
 } from "./agent-compute-funding";
 import { enqueueAgentComputeLeaseInTransaction } from "./agent-compute-lease-jobs";
+import { AGENT_COMPUTE_RETIREMENT_LEAD_MS } from "./agent-compute-policy";
 import { SUBSCRIPTION_FUNDING_INSUFFICIENT } from "./subscription-funding";
 
 export async function settleFundedAgentBillingInTransaction(
@@ -56,6 +58,18 @@ export async function settleFundedAgentBillingInTransaction(
       actualAmount: amountDecimal,
     });
   } catch (error) {
+    // Running out of additional cash does not revoke an already confirmed
+    // hold. Other authority failures, including cancellation, still stop now.
+    if (
+      error instanceof ElizaError &&
+      error.code === SUBSCRIPTION_FUNDING_INSUFFICIENT &&
+      window.host_lease_confirmed_at
+    ) {
+      const stopAfter = new Date(window.period_end.getTime() - AGENT_COMPUTE_RETIREMENT_LEAD_MS);
+      if (stopAfter > (await readPostLockDatabaseNow(tx))) {
+        return { status: "funded_until" as const, fundedUntil: window.period_end, stopAfter };
+      }
+    }
     // error-policy:J4 A denied renewal enters the canonical stop path. The
     // savepoint preserves the existing hold until the host stop is reconciled,
     // including when cancellation or expiry withdrew subscription authority.

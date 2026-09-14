@@ -14,6 +14,15 @@ export const AGENT_PRICING = {
   // ── Hourly rates ──────────────────────────────────────────────────
   /** Cost per hour for a running agent. */
   RUNNING_HOURLY_RATE: 0.15,
+  /** Minimum billed amount per successful activation, expressed at the running rate. */
+  MINIMUM_ACTIVATION_HOURS: 2,
+  get MINIMUM_ACTIVATION_CHARGE(): number {
+    return (
+      Math.round(
+        this.RUNNING_HOURLY_RATE * this.MINIMUM_ACTIVATION_HOURS * 100,
+      ) / 100
+    );
+  },
   /** Cost per hour for an idle/stopped agent (snapshot storage). */
   IDLE_HOURLY_RATE: 0.0025,
 

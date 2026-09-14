@@ -22,6 +22,7 @@ import { agentComputeFundingService } from "../../agent-compute-funding";
 import { settleAgentBringUpBilling } from "../../agent-compute-provision";
 import { startFundedAgentInTransaction } from "../../agent-compute-start";
 import { hasOpenAgentComputeFunding, stopFundedAgentInTransaction } from "../../agent-compute-stop";
+import { deferFundedAgentStopInTransaction } from "../../agent-compute-stop-schedule";
 import { creditsService } from "../../credits";
 import { reconcileAllocatedWorkloadsOnNodeWithDatabase } from "../../docker-node-workload-queries";
 import type { SandboxHandle, SandboxProvider } from "../../sandbox-provider-types";
@@ -748,6 +749,24 @@ export class SandboxPower {
             fundedAt,
             "billing_recovery",
           );
+        if (settlement.status === "funded_until") {
+          if (
+            !(await deferFundedAgentStopInTransaction(tx, {
+              agentId,
+              organizationId: orgId,
+              jobId,
+              stopAfter: settlement.stopAfter,
+            }))
+          ) {
+            throw new Error("Funded stop lost its billing authority");
+          }
+          return {
+            success: true,
+            containerStopped: false,
+            skipped: true,
+            reason: "billing_recovered",
+          } as const;
+        }
         if (settlement.status !== "insufficient_credits") {
           await tx
             .update(agentComputeStopIntents)
@@ -1557,6 +1576,24 @@ export class SandboxPower {
                 now,
                 "billing_recovery",
               );
+            if (settlement.status === "funded_until") {
+              if (
+                !(await deferFundedAgentStopInTransaction(tx, {
+                  agentId,
+                  organizationId: orgId,
+                  jobId: billingAuthority.jobId,
+                  stopAfter: settlement.stopAfter,
+                }))
+              ) {
+                throw new Error("Funded retirement lost its billing authority");
+              }
+              return {
+                success: true as const,
+                containerRemoved: false,
+                skipped: true as const,
+                reason: "billing_recovered" as const,
+              };
+            }
             if (settlement.status !== "insufficient_credits") {
               await tx
                 .update(agentComputeStopIntents)
