@@ -376,6 +376,17 @@ export async function handleBatchTextEmbedding(
             `[BatchEmbeddings] response index out of range: ${String(item.index)} (batch size ${batch.length})`
           );
         }
+        // A repeated index passes the count check above (right vector count,
+        // one slot written twice) yet leaves another slot as an `undefined`
+        // hole that escapes as a non-array "embedding" to the runtime and
+        // corrupts the store. Reject it here — throw, never hand back a
+        // fabricated/undefined vector (Commandment 8). The throw precedes the
+        // `data.usage` emit below, so a duplicate-index batch bills nothing.
+        if (results[slot.originalIndex] !== undefined) {
+          throw new Error(
+            `[BatchEmbeddings] duplicate response index ${item.index}; a vector slot would be left unfilled`
+          );
+        }
         // Width must match the configured dimension exactly. A wrong width is the
         // root of the "Skipping embedding insert: dimension mismatch" (#8769)
         // silent drop downstream — surface it here so the router can fall through.
