@@ -312,11 +312,21 @@ jobs:
       # platform image so the retag-and-push below publishes the same content
       # that was verified (no second build, no "latest yt-dlp" drift between the
       # verified and published image).
+      - name: Resolve pinned native embedding source
+        id: native-source
+        run: |
+          set -euo pipefail
+          revision="$(git rev-parse HEAD:plugins/plugin-local-inference/native/llama.cpp)"
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+
       - id: build-local
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           context: .
           file: packages/app-core/deploy/Dockerfile.ci
+          build-args: |
+            LLAMA_CPP_REVISION=${{ steps.native-source.outputs.revision }}
           push: false
           load: true
           provenance: false
@@ -342,8 +352,7 @@ jobs:
           cache-to: type=registry,ref=${{ steps.image.outputs.name }}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
 
       - name: Verify image boots (real agent entrypoint)
-        # Runs the production entrypoint (node --import
-        # /opt/tsx/node_modules/tsx/dist/loader.mjs packages/agent/dist/bin.js
+        # Runs the production entrypoint (bun packages/agent/dist/bin.js
         # start) inside the just-built image and fails RED if the agent crashes
         # on startup, exits non-zero, logs a known crash signature (Cannot find
         # package/module, Failed to start, crashed during init, ...), never

@@ -232,7 +232,7 @@ load_env_file "deploy/deploy.env"
 
 APP_IMAGE="${APP_IMAGE:-eliza/agent}"
 APP_ENTRYPOINT="${APP_ENTRYPOINT:-$AGENT_DIR/dist/bin.js}"
-APP_CMD_START="${APP_CMD_START:-node --import /opt/tsx/node_modules/tsx/dist/loader.mjs ${APP_ENTRYPOINT} start}"
+APP_CMD_START="${APP_CMD_START:-bun ${APP_ENTRYPOINT} start}"
 APP_PORT="${APP_PORT:-2138}"
 APP_API_BIND="${APP_API_BIND:-127.0.0.1}"
 OCI_SOURCE="${OCI_SOURCE:-}"
@@ -849,6 +849,7 @@ fi
   --file "$APP_CORE_DIR/deploy/Dockerfile.ci" \
   --tag "$DOCKER_IMAGE" \
   --build-arg "BUN_VERSION=$BUN_VERSION" \
+  --build-arg "LLAMA_CPP_REVISION=$(git rev-parse HEAD:plugins/plugin-local-inference/native/llama.cpp)" \
   --build-arg "APP_CORE_DIR=$APP_CORE_DIR" \
   --build-arg "AGENT_DIR=$AGENT_DIR" \
   --build-arg "APP_DIR=$APP_DIR" \

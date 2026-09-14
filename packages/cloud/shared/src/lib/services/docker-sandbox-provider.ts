@@ -944,9 +944,13 @@ export function buildManagedElizaRuntimeConfig(
 ): Record<string, unknown> {
   const apiKey = allEnv.ELIZAOS_CLOUD_API_KEY || "";
   const agentId = allEnv.ELIZA_CLOUD_AGENT_ID || allEnv.WAIFU_ELIZA_CLOUD_AGENT_ID;
+  const cloudEmbeddingsDisabled =
+    allEnv.ELIZAOS_CLOUD_USE_EMBEDDINGS?.trim().toLowerCase() === "false";
   const directEmbeddingProvider =
-    allEnv.ELIZAOS_CLOUD_USE_EMBEDDINGS?.trim().toLowerCase() === "false" &&
+    cloudEmbeddingsDisabled &&
     Boolean(allEnv.EMBEDDING_BASE_URL?.trim() || allEnv.EMBEDDING_API_KEY?.trim());
+  const localEmbeddingProvider =
+    cloudEmbeddingsDisabled && allEnv.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS === "1";
 
   return {
     logging: { level: "info" },
@@ -965,11 +969,14 @@ export function buildManagedElizaRuntimeConfig(
       // Canonical routing wins over process env during PID1 boot. Persist the
       // same direct embedding ownership selected by managed provisioning;
       // otherwise the default Eliza Cloud route below flips
-      // ELIZAOS_CLOUD_USE_EMBEDDINGS back to true. Legacy agents without a
-      // direct provider and explicit Cloud opt-ins keep cloud-proxy routing.
+      // ELIZAOS_CLOUD_USE_EMBEDDINGS back to true. An explicit HTTP provider
+      // takes precedence over the native local embedder. Legacy agents without
+      // either selection and explicit Cloud opt-ins keep cloud-proxy routing.
       base: directEmbeddingProvider
         ? { embeddings: { backend: "embeddings", transport: "direct" } }
-        : undefined,
+        : localEmbeddingProvider
+          ? { embeddings: { backend: "local-inference", transport: "direct" } }
+          : undefined,
       includeInference: true,
       nanoModel: allEnv.ELIZAOS_CLOUD_NANO_MODEL,
       smallModel: allEnv.ELIZAOS_CLOUD_SMALL_MODEL,

@@ -7,9 +7,9 @@ ARG APP_CORE_DIR=packages/app-core
 ARG AGENT_DIR=packages/agent
 ARG APP_DIR=packages/app
 ARG APP_ENTRYPOINT=packages/agent/dist/bin.js
-# `--import` points at the standalone tsx loader installed by the `tsx` stage
-# at /opt/tsx — avoids depending on workspace-resolved `tsx` in /app/node_modules.
-ARG APP_CMD_START="node --import /opt/tsx/node_modules/tsx/dist/loader.mjs packages/agent/dist/bin.js start"
+# Native embeddings require bun:ffi; use the pinned Bun runtime for the agent.
+# APP_CMD_START remains an explicit operator override.
+ARG APP_CMD_START="bun packages/agent/dist/bin.js start"
 ARG APP_PORT=2138
 ARG APP_API_BIND=127.0.0.1
 ARG OCI_SOURCE=""
@@ -56,6 +56,33 @@ ARG TAILSCALE_VERSION=1.98.3
 # the collector script itself changes. With the registry build cache this
 # turns ~80s of npm install into a cache hit on the typical source-only
 # commit.
+# Native embeddings use the fused CPU library through Bun FFI. Build against
+# the same Debian/Node base as the final image so host-runner glibc versions do
+# not leak into the published artifact. Keep this pin aligned with the native
+# submodule; image builders can supply the exact gitlink as a build argument.
+FROM node:${NODE_VERSION}-slim AS native-embeddings
+ARG APP_CORE_DIR
+ARG LLAMA_CPP_REVISION=1891089dbed568cec30b5b9591cba9b85553e3e9
+WORKDIR /app
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates git cmake ninja-build build-essential python3 \
+  && rm -rf /var/lib/apt/lists/*
+COPY --parents ${APP_CORE_DIR}/scripts/stage-desktop-fused-lib.mjs \
+  ${APP_CORE_DIR}/scripts/build-helpers/verify-fused-symbols.mjs \
+  ${APP_CORE_DIR}/scripts/lib/fused-artifact-integrity.mjs \
+  ${APP_CORE_DIR}/scripts/lib/setup-state-dir.mjs \
+  packages/scripts/rm-path-recursive.mjs \
+  ./
+RUN test "${#LLAMA_CPP_REVISION}" -eq 40 \
+  && mkdir -p plugins/plugin-local-inference/native/llama.cpp \
+  && git -C plugins/plugin-local-inference/native/llama.cpp init \
+  && git -C plugins/plugin-local-inference/native/llama.cpp remote add origin https://github.com/elizaOS/llama.cpp.git \
+  && git -C plugins/plugin-local-inference/native/llama.cpp fetch --depth=1 origin "${LLAMA_CPP_REVISION}" \
+  && git -C plugins/plugin-local-inference/native/llama.cpp checkout --detach FETCH_HEAD \
+  && test "$(git -C plugins/plugin-local-inference/native/llama.cpp rev-parse HEAD)" = "${LLAMA_CPP_REVISION}" \
+  && node "${APP_CORE_DIR}/scripts/stage-desktop-fused-lib.mjs" \
+       --variant cpu --portable-cpu --jobs 4 --out /opt/eliza-inference/lib
+
 FROM node:${NODE_VERSION}-slim AS runtime-deps
 WORKDIR /app
 ARG APP_CORE_DIR
@@ -180,7 +207,7 @@ LABEL org.opencontainers.image.title="${OCI_TITLE}" \
       org.opencontainers.image.version="${VERSION_CLEAN}" \
       org.opencontainers.image.revision="${REVISION}" \
       org.opencontainers.image.licenses="${OCI_LICENSES}"
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg libopus-dev \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg libopus-dev libgomp1 \
   && rm -rf /var/lib/apt/lists/*
 
 # Install tailscale so Cloud-managed agent sandboxes can join Headscale/Tailscale
@@ -217,11 +244,16 @@ RUN ARCH="$(dpkg --print-architecture)" \
 
 WORKDIR /app
 COPY --from=pruner /app /app
-# tsx is required by APP_CMD_START. Bring it in
+# Retain tsx for explicit Node APP_CMD_START overrides. Bring it in
 # from its own stage so it's self-contained (with esbuild + get-tsconfig
 # deps) at /opt/tsx, independent of bun's workspace install.
 COPY --from=tsx /opt/tsx /opt/tsx
 COPY --from=bun-runtime /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=native-embeddings /opt/eliza-inference/lib /opt/eliza-inference/lib
+ENV ELIZA_INFERENCE_LIB_DIR=/opt/eliza-inference/lib
+# Exercise the actual Bun FFI loader in the final filesystem, including linked
+# CPU libraries. This does not load or download a model.
+RUN bun -e 'import { dlopen, FFIType } from "bun:ffi"; const lib = dlopen("/opt/eliza-inference/lib/libelizainference.so", { eliza_inference_embed_supported: { args: [], returns: FFIType.i32 } }); try { if (lib.symbols.eliza_inference_embed_supported() !== 1) throw new Error("Native embedding support missing"); } finally { lib.close(); }'
 
 ENV NODE_ENV=production
 ENV ELIZA_DISABLE_DIRECT_RUN=1
@@ -244,4 +276,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
   CMD sh -lc 'port="${PORT:-${APP_PORT:-${ELIZA_PORT:-2138}}}"; code="$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${port}/api/health")" && [ "$code" = "200" -o "$code" = "401" ]'
 
 ENTRYPOINT ["sh", "-lc", "exec sh \"./${APP_CORE_DIR:-packages/app-core}/scripts/docker-entrypoint.sh\" \"$@\"", "--"]
-CMD ["sh", "-lc", "exec ${APP_CMD_START:-node --import /opt/tsx/node_modules/tsx/dist/loader.mjs ${APP_ENTRYPOINT} start}"]
+CMD ["sh", "-lc", "exec ${APP_CMD_START:-bun ${APP_ENTRYPOINT} start}"]
