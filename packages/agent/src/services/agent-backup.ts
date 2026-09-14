@@ -25,6 +25,7 @@ import {
 import { z } from "zod";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveConfigPath, resolveStateDir } from "../config/paths.ts";
+import { cancelAndDrainDeferredBoot } from "../runtime/deferred-boot-owner.ts";
 import {
   AGENT_BACKUP_AUTHORITY_DIRECTORY,
   INITIAL_AGENT_BACKUP_GENERATION,
@@ -2061,17 +2062,21 @@ function sortedTablesForDelete(
   return sortedTablesForRestore(tables).reverse();
 }
 
-async function restorePostgresRows(
-  postgresUrl: string,
-  agentId: string,
-  dump: AgentBackupPostgresDump,
-): Promise<void> {
+function verifyPostgresDump(dump: AgentBackupPostgresDump): void {
   const expected = withPostgresHash({ ...dump, sha256: "" }).sha256;
   if (expected !== dump.sha256) {
     throw new Error(
       `Postgres dump hash mismatch: expected ${dump.sha256}, got ${expected}`,
     );
   }
+}
+
+async function restorePostgresRows(
+  postgresUrl: string,
+  agentId: string,
+  dump: AgentBackupPostgresDump,
+): Promise<void> {
+  verifyPostgresDump(dump);
 
   const pgModule = await import("pg");
   const pool = new pgModule.default.Pool({
@@ -2226,6 +2231,19 @@ async function restoreAuthorizedAgentSnapshot(
 
   const stateDir = resolveStateDir();
   const database = manifest.components.database;
+  // Reject invalid later components before stopping a healthy runtime or
+  // replacing any data. Each writer retains its own integrity check as well.
+  for (const fileSet of [
+    manifest.components.media,
+    manifest.components.vault,
+    manifest.components.stateFiles,
+  ]) {
+    verifyFileSet(fileSet);
+    for (const file of fileSet.files) normalizeRelativePath(file.path);
+  }
+  if (manifest.components.character.configFile) {
+    verifyFileEntry(manifest.components.character.configFile);
+  }
   let pgliteDirForStateFiles: string | null = null;
   if (database.kind === "postgres-rows") {
     const postgresUrl = hasPostgresUrl(runtime);
@@ -2237,6 +2255,8 @@ async function restoreAuthorizedAgentSnapshot(
     if (!database.postgres) {
       throw new Error("Backup database component is missing Postgres rows");
     }
+    verifyPostgresDump(database.postgres);
+    await stopRuntimeBeforeDatabaseRestore(runtime);
     await restorePostgresRows(postgresUrl, runtime.agentId, database.postgres);
   } else if (database.kind === "pglite-dump") {
     if (!database.pgliteDump) {
@@ -2249,6 +2269,8 @@ async function restoreAuthorizedAgentSnapshot(
         `Cannot restore PGlite backup into non-filesystem data dir ${pgliteDir}`,
       );
     }
+    verifyPgliteDump(database.pgliteDump);
+    await stopRuntimeBeforeDatabaseRestore(runtime);
     if (
       typeof (runtime.adapter as { close?: () => Promise<void> }).close ===
       "function"
@@ -2267,6 +2289,9 @@ async function restoreAuthorizedAgentSnapshot(
         `Cannot restore PGlite backup into non-filesystem data dir ${pgliteDir}`,
       );
     }
+    verifyFileSet(database.pglite);
+    for (const file of database.pglite.files) normalizeRelativePath(file.path);
+    await stopRuntimeBeforeDatabaseRestore(runtime);
     if (
       typeof (runtime.adapter as { close?: () => Promise<void> }).close ===
       "function"
@@ -2323,4 +2348,14 @@ async function restoreAuthorizedAgentSnapshot(
   );
 
   return { restored: true, requiresRestart: true };
+}
+
+async function stopRuntimeBeforeDatabaseRestore(
+  runtime: IAgentRuntime | AgentRuntime,
+): Promise<void> {
+  // Stop boot admissions and fully drain services while their database is
+  // still usable. The fast signal-exit path can return with work pending and
+  // is inappropriate when this process will immediately replace its data.
+  await cancelAndDrainDeferredBoot(runtime);
+  await runtime.stop();
 }
