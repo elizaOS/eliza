@@ -2604,6 +2604,349 @@ function distinctStatedLocalDates(
   return dates;
 }
 
+/** Wall-clock time the user stated, on the 24-hour clock. */
+export type StatedClockTime = { hour: number; minute: number };
+
+export type StatedClockTimes =
+  | { kind: "none" }
+  | { kind: "one"; start: StatedClockTime; end?: StatedClockTime }
+  | { kind: "several" };
+
+const STATED_MERIDIEM_SOURCE = String.raw`(a\.?m\.?|p\.?m\.?)`;
+// "4pm", "4:30 p.m.", "noon", "midnight", "16:00". A bare "4" or "3:30" is
+// ambiguous and counts as no stated time.
+const STATED_CLOCK_MENTION_SOURCE = String.raw`\b(\d{1,2})(?::(\d{2}))?\s*${STATED_MERIDIEM_SOURCE}(?![a-z])|\b(noon|midnight)\b|\b([01]\d|2[0-3]):([0-5]\d)\b(?!\s*${STATED_MERIDIEM_SOURCE})`;
+const STATED_CLOCK_MENTION_PATTERN = new RegExp(
+  STATED_CLOCK_MENTION_SOURCE,
+  "gi",
+);
+const STATED_CLOCK_PRESENT_PATTERN = new RegExp(
+  STATED_CLOCK_MENTION_SOURCE,
+  "i",
+);
+// "3-5pm", "3pm to 5pm", "from 3 until 5pm": the first time inherits the
+// second's meridiem when it has none.
+const STATED_CLOCK_RANGE_PATTERN = new RegExp(
+  String.raw`\b(\d{1,2})(?::(\d{2}))?\s*${STATED_MERIDIEM_SOURCE}?\s*(?:-|–|—|until|till|through|to)\s*(\d{1,2})(?::(\d{2}))?\s*${STATED_MERIDIEM_SOURCE}(?![a-z])`,
+  "i",
+);
+
+function clockFromStatedParts(
+  hourRaw: string | undefined,
+  minuteRaw: string | undefined,
+  meridiem: string | undefined,
+): StatedClockTime | null {
+  if (hourRaw === undefined) return null;
+  const hour = Number(hourRaw);
+  const minute = minuteRaw === undefined ? 0 : Number(minuteRaw);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute)) return null;
+  if (minute < 0 || minute > 59) return null;
+  if (meridiem === undefined) {
+    return hour >= 0 && hour <= 23 ? { hour, minute } : null;
+  }
+  if (hour < 1 || hour > 12) return null;
+  const afternoon = meridiem.toLowerCase().startsWith("p");
+  return { hour: (hour % 12) + (afternoon ? 12 : 0), minute };
+}
+
+/**
+ * The clock time(s) a request states. Exactly one start (with the end of a
+ * stated range, when there is one) can be checked against an applied event;
+ * none, or several ("the 3pm dentist and the 5pm call"), cannot.
+ */
+export function parseStatedClockTimes(text: string): StatedClockTimes {
+  const normalized = normalizeText(text);
+  const range = STATED_CLOCK_RANGE_PATTERN.exec(normalized);
+  let remainder = normalized;
+  let start: StatedClockTime | undefined;
+  let end: StatedClockTime | undefined;
+  if (range) {
+    const rangeStart = clockFromStatedParts(
+      range[1],
+      range[2],
+      range[3] ?? range[6],
+    );
+    const rangeEnd = clockFromStatedParts(range[4], range[5], range[6]);
+    if (!rangeStart || !rangeEnd) return { kind: "several" };
+    start = rangeStart;
+    end = rangeEnd;
+    remainder = `${normalized.slice(0, range.index)} ${normalized.slice(
+      range.index + range[0].length,
+    )}`;
+  }
+  const mentions: StatedClockTime[] = [];
+  for (const match of remainder.matchAll(STATED_CLOCK_MENTION_PATTERN)) {
+    const mention =
+      match[4] !== undefined
+        ? { hour: match[4].toLowerCase() === "noon" ? 12 : 0, minute: 0 }
+        : match[5] !== undefined
+          ? clockFromStatedParts(match[5], match[6], undefined)
+          : clockFromStatedParts(match[1], match[2], match[3]);
+    if (!mention) return { kind: "several" };
+    mentions.push(mention);
+  }
+  if (start) {
+    return mentions.length > 0
+      ? { kind: "several" }
+      : { kind: "one", start, ...(end ? { end } : {}) };
+  }
+  const distinct = new Set(
+    mentions.map((mention) => `${mention.hour}:${mention.minute}`),
+  );
+  const only = mentions[0];
+  if (distinct.size === 0 || only === undefined) return { kind: "none" };
+  if (distinct.size > 1) return { kind: "several" };
+  return { kind: "one", start: only };
+}
+
+/**
+ * An update's destination is what the user asked for ("move my 3pm dentist
+ * to 4pm" moves it to 4pm): the last "to" clause that names a clock time.
+ */
+function statedUpdateDestinationText(text: string): string {
+  const segments = text.split(CALENDAR_DESTINATION_CLAUSE_PATTERN);
+  for (let index = segments.length - 1; index > 0; index -= 1) {
+    const segment = segments[index];
+    if (segment !== undefined && STATED_CLOCK_PRESENT_PATTERN.test(segment)) {
+      return segment;
+    }
+  }
+  return text;
+}
+
+function wordTokens(value: string): string[] {
+  return normalizeText(value)
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((token) => token.length >= 2);
+}
+
+/**
+ * The deleted title carries every word of the target hint, and so does the
+ * user's own message: the hint is the planner's, the words must be the user's.
+ */
+function deletedTitleNamedByUser(
+  title: string,
+  hint: string | undefined,
+  requestText: string,
+): boolean {
+  const hintTokens = wordTokens(hint ?? "");
+  if (hintTokens.length === 0) return false;
+  const carries = (haystack: string): boolean => {
+    const tokens = new Set(
+      wordTokens(haystack).flatMap((token) => tokenVariants(token)),
+    );
+    return hintTokens.every((token) =>
+      tokenVariants(token).some((variant) => tokens.has(variant)),
+    );
+  };
+  return carries(title) && carries(requestText);
+}
+
+/**
+ * "Friday, Sep 18 at 4pm EDT" — "tomorrow, Friday, …" when that is what the
+ * day is for the user, the year only when it is not the current one.
+ */
+function formatVerifiedEventMoment(
+  start: Date,
+  timeZone: string,
+  now: Date,
+): string {
+  const yearOf = (date: Date): string =>
+    new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric" }).format(
+      date,
+    );
+  const today = getZonedDateParts(now, timeZone);
+  const applied = getZonedDateParts(start, timeZone);
+  const relative =
+    compareLocalDates(applied, today) === 0
+      ? "today, "
+      : compareLocalDates(applied, addDaysToLocalDate(today, 1)) === 0
+        ? "tomorrow, "
+        : "";
+  const day = `${relative}${new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    ...(yearOf(start) === yearOf(now) ? {} : { year: "numeric" }),
+  }).format(start)}`;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZoneName: "short",
+  }).formatToParts(start);
+  const read = (type: string): string =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  const minute = read("minute");
+  const period = read("dayPeriod").toLowerCase();
+  const zone = read("timeZoneName");
+  const clock = `${read("hour")}${minute === "00" ? "" : `:${minute}`}${period}`;
+  return `${day} at ${clock}${zone ? ` ${zone}` : ""}`;
+}
+
+/**
+ * Deterministic self-verification of a settled built-in mutation. The
+ * evaluator model call (11.2K prompt tokens, ~0.9 s per settled calendar turn,
+ * live 2026-09-14) exists to catch a planner that executed something other
+ * than what the user asked — it once caught "4pm" written into `location`.
+ * Where the user's own words name a clock time, the applied event can be
+ * checked against them mechanically, and the receipt sentence then IS the
+ * user's request: the runtime delivers it verbatim and skips the evaluator
+ * (the MEMORY "Saved: …" shape, `turnComplete` + `verifiedUserFacing`).
+ *
+ * The rule, all of which must hold (anything else returns null and keeps the
+ * evaluator):
+ * - one applied event on the built-in calendar, timed (not all-day), with no
+ *   guests and no recurrence, and nothing else asked for that the sentence
+ *   cannot show (`carriesUnshownDetails`: a rename, recurrence, guests, a
+ *   travel buffer, a location or note change);
+ * - create/update: the request states exactly one clock time (or one range)
+ *   and the applied start (and end) is that wall-clock time in the event's
+ *   zone; an update reads its destination clause;
+ * - the request names at most one day and the applied day is that day; with
+ *   no stated day a create lands today or tomorrow and an update keeps the
+ *   target's day; an update without a stated range keeps the duration;
+ * - delete: the deleted title and the user's message both carry every word of
+ *   the target hint, plus the same day/time checks when the message states
+ *   them.
+ */
+export function verifyAppliedCalendarMutation(args: {
+  operation: "create" | "update" | "delete";
+  /** The user's own words, never the planner's intent. */
+  requestText: string;
+  /** The event the receipt covers: as created/updated, or the deleted target. */
+  event: LifeOpsCalendarEvent;
+  /** update: the target before the move. */
+  previous?: Pick<LifeOpsCalendarEvent, "startAt" | "endAt">;
+  /** delete: the target words the lookup used. */
+  titleHint?: string;
+  fallbackTimeZone?: string;
+  now?: Date;
+  /** Events the receipt covers; only a single applied event is verifiable. */
+  appliedCount?: number;
+  /** The call carried something the sentence cannot vouch for. */
+  carriesUnshownDetails?: boolean;
+}): string | null {
+  try {
+    return verifyAppliedCalendarMutationOrThrow(args);
+  } catch {
+    // Verification only ever removes an evaluator call; a zone or parse
+    // failure keeps the evaluator instead of failing a settled mutation.
+    return null;
+  }
+}
+
+function verifyAppliedCalendarMutationOrThrow(
+  args: Parameters<typeof verifyAppliedCalendarMutation>[0],
+): string | null {
+  if ((args.appliedCount ?? 1) !== 1) return null;
+  if (args.carriesUnshownDetails) return null;
+  const { event } = args;
+  if (event.provider !== ELIZA_CALENDAR_PROVIDER) return null;
+  if (event.isAllDay || event.attendees.length > 0) return null;
+  if (isRecurringCalendarEvent(event)) return null;
+  const title = event.title.trim();
+  if (!title) return null;
+  const timeZone = event.timezone?.trim() || args.fallbackTimeZone?.trim();
+  if (!timeZone || !isValidTimeZone(timeZone)) return null;
+  const start = new Date(event.startAt);
+  if (!Number.isFinite(start.getTime())) return null;
+  const now = args.now ?? new Date();
+  const requestText = args.requestText.trim();
+  if (!requestText) return null;
+  const scope =
+    args.operation === "update"
+      ? statedUpdateDestinationText(requestText)
+      : requestText;
+
+  const stated = parseStatedClockTimes(scope);
+  if (stated.kind === "several") return null;
+  if (stated.kind === "none" && args.operation !== "delete") return null;
+  const applied = getZonedDateParts(start, timeZone);
+  if (stated.kind === "one") {
+    if (
+      applied.hour !== stated.start.hour ||
+      applied.minute !== stated.start.minute
+    ) {
+      return null;
+    }
+    if (stated.end) {
+      const end = new Date(event.endAt);
+      if (!Number.isFinite(end.getTime())) return null;
+      const appliedEnd = getZonedDateParts(end, timeZone);
+      if (
+        appliedEnd.hour !== stated.end.hour ||
+        appliedEnd.minute !== stated.end.minute
+      ) {
+        return null;
+      }
+    }
+  }
+
+  const scopeDates = distinctStatedLocalDates(scope, timeZone);
+  const messageDates =
+    scope === requestText
+      ? scopeDates
+      : distinctStatedLocalDates(requestText, timeZone);
+  if (scopeDates.length > 1) return null;
+  if (scopeDates.length === 0 && messageDates.length > 1) return null;
+  const statedDay = scopeDates[0] ?? messageDates[0];
+  if (statedDay) {
+    if (compareLocalDates(applied, statedDay) !== 0) return null;
+  } else if (args.operation === "update") {
+    const previousStart = args.previous
+      ? new Date(args.previous.startAt)
+      : null;
+    if (!previousStart || !Number.isFinite(previousStart.getTime())) {
+      return null;
+    }
+    const previousDay = getZonedDateParts(previousStart, timeZone);
+    if (compareLocalDates(applied, previousDay) !== 0) return null;
+  } else if (args.operation === "create") {
+    const today = getZonedDateParts(now, timeZone);
+    const tomorrow = addDaysToLocalDate(today, 1);
+    if (
+      compareLocalDates(applied, today) !== 0 &&
+      compareLocalDates(applied, tomorrow) !== 0
+    ) {
+      return null;
+    }
+  }
+
+  if (args.operation === "update" && !(stated.kind === "one" && stated.end)) {
+    if (!args.previous) return null;
+    const previousDuration =
+      Date.parse(args.previous.endAt) - Date.parse(args.previous.startAt);
+    const appliedDuration = Date.parse(event.endAt) - Date.parse(event.startAt);
+    if (
+      !Number.isFinite(previousDuration) ||
+      !Number.isFinite(appliedDuration) ||
+      previousDuration !== appliedDuration
+    ) {
+      return null;
+    }
+  }
+
+  if (
+    args.operation === "delete" &&
+    !deletedTitleNamedByUser(title, args.titleHint, requestText)
+  ) {
+    return null;
+  }
+
+  const moment = formatVerifiedEventMoment(start, timeZone, now);
+  switch (args.operation) {
+    case "create":
+      return `Created “${title}” for ${moment}.`;
+    case "update":
+      return `Moved “${title}” to ${moment}.`;
+    case "delete":
+      return `Deleted “${title}” (${moment}) from your calendar.`;
+  }
+}
+
 /**
  * The date the user stated for THIS create. The message is authoritative when
  * it names one date; when it names several (one message, several events —
@@ -4888,6 +5231,12 @@ const calendarAction: CalendarHandlerAction = {
       success: boolean;
       text: string | ReturnType<typeof renderReply>;
       interaction?: boolean;
+      /**
+       * The receipt sentence when the applied result provably matches the
+       * user's own words (verifyAppliedCalendarMutation): stamped as the
+       * verified, turn-completing reply so the runtime skips the evaluator.
+       */
+      verifiedReply?: string | null;
       data?: T;
       effectReceipt: EffectReceipt;
     }): Promise<ActionResult> => {
@@ -4903,10 +5252,25 @@ const calendarAction: CalendarHandlerAction = {
           effectReceipt.outcome !== "failed" &&
           pauseData?.requiresInput !== true &&
           pauseData?.approvalRequired !== true;
+        const verifiedReply =
+          settled && effectReceipt.outcome === "applied"
+            ? payload.verifiedReply?.trim() || undefined
+            : undefined;
         return {
           success: payload.success,
           transcriptVisibility: "internal",
           ...(settled ? {} : { turnComplete: false }),
+          // A self-verified receipt completes the turn on the action's own
+          // terms (the MEMORY shape): the runtime's verified-intent gate
+          // delivers `userFacingText` verbatim and skips the evaluator call.
+          ...(verifiedReply
+            ? {
+                turnComplete: true,
+                verifiedUserFacing: true,
+                userFacingText: verifiedReply,
+                userFacingEffectReceiptIds: [effectReceipt.receiptId],
+              }
+            : {}),
           effectReceipts: [effectReceipt],
           data: {
             ...payload.data,
@@ -5270,15 +5634,34 @@ const calendarAction: CalendarHandlerAction = {
               travelBuffer,
             });
           }
-          const fallback = `Created “${createdEvent.title}” for ${formatCalendarEventDateTime(
-            createdEvent,
-            { includeTimeZoneName: true },
-          )}.`;
+          const verifiedReply = verifyAppliedCalendarMutation({
+            operation: "create",
+            requestText: messageText(message),
+            event: createdEvent,
+            fallbackTimeZone: createTimeZone,
+            now: new Date(calendarMessageObservedAt(message)),
+            // A travel buffer, guests, a recurrence rule, a place or a note
+            // are asked-for details the receipt sentence cannot show; the
+            // evaluator keeps those turns.
+            carriesUnshownDetails:
+              Boolean(travelIntent) ||
+              (requestToApprove.recurrence?.length ?? 0) > 0 ||
+              (requestToApprove.attendees?.length ?? 0) > 0 ||
+              createdEvent.location.trim().length > 0 ||
+              createdEvent.description.trim().length > 0,
+          });
+          const fallback =
+            verifiedReply ??
+            `Created “${createdEvent.title}” for ${formatCalendarEventDateTime(
+              createdEvent,
+              { includeTimeZoneName: true },
+            )}.`;
           return respond({
             success: true,
             text: await renderReply("create_event_completed", fallback, {
               event: createdEvent,
             }),
+            verifiedReply,
             effectReceipt: calendarEventMutationReceipt({
               event: createdEvent,
               idempotencyKey,
@@ -5634,15 +6017,38 @@ const calendarAction: CalendarHandlerAction = {
             expectedProviderVersion,
             idempotencyKey,
           });
-          const fallback = `Updated “${updatedEvent.title}” for ${formatCalendarEventDateTime(
-            updatedEvent,
-            { includeTimeZoneName: true },
-          )}.${builtInNotifyNote(details, targetEvent)}`;
+          const verifiedReply = verifyAppliedCalendarMutation({
+            operation: "update",
+            requestText: messageText(message),
+            event: updatedEvent,
+            previous: targetEvent,
+            fallbackTimeZone: updateTimeZone ?? planningTimeZone,
+            now: new Date(calendarMessageObservedAt(message)),
+            // Only a plain time move is self-verifiable: a rename, a
+            // recurrence edit, a place or note change, or guests are details
+            // the "Moved …" sentence cannot vouch for.
+            carriesUnshownDetails:
+              updateRequest.startAt === undefined ||
+              updatedEvent.title !== targetEvent.title ||
+              Boolean(recurrenceUpdate) ||
+              updateRequest.recurrenceScope !== undefined ||
+              updateRequest.location !== undefined ||
+              updateRequest.description !== undefined ||
+              isRecurringCalendarEvent(targetEvent) ||
+              targetEvent.attendees.length > 0,
+          });
+          const fallback =
+            verifiedReply ??
+            `Updated “${updatedEvent.title}” for ${formatCalendarEventDateTime(
+              updatedEvent,
+              { includeTimeZoneName: true },
+            )}.${builtInNotifyNote(details, targetEvent)}`;
           return respond({
             success: true,
             text: await renderReply("update_event_completed", fallback, {
               event: updatedEvent,
             }),
+            verifiedReply,
             effectReceipt: calendarEventMutationReceipt({
               event: updatedEvent,
               idempotencyKey,
@@ -5905,12 +6311,27 @@ const calendarAction: CalendarHandlerAction = {
             expectedProviderVersion,
             idempotencyKey,
           });
-          const fallback = `Deleted “${targetEvent.title}” from your calendar.${builtInNotifyNote(details, targetEvent)}`;
+          const verifiedReply = verifyAppliedCalendarMutation({
+            operation: "delete",
+            requestText: messageText(message),
+            event: targetEvent,
+            titleHint: searchQueries[0] ?? explicitTitle,
+            fallbackTimeZone: planningTimeZone,
+            now: new Date(calendarMessageObservedAt(message)),
+            carriesUnshownDetails:
+              recurrenceScopeForDelete !== null ||
+              isRecurringCalendarEvent(targetEvent) ||
+              targetEvent.attendees.length > 0,
+          });
+          const fallback =
+            verifiedReply ??
+            `Deleted “${targetEvent.title}” from your calendar.${builtInNotifyNote(details, targetEvent)}`;
           return respond({
             success: true,
             text: await renderReply("delete_event_completed", fallback, {
               event: targetEvent,
             }),
+            verifiedReply,
             effectReceipt: calendarEventMutationReceipt({
               event: targetEvent,
               idempotencyKey,
