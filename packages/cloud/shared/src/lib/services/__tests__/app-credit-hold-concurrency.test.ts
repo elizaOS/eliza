@@ -718,7 +718,7 @@ describe("reconcileCredits — refund ↔ creator-earnings-reversal pairing (#10
         reduceSpy.mockRestore();
       }
 
-      // No refund is allowed to commit until the creator clawback succeeds.
+      // Admission rejects before either the consumer or creator ledger mutates.
       const refunds = await orgTransactions(payerOrgId, "refund");
       expect(refunds).toHaveLength(0);
       expect(await orgBalance(payerOrgId)).toBeCloseTo(7.8, 6);

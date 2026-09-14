@@ -180,13 +180,17 @@ describe("assertRequiredBundledPackagesLanded", () => {
     ).toThrowError(/missing runtime entry .*dist[\\/]index\.mjs/);
   });
 
-  it("checks baseline package runtime export targets but ignores type-only exports", () => {
+  it("checks baseline runtime exports but ignores type and source-only conditions", () => {
     const packageRoot = writePackageJson("@elizaos/core", {
       exports: {
         ".": {
           import: "./dist/index.js",
           require: "./dist/index.cjs",
           types: "./dist/index.d.ts",
+          "eliza-source": {
+            import: "./src/index.ts",
+            default: "./src/index.ts",
+          },
         },
       },
     });
@@ -204,6 +208,7 @@ describe("assertRequiredBundledPackagesLanded", () => {
       expect(message).toContain(path.join(packageRoot, "dist", "index.js"));
       expect(message).toContain(path.join(packageRoot, "dist", "index.cjs"));
       expect(message).not.toContain("index.d.ts");
+      expect(message).not.toContain(path.join(packageRoot, "src", "index.ts"));
     }
   });
 

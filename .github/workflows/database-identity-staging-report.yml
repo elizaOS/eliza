@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       expected_cloud_commit:
-        description: Exact 40-character develop commit to inspect
+        description: Exact 40-character staging commit to inspect
         required: true
         type: string
 
@@ -24,8 +24,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "$SOURCE_REF" != "refs/heads/develop" ]]; then
-            echo "::error::database identity report requires the trusted develop source"
+          if [[ "$SOURCE_REF" != "refs/heads/staging" ]]; then
+            echo "::error::database identity report requires the trusted staging source"
             exit 1
           fi
           if [[ ! "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]] || [[ "$EXPECTED_COMMIT" != "$CHECKED_OUT_COMMIT" ]]; then
@@ -35,7 +35,7 @@ jobs:
 
   report:
     needs: admission
-    if: needs.admission.result == 'success' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'
+    if: needs.admission.result == 'success' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/staging'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: staging
@@ -79,9 +79,9 @@ jobs:
       # environments, preventing direct or accidental injection there. It is
       # not an adversarial isolation boundary: every preceding step shares this
       # mutable job and can persist state. Admission proves only that the
-      # operator-supplied SHA equals github.sha on develop before the staging
+      # operator-supplied SHA equals github.sha on staging before the staging
       # Environment is attached; it does not prove reviewer approval. Human
-      # source review and effective develop admission remain external parts of
+      # source review and effective staging admission remain external parts of
       # the trusted computing base.
       - name: Emit redacted staging identity receipts
         env:

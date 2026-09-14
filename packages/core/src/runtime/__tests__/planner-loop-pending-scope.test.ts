@@ -24,11 +24,7 @@ import type {
 } from "../planner-types";
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 
-function call(
-	name: string,
-	scope?: "more_work_pending" | "final",
-	text?: string,
-) {
+function call(name: string, scope?: string, text?: string) {
 	return {
 		id: name.toLowerCase(),
 		name,
@@ -144,6 +140,179 @@ function harness(args: {
 }
 
 describe("planner-declared pending work", () => {
+	it.each(["STOP", "IGNORE", "NONE"])(
+		"preserves explicit silent control %s after pending work",
+		async (name) => {
+			const h = harness({
+				plans: [
+					{ text: "", toolCalls: [call("READ", "more_work_pending")] },
+					{ text: "", toolCalls: [call(name)] },
+				],
+				evaluations: [continueWork("More work was pending.")],
+			});
+			const result = await h.run();
+			expect(h.executed).toEqual(["READ"]);
+			expect(result.endedWithDeliberateSilence).toBe(true);
+			expect(result.silentTerminalAction).toBe(
+				name === "STOP" ? "STOP" : "IGNORE",
+			);
+		},
+	);
+	it("does not exempt executable calls mixed with silent controls", async () => {
+		const h = harness({
+			plans: [
+				{ text: "", toolCalls: [call("READ", "more_work_pending")] },
+				{ text: "", toolCalls: [call("STOP"), call("UPDATE")] },
+				{ text: "", toolCalls: [call("STOP")] },
+			],
+			evaluations: [continueWork("More work was pending.")],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["READ"]);
+		expect(result.silentTerminalAction).toBe("STOP");
+		expect(JSON.stringify(h.useModel.mock.calls[3])).toContain(
+			"PLANNER_SCOPE_DECLARATION_REQUIRED",
+		);
+	});
+	it("resets the consecutive protocol budget after a corrected independent batch", async () => {
+		const h = harness({
+			plans: [
+				{ text: "", toolCalls: [call("READ", "more_work_pending")] },
+				{ text: "", toolCalls: [call("UPDATE")] },
+				{ text: "", toolCalls: [call("UPDATE", "more_work_pending")] },
+				{ text: "", toolCalls: [call("NOTIFY")] },
+				{ text: "", toolCalls: [call("NOTIFY", "final")] },
+			],
+			evaluations: [
+				continueWork("Update."),
+				continueWork("Notify."),
+				finish("Both operations finished."),
+			],
+		});
+		const result = await h.run({ config: { maxRepeatedFailures: 2 } });
+		expect(h.executed).toEqual(["READ", "UPDATE", "NOTIFY"]);
+		expect(result.finalMessage).toBe("Both operations finished.");
+		expect(result.terminalFailure).toBeUndefined();
+	});
+	it("repairs a missing native scope before executing the pending mutation", async () => {
+		const completeArgument =
+			"Copper record " +
+			"complete argument boundary ".repeat(6000) +
+			"ARGUMENT-END";
+		const missing = {
+			...call("UPDATE"),
+			arguments: { value: completeArgument },
+		};
+		const repaired = {
+			...missing,
+			arguments: { ...missing.arguments, eliza_turn_scope: "final" as const },
+		};
+		const h = harness({
+			plans: [
+				{ text: "", toolCalls: [call("READ", "more_work_pending")] },
+				{ text: "", toolCalls: [missing] },
+				{ text: "", toolCalls: [repaired] },
+			],
+			evaluations: [
+				continueWork("Update the returned record."),
+				finish("The record is updated."),
+			],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["READ", "UPDATE"]);
+		expect(result.finalMessage).toBe("The record is updated.");
+		const calls = h.useModel.mock.calls;
+		expect(calls.map(([type]) => type)).toEqual([
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+		expect(JSON.stringify(calls[3]?.[1])).toContain(
+			"PLANNER_SCOPE_DECLARATION_REQUIRED",
+		);
+		expect(JSON.stringify(calls[3]?.[1])).toContain(completeArgument);
+	});
+
+	it.each([undefined, "not-a-scope"])(
+		"rejects an entire mixed batch with invalid scope %s before any call executes",
+		async (invalidScope) => {
+			const h = harness({
+				plans: [
+					{ text: "", toolCalls: [call("READ", "more_work_pending")] },
+					{
+						text: "",
+						toolCalls: [call("UPDATE", "final"), call("NOTIFY", invalidScope)],
+					},
+					{
+						text: "",
+						toolCalls: [call("UPDATE", "final"), call("NOTIFY", "final")],
+					},
+				],
+				evaluations: [
+					continueWork("Use the returned record."),
+					JSON.stringify({
+						success: false,
+						decision: "NEXT_RECOMMENDED",
+						thought: "The notification remains queued after the update.",
+						recommendedToolCallId: "notify",
+					}),
+					finish("Updated and notified."),
+				],
+			});
+			const result = await h.run();
+			expect(h.executed).toEqual(["READ", "UPDATE", "NOTIFY"]);
+			expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
+				ModelType.ACTION_PLANNER,
+				ModelType.RESPONSE_HANDLER,
+				ModelType.ACTION_PLANNER,
+				ModelType.ACTION_PLANNER,
+				ModelType.RESPONSE_HANDLER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+			expect(result.finalMessage).toBe("Updated and notified.");
+		},
+	);
+	it("fails with a typed scope error when invalid native declarations repeat", async () => {
+		const h = harness({
+			plans: [
+				{ text: "", toolCalls: [call("READ", "more_work_pending")] },
+				{ text: "", toolCalls: [call("UPDATE")] },
+				{ text: "", toolCalls: [call("UPDATE")] },
+			],
+			evaluations: [continueWork("Use the returned record.")],
+		});
+		const result = await h.run({ config: { maxRepeatedFailures: 2 } });
+		expect(result.terminalFailure).toMatchObject({
+			code: "PLANNER_SCOPE_DECLARATION_REQUIRED",
+			transient: false,
+		});
+		expect(result.trajectory.steps.filter((step) => step.result)).toHaveLength(
+			1,
+		);
+		expect(h.executed).toEqual(["READ"]);
+	});
+	it("preserves the JSON planner completion contract after native pending work", async () => {
+		const h = harness({
+			plans: [
+				{ text: "", toolCalls: [call("READ", "more_work_pending")] },
+				JSON.stringify({
+					completed: true,
+					toolCalls: [
+						{ id: "update", name: "UPDATE", params: { id: "record-1" } },
+					],
+				}),
+			],
+			evaluations: [
+				continueWork("Update the result."),
+				finish("Updated the result."),
+			],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["READ", "UPDATE"]);
+		expect(result.finalMessage).toBe("Updated the result.");
+	});
 	it.each([
 		undefined,
 		"Review this unsaved draft:\nTitle: History header QA 20260912\nBody: Bring a green folder and a charger.",
@@ -517,11 +686,12 @@ describe("planner-declared pending work", () => {
 		},
 	);
 
-	it("preserves explicitly pending scope across discovery and an unscoped domain call", async () => {
+	it("rejects an unscoped domain call after discovery before executing its scoped retry", async () => {
 		const h = harness({
 			plans: [
 				{ text: "", toolCalls: [call("DISCOVER_TOOLS", "more_work_pending")] },
 				{ text: "", toolCalls: [call("READ")] },
+				{ text: "", toolCalls: [call("READ", "more_work_pending")] },
 				{ text: "", toolCalls: [call("REPLY", "final")] },
 			],
 			evaluations: [finish("The requested record was read.")],
@@ -529,6 +699,7 @@ describe("planner-declared pending work", () => {
 		const result = await h.run();
 		expect(h.executed).toEqual(["DISCOVER_TOOLS", "READ"]);
 		expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
+			ModelType.ACTION_PLANNER,
 			ModelType.ACTION_PLANNER,
 			ModelType.ACTION_PLANNER,
 			ModelType.RESPONSE_HANDLER,
@@ -935,11 +1106,7 @@ describe("planner-declared pending work", () => {
 				{ text: "Only read.", toolCalls: [call("REPLY")] },
 				{ text: "", toolCalls: [call("NAVIGATE", "final")] },
 			],
-			evaluations: [
-				finish("Only read."),
-				finish("Only read."),
-				finish("All done."),
-			],
+			evaluations: [finish("Only read."), finish("All done.")],
 		});
 		const result = await h.run();
 		expect(h.executed).toEqual(["READ", "NAVIGATE"]);
@@ -1354,50 +1521,60 @@ describe("canonical evaluation of grounded internal receipts", () => {
 		expect(result.finalMessage).toBe("The recorded read is complete.");
 	});
 
-	it("does not reuse a rejected FINISH if context changes during the scope-release planner call", async () => {
-		let activeTrajectory: PlannerTrajectory | undefined;
-		const h = harness({
-			plans: [
-				{ text: "", toolCalls: [call("CALENDAR", "more_work_pending")] },
-				{ text: "", toolCalls: [call("REPLY", "final")] },
-			],
-			evaluations: [
-				finish("Your gym session is in the calendar.", true, [
-					appliedReceipt.receiptId,
-				]),
-				finish("The event is saved; I need to check the new request.", false),
-			],
-			intents: ["add gym session to calendar"],
-		});
-		const model = h.useModel.getMockImplementation();
-		if (!model) throw new Error("Missing deterministic model adapter");
-		h.useModel.mockImplementation(async (...args) => {
-			if (args[0] === ModelType.ACTION_PLANNER && activeTrajectory) {
-				activeTrajectory.context = {
-					...activeTrajectory.context,
-					events: [
-						...activeTrajectory.context.events,
-						{
-							id: "new-input",
-							type: "message",
-							message: { role: "user", content: "Wait, one more thing." },
-						},
-					],
-				};
-			}
-			return model(...args);
-		});
-		const result = await h.run({
-			executeToolCall: (_call, { trajectory }) => {
-				activeTrajectory = trajectory;
-				return internalCalendarResult();
-			},
-		});
-		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(2);
-		expect(result.finalMessage).toBe(
-			"The event is saved; I need to check the new request.",
-		);
-	});
+	it.each([false, true])(
+		"does not reuse a rejected FINISH after context changes (rejected scope retry: %s)",
+		async (rejectFirst) => {
+			let activeTrajectory: PlannerTrajectory | undefined;
+			let contextChanged = false;
+			const h = harness({
+				plans: [
+					{ text: "", toolCalls: [call("CALENDAR", "more_work_pending")] },
+					...(rejectFirst ? [{ text: "", toolCalls: [call("REPLY")] }] : []),
+					{ text: "", toolCalls: [call("REPLY", "final")] },
+				],
+				evaluations: [
+					finish("Your gym session is in the calendar.", true, [
+						appliedReceipt.receiptId,
+					]),
+					finish("The event is saved; I need to check the new request.", false),
+				],
+				intents: ["add gym session to calendar"],
+			});
+			const model = h.useModel.getMockImplementation();
+			if (!model) throw new Error("Missing deterministic model adapter");
+			h.useModel.mockImplementation(async (...args) => {
+				if (
+					args[0] === ModelType.ACTION_PLANNER &&
+					activeTrajectory &&
+					!contextChanged
+				) {
+					contextChanged = true;
+					activeTrajectory.context = {
+						...activeTrajectory.context,
+						events: [
+							...activeTrajectory.context.events,
+							{
+								id: "new-input",
+								type: "message",
+								message: { role: "user", content: "Wait, one more thing." },
+							},
+						],
+					};
+				}
+				return model(...args);
+			});
+			const result = await h.run({
+				executeToolCall: (_call, { trajectory }) => {
+					activeTrajectory = trajectory;
+					return internalCalendarResult();
+				},
+			});
+			expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(2);
+			expect(result.finalMessage).toBe(
+				"The event is saved; I need to check the new request.",
+			);
+		},
+	);
 
 	it.each(["more_work_pending", undefined] as const)(
 		"does not reuse a rejected FINISH for REPLY with scope %s",

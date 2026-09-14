@@ -8,7 +8,7 @@
  * without wiring up a MODEL_USED consumer.
  */
 import type { EventPayload, IAgentRuntime, ModelTypeName } from "@elizaos/core";
-import { EventType, logger } from "@elizaos/core";
+import { EventType, logger, normalizeProviderUsage } from "@elizaos/core";
 
 type ModelUsage = {
   promptTokens?: number;
@@ -56,9 +56,8 @@ export function emitModelUsageEvent(
   usage: ModelUsage,
   modelName?: string
 ): NormalizedModelUsage {
-  const promptTokens = usage.promptTokens ?? usage.inputTokens ?? 0;
-  const completionTokens = usage.completionTokens ?? usage.outputTokens ?? 0;
-  const totalTokens = usage.totalTokens ?? promptTokens + completionTokens;
+  const normalized = normalizeProviderUsage(usage);
+  const { promptTokens, completionTokens, totalTokens } = normalized;
   const cacheRead = usage.cacheReadInputTokens;
   const cacheWrite = usage.cacheCreationInputTokens;
   const model = modelName?.trim() || String(type);

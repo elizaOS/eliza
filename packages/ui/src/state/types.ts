@@ -222,6 +222,7 @@ export type StartupErrorReason =
   | "backend-unreachable"
   | "agent-timeout"
   | "agent-error"
+  | "agent-stopped"
   | "asset-missing"
   | "unknown";
 
@@ -232,6 +233,9 @@ export interface StartupErrorState {
   detail?: string;
   status?: number;
   path?: string;
+  /** Trusted Cloud management destination for an explicitly stopped agent. */
+  cloudManagementUrl?: string;
+  cloudAgentId?: string;
 }
 
 export interface StartupCoordinatorView {

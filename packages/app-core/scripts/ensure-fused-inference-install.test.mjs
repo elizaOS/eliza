@@ -268,10 +268,15 @@ test("relative state directories stage embedding bytes where the runtime resolve
       fetchImpl: async () => fixtureResponse(bytes),
     });
     assert.deepEqual(
-      readFileSync(path.join(root, "models", "gte-small_fp16.gguf")),
+      readFileSync(
+        path.join(root, "models", FUSED_EMBEDDING_ARTIFACT.filename),
+      ),
       bytes,
     );
-    assert.equal(result.path, path.join(root, "models", "gte-small_fp16.gguf"));
+    assert.equal(
+      result.path,
+      path.join(root, "models", FUSED_EMBEDDING_ARTIFACT.filename),
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -552,7 +552,7 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, ScopedHostExternalImporter> = {
     importHostExternal("@elizaos/capacitor-phone"),
   "@elizaos/capacitor-system": () =>
     importHostExternal("@elizaos/capacitor-system"),
-  "@elizaos/shared": () => importHostExternal("@elizaos/shared"),
+  "@elizaos/shared": () => import("@elizaos/shared"),
   "@elizaos/ui": importUiRootCompat,
   "@elizaos/ui/agent-surface": async () => AgentSurfaceHost,
   "@elizaos/ui/app-navigate-view": importUiAppNavigateViewCompat,
@@ -835,7 +835,15 @@ export const hostImport: HostModuleImporter = (specifier) => {
 async function resolveBundleNamespace(
   mod: Record<string, unknown>,
   importHost: HostModuleImporter,
+  scope: SurfaceRealmScope | null,
 ): Promise<Record<string, unknown>> {
+  if (scope !== getActiveSurfaceRealmScope()) {
+    throw new SurfaceRealmDeniedError(
+      scope?.viewId ?? "unbound",
+      "navigate",
+      "view bundle authority changed before evaluation",
+    );
+  }
   const factory = mod.default;
   if (typeof factory !== "function") return mod;
   return (factory as HostExternalBundleFactory)(importHost);
@@ -892,6 +900,7 @@ async function importViewBundle(
     return resolveBundleNamespace(
       await importAuthenticatedViewBundle(hostExternalUrl),
       importHost,
+      scope,
     );
   }
 
@@ -913,6 +922,7 @@ async function importViewBundle(
   return resolveBundleNamespace(
     await importAuthenticatedViewBundle(rewrittenUrl),
     importHost,
+    scope,
   );
 }
 

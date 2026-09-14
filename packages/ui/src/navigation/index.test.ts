@@ -13,6 +13,7 @@ import {
   getWindowNavigationPath,
   isDeveloperWorkspaceRoute,
   LEGACY_PREFIX_TAB_ALIASES,
+  pathForTab,
   resolveBuiltinRouteDescriptor,
   resolveLegacyBuiltinRoute,
   shouldUseHashNavigation,
@@ -74,6 +75,17 @@ describe("local developer shell routing", () => {
 });
 
 describe("navigation tabFromPath", () => {
+  it.each(["/rolodex", "/ROLODEX/"])(
+    "routes legacy contact-book links %s to Relationships",
+    (path) => {
+      expect(tabFromPath(path)).toBe("relationships");
+      expect(resolveLegacyBuiltinRoute(path)).toEqual({
+        tab: "relationships",
+        canonicalPath: TAB_PATHS.relationships,
+      });
+      expect(pathForTab("rolodex")).toBe(TAB_PATHS.relationships);
+    },
+  );
   it.each(["/home", "/HOME/"])(
     "canonicalizes the Home alias %s to the chat canvas",
     (path) => {

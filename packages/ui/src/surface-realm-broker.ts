@@ -350,11 +350,9 @@ export class SurfaceRealmScope {
     readonly viewId: string,
     backing: Storage,
     navigate: (path: string) => void,
-    childViewIds: readonly string[] = [],
+    memberViewIds: readonly string[] = [viewId],
   ) {
-    // Membership comes from the shell's rendered composition. It allows a
-    // child to load under this owner; it never adds capability grants.
-    this.memberViewIds = new Set([viewId, ...childViewIds]);
+    this.memberViewIds = new Set([viewId, ...memberViewIds]);
     this.storage = brokerSurfaceStorage(manifest, backing, viewId);
     this.navigate = brokerSurfaceNavigate(manifest, viewId, navigate);
     if (typeof document === "undefined") {
@@ -382,6 +380,7 @@ export class SurfaceRealmScope {
     }
   }
 
+  /** Only the routed owner or explicit layout members may evaluate in this scope. */
   ownsView(viewId: string): boolean {
     return this.memberViewIds.has(viewId);
   }
@@ -450,6 +449,7 @@ export class SurfaceRealmScope {
 let activeScope: SurfaceRealmScope | null = null;
 const activeScopeListeners = new Set<() => void>();
 
+/** Observe committed scope replacement so evaluated views renew their handles. */
 export function subscribeActiveSurfaceRealmScope(
   listener: () => void,
 ): () => void {

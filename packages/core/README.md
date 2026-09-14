@@ -30,6 +30,12 @@ descriptions; the runtime refreshes the authorized catalog before processing any
 reply or action. This can add a model call, so compare whole-turn usage. It does
 not trim conversation history or grant access to tools or private data.
 
+`resolveActionArgs` treats a required empty array as missing unless its
+`SubactionSpec.allowEmptyArrays` names that parameter. This opt-in preserves
+an explicitly supplied or extracted `[]` through argument resolution; it never
+defaults an omitted or null value to an empty list. The owning action must still
+validate element types, permissions and domain constraints.
+
 ## Computer-use adapter contract
 
 `contracts/computer-use.ts` is the provider-neutral boundary shared by browser
@@ -431,6 +437,14 @@ Actions define specific tasks or capabilities the agent can perform. Each action
 - A `handler` function that executes the action's logic.
 
 Actions enable the agent to respond intelligently and perform operations based on user input or internal triggers.
+
+Before routing, the response handler receives an `available_actions` discovery
+catalog containing every eligible action's name, complete description, contexts,
+and aliases. Discovery checks the current actor, delivery audience, connector
+policy, and action validation under the action's declared routing contexts. This
+catalog is rebuilt for each turn and is not part of the shared prompt cache.
+The planner then receives native tools with parameter schemas and checks
+authorization again before executing; discovering an action does not execute it.
 
 Model-facing action, provider, and analytics results preserve complete records.
 For example, detailed `TRUST action=evaluate` results return every evidence

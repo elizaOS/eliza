@@ -1,6 +1,7 @@
 /** Real-browser regression coverage for bounded optional Cloud actions. */
 
 import { expect, type Locator, test } from "@playwright/test";
+import type { CloudLiveRuntimeBinding } from "../cloud-live-continuity-contract";
 import { installDedicatedAdoptionConsentProof } from "../cloud-live-dedicated-adoption-consent";
 import {
   CloudLiveDedicatedConfirmationRequiredError,
@@ -50,6 +51,93 @@ test.describe("Cloud live optional action boundary", () => {
     });
     expect(String(result.error)).not.toMatch(/data-testid|locator|selector/);
   });
+
+  const referenceBinding: CloudLiveRuntimeBinding = {
+    personalIdentity: "personal-test-account",
+    runtimeBinding: "dedicated-test-agent",
+    runtime: "dedicated",
+    apiBase: "https://api.test/agents/dedicated-test-agent",
+  };
+
+  for (const resolvesDuringChoice of [false, true]) {
+    test(`accepts the verified existing identity ${resolvesDuringChoice ? "while the runtime choice disappears" : "before the overlay opens"}`, async ({
+      page,
+    }) => {
+      await page.setContent(
+        resolvesDuringChoice
+          ? '<main data-testid="chat-overlay">Connecting</main>'
+          : "<main>Connected</main>",
+      );
+      let binding: CloudLiveRuntimeBinding | null = resolvesDuringChoice
+        ? null
+        : referenceBinding;
+      let choiceAttempted = false;
+
+      await prepareCloudLivePersonalIdentity({
+        chooseRuntime: true,
+        chatOverlay: page.getByTestId("chat-overlay"),
+        chatOverlayTimeoutMs: 100,
+        resolvedIdentity: {
+          reference: referenceBinding,
+          readBinding: async () => binding,
+        },
+        chooseRuntimeAction: async () => {
+          choiceAttempted = true;
+          binding = referenceBinding;
+          await clickCloudLiveOptionalAction(
+            page.getByTestId("runtime-cloud"),
+            {
+              phase: "pre-identity-runtime-choice",
+              action: "runtime-cloud",
+              offerTimeoutMs: 100,
+              actionTimeoutMs: 100,
+              required: true,
+            },
+          );
+        },
+      });
+      expect(choiceAttempted).toBe(resolvesDuringChoice);
+    });
+  }
+
+  for (const [label, binding] of [
+    ["missing", null],
+    ["different account", { ...referenceBinding, personalIdentity: "other" }],
+    ["different agent", { ...referenceBinding, runtimeBinding: "other" }],
+    ["shared runtime", { ...referenceBinding, runtime: "shared" }],
+    ["different API", { ...referenceBinding, apiBase: "https://other.test" }],
+  ] as const) {
+    test(`rejects a missing choice with ${label} identity`, async ({
+      page,
+    }) => {
+      await page.setContent(
+        '<main data-testid="chat-overlay">Connecting</main>',
+      );
+      await expect(
+        prepareCloudLivePersonalIdentity({
+          chooseRuntime: true,
+          chatOverlay: page.getByTestId("chat-overlay"),
+          chatOverlayTimeoutMs: 100,
+          resolvedIdentity: {
+            reference: referenceBinding,
+            readBinding: async () => binding,
+          },
+          chooseRuntimeAction: async () => {
+            await clickCloudLiveOptionalAction(
+              page.getByTestId("runtime-cloud"),
+              {
+                phase: "pre-identity-runtime-choice",
+                action: "runtime-cloud",
+                offerTimeoutMs: 100,
+                actionTimeoutMs: 100,
+                required: true,
+              },
+            );
+          },
+        }),
+      ).rejects.toBeInstanceOf(CloudLiveRequiredActionUnavailableError);
+    });
+  }
 
   test("keeps Dedicated activation and adoption confirmation fail-closed by default", async ({
     page,

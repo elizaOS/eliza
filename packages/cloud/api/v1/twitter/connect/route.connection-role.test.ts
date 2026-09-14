@@ -25,8 +25,15 @@ mock.module("@/lib/auth", () => ({
 mock.module("@/lib/services/twitter-automation", () => ({
   twitterAutomationService: { generateAuthLink, isConfigured },
 }));
+const cacheClientActualModule = await import("@/lib/cache/client");
+
 mock.module("@/lib/cache/client", () => ({
-  cache: { set: cacheSet },
+  ...cacheClientActualModule,
+  cache: {
+    set: cacheSet,
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
+  },
 }));
 mock.module("@/lib/security/redirect-validation", () => ({
   getDefaultPlatformRedirectOrigins: () => [],

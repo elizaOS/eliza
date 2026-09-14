@@ -35,7 +35,7 @@
  * remains testable.
  */
 
-import type { ScheduledTaskInput } from "../wave1-types.js";
+import type { ScheduledTaskInput } from "@elizaos/plugin-scheduling";
 import type { OwnerFactWindow } from "./state.js";
 
 const TIME_OF_DAY_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;

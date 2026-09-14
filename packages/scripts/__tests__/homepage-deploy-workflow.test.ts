@@ -534,9 +534,11 @@ describe("homepage deployment workflow", () => {
       "TELEGRAM_IDENTITY_AUTHORITY_SHA256",
     );
     for (const name of reusableEnvironmentSecrets) {
-      // GitHub requires the caller binding to expose the selected Environment
-      // secret in the called job. An empty literal cannot forward repo values.
-      expect(callerSecretMap[name], name).toBe("");
+      // Explicit expressions let the called job resolve its protected
+      // Environment secrets; empty literals produced blank deploy credentials.
+      expect(callerSecretMap[name], name).toBe(
+        githubExpression(`secrets.${name}`),
+      );
       expect(
         parsedReleaseWorkflow.on?.workflow_call?.secrets?.[name],
         name,

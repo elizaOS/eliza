@@ -129,16 +129,12 @@ describe("ManagedCloudPage", () => {
   it("renders a registered /cloud route for an authenticated Cloud account", () => {
     renderPage("/cloud/billing");
     expect(screen.getByTestId("billing-page")).toBeTruthy();
-    expect(
-      screen.getByRole("heading", { name: "Cloud Billing", level: 1 }),
-    ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Add credits" })).toBeTruthy();
     expect(
       screen.getByRole("button", {
         name: "Account menu for nubs@example.com",
       }),
     ).toBeTruthy();
-    expect(screen.getAllByTestId("view-header")).toHaveLength(1);
     const frame = screen
       .getByTestId("billing-page")
       .closest("[data-page-kind]");

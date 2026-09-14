@@ -14,6 +14,7 @@ import {
   type EphemeralPostgres,
 } from "../../../lib/services/tenant-db/__tests__/ephemeral-postgres";
 import type { NewContainer } from "../containers";
+import { installOrganizationPolicyTestSchema } from "../organization-policy-test-fixture";
 
 const SKIP_REASON =
   "[container project-intent PostgreSQL] SKIPPED - no real PostgreSQL available. " +
@@ -175,6 +176,7 @@ try {
 
 beforeAll(async () => {
   if (!dbWrite) return;
+  const database = dbWrite;
   const ddl = [
     `CREATE TABLE organizations (
       id uuid PRIMARY KEY,
@@ -236,8 +238,9 @@ beforeAll(async () => {
     )`,
   ];
   for (const statement of ddl) {
-    await dbWrite.execute(statement);
+    await database.execute(statement);
   }
+  await installOrganizationPolicyTestSchema((query) => database.execute(query));
 }, 60_000);
 
 const realPostgres = postgres ? describe : describe.skip;

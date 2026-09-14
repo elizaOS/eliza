@@ -293,7 +293,7 @@ export function WorkflowTriggerPanel({
           {type === "event" ? (
             <>
               <NativeSelect
-                presentation="toolbar"
+                presentation="compact"
                 aria-label="Event source"
                 value={eventMode}
                 onChange={(event) =>
@@ -309,7 +309,7 @@ export function WorkflowTriggerPanel({
               </NativeSelect>
               {eventMode !== "message" ? (
                 <NativeSelect
-                  presentation="toolbar"
+                  presentation="compact"
                   aria-label="Source workflow"
                   value={sourceWorkflowId}
                   onChange={(event) => setSourceWorkflowId(event.target.value)}
@@ -327,7 +327,7 @@ export function WorkflowTriggerPanel({
               ) : null}
               {eventMode === "step" ? (
                 <NativeSelect
-                  presentation="toolbar"
+                  presentation="compact"
                   aria-label="Source step"
                   value={sourceStepId}
                   onChange={(event) => setSourceStepId(event.target.value)}

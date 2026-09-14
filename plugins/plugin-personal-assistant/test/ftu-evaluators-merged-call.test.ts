@@ -31,10 +31,14 @@ interface CapturedModelCall {
 function createEvaluatorRuntime(modelOutput: Record<string, unknown>): {
   runtime: IAgentRuntime;
   calls: CapturedModelCall[];
+  memories: Memory[];
 } {
   const calls: CapturedModelCall[] = [];
+  const memories: Memory[] = [];
   const runtime = createOwnerRuntimeStub({
     evaluators: [ftuGoalDiscoveryEvaluator, anticipationFeedbackEvaluator],
+    getMemories: async ({ roomId }: { roomId: string }) =>
+      memories.filter((memory) => memory.roomId === roomId),
     useModel: (async (
       _modelType: string,
       params: {
@@ -57,7 +61,7 @@ function createEvaluatorRuntime(modelOutput: Record<string, unknown>): {
       error: () => {},
     } as never,
   } as never);
-  return { runtime, calls };
+  return { runtime, calls, memories };
 }
 
 function ownerMessage(runtime: IAgentRuntime, text: string): Memory {
@@ -73,7 +77,7 @@ function ownerMessage(runtime: IAgentRuntime, text: string): Memory {
 
 describe("FTU + anticipation evaluators through the real merged EvaluatorService call", () => {
   it("runs both evaluators in one model call, persists via processors, then never reprocesses", async () => {
-    const { runtime, calls } = createEvaluatorRuntime({
+    const { runtime, calls, memories } = createEvaluatorRuntime({
       ftu_goal_discovery: {
         goalFound: true,
         goal: "Stay on top of email and family follow-ups",
@@ -97,6 +101,7 @@ describe("FTU + anticipation evaluators through the real merged EvaluatorService
       runtime,
       "Yes please — mostly I need help staying on top of email and family follow-ups.",
     );
+    memories.push(message);
     const result = await service.run(message, undefined, { didRespond: true });
 
     expect(result.skipped).toBe(false);
@@ -113,6 +118,7 @@ describe("FTU + anticipation evaluators through the real merged EvaluatorService
     // Exactly ONE merged model call, whose prompt and schema carry both
     // evaluator sections.
     expect(calls).toHaveLength(1);
+    expect(calls[0]?.prompt).toContain(message.content.text);
     expect(calls[0]?.prompt).toContain("### ftu_goal_discovery");
     expect(calls[0]?.prompt).toContain("### anticipation_feedback");
     expect(Object.keys(calls[0]?.schema?.properties ?? {}).sort()).toEqual([
@@ -151,7 +157,7 @@ describe("FTU + anticipation evaluators through the real merged EvaluatorService
   });
 
   it("keeps discovery open when the merged output is low-confidence", async () => {
-    const { runtime, calls } = createEvaluatorRuntime({
+    const { runtime, calls, memories } = createEvaluatorRuntime({
       ftu_goal_discovery: {
         goalFound: true,
         goal: "Maybe something with fitness?",
@@ -164,11 +170,12 @@ describe("FTU + anticipation evaluators through the real merged EvaluatorService
     await firstRun.complete();
 
     const service = (await EvaluatorService.start(runtime)) as EvaluatorService;
-    const result = await service.run(
-      ownerMessage(runtime, "eh, I sometimes think about the gym"),
-      undefined,
-      { didRespond: true },
+    const message = ownerMessage(
+      runtime,
+      "eh, I sometimes think about the gym",
     );
+    memories.push(message);
+    const result = await service.run(message, undefined, { didRespond: true });
 
     // Only the goal evaluator was active (no proactive marker), it ran, and
     // low confidence left the pipeline open for the next turn.

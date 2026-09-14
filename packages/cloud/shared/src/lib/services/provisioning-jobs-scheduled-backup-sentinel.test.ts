@@ -3,9 +3,10 @@
  * on in-process PGlite: the selection SQL, the per-row `enqueueAgentSnapshotOnce`
  * → `enqueueLifecycleJob` transaction (advisory lock, sandbox read, in-flight
  * idempotency lookup, `jobs` insert) all execute for real and the assertions
- * read back the actual `jobs` rows written. No mock stands in for the thing under
- * test; a single spy appears only in the failure-path case, to force the
- * downstream enqueue to throw so the scanner's per-row catch is exercised.
+ * read back the actual `jobs` rows written. Snapshot enqueue failure coverage
+ * injects a downstream failure so the scanner's per-row catch is exercised.
+ * Billing-stop tests retain real intent/job transactions while simulating the
+ * backup prerequisite at SandboxPower and the external provider stop.
  *
  * The load-bearing behavior is the reachability carve-out (issue #15737): a
  * `running` row whose bridge_url is the unreachable loopback sentinel
@@ -20,6 +21,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { readFile } from "node:fs/promises";
 import { and, eq, sql } from "drizzle-orm";
 import { installOrganizationPolicyTestSchema } from "../../db/repositories/organization-policy-test-fixture";
 
@@ -41,6 +43,7 @@ import { organizations } from "../../db/schemas/organizations";
 import { users } from "../../db/schemas/users";
 import { PROVISIONING_JOB_TEST_TABLES } from "./__tests__/tier-upgrade-pglite-schema";
 import { elizaSandboxService } from "./eliza-sandbox";
+import { SandboxPower } from "./eliza-sandbox/lifecycle/power";
 import { JOB_TYPES } from "./provisioning-job-types";
 import {
   listRecoverableAgentComputeStopIntents,
@@ -132,6 +135,16 @@ beforeAll(async () => {
     }
     const { getPgliteClientForTests } = await import("../../db/client");
     await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
+    for (const name of [
+      "0388_agent_compute_funded_receipts.sql",
+      "0394_agent_billing_activation_minimum.sql",
+    ]) {
+      const migration = await readFile(
+        new URL(`../../db/migrations/${name}`, import.meta.url),
+        "utf8",
+      );
+      await getPgliteClientForTests().exec(migration);
+    }
   } catch (error) {
     pgliteReady = false;
     console.error(
@@ -455,15 +468,12 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
         authorization: "user_request" | "billing_request",
       ): Promise<{ success: boolean; containerStopped: boolean; error?: string }>;
       runBoundedSandboxStopForReplacement(sandboxId: string): Promise<{ error: unknown } | null>;
-      prepareSuspendBackupGate(
-        rec: unknown,
-      ): Promise<{ outcome: "proceed"; capturedFresh: boolean }>;
     };
     const service = elizaSandboxService as unknown as BillingSuspendService;
     const providerStop = spyOn(service, "runBoundedSandboxStopForReplacement").mockResolvedValue({
       error: new Error("provider unavailable"),
     });
-    const gateSpy = spyOn(service, "prepareSuspendBackupGate").mockResolvedValue({
+    const gateSpy = spyOn(SandboxPower.prototype, "prepareSuspendBackupGate").mockResolvedValue({
       outcome: "proceed",
       capturedFresh: false,
     });
@@ -654,15 +664,12 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
         authorization: "user_request" | "billing_request",
       ): Promise<{ success: boolean; containerStopped: boolean; error?: string }>;
       runBoundedSandboxStopForReplacement(sandboxId: string): Promise<{ error: unknown } | null>;
-      prepareSuspendBackupGate(
-        rec: unknown,
-      ): Promise<{ outcome: "proceed"; capturedFresh: boolean }>;
     };
     const service = elizaSandboxService as unknown as ManualSuspendService;
     const providerStop = spyOn(service, "runBoundedSandboxStopForReplacement").mockResolvedValue(
       null,
     );
-    const gateSpy = spyOn(service, "prepareSuspendBackupGate").mockResolvedValue({
+    const gateSpy = spyOn(SandboxPower.prototype, "prepareSuspendBackupGate").mockResolvedValue({
       outcome: "proceed",
       capturedFresh: false,
     });
@@ -984,15 +991,12 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
         expectedLifecycleRevision?: number,
       ): Promise<{ success: boolean; containerStopped: boolean; error?: string }>;
       runBoundedSandboxStopForReplacement(sandboxId: string): Promise<{ error: unknown } | null>;
-      prepareSuspendBackupGate(
-        rec: unknown,
-      ): Promise<{ outcome: "proceed"; capturedFresh: boolean }>;
     };
     const service = elizaSandboxService as unknown as UserSuspendService;
     const providerStop = spyOn(service, "runBoundedSandboxStopForReplacement").mockResolvedValue(
       null,
     );
-    const gateSpy = spyOn(service, "prepareSuspendBackupGate").mockResolvedValue({
+    const gateSpy = spyOn(SandboxPower.prototype, "prepareSuspendBackupGate").mockResolvedValue({
       outcome: "proceed",
       capturedFresh: false,
     });
@@ -1073,15 +1077,12 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
         expectedLifecycleRevision?: number,
       ): Promise<{ success: boolean; containerStopped: boolean; error?: string }>;
       runBoundedSandboxStopForReplacement(sandboxId: string): Promise<{ error: unknown } | null>;
-      prepareSuspendBackupGate(
-        rec: unknown,
-      ): Promise<{ outcome: "proceed"; capturedFresh: boolean }>;
     };
     const service = elizaSandboxService as unknown as AlreadyStoppedSuspendService;
     const providerStop = spyOn(service, "runBoundedSandboxStopForReplacement").mockResolvedValue(
       null,
     );
-    const gateSpy = spyOn(service, "prepareSuspendBackupGate").mockResolvedValue({
+    const gateSpy = spyOn(SandboxPower.prototype, "prepareSuspendBackupGate").mockResolvedValue({
       outcome: "proceed",
       capturedFresh: false,
     });
@@ -1170,15 +1171,12 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
         error?: string;
       }>;
       runBoundedSandboxStopForReplacement(sandboxId: string): Promise<{ error: unknown } | null>;
-      prepareSuspendBackupGate(
-        rec: unknown,
-      ): Promise<{ outcome: "proceed"; capturedFresh: boolean }>;
     };
     const service = elizaSandboxService as unknown as FundedStoppedSuspendService;
     const providerStop = spyOn(service, "runBoundedSandboxStopForReplacement").mockResolvedValue(
       null,
     );
-    const gateSpy = spyOn(service, "prepareSuspendBackupGate").mockResolvedValue({
+    const gateSpy = spyOn(SandboxPower.prototype, "prepareSuspendBackupGate").mockResolvedValue({
       outcome: "proceed",
       capturedFresh: false,
     });
@@ -1262,15 +1260,12 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
         expectedLifecycleRevision?: number,
       ): Promise<{ success: boolean; containerStopped: boolean; error?: string }>;
       runBoundedSandboxStopForReplacement(sandboxId: string): Promise<{ error: unknown } | null>;
-      prepareSuspendBackupGate(
-        rec: unknown,
-      ): Promise<{ outcome: "proceed"; capturedFresh: boolean }>;
     };
     const service = elizaSandboxService as unknown as StaleSuspendService;
     const providerStop = spyOn(service, "runBoundedSandboxStopForReplacement").mockResolvedValue(
       null,
     );
-    const gateSpy = spyOn(service, "prepareSuspendBackupGate").mockResolvedValue({
+    const gateSpy = spyOn(SandboxPower.prototype, "prepareSuspendBackupGate").mockResolvedValue({
       outcome: "proceed",
       capturedFresh: false,
     });
@@ -1392,15 +1387,12 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
         authorization: "user_request" | "billing_request",
       ): Promise<{ success: boolean; containerStopped: boolean; error?: string }>;
       runBoundedSandboxStopForReplacement(sandboxId: string): Promise<{ error: unknown } | null>;
-      prepareSuspendBackupGate(
-        rec: unknown,
-      ): Promise<{ outcome: "proceed"; capturedFresh: boolean }>;
     };
     const service = elizaSandboxService as unknown as BillingSuspendService;
     const providerStop = spyOn(service, "runBoundedSandboxStopForReplacement").mockResolvedValue(
       null,
     );
-    const gateSpy = spyOn(service, "prepareSuspendBackupGate").mockResolvedValue({
+    const gateSpy = spyOn(SandboxPower.prototype, "prepareSuspendBackupGate").mockResolvedValue({
       outcome: "proceed",
       capturedFresh: false,
     });
@@ -1467,15 +1459,12 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
         authorization: "user_request" | "billing_request",
       ): Promise<{ success: boolean; containerStopped: boolean; error?: string }>;
       runBoundedSandboxStopForReplacement(sandboxId: string): Promise<{ error: unknown } | null>;
-      prepareSuspendBackupGate(
-        rec: unknown,
-      ): Promise<{ outcome: "proceed"; capturedFresh: boolean }>;
     };
     const service = elizaSandboxService as unknown as BillingSuspendService;
     const providerStop = spyOn(service, "runBoundedSandboxStopForReplacement").mockResolvedValue(
       null,
     );
-    const gateSpy = spyOn(service, "prepareSuspendBackupGate").mockResolvedValue({
+    const gateSpy = spyOn(SandboxPower.prototype, "prepareSuspendBackupGate").mockResolvedValue({
       outcome: "proceed",
       capturedFresh: false,
     });

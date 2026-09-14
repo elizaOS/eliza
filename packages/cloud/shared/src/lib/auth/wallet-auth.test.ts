@@ -11,7 +11,10 @@ import { privateKeyToAccount } from "viem/accounts";
 
 const nonceStore = new Map<string, string>();
 
+const cacheClientActualModule = await import("../cache/client");
+
 mock.module("../cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     isAvailable: () => true,
     setIfNotExists: async (key: string, value: string) => {
@@ -22,6 +25,8 @@ mock.module("../cache/client", () => ({
     get: async () => null,
     set: async () => {},
     del: async () => {},
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 

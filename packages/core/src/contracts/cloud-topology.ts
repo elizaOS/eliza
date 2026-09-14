@@ -28,6 +28,8 @@ export type ResolvedElizaCloudTopology = {
 	provider: "elizacloud" | null;
 	runtime: "cloud" | "local";
 	services: Record<ElizaCloudService, boolean>;
+	/** Cloud-routed services that cannot run because no Cloud account is linked. */
+	servicesUnreconciled: ElizaCloudService[];
 	shouldLoadPlugin: boolean;
 };
 
@@ -100,15 +102,29 @@ export function resolveElizaCloudTopology(
 	const cloudDeploymentSelected =
 		deploymentTarget.runtime === "cloud" &&
 		deploymentTarget.provider === "elizacloud";
+	const linked = isElizaCloudLinkedInConfig(config);
+	const servicesUnreconciled = linked
+		? []
+		: (Object.entries(resolvedServices) as [ElizaCloudService, boolean][])
+				.filter(([, selected]) => selected)
+				.map(([service]) => service);
 
 	return {
-		linked: isElizaCloudLinkedInConfig(config),
+		linked,
 		provider,
 		runtime,
 		services: resolvedServices,
+		servicesUnreconciled,
 		shouldLoadPlugin:
 			cloudDeploymentSelected || Object.values(resolvedServices).some(Boolean),
 	};
+}
+
+/** Whether Cloud routing declares at least one service without a linked account. */
+export function hasUnreconciledElizaCloudServices(
+	config: Record<string, unknown> | null | undefined,
+): boolean {
+	return resolveElizaCloudTopology(config).servicesUnreconciled.length > 0;
 }
 
 export function isElizaCloudServiceSelectedInConfig(

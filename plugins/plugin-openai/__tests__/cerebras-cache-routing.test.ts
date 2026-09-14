@@ -84,7 +84,7 @@ it("sends stable conversation-scoped Cerebras keys through the OpenAI SDK", asyn
 it.each([
   { cerebras: true, options: { promptCacheKey: "cerebras-camel" }, expected: "cerebras-camel" },
   { cerebras: true, options: { prompt_cache_key: "cerebras-snake" }, expected: "cerebras-snake" },
-  { cerebras: true, options: {}, expected: "openai-legacy" },
+  { cerebras: true, options: {}, expected: undefined },
   { cerebras: false, options: { promptCacheKey: "cerebras-only" }, expected: "openai-legacy" },
 ])(
   "preserves provider-specific cache precedence ($expected)",

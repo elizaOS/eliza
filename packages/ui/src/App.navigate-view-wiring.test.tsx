@@ -628,6 +628,7 @@ vi.mock("./hooks/useIsDeveloperMode", () => ({
 }));
 
 import { App } from "./App";
+import { navigateBackToLauncher } from "./components/shared/ViewHeader";
 
 function navigateView(detail: Record<string, unknown>) {
   act(() => {
@@ -705,6 +706,155 @@ describe("App navigate-view event wiring", () => {
       Object.defineProperty(window, "location", originalLocationDescriptor);
     }
   });
+
+  async function mountedRemoteNavigation() {
+    mockAvailableViews[0] = {
+      ...remoteLedgerView,
+      surface: { capabilities: ["navigate"] },
+    };
+    appState.tab = "views";
+    window.history.replaceState(null, "", remoteLedgerView.path);
+    const rendered = render(<App />);
+    await waitFor(() =>
+      expect(getActiveSurfaceRealmScope()?.viewId).toBe(remoteLedgerView.id),
+    );
+    const actual = await vi.importActual<
+      typeof import("./components/views/DynamicViewLoader")
+    >("./components/views/DynamicViewLoader");
+    const external = await actual.hostImport("@elizaos/ui/app-navigate-view");
+    const navigate = external.navigateBrowserPath;
+    if (typeof navigate !== "function")
+      throw new Error("Host navigation external is unavailable");
+    return { rendered, navigate };
+  }
+
+  it("keeps a mounted remote view's real navigation handle through an equivalent registry refresh", async () => {
+    const { rendered, navigate } = await mountedRemoteNavigation();
+    await act(async () => {
+      mockAvailableViews[0] = {
+        ...mockAvailableViews[0],
+        surface: { capabilities: ["navigate"] },
+      };
+      registerAppShellPage({
+        id: "unrelated-refresh",
+        pluginId: "@test/refresh",
+        label: "Refresh",
+        path: "/refresh",
+        Component: () => null,
+      });
+    });
+    rendered.rerender(<App />);
+    act(() => navigate("/settings"));
+    expect(window.location.pathname).toBe("/settings");
+  });
+
+  it.each(["view", "policy", "bundle", "plugin"] as const)(
+    "revokes a mounted remote handle after actual %s replacement",
+    async (change) => {
+      const { rendered, navigate } = await mountedRemoteNavigation();
+      await act(async () => {
+        if (change === "view") {
+          appState.tab = "settings";
+          shellHistory.replaceState(null, "", "/settings");
+          window.dispatchEvent(new PopStateEvent("popstate"));
+        } else {
+          mockAvailableViews[0] = {
+            ...mockAvailableViews[0],
+            ...(change === "policy" ? { surface: { capabilities: [] } } : {}),
+            ...(change === "bundle"
+              ? { bundleUrl: "/api/views/replacement/bundle.js" }
+              : {}),
+            ...(change === "plugin" ? { pluginName: "@test/replacement" } : {}),
+          };
+        }
+        registerAppShellPage({
+          id: "replacement-refresh",
+          pluginId: "@test/refresh",
+          label: "Refresh",
+          path: "/refresh",
+          Component: () => null,
+        });
+      });
+      rendered.rerender(<App />);
+      expect(() => navigate("/inventory")).toThrow(SurfaceRealmDeniedError);
+      expect(window.location.pathname).not.toBe("/inventory");
+      if (change === "view") {
+        appState.tab = "views";
+        shellHistory.replaceState(null, "", remoteLedgerView.path);
+        window.dispatchEvent(new PopStateEvent("popstate"));
+        rendered.rerender(<App />);
+        expect(() => navigate("/inventory")).toThrow(SurfaceRealmDeniedError);
+      }
+    },
+  );
+
+  it.each(["component", "loader"] as const)(
+    "revokes old host navigation after registered %s replacement",
+    async (change) => {
+      const First = () => <div>Original owned page</div>;
+      const Second = () => <div>Replacement owned page</div>;
+      const registration = {
+        id: "owned-host",
+        pluginId: "@test/owned-host",
+        label: "Owned host",
+        path: "/apps/owned-host",
+        surface: { capabilities: ["navigate"] as const },
+        ...(change === "component"
+          ? { Component: First }
+          : { loader: async () => ({ default: First }) }),
+      };
+      registerAppShellPage(registration);
+      appState.tab = "views";
+      window.history.replaceState(null, "", "/apps/owned-host");
+      const rendered = render(<AppWithRealNavigation />);
+      await waitFor(() =>
+        expect(getActiveSurfaceRealmScope()?.viewId).toBe("owned-host"),
+      );
+      const actual = await vi.importActual<
+        typeof import("./components/views/DynamicViewLoader")
+      >("./components/views/DynamicViewLoader");
+      const external = await actual.hostImport("@elizaos/ui/app-navigate-view");
+      const navigate = external.navigateBrowserPath;
+      if (typeof navigate !== "function")
+        throw new Error("Host navigation external is unavailable");
+      await act(async () => {
+        registerAppShellPage({
+          ...registration,
+          ...(change === "component"
+            ? { Component: Second }
+            : { loader: async () => ({ default: Second }) }),
+        });
+      });
+      rendered.rerender(<AppWithRealNavigation />);
+      expect(() => navigate("/inventory")).toThrow(SurfaceRealmDeniedError);
+      expect(window.location.pathname).toBe("/apps/owned-host");
+    },
+  );
+
+  it.each(["base", "credential"] as const)(
+    "revokes a remote handle on actual client %s authority replacement",
+    async (change) => {
+      const { client: actualClient } = await import("./api/client");
+      const previousBase = actualClient.getBaseUrl();
+      const previousToken = actualClient.getRestAuthToken();
+      actualClient.setBaseUrl("http://127.0.0.1:49181");
+      actualClient.setToken("synthetic-scope-owner-a");
+      const { navigate } = await mountedRemoteNavigation();
+      try {
+        await act(async () => {
+          if (change === "base")
+            actualClient.setBaseUrl("http://127.0.0.1:49182");
+          else actualClient.setToken("synthetic-scope-owner-b");
+        });
+        expect(() => navigate("/inventory")).toThrow(SurfaceRealmDeniedError);
+        expect(window.location.pathname).not.toBe("/inventory");
+      } finally {
+        cleanup();
+        actualClient.setBaseUrl(previousBase);
+        actualClient.setToken(previousToken);
+      }
+    },
+  );
 
   it("keeps the exact branded staging Pages alias inside first-run onboarding", () => {
     window.history.replaceState(null, "", "/?shellMode=full");
@@ -1204,7 +1354,7 @@ describe("App navigate-view event wiring", () => {
       );
       expect(window.location.pathname).toBe("/notes");
 
-      fireEvent.click(screen.getByRole("button", { name: "Back to launcher" }));
+      act(() => navigateBackToLauncher());
 
       await waitFor(() => {
         expect(window.location.pathname).toBe("/views");
@@ -1212,7 +1362,6 @@ describe("App navigate-view event wiring", () => {
         expect(
           screen.queryByRole("region", { name: "Notes fixture" }),
         ).toBeNull();
-        expect(screen.queryByRole("heading", { name: "Notes" })).toBeNull();
         expect(getActiveSurfaceRealmScope()?.viewId).not.toBe("notes");
       });
       // A second real browser event must not resurrect stale provider tab state.
@@ -1385,6 +1534,64 @@ describe("App navigate-view event wiring", () => {
       expect(getActiveSurfaceRealmScope()?.manifest.layout.topology).toBe(
         "ambient",
       );
+    },
+  );
+
+  it.each([
+    "restoring-session",
+    "polling-backend",
+    "pairing-required",
+    "error",
+    "starting-runtime",
+    "ready",
+  ])(
+    "keeps authenticated account management available during agent %s",
+    async (phase) => {
+      registerAppShellPage({
+        id: "cloud",
+        pluginId: "@elizaos/ui",
+        label: "Cloud",
+        path: "/cloud",
+        pathPatterns: ["/cloud/*"],
+        surface: { capabilities: ["navigate"] },
+        Component: () => <div data-testid="managed-cloud-page" />,
+      });
+      cloudSessionState.authenticated = true;
+      authStatusMock.phase = "unauthenticated";
+      appState.startupPhase = phase;
+      appState.backendConnectionState = "disconnected";
+      appState.tab = "cloud";
+      window.history.replaceState(null, "", "/cloud/agents");
+
+      render(<App />);
+
+      await screen.findByTestId("managed-cloud-page");
+      expect(appState.retryStartup).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { authenticated: false, owner: "@elizaos/ui" },
+    { authenticated: true, owner: "@elizaos/plugin-elizacloud" },
+  ])(
+    "keeps agent startup gates for $owner with Cloud auth=$authenticated",
+    ({ authenticated, owner }) => {
+      registerAppShellPage({
+        id: "cloud",
+        pluginId: owner,
+        label: "Cloud",
+        path: "/cloud",
+        pathPatterns: ["/cloud/*"],
+        Component: () => <div data-testid="managed-cloud-page" />,
+      });
+      cloudSessionState.authenticated = authenticated;
+      appState.startupPhase = "polling-backend";
+      appState.tab = "cloud";
+      window.history.replaceState(null, "", "/cloud/agents");
+
+      render(<App />);
+
+      expect(screen.queryByTestId("managed-cloud-page")).toBeNull();
     },
   );
 

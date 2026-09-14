@@ -268,18 +268,24 @@ type PromptSegmentLike = {
 function renderPromptContent(content: unknown): string {
 	if (typeof content === "string") return content;
 	if (Array.isArray(content)) {
-		if (
-			content.some(
-				(part) =>
-					typeof part !== "object" ||
-					part === null ||
-					(part as { type?: unknown }).type !== "text" ||
-					typeof (part as { text?: unknown }).text !== "string",
-			)
-		) {
-			return JSON.stringify(content);
+		const textParts = content.map((part) => {
+			if (typeof part === "string") return part;
+			if (
+				part &&
+				typeof part === "object" &&
+				(part as { type?: unknown }).type === "text" &&
+				typeof (part as { text?: unknown }).text === "string"
+			) {
+				return (part as { text: string }).text;
+			}
+			return null;
+		});
+		if (textParts.every((part) => part !== null)) {
+			return textParts.join("\n");
 		}
-		return content.map((part) => (part as { text: string }).text).join("\n");
+		// Tool-call/result parts carry structured fields that cannot be flattened
+		// into text without losing native tool semantics.
+		return JSON.stringify(content);
 	}
 	return content === undefined ? "" : JSON.stringify(content);
 }

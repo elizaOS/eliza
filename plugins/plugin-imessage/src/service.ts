@@ -766,6 +766,9 @@ export class IMessageService extends Service implements IIMessageService {
   static registerSendHandlers(runtime: IAgentRuntime, service: IMessageService): void {
     const status = service.getStatus();
     const isBlooio = status.transport === "blooio";
+    const connectorAliases = isBlooio
+      ? ["blooio", "imessage", "messages"]
+      : ["imessage", "messages"];
     const registration = {
       source: IMESSAGE_SERVICE_NAME,
       label: "iMessage",
@@ -781,7 +784,7 @@ export class IMessageService extends Service implements IIMessageService {
         // `sms` is the canonical source owned by the Android Messages plugin.
         // Keeping the local bridge on its iMessage/Messages names makes source
         // selection deterministic when both first-party plugins are loaded.
-        aliases: ["imessage", "messages"],
+        aliases: connectorAliases,
         accountId: IMESSAGE_LOCAL_ACCOUNT_ID,
         bridge: isBlooio ? "blooio" : "macos-messages",
         accountSemantics: isBlooio

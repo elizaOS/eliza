@@ -1,13 +1,8 @@
 /**
- * Bundles the compiled `dist/esm/index.js` output of the `ElizaCanvas`
- * Capacitor plugin into `dist/plugin.js` (IIFE, for `<script>`/unpkg
- * consumption) and `dist/plugin.cjs.js` (CommonJS); the ESM build comes
- * straight from `tsc` and isn't rolled up here.
+ * Generated native Capacitor package build configuration. Change the scaffold
+ * manifest or generator instead of editing this file directly.
  */
-
 import nodeResolve from "@rollup/plugin-node-resolve";
-
-const external = ["@capacitor/core"];
 
 export default [
   {
@@ -17,9 +12,7 @@ export default [
         file: "dist/plugin.js",
         format: "iife",
         name: "capacitorElizaCanvas",
-        globals: {
-          "@capacitor/core": "capacitorExports",
-        },
+        globals: { "@capacitor/core": "capacitorExports" },
         sourcemap: true,
         inlineDynamicImports: true,
       },
@@ -30,7 +23,7 @@ export default [
         inlineDynamicImports: true,
       },
     ],
-    external,
+    external: ["@capacitor/core"],
     plugins: [nodeResolve()],
   },
 ];

@@ -1,17 +1,10 @@
 /**
- * Pure billing-decision policy for the container-billing cron.
- *
- * The cron's hot path mixes side-effecting calls (DB writes, emails, earnings
- * conversion) with the decision of "how should we split this charge across
- * earnings vs credits, or do we need to warn the org instead?". Extracting
- * that decision into a pure function lets us prove the load-bearing rules
- * (pay-as-you-go pulls from earnings before credits; pay-as-you-go=off
- * preserves earnings; insufficient total triggers warning) without a real
- * database.
- *
- * Anything that mutates state stays in `container-billing/route.ts`. This
- * file only computes "what's the plan?".
+ * Computes preliminary funding availability for the container-billing cron.
+ * Invalid monetary inputs fail before route-side warning or stop requests;
+ * the repository independently settles authoritative charges using Decimal.
  */
+
+import { ElizaError } from "@elizaos/core";
 
 export interface ContainerBillingPlanInput {
   /** Today's container cost in USD (already calculated from cpu/memory tier). */
@@ -38,23 +31,64 @@ export interface ContainerBillingPlan {
   earningsEligible: number;
 }
 
-/**
- * Decide how to split today's container charge between earnings and credits.
- *
- * Rules (the load-bearing survival-economics behavior):
- *  1. `payAsYouGoFromEarnings === false` → earnings stay frozen, charge comes
- *     purely from credits. Default when org owner opts out at
- *     /cloud/billing.
- *  2. `payAsYouGoFromEarnings === true` (default) → earnings absorb the bill
- *     first up to `dailyCost`, then credits cover the remainder. This is what
- *     keeps an earning agent self-funding ("survival economics" loop).
- *  3. If `earnings + credits < dailyCost`, return `action: "insufficient"`.
- *     The caller emits the 48-hour shutdown warning.
- */
+/** Validates monetary inputs and applies the organization's earnings opt-out. */
 export function computeContainerBillingPlan(
   input: ContainerBillingPlanInput,
 ): ContainerBillingPlan {
   const { dailyCost, currentBalance, ownerEarningsAvailable, payAsYouGoFromEarnings } = input;
+
+  for (const [field, value] of Object.entries({
+    dailyCost,
+    currentBalance,
+    ownerEarningsAvailable,
+  })) {
+    if (!Number.isFinite(value)) {
+      throw new ElizaError(
+        `Container billing plan input ${field} must be a finite number, received ${value}`,
+        {
+          code: "CONTAINER_BILLING_PLAN_INPUT_INVALID",
+          context: {
+            field,
+            value,
+            dailyCost,
+            currentBalance,
+            ownerEarningsAvailable,
+          },
+          severity: "fatal",
+        },
+      );
+    }
+  }
+  if (dailyCost < 0) {
+    throw new ElizaError(
+      `Container billing plan input dailyCost must be >= 0, received ${dailyCost}`,
+      {
+        code: "CONTAINER_BILLING_PLAN_INPUT_INVALID",
+        context: { field: "dailyCost", value: dailyCost },
+        severity: "fatal",
+      },
+    );
+  }
+  if (ownerEarningsAvailable < 0) {
+    // Negative earnings are invalid data, not a live state:
+    // redeemable_earnings.available_balance is CHECK-constrained >= 0
+    // (0000_last_reavers.sql, `available_balance_non_negative`). This guard is
+    // defense-in-depth — getAvailableEarnings already throws on non-finite
+    // parses — and deliberately validates even when the toggle is off, because
+    // the input contract validates every field regardless of whether this
+    // call reads it (pinned by the suite).
+    throw new ElizaError(
+      `Container billing plan input ownerEarningsAvailable must be >= 0, received ${ownerEarningsAvailable}`,
+      {
+        code: "CONTAINER_BILLING_PLAN_INPUT_INVALID",
+        context: {
+          field: "ownerEarningsAvailable",
+          value: ownerEarningsAvailable,
+        },
+        severity: "fatal",
+      },
+    );
+  }
 
   const earningsEligible = payAsYouGoFromEarnings ? ownerEarningsAvailable : 0;
   const totalAvailable = currentBalance + earningsEligible;

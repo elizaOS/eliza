@@ -1,4 +1,8 @@
-/** Public package entry: re-exports the plugin, overlay app, views, and register side-effect. */
+/**
+ * Public package entry for plugin/runtime consumers. `ContactsView` remains the
+ * raw embeddable surface; hosts that own page navigation load the framed
+ * `ContactsPage` through the `/ui`, signed-registration, or view-bundle ABI.
+ */
 export { ContactsAppView } from "./components/ContactsAppView";
 export { ContactsPage } from "./components/ContactsPage";
 export { ContactsView } from "./components/ContactsView";

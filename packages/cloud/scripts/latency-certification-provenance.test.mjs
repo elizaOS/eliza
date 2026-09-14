@@ -36,7 +36,7 @@ test("real Git ancestry rejects untrusted revisions and binds changed verifier c
     const base = await commit("ordinary.txt", "base");
     const sourceSha = await commit("ordinary.txt", "later");
     const config = {
-      sourceRef: "refs/heads/develop",
+      sourceRef: "refs/heads/staging",
       sourceSha,
       deploySha: base,
     };

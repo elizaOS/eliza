@@ -29,6 +29,8 @@ process.env.MOCK_REDIS = "1";
 import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import * as realAuth from "@/lib/auth";
+import { runWithCloudBindings } from "@/lib/runtime/cloud-bindings";
+import { SandboxTransport } from "@/lib/services/eliza-sandbox/bridge/transport";
 import {
   personalSharedAgent,
   personalSharedAgentId,
@@ -187,6 +189,7 @@ const ENV = {
   SHARED_RUNTIME_CONVERSATIONS: cutoverNamespace,
   PERSONAL_DELIVERY_PROJECTIONS: personalDeliveryProjectionNamespace,
   ELIZA_CLOUD_AGENT_BASE_DOMAIN: "dedicated-cutover.test",
+  AGENT_ROUTER_ORIGIN_HOST: "router-cutover.test",
 } as unknown as AppEnv["Bindings"];
 
 let pgliteReady = true;
@@ -233,8 +236,8 @@ beforeAll(async () => {
     const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
 
     await dbWrite.insert(organizations).values([
-      // Above the create minimum ($0.10) but BELOW the 3-day hosting runway
-      // ($0.72) — the exact gap the upgrade gate exists to close.
+      // Above the create minimum ($0.30) but BELOW the 3-day hosting runway
+      // ($10.80) — the exact gap the upgrade gate exists to close.
       { id: ORG_A, name: "Org A", slug: "org-a", credit_balance: "0.50" },
       { id: ORG_B, name: "Org B", slug: "org-b", credit_balance: "100" },
     ]);
@@ -365,17 +368,19 @@ function quote(agentId: string) {
 }
 
 function cutover(agentId: string, dedicatedAgentId: string) {
-  return app.request(
-    `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/upgrade-tier/cutover`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer steward-test",
-        "Content-Type": "application/json",
+  return runWithCloudBindings(ENV, () =>
+    app.request(
+      `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/upgrade-tier/cutover`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer steward-test",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ dedicatedAgentId }),
       },
-      body: JSON.stringify({ dedicatedAgentId }),
-    },
-    ENV,
+      ENV,
+    ),
   );
 }
 
@@ -397,6 +402,7 @@ async function upgrade(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "activate_dedicated",
+        minimumActivationChargeUsd: 0.3,
         quoteId: body?.data?.quoteId ?? "0".repeat(64),
       }),
     },
@@ -492,6 +498,33 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     });
   });
 
+  test("rejects activation when the minimum charge is missing or differs from the reviewed terms", async () => {
+    const quoted = (await (await quote(PERSONAL_A)).json()) as {
+      data: { quoteId: string; minimumActivationChargeUsd: number };
+    };
+    expect(quoted.data.minimumActivationChargeUsd).toBe(0.3);
+    const { dbWrite } = await import("@/db/client");
+    const { jobs } = await import("@/db/schemas/jobs");
+    const before = await dbWrite.select().from(jobs);
+    for (const minimumActivationChargeUsd of [undefined, 0, 0.29, 0.31]) {
+      const response = await app.request(
+        `/api/v1/eliza/agents/${encodeURIComponent(PERSONAL_A)}/upgrade-tier`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "activate_dedicated",
+            quoteId: quoted.data.quoteId,
+            minimumActivationChargeUsd,
+          }),
+        },
+        ENV,
+      );
+      expect(response.status).toBe(400);
+    }
+    expect(await dbWrite.select().from(jobs)).toEqual(before);
+  });
+
   test("a same-org operator cannot bypass another user's retained source authority", async () => {
     expect(pgliteReady).toBe(true);
     const { dbWrite } = await import("@/db/client");
@@ -501,7 +534,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     const { personalDedicatedUpgradeAuthorities } = await import(
       "@/db/schemas/personal-dedicated-upgrade-authorities"
     );
-    await setOrgBalance(ORG_A, "10");
+    await setOrgBalance(ORG_A, "20");
     await dbWrite.insert(agentSandboxes).values({
       id: SHARED_RETAINED_AUTHORITY,
       organization_id: ORG_A,
@@ -590,12 +623,12 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     };
     expect(body.data).toMatchObject({
       sourceAgentId: PERSONAL_A,
-      hourlyRateUsd: 0.01,
-      dailyRateUsd: 0.24,
-      minimumBalanceUsd: 0.72,
+      hourlyRateUsd: 0.15,
+      dailyRateUsd: 3.6,
+      minimumBalanceUsd: 10.8,
       minimumRunwayDays: 3,
       balanceUsd: 0.5,
-      deficitUsd: 0.22,
+      deficitUsd: 10.3,
       canActivate: false,
       requiresConfirmation: true,
       action: "activate_dedicated",
@@ -620,9 +653,9 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     };
     expect(body.success).toBe(false);
     expect(body.code).toBe("insufficient_credits");
-    // The 402 carries the ENFORCED runway threshold ($0.72 = 3 × $0.24/day),
-    // not the create/provision minimum ($0.10) — the client renders these.
-    expect(body.requiredBalance).toBe(0.72);
+    // The 402 carries the ENFORCED runway threshold ($10.80 = 3 × $3.60/day),
+    // not the create/provision minimum ($0.30) — the client renders these.
+    expect(body.requiredBalance).toBe(10.8);
     expect(body.currentBalance).toBe(0.5);
     expect(body.error).toContain("3 days of hosting");
 
@@ -644,7 +677,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     const { personalDedicatedAdoptionSelections } = await import(
       "@/db/schemas/personal-dedicated-adoption-selections"
     );
-    await setOrgBalance(ORG_A, "10");
+    await setOrgBalance(ORG_A, "20");
     await dbWrite.insert(agentSandboxes).values([
       {
         id: SHARED_SELECTED,
@@ -697,6 +730,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "activate_dedicated",
+          minimumActivationChargeUsd: 0.3,
           quoteId: quoteBody.data.quoteId,
         }),
       },
@@ -793,12 +827,12 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
 
   test("a rowless personal Eliza rejects a stale quote, then mints one singleton Dedicated target", async () => {
     expect(pgliteReady).toBe(true);
-    await setOrgBalance(ORG_A, "10");
+    await setOrgBalance(ORG_A, "20");
     const firstQuote = await quote(PERSONAL_A);
     const firstBody = (await firstQuote.json()) as {
       data: { quoteId: string };
     };
-    await setOrgBalance(ORG_A, "11");
+    await setOrgBalance(ORG_A, "21");
 
     const stale = await app.request(
       `/api/v1/eliza/agents/${encodeURIComponent(PERSONAL_A)}/upgrade-tier`,
@@ -807,6 +841,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "activate_dedicated",
+          minimumActivationChargeUsd: 0.3,
           quoteId: firstBody.data.quoteId,
         }),
       },
@@ -815,7 +850,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     expect(stale.status).toBe(409);
     expect(await stale.json()).toMatchObject({
       code: "dedicated_quote_changed",
-      data: { balanceUsd: 11 },
+      data: { balanceUsd: 21 },
     });
 
     const activated = await upgrade(PERSONAL_A);
@@ -872,7 +907,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
 
   test("funded upgrade mints a dedicated-always target with the identity copied server-side", async () => {
     expect(pgliteReady).toBe(true);
-    await setOrgBalance(ORG_A, "10");
+    await setOrgBalance(ORG_A, "20");
 
     const res = await upgradeWithRetainedNudge(SHARED_A);
     expect(res.status).toBe(202);
@@ -1086,15 +1121,15 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     const { organizations } = await import("@/db/schemas/organizations");
     const { users } = await import("@/db/schemas/users");
 
-    // Balance 0.80: above the 0.72 hosting-runway gate, below the 1.0 tier
-    // boundary → cap = 5. Five live sandboxes (the shared source included)
-    // fill the cap, so the upgrade must refuse via the org-serialized quota
+    // Balance 20 clears the hosting runway and allows 100 sandboxes. Fill
+    // that cap (including the source) so the funded upgrade reaches the
+    // org-serialized quota
     // check in the single-flight service — mapped by the route to 429.
     await dbWrite.insert(organizations).values({
       id: ORG_FULL,
       name: "Org Full",
       slug: "org-full",
-      credit_balance: "0.80",
+      credit_balance: "20.00",
     });
     await dbWrite.insert(users).values({
       id: USER_FULL,
@@ -1113,8 +1148,8 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         status: "running",
         database_status: "none",
       },
-      ...Array.from({ length: 4 }, (_unused, index) => ({
-        id: `dddddddd-000${index + 1}-4111-8111-111111111111`,
+      ...Array.from({ length: 99 }, (_unused, index) => ({
+        id: `dddddddd-${String(index + 1).padStart(4, "0")}-4111-8111-111111111111`,
         organization_id: ORG_FULL,
         user_id: USER_FULL,
         agent_name: `Filler ${index + 1}`,
@@ -1144,15 +1179,15 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       };
       expect(body.success).toBe(false);
       expect(body.code).toBe("agent_quota_exceeded");
-      expect(body.currentAgents).toBe(5);
-      expect(body.maxAgents).toBe(5);
+      expect(body.currentAgents).toBe(100);
+      expect(body.maxAgents).toBe(100);
 
       // Refused in phase 1, BEFORE credential preparation: no target row and
       // no candidate api key were ever minted for this org.
       const orgRows = (await dbWrite.select().from(agentSandboxes)).filter(
         (row) => row.organization_id === ORG_FULL,
       );
-      expect(orgRows).toHaveLength(5);
+      expect(orgRows).toHaveLength(100);
       const orgKeys = (await dbWrite.select().from(apiKeys)).filter(
         (key) => key.organization_id === ORG_FULL,
       );
@@ -1269,7 +1304,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       id: ORG_C,
       name: "Cutover Org",
       slug: "cutover-org",
-      credit_balance: "10",
+      credit_balance: "20",
     });
     await dbWrite.insert(users).values({
       id: USER_C,
@@ -1299,6 +1334,10 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     });
 
     const originalFetch = globalThis.fetch;
+    const workerRuntime = spyOn(
+      SandboxTransport.prototype,
+      "isCloudflareWorkerRuntime",
+    ).mockReturnValue(true);
     const importFetch = mock(
       async (_input: RequestInfo | URL, _init?: RequestInit) =>
         Response.json({ error: "not ready" }, { status: 503 }),
@@ -1622,12 +1661,15 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         },
       });
       expect(importFetch).toHaveBeenLastCalledWith(
-        `https://${CUTOVER_TARGET}.dedicated-cutover.test/api/conversations/${encodeURIComponent(PERSONAL_C)}/import`,
+        `https://router-cutover.test/api/conversations/${encodeURIComponent(PERSONAL_C)}/import`,
         expect.objectContaining({
           method: "POST",
+          redirect: "manual",
           headers: expect.objectContaining({
             Authorization: "Bearer agent_cutover_transport",
             "X-API-Key": "agent_cutover_transport",
+            "X-Forwarded-Host": `${CUTOVER_TARGET}.dedicated-cutover.test`,
+            "X-Forwarded-Proto": "https",
           }),
         }),
       );
@@ -1816,6 +1858,15 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       cutoverCoordinatorOperations.length = 0;
       const recoveredAfterCommit = await cutover(PERSONAL_C, CUTOVER_TARGET);
       expect(recoveredAfterCommit.status).toBe(200);
+      // Initial import, activation, and committed retry must all use the
+      // origin. A public UUID-host fetch from a Worker bypasses its own proxy.
+      for (const [url, init] of importFetch.mock.calls) {
+        expect(new URL(String(url)).hostname).toBe("router-cutover.test");
+        expect(new Headers(init?.headers).get("X-Forwarded-Host")).toBe(
+          `${CUTOVER_TARGET}.dedicated-cutover.test`,
+        );
+        expect(init?.redirect).toBe("manual");
+      }
       expect(cutoverCoordinatorOperations).toEqual(["cutover-commit"]);
       const [afterCommittedRecovery] = await dbWrite
         .select()
@@ -1868,6 +1919,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         .delete(personalAccountConvergences)
         .where(eq(personalAccountConvergences.token, convergenceToken));
       globalThis.fetch = originalFetch;
+      workerRuntime.mockRestore();
       currentUser.id = USER_A;
       currentUser.email = "owner-a@test.test";
       currentUser.organization_id = ORG_A;

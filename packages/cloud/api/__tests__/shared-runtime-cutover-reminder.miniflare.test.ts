@@ -56,6 +56,7 @@ const RUNTIME_STUBS = {
     }
   `,
   coreEdge: `
+    export class ElizaError extends Error {}
     export const ChannelType = {
       SELF: "SELF",
       DM: "DM",
@@ -238,7 +239,7 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
           plugins: [{
             name: "shared-cutover-reminder-runtime-boundaries",
             setup(build) {
-              build.onResolve({ filter: /^@elizaos\\/core\\/edge$/ }, () => ({
+              build.onResolve({ filter: /^@elizaos\\/core(?:\\/edge)?$/ }, () => ({
                 path: "core-edge",
                 namespace: "shared-cutover-test-stub",
               }));

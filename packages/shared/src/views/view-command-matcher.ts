@@ -709,6 +709,7 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
     "agents view",
     "my agents",
   ],
+  projects: ["projects", "projects view", "project view"],
   "task-coordinator": [
     "task coordinator",
     "orchestrator",
@@ -886,6 +887,7 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
 // "task coordinator" wins over a bare "coding" elsewhere, etc.
 const VIEW_PRIORITY = [
   "cockpit",
+  "projects",
   "task-coordinator",
   "pendant-transcript",
   "finances",

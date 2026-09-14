@@ -6,6 +6,10 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  compareCodePoints,
+  isIgnoredGeneratedSourcePath,
+} from "./find-duplicate-components.mjs";
+import {
   assertMolecularArtifactsCurrent,
   buildMolecularInventory,
   fileComposesContract,
@@ -21,6 +25,37 @@ import {
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../../..");
+
+test("inventory ordering uses locale-independent code-point comparison", () => {
+  assert.deepEqual(["a", "z", "A", "a-1", "ä"].sort(compareCodePoints), [
+    "A",
+    "a",
+    "a-1",
+    "z",
+    "ä",
+  ]);
+});
+
+test("inventory excludes only explicit package-local generated state roots", () => {
+  assert.equal(
+    isIgnoredGeneratedSourcePath("packages/app/.vite/deps/cache.tsx"),
+    true,
+  );
+  assert.equal(
+    isIgnoredGeneratedSourcePath(
+      "plugins/plugin-workflow/.eliza/runs/generated.tsx",
+    ),
+    true,
+  );
+  assert.equal(
+    isIgnoredGeneratedSourcePath("packages/ui/src/.well-known/view.tsx"),
+    false,
+  );
+  assert.equal(
+    isIgnoredGeneratedSourcePath("plugins/plugin-example/src/.meta/view.tsx"),
+    false,
+  );
+});
 
 function exampleCluster(signature = "card:badge+button") {
   return {

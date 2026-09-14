@@ -22,6 +22,10 @@ import {
   type Plugin,
   transformWithOxc,
 } from "vite";
+import {
+  ANDROID_CLOUD_ROUTING_MARKERS,
+  findAndroidCloudRoutingMarkers,
+} from "../app-core/scripts/lib/android-cloud-routing-markers.mjs";
 import { resolveAppBranding } from "../shared/src/config/app-config.ts";
 import { colorizeDevSettingsStartupBanner } from "../shared/src/dev-settings-banner-style.ts";
 import { prependDevSubsystemFigletHeading } from "../shared/src/dev-settings-figlet-heading.ts";
@@ -1077,14 +1081,8 @@ export function resolveAppShellLocalCspSources(
   };
 }
 
-export const ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS = Object.freeze([
-  "32437",
-  "32438",
-  "10.0.2.2",
-  "adb reverse",
-  "__ELIZA_ANDROID_IPC_FETCH_BRIDGE__",
-  "navigator.serviceWorker",
-]);
+export const ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS =
+  ANDROID_CLOUD_ROUTING_MARKERS;
 
 type AndroidCloudAuditOutput = {
   type: "chunk" | "asset";
@@ -1113,10 +1111,8 @@ export function findAndroidCloudEmittedRoutingFindings(
             ? new TextDecoder().decode(output.source)
             : undefined;
     if (!content) continue;
-    for (const marker of ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS) {
-      if (content.toLowerCase().includes(marker.toLowerCase())) {
-        findings.push(`${fileName}: ${marker}`);
-      }
+    for (const marker of findAndroidCloudRoutingMarkers(content)) {
+      findings.push(`${fileName}: ${marker}`);
     }
   }
   return findings.sort();
@@ -1878,6 +1874,9 @@ const VENDOR_DRACO_TEST = /\/node_modules\/draco3d(gltf)?\//;
  */
 function resolveManualChunk(id: string): string | undefined {
   const normalizedId = id.split(path.sep).join("/");
+  // A global vendor stylesheet must not make its JavaScript chunk eager.
+  // Vite extracts CSS independently; these groups only own executable modules.
+  if (/\.css(?:\?|$)/.test(normalizedId)) return undefined;
 
   // Build-generated leaf shims shared by the eager entry graph AND the pinned
   // vendor-crypto graph: Vite's dynamic-import preload helper, the node-builtin
@@ -1921,9 +1920,25 @@ function resolveManualChunk(id: string): string | undefined {
   // form the cross-chunk init cycle the crypto pin guards against.
   if (
     normalizedId.includes("/node_modules/@noble/") ||
-    /\/node_modules\/(uuid|zod)\//.test(normalizedId)
+    /\/node_modules\/(uuid|zod|clsx|eventemitter3)\//.test(normalizedId) ||
+    /\/node_modules\/(bs58|base-x)\/src\/esm\//.test(normalizedId)
   ) {
     return "vendor-boot-leaves";
+  }
+
+  // Dialog scroll locks and query state are shared with wallet modals. Keep
+  // their React-only support graph outside the wallet chunk so opening the app
+  // does not load every wallet adapter. Older CommonJS base-x stays with crypto
+  // because it imports safe-buffer; only the ESM codec is a boot leaf above.
+  if (
+    /\/node_modules\/@tanstack\/(react-query|query-core)\//.test(
+      normalizedId,
+    ) ||
+    /\/node_modules\/(react-remove-scroll|react-remove-scroll-bar|react-style-singleton|use-callback-ref|use-sidecar|get-nonce|detect-node-es)\//.test(
+      normalizedId,
+    )
+  ) {
+    return "vendor-ui-support";
   }
 
   if (VENDOR_OPTIMIZED_WALLET_TEST.test(normalizedId)) {

@@ -160,6 +160,7 @@ export interface PlannerToolDefinition {
 		description: string;
 		parameters: ActionParametersJsonSchema | JsonSchema;
 		strict: boolean;
+		strictWithOptionalProperties?: boolean;
 	};
 }
 
@@ -310,6 +311,9 @@ function actionToPlannerTool(action: PlannerToolActionShape): ToolDefinition {
 		description,
 		type: "function",
 		strict: action.toolSchemaStrict ?? true,
+		...(action.toolSchemaStrict === false
+			? { strictWithOptionalProperties: true }
+			: {}),
 		parameters,
 	};
 }
@@ -607,6 +611,9 @@ export function actionToTool(action: Action): PlannerToolDefinition {
 			description: action.description,
 			parameters: actionToJsonSchema(action),
 			strict: action.toolSchemaStrict ?? true,
+			...(action.toolSchemaStrict === false
+				? { strictWithOptionalProperties: true }
+				: {}),
 		},
 	};
 }

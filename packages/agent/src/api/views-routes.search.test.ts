@@ -9,7 +9,6 @@ import type http from "node:http";
 import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  registerBuiltinViews,
   registerPluginViews,
   unregisterPluginViews,
 } from "./views-registry.ts";
@@ -70,8 +69,8 @@ function resultsFrom(json: ReturnType<typeof vi.fn>): SearchResult[] {
 
 describe("GET /api/views/search keyword scoring", () => {
   beforeEach(async () => {
-    registerBuiltinViews();
     clearCurrentViewState();
+    // Keep the keyword fixtures isolated: shipped views reserve their own ids.
     await registerPluginViews(
       {
         name: TEST_PLUGIN,
@@ -181,7 +180,7 @@ describe("GET /api/views/search keyword scoring", () => {
   it("clamps limit to the [1,20] window and never exceeds it", async () => {
     // A default (gui) search matches two plugin views — "wallet" and
     // "wallet-history" (the third, "tui-wallet", is a tui declaration and is
-    // excluded unless viewType=tui). Builtin views don't match "wallet".
+    // excluded unless viewType=tui).
     // Asking for limit=1 must clamp the result count to exactly 1.
     const { ctx: ctxLow, json: jsonLow } = makeSearchCtx("?q=wallet&limit=1");
     await expect(handleViewsRoutes(ctxLow)).resolves.toBe(true);

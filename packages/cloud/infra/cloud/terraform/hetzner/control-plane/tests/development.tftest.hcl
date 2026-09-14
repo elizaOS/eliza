@@ -40,3 +40,40 @@ run "reject_development_production_branch" {
   }
   expect_failures = [var.deploy_branch]
 }
+
+run "reject_development_staging_branch" {
+  command = plan
+  variables {
+    deploy_branch = "staging"
+  }
+  expect_failures = [var.deploy_branch]
+}
+
+# Exercise the branch-dependent server/cloud-init graph. Legacy DNS imports
+# require existing provider state and are outside this branch-admission test.
+run "staging_follows_staging" {
+  command = plan
+  plan_options {
+    target = [hcloud_server.control_plane]
+  }
+  variables {
+    environment                  = "staging"
+    headscale_hostname           = "headscale-staging.elizacloud.ai"
+    canonical_headscale_hostname = "headscale-staging.eliza.app"
+    deploy_branch                = "staging"
+  }
+}
+
+run "reject_staging_develop_branch" {
+  command = plan
+  plan_options {
+    target = [hcloud_server.control_plane]
+  }
+  variables {
+    environment                  = "staging"
+    headscale_hostname           = "headscale-staging.elizacloud.ai"
+    canonical_headscale_hostname = "headscale-staging.eliza.app"
+    deploy_branch                = "develop"
+  }
+  expect_failures = [var.deploy_branch]
+}

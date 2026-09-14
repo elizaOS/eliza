@@ -80,6 +80,15 @@ bun run --cwd packages/cloud/shared preflight:messaging-gateways
 
 There is no build step here (`build:linked-workspaces` defers to the repo-root `build:core`).
 
+The paid Docker runtime guard has an explicit Linux/root integration lane:
+`bun run --cwd packages/cloud/shared test:docker-compute-lease --image=<existing-local-image-id>`.
+Use an existing image containing `/bin/sh`, `sleep`, and `cat`. The test creates
+two containers with networking disabled and resource limits, exercises actual
+start, renewal, expiry, stale-command rejection and retained data, then removes
+only those containers. It does not pull images, supply agent credentials, install
+a system service, or change the host clock. This host boundary test does not
+establish that application billing and provisioning use the guard.
+
 ## Config
 
 `db/database-url.ts` resolves the Postgres URL: explicit `DATABASE_URL` / `TEST_DATABASE_URL` (Railway in production) wins; otherwise local dev falls back to a file-backed PGlite store at `pglite://<cwd>/.eliza/.pgdata` (override the path with `PGLITE_DATA_DIR` / `LOCAL_DATABASE_PATH`). The `lib/` services read service-specific env (Stripe, Steward session/JWT secrets, BitRouter/provider keys, Telegram/Discord/WhatsApp, Hetzner/container infra). See `.env.example` for the full set.
@@ -142,6 +151,15 @@ acceptance, an expired attempt becomes `uncertain` and is never automatically
 resent. Accepted submission is stored as `accepted`, never `delivered`; rejection
 and unavailable transport also require a separate approved reconciliation decision.
 This deliberately favors avoiding duplicate messages over guaranteed delivery.
+
+The organization billing snapshot includes a `cancellationNotice` observation for
+the current canceled revision. It reports persisted email submission state and
+its last update under the same primary transaction as the subscription read.
+`accepted` is transport acceptance, while `delivery: "not_observed"` explicitly
+retains the absence of recipient evidence. Missing current intent is unavailable;
+a non-canceled subscription has no applicable cancellation notice. Historical
+revisions, message content, recipient addresses, and transport identifiers are
+not exposed in this public observation. Reading it cannot dispatch or retry mail.
 
 Migration `0382_subscription_notice_intents.sql` must precede deploying the
 updated finalizer. Intent/attempt identity and terminal outcomes are immutable;

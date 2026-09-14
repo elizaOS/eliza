@@ -497,11 +497,17 @@ function assertApprovalPayload(
 ): asserts record is ApprovalPayload {
   switch (action) {
     case "send_message":
+      if (record.familyPacketId !== undefined)
+        requireStringField(record, "familyPacketId", label);
       requireStringField(record, "recipient", label);
       requireStringField(record, "body", label);
       requireNullableStringField(record, "replyToMessageId", label);
       break;
     case "send_email":
+      if (record.grantId !== undefined)
+        requireStringField(record, "grantId", label);
+      if (record.familyPacketId !== undefined)
+        requireStringField(record, "familyPacketId", label);
       requireStringArrayField(record, "to", label);
       requireStringArrayField(record, "cc", label);
       requireStringArrayField(record, "bcc", label);

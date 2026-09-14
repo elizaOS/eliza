@@ -1,4 +1,4 @@
-// Coordinates cloud service rpc behavior behind route handlers.
+/** Routes priced EVM and Solana JSON-RPC requests through configured providers. */
 import { getCloudAwareEnv } from "../../../runtime/cloud-bindings";
 import { logger } from "../../../utils/logger";
 import { getProxyConfig } from "../config";
@@ -98,17 +98,47 @@ const EVM_ALLOWED_METHODS = new Set([
  * EVM methods that should not be cached
  *
  * WHY these are non-cacheable:
- * - Mutations: sendRawTransaction (changes blockchain state)
+ * - Stateful methods are excluded separately by the shared replay classification.
  * - Rapidly changing: blockNumber, gasPrice, maxPriorityFeePerGas (update every block)
  * - Caching these = stale data misleads users while still costing 50%
  */
 const EVM_NON_CACHEABLE_METHODS = new Set([
-  "eth_sendRawTransaction",
   "eth_blockNumber",
   "eth_gasPrice",
   "eth_maxPriorityFeePerGas",
   "eth_blobBaseFee",
 ]);
+
+// Filter polling consumes pending changes; creating/removing filters and
+// subscriptions also changes provider state even though no transaction is sent.
+const EVM_NON_REPLAYABLE_METHODS = new Set([
+  "eth_sendRawTransaction",
+  "eth_newFilter",
+  "eth_newBlockFilter",
+  "eth_newPendingTransactionFilter",
+  "eth_getFilterChanges",
+  "eth_uninstallFilter",
+  "eth_subscribe",
+  "eth_unsubscribe",
+]);
+
+function isReplayableEvmRequest(body: unknown): boolean {
+  return (
+    body !== null &&
+    typeof body === "object" &&
+    !Array.isArray(body) &&
+    "method" in body &&
+    typeof body.method === "string" &&
+    EVM_ALLOWED_METHODS.has(body.method) &&
+    !EVM_NON_REPLAYABLE_METHODS.has(body.method)
+  );
+}
+
+function isReplayableEvmBody(body: unknown): boolean {
+  return Array.isArray(body)
+    ? body.length > 0 && body.every(isReplayableEvmRequest)
+    : isReplayableEvmRequest(body);
+}
 
 /**
  * Extract method from JSON-RPC request body (EVM)
@@ -169,7 +199,8 @@ function buildEvmRpcConfig(): ServiceConfig {
     },
     cache: {
       maxTTL: 60,
-      isMethodCacheable: (method) => !EVM_NON_CACHEABLE_METHODS.has(method),
+      isMethodCacheable: (method) =>
+        !EVM_NON_REPLAYABLE_METHODS.has(method) && !EVM_NON_CACHEABLE_METHODS.has(method),
       maxResponseSize: 65536,
       hitCostMultiplier: 0.5,
     },
@@ -222,6 +253,7 @@ function buildEvmRpcHandler(chain: string): ServiceHandler {
 
     try {
       const response = await retryFetch({
+        replayPolicy: isReplayableEvmBody(body) ? "idempotent" : "never",
         url,
         init: {
           method: "POST",

@@ -94,8 +94,18 @@ const cacheGetOrSet = mock(async (key: string, _ttl: number, loader: () => Promi
     inFlight.delete(key);
   }
 });
+const cacheClientActualModule = await import("../../cache/client");
+
 mock.module("../../cache/client", () => ({
-  cache: { get: cacheGet, set: cacheSet, del: cacheDel, getOrSet: cacheGetOrSet },
+  ...cacheClientActualModule,
+  cache: {
+    get: cacheGet,
+    set: cacheSet,
+    del: cacheDel,
+    getOrSet: cacheGetOrSet,
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
+  },
 }));
 
 // validateApiKey double for the cache-HIT re-validation gate.

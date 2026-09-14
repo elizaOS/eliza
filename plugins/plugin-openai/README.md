@@ -260,10 +260,11 @@ await runtime.useModel(ModelType.TEXT_LARGE, {
 ```
 
 For Cerebras, `providerOptions.cerebras.promptCacheKey` (or `prompt_cache_key`)
-takes precedence over the OpenAI key. Core supplies a conversation-and-prefix
-scoped key when a conversation ID is available, so unrelated chats do not share
-one routing hint merely because their system instructions match. Calls that
-only supply the OpenAI key remain supported. This does not alter prompt text,
+takes precedence over the OpenAI key. An explicit empty Cerebras options object
+suppresses the legacy OpenAI key. Core supplies a stable conversation-and-stage
+routing key when a conversation ID is available, so unrelated chats do not share
+one routing hint merely because their system instructions match. Prefix changes
+do not change that routing key. Calls that only supply the OpenAI key remain supported. This does not alter prompt text,
 token counts, or permissions; Cerebras still matches actual prompt prefixes and
 controls cache retention. See [Cerebras prompt caching](https://inference-docs.cerebras.ai/capabilities/prompt-caching).
 

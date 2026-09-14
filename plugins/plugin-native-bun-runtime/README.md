@@ -94,6 +94,13 @@ the native plugin is available. The JSContext compatibility host is retained
 only for development/sideload builds; iOS store builds fail closed instead of
 falling back to it.
 
+The Swift host supplies `ELIZA_IOS_APP_DATA_DIR` from the canonical Foundation
+Application Support directory and `ELIZA_STATE_DIR` from its `Eliza` child.
+These native values override caller environment values. The runtime validates
+identity ownership and permissions within that boundary while rechecking the
+inodes of platform-managed ancestors. `ELIZAOS_BUNDLED_SKILLS_DIR` points to the
+read-only skills packaged alongside the agent bundle.
+
 ## Llama backend
 
 `llama_*` host functions delegate to `LlamaBridgeImpl`, which links against the

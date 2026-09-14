@@ -77,8 +77,11 @@ export function preservedSettledToolResult(
 ): (PlannerToolResult & { userFacingText: string }) | undefined {
 	for (let index = settled.length - 1; index >= 0; index--) {
 		const entry = settled[index];
-		if (entry?.result.success !== true) continue;
 		if (isTerminalPlannerToolName(entry.name)) continue;
+		// A later failed operation makes earlier success prose incomplete.
+		// Keep the failure boundary unless a subsequent successful result owns
+		// the reply; never discard the intervening failure while scanning back.
+		if (entry.result.success !== true) return undefined;
 		const candidate = entry.result.userFacingText?.trim();
 		if (!candidate) continue;
 		// A text the user already saw via an action callback must not be

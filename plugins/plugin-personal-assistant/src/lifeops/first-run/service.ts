@@ -15,9 +15,12 @@
  */
 
 import { type IAgentRuntime, logger } from "@elizaos/core";
+import type {
+  ScheduledTask,
+  ScheduledTaskInput,
+} from "@elizaos/plugin-scheduling";
 import { resolveDefaultTimeZone } from "../defaults.js";
 import { asCacheRuntime } from "../runtime-cache.js";
-import type { ScheduledTask, ScheduledTaskInput } from "../wave1-types.js";
 import {
   buildDefaultsPack,
   deriveMorningWindow,

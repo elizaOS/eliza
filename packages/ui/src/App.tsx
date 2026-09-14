@@ -139,6 +139,7 @@ import { useBootConfig } from "./config/boot-config-react.hooks";
 import { useBranding } from "./config/branding";
 import {
   CHAT_OPEN_EVENT,
+  type ConnectRequestResult,
   dispatchNavigateViewEvent,
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
@@ -158,7 +159,6 @@ import { FirstRunConductorMount } from "./first-run/use-first-run-conductor";
 import { ModelStatusConductorMount } from "./first-run/use-model-status-conductor";
 import { GlassStyles } from "./glass";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
-import { useActiveAgentAuthority } from "./hooks/useActiveAgentAuthority";
 import { useAgentSessionRecovery } from "./hooks/useAgentSessionRecovery";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useRole } from "./hooks/useRole";
@@ -289,6 +289,7 @@ import {
 import { ViewHeader } from "./components/shared/ViewHeader";
 import { DynamicViewLoader } from "./components/views/DynamicViewLoader";
 import { registerSandboxProbeView } from "./components/views/sandbox-probe-view";
+import { useActiveAgentAuthority } from "./hooks/useActiveAgentAuthority";
 import {
   useAvailableViews,
   useRoutableViews,
@@ -883,6 +884,10 @@ interface ActiveViewSurface {
   manifest: ResolvedSurfaceManifest;
   viewId: string;
   children?: readonly ActiveViewSurfaceChild[];
+  sourceKey: string;
+  memberViewIds?: readonly string[];
+  sourceComponent?: AppShellPageRegistration["Component"];
+  sourceLoader?: AppShellPageRegistration["loader"];
 }
 
 interface ActiveViewSurfaceChild {
@@ -923,6 +928,60 @@ function layoutRouteOverrideForView(
   };
 }
 
+function shellSurfaceOwner(page: AppShellPageRegistration) {
+  return {
+    sourceKey: JSON.stringify(["shell", page.pluginId, page.id]),
+    sourceComponent: page.Component,
+    sourceLoader: page.loader,
+  };
+}
+
+function remoteSurfaceOwner(view: ViewRegistryEntry) {
+  return {
+    sourceKey: JSON.stringify([
+      "remote",
+      view.pluginName,
+      view.id,
+      view.bundleUrl,
+      view.frameUrl,
+      view.componentExport,
+    ]),
+  };
+}
+
+function surfacePolicyKey({
+  manifest,
+  viewId,
+  sourceKey,
+  memberViewIds,
+  children,
+}: ActiveViewSurface): string {
+  const { background, header, isolation, lifecycle, layout, capabilities } =
+    manifest;
+  return JSON.stringify([
+    viewId,
+    sourceKey,
+    memberViewIds,
+    children?.map((child) => ({
+      ...child,
+      manifest: {
+        ...child.manifest,
+        capabilities: [...child.manifest.capabilities].sort(),
+      },
+    })),
+    background,
+    header,
+    isolation,
+    lifecycle,
+    layout.kind,
+    layout.topology,
+    layout.width,
+    layout.scroll,
+    layout.gutter,
+    [...capabilities].sort(),
+  ]);
+}
+
 function resolveActiveViewSurface({
   tab,
   navigationPath,
@@ -946,6 +1005,10 @@ function resolveActiveViewSurface({
   // it resolves to the safe default (no grants) — the default-deny baseline.
   if (viewLayout) {
     return {
+      sourceKey: "layout",
+      memberViewIds: activeViewLayoutEntries(viewLayout, availableViews).map(
+        (view) => view.id,
+      ),
       manifest: resolveRoutedSurfaceManifest(null),
       viewId: `layout:${viewLayout.viewIds.join("+") || tab}`,
       // Mirror the shell's actual pane composition. Membership permits loading
@@ -985,6 +1048,7 @@ function resolveActiveViewSurface({
     )
   ) {
     return {
+      ...shellSurfaceOwner(visibleAppShellPage),
       manifest: resolveRoutedSurfaceManifest(visibleAppShellPage),
       viewId: visibleAppShellPage.id,
     };
@@ -994,6 +1058,7 @@ function resolveActiveViewSurface({
   // their intentional remote-bundle precedence below.
   if (visibleAppShellPage && !isDynamicViewLoadingAllowed()) {
     return {
+      ...shellSurfaceOwner(visibleAppShellPage),
       manifest: resolveRoutedSurfaceManifest(visibleAppShellPage),
       viewId: visibleAppShellPage.id,
     };
@@ -1011,6 +1076,7 @@ function resolveActiveViewSurface({
   );
   if (remoteView) {
     return {
+      ...remoteSurfaceOwner(remoteView),
       manifest: resolveRoutedSurfaceManifest(remoteView),
       viewId: remoteView.id,
     };
@@ -1018,6 +1084,7 @@ function resolveActiveViewSurface({
 
   if (visibleAppShellPage) {
     return {
+      ...shellSurfaceOwner(visibleAppShellPage),
       manifest: resolveRoutedSurfaceManifest(visibleAppShellPage),
       viewId: visibleAppShellPage.id,
     };
@@ -1033,6 +1100,7 @@ function resolveActiveViewSurface({
   );
   if (appShellPageForTab) {
     return {
+      ...shellSurfaceOwner(appShellPageForTab),
       manifest: resolveRoutedSurfaceManifest(appShellPageForTab),
       viewId: appShellPageForTab.agentViewId ?? appShellPageForTab.id,
     };
@@ -1040,6 +1108,16 @@ function resolveActiveViewSurface({
 
   if (dynamicPage) {
     return {
+      ...(dynamicPage.registration
+        ? shellSurfaceOwner(dynamicPage.registration)
+        : {
+            sourceKey: JSON.stringify([
+              "dynamic",
+              dynamicPage.pluginId,
+              dynamicPage.id,
+              dynamicPage.componentExport,
+            ]),
+          }),
       manifest: resolveRoutedSurfaceManifest(
         dynamicPage.registration ?? dynamicPage,
       ),
@@ -1056,6 +1134,7 @@ function resolveActiveViewSurface({
   );
   if (registeredView) {
     return {
+      ...remoteSurfaceOwner(registeredView),
       manifest: resolveRoutedSurfaceManifest(registeredView),
       viewId: registeredView.id,
     };
@@ -1070,6 +1149,7 @@ function resolveActiveViewSurface({
   const builtinManifest = resolveBuiltinRoutedViewManifest(tab);
   if (builtinManifest) {
     return {
+      sourceKey: "builtin",
       manifest: builtinManifest,
       viewId: tab === "tasks" ? "projects" : resolveBuiltinTabId(tab),
       children: builtinSurfaceChildren(tab),
@@ -1079,6 +1159,7 @@ function resolveActiveViewSurface({
   const builtinDescriptor = resolveBuiltinRouteDescriptor(tab);
   if (builtinDescriptor) {
     return {
+      sourceKey: "builtin",
       manifest: {
         ...resolveSurfaceManifest({
           surface: { layout: builtinDescriptor.layout },
@@ -1090,7 +1171,11 @@ function resolveActiveViewSurface({
     };
   }
 
-  return { manifest: resolveRoutedSurfaceManifest(null), viewId: tab };
+  return {
+    sourceKey: "unregistered",
+    manifest: resolveRoutedSurfaceManifest(null),
+    viewId: tab,
+  };
 }
 
 function useActiveViewSurface({
@@ -1136,29 +1221,19 @@ function useActiveViewSurface({
     tab,
     viewLayout,
   ]);
-  // Registry refreshes and unrelated page registrations may produce new input
-  // objects without changing this mounted surface. Replacing its broker scope
-  // would strand the navigation/storage helpers captured by its loaded bundle.
-  // Compare the complete resolved policy, including the capability Set.
-  const policyKey = JSON.stringify({
-    ...resolved,
-    manifest: {
-      ...resolved.manifest,
-      capabilities: [...resolved.manifest.capabilities].sort(),
-    },
-    children: resolved.children?.map((child) => ({
-      ...child,
-      manifest: {
-        ...child.manifest,
-        capabilities: [...child.manifest.capabilities].sort(),
-      },
-    })),
-  });
-  const stable = useRef({ policyKey, surface: resolved });
-  if (stable.current.policyKey !== policyKey) {
-    stable.current = { policyKey, surface: resolved };
+  // Registry and auth refreshes can replace DTO identities without replacing
+  // the mounted owner. Keep its imported broker handles alive until its actual
+  // policy/source changes; render-phase state adjustment remains render-local.
+  const [stable, setStable] = useState(resolved);
+  if (
+    surfacePolicyKey(stable) !== surfacePolicyKey(resolved) ||
+    stable.sourceComponent !== resolved.sourceComponent ||
+    stable.sourceLoader !== resolved.sourceLoader
+  ) {
+    setStable(resolved);
+    return resolved;
   }
-  return stable.current.surface;
+  return stable;
 }
 
 function trimmedNavigationPath(navigationPath: string): string {
@@ -2527,6 +2602,7 @@ function ChatOverlayMount({
       initialMode={initialMode}
       fillHostAtHalf={fillHostAtHalf}
       firstRunOpen={firstRunOpen}
+      acceptPendingFirstRunText={firstRunComplete}
       releaseFirstRunToFull={releaseFirstRunToFull}
       onFirstRunReleaseHandled={onFirstRunReleaseHandled}
       onPilledChange={onPilledChange}
@@ -2694,7 +2770,7 @@ function AppContent() {
       token?: string;
       completeFirstRun?: boolean;
       skipConfirm?: boolean;
-    }): Promise<void> => {
+    }): Promise<ConnectRequestResult> => {
       const shouldCompleteFirstRun = payload.completeFirstRun === true;
       const skipConfirm = payload.skipConfirm === true;
       if (!skipConfirm && !isLoopbackGatewayHost(payload.gatewayUrl)) {
@@ -2709,7 +2785,7 @@ function AppContent() {
         });
         if (!approved) {
           setActionNotice("Connection request cancelled.", "info", 4200);
-          return;
+          return { status: "cancelled" };
         }
       }
 
@@ -2723,7 +2799,6 @@ function AppContent() {
         setState("firstRunRuntimeTarget", "remote");
         setState("firstRunRemoteApiBase", connection.apiBase);
         setState("firstRunRemoteToken", connection.token ?? "");
-        setState("firstRunRemoteConnected", true);
         setState("firstRunRemoteError", null);
         if (shouldCompleteFirstRun) {
           await completeRemoteAgentFirstRun(
@@ -2736,16 +2811,20 @@ function AppContent() {
             completeFirstRun,
           );
         }
+        setState("firstRunRemoteConnected", true);
         setActionNotice("Connected to remote backend.", "success", 4200);
         retryStartup();
+        return { status: "connected" };
       } catch (err) {
-        setActionNotice(
+        // error-policy:J1 expose failed adoption to both the initiating form and shell notice.
+        const message =
           err instanceof Error
             ? err.message
-            : "Failed to connect remote backend.",
-          "error",
-          8000,
-        );
+            : "Failed to connect remote backend.";
+        setState("firstRunRemoteConnected", false);
+        setState("firstRunRemoteError", message);
+        setActionNotice(message, "error", 8000);
+        return { status: "failed", message };
       }
     };
 
@@ -3040,6 +3119,17 @@ function AppContent() {
   const { authenticated: cloudAuthenticated, user: cloudUser } =
     useSessionAuth();
   const agentAuthority = useActiveAgentAuthority();
+  // Account management is authorized by the Cloud session, independently of
+  // the selected agent. Keep its wake/recovery controls reachable while that
+  // agent is asleep, disconnected, or awaiting pairing.
+  const authenticatedAccountPage = authenticatedCloudDashboardOwnsRoute(
+    findVisibleAppShellPageForRoute(
+      navigationPath,
+      enabledKinds,
+      managedCloudRuntime,
+    ),
+    cloudAuthenticated,
+  );
   const screenBackgroundPolicy = useActiveScreenBackgroundPolicy({
     tab,
     navigationPath,
@@ -3132,7 +3222,11 @@ function AppContent() {
       scopeLifetime.surface.viewId,
       window.localStorage,
       navigateBrowserPath,
-      scopeLifetime.surface.children?.map((child) => child.viewId),
+      [
+        scopeLifetime.surface.viewId,
+        ...(scopeLifetime.surface.memberViewIds ?? []),
+        ...(scopeLifetime.surface.children?.map((child) => child.viewId) ?? []),
+      ],
     );
     setActiveSurfaceRealmScope(scope);
     return () => {
@@ -3605,7 +3699,10 @@ function AppContent() {
     );
   }
 
-  if (!isShellPaintableNow || bootstrapGateHolds) {
+  if (
+    !authenticatedAccountPage &&
+    (!isShellPaintableNow || bootstrapGateHolds)
+  ) {
     return (
       <BugReportProvider value={bugReport}>
         <StartupScreen />
@@ -3622,6 +3719,7 @@ function AppContent() {
   // primes the probe (primeAuthStatusProbe) so it overlaps backend polling /
   // hydration instead of serializing an extra round-trip after first paint.
   if (
+    !authenticatedAccountPage &&
     isShellPaintableNow &&
     !isPopout &&
     topLevelAuthGateOwnsSurface(

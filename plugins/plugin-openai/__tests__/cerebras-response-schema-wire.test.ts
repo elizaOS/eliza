@@ -13,6 +13,7 @@ afterEach(() => vi.restoreAllMocks());
 
 type WireRequest = {
   model: string;
+  prompt_cache_key?: string;
   stream?: boolean;
   messages: Array<{ role: string; content: string }>;
   response_format?: {
@@ -113,12 +114,30 @@ it.each([false, true])(
         required: ["answer"],
         additionalProperties: false,
       };
-      for (const variant of ["schema", "schema-with-json-mode", "json-mode"] as const) {
+      for (const variant of [
+        "schema",
+        "schema-with-json-mode",
+        "json-mode",
+        "openai-only-key",
+      ] as const) {
         const prompt = "Return JSON with the answer. Preserve this request's complete content 🧭.";
         const before = bodies.length;
         const result = await handleTextSmall(runtime, {
           prompt,
           stream,
+          providerOptions: {
+            openai: { promptCacheKey: "shared-prefix" },
+            ...(variant === "openai-only-key"
+              ? {}
+              : {
+                  cerebras:
+                    variant === "schema"
+                      ? { promptCacheKey: "workflow-camel" }
+                      : variant === "schema-with-json-mode"
+                        ? { prompt_cache_key: "workflow-snake" }
+                        : {},
+                }),
+          },
           ...(variant !== "json-mode" ? { responseSchema } : {}),
           ...(variant !== "schema" ? { responseFormat: { type: "json_object" } } : {}),
         });
@@ -134,6 +153,15 @@ it.each([false, true])(
         expect(JSON.parse(text)).toEqual({ answer: "ok" });
         expect(bodies).toHaveLength(before + 1);
         const wire = bodies.at(-1);
+        expect(wire?.prompt_cache_key).toBe(
+          variant === "schema"
+            ? "workflow-camel"
+            : variant === "schema-with-json-mode"
+              ? "workflow-snake"
+              : variant === "openai-only-key"
+                ? "shared-prefix"
+                : undefined
+        );
         expect(wire?.messages.find((message) => message.role === "user")?.content).toBe(prompt);
         if (variant === "json-mode") expect(wire?.response_format).toEqual({ type: "json_object" });
         else {

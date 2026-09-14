@@ -1,9 +1,7 @@
 /**
- * Vite view-bundle entry: re-exports the unified spatial view component plus the
- * `interact` capability handler so the built bundle (dist/views/bundle.js)
- * exposes the named exports the view loader reads (`MessagesView`, `interact`).
- * Kept separate from MessagesView.tsx so that file exports only React components
- * and stays Fast-Refresh-compatible in dev.
+ * Vite view-bundle entry: exposes the embeddable view plus the `interact`
+ * handler under the names read from the built bundle. The remote-view host owns
+ * page chrome; signed native registration continues to mount `MessagesPage`.
  */
 
 export { MessagesView } from "./MessagesView.tsx";

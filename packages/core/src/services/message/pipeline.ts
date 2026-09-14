@@ -255,6 +255,7 @@ export async function runV5MessageRuntimeStage1(
 		ambientTurn && isStage1AmbientHardGated(args.runtime, args.message);
 	const context = await createV5MessageContextObject({
 		...args,
+		includeActionDiscovery: true,
 		userRoles: [senderRole],
 		availableContexts,
 		ambientTurn,
@@ -747,6 +748,8 @@ export async function runV5MessageRuntimeStage1(
 				replyIsModelVoice = false;
 			}
 			const directReplyEgressDecision = evaluatePlannedReplyEgress({
+				providers: args.state.data.providers,
+				request: args.message.content.text,
 				reply,
 				actionResults: [],
 				actions: args.runtime.actions,
@@ -754,6 +757,7 @@ export async function runV5MessageRuntimeStage1(
 			if (directReplyEgressDecision.verdict === "reject") {
 				reply = (
 					await resolvePlannedReplyEgress({
+						providers: args.state.data.providers,
 						runtime: args.runtime,
 						message: args.message,
 						reply,
@@ -815,6 +819,8 @@ export async function runV5MessageRuntimeStage1(
 		const onResponseHandlerEarlyReply = args.onResponseHandlerEarlyReply;
 		if (earlyReplyText.length > 0 && onResponseHandlerEarlyReply) {
 			const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
+				providers: args.state.data.providers,
+				request: args.message.content.text,
 				reply: earlyReplyText,
 				actionResults: [],
 				actions: args.runtime.actions,
@@ -1291,7 +1297,14 @@ export async function runV5MessageRuntimeStage1(
 				),
 			logger: args.runtime.logger as PlannerRuntime["logger"],
 		};
-		let plannerTools = collectPlannerTools(plannerContextWithDecision);
+		let plannerTools = collectPlannerTools(
+			plannerContextWithDecision,
+			undefined,
+			{
+				canonicalFamilies: true,
+				candidateActions: getMessageHandlerCandidateActions(messageHandler),
+			},
+		);
 		let budgetedPlannerContextWithDecision = plannerContextWithDecision;
 		const plannerProviderAttributionState = plannerState;
 		const preflightConfig = {
@@ -1724,6 +1737,8 @@ export async function runV5MessageRuntimeStage1(
 					}
 					const groundedModelReplyEgress = groundedModelReply
 						? evaluatePlannedReplyEgress({
+								providers: plannerState.data.providers,
+								request: args.message.content.text,
 								reply: groundedModelReply,
 								actionResults: [],
 								actions: args.runtime.actions,
@@ -1774,12 +1789,18 @@ export async function runV5MessageRuntimeStage1(
 								effects: evaluatorEffects,
 								recorder,
 								trajectoryId,
-								cacheConversationId: String(args.message.roomId),
+								cacheConversationId: JSON.stringify([
+									args.runtime.agentId,
+									args.message.roomId,
+								]),
 							}),
 						evaluatorEffects,
 						recorder,
 						trajectoryId,
-						cacheConversationId: String(args.message.roomId),
+						cacheConversationId: JSON.stringify([
+							args.runtime.agentId,
+							args.message.roomId,
+						]),
 						providerAttributionState: plannerProviderAttributionState,
 					});
 				}
@@ -1879,7 +1900,10 @@ export async function runV5MessageRuntimeStage1(
 					evaluatorEffects,
 					recorder,
 					trajectoryId,
-					cacheConversationId: String(args.message.roomId),
+					cacheConversationId: JSON.stringify([
+						args.runtime.agentId,
+						args.message.roomId,
+					]),
 					providerAttributionState: plannerProviderAttributionState,
 					executeToolCall: (toolCall, ctx) =>
 						timeInferenceSpan(
@@ -1939,7 +1963,10 @@ export async function runV5MessageRuntimeStage1(
 								effects: evaluatorEffects,
 								recorder,
 								trajectoryId,
-								cacheConversationId: String(args.message.roomId),
+								cacheConversationId: JSON.stringify([
+									args.runtime.agentId,
+									args.message.roomId,
+								]),
 							}),
 						),
 				}),
@@ -2073,7 +2100,12 @@ export async function runV5MessageRuntimeStage1(
 		);
 		if (
 			plannerResult.terminalFailure &&
-			egressActionResults.some((result) => result.replyFailure !== undefined)
+			(egressActionResults.some(
+				(result) => result.replyFailure !== undefined,
+			) ||
+				(plannerResult.terminalFailure.code ===
+					"PLANNER_SCOPE_DECLARATION_REQUIRED" &&
+					!plannerResult.finalMessage?.trim()))
 		) {
 			// There is no model-authored reply to deliver. Preserve every action
 			// outcome and surface the unavailable system status separately; none of
@@ -2119,6 +2151,8 @@ export async function runV5MessageRuntimeStage1(
 			args.codingMode === true
 				? ({ verdict: "allow" } as const)
 				: evaluatePlannedReplyEgress({
+						providers: plannerState.data.providers,
+						request: args.message.content.text,
 						reply: String(plannerResult.finalMessage ?? ""),
 						actionResults: egressActionResults,
 						actions: args.runtime.actions,
@@ -2147,6 +2181,7 @@ export async function runV5MessageRuntimeStage1(
 				"[message] replaced a planned reply whose state claim lacked a matching action receipt",
 			);
 			recoveredReply = await resolvePlannedReplyEgress({
+				providers: plannerState.data.providers,
 				runtime: args.runtime,
 				message: args.message,
 				reply: plannerResult.finalMessage ?? "",

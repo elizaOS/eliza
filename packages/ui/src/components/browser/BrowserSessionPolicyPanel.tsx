@@ -96,7 +96,7 @@ function policyBadgeClass(allowed: boolean, mode: BrowserDomainPolicyMode) {
   }
   return allowed
     ? "border-accent/50 bg-accent/15 text-accent"
-    : "border-border bg-muted/40 text-muted-foreground";
+    : "border-border bg-bg-muted text-muted-strong";
 }
 
 type LoadPhase = "loading" | "error" | "ready" | "unsupported";
@@ -430,7 +430,7 @@ export function BrowserSessionPolicyPanel({
               </div>
             ) : null}
             {takeover ? (
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
                   disabled={busy}
@@ -450,7 +450,7 @@ export function BrowserSessionPolicyPanel({
                 </Button>
               </div>
             ) : null}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {blocked ? (
                 <Button
                   size="sm"

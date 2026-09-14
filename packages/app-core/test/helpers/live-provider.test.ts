@@ -97,23 +97,25 @@ describe("selectLiveProvider", () => {
     expect(selectLiveProvider()?.apiKey).toBe("gsk_canonical");
   });
 
-  it("selects cerebras when explicitly selected with ELIZA_PROVIDER", async () => {
+  it("selects cerebras and propagates explicitly configured inference models", async () => {
     vi.stubEnv("CEREBRAS_API_KEY", "csk_test_cerebras_key");
     vi.stubEnv("GROQ_API_KEY", "");
     vi.stubEnv("OPENAI_API_KEY", "");
     vi.stubEnv("ELIZA_PROVIDER", "cerebras");
+    vi.stubEnv("ELIZA_LIVE_TEST_LARGE_MODEL", "review-large-model");
+    vi.stubEnv("ELIZA_LIVE_TEST_SMALL_MODEL", "review-small-model");
 
     const { selectLiveProvider } = await import("./live-provider.ts");
 
     const provider = selectLiveProvider();
     expect(provider?.name).toBe("cerebras");
     expect(provider?.baseUrl).toBe("https://api.cerebras.ai/v1");
-    expect(provider?.largeModel).toBe("gemma-4-31b");
-    expect(provider?.smallModel).toBe("gemma-4-31b");
+    expect(provider?.largeModel).toBe("review-large-model");
+    expect(provider?.smallModel).toBe("review-small-model");
     expect(provider?.env.ELIZA_PROVIDER).toBe("cerebras");
-    expect(provider?.env.CEREBRAS_MODEL).toBe("gemma-4-31b");
-    expect(provider?.env.OPENAI_SMALL_MODEL).toBe("gemma-4-31b");
-    expect(provider?.env.OPENAI_LARGE_MODEL).toBe("gemma-4-31b");
+    expect(provider?.env.CEREBRAS_MODEL).toBe("review-large-model");
+    expect(provider?.env.OPENAI_SMALL_MODEL).toBe("review-small-model");
+    expect(provider?.env.OPENAI_LARGE_MODEL).toBe("review-large-model");
   });
 
   it("resolves Cerebras vault references in the async selector", async () => {
