@@ -1145,6 +1145,116 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
+	it.each([
+		"repair",
+		"still-incomplete",
+		"explicit",
+		"deferred",
+		"unknown",
+		"stale",
+		"full",
+		"malformed",
+		"cancelled",
+	])("validates projected-history routing before effects: %s", async (mode) => {
+		const { runtime, message, rows, state } = await reviewedHistoryFixture();
+		message.content.text = "Open the requested view.";
+		const before = structuredClone(rows);
+		const dispatch = vi.spyOn(runtime.responseHandlerFieldRegistry, "dispatch");
+		const abort = new AbortController();
+		const inputs: Array<Array<{ role: string; content: string }>> = [];
+		const canRepair = ["repair", "still-incomplete", "cancelled"].includes(
+			mode,
+		);
+		runtime.useModel = vi.fn(
+			async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+				const input = args[1] as {
+					messages: Array<{ role: string; content: string }>;
+				};
+				inputs.push(structuredClone(input.messages));
+				const call = inputs.length;
+				if (call > 3) throw new Error("Unbounded routing repair");
+				expect(dispatch).not.toHaveBeenCalled();
+				const text = input.messages.map((m) => m.content).join("\n");
+				const sourceSetId = text.match(
+					/completion_source_set: ([a-f0-9]{64})/,
+				)?.[1];
+				const restoring = call > (canRepair ? 2 : 1);
+				if (restoring) expect(text).toContain(rows[1].content.text?.trim());
+				else expect(text).not.toContain(rows[1].content.text?.trim());
+				if (call === 2 && canRepair) {
+					expect(input.messages.slice(0, inputs[0].length)).toEqual(inputs[0]);
+					expect(input.messages.at(-1)?.content).toContain(
+						"response_contract_repair:",
+					);
+					expect(input.messages.at(-1)?.content).toContain(
+						'"candidateActionNames":["OPEN_VIEW"]',
+					);
+				}
+				if (call === 2 && !canRepair)
+					expect(text).not.toContain("response_contract_repair:");
+				const incomplete =
+					call === 1 || (mode === "still-incomplete" && call === 2);
+				if (mode === "cancelled")
+					abort.abort(new Error("cancelled history repair"));
+				return stage1Response({
+					contexts: incomplete ? ["simple"] : ["general"],
+					intents: ["open the requested view"],
+					candidateActionNames: ["OPEN_VIEW"],
+					contextRequests:
+						call === 1 && mode === "explicit" ? ["history:all"] : [],
+					replyText: incomplete ? "Unaccepted draft." : "I will open the view.",
+					facts: incomplete ? ["Do not process intermediate extraction"] : [],
+					extra: {
+						replyEffectStatus: incomplete ? "none" : "pending",
+						completionContext: {
+							mode:
+								call === 1 && mode === "full"
+									? "all_prior_dialogue"
+									: "relevant_prior_dialogue",
+							sourceSetId:
+								call === 1 && mode === "stale" ? "stale" : sourceSetId,
+							complete: !incomplete,
+							relevantSourceIds:
+								call === 1 && mode === "deferred"
+									? ["h2"]
+									: call === 1 && mode === "unknown"
+										? ["h999"]
+										: [],
+							constraintSourceIds: ["h1"],
+							referentSourceIds: call === 1 && mode === "malformed" ? [42] : [],
+							pendingIntentSourceIds: [],
+						},
+					},
+				});
+			},
+		) as IAgentRuntime["useModel"];
+		const run = () =>
+			runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state,
+				responseId: message.id as UUID,
+				stage1DecisionOnly: true,
+			});
+		if (mode === "cancelled") {
+			await expect(
+				runWithStreamingContext({ abortSignal: abort.signal }, run),
+			).rejects.toThrow("cancelled history repair");
+			expect(inputs).toHaveLength(1);
+			expect(dispatch).not.toHaveBeenCalled();
+		} else {
+			const result = await run();
+			expect(inputs).toHaveLength(mode === "still-incomplete" ? 3 : 2);
+			expect(dispatch).toHaveBeenCalledTimes(1);
+			expect(dispatch.mock.calls[0]?.[0].rawParsed.facts).toEqual([]);
+			expect(result.messageHandler.plan.intents).toEqual([
+				"open the requested view",
+			]);
+			expect(result.messageHandler.plan.requiresTool).toBe(true);
+		}
+		expect(rows).toEqual(before);
+	});
+
 	it("repairs conflicting direct-answer intents before dispatching fields or entering the planner", async () => {
 		const quote = "Correction: the mug is violet; keep the yellow notebook.";
 		const runtime = makeRuntime([

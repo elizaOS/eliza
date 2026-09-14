@@ -176,6 +176,40 @@ export function requestedHistory(
 	];
 }
 
+/** An incomplete selection may accompany contradictory routing rather than a
+ * missing original. Allow one response-contract repair only when every selected
+ * source is already supplied and the selection still matches this projection.
+ * This does not certify completion; an unresolved retry still restores history. */
+export function canRepairIncompleteHistorySelection(
+	context: ContextObject,
+	projection: HistoryDiscovery | undefined,
+	raw: Record<string, unknown> | null,
+): boolean {
+	if (!projection) return false;
+	const selection = parseCompletionContextSelection(raw?.completionContext);
+	if (!selection || selection.complete || selection.mode !== "selected")
+		return false;
+	const bound = completionContextSources(context);
+	if (
+		bound.sourceSetId !== projection.sourceSetId ||
+		selection.sourceSetId !== bound.sourceSetId
+	)
+		return false;
+	return [
+		...selection.relevantSourceIds,
+		...selection.constraintSourceIds,
+		...selection.referentSourceIds,
+		...selection.pendingIntentSourceIds,
+	].every((id) => {
+		const source = bound.sources.find((row) => row.id === id);
+		return (
+			!!source &&
+			(projection.visibleEventIds.has(source.event.id) ||
+				projection.loadedSourceIds.has(id))
+		);
+	});
+}
+
 /** Called only after ordinary context-request validation and fresh source/role
  * checks. Undefined means render every current authorized original. */
 export function loadHistoryReferences(

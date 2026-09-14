@@ -49,6 +49,7 @@ import {
 	resolveContinuationInferenceMessageText,
 } from "./dialogue-context.js";
 import {
+	canRepairIncompleteHistorySelection,
 	HISTORY_REFERENCE_PREFIX,
 	type HistoryDiscovery,
 	historyReferences,
@@ -473,7 +474,10 @@ export async function generateStage1Decision(
 		);
 		const requested = [...new Set([...explicit, ...historyRequested])];
 		const routingRepair =
-			requested.length === 0 && !routingRepairAttempted
+			!routingRepairAttempted &&
+			explicit.length === 0 &&
+			(requested.length === 0 ||
+				canRepairIncompleteHistorySelection(context, history, parsedDecision))
 				? getStage1RoutingRepair(parsedDecision)
 				: undefined;
 		if (requested.length === 0 && !routingRepair) break;

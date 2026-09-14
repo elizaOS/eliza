@@ -37,7 +37,7 @@ export function getStage1RoutingRepair(
 		!Array.isArray(parsed.contexts) ||
 		parsed.contexts.some((context) => context !== "simple") ||
 		!Array.isArray(parsed.candidateActionNames) ||
-		parsed.candidateActionNames.length !== 0 ||
+		parsed.candidateActionNames.some((name) => typeof name !== "string") ||
 		!Array.isArray(parsed.intents) ||
 		parsed.intents.some((intent) => typeof intent !== "string") ||
 		!parsed.intents.some((intent) => intent.trim().length > 0)
