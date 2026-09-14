@@ -50,6 +50,18 @@ describe("submitPluginToRegistry", () => {
     ["git+ssh://git@github.com/acme/plugin-weather.git"],
     ["ssh://git@github.com/acme/plugin-weather.git"],
     ["git://github.com/acme/plugin-weather.git"],
+    // An explicit ssh port must not become the owner segment (#28346).
+    ["git+ssh://git@github.com:22/acme/plugin-weather.git"],
+    ["ssh://git@github.com:2222/acme/plugin-weather.git"],
+    // A /tree or /blob path after `.git` must not leave `.git` on the name.
+    ["https://github.com/acme/plugin-weather.git/tree/main/src"],
+    ["https://github.com/acme/plugin-weather.git/blob/main/README.md"],
+    ["https://github.com/acme/plugin-weather.git#readme"],
+    ["https://github.com/acme/plugin-weather.git/extra/segment"],
+    ["https://github.com/acme/plugin-weather/"],
+    // scp shorthand with an ssh scheme pasted on is tolerated, as before.
+    ["ssh://git@github.com:acme/plugin-weather.git"],
+    ["git+ssh://git@github.com:acme/plugin-weather"],
   ])("normalizes the npm repository url form %s", async (repositoryUrl) => {
     const dir = makePluginPackage({
       name: "@acme/plugin-weather",
