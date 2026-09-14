@@ -30,6 +30,94 @@ describe("BLOCKED_ENV_KEYS", () => {
     expect(BLOCKED_ENV_KEYS.has("OPINION_PRIVATE_KEY")).toBe(true);
   });
 
+  /**
+   * The spot-checks above name five of the thirteen keys this package appends
+   * on top of the core spawn policy, and the superset test below only covers
+   * what core contributes. The other eight are unasserted: deleting
+   * `EVM_PRIVATE_KEY` or `SOLANA_PRIVATE_KEY` from the set leaves every suite
+   * in this package green, and a config write could then persist a wallet key
+   * into `process.env`.
+   *
+   * Pin the agent-specific tail by subtracting core's contribution, so the
+   * assertion keeps naming exactly this package's own keys as core's list
+   * grows, and so an addition here is a deliberate edit rather than a silent
+   * one.
+   */
+  it("appends exactly the agent-specific secrets on top of the core policy", () => {
+    const agentSpecific = [...BLOCKED_ENV_KEYS]
+      .filter((key) => !BLOCKED_SPAWN_ENV_KEYS.has(key))
+      .sort();
+
+    expect(agentSpecific).toEqual([
+      "DATABASE_URL",
+      "ELIZA_API_TOKEN",
+      "ELIZA_CLOUD_CLIENT_ADDRESS_KEY",
+      "ELIZA_TERMINAL_RUN_TOKEN",
+      "ELIZA_WALLET_EXPORT_TOKEN",
+      "EVM_PRIVATE_KEY",
+      "GITHUB_TOKEN",
+      "OPINION_API_KEY",
+      "OPINION_PRIVATE_KEY",
+      "POSTGRES_URL",
+      "SOLANA_PRIVATE_KEY",
+      "STEWARD_AGENT_TOKEN",
+      "STEWARD_API_KEY",
+    ]);
+  });
+
+  it.each([
+    "DATABASE_URL",
+    "ELIZA_API_TOKEN",
+    "ELIZA_CLOUD_CLIENT_ADDRESS_KEY",
+    "ELIZA_TERMINAL_RUN_TOKEN",
+    "ELIZA_WALLET_EXPORT_TOKEN",
+    "EVM_PRIVATE_KEY",
+    "GITHUB_TOKEN",
+    "OPINION_API_KEY",
+    "OPINION_PRIVATE_KEY",
+    "POSTGRES_URL",
+    "SOLANA_PRIVATE_KEY",
+    "STEWARD_AGENT_TOKEN",
+    "STEWARD_API_KEY",
+  ])("refuses %s through the predicate, not just the raw set", (key) => {
+    // Membership is not the boundary — `isBlockedEnvKey` is, and it is what the
+    // config and API gates call. None of these keys sits inside a prefix
+    // family, so the exact-set branch is the only thing that can catch them.
+    expect(isBlockedEnvKey(key)).toBe(true);
+    // The predicate folds case and surrounding whitespace before matching;
+    // these keys have to survive that path too, since a request body supplies
+    // the spelling.
+    expect(isBlockedEnvKey(key.toLowerCase())).toBe(true);
+    expect(isBlockedEnvKey(`  ${key}  `)).toBe(true);
+  });
+
+  it("collectConfigEnvVars drops every agent-specific secret", () => {
+    // The set exists to stop these reaching process.env at startup. Drive the
+    // real collector rather than re-asserting membership.
+    const agentSpecific = [...BLOCKED_ENV_KEYS].filter(
+      (key) => !BLOCKED_SPAWN_ENV_KEYS.has(key),
+    );
+    expect(agentSpecific.length).toBeGreaterThan(0);
+    const secrets = Object.fromEntries(
+      agentSpecific.map((key) => [key, "leaked"]),
+    );
+
+    // `collectConfigEnvVars` filters two separate loops — the explicit
+    // `env.vars` map and the loose string members of `env` itself. Both reach
+    // process.env, so both have to drop these keys.
+    expect(
+      collectConfigEnvVars({
+        env: { vars: { ...secrets, SAFE_FLAG: "true" } },
+      } as Parameters<typeof collectConfigEnvVars>[0]),
+    ).toEqual({ SAFE_FLAG: "true" });
+
+    expect(
+      collectConfigEnvVars({
+        env: { ...secrets, SAFE_FLAG: "true" },
+      } as Parameters<typeof collectConfigEnvVars>[0]),
+    ).toEqual({ SAFE_FLAG: "true" });
+  });
+
   it("is a superset of BLOCKED_SPAWN_ENV_KEYS so the two denylists cannot drift", () => {
     for (const key of BLOCKED_SPAWN_ENV_KEYS) {
       expect(BLOCKED_ENV_KEYS.has(key)).toBe(true);
