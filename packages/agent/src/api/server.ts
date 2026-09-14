@@ -1408,6 +1408,7 @@ export { isWaifuChatAuthorized } from "./waifu-chat-role-resolver.ts";
 import { resolveHostSessionAccessContext } from "./host-session-access-context.ts";
 import { resolveHttpAccessContext } from "./http-access-context.ts";
 import { resolveInboxRequestAuthorization } from "./inbox-request-authorization.ts";
+import { isTrajectoryOwnerRequest } from "./trajectory-request-authorization.ts";
 
 const isAllowedHost = _isAllowedHost;
 const applyCors = _applyCors;
@@ -1914,6 +1915,23 @@ async function handleRequest(
     !isBoundaryRoleAuthorized(req, method, pathname)
   ) {
     json(res, { error: "Unauthorized" }, 401);
+    return;
+  }
+
+  // Complete trajectory inputs and outputs belong to the owner's developer
+  // surface. Enforce this before forwarding or any plugin route can dispatch.
+  if (
+    method !== "OPTIONS" &&
+    (pathname === "/api/trajectories" ||
+      pathname.startsWith("/api/trajectories/")) &&
+    !isTrajectoryOwnerRequest(
+      req,
+      method,
+      pathname,
+      await resolveHostSessionAuthorization(),
+    )
+  ) {
+    json(res, { error: "Owner role required" }, 403);
     return;
   }
 
