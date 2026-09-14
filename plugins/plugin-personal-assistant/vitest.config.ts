@@ -86,6 +86,9 @@ const agentSourceJsToTsPlugin = {
     if (source === "@elizaos/agent/api/zip-utils") {
       return path.join(agentSourceRoot, "api", "zip-utils.ts");
     }
+    if (source === "@elizaos/agent/services/agent-backup") {
+      return path.join(agentSourceRoot, "services", "agent-backup.ts");
+    }
     if (source === "@elizaos/agent/services/agent-backup-authority") {
       return path.join(
         agentSourceRoot,
@@ -541,6 +544,10 @@ export default defineConfig({
           "services",
           "agent-backup-authority.ts",
         ),
+      },
+      {
+        find: /^@elizaos\/agent\/services\/agent-backup$/,
+        replacement: path.join(agentSourceRoot, "services", "agent-backup.ts"),
       },
       {
         find: "@elizaos/agent",

@@ -470,6 +470,15 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/lifeops/family-workflows/deletion" },
   { type: "POST", path: "/api/lifeops/family-workflows/deletion" },
   { type: "POST", path: "/api/lifeops/family-workflows/deletion/resume" },
+  {
+    type: "GET",
+    path: "/api/lifeops/family-workflows/deletion/backups/preview",
+  },
+  { type: "POST", path: "/api/lifeops/family-workflows/deletion/backups" },
+  {
+    type: "POST",
+    path: "/api/lifeops/family-workflows/deletion/backups/resume",
+  },
   { type: "GET", path: "/api/lifeops/family-workflows/email-options" },
   { type: "GET", path: "/api/lifeops/family-workflows/packets" },
   { type: "POST", path: "/api/lifeops/family-workflows/packets" },
