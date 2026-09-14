@@ -1,34 +1,22 @@
 # wakesync personal device lane
 
 Branch: `sol/main` on `elizaOS/eliza`. Base: `develop`, rebased daily. Tracking issue: elizaOS/eliza#31339.
-Goal: Eliza as the daily driver on a second phone (Pixel 11 Pro) and a companion iOS build, developed locally on the new Mac with the Codex Mac app. No SSH into the Mac, no VPS agent access to it. Sync is git + Discord only.
+Personal side project to improve the quality of shadow's life. Goal: Eliza as the daily driver on a second phone (Pixel 11 Pro) and a companion iOS build, developed locally on the new Mac with the Codex Mac app. No SSH into the Mac, no VPS agent access to it. Sync is git + Discord only.
 
 This folder holds the lane docs and receipts. Nothing in `wakesync/` is upstream-bound; it is deleted from any PR cut for `develop`.
 
 ---
 
-## 0. Not stepping on toes (read before touching anything)
+## 0. What this is, and the boundary
 
-The Alpha Phone program owns the mainline Android/AOSP work right now. Their open issues, owners and dates:
+This is explicitly a **personal side project to improve the quality of shadow's life**: one phone, one agent, fewer apps, the day visible in one place. It is not on any roadmap. Nothing here blocks or depends on other work in the repo, and nothing here should touch work that is mid-flight elsewhere.
 
-| Issue | Owner | Window | Scope |
-|---|---|---|---|
-| #31018 Nitro deployment | Nubs | Sep 14-17 | Alpha enclave agent deployment |
-| #31021 Phone pairing | Nubs | 2d after #31018 | cloud-only APK profile, pairing, auth contract |
-| #31022 Assistant routines | Nubs | 1d after #31021 | scheduler routines, offline delivery |
-| #31023 Pixel AOSP | Shaw | Sep 18-24 | AOSP image on Pixel 10 (11 only if validated) |
-| #31024 SMS and calls | Nubs | 5d | Blooio gateway + native SMS/calls |
-| #31025 Four-phone rollout | Nubs | 2d | provisioning 4 devices |
-| #30844 Android fixes + final build | Nubs | Sep 18, 21 | Cloud APK stability, ConnectionMonitor |
-| #31034 Alpha design and branding | Shaw | | |
-| #31037 Final Alpha Phone QA | Shaw + Nubs | Oct 13-14 | |
+Rules:
 
-Rules that follow from that:
-
-1. **Do not touch** `build:android:cloud` / `android-cloud-debug` (the Play/Alpha thin client), its capability allowlist, `ConnectionMonitor`, pairing, `packages/cloud/**`, Blooio, SMS/dialer code, or anything under `elizaOS/os`. That is all theirs and mid-flight.
+1. **Do not touch** `build:android:cloud` / `android-cloud-debug` (the Play thin client), its capability allowlist, `ConnectionMonitor`, pairing, `packages/cloud/**`, iMessage/SMS gateways, dialer code, or anything under `elizaOS/os`. Those are owned and active elsewhere.
 2. **Our lanes are `build:android` (sideload) and `build:android:launcher`** on a stock Pixel. Everything we add is stripped from the Play lane by the existing lane-strip mechanism in `run-mobile-build.mjs`. `android-cloud-audit` must stay green after every manifest/Java change.
-3. **No flashing until Shaw's #31023 image exists or Graphene posts Pixel 11 support.** We stay on stock + unlocked bootloader. Their AOSP image is what we flash later, not our own.
-4. **Calendar:** Shaw has been in `plugin-calendar` and the calendar UI every day for two weeks (#31003 open). Our calendar work is the **Android native bridge only** (CalendarContract read/write, mirroring `plugin-native-calendar`'s EventKit surface). We do not touch the agent-side calendar planner, sync destinations, or the calendar view.
+3. **No flashing until an AOSP image for the Pixel 11 exists (from the repo's own AOSP track or Graphene).** We stay on stock + unlocked bootloader. We flash an existing image later; we do not build our own.
+4. **Calendar:** `plugin-calendar` (agent planner/sync) and the calendar view are under active development by others. Our calendar work is the **Android native bridge only** (CalendarContract read/write, mirroring `plugin-native-calendar`'s EventKit surface). We do not touch the planner, sync destinations, or the view.
 5. **Everything lands on `sol/main` first.** Upstream PRs are cut per capability, one consolidated PR with tests, as drafts against `develop`. A human merges. No auto-merge, no check weakening, no `gh pr edit` (use `gh api -X PATCH`).
 6. Never `wakesync.dev`. Git identity on the Mac: `Shadow <shadow@shad0w.xyz>`.
 7. Bug fixes need bidirectional proof (test fails on clean `develop`, passes with the fix). Features need device evidence (screenshot / screenrecord / logcat) saved under `wakesync/receipts/`.
@@ -199,7 +187,7 @@ Open the repo at `~/src/eliza` in the Codex Mac app with computer use enabled. G
 - work each workstream on its own `codex/<topic>-<date>` branch cut from `sol/main`
 - write receipts under `wakesync/receipts/` and push the branch
 
-Do **not** let it: merge anything, push to `sol/main` or `develop`, touch the Play/Alpha lane, touch `packages/cloud/**`, or bypass a consent grant with computer use (the grant flow is the product surface; document it).
+Do **not** let it: merge anything, push to `sol/main` or `develop`, touch the Play lane, touch `packages/cloud/**`, or bypass a consent grant with computer use (the grant flow is the product surface; document it).
 
 `scrcpy -s $ANDROID_SERIAL` mirrors the Pixel to the Mac so Codex can see and tap it.
 
@@ -225,7 +213,7 @@ Real vs burner account on the Pixel: real. It's the only way the listener and ca
 - Push `sol/<topic>` / `codex/<topic>` branches. Sol reviews from the VPS, merges to `sol/main`, cuts upstream PRs, runs the rebase cron.
 - Receipts go in `wakesync/receipts/` on the branch. That's how Sol sees device evidence.
 - Blockers, questions, tokens: Discord #cc-eliza.
-- Sol never gets a shell on this Mac. The Mac never gets keys to the VPS. Old Mac keeps the Codex reverse tunnel and Strata; this Mac is Eliza only.
+- Sol never gets a shell on this Mac. The Mac never gets keys to the VPS. Old Mac keeps the Codex reverse tunnel and other work; this Mac is Eliza only.
 
 ---
 
@@ -233,8 +221,8 @@ Real vs burner account on the Pixel: real. It's the only way the listener and ca
 
 New Mac. Reasons:
 
-1. Firewall by construction. Old Mac has the VPS reverse tunnel, Strata credentials and history. Strata is nearing prod; the Eliza personal-device lane pulling in a phone with your real accounts should not share a machine with that. Two machines, two worlds, nothing to leak.
+1. Firewall by construction. Old Mac has the VPS reverse tunnel plus credentials and history for unrelated work that is nearing production; the Eliza personal-device lane pulling in a phone with your real accounts should not share a machine with that. Two machines, two worlds, nothing to leak.
 2. Xcode needs current macOS. The old Mac needs the OS update anyway; not worth blocking on.
 3. Codex computer use on a machine Sol can't reach is the right trust shape for a device that holds your calendar and notifications.
 
-Old Mac stays: Strata, Codex loop tunnel, JJ-side work. New Mac: Eliza, Pixel, iPhone. Never cross-clone.
+Old Mac stays: existing work, Codex loop tunnel. New Mac: Eliza, Pixel, iPhone. Never cross-clone.

@@ -2,7 +2,7 @@
 
 You are Codex running on Shadow's Mac (M5 Pro, 48GB) with computer use. Repo is `~/src/eliza`, branch `sol/main`. Read `wakesync/README.md` first: environment setup, branch model, and the list of areas owned by other people that you must not touch. This file is the work.
 
-Goal of this phase: make the Eliza sideload/launcher build livable as the daily surface on a stock Pixel 11 Pro, with real notifications, real calendar, and a home screen, and get the same surfaces on the iPhone build where iOS allows. The AOSP flash comes later from Shaw's image (#31023); nothing here blocks on it.
+Goal of this phase: make the Eliza sideload/launcher build livable as the daily surface on a stock Pixel 11 Pro, with real notifications, real calendar, and a home screen, and get the same surfaces on the iPhone build where iOS allows. The AOSP flash comes later, from an existing image; nothing here blocks on it.
 
 Read this whole file before doing anything. Then work top to bottom. Every phase ends with a receipt you write to disk. Never report a phase done without the receipt's evidence existing.
 
@@ -13,7 +13,7 @@ Read this whole file before doing anything. Then work top to bottom. Every phase
 - Base branch is `sol/main`, not `develop`. Start every day with `git pull --rebase origin sol/main`. Cut `codex/<topic>-$(date +%Y%m%d)` from it, one per workstream. Rebase, don't merge, when `sol/main` moves.
 - **You push topic branches. You never merge, never push to `sol/main` or `develop`, never open a PR against `develop`.** Sol merges into `sol/main` and cuts the upstream PRs.
 - The real phone is `$ANDROID_SERIAL` (Shadow's Pixel 11 Pro, real Google account). Destructive specs (`lifecycle`, `lifecycle:reboot`, `-wipe-data`, calendar writes) run on the `eliza-pixel-clean` AVD only. Never clear app data or write to the calendar on the real phone unless a step says so.
-- Off limits (mid-flight for the Alpha Phone program, see README §0): `build:android:cloud` / `android-cloud-debug` and the capability allowlist, `ConnectionMonitor`, pairing, `packages/cloud/**`, Blooio, SMS/dialer code, `plugins/plugin-calendar`, the calendar view in `packages/app`, `elizaOS/os`.
+- Off limits (owned and active elsewhere, see README §0): `build:android:cloud` / `android-cloud-debug` and the capability allowlist, `ConnectionMonitor`, pairing, `packages/cloud/**`, Blooio, SMS/dialer code, `plugins/plugin-calendar`, the calendar view in `packages/app`, `elizaOS/os`.
 - Git identity for commits: `Shadow <shadow@shad0w.xyz>`. Never `wakesync.dev`. Verify with `git config user.email` in the checkout before the first commit.
 - **No weakening or skipping CI checks. No production deploys. No Play Store or TestFlight uploads.**
 - Do not touch Telegram adapter files (another contributor owns them). Do not touch `packages/cloud/**` unless a notification feature strictly needs a server-side endpoint, and then keep it to one small, tested change.
@@ -26,7 +26,7 @@ Read this whole file before doing anything. Then work top to bottom. Every phase
 
 ## 1. Repo map (what already exists, so you don't rebuild it)
 
-Shaw and the team have already built most of the Android substrate. Read these before writing code:
+Most of the Android substrate already exists. Read these before writing code:
 
 | Thing | Path |
 |---|---|
@@ -129,7 +129,7 @@ What "done" looks like: the agent can read and (behind a flag) write the phone's
 - Mirror `plugins/plugin-native-calendar` (EventKit) exactly: `checkPermissions`, `requestPermissions`, `listCalendars`, `listEvents({timeMin,timeMax,calendarId?})`, `createEvent`, `updateEvent`, `deleteEvent`, same result shapes (`ok`, `error`, `message`). Read that plugin's `package.json` and Capacitor config first and follow its layout: either an Android platform branch inside it, or a sibling `@elizaos/capacitor-android-calendar`, whichever the existing pattern supports.
 - Android side: `READ_CALENDAR` / `WRITE_CALENDAR` runtime permissions, `CalendarContract.Calendars` + `Events` + `Instances` for expanded recurrences. Attendees read-only (mirror the EventKit limitation note).
 - `ELIZA_ANDROID_CALENDAR_WRITE=0` default: `createEvent`/`updateEvent`/`deleteEvent` return `error: "write_disabled"` until the flag is on. Flip it only after the write tests pass on the AVD.
-- **Do not touch** `plugins/plugin-calendar` (agent planner/sync; Shaw is in it daily), the calendar view in `packages/app`, or sync destinations. This is the native data source only. If the agent side needs a one-line provider registration, keep it to that and call it out in the summary.
+- **Do not touch** `plugins/plugin-calendar` (agent planner/sync, under active development by others), the calendar view in `packages/app`, or sync destinations. This is the native data source only. If the agent side needs a one-line provider registration, keep it to that and call it out in the summary.
 - Tests: JVM unit test for the cursor-to-event mapper; device spec that inserts an event on the `eliza-pixel-clean` AVD via `adb shell content insert --uri content://com.android.calendar/events ...`, then asserts `listEvents` returns it. Write tests on the AVD only, never on the real phone.
 - Receipt: `wakesync/receipts/C4-calendar.md` with the real-phone read screenshot (redact event titles) and the AVD write proof.
 
@@ -145,7 +145,7 @@ A normal APK **cannot replace the keyguard**; that is SystemUI and only the AOSP
 
 Do items 1 and 2. Verify 3 and 4. For each, prove on the real phone (AVD for the destructive parts) with `adb shell input keyevent KEYCODE_SLEEP`, then trigger, then `adb exec-out screencap`. The device spec should assert the activity is visible over keyguard via `adb shell dumpsys window | grep -E "mShowWhenLocked|mDreamingLockscreen|KeyguardController"`.
 
-The real lock-screen takeover (replacing keyguard, boot-to-Eliza with no launcher chooser, pre-granted roles) is the **AOSP system lane** (`build:android:system` + `elizaOS/os`). Write a short `wakesync/receipts/C5-aosp-followups.md` listing exactly which behaviors need the system image; this feeds Shaw's #31023 so the flash phase starts with a checklist.
+The real lock-screen takeover (replacing keyguard, boot-to-Eliza with no launcher chooser, pre-granted roles) is the **AOSP system lane** (`build:android:system` + `elizaOS/os`). Write a short `wakesync/receipts/C5-aosp-followups.md` listing exactly which behaviors need the system image; so the flash phase starts with a checklist.
 
 ### C6. iOS parity (after C1 to C4 are on the Pixel)
 
@@ -184,7 +184,7 @@ Computer-use is for: SDK installers, Android Studio AVD manager, consent dialogs
 - [ ] Branch: C3 launcher app drawer + home re-entry + wallpaper (spec green)
 - [ ] Branch: C4 Android calendar bridge (read on phone, write on AVD, flag default off)
 - [ ] Branch: C5 show-when-locked voice surface + full-screen intent path (evidence over keyguard)
-- [ ] `wakesync/receipts/C5-aosp-followups.md` (the Pixel-flash checklist, feeds #31023)
+- [ ] `wakesync/receipts/C5-aosp-followups.md` (the Pixel-flash checklist)
 - [ ] Branch: C6 iOS parity + `wakesync/receipts/C6-ios.md`
 - [ ] One `wakesync/receipts/<Cn>-summary.md` per branch: what changed, why, how to verify in under 5 minutes, what is verified on the Pixel 11 Pro vs AVD-only. Sol turns these into the upstream PR descriptions.
 
