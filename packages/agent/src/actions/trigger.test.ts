@@ -1282,6 +1282,10 @@ describe("TRIGGER update / delete / toggle — lifecycle ops (#16863)", () => {
     });
     expect(missing?.success).toBe(false);
     expect(missing?.error).toBe("TRIGGER_NOT_FOUND");
+    expect(missing?.data).toMatchObject({
+      error: "TRIGGER_NOT_FOUND",
+      readOnlyOperation: true,
+    });
 
     const noId = await dispatch(runtime, {
       action: "update",
@@ -1289,6 +1293,10 @@ describe("TRIGGER update / delete / toggle — lifecycle ops (#16863)", () => {
     });
     expect(noId?.success).toBe(false);
     expect(noId?.error).toBe("MISSING_TASK_ID");
+    expect(noId?.data).toMatchObject({
+      error: "MISSING_TASK_ID",
+      readOnlyOperation: true,
+    });
     expect(updates).toHaveLength(0);
   });
 
