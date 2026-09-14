@@ -131,6 +131,22 @@ export interface PlannerRuntime {
 	};
 }
 
+/**
+ * Evidence that the executor ran an umbrella call which omitted its
+ * discriminator as the promoted child the umbrella's `inferSubaction` named,
+ * pinning `discriminator: value` into the executed arguments instead of
+ * delegating to the sub-planner. The planner's recorded call keeps its
+ * original arguments; the trajectory's tool stage carries this on the result.
+ */
+export interface InferredSubactionDispatch {
+	/** Promoted child the arguments resolved to, e.g. `MEMORY_CREATE`. */
+	child: string;
+	/** Umbrella discriminator parameter that was pinned, e.g. `action`. */
+	discriminator: string;
+	/** Pinned discriminator value, e.g. `create`. */
+	value: string;
+}
+
 export interface PlannerToolResult {
 	success: boolean;
 	/**
@@ -144,6 +160,8 @@ export interface PlannerToolResult {
 		success: boolean;
 		messageToUser?: string;
 	};
+	/** Set when an umbrella call was dispatched through `inferSubaction`. */
+	inferredSubaction?: InferredSubactionDispatch;
 	/**
 	 * Diagnostic / log-shaped projection of the tool's output. Goes into
 	 * the trajectory and the planner's tool-result message. Used by the

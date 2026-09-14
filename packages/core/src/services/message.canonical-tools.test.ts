@@ -196,9 +196,10 @@ describe("canonical promoted-family planner surface", () => {
 			name: string;
 			description?: string;
 			descriptionSuffix?: string;
-			parameters: JsonSchema & {
+			pins?: Record<string, string>;
+			parameters?: JsonSchema & {
 				parentParameterNames?: string[];
-				propertyOverrides: Record<string, JsonSchema>;
+				propertyOverrides?: Record<string, JsonSchema>;
 			};
 		}> = JSON.parse(tool.description.split("\n").at(-1) ?? "invalid");
 		for (const contract of contracts) {
@@ -206,23 +207,43 @@ describe("canonical promoted-family planner surface", () => {
 			if (!original)
 				throw new Error("Alias action missing from dispatch context");
 			// The alias description extends the umbrella's, so the contract
-			// carries only the suffix; every RECORDS alias accepts the complete
-			// umbrella property list, so the contract omits the names.
+			// carries at most the suffix (create's override blurb; update's
+			// default " — subaction = update" is implied by its pin); every
+			// RECORDS alias accepts the complete umbrella property list, so the
+			// contract omits the names and spells out only its own `required`.
 			expect(contract.description).toBeUndefined();
-			expect(`${actions[0].description}${contract.descriptionSuffix}`).toBe(
-				original.description,
-			);
-			const { parentParameterNames, propertyOverrides, ...outerSchema } =
-				contract.parameters;
+			const pin = Object.values(contract.pins ?? {})[0];
+			const suffix = contract.descriptionSuffix ?? ` — subaction = ${pin}`;
+			expect(`${actions[0].description}${suffix}`).toBe(original.description);
+			const {
+				parentParameterNames,
+				propertyOverrides = {},
+				...outerSchema
+			} = contract.parameters ?? {};
 			expect(parentParameterNames).toBeUndefined();
+			expect(propertyOverrides).toEqual({});
 			const parentSchema = actionToJsonSchema(actions[0]);
 			const schema = {
+				type: "object",
+				required: [],
+				additionalProperties: parentSchema.additionalProperties,
 				...outerSchema,
 				properties: Object.fromEntries(
-					Object.keys(parentSchema.properties).map((name) => [
-						name,
-						propertyOverrides[name] ?? parentSchema.properties[name],
-					]),
+					Object.keys(parentSchema.properties).map((name) => {
+						const parentProperty = parentSchema.properties[name];
+						const pinned = contract.pins?.[name];
+						return [
+							name,
+							pinned === undefined
+								? parentProperty
+								: {
+										...parentProperty,
+										description: `Subaction discriminator (auto-set to "${pinned}" for this virtual; do not change).`,
+										enum: [pinned],
+										default: pinned,
+									},
+						];
+					}),
 				),
 			};
 			expect(schema).toEqual(actionToJsonSchema(original));

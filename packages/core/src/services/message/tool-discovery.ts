@@ -38,17 +38,22 @@ export function createPlannerToolDiscoveryAction(
 		name: DISCOVER_TOOLS_NAME,
 		// Names and children only: the routing hints repeated a 14.9K-character
 		// catalog in every planner round (audit 2026-09-13); a loaded family
-		// carries its complete description on the next round.
+		// carries its complete description on the next round. One line per
+		// family rather than a JSON array: the same names cost ~1.1K fewer
+		// characters on the live owner catalog (2026-09-14, 4,674 -> ~3,570),
+		// the shape the Stage-1 available_actions catalog already uses.
 		description:
 			"Load complete tool schemas from the authorized catalog below when an exposed tool does not cover an intent. " +
 			"Pass one or more exact parent or child names. All authorized operations of each selected family become callable on the next planner round. " +
-			"Discovery does not execute the requested work; continue with the loaded tools. Do not claim a capability is unavailable before checking this catalog.\n" +
-			JSON.stringify(
-				catalog.parents.map((parent) => ({
-					name: parent.name,
-					children: parent.childNames,
-				})),
-			),
+			"Discovery does not execute the requested work; continue with the loaded tools. Do not claim a capability is unavailable before checking this catalog. " +
+			"One family per line as PARENT: child, child (a parent without children stands alone).\n" +
+			catalog.parents
+				.map((parent) =>
+					parent.childNames.length > 0
+						? `${parent.name}: ${parent.childNames.join(", ")}`
+						: parent.name,
+				)
+				.join("\n"),
 		parameters: [
 			{
 				name: "names",

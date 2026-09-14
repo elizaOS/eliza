@@ -1138,8 +1138,9 @@ describe("v5 tiered action surface", () => {
 			} else {
 				expect(tools).not.toContain("UNRELATED");
 				expect(tools).toContain("DISCOVER_TOOLS");
-				expect(availableActionsSection(runtime)).toContain(
-					'"name":"UNRELATED"',
+				// DISCOVER_TOOLS lists one family per line as PARENT: child, child.
+				expect(availableActionsSection(runtime)).toMatch(
+					/(^|\n)UNRELATED(:|\n|$)/,
 				);
 			}
 			expect(tools).not.toContain("MISSING_CAPABILITY");
@@ -1205,8 +1206,8 @@ describe("v5 tiered action surface", () => {
 		expect(tools).not.toContain("VIEWS");
 		expect(tools).not.toContain("MESSAGE");
 		expect(tools).toContain("DISCOVER_TOOLS");
-		expect(availableActionsSection(runtime)).toContain('"name":"VIEWS"');
-		expect(availableActionsSection(runtime)).toContain('"name":"MESSAGE"');
+		expect(availableActionsSection(runtime)).toMatch(/(^|\n)VIEWS(:|\n|$)/);
+		expect(availableActionsSection(runtime)).toMatch(/(^|\n)MESSAGE(:|\n|$)/);
 	});
 
 	it("loads a missing family and executes it through the normal planner and executor", async () => {

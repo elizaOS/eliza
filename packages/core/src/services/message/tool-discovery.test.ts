@@ -43,6 +43,11 @@ describe("planner tool discovery", () => {
 			loaded = selected;
 		});
 		expect(discovery.description).not.toContain("DENIED_CHILD");
+		// One `PARENT: child, child` line per family (a parent without children
+		// stands alone), not a JSON array.
+		expect(discovery.description).toMatch(/^VIEWS$/m);
+		expect(discovery.description).toMatch(/^CALENDAR: EVENTS/m);
+		expect(discovery.description).not.toContain('{"name"');
 		const result = await discovery.handler?.(runtime, message, undefined, {
 			parameters: { names: ["CALENDAR"] },
 		});

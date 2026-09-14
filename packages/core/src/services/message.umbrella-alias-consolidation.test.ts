@@ -22,9 +22,11 @@ const CONTRACTS_MARKER = "Complete alias contracts:";
 interface AliasContract {
 	name: string;
 	descriptionSuffix?: string;
-	parameters: {
+	pins?: Record<string, string>;
+	parameters?: {
+		required?: string[];
 		parentParameterNames?: string[];
-		propertyOverrides: Record<string, { enum?: string[] }>;
+		propertyOverrides?: Record<string, { enum?: string[] }>;
 	};
 }
 
@@ -109,14 +111,18 @@ describe("umbrella alias consolidation on the planner wire", () => {
 			"LEDGER_CREATE",
 			"LEDGER_DELETE",
 		]);
-		expect(contracts[0]?.parameters.propertyOverrides.action?.enum).toEqual([
-			"create",
-		]);
+		// The pinned discriminator is the only property an alias overrides, so
+		// the contract carries `pins` instead of a repeated schema override.
+		expect(contracts[0]?.pins).toEqual({ action: "create" });
+		expect(contracts[0]?.parameters?.propertyOverrides).toBeUndefined();
 		// Every LEDGER alias accepts the complete umbrella property list and
-		// extends its description, so the contract omits the names and carries
-		// only the description suffix.
-		expect(contracts[0]?.parameters.parentParameterNames).toBeUndefined();
-		expect(contracts[0]?.descriptionSuffix).toBe(" — subaction = create");
+		// extends its description with the default subaction blurb, so the
+		// contract omits the names and the suffix; only the alias's own
+		// `required` (the umbrella's `id` without the pinned discriminator)
+		// stays explicit.
+		expect(contracts[0]?.parameters?.parentParameterNames).toBeUndefined();
+		expect(contracts[0]?.parameters?.required).toEqual(["id"]);
+		expect(contracts[0]?.descriptionSuffix).toBeUndefined();
 		// The umbrella schema is rendered once; alias contracts reference its
 		// properties instead of repeating them.
 		expect(occurrences(JSON.stringify(tools), ENTRY_TEXT_DESCRIPTION)).toBe(1);

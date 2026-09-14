@@ -52,9 +52,10 @@ interface AliasContract {
 	name: string;
 	description?: string;
 	descriptionSuffix?: string;
-	parameters: JsonSchema & {
+	pins?: Record<string, string>;
+	parameters?: JsonSchema & {
 		parentParameterNames?: string[];
-		propertyOverrides: Record<string, JsonSchema>;
+		propertyOverrides?: Record<string, JsonSchema>;
 	};
 }
 
@@ -87,6 +88,61 @@ function contractBlockLength(description: string | undefined): number {
 	const start = text.lastIndexOf(CONTRACTS_MARKER);
 	expect(start).toBeGreaterThan(-1);
 	return text.length - start;
+}
+
+/** The pinned discriminator exactly as pinDiscriminatorForVirtual writes it. */
+function pinnedProperty(property: JsonSchema, value: string): JsonSchema {
+	return {
+		...property,
+		description: `Subaction discriminator (auto-set to "${value}" for this virtual; do not change).`,
+		enum: [value],
+		default: value,
+	};
+}
+
+/** Alias description per the contract preamble's defaults. */
+function reconstructAliasDescription(
+	parent: Action,
+	contract: AliasContract,
+): string {
+	if (contract.description !== undefined) return contract.description;
+	const suffix =
+		contract.descriptionSuffix ??
+		` — subaction = ${Object.values(contract.pins ?? {})[0]}`;
+	return `${parent.description}${suffix}`;
+}
+
+/** Alias JSON schema per the contract preamble's defaults. */
+function reconstructAliasSchema(
+	parentSchema: ReturnType<typeof actionToJsonSchema>,
+	contract: AliasContract,
+): JsonSchema {
+	const pins = contract.pins ?? {};
+	const {
+		parentParameterNames,
+		propertyOverrides = {},
+		...outerSchema
+	} = contract.parameters ?? {};
+	const names = parentParameterNames ?? Object.keys(parentSchema.properties);
+	return {
+		type: "object",
+		required: [],
+		additionalProperties: parentSchema.additionalProperties,
+		...outerSchema,
+		properties: Object.fromEntries(
+			names.map((name) => {
+				const parentProperty = parentSchema.properties[name];
+				const pin = pins[name];
+				return [
+					name,
+					propertyOverrides[name] ??
+						(pin === undefined
+							? parentProperty
+							: pinnedProperty(parentProperty, pin)),
+				];
+			}),
+		),
+	};
 }
 
 function occurrences(haystack: string, needle: string): number {
@@ -222,16 +278,16 @@ describe("umbrella children consolidation on the planner wire", () => {
 			TASK_OPS.map((op) => aliasName("TASKS", op)),
 		);
 		for (const [index, contract] of contracts.entries()) {
-			expect(Object.keys(contract.parameters.propertyOverrides)).toEqual([
-				"action",
-			]);
-			expect(contract.parameters.propertyOverrides.action?.enum).toEqual([
-				TASK_OPS[index],
-			]);
+			// The pinned `action` is the only overridden property and every
+			// operand is optional, so the alias differs from the umbrella by its
+			// pin alone: no parameters object at all.
+			expect(contract.pins).toEqual({ action: TASK_OPS[index] });
+			expect(contract.parameters).toBeUndefined();
 			expect(contract.description).toBeUndefined();
-			expect(contract.parameters.parentParameterNames).toBeUndefined();
 		}
-		expect(contracts[0]?.descriptionSuffix).toBe(" — subaction = create");
+		// The default " — subaction = <pin>" blurb is implied by the pin; only
+		// spawn_agent's override blurb is spelled out.
+		expect(contracts[0]?.descriptionSuffix).toBeUndefined();
 		expect(contracts[1]?.descriptionSuffix).toBe(
 			` — ${SPAWN_AGENT_DESCRIPTION}`,
 		);
@@ -301,13 +357,14 @@ describe("umbrella children consolidation on the planner wire", () => {
 			expect(contracts.map((contract) => contract.name)).toEqual(
 				ops.map((op) => aliasName(tool?.name ?? "", op)),
 			);
-			for (const contract of contracts) {
+			for (const [index, contract] of contracts.entries()) {
 				// The umbrella requires the discriminator and each alias pins it, so
-				// nothing the umbrella requires is missing from any alias and the
-				// alias's own `required` stays explicit.
-				expect(contract.parameters.required).toEqual([]);
-				expect(contract.parameters.parentParameterNames).toBeUndefined();
-				expect(contract.descriptionSuffix).toMatch(/^ — subaction = /);
+				// nothing the umbrella requires is missing from any alias; with no
+				// required operand and every property in umbrella order the alias
+				// differs from the umbrella by its pin alone.
+				expect(contract.pins).toEqual({ action: ops[index] });
+				expect(contract.parameters).toBeUndefined();
+				expect(contract.descriptionSuffix).toBeUndefined();
 			}
 		}
 	});
@@ -348,8 +405,9 @@ describe("umbrella children consolidation on the planner wire", () => {
 				canonicalFamilies: true,
 			})[0]?.description,
 		);
-		expect(contracts[0]?.parameters.required).toEqual(["task"]);
-		expect(contracts[2]?.parameters.required).toEqual([]);
+		expect(contracts[0]?.parameters?.required).toEqual(["task"]);
+		// A required list equal to the umbrella's is an omitted default.
+		expect(contracts[2]?.parameters?.required ?? []).toEqual([]);
 	});
 
 	it("dispatches an operation through the umbrella and through a retained alias to the same handler", async () => {
@@ -398,22 +456,12 @@ describe("umbrella children consolidation on the planner wire", () => {
 		for (const contract of aliasContracts(tool?.description)) {
 			const alias = actions.find((action) => action.name === contract.name);
 			if (!alias) throw new Error(`${contract.name} missing from the context`);
-			expect(`${actions[0].description}${contract.descriptionSuffix}`).toBe(
+			expect(reconstructAliasDescription(actions[0], contract)).toBe(
 				alias.description,
 			);
-			const { parentParameterNames, propertyOverrides, ...outerSchema } =
-				contract.parameters;
-			const names =
-				parentParameterNames ?? Object.keys(parentSchema.properties);
-			expect({
-				...outerSchema,
-				properties: Object.fromEntries(
-					names.map((name) => [
-						name,
-						propertyOverrides[name] ?? parentSchema.properties[name],
-					]),
-				),
-			}).toEqual(actionToJsonSchema(alias));
+			expect(reconstructAliasSchema(parentSchema, contract)).toEqual(
+				actionToJsonSchema(alias),
+			);
 		}
 	});
 });
