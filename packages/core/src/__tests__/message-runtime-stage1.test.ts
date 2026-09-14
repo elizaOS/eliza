@@ -922,6 +922,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				expect(text).toContain(rows[0].content.text);
 				if (calls === 2) {
 					expect(text).toContain("context_loaded: history:h1");
+					expect(text.split(rows[0].content.text as string)).toHaveLength(2);
 					expect(text).not.toContain(rows[1].content.text?.trim());
 				}
 				return stage1Response({

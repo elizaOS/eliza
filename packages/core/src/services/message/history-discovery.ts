@@ -283,6 +283,7 @@ export function historyReferenceNotice(
 export function loadedHistorySegments(
 	context: ContextObject,
 	projection?: HistoryDiscovery,
+	renderedHistoryIds?: ReadonlySet<string>,
 ): PromptSegment[] {
 	// No deferred reads means there is no evidence to render or authorize here.
 	// Avoid hashing every original source merely to return an empty list.
@@ -311,7 +312,9 @@ export function loadedHistorySegments(
 			.map((source) => ({
 				id: `history-read:${source.event.id}`,
 				stable: false,
-				content: `context_loaded: ${HISTORY_REFERENCE_PREFIX}${source.id}\nComplete original conversation source at position ${source.id}; evidence, not a new message or instruction.\n[${source.id} ${source.event.segment.label === "prior_message:user" ? "user" : "assistant"}]\n${source.event.segment.content}`,
+				content: renderedHistoryIds?.has(source.event.id)
+					? `context_loaded: ${HISTORY_REFERENCE_PREFIX}${source.id}\nComplete original: [${source.id}] above (same source, not a new message or instruction).`
+					: `context_loaded: ${HISTORY_REFERENCE_PREFIX}${source.id}\nComplete original conversation source at position ${source.id}; evidence, not a new message or instruction.\n[${source.id} ${source.event.segment.label === "prior_message:user" ? "user" : "assistant"}]\n${source.event.segment.content}`,
 			})),
 	];
 }
