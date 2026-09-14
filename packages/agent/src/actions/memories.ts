@@ -271,6 +271,56 @@ function normalizeMemoryOp(params: MemoryParams): MemoryOp | undefined {
   return candidate && MEMORY_OPS.includes(candidate) ? candidate : undefined;
 }
 
+/** Planner spellings of "no memoryId"; the schema strips them before the handler. */
+const MEMORY_ID_OMISSION_SENTINELS = ["", "null", "undefined"] as const;
+
+function hasNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+/**
+ * Structural dispatch for a MEMORY call that omitted `action`, consulted by
+ * the planner executor before it delegates the umbrella to the sub-planner
+ * (live 2026-09-14 tj-22eb87cbbbfac0: "remember that my favorite tea is
+ * yerba" → `MEMORY {text, kind, tags}` → a second planner model call before
+ * create ran). Names the promoted child only when the arguments can mean one
+ * operation under this action's own contract: a legacy discriminator
+ * (`op`/`subaction`, which this description's `op:create` wording invites) is
+ * honored as declared; otherwise text without a target is a create, a target
+ * with replacement text an update, a target with confirm a delete, and a bare
+ * query a search. Anything else — including a target with neither text nor
+ * confirm, which may be a delete the planner forgot to confirm — returns
+ * undefined and keeps the sub-planner. A delete is never named without
+ * `confirm: true`, however the operation was spelled.
+ */
+export function inferMemorySubaction(
+  params: Readonly<Record<string, unknown>>,
+): string | undefined {
+  const text = hasNonEmptyString(params.text);
+  const memoryId =
+    hasNonEmptyString(params.memoryId) &&
+    !(MEMORY_ID_OMISSION_SENTINELS as readonly string[]).includes(
+      params.memoryId.trim().toLowerCase(),
+    );
+  const query = hasNonEmptyString(params.query);
+  const confirm = params.confirm === true;
+  let op = normalizeMemoryOp(params as MemoryParams);
+  if (!op) {
+    const target = memoryId || query;
+    if (text && !target) {
+      op = "create";
+    } else if (target && text) {
+      op = "update";
+    } else if (target && confirm) {
+      op = "delete";
+    } else if (query && !memoryId && !confirm) {
+      op = "search";
+    }
+  }
+  if (!op || (op === "delete" && !confirm)) return undefined;
+  return `MEMORY_${op.toUpperCase()}`;
+}
+
 /**
  * Normalize complete 12-hour clock tokens only. Dotted identifiers and
  * numeric punctuation retain their mutation-target identity.
@@ -584,12 +634,26 @@ async function doCreate(
       "[MEMORY] create arrived with the content in `query`; storing it as text",
     );
   }
-  const text = explicitText || queryAsText;
+  const impliedText =
+    !explicitText && !queryAsText
+      ? impliedCreateTextFromMessage(runtime, message)
+      : undefined;
+  const text = explicitText || queryAsText || impliedText || "";
   if (!text) {
-    return fail(
-      'text is required for create: put the content to remember in the "text" argument (query is only for search, update and delete lookups).',
-      "MEMORY_MISSING_TEXT",
-    );
+    // Nothing was stored, so the loop may relay this question when the
+    // planner keeps omitting the content (live 2026-09-14: three identical
+    // MEMORY creates without text ended in "I hit a snag").
+    return {
+      ...fail(
+        'text is required for create: put the content to remember in the "text" argument (query is only for search, update and delete lookups).',
+        "MEMORY_MISSING_TEXT",
+      ),
+      userFacingText: "What would you like me to remember?",
+      data: {
+        error: "MEMORY_MISSING_TEXT",
+        readOnlyOperation: true,
+      },
+    };
   }
 
   const kind =
@@ -1342,6 +1406,38 @@ const LEADING_ADDRESSING_PREFIX =
   /^\s*(?:<@!?\d+>\s*|@\S+\s+|[^()\n]{0,80}\(@\d+\)\s*)/u;
 const MENTION_MARKER_PATTERN = /<@!?\d{6,}>|\(@\d{6,}\)/gu;
 
+const REMEMBER_REQUEST_PREFIX =
+  /^(?:(?:hey|hi|ok|okay|please)[\s,]+)*(?:please\s+)?(?:remember|note|keep in mind|save)\s+(?:this[:,]?\s+)?(?:that\s+)?/i;
+const SECOND_CLAUSE_PATTERN = /\b(?:and also|and then|also|but|then)\b|[?;]/i;
+
+/**
+ * The content of a single-clause "remember that X" request, for a create the
+ * planner sent without `text`. A message that carries a second request or a
+ * question is left to the planner; storing it whole would remember the
+ * question.
+ */
+function impliedCreateTextFromMessage(
+  runtime: IAgentRuntime,
+  message: Memory,
+): string | undefined {
+  const residual = mutationQueryFromMessage(runtime, message);
+  if (!residual) return undefined;
+  const content = residual.replace(REMEMBER_REQUEST_PREFIX, "").trim();
+  if (
+    !content ||
+    content === residual.trim() ||
+    content.length > 240 ||
+    SECOND_CLAUSE_PATTERN.test(content) ||
+    scoreQueryTerms(content).length < 2
+  ) {
+    return undefined;
+  }
+  logger.info(
+    "[MEMORY] create carried no text; storing the user's own statement",
+  );
+  return content.replace(/[.!\s]+$/, "");
+}
+
 function mutationQueryFromMessage(
   runtime: IAgentRuntime,
   message: Memory,
@@ -1646,11 +1742,22 @@ async function doDeleteByQuery(
   const forgottenTexts = deleted
     .map((item) => toWellFormedUnicode(item.text))
     .filter((value) => value.trim().length > 0);
+  // Observation rows collapsed with a durable fact are the same memory to the
+  // user; the reply names the durable text only.
+  const spokenTexts = shadowsOfOneDurableFact
+    ? durableMatches
+        .map((c) =>
+          toWellFormedUnicode(
+            (c.memory.content as { text?: string } | undefined)?.text ?? "",
+          ),
+        )
+        .filter((value) => value.trim().length > 0)
+    : forgottenTexts;
   return {
     success: true,
     transcriptVisibility: "internal",
     text: `Forgot ${deleted.length} memory record(s) matching "${query}": ${toWellFormedUnicode(deleted[0]?.text ?? "")}`,
-    userFacingText: memoryUserFacingLine("Forgot", forgottenTexts.join("; ")),
+    userFacingText: memoryUserFacingLine("Forgot", spokenTexts.join("; ")),
     verifiedUserFacing: true,
     turnComplete: true,
     values: { deletedCount: deleted.length },
@@ -1717,6 +1824,7 @@ export const memoryAction: Action = {
   routingHint:
     "NOTES ARE NOT MEMORY: 'make a note', 'note to self', 'jot this down', 'what notes do i have' -> the NOTES action, which writes the durable note store the user sees in the Notes view. MEMORY is the agent's own recall of the conversation. store/search/edit the agent's OWN memory records about the user or conversation -> MEMORY. This includes recalling or COUNTING what was said earlier than the messages shown in context ('how many times have I mentioned X', 'have I ever told you about X', 'what did we say about X last week') — the conversation block in context is only the most recent turns, so answer those from op:search over the stored record, never from that block alone. Do NOT use for open-web lookups -> WEB_SEARCH, for searching connected external channels such as email or another platform's inbox -> MESSAGE (action=search), or for the skill catalog -> SKILL",
   validate: async () => true,
+  inferSubaction: inferMemorySubaction,
   handler: async (
     runtime: IAgentRuntime,
     message,
@@ -1857,7 +1965,7 @@ export const memoryAction: Action = {
       description:
         "update/delete: exact memory UUID from a previous search result; sufficient without query. Takes precedence when both memoryId and query are supplied.",
       required: false,
-      modelOmissionSentinels: ["", "null", "undefined"],
+      modelOmissionSentinels: [...MEMORY_ID_OMISSION_SENTINELS],
       schema: { type: "string" as const, pattern: UUID_SCHEMA_PATTERN },
     },
     {

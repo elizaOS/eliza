@@ -452,9 +452,14 @@ describe("MEMORY op:create argument shape", () => {
 
   it("names the field to use when neither text nor query carries content", async () => {
     const { runtime, rows } = makeRuntime();
-    const result = await runCreate(runtime, makeMessage(), {
-      kind: "preference",
-    });
+    const result = await runCreate(
+      runtime,
+      // No statement to fall back on: the message asks, it does not tell.
+      makeMessage({ text: "what should I have for lunch?" }),
+      {
+        kind: "preference",
+      },
+    );
     expect(result.success).toBe(false);
     expect(result.text).toContain('"text" argument');
     expect(rows).toHaveLength(0);
@@ -640,6 +645,42 @@ describe("MEMORY op:delete by query scope", () => {
     expect(rows.map((row) => row.memory.id)).toEqual([keptId]);
     expect(rows.map((row) => row.memory.id)).not.toContain(durableId);
     expect(rows.map((row) => row.memory.id)).not.toContain(echoId);
+    // The reply names the durable memory, not its observation shadow.
+    expect(result.userFacingText).toBe("Forgot: your favorite color is teal.");
+  });
+
+  it("stores the user's own statement when a create arrives without text", async () => {
+    const { runtime, rows } = makeRuntime();
+
+    const result = await runAction(
+      runtime,
+      makeMessage({ text: "remember that my favorite tea is oolong." }),
+      { action: "create", kind: "preference", tags: ["tea"] },
+    );
+
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.memory.content.text).toBe("my favorite tea is oolong");
+  });
+
+  it("asks what to remember when a text-less create arrives with a two-request message", async () => {
+    const { runtime, rows } = makeRuntime();
+
+    const result = await runAction(
+      runtime,
+      makeMessage({
+        text: "remember my dog is named Biscuit and also what day is it today?",
+      }),
+      { action: "create", kind: "fact", tags: ["pet"] },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({
+      error: "MEMORY_MISSING_TEXT",
+      readOnlyOperation: true,
+    });
+    expect(result.userFacingText).toBe("What would you like me to remember?");
+    expect(rows).toHaveLength(0);
   });
 
   it("still asks for an id when two durable facts match the query", async () => {
@@ -1328,7 +1369,11 @@ describe("MEMORY op:create", () => {
 
   it("rejects an empty text", async () => {
     const { runtime, rows } = makeRuntime();
-    const result = await runCreate(runtime, makeMessage(), { text: "   " });
+    const result = await runCreate(
+      runtime,
+      makeMessage({ text: "what should I have for lunch?" }),
+      { text: "   " },
+    );
     expect(result.success).toBe(false);
     expect(rows).toHaveLength(0);
   });
@@ -2575,5 +2620,120 @@ describe("MEMORY results own a verified user-facing line", () => {
     ).toMatch(
       /^That matches one saved memory: "a{159}…"\. Which one should I update\?$/,
     );
+  });
+});
+
+describe("MEMORY inferSubaction (umbrella call without action)", () => {
+  // Live 2026-09-14 tj-22eb87cbbbfac0: "remember that my favorite tea is
+  // yerba" → `MEMORY {text, kind, tags}` with no `action`, routed through the
+  // sub-planner (a second planner model call) before MEMORY_CREATE ran.
+  const MEMORY_ID = "00000000-0000-0000-0000-0000000000f1";
+  const infer = (params: Record<string, unknown>) =>
+    memoryAction.inferSubaction?.(params);
+  const promotedNames = promoteSubactionsToActions(memoryAction)
+    .slice(1)
+    .map((action) => action.name);
+
+  it("names only promoted children of MEMORY", () => {
+    expect(promotedNames).toEqual([
+      "MEMORY_CREATE",
+      "MEMORY_SEARCH",
+      "MEMORY_UPDATE",
+      "MEMORY_DELETE",
+    ]);
+    for (const params of [
+      { text: "t" },
+      { query: "q" },
+      { query: "q", text: "t" },
+      { query: "q", confirm: true },
+    ]) {
+      expect(promotedNames).toContain(infer(params));
+    }
+  });
+
+  it("infers create from text without a target", () => {
+    expect(
+      infer({
+        text: "The user's favorite tea is yerba.",
+        kind: "preference",
+        tags: ["tea", "preference"],
+      }),
+    ).toBe("MEMORY_CREATE");
+    expect(infer({ text: "t" })).toBe("MEMORY_CREATE");
+    // The schema's omission sentinels are not a target.
+    expect(infer({ text: "t", memoryId: "null" })).toBe("MEMORY_CREATE");
+  });
+
+  it("infers search from a bare query", () => {
+    expect(infer({ query: "favorite tea" })).toBe("MEMORY_SEARCH");
+    expect(infer({ query: "favorite tea", type: "facts", limit: 5 })).toBe(
+      "MEMORY_SEARCH",
+    );
+  });
+
+  it("infers update from a target with replacement text", () => {
+    expect(
+      infer({
+        query: "favorite tea",
+        text: "The user's favorite tea is matcha.",
+      }),
+    ).toBe("MEMORY_UPDATE");
+    expect(
+      infer({
+        memoryId: MEMORY_ID,
+        text: "The user's favorite tea is matcha.",
+        confirm: true,
+      }),
+    ).toBe("MEMORY_UPDATE");
+  });
+
+  it("infers delete only from a target with confirm:true and no text", () => {
+    expect(infer({ query: "favorite tea", confirm: true })).toBe(
+      "MEMORY_DELETE",
+    );
+    expect(infer({ memoryId: MEMORY_ID, confirm: true })).toBe("MEMORY_DELETE");
+  });
+
+  it("never names delete without confirm:true, however the op is spelled", () => {
+    const withoutConfirm = [
+      { memoryId: MEMORY_ID },
+      { query: "favorite tea", memoryId: MEMORY_ID },
+      { memoryId: MEMORY_ID, confirm: false },
+      { memoryId: MEMORY_ID, confirm: "true" },
+      { op: "delete", query: "favorite tea" },
+      { subaction: "delete", memoryId: MEMORY_ID },
+      { action: "delete", query: "favorite tea" },
+    ];
+    for (const params of withoutConfirm) {
+      expect(infer(params)).toBeUndefined();
+    }
+  });
+
+  it("honors a declared legacy discriminator", () => {
+    expect(infer({ op: "search", query: "q", confirm: true })).toBe(
+      "MEMORY_SEARCH",
+    );
+    expect(infer({ subaction: "create", text: "t", query: "q" })).toBe(
+      "MEMORY_CREATE",
+    );
+    expect(infer({ op: "delete", memoryId: MEMORY_ID, confirm: true })).toBe(
+      "MEMORY_DELETE",
+    );
+    // An unknown spelling carries no declaration; the structure decides.
+    expect(infer({ op: "bogus", text: "t" })).toBe("MEMORY_CREATE");
+  });
+
+  it("returns undefined when the arguments are ambiguous", () => {
+    for (const params of [
+      {},
+      { kind: "preference" },
+      { confirm: true },
+      { type: "facts" },
+      { text: "   " },
+      { query: "   " },
+      { memoryId: "null", confirm: true },
+    ]) {
+      expect(infer(params)).toBeUndefined();
+    }
   });
 });
