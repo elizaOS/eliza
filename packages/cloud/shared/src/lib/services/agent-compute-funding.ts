@@ -232,7 +232,12 @@ export class AgentComputeFundingService {
     minimumChargeRemaining?: string,
   ) {
     const id = crypto.randomUUID();
-    const hourlyRate = previous?.hourly_rate ?? AGENT_PRICING.RUNNING_HOURLY_RATE.toFixed(6);
+    // Only uninterrupted renewal retains the existing tariff. A new start
+    // uses the current rate disclosed alongside its new activation minimum.
+    const hourlyRate =
+      minimumChargeRemaining !== undefined && previous
+        ? previous.hourly_rate
+        : AGENT_PRICING.RUNNING_HOURLY_RATE.toFixed(6);
     const amount = microsToMoney(
       (moneyToMicros(hourlyRate, "hourlyRate") * BigInt(AGENT_COMPUTE_FUNDING_WINDOW_MS) +
         3_599_999n) /

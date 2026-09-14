@@ -67,6 +67,7 @@ import { statusDotColor } from "../lib/sandbox-status";
 import { type TrackedJob, useJobPoller } from "../lib/use-job-poller";
 import { useSandboxListPoll } from "../lib/use-sandbox-status-poll";
 import { AgentCostBadge } from "./agent-cost-badge";
+import { DedicatedStartConfirmation } from "./dedicated-start-confirmation";
 
 /**
  * Envelope the agent provision/suspend job endpoints return. 202 and 409
@@ -355,6 +356,10 @@ export function ElizaAgentsTable({
   // Deactivate (sleep) needs a billing-transparency confirm before the job is
   // enqueued; the row Moon button stages the id here and the dialog confirms.
   const [deactivateId, setDeactivateId] = useState<string | null>(null);
+  const [startTarget, setStartTarget] = useState<{
+    id: string;
+    action: "provision" | "wake";
+  } | null>(null);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(
     new Set(),
@@ -956,6 +961,24 @@ export function ElizaAgentsTable({
 
   return (
     <TooltipProvider>
+      <DedicatedStartConfirmation
+        open={startTarget !== null}
+        disabled={
+          !!actionInProgress ||
+          (startTarget !== null && poller.isActive(startTarget.id))
+        }
+        onOpenChange={(open) => {
+          if (!open) setStartTarget(null);
+        }}
+        onConfirm={() => {
+          const target = startTarget;
+          setStartTarget(null);
+          if (target)
+            void (target.action === "wake"
+              ? handleWake(target.id)
+              : handleProvision(target.id));
+        }}
+      />
       <DashboardDataList>
         <BulkSelectionBar
           count={selectedIds.size}
@@ -1175,7 +1198,12 @@ export function ElizaAgentsTable({
                                     "cloud.elizaAgentsTable.resumeAgent",
                                     { defaultValue: "Resume agent" },
                                   )}
-                                  onClick={() => handleProvision(sb.id)}
+                                  onClick={() =>
+                                    setStartTarget({
+                                      id: sb.id,
+                                      action: "provision",
+                                    })
+                                  }
                                   disabled={busy}
                                 >
                                   <Play className="size-4" />
@@ -1225,7 +1253,12 @@ export function ElizaAgentsTable({
                                     "cloud.elizaAgentsTable.reactivateAgent",
                                     { defaultValue: "Reactivate agent" },
                                   )}
-                                  onClick={() => handleWake(sb.id)}
+                                  onClick={() =>
+                                    setStartTarget({
+                                      id: sb.id,
+                                      action: "wake",
+                                    })
+                                  }
                                   disabled={busy}
                                 >
                                   <Sun className="size-4" />
@@ -1384,7 +1417,9 @@ export function ElizaAgentsTable({
                           aria-label={t("cloud.elizaAgentsTable.resumeAgent", {
                             defaultValue: "Resume agent",
                           })}
-                          onClick={() => handleProvision(sb.id)}
+                          onClick={() =>
+                            setStartTarget({ id: sb.id, action: "provision" })
+                          }
                           disabled={busy}
                         >
                           <Play className="size-3.5" />
@@ -1417,7 +1452,9 @@ export function ElizaAgentsTable({
                               defaultValue: "Reactivate agent",
                             },
                           )}
-                          onClick={() => handleWake(sb.id)}
+                          onClick={() =>
+                            setStartTarget({ id: sb.id, action: "wake" })
+                          }
                           disabled={busy}
                         >
                           <Sun className="size-3.5" />

@@ -65,6 +65,7 @@ import { apiWithStatus, readCloudBearerToken } from "../../lib/api-client";
 import { useT } from "../lib/i18n";
 import { openWebUIWithPairing } from "../lib/open-web-ui";
 import { useJobPoller } from "../lib/use-job-poller";
+import { DedicatedStartConfirmation } from "./dedicated-start-confirmation";
 
 interface ElizaAgentActionsProps {
   agentId: string;
@@ -107,6 +108,9 @@ export function ElizaAgentActions({
   const [loading, setLoading] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
+  const [startAction, setStartAction] = useState<"resume" | "wake" | null>(
+    null,
+  );
   const [showUpgradeConfirm, setShowUpgradeConfirm] = useState(false);
   const [upgradeQuote, setUpgradeQuote] =
     useState<DedicatedActivationQuote | null>(null);
@@ -632,7 +636,9 @@ export function ElizaAgentActions({
                 variant="default"
                 size="sm"
                 className="min-h-touch"
-                onClick={() => doAction("resume")}
+                onClick={() =>
+                  isDedicated ? setStartAction("resume") : doAction("resume")
+                }
                 disabled={!!loading || isBusy}
               >
                 {loading === "resume" ? (
@@ -651,7 +657,9 @@ export function ElizaAgentActions({
                 variant="default"
                 size="sm"
                 className="min-h-touch"
-                onClick={() => doAction("wake")}
+                onClick={() =>
+                  isDedicated ? setStartAction("wake") : doAction("wake")
+                }
                 disabled={!!loading || isBusy}
                 title={t("cloud.containers.agentActions.reactivateHint", {
                   defaultValue:
@@ -864,6 +872,18 @@ export function ElizaAgentActions({
         )}
       </div>
 
+      <DedicatedStartConfirmation
+        open={startAction !== null}
+        disabled={!!loading || isBusy}
+        onOpenChange={(open) => {
+          if (!open) setStartAction(null);
+        }}
+        onConfirm={() => {
+          const action = startAction;
+          setStartAction(null);
+          if (action) void doAction(action);
+        }}
+      />
       {/* Upgrade confirmation renders the immutable server quote. No compute
           starts until the user confirms that exact quote. */}
       <AlertDialog
