@@ -11,7 +11,7 @@
  * and returns `requiresRestart`.
  */
 import crypto from "node:crypto";
-import type { BigIntStats } from "node:fs";
+import type { BigIntStats, Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
@@ -1495,15 +1495,24 @@ export async function listLocalAgentBackups(
   agentId?: string,
 ): Promise<LocalAgentBackupMetadata[]> {
   const root = localBackupsDir();
-  if (
-    !(await timeInferenceSpan("local-backups:directory-stat", () =>
-      pathExists(root),
-    ))
-  )
-    return [];
-  const entries = await timeInferenceSpan("local-backups:directory-list", () =>
-    fs.readdir(root, { withFileTypes: true }),
-  );
+  let entries: Dirent[];
+  try {
+    entries = await timeInferenceSpan("local-backups:directory-list", () =>
+      fs.readdir(root, { withFileTypes: true }),
+    );
+  } catch (error) {
+    // error-policy:J3 A missing backup directory is an empty listing. Check
+    // existence only after ENOENT so a dangling symlink remains an error,
+    // while ordinary listings need no redundant directory stat.
+    if (
+      (error as NodeJS.ErrnoException).code === "ENOENT" &&
+      !(await timeInferenceSpan("local-backups:directory-stat", () =>
+        pathExists(root),
+      ))
+    )
+      return [];
+    throw error;
+  }
   const backups: LocalAgentBackupMetadata[] = [];
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith(LOCAL_BACKUP_EXTENSION))

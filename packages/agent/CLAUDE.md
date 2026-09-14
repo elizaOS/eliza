@@ -220,3 +220,5 @@ its action handler is active. Direct/background callers and withheld result
 payloads keep standalone rendering. Deferred replies are internal evidence,
 never unavailable status or canned user prose; preserve receipts, clarification
 states, permission rechecks, final-context restoration and reply-only recovery.
+
+Backup metadata listing enumerates an existing directory directly, without an unconditional existence stat. After ENOENT, distinguish an absent directory from a dangling symlink before returning an empty list. Permission and non-directory errors remain errors; per-file identity checks, complete results and encrypted restore behavior remain unchanged.
