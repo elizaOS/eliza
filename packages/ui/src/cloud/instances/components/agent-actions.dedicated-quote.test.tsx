@@ -169,10 +169,41 @@ describe("Dedicated activation quote", () => {
       await waitFor(() => expect(apiWithStatus).toHaveBeenCalledTimes(1));
       expect(apiWithStatus).toHaveBeenCalledWith(
         `/api/v1/eliza/agents/existing-dedicated/${action}`,
-        { method: "POST", json: undefined },
+        {
+          method: "POST",
+          json: undefined,
+          headers: {
+            "X-Eliza-Dedicated-Price":
+              "dedicated-compute-v1:USD:0.150000:0.300000",
+          },
+        },
       );
     },
   );
+
+  it("shows a changed-price refusal without retrying or accepting new terms", async () => {
+    const message =
+      "Refresh the app and review the current Dedicated price before starting. No compute was started.";
+    apiWithStatus.mockResolvedValue({ status: 428, data: { error: message } });
+    renderWithQueryClient(
+      <MemoryRouter>
+        <ElizaAgentActions
+          agentId="existing-dedicated"
+          executionTier="dedicated-always"
+          status="stopped"
+        />
+      </MemoryRouter>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Resume Agent" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Start Dedicated" }),
+    );
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(`Action failed: ${message}`),
+    );
+    expect(apiWithStatus).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
 
   it("loads and renders the server-owned quote before offering activation", async () => {
     apiWithStatus.mockResolvedValueOnce({

@@ -59,3 +59,11 @@ export const AGENT_PRICING = {
   /** No unpaid grace: insufficient funds queue a stop immediately. */
   GRACE_PERIOD_HOURS: 0,
 } as const;
+
+/** Explicit acceptance of the tariff shown before a new paid Dedicated start. */
+export const DEDICATED_COMPUTE_PRICE_HEADER = "X-Eliza-Dedicated-Price";
+
+/** Version the policy as well as its amounts; callers must review changed terms. */
+export function getDedicatedComputePriceAcceptance(): string {
+  return `dedicated-compute-v1:USD:${AGENT_PRICING.RUNNING_HOURLY_RATE.toFixed(6)}:${AGENT_PRICING.MINIMUM_ACTIVATION_CHARGE.toFixed(6)}`;
+}

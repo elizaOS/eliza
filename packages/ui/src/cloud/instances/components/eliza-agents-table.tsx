@@ -10,7 +10,9 @@ import type {
 } from "@elizaos/cloud-sdk";
 import {
   AGENT_PRICING,
+  DEDICATED_COMPUTE_PRICE_HEADER,
   formatHourlyRate,
+  getDedicatedComputePriceAcceptance,
 } from "@elizaos/cloud-sdk/browser-contracts";
 import {
   AlertDialog,
@@ -688,6 +690,10 @@ export function ElizaAgentsTable({
           `/api/v1/eliza/agents/${id}/provision`,
           {
             method: "POST",
+            headers: {
+              [DEDICATED_COMPUTE_PRICE_HEADER]:
+                getDedicatedComputePriceAcceptance(),
+            },
           },
         ),
       optimisticStatus: "provisioning",
@@ -805,6 +811,10 @@ export function ElizaAgentsTable({
       request: () =>
         apiWithStatus<AgentJobEnvelope>(`/api/v1/eliza/agents/${id}/wake`, {
           method: "POST",
+          headers: {
+            [DEDICATED_COMPUTE_PRICE_HEADER]:
+              getDedicatedComputePriceAcceptance(),
+          },
         }),
       optimisticStatus: "provisioning",
       labels: {
