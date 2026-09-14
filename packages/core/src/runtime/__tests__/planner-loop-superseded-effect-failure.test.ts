@@ -1,0 +1,129 @@
+/**
+ * A failed effect receipt loses failure authority over the turn's final
+ * message once the same tool applies the same effect operation later in the
+ * turn, however differently the retry addressed its target. Live 2026-09-14
+ * (tj-af1f161f95eec3): a calendar move failed on a planner-invented event id,
+ * was applied on the fourth call by title, and the user was told it could not
+ * be moved.
+ */
+import { describe, expect, it, vi } from "vitest";
+import type { EffectReceipt } from "../../types/effects";
+import { runPlannerLoop } from "../planner-loop";
+
+const RECEIPT_BASE = {
+	resource: { kind: "calendar.event", id: "evt-1" },
+	artifacts: [],
+	idempotency: { key: null, replayed: false },
+	observedAt: "2026-09-14T06:51:00.000Z",
+} as const;
+
+function failedReceipt(operation: string): EffectReceipt {
+	return {
+		...RECEIPT_BASE,
+		receiptId: `failed:${operation}`,
+		operation,
+		outcome: "failed",
+		failure: {
+			code: "CALENDAR_SERVICE_409",
+			retryable: false,
+			acceptance: "unknown",
+		},
+	};
+}
+
+function appliedReceipt(operation: string): EffectReceipt {
+	return {
+		...RECEIPT_BASE,
+		receiptId: `applied:${operation}`,
+		operation,
+		outcome: "applied",
+		commit: {
+			kind: "durable",
+			id: "evt-1",
+			committedAt: "2026-09-14T06:51:10.000Z",
+		},
+	};
+}
+
+async function runMoveTurn(failedOperation: string): Promise<string> {
+	const useModel = vi
+		.fn()
+		.mockResolvedValueOnce({
+			text: "",
+			toolCalls: [
+				{
+					id: "call-1",
+					name: "CALENDAR",
+					arguments: {
+						action: "update_event",
+						details: { eventId: "primary-00024", start: "2026-09-18T16:00:00" },
+					},
+				},
+			],
+		})
+		.mockResolvedValueOnce({
+			text: "",
+			toolCalls: [
+				{
+					id: "call-2",
+					name: "CALENDAR",
+					arguments: {
+						action: "update_event",
+						query: "barber appointment",
+						details: { start: "2026-09-18T16:00:00" },
+					},
+				},
+			],
+		})
+		.mockResolvedValue({ text: "synthesized failure report" });
+	const executeToolCall = vi
+		.fn()
+		.mockResolvedValueOnce({
+			success: false,
+			text: "Google Calendar is not connected.",
+			effectReceipts: [failedReceipt(failedOperation)],
+			data: { error: "CALENDAR_SERVICE_409" },
+		})
+		.mockResolvedValueOnce({
+			success: true,
+			text: "Updated the event.",
+			effectReceipts: [appliedReceipt("calendar.event.update")],
+		});
+	const evaluate = vi
+		.fn()
+		.mockResolvedValueOnce({
+			success: false,
+			decision: "CONTINUE" as const,
+			thought: "The event id was rejected; retry by title.",
+		})
+		.mockResolvedValueOnce({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "The move applied.",
+			messageToUser: "Moved your barber appointment to Friday at 4pm.",
+		});
+
+	const result = await runPlannerLoop({
+		runtime: { useModel },
+		context: { id: "ctx" },
+		tools: [{ name: "CALENDAR", description: "Calendar operations." }],
+		executeToolCall,
+		evaluate,
+	});
+	expect(executeToolCall).toHaveBeenCalledTimes(2);
+	return result.finalMessage ?? "";
+}
+
+describe("failure authority superseded by a later applied effect", () => {
+	it("lets the applied retry's reply ship when the failed receipt names the same operation", async () => {
+		await expect(runMoveTurn("calendar.event.update")).resolves.toBe(
+			"Moved your barber appointment to Friday at 4pm.",
+		);
+	});
+
+	it("keeps failure authority when the applied receipt is a different operation", async () => {
+		await expect(runMoveTurn("calendar.event.delete")).resolves.not.toBe(
+			"Moved your barber appointment to Friday at 4pm.",
+		);
+	});
+});

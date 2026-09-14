@@ -5399,9 +5399,53 @@ function latestUnresolvedFailedNonTerminalToolStep(
 			unresolvedByOperation.delete(operationKey);
 			resolveShellFailuresSubsumedBy(step, unresolvedByOperation);
 			resolveMalformedCallsSupersededBy(step, unresolvedByOperation);
+			resolveFailedEffectsSupersededBy(step, unresolvedByOperation);
 		}
 	}
 	return [...unresolvedByOperation.values()].at(-1);
+}
+
+/**
+ * A failed effect receipt is superseded once the same tool applies the same
+ * effect operation later in the turn. The operation key carries every
+ * argument, so a retry that reaches the target another way (by title after a
+ * rejected event id) never matches the failed call and the stale failure kept
+ * authority over the final message: live 2026-09-14 a calendar move was
+ * applied on the fourth call and the user was told it could not be moved.
+ * The receipt's namespaced operation ("calendar.event.update") is the
+ * tool's own statement of what it did; an applied receipt for it says the
+ * failed attempt's outcome no longer stands.
+ */
+function resolveFailedEffectsSupersededBy(
+	step: PlannerStep,
+	unresolvedByOperation: Map<string, PlannerStep>,
+): void {
+	const call = step.toolCall;
+	if (!call) return;
+	const applied = new Set(
+		(step.result?.effectReceipts ?? [])
+			.filter((receipt) => receipt.outcome === "applied")
+			.map((receipt) => receipt.operation),
+	);
+	if (applied.size === 0) return;
+	for (const [key, failed] of [...unresolvedByOperation.entries()]) {
+		const failedCall = failed.toolCall;
+		if (
+			!failedCall ||
+			failedCall.name.toUpperCase() !== call.name.toUpperCase()
+		) {
+			continue;
+		}
+		const failedOperations = (failed.result?.effectReceipts ?? [])
+			.filter((receipt) => receipt.outcome === "failed")
+			.map((receipt) => receipt.operation);
+		if (
+			failedOperations.length > 0 &&
+			failedOperations.every((operation) => applied.has(operation))
+		) {
+			unresolvedByOperation.delete(key);
+		}
+	}
 }
 
 const MALFORMED_CALL_FAILURE_PATTERN =
