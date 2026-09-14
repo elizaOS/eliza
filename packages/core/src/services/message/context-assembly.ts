@@ -300,7 +300,9 @@ export async function createV5MessageContextObject(args: {
 			})),
 		);
 		const index = [
-			JSON.stringify(actions.map((action) => action.name)),
+			// This is a name lookup index, not the planner's relevance ranking.
+			// Keep equal authorized sets byte-identical when the active view changes.
+			JSON.stringify(actions.map((action) => action.name).sort()),
 			"All currently authorized action names are listed above. For a known operation, name its exact action in candidateActionNames. When descriptions or aliases are needed to identify or explain a capability, select DISCOVER_TOOLS and a non-simple context: the planner can read complete descriptions with names=[] and load complete schemas by exact name. Do not infer that an unfamiliar name means a capability is absent. Discovery is reference reading, never execution or permission. A conversational reply needs no discovery.",
 		].join("\n");
 		events.push({

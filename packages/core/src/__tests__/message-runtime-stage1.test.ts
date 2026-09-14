@@ -1418,6 +1418,16 @@ describe("runV5MessageRuntimeStage1", () => {
 				replyText: "Hi.",
 				extra: { replyEffectStatus: "none" },
 			}),
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Hello again.",
+				extra: { replyEffectStatus: "none" },
+			}),
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Hi again.",
+				extra: { replyEffectStatus: "none" },
+			}),
 		]);
 		const actions: Action[] = Array.from({ length: 360 }, (_, index) => ({
 			name: `CUSTOM_OPERATION_${index}`,
@@ -1446,6 +1456,46 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(wire).toContain("names=[]");
 		expect(runtime.actions).toEqual(before);
 		expect(result.kind).toBe("direct_reply");
+		expect(request.messages[1].content.startsWith("available_actions:\n")).toBe(
+			true,
+		);
+		// Prefix placement must never turn the catalog into cached authority.
+		actions[0].validate = async () => false;
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "hi again", channelType: ChannelType.DM }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
+		});
+		const next = useModelCalls(runtime)[1][1] as {
+			messages: Array<{ content: string }>;
+		};
+		expect(next.messages[0].content).toBe(request.messages[0].content);
+		expect(next.messages[1].content.startsWith("available_actions:\n")).toBe(
+			true,
+		);
+		expect(next.messages[1].content).not.toContain('"CUSTOM_OPERATION_0"');
+		expect(next.messages[1].content).not.toContain("PRIVATE_OPERATION");
+		for (const action of actions.slice(1))
+			expect(next.messages[1].content).toContain(action.name);
+		const rankedActions = [...runtime.actions].reverse();
+		runtime.actions = rankedActions;
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "hi once more",
+				channelType: ChannelType.DM,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000007" as UUID,
+		});
+		const reordered = useModelCalls(runtime)[2][1] as {
+			messages: Array<{ content: string }>;
+		};
+		expect(reordered.messages[1].content.split("\n\n")[0]).toBe(
+			next.messages[1].content.split("\n\n")[0],
+		);
+		expect(runtime.actions).toEqual(rankedActions);
 	});
 
 	it("reads the complete context catalog before dispatch without changing the stable prefix", async () => {

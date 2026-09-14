@@ -444,7 +444,12 @@ name index when smaller; the planner reads full descriptions, contexts and alias
 through `DISCOVER_TOOLS names=[]`, and loads schemas by exact name. Voice, group
 and coding paths retain the complete inline reference. Discovery checks the current actor, delivery audience, connector
 policy, and action validation under the action's declared routing contexts. This
-catalog is rebuilt for each turn and is not part of the shared prompt cache.
+catalog is rebuilt for each turn. Direct text places its complete current content
+before changing history and provider text so an identical authorized catalog can
+reuse the model's prefix cache. It remains a dynamic segment, outside the system
+prefix; role, availability and registration changes still rebuild it normally.
+The names-only index sorts complete names consistently; the planner's ranked
+action list and complete reference retain their original order.
 The planner then receives native tools with parameter schemas and checks
 authorization again before executing; discovering an action does not execute it.
 
