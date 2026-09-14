@@ -86,6 +86,54 @@ describe("runDeploy", () => {
     );
   });
 
+  it("reports method, route, and status when a proxy answers with an HTML error page", async () => {
+    process.env.ELIZAOS_CLOUD_API_KEY = "eliza_test_key";
+    process.env.ELIZA_CLOUD_API_BASE_URL = "https://cloud.example.test/api/v1";
+    const html =
+      "<html><head><title>502 Bad Gateway</title></head><body><h1>502 Bad Gateway</h1></body></html>";
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 502,
+      text: vi.fn().mockResolvedValue(html),
+    } as unknown as Response) as unknown as typeof fetch;
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const code = await runDeploy({ appId: "app-1" });
+
+    expect(code).toBe(1);
+    const printed = errorSpy.mock.calls
+      .map((call) => String(call[0]))
+      .join("\n");
+    expect(printed).toContain("POST /apps/app-1/deploy failed (502)");
+    expect(printed).toContain("502 Bad Gateway");
+    expect(printed).not.toMatch(/Unexpected token|SyntaxError|JSON/);
+  });
+
+  it("reports a non-JSON success body with its status instead of a parser error", async () => {
+    process.env.ELIZAOS_CLOUD_API_KEY = "eliza_test_key";
+    process.env.ELIZA_CLOUD_API_BASE_URL = "https://cloud.example.test/api/v1";
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: vi.fn().mockResolvedValue("<!doctype html><title>Sign in</title>"),
+    } as unknown as Response) as unknown as typeof fetch;
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const code = await runDeploy({ appId: "app-1" });
+
+    expect(code).toBe(1);
+    const printed = errorSpy.mock.calls
+      .map((call) => String(call[0]))
+      .join("\n");
+    expect(printed).toContain(
+      "POST /apps/app-1/deploy returned 200 with a non-JSON body",
+    );
+    expect(printed).toContain("Sign in");
+    expect(printed).not.toMatch(/Unexpected token|SyntaxError/);
+  });
+
   it.each(["-1", "1.5", "2147483648"])(
     "rejects malformed poll interval %s before any network call",
     async (interval) => {
