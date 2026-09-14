@@ -652,6 +652,19 @@ export function collectPlannerTools(
 			const parentSchema = normalizeActionJsonSchema(parent);
 			const parentPropertyNames = Object.keys(parentSchema.properties ?? {});
 			const parentStrict = parent.toolSchemaStrict ?? true;
+			// Aliases promoted from an earlier umbrella description keep it as
+			// their common lead after the umbrella's own description changed
+			// (MESSAGE, live 2026-09-14: 27 aliases each restated the same
+			// 760-character base description — 17.7K of a 25K-character contract
+			// block on every planner round that exposed the family). Such a lead
+			// is stated once; each alias carries only its remainder as
+			// `descriptionTail`, or nothing when the remainder is the default
+			// blurb.
+			const sharedAliasPreamble = sharedDescriptionPreamble(
+				aliases
+					.filter((alias) => !alias.description.startsWith(parent.description))
+					.map((alias) => alias.description),
+			);
 			const aliasContracts = aliases.map((alias) => {
 				const {
 					properties = {},
@@ -671,6 +684,10 @@ export function collectPlannerTools(
 				const extendsParentDescription = alias.description.startsWith(
 					parent.description,
 				);
+				const extendsSharedPreamble =
+					!extendsParentDescription &&
+					sharedAliasPreamble !== undefined &&
+					alias.description.startsWith(sharedAliasPreamble);
 				// An alias accepting every umbrella property in order (no
 				// `subactions` applicability lists: TASKS, CONTACT, DATABASE)
 				// repeated the complete name list per alias (TASKS: 56 names × 14
@@ -707,6 +724,10 @@ export function collectPlannerTools(
 				const suffix = extendsParentDescription
 					? alias.description.slice(parent.description.length)
 					: undefined;
+				const tail =
+					extendsSharedPreamble && sharedAliasPreamble !== undefined
+						? alias.description.slice(sharedAliasPreamble.length)
+						: undefined;
 				const parameters = {
 					...schema,
 					...(schemaType === "object" ? {} : { type: schemaType }),
@@ -723,11 +744,15 @@ export function collectPlannerTools(
 				};
 				return {
 					name: alias.name,
-					...(suffix === undefined
-						? { description: alias.description }
-						: suffix === defaultSuffix
+					...(suffix !== undefined
+						? suffix === defaultSuffix
 							? {}
-							: { descriptionSuffix: suffix }),
+							: { descriptionSuffix: suffix }
+						: tail !== undefined
+							? tail === defaultSuffix
+								? {}
+								: { descriptionTail: tail }
+							: { description: alias.description }),
 					routingHint: alias.routingHint,
 					...((alias.toolSchemaStrict ?? true) === parentStrict
 						? {}
@@ -736,7 +761,11 @@ export function collectPlannerTools(
 					...(Object.keys(parameters).length > 0 ? { parameters } : {}),
 				};
 			});
-			parentTool.description += `\nGenerated aliases represented by this umbrella: call this tool using the alias's pinned discriminator. Defaults for every alias unless its contract says otherwise: pins[name]=value pins that property of this tool to value (enum [value], default value, description 'Subaction discriminator (auto-set to "value" for this virtual; do not change).'); the alias description is this tool's description + " — subaction = value" (descriptionSuffix appends verbatim instead; description replaces it); the alias takes every property of this tool in order, including descriptions and defaults (parentParameterNames lists the exact subset; propertyOverrides replaces only differing properties); type object, nothing required, and this tool's strict and additionalProperties. Complete alias contracts:\n${JSON.stringify(aliasContracts)}`;
+			const preambleNote =
+				sharedAliasPreamble !== undefined
+					? ` Aliases carrying descriptionTail (or neither description field) are described by this shared preamble followed by the tail (or by the default " — subaction = value"): ${JSON.stringify(sharedAliasPreamble)}.`
+					: "";
+			parentTool.description += `\nGenerated aliases represented by this umbrella: call this tool using the alias's pinned discriminator. Defaults for every alias unless its contract says otherwise: pins[name]=value pins that property of this tool to value (enum [value], default value, description 'Subaction discriminator (auto-set to "value" for this virtual; do not change).'); the alias description is this tool's description + " — subaction = value" (descriptionSuffix appends verbatim instead; description replaces it); the alias takes every property of this tool in order, including descriptions and defaults (parentParameterNames lists the exact subset; propertyOverrides replaces only differing properties); type object, nothing required, and this tool's strict and additionalProperties.${preambleNote} Complete alias contracts:\n${JSON.stringify(aliasContracts)}`;
 		}
 	}
 	const terminalNames = new Set(
@@ -752,6 +781,31 @@ export function collectPlannerTools(
 		),
 		...CORE_PLANNER_TERMINALS,
 	];
+}
+
+/** Word-boundary common lead of two or more texts when it is long enough to be worth stating once. */
+export function sharedDescriptionPreamble(
+	texts: readonly string[],
+): string | undefined {
+	if (texts.length < 2) return undefined;
+	const [first, ...rest] = texts;
+	if (first === undefined) return undefined;
+	let end = first.length;
+	for (const text of rest) {
+		let index = 0;
+		while (index < end && index < text.length && first[index] === text[index]) {
+			index++;
+		}
+		end = index;
+	}
+	const boundary = first.slice(0, end).search(/[^\s]*$/);
+	// The default " — subaction = value" blurb shares its lead across aliases;
+	// keep it out of the preamble so each alias's tail stays the whole blurb.
+	const preamble = first
+		.slice(0, boundary)
+		.replace(/\s*—(?:\s*subaction(?:\s*=)?)?\s*$/, "")
+		.trimEnd();
+	return preamble.length >= 80 ? preamble : undefined;
 }
 
 /**

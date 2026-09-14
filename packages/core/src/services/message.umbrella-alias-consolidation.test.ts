@@ -21,6 +21,8 @@ const CONTRACTS_MARKER = "Complete alias contracts:";
 
 interface AliasContract {
 	name: string;
+	description?: string;
+	descriptionTail?: string;
 	descriptionSuffix?: string;
 	pins?: Record<string, string>;
 	parameters?: {
@@ -200,5 +202,36 @@ describe("umbrella alias consolidation on the planner wire", () => {
 			"STOP",
 		]);
 		expect(collectCanonicalPlannerActions(actions)).toEqual(actions);
+	});
+
+	it("states a preamble shared by aliases once when the umbrella's own description moved on (live: MESSAGE, 27 × 760 chars)", () => {
+		const actions = ledgerFamily();
+		const parent = actions[0];
+		if (!parent) throw new Error("no parent");
+		const base = parent.description;
+		const preamble = `${"Addressed ledger action with a long authored lead that every subaction repeats verbatim. ".repeat(3)}Public feed publishing uses POST.`;
+		// The virtuals were promoted from `preamble`; the umbrella's description
+		// was then replaced by routing text, so no alias extends it any more.
+		for (const action of actions.slice(1)) {
+			action.description = action.description.replace(base, preamble);
+		}
+		parent.description =
+			"Routing text for the ledger family; do NOT use for notes.";
+		const tools = collectPlannerTools(contextFor(actions), undefined, {
+			canonicalFamilies: true,
+		});
+		const umbrella = tools[0];
+		const description = umbrella?.description ?? "";
+		expect(occurrences(description, preamble)).toBe(1);
+		const contracts = aliasContracts(description);
+		expect(contracts.map((contract) => contract.name)).toEqual([
+			"LEDGER_CREATE",
+			"LEDGER_DELETE",
+		]);
+		// The remainder of each alias description is the default blurb, so the
+		// contract carries neither description field.
+		expect(contracts[0]?.description).toBeUndefined();
+		expect(contracts[0]?.descriptionTail).toBeUndefined();
+		expect(contracts[0]?.descriptionSuffix).toBeUndefined();
 	});
 });
