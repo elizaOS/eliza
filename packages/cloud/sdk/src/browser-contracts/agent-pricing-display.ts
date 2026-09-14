@@ -22,9 +22,10 @@ export function formatUSD(amount: number, decimals = 2): string {
   return `$${amount.toFixed(decimals)}`;
 }
 
-/** Format hourly rate as "$X.XX/hr". */
+/** Keep fractional cents visible, up to the billing ledger's six-decimal precision. */
 export function formatHourlyRate(rate: number): string {
-  return `${formatUSD(rate)}/hr`;
+  const amount = rate.toFixed(6).replace(/(\.\d{2}.*?)0+$/, "$1");
+  return `$${amount}/hr`;
 }
 
 /** Format monthly estimate as "~$X.XX/mo". */
