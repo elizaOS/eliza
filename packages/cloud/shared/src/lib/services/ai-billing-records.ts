@@ -5,13 +5,21 @@ import {
   aiBillingRecordsRepository,
   type NewAiBillingRecord,
 } from "../../db/repositories/ai-billing-records";
+import { getProviderFromModel } from "../pricing";
 import type { BillingContext, BillingResult } from "./ai-billing";
 import type { CreditReconciliationResult } from "./credits";
 
 export interface RecordAiBillingInput {
   context: BillingContext;
   billing: BillingResult;
-  usageRecord: UsageRecord;
+  /**
+   * The usage-analytics row, or `null` when its insert failed. Credits are
+   * settled before analytics runs, so a null here must still produce a ledger
+   * row; otherwise the charge is invisible and unreconcilable (#31112).
+   */
+  usageRecord: UsageRecord | null;
+  /** Why `usageRecord` is null; stored in the row's metadata. */
+  usageRecordError?: string;
   idempotencyKey: string;
   reconciliation: CreditReconciliationResult | null;
 }
@@ -26,9 +34,14 @@ function totalLedgerAmount(
 
 export class AiBillingRecordsService {
   async record(input: RecordAiBillingInput): Promise<AiBillingRecord> {
-    const { context, billing, usageRecord, idempotencyKey, reconciliation } = input;
+    const { context, billing, usageRecord, usageRecordError, idempotencyKey, reconciliation } =
+      input;
     const metadata = {
       ...(context.metadata ?? {}),
+      usageRecordStatus: usageRecord ? "recorded" : "unavailable",
+      ...(usageRecord
+        ? {}
+        : { usageRecordError: usageRecordError ?? "usage analytics insert failed" }),
       baseInputCost: billing.baseInputCost,
       baseOutputCost: billing.baseOutputCost,
       baseTotalCost: billing.baseTotalCost,
@@ -45,12 +58,12 @@ export class AiBillingRecordsService {
     const record: NewAiBillingRecord = {
       organization_id: context.organizationId,
       user_id: context.userId,
-      usage_record_id: usageRecord.id,
+      usage_record_id: usageRecord?.id ?? null,
       reservation_transaction_id: reconciliation?.reservationTransactionId ?? null,
       settlement_transaction_ids: reconciliation?.settlementTransactionIds ?? [],
       idempotency_key: idempotencyKey,
       request_id: context.requestId ?? null,
-      provider: context.provider ?? usageRecord.provider,
+      provider: context.provider ?? usageRecord?.provider ?? getProviderFromModel(context.model),
       model: context.model,
       billing_source: context.billingSource ?? null,
       pricing_snapshot_ids: context.pricingSnapshotId ? [context.pricingSnapshotId] : [],

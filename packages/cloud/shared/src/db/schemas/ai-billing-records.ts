@@ -31,9 +31,12 @@ export const aiBillingRecords = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
     user_id: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
-    usage_record_id: uuid("usage_record_id")
-      .notNull()
-      .references(() => usageRecords.id, { onDelete: "cascade" }),
+    // Null when the usage-analytics insert failed after credits were already
+    // settled: the ledger row must still exist so the charge is visible and
+    // reconcilable (#31112). `metadata.usageRecordStatus` says why it is null.
+    usage_record_id: uuid("usage_record_id").references(() => usageRecords.id, {
+      onDelete: "cascade",
+    }),
     reservation_transaction_id: uuid("reservation_transaction_id").references(
       () => creditTransactions.id,
       { onDelete: "set null" },
