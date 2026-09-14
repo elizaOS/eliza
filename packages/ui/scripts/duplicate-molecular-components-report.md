@@ -88,7 +88,7 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 
 - `TelegramBotSetupPanel` in `packages/ui/src/components/connectors/TelegramBotSetupPanel.tsx:35`
 - `ReleaseNotesSection` in `packages/ui/src/components/release-center/sections.tsx:241`
-- `FamilyDeletionPanel` in `plugins/plugin-personal-assistant/src/components/family-operations/FamilyDeletionPanel.tsx:28`
+- `FamilyDeletionPanel` in `plugins/plugin-personal-assistant/src/components/family-operations/FamilyDeletionPanel.tsx:29`
 - Fingerprint: `sha256:7c58e0f8693e13ed13c204e2cd438118f008bca8e594d9a96dc8c59e82a56648`
 - Decision: **distinct-domain-compositions**. Telegram setup validates connector credentials and establishes a session. Release notes configure and open a native browser window. Family deletion binds owner confirmation to a reviewed snapshot and recovers durable deletion jobs. These distinct domain lifecycles compose the canonical Button and Input primitives.
 
