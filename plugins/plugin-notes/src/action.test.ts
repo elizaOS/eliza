@@ -109,6 +109,64 @@ function execute(
 }
 
 describe("promoted Notes execution", () => {
+  it("accepts the planner alias spellings the handler documents (#31114)", async () => {
+    // Before the aliases were declared, every one of these calls was rejected
+    // by the core validator with "Unexpected argument" before the handler ran.
+    const runtime = await executorHarness();
+    const created = await execute(runtime, {
+      name: "NOTES_CREATE",
+      params: { text: "Alias check\noriginal body" },
+    });
+    expect(created).toMatchObject({
+      success: true,
+      data: {
+        op: "create",
+        note: { title: "Alias check", body: "original body" },
+      },
+    });
+
+    const listed = await execute(runtime, {
+      name: "NOTES_LIST",
+      params: { query: "alias" },
+    });
+    expect(listed).toMatchObject({
+      success: true,
+      data: { count: 1, filterApplied: true, topic: "alias" },
+    });
+
+    const updated = await execute(runtime, {
+      name: "NOTES_UPDATE",
+      params: { title: "Alias check", newText: "Alias check\nupdated body" },
+    });
+    expect(updated).toMatchObject({
+      success: true,
+      data: {
+        op: "update",
+        note: { title: "Alias check", body: "updated body" },
+      },
+    });
+
+    const umbrella = await execute(runtime, {
+      name: "NOTES",
+      params: { action: "create", note: "Second note" },
+    });
+    expect(umbrella).toMatchObject({
+      success: true,
+      data: { op: "create", note: { title: "Second note" } },
+    });
+
+    // Core never lets an alias clobber an explicit canonical value: when both
+    // arrive, the alias stays undeclared and the call is rejected as before.
+    const conflict = await execute(runtime, {
+      name: "NOTES_LIST",
+      params: { content: "second", query: "alias" },
+    });
+    expect(conflict).toMatchObject({
+      success: false,
+      data: { invalidParameterNames: ["query"] },
+    });
+  });
+
   it("creates, lists, updates, and deletes through the registered children", async () => {
     const runtime = await executorHarness();
     const created = await execute(runtime, {

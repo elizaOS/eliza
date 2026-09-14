@@ -301,6 +301,11 @@ export const notesAction: Action = {
         "For create, the complete new note: title on the first line and body on subsequent lines. Copy an explicit user title byte-for-byte, including spaces, capitalization, punctuation, and alphanumeric codes, even when the body is recalled from earlier conversation or generated. Do not reformat the title or substitute the spelling or spacing of a similar prior note. Preserve an explicitly supplied body exactly. Put a newline between title and body; do not join them with a dash into one title. Prefer this single field and omit body. Alternatively, pass only the exact title in content and the requested body in body. For update/delete, this identifies the EXISTING note, not its replacement. On list, pass only a requested topic to filter note text. Omit it for all notes, counts, or recency questions without a topic; use the returned createdAt/updatedAt timestamps to compare recency, not a text filter such as 'most recently updated'.",
       required: false,
       requiredForSubactions: ["create", "update", "delete"],
+      // The handler accepts these spellings as fallbacks for `content`, but
+      // core's validator rejects any undeclared key before the handler runs, so
+      // they must be declared here or a planner that uses them burns a round
+      // on "Unexpected argument" and saves nothing (#31114).
+      aliases: ["text", "note", "title", "query"],
       // Strict providers may serialize an omitted optional string as "". The
       // empty string is never valid note content (minLength is 1), so normalize
       // that provider sentinel back to omission before schema validation. This
@@ -315,6 +320,7 @@ export const notesAction: Action = {
         "For update, COMPLETE replacement note content: first line is the label, remaining lines are the body. To edit only the body, include the unchanged label followed by a newline and the new body. Preserve unedited content; list the matching note first if unknown. For create, OMIT this field when content already holds the full note. If content holds ONLY a title, body may contain ONLY the requested body, never repeat the title.",
       required: false,
       requiredForSubactions: ["update"],
+      aliases: ["newText", "replacement"],
       schema: { type: "string" },
     },
   ],
