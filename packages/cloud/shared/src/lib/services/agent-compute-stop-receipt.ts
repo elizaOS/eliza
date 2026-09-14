@@ -17,6 +17,7 @@ const receiptSchema = z.object({
   bootId: z.uuid(),
   expired: z.literal(true),
   stoppedAtMs: z.number().int().positive().safe(),
+  startedAtMs: z.number().int().positive().safe().nullable().optional(),
 });
 
 export type DockerComputeStopReceipt = z.infer<typeof receiptSchema>;

@@ -145,6 +145,15 @@ export async function settleStoppedAgentComputeInTransaction(
   );
   if (agent.last_billed_at && agent.last_billed_at.getTime() > window.period_start.getTime())
     changed();
+  if (receipt.startedAtMs && cutoff > window.period_start) {
+    const { recordFundedComputeStartInTransaction } = await import("./agent-compute-start");
+    await recordFundedComputeStartInTransaction(
+      tx,
+      window,
+      identity.lifecycleRevision,
+      receipt.startedAtMs,
+    );
+  }
   const meter = await settleComputeRateSegments(tx, {
     organizationId: identity.organizationId,
     workloadKind: "agent",

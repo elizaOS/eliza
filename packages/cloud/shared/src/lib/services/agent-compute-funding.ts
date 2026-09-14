@@ -1,7 +1,7 @@
 /** Reserves Dedicated runtime funds under lifecycle authority before provider work, and binds them to one exact container. */
 
 import { ElizaError } from "@elizaos/core";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { readPostLockDatabaseNow } from "../../db/repositories/primary-database-clock";
 import {
@@ -46,7 +46,7 @@ function reject(code: string, message: string, identity: FundingAgentIdentity): 
 async function lockFundingAgent(
   tx: DbTransaction,
   identity: FundingAgentIdentity,
-  statuses: readonly ("provisioning" | "running")[],
+  statuses: readonly ("provisioning" | "running" | "stopped")[],
 ) {
   const [agent] = await tx
     .select({
@@ -111,6 +111,68 @@ async function lockFundingAgent(
 }
 
 export class AgentComputeFundingService {
+  /** A retained container resumes only from its reconciled stop, or replays the same committed successor. */
+  async reserveRetainedResumeInTransaction(tx: DbTransaction, identity: FundingAgentIdentity) {
+    const agent = await lockFundingAgent(tx, identity, ["stopped", "provisioning"]);
+    const [latest] = await tx
+      .select()
+      .from(agentComputeFunding)
+      .where(
+        and(
+          eq(agentComputeFunding.agent_id, identity.agentId),
+          eq(agentComputeFunding.organization_id, identity.organizationId),
+        ),
+      )
+      .orderBy(desc(agentComputeFunding.period_start), desc(agentComputeFunding.id))
+      .limit(1)
+      .for("update");
+    if (!latest) return null;
+    if (!latest.provider_container_id || latest.provider_node_id !== agent.node_id) {
+      reject(
+        AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED,
+        "Retained Dedicated provider changed",
+        identity,
+      );
+    }
+    if (latest.settled_at === null) {
+      const [previous] = latest.previous_funding_id
+        ? await tx
+            .select()
+            .from(agentComputeFunding)
+            .where(
+              and(
+                eq(agentComputeFunding.id, latest.previous_funding_id),
+                eq(agentComputeFunding.agent_id, identity.agentId),
+                eq(agentComputeFunding.organization_id, identity.organizationId),
+              ),
+            )
+            .limit(1)
+        : [];
+      if (!previous?.provider_stop_receipt || agent.status !== "provisioning") {
+        reject(
+          AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED,
+          "Dedicated resume requires a reconciled predecessor",
+          identity,
+        );
+      }
+      await this.readBoundWindowInTransaction(tx, {
+        ...identity,
+        fundingId: latest.id,
+        nodeId: latest.provider_node_id!,
+        containerId: latest.provider_container_id,
+      });
+      return { window: latest, replayed: true, purchasedCreditDebited: false };
+    }
+    if (!latest.provider_stop_receipt || agent.status !== "stopped") {
+      reject(
+        AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED,
+        "Dedicated resume requires a verified stop",
+        identity,
+      );
+    }
+    return this.createWindowInTransaction(tx, identity, await readPostLockDatabaseNow(tx), latest);
+  }
+
   /** The caller commits this reservation with provisioning admission, then invalidates credit caches if a cash debit occurred. */
   async reserveInTransaction(tx: DbTransaction, identity: FundingAgentIdentity) {
     await lockFundingAgent(tx, identity, ["provisioning"]);
