@@ -327,17 +327,26 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 				],
 			};
 		}
-		// Resolve a supplied structured alias through the same vocabulary as
+		// Resolve a supplied structured ID or alias through the same vocabulary as
 		// VIEWS, then recheck the fresh authorized catalog. Never infer intent
 		// from user text or accept an unavailable/private/developer-only target.
 		const stagedViewId = intent?.viewId;
 		if (intent && !catalog.some((view) => view.id === stagedViewId)) {
-			const canonicalTarget = resolveCanonicalViewTarget(intent.viewId);
+			const normalizedTarget = intent.viewId.toLowerCase();
+			const matchingIds = catalog.filter(
+				(view) => view.id.toLowerCase() === normalizedTarget,
+			);
+			const canonicalViewId =
+				matchingIds.length === 1
+					? matchingIds[0].id
+					: matchingIds.length === 0
+						? resolveCanonicalViewTarget(intent.viewId)?.viewId
+						: undefined;
 			if (
-				canonicalTarget &&
-				catalog.some((view) => view.id === canonicalTarget.viewId)
+				canonicalViewId &&
+				catalog.some((view) => view.id === canonicalViewId)
 			) {
-				intent = { ...intent, viewId: canonicalTarget.viewId };
+				intent = { ...intent, viewId: canonicalViewId };
 			}
 		}
 		if (

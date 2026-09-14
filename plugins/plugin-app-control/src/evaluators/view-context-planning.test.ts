@@ -704,18 +704,24 @@ describe("same-turn contextual navigation", () => {
 			]);
 		},
 	);
-	it.each(["home", "Home", "chat"])(
-		"reuses a model-selected %s target through the canonical catalog alias without another call",
-		async (viewId) => {
+	it.each([
+		{ viewId: "home", id: "chat", label: "Messages" },
+		{ viewId: "Home", id: "chat", label: "Messages" },
+		{ viewId: "chat", id: "chat", label: "Messages" },
+		{ viewId: "Browser", id: "browser", label: "Browser" },
+		{ viewId: "Custom-Panel", id: "custom-panel", label: "Weather radar" },
+	])(
+		"reuses a model-selected $viewId target through the authorized catalog without another call",
+		async ({ viewId, id, label }) => {
 			extraViews = [
 				{
-					id: "chat",
-					label: "Messages",
+					id,
+					label,
 					pluginName: "builtin",
 					available: true,
 				},
 			];
-			const text = "Go Home without changing any notes or calendar events";
+			const text = `Open ${viewId} without changing any notes or calendar events`;
 			const ctx = context(text, {
 				disposition: "none",
 				reason: "must not run",
@@ -735,8 +741,58 @@ describe("same-turn contextual navigation", () => {
 				"VIEWS",
 			]);
 			expect(ctx.messageHandler.plan.contextSlices?.join("\n")).toContain(
-				'"viewId":"chat"',
+				`"viewId":"${id}"`,
 			);
+		},
+	);
+	it.each<{ catalog: ViewSummary[] }>([
+		{
+			catalog: [{ id: "browser", label: "Browser", available: false }],
+		},
+		{
+			catalog: [
+				{
+					id: "browser",
+					label: "Browser",
+					available: true,
+					developerOnly: true,
+				},
+			],
+		},
+		{
+			catalog: [
+				{
+					id: "browser",
+					label: "Private Browser",
+					available: true,
+					roleGate: { minRole: "OWNER" },
+				},
+			],
+		},
+		{
+			catalog: [
+				{ id: "browser", label: "First browser", available: true },
+				{ id: "BROWSER", label: "Second browser", available: true },
+			],
+		},
+	])(
+		"retains classification for unavailable or ambiguous folded IDs: %j",
+		async ({ catalog }) => {
+			extraViews = catalog.map((view) => ({ ...view, pluginName: "fixture" }));
+			const ctx = context("Open Browser", {
+				disposition: "none",
+				reason: "No unambiguous authorized destination",
+			});
+			const result = await runWithField(ctx, {
+				disposition: "requested",
+				viewId: "Browser",
+				reason: "requested",
+			});
+			expect(result.errors).toEqual([]);
+			expect(result.navigationBlock).toBe("forbidden");
+			expect(prompts).toHaveLength(1);
+			expect(prompts[0]).not.toContain("Private Browser");
+			expect(ctx.messageHandler.plan.candidateActions).toEqual(["CALENDAR"]);
 		},
 	);
 	it.each<{ catalog: ViewSummary[] }>([
