@@ -570,9 +570,14 @@ export async function generateStage1Decision(
 				)
 					history = undefined;
 			}
+			const refreshedRole = await resolveStage1SenderRole(
+				args.runtime,
+				args.message,
+			);
 			const refreshedContext = await createV5MessageContextObject({
 				...args,
-				userRoles: [senderRole],
+				includeActionDiscovery: discoveryEnabled ? "index" : true,
+				userRoles: [refreshedRole],
 				availableContexts,
 			});
 			Object.assign(context, refreshedContext, { id: context.id });

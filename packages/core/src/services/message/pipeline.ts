@@ -255,7 +255,12 @@ export async function runV5MessageRuntimeStage1(
 		ambientTurn && isStage1AmbientHardGated(args.runtime, args.message);
 	const context = await createV5MessageContextObject({
 		...args,
-		includeActionDiscovery: true,
+		includeActionDiscovery:
+			directMessageChannel &&
+			args.message.content?.channelType !== ChannelType.VOICE_DM &&
+			!args.codingMode
+				? "index"
+				: true,
 		userRoles: [senderRole],
 		availableContexts,
 		ambientTurn,

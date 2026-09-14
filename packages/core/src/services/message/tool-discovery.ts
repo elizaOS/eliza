@@ -102,9 +102,17 @@ export function createPlannerToolDiscoveryAction(
 						readOnlyOperation: true,
 						catalog: completeCatalog.parents.map((parent) => ({
 							name: parent.name,
-							description: parent.description,
+							description: parent.source.description,
+							contexts: parent.source.contexts,
+							similes: parent.source.similes,
 							routingHint: parent.routingHint,
 							children: parent.childNames,
+							childDefinitions: parent.children.map((child) => ({
+								name: child.name,
+								description: child.source.description,
+								contexts: child.source.contexts,
+								similes: child.source.similes,
+							})),
 						})),
 					},
 				};

@@ -500,11 +500,17 @@ describe("planner tool discovery", () => {
 
 	it("keeps all names inline and retrieves complete descriptions without loading tools", async () => {
 		let loads = 0;
+		const childDetail = "  Exact child instructions Ω\n".repeat(100);
 		const detail = `Exact family documentation ${"detail\n".repeat(900)} FINAL_DETAIL`;
 		const discovery = createPlannerToolDiscoveryAction(
 			[
 				{ name: "NOTES", description: detail, subActions: ["NOTES_READ"] },
-				{ name: "NOTES_READ", description: "Read" },
+				{
+					name: "NOTES_READ",
+					description: childDetail,
+					contexts: ["notes"],
+					similes: ["READ_SAVED_NOTE"],
+				},
 			],
 			() => {
 				loads++;
@@ -519,6 +525,20 @@ describe("planner tool discovery", () => {
 		expect(JSON.stringify(result?.data)).toContain(
 			JSON.stringify(detail).slice(1, -1),
 		);
+		expect(result?.data?.catalog).toEqual([
+			expect.objectContaining({
+				name: "NOTES",
+				description: detail,
+				childDefinitions: [
+					{
+						name: "NOTES_READ",
+						description: childDetail,
+						contexts: ["notes"],
+						similes: ["READ_SAVED_NOTE"],
+					},
+				],
+			}),
+		]);
 		expect(loads).toBe(0);
 	});
 

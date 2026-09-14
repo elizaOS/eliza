@@ -1367,6 +1367,47 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(dispatch).not.toHaveBeenCalled();
 	});
 
+	it("indexes every authorized action for a greeting without eager descriptions or schemas", async () => {
+		const description =
+			"Complete action reference: exact Unicode Ω and instructions. ".repeat(
+				30,
+			);
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Hi.",
+				extra: { replyEffectStatus: "none" },
+			}),
+		]);
+		const actions: Action[] = Array.from({ length: 360 }, (_, index) => ({
+			name: `CUSTOM_OPERATION_${index}`,
+			description,
+			contexts: ["general"],
+		}));
+		runtime.actions = [
+			...actions,
+			{ name: "PRIVATE_OPERATION", description, private: true },
+		];
+		const before = structuredClone(runtime.actions);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "hi", channelType: ChannelType.DM }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		const calls = useModelCalls(runtime);
+		expect(calls).toHaveLength(1);
+		const request = calls[0][1] as { messages: Array<{ content: string }> };
+		const wire = request.messages.map(({ content }) => content).join("\n");
+		for (const action of actions) expect(wire).toContain(action.name);
+		expect(wire).not.toContain("PRIVATE_OPERATION");
+		expect(wire).not.toContain(description);
+		expect(wire).toContain("DISCOVER_TOOLS");
+		expect(wire).toContain("names=[]");
+		expect(runtime.actions).toEqual(before);
+		expect(result.kind).toBe("direct_reply");
+	});
+
 	it("reads the complete context catalog before dispatch without changing the stable prefix", async () => {
 		const description =
 			"Exact routing instructions with punctuation and an alias. ".repeat(30);
@@ -1450,15 +1491,18 @@ describe("runV5MessageRuntimeStage1", () => {
 			{ id: "removed_context", description: removed },
 			{ id: "current_context", description: retained },
 		]);
+		runtime.actions = [{ name: "REVOKED_ACTION", description: removed }];
 		const originalModel = runtime.useModel.bind(runtime);
 		let calls = 0;
 		runtime.useModel = vi.fn(
 			async (...args: Parameters<IAgentRuntime["useModel"]>) => {
 				const result = await originalModel(...args);
-				if (++calls === 1)
+				if (++calls === 1) {
 					runtime.contexts = new ContextRegistry([
 						{ id: "current_context", description: retained },
 					]);
+					runtime.actions = [{ name: "CURRENT_ACTION", description: retained }];
+				}
 				return result;
 			},
 		) as IAgentRuntime["useModel"];
@@ -1475,6 +1519,8 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(wire).toContain(retained.trim());
 		expect(wire).not.toContain(removed.trim());
 		expect(wire).not.toContain("removed_context");
+		expect(wire).toContain("CURRENT_ACTION");
+		expect(wire).not.toContain("REVOKED_ACTION");
 	});
 
 	it("keeps denied contexts out of both catalog names and full description reads", async () => {
@@ -1552,6 +1598,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			const runtime = makeRuntime([
 				stage1Response({ contexts: ["simple"], replyText: "Hello." }),
 			]);
+			runtime.actions = [
+				{ name: "CUSTOM_ACTION", description, similes: ["CUSTOM_ALIAS"] },
+			];
 			runtime.contexts = new ContextRegistry([
 				{ id: "custom_catalog", description },
 			]);
@@ -1567,6 +1616,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			};
 			const wire = params.messages.map(({ content }) => content).join("\n");
 			expect(wire).toContain(description.trim());
+			expect(wire).toContain("CUSTOM_ALIAS");
 			expect(wire).not.toContain("context_discovery: CONTEXT_CATALOG");
 			expect(useModelCalls(runtime)).toHaveLength(1);
 		},
