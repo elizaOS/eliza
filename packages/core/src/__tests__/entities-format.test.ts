@@ -87,7 +87,11 @@ describe("formatEntities", () => {
 		});
 		const rendered = formatEntities({
 			entities: [
-				{ id: "00000000-0000-0000-0000-000000000125", names, metadata } as Entity,
+				{
+					id: "00000000-0000-0000-0000-000000000125",
+					names,
+					metadata,
+				} as Entity,
 			],
 		});
 		expect(rendered).toBe(
@@ -101,13 +105,20 @@ describe("formatEntities", () => {
 				{ discord: { id: "42", userName: "shadow_ops" }, roles: ["admin"] },
 				["Nubs"],
 			),
-		).toEqual({ discord: { id: "42", userName: "shadow_ops" }, roles: ["admin"] });
+		).toEqual({
+			discord: { id: "42", userName: "shadow_ops" },
+			roles: ["admin"],
+		});
 		const rendered = formatEntities({
 			entities: [
 				{
 					id: "00000000-0000-0000-0000-000000000126",
 					names: ["Nubs"],
-					metadata: { displayName: "nubs", username: "@Nubs#0001", default: { name: "Nubs" } },
+					metadata: {
+						displayName: "nubs",
+						username: "@Nubs#0001",
+						default: { name: "Nubs" },
+					},
 				} as Entity,
 			],
 		});

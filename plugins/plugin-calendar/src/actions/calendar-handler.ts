@@ -1668,7 +1668,9 @@ export function isUngroundedTextField(
   if (spoken.length === 0) return false;
   const titleWords = contentWords(title ?? "");
   const valueWords = contentWords(value);
-  const residual = (valueWords.length > 0 ? valueWords : rawWords(value)).filter(
+  const residual = (
+    valueWords.length > 0 ? valueWords : rawWords(value)
+  ).filter(
     (word) =>
       !looksLikeScheduleToken(word) &&
       !isScaffoldWord(word) &&

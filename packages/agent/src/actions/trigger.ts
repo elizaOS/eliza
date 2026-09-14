@@ -36,8 +36,8 @@ import {
   type TriggerType,
   type TriggerWakeMode,
   toWellFormedUnicode,
-  unwrapUserMessageText,
   type UUID,
+  unwrapUserMessageText,
   validateUuid,
 } from "@elizaos/core";
 import { textStatesExplicitRecurrence } from "@elizaos/shared";

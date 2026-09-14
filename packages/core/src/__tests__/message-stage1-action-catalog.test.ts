@@ -28,7 +28,11 @@ describe("stage1RoutingDescription", () => {
 
 	it("keeps the lead and the routing sentences of a long description and drops the operation list", () => {
 		const trimmed = stage1RoutingDescription(TRIGGER_DESCRIPTION);
-		expect(trimmed.startsWith("Recurring/scheduled trigger lifecycle AND user reminders.")).toBe(true);
+		expect(
+			trimmed.startsWith(
+				"Recurring/scheduled trigger lifecycle AND user reminders.",
+			),
+		).toBe(true);
 		expect(trimmed).toContain("Use toggle to PAUSE or RESUME a reminder");
 		expect(trimmed).toContain("reminders are NOT calendar events");
 		expect(trimmed).not.toContain("Action-based dispatch");
@@ -39,8 +43,14 @@ describe("stage1RoutingDescription", () => {
 
 	it("keeps a disambiguation ahead of a positive cue when not everything fits", () => {
 		const trimmed = stage1RoutingDescription(TASKS_DESCRIPTION);
-		expect(trimmed.startsWith("Planner surface for orchestrator workspace operations")).toBe(true);
-		expect(trimmed).toContain("NOT for building a web app/page/site/interactive HTML");
+		expect(
+			trimmed.startsWith(
+				"Planner surface for orchestrator workspace operations",
+			),
+		).toBe(true);
+		expect(trimmed).toContain(
+			"NOT for building a web app/page/site/interactive HTML",
+		);
 		expect(trimmed).not.toContain("Available operations");
 		expect(trimmed).not.toContain("Choose this when");
 		expect(trimmed.length).toBeLessThanOrEqual(400);
@@ -55,7 +65,9 @@ describe("stage1RoutingDescription", () => {
 
 	it("falls back to the leading sentences when routing cues leave too little, and 'preferences' is not a cue", () => {
 		const trimmed = stage1RoutingDescription(CONTACT_DESCRIPTION);
-		expect(trimmed.startsWith("Manage Rolodex contacts. Action-based dispatch")).toBe(true);
+		expect(
+			trimmed.startsWith("Manage Rolodex contacts. Action-based dispatch"),
+		).toBe(true);
 		expect(trimmed).not.toContain("update entity-level fields");
 		expect(trimmed.length).toBeGreaterThanOrEqual(120);
 		expect(trimmed.length).toBeLessThanOrEqual(401);

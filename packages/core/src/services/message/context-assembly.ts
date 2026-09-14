@@ -103,10 +103,7 @@ function cutAtWord(text: string): string {
  * unranked packing stops at the first sentence that does not fit. Below the
  * floor the next sentence joins anyway and the whole is cut at a word.
  */
-function packSentences(
-	sentences: readonly string[],
-	ranked: boolean,
-): string {
+function packSentences(sentences: readonly string[], ranked: boolean): string {
 	const lead = sentences[0];
 	if (lead === undefined) return "";
 	const kept = new Map<number, string>([[0, cutAtWord(lead)]]);

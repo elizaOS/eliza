@@ -41,8 +41,9 @@ describe("isUngroundedTextField", () => {
   const move = "move my tailor appointment to friday at 4pm";
 
   it("drops a place the user never said (live: 123 Main st)", () => {
-    expect(isUngroundedTextField("123 Main st", "Tailor appointment", [move]))
-      .toBe(true);
+    expect(
+      isUngroundedTextField("123 Main st", "Tailor appointment", [move]),
+    ).toBe(true);
   });
 
   it("drops an abbreviation of the event's own noun (live: chiro)", () => {
@@ -120,8 +121,9 @@ describe("isUngroundedTextField", () => {
     expect(isUngroundedTextField("LA", "Trip", ["move the trip to LA"])).toBe(
       false,
     );
-    expect(isUngroundedTextField("LA", "Trip", ["move the trip to friday"]))
-      .toBe(true);
+    expect(
+      isUngroundedTextField("LA", "Trip", ["move the trip to friday"]),
+    ).toBe(true);
   });
 
   it("grounds through the user's earlier lines but not the agent's", () => {
@@ -269,7 +271,8 @@ describe("calendarUpdateTextField", () => {
         { ...guards, requestText: named, userTexts: [named] },
       ),
     ).toBe("Dr. Chen's office");
-    const note = "add a note to bring the insurance card to my chiropractor appointment";
+    const note =
+      "add a note to bring the insurance card to my chiropractor appointment";
     expect(
       calendarUpdateTextField(
         {},
@@ -283,23 +286,16 @@ describe("calendarUpdateTextField", () => {
   it("grounds through an earlier user line only for the value, not the clear", () => {
     const earlier = "the new office is on 5th avenue";
     expect(
-      calendarUpdateTextField(
-        { location: "5th Ave office" },
-        {},
-        "location",
-        { ...guards, userTexts: [plainMove, earlier] },
-      ),
+      calendarUpdateTextField({ location: "5th Ave office" }, {}, "location", {
+        ...guards,
+        userTexts: [plainMove, earlier],
+      }),
     ).toBe("5th Ave office");
     expect(
-      calendarUpdateTextField(
-        { clearFields: ["location"] },
-        {},
-        "location",
-        {
-          ...guards,
-          userTexts: [plainMove, "remove the location"],
-        },
-      ),
+      calendarUpdateTextField({ clearFields: ["location"] }, {}, "location", {
+        ...guards,
+        userTexts: [plainMove, "remove the location"],
+      }),
     ).toBeUndefined();
   });
 });

@@ -940,7 +940,9 @@ function entityNameKey(value: string): string {
 function isEmptyProjection(value: unknown): boolean {
 	if (Array.isArray(value)) return value.length === 0;
 	return (
-		typeof value === "object" && value !== null && Object.keys(value).length === 0
+		typeof value === "object" &&
+		value !== null &&
+		Object.keys(value).length === 0
 	);
 }
 
@@ -952,7 +954,10 @@ export function projectEntityDisplayMetadata(
 	return projectEntityDisplayValue(value, known);
 }
 
-function projectEntityDisplayValue(value: unknown, known: Set<string>): unknown {
+function projectEntityDisplayValue(
+	value: unknown,
+	known: Set<string>,
+): unknown {
 	if (Array.isArray(value)) {
 		return value
 			.map((entry) => projectEntityDisplayValue(entry, known))
