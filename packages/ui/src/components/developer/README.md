@@ -60,15 +60,17 @@ Overlapping stage durations must not be added. HTTP attempts, queue time and
 provider first-token timing are not measured here. Configured routing does not
 prove the provider used: recorded calls can show fallback providers.
 
-The reply footer labels the recorded duration **total** (or **so far** while
+The reply footer labels the recorded duration **server run** (or **server run so far** while
 active) and includes the number of **model attempts**. Attempts include local
 rejections before an HTTP request, such as a provider cooldown. They are not a
 count of requests reaching the provider; HTTP request counts are not recorded
-in these summaries. Unknown usage stays unknown. Details separates **Total run
+in these summaries. Unknown usage stays unknown. Details separates **Server run
 time** from **Combined model time**, the sum of recorded call durations. These
 are different measurements: the run includes context, tools and orchestration;
 concurrent calls can overlap, so subtracting their sum does not reliably measure
-other work. Neither number measures time to first token or reply delivery.
+other work. Neither number measures time to first token or reply delivery. Server run time
+excludes waiting before the recorded run starts and delivery/rendering afterward;
+it is not the full interval from pressing Send to seeing the reply.
 Cached input is shown separately as an included portion of input tokens.
 Missing, invalid or not-yet-loaded call measurements keep totals partial.
 
