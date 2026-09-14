@@ -21,8 +21,9 @@ const CONTRACTS_MARKER = "Complete alias contracts:";
 
 interface AliasContract {
 	name: string;
+	descriptionSuffix?: string;
 	parameters: {
-		parentParameterNames: string[];
+		parentParameterNames?: string[];
 		propertyOverrides: Record<string, { enum?: string[] }>;
 	};
 }
@@ -111,11 +112,11 @@ describe("umbrella alias consolidation on the planner wire", () => {
 		expect(contracts[0]?.parameters.propertyOverrides.action?.enum).toEqual([
 			"create",
 		]);
-		expect(contracts[0]?.parameters.parentParameterNames).toEqual([
-			"action",
-			"id",
-			"text",
-		]);
+		// Every LEDGER alias accepts the complete umbrella property list and
+		// extends its description, so the contract omits the names and carries
+		// only the description suffix.
+		expect(contracts[0]?.parameters.parentParameterNames).toBeUndefined();
+		expect(contracts[0]?.descriptionSuffix).toBe(" — subaction = create");
 		// The umbrella schema is rendered once; alias contracts reference its
 		// properties instead of repeating them.
 		expect(occurrences(JSON.stringify(tools), ENTRY_TEXT_DESCRIPTION)).toBe(1);

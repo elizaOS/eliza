@@ -194,9 +194,10 @@ describe("canonical promoted-family planner surface", () => {
 		})[0];
 		const contracts: Array<{
 			name: string;
-			description: string;
+			description?: string;
+			descriptionSuffix?: string;
 			parameters: JsonSchema & {
-				parentParameterNames: string[];
+				parentParameterNames?: string[];
 				propertyOverrides: Record<string, JsonSchema>;
 			};
 		}> = JSON.parse(tool.description.split("\n").at(-1) ?? "invalid");
@@ -204,14 +205,21 @@ describe("canonical promoted-family planner surface", () => {
 			const original = actions.find((action) => action.name === contract.name);
 			if (!original)
 				throw new Error("Alias action missing from dispatch context");
-			expect(contract.description).toBe(original.description);
+			// The alias description extends the umbrella's, so the contract
+			// carries only the suffix; every RECORDS alias accepts the complete
+			// umbrella property list, so the contract omits the names.
+			expect(contract.description).toBeUndefined();
+			expect(`${actions[0].description}${contract.descriptionSuffix}`).toBe(
+				original.description,
+			);
 			const { parentParameterNames, propertyOverrides, ...outerSchema } =
 				contract.parameters;
+			expect(parentParameterNames).toBeUndefined();
 			const parentSchema = actionToJsonSchema(actions[0]);
 			const schema = {
 				...outerSchema,
 				properties: Object.fromEntries(
-					parentParameterNames.map((name) => [
+					Object.keys(parentSchema.properties).map((name) => [
 						name,
 						propertyOverrides[name] ?? parentSchema.properties[name],
 					]),

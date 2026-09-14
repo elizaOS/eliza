@@ -580,16 +580,45 @@ export function collectPlannerTools(
 			);
 			if (aliases.length === 0) continue;
 			const parentSchema = normalizeActionJsonSchema(parent);
+			const parentPropertyNames = Object.keys(parentSchema.properties ?? {});
 			const aliasContracts = aliases.map((alias) => {
 				const { properties = {}, ...schema } = normalizeActionJsonSchema(alias);
+				const propertyNames = Object.keys(properties);
+				// A generated alias composes `${parent.description} — ${blurb}`
+				// (promoteSubactionsToActions), so a complete alias description
+				// rendered the umbrella's own description once more per alias (live
+				// 2026-09-13, consolidated TASKS: 16,882 of the 30,722-char contract
+				// block was the 1,977-char umbrella description repeated 14 times;
+				// CALENDAR 3,702 of 8,270). The suffix appends verbatim to this
+				// tool's description.
+				const extendsParentDescription = alias.description.startsWith(
+					parent.description,
+				);
+				// An alias accepting every umbrella property in order (no
+				// `subactions` applicability lists: TASKS, CONTACT, DATABASE)
+				// repeated the complete name list per alias (TASKS: 56 names × 14
+				// aliases, 9,198 chars). Omission means every property of this tool.
+				const usesEveryParentProperty =
+					propertyNames.length === parentPropertyNames.length &&
+					propertyNames.every(
+						(name, index) => parentPropertyNames[index] === name,
+					);
 				return {
 					name: alias.name,
-					description: alias.description,
+					...(extendsParentDescription
+						? {
+								descriptionSuffix: alias.description.slice(
+									parent.description.length,
+								),
+							}
+						: { description: alias.description }),
 					routingHint: alias.routingHint,
 					strict: alias.toolSchemaStrict ?? true,
 					parameters: {
 						...schema,
-						parentParameterNames: Object.keys(properties),
+						...(usesEveryParentProperty
+							? {}
+							: { parentParameterNames: propertyNames }),
 						propertyOverrides: Object.fromEntries(
 							Object.entries(properties).filter(
 								([name, property]) =>
@@ -600,7 +629,7 @@ export function collectPlannerTools(
 					},
 				};
 			});
-			parentTool.description += `\nGenerated aliases represented by this umbrella: call this tool using the alias's pinned discriminator. Each alias parameter object uses exactly parentParameterNames from this tool's complete properties, including descriptions and defaults; propertyOverrides replaces only differing properties. Other schema fields (including required) are explicit. Complete alias contracts:\n${JSON.stringify(aliasContracts)}`;
+			parentTool.description += `\nGenerated aliases represented by this umbrella: call this tool using the alias's pinned discriminator. descriptionSuffix appends verbatim to this tool's description. Each alias parameter object uses exactly parentParameterNames from this tool's complete properties, including descriptions and defaults; an alias without parentParameterNames uses every property of this tool in order; propertyOverrides replaces only differing properties. Other schema fields (including required) are explicit. Complete alias contracts:\n${JSON.stringify(aliasContracts)}`;
 		}
 	}
 	const terminalNames = new Set(
