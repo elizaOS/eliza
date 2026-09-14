@@ -47,6 +47,7 @@ import { ChannelType } from "../../../types/index.ts";
 import {
 	addHeader,
 	conversationMessagesHeader,
+	formatMessageSegments,
 	formatMessages,
 	formatPosts,
 } from "../../../utils.ts";
@@ -483,9 +484,9 @@ export const recentMessagesProvider: Provider = {
 				: false;
 
 			// Format recent messages and posts in parallel, using only dialogue messages
-			const [formattedRecentMessages, formattedRecentPosts] = await Promise.all(
-				[
-					formatMessages({
+			const [formattedMessageSegments, formattedRecentPosts] =
+				await Promise.all([
+					formatMessageSegments({
 						messages: dialogueMessages,
 						entities: entitiesForFormatting,
 					}),
@@ -494,8 +495,9 @@ export const recentMessagesProvider: Provider = {
 						entities: entitiesForFormatting,
 						conversationHeader: false,
 					}),
-				],
-			);
+				]);
+
+			const formattedRecentMessages = formattedMessageSegments.join("\n");
 
 			// Action results are formatted exclusively by the ACTION_STATE provider
 			// (position 150) to avoid duplication in the LLM context.
@@ -754,6 +756,7 @@ export const recentMessagesProvider: Provider = {
 			return {
 				data: {
 					recentMessages: data.recentMessages,
+					formattedMessageSegments,
 					recentInteractions: data.recentInteractions,
 					...(data.recentInteractionsDisclosure
 						? {

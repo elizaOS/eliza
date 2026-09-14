@@ -36,6 +36,7 @@ import {
 	type IAgentRuntime,
 	type Memory,
 } from "../../../types/index.ts";
+import { addHeader, conversationMessagesHeader } from "../../../utils.ts";
 import { recentMessagesProvider } from "./recentMessages.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";
@@ -108,6 +109,13 @@ describe("recentMessagesProvider", () => {
 		);
 
 		expect(result.data?.recentMessages).toHaveLength(2);
+		if (!result.data) throw new Error("Missing provider data");
+		expect(result.values?.recentMessages).toBe(
+			addHeader(
+				conversationMessagesHeader(2),
+				(result.data.formattedMessageSegments as string[]).join("\n"),
+			),
+		);
 		expect(result.text).toContain("Agent: done");
 		expect(result.text?.match(/Agent: done/g)).toHaveLength(1);
 	});
