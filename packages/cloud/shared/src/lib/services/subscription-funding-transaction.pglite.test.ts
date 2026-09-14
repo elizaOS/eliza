@@ -1279,6 +1279,218 @@ test("expired provisioning survives a lost worker, rolls back refunds atomically
   ).toBe(3);
 });
 
+test("a provision failure cannot overwrite a new execution, tenant, environment or stopped generation", async () => {
+  const org = "61000000-0000-4000-8000-000000000034";
+  const agentId = "63000000-0000-4000-8000-000000000034";
+  const jobId = crypto.randomUUID();
+  const generation = crypto.randomUUID();
+  await fixture.query(
+    `INSERT INTO organizations(id,credit_balance,balance_revision,balance_decrease_revision,settings,is_active,auto_top_up_enabled,account_lifecycle_state)
+    VALUES($1,1,1,0,'{}',true,false,'active')`,
+    [org],
+  );
+  await fixture.query(
+    `INSERT INTO agent_sandboxes(id,organization_id,status,execution_tier,lifecycle_revision,environment_revision,billing_status,total_billed,lifecycle_job_id,lifecycle_execution_generation)
+    VALUES($1,$2,'provisioning','dedicated-always',1,1,'active',0,$3,$4)`,
+    [agentId, org, jobId, generation],
+  );
+  const { agentSandboxesRepository: repository } = await import(
+    "../../db/repositories/agent-sandboxes"
+  );
+  const expected = await repository.findByIdAndOrg(agentId, org);
+  if (!expected) throw new Error("Missing failure generation fixture");
+  expect(
+    await repository.markProvisionFailed(
+      { ...expected, organization_id: organizationId },
+      "foreign",
+    ),
+  ).toBeUndefined();
+  await fixture.query(
+    "UPDATE agent_sandboxes SET lifecycle_execution_generation=$2,lifecycle_revision=2 WHERE id=$1",
+    [agentId, crypto.randomUUID()],
+  );
+  expect(await repository.markProvisionFailed(expected, "stale worker")).toBeUndefined();
+  await fixture.query(
+    "UPDATE agent_sandboxes SET lifecycle_execution_generation=$2,environment_revision=2 WHERE id=$1",
+    [agentId, generation],
+  );
+  expect(await repository.markProvisionFailed(expected, "stale config")).toBeUndefined();
+  await fixture.query(
+    "UPDATE agent_sandboxes SET environment_revision=1,status='stopped' WHERE id=$1",
+    [agentId],
+  );
+  expect(await repository.markProvisionFailed(expected, "late running failure")).toBeUndefined();
+  // Own adoption changed the row revision while retaining the exact job execution.
+  await fixture.query(
+    "UPDATE agent_sandboxes SET status='running',bridge_url='https://owned.test',health_url='https://owned.test/health' WHERE id=$1",
+    [agentId],
+  );
+  expect(await repository.markProvisionFailed(expected, "restore rejected")).toMatchObject({
+    status: "error",
+    error_message: "restore rejected",
+    error_count: 1,
+    bridge_url: null,
+    health_url: null,
+  });
+  await fixture.query(
+    "UPDATE agent_sandboxes SET status='provisioning',lifecycle_job_id=NULL,lifecycle_execution_generation=NULL WHERE id=$1",
+    [agentId],
+  );
+  const direct = await repository.findByIdAndOrg(agentId, org);
+  if (!direct) throw new Error("Missing direct provision fixture");
+  await fixture.query(
+    "UPDATE agent_sandboxes SET lifecycle_revision=lifecycle_revision+1 WHERE id=$1",
+    [agentId],
+  );
+  expect(await repository.markProvisionFailed(direct, "unleased stale callback")).toBeUndefined();
+  expect(
+    (await fixture.query("SELECT status,error_count FROM agent_sandboxes WHERE id=$1", [agentId]))
+      .rows[0],
+  ).toEqual({ status: "provisioning", error_count: 1 });
+});
+
+test("replacement cleanup commits its refund before provider deletion and retries without a second refund", async () => {
+  const org = "61000000-0000-4000-8000-000000000035";
+  const agentId = "63000000-0000-4000-8000-000000000035";
+  const name = `agent-${agentId}`;
+  const attemptId = crypto.randomUUID();
+  const containerId = "5".repeat(64);
+  await fixture.query(
+    `INSERT INTO organizations(id,credit_balance,balance_revision,balance_decrease_revision,settings,is_active,auto_top_up_enabled,account_lifecycle_state)
+    VALUES($1,1,1,0,'{}',true,false,'active')`,
+    [org],
+  );
+  await fixture.query(
+    `INSERT INTO agent_sandboxes(id,organization_id,status,execution_tier,lifecycle_revision,environment_revision,billing_status,total_billed)
+    VALUES($1,$2,'provisioning','dedicated-always',1,1,'active',0)`,
+    [agentId, org],
+  );
+  const { agentSandboxesRepository } = await import("../../db/repositories/agent-sandboxes");
+  const { reserveProvisionCompute } = await import("./agent-compute-provision");
+  const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, org);
+  if (!rec) throw new Error("Missing cleanup fixture");
+  const paid = await reserveProvisionCompute(rec);
+  await fixture.query(
+    `UPDATE agent_sandboxes SET replacement_cleanup_sandbox_id=$2,replacement_cleanup_container_name=$2,replacement_cleanup_node_id='cleanup-test-node',replacement_cleanup_container_id=$3,replacement_cleanup_attempt_id=$4,replacement_cleanup_allocation_counted=false,replacement_cleanup_created_at=date_trunc('milliseconds',clock_timestamp()) WHERE id=$1`,
+    [agentId, name, containerId, attemptId],
+  );
+  const handle = {
+    sandboxId: name,
+    bridgeUrl: "http://cleanup.test",
+    healthUrl: "http://cleanup.test/health",
+    metadata: {
+      provider: "docker" as const,
+      nodeId: "cleanup-test-node",
+      hostname: "cleanup.test",
+      containerName: name,
+      bridgePort: 2138,
+      webUiPort: 2138,
+      agentId,
+      volumePath: `/data/agents/${agentId}`,
+      dockerImage: "fixture",
+      imageDigest: "fixture",
+      replacementAttemptId: attemptId,
+      containerId,
+      allocationCounted: false,
+    },
+  };
+  const { DockerSandboxProvider } = await import("./docker-sandbox-provider");
+  const provider = new DockerSandboxProvider();
+  let deletions = 0;
+  // Provider deletion is observed, not simulated as proof of physical removal.
+  // The service and its refund/fence transactions use the real database.
+  provider.stopOnSpecificNodeForReplacement = async (_node, nameArg, _vpn, identity) => {
+    expect(nameArg).toBe(name);
+    expect(identity?.containerId).toBe(containerId);
+    expect(
+      (
+        await fixture.query(
+          "SELECT settled_at IS NOT NULL AS settled FROM agent_compute_funding WHERE id=$1",
+          [paid.window.id],
+        )
+      ).rows[0]?.settled,
+    ).toBe(true);
+    expect(
+      (await fixture.query("SELECT credit_balance::text FROM organizations WHERE id=$1", [org]))
+        .rows[0]?.credit_balance,
+    ).toBe("1.000000");
+    deletions += 1;
+  };
+  const { SandboxReplacementCleanup } = await import(
+    "./eliza-sandbox/lifecycle/replacement-cleanup"
+  );
+  const { SandboxLifecycleAuthority } = await import("./eliza-sandbox/lifecycle/authority");
+  const authority = new SandboxLifecycleAuthority();
+  const cleanup = new SandboxReplacementCleanup({
+    lockLifecycle: authority.lockLifecycle.bind(authority),
+    getAgentForLifecycleMutation: authority.getAgentForLifecycleMutation.bind(authority),
+    hasActiveExclusiveLifecycleJobTx: authority.hasActiveExclusiveLifecycleJobTx.bind(authority),
+    isReplacementCleanupSweepEligibleTx:
+      authority.isReplacementCleanupSweepEligibleTx.bind(authority),
+    getProvider: async () => provider,
+  });
+  await expect(
+    cleanup.retirePersistedReplacementCleanup(agentId, org, undefined, undefined, "lifecycle", {
+      ...handle,
+      metadata: { ...handle.metadata, containerId: "6".repeat(64) },
+    }),
+  ).rejects.toThrow(/identity changed/);
+  expect(deletions).toBe(0);
+  expect(
+    (
+      await fixture.query("SELECT settled_at FROM agent_compute_funding WHERE id=$1", [
+        paid.window.id,
+      ])
+    ).rows[0],
+  ).toEqual({ settled_at: null });
+  await fixture.exec(`CREATE FUNCTION reject_cleanup_release() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+    IF NEW.id='${agentId}' AND NEW.replacement_cleanup_node_id IS NULL THEN RAISE EXCEPTION 'forced cleanup release rollback'; END IF;
+    RETURN NEW; END $$;
+    CREATE TRIGGER reject_cleanup_release BEFORE UPDATE ON agent_sandboxes FOR EACH ROW EXECUTE FUNCTION reject_cleanup_release();`);
+  await expect(
+    cleanup.retirePersistedReplacementCleanup(
+      agentId,
+      org,
+      undefined,
+      undefined,
+      "lifecycle",
+      handle,
+    ),
+  ).rejects.toMatchObject({ cause: { message: "forced cleanup release rollback" } });
+  expect(deletions).toBe(1);
+  expect(
+    (
+      await fixture.query(
+        "SELECT replacement_cleanup_container_id FROM agent_sandboxes WHERE id=$1",
+        [agentId],
+      )
+    ).rows[0]?.replacement_cleanup_container_id,
+  ).toBe(containerId);
+  await fixture.exec(
+    "DROP TRIGGER reject_cleanup_release ON agent_sandboxes; DROP FUNCTION reject_cleanup_release()",
+  );
+  expect(
+    await cleanup.retirePersistedReplacementCleanup(
+      agentId,
+      org,
+      undefined,
+      undefined,
+      "lifecycle",
+      handle,
+    ),
+  ).toBe("retired");
+  expect(deletions).toBe(2);
+  expect(
+    (
+      await fixture.query(
+        "SELECT count(*)::int AS n FROM credit_transactions WHERE organization_id=$1",
+        [org],
+      )
+    ).rows[0]?.n,
+  ).toBe(2);
+  expect(await cleanup.retirePersistedReplacementCleanup(agentId, org)).toBe("clean");
+});
+
 if (sshFixturePath) {
   test("real Docker stop survives a PostgreSQL rollback and app suspension refunds once", async () => {
     const target = z
@@ -1304,6 +1516,7 @@ if (sshFixturePath) {
     const org = "61000000-0000-4000-8000-000000000030";
     const agentId = "63000000-0000-4000-8000-000000000030";
     const marker = crypto.randomUUID();
+    const cleanupAttemptId = crypto.randomUUID();
     let containerId: string | undefined;
     let initialContainerId: string | undefined;
     let ownsGuard = false;
@@ -1327,6 +1540,7 @@ if (sshFixturePath) {
             `--health-interval=1s --health-timeout=5s --health-retries=10 --health-cmd ${shellQuote(`node -e "fetch('http://127.0.0.1:2138/api/health').then(r=>process.exit(r.ok?0:1))"`)}`,
             "--cap-drop=ALL --security-opt=no-new-privileges --user=65534:65534 --restart=no",
             `--name ${shellQuote(name)} --label ai.elizaos.managed-by=eliza-cloud --label ai.elizaos.container-class=test`,
+            `--label ai.elizaos.replacement-attempt=${cleanupAttemptId}`,
             `--label ai.elizaos.agent-id=${agentId} --label ai.elizaos.org-id=${org}`,
             `--entrypoint node ${shellQuote(target.image)} -e ${shellQuote("require('http').createServer((q,r)=>r.end(JSON.stringify({ok:true}))).listen(2138,'127.0.0.1')")}`,
           ].join(" "),
@@ -1668,12 +1882,115 @@ if (sshFixturePath) {
         bridge_url: `http://${target.hostname}:2138`,
         health_url: `http://${target.hostname}:2138/api`,
       });
+      const runningRecord = await agentSandboxesRepository.findByIdAndOrg(agentId, org);
+      if (!runningRecord) throw new Error("Missing running cleanup fixture");
+      const [activeWindow] = (
+        await fixture.query<{ id: string }>(
+          "SELECT id FROM agent_compute_funding WHERE agent_id=$1 AND settled_at IS NULL",
+          [agentId],
+        )
+      ).rows;
+      if (!activeWindow) throw new Error("Missing paid cleanup window");
+      const cleanupHandle = {
+        ...initialHandle,
+        sandboxId: name,
+        metadata: {
+          ...initialHandle.metadata,
+          agentId,
+          containerName: name,
+          containerId,
+          replacementAttemptId: cleanupAttemptId,
+          allocationCounted: false,
+          volumePath: `/data/agents/${agentId}`,
+        },
+      };
+      const { reconcileFailedProvisionCompute } = await import("./agent-compute-provision");
+      await expect(
+        reconcileFailedProvisionCompute(agentId, org, activeWindow.id, {
+          expected: { ...runningRecord, lifecycle_execution_generation: crypto.randomUUID() },
+          handle: cleanupHandle,
+        }),
+      ).rejects.toMatchObject({ code: "AGENT_COMPUTE_PROVISION_AUTHORITY_CHANGED" });
       expect(
-        await elizaSandboxService.executeSuspend(agentId, org, crypto.randomUUID(), "user_request"),
-      ).toMatchObject({ success: true, containerStopped: true });
+        (await ssh.exec(`${docker} inspect --format '{{.State.Running}}' ${containerId}`)).trim(),
+      ).toBe("true");
       expect(
         (await ssh.exec(`${docker} cp ${containerId}:/tmp/stop-marker - | tar -xO`)).trim(),
       ).toBe(marker);
+
+      // Model the durable pre-adoption candidate that a crashed/failed provision
+      // leaves behind. The paid container and its host lease remain real.
+      await fixture.query(
+        `UPDATE agent_sandboxes SET status='provisioning',replacement_cleanup_sandbox_id=$2,replacement_cleanup_container_name=$2,replacement_cleanup_node_id=$3,replacement_cleanup_container_id=$4,replacement_cleanup_attempt_id=$5,replacement_cleanup_allocation_counted=false,replacement_cleanup_created_at=date_trunc('milliseconds',clock_timestamp()) WHERE id=$1`,
+        [agentId, name, nodeId, containerId, cleanupAttemptId],
+      );
+      const { DockerSandboxProvider } = await import("./docker-sandbox-provider");
+      const cleanupProvider = new DockerSandboxProvider();
+      const removeExact = cleanupProvider.stopOnSpecificNodeForReplacement.bind(cleanupProvider);
+      cleanupProvider.stopOnSpecificNodeForReplacement = async (...args) => {
+        expect(
+          (
+            await fixture.query(
+              "SELECT settled_at IS NOT NULL AS settled,provider_stop_receipt IS NOT NULL AS stopped FROM agent_compute_funding WHERE id=$1",
+              [activeWindow.id],
+            )
+          ).rows[0],
+        ).toEqual({ settled: true, stopped: true });
+        expect(
+          (await ssh.exec(`${docker} inspect --format '{{.State.Running}}' ${containerId}`)).trim(),
+        ).toBe("false");
+        await removeExact(...args);
+      };
+      const { SandboxReplacementCleanup } = await import(
+        "./eliza-sandbox/lifecycle/replacement-cleanup"
+      );
+      const { SandboxLifecycleAuthority } = await import("./eliza-sandbox/lifecycle/authority");
+      const authority = new SandboxLifecycleAuthority();
+      const cleanup = new SandboxReplacementCleanup({
+        lockLifecycle: authority.lockLifecycle.bind(authority),
+        getAgentForLifecycleMutation: authority.getAgentForLifecycleMutation.bind(authority),
+        hasActiveExclusiveLifecycleJobTx:
+          authority.hasActiveExclusiveLifecycleJobTx.bind(authority),
+        isReplacementCleanupSweepEligibleTx:
+          authority.isReplacementCleanupSweepEligibleTx.bind(authority),
+        getProvider: async () => cleanupProvider,
+      });
+      expect(
+        await cleanup.retirePersistedReplacementCleanup(
+          agentId,
+          org,
+          undefined,
+          undefined,
+          "lifecycle",
+          cleanupHandle,
+        ),
+      ).toBe("retired");
+      expect(
+        (await ssh.exec(`${docker} ps -aq --no-trunc --filter id=${containerId}`)).trim(),
+      ).toBe("");
+      expect(
+        (
+          await fixture.query(
+            "SELECT replacement_cleanup_container_id FROM agent_sandboxes WHERE id=$1",
+            [agentId],
+          )
+        ).rows[0],
+      ).toEqual({ replacement_cleanup_container_id: null });
+      const transactionsAfterCleanup = (
+        await fixture.query(
+          "SELECT count(*)::int AS n FROM credit_transactions WHERE organization_id=$1",
+          [org],
+        )
+      ).rows[0]?.n;
+      expect(await cleanup.retirePersistedReplacementCleanup(agentId, org)).toBe("clean");
+      expect(
+        (
+          await fixture.query(
+            "SELECT count(*)::int AS n FROM credit_transactions WHERE organization_id=$1",
+            [org],
+          )
+        ).rows[0]?.n,
+      ).toBe(transactionsAfterCleanup);
     } finally {
       try {
         if (initialContainerId) await ssh.exec(`${docker} rm -f ${shellQuote(initialContainerId)}`);
@@ -1697,6 +2014,7 @@ if (sshFixturePath) {
         ).toEqual(originalRunning);
       } finally {
         await ssh.disconnect();
+        await DockerSSHClient.disconnectAll();
       }
     }
   }, 360_000);

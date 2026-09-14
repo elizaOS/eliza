@@ -272,7 +272,7 @@ export class SandboxProvision {
           await releaseReviewedProvisionAdmissionFence(reviewedAdmissionFence);
           reviewedAdmissionFence = undefined;
         }
-        await this.markError(rec, message);
+        rec = (await this.markError(rec, message)) ?? rec;
         return {
           success: false,
           sandboxRecord: await agentSandboxesRepository.findById(rec.id),
@@ -283,7 +283,7 @@ export class SandboxProvision {
     }
 
     let computeFundingId: string | undefined;
-    let retainComputeFunding = false;
+    let skipFundingCleanup = false;
     // biome-ignore format: keep the existing provision body stable while this guard owns fence cleanup.
     try {
     const provisionProvider = await this.host.getProvider();
@@ -297,7 +297,7 @@ export class SandboxProvision {
       } catch (error) {
         // error-policy:J1 no provider allocation has occurred; return payment/admission failure.
         const message = error instanceof Error ? error.message : String(error);
-        await this.markError(rec, message);
+        rec = (await this.markError(rec, message)) ?? rec;
         return { success: false, sandboxRecord: await agentSandboxesRepository.findById(rec.id), error: message, failureCause: error };
       }
     }
@@ -306,7 +306,7 @@ export class SandboxProvision {
     if (rec.database_status !== "ready" || !dbUri) {
       const db = await this.provisionAgentDatabase(rec);
       if (!db.success) {
-        await this.markError(rec, `Database provisioning failed: ${db.error}`);
+        rec = (await this.markError(rec, `Database provisioning failed: ${db.error}`)) ?? rec;
         return {
           success: false,
           sandboxRecord: await agentSandboxesRepository.findById(rec.id),
@@ -395,7 +395,7 @@ export class SandboxProvision {
     } catch (envError) {
       // error-policy:J1 return a failed provision without losing its decryption cause.
       const message = envError instanceof Error ? envError.message : String(envError);
-      await this.markError(rec, `Environment decryption failed: ${message}`);
+      rec = (await this.markError(rec, `Environment decryption failed: ${message}`)) ?? rec;
       return {
         success: false,
         sandboxRecord: await agentSandboxesRepository.findById(rec.id),
@@ -478,7 +478,7 @@ export class SandboxProvision {
             failureCause: err,
           };
         }
-        await this.markError(rec, `Sandbox creation failed: ${msg}`);
+        rec = (await this.markError(rec, `Sandbox creation failed: ${msg}`)) ?? rec;
         return {
           success: false,
           sandboxRecord: await agentSandboxesRepository.findById(rec.id),
@@ -648,6 +648,7 @@ export class SandboxProvision {
           rec.environment_revision,
           updateData,
         );
+        rec = updated;
 
         // Re-enter the billable set on every successful provision. A
         // credit-suspended agent (billing_status='suspended') that a user tops
@@ -883,7 +884,7 @@ export class SandboxProvision {
           sandboxId: handle.sandboxId,
           attempt,
         });
-        retainComputeFunding = true;
+        skipFundingCleanup = true;
         return {
           success: true,
           sandboxRecord: completed,
@@ -906,7 +907,7 @@ export class SandboxProvision {
         // recovers. Preserve the (pending/provisioning) row so the reconciler
         // and job retry both have something to act on.
         if (err instanceof SandboxReachabilityUnresolvedError) {
-          retainComputeFunding = true;
+          skipFundingCleanup = true;
           logger.warn(
             "[agent-sandbox] Managed reachability remains unresolved; leaving container in place for retry/reconciliation",
             { agentId: rec.id, sandboxId: handle.sandboxId, attempt },
@@ -928,13 +929,19 @@ export class SandboxProvision {
         });
 
         try {
+          if (computeFundingId) {
+            await reconcileFailedProvisionCompute(rec.id, rec.organization_id, computeFundingId, {
+              expected: rec, handle,
+            });
+            skipFundingCleanup = true;
+          }
           const current = await agentSandboxesRepository.findByIdAndOrg(
             rec.id,
             rec.organization_id,
           );
           if (current && this.host.getReplacementCleanupLocator(current)) {
-            await this.host.retirePersistedReplacementCleanup(rec.id, rec.organization_id);
-          } else {
+            await this.host.retirePersistedReplacementCleanup(rec.id, rec.organization_id, undefined, undefined, "lifecycle", handle);
+          } else if (!computeFundingId) {
             const provider = await this.host.getProvider();
             if (!provider.stopForReplacement) {
               throw new Error("Sandbox provider cannot prove failed provision absent");
@@ -948,6 +955,7 @@ export class SandboxProvision {
             sandboxId: handle.sandboxId,
             error: stopErr instanceof Error ? stopErr.message : String(stopErr),
           });
+          if (computeFundingId) skipFundingCleanup = true;
           return {
             success: false,
             retryable: true,
@@ -983,10 +991,10 @@ export class SandboxProvision {
     // a port collision and therefore was never eligible for a retry.
     const attemptsLabel = attemptsMade === 1 ? "1 attempt" : `${attemptsMade} attempts`;
     const giveUpReason = lastErrorRetryable ? "" : " (not retryable)";
-    await this.markError(
+    rec = (await this.markError(
       rec,
       `Provisioning failed after ${attemptsLabel}${giveUpReason}: ${lastError}`,
-    );
+    )) ?? rec;
     return {
       success: false,
       sandboxRecord: await agentSandboxesRepository.findById(rec.id),
@@ -997,8 +1005,8 @@ export class SandboxProvision {
     };
     } finally {
       try {
-        if (computeFundingId && !retainComputeFunding) {
-          await reconcileFailedProvisionCompute(rec.id, rec.organization_id, computeFundingId);
+        if (computeFundingId && !skipFundingCleanup) {
+          await reconcileFailedProvisionCompute(rec.id, rec.organization_id, computeFundingId, { expected: rec });
         }
       } finally {
         if (reviewedAdmissionFence) {
@@ -1053,11 +1061,7 @@ export class SandboxProvision {
   }
 
   async markError(rec: AgentSandbox, msg: string) {
-    await agentSandboxesRepository.update(rec.id, {
-      status: "error",
-      error_message: msg,
-      error_count: (rec.error_count ?? 0) + 1,
-    });
+    return agentSandboxesRepository.markProvisionFailed(rec, msg);
   }
 
   /**
