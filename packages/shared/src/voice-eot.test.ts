@@ -25,6 +25,20 @@ describe("scoreEndOfTurnHeuristic — canonical heuristic", () => {
     expect(score("that's correct right")).toBe(0.85);
     expect(score("it is ready yeah")).toBe(0.85);
     expect(score("that makes sense correct")).toBe(0.85);
+    expect(score("that's correct, right")).toBe(0.85);
+    expect(score("right")).toBe(0.85);
+  });
+
+  it("rule 3 matches a bare tag only as a whole final word, never as a suffix", () => {
+    // "incorrect" ends in "correct" and "alright"/"copyright" end in "right";
+    // a suffix match would commit these ordinary statements at 0.85.
+    expect(score("no that is incorrect")).toBe(0.5);
+    expect(score("i still need the copyright")).toBe(0.5);
+    expect(score("it turned out alright in the end")).toBe(0.5);
+    expect(score("that was downright rude of them")).toBe(0.5);
+    // A short utterance ending in such a word falls to the short-command rule.
+    expect(score("alright")).toBe(0.7);
+    expect(score("not incorrect")).toBe(0.7);
   });
 
   it("rule 4: trailing conjunction → mid-clause (0.15)", () => {
