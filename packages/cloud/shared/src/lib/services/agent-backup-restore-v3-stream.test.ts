@@ -204,6 +204,8 @@ interface FixtureOptions {
 
 interface RestoreFixture {
   readonly input: StreamAgentBackupRestoreV3Input;
+  readonly sealStarted: Promise<void>;
+  readonly cancel: () => void;
   readonly manifest: AgentBackupManifestV3;
   readonly events: string[];
   readonly counts: {
@@ -242,6 +244,7 @@ interface RestoreFixture {
 async function createFixture(options: FixtureOptions = {}): Promise<RestoreFixture> {
   const deadlineEpochMs = options.deadlineEpochMs ?? DEADLINE_EPOCH_MS;
   const events: string[] = [];
+  const sealStarted = deferred<void>();
   const counts = {
     begin: 0,
     revalidate: 0,
@@ -643,6 +646,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<RestoreFixtu
       if (options.hangSealBeforeCommit && !lostSealResponse) {
         lostSealResponse = true;
         events.push("staging:seal-pending-before-commit");
+        sealStarted.resolve(undefined);
         return new Promise<AgentBackupRestoreV3CandidateReceipt>(() => undefined);
       }
       if (operationControl.signal.aborted) {
@@ -657,6 +661,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<RestoreFixtu
       durableSealedReceipt = receipt;
       if (options.hangSealResponse && !lostSealResponse) {
         lostSealResponse = true;
+        sealStarted.resolve(undefined);
         return new Promise<AgentBackupRestoreV3CandidateReceipt>(() => undefined);
       }
       if (options.loseSealResponse && !lostSealResponse) {
@@ -790,6 +795,9 @@ async function createFixture(options: FixtureOptions = {}): Promise<RestoreFixtu
   };
   return {
     input,
+    sealStarted: sealStarted.promise,
+    cancel: () =>
+      abortController.abort(new Error("caller cancelled at the observed seal boundary")),
     manifest,
     events,
     counts,
@@ -1086,13 +1094,17 @@ describe("streamAgentBackupRestoreV3", () => {
     expectBefore(fixture.events, "staging:seal", "staging:seal-exact-replay");
   });
 
-  test("recovers a durable seal whose first response hangs past the operation deadline", async () => {
+  test("recovers a durable seal when cancellation interrupts its pending response", async () => {
     const fixture = await createFixture({
-      deadlineEpochMs: NOW_EPOCH_MS + 100,
       hangSealResponse: true,
     });
 
-    const result = await streamAgentBackupRestoreV3(fixture.input);
+    const operation = streamAgentBackupRestoreV3(fixture.input);
+    await Promise.race([fixture.sealStarted, operation]);
+    expect(fixture.state()).toBe("sealed");
+    expect(fixture.counts.seal).toBe(1);
+    fixture.cancel();
+    const result = await operation;
 
     expect(result.sealed).toBe(true);
     expect(result.receipt).toEqual(fixture.sealedReceipt());
@@ -1105,11 +1117,16 @@ describe("streamAgentBackupRestoreV3", () => {
 
   test("does not create a seal after cancellation when the first request never committed", async () => {
     const fixture = await createFixture({
-      deadlineEpochMs: NOW_EPOCH_MS + 100,
       hangSealBeforeCommit: true,
     });
 
-    const failure = await captureFailure(streamAgentBackupRestoreV3(fixture.input));
+    const operation = captureFailure(streamAgentBackupRestoreV3(fixture.input));
+    await Promise.race([fixture.sealStarted, operation]);
+    expect(fixture.state()).toBe("active");
+    expect(fixture.sealedReceipt()).toBeUndefined();
+    expect(fixture.counts.seal).toBe(1);
+    fixture.cancel();
+    const failure = await operation;
 
     expect(failure).toBeInstanceOf(AgentBackupRestoreV3StreamError);
     expect((failure as AgentBackupRestoreV3StreamError).code).toBe(
