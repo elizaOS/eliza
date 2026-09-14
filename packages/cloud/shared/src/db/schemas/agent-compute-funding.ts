@@ -28,6 +28,10 @@ export const agentComputeFunding = pgTable(
     period_start: timestamp("period_start", { withTimezone: true }).notNull(),
     period_end: timestamp("period_end", { withTimezone: true }).notNull(),
     hourly_rate: numeric("hourly_rate", { precision: 16, scale: 6 }).notNull(),
+    /** Unsettled activation minimum carried through renewals; legacy windows retain zero. */
+    minimum_charge_remaining: numeric("minimum_charge_remaining", { precision: 16, scale: 6 })
+      .notNull()
+      .default("0.000000"),
     provider_node_id: text("provider_node_id"),
     provider_container_id: text("provider_container_id"),
     provider_bound_at: timestamp("provider_bound_at", { withTimezone: true }),
@@ -48,6 +52,10 @@ export const agentComputeFunding = pgTable(
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    minimum_charge_check: check(
+      "agent_compute_funding_minimum_charge_check",
+      sql`${table.minimum_charge_remaining} >= 0 AND ${table.minimum_charge_remaining} <> 'NaN'::numeric`,
+    ),
     retirement_backup_check: check(
       "agent_compute_funding_retirement_backup_check",
       sql`${table.retirement_backup_id} IS NULL OR (${table.settled_at} IS NOT NULL AND ${table.provider_stopped_at} IS NOT NULL)`,

@@ -262,7 +262,10 @@ async function processSandboxBilling(
     };
   }
 
-  if (billingResult.status === "insufficient_credits") {
+  if (
+    billingResult.status === "insufficient_credits" ||
+    billingResult.status === "funded_until"
+  ) {
     return queueUnfundedStop();
   }
 

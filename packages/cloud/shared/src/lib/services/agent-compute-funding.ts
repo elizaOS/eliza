@@ -229,6 +229,7 @@ export class AgentComputeFundingService {
     identity: FundingAgentIdentity,
     periodStart: Date,
     previous: AgentComputeFunding | null,
+    minimumChargeRemaining?: string,
   ) {
     const id = crypto.randomUUID();
     const hourlyRate = previous?.hourly_rate ?? AGENT_PRICING.RUNNING_HOURLY_RATE.toFixed(6);
@@ -237,6 +238,20 @@ export class AgentComputeFundingService {
         3_599_999n) /
         3_600_000n,
     );
+    const activationMinimum = microsToMoney(
+      moneyToMicros(hourlyRate, "hourlyRate") * BigInt(AGENT_PRICING.MINIMUM_ACTIVATION_HOURS),
+    );
+    const remainingMinimum = minimumChargeRemaining ?? activationMinimum;
+    if (
+      moneyToMicros(remainingMinimum, "minimumChargeRemaining") >
+      moneyToMicros(amount, "reservationAmount")
+    ) {
+      reject(
+        AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED,
+        "Dedicated minimum exceeds reserved funding",
+        identity,
+      );
+    }
     const expiresAt = new Date(periodStart.getTime() + AGENT_COMPUTE_FUNDING_WINDOW_MS);
     const reserved = await subscriptionFundingService.reserveInTransaction(tx, {
       organizationId: identity.organizationId,
@@ -265,6 +280,9 @@ export class AgentComputeFundingService {
         period_start: periodStart,
         period_end: periodEnd,
         hourly_rate: hourlyRate,
+        // A retained restart starts a new activation; only uninterrupted
+        // renewal supplies the remainder of the previously accepted minimum.
+        minimum_charge_remaining: remainingMinimum,
         provider_node_id: previous?.provider_node_id ?? null,
         provider_container_id: previous?.provider_container_id ?? null,
         provider_bound_at: previous ? fundedAt : null,
@@ -573,6 +591,12 @@ export class AgentComputeFundingService {
         input,
         input.settledThrough,
         previous,
+        microsToMoney(
+          moneyToMicros(previous.minimum_charge_remaining, "minimumChargeRemaining") > actualMicros
+            ? moneyToMicros(previous.minimum_charge_remaining, "minimumChargeRemaining") -
+                actualMicros
+            : 0n,
+        ),
       );
       if (replacement.window.period_end <= previous.period_end) {
         reject(

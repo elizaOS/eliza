@@ -77,6 +77,7 @@ interface DedicatedActivationQuote {
   quoteId: string;
   sourceAgentId: string;
   hourlyRateUsd: number;
+  minimumActivationChargeUsd: number;
   dailyRateUsd: number;
   minimumBalanceUsd: number;
   minimumRunwayDays: number;
@@ -202,6 +203,14 @@ export function ElizaAgentActions({
       });
       if (httpStatus < 200 || httpStatus >= 300 || !data?.data) {
         throw new Error(data?.error ?? `HTTP ${httpStatus}`);
+      }
+      if (
+        !Number.isFinite(data.data.minimumActivationChargeUsd) ||
+        data.data.minimumActivationChargeUsd < 0
+      ) {
+        throw new Error(
+          "The current Dedicated charge could not be loaded. Refresh and try again.",
+        );
       }
       return data.data;
     },
@@ -396,6 +405,7 @@ export function ElizaAgentActions({
         json: {
           action: "activate_dedicated",
           quoteId: upgradeQuote.quoteId,
+          minimumActivationChargeUsd: upgradeQuote.minimumActivationChargeUsd,
         },
       });
 
@@ -889,6 +899,13 @@ export function ElizaAgentActions({
                       })}
                 </span>
                 <span className="mt-3 block text-txt-strong">
+                  {t("cloud.join.dedicatedActivationMinimum", {
+                    defaultValue:
+                      "Minimum charge per successful start: {{minimum}}. Applies again after stopping and restarting.",
+                    minimum: formatUSD(upgradeQuote.minimumActivationChargeUsd),
+                  })}
+                </span>
+                <span className="mt-3 block text-txt-strong">
                   {t("cloud.containers.agentActions.upgradeBalance", {
                     defaultValue:
                       "Current balance: {{balance}} · Required before activation: {{minimum}} ({{days}} days)",
@@ -995,6 +1012,12 @@ export function ElizaAgentActions({
                 {t("cloud.containers.agentActions.deactivateBody2", {
                   defaultValue:
                     "Eliza retains your agent data during deactivation. If deactivation cannot complete, the agent stays running and billing continues.",
+                })}
+              </span>
+              <span className="block mt-2">
+                {t("cloud.containers.agentActions.deactivateMinimum", {
+                  defaultValue:
+                    "Any remaining activation minimum is charged when you stop.",
                 })}
               </span>
               <span className="block mt-2">

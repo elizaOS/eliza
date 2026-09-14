@@ -75,6 +75,7 @@ const QUOTE = {
   sourceAgentId: PERSONAL_ID,
   hourlyRateUsd: 0.15,
   dailyRateUsd: 3.6,
+  minimumActivationChargeUsd: 0.3,
   minimumBalanceUsd: 10.8,
   minimumRunwayDays: 3,
   balanceUsd: 12.5,
@@ -153,6 +154,11 @@ describe("Dedicated activation quote", () => {
     ).toBeTruthy();
     expect(
       screen.getByRole("button", { name: "Activate Dedicated" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Minimum charge per successful start: $0.30. Applies again after stopping and restarting.",
+      ),
     ).toBeTruthy();
     expect(apiWithStatus).toHaveBeenCalledWith(
       `/api/v1/eliza/agents/${encodeURIComponent(PERSONAL_ID)}/upgrade-tier`,
@@ -263,6 +269,7 @@ describe("Dedicated activation quote", () => {
       {
         method: "POST",
         json: {
+          minimumActivationChargeUsd: 0.3,
           action: "activate_dedicated",
           quoteId: QUOTE.quoteId,
         },

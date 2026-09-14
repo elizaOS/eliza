@@ -1546,6 +1546,12 @@ export function ElizaAgentsTable({
                 })}
               </span>
               <span className="block mt-2">
+                {t("cloud.containers.agentActions.deactivateMinimum", {
+                  defaultValue:
+                    "Any remaining activation minimum is charged when you stop.",
+                })}
+              </span>
+              <span className="block mt-2">
                 {t("cloud.containers.agentActions.deactivateBody3", {
                   defaultValue:
                     "Reactivation restores the agent's retained data and can take a few minutes; it requires available credits.",

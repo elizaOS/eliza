@@ -93,6 +93,9 @@ beforeAll(async () => {
       await getPgliteClientForTests().exec(index[0]);
     }
     await getPgliteClientForTests().exec(await migration("0388_agent_compute_funded_receipts.sql"));
+    await getPgliteClientForTests().exec(
+      await migration("0394_agent_billing_activation_minimum.sql"),
+    );
     await dbWrite.execute(
       sql.raw(`CREATE TABLE jobs (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

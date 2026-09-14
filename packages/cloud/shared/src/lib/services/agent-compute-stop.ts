@@ -5,7 +5,10 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { settleComputeRateSegments } from "../../db/repositories/compute-billing-segments";
 import { readPostLockDatabaseNow } from "../../db/repositories/primary-database-clock";
-import { moneyToMicros } from "../../db/repositories/subscription-funding-reservations";
+import {
+  microsToMoney,
+  moneyToMicros,
+} from "../../db/repositories/subscription-funding-reservations";
 import {
   type AgentComputeFunding,
   agentComputeFunding,
@@ -171,11 +174,22 @@ export async function settleStoppedAgentComputeInTransaction(
       ),
     )
     .for("update");
+  const meteredMicros = moneyToMicros(meter.amount.toFixed(6), "meteredAmount");
+  // Failed activation does not earn an activation minimum. Successful runtime
+  // retains its once-per-activation remainder across hourly reservations.
+  const minimumMicros =
+    window.runtime_ready_at &&
+    cutoff > window.period_start &&
+    (receipt.startedAtMs || meteredMicros > 0n)
+      ? moneyToMicros(window.minimum_charge_remaining, "minimumChargeRemaining")
+      : 0n;
+  const actualMicros = meteredMicros > minimumMicros ? meteredMicros : minimumMicros;
+  const actualAmount = microsToMoney(actualMicros);
+  const minimumAdjustment = microsToMoney(actualMicros - meteredMicros);
   if (
     !reservation ||
     reservation.status !== "reserved" ||
-    moneyToMicros(meter.amount.toFixed(6), "amount") >
-      moneyToMicros(reservation.reserved_amount, "reservedAmount")
+    actualMicros > moneyToMicros(reservation.reserved_amount, "reservedAmount")
   )
     changed();
   return tx.transaction(async (nested) => {
@@ -183,12 +197,14 @@ export async function settleStoppedAgentComputeInTransaction(
       organizationId: identity.organizationId,
       logicalOperationId: `compute.${identity.agentId}.${window.id}`,
       operation: "managed_agent_compute",
-      actualAmount: meter.amount.toFixed(6),
+      actualAmount,
       occurredAt: cutoff,
       metadata: {
         agent_id: identity.agentId,
         compute_funding_id: window.id,
         provider_stop: durableReceipt,
+        metered_amount: meter.amount.toFixed(6),
+        minimum_charge_amount: minimumAdjustment,
       },
     });
     await nested
@@ -218,7 +234,8 @@ export async function settleStoppedAgentComputeInTransaction(
           .mul(3_600_000)
           .div(cutoff.getTime() - window.period_start.getTime())
           .toFixed(6),
-        amount: meter.amount.toFixed(6),
+        amount: actualAmount,
+        minimum_charge_amount: minimumAdjustment,
         rate_segments: meter.segments,
         credit_transaction_id: null,
         compute_funding_id: window.id,
@@ -229,7 +246,7 @@ export async function settleStoppedAgentComputeInTransaction(
       .update(agentSandboxes)
       .set({
         last_billed_at: cutoff,
-        total_billed: sql`${agentSandboxes.total_billed} + ${meter.amount.toFixed(6)}`,
+        total_billed: sql`${agentSandboxes.total_billed} + ${actualAmount}`,
         updated_at: now,
       })
       .where(

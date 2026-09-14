@@ -402,6 +402,7 @@ async function upgrade(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "activate_dedicated",
+        minimumActivationChargeUsd: 0.3,
         quoteId: body?.data?.quoteId ?? "0".repeat(64),
       }),
     },
@@ -495,6 +496,33 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     expect(await res.json()).toMatchObject({
       code: "dedicated_confirmation_required",
     });
+  });
+
+  test("rejects activation when the minimum charge is missing or differs from the reviewed terms", async () => {
+    const quoted = (await (await quote(PERSONAL_A)).json()) as {
+      data: { quoteId: string; minimumActivationChargeUsd: number };
+    };
+    expect(quoted.data.minimumActivationChargeUsd).toBe(0.3);
+    const { dbWrite } = await import("@/db/client");
+    const { jobs } = await import("@/db/schemas/jobs");
+    const before = await dbWrite.select().from(jobs);
+    for (const minimumActivationChargeUsd of [undefined, 0, 0.29, 0.31]) {
+      const response = await app.request(
+        `/api/v1/eliza/agents/${encodeURIComponent(PERSONAL_A)}/upgrade-tier`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "activate_dedicated",
+            quoteId: quoted.data.quoteId,
+            minimumActivationChargeUsd,
+          }),
+        },
+        ENV,
+      );
+      expect(response.status).toBe(400);
+    }
+    expect(await dbWrite.select().from(jobs)).toEqual(before);
   });
 
   test("a same-org operator cannot bypass another user's retained source authority", async () => {
@@ -702,6 +730,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "activate_dedicated",
+          minimumActivationChargeUsd: 0.3,
           quoteId: quoteBody.data.quoteId,
         }),
       },
@@ -812,6 +841,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "activate_dedicated",
+          minimumActivationChargeUsd: 0.3,
           quoteId: firstBody.data.quoteId,
         }),
       },

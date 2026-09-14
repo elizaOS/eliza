@@ -69,6 +69,7 @@ export type AgentHourlyBillingOutcome =
       amountDecimal: string;
     }
   | { status: "already_billed_recently" }
+  | { status: "funded_until"; fundedUntil: Date; stopAfter: Date }
   | { status: "insufficient_credits" };
 
 const BILLABLE_BILLING_STATUSES: AgentBillingStatus[] = ["active", "warning", "shutdown_pending"];
