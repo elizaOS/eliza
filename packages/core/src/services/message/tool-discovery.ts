@@ -7,9 +7,45 @@
 import { DISCOVER_TOOLS_NAME } from "../../actions/to-tool";
 import { ElizaError } from "../../errors";
 import { buildActionCatalog } from "../../runtime/action-catalog";
+import { actionGateRejection } from "../../runtime/action-gate";
 import type { Action } from "../../types/components";
+import type { AgentContext, RoleGateRole } from "../../types/contexts";
+import type { Memory } from "../../types/memory";
 import { isObjectRecord } from "../../utils/type-guards";
+import { mergeAgentContexts } from "./action-surface.js";
 import { collectBudgetedStageOneCandidateActions } from "./planned-tool.js";
+
+/**
+ * The families DISCOVER_TOOLS may list and load: every registered action the
+ * actor is authorized for under the action's OWN declared contexts — the same
+ * rule the executor applies at dispatch (planned-tool.ts merges
+ * `action.contexts` into the active set). The planner's exposed surface is
+ * the Stage-1 context slice, and building the catalog from that slice meant a
+ * misrouted turn could never load the family it needed: "read the last 3
+ * messages in the #general discord channel" was routed to `general`, the
+ * planner asked for MESSAGE, and the catalog (42 families, no MESSAGE)
+ * rejected it, so the reply came from the wrong room (live 2026-09-14,
+ * tj-ab82a95eb85149). Private, disclosure and role gates run unchanged with
+ * the real message and roles; only the context term is per-action.
+ */
+export function collectDiscoveryCatalogActions(args: {
+	actions: readonly Action[];
+	message: Memory;
+	selectedContexts: readonly AgentContext[];
+	userRoles: readonly RoleGateRole[];
+}): Action[] {
+	return args.actions.filter(
+		(action) =>
+			actionGateRejection(action, {
+				message: args.message,
+				userRoles: args.userRoles,
+				activeContexts: mergeAgentContexts(
+					args.selectedContexts,
+					action.contexts,
+				),
+			}) === undefined,
+	);
+}
 
 export function createPlannerToolDiscoveryAction(
 	authorizedActions: readonly Action[],
@@ -75,10 +111,15 @@ export function createPlannerToolDiscoveryAction(
 						typeof name === "string" && actionsByName.has(name),
 				)
 			) {
+				// A miss loads nothing and changes nothing: it steers the model
+				// (coachingFailure) and never owns the turn's final message, which
+				// otherwise shipped "the available runtime step failed" over a
+				// later successful answer (live 2026-09-14, tj-8ce2f7a7e5384b).
 				return {
 					success: false,
 					error:
 						"Select exact names from the authorized discovery catalog. No tools were loaded.",
+					data: { coachingFailure: true },
 				};
 			}
 			const selected = collectBudgetedStageOneCandidateActions({

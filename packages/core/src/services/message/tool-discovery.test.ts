@@ -4,7 +4,10 @@ import { buildPlannerToolsFromActions } from "../../actions/to-tool";
 import type { Action } from "../../types/components";
 import type { Memory } from "../../types/memory";
 import type { IAgentRuntime } from "../../types/runtime";
-import { createPlannerToolDiscoveryAction } from "./tool-discovery";
+import {
+	collectDiscoveryCatalogActions,
+	createPlannerToolDiscoveryAction,
+} from "./tool-discovery";
 
 const runtime = {} as IAgentRuntime;
 const message = {} as Memory;
@@ -86,9 +89,49 @@ describe("planner tool discovery", () => {
 				parameters: { names },
 			});
 			expect(result?.success).toBe(false);
+			expect(result?.data).toMatchObject({ coachingFailure: true });
+			expect(result?.error).toContain("No tools were loaded");
 			expect(loaded).toBe(false);
 		},
 	);
+
+	it("lists a family gated only by context under its own declared contexts and keeps the private and role gates (live: MESSAGE on a general-routed turn)", async () => {
+		const actions: Action[] = [
+			{ name: "MESSAGE", description: "Messaging", contexts: ["messaging"] },
+			{ name: "VIEWS", description: "Navigate", contexts: ["general"] },
+			{
+				name: "PRIVATE_X",
+				description: "Autonomy only",
+				contexts: ["general"],
+				private: true,
+			},
+			{
+				name: "OWNER_X",
+				description: "Owner only",
+				contexts: ["general"],
+				roleGate: { minRole: "OWNER" },
+			},
+		] as Action[];
+		const catalog = collectDiscoveryCatalogActions({
+			actions,
+			message,
+			selectedContexts: ["general"],
+			userRoles: ["ADMIN"],
+		});
+		expect(catalog.map((action) => action.name)).toEqual(["MESSAGE", "VIEWS"]);
+		let loaded: string[] = [];
+		const discovery = createPlannerToolDiscoveryAction(catalog, (found) => {
+			loaded = found.map((action) => action.name);
+		});
+		expect(discovery.description).toMatch(/^MESSAGE$/m);
+		expect(discovery.description).not.toContain("PRIVATE_X");
+		expect(discovery.description).not.toContain("OWNER_X");
+		const result = await discovery.handler?.(runtime, message, undefined, {
+			parameters: { names: ["MESSAGE"] },
+		});
+		expect(result?.success).toBe(true);
+		expect(loaded).toEqual(["MESSAGE"]);
+	});
 
 	it("rejects a registered action using the reserved discovery protocol name", () => {
 		expect(() =>
