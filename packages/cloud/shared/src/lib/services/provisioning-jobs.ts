@@ -13,6 +13,7 @@
  * - agent_restore: Restore from backup
  */
 
+import { getDedicatedComputePriceAcceptance } from "@elizaos/cloud-sdk/browser-contracts";
 import { ElizaError } from "@elizaos/core";
 import {
   and,
@@ -167,6 +168,12 @@ function safeErrorKind<T extends Error>(
 
 const CONTAINER_BACKED_TARGET_REQUIRED_MESSAGE =
   "Agent job requires a container-backed execution tier";
+const PRICED_AGENT_START_JOB_TYPES: readonly string[] = [
+  JOB_TYPES.AGENT_PROVISION,
+  JOB_TYPES.AGENT_RESUME,
+  JOB_TYPES.AGENT_WAKE,
+  JOB_TYPES.AGENT_RESTART,
+];
 export const CONTAINER_BACKED_TARGET_REJECTION_REASON = "agent_job_target_not_container_backed";
 
 function isContainerBackedExecutionTier(tier: AgentExecutionTier): boolean {
@@ -1987,6 +1994,15 @@ export class ProvisioningJobService {
     }
 
     await opts.beforeInsert?.(tx, sandbox);
+
+    // Persist admission-time terms only on new jobs. Reuse and recovery must
+    // retain their original terms, never manufacture acceptance of a new price.
+    if (PRICED_AGENT_START_JOB_TYPES.includes(opts.jobType)) {
+      newJob.data = {
+        ...newJob.data,
+        admittedComputePrice: getDedicatedComputePriceAcceptance(),
+      };
+    }
 
     const [job] = await tx
       .insert(jobs)
@@ -5096,6 +5112,21 @@ export class ProvisioningJobService {
   }
 
   private async executeJobDispatch(job: Job): Promise<void> {
+    if (
+      PRICED_AGENT_START_JOB_TYPES.includes(job.type) &&
+      job.data.admittedComputePrice !== getDedicatedComputePriceAcceptance()
+    ) {
+      throw new RejectedAgentExecutionError(
+        "Dedicated start price is missing or changed. Review the current price and submit a new start request; no runtime action was dispatched.",
+        {
+          jobId: job.id,
+          jobType: job.type,
+          columnAgentId: job.agent_id,
+          columnOrganizationId: job.organization_id,
+          cause: "dedicated_compute_price_confirmation_required",
+        },
+      );
+    }
     switch (job.type) {
       case JOB_TYPES.AGENT_COMPUTE_LEASE: {
         const result = await executeAgentComputeLeaseJob(job, () =>
