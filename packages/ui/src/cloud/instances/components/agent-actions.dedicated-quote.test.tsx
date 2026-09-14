@@ -133,6 +133,47 @@ describe("Dedicated activation quote", () => {
     vi.clearAllMocks();
   });
 
+  it.each([
+    ["stopped", "Resume Agent", "resume"],
+    ["sleeping", "Reactivate Agent", "wake"],
+  ] as const)(
+    "requires paid-start confirmation for %s agents",
+    async (status, label, action) => {
+      apiWithStatus.mockResolvedValue({
+        status: 202,
+        data: { data: { jobId: "restart-job" } },
+      });
+      renderWithQueryClient(
+        <MemoryRouter>
+          <ElizaAgentActions
+            agentId="existing-dedicated"
+            executionTier="dedicated-always"
+            status={status}
+          />
+        </MemoryRouter>,
+      );
+      await userEvent.click(screen.getByRole("button", { name: label }));
+      expect(await screen.findByRole("alertdialog")).toBeTruthy();
+      expect(
+        screen.getByText(/Minimum charge per successful start: \$0.30/),
+      ).toBeTruthy();
+      expect(screen.getByText(/Running costs \$0.15/)).toBeTruthy();
+      expect(apiWithStatus).not.toHaveBeenCalled();
+      await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(screen.queryByRole("alertdialog")).toBeNull();
+      expect(apiWithStatus).not.toHaveBeenCalled();
+      await userEvent.click(screen.getByRole("button", { name: label }));
+      await userEvent.click(
+        screen.getByRole("button", { name: "Start Dedicated" }),
+      );
+      await waitFor(() => expect(apiWithStatus).toHaveBeenCalledTimes(1));
+      expect(apiWithStatus).toHaveBeenCalledWith(
+        `/api/v1/eliza/agents/existing-dedicated/${action}`,
+        { method: "POST", json: undefined },
+      );
+    },
+  );
+
   it("loads and renders the server-owned quote before offering activation", async () => {
     apiWithStatus.mockResolvedValueOnce({
       status: 200,

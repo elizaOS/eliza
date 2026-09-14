@@ -1187,6 +1187,57 @@ test("hourly renewal carries only the unpaid activation minimum into the stop re
   ).toEqual([{ charged: "0.300000" }]);
 });
 
+test("retained restarts use the current tariff while uninterrupted renewals keep the prior rate", async () => {
+  for (const restart of [false, true]) {
+    const { org, agentId, identity, provider, input, compute } = await billableFundedAgent(
+      restart ? "000000000066" : "000000000065",
+      "1.000000",
+    );
+    await fixture.query(
+      "UPDATE agent_compute_funding SET hourly_rate='0.010000',minimum_charge_remaining='0.020000' WHERE id=$1",
+      [provider.fundingId],
+    );
+    await fixture.query(
+      "UPDATE compute_billing_rate_segments SET rate_per_hour='0.010000' WHERE workload_id=$1 AND billing_state='running'",
+      [agentId],
+    );
+    if (restart) {
+      const receipt = await stopReceiptFor(provider.fundingId, input.now);
+      const { settleStoppedAgentComputeInTransaction: settle } = await import(
+        "./agent-compute-stop"
+      );
+      await helpers.writeTransaction((tx) =>
+        settle(tx, { ...identity, fundingId: provider.fundingId }, receipt),
+      );
+      await fixture.query("UPDATE agent_sandboxes SET status='stopped' WHERE id=$1", [agentId]);
+      const resumed = await helpers.writeTransaction((tx) =>
+        compute.reserveRetainedResumeInTransaction(tx, identity),
+      );
+      expect(resumed?.window.hourly_rate).toBe("0.150000");
+      expect(resumed?.window.minimum_charge_remaining).toBe("0.300000");
+    } else {
+      const renewed = await helpers.writeTransaction((tx) =>
+        compute.renewInTransaction(tx, {
+          ...identity,
+          fundingId: provider.fundingId,
+          settledThrough: input.now,
+          actualAmount: "0.010000",
+        }),
+      );
+      expect(renewed.window.hourly_rate).toBe("0.010000");
+      expect(renewed.window.minimum_charge_remaining).toBe("0.010000");
+    }
+    expect(
+      (
+        await fixture.query("SELECT hourly_rate::text FROM agent_compute_funding WHERE id=$1", [
+          provider.fundingId,
+        ])
+      ).rows,
+    ).toEqual([{ hourly_rate: "0.010000" }]);
+    expect(Number((await renewalState(org)).balance[0]!.credit_balance)).toBeGreaterThanOrEqual(0);
+  }
+});
+
 test("an activation that never becomes ready does not collect the minimum charge", async () => {
   const { org, agentId, identity, provider, input } = await billableFundedAgent(
     "000000000062",

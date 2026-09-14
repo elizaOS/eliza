@@ -337,6 +337,42 @@ describe("ElizaAgentsTable per-row view model", () => {
     expect(screen.getAllByText("<$0.01/hr").length).toBeGreaterThanOrEqual(1);
   });
 
+  it.each([
+    ["stopped", "Resume agent"],
+    ["sleeping", "Reactivate agent"],
+  ] as const)(
+    "discloses a paid start from both %s row layouts",
+    async (status, label) => {
+      const user = userEvent.setup();
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={queryClient}>
+          <ElizaAgentsTable agents={[row({ status })]} />
+        </QueryClientProvider>,
+      );
+      const buttons = screen.getAllByRole("button", {
+        name: label,
+      });
+      expect(buttons).toHaveLength(2);
+      for (const button of buttons) {
+        await user.click(button);
+        const dialog = await screen.findByRole("alertdialog");
+        expect(
+          within(dialog).getByText(/Minimum charge per successful start/),
+        ).toBeTruthy();
+        expect(
+          within(dialog).getByText(/Running charges count toward this minimum/),
+        ).toBeTruthy();
+        await user.click(
+          within(dialog).getByRole("button", { name: "Cancel" }),
+        );
+        expect(screen.queryByRole("alertdialog")).toBeNull();
+      }
+    },
+  );
+
   it("requires a billing-transparency confirm before deactivating", async () => {
     const user = userEvent.setup();
     const queryClient = new QueryClient({
