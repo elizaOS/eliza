@@ -1,0 +1,4 @@
+receipts/**/*.mp4
+receipts/**/*.png
+receipts/**/*.jpg
+receipts/**/logcat-*.txt
