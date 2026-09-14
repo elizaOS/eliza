@@ -5,7 +5,11 @@
  * travel path.
  */
 import { describe, expect, it } from "vitest";
-import { intentStatesTravel, isTitleEchoLocation } from "./calendar-handler";
+import {
+  impliedMutationTargetHint,
+  intentStatesTravel,
+  isTitleEchoLocation,
+} from "./calendar-handler";
 
 describe("intentStatesTravel", () => {
   it("rejects a plain create carrying a fabricated origin (live regression)", () => {
@@ -91,5 +95,36 @@ describe("isTitleEchoLocation", () => {
     ).toBe(false);
     expect(isTitleEchoLocation("Main St gym", "Gym", ["gym at 6"])).toBe(false);
     expect(isTitleEchoLocation(undefined, "Gym", ["gym at 6"])).toBe(false);
+  });
+});
+
+describe("impliedMutationTargetHint", () => {
+  it("names the event between the verb and the first time or place clause", () => {
+    expect(
+      impliedMutationTargetHint(
+        "move my chiropractor appointment to friday at 4pm",
+      ),
+    ).toBe("chiropractor appointment");
+    expect(
+      impliedMutationTargetHint(
+        "delete the chiropractor appointment from my calendar",
+      ),
+    ).toBe("chiropractor appointment");
+    expect(impliedMutationTargetHint("cancel my 3pm dentist")).toBe("dentist");
+    expect(
+      impliedMutationTargetHint("please reschedule dentist to next tuesday"),
+    ).toBe("dentist");
+  });
+
+  it("returns nothing for requests that are not mutations or name no event", () => {
+    expect(impliedMutationTargetHint("add a haircut friday at 2pm")).toBe(
+      undefined,
+    );
+    expect(impliedMutationTargetHint("move it to 5pm")).toBe(undefined);
+    expect(impliedMutationTargetHint("change its start time")).toBe(undefined);
+    expect(impliedMutationTargetHint("delete that one")).toBe(undefined);
+    expect(impliedMutationTargetHint("cancel 3pm")).toBe(undefined);
+    expect(impliedMutationTargetHint("")).toBe(undefined);
+    expect(impliedMutationTargetHint(undefined)).toBe(undefined);
   });
 });

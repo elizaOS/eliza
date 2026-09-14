@@ -1472,6 +1472,42 @@ const SCHEDULE_TOKEN_PATTERN =
  * to notice and reissue the call. A value that is only a clock time, weekday
  * or date is a schedule the planner misfiled, never a place or a note.
  */
+const MUTATION_LEAD_PATTERN =
+  /^(?:(?:hey|hi|ok|okay|please)[\s,]+)*(?:please\s+)?(?:can you\s+|could you\s+|would you\s+)?(?:move|reschedule|shift|push|bump|change|update|edit|delete|cancel|remove|drop|scrap)\s+(?:the\s+|my\s+|our\s+|that\s+|this\s+)?/i;
+const MUTATION_TAIL_PATTERN =
+  /\s+(?:to|at|for|on|from|until|till|by|into|instead|off|out)\b[\s\S]*$/i;
+const HINT_PRONOUN_LEAD_PATTERN =
+  /^(?:it|its|that|this|them|those|these|one|the one|everything|all|each|every)\b/i;
+const HINT_SCHEDULE_TOKEN_PATTERN =
+  /\b(?:\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)|(?:next\s+)?(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*|today|tomorrow|tonight|noon|midnight)\b/gi;
+
+/**
+ * The event the user named in a mutation request the planner sent without
+ * any target ("move my chiropractor appointment to friday at 4pm" arrived as
+ * `{action: "update_event"}`, live 2026-09-14, and the turn spent two rounds
+ * searching). The words between the leading verb and the first
+ * time/place clause, minus schedule tokens; undefined when nothing usable
+ * remains, so the existing clarification still asks.
+ */
+export function impliedMutationTargetHint(
+  requestText: string | undefined,
+): string | undefined {
+  const text = requestText?.trim();
+  if (!text) return undefined;
+  const firstClause = text.split(/[.!?;\n]/)[0] ?? "";
+  if (!MUTATION_LEAD_PATTERN.test(firstClause)) return undefined;
+  const hint = firstClause
+    .replace(MUTATION_LEAD_PATTERN, "")
+    .replace(MUTATION_TAIL_PATTERN, "")
+    .replace(HINT_SCHEDULE_TOKEN_PATTERN, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  // A pronoun points at context the handler cannot see ("change its start
+  // time", "move it to 5pm"); the clarification asks as before.
+  if (HINT_PRONOUN_LEAD_PATTERN.test(hint)) return undefined;
+  return /[a-z]{3,}/i.test(hint) ? hint : undefined;
+}
+
 export function looksLikeScheduleToken(value: string): boolean {
   return SCHEDULE_TOKEN_PATTERN.test(value);
 }
@@ -5752,7 +5788,8 @@ const calendarAction: CalendarHandlerAction = {
           }
         }
         if (!resolvedEventId) {
-          const titleHint = searchQueries[0];
+          const titleHint =
+            searchQueries[0] ?? impliedMutationTargetHint(messageText(message));
           if (!titleHint) {
             return respond({
               success: false,
@@ -6184,7 +6221,10 @@ const calendarAction: CalendarHandlerAction = {
           // A structured deletion title identifies the target too; unlike an
           // update title, it cannot mean a requested rename. Keep explicit
           // query precedence and the existing unique-match checks below.
-          const titleHint = searchQueries[0] ?? explicitTitle;
+          const titleHint =
+            searchQueries[0] ??
+            explicitTitle ??
+            impliedMutationTargetHint(messageText(message));
           if (!titleHint) {
             return respond({
               success: false,
