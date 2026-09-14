@@ -1,8 +1,8 @@
 /** Verifies PR admission combines source contracts, PostgreSQL subscription authority, affected static checks, billing replay, and Windows security. */
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { listPackages } from "../lib/workspaces.mjs";
 
@@ -222,9 +222,10 @@ describe("PR Static Smoke workflow", () => {
     expect(commands).toContain(
       "packages/cloud/shared/scripts/messaging-gateway-preflight.test.mjs",
     );
-    expect(commands).toContain(
-      "packages/scripts/__tests__/pr-static-smoke-workflow.test.ts",
-    );
+    // This file used to be named here individually. It is now covered by the
+    // directory, together with every other workflow-contract test -- see
+    // "runs every test that reads a workflow file" below.
+    expect(commands).toContain("packages/scripts/__tests__");
     expect(commands).toContain("bun run build:core");
     expect(commands).toContain("run lint:check --concurrency=4 --affected");
     expect(commands).toContain("run typecheck --concurrency=4 --affected");
@@ -246,5 +247,74 @@ describe("PR Static Smoke workflow", () => {
       "mock-backed payment replay Playwright proof",
     );
     expect(workflowReadme).not.toMatch(/does\s+not run tests/);
+  });
+
+  // `packages/scripts` is not a workspace package, so `run-all-tests.mjs` never
+  // reaches it and `audit-test-lane-membership.mjs` -- which accounts for named
+  // workspace packages -- cannot see it either. Nothing else in CI runs these
+  // files. A workflow-contract test that no lane runs is not a guard; it is a
+  // file. Fail closed here so a new one cannot arrive dead.
+  test("runs every test that reads a workflow file", () => {
+    const contractStep = (workflow.jobs?.["source-smoke"]?.steps ?? []).find(
+      (step) => step.name === "Test required workflow contracts",
+    );
+    const covered = splitWords(contractStep?.run);
+    expect(covered.length).toBeGreaterThan(0);
+
+    const isCovered = (rel: string) =>
+      covered.some(
+        (entry) =>
+          entry === rel || rel.startsWith(`${entry.replace(/\/+$/, "")}/`),
+      );
+
+    const testFilePattern = /[._](?:test|spec)\.[^./]+$/i;
+    const skipDirs = new Set(["node_modules", "dist", ".turbo"]);
+    const found: string[] = [];
+    const uncovered: string[] = [];
+
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir)) {
+        if (skipDirs.has(entry)) continue;
+        const full = join(dir, entry);
+        if (statSync(full).isDirectory()) {
+          walk(full);
+          continue;
+        }
+        if (!testFilePattern.test(entry)) continue;
+        // The marker is the subject, not the runner: a test that reads a
+        // workflow file is asserting a CI contract, wherever it lives.
+        if (!readFileSync(full, "utf8").includes(".github/workflows/"))
+          continue;
+        const rel = relative(repoRoot, full).split("\\").join("/");
+        found.push(rel);
+        if (!isCovered(rel)) uncovered.push(rel);
+      }
+    };
+    walk(join(repoRoot, "packages/scripts"));
+
+    // A broken walk or a marker that matched nothing would satisfy the real
+    // assertion below without having checked a single file.
+    expect(found.length).toBeGreaterThan(40);
+    expect(uncovered).toEqual([]);
+  });
+
+  test("the completeness guard is not vacuous", () => {
+    // A broken walk or a marker that matches nothing would pass the assertion
+    // above without checking anything.
+    const contractStep = (workflow.jobs?.["source-smoke"]?.steps ?? []).find(
+      (step) => step.name === "Test required workflow contracts",
+    );
+    expect(splitWords(contractStep?.run)).toContain(
+      "packages/scripts/__tests__",
+    );
+    expect(
+      readFileSync(
+        join(
+          repoRoot,
+          "packages/scripts/__tests__/homepage-deploy-workflow.test.ts",
+        ),
+        "utf8",
+      ),
+    ).toContain(".github/workflows/");
   });
 });
