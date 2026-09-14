@@ -367,7 +367,7 @@ export async function admitFamilyBackupCleanup(
 ): Promise<FamilyDeletionJob> {
   requireOwner(input.ownerEntityId);
   z.literal(true).parse(input.acknowledgeWholeArchiveHistory);
-  return withReviewedRetiredLocalAgentBackups(
+  const admitted = await withReviewedRetiredLocalAgentBackups(
     runtime.agentId,
     async (inventory) => {
       const job = await requireDeletionJob(runtime, input.ownerEntityId);
@@ -396,15 +396,30 @@ export async function admitFamilyBackupCleanup(
       return updated;
     },
   );
+  const { ensureFamilyBackupCleanupSchedule } = await import(
+    "./backup-cleanup-schedule.js"
+  );
+  await ensureFamilyBackupCleanupSchedule(runtime);
+  return admitted;
 }
 
 /** Load admitted identities under the backup lock, then durably acknowledge verified removal. */
 export async function purgeFamilyBackupCleanup(
   runtime: IAgentRuntime,
   ownerEntityId: string,
+  expected?: { jobId: string; sha256: string },
 ): Promise<FamilyDeletionJob> {
   requireOwner(ownerEntityId);
   const admittedJob = await requireDeletionJob(runtime, ownerEntityId);
+  if (
+    expected &&
+    (admittedJob.id !== expected.jobId ||
+      admittedJob.backupCleanup?.sha256 !== expected.sha256)
+  )
+    throw new ElizaError(
+      "[FamilyDeletion] Scheduled cleanup no longer matches the admitted review",
+      { code: "FAMILY_DELETION_PREVIEW_STALE" },
+    );
   if (admittedJob.state === "complete") return admittedJob;
   const review = admittedJob.backupCleanup;
   if (!review || admittedJob.state !== "backup_pending")

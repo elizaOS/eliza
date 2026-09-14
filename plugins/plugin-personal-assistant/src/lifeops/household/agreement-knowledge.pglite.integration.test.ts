@@ -34,7 +34,7 @@ import {
   registerScheduledTaskChannelDispatcher,
 } from "@elizaos/plugin-scheduling";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { tryHandleRuntimePluginRoute } from "../../../../../packages/agent/src/api/runtime-plugin-routes.ts";
 import { LocalFileStorageService } from "../../../../../packages/agent/src/services/file-storage.js";
@@ -51,6 +51,10 @@ import { agreementPinsProvider } from "../../providers/agreement-pins.js";
 import { bindMachineAuthIdentityToEntity } from "../../routes/authenticated-entity-principal.js";
 import { CalendarCardAccessStore } from "../calendar-card.js";
 import { MonthlyFamilyPacketService } from "../family-coordination/monthly-packet.js";
+import {
+  ensureFamilyBackupCleanupSchedule,
+  FAMILY_BACKUP_CLEANUP_OPERATION,
+} from "../family-workflows/backup-cleanup-schedule.js";
 import {
   previewFamilyDeletionDatabase,
   withReviewedFamilyDeletionDatabase,
@@ -3607,7 +3611,7 @@ describe("reviewed workspace deletion — real database and disk", () => {
         headers,
         body: JSON.stringify({
           expectedSha256: preview.sha256,
-          backupRetention: "immediate",
+          backupRetention: "7-days",
         }),
       });
       expect(started.status, await started.clone().text()).toBe(202);
@@ -3647,6 +3651,64 @@ describe("reviewed workspace deletion — real database and disk", () => {
       ).toBe("backup_pending");
       await executeRawSql(
         runtime,
+        "CREATE FUNCTION app_scheduling.reject_cleanup_schedule() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.metadata_json::jsonb->>'systemOperation' = 'agent.familyBackupCleanup' THEN RAISE EXCEPTION 'schedule storage unavailable'; END IF; RETURN NEW; END; $$",
+      );
+      await executeRawSql(
+        runtime,
+        "CREATE TRIGGER reject_cleanup_schedule BEFORE INSERT ON app_scheduling.life_scheduled_tasks FOR EACH ROW EXECUTE FUNCTION app_scheduling.reject_cleanup_schedule()",
+      );
+      const scheduleInterrupted = await fetch(`${base}/backups`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          expectedSha256: backupReview.sha256,
+          acknowledgeWholeArchiveHistory: true,
+        }),
+      });
+      expect(scheduleInterrupted.status).toBe(500);
+      expect(
+        (await readFamilyDeletionJob(runtime, SELF_ENTITY_ID))?.backupCleanup
+          ?.sha256,
+      ).toBe(backupReview.sha256);
+      expect(fs.existsSync(oldBackup.path)).toBe(true);
+      await executeRawSql(
+        runtime,
+        "DROP TRIGGER reject_cleanup_schedule ON app_scheduling.life_scheduled_tasks",
+      );
+      await ensureFamilyBackupCleanupSchedule(runtime);
+      const retained = await fetch(`${base}/backups`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          expectedSha256: backupReview.sha256,
+          acknowledgeWholeArchiveHistory: true,
+        }),
+      });
+      expect(retained.status, await retained.clone().text()).toBe(202);
+      await expect(
+        purgeFamilyBackupCleanup(runtime, SELF_ENTITY_ID, {
+          jobId: backupReview.jobId,
+          sha256: backupReview.sha256,
+        }),
+      ).rejects.toMatchObject({ code: "AGENT_BACKUP_RETENTION_PENDING" });
+      expect(fs.existsSync(oldBackup.path)).toBe(true);
+      await expect(
+        purgeFamilyBackupCleanup(runtime, SELF_ENTITY_ID, {
+          jobId: crypto.randomUUID(),
+          sha256: backupReview.sha256,
+        }),
+      ).rejects.toMatchObject({ code: "FAMILY_DELETION_PREVIEW_STALE" });
+      const afterRetention = Date.parse(backupReview.notBefore) + 1000;
+      vi.spyOn(Date, "now").mockReturnValue(afterRetention);
+      const { session: renewedOwner } = await createBrowserSession(auth, {
+        identityId: ownerId,
+        ip: null,
+        userAgent: null,
+        rememberDevice: false,
+      });
+      headers.Authorization = `Bearer ${renewedOwner.id}`;
+      await executeRawSql(
+        runtime,
         "CREATE FUNCTION app_lifeops.reject_backup_completion() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.job_json->>'state' = 'complete' THEN RAISE EXCEPTION 'completion storage unavailable'; END IF; RETURN NEW; END; $$",
       );
       await executeRawSql(
@@ -3671,6 +3733,25 @@ describe("reviewed workspace deletion — real database and disk", () => {
         runtime,
         "DROP TRIGGER reject_backup_completion ON app_lifeops.life_family_workspace_deletions",
       );
+      await ensureFamilyBackupCleanupSchedule(runtime);
+      await ensureFamilyBackupCleanupSchedule(runtime);
+      const runner = getScheduledTaskRunner(runtime, {
+        agentId: runtime.agentId,
+        now: () => new Date(afterRetention),
+      });
+      const cleanupTasks = (await runner.list()).filter(
+        (task) =>
+          task.metadata?.systemOperation === FAMILY_BACKUP_CLEANUP_OPERATION,
+      );
+      expect(cleanupTasks).toHaveLength(1);
+      const cleanupTask = cleanupTasks[0];
+      if (!cleanupTask) throw new Error("Admitted cleanup was not scheduled");
+      expect((await runner.fireWithResult(cleanupTask.taskId)).kind).toBe(
+        "fired",
+      );
+      expect(
+        (await readFamilyDeletionJob(runtime, SELF_ENTITY_ID))?.state,
+      ).toBe("complete");
       const completed = await fetch(`${base}/backups/resume`, {
         method: "POST",
         headers,
@@ -3697,6 +3778,7 @@ describe("reviewed workspace deletion — real database and disk", () => {
         }),
       ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
     } finally {
+      vi.restoreAllMocks();
       if (previousKmsBackend === undefined)
         delete process.env.ELIZA_KMS_BACKEND;
       else process.env.ELIZA_KMS_BACKEND = previousKmsBackend;
