@@ -276,7 +276,7 @@ export function renderMessageHandlerModelInput(
 		...(completionSources?.sources.length
 			? [
 					{
-						content: `completion_source_set: ${completionSources.sourceSetId}\nThe [hN] labels above belong to this source set. Return advisory completionContext annotations while preserving all original history.${historyReferenceNotice(context, history)}`,
+						content: `completion_source_set: ${completionSources.sourceSetId}\nThe [hN] labels above belong to this source set. Return completionContext according to history_source_selection.${historyReferenceNotice(context, history)}`,
 						stable: false,
 					},
 				]

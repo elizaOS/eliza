@@ -610,8 +610,7 @@ describe("runV5MessageRuntimeStage1", () => {
 					const sourceSetId =
 						text.match(/completion_source_set: ([a-f0-9]{64})/)?.[1] ?? "";
 					const reading =
-						calls === 1 &&
-						!["hi", "selected", "new-source", "collision"].includes(mode);
+						calls === 1 && !["hi", "new-source", "collision"].includes(mode);
 					return stage1Response({
 						contexts: ["simple"],
 						replyText: reading
@@ -668,21 +667,21 @@ describe("runV5MessageRuntimeStage1", () => {
 			};
 			if (mode === "collision")
 				expect(modeSchema(0)).toContain("all_prior_dialogue");
-			else expect(modeSchema(0)).toContain("all_prior_dialogue");
+			else expect(modeSchema(0)).toEqual(["relevant_prior_dialogue"]);
 			expect(first).toContain(rows[0].content.text);
 			if (mode !== "new-source")
 				expect(first).toContain(before[4].content.text);
 			if (mode === "collision")
 				expect(first).toContain(before[1].content.text?.trim());
 			else {
-				expect(first).toContain(before[1].content.text?.trim());
+				expect(first).not.toContain(before[1].content.text?.trim());
 				expect(first).not.toContain(
 					"there is no separate chat-history search tool on this turn",
 				);
 			}
 			if (mode === "new-source")
 				expect(first).toContain("New unreviewed rule: do not send emails.");
-			if (["hi", "selected", "new-source", "collision"].includes(mode))
+			if (["hi", "new-source", "collision"].includes(mode))
 				expect(calls).toBe(1);
 			else {
 				expect(calls).toBe(2);
@@ -698,7 +697,7 @@ describe("runV5MessageRuntimeStage1", () => {
 					].includes(mode)
 				)
 					expect(modeSchema(1)).toContain("all_prior_dialogue");
-				else expect(modeSchema(1)).toContain("all_prior_dialogue");
+				else expect(modeSchema(1)).toEqual(["relevant_prior_dialogue"]);
 				if (mode === "revoked")
 					expect(second).not.toContain(before[1].content.text?.trim());
 				else if (mode === "edited") {
@@ -781,7 +780,8 @@ describe("runV5MessageRuntimeStage1", () => {
 					const reading =
 						calls === 1 ||
 						(["repeat", "repeat-id"].includes(mode) && calls === 2);
-					if (calls === 1) expect(text).toContain(rows[1].content.text);
+					if (calls === 1 && mode !== "disabled")
+						expect(text).not.toContain(rows[1].content.text);
 					if (calls > 1) {
 						if (mode === "revoked" || mode === "edited")
 							expect(text).not.toContain(rows[1].content.text);
@@ -882,7 +882,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				expect(text).toContain(rows[0].content.text);
 				if (calls === 2) {
 					expect(text).toContain("context_loaded: history:h1");
-					expect(text).toContain(rows[1].content.text?.trim());
+					expect(text).not.toContain(rows[1].content.text?.trim());
 				}
 				return stage1Response({
 					contexts: ["simple"],
@@ -1155,19 +1155,16 @@ describe("runV5MessageRuntimeStage1", () => {
 		"full",
 		"malformed",
 		"cancelled",
-	])("validates complete-history routing before effects: %s", async (mode) => {
+	])("validates projected-history routing before effects: %s", async (mode) => {
 		const { runtime, message, rows, state } = await reviewedHistoryFixture();
 		message.content.text = "Open the requested view.";
 		const before = structuredClone(rows);
 		const dispatch = vi.spyOn(runtime.responseHandlerFieldRegistry, "dispatch");
 		const abort = new AbortController();
 		const inputs: Array<Array<{ role: string; content: string }>> = [];
-		const canRepair = [
-			"repair",
-			"still-incomplete",
-			"cancelled",
-			"deferred",
-		].includes(mode);
+		const canRepair = ["repair", "still-incomplete", "cancelled"].includes(
+			mode,
+		);
 		runtime.useModel = vi.fn(
 			async (...args: Parameters<IAgentRuntime["useModel"]>) => {
 				const input = args[1] as {
@@ -1181,7 +1178,9 @@ describe("runV5MessageRuntimeStage1", () => {
 				const sourceSetId = text.match(
 					/completion_source_set: ([a-f0-9]{64})/,
 				)?.[1];
-				expect(text).toContain(rows[1].content.text?.trim());
+				const restoring = call > (canRepair ? 2 : 1);
+				if (restoring) expect(text).toContain(rows[1].content.text?.trim());
+				else expect(text).not.toContain(rows[1].content.text?.trim());
 				if (call === 2 && canRepair) {
 					expect(input.messages.slice(0, inputs[0].length)).toEqual(inputs[0]);
 					expect(input.messages.at(-1)?.content).toContain(

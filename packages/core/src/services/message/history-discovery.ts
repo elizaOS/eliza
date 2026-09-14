@@ -1,5 +1,5 @@
 /** Foreground reads of reviewed original dialogue before reply processing or
- * effects. Retention annotations and optional rereads never remove model context. */
+ * effects. Original context events remain intact; only Stage-1 rendering changes. */
 import {
 	collectCompletionContextSources,
 	completionContextSources,
@@ -13,9 +13,35 @@ import type { ContextObject } from "../../types/context-object.ts";
 import type { JSONSchema, PromptSegment } from "../../types/model.ts";
 import { readContextRequests } from "./context-discovery.ts";
 
-/** Retain the complete-context schema even when legacy rereads are available. */
+/** Match source-selection semantics to the supplied originals and available reads. */
 export function withReviewedHistorySelection(schema: JSONSchema): JSONSchema {
-	return schema;
+	const selection = schema.properties?.completionContext;
+	const complete = selection?.properties?.complete;
+	const mode = selection?.properties?.mode;
+	if (!selection || !complete || !mode) return schema;
+	return {
+		...schema,
+		properties: {
+			...schema.properties,
+			completionContext: {
+				...selection,
+				properties: {
+					...selection.properties,
+					mode: {
+						...mode,
+						enum: ["relevant_prior_dialogue"],
+						description:
+							"Select from supplied originals. Request missing originals through contextRequests, including history:all for exhaustive or unresolved history. Keep complete=false while a dependency remains unresolved.",
+					},
+					complete: {
+						...complete,
+						description:
+							"True only after reviewing supplied originals and resolving every applicable constraint, correction, referent and referenced pending intent. Read needed deferred originals through contextRequests before deciding; never certify unseen content. This certifies source selection, not completion of future tool work.",
+					},
+				},
+			},
+		},
+	};
 }
 
 export const HISTORY_REFERENCE_PREFIX = "history:";
@@ -44,7 +70,7 @@ export function projectReviewedHistory(
 	return {
 		sourceSetId: bound.sourceSetId,
 		scope,
-		visibleEventIds: new Set(bound.sources.map((source) => source.event.id)),
+		visibleEventIds: visible,
 		loadedSourceIds: new Set(),
 	};
 }
@@ -222,16 +248,17 @@ export function loadHistoryReferences(
 	};
 }
 
-export const REVIEWED_HISTORY_SELECTION_INSTRUCTIONS = `history_source_annotations:
-Every authorized original conversation source is supplied in chronological order, including originals previously marked deferred by a retention review. Retention annotations never authorize omission, summarization or a history window. Use all_prior_dialogue and preserve all constraints, corrections, referents and unfinished work.
-The source-bound contextRequests references remain available for an explicit reread: history:hN for a known source ID, history:search:literal phrase for every case-insensitive literal match, and history:all for a complete refresh. These reads refresh authorization; they do not establish that other originals were absent. Do not infer missing history from a review annotation. Leave replyText and action candidates empty while reading; no draft, extraction or effect from a read decision executes. Source annotations cannot rewrite the retention checkpoint or remove complete model context.`;
+export const REVIEWED_HISTORY_SELECTION_INSTRUCTIONS = `history_source_selection:
+The supplied original history contains retained standing constraints and unfinished work, every new unreviewed source, and the complete current exchange. Other reviewed originals remain in this authorized conversation; the current-turn boundary gives the complete reference index. A prior retention review is model judgment, not proof every future dependency is supplied. No original is deleted, rewritten or summarized.
+Read a needed missing original through contextRequests=["history:hN", ...] only when its ID is known; never guess numbered sources. To locate an original by remembered wording, use contextRequests=["history:search:literal phrase", ...]. Each query is a case-insensitive literal substring, not a semantic query or regular expression; all matching complete originals are supplied. Choose distinctive words likely in the original. Queries in one read form a union. A search that adds no originals restores full history, not an absence claim. Use contextRequests=["history:all"] when literal lookup cannot resolve the dependency, interpretation is uncertain, or the request requires exhaustive conversation coverage. Leave replyText and action candidates empty while reading; no draft, extraction or effect from a read decision executes. A ban on app/storage tools does not forbid reading these same conversation originals. Never infer omitted content or permission. Already loaded IDs need not be requested again.
+After resolving dependencies, select applicable supplied originals in completionContext: factual background, standing constraints/corrections, referents and referenced unfinished work. Their complete union remains available without a cap. Use mode=relevant_prior_dialogue; complete=true means this request's dependencies are resolved from supplied originals, not that unseen originals were reviewed. Missing history is requested through contextRequests, not a separate selection mode. Copy completion_source_set exactly. An incomplete selection restores every original before delivery or effects. Current request, system/provider constraints and tool receipts remain complete. This decision cannot rewrite the retention checkpoint.`;
 
 export function historyReferenceNotice(
 	context: ContextObject,
 	projection?: HistoryDiscovery,
 ): string {
 	if (!projection) return "";
-	return `\nComplete original history index: h1 through h${collectCompletionContextSources(context).length}, inclusive, in chronological order. Each ID identifies one complete original source. Shown or context_loaded sources are already supplied; read a known ID through contextRequests=["history:hN"], or locate originals with ["history:search:literal phrase"]. Never guess IDs. "history:all" refreshes all originals. All authorized originals are already supplied. Ranges and wildcards are not request names.`;
+	return `\nComplete original history index: h1 through h${collectCompletionContextSources(context).length}, inclusive, in chronological order. Each ID identifies one complete original source. Shown or context_loaded sources are already supplied; read a known ID through contextRequests=["history:hN"], or locate originals with ["history:search:literal phrase"]. Never guess IDs. "history:all" restores all originals. Ranges and wildcards are not request names.`;
 }
 
 export function loadedHistorySegments(
