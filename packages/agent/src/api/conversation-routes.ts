@@ -5495,19 +5495,11 @@ export async function handleConversationRoutes(
         }
 
         const endActiveChatTurn = beginActiveChatTurn(state);
-        try {
-          const result = await generateChatResponse(
-            runtime,
-            routedUserMessage,
-            state.agentName,
-            {
-              inferenceTimer,
-              roomHandlerLease: runtimeTurnLease,
-              resolveNoResponseText: () =>
-                resolveNoResponseFallback(state.logBuffer, runtime),
-              preferredLanguage,
-            },
-          );
+        let replySent = false;
+        const deliverResult = async (
+          result: ChatGenerationResult,
+        ): Promise<void> => {
+          if (replySent) return;
           assertConversationConnectionRuntime(
             state.runtime,
             connectionDescriptor,
@@ -5587,7 +5579,34 @@ export async function handleConversationRoutes(
             await settleTurnReservation(outcome);
             json(res, buildConversationJsonOutcome(outcome));
           }
+          replySent = true;
+        };
+        try {
+          const result = await generateChatResponse(
+            runtime,
+            routedUserMessage,
+            state.agentName,
+            {
+              inferenceTimer,
+              roomHandlerLease: runtimeTurnLease,
+              resolveNoResponseText: () =>
+                resolveNoResponseFallback(state.logBuffer, runtime),
+              preferredLanguage,
+              onReplyReady: deliverResult,
+            },
+          );
+          await deliverResult(result);
         } catch (err) {
+          if (replySent) {
+            // error-policy:J7 The durable reply and idempotency outcome already
+            // reached the caller; report a later drain failure without replying again.
+            runtime.reportError("ConversationJson.postDelivery", err, {
+              conversationId: conv.id,
+              roomId: conv.roomId,
+              clientMessageId,
+            });
+            return true;
+          }
           if (
             isCallbackHistoryPersistenceError(err) ||
             err instanceof AssistantReplyPersistenceError
