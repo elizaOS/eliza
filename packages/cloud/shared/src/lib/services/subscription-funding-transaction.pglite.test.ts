@@ -1664,7 +1664,7 @@ test("provision completion commits readiness with running state and rejects stal
 });
 
 if (sshFixturePath) {
-  async function runPaidContainerScenario(scenario: "worker" | "sleep") {
+  async function runPaidContainerScenario(scenario: "worker" | "sleep" | "shutdown" | "restart") {
     const target = z
       .object({
         hostname: z.ipv4(),
@@ -1683,7 +1683,14 @@ if (sshFixturePath) {
     const ssh = new DockerSSHClient(target);
     const rootSSH = guard.dockerComputeRootSSH(ssh, target.username);
     const docker = target.username === "root" ? "docker" : "sudo --non-interactive docker";
-    const suffix = scenario === "worker" ? "000000000041" : "000000000042";
+    const suffix =
+      scenario === "worker"
+        ? "000000000041"
+        : scenario === "sleep"
+          ? "000000000042"
+          : scenario === "shutdown"
+            ? "000000000043"
+            : "000000000044";
     const agentId = `63000000-0000-4000-8000-${suffix}`;
     const org = `61000000-0000-4000-8000-${suffix}`;
     const name = `agent-${agentId}`;
@@ -1700,6 +1707,7 @@ if (sshFixturePath) {
     const directory = await mkdtemp(join(tmpdir(), "eliza-paid-worker-"));
     const children: ReturnType<typeof Bun.spawn>[] = [];
     let containerId: string | undefined;
+    const ownedContainerIds: string[] = [];
     let ownsGuard = false;
     let originalRunning: string[] = [];
     let releaseRestore = () => {};
@@ -1721,7 +1729,7 @@ if (sshFixturePath) {
         const body = await request.text();
         expect(JSON.parse(body)).toEqual(state);
         restoreRequests++;
-        if (restoreRequests === 1) {
+        if (scenario === "worker" && restoreRequests === 1) {
           sawRestore();
           await firstRestoreBlocked;
           return Response.json({ ok: true });
@@ -1801,6 +1809,7 @@ if (sshFixturePath) {
         )
       ).trim();
       expect(containerId).toMatch(/^[a-f0-9]{64}$/);
+      ownedContainerIds.push(containerId);
       const { dockerNodes } = await import("../../db/schemas/docker-nodes");
       await fixture.exec(
         `CREATE TABLE IF NOT EXISTS docker_nodes (${getTableConfig(dockerNodes)
@@ -1954,7 +1963,7 @@ if (sshFixturePath) {
           "../../db/schemas/agent-sandboxes"
         );
         await fixture.exec(
-          `CREATE TABLE agent_sandbox_backups (${getTableConfig(agentSandboxBackups)
+          `CREATE TABLE IF NOT EXISTS agent_sandbox_backups (${getTableConfig(agentSandboxBackups)
             .columns.map((column) => `"${column.name}" ${column.getSQLType()}`)
             .join(", ")})`,
         );
@@ -1965,10 +1974,13 @@ if (sshFixturePath) {
             .join(", ")})`,
         );
         await fixture.query(
-          "INSERT INTO agent_sandboxes(id,organization_id,status,execution_tier,lifecycle_revision,node_id) VALUES('63000000-0000-4000-8000-000000000049',$1,'running','dedicated-always',1,$2)",
-          [org, nodeId],
+          "INSERT INTO agent_sandboxes(id,organization_id,status,execution_tier,lifecycle_revision,node_id) VALUES($3,$1,'running','dedicated-always',1,$2)",
+          [org, nodeId, crypto.randomUUID()],
         );
-        await fixture.query("UPDATE docker_nodes SET allocated_count=2 WHERE node_id=$1", [nodeId]);
+        await fixture.query(
+          "UPDATE docker_nodes SET allocated_count=2,capacity=2,enabled=true,placement_state='open',status='healthy' WHERE node_id=$1",
+          [nodeId],
+        );
         const allocated = async () =>
           (
             await fixture.query("SELECT allocated_count FROM docker_nodes WHERE node_id=$1", [
@@ -1977,6 +1989,22 @@ if (sshFixturePath) {
           ).rows[0]?.allocated_count;
         const sleepProvider = new DockerSandboxProvider();
         const service = new ElizaSandboxService(sleepProvider);
+        const finalStatus = scenario === "sleep" ? "sleeping" : "stopped";
+        const retire = () =>
+          scenario === "sleep"
+            ? service.executeSleep(agentId, org)
+            : scenario === "shutdown"
+              ? service.shutdown(agentId, org)
+              : service.executeRestart(agentId, org);
+        if (scenario === "restart")
+          await fixture.query(
+            "UPDATE agent_sandboxes SET claimed_at=now(),warm_claim_credential_state='ready' WHERE id=$1",
+            [agentId],
+          );
+        const comparableMoney = (value: Awaited<ReturnType<typeof renewalState>>) => ({
+          ...value,
+          ledger: value.ledger.filter((entry) => Number(entry.amount) !== 0),
+        });
         // Snapshot transport and verified plaintext backup storage are explicit
         // fixtures. Lifecycle transactions, monetary settlement, host stop,
         // provider removal and restore-gate reads remain real.
@@ -2039,10 +2067,12 @@ if (sshFixturePath) {
             )
           ).rows[0];
         try {
-          expect(await service.executeSleep(agentId, org)).toMatchObject({
+          expect(await retire()).toMatchObject({
             success: false,
-            containerRemoved: false,
-            error: "Removal transport unavailable after committed paid stop",
+            error:
+              scenario === "sleep"
+                ? "Removal transport unavailable after committed paid stop"
+                : "Failed to prove the previous sandbox stopped",
           });
           expect(await canonical()).toEqual({
             status: "stopped",
@@ -2081,9 +2111,9 @@ if (sshFixturePath) {
           // Fail after Docker deletion, in the second transaction. The first
           // transaction's refund and backup must remain committed and retryable.
           await fixture.exec(
-            "CREATE FUNCTION reject_sleep_fixture() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.status='sleeping' THEN RAISE EXCEPTION 'forced final sleep rollback'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_sleep_fixture BEFORE UPDATE ON agent_sandboxes FOR EACH ROW EXECUTE FUNCTION reject_sleep_fixture()",
+            `CREATE FUNCTION reject_sleep_fixture() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.status='${finalStatus}' AND NEW.sandbox_id IS NULL THEN RAISE EXCEPTION 'forced final sleep rollback'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_sleep_fixture BEFORE UPDATE ON agent_sandboxes FOR EACH ROW EXECUTE FUNCTION reject_sleep_fixture()`,
           );
-          const finalFailure = await service.executeSleep(agentId, org).then(
+          const finalFailure = await retire().then(
             () => null,
             (error: unknown) => error,
           );
@@ -2094,7 +2124,7 @@ if (sshFixturePath) {
           expect(
             (await ssh.exec(`${docker} ps -aq --no-trunc --filter id=${containerId}`)).trim(),
           ).toBe("");
-          expect(await renewalState(org)).toEqual(stopped);
+          expect(comparableMoney(await renewalState(org))).toEqual(comparableMoney(stopped));
           expect(await allocated()).toBe(1);
           expect(await canonical()).toEqual({
             status: "stopped",
@@ -2104,27 +2134,157 @@ if (sshFixturePath) {
           await fixture.exec(
             "DROP TRIGGER reject_sleep_fixture ON agent_sandboxes; DROP FUNCTION reject_sleep_fixture()",
           );
-          expect(await service.executeSleep(agentId, org)).toMatchObject({
-            success: true,
-            containerRemoved: true,
-            backupId,
-          });
-          expect(await canonical()).toEqual({
-            status: "sleeping",
-            sandbox_id: null,
-            last_backup_at: expect.any(Date),
-          });
-          expect(await renewalState(org)).toEqual(stopped);
-          expect(await allocated()).toBe(1);
-          expect((await agentSandboxesRepository.getBackupById(backupId))?.state_data).toEqual(
-            state,
-          );
-          expect(await service.executeSleep(agentId, org)).toMatchObject({
-            success: true,
-            containerRemoved: true,
-          });
-          expect(await renewalState(org)).toEqual(stopped);
-          expect(await allocated()).toBe(1);
+          if (scenario === "restart") {
+            const { SandboxTransport } = await import("./eliza-sandbox/bridge/transport");
+            const endpoint = spyOn(
+              SandboxTransport.prototype,
+              "getSafeBridgeEndpoint",
+            ).mockImplementation(async (_target, path) => {
+              expect(path).toBe("/api/restore");
+              return new URL(path, server.url).toString();
+            });
+            const ensure = spyOn(
+              service as unknown as { ensureRuntimeAgentStarted: () => Promise<null> },
+              "ensureRuntimeAgentStarted",
+            ).mockResolvedValue(null);
+            const create = spyOn(sleepProvider, "create").mockImplementation(async (config) => {
+              const paid = await renewalState(org);
+              expect(paid.windows).toHaveLength(2);
+              expect(paid.reservations.filter((entry) => entry.status === "reserved")).toHaveLength(
+                1,
+              );
+              expect(paid.windows.filter((entry) => entry.settled_at === null)).toHaveLength(1);
+              const attemptId = crypto.randomUUID();
+              const handle: import("./sandbox-provider-types").SandboxHandle = {
+                sandboxId: name,
+                bridgeUrl: `http://${target.hostname}:2138`,
+                healthUrl: `http://${target.hostname}:2138/api`,
+                metadata: {
+                  provider: "docker",
+                  nodeId,
+                  hostname: target.hostname,
+                  nodeSshPort: target.port,
+                  nodeSshUser: target.username,
+                  nodeHostKeyFingerprint: target.hostKeyFingerprint,
+                  containerName: name,
+                  bridgePort: 2138,
+                  webUiPort: 2138,
+                  agentId,
+                  volumePath: `/data/agents/${agentId}`,
+                  dockerImage: target.image,
+                  imageDigest: target.image,
+                  replacementAttemptId: attemptId,
+                  allocationCounted: true,
+                },
+              };
+              if (
+                !config.onReplacementCreateIntent ||
+                !config.onReplacementCreated ||
+                !config.startFundedContainer
+              )
+                throw new Error("Paid restart omitted durable create/start callbacks");
+              await config.onReplacementCreateIntent(handle);
+              expect(await allocated()).toBe(2);
+              containerId = (
+                await ssh.exec(
+                  [
+                    `${docker} create --pull=never --network=none --memory=128m --cpus=0.2 --pids-limit=64 --env PORT=2138`,
+                    `--health-interval=1s --health-timeout=5s --health-retries=10 --health-cmd ${shellQuote(`node -e "fetch('http://127.0.0.1:2138/api/health').then(r=>process.exit(r.ok?0:1))"`)}`,
+                    "--cap-drop=ALL --security-opt=no-new-privileges --user=65534:65534 --restart=no",
+                    `--label ai.elizaos.replacement-attempt=${attemptId} --name ${name} --label ai.elizaos.managed-by=eliza-cloud --label ai.elizaos.container-class=test --label ai.elizaos.agent-id=${agentId} --label ai.elizaos.org-id=${org}`,
+                    `--entrypoint node ${shellQuote(target.image)} -e ${shellQuote("require('http').createServer((q,r)=>r.end(JSON.stringify({ok:true}))).listen(2138,'127.0.0.1')")}`,
+                  ].join(" "),
+                )
+              ).trim();
+              expect(containerId).toMatch(/^[a-f0-9]{64}$/);
+              ownedContainerIds.push(containerId);
+
+              handle.metadata = { ...handle.metadata, containerId };
+              await config.onReplacementCreated(handle);
+              await config.startFundedContainer(handle);
+              return handle;
+            });
+            try {
+              // An isolated zero-balance account cannot buy replacement CPU.
+              // Restore only this fixture's previous balance for the paid leg.
+              await fixture.query("UPDATE organizations SET credit_balance=0 WHERE id=$1", [org]);
+              const unpaid = await retire();
+              expect(unpaid).toMatchObject({ success: false, containerStarted: false });
+              expect(create).not.toHaveBeenCalled();
+              const denied = await renewalState(org);
+              expect(denied.balance).toEqual([{ credit_balance: "0.000000" }]);
+              expect(denied.windows).toEqual(stopped.windows);
+              expect(denied.reservations).toEqual(stopped.reservations);
+              expect(await allocated()).toBe(1);
+              expect((await agentSandboxesRepository.getBackupById(backupId))?.state_data).toEqual(
+                state,
+              );
+              await fixture.query("UPDATE organizations SET credit_balance=$2 WHERE id=$1", [
+                org,
+                stopped.balance[0]!.credit_balance,
+              ]);
+              const restarted = await retire();
+              expect(restarted).toMatchObject({
+                success: true,
+                containerStopped: true,
+                containerStarted: true,
+              });
+              expect(create).toHaveBeenCalledTimes(1);
+              expect(await canonical()).toEqual({
+                status: "running",
+                sandbox_id: name,
+                last_backup_at: expect.any(Date),
+              });
+              const renewed = await renewalState(org);
+              expect(renewed.windows).toHaveLength(2);
+              expect(renewed.windows.find((entry) => entry.settled_at === null)).toMatchObject({
+                provider_container_id: containerId,
+                runtime_ready_at: expect.any(Date),
+              });
+              expect(
+                (
+                  await fixture.query(
+                    "SELECT o.credit_balance+a.total_billed+(SELECT COALESCE(sum(r.reserved_amount),0) FROM billing_funding_reservations r WHERE r.organization_id=o.id AND r.status='reserved')=1.000000 AS reconciled FROM organizations o JOIN agent_sandboxes a ON a.organization_id=o.id WHERE a.id=$1",
+                    [agentId],
+                  )
+                ).rows[0]?.reconciled,
+              ).toBe(true);
+              expect(await allocated()).toBe(2);
+              expect(
+                JSON.parse(
+                  await ssh.exec(
+                    `${docker} exec ${containerId} cat /tmp/worker-restored-state.json`,
+                  ),
+                ),
+              ).toEqual(state);
+              expect((await agentSandboxesRepository.getBackupById(backupId))?.state_data).toEqual(
+                state,
+              );
+            } finally {
+              endpoint.mockRestore();
+              ensure.mockRestore();
+              create.mockRestore();
+            }
+          } else {
+            expect(await retire()).toMatchObject(
+              scenario === "sleep"
+                ? { success: true, containerRemoved: true, backupId }
+                : { success: true },
+            );
+            expect(await canonical()).toEqual({
+              status: finalStatus,
+              sandbox_id: null,
+              last_backup_at: expect.any(Date),
+            });
+            expect(comparableMoney(await renewalState(org))).toEqual(comparableMoney(stopped));
+            expect(await allocated()).toBe(1);
+            expect((await agentSandboxesRepository.getBackupById(backupId))?.state_data).toEqual(
+              state,
+            );
+            expect(await retire()).toMatchObject({ success: true });
+            expect(comparableMoney(await renewalState(org))).toEqual(comparableMoney(stopped));
+            expect(await allocated()).toBe(1);
+          }
         } finally {
           capture.mockRestore();
           persist.mockRestore();
@@ -2139,14 +2299,15 @@ if (sshFixturePath) {
       }
       await server.stop(true);
       try {
-        if (containerId) await ssh.exec(`${docker} rm -f ${shellQuote(containerId)}`);
+        for (const owned of ownedContainerIds)
+          await ssh.exec(`${docker} rm -f ${shellQuote(owned)}`);
         if (ownsGuard) {
           const digest = createHash("sha256")
             .update(guard.DOCKER_COMPUTE_GUARD_PROGRAM)
             .digest("hex");
           await rootSSH.execStdin(
             "python3 -",
-            `import json, pathlib, shutil, subprocess\nroot=pathlib.Path('/var/lib/eliza/compute-leases')\nunit=pathlib.Path('/etc/systemd/system/eliza-compute-guard.service')\nif unit.exists():\n assert 'guard-${digest}.py' in unit.read_text(), 'foreign_guard_preserved'\nif root.exists():\n for p in root.glob('*.json'):\n  assert json.loads(p.read_text())['authorization']['containerId'] == ${JSON.stringify(containerId)}, 'foreign_lease_preserved'\nif unit.exists():\n subprocess.run(['systemctl','disable','--now',unit.name],check=True,capture_output=True)\n unit.unlink()\n subprocess.run(['systemctl','daemon-reload'],check=True,capture_output=True)\nif root.exists(): shutil.rmtree(root)\nassert not root.exists() and not unit.exists()\n`,
+            `import json, pathlib, shutil, subprocess\nroot=pathlib.Path('/var/lib/eliza/compute-leases')\nunit=pathlib.Path('/etc/systemd/system/eliza-compute-guard.service')\nif unit.exists():\n assert 'guard-${digest}.py' in unit.read_text(), 'foreign_guard_preserved'\nif root.exists():\n for p in root.glob('*.json'):\n  assert json.loads(p.read_text())['authorization']['containerId'] in ${JSON.stringify(ownedContainerIds)}, 'foreign_lease_preserved'\nif unit.exists():\n subprocess.run(['systemctl','disable','--now',unit.name],check=True,capture_output=True)\n unit.unlink()\n subprocess.run(['systemctl','daemon-reload'],check=True,capture_output=True)\nif root.exists(): shutil.rmtree(root)\nassert not root.exists() and not unit.exists()\n`,
           );
         }
         expect(
@@ -2167,6 +2328,18 @@ if (sshFixturePath) {
   test(
     "paid sleep commits backup and refund before removal and retries a post-removal database rollback",
     () => runPaidContainerScenario("sleep"),
+    180_000,
+  );
+
+  test(
+    "paid shutdown commits backup and refund before removal and retries a post-removal database rollback",
+    () => runPaidContainerScenario("shutdown"),
+    180_000,
+  );
+
+  test(
+    "paid restart commits the old refund then funds and restores a new container",
+    () => runPaidContainerScenario("restart"),
     180_000,
   );
 
