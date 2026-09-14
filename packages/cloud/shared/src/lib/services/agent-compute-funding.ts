@@ -112,7 +112,11 @@ async function lockFundingAgent(
 
 export class AgentComputeFundingService {
   /** A retained container resumes only from its reconciled stop, or replays the same committed successor. */
-  async reserveRetainedResumeInTransaction(tx: DbTransaction, identity: FundingAgentIdentity) {
+  async reserveRetainedResumeInTransaction(
+    tx: DbTransaction,
+    identity: FundingAgentIdentity,
+    admission: "resume" | "provision-retry" = "resume",
+  ) {
     const agent = await lockFundingAgent(tx, identity, ["stopped", "provisioning"]);
     const [latest] = await tx
       .select()
@@ -163,7 +167,10 @@ export class AgentComputeFundingService {
       });
       return { window: latest, replayed: true, purchasedCreditDebited: false };
     }
-    if (!latest.provider_stop_receipt || agent.status !== "stopped") {
+    if (
+      !latest.provider_stop_receipt ||
+      agent.status !== (admission === "provision-retry" ? "provisioning" : "stopped")
+    ) {
       reject(
         AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED,
         "Dedicated resume requires a verified stop",

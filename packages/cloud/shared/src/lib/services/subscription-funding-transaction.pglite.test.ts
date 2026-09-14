@@ -1,6 +1,6 @@
 /** Verifies funding admission, renewal and stop refunds on PGlite or empty loopback PostgreSQL. An explicit SSH fixture adds real Docker rollback/retry proof on a host without an existing compute guard. */
 
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { sql } from "drizzle-orm";
@@ -1491,6 +1491,76 @@ test("replacement cleanup commits its refund before provider deletion and retrie
   expect(await cleanup.retirePersistedReplacementCleanup(agentId, org)).toBe("clean");
 });
 
+test("failed-restore admission keeps its paid container and requires a verified stop and fresh funds", async () => {
+  const { org, agentId, identity, provider, input } = await billableFundedAgent(
+    "000000000036",
+    "1.000000",
+  );
+  const { agentSandboxesRepository: agents } = await import(
+    "../../db/repositories/agent-sandboxes"
+  );
+  const { reserveProvisionCompute } = await import("./agent-compute-provision");
+  const { settleStoppedAgentComputeInTransaction: settle } = await import("./agent-compute-stop");
+  await fixture.query(
+    "UPDATE agent_sandboxes SET status='provisioning',sandbox_id=$2,container_name=$2,bridge_port=2138,web_ui_port=2138,bridge_url=NULL,health_url=NULL WHERE id=$1",
+    [agentId, `agent-${agentId}`],
+  );
+  const current = (await agents.findByIdAndOrg(agentId, org))!;
+  const existing = await reserveProvisionCompute(current);
+  expect(existing.retained).toBe(true);
+  expect(existing.window.id).toBe(provider.fundingId);
+  const receipt = await stopReceiptFor(provider.fundingId, input.now);
+  await helpers.writeTransaction((tx) =>
+    settle(tx, { ...identity, fundingId: provider.fundingId }, receipt),
+  );
+  await fixture.query("UPDATE organizations SET credit_balance=0 WHERE id=$1", [org]);
+  const before = await renewalState(org);
+  await expect(reserveProvisionCompute(current)).rejects.toMatchObject({
+    code: funding.SUBSCRIPTION_FUNDING_INSUFFICIENT,
+  });
+  expect(await renewalState(org)).toEqual(before);
+  await fixture.query("UPDATE organizations SET credit_balance=1 WHERE id=$1", [org]);
+  const stopProof = (
+    await fixture.query(
+      "SELECT provider_stop_receipt,provider_stopped_at FROM agent_compute_funding WHERE id=$1",
+      [provider.fundingId],
+    )
+  ).rows[0]!;
+  await fixture.query(
+    "UPDATE agent_compute_funding SET provider_stop_receipt=NULL,provider_stopped_at=NULL WHERE id=$1",
+    [provider.fundingId],
+  );
+  await expect(reserveProvisionCompute(current)).rejects.toMatchObject({
+    code: "AGENT_COMPUTE_FUNDING_AUTHORITY_CHANGED",
+  });
+  await fixture.query(
+    "UPDATE agent_compute_funding SET provider_stop_receipt=$2,provider_stopped_at=$3 WHERE id=$1",
+    [
+      provider.fundingId,
+      JSON.stringify(stopProof.provider_stop_receipt),
+      stopProof.provider_stopped_at,
+    ],
+  );
+  await fixture.query("UPDATE agent_sandboxes SET node_id='other-node' WHERE id=$1", [agentId]);
+  await expect(reserveProvisionCompute(current)).rejects.toMatchObject({
+    code: "AGENT_COMPUTE_PROVISION_AUTHORITY_CHANGED",
+  });
+  await fixture.query("UPDATE agent_sandboxes SET node_id=$2 WHERE id=$1", [
+    agentId,
+    provider.nodeId,
+  ]);
+  const next = await reserveProvisionCompute(current);
+  expect(next.retained).toBe(true);
+  expect(next.window.previous_funding_id).toBe(provider.fundingId);
+  expect(next.window.provider_container_id).toBe(provider.containerId);
+  expect(next.agent.bridge_url).toBeNull();
+  const once = await renewalState(org);
+  const replay = await reserveProvisionCompute(next.agent);
+  expect(replay.window.id).toBe(next.window.id);
+  expect(replay.retained).toBe(true);
+  expect(await renewalState(org)).toEqual(once);
+});
+
 if (sshFixturePath) {
   test("real Docker stop survives a PostgreSQL rollback and app suspension refunds once", async () => {
     const target = z
@@ -1882,6 +1952,131 @@ if (sshFixturePath) {
         bridge_url: `http://${target.hostname}:2138`,
         health_url: `http://${target.hostname}:2138/api`,
       });
+      // Exercise the actual provision/restore tail against this same paid
+      // container. The tiny fixture image has no Eliza restore API, so a
+      // loopback transport fixture validates auth and writes the received
+      // snapshot into the real container. Backup selection is a fixed fixture;
+      // funding, admission, adoption, failure CAS and host stop/start are real.
+      const { ElizaSandboxService } = await import("./eliza-sandbox");
+      const { DockerSandboxProvider: RetryProvider } = await import("./docker-sandbox-provider");
+      const retryProvider = new RetryProvider();
+      let creates = 0;
+      retryProvider.create = async () => {
+        creates++;
+        throw new Error("Retained retry attempted a new container");
+      };
+      const retryService = new ElizaSandboxService(retryProvider);
+      const retryToken = `test-${crypto.randomUUID()}`;
+      const restorePayload = {
+        memories: [],
+        config: { checkpoint: marker },
+        workspaceFiles: { "saved.txt": marker },
+      };
+      let restoreRequests = 0;
+      const restoreServer = Bun.serve({
+        hostname: "127.0.0.1",
+        port: 0,
+        async fetch(request) {
+          if (request.headers.get("authorization") !== `Bearer ${retryToken}`)
+            return new Response("unauthorized", { status: 401 });
+          const body = await request.text();
+          expect(JSON.parse(body)).toEqual(restorePayload);
+          restoreRequests++;
+          if (restoreRequests === 1)
+            return new Response("transient restore failure", { status: 500 });
+          await rootSSH.execStdin(
+            `${docker} exec -i ${containerId} node -e ${shellQuote("let b='';process.stdin.on('data',x=>b+=x);process.stdin.on('end',()=>require('fs').writeFileSync('/tmp/restored-state.json',b))")}`,
+            body,
+          );
+          return Response.json({ ok: true });
+        },
+      });
+      const { SandboxTransport } = await import("./eliza-sandbox/bridge/transport");
+      const endpoint = spyOn(
+        SandboxTransport.prototype,
+        "getSafeBridgeEndpoint",
+      ).mockImplementation(async (_target, path) => {
+        expect(path).toBe("/api/restore");
+        return new URL(path, restoreServer.url).toString();
+      });
+      const ensure = spyOn(
+        retryService as unknown as { ensureRuntimeAgentStarted: () => Promise<null> },
+        "ensureRuntimeAgentStarted",
+      ).mockResolvedValue(null);
+      const backupId = "65000000-0000-4000-8000-000000000030";
+      const backup = spyOn(agentSandboxesRepository, "getBackupById").mockResolvedValue({
+        id: backupId,
+        sandbox_record_id: agentId,
+        snapshot_type: "pre-shutdown",
+        state_data: restorePayload,
+        state_data_storage: "inline",
+        state_data_key: null,
+        size_bytes: JSON.stringify(restorePayload).length,
+        backup_kind: "full",
+        parent_backup_id: null,
+        content_hash: null,
+        created_at: new Date(),
+      });
+      const reconstruct = spyOn(
+        agentSandboxesRepository,
+        "getReconstructedBackupState",
+      ).mockResolvedValue(restorePayload);
+      try {
+        await fixture.query(
+          "UPDATE agent_sandboxes SET status='provisioning',environment_revision=1,database_status='ready',database_uri='postgres://fixture.invalid/retained',environment_vars=$2,quota_admission_scope='trusted_internal' WHERE id=$1",
+          [agentId, JSON.stringify({ ELIZA_API_TOKEN: retryToken })],
+        );
+        const failed = await retryService.provision(agentId, org, {
+          kind: "from-backup",
+          backupId,
+        });
+        expect(failed.success).toBe(false);
+        expect(failed.error).toContain("State restore failed: HTTP 500");
+        const failedRec = (await agentSandboxesRepository.findByIdAndOrg(agentId, org))!;
+        expect(failedRec.status).toBe("error");
+        expect(failedRec.sandbox_id).toBe(name);
+        expect(failedRec.bridge_url).toBeNull();
+        expect(
+          (await ssh.exec(`${docker} inspect --format '{{.State.Running}}' ${containerId}`)).trim(),
+        ).toBe("false");
+        expect(
+          (await ssh.exec(`${docker} cp ${containerId}:/tmp/stop-marker - | tar -xO`)).trim(),
+        ).toBe(marker);
+        await fixture.query("UPDATE organizations SET credit_balance=0 WHERE id=$1", [org]);
+        const unpaidBefore = await renewalState(org);
+        expect(
+          (await retryService.provision(agentId, org, { kind: "from-backup", backupId })).success,
+        ).toBe(false);
+        expect(await renewalState(org)).toEqual(unpaidBefore);
+        expect(restoreRequests).toBe(1);
+        expect(
+          (await ssh.exec(`${docker} inspect --format '{{.State.Running}}' ${containerId}`)).trim(),
+        ).toBe("false");
+        await fixture.query("UPDATE organizations SET credit_balance=1 WHERE id=$1", [org]);
+        expect(
+          (await retryService.provision(agentId, org, { kind: "from-backup", backupId })).success,
+        ).toBe(true);
+        expect(creates).toBe(0);
+        expect(restoreRequests).toBe(2);
+        expect(
+          JSON.parse(await ssh.exec(`${docker} exec ${containerId} cat /tmp/restored-state.json`)),
+        ).toEqual(restorePayload);
+        expect((await ssh.exec(`${docker} exec ${containerId} cat /tmp/stop-marker`)).trim()).toBe(
+          marker,
+        );
+        const restoredRec = (await agentSandboxesRepository.findByIdAndOrg(agentId, org))!;
+        expect(restoredRec.status).toBe("running");
+        expect(restoredRec.environment_vars).toEqual({ ELIZA_API_TOKEN: retryToken });
+        expect(restoredRec.container_name).toBe(name);
+        const restoredFunding = (await renewalState(org)).windows;
+        expect(restoredFunding).toHaveLength(3);
+      } finally {
+        endpoint.mockRestore();
+        ensure.mockRestore();
+        backup.mockRestore();
+        reconstruct.mockRestore();
+        await restoreServer.stop(true);
+      }
       const runningRecord = await agentSandboxesRepository.findByIdAndOrg(agentId, org);
       if (!runningRecord) throw new Error("Missing running cleanup fixture");
       const [activeWindow] = (

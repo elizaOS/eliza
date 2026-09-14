@@ -1,13 +1,13 @@
 /** Commits initial Dedicated funding before provider allocation and fences candidate start/refund by durable placement. */
 import { ElizaError } from "@elizaos/core";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/helpers";
 import type { AgentSandbox } from "../../db/repositories/agent-sandboxes";
 import { agentComputeFunding } from "../../db/schemas/agent-compute-funding";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { agentComputeFundingService } from "./agent-compute-funding";
-import { startFundedAgentInTransaction } from "./agent-compute-start";
+import { fundedRuntimeHandle, startFundedAgentInTransaction } from "./agent-compute-start";
 import {
   cancelUnboundAgentComputeInTransaction,
   stopFundedAgentInTransaction,
@@ -36,14 +36,52 @@ export async function reserveProvisionCompute(expected: AgentSandbox) {
     if (
       !current ||
       current.lifecycle_revision !== expected.lifecycle_revision ||
+      current.environment_revision !== expected.environment_revision ||
+      current.lifecycle_job_id !== expected.lifecycle_job_id ||
+      current.lifecycle_execution_generation !== expected.lifecycle_execution_generation ||
       current.status !== "provisioning"
     )
       changed();
-    const funding = await agentComputeFundingService.reserveInTransaction(tx, {
+    const identity = {
       agentId: current.id,
       organizationId: current.organization_id,
       lifecycleRevision: current.lifecycle_revision,
-    });
+    };
+    const [latest] = await tx
+      .select()
+      .from(agentComputeFunding)
+      .where(
+        and(
+          eq(agentComputeFunding.agent_id, current.id),
+          eq(agentComputeFunding.organization_id, current.organization_id),
+        ),
+      )
+      .orderBy(desc(agentComputeFunding.period_start), desc(agentComputeFunding.id))
+      .limit(1)
+      .for("update");
+    // A paid canonical placement must never fall through to create after its
+    // restore failed. Its ingress URLs may have been cleared by markError.
+    const retained = Boolean(
+      latest && current.sandbox_id && current.node_id && !current.replacement_cleanup_node_id,
+    );
+    if (
+      retained &&
+      (current.container_name !== current.sandbox_id ||
+        !current.bridge_port ||
+        !current.web_ui_port ||
+        latest!.provider_node_id !== current.node_id ||
+        !latest!.provider_container_id)
+    )
+      changed();
+    const funding =
+      retained && latest!.settled_at !== null
+        ? await agentComputeFundingService.reserveRetainedResumeInTransaction(
+            tx,
+            identity,
+            "provision-retry",
+          )
+        : await agentComputeFundingService.reserveInTransaction(tx, identity);
+    if (!funding) changed();
     const [agent] = await tx
       .update(agentSandboxes)
       .set({
@@ -58,7 +96,7 @@ export async function reserveProvisionCompute(expected: AgentSandbox) {
       )
       .returning();
     if (!agent) changed();
-    return { ...funding, agent };
+    return { ...funding, agent, retained };
   });
   if (reserved.purchasedCreditDebited)
     await creditsService.invalidateCreditCaches(expected.organization_id);
@@ -114,7 +152,7 @@ export async function startProvisionCompute(
 
 /** A retained provisioning retry renews admission for the same committed container; it never allocates another. */
 export async function restartProvisionCompute(expected: AgentSandbox, fundingId: string) {
-  await dbWrite.transaction(async (tx) => {
+  return dbWrite.transaction(async (tx) => {
     await lifecycle.lockLifecycle(tx, expected.id, expected.organization_id);
     const current = await lifecycle.getAgentForLifecycleMutation(
       tx,
@@ -136,11 +174,15 @@ export async function restartProvisionCompute(expected: AgentSandbox, fundingId:
       !current ||
       current.status !== "provisioning" ||
       current.environment_revision !== expected.environment_revision ||
+      current.lifecycle_job_id !== expected.lifecycle_job_id ||
+      current.lifecycle_execution_generation !== expected.lifecycle_execution_generation ||
+      (current.lifecycle_execution_generation === null &&
+        current.lifecycle_revision !== expected.lifecycle_revision) ||
       !window?.provider_container_id ||
       !window.provider_node_id
     )
       changed();
-    await startFundedAgentInTransaction(tx, {
+    const started = await startFundedAgentInTransaction(tx, {
       agentId: current.id,
       organizationId: current.organization_id,
       lifecycleRevision: current.lifecycle_revision,
@@ -148,6 +190,7 @@ export async function restartProvisionCompute(expected: AgentSandbox, fundingId:
       nodeId: window.provider_node_id,
       containerId: window.provider_container_id,
     });
+    return fundedRuntimeHandle(started);
   });
 }
 

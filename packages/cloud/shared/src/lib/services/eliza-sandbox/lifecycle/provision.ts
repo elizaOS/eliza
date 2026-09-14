@@ -283,6 +283,7 @@ export class SandboxProvision {
     }
 
     let computeFundingId: string | undefined;
+    let retainedCompute = false;
     let skipFundingCleanup = false;
     // biome-ignore format: keep the existing provision body stable while this guard owns fence cleanup.
     try {
@@ -293,6 +294,7 @@ export class SandboxProvision {
       try {
         const funding = await reserveProvisionCompute(rec);
         computeFundingId = funding.window.id;
+        retainedCompute = funding.retained;
         rec = funding.agent;
       } catch (error) {
         // error-policy:J1 no provider allocation has occurred; return payment/admission failure.
@@ -334,7 +336,7 @@ export class SandboxProvision {
     // writing the replacement. A retained provisioning container also needs its
     // original environment: re-probing it cannot install a replacement key.
     // Only a new cold container may rotate credentials here.
-    if (!rec.claimed_at && !provisioningRetryHandle) {
+    if (!rec.claimed_at && !provisioningRetryHandle && !retainedCompute) {
       const managedEnvironment = await prepareManagedElizaEnvironment({
         existingEnv: (rec.environment_vars as Record<string, string>) ?? {},
         organizationId: rec.organization_id,
@@ -411,9 +413,10 @@ export class SandboxProvision {
 
       try {
         const retryHandle = attempt === 1 ? provisioningRetryHandle : null;
-        if (retryHandle) {
-          if (computeFundingId) await restartProvisionCompute(rec, computeFundingId);
-          handle = retryHandle;
+        if (retryHandle || (attempt === 1 && retainedCompute)) {
+          handle = computeFundingId
+            ? await restartProvisionCompute(rec, computeFundingId)
+            : retryHandle!;
           healthContext = { kind: "canonical" };
           logger.info(
             "[agent-sandbox] Re-probing persisted provisioning container before create",
