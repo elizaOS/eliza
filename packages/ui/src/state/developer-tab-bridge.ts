@@ -300,11 +300,15 @@ export class DeveloperTabBridge {
       return;
     }
     this.running = { id, source, conversationId };
-    this.previousMessages.clear();
+    // Retain the pre-send baseline for synchronous ephemeral retirement, but
+    // do not replay unchanged history over the developer tab's refreshed rows.
+    this.previousMessages = new Map(
+      (this.host.messageSnapshot(conversationId) ?? []).map((message) => [
+        message.id,
+        message,
+      ]),
+    );
     this.post({ kind: "accepted", target: source, id });
-    // Sending can synchronously retire the previous ephemeral reply. Capture
-    // the owned pre-send rows so the next diff includes those removals too.
-    this.stream();
     void this.host
       .send(text, conversationId, id)
       .then(
