@@ -7,7 +7,7 @@
  * staging-session token-class guard names dbRead at module scope).
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, setSystemTime, test } from "bun:test";
 import { SignJWT } from "jose";
 
 const SECRET = "service-jwt-test-secret-0123456789abcdef";
@@ -104,19 +104,25 @@ describe("verifyServiceJwt — token lifecycle claims", () => {
   });
 
   test("rejects exp without iat and malformed NumericDate relationships", async () => {
-    const now = Math.floor(Date.now() / 1000);
-    const invalidClaims = [
-      ["missing iat", { exp: now + 60 }],
-      ["inverted", { iat: now, exp: now }],
-      ["fractional", { iat: now + 0.5, exp: now + 60 }],
-      ["future iat", { iat: now + 301, exp: now + 601 }],
-      ["nbf after exp", { iat: now, exp: now + 60, nbf: now + 61 }],
-    ] as const;
-    for (const [label, claims] of invalidClaims) {
-      const token = await new SignJWT({ userId: "waifu:svc", ...claims })
-        .setProtectedHeader({ alg: "HS256" })
-        .sign(secretKey());
-      expect(await verify(token), label).toBeNull();
+    // Hold the one-second-outside-skew boundary fixed while real signing awaits.
+    setSystemTime(new Date("2026-09-14T12:00:00.000Z"));
+    try {
+      const now = Math.floor(Date.now() / 1000);
+      const invalidClaims = [
+        ["missing iat", { exp: now + 60 }],
+        ["inverted", { iat: now, exp: now }],
+        ["fractional", { iat: now + 0.5, exp: now + 60 }],
+        ["future iat", { iat: now + 301, exp: now + 601 }],
+        ["nbf after exp", { iat: now, exp: now + 60, nbf: now + 61 }],
+      ] as const;
+      for (const [label, claims] of invalidClaims) {
+        const token = await new SignJWT({ userId: "waifu:svc", ...claims })
+          .setProtectedHeader({ alg: "HS256" })
+          .sign(secretKey());
+        expect(await verify(token), label).toBeNull();
+      }
+    } finally {
+      setSystemTime();
     }
   });
 
