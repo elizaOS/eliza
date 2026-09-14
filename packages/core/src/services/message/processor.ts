@@ -777,6 +777,17 @@ export class MessageProcessor {
 		}
 
 		if (!strategyResult && hasTextGenerationHandler(runtime)) {
+			let hasSettledEffectEvidence = false;
+			const onSettledActionResult = (result: ActionResult) => {
+				// Any recorded mutation outcome (including a rollback or uncertain
+				// commit) makes the pre-action state unsuitable for failure prose.
+				// The caller retains the complete results and resolves their status;
+				// this boundary must not reinterpret them as a successful commit.
+				hasSettledEffectEvidence ||=
+					(result.effectReceipts?.length ?? 0) > 0 ||
+					result.data?.reconciliationRequired === true;
+				opts.onSettledActionResult?.(result);
+			};
 			if (isAutonomous) {
 				runtime.logger.debug(
 					{ src: "service:message", autonomyMode },
@@ -801,11 +812,7 @@ export class MessageProcessor {
 								? { roomHandlerLease: opts.roomHandlerLease }
 								: {}),
 							runTerminalOwner,
-							...(opts.onSettledActionResult
-								? {
-										onSettledActionResult: opts.onSettledActionResult,
-									}
-								: {}),
+							onSettledActionResult,
 							onResponseHandlerEarlyReply: deliverResponseHandlerEarlyReply,
 							onStage1RespondDecision: () => {
 								stage1DecidedRespond = true;
@@ -866,6 +873,12 @@ export class MessageProcessor {
 					// Effects may be committed: preserve the typed delivery failure for
 					// the caller's settled-result handling, never synthesize an apology
 					// from the pre-action state or invite a duplicate mutation.
+					throw error;
+				}
+				if (hasSettledEffectEvidence) {
+					// Preserve the original unexpected failure for the caller's
+					// settled-result boundary. Do not make another model call from
+					// pre-action state or invite replay of a completed mutation.
 					throw error;
 				}
 				const errMsg = error instanceof Error ? error.message : String(error);

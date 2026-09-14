@@ -222,6 +222,85 @@ function visibleTexts(contents: Content[]): string[] {
 }
 
 describe("planner-loop death after a completed tool", () => {
+	it.each([true, false])(
+		"propagates an unexpected post-effect error without apology inference (result success=%s)",
+		async (success) => {
+			let actionCalls = 0;
+			const h = await createHarness({
+				actionResult: {
+					success,
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+					data: { noteId: "note-1" },
+					effectReceipts: [
+						{
+							receiptId: "saved-note-1",
+							operation: "notes.note.create",
+							outcome: "applied",
+							resource: { kind: "note", id: "note-1" },
+							artifacts: [],
+							idempotency: { key: null, replayed: false },
+							observedAt: "2026-09-14T00:00:00.000Z",
+							commit: {
+								kind: "durable",
+								id: "note-1",
+								committedAt: "2026-09-14T00:00:00.000Z",
+							},
+						},
+					],
+				},
+				actionGate: async () => {
+					actionCalls++;
+				},
+			});
+			const failure = new TypeError(
+				"unexpected evaluator failure after commit",
+			);
+			let handlerCalls = 0;
+			h.runtime.registerModel(
+				ModelType.RESPONSE_HANDLER,
+				async () => {
+					if (handlerCalls++ === 0) return stageOneToolTurn();
+					throw failure;
+				},
+				"post-effect-error-test",
+				300,
+			);
+			const apologyModel = vi.fn(async () => {
+				throw failure;
+			});
+			h.runtime.registerModel(
+				ModelType.TEXT_SMALL,
+				apologyModel,
+				"post-effect-error-test",
+				300,
+			);
+			const onSettledActionResult = vi.fn();
+			await expect(
+				new DefaultMessageService().handleMessage(
+					h.runtime,
+					makeMessage(h.runtime, "Save the note."),
+					h.callback,
+					{ onSettledActionResult },
+				),
+			).rejects.toBe(failure);
+			expect(actionCalls).toBe(1);
+			expect(onSettledActionResult).toHaveBeenCalledTimes(1);
+			expect(onSettledActionResult).toHaveBeenCalledWith(
+				expect.objectContaining({
+					effectReceipts: [
+						expect.objectContaining({
+							receiptId: "saved-note-1",
+							outcome: "applied",
+						}),
+					],
+				}),
+			);
+			expect(apologyModel).not.toHaveBeenCalled();
+			expect(visibleTexts(h.callbacks)).toEqual([]);
+		},
+	);
+
 	it("retains prior dialogue when immediate reply grounding needs a rewrite without replaying the tool", async () => {
 		let actionCalls = 0;
 		const h = await createHarness({
