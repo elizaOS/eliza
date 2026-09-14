@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { Memory } from "../types/index.ts";
-import { previousEvidencePage } from "./evaluator-evidence-page.ts";
+import {
+	previousEvidencePage,
+	selectSharedEvidencePages,
+} from "./evaluator-evidence-page.ts";
 
 const rows = Array.from({ length: 40 }, (_, i) => ({
 	id: `source-${i}`,
@@ -12,6 +15,24 @@ const rows = Array.from({ length: 40 }, (_, i) => ({
 	},
 })) as Array<Memory & { id: NonNullable<Memory["id"]> }>;
 describe("historical evidence continuation", () => {
+	it("budgets evidence without the recovery carrier while returning complete records", () => {
+		const source = structuredClone(rows[0]);
+		source.content.chatIdempotency = { response: "recovery".repeat(30_000) };
+		const original = structuredClone(source);
+		const page = previousEvidencePage([source, rows[1]], rows[1].id, 1024);
+		expect(page.messages).toEqual([original]);
+		expect(source).toEqual(original);
+		expect(
+			selectSharedEvidencePages([page], (entry) => entry.messages, 1024),
+		).toEqual({ selected: [page], deferred: [] });
+		const authored = {
+			...source,
+			content: { text: "evidence".repeat(30_000) },
+		};
+		expect(() =>
+			selectSharedEvidencePages([[authored]], (entry) => entry, 1024),
+		).toThrow(expect.objectContaining({ code: "EVALUATOR_SOURCE_TOO_LARGE" }));
+	});
 	it("reassembles ordered Unicode records exactly through every explicit cursor page", () => {
 		const budget = Math.max(
 			...rows.map(

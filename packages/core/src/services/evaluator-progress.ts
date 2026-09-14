@@ -21,6 +21,7 @@ import type {
 	UUID,
 } from "../types/index.ts";
 import { isPlainObject } from "../utils/type-guards.ts";
+import { evaluatorEvidenceByteLength } from "./evaluator-evidence-page.ts";
 
 // Bump when extraction/progress semantics require an explicit new backfill.
 const EXTRACTION_VERSION = 1;
@@ -643,9 +644,7 @@ async function prepareProgressFromSources(
 			const deferred: Memory[] = [];
 			let bytes = 0;
 			for (const source of messages) {
-				const size = new TextEncoder().encode(
-					JSON.stringify(source),
-				).byteLength;
+				const size = evaluatorEvidenceByteLength(source);
 				if (
 					options.maxEvidenceBytes !== undefined &&
 					size > options.maxEvidenceBytes

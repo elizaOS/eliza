@@ -5,6 +5,17 @@ import type { Memory } from "../types/index.ts";
 
 export const DEFAULT_MEMORY_EVIDENCE_BATCH_BYTES = 65_536;
 
+/** Recovery transport is omitted from shared transcripts and authored-source
+ * revisions. Do not charge it against evidence capacity or mutate its record. */
+export function evaluatorEvidenceByteLength(memory: Memory): number {
+	return new TextEncoder().encode(
+		JSON.stringify({
+			...memory,
+			content: { ...memory.content, chatIdempotency: undefined },
+		}),
+	).byteLength;
+}
+
 export function previousEvidencePage(
 	messages: readonly Memory[],
 	beforeMessageId: string,
@@ -27,9 +38,7 @@ export function previousEvidencePage(
 	let start = end;
 	let bytes = 0;
 	while (start > 0) {
-		const size = new TextEncoder().encode(
-			JSON.stringify(ordered[start - 1]),
-		).byteLength;
+		const size = evaluatorEvidenceByteLength(ordered[start - 1]);
 		if (size > maxBytes && start === end)
 			throw new ElizaError(
 				"One complete reference record exceeds the evidence page budget",
@@ -65,7 +74,7 @@ export function selectSharedEvidencePages<T>(
 		let pageBytes = 0;
 		let added = 0;
 		for (const [id, source] of page) {
-			const bytes = new TextEncoder().encode(JSON.stringify(source)).byteLength;
+			const bytes = evaluatorEvidenceByteLength(source);
 			pageBytes += bytes;
 			if (!included.has(id)) added += bytes;
 		}

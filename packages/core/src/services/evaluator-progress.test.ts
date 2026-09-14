@@ -322,6 +322,31 @@ describe("incremental evaluator progress", () => {
 		expect(done.isBackfill).toBe(false);
 	});
 
+	it("reviews a small authored source with a large recovery carrier without changing it", async () => {
+		const h = runtimeWith();
+		const source = memory("recovery", "Save the violet notebook note.");
+		source.content.chatIdempotency = { response: "recovery".repeat(30_000) };
+		const original = structuredClone(source);
+		authoritativeRows.get(h.runtime)?.([source]);
+		const snapshot = selected(
+			await prepareProgress(h.runtime, source, ["facts"], [source], {
+				maxEvidenceBytes: 1024,
+			}),
+		);
+		expect(snapshot.messages).toEqual([original]);
+		expect(snapshot.remainingSourceCount).toBe(0);
+		await stageEvaluatorOutput(h.runtime, snapshot, {});
+		await commitEvaluatorProgress(h.runtime, snapshot);
+		expect(
+			selected(
+				await prepareProgress(h.runtime, source, ["facts"], [source], {
+					maxEvidenceBytes: 1024,
+				}),
+			).messages,
+		).toEqual([]);
+		expect(source).toEqual(original);
+	});
+
 	it("rejects a single oversized source intact before staging or acknowledging anything", async () => {
 		const h = runtimeWith();
 		const source = memory("large", "完整".repeat(100));

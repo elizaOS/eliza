@@ -169,7 +169,7 @@ describe("managed incremental evaluators", () => {
 			id: old.id,
 			content: {
 				...old.content,
-				chatIdempotency: { outcome: "TRANSPORT_ACK_CANARY" },
+				chatIdempotency: { outcome: "TRANSPORT_ACK_CANARY".repeat(15_000) },
 			},
 		});
 		runtime.useModel = vi.fn(async () => ({
@@ -210,6 +210,11 @@ describe("managed incremental evaluators", () => {
 				unique: false,
 			}),
 		).toHaveLength(2);
+		expect(
+			(await runtime.getMemoryById(old.id))?.content.chatIdempotency,
+		).toEqual({
+			outcome: "TRANSPORT_ACK_CANARY".repeat(15_000),
+		});
 		const replay = await service.run(structuredClone(current), state, {
 			phase: "post_turn",
 			semanticSignal: true,

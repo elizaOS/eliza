@@ -236,6 +236,12 @@ and fingerprinted source snapshot. Each keeps independent progress, output and
 reconciliation data; staging and commit still recheck authoritative sources.
 The snapshot is never reused across batches or room scopes.
 
+Evidence byte budgets exclude `content.chatIdempotency`, the recovery transport
+carrier already omitted from shared transcripts and authored-source revisions.
+Batch selection, historical pages and shared batches use that accounting;
+stored messages and recovery snapshots remain complete. Authored evidence still
+must fit the configured resource boundary without clipping.
+
 The background worker yields to the event loop between jobs, including failed
 staged-output replays. Cached database work can otherwise keep an entire task
 batch in promise continuations and delay incoming network requests before they
