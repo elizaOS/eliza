@@ -320,6 +320,7 @@ export function sandboxCommand(options: {
   args: string[];
 }): { command: string; args: string[] } {
   if (!options.enabled) return { command: options.runtime, args: options.args };
+  const supervisor = supervisorIdentity();
   assertSandboxReadableSource(options.repoRoot);
   if (!Number.isSafeInteger(options.callerUid) || options.callerUid <= 0) {
     throw new Error("sandbox caller UID must be a positive safe integer");
@@ -342,7 +343,7 @@ export function sandboxCommand(options: {
             "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
           ),
       options.nativeAdmission ? "run-native" : "run",
-      supervisorIdentity(),
+      supervisor,
       ...(options.nativeAdmission
         ? [
             options.nativeAdmission.nativeBundle,

@@ -464,7 +464,7 @@ test("sandbox launch fails closed when host authority is unavailable", async () 
     sandboxCommand({
       enabled: true,
       allowedPorts: "4311",
-      repoRoot: "/repo",
+      repoRoot,
       outputDir: "/output",
       environmentPath: "/output/.sandbox-environment-test.bin",
       callerHome: "/home/caller",
@@ -1091,14 +1091,34 @@ test.skipIf(!hostedLinux)(
         probePath,
         `
 import { spawn } from "node:child_process";
-import { writeFileSync, renameSync } from "node:fs";
-import { once } from "node:events";
-const descendant = spawn(process.execPath, ["-e", "process.on('SIGTERM', () => {}); process.stdout.write('ready'); setInterval(() => {}, 1000)"], {
-  detached: false,
-  stdio: ["ignore", "pipe", "ignore"],
-});
+import { writeFileSync, renameSync, existsSync, openSync, closeSync, fstatSync, readFileSync, constants } from "node:fs";
+const childReady = process.env.TEARDOWN_READY_PATH + ".descendant";
+const descendant = spawn(process.execPath, ["-e", \`
+import * as fs from 'node:fs';
+process.on('SIGTERM', () => {});
+const fields = fs.readFileSync('/proc/self/stat','utf8').split(') ').at(-1).split(' ');
+if (Number(fields[3]) !== process.pid) throw new Error('descendant did not enter its own session');
+const target = process.env.TEARDOWN_READY_PATH + '.descendant';
+fs.writeFileSync(target + '.pending', JSON.stringify({ pid: process.pid, uid: process.getuid(), sessionId: Number(fields[3]) }), { flag: 'wx', mode: 0o400 });
+fs.renameSync(target + '.pending', target);
+setInterval(() => {}, 1000);
+\`], { detached: true, stdio: ["ignore", "ignore", "ignore"] });
 process.on("SIGTERM", () => {});
-await once(descendant.stdout, "data", { signal: AbortSignal.timeout(10000) });
+let childError;
+descendant.once('error', error => { childError = error; });
+const deadline = performance.now() + 10000;
+while (!existsSync(childReady)) {
+  if (childError) throw childError;
+  if (descendant.exitCode !== null || performance.now() >= deadline) throw new Error('owned descendant readiness failed');
+  await new Promise(resolve => setTimeout(resolve, 10));
+}
+const readyFd = openSync(childReady, constants.O_RDONLY | constants.O_NOFOLLOW);
+try {
+  const metadata = fstatSync(readyFd);
+  if (!metadata.isFile() || metadata.uid !== process.getuid() || metadata.nlink !== 1 || metadata.size > 1024) throw new Error('invalid descendant readiness authority');
+  const identity = JSON.parse(readFileSync(readyFd, 'utf8'));
+  if (identity.pid !== descendant.pid || identity.uid !== process.getuid() || identity.sessionId !== descendant.pid) throw new Error('descendant readiness identity changed');
+} finally { closeSync(readyFd); }
 writeFileSync(process.env.TEARDOWN_READY_PATH + ".pending", JSON.stringify({
   uid: process.getuid?.(),
   hostUid: Number(process.env.ELIZA_STABILITY_SANDBOX_HOST_UID),
