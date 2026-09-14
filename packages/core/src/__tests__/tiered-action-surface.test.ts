@@ -1191,6 +1191,14 @@ describe("v5 tiered action surface", () => {
 									text: "Done.",
 									eliza_turn_scope: "final",
 								}),
+								{
+									body: JSON.stringify({
+										thought:
+											"Tool discovery did not read the event; the requested read is still outstanding.",
+										success: false,
+										decision: "CONTINUE",
+									}),
+								},
 							]
 						: []),
 					plannerToolResponse("READ_EVENT", { eliza_turn_scope: "final" }),
@@ -1211,7 +1219,7 @@ describe("v5 tiered action surface", () => {
 				getCalls(runtime).filter(
 					(call) => call.modelType === ModelType.RESPONSE_HANDLER,
 				),
-			).toHaveLength(2);
+			).toHaveLength(candidate === "VIEWS" ? 3 : 2);
 			const first = plannerCalls[0].params as {
 				tools: Array<{ name: string }>;
 			};

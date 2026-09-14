@@ -563,6 +563,14 @@ Experience retrieval orders candidates by semantic similarity, then quality for 
 Foreground history uses compact source labels and exact-repeat references without discarding stored or model-readable conversation evidence. Settled-result reply-only rounds use a smaller default instruction set, preserve original-context restoration, and cannot execute tools again. Custom prompt policies and ordinary planning remain intact.
 
 A bare "Got it." is an acknowledgement, not evidence that work remains.
+Withheld Stage-1 reply drafts remain in planner context as undelivered evidence,
+including any conditions or confirmation requirements. They prove neither
+permission nor execution. A non-coding planner's nonempty terminal proposal can
+reach the existing completion evaluator before a required tool runs; a CONTINUE
+verdict still requires outstanding work. A textless REPLY can propose that
+same saved draft for evaluation; without a draft it remains rejected. This does
+not add evaluation before ordinary action planning or change coding routing.
+
 Stage-1 routing still honors explicit pending effects, required tools, selected
 actions and intents. Genuine progress promises retain their existing checks;
 the acknowledgement alone must not reopen a completed conversational turn.

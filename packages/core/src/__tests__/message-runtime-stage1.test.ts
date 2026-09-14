@@ -5972,6 +5972,14 @@ describe("runV5MessageRuntimeStage1", () => {
 				ModelType.RESPONSE_HANDLER,
 				ModelType.ACTION_PLANNER,
 			]);
+			const plannerInput = useModelCalls(runtime)[1]?.[1] as {
+				messages: Array<{ content: string }>;
+			};
+			expect(
+				plannerInput.messages.some((entry) =>
+					entry.content.includes(JSON.stringify(promise)),
+				),
+			).toBe(true);
 			if (result.kind === "planned_reply")
 				expect(result.result.responseContent?.text).toBe(answer);
 		},
@@ -9243,6 +9251,13 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect.objectContaining({
 				text: "I'll start on that.",
 			}),
+		);
+		const plannerCalls = vi
+			.mocked(runtime.useModel)
+			.mock.calls.filter(([type]) => type === ModelType.ACTION_PLANNER);
+		expect(plannerCalls).toHaveLength(1);
+		expect(JSON.stringify(plannerCalls[0][1])).not.toContain(
+			"undeliveredDraft",
 		);
 	});
 

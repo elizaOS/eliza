@@ -485,6 +485,7 @@ async function runPlannerLoopIterations(
 	// into actually acting instead of being accepted as the final answer. A
 	// genuinely blocking question still surfaces after the miss budget.
 	let stageOnePlan: unknown;
+	let undeliveredStageOneDraft: string | undefined;
 	for (let index = plannerContext.events.length - 1; index >= 0; index--) {
 		const event = plannerContext.events[index];
 		if (
@@ -492,6 +493,10 @@ async function runPlannerLoopIterations(
 			event.source === "message-service"
 		) {
 			stageOnePlan = event.metadata?.plan;
+			const draft = event.metadata?.undeliveredDraft;
+			if (isPlainObject(draft)) {
+				undeliveredStageOneDraft = getNonEmptyString(draft.replyText);
+			}
 			break;
 		}
 	}
@@ -573,6 +578,12 @@ async function runPlannerLoopIterations(
 		typeof stageOnePlan.reply === "string" &&
 		stageOnePlan.reply.trim().length > 0 &&
 		!isUnsafeUserVisibleText(stageOnePlan.reply);
+	// A later planner may discover that an apparent pending action requires
+	// confirmation. Judge its terminal proposal before demanding an effect;
+	// a CONTINUE verdict still requires the outstanding work. This does not
+	// seed an extra evaluation before ordinary action planning.
+	const canEvaluatePlannerTerminal =
+		!codingMode && requiresIntentEvaluation && requireNonTerminalToolCall;
 	// Per-turn required-tool miss budget (see
 	// PlannerLoopParams.requiredToolMissBudgetOverride). Honored ONLY when a
 	// shape-guarded Stage-1 answer is available to finish with: the reduced
@@ -1440,11 +1451,29 @@ async function runPlannerLoopIterations(
 				};
 			}
 
+			const proposedTerminalText =
+				terminalMessageFromToolCalls(
+					plannerOutput.toolCalls,
+					plannerOutput.messageToUser,
+				) ??
+				(!hasExecutedNonTerminalTool(trajectory) &&
+				plannerOutput.toolCalls.every(isTerminalToolCall) &&
+				plannerOutput.toolCalls.some(
+					(call) => call.name.toUpperCase() === "REPLY",
+				)
+					? undeliveredStageOneDraft
+					: undefined);
+			const canEvaluateCurrentTerminal =
+				canEvaluateUnexecutedReply ||
+				(canEvaluatePlannerTerminal &&
+					typeof proposedTerminalText === "string" &&
+					proposedTerminalText.trim().length > 0 &&
+					!isUnsafeUserVisibleText(proposedTerminalText));
 			if (
 				!codingDrainQueue &&
 				requiresIntentEvaluation &&
 				(hasExecutedNonTerminalTool(trajectory) ||
-					canEvaluateUnexecutedReply) &&
+					canEvaluateCurrentTerminal) &&
 				plannerOutput.toolCalls.every(isTerminalToolCall) &&
 				plannerOutput.toolCalls.some(
 					(call) => call.name.toUpperCase() === "REPLY",
@@ -1457,10 +1486,7 @@ async function runPlannerLoopIterations(
 				plannerOutput = {
 					...plannerOutput,
 					messageToUser:
-						terminalMessageFromToolCalls(
-							plannerOutput.toolCalls,
-							plannerOutput.messageToUser,
-						) ??
+						proposedTerminalText ??
 						// A textless pre-execution REPLY proposes the existing draft
 						// for evaluation. It does not approve delivery or an effect.
 						(canEvaluateUnexecutedReply &&
@@ -1475,7 +1501,7 @@ async function runPlannerLoopIterations(
 			if (plannerOutput.toolCalls.length === 0) {
 				if (
 					requireNonTerminalToolCall &&
-					!canEvaluateUnexecutedReply &&
+					!canEvaluateCurrentTerminal &&
 					!hasExecutedNonTerminalTool(trajectory)
 				) {
 					// Prefer the planner's EXPLICIT messageToUser refusal. When the
@@ -1586,7 +1612,7 @@ async function runPlannerLoopIterations(
 				});
 				if (
 					trajectory.steps.some((step) => step.toolCall) ||
-					canEvaluateUnexecutedReply
+					canEvaluateCurrentTerminal
 				) {
 					// Coding mode: the model emitted a final text summary AFTER
 					// executing build tools — it's signalling completion. Finish with
