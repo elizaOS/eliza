@@ -17,6 +17,9 @@ configured provider. Set `ELIZA_CLI_CODEX_MODEL` and
 `ELIZA_CLI_CODEX_PLANNER_MODEL` to the supported model ID; use
 `ELIZA_CLI_CLAUDE_ALL_TIERS=1` to include the small text tiers.
 
+The configured `CODEX_HOME` is preserved for account selection when no pooled
+account overrides it; unrelated ambient secrets remain excluded.
+
 The official SDK manages authentication. Its inference-only exec launcher adds
 `--ignore-user-config --ignore-rules --ephemeral`; the SDK version used here
 does not expose these flags directly. This keeps personal MCP configuration out

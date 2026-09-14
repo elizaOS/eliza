@@ -292,7 +292,8 @@ export class CodexSdkSession {
       "codex-inference-exec.mjs"
     );
     codexOptions.env = {
-      ...(this.subprocessEnv ?? filterEnv(process.env)),
+      ...(this.subprocessEnv ??
+        filterEnv(process.env, undefined, { CODEX_HOME: process.env.CODEX_HOME })),
       ELIZA_CODEX_INFERENCE_BIN: this.codexBinPath ?? "codex",
     };
     const codex = new Codex(codexOptions);
