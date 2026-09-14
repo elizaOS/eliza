@@ -298,10 +298,12 @@ export async function startServerOnlyHost({
     try {
       await sandboxRegistry.register();
     } catch (err) {
-      // error-policy:J7 registry heartbeat can recover after an initial
-      // registration failure; surface the degraded routing path to the agent.
+      // error-policy:J7 initial registration failure is fail-closed: heartbeat
+      // refresh requires the already-written trio and reports
+      // SANDBOX_REGISTRY_OWNERSHIP_LOST instead of recreating missing keys.
+      // Durable recovery after complete expiry is tracked in #24767.
       logger.error(
-        `[eliza] Failed to register sandbox in Redis (gateways will not route inbound platform messages here until the next heartbeat succeeds): ${formatError(err)}`,
+        `[eliza] Failed to register sandbox in Redis (gateways will not route inbound platform messages here; heartbeat cannot recreate a missing trio and fails closed with SANDBOX_REGISTRY_OWNERSHIP_LOST): ${formatError(err)}`,
       );
       currentRuntime?.reportError("eliza.sandboxRegistry", err, {
         phase: "register",
