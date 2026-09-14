@@ -605,3 +605,10 @@ Default metadata stays constant in cardinality as the catalog grows. Set
 these opt-in records can be large. Neither form is model context. Stage-1
 sender-role lookup and context construction have separate spans; nested spans
 overlap and must not be added together as independent latency.
+
+When original conversation history is available through source references, a
+recall question itself calls for reading a missing dependency. Omission from
+the supplied selection does not establish absence. The current-turn boundary
+uses that retrieval policy instead of limiting answers to initially visible
+chat; full-context and tool-planning boundaries remain unchanged. Original
+speaker/correction evidence and current app-record verification stay distinct.
