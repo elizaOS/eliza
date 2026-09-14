@@ -1227,6 +1227,7 @@ export const browserAction: Action = {
     },
     {
       name: "script",
+      subactions: ["wait"],
       description: "Script for eval",
       required: false,
       schema: { type: "string" as const },

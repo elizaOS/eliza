@@ -186,6 +186,11 @@ describe("BROWSER action", () => {
       { tabAction: "switch", id: "tab-2" },
       { tabAction: "switch", id: "tab-2" },
     ],
+    [
+      "wait",
+      { script: "document.readyState === 'complete'", timeoutMs: 250 },
+      { script: "document.readyState === 'complete'", timeoutMs: 250 },
+    ],
   ] as const)(
     "preserves %s operation arguments after promotion",
     async (action, inputs, command) => {
@@ -225,6 +230,7 @@ describe("BROWSER action", () => {
       "pixels",
       "direction",
       "targetSelector",
+      "script",
       "cursorDurationMs",
       "perCharDelayMs",
       "replace",
