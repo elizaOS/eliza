@@ -1581,12 +1581,80 @@ function wordsAgree(a: string, b: string): boolean {
 }
 
 /**
+ * Words of the request itself — the mutation verbs, the calendar nouns and
+ * filler — say nothing about a place or note: "move my notary appointment to
+ * friday at 4pm" arrived with description "Move notary appointment to Friday
+ * at 4:00 PM" (live 2026-09-14), grounded only by its own verb.
+ */
+const REQUEST_SCAFFOLD_WORDS = new Set([
+  "add",
+  "create",
+  "schedule",
+  "book",
+  "put",
+  "set",
+  "make",
+  "move",
+  "reschedule",
+  "shift",
+  "push",
+  "bump",
+  "change",
+  "update",
+  "edit",
+  "delete",
+  "cancel",
+  "remove",
+  "drop",
+  "scrap",
+  "please",
+  "calendar",
+  "event",
+  "events",
+  "appointment",
+  "appointments",
+  "appt",
+  "meeting",
+  "meetings",
+  "reminder",
+  "the",
+  "and",
+  "for",
+  "with",
+  "from",
+  "into",
+  "onto",
+  "about",
+  "this",
+  "that",
+  "then",
+  "also",
+  "later",
+  "earlier",
+  "instead",
+  "time",
+  "date",
+  "day",
+  "week",
+  "next",
+  "morning",
+  "afternoon",
+  "evening",
+  "noon",
+  "midnight",
+]);
+
+function isScaffoldWord(word: string): boolean {
+  return REQUEST_SCAFFOLD_WORDS.has(word);
+}
+
+/**
  * A place or note the user never said is planner-invented: "move my tailor
  * appointment to friday at 4pm" arrived with location "123 Main st", and the
  * chiropractor move with location "chiro" (live 2026-09-14). A value is the
- * user's when at least one of its words — beyond schedule tokens and the
- * event's own title words — appears in their text. With no user text to check
- * against (a programmatic caller) nothing is judged.
+ * user's when at least one of its words — beyond schedule tokens, request
+ * scaffold and the event's own title words — appears in their text. With no
+ * user text to check against (a programmatic caller) nothing is judged.
  */
 export function isUngroundedTextField(
   value: string | undefined,
@@ -1603,11 +1671,13 @@ export function isUngroundedTextField(
   const residual = (valueWords.length > 0 ? valueWords : rawWords(value)).filter(
     (word) =>
       !looksLikeScheduleToken(word) &&
+      !isScaffoldWord(word) &&
       !titleWords.some((titleWord) => wordsAgree(word, titleWord)),
   );
   if (residual.length === 0) return true;
+  const grounding = spoken.filter((word) => !isScaffoldWord(word));
   return !residual.some((word) =>
-    spoken.some((spokenWord) => wordsAgree(word, spokenWord)),
+    grounding.some((spokenWord) => wordsAgree(word, spokenWord)),
   );
 }
 

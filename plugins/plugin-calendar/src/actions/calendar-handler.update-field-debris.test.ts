@@ -61,6 +61,34 @@ describe("isUngroundedTextField", () => {
     ).toBe(true);
   });
 
+  it("drops a note that restates the request (live: Move notary appointment to Friday at 4:00 PM)", () => {
+    expect(
+      isUngroundedTextField(
+        "Move notary appointment to Friday at 4:00 PM",
+        "Notary appointment",
+        ["move my notary appointment to friday at 4pm"],
+      ),
+    ).toBe(true);
+    expect(
+      isUngroundedTextField("Dentist appointment", "Dentist", [
+        "add a dentist appointment friday at 3pm to my calendar",
+      ]),
+    ).toBe(true);
+    expect(
+      isUngroundedTextField("Moving the meeting", "Budget sync", [
+        "move the budget sync to 4pm",
+      ]),
+    ).toBe(true);
+  });
+
+  it("keeps a note whose substance the user said", () => {
+    expect(
+      isUngroundedTextField("Discuss the Q3 budget with Sam", "Budget sync", [
+        "add a meeting with sam friday at 3 to discuss the q3 budget",
+      ]),
+    ).toBe(false);
+  });
+
   it("keeps a place the user named on this turn", () => {
     expect(
       isUngroundedTextField("Dr. Chen's office", "Dentist appointment", [
