@@ -11,7 +11,7 @@ export const isReplyRecoveryRun = (record: TrajectoryRecord) =>
   record.metadata?.replyRecovery === true;
 
 const runLabel = (record: TrajectoryRecord) =>
-  `${isReplyRecoveryRun(record) ? "Reply recovery" : record.source === "client_chat" ? "Chat run" : record.source === "background_memory" ? "Background memory" : record.source.replace(/_/g, " ")} · ${record.llmCallCount} model ${record.llmCallCount === 1 ? "call" : "calls"} · ${record.status}`;
+  `${isReplyRecoveryRun(record) ? "Reply recovery" : record.source === "client_chat" ? "Chat run" : record.source === "background_memory" ? "Background memory" : record.source.replace(/_/g, " ")} · ${record.llmCallCount} model ${record.llmCallCount === 1 ? "attempt" : "attempts"} · ${record.status}`;
 
 export function useMessageTrajectories({
   records,

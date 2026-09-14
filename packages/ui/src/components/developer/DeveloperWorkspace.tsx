@@ -138,7 +138,7 @@ export function DeveloperTrace({
       <Separator />
       <div className="grid grid-cols-3 gap-3 py-3">
         <div>
-          <div className="text-xs text-muted">Recorded calls</div>
+          <div className="text-xs text-muted">Model attempts</div>
           <div className="text-lg tabular-nums">{detail.llmCalls.length}</div>
         </div>
         <div>
@@ -174,15 +174,15 @@ export function DeveloperTrace({
         </div>
       </dl>
       <p className="text-xs leading-relaxed text-muted">
-        Tokens are summed across calls, including evaluation and cached input.
-        Missing usage is unknown; ≈ marks estimates. Run time measures the
-        recorded run, not time to first token or reply delivery. HTTP attempts,
-        queue time and provider first-token timing are not measured here.
+        Model attempts include local rejections before a provider request. HTTP
+        request counts are not recorded here. Tokens include evaluation and
+        cached input; missing usage is unknown and ≈ marks estimates. Run time
+        is not time to first token or reply delivery.
       </p>
       <div className="overflow-x-auto">
         <Table density="compact" className="caption-top text-left">
           <caption className="pb-2 text-left font-medium">
-            Model calls · {record.status}
+            Model attempts · {record.status}
           </caption>
           <thead className="text-muted">
             <tr>
@@ -473,7 +473,7 @@ export function DeveloperReplyDetails({
         {record || open ? (
           <span
             className="developer-token-count"
-            title="Tokens summed across recorded model calls, including cached input. Total is recorded run time, not time to first token. Inspect for model time and missing or estimated usage."
+            title="Model attempts include local rejections, not just provider requests. Input includes cached tokens. Total is recorded run time, not time to first token. Inspect for usage and timing details."
           >
             {recoveries.length ? "Original run: " : ""}
             {record &&
@@ -492,10 +492,10 @@ export function DeveloperReplyDetails({
                 : record.status === "active"
                   ? "Usage pending"
                   : record.llmCallCount === 0
-                    ? "No recorded model calls"
+                    ? "No recorded model attempts"
                     : "Usage details"}
             {record && record.llmCallCount > 0
-              ? ` · ${count(record.llmCallCount)} model ${record.llmCallCount === 1 ? "call" : "calls"}`
+              ? ` · ${count(record.llmCallCount)} model ${record.llmCallCount === 1 ? "attempt" : "attempts"}`
               : ""}
             {!isMeasurement(record?.durationMs)
               ? ""
@@ -506,7 +506,7 @@ export function DeveloperReplyDetails({
         {recoveries.map((recovery, index) => (
           <span key={recovery.id} className="developer-token-count">
             Reply recovery {index + 1}: {count(recovery.llmCallCount)} model{" "}
-            {recovery.llmCallCount === 1 ? "call" : "calls"} ·{" "}
+            {recovery.llmCallCount === 1 ? "attempt" : "attempts"} ·{" "}
             {recovery.totalPromptTokens > 0 ||
             recovery.totalCompletionTokens > 0
               ? `${count(recovery.totalPromptTokens)} tokens in · ${count(recovery.totalCompletionTokens)} out`
@@ -739,7 +739,7 @@ function LiveActivity({
           <div className="mt-3">
             <p className="text-xs text-muted">
               Latest run in this chat · {record.llmCallCount} recorded model
-              calls
+              attempts
             </p>
             <DeveloperReplyDetails record={record} />
           </div>
@@ -944,7 +944,7 @@ function DeveloperPanel({ section }: { section: "chat" | "settings" }) {
                         {telemetry.rows.map((row) => (
                           <option key={row.id} value={row.id}>
                             {new Date(row.startTime).toLocaleTimeString()} ·{" "}
-                            {row.source} · {row.llmCallCount} calls ·{" "}
+                            {row.source} · {row.llmCallCount} attempts ·{" "}
                             {row.roomId === conversation?.roomId
                               ? "this room"
                               : "other room"}{" "}
