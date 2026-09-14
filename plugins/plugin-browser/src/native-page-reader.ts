@@ -1,3 +1,5 @@
+/** Validates complete native page reads before exposing text or snapshots to the model. */
+import { ElizaError } from "@elizaos/core";
 import { BrowserDispatchFailure } from "./dispatch-types.js";
 import type {
   BrowserWorkspaceCommand,
@@ -56,17 +58,16 @@ export async function readNativeBrowserPage(
     typeof page.url !== "string" ||
     typeof page.title !== "string" ||
     typeof page.text !== "string" ||
-    page.text.length > 16_000 ||
     typeof page.truncated !== "boolean"
   )
     throw new Error("Invalid native Browser page result.");
-  if (
-    command.subaction === "get" &&
-    (!command.getMode || command.getMode === "text") &&
-    page.truncated
-  ) {
-    throw new Error(
-      "Native page text exceeds the read limit. Use a narrower selector or snapshot, which reports truncation explicitly.",
+  if (page.truncated) {
+    throw new ElizaError(
+      "Native page read is incomplete. Update the native client or request a complete read with an explicit selector.",
+      {
+        code: "NATIVE_PAGE_READ_INCOMPLETE",
+        context: { clientId, subaction: command.subaction },
+      },
     );
   }
   return {

@@ -131,7 +131,7 @@ export interface NativePageRead {
   url: string;
   title: string;
   text: string;
-  /** True when the bounded visible-text scan did not include the whole page. */
+  /** Legacy-client compatibility flag; consumers reject incomplete reads. */
   truncated: boolean;
 }
 

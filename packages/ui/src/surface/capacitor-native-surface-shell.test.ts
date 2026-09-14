@@ -473,7 +473,7 @@ class StatefulNativeManager implements ElizaSurfaceManagerPlugin {
 }
 
 describe("CapacitorNativeSurfaceShell", () => {
-  it("reads the owned native page and rejects malformed native payloads", async () => {
+  it("preserves complete long native reads and rejects clipped payloads", async () => {
     const manager = new StatefulNativeManager();
     const shell = new CapacitorNativeSurfaceShell(() => manager, IDENTITY_A);
     await shell.createSurface(CREATE_A);
@@ -481,11 +481,21 @@ describe("CapacitorNativeSurfaceShell", () => {
       text: "Visible page text",
       truncated: false,
     });
-    vi.spyOn(manager, "readPage").mockResolvedValueOnce({
+    const complete = "x".repeat(32_001) + " 終端 Ω";
+    const read = vi.spyOn(manager, "readPage").mockResolvedValueOnce({
       url: "https://a.example/",
       title: "A",
-      text: "x".repeat(16_001),
+      text: complete,
       truncated: false,
+    });
+    await expect(shell.readPage(CREATE_A.id)).resolves.toMatchObject({
+      text: complete,
+    });
+    read.mockResolvedValueOnce({
+      url: "https://a.example/",
+      title: "A",
+      text: "prefix",
+      truncated: true,
     });
     await expect(shell.readPage(CREATE_A.id)).rejects.toThrow(
       "invalid page read",

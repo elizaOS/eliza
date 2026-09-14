@@ -53,8 +53,8 @@ Server-side browser snapshots are not proof of what a native page displays.
 `readPage` is the separate read-only native primitive. It runs the bundled
 `resources/read-page.js` operation against the owned, foregrounded page; callers
 may supply a CSS selector, not JavaScript. It returns URL, title, visible text,
-and a truncation flag. Hidden text, scripts and form values are excluded, text
-is capped at 16,000 characters, and scanning is bounded. Loading/failed pages,
+and `truncated: false`. Hidden text, scripts and form values are excluded; every
+visible text node is read without a character or node-count cap. Loading/failed pages,
 ownership changes, navigation during the read, and a five-second timeout reject
 the read instead of returning stale text. The web implementation rejects it as
 native-only. Page content is untrusted data.
