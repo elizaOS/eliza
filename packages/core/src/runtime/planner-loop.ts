@@ -5420,6 +5420,24 @@ function latestUnresolvedFailedNonTerminalToolStep(
  * tool's own statement of what it did; an applied receipt for it says the
  * failed attempt's outcome no longer stands.
  */
+/**
+ * Two receipt operation names denote the same effect when they carry the
+ * same words in any order and joiner: the personal-assistant wrapper names
+ * a failed calendar update `calendar.update_event` (its subaction) while the
+ * calendar handler names the applied mutation `calendar.event.update`, so an
+ * exact comparison never matched on the live path and the failed step kept
+ * authority over "Done — moved to 4pm" (live 2026-09-14, tj-5657e3e32de5da:
+ * a forced "do not claim success" compose pass after the move applied).
+ */
+export function effectOperationKey(operation: string): string {
+	return operation
+		.toLowerCase()
+		.split(/[^a-z0-9]+/)
+		.filter((token) => token.length > 0)
+		.sort()
+		.join(" ");
+}
+
 function resolveFailedEffectsSupersededBy(
 	step: PlannerStep,
 	unresolvedByOperation: Map<string, PlannerStep>,
@@ -5429,7 +5447,7 @@ function resolveFailedEffectsSupersededBy(
 	const applied = new Set(
 		(step.result?.effectReceipts ?? [])
 			.filter((receipt) => receipt.outcome === "applied")
-			.map((receipt) => receipt.operation),
+			.map((receipt) => effectOperationKey(receipt.operation)),
 	);
 	if (applied.size === 0) return;
 	for (const [key, failed] of [...unresolvedByOperation.entries()]) {
@@ -5442,7 +5460,7 @@ function resolveFailedEffectsSupersededBy(
 		}
 		const failedOperations = (failed.result?.effectReceipts ?? [])
 			.filter((receipt) => receipt.outcome === "failed")
-			.map((receipt) => receipt.operation);
+			.map((receipt) => effectOperationKey(receipt.operation));
 		if (
 			failedOperations.length > 0 &&
 			failedOperations.every((operation) => applied.has(operation))

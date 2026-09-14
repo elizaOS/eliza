@@ -8,7 +8,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import type { EffectReceipt } from "../../types/effects";
-import { runPlannerLoop } from "../planner-loop";
+import { effectOperationKey, runPlannerLoop } from "../planner-loop";
 
 const RECEIPT_BASE = {
 	resource: { kind: "calendar.event", id: "evt-1" },
@@ -121,9 +121,25 @@ describe("failure authority superseded by a later applied effect", () => {
 		);
 	});
 
+	it("matches the wrapper's subaction spelling of the same operation (live: calendar.update_event vs calendar.event.update)", async () => {
+		await expect(runMoveTurn("calendar.update_event")).resolves.toBe(
+			"Moved your barber appointment to Friday at 4pm.",
+		);
+	});
+
 	it("keeps failure authority when the applied receipt is a different operation", async () => {
 		await expect(runMoveTurn("calendar.event.delete")).resolves.not.toBe(
 			"Moved your barber appointment to Friday at 4pm.",
 		);
+	});
+
+	it("keys operations by their words, not their joiners", () => {
+		expect(effectOperationKey("calendar.update_event")).toBe(
+			effectOperationKey("calendar.event.update"),
+		);
+		expect(effectOperationKey("calendar.delete_event")).not.toBe(
+			effectOperationKey("calendar.event.update"),
+		);
+		expect(effectOperationKey("trigger.create")).toBe("create trigger");
 	});
 });
