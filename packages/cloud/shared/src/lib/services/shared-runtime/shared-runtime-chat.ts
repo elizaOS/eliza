@@ -144,7 +144,6 @@ const SSE_TRANSPORT_READY_COMMENT = ": ready\n\n";
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
 const PROVIDER_CANCELLATION_OBSERVE_MS = 5_000;
 const SHARED_STREAM_TERMINAL_DEADLINE_MS = 75_000;
-const PERSONAL_SHARED_RATE_LIMIT = { windowMs: 60_000, maxRequests: 60 } as const;
 const PERSONAL_SHARED_IMAGE_MODEL_ID = "fal-ai/flux/schnell";
 const linkedCharacterMemoryCache = new InMemoryLRUCache<UserCharacter>(256, 60_000);
 
@@ -423,9 +422,7 @@ function personalSharedMediaPort(
       actionOrdinal += 1;
       let rateLimited: Response | null;
       try {
-        rateLimited = await enforceOrgRateLimit(agent.organization_id, "strict", {
-          config: PERSONAL_SHARED_RATE_LIMIT,
-        });
+        rateLimited = await enforceOrgRateLimit(agent.organization_id, "strict");
       } catch (error) {
         // error-policy:J1 translate the cache-only rate-limit boundary into
         // the Shared runtime's single retryable warming signal.
@@ -1066,7 +1063,7 @@ async function admitTurn(
       executionCtx,
       config:
         funding === "platform"
-          ? PERSONAL_SHARED_RATE_LIMIT
+          ? undefined
           : inferenceRateLimitConfig(admissionSnapshot, "completions"),
     });
   } catch (error) {

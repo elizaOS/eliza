@@ -189,10 +189,10 @@ describe("resolveCodingBackend precedence", () => {
 
   it("4. operator pin wins over the planner's heuristic guess", () => {
     const runtime = fakeRuntime({
-      settings: { ELIZA_ACP_DEFAULT_AGENT: "codex" },
+      settings: { ELIZA_ACP_DEFAULT_AGENT: "grok" },
     });
     const r = resolveCodingBackend({ runtime, plannerGuess: "claude" });
-    expect(r).toEqual({ agentType: "codex", source: "pin" });
+    expect(r).toEqual({ agentType: "grok", source: "pin" });
   });
 
   it("5. planner guess used when nothing more authoritative applies", () => {

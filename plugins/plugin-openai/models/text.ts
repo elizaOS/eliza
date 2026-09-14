@@ -294,8 +294,20 @@ function firstNumber(...values: unknown[]): number | undefined {
   return undefined;
 }
 
-function resolvePromptCacheOptions(params: GenerateTextParams): OpenAIPromptCacheOptions {
+function resolvePromptCacheOptions(
+  params: GenerateTextParams,
+  runtime: IAgentRuntime
+): OpenAIPromptCacheOptions {
   const withOpenAIOptions = params as GenerateTextParamsWithOpenAIOptions;
+  const cerebras = withOpenAIOptions.providerOptions?.cerebras;
+  if (isCerebrasMode(runtime) && cerebras && typeof cerebras === "object") {
+    const camel = "promptCacheKey" in cerebras ? cerebras.promptCacheKey : undefined;
+    const snake = "prompt_cache_key" in cerebras ? cerebras.prompt_cache_key : undefined;
+    return {
+      promptCacheKey:
+        typeof camel === "string" ? camel : typeof snake === "string" ? snake : undefined,
+    };
+  }
   return {
     promptCacheKey: withOpenAIOptions.providerOptions?.openai?.promptCacheKey,
     promptCacheRetention: withOpenAIOptions.providerOptions?.openai?.promptCacheRetention,
@@ -453,7 +465,7 @@ function resolveProviderOptions(
 ): Record<string, unknown> | undefined {
   const withOpenAIOptions = params as GenerateTextParamsWithOpenAIOptions;
   const rawProviderOptions = withOpenAIOptions.providerOptions;
-  const promptCacheOptions = resolvePromptCacheOptions(params);
+  const promptCacheOptions = resolvePromptCacheOptions(params, runtime);
   const reasoningEffort = resolveReasoningEffort(runtime, modelName);
   // Thinking-off suppression outranks the env pin and provider default so
   // forced-tool planner calls do not enter an incompatible reasoning mode.
@@ -473,13 +485,8 @@ function resolveProviderOptions(
     return undefined;
   }
 
-  // Cerebras supports prompt caching on gpt-oss-120b — 128-token blocks,
-  // default-on. The `prompt_cache_key` field IS accepted by Cerebras's
-  // OpenAI-compatible endpoint and surfaces hit counts via
-  // `usage.prompt_tokens_details.cached_tokens` (same shape as OpenAI), so
-  // we keep it in the request body. Only `prompt_cache_retention` is an
-  // OpenAI-direct-only field that Cerebras rejects with HTTP 400
-  // (`wrong_api_format`), so we strip just that one when in Cerebras mode.
+  // Cerebras accepts affinity keys, but not OpenAI's retention directive.
+  // Resolve its namespace before the SDK's OpenAI-compatible serialization.
   const skipCacheRetention = isCerebrasMode(runtime);
 
   const { agentName: _agentName, openai: rawOpenAIOptions, ...rest } = rawProviderOptions ?? {};
@@ -489,7 +496,11 @@ function resolveProviderOptions(
   const sanitizedRawOpenAIOptions = (() => {
     if (!rawOpenAIOptions || typeof rawOpenAIOptions !== "object") return rawOpenAIOptions;
     if (!skipCacheRetention) return rawOpenAIOptions;
-    const { promptCacheRetention: _drop, ...rest2 } = rawOpenAIOptions as Record<string, unknown>;
+    const {
+      promptCacheRetention: _drop,
+      promptCacheKey: _key,
+      ...rest2
+    } = rawOpenAIOptions as Record<string, unknown>;
     return rest2;
   })();
   const openaiOptions = {
@@ -731,6 +742,25 @@ function sanitizeToolDescriptionPreservingDescriptors<T extends object>(tool: T)
   return sanitized;
 }
 
+/** Resolve optional-property opt-in before choosing request-wide provider strictness. */
+function nativeToolStrictness(
+  tool: Record<string, unknown>,
+  functionTool: Record<string, unknown>,
+  cerebrasMode: boolean | undefined
+): boolean | undefined {
+  const declared =
+    typeof tool.strict === "boolean"
+      ? tool.strict
+      : typeof functionTool.strict === "boolean"
+        ? functionTool.strict
+        : undefined;
+  const optionalCompatible =
+    typeof tool.strictWithOptionalProperties === "boolean"
+      ? tool.strictWithOptionalProperties
+      : functionTool.strictWithOptionalProperties === true;
+  return declared === false && cerebrasMode && optionalCompatible ? true : declared;
+}
+
 /**
  * Native tool normalization plus the strict-safe record/map transform selected
  * for #13111. Tool schemas still close every object with additionalProperties:
@@ -807,20 +837,14 @@ function normalizeNativeToolsForCall(
   // per-tool: one non-strict (or unflagged) tool downgrades every tool in the
   // call, so the wire flag must be emitted uniformly — and always explicitly,
   // since an omitted flag is not the same as false to the compiler. Schema
-  // handling below still follows each tool's declared flag (a declared
-  // non-strict schema passes through raw; everything else is sanitized).
+  // Optional-property-compatible actions can retain strict enforcement here;
+  // unopted non-strict tools still keep the whole request non-strict.
   const cerebrasRequestStrict =
     options.cerebrasMode === true &&
     tools.every((rawTool) => {
       const tool = asRecord(rawTool);
       const functionTool = asRecord(tool.function);
-      const declared =
-        typeof tool.strict === "boolean"
-          ? tool.strict
-          : typeof functionTool.strict === "boolean"
-            ? functionTool.strict
-            : undefined;
-      return declared === true;
+      return nativeToolStrictness(tool, functionTool, options.cerebrasMode) === true;
     });
 
   for (const rawTool of tools) {
@@ -838,12 +862,7 @@ function normalizeNativeToolsForCall(
     // shape required by strict grammar compilers.
     const declaredSchema =
       tool.parameters ?? functionTool.parameters ?? ({ type: "object" } satisfies JSONSchema7);
-    const strict =
-      typeof tool.strict === "boolean"
-        ? tool.strict
-        : typeof functionTool.strict === "boolean"
-          ? functionTool.strict
-          : undefined;
+    const strict = nativeToolStrictness(tool, functionTool, options.cerebrasMode);
     const recordArgTransforms: RecordArgTransform[] = [];
     // The production strict Cerebras path used to call sanitizeJsonSchema
     // (raw Array.isArray / object spread / Object.entries / .map / unbounded

@@ -5,11 +5,60 @@
  * adapter, no model calls.
  */
 import { describe, expect, it } from "vitest";
+import { createCharacter } from "../character";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { AgentRuntime } from "../runtime";
 import type { Character } from "../types";
 
 describe("AgentRuntime.getSetting", () => {
+	it.each([false, true])(
+		"keeps runtime setting writes local (secret=%s)",
+		(secret) => {
+			const first = new AgentRuntime({
+				character: createCharacter({ name: "settings-first" }),
+			});
+			const second = new AgentRuntime({
+				character: createCharacter({ name: "settings-second" }),
+			});
+			const key = "RUNTIME_SETTINGS_LOCAL_TEST";
+			try {
+				first.setSetting(key, "first-value", secret);
+				expect(first.getSetting(key)).toBe("first-value");
+				expect(second.getSetting(key)).toBeNull();
+				const later = new AgentRuntime({
+					character: createCharacter({ name: "settings-later" }),
+				});
+				expect(later.getSetting(key)).toBeNull();
+				second.setSetting(key, "second-value", secret);
+				first.setSetting(key, null, secret);
+				expect(first.getSetting(key)).toBeNull();
+				expect(second.getSetting(key)).toBe("second-value");
+			} finally {
+				first.setSetting(key, null, secret);
+				second.setSetting(key, null, secret);
+			}
+		},
+	);
+
+	it("owns a mutable copy of caller-provided constructor settings", () => {
+		const settings = Object.freeze({ RUNTIME_SETTINGS_COPY_TEST: "initial" });
+		const first = new AgentRuntime({
+			character: createCharacter({ name: "copy-first" }),
+			settings,
+		});
+		const second = new AgentRuntime({
+			character: createCharacter({ name: "copy-second" }),
+			settings,
+		});
+		first.setSetting("RUNTIME_SETTINGS_COPY_TEST", "updated");
+		expect(first.getSetting("RUNTIME_SETTINGS_COPY_TEST")).toBe("updated");
+		expect(second.getSetting("RUNTIME_SETTINGS_COPY_TEST")).toBe("initial");
+		first.setSetting("RUNTIME_SETTINGS_COPY_TEST", null);
+		expect(first.getSetting("RUNTIME_SETTINGS_COPY_TEST")).toBeNull();
+		expect(second.getSetting("RUNTIME_SETTINGS_COPY_TEST")).toBe("initial");
+		expect(settings.RUNTIME_SETTINGS_COPY_TEST).toBe("initial");
+	});
+
 	it("reads primitive character env values as runtime settings", () => {
 		const runtime = new AgentRuntime({
 			character: {
@@ -105,6 +154,22 @@ describe("AgentRuntime.getSetting", () => {
 		expect(runtime.getSetting("DISCORD_APPLICATION_ID")).toBe("old-app");
 		runtime.setSetting("DISCORD_APPLICATION_ID", null, false);
 		expect(runtime.getSetting("DISCORD_APPLICATION_ID")).toBeNull();
+	});
+
+	it("replaces and revokes a boot-copied nested secret", () => {
+		const runtime = new AgentRuntime({
+			character: {
+				name: "nested-secret-live-update-test",
+				settings: { secrets: { OPENROUTER_API_KEY: "token-a" } },
+			} as Character,
+			settings: { OPENROUTER_API_KEY: "token-a" },
+		});
+
+		expect(runtime.getSetting("OPENROUTER_API_KEY")).toBe("token-a");
+		runtime.setSetting("OPENROUTER_API_KEY", "token-b", true);
+		expect(runtime.getSetting("OPENROUTER_API_KEY")).toBe("token-b");
+		runtime.setSetting("OPENROUTER_API_KEY", null, true);
+		expect(runtime.getSetting("OPENROUTER_API_KEY")).toBeNull();
 	});
 
 	it("uses fresh constructor settings over DB-persisted agent settings on restart", async () => {

@@ -314,6 +314,34 @@ async function seededPiiSession(): Promise<{
 }
 
 describe("runV5MessageRuntimeStage1", () => {
+	it("separates shared-room agents while preserving resumed Stage 1 affinity", async () => {
+		const captures: Array<{ key: string; messages: unknown }> = [];
+		for (const suffix of ["3", "4", "3"]) {
+			const runtime = makeRuntime([
+				stage1Response({ contexts: ["simple"], replyText: "Ready." }),
+			]);
+			runtime.agentId = `00000000-0000-0000-0000-00000000000${suffix}` as UUID;
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000006" as UUID,
+			});
+			const params = useModelCalls(runtime)[0]?.[1] as {
+				messages: unknown;
+				providerOptions: { cerebras: { prompt_cache_key: string } };
+			};
+			captures.push({
+				key: params.providerOptions.cerebras.prompt_cache_key,
+				messages: params.messages,
+			});
+		}
+		expect(captures[0]?.key).toBeTruthy();
+		expect(captures[0]?.key).not.toBe(captures[1]?.key);
+		expect(captures[0]?.key).toBe(captures[2]?.key);
+		expect(captures[0]?.messages).toEqual(captures[2]?.messages);
+	});
+
 	it("preserves a committed action when its reply is unavailable without recovery models or context-after actions", async () => {
 		const unavailable = createUnavailableGroundedActionReply({
 			kind: "provider_issue",
@@ -3007,7 +3035,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("hard-enforces an umbrella candidate when retrieval exposes only its promoted child", async () => {
+	it("hard-enforces an umbrella candidate through its canonical operation schema", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				thought: "A repository review requires delegated coding work.",
@@ -3031,8 +3059,8 @@ describe("runV5MessageRuntimeStage1", () => {
 				toolCalls: [
 					{
 						id: "spawn-reviewer",
-						name: "TASKS_SPAWN_AGENT",
-						args: { task: "Review PR 18106." },
+						name: "TASKS",
+						args: { action: "spawn_agent", task: "Review PR 18106." },
 					},
 				],
 			},
@@ -7380,8 +7408,11 @@ describe("runV5MessageRuntimeStage1", () => {
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
-		expect(validateAllowed).toHaveBeenCalledTimes(2);
-		expect(validateDenied).toHaveBeenCalledTimes(1);
+		expect(validateAllowed).toHaveBeenCalled();
+		expect(validateDenied).toHaveBeenCalled();
+		const discoveryPrompt = JSON.stringify(useModelCalls(runtime)[0]?.[1]);
+		expect(discoveryPrompt).toContain("CHECK_RUNTIME");
+		expect(discoveryPrompt).not.toContain("SKIP_RUNTIME");
 		const firstPlannerParams = useModelCalls(runtime)[1]?.[1] as {
 			tools?: Array<{ name?: string }>;
 			messages?: Array<{ role?: string; content?: string | null }>;

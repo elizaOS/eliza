@@ -9,7 +9,7 @@ import { resolve } from "node:path";
 import { dispatchRoute as dispatchApiRoute } from "@elizaos/plugin-capacitor-bridge/type-shims/agent-api";
 import {
   configFileExists,
-  dispatchRoute as dispatchRootRoute,
+  dispatchApiRoute as dispatchRootRoute,
   hasPersistedFirstRunState,
   loadElizaConfig,
   saveElizaConfig,

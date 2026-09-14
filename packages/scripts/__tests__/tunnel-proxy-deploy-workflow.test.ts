@@ -51,7 +51,7 @@ describe("protected tunnel-proxy deployment workflow", () => {
     expect(deploy?.env?.DEPLOY_BRANCH).toContain(
       "inputs.environment == 'production'",
     );
-    expect(deploy?.env?.DEPLOY_BRANCH).toContain("'main' || 'develop'");
+    expect(deploy?.env?.DEPLOY_BRANCH).toContain("'main' || 'staging'");
 
     const preflight = step("Validate protected canonical configuration");
     for (const name of [

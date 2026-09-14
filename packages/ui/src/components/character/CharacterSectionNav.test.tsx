@@ -24,7 +24,7 @@ import {
 
 function renderCharacterSectionNav(activePath: string) {
   return render(
-    <FramedPage gutterOwner="framed-page">
+    <FramedPage gutterOwner="page-frame">
       <CharacterSectionNav activePath={activePath} />
     </FramedPage>,
   );

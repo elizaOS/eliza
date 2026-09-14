@@ -13,11 +13,16 @@
  * resolution path.
  */
 import type { IAgentRuntime } from "@elizaos/core";
+import {
+  DEFAULT_CONNECTOR_ACCOUNT_ID,
+  normalizeConnectorAccountId,
+  selectDefaultConnectorAccountId,
+} from "@elizaos/core";
 
 /**
  * Default account identifier used when no specific account is configured
  */
-export const DEFAULT_ACCOUNT_ID = "default";
+export const DEFAULT_ACCOUNT_ID = DEFAULT_CONNECTOR_ACCOUNT_ID;
 
 /**
  * Group-specific configuration
@@ -103,14 +108,7 @@ export interface ResolvedIMessageAccount {
  * Normalizes an account ID, returning the default if not provided
  */
 export function normalizeAccountId(accountId?: string | null): string {
-  if (!accountId || typeof accountId !== "string") {
-    return DEFAULT_ACCOUNT_ID;
-  }
-  const trimmed = accountId.trim().toLowerCase();
-  if (!trimmed || trimmed === "default") {
-    return DEFAULT_ACCOUNT_ID;
-  }
-  return trimmed;
+  return normalizeConnectorAccountId(accountId);
 }
 
 /**
@@ -159,11 +157,7 @@ export function listIMessageAccountIds(runtime: IAgentRuntime): string[] {
  * Resolves the default account ID to use
  */
 export function resolveDefaultIMessageAccountId(runtime: IAgentRuntime): string {
-  const ids = listIMessageAccountIds(runtime);
-  if (ids.includes(DEFAULT_ACCOUNT_ID)) {
-    return DEFAULT_ACCOUNT_ID;
-  }
-  return ids[0] ?? DEFAULT_ACCOUNT_ID;
+  return selectDefaultConnectorAccountId(listIMessageAccountIds(runtime));
 }
 
 /**

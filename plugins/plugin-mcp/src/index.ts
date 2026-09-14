@@ -49,6 +49,7 @@ const mcpPlugin: Plugin = {
 
 export default mcpPlugin;
 
+export * from "@elizaos/shared/mcp";
 export {
   DEFAULT_MCP_MARKETPLACE_MAX_RESPONSE_BYTES,
   DEFAULT_MCP_MARKETPLACE_TIMEOUT_MS,

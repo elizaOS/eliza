@@ -1479,7 +1479,18 @@ export async function executeApprovedRequest(args: {
         `[approval] action/payload mismatch: action=send_email, payload.action=${payload.action}`,
       );
     }
+    const familyWorkflow = getFamilyWorkflowRuntimeService(args.runtime);
+    const familyPackets = familyWorkflow?.packets;
+    let familyPacketDraft = null;
     try {
+      if (payload.familyPacketId && !familyWorkflow)
+        throw new ApprovalConnectorPreflightError(
+          "FAMILY_PACKET_SERVICE_UNAVAILABLE",
+          "Family authorization is unavailable. Retry after the family workflow service is ready.",
+        );
+      familyPacketDraft =
+        (await familyPackets?.validateApprovedDraftIfBound(args.request)) ??
+        null;
       if (payload.body.trim().length === 0) {
         throw new ApprovalConnectorPreflightError(
           "INVALID_EMAIL_PAYLOAD",
@@ -1495,9 +1506,15 @@ export async function executeApprovedRequest(args: {
           "A new email requires at least one recipient",
         );
       }
-      await service.requireGoogleGmailSendGrant(INTERNAL_URL, "local", "owner");
+      await service.requireGoogleGmailSendGrant(
+        INTERNAL_URL,
+        "local",
+        "owner",
+        payload.grantId,
+      );
       if (payload.replyToMessageId) {
         await service.readGmailMessage(INTERNAL_URL, {
+          grantId: payload.grantId,
           mode: "local",
           side: "owner",
           messageId: payload.replyToMessageId,
@@ -1513,8 +1530,15 @@ export async function executeApprovedRequest(args: {
       prepared: {
         provider: "gmail",
         dispatch: async () => {
+          let sentEmail: { messageId: string; threadId: string | null } | null =
+            null;
+          if (familyPacketDraft && familyPackets && familyWorkflow) {
+            await familyPackets.validateApprovedDraft(args.request);
+            await familyWorkflow.validateRecipientIdentity(familyPacketDraft);
+          }
           if (payload.replyToMessageId) {
             await service.sendGmailReply(INTERNAL_URL, {
+              grantId: payload.grantId,
               messageId: payload.replyToMessageId,
               bodyText: payload.body,
               subject: payload.subject || undefined,
@@ -1523,7 +1547,8 @@ export async function executeApprovedRequest(args: {
               confirmSend: true,
             });
           } else {
-            await service.sendGmailMessage(INTERNAL_URL, {
+            sentEmail = await service.sendGmailMessage(INTERNAL_URL, {
+              grantId: payload.grantId,
               to: [...payload.to],
               cc: [...payload.cc],
               bcc: [...payload.bcc],
@@ -1538,6 +1563,12 @@ export async function executeApprovedRequest(args: {
               provider: "gmail",
               accepted: true,
               replyToMessageId: payload.replyToMessageId ?? null,
+              ...(sentEmail
+                ? {
+                    messageId: sentEmail.messageId,
+                    threadId: sentEmail.threadId,
+                  }
+                : {}),
             },
           };
         },
@@ -1583,11 +1614,15 @@ export async function executeApprovedRequest(args: {
         `[approval] action/payload mismatch: action=send_message, payload.action=${payload.action}`,
       );
     }
-    const familyPackets = getFamilyWorkflowRuntimeService(
-      args.runtime,
-    )?.packets;
+    const familyWorkflow = getFamilyWorkflowRuntimeService(args.runtime);
+    const familyPackets = familyWorkflow?.packets;
     let familyPacketDraft = null;
     try {
+      if (payload.familyPacketId && !familyWorkflow)
+        throw new ApprovalConnectorPreflightError(
+          "FAMILY_PACKET_SERVICE_UNAVAILABLE",
+          "Family authorization is unavailable. Retry after the family workflow service is ready.",
+        );
       familyPacketDraft =
         (await familyPackets?.validateApprovedDraftIfBound(args.request)) ??
         null;
@@ -1619,10 +1654,11 @@ export async function executeApprovedRequest(args: {
       prepared: {
         provider: prepared.provider,
         dispatch: async (providerIdempotencyKey) => {
-          if (familyPacketDraft && familyPackets) {
+          if (familyPacketDraft && familyPackets && familyWorkflow) {
             // Re-check the immutable draft, latest-version guard, recipient
             // ACL, and live agreement grant at the final pre-provider edge.
             await familyPackets.validateApprovedDraft(args.request);
+            await familyWorkflow.validateRecipientIdentity(familyPacketDraft);
           }
           return {
             value: undefined,

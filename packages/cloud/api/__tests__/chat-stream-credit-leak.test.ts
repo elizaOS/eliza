@@ -187,6 +187,7 @@ const { default: chatRoute } = await import("../v1/chat/route");
 afterAll(() => {
   mock.module("@/lib/middleware/rate-limit", () => rateLimitActual);
   mock.module("ai", () => aiActual);
+  mock.module("@/lib/services/credits", () => creditsActual);
   mock.module("@/lib/providers/language-model", () => languageModelActual);
 });
 

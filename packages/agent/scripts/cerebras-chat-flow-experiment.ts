@@ -216,6 +216,10 @@ export function measuredProviderFetch(
   endpoints: { text: string; embedding: string },
   context: () => ProviderWireEvidence["context"],
   observe: (evidence: ProviderWireEvidence) => void,
+  onDispatch?: (
+    kind: "text" | "embedding",
+    context: ProviderWireEvidence["context"],
+  ) => void,
 ): typeof fetch {
   const textBase = new URL(endpoints.text);
   const embeddingBase = new URL(endpoints.embedding);
@@ -242,7 +246,12 @@ export function measuredProviderFetch(
     const requestCaptureMs = performance.now() - startedAt;
     const fetchStartedAt = performance.now();
     try {
-      const response = await originalFetch(request);
+      const pending = originalFetch(request);
+      // Observe transport rejection even if the diagnostic callback itself throws.
+      const [response] = await Promise.all([
+        pending,
+        Promise.resolve().then(() => onDispatch?.(kind, capturedContext)),
+      ]);
       observe({
         kind,
         context: capturedContext ? { ...capturedContext } : null,

@@ -14,7 +14,12 @@ import type {
   ProcessEnvLike,
   TextToSpeechParams,
 } from "@elizaos/core";
-import { ElizaError, logger, ModelType } from "@elizaos/core";
+import {
+  ElizaError,
+  logger,
+  ModelType,
+  registerProviderModels,
+} from "@elizaos/core";
 import { decode, encode } from "@msgpack/msgpack";
 
 export const FISH_AUDIO_TTS_WEBSOCKET_URL = "wss://api.fish.audio/v1/tts/live";
@@ -589,14 +594,15 @@ export const fishAudioPlugin: Plugin = {
       );
       return;
     }
-    runtime.registerModel(
-      ModelType.TEXT_TO_SPEECH,
-      handleFishAudioTextToSpeech as unknown as Parameters<
-        IAgentRuntime["registerModel"]
-      >[1],
-      fishAudioPlugin.name,
-      fishAudioPlugin.priority,
-    );
+    registerProviderModels(runtime, fishAudioPlugin.name, [
+      {
+        modelType: ModelType.TEXT_TO_SPEECH,
+        handler: handleFishAudioTextToSpeech as unknown as Parameters<
+          IAgentRuntime["registerModel"]
+        >[1],
+        priority: fishAudioPlugin.priority,
+      },
+    ]);
   },
 };
 

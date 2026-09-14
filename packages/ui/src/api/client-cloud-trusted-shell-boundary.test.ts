@@ -15,6 +15,14 @@ const platform = vi.hoisted(() => ({
   native: false,
   request: vi.fn(),
 }));
+const desktopSecureStoreDelete = vi.hoisted(() =>
+  vi.fn(async () => {
+    // The Electrobun fixture seeds the legacy browser mirror directly; the
+    // real desktop bridge owns this deletion in protected storage.
+    window.localStorage.removeItem("steward_session_token");
+    return { ok: true as const };
+  }),
+);
 
 vi.mock("../bridge/electrobun-rpc", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../bridge/electrobun-rpc")>()),
@@ -36,6 +44,11 @@ vi.mock("@capacitor/core", () => ({
     post: vi.fn(),
     request: platform.request,
   },
+}));
+
+vi.mock("../bridge/electrobun-rpc", async (importOriginal) => ({
+  ...(await importOriginal()),
+  desktopSecureStoreDelete,
 }));
 
 import { setBootConfig } from "../config/boot-config";
@@ -154,6 +167,7 @@ function assertStewardRequests(
 beforeEach(() => {
   platform.native = false;
   platform.request.mockReset();
+  desktopSecureStoreDelete.mockClear();
   localStorage.removeItem(STEWARD_TOKEN_KEY);
   setElectrobunRuntime(false);
   setBootConfig({
@@ -168,10 +182,85 @@ afterEach(() => {
   if (originalLocationDescriptor) {
     Object.defineProperty(window, "location", originalLocationDescriptor);
   }
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
 describe("dedicated Cloud account boundary on trusted app shells", () => {
+  it.each(["", "http://localhost:31484"])(
+    "keeps a returned staging account connected with local runtime %s",
+    async (runtimeBase) => {
+      setPageLocation("localhost");
+      vi.stubEnv("VITE_STEWARD_API_URL", "https://staging.eliza.app/steward");
+      vi.stubEnv("VITE_STEWARD_TENANT_ID", "elizacloud-staging");
+      setBootConfig({ branding: {}, cloudApiBase: STAGING_CONTROL_PLANE });
+      localStorage.setItem(STEWARD_TOKEN_KEY, "returned-steward-session");
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockImplementation(async (url) => {
+          if (String(url).endsWith("/api/v1/user")) {
+            return jsonResponse({
+              id: "returned-user",
+              organization_id: "returned-org",
+            });
+          }
+          return jsonResponse({ connected: false, enabled: false });
+        });
+      const client = new ElizaClient(runtimeBase, "local-runtime-token");
+
+      await expect(client.getCloudStatus()).resolves.toMatchObject({
+        connected: true,
+        userId: "returned-user",
+        organizationId: "returned-org",
+      });
+      expect(String(fetchSpy.mock.calls[0]?.[0])).toBe(
+        `${STAGING_CONTROL_PLANE}/api/v1/user`,
+      );
+      expect(
+        new Headers(fetchSpy.mock.calls[0]?.[1]?.headers).get("authorization"),
+      ).toBe("Bearer returned-steward-session");
+      expect(client.getBaseUrl()).toBe(runtimeBase);
+      await client.fetch("/api/status");
+      expect(
+        new Headers(fetchSpy.mock.calls.at(-1)?.[1]?.headers).get(
+          "authorization",
+        ),
+      ).toBe("Bearer local-runtime-token");
+    },
+  );
+
+  it.each([
+    { base: "http://localhost:31484", staging: false, token: true },
+    { base: "https://my-private-agent.example", staging: true, token: true },
+    { base: "http://localhost:31484", staging: true, token: false },
+  ])(
+    "preserves the runtime account route outside a signed-in staging loopback ($base, $staging, $token)",
+    async ({ base, staging, token }) => {
+      setPageLocation("localhost");
+      vi.stubEnv(
+        "VITE_STEWARD_API_URL",
+        staging ? "https://staging.eliza.app/steward" : "",
+      );
+      vi.stubEnv("VITE_STEWARD_TENANT_ID", staging ? "elizacloud-staging" : "");
+      if (token)
+        localStorage.setItem(STEWARD_TOKEN_KEY, "returned-steward-session");
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(jsonResponse({ connected: false }));
+      const client = new ElizaClient(base, "local-runtime-token");
+
+      await expect(client.getCloudStatus()).resolves.toMatchObject({
+        connected: false,
+      });
+      expect(String(fetchSpy.mock.calls[0]?.[0])).toBe(
+        `${base}/api/cloud/status`,
+      );
+      expect(
+        new Headers(fetchSpy.mock.calls[0]?.[1]?.headers).get("authorization"),
+      ).not.toBe("Bearer returned-steward-session");
+    },
+  );
+
   it("routes account reads from a local Shared agent to the configured loopback control plane", async () => {
     setPageLocation("127.0.0.1");
     setBootConfig({

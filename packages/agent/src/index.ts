@@ -183,6 +183,7 @@ export {
 // exported through `./api/server.js`.
 export {
   getConfiguredApiToken,
+  isCredentialedCorsOrigin,
   isTrustedLocalRequest,
 } from "./api/server-helpers-auth.ts";
 // `server-types.ts` is the canonical source for conversation/server type
@@ -375,6 +376,11 @@ export {
 // re-export to mirror the relationships-graph surface and avoid colliding
 // with the broad services barrel.
 export {
+  archiveCoreRelationshipsInventory,
+  type CoreRelationshipsInventoryDatabase,
+  type CoreRelationshipsInventoryReport,
+  type CoreRelationshipsInventorySession,
+  type CoreRelationshipsSourceKind,
   EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
   KnowledgeGraphService,

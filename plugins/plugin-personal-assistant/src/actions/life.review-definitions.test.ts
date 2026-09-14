@@ -306,6 +306,35 @@ describe("LifeOps definition review isolation", () => {
     expect(result.text).not.toContain("File taxes");
   });
 
+  it.each(["foreign-owner", "other-domain", "other-surface"])(
+    "does not disclose a completed ID outside the caller's review scope: %s",
+    async (scope) => {
+      const record = definitionRecord({
+        id: "completed-private-record",
+        kind: "task",
+        status: "completed",
+        title: "Private completed item",
+        ownerSurface:
+          scope === "other-surface" ? "OWNER_REMINDERS" : "OWNER_TODOS",
+        domain: scope === "other-domain" ? "agent_ops" : "user_lifeops",
+      });
+      if (scope === "foreign-owner") {
+        record.definition.subjectId = "00000000-0000-0000-0000-000000000099";
+      }
+      serviceState.definitions.push(record);
+      const result = await review({
+        ownerSurface: "OWNER_TODOS",
+        target: record.definition.id,
+      });
+      expect(result).toMatchObject({
+        success: false,
+        data: { definitions: [], error: "LIFEOPS_DEFINITION_NOT_FOUND" },
+      });
+      expect(result.text).not.toContain(record.definition.title);
+      expect(result.text).not.toContain("File taxes");
+    },
+  );
+
   it("returns exactly one structurally allowed target", async () => {
     const result = await review({
       ownerSurface: "OWNER_TODOS",

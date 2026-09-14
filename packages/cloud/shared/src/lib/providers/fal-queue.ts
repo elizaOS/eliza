@@ -55,8 +55,13 @@ function assertSameOrigin(urlString: string, base: URL, label: string): URL {
   return url;
 }
 
-async function queueFetch(url: URL, apiKey: string, init?: RequestInit): Promise<Response> {
-  return await fetch(url, {
+async function queueFetch(
+  fetchImpl: typeof fetch,
+  url: URL,
+  apiKey: string,
+  init?: RequestInit,
+): Promise<Response> {
+  return await fetchImpl(url, {
     ...init,
     headers: {
       Authorization: `Key ${apiKey}`,
@@ -88,6 +93,7 @@ export async function runFalQueueJob(
   model: string,
   input: Record<string, unknown>,
   options: FalQueueOptions,
+  fetchImpl: typeof fetch = globalThis.fetch,
 ): Promise<FalQueueResult> {
   const base = new URL(options.baseUrl ?? DEFAULT_QUEUE_BASE_URL);
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
@@ -97,7 +103,7 @@ export async function runFalQueueJob(
     `${base.pathname.replace(/\/+$/, "")}/${model}`.replace(/^\/+/, "/"),
     base.origin,
   );
-  const submitResponse = await queueFetch(submitUrl, options.apiKey, {
+  const submitResponse = await queueFetch(fetchImpl, submitUrl, options.apiKey, {
     method: "POST",
     body: JSON.stringify(input),
   });
@@ -121,7 +127,7 @@ export async function runFalQueueJob(
 
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    const statusResponse = await queueFetch(statusUrl, options.apiKey);
+    const statusResponse = await queueFetch(fetchImpl, statusUrl, options.apiKey);
     const statusPayload = await readJson(statusResponse, "status");
     if (!statusResponse.ok) {
       throw new Error(`fal queue status failed (${statusResponse.status})`);
@@ -140,7 +146,7 @@ export async function runFalQueueJob(
     await sleep(pollIntervalMs);
   }
 
-  const resultResponse = await queueFetch(responseUrl, options.apiKey);
+  const resultResponse = await queueFetch(fetchImpl, responseUrl, options.apiKey);
   const payload = await readJson(resultResponse, "response");
   if (!resultResponse.ok) {
     throw new Error(`fal queue response fetch failed (${resultResponse.status})`);

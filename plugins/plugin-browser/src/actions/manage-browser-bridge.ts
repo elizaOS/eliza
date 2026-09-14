@@ -36,6 +36,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger, ModelType, parseKeyValueXml } from "@elizaos/core";
+import { rejectAtDeadline } from "@elizaos/shared";
 import type {
   BrowserBridgeCompanionPackageStatus,
   BrowserBridgeCompanionStatus,
@@ -70,15 +71,10 @@ function withBrowserBridgeTimeout<T>(
   promise: Promise<T>,
   label: string,
 ): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<never>((_, reject) =>
-      setTimeout(
-        () => reject(new Error(`${label} timed out`)),
-        BROWSER_BRIDGE_TIMEOUT_MS,
-      ),
-    ),
-  ]);
+  return rejectAtDeadline(promise, {
+    timeoutMs: BROWSER_BRIDGE_TIMEOUT_MS,
+    onTimeout: () => new Error(`${label} timed out`),
+  });
 }
 
 const SELECTED_CONTEXT_KEYS = [

@@ -598,7 +598,9 @@ export interface Action {
 	 * tool intentionally spans multiple parameter shapes and therefore needs
 	 * optional fields to remain optional on the wire. Runtime argument
 	 * validation and the handler's resolved child contract still enforce the
-	 * selected operation before execution.
+	 * selected operation before execution. The tool adapter permits strict
+	 * normalization on providers that preserve optional properties; native
+	 * ToolDefinition callers can still explicitly disable strict mode.
 	 */
 	toolSchemaStrict?: boolean;
 

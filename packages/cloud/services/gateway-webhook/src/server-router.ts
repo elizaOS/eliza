@@ -1,7 +1,18 @@
 /** Routes authenticated connector traffic to cloud identities and agent servers. */
 
-import { readFileSync } from "node:fs";
-import { patchK8sDeploymentScale } from "@elizaos/cloud-services-common/k8s-deployment-wake";
+import {
+  executeGatewayForwardAttempts,
+  type GatewayTargetResult,
+  postGatewayTarget,
+} from "@elizaos/cloud-services-common/gateway-forward";
+import {
+  type GatewayServerLookup,
+  type GatewayWakeDependencies,
+  observeGatewayWake,
+  refreshGatewayActivity,
+  resolveGatewayAgentServer,
+  wakeGatewayServer,
+} from "@elizaos/cloud-services-common/gateway-routing";
 import { reacquireAuthHeader } from "./auth";
 import { getHashTargets, refreshHashRing } from "./hash-router";
 import { logger } from "./logger";
@@ -35,11 +46,6 @@ type CanonicalAgentFallbackEnv = Record<string, string | undefined>;
 export interface CanonicalAgentRoutingConfiguration {
   agentBaseDomain: string;
   routerOriginHost: string;
-}
-
-interface ServerRoute {
-  serverName: string;
-  serverUrl: string;
 }
 
 export type RoutingRedis = Pick<
@@ -242,136 +248,41 @@ export async function resolveIdentity(
  * or scaled to zero. Callers that treat "no route" as "not provisioned yet" —
  * and answer with onboarding — must only do so for `unregistered`.
  */
-export type AgentServerLookup =
-  | ({ kind: "ready" } & ServerRoute)
-  | { kind: "unregistered" }
-  | { kind: "unreachable"; serverName: string };
+export type AgentServerLookup = GatewayServerLookup;
 
-export async function resolveAgentServer(
+export function resolveAgentServer(
   redis: RoutingRedis,
   agentId: string,
 ): Promise<AgentServerLookup> {
-  const serverName = await redis.get<string>(`agent:${agentId}:server`);
-  if (!serverName) return { kind: "unregistered" };
-
-  const serverUrl = await redis.get<string>(`server:${serverName}:url`);
-  if (!serverUrl) return { kind: "unreachable", serverName };
-
-  return { kind: "ready", serverName, serverUrl };
+  return resolveGatewayAgentServer(redis, agentId);
 }
 
-export async function refreshKedaActivity(
+export function refreshKedaActivity(
   redis: RoutingRedis,
   serverName: string,
 ): Promise<void> {
-  const key = `keda:${serverName}:activity`;
-  await redis.lpush(key, Date.now().toString());
-  await redis.ltrim(key, 0, 0);
-  await redis.expire(key, KEDA_COOLDOWN_SECONDS);
+  return refreshGatewayActivity(redis, serverName, KEDA_COOLDOWN_SECONDS);
 }
 
-let k8sToken: string | null = null;
-let k8sCaCert: string | null = null;
+export type WakeServerDependencies = Partial<GatewayWakeDependencies>;
 
-function getK8sToken(): string | null {
-  if (k8sToken !== null) return k8sToken;
-  try {
-    k8sToken = readFileSync(
-      "/var/run/secrets/kubernetes.io/serviceaccount/token",
-      "utf-8",
-    ).trim();
-  } catch (err) {
-    logger.debug("K8s service account token not available", {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    k8sToken = "";
-  }
-  return k8sToken || null;
-}
-
-function getK8sCaCert(): string | null {
-  if (k8sCaCert !== null) return k8sCaCert;
-  try {
-    k8sCaCert = readFileSync(
-      "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt",
-      "utf-8",
-    );
-  } catch (err) {
-    logger.debug("K8s CA cert not available", {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    k8sCaCert = "";
-  }
-  return k8sCaCert || null;
-}
-
-function parseNamespaceFromUrl(serverUrl: string): string | null {
-  const match = serverUrl.match(/^https?:\/\/[^.]+\.([^.]+)\.svc/);
-  return match?.[1] ?? null;
-}
-
-export interface WakeServerDependencies {
-  getToken?: () => string | null;
-  getCaCert?: () => string | null;
-  fetchFn?: typeof fetch;
-  createTimeoutSignal?: (timeoutMs: number) => AbortSignal;
-  logError?: (message: string, context: Record<string, unknown>) => void;
-}
-
-export async function wakeServer(
+export function wakeServer(
   serverName: string,
   serverUrl: string,
   dependencies: WakeServerDependencies = {},
 ): Promise<void> {
-  const logError = dependencies.logError ?? logger.error.bind(logger);
-  const token = (dependencies.getToken ?? getK8sToken)();
-  if (!token) return;
-
-  const namespace = parseNamespaceFromUrl(serverUrl);
-  if (!namespace) return;
-
-  try {
-    const res = await patchK8sDeploymentScale({
-      serverName,
-      namespace,
-      token,
-      caCert: (dependencies.getCaCert ?? getK8sCaCert)(),
-      fetchFn: dependencies.fetchFn,
-      createTimeoutSignal: dependencies.createTimeoutSignal,
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      logError("wakeServer failed", {
-        serverName,
-        status: res.status,
-        body: text,
-      });
-    }
-  } catch (err) {
-    // error-policy:J1 Detached wake failures terminate at this logged boundary.
-    logError("wakeServer error", {
-      serverName,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
+  return wakeGatewayServer(serverName, serverUrl, {
+    ...dependencies,
+    logError: dependencies.logError ?? logger.error.bind(logger),
+  });
 }
 
 export function observeWakeServer(
   promise: Promise<void>,
   serverName: string,
-  logError: (
-    message: string,
-    context: Record<string, unknown>,
-  ) => void = logger.error.bind(logger),
+  logError: GatewayWakeDependencies["logError"] = logger.error.bind(logger),
 ): void {
-  // error-policy:J5 wakeServer observes expected failures internally; this
-  // terminal observer records only an unexpected residual rejection.
-  void promise.catch((err) => {
-    logError("wakeServer unhandled error", {
-      serverName,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  });
+  observeGatewayWake(promise, serverName, logError);
 }
 
 /**
@@ -520,15 +431,7 @@ export async function forwardEventToServer(
   );
 }
 
-type TargetResult =
-  | { ok: true; response: string }
-  | {
-      ok: false;
-      error: Error;
-      isConnectionError: boolean;
-      timedOut: boolean;
-      status?: number;
-    };
+type TargetResult = GatewayTargetResult;
 
 interface ForwardAttemptPolicy {
   timeoutMs: number;
@@ -644,8 +547,6 @@ async function forwardWithRetry(
     retryOnTimeout: true,
   },
 ): Promise<string> {
-  let lastError: Error | null = null;
-  let woken = false;
   let canonicalAttempted = false;
 
   // Dedicated Docker sandboxes self-register a public host:port in Redis for
@@ -666,86 +567,41 @@ async function forwardWithRetry(
     if (canonical.timedOut && !policy.retryOnTimeout) {
       throw canonical.error;
     }
-    lastError = canonical.error;
   }
 
-  for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
-    if (attempt > 0) {
-      const delay = RETRY_BASE_DELAY_MS + RETRY_INCREMENT_MS * attempt;
-      await new Promise((r) => setTimeout(r, delay));
-    }
-
-    const targets = await getHashTargets(serverUrl, hashKey, 2);
-
-    if (targets.length === 0) {
-      if (!woken) {
-        woken = true;
-        observeWakeServer(wakeServer(serverName, serverUrl), serverName);
+  return executeGatewayForwardAttempts({
+    attempts: RETRY_ATTEMPTS,
+    baseDelayMs: RETRY_BASE_DELAY_MS,
+    incrementMs: RETRY_INCREMENT_MS,
+    getTargets: () => getHashTargets(serverUrl, hashKey, 2),
+    refreshTargets: () => refreshHashRing(serverUrl),
+    wake: () =>
+      observeWakeServer(wakeServer(serverName, serverUrl), serverName),
+    tryTarget: (target) =>
+      tryTarget(target, endpointPath, body, undefined, policy.timeoutMs),
+    retryOnTimeout: policy.retryOnTimeout,
+    // Only transport failures can move to the fixed canonical ingress. An HTTP
+    // response is authoritative and may not be bypassed through another host.
+    afterPrimaryFailure: async (target, result) => {
+      if (
+        result.isConnectionError &&
+        connectionFallback &&
+        !canonicalAttempted &&
+        target.replace(/\/$/, "") !==
+          connectionFallback.baseUrl.replace(/\/$/, "")
+      ) {
+        canonicalAttempted = true;
+        return tryCanonicalTarget(
+          connectionFallback,
+          endpointPath,
+          body,
+          policy,
+        );
       }
-      lastError = new Error("No pods available (scaled to zero)");
-      continue;
-    }
-
-    const result = await tryTarget(
-      targets[0],
-      endpointPath,
-      body,
-      undefined,
-      policy.timeoutMs,
-    );
-    if (result.ok) return result.response;
-    if (result.timedOut && !policy.retryOnTimeout) {
-      throw result.error;
-    }
-
-    // Dedicated sandboxes can remain healthy behind their canonical hostname
-    // while an old direct host:port is still being refreshed into Redis. Only
-    // a transport failure may use this fixed-domain route: an HTTP response is
-    // authoritative and must not be bypassed through a second ingress.
-    if (
-      result.isConnectionError &&
-      connectionFallback &&
-      !canonicalAttempted &&
-      targets[0].replace(/\/$/, "") !==
-        connectionFallback.baseUrl.replace(/\/$/, "")
-    ) {
-      canonicalAttempted = true;
-      const canonical = await tryCanonicalTarget(
-        connectionFallback,
-        endpointPath,
-        body,
-        policy,
-      );
-      if (canonical.ok) return canonical.response;
-      if (canonical.timedOut && !policy.retryOnTimeout) {
-        throw canonical.error;
-      }
-      lastError = canonical.error;
-    }
-
-    if (targets.length > 1) {
-      await refreshHashRing(serverUrl);
-      const fallback = await tryTarget(
-        targets[1],
-        endpointPath,
-        body,
-        undefined,
-        policy.timeoutMs,
-      );
-      if (fallback.ok) return fallback.response;
-      if (fallback.timedOut && !policy.retryOnTimeout) {
-        throw fallback.error;
-      }
-    }
-
-    lastError = result.error;
-    if (!woken && result.isConnectionError) {
-      woken = true;
-      observeWakeServer(wakeServer(serverName, serverUrl), serverName);
-    }
-  }
-
-  throw lastError ?? new Error("Forward failed after retries");
+      return null;
+    },
+    exhaustedError: new Error("Forward failed after retries"),
+  });
 }
 
 /**
@@ -759,64 +615,15 @@ async function tryTarget(
   forwardedHost?: string,
   timeoutMs = FORWARD_TIMEOUT_MS,
 ): Promise<TargetResult> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(
-    () =>
-      controller.abort(
-        new Error(`Agent forward timed out after ${timeoutMs}ms`),
-      ),
+  return postGatewayTarget({
+    target,
+    endpointPath,
+    body,
     timeoutMs,
-  );
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  const sharedSecret = process.env.AGENT_SERVER_SHARED_SECRET;
-  if (sharedSecret) {
-    headers["X-Server-Token"] = sharedSecret;
-  }
-  if (forwardedHost) {
-    headers["X-Forwarded-Host"] = forwardedHost;
-  }
-
-  try {
-    const targetBase =
-      target.startsWith("http://") || target.startsWith("https://")
-        ? target
-        : `http://${target}`;
-    const res = await fetch(`${targetBase}${endpointPath}`, {
-      method: "POST",
-      headers,
-      body,
-      signal: controller.signal,
-    });
-
-    if (res.ok) {
-      const text = await res.text();
-      return { ok: true, response: text };
-    }
-
-    return {
-      ok: false,
-      error: new Error(`Server returned ${res.status}: ${await res.text()}`),
-      isConnectionError: false,
-      timedOut: false,
-      status: res.status,
-    };
-  } catch (err) {
-    const timedOut = controller.signal.aborted;
-    return {
-      ok: false,
-      error:
-        timedOut && controller.signal.reason instanceof Error
-          ? controller.signal.reason
-          : err instanceof Error
-            ? err
-            : new Error(String(err)),
-      isConnectionError: !timedOut,
-      timedOut,
-    };
-  } finally {
-    clearTimeout(timeoutId);
-  }
+    sharedSecret: process.env.AGENT_SERVER_SHARED_SECRET,
+    forwardedHost,
+    timeoutError: new Error(`Agent forward timed out after ${timeoutMs}ms`),
+    timeoutIsConnectionError: false,
+    readResponse: (response) => response.text(),
+  });
 }

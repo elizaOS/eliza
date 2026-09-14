@@ -7,6 +7,7 @@
  */
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime } from "@elizaos/core";
+import type { CarveOutDatabase } from "@elizaos/plugin-sql";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DispatchResult } from "../dispatch-types.js";
 import {
@@ -39,6 +40,21 @@ function rawQueryText(query: RawSqlQuery): string {
   return String(query.queryChunks.map((chunk) => chunk.value ?? "").join(""));
 }
 
+function carveOutDatabase(pg: PGlite): CarveOutDatabase {
+  const execute = async (statement: string) =>
+    (await pg.query<Record<string, unknown>>(statement)).rows;
+  return {
+    execute,
+    transaction: (operation) =>
+      pg.transaction((transaction) =>
+        operation(
+          async (statement) =>
+            (await transaction.query<Record<string, unknown>>(statement)).rows,
+        ),
+      ),
+  };
+}
+
 interface RuntimeHarness {
   runtime: IAgentRuntime;
   pg: PGlite;
@@ -50,6 +66,16 @@ async function createRuntimeHarness(): Promise<RuntimeHarness> {
   const pg = new PGlite();
   const db = {
     execute: (query: RawSqlQuery) => pg.query(rawQueryText(query)),
+    transaction: <T>(
+      operation: (transaction: {
+        execute(query: RawSqlQuery): Promise<unknown>;
+      }) => Promise<T>,
+    ) =>
+      pg.transaction((transaction) =>
+        operation({
+          execute: (query) => transaction.query(rawQueryText(query)),
+        }),
+      ),
   };
   let service: ScheduledTaskRunnerService | null = null;
   const runtime = {
@@ -62,10 +88,7 @@ async function createRuntimeHarness(): Promise<RuntimeHarness> {
     reportError: vi.fn(),
   } as unknown as IAgentRuntime;
 
-  await migrateSchedulingTables(async (sql) => {
-    const result = await pg.query<Record<string, unknown>>(sql);
-    return result.rows;
-  });
+  await migrateSchedulingTables(carveOutDatabase(pg));
   return {
     runtime,
     pg,
@@ -694,10 +717,9 @@ describe("scheduling SQL persistence", () => {
       )`,
       );
 
-      const results = await migrateSchedulingTables(async (sql) => {
-        const result = await harness.pg.query<Record<string, unknown>>(sql);
-        return result.rows;
-      });
+      const results = await migrateSchedulingTables(
+        carveOutDatabase(harness.pg),
+      );
 
       expect(results.map((result) => result.outcome)).toEqual([
         "copied",
@@ -914,10 +936,7 @@ describe("scheduling SQL persistence", () => {
           DROP CONSTRAINT life_scheduled_tasks_pkey,
           ADD CONSTRAINT life_scheduled_tasks_pkey PRIMARY KEY (id)
       `);
-      await migrateSchedulingTables(async (sql) => {
-        const result = await harness.pg.query<Record<string, unknown>>(sql);
-        return result.rows;
-      });
+      await migrateSchedulingTables(carveOutDatabase(harness.pg));
       const executeSql = async (sql: string) =>
         (await harness.pg.query<Record<string, unknown>>(sql)).rows;
       const sourceStore = createSchedulingSqlScheduledTaskStore({

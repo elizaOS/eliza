@@ -58,7 +58,7 @@ describe("production Railway database authority audit workflow", () => {
 
   test.each([
     ["refs/heads/main", 0],
-    ["refs/heads/develop", 1],
+    ["refs/heads/staging", 1],
     ["refs/heads/fix/deployment", 1],
     ["refs/tags/main", 1],
     ["", 1],

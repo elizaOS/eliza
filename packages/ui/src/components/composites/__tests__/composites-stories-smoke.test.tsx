@@ -8,4 +8,9 @@ import { smokeStoryModules } from "../../../../test/portable-stories";
 
 const modules = import.meta.glob("../**/*.stories.tsx", { eager: true });
 
-smokeStoryModules("composites", modules, { minModules: 1 });
+smokeStoryModules("composites", modules, {
+  minModules: 1,
+  // jsdom has no layout; keep mounting this story here while its unchanged
+  // width/overflow and computed-style contract runs in the browser story gate.
+  browserOnlyPlay: ["chat-bubble/FirstRun"],
+});

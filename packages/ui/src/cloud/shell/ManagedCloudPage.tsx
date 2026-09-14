@@ -19,7 +19,7 @@ import {
   EnsurePageHeaderProvider,
   usePageHeader,
 } from "../../cloud-ui/components/layout";
-import { ViewHeader } from "../../components/shared/ViewHeader";
+import { ViewBackButton, ViewHeader } from "../../components/shared/ViewHeader";
 import { PageFrame } from "../../layouts";
 import { useSessionAuth } from "../lib/use-session-auth";
 import { CloudAccountMenu } from "./CloudAccountMenu";
@@ -97,20 +97,25 @@ function ManagedCloudRouteFrame({
   const layout = route.surface?.layout ?? DEFAULT_MANAGED_CLOUD_LAYOUT;
   return (
     <div className="theme-cloud flex min-h-0 min-w-0 flex-1 flex-col bg-bg text-txt">
-      <ViewHeader
-        title={pageInfo?.title ?? "Cloud"}
-        onBack={isCloudOverview ? undefined : () => navigate("/cloud")}
-        backLabel={
-          isCloudOverview ? "Back to launcher" : "Back to Cloud overview"
-        }
-        right={
-          <div className="flex items-center gap-2">
-            {pageInfo?.actions}
-            <CloudAccountMenu email={email} />
-          </div>
-        }
-        className="border-b border-border"
-      />
+      <div className="flex shrink-0 items-center border-b border-border">
+        {!isCloudOverview ? (
+          <ViewBackButton
+            onBack={() => navigate("/cloud")}
+            label="Back to Cloud overview"
+            className="ml-2 shrink-0 sm:ml-3"
+          />
+        ) : null}
+        <ViewHeader
+          title={pageInfo?.title ?? "Cloud"}
+          right={
+            <div className="flex items-center gap-2">
+              {pageInfo?.actions}
+              <CloudAccountMenu email={email} />
+            </div>
+          }
+          className="min-w-0 flex-1"
+        />
+      </div>
       {pageInfo?.description ? (
         <p className="sr-only">{pageInfo.description}</p>
       ) : null}

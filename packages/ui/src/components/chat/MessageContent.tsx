@@ -931,6 +931,9 @@ export function SensitiveRequestBlock({
   const [authorizing, setAuthorizing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const currentRequest = useRef(request);
+  currentRequest.current = request;
+
   useEffect(() => {
     setStatus(request.status);
     setValues({});
@@ -965,6 +968,7 @@ export function SensitiveRequestBlock({
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       if (!canCollectSecret || !canSubmit) return;
+      const submittedRequest = request;
       setSaving(true);
       setError(null);
       try {
@@ -988,12 +992,23 @@ export function SensitiveRequestBlock({
             );
             return;
           }
-          dispatchConnectRequest({
+          const result = await dispatchConnectRequest({
             gatewayUrl: normalized,
             token: values.token?.trim() || undefined,
             completeFirstRun: true,
             skipConfirm: true,
           });
+          if (currentRequest.current !== submittedRequest) return;
+          if (result.status !== "connected") {
+            setError(
+              result.status === "failed"
+                ? result.message
+                : result.status === "cancelled"
+                  ? "Connection request cancelled. You can edit the details and try again."
+                  : "A newer connection request replaced this attempt. Try connecting again.",
+            );
+            return;
+          }
           setValues({});
           setStatus("saved");
           return;
@@ -1027,6 +1042,7 @@ export function SensitiveRequestBlock({
         setValues({});
         setStatus("saved");
       } catch (caught) {
+        if (currentRequest.current !== submittedRequest) return;
         // error-policy:J4 submit failure renders the form's error state
         setError(
           caught instanceof Error
@@ -1037,10 +1053,18 @@ export function SensitiveRequestBlock({
         );
         setStatus("failed");
       } finally {
-        setSaving(false);
+        if (currentRequest.current === submittedRequest) setSaving(false);
       }
     },
-    [canCollectSecret, canSubmit, fields, isRemoteConnect, tunnel, values],
+    [
+      canCollectSecret,
+      canSubmit,
+      fields,
+      isRemoteConnect,
+      request,
+      tunnel,
+      values,
+    ],
   );
 
   return (

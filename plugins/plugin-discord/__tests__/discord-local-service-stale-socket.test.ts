@@ -40,6 +40,7 @@ vi.mock("node:fs", async () => {
 vi.mock("@elizaos/core", () => ({
 	ChannelType: {},
 	ContentType: {},
+	DEFAULT_CONNECTOR_ACCOUNT_ID: "default",
 	Service: class Service {
 		runtime: unknown;
 		constructor(runtime?: unknown) {

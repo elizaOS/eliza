@@ -120,7 +120,7 @@ describe("WEB_FETCH action", () => {
     expect(result.text).toBe(huge);
   });
 
-  it("preserves a body larger than the retired transport safety limit", async () => {
+  it("preserves a body beyond the retired transport safety limit", async () => {
     const huge = "x".repeat(256 * 1024 + 1);
     __setPinnedFetchImplForTests(
       async () => new Response(huge, { status: 200 }),

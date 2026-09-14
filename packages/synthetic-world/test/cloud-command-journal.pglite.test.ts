@@ -258,8 +258,9 @@ describe("Cloud synthetic command journal on PGlite", () => {
       journal.execute(stale, command(stale, "stale-command"), async () => null),
     ).rejects.toMatchObject({ code: "SYNTHETIC_LEASE_LOST" });
 
-    const expiring = await acquire("cloud:journal:expiry", 40);
+    const expiring = await acquire("cloud:journal:expiry");
     const agentId = "00000000-0000-4000-8000-000000000203";
+    let mutationReadbackObserved = false;
     await expect(
       journal.execute(
         expiring,
@@ -269,13 +270,40 @@ describe("Cloud synthetic command journal on PGlite", () => {
             { id: agentId, name: "Expired Agent" },
             tx,
           );
-          await Bun.sleep(80);
+          mutationReadbackObserved =
+            (await agentsRepository.findById(agentId, tx))?.id === agentId;
+          const [lease] = await tx
+            .select({ expiresAt: syntheticEnvironmentLeases.expires_at })
+            .from(syntheticEnvironmentLeases)
+            .where(
+              eq(syntheticEnvironmentLeases.namespace, expiring.namespace),
+            );
+          if (!lease?.expiresAt)
+            throw new Error("Active test lease is missing");
+          // Enter the real mutation before deliberately crossing the database
+          // deadline; a tiny acquisition lease can expire before this callback.
+          while (true) {
+            const remaining =
+              lease.expiresAt.getTime() - (await repository.now(tx));
+            if (remaining <= 0) break;
+            await Bun.sleep(remaining + 1);
+          }
           return { agentId };
+        },
+        {
+          async onCheckpoint(checkpoint) {
+            if (checkpoint.phase !== "EXECUTING") return;
+            await leaseStore.heartbeat({
+              authority: expiring,
+              leaseDurationMs: 500,
+            });
+          },
         },
       ),
     ).rejects.toMatchObject({
       code: "SYNTHETIC_COMMAND_FAILURE_CLASSIFICATION_FAILED",
     });
+    expect(mutationReadbackObserved).toBe(true);
     expect(await agentsRepository.findById(agentId)).toBeNull();
     expect(
       await dbWrite
@@ -286,7 +314,7 @@ describe("Cloud synthetic command journal on PGlite", () => {
         .from(syntheticWorldCommands)
         .where(eq(syntheticWorldCommands.command_id, "expired-agent")),
     ).toEqual([{ phase: "EXECUTING", result: null }]);
-  });
+  }, 15_000);
 
   test("does not steal same-generation active execution during recovery", async () => {
     const authority = await acquire("cloud:journal:active");

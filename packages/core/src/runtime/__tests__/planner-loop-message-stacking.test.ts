@@ -421,7 +421,7 @@ describe("planner-loop message stacking regression", () => {
 		expect(JSON.stringify(second).match(/result:second/g)).toHaveLength(1);
 	});
 
-	it("keeps local cache affinity stable across trajectories and separated by stage", async () => {
+	it("keeps local and Cerebras affinity stable through evolving trajectories and separated by stage", async () => {
 		type CacheCapture = {
 			modelType: string;
 			conversationId?: string;
@@ -464,7 +464,7 @@ describe("planner-loop message stacking regression", () => {
 
 			await runPlannerLoop({
 				runtime,
-				context: { id: "same-context" },
+				context: { id: `evolving-context-${trajectoryId}` },
 				tools: [TOOL_DEF],
 				trajectoryId,
 				cacheConversationId: "room-stable",
@@ -487,6 +487,9 @@ describe("planner-loop message stacking regression", () => {
 			"room-stable:evaluator",
 		]);
 		expect(planners[0]?.conversationId).not.toBe(evaluators[0]?.conversationId);
+		expect(planners[0]?.promptCacheKey).toBeTruthy();
+		expect(evaluators[0]?.promptCacheKey).toBeTruthy();
+		expect(planners[0]?.promptCacheKey).not.toBe(evaluators[0]?.promptCacheKey);
 		expect(planners[1]?.promptCacheKey).toBe(planners[0]?.promptCacheKey);
 		expect(evaluators[1]?.promptCacheKey).toBe(evaluators[0]?.promptCacheKey);
 	});

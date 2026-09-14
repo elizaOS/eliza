@@ -14,7 +14,11 @@ const adapter = {
       message: "School workflow API has not been installed on this runtime.",
     },
     packets: { status: "ready", data: [] },
+    emailOptions: { status: "ready", data: { accounts: [], recipients: [] } },
   }),
+  downloadWorkspace: async () => {
+    throw new Error("This preview has no stored workspace to export.");
+  },
   decideObligation: async (obligation: never) => obligation,
   listPins: async () => [],
   pin: async () => null,
@@ -25,6 +29,7 @@ const adapter = {
   resolveCalendarConflict: async () => undefined,
   disconnectCalendar: async () => undefined,
   runSchoolWorkflow: async () => undefined,
+  configureSchool: async () => undefined,
   approveSchoolDiff: async () => undefined,
   generatePacket: async () => undefined,
 } as unknown as FamilyOperationsAdapter;

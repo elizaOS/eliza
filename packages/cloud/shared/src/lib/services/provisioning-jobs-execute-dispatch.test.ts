@@ -32,7 +32,7 @@ const EMPTY_RECOVERY = {
   unchanged: 0,
   failures: [],
 };
-const dispatchService = new ProvisioningJobService({
+const defaultDispatchService = new ProvisioningJobService({
   acquireProviderAdmission: async () => true,
   releaseProviderAdmission: async () => {},
 });
@@ -52,6 +52,7 @@ function makeJob(
       organizationId: ORG,
       userId: USER,
       agentName: "Test Agent",
+      admittedComputePrice: "dedicated-compute-v1:USD:0.150000:0.300000",
       ...(type === JOB_TYPES.AGENT_SUSPEND ? { authorization: "user_request" } : {}),
       ...extraData,
     },
@@ -96,7 +97,7 @@ function makeJob(
  */
 function harness(
   job: Job,
-  service = dispatchService,
+  service = defaultDispatchService,
   suspendIntent?: {
     authorization: "user_request" | "billing_request";
     lifecycleRevision: number;
@@ -204,7 +205,7 @@ afterEach(() => {
   for (const s of serviceSpies.splice(0)) s.mockRestore();
 });
 
-async function run(type: string, service = dispatchService) {
+async function run(type: string, service = defaultDispatchService) {
   return service.processPendingJobs(1, {
     jobTypes: [type as ProvisioningJobType],
   });
@@ -381,6 +382,48 @@ function armSnapshotGateFor(type: string): () => void {
     else process.env.ELIZA_SNAPSHOT_JOBS_ENABLED = prev;
   };
 }
+
+describe("queued Dedicated price changes", () => {
+  for (const type of [
+    JOB_TYPES.AGENT_PROVISION,
+    JOB_TYPES.AGENT_RESUME,
+    JOB_TYPES.AGENT_WAKE,
+    JOB_TYPES.AGENT_RESTART,
+  ]) {
+    for (const admittedComputePrice of [
+      undefined,
+      "dedicated-compute-v1:USD:0.010000:0.020000",
+      42,
+    ]) {
+      test(`${type} rejects ${String(admittedComputePrice)} without runtime dispatch or retry`, async () => {
+        const arm = AGENT_ARMS.find((candidate) => candidate.type === type);
+        if (!arm) throw new Error(`Missing dispatch fixture for ${type}`);
+        const ctx = harness(makeJob(type, { ...arm.data, admittedComputePrice }));
+        const providerSpy = stub(arm.method, arm.success);
+        const rejectSpy = spyOn(jobsRepository, "rejectClaimedExecution").mockResolvedValue(
+          "rejected",
+        );
+        try {
+          const result = await run(type);
+          expect(result).toMatchObject({ succeeded: 0, failed: 1, retried: 0 });
+          expect(providerSpy).not.toHaveBeenCalled();
+          expect(rejectSpy).toHaveBeenCalledTimes(1);
+          expect(rejectSpy.mock.calls[0]?.[1]).toContain("Review the current price");
+          expect(ctx.incrementSpy).not.toHaveBeenCalled();
+          expect(ctx.retryLaterSpy).not.toHaveBeenCalled();
+        } finally {
+          rejectSpy.mockRestore();
+          ctx.claimSpy.mockRestore();
+          ctx.recoverSpy.mockRestore();
+          ctx.updateStatusSpy.mockRestore();
+          ctx.updateSpy.mockRestore();
+          ctx.incrementSpy.mockRestore();
+          ctx.retryLaterSpy.mockRestore();
+        }
+      });
+    }
+  }
+});
 
 describe("executeJob dispatch — success path per job type marks the job completed", () => {
   for (const arm of AGENT_ARMS) {
@@ -1545,7 +1588,7 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
 
   test("agent_suspend dispatch recovers the durable revision omitted by a user envelope", async () => {
     const job = makeJob(JOB_TYPES.AGENT_SUSPEND);
-    const ctx = harness(job, dispatchService, {
+    const ctx = harness(job, defaultDispatchService, {
       authorization: "user_request",
       lifecycleRevision: 7,
     });
@@ -1620,7 +1663,7 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
 
   test("agent_suspend dispatch honors a billing intent promoted to user authority", async () => {
     const job = makeJob(JOB_TYPES.AGENT_SUSPEND, { authorization: "billing_request" });
-    const ctx = harness(job, dispatchService, {
+    const ctx = harness(job, defaultDispatchService, {
       authorization: "user_request",
       lifecycleRevision: 9,
     });

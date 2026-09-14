@@ -395,7 +395,7 @@ describe("adoptRotatedCodexTokens (CLI self-refresh sync-back)", () => {
     },
   );
 
-  it("heals a flagged direct-API account after its stored credential resolves", async () => {
+  it("does not heal a provider-rejected direct key from local readability", async () => {
     writeAccount("anthropic-api", "direct-work", {
       access: "sk-ant-valid",
       refresh: "",
@@ -412,7 +412,7 @@ describe("adoptRotatedCodexTokens (CLI self-refresh sync-back)", () => {
       refreshed: 0,
       failed: 0,
     });
-    expect(pool.get("direct-work", "anthropic-api")?.health).toBe("ok");
+    expect(pool.get("direct-work", "anthropic-api")?.health).toBe("invalid");
   });
 
   it("observes an adoption failure at the keep-alive timer boundary", async () => {

@@ -144,7 +144,7 @@ async function createHarness(options: {
 				name: "action",
 				description: "Lookup operation",
 				required: true,
-				schema: { type: "string", enum: ["create"] },
+				schema: { type: "string", enum: ["create", "verify"] },
 			},
 		],
 		validate: async () => true,
@@ -545,6 +545,90 @@ describe("planner-loop death after a completed tool", () => {
 		expect(harness.reportedScopes).toContain("MessageService.plannerLoop");
 	});
 
+	it("does not rescue an older success after failed verification and a provider outage", async () => {
+		const harness = await createHarness({ actionResult: { success: true } });
+		const action = harness.runtime.actions.find(
+			(entry) => entry.name === "LOOKUP",
+		);
+		if (!action) throw new Error("Lookup action missing from harness");
+
+		const executed: string[] = [];
+		action.handler = async (_runtime, _message, _state, options) => {
+			const operation = options?.parameters?.action;
+			if (typeof operation !== "string") throw new Error("Missing operation");
+			executed.push(operation);
+			return operation === "create"
+				? {
+						success: true,
+						userFacingText: USER_FACING,
+						verifiedUserFacing: true,
+					}
+				: {
+						success: false,
+						text: "Verification lookup did not find the completed record.",
+						userFacingText:
+							"Verification lookup did not find the completed record.",
+						verifiedUserFacing: true,
+						turnComplete: true,
+						data: { readOnlyOperation: true },
+					};
+		};
+		let responseCalls = 0;
+		harness.runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			async () => {
+				if (++responseCalls === 1) return stageOneToolTurn();
+				return JSON.stringify({
+					decision: "CONTINUE",
+					success: executed.length < 2,
+					thought: "Continue with the remaining requested read.",
+				});
+			},
+			"failed-verification-test",
+			200,
+		);
+		let plannerCalls = 0;
+		harness.runtime.registerModel(
+			ModelType.ACTION_PLANNER,
+			async () => {
+				++plannerCalls;
+				if (executed.length >= 2)
+					throw Object.assign(
+						new Error(
+							"Too Many Requests: Tokens per minute limit exceeded - too many tokens processed.",
+						),
+						{ status: 429 },
+					);
+				return {
+					completed: false,
+					toolCalls: [
+						{
+							id: `entry-${plannerCalls}`,
+							name: "LOOKUP",
+							args: { action: executed.length === 0 ? "create" : "verify" },
+						},
+					],
+				};
+			},
+			"failed-verification-test",
+			200,
+		);
+		const result = await new DefaultMessageService().handleMessage(
+			harness.runtime,
+			makeMessage(
+				harness.runtime,
+				"Create the entry, verify it, then read the final calendar.",
+			),
+			harness.callback,
+		);
+		expect(executed).toEqual(["create", "verify"]);
+		expect(visibleTexts(harness.callbacks)).not.toContain(USER_FACING);
+		expect(result.responseContent?.text).not.toBe(USER_FACING);
+		expect(result.responseContent?.text).toBe(
+			"Verification lookup did not find the completed record.",
+		);
+	});
+
 	it("keeps the canned failure line when no tool produced user-facing text", async () => {
 		const harness = await createHarness({
 			actionResult: {
@@ -695,6 +779,38 @@ describe("preservedSettledToolResult candidate selection", () => {
 			new Set(),
 		);
 		expect(picked?.userFacingText).toBe(USER_FACING);
+	});
+
+	it("does not select an older successful operation past a failed verification", () => {
+		expect(
+			preservedSettledToolResult(
+				[
+					settle("LOOKUP", { userFacingText: USER_FACING }),
+					settle("VERIFY", {
+						success: false,
+						userFacingText: "Verification failed.",
+					}),
+				],
+				new Set(),
+			),
+		).toBeUndefined();
+	});
+
+	it("retains a successful recovery after an earlier failed verification", () => {
+		const recovered = preservedSettledToolResult(
+			[
+				settle("LOOKUP", {
+					success: false,
+					userFacingText: "Verification failed.",
+				}),
+				settle("LOOKUP", {
+					success: true,
+					userFacingText: "The saved entry is verified.",
+				}),
+			],
+			new Set(),
+		);
+		expect(recovered?.userFacingText).toBe("The saved entry is verified.");
 	});
 
 	it("skips failed results, terminals, and results without user-facing text", () => {

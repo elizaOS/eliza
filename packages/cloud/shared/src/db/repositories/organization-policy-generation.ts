@@ -9,11 +9,25 @@ export async function lockOrganizationPolicy(
   tx: DbTransaction,
   organizationId: string,
 ): Promise<void> {
+  return lockPolicyRow(tx, organizationId, "update");
+}
+/** Read-only admission may overlap other readers while still fencing policy and balance writers. */
+export async function lockOrganizationPolicyForRead(
+  tx: DbTransaction,
+  organizationId: string,
+): Promise<void> {
+  return lockPolicyRow(tx, organizationId, "share");
+}
+async function lockPolicyRow(
+  tx: DbTransaction,
+  organizationId: string,
+  strength: "update" | "share",
+): Promise<void> {
   const [organization] = await tx
     .select({ id: organizations.id })
     .from(organizations)
     .where(eq(organizations.id, organizationId))
-    .for("update");
+    .for(strength);
   if (!organization)
     throw new ElizaError("Organization policy authority does not exist", {
       code: "ORGANIZATION_POLICY_UNAVAILABLE",

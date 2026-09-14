@@ -1181,6 +1181,87 @@ export function stageSeccompShimForAbi({
   return changes;
 }
 
+/** Stages the complete skill bundle and binds every file to Android payload provenance. */
+export function stageAndroidBundledSkills({
+  distMobileDir,
+  assetsAgentDir,
+  androidMainDir,
+}) {
+  const source = path.join(distMobileDir, "skills");
+  const target = path.join(assetsAgentDir, "skills");
+  fs.readdirSync(source); // Fail before replacing an existing stage if the bundle is absent.
+  fs.rmSync(target, { recursive: true, force: true });
+  let stagedCount = 0;
+  const stagedFiles = [];
+  const visit = (relative) => {
+    for (const entry of fs.readdirSync(path.join(source, relative), {
+      withFileTypes: true,
+    })) {
+      const child = path.join(relative, entry.name);
+      if (entry.isDirectory()) {
+        visit(child);
+        continue;
+      }
+      if (!entry.isFile())
+        throw new Error(`Unsupported bundled skill asset: ${child}`);
+      const src = path.join(source, child);
+      const dst = path.join(target, child);
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      if (copyIfDifferent(src, dst)) stagedCount += 1;
+      stagedFiles.push(
+        fileProvenanceEntry({
+          filePath: dst,
+          relativePath: path.relative(androidMainDir, dst),
+          source: { kind: "mobile-agent-bundle", path: src },
+        }),
+      );
+    }
+  };
+  visit("");
+  if (!stagedFiles.some((entry) => entry.path.endsWith("/SKILL.md")))
+    throw new Error("Mobile agent bundle contains no bundled skills");
+  return { stagedCount, stagedFiles };
+}
+
+/** Stages database payloads and records their actual bytes in Android runtime provenance. */
+export function stageAndroidPgliteAssets({
+  distMobileDir,
+  assetsAgentDir,
+  androidMainDir,
+}) {
+  let stagedCount = 0;
+  const stagedFiles = [];
+  // PGlite runtime artifacts. They are optional because minimal mobile bundles
+  // can run without embedded database extensions.
+  const pgliteAssets = [
+    "pglite.wasm",
+    "initdb.wasm",
+    "pglite.data",
+    "vector.tar.gz",
+    "fuzzystrmatch.tar.gz",
+    "pg_trgm.tar.gz",
+    "plugins-manifest.json",
+  ];
+  for (const name of pgliteAssets) {
+    const src = path.join(distMobileDir, name);
+    if (!fs.existsSync(src)) continue;
+    const dst = path.join(assetsAgentDir, name);
+    if (copyIfDifferent(src, dst)) stagedCount += 1;
+    stagedFiles.push(
+      fileProvenanceEntry({
+        filePath: dst,
+        relativePath: path.relative(androidMainDir, dst),
+        source: {
+          kind: "mobile-agent-bundle",
+          path: src,
+        },
+      }),
+    );
+  }
+
+  return { stagedCount, stagedFiles };
+}
+
 /**
  * Download (if needed) and stage the on-device agent runtime into the
  * Android assets tree. Idempotent — safe to run on every gradle invocation.
@@ -1509,36 +1590,21 @@ export async function stageAndroidAgentRuntime({
     }),
   );
 
-  // PGlite runtime artifacts. They are optional because minimal mobile bundles
-  // can run without embedded database extensions.
-  const pgliteAssets = [
-    "pglite.wasm",
-    "initdb.wasm",
-    "pglite.data",
-    "vector.tar.gz",
-    "fuzzystrmatch.tar.gz",
-    "pg_trgm.tar.gz",
-    "plugins-manifest.json",
-  ];
-  for (const name of pgliteAssets) {
-    const src = path.join(distMobileDir, name);
-    if (!fs.existsSync(src)) continue;
-    const dst = path.join(assetsAgentDir, name);
-    if (copyIfDifferent(src, dst)) stagedCount += 1;
-    stagedFiles.push(
-      fileProvenanceEntry({
-        filePath: dst,
-        relativePath: path.relative(
-          path.join(androidDir, "app", "src", "main"),
-          dst,
-        ),
-        source: {
-          kind: "mobile-agent-bundle",
-          path: src,
-        },
-      }),
-    );
-  }
+  const skillsStage = stageAndroidBundledSkills({
+    distMobileDir,
+    assetsAgentDir,
+    androidMainDir: path.join(androidDir, "app", "src", "main"),
+  });
+  stagedCount += skillsStage.stagedCount;
+  stagedFiles.push(...skillsStage.stagedFiles);
+
+  const pgliteStage = stageAndroidPgliteAssets({
+    distMobileDir,
+    assetsAgentDir,
+    androidMainDir: path.join(androidDir, "app", "src", "main"),
+  });
+  stagedCount += pgliteStage.stagedCount;
+  stagedFiles.push(...pgliteStage.stagedFiles);
 
   const launchTarget = path.join(assetsAgentDir, "launch.sh");
   if (writeIfChanged(launchTarget, LAUNCH_SCRIPT)) stagedCount += 1;

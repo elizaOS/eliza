@@ -157,6 +157,7 @@ export async function runShortcutGate(args: {
 	const shortcutActionResults = actionResult ? [actionResult] : [];
 	const { text: shortcutReply, effectReceiptIds: shortcutReplyReceiptIds } =
 		await resolvePlannedReplyEgress({
+			providers: resultState.data.providers,
 			runtime: args.runtime,
 			message: args.message,
 			reply: captured,

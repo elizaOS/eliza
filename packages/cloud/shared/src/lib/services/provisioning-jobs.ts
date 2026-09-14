@@ -13,6 +13,7 @@
  * - agent_restore: Restore from backup
  */
 
+import { getDedicatedComputePriceAcceptance } from "@elizaos/cloud-sdk/browser-contracts";
 import { ElizaError } from "@elizaos/core";
 import {
   and,
@@ -32,6 +33,7 @@ import {
 import type { DbTransaction } from "../../db/client";
 import { ensureAgentSandboxSchema } from "../../db/ensure-agent-sandbox-schema";
 import { dbWrite } from "../../db/helpers";
+import { updateAgentLifecycleExecutionFence } from "../../db/repositories/agent-lifecycle-execution-fence";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import {
   cutoverResumeWindowAllows,
@@ -80,6 +82,10 @@ import {
   isAdminCanaryImageJobData,
   isPendingAdminCanaryCutoverAudit,
 } from "./admin-canary-image";
+import {
+  executeAgentComputeLeaseJob,
+  readAgentComputeLeaseJobData,
+} from "./agent-compute-lease-jobs";
 import {
   AppCacheInvalidationRetryError,
   dispatchAppCacheInvalidationJob,
@@ -162,6 +168,12 @@ function safeErrorKind<T extends Error>(
 
 const CONTAINER_BACKED_TARGET_REQUIRED_MESSAGE =
   "Agent job requires a container-backed execution tier";
+const PRICED_AGENT_START_JOB_TYPES: readonly string[] = [
+  JOB_TYPES.AGENT_PROVISION,
+  JOB_TYPES.AGENT_RESUME,
+  JOB_TYPES.AGENT_WAKE,
+  JOB_TYPES.AGENT_RESTART,
+];
 export const CONTAINER_BACKED_TARGET_REJECTION_REASON = "agent_job_target_not_container_backed";
 
 function isContainerBackedExecutionTier(tier: AgentExecutionTier): boolean {
@@ -1983,6 +1995,15 @@ export class ProvisioningJobService {
 
     await opts.beforeInsert?.(tx, sandbox);
 
+    // Persist admission-time terms only on new jobs. Reuse and recovery must
+    // retain their original terms, never manufacture acceptance of a new price.
+    if (PRICED_AGENT_START_JOB_TYPES.includes(opts.jobType)) {
+      newJob.data = {
+        ...newJob.data,
+        admittedComputePrice: getDedicatedComputePriceAcceptance(),
+      };
+    }
+
     const [job] = await tx
       .insert(jobs)
       .values(await prepareJobInsertData(newJob))
@@ -2508,7 +2529,21 @@ export class ProvisioningJobService {
             and(
               eq(agentComputeStopIntents.organization_id, params.organizationId),
               eq(agentComputeStopIntents.agent_id, params.agentId),
-              eq(agentComputeStopIntents.lifecycle_revision, targetRevision),
+              or(
+                eq(agentComputeStopIntents.lifecycle_revision, targetRevision),
+                ...(expectedLifecycleRevision === undefined
+                  ? []
+                  : [
+                      sql`EXISTS (
+                  SELECT 1 FROM ${jobs}
+                  WHERE ${jobs.id} = ${agentComputeStopIntents.job_id}
+                    AND ${jobs.organization_id} = ${params.organizationId}
+                    AND ${jobs.agent_id} = ${params.agentId}
+                    AND ${jobs.type} = 'agent_suspend'
+                    AND ${jobs.data}->>'lifecycleRevision' = ${String(expectedLifecycleRevision)}
+                )`,
+                    ]),
+              ),
               eq(agentComputeStopIntents.authorization, "user_request"),
               ...(params.authorization === "billing_request"
                 ? [
@@ -2600,6 +2635,15 @@ export class ProvisioningJobService {
         // Do not rewrite the claimed job envelope. An executor may
         // already hold its hydrated snapshot and settlement CAS; the
         // locked intent is the monotonic authority boundary.
+        if (billingJob.status === "pending") {
+          const [immediate] = await tx
+            .update(jobs)
+            .set({ scheduled_for: now, updated_at: now })
+            .where(and(eq(jobs.id, billingJob.id), eq(jobs.status, "pending")))
+            .returning();
+          if (!immediate) throw new Error("Promoted user stop lost its pending job");
+          return immediate;
+        }
         return billingJob;
       },
       validateSandbox: validateTarget,
@@ -4764,6 +4808,9 @@ export class ProvisioningJobService {
     let identity: { agentId: string; organizationId: string };
     try {
       switch (job.type) {
+        case JOB_TYPES.AGENT_COMPUTE_LEASE:
+          identity = readAgentComputeLeaseJobData(job);
+          break;
         case JOB_TYPES.AGENT_PROVISION:
           identity = readAgentProvisionJobData(job);
           break;
@@ -4967,26 +5014,12 @@ export class ProvisioningJobService {
             },
           );
         }
-        const [claimedSandbox] = await tx
-          .update(agentSandboxes)
-          .set({
-            lifecycle_job_id: job.id,
-            lifecycle_execution_generation: job.execution_generation,
-          })
-          .where(
-            and(
-              eq(agentSandboxes.id, identity.agentId),
-              eq(agentSandboxes.organization_id, identity.organizationId),
-              or(
-                isNull(agentSandboxes.lifecycle_execution_generation),
-                and(
-                  eq(agentSandboxes.lifecycle_job_id, job.id),
-                  sql`${agentSandboxes.lifecycle_execution_generation} IS NOT DISTINCT FROM ${job.execution_generation}`,
-                ),
-              ),
-            ),
-          )
-          .returning({ id: agentSandboxes.id });
+        const claimedSandbox = await updateAgentLifecycleExecutionFence(
+          tx,
+          job,
+          job.execution_generation!,
+          "claim",
+        );
         if (!claimedSandbox) {
           const [existingSandbox] = await tx
             .select({ id: agentSandboxes.id })
@@ -5079,7 +5112,32 @@ export class ProvisioningJobService {
   }
 
   private async executeJobDispatch(job: Job): Promise<void> {
+    if (
+      PRICED_AGENT_START_JOB_TYPES.includes(job.type) &&
+      job.data.admittedComputePrice !== getDedicatedComputePriceAcceptance()
+    ) {
+      throw new RejectedAgentExecutionError(
+        "Dedicated start price is missing or changed. Review the current price and submit a new start request; no runtime action was dispatched.",
+        {
+          jobId: job.id,
+          jobType: job.type,
+          columnAgentId: job.agent_id,
+          columnOrganizationId: job.organization_id,
+          cause: "dedicated_compute_price_confirmation_required",
+        },
+      );
+    }
     switch (job.type) {
+      case JOB_TYPES.AGENT_COMPUTE_LEASE: {
+        const result = await executeAgentComputeLeaseJob(job, () =>
+          this.assertExecutionMutationLease(job),
+        );
+        await this.settleClaimedExecution(job, "completed", {
+          result,
+          completed_at: new Date(),
+        });
+        break;
+      }
       case JOB_TYPES.AGENT_PROVISION:
         await this.executeAgentProvision(job);
         break;
@@ -6744,6 +6802,11 @@ export class ProvisioningJobService {
       });
     }
     return { total, recovered, unresolved, failed };
+  }
+
+  async reconcileExpiredAgentCompute() {
+    const { reconcileExpiredAgentComputeBatch } = await import("./agent-compute-recovery");
+    return reconcileExpiredAgentComputeBatch();
   }
 
   /**

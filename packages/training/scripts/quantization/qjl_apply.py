@@ -188,16 +188,19 @@ def kv_bytes_per_token_analytic(
     bf16 norm. V-cache geometry matches TurboQuant.
     """
     text_cfg = get_text_config(config)
-    head_dim = head_dim_of(text_cfg)
-    num_kv_heads = (
-        getattr(text_cfg, "num_key_value_heads", None) or text_cfg.num_attention_heads
-    )
+    per_layer_config = getattr(text_cfg, "per_layer_config", None)
     full_idx = full_attention_layer_indices(text_cfg)
 
     bytes_per_group = 0
     bytes_per_group_baseline = 0
 
     for i in full_idx:
+        # Hybrid decoders can use different geometry for full and sliding layers.
+        layer_cfg = per_layer_config[i] if per_layer_config is not None else text_cfg
+        head_dim = head_dim_of(layer_cfg)
+        num_kv_heads = (
+            getattr(layer_cfg, "num_key_value_heads", None) or layer_cfg.num_attention_heads
+        )
         coords_k = num_kv_heads * head_dim
         coords_v = num_kv_heads * head_dim
         bytes_per_group_baseline += group_size * 2 * (coords_k + coords_v)

@@ -17,6 +17,7 @@ const cleanup: string[] = [];
 const execFileAsync = promisify(execFile);
 const originalElizaPlatform = process.env.ELIZA_PLATFORM;
 const originalAndroidAppDataDir = process.env.ELIZA_ANDROID_APP_DATA_DIR;
+const originalIosAppDataDir = process.env.ELIZA_IOS_APP_DATA_DIR;
 
 async function expectNoIdentityArtifacts(directory: string): Promise<void> {
   const names = await fs.readdir(directory);
@@ -41,6 +42,9 @@ afterEach(async () => {
   } else {
     process.env.ELIZA_ANDROID_APP_DATA_DIR = originalAndroidAppDataDir;
   }
+  if (originalIosAppDataDir === undefined)
+    delete process.env.ELIZA_IOS_APP_DATA_DIR;
+  else process.env.ELIZA_IOS_APP_DATA_DIR = originalIosAppDataDir;
   await Promise.all(
     cleanup
       .splice(0)
@@ -49,6 +53,88 @@ afterEach(async () => {
 });
 
 describe("runtime installation identity", () => {
+  it("keeps one iOS identity beneath a platform-managed simulator ancestor", async () => {
+    const root = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), "runtime-id-ios-")),
+    );
+    cleanup.push(root);
+    const platformDirectory = path.join(root, "simulator-data");
+    const state = path.join(
+      platformDirectory,
+      "container",
+      "Library",
+      "Application Support",
+      "Eliza",
+    );
+    await fs.mkdir(state, { recursive: true, mode: 0o700 });
+    await fs.chmod(platformDirectory, 0o775);
+    process.env.ELIZA_PLATFORM = "ios";
+    process.env.ELIZA_IOS_APP_DATA_DIR = path.dirname(state);
+    const values = await Promise.all(
+      Array.from({ length: 8 }, () => loadOrCreateRuntimeInstallationId(state)),
+    );
+    expect(new Set(values).size).toBe(1);
+    expect(await loadOrCreateRuntimeInstallationId(state)).toBe(values[0]);
+    expect(
+      await fs.readFile(path.join(state, "runtime-installation-id"), "utf8"),
+    ).toBe(`${values[0]}\n`);
+    await expect(
+      loadOrCreateRuntimeInstallationId(path.join(root, "outside")),
+    ).rejects.toThrow("must remain inside");
+    process.env.ELIZA_PLATFORM = "desktop";
+    await expect(loadOrCreateRuntimeInstallationId(state)).rejects.toThrow(
+      "replaceable by another user",
+    );
+  });
+
+  it("rejects missing, relative, escaped, linked and writable iOS boundaries", async () => {
+    const root = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), "runtime-id-ios-invalid-")),
+    );
+    cleanup.push(root);
+    const boundary = path.join(root, "app-data");
+    const state = path.join(boundary, "app-support");
+    const outside = path.join(root, "outside");
+    await fs.mkdir(state, { recursive: true, mode: 0o700 });
+    await fs.mkdir(outside, { mode: 0o700 });
+    process.env.ELIZA_PLATFORM = "ios";
+    delete process.env.ELIZA_IOS_APP_DATA_DIR;
+    await expect(loadOrCreateRuntimeInstallationId(state)).rejects.toThrow(
+      "requires an absolute ELIZA_IOS_APP_DATA_DIR",
+    );
+    process.env.ELIZA_IOS_APP_DATA_DIR = "relative";
+    await expect(loadOrCreateRuntimeInstallationId(state)).rejects.toThrow(
+      "requires an absolute ELIZA_IOS_APP_DATA_DIR",
+    );
+    process.env.ELIZA_IOS_APP_DATA_DIR = outside;
+    await expect(loadOrCreateRuntimeInstallationId(state)).rejects.toThrow(
+      "must remain inside ELIZA_IOS_APP_DATA_DIR",
+    );
+    const linked = path.join(root, "linked-support");
+    await fs.symlink(boundary, linked, "dir");
+    process.env.ELIZA_IOS_APP_DATA_DIR = linked;
+    await expect(
+      loadOrCreateRuntimeInstallationId(path.join(linked, "app-support")),
+    ).rejects.toThrow(/real directory/);
+    process.env.ELIZA_IOS_APP_DATA_DIR = boundary;
+    await fs.symlink(outside, path.join(state, "redirect"), "dir");
+    await expect(
+      loadOrCreateRuntimeInstallationId(path.join(state, "redirect", "nested")),
+    ).rejects.toThrow(/real directory/);
+    await fs.chmod(state, 0o777);
+    await expect(loadOrCreateRuntimeInstallationId(state)).rejects.toThrow(
+      /writable by another user/,
+    );
+    await fs.chmod(state, 0o700);
+    await fs.chmod(boundary, 0o777);
+    await expect(loadOrCreateRuntimeInstallationId(state)).rejects.toThrow(
+      /replaceable by another user/,
+    );
+    await fs.chmod(boundary, 0o700);
+    await expectNoIdentityArtifacts(state);
+    await expectNoIdentityArtifacts(outside);
+  });
+
   it("preserves identity through an Android platform-owned app-data alias", async () => {
     const root = await fs.realpath(
       await fs.mkdtemp(path.join(os.tmpdir(), "runtime-id-android-alias-")),

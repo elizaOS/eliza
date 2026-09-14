@@ -196,7 +196,7 @@ test("answers crypto payment confirmation preflight before shard loading", async
       {
         method: "OPTIONS",
         headers: {
-          origin: "https://develop.eliza-app.pages.dev",
+          origin: "https://staging.eliza-app.pages.dev",
           "access-control-request-method": "POST",
           "access-control-request-headers": "content-type, x-eliza-csrf",
         },
@@ -209,7 +209,7 @@ test("answers crypto payment confirmation preflight before shard loading", async
 
   expect(response.status).toBe(204);
   expect(response.headers.get("access-control-allow-origin")).toBe(
-    "https://develop.eliza-app.pages.dev",
+    "https://staging.eliza-app.pages.dev",
   );
   expect(response.headers.get("access-control-allow-credentials")).toBe("true");
   expect(response.headers.get("access-control-allow-methods")).toContain(
@@ -222,7 +222,7 @@ test("answers crypto payment confirmation preflight before shard loading", async
 });
 
 test("dispatches provider webhooks without full-app bootstrap", async () => {
-  const traceId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  const traceId = "11111111111141118111111111111111";
   const env = {
     ENVIRONMENT: "test",
     NODE_ENV: "test",
@@ -315,7 +315,7 @@ test("matches only dependency-bounded managed Discord gateway routes", () => {
 });
 
 test("dispatches managed Discord turns without full-app bootstrap", async () => {
-  const traceId = "cccccccccccccccccccccccccccccccc";
+  const traceId = "33333333333343338333333333333333";
   const env = {
     ENVIRONMENT: "test",
     NODE_ENV: "test",
@@ -515,7 +515,7 @@ test("preserves provider authentication on the thin webhook path", async () => {
 });
 
 test("correlates and times dispatch outside full-app middleware", async () => {
-  const traceId = "dddddddddddddddddddddddddddddddd";
+  const traceId = "22222222222242228222222222222222";
   const env = {
     ENVIRONMENT: "test",
     NODE_ENV: "test",
@@ -1292,7 +1292,7 @@ describe("cloud-api worker entrypoint", () => {
     );
 
     expect(target?.toString()).toBe(
-      "https://develop.eliza-app.pages.dev/dashboard?tab=agents",
+      "https://staging.eliza-app.pages.dev/dashboard?tab=agents",
     );
   });
 
@@ -1312,7 +1312,7 @@ describe("cloud-api worker entrypoint", () => {
     );
 
     expect(target?.toString()).toBe(
-      "https://develop.eliza-app.pages.dev/?runtime=first-run",
+      "https://staging.eliza-app.pages.dev/?runtime=first-run",
     );
   });
 

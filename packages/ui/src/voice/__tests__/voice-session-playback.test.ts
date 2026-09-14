@@ -400,6 +400,65 @@ describe("voice-session streaming PCM playback sink (ScriptProcessor path)", () 
     expect(pb.getStats().queuedSamples).toBe(160);
     await pb.stop();
   });
+  it("retires old-only samples played after a short reply ends mid-crossfade", async () => {
+    const ctx = new FakePlaybackAudioContext(16_000);
+    const onDrained = vi.fn();
+    const pb = await createVoiceSessionPlayback({
+      createAudioContext: () => ctx,
+      preRollMs: 0,
+      onDrained,
+    });
+    await pb.unlock();
+    pb.beginInput();
+    pb.enqueue(pcmFrame(0.8, 512));
+    scriptNodeOf(ctx).render(2);
+    expect(pb.getStats().queuedSamples).toBe(510);
+
+    pb.beginHandoff(20); // 320-sample crossfade at 16 kHz
+    pb.enqueue(pcmFrame(-0.8, 100)); // shorter than the crossfade
+    const out = scriptNodeOf(ctx).render(352);
+    // 100 mixed frames retire 200 samples; the next 252 frames play old audio
+    // alone and must retire one sample each.
+    expect(out[50]).not.toBeCloseTo(0.8, 2);
+    expect(out[200]).toBeCloseTo(0.8, 2);
+    expect(pb.getStats().queuedSamples).toBe(510 + 100 - 200 - 252);
+
+    pb.finishInput();
+    // 158 old samples remain; the extra frames let the sink observe the empty queue.
+    scriptNodeOf(ctx).render(166);
+    expect(pb.getStats().queuedSamples).toBe(0);
+    expect(onDrained).toHaveBeenCalledTimes(1);
+    await pb.stop();
+  });
+  it("retires the abandoned old tail when a handoff is replaced before it completes", async () => {
+    const ctx = new FakePlaybackAudioContext(16_000);
+    const completed = vi.fn();
+    const pb = await createVoiceSessionPlayback({
+      createAudioContext: () => ctx,
+      preRollMs: 0,
+      onHandoffComplete: completed,
+    });
+    await pb.unlock();
+    pb.beginInput();
+    pb.enqueue(pcmFrame(0.8, 512));
+    scriptNodeOf(ctx).render(2);
+
+    pb.beginHandoff(20);
+    pb.enqueue(pcmFrame(-0.8, 512));
+    scriptNodeOf(ctx).render(100); // 100 mixed frames: 410 old and 412 new remain
+    expect(pb.getStats().queuedSamples).toBe(822);
+
+    // Replacing the handoff before its crossfade completes discards the 410
+    // unplayed old samples, which must leave the depth with them.
+    pb.beginHandoff(20);
+    expect(pb.getStats().queuedSamples).toBe(412);
+    pb.enqueue(pcmFrame(0.4, 512));
+    scriptNodeOf(ctx).render(352);
+    // 320 mixed frames (640), the 92-sample abandoned tail, then 32 new-only frames.
+    expect(completed).toHaveBeenCalledTimes(1);
+    expect(pb.getStats().queuedSamples).toBe(412 + 512 - 640 - 92 - 32);
+    await pb.stop();
+  });
   it.each(["autoplay", "startup reserve"])(
     "hands off audio held by %s without replaying the obsolete response",
     async (heldBy) => {

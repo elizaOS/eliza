@@ -108,12 +108,18 @@ type ApprovalCalendarSourceBinding = {
 export type ApprovalPayload =
   | {
       action: "send_message";
+      /** Requires family draft authorization immediately before delivery. */
+      familyPacketId?: string;
       recipient: string;
       body: string;
       replyToMessageId: string | null;
     }
   | {
       action: "send_email";
+      /** Requires family draft authorization immediately before delivery. */
+      familyPacketId?: string;
+      /** Binds a reviewed send to one account; legacy approvals may omit it. */
+      grantId?: string;
       to: ReadonlyArray<string>;
       cc: ReadonlyArray<string>;
       bcc: ReadonlyArray<string>;

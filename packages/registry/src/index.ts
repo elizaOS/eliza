@@ -14,6 +14,21 @@ export {
   loadThirdPartyEntries,
   thirdPartyEntriesDir,
 } from "./loader.ts";
+export type {
+  DecodeRuntimeRegistryOptions,
+  NormalizedRegistryEntry,
+  RegistrySearchable,
+  RegistrySearchPolicy,
+  RuntimeRegistryWireEntry,
+} from "./runtime-kernel.ts";
+export {
+  AGENT_REGISTRY_SEARCH_POLICY,
+  CORE_REGISTRY_SEARCH_POLICY,
+  decodeRuntimeRegistry,
+  isRegistryCacheFresh,
+  runtimeRegistryEntrySchema,
+  searchRegistryEntries,
+} from "./runtime-kernel.ts";
 export {
   assertRegistryEntry,
   isValidRegistryPackageName,

@@ -9,7 +9,11 @@ import {
   resolveKnowledgeGraphService,
 } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
-import { AgentEventService, createMessageMemory } from "@elizaos/core";
+import {
+  AgentEventService,
+  createMessageMemory,
+  promoteSubactionsToActions,
+} from "@elizaos/core";
 import {
   getScheduledTaskRunner,
   type ScheduledTaskRunnerHandle,
@@ -25,8 +29,14 @@ import { householdCoordinationAction } from "../../actions/household-coordinatio
 import { resolveRequestAction } from "../../actions/resolve-request.js";
 import { createApprovalQueue } from "../approval-queue.js";
 import type { ApprovalQueue } from "../approval-queue.types.js";
+import { fenceFamilyWorkspace } from "../family-workflows/workspace-operation-store.js";
 import { LifeOpsRepository } from "../repository.js";
-import { executeRawSql, sqlInteger, sqlQuote } from "../sql.js";
+import {
+  executeRawSql,
+  sqlInteger,
+  sqlQuote,
+  withTransaction,
+} from "../sql.js";
 import { HOUSEHOLD_GRANT_EXPIRY_WARNING_GATE } from "./grant-expiry-warning.js";
 import { HouseholdCoordinationRepository } from "./repository.js";
 import {
@@ -237,6 +247,118 @@ describe("household coordination — real PGlite", () => {
       reason: "I approve this exact time and custody plan.",
     });
   }
+
+  it("issues and revokes a knowledge-only grant through promoted actions with explicit empty subjects", async () => {
+    const principalEntityId = await person("knowledge-only-caregiver");
+    const householdId = `knowledge-only-${randomUUID()}`;
+    await service().bindRole({
+      entityId: principalEntityId,
+      role: "caregiver",
+      householdId,
+      subjectEntityIds: [],
+      evidence: "Synthetic knowledge-only household access acceptance.",
+      boundByEntityId: SELF_ENTITY_ID,
+    });
+    const actions = promoteSubactionsToActions(householdCoordinationAction);
+    const issue = actions.find(
+      (action) => action.name === "HOUSEHOLD_COORDINATION_ISSUE_GRANT",
+    );
+    const revoke = actions.find(
+      (action) => action.name === "HOUSEHOLD_COORDINATION_REVOKE_GRANT",
+    );
+    if (!issue || !revoke)
+      throw new Error("Household grant actions are unavailable");
+    const message = createMessageMemory({
+      entityId: runtime.agentId,
+      agentId: runtime.agentId,
+      roomId: runtime.agentId,
+      content: {
+        text: "Issue the explicitly requested knowledge-only grant.",
+        source: "client_chat",
+      },
+    });
+    const parameters = {
+      householdId,
+      principalEntityId,
+      role: "caregiver",
+      subjectEntityIds: [],
+      scopes: ["knowledge.read"],
+    };
+    const result = await issue.handler(runtime, message, undefined, {
+      parameters,
+    });
+    expect(result).toMatchObject({
+      success: true,
+      data: { action: "issue_grant" },
+    });
+    const grants = await householdRepository.listGrants(
+      principalEntityId,
+      householdId,
+    );
+    expect(grants).toEqual([
+      expect.objectContaining({
+        principalEntityId,
+        householdId,
+        role: "caregiver",
+        subjectEntityIds: [],
+        scopes: ["household.visibility", "knowledge.read"],
+        revokedAt: null,
+      }),
+    ]);
+    const grant = grants[0];
+    if (!grant)
+      throw new Error("Issued knowledge-only grant was not persisted");
+    expect(result).toMatchObject({
+      effectReceipts: [
+        {
+          outcome: "applied",
+          resource: { id: grant.id },
+          commit: { kind: "durable" },
+        },
+      ],
+    });
+
+    const { subjectEntityIds: _subjects, ...withoutSubjects } = parameters;
+    expect(
+      await issue.handler(runtime, message, undefined, {
+        parameters: withoutSubjects,
+      }),
+    ).toMatchObject({
+      success: false,
+      data: {
+        error: "MISSING_HOUSEHOLD_PARAMETERS",
+      },
+    });
+    await expect(
+      issue.handler(runtime, message, undefined, {
+        parameters: { ...parameters, subjectEntityIds: [42] },
+      }),
+    ).rejects.toMatchObject({ code: "HOUSEHOLD_INVALID_CONTRACT" });
+    await expect(
+      issue.handler(runtime, message, undefined, {
+        parameters: { ...parameters, scopes: ["calendar.freebusy"] },
+      }),
+    ).rejects.toMatchObject({ code: "HOUSEHOLD_INVALID_CONTRACT" });
+    expect(
+      await householdRepository.listGrants(principalEntityId, householdId),
+    ).toEqual(grants);
+
+    expect(
+      await revoke.handler(runtime, message, undefined, {
+        parameters: {
+          grantId: grant.id,
+          reason: "Synthetic knowledge-only grant acceptance complete.",
+        },
+      }),
+    ).toMatchObject({ success: true });
+    const revoked = await householdRepository.listGrants(
+      principalEntityId,
+      householdId,
+    );
+    expect(revoked).toEqual([
+      expect.objectContaining({ id: grant.id, revokedAt: expect.any(String) }),
+    ]);
+  });
 
   it("exposes safe owner operations without an affected-party impersonation verb", async () => {
     const actionParameter = householdCoordinationAction.parameters?.find(
@@ -1645,6 +1767,11 @@ describe("household coordination — real PGlite", () => {
     await expect(runner.fireWithResult(task.taskId)).rejects.toMatchObject({
       code: "HOUSEHOLD_INVALID_CONTRACT",
     });
+    await expect(
+      withTransaction(runtime, (tx) =>
+        fenceFamilyWorkspace(tx, runtime.agentId),
+      ),
+    ).rejects.toMatchObject({ code: "FAMILY_DELETION_WORK_UNSETTLED" });
     await runner.apply(task.taskId, "edit", { metadata: originalMetadata });
 
     const originalIdentity = originalMetadata?.householdGrantExpiryWarning;
