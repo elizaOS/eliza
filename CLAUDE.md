@@ -199,6 +199,30 @@ Large supported contexts are a product capability; silently changing them
 creates non-local reasoning failures that are much harder to diagnose than an
 explicit error.
 
+Planning and post-tool completion share an explicit source-selection contract.
+The existing Stage-1 model may select prior user and assistant dialogue by source IDs after
+checking every source for relevant facts, all applicable standing constraints
+and corrections, referents and referenced pending work. Bind the selector to
+the exact turn, room, source identities and source bytes; absent, malformed,
+incomplete or stale selectors keep full context. Never select away the current
+request, system instructions, standing provider constraints (including recomposed privacy results),
+semantic patches, execution feedback, pending tools or any
+tool receipt. The evaluator can request the complete original context once
+without tools or delivery effects. Native-tool planners can request
+RESTORE_CONTEXT once before uncertain effects; no call from that response
+executes, and all later planner rounds retain the restored sources. Coding
+and schema-only planners retain full context. Full stored history and the original in-memory context stay
+intact; source selection is a model judgment, not a deterministic proof of
+semantic completeness. No new factual summary, character/token cap or recency
+window is authorized by this contract. Voice retains its complete path.
+
+The evaluator may also omit known message-service `plan.actionSurface`
+retrieval diagnostics with the source event/omitted field recorded. Unknown
+fields and custom producers retain the complete representation. Canonical tool
+JSON may omit indentation only after an exact roundtrip check; every field and
+string value remains complete. Training and trajectory recordings retain the
+actual wire request, including its selection and retrieval attempts.
+
 Training and evaluation have the same invariant: teacher prompts, recorded
 requests/responses, and tokenizer inputs must not be compacted or truncated.
 A trainer with a smaller sequence boundary must reject the complete row before

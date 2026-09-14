@@ -1,7 +1,7 @@
 /**
- * Exercises complete dialogue preservation through real Stage-1 rendering,
- * planner and evaluator dispatch with deterministic model responses. Authorized
- * provider reads must not omit history or execute accompanying effects.
+ * Tests source-bound foreground selection through real Stage-1 rendering,
+ * parsing and evaluator dispatch with deterministic model responses. No data
+ * writes or live provider calls run; stored contexts are checked unchanged.
  */
 import { describe, expect, it, vi } from "vitest";
 import { buildPlannerToolsFromActions } from "../../actions/to-tool";
@@ -119,23 +119,6 @@ function withSelection(
 	};
 }
 
-function withDeferredGuide(context: ContextObject): ContextObject {
-	return {
-		...context,
-		metadata: { ...context.metadata, providerDiscoveryEnabled: true },
-		events: [
-			...context.events,
-			{
-				id: "provider:restore-guide",
-				type: "provider",
-				name: "RESTORE_GUIDE",
-				text: "Complete authorized guide. ".repeat(300),
-				discoveryText: "An authorized guide can be read when needed.",
-			},
-		],
-	};
-}
-
 function trajectory(context: ContextObject): PlannerTrajectory {
 	return {
 		context,
@@ -202,7 +185,7 @@ describe("source-bound completion relevance", () => {
 		["selected", "selected"],
 		["full", "full"],
 	] as const)(
-		"keeps complete sources for legacy wire mode %s",
+		"preserves source selection and restoration semantics for wire mode %s",
 		(wireMode, mode) => {
 			const context = historyContext();
 			const before = structuredClone(context);
@@ -219,8 +202,7 @@ describe("source-bound completion relevance", () => {
 				withSelection(context, { ...wire, mode }),
 			);
 			expect(selected.context.events).toEqual(legacy.context.events);
-			expect(selected.applied).toBe(false);
-			expect(selected.context.events).toEqual(context.events);
+			expect(selected.applied).toBe(mode === "selected");
 			expect(selected.context.events).toContainEqual(context.events[0]);
 			expect(selected.context.events).toContainEqual(context.events[3]);
 			expect(
@@ -330,7 +312,7 @@ describe("source-bound completion relevance", () => {
 		expect(noSourceErrors).toEqual([]);
 	});
 
-	it("preserves every repeated occurrence despite a narrow relevance annotation", () => {
+	it("selects the exact repeated occurrence from its original full source", () => {
 		const context = historyContext();
 		const first = completionContextSources(context).sources[0].event;
 		first.segment.content +=
@@ -357,9 +339,7 @@ describe("source-bound completion relevance", () => {
 		const focused = selectCompletionContext(withSelection(context, chosen));
 		expect(
 			completionContextSources(focused.context).sources.map((s) => s.event),
-		).toEqual(
-			completionContextSources(context).sources.map((source) => source.event),
-		);
+		).toEqual([repeated]);
 		expect(JSON.stringify(context)).toBe(before);
 		expect(focused.context.events).toContainEqual(repeated);
 	});
@@ -389,13 +369,15 @@ describe("source-bound completion relevance", () => {
 		expect(JSON.stringify(context)).toBe(before);
 	});
 
-	it("preserves all original dialogue despite a valid narrow relevance annotation", () => {
+	it("keeps all safety sources and selected constraints while omitting only unrelated prior user text", () => {
 		const full = withSelection(historyContext());
 		const before = JSON.stringify(full);
 		const focused = selectCompletionContext(full);
-		expect(focused.applied).toBe(false);
-		expect(focused.omittedSourceCount).toBe(0);
-		expect(focused.context.events).toEqual(full.events);
+		expect(focused.applied).toBe(true);
+		expect(focused.omittedSourceCount).toBe(1);
+		expect(focused.context.events).toEqual(
+			full.events.filter((event) => event.id !== "history:message-3"),
+		);
 		expect(JSON.stringify(full)).toBe(before);
 	});
 
@@ -416,7 +398,7 @@ describe("source-bound completion relevance", () => {
 		const focused = selectCompletionContext(
 			withSelection(recomposed, selection(original)),
 		);
-		expect(focused.applied).toBe(false);
+		expect(focused.applied).toBe(true);
 		expect(JSON.stringify(focused.context)).toContain("no access granted");
 	});
 	it("preserves identical evidence when each source is emitted only in its most specific category", () => {
@@ -436,19 +418,19 @@ describe("source-bound completion relevance", () => {
 		const repeated = selectCompletionContext(
 			withSelection(original, duplicated),
 		);
-		expect(compact.applied).toBe(false);
+		expect(compact.applied).toBe(true);
 		expect(compact.context.events).toEqual(repeated.context.events);
 		expect(compact.omittedSourceCount).toBe(repeated.omittedSourceCount);
 	});
 
-	it("binds and preserves assistant sources despite unrelated relevance annotations", () => {
+	it("binds assistant sources and omits only reviewed unrelated replies", () => {
 		const original = historyContext();
 		const chosen = selection(original);
 		chosen.pendingIntentSourceIds = [];
 		const focused = selectCompletionContext(withSelection(original, chosen));
 		expect(
 			focused.context.events.some((event) => event.id === "history:assistant"),
-		).toBe(true);
+		).toBe(false);
 		const edited = {
 			...original,
 			events: original.events.filter(
@@ -569,8 +551,8 @@ describe("source-bound completion relevance", () => {
 		);
 	});
 
-	it("reads an authorized provider once while retaining every original dialogue source", async () => {
-		const context = withDeferredGuide(withSelection(historyContext()));
+	it("restores all original sources once without tools or effects when the evaluator requests them", async () => {
+		const context = withSelection(historyContext());
 		const stored = trajectory(context);
 		const before = JSON.stringify(stored);
 		const messages: ChatMessage[][] = [];
@@ -617,7 +599,7 @@ describe("source-bound completion relevance", () => {
 			[...recorded.values()].map((stage) => stage.model?.messages),
 		).toEqual(messages);
 		expect([...recorded.keys()][0]).toContain("-attempt-0");
-		expect(JSON.stringify(messages[0])).toContain(
+		expect(JSON.stringify(messages[0])).not.toContain(
 			"Old completed unrelated weather request.",
 		);
 		expect(JSON.stringify(messages[1])).toContain(
@@ -638,7 +620,7 @@ describe("source-bound completion relevance", () => {
 	});
 
 	it("cannot loop repeated full-context requests or deliver an intermediate reply", async () => {
-		const context = withDeferredGuide(withSelection(historyContext()));
+		const context = withSelection(historyContext());
 		const recorded = new Map<string, RecordedStage>();
 		const recorder: TrajectoryRecorder = {
 			startTrajectory: () => "repeated-context-restore",
@@ -692,7 +674,7 @@ describe("planner source selection and restoration", () => {
 	])(
 		"keeps reply-only synthesis scoped without replay (restore=$restore, custom=$custom, forced=$forced, fail=$fail)",
 		async ({ restore, custom, forced, fail }) => {
-			const full = withDeferredGuide(withSelection(historyContext()));
+			const full = withSelection(historyContext());
 			const before = JSON.stringify(full);
 			const captured: Record<string, unknown>[] = [];
 			const execute = vi.fn(async () => ({
@@ -760,7 +742,7 @@ describe("planner source selection and restoration", () => {
 												{
 													name: "RESTORE_CONTEXT",
 													params: {
-														scope: "providers",
+														scope: "history",
 														reason: "Need original weather evidence",
 													},
 												},
@@ -786,7 +768,7 @@ describe("planner source selection and restoration", () => {
 			});
 			expect(captured).toHaveLength(restore ? 2 : 1);
 			const first = JSON.stringify(captured[0].messages);
-			expect(first).toContain("Old completed unrelated weather request.");
+			expect(first).not.toContain("Old completed unrelated weather request.");
 			expect(first).toContain(
 				"Correction: keep the exact title  Picnic!?  with its spacing.",
 			);
@@ -836,13 +818,13 @@ describe("planner source selection and restoration", () => {
 			if (restore) {
 				expect(
 					result.trajectory.modelBaseContext?.metadata?.completionContext,
-				).toEqual(full.metadata?.completionContext);
+				).toBeUndefined();
 			}
 			expect(JSON.stringify(full)).toBe(before);
 		},
 	);
-	it("keeps full query diagnostics during authorized provider reads without executing accompanying tools", async () => {
-		const full = withDeferredGuide(historyContext());
+	it("references large query diagnostics losslessly and restores them without executing accompanying tools", async () => {
+		const full = historyContext();
 		const tokens = Array.from({ length: 1000 }, (_, i) => `query-token-${i}`);
 		full.events.push({
 			id: "search-diagnostics",
@@ -862,8 +844,8 @@ describe("planner source selection and restoration", () => {
 		});
 		const before = JSON.stringify(full);
 		const projected = referencePlannerQueryTokens(full);
-		expect(projected.applied).toBe(false);
-		expect(JSON.stringify(projected.context)).toContain("query-token-999");
+		expect(projected.applied).toBe(true);
+		expect(JSON.stringify(projected.context)).not.toContain("query-token-999");
 		expect(JSON.stringify(projected.context)).toContain("permission preserved");
 		expect(JSON.stringify(full)).toBe(before);
 		const calls: string[] = [];
@@ -918,7 +900,7 @@ describe("planner source selection and restoration", () => {
 			}),
 		});
 		expect(calls[0]).toContain("RESTORE_CONTEXT");
-		expect(calls[0]).toContain("query-token-999");
+		expect(calls[0]).not.toContain("query-token-999");
 		expect(calls[1]).toContain("query-token-999");
 		expect(execute).not.toHaveBeenCalled();
 		expect(JSON.stringify(full)).toBe(before);
@@ -943,7 +925,7 @@ describe("planner source selection and restoration", () => {
 		repeated.id = "history:repeated";
 		repeated.segment.id = repeated.id;
 		original.events.push(repeated);
-		const full = withDeferredGuide(withSelection(original));
+		const full = withSelection(original);
 		const before = structuredClone(full);
 		const calls: Array<{ type: string; wire: string }> = [];
 		let plans = 0;
@@ -983,7 +965,7 @@ describe("planner source selection and restoration", () => {
 											id: "restore",
 											name: "RESTORE_CONTEXT",
 											arguments: {
-												scope: "providers",
+												scope: "history",
 												reason: "Need the repeated occurrence",
 											},
 										},
@@ -1006,7 +988,7 @@ describe("planner source selection and restoration", () => {
 			"ACTION_PLANNER",
 			"RESPONSE_HANDLER",
 		]);
-		expect(calls[0].wire).toContain("same_text_as=");
+		expect(calls[0].wire).not.toContain("same_text_as=");
 		for (const { wire } of calls.slice(1)) {
 			expect(wire).toContain("[h6; same_text_as=h1]");
 			expect(wire).toContain(first.segment.content);
@@ -1029,7 +1011,7 @@ describe("planner source selection and restoration", () => {
 			},
 		},
 	];
-	it("keeps every prior message, current request, privacy constraint and tool receipt", async () => {
+	it("uses the selected prior users while keeping current request, privacy, referents and every tool receipt", async () => {
 		const full = withSelection(historyContext());
 		const before = JSON.stringify(full);
 		const calls: string[] = [];
@@ -1076,7 +1058,7 @@ describe("planner source selection and restoration", () => {
 			}),
 		});
 		expect(execute).toHaveBeenCalledTimes(1);
-		expect(calls[0]).toContain("Old completed unrelated weather request.");
+		expect(calls[0]).not.toContain("Old completed unrelated weather request.");
 		for (const text of [
 			"Do not send any email",
 			"Correction: keep the exact title",
@@ -1156,7 +1138,7 @@ describe("planner source selection and restoration", () => {
 		expect(JSON.stringify(full)).toBe(before);
 	});
 
-	it.each(["providers"] as const)(
+	it.each(["history", "providers"] as const)(
 		"restores only requested %s in planner and completion",
 		async (scope) => {
 			for (const stage of ["planner", "completion"] as const) {
@@ -1236,13 +1218,15 @@ describe("planner source selection and restoration", () => {
 					});
 				expect(calls).toHaveLength(2);
 				expect(calls[0]).not.toContain("Complete guide");
-				expect(calls[0]).toContain("Old completed unrelated weather request.");
+				expect(calls[0]).not.toContain(
+					"Old completed unrelated weather request.",
+				);
 				expect(calls[1]?.includes("Complete guide")).toBe(
 					scope === "providers",
 				);
 				expect(
 					calls[1]?.includes("Old completed unrelated weather request."),
-				).toBe(true);
+				).toBe(scope === "history");
 				expect(restore).toHaveBeenCalledTimes(scope === "providers" ? 1 : 0);
 				expect(execute).not.toHaveBeenCalled();
 				expect(JSON.stringify(full)).toBe(before);
@@ -1298,8 +1282,8 @@ describe("planner source selection and restoration", () => {
 		);
 	});
 
-	it("reads authorized providers without executing any call in the read batch", async () => {
-		const full = withDeferredGuide(withSelection(historyContext()));
+	it("restores every original source without executing any call in the restoration batch", async () => {
+		const full = withSelection(historyContext());
 		const before = JSON.stringify(full);
 		const calls: Array<{ messages?: ChatMessage[]; tools?: unknown }> = [];
 		const recorded: RecordedStage[] = [];
@@ -1352,7 +1336,7 @@ describe("planner source selection and restoration", () => {
 			} as TrajectoryRecorder,
 		});
 		expect(calls).toHaveLength(2);
-		expect(JSON.stringify(calls[0].messages)).toContain(
+		expect(JSON.stringify(calls[0].messages)).not.toContain(
 			"Old completed unrelated weather request.",
 		);
 		expect(JSON.stringify(calls[1].messages)).toContain(
@@ -1409,7 +1393,7 @@ describe("planner source selection and restoration", () => {
 			expect(captured[0]).not.toContain('"name":"RESTORE_CONTEXT"');
 		},
 	);
-	it("rejects unsolicited history restoration without another inference or tool effect", async () => {
+	it("rejects a repeated restoration without a third inference or tool effect", async () => {
 		const full = withSelection(historyContext());
 		const useModel = vi.fn(async () => ({
 			text: "",
@@ -1431,7 +1415,7 @@ describe("planner source selection and restoration", () => {
 				evaluate: vi.fn(),
 			}),
 		).rejects.toMatchObject({ code: "PLANNER_CONTEXT_RESTORE_INVALID" });
-		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(useModel).toHaveBeenCalledTimes(2);
 		expect(executeToolCall).not.toHaveBeenCalled();
 	});
 });

@@ -1367,7 +1367,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(dispatch).not.toHaveBeenCalled();
 	});
 
-	it("preserves every authorized action definition at Stage 1 without exposing private actions", async () => {
+	it("indexes every authorized action for a greeting without eager descriptions or schemas", async () => {
 		const description =
 			"Complete action reference: exact Unicode Ω and instructions. ".repeat(
 				30,
@@ -1381,7 +1381,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		]);
 		const actions: Action[] = Array.from({ length: 360 }, (_, index) => ({
 			name: `CUSTOM_OPERATION_${index}`,
-			description: `${description} Final routing instruction ${index}.`,
+			description,
 			contexts: ["general"],
 		}));
 		runtime.actions = [
@@ -1399,11 +1399,11 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(calls).toHaveLength(1);
 		const request = calls[0][1] as { messages: Array<{ content: string }> };
 		const wire = request.messages.map(({ content }) => content).join("\n");
-		for (const action of actions) {
-			expect(wire).toContain(action.name);
-			expect(wire).toContain(action.description);
-		}
+		for (const action of actions) expect(wire).toContain(action.name);
 		expect(wire).not.toContain("PRIVATE_OPERATION");
+		expect(wire).not.toContain(description);
+		expect(wire).toContain("DISCOVER_TOOLS");
+		expect(wire).toContain("names=[]");
 		expect(runtime.actions).toEqual(before);
 		expect(result.kind).toBe("direct_reply");
 	});
