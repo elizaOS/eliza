@@ -117,6 +117,63 @@ describe("atomic-json", () => {
 			expect((await fsp.readdir(tempDir)).sort()).toEqual(["concurrent.json"]);
 		});
 
+		it("rejects undefined values with a TypeError and no filesystem side effects", async () => {
+			const target = path.join(tempDir, "undefined-value.json");
+			// A pre-existing good file must survive the rejected write untouched.
+			await fsp.writeFile(target, '{"ok":true}\n', "utf-8");
+
+			await expect(
+				writeJsonAtomic(
+					target,
+					undefined as unknown as Record<string, unknown>,
+				),
+			).rejects.toThrow(new TypeError("Cannot serialize undefined to JSON"));
+
+			// Default and trailingNewline paths both rejected; default is the variant
+			// that previously threw the opaque writeFile TypeError after side effects.
+			await expect(
+				writeJsonAtomic(
+					target,
+					undefined as unknown as Record<string, unknown>,
+					{ trailingNewline: true },
+				),
+			).rejects.toThrow(TypeError);
+
+			expect(await fsp.readFile(target, "utf-8")).toBe('{"ok":true}\n');
+			// Neither mkdir nor a temp file may exist from the rejected writes.
+			expect(await fsp.readdir(tempDir)).toEqual(["undefined-value.json"]);
+
+			await expect(readJsonFile(target)).resolves.toEqual({ ok: true });
+		});
+
+		it("rejects undefined values synchronously before touching the filesystem", () => {
+			const target = path.join(tempDir, "undefined-sync.json");
+			fs.writeFileSync(target, '{"ok":true}\n', "utf-8");
+
+			expect(() =>
+				writeJsonAtomicSync(
+					target,
+					undefined as unknown as Record<string, unknown>,
+				),
+			).toThrow(new TypeError("Cannot serialize undefined to JSON"));
+
+			expect(fs.readFileSync(target, "utf-8")).toBe('{"ok":true}\n');
+			expect(fs.readdirSync(tempDir)).toEqual(["undefined-sync.json"]);
+		});
+
+		it("rejects function and symbol values instead of writing a corrupt body", async () => {
+			const target = path.join(tempDir, "unserializable.json");
+
+			await expect(
+				writeJsonAtomic(target, () => "unserializable" as unknown as string),
+			).rejects.toThrow(new TypeError("Cannot serialize function to JSON"));
+			await expect(
+				writeJsonAtomic(target, Symbol("s") as unknown as string),
+			).rejects.toThrow(new TypeError("Cannot serialize symbol to JSON"));
+
+			expect(await fsp.readdir(tempDir)).toEqual([]);
+		});
+
 		it("rejects non-string or empty file paths", async () => {
 			await expect(
 				writeJsonAtomic("" as unknown as string, {}),
