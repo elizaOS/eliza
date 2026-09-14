@@ -1643,6 +1643,8 @@ async function verifyPackedEdgeContract(): Promise<void> {
 		await execFileAsync(
 			resolveTscBin(),
 			[
+				// This standalone consumer uses only the explicit compiler options below.
+				"--ignoreConfig",
 				"--noEmit",
 				"--module",
 				"NodeNext",
