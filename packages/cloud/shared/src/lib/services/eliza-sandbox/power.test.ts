@@ -100,10 +100,13 @@ describe("ElizaSandboxService wake", () => {
       const provider: SandboxProvider = {
         create: mock(async () => ({
           sandboxId: "agent-e06bb509",
-          bridgeUrl: "https://runtime.example",
+          bridgeUrl: "http://100.64.0.20:21060",
           healthUrl: "https://runtime.example/health",
           metadata: {
+            provider: "docker",
+            hostname: "100.64.0.20",
             nodeId: "node-1",
+            headscaleIp: "100.64.0.20",
             containerName: "agent-e06bb509",
             bridgePort: 21060,
             webUiPort: 3000,
@@ -116,10 +119,10 @@ describe("ElizaSandboxService wake", () => {
       globalThis.fetch = mock(async (input: RequestInfo | URL) => {
         const url = fetchUrl(input);
         requests.push(url);
-        if (url === "https://runtime.example/api/agents") {
+        if (url === "http://100.64.0.20:21060/api/agents") {
           return Response.json({ error: "Not found" }, { status: 404 });
         }
-        if (url === "https://runtime.example/api/restore") {
+        if (url === "http://100.64.0.20:21060/api/restore") {
           return Response.json({ error: "Not found" }, { status: 404 });
         }
         return Response.json({ ok: true });
@@ -205,7 +208,7 @@ describe("ElizaSandboxService wake", () => {
           reprovisioned: true,
           restoredBackupId: backup.id,
         });
-        expect(requests).toContain("https://runtime.example/api/restore");
+        expect(requests).toContain("http://100.64.0.20:21060/api/restore");
         expect(updateSpy).toHaveBeenCalledWith(
           sleepingSandbox.id,
           expect.objectContaining({ status: "running" }),
