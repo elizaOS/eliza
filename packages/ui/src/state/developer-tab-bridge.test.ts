@@ -149,6 +149,27 @@ describe("developer app-tab relay", () => {
     await promise;
   });
 
+  it("relays removal of an ephemeral reply retired synchronously by the next send", async () => {
+    const app = mount("app", false);
+    const dev = mount("dev", true);
+    const failed: ConversationMessage = {
+      id: "temp-failure",
+      role: "assistant",
+      text: "Try again.",
+      timestamp: 1,
+      assistantEphemeral: true,
+      replyToMessageId: "first-user",
+    };
+    app.setMessages([failed]);
+    // The sender can retire the previous reply before React emits another
+    // transcript snapshot. The relay needs the pre-send removal baseline.
+    app.host.send.mockImplementationOnce(async () => {
+      app.setMessages([]);
+    });
+    await dev.bridge.send("app", "hello", "conv");
+    expect(dev.host.messages).toHaveBeenLastCalledWith("conv", [], [failed.id]);
+  });
+
   it.each([false, true])(
     "flushes a final ephemeral reply before settlement even without another render (sender rejects: %s)",
     async (rejects) => {

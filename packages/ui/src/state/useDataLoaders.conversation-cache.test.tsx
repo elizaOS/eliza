@@ -118,7 +118,7 @@ beforeEach(() => {
 
 describe("useDataLoaders — conversation message prefetch cache", () => {
   it("keeps a relayed ephemeral final reply through history refresh, then honors its streamed removal", async () => {
-    const persisted = userMsg("server-user");
+    const persisted = { ...userMsg("server-user"), timestamp: 5 };
     mocks.client.getConversationMessages.mockResolvedValue({
       messages: [persisted],
     });
@@ -134,6 +134,7 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
       clientRenderId: "temp-final",
       timestamp: 2,
       assistantEphemeral: true,
+      replyToMessageId: "server-user",
       text: "The model context is too large; nothing was changed.",
     };
     act(() => {

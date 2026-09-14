@@ -35,8 +35,12 @@ updates independently of the transcript. Token counts arrive after model calls
 are recorded; unfinished calls do not have final usage. During sending, an
 explicitly labeled latest run in the current room provides provisional run
 details. Completed reply counts require an exact user message ID and room ID
-match. Canonical `replyToMessageId` takes precedence even when its user message
-is outside the loaded transcript; only replies without that link use adjacency.
+match. Canonical `replyToMessageId` is required even when its user message
+is outside the loaded transcript; unlinked rows never borrow an adjacent request.
+Transient failure replies receive that link from the terminal server receipt,
+so live failures show their own recorded usage without being persisted as
+ordinary dialogue. Linked temporary replies remain after their request despite
+client/server clock skew. The normal ephemeral retirement policy remains in effect.
 Background memory runs correlate by the same IDs and remain separate.
 
 Replies outside the recent summary window initially show **Inspect**. Opening
