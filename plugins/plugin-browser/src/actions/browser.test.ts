@@ -152,6 +152,109 @@ describe("BROWSER action", () => {
 
   it.each([
     [
+      "scroll",
+      { direction: "left", pixels: 375 },
+      { direction: "left", pixels: 375 },
+    ],
+    [
+      "drag",
+      { selector: "#from", targetSelector: "#to" },
+      { selector: "#from", value: "#to" },
+    ],
+    [
+      "press",
+      { selector: "#input", key: "Escape" },
+      { selector: "#input", key: "Escape" },
+    ],
+    [
+      "realistic_type",
+      { selector: "#input", text: "abc", perCharDelayMs: 17, replace: true },
+      {
+        subaction: "realistic-type",
+        perCharDelayMs: 17,
+        replace: true,
+        text: "abc",
+      },
+    ],
+    [
+      "cursor_move",
+      { x: 12, y: 34, cursorDurationMs: 75 },
+      { subaction: "cursor-move", x: 12, y: 34, cursorDurationMs: 75 },
+    ],
+    [
+      "tab",
+      { tabAction: "switch", id: "tab-2" },
+      { tabAction: "switch", id: "tab-2" },
+    ],
+  ] as const)(
+    "preserves %s operation arguments after promotion",
+    async (action, inputs, command) => {
+      const child = promoteSubactionsToActions(browserAction).find(
+        (entry) => entry.name === `BROWSER_${action.toUpperCase()}`,
+      );
+      if (!child) throw new Error(`Missing promoted ${action}`);
+      const validation = validateToolArgs(child, {
+        ...inputs,
+        target: "custom-browser",
+      });
+      expect(validation.valid).toBe(true);
+      expect(validation.args).toMatchObject(inputs);
+      const service = browserService();
+      await child.handler?.(
+        runtimeWithService(service) as never,
+        { content: { text: "Perform the specified operation." } } as never,
+        undefined,
+        { parameters: validation.args } as never,
+      );
+      expect(service.execute).toHaveBeenCalledWith(
+        expect.objectContaining(command),
+        "custom-browser",
+        undefined,
+      );
+    },
+  );
+
+  it("omits interaction-only fields from navigation while retaining the full parent contract", () => {
+    const navigate = promoteSubactionsToActions(browserAction).find(
+      (entry) => entry.name === "BROWSER_NAVIGATE",
+    );
+    if (!navigate) throw new Error("Missing promoted navigate");
+    for (const name of [
+      "tabAction",
+      "key",
+      "pixels",
+      "direction",
+      "targetSelector",
+      "cursorDurationMs",
+      "perCharDelayMs",
+      "replace",
+      "x",
+      "y",
+    ]) {
+      expect(
+        browserAction.parameters?.some((parameter) => parameter.name === name),
+      ).toBe(true);
+      expect(
+        navigate.parameters?.some((parameter) => parameter.name === name),
+      ).toBe(false);
+    }
+    expect(
+      validateToolArgs(navigate, {
+        url: "https://example.com/",
+        target: "workspace",
+        id: "tab-1",
+        timeoutMs: 1250,
+      }).args,
+    ).toMatchObject({
+      url: "https://example.com/",
+      target: "workspace",
+      id: "tab-1",
+      timeoutMs: 1250,
+    });
+  });
+
+  it.each([
+    [
       "BROWSER_AUTOFILL_LOGIN",
       "autofill_login",
       { domain: "example.com", username: "alice", submit: false },

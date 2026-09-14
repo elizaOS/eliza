@@ -46,6 +46,12 @@ specialized handlers, not ordinary workspace commands. The parent `BROWSER`
 retains every parameter, and target selection, vault authorization and URL-wait
 validation still run in the shared handlers.
 
+Promoted operations also restrict tab, scroll, keyboard, drag, cursor and typing
+options to their applicable operations. Navigation no longer repeats those
+interaction-only fields. The parent still exposes the full contract, every
+authorized child remains discoverable, and common target, tab ID and timeout
+arguments remain available. This changes schema exposure, not command dispatch.
+
 When a model omits `url`, the dispatcher recognizes the first explicit HTTP(S)
 link in the current message using standard linkification boundaries. Sentence
 punctuation is excluded; explicit `url` arguments retain their exact value.
