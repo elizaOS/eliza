@@ -35,6 +35,9 @@ env:
   IMAGE_NAME: ${{ github.repository }}
   DEMO_IMAGE_REPOSITORY: ghcr.io/elizaos/eliza-demo
   BUN_VERSION: "1.3.14"
+  # Docker owns the portable native build. Avoid duplicate host compilation
+  # and the model download performed by desktop postinstall setup.
+  ELIZA_SKIP_FUSED_INFERENCE_SETUP: "1"
 
 # Default to least privilege. Override per-job where needed.
 # Manual publications always finish because they publish operator-selected targets.
