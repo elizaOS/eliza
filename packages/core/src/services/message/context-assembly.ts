@@ -58,16 +58,123 @@ function priorDialogueBudgetFromSettings(runtime: IAgentRuntime): {
 	};
 }
 
+const STAGE1_DESCRIPTION_CAP = 400;
+const STAGE1_DESCRIPTION_FLOOR = 120;
+const SENTENCE_GAP = /(?<=[.!?])\s+/;
+const ABBREVIATION_TAIL = /\b(?:e\.g|i\.e|vs|etc|approx|incl|min|max)\.$/i;
+/** "BROWSER action." — a label, not a description. */
+const NAME_LABEL_SENTENCE = /^[A-Z][A-Z0-9_]*\s+action\.?$/;
+/**
+ * A sentence that tells Stage 1 when to pick (or not pick) the family: a
+ * use/prefer/only/never/for/when lead, an "instead"/"prefer" contrast, or a
+ * quoted user phrasing ('remind me in N minutes …'). Operation lists
+ * ("action=status snapshots …; action=self_status …") are the planner's
+ * business — it receives the complete description with the loaded schema.
+ */
+const ROUTING_CUE =
+	/^(?:use|prefer|only|do not|don't|never|not for|avoid|requires?|owner-only|for|when|covers?|handles?|includes?|also|instead|this (?:action|is)|scope|choose|pick|route)\b|\b(?:prefer|instead)\b|(?:^|[\s(])'[^']+'/i;
+/** A disambiguation ("NOT for building a web app … that is APP action=create") outranks a positive cue when not everything fits. */
+const NEGATIVE_CUE = /^not\b|\b(?:not for|do not|don't|never|instead)\b/i;
+
+function splitSentences(text: string): string[] {
+	const sentences: string[] = [];
+	for (const piece of text.split(SENTENCE_GAP)) {
+		if (!piece) continue;
+		const previous = sentences.at(-1);
+		if (previous !== undefined && ABBREVIATION_TAIL.test(previous)) {
+			sentences[sentences.length - 1] = `${previous} ${piece}`;
+		} else {
+			sentences.push(piece);
+		}
+	}
+	return sentences;
+}
+
+function cutAtWord(text: string): string {
+	if (text.length <= STAGE1_DESCRIPTION_CAP) return text;
+	const head = text.slice(0, STAGE1_DESCRIPTION_CAP);
+	const boundary = head.lastIndexOf(" ");
+	return `${(boundary > 0 ? head.slice(0, boundary) : head).replace(/[,;:]+$/, "")}…`;
+}
+
+/**
+ * Packs the lead plus as many following sentences as fit the cap, rendered
+ * in their original order. Ranked packing tries disambiguations first;
+ * unranked packing stops at the first sentence that does not fit. Below the
+ * floor the next sentence joins anyway and the whole is cut at a word.
+ */
+function packSentences(
+	sentences: readonly string[],
+	ranked: boolean,
+): string {
+	const lead = sentences[0];
+	if (lead === undefined) return "";
+	const kept = new Map<number, string>([[0, cutAtWord(lead)]]);
+	let total = cutAtWord(lead).length;
+	const order = sentences.map((_, index) => index).slice(1);
+	if (ranked) {
+		const rank = (index: number) =>
+			NEGATIVE_CUE.test(sentences[index] ?? "") ? 0 : 1;
+		order.sort((a, b) => rank(a) - rank(b) || a - b);
+	}
+	for (const index of order) {
+		const sentence = sentences[index] ?? "";
+		if (total + 1 + sentence.length <= STAGE1_DESCRIPTION_CAP) {
+			kept.set(index, sentence);
+			total += 1 + sentence.length;
+			continue;
+		}
+		if (total < STAGE1_DESCRIPTION_FLOOR) {
+			kept.set(index, sentence);
+			break;
+		}
+		if (!ranked) break;
+	}
+	return cutAtWord(
+		[...kept.entries()]
+			.sort((a, b) => a[0] - b[0])
+			.map(([, text]) => text)
+			.join(" "),
+	);
+}
+
+/**
+ * The Stage-1 routing view of an action description: a description within
+ * the cap is rendered complete; a longer one keeps its lead sentence plus the
+ * sentences that say when to route to the family, disambiguations first,
+ * packed to the cap at sentence boundaries (an over-long lead is cut at a
+ * word). When the routing sentences leave too little, the leading sentences
+ * stand in. Stage 1 routes
+ * by family and emits names; the planner loads the complete description with
+ * the schema. On the live owner catalog the operation lists were 9.8K of
+ * 32K characters (~2.6K tokens) in every Stage-1 call (2026-09-14).
+ */
+export function stage1RoutingDescription(description: string): string {
+	const flat = description.replace(/[ \t]*\r?\n[ \t\r\n]*/g, " ").trim();
+	if (flat.length <= STAGE1_DESCRIPTION_CAP) return flat;
+	let sentences = splitSentences(flat);
+	if (sentences.length > 1 && NAME_LABEL_SENTENCE.test(sentences[0] ?? "")) {
+		sentences = sentences.slice(1);
+	}
+	const routing = sentences.filter(
+		(sentence, index) => index === 0 || ROUTING_CUE.test(sentence),
+	);
+	const packed = packSentences(routing, true);
+	return packed.length >= STAGE1_DESCRIPTION_FLOOR
+		? packed
+		: packSentences(sentences, false);
+}
+
 /**
  * Render the Stage-1 discovery catalog as one `NAME: description` line per
  * action. The JSON array it replaces spent 2.8K of its 35K characters on keys
  * and quoting for the 107-entry owner catalog (live 2026-09-14) and turned
- * every quote and newline inside a description into an escape sequence. The
- * line form carries the same names and the same complete descriptions; a
- * newline run inside a description collapses to one space so each catalog
- * line stays one action. Stage-1 output never parses this text: the
- * `candidateActionNames` it emits are names, resolved server-side against
- * runtime.actions (action-surface.ts).
+ * every quote and newline inside a description into an escape sequence. Each
+ * line carries the name and the routing view of the description
+ * (stage1RoutingDescription); a newline run inside a description collapses to
+ * one space so each catalog line stays one action. Stage-1 output never
+ * parses this text: the `candidateActionNames` it emits are names, resolved
+ * server-side against runtime.actions (action-surface.ts).
  */
 export function formatAvailableActionsForPrompt(
 	actions: readonly Pick<Action, "name" | "description">[],
@@ -77,10 +184,7 @@ export function formatAvailableActionsForPrompt(
 	}
 	return actions
 		.map((action) => {
-			const description = (action.description ?? "").replace(
-				/[ \t]*\r?\n[ \t\r\n]*/g,
-				" ",
-			);
+			const description = stage1RoutingDescription(action.description ?? "");
 			return description ? `${action.name}: ${description}` : action.name;
 		})
 		.join("\n");
@@ -318,9 +422,10 @@ export async function createV5MessageContextObject(args: {
 			discoverActions: true,
 		});
 		// This is a discovery projection, not an execution tool surface. Retain
-		// every authorized umbrella's name and complete description; Stage 2
-		// supplies the native parameter schemas and rechecks authorization before
-		// execution. Promoted sub-actions are represented by their parent: each
+		// every authorized umbrella's name and its routing description
+		// (stage1RoutingDescription); Stage 2 supplies the complete
+		// descriptions and native parameter schemas and rechecks authorization
+		// before execution. Promoted sub-actions are represented by their parent: each
 		// virtual repeats the parent's description with a suffix, and on a full
 		// catalog (380 entries, 273 of them promoted) that repetition was 235K
 		// characters (~58K tokens) per Stage-1 call, 2–3× the whole prompt
