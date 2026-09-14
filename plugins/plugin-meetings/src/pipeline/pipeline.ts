@@ -155,8 +155,9 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
       _speakerName,
       audio,
       purpose,
+      generation,
     ) => {
-      this.transcribeWindow(speakerKey, audio, purpose);
+      this.transcribeWindow(speakerKey, audio, purpose, generation);
     };
 
     this.manager.onSegmentConfirmed = (event) => {
@@ -421,6 +422,7 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
     speakerKey: string,
     audio: Float32Array,
     purpose: "interim" | "final",
+    generation: number,
   ): void {
     const wav = float32ToWav(audio, MEETING_AUDIO_SAMPLE_RATE);
     const prompt = this.manager.getLastConfirmedText(speakerKey);
@@ -436,7 +438,13 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
           } catch (err) {
             if (isMeetingInsufficientCreditsError(err)) {
               this.options.onSpendCapReached?.(err);
-              this.manager.handleTranscriptionResult(speakerKey, "");
+              this.manager.handleTranscriptionResult(
+                speakerKey,
+                "",
+                undefined,
+                undefined,
+                generation,
+              );
               return;
             }
             throw err;
@@ -461,6 +469,7 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
           result.text,
           segmentEndSec,
           segments,
+          generation,
         );
       } catch (err) {
         // error-policy:J7 a single ASR window failing (already retried in the
@@ -478,7 +487,13 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
           speakerKey,
         });
         // Clear the in-flight flag so the stream keeps moving.
-        this.manager.handleTranscriptionResult(speakerKey, "");
+        this.manager.handleTranscriptionResult(
+          speakerKey,
+          "",
+          undefined,
+          undefined,
+          generation,
+        );
       }
       this.notify([]);
     })();
