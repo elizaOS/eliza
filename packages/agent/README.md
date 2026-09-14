@@ -19,6 +19,14 @@ bun run test
 
 See `package.json` for `build`, `lint`, and other scripts.
 
+## Trajectory viewer access
+
+Raw trajectory reads require owner authority at the HTTP boundary. Authenticated
+non-owner sessions and shared gateway credentials do not grant developer-view
+access. Standalone trusted-local access, configured API owner credentials, and
+authorized owner sessions retain the existing read-service contract. Product
+role resolvers must grant both owner authority and route access.
+
 ## Memory search results
 
 Planner-owned `MEMORY action=search` calls return each complete source once in

@@ -35,12 +35,18 @@ import {
   withEvaluatorStep,
 } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { startApiServer } from "../api/server.ts";
 import {
   type DevTrajectoryRecoveryRegistration,
   type DevTrajectoryRecoveryTransport,
   prepareDevTrajectoryRecovery,
 } from "./dev-trajectory-recovery.ts";
 import type { DevTrajectoryRecoveryOwner } from "./dev-trajectory-recovery-protocol.ts";
+import {
+  _resetAgentHostBridge,
+  defaultAgentHostBridge,
+  setAgentHostBridge,
+} from "./host-bridge.ts";
 import {
   asRecord,
   createBaseTrajectory,
@@ -586,6 +592,92 @@ afterAll(async () => {
 });
 
 describe("trajectory capture -> DB -> viewer", () => {
+  it("serves stored trajectory text to its HTTP owner and denies a non-owner", async () => {
+    const keys = [
+      "ELIZA_STATE_DIR",
+      "ELIZA_CONFIG_PATH",
+      "ELIZA_PERSIST_CONFIG_PATH",
+      "ELIZA_API_BIND_HOST",
+      "ELIZA_API_TOKEN",
+      "ELIZA_API_AUTH_TOKEN",
+      "ELIZA_CLOUD_PROVISIONED",
+      "ELIZA_REQUIRE_LOCAL_AUTH",
+      "AGENT_SERVER_SHARED_SECRET",
+    ] as const;
+    const previous = new Map(keys.map((key) => [key, process.env[key]]));
+    let api: Awaited<ReturnType<typeof startApiServer>> | undefined;
+    try {
+      process.env.ELIZA_STATE_DIR = pgliteDir;
+      process.env.ELIZA_CONFIG_PATH = path.join(
+        pgliteDir,
+        "http-test-config.json",
+      );
+      process.env.ELIZA_PERSIST_CONFIG_PATH = process.env.ELIZA_CONFIG_PATH;
+      process.env.ELIZA_API_BIND_HOST = "127.0.0.1";
+      for (const key of [
+        "ELIZA_API_TOKEN",
+        "ELIZA_API_AUTH_TOKEN",
+        "ELIZA_CLOUD_PROVISIONED",
+        "ELIZA_REQUIRE_LOCAL_AUTH",
+        "AGENT_SERVER_SHARED_SECRET",
+      ])
+        delete process.env[key];
+      setAgentHostBridge({
+        ...defaultAgentHostBridge,
+        resolveHttpRequestAuthorization: async (req) => ({
+          ok: true,
+          role:
+            req.headers.authorization === "Bearer trajectory-owner-fixture"
+              ? "OWNER"
+              : "USER",
+          identityId: "synthetic-http-principal",
+        }),
+      });
+      const logger = runtime.getService(
+        "trajectories",
+      ) as unknown as TrajLogger;
+      const trajectoryId = await logger.startTrajectory(runtime.agentId);
+      const stepId = logger.startStep(trajectoryId);
+      const exactResponse = "HTTP owner fixture: exact Unicode ✓\nsecond line";
+      logger.logLlmCall(
+        llmCall(stepId, "fixture", "fixture-model", exactResponse),
+      );
+      await logger.endTrajectory(trajectoryId, "completed");
+      await flushTrajectoryWrites(runtime);
+      api = await startApiServer({
+        port: 0,
+        runtime,
+        skipDeferredStartupWork: true,
+      });
+      const url = `http://127.0.0.1:${api.port}/api/trajectories/${trajectoryId}`;
+      const headers = { "x-forwarded-for": "203.0.113.10" };
+      const rejected = await fetch(url, { headers });
+      expect(rejected.status).toBe(403);
+      expect(await rejected.json()).toEqual({ error: "Owner role required" });
+      const accepted = await fetch(url, {
+        headers: {
+          ...headers,
+          Authorization: "Bearer trajectory-owner-fixture",
+        },
+      });
+      expect(accepted.status).toBe(200);
+      const detail = await accepted.json();
+      expect(detail).toMatchObject({ llmCalls: [{ response: exactResponse }] });
+      const stored = await logger.getTrajectoryDetail(trajectoryId);
+      expect(stored).toMatchObject({
+        steps: [{ llmCalls: [{ response: exactResponse }] }],
+      });
+    } finally {
+      await api?.close();
+      _resetAgentHostBridge();
+      for (const key of keys) {
+        const value = previous.get(key);
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
   describe.each(["public", "installed"] as const)(
     "%s supervised dev recovery",
     (mode) => {
