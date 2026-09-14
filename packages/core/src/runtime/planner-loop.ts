@@ -569,14 +569,20 @@ async function runPlannerLoopIterations(
 	// direct-answer rescue heuristic can reject a conditional offer such as
 	// "Reply save it and I'll create it" as imminent work. Do not let that
 	// wording prevent the evaluator from judging whether execution must wait.
+	// An empty intents list is not proof that an action must run: the evaluator
+	// still receives the complete request and can reject an incomplete draft.
 	const canEvaluateUnexecutedReply =
 		!codingMode &&
-		requiresIntentEvaluation &&
+		(requiresIntentEvaluation || requireNonTerminalToolCall) &&
 		isPlainObject(stageOnePlan) &&
 		(stageOnePlan.replyEffectStatus === "none" ||
 			stageOnePlan.replyEffectStatus === "non_applied") &&
 		typeof stageOnePlan.reply === "string" &&
 		stageOnePlan.reply.trim().length > 0 &&
+		// Do not add a completion call for a bare acknowledgment on the new
+		// empty-intent path; it still needs normal action planning.
+		(requiresIntentEvaluation ||
+			!PROGRESS_ONLY_ANSWER_REJECT.test(stageOnePlan.reply.trim())) &&
 		!isUnsafeUserVisibleText(stageOnePlan.reply);
 	// A later planner may discover that an apparent pending action requires
 	// confirmation. Judge its terminal proposal before demanding an effect;

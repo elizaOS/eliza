@@ -368,15 +368,22 @@ describe("planner-declared pending work", () => {
 		},
 	);
 
-	it.each(["none", "non_applied"] as const)(
-		"evaluates a proposed preview before forcing an action (%s)",
-		async (replyEffectStatus) => {
+	it.each(
+		(["none", "non_applied"] as const).flatMap((replyEffectStatus) =>
+			[true, false].map((declaresIntent) => ({
+				replyEffectStatus,
+				declaresIntent,
+			})),
+		),
+	)(
+		"evaluates a proposed preview before forcing an action ($replyEffectStatus, declaresIntent=$declaresIntent)",
+		async ({ replyEffectStatus, declaresIntent }) => {
 			const preview =
 				"Title: Preview QA\nBody: Wait for confirmation before saving.";
 			const h = harness({
 				userMessage:
 					"Preview this note; wait for my separate confirmation before saving.",
-				intents: ["preview note for approval"],
+				intents: declaresIntent ? ["preview note for approval"] : [],
 				stageOnePlan: {
 					reply: preview,
 					replyEffectStatus,
@@ -399,6 +406,33 @@ describe("planner-declared pending work", () => {
 			expect(result.trajectory.evaluatorOutputs).toHaveLength(1);
 		},
 	);
+
+	it("still performs required work when an empty-intent draft fails completion", async () => {
+		const h = harness({
+			userMessage: "Read the current note before answering; do not change it.",
+			intents: [],
+			stageOnePlan: {
+				reply: "I can answer about the note.",
+				replyEffectStatus: "none",
+				candidateActions: ["READ"],
+			},
+			plans: [{ text: "", toolCalls: [call("READ", "final")] }],
+			evaluations: [
+				continueWork("The request requires a current read, which has not run."),
+				finish("The current note says to bring the purple folder."),
+			],
+		});
+		const result = await h.run({
+			tools: [{ name: "READ" }, { name: "REPLY" }],
+			requireNonTerminalToolCall: true,
+		});
+		expect(h.executed).toEqual(["READ"]);
+		expect(h.useModel.mock.calls[0][0]).toBe(ModelType.RESPONSE_HANDLER);
+		expect(result.trajectory.evaluatorOutputs[0].decision).toBe("CONTINUE");
+		expect(result.finalMessage).toBe(
+			"The current note says to bring the purple folder.",
+		);
+	});
 
 	it.each([true, false])(
 		"evaluates a planner confirmation pause even when Stage 1 incorrectly marked it pending (reply text: %s)",

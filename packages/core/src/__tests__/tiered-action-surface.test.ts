@@ -518,7 +518,8 @@ describe("v5 tiered action surface", () => {
 		},
 		{ name: "malformed effect status", fields: { replyEffectStatus: {} } },
 	])("preserves Calendar planning for $name", async ({ fields }) => {
-		const evaluatesDraft = "intents" in fields;
+		const evaluatesDraft =
+			"intents" in fields || "candidateActionNames" in fields;
 		const handler = vi.fn(async () => {
 			if (evaluatesDraft) {
 				expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
@@ -564,15 +565,12 @@ describe("v5 tiered action surface", () => {
 		{ name: "mutation intent", fields: { intents: ["move lunch"] } },
 		{ name: "tool requirement", fields: { requiresTool: true } },
 	])("preserves nested legacy $name", async ({ fields }) => {
-		const evaluatesDraft = "intents" in fields;
 		const handler = vi.fn(async () => {
-			if (evaluatesDraft) {
-				expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
-					ModelType.RESPONSE_HANDLER,
-					ModelType.RESPONSE_HANDLER,
-					ModelType.ACTION_PLANNER,
-				]);
-			}
+			expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+				ModelType.RESPONSE_HANDLER,
+				ModelType.ACTION_PLANNER,
+			]);
 			return { success: true };
 		});
 		const runtime = makeRuntime({
@@ -591,7 +589,7 @@ describe("v5 tiered action surface", () => {
 						},
 					}),
 				},
-				...(evaluatesDraft ? [continueEvaluatorResponse()] : []),
+				continueEvaluatorResponse(),
 				plannerToolResponse("CALENDAR"),
 				finishEvaluatorResponse("The Calendar tool returned."),
 			],
@@ -607,7 +605,7 @@ describe("v5 tiered action surface", () => {
 		expect(handler).toHaveBeenCalledTimes(1);
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
 			ModelType.RESPONSE_HANDLER,
-			...(evaluatesDraft ? [ModelType.RESPONSE_HANDLER] : []),
+			ModelType.RESPONSE_HANDLER,
 			ModelType.ACTION_PLANNER,
 			ModelType.RESPONSE_HANDLER,
 		]);
