@@ -82,6 +82,7 @@ beforeAll(async () => {
     const migration = (name: string) =>
       readFile(new URL(`../../migrations/${name}`, import.meta.url), "utf8");
     await getPgliteClientForTests().exec(await migration("0387_agent_compute_funding.sql"));
+    await getPgliteClientForTests().exec(await migration("0389_agent_compute_stop_receipts.sql"));
     const receiptDDL = await migration("0265_compute_billing_recovery.sql");
     const receiptTable = receiptDDL.match(/CREATE TABLE agent_billing_records \([\s\S]*?\n\);/);
     if (!receiptTable) throw new Error("Missing canonical agent billing receipt DDL");

@@ -10,7 +10,11 @@ import { agentComputeFunding } from "../../db/schemas/agent-compute-funding";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { agentBillingRecords } from "../../db/schemas/compute-billing";
 import { organizations } from "../../db/schemas/organizations";
-import { agentComputeFundingService } from "./agent-compute-funding";
+import {
+  AGENT_COMPUTE_FUNDING_EXPIRED,
+  AGENT_COMPUTE_FUNDING_UNCONFIRMED,
+  agentComputeFundingService,
+} from "./agent-compute-funding";
 import { enqueueAgentComputeLeaseInTransaction } from "./agent-compute-lease-jobs";
 import { SUBSCRIPTION_FUNDING_INSUFFICIENT } from "./subscription-funding";
 
@@ -20,7 +24,7 @@ export async function settleFundedAgentBillingInTransaction(
   meter: Awaited<ReturnType<typeof settleComputeRateSegments>>,
   periodStart: Date,
   lifecycleRevision: number,
-  forceLifecycleSettlement: boolean,
+  requiresLifecycleReconciliation: boolean,
 ) {
   const [window] = await tx
     .select()
@@ -34,7 +38,7 @@ export async function settleFundedAgentBillingInTransaction(
     )
     .for("update");
   if (!window) return null;
-  if (forceLifecycleSettlement || window.period_start.getTime() !== periodStart.getTime()) {
+  if (requiresLifecycleReconciliation || window.period_start.getTime() !== periodStart.getTime()) {
     throw new ElizaError("Dedicated funding requires lifecycle reconciliation before billing", {
       code: "AGENT_COMPUTE_BILLING_RECONCILIATION_REQUIRED",
       severity: "ephemeral",
@@ -53,7 +57,14 @@ export async function settleFundedAgentBillingInTransaction(
     });
   } catch (error) {
     // error-policy:J3 Renewal's savepoint preserves the old hold; the canonical biller queues the insufficient-funds stop.
-    if (error instanceof ElizaError && error.code === SUBSCRIPTION_FUNDING_INSUFFICIENT) {
+    if (
+      error instanceof ElizaError &&
+      [
+        SUBSCRIPTION_FUNDING_INSUFFICIENT,
+        AGENT_COMPUTE_FUNDING_EXPIRED,
+        AGENT_COMPUTE_FUNDING_UNCONFIRMED,
+      ].includes(error.code)
+    ) {
       return { status: "insufficient_credits" as const };
     }
     throw error;

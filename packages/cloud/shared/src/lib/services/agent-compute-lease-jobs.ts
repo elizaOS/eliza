@@ -86,7 +86,7 @@ export async function executeAgentComputeLeaseJob(
   // Keep SSH and the embedded host program outside the Worker billing import path.
   const { dockerNodesRepository } = await import("../../db/repositories/docker-nodes");
   const { DockerSSHClient } = await import("./docker-ssh");
-  const { installDockerComputeGuard, grantDockerComputeLease } = await import(
+  const { installDockerComputeGuard, grantDockerComputeLease, dockerComputeRootSSH } = await import(
     "./docker-compute-lease"
   );
   const node = await dockerNodesRepository.findByNodeIdOnPrimary(window.provider_node_id);
@@ -107,15 +107,16 @@ export async function executeAgentComputeLeaseJob(
     nodeId: window.provider_node_id,
     containerId: window.provider_container_id,
   };
+  const rootSSH = dockerComputeRootSSH(ssh, node.ssh_user);
   try {
     await assertExecutionLease();
     await ssh.connect();
-    await installDockerComputeGuard(ssh);
+    await installDockerComputeGuard(rootSSH);
     await assertExecutionLease();
     const authorization = await dbWrite.transaction((tx) =>
       agentComputeFundingService.authorizeHostInTransaction(tx, identity),
     );
-    const receipt: unknown = JSON.parse(await grantDockerComputeLease(ssh, authorization));
+    const receipt: unknown = JSON.parse(await grantDockerComputeLease(rootSSH, authorization));
     const parsed = z
       .object({
         authorization: z.object({

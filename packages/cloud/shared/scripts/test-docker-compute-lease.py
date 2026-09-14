@@ -35,6 +35,7 @@ def main():
     root = Path(tempfile.mkdtemp(prefix="eliza-compute-lease-test-"))
     (root / "grants").mkdir(mode=0o700)
     (root / "receipts").mkdir(mode=0o700)
+    (root / "revocations").mkdir(mode=0o700)
     log = (root / "daemon.log").open("w")
     daemon = subprocess.Popen([sys.executable, str(program), str(root), "daemon"], stdout=log, stderr=log)
     names = []
@@ -149,6 +150,32 @@ def main():
         replacement.write_text(json.dumps(lease))
         os.replace(replacement, path)
         wait_stopped(container_id, 15)
+        # Stop a valid paid runtime while its committed successor has not yet
+        # reached the host. Neither the old grant nor the delayed successor may
+        # start it again after the unused reservation is eligible for refund.
+        accepted("start", dict(containerId=other_id, fundingId=skewed["fundingId"]))
+        checked("docker", "exec", other_id, "/bin/sh", "-c", "printf '%s' '" + marker + "' > /tmp/retained-after-refund")
+        now = time.time_ns() // 1000000
+        pending = {**skewed, "fundingId": str(uuid.uuid4()), "previousFundingId": skewed["fundingId"],
+            "issuedAtMs": now, "paidFromMs": now, "paidUntilMs": now + 7200000}
+        rejected("revoke", {**pending, "previousFundingId": str(uuid.uuid4())}, "revocation_funding_superseded")
+        stopped = accepted("revoke", pending)
+        assert stopped["expired"] and stopped["stoppedAtMs"] is not None and not running(other_id)
+        assert accepted("revoke", pending) == stopped
+        now = time.time_ns() // 1000000
+        never_delivered = {**pending, "fundingId": str(uuid.uuid4()), "previousFundingId": pending["fundingId"],
+            "issuedAtMs": now, "paidFromMs": now, "paidUntilMs": now + 7200000}
+        no_new_usage = accepted("revoke", never_delivered)
+        assert no_new_usage["stoppedAtMs"] == stopped["stoppedAtMs"]
+        assert (root / "receipts" / (never_delivered["fundingId"] + ".json")).exists()
+        rejected("grant", {**pending, "issuedAtMs": time.time_ns() // 1000000}, "funding_revoked")
+        rejected("grant", {**skewed, "issuedAtMs": time.time_ns() // 1000000}, "funding_revoked")
+        rejected("grant", never_delivered, "funding_revoked")
+        rejected("start", dict(containerId=other_id, fundingId=never_delivered["fundingId"]), "funding_expired")
+        checked("docker", "start", other_id)
+        assert checked("docker", "exec", other_id, "cat", "/tmp/retained-after-refund") == marker
+        wait_stopped(other_id, 15)
+        assertions.append("revocation_stopped_runtime_and_fenced_delayed_renewal")
         daemon.terminate()
         daemon.wait(timeout=20)
         time.sleep(3.1)

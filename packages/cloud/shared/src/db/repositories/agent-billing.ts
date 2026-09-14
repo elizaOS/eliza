@@ -343,8 +343,15 @@ export class AgentBillingRepository {
     sandboxId: string,
     organizationId: string,
     now: Date,
+    purpose: "lifecycle_transition" | "billing_recovery" = "lifecycle_transition",
   ): Promise<AgentHourlyBillingOutcome> {
-    return this.settleAccruedBillingBeforeLifecycleWithExecutor(tx, sandboxId, organizationId, now);
+    return this.settleAccruedBillingBeforeLifecycleWithExecutor(
+      tx,
+      sandboxId,
+      organizationId,
+      now,
+      purpose,
+    );
   }
 
   private async settleAccruedBillingBeforeLifecycleWithExecutor(
@@ -352,6 +359,7 @@ export class AgentBillingRepository {
     sandboxId: string,
     organizationId: string,
     now: Date,
+    purpose: "lifecycle_transition" | "billing_recovery" = "lifecycle_transition",
   ): Promise<AgentHourlyBillingOutcome> {
     const [sandbox] = await executor
       .select({
@@ -379,7 +387,7 @@ export class AgentBillingRepository {
         lowCreditWarningAmount: 0,
         now,
       },
-      { forceLifecycleSettlement: true },
+      { forceLifecycleSettlement: true, lifecyclePurpose: purpose },
       executor === dbWrite ? undefined : (executor as DbTransaction),
     );
   }
@@ -388,6 +396,7 @@ export class AgentBillingRepository {
     input: AgentHourlyBillingInput,
     options: {
       forceLifecycleSettlement?: boolean;
+      lifecyclePurpose?: "lifecycle_transition" | "billing_recovery";
       runAuthority?: AgentBillingRunLeaseAuthority;
     } = {},
     existingTx?: DbTransaction,
@@ -483,7 +492,8 @@ export class AgentBillingRepository {
         settled,
         periodStart,
         claimedSandbox.lifecycle_revision,
-        options.forceLifecycleSettlement ?? false,
+        options.forceLifecycleSettlement === true &&
+          options.lifecyclePurpose !== "billing_recovery",
       );
       if (funded) {
         if (funded.status === "billed" && options.runAuthority) {
