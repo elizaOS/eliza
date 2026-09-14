@@ -56,7 +56,12 @@ describe("internal applied effect followed by evaluator reply failure", () => {
 			});
 			const useModel = vi
 				.fn<PlannerRuntime["useModel"]>()
-				.mockResolvedValue(finish)
+				.mockImplementation(async () => {
+					if (useModel.mock.calls.length > 20) {
+						throw new Error(`Unexpected planner repetition: ${variant}`);
+					}
+					return finish;
+				})
 				.mockResolvedValueOnce({
 					text: "",
 					toolCalls: [
@@ -100,17 +105,38 @@ describe("internal applied effect followed by evaluator reply failure", () => {
 						},
 					],
 				})
-				.mockResolvedValueOnce(finish)
-				.mockResolvedValueOnce({
-					text: "",
-					toolCalls: [
-						{
-							id: "release-1",
-							name: "REPLY",
-							arguments: { eliza_turn_scope: "final" },
-						},
-					],
-				});
+				.mockResolvedValueOnce(
+					variant === "unscoped"
+						? {
+								text: "",
+								toolCalls: [
+									{
+										id: "corrected-reply",
+										name: "REPLY",
+										arguments: {
+											eliza_turn_scope: "final",
+											text: reply,
+											effectReceiptIds: [receipt.receiptId],
+										},
+									},
+								],
+							}
+						: finish,
+				)
+				.mockResolvedValueOnce(
+					variant === "unscoped"
+						? finish
+						: {
+								text: "",
+								toolCalls: [
+									{
+										id: "release-1",
+										name: "REPLY",
+										arguments: { eliza_turn_scope: "final" },
+									},
+								],
+							},
+				);
 			const executeToolCall = vi.fn(async () => {
 				expect(events.delete("event-1")).toBe(true);
 				return actionResultToPlannerToolResult({
@@ -170,10 +196,9 @@ describe("internal applied effect followed by evaluator reply failure", () => {
 				ModelType.ACTION_PLANNER,
 				ModelType.RESPONSE_HANDLER,
 				ModelType.ACTION_PLANNER,
+				...(variant === "unscoped" ? [ModelType.ACTION_PLANNER] : []),
 				...(variant === "final" ? [] : [ModelType.RESPONSE_HANDLER]),
-				...(["pending", "unscoped"].includes(variant)
-					? [ModelType.ACTION_PLANNER]
-					: []),
+				...(variant === "pending" ? [ModelType.ACTION_PLANNER] : []),
 			]);
 			expect(result.evaluator?.effectReceiptIds).toEqual([receipt.receiptId]);
 			if (variant === "final")

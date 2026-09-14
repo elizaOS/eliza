@@ -151,7 +151,7 @@ describe("complete planner dispatch above the estimated window", () => {
 					{
 						id: "calendar-1",
 						name: "CALENDAR_DELETE",
-						args: { title: "Gym session" },
+						args: { title: "Gym session", eliza_turn_scope: "final" },
 					},
 				],
 			},
