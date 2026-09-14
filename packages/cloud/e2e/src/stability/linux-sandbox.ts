@@ -13,7 +13,9 @@ import {
   mkdtempSync,
   openSync,
   readFileSync,
+  realpathSync,
   rmSync,
+  statSync,
 } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -27,6 +29,34 @@ export const NATIVE_STABILITY_TIMEOUT_MS = 600_000;
 const NATIVE_CAPABILITY_STOP_GRACE_MS = NATIVE_STABILITY_TIMEOUT_MS + 5_000;
 const NATIVE_CAPABILITY_PARENT_TIMEOUT_MS =
   NATIVE_STABILITY_TIMEOUT_MS + NATIVE_CAPABILITY_STOP_GRACE_MS + 10_000;
+
+/** Fresh sandbox identities require an explicitly readable source workspace. */
+export function assertSandboxReadableSource(repoRoot: string): void {
+  try {
+    const source = realpathSync(repoRoot);
+    let current = source;
+    while (true) {
+      const info = statSync(current);
+      const required = current === source ? 0o005 : 0o001;
+      if (!info.isDirectory() || (info.mode & required) !== required) {
+        throw new Error("Source directory or ancestor is private");
+      }
+      const parent = path.dirname(current);
+      if (parent === current) break;
+      current = parent;
+    }
+  } catch (cause) {
+    // error-policy:J2 Reject inaccessible source before privileged allocation.
+    throw new ElizaError(
+      "Linux containment requires a sandbox-readable source workspace outside private directories; stage the checkout without exposing home credentials",
+      {
+        code: "STABILITY_SANDBOX_SOURCE_UNAVAILABLE",
+        cause,
+        context: { repoRoot },
+      },
+    );
+  }
+}
 
 const admittedSourceNames = new Set([
   "ANTHROPIC_BASE_URL",
@@ -99,6 +129,7 @@ export function assertLinuxSandboxCapabilities(
   installedLauncher?: string,
 ): void {
   if (!linuxSandboxEnabled(mode)) return;
+  assertSandboxReadableSource(repoRoot);
   const captureRoot = mkdtempSync(
     path.join(os.tmpdir(), "eliza-sandbox-capability-"),
   );
@@ -289,6 +320,7 @@ export function sandboxCommand(options: {
   args: string[];
 }): { command: string; args: string[] } {
   if (!options.enabled) return { command: options.runtime, args: options.args };
+  assertSandboxReadableSource(options.repoRoot);
   if (!Number.isSafeInteger(options.callerUid) || options.callerUid <= 0) {
     throw new Error("sandbox caller UID must be a positive safe integer");
   }

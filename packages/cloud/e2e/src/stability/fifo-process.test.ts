@@ -218,10 +218,16 @@ threads=[threading.Thread(target=write,args=(1,b'O')),threading.Thread(target=wr
       const exited = new Promise<void>((resolve) =>
         child.once("exit", () => resolve()),
       );
-      const pid = child.pid!;
+      assert.equal(typeof child.pid, "number");
+      const pid = child.pid;
+      if (pid === undefined)
+        throw new Error("Owned child did not receive a PID");
       try {
+        const stdout = child.stdout;
+        if (!stdout)
+          throw new Error("Owned child omitted its readiness stream");
         await new Promise<void>((resolve, reject) => {
-          child.stdout!.once("data", () => resolve());
+          stdout.once("data", () => resolve());
           child.once("error", reject);
         });
         let killed = false;
@@ -358,8 +364,7 @@ else:
         import.meta.dirname,
         "../../scripts/stability-sandbox-exec.py",
       );
-      const result = await runFifoProcess(
-        options(`import os,sys,tempfile,socket,resource
+      const barrierOptions = options(`import os,sys,tempfile,socket,resource
 with tempfile.TemporaryDirectory(prefix='owned-fifo-policy-') as root:
  policy=root+'/policy'
  open(policy,'wb').write(b'owned-policy')
@@ -374,10 +379,16 @@ with tempfile.TemporaryDirectory(prefix='owned-fifo-policy-') as root:
  if pid==0:
   os.execv('/usr/bin/python3',['/usr/bin/python3','-I','-S',${JSON.stringify(helper)},policy,'/usr/bin/python3','-I','-S','-c',"import os,stat,errno; assert all(stat.S_ISFIFO(os.fstat(fd).st_mode) for fd in (1,2)); assert os.fstat(3).st_size>0;\\nfor fd in (100,4096):\\n try: os.fstat(fd); raise AssertionError('inherited descriptor')\\n except OSError as e: assert e.errno==errno.EBADF\\nprint('barrier-accepted')"])
  status=os.waitpid(pid,0)[1]
- assert os.waitstatus_to_exitcode(status)==0`),
-      );
+ assert os.waitstatus_to_exitcode(status)==0`);
+      const result = await runFifoProcess({
+        ...barrierOptions,
+        command: "sudo",
+        args: ["-n", barrierOptions.command, ...barrierOptions.args],
+        signalGroup: createScenarioProcessGroup(true).signal,
+        terminateGroup: createScenarioProcessGroup(true).terminate,
+      });
+      assert.equal(result.code, 0, result.stderr);
       assert.equal(result.stdout, "barrier-accepted\n");
-      assert.equal(result.code, 0);
     },
   ],
 ] as const) {
