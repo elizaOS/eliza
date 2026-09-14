@@ -134,9 +134,10 @@ The runner pattern-matches **only** on the structural fields above
 `subject`, `priority`, `respectsGlobalPause`). It never inspects
 `promptInstructions` content. This is non-negotiable.
 
-The frozen contract is defined in `src/lifeops/scheduled-task/types.ts`
-(the runner imports `ScheduledTask` from there). `src/lifeops/wave1-types.ts`
-is a slightly diverged copy consumed only by the `first-run` module.
+The canonical task contract is exported by `@elizaos/plugin-scheduling`.
+Both the runner and the `first-run` module consume its `ScheduledTask` and
+`ScheduledTaskInput` types; personal-assistant must not define a parallel task
+shape.
 
 ### No-reply semantics
 
@@ -231,8 +232,15 @@ for every page with native text plus rendered-page vision transcription for
 images or text-empty pages. One failed page fails ingestion; partial content is
 never published as a complete owner-private `DocumentService` record. LifeOps
 persists the media SHA-256, handle, document id, byte size, MIME type, filename,
-parser-derived page count, complete extracted text, and version chain; it does
+parser-derived page count, complete extracted text and page map, and version chain; it does
 not create another permanent file store.
+
+Each immutable agreement owns a distinct document ingestion identity. If artifact
+persistence rejects the upload, ingestion removes that attempt's document,
+derived fragments, and private PDF through the canonical services. A failed
+commit observation preserves the sources for reconciliation; an incomplete
+cleanup returns an explicit storage error and reports the affected artifact
+and source handles to runtime diagnostics.
 
 Owner- or agent-extracted obligations begin as `proposed` and must carry an
 in-range page citation plus the cited source text. Only the owner can make the terminal
@@ -246,11 +254,43 @@ Guest views expose approved obligations only. Revoking the relationship-backed
 household grant immediately invalidates every agreement binding that relies on
 it.
 
+A knowledge-only household grant may explicitly supply `subjectEntityIds: []`.
+Omitting the field remains an invalid action request. The canonical scope
+expansion includes basic `household.visibility` with `knowledge.read`; it adds
+no calendar authority. Non-owner calendar grants still require at least one
+subject from the principal's household relationship.
+
+A paired guest reads `GET /api/lifeops/agreements/:id/shared` using its machine
+session. The owner must bind that machine identity to a person through
+`POST /api/lifeops/entities/:id/auth-bindings` and explicitly issue the household
+and agreement grants. The shared route derives the person from the verified
+session binding; caller-supplied principal IDs and role headers cannot select
+another reader. It returns approved clauses and limited metadata with no-store
+caching. Original PDF downloads, exports, review history, and mutations remain
+owner-only. Use the normal owner read route for owner requests.
+
 The owner surface is available through `OWNER_AGREEMENT_KNOWLEDGE` and the
 authenticated `/api/lifeops/agreements/*` routes. Grant previews enumerate the
 exact read effects and exclusions before issuance. Active agent/chat pins feed
 only approved, page-cited obligations into owner planner context; uploading a
 PDF remains on the document/API surface so chat actions never invent bytes.
+
+Owners can download the original PDF or export one agreement version from the
+Agreement view. `POST /api/lifeops/agreements/:id/export` returns a ZIP containing
+`original.pdf`, `manifest.json`, `SHA256SUMS`, and the exact saved
+`extraction.json` when available. Verify the files independently with
+`sha256sum -c SHA256SUMS`; the extraction hash also matches its ingestion audit
+event. The versioned manifest includes all obligation
+states and citations, current and inactive pin/grant records, linked household
+grant expiry/revocation records, and the canonical agreement audit history from
+one database snapshot. Original byte length and SHA-256 must match before export.
+
+Agreement ingestion, review, pin, and grant transitions commit atomically with
+`life_audit_events`. Export preparation records the manifest and archive hashes;
+it does not assert that the browser received or saved the download. Legacy
+versions explicitly identify missing extraction page maps and partial audit
+history. Export never reconstructs unrecorded past activity. This agreement
+archive does not replace workspace-wide export or deletion workflows.
 
 ## Default packs
 
@@ -404,7 +444,57 @@ internals; it consumes the plugin's public exports only. See
 
 ## Where to look next
 
-- Frozen interface types: `src/lifeops/scheduled-task/types.ts`.
+- Frozen interface types: `plugins/plugin-scheduling/src/scheduled-task/types.ts`, exported by `@elizaos/plugin-scheduling`.
 - Prompt-content lint rules: `scripts/lint-default-packs.mjs`.
 - Health domain: `plugins/plugin-health/README.md`.
 - REST routes: `src/routes/`.
+
+### Family workspace export
+
+The owner-only `POST /api/lifeops/family-workflows/export` downloads a ZIP with
+all family agreement versions, retained school PDFs, monthly packet versions
+and drafts, their approval records, and stored provider/school mutation receipts.
+Each member has a SHA-256 checksum. Agreement archives preserve their existing
+source/extraction and review/access provenance; packet and workflow records use
+one database statement snapshot. The manifest records this component-snapshot
+boundary and explicitly identifies uninitialized historical record stores.
+Missing or changed retained PDF bytes fail export rather than producing a
+healthy-looking partial archive. Connection credentials and executor lease
+tokens are excluded. Export records preparation, not receipt by the client,
+and does not revoke access or delete data.
+
+
+Family lifecycle admission wraps the canonical scheduling SQL stores. It resolves
+monthly tasks, grant warnings, and family approval reminders through typed task
+metadata and persisted domain references. Canonical approval payloads retain that
+classification before a household approval link is acknowledged. The deletion
+snapshot uses the same predicates and includes those tasks and their history.
+Task mutations inspect both stored and proposed metadata inside the transaction;
+removing a family marker cannot evade an active deletion fence. Unrelated tasks
+and approvals remain usable, and history maintenance preserves fenced family
+records. Scheduled family execution holds a durable operation through final
+receipt persistence. A rejected execution retains its claim for reconciliation;
+typed domain errors remain unchanged for callers and diagnostics record the
+operation identity. Direct packet creation and draft edits also hold active-state
+admission through their database commit. Approval requests retain a durable claim
+until both canonical persistence and reminder surfacing finish; an uncertain
+completion leaves its packet/version identity available for reconciliation.
+School configuration writes participate in the same active-state transaction.
+Manual and scheduled school ingestion and calendar application retain a durable
+source/run claim through extraction, delivery, and final receipt persistence.
+The run records the canonical PDF identity before storing bytes. An acknowledged
+failure with no uncertain external effect releases the claim; lost storage or
+provider acknowledgements preserve it for reconciliation. Expired execution
+leases do not settle these claims.
+Agreement downloads, owner/guest projections, approved-obligation reads, pinned
+context, and exports reject a revoking or deleted workspace. Asynchronous reads
+recheck admission before returning private data, including PDF reads that began
+before revocation. Export audit writes also require active admission. The planner
+reports revoked agreement context as explicitly unavailable while preserving
+unrelated work; it does not substitute an empty, apparently healthy pin set.
+Owners review and confirm deletion in Family Operations through the private
+`/api/lifeops/family-workflows/deletion` routes. Confirmation binds the complete
+reviewed snapshot to an explicit backup-retention choice. A durable journal
+allows interrupted private-file cleanup to resume; backup restore generations
+are retired before primary removal. The job remains `backup_pending` until
+eligible archive removal is separately implemented and verified.

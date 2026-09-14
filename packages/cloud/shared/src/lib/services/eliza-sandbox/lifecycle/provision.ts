@@ -305,12 +305,15 @@ export class SandboxProvision {
     const isWarmPoolProvision =
       rec.organization_id === WARM_POOL_ORG_ID && rec.pool_status === "unclaimed";
     const containerLaunch = resolveSandboxContainerLaunchConfig(rec.agent_config);
+    const provisioningRetryHandle =
+      previousStatus === "provisioning" ? this.buildProvisioningRetryHandle(rec) : null;
 
     // Every claimed row carries the exact managed key owned by its durable
     // handoff fence. Generic environment preparation revokes that key before
-    // writing the replacement, so it is reserved for cold-created rows; warm
-    // claims reuse their persisted environment through restart and attestation.
-    if (!rec.claimed_at) {
+    // writing the replacement. A retained provisioning container also needs its
+    // original environment: re-probing it cannot install a replacement key.
+    // Only a new cold container may rotate credentials here.
+    if (!rec.claimed_at && !provisioningRetryHandle) {
       const managedEnvironment = await prepareManagedElizaEnvironment({
         existingEnv: (rec.environment_vars as Record<string, string>) ?? {},
         organizationId: rec.organization_id,
@@ -386,10 +389,7 @@ export class SandboxProvision {
       let healthContext: SandboxHealthContext = { kind: "candidate" };
 
       try {
-        const retryHandle =
-          attempt === 1 && previousStatus === "provisioning"
-            ? this.buildProvisioningRetryHandle(rec)
-            : null;
+        const retryHandle = attempt === 1 ? provisioningRetryHandle : null;
         if (retryHandle) {
           handle = retryHandle;
           healthContext = { kind: "canonical" };

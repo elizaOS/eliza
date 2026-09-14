@@ -556,18 +556,71 @@ describe("coding-account-bridge", () => {
     expect(cfg).toContain('cli_auth_credentials_store = "file"');
   });
 
-  it("fails closed for direct API accounts and unknown adapters", async () => {
-    writeAccount("openai-api", "direct", "openai-direct-key");
-    writeAccount("cerebras-api", "cerebras", "cerebras-direct-key");
+  it("routes supported direct API accounts only through Pi", async () => {
+    writeAccount("deepseek-api", "deepseek", "deepseek-direct-key");
     getDefaultAccountPool();
     const bridge = getCodingAgentSelectorBridge();
 
-    expect(await bridge?.select("codex")).toBeNull();
     expect(await bridge?.select("unknown-adapter")).toBeNull();
+    expect(await bridge?.select("pi-agent")).toMatchObject({
+      providerId: "deepseek-api",
+      accountId: "deepseek",
+      source: "api-key",
+      envPatch: { DEEPSEEK_API_KEY: "deepseek-direct-key" },
+    });
     expect(Object.keys(bridge?.describe() ?? {}).sort()).toEqual([
       "claude",
       "codex",
+      "pi-agent",
     ]);
+  });
+
+  it.each([
+    ["zai-coding", "ZAI_API_KEY"],
+    ["kimi-coding", "KIMI_API_KEY"],
+  ] as const)(
+    "keeps the %s coding-plan key child-only and typed",
+    async (providerId, envKey) => {
+      const before = process.env[envKey];
+      writeAccount(providerId, "plan", `${providerId}-plan-key`);
+      const selection = await (
+        getDefaultAccountPool() && getCodingAgentSelectorBridge()
+      )?.select("pi-agent");
+      expect(selection).toMatchObject({
+        providerId,
+        source: "coding-plan-key",
+        envPatch: { [envKey]: `${providerId}-plan-key` },
+      });
+      expect(process.env[envKey]).toBe(before);
+    },
+  );
+
+  it("pins provider-scoped identities when two Pi accounts share an id", async () => {
+    writeAccount("zai-coding", "shared", "zai-key");
+    writeAccount("kimi-coding", "shared", "kimi-key");
+    const pool = getDefaultAccountPool();
+    const zai = pool
+      .list("zai-coding")
+      .find((account) => account.id === "shared");
+    if (!zai) throw new Error("missing fixture account");
+    await pool.upsert({ ...zai, enabled: false });
+    const bridge = getCodingAgentSelectorBridge();
+    const initial = await bridge?.select("pi-agent");
+    expect(initial?.providerId).toBe("kimi-coding");
+    await pool.upsert({ ...zai, enabled: true });
+    const resumed = await bridge?.select("pi-agent", {
+      providerId: initial?.providerId,
+      accountIds: ["shared"],
+    });
+    expect(resumed).toMatchObject({
+      providerId: "kimi-coding",
+      accountId: "shared",
+      envPatch: { KIMI_API_KEY: "kimi-key" },
+    });
+    const alternative = await bridge?.select("pi-agent", {
+      excludeAccounts: [{ providerId: "zai-coding", accountId: "shared" }],
+    });
+    expect(alternative?.providerId).toBe("kimi-coding");
   });
 
   it("attributes recorded usage to the serving account (per-account delta)", async () => {

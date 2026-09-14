@@ -13,6 +13,7 @@ import {
 import {
   ELECTROBUN_BOOT_CONFIG_STORE_KEY,
   type ElectrobunBootConfig,
+  updateElectrobunBootConfig,
 } from "./electrobun-boot-config.ts";
 
 type RpcMessageListener = (payload: unknown) => void;
@@ -332,13 +333,22 @@ describe("electrobun-preload", () => {
   });
 
   it("apiBaseUpdate omits apiToken when the token is absent or empty", () => {
-    host.__ELIZAOS_APP_BOOT_CONFIG__ = { apiBase: "http://old" };
+    updateElectrobunBootConfig(host, {
+      apiBase: "http://old",
+      apiToken: "old-local",
+    });
+    host.__ELIZA_DESKTOP_LOCAL_API_BASE__ = "http://old";
     dispatchIncoming({
       type: "message",
       id: "apiBaseUpdate",
-      payload: { base: "http://127.0.0.1:3", token: "" },
+      payload: {
+        base: "http://127.0.0.1:3",
+        token: "",
+        localApiBase: "http://127.0.0.1:3",
+      },
     });
     expect(host.__ELIZAOS_APP_BOOT_CONFIG__).toEqual({
+      branding: { name: "Eliza" },
       apiBase: "http://127.0.0.1:3",
     });
     expect(host.__ELIZAOS_APP_BOOT_CONFIG__).not.toHaveProperty("apiToken");

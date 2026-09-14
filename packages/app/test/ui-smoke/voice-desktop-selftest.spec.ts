@@ -1,20 +1,12 @@
 /**
- * DESKTOP voice self-test (Electrobun renderer path), headless.
- *
- * The desktop voice surface is the SAME renderer bundle as web — the Electrobun
- * pill loads it with a ?shellMode= param over a Chromium-engine webview. We
- * inject the Electrobun runtime marker (window.__electrobunWindowId) so the
- * self-test screen detects platform=desktop and routes TTS through the desktop
- * local-inference TTS route, then drive the real round-trip harness. This proves
- * the desktop CONFIG path of the voice self-test green in CI without a packaged
- * Electrobun build. (The native Electrobun shell integration — talkmodeSpeak
- * main-process bridge, views:// mic grant — is exercised by the packaged
- * electrobun-packaged lane.)
- *
- *   bun run --cwd packages/app test:e2e test/ui-smoke/voice-desktop-selftest.spec.ts
+ * Exercises the desktop voice self-test renderer with a synthetic native bridge
+ * and controlled ASR, conversation, and TTS responses. The browser drives the
+ * real self-test UI and verifies desktop TTS routing; native shell and physical
+ * audio-device behavior belong to the packaged Electrobun lane.
  */
 import { expect, type Page, test } from "@playwright/test";
 import { installDefaultAppRoutes, seedAppStorage } from "./helpers";
+import { installDesktopBridgeFixture } from "./helpers/desktop-bridge";
 
 const EXPECTED_PHRASE = "what time is it";
 
@@ -97,12 +89,7 @@ async function installVoiceBackendMocks(page: Page): Promise<void> {
 }
 
 test.beforeEach(async ({ page }) => {
-  // Make the renderer detect the Electrobun (desktop) runtime BEFORE boot.
-  await page.addInitScript(() => {
-    (
-      window as unknown as { __electrobunWindowId?: number }
-    ).__electrobunWindowId = 1;
-  });
+  await installDesktopBridgeFixture(page);
   await seedAppStorage(page);
   await installDefaultAppRoutes(page);
   await installVoiceBackendMocks(page);

@@ -40,7 +40,7 @@ jobs:
       queue: max
     env:
       TARGET_ENVIRONMENT: ${{ inputs.environment }}
-      DEPLOY_BRANCH: ${{ inputs.environment == 'production' && 'main' || 'develop' }}
+      DEPLOY_BRANCH: ${{ inputs.environment == 'production' && 'main' || 'staging' }}
       EXPECTED_SERVICE_NAME: ${{ inputs.environment == 'production' && 'gateway-webhook' || 'gateway-webhook-stg' }}
       EXPECTED_CLOUD_URL: ${{ inputs.environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
       EXPECTED_ROUTER_ORIGIN: ${{ inputs.environment == 'production' && 'eliza-production-1.eliza.app' || 'eliza-staging-1.eliza.app' }}

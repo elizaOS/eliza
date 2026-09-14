@@ -324,20 +324,10 @@ export class SandboxPower {
   }
 
   /**
-   * Backup gate run before `executeSuspend` stops a data-bearing container
-   * (#20726 item 6: every destructive lifecycle / billing freeze proves a
-   * restorable backup first). The provider stop drops the container from its
-   * node, so container-local state that never reached a durable backup would
-   * be lost silently. Mirrors the sleep gate exactly: a live capture when the
-   * bridge is reachable, a transient capture signal deferring to the job
-   * retry loop, and any other capture failure — including an image with no
-   * snapshot endpoint — falling through to a proven-restorable existing
-   * backup via the wake integrity gate. Suspend keeps state for a later
-   * resume, so unlike delete there is no state-loss waiver: an uncapturable
-   * container with no durable backup refuses rather than discarding the only
-   * copy. A refusal leaves the container running; a
-   * billing-request suspend surfaces through the stop-intent retry /
-   * terminal-attention machinery instead of destroying state.
+   * Capture current state before a data-bearing container is removed. An older
+   * verified backup proves restorability, not preservation of later writes.
+   * Failed capture leaves compute running, including for billing suspension;
+   * the existing stop-intent retry/attention path owns that failure.
    */
   async prepareSuspendBackupGate(rec: AgentSandbox): Promise<
     | { outcome: "skip" }
@@ -368,52 +358,23 @@ export class SandboxPower {
           pendingSnapshot: { stateData, sizeBytes },
         };
       } catch (error) {
-        // error-policy:J1 the suspend command boundary translates capture
-        // failures into an explicit disposition: a transient signal defers to
-        // the job retry loop, and anything else — including an image with no
-        // snapshot endpoint — falls through to the proven-existing-backup
-        // gate below (retrying an unsupported capture can never succeed, and
-        // an unbacked-up container must not be dropped).
+        // error-policy:J1 the lifecycle boundary refuses destructive stop when
+        // current state cannot be captured; a prior backup cannot cover new writes.
         const message = error instanceof Error ? error.message : String(error);
-        if (message === SNAPSHOT_CAPTURE_TRANSIENT) {
-          logger.warn("[agent-sandbox] Suspend deferred: capture transiently unavailable", {
-            agentId: rec.id,
-          });
-          return {
-            outcome: "refuse",
-            error: `Refusing to stop without a current backup: ${message}`,
-          };
-        }
-        logger.warn(
-          "[agent-sandbox] Suspend snapshot fetch failed; checking latest durable backup",
-          { agentId: rec.id, error: message },
-        );
+        logger.warn("[agent-sandbox] Stop refused: current snapshot capture failed", {
+          agentId: rec.id,
+          error: message,
+        });
+        return {
+          outcome: "refuse",
+          error: `Refusing to stop without a current backup: ${message}`,
+        };
       }
-    }
-    const gate = await runWakeRestoreIntegrityGate({
-      sandboxRecordId: rec.id,
-      agentName: rec.agent_name,
-    });
-    if (!gate.ok) {
-      logger.error("[agent-sandbox] Suspend refused: no restorable backup proven", {
-        agentId: rec.id,
-        failure: gate.failure.kind,
-      });
-      return {
-        outcome: "refuse",
-        error: `Refusing to stop on an unproven backup; agent was left running. ${formatWakeRestoreIntegrityError(gate.failure)}`,
-      };
-    }
-    if (gate.backupId) {
-      return { outcome: "proceed", backupId: gate.backupId, capturedFresh: false };
-    }
-    if (gate.verification === "disabled") {
-      const existing = await agentSandboxesRepository.getLatestBackup(rec.id);
-      if (existing) return { outcome: "proceed", backupId: existing.id, capturedFresh: false };
     }
     return {
       outcome: "refuse",
-      error: "Unable to create or find a durable backup before stopping; agent was left running.",
+      error:
+        "Refusing to stop without a current backup: the agent has no reachable bridge to capture from",
     };
   }
 
@@ -948,9 +909,8 @@ export class SandboxPower {
    * Both suspend and sleep drop the container + free the node slot; unlike
    * `agent_suspend` (which keeps the row's `sandbox_id` + managed DB for an
    * in-place resume), sleep frees the compute identity entirely:
-   *   1. Capture a durable backup. A live `/api/snapshot` pull when the agent
-   *      is reachable, otherwise the latest existing backup. If neither exists,
-   *      sleep fails and leaves compute running so missing state is observable.
+   *   1. Capture a current durable backup before stopping live compute. Already
+   *      stopped agents may reuse their proven restorable backup.
    *   2. Stop + drop the container (the provider `stop` removes it from the
    *      node).
    *   3. Clear the compute identity (`sandbox_id`, `node_id`, `container_name`,
@@ -1009,23 +969,16 @@ export class SandboxPower {
     // 1. Durable backup before compute is freed.
     let backupId: string | undefined;
     let pendingSleepSnapshot: { stateData: AgentBackupStateData; sizeBytes: number } | undefined;
-    if (rec.status === "running" && rec.bridge_url) {
-      try {
-        const { stateData, sizeBytes } = await this.host.fetchSnapshotState(rec);
-        pendingSleepSnapshot = { stateData, sizeBytes };
-      } catch (error) {
-        logger.warn("[agent-sandbox] Sleep snapshot fetch failed; checking latest durable backup", {
-          agentId,
-          error: error instanceof Error ? error.message : String(error),
-        });
+    if (rec.status !== "stopped" && rec.sandbox_id) {
+      const capture = await this.prepareSuspendBackupGate(rec);
+      if (capture.outcome === "refuse") {
+        return { success: false, containerRemoved: false, error: capture.error };
       }
+      if (capture.outcome === "proceed") pendingSleepSnapshot = capture.pendingSnapshot;
     }
     if (!backupId && !pendingSleepSnapshot) {
-      // The fallback destroys newer compute state in favor of whatever this
-      // resolves to, so "a backup row exists" is not enough: it must be PROVEN
-      // restorable (fresh verified stamp, or a live decrypt+chain+hash
-      // verification right now) before the container is stopped. The wake gate
-      // already implements exactly that proof, alternative scan included.
+      // Already stopped compute has no new writes to capture. Its durable
+      // backup still needs the same restorability proof used by wake.
       const gate = await runWakeRestoreIntegrityGate({
         sandboxRecordId: rec.id,
         agentName: rec.agent_name,

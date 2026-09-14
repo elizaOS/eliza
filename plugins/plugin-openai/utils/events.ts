@@ -4,7 +4,7 @@
  * one payload and emits `EventType.MODEL_USED` with the complete prompt.
  */
 import type { IAgentRuntime, ModelEventPayload, ModelTypeName } from "@elizaos/core";
-import { EventType } from "@elizaos/core";
+import { EventType, normalizeProviderUsage } from "@elizaos/core";
 import type { TokenUsage } from "../types";
 import { getUsageProvider } from "./config";
 
@@ -55,45 +55,6 @@ interface OpenAIAPIUsage {
 
 type ModelUsage = TokenUsage | AISDKUsage | OpenAIAPIUsage;
 
-function normalizeUsage(usage: ModelUsage): TokenUsage {
-  if ("promptTokens" in usage) {
-    const promptTokensDetails =
-      "promptTokensDetails" in usage ? usage.promptTokensDetails : undefined;
-    const cachedPromptTokens = usage.cachedPromptTokens ?? promptTokensDetails?.cachedTokens;
-    const reasoning = usage.reasoningTokens;
-    return {
-      promptTokens: usage.promptTokens ?? 0,
-      completionTokens: usage.completionTokens ?? 0,
-      totalTokens: usage.totalTokens ?? (usage.promptTokens ?? 0) + (usage.completionTokens ?? 0),
-      cachedPromptTokens,
-      ...(typeof reasoning === "number" && Number.isFinite(reasoning) && reasoning >= 0
-        ? { reasoningTokens: reasoning }
-        : {}),
-    };
-  }
-  if ("inputTokens" in usage || "outputTokens" in usage) {
-    const input = (usage as AISDKUsage).inputTokens ?? 0;
-    const output = (usage as AISDKUsage).outputTokens ?? 0;
-    const total = (usage as AISDKUsage).totalTokens ?? input + output;
-    const details = (usage as AISDKUsage).outputTokenDetails;
-    const reasoning = details?.reasoningTokens ?? (usage as AISDKUsage).reasoningTokens;
-    return {
-      promptTokens: input,
-      completionTokens: output,
-      totalTokens: total,
-      cachedPromptTokens: (usage as AISDKUsage).cachedInputTokens,
-      ...(typeof reasoning === "number" && Number.isFinite(reasoning) && reasoning >= 0
-        ? { reasoningTokens: reasoning }
-        : {}),
-    };
-  }
-  return {
-    promptTokens: 0,
-    completionTokens: 0,
-    totalTokens: 0,
-  };
-}
-
 export function emitModelUsageEvent(
   runtime: IAgentRuntime,
   type: ModelTypeName,
@@ -102,7 +63,7 @@ export function emitModelUsageEvent(
   modelName: string,
   retry?: ModelRetryTelemetry
 ): void {
-  const normalized = normalizeUsage(usage);
+  const normalized = normalizeProviderUsage(usage);
   const model = modelName.trim();
   if (!model) {
     throw new Error("MODEL_USED requires the concrete provider model name");
@@ -129,11 +90,11 @@ export function emitModelUsageEvent(
       prompt: normalized.promptTokens,
       completion: normalized.completionTokens,
       total: normalized.totalTokens,
-      ...(normalized.cachedPromptTokens !== undefined
+      ...(normalized.cacheReadInputTokens !== undefined
         ? {
-            cached: normalized.cachedPromptTokens,
-            cachedInputTokens: normalized.cachedPromptTokens,
-            cacheReadInputTokens: normalized.cachedPromptTokens,
+            cached: normalized.cacheReadInputTokens,
+            cachedInputTokens: normalized.cacheReadInputTokens,
+            cacheReadInputTokens: normalized.cacheReadInputTokens,
           }
         : {}),
       ...(normalized.reasoningTokens !== undefined

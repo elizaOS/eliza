@@ -23,6 +23,7 @@ const ALLOWED_ORIGINS = [
   // Exact develop branch alias for staging QA. Do not add a broad *.pages.dev
   // wildcard here; these auth routes can return API keys after login.
   "https://develop.eliza-app.pages.dev",
+  "https://staging.eliza-app.pages.dev",
   "https://eliza.ai",
   "https://www.eliza.ai",
   // Capacitor native shells (iOS WKWebView / Android WebView). The

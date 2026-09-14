@@ -30,6 +30,7 @@ vi.mock("../../api/client", () => ({
     })),
     listPendingActions: vi.fn(async () => ({ pending: [] })),
     onWsEvent: vi.fn(),
+    onAuthorityChange: vi.fn(() => () => {}),
     // notificationProbesEnabled reads the configured base URL before every
     // hydration request; empty string = same-origin (probes enabled).
     getBaseUrl: vi.fn(() => ""),

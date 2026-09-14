@@ -5,6 +5,13 @@ const checkoutCreate = mock(async () => ({
   id: "cs_1",
   url: "https://checkout.stripe.test/session",
 }));
+const checkoutOrder = {
+  id: "order-1",
+  status: "quoted",
+  stripe_customer_id: null as string | null,
+  stripe_checkout_session_id: null as string | null,
+  updated_at: new Date("2026-08-31T00:00:00.000Z"),
+};
 
 mock.module("@/lib/auth/service-key-hono-worker", () => ({
   requireServiceKey: async () => undefined,
@@ -27,20 +34,22 @@ mock.module("@/db/helpers", () => ({
     }),
   },
   dbWrite: {},
+  writeTransaction: async (operation: (tx: unknown) => Promise<unknown>) =>
+    operation({}),
 }));
 
-const checkoutOrder = {
-  id: "order-1",
-  status: "pending",
-  stripe_customer_id: null as string | null,
-  stripe_checkout_session_id: null,
-  updated_at: new Date("2026-08-01T00:00:00.000Z"),
-};
+mock.module("@/lib/services/users", () => ({
+  usersService: { getWithOrganization: async () => null },
+}));
+
+mock.module("@/lib/services/organizations", () => ({
+  organizationsService: { update: async () => undefined },
+}));
 
 mock.module("@/lib/services/stripe-checkout-orders", () => ({
   stripeCheckoutOrdersService: {
     create: async () => ({ ...checkoutOrder }),
-    bindCustomer: async (_id: string, customerId: string) => ({
+    bindCustomer: async (_orderId: string, customerId: string) => ({
       ...checkoutOrder,
       stripe_customer_id: customerId,
     }),
@@ -51,15 +60,9 @@ mock.module("@/lib/services/stripe-checkout-orders", () => ({
 }));
 
 mock.module("@/lib/services/stripe-customer-authority", () => ({
-  stripeCustomerAuthorityService: { ensure: async () => "cus_1" },
-}));
-
-mock.module("@/lib/services/users", () => ({
-  usersService: { getWithOrganization: async () => null },
-}));
-
-mock.module("@/lib/services/organizations", () => ({
-  organizationsService: { update: async () => undefined },
+  stripeCustomerAuthorityService: {
+    ensure: async () => "cus_1",
+  },
 }));
 
 mock.module("@/lib/security/redirect-validation", () => ({

@@ -143,6 +143,15 @@ resent. Accepted submission is stored as `accepted`, never `delivered`; rejectio
 and unavailable transport also require a separate approved reconciliation decision.
 This deliberately favors avoiding duplicate messages over guaranteed delivery.
 
+The organization billing snapshot includes a `cancellationNotice` observation for
+the current canceled revision. It reports persisted email submission state and
+its last update under the same primary transaction as the subscription read.
+`accepted` is transport acceptance, while `delivery: "not_observed"` explicitly
+retains the absence of recipient evidence. Missing current intent is unavailable;
+a non-canceled subscription has no applicable cancellation notice. Historical
+revisions, message content, recipient addresses, and transport identifiers are
+not exposed in this public observation. Reading it cannot dispatch or retry mail.
+
 Migration `0382_subscription_notice_intents.sql` must precede deploying the
 updated finalizer. Intent/attempt identity and terminal outcomes are immutable;
 source erasure cascades their rows and the portable account export includes them.

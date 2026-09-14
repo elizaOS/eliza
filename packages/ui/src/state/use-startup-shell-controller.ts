@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
 import type { StartupShellView } from "../components/shell/startup-shell-types";
-import { listenForConnectRequests } from "../events";
+import { type ConnectRequestResult, listenForConnectRequests } from "../events";
 import { completeRemoteAgentFirstRun } from "../first-run/adopt-remote-first-run";
 import { ensureStoreBuildWorkspaceFolder } from "../first-run/ensure-store-build-workspace-folder";
 import { persistMobileRuntimeModeForServerTarget } from "../first-run/mobile-runtime-mode";
@@ -123,7 +123,7 @@ export function useStartupShellController(): StartupShellController {
       token?: string;
       completeFirstRun?: boolean;
       skipConfirm?: boolean;
-    }): Promise<void> => {
+    }): Promise<ConnectRequestResult> => {
       // `completeFirstRun` marks the connected remote as this device's finished
       // first-run target (device/desktop remote-connect-at-URL onboarding), so
       // it lands on home instead of re-showing onboarding on the next launch.
@@ -151,7 +151,7 @@ export function useStartupShellController(): StartupShellController {
         });
         if (!approved) {
           setActionNotice("Connection request cancelled.", "info", 4200);
-          return;
+          return { status: "cancelled" };
         }
       }
 
@@ -165,7 +165,6 @@ export function useStartupShellController(): StartupShellController {
         setState("firstRunRuntimeTarget", "remote");
         setState("firstRunRemoteApiBase", connection.apiBase);
         setState("firstRunRemoteToken", connection.token ?? "");
-        setState("firstRunRemoteConnected", true);
         setState("firstRunRemoteError", null);
         if (shouldCompleteFirstRun) {
           // Adopt the remote as this device's completed first-run target. Probes
@@ -182,16 +181,20 @@ export function useStartupShellController(): StartupShellController {
             completeFirstRun,
           );
         }
+        setState("firstRunRemoteConnected", true);
         setActionNotice("Connected to remote backend.", "success", 4200);
         retryStartup();
+        return { status: "connected" };
       } catch (err) {
-        setActionNotice(
+        // error-policy:J1 expose failed adoption to both the initiating form and shell notice.
+        const message =
           err instanceof Error
             ? err.message
-            : "Failed to connect remote backend.",
-          "error",
-          8000,
-        );
+            : "Failed to connect remote backend.";
+        setState("firstRunRemoteConnected", false);
+        setState("firstRunRemoteError", message);
+        setActionNotice(message, "error", 8000);
+        return { status: "failed", message };
       }
     };
 

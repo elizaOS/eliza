@@ -7,6 +7,7 @@
  */
 
 import type { DedicatedAdoptionConfirmationRequester } from "../../../api/client-cloud";
+import type { DedicatedActivationConfirmationRequester } from "../../../api/dedicated-activation-confirmation";
 
 /** The slice of `ElizaClient` the join flow drives. */
 export interface JoinFlowClient {
@@ -16,6 +17,7 @@ export interface JoinFlowClient {
     signal?: AbortSignal;
     onProgress?: (status: string, detail?: string) => void;
     requestDedicatedAdoptionConfirmation?: DedicatedAdoptionConfirmationRequester;
+    requestDedicatedActivationConfirmation?: DedicatedActivationConfirmationRequester;
   }): Promise<{
     personalElizaId: string;
     agentId: string;
@@ -50,6 +52,7 @@ export interface RunJoinFlowArgs {
   onProgress?: (status: string, detail?: string) => void;
   signal?: AbortSignal;
   requestDedicatedAdoptionConfirmation?: DedicatedAdoptionConfirmationRequester;
+  requestDedicatedActivationConfirmation?: DedicatedActivationConfirmationRequester;
 }
 
 export interface JoinFlowResult {
@@ -73,6 +76,7 @@ export async function runJoinFlow(
     onProgress,
     signal,
     requestDedicatedAdoptionConfirmation,
+    requestDedicatedActivationConfirmation,
   } = args;
   signal?.throwIfAborted();
   onProgress?.("connecting", "Opening your personal Eliza…");
@@ -84,6 +88,9 @@ export async function runJoinFlow(
     ...(signal ? { signal } : {}),
     ...(requestDedicatedAdoptionConfirmation
       ? { requestDedicatedAdoptionConfirmation }
+      : {}),
+    ...(requestDedicatedActivationConfirmation
+      ? { requestDedicatedActivationConfirmation }
       : {}),
   });
   signal?.throwIfAborted();

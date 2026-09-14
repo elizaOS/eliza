@@ -54,6 +54,7 @@ import {
   elizaSandboxService,
   SNAPSHOT_ENDPOINT_UNSUPPORTED,
 } from "./eliza-sandbox";
+import { SandboxReplacementCleanup } from "./eliza-sandbox/lifecycle/replacement-cleanup";
 import { JOB_TYPES } from "./provisioning-job-types";
 import { provisioningJobService, readAdminCanaryImageJobData } from "./provisioning-jobs";
 import type { SandboxCreateConfig, SandboxHandle, SandboxProvider } from "./sandbox-provider-types";
@@ -85,16 +86,6 @@ type ReplacementStageService = {
     },
     stage: "intent" | "created" | "vpn",
   ): Promise<void>;
-};
-
-type ReplacementCleanupService = {
-  retirePersistedReplacementCleanup(
-    agentId: string,
-    orgId: string,
-    expectation?: undefined,
-    onConvergedInTx?: undefined,
-    source?: "lifecycle" | "background-reconcile" | "admin-converge",
-  ): Promise<"missing" | "clean" | "deferred" | "retired">;
 };
 
 function replacementHandle(params: {
@@ -1266,30 +1257,33 @@ describe("admin agent image rollout on primary PGlite", () => {
       undefined,
     );
     const service = new ElizaSandboxService(provider as unknown as SandboxProvider);
-    const cleanupService = service as unknown as ReplacementCleanupService;
-    const retire = cleanupService.retirePersistedReplacementCleanup.bind(service);
+    const retire = SandboxReplacementCleanup.prototype.retirePersistedReplacementCleanup;
     let insertedJobId: string | null = null;
-    spyOn(cleanupService, "retirePersistedReplacementCleanup").mockImplementation(
-      async (...args) => {
-        if (!insertedJobId) {
-          const [job] = await dbWrite
-            .insert(jobs)
-            .values({
-              type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
-              status: "pending",
-              organization_id: seeded.organizationId,
-              user_id: seeded.actorUserId,
-              agent_id: agentId,
-              data: {},
-            })
-            .returning({ id: jobs.id });
-          insertedJobId = job!.id;
-        }
-        return retire(...args);
-      },
-    );
+    // Insert the competing job after real candidate selection, before the
+    // cleanup owner enters its locked lifecycle recheck.
+    spyOn(
+      SandboxReplacementCleanup.prototype,
+      "retirePersistedReplacementCleanup",
+    ).mockImplementationOnce(async function (this: SandboxReplacementCleanup, ...args) {
+      const [job] = await dbWrite
+        .insert(jobs)
+        .values({
+          type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+          status: "pending",
+          organization_id: seeded.organizationId,
+          user_id: seeded.actorUserId,
+          agent_id: agentId,
+          data: {},
+        })
+        .returning({ id: jobs.id });
+      if (!job) throw new Error("Expected competing lifecycle job to persist");
+      insertedJobId = job.id;
+      return retire.apply(this, args);
+    });
 
-    expect(await service.reconcileReplacementCleanupFences()).toEqual({
+    const outcome = await service.reconcileReplacementCleanupFences();
+    expect(insertedJobId).not.toBeNull();
+    expect(outcome).toEqual({
       total: 1,
       retired: 0,
       failed: 0,

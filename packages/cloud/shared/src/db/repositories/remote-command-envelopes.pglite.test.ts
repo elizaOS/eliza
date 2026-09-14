@@ -12,6 +12,7 @@ import {
   type EncryptedRemoteCommandResultEnvelope,
   type EncryptedRemoteCommandStartReceiptEnvelope,
   type EncryptedRemoteControlEnvelope,
+  REMOTE_COMMAND_MAX_TTL_MS,
   REMOTE_CONTROL_ENVELOPE_ALGORITHM,
   REMOTE_CONTROL_PROTOCOL_VERSION,
 } from "@elizaos/shared/contracts/remote-control";
@@ -96,13 +97,14 @@ function envelope(
     ciphertext: "C".repeat(23),
   };
   if (messageKind === "command") {
+    const issuedAt = Date.now();
     return {
       ...common,
       messageKind,
       sequence: 1,
       nonce: "nonce-one",
-      issuedAt: Date.now(),
-      expiresAt: Date.now() + 60_000,
+      issuedAt,
+      expiresAt: issuedAt + REMOTE_COMMAND_MAX_TTL_MS,
       ...overrides,
     } as EncryptedRemoteControlEnvelope;
   }

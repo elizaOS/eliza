@@ -1,30 +1,17 @@
+/**
+ * Exercises the todo HTTP projection against real LifeOps services and PGlite.
+ * Persisted undated status and caller ownership must survive route serialization.
+ */
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
-import type { AgentRuntime } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { LifeOpsRouteContext } from "./lifeops-routes.js";
-
-const { getOverview, listDefinitions } = vi.hoisted(() => ({
-  getOverview: vi.fn(async () => ({ owner: { occurrences: [] } })),
-  listDefinitions: vi.fn(async () => [] as Array<Record<string, unknown>>),
-}));
-
-vi.mock("@elizaos/plugin-calendar/routes/calendar-routes", () => ({
-  handleCalendarRoutes: vi.fn(async () => false),
-}));
-
-vi.mock("../lifeops/service.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../lifeops/service.js")>();
-  return {
-    ...actual,
-    LifeOpsService: class MockLifeOpsService {
-      getOverview = getOverview;
-      listDefinitions = listDefinitions;
-    },
-  };
-});
-
-const { handleLifeOpsRoutes } = await import("./lifeops-routes.js");
+import type { AgentRuntime, UUID } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
+import { createLifeOpsTestRuntime } from "../../test/helpers/runtime.js";
+import { LifeOpsService } from "../lifeops/service.js";
+import {
+  handleLifeOpsRoutes,
+  type LifeOpsRouteContext,
+} from "./lifeops-routes.js";
 
 interface CapturedResponse {
   statusCode?: number;
@@ -32,7 +19,11 @@ interface CapturedResponse {
   ended: boolean;
 }
 
-function buildCtx(search = ""): {
+function buildCtx(
+  runtime: AgentRuntime,
+  owner: string,
+  search = "",
+): {
   ctx: LifeOpsRouteContext;
   res: CapturedResponse;
 } {
@@ -68,8 +59,8 @@ function buildCtx(search = ""): {
     pathname: "/api/lifeops/todos",
     url: new URL(`http://localhost/api/lifeops/todos${search}`),
     state: {
-      runtime: { agentId: "agent-1" } as unknown as AgentRuntime,
-      adminEntityId: null,
+      runtime,
+      adminEntityId: owner,
     },
     json(r, data, status = 200) {
       r.statusCode = status;
@@ -95,56 +86,89 @@ function buildCtx(search = ""): {
   return { ctx, res };
 }
 
-describe("GET /api/lifeops/todos unscheduled tasks", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    listDefinitions.mockResolvedValue([]);
+describe("GET /api/lifeops/todos persisted owner records", () => {
+  it("serializes the durable todo status without manufacturing an occurrence", async () => {
+    const host = await createLifeOpsTestRuntime();
+    const owner = crypto.randomUUID() as UUID;
+    try {
+      const service = new LifeOpsService(host.runtime, {
+        ownerEntityId: owner,
+      });
+      const created = await service.createDefinition({
+        title: "Read the complete draft",
+        kind: "task",
+        cadence: { kind: "unscheduled" },
+        timezone: "UTC",
+      });
+      const id = created.definition.id;
+      const pending = buildCtx(host.runtime, owner);
+      await handleLifeOpsRoutes(pending.ctx);
+      expect(pending.res.statusCode).toBe(200);
+      expect(JSON.parse(pending.res.body ?? "invalid").todos).toEqual([
+        expect.objectContaining({
+          id,
+          targetKind: "definition",
+          title: "Read the complete draft",
+          status: "pending",
+          dueDate: null,
+        }),
+      ]);
+      await service.completeTodo(id);
+      const completed = buildCtx(host.runtime, owner);
+      await handleLifeOpsRoutes(completed.ctx);
+      expect(JSON.parse(completed.res.body ?? "invalid").todos).toEqual([
+        expect.objectContaining({
+          id,
+          targetKind: "definition",
+          status: "completed",
+          dueDate: null,
+        }),
+      ]);
+      expect(
+        await service.repository.listOccurrencesForDefinition(
+          host.runtime.agentId,
+          id,
+        ),
+      ).toEqual([]);
+    } finally {
+      await host.cleanup();
+    }
   });
 
-  it("includes active owner unscheduled tasks without manufacturing scheduled occurrences", async () => {
-    listDefinitions.mockResolvedValue([
-      {
-        definition: {
-          id: "undated",
-          title: "Read the draft",
-          kind: "task",
-          subjectType: "owner",
-          status: "active",
-          cadence: { kind: "unscheduled" },
-        },
-      },
-    ]);
-    const { ctx, res } = buildCtx();
-    await handleLifeOpsRoutes(ctx);
-    expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body ?? "{}").todos).toEqual([
-      {
-        id: "undated",
-        title: "Read the draft",
-        status: "pending",
-        dueDate: null,
-        progress: null,
-      },
-    ]);
-  });
-
-  it("excludes agent operations, inactive tasks, and scheduled definitions from the unscheduled projection", async () => {
-    const base = {
-      id: "excluded",
-      title: "Hidden",
-      kind: "task",
-      subjectType: "owner",
-      status: "active",
-      cadence: { kind: "unscheduled" },
-    };
-    listDefinitions.mockResolvedValue([
-      { definition: { ...base, subjectType: "agent" } },
-      { definition: { ...base, status: "archived" } },
-      { definition: { ...base, cadence: { kind: "once" } } },
-      { definition: { ...base, kind: "routine" } },
-    ]);
-    const { ctx, res } = buildCtx();
-    await handleLifeOpsRoutes(ctx);
-    expect(JSON.parse(res.body ?? "{}").todos).toEqual([]);
+  it("does not expose another owner's persisted todo through the route", async () => {
+    const host = await createLifeOpsTestRuntime();
+    const owner = crypto.randomUUID() as UUID;
+    const other = crypto.randomUUID() as UUID;
+    try {
+      const ownService = new LifeOpsService(host.runtime, {
+        ownerEntityId: owner,
+      });
+      const otherService = new LifeOpsService(host.runtime, {
+        ownerEntityId: other,
+      });
+      const own = await ownService.createDefinition({
+        title: "Visible owner record",
+        kind: "task",
+        cadence: { kind: "unscheduled" },
+        timezone: "UTC",
+      });
+      await otherService.createDefinition({
+        title: "Other owner private record",
+        kind: "task",
+        cadence: { kind: "unscheduled" },
+        timezone: "UTC",
+      });
+      const request = buildCtx(host.runtime, owner);
+      await handleLifeOpsRoutes(request.ctx);
+      expect(request.res.statusCode).toBe(200);
+      expect(JSON.parse(request.res.body ?? "invalid").todos).toEqual([
+        expect.objectContaining({
+          id: own.definition.id,
+          title: "Visible owner record",
+        }),
+      ]);
+    } finally {
+      await host.cleanup();
+    }
   });
 });

@@ -9,6 +9,7 @@ export {
   analyzeImageFile,
   closeOcrEngines,
   ocrImage,
+  ocrImageRegion,
   resetTesseractProbe,
   resolveOcrEngine,
   resolveTesseract,

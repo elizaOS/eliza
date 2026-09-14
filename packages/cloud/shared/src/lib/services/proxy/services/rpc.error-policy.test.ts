@@ -1,7 +1,7 @@
-// Pins the EVM RPC handler's fail-closed error surface (#13415): an upstream
-// failure must never be swallowed into a fabricated success. Drives the real
-// exported rpcHandlerForChain against a mocked global fetch (the only I/O
-// boundary); config + retry are the real modules.
+/**
+ * Exercises the EVM RPC handler's error and replay boundaries through a mocked
+ * provider fetch. Configuration and the shared attempt engine execute for real.
+ */
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import type { HandlerContext } from "../types";
 import { rpcHandlerForChain } from "./rpc";
@@ -34,6 +34,48 @@ afterEach(() => {
 });
 
 describe("EVM RPC handler — fail-closed error surface", () => {
+  it.each([
+    "eth_sendRawTransaction",
+    "eth_newFilter",
+    "eth_newBlockFilter",
+    "eth_newPendingTransactionFilter",
+    "eth_getFilterChanges",
+    "eth_uninstallFilter",
+    "eth_subscribe",
+    "eth_unsubscribe",
+  ])("does not replay an ambiguous %s, alone or inside a read batch", async (method) => {
+    process.env.ALCHEMY_MAX_RETRIES = "3";
+    const mutation = { jsonrpc: "2.0", id: 2, method, params: [] };
+    for (const body of [mutation, [ctx().body, mutation]]) {
+      let providerExecutions = 0;
+      globalThis.fetch = mock(async () => {
+        providerExecutions += 1;
+        throw new Error("connection lost after provider execution");
+      });
+      await expect(rpcHandlerForChain("ethereum")({ ...ctx(), body })).rejects.toThrow(
+        "connection lost after provider execution",
+      );
+      expect(providerExecutions).toBe(1);
+    }
+  });
+
+  it("retries a read-only batch after a transient provider failure", async () => {
+    process.env.ALCHEMY_MAX_RETRIES = "3";
+    const result = [{ jsonrpc: "2.0", id: 1, result: "0x10" }];
+    let attempts = 0;
+    globalThis.fetch = mock(async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("connection reset");
+      return Response.json(result);
+    });
+    const { response } = await rpcHandlerForChain("ethereum")({
+      ...ctx(),
+      body: [ctx().body],
+    });
+    await expect(response.json()).resolves.toEqual(result);
+    expect(attempts).toBe(2);
+  });
+
   it("passes a legitimate upstream success through unchanged (the healthy result)", async () => {
     const okBody = { jsonrpc: "2.0", id: 1, result: "0x10" };
     globalThis.fetch = mock(async () => Response.json(okBody, { status: 200 }));

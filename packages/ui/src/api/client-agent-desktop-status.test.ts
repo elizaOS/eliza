@@ -32,6 +32,7 @@ function installDesktopRpc(
   Object.defineProperty(globalThis, "window", {
     configurable: true,
     value: {
+      __ELIZA_DESKTOP_LOCAL_API_BASE__: "http://agent.example:31337",
       ...globals,
       __ELIZA_ELECTROBUN_RPC__: {
         request,

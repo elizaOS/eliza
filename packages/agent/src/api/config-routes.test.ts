@@ -1,7 +1,7 @@
 /**
- * PUT /api/config nest bound. Recursive strip/safeMerge stack limits are
- * runtime-dependent, so structurally excessive patches are rejected by the
- * canonical blocked-object-key walker before those consumers run.
+ * Exercises config patch validation and atomic persistence through the real
+ * route and temporary config files. Remote adoption markers must preserve host
+ * topology and credentials while surviving a config reload.
  */
 
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -150,6 +150,44 @@ describe("config patch persistence", () => {
     }
     resetDevCloudEnvAuthorityForTests();
     rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("persists remote adoption without replacing host topology or credentials", async () => {
+    const config: ConfigRouteContext["config"] = {
+      meta: { firstRunComplete: false },
+      deploymentTarget: { runtime: "local" },
+      serviceRouting: {
+        llmText: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+          accountId: "elizacloud",
+        },
+        embeddings: { backend: "local-inference", transport: "direct" },
+      },
+      linkedAccounts: { elizacloud: { status: "linked", source: "oauth" } },
+      cloud: { apiKey: "synthetic-host-credential" },
+      ui: { language: "en", assistant: { name: "Family agent" } },
+    };
+    const before = structuredClone(config);
+    const { ctx, error } = makeCtx(
+      { meta: { firstRunComplete: true } },
+      vi.fn(),
+      { config, allowedTopKeys: ["meta"] },
+    );
+    expect(await handleConfigRoutes(ctx)).toBe(true);
+    expect(error).not.toHaveBeenCalled();
+    const expected = {
+      ...before,
+      meta: { ...before.meta, firstRunComplete: true },
+    };
+    expect(config).toEqual(expected);
+    expect(
+      JSON.parse(readFileSync(path.join(tempDir, "eliza.json"), "utf8")),
+    ).toEqual(expected);
+    expect(await handleConfigRoutes(ctx)).toBe(true);
+    expect(
+      JSON.parse(readFileSync(path.join(tempDir, "eliza.json"), "utf8")),
+    ).toEqual(expected);
   });
 
   it("rejects a failed save without changing live config or process.env", async () => {

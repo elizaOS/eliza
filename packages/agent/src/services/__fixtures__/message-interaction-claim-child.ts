@@ -9,7 +9,10 @@ if (!stateDirectory || !contextPath)
 const context = JSON.parse(await fs.readFile(contextPath, "utf8"));
 const store = new FileMessageInteractionSessionStore({
   stateDirectory,
-  clock: () => context.now,
+  // The claim context owns the interaction timestamp. Use the same instant for
+  // opportunistic pruning so this contention fixture does not become invalid
+  // merely because its deterministic timestamp is older than wall-clock time.
+  clock: () => Number(context.now),
   // Eight independent Bun processes deliberately contend on a durable fsync
   // path. Keep the assertion about serialization independent of host I/O load;
   // lock-timeout behavior has its own deterministic coverage.

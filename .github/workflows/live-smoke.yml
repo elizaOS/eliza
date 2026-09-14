@@ -13,7 +13,12 @@ on:
         required: true
         default: all
         type: choice
-        options: [all, app, scenarios, group-chat, live-information, cloud, voice, dedicated]
+        options: [all, app, scenarios, group-chat, live-information, cloud, voice, dedicated, pi-linked-account]
+      pi_source_sha:
+        description: "Exact reviewed head for the opt-in Pi linked-account check; must equal the dispatch ref SHA"
+        required: false
+        type: string
+        default: ""
       planner_provider:
         description: Acting model provider for focused live-information or group-chat suites
         required: true
@@ -47,11 +52,81 @@ permissions:
   contents: read
 
 jobs:
+  pi-linked-account:
+    name: Pi linked account (real OpenRouter response)
+    if: ${{ inputs.suite == 'pi-linked-account' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GOMAXPROCS: "2"
+      RUN_TURBO_CONCURRENCY: "2"
+      TURBO_ENV_MODE: loose
+    steps:
+      - name: Require exact reviewed source
+        env:
+          REQUESTED_SHA: ${{ inputs.pi_source_sha }}
+          DISPATCH_SHA: ${{ github.sha }}
+          CLEANUP_ONLY: ${{ inputs.cleanup_only }}
+          DIAGNOSE_SUFFIX: ${{ inputs.diagnose_canary_suffix }}
+          STALE_SUFFIX: ${{ inputs.stale_canary_suffix }}
+        run: |
+          set -euo pipefail
+          [[ "$CLEANUP_ONLY" != "true" && -z "$DIAGNOSE_SUFFIX" && -z "$STALE_SUFFIX" ]] || {
+            echo "::error::Pi qualification cannot select legacy canary operations."
+            exit 1
+          }
+          [[ "$REQUESTED_SHA" =~ ^[a-f0-9]{40}$ && "$REQUESTED_SHA" = "$DISPATCH_SHA" ]] || {
+            echo "::error::Pi qualification requires the exact reviewed dispatch-ref SHA."
+            exit 1
+          }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.pi_source_sha }}
+          persist-credentials: false
+          submodules: false
+      - uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: "1.3.14"
+          node-version: "24.15.0"
+          install-command: bun install --frozen-lockfile
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+      - name: Install pinned Pi executables in disposable tool directory
+        run: |
+          set -euo pipefail
+          tool_dir="$RUNNER_TEMP/pi-linked-account-tools"
+          mkdir -p "$tool_dir"
+          printf '%s\n' '{"private":true,"type":"module"}' > "$tool_dir/package.json"
+          bun add --cwd "$tool_dir" --exact pi-acp@0.0.33 @earendil-works/pi-coding-agent@0.84.2 @earendil-works/pi-ai@0.84.4
+          echo "$tool_dir/node_modules/.bin" >> "$GITHUB_PATH"
+          TOOL_DIR="$tool_dir" node --input-type=module <<'JS'
+          import { readFileSync, appendFileSync } from 'node:fs';
+          import path from 'node:path';
+          const version = name => JSON.parse(readFileSync(path.join(process.env.TOOL_DIR, 'node_modules', name, 'package.json'), 'utf8')).version;
+          const versions = { pi: version('@earendil-works/pi-coding-agent'), piAcp: version('pi-acp'), piAi: version('@earendil-works/pi-ai') };
+          appendFileSync(process.env.GITHUB_ENV, `LIVE_PI_TOOL_VERSIONS=${JSON.stringify(versions)}\n`);
+          JS
+      - name: Qualify real linked-account Pi inference
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          RUN_LIVE_PI_LINKED_ACCOUNT: "1"
+          LIVE_PI_SOURCE_SHA: ${{ inputs.pi_source_sha }}
+          LIVE_PI_EVIDENCE_DIR: artifacts/pi-linked-account
+        run: bun --conditions=eliza-source plugins/plugin-agent-orchestrator/scripts/live-pi-linked-account.mjs
+      - name: Retain sanitized source-bound Pi receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pi-linked-account-${{ inputs.pi_source_sha }}
+          path: artifacts/pi-linked-account/receipt.json
+          if-no-files-found: error
+          retention-days: 14
+
   smoke:
     name: ${{ inputs.suite }}
     # cleanup_only is an exclusive destructive-recovery mode. Never run an
     # unrelated live suite under the same dispatch, regardless of suite input.
-    if: ${{ inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite != 'dedicated' }}
+    if: ${{ inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite != 'dedicated' && inputs.suite != 'pi-linked-account' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -198,7 +273,7 @@ jobs:
 
   dedicated:
     name: Managed dedicated staging canary
-    if: inputs.diagnose_canary_suffix == '' && (inputs.cleanup_only || inputs.suite == 'all' || inputs.suite == 'dedicated')
+    if: inputs.suite != 'pi-linked-account' && inputs.diagnose_canary_suffix == '' && (inputs.cleanup_only || inputs.suite == 'all' || inputs.suite == 'dedicated')
     runs-on: ubuntu-24.04
     environment: staging
     # Serialize this live lifecycle even when an `all` run overlaps a
@@ -510,7 +585,7 @@ jobs:
 
   dedicated-diagnostic:
     name: Read-only managed dedicated provision diagnosis
-    if: inputs.diagnose_canary_suffix != ''
+    if: inputs.suite != 'pi-linked-account' && inputs.diagnose_canary_suffix != ''
     runs-on: ubuntu-24.04
     environment: staging
     concurrency:

@@ -798,6 +798,98 @@ describe("compute billing recovery", () => {
     expect(result).toMatchObject({ status: "billed", amount: 0.01 });
   });
 
+  test.each([5_157, 45_000])(
+    "slow initial transaction (%i ms) still bills only funded runtime once",
+    async (creationDelayMs) => {
+      const { org, user, sandbox, lastBilledAt } = await seed();
+      await dbWrite.delete(computeBillingRateSegments);
+      const runningAt = new Date(lastBilledAt.getTime() + 60_000);
+      const now = new Date(runningAt.getTime() + 60 * 60_000);
+      await dbWrite.insert(computeBillingRateSegments).values([
+        {
+          organization_id: org.id,
+          workload_kind: "agent",
+          workload_id: sandbox.id,
+          lifecycle_revision: 0,
+          billing_state: "not_billable",
+          rate_per_hour: "0.000000",
+          effective_at: new Date(lastBilledAt.getTime() + creationDelayMs),
+        },
+        {
+          organization_id: org.id,
+          workload_kind: "agent",
+          workload_id: sandbox.id,
+          lifecycle_revision: 2,
+          billing_state: "running",
+          rate_per_hour: "0.010000",
+          effective_at: runningAt,
+        },
+      ]);
+      const input = {
+        ...(await claimBillingRun(now)),
+        sandboxId: sandbox.id,
+        organizationId: org.id,
+        userId: user.id,
+        agentName: "slow-created-agent",
+        hourlyRate: 999,
+        billingDescription: "slow creation recovery",
+        lowCreditWarningAmount: 1,
+        now,
+      };
+      await expect(agentBillingRepository.recordHourlyBilling(input)).resolves.toMatchObject({
+        status: "billed",
+        amount: 0.01,
+      });
+      await expect(agentBillingRepository.recordHourlyBilling(input)).resolves.toMatchObject({
+        status: "already_billed_recently",
+      });
+      const [receipt] = await dbWrite.select().from(agentBillingRecords);
+      expect(receipt.rate_segments).toMatchObject([
+        { state: "not_billable", amount: "0.000000", endedAt: runningAt.toISOString() },
+        { state: "running", amount: "0.010000", startedAt: runningAt.toISOString() },
+      ]);
+      expect(await dbWrite.select().from(creditTransactions)).toHaveLength(1);
+      const [updatedOrg] = await dbWrite
+        .select()
+        .from(organizations)
+        .where(eq(organizations.id, org.id));
+      expect(updatedOrg.credit_balance).toBe("9.990000");
+    },
+  );
+
+  test.each([
+    { revision: 1, state: "not_billable", rate: "0.000000" },
+    { revision: 0, state: "running", rate: "0.010000" },
+  ])(
+    "incomplete initial rate history remains rejected ($state, revision $revision)",
+    async ({ revision, state, rate }) => {
+      const { org, sandbox, lastBilledAt } = await seed();
+      await dbWrite.delete(computeBillingRateSegments);
+      await dbWrite.insert(computeBillingRateSegments).values({
+        organization_id: org.id,
+        workload_kind: "agent",
+        workload_id: sandbox.id,
+        lifecycle_revision: revision,
+        billing_state: state,
+        rate_per_hour: rate,
+        effective_at: new Date(lastBilledAt.getTime() + 45_000),
+      });
+      await expect(
+        agentBillingRepository.settleAccruedBillingBeforeLifecycle(
+          sandbox.id,
+          org.id,
+          new Date(lastBilledAt.getTime() + 60 * 60_000),
+        ),
+      ).rejects.toThrow("Compute billing rate history is missing");
+      expect(await dbWrite.select().from(creditTransactions)).toHaveLength(0);
+      const [updatedOrg] = await dbWrite
+        .select()
+        .from(organizations)
+        .where(eq(organizations.id, org.id));
+      expect(updatedOrg.credit_balance).toBe("10.000000");
+    },
+  );
+
   test("a mismatched tenant cannot charge another tenant's workload", async () => {
     const { user, sandbox } = await seed();
     const [other] = await dbWrite
@@ -2104,9 +2196,9 @@ describe("compute billing recovery", () => {
   });
 
   test("funding restored under the stop-decision locks reactivates without a provider job", async () => {
+    const periodStart = new Date(Math.floor((Date.now() - 60 * 60 * 1_000) / 1_000) * 1_000);
     const { org, user } = await seed("10.000000");
     const containerId = "00000000-0000-4000-8000-000000000002";
-    const periodStart = new Date(Date.now() - 60 * 60 * 1000);
     await dbWrite.execute(sql`INSERT INTO containers
       (id, name, project_name, organization_id, user_id, status, billing_status, scheduled_shutdown_at,
        last_billed_at, lifecycle_revision, created_at, updated_at)
@@ -2135,11 +2227,12 @@ describe("compute billing recovery", () => {
     expect(row).toMatchObject({
       billing_status: "active",
       scheduled_shutdown_at: null,
-      last_billed_at: periodStart,
     });
+    expect(row.last_billed_at).toEqual(periodStart);
   });
 
   test("policy-permitted earnings fund stop revalidation without forgiving elapsed debt", async () => {
+    const periodStart = new Date(Math.floor((Date.now() - 60 * 60 * 1_000) / 1_000) * 1_000);
     const { org, user } = await seed("0.000000");
     await dbWrite
       .update(organizations)
@@ -2151,7 +2244,6 @@ describe("compute billing recovery", () => {
       available_balance: "10.0000",
     });
     const containerId = "00000000-0000-4000-8000-000000000006";
-    const periodStart = new Date(Date.now() - 60 * 60 * 1000);
     await dbWrite.execute(sql`INSERT INTO containers
       (id, name, project_name, organization_id, user_id, status, billing_status, scheduled_shutdown_at,
        last_billed_at, lifecycle_revision, created_at, updated_at)
@@ -2180,8 +2272,8 @@ describe("compute billing recovery", () => {
       .where(eq(containers.id, containerId));
     expect(row).toMatchObject({
       billing_status: "active",
-      last_billed_at: periodStart,
     });
+    expect(row.last_billed_at).toEqual(periodStart);
   });
 
   test("shutdown warning CAS refuses any durable provider proof", async () => {

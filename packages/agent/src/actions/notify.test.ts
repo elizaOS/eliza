@@ -253,7 +253,10 @@ describe("NOTIFY on the planner action surface", () => {
   ): Promise<string[]> {
     const runtime = await makePipelineRuntime([
       stage1Response(contexts, candidates),
-      plannerBody ?? { text: "", toolCalls: [] },
+      plannerBody ?? {
+        text: "I need repository contribution data to identify the top contributors.",
+        toolCalls: [],
+      },
       JSON.stringify({
         success: true,
         decision: "FINISH",

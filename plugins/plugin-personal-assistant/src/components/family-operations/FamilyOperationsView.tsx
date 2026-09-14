@@ -36,7 +36,11 @@ import {
   useMemo,
   useState,
 } from "react";
+import { nextFamilyPacketPeriod } from "../../lifeops/family-workflows/period.js";
 import { defaultFamilyOperationsAdapter } from "./adapter.js";
+import type { FamilyDeletionAdapter } from "./deletion-adapter.js";
+import { FamilyDeletionPanel } from "./FamilyDeletionPanel.js";
+import { PacketDraftEditor } from "./PacketDraftEditor.js";
 import type {
   FamilyOperationsAdapter,
   FamilyOperationsSnapshot,
@@ -247,6 +251,9 @@ function AgreementPanel({
   refresh: () => Promise<void>;
 }) {
   const [selectedId, setSelectedId] = useState("");
+  const [downloading, setDownloading] = useState<"original" | "export" | null>(
+    null,
+  );
   const [reason, setReason] = useState("");
   const [targetType, setTargetType] = useState<"agent" | "chat">("agent");
   const [targetId, setTargetId] = useState("");
@@ -289,6 +296,41 @@ function AgreementPanel({
       await refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The request failed");
+    }
+  };
+
+  const download = async (format: "original" | "export") => {
+    if (!selected || downloading) return;
+    setDownloading(format);
+    setError(null);
+    setNotice(null);
+    try {
+      const blob = await adapter.downloadAgreement(
+        selected.artifact.id,
+        format,
+      );
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download =
+        format === "original"
+          ? selected.artifact.originalFilename
+          : `agreement-${selected.artifact.id}-v${selected.artifact.version}.zip`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      // Allow the browser to consume the object URL before releasing it.
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setNotice(
+        format === "original"
+          ? "Original PDF download started."
+          : "Agreement export download started. The archive includes the original, provenance, and checksums.",
+      );
+    } catch (cause) {
+      // error-policy:J1 Download failures remain visible in the owner workspace.
+      setError(cause instanceof Error ? cause.message : "Download failed");
+    } finally {
+      setDownloading(null);
     }
   };
 
@@ -354,6 +396,28 @@ function AgreementPanel({
             </dd>
           </div>
         </dl>
+        <div
+          style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 16 }}
+        >
+          <Button
+            variant="accentDarkHover"
+            disabled={downloading !== null}
+            onClick={() => void download("original")}
+          >
+            {downloading === "original"
+              ? "Preparing PDF…"
+              : "Download original PDF"}
+          </Button>
+          <Button
+            variant="accentDarkHover"
+            disabled={downloading !== null}
+            onClick={() => void download("export")}
+          >
+            {downloading === "export"
+              ? "Preparing export…"
+              : "Export agreement"}
+          </Button>
+        </div>
       </Card>
 
       <Card
@@ -460,7 +524,8 @@ function AgreementPanel({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "minmax(110px, 0.4fr) minmax(180px, 1fr) auto",
+            gridTemplateColumns:
+              "repeat(auto-fit, minmax(min(100%, 180px), 1fr))",
             gap: 8,
           }}
         >
@@ -774,22 +839,95 @@ function SchoolPanel({
   refresh: () => Promise<void>;
 }) {
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [schoolLevel, setSchoolLevel] = useState<"all" | "elementary">(
+    "elementary",
+  );
+  const [updateMode, setUpdateMode] = useState<"review" | "automatic">(
+    "automatic",
+  );
+  useEffect(() => {
+    if (state.status === "ready" && state.data.sourceUrl) {
+      setSchoolLevel(state.data.schoolLevel);
+      setUpdateMode(state.data.updateMode);
+    }
+  }, [state]);
   if (state.status === "unavailable")
     return <Unavailable message={state.message} />;
   const workflow = state.data;
   const run = async (op: () => Promise<void>) => {
     try {
+      setBusy(true);
       setError(null);
       await op();
       await refresh();
     } catch (cause) {
+      // error-policy:J4 Configuration and execution failures remain visible to the owner.
       setError(
         cause instanceof Error ? cause.message : "School workflow failed",
       );
+    } finally {
+      setBusy(false);
     }
   };
   return (
     <Card title={workflow.label} detail={`Source: ${workflow.sourceUrl}`}>
+      <fieldset
+        disabled={busy}
+        style={{ border: 0, padding: 0, display: "grid", gap: 12 }}
+      >
+        <div style={{ display: "grid", gap: 6 }}>
+          <label htmlFor="school-level">School level</label>
+          <Select
+            disabled={busy}
+            value={schoolLevel}
+            onValueChange={(value) =>
+              setSchoolLevel(value === "elementary" ? "elementary" : "all")
+            }
+          >
+            <SelectTrigger id="school-level">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="elementary">
+                Elementary school and district dates
+              </SelectItem>
+              <SelectItem value="all">All school levels</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div style={{ display: "grid", gap: 6 }}>
+          <label htmlFor="school-update-mode">Calendar updates</label>
+          <Select
+            disabled={busy}
+            value={updateMode}
+            onValueChange={(value) =>
+              setUpdateMode(value === "automatic" ? "automatic" : "review")
+            }
+          >
+            <SelectTrigger id="school-update-mode">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="automatic">
+                Apply validated school changes automatically
+              </SelectItem>
+              <SelectItem value="review">Review each change</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <p>
+          Checks monthly. Unchanged files add no events. Unclear dates stop for
+          review; changes apply only to events managed by this school source.
+        </p>
+        <Button
+          onClick={() =>
+            void run(() => adapter.configureSchool({ schoolLevel, updateMode }))
+          }
+        >
+          Save school settings
+        </Button>
+      </fieldset>
       <p>
         <strong>Status:</strong> {workflow.state} · checked{" "}
         {date(workflow.lastCheckedAt)}
@@ -806,11 +944,15 @@ function SchoolPanel({
         <Empty>No pending calendar differences.</Empty>
       )}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
-        <Button onClick={() => void run(() => adapter.runSchoolWorkflow())}>
+        <Button
+          disabled={busy}
+          onClick={() => void run(() => adapter.runSchoolWorkflow())}
+        >
           <RefreshCw size={16} /> Run now
         </Button>
         {workflow.state === "awaiting_approval" && workflow.runId ? (
           <Button
+            disabled={busy}
             variant="outline"
             onClick={() =>
               void run(() =>
@@ -829,16 +971,37 @@ function SchoolPanel({
 
 function PacketPanel({
   state,
+  emailOptions,
   adapter,
   refresh,
 }: {
   state: FamilyOperationsSnapshot["packets"];
+  emailOptions: FamilyOperationsSnapshot["emailOptions"];
   adapter: FamilyOperationsAdapter;
   refresh: () => Promise<void>;
 }) {
-  const currentPeriod = useMemo(() => new Date().toISOString().slice(0, 7), []);
-  const [recipient, setRecipient] = useState("");
-  const [recipientEntityId, setRecipientEntityId] = useState("");
+  const currentPeriod = useMemo(
+    () => nextFamilyPacketPeriod(new Date()).key,
+    [],
+  );
+  const [recipientKey, setRecipientKey] = useState("");
+  const [senderGrantId, setSenderGrantId] = useState("");
+  const [subject, setSubject] = useState(
+    `Family coordination for ${currentPeriod}`,
+  );
+  const recipient =
+    emailOptions.status === "ready"
+      ? emailOptions.data.recipients.find(
+          (value) =>
+            JSON.stringify([value.entityId, value.address]) === recipientKey,
+        )
+      : undefined;
+  const sender =
+    emailOptions.status === "ready"
+      ? emailOptions.data.accounts.find(
+          (value) => value.grantId === senderGrantId,
+        )
+      : undefined;
   const [calendarPrivacyMode, setCalendarPrivacyMode] = useState<
     "full" | "times_only" | "busy_only"
   >("busy_only");
@@ -861,11 +1024,14 @@ function PacketPanel({
     try {
       setError(null);
       setNotice(null);
+      if (!recipient || !sender)
+        throw new Error("Choose a connected sender and a verified recipient.");
       await adapter.createPacketDraft({
         packetId,
-        recipient: recipient.trim(),
-        recipientEntityId: recipientEntityId.trim(),
+        recipient: recipient.address,
+        recipientEntityId: recipient.entityId,
         calendarPrivacyMode,
+        email: { subject, senderGrantId: sender.grantId },
       });
       setNotice("Immutable guest-shareable draft created for review.");
       await refresh();
@@ -888,8 +1054,7 @@ function PacketPanel({
       );
     }
   };
-  const canCreateDraft =
-    recipient.trim().length > 0 && recipientEntityId.trim().length > 0;
+  const canCreateDraft = Boolean(recipient && sender && subject.trim());
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <div>
@@ -897,9 +1062,22 @@ function PacketPanel({
           Generate {currentPeriod} packet
         </Button>
       </div>
+      {emailOptions.status === "unavailable" ? (
+        <Unavailable message={emailOptions.message} />
+      ) : emailOptions.data.accounts.length === 0 ? (
+        <p>
+          Connect an email account with permission to send approved email in
+          Mail &amp; Calendars.
+        </p>
+      ) : emailOptions.data.recipients.length === 0 ? (
+        <p>
+          Add and verify your recipient's email address before preparing an
+          external draft.
+        </p>
+      ) : null}
       <Card
-        title="Guest delivery"
-        detail="Choose the exact verified co-parent Entity and its iMessage address. The draft is privacy-filtered before it can enter the approval queue; this screen never sends it directly."
+        title="Monthly email"
+        detail="Choose your sending account and a verified recipient. Review the exact email before approving delivery."
       >
         <div
           style={{
@@ -908,30 +1086,60 @@ function PacketPanel({
             gap: 12,
           }}
         >
+          <div style={{ display: "grid", gap: 6 }}>
+            <label htmlFor="packet-sender">Sending account</label>
+            <Select value={senderGrantId} onValueChange={setSenderGrantId}>
+              <SelectTrigger id="packet-sender" aria-label="Sending account">
+                <SelectValue placeholder="Choose a sending account" />
+              </SelectTrigger>
+              <SelectContent>
+                {emailOptions.status === "ready"
+                  ? emailOptions.data.accounts.map((account) => (
+                      <SelectItem key={account.grantId} value={account.grantId}>
+                        {account.label}
+                      </SelectItem>
+                    ))
+                  : null}
+              </SelectContent>
+            </Select>
+          </div>
+          <div style={{ display: "grid", gap: 6 }}>
+            <label htmlFor="packet-recipient">Email recipient</label>
+            <Select value={recipientKey} onValueChange={setRecipientKey}>
+              <SelectTrigger id="packet-recipient" aria-label="Email recipient">
+                <SelectValue placeholder="Choose a verified contact" />
+              </SelectTrigger>
+              <SelectContent>
+                {emailOptions.status === "ready"
+                  ? emailOptions.data.recipients.map((contact) => (
+                      <SelectItem
+                        key={JSON.stringify([
+                          contact.entityId,
+                          contact.address,
+                        ])}
+                        value={JSON.stringify([
+                          contact.entityId,
+                          contact.address,
+                        ])}
+                      >
+                        {contact.name} — {contact.address}
+                      </SelectItem>
+                    ))
+                  : null}
+              </SelectContent>
+            </Select>
+          </div>
           <label
-            htmlFor="packet-recipient-entity"
+            htmlFor="packet-email-subject"
             style={{ display: "grid", gap: 6 }}
           >
-            <span>Recipient Entity ID</span>
+            Subject
             <Input
-              id="packet-recipient-entity"
-              value={recipientEntityId}
+              aria-label="Email subject"
+              id="packet-email-subject"
+              value={subject}
               onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                setRecipientEntityId(event.target.value)
-              }
-            />
-          </label>
-          <label
-            htmlFor="packet-recipient-imessage"
-            style={{ display: "grid", gap: 6 }}
-          >
-            <span>Verified iMessage address</span>
-            <Input
-              id="packet-recipient-imessage"
-              value={recipient}
-              placeholder="+15551234567 or Apple ID"
-              onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                setRecipient(event.target.value)
+                setSubject(event.target.value)
               }
             />
           </label>
@@ -994,26 +1202,61 @@ function PacketPanel({
                 <summary>
                   Review guest-shareable draft v{packet.draft.draftVersion}
                 </summary>
+                <p>To: {packet.draft.recipient}</p>
+                {packet.draft.email ? (
+                  <>
+                    <p>
+                      From:{" "}
+                      {emailOptions.status === "ready"
+                        ? (emailOptions.data.accounts.find(
+                            (account) =>
+                              account.grantId ===
+                              packet.draft?.email?.senderGrantId,
+                          )?.label ?? "Sender account is no longer connected")
+                        : "Sender account status unavailable"}
+                    </p>
+                    <p>Subject: {packet.draft.email.subject}</p>
+                  </>
+                ) : null}
                 <pre style={{ whiteSpace: "pre-wrap", font: "inherit" }}>
                   {packet.draft.body}
                 </pre>
                 <p>
                   {packet.draft.approvalId
-                    ? "Waiting in the shared approvals queue."
+                    ? "Submitted to the shared approvals queue. Check its result for delivery status."
                     : "Draft has not been submitted for approval."}
                 </p>
-                {!packet.draft.approvalId ? (
-                  <Button
-                    onClick={() =>
-                      void requestApproval(
-                        packet.packetId,
-                        packet.draft?.draftVersion as number,
-                      )
-                    }
+                <p>
+                  <a
+                    download={`family-packet-${packet.periodKey}-draft-${packet.draft.draftVersion}.json`}
+                    href={`data:application/json;charset=utf-8,${encodeURIComponent(
+                      JSON.stringify(
+                        {
+                          recordType: "family_packet_draft",
+                          deliveryStatus: "not_verified_by_this_record",
+                          packetId: packet.packetId,
+                          period: packet.periodKey,
+                          packetVersion: packet.version,
+                          draft: packet.draft,
+                        },
+                        null,
+                        2,
+                      ),
+                    )}`}
                   >
-                    Request owner approval
-                  </Button>
-                ) : null}
+                    Download draft record
+                  </a>
+                </p>
+                <PacketDraftEditor
+                  key={packet.draft.draftVersion}
+                  packetId={packet.packetId}
+                  draft={packet.draft}
+                  adapter={adapter}
+                  refresh={refresh}
+                  requestApproval={(version) =>
+                    requestApproval(packet.packetId, version)
+                  }
+                />
               </details>
             ) : (
               <Empty>No shareable draft yet.</Empty>
@@ -1029,10 +1272,12 @@ function PacketPanel({
 
 export interface FamilyOperationsViewProps {
   adapter?: FamilyOperationsAdapter;
+  deletionAdapter?: FamilyDeletionAdapter;
 }
 
 export function FamilyOperationsView({
   adapter = defaultFamilyOperationsAdapter,
+  deletionAdapter,
 }: FamilyOperationsViewProps) {
   const [tab, setTab] = useState<Tab>("agreements");
   const [snapshot, setSnapshot] = useState<FamilyOperationsSnapshot | null>(
@@ -1040,6 +1285,34 @@ export function FamilyOperationsView({
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
+  const exportWorkspace = async () => {
+    if (exporting) return;
+    setExporting(true);
+    setExportError(null);
+    setExportNotice(null);
+    try {
+      const blob = await adapter.downloadWorkspace();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "family-workspace.zip";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setExportNotice("Workspace download started.");
+    } catch (cause) {
+      // error-policy:J1 A failed export remains visible and can be retried.
+      setExportError(
+        cause instanceof Error ? cause.message : "Workspace export failed",
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -1073,7 +1346,13 @@ export function FamilyOperationsView({
       }}
     >
       <div
-        style={{ maxWidth: 1040, margin: "0 auto", display: "grid", gap: 18 }}
+        style={{
+          maxWidth: 1040,
+          margin: "0 auto",
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1fr)",
+          gap: 18,
+        }}
       >
         <header>
           <p
@@ -1093,10 +1372,21 @@ export function FamilyOperationsView({
           </h1>
           <p style={{ margin: 0, color: "var(--muted)", maxWidth: 720 }}>
             Review the parenting agreement, calendar synchronization, school
-            dates, and monthly coordination packet. Expenses are intentionally
-            out of scope.
+            dates, and monthly coordination email.
           </p>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={loading || exporting}
+            onClick={() => void exportWorkspace()}
+            style={{ marginTop: 12 }}
+          >
+            {exporting ? "Preparing workspace export…" : "Export workspace"}
+          </Button>
+          {exportError ? <Unavailable message={exportError} /> : null}
+          {exportNotice ? <p role="status">{exportNotice}</p> : null}
         </header>
+        <FamilyDeletionPanel adapter={deletionAdapter} onChange={refresh} />
         <nav
           aria-label="Family Operations sections"
           style={{
@@ -1147,6 +1437,7 @@ export function FamilyOperationsView({
             ) : (
               <PacketPanel
                 state={snapshot.packets}
+                emailOptions={snapshot.emailOptions}
                 adapter={adapter}
                 refresh={refresh}
               />

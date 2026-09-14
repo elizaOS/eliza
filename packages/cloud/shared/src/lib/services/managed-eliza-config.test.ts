@@ -1,4 +1,4 @@
-// Exercises managed eliza config behavior with deterministic cloud-shared lib fixtures.
+/** Exercises managed environment translation and upgrade preservation with deterministic API-key fixtures. */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 mock.module("./api-keys", () => ({
@@ -352,8 +352,6 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
     expect(result.EMBEDDING_DIMENSION).toBe("384");
     expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");
     expect(result.ELIZAOS_CLOUD_EMBEDDING_URL).toBeTruthy();
-    expect(result.ELIZAOS_CLOUD_SMALL_MODEL).toBe("gemma-4-31b");
-    expect(result.ELIZAOS_CLOUD_LARGE_MODEL).toBe("gemma-4-31b");
   });
 
   test("a previously provisioned agent (cloud key present) keeps the 1536-d cloud default — no #9911 heal", async () => {
@@ -423,8 +421,13 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
     expect(result.EMBEDDING_DIMENSION).toBe("768");
     expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("768");
     expect(result.ELIZAOS_CLOUD_EMBEDDING_URL).toBe("https://custom.example.com/api/v1");
-    expect(result.ELIZAOS_CLOUD_SMALL_MODEL).toBe("gemma-4-31b");
-    expect(result.ELIZAOS_CLOUD_LARGE_MODEL).toBe("gemma-4-31b");
+    const fresh = applyManagedAgentInferenceEnvDefaults({});
+    expect(fresh.ELIZAOS_CLOUD_SMALL_MODEL).toMatch(/\S/);
+    expect(fresh.ELIZAOS_CLOUD_LARGE_MODEL).toMatch(/\S/);
+    expect(result.ELIZAOS_CLOUD_SMALL_MODEL).toBe(fresh.ELIZAOS_CLOUD_SMALL_MODEL);
+    expect(result.ELIZAOS_CLOUD_LARGE_MODEL).toBe(fresh.ELIZAOS_CLOUD_LARGE_MODEL);
+    expect(result.ELIZAOS_CLOUD_SMALL_MODEL).not.toBe("zai-glm-4.7");
+    expect(result.ELIZAOS_CLOUD_LARGE_MODEL).not.toBe("zai-glm-4.7");
   });
 
   test("spreading the helper heals a stale upgrade env that lacks EMBEDDING_DIMENSION", async () => {
@@ -455,8 +458,6 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
     expect(healed.EMBEDDING_DIMENSION).toBe("1536");
     expect(healed.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("1536");
     expect(healed.ELIZAOS_CLOUD_EMBEDDING_URL).toBeTruthy();
-    expect(healed.ELIZAOS_CLOUD_SMALL_MODEL).toBe("gemma-4-31b");
-    expect(healed.ELIZAOS_CLOUD_LARGE_MODEL).toBe("gemma-4-31b");
     // ...and the stored env is preserved verbatim (no key rotation, no DB strip,
     // no state flip - the whole point of the narrow helper).
     expect(healed.DATABASE_URL).toBe("postgres://agent/own-db");

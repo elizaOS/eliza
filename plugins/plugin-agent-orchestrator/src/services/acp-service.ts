@@ -55,7 +55,11 @@ import {
   getHostExecutionBaseline,
   HOST_EXECUTION_BASELINE_ENV_MIRROR_KEYS,
 } from "@elizaos/shared/host-execution-env";
-import { NativeAcpClient, splitCommandLine } from "./acp-native-transport.js";
+import {
+  NativeAcpClient,
+  type NativeAcpEventContext,
+  splitCommandLine,
+} from "./acp-native-transport.js";
 import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
 import {
   CODEX_NO_LANDLOCK_SANDBOX_MODE_ENV,
@@ -70,6 +74,8 @@ import {
 import {
   accountMetaFromSessionMetadata,
   type CodingAccountMeta,
+  type CodingAccountSelection,
+  connectedCodingAccountCount,
   diagnoseCodingAccountFallback,
   isRefreshTokenExpiryText,
   isTokenExpiryText,
@@ -109,6 +115,11 @@ import {
   isParentAgentBrokerWired,
   PARENT_AGENT_BROKER_MANIFEST_ENTRY,
 } from "./parent-agent-broker.js";
+import {
+  enforcePiProviderCredentialIsolation,
+  type PreparedPiProviderRoute,
+  preparePiProviderRoute,
+} from "./pi-provider-config.js";
 import {
   AcpSessionStore,
   InMemorySessionStore,
@@ -2087,7 +2098,7 @@ export class AcpService extends Service {
         ...(gitIndexIsolation?.env ?? {}),
         [CREDENTIAL_BRIDGE_TOKEN_ENV]: credentialBridgeToken.token,
       };
-      const spawnModel =
+      let spawnModel =
         agentType === "claude"
           ? normalizeClaudeAcpModelId(opts.model)
           : opts.model;
@@ -2099,11 +2110,49 @@ export class AcpService extends Service {
       const accountStrategy = resolveCodingAccountStrategy(
         this.setting("ELIZA_CODING_ACCOUNT_STRATEGY"),
       );
-      const resolvedAccount = await selectCodingAccount(agentType, {
-        sessionKey: id,
-        ...(accountStrategy ? { strategy: accountStrategy } : {}),
-        ...(spawnModel ? { model: spawnModel } : {}),
-      });
+      // A model-gateway route owns Pi billing and credentials, so it must not
+      // also select/stamp a pooled provider account. Without a gateway, a Pi
+      // account is resolved atomically with its private provider config below.
+      const resolvedAccount =
+        agentType === "pi-agent" && resolveModelGatewayConfig()
+          ? null
+          : await selectCodingAccount(agentType, {
+              sessionKey: id,
+              ...(accountStrategy ? { strategy: accountStrategy } : {}),
+              ...(spawnModel ? { model: spawnModel } : {}),
+              ...(agentType === "pi-agent" ? { failClosedOnError: true } : {}),
+            });
+      if (
+        agentType === "pi-agent" &&
+        !resolveModelGatewayConfig() &&
+        !resolvedAccount &&
+        connectedCodingAccountCount(agentType) > 0
+      ) {
+        throw new ElizaError(
+          "Pi has linked provider accounts, but none is currently selectable",
+          {
+            code: "PI_PROVIDER_ROUTE_UNAVAILABLE",
+            context: { agentType },
+            severity: "ephemeral",
+          },
+        );
+      }
+      const piProviderRoute =
+        agentType === "pi-agent" && resolvedAccount
+          ? await preparePiProviderRoute({
+              sessionId: id,
+              workdir,
+              stateRoot:
+                this.setting("ELIZA_ACP_STATE_DIR") ??
+                join(homedir(), ".eliza", "plugin-acp"),
+              selection: resolvedAccount.selection,
+              model: spawnModel,
+            })
+          : undefined;
+      if (piProviderRoute) {
+        Object.assign(sessionEnv, piProviderRoute.env);
+        spawnModel = piProviderRoute.summary.model;
+      }
       const customCredentials = resolvedAccount
         ? {
             ...(opts.customCredentials ?? {}),
@@ -2156,6 +2205,7 @@ export class AcpService extends Service {
           : {}),
         ...(gitIndexIsolation?.metadata ?? {}),
         ...(resolvedAccount ? { account: resolvedAccount.meta } : {}),
+        ...(piProviderRoute ? { piProvider: piProviderRoute.summary } : {}),
         [ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY]:
           this.getOrchestratorOwnedArtifacts(id),
         [CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA]: credentialBridgeToken.hash,
@@ -2514,6 +2564,7 @@ export class AcpService extends Service {
         ? normalizeClaudeAcpModelId(opts.model)
         : opts.model;
     if (transportMode === "native") {
+      this.modelForSessionRoute(session, promptModel);
       if (this.nativePromptSessionIds.has(sessionId)) {
         throw new Error(`ACP session is already busy: ${sessionId}`);
       }
@@ -2541,21 +2592,6 @@ export class AcpService extends Service {
       }
     }
     this.turnOutputBuffers.set(sessionId, []);
-    const args = this.baseArgs({
-      workdir: session.workdir,
-      approvalPreset: session.approvalPreset,
-      timeoutMs: opts.timeoutMs ?? this.sessionTimeoutMs,
-      model: promptModel,
-    });
-    args.push(
-      ...this.agentCommandArgs(session.agentType, [
-        "prompt",
-        "-s",
-        session.name ?? session.id,
-        "--",
-        text,
-      ]),
-    );
 
     // The cli transport spawns a fresh subprocess per prompt, so re-inject the
     // session's selected-account credentials (the native transport keeps the
@@ -2581,6 +2617,23 @@ export class AcpService extends Service {
       throw credentialResult.error;
     }
     const promptCredentials = credentialResult.value;
+    const routeModel = this.modelForSessionRoute(session, promptModel);
+    const args = this.baseArgs({
+      workdir: session.workdir,
+      approvalPreset: session.approvalPreset,
+      timeoutMs: opts.timeoutMs ?? this.sessionTimeoutMs,
+      model: routeModel,
+    });
+    args.push(
+      ...this.agentCommandArgs(session.agentType, [
+        "prompt",
+        "-s",
+        session.name ?? session.id,
+        "--",
+        text,
+      ]),
+    );
+
     if (this.promptTurns.get(sessionId)?.cancelRequested) {
       return settlePreProcessCancellation();
     }
@@ -2601,7 +2654,7 @@ export class AcpService extends Service {
       env: this.buildEnv(
         promptEnv,
         promptCredentials,
-        promptModel,
+        routeModel,
         session.agentType,
         sessionId,
       ),
@@ -3474,8 +3527,33 @@ export class AcpService extends Service {
     },
   ): { client: NativeAcpClient; command: string } {
     const command = this.nativeAgentCommand(session.agentType);
+    let expectedModelId: string | undefined;
+    if (
+      session.agentType === "pi-agent" &&
+      accountMetaFromSessionMetadata(session.metadata)
+    ) {
+      const piProvider = session.metadata?.piProvider;
+      if (
+        !piProvider ||
+        typeof piProvider !== "object" ||
+        !("piProviderId" in piProvider) ||
+        typeof piProvider.piProviderId !== "string" ||
+        !piProvider.piProviderId ||
+        !opts.model
+      ) {
+        throw new ElizaError(
+          "The linked Pi session has no confirmed provider/model route",
+          {
+            code: "PI_PROVIDER_ROUTE_MISSING",
+            context: { sessionId: session.id },
+          },
+        );
+      }
+      expectedModelId = `${piProvider.piProviderId}/${opts.model}`;
+    }
     const client = new NativeAcpClient({
       command,
+      ...(expectedModelId ? { expectedModelId } : {}),
       cwd: session.workdir,
       approvalPreset: session.approvalPreset,
       timeoutMs: opts.timeoutMs ?? this.sessionTimeoutMs,
@@ -3489,7 +3567,7 @@ export class AcpService extends Service {
         opts.codexInitialAgentModeOverride,
       ),
       mcpServers: readConfigMcpServers(),
-      onEvent: (event, protocolSessionId) => {
+      onEvent: (event, protocolSessionId, context) => {
         this.handleAcpEvent(
           event,
           session.id,
@@ -3497,6 +3575,8 @@ export class AcpService extends Service {
           Date.now(),
           false,
           new Set<string>(),
+          false,
+          context,
         );
         if (protocolSessionId && protocolSessionId !== session.id) {
           void this.store
@@ -3531,7 +3611,7 @@ export class AcpService extends Service {
       env: opts.env,
       mcpServers: readConfigMcpServers(),
       timeoutMs: opts.timeoutMs ?? this.sessionTimeoutMs,
-      onEvent: (event, protocolSessionId) => {
+      onEvent: (event, protocolSessionId, context) => {
         this.handleAcpEvent(
           event,
           session.id,
@@ -3539,6 +3619,8 @@ export class AcpService extends Service {
           Date.now(),
           false,
           new Set<string>(),
+          false,
+          context,
         );
         if (protocolSessionId && protocolSessionId !== session.id) {
           void this.store
@@ -3641,6 +3723,11 @@ export class AcpService extends Service {
       // error-policy:J6 best-effort teardown of the failed client; the start
       // or createSession failure is rethrown or retried below.
       await client.close().catch(() => undefined);
+      if (
+        err instanceof ElizaError &&
+        err.code === "ACP_SELECTED_MODEL_UNCONFIRMED"
+      )
+        throw err;
       let message = stderr.join("").trim() || errorMessage(err);
       if (
         !this.shouldRetryManagedCodexLandlock(
@@ -3738,7 +3825,11 @@ export class AcpService extends Service {
     let finalText = "";
     let eventStopReason: string | undefined;
     const capturedToolOutputs = new Set<string>();
-    const previousOnAcp = (event: AcpJsonRpcMessage) => {
+    const previousOnAcp = (
+      event: AcpJsonRpcMessage,
+      _protocolSessionId?: string,
+      context?: NativeAcpEventContext,
+    ) => {
       const handled = this.handleAcpEvent(
         event,
         session.id,
@@ -3746,6 +3837,8 @@ export class AcpService extends Service {
         startedAt,
         true,
         capturedToolOutputs,
+        false,
+        context,
       );
       finalText = handled.finalText;
       eventStopReason = handled.stopReason ?? eventStopReason;
@@ -3855,7 +3948,7 @@ export class AcpService extends Service {
         error: message,
       };
     } finally {
-      client.setEventHandler((event, protocolSessionId) => {
+      client.setEventHandler((event, protocolSessionId, context) => {
         this.handleAcpEvent(
           event,
           session.id,
@@ -3863,6 +3956,8 @@ export class AcpService extends Service {
           Date.now(),
           false,
           new Set<string>(),
+          false,
+          context,
         );
         if (protocolSessionId && protocolSessionId !== session.id) {
           void this.store
@@ -3949,11 +4044,13 @@ export class AcpService extends Service {
         session,
         env: promptEnv,
         customCredentials: promptCredentials,
-        model:
+        model: this.modelForSessionRoute(
+          session,
           opts.model ??
-          (typeof session.metadata?.[ACP_METADATA_SPAWN_MODEL] === "string"
-            ? session.metadata[ACP_METADATA_SPAWN_MODEL]
-            : undefined),
+            (typeof session.metadata?.[ACP_METADATA_SPAWN_MODEL] === "string"
+              ? session.metadata[ACP_METADATA_SPAWN_MODEL]
+              : undefined),
+        ),
         timeoutMs: opts.timeoutMs,
       });
       client = attached.client;
@@ -4457,6 +4554,7 @@ export class AcpService extends Service {
     emitPromptTerminalEvents: boolean,
     capturedToolOutputs: Set<string>,
     deferPromptTerminalEvent = false,
+    context?: NativeAcpEventContext,
   ): {
     finalText: string;
     stopReason?: string;
@@ -4504,6 +4602,24 @@ export class AcpService extends Service {
     // Some adapters put fields at params.* directly. Look in both places.
     const updateBlock = asRecord(params?.update) ?? params;
     const sessionUpdate = updateBlock?.sessionUpdate ?? params?.sessionUpdate;
+
+    if (context?.kind === "startup") {
+      const content = asRecord(updateBlock?.content);
+      // The native transport owns declaration matching and the pre-prompt
+      // barrier. Keep its status bytes in the event trail, never in the answer
+      // or message stream consumed by task memory and conversation narration.
+      if (
+        sessionId &&
+        content?.type === "text" &&
+        typeof content.text === "string"
+      ) {
+        this.emitSessionEvent(sessionId, "startup", {
+          text: content.text,
+          protocolSessionId: context.sessionId,
+        });
+      }
+      return { finalText };
+    }
 
     if (
       sessionId &&
@@ -5078,14 +5194,23 @@ export class AcpService extends Service {
     if (!meta) return undefined;
     const pinned = await selectCodingAccount(session.agentType, {
       sessionKey: session.id,
+      providerId: meta.providerId,
       accountIds: [meta.accountId],
     });
-    if (pinned) return pinned.selection.envPatch;
+    if (pinned) {
+      const prepared = await this.prepareSessionAccountCredentials(
+        session,
+        pinned.selection,
+      );
+      return prepared.env;
+    }
     // Exclude the dud explicitly: it may still be pool-selectable (only its
     // token resolve failed), and re-picking it here would just re-fail.
     const failover = await selectCodingAccount(session.agentType, {
       sessionKey: session.id,
-      exclude: [meta.accountId],
+      excludeAccounts: [
+        { providerId: meta.providerId, accountId: meta.accountId },
+      ],
     });
     if (!failover) {
       // This session was explicitly stamped to a linked account. Returning no
@@ -5113,8 +5238,85 @@ export class AcpService extends Service {
       now: failover.meta.accountId,
       providerId: failover.meta.providerId,
     });
-    await this.restampSessionAccount(session, failover.meta);
-    return failover.selection.envPatch;
+    // Resolve and materialize the complete route before changing durable
+    // billing attribution. A malformed provider/model/credential therefore
+    // fails closed without stamping a session to credentials no child used.
+    const prepared = await this.prepareSessionAccountCredentials(
+      session,
+      failover.selection,
+    );
+    await this.restampSessionAccount(
+      session,
+      failover.meta,
+      prepared.piProvider,
+    );
+    return prepared.env;
+  }
+
+  /** A pooled Pi prompt must use the model whose provider configuration was materialized. */
+  private modelForSessionRoute(
+    session: SessionInfo,
+    requestedModel?: string,
+  ): string | undefined {
+    if (session.agentType !== "pi-agent" || !session.metadata?.piProvider)
+      return requestedModel;
+    const model = session.metadata[ACP_METADATA_SPAWN_MODEL];
+    if (typeof model !== "string" || !model) {
+      throw new ElizaError("The pooled Pi route has no materialized model", {
+        code: "PI_PROVIDER_MODEL_MISSING",
+        context: { sessionId: session.id },
+      });
+    }
+    if (requestedModel !== undefined && requestedModel !== model) {
+      throw new ElizaError(
+        "The requested Pi model does not match the selected provider route; start a new session with that model",
+        {
+          code: "PI_PROVIDER_MODEL_ROUTE_MISMATCH",
+          context: { sessionId: session.id, requestedModel, routeModel: model },
+        },
+      );
+    }
+    return model;
+  }
+
+  /**
+   * Turn a pooled account selection into the exact child credential surface.
+   * Pi is special: every prompt/reconnect must rewrite its session-private
+   * provider files and expose only the generic key those files reference.
+   */
+  private async prepareSessionAccountCredentials(
+    session: SessionInfo,
+    selection: CodingAccountSelection,
+  ): Promise<{
+    env: Record<string, string>;
+    piProvider?: PreparedPiProviderRoute["summary"];
+  }> {
+    if (session.agentType !== "pi-agent") {
+      return { env: selection.envPatch };
+    }
+    const storedModel = session.metadata?.[ACP_METADATA_SPAWN_MODEL];
+    const storedProvider = session.metadata?.piProvider;
+    const sameProvider =
+      typeof storedProvider === "object" &&
+      storedProvider !== null &&
+      "accountProviderId" in storedProvider &&
+      storedProvider.accountProviderId === selection.providerId;
+    const route = await preparePiProviderRoute({
+      sessionId: session.id,
+      workdir: session.workdir,
+      stateRoot:
+        this.setting("ELIZA_ACP_STATE_DIR") ??
+        join(homedir(), ".eliza", "plugin-acp"),
+      selection,
+      // Preserve the chosen model while rotating sibling accounts of the same
+      // provider. A cross-provider failover takes the destination's truthful
+      // default instead of sending (for example) a DeepSeek-only id to Z.AI.
+      model:
+        sameProvider && typeof storedModel === "string"
+          ? storedModel
+          : undefined,
+    });
+    return { env: route.env, piProvider: route.summary };
   }
 
   /**
@@ -5128,8 +5330,18 @@ export class AcpService extends Service {
   private async restampSessionAccount(
     session: SessionInfo,
     meta: CodingAccountMeta,
+    piProvider?: PreparedPiProviderRoute["summary"],
   ): Promise<void> {
-    const metadata = { ...(session.metadata ?? {}), account: meta };
+    const metadata = {
+      ...(session.metadata ?? {}),
+      account: meta,
+      ...(piProvider
+        ? {
+            piProvider,
+            [ACP_METADATA_SPAWN_MODEL]: piProvider.model,
+          }
+        : {}),
+    };
     // Durable session and task/billing consumers must agree before credentials
     // for the new account can reach a child process. A partial re-key is a
     // wrong-account billing defect, not a diagnostics-only degradation.
@@ -5356,6 +5568,12 @@ export class AcpService extends Service {
           : undefined,
         excludedProviderKeys: [...MODEL_GATEWAY_EXCLUDED_PROVIDER_KEYS],
       });
+    }
+    // A selected Pi provider must remain the only billable model authority in
+    // the child. The private models.json references ELIZA_PI_ROUTE_API_KEY, so
+    // every ambient provider key can be removed after all env merge steps.
+    if (agentType === "pi-agent") {
+      enforcePiProviderCredentialIsolation(env);
     }
     // Credential-proxy mode (#11536 E3) — the NON-MODEL sibling of the gateway
     // block above. Independent env keys (VCS PATs + GIT_CONFIG_*), so it never

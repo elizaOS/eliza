@@ -8,6 +8,10 @@
 
 import type { Route } from "@elizaos/core";
 import {
+  normalizeScreenCaptureFailureContract,
+  normalizeScreenCaptureFrameContract,
+} from "@elizaos/shared";
+import {
   OCR_BRIDGE_SERVICE_TYPE,
   type OcrBridgeService,
   type OcrBridgeWord,
@@ -16,26 +20,6 @@ import {
   SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE,
   type ScreenCaptureBridgeService,
 } from "./screen-capture-bridge";
-
-interface ScreenFrameBody {
-  requestId: string;
-  base64: string;
-  format: string;
-  width: number;
-  height: number;
-}
-
-function isScreenFrameBody(value: unknown): value is ScreenFrameBody {
-  if (typeof value !== "object" || value === null) return false;
-  const body = value as Record<string, unknown>;
-  return (
-    typeof body.requestId === "string" &&
-    typeof body.base64 === "string" &&
-    typeof body.format === "string" &&
-    typeof body.width === "number" &&
-    typeof body.height === "number"
-  );
-}
 
 function jsonResult(
   status: number,
@@ -77,30 +61,26 @@ export const screenFrameRoute: Route = {
     const body = ctx.body;
     // Renderer signalled a capture failure/skip so the pending request settles
     // immediately rather than waiting out the bridge timeout.
-    if (
-      typeof body === "object" &&
-      body !== null &&
-      typeof (body as Record<string, unknown>).requestId === "string" &&
-      (body as Record<string, unknown>).error !== undefined
-    ) {
-      const requestId = (body as Record<string, unknown>).requestId as string;
-      const reason = String((body as Record<string, unknown>).error);
-      const failed = bridge.failFrame(requestId, reason);
+    const failure = normalizeScreenCaptureFailureContract(body);
+    if (failure) {
+      const failed = bridge.failFrame(failure.requestId, failure.error);
       return failed
         ? jsonResult(200, { ok: true })
         : jsonResult(404, { ok: false, error: "unknown_request" });
     }
 
-    if (!isScreenFrameBody(body)) {
+    const frame = normalizeScreenCaptureFrameContract(body);
+    if (!frame) {
       return jsonResult(400, { ok: false, error: "invalid_body" });
     }
 
     const ok = bridge.submitFrame(
-      body.requestId,
-      body.base64,
-      body.format,
-      body.width,
-      body.height,
+      frame.requestId,
+      frame.base64,
+      frame.format,
+      frame.width,
+      frame.height,
+      frame.capturedAt,
     );
     return ok
       ? jsonResult(200, { ok: true })

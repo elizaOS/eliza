@@ -294,6 +294,7 @@ function routeTable(): RouteMatch[] {
         windowDays: 14,
       }),
     },
+    { test: has("/api/approvals"), body: () => ({ pending: [] }) },
     { test: has("/api/notifications"), body: notificationsPayload },
   ];
 }

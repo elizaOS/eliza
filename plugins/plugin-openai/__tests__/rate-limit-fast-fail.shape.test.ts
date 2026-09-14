@@ -49,6 +49,8 @@ function createRuntime(): IAgentRuntime {
 }
 
 beforeEach(() => {
+  // This fixture rotates the OpenAI credential even on a compatible endpoint.
+  vi.stubEnv("CEREBRAS_API_KEY", undefined);
   vi.stubEnv("OPENAI_API_KEY", "test-key");
   vi.stubEnv("OPENAI_BASE_URL", "https://api.cerebras.ai/v1");
   vi.stubEnv("OPENAI_SMALL_MODEL", "gemma-4-31b");

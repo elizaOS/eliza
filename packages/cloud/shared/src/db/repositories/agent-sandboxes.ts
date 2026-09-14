@@ -66,6 +66,7 @@ import { decryptAgentBackupStateData, encryptAgentBackupStateData } from "../cry
 import { ensureAgentSandboxSchema } from "../ensure-agent-sandbox-schema";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
+import { agentComputeStopIntents } from "../schemas/agent-compute-stop-intents";
 import {
   type AgentBackupSnapshotType,
   type AgentBackupStateData,
@@ -390,18 +391,24 @@ function warmPoolGenerationConditions(expected: WarmPoolRuntimeGeneration): SQL[
 /** Keep generic and restore-fenced provisioning transitions byte-equivalent. */
 function provisioningAdmissionUpdatePayload() {
   const permanentProvisionFailure = sql`${agentSandboxes.status} = 'error' AND ${agentSandboxes.error_message} LIKE 'Provisioning permanently failed%'`;
+  // Stop retains the retired locator while the agent is off. Once explicit
+  // provisioning is admitted, keeping that node would count the new
+  // `provisioning` row against its own freed slot before placement can run.
+  // Recovery data stays on the row; unresolved and sleeping generations keep
+  // their existing handle semantics.
+  const retiredPlacement = sql`${agentSandboxes.status} = 'stopped' OR (${permanentProvisionFailure})`;
   return {
     status: "provisioning" as const,
     updated_at: new Date(),
     error_message: null,
-    sandbox_id: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.sandbox_id} END`,
-    bridge_url: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.bridge_url} END`,
-    health_url: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.health_url} END`,
-    node_id: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.node_id} END`,
-    container_name: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.container_name} END`,
-    bridge_port: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.bridge_port} END`,
-    web_ui_port: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.web_ui_port} END`,
-    headscale_ip: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.headscale_ip} END`,
+    sandbox_id: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.sandbox_id} END`,
+    bridge_url: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.bridge_url} END`,
+    health_url: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.health_url} END`,
+    node_id: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.node_id} END`,
+    container_name: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.container_name} END`,
+    bridge_port: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.bridge_port} END`,
+    web_ui_port: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.web_ui_port} END`,
+    headscale_ip: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.headscale_ip} END`,
   };
 }
 
@@ -636,6 +643,27 @@ export class AgentSandboxesRepository {
       .where(eq(agentSandboxes.id, id))
       .limit(1);
     return r?.organizationId;
+  }
+
+  /** Distinguishes a completed user shutdown from a recoverable billing stop. */
+  async wasStoppedByUser(id: string, orgId: string): Promise<boolean> {
+    const [latest] = await dbWrite
+      .select({ authorization: agentComputeStopIntents.authorization })
+      .from(agentComputeStopIntents)
+      .where(
+        and(
+          eq(agentComputeStopIntents.agent_id, id),
+          eq(agentComputeStopIntents.organization_id, orgId),
+          eq(agentComputeStopIntents.status, "provider_confirmed"),
+          isNotNull(agentComputeStopIntents.provider_confirmed_at),
+        ),
+      )
+      .orderBy(
+        desc(agentComputeStopIntents.provider_confirmed_at),
+        desc(agentComputeStopIntents.id),
+      )
+      .limit(1);
+    return latest?.authorization === "user_request";
   }
 
   async findByIdAndOrg(id: string, orgId: string): Promise<AgentSandbox | undefined> {
@@ -1514,7 +1542,23 @@ export class AgentSandboxesRepository {
         // every write, including raw SQL writers, so no timestamp-precision
         // or same-millisecond ABA window exists (#17249 fence class).
         eq(agentSandboxes.lifecycle_revision, expectedRunningGeneration.lifecycleRevision),
+        hasNoProvisioningOwnerJob([...EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES]),
       );
+      // Enqueue takes this same lock before capturing the lifecycle revision.
+      // A probe must either commit first or yield to the accepted operation;
+      // otherwise a harmless heartbeat can supersede a queued user shutdown.
+      return dbWrite.transaction(async (tx) => {
+        await configureElizaLifecycleTransaction(tx);
+        await tx.execute(
+          elizaProvisionAdvisoryLockSql(expectedRunningGeneration.organizationId, id),
+        );
+        const [updated] = await tx
+          .update(agentSandboxes)
+          .set(updateData)
+          .where(and(...predicates))
+          .returning();
+        return updated;
+      });
     }
     const [r] = await dbWrite
       .update(agentSandboxes)

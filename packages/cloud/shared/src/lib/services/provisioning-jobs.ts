@@ -32,6 +32,7 @@ import {
 import type { DbTransaction } from "../../db/client";
 import { ensureAgentSandboxSchema } from "../../db/ensure-agent-sandbox-schema";
 import { dbWrite } from "../../db/helpers";
+import { updateAgentLifecycleExecutionFence } from "../../db/repositories/agent-lifecycle-execution-fence";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import {
   cutoverResumeWindowAllows,
@@ -2508,7 +2509,21 @@ export class ProvisioningJobService {
             and(
               eq(agentComputeStopIntents.organization_id, params.organizationId),
               eq(agentComputeStopIntents.agent_id, params.agentId),
-              eq(agentComputeStopIntents.lifecycle_revision, targetRevision),
+              or(
+                eq(agentComputeStopIntents.lifecycle_revision, targetRevision),
+                ...(expectedLifecycleRevision === undefined
+                  ? []
+                  : [
+                      sql`EXISTS (
+                  SELECT 1 FROM ${jobs}
+                  WHERE ${jobs.id} = ${agentComputeStopIntents.job_id}
+                    AND ${jobs.organization_id} = ${params.organizationId}
+                    AND ${jobs.agent_id} = ${params.agentId}
+                    AND ${jobs.type} = 'agent_suspend'
+                    AND ${jobs.data}->>'lifecycleRevision' = ${String(expectedLifecycleRevision)}
+                )`,
+                    ]),
+              ),
               eq(agentComputeStopIntents.authorization, "user_request"),
               ...(params.authorization === "billing_request"
                 ? [
@@ -4967,26 +4982,12 @@ export class ProvisioningJobService {
             },
           );
         }
-        const [claimedSandbox] = await tx
-          .update(agentSandboxes)
-          .set({
-            lifecycle_job_id: job.id,
-            lifecycle_execution_generation: job.execution_generation,
-          })
-          .where(
-            and(
-              eq(agentSandboxes.id, identity.agentId),
-              eq(agentSandboxes.organization_id, identity.organizationId),
-              or(
-                isNull(agentSandboxes.lifecycle_execution_generation),
-                and(
-                  eq(agentSandboxes.lifecycle_job_id, job.id),
-                  sql`${agentSandboxes.lifecycle_execution_generation} IS NOT DISTINCT FROM ${job.execution_generation}`,
-                ),
-              ),
-            ),
-          )
-          .returning({ id: agentSandboxes.id });
+        const claimedSandbox = await updateAgentLifecycleExecutionFence(
+          tx,
+          job,
+          job.execution_generation!,
+          "claim",
+        );
         if (!claimedSandbox) {
           const [existingSandbox] = await tx
             .select({ id: agentSandboxes.id })

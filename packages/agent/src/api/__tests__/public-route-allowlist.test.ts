@@ -263,7 +263,7 @@ function scanRepo(): PublicRoute[] {
       text,
       path.relative(REPO_ROOT, file),
     )) {
-      const dedupe = `${route.identity} ${route.file}`;
+      const dedupe = `${route.identity}\0${route.file}`;
       if (seen.has(dedupe)) continue;
       seen.add(dedupe);
       routes.push(route);

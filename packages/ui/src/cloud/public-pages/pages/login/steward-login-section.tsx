@@ -1144,6 +1144,7 @@ export default function StewardLoginSection() {
   useEffect(() => {
     if (
       step !== "email-sent" ||
+      loading === "email" ||
       !emailChallenge?.challengeId ||
       !emailChallenge.pollSecret
     ) {
@@ -1223,6 +1224,7 @@ export default function StewardLoginSection() {
   }, [
     emailChallenge,
     emailCheckState,
+    loading,
     recoverSharedEmailSession,
     searchParams,
     step,
@@ -1230,7 +1232,10 @@ export default function StewardLoginSection() {
   ]);
 
   useEffect(() => {
-    if (step !== "email-sent" || !email.trim()) return;
+    // A code submitted here consumes the same challenge that link polling
+    // observes. Let its verification and cookie sync finish before treating a
+    // consumed challenge as a sign-in completed in another tab.
+    if (step !== "email-sent" || loading === "email" || !email.trim()) return;
     let cancelled = false;
     const unsubscribe = subscribeStewardEmailLoginComplete(email, (message) => {
       void (async () => {
@@ -1271,7 +1276,7 @@ export default function StewardLoginSection() {
       cancelled = true;
       unsubscribe();
     };
-  }, [email, recoverSharedEmailSession, step]);
+  }, [email, loading, recoverSharedEmailSession, step]);
 
   useEffect(() => {
     const tracksEmailExpiry = step === "email-sent" && emailChallenge !== null;

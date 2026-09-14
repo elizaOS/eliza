@@ -26,6 +26,10 @@ import type {
   DedicatedAdoptionConfirmationQuote,
   DedicatedAdoptionConfirmationRequester,
 } from "../../api/client-cloud";
+import type {
+  DedicatedActivationConfirmationQuote,
+  DedicatedActivationConfirmationRequester,
+} from "../../api/dedicated-activation-confirmation";
 import { Button } from "../../components/ui/button";
 import {
   savePersistedActiveServer,
@@ -109,6 +113,15 @@ export default function JoinPage(): React.JSX.Element {
     useState<DedicatedAdoptionReview | null>(null);
   const pendingAdoptionDecisionRef =
     useRef<PendingDedicatedAdoptionDecision | null>(null);
+  const [activationReview, setActivationReview] =
+    useState<DedicatedActivationConfirmationQuote | null>(null);
+  const pendingActivationDecisionRef = useRef<{
+    quote: DedicatedActivationConfirmationQuote;
+    resolve: (
+      decision: Awaited<ReturnType<DedicatedActivationConfirmationRequester>>,
+    ) => void;
+    dispose: () => void;
+  } | null>(null);
   const appHandoff =
     typeof window === "undefined"
       ? null
@@ -169,6 +182,38 @@ export default function JoinPage(): React.JSX.Element {
       [settleDedicatedAdoption],
     );
 
+  const settleDedicatedActivation = useCallback((confirmed: boolean) => {
+    const pending = pendingActivationDecisionRef.current;
+    if (!pending) return;
+    pendingActivationDecisionRef.current = null;
+    pending.dispose();
+    setActivationReview(null);
+    pending.resolve(
+      confirmed
+        ? { action: "activate_dedicated", quoteId: pending.quote.quoteId }
+        : null,
+    );
+  }, []);
+
+  const requestDedicatedActivationConfirmation =
+    useCallback<DedicatedActivationConfirmationRequester>(
+      (quote, { signal }) => {
+        if (signal?.aborted) return Promise.resolve(null);
+        settleDedicatedActivation(false);
+        return new Promise((resolve) => {
+          const onAbort = () => settleDedicatedActivation(false);
+          pendingActivationDecisionRef.current = {
+            quote,
+            resolve,
+            dispose: () => signal?.removeEventListener("abort", onAbort),
+          };
+          signal?.addEventListener("abort", onAbort, { once: true });
+          setActivationReview(quote);
+        });
+      },
+      [settleDedicatedActivation],
+    );
+
   const start = useCallback(async () => {
     const authToken = resolveJoinAuthToken();
     if (!authToken) {
@@ -179,6 +224,7 @@ export default function JoinPage(): React.JSX.Element {
     setError(null);
     setBillingError(null);
     settleDedicatedAdoption(null);
+    settleDedicatedActivation(false);
     activeAttemptRef.current?.controller.abort(
       new DOMException("Join attempt superseded", "AbortError"),
     );
@@ -195,6 +241,7 @@ export default function JoinPage(): React.JSX.Element {
           authToken,
           signal: controller.signal,
           requestDedicatedAdoptionConfirmation,
+          requestDedicatedActivationConfirmation,
           onProgress: (_status, progressDetail) => {
             if (progressDetail) setDetail(progressDetail);
           },
@@ -216,7 +263,12 @@ export default function JoinPage(): React.JSX.Element {
     if (activeAttemptRef.current?.controller === controller) {
       activeAttemptRef.current = null;
     }
-  }, [requestDedicatedAdoptionConfirmation, settleDedicatedAdoption]);
+  }, [
+    requestDedicatedAdoptionConfirmation,
+    settleDedicatedAdoption,
+    requestDedicatedActivationConfirmation,
+    settleDedicatedActivation,
+  ]);
 
   useEffect(
     () => () => {
@@ -358,6 +410,61 @@ export default function JoinPage(): React.JSX.Element {
             <p className="text-sm text-white/70" role="alert">
               {error?.message}
             </p>
+            {signOutButton}
+          </div>
+        ) : activationReview ? (
+          <div
+            className="flex w-full flex-col items-center gap-4"
+            data-testid="dedicated-activation-review"
+          >
+            <h1 className="font-poppins text-lg font-semibold text-white">
+              {t("cloud.join.dedicatedActivationTitle", {
+                defaultValue: "Start your Dedicated Eliza",
+              })}
+            </h1>
+            <p className="text-sm leading-relaxed text-white/72">
+              {t("cloud.join.dedicatedActivationDescription", {
+                defaultValue:
+                  "Your agent runs on Dedicated hosting. Review the cost, then start chatting when setup finishes.",
+              })}
+            </p>
+            <p className="text-base font-medium text-white">
+              {t("cloud.join.dedicatedActivationPrice", {
+                defaultValue: "{{daily}}/day ({{hourly}})",
+                daily: formatUSD(activationReview.dailyRateUsd),
+                hourly: formatHourlyRate(activationReview.hourlyRateUsd),
+              })}
+            </p>
+            <p className="text-sm leading-relaxed text-white/72">
+              {t("cloud.join.dedicatedActivationBalance", {
+                defaultValue:
+                  "Balance: {{balance}} · Minimum to start: {{minimum}}",
+                balance: formatUSD(activationReview.balanceUsd),
+                minimum: formatUSD(activationReview.minimumBalanceUsd),
+              })}
+            </p>
+            <div className="flex w-full flex-col gap-3">
+              <Button
+                variant="surface"
+                size="wide"
+                type="button"
+                onClick={() => settleDedicatedActivation(true)}
+              >
+                {t("cloud.join.dedicatedActivationConfirm", {
+                  defaultValue: "Start Dedicated",
+                })}
+              </Button>
+              <Button
+                variant="ghostMuted"
+                size="wide"
+                type="button"
+                onClick={() => settleDedicatedActivation(false)}
+              >
+                {t("cloud.join.dedicatedActivationCancel", {
+                  defaultValue: "Not now",
+                })}
+              </Button>
+            </div>
             {signOutButton}
           </div>
         ) : adoptionReview ? (

@@ -253,15 +253,15 @@ app.post("/native", async (c) => {
       );
     }
 
-    return c.json(
-      {
-        message: "Paired successfully",
-        apiKey: claim.apiKey,
-        agentName: claim.agentName ?? "Agent",
-      },
-      200,
-      { "Cache-Control": "no-store, no-cache, must-revalidate" },
-    );
+    const response: CloudPairExchangeResponse = {
+      message: "Paired successfully",
+      apiKey: claim.apiKey,
+      agentName: claim.agentName ?? "Agent",
+      agentId: claim.pairingToken.agentId,
+    };
+    return c.json(response, 200, {
+      "Cache-Control": "no-store, no-cache, must-revalidate",
+    });
   } catch (err) {
     // error-policy:J1 route boundary — translate authentication and dependency
     // failures into structured HTTP errors without exposing token context.

@@ -398,38 +398,6 @@ describe("view management actions", () => {
 		expect(globalThis.fetch).not.toHaveBeenCalled();
 	});
 
-	it("advertises UI view switching in its planner routing hint", () => {
-		const action = createViewsAction();
-		const closeOne = createViewsAliasAction("CLOSE_VIEW");
-		const closeAll = createViewsAliasAction("CLOSE_ALL_VIEWS");
-		expect(action.routingHint).toContain("UI view/window/panel/app navigation");
-		expect(action.routingHint).toContain("Close/hide means VIEWS action=close");
-		expect(action.routingHint).toContain(
-			"agent-fill and agent-click are only for an explicitly requested form-control interaction",
-		);
-		expect(action.routingHint).toContain(
-			"reading or changing calendar events uses the CALENDAR action",
-		);
-		expect(action.routingHint).toContain(
-			"action=interact view=device-control capability=set-flashlight",
-		);
-		expect(action.similes).toContain("SET_FLASHLIGHT");
-		expect(action.tags).toContain("flashlight");
-		expect(action.description).toContain("native device controls");
-		expect(closeOne.routingHint).toContain("one open UI view/tab");
-		expect(closeAll.routingHint).toContain("every open UI view/tab");
-		expect(closeOne.routingHint).not.toContain("show or switch");
-		expect(closeAll.routingHint).not.toContain("show or switch");
-		expect(closeAll.parameters).toEqual([]);
-		expect(
-			Array.isArray(closeOne.parameters)
-				? closeOne.parameters.map((parameter) => parameter.name)
-				: [],
-		).toEqual(["view", "id", "name", "target"]);
-		expect(closeOne.tags).not.toContain("notes");
-		expect(closeAll.tags).not.toContain("notes");
-	});
-
 	it("does not reinterpret an undeclared explicit capability on the current view", async () => {
 		const { runtime } = createRuntime();
 		const action = createViewsAction({

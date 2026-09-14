@@ -126,6 +126,7 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     "OPENAI_API_KEY",
     "GEMINI_API_KEY",
     "GOOGLE_API_KEY",
+    "GOOGLE_CLIENT_SECRET",
     "GOOGLE_GENERATIVE_AI_API_KEY",
     "GROQ_API_KEY",
     "XAI_API_KEY",
@@ -160,7 +161,7 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     // Matrix connector — only the genuine credentials live here (redactable
     // secrets). The homeserver URL, user/room/device IDs, the verify-allowlist,
     // and the behaviour flags are PUBLIC identifiers and are bridged as plain
-    // settings below (matrixPublicConfigKeys) — putting them in secrets makes the
+    // settings below (publicConnectorConfigKeys) — putting them in secrets makes the
     // redaction layer blank them out wherever they appear in output (e.g. a DM
     // room name "remilio ↔ @user:server" rendered as "[REDACTED:...]").
     // MATRIX_ACCOUNTS stays a secret because its JSON embeds per-account tokens.
@@ -205,7 +206,10 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
   // character.settings.secrets — leaves them intact. These are not credentials
   // (homeserver URL, user/room/device IDs, the verify allow-list, on/off flags),
   // so redacting them only corrupted output (room names, the agent's own id).
-  const matrixPublicConfigKeys = [
+  const publicConnectorConfigKeys = [
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_REDIRECT_URI",
+    "ELIZA_EXTERNAL_BASE_URL",
     "MATRIX_HOMESERVER",
     "MATRIX_USER_ID",
     "MATRIX_DEVICE_ID",
@@ -217,7 +221,7 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     "MATRIX_VERIFY_ALLOWLIST",
     "MATRIX_PERSONAL",
   ];
-  for (const key of matrixPublicConfigKeys) {
+  for (const key of publicConnectorConfigKeys) {
     const value = process.env[key];
     if (value?.trim()) {
       settings[key] = value;

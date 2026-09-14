@@ -6,235 +6,318 @@
 import { ModelType } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-	createLocalInferenceModelHandlers,
-	isLocalInferenceUnavailableError,
-	LOCAL_INFERENCE_PROVIDER_ID,
-	LocalInferenceUnavailableError,
+  createLocalInferenceModelHandlers,
+  isLocalInferenceUnavailableError,
+  LOCAL_INFERENCE_PROVIDER_ID,
+  LocalInferenceUnavailableError,
 } from "../src/provider.ts";
 
 function runtimeWithService(
-	service: Record<string, unknown>,
-	fetchImpl?: typeof fetch,
+  service: Record<string, unknown>,
+  fetchImpl?: typeof fetch,
 ) {
-	return {
-		...(fetchImpl ? { fetch: fetchImpl } : {}),
-		getService: vi.fn((name: string) =>
-			name === "localInferenceLoader" ? service : null,
-		),
-	};
+  return {
+    ...(fetchImpl ? { fetch: fetchImpl } : {}),
+    getService: vi.fn((name: string) =>
+      name === "localInferenceLoader" ? service : null,
+    ),
+  };
 }
 
 afterEach(() => {
-	vi.unstubAllEnvs();
+  vi.unstubAllEnvs();
 });
 
 describe("local inference provider", () => {
-	it("delegates text generation to the runtime local inference service", async () => {
-		const generate = vi.fn(async (args: { prompt: string }) => `local:${args.prompt}`);
-		const runtime = runtimeWithService({ generate });
-		const handlers = createLocalInferenceModelHandlers();
+  it("delegates text generation to the runtime local inference service", async () => {
+    const generate = vi.fn(
+      async (args: { prompt: string }) => `local:${args.prompt}`,
+    );
+    const runtime = runtimeWithService({ generate });
+    const handlers = createLocalInferenceModelHandlers();
 
-		const result = await handlers[ModelType.TEXT_SMALL]?.(runtime as never, {
-			prompt: "hello",
-			stopSequences: ["</s>"],
-			temperature: 0.2,
-		} as never);
+    const result = await handlers[ModelType.TEXT_SMALL]?.(
+      runtime as never,
+      {
+        prompt: "hello",
+        stopSequences: ["</s>"],
+        temperature: 0.2,
+      } as never,
+    );
 
-		expect(result).toBe("local:hello");
-		expect(generate).toHaveBeenCalledWith(
-			expect.objectContaining({
-				prompt: "hello",
-				stopSequences: [
-					"</s>",
-					"<end_of_turn>",
-					"<start_of_turn>",
-					"<endoftext>",
-				],
-				temperature: 0.2,
-			}),
-		);
-	});
+    expect(result).toBe("local:hello");
+    expect(generate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: "hello",
+        stopSequences: [
+          "</s>",
+          "<end_of_turn>",
+          "<start_of_turn>",
+          "<endoftext>",
+        ],
+        temperature: 0.2,
+      }),
+    );
+  });
 
-	it("renders v5 message arrays before delegating text generation", async () => {
-		const generate = vi.fn(async (args: { prompt: string }) => args.prompt);
-		const runtime = runtimeWithService({ generate });
-		const handlers = createLocalInferenceModelHandlers();
+  it("renders v5 message arrays before delegating text generation", async () => {
+    const generate = vi.fn(async (args: { prompt: string }) => args.prompt);
+    const runtime = runtimeWithService({ generate });
+    const handlers = createLocalInferenceModelHandlers();
 
-		const result = await handlers[ModelType.TEXT_SMALL]?.(runtime as never, {
-			messages: [
-				{ role: "system", content: "You are Eliza." },
-				{
-					role: "user",
-					content: [{ type: "text", text: "hello. say hello back" }],
-				},
-			],
-			maxTokens: 32,
-			topP: 0.9,
-		} as never);
+    const result = await handlers[ModelType.TEXT_SMALL]?.(
+      runtime as never,
+      {
+        messages: [
+          { role: "system", content: "You are Eliza." },
+          {
+            role: "user",
+            content: [{ type: "text", text: "hello. say hello back" }],
+          },
+        ],
+        maxTokens: 32,
+        topP: 0.9,
+      } as never,
+    );
 
-		expect(result).toBe(
-			'system:\nYou are Eliza.\n\nuser:\n[{"type":"text","text":"hello. say hello back"}]',
-		);
-		expect(generate).toHaveBeenCalledWith(
-			expect.objectContaining({
-				prompt:
-					'system:\nYou are Eliza.\n\nuser:\n[{"type":"text","text":"hello. say hello back"}]',
-				maxTokens: 32,
-				topP: 0.9,
-			}),
-		);
-	});
+    expect(result).toBe(
+      "system:\nYou are Eliza.\n\nuser:\nhello. say hello back",
+    );
+    expect(generate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: "system:\nYou are Eliza.\n\nuser:\nhello. say hello back",
+        maxTokens: 32,
+        topP: 0.9,
+      }),
+    );
+  });
 
-	it("renders prompt segments before delegating text generation", async () => {
-		const generate = vi.fn(async (args: { prompt: string }) => args.prompt);
-		const runtime = runtimeWithService({ generate });
-		const handlers = createLocalInferenceModelHandlers();
+  it("preserves complete mixed text parts at the local generation boundary", async () => {
+    const first = "First complete line — 東京\n".repeat(900);
+    const last = "Final line with café and 🧭";
+    const generate = vi.fn(async (args: { prompt: string }) => args.prompt);
+    const runtime = runtimeWithService({ generate });
+    const handlers = createLocalInferenceModelHandlers();
+    const expected = `user:\n${first}\n${last}`;
 
-		await expect(
-			handlers[ModelType.TEXT_LARGE]?.(runtime as never, {
-				promptSegments: [
-					{ content: "system:\nYou are Eliza.\n\n" },
-					{ content: "user:\nhello" },
-				],
-			} as never),
-		).resolves.toBe("system:\nYou are Eliza.\n\nuser:\nhello");
-	});
+    await expect(
+      handlers[ModelType.TEXT_SMALL]?.(
+        runtime as never,
+        {
+          messages: [
+            { role: "user", content: [first, { type: "text", text: last }] },
+          ],
+        } as never,
+      ),
+    ).resolves.toBe(expected);
+    expect(generate).toHaveBeenCalledWith(
+      expect.objectContaining({ prompt: expected }),
+    );
+  });
 
-	it("delegates embeddings without returning fake vectors for warmup probes", async () => {
-		const embed = vi.fn(async () => ({ embedding: [0.1, 0.2, 0.3] }));
-		const runtime = runtimeWithService({ embed });
-		const handlers = createLocalInferenceModelHandlers();
+  it("preserves structured tool fields with adjacent text at the local generation boundary", async () => {
+    const content = [
+      { type: "text", text: "Retain the full tool context" },
+      {
+        type: "tool-result",
+        toolCallId: "weather-1",
+        toolName: "weather",
+        output: { city: "東京", temperatures: [0, -3, 12], complete: true },
+      },
+    ];
+    const generate = vi.fn(async (args: { prompt: string }) => args.prompt);
+    const runtime = runtimeWithService({ generate });
+    const handlers = createLocalInferenceModelHandlers();
+    const result = await handlers[ModelType.TEXT_SMALL]?.(
+      runtime as never,
+      {
+        messages: [{ role: "tool", content }],
+      } as never,
+    );
 
-		await expect(
-			handlers[ModelType.TEXT_EMBEDDING]?.(runtime as never, null as never),
-		).rejects.toMatchObject({
-			code: "LOCAL_INFERENCE_UNAVAILABLE",
-			reason: "invalid_input",
-		});
+    expect(typeof result).toBe("string");
+    expect(JSON.parse((result as string).replace(/^tool:\n/, ""))).toEqual(
+      content,
+    );
+    expect(generate).toHaveBeenCalledWith(
+      expect.objectContaining({ prompt: result }),
+    );
+  });
 
-		await expect(
-			handlers[ModelType.TEXT_EMBEDDING]?.(runtime as never, {
-				text: "embed me",
-			} as never),
-		).resolves.toEqual([0.1, 0.2, 0.3]);
-		expect(embed).toHaveBeenCalledWith({ input: "embed me" });
-	});
+  it("renders prompt segments before delegating text generation", async () => {
+    const generate = vi.fn(async (args: { prompt: string }) => args.prompt);
+    const runtime = runtimeWithService({ generate });
+    const handlers = createLocalInferenceModelHandlers();
 
-	it("delegates local TTS and transcription when those backend APIs exist", async () => {
-		const wav = new Uint8Array([82, 73, 70, 70]);
-		const synthesizeSpeech = vi.fn(async () => wav);
-		const transcribePcm = vi.fn(async () => "hello transcript");
-		const runtime = runtimeWithService({ synthesizeSpeech, transcribePcm });
-		const handlers = createLocalInferenceModelHandlers();
+    await expect(
+      handlers[ModelType.TEXT_LARGE]?.(
+        runtime as never,
+        {
+          promptSegments: [
+            { content: "system:\nYou are Eliza.\n\n" },
+            { content: "user:\nhello" },
+          ],
+        } as never,
+      ),
+    ).resolves.toBe("system:\nYou are Eliza.\n\nuser:\nhello");
+  });
 
-		await expect(
-			handlers[ModelType.TEXT_TO_SPEECH]?.(runtime as never, {
-				text: "say this",
-			} as never),
-		).resolves.toEqual(wav);
-		expect(synthesizeSpeech).toHaveBeenCalledWith(
-			"say this",
-			undefined,
-			undefined,
-		);
+  it("delegates embeddings without returning fake vectors for warmup probes", async () => {
+    const embed = vi.fn(async () => ({ embedding: [0.1, 0.2, 0.3] }));
+    const runtime = runtimeWithService({ embed });
+    const handlers = createLocalInferenceModelHandlers();
 
-		await expect(
-			handlers[ModelType.TEXT_TO_SPEECH]?.(runtime as never, {
-				text: "use this voice",
-				voice: "  af_heart  ",
-			} as never),
-		).resolves.toEqual(wav);
-		expect(synthesizeSpeech).toHaveBeenLastCalledWith(
-			"use this voice",
-			undefined,
-			"af_heart",
-		);
+    await expect(
+      handlers[ModelType.TEXT_EMBEDDING]?.(runtime as never, null as never),
+    ).rejects.toMatchObject({
+      code: "LOCAL_INFERENCE_UNAVAILABLE",
+      reason: "invalid_input",
+    });
 
-		const pcm = new Float32Array([0, 0.1, -0.1]);
-		await expect(
-			handlers[ModelType.TRANSCRIPTION]?.(runtime as never, {
-				pcm,
-				sampleRateHz: 16_000,
-			} as never),
-		).resolves.toBe("hello transcript");
-		expect(transcribePcm).toHaveBeenCalledWith({ pcm, sampleRate: 16_000 });
-	});
+    await expect(
+      handlers[ModelType.TEXT_EMBEDDING]?.(
+        runtime as never,
+        {
+          text: "embed me",
+        } as never,
+      ),
+    ).resolves.toEqual([0.1, 0.2, 0.3]);
+    expect(embed).toHaveBeenCalledWith({ input: "embed me" });
+  });
 
-	it("delegates image description to the local backend", async () => {
-		const describeImage = vi.fn(async () => ({
-			title: "A chart",
-			description: "A chart on a laptop screen.",
-		}));
-		const runtime = runtimeWithService({ describeImage });
-		const handlers = createLocalInferenceModelHandlers();
+  it("delegates local TTS and transcription when those backend APIs exist", async () => {
+    const wav = new Uint8Array([82, 73, 70, 70]);
+    const synthesizeSpeech = vi.fn(async () => wav);
+    const transcribePcm = vi.fn(async () => "hello transcript");
+    const runtime = runtimeWithService({ synthesizeSpeech, transcribePcm });
+    const handlers = createLocalInferenceModelHandlers();
 
-		await expect(
-			handlers[ModelType.IMAGE_DESCRIPTION]?.(runtime as never, {
-				imageUrl: "data:image/png;base64,AAAA",
-				prompt: "describe it",
-			} as never),
-		).resolves.toEqual({
-			title: "A chart",
-			description: "A chart on a laptop screen.",
-		});
-		expect(describeImage).toHaveBeenCalledWith({
-			imageUrl: "data:image/png;base64,AAAA",
-			prompt: "describe it",
-		});
-	});
+    await expect(
+      handlers[ModelType.TEXT_TO_SPEECH]?.(
+        runtime as never,
+        {
+          text: "say this",
+        } as never,
+      ),
+    ).resolves.toEqual(wav);
+    expect(synthesizeSpeech).toHaveBeenCalledWith(
+      "say this",
+      undefined,
+      undefined,
+    );
 
-	it("inlines a canonical local media-store image before legacy backend dispatch", async () => {
-		vi.stubEnv("SERVER_PORT", "4317");
-		const describeImage = vi.fn(async () => ({
-			title: "A stored image",
-			description: "The runtime-owned attachment.",
-		}));
-		const fetchImpl = vi.fn(
-			async () =>
-				new Response(Uint8Array.from([1, 2, 3]), {
-					headers: { "content-type": "image/png" },
-				}),
-		) as unknown as typeof fetch;
-		const runtime = runtimeWithService({ describeImage }, fetchImpl);
-		const handlers = createLocalInferenceModelHandlers();
-		const imageUrl = `/api/media/${"a".repeat(64)}.png`;
+    await expect(
+      handlers[ModelType.TEXT_TO_SPEECH]?.(
+        runtime as never,
+        {
+          text: "use this voice",
+          voice: "  af_heart  ",
+        } as never,
+      ),
+    ).resolves.toEqual(wav);
+    expect(synthesizeSpeech).toHaveBeenLastCalledWith(
+      "use this voice",
+      undefined,
+      "af_heart",
+    );
 
-		await expect(
-			handlers[ModelType.IMAGE_DESCRIPTION]?.(runtime as never, {
-				imageUrl,
-				prompt: "describe it",
-			} as never),
-		).resolves.toEqual({
-			title: "A stored image",
-			description: "The runtime-owned attachment.",
-		});
-		expect(fetchImpl).toHaveBeenCalledWith(
-			`http://localhost:4317${imageUrl}`,
-			expect.objectContaining({ signal: expect.any(AbortSignal) }),
-		);
-		expect(describeImage).toHaveBeenCalledWith({
-			imageUrl: "data:image/png;base64,AQID",
-			prompt: "describe it",
-		});
-	});
+    const pcm = new Float32Array([0, 0.1, -0.1]);
+    await expect(
+      handlers[ModelType.TRANSCRIPTION]?.(
+        runtime as never,
+        {
+          pcm,
+          sampleRateHz: 16_000,
+        } as never,
+      ),
+    ).resolves.toBe("hello transcript");
+    expect(transcribePcm).toHaveBeenCalledWith({ pcm, sampleRate: 16_000 });
+  });
 
-	it("throws a typed unavailable error when no real backend is exposed", async () => {
-		const handlers = createLocalInferenceModelHandlers();
-		const call = handlers[ModelType.TEXT_TO_SPEECH]?.({} as never, "hello" as never);
-		let caught: unknown;
-		try {
-			await call;
-		} catch (error) {
-			caught = error;
-		}
+  it("delegates image description to the local backend", async () => {
+    const describeImage = vi.fn(async () => ({
+      title: "A chart",
+      description: "A chart on a laptop screen.",
+    }));
+    const runtime = runtimeWithService({ describeImage });
+    const handlers = createLocalInferenceModelHandlers();
 
-		expect(caught).toBeInstanceOf(LocalInferenceUnavailableError);
-		expect(isLocalInferenceUnavailableError(caught)).toBe(true);
-		expect(caught).toMatchObject({
-			code: "LOCAL_INFERENCE_UNAVAILABLE",
-			provider: LOCAL_INFERENCE_PROVIDER_ID,
-			modelType: ModelType.TEXT_TO_SPEECH,
-			reason: "backend_unavailable",
-		});
-	});
+    await expect(
+      handlers[ModelType.IMAGE_DESCRIPTION]?.(
+        runtime as never,
+        {
+          imageUrl: "data:image/png;base64,AAAA",
+          prompt: "describe it",
+        } as never,
+      ),
+    ).resolves.toEqual({
+      title: "A chart",
+      description: "A chart on a laptop screen.",
+    });
+    expect(describeImage).toHaveBeenCalledWith({
+      imageUrl: "data:image/png;base64,AAAA",
+      prompt: "describe it",
+    });
+  });
+
+  it("inlines a canonical local media-store image before legacy backend dispatch", async () => {
+    vi.stubEnv("SERVER_PORT", "4317");
+    const describeImage = vi.fn(async () => ({
+      title: "A stored image",
+      description: "The runtime-owned attachment.",
+    }));
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(Uint8Array.from([1, 2, 3]), {
+          headers: { "content-type": "image/png" },
+        }),
+    ) as unknown as typeof fetch;
+    const runtime = runtimeWithService({ describeImage }, fetchImpl);
+    const handlers = createLocalInferenceModelHandlers();
+    const imageUrl = `/api/media/${"a".repeat(64)}.png`;
+
+    await expect(
+      handlers[ModelType.IMAGE_DESCRIPTION]?.(
+        runtime as never,
+        {
+          imageUrl,
+          prompt: "describe it",
+        } as never,
+      ),
+    ).resolves.toEqual({
+      title: "A stored image",
+      description: "The runtime-owned attachment.",
+    });
+    expect(fetchImpl).toHaveBeenCalledWith(
+      `http://localhost:4317${imageUrl}`,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(describeImage).toHaveBeenCalledWith({
+      imageUrl: "data:image/png;base64,AQID",
+      prompt: "describe it",
+    });
+  });
+
+  it("throws a typed unavailable error when no real backend is exposed", async () => {
+    const handlers = createLocalInferenceModelHandlers();
+    const call = handlers[ModelType.TEXT_TO_SPEECH]?.(
+      {} as never,
+      "hello" as never,
+    );
+    let caught: unknown;
+    try {
+      await call;
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(LocalInferenceUnavailableError);
+    expect(isLocalInferenceUnavailableError(caught)).toBe(true);
+    expect(caught).toMatchObject({
+      code: "LOCAL_INFERENCE_UNAVAILABLE",
+      provider: LOCAL_INFERENCE_PROVIDER_ID,
+      modelType: ModelType.TEXT_TO_SPEECH,
+      reason: "backend_unavailable",
+    });
+  });
 });

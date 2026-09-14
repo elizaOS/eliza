@@ -57,6 +57,7 @@
  * gate in this mode; it stays reachable from its home tile.
  */
 
+import { Capacitor } from "@capacitor/core";
 import { logger } from "@elizaos/logger";
 import {
   hasStewardAuthedCookie,
@@ -77,10 +78,14 @@ import {
   getCloudAuthToken,
   refreshCloudStewardSession,
 } from "../api/client-cloud";
+import type {
+  DedicatedActivationConfirmationQuote,
+  DedicatedActivationConfirmationRequester,
+} from "../api/dedicated-activation-confirmation";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { getBootConfig } from "../config/boot-config";
 import { useBranding } from "../config/branding";
-import { APP_RESUME_EVENT, dispatchChatPrefill } from "../events";
+import { APP_RESUME_EVENT } from "../events";
 import {
   ACCENT_PRESETS,
   useAppSelector,
@@ -100,6 +105,8 @@ import {
 } from "../state/first-run-transcript-epoch";
 import { startTutorial } from "../tutorial/tutorial-service";
 import { openDesktopSettingsWindow } from "../utils/desktop-workspace";
+import { isSafeNavigationUrl } from "../utils/navigation-url";
+import { openExternalUrl } from "../utils/openExternalUrl";
 import { clearFirstRunTranscriptMessages } from "./clear-first-run-transcript";
 import {
   armCloudLoginWaitDeadline,
@@ -139,9 +146,9 @@ import {
   FIRST_RUN_SIGN_IN_PROMPT,
 } from "./first-run-greeting";
 import {
+  handoffPendingFirstRunText,
   readPendingFirstRunText,
   setPendingFirstRunTextReleaseHandler,
-  takePendingFirstRunText,
   writePendingFirstRunText,
 } from "./first-run-pending-text";
 import { isRuntimeChooserEnabled } from "./first-run-runtime-flag";
@@ -188,9 +195,9 @@ const REAL_PROVISION_STATUS_CODES = new Set([
 
 /** User-facing recovery message when a cloud provisioning call rejects. */
 function cloudFailureMessage(err: unknown): string {
-  const detail = err instanceof Error ? err.message : "";
+  const detail = err instanceof Error ? err.message.trim() : "";
   return detail
-    ? `Couldn't connect to Eliza Cloud: ${detail}.`
+    ? `Couldn't connect to Eliza Cloud: ${detail}${/[.!?]$/.test(detail) ? "" : "."}`
     : "Couldn't connect to Eliza Cloud.";
 }
 
@@ -358,30 +365,53 @@ const CLOUD_ONLY_ERROR_CHOICE = [
   "[/CHOICE]",
 ].join("\n");
 
+type DedicatedHostingQuote =
+  | DedicatedAdoptionConfirmationQuote
+  | DedicatedActivationConfirmationQuote;
+type DedicatedHostingDecision = {
+  action: DedicatedHostingQuote["action"];
+  quoteId: string;
+} | null;
+
 function dedicatedAdoptionConfirmationText(
-  quote: DedicatedAdoptionConfirmationQuote,
+  quote: DedicatedHostingQuote,
   reason: "initial" | "quote_changed",
 ): string {
+  if (quote.action === "activate_dedicated") {
+    return [
+      "Start your Dedicated Eliza?",
+      "",
+      `Hosting costs $${quote.dailyRateUsd.toFixed(2)}/day ($${quote.hourlyRateUsd.toFixed(2)}/hour).`,
+      `Your balance is $${quote.balanceUsd.toFixed(2)}. You need at least $${quote.minimumBalanceUsd.toFixed(2)} to start.`,
+      "",
+      "[CHOICE:first-run id=dedicated-adoption]",
+      `${FIRST_RUN_ACTION_PREFIX}dedicated-adoption:confirm=Start Dedicated`,
+      `${FIRST_RUN_ACTION_PREFIX}dedicated-adoption:cancel=Not now`,
+      "[/CHOICE]",
+    ].join("\n");
+  }
   const disposition =
     quote.stateDisposition === "verified_backup_present"
-      ? "restore its reviewed backup"
+      ? "Your verified backup will be restored."
       : quote.stateDisposition === "fresh_boot_no_verified_backup"
-        ? "start fresh because no verified backup is available"
-        : "keep its current state without a reviewed restore";
+        ? "This starts fresh; no verified backup is available."
+        : "Your current data stays. No verified Cloud backup is available.";
   const changed =
     reason === "quote_changed"
-      ? "The agent or hosting quote changed while you were reviewing it. Please review the updated terms.\n\n"
+      ? "The hosting details changed. Please review them again.\n\n"
       : "";
   return [
     `${changed}Use your existing Dedicated agent?`,
     "",
-    `Current status: ${quote.status}.`,
-    `Hosting: $${quote.hourlyRateUsd.toFixed(2)}/hour ($${quote.dailyRateUsd.toFixed(2)}/day).`,
-    `Balance: $${quote.balanceUsd.toFixed(2)}; minimum required: $${quote.minimumBalanceUsd.toFixed(2)} (${quote.minimumRunwayDays} days of runway); deficit: $${quote.deficitUsd.toFixed(2)}.`,
-    `This action ${quote.startsCompute ? "starts Dedicated compute" : "does not start new compute"} and will ${disposition}.`,
+    `$${quote.dailyRateUsd.toFixed(2)}/day ($${quote.hourlyRateUsd.toFixed(2)}/hour).`,
+    `Balance: $${quote.balanceUsd.toFixed(2)}; $${quote.minimumBalanceUsd.toFixed(2)} required.`,
+    ...(quote.deficitUsd > 0
+      ? [`Add $${quote.deficitUsd.toFixed(2)} to start.`]
+      : []),
+    disposition,
     "",
     "[CHOICE:first-run id=dedicated-adoption]",
-    `${FIRST_RUN_ACTION_PREFIX}dedicated-adoption:confirm=Confirm and continue`,
+    `${FIRST_RUN_ACTION_PREFIX}dedicated-adoption:confirm=${quote.startsCompute ? "Start Dedicated" : "Connect"}`,
     `${FIRST_RUN_ACTION_PREFIX}dedicated-adoption:cancel=Not now`,
     "[/CHOICE]",
   ].join("\n");
@@ -399,6 +429,13 @@ function finishErrorMessage(
   runtimeChooserEnabled: boolean,
 ): string {
   const detail = message.trim();
+  if (
+    detail.includes(
+      "did not become ready before the signed-in startup deadline",
+    )
+  ) {
+    return "Your Dedicated agent took too long to connect. Try again to continue setup.";
+  }
   const isTerse = /^(not found|failed to fetch|forbidden|unauthorized)$/i.test(
     detail,
   );
@@ -406,8 +443,8 @@ function finishErrorMessage(
     ? `I couldn't finish setting up your agent (${detail}).`
     : `I couldn't finish setting up your agent: ${detail}`;
   const recovery = runtimeChooserEnabled
-    ? "You can try again, pick a different way to run your agent, or configure a model provider yourself in Settings."
-    : "You can try again, or configure a model provider yourself in Settings.";
+    ? "Try again, choose another way to run your agent, or open Settings."
+    : "Try again, or open Settings for more options.";
   return `${lead}\n\n${recovery}`;
 }
 
@@ -494,6 +531,8 @@ export function useFirstRunConductor(): void {
     firstRunName,
     completeFirstRun,
     elizaCloudConnected,
+    elizaCloudLoginBusy,
+    elizaCloudLoginFallbackUrl,
     handleInteractiveCloudLogin,
     setTab,
     setState,
@@ -504,6 +543,8 @@ export function useFirstRunConductor(): void {
     firstRunName: s.firstRunName,
     completeFirstRun: s.completeFirstRun,
     elizaCloudConnected: s.elizaCloudConnected,
+    elizaCloudLoginBusy: s.elizaCloudLoginBusy,
+    elizaCloudLoginFallbackUrl: s.elizaCloudLoginFallbackUrl,
     handleInteractiveCloudLogin: s.handleInteractiveCloudLogin,
     setTab: s.setTab,
     setState: s.setState,
@@ -544,15 +585,23 @@ export function useFirstRunConductor(): void {
   // popup/provision promise can never keep the busy latch or mutate the new
   // flow when it settles late.
   const activeCloudLoginCancelRef = React.useRef<(() => void) | null>(null);
+  const refreshCloudLoginWaitingRef = React.useRef<(() => void) | null>(null);
+  const activeCloudLoginFallbackUrl =
+    elizaCloudLoginBusy &&
+    typeof elizaCloudLoginFallbackUrl === "string" &&
+    isSafeNavigationUrl(elizaCloudLoginFallbackUrl)
+      ? new URL(elizaCloudLoginFallbackUrl).href
+      : null;
+  const cloudLoginFallbackRef = React.useRef(activeCloudLoginFallbackUrl);
+  React.useEffect(() => {
+    cloudLoginFallbackRef.current = activeCloudLoginFallbackUrl;
+    if (active) refreshCloudLoginWaitingRef.current?.();
+  }, [active, activeCloudLoginFallbackUrl]);
+
   const pendingDedicatedAdoptionRef = React.useRef<{
-    quote: DedicatedAdoptionConfirmationQuote;
+    quote: DedicatedHostingQuote;
     choiceText: string;
-    resolve: (
-      confirmation: {
-        action: "adopt_existing_dedicated";
-        quoteId: string;
-      } | null,
-    ) => void;
+    resolve: (confirmation: DedicatedHostingDecision) => void;
     dispose: () => void;
   } | null>(null);
   // Latched by the first tutorial pick: the store flip unregisters the handler
@@ -586,12 +635,11 @@ export function useFirstRunConductor(): void {
     // must not roll it back to an older durable prefix. On a cold mount the ref
     // was initialized from that same durable copy.
     const pending = pendingFirstRunTextRef.current;
-    const durable = takePendingFirstRunText();
+    const durable = readPendingFirstRunText();
     if (pending.length === 0 && durable.length > 0) pending.push(...durable);
     if (pending.length === 0) return;
     pendingFirstRunTextRef.current = [];
-    const text = pending.join("\n\n");
-    queueMicrotask(() => dispatchChatPrefill({ text, select: true }));
+    handoffPendingFirstRunText(pending);
   }, []);
   // Re-offered choice turns have the same collision risk: a user can reject
   // two unavailable options before the wall clock advances.
@@ -632,36 +680,67 @@ export function useFirstRunConductor(): void {
     [setConversationMessages],
   );
 
+  const requestDedicatedHostingConfirmation = React.useCallback<
+    (
+      quote: DedicatedHostingQuote,
+      context: { reason: "initial" | "quote_changed"; signal?: AbortSignal },
+    ) => Promise<DedicatedHostingDecision>
+  >(
+    (quote, context) => {
+      context.signal?.throwIfAborted();
+      pendingDedicatedAdoptionRef.current?.resolve(null);
+      pendingDedicatedAdoptionRef.current?.dispose();
+      silentCloudEntryRef.current = false;
+      const choiceText = dedicatedAdoptionConfirmationText(
+        quote,
+        context.reason,
+      );
+      seedFreshChoiceTurn("first-run:dedicated-adoption", choiceText);
+      return new Promise((resolve, reject) => {
+        const onAbort = () => {
+          if (pendingDedicatedAdoptionRef.current?.quote !== quote) return;
+          pendingDedicatedAdoptionRef.current = null;
+          reject(context.signal?.reason);
+        };
+        context.signal?.addEventListener("abort", onAbort, { once: true });
+        const dispose = () =>
+          context.signal?.removeEventListener("abort", onAbort);
+        pendingDedicatedAdoptionRef.current = {
+          quote,
+          choiceText,
+          resolve,
+          dispose,
+        };
+      });
+    },
+    [seedFreshChoiceTurn],
+  );
+
   const requestDedicatedAdoptionConfirmation =
     React.useCallback<DedicatedAdoptionConfirmationRequester>(
-      (quote, context) => {
-        context.signal?.throwIfAborted();
-        pendingDedicatedAdoptionRef.current?.resolve(null);
-        pendingDedicatedAdoptionRef.current?.dispose();
-        silentCloudEntryRef.current = false;
-        const choiceText = dedicatedAdoptionConfirmationText(
+      async (quote, context) => {
+        const decision = await requestDedicatedHostingConfirmation(
           quote,
-          context.reason,
+          context,
         );
-        seedFreshChoiceTurn("first-run:dedicated-adoption", choiceText);
-        return new Promise((resolve, reject) => {
-          const onAbort = () => {
-            if (pendingDedicatedAdoptionRef.current?.quote !== quote) return;
-            pendingDedicatedAdoptionRef.current = null;
-            reject(context.signal?.reason);
-          };
-          context.signal?.addEventListener("abort", onAbort, { once: true });
-          const dispose = () =>
-            context.signal?.removeEventListener("abort", onAbort);
-          pendingDedicatedAdoptionRef.current = {
-            quote,
-            choiceText,
-            resolve,
-            dispose,
-          };
-        });
+        return decision?.action === "adopt_existing_dedicated"
+          ? { action: decision.action, quoteId: decision.quoteId }
+          : null;
       },
-      [seedFreshChoiceTurn],
+      [requestDedicatedHostingConfirmation],
+    );
+  const requestDedicatedActivationConfirmation =
+    React.useCallback<DedicatedActivationConfirmationRequester>(
+      async (quote, context) => {
+        const decision = await requestDedicatedHostingConfirmation(quote, {
+          ...context,
+          reason: "initial",
+        });
+        return decision?.action === "activate_dedicated"
+          ? { action: decision.action, quoteId: decision.quoteId }
+          : null;
+      },
+      [requestDedicatedHostingConfirmation],
     );
 
   React.useEffect(() => {
@@ -795,7 +874,9 @@ export function useFirstRunConductor(): void {
         completeCloudOnly();
       },
       onStatus: (text, code) => {
-        if (!text) return;
+        // A rejected startup may still deliver a late progress callback. Keep
+        // the recovery choices visible until the user explicitly retries.
+        if (!text || erroredRef.current || completedRef.current) return;
         if (silentCloudEntryRef.current) {
           // Silent cloud entry (#15133): reuse narration ("Setting up your
           // cloud agent", "Finding your agents...", "Connected to your
@@ -807,9 +888,20 @@ export function useFirstRunConductor(): void {
           if (!code || !REAL_PROVISION_STATUS_CODES.has(code)) return;
           silentCloudEntryRef.current = false;
         }
-        seedTurn(makeTurn(`first-run:status:${text}`, text));
+        const statusTurn = makeTurn(`first-run:status:${text}`, text);
+        // The same phase can recur on retry. Move it to the current end of
+        // setup instead of deduplicating it behind the previous error/login.
+        setConversationMessages((prev) => [
+          ...prev.filter(
+            (turn) =>
+              turn.id !== statusTurn.id &&
+              turn.id !== "first-run:cloud-login-waiting",
+          ),
+          statusTurn,
+        ]);
       },
       requestDedicatedAdoptionConfirmation,
+      requestDedicatedActivationConfirmation,
     }),
     [
       uiLanguage,
@@ -819,9 +911,10 @@ export function useFirstRunConductor(): void {
       setTab,
       seedTutorial,
       completeCloudOnly,
-      seedTurn,
+      setConversationMessages,
       runtimeChooserEnabled,
       requestDedicatedAdoptionConfirmation,
+      requestDedicatedActivationConfirmation,
     ],
   );
   const portsRef = React.useRef(ports);
@@ -995,6 +1088,7 @@ export function useFirstRunConductor(): void {
   // ── Flow launchers (shared by the action handler + the auto-resume) ──────
   const allowInteractiveCloudLoginRef = React.useRef(true);
   const startCloudProvisionFlow = React.useCallback(() => {
+    erroredRef.current = false;
     const allowInteractiveCloudLogin = allowInteractiveCloudLoginRef.current;
     allowInteractiveCloudLoginRef.current = true;
     busyRef.current = true;
@@ -1021,16 +1115,26 @@ export function useFirstRunConductor(): void {
       releaseClaimedCloudLoginWindow();
       if (activeCloudLoginCancelRef.current === abandonAttempt) {
         activeCloudLoginCancelRef.current = null;
+        refreshCloudLoginWaitingRef.current = null;
       }
     };
     activeCloudLoginCancelRef.current = abandonAttempt;
     const seedWaitingTurn = () => {
+      const fallbackUrl = cloudLoginFallbackRef.current;
       const waitingTurn = makeTurn(
         "first-run:cloud-login-waiting",
         [
-          "Waiting for sign-in in the browser we opened… Finish there, then this chat will continue.",
+          "Finish signing in to continue here.",
+          fallbackUrl
+            ? "If the page didn't open, continue sign-in below."
+            : "Opening the sign-in page…",
           "",
           `[CHOICE:first-run id=cloud-login-retry-${attempt}]`,
+          ...(fallbackUrl
+            ? [
+                `${FIRST_RUN_ACTION_PREFIX}cloud-login:continue=Continue sign-in`,
+              ]
+            : []),
           `${FIRST_RUN_ACTION_PREFIX}cloud-login:retry=Open sign-in again`,
           "[/CHOICE]",
         ].join("\n"),
@@ -1045,6 +1149,7 @@ export function useFirstRunConductor(): void {
         );
       });
     };
+    refreshCloudLoginWaitingRef.current = seedWaitingTurn;
     // Idempotent and OAuth-only: arm at the moment the finish flow actually
     // enters interactive OAuth. An already-authenticated entry can spend up to
     // six minutes activating Dedicated compute; applying this 90s login guard
@@ -1072,8 +1177,15 @@ export function useFirstRunConductor(): void {
         },
       });
     };
-    if (!silentCloudEntryRef.current) {
+    const hasStoredSession = hasUsableStoredStewardToken();
+    if (!silentCloudEntryRef.current && !hasStoredSession) {
       seedWaitingTurn();
+    } else if (hasStoredSession) {
+      refreshCloudLoginWaitingRef.current = null;
+      portsRef.current.onStatus?.(
+        "Connecting to your Dedicated agent…",
+        "listing",
+      );
     }
     // Pre-open only when this gesture can actually enter OAuth. A usable
     // stored Steward token takes the silent provisioning path and may spend
@@ -1081,26 +1193,35 @@ export function useFirstRunConductor(): void {
     // for that entire phase is both misleading and unnecessary. Token-less
     // entries still claim synchronously because user activation does not
     // survive the network awaits before interactive login (#15143/#17064).
-    if (!hasUsableStoredStewardToken()) {
+    if (!hasStoredSession) {
       claimCloudLoginWindow();
     }
     void listOrAutoProvisionCloudAgent(draftRef.current, {
       ...portsRef.current,
       allowInteractiveCloudLogin,
       signal: abortController.signal,
+      onStatus: (text, code) => {
+        if (!cloudLoginAttemptRef.current.isCurrent(attempt)) return;
+        portsRef.current.onStatus?.(text, code);
+      },
       onInteractiveLogin: () => {
         if (!cloudLoginAttemptRef.current.isCurrent(attempt)) return;
         // A silent entry (stored Steward token, #15133) just degraded into
         // real OAuth: the flow is interactive now, so the user gets the same
         // waiting turn and bounded recovery as a visible entry (#19255).
-        if (silentCloudEntryRef.current) {
-          silentCloudEntryRef.current = false;
-          seedWaitingTurn();
-        }
+        silentCloudEntryRef.current = false;
+        refreshCloudLoginWaitingRef.current = seedWaitingTurn;
+        seedWaitingTurn();
         armRecoveryDeadline();
       },
       onInteractiveLoginComplete: () => {
         loginDeadline?.cancel();
+        if (!cloudLoginAttemptRef.current.isCurrent(attempt)) return;
+        refreshCloudLoginWaitingRef.current = null;
+        portsRef.current.onStatus?.(
+          "Connecting to your Dedicated agent…",
+          "listing",
+        );
       },
     })
       .then((outcome) => {
@@ -1141,6 +1262,7 @@ export function useFirstRunConductor(): void {
           releaseClaimedCloudLoginWindow();
           if (activeCloudLoginCancelRef.current === abandonAttempt) {
             activeCloudLoginCancelRef.current = null;
+            refreshCloudLoginWaitingRef.current = null;
           }
         }
       });
@@ -1264,6 +1386,29 @@ export function useFirstRunConductor(): void {
       // intentionally handled before the generic busy guard: it abandons the
       // current owned attempt, then starts a fresh sign-in from the new user
       // gesture. Late completion from the old attempt is generation-gated.
+      if (group === "cloud-login" && id === "continue") {
+        const url = cloudLoginFallbackRef.current;
+        const owner = activeCloudLoginCancelRef.current;
+        if (!owner || !url) return true;
+        const showOpenFailure = () => {
+          if (activeCloudLoginCancelRef.current === owner) {
+            seedError("The sign-in page could not open. Try again.");
+          }
+        };
+        // The existing server-issued URL carries the same session and return
+        // destination. Web stays in this tab so popup blocking cannot hide it.
+        if (Capacitor.isNativePlatform() || isElectrobunRuntime()) {
+          void openExternalUrl(url)
+            .then((opened) => {
+              if (!opened) showOpenFailure();
+            })
+            .catch(showOpenFailure);
+        } else {
+          window.location.assign(url);
+        }
+        return true;
+      }
+
       if (group === "cloud-login" && id === "retry") {
         activeCloudLoginCancelRef.current?.();
         startCloudProvisionFlow();
@@ -1283,7 +1428,7 @@ export function useFirstRunConductor(): void {
         pending.resolve(
           id === "confirm"
             ? {
-                action: "adopt_existing_dedicated",
+                action: pending.quote.action,
                 quoteId: pending.quote.quoteId,
               }
             : null,
@@ -1615,6 +1760,7 @@ export function useFirstRunConductor(): void {
       exitToSettings,
       startCloudProvisionFlow,
       startProviderFinish,
+      seedError,
       setUiAccent,
       runtimeChooserEnabled,
     ],

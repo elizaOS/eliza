@@ -2,11 +2,13 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { StewardSidecar } from "./steward-sidecar";
 
 it("provisions a local wallet and reopens the same authority after restarting", async () => {
   const directory = await mkdtemp(join(tmpdir(), "eliza-login-sidecar-"));
+  // Isolate legacy migration discovery from the developer's existing wallet.
+  vi.stubEnv("HOME", directory);
   const sidecar = new StewardSidecar({ dataDir: directory, maxRestarts: 0 });
   let resumed: StewardSidecar | undefined;
   try {
@@ -42,6 +44,7 @@ it("provisions a local wallet and reopens the same authority after restarting", 
   } finally {
     await resumed?.stop();
     await sidecar.stop();
+    vi.unstubAllEnvs();
     await rm(directory, { recursive: true, force: true });
   }
 }, 60_000);

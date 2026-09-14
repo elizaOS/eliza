@@ -3,10 +3,10 @@
  * temp HOME/ELIZA_HOME/CODEX_HOME per test (removed afterEach), permission-based
  * fault injection for the retire/pool-write failure paths, and a genuine second
  * OS process performing Codex's atomic-replace refresh write pattern for the
- * concurrent-refresher race.
+ * concurrent-refresher race, synchronized at the real retirement rename.
  */
 import { spawn } from "node:child_process";
-import {
+import fs, {
   chmodSync,
   existsSync,
   lstatSync,
@@ -18,6 +18,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ElizaError } from "@elizaos/core";
@@ -376,73 +377,103 @@ describe("fault injection", () => {
 });
 
 describe("two-process concurrency", () => {
-  it("detects a second process that recreates the source after retirement", async () => {
-    const codexHome = path.join(home, "codex");
-    const authPath = writeCodexAuth(codexHome, "refresh-base");
-    const initial = JSON.parse(readFileSync(authPath, "utf-8")) as Record<
-      string,
-      unknown
-    >;
-    // Reading and parsing this retired file gives the second process a stable
-    // window to observe the atomic rename. The padding is ignored by the token
-    // validator and avoids relying on probabilistic scheduler timing.
-    writeFileSync(
-      authPath,
-      JSON.stringify({ ...initial, padding: "x".repeat(4 * 1024 * 1024) }),
-    );
+  it.each([0, 100])(
+    "detects a second process that recreates the source after retirement with a %i ms scheduling delay",
+    async (writerDelayMs) => {
+      const codexHome = path.join(home, "codex");
+      const authPath = writeCodexAuth(codexHome, "refresh-base");
+      const originalBody = readFileSync(authPath, "utf-8");
+      const refreshedBody = codexAuthBody("concurrent-refresh");
+      const recreatedMarker = path.join(home, "writer-recreated");
 
-    // A genuine second OS process waits for retirement, then performs Codex's
-    // refresh write pattern: write a temp file and atomically rename it over
-    // auth.json. Readiness is explicit so the test never guesses at startup.
-    const writerScript = `
-      const { existsSync, writeFileSync, renameSync } = require("node:fs");
-      const authPath = process.argv[1];
-      const body = JSON.stringify({
-        tokens: {
-          access_token: "concurrent-access",
-          refresh_token: "concurrent-refresh",
-        },
-      });
-      process.stdout.write("ready\\n");
-      const deadline = Date.now() + 5000;
-      while (Date.now() < deadline) {
-        if (!existsSync(authPath)) {
-          const tmp = authPath + ".tmp";
-          writeFileSync(tmp, body);
-          renameSync(tmp, authPath);
-          process.stdout.write("recreated\\n");
-          process.exit(0);
+      // The child performs the real atomic replacement. Its completion marker
+      // lets the parent resume adoption only after this interleaving occurred,
+      // including when the OS delays scheduling the writer.
+      const writerScript = `
+        import { existsSync, writeFileSync, renameSync } from "node:fs";
+        const [authPath, body, recreatedMarker, delay] = process.argv.slice(1);
+        const sleeper = new Int32Array(new SharedArrayBuffer(4));
+        process.stdout.write("ready\\n");
+        const deadline = Date.now() + 5000;
+        while (Date.now() < deadline) {
+          if (!existsSync(authPath)) {
+            Atomics.wait(sleeper, 0, 0, Number(delay));
+            const tmp = authPath + ".tmp";
+            writeFileSync(tmp, body);
+            renameSync(tmp, authPath);
+            writeFileSync(recreatedMarker, "complete");
+            process.exit(0);
+          }
+          Atomics.wait(sleeper, 0, 0, 5);
         }
-      }
-      process.exit(2);
-    `;
-    const writer = spawn(process.execPath, ["-e", writerScript, authPath], {
-      stdio: ["ignore", "pipe", "inherit"],
-    });
-    const writerReady = new Promise<void>((resolve, reject) => {
-      writer.once("error", reject);
-      writer.stdout?.once("data", (chunk) => {
-        expect(chunk.toString()).toContain("ready");
-        resolve();
-      });
-    });
-    const writerDone = new Promise<number | null>((resolve, reject) => {
-      writer.once("error", reject);
-      writer.once("exit", (code) => resolve(code));
-    });
-
-    try {
-      await writerReady;
-      const error = await expectAdoptError(
-        async () => adoptCodexCliLogin({ codexHome, accountId: "race" }),
-        "adopt_codex.concurrent_refresher",
+        process.exit(2);
+      `;
+      const writer = spawn(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          writerScript,
+          authPath,
+          refreshedBody,
+          recreatedMarker,
+          String(writerDelayMs),
+        ],
+        { stdio: ["ignore", "pipe", "inherit"] },
       );
-      expect(existsSync(String(error.context?.retiredTo))).toBe(true);
-      expect(await loadAccount("openai-codex", "race")).toBeNull();
-      expect(await writerDone).toBe(0);
-    } finally {
-      if (writer.exitCode === null) writer.kill();
-      await writerDone;
-    }
-  }, 15_000);
+      const writerReady = new Promise<void>((resolve, reject) => {
+        writer.once("error", reject);
+        writer.once("exit", (code) =>
+          reject(new Error(`writer exited before readiness: ${code}`)),
+        );
+        writer.stdout.once("data", (chunk) => {
+          if (!chunk.toString().includes("ready")) {
+            reject(new Error("writer emitted an unexpected readiness message"));
+            return;
+          }
+          resolve();
+        });
+      });
+      const writerDone = new Promise<number | null>((resolve, reject) => {
+        writer.once("error", reject);
+        writer.once("exit", resolve);
+      });
+      const realRename = fs.renameSync;
+      try {
+        // Pause only after the real source retirement syscall. Synchronize the
+        // named ESM binding used by adoption, and restore it in the finally.
+        fs.renameSync = (source, destination) => {
+          realRename(source, destination);
+          if (source !== authPath) return;
+          const deadline = Date.now() + 5000;
+          const sleeper = new Int32Array(new SharedArrayBuffer(4));
+          while (!existsSync(recreatedMarker)) {
+            if (Date.now() >= deadline) {
+              throw new Error("writer did not complete the atomic replacement");
+            }
+            Atomics.wait(sleeper, 0, 0, 5);
+          }
+        };
+        syncBuiltinESMExports();
+        await writerReady;
+        const error = await expectAdoptError(
+          async () => adoptCodexCliLogin({ codexHome, accountId: "race" }),
+          "adopt_codex.concurrent_refresher",
+        );
+        expect(typeof error.context?.retiredTo).toBe("string");
+        expect(readFileSync(String(error.context?.retiredTo), "utf-8")).toBe(
+          originalBody,
+        );
+        expect(readFileSync(authPath, "utf-8")).toBe(refreshedBody);
+        expect(await loadAccount("openai-codex", "race")).toBeNull();
+        expect(await writerDone).toBe(0);
+      } finally {
+        fs.renameSync = realRename;
+        syncBuiltinESMExports();
+        if (writer.exitCode === null) writer.kill();
+        await writerDone;
+      }
+    },
+    15_000,
+  );
 });

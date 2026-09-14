@@ -239,6 +239,8 @@ export async function finalizePlannerReply(
 		args.codingMode === true || recoveredReply?.text === effectiveReplyText
 			? ({ verdict: "allow" } as const)
 			: evaluatePlannedReplyEgress({
+					providers: finalPlannerState.data.providers,
+					request: args.message.content.text,
 					reply: effectiveReplyText,
 					actionResults,
 					actions: args.runtime.actions,
@@ -246,6 +248,7 @@ export async function finalizePlannerReply(
 				});
 	if (finalReplyEgressDecision.verdict === "reject") {
 		recoveredReply = await resolvePlannedReplyEgress({
+			providers: finalPlannerState.data.providers,
 			runtime: args.runtime,
 			message: args.message,
 			reply: effectiveReplyText,
@@ -431,6 +434,7 @@ export async function finalizePlannerReply(
 			"RESPOND turn reached the reply gate with zero deliveries; recovering instead of ending silent",
 		);
 		recoveredReply = await resolvePlannedReplyEgress({
+			providers: finalPlannerState.data.providers,
 			runtime: args.runtime,
 			message: args.message,
 			reply: zeroDeliveryRecovery.text,

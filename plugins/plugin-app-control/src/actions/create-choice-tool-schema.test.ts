@@ -2,12 +2,19 @@
  * Exercises the real planner-to-provider schema boundary so optional saved
  * choice bindings are never required placeholders on ordinary create calls.
  */
-import type { ActionParameterSchema } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { promoteSubactionsToActions } from "../../../../packages/core/src/actions/promote-subactions.js";
 import { buildPlannerToolsFromActions } from "../../../../packages/core/src/actions/to-tool.js";
-import { validateToolArgs } from "../../../../packages/core/src/actions/validate-tool-args.js";
-import { __INTERNAL_normalizeNativeToolsForCall as normalizeNativeToolsForCall } from "../../../plugin-openai/models/text.js";
+import {
+	type JsonSchema,
+	validateToolArgs,
+} from "../../../../packages/core/src/actions/validate-tool-args.js";
+import { parseAndValidate } from "../../../../packages/core/src/runtime/validated-model-call.js";
+import { isObjectRecord } from "../../../../packages/core/src/utils/type-guards.js";
+import {
+	__INTERNAL_normalizeNativeToolsForCall as normalizeNativeToolsForCall,
+	__INTERNAL_restoreRecordArgToolCalls as restoreRecordArgToolCalls,
+} from "../../../plugin-openai/models/text.js";
 import { createAppAction } from "./app.js";
 import { createViewsAction } from "./views.js";
 
@@ -16,29 +23,58 @@ describe.each([
 	["VIEWS", createViewsAction],
 ] as const)("%s optional saved choice arguments", (name, createAction) => {
 	it.each([false, true])(
-		"keeps taskId optional through the provider wire schema (Cerebras: %s)",
+		"accepts an unbound create through the provider schema and runtime (Cerebras: %s)",
 		(cerebrasMode) => {
 			const family = promoteSubactionsToActions(createAction());
-			if (name === "APP") {
-				expect(family.map((action) => action.name)).toContain("APP_CREATE");
-			}
+			const action =
+				family.find((candidate) => candidate.name === `${name}_CREATE`) ??
+				family.find((candidate) => candidate.name === name);
+			if (!action) throw new Error("Create action is unavailable");
 			const normalized = normalizeNativeToolsForCall(
 				buildPlannerToolsFromActions(family),
 				{ cerebrasMode },
-			).tools;
-			if (!normalized)
-				throw new Error("choice action family was not normalized");
-			for (const action of family) {
-				const tool = normalized[action.name] as {
-					strict?: boolean;
-					inputSchema: { jsonSchema: ActionParameterSchema };
-				};
-				const schema = tool.inputSchema.jsonSchema;
-				expect(schema.properties?.taskId).toMatchObject({ type: "string" });
-				expect(schema.required ?? []).not.toContain("taskId");
-				expect(schema.required ?? []).not.toContain("choice");
-				expect(tool.strict).toBe(false);
+			);
+			const registeredName = normalized.toolNameMap.get(action.name);
+			if (!registeredName || !normalized.tools)
+				throw new Error("Create tool was not normalized");
+			const tool = normalized.tools[registeredName] as {
+				inputSchema: { jsonSchema: JsonSchema };
+			};
+			const args = { action: "create", intent: "Build a reading tracker" };
+			// VIEWS permits extra arguments; strict transport carries that empty
+			// map losslessly while saved task/choice bindings remain omitted.
+			const modelArgs =
+				cerebrasMode && name === "VIEWS"
+					? { ...args, __eliza_record_entries: [] }
+					: args;
+			const wire = parseAndValidate(
+				JSON.stringify(modelArgs),
+				tool.inputSchema.jsonSchema,
+			);
+			expect(wire, JSON.stringify(wire.errors)).toMatchObject({
+				valid: true,
+				parsed: modelArgs,
+			});
+			if (!wire.parsed)
+				throw new Error("Valid wire arguments were not returned");
+			const restored = restoreRecordArgToolCalls(
+				[{ toolName: registeredName, input: wire.parsed }],
+				normalized.recordArgTransformsByTool,
+			)?.[0];
+			if (!isObjectRecord(restored) || !isObjectRecord(restored.input)) {
+				throw new Error("Provider arguments were not restored");
 			}
+			expect(restored.input).toEqual(args);
+			expect(validateToolArgs(action, restored.input)).toMatchObject({
+				valid: true,
+				args,
+			});
+			const invalid = { ...modelArgs, taskId: 42 };
+			expect(
+				parseAndValidate(JSON.stringify(invalid), tool.inputSchema.jsonSchema)
+					.valid,
+			).toBe(false);
+			expect(validateToolArgs(action, invalid).valid).toBe(false);
 		},
 	);
 

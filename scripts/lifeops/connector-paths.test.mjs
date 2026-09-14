@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   appBase,
   CONNECTOR_PATH_ENV_NAMES,
@@ -54,7 +55,7 @@ function markdownCells(row) {
     .map((cell) => cell.replaceAll("__ESCAPED_PIPE__", "|").trim());
 }
 
-const ROOT = resolve(new URL("../..", import.meta.url).pathname);
+const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const IDENTITY_SLOT_CATALOG = resolve(
   ROOT,
   "docs/testing/hitl-identity-slots.md",

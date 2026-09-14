@@ -9,11 +9,10 @@ import { createRequire } from "node:module";
 import { Worker } from "node:worker_threads";
 import type { State } from "@elizaos/core";
 import {
-  type McpProviderData,
-  type McpServerInfo,
-  ResourceSelectionSchema,
-  type ValidationResult,
-} from "../types";
+  createMcpResourceSelectionFeedback,
+  validateMcpResourceSelection,
+} from "@elizaos/shared/mcp";
+import type { McpProviderData, McpServerInfo, ValidationResult } from "../types";
 import { getMcpJsonSchemaBudgetError, validateJsonSchema } from "./json";
 import {
   type ResourceSelection,
@@ -301,19 +300,7 @@ export async function validateToolSelectionArgument(
 }
 
 export function validateResourceSelection(selection: unknown): ValidationResult<ResourceSelection> {
-  if (isRecord(selection) && selection.noResourceAvailable === true) {
-    return {
-      success: true,
-      data: {
-        serverName: "",
-        uri: "",
-        noResourceAvailable: true,
-        ...optionalReasoning(selection),
-      },
-    };
-  }
-
-  return validateJsonSchema<ResourceSelection>(selection, ResourceSelectionSchema);
+  return validateMcpResourceSelection(selection) as ValidationResult<ResourceSelection>;
 }
 
 interface ToolDescription {
@@ -352,44 +339,19 @@ export function createToolSelectionFeedbackPrompt(
   );
 }
 
-interface ResourceDescription {
-  readonly description?: string;
-  readonly name?: string;
-}
-
 export function createResourceSelectionFeedbackPrompt(
   originalResponse: string,
   errorMessage: string,
   composedState: State,
   userMessage: string
 ): string {
-  let resourcesDescription = "";
   const mcpData = composedState.values.mcp as Record<string, McpProviderData[string]> | undefined;
-
-  if (mcpData) {
-    for (const [serverName, server] of Object.entries(mcpData)) {
-      if (server.status !== "connected") continue;
-
-      const resources = server.resources as Record<string, ResourceDescription> | undefined;
-      if (resources) {
-        for (const [uri, resource] of Object.entries(resources)) {
-          resourcesDescription += `Resource: ${uri} (Server: ${serverName})\n`;
-          resourcesDescription += `Name: ${resource.name ?? "No name available"}\n`;
-          resourcesDescription += `Description: ${
-            resource.description ?? "No description available"
-          }\n\n`;
-        }
-      }
-    }
-  }
-
-  return createFeedbackPrompt(
+  return createMcpResourceSelectionFeedback({
     originalResponse,
     errorMessage,
-    "resource",
-    resourcesDescription,
-    userMessage
-  );
+    providerData: mcpData ?? {},
+    userMessage,
+  });
 }
 
 function createFeedbackPrompt(

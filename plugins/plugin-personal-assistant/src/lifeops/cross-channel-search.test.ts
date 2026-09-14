@@ -41,7 +41,7 @@ describe("cross-channel search context integrity", () => {
       searchMemories,
       getRoom: vi.fn(
         async () =>
-          ({ id: ROOM_ID, name: "complete room", source: "discord" }) as Room,
+          ({ id: ROOM_ID, name: "complete room", source: "memory" }) as Room,
       ),
     } as unknown as IAgentRuntime;
 

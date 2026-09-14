@@ -1,9 +1,8 @@
 /**
- * Bundles the compiled `dist/esm/index.js` into the two artifacts Capacitor
- * consumers load directly: an IIFE (`dist/plugin.js`, global
- * `capacitorBunRuntime`) for script-tag/webview use and a CJS build
- * (`dist/plugin.cjs.js`); `@capacitor/core` stays external in both.
+ * Generated native Capacitor package build configuration. Change the scaffold
+ * manifest or generator instead of editing this file directly.
  */
+
 export default {
   input: "dist/esm/index.js",
   output: [
@@ -11,9 +10,7 @@ export default {
       file: "dist/plugin.js",
       format: "iife",
       name: "capacitorBunRuntime",
-      globals: {
-        "@capacitor/core": "capacitorExports",
-      },
+      globals: { "@capacitor/core": "capacitorExports" },
       sourcemap: true,
       inlineDynamicImports: true,
     },

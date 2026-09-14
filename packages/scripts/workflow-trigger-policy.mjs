@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Enforces one lightweight pull-request authority and one latest-tip develop
- * authority. Periodic and completion-chained triggers remain forbidden so a
- * merged develop tip is the repository's only automatic full-validation event.
+ * Enforces one lightweight pull-request authority and one latest-tip branch
+ * authority. Periodic and completion-chained triggers remain forbidden so the
+ * canonical branch workflow remains the only automatic full-validation authority.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -19,7 +19,7 @@ const FORBIDDEN_EVENTS = new Set([
 const CANONICAL_ADMISSION_WORKFLOW = "pr-static-smoke.yml";
 const DEVELOP_AUTHORITY_WORKFLOW = "develop-full.yml";
 const FORBIDDEN_AUTOMATION_EVENTS = new Set(["schedule", "workflow_run"]);
-const REQUIRED_PR_BRANCHES = ["develop", "main"];
+const REQUIRED_PR_BRANCHES = ["develop", "staging", "main"];
 const REQUIRED_PR_TYPES = [
   "opened",
   "ready_for_review",
@@ -133,12 +133,14 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
       if (branches.length === 0 && tags.length > 0 && !hasBranchIgnore)
         continue;
       if (
-        branches.length !== 1 ||
-        branches[0] !== "develop" ||
+        branches.length !== 3 ||
+        !["develop", "staging", "main"].every((branch) =>
+          branches.includes(branch),
+        ) ||
         hasBranchIgnore
       ) {
         failures.push(
-          `${name}: push branches must be exactly [develop], received ${JSON.stringify(branches)}`,
+          `${name}: push branches must be exactly [develop, staging, main], received ${JSON.stringify(branches)}`,
         );
         continue;
       }

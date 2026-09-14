@@ -2708,6 +2708,7 @@ export type ElizaDesktopRPCSchema = {
         base: string;
         token?: string;
         externalApiBase?: string | null;
+        localApiBase?: string | null;
       };
 
       // Local-agent IPC streaming push events (#12180 / #12355): a

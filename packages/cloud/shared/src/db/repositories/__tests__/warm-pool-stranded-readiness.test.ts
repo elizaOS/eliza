@@ -6,6 +6,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
+import { countAllocatedWorkloadsOnNodeWithDatabase } from "../../../lib/services/docker-node-workload-queries";
 import { agentNodeIncarnationHistories } from "../../schemas/agent-node-incarnation-histories";
 import { agentSandboxes, WARM_POOL_ORG_ID, WARM_POOL_USER_ID } from "../../schemas/agent-sandboxes";
 import { apiKeys } from "../../schemas/api-keys";
@@ -65,6 +66,13 @@ beforeAll(async () => {
   await apply();
   const { getPgliteClientForTests } = await import("../../client");
   await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
+  await dbWrite.execute(sql`
+    CREATE TABLE IF NOT EXISTS containers (
+      id uuid PRIMARY KEY,
+      node_id text,
+      status text NOT NULL
+    )
+  `);
   await repository.countAllPoolEntries({ image: IMAGE });
 
   // Replenish reads the tenant-starvation guard inputs (queued tenant jobs +
@@ -715,12 +723,64 @@ test(
 );
 
 test(
+  "stopped resume leaves its released one-slot node available and preserves recovery data",
+  async () => {
+    const id = await seedUserAgent();
+    const lastBackupAt = new Date("2026-09-12T10:07:33.122Z");
+    await dbWrite.update(dockerNodes).set({ capacity: 1 }).where(eq(dockerNodes.node_id, "node-1"));
+    try {
+      await dbWrite
+        .update(agentSandboxes)
+        .set({
+          status: "stopped",
+          sandbox_id: "retired-sandbox",
+          container_name: "retired-container",
+          node_id: "node-1",
+          bridge_port: 18791,
+          web_ui_port: 20001,
+          database_status: "ready",
+          database_uri: "postgresql://retained.invalid/agent",
+          snapshot_id: "retained-snapshot",
+          last_backup_at: lastBackupAt,
+        })
+        .where(eq(agentSandboxes.id, id));
+      expect(await countAllocatedWorkloadsOnNodeWithDatabase(dbWrite, "node-1")).toBe(0);
+
+      const admitted = await repository.trySetProvisioning(id);
+
+      expect(admitted?.status).toBe("provisioning");
+      expect(await countAllocatedWorkloadsOnNodeWithDatabase(dbWrite, "node-1")).toBe(0);
+      expect(admitted?.node_id).toBeNull();
+      expect(admitted?.sandbox_id).toBeNull();
+      expect(admitted?.container_name).toBeNull();
+      expect(admitted?.bridge_port).toBeNull();
+      expect(admitted?.web_ui_port).toBeNull();
+      expect(admitted?.database_status).toBe("ready");
+      expect(admitted?.database_uri).toBe("postgresql://retained.invalid/agent");
+      expect(admitted?.snapshot_id).toBe("retained-snapshot");
+      expect(admitted?.last_backup_at?.toISOString()).toBe(lastBackupAt.toISOString());
+    } finally {
+      await dbWrite
+        .update(dockerNodes)
+        .set({ capacity: 16 })
+        .where(eq(dockerNodes.node_id, "node-1"));
+    }
+  },
+  PGLITE_TIMEOUT,
+);
+
+test(
   "restore admission rejects foreign and stale capture before accepting exact authority",
   async () => {
     const id = await seedUserAgent();
     await dbWrite
       .update(agentSandboxes)
-      .set({ status: "stopped" })
+      .set({
+        status: "stopped",
+        sandbox_id: "retired-restore-sandbox",
+        container_name: "retired-restore-container",
+        node_id: "node-1",
+      })
       .where(eq(agentSandboxes.id, id));
     const capture = await persistedAgent(id);
     expect(
@@ -736,9 +796,10 @@ test(
       }),
     ).toBeUndefined();
     expect((await persistedAgent(id)).status).toBe("stopped");
-    expect((await repository.trySetProvisioningFromRestoreCapture(capture))?.status).toBe(
-      "provisioning",
-    );
+    const admitted = await repository.trySetProvisioningFromRestoreCapture(capture);
+    expect(admitted?.status).toBe("provisioning");
+    expect(admitted?.node_id).toBeNull();
+    expect(await countAllocatedWorkloadsOnNodeWithDatabase(dbWrite, "node-1")).toBe(0);
   },
   PGLITE_TIMEOUT,
 );

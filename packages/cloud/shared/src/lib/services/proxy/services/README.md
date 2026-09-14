@@ -172,6 +172,7 @@ export const twitterHandler: ServiceHandler = async ({ body }) => {
   const path = PROVIDER_PATHS[method];
 
   const response = await retryFetch({
+    replayPolicy: "idempotent", // Only for requests safe to execute again.
     url: `https://api.twitter.com${path}`,
     init: {
       method: "GET",

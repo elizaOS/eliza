@@ -12,6 +12,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { parseCloudLiveContinuityEvidence } from "../../app/test/cloud-live-continuity-contract.ts";
 
 export const PAGES_AUTHORITY_SCHEMA =
   "elizaos.cloudflare.pages-deployment-authority/v1";
@@ -112,21 +113,6 @@ const LATENCY_KEYS = [
   "firstTurnLatencyMs",
   "lane",
   "metric",
-  "schemaVersion",
-];
-const CONTINUITY_KEYS = [
-  "apiBaseReused",
-  "challengeTurnCount",
-  "cleanupDisposition",
-  "conversationHistoryDisposition",
-  "forbiddenAgentMutationCount",
-  "freshContextHistoryPassed",
-  "lane",
-  "noAdditionalChatSendAfterChallenge",
-  "personalIdentityEndpointPassed",
-  "personalIdentityReused",
-  "reloadHistoryPassed",
-  "runtimeBindingReused",
   "schemaVersion",
 ];
 const PROOF_KEYS = [
@@ -835,31 +821,6 @@ function parseLatency(value) {
   };
 }
 
-function parseContinuity(value) {
-  const continuity = requireExactKeys(value, CONTINUITY_KEYS, "continuity");
-  const expected = {
-    schemaVersion: 1,
-    lane: RECEIPT_LANE,
-    challengeTurnCount: 1,
-    noAdditionalChatSendAfterChallenge: true,
-    personalIdentityEndpointPassed: true,
-    reloadHistoryPassed: true,
-    freshContextHistoryPassed: true,
-    personalIdentityReused: true,
-    runtimeBindingReused: true,
-    apiBaseReused: true,
-    forbiddenAgentMutationCount: 0,
-    cleanupDisposition: "no-test-owned-agent",
-    conversationHistoryDisposition: "preserved",
-  };
-  for (const [key, expectedValue] of Object.entries(expected)) {
-    if (continuity[key] !== expectedValue) {
-      fail(`continuity.${key} is invalid`);
-    }
-  }
-  return expected;
-}
-
 export function createDeployedRendererProof({
   authority: authorityValue,
   preflight: preflightValue,
@@ -872,7 +833,7 @@ export function createDeployedRendererProof({
   const preflight = parsePagesPublicCheck(preflightValue, "preflight");
   const remoteSmoke = parseDeployedBrowserSmoke(remoteSmokeValue);
   const latency = parseLatency(latencyValue);
-  const continuity = parseContinuity(continuityValue);
+  const continuity = parseCloudLiveContinuityEvidence(continuityValue);
   const postflight = parsePagesPublicCheck(postflightValue, "postflight");
 
   for (const [label, observed] of [

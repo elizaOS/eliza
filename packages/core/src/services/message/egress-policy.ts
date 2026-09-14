@@ -27,10 +27,13 @@ import {
 import type { Memory } from "../../types/memory";
 import type { Content } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
+import type { StateData } from "../../types/state";
 import { isObjectRecord as isRecord } from "../../utils/type-guards";
 import { resolveCallbackActionName } from "./action-identifiers.js";
 import { rewriteActionCallbackInCharacter } from "./delivery.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
+import { financialCompletionIsUngrounded } from "./financial-completion";
+import { financialHoldingIsUngrounded } from "./financial-observations";
 import {
 	replyClaimsCompletedSideEffect,
 	replyClaimsEmptyTrackedWorkState,
@@ -38,6 +41,8 @@ import {
 
 export type PlannedReplyClaimKind =
 	| "completed_side_effect"
+	| "financial_completion"
+	| "financial_holding"
 	| "empty_tracked_state";
 
 export function appliedEffectReceiptIdsForReply(
@@ -163,12 +168,22 @@ export type PlannedReplyEgressDecision =
  */
 export function evaluatePlannedReplyEgress(args: {
 	reply: string;
+	request?: string;
+	providers?: StateData["providers"];
 	actionResults: readonly ActionResult[];
 	actions: readonly Action[];
 	evaluator?: EvaluatorOutput;
 }): PlannedReplyEgressDecision {
 	const reply = args.reply.trim();
 	if (!reply) return { verdict: "allow" };
+	if (
+		financialCompletionIsUngrounded(reply, args.actionResults, args.request)
+	) {
+		return { verdict: "reject", kind: "financial_completion" };
+	}
+	if (financialHoldingIsUngrounded(args)) {
+		return { verdict: "reject", kind: "financial_holding" };
+	}
 	if (replyClaimsCompletedSideEffect(reply)) {
 		if (
 			plannedReplyHasClaimGroundingReceipt({
@@ -214,11 +229,14 @@ export async function resolvePlannedReplyEgress(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
 	reply: string;
+	providers?: StateData["providers"];
 	actionResults: readonly ActionResult[];
 	evaluator?: EvaluatorOutput;
 }): Promise<{ text: string; effectReceiptIds: readonly string[] }> {
 	const decision = evaluatePlannedReplyEgress({
 		reply: args.reply,
+		request: args.message.content.text,
+		providers: args.providers,
 		actionResults: args.actionResults,
 		actions: args.runtime.actions,
 		evaluator: args.evaluator,
@@ -238,6 +256,7 @@ export async function resolvePlannedReplyEgress(args: {
 		rejectedReply: args.reply,
 		reason: decision.verdict === "reject" ? decision.kind : "missing_reply",
 		results: renderActionResultsForModel([...args.actionResults]).text,
+		providers: args.providers,
 	});
 	const rewritten = await rewriteActionCallbackInCharacter({
 		runtime: args.runtime,
@@ -264,6 +283,8 @@ export async function resolvePlannedReplyEgress(args: {
 	const rewrittenDecision = reply
 		? evaluatePlannedReplyEgress({
 				reply,
+				request: args.message.content.text,
+				providers: args.providers,
 				actionResults: args.actionResults,
 				actions: args.runtime.actions,
 			})
