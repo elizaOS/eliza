@@ -25,7 +25,12 @@
 
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { ElizaError, type IAgentRuntime, Service } from "@elizaos/core";
+import {
+	ElizaError,
+	type IAgentRuntime,
+	parseBooleanValue,
+	Service,
+} from "@elizaos/core";
 import {
 	estimateTokens,
 	extractBody,
@@ -404,20 +409,23 @@ export class AgentSkillsService extends Service {
 				? DEFAULT_SKILL_DOWNLOAD_TIMEOUT_MS
 				: configuredFetchTimeout;
 
-		// Registry I/O is opt-in during startup. getSetting() may preserve the
-		// string or coerce it to a boolean, so accept both explicit true forms.
-		const syncCatalogOnStartSetting = runtime.getSetting(
-			"SKILLS_SYNC_CATALOG_ON_START",
-		);
+		// Boolean settings arrive as the string an env file holds or as the
+		// boolean a settings UI stores (the manifest declares them boolean), so
+		// every flag goes through one parser; an unparseable value keeps the
+		// documented default instead of silently flipping the feature.
+		const booleanSetting = (key: string): boolean | undefined =>
+			parseBooleanValue(runtime.getSetting(key));
+
+		// Registry I/O is opt-in during startup.
 		this.syncCatalogOnStart =
 			config?.syncCatalogOnStart ??
-			(syncCatalogOnStartSetting === "true" ||
-				syncCatalogOnStartSetting === true);
+			booleanSetting("SKILLS_SYNC_CATALOG_ON_START") ??
+			false;
 
 		this.autoLoad =
 			config?.autoLoad ??
-			(runtime.getSetting("SKILLS_AUTO_LOAD") !== "false" &&
-				runtime.getSetting("CLAWHUB_AUTO_LOAD") !== "false");
+			((booleanSetting("SKILLS_AUTO_LOAD") ?? true) &&
+				(booleanSetting("CLAWHUB_AUTO_LOAD") ?? true));
 
 		// Bundled skills directories from config or runtime settings
 		// Can be comma-separated string or array
@@ -490,8 +498,7 @@ export class AgentSkillsService extends Service {
 
 		// Auto-refresh
 		this.autoRefreshEnabled =
-			config?.autoRefresh ??
-			runtime.getSetting("SKILLS_AUTO_REFRESH") === "true";
+			config?.autoRefresh ?? booleanSetting("SKILLS_AUTO_REFRESH") ?? false;
 		this.autoRefreshInterval =
 			config?.autoRefreshInterval ?? DEFAULT_AUTO_REFRESH_INTERVAL;
 
