@@ -22,9 +22,11 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import {
   acquirePortLease,
+  candidatePortRange,
   cleanupRunContext,
   createManagedRunContext,
   createOwnedChildRegistry,
+  ephemeralPortFloor,
   externalApiHealthy,
   installSignalTeardown,
   managedApiHealthy,
@@ -336,6 +338,55 @@ test("refuses a listener that races a lease without stopping it", async () => {
   } finally {
     await closeServer(foreignServer);
     if (existsSync(context.runRoot)) cleanupRunContext(context);
+  }
+});
+
+test("random lease candidates stay below the kernel's ephemeral source-port floor", async () => {
+  // A leased port inside ip_local_port_range can be handed to an outbound
+  // socket between the lease and the server's bind (#31154).
+  assert.deepEqual(
+    candidatePortRange({ min: 20_000, max: 60_999, ephemeralMin: 32_768 }),
+    { min: 20_000, max: 32_767 },
+  );
+  assert.deepEqual(
+    candidatePortRange({ min: 20_000, max: 30_000, ephemeralMin: 49_152 }),
+    { min: 20_000, max: 30_000 },
+  );
+  assert.throws(
+    () =>
+      candidatePortRange({ min: 40_000, max: 60_999, ephemeralMin: 32_768 }),
+    /at or above the ephemeral floor/,
+  );
+  assert.equal(
+    ephemeralPortFloor(() => null),
+    49_152,
+  );
+  assert.equal(
+    ephemeralPortFloor(() => ({ min: 32_768, max: 60_999 })),
+    32_768,
+  );
+
+  const leaseRoot = mkdtempSync(
+    path.join(os.tmpdir(), "cloud-integration-lease-floor-"),
+  );
+  const floor = ephemeralPortFloor();
+  const leases = [];
+  try {
+    for (let index = 0; index < 12; index += 1) {
+      const lease = await acquirePortLease({
+        runId: `floor-${index}`,
+        label: "API",
+        leaseRoot,
+      });
+      leases.push(lease);
+      assert.ok(
+        lease.port >= 20_000 && lease.port < floor,
+        `lease ${lease.port} must sit in 20000..${floor - 1}`,
+      );
+    }
+  } finally {
+    for (const lease of leases) releasePortLease(lease);
+    rmSync(leaseRoot, { recursive: true, force: true });
   }
 });
 
