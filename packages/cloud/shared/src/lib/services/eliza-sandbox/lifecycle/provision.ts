@@ -17,6 +17,7 @@ import {
 } from "../../../../db/schemas/agent-sandboxes";
 import { logger } from "../../../utils/logger";
 import {
+  completeProvisionCompute,
   reconcileFailedProvisionCompute,
   reserveProvisionCompute,
   restartProvisionCompute,
@@ -595,17 +596,11 @@ export class SandboxProvision {
 
         // 4. Persist the reachable container and provider-specific metadata.
         //
-        // User rows flip to `running` before restore because that status is the
-        // proxy reachability gate; delaying it made a responsive agent render
-        // as "waking" throughout restore (#14038). Unclaimed pool rows are the
-        // exception: exposing them as claimable before the restore tail
-        // succeeds recreates the readiness crash window, so they stay
-        // `provisioning` until the final status+stamp CAS below.
+        // Funded containers remain non-public until the complete restore tail
+        // commits readiness. A crash leaves a retryable provisioning row.
+        // Pool rows similarly remain unclaimable until their final readiness CAS.
         const updateData: Parameters<typeof agentSandboxesRepository.update>[1] = {
-          // Pool rows stay non-claimable until the entire provision tail
-          // succeeds. Their final status+readiness stamp is one repository CAS
-          // below; user rows retain the early reachability flip.
-          status: recoveringPendingWarmClaim || isWarmPoolProvision ? "provisioning" : "running",
+          status: computeFundingId || recoveringPendingWarmClaim || isWarmPoolProvision ? "provisioning" : "running",
           sandbox_id: handle.sandboxId,
           bridge_url: handle.bridgeUrl,
           health_url: handle.healthUrl,
@@ -863,7 +858,9 @@ export class SandboxProvision {
           });
         }
 
-        let completed = updated;
+        let completed = computeFundingId
+          ? await completeProvisionCompute(updated, computeFundingId, handle)
+          : updated;
         if (isWarmPoolProvision) {
           const ready = await agentSandboxesRepository.commitPoolEntryReady(updated);
           if (!ready) {

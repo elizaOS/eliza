@@ -32,6 +32,8 @@ export const agentComputeFunding = pgTable(
     provider_container_id: text("provider_container_id"),
     provider_bound_at: timestamp("provider_bound_at", { withTimezone: true }),
     host_lease_confirmed_at: timestamp("host_lease_confirmed_at", { withTimezone: true }),
+    /** Completed application provisioning for this exact container; inherited only on retained resume/renewal. */
+    runtime_ready_at: timestamp("runtime_ready_at", { withTimezone: true }),
     provider_stopped_at: timestamp("provider_stopped_at", { withTimezone: true }),
     provider_stop_receipt: jsonb("provider_stop_receipt").$type<{
       containerId: string;

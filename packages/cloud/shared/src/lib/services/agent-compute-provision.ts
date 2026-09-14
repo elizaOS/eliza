@@ -5,6 +5,7 @@ import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/helpers";
 import { agentBillingRepository } from "../../db/repositories/agent-billing";
 import type { AgentSandbox } from "../../db/repositories/agent-sandboxes";
+import { readPostLockDatabaseNow } from "../../db/repositories/primary-database-clock";
 import { agentComputeFunding } from "../../db/schemas/agent-compute-funding";
 import { agentSandboxes, CONTAINER_BACKED_EXECUTION_TIERS } from "../../db/schemas/agent-sandboxes";
 import { agentComputeFundingService } from "./agent-compute-funding";
@@ -118,6 +119,14 @@ export async function reserveProvisionCompute(expected: AgentSandbox) {
           )
         : await agentComputeFundingService.reserveInTransaction(tx, identity);
     if (!funding) changed();
+    // Entering the restore tail invalidates readiness even when the paid
+    // container survives a previous attempt. Only its final commit restores it.
+    const [pendingWindow] = await tx
+      .update(agentComputeFunding)
+      .set({ runtime_ready_at: null })
+      .where(eq(agentComputeFunding.id, funding.window.id))
+      .returning();
+    if (!pendingWindow) changed();
     const [agent] = await tx
       .update(agentSandboxes)
       .set({
@@ -132,7 +141,7 @@ export async function reserveProvisionCompute(expected: AgentSandbox) {
       )
       .returning();
     if (!agent) changed();
-    return { ...funding, agent, retained };
+    return { ...funding, window: pendingWindow, agent, retained };
   });
   if (reserved.purchasedCreditDebited)
     await creditsService.invalidateCreditCaches(expected.organization_id);
@@ -347,4 +356,84 @@ export async function settleReplacementComputeInTransaction(
   return window.provider_container_id === null
     ? cancelUnboundAgentComputeInTransaction(tx, identity)
     : stopFundedAgentInTransaction(tx, identity);
+}
+
+/** Publish reachability only after the full application restore tail succeeded. */
+export async function completeProvisionCompute(
+  expected: AgentSandbox,
+  fundingId: string,
+  handle: SandboxHandle,
+) {
+  if (!isDockerSandboxMetadata(handle.metadata)) changed();
+  const meta = handle.metadata;
+  const { containerId, nodeId } = meta;
+  if (!containerId || !nodeId) changed();
+  return dbWrite.transaction(async (tx) => {
+    await lifecycle.lockLifecycle(tx, expected.id, expected.organization_id);
+    const current = await lifecycle.getAgentForLifecycleMutation(
+      tx,
+      expected.id,
+      expected.organization_id,
+    );
+    if (
+      !current ||
+      current.status !== "provisioning" ||
+      current.lifecycle_revision !== expected.lifecycle_revision ||
+      current.environment_revision !== expected.environment_revision ||
+      current.lifecycle_job_id !== expected.lifecycle_job_id ||
+      current.lifecycle_execution_generation !== expected.lifecycle_execution_generation ||
+      current.node_id !== meta.nodeId ||
+      current.sandbox_id !== handle.sandboxId ||
+      current.container_name !== meta.containerName ||
+      current.bridge_url !== handle.bridgeUrl ||
+      current.health_url !== handle.healthUrl ||
+      current.replacement_cleanup_container_id !== null
+    )
+      changed();
+    await agentComputeFundingService.authorizeHostInTransaction(tx, {
+      agentId: current.id,
+      organizationId: current.organization_id,
+      lifecycleRevision: current.lifecycle_revision,
+      fundingId,
+      nodeId,
+      containerId,
+    });
+    const [window] = await tx
+      .select()
+      .from(agentComputeFunding)
+      .where(
+        and(
+          eq(agentComputeFunding.id, fundingId),
+          eq(agentComputeFunding.agent_id, current.id),
+          eq(agentComputeFunding.organization_id, current.organization_id),
+        ),
+      )
+      .limit(1);
+    if (!window?.host_lease_confirmed_at) changed();
+    const now = await readPostLockDatabaseNow(tx);
+    await tx
+      .update(agentComputeFunding)
+      .set({ runtime_ready_at: now })
+      .where(eq(agentComputeFunding.id, fundingId));
+    const [ready] = await tx
+      .update(agentSandboxes)
+      .set({
+        status:
+          current.claimed_at && current.warm_claim_credential_state !== "ready"
+            ? "provisioning"
+            : "running",
+        error_message: null,
+        last_heartbeat_at: now,
+        updated_at: now,
+      })
+      .where(
+        and(
+          eq(agentSandboxes.id, current.id),
+          eq(agentSandboxes.organization_id, current.organization_id),
+        ),
+      )
+      .returning();
+    if (!ready) changed();
+    return ready;
+  });
 }
