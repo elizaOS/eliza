@@ -8,6 +8,11 @@
 
 import { actionToJsonSchema } from "../actions/action-schema";
 import {
+	isPromotedSubactionVirtual,
+	pinnedDiscriminatorForPromotedChild,
+	promotedSubactionParent,
+} from "../actions/promote-subactions";
+import {
 	buildPlannerToolsFromActions,
 	CORE_PLANNER_TERMINALS,
 } from "../actions/to-tool";
@@ -57,6 +62,14 @@ function buildSubPlannerActionLookup(
 	return lookup;
 }
 
+/**
+ * One native tool per child plus one per simile: the planner loop counts a
+ * call to a name outside this list as an unavailable tool before the execute
+ * wrapper can resolve it, so a simile the model uses must be listed. A
+ * promoted family never reaches here (promotedFamilySurface), which is where
+ * the copies were expensive: 12 simile copies of the umbrella schema were
+ * ~70K of the live CALENDAR sub-planner's 125K-character surface (2026-09-14).
+ */
 function buildSubPlannerTools(actions: readonly Action[]): ToolDefinition[] {
 	const canonicalTools = buildPlannerToolsFromActions(actions);
 	const toolsByName = new Map(canonicalTools.map((tool) => [tool.name, tool]));
@@ -79,6 +92,95 @@ function buildSubPlannerTools(actions: readonly Action[]): ToolDefinition[] {
 		}
 	}
 	return tools;
+}
+
+interface PromotedFamilySurface {
+	tool: ToolDefinition;
+	discriminator: string;
+	childByValue: Map<string, Action>;
+}
+
+/** The child's own words: its description minus the umbrella description it was composed from and the default "subaction = value" blurb. */
+function promotedChildBlurb(parent: Action, child: Action): string {
+	let blurb = child.description ?? "";
+	if (parent.description && blurb.startsWith(parent.description)) {
+		blurb = blurb.slice(parent.description.length);
+	}
+	blurb = blurb.replace(/^\s*[—-]+\s*/, "").trim();
+	return /^subaction\s*=\s*\S+$/i.test(blurb) ? "" : blurb;
+}
+
+/**
+ * When every admitted child is a promoted virtual of this umbrella — the
+ * umbrella's own handler with one discriminator value pinned — the
+ * sub-planner only has to supply that value. One native tool per child
+ * repeated the umbrella's complete schema per child (live 2026-09-14,
+ * "delete the tailor appointment": CALENDAR without `action`, 11 children
+ * ≈ 77K characters, a 40K-token round). The umbrella is exposed once with
+ * the discriminator required, its enum narrowed to the admitted children
+ * and a per-value guide taken from the children's own descriptions; the
+ * execute wrapper maps the chosen value back to the child. Any child that
+ * is not such a virtual keeps the per-child surface.
+ */
+function promotedFamilySurface(
+	parent: Action,
+	children: readonly Action[],
+	lookup: (name: string) => Action | undefined,
+): PromotedFamilySurface | undefined {
+	if (children.length === 0) return undefined;
+	const childByValue = new Map<string, Action>();
+	let discriminator: string | undefined;
+	for (const child of children) {
+		if (
+			!isPromotedSubactionVirtual(child) ||
+			promotedSubactionParent(child) !== parent.name
+		) {
+			return undefined;
+		}
+		const pin = pinnedDiscriminatorForPromotedChild(parent, child.name, lookup);
+		if (
+			!pin ||
+			(discriminator !== undefined && pin.discriminator !== discriminator) ||
+			childByValue.has(pin.value)
+		) {
+			return undefined;
+		}
+		discriminator = pin.discriminator;
+		childByValue.set(pin.value, child);
+	}
+	if (discriminator === undefined) return undefined;
+	const [base] = buildPlannerToolsFromActions([parent]);
+	const parameters = base?.parameters;
+	const property = parameters?.properties?.[discriminator];
+	if (!base || !parameters || !property) return undefined;
+	const values = [...childByValue.keys()];
+	const required = parameters.required ?? [];
+	const guide = values
+		.map((value) => {
+			const child = childByValue.get(value);
+			const blurb = child ? promotedChildBlurb(parent, child) : "";
+			return blurb ? `${value} — ${blurb}` : value;
+		})
+		.join("\n");
+	return {
+		tool: {
+			...base,
+			description:
+				`${base.description ?? ""}\n\`${discriminator}\` is required; choose one of:\n${guide}`.trim(),
+			parameters: {
+				...parameters,
+				properties: {
+					...parameters.properties,
+					[discriminator]: { ...property, enum: values },
+				},
+				required: required.includes(discriminator)
+					? required
+					: [...required, discriminator],
+			},
+		},
+		discriminator,
+		childByValue,
+	};
 }
 
 export function actionHasSubActions(action: Action): boolean {
@@ -252,12 +354,16 @@ export async function runSubPlanner(
 
 	const childActionNames = new Set(childActions.map((action) => action.name));
 	const childActionLookup = buildSubPlannerActionLookup(childActions);
+	const family = promotedFamilySurface(params.action, childActions, (name) =>
+		params.runtime.actions.find((candidate) => candidate.name === name),
+	);
 	// Sub-planner exposes each child action directly as its own native tool
-	// (same surface as the top-level planner). The universal terminal-sentinel
-	// tools (REPLY / IGNORE / STOP) are always exposed so the model has a
-	// stable way to end the sub-planner pass.
+	// (same surface as the top-level planner), or a promoted family as the
+	// umbrella itself with the discriminator required. The universal
+	// terminal-sentinel tools (REPLY / IGNORE / STOP) are always exposed so
+	// the model has a stable way to end the sub-planner pass.
 	const tools: ToolDefinition[] = [
-		...buildSubPlannerTools(childActions),
+		...(family ? [family.tool] : buildSubPlannerTools(childActions)),
 		...CORE_PLANNER_TERMINALS,
 	];
 	const execute = params.execute ?? executePlannedToolCall;
@@ -265,6 +371,7 @@ export async function runSubPlanner(
 		params.context,
 		params.action,
 		childActions,
+		family?.tool,
 	);
 	await emitAppendedContextEvents(
 		context.events.slice(params.context.events.length),
@@ -308,6 +415,26 @@ export async function runSubPlanner(
 					success: false,
 					error: `Sub-planner ${params.action.name} requires a non-empty action name`,
 				};
+			}
+			if (
+				family &&
+				normalizeSubPlannerActionIdentifier(toolCall.name) ===
+					normalizeSubPlannerActionIdentifier(params.action.name)
+			) {
+				const value = toolCall.params?.[family.discriminator];
+				const child =
+					typeof value === "string"
+						? family.childByValue.get(value)
+						: undefined;
+				if (!child) {
+					return {
+						success: false,
+						error: `Sub-planner ${params.action.name} requires \`${family.discriminator}\`, one of: ${[...family.childByValue.keys()].join(", ")}`,
+					};
+				}
+				// The umbrella call with its discriminator IS the child call; the
+				// child virtual carries the same handler with that value pinned.
+				toolCall.name = child.name;
 			}
 			const resolvedChildAction =
 				childActionLookup.get(
@@ -442,16 +569,29 @@ function buildSubPlannerContext(
 	context: ContextObject,
 	parentAction: Action,
 	childActions: readonly Action[],
+	familyTool?: ToolDefinition,
 ): ContextObject {
-	return {
-		...context,
-		metadata: {
-			...(context.metadata ?? {}),
-			subPlannerParentAction: parentAction.name,
-		},
-		events: [
-			...context.events,
-			...childActions.map((action) => ({
+	// The exposed tool events must name what the model can call: the
+	// umbrella when a promoted family is collapsed onto it, else each child.
+	const exposed = familyTool
+		? [
+				{
+					id: `sub-planner:${parentAction.name}:tool:${parentAction.name}`,
+					type: "tool" as const,
+					source: "sub-planner",
+					tool: {
+						name: parentAction.name,
+						description: familyTool.description ?? parentAction.description,
+						parameters: (familyTool.parameters ??
+							actionToJsonSchema(parentAction)) as JSONSchema,
+						action: parentAction,
+						metadata: {
+							parentAction: parentAction.name,
+						},
+					},
+				},
+			]
+		: childActions.map((action) => ({
 				id: `sub-planner:${parentAction.name}:tool:${action.name}`,
 				type: "tool" as const,
 				source: "sub-planner",
@@ -464,7 +604,13 @@ function buildSubPlannerContext(
 						parentAction: parentAction.name,
 					},
 				},
-			})),
-		],
+			}));
+	return {
+		...context,
+		metadata: {
+			...(context.metadata ?? {}),
+			subPlannerParentAction: parentAction.name,
+		},
+		events: [...context.events, ...exposed],
 	};
 }
