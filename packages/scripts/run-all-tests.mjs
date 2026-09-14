@@ -815,9 +815,60 @@ function isSingleVitestWrapperCommand(command) {
 }
 
 function isSingleVitestBatchWrapperCommand(command) {
-  return /^node\s+scripts\/run-vitest-batches\.mjs$/.test(
-    stripLeadingEnvAssignments(command),
-  );
+  const effective = finalFailFastSegment(stripLeadingEnvAssignments(command));
+  if (effective === null) {
+    return false;
+  }
+  return /^node\s+scripts\/run-vitest-batches\.mjs$/.test(effective);
+}
+
+// A test script may chain setup work ahead of the batch runner with fail-fast
+// `&&` (for example `bun run test:entry && node
+// scripts/run-vitest-batches.mjs`). Only pure `&&` chains qualify: `;`, `||`,
+// pipes, and backgrounding can run the tail after a failed prefix, which
+// would let red setup ride along on green batch evidence. Anything else fails
+// closed to the previous strict behavior.
+function finalFailFastSegment(command) {
+  const segments = [];
+  let current = "";
+  let quote = null;
+  for (let i = 0; i < command.length; i += 1) {
+    const ch = command[i];
+    if (quote !== null) {
+      current += ch;
+      if (ch === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === "&" && command[i + 1] === "&") {
+      segments.push(current);
+      current = "";
+      i += 1;
+      continue;
+    }
+    if (ch === ";" || ch === "|" || ch === "&") {
+      return null;
+    }
+    current += ch;
+  }
+  if (quote !== null) {
+    return null;
+  }
+  segments.push(current);
+  if (segments.length < 2) {
+    return command;
+  }
+  const tail = segments[segments.length - 1].trim();
+  if (segments.slice(0, -1).join("").trim() === "" || tail === "") {
+    return null;
+  }
+  return tail;
 }
 
 function stripLeadingEnvAssignments(command) {

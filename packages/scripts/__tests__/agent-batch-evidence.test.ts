@@ -113,3 +113,88 @@ test("a failed Vitest batch remains a failure", () => {
   expect(result.stdout).toContain("executes arithmetic");
   expect(result.stdout).toContain('"status":"fail"');
 }, 60_000);
+
+function runCompoundFixture(entryMode: "pass" | "fail") {
+  const directory = mkdtempSync(
+    path.join(root, "packages", "agent-evidence-fixture-"),
+  );
+  const name = `@elizaos/${path.basename(directory)}`;
+  try {
+    for (const child of ["src", "test", "scripts"]) {
+      mkdirSync(path.join(directory, child));
+    }
+    copyFileSync(
+      path.join(root, "packages/agent/scripts/run-vitest-batches.mjs"),
+      path.join(directory, "scripts/run-vitest-batches.mjs"),
+    );
+    writeFileSync(
+      path.join(directory, "package.json"),
+      JSON.stringify({
+        name,
+        private: true,
+        type: "module",
+        scripts: {
+          test: "bun run test:entry && node scripts/run-vitest-batches.mjs",
+          "test:entry": "bun test scripts/entry.test.mjs",
+        },
+      }),
+    );
+    writeFileSync(
+      path.join(directory, "vitest.config.ts"),
+      'export default { test: { include: ["src/*.test.ts"], maxWorkers: 1 } };\n',
+    );
+    writeFileSync(
+      path.join(directory, "scripts/entry.test.mjs"),
+      entryMode === "pass"
+        ? 'import { test, expect } from "bun:test";\ntest("entry gate passes", () => expect(1 + 1).toBe(2));\n'
+        : 'import { test, expect } from "bun:test";\ntest("entry gate fails", () => expect(1 + 1).toBe(3));\n',
+    );
+    writeFileSync(
+      path.join(directory, "src/first.test.ts"),
+      'import { test, expect } from "vitest";\ntest("executes arithmetic", () => expect(2 + 2).toBe(4));\n',
+    );
+    writeFileSync(
+      path.join(directory, "src/second.test.ts"),
+      'import { test } from "vitest";\ntest.skip("explicit unavailable fixture", () => { throw new Error("must stay skipped"); });\n',
+    );
+    return spawnSync(
+      process.execPath,
+      [
+        path.join(root, "packages/scripts/run-all-tests.mjs"),
+        "--only=test",
+        "--no-cloud",
+        `--filter=${name}`,
+        "--require-work",
+      ],
+      {
+        cwd: root,
+        encoding: "utf8",
+        timeout: 60_000,
+        maxBuffer: 16 * 1024 * 1024,
+        env: {
+          ...process.env,
+          AGENT_TEST_CONCURRENCY: "1",
+          AGENT_TEST_BATCH_SIZE: "1",
+        },
+      },
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+test("reconciles batches behind a fail-fast setup step", () => {
+  const result = runCompoundFixture("pass");
+  expect(result.error).toBeUndefined();
+  expect(result.status).toBe(0);
+  expect(result.stdout).toContain(
+    "EVIDENCE reports=1 tests=2 executed=1 skipped=1 unobserved-tasks=0",
+  );
+}, 60_000);
+
+test("a failing setup step still fails the chained task", () => {
+  const result = runCompoundFixture("fail");
+  expect(result.error).toBeUndefined();
+  expect(result.status).not.toBe(0);
+  expect(result.stdout).toContain('"status":"fail"');
+}, 60_000);
