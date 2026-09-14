@@ -1130,11 +1130,19 @@ describe("check-pr-evidence row primitives", () => {
       requiresSurfaceArtifactsFromFiles([String.raw`apps\app\src\Panel.tsx`]),
       true,
     );
+    assert.equal(
+      requiresSurfaceArtifactsFromFiles([
+        "plugins/plugin-inbox/src/components/inbox/InboxView.tsx",
+      ]),
+      true,
+    );
     // Tests, stories, and server code render nothing a user sees.
     assert.equal(
       requiresSurfaceArtifactsFromFiles([
         "packages/ui/src/components/Foo.test.tsx",
         "packages/ui/src/components/Foo.stories.tsx",
+        "plugins/plugin-inbox/src/components/inbox/InboxView.test.tsx",
+        "plugins/plugin-inbox/test/stubs/InboxView.tsx",
         "packages/app-core/src/services/thing.ts",
         "packages/app/README.md",
       ]),
@@ -1142,13 +1150,13 @@ describe("check-pr-evidence row primitives", () => {
     );
   });
 
-  it("forces surface artifacts from a UI diff even without labels", () => {
+  it("forces surface artifacts from a plugin UI diff even without labels", () => {
     const body = REQUIRED_EVIDENCE_ROWS.map(
       ({ id }) =>
         `<!-- evidence-row:${id} -->\n- [ ] row \`N/A - not applicable to this change\`.`,
     ).join("\n\n");
     const { ok, findings } = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
-      changedFiles: ["packages/ui/src/components/NotificationRow.tsx"],
+      changedFiles: ["plugins/plugin-inbox/src/components/inbox/InboxView.tsx"],
     });
     assert.equal(ok, false);
     for (const id of SURFACE_ARTIFACT_ROW_IDS) {
