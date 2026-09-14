@@ -727,6 +727,8 @@ describe("runV5MessageRuntimeStage1", () => {
 		"matching",
 		"multiple",
 		"no-match",
+		"miss-then-unresolved",
+		"miss-then-repeat",
 		"repeat",
 		"repeat-id",
 		"edited",
@@ -779,10 +781,38 @@ describe("runV5MessageRuntimeStage1", () => {
 					const text = input.messages.map((m) => m.content).join("\n");
 					const reading =
 						calls === 1 ||
-						(["repeat", "repeat-id"].includes(mode) && calls === 2);
+						([
+							"repeat",
+							"repeat-id",
+							"miss-then-unresolved",
+							"miss-then-repeat",
+						].includes(mode) &&
+							calls === 2);
 					if (calls === 1 && mode !== "disabled")
 						expect(text).not.toContain(rows[1].content.text);
-					if (calls > 1) {
+					const emptyResult =
+						calls === 2 &&
+						(mode === "no-match" || mode.startsWith("miss-then-"));
+					if (emptyResult) {
+						expect(text).not.toContain(rows[1].content.text);
+						const receipt = JSON.parse(
+							text.match(/history_literal_search_results: (.+)/)?.[1] ?? "null",
+						);
+						expect(receipt).toEqual({
+							sourceSetId: text.match(
+								/completion_source_set: ([a-f0-9]{64})/,
+							)?.[1],
+							matchMode: "case-insensitive literal substring",
+							results: [
+								{
+									query: "does-not-occur",
+									scannedSources: rows.length,
+									matchedSourceIds: [],
+								},
+							],
+						});
+					} else if (calls > 1) {
+						expect(text).not.toContain("history_literal_search_results:");
 						if (mode === "revoked" || mode === "edited")
 							expect(text).not.toContain(rows[1].content.text);
 						else expect(text).toContain(rows[1].content.text);
@@ -808,19 +838,20 @@ describe("runV5MessageRuntimeStage1", () => {
 					}
 					return stage1Response({
 						contexts: ["simple"],
-						contextRequests: reading
-							? mode === "repeat-id" && calls === 2
-								? ["history:h2"]
-								: mode === "multiple"
-									? [
-											"history:search:BLUEBERRY",
-											"history:search:Acknowledged",
-											"history:search:OLD LITERAL",
-										]
-									: [
-											`history:search:${mode === "no-match" ? "does-not-occur" : mode === "empty" ? "   " : "OLD LITERAL"}`,
-										]
-							: [],
+						contextRequests:
+							reading && !(mode === "miss-then-unresolved" && calls === 2)
+								? mode === "repeat-id" && calls === 2
+									? ["history:h2"]
+									: mode === "multiple"
+										? [
+												"history:search:BLUEBERRY",
+												"history:search:Acknowledged",
+												"history:search:OLD LITERAL",
+											]
+										: [
+												`history:search:${mode === "no-match" || mode.startsWith("miss-then-") ? "does-not-occur" : mode === "empty" ? "   " : "OLD LITERAL"}`,
+											]
+								: [],
 						replyText: reading
 							? "Never deliver this draft."
 							: "I have read the originals; nothing changed.",
@@ -832,7 +863,7 @@ describe("runV5MessageRuntimeStage1", () => {
 								sourceSetId: text.match(
 									/completion_source_set: ([a-f0-9]{64})/,
 								)?.[1],
-								complete: true,
+								complete: !(mode === "miss-then-unresolved" && calls === 2),
 								relevantSourceIds: [],
 								constraintSourceIds: ["h1"],
 								referentSourceIds: [],
@@ -862,7 +893,16 @@ describe("runV5MessageRuntimeStage1", () => {
 						"I have read the originals; nothing changed.",
 					);
 				expect(dispatch).toHaveBeenCalledTimes(1);
-				expect(calls).toBe(["repeat", "repeat-id"].includes(mode) ? 3 : 2);
+				expect(calls).toBe(
+					[
+						"repeat",
+						"repeat-id",
+						"miss-then-unresolved",
+						"miss-then-repeat",
+					].includes(mode)
+						? 3
+						: 2,
+				);
 			}
 			expect(rows).toEqual(before);
 		},
