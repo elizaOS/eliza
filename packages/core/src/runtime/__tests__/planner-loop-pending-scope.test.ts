@@ -66,6 +66,7 @@ function harness(args: {
 	results?: PlannerToolResult[];
 	intents?: string[];
 	userMessage?: string;
+	undeliveredDraft?: string;
 	stageOnePlan?: {
 		reply: string;
 		replyEffectStatus: "none" | "non_applied" | "pending" | "applied";
@@ -124,6 +125,9 @@ function harness(args: {
 						type: "message_handler",
 						...(args.stageOnePlan ? { source: "message-service" } : {}),
 						metadata: {
+							...(args.undeliveredDraft
+								? { undeliveredDraft: { replyText: args.undeliveredDraft } }
+								: {}),
 							plan: {
 								intents: args.intents ?? ["read record", "open destination"],
 								...args.stageOnePlan,
@@ -364,15 +368,22 @@ describe("planner-declared pending work", () => {
 		},
 	);
 
-	it.each(["none", "non_applied"] as const)(
-		"evaluates a proposed preview before forcing an action (%s)",
-		async (replyEffectStatus) => {
+	it.each(
+		(["none", "non_applied"] as const).flatMap((replyEffectStatus) =>
+			[true, false].map((declaresIntent) => ({
+				replyEffectStatus,
+				declaresIntent,
+			})),
+		),
+	)(
+		"evaluates a proposed preview before forcing an action ($replyEffectStatus, declaresIntent=$declaresIntent)",
+		async ({ replyEffectStatus, declaresIntent }) => {
 			const preview =
 				"Title: Preview QA\nBody: Wait for confirmation before saving.";
 			const h = harness({
 				userMessage:
 					"Preview this note; wait for my separate confirmation before saving.",
-				intents: ["preview note for approval"],
+				intents: declaresIntent ? ["preview note for approval"] : [],
 				stageOnePlan: {
 					reply: preview,
 					replyEffectStatus,
@@ -396,10 +407,10 @@ describe("planner-declared pending work", () => {
 		},
 	);
 
-	it("continues required work when evaluation rejects a pre-tool answer", async () => {
+	it("still performs required work when an empty-intent draft fails completion", async () => {
 		const h = harness({
 			userMessage: "Read the current note before answering; do not change it.",
-			intents: ["read current note"],
+			intents: [],
 			stageOnePlan: {
 				reply: "I can answer about the note.",
 				replyEffectStatus: "none",
@@ -407,7 +418,7 @@ describe("planner-declared pending work", () => {
 			},
 			plans: [{ text: "", toolCalls: [call("READ", "final")] }],
 			evaluations: [
-				continueWork("The user needs a current read; no read has run yet."),
+				continueWork("The request requires a current read, which has not run."),
 				finish("The current note says to bring the purple folder."),
 			],
 		});
@@ -415,18 +426,98 @@ describe("planner-declared pending work", () => {
 			tools: [{ name: "READ" }, { name: "REPLY" }],
 			requireNonTerminalToolCall: true,
 		});
-		expect(result.status).toBe("finished");
 		expect(h.executed).toEqual(["READ"]);
-		expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
-			ModelType.RESPONSE_HANDLER,
-			ModelType.ACTION_PLANNER,
-			ModelType.RESPONSE_HANDLER,
-		]);
-		expect(result.trajectory.evaluatorOutputs.map((e) => e.decision)).toEqual([
-			"CONTINUE",
-			"FINISH",
-		]);
+		expect(h.useModel.mock.calls[0][0]).toBe(ModelType.RESPONSE_HANDLER);
+		expect(result.trajectory.evaluatorOutputs[0].decision).toBe("CONTINUE");
+		expect(result.finalMessage).toBe(
+			"The current note says to bring the purple folder.",
+		);
 	});
+
+	it.each([true, false])(
+		"evaluates a planner confirmation pause even when Stage 1 incorrectly marked it pending (reply text: %s)",
+		async (hasReplyText) => {
+			const preview =
+				"Title: Approval QA\nBody: Keep this unsaved until confirmation.";
+			const h = harness({
+				userMessage: "Prepare the note under my separate-confirmation rule.",
+				intents: ["Create the note after a separate user confirmation"],
+				undeliveredDraft: preview,
+				stageOnePlan: {
+					reply: "",
+					replyEffectStatus: "pending",
+					candidateActions: ["NOTES_CREATE"],
+				},
+				plans: [
+					{
+						text: "",
+						toolCalls: [
+							call("REPLY", "final", hasReplyText ? preview : undefined),
+						],
+					},
+				],
+				evaluations: [finish(preview)],
+			});
+			const result = await h.run({
+				tools: [{ name: "NOTES_CREATE" }, { name: "REPLY" }],
+				requireNonTerminalToolCall: true,
+			});
+			expect(h.executed).toEqual([]);
+			expect(result.finalMessage).toBe(preview);
+			expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
+				ModelType.ACTION_PLANNER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+		},
+	);
+
+	it.each(["none", "pending"] as const)(
+		"continues required work when evaluation rejects a pre-tool answer (%s)",
+		async (replyEffectStatus) => {
+			const h = harness({
+				userMessage:
+					"Read the current note before answering; do not change it.",
+				intents: ["read current note"],
+				stageOnePlan: {
+					reply: "I can answer about the note.",
+					replyEffectStatus,
+					candidateActions: ["READ"],
+				},
+				plans: [
+					...(replyEffectStatus === "pending"
+						? [
+								{
+									text: "",
+									toolCalls: [
+										call("REPLY", "final", "I can answer about the note."),
+									],
+								},
+							]
+						: []),
+					{ text: "", toolCalls: [call("READ", "final")] },
+				],
+				evaluations: [
+					continueWork("The user needs a current read; no read has run yet."),
+					finish("The current note says to bring the purple folder."),
+				],
+			});
+			const result = await h.run({
+				tools: [{ name: "READ" }, { name: "REPLY" }],
+				requireNonTerminalToolCall: true,
+			});
+			expect(result.status).toBe("finished");
+			expect(h.executed).toEqual(["READ"]);
+			expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
+				...(replyEffectStatus === "pending" ? [ModelType.ACTION_PLANNER] : []),
+				ModelType.RESPONSE_HANDLER,
+				ModelType.ACTION_PLANNER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+			expect(result.trajectory.evaluatorOutputs.map((e) => e.decision)).toEqual(
+				["CONTINUE", "FINISH"],
+			);
+		},
+	);
 
 	it.each(["pending", "applied", "none"] as const)(
 		"keeps the required-tool gate for work claims or absent answers (%s)",

@@ -106,7 +106,7 @@ describe("internal applied effect followed by evaluator reply failure", () => {
 								text: "",
 								toolCalls: [
 									{
-										id: "scoped-reply-1",
+										id: "corrected-reply",
 										name: "REPLY",
 										arguments: {
 											eliza_turn_scope: "final",

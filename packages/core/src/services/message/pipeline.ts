@@ -216,7 +216,9 @@ export async function runV5MessageRuntimeStage1(
 	}
 	const senderRole =
 		getTrajectoryContext()?.userRole ??
-		(await resolveStage1SenderRole(args.runtime, args.message));
+		(await timeInferenceSpan("message:stage1:sender-role", () =>
+			resolveStage1SenderRole(args.runtime, args.message),
+		));
 	const availableContexts = listAvailableContextsForRole(
 		args.runtime.contexts,
 		senderRole,
@@ -256,7 +258,12 @@ export async function runV5MessageRuntimeStage1(
 	const context = await timeInferenceSpan("message:stage1:context", () =>
 		createV5MessageContextObject({
 			...args,
-			includeActionDiscovery: true,
+			includeActionDiscovery:
+				directMessageChannel &&
+				args.message.content?.channelType !== ChannelType.VOICE_DM &&
+				!args.codingMode
+					? "index"
+					: true,
 			userRoles: [senderRole],
 			availableContexts,
 			ambientTurn,
@@ -1189,6 +1196,8 @@ export async function runV5MessageRuntimeStage1(
 		const responseHandlerContextSlices = stringArrayProperty(
 			(messageHandler.plan as { contextSlices?: unknown }).contextSlices,
 		);
+		const originalResponseHandlerDraft =
+			fieldRunResult?.parsed.replyText ?? parsedResponseHandlerReply;
 		plannerContext.metadata = {
 			...plannerContext.metadata,
 			providerDiscoveryEnabled,
@@ -1211,6 +1220,19 @@ export async function runV5MessageRuntimeStage1(
 				: {}),
 			metadata: {
 				processMessage: messageHandler.processMessage,
+				// Routing may withhold a draft from delivery, but its conditions
+				// remain evidence for planning. Do not erase them with the reply.
+				...(!earlyReplySent &&
+				originalResponseHandlerDraft &&
+				originalResponseHandlerDraft !== messageHandler.plan.reply
+					? {
+							undeliveredDraft: {
+								replyText: originalResponseHandlerDraft,
+								instruction:
+									"This Stage-1 draft was not delivered and proves neither permission nor execution. Preserve its applicable conditions and confirmation requirements before any action; routing candidates are not authorization. Resolve conflicts against the original user evidence.",
+							},
+						}
+					: {}),
 				plan: {
 					contexts: messageHandler.plan.contexts,
 					...(messageHandler.plan.replyEffectStatus !== undefined
@@ -1486,15 +1508,8 @@ export async function runV5MessageRuntimeStage1(
 							"Do not answer with REPLY/RESPOND prose — the harness scores tool calls, not conversation. " +
 							"Pick the single best non-terminal action (e.g. MESSAGE, CALENDAR, TODO) that can attempt the request and call it now."
 						: args.codingMode !== true &&
-								typeof messageHandler.plan.reply === "string" &&
-								messageHandler.plan.reply.trim().length > 0 &&
-								messageHandler.plan.intents?.some((intent) => intent.trim()) &&
-								!PROGRESS_ONLY_ANSWER_REJECT.test(
-									messageHandler.plan.reply.trim(),
-								) &&
-								(messageHandler.plan.replyEffectStatus === "none" ||
-									messageHandler.plan.replyEffectStatus === "non_applied")
-							? "Stage 1 named candidate tools but made no pending or applied work claim. " +
+								messageHandler.plan.intents?.some((intent) => intent.trim())
+							? "Stage 1 named candidate tools for the current request. " +
 								"Candidate names are not authorization. Honor the complete request and its constraints. " +
 								"If only a preview, confirmation question, or terminal answer is appropriate, propose REPLY without executing an effect; completion evaluation will check outstanding intents."
 							: "The Stage 1 router marked this current turn as requiring a tool. " +

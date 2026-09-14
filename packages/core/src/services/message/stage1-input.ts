@@ -210,10 +210,12 @@ export function renderMessageHandlerModelInput(
 	const completionSourceIds = new Map(
 		completionSources?.sources.map(({ id, event }) => [event.id, id]),
 	);
-	const history =
+	const directText =
 		options?.directMessage &&
 		!options.voiceDirectMessage &&
-		!options.groupTriage &&
+		!options.groupTriage;
+	const history =
+		directText &&
 		options.history?.sourceSetId === completionSources?.sourceSetId
 			? options.history
 			: undefined;
@@ -258,18 +260,28 @@ export function renderMessageHandlerModelInput(
 	const dynamicProviderSegments = remainingDynamicSegments.filter(
 		(segment) => segment.label?.startsWith("provider:") === true,
 	);
+	// This fresh, authorized catalog often stays identical across turns. Put its
+	// complete text before changing dialogue/providers for prefix-cache reuse,
+	// without marking it stable or reusing any previous authorization decision.
+	const actionCatalogSegments = directText
+		? remainingDynamicSegments.filter(
+				(segment) =>
+					segment.id === "available-actions" &&
+					segment.label === "available_actions",
+			)
+		: [];
 	const turnTailSegments = remainingDynamicSegments.filter(
 		(segment) =>
 			segment.label?.startsWith("prior_message:") !== true &&
-			segment.label?.startsWith("provider:") !== true,
+			segment.label?.startsWith("provider:") !== true &&
+			!actionCatalogSegments.includes(segment),
 	);
 	// The boundary follows untrusted dialogue so stored messages cannot supersede
 	// it with structural-looking text. Providers remain adjacent after that
 	// boundary, preserving their reusable prefix before the current message.
 	const orderedDynamicSegments = [
-		...(options?.directMessage &&
-		!options.voiceDirectMessage &&
-		!options.groupTriage
+		...actionCatalogSegments,
+		...(directText
 			? shortenHistoryRoleLabels(priorDialogueSegments, completionSourceIds)
 			: priorDialogueSegments),
 		...currentTurnBoundary,

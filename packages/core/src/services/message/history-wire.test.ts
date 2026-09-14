@@ -160,6 +160,17 @@ describe("lossless history references", () => {
 					},
 				},
 				{
+					id: "available-actions",
+					type: "segment",
+					segment: {
+						id: "available-actions",
+						label: "available_actions",
+						content:
+							'["READ_ORIGINAL_Ω", "SHOW_VIEW"]\nComplete discovery notice.',
+						stable: false,
+					},
+				},
+				{
 					id: "current-message",
 					type: "segment",
 					segment: {
@@ -183,6 +194,17 @@ describe("lossless history references", () => {
 			);
 		}
 		const userText = String(text.messages[1].content);
+		expect(
+			userText.startsWith(
+				'available_actions:\n["READ_ORIGINAL_Ω", "SHOW_VIEW"]\nComplete discovery notice.\n\n',
+			),
+		).toBe(true);
+		expect(userText.match(/Complete discovery notice\./g)).toHaveLength(1);
+		expect(text.messages[0].content).not.toContain("READ_ORIGINAL_Ω");
+		expect(
+			text.promptSegments.find((s) => s.content.includes("READ_ORIGINAL_Ω"))
+				?.stable,
+		).toBe(false);
 		expect(userText.indexOf("[h40 user]\nsource 39")).toBeLessThan(
 			userText.indexOf("current_turn_boundary:"),
 		);
@@ -203,6 +225,10 @@ describe("lossless history references", () => {
 			);
 			expect(other.messages[1].content).not.toContain("History roles:");
 			expect(other.messages[1].content).toContain("prior_message:user:");
+			const otherText = String(other.messages[1].content);
+			expect(otherText.indexOf("available_actions:")).toBeGreaterThan(
+				otherText.indexOf("current_turn_boundary:"),
+			);
 		}
 		expect(context).toEqual(before);
 	});

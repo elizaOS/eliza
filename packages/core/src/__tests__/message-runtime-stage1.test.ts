@@ -727,6 +727,8 @@ describe("runV5MessageRuntimeStage1", () => {
 		"matching",
 		"multiple",
 		"no-match",
+		"miss-then-unresolved",
+		"miss-then-repeat",
 		"repeat",
 		"repeat-id",
 		"edited",
@@ -779,10 +781,38 @@ describe("runV5MessageRuntimeStage1", () => {
 					const text = input.messages.map((m) => m.content).join("\n");
 					const reading =
 						calls === 1 ||
-						(["repeat", "repeat-id"].includes(mode) && calls === 2);
+						([
+							"repeat",
+							"repeat-id",
+							"miss-then-unresolved",
+							"miss-then-repeat",
+						].includes(mode) &&
+							calls === 2);
 					if (calls === 1 && mode !== "disabled")
 						expect(text).not.toContain(rows[1].content.text);
-					if (calls > 1) {
+					const emptyResult =
+						calls === 2 &&
+						(mode === "no-match" || mode.startsWith("miss-then-"));
+					if (emptyResult) {
+						expect(text).not.toContain(rows[1].content.text);
+						const receipt = JSON.parse(
+							text.match(/history_literal_search_results: (.+)/)?.[1] ?? "null",
+						);
+						expect(receipt).toEqual({
+							sourceSetId: text.match(
+								/completion_source_set: ([a-f0-9]{64})/,
+							)?.[1],
+							matchMode: "case-insensitive literal substring",
+							results: [
+								{
+									query: "does-not-occur",
+									scannedSources: rows.length,
+									matchedSourceIds: [],
+								},
+							],
+						});
+					} else if (calls > 1) {
+						expect(text).not.toContain("history_literal_search_results:");
 						if (mode === "revoked" || mode === "edited")
 							expect(text).not.toContain(rows[1].content.text);
 						else expect(text).toContain(rows[1].content.text);
@@ -808,19 +838,20 @@ describe("runV5MessageRuntimeStage1", () => {
 					}
 					return stage1Response({
 						contexts: ["simple"],
-						contextRequests: reading
-							? mode === "repeat-id" && calls === 2
-								? ["history:h2"]
-								: mode === "multiple"
-									? [
-											"history:search:BLUEBERRY",
-											"history:search:Acknowledged",
-											"history:search:OLD LITERAL",
-										]
-									: [
-											`history:search:${mode === "no-match" ? "does-not-occur" : mode === "empty" ? "   " : "OLD LITERAL"}`,
-										]
-							: [],
+						contextRequests:
+							reading && !(mode === "miss-then-unresolved" && calls === 2)
+								? mode === "repeat-id" && calls === 2
+									? ["history:h2"]
+									: mode === "multiple"
+										? [
+												"history:search:BLUEBERRY",
+												"history:search:Acknowledged",
+												"history:search:OLD LITERAL",
+											]
+										: [
+												`history:search:${mode === "no-match" || mode.startsWith("miss-then-") ? "does-not-occur" : mode === "empty" ? "   " : "OLD LITERAL"}`,
+											]
+								: [],
 						replyText: reading
 							? "Never deliver this draft."
 							: "I have read the originals; nothing changed.",
@@ -832,7 +863,7 @@ describe("runV5MessageRuntimeStage1", () => {
 								sourceSetId: text.match(
 									/completion_source_set: ([a-f0-9]{64})/,
 								)?.[1],
-								complete: true,
+								complete: !(mode === "miss-then-unresolved" && calls === 2),
 								relevantSourceIds: [],
 								constraintSourceIds: ["h1"],
 								referentSourceIds: [],
@@ -862,7 +893,16 @@ describe("runV5MessageRuntimeStage1", () => {
 						"I have read the originals; nothing changed.",
 					);
 				expect(dispatch).toHaveBeenCalledTimes(1);
-				expect(calls).toBe(["repeat", "repeat-id"].includes(mode) ? 3 : 2);
+				expect(calls).toBe(
+					[
+						"repeat",
+						"repeat-id",
+						"miss-then-unresolved",
+						"miss-then-repeat",
+					].includes(mode)
+						? 3
+						: 2,
+				);
 			}
 			expect(rows).toEqual(before);
 		},
@@ -1378,6 +1418,16 @@ describe("runV5MessageRuntimeStage1", () => {
 				replyText: "Hi.",
 				extra: { replyEffectStatus: "none" },
 			}),
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Hello again.",
+				extra: { replyEffectStatus: "none" },
+			}),
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Hi again.",
+				extra: { replyEffectStatus: "none" },
+			}),
 		]);
 		const actions: Action[] = Array.from({ length: 360 }, (_, index) => ({
 			name: `CUSTOM_OPERATION_${index}`,
@@ -1406,6 +1456,46 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(wire).toContain("names=[]");
 		expect(runtime.actions).toEqual(before);
 		expect(result.kind).toBe("direct_reply");
+		expect(request.messages[1].content.startsWith("available_actions:\n")).toBe(
+			true,
+		);
+		// Prefix placement must never turn the catalog into cached authority.
+		actions[0].validate = async () => false;
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "hi again", channelType: ChannelType.DM }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
+		});
+		const next = useModelCalls(runtime)[1][1] as {
+			messages: Array<{ content: string }>;
+		};
+		expect(next.messages[0].content).toBe(request.messages[0].content);
+		expect(next.messages[1].content.startsWith("available_actions:\n")).toBe(
+			true,
+		);
+		expect(next.messages[1].content).not.toContain('"CUSTOM_OPERATION_0"');
+		expect(next.messages[1].content).not.toContain("PRIVATE_OPERATION");
+		for (const action of actions.slice(1))
+			expect(next.messages[1].content).toContain(action.name);
+		const rankedActions = [...runtime.actions].reverse();
+		runtime.actions = rankedActions;
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "hi once more",
+				channelType: ChannelType.DM,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000007" as UUID,
+		});
+		const reordered = useModelCalls(runtime)[2][1] as {
+			messages: Array<{ content: string }>;
+		};
+		expect(reordered.messages[1].content.split("\n\n")[0]).toBe(
+			next.messages[1].content.split("\n\n")[0],
+		);
+		expect(runtime.actions).toEqual(rankedActions);
 	});
 
 	it("reads the complete context catalog before dispatch without changing the stable prefix", async () => {
@@ -5972,6 +6062,14 @@ describe("runV5MessageRuntimeStage1", () => {
 				ModelType.RESPONSE_HANDLER,
 				ModelType.ACTION_PLANNER,
 			]);
+			const plannerInput = useModelCalls(runtime)[1]?.[1] as {
+				messages: Array<{ content: string }>;
+			};
+			expect(
+				plannerInput.messages.some((entry) =>
+					entry.content.includes(JSON.stringify(promise)),
+				),
+			).toBe(true);
 			if (result.kind === "planned_reply")
 				expect(result.result.responseContent?.text).toBe(answer);
 		},
@@ -9243,6 +9341,13 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect.objectContaining({
 				text: "I'll start on that.",
 			}),
+		);
+		const plannerCalls = vi
+			.mocked(runtime.useModel)
+			.mock.calls.filter(([type]) => type === ModelType.ACTION_PLANNER);
+		expect(plannerCalls).toHaveLength(1);
+		expect(JSON.stringify(plannerCalls[0][1])).not.toContain(
+			"undeliveredDraft",
 		);
 	});
 
