@@ -3,13 +3,15 @@ import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/helpers";
+import { agentBillingRepository } from "../../db/repositories/agent-billing";
 import type { AgentSandbox } from "../../db/repositories/agent-sandboxes";
 import { agentComputeFunding } from "../../db/schemas/agent-compute-funding";
-import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
+import { agentSandboxes, CONTAINER_BACKED_EXECUTION_TIERS } from "../../db/schemas/agent-sandboxes";
 import { agentComputeFundingService } from "./agent-compute-funding";
 import { fundedRuntimeHandle, startFundedAgentInTransaction } from "./agent-compute-start";
 import {
   cancelUnboundAgentComputeInTransaction,
+  hasOpenAgentComputeFunding,
   stopFundedAgentInTransaction,
 } from "./agent-compute-stop";
 import { creditsService } from "./credits";
@@ -18,6 +20,40 @@ import { isDockerSandboxMetadata } from "./eliza-sandbox/lifecycle/provider-meta
 import type { SandboxHandle } from "./sandbox-provider-types";
 
 const lifecycle = new SandboxLifecycleAuthority();
+
+/** A prepaid runtime already owns its running funds; only unfunded accrued storage uses legacy settlement. */
+export async function settleAgentBringUpBilling(expected: AgentSandbox) {
+  return dbWrite.transaction(async (tx) => {
+    await lifecycle.lockLifecycle(tx, expected.id, expected.organization_id);
+    const current = await lifecycle.getAgentForLifecycleMutation(
+      tx,
+      expected.id,
+      expected.organization_id,
+    );
+    if (
+      !current ||
+      current.lifecycle_revision !== expected.lifecycle_revision ||
+      current.environment_revision !== expected.environment_revision ||
+      current.lifecycle_job_id !== expected.lifecycle_job_id ||
+      current.lifecycle_execution_generation !== expected.lifecycle_execution_generation ||
+      current.status !== expected.status ||
+      current.execution_tier !== expected.execution_tier ||
+      !(CONTAINER_BACKED_EXECUTION_TIERS as readonly string[]).includes(current.execution_tier) ||
+      current.pool_status !== null ||
+      current.deleted_at !== null ||
+      current.deletion_attempt_id !== null
+    )
+      changed();
+    if (await hasOpenAgentComputeFunding(tx, current.id, current.organization_id))
+      return { status: "already_billed_recently" as const };
+    return agentBillingRepository.settleAccruedBillingBeforeLifecycleInTransaction(
+      tx,
+      current.id,
+      current.organization_id,
+      new Date(),
+    );
+  });
+}
 
 function changed(): never {
   throw new ElizaError("Dedicated provisioning funding authority changed", {
