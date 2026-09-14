@@ -150,7 +150,9 @@ export function DeveloperTrace({
         </div>
         <div>
           <div className="text-xs text-muted">
-            {record.status === "active" ? "Run so far" : "Total run time"}
+            {record.status === "active"
+              ? "Server run so far"
+              : "Server run time"}
           </div>
           <div className="text-lg tabular-nums">
             {duration(record.durationMs)}
@@ -163,9 +165,11 @@ export function DeveloperTrace({
           <dt>Combined model time</dt>
           <dd className="tabular-nums">{modelTime}</dd>
           <dd className="mt-1 w-full text-xs leading-relaxed text-muted">
-            Sum of recorded call durations. Total run time also includes
+            Sum of recorded call durations. Server run time also includes
             context, tools and orchestration. Concurrent calls can overlap, so
-            this sum cannot be subtracted to measure other work.
+            this sum cannot be subtracted to measure other work. Server run time
+            excludes waiting before the run starts and final delivery or
+            rendering afterward.
           </dd>
         </div>
         <div className="flex justify-between gap-3">
@@ -473,7 +477,7 @@ export function DeveloperReplyDetails({
         {record || open ? (
           <span
             className="developer-token-count"
-            title="Model attempts include local rejections, not just provider requests. Input includes cached tokens. Total is recorded run time, not time to first token. Inspect for usage and timing details."
+            title="Model attempts include local rejections, not just provider requests. Input includes cached tokens. Server run time excludes waiting before the run starts and delivery or rendering afterward. Inspect for timing details."
           >
             {recoveries.length ? "Original run: " : ""}
             {record &&
@@ -499,7 +503,7 @@ export function DeveloperReplyDetails({
               : ""}
             {!isMeasurement(record?.durationMs)
               ? ""
-              : ` · ${duration(record?.durationMs)} ${record?.status === "active" ? "so far" : "total"}`}
+              : ` · ${duration(record?.durationMs)} ${record?.status === "active" ? "server run so far" : "server run"}`}
             {record?.status === "active" ? " · Working…" : ""}
           </span>
         ) : null}
@@ -514,7 +518,7 @@ export function DeveloperReplyDetails({
                 ? "Usage pending"
                 : "Token usage unavailable"}
             {isMeasurement(recovery.durationMs)
-              ? ` · ${duration(recovery.durationMs)} ${recovery.status === "active" ? "so far" : "total"}`
+              ? ` · ${duration(recovery.durationMs)} ${recovery.status === "active" ? "server run so far" : "server run"}`
               : ""}
             {recovery.status === "error" ? " · Failed" : ""}
           </span>

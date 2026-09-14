@@ -209,9 +209,9 @@ describe("developer workspace", () => {
     await flush();
     expect(
       screen.getByText(/Original run: 100 tokens in/).textContent,
-    ).toContain("1.50s total");
+    ).toContain("1.50s server run");
     expect(screen.getByText(/Reply recovery 1:/).textContent).toContain(
-      "57,656 tokens in · 99 out · 2.70s total",
+      "57,656 tokens in · 99 out · 2.70s server run",
     );
     fireEvent.click(screen.getByRole("button", { name: "Inspect" }));
     await flush();
@@ -229,7 +229,7 @@ describe("developer workspace", () => {
     expect(mocks.detail).toHaveBeenCalledWith(recovery.id, expect.anything());
     expect(
       screen.getByText(/Original run: 100 tokens in/).textContent,
-    ).toContain("1.50s total");
+    ).toContain("1.50s server run");
   });
 
   it("uses recorded run ownership without inferring post-turn timing from stage names", () => {
@@ -274,7 +274,7 @@ describe("developer workspace", () => {
     await flush();
     expect(screen.getByText("Which view is open?")).toBeTruthy();
     expect(screen.getByText(/100 tokens in · 20 out/)).toBeTruthy();
-    expect(screen.getByText(/1 model attempt · 1.50s total/)).toBeTruthy();
+    expect(screen.getByText(/1 model attempt · 1.50s server run/)).toBeTruthy();
     expect(screen.queryByText("Recorded runs")).toBeNull();
     expect(screen.queryByText("Run input")).toBeNull();
     expect(mocks.detail).not.toHaveBeenCalled();
@@ -808,6 +808,10 @@ describe("developer workspace", () => {
     );
     expect(screen.getByText("50,855")).toBeTruthy();
     expect(screen.getByText("3.43s")).toBeTruthy();
+    expect(screen.getByText("Server run time")).toBeTruthy();
+    expect(
+      screen.getByText(/excludes waiting before the run starts/),
+    ).toBeTruthy();
     expect(
       screen.getByText("Combined model time").nextElementSibling?.textContent,
     ).toBe("2.29s");
@@ -866,7 +870,7 @@ describe("developer workspace", () => {
   });
   it("does not call an active run's duration a completed total", () => {
     render(<DeveloperReplyDetails record={{ ...record, status: "active" }} />);
-    expect(screen.getByText(/1.50s so far · Working/)).toBeTruthy();
+    expect(screen.getByText(/1.50s server run so far · Working/)).toBeTruthy();
     expect(screen.queryByText(/1.50s total/)).toBeNull();
   });
   it("does not label an unavailable agent ready", async () => {
