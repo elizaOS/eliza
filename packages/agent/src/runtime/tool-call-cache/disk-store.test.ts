@@ -11,6 +11,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -97,22 +98,16 @@ describe("DiskStore.read", () => {
     expect(store.read(KEY_AB)).toEqual(written);
   });
 
-  it("returns undefined when the stored key does not match the lookup key", () => {
+  it("returns undefined and evicts when the stored key does not match the lookup key", () => {
     const store = storeWith();
     store.write(entry(KEY_AB, { output: "kept" }));
     const file = fileFor(tempRoot, KEY_AB);
     const parsed = JSON.parse(readFileSync(file, "utf8")) as ToolCacheEntry;
     writeFileSync(file, JSON.stringify({ ...parsed, key: KEY_CD }), "utf8");
     expect(store.read(KEY_AB)).toBeUndefined();
-    expect(existsSync(file)).toBe(true);
-  });
-
-  it("throws when the on-disk row is not JSON", () => {
-    const store = storeWith();
-    const file = fileFor(tempRoot, KEY_AB);
-    mkdirSync(path.dirname(file), { recursive: true });
-    writeFileSync(file, "not-json{", "utf8");
-    expect(() => store.read(KEY_AB)).toThrow();
+    // Previously the row was declined but left in place, so the mismatch was
+    // re-detected on every future lookup and the key could never repopulate.
+    expect(existsSync(file)).toBe(false);
   });
 
   it("does not alias the on-disk row through the returned object", () => {
@@ -130,6 +125,138 @@ describe("DiskStore.read", () => {
     (first.output as { n: number }).n = 99;
     expect(store.read(KEY_AB)).toEqual(entry(KEY_AB, { output: { n: 1 } }));
   });
+
+  // --- rows this process did not write -------------------------------------
+  // A row on disk may be truncated by a crash, left by an older layout, or
+  // edited in the state directory. Each case must read as a miss AND evict the
+  // file: the read path is called synchronously before the tool executor, so a
+  // throw here fails the tool call outright, and a row it merely declines
+  // without removing keeps failing that key on every future call.
+
+  function writeRaw(key: string, bytes: string): string {
+    const file = fileFor(tempRoot, key);
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, bytes, "utf8");
+    return file;
+  }
+
+  const MALFORMED: ReadonlyArray<readonly [string, string]> = [
+    [
+      "truncated mid-object (an interrupted write)",
+      '{"key":"x","output":{"a":1',
+    ],
+    ["empty file", ""],
+    ["not JSON at all", "<html>nope</html>"],
+    ["valid JSON but null", "null"],
+    ["valid JSON but an array", "[]"],
+    ["valid JSON but a bare number", "123"],
+  ];
+
+  for (const [label, bytes] of MALFORMED) {
+    it(`reads as a miss and evicts the file: ${label}`, () => {
+      const file = writeRaw(KEY_AB, bytes);
+      const store = storeWith();
+      expect(() => store.read(KEY_AB)).not.toThrow();
+      expect(store.read(KEY_AB)).toBeUndefined();
+      expect(existsSync(file)).toBe(false);
+    });
+  }
+
+  const NONCONFORMING: ReadonlyArray<
+    readonly [string, Record<string, unknown>]
+  > = [
+    [
+      "no expiresAt (would compare `undefined <= now` and never expire)",
+      { toolName: "web_search", toolVersion: "1", cachedAt: 1, output: 1 },
+    ],
+    [
+      "expiresAt is a string",
+      {
+        toolName: "web_search",
+        toolVersion: "1",
+        cachedAt: 1,
+        expiresAt: "2000",
+        output: 1,
+      },
+    ],
+    [
+      "expiresAt is NaN",
+      {
+        toolName: "web_search",
+        toolVersion: "1",
+        cachedAt: 1,
+        expiresAt: Number.NaN,
+        output: 1,
+      },
+    ],
+    [
+      "no cachedAt",
+      { toolName: "web_search", toolVersion: "1", expiresAt: 2, output: 1 },
+    ],
+    [
+      "no toolVersion (version invalidation could not fire)",
+      { toolName: "web_search", cachedAt: 1, expiresAt: 2, output: 1 },
+    ],
+    [
+      "toolVersion is a number",
+      {
+        toolName: "web_search",
+        toolVersion: 1,
+        cachedAt: 1,
+        expiresAt: 2,
+        output: 1,
+      },
+    ],
+    ["no toolName", { toolVersion: "1", cachedAt: 1, expiresAt: 2, output: 1 }],
+    [
+      "no output at all",
+      { toolName: "web_search", toolVersion: "1", cachedAt: 1, expiresAt: 2 },
+    ],
+  ];
+
+  for (const [label, row] of NONCONFORMING) {
+    it(`reads as a miss and evicts the file: ${label}`, () => {
+      const file = writeRaw(KEY_AB, JSON.stringify({ key: KEY_AB, ...row }));
+      const store = storeWith();
+      expect(store.read(KEY_AB)).toBeUndefined();
+      expect(existsSync(file)).toBe(false);
+    });
+  }
+
+  it("reads as a miss when the row path is not a regular file", () => {
+    // `readFileSync` raises EISDIR here and the eviction that follows cannot
+    // remove a directory with a non-recursive `rmSync`, so both the read and
+    // its own repair step have to absorb a failure.
+    const file = fileFor(tempRoot, KEY_AB);
+    mkdirSync(file, { recursive: true });
+    writeFileSync(path.join(file, "occupied"), "x", "utf8");
+    const store = storeWith();
+    expect(() => store.read(KEY_AB)).not.toThrow();
+    expect(store.read(KEY_AB)).toBeUndefined();
+  });
+
+  // Liveness control for the two tables above. Without it every "reads as a
+  // miss" assertion would still pass if the validator rejected everything.
+  const FALSY_OUTPUTS: ReadonlyArray<
+    readonly [string, ToolCacheEntry["output"]]
+  > = [
+    ["null", null],
+    ["zero", 0],
+    ["false", false],
+    ["empty string", ""],
+    ["empty array", []],
+    ["empty object", {}],
+  ];
+
+  for (const [label, output] of FALSY_OUTPUTS) {
+    it(`still serves a conforming row whose output is ${label}`, () => {
+      const store = storeWith();
+      const written = entry(KEY_AB, { output });
+      store.write(written);
+      expect(store.read(KEY_AB)).toEqual(written);
+      expect(existsSync(fileFor(tempRoot, KEY_AB))).toBe(true);
+    });
+  }
 });
 
 describe("DiskStore.write", () => {
@@ -289,6 +416,37 @@ describe("DiskStore.write", () => {
     expect(store.read(KEY_AB)?.output).toBe(false);
     store.write(entry(KEY_AB, { output: ["x", { y: 1 }] }));
     expect(store.read(KEY_AB)?.output).toEqual(["x", { y: 1 }]);
+  });
+
+  // Writes publish atomically so a crash cannot leave the truncated row the
+  // read path above has to defend against.
+  it("leaves no temp file behind after a successful write", () => {
+    const store = storeWith();
+    store.write(entry(KEY_AB));
+    const dir = path.dirname(fileFor(tempRoot, KEY_AB));
+    expect(readdirSync(dir)).toEqual([`${KEY_AB}.json`]);
+  });
+
+  it("swallows a publish failure and cleans up its temp file", () => {
+    const store = storeWith();
+    // Make the destination un-renameable-onto in a way that survives on both
+    // Linux and macOS: a directory sitting where the row file belongs. The
+    // serialisation and temp write both succeed, so this exercises exactly the
+    // window a crash would land in — after the bytes exist, before they are
+    // published — and nothing may be left behind in it.
+    const file = fileFor(tempRoot, KEY_AB);
+    mkdirSync(file, { recursive: true });
+    writeFileSync(path.join(file, "occupied"), "x", "utf8");
+
+    // `write` runs inside `ToolCallCache.run`'s `.then`, after the tool has
+    // already produced a result, so a raised fs error would discard a
+    // successful tool call. Failing to cache must stay invisible to the caller.
+    expect(() => store.write(entry(KEY_AB))).not.toThrow();
+
+    const dir = path.dirname(file);
+    expect(readdirSync(dir).filter((name) => name.endsWith(".tmp"))).toEqual(
+      [],
+    );
   });
 });
 
