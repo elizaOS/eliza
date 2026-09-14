@@ -141,6 +141,170 @@ describe("startCloudAgent HTTP handlers", () => {
     vi.clearAllMocks();
   });
 
+  it.each(["Ω", "€", "😀"])(
+    "preserves complete restored state when %s spans request chunks",
+    async (codePoint) => {
+      const { startCloudAgent } = await import("./cloud-agent-shared");
+      startCloudAgent({ port: 0, bridgePort: 0, bridgeSecret: "secret" });
+      await waitForEchoRuntime(capturedServers[0]);
+      const bridge = capturedServers[1];
+      const expected = {
+        memories: [{ text: "Complete memory Ω" }],
+        config: { name: "Unicode restore" },
+        workspaceFiles: {
+          "notes.txt": `before ${codePoint} after \uFEFF retained`,
+        },
+      };
+      const bytes = Buffer.from(JSON.stringify(expected));
+      const split =
+        bytes.indexOf(
+          Buffer.from(codePoint),
+          bytes.indexOf(Buffer.from("workspaceFiles")),
+        ) + 1;
+      const req = makeRequest("POST", "/api/restore", undefined, {
+        authorization: "Bearer secret",
+      });
+      const res = makeResponse();
+      const pending = bridge.handler(req, res);
+      req.emit("data", bytes.subarray(0, split));
+      req.emit("data", bytes.subarray(split));
+      req.emit("end");
+      await pending;
+      expect(res.statusCode).toBe(200);
+      const snapshot = parseJson(
+        await dispatch(bridge, "POST", "/api/snapshot", undefined, {
+          authorization: "Bearer secret",
+        }),
+      );
+      expect({
+        memories: snapshot.memories,
+        config: snapshot.config,
+        workspaceFiles: snapshot.workspaceFiles,
+      }).toEqual(expected);
+    },
+  );
+
+  it.each([
+    ["/api/restore", "malformed"],
+    ["/api/restore", "truncated"],
+    ["/bridge", "malformed"],
+    ["/bridge/stream", "truncated"],
+    ["/api/conversations/personal%3Atest/import", "malformed"],
+  ])("rejects %s %s UTF-8 without changing state", async (path, encoding) => {
+    const { startCloudAgent } = await import("./cloud-agent-shared");
+    startCloudAgent({ port: 0, bridgePort: 0, bridgeSecret: "secret" });
+    await waitForEchoRuntime(capturedServers[0]);
+    const bridge = capturedServers[1];
+    const auth = { authorization: "Bearer secret" };
+    const expected = {
+      memories: [{ text: "Retained Ω😀" }],
+      config: { name: "Original" },
+      workspaceFiles: { "notes.txt": "Complete original" },
+    };
+    expect(
+      (
+        await dispatch(
+          bridge,
+          "POST",
+          "/api/restore",
+          JSON.stringify(expected),
+          auth,
+        )
+      ).statusCode,
+    ).toBe(200);
+    const req = makeRequest("POST", path, undefined, auth);
+    const res = makeResponse();
+    const pending = bridge.handler(req, res);
+    req.emit("data", Buffer.from('{"config":{"name":"'));
+    req.emit(
+      "data",
+      Buffer.from(encoding === "malformed" ? [0xff] : [0xf0, 0x9f]),
+    );
+    req.emit("end");
+    await pending;
+    expect(res.statusCode).toBe(400);
+    expect(parseJson(res)).toEqual({
+      error: "Request body must contain complete valid UTF-8",
+      code: "CLOUD_AGENT_INVALID_UTF8",
+    });
+    const snapshot = parseJson(
+      await dispatch(bridge, "POST", "/api/snapshot", undefined, auth),
+    );
+    expect({
+      memories: snapshot.memories,
+      config: snapshot.config,
+      workspaceFiles: snapshot.workspaceFiles,
+    }).toEqual(expected);
+  });
+
+  it("rejects a leading UTF-8 BOM without changing restored state", async () => {
+    const { startCloudAgent } = await import("./cloud-agent-shared");
+    startCloudAgent({ port: 0, bridgePort: 0, bridgeSecret: "secret" });
+    await waitForEchoRuntime(capturedServers[0]);
+    const bridge = capturedServers[1];
+    const auth = { authorization: "Bearer secret" };
+    const before = parseJson(
+      await dispatch(bridge, "POST", "/api/snapshot", undefined, auth),
+    );
+    const response = await dispatch(
+      bridge,
+      "POST",
+      "/api/restore",
+      '\uFEFF{"config":{"name":"Unexpected replacement"}}',
+      auth,
+    );
+    expect(response.statusCode).toBe(400);
+    const after = parseJson(
+      await dispatch(bridge, "POST", "/api/snapshot", undefined, auth),
+    );
+    expect({
+      memories: after.memories,
+      config: after.config,
+      workspaceFiles: after.workspaceFiles,
+    }).toEqual({
+      memories: before.memories,
+      config: before.config,
+      workspaceFiles: before.workspaceFiles,
+    });
+  });
+
+  it("still destroys an oversized body after malformed UTF-8", async () => {
+    const { startCloudAgent } = await import("./cloud-agent-shared");
+    startCloudAgent({
+      port: 0,
+      bridgePort: 0,
+      bridgeSecret: "secret",
+      maxBodyBytes: 40,
+    });
+    await waitForEchoRuntime(capturedServers[0]);
+    const bridge = capturedServers[1];
+    const auth = { authorization: "Bearer secret" };
+    const before = parseJson(
+      await dispatch(bridge, "POST", "/api/snapshot", undefined, auth),
+    );
+    const req = makeRequest("POST", "/api/restore", undefined, auth);
+    req.destroy = vi.fn(() => req);
+    const res = makeResponse();
+    const pending = bridge.handler(req, res);
+    req.emit("data", Buffer.from([0xff]));
+    req.emit("data", Buffer.alloc(64, 0x20));
+    req.emit("end");
+    await pending;
+    expect(req.destroy).toHaveBeenCalledOnce();
+    const after = parseJson(
+      await dispatch(bridge, "POST", "/api/snapshot", undefined, auth),
+    );
+    expect({
+      memories: after.memories,
+      config: after.config,
+      workspaceFiles: after.workspaceFiles,
+    }).toEqual({
+      memories: before.memories,
+      config: before.config,
+      workspaceFiles: before.workspaceFiles,
+    });
+  });
+
   it("routes health, snapshot, restore, message, stream, and status requests", async () => {
     const { startCloudAgent } = await import("./cloud-agent-shared");
     startCloudAgent({
