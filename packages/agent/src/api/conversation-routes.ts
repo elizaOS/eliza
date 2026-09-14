@@ -5616,9 +5616,14 @@ export async function handleConversationRoutes(
           await completeGeneration(result);
         } catch (err) {
           if (generationDelivered) {
-            logger.warn(
-              `[conversations] post-delivery drain failed after JSON delivery: ${getErrorMessage(err)}`,
-            );
+            // error-policy:J7 The durable reply and idempotency outcome already
+            // reached the caller; report a later drain failure without replying
+            // again (develop #31349 contract).
+            runtime.reportError("ConversationJson.postDelivery", err, {
+              conversationId: conv.id,
+              roomId: conv.roomId,
+              clientMessageId,
+            });
             return true;
           }
           if (
