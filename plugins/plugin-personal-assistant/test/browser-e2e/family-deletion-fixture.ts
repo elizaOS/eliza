@@ -14,7 +14,60 @@ export function createFamilyDeletionFixture(): FamilyDeletionAdapter {
       ? null
       : familyDeletionJobSchema.parse(JSON.parse(value));
   };
+  const previewBackups = () => {
+    const job = status();
+    if (!job) throw new Error("No deletion operation exists");
+    const days = { immediate: 0, "7-days": 7, "30-days": 30 }[
+      job.backupRetention
+    ];
+    return {
+      jobId: job.id,
+      generation: job.backupGeneration,
+      notBefore: new Date(
+        Date.parse(job.startedAt) + days * 86_400_000,
+      ).toISOString(),
+      sha256: "e".repeat(64),
+      archives: [
+        {
+          fileName: "synthetic.agent-backup.json",
+          archiveSha256: "f".repeat(64),
+          stateSha256: "a".repeat(64),
+          restoreGeneration: "initial",
+          createdAt: "2026-09-01T12:00:00.000Z",
+          sizeBytes: 100,
+        },
+      ],
+    };
+  };
   return {
+    previewBackups: async () => previewBackups(),
+    async admitBackups(input) {
+      const job = status();
+      const review = previewBackups();
+      if (
+        !job ||
+        input.expectedSha256 !== review.sha256 ||
+        input.acknowledgeWholeArchiveHistory !== true
+      )
+        throw new Error("Review every synthetic backup first");
+      const updated = { ...job, backupCleanup: review };
+      sessionStorage.setItem("deletion-job", JSON.stringify(updated));
+      return updated;
+    },
+    async resumeBackups() {
+      const job = status();
+      if (!job?.backupCleanup)
+        throw new Error("No backup cleanup was admitted");
+      if (Date.now() < Date.parse(job.backupCleanup.notBefore))
+        throw new Error("Backups are still retained");
+      sessionStorage.setItem(
+        "deletion-job",
+        JSON.stringify({ ...job, state: "complete" }),
+      );
+      throw new Error(
+        "Backup cleanup acknowledgement lost. Refresh deletion status.",
+      );
+    },
     status: async () => status(),
     preview: async () => ({
       agentId: "fixture-owner-agent",
