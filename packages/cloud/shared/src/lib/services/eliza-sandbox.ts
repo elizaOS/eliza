@@ -1254,6 +1254,7 @@ export class ElizaSandboxService {
    */
   private async runBoundedSandboxStopForReplacement(
     sandboxId: string,
+    options?: Parameters<NonNullable<SandboxProvider["stopForReplacement"]>>[1],
   ): Promise<BoundedSandboxStopResult> {
     return withTimeout(
       (async (): Promise<null | { error: unknown }> => {
@@ -1262,7 +1263,8 @@ export class ElizaSandboxService {
           if (!provider.stopForReplacement) {
             throw new Error("Sandbox provider cannot prove workload absence before replacement");
           }
-          await provider.stopForReplacement(sandboxId);
+          if (options) await provider.stopForReplacement(sandboxId, options);
+          else await provider.stopForReplacement(sandboxId);
           return null;
         } catch (error) {
           // error-policy:J1 provider boundary translation — replacement remains

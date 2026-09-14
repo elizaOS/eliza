@@ -5307,13 +5307,14 @@ export class DockerSandboxProvider implements SandboxProvider {
    * abandonment policy. The old container may resume when its node returns, so
    * an unresolved stop must retain the database fence and block replacement.
    */
-  async stopForReplacement(sandboxId: string): Promise<void> {
-    // Suspend, shutdown, sleep, warm-claim retire and ghost cleanup all route
-    // here. None has a durable generation to own the slot, and each stops
-    // exactly once under a fence, so the provider still releases capacity for
-    // them — the same per-operation ownership `stopOnSpecificNodeWithPolicy`
-    // already declares.
-    await this.stopWithPolicy(sandboxId, false, true);
+  async stopForReplacement(
+    sandboxId: string,
+    options?: { readonly releaseCapacity?: false },
+  ): Promise<void> {
+    // Legacy callers retain provider-owned slot release. Paid sleep opts out:
+    // its database transaction recounts remaining workloads so a retry after
+    // physical removal cannot decrement a live sibling's allocation.
+    await this.stopWithPolicy(sandboxId, false, options?.releaseCapacity !== false);
   }
 
   private async stopWithPolicy(
