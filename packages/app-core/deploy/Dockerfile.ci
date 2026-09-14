@@ -126,6 +126,11 @@ COPY --from=runtime-deps /deps/node_modules/ /app/node_modules/
 
 RUN node "${APP_CORE_DIR}/scripts/link-docker-local-app-packages.mjs"
 
+# The CI context excludes Bun's install store. Its dangling workspace links
+# stop Bun resolution before it can reach the installed root runtime closure.
+# Keep valid workspace/native links; remove only broken node_modules links.
+RUN find /app -path '*/node_modules/*' -xtype l -delete
+
 RUN node "${APP_CORE_DIR}/scripts/ensure-generated-core-proto-js.mjs"
 
 # Patch plugin-agent-skills getCatalogStats crash (alpha.11 vs alpha.66 interface mismatch)

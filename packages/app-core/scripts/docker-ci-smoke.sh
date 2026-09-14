@@ -227,7 +227,11 @@ fi
 [[ -f "$APP_CORE_DIR/deploy/.dockerignore.ci" ]] || fail "$APP_CORE_DIR/deploy/.dockerignore.ci not found"
 [[ -d "$APP_DIR" ]] || fail "$APP_DIR not found"
 
+SMOKE_APP_CMD_START_OVERRIDE="${APP_CMD_START:-}"
 load_env_file "$APP_CORE_DIR/deploy/deploy.defaults.env"
+# The shared deployment defaults still describe older Node images. This
+# Dockerfile uses Bun; keep an explicit caller or deployment-file override.
+APP_CMD_START="${SMOKE_APP_CMD_START_OVERRIDE:-bun ${APP_ENTRYPOINT:-$AGENT_DIR/dist/bin.js} start}"
 load_env_file "deploy/deploy.env"
 
 APP_IMAGE="${APP_IMAGE:-eliza/agent}"
@@ -305,7 +309,9 @@ trap cleanup EXIT
 # boot (missing runtime deps, broken entrypoint) from shipping green.
 boot_verify() {
   log "Starting container boot verification (real agent entrypoint)"
-  log "Command under test: ${APP_CMD_START}"
+  local image_command
+  image_command="$("$DOCKER_BIN" image inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$DOCKER_IMAGE" | sed -n 's/^APP_CMD_START=//p')"
+  log "Image command under test: ${image_command}"
 
   # A tiny, valid character so the agent has a concrete identity to boot with.
   # The runtime falls back to a bundled default if this is unset, but pinning
@@ -328,7 +334,7 @@ boot_verify() {
     BOOT_KPI_START_MS="$(now_ms 2>/dev/null || true)"
   fi
   # NOTE: no command override here. The container runs its default CMD
-  # (APP_CMD_START = the real absolute tsx loader plus agent dist start).
+  # (APP_CMD_START = the image's real agent command).
   # Substituting a stub health server is exactly what let broken
   # images ship green before; do not reintroduce it.
   "$DOCKER_BIN" run -d \
