@@ -200,6 +200,34 @@ describe("oauth-flow FlowState broadcast", () => {
     await expect(handle.completion).rejects.toThrow("Cancelled");
   });
 
+  it("reports the real timeout window in the terminal state", async () => {
+    useTempElizaHome();
+    stubCodexLogin();
+    vi.useFakeTimers();
+    try {
+      const handle = await startCodexOAuthFlow({
+        label: "Timeout",
+        accountId: "acct-timeout",
+      });
+      const frames: FlowState[] = [];
+      subscribeFlow(handle.sessionId, (state) => {
+        frames.push(state);
+      });
+
+      const rejection = expect(handle.completion).rejects.toThrow(
+        "OAuth flow timed out after 15 minutes",
+      );
+      await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
+      await rejection;
+
+      const terminal = frames.at(-1);
+      expect(terminal?.status).toBe("timeout");
+      expect(terminal?.error).toBe("OAuth flow timed out after 15 minutes");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("emits a success state without the OAuth tokens", async () => {
     useTempElizaHome();
     const vendor = stubCodexLogin();
