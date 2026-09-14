@@ -102,6 +102,113 @@ description: Subdirectory skill description
     }
   });
 
+  it("degrades a non-string frontmatter name to a diagnostic instead of failing the load", () => {
+    const tempDir = createTempDir("skill-loader-nonstring-name");
+    try {
+      // YAML types these as a number and a boolean, not strings.
+      const numericDir = join(tempDir, "numeric-name");
+      mkdirSync(numericDir);
+      writeFileSync(
+        join(numericDir, "SKILL.md"),
+        "---\nname: 123\ndescription: Numeric name\n---\nBody\n",
+      );
+      const booleanDir = join(tempDir, "boolean-name");
+      mkdirSync(booleanDir);
+      writeFileSync(
+        join(booleanDir, "SKILL.md"),
+        "---\nname: true\ndescription: Boolean name\n---\nBody\n",
+      );
+      writeFileSync(
+        join(tempDir, "healthy.md"),
+        "---\nname: healthy\ndescription: Healthy sibling\n---\nBody\n",
+      );
+
+      const result = loadSkillsFromDir({ dir: tempDir, source: "test" });
+
+      const names = result.skills.map((skill) => skill.name).sort();
+      assert.deepStrictEqual(names, [
+        "boolean-name",
+        "healthy",
+        "numeric-name",
+      ]);
+      for (const skill of result.skills) {
+        assert.strictEqual(typeof skill.name, "string");
+      }
+      const nameWarnings = result.diagnostics.filter((d) =>
+        d.message.includes("name must be a string"),
+      );
+      assert.strictEqual(nameWarnings.length, 2);
+      assert.ok(nameWarnings.every((d) => d.type === "warning"));
+      // The formatter consumes the loaded names; a non-string would throw here.
+      assert.doesNotThrow(() => formatSkillsForPrompt(result.skills));
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports a whitespace-only name and falls back to the path-derived name", () => {
+    const tempDir = createTempDir("skill-loader-blank-name");
+    try {
+      const blankDir = join(tempDir, "blank-name");
+      mkdirSync(blankDir);
+      writeFileSync(
+        join(blankDir, "SKILL.md"),
+        '---\nname: "   "\ndescription: Blank name\n---\nBody\n',
+      );
+
+      const result = loadSkillsFromDir({ dir: tempDir, source: "test" });
+
+      assert.deepStrictEqual(
+        result.skills.map((skill) => skill.name),
+        ["blank-name"],
+      );
+      const blankWarnings = result.diagnostics.filter((d) =>
+        d.message.includes("name must not be blank"),
+      );
+      assert.strictEqual(blankWarnings.length, 1);
+      assert.strictEqual(blankWarnings[0].type, "warning");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("skips a skill whose description is not a string without aborting the scan", () => {
+    const tempDir = createTempDir("skill-loader-nonstring-description");
+    try {
+      const numericDir = join(tempDir, "numeric-description");
+      mkdirSync(numericDir);
+      writeFileSync(
+        join(numericDir, "SKILL.md"),
+        "---\nname: numeric-description\ndescription: 123\n---\nBody\n",
+      );
+      const booleanDir = join(tempDir, "boolean-description");
+      mkdirSync(booleanDir);
+      writeFileSync(
+        join(booleanDir, "SKILL.md"),
+        "---\nname: boolean-description\ndescription: true\n---\nBody\n",
+      );
+      writeFileSync(
+        join(tempDir, "healthy.md"),
+        "---\nname: healthy\ndescription: Healthy sibling\n---\nBody\n",
+      );
+
+      const result = loadSkillsFromDir({ dir: tempDir, source: "test" });
+
+      // The malformed skills are skipped, the healthy sibling still loads.
+      assert.deepStrictEqual(
+        result.skills.map((skill) => skill.name),
+        ["healthy"],
+      );
+      const descriptionWarnings = result.diagnostics.filter((d) =>
+        d.message.includes("description must be a string"),
+      );
+      assert.strictEqual(descriptionWarnings.length, 2);
+      assert.ok(descriptionWarnings.every((d) => d.type === "warning"));
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("defaults flat markdown skill name to filename slug when name is omitted", () => {
     const tempDir = createTempDir("skill-loader-flat-slug");
     try {

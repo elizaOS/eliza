@@ -73,10 +73,18 @@ function validateName(
   return errors;
 }
 
-function validateDescription(description: string | undefined): string[] {
+function validateDescription(description: unknown): string[] {
   const errors: string[] = [];
 
-  if (!description || description.trim() === "") {
+  if (description === undefined || description === null || description === "") {
+    errors.push("description is required");
+  } else if (typeof description !== "string") {
+    // YAML types a bare `description: 123` or `description: true` as a
+    // number or boolean; report it instead of letting string handling throw.
+    errors.push(
+      `description must be a string (got ${typeof description}); skill skipped`,
+    );
+  } else if (description.trim() === "") {
     errors.push("description is required");
   } else if (description.length > MAX_DESCRIPTION_LENGTH) {
     errors.push(
@@ -134,14 +142,41 @@ function loadSkillFromFile(
     diagnostics.push({ type: "warning", message: error, path: filePath });
   }
 
-  const name = frontmatter.name || expectedName;
+  // YAML types a bare `name: 123` or `name: true` as a number or boolean.
+  // Such a value is not a usable identifier and would reach string handling
+  // in the name registry and prompt formatter; report it and fall back to the
+  // name the path implies, the same way an omitted name does.
+  const rawName = frontmatter.name;
+  if (
+    rawName !== undefined &&
+    rawName !== null &&
+    typeof rawName !== "string"
+  ) {
+    diagnostics.push({
+      type: "warning",
+      message: `name must be a string (got ${typeof rawName}); using "${expectedName}"`,
+      path: filePath,
+    });
+  }
+  if (typeof rawName === "string" && rawName !== "" && rawName.trim() === "") {
+    diagnostics.push({
+      type: "warning",
+      message: `name must not be blank; using "${expectedName}"`,
+      path: filePath,
+    });
+  }
+  const name =
+    typeof rawName === "string" && rawName.trim() !== ""
+      ? rawName
+      : expectedName;
 
   const nameErrors = validateName(name, expectedName, isSkillMd);
   for (const error of nameErrors) {
     diagnostics.push({ type: "warning", message: error, path: filePath });
   }
 
-  if (!frontmatter.description || frontmatter.description.trim() === "") {
+  const description = frontmatter.description;
+  if (typeof description !== "string" || description.trim() === "") {
     return { skill: null, diagnostics };
   }
 
@@ -150,7 +185,7 @@ function loadSkillFromFile(
   return {
     skill: {
       name,
-      description: frontmatter.description,
+      description,
       filePath,
       baseDir: skillDir,
       source,
