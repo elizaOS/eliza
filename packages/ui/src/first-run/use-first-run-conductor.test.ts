@@ -1925,9 +1925,9 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
           {
             quoteId,
             sourceAgentId: PERSONAL_ELIZA_ID,
-            hourlyRateUsd: 0.01,
-            dailyRateUsd: 0.24,
-            minimumBalanceUsd: 0.72,
+            hourlyRateUsd: 0.15,
+            dailyRateUsd: 3.6,
+            minimumBalanceUsd: 10.8,
             minimumRunwayDays: 3,
             balanceUsd: 10,
             deficitUsd: 0,
@@ -1952,9 +1952,9 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     const { turn, unmount } = renderConductor();
     const review = await waitForTurn(turn, "first-run:dedicated-adoption");
     expect(review.text).toContain("Start your Dedicated Eliza?");
-    expect(review.text).toContain("$0.24/day ($0.01/hour)");
+    expect(review.text).toContain("$3.60/day ($0.15/hour)");
     expect(review.text).toContain("$10.00");
-    expect(review.text).toContain("$0.72");
+    expect(review.text).toContain("$10.80");
     expect(review.text).not.toContain(quoteId);
     expect(activate).not.toHaveBeenCalled();
     expect(spies.completeFirstRun).not.toHaveBeenCalled();
@@ -1990,9 +1990,9 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
             adoptionState: "available",
             status: "error",
             startsCompute: true,
-            hourlyRateUsd: 0.01,
-            dailyRateUsd: 0.24,
-            minimumBalanceUsd: 0.72,
+            hourlyRateUsd: 0.15,
+            dailyRateUsd: 3.6,
+            minimumBalanceUsd: 10.8,
             minimumRunwayDays: 3,
             balanceUsd: 115.54,
             deficitUsd: 0,
@@ -2028,9 +2028,9 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
       turn,
       "first-run:dedicated-adoption",
     );
-    expect(confirmationTurn.text).toContain("$0.24/day ($0.01/hour)");
+    expect(confirmationTurn.text).toContain("$3.60/day ($0.15/hour)");
     expect(confirmationTurn.text).toContain("Balance: $115.54");
-    expect(confirmationTurn.text).toContain("$0.72 required");
+    expect(confirmationTurn.text).toContain("$10.80 required");
     expect(confirmationTurn.text).toContain("confirm=Start Dedicated");
     expect(confirmationTurn.text).toContain(
       "Your verified backup will be restored",
@@ -2063,9 +2063,9 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
             adoptionState: "available",
             status: "stopped",
             startsCompute: true,
-            hourlyRateUsd: 0.01,
-            dailyRateUsd: 0.24,
-            minimumBalanceUsd: 0.72,
+            hourlyRateUsd: 0.15,
+            dailyRateUsd: 3.6,
+            minimumBalanceUsd: 10.8,
             minimumRunwayDays: 3,
             balanceUsd: 10,
             deficitUsd: 0,

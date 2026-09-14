@@ -73,11 +73,11 @@ const PERSONAL_ID = "personal:00000000-0000-5000-8000-000000000001";
 const QUOTE = {
   quoteId: "a".repeat(64),
   sourceAgentId: PERSONAL_ID,
-  hourlyRateUsd: 0.01,
-  dailyRateUsd: 0.24,
-  minimumBalanceUsd: 0.72,
+  hourlyRateUsd: 0.15,
+  dailyRateUsd: 3.6,
+  minimumBalanceUsd: 10.8,
   minimumRunwayDays: 3,
-  balanceUsd: 1.25,
+  balanceUsd: 12.5,
   deficitUsd: 0,
   canActivate: true,
   requiresConfirmation: true as const,
@@ -143,12 +143,12 @@ describe("Dedicated activation quote", () => {
 
     expect(
       await screen.findByText(
-        "Current balance: $1.25 · Required before activation: $0.72 (3 days)",
+        "Current balance: $12.50 · Required before activation: $10.80 (3 days)",
       ),
     ).toBeTruthy();
     expect(
       screen.getByText(
-        "Your Shared Agent becomes a private, always-on Dedicated Agent. Dedicated hosting uses $0.24 per day ($0.01/hr) while running.",
+        "Your Shared Agent becomes a private, always-on Dedicated Agent. Dedicated hosting uses $3.60 per day ($0.15/hr) while running.",
       ),
     ).toBeTruthy();
     expect(
@@ -187,7 +187,7 @@ describe("Dedicated activation quote", () => {
     ).toBeTruthy();
     expect(
       screen.getByText(
-        "A Dedicated Agent already exists for this upgrade, but setup did not finish. Resuming reuses that agent — it does not create another one. Hosting uses $0.24 per day ($0.01/hr) while running.",
+        "A Dedicated Agent already exists for this upgrade, but setup did not finish. Resuming reuses that agent — it does not create another one. Hosting uses $3.60 per day ($0.15/hr) while running.",
       ),
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Resume setup" })).toBeTruthy();
@@ -373,7 +373,7 @@ describe("Dedicated activation quote", () => {
         data: {
           ...QUOTE,
           balanceUsd: 0,
-          deficitUsd: 0.72,
+          deficitUsd: 10.8,
           canActivate: false,
           unavailableReason: "Add credits to activate Dedicated.",
         },

@@ -167,7 +167,7 @@ describe("ElizaAgentsTable per-row view model", () => {
     expect(container.textContent).not.toContain("00000000");
     expect(container.textContent).not.toContain("Heartbeat");
     expect(screen.getAllByText("Free").length).toBeGreaterThanOrEqual(2);
-    expect(screen.getAllByText("$0.01/hr").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("$0.15/hr").length).toBeGreaterThanOrEqual(2);
     const sharedRow = screen.getAllByText("Shared Agent")[0]?.closest("tr");
     const dedicatedRow = screen
       .getAllByText("Dedicated Eliza")[0]

@@ -1380,7 +1380,8 @@ describe("DockerSandboxProvider replacement cleanup", () => {
 
     try {
       getAutoscaler.mockReturnValue({
-        provisionNode: async () => {
+        provisionNode: async (request: nodeAutoscaler.ProvisionRequest) => {
+          expect(request).toMatchObject({ serverType: "ccx13", capacity: 1 });
           throw provisionFailure;
         },
       } as never);
