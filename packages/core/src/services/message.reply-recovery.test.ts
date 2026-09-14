@@ -65,6 +65,68 @@ const withdrawnEditReply =
 	"I will not perform that edit. QA note B says silver thermos. The requested update failed because the target note was not found; neither existing note changed.";
 
 describe("model-backed final reply recovery", () => {
+	it("repairs an unsaved draft without serializing the provider store and retains complete grounding evidence", async () => {
+		const response = "I will not create or change any notes.";
+		let repairPrompt = "";
+		const runtime = createMockRuntime({
+			useModel: vi.fn(async (_type, params) => {
+				repairPrompt = String(params.prompt);
+				return JSON.stringify({ response, effectReceiptIds: [] });
+			}),
+		});
+		const historyStore = "internal-provider-history-copy ".repeat(10000);
+		const walletEvidence = {
+			data: {
+				token: "SOL",
+				balance: "2.000000001",
+				warning: "Exact observation: 紫色; not settlement.",
+			},
+			text: "Observed balance is 2.000000001 SOL; observation-tail.",
+		};
+		const recovery = {
+			context:
+				'Complete saved context: wait for APPROVE VIOLET.\nCorrection: 紫色. Keep "two  spaces", C:\\notes\\draft and literal \\n. context-tail',
+			pendingToolCalls: [],
+			evaluatorOutputs: [],
+		};
+		await expect(
+			resolvePlannedReplyEgress({
+				runtime,
+				message: {
+					...message,
+					content: {
+						text: "Cancel that unsaved draft. Do not create or change any notes.",
+					},
+				},
+				reply:
+					"Cancelled. The audit note was only a preview and was never saved, so there's nothing to undo. No notes created or changed.",
+				actionResults: [],
+				providers: {
+					RECENT_MESSAGES: {
+						text: historyStore,
+						data: { originalMessages: historyStore },
+					},
+					"get-balance": walletEvidence,
+				},
+				recovery,
+			}),
+		).resolves.toEqual({ text: response, effectReceiptIds: [] });
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(repairPrompt).not.toContain("internal-provider-history-copy");
+		const payloadLine = repairPrompt
+			.split("\n")
+			.find((line) => line.startsWith("Original action payload: "));
+		expect(payloadLine).toBeDefined();
+		const payload = JSON.parse(
+			payloadLine!.replace("Original action payload: ", ""),
+		);
+		expect(payload.providers).toEqual({ "get-balance": walletEvidence });
+		expect(payload.replyOnlyRecovery.context).toBe(recovery.context);
+		expect(payload.request.text).toBe(
+			"Cancel that unsaved draft. Do not create or change any notes.",
+		);
+	});
+
 	it("reuses lossless history references in durable recovery without dropping corrections or replaying effects", async () => {
 		const repeated =
 			"Standing rule: show the full title and wait for separate approval.\n".repeat(

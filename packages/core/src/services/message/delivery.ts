@@ -17,7 +17,7 @@ import type { HandlerCallback } from "../../types/components";
 import type { Memory } from "../../types/memory";
 import type { GenerateTextResult, TextToSpeechParams } from "../../types/model";
 import { ModelType } from "../../types/model";
-import type { Content } from "../../types/primitives";
+import type { Content, JsonValue } from "../../types/primitives";
 import { ContentType } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
 import { parseBooleanFromText, parseJSONObjectFromText } from "../../utils";
@@ -408,6 +408,8 @@ export async function rewriteActionCallbackInCharacter(args: {
 	response: Content;
 	actionName?: string;
 	text: string;
+	/** Complete structured evidence; render once instead of quoting serialized JSON. */
+	jsonPayload?: JsonValue;
 	/** Runtime validation outcome, not a model-authored or payload instruction. */
 	groundingFailure?: PlannedReplyClaimKind | "missing_reply";
 }): Promise<{ text: string; effectReceiptIds: string[] } | null> {
@@ -462,7 +464,7 @@ export async function rewriteActionCallbackInCharacter(args: {
 		`Character: ${JSON.stringify(characterVoice)}`,
 		`Action: ${JSON.stringify(args.actionName ?? "ACTION")}`,
 		`Room: ${String(args.message.roomId)}`,
-		`Original action payload: ${JSON.stringify(args.text)}`,
+		`Original action payload: ${JSON.stringify(args.jsonPayload === undefined ? args.text : args.jsonPayload)}`,
 		`Callback metadata: ${JSON.stringify({
 			source: args.response.source,
 			actions: args.response.actions,

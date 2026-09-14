@@ -44,7 +44,10 @@ import { resolveCallbackActionName } from "./action-identifiers.js";
 import { rewriteActionCallbackInCharacter } from "./delivery.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
 import { financialCompletionIsUngrounded } from "./financial-completion";
-import { financialHoldingIsUngrounded } from "./financial-observations";
+import {
+	financialHoldingIsUngrounded,
+	financialObservationProviders,
+} from "./financial-observations";
 import { referenceRepeatedHistory } from "./history-wire";
 import {
 	replyClaimsCompletedSideEffect,
@@ -316,13 +319,17 @@ export async function resolvePlannedReplyEgress(args: {
 					},
 				}
 			: {}),
-		providers: args.providers,
+		// Match the validator's evidence contract; do not serialize the entire
+		// runtime provider store alongside the complete recovery context above.
+		providers: financialObservationProviders(args.providers),
 	});
 	const rewritten = await rewriteActionCallbackInCharacter({
 		runtime: args.runtime,
 		message: args.message,
 		response: { text },
 		text,
+		// Preserve the existing JSON normalization, without quoting that JSON again.
+		jsonPayload: JSON.parse(text) as JsonValue,
 		groundingFailure:
 			decision.verdict === "reject" ? decision.kind : "missing_reply",
 	});
