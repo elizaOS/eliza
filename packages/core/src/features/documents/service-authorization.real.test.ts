@@ -359,6 +359,51 @@ describe("DocumentService requester authorization", () => {
 		);
 	});
 
+	it("preserves large source text through update and existing-document upsert", async () => {
+		const id = "f4300000-0000-4000-8000-000000000031" as UUID;
+		const source = 'original "🌍\n'.repeat(200_000);
+		const document = userPrivateDocument(id, source);
+		await runtime.createMemory(document, "documents");
+		await runtime.updateMemory({ ...document, id });
+		expect((await runtime.getMemoryById(id))?.content.text).toBe(source);
+		const updated = `${source}\nNEW-END`;
+		await runtime.adapter.upsertMemories([
+			{
+				memory: { ...document, content: { text: updated } },
+				tableName: "documents",
+			},
+		]);
+		expect((await runtime.getMemoryById(id))?.content.text).toBe(updated);
+	});
+
+	it("keeps ordinary memory and non-source document fields under the JSON budget on update", async () => {
+		const documentId = "f4300000-0000-4000-8000-000000000032" as UUID;
+		const messageId = "f4300000-0000-4000-8000-000000000033" as UUID;
+		const content = { text: "unchanged" };
+		const oversized = "x".repeat(2 * 1024 * 1024);
+		await runtime.createMemory(
+			userPrivateDocument(documentId, content.text),
+			"documents",
+		);
+		await runtime.createMemory(
+			{ ...message(), id: messageId, content },
+			"messages",
+		);
+		for (const update of [
+			{ id: messageId, content: { text: oversized } },
+			{ id: documentId, content: { text: "new", nested: { text: oversized } } },
+			{ id: documentId, content: { text: "new", title: oversized } },
+			{ id: documentId, content: { text: "invalid\0source" } },
+		]) {
+			await expect(runtime.updateMemory(update)).rejects.toMatchObject({
+				code: "DB_UPDATE_FAILED",
+			});
+			expect((await runtime.getMemoryById(update.id))?.content).toEqual(
+				content,
+			);
+		}
+	});
+
 	it("reads a late page from a 10 MiB PGLite document without returning a source-sized projection", async () => {
 		const ordinaryLine = `${"x".repeat(1_023)}\n`;
 		const lateLine = `${"LATE-EVIDENCE".padEnd(1_023, "z")}\n`;
