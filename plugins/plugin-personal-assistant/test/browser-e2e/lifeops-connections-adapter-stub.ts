@@ -2,3 +2,4 @@
 
 export const defaultLifeOpsConnectionsAdapter = {};
 export const defaultFamilyOperationsAdapter = {};
+export const defaultFamilyDeletionAdapter = {};
