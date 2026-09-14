@@ -1539,67 +1539,74 @@ describe("v5 tiered action surface", () => {
 		expect(availableActionsSection(runtime)).toContain("MESSAGE");
 	});
 
-	it("exposes Tier-A sub-actions as first-class planner tools alongside the parent", async () => {
-		// This is the core guarantee: when MUSIC is in Tier A, its sub-actions
-		// PLAY_MUSIC and PAUSE_MUSIC are first-class entries in the planner's
-		// `tools` array (not just hidden behind a "dig into parent" round-trip).
-		const playMusic = makeAction({
-			name: "PLAY_MUSIC",
-			description: "Start playing a track.",
-			contexts: ["music_child" as AgentContext],
-		});
-		const pauseMusic = makeAction({
-			name: "PAUSE_MUSIC",
-			description: "Pause the active track.",
-			contexts: ["music_child" as AgentContext],
-		});
-		const music = makeAction({
-			name: "MUSIC",
-			description: "Music control parent action.",
-			contexts: ["music" as AgentContext],
-			subActions: ["PLAY_MUSIC", "PAUSE_MUSIC"],
-		});
-		const email = makeAction({
-			name: "SEND_EMAIL",
-			description: "Send an email.",
-			contexts: ["email" as AgentContext],
-		});
-		const runtime = makeRuntime({
-			actions: [music, playMusic, pauseMusic, email],
-			responses: [
-				stage1Response({
-					contexts: ["music"],
-					candidateActionNames: ["play_music", "MUSIC"],
-				}),
-				plannerToolResponse("PLAY_MUSIC"),
-				finishEvaluatorResponse("Playing music."),
-			],
-		});
+	it.each([
+		{ candidates: ["MUSIC"], expected: ["MUSIC", "PLAY_MUSIC", "PAUSE_MUSIC"] },
+		{ candidates: ["play_music", "MUSIC"], expected: ["PLAY_MUSIC"] },
+	])(
+		"loads requested music operations with progressive discovery: $candidates",
+		async ({ candidates, expected }) => {
+			// An explicit family loads all its children. A named child beside its
+			// parent loads only that operation; the family remains discoverable.
+			const playMusic = makeAction({
+				name: "PLAY_MUSIC",
+				description: "Start playing a track.",
+				contexts: ["music_child" as AgentContext],
+			});
+			const pauseMusic = makeAction({
+				name: "PAUSE_MUSIC",
+				description: "Pause the active track.",
+				contexts: ["music_child" as AgentContext],
+			});
+			const music = makeAction({
+				name: "MUSIC",
+				description: "Music control parent action.",
+				contexts: ["music" as AgentContext],
+				subActions: ["PLAY_MUSIC", "PAUSE_MUSIC"],
+			});
+			const email = makeAction({
+				name: "SEND_EMAIL",
+				description: "Send an email.",
+				contexts: ["email" as AgentContext],
+			});
+			const runtime = makeRuntime({
+				actions: [music, playMusic, pauseMusic, email],
+				responses: [
+					stage1Response({
+						contexts: ["music"],
+						candidateActionNames: candidates,
+					}),
+					plannerToolResponse("PLAY_MUSIC"),
+					finishEvaluatorResponse("Playing music."),
+				],
+			});
 
-		await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage("play the new album"),
-			state: makeState(),
-			responseId: RESPONSE_ID,
-		});
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage("play the new album"),
+				state: makeState(),
+				responseId: RESPONSE_ID,
+			});
 
-		const plannerCall = getCalls(runtime).find(
-			(call) => call.modelType === ModelType.ACTION_PLANNER,
-		);
-		const tools = (
-			plannerCall?.params as { tools?: Array<{ name?: string }> } | undefined
-		)?.tools;
-		const toolNames = tools?.map((tool) => tool.name).filter(Boolean) ?? [];
-		expect(toolNames).toContain("MUSIC");
-		expect(toolNames).toContain("PLAY_MUSIC");
-		expect(toolNames).toContain("PAUSE_MUSIC");
-		// Universal terminals must still be appended.
-		expect(toolNames).toContain("REPLY");
-		expect(toolNames).toContain("IGNORE");
-		expect(toolNames).toContain("STOP");
-		// Sibling-context action that is not in Tier A / Tier B should not leak in.
-		expect(toolNames).not.toContain("SEND_EMAIL");
-	});
+			const plannerCall = getCalls(runtime).find(
+				(call) => call.modelType === ModelType.ACTION_PLANNER,
+			);
+			const tools = (
+				plannerCall?.params as { tools?: Array<{ name?: string }> } | undefined
+			)?.tools;
+			const toolNames = tools?.map((tool) => tool.name).filter(Boolean) ?? [];
+			for (const name of ["MUSIC", "PLAY_MUSIC", "PAUSE_MUSIC"]) {
+				if (expected.includes(name)) expect(toolNames).toContain(name);
+				else expect(toolNames).not.toContain(name);
+			}
+			if (expected.length === 1) expect(toolNames).toContain("DISCOVER_TOOLS");
+			// Universal terminals must still be appended.
+			expect(toolNames).toContain("REPLY");
+			expect(toolNames).toContain("IGNORE");
+			expect(toolNames).toContain("STOP");
+			// Sibling-context action that is not in Tier A / Tier B should not leak in.
+			expect(toolNames).not.toContain("SEND_EMAIL");
+		},
+	);
 
 	it.each(["MESSAGE", "MESSAGE_REVIEW_QUEUE"])(
 		"keeps every registered child reachable from %s (#24699)",
