@@ -128,6 +128,27 @@ describe("dev-settings-table", () => {
       }
     });
 
+    it("preserves settings text that fits the minimum-width frame", () => {
+      const formatted = formatDevSettingsTableNarrow(
+        "App Server",
+        [
+          {
+            setting: "ELIZA_STATE_DIR",
+            effective: "/opt/eliza/state",
+            source: "default",
+            change: "Set via export ELIZA_STATE_DIR=",
+          },
+        ],
+        24,
+        true,
+      );
+
+      expect(formatted).toContain("│     /opt/eliza/state │");
+      expect(formatted).toContain("│     ELIZA_STATE_DIR= │");
+      expect(formatted).not.toContain("/opt/eliza/st…");
+      expect(formatted).not.toContain("ELIZA_STATE_D…");
+    });
+
     it("formats unframed narrow table with plain headers", () => {
       const formatted = formatDevSettingsTableNarrow(
         "App Server",
