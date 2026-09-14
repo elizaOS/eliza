@@ -3252,6 +3252,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         {
           image: resolvedImage,
           platform: imagePlatform,
+          requiredMemoryMb: containerMemoryMb,
         },
         remoteCompletionTracker,
       );
@@ -4422,9 +4423,11 @@ export class DockerSandboxProvider implements SandboxProvider {
     {
       image,
       platform,
+      requiredMemoryMb,
     }: {
       image: string;
       platform?: string;
+      requiredMemoryMb: number;
     },
     remoteCompletionTracker?: RemoteCompletionTracker,
   ): Promise<DockerNode | null> {
@@ -4467,6 +4470,7 @@ export class DockerSandboxProvider implements SandboxProvider {
           node &&
           (await dockerNodeManager.ensureNodeReady(node, {
             requiredPlatform: platform,
+            ...(requiredMemoryMb > 0 ? { requiredMemoryMb } : {}),
           }))
         ) {
           logger.info("[docker-sandbox] Autoscaled Docker node is ready", {
