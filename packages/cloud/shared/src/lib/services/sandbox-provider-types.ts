@@ -256,6 +256,8 @@ export class SandboxReplacementCreateSettlementCleanupUnresolvedError extends Sa
 }
 
 export interface SandboxProvider {
+  /** Remote paid compute supports a caller-owned, committed-funding start instead of raw Docker start. */
+  readonly computeFundingCapability?: "host-lease-v1";
   /**
    * Declares support for caller-owned replacement identity, a pre-effect start
    * marker, and an exact success-only completion signal. Callers must check
@@ -450,6 +452,13 @@ export interface SandboxCreateConfig {
   onReplacementCreateIntent?: (handle: SandboxHandle) => Promise<void>;
   /** CAS-enriches a persisted intent with Docker's exact container id. */
   onReplacementCreated?: (handle: SandboxHandle) => Promise<void>;
+  /**
+   * Starts the exact created container only after its funding binding commits.
+   * Called after host configuration is prepared. A rejection must never fall
+   * through to an ordinary provider start. Local and explicit pool capacity do
+   * not supply this callback.
+   */
+  startFundedContainer?: (handle: SandboxHandle) => Promise<void>;
   /**
    * Enriches the durable candidate fence with the exact Headscale identity as
    * soon as registration completes. The initial placement remains authoritative

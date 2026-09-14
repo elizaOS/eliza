@@ -2158,6 +2158,7 @@ export async function registerAgentWithSteward(
 // ---------------------------------------------------------------------------
 
 export class DockerSandboxProvider implements SandboxProvider {
+  readonly computeFundingCapability = "host-lease-v1" as const;
   readonly replacementCreateSettlementCapability = "exact-success" as const;
   readonly exactRestoreCreateCapability = "stopped-quarantine-v1" as const;
 
@@ -3820,35 +3821,34 @@ export class DockerSandboxProvider implements SandboxProvider {
             );
           },
         }),
+        { requireFullId: Boolean(config.startFundedContainer) },
       );
       createdContainerId = containerId;
-      const persistCreatedReplacement = config.onReplacementCreated;
-      if (persistCreatedReplacement) {
-        await persistCreatedReplacement({
-          sandboxId: containerName,
-          bridgeUrl: `http://${hostname}:${bridgePort}`,
-          healthUrl: `http://${hostname}:${webUiPort}/api`,
-          metadata: {
-            provider: "docker",
-            nodeId,
-            hostname,
-            ...replacementPlacementMetadata,
-            containerName,
-            bridgePort,
-            webUiPort,
-            agentId,
-            volumePath,
-            dockerImage: resolvedImage,
-            imageDigest: null,
-            replacementAttemptId,
-            containerId,
-            allocationCounted: Boolean(dbNode),
-            vpnNodeName: vpnEnvVars.TS_HOSTNAME,
-            vpnRegistrationStartedAt,
-            previousVpnNodeId,
-          } satisfies DockerSandboxMetadata,
-        });
-      }
+      const createdHandle: SandboxHandle = {
+        sandboxId: containerName,
+        bridgeUrl: `http://${hostname}:${bridgePort}`,
+        healthUrl: `http://${hostname}:${webUiPort}/api`,
+        metadata: {
+          provider: "docker",
+          nodeId,
+          hostname,
+          ...replacementPlacementMetadata,
+          containerName,
+          bridgePort,
+          webUiPort,
+          agentId,
+          volumePath,
+          dockerImage: resolvedImage,
+          imageDigest: null,
+          replacementAttemptId,
+          containerId,
+          allocationCounted: Boolean(dbNode),
+          vpnNodeName: vpnEnvVars.TS_HOSTNAME,
+          vpnRegistrationStartedAt,
+          previousVpnNodeId,
+        } satisfies DockerSandboxMetadata,
+      };
+      await config.onReplacementCreated?.(createdHandle);
 
       // Pre-seed the cloud runtime config on the HOST side of the
       // `${volumePath}/eliza:/root/.eliza` mount BEFORE starting the container,
@@ -3872,7 +3872,11 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
 
-      await ssh.exec(`docker start ${shellQuote(containerName)}`, DOCKER_CMD_TIMEOUT_MS);
+      if (config.startFundedContainer) {
+        await config.startFundedContainer(createdHandle);
+      } else {
+        await ssh.exec(`docker start ${shellQuote(containerName)}`, DOCKER_CMD_TIMEOUT_MS);
+      }
       logger.info(
         `[docker-sandbox] Container created on ${nodeId}: ${containerId} (${containerName})`,
       );

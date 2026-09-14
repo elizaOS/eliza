@@ -261,7 +261,10 @@ export async function settleStoppedAgentComputeInTransaction(
 }
 
 /** The lifecycle caller holds this transaction through stop proof and final state writeback, then invalidates credit caches after commit. */
-export async function stopFundedAgentInTransaction(tx: DbTransaction, identity: StopIdentity) {
+export async function stopFundedAgentInTransaction(
+  tx: DbTransaction,
+  identity: StopIdentity & { fundingId?: string },
+) {
   await lockStopAgent(tx, identity);
   const [window] = await tx
     .select()
@@ -271,6 +274,7 @@ export async function stopFundedAgentInTransaction(tx: DbTransaction, identity: 
         eq(agentComputeFunding.agent_id, identity.agentId),
         eq(agentComputeFunding.organization_id, identity.organizationId),
         isNull(agentComputeFunding.settled_at),
+        identity.fundingId ? eq(agentComputeFunding.id, identity.fundingId) : undefined,
       ),
     )
     .for("update");
@@ -304,4 +308,58 @@ export async function stopFundedAgentInTransaction(tx: DbTransaction, identity: 
   } finally {
     await ssh.disconnect();
   }
+}
+
+/** An unbound hold has never authorized a provider start; closing it fences every late binding callback. */
+export async function cancelUnboundAgentComputeInTransaction(
+  tx: DbTransaction,
+  identity: StopIdentity & { fundingId: string },
+) {
+  await lockStopAgent(tx, identity);
+  const [window] = await tx
+    .select()
+    .from(agentComputeFunding)
+    .where(
+      and(
+        eq(agentComputeFunding.id, identity.fundingId),
+        eq(agentComputeFunding.agent_id, identity.agentId),
+        eq(agentComputeFunding.organization_id, identity.organizationId),
+      ),
+    )
+    .for("update");
+  if (
+    !window ||
+    window.provider_container_id !== null ||
+    window.provider_node_id !== null ||
+    window.host_lease_confirmed_at !== null
+  )
+    changed();
+  if (window.settled_at !== null)
+    return { fundingId: window.id, replayed: true, purchasedCreditRefunded: false };
+  return tx.transaction(async (nested) => {
+    const settled = await subscriptionFundingService.settleInTransaction(nested, {
+      organizationId: identity.organizationId,
+      logicalOperationId: `compute.${identity.agentId}.${window.id}`,
+      operation: "managed_agent_compute",
+      actualAmount: "0.000000",
+      occurredAt: window.period_start,
+      metadata: {
+        agent_id: identity.agentId,
+        compute_funding_id: window.id,
+        unbound_provision_cancelled: true,
+      },
+    });
+    await nested
+      .update(agentComputeFunding)
+      .set({
+        settled_at: await readPostLockDatabaseNow(nested),
+        settled_through: window.period_start,
+      })
+      .where(eq(agentComputeFunding.id, window.id));
+    return {
+      fundingId: window.id,
+      replayed: false,
+      purchasedCreditRefunded: settled.purchasedCreditRefunded,
+    };
+  });
 }
