@@ -459,8 +459,9 @@ export interface SandboxCreateConfig {
   /**
    * Starts the exact created container only after its funding binding commits.
    * Called after host configuration is prepared. A rejection must never fall
-   * through to an ordinary provider start. Local and explicit pool capacity do
-   * not supply this callback.
+   * through to an ordinary provider start. Required for runnable remote Docker
+   * customer containers, including replacements and test organizations. Local,
+   * stopped exact-restore candidates and explicit pool capacity are exempt.
    */
   startFundedContainer?: (handle: SandboxHandle) => Promise<void>;
   /**
