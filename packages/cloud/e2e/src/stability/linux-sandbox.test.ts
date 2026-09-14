@@ -1009,6 +1009,7 @@ test.skipIf(!hostedLinux)(
         original.replace(invocation, `${fakeBwrapPath} --die-with-parent`),
         { mode: 0o500 },
       );
+      await chmod(fixtureRoot, 0o555);
       const environmentPath = await writeSandboxEnvironment(
         directory,
         scenarioChildEnvironment(process.env, {}),
@@ -1032,7 +1033,11 @@ test.skipIf(!hostedLinux)(
       cleanupVerified = true;
       expect(result.stdout).toBe("");
       expect(result.stderr).not.toContain("unbound variable");
-      expect(result.code).toBe(91);
+      if (result.code !== 91) {
+        throw new Error(
+          `Owned bwrap failure injection returned ${result.code}: ${result.stderr}`,
+        );
+      }
       expect(existsSync(environmentPath)).toBe(false);
       expect(
         spawnSync("pgrep", ["-u", String(result.hostUid)], { stdio: "ignore" })
