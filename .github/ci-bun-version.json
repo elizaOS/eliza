@@ -1,4 +1,0 @@
-{
-  "$comment": "Single source of truth for Bun on every frozen-lockfile CI install path. Floating `canary`/`latest` can reserialize bun.lock or disappear without notice, so required test/build gates pin the stable version declared by packageManager. Enforced by packages/scripts/ci-bun-version-contract.mjs: packageManager and every concrete `bun-version`/`BUN_VERSION` pin in .github/workflows must equal `version`, and gate workflows must never float. To bump: update packageManager, this file, workflow literals, and the contract fixture together.",
-  "version": "1.3.14"
-}

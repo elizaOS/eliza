@@ -1,0 +1,3213 @@
+{
+  "format": 1,
+  "date": "2026-09-14",
+  "purpose": "Recovery archive of inactive clean worktree commit histories. Not an integration branch.",
+  "worktrees": [
+    {
+      "path": "/Users/nubs/.codex/worktrees/04d6/eliza",
+      "head": "76c9feefcfba818d64ee29ddb31fbcaa07e812f5",
+      "branch": "refs/heads/feat/dedicated-cloud-product-local-20260821",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/04d6/eliza-cleanup-split",
+      "head": "8fa8ce5028e9d0c632c177f683bf498aaf6c7353",
+      "branch": "refs/heads/codex/remove-chat-widget-rail-20260822",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/04d6/eliza-dedicated-focused",
+      "head": "08258a55ce91c544ca1343ac8882414e1caeda1e",
+      "branch": "refs/heads/codex/dedicated-cloud-focused-20260822",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/04d6/eliza-dedicated-runtime",
+      "head": "03de9d17676bf700a3b6b09fe97fbeaf7f2c4179",
+      "branch": "refs/heads/codex/dedicated-web-ui-handoff-20260822",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/18ae/eliza",
+      "head": "441cf9a9fe7ed63f4f657270e183b4e3a6e0b32c",
+      "branch": "refs/heads/fix/staging-stale-dedicated-selection",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/76a2/eliza",
+      "head": "e3d22588281371d4abb533a22e6d93e70ab423b9",
+      "branch": "refs/heads/codex/apns-cloud-owner-current",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/9143/eliza",
+      "head": "ab3f5c77ace2feaf26235e83ca8a811c38d754c0",
+      "branch": null,
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/9c6a/eliza",
+      "head": "9dd3bf2cfe10612bb73e8e09648c02f071e3d327",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/a782-production-direct-20260826",
+      "head": "0b7d82868e030bd0a439985740ee03edf471e500",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/agent-backups-dashboard-20260816",
+      "head": "dc8aa82684ca3a828ac0a451135047eee2ec9013",
+      "branch": "refs/heads/fix/agent-backups-dashboard-20260816",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/agent-detail-dashboard-preview-20260817",
+      "head": "9392f856ec69ee64fdfda182be9583002be15722",
+      "branch": "refs/heads/codex/agent-detail-dashboard-preview-20260817",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/agent-detail-dashboard-preview-current-20260818",
+      "head": "b354f364250c83e974fb49f7d988a7d575420e25",
+      "branch": "refs/heads/codex/agent-detail-dashboard-preview-current-20260818",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/agent-detail-heartbeat-20260817",
+      "head": "8320550e0b7ebb91bd8e56aa1f15ecd1dca005d6",
+      "branch": "refs/heads/fix/agent-detail-heartbeat-20260817",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/agents-dashboard-detail-final-20260817",
+      "head": "07037cd383e149eb579355718e669d070e83da1a",
+      "branch": "refs/heads/codex/agents-dashboard-detail-final-20260817",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/agents-dashboard-detail-recovery-20644",
+      "head": "ccd1abebeb23da75c34af486b09e42324acb91b1",
+      "branch": null,
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/agents-dashboard-detail-reliability-20260816",
+      "head": "109bef34925b4d9c6c0f6b3732fc112b351b74dd",
+      "branch": "refs/heads/codex/agents-dashboard-detail-review-fix",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/agents-list-dto-authority-20260816",
+      "head": "243eb2f0aa35967f7161d160455ed056cf02509f",
+      "branch": "refs/heads/fix/agents-list-dto-authority-20260816",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/agents-list-dto-authority-final-sync-20260816",
+      "head": "883e2df3ddc5497690e9e94b6a4b27011159bac4",
+      "branch": "refs/heads/fix/agents-list-dto-authority-final-sync-20260816",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/atomic-json-windows-concurrency-20260828",
+      "head": "a5147282c9886a50ef99bfe348effa467f058ea0",
+      "branch": "refs/heads/codex/fix-life-smoke-model-fixture-20260828",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/backup-catalog-fatal-classification-20260826",
+      "head": "7cd44d5522b6cab22a65137a715c6c441cd4f354",
+      "branch": "refs/heads/codex/backup-catalog-fatal-classification-20260826",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/browser-full-duplex-20260827",
+      "head": "3199511c04f3db5e94f515ef02456871e4f0831a",
+      "branch": "refs/heads/codex/browser-full-duplex-20260827",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/browser-paired-bundle-auth-20260829",
+      "head": "f2620111250d46951d7220224f4a2da16fb97431",
+      "branch": "refs/heads/codex/test-vps-preview-29945-29953",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/browser-paired-bundle-auth-review-20260829",
+      "head": "32ced787ec8b601aa5bc49691a7adc83694fed83",
+      "branch": "refs/heads/codex/fix-paired-view-bundle-auth-20260829",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/canonical-app-core-e7b7-20260829",
+      "head": "e7b7e7c90595cd419460ef7871ba2407569e0d3b",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/canonical-scripts-baseline-20260827",
+      "head": "c1993b7a061b4cb96822ab5735de09615325721a",
+      "branch": "refs/heads/codex/canonical-scripts-baseline-20260827",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/canonical-smoke-baseline-20260827",
+      "head": "4f28b0ae32ad0d6f679a4bb3f7ee6fd38f688817",
+      "branch": "refs/heads/codex/canonical-smoke-baseline-20260827",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/chat-keyboard-viewport-20260826",
+      "head": "ca7d91420ae894a6a39ab8df3c5840182cec8085",
+      "branch": "refs/heads/codex/chat-keyboard-viewport-20260826",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/ci-clean-build-order-20260825",
+      "head": "57621e200956ea06ffce39cfad29ba960ed4b2e1",
+      "branch": "refs/heads/codex/ci-clean-build-order-20260825",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/cloud-api-typecheck-gate-20260817",
+      "head": "ee7010ab5997d94af057c9ee4ff9028a9bf57f8c",
+      "branch": "refs/heads/fix/cloud-api-typecheck-gate-20260817",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/cloud-continuation-storage-presence-20260813",
+      "head": "ec403128bfa69e9606ff687467bc387e8d978007",
+      "branch": "refs/heads/fix/cloud-continuation-storage-presence-20260813",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/cloud-crypto-confirm-auth-20260826",
+      "head": "11f1c9951c55e45081de866e6ec5a5adc6a10858",
+      "branch": "refs/heads/codex/fix-crypto-confirm-auth-gate-20260826",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/cloud-dashboard-integration-20260819",
+      "head": "061acf02a0036014a55360ad4eaa9a2e14408ecb",
+      "branch": "refs/heads/codex/cloud-dashboard-integration-20260819",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/cloud-dashboard-product-20260819",
+      "head": "0a4146e1e97322d1cbf7a6b7ccca46e7a1342547",
+      "branch": "refs/heads/codex/cloud-dashboard-product-20260819",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/cloud-dashboard-product-final-20260819",
+      "head": "7421ee137e1aba079fe9be160a5a54ce514b8e81",
+      "branch": "refs/heads/codex/fix-cloud-dashboard-product-final-20260819",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/cloud-jobs-recovery-gate-20479",
+      "head": "f4fa3952ba2e282627954b67d48a230bab313d81",
+      "branch": "refs/heads/fix/cloud-jobs-recovery-gate-20479",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/cloud-live-choice-click-boundary-20260827",
+      "head": "1f5695b6b522a5eaab4db96167010d424ca423e3",
+      "branch": "refs/heads/codex/fix-cloud-live-entry-recovery",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/cloud-no-auto-credit-compute-current-20260815",
+      "head": "01c27992506c7059a4bc518d6e06240823198b57",
+      "branch": "refs/heads/fix/cloud-no-auto-credit-compute-current-20260815",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/cloud-onboarding-nonmutation-ui-20260813",
+      "head": "afac817814707e95bc0a1bd1cbaa91c41a78dbe8",
+      "branch": "refs/heads/fix/cloud-onboarding-nonmutation-ui-20260813",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/cloud-provider-credential-gate-20045",
+      "head": "8f5af7d39698e4923ada9d13140443e884ad2c9f",
+      "branch": "refs/heads/fix/cloud-provider-credential-gate-20045",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/cloud-stack-shared-upgrade-20260828",
+      "head": "7fc629d93a57288557ddfc12610f1a9b0aa29c6f",
+      "branch": "refs/heads/codex/fix-shared-upgrade-llm-fixture-20260828",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/cloud-voice-secret-order-20260815",
+      "head": "6ab0aa6c9dac6d876e19c4e3a0554eec2ea539de",
+      "branch": "refs/heads/fix/cloud-voice-secret-order-20260815",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/combined-released-baselines-20260827",
+      "head": "d60af2ea8e7de9b5018968444f3be814b5fa24fb",
+      "branch": "refs/heads/codex/combined-released-baselines-20260827",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/compact-mobile-browser-toolbar-publish-20260826",
+      "head": "18d8a55a141610f5394566860a37d7ac48517aac",
+      "branch": "refs/heads/fix/compact-mobile-browser-toolbar",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/compute-stop-fixture-repin-20260828",
+      "head": "184910ce51d1d7c6bdcc8c1591b60200a3c00174",
+      "branch": "refs/heads/codex/compute-stop-fixture-repin-20260828",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/core-edge-build-order-20010",
+      "head": "69b1fcc6319e8d9b1d9e6d42d0eae0a417812401",
+      "branch": "refs/heads/fix/core-edge-build-order-20010",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/core-macos-message-baseline-20260828",
+      "head": "bcbc61de321fc0c09ba3033e0b6d7955942a0c69",
+      "branch": "refs/heads/codex/core-macos-message-baseline-20260828",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/database-identity-report-order-20260826",
+      "head": "3f3921d4b9da87cb921a78fcf52fbd5df0216362",
+      "branch": "refs/heads/codex/database-identity-report-order-20260826",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/decomposed-interactions-a11y-fixture-20260827",
+      "head": "b356f4fa2af9928b2cf0a7be8da7f8771be71611",
+      "branch": "refs/heads/fix/decomposed-interactions-a11y-fixture-20260827",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/dedicated-29207-current-verify-20260826",
+      "head": "56d8d56c30464fa56c97e6d181317cf0c1321b20",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/dedicated-adoption-consent-20260827",
+      "head": "1180ecd83b13da85b4899ad8db52e9c445d05f26",
+      "branch": "refs/heads/codex/dedicated-adoption-consent-20260827",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/dedicated-adoption-quote-diagnostics-20260830",
+      "head": "cb4100b91ad734328ed737750361cdfd6dacf573",
+      "branch": "refs/heads/codex/cloud-adoption-quote-diagnostics-20260830",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/dedicated-hcloud-delete-no-content-20260830",
+      "head": "0512f61d0e236a9fc4ecb4fbc88c273341de9189",
+      "branch": "refs/heads/codex/fix-hcloud-delete-no-content-20260830",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/dedicated-hosted-liveness",
+      "head": "3d43fe19dcc599075f495a39eb1080eb5b6f2c37",
+      "branch": "refs/heads/codex/app-charge-expiry-validation-20260830",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/dedicated-live-adoption-consent-29712",
+      "head": "dd7b01c81ecbbe87938566dfd0a73800a28457ea",
+      "branch": "refs/heads/fix/29712-live-adoption-consent-gate",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/dedicated-local-cert-87201f",
+      "head": "e8405ec58e0c34ba6d0c5c0177c5a984c1cdc6ad",
+      "branch": "refs/heads/codex/dedicated-local-first-five-cert",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/dedicated-pixel-source-review-20260825",
+      "head": "384c4e96305389aa2f125afdc5a687fb066d7963",
+      "branch": "refs/heads/codex/dedicated-pixel-source-review-20260825",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/dedicated-private-address-contract",
+      "head": "bcbf7c6b02fe2f7ee00c3b4c532f492346fbc42b",
+      "branch": "refs/heads/codex/fix-dedicated-private-address-contract-20260824",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/dedicated-prod-recovery-20260826",
+      "head": "9aa1af65ddd9c9971da8e82ff037cc33e2da7219",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/dedicated-production-provenance-20260826",
+      "head": "36fd9c1e63bacf87c20b621157d3e786daee7cfb",
+      "branch": "refs/heads/codex/dedicated-production-provenance-20260826",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/dedicated-provisioning-ship-20260825",
+      "head": "8c752f38034603406a39ed4e872ac5d3c029d5ab",
+      "branch": "refs/heads/codex/dedicated-provisioning-ship-20260825",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/dedicated-renderer-continuity",
+      "head": "323b27fecd00c6ecec493148408f56e225150fe9",
+      "branch": "refs/heads/fix/cloud-live-history-reveal",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/dedicated-same-id-adoption-20260825",
+      "head": "6acdeb922205900738605c5133a02aaff91c1da8",
+      "branch": "refs/heads/codex/dedicated-same-id-adoption-20260825",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/dedicated-same-id-adoption-current-20260825",
+      "head": "20f0643d240f3bf71bbdf48a84587aeee0994e5a",
+      "branch": "refs/heads/codex/dedicated-same-id-adoption-current-20260825",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/dedicated-stable-local-cert-20260830",
+      "head": "420e6d90525b195c8a6b022b71ef293c46ee3f2c",
+      "branch": "refs/heads/codex/dedicated-stable-local-cert-20260830",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/dedicated-staging-ci-unblock",
+      "head": "c8002807f8f9ddd91cfbefdaaec78416a816f0b3",
+      "branch": "refs/heads/codex/dedicated-staging-ci-unblock",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/dedicated-terminal-sync-20260826",
+      "head": "29ae0178e3d7d587068b08ffa9ee85f3239add3a",
+      "branch": "refs/heads/chore/release-dedicated-final-20260826",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/dedicated-worker-runner-workaround-20260826",
+      "head": "da65b0bec99317cd93ae0d1f8e9c164764c21911",
+      "branch": "refs/heads/codex/ops-worker-runner-self-hosted-20260826",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/desktop-provider-truth-validation-20260815",
+      "head": "fe145d7fc750b60eb8e9a802c94d411d10886385",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/develop-baseline-integration-20260827",
+      "head": "e6f71360f1ebd0c34b98940e5f59b2b6d22d03cd",
+      "branch": "refs/heads/codex/develop-baseline-integration-20260827",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/develop-browser-fixture-fix-20260827",
+      "head": "31746131fd49dce9ddfa4816a3824e0c169eaeb1",
+      "branch": "refs/heads/codex/develop-browser-fixture-fix-20260827",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/develop-login-staging-20260830",
+      "head": "6cf04b1306b676432f2d55e31a00621e479c212f",
+      "branch": "refs/heads/codex/staging-login-autoreturn-20260830",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/discord-shared-account-hot-path-20119",
+      "head": "873fe2f09511271f0b956a4bce16f69d36158bc4",
+      "branch": "refs/heads/fix/discord-shared-account-hot-path",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/eliza-apple-local-runtime-audit-20260815",
+      "head": "4461590612953ce621c3b41ad3014c4973fcfeee",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/eliza-apple-local-runtime-current-20260815",
+      "head": "2d7cfda843a5586393b3891c17557e6bad4dc28c",
+      "branch": "refs/heads/codex/fix-desktop-vite-node-runtime-20260815",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/eliza-apple-native-audit-20260815",
+      "head": "ac61a158310d5c6ad6de73b302662d43c0f691f8",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/eliza-apple-native-localization-20260815",
+      "head": "2ca9b661c95023810de6051a2a190166db85f070",
+      "branch": null,
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/eliza-ios-screen-time-truth-20007",
+      "head": "20f97f7dc3d2f77eb59d7752c2a7e42c2f280b7d",
+      "branch": "refs/heads/fix/ios-screen-time-truth-20007",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/eliza-macos-desktop-shortcut-bridge-20260814",
+      "head": "37319b010a927544f15110a7f01d29d5ac7e00f0",
+      "branch": "refs/heads/fix/macos-desktop-shortcut-bridge-20260814",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/eliza-macos-overlay-geometry-current-20260815",
+      "head": "beb747a0f9654323efcd51c396b53c4aded9f028",
+      "branch": null,
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/eliza-native-local-cerebras-qa-20260815",
+      "head": "712ee56076e87d566e95f15359ed6c25f14a1f2b",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/eliza-omarchy-runtime-pr-20260822",
+      "head": "6c8b9871a33666bff2e96700b30457954a43f7cd",
+      "branch": "refs/heads/feat/omarchy-desktop-integration",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/eliza-plugin-omarchy-20260820",
+      "head": "396cd2773e63bb9615ebaa4a4fff3bd051e320f7",
+      "branch": "refs/heads/codex/omarchy",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/evidence-review-ci-timeout-30102",
+      "head": "9b6e0562f95bf7de3bcbc0029c4bb7c0f05bf6da",
+      "branch": "refs/heads/fix/evidence-review-ci-timeout-30102",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/exempt-agent-billing-status-20021",
+      "head": "c7b6aaf1059f1ac30fd2eb0ff9e41f6df4223533",
+      "branch": "refs/heads/fix/exempt-agent-billing-status",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/f682/eliza",
+      "head": "2ba6c45c77bbfda326f32830d8ae266c9f71e446",
+      "branch": "refs/heads/codex/computer-use-window-local-spi-continuation-20260823",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/f8f1/eliza",
+      "head": "9c1fc32c0def7f3da4d40d54d88ac343e24c3a97",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/fix-explicit-dedicated-activation-20260827",
+      "head": "564cb3c707900237bce93dceeae29d1badb715cf",
+      "branch": "refs/heads/fix/personal-dedicated-same-row-adoption-20260827",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/fix-history-tab-reconciliation-30068",
+      "head": "ab1e9636566a6d8c8d93c9e6b62c604cbbc2536f",
+      "branch": "refs/heads/fix/30068-history-tab-reconciliation",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/fix-model-settings-lifecycle-30061",
+      "head": "976b4d9a03a65e6875afa06ebd268c8944fd6d44",
+      "branch": "refs/heads/fix/30061-model-settings-lifecycle",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/fix-production-db-authority-pin-20260827",
+      "head": "1b0e718bed8fbaf14ef4a01c672257883e316473",
+      "branch": "refs/heads/codex/fix-production-db-authority-pin-20260827",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/fix-worker-heartbeat-decoded-object-20260826",
+      "head": "62e1ca8518278853b490f4ced4bdfa15bafe9ac4",
+      "branch": "refs/heads/codex/fix-worker-heartbeat-decoded-object-20260826",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/full-walkthrough-tutorial-20260828",
+      "head": "df410d8a075ec009219e517e767b4f1a5db7447d",
+      "branch": "refs/heads/codex/fix-full-walkthrough-tutorial-20260828",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/gateway-discord-staging-20260815",
+      "head": "599771c174a007f4b989838f66874e6061d59127",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/github-mcp-transport",
+      "head": "76c9feefcfba818d64ee29ddb31fbcaa07e812f5",
+      "branch": "refs/heads/codex/dedicated-cloud-sync-20260823",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/hardware-badge-crash-20260828",
+      "head": "d7fa2cdb545aa82b65b3f212b0d0fdc4982bccb4",
+      "branch": "refs/heads/codex/fix-hardware-badge-crash-20260828",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/hmr-dependency-smoke-20260828",
+      "head": "d11e518de95fd0301206b7a04e6f34c7ac6be19f",
+      "branch": "refs/heads/codex/hmr-dependency-smoke-20260828",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/hmr-offline-fixture-20260828",
+      "head": "3075845d17e17eeaf85d02120072dcdd6a21407a",
+      "branch": "refs/heads/codex/hmr-offline-fixture-20260828",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/home-invalid-url-fixture-20260828",
+      "head": "8744eaabc6c2ad93facbd41d15ac6cb7eda752c1",
+      "branch": "refs/heads/codex/home-invalid-url-fixture-20260828",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/hyperdrive-prod-authority-20260827",
+      "head": "3ecc5474ad2afc644ef28efd5454428e6ac36dbb",
+      "branch": "refs/heads/codex/fix-production-hyperdrive-authority",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/hyperdrive-prod-authority-develop-20260827",
+      "head": "3c82f17973215557ef21c5a2eff5ad5cc0c2f5df",
+      "branch": "refs/heads/codex/fix-production-hyperdrive-authority-develop",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/inference-fixtures-exact-20260828",
+      "head": "4364f513758851e77d94ea86cd934cf7b9eb1ede",
+      "branch": "refs/heads/codex/fix-inference-fixtures-exact-20260828",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/internal-gateway-auth-fast-path",
+      "head": "d82632da96fb9bbf30861f32aca84706a6479064",
+      "branch": "refs/heads/fix/internal-gateway-auth-fast-path",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/ios-apns-registration-gate-20260817",
+      "head": "1f316deb602e8f41cffc09ec2d61962f8c11b45e",
+      "branch": "refs/heads/codex/ios-apns-registration-gate-20260817",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/ios-chat-overlay-polish-20260815",
+      "head": "9182dda20824ec43ebacebf78625e5e0de4c26e4",
+      "branch": "refs/heads/fix/ios-chat-overlay-polish-20260815",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/ios-full-production-readiness-20260828",
+      "head": "2a4af7351c96881b83333fabb37927222dbb09fd",
+      "branch": "refs/heads/codex/ios-full-production-readiness-20260828",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/ios-healthkit-entitlement-truth-20260817",
+      "head": "0a97c7b9807258caa60273299cfb52d8be5f08ee",
+      "branch": "refs/heads/codex/ios-healthkit-entitlement-truth-20260817",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/ios-local-mode-boot-audit-20260815",
+      "head": "c9f89aeb46d4801b2d9f16602dc4c09434b71ae3",
+      "branch": "refs/heads/fix/ios-local-runtime-chooser-20260815",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/ios-remote-mac-followup-handoff-20260815",
+      "head": "bd8a0201645e121f0aeeab9f599be39ab4304b55",
+      "branch": "refs/heads/fix/ios-remote-mac-followup-handoff-20260815",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/ios-remote-mac-http-20260815",
+      "head": "700110e791ef7b9a75ed2412043aa922e98f1f15",
+      "branch": "refs/heads/fix/ios-remote-mac-http-20260815",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/ios-remote-model-status-20347-sync-20260816",
+      "head": "ecb9070be9ea64f7b59e4ec9d5b292f66fe98f9c",
+      "branch": "refs/heads/fix/ios-remote-model-status-20347-sync-20260816",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/ios-voice-live-activity-20260817",
+      "head": "515e3e121ec5f8feffd476e7ea87443734e400eb",
+      "branch": "refs/heads/codex/ios-voice-live-activity-20260817",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/jira-transport-contract-20260827",
+      "head": "4b06aae7ef8094601097e5b622a5cae02d368535",
+      "branch": "refs/heads/codex/jira-transport-contract-20260827",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/keyless-stub-designed-empty-20260828",
+      "head": "31586842bcba069dd31c42e1f96f9e72ea81a353",
+      "branch": "refs/heads/codex/fix-keyless-stub-designed-empty-20260828",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/local-app-demo-polish-current-20260826",
+      "head": "9a376bc7d448bbebe17fdd48321bb3f728c35f0c",
+      "branch": "refs/heads/fix/local-app-demo-polish-current-20260826",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/local-app-demo-polish-tip",
+      "head": "5699c938efab2ea5e9ab9cb7709d0727f6c1e3a4",
+      "branch": null,
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/local-app-qa-repairs-20260825",
+      "head": "04a5c644c125afa2a83a9620930385881a5e1f12",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/local-browser-qa-e5acc-20260829-307",
+      "head": "e5accb352a8ae897a69fc16a3d1a7f85a7720254",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/local-ui-browser-qa-2551-20260829-1615",
+      "head": "2a4af7351c96881b83333fabb37927222dbb09fd",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/local-ui-browser-qa-2918-371",
+      "head": "59f4e5134779bf049da9149c6aa19b7d4477245f",
+      "branch": "refs/heads/codex/fix-local-inference-snapshot-active-20260828",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/local-ui-registry-recovery-20260828",
+      "head": "ddbbaa66517f9919dbfd03ff169523ad22db0443",
+      "branch": "refs/heads/codex/local-ui-registry-recovery-20260828",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/local-voice-dev-defaults-20260827",
+      "head": "621b20fba371e423864f60f07477d7ce9bc1c0b8",
+      "branch": "refs/heads/fix/local-voice-dev-defaults-20260827",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/mac-local-runtime-status-20260815",
+      "head": "1f9551fd98c2a84076e7ab926746ebdedbf41ed9",
+      "branch": "refs/heads/fix/mac-local-runtime-status-20260815",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/macos-fullapp-production-readiness-20260828",
+      "head": "2a4af7351c96881b83333fabb37927222dbb09fd",
+      "branch": "refs/heads/codex/macos-fullapp-production-readiness-20260828",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/mobile-cloud-auth-rollout-20260826",
+      "head": "497df3c1765b0b0618e4aa337f6c207f735f15c0",
+      "branch": "refs/heads/codex/mobile-cloud-auth-rollout-20260826",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/model-config-strictmode-29803-20260828",
+      "head": "0cc701096de4ac9311dc1b33a6712f41376063bb",
+      "branch": "refs/heads/codex/fix-model-config-strictmode-29803-20260828",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/model-switch-preference-routing-20260815",
+      "head": "e43c11c670c820961f665b5a4e1f6186f762e53e",
+      "branch": "refs/heads/codex/fix-model-switch-preference-routing-20260815",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/notification-unify-review-20260828",
+      "head": "2400a0818d3e77e87bab8bb47c29d1a32ecc8afd",
+      "branch": "refs/heads/codex/fix-notification-unify-review-20260828",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/nubsstable-develop-sync-20260830",
+      "head": "651ed1c9e92e1bd0426aeb7cf3a0a4769de9d05e",
+      "branch": "refs/heads/codex/stable-develop-sync-20260830",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/ocr-character-fixture-20260828",
+      "head": "b864450b9645b848fd4a8f514909ae2ece604145",
+      "branch": "refs/heads/codex/fix-ocr-character-fixture-20260828",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/orchestrator-bulk-hydration-20260828",
+      "head": "26ca9bdc09c3fe7430539d3fbab4c1af577fd29f",
+      "branch": "refs/heads/fix/orchestrator-bulk-task-hydration",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/orchestrator-opencode-tests-20260828",
+      "head": "e17478b2f8fb8080ba097cf5a54be8c34665f3a8",
+      "branch": "refs/heads/codex/orchestrator-opencode-tests-20260828",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/pages-ui-radio-export-20260826",
+      "head": "32ecd8fe77f36ce228657a9ad7ca57b4155b381d",
+      "branch": "refs/heads/codex/fix-radio-group-browser-export-20260826",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/permission-priming-fixture-20260827",
+      "head": "c18c15383fbbab62ea8d00c755c6c28d30096fb0",
+      "branch": "refs/heads/codex/permission-priming-fixture-20260827",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/personal-assistant-no-provider-fixture-20260828",
+      "head": "dc4b254c44fe2d2613011a45ae12922de2e9fdc7",
+      "branch": "refs/heads/codex/personal-assistant-no-provider-fixture-20260828",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/personal-delivery-projection",
+      "head": "6106efaf4da19e56da0ad1c2bfe802e6b0077234",
+      "branch": "refs/heads/fix/personal-delivery-projection",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/personal-shared-cold-first-contact",
+      "head": "324392fdb3fbd04261640fa34085e361781414e9",
+      "branch": "refs/heads/fix/personal-shared-cold-first-contact",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/personal-shared-image-generation-21391",
+      "head": "f4965d4c2e29a6dcb7b33d4d82b4da3213ea71bd",
+      "branch": "refs/heads/feat/personal-shared-image-generation-21391",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/personal-shared-staging-canary",
+      "head": "ca68bc31aa49aa364a2c36a6922d6acd3b53490f",
+      "branch": "refs/heads/codex/personal-shared-staging-canary",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/pixel-cloud-clean-integration-20260826",
+      "head": "d51701f42d8e00ff10f56b0846bb1749dc107e25",
+      "branch": "refs/heads/codex/pixel-cloud-offline-recovery-clean",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/pixel-cloud-resilience-publish-20260826",
+      "head": "cb58e46086b1731a2c8765a8a3a59006d0903943",
+      "branch": "refs/heads/codex/pixel-cloud-resilience-publish-20260826",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/pixel-vps-hardening-20260826",
+      "head": "63a275b6a58fe500c12f3fe8a270ea76c4da932f",
+      "branch": "refs/heads/codex/pixel-vps-hardening-20260826",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/pixel-vps-hardpin-build-20260826",
+      "head": "1ada0989f8d5daa42ad16ee64ca5aa1c4ab58a38",
+      "branch": "refs/heads/codex/pixel-vps-hardpin-build-20260826",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/pixel-vps-sidecar-20260826",
+      "head": "63a275b6a58fe500c12f3fe8a270ea76c4da932f",
+      "branch": "refs/heads/codex/pixel-vps-sidecar-20260826",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/plugin-manager-windows-paths-format-20260828",
+      "head": "d2ecc80e51ef150bd2db38efcf58d49714e253fd",
+      "branch": "refs/heads/codex/fix-plugin-manager-windows-paths-20260828",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/plugin-pty-shared-dep-20260827",
+      "head": "6d53ff9edb977e7b19a7c49c61ff7057ef9a4729",
+      "branch": "refs/heads/codex/fix-plugin-pty-shared-dependency",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/plugin-registry-encoding-fixture-20260828",
+      "head": "cbc483dc07f669d8686065657d2fdc912cdd2c67",
+      "branch": "refs/heads/codex/fix-plugin-registry-encoding-fixture-20260828",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/plugin-vision-context-fixture-20260828",
+      "head": "40d918510846821e5d9c91dee5449968dd261977",
+      "branch": "refs/heads/codex/fix-plugin-vision-context-fixture-20260828",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/pr-29248-rebase-20260826",
+      "head": "75db79550a12ddcf59fb0ed6167617ca45ee27b7",
+      "branch": "refs/heads/codex/pr29248-rebase-20260826",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/pr19799-evidence-a5d7d879",
+      "head": "8d81b4d86fe8b5c9d7f90e61c9378d0d2cfcef44",
+      "branch": "refs/heads/codex/pr19799-onboarding-mock-contract",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/pr20273-review-20260815",
+      "head": "8f10141b1f336ea7a832d15e359352754fb8015f",
+      "branch": null,
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/pr22546-current-restack-20260819",
+      "head": "c09b99284d711eea93a893e88ad1affc8848415a",
+      "branch": "refs/heads/codex/pr22546-current-restack-20260819",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/pr27103-p2-query-metadata-20260825",
+      "head": "d08f069ebeb8e8e543864c09ce55477dc6d5c305",
+      "branch": "refs/heads/codex/pr27103-p2-query-metadata-20260825",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/pr29098-ready-fix",
+      "head": "de92e89cec196d37a4474f12239ed6569d3a9600",
+      "branch": "refs/heads/codex/pr29098-ready-fix-20260826",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/production-hyperdrive-certification-v2-develop",
+      "head": "e2d5a803f39387307bb818f6d551e8a92f0f4e0b",
+      "branch": "refs/heads/codex/production-hyperdrive-certification-v2-develop",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/production-hyperdrive-certification-v2-main",
+      "head": "97d6ef28ca348454ac9a11bc5173bf9a410898df",
+      "branch": "refs/heads/codex/production-hyperdrive-certification-v2-main",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/provider-serving-truth-20260829",
+      "head": "651ed1c9e92e1bd0426aeb7cf3a0a4769de9d05e",
+      "branch": "refs/heads/codex/provider-serving-truth-stable-qa-20260830",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/provisioning-prompts-runtime-20260826",
+      "head": "717060edcf70a64767583b60c3778345b917b2f5",
+      "branch": "refs/heads/codex/provisioning-prompts-runtime-20260826",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/provisioning-worker-concurrency-current-20260827",
+      "head": "f7485b2f17ab0eb3f77d94c9c1a0809f42e8d5f3",
+      "branch": "refs/heads/codex/provisioning-worker-concurrency-current-20260827",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/release-a782-production-20260826",
+      "head": "0ac4bd70bcb6cc56fd9518bc1ea2f0529c8a7377",
+      "branch": "refs/heads/chore/release-a782-production-20260826",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/reminder-20186-current-head",
+      "head": "45811f77a98710007e00117ec122b71083b64acf",
+      "branch": null,
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/reminder-lifecycle-recovery-20870",
+      "head": "873959dbcc751aa9a7be0c8c5a5d3340564eb311",
+      "branch": "refs/heads/fix/reminder-lifecycle-recovery-20870",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/review-pr20338-20260815",
+      "head": "89b2575d738605cbe599cda3feb8577f839df4aa",
+      "branch": null,
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/scenario-json-envelope-29078-20260828",
+      "head": "ca75080a412162f79f0ce6fe3adef86904fa414e",
+      "branch": "refs/heads/codex/scenario-json-envelope-29078-20260828",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/scripts-runtime-skip-classifier-20260828",
+      "head": "2827e98fad2f32e438d1e1e731529bc27029e0d6",
+      "branch": "refs/heads/codex/scripts-runtime-skip-classifier-20260828",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/server-tests-baseline-repair-20260827",
+      "head": "c5fe1b112f486da2c9285d7edb7deea154651a1a",
+      "branch": "refs/heads/codex/server-tests-baseline-repair-20260827",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/shared-discord-integration-20315-20336",
+      "head": "4ec0b56a13fdc97d51abedbc5431951e0e5b92cc",
+      "branch": null,
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/shared-primary-intent-20330",
+      "head": "d84166bbf7df557cdb6a1da284e1de6439c761e0",
+      "branch": "refs/heads/fix/shared-primary-intent-20330",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/shared-primary-intent-20330-shaw-review",
+      "head": "4b958175276e42b45b097a8bbd30f408d32d40ef",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/shared-projection-staging-activation",
+      "head": "3300b9e7273437f7f0b11afa6ccabedf8b23912d",
+      "branch": "refs/heads/fix/shared-projection-staging-activation",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/shared-provider-timing-20127",
+      "head": "5afc068c4be88ebd65fbbf945d4ddab50d033e7a",
+      "branch": "refs/heads/fix/shared-provider-timing-20127",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/shared-reminder-lifecycle-receipts-20870",
+      "head": "5a44574456bb75727f46448fa1835d7ddaf71730",
+      "branch": "refs/heads/fix/shared-reminder-lifecycle-receipts-20870",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/shared-reminder-multichannel-20175",
+      "head": "05a666250fc5de2f2a5927228285cbb9dd46c87d",
+      "branch": "refs/heads/codex/shared-reminder-sync-20175",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/shared-reminder-relative-delay-20404",
+      "head": "ed6691971164ef0dff8bedea1d67eab6865afba6",
+      "branch": "refs/heads/fix/shared-reminder-relative-delay-20404",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/shared-reminder-sync-current",
+      "head": "ead4ee698bdf941383bdc7dcbda00ba5fd3d6c01",
+      "branch": "refs/heads/codex/shared-reminder-sync-current",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/shared-reminders-v1-current-20260815",
+      "head": "6f5ddd45d8eccd6ba51159724c475f9e51575a12",
+      "branch": "refs/heads/fix/shared-reminder-effect-receipts-20312",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/shared-telegram-latency-observability",
+      "head": "aff71e3a78f3bf2cb720f239ae993aad03945c57",
+      "branch": "refs/heads/fix/version-aware-worker-secrets",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/shared-todos-postmerge-d4845d",
+      "head": "d4845d272c16e65a39433ad3ebe92799afeadfcf",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/shared-transcript-fix-20452",
+      "head": "8107a23a8b761e76a81d96262bf11a7469f824d3",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/shared-v1-capability-audit-dd300",
+      "head": "dd300761e4d6209b59f8cd1350139bd8d8edfff6",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/shared-web-grounding-20213",
+      "head": "3df3a9633ca378fc6ed31d6a375b6ed9aa8763d8",
+      "branch": "refs/heads/codex/shared-web-grounding-20213",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/shell-sync-error-integrity-20260828",
+      "head": "05a81c39819d3d9b58de24b3a781295d4e6862e3",
+      "branch": "refs/heads/codex/shell-sync-error-integrity-20260828",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/stable-develop-integration-20260906",
+      "head": "8061525519b6e99af0931878901cf1cfd9a9e7fb",
+      "branch": "refs/heads/codex/eliza-reliability-followup-20260906",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/staging-personal-readonly-diagnostic-20260827",
+      "head": "c5beda44fade957e7b0549c10d1a741e6af81aea",
+      "branch": "refs/heads/codex/staging-personal-readonly-diagnostic-20260827",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/staging-proof-readiness-race-20260826",
+      "head": "19536bcea190f83a89c9a6eaf696bb5f8a54855a",
+      "branch": "refs/heads/codex/staging-proof-readiness-race-20260826",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/staging-renderer-api-boundary-20260826",
+      "head": "4c68a1e93bbec5cc3133f8506817583eb6d65ed7",
+      "branch": "refs/heads/codex/staging-renderer-api-boundary-20260826",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/steward-css-fixture-20260827",
+      "head": "1d1cd172f6dd6075ab20d3219dc87c37e6592d96",
+      "branch": "refs/heads/codex/steward-css-fixture-20260827",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/steward-provider-truth-20260826",
+      "head": "2018afa97e840582cfac5958ad1224a5aa9a3dd7",
+      "branch": "refs/heads/codex/steward-provider-truth-20260826",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/steward-providers-compression-20260826",
+      "head": "ed09f4bafc299ba0121c39baa4ab08efe76313a3",
+      "branch": "refs/heads/codex/steward-providers-compression-20260826",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/telegram-shared-account-hot-path-20095",
+      "head": "eb081ae93377dcfdb5b211798729b4428301f2c4",
+      "branch": "refs/heads/fix/telegram-shared-account-hot-path",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/twilio-voice-completion-19772",
+      "head": "5cf108f57a1bc1418197d1dcf5ffa520d610d077",
+      "branch": "refs/heads/fix/twilio-contextual-opening-19772",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/twilio-voice-recovery-21396",
+      "head": "0a2102978ad05c3a823c085db82fe6fa1d5c9fa6",
+      "branch": "refs/heads/fix/twilio-opening-cutoff-recovery",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/undated-todo-intent-20026",
+      "head": "f7ffeba6df6ecd01053304e9d3473686bc71d0b4",
+      "branch": "refs/heads/fix/undated-todo-intent-authority",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/view-hero-discovery-fix-20260827",
+      "head": "c04452fe2fb892614c22ea8a62888bbde06fcf04",
+      "branch": "refs/heads/codex/view-hero-discovery-fix-20260827",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/view-lifecycle-fixture-translation-provider-20260828",
+      "head": "e84e6067fbc0e1993a040ca9b3d65c1558feb125",
+      "branch": "refs/heads/codex/view-lifecycle-fixture-translation-provider-20260828",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/view-switch-speed-audit-20260827",
+      "head": "eaca601284dce67273fc06ab0d11ce6d1ddc9a34",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/vite-null-export-timeout-20260828",
+      "head": "cb160b720d8e369100bb71da0dbeee9210b30cd5",
+      "branch": "refs/heads/codex/fix-vite-null-export-timeout-20260828",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/voice-full-duplex-repin-executor-20260827",
+      "head": "de9ca63d267a9eea7a9316ea426e356aefc91b5f",
+      "branch": "refs/heads/codex/voice-full-duplex-repin-executor-20260827",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/wildcard-main-backport-20260815",
+      "head": "d399531fff34216e2e6036879c339616ec4a483e",
+      "branch": "refs/heads/fix/canonical-edge-additive-main",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/windows-profile-matrix-20260828",
+      "head": "7f9c2c444259b41c2b2e2ca58da4396ab2898c0d",
+      "branch": "refs/heads/codex/windows-profile-matrix-20260828",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/worker-deploy-concurrency-main-20260826",
+      "head": "d7da97e567412cff7ca90c201888cd282ccad600",
+      "branch": "refs/heads/codex/fix-worker-deploy-concurrency-main-20260826",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/worker-runner-selector-main-20260826",
+      "head": "b4d2f263205b8b7608031740b38283988f9dc83b",
+      "branch": "refs/heads/codex/fix-worker-runner-selector-main-20260826",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/workflow-contract-drift-20260827",
+      "head": "1f969a2bcf2eace37058e7e25e6a5d31a8e2554f",
+      "branch": "refs/heads/codex/workflow-contract-drift-20260827",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/workflow-editor-menuitem-20260828",
+      "head": "ed0c835963566f761b90d6b6511743aa5a032a58",
+      "branch": "refs/heads/codex/fix-workflow-editor-menuitem-fixture-20260828",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/workspace-scroll-a11y-20260827",
+      "head": "2c830bf6d81d03298608831c44ce3428deee46e1",
+      "branch": "refs/heads/codex/workspace-scroll-a11y-20260827",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/.codex/worktrees/zero-key-wallet-network-settings-20260828",
+      "head": "81141954fff33ff031df7ec9eda5d496c1ca1d1c",
+      "branch": "refs/heads/codex/fix-zero-key-wallet-network-settings-20260828",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-18463-join-state-machine",
+      "head": "28e4c063f10282accbd0d54985b061c798578f9b",
+      "branch": "refs/heads/codex/fix-18463-join-state-machine",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-android17-capabilities-20260825",
+      "head": "9b34e8e5364982b52b89855df90dc439c3d996f6",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-baseline",
+      "head": "1e63232fe08a25a7ebce3d408a6b986647b2a10f",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-elizaresearch",
+      "head": "3c539c9e0ab11a29ce1748a38fbb9a9ab2b53e66",
+      "branch": "refs/heads/feat/elizaresearch-reflow-graphic",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-elizaresearch-latest",
+      "head": "dd7190c50f4f8eb11700fc596368271b929d474f",
+      "branch": "refs/heads/nubs/elizaresearch-reflow-latest-test",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-develop-ui",
+      "head": "e02900ebe47c9ee6a0768f547fed32ad0006edc3",
+      "branch": "refs/heads/fix/notification-chat-interactions",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-fastdev-0812/repair-ios-cloud-0812",
+      "head": "60a1da4f753416aa48945b916e48940bbbd89eb5",
+      "branch": "refs/heads/fix/ios-cloud-runtime-policy-0812",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-feat-groupremind",
+      "head": "a229bb0337d75bdf002140a38458ca23b250fbf3",
+      "branch": "refs/heads/feat/group-reminders",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-ios-cartesia-intent",
+      "head": "26b9ea055e7ee22ff4a7c9d3f10011df781ca00d",
+      "branch": "refs/heads/fix/18317-ios-cartesia-system-voice",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-ios-voice-selftest",
+      "head": "4fc8c7844f3dbbe80526ebaeeeb9252a02719b6c",
+      "branch": "refs/heads/fix/18313-ios-local-voice-selftest",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-notification-cold-start",
+      "head": "db521ee6f4e7e5de4bcbd6c9033d015421a095e7",
+      "branch": "refs/heads/fix/18328-notification-cold-start-recovery",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-local-ai",
+      "head": "22b7888d550f8e3a2c1d6c84f1c65f31680ec3e5",
+      "branch": "refs/heads/fix/local-inference-readiness-truth",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-nubs-demo",
+      "head": "e35c4c159e12b8d5d6c932200b53a05ef749dce2",
+      "branch": "refs/heads/nubs/demo-night",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-oidc-work",
+      "head": "4b1a757afc493ecd1ed217a4cad60aac1c16a6d5",
+      "branch": "refs/heads/develop",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-wt-appcontrol",
+      "head": "5f19db53769198ddffb3af2d2a2ad8b23db99e1c",
+      "branch": "refs/heads/test/scenario-fixture-isolation",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-wt-barrier",
+      "head": "cc3fbcda92c14c3f03b78e0aa54693ef973d0cc3",
+      "branch": "refs/heads/fix/migration-barrier-fresh-ledger",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-wt-delivery",
+      "head": "55d6bf9f309a061739e1459d3f07f2ca90eec50a",
+      "branch": "refs/heads/fix/companion-device-readiness-barrier",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-wt-e2e",
+      "head": "77a63f1ae8a1d7f792ddf8e876f68ef9bdfde076",
+      "branch": "refs/heads/test/first-five-minutes-e2e-drift",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-wt-harness",
+      "head": "20f5fab88e67bbe011ed5e5bfe370cc6c61e7f0e",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-wt-inbox",
+      "head": "d89654cbcd8e4113683eafd54fc755fe36b13374",
+      "branch": "refs/heads/fix/inbox-chat-sort-tiebreak",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-wt-lint",
+      "head": "ba24fcf5eeaaee7f872467082883171c25f0568e",
+      "branch": "refs/heads/chore/lint-closure-2",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-wt-media",
+      "head": "4c6cf4bc0a3729ec69a73b6836338e6dc8bccffd",
+      "branch": "refs/heads/fix/inbound-media-review-findings",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-wt-parent",
+      "head": "e369595f81bf47904bbc98b3343236505ffc5937",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-wt-placeholder",
+      "head": "ffed6046991c23fd35f7cc3415932c6b96722c4b",
+      "branch": "refs/heads/fix/ambient-placeholder-silence",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-wt-scoping",
+      "head": "38e5daa4cdff58ea25510ee2032eabd03ef04837",
+      "branch": "refs/heads/fix/scenario-seed-owner-scoping",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-wt-rooms",
+      "head": "20f5fab88e67bbe011ed5e5bfe370cc6c61e7f0e",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-wt-speaker",
+      "head": "0170510c5081b49b08028792f46d8d9186276c95",
+      "branch": "refs/heads/docs/group-room-sim-gateway-env",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-wt-textsmall",
+      "head": "a9f9d566ee746df1b5391f0193579e8d8f901ff3",
+      "branch": "refs/heads/fix/scenario-unexpected-text-small",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-wt-todotext",
+      "head": "a25d31e8151acaac12389704b7ac0b6c68af46d6",
+      "branch": "refs/heads/fix/todo-confirmation-prose",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/Git/eliza-wt-tools",
+      "head": "ef10cfb172c73c5628db07bb1aa45f6a2bc70d6f",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/17172-chain-budget-port",
+      "head": "6ec71fc9b974d3d9f48212de78a167b120d22979",
+      "branch": "refs/heads/codex/17172-chain-budget-port",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/17172-final-626b",
+      "head": "6ac1922b2eafa6b61eaf52daebf01607d6a1d09a",
+      "branch": "refs/heads/codex/17172-final-626b",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/17172-final-d44b-preview",
+      "head": "ae8df2fb36e9bbadf5a96555aa86bd79ebf8bbd7",
+      "branch": "refs/heads/codex/17172-final-d44b-preview",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/17172-p1-lifecycle-ae8",
+      "head": "9bcb917b3e798d3cc3f0544d18b60c43486b5f7b",
+      "branch": "refs/heads/codex/17172-p1-lifecycle-ae8",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/aa667-ios-cloud-final",
+      "head": "aa6677ea695512d3af174b4c45eb97f4a6f92db5",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/17172-source-budget-port",
+      "head": "3d8de82cca2a5a0fecbab1c2eb3fa178bddbe819",
+      "branch": "refs/heads/codex/17172-source-budget-port",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/17172-test-fixtures-ae8",
+      "head": "a4045d7b02a8a43fd8dd872a5ad86718adc66a99",
+      "branch": "refs/heads/codex/17172-test-fixtures-ae8",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/agent-memory-test-vitest-44e",
+      "head": "8b13ef98cd0c5e4930cb8371316f5567f9787d58",
+      "branch": "refs/heads/codex/agent-memory-test-vitest",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/agent-pngjs-types-17729-clean",
+      "head": "a66695dcb81ba3baea74f0b132462f24d8555af6",
+      "branch": "refs/heads/fix/agent-pngjs-types-17729-clean",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/agent-memory-test-vitest-latest-44e",
+      "head": "44e6088774ea79bd2c0fa2aa004ecad181fdbbab",
+      "branch": "refs/heads/codex/agent-memory-test-vitest-44e",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/all-open-prs-integration-0804",
+      "head": "d866455e751e93e04e2cad2d3241aa094c2ece3c",
+      "branch": "refs/heads/codex/all-open-prs-integration-0804",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/all-open-prs-latest-0805",
+      "head": "f5b8305bbae7b39963689c3ddf1cdf6b89fb8b7b",
+      "branch": "refs/heads/codex/all-open-prs-latest-0805",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/all-open-prs-latest-0806",
+      "head": "b99716eb446856e900b8b2aa368ef2540d732756",
+      "branch": "refs/heads/codex/all-open-prs-latest-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/all-open-prs-latest-sync-0805",
+      "head": "54d4e823e84484cb9868456c0e988136c942cde3",
+      "branch": "refs/heads/codex/all-open-prs-latest-sync-0805",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/all-open-prs-latest-verified-0805",
+      "head": "963016c10c6addd3a4b5eeb04b8e441e6c507e02",
+      "branch": "refs/heads/codex/all-open-prs-latest-verified-0805",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/all-open-prs-latest2-verified-0805",
+      "head": "5e01384371ce2397fac37f44083409c30ef592ce",
+      "branch": "refs/heads/codex/all-open-prs-latest2-0805",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/all-open-prs-trial-17628-0804",
+      "head": "96b03a709ea4572a243afa11fb8bc5f4c5bfa394",
+      "branch": "refs/heads/codex/all-open-prs-trial-17628-0804",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/all-open-prs-publication-0805",
+      "head": "a0cc38f044333577de777ba811851cfad5f62f46",
+      "branch": "refs/heads/codex/all-open-prs-publication-0805",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/all-open-prs-trial-17631-0804",
+      "head": "4bff232e9cc91b1758c87d64e6b236ee548e4d4f",
+      "branch": "refs/heads/codex/all-open-prs-trial-17631-0804",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/app-all-views-semantic-18146",
+      "head": "c2382422e588564b32917cd093703db2add98ca3",
+      "branch": "refs/heads/test/app-all-views-semantic-18146",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/atomic-browser-pair-claim-0810",
+      "head": "f255fcd057a8bf845d5d978db4c80965d74d04a7",
+      "branch": "refs/heads/codex/atomic-browser-pair-claim-0810",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/audit-develop-59ff-0809",
+      "head": "0fa07693c19defa664361d2365e51559195260ea",
+      "branch": "refs/heads/fix/ci-consolidation-followup-18132",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/audit-pr18362-771e-0811",
+      "head": "771e603e767543b96e9fb295a8fe25cb72a1bb1d",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/autoheal-develop-base-17815",
+      "head": "a9b1412859f70d3e478f51d24347d4353cabd763",
+      "branch": "refs/heads/fix/autoheal-develop-base-17815",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/app-stop-coverage-2f9ac",
+      "head": "b0dde29176f147ffde869272c406a21044057c9e",
+      "branch": "refs/heads/codex/app-stop-coverage-2f9ac",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/base-agent-fixture-repro-18037",
+      "head": "69ecac0eacc511b1372c40b5cc1dbb6b1e948017",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/baseline-fixture-repair-18038-0808",
+      "head": "44b44573418e6b2832aabd4c398a97babaefb488",
+      "branch": "refs/heads/codex/fix-agent-fixture-contracts-18038-0808",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/browser-compact-chat-reserve-0808",
+      "head": "feca26914fe4f4b5c478f56250d842aa4a96b634",
+      "branch": "refs/heads/fix/browser-compact-chat-reserve",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/baseline-eb5-app-typecheck",
+      "head": "eb5a727a7f3db0fcfeba4d0d1c5038cda18c9b4c",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/baseline-eb5-typecheck",
+      "head": "eb5a727a7f3db0fcfeba4d0d1c5038cda18c9b4c",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/browser-native-outer-clip-0807",
+      "head": "9a4c98ccff5c30d16eb0922b0ea1320dde97a08d",
+      "branch": "refs/heads/codex/browser-native-outer-clip-0807",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/browser-native-true-overlay-0807",
+      "head": "fa398114b1aa884d1b57b8302f092a9d526121de",
+      "branch": "refs/heads/codex/browser-native-true-overlay-0807",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/browser-overlay-rebase-a217-0807",
+      "head": "7ff827c188d451bf976c102beabe1e484fe01cd0",
+      "branch": "refs/heads/codex/browser-overlay-rebase-a217-0807",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/builtin-calendar-default-0807",
+      "head": "211fdee565644d5d0e1d6a412f8aee17976fb90f",
+      "branch": "refs/heads/feat/builtin-calendar-default",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/builtin-calendar-default-publish-0807",
+      "head": "62ac8e80418481c46b16eef9307329e44fd27a5b",
+      "branch": "refs/heads/codex/demo-seeker-final-0807",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/calendar-video-typecheck-order-17721",
+      "head": "99af2c8c7dddb93a919bc71f0a81d938fe170c05",
+      "branch": "refs/heads/fix/calendar-video-typecheck-order-17721",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/cartesia-only-realtime-voice-0806",
+      "head": "af7b4bca2aad3cad72bc520e7b32fb800ef5b09d",
+      "branch": "refs/heads/codex/feat/thinking-orb-voice-polish",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/calendar-notes-cloud-demo",
+      "head": "b2b3e16b4369985552b4aca1c01394266d084214",
+      "branch": "refs/heads/codex/calendar-notes-cloud-demo",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/calendar-route-fix-44140",
+      "head": "1d380e743157f06d08f14318251c396fa2e7d082",
+      "branch": "refs/heads/codex/calendar-route-fix-44140",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/cloud-api-typecheck-fixtures-0804",
+      "head": "8b15d6c1b139b70e1cc138ac4ea0f0d79d35db8b",
+      "branch": "refs/heads/fix/cloud-api-typecheck-fixtures-0804",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/cloud-apps-matcher-20260731",
+      "head": "d4ae2c6bb8fdee7437e8da2184fc95dda60ce6b3",
+      "branch": "refs/heads/codex/cloud-apps-matcher-20260731",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/cloud-large-agent-upgrade-rebase-5188",
+      "head": "14c94f2d83908f210a1085f639f6a3ad9cef88f1",
+      "branch": "refs/heads/codex/replay-17172-final-5188",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/cloud-profile-owner-binding-18304",
+      "head": "fd7ceb97655fa07297abe85064bd29cc8c0c2824",
+      "branch": "refs/heads/fix/cloud-profile-owner-binding-18304",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/cloud-large-agent-upgrade-recovery-a10",
+      "head": "a10ef4d1ff0f875c80fd2312f1be0f3fac0acc0d",
+      "branch": "refs/heads/codex/recover-17172-postreboot-a10",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/contribution-skill-d893-0807",
+      "head": "d893b9f3180bd5c79bf12b404a9e11b1fd67efce",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/cloud-large-agent-upgrade-replay-394",
+      "head": "2fc20c254b96e8413b03a59318e7002826e5e730",
+      "branch": "refs/heads/codex/replay-17172-final-394",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/conversation-turn-serialization-0807",
+      "head": "f1d50a62504536166be9a3ba5a89155f93173821",
+      "branch": "refs/heads/codex/fix-conversation-turn-serialization-0807",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/current-demo-ae8-ui",
+      "head": "17e6ee94c0b30db73a8b8ee9d38459de47bb3ae5",
+      "branch": "refs/heads/codex/current-demo-ae8-ui",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/current-demo-final-5511",
+      "head": "cee0319a2b461e155cba2c62358305f41befc8d8",
+      "branch": "refs/heads/codex/current-demo-final-5511",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/current-demo-phone-cee",
+      "head": "44140a381f2a2e55ee637be9b08dd44d76b4e41a",
+      "branch": "refs/heads/codex/current-demo-phone-cee",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/default-eliza-character-0818",
+      "head": "51b9b2aeaeae41d007da95a78bd214aee892c54c",
+      "branch": "refs/heads/codex/default-eliza-character-0818",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/default-eliza-consumer-0821",
+      "head": "e17205ccf0d361903f451661561881f8628ff1ca",
+      "branch": "refs/heads/codex/default-eliza-consumer-0821",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/develop-baseline-1a84",
+      "head": "1a84f2860213a52cb385014c044268c178b85857",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/develop-ui-baseline-0805",
+      "head": "7a06f9fc09858c84aecf2bc8af2808d4663c9237",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/embedding-capability-unavailable-recall",
+      "head": "1ff83a9b3eaad24c2a41d10a6013ca417784f4d5",
+      "branch": "refs/heads/fix/embedding-capability-unavailable-recall",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/evidence-browser-audit-456c",
+      "head": "c58ecf919aa2455385cd0f5f5697e1fefaf1f342",
+      "branch": "refs/heads/codex/evidence-browser-audit-456c",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/direct-provider-ownership-7b5",
+      "head": "9ad3e339cdead22625100536cf8ab01982b43f91",
+      "branch": "refs/heads/codex/fix/direct-provider-ownership",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/evidence-browser-style-6249",
+      "head": "3915ff44e8f9a60fc76d659a3bcb7727572e441f",
+      "branch": "refs/heads/codex/evidence-browser-style-6249",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/duplicate-notification-banner-16460",
+      "head": "c190b01358f90b154d3134c189b45faedaf17050",
+      "branch": "refs/heads/codex/duplicate-notification-banner-16460",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/evidence-browser-style-b99c",
+      "head": "92ed9bfa116a094723468faab4d9246df9036bf9",
+      "branch": "refs/heads/codex/evidence-browser-style-b99c",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/evidence-browser-switcher-18153-6659",
+      "head": "e23db703c4ef36a8bc5082005fce70600383da82",
+      "branch": "refs/heads/codex/evidence-browser-switcher-18153-6659",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/evidence-browser-switcher-18153-before-6659",
+      "head": "93590886ddc5585e7c1dd74079a275e6e8a6e86c",
+      "branch": "refs/heads/codex/evidence-browser-switcher-18153-before-6659",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/evidence-pr17560-exact-0806",
+      "head": "8ad4bf9e520faf51100f5911def2042c58cfd6d3",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/evidence-pr17727-before-0806",
+      "head": "580cf1ef383a0651326265fa1e65b744459fd0ab",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/evidence-pr17564-exact-0806",
+      "head": "779d4678356529a7b3bea0b3612f1daee76c2dfe",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/evidence-pr17727-exact-0806",
+      "head": "0b742fcb1f213f16ce0bdcfb69d43801979b34d5",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/evidence-pr17849-35f6-0806",
+      "head": "32871878760f1e4c6b33f658f6660d6fb345979b",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/evidence-pr17849-latest-0806",
+      "head": "b6d7e90cba81d9b0adbf8a4ec6fde0e6d8acd744",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/evidence-pr17849-exact-0806",
+      "head": "662f097fda6ed7052c8b0fc1ccc6857d9f822ba5",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/evidence-pr17850-base-0806",
+      "head": "662f097fda6ed7052c8b0fc1ccc6857d9f822ba5",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/evidence-pr17850-exact-0806",
+      "head": "c8865e1299fe78245a395bbc7d05137a754ae5d5",
+      "branch": "refs/heads/codex/publish/ui-navigation-polish-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/evidence-pr17852-exact-0806",
+      "head": "fc5a897a21138ff96a0a3de9e809f370f57d90e0",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/final-restack-0804",
+      "head": "50b6ce01d7730c028dae28aabfb0e7b7317308bc",
+      "branch": "refs/heads/codex/final-restack-0804",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/final-demo-current-develop-0801",
+      "head": "9962ac47c5748ff619e03bf5f2f035168dca1699",
+      "branch": "refs/heads/fix/final-demo-current-develop-0801",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/final-publication-0804",
+      "head": "8461aafd7140985276b83f9abd95b470f5ddcd02",
+      "branch": "refs/heads/fix/lp3-paired-lan-stream-settlement",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/final-restack-latest-0804",
+      "head": "0e99ee98f7837a4f8a1317d1021f7352b74c3372",
+      "branch": "refs/heads/codex/final-restack-latest-0804",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/final-staging-ios-sim-ba289-0811",
+      "head": "ba28980808d702acf547f530e2adeecd291d7652",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-18313-offline-voice-0811",
+      "head": "cd0b03739283482f532e772204ccf92719affd0c",
+      "branch": "refs/heads/codex/fix-18313-ios-local-voice-selftest",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-18348-core-transcription-forward-0811",
+      "head": "77e50194270405c9ae76e6c4420f1536fa5c48f4",
+      "branch": "refs/heads/codex/fix-18348-core-transcription-forward-0811",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/final-ui-regression-repair-0801",
+      "head": "badd63aa152a2fe40495b43ac23210ac73f8d6ab",
+      "branch": "refs/heads/codex/final-ui-regression-repair-0801",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-18355-real-retrieval-regression-0811",
+      "head": "1ce36487b403d0fc34c4e5d00d3de8821778e014",
+      "branch": "refs/heads/codex/fix-18355-real-retrieval-regression",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-18363-sync-artifacts-cleanup-0811",
+      "head": "04f131dcb04ea1ec78faa87ad4c9f70ab0c42731",
+      "branch": "refs/heads/codex/fix-18363-sync-artifacts-cleanup",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-18365-electrobun-cloud-poll-0811",
+      "head": "7fb535bdf2248bb689064777e9c1f028bffcd652",
+      "branch": "refs/heads/fix/18365-electrobun-cloud-poll",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-18365-trusted-shell-cloud-0811",
+      "head": "a708b572335da379148abd6765c339377ddb88e0",
+      "branch": "refs/heads/codex/fix-trusted-shell-cloud-credential-18365",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-18368-steward-migration-0811",
+      "head": "0f42634231566542c85a6f87f162fbf0b4223b0c",
+      "branch": "refs/heads/codex/fix-steward-token-contamination-18368",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-18374-realtime-stop-0811",
+      "head": "ed2e46f85fbdee35cd03d0d614b25235b784108f",
+      "branch": "refs/heads/codex/fix-realtime-stop-voice-18374",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-18374-realtime-stop-publish-0811b",
+      "head": "8fd2f92c7bdeca4757c176d3777f435445028356",
+      "branch": "refs/heads/codex/fix-realtime-stop-voice-18374-final",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-agent-router-forwarded-host-0810",
+      "head": "1b92033a2e49c28a47332e549add19619ed32787",
+      "branch": "refs/heads/fix/agent-router-pairing-origin-18304",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-app-aesthetic-audit-project-propagation",
+      "head": "e9b3e9dff436d52bd841748161e9ab13af1f93e7",
+      "branch": "refs/heads/fix/app-aesthetic-audit-project-propagation",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-app-memory-cache-17806",
+      "head": "b853dfa963f59bb2a37fce39b1ada7ecf014e83c",
+      "branch": "refs/heads/fix/app-memory-cache-invalidation-17806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-agent-es2022-findlast-55f5",
+      "head": "f50aaff469493c1aea4171fae3b29ca6c9916360",
+      "branch": "refs/heads/codex/fix-agent-es2022-findlast-55f5",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-browser-background-refresh-timeout-18148",
+      "head": "4ce93c29a360669f6af657651be1c8191f33313c",
+      "branch": "refs/heads/fix/browser-background-refresh-timeout-18148",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-browser-switcher-style-18153",
+      "head": "750163ff8e52c1e714cd249ec00146ce30768910",
+      "branch": "refs/heads/fix/browser-switcher-style-18153",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-browser-wallet-origin-18125",
+      "head": "9bddaabc1f09dec2794e63615426f72303aeee70",
+      "branch": "refs/heads/fix/browser-wallet-origin-18125",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-character-gate-18098",
+      "head": "ae71d900916d26dbbea8654b6c7c8a726872f3b2",
+      "branch": "refs/heads/fix/character-gate-chat-local",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-ci-smoke-playwright-0809",
+      "head": "10163554a56f9ad10b99fd6e5cab2c809d66c164",
+      "branch": "refs/heads/fix/ci-smoke-playwright-browsers",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-cloud-agent-create-routing-18304",
+      "head": "21e28adccce79821e26b8915f696756a8bf084ad",
+      "branch": "refs/heads/codex/fix-cloud-agent-create-routing-18304",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-cloud-agent-lifecycle-created-fixture-18370",
+      "head": "666b4deb709c671f6212e124dc3c8ca7a3bb435f",
+      "branch": "refs/heads/fix/cloud-agent-lifecycle-created-fixture-18370",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-cloud-integration-harness-isolation",
+      "head": "717ff0d16189c18b8000877c81c2ecb656ab3313",
+      "branch": "refs/heads/fix/cloud-integration-harness-isolation",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-cloud-migrator-stack-0821",
+      "head": "51bfd041911040db958e5732cb4a9389fcb8a4b5",
+      "branch": "refs/heads/codex/fix-cloud-migrator-stack-0821",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-core-document-batch-embedding",
+      "head": "0ef7f3ddb3cdce192869554baa6039bf166aa900",
+      "branch": "refs/heads/fix/core-document-batch-embedding",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-cloud-api-typecheck-72d",
+      "head": "4e3efee0e22985c24de31a0300887d1209ab06e9",
+      "branch": "refs/heads/codex/fix-cloud-api-typecheck-72d",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-dedicated-proxy-credential-isolation-0810",
+      "head": "aea449a6e6c89c0bc963a860dffcdfda301ddd72",
+      "branch": "refs/heads/codex/fix-dedicated-proxy-credential-isolation-0810",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-homepage-swipe-18128",
+      "head": "4edfba526f92fec5c645892cd7a0ae69747c19eb",
+      "branch": "refs/heads/fix/homepage-swipe-wrapper-lint",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-macos-calendar-dev-bridge-0807",
+      "head": "13c65da951bee78785b71f0a2f14ef75294a035a",
+      "branch": "refs/heads/fix/macos-calendar-dev-bridge",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-local-inference-service-18135",
+      "head": "9b020731fb40ebbc296f10cebaee98f61c78508f",
+      "branch": "refs/heads/fix/local-inference-service-registration-18135",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-dev-vite-launch-handoff",
+      "head": "420a8f5f3d9bac0e266cad65cc4aa666798094d3",
+      "branch": "refs/heads/codex/fix-dev-vite-launch-handoff",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-macos-notification-permission-recovery",
+      "head": "4273eae679d6856ca5aa948fe81c158618052954",
+      "branch": "refs/heads/fix/macos-notification-permission-recovery",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-managed-static-token-injection-0810",
+      "head": "3f6117e23f63686a73abb97223e5bbcaa4f37ef8",
+      "branch": "refs/heads/codex/fix-managed-static-token-injection-0810",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-notes-delete-selector-contract-18377",
+      "head": "aac6252adfeeecfb4c48ac146860f6ab55a08c06",
+      "branch": "refs/heads/codex/fix-notes-delete-selector-contract-18377",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-plugin-compat-allowlist-drift",
+      "head": "e72127b362fea81edaef574b36cbd9a4cea4b9c1",
+      "branch": "refs/heads/fix/plugin-compat-allowlist-drift",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-plugin-elizacloud-image-warming-format",
+      "head": "c93fca2f44830bead2b634d48000c86892cca15e",
+      "branch": "refs/heads/fix/plugin-elizacloud-image-warming-format",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-pr18305-cold-boot-ci",
+      "head": "97c06f5fabad143e3e029af858c958c614a4fe45",
+      "branch": "refs/heads/codex/fix-pr18305-cold-boot-ci",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-pr18305-desktop-restore-ci",
+      "head": "dc7e99866b0c719aec56e9066cef9b520217428a",
+      "branch": "refs/heads/codex/fix-pr18305-desktop-restore-ci",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-provisioning-receipt-integrity-0811",
+      "head": "1b0c7b8b71ec8b1dfac28e9e5925136a24c5f0c2",
+      "branch": "refs/heads/codex/fix-provisioning-receipt-integrity-0811",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-recall-embedding-17728",
+      "head": "e9996e8e284897a1dcc034396fad1ac25d8ebeb9",
+      "branch": "refs/heads/fix/recall-embedding-escalation-17728",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-registry-dependency-17820",
+      "head": "aba7c4ce03290fb495d2f588221914d227d1c07e",
+      "branch": "refs/heads/codex/fix-registry-dependency-17820",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-risk-gate-external-payload-18159",
+      "head": "0dd6bd6e38fd2527ca23a2ff89a935983b24fc39",
+      "branch": "refs/heads/fix/risk-gate-external-payload-18159",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-scenario-agent-skills-bb2-0809",
+      "head": "2ff355943e6b8f8d9b16f43b7be1edecb6787ebb",
+      "branch": "refs/heads/fix/scenario-agent-skills-baseline",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-scenario-runner-filtered-typecheck-order-18144",
+      "head": "8c877cd44f0ae9c3842b4d3326c302c4887460f4",
+      "branch": "refs/heads/fix/scenario-runner-filtered-typecheck-order",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-trajectory-bridge-17730",
+      "head": "e894728095759837173a34b8259ce539de2eb2a0",
+      "branch": "refs/heads/fix/trajectory-bridge-ownership-17730",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-trigger-timezone-18099",
+      "head": "bcc08e07fc23ded7531d5df628485024d7020194",
+      "branch": "refs/heads/fix/trigger-timezone-18099",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-vite-eliza-source-18134-0809",
+      "head": "61868351a503a98dabf920a3cca23028fd23550c",
+      "branch": "refs/heads/fix/app-core-vite-source-resolution-18134",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fix-script-audit-inventory-55f5",
+      "head": "1f0145cfe0ea4b55b05c850f1b21eca2dd334f29",
+      "branch": "refs/heads/codex/fix-script-audit-inventory-55f5",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/fused-embedding-lifecycle-0806",
+      "head": "260495af8cbea1bdc1a03cd026f883cd7c1b3c23",
+      "branch": "refs/heads/fix/fused-embedding-bundle-lifecycle",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/gauss-pr-train-0811",
+      "head": "df8587a58673e68c1774cff943635c22cd49d8d7",
+      "branch": "refs/heads/codex/gauss-pr-train-0811",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/gauss-latest-qa-0811",
+      "head": "5f52203e7eb34ff8e8b0d2e9dd3164d281da08de",
+      "branch": "refs/heads/codex/gauss-latest-qa-0811",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/harden-native-cloud-token-boundary-0811",
+      "head": "854017115ad60678e04278e1fa5f5187962c13a1",
+      "branch": "refs/heads/codex/harden-native-cloud-token-boundary-0811",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/home-notification-gesture-e2e-17726",
+      "head": "6c11f0790e26325afc13a0e25713966f8828fb87",
+      "branch": "refs/heads/fix/home-notification-gesture-e2e-17726",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/homepage-drag-a11y-0808",
+      "head": "21e0477808a03edea0abd8937038531734a4ebe6",
+      "branch": "refs/heads/fix/homepage-drag-a11y-baseline",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/homepage-e2e-format-18160",
+      "head": "9623917e4bb3d06bba6f02c59571542dac0310cf",
+      "branch": "refs/heads/fix/homepage-e2e-format-18160",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/issue-29819-plugin-sql-route-manifest",
+      "head": "3f417154f43c05bf012f82a7a262c68f3b522e5d",
+      "branch": "refs/heads/codex/issue-29819-plugin-sql-route-manifest",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/integration-after-17695-0804",
+      "head": "19b178c00a9d668828a2da25783ab0f2df50d0b2",
+      "branch": "refs/heads/codex/integration-after-17695-0804",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/integration-preview-2652",
+      "head": "95cac6c7fcb51eab8c81d9306169cbd784e67987",
+      "branch": "refs/heads/codex/integration-preview-2652",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/kepler-create-outcome-04a98e6",
+      "head": "2fe14ab6f5eb8d8a33047e0b0b0377235fd9c8fb",
+      "branch": "refs/heads/fix/18304-cloud-agent-create-outcome",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/local-pr18152-after-18281-9294851",
+      "head": "6384deafc15513ea54629cbc0706a3af75fbab85",
+      "branch": "refs/heads/codex/local-pr18152-after-18281-9294851",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/lifeops-inactive-producer-gating-20260731",
+      "head": "29c31729b678aad23fae84576fbcfd97efced524",
+      "branch": "refs/heads/codex/lifeops-inactive-producer-gating-20260731",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/lp3-approved-1836-integration",
+      "head": "463277dd656e6518a788519d33cce2c32de4555a",
+      "branch": "refs/heads/codex/lp3-approved-1836-integration",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/lp3-auth-revalidation-0806",
+      "head": "160521c042a069e49de562b61819e566723524d1",
+      "branch": "refs/heads/codex/lp3-auth-revalidation-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/lp3-approved-c135-integration",
+      "head": "0d85c8dad323f107b5984196601c4754382a8962",
+      "branch": "refs/heads/codex/lp3-approved-c135-integration",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/lp3-color-persistence",
+      "head": "34c50d636c572dce6de2532a7234ac8e52ed0df9",
+      "branch": "refs/heads/codex/fix-lp3-color-persistence",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/lp3-demo-final-0802",
+      "head": "655aaabe2c245db9bd3a7734e7a2aa8bad09519c",
+      "branch": "refs/heads/codex/lp3-demo-final-0802",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/lp3-demo-latest-0803",
+      "head": "7058228a4c39abcf2b47035a18b7a0df87a7485b",
+      "branch": "refs/heads/codex/lp3-demo-latest-0803",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/lp3-lan-flashlight-final",
+      "head": "37680d402519738224fe008b21ff2888727551cd",
+      "branch": "refs/heads/codex/lp3-lan-flashlight-final",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/lp3-late-ephemeral-fix-0803",
+      "head": "a8e8ebcfaf9e21c0f6df23babd9e7f8a6a61a9d4",
+      "branch": "refs/heads/codex/simple-views-chat-only",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/lp3-pager-ci",
+      "head": "31fe7450396744fe2812cb43b4d4db3776ad7e02",
+      "branch": "refs/heads/fix/lp3-pager-finger-swipe",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/managed-pair-routing-config-0810",
+      "head": "b2e4d1c0be614706163204ca00601af11e3b7271",
+      "branch": "refs/heads/codex/managed-pair-routing-config-0810",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/lp3-pr-review-0803",
+      "head": "830a55f87048d9202e0af199227fb8224aca3c5d",
+      "branch": "refs/heads/codex/lp3-pr-review-0803",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/lp3-stale-error-retirement",
+      "head": "5c7a163dc5b83c0811a8750781677c19775989de",
+      "branch": "refs/heads/codex/lp3-stale-error-retirement",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/model-runtime-boundary-fix-0806",
+      "head": "662f097fda6ed7052c8b0fc1ccc6857d9f822ba5",
+      "branch": "refs/heads/codex/model-runtime-boundary-fix-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/notification-first-contact-v2-0804",
+      "head": "2961b02b33c4fc033cc42e0777074278c9c6fe2b",
+      "branch": "refs/heads/codex/fix-notification-first-contact-v2",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/notification-pager-v3-0804",
+      "head": "3122cc94233e358161fa416a9a945af13e5077ad",
+      "branch": "refs/heads/codex/fix-pager-first-contact-v3",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/model-catalog-shape",
+      "head": "cf94400c1343b08a4ecefc05fec91706b9a8d364",
+      "branch": "refs/heads/codex/fix-model-catalog-shape",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/notification-touch-material-0804",
+      "head": "6ea1e4302b794793b8b7d1d82f8e3b2f5d41a608",
+      "branch": "refs/heads/codex/fix-notification-touch-material",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/nubs-final-train-0810",
+      "head": "bf7fcd171b5f7006e7ec7d3864e9af7298f94a3b",
+      "branch": "refs/heads/codex/nubs-final-train-0810",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/nubs-final-train-v2-0810",
+      "head": "ce998e695478ac7eea025b5fc8df054dfb8ae5e1",
+      "branch": "refs/heads/codex/nubs-final-train-v2-0810",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/nubs-final-train-v3-0810",
+      "head": "02c00ceeb166f7a35d7062a25067bde2ff6990dc",
+      "branch": "refs/heads/codex/nubs-final-train-v3-0810",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/notification-polish-rebase",
+      "head": "1291380d1cdec1ecd5530a7cdf490d888322d4e8",
+      "branch": "refs/heads/codex/notification-polish-rebase",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/nubs-final-train-v4-0810",
+      "head": "a647cd5f2595a6d717f36213b26d034f9c0c6c66",
+      "branch": "refs/heads/codex/nubs-final-train-v4-0810",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/nubs-integration-0811",
+      "head": "7a6182f963368204864dd4e0fe3a17091e0c6124",
+      "branch": "refs/heads/codex/nubs-integration-0811",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/nubs-merge-train-0809",
+      "head": "14571ec58211341fc2b92bbf5571507f06305aa4",
+      "branch": "refs/heads/codex/nubs-merge-train-0809",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pair-direct-relay-final-env-0810",
+      "head": "8295ec191d2ba08909f30588a81572702dfeb7a9",
+      "branch": "refs/heads/codex/pair-direct-relay-final-env-0810",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/post-demo-action-latency-0807",
+      "head": "4c32dcfe8fc60392e764a431555597c84f0bc779",
+      "branch": "refs/heads/codex/post-demo-action-latency-0807",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/post-demo-final-blockers-0807",
+      "head": "e32c32c443e1ac2605ad8f6a7cc39bc1f0462a1b",
+      "branch": "refs/heads/codex/post-demo-action-rank1-followup-0807",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/post-demo-final-integration-0807",
+      "head": "a45266b482639a60fd2ae00b353b9ed138f3fe3c",
+      "branch": "refs/heads/codex/post-demo-final-integration-0807",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/per-client-view-routing-72d",
+      "head": "2fdbe7b02e6b987502e744fc390f7befd17a70d1",
+      "branch": "refs/heads/codex/per-client-view-routing-72d",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/post-demo-final-rebase-0807",
+      "head": "620449092edb53d29006e8e552e1eafd07144625",
+      "branch": "refs/heads/codex/post-demo-final-rebase-0807",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/post-demo-stabilization-0807",
+      "head": "0458354c618acf778086bf9c5848d133708be6c9",
+      "branch": "refs/heads/codex/post-demo-stabilization-final-0807",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/post-demo-stabilization-latest-0807",
+      "head": "68972f9264fcc3a15241dafd7881d8f7e43af658",
+      "branch": "refs/heads/codex/post-demo-stabilization-latest-0807",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/post-voice-small-prs-preflight-0806",
+      "head": "1d53ce60342381c29090ca0a37113d046f6094c7",
+      "branch": "refs/heads/codex/post-voice-small-prs-preflight-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr-17514-publish-0801",
+      "head": "48281189511f8ce3431cf5c4d6ae5f8fabd461a5",
+      "branch": "refs/heads/codex/fix/singular-navigation-action-replies",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr-17479-sync",
+      "head": "3c0fcc4e6b7da6dcd9185ab4bbb369b91b3f7f8c",
+      "branch": "refs/heads/fix/app-build-reliability",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr-17501-sync",
+      "head": "7a66cd9a22ab2b91023f17758cbab61ec70e443c",
+      "branch": "refs/heads/fix/honest-tool-failures",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr-17517-publish-0801",
+      "head": "bd0346ee3d7d64e3e8681e5370e9ee480cd94917",
+      "branch": "refs/heads/codex/fix/chat-interaction-voice-attachments",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr-17517-reviewed",
+      "head": "53fca18230ea351a8315fa3557dad4e5d29c7e3d",
+      "branch": "refs/heads/codex/pr-final-17517-reviewed",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr-17587-reviewed",
+      "head": "0fc4e2097aefccf1b11e77ec822a57d113da23bf",
+      "branch": "refs/heads/codex/pr-final-17587-reviewed",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr-17564-reviewed",
+      "head": "b680282f5a6a565c7b0c4006d87c07c7198fa524",
+      "branch": "refs/heads/codex/pr-17564-reviewed",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr-policy-self-tests-0804",
+      "head": "a479dc9befc87bf40f51dcbf0673f1d4b881e928",
+      "branch": "refs/heads/fix/pr-policy-self-tests-0804",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr-17715-calendar-runtime-j4-0804",
+      "head": "e42521b9da80b5d9e2db57feb5817685eb77e22e",
+      "branch": "refs/heads/fix/canonical-notes-calendar-demo-0804",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr-17622-stack-95ac",
+      "head": "66a8a9a544b8ff905721472ef28f908206eb5e3f",
+      "branch": "refs/heads/codex/rewrite-pr-17622-stack-95ac",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr-pager-review-fix-0803",
+      "head": "6f44ec6e7e98a363ed7cc6bd501cbec49ec156c4",
+      "branch": "refs/heads/codex/pr-pager-review-fix-0803",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr-stack-c135-rewrite",
+      "head": "b9c2aecb8d1d7b32a7b223a1428ad86afcf57e89",
+      "branch": "refs/heads/codex/pr-stack-c135-composed-proof",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr-stack-f7ad-0804",
+      "head": "f5cb11ba1a6679f028257cad0b1aad7e31d90825",
+      "branch": "refs/heads/codex/rebase-pr-stack-f7ad-0804",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr-stack-final-0802",
+      "head": "49e80618f22f81cacc0765338bc2f136ed7b86af",
+      "branch": "refs/heads/codex/fix/lp3-usb-runtime-loopback",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr-stack-publish-95ac",
+      "head": "6ea94e7070ddef7bf14b9a559f26fc3cb21f8d38",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr-stack-reviewed-0803",
+      "head": "e1b7dd7959e3b018dc40484b8f2932dc32f9abdf",
+      "branch": "refs/heads/codex/pr-stack-reviewed-0803",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr17519-current-proof",
+      "head": "9d53f14a378e5b178ebda24ea4ba3f65ec53ff51",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr17519-server-fixture-0804",
+      "head": "cf817a55b43080c78a30d6735639414e0b7c0c31",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr17781-main-sync-0806",
+      "head": "3623ceb246beea79e51bab202ffebc05ba67f2a5",
+      "branch": "refs/heads/codex/pr17781-main-sync-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr17559-audit-route-0804",
+      "head": "db7835a62cfaf19b0d1f3ae8757d52dec9a748b2",
+      "branch": "refs/heads/codex/pr17559-audit-route-0804",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr17819-sync-0806",
+      "head": "cfa0921e14b03f1bef120bbc5cff3c9f13d7ad34",
+      "branch": "refs/heads/codex/pr17819-sync-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr17816-sync-0806",
+      "head": "43f3f029abdb72ff3c3c1988c36205e35cec0856",
+      "branch": "refs/heads/codex/pr17816-sync-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr17837-rebase-0806",
+      "head": "149437f056ae97d827b74797d4cf4d768cc92811",
+      "branch": "refs/heads/fix/stale-agent-binding-join",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr17861-sync-0806",
+      "head": "acc7cedada07675294d90012ef01f16f77484985",
+      "branch": "refs/heads/codex/pr17861-sync-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr17879-sync-0806",
+      "head": "611ce6f581c04948cdc7b25186da34c918fea32f",
+      "branch": "refs/heads/codex/pr17879-sync-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr17827-sync-0806",
+      "head": "1ea48ca296dd8633158f6753b2e858f5a2d4bfb7",
+      "branch": "refs/heads/codex/pr17827-sync-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr17882-sync-0806",
+      "head": "ae19bf287367f767a06303f86bf430fdb1e4b9d3",
+      "branch": "refs/heads/codex/pr17882-sync-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr18136-seven-path",
+      "head": "310f5d6b213b4faf2cc070040ff10641ddcb6e0f",
+      "branch": "refs/heads/fix/ci-script-audit-residue",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr18168-amended-0809",
+      "head": "2a322c4cd57453c53531e82ed0a8a019256dafea",
+      "branch": "refs/heads/codex/pr18168-amended-0809",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr18169-closeout-0809",
+      "head": "b20f21eb2e8ccf8eaea8a20191df6e9efd82081e",
+      "branch": "refs/heads/codex/pr18169-closeout-0809",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr18169-preinit-lifecycle-repair-0811",
+      "head": "87a1ecb46b9af9af4eceafd177a11fd1f9a601a5",
+      "branch": "refs/heads/fix/pr18169-preinit-lifecycle-0811",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr18218-amended-0809",
+      "head": "e2c1a446beb91740335129d950a28771f1b173c9",
+      "branch": "refs/heads/codex/pr18218-amended-0809",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/pr18285-runtime-canonical-fix-0810",
+      "head": "602b8c8bad0f42ca57efb6ff124916753b15f104",
+      "branch": "refs/heads/codex/pr18285-runtime-canonical-fix-0810",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/preflight-pr18039-18034-0808",
+      "head": "f6de7433318c9938167f1198e5c83e2aa80ea8a2",
+      "branch": "refs/heads/codex/preflight-pr18039-18034-0808",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/prepare-pr18150-after-18168",
+      "head": "f006b52ea2bf5553515243497ab225ffc084dfa3",
+      "branch": "refs/heads/codex/prepare-pr18150-after-18168",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/prepare-pr18152-after-18281",
+      "head": "2841ac45ac75641206b3c39e83f5e65cf6957994",
+      "branch": "refs/heads/codex/prepare-pr18152-after-18281",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/prepare-pr18156-after-18281",
+      "head": "9b6e1be47aff0ba5ba6db2ff1528fda93b478ff1",
+      "branch": "refs/heads/codex/prepare-pr18156-after-18281",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/prepare-pr18162-after-18168",
+      "head": "8a2dd3b3e57d3d8eb1b4c39bef1043f28e93a79f",
+      "branch": "refs/heads/codex/prepare-pr18162-after-18168",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/prepare-pr18166-after-pr18152",
+      "head": "d594b650eb375ff0f4d867f3093e149e399c9725",
+      "branch": "refs/heads/codex/prepare-pr18166-after-pr18152",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/prepare-pr18167-after-18156",
+      "head": "b1db5e31aab215de5ecbd920bd9e3bd17f1ad2e6",
+      "branch": "refs/heads/codex/prepare-pr18167-after-18156",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/prepare-pr18168-after-18167",
+      "head": "3d4ceb5dc8579840fdaee987083f01f4d8d2f65b",
+      "branch": "refs/heads/codex/prepare-pr18168-after-18167",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/prepare-pr18169-after-pr18166",
+      "head": "6afb5b132f280adab5f688ff46bc7c4cab1cb02b",
+      "branch": "refs/heads/codex/prepare-pr18169-after-pr18166",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/prepare-pr18308-current-0811",
+      "head": "0667e9977aa49915fbfdaefc69a952f94ab720bc",
+      "branch": "refs/heads/codex/prepare-pr18308-current-0811",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/prepare-pr18318-current-0811",
+      "head": "95b8a3eec6c63e805f5663198eb3ed0637f1db37",
+      "branch": "refs/heads/codex/prepare-pr18318-current-0811",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/prepare-pr18335-current-0811",
+      "head": "a7282e9023ab215ef4529a9fb1f543cb9390c3bc",
+      "branch": "refs/heads/codex/prepare-pr18335-current-0811",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/preview-full-train-0807",
+      "head": "1d53ce60342381c29090ca0a37113d046f6094c7",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/preview-latest-9b22-2138-0804",
+      "head": "9b22dc5e1675fa2fd0ffbe5a7efc2db5248faa22",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/preview-latest-0b28-2138-0804",
+      "head": "0b285c1598638d09a503fa078bbcbf174de908dd",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/preview-final-50b-2138-0804",
+      "head": "50b6ce01d7730c028dae28aabfb0e7b7317308bc",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/preview-latest-cc9a-2138-0804",
+      "head": "cc9acba38a069bd345fbf694a23d74037b9162f8",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/preview-open-prs-2138-authoritative-0804",
+      "head": "f22b90f7b231e12fc044dd049cec0f43ae96ba6f",
+      "branch": "refs/heads/codex/preview-open-prs-2138-authoritative-0804",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/preview-open-prs-2138-0804",
+      "head": "f9be5d850df179ba4d164d23463d997a0036e6eb",
+      "branch": "refs/heads/codex/preview-open-prs-2138-0804",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/preview-open-prs-2138-final-0804",
+      "head": "b88f0e602b1852049c8e0b6d006597951981751c",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/preview-open-prs-2138-latest-0804",
+      "head": "ce24c40f82c8015509712a2720796002c4afc590",
+      "branch": "refs/heads/codex/preview-open-prs-2138-latest-0804",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/preview-open-prs-2138-v2-0804",
+      "head": "81ff0380e67fca8e386c4d4753284a2c615425a8",
+      "branch": "refs/heads/codex/preview-open-prs-2138-v2-0804",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/prompt-optimizer-tool-history-0807",
+      "head": "3b075047d71a764bc72be69371bf07b10b886817",
+      "branch": "refs/heads/codex/fix-prompt-optimizer-tool-history-0807",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/provider-credit-neutral-2f9ac",
+      "head": "ae071e0a66b9c1f679051d715079e22c000f3145",
+      "branch": "refs/heads/codex/provider-credit-neutral-2f9ac",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/publication-linear-final-v2-0806",
+      "head": "2e83ec79125895b8eebdb31739c11d1e0d905f51",
+      "branch": "refs/heads/codex/publish/pr17689-final-v2-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/publication-linear-final-0806",
+      "head": "8ea41057b0c8a58cd5aa9b228d48674c1301be44",
+      "branch": "refs/heads/codex/publication-linear-final-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/publish-18389-0811",
+      "head": "ee7b0689f1487d986e3e780e651e2a3e51240b48",
+      "branch": "refs/heads/codex/fix-cerebras-active-endpoint-18389",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/publish-pr18150-0810",
+      "head": "5c147f40aa9321ec5f72592a58d4fc4ba569fcee",
+      "branch": "refs/heads/codex/publish-pr18150-0810",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/publish-pr18162-amended-2e60-0810",
+      "head": "617c2b99215e6d859b2957c82d18305f39f18a96",
+      "branch": "refs/heads/codex/publish-pr18162-amended-2e60-0810",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/publish-contextual-view-routing",
+      "head": "1ac442018ff2ed4994a96aee60fa5c25f7ad6ea2",
+      "branch": "refs/heads/codex/fix/contextual-view-routing",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/publish-curated-demo-launcher",
+      "head": "4c1486dcddb5bd6195f540e11a46a4376c1e240c",
+      "branch": "refs/heads/codex/fix/curated-demo-launcher",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/publish-pr18166-0810",
+      "head": "0aa3c6c578859ab3c1a5d4fdd447991c409dd159",
+      "branch": "refs/heads/codex/publish-pr18166-0810",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/publish-pr18168-amended-2e60-0810",
+      "head": "496178433322aca0fa1066957924d996cd6554c4",
+      "branch": "refs/heads/codex/publish-pr18168-amended-2e60-0810",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/publish-pr18169-0810",
+      "head": "a83a2c682cd9568ec469700fb362da49a50cbde8",
+      "branch": "refs/heads/codex/publish-pr18169-0810",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/publish-pr18285-current-0810",
+      "head": "ccda50543a0657c87cbba2ee02fec21cddfc9ddb",
+      "branch": "refs/heads/codex/publish-pr18285-current-0810",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/qa-latest-2138",
+      "head": "ea90468528e63e7237a33f3ddc4870eae82da67b",
+      "branch": "refs/heads/codex/browser-workspace-interactions",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/release-candidate-publish-1dcd-0806",
+      "head": "1dcd08ba2e59f2fce29a1883fba5c14156e602c0",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/rebuild-pr-stack-0804",
+      "head": "ed87b6b304e2dabc28dec87fa20878bcb12123ed",
+      "branch": "refs/heads/codex/rebuilt/full-combined-0804",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/repair-pr18281-i18n-0811",
+      "head": "b4f2aaab0f14d683d8269315163ac1e692847f55",
+      "branch": "refs/heads/codex/repair-18281-permission-i18n",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/release-residue-18145",
+      "head": "4ad28ddab874e75aa10c755fbf1e3e8800bdf4dc",
+      "branch": "refs/heads/fix/release-check-residue-18145",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/repair-pr18357-duration-metadata-0811",
+      "head": "f6467e95cd1b39a0d5f26556167bd7445eeb226b",
+      "branch": "refs/heads/codex/repair-pr18357-duration-metadata",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/repair-pr18355-similes-0811",
+      "head": "12ac12d1d209a8fade34054861a4d5a123603b8c",
+      "branch": "refs/heads/codex/repair-18355-verb-first-similes",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/restack-18034-after-18039-0808",
+      "head": "afc7edf25d5606f2307b16e1255b21280553c9c4",
+      "branch": "refs/heads/codex/restack-18034-after-18039-0808",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/restack-18034-cb5-0808",
+      "head": "cad18e15cd7f501ee116af5f9a4061c6808ae009",
+      "branch": "refs/heads/codex/fix-browser-focus-handoff",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/restack-18034-rank1-0808",
+      "head": "cb9ad213906a86aadc9144c3a53cf933768f2013",
+      "branch": "refs/heads/codex/restack-18034-rank1-0808",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/restack-18034-rank1-1232-0808",
+      "head": "f337b0a5e01718f3c9007e49a68f140974bad3be",
+      "branch": "refs/heads/codex/restack-18034-rank1-1232-0808",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/restack-approved-demo-0804",
+      "head": "b88f0e602b1852049c8e0b6d006597951981751c",
+      "branch": "refs/heads/fix/lp3-paired-lan-stream-0804",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/restack-latest-linear-0804",
+      "head": "dd9f85c06b86e0f45cf696816db4fb0fead9dce9",
+      "branch": "refs/heads/codex/restack-latest-linear-0804",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/restack-pr17558-0806",
+      "head": "664f835d0eaac994a612bb34a2f66450e2b5d2b9",
+      "branch": "refs/heads/codex/restack-pr17558-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/restack-pr17517-0806",
+      "head": "4e77ad8d8ac1c26099150ea05090478a701cf05d",
+      "branch": "refs/heads/codex/restack-pr17517-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/restack-pr17519-0806",
+      "head": "0ead72c34dc6df6a4ba0ec0f0b928af4ccd7541f",
+      "branch": "refs/heads/codex/restack-pr17519-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/restack-pr17564-0805",
+      "head": "1083edd249f1a94da7e01dca7a7c8ac14af2a874",
+      "branch": "refs/heads/codex/restack-pr17564-0805",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/restack-pr17560-0806",
+      "head": "8bf9f3da9338353a0ad10b315a909a9777e5554a",
+      "branch": "refs/heads/codex/restack-pr17560-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/restack-pr17688-0806",
+      "head": "0e817ffd85e82b4993ad3b7de8a34ecec3de2600",
+      "branch": "refs/heads/codex/restack-pr17688-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/restack-pr17689-0806",
+      "head": "dde780a8acb954c2c3b4119e09c992e74991fe7d",
+      "branch": "refs/heads/codex/restack-pr17689-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/restack-pr17727-0806",
+      "head": "2229709c3399236b45c6816d8f130cff8588d97c",
+      "branch": "refs/heads/codex/restack-pr17727-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/restack-pr17714-0805",
+      "head": "fd4fb3d27e7822397b830db654687561165226f9",
+      "branch": "refs/heads/codex/restack-pr17714-0805",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/restack-pr17722-0805",
+      "head": "5c9e76a30b64eadd2511e9d9e8b8f2b794d56d2c",
+      "branch": "refs/heads/codex/restack-pr17722-0805",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/restack-pr17715-0806",
+      "head": "0ccf01f44e51f2095a43ac3a8c19661d18df0810",
+      "branch": "refs/heads/codex/restack-pr17715-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/restack-publication-0806",
+      "head": "fc28754cf5a85b0e149039f89c845b88ee56f3c7",
+      "branch": "refs/heads/codex/restack-publication-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/restack-slice-boundary-0806",
+      "head": "60fb076588d37382ec40ab80ce2106b82ed54617",
+      "branch": "refs/heads/codex/restack-slice-boundary-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/restack-publication-linear-0805",
+      "head": "5dcf682488261fd6cb0375c1c035de1a6f4bacea",
+      "branch": "refs/heads/codex/restack-publication-linear-0805",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/restack-slice-descendants-0806",
+      "head": "ca3d655ec947792e9e0e75a86c33d67594726c19",
+      "branch": "refs/heads/codex/restack-slice-descendants-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/review-17814-0805",
+      "head": "1c0164adc4e3541615a90ad5c6f5d71627d6fb01",
+      "branch": null,
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/review-pr18150-0811",
+      "head": "5c147f40aa9321ec5f72592a58d4fc4ba569fcee",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/review-pr18166-0811",
+      "head": "0aa3c6c578859ab3c1a5d4fdd447991c409dd159",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/review-pr18285-0811",
+      "head": "783d7f3b9008002ac0a602c9566c50e380c17874",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/review-pr18390-0811",
+      "head": "c4ab295bf65ae2d59b2d3d537b3fae7533946bc4",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/seeker-trajectory-audit-0807",
+      "head": "8a1f4e4e72ae7455bd5c4a241f2eef92175a647f",
+      "branch": "refs/heads/codex/seeker-trajectory-audit-0807",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/shared-full-character-0817",
+      "head": "3cc6eb1d2ebfd45ee6aada3a8e5ff686a6c8db4e",
+      "branch": "refs/heads/codex/shared-full-character-0817",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/schema-v4-canary-diagnostic-17217",
+      "head": "c9ecd817a356892ea76161a580856de40e98cfe5",
+      "branch": "refs/heads/codex/schema-v4-canary-diagnostic-17217",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/trajectory-bridge-contract-0804",
+      "head": "9fe7b65def38d566ad3d7909ef298e6490c2a24a",
+      "branch": "refs/heads/fix/trajectory-bridge-contract-0804",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/simple-views-plugin",
+      "head": "d7b2a7b15c451245b72c05afca344961b1556703",
+      "branch": "refs/heads/feat/simple-views-qa",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/simple-views-terminal-reconcile-0801",
+      "head": "15e13251026f3e410ecca469dff90fec58e2bde6",
+      "branch": "refs/heads/fix/simple-views-terminal-reconcile-0801",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/trajectory-bridge-structural-0807",
+      "head": "dee2e910637ab9efa66fa4b22644b081682234e7",
+      "branch": "refs/heads/fix/trajectory-bridge-structural-0807",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/trajectory-postturn-terminal-order-0807",
+      "head": "f7f4eed471658067f8b60f5678d71bcdc27d6f74",
+      "branch": "refs/heads/codex/trajectory-postturn-terminal-order-0807",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/transcript-persistence-order",
+      "head": "019cd05e4dbcbc437f147aebff8cff15c72d3a04",
+      "branch": "refs/heads/codex/fix-transcript-persistence-order",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/ui-polish-followup-0802",
+      "head": "1d2f2b1c189d2be0aa3589576a6d21494620b7ec",
+      "branch": "refs/heads/codex/fix/ui-polish-followup-0802",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/user-approval-candidate",
+      "head": "fb44fece51f970575edf1baf5593e8b0efe058b7",
+      "branch": "refs/heads/codex/user-approval-candidate",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/ui-simple-views",
+      "head": "fedc50a276d5dbcfbf00cbe990f10c934ab0d878",
+      "branch": "refs/heads/codex/simple-views-workbench",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/voice-dm-contract-0806",
+      "head": "4b6a5f2e70bc5a5df8e66c19667be7f3bbea613a",
+      "branch": "refs/heads/fix/voice-dm-direct-response-contract",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/views-runtime-interaction-context",
+      "head": "759257b585fbe628606b0c2c74d305b6dc0235d5",
+      "branch": "refs/heads/fix/views-runtime-interaction-context",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/voice-final-preflight-0806",
+      "head": "225f54828cc7d5e08e4300a06c3373dd439f4ae3",
+      "branch": "refs/heads/codex/voice-final-preflight-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/voice-final-rebase-0807",
+      "head": "8927115a1fa664fb2a9e65ed258ab4ff8bc2bf9e",
+      "branch": "refs/heads/codex/voice-final-rebase-0807",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/voice-foundation-clean-0806",
+      "head": "eda77bcae8cbfa5aa73e5834567ccac53da28da1",
+      "branch": "refs/heads/codex/fix/mac-voice-eot-wav-contract",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/voice-mac-qa-0806",
+      "head": "8d68c76fe6ec0f42a0b6ac45b5d47948c6ee0d4d",
+      "branch": "refs/heads/codex/fix-gemma4-eot-token-contract-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/voice-on-rollup-0806",
+      "head": "617552a64442edbdf5e51649d6f8cbca62562436",
+      "branch": "refs/heads/codex/voice-complete-on-rollup-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/voice-restack-final-0806",
+      "head": "54123612015ef7bd1a6a7204b8303c7dbfd1a4c7",
+      "branch": "refs/heads/codex/voice-restack-final-0806",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/voice-stability-dedup-0807",
+      "head": "0efd405e7216ed1b2ad66c8ed8d4d4228d726c91",
+      "branch": "refs/heads/codex/voice-stability-dedup-0807",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/eliza/.worktrees/workflow-topology-18147",
+      "head": "c005f7f646ae6ec3778837628a6997a4999d82a6",
+      "branch": "refs/heads/docs/workflow-topology-linter-18147",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/os/.eliza-source",
+      "head": "f6d8f8ee7f3006693113bbc313979724e603b355",
+      "branch": null,
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/wt-18348",
+      "head": "565ffce8bfb83620dbf11e4f198cb535b474a8f7",
+      "branch": "refs/heads/fix/on-demand-transcription-hardening",
+      "already_remote_before_archive": false
+    },
+    {
+      "path": "/Users/nubs/Git/wt-18350",
+      "head": "4e5fe92a135ea8002c9ac92e45f631e188e18974",
+      "branch": "refs/heads/fix/cloud-registry-host-404",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/wt-18351",
+      "head": "56769c4d18efa10c6bc1c2edc04a4aaf1c3a4968",
+      "branch": "refs/heads/fix/autoscaler-cap-proactive-headroom",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/wt-18413-sweep",
+      "head": "6156036f977a56b1e971b5743272b0b88ea25b4e",
+      "branch": "refs/heads/fix/artifact-sweep-enumeration-guard",
+      "already_remote_before_archive": true
+    },
+    {
+      "path": "/Users/nubs/Git/wt-18445fwd",
+      "head": "0e85ba5e4ab7f2e0028c3e354117f6af29c8d88d",
+      "branch": "refs/heads/fix/transcription-p1-repair-forward",
+      "already_remote_before_archive": false
+    }
+  ],
+  "destination": "elizaOS/eliza",
+  "scope": "Saved committed histories from September 13 cleanup; not a snapshot of all September 14 working changes."
+}
