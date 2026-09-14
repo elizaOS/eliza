@@ -1828,6 +1828,62 @@ describe("durable background memory", () => {
 		});
 	});
 
+	it("persists in-flight vectors after turn admissions close without revising evidence", async () => {
+		const { runtime, service, message } = await setup();
+		runtime.services.set("evaluator", [service]);
+		const messageId = message.id as NonNullable<Memory["id"]>;
+		const before = await runtime.getMemoryById(messageId);
+		const tasks = await runtime.getTasksByName("POST_TURN_MEMORY");
+		runtime.roomHandlerQueue.closeAdmissions("runtime-stop");
+		await runtime.updateMemory({ id: messageId, embedding: [1, 0, 0] });
+		expect(await runtime.getMemoryById(messageId)).toEqual({
+			...before,
+			embedding: [1, 0, 0],
+		});
+		expect(await runtime.getTasksByName("POST_TURN_MEMORY")).toEqual(tasks);
+	});
+
+	it.each([
+		{ content: { text: "I live in Paris." } },
+		{ entityId: stringToUuid("changed-source-owner") },
+		{ metadata: { note: "changed authored metadata" } },
+	])(
+		"retains closed-admission protection for mixed vector patches: %j",
+		async (patch) => {
+			const { runtime, service, message } = await setup();
+			runtime.services.set("evaluator", [service]);
+			const messageId = message.id as NonNullable<Memory["id"]>;
+			const before = await runtime.getMemoryById(messageId);
+			runtime.roomHandlerQueue.closeAdmissions("runtime-stop");
+			await expect(
+				runtime.updateMemory({
+					id: messageId,
+					embedding: [1, 0, 0],
+					...patch,
+				}),
+			).rejects.toMatchObject({ code: "ROOM_HANDLER_QUEUE_CLOSED" });
+			expect(await runtime.getMemoryById(messageId)).toEqual(before);
+		},
+	);
+
+	it("does not partially persist a mixed batch after admissions close", async () => {
+		const { runtime, service, message } = await setup();
+		runtime.services.set("evaluator", [service]);
+		const messageId = message.id as NonNullable<Memory["id"]>;
+		const second = { ...message, id: stringToUuid("second-vector-source") };
+		await runtime.upsertMemory(second, "messages");
+		const ids = [messageId, second.id];
+		const before = await runtime.getMemoriesByIds(ids, "messages");
+		runtime.roomHandlerQueue.closeAdmissions("runtime-stop");
+		await expect(
+			runtime.updateMemories([
+				{ id: messageId, embedding: [1, 0, 0] },
+				{ id: second.id, content: { text: "A corrected claim." } },
+			]),
+		).rejects.toMatchObject({ code: "ROOM_HANDLER_QUEUE_CLOSED" });
+		expect(await runtime.getMemoriesByIds(ids, "messages")).toEqual(before);
+	});
+
 	it.each(["update", "upsert", "delete"])(
 		"automatically retires source-derived facts on %s without another conversation",
 		async (operation) => {

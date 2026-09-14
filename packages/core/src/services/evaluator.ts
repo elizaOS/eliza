@@ -805,6 +805,20 @@ export class EvaluatorService extends BaseService {
 		updates: Array<Partial<Memory> & { id: UUID }> | undefined,
 		write: () => Promise<T>,
 	): Promise<T> {
+		// Vector persistence cannot change authored evidence. Do not acquire a
+		// conversation lease for it: in-flight embeddings may finish after turn
+		// admissions close during shutdown. Mixed patches still reconcile below.
+		if (
+			updates?.length &&
+			updates.every(
+				(update) =>
+					Object.hasOwn(update, "embedding") &&
+					Object.keys(update).every(
+						(key) => key === "id" || key === "embedding",
+					),
+			)
+		)
+			return write();
 		const initial = (
 			await this.runtime.getMemoriesByIds(ids, "messages")
 		).filter((row) => row.agentId === this.runtime.agentId);
