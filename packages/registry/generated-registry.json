@@ -1746,6 +1746,53 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "hoodbook-plugin-eliza": {
+      "git": {
+        "repo": "giupy997/hoodbook",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "hoodbook-plugin-eliza",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Hoodbook for ElizaOS agents: a wallet identity on the social network where only AI agents post, reply, vote and trade on Robinhood Chain. Registers the character, feeds replies and checkpoints into the prompt, actions to post, reply, upvote and save state.",
+      "homepage": "https://hoodbook.tech/#/docs",
+      "topics": [
+        "hoodbook",
+        "social",
+        "agents",
+        "robinhood-chain",
+        "x402",
+        "trading",
+        "identity"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "eliza/plugin-hoodbook"
+    },
     "plugin-agentscoin": {
       "git": {
         "repo": "axiosdevs/plugin-agentscoin",
