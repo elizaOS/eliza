@@ -19,6 +19,7 @@ import {
 import { AGENT_PRICING } from "../../../constants/agent-pricing";
 import { logger } from "../../../utils/logger";
 import { agentComputeFundingService } from "../../agent-compute-funding";
+import { settleAgentBringUpBilling } from "../../agent-compute-provision";
 import { startFundedAgentInTransaction } from "../../agent-compute-start";
 import { hasOpenAgentComputeFunding, stopFundedAgentInTransaction } from "../../agent-compute-stop";
 import { creditsService } from "../../credits";
@@ -982,6 +983,9 @@ export class SandboxPower {
           code: "AGENT_COMPUTE_RESUME_AUTHORITY_CHANGED",
         });
       }
+      // An error may represent a failed backup application after early
+      // adoption. A plain Docker resume would expose that partial runtime.
+      if (rec.status === "error") return { restoreRequired: true as const };
       if (!rec.bridge_port || !rec.web_ui_port)
         throw new ElizaError("Dedicated resume is missing retained ports", {
           code: "AGENT_COMPUTE_RESUME_AUTHORITY_CHANGED",
@@ -1033,6 +1037,15 @@ export class SandboxPower {
       };
     });
     if (!admission) return null;
+    if ("restoreRequired" in admission) {
+      const restored = await this.executeWake(agentId, orgId);
+      return {
+        success: restored.success,
+        containerStarted: restored.success,
+        reprovisioned: restored.reprovisioned,
+        ...(restored.error ? { error: restored.error } : {}),
+      };
+    }
     if (admission.alreadyRunning)
       return { success: true, containerStarted: true, reprovisioned: false };
     await creditsService.invalidateCreditCaches(orgId);
@@ -1406,32 +1419,6 @@ export class SandboxPower {
         error: "restoreBackupId and forceFreshBoot are mutually exclusive",
       };
     }
-    const fundingAuthority = await this.host.getAgentForWrite(agentId, orgId);
-    if (
-      !fundingAuthority ||
-      !isContainerBackedExecutionTier(fundingAuthority.execution_tier) ||
-      fundingAuthority.lifecycle_revision !== rec.lifecycle_revision
-    ) {
-      return {
-        success: false,
-        reprovisioned: false,
-        error: "Agent lifecycle changed before wake billing settlement",
-      };
-    }
-    rec = fundingAuthority;
-    const funding = await agentBillingRepository.settleAccruedBillingBeforeLifecycle(
-      agentId,
-      orgId,
-      new Date(),
-    );
-    if (funding.status === "insufficient_credits") {
-      return {
-        success: false,
-        reprovisioned: false,
-        error: "Insufficient credits to settle accrued agent compute charges",
-      };
-    }
-
     const gateSource = await this.host.getAgentForWrite(agentId, orgId);
     if (!gateSource || !isContainerBackedExecutionTier(gateSource.execution_tier)) {
       return {
@@ -1453,7 +1440,59 @@ export class SandboxPower {
     }
     rec = gateAuthority;
 
-    if (opts?.forceFreshBoot) {
+    // Reject an unusable backup before changing billing or allocating compute.
+    const gate = opts?.forceFreshBoot
+      ? null
+      : await runWakeRestoreIntegrityGate({
+          sandboxRecordId: rec.id,
+          agentName: rec.agent_name,
+          requestedBackupId: opts?.restoreBackupId,
+        });
+    if (gate && !gate.ok) {
+      return {
+        success: false,
+        reprovisioned: false,
+        error: formatWakeRestoreIntegrityError(gate.failure),
+        integrityFailure: gate.failure,
+      };
+    }
+
+    const fundingAuthority = await this.host.getAgentForWrite(agentId, orgId);
+    if (
+      !fundingAuthority ||
+      !isContainerBackedExecutionTier(fundingAuthority.execution_tier) ||
+      fundingAuthority.lifecycle_revision !== rec.lifecycle_revision ||
+      fundingAuthority.environment_revision !== rec.environment_revision ||
+      fundingAuthority.lifecycle_job_id !== rec.lifecycle_job_id ||
+      fundingAuthority.lifecycle_execution_generation !== rec.lifecycle_execution_generation ||
+      fundingAuthority.status !== rec.status ||
+      fundingAuthority.execution_tier !== rec.execution_tier
+    ) {
+      return {
+        success: false,
+        reprovisioned: false,
+        error: "Agent lifecycle changed before wake billing settlement",
+      };
+    }
+    rec = fundingAuthority;
+    const provider = await this.host.getProvider();
+    const funding =
+      provider.computeFundingCapability === "host-lease-v1"
+        ? await settleAgentBringUpBilling(rec)
+        : await agentBillingRepository.settleAccruedBillingBeforeLifecycle(
+            agentId,
+            orgId,
+            new Date(),
+          );
+    if (funding.status === "insufficient_credits") {
+      return {
+        success: false,
+        reprovisioned: false,
+        error: "Insufficient credits to settle accrued agent compute charges",
+      };
+    }
+
+    if (!gate) {
       logger.warn("[agent-sandbox] Wake with explicit forceFreshBoot: restore skipped by user", {
         agentId,
       });
@@ -1463,22 +1502,6 @@ export class SandboxPower {
       }
       logger.info("[agent-sandbox] Wake complete (explicit fresh boot)", { agentId });
       return { success: true, reprovisioned: true, freshBoot: true };
-    }
-
-    // Gate BEFORE any compute side effect: on failure nothing has been
-    // provisioned or torn down, so the row simply stays `sleeping`.
-    const gate = await runWakeRestoreIntegrityGate({
-      sandboxRecordId: rec.id,
-      agentName: rec.agent_name,
-      requestedBackupId: opts?.restoreBackupId,
-    });
-    if (!gate.ok) {
-      return {
-        success: false,
-        reprovisioned: false,
-        error: formatWakeRestoreIntegrityError(gate.failure),
-        integrityFailure: gate.failure,
-      };
     }
 
     // Restore through provision's explicit from-backup path whenever the gate

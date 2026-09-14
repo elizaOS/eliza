@@ -1559,6 +1559,24 @@ test("failed-restore admission keeps its paid container and requires a verified 
   expect(replay.window.id).toBe(next.window.id);
   expect(replay.retained).toBe(true);
   expect(await renewalState(org)).toEqual(once);
+  const { settleAgentBringUpBilling } = await import("./agent-compute-provision");
+  expect(await settleAgentBringUpBilling(replay.agent)).toEqual({
+    status: "already_billed_recently",
+  });
+  expect(await renewalState(org)).toEqual(once);
+  await expect(
+    settleAgentBringUpBilling({
+      ...replay.agent,
+      environment_revision: replay.agent.environment_revision + 1,
+    }),
+  ).rejects.toMatchObject({ code: "AGENT_COMPUTE_PROVISION_AUTHORITY_CHANGED" });
+  await expect(
+    settleAgentBringUpBilling({
+      ...replay.agent,
+      lifecycle_execution_generation: crypto.randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: "AGENT_COMPUTE_PROVISION_AUTHORITY_CHANGED" });
+  expect(await renewalState(org)).toEqual(once);
 });
 
 if (sshFixturePath) {
@@ -2004,19 +2022,35 @@ if (sshFixturePath) {
         "ensureRuntimeAgentStarted",
       ).mockResolvedValue(null);
       const backupId = "65000000-0000-4000-8000-000000000030";
-      const backup = spyOn(agentSandboxesRepository, "getBackupById").mockResolvedValue({
+      const backupRow = {
         id: backupId,
         sandbox_record_id: agentId,
-        snapshot_type: "pre-shutdown",
+        snapshot_type: "pre-shutdown" as const,
         state_data: restorePayload,
-        state_data_storage: "inline",
+        state_data_storage: "inline" as const,
         state_data_key: null,
         size_bytes: JSON.stringify(restorePayload).length,
-        backup_kind: "full",
+        backup_kind: "full" as const,
         parent_backup_id: null,
         content_hash: null,
         created_at: new Date(),
-      });
+      };
+      const backup = spyOn(agentSandboxesRepository, "getBackupById").mockResolvedValue(backupRow);
+      // The stored backup is a fixed, freshly verified fixture. The real wake
+      // gate must select it; the test does not claim cryptographic verification.
+      const stored = {
+        ...backupRow,
+        verification_status: "verified",
+        verified_at: new Date(),
+        verification_error: null,
+      } as import("../../db/schemas/agent-sandboxes").StoredAgentSandboxBackup;
+      const storedById = spyOn(agentSandboxesRepository, "getStoredBackupById").mockResolvedValue(
+        stored,
+      );
+      const storedLatest = spyOn(
+        agentSandboxesRepository,
+        "getLatestStoredBackup",
+      ).mockResolvedValue(stored);
       const reconstruct = spyOn(
         agentSandboxesRepository,
         "getReconstructedBackupState",
@@ -2026,10 +2060,7 @@ if (sshFixturePath) {
           "UPDATE agent_sandboxes SET status='provisioning',environment_revision=1,database_status='ready',database_uri='postgres://fixture.invalid/retained',environment_vars=$2,quota_admission_scope='trusted_internal' WHERE id=$1",
           [agentId, JSON.stringify({ ELIZA_API_TOKEN: retryToken })],
         );
-        const failed = await retryService.provision(agentId, org, {
-          kind: "from-backup",
-          backupId,
-        });
+        const failed = await retryService.executeWake(agentId, org, { restoreBackupId: backupId });
         expect(failed.success).toBe(false);
         expect(failed.error).toContain("State restore failed: HTTP 500");
         const failedRec = (await agentSandboxesRepository.findByIdAndOrg(agentId, org))!;
@@ -2042,20 +2073,32 @@ if (sshFixturePath) {
         expect(
           (await ssh.exec(`${docker} cp ${containerId}:/tmp/stop-marker - | tar -xO`)).trim(),
         ).toBe(marker);
+        const beforeRejectedBackup = await renewalState(org);
+        storedById.mockResolvedValueOnce(undefined);
+        const rejectedBackup = await retryService.executeWake(agentId, org, {
+          restoreBackupId: crypto.randomUUID(),
+        });
+        expect(rejectedBackup.success).toBe(false);
+        expect(rejectedBackup.integrityFailure?.kind).toBe("backup-not-found");
+        expect(await renewalState(org)).toEqual(beforeRejectedBackup);
+        expect(restoreRequests).toBe(1);
         await fixture.query("UPDATE organizations SET credit_balance=0 WHERE id=$1", [org]);
         const unpaidBefore = await renewalState(org);
-        expect(
-          (await retryService.provision(agentId, org, { kind: "from-backup", backupId })).success,
-        ).toBe(false);
-        expect(await renewalState(org)).toEqual(unpaidBefore);
+        expect((await retryService.executeResume(agentId, org)).success).toBe(false);
+        const unpaidAfter = await renewalState(org);
+        // Accrued-debt settlement can append a zero-dollar audit entry even
+        // when new admission is denied. No funds or funding windows may change.
+        expect({ ...unpaidAfter, ledger: [] }).toEqual({ ...unpaidBefore, ledger: [] });
+        const priorLedgerIds = new Set(unpaidBefore.ledger.map((entry) => entry.id));
+        for (const entry of unpaidAfter.ledger) {
+          if (!priorLedgerIds.has(entry.id)) expect(Number(entry.amount)).toBe(0);
+        }
         expect(restoreRequests).toBe(1);
         expect(
           (await ssh.exec(`${docker} inspect --format '{{.State.Running}}' ${containerId}`)).trim(),
         ).toBe("false");
         await fixture.query("UPDATE organizations SET credit_balance=1 WHERE id=$1", [org]);
-        expect(
-          (await retryService.provision(agentId, org, { kind: "from-backup", backupId })).success,
-        ).toBe(true);
+        expect((await retryService.executeResume(agentId, org)).success).toBe(true);
         expect(creates).toBe(0);
         expect(restoreRequests).toBe(2);
         expect(
@@ -2075,6 +2118,8 @@ if (sshFixturePath) {
         ensure.mockRestore();
         backup.mockRestore();
         reconstruct.mockRestore();
+        storedById.mockRestore();
+        storedLatest.mockRestore();
         await restoreServer.stop(true);
       }
       const runningRecord = await agentSandboxesRepository.findByIdAndOrg(agentId, org);
