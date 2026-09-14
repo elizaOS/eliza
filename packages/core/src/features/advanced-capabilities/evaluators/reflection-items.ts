@@ -72,7 +72,10 @@ import {
 	factClaimsEquivalent,
 } from "../fact-keywords.ts";
 import { recordFactCandidate } from "./_factCandidates.ts";
-import { reconcileFactEvidence } from "./extraction-reconciliation.ts";
+import {
+	reconcileFactEvidence,
+	reconcileSuccessEvidence,
+} from "./extraction-reconciliation.ts";
 import {
 	type AddCurrentOp,
 	type AddDurableOp,
@@ -1685,6 +1688,7 @@ export const successEvaluator: Evaluator<SuccessOutput, SuccessPrepared> = {
 	name: "success",
 	incremental: true,
 	background: true,
+	reconcileEvidence: reconcileSuccessEvidence,
 	description: "Evaluates whether user task is complete this turn.",
 	priority: EvaluatorPriority.REFLECTION_SUCCESS,
 	schema: successSchema,
