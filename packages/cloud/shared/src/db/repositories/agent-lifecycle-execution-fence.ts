@@ -4,7 +4,7 @@ import {
   parsePreparedStopBackup,
   preparedStopMatches,
   preparedStopSource,
-} from "../../lib/services/eliza-sandbox/backup/prepared-stop";
+} from "../agent-compute-stop-backup-proof";
 import type { DbTransaction } from "../client";
 import { agentComputeStopIntents } from "../schemas/agent-compute-stop-intents";
 import { agentSandboxes } from "../schemas/agent-sandboxes";

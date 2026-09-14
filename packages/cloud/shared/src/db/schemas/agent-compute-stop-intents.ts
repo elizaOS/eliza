@@ -46,7 +46,7 @@ export const agentComputeStopIntents = pgTable(
     job_id: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
     prepared_backup:
       jsonb("prepared_backup").$type<
-        import("../../lib/services/eliza-sandbox/backup/prepared-stop").PreparedStopBackup
+        import("../agent-compute-stop-backup-proof").PreparedStopBackup
       >(),
     attempts: integer("attempts").notNull().default(0),
     last_error: text("last_error"),
