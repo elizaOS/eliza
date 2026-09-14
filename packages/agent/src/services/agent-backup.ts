@@ -24,6 +24,12 @@ import {
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveConfigPath, resolveStateDir } from "../config/paths.ts";
 import {
+  AGENT_BACKUP_AUTHORITY_DIRECTORY,
+  INITIAL_AGENT_BACKUP_GENERATION,
+  isBackupAuthorityPath,
+  withAgentBackupAuthority,
+} from "./agent-backup-authority.ts";
+import {
   AGENT_BACKUP_V2_PGLITE_CAPTURE_LIMITS,
   type PglitePhysicalPreflight,
   preflightPglitePhysicalDirectory,
@@ -84,6 +90,7 @@ export interface AgentBackupManifest {
   format: "elizaos.agent-backup";
   createdAt: string;
   agentId: string;
+  restoreGeneration?: string;
   components: {
     database: AgentBackupDatabaseComponent;
     media: AgentBackupFileSet;
@@ -574,6 +581,7 @@ function baseStateFileInclude(relativePath: string): boolean {
   if (relativePath === "skills/.cache/catalog.json") return false;
   const first = relativePath.split("/")[0];
   if (
+    first === AGENT_BACKUP_AUTHORITY_DIRECTORY ||
     first === MEDIA_DIR_NAME ||
     first === BACKUPS_DIR_NAME ||
     first === MODELS_DIR_NAME ||
@@ -1220,6 +1228,22 @@ export async function createAgentSnapshot(
   config: ElizaConfig,
   options?: { signal?: AbortSignal; maxRawBytes?: number; maxFiles?: number },
 ): Promise<AgentBackupStateData> {
+  return withAgentBackupAuthority(resolveStateDir(), async (authority) =>
+    captureAgentSnapshot(
+      runtime,
+      config,
+      await authority.generation(runtime.agentId),
+      options,
+    ),
+  );
+}
+
+async function captureAgentSnapshot(
+  runtime: IAgentRuntime | AgentRuntime,
+  config: ElizaConfig,
+  restoreGeneration: string,
+  options?: { signal?: AbortSignal; maxRawBytes?: number; maxFiles?: number },
+): Promise<AgentBackupStateData> {
   // Bound what THIS process materializes. Without it the five captures below
   // run concurrently with no size awareness at all, and the downstream Cloud
   // check only ever sees a payload this heap already paid for (#17172 §1).
@@ -1310,6 +1334,7 @@ export async function createAgentSnapshot(
     format: "elizaos.agent-backup",
     createdAt: new Date().toISOString(),
     agentId: runtime.agentId,
+    restoreGeneration,
     components: {
       database,
       media,
@@ -1420,7 +1445,19 @@ export async function createLocalAgentBackup(
   runtime: IAgentRuntime | AgentRuntime,
   config: ElizaConfig,
 ): Promise<LocalAgentBackupMetadata> {
-  const snapshot = await createAgentSnapshot(runtime, config);
+  return withAgentBackupAuthority(resolveStateDir(), async (authority) => {
+    const snapshot = await captureAgentSnapshot(
+      runtime,
+      config,
+      await authority.generation(runtime.agentId),
+    );
+    return persistLocalAgentBackup(snapshot);
+  });
+}
+
+async function persistLocalAgentBackup(
+  snapshot: AgentBackupStateData,
+): Promise<LocalAgentBackupMetadata> {
   const envelope = await encryptLocalBackupEnvelope(snapshot);
   const fileName = safeBackupFileName(envelope.createdAt, envelope.agentId);
   const filePath = resolveLocalBackupPath(fileName);
@@ -1796,6 +1833,62 @@ function assertManifest(snapshot: AgentBackupStateData): AgentBackupManifest {
 }
 
 export async function restoreAgentSnapshot(
+  runtime: IAgentRuntime | AgentRuntime,
+  snapshot: AgentBackupStateData,
+): Promise<{ restored: true; requiresRestart: true }> {
+  return withAgentBackupAuthority(resolveStateDir(), async (authority) => {
+    const manifest = assertManifest(snapshot);
+    const current = await authority.generation(runtime.agentId);
+    if (
+      (manifest.restoreGeneration ?? INITIAL_AGENT_BACKUP_GENERATION) !==
+      current
+    )
+      throw new ElizaError(
+        "[AgentBackup] This snapshot predates a data-deletion boundary and cannot be restored",
+        {
+          code: "AGENT_BACKUP_GENERATION_RETIRED",
+        },
+      );
+    const sets = [
+      manifest.components.stateFiles,
+      manifest.components.vault,
+      manifest.components.media,
+    ];
+    if (
+      sets.some((set) =>
+        set.files.some((file) => isBackupAuthorityPath(file.path)),
+      )
+    )
+      throw new ElizaError(
+        "[AgentBackup] A snapshot cannot replace backup authority",
+        {
+          code: "AGENT_BACKUP_AUTHORITY_INVALID",
+        },
+      );
+    const stateDir = path.resolve(resolveStateDir());
+    const authorityRoot = path.join(stateDir, AGENT_BACKUP_AUTHORITY_DIRECTORY);
+    const databaseRoot =
+      manifest.components.database.kind === "postgres-rows"
+        ? null
+        : path.resolve(await resolvePgliteDir());
+    const configTarget = path.resolve(resolveConfigPath());
+    if (
+      (databaseRoot &&
+        (isWithin(databaseRoot, authorityRoot) ||
+          isWithin(authorityRoot, databaseRoot))) ||
+      isWithin(authorityRoot, configTarget)
+    )
+      throw new ElizaError(
+        "[AgentBackup] Restore targets overlap backup authority; configure independent database and configuration paths",
+        {
+          code: "AGENT_BACKUP_AUTHORITY_INVALID",
+        },
+      );
+    return restoreAuthorizedAgentSnapshot(runtime, snapshot);
+  });
+}
+
+async function restoreAuthorizedAgentSnapshot(
   runtime: IAgentRuntime | AgentRuntime,
   snapshot: AgentBackupStateData,
 ): Promise<{ restored: true; requiresRestart: true }> {

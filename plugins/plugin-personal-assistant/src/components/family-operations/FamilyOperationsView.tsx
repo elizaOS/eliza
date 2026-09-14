@@ -38,6 +38,8 @@ import {
 } from "react";
 import { nextFamilyPacketPeriod } from "../../lifeops/family-workflows/period.js";
 import { defaultFamilyOperationsAdapter } from "./adapter.js";
+import type { FamilyDeletionAdapter } from "./deletion-adapter.js";
+import { FamilyDeletionPanel } from "./FamilyDeletionPanel.js";
 import { PacketDraftEditor } from "./PacketDraftEditor.js";
 import type {
   FamilyOperationsAdapter,
@@ -1270,10 +1272,12 @@ function PacketPanel({
 
 export interface FamilyOperationsViewProps {
   adapter?: FamilyOperationsAdapter;
+  deletionAdapter?: FamilyDeletionAdapter;
 }
 
 export function FamilyOperationsView({
   adapter = defaultFamilyOperationsAdapter,
+  deletionAdapter,
 }: FamilyOperationsViewProps) {
   const [tab, setTab] = useState<Tab>("agreements");
   const [snapshot, setSnapshot] = useState<FamilyOperationsSnapshot | null>(
@@ -1382,6 +1386,7 @@ export function FamilyOperationsView({
           {exportError ? <Unavailable message={exportError} /> : null}
           {exportNotice ? <p role="status">{exportNotice}</p> : null}
         </header>
+        <FamilyDeletionPanel adapter={deletionAdapter} onChange={refresh} />
         <nav
           aria-label="Family Operations sections"
           style={{

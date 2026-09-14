@@ -492,5 +492,9 @@ recheck admission before returning private data, including PDF reads that began
 before revocation. Export audit writes also require active admission. The planner
 reports revoked agreement context as explicitly unavailable while preserving
 unrelated work; it does not substitute an empty, apparently healthy pin set.
-These internal guards do not themselves expose a delete endpoint or establish a
-backup-retention policy.
+Owners review and confirm deletion in Family Operations through the private
+`/api/lifeops/family-workflows/deletion` routes. Confirmation binds the complete
+reviewed snapshot to an explicit backup-retention choice. A durable journal
+allows interrupted private-file cleanup to resume; backup restore generations
+are retired before primary removal. The job remains `backup_pending` until
+eligible archive removal is separately implemented and verified.
