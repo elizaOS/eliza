@@ -48,6 +48,7 @@ import concurrent.futures
 import contextlib
 import fcntl
 import json
+import datetime
 import os
 from pathlib import Path
 import re
@@ -113,7 +114,7 @@ def inspect(container_id, authorization=None):
         return None
     require(ids == [container_id], 'container_identity_mismatch')
     state = json.loads(docker('inspect', '--format',
-        '{"id":{{json .Id}},"labels":{{json .Config.Labels}},"running":{{json .State.Running}},"restart":{{json .HostConfig.RestartPolicy.Name}}}', container_id))
+        '{"id":{{json .Id}},"labels":{{json .Config.Labels}},"running":{{json .State.Running}},"restart":{{json .HostConfig.RestartPolicy.Name}},"startedAt":{{json .State.StartedAt}}}', container_id))
     require(state['id'] == container_id, 'container_identity_mismatch')
     labels = state['labels'] or {}
     require(labels.get('ai.elizaos.managed-by') == 'eliza-cloud', 'unmanaged_container')
@@ -178,11 +179,11 @@ def grant(authorization):
             require(authorization['agentId'] == previous['agentId'] and
                 authorization['organizationId'] == previous['organizationId'], 'funding_owner_changed')
             require(authorization['issuedAtMs'] >= previous['issuedAtMs'], 'stale_authorization')
-            require(authorization['paidUntilMs'] > previous['paidUntilMs'], 'funding_cannot_shorten')
             if expired(old):
                 require(not state['running'], 'expired_container_must_be_stopped')
                 require(authorization['paidFromMs'] <= authorization['issuedAtMs'], 'funding_not_started')
             else:
+                require(authorization['paidUntilMs'] > previous['paidUntilMs'], 'funding_cannot_shorten')
                 # A rolling reservation must cover the remaining old lease before its funds are released.
                 require(authorization['paidFromMs'] <= min(authorization['issuedAtMs'], previous['paidUntilMs']), 'funding_interval_has_gap')
                 expires_boot = min(expires_boot, old['expiresBootNs'] +
@@ -193,9 +194,19 @@ def grant(authorization):
         docker('update', '--restart=no', container_id)
         write(history_path, authorization)
         lease = {'authorization': authorization, 'bootId': BOOT_ID, 'expiresBootNs': expires_boot,
-            'expired': False, 'stoppedAtMs': None}
+            'expired': False, 'stoppedAtMs': None,
+            'startedAtMs': old.get('startedAtMs') if old is not None and state['running'] else None,
+            'dockerStartBeforeGrant': state['startedAt'] if not state['running'] else None}
         write(path, lease)
         return lease
+
+def capture_start(path, lease, state):
+    if (state is not None and lease.get('startedAtMs') is None
+        and state['startedAt'] != lease.get('dockerStartBeforeGrant')
+        and not state['startedAt'].startswith('0001-')):
+        started = int(datetime.datetime.fromisoformat(state['startedAt'].replace('Z', '+00:00')).timestamp() * 1000)
+        lease['startedAtMs'] = started
+        write(path, lease)
 
 def stop(path, lease):
     # Persist the tombstone before Docker effects; retries keep enforcing it after success.
@@ -204,6 +215,7 @@ def stop(path, lease):
         write(path, lease)
     container_id = lease['authorization']['containerId']
     state = inspect(container_id, lease['authorization'])
+    capture_start(path, lease, state)
     if state is not None:
         if state['restart'] != 'no':
             docker('update', '--restart=no', container_id)
@@ -253,7 +265,9 @@ def revoke(authorization):
             prior_stop = (previous['stoppedAtMs'] if previous is not None
                 and previous['bootId'] == BOOT_ID and (state is None or not state['running']) else None)
             lease = {'authorization': authorization, 'bootId': BOOT_ID, 'expiresBootNs': boot_ns(),
-                'expired': True, 'stoppedAtMs': prior_stop}
+                'expired': True, 'stoppedAtMs': prior_stop,
+                'startedAtMs': previous.get('startedAtMs') if previous is not None else None,
+                'dockerStartBeforeGrant': previous.get('dockerStartBeforeGrant') if previous is not None else (state['startedAt'] if state is not None else None)}
         write(path, lease)
         stopped = stop(path, lease)
         write(ROOT / 'receipts' / (authorization['fundingId'] + '.json'), stopped)
@@ -276,6 +290,7 @@ def start(request):
             raise RuntimeError('funding_expired_during_start')
         state = inspect(request['containerId'], lease['authorization'])
         require(state is not None and state['running'], 'container_start_unresolved')
+        capture_start(path, lease, state)
         return lease
 
 def enforce(container_id):

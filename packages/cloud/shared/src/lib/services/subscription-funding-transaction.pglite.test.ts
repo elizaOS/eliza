@@ -1115,7 +1115,7 @@ if (sshFixturePath) {
     );
     const ssh = new DockerSSHClient(target);
     const rootSSH = guard.dockerComputeRootSSH(ssh, target.username);
-    const name = `eliza-compute-stop-integration-${crypto.randomUUID()}`;
+    const name = "agent-63000000-0000-4000-8000-000000000030";
     const nodeId = `stop-test-${crypto.randomUUID()}`;
     const org = "61000000-0000-4000-8000-000000000030";
     const agentId = "63000000-0000-4000-8000-000000000030";
@@ -1138,11 +1138,12 @@ if (sshFixturePath) {
       containerId = (
         await ssh.exec(
           [
-            `${docker} create --pull=never --network=none --memory=64m --cpus=0.2 --pids-limit=32`,
+            `${docker} create --pull=never --network=none --memory=128m --cpus=0.2 --pids-limit=64 --env PORT=2138`,
+            `--health-interval=1s --health-timeout=5s --health-retries=10 --health-cmd ${shellQuote(`node -e "fetch('http://127.0.0.1:2138/api/health').then(r=>process.exit(r.ok?0:1))"`)}`,
             "--cap-drop=ALL --security-opt=no-new-privileges --user=65534:65534 --restart=no",
             `--name ${shellQuote(name)} --label ai.elizaos.managed-by=eliza-cloud --label ai.elizaos.container-class=test`,
             `--label ai.elizaos.agent-id=${agentId} --label ai.elizaos.org-id=${org}`,
-            `--entrypoint /bin/sh ${shellQuote(target.image)} -c 'exec sleep 600'`,
+            `--entrypoint node ${shellQuote(target.image)} -e ${shellQuote("require('http').createServer((q,r)=>r.end(JSON.stringify({ok:true}))).listen(2138,'127.0.0.1')")}`,
           ].join(" "),
         )
       ).trim();
@@ -1161,10 +1162,10 @@ if (sshFixturePath) {
         "1.000000",
         { nodeId, containerId },
       );
-      await fixture.query("UPDATE agent_sandboxes SET sandbox_id=$2 WHERE id=$1", [
-        agentId,
-        `docker://${nodeId}/${name}`,
-      ]);
+      await fixture.query(
+        "UPDATE agent_sandboxes SET sandbox_id=$2,container_name=$2,bridge_port=2138,web_ui_port=2138 WHERE id=$1",
+        [agentId, name],
+      );
       const authorization = await helpers.writeTransaction((tx) =>
         compute.authorizeHostInTransaction(tx, provider),
       );
@@ -1208,7 +1209,7 @@ if (sshFixturePath) {
       );
       expect(totals.rows[0]).toMatchObject({
         status: "stopped",
-        sandbox_id: `docker://${nodeId}/${name}`,
+        sandbox_id: name,
         ledger_count: 2,
         receipt_count: 1,
         reconciled: true,
@@ -1238,6 +1239,86 @@ if (sshFixturePath) {
       expect(
         (await ssh.exec(`${docker} inspect --format '{{.State.Running}}' ${containerId}`)).trim(),
       ).toBe("false");
+      await fixture.query("UPDATE organizations SET credit_balance=0 WHERE id=$1", [org]);
+      const unfunded = await renewalState(org);
+      expect(await elizaSandboxService.executeResume(agentId, org)).toMatchObject({
+        success: false,
+        containerStarted: false,
+        reprovisioned: false,
+      });
+      expect(await renewalState(org)).toEqual(unfunded);
+      expect(
+        (await ssh.exec(`${docker} inspect --format '{{.State.Running}}' ${containerId}`)).trim(),
+      ).toBe("false");
+      await fixture.query("UPDATE organizations SET credit_balance=1 WHERE id=$1", [org]);
+      const admitted = await helpers.writeTransaction(async (tx) => {
+        const next = await compute.reserveRetainedResumeInTransaction(tx, identity);
+        if (!next) throw new Error("Retained funding fixture disappeared");
+        await tx.execute(
+          sql`UPDATE agent_sandboxes SET status='provisioning',last_billed_at=${next.window.period_start} WHERE id=${agentId}`,
+        );
+        return { ...identity, fundingId: next.window.id, nodeId, containerId: containerId! };
+      });
+      const reservedResume = await renewalState(org);
+      const { startFundedAgentInTransaction } = await import("./agent-compute-start");
+      await expect(
+        helpers.writeTransaction(async (tx) => {
+          await startFundedAgentInTransaction(tx, admitted);
+          throw new Error("Forced rollback after real paid start");
+        }),
+      ).rejects.toThrow("Forced rollback after real paid start");
+      expect(await renewalState(org)).toEqual(reservedResume);
+      expect(
+        (await ssh.exec(`${docker} inspect --format '{{.State.Running}}' ${containerId}`)).trim(),
+      ).toBe("true");
+      const firstPaidStart = (
+        await ssh.exec(`${docker} inspect --format '{{.State.StartedAt}}' ${containerId}`)
+      ).trim();
+      expect(await elizaSandboxService.executeResume(agentId, org)).toMatchObject({
+        success: true,
+        containerStarted: true,
+        reprovisioned: false,
+      });
+      expect((await ssh.exec(`${docker} exec ${containerId} cat /tmp/stop-marker`)).trim()).toBe(
+        marker,
+      );
+      const resumed = await renewalState(org);
+      expect(
+        (await ssh.exec(`${docker} inspect --format '{{.State.StartedAt}}' ${containerId}`)).trim(),
+      ).toBe(firstPaidStart);
+      const runningStart = await fixture.query<{ count: number }>(
+        `SELECT count(*)::int AS count FROM compute_billing_rate_segments
+        WHERE organization_id=$1 AND workload_id=$2 AND billing_state='running' AND effective_at=$3`,
+        [org, agentId, new Date(firstPaidStart)],
+      );
+      expect(runningStart.rows[0]?.count).toBe(1);
+      expect(resumed.windows).toHaveLength(2);
+      expect(resumed.reservations).toHaveLength(2);
+      expect(await elizaSandboxService.executeResume(agentId, org)).toMatchObject({
+        success: true,
+        containerStarted: true,
+        reprovisioned: false,
+      });
+      expect(await renewalState(org)).toEqual(resumed);
+      expect(
+        (
+          await fixture.query(
+            "SELECT status,sandbox_id,bridge_url,health_url FROM agent_sandboxes WHERE id=$1",
+            [agentId],
+          )
+        ).rows[0],
+      ).toEqual({
+        status: "running",
+        sandbox_id: name,
+        bridge_url: `http://${target.hostname}:2138`,
+        health_url: `http://${target.hostname}:2138/api`,
+      });
+      expect(
+        await elizaSandboxService.executeSuspend(agentId, org, crypto.randomUUID(), "user_request"),
+      ).toMatchObject({ success: true, containerStopped: true });
+      expect(
+        (await ssh.exec(`${docker} cp ${containerId}:/tmp/stop-marker - | tar -xO`)).trim(),
+      ).toBe(marker);
     } finally {
       try {
         if (containerId) await ssh.exec(`${docker} rm -f ${shellQuote(containerId)}`);

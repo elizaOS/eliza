@@ -1,5 +1,6 @@
 /** Owns sandbox power operations while preserving the host’s lifecycle transactions, provider instance, and backup authority. */
 
+import { ElizaError } from "@elizaos/core";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { dbWrite } from "../../../../db/helpers";
 import { agentBillingRepository } from "../../../../db/repositories/agent-billing";
@@ -7,6 +8,7 @@ import {
   type AgentSandbox,
   agentSandboxesRepository,
 } from "../../../../db/repositories/agent-sandboxes";
+import { agentComputeFunding } from "../../../../db/schemas/agent-compute-funding";
 import { agentComputeStopIntents } from "../../../../db/schemas/agent-compute-stop-intents";
 import {
   type AgentBackupStateData,
@@ -16,8 +18,11 @@ import {
 } from "../../../../db/schemas/agent-sandboxes";
 import { AGENT_PRICING } from "../../../constants/agent-pricing";
 import { logger } from "../../../utils/logger";
+import { agentComputeFundingService } from "../../agent-compute-funding";
+import { startFundedAgentInTransaction } from "../../agent-compute-start";
 import { hasOpenAgentComputeFunding, stopFundedAgentInTransaction } from "../../agent-compute-stop";
 import { creditsService } from "../../credits";
+import type { SandboxHandle, SandboxProvider } from "../../sandbox-provider-types";
 import { isContainerBackedExecutionTier } from "../../sandbox-provider-types";
 import {
   formatWakeRestoreIntegrityError,
@@ -41,6 +46,7 @@ import { SandboxReplacementCleanup } from "./replacement-cleanup.js";
 import { BoundedSandboxStopResult } from "./stop-contracts.js";
 
 export interface SandboxPowerHost {
+  getProvider(): Promise<SandboxProvider>;
   getAgentForWrite(agentId: string, orgId: string): Promise<AgentSandbox | undefined>;
   fetchSnapshotState(
     ...args: Parameters<SandboxBackup["fetchSnapshotState"]>
@@ -859,17 +865,10 @@ export class SandboxPower {
   }
 
   /**
-   * Daemon-side handler for the `agent_resume` job. Delegates to
-   * `provision()` which restores `bridge_url` / `health_url` from the
-   * provider's sandbox handle and reuses the existing shared DB
-   * (`sandbox_id` is retained across suspend). `provision()` acquires
-   * its own advisory lock, so two concurrent resume jobs serialize.
-   *
-   * A future fast path will `docker start` the existing container (~5s)
-   * when the provider exposes a standalone `start()` method that
-   * returns a fresh handle — today the only way to get `bridgeUrl` /
-   * `healthUrl` back is via the create-or-restart flow inside
-   * `provision()`, so we always pay that path.
+   * Daemon-side handler for `agent_resume`. Paid retained runtime commits its
+   * next hold before guarded start, then restores ingress only after readiness.
+   * Failed start writeback replays the same hold and durable host timestamp.
+   * Legacy containers still delegate to provision and its backup restore path.
    */
   async executeResume(
     agentId: string,
@@ -904,6 +903,19 @@ export class SandboxPower {
 
     if (rec.status === "running")
       return { success: true, containerStarted: true, reprovisioned: false };
+
+    try {
+      const retained = await this.executeFundedResume(agentId, orgId);
+      if (retained) return retained;
+    } catch (error) {
+      // error-policy:J1 keep paid retained state retryable; never fall into replacement after ambiguous start.
+      return {
+        success: false,
+        containerStarted: false,
+        reprovisioned: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
 
     const fundingAuthority = await this.host.getAgentForWrite(agentId, orgId);
     if (
@@ -943,6 +955,153 @@ export class SandboxPower {
       };
     }
     return { success: true, containerStarted: true, reprovisioned: true };
+  }
+
+  private async executeFundedResume(agentId: string, orgId: string) {
+    const admission = await dbWrite.transaction(async (tx) => {
+      await this.host.lockLifecycle(tx, agentId, orgId);
+      const [fundingHistory] = await tx
+        .select({ id: agentComputeFunding.id })
+        .from(agentComputeFunding)
+        .where(
+          and(
+            eq(agentComputeFunding.agent_id, agentId),
+            eq(agentComputeFunding.organization_id, orgId),
+          ),
+        )
+        .limit(1);
+      if (!fundingHistory) return null;
+      const rec = await this.host.getAgentForLifecycleMutation(tx, agentId, orgId);
+      if (rec?.status === "running") return { alreadyRunning: true as const };
+      if (
+        !rec ||
+        this.host.getReplacementCleanupLocator(rec) ||
+        (await this.host.hasActiveProvisionJobTx(tx, agentId, orgId))
+      ) {
+        throw new ElizaError("Dedicated retained resume authority changed", {
+          code: "AGENT_COMPUTE_RESUME_AUTHORITY_CHANGED",
+        });
+      }
+      if (!rec.bridge_port || !rec.web_ui_port)
+        throw new ElizaError("Dedicated resume is missing retained ports", {
+          code: "AGENT_COMPUTE_RESUME_AUTHORITY_CHANGED",
+        });
+      if (!(await hasOpenAgentComputeFunding(tx, agentId, orgId))) {
+        const settled =
+          await agentBillingRepository.settleAccruedBillingBeforeLifecycleInTransaction(
+            tx,
+            agentId,
+            orgId,
+            new Date(),
+          );
+        if (settled.status === "insufficient_credits")
+          throw new ElizaError("Insufficient credits to settle Dedicated storage", {
+            code: "AGENT_COMPUTE_RESUME_AUTHORITY_CHANGED",
+          });
+      }
+      const funded = await agentComputeFundingService.reserveRetainedResumeInTransaction(tx, {
+        agentId,
+        organizationId: orgId,
+        lifecycleRevision: rec.lifecycle_revision,
+      });
+      if (!funded)
+        throw new ElizaError("Dedicated funding history changed", {
+          code: "AGENT_COMPUTE_RESUME_AUTHORITY_CHANGED",
+        });
+      const [admitted] = await tx
+        .update(agentSandboxes)
+        .set({
+          status: "provisioning",
+          billing_status: "active",
+          last_billed_at: funded.window.period_start,
+          updated_at: new Date(),
+        })
+        .where(and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.organization_id, orgId)))
+        .returning();
+      if (!admitted)
+        throw new ElizaError("Dedicated resume admission did not persist", {
+          code: "AGENT_COMPUTE_RESUME_AUTHORITY_CHANGED",
+        });
+      return {
+        alreadyRunning: false as const,
+        agentId,
+        organizationId: orgId,
+        lifecycleRevision: admitted.lifecycle_revision,
+        fundingId: funded.window.id,
+        nodeId: funded.window.provider_node_id!,
+        containerId: funded.window.provider_container_id!,
+      };
+    });
+    if (!admission) return null;
+    if (admission.alreadyRunning)
+      return { success: true, containerStarted: true, reprovisioned: false };
+    await creditsService.invalidateCreditCaches(orgId);
+    const started = await dbWrite.transaction(async (tx) => {
+      await this.host.lockLifecycle(tx, agentId, orgId);
+      return startFundedAgentInTransaction(tx, admission);
+    });
+    const host = started.agent.headscale_ip || started.node.hostname;
+    const urlHost = host.includes(":") ? `[${host}]` : host;
+    const bridgePort = started.agent.headscale_ip
+      ? started.containerPort
+      : started.agent.bridge_port!;
+    const webPort = started.agent.headscale_ip ? started.containerPort : started.agent.web_ui_port!;
+    const handle: SandboxHandle = {
+      sandboxId: started.agent.container_name!,
+      bridgeUrl: `http://${urlHost}:${bridgePort}`,
+      healthUrl: `http://${urlHost}:${webPort}/api`,
+      metadata: {
+        provider: "docker",
+        nodeId: admission.nodeId,
+        hostname: started.node.hostname,
+        containerName: started.agent.container_name!,
+        agentId,
+        bridgePort: started.agent.bridge_port!,
+        webUiPort: started.agent.web_ui_port!,
+        nodeSshPort: started.node.ssh_port,
+        nodeSshUser: started.node.ssh_user,
+        nodeHostKeyFingerprint: started.node.host_key_fingerprint,
+        ...(started.agent.headscale_ip ? { headscaleIp: started.agent.headscale_ip } : {}),
+      },
+    };
+    const provider = await this.host.getProvider();
+    const ready = provider.checkHealthDetailed
+      ? (await provider.checkHealthDetailed(handle, { kind: "candidate" })).ready
+      : await provider.checkHealth(handle, { kind: "candidate" });
+    if (!ready)
+      return {
+        success: false,
+        containerStarted: true,
+        reprovisioned: false,
+        error: "Dedicated retained runtime is not ready; paid resume can be retried",
+      };
+    await dbWrite.transaction(async (tx) => {
+      await this.host.lockLifecycle(tx, agentId, orgId);
+      await agentComputeFundingService.authorizeHostInTransaction(tx, admission);
+      const rec = await this.host.getAgentForLifecycleMutation(tx, agentId, orgId);
+      if (
+        !rec ||
+        rec.status !== "provisioning" ||
+        !snapshotCaptureStillCanonical(rec, started.agent)
+      ) {
+        throw new ElizaError("Dedicated lifecycle changed during resume readiness", {
+          code: "AGENT_COMPUTE_RESUME_AUTHORITY_CHANGED",
+        });
+      }
+      await tx
+        .update(agentSandboxes)
+        .set({
+          status: "running",
+          bridge_url: handle.bridgeUrl,
+          health_url: handle.healthUrl,
+          billing_status: "active",
+          scheduled_shutdown_at: null,
+          shutdown_warning_sent_at: null,
+          updated_at: new Date(),
+        })
+        .where(and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.organization_id, orgId)));
+    });
+    return { success: true, containerStarted: true, reprovisioned: false };
   }
 
   /**

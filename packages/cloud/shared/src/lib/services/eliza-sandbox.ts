@@ -273,6 +273,7 @@ export class ElizaSandboxService {
     retirePersistedReplacementCleanup: (...args) => this.retirePersistedReplacementCleanup(...args),
   });
   readonly #power = new SandboxPower({
+    getProvider: (...args) => this.getProvider(...args),
     getAgentForWrite: (...args) => this.getAgentForWrite(...args),
     fetchSnapshotState: (...args) => this.fetchSnapshotState(...args),
     lockLifecycle: (...args) => this.lockLifecycle(...args),
