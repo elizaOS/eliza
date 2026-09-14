@@ -2264,6 +2264,20 @@ export class DockerSandboxProvider implements SandboxProvider {
       );
     }
 
+    // Customer runtime must enter through committed funding, including image
+    // replacements. Reject before node selection, autoscale or SSH effects.
+    // Exact restore returned above with a stopped, network-isolated candidate;
+    // the explicit platform pool remains separately operator-controlled.
+    if (
+      config.organizationId !== WARM_POOL_ORG_ID &&
+      typeof config.startFundedContainer !== "function"
+    ) {
+      throw new ElizaError("Dedicated container creation requires committed runtime funding", {
+        code: "SANDBOX_COMPUTE_FUNDING_REQUIRED",
+        context: { agentId: config.agentId, organizationId: config.organizationId },
+      });
+    }
+
     // Freeze one attempt identity at the public boundary. It is one-shot: an
     // exact cleanup tombstones this id remotely, so any later retry is a new
     // caller-owned invocation rather than a replay behind durable authority.

@@ -236,6 +236,9 @@ function replacementCreateConfig(
     organizationId: "22222222-2222-4222-8222-222222222222",
     executionTier: "dedicated-always",
     environmentVars: {},
+    // This suite controls provider transports; actual committed funding and
+    // host leases are exercised by the PostgreSQL/SSH integration suite.
+    startFundedContainer: async () => {},
     ...overrides,
   };
 }
@@ -254,6 +257,46 @@ afterEach(() => {
 });
 
 describe("DockerSandboxProvider replacement cleanup", () => {
+  test("a configured test organization cannot bypass runtime funding", async () => {
+    const savedTestOrgs = process.env.CONTAINERS_TEST_ORG_IDS;
+    const config = replacementCreateConfig({ startFundedContainer: undefined });
+    process.env.CONTAINERS_TEST_ORG_IDS = config.organizationId;
+    const selectNode = spyOn(dockerNodeManager, "getAvailableNode");
+    const getSshClient = spyOn(DockerSSHClient, "getClient");
+    try {
+      await expect(replacementProvider().create(config)).rejects.toMatchObject({
+        code: "SANDBOX_COMPUTE_FUNDING_REQUIRED",
+      });
+      expect(selectNode).not.toHaveBeenCalled();
+      expect(getSshClient).not.toHaveBeenCalled();
+    } finally {
+      if (savedTestOrgs === undefined) delete process.env.CONTAINERS_TEST_ORG_IDS;
+      else process.env.CONTAINERS_TEST_ORG_IDS = savedTestOrgs;
+    }
+  });
+
+  test.each([undefined, ATTEMPT_ID])(
+    "rejects missing runtime funding before placement or remote effects (attempt %s)",
+    async (replacementAttemptId) => {
+      const provider = replacementProvider();
+      const selectNode = spyOn(dockerNodeManager, "getAvailableNode");
+      const getSshClient = spyOn(DockerSSHClient, "getClient");
+      const intent = mock(async () => {});
+      await expect(
+        provider.create(
+          replacementCreateConfig({
+            replacementAttemptId,
+            startFundedContainer: undefined,
+            onReplacementCreateIntent: intent,
+          }),
+        ),
+      ).rejects.toMatchObject({ code: "SANDBOX_COMPUTE_FUNDING_REQUIRED" });
+      expect(selectNode).not.toHaveBeenCalled();
+      expect(getSshClient).not.toHaveBeenCalled();
+      expect(intent).not.toHaveBeenCalled();
+    },
+  );
+
   test("advertises exact-success replacement settlement support", () => {
     expect(replacementProvider().replacementCreateSettlementCapability).toBe("exact-success");
   });
@@ -1162,6 +1205,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
           organizationId: "22222222-2222-4222-8222-222222222222",
           executionTier: "dedicated-always",
           environmentVars: {},
+          startFundedContainer: async () => {},
           replacementAttemptId: ATTEMPT_ID,
           onReplacementCreateAttemptStarted: async (started) => {
             events.push("attempt-started");
@@ -1592,7 +1636,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     expect(error).toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
     expect(error).toMatchObject({
       replacementAttemptId: ATTEMPT_ID,
-      containerId: CONTAINER_ID.slice(0, 12),
+      containerId: CONTAINER_ID,
     });
     expect((error as Error).cause).toBeInstanceOf(AggregateError);
     expect(((error as Error).cause as AggregateError).errors).toContain(pullFailure);
@@ -1980,7 +2024,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
           },
           onReplacementCreated: async (candidate) => {
             events.push("created");
-            expect(candidate.metadata?.containerId).toBe(CONTAINER_ID.slice(0, 12));
+            expect(candidate.metadata?.containerId).toBe(CONTAINER_ID);
           },
           onReplacementCreateSettled: async () => {
             events.push("settled");
@@ -1990,7 +2034,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
 
       expect(handle.metadata).toMatchObject({
         replacementAttemptId: ATTEMPT_ID,
-        containerId: CONTAINER_ID.slice(0, 12),
+        containerId: CONTAINER_ID,
         replacementSecretCleanupVersion: 1,
       });
       expect(handle.metadata?.vpnNodeId).toBeUndefined();
@@ -2016,7 +2060,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     }
   });
 
-  test.each(["legacy", "funded", "rejected"] as const)(
+  test.each(["funded", "rejected"] as const)(
     "binds one exact attempt through intent, Docker label, enrichments, handle, and settlement (%s)",
     async (fundingMode) => {
       const controlledEnvironment = [
@@ -2218,16 +2262,11 @@ describe("DockerSandboxProvider replacement cleanup", () => {
             onReplacementCreated: async (createdHandle) => {
               await persistStrictCleanupStage("created", createdHandle);
             },
-            ...(fundingMode === "legacy"
-              ? {}
-              : {
-                  startFundedContainer: async (createdHandle: SandboxHandle) => {
-                    events.push("funded-start");
-                    expect(createdHandle.metadata?.containerId).toBe(CONTAINER_ID);
-                    if (fundingMode === "rejected")
-                      throw new Error("funding rejected before start");
-                  },
-                }),
+            startFundedContainer: async (createdHandle: SandboxHandle) => {
+              events.push("funded-start");
+              expect(createdHandle.metadata?.containerId).toBe(CONTAINER_ID);
+              if (fundingMode === "rejected") throw new Error("funding rejected before start");
+            },
             onReplacementVpnRegistered: async (vpnHandle) => {
               await persistStrictCleanupStage("vpn", vpnHandle);
             },
@@ -2249,18 +2288,15 @@ describe("DockerSandboxProvider replacement cleanup", () => {
         }
       }
 
-      if (fundingMode !== "legacy") {
-        expect(events).not.toContain("docker-start");
-        expect(events.indexOf("persist-created")).toBeLessThan(events.indexOf("funded-start"));
-      }
+      expect(events).not.toContain("docker-start");
+      expect(events.indexOf("persist-created")).toBeLessThan(events.indexOf("funded-start"));
       if (fundingMode === "rejected") {
         expect(rejected).toBeDefined();
         expect(events).not.toContain("settlement-succeeded");
         return;
       }
       if (!handle) throw new Error("Missing successful provider handle");
-      const expectedContainerId =
-        fundingMode === "legacy" ? CONTAINER_ID.slice(0, 12) : CONTAINER_ID;
+      const expectedContainerId = CONTAINER_ID;
       expect(events[0]).toBe("attempt-started");
       expect(events.indexOf("attempt-started")).toBeLessThan(events.indexOf("steward"));
       expect(events.indexOf("attempt-started")).toBeLessThan(events.indexOf("headscale-prepare"));
@@ -2269,9 +2305,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
       expect(events.indexOf("steward-register")).toBeLessThan(events.indexOf("persist-intent"));
       expect(events.indexOf("network-ready")).toBeLessThan(events.indexOf("persist-intent"));
       expect(events.indexOf("persist-intent")).toBeLessThan(events.indexOf("docker-create"));
-      expect(events.indexOf("persist-created")).toBeLessThan(
-        events.indexOf(fundingMode === "legacy" ? "docker-start" : "funded-start"),
-      );
+      expect(events.indexOf("persist-created")).toBeLessThan(events.indexOf("funded-start"));
       expect(events.indexOf("vpn-registration")).toBeLessThan(events.indexOf("tailnet-bound"));
       expect(registrationOptions?.registrationStartedAt?.toISOString()).toBe(
         REGISTRATION_STARTED_AT,
@@ -3262,6 +3296,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
         organizationId: "22222222-2222-4222-8222-222222222222",
         executionTier: "dedicated-always",
         environmentVars: {},
+        startFundedContainer: async () => {},
         onReplacementCreateIntent: async () => {},
       }),
     ).rejects.toThrow("port is already allocated");
@@ -3299,6 +3334,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
         organizationId: "22222222-2222-4222-8222-222222222222",
         executionTier: "dedicated-always",
         environmentVars: {},
+        startFundedContainer: async () => {},
       }),
     ).rejects.toBe(unresolved);
     expect(createOnce).toHaveBeenCalledTimes(1);
