@@ -295,6 +295,22 @@ describe("ChatOverlay", () => {
     expect(onDetentChange).toHaveBeenLastCalledWith("input");
   });
 
+  it("shows the active view's search placeholder while a view chat binding is registered (#31293)", () => {
+    setViewChatBinding({
+      placeholder: "Search plugins…",
+      onQuery: () => undefined,
+    });
+    render(<ChatOverlay controller={makeController()} />);
+    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+    expect(input.placeholder).toBe("Search plugins…");
+
+    // Leaving the view clears the binding; the default prompt returns.
+    act(() => {
+      setViewChatBinding(null);
+    });
+    expect(input.placeholder).toBe("Hey Eliza…");
+  });
+
   it("shows the mic and no send button when the draft is empty", () => {
     render(<ChatOverlay controller={makeController()} />);
     expect(screen.getByLabelText("talk")).toBeTruthy();
