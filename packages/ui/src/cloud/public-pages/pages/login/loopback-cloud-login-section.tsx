@@ -75,6 +75,15 @@ export default function LoopbackCloudLoginSection() {
         returnTo.search = "";
         returnTo.hash = "cloud-overview";
       }
+      // The account route's auth gate runs before the app callback consumer.
+      // Claim the one-time CLI credential on an ordinary app route first.
+      if (/^\/cloud(?:\/|$)/.test(returnTo.pathname)) {
+        const accountPath = returnTo.pathname + returnTo.search + returnTo.hash;
+        returnTo.pathname = "/settings";
+        returnTo.search = "";
+        returnTo.hash = "cloud-overview";
+        returnTo.searchParams.set("elizaCloudLoginReturnTo", accountPath);
+      }
       returnTo.searchParams.set("elizaCloudLogin", "complete");
       returnTo.searchParams.set("elizaCloudLoginSession", session.sessionId);
       destination.searchParams.set("returnTo", returnTo.toString());

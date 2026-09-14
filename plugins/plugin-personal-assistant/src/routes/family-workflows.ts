@@ -3,12 +3,15 @@
  * family packet generation, review, drafting, and canonical approval enqueue.
  */
 
+import { SELF_ENTITY_ID } from "@elizaos/shared";
 import type {
   FamilyPacketEmailDelivery,
   FamilyPacketPeriod,
 } from "../lifeops/family-coordination/index.js";
 import { getFamilyWorkflowRuntimeService } from "../lifeops/family-workflows/index.js";
+import { exportFamilyWorkspace } from "../lifeops/family-workflows/workspace-export.js";
 import { CONCORD_SCHOOL_CALENDAR_SOURCE } from "../lifeops/school/calendar-workflow.js";
+import { handleFamilyDeletionRoutes } from "./family-deletion.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 
 function service(ctx: LifeOpsRouteContext) {
@@ -30,9 +33,28 @@ export async function handleFamilyWorkflowRoutes(
 ): Promise<boolean> {
   const { method, pathname, req, res, json, readJsonBody, url } = ctx;
   if (!pathname.startsWith("/api/lifeops/family-workflows")) return false;
+  if (await handleFamilyDeletionRoutes(ctx)) return true;
   const runtimeService = service(ctx);
   if (!runtimeService) return true;
   try {
+    if (
+      method === "POST" &&
+      pathname === "/api/lifeops/family-workflows/export"
+    ) {
+      const runtime = ctx.state.runtime;
+      if (!runtime) throw new Error("Agent runtime is unavailable");
+      const file = await exportFamilyWorkspace(runtime, SELF_ENTITY_ID);
+      res.statusCode = 200;
+      res.setHeader("Content-Type", file.mimeType);
+      res.setHeader("Cache-Control", "no-store");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
+      );
+      res.setHeader("Content-Length", String(file.bytes.length));
+      res.end(file.bytes);
+      return true;
+    }
     if (
       method === "GET" &&
       pathname === "/api/lifeops/family-workflows/email-options"

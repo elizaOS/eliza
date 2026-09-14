@@ -1,6 +1,6 @@
 # Molecular component duplicate inventory
 
-Scanned 912 maintained React files. 103 exported compositions have a recognized molecular role and at least two atomic dependencies.
+Scanned 913 maintained React files. 104 exported compositions have a recognized molecular role and at least two atomic dependencies.
 
 Clusters share both a role and an atomic dependency signature. Detection creates a review queue; this committed report contains only final dispositions based on product behavior, state ownership, and responsive layout.
 
@@ -26,11 +26,11 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 | form | button, input | 3 | distinct-domain-compositions |
 | list | badge, button, card | 3 | distinct-domain-compositions |
 | panel | button, card, input | 3 | distinct-domain-compositions |
+| panel | button, input | 3 | distinct-domain-compositions |
 | card | badge, button, card, checkbox, dialog, spinner | 2 | distinct-domain-compositions |
 | card | button, input | 2 | distinct-domain-compositions |
 | dialog | alert, button, card | 2 | distinct-domain-compositions |
 | form | button, input, textarea | 2 | distinct-domain-compositions |
-| panel | button, input | 2 | distinct-domain-compositions |
 | row | button, card, statusDot | 2 | distinct-domain-compositions |
 
 ## Reviewed clusters
@@ -84,6 +84,14 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 - Fingerprint: `sha256:4a7d6f88b5646c000931d32d3acd7c6fa62ebd23b2506bc7c79785d65f8afb6f`
 - Decision: **distinct-domain-compositions**. These panels use the canonical Card boundary but retain unrelated search, connector, and release workflows.
 
+### panel: button + input
+
+- `TelegramBotSetupPanel` in `packages/ui/src/components/connectors/TelegramBotSetupPanel.tsx:35`
+- `ReleaseNotesSection` in `packages/ui/src/components/release-center/sections.tsx:241`
+- `FamilyDeletionPanel` in `plugins/plugin-personal-assistant/src/components/family-operations/FamilyDeletionPanel.tsx:28`
+- Fingerprint: `sha256:7c58e0f8693e13ed13c204e2cd438118f008bca8e594d9a96dc8c59e82a56648`
+- Decision: **distinct-domain-compositions**. Telegram setup validates connector credentials and establishes a session. Release notes configure and open a native browser window. Family deletion binds owner confirmation to a reviewed snapshot and recovers durable deletion jobs. These distinct domain lifecycles compose the canonical Button and Input primitives.
+
 ### card: badge + button + card + checkbox + dialog + spinner
 
 - `AccountCard` in `packages/ui/src/components/accounts/AccountCard.tsx:174`
@@ -111,13 +119,6 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 - `PacketDraftEditor` in `plugins/plugin-personal-assistant/src/components/family-operations/PacketDraftEditor.tsx:6`
 - Fingerprint: `sha256:173f0f898a7384e9d1d418903e0385ae1fd1845d178512241aeed07f627e216f`
 - Decision: **distinct-domain-compositions**. Session creation owns model, mode, and initial prompt selection. Family email revision owns immutable draft versions, stale approval rejection, and preservation of unsaved edits. Their shared field and button behavior remains in canonical atoms.
-
-### panel: button + input
-
-- `TelegramBotSetupPanel` in `packages/ui/src/components/connectors/TelegramBotSetupPanel.tsx:35`
-- `ReleaseNotesSection` in `packages/ui/src/components/release-center/sections.tsx:241`
-- Fingerprint: `sha256:ec039280f3434f35b9ebaf6933da18f63de754b08530e467b553a1bdc32717e9`
-- Decision: **distinct-domain-compositions**. Search, connector setup, and release-note panels have different interaction and state contracts.
 
 ### row: button + card + statusDot
 

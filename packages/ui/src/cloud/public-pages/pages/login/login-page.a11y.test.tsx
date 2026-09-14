@@ -44,6 +44,7 @@ vi.mock("../../../shell/steward-url", () => ({
 }));
 
 vi.mock("../../../shell/steward-config", () => ({
+  configuredStewardApiUrlOverride: () => null,
   configuredStewardTenantId: () => "elizacloud",
   DEFAULT_STEWARD_TENANT_ID: "elizacloud",
 }));

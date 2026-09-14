@@ -109,6 +109,8 @@ export function createFamilyPacketFixture(
       document.documentElement.dataset.familyApprovalVersion = String(version);
     },
     uploadAgreement: unsupported,
+    downloadAgreement: unsupported,
+    downloadWorkspace: unsupported,
     decideObligation: unsupported,
     async listPins() {
       return [];
