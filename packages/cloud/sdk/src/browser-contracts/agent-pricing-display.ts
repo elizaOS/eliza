@@ -9,7 +9,7 @@ import { AGENT_PRICING } from "./agent-pricing.js";
 
 /** Monthly cost for a running agent (24/7). */
 export const MONTHLY_RUNNING_COST =
-  Math.round(AGENT_PRICING.RUNNING_HOURLY_RATE * 24 * 30 * 100) / 100; // ~$7.20
+  Math.round(AGENT_PRICING.RUNNING_HOURLY_RATE * 24 * 30 * 100) / 100;
 
 /** Monthly cost for an idle agent. */
 export const MONTHLY_IDLE_COST =
