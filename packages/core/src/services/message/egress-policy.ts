@@ -328,6 +328,8 @@ export async function resolvePlannedReplyEgress(args: {
 		message: args.message,
 		response: { text },
 		text,
+		// Preserve the existing JSON normalization, without quoting that JSON again.
+		jsonPayload: JSON.parse(text) as JsonValue,
 		groundingFailure:
 			decision.verdict === "reject" ? decision.kind : "missing_reply",
 	});

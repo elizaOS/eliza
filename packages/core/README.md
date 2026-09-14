@@ -577,6 +577,10 @@ Reply grounding repair supplies the complete wallet provider observations admitt
 by its holdings validator, rather than serializing the entire runtime provider
 store again. Saved recovery context, constraints, settled results and receipt
 validation remain unchanged; this does not cap or summarize their contents.
+Structured repair payloads are JSON-encoded once on the model wire. Exact saved
+context strings and nested evidence retain their original values; ordinary
+action callback text keeps its string encoding. Durable recovery records do not
+change format.
 
 The optional `historyRetention` evaluator reviews original dialogue through the existing background memory worker. Its committed source-bound checkpoint lets direct text chat keep standing constraints, unfinished work, new messages and the current exchange in the first request, while other originals remain available through `history:hN` and `history:all` context reads. Reads complete before a reply or action is processed; changed sources or authorization restore full current context. Stored messages remain unchanged. The advanced-memory plugin registers this evaluator when the existing advancedMemory feature is enabled; it remains excluded from the basic bundle. Group and voice sources do not schedule history review. A missing or invalid index keeps complete authorized history while the existing worker builds a committed checkpoint. Initial review consumes model quota separately from foreground replies; measure that cost when enabling advanced memory.
 

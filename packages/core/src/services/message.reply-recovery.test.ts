@@ -85,7 +85,7 @@ describe("model-backed final reply recovery", () => {
 		};
 		const recovery = {
 			context:
-				"Complete saved context: wait for APPROVE VIOLET. Correction: 紫色. context-tail",
+				'Complete saved context: wait for APPROVE VIOLET.\nCorrection: 紫色. Keep "two  spaces", C:\\notes\\draft and literal \\n. context-tail',
 			pendingToolCalls: [],
 			evaluatorOutputs: [],
 		};
@@ -118,7 +118,7 @@ describe("model-backed final reply recovery", () => {
 			.find((line) => line.startsWith("Original action payload: "));
 		expect(payloadLine).toBeDefined();
 		const payload = JSON.parse(
-			JSON.parse(payloadLine!.replace("Original action payload: ", "")),
+			payloadLine!.replace("Original action payload: ", ""),
 		);
 		expect(payload.providers).toEqual({ "get-balance": walletEvidence });
 		expect(payload.replyOnlyRecovery.context).toBe(recovery.context);
