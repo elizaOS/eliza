@@ -5,14 +5,18 @@ import type { Memory } from "../types/index.ts";
 
 export const DEFAULT_MEMORY_EVIDENCE_BATCH_BYTES = 65_536;
 
-/** Recovery transport is omitted from shared transcripts and authored-source
- * revisions. Do not charge it against evidence capacity or mutate its record. */
+/** Model evidence excludes recovery transport; stored records stay untouched. */
+export function evaluatorEvidenceRecord(memory: Memory): Memory {
+	return {
+		...memory,
+		content: { ...memory.content, chatIdempotency: undefined },
+	};
+}
+
+/** Charge the same evidence representation used for reference restoration. */
 export function evaluatorEvidenceByteLength(memory: Memory): number {
 	return new TextEncoder().encode(
-		JSON.stringify({
-			...memory,
-			content: { ...memory.content, chatIdempotency: undefined },
-		}),
+		JSON.stringify(evaluatorEvidenceRecord(memory)),
 	).byteLength;
 }
 

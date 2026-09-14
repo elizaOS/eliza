@@ -238,8 +238,10 @@ The snapshot is never reused across batches or room scopes.
 
 Evidence byte budgets exclude `content.chatIdempotency`, the recovery transport
 carrier already omitted from shared transcripts and authored-source revisions.
-Batch selection, historical pages and shared batches use that accounting;
-stored messages and recovery snapshots remain complete. Authored evidence still
+Batch selection, historical pages and shared batches use that accounting.
+Historical reference prompts also omit this transport carrier; their cumulative
+byte guard measures the exact serialized evidence array supplied to the model.
+Stored messages and recovery snapshots remain complete. Authored evidence still
 must fit the configured resource boundary without clipping.
 
 The background worker yields to the event loop between jobs, including failed

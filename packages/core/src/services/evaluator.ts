@@ -59,6 +59,7 @@ import {
 import { CONVERSATION_MESSAGES_HEADER_PREFIX, stringToUuid } from "../utils.ts";
 import {
 	DEFAULT_MEMORY_EVIDENCE_BATCH_BYTES,
+	evaluatorEvidenceRecord,
 	previousEvidencePage,
 	selectSharedEvidencePages,
 } from "./evaluator-evidence-page.ts";
@@ -1992,7 +1993,7 @@ export class EvaluatorService extends BaseService {
 			background
 				? `Historical context is available through explicit ordered pagination. Selected evidence is one complete pending page per evaluator; later pages remain durable work: ${JSON.stringify(Object.fromEntries(freshEntries.map((entry) => [entry.evaluator.name, entry.progress?.remainingSourceCount ?? 0])))}. Earlier history available: ${hasEarlier}. If a pronoun, correction, or claim needs earlier evidence, request restoreContextBefore using a visible message ID immediately after the missing historical range; all output sections will be ignored until those complete records are restored. Never guess missing context or treat reference records as new personal statements. Restored ranges: ${JSON.stringify(restoredRanges)}.
 Historical reference records (context only; do not cite as newly selected evidence):
-${JSON.stringify(references)}`
+${JSON.stringify(references.map(evaluatorEvidenceRecord))}`
 				: "";
 		let rendered =
 			freshEntries.length > 0
@@ -2077,7 +2078,9 @@ ${JSON.stringify(references)}`
 						{ code: "EVALUATOR_REFERENCE_CURSOR_INVALID" },
 					);
 				const referenceBytes = new TextEncoder().encode(
-					JSON.stringify([...page.messages, ...references]),
+					JSON.stringify(
+						[...page.messages, ...references].map(evaluatorEvidenceRecord),
+					),
 				).byteLength;
 				if (referenceBytes > this.evidenceBatchBytes() * 4)
 					throw new ElizaError(

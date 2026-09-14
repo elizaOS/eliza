@@ -1560,9 +1560,14 @@ describe("durable background memory", () => {
 		expect(runtime.useModel).toHaveBeenCalledTimes(stored.length);
 	});
 
-	it.each([false, true])(
-		"restores a full prior page before effects and rejects changed reference evidence (changed=%s)",
-		async (changeReference) => {
+	it.each([
+		{ changeReference: false, recoveryCarrier: false },
+		{ changeReference: true, recoveryCarrier: false },
+		{ changeReference: false, recoveryCarrier: true },
+		{ changeReference: true, recoveryCarrier: true },
+	])(
+		"restores authored reference evidence before effects (changed=$changeReference, recovery=$recoveryCarrier)",
+		async ({ changeReference, recoveryCarrier }) => {
 			const { runtime, service, message } = await setup();
 			const earlier = {
 				...message,
@@ -1589,6 +1594,12 @@ describe("durable background memory", () => {
 			vi.spyOn(runtime, "getSetting").mockImplementation((key) =>
 				key === "MEMORY_EVIDENCE_BATCH_BYTES" ? String(budget) : null,
 			);
+			const transport = { reply: "REFERENCE_RECOVERY_CANARY".repeat(10_000) };
+			if (recoveryCarrier)
+				await runtime.updateMemory({
+					id: earlier.id,
+					content: { ...earlier.content, chatIdempotency: transport },
+				});
 			const processor = vi.fn(async () => undefined);
 			runtime.registerEvaluator(evaluator(processor));
 			let call = 0;
@@ -1604,6 +1615,9 @@ describe("durable background memory", () => {
 						"The notebook in this story is violet.",
 					);
 					expect(JSON.stringify(params)).toContain("Full reference 🍊");
+					expect(JSON.stringify(params)).not.toContain(
+						"REFERENCE_RECOVERY_CANARY",
+					);
 					expect(processor).toHaveBeenCalledTimes(1);
 					if (changeReference)
 						await runtime.roomHandlerQueue.withLease(
@@ -1642,6 +1656,10 @@ describe("durable background memory", () => {
 				expect(await runtime.getTask(task.id)).toBeNull();
 			}
 			expect(runtime.useModel).toHaveBeenCalledTimes(3);
+			if (recoveryCarrier && !changeReference)
+				expect(
+					(await runtime.getMemoryById(earlier.id))?.content.chatIdempotency,
+				).toEqual(transport);
 		},
 	);
 	it.each(["edit", "delete"])(
