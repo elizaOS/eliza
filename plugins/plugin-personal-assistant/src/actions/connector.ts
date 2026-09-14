@@ -1738,7 +1738,7 @@ export const connectorAction: Action & {
     {
       name: "capabilities",
       description:
-        "google connect only: narrow the OAuth request to these LifeOps Google capabilities (for example google.calendar.read for calendar-only access). Omit to request the provider's default scope set.",
+        "google connect only: narrow the OAuth request to these LifeOps Google capabilities (for example google.calendar.read for calendar-only access). A new Google connection requires an explicit nonempty capability selection.",
       required: false,
       schema: {
         type: "array" as const,
