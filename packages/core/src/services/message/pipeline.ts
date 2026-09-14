@@ -216,7 +216,9 @@ export async function runV5MessageRuntimeStage1(
 	}
 	const senderRole =
 		getTrajectoryContext()?.userRole ??
-		(await resolveStage1SenderRole(args.runtime, args.message));
+		(await timeInferenceSpan("message:stage1:sender-role", () =>
+			resolveStage1SenderRole(args.runtime, args.message),
+		));
 	const availableContexts = listAvailableContextsForRole(
 		args.runtime.contexts,
 		senderRole,
@@ -253,27 +255,29 @@ export async function runV5MessageRuntimeStage1(
 	);
 	const ambientHardGate =
 		ambientTurn && isStage1AmbientHardGated(args.runtime, args.message);
-	const context = await createV5MessageContextObject({
-		...args,
-		includeActionDiscovery:
-			directMessageChannel &&
-			args.message.content?.channelType !== ChannelType.VOICE_DM &&
-			!args.codingMode
-				? "index"
-				: true,
-		userRoles: [senderRole],
-		availableContexts,
-		ambientTurn,
-		ambientHardGate,
-		peerCorrectionContinuation,
-		extraProviderExclusions: ambientTurnProviderExclusions(
-			args.runtime,
-			args.message,
-		),
-		// Per-turn exclusions (not the static list): even if a cached compose
-		// left RECENT_ERRORS in state, an unaddressed group turn must not
-		// render internal diagnostics into its Stage-1 context.
-	});
+	const context = await timeInferenceSpan("message:stage1:context", () =>
+		createV5MessageContextObject({
+			...args,
+			includeActionDiscovery:
+				directMessageChannel &&
+				args.message.content?.channelType !== ChannelType.VOICE_DM &&
+				!args.codingMode
+					? "index"
+					: true,
+			userRoles: [senderRole],
+			availableContexts,
+			ambientTurn,
+			ambientHardGate,
+			peerCorrectionContinuation,
+			extraProviderExclusions: ambientTurnProviderExclusions(
+				args.runtime,
+				args.message,
+			),
+			// Per-turn exclusions (not the static list): even if a cached compose
+			// left RECENT_ERRORS in state, an unaddressed group turn must not
+			// render internal diagnostics into its Stage-1 context.
+		}),
+	);
 	const stage1PreprocessStartedAt = performance.now();
 
 	// G10/G11: construct the per-trajectory recorder. No-op when disabled via

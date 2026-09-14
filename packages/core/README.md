@@ -597,3 +597,11 @@ While reviewed history is projected, Stage 1 selects supplied originals with `re
 When an original's source ID is unknown, `contextRequests=["history:search:literal phrase"]` searches the same authorized conversation by case-insensitive literal substring. Queries in one read return the union of all complete matching originals, without a result cap or summary. A search that adds no originals restores complete history; a literal miss is not proof that a fact was never discussed. Search uses the same fresh source and authorization checks before any draft processing or effect, and is available only while the optional history projection is active.
 
 An explicit DISCOVER_TOOLS names=[] read refreshes the complete registered catalog through canonical candidate admission, including each candidate's declared contexts, instead of treating Stage 1 routing as a permanent discovery boundary. Role, privacy, context, account-policy and availability checks remain active. This read returns authorized descriptions and child names without loading schemas or executing domain work; exact-name requests still load only their selected operations.
+
+Action discovery records aggregate count, elapsed time, maximum time and thrown
+checks for connector-policy and availability validation in one timing span.
+Default metadata stays constant in cardinality as the catalog grows. Set
+`ELIZA_INFERENCE_TIMING=1` to include every per-action check while debugging;
+these opt-in records can be large. Neither form is model context. Stage-1
+sender-role lookup and context construction have separate spans; nested spans
+overlap and must not be added together as independent latency.
