@@ -4,7 +4,7 @@
  * screenshots only to a temporary directory outside the repository.
  */
 
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -611,6 +611,22 @@ try {
     const page = await context.newPage();
     await page.clock.setFixedTime(new Date("2026-09-13T13:00:00.000Z"));
     const errors = [];
+    const frontend = [];
+    page.on("console", (message) =>
+      frontend.push({
+        type: "console",
+        level: message.type(),
+        text: message.text(),
+      }),
+    );
+    page.on("response", (response) =>
+      frontend.push({
+        type: "response",
+        method: response.request().method(),
+        path: new URL(response.url()).pathname,
+        status: response.status(),
+      }),
+    );
     page.on("pageerror", (error) => errors.push(String(error)));
     await page.goto(`${baseURL}?scenario=family-deletion`);
     await page
@@ -747,6 +763,10 @@ try {
     );
     assert(!overflow, `deletion review fits ${width}px viewport`);
     assert(errors.length === 0, `deletion ${width}px flow has no page errors`);
+    await writeFile(
+      join(outputDir, `deletion-frontend-${width}.json`),
+      JSON.stringify({ frontend, pageErrors: errors }, null, 2),
+    );
     await context.close();
   }
 
