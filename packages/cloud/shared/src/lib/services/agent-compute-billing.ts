@@ -56,11 +56,15 @@ export async function settleFundedAgentBillingInTransaction(
       actualAmount: amountDecimal,
     });
   } catch (error) {
-    // error-policy:J3 Renewal's savepoint preserves the old hold; the canonical biller queues the insufficient-funds stop.
+    // error-policy:J4 A denied renewal enters the canonical stop path. The
+    // savepoint preserves the existing hold until the host stop is reconciled,
+    // including when cancellation or expiry withdrew subscription authority.
     if (
       error instanceof ElizaError &&
       [
         SUBSCRIPTION_FUNDING_INSUFFICIENT,
+        "SUBSCRIPTION_FUNDING_AUTHORITY_UNAVAILABLE",
+        "ORGANIZATION_POLICY_UNAVAILABLE",
         AGENT_COMPUTE_FUNDING_EXPIRED,
         AGENT_COMPUTE_FUNDING_UNCONFIRMED,
       ].includes(error.code)
