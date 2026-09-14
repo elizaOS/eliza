@@ -1,6 +1,6 @@
 # wakesync personal device lane
 
-Branch: `sol/main` on `elizaOS/eliza`. Base: `develop`, rebased daily.
+Branch: `sol/main` on `elizaOS/eliza`. Base: `develop`, rebased daily. Tracking issue: elizaOS/eliza#31339.
 Goal: Eliza as the daily driver on a second phone (Pixel 11 Pro) and a companion iOS build, developed locally on the new Mac with the Codex Mac app. No SSH into the Mac, no VPS agent access to it. Sync is git + Discord only.
 
 This folder holds the lane docs and receipts. Nothing in `wakesync/` is upstream-bound; it is deleted from any PR cut for `develop`.
