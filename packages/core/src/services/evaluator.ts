@@ -162,11 +162,35 @@ const POST_TURN_EVALUATOR_CHARS_PER_TOKEN = 3.5 * 1.1;
 const POST_TURN_EVALUATOR_SKIP_REASON = "input_budget_exceeded";
 const POST_TURN_EVALUATOR_SKIP_ERROR =
 	"Post-turn evaluator skipped: estimated prompt exceeds POST_TURN_EVALUATOR_MAX_PROMPT_TOKENS";
+/**
+ * Opt-in per-result cap for the post-turn prompt. Unset keeps the complete
+ * result projections (the lossless contract); a deployment on a small
+ * context window sets it (live 2026-09-14: one WEB_FETCH result rendered
+ * 45K chars into a 29.6K-token post-turn call).
+ */
+const POST_TURN_EVALUATOR_RESULT_MAX_CHARS_SETTING =
+	"POST_TURN_EVALUATOR_RESULT_MAX_CHARS";
 /** One rendered RECENT_MESSAGES row starts `HH:MM (relative time) [entityId] `. */
 const CONVERSATION_ROW_START = /^\d{2}:\d{2} \([^()\n]*\) \[[^\]\n]+\] /gm;
 /** Sections the RECENT_MESSAGES provider appends after its conversation block. */
 const CONVERSATION_BLOCK_END =
 	/\n\n# (?:Received Message|Focus your response|Recent conversations across verified accounts)\n/;
+
+function optionalPositiveIntegerSetting(
+	runtime: IAgentRuntime,
+	key: string,
+): number | undefined {
+	const value = runtime.getSetting(key);
+	const parsed =
+		typeof value === "number"
+			? value
+			: typeof value === "string"
+				? Number.parseInt(value, 10)
+				: Number.NaN;
+	return Number.isFinite(parsed) && parsed >= 1
+		? Math.floor(parsed)
+		: undefined;
+}
 
 function positiveIntegerSetting(
 	runtime: IAgentRuntime,
@@ -318,6 +342,39 @@ function buildMergedSchema(active: PreparedEntry[]): JSONSchema {
 	};
 }
 
+/**
+ * How the merged output contract reaches the model. A schema-constrained
+ * request carries it structurally (response_format json_schema / strict
+ * tool), so its prompt keeps a compact outline; JSON-object and plain-output
+ * requests carry no enforceable schema, so their prompt spells it out.
+ */
+type SchemaRendering = "structural" | "text";
+
+function outlineType(schema: JSONSchema): string {
+	if (Array.isArray(schema.enum)) {
+		return (schema.enum as unknown[]).map(String).join("|");
+	}
+	return typeof schema.type === "string" ? schema.type : "any";
+}
+
+/**
+ * One line per top-level section listing its keys with their JSON type or
+ * enum values; optional keys carry `?`. The structured response format
+ * enforces the complete schema, so the prompt only needs this reminder.
+ */
+function renderSchemaOutline(schema: JSONSchema): string {
+	return Object.entries(schema.properties ?? {})
+		.map(([name, section]) => {
+			const required = new Set(section.required ?? []);
+			const keys = Object.entries(section.properties ?? {}).map(
+				([key, value]) =>
+					`${key}${required.has(key) ? "" : "?"}: ${outlineType(value)}`,
+			);
+			return `- ${name}: {${keys.join(", ")}}`;
+		})
+		.join("\n");
+}
+
 type RenderedEvaluatorPrompt = {
 	prompt: string;
 	promptSegments: PromptSegment[];
@@ -330,12 +387,20 @@ function renderSharedContext(params: {
 	agentName: string;
 	options: EvaluatorRunOptions;
 	parts: Record<string, string>;
+	/** Blocks hoisted from the active sections, rendered once after the provider context. */
+	blocks: Record<string, string>;
 }): string {
-	const { runtime, message, agentName, options, parts } = params;
+	const { runtime, message, agentName, options, parts, blocks } = params;
 	const part = (name: string, fallback = "(none)") => {
 		const text = toWellFormedUnicode(parts[name] ?? "");
 		return text || fallback;
 	};
+	const blockText = Object.entries(blocks)
+		.map(
+			([heading, text]) =>
+				`\n${heading}:\n${toWellFormedUnicode(text) || "(none)"}\n`,
+		)
+		.join("");
 
 	return `Evaluate just-finished turn for ${agentName}.
 
@@ -362,7 +427,7 @@ ${part("roomTranscript")}
 
 Provider context:
 ${part("providerContext")}
-`;
+${blockText}`;
 }
 
 function buildPrompt(params: {
@@ -376,6 +441,8 @@ function buildPrompt(params: {
 	schema: JSONSchema;
 	/** Oldest conversation rows dropped by the input budget, if any. */
 	transcriptOmittedRows?: number;
+	/** Defaults to "structural": the request carries the schema on the wire. */
+	schemaRendering?: SchemaRendering;
 }): RenderedEvaluatorPrompt {
 	const { runtime, message, state, active, options } = params;
 	const incremental = active.every((entry) => entry.progress !== undefined);
@@ -402,8 +469,14 @@ function buildPrompt(params: {
 	const omittedNote = params.transcriptOmittedRows
 		? `${params.transcriptOmittedRows} older message(s) omitted for the post-turn evaluator input budget`
 		: "";
-	// The merged evaluator prompt uses complete model projections while the
-	// complete ActionResults remain available on state for evaluator code.
+	// Each shared result keeps its head up to POST_TURN_EVALUATOR_RESULT_MAX_CHARS
+	// (the outcome the evaluators read) while the complete ActionResults remain
+	// available on state for evaluator code; the in-loop evaluator keeps its
+	// complete projections.
+	const actionResultsMaxChars = optionalPositiveIntegerSetting(
+		runtime,
+		POST_TURN_EVALUATOR_RESULT_MAX_CHARS_SETTING,
+	);
 	const sharedParts = {
 		evidenceMode: incremental
 			? "complete pending evidence records; processed history remains in storage"
@@ -411,7 +484,9 @@ function buildPrompt(params: {
 		latestMessage,
 		responseTexts,
 		actionResults: Array.isArray(actionResults)
-			? renderActionResultsForModel(actionResults as ActionResult[]).text
+			? renderActionResultsForModel(actionResults as ActionResult[], {
+					maxCharsPerResult: actionResultsMaxChars,
+				}).text
 			: stringifyForPrompt(actionResults ?? []),
 		providerContext,
 		// Rendered once here; sections refer to it instead of embedding their
@@ -448,10 +523,28 @@ function buildPrompt(params: {
 						)
 					: `${omittedNote ? `(${omittedNote})\n` : ""}${formatRecentMessages(params.roomTranscript)}`,
 	};
+	// Blocks several sections would each embed (live 2026-09-14: the room
+	// entity list appeared once per participant section) render once in the
+	// shared context; the first declaring section's text wins.
+	const sharedBlocks: Record<string, string> = {};
+	for (const entry of active) {
+		const declared = entry.evaluator.sharedBlocks?.({
+			runtime,
+			message: entry.message,
+			state,
+			options: entry.options,
+			prepared: entry.prepared,
+		});
+		for (const [heading, text] of Object.entries(declared ?? {})) {
+			if (text && !(heading in sharedBlocks)) sharedBlocks[heading] = text;
+		}
+	}
 	const shared = {
 		roomTranscriptRendered:
 			providerConversationRendered || params.roomTranscript !== null,
 		actionResultsText: sharedParts.actionResults,
+		actionResultsMaxChars,
+		blocks: sharedBlocks,
 	};
 
 	const stable: PromptSegment[] = [
@@ -539,21 +632,32 @@ function buildPrompt(params: {
 			stable: false,
 		});
 	}
-	// JSON-object and plain-output providers do not carry an enforceable schema
-	// on the wire. Keep the complete contract visible to every model path.
-	stable.push({
-		content: `## Output JSON Schema\n${stringifyForModel(params.schema)}\n\n`,
-		stable: true,
-	});
+	// A schema-constrained request carries the complete contract structurally
+	// (response_format json_schema / strict tool), so its prompt keeps a compact
+	// outline instead of repeating the merged schema as text (live 2026-09-14:
+	// 23.8K of 59.7K prompt chars, 40% of a 19.4K-token call). JSON-object and
+	// plain-output requests carry no enforceable schema on the wire, so their
+	// prompt keeps the complete contract visible.
+	// Rendered outside the cached prefix: the outline and the fallback's full
+	// text differ, and every rung of one call must share one prefix hash.
+	const schemaSegment: PromptSegment = {
+		content:
+			params.schemaRendering === "text"
+				? `## Output JSON Schema\n${stringifyForModel(params.schema)}\n\n`
+				: `## Output Shape\nThe structured response format enforces the exact JSON schema. Return one object with exactly these keys:\n${renderSchemaOutline(params.schema)}\n\n`,
+		stable: false,
+	};
 	const sharedContext = renderSharedContext({
 		runtime,
 		message,
 		agentName,
 		options,
 		parts: sharedParts,
+		blocks: sharedBlocks,
 	});
 	const promptSegments = [
 		...stable,
+		schemaSegment,
 		{
 			content: `${sharedContext}\n\n## Active Evaluators\n\n`,
 			stable: false,
@@ -592,6 +696,8 @@ function buildPrompt(params: {
 
 type BudgetedEvaluatorPrompt = {
 	rendered: RenderedEvaluatorPrompt;
+	/** The (possibly trimmed) input the dispatched prompt was rendered from. */
+	promptInput: Parameters<typeof buildPrompt>[0];
 	estimatedPromptTokens: number;
 	budgetTokens: number;
 	omittedRows: number;
@@ -652,6 +758,12 @@ function applyPostTurnInputBudget(
 	}
 	return {
 		rendered,
+		promptInput: {
+			...promptInput,
+			state,
+			roomTranscript,
+			transcriptOmittedRows: omittedRows,
+		},
 		estimatedPromptTokens,
 		budgetTokens,
 		omittedRows,
@@ -718,16 +830,31 @@ const schemaUnsupportedRuntimes = new WeakSet<object>();
 const schemaRejectionStreak = new WeakMap<object, number>();
 const SCHEMA_UNSUPPORTED_STREAK_THRESHOLD = 2;
 
+function modelInputFor(rendered: RenderedEvaluatorPrompt) {
+	return {
+		messages: [{ role: "user" as const, content: rendered.prompt }],
+		promptSegments: rendered.promptSegments,
+		providerOptions: rendered.providerOptions,
+	};
+}
+
 async function generateEvaluationOutput(params: {
 	runtime: IAgentRuntime;
 	rendered: RenderedEvaluatorPrompt;
 	schema: JSONSchema;
+	/** Prompt variant spelling the schema out, for requests that carry none on the wire. */
+	renderTextSchemaPrompt: () => RenderedEvaluatorPrompt;
 }): Promise<unknown> {
 	const { runtime, rendered, schema } = params;
-	const modelInput = {
-		messages: [{ role: "user" as const, content: rendered.prompt }],
-		promptSegments: rendered.promptSegments,
-		providerOptions: rendered.providerOptions,
+	const modelInput = modelInputFor(rendered);
+	// The JSON-object and plain requests send no schema, so their prompt is the
+	// text-schema variant, rendered once and only when a fallback is needed.
+	let textSchemaInput: ReturnType<typeof modelInputFor> | undefined;
+	const textSchemaModelInput = (): ReturnType<typeof modelInputFor> => {
+		if (!textSchemaInput) {
+			textSchemaInput = modelInputFor(params.renderTextSchemaPrompt());
+		}
+		return textSchemaInput;
 	};
 	// Post-turn evaluation runs on the SMALL model: it is a cheap, frequent,
 	// structured extraction/classification pass (all active evaluators share one
@@ -735,13 +862,13 @@ async function generateEvaluationOutput(params: {
 	// especially for local-first tiers.
 	const requestJsonObject = (): Promise<unknown> =>
 		runtime.useModel(ModelType.TEXT_SMALL, {
-			...modelInput,
+			...textSchemaModelInput(),
 			responseFormat: { type: "json_object" },
 			temperature: 0,
 		});
 	const requestPlain = (): Promise<unknown> =>
 		runtime.useModel(ModelType.TEXT_SMALL, {
-			...modelInput,
+			...textSchemaModelInput(),
 			temperature: 0,
 		});
 	const afterJsonObjectRejected = async (
@@ -1003,13 +1130,15 @@ export class EvaluatorService extends BaseService {
 		evaluatorId: string;
 		rendered: RenderedEvaluatorPrompt;
 		schema: JSONSchema;
+		renderTextSchemaPrompt: () => RenderedEvaluatorPrompt;
 	}): Promise<{ output: Record<string, unknown> | null; error?: string }> {
-		const { evaluatorId, rendered, schema } = params;
+		const { evaluatorId, rendered, schema, renderTextSchemaPrompt } = params;
 		try {
 			const raw = await generateEvaluationOutput({
 				runtime: this.runtime,
 				rendered,
 				schema,
+				renderTextSchemaPrompt,
 			});
 			const output = coerceObjectOutput(raw);
 			if (!output) {
@@ -1549,6 +1678,8 @@ export class EvaluatorService extends BaseService {
 						evaluatorId,
 						rendered,
 						schema,
+						renderTextSchemaPrompt: () =>
+							buildPrompt({ ...budgeted.promptInput, schemaRendering: "text" }),
 					})
 				: { output: {}, error: undefined };
 		if (
