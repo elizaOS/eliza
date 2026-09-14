@@ -3,7 +3,6 @@
  * groups and a leased synthetic authority, retaining reset and aggregate proof.
  */
 
-import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -12,10 +11,10 @@ import { SyntheticControlClient } from "@elizaos/shared/synthetic-control";
 import cloudStabilityScenario from "../scenarios/cloud-stability-agent.scenario.ts";
 import {
   authorityPortClosed,
+  installAuthoritySignalCleanup,
+  startAuthority,
   stopAuthority,
-  waitForAuthorityReady,
 } from "../src/stability/authority-process.ts";
-import { authorityChildEnvironment } from "../src/stability/cloud-stability-environment.ts";
 import {
   type CloudStabilityMode,
   canonicalCloudStabilitySha256,
@@ -58,68 +57,6 @@ function modelOption(defaultModel: string): string {
     throw new Error("--model must be a bounded provider model identifier");
   }
   return model;
-}
-
-async function startAuthority(
-  namespace: string,
-  token: string,
-): Promise<{
-  child: ReturnType<typeof spawn>;
-  url: string;
-}> {
-  const child = spawn(
-    process.execPath,
-    [
-      "--conditions=eliza-source",
-      path.join(
-        repoRoot,
-        "packages/cloud/test-mocks/test/fixtures/synthetic-control-authority.ts",
-      ),
-    ],
-    {
-      cwd: repoRoot,
-      detached: false,
-      shell: false,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: authorityChildEnvironment(process.env, namespace, token),
-    },
-  );
-  const url = await waitForAuthorityReady(child);
-  return { child, url };
-}
-
-function installAuthoritySignalCleanup(
-  child: ReturnType<typeof spawn>,
-): () => void {
-  let handling = false;
-  const handlers = new Map<NodeJS.Signals, () => void>();
-  for (const signal of ["SIGINT", "SIGTERM"] as const) {
-    const handler = (): void => {
-      if (handling) return;
-      handling = true;
-      const reraise = (): void => {
-        for (const [registeredSignal, registeredHandler] of handlers) {
-          process.removeListener(registeredSignal, registeredHandler);
-        }
-        process.kill(process.pid, signal);
-      };
-      void stopAuthority(child).then(reraise, (error: unknown) => {
-        // error-policy:J1 Signal cleanup reports the bounded teardown failure before preserving signal semantics.
-        const message = error instanceof Error ? error.message : String(error);
-        process.stderr.write(
-          `[cloud-stability] authority signal cleanup failed: ${message.slice(0, 1_000)}\n`,
-        );
-        reraise();
-      });
-    };
-    handlers.set(signal, handler);
-    process.once(signal, handler);
-  }
-  return () => {
-    for (const [signal, handler] of handlers) {
-      process.removeListener(signal, handler);
-    }
-  };
 }
 
 function processExists(pid: number): boolean {
@@ -211,7 +148,7 @@ const outputRoot = path.resolve(
 await mkdir(outputRoot, { recursive: true, mode: 0o700 });
 const namespace = `cloud-stability-${randomBytes(8).toString("hex")}`;
 const controlToken = randomBytes(32).toString("hex");
-const authority = await startAuthority(namespace, controlToken);
+const authority = await startAuthority(repoRoot, namespace, controlToken);
 const removeAuthoritySignalCleanup = installAuthoritySignalCleanup(
   authority.child,
 );
