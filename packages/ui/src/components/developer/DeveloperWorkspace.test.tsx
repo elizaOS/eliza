@@ -274,7 +274,7 @@ describe("developer workspace", () => {
     await flush();
     expect(screen.getByText("Which view is open?")).toBeTruthy();
     expect(screen.getByText(/100 tokens in · 20 out/)).toBeTruthy();
-    expect(screen.getByText(/1 model call · 1.50s total/)).toBeTruthy();
+    expect(screen.getByText(/1 model attempt · 1.50s total/)).toBeTruthy();
     expect(screen.queryByText("Recorded runs")).toBeNull();
     expect(screen.queryByText("Run input")).toBeNull();
     expect(mocks.detail).not.toHaveBeenCalled();
@@ -375,7 +375,7 @@ describe("developer workspace", () => {
     await flush();
     const panel = screen.getByRole("tabpanel", { name: "Trajectories" });
     expect(
-      within(panel).getByText(/Background memory · 1 model call/),
+      within(panel).getByText(/Background memory · 1 model attempt/),
     ).toBeTruthy();
     expect(mocks.list).toHaveBeenCalledWith(
       { search: "user-1", limit: 100, offset: 4 },
@@ -527,7 +527,9 @@ describe("developer workspace", () => {
       ctrlKey: false,
     });
     await flush();
-    expect(screen.getByText(/Background memory · 1 model call/)).toBeTruthy();
+    expect(
+      screen.getByText(/Background memory · 1 model attempt/),
+    ).toBeTruthy();
     expect(mocks.detail).toHaveBeenCalledWith("memory-only", expect.anything());
   });
 
@@ -610,7 +612,9 @@ describe("developer workspace", () => {
       { search: "user-1", limit: 100, offset: 0 },
       expect.anything(),
     );
-    expect(screen.getByText(/Background memory · 1 model call/)).toBeTruthy();
+    expect(
+      screen.getByText(/Background memory · 1 model attempt/),
+    ).toBeTruthy();
   });
 
   it("never gives an unlinked notification the previous reply's usage", async () => {
