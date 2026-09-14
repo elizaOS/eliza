@@ -19,6 +19,7 @@ import {
   type TargetInfo,
   type UUID,
 } from "@elizaos/core";
+import { compareConversationsByRecency } from "../api/conversation-sort.ts";
 import type { ConversationMeta, ServerState } from "../api/server-types.ts";
 
 /**
@@ -121,7 +122,7 @@ function resolveConversation(
 
   // 3. Most recently updated conversation
   const sorted = Array.from(state.conversations.values()).sort(
-    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    compareConversationsByRecency,
   );
   return sorted[0];
 }
