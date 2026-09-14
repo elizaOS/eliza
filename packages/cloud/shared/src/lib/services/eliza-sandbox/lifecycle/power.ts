@@ -198,109 +198,156 @@ export class SandboxPower {
       }
     }
 
-    const result = await dbWrite.transaction(async (tx) => {
-      await this.host.lockLifecycle(tx, agentId, orgId);
+    const prepaidProvider =
+      (await this.host.getProvider()).computeFundingCapability === "host-lease-v1";
+    const commitShutdownPhase = (expectedStopped?: AgentSandbox) =>
+      dbWrite.transaction(async (tx) => {
+        await this.host.lockLifecycle(tx, agentId, orgId);
 
-      const rec = await this.host.getAgentForLifecycleMutation(tx, agentId, orgId);
-      if (!rec) return { success: false, error: "Agent not found" } as const;
-      const tierRejection = containerBackedServiceRejection(rec, "shutdown");
-      if (tierRejection) return { success: false, error: tierRejection } as const;
-      if (rec.deletion_attempt_id || this.host.isAwaitingDeletion(rec.status)) {
-        return { success: false, error: "Agent not found" } as const;
-      }
-      if (this.host.getReplacementCleanupLocator(rec)) {
-        return { success: false, error: "Agent replacement cleanup is still pending" } as const;
-      }
+        const rec = await this.host.getAgentForLifecycleMutation(tx, agentId, orgId);
+        if (!rec) return { success: false, error: "Agent not found" } as const;
+        const tierRejection = containerBackedServiceRejection(rec, "shutdown");
+        if (tierRejection) return { success: false, error: tierRejection } as const;
+        if (rec.deletion_attempt_id || this.host.isAwaitingDeletion(rec.status)) {
+          return { success: false, error: "Agent not found" } as const;
+        }
+        if (this.host.getReplacementCleanupLocator(rec)) {
+          return { success: false, error: "Agent replacement cleanup is still pending" } as const;
+        }
 
-      if (
-        shutdownCaptureAuthority &&
-        !snapshotCaptureStillCanonical(rec, shutdownCaptureAuthority)
-      ) {
-        return {
-          success: false,
-          error:
-            "Refusing to stop: the agent's lifecycle generation moved after the pre-stop capture; retry the shutdown.",
-        } as const;
-      }
+        if (
+          (expectedStopped && !snapshotCaptureStillCanonical(rec, expectedStopped)) ||
+          (snapshotSource &&
+            (rec.lifecycle_job_id !== snapshotSource.lifecycle_job_id ||
+              rec.lifecycle_execution_generation !== snapshotSource.lifecycle_execution_generation))
+        )
+          return {
+            success: false,
+            error: "Agent shutdown execution changed before removal",
+          } as const;
 
-      const hasActiveProvisionJob = await this.host.hasActiveProvisionJobTx(tx, agentId, orgId);
-      const recoveringWarmCredentialFence =
-        rec.status === "provisioning" &&
-        rec.claimed_at !== null &&
-        (rec.warm_claim_credential_state === "pending" ||
-          rec.warm_claim_credential_state === "attested");
-      const hasCompleteWarmRecoveryLocator =
-        rec.sandbox_id !== null && rec.node_id !== null && rec.container_name !== null;
-      const hasNoWarmRecoveryLocator =
-        rec.sandbox_id === null && rec.node_id === null && rec.container_name === null;
-      if (
-        recoveringWarmCredentialFence &&
-        !hasCompleteWarmRecoveryLocator &&
-        !hasNoWarmRecoveryLocator
-      ) {
-        return {
-          success: false,
-          error: "Warm-claim recovery locator is incomplete",
-        } as const;
-      }
-      const recoveringWarmCredential =
-        recoveringWarmCredentialFence &&
-        (hasCompleteWarmRecoveryLocator || hasNoWarmRecoveryLocator);
-      if ((rec.status === "provisioning" && !recoveringWarmCredential) || hasActiveProvisionJob) {
-        return {
-          success: false,
-          error: "Agent provisioning is in progress",
-        } as const;
-      }
-
-      if (
-        rec.status === "running" &&
-        rec.bridge_url &&
-        !captureUnsupported &&
-        !captureWaivedByOperator
-      ) {
-        // The exact capture authority was checked above. Keep the returned URL
-        // assertion as an additional response-integrity check: a helper must
-        // never return bytes attributed to a different bridge than it dialled.
-        if (!preShutdownSnapshot || rec.bridge_url !== preShutdownSnapshot.bridgeUrl) {
+        if (
+          shutdownCaptureAuthority &&
+          !snapshotCaptureStillCanonical(rec, shutdownCaptureAuthority)
+        ) {
           return {
             success: false,
             error:
               "Refusing to stop: the agent's lifecycle generation moved after the pre-stop capture; retry the shutdown.",
           } as const;
         }
-        await this.host.persistSnapshotWithinTransaction(
-          tx,
-          rec.id,
-          rec.organization_id,
-          "pre-shutdown",
-          preShutdownSnapshot.stateData,
-          preShutdownSnapshot.sizeBytes,
-        );
-      }
 
-      if (rec.sandbox_id) {
-        const stop = await this.host.runBoundedSandboxStopForReplacement(rec.sandbox_id);
-        if (stop) {
-          const error = stop.error instanceof Error ? stop.error.message : String(stop.error);
-          logger.warn("[agent-sandbox] Stop failed during shutdown", {
-            sandboxId: rec.sandbox_id,
-            status: rec.status,
-            error,
-          });
+        const hasActiveProvisionJob = await this.host.hasActiveProvisionJobTx(tx, agentId, orgId);
+        const recoveringWarmCredentialFence =
+          rec.status === "provisioning" &&
+          rec.claimed_at !== null &&
+          (rec.warm_claim_credential_state === "pending" ||
+            rec.warm_claim_credential_state === "attested");
+        const hasCompleteWarmRecoveryLocator =
+          rec.sandbox_id !== null && rec.node_id !== null && rec.container_name !== null;
+        const hasNoWarmRecoveryLocator =
+          rec.sandbox_id === null && rec.node_id === null && rec.container_name === null;
+        if (
+          recoveringWarmCredentialFence &&
+          !hasCompleteWarmRecoveryLocator &&
+          !hasNoWarmRecoveryLocator
+        ) {
           return {
             success: false,
-            error: "Failed to prove the previous sandbox stopped",
+            error: "Warm-claim recovery locator is incomplete",
           } as const;
         }
-      }
+        const recoveringWarmCredential =
+          recoveringWarmCredentialFence &&
+          (hasCompleteWarmRecoveryLocator || hasNoWarmRecoveryLocator);
+        if ((rec.status === "provisioning" && !recoveringWarmCredential) || hasActiveProvisionJob) {
+          return {
+            success: false,
+            error: "Agent provisioning is in progress",
+          } as const;
+        }
 
-      // `getAgentForLifecycleMutation()` holds this exact row FOR UPDATE through
-      // the provider absence proof and write. The locked tier guard above
-      // therefore makes the allowlist predicate stable; it is a final SQL
-      // backstop, not an unchecked optimistic CAS that can silently lose a tier
-      // race after the container has stopped.
-      await tx.execute(sql`
+        let commitLifecycleRevision = rec.lifecycle_revision;
+        if (
+          rec.status === "running" &&
+          rec.bridge_url &&
+          !captureUnsupported &&
+          !captureWaivedByOperator
+        ) {
+          // The exact capture authority was checked above. Keep the returned URL
+          // assertion as an additional response-integrity check: a helper must
+          // never return bytes attributed to a different bridge than it dialled.
+          if (!preShutdownSnapshot || rec.bridge_url !== preShutdownSnapshot.bridgeUrl) {
+            return {
+              success: false,
+              error:
+                "Refusing to stop: the agent's lifecycle generation moved after the pre-stop capture; retry the shutdown.",
+            } as const;
+          }
+          const persisted = await this.host.persistSnapshotWithinTransaction(
+            tx,
+            rec.id,
+            rec.organization_id,
+            "pre-shutdown",
+            preShutdownSnapshot.stateData,
+            preShutdownSnapshot.sizeBytes,
+          );
+          commitLifecycleRevision = persisted.lifecycleRevision;
+        }
+
+        if (prepaidProvider && (await hasOpenAgentComputeFunding(tx, agentId, orgId))) {
+          if (
+            rec.status === "running" &&
+            !preShutdownSnapshot &&
+            !captureUnsupported &&
+            !captureWaivedByOperator
+          )
+            return {
+              success: false,
+              error: "Refusing paid shutdown without a current backup",
+            } as const;
+          const funding = await stopFundedAgentInTransaction(tx, {
+            agentId,
+            organizationId: orgId,
+            lifecycleRevision: commitLifecycleRevision,
+          });
+          if (!funding) throw new Error("Shutdown lost its paid stop authority");
+          const [stopped] = await tx
+            .update(agentSandboxes)
+            .set({ status: "stopped", updated_at: new Date() })
+            .where(and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.organization_id, orgId)))
+            .returning();
+          if (!stopped) throw new Error("Shutdown lost its stopped generation");
+          if (rec.node_id) await reconcileAllocatedWorkloadsOnNodeWithDatabase(tx, rec.node_id);
+          return { success: true, fundedRetirement: stopped, funding } as const;
+        }
+
+        if (rec.sandbox_id) {
+          const stop = prepaidProvider
+            ? await this.host.runBoundedSandboxStopForReplacement(rec.sandbox_id, {
+                releaseCapacity: false,
+              })
+            : await this.host.runBoundedSandboxStopForReplacement(rec.sandbox_id);
+          if (stop) {
+            const error = stop.error instanceof Error ? stop.error.message : String(stop.error);
+            logger.warn("[agent-sandbox] Stop failed during shutdown", {
+              sandboxId: rec.sandbox_id,
+              status: rec.status,
+              error,
+            });
+            return {
+              success: false,
+              error: "Failed to prove the previous sandbox stopped",
+            } as const;
+          }
+        }
+
+        // `getAgentForLifecycleMutation()` holds this exact row FOR UPDATE through
+        // the provider absence proof and write. The locked tier guard above
+        // therefore makes the allowlist predicate stable; it is a final SQL
+        // backstop, not an unchecked optimistic CAS that can silently lose a tier
+        // race after the container has stopped.
+        await tx.execute(sql`
         UPDATE ${agentSandboxes}
         SET
           status = 'stopped',
@@ -313,12 +360,26 @@ export class SandboxPower {
           AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
       `);
 
-      snapshotAgentId = rec.id;
-      if (captureWaivedByOperator) {
-        return { success: true, stateLossAcknowledged: true } as const;
-      }
-      return { success: true } as const;
-    });
+        if (prepaidProvider && rec.node_id)
+          await reconcileAllocatedWorkloadsOnNodeWithDatabase(tx, rec.node_id);
+        snapshotAgentId = rec.id;
+        if (captureWaivedByOperator) {
+          return { success: true, stateLossAcknowledged: true } as const;
+        }
+        return { success: true } as const;
+      });
+
+    let result = await commitShutdownPhase();
+    if (result.success && "fundedRetirement" in result && result.fundedRetirement) {
+      const stopped = result.fundedRetirement;
+      shutdownCaptureAuthority = stopped;
+      preShutdownSnapshot = null;
+      if (result.funding.purchasedCreditRefunded)
+        await creditsService.invalidateCreditCaches(orgId);
+      result = await commitShutdownPhase(stopped);
+      if ("fundedRetirement" in result)
+        throw new Error("Shutdown paid retirement did not converge");
+    }
 
     if (result.success && snapshotAgentId) {
       await agentSandboxesRepository.pruneBackups(snapshotAgentId, MAX_BACKUPS).catch((error) => {
@@ -1651,7 +1712,9 @@ export class SandboxPower {
         ? (await agentSandboxesRepository.getLatestStoredBackup(rec.id))?.id
         : (gate.backupId ?? undefined);
 
-    const provisionResult = await this.host.provision(agentId, orgId, restoreOverride);
+    const provisionResult = restoreOverride
+      ? await this.host.provision(agentId, orgId, restoreOverride)
+      : await this.host.provision(agentId, orgId);
     if (!provisionResult.success) {
       return { success: false, reprovisioned: true, error: provisionResult.error };
     }
@@ -1734,11 +1797,15 @@ export class SandboxPower {
         error: "Agent lifecycle changed before restart billing settlement",
       };
     }
-    const funding = await agentBillingRepository.settleAccruedBillingBeforeLifecycle(
-      agentId,
-      orgId,
-      new Date(),
-    );
+    const provider = await this.host.getProvider();
+    const funding =
+      provider.computeFundingCapability === "host-lease-v1"
+        ? await settleAgentBringUpBilling(rec)
+        : await agentBillingRepository.settleAccruedBillingBeforeLifecycle(
+            agentId,
+            orgId,
+            new Date(),
+          );
     if (funding.status === "insufficient_credits") {
       return {
         success: false,
@@ -1767,7 +1834,50 @@ export class SandboxPower {
       };
     }
 
-    const provisionResult = await this.host.provision(agentId, orgId);
+    let restoreOverride: ProvisionRestoreOverride | undefined;
+    if (
+      provider.computeFundingCapability === "host-lease-v1" &&
+      !shutdownResult.stateLossAcknowledged
+    ) {
+      const stopped = await this.host.getAgentForWrite(agentId, orgId);
+      if (
+        !stopped ||
+        stopped.status !== "stopped" ||
+        stopped.sandbox_id !== null ||
+        stopped.environment_revision !== rec.environment_revision ||
+        stopped.lifecycle_job_id !== rec.lifecycle_job_id ||
+        stopped.lifecycle_execution_generation !== rec.lifecycle_execution_generation ||
+        stopped.execution_tier !== rec.execution_tier
+      ) {
+        return {
+          success: false,
+          containerStopped: true,
+          containerStarted: false,
+          error: "Agent restart authority changed after shutdown",
+        };
+      }
+      const gate = await runWakeRestoreIntegrityGate({
+        sandboxRecordId: agentId,
+        agentName: stopped.agent_name,
+      });
+      if (!gate.ok || !gate.backupId) {
+        return {
+          success: false,
+          containerStopped: true,
+          containerStarted: false,
+          error: !gate.ok
+            ? formatWakeRestoreIntegrityError(gate.failure)
+            : "Paid restart requires a restorable backup",
+        };
+      }
+      restoreOverride = {
+        kind: "from-backup",
+        backupId: gate.backupId,
+        requireRestoreEndpoint: true,
+        expectedAdmission: stopped,
+      };
+    }
+    const provisionResult = await this.host.provision(agentId, orgId, restoreOverride);
     if (!provisionResult.success) {
       return {
         success: false,

@@ -955,11 +955,18 @@ describe("ElizaSandboxService deletion-state guards (resume/wake/restart)", () =
     });
   }
 
-  test("executeRestart propagates a transient fail-closed snapshot result", async () => {
+  test("legacy executeRestart propagates a transient fail-closed snapshot result", async () => {
     const { ElizaSandboxService, SNAPSHOT_CAPTURE_TRANSIENT } = await import(
       "../eliza-sandbox.ts?actual"
     );
-    const svc = new ElizaSandboxService();
+    const provider: SandboxProvider = {
+      create: mock(async () => {
+        throw new Error("Transient shutdown must not allocate");
+      }),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      checkHealth: mock(async () => true),
+    };
+    const svc = new ElizaSandboxService(provider);
     const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
       row("running"),
     );
