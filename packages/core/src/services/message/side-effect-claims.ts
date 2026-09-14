@@ -818,7 +818,7 @@ export function replyClaimsEmptyTrackedWorkState(reply: string): boolean {
 // what is it?") never fire; questions are exempt like every detector here.
 const PROGRESS_PROMISE_REPLY_PATTERN = new RegExp(
 	String.raw`^[\s"'…–—-]*(?:` +
-		String.raw`on it|got it|will do|sure thing|you got it|no problem|right away|` +
+		String.raw`on it|will do|sure thing|you got it|no problem|right away|` +
 		String.raw`one (?:sec|second|moment|min(?:ute)?)|just a (?:sec|second|moment|min(?:ute)?)|hold on|hang (?:on|tight)|gimme a (?:sec|second|minute)|` +
 		String.raw`(?:i(?:['’]m|\s+am)\s+)?(?:checking|looking into|pulling up|grabbing|fetching|getting|working) (?:it|that|this|on it|[\w\s]{0,24}?)(?:\s+now)?|` +
 		String.raw`i(?:['’]ll|\s+will) (?:check|look into|pull(?: that| it)? up|grab|fetch|get|handle|take care of)(?:\s[\w\s]{0,24})?|` +

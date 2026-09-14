@@ -1840,6 +1840,33 @@ describe("core.simple_progress_promise", () => {
 		return evaluator;
 	}
 
+	it.each(["none", "non_applied"] as const)(
+		"does not reopen a terminal %s acknowledgement as work",
+		async (status) => {
+			const handler = simpleReplyHandler("Got it.");
+			handler.plan.replyEffectStatus = status;
+			expect(
+				await getProgressEvaluator().shouldRun(
+					makeContext(handler, {
+						userText:
+							"This is only an acknowledgement, with no app action or saved-record changes. Reply exactly: Got it.",
+					}),
+				),
+			).toBe(false);
+		},
+	);
+
+	it("still routes explicitly pending work with a conversational acknowledgement", async () => {
+		const handler = simpleReplyHandler("Got it.");
+		handler.plan.replyEffectStatus = "pending";
+		const context = makeContext(handler);
+		expect(await getProgressEvaluator().shouldRun(context)).toBe(true);
+		expect(await getProgressEvaluator().evaluate(context)).toMatchObject({
+			requiresTool: true,
+			clearReply: true,
+		});
+	});
+
 	it("fires only on simple-path bare promises (live: 'On it.' with zero tools)", async () => {
 		const evaluator = getProgressEvaluator();
 		expect(

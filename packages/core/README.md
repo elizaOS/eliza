@@ -538,6 +538,11 @@ Experience retrieval orders candidates by semantic similarity, then quality for 
 
 Foreground history uses compact source labels and exact-repeat references without discarding stored or model-readable conversation evidence. Settled-result reply-only rounds use a smaller default instruction set, preserve original-context restoration, and cannot execute tools again. Custom prompt policies and ordinary planning remain intact.
 
+A bare "Got it." is an acknowledgement, not evidence that work remains.
+Stage-1 routing still honors explicit pending effects, required tools, selected
+actions and intents. Genuine progress promises retain their existing checks;
+the acknowledgement alone must not reopen a completed conversational turn.
+
 Reply-only recovery captures reuse the same exact-repeat encoding when the
 original context enables it. Every dialogue occurrence remains recoverable;
 current instructions, providers, tool results and pending work stay complete.

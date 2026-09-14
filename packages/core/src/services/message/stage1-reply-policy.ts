@@ -30,7 +30,6 @@ import {
 import { stripReasoningBlocks } from "./fallback-reply";
 
 export const PLANNING_ACK_REPLIES = new Set([
-	"got it.",
 	"looking into it.",
 	"on it.",
 	"running shell commands to gather disk usage...",

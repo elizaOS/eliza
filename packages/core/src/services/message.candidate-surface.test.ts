@@ -1,3 +1,4 @@
+/** Exercises Stage-1 candidate admission and terminal replies through the real parsers without model transport. */
 import { describe, expect, it } from "vitest";
 import type { Action } from "../types/components";
 import {
@@ -19,6 +20,38 @@ const actions: Action[] = [
 ];
 
 describe("budgeted model-selected action surface", () => {
+	it.each(["none", "non_applied"] as const)(
+		"keeps an explicit %s acknowledgement out of inferred app work",
+		(replyEffectStatus) => {
+			const envelope = {
+				shouldRespond: "RESPOND",
+				contexts: ["simple"],
+				intents: [],
+				candidateActionNames: [],
+				replyText: "Got it.",
+				replyEffectStatus,
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			};
+			const runtime = {
+				actions: [
+					{ name: "VIEWS", tags: ["views", "app", "notes", "calendar"] },
+					{ name: "APP", tags: ["app", "apps"] },
+				],
+				messageText:
+					"This is only an acknowledgement, with no app action or saved-record changes. Reply exactly: Got it.",
+			};
+			for (const result of [
+				messageHandlerFromFieldResult(envelope, undefined, runtime),
+				parseMessageHandlerModelOutput(JSON.stringify(envelope), runtime),
+			]) {
+				expect(result?.plan.requiresTool).not.toBe(true);
+				expect(result?.plan.candidateActions ?? []).toEqual([]);
+				expect(result?.plan.reply).toBe("Got it.");
+			}
+		},
+	);
 	it.each([
 		{ candidates: ["DISCOVER_TOOLS"] },
 		{ candidates: ["DISCOVER_TOOLS", "NOTES"] },
