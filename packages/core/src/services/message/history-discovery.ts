@@ -284,7 +284,14 @@ export function loadedHistorySegments(
 	context: ContextObject,
 	projection?: HistoryDiscovery,
 ): PromptSegment[] {
-	if (!projection) return [];
+	// No deferred reads means there is no evidence to render or authorize here.
+	// Avoid hashing every original source merely to return an empty list.
+	if (
+		!projection ||
+		(projection.loadedSourceIds.size === 0 &&
+			!projection.emptySearchResults?.length)
+	)
+		return [];
 	const bound = completionContextSources(context);
 	if (projection.sourceSetId !== bound.sourceSetId) return [];
 	const searchResults: ContextObjectPromptSegment[] = projection
@@ -299,7 +306,7 @@ export function loadedHistorySegments(
 		: [];
 	return [
 		...searchResults,
-		...collectCompletionContextSources(context)
+		...bound.sources
 			.filter((source) => projection.loadedSourceIds.has(source.id))
 			.map((source) => ({
 				id: `history-read:${source.event.id}`,
