@@ -401,8 +401,8 @@ export class SandboxPower {
   /**
    * Capture current state before a data-bearing container is removed. An older
    * verified backup proves restorability, not preservation of later writes.
-   * Failed capture leaves compute running, including for billing suspension;
-   * the existing stop-intent retry/attention path owns that failure.
+   * Failed capture denies removal. Funded suspension can instead confirm a
+   * stop in place, retaining the container and volume for later recovery.
    */
   async prepareSuspendBackupGate(rec: AgentSandbox): Promise<
     | { outcome: "skip" }
@@ -456,8 +456,8 @@ export class SandboxPower {
   /**
    * Daemon-side handler for `agent_suspend`. Intent-bound prepaid stops capture
    * current state and release compute through the sleep lifecycle. Low-level
-   * reconciliation without an intent can still stop in place before refunding;
-   * it retains the full container when no current backup authorizes removal.
+   * reconciliation and intent-bound capture failures can stop in place before
+   * refunding, retaining the full container without authority to remove it.
    * Legacy runtime requires a current backup before replacement stop removes it.
    */
   async executeSuspend(
@@ -583,13 +583,23 @@ export class SandboxPower {
           jobId,
           lifecycleRevision: expectedLifecycleRevision,
         });
-        return {
-          success: sleep.success,
-          containerStopped: sleep.containerRemoved,
-          backupId: sleep.backupId,
+        if (!sleep.backupCaptureUnavailable || !fundedSource) {
+          return {
+            success: sleep.success,
+            containerStopped: sleep.containerRemoved,
+            backupId: sleep.backupId,
+            error: sleep.error,
+            ...(sleep.skipped ? { skipped: true as const, reason: sleep.reason } : {}),
+          };
+        }
+        // A dead snapshot endpoint cannot keep paid CPU or its hold alive.
+        // The transaction below revalidates the intent and funding, then stops
+        // in place. Retaining the container preserves every unbacked write.
+        logger.warn("[agent-sandbox] Live backup unavailable; retaining state during paid stop", {
+          agentId,
+          jobId,
           error: sleep.error,
-          ...(sleep.skipped ? { skipped: true as const, reason: sleep.reason } : {}),
-        };
+        });
       }
     }
     // Low-level prepaid reconciliation stops in place. Retaining the container and
@@ -1328,7 +1338,9 @@ export class SandboxPower {
     backupId?: string;
     error?: string;
   }> {
-    return this.executeSleepWithStopAuthority(agentId, orgId);
+    const { backupCaptureUnavailable: _backupCaptureUnavailable, ...result } =
+      await this.executeSleepWithStopAuthority(agentId, orgId);
+    return result;
   }
 
   private async executeSleepWithStopAuthority(
@@ -1343,6 +1355,7 @@ export class SandboxPower {
     containerRemoved: boolean;
     backupId?: string;
     error?: string;
+    backupCaptureUnavailable?: true;
     skipped?: true;
     reason?: "lifecycle_changed" | "stop_intent_superseded" | "billing_recovered";
   }> {
@@ -1419,7 +1432,12 @@ export class SandboxPower {
     if (rec.status !== "stopped" && rec.sandbox_id) {
       const capture = await this.prepareSuspendBackupGate(rec);
       if (capture.outcome === "refuse") {
-        return { success: false, containerRemoved: false, error: capture.error };
+        return {
+          success: false,
+          containerRemoved: false,
+          error: capture.error,
+          backupCaptureUnavailable: true,
+        };
       }
       if (capture.outcome === "proceed") pendingSleepSnapshot = capture.pendingSnapshot;
     }

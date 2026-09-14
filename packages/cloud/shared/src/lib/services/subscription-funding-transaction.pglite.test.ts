@@ -2868,20 +2868,40 @@ if (sshFixturePath) {
           ).rows[0];
         try {
           if (scenario === "user-suspend-backup-failure") {
-            const before = await renewalState(org);
+            const allocationBeforeStop = await allocated();
             expect(await retire()).toMatchObject({
-              success: false,
-              containerStopped: false,
-              error: expect.stringContaining("user-stop capture unavailable"),
+              success: true,
+              containerStopped: true,
             });
             expect(remove).not.toHaveBeenCalled();
             expect(persist).not.toHaveBeenCalled();
-            expect(await renewalState(org)).toEqual(before);
             expect(
               (
                 await ssh.exec(`${docker} inspect --format '{{.State.Running}}' ${containerId}`)
               ).trim(),
-            ).toBe("true");
+            ).toBe("false");
+            expect(
+              (
+                await ssh.exec(`${docker} cp ${containerId}:/tmp/worker-marker - | tar -xOf -`)
+              ).trim(),
+            ).toBe(marker);
+            expect(await canonical()).toEqual({
+              status: "stopped",
+              sandbox_id: name,
+              last_backup_at: null,
+            });
+            expect(await allocated()).toBe(allocationBeforeStop);
+            const stopped = await renewalState(org);
+            expect(stopped.windows).toHaveLength(1);
+            expect(stopped.windows[0]).toMatchObject({
+              settled_at: expect.any(Date),
+              provider_stop_receipt: expect.any(Object),
+              retirement_backup_id: null,
+            });
+            expect(stopped.reservations[0]?.status).toBe("finalized");
+            expect(await retire()).toMatchObject({ success: true, containerStopped: true });
+            expect(comparableMoney(await renewalState(org))).toEqual(comparableMoney(stopped));
+            expect(remove).not.toHaveBeenCalled();
             return;
           }
           if (scenario === "billing-topup" || scenario === "billing-held") {
@@ -3309,7 +3329,7 @@ if (sshFixturePath) {
   );
 
   test(
-    "funded user suspension leaves paid runtime and funds intact when backup capture fails",
+    "funded user suspension settles stopped compute and retains current data when backup capture fails",
     () => runPaidContainerScenario("user-suspend-backup-failure"),
     180_000,
   );
