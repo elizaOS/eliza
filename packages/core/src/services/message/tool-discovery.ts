@@ -124,7 +124,11 @@ export function createPlannerToolDiscoveryAction(
 				return {
 					success: false,
 					error:
-						"Requested tool family was not admitted by the current capability and permission checks. No tools were loaded. Do not substitute an unrelated family for the requested operation.",
+						"Requested tool family was not admitted by the current capability and permission checks. No tools were loaded. Select an exact relevant name from availableNames, or use names=[] if you need complete catalog descriptions. Do not substitute an unrelated family for the requested operation.",
+					data: {
+						readOnlyOperation: true,
+						availableNames: [...admitted.keys()],
+					},
 				};
 			}
 			for (const [name, action] of admitted) actionsByName.set(name, action);

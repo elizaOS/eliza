@@ -499,6 +499,26 @@ describe("planner tool discovery", () => {
 		},
 	);
 
+	it("returns admitted exact retry names without loading a partial or rejected request", async () => {
+		const loads: Action[][] = [];
+		const discovery = createPlannerToolDiscoveryAction(
+			[{ name: "DOCUMENT", description: "Read documents" }],
+			(actions) => loads.push(actions),
+			async () => [],
+		);
+		const rejected = await discovery.handler?.(runtime, message, undefined, {
+			parameters: { names: ["DOCUMENT", "DOCUMENTS_READ"] },
+		});
+		expect(rejected?.success).toBe(false);
+		expect(loads).toEqual([]);
+		expect(rejected?.data?.availableNames).toEqual(["DOCUMENT"]);
+		const retry = await discovery.handler?.(runtime, message, undefined, {
+			parameters: { names: ["DOCUMENT"] },
+		});
+		expect(retry?.success).toBe(true);
+		expect(loads.flat().map((action) => action.name)).toEqual(["DOCUMENT"]);
+	});
+
 	it("rejects a registered action using the reserved discovery protocol name", () => {
 		expect(() =>
 			createPlannerToolDiscoveryAction(
