@@ -154,6 +154,21 @@ const SEARCH_QUERY_STOP_WORDS = new Set([
 ]);
 
 /**
+ * A stored fact in the user's terms: whitespace-collapsed, possessives
+ * rewritten to second person. Only possessives are rewritten ("user's" / "my"
+ * → "your"); subject rewrites would need verb agreement ("the user prefers" →
+ * "you prefer") and are left as-is, so a first-person "I" keeps its capital.
+ */
+function spokenMemoryText(factText: string): string {
+  return toWellFormedUnicode(factText)
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^(?:the )?user'?s\b/i, "your")
+    .replace(/\bthe user'?s\b/gi, "your")
+    .replace(/^my\b/i, "your");
+}
+
+/**
  * A sentence the user can see verbatim for a completed memory mutation. Stored
  * facts are third person ("User's favorite tea is yerba."); the reply speaks to
  * the user. With `verifiedUserFacing` + `turnComplete` the planner loop skips
@@ -161,20 +176,45 @@ const SEARCH_QUERY_STOP_WORDS = new Set([
  * single-tool turn and delivers this line as the reply.
  */
 export function memoryUserFacingLine(verb: string, factText: string): string {
-  const cleaned = toWellFormedUnicode(factText).replace(/\s+/g, " ").trim();
-  // Only possessives are rewritten ("user's" / "my" → "your"); subject rewrites
-  // would need verb agreement ("the user prefers" → "you prefer") and are left
-  // as-is, so a first-person "I" keeps its capital.
-  const spoken = cleaned
-    .replace(/^(?:the )?user'?s\b/i, "your")
-    .replace(/\bthe user'?s\b/gi, "your")
-    .replace(/^my\b/i, "your");
+  const spoken = spokenMemoryText(factText);
   const body =
     spoken && !/^I\b/.test(spoken)
       ? spoken.charAt(0).toLowerCase() + spoken.slice(1)
       : spoken;
   const terminated = /[.!?]$/.test(body) ? body : `${body}.`;
   return body ? `${verb}: ${terminated}` : `${verb}.`;
+}
+
+/** Longest candidate excerpt quoted in an ambiguous-query question. */
+const AMBIGUOUS_MEMORY_EXCERPT_CHARS = 160;
+
+/**
+ * The user-facing half of an ambiguous-query refusal: the candidate TEXTS in
+ * the user's terms, never record ids. `text` keeps the id list for the planner
+ * (which resolves the choice by memoryId); this question is what the planner
+ * loop may relay verbatim when the planner cannot resolve it and keeps
+ * re-sending the same query (live 2026-09-13 tj-f1579f952d5d21: the
+ * repeated-failure limit ended that turn with a generic apology).
+ */
+export function ambiguousMemoryUserFacingText(
+  verb: "forget" | "update",
+  candidates: readonly Pick<MemoryListItem, "text">[],
+): string {
+  const distinct = [
+    ...new Set(candidates.map((item) => spokenMemoryText(item.text))),
+  ].filter((text) => text.length > 0);
+  const listed = distinct
+    .map((text) =>
+      text.length > AMBIGUOUS_MEMORY_EXCERPT_CHARS
+        ? `"${text.slice(0, AMBIGUOUS_MEMORY_EXCERPT_CHARS - 1)}…"`
+        : `"${text}"`,
+    )
+    .join("; ");
+  const count =
+    distinct.length === 1
+      ? "one saved memory"
+      : `${distinct.length} saved memories`;
+  return `That matches ${count}: ${listed}. Which one should I ${verb}?`;
 }
 
 function fail(
@@ -1208,7 +1248,15 @@ async function doUpdate(
           `Query "${query}" matches ${distinctTexts.size} distinct memories. Review all candidates and update each record affected by the user's correction by memoryId, preserving unrelated facts in each replacement:`,
           ...lines,
         ].join("\n"),
-        data: { error: "MEMORY_AMBIGUOUS_QUERY", candidates },
+        userFacingText: ambiguousMemoryUserFacingText("update", candidates),
+        // Nothing was written: an ambiguous query is an observation, not a
+        // broken mutation, so it must not own the turn's terminal message
+        // once a later by-id update succeeds.
+        data: {
+          error: "MEMORY_AMBIGUOUS_QUERY",
+          candidates,
+          readOnlyOperation: true,
+        },
       };
     }
     existingMemories = matched.map((candidate) => candidate.memory);
@@ -1526,7 +1574,16 @@ async function doDeleteByQuery(
         `Query "${query}" matches ${distinctTexts.size} distinct memories. Delete by memoryId instead:`,
         ...lines,
       ].join("\n"),
-      data: { error: "MEMORY_AMBIGUOUS_QUERY", candidates },
+      userFacingText: ambiguousMemoryUserFacingText("forget", candidates),
+      // Nothing was deleted: an ambiguous query is an observation, not a
+      // broken mutation, so it must not own the turn's terminal message
+      // once a later by-id delete succeeds (the failure-authority tail would
+      // otherwise append this question after "Forgot: …").
+      data: {
+        error: "MEMORY_AMBIGUOUS_QUERY",
+        candidates,
+        readOnlyOperation: true,
+      },
     };
   }
 
@@ -1568,7 +1625,12 @@ async function doDeleteByQuery(
             `- [${item.type}] ${item.id}: ${toWellFormedUnicode(item.text)}`,
         ),
       ].join("\n"),
-      data: { error: "MEMORY_AMBIGUOUS_QUERY", candidates },
+      userFacingText: ambiguousMemoryUserFacingText("forget", candidates),
+      data: {
+        error: "MEMORY_AMBIGUOUS_QUERY",
+        candidates,
+        readOnlyOperation: true,
+      },
     };
   }
 

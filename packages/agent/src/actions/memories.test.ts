@@ -576,6 +576,13 @@ describe("MEMORY op:delete by query scope", () => {
     expect(ambiguous.text).toContain(ownId);
     expect(ambiguous.text).toContain(friendId);
     expect(ambiguous.effectReceipts).toBeUndefined();
+    // The user-facing half names the candidate texts, never record ids, and
+    // marks the refusal as a read-only observation (nothing was deleted).
+    expect(ambiguous.userFacingText).toContain("Which one should I forget?");
+    expect(ambiguous.userFacingText).toContain("green tea without sugar");
+    expect(ambiguous.userFacingText).not.toContain(ownId);
+    expect(ambiguous.userFacingText).not.toContain(friendId);
+    expect(ambiguous.data).toMatchObject({ readOnlyOperation: true });
     expect(rows).toEqual(before);
 
     const selected = await runAction(runtime, message, {
@@ -2548,5 +2555,25 @@ describe("MEMORY results own a verified user-facing line", () => {
       "Saved: I like my coffee black.",
     );
     expect(memoryUserFacingLine("Forgot", "   ")).toBe("Forgot.");
+  });
+
+  it("phrases an ambiguous query as a choice between candidate texts, never ids", async () => {
+    const { ambiguousMemoryUserFacingText } = await import("./memories");
+    // Live 2026-09-13 tj-f1579f952d5d21: the durable fact and its
+    // observation echo both matched "forget my favorite color".
+    const question = ambiguousMemoryUserFacingText("forget", [
+      { text: "user favorite_color teal" },
+      { text: "The user's favorite color is teal." },
+      { text: "The user's favorite color is teal." },
+    ]);
+    expect(question).toBe(
+      'That matches 2 saved memories: "user favorite_color teal"; "your favorite color is teal.". Which one should I forget?',
+    );
+    expect(question).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/i);
+    expect(
+      ambiguousMemoryUserFacingText("update", [{ text: "a".repeat(400) }]),
+    ).toMatch(
+      /^That matches one saved memory: "a{159}…"\. Which one should I update\?$/,
+    );
   });
 });
