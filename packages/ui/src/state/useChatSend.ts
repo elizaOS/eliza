@@ -856,6 +856,9 @@ export function useChatSend(deps: UseChatSendDeps) {
           mode: "complete",
           fullText: interruptedText,
           interrupted: true,
+          ...(data.userMessageId
+            ? { replyToMessageId: data.userMessageId }
+            : {}),
           ...(data.failureKind ? { failureKind: data.failureKind } : {}),
           ...(data.replyRecoveryAvailable === true
             ? { replyRecoveryAvailable: true }
@@ -892,12 +895,17 @@ export function useChatSend(deps: UseChatSendDeps) {
         shouldApplyFinalStreamText(streamedAssistantText, data.text) ||
         (options.includeReasoning && data.reasoning) ||
         capabilityHandoff ||
-        data.messageId
+        data.messageId ||
+        data.userMessageId ||
+        data.assistantEphemeral
       ) {
         applyStreamingModificationForConversation(conversationId, {
           messageId: assistantMessageId,
           mode: "complete",
           fullText: data.text,
+          ...(data.userMessageId
+            ? { replyToMessageId: data.userMessageId }
+            : {}),
           ...(data.failureKind ? { failureKind: data.failureKind } : {}),
           ...(data.replyRecoveryAvailable === true
             ? { replyRecoveryAvailable: true }

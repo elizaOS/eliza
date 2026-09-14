@@ -3911,56 +3911,68 @@ describe("useChatSend — user turn sent during agent warm-up is never evicted (
     expect(undeliveredTurns(deps)).toHaveLength(0);
   });
 
-  it("retains a completed context overflow reply across the server history refresh", async () => {
-    const failureText = "The model rejected this request at its context limit.";
-    mocks.client.sendConversationMessageStream.mockResolvedValue({
-      text: failureText,
-      completed: true,
-      assistantEphemeral: true,
-      failureKind: "context_overflow",
-      historyRefreshRequired: true,
-      userMessageId: "server-user-overflow",
-    });
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
-    // Synthetic failure prose is deliberately absent from durable history.
-    // A successful history refresh must not erase the visible failure.
-    vi.mocked(deps.loadConversationMessages).mockImplementation(async () => {
-      deps.setConversationMessages([
-        {
-          id: "server-user-overflow",
-          role: "user",
-          text: "Preview a reminder without saving it.",
-          timestamp: Date.now(),
-        },
-      ]);
-      return { ok: true };
-    });
-    const { result } = renderHook(() => useChatSend(deps));
-
-    await act(async () => {
-      await result.current.sendChatText(
-        "Preview a reminder without saving it.",
-        {
-          conversationId: "conv-1",
+  it.each([false, true])(
+    "retains a completed context overflow reply and its request link across history refresh (already streamed: %s)",
+    async (streamed) => {
+      const failureText =
+        "The model rejected this request at its context limit.";
+      mocks.client.sendConversationMessageStream.mockImplementation(
+        async (_conversationId, _text, onToken) => {
+          if (streamed) onToken(failureText, failureText);
+          return {
+            text: failureText,
+            completed: true,
+            assistantEphemeral: true,
+            failureKind: "context_overflow",
+            historyRefreshRequired: true,
+            userMessageId: "server-user-overflow",
+          };
         },
       );
-    });
+      const deps = makeDeps({
+        activeConversationId: "conv-1",
+        conversations: [conversation("conv-1", "room-1")],
+      });
+      // Synthetic failure prose is deliberately absent from durable history.
+      // A successful history refresh must not erase the visible failure.
+      vi.mocked(deps.loadConversationMessages).mockImplementation(async () => {
+        deps.setConversationMessages([
+          {
+            id: "server-user-overflow",
+            role: "user",
+            text: "Preview a reminder without saving it.",
+            timestamp: Date.now(),
+          },
+        ]);
+        return { ok: true };
+      });
+      const { result } = renderHook(() => useChatSend(deps));
 
-    expect(deps.loadConversationMessages).toHaveBeenCalledWith("conv-1");
-    const assistants = deps.conversationMessagesRef.current.filter(
-      (message) => message.role === "assistant",
-    );
-    expect(assistants).toHaveLength(1);
-    expect(assistants[0]).toMatchObject({
-      text: failureText,
-      failureKind: "context_overflow",
-      assistantEphemeral: true,
-    });
-    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
-  });
+      await act(async () => {
+        await result.current.sendChatText(
+          "Preview a reminder without saving it.",
+          {
+            conversationId: "conv-1",
+          },
+        );
+      });
+
+      expect(deps.loadConversationMessages).toHaveBeenCalledWith("conv-1");
+      const assistants = deps.conversationMessagesRef.current.filter(
+        (message) => message.role === "assistant",
+      );
+      expect(assistants).toHaveLength(1);
+      expect(assistants[0]).toMatchObject({
+        text: failureText,
+        failureKind: "context_overflow",
+        assistantEphemeral: true,
+        replyToMessageId: "server-user-overflow",
+      });
+      expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(
+        1,
+      );
+    },
+  );
 
   it("retires a server-ephemeral failed reply when the next user turn begins", async () => {
     const failureText =

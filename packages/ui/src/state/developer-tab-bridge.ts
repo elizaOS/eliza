@@ -302,6 +302,9 @@ export class DeveloperTabBridge {
     this.running = { id, source, conversationId };
     this.previousMessages.clear();
     this.post({ kind: "accepted", target: source, id });
+    // Sending can synchronously retire the previous ephemeral reply. Capture
+    // the owned pre-send rows so the next diff includes those removals too.
+    this.stream();
     void this.host
       .send(text, conversationId, id)
       .then(

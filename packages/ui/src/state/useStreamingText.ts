@@ -92,6 +92,8 @@ export type StreamingTextModification =
       assistantEphemeral?: boolean;
       /** Persisted server id replacing the optimistic temp-resp-* stream id. */
       persistedMessageId?: string;
+      /** Server-confirmed user turn that owns this reply, including ephemeral failures. */
+      replyToMessageId?: string;
     }
   | {
       messageId: string;
@@ -191,6 +193,9 @@ function computeNextMessage(
       const sameId =
         mod.persistedMessageId === undefined ||
         message.id === mod.persistedMessageId;
+      const sameReplyTo =
+        mod.replyToMessageId === undefined ||
+        message.replyToMessageId === mod.replyToMessageId;
       if (
         sameText &&
         sameInterruption &&
@@ -202,6 +207,7 @@ function computeNextMessage(
         sameReasoning &&
         sameAssistantEphemeral &&
         sameId &&
+        sameReplyTo &&
         message.provisional === undefined
       ) {
         return null;
@@ -210,6 +216,9 @@ function computeNextMessage(
         {
           ...message,
           ...(mod.persistedMessageId ? { id: mod.persistedMessageId } : {}),
+          ...(mod.replyToMessageId
+            ? { replyToMessageId: mod.replyToMessageId }
+            : {}),
           text: mod.fullText,
         },
         // Terminal text is no longer provisional; interruption remains a

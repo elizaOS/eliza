@@ -399,10 +399,24 @@ function mergeMessagesChronologically(
     );
     if (insertionIndex < 0) insertionIndex = merged.length;
 
+    // A terminal receipt is stronger ordering evidence than client/server
+    // clocks. An ephemeral reply must never precede its recorded request.
+    const replyToPosition =
+      message.role === "assistant" && message.replyToMessageId
+        ? merged.findIndex(
+            (candidate) =>
+              candidate.message.role === "user" &&
+              candidate.message.id === message.replyToMessageId,
+          )
+        : -1;
+    if (replyToPosition >= 0) {
+      insertionIndex = Math.max(insertionIndex, replyToPosition + 1);
+    }
     const lineage = localConversationMessageLineage(message);
-    const predecessorServerIndex = lineage
-      ? causalServerPredecessors?.get(lineage)
-      : undefined;
+    const predecessorServerIndex =
+      lineage && !message.replyToMessageId
+        ? causalServerPredecessors?.get(lineage)
+        : undefined;
     if (typeof predecessorServerIndex === "number") {
       const predecessorPosition = merged.findIndex(
         (candidate) => candidate.serverIndex === predecessorServerIndex,
@@ -1221,8 +1235,14 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           .map((row) => [row.id, row]),
       );
       for (const row of changed) rows.set(row.id, row);
+      const orderedRows = [...rows.values()].sort(
+        (a, b) => a.timestamp - b.timestamp,
+      );
       setConversationMessages(
-        [...rows.values()].sort((a, b) => a.timestamp - b.timestamp),
+        mergeMessagesChronologically(
+          orderedRows.filter((row) => row.assistantEphemeral !== true),
+          orderedRows.filter((row) => row.assistantEphemeral === true),
+        ),
       );
       // Relayed optimistic and ephemeral rows need the same history-refresh
       // protection as locally sent rows. Durable history is not an overlay.
