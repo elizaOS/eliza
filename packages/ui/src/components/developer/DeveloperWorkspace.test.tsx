@@ -181,6 +181,57 @@ const flush = async () => {
 };
 
 describe("developer workspace", () => {
+  it("keeps original usage separate from a newer recovery and opens both real run ids", async () => {
+    const recovery = {
+      ...record,
+      id: "recovery-1",
+      startTime: 2000,
+      durationMs: 2700,
+      totalPromptTokens: 57656,
+      totalCompletionTokens: 99,
+      metadata: { messageId: "user-1", replyRecovery: true },
+    };
+    mocks.list.mockResolvedValue({
+      trajectories: [recovery, record],
+      total: 2,
+    });
+    mocks.detail.mockImplementation((id) =>
+      Promise.resolve({
+        ...detail,
+        trajectory: id === recovery.id ? recovery : record,
+      }),
+    );
+    render(
+      <DeveloperWorkspace>
+        <div>Existing app</div>
+      </DeveloperWorkspace>,
+    );
+    await flush();
+    expect(
+      screen.getByText(/Original run: 100 tokens in/).textContent,
+    ).toContain("1.50s total");
+    expect(screen.getByText(/Reply recovery 1:/).textContent).toContain(
+      "57,656 tokens in · 99 out · 2.70s total",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Inspect" }));
+    await flush();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Trajectories" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    await flush();
+    expect(screen.getByRole("option", { name: /Chat run/ })).toBeTruthy();
+    expect(screen.getByRole("option", { name: /Reply recovery/ })).toBeTruthy();
+    fireEvent.change(screen.getByRole("combobox", { name: "Run" }), {
+      target: { value: recovery.id },
+    });
+    await flush();
+    expect(mocks.detail).toHaveBeenCalledWith(recovery.id, expect.anything());
+    expect(
+      screen.getByText(/Original run: 100 tokens in/).textContent,
+    ).toContain("1.50s total");
+  });
+
   it("uses recorded run ownership without inferring post-turn timing from stage names", () => {
     expect(callLane("client_chat")).toBe("Chat run");
     expect(callLane("background_memory")).toBe("Background memory");

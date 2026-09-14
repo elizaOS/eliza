@@ -38,6 +38,7 @@ import type {
 } from "@elizaos/core";
 import {
   executePlannedToolCall,
+  getTrajectoryContext,
   logger,
   RoomHandlerQueue,
   stringToUuid,
@@ -657,6 +658,79 @@ describe("conversation-route chat idempotency wiring", () => {
       expect(effects).toHaveLength(1);
     },
   );
+
+  it("records failed and successful recovery attempts separately, without recording cached retries", async () => {
+    const h = createReplyRecoveryHarness();
+    const first = await runRoute("POST", SEND_PATH, h.state, {
+      text: "create QA note",
+      clientMessageId: "recovery-trajectories",
+    });
+    const outcome = first.captured.payload as {
+      messageId: string;
+      userMessageId: string;
+    };
+    const attempts: {
+      id: string;
+      metadata: Record<string, unknown>;
+      status?: string;
+    }[] = [];
+    const recorder = {
+      isEnabled: () => true,
+      startTrajectory: async (
+        _agent: string,
+        options: { metadata: Record<string, unknown> },
+      ) => {
+        const id = `recovery-${attempts.length + 1}`;
+        attempts.push({ id, metadata: options.metadata });
+        return id;
+      },
+      startStep: (id: string) => id,
+      logLlmCall: () => {},
+      endTrajectory: async (id: string, status: string) => {
+        const attempt = attempts.find((entry) => entry.id === id);
+        if (!attempt) throw new Error("Unknown recovery attempt");
+        attempt.status = status;
+      },
+    };
+    const runtime = h.state.runtime as AgentRuntime;
+    const getService = runtime.getService.bind(runtime);
+    runtime.getService = ((name: string) =>
+      name === "trajectories"
+        ? recorder
+        : getService(name)) as AgentRuntime["getService"];
+    const modelRuns: (string | undefined)[] = [];
+    h.generateReply.mockImplementation(async () => {
+      modelRuns.push(getTrajectoryContext()?.trajectoryStepId);
+      if (modelRuns.length === 1) throw new Error("provider unavailable");
+      return JSON.stringify({
+        response: "Created the QA note.",
+        effectReceiptIds: ["reply-recovery-receipt"],
+      });
+    });
+    const retryPath = `${SEND_PATH}/${outcome.messageId}/retry-reply`;
+    await runRoute("POST", retryPath, h.state, {});
+    const recovered = await Promise.all([
+      runRoute("POST", retryPath, h.state, {}),
+      runRoute("POST", retryPath, h.state, {}),
+    ]);
+    expect(recovered[0].captured.payload).toEqual(
+      recovered[1].captured.payload,
+    );
+    expect(modelRuns).toEqual(["recovery-1", "recovery-2"]);
+    expect(attempts.map((attempt) => attempt.status)).toEqual([
+      "error",
+      "completed",
+    ]);
+    for (const attempt of attempts)
+      expect(attempt.metadata).toMatchObject({
+        messageId: outcome.userMessageId,
+        assistantMessageId: outcome.messageId,
+        roomId: ROOM_ID,
+        replyRecovery: true,
+      });
+    expect(h.effects).toEqual(["qa-reply-note"]);
+    expect(h.handleMessage).toHaveBeenCalledTimes(1);
+  });
 
   it("retains the missing reply on model failure and rejects forged input, unknown commits and foreign callers", async () => {
     const harness = createReplyRecoveryHarness();

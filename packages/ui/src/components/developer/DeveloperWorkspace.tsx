@@ -60,6 +60,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { Textarea } from "../ui/textarea";
 import {
   DeveloperTrajectories,
+  isReplyRecoveryRun,
   useMessageTrajectories,
 } from "./DeveloperTrajectories";
 import {
@@ -87,7 +88,8 @@ function recordedTotal(
 }
 
 /** Source identifies ownership; an evaluation stage does not identify delivery timing. */
-export function callLane(source: string): string {
+export function callLane(source: string, replyRecovery = false): string {
+  if (replyRecovery) return "Reply recovery";
   if (source === "background_memory") return "Background memory";
   return source === "client_chat" ? "Chat run" : source;
 }
@@ -201,7 +203,7 @@ export function DeveloperTrace({
                     {call.provider || "Provider not recorded"} / {call.model}
                   </div>
                   <div className="mt-1 text-muted">
-                    {callLane(record.source)}
+                    {callLane(record.source, isReplyRecoveryRun(record))}
                   </div>
                 </td>
                 <td className="py-3 pr-3 text-right tabular-nums">
@@ -425,9 +427,11 @@ export function DeveloperReplyDetails({
   const [error, setError] = useState(false);
   const [tab, setTab] = useState("details");
   const history = useMessageTrajectories({
-    records: summaryRecord
-      ? [summaryRecord, ...relatedRuns, ...backgrounds]
-      : [],
+    records: [
+      ...(summaryRecord ? [summaryRecord] : []),
+      ...relatedRuns,
+      ...backgrounds,
+    ],
     roomId: roomId ?? summaryRecord?.roomId ?? undefined,
     messageId:
       messageId ??
@@ -438,7 +442,10 @@ export function DeveloperReplyDetails({
   });
   const record =
     summaryRecord ??
-    [...history.runs].reverse().find((row) => row.source === "client_chat");
+    [...history.runs]
+      .reverse()
+      .find((row) => row.source === "client_chat" && !isReplyRecoveryRun(row));
+  const recoveries = history.runs.filter(isReplyRecoveryRun);
   const revision = record ? trajectoryRevision(record) : "";
   const recordId = record?.id;
   useEffect(() => {
@@ -468,6 +475,7 @@ export function DeveloperReplyDetails({
             className="developer-token-count"
             title="Tokens summed across recorded model calls, including cached input. Total is recorded run time, not time to first token. Inspect for model time and missing or estimated usage."
           >
+            {recoveries.length ? "Original run: " : ""}
             {record &&
             (record.totalPromptTokens > 0 || record.totalCompletionTokens > 0)
               ? `${count(record.totalPromptTokens)} tokens in · ${count(record.totalCompletionTokens)} out`
@@ -495,6 +503,22 @@ export function DeveloperReplyDetails({
             {record?.status === "active" ? " · Working…" : ""}
           </span>
         ) : null}
+        {recoveries.map((recovery, index) => (
+          <span key={recovery.id} className="developer-token-count">
+            Reply recovery {index + 1}: {count(recovery.llmCallCount)} model{" "}
+            {recovery.llmCallCount === 1 ? "call" : "calls"} ·{" "}
+            {recovery.totalPromptTokens > 0 ||
+            recovery.totalCompletionTokens > 0
+              ? `${count(recovery.totalPromptTokens)} tokens in · ${count(recovery.totalCompletionTokens)} out`
+              : recovery.status === "active"
+                ? "Usage pending"
+                : "Token usage unavailable"}
+            {isMeasurement(recovery.durationMs)
+              ? ` · ${duration(recovery.durationMs)} ${recovery.status === "active" ? "so far" : "total"}`
+              : ""}
+            {recovery.status === "error" ? " · Failed" : ""}
+          </span>
+        ))}
         <DialogTrigger asChild>
           <Button
             variant="ghost"
@@ -787,6 +811,7 @@ function DeveloperPanel({ section }: { section: "chat" | "settings" }) {
             ? telemetry.rows.find(
                 (row) =>
                   row.source === "client_chat" &&
+                  !isReplyRecoveryRun(row) &&
                   row.roomId === conversation?.roomId &&
                   row.metadata?.messageId === messageId,
               )

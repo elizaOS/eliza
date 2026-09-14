@@ -156,3 +156,13 @@ capture predates the final developer-only label/control adjustments; the live
 developer view is checked separately. Full release and latency acceptance remain
 open. Evidence lives locally under
 `/Users/nubs/Documents/ChatGPT/test/eliza-trajectories-20260910`.
+
+## Reply-only recovery telemetry
+
+A fresh reply-only recovery is a separate `client_chat` trajectory with
+`metadata.replyRecovery=true`, linked to the original user message and assistant
+row. It records the real generation and recovery persistence, with independent
+usage and duration. Prepared/cached retries do not create model runs. The chat
+footer keeps the original run and each recovery separate; the Trajectories run
+selector exposes their complete inputs and outputs. Failed recovery attempts
+remain inspectable. This does not replay actions or change their saved evidence.

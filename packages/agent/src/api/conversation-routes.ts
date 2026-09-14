@@ -65,6 +65,7 @@ import {
   timeInferenceSpan,
   type UUID,
   validateUuid,
+  withStandaloneTrajectory,
 } from "@elizaos/core";
 import {
   getScheduledTaskRunner,
@@ -4562,206 +4563,238 @@ export async function handleConversationRoutes(
       };
       await authorizeRecoveryAudience();
       assertCurrent();
-      const reply =
-        recovery.reply ??
-        (await resolvePlannedReplyEgress({
+      const recoveryLease = lease;
+      const recoverAttempt = async () => {
+        const reply =
+          recovery.reply ??
+          (await resolvePlannedReplyEgress({
+            runtime,
+            message,
+            reply: "",
+            actionResults: recovery.actionResults,
+            recovery,
+          }));
+        if (
+          reply.effectReceiptIds.length > 0 &&
+          !resolveAppliedUserFacingEffectReceipts(
+            {
+              verifiedUserFacing: true,
+              userFacingText: reply.text,
+              userFacingEffectReceiptIds: reply.effectReceiptIds,
+            },
+            mergeEffectReceipts(
+              ...recovery.actionResults.map((result) => result.effectReceipts),
+            ),
+          )
+        )
+          throw new ElizaError("The saved reply has invalid effect evidence", {
+            code: "CHAT_REPLY_RECOVERY_INVALID",
+          });
+        const replyBinding: ActionResult = {
+          success: true,
+          userFacingText: reply.text,
+          verifiedUserFacing: true,
+          userFacingEffectReceiptIds: reply.effectReceiptIds,
+        };
+        if (
+          evaluatePlannedReplyEgress({
+            reply: reply.text,
+            actionResults: [...recovery.actionResults, replyBinding],
+            actions: runtime.actions,
+          }).verdict !== "allow"
+        )
+          throw new ElizaError(
+            "The saved reply is not grounded in its original effects",
+            { code: "CHAT_REPLY_RECOVERY_INVALID" },
+          );
+        await authorizeRecoveryAudience();
+        assertCurrent();
+        let content: Content = {
+          ...assistant.content,
+          text: reply.text,
+          inReplyTo: userId,
+          effectReceiptIds: [...reply.effectReceiptIds],
+          agentVoiced: true,
+        };
+        delete content.terminalFailure;
+        delete content.failureKind;
+        delete content.replyFailure;
+        delete content.replyRecoveryAvailable;
+        delete content.elizaSyntheticFailure;
+        delete content.interrupted;
+        delete content.transcriptVisibility;
+        const normalizedContent = clearRecoveredReplyFailureMarkers(content);
+        if (isRecord(normalizedContent.metadata))
+          normalizedContent.metadata = clearRecoveredReplyFailureMarkers(
+            normalizedContent.metadata,
+          );
+        // New prepared prose binds its successful metadata before persistence.
+        // Legacy staged/completed replies keep their exact saved revision: memory
+        // evaluators may already have acknowledged that historical content hash.
+        const normalizeFailureMetadata =
+          !recovery.reply ||
+          recovery.reply.contentHash ===
+            conversationReplyContentHash(normalizedContent);
+        if (normalizeFailureMetadata) content = normalizedContent;
+        if (
+          recovery.reply &&
+          recovery.reply.contentHash !== conversationReplyContentHash(content)
+        )
+          throw new ElizaError(
+            "Stored recovered content does not match its prepared revision",
+            { code: "CHAT_REPLY_RECOVERY_INVALID" },
+          );
+        const checked = await enforceTrustedDeliveryAudienceAtEgress(
           runtime,
           message,
-          reply: "",
-          actionResults: recovery.actionResults,
-          recovery,
-        }));
-      if (
-        reply.effectReceiptIds.length > 0 &&
-        !resolveAppliedUserFacingEffectReceipts(
-          {
-            verifiedUserFacing: true,
-            userFacingText: reply.text,
-            userFacingEffectReceiptIds: reply.effectReceiptIds,
-          },
-          mergeEffectReceipts(
-            ...recovery.actionResults.map((result) => result.effectReceipts),
-          ),
+          content,
+        );
+        if (checked !== content)
+          throw new ElizaError(
+            "The current audience cannot receive the recovered reply",
+            { code: "CHAT_REPLY_RECOVERY_IDENTITY" },
+          );
+        assertCurrent();
+        if (alreadyRecovered && outcome) {
+          return outcome;
+        }
+        // The model awaited external I/O. Re-read authority before writing so
+        // an independently edited/deleted memory is never replaced from a stale
+        // snapshot. Runtime memory mutation routes share this same room lease.
+        const latestRows = await runtime.getMemoriesByIds(
+          [userId, assistantId],
+          "messages",
+        );
+        const latestUser = latestRows.find((memory) => memory.id === userId);
+        const latestAssistant = latestRows.find(
+          (memory) => memory.id === assistantId,
+        );
+        const latestMarker = readDurableConversationChatMarker(
+          latestUser?.content.chatIdempotency,
+        );
+        if (
+          !latestUser ||
+          latestUser.roomId !== conv.roomId ||
+          latestUser.entityId !== caller.entityId ||
+          latestUser.agentId !== runtime.agentId ||
+          conversationReplyContentHash(latestUser.content) !==
+            recovery.userContentHash ||
+          !latestMarker ||
+          latestMarker.scope !== marker.scope ||
+          latestMarker.clientMessageId !== marker.clientMessageId ||
+          latestMarker.fingerprint !== marker.fingerprint ||
+          latestMarker.replyRecoveryJson !== marker.replyRecoveryJson ||
+          !latestAssistant ||
+          latestAssistant.roomId !== conv.roomId ||
+          latestAssistant.agentId !== runtime.agentId ||
+          latestAssistant.entityId !== runtime.agentId ||
+          conversationReplyContentHash(latestAssistant.content) !==
+            originalAssistantHash
         )
-      )
-        throw new ElizaError("The saved reply has invalid effect evidence", {
-          code: "CHAT_REPLY_RECOVERY_INVALID",
-        });
-      const replyBinding: ActionResult = {
-        success: true,
-        userFacingText: reply.text,
-        verifiedUserFacing: true,
-        userFacingEffectReceiptIds: reply.effectReceiptIds,
-      };
-      if (
-        evaluatePlannedReplyEgress({
-          reply: reply.text,
-          actionResults: [...recovery.actionResults, replyBinding],
-          actions: runtime.actions,
-        }).verdict !== "allow"
-      )
-        throw new ElizaError(
-          "The saved reply is not grounded in its original effects",
-          { code: "CHAT_REPLY_RECOVERY_INVALID" },
-        );
-      await authorizeRecoveryAudience();
-      assertCurrent();
-      let content: Content = {
-        ...assistant.content,
-        text: reply.text,
-        inReplyTo: userId,
-        effectReceiptIds: [...reply.effectReceiptIds],
-        agentVoiced: true,
-      };
-      delete content.terminalFailure;
-      delete content.failureKind;
-      delete content.replyFailure;
-      delete content.replyRecoveryAvailable;
-      delete content.elizaSyntheticFailure;
-      delete content.interrupted;
-      delete content.transcriptVisibility;
-      const normalizedContent = clearRecoveredReplyFailureMarkers(content);
-      if (isRecord(normalizedContent.metadata))
-        normalizedContent.metadata = clearRecoveredReplyFailureMarkers(
-          normalizedContent.metadata,
-        );
-      // New prepared prose binds its successful metadata before persistence.
-      // Legacy staged/completed replies keep their exact saved revision: memory
-      // evaluators may already have acknowledged that historical content hash.
-      const normalizeFailureMetadata =
-        !recovery.reply ||
-        recovery.reply.contentHash ===
-          conversationReplyContentHash(normalizedContent);
-      if (normalizeFailureMetadata) content = normalizedContent;
-      if (
-        recovery.reply &&
-        recovery.reply.contentHash !== conversationReplyContentHash(content)
-      )
-        throw new ElizaError(
-          "Stored recovered content does not match its prepared revision",
-          { code: "CHAT_REPLY_RECOVERY_INVALID" },
-        );
-      const checked = await enforceTrustedDeliveryAudienceAtEgress(
-        runtime,
-        message,
-        content,
-      );
-      if (checked !== content)
-        throw new ElizaError(
-          "The current audience cannot receive the recovered reply",
-          { code: "CHAT_REPLY_RECOVERY_IDENTITY" },
-        );
-      assertCurrent();
-      if (alreadyRecovered && outcome) {
-        disconnect.markCompleted();
-        json(res, buildConversationJsonOutcome(outcome));
-        return true;
-      }
-      // The model awaited external I/O. Re-read authority before writing so
-      // an independently edited/deleted memory is never replaced from a stale
-      // snapshot. Runtime memory mutation routes share this same room lease.
-      const latestRows = await runtime.getMemoriesByIds(
-        [userId, assistantId],
-        "messages",
-      );
-      const latestUser = latestRows.find((memory) => memory.id === userId);
-      const latestAssistant = latestRows.find(
-        (memory) => memory.id === assistantId,
-      );
-      const latestMarker = readDurableConversationChatMarker(
-        latestUser?.content.chatIdempotency,
-      );
-      if (
-        !latestUser ||
-        latestUser.roomId !== conv.roomId ||
-        latestUser.entityId !== caller.entityId ||
-        latestUser.agentId !== runtime.agentId ||
-        conversationReplyContentHash(latestUser.content) !==
-          recovery.userContentHash ||
-        !latestMarker ||
-        latestMarker.scope !== marker.scope ||
-        latestMarker.clientMessageId !== marker.clientMessageId ||
-        latestMarker.fingerprint !== marker.fingerprint ||
-        latestMarker.replyRecoveryJson !== marker.replyRecoveryJson ||
-        !latestAssistant ||
-        latestAssistant.roomId !== conv.roomId ||
-        latestAssistant.agentId !== runtime.agentId ||
-        latestAssistant.entityId !== runtime.agentId ||
-        conversationReplyContentHash(latestAssistant.content) !==
-          originalAssistantHash
-      )
-        throw new ElizaError(
-          "The original turn changed while its reply was recovering",
-          { code: "CHAT_REPLY_RECOVERY_CONFLICT" },
-        );
-      assertCurrent();
-      if (!recovery.reply) {
-        // Commit the generated prose first. A crash between this marker and
-        // the assistant row only repeats persistence, never tools or the model.
-        const preparedRecovery = {
-          ...recovery,
-          reply: {
-            text: reply.text,
-            effectReceiptIds: [...reply.effectReceiptIds],
-            contentHash: conversationReplyContentHash(content),
+          throw new ElizaError(
+            "The original turn changed while its reply was recovering",
+            { code: "CHAT_REPLY_RECOVERY_CONFLICT" },
+          );
+        assertCurrent();
+        if (!recovery.reply) {
+          // Commit the generated prose first. A crash between this marker and
+          // the assistant row only repeats persistence, never tools or the model.
+          const preparedRecovery = {
+            ...recovery,
+            reply: {
+              text: reply.text,
+              effectReceiptIds: [...reply.effectReceiptIds],
+              contentHash: conversationReplyContentHash(content),
+            },
+          };
+          await runtime.roomHandlerQueue.runInLease(
+            conv.roomId,
+            recoveryLease,
+            () => {
+              assertCurrent();
+              return runtime.updateMemory({
+                id: userId,
+                content: {
+                  ...latestUser.content,
+                  chatIdempotency: {
+                    ...latestMarker,
+                    replyRecoveryJson: JSON.stringify(preparedRecovery),
+                  },
+                },
+              });
+            },
+          );
+        }
+        assertCurrent();
+        await runtime.roomHandlerQueue.runInLease(
+          conv.roomId,
+          recoveryLease,
+          () => {
+            assertCurrent();
+            const metadata = latestAssistant.metadata
+              ? normalizeFailureMetadata
+                ? clearRecoveredReplyFailureMarkers(latestAssistant.metadata)
+                : { ...latestAssistant.metadata }
+              : undefined;
+            if (
+              !normalizeFailureMetadata &&
+              metadata &&
+              "chatFailureKind" in metadata
+            )
+              delete metadata.chatFailureKind;
+            return runtime.updateMemory({
+              id: assistantId,
+              content,
+              ...(metadata ? { metadata } : {}),
+            });
           },
+        );
+        const recoveredOutcome: ChatMessageIdOutcome = {
+          text: reply.text,
+          agentName: state.agentName,
+          messageId: assistantId,
+          userMessageId: userId,
+          ...(outcome?.actionResults
+            ? { actionResults: outcome.actionResults }
+            : {}),
         };
-        await runtime.roomHandlerQueue.runInLease(conv.roomId, lease, () => {
-          assertCurrent();
-          return runtime.updateMemory({
-            id: userId,
-            content: {
-              ...latestUser.content,
-              chatIdempotency: {
-                ...latestMarker,
-                replyRecoveryJson: JSON.stringify(preparedRecovery),
+        await persistDurableConversationChatOutcome(
+          runtime,
+          conv.roomId,
+          scope,
+          marker.clientMessageId,
+          marker.fingerprint,
+          recoveredOutcome,
+          recoveryLease,
+          assertCurrent,
+        );
+        assertCurrent();
+        conv.updatedAt = new Date().toISOString();
+        state.broadcastWs?.({
+          type: "conversation-updated",
+          conversation: conv,
+        });
+        return recoveredOutcome;
+      };
+      // A prepared/cached reply only resumes persistence. Record fresh model
+      // work as its own run, linked to the same original user message; never
+      // append it to a completed chat trajectory or replay its tools.
+      const recoveredOutcome = recovery.reply
+        ? await recoverAttempt()
+        : await withStandaloneTrajectory(
+            runtime,
+            {
+              source: MESSAGE_SOURCE_CLIENT_CHAT,
+              metadata: {
+                roomId: conv.roomId,
+                entityId: caller.entityId,
+                messageId: userId,
+                assistantMessageId: assistantId,
+                replyRecovery: true,
               },
             },
-          });
-        });
-      }
-      assertCurrent();
-      await runtime.roomHandlerQueue.runInLease(conv.roomId, lease, () => {
-        assertCurrent();
-        const metadata = latestAssistant.metadata
-          ? normalizeFailureMetadata
-            ? clearRecoveredReplyFailureMarkers(latestAssistant.metadata)
-            : { ...latestAssistant.metadata }
-          : undefined;
-        if (
-          !normalizeFailureMetadata &&
-          metadata &&
-          "chatFailureKind" in metadata
-        )
-          delete metadata.chatFailureKind;
-        return runtime.updateMemory({
-          id: assistantId,
-          content,
-          ...(metadata ? { metadata } : {}),
-        });
-      });
-      const recoveredOutcome: ChatMessageIdOutcome = {
-        text: reply.text,
-        agentName: state.agentName,
-        messageId: assistantId,
-        userMessageId: userId,
-        ...(outcome?.actionResults
-          ? { actionResults: outcome.actionResults }
-          : {}),
-      };
-      await persistDurableConversationChatOutcome(
-        runtime,
-        conv.roomId,
-        scope,
-        marker.clientMessageId,
-        marker.fingerprint,
-        recoveredOutcome,
-        lease,
-        assertCurrent,
-      );
-      assertCurrent();
-      conv.updatedAt = new Date().toISOString();
-      state.broadcastWs?.({ type: "conversation-updated", conversation: conv });
+            recoverAttempt,
+          );
       disconnect.markCompleted();
       json(res, buildConversationJsonOutcome(recoveredOutcome));
     } catch (cause) {
