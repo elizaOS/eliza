@@ -56,12 +56,7 @@ describe("internal applied effect followed by evaluator reply failure", () => {
 			});
 			const useModel = vi
 				.fn<PlannerRuntime["useModel"]>()
-				.mockImplementation(async () => {
-					if (useModel.mock.calls.length > 20) {
-						throw new Error(`Unexpected planner repetition: ${variant}`);
-					}
-					return finish;
-				})
+				.mockRejectedValue(new Error("Reply recovery fixture exhausted"))
 				.mockResolvedValueOnce({
 					text: "",
 					toolCalls: [
@@ -255,14 +250,7 @@ describe("internal applied effect followed by evaluator reply failure", () => {
 				"The selected event was deleted. The other event is unchanged.";
 			const useModel = vi
 				.fn<PlannerRuntime["useModel"]>()
-				.mockResolvedValue(
-					JSON.stringify({
-						thought: "The recorded deletion is complete.",
-						success: true,
-						decision: "FINISH",
-						messageToUser: clean,
-					}),
-				)
+				.mockRejectedValue(new Error("Reply recovery fixture exhausted"))
 				.mockResolvedValueOnce({
 					text: "",
 					toolCalls: [

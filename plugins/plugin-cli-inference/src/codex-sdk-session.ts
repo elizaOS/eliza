@@ -66,7 +66,10 @@ interface CodexTurn {
   usage?: unknown;
 }
 interface CodexThread {
-  run(input: string, turnOptions?: { outputSchema?: unknown }): Promise<CodexTurn>;
+  run(
+    input: string,
+    turnOptions?: { outputSchema?: unknown; signal?: AbortSignal }
+  ): Promise<CodexTurn>;
 }
 interface CodexInstance {
   startThread(options?: Record<string, unknown>): CodexThread;
@@ -151,6 +154,7 @@ export class CodexSdkSession {
   private workingDirectory: string | null = null;
   private turns = 0;
   private chain: Promise<unknown> = Promise.resolve();
+  private lifecycle = new AbortController();
 
   constructor(config: CodexSdkSessionConfig) {
     this.model = config.model?.trim() || DEFAULT_MODEL;
@@ -166,8 +170,9 @@ export class CodexSdkSession {
   }
 
   /** TEXT mode: generate one completion's text. Serialized. */
-  generate(body: string, outputSchema?: unknown): Promise<string> {
-    return this.enqueue(() => this.sendOnce(body, "text", outputSchema));
+  generate(body: string, outputSchema?: unknown, signal?: AbortSignal): Promise<string> {
+    const requestSignal = this.requestSignal(signal);
+    return this.enqueue(() => this.sendOnce(body, "text", outputSchema, requestSignal));
   }
 
   /**
@@ -175,8 +180,13 @@ export class CodexSdkSession {
    * picked via codex's native structured output. Consumed directly by the planner
    * loop's text-mode parser, so no core change is needed.
    */
-  route(body: string): Promise<string> {
-    return this.enqueue(() => this.sendOnce(body, "route"));
+  route(body: string, signal?: AbortSignal): Promise<string> {
+    const requestSignal = this.requestSignal(signal);
+    return this.enqueue(() => this.sendOnce(body, "route", undefined, requestSignal));
+  }
+
+  private requestSignal(signal?: AbortSignal): AbortSignal {
+    return signal ? AbortSignal.any([signal, this.lifecycle.signal]) : this.lifecycle.signal;
   }
 
   private enqueue<T>(fn: () => Promise<T>): Promise<T> {
@@ -191,29 +201,32 @@ export class CodexSdkSession {
   private async sendOnce(
     body: string,
     mode: "text" | "route",
-    outputSchema?: unknown
+    outputSchema: unknown,
+    signal: AbortSignal
   ): Promise<string> {
+    signal.throwIfAborted();
     if (!body.trim()) {
       throw new Error("[cli-inference:codex-sdk] empty prompt body");
     }
     if (this.thread && this.turns >= this.restartAfterTurns) {
-      this.dispose();
+      this.releaseThread();
     }
     try {
       if (!this.thread) await this.start();
+      signal.throwIfAborted();
       this.turns += 1;
       const thread = this.thread;
       if (!thread) throw new Error("[cli-inference:codex-sdk] thread not started");
       // ROUTE: constrain output to {action, params:json-string} via the codex
       // native output schema (reliable shape; needs the system codex binary).
-      const turn = await thread.run(
-        body,
-        outputSchema
+      const turn = await thread.run(body, {
+        signal,
+        ...(outputSchema
           ? { outputSchema }
           : mode === "route"
             ? { outputSchema: ROUTE_OUTPUT_SCHEMA }
-            : undefined
-      );
+            : {}),
+      });
       const text = turnToText(turn);
       if (mode === "route") {
         return this.normalizeRoute(text);
@@ -225,11 +238,11 @@ export class CodexSdkSession {
     } catch (err) {
       // error-policy:J2 context-adding rethrow — self-heal (a dead/erroring thread
       // must not poison the next turn), then rethrow so the caller sees the failure.
-      this.dispose();
+      this.releaseThread();
       throw err instanceof Error ? err : new Error(`[cli-inference:codex-sdk] ${String(err)}`);
     } finally {
       // Eliza owns conversation history and access filtering, not the SDK.
-      this.dispose();
+      this.releaseThread();
       const directory = this.workingDirectory;
       this.workingDirectory = null;
       if (directory) await rm(directory, { recursive: true, force: true });
@@ -292,7 +305,8 @@ export class CodexSdkSession {
       "codex-inference-exec.mjs"
     );
     codexOptions.env = {
-      ...(this.subprocessEnv ?? filterEnv(process.env)),
+      ...(this.subprocessEnv ??
+        filterEnv(process.env, undefined, { CODEX_HOME: process.env.CODEX_HOME })),
       ELIZA_CODEX_INFERENCE_BIN: this.codexBinPath ?? "codex",
     };
     const codex = new Codex(codexOptions);
@@ -316,8 +330,14 @@ export class CodexSdkSession {
     );
   }
 
-  /** Release the request thread without retaining its conversation history. */
+  /** Cancel active and already queued requests; later requests start a fresh lifecycle. */
   dispose(): void {
+    this.lifecycle.abort(new DOMException("Codex inference session disposed", "AbortError"));
+    this.lifecycle = new AbortController();
+    this.releaseThread();
+  }
+
+  private releaseThread(): void {
     this.thread = null;
     this.turns = 0;
   }
