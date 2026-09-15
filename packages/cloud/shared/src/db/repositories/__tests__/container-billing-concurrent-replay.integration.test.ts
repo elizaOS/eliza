@@ -181,6 +181,36 @@ beforeAll(async () => {
       created_at timestamp NOT NULL DEFAULT now(),
       updated_at timestamp NOT NULL DEFAULT now()
     )`,
+    `CREATE TABLE IF NOT EXISTS jobs (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      type text NOT NULL,
+      status text NOT NULL DEFAULT 'pending',
+      data jsonb NOT NULL DEFAULT '{}',
+      data_storage text NOT NULL DEFAULT 'inline',
+      data_key text,
+      organization_id uuid NOT NULL,
+      created_at timestamp NOT NULL DEFAULT now(),
+      updated_at timestamp NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS container_compute_stop_intents (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      organization_id uuid NOT NULL,
+      container_id uuid NOT NULL,
+      lifecycle_revision bigint NOT NULL,
+      "authorization" text NOT NULL DEFAULT 'billing_request',
+      status text NOT NULL DEFAULT 'pending',
+      job_id uuid,
+      attempts integer NOT NULL DEFAULT 0,
+      last_error text,
+      next_attempt_at timestamp NOT NULL DEFAULT now(),
+      provider_started_at timestamp,
+      provider_confirmed_at timestamp,
+      provider_node_id text,
+      slot_released_at timestamp,
+      superseded_at timestamp,
+      created_at timestamp NOT NULL DEFAULT now(),
+      updated_at timestamp NOT NULL DEFAULT now()
+    )`,
     `CREATE TABLE IF NOT EXISTS container_billing_records (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       container_id uuid NOT NULL,
@@ -203,7 +233,7 @@ beforeAll(async () => {
       workload_kind text NOT NULL,
       workload_id uuid NOT NULL,
       lifecycle_revision bigint NOT NULL,
-      billing_state text NOT NULL,
+      lifecycle_status text, billing_state text NOT NULL,
       rate_per_hour numeric(16,6) NOT NULL,
       effective_at timestamp NOT NULL,
       created_at timestamp NOT NULL DEFAULT now()

@@ -155,7 +155,10 @@ async function postCreate(body: unknown) {
   return app.fetch(
     new Request("https://api.example.test/api/v1/eliza/agents", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Eliza-Dedicated-Price": "dedicated-compute-v1:USD:0.150000:0.300000",
+      },
       body: JSON.stringify(body),
     }),
   );
@@ -259,7 +262,7 @@ describe("POST /api/v1/eliza/agents — reuse idempotency", () => {
       success: false,
       code: "insufficient_credits",
       error: "Insufficient credits. Please add funds.",
-      requiredBalance: 0.1,
+      requiredBalance: 0.3,
       currentBalance: 0,
     });
     expect(createAgent).not.toHaveBeenCalled();

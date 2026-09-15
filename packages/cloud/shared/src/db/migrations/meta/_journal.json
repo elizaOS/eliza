@@ -2647,6 +2647,20 @@
       "when": 1796083200021,
       "tag": "0394_agent_billing_activation_minimum",
       "breakpoints": true
+    },
+    {
+      "idx": 378,
+      "version": "7",
+      "when": 1796083200022,
+      "tag": "0395_provider_unconfirmed_deletion_billing",
+      "breakpoints": true
+    },
+    {
+      "idx": 379,
+      "version": "7",
+      "when": 1796083200023,
+      "tag": "0396_prepared_stop_backup",
+      "breakpoints": true
     }
   ]
 }

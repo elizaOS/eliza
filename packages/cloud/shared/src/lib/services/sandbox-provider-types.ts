@@ -256,6 +256,15 @@ export class SandboxReplacementCreateSettlementCleanupUnresolvedError extends Sa
 }
 
 export interface SandboxProvider {
+  /** Removes only the verified immutable runtime; its caller owns transactional capacity reconciliation. */
+  stopObservedRuntime?(
+    sandboxId: string,
+    identity: import("./sandbox-runtime-observation").SandboxRuntimeIdentity,
+  ): Promise<void>;
+  /** Exact read-only identity observation; unsupported or unknown never means absent. */
+  observeRuntime?(
+    input: import("./sandbox-runtime-observation").SandboxRuntimeObservationRequest,
+  ): Promise<import("./sandbox-runtime-observation").SandboxRuntimeObservation>;
   /** Remote paid compute supports a caller-owned, committed-funding start instead of raw Docker start. */
   readonly computeFundingCapability?: "host-lease-v1";
   /**
@@ -290,7 +299,10 @@ export interface SandboxProvider {
   stopForReplacement?(
     sandboxId: string,
     /** A lifecycle caller that transactionally recounts capacity owns its release. */
-    options?: { readonly releaseCapacity?: false },
+    options?: {
+      readonly releaseCapacity?: false;
+      readonly expectedRuntime?: import("./sandbox-runtime-observation").SandboxRuntimeIdentity;
+    },
   ): Promise<void>;
   /**
    * Reclaims a replacement candidate from its durable placement record. This

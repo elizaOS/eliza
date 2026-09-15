@@ -4066,3 +4066,275 @@ if (sshFixturePath) {
     }
   }, 360_000);
 }
+
+for (const upgrade of [false, true]) {
+  test(`funded deletion rate authority preserves settled money ${upgrade ? "across migration upgrade and replay" : "after retirement metadata updates"}`, async () => {
+    const schema = await import("../../db/schemas");
+    for (const table of [schema.containerComputeStopIntents, schema.agentComputeStopIntents]) {
+      const config = getTableConfig(table);
+      await fixture.exec(
+        `CREATE TABLE IF NOT EXISTS "${config.name}" (${config.columns.map((column) => `"${column.name}" ${"enumValues" in column && column.enumValues ? "text" : column.getSQLType()}`).join(", ")})`,
+      );
+    }
+    await fixture.exec(
+      "ALTER TABLE compute_billing_rate_segments ALTER COLUMN id SET DEFAULT gen_random_uuid()",
+    );
+    const migration = await readFile(
+      new URL(
+        "../../db/migrations/0395_provider_unconfirmed_deletion_billing.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    const subject = await billableFundedAgent(
+      upgrade ? "000000000091" : "000000000090",
+      "1.000000",
+    );
+    const { org, agentId, identity, provider, input, agentBillingRepository } = subject;
+    try {
+      if (!upgrade) await fixture.exec(migration);
+      await fixture.query(
+        "UPDATE agent_sandboxes SET status='deletion_pending',deletion_attempt_id=$2,deletion_previous_status='running',deletion_previous_billing_status='active',deletion_started_at=now() WHERE id=$1",
+        [agentId, crypto.randomUUID()],
+      );
+      // Let the real host stop occur after the PostgreSQL microsecond lifecycle fence.
+      await Bun.sleep(20);
+      const receipt = await stopReceiptFor(provider.fundingId, new Date());
+      const { settleStoppedAgentComputeInTransaction: settle } = await import(
+        "./agent-compute-stop"
+      );
+      await helpers.writeTransaction((tx) =>
+        settle(tx, { ...identity, fundingId: provider.fundingId }, receipt),
+      );
+      const stopped = await renewalState(org);
+      expect(stopped.windows[0]).toMatchObject({
+        provider_stopped_at: expect.any(Date),
+        settled_through: expect.any(Date),
+        provider_stop_receipt: expect.any(Object),
+      });
+      const zero = await fixture.query(
+        "SELECT billing_state,rate_per_hour::text FROM compute_billing_rate_segments WHERE organization_id=$1 AND workload_id=$2 ORDER BY effective_at DESC,id DESC LIMIT 1",
+        [org, agentId],
+      );
+      expect(zero.rows).toEqual([{ billing_state: "not_billable", rate_per_hour: "0.000000" }]);
+      // Actual retirement clears cancellation metadata only after canonical funded settlement.
+      await fixture.query("UPDATE agent_sandboxes SET deletion_previous_status=NULL WHERE id=$1", [
+        agentId,
+      ]);
+      if (upgrade) {
+        await fixture.exec(migration);
+        await fixture.exec(migration);
+      }
+      // Provider removal may remain pending; an ordinary later billing run must not debit stopped compute.
+      await agentBillingRepository.recordHourlyBilling({
+        ...input,
+        now: new Date(Date.now() + 3_600_000),
+      });
+      const after = await renewalState(org);
+      expect(after.balance).toEqual(stopped.balance);
+      const priorIds = new Set(stopped.ledger.map((row) => row.id));
+      expect(after.ledger.filter((row) => priorIds.has(row.id))).toEqual(stopped.ledger);
+      const added = after.ledger.filter((row) => !priorIds.has(row.id));
+      expect(added).toHaveLength(1);
+      expect(added[0]).toMatchObject({ amount: "0.000000", type: "debit", organization_id: org });
+      const audit = await fixture.query<{
+        amount: string;
+        hourly_rate: string;
+        invalid_segments: number;
+      }>(
+        `SELECT r.amount::text,r.hourly_rate::text,
+          (SELECT count(*)::integer FROM jsonb_array_elements(r.rate_segments) segment
+            WHERE segment->>'state' IS DISTINCT FROM 'not_billable'
+              OR (segment->>'amount')::numeric IS DISTINCT FROM 0
+              OR (segment->>'ratePerHour')::numeric IS DISTINCT FROM 0) AS invalid_segments
+         FROM agent_billing_records r WHERE r.credit_transaction_id=$1 AND r.sandbox_id=$2`,
+        [added[0]?.id, agentId],
+      );
+      expect(audit.rows).toEqual([
+        { amount: "0.000000", hourly_rate: "0.000000", invalid_segments: 0 },
+      ]);
+      expect(after.windows).toEqual(stopped.windows);
+      expect(after.reservations).toEqual(stopped.reservations);
+      expect(after.allocations).toEqual(stopped.allocations);
+      const ownership = await fixture.query(
+        "SELECT status,deletion_previous_status,deletion_attempt_id IS NOT NULL AS deletion_owned,total_billed::text FROM agent_sandboxes WHERE id=$1",
+        [agentId],
+      );
+      expect(ownership.rows).toEqual([
+        {
+          status: "deletion_pending",
+          deletion_previous_status: null,
+          deletion_owned: true,
+          total_billed: "0.300000",
+        },
+      ]);
+      const latest = await fixture.query(
+        "SELECT billing_state,rate_per_hour::text FROM compute_billing_rate_segments WHERE organization_id=$1 AND workload_id=$2 ORDER BY effective_at DESC,id DESC LIMIT 1",
+        [org, agentId],
+      );
+      expect(latest.rows).toEqual([{ billing_state: "not_billable", rate_per_hour: "0.000000" }]);
+      const { activeBillingService } = await import("./active-billing");
+      expect(
+        (await activeBillingService.listActiveResources(org)).map(
+          (resource) => resource.resourceId,
+        ),
+      ).not.toContain(agentId);
+      if (upgrade) {
+        const unconfirmed = await billableFundedAgent("000000000092", "1.000000");
+        await fixture.query(
+          "UPDATE agent_sandboxes SET status='deletion_pending',deletion_previous_status='running',deletion_attempt_id=$2 WHERE id=$1",
+          [unconfirmed.agentId, crypto.randomUUID()],
+        );
+        const listed = await activeBillingService.listActiveResources(unconfirmed.org);
+        const currentRunning = await fixture.query<{ rate: string }>(
+          "SELECT rate_per_hour::text AS rate FROM compute_billing_rate_segments WHERE workload_id=$1 ORDER BY effective_at DESC,id DESC LIMIT 1",
+          [unconfirmed.agentId],
+        );
+        const currentRate = Number(currentRunning.rows[0]?.rate);
+        expect(currentRate).toBeGreaterThan(0);
+        expect(
+          listed.find((resource) => resource.resourceId === unconfirmed.agentId),
+        ).toMatchObject({ unitPrice: currentRate, metadata: { billableReason: "running_agent" } });
+        const appendRate = async (
+          targetOrg: string,
+          targetAgent: string,
+          state: string,
+          rate: string,
+        ) => {
+          await fixture.query(
+            `INSERT INTO compute_billing_rate_segments(id,organization_id,workload_kind,workload_id,lifecycle_revision,billing_state,rate_per_hour,effective_at)
+            SELECT gen_random_uuid(),$1,'agent',$2,1,$3,$4,GREATEST(clock_timestamp(),max(effective_at)+interval '1 microsecond')
+            FROM compute_billing_rate_segments WHERE organization_id=$1 AND workload_id=$2`,
+            [targetOrg, targetAgent, state, rate],
+          );
+        };
+        // A different agent's genuine settled receipt must not authorize this historical zero.
+        await appendRate(unconfirmed.org, unconfirmed.agentId, "not_billable", "0.000000");
+        await fixture.exec(migration);
+        const foreign = await fixture.query(
+          "SELECT billing_state,rate_per_hour::text FROM compute_billing_rate_segments WHERE workload_id=$1 ORDER BY effective_at DESC,id DESC LIMIT 1",
+          [unconfirmed.agentId],
+        );
+        expect(foreign.rows).toEqual([
+          { billing_state: "running", rate_per_hour: unconfirmed.reserved.window.hourly_rate },
+        ]);
+        // Even this same agent's real receipt is stale once a later runtime generation charged.
+        await appendRate(org, agentId, "running", "0.010000");
+        await appendRate(org, agentId, "not_billable", "0.000000");
+        await fixture.exec(migration);
+        const resumed = await fixture.query(
+          "SELECT billing_state,rate_per_hour::text FROM compute_billing_rate_segments WHERE workload_id=$1 ORDER BY effective_at DESC,id DESC LIMIT 1",
+          [agentId],
+        );
+        expect(resumed.rows).toEqual([{ billing_state: "running", rate_per_hour: "0.010000" }]);
+        await fixture.query("DELETE FROM compute_billing_rate_segments WHERE workload_id=$1", [
+          agentId,
+        ]);
+        await expect(
+          fixture.query("UPDATE agent_sandboxes SET status='deletion_failed' WHERE id=$1", [
+            agentId,
+          ]),
+        ).rejects.toThrow("AGENT_DELETION_BILLING_HISTORY_MISSING");
+        expect(
+          (await fixture.query("SELECT status FROM agent_sandboxes WHERE id=$1", [agentId])).rows,
+        ).toEqual([{ status: "deletion_pending" }]);
+      }
+    } finally {
+      // error-policy:J6 Remove only fixture triggers so other funding contracts retain their original setup.
+      await fixture.exec(
+        "DROP TRIGGER IF EXISTS agent_compute_billing_rate_segment_append ON agent_sandboxes; DROP TRIGGER IF EXISTS container_compute_billing_rate_segment_append ON containers;",
+      );
+    }
+  });
+}
+
+test("funded readiness preserves the contracted rate through lifecycle publication", async () => {
+  const schema = await import("../../db/schemas");
+  for (const table of [schema.containerComputeStopIntents, schema.agentComputeStopIntents]) {
+    const config = getTableConfig(table);
+    await fixture.exec(
+      `CREATE TABLE IF NOT EXISTS "${config.name}" (${config.columns.map((column) => `"${column.name}" ${"enumValues" in column && column.enumValues ? "text" : column.getSQLType()}`).join(", ")})`,
+    );
+  }
+  await fixture.exec(
+    "ALTER TABLE compute_billing_rate_segments ALTER COLUMN id SET DEFAULT gen_random_uuid()",
+  );
+  const migration = await readFile(
+    new URL("../../db/migrations/0395_provider_unconfirmed_deletion_billing.sql", import.meta.url),
+    "utf8",
+  );
+  const { org, agentId, provider } = await billableFundedAgent("000000000095", "1.000000");
+  const { recordFundedComputeStartInTransaction } = await import("./agent-compute-start");
+  const { settleComputeRateSegments } = await import(
+    "../../db/repositories/compute-billing-segments"
+  );
+  const { eq } = await import("drizzle-orm");
+  try {
+    await fixture.exec(migration);
+    await fixture.query("UPDATE agent_sandboxes SET status='provisioning' WHERE id=$1", [agentId]);
+    await Bun.sleep(20);
+    await helpers.writeTransaction(async (tx) => {
+      const [window] = await tx
+        .select()
+        .from(schema.agentComputeFunding)
+        .where(eq(schema.agentComputeFunding.id, provider.fundingId));
+      if (!window) throw new Error("Funded readiness window disappeared");
+      await recordFundedComputeStartInTransaction(tx, window, 1, Date.now());
+    });
+    // This is the real ready-publication write performed after the host-start receipt.
+    await fixture.query("UPDATE agent_sandboxes SET status='running' WHERE id=$1", [agentId]);
+    const [{ period_start: periodStart }] = (
+      await fixture.query<{ period_start: Date }>(
+        "SELECT date_trunc('milliseconds',clock_timestamp()) + interval '1 millisecond' AS period_start",
+      )
+    ).rows;
+    const meter = await helpers.writeTransaction((tx) =>
+      settleComputeRateSegments(tx, {
+        organizationId: org,
+        workloadKind: "agent",
+        workloadId: agentId,
+        periodStart,
+        periodEnd: new Date(periodStart.getTime() + 3_600_000),
+      }),
+    );
+    // A one-hour interval at the committed tariff must not inherit the old legacy trigger price.
+    expect(meter.amount.toFixed(6)).toBe("0.150000");
+    expect(meter.segments.every((segment) => segment.state === "running")).toBe(true);
+    // Upgrade a live legacy-priced tail without rewriting previously recorded usage.
+    await fixture.query(
+      `INSERT INTO compute_billing_rate_segments
+      (organization_id,workload_kind,workload_id,lifecycle_revision,billing_state,rate_per_hour,effective_at)
+      VALUES ($1,'agent',$2,1,'running',0.01,clock_timestamp()+interval '2 milliseconds')`,
+      [org, agentId],
+    );
+    const before = (
+      await fixture.query(
+        "SELECT * FROM compute_billing_rate_segments WHERE workload_id=$1 ORDER BY effective_at,id",
+        [agentId],
+      )
+    ).rows;
+    await fixture.exec(migration);
+    const corrected = (
+      await fixture.query(
+        "SELECT * FROM compute_billing_rate_segments WHERE workload_id=$1 ORDER BY effective_at,id",
+        [agentId],
+      )
+    ).rows;
+    expect(corrected.slice(0, before.length)).toEqual(before);
+    expect(corrected.at(-1)).toMatchObject({ billing_state: "running", rate_per_hour: "0.150000" });
+    await fixture.exec(migration);
+    expect(
+      (
+        await fixture.query(
+          "SELECT * FROM compute_billing_rate_segments WHERE workload_id=$1 ORDER BY effective_at,id",
+          [agentId],
+        )
+      ).rows,
+    ).toEqual(corrected);
+  } finally {
+    // error-policy:J6 Isolate the actual migration trigger from unrelated funding fixtures.
+    await fixture.exec(
+      "DROP TRIGGER IF EXISTS agent_compute_billing_rate_segment_append ON agent_sandboxes; DROP TRIGGER IF EXISTS container_compute_billing_rate_segment_append ON containers;",
+    );
+  }
+});

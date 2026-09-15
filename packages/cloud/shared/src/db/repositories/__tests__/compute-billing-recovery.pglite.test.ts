@@ -4,15 +4,17 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { pushSchema } from "drizzle-kit/api";
 import { and, eq, sql } from "drizzle-orm";
-import { getPgliteClientForTests } from "../../client";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 
+import { activeBillingService } from "../../../lib/services/active-billing";
+import { retireContainerWithDeleteJob } from "../../../lib/services/container-retirement";
 import {
   dispatchContainerStopJob as dispatchContainerStopJobService,
   enqueueContainerStopOnce,
@@ -21,7 +23,7 @@ import {
   rearmRecoverableContainerStopIntentOnce,
 } from "../../../lib/services/container-stop-job-service";
 import { getHetznerContainersClient } from "../../../lib/services/containers/hetzner-client/client";
-import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
+import { closeDatabaseConnectionsForTests, dbWrite, getPgliteClientForTests } from "../../client";
 import { agentSandboxes } from "../../schemas/agent-sandboxes";
 import { apiKeys } from "../../schemas/api-keys";
 import {
@@ -53,6 +55,10 @@ import { jobsRepository } from "../jobs";
 import { installOrganizationPolicyTestSchema } from "../organization-policy-test-fixture";
 
 const PGLITE_TIMEOUT = 60_000;
+const deletionBillingMigration = readFileSync(
+  new URL("../../migrations/0395_provider_unconfirmed_deletion_billing.sql", import.meta.url),
+  "utf8",
+).replaceAll("--> statement-breakpoint", "");
 let ready = true;
 
 beforeAll(async () => {
@@ -132,6 +138,15 @@ beforeAll(async () => {
       updated_at timestamp NOT NULL DEFAULT now()
     )`),
     );
+    const authorityMigration = readFileSync(
+      new URL("../../migrations/0265_compute_billing_recovery.sql", import.meta.url),
+      "utf8",
+    );
+    const agentStopTable = authorityMigration.match(
+      /CREATE TABLE agent_compute_stop_intents \([\s\S]*?\n\);/,
+    );
+    if (!agentStopTable) throw new Error("Agent stop authority DDL unavailable");
+    await getPgliteClientForTests().exec(agentStopTable[0]);
     await dbWrite.execute(
       sql.raw(`CREATE TABLE job_execution_leases (
       job_id uuid PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
@@ -183,6 +198,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   expect(ready).toBe(true);
+  await dbWrite.execute(sql.raw(`DELETE FROM agent_compute_stop_intents`));
   await dbWrite.execute(sql.raw(`DELETE FROM jobs`));
   await dbWrite.execute(sql.raw(`DELETE FROM container_compute_stop_intents`));
   await dbWrite.delete(containerBillingRecords);
@@ -635,6 +651,486 @@ describe("compute billing recovery", () => {
       amount: "0.035000",
     });
     expect(runItem?.transaction_id).toBeTruthy();
+  });
+
+  test("migration-backed deletion states debit once and replay with zero effect", async () => {
+    const { org, user, sandbox } = await seed("20.000000");
+    await getPgliteClientForTests().exec(deletionBillingMigration);
+    try {
+      const transitionAt = new Date();
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ status: "deletion_failed", updated_at: transitionAt })
+        .where(eq(agentSandboxes.id, sandbox.id));
+      const agentNow = new Date(transitionAt.getTime() + 2 * 60 * 60 * 1000);
+      const agentInput = {
+        ...(await claimBillingRun(agentNow)),
+        sandboxId: sandbox.id,
+        organizationId: org.id,
+        userId: user.id,
+        agentName: "deletion-failed-agent",
+        hourlyRate: 0.01,
+        billingDescription: "provider-unconfirmed agent compute",
+        lowCreditWarningAmount: 1,
+        now: agentNow,
+      };
+      const [agentFirst, agentReplay] = await Promise.all([
+        agentBillingRepository.recordHourlyBilling(agentInput),
+        agentBillingRepository.recordHourlyBilling(agentInput),
+      ]);
+      expect([agentFirst, agentReplay].filter((result) => result.status === "billed")).toHaveLength(
+        1,
+      );
+
+      const containerId = "00000000-0000-4000-8000-000000000099";
+      await dbWrite.insert(containers).values({
+        id: containerId,
+        organization_id: org.id,
+        user_id: user.id,
+        name: "deleting-container",
+        project_name: "deleting-container",
+        status: "deleting",
+        billing_status: "active",
+        desired_count: 1,
+        cpu: 1024,
+        memory: 2048,
+        last_billed_at: transitionAt,
+        next_billing_at: new Date(0),
+        created_at: transitionAt,
+        updated_at: transitionAt,
+      });
+      const containerInput = {
+        containerId,
+        organizationId: org.id,
+        userId: user.id,
+        containerName: "deleting-container",
+        dailyRate: 0.67,
+        earningsSourceUserId: null,
+        payAsYouGoFromEarnings: false,
+        newBalance: 0,
+        now: new Date(transitionAt.getTime() + 24 * 60 * 60 * 1000),
+      };
+      const first = await containerBillingRepository.recordSuccessfulDailyBilling(containerInput);
+      const replay = await containerBillingRepository.recordSuccessfulDailyBilling(containerInput);
+      expect(first).toMatchObject({ alreadyBilled: false });
+      expect(first.amount).toBeCloseTo(0.67, 4);
+      expect(replay).toMatchObject({ alreadyBilled: true, amount: 0 });
+
+      const segments = await dbWrite.execute(sql`SELECT workload_kind, billing_state, rate_per_hour
+        FROM compute_billing_rate_segments
+        WHERE workload_id IN (${sandbox.id}, ${containerId})
+        ORDER BY workload_kind, effective_at`);
+      expect(segments.rows.some((row) => row.billing_state !== "running")).toBe(false);
+      expect(await dbWrite.select().from(agentBillingRecords)).toHaveLength(1);
+      expect(await dbWrite.select().from(containerBillingRecords)).toHaveLength(1);
+    } finally {
+      await getPgliteClientForTests().exec(
+        `DROP TRIGGER IF EXISTS agent_compute_billing_rate_segment_append ON agent_sandboxes;
+         DROP TRIGGER IF EXISTS container_compute_billing_rate_segment_append ON containers;`,
+      );
+    }
+  });
+
+  test("upgrade restores collection and visibility for legacy suspended failed deletion", async () => {
+    const { org, user, sandbox } = await seed();
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "deletion_failed",
+        billing_status: "suspended",
+        deletion_previous_status: "running",
+        deletion_previous_billing_status: "active",
+        deletion_attempt_id: crypto.randomUUID(),
+        deletion_started_at: new Date(),
+      })
+      .where(eq(agentSandboxes.id, sandbox.id));
+    await dbWrite
+      .update(computeBillingRateSegments)
+      .set({ billing_state: "not_billable", rate_per_hour: "0.000000" })
+      .where(eq(computeBillingRateSegments.workload_id, sandbox.id));
+    await getPgliteClientForTests().exec(deletionBillingMigration);
+    try {
+      const now = new Date();
+      const billable = await agentBillingRepository.listBillableSandboxes(now, now);
+      expect({
+        collected: billable.runningSandboxes.some((row) => row.id === sandbox.id),
+        visible: (await activeBillingService.listActiveResources(org.id)).some(
+          (row) => row.resourceId === sandbox.id,
+        ),
+      }).toEqual({ collected: true, visible: true });
+      const at = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+      const input = {
+        ...(await claimBillingRun(at)),
+        sandboxId: sandbox.id,
+        organizationId: org.id,
+        userId: user.id,
+        agentName: sandbox.agent_name!,
+        hourlyRate: 0.01,
+        billingDescription: "Recovered deletion billing",
+        lowCreditWarningAmount: 1,
+        now: at,
+      };
+      expect(await agentBillingRepository.recordHourlyBilling(input)).toMatchObject({
+        status: "billed",
+        amount: 0.02,
+      });
+      expect(await agentBillingRepository.recordHourlyBilling(input)).toMatchObject({
+        status: "already_billed_recently",
+      });
+      expect(await dbWrite.select().from(creditTransactions)).toHaveLength(1);
+      const history = await dbWrite.select().from(computeBillingRateSegments);
+      await getPgliteClientForTests().exec(deletionBillingMigration);
+      expect(await dbWrite.select().from(computeBillingRateSegments)).toEqual(history);
+    } finally {
+      await getPgliteClientForTests().exec(
+        `DROP TRIGGER IF EXISTS agent_compute_billing_rate_segment_append ON agent_sandboxes; DROP TRIGGER IF EXISTS container_compute_billing_rate_segment_append ON containers;`,
+      );
+    }
+  });
+
+  test("retiring stopped compute does not resume charging while provider deletion is pending", async () => {
+    const { org, user } = await seed();
+    await getPgliteClientForTests().exec(deletionBillingMigration);
+    try {
+      const id = crypto.randomUUID();
+      const start = new Date();
+      await dbWrite.insert(containers).values({
+        id,
+        organization_id: org.id,
+        user_id: user.id,
+        name: "stopped-retirement",
+        project_name: "stopped-retirement",
+        status: "stopped",
+        billing_status: "suspended",
+        last_billed_at: start,
+      });
+      await retireContainerWithDeleteJob(id, org.id);
+      const settled = await dbWrite.transaction((tx) =>
+        settleComputeRateSegments(tx, {
+          organizationId: org.id,
+          workloadKind: "container",
+          workloadId: id,
+          periodStart: start,
+          periodEnd: new Date(start.getTime() + 86_400_000),
+        }),
+      );
+      expect(settled.amount.toNumber()).toBe(0);
+      const history = await dbWrite.select().from(computeBillingRateSegments);
+      await retireContainerWithDeleteJob(id, org.id);
+      await getPgliteClientForTests().exec(deletionBillingMigration);
+      expect(await dbWrite.select().from(computeBillingRateSegments)).toEqual(history);
+    } finally {
+      await getPgliteClientForTests().exec(
+        `DROP TRIGGER IF EXISTS agent_compute_billing_rate_segment_append ON agent_sandboxes; DROP TRIGGER IF EXISTS container_compute_billing_rate_segment_append ON containers;`,
+      );
+    }
+  });
+
+  test("provider-confirmed running-row fence remains zero through retirement and migration replay", async () => {
+    const { org, user } = await seed();
+    await getPgliteClientForTests().exec(deletionBillingMigration);
+    try {
+      const id = crypto.randomUUID();
+      const at = new Date(Math.floor(Date.now() / 1000) * 1000);
+      await dbWrite.insert(containers).values({
+        id,
+        organization_id: org.id,
+        user_id: user.id,
+        name: "confirmed-stop",
+        project_name: "confirmed-stop",
+        status: "running",
+        billing_status: "suspended",
+        lifecycle_revision: 17,
+      });
+      await dbWrite.insert(containerComputeStopIntents).values({
+        organization_id: org.id,
+        container_id: id,
+        lifecycle_revision: 17,
+        authorization: "user_request",
+        status: "retry",
+        provider_confirmed_at: at,
+      });
+      // The production stop fence records this exact confirmation-time segment before final row settlement.
+      await dbWrite.insert(computeBillingRateSegments).values({
+        organization_id: org.id,
+        workload_kind: "container",
+        workload_id: id,
+        lifecycle_revision: 17,
+        billing_state: "not_billable",
+        rate_per_hour: "0.000000",
+        effective_at: new Date(at.getTime() + 2000),
+      });
+      await dbWrite
+        .update(containerComputeStopIntents)
+        .set({ provider_confirmed_at: new Date(at.getTime() + 2000) })
+        .where(eq(containerComputeStopIntents.container_id, id));
+      await retireContainerWithDeleteJob(id, org.id);
+      const start = new Date(at.getTime() + 3000);
+      const settled = await dbWrite.transaction((tx) =>
+        settleComputeRateSegments(tx, {
+          organizationId: org.id,
+          workloadKind: "container",
+          workloadId: id,
+          periodStart: start,
+          periodEnd: new Date(start.getTime() + 86_400_000),
+        }),
+      );
+      expect(settled.amount.toNumber()).toBe(0);
+      await getPgliteClientForTests().exec(deletionBillingMigration);
+      const history = await dbWrite.select().from(computeBillingRateSegments);
+      await retireContainerWithDeleteJob(id, org.id);
+      await getPgliteClientForTests().exec(deletionBillingMigration);
+      expect(await dbWrite.select().from(computeBillingRateSegments)).toEqual(history);
+    } finally {
+      await getPgliteClientForTests().exec(
+        `DROP TRIGGER IF EXISTS agent_compute_billing_rate_segment_append ON agent_sandboxes; DROP TRIGGER IF EXISTS container_compute_billing_rate_segment_append ON containers;`,
+      );
+    }
+  });
+
+  test("ambiguous legacy deletion aborts upgrade before eligibility or history mutations", async () => {
+    const { org, user, sandbox } = await seed();
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "deletion_failed",
+        billing_status: "suspended",
+        deletion_previous_status: "running",
+        deletion_previous_billing_status: "active",
+        deletion_attempt_id: crypto.randomUUID(),
+        deletion_started_at: new Date(),
+      })
+      .where(eq(agentSandboxes.id, sandbox.id));
+    const id = crypto.randomUUID();
+    await dbWrite.insert(containers).values({
+      id,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "ambiguous-history",
+      project_name: "ambiguous-history",
+      status: "deleting",
+      billing_status: "active",
+      lifecycle_revision: 2,
+    });
+    for (const revision of [1, 2])
+      await dbWrite.insert(computeBillingRateSegments).values({
+        organization_id: org.id,
+        workload_kind: "container",
+        workload_id: id,
+        lifecycle_revision: revision,
+        billing_state: "not_billable",
+        rate_per_hour: "0.000000",
+        effective_at: new Date(1_700_000_000_000 + revision * 1000),
+      });
+    const before = await dbWrite.select().from(computeBillingRateSegments);
+    await expect(
+      dbWrite.transaction((tx) => tx.execute(sql.raw(deletionBillingMigration))),
+    ).rejects.toThrow("CONTAINER_DELETION_BILLING_HISTORY_UNRESOLVED");
+    expect(await dbWrite.select().from(computeBillingRateSegments)).toEqual(before);
+    const [retained] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandbox.id));
+    expect(retained.billing_status).toBe("suspended");
+    expect(
+      (await activeBillingService.listActiveResources(org.id)).some(
+        (row) => row.resourceId === sandbox.id,
+      ),
+    ).toBe(false);
+  });
+
+  test("supported legacy running deletion recovers prospectively without rewriting immutable history", async () => {
+    const { org, user } = await seed();
+    const id = crypto.randomUUID();
+    await dbWrite.insert(containers).values({
+      id,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "legacy-running-delete",
+      project_name: "legacy-running-delete",
+      status: "deleting",
+      billing_status: "active",
+      lifecycle_revision: 2,
+    });
+    const past = new Date(Date.now() - 86_400_000);
+    await dbWrite.insert(computeBillingRateSegments).values([
+      {
+        organization_id: org.id,
+        workload_kind: "container",
+        workload_id: id,
+        lifecycle_revision: 1,
+        billing_state: "running",
+        rate_per_hour: "0.025000",
+        effective_at: past,
+      },
+      {
+        organization_id: org.id,
+        workload_kind: "container",
+        workload_id: id,
+        lifecycle_revision: 2,
+        billing_state: "not_billable",
+        rate_per_hour: "0.000000",
+        effective_at: new Date(past.getTime() + 1000),
+      },
+    ]);
+    const before = await dbWrite.select().from(computeBillingRateSegments);
+    const originalMigration = readFileSync(
+      new URL("../../migrations/0265_compute_billing_recovery.sql", import.meta.url),
+      "utf8",
+    );
+    const guard = originalMigration.match(
+      /CREATE OR REPLACE FUNCTION guard_compute_billing_receipt_immutable\(\)[\s\S]*?LANGUAGE plpgsql;/,
+    );
+    const trigger = originalMigration.match(
+      /CREATE TRIGGER compute_billing_rate_segments_immutable[\s\S]*?guard_compute_billing_receipt_immutable\(\);/,
+    );
+    if (!guard || !trigger) throw new Error("Immutable history DDL unavailable");
+    await getPgliteClientForTests().exec(guard[0] + trigger[0]);
+    try {
+      await getPgliteClientForTests().exec(deletionBillingMigration);
+      const after = await dbWrite.select().from(computeBillingRateSegments);
+      for (const row of before) expect(after.find((entry) => entry.id === row.id)).toEqual(row);
+      const recovered = after.find(
+        (row) => row.workload_id === id && row.lifecycle_status === "deleting",
+      );
+      expect(recovered).toBeDefined();
+      if (!recovered) throw new Error("Recovery authority missing");
+      const settled = await dbWrite.transaction((tx) =>
+        settleComputeRateSegments(tx, {
+          organizationId: org.id,
+          workloadKind: "container",
+          workloadId: id,
+          periodStart: recovered.effective_at,
+          periodEnd: new Date(recovered.effective_at.getTime() + 86_400_000),
+        }),
+      );
+      expect(settled.amount.toNumber()).toBe(0.6);
+      await getPgliteClientForTests().exec(deletionBillingMigration);
+      expect(await dbWrite.select().from(computeBillingRateSegments)).toEqual(after);
+      await expect(
+        dbWrite
+          .update(computeBillingRateSegments)
+          .set({ lifecycle_status: "running" })
+          .where(eq(computeBillingRateSegments.id, recovered.id))
+          .execute(),
+      ).rejects.toMatchObject({ cause: { constraint: "compute_billing_receipt_immutable" } });
+    } finally {
+      await getPgliteClientForTests().exec(
+        `DROP TRIGGER IF EXISTS compute_billing_rate_segments_immutable ON compute_billing_rate_segments; DROP TRIGGER IF EXISTS agent_compute_billing_rate_segment_append ON agent_sandboxes; DROP TRIGGER IF EXISTS container_compute_billing_rate_segment_append ON containers;`,
+      );
+    }
+  });
+
+  test("legacy stopped and provider-confirmed agents stay excluded while missing provenance rejects upgrade", async () => {
+    const { org, sandbox } = await seed();
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "deletion_failed",
+        billing_status: "suspended",
+        deletion_previous_status: "stopped",
+        deletion_previous_billing_status: "suspended",
+        deletion_attempt_id: crypto.randomUUID(),
+        deletion_started_at: new Date(),
+        last_backup_at: null,
+      })
+      .where(eq(agentSandboxes.id, sandbox.id));
+    await dbWrite
+      .update(computeBillingRateSegments)
+      .set({ billing_state: "not_billable", rate_per_hour: "0.000000" })
+      .where(eq(computeBillingRateSegments.workload_id, sandbox.id));
+    try {
+      const history = await dbWrite.select().from(computeBillingRateSegments);
+      await getPgliteClientForTests().exec(deletionBillingMigration);
+      expect(await dbWrite.select().from(computeBillingRateSegments)).toEqual(history);
+      expect(
+        (await activeBillingService.listActiveResources(org.id)).some(
+          (row) => row.resourceId === sandbox.id,
+        ),
+      ).toBe(false);
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ deletion_previous_status: "running", deletion_previous_billing_status: "active" })
+        .where(eq(agentSandboxes.id, sandbox.id));
+      await dbWrite.execute(
+        sql`INSERT INTO agent_compute_stop_intents (organization_id, agent_id, lifecycle_revision, status, provider_confirmed_at) VALUES (${org.id}, ${sandbox.id}, ${sandbox.lifecycle_revision}, 'provider_confirmed', now() + interval '1 second')`,
+      );
+      await dbWrite
+        .update(computeBillingRateSegments)
+        .set({ billing_state: "not_billable", rate_per_hour: "0.000000" })
+        .where(eq(computeBillingRateSegments.workload_id, sandbox.id));
+      const fenced = await dbWrite.select().from(computeBillingRateSegments);
+      await getPgliteClientForTests().exec(deletionBillingMigration);
+      expect(
+        (await activeBillingService.listActiveResources(org.id)).some(
+          (row) => row.resourceId === sandbox.id,
+        ),
+      ).toBe(false);
+      expect(await dbWrite.select().from(computeBillingRateSegments)).toEqual(fenced);
+      await dbWrite.execute(
+        sql`DELETE FROM agent_compute_stop_intents WHERE agent_id = ${sandbox.id}`,
+      );
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ deletion_previous_billing_status: null })
+        .where(eq(agentSandboxes.id, sandbox.id));
+      await expect(
+        dbWrite.transaction((tx) => tx.execute(sql.raw(deletionBillingMigration))),
+      ).rejects.toThrow("AGENT_DELETION_BILLING_PROVENANCE_UNRESOLVED");
+    } finally {
+      await getPgliteClientForTests().exec(
+        `DROP TRIGGER IF EXISTS agent_compute_billing_rate_segment_append ON agent_sandboxes; DROP TRIGGER IF EXISTS container_compute_billing_rate_segment_append ON containers;`,
+      );
+    }
+  });
+
+  test("deletion of retained backups preserves the existing storage rate", async () => {
+    const { org, sandbox } = await seed();
+    await getPgliteClientForTests().exec(deletionBillingMigration);
+    try {
+      await dbWrite
+        .update(agentSandboxes)
+        .set({
+          status: "stopped",
+          last_backup_at: new Date(),
+        })
+        .where(eq(agentSandboxes.id, sandbox.id));
+      const before = await dbWrite.execute(sql`SELECT billing_state, rate_per_hour
+        FROM compute_billing_rate_segments WHERE workload_id = ${sandbox.id}
+        ORDER BY effective_at DESC, id DESC LIMIT 1`);
+      expect(Number(before.rows[0].rate_per_hour)).toBe(0.0025);
+      await dbWrite
+        .update(agentSandboxes)
+        .set({
+          status: "deletion_pending",
+          deletion_previous_status: "stopped",
+          deletion_attempt_id: crypto.randomUUID(),
+          deletion_started_at: new Date(),
+        })
+        .where(eq(agentSandboxes.id, sandbox.id));
+      const after = await dbWrite.execute(sql`SELECT billing_state, rate_per_hour
+        FROM compute_billing_rate_segments WHERE workload_id = ${sandbox.id}
+        ORDER BY effective_at DESC, id DESC LIMIT 1`);
+      expect(after.rows[0]).toEqual(before.rows[0]);
+      const resource = (await activeBillingService.listActiveResources(org.id)).find(
+        (entry) => entry.resourceId === sandbox.id,
+      );
+      expect(resource?.unitPrice).toBe(Number(after.rows[0].rate_per_hour));
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ status: "deletion_failed" })
+        .where(eq(agentSandboxes.id, sandbox.id));
+      await getPgliteClientForTests().exec(deletionBillingMigration);
+      const replay = await dbWrite.execute(sql`SELECT billing_state, rate_per_hour
+        FROM compute_billing_rate_segments WHERE workload_id = ${sandbox.id}
+        ORDER BY effective_at DESC, id DESC LIMIT 1`);
+      expect(replay.rows[0]).toEqual(before.rows[0]);
+    } finally {
+      await getPgliteClientForTests().exec(
+        `DROP TRIGGER IF EXISTS agent_compute_billing_rate_segment_append ON agent_sandboxes;
+         DROP TRIGGER IF EXISTS container_compute_billing_rate_segment_append ON containers;`,
+      );
+    }
   });
 
   test("insufficient credit rolls back the claim and creates no ledger or receipt", async () => {
@@ -2214,6 +2710,29 @@ describe("compute billing recovery", () => {
     }
   });
 
+  test("durable delete ownership remains billable until daemon confirmation", async () => {
+    const { org, user } = await seed("10.000000");
+    const containerId = "00000000-0000-4000-8000-000000000013";
+    const periodStart = new Date("2026-08-19T01:00:00.000Z");
+    await dbWrite.execute(sql`INSERT INTO containers
+      (id, name, project_name, organization_id, user_id, status, billing_status,
+       last_billed_at, next_billing_at, lifecycle_revision, created_at, updated_at)
+      VALUES (${containerId}, 'user-delete', 'user-delete', ${org.id}, ${user.id}, 'running',
+        'active', ${periodStart}, ${new Date(0)}, 33, ${periodStart}, ${periodStart})`);
+
+    const retirement = await retireContainerWithDeleteJob(containerId, org.id);
+    expect(retirement).toMatchObject({ outcome: "retired", jobId: expect.any(String) });
+    const due = await containerBillingRepository.listBillableContainers(new Date());
+    expect(due.map((row) => row.id)).toContain(containerId);
+
+    await dbWrite
+      .update(containers)
+      .set({ status: "deleted" })
+      .where(eq(containers.id, containerId));
+    const terminal = await containerBillingRepository.listBillableContainers(new Date());
+    expect(terminal.map((row) => row.id)).not.toContain(containerId);
+  });
+
   test("funding restored under the stop-decision locks reactivates without a provider job", async () => {
     const periodStart = new Date(Math.floor((Date.now() - 60 * 60 * 1_000) / 1_000) * 1_000);
     const { org, user } = await seed("10.000000");
@@ -2235,19 +2754,15 @@ describe("compute billing recovery", () => {
     const outcome = await enqueueContainerStopOnce({ containerId, organizationId: org.id });
     expect(outcome).toMatchObject({ requested: false, reason: "funding_restored" });
     expect(await dbWrite.select().from(jobs)).toHaveLength(0);
-    const [row] = await dbWrite
-      .select({
-        billing_status: containers.billing_status,
-        scheduled_shutdown_at: containers.scheduled_shutdown_at,
-        last_billed_at: containers.last_billed_at,
-      })
-      .from(containers)
-      .where(eq(containers.id, containerId));
-    expect(row).toMatchObject({
+    const row = await dbWrite.execute(
+      sql`SELECT billing_status, scheduled_shutdown_at, EXTRACT(epoch FROM last_billed_at) * 1000 AS last_billed_at_ms
+          FROM containers WHERE id = ${containerId}`,
+    );
+    expect(row.rows[0]).toMatchObject({
       billing_status: "active",
       scheduled_shutdown_at: null,
     });
-    expect(row.last_billed_at).toEqual(periodStart);
+    expect(Number(row.rows[0].last_billed_at_ms)).toBe(periodStart.getTime());
   });
 
   test("policy-permitted earnings fund stop revalidation without forgiving elapsed debt", async () => {
@@ -2282,17 +2797,13 @@ describe("compute billing recovery", () => {
       enqueueContainerStopOnce({ containerId, organizationId: org.id }),
     ).resolves.toMatchObject({ requested: false, reason: "funding_restored" });
     expect(await dbWrite.select().from(jobs)).toHaveLength(0);
-    const [row] = await dbWrite
-      .select({
-        billing_status: containers.billing_status,
-        last_billed_at: containers.last_billed_at,
-      })
-      .from(containers)
-      .where(eq(containers.id, containerId));
-    expect(row).toMatchObject({
+    const row = await dbWrite.execute(
+      sql`SELECT billing_status, EXTRACT(epoch FROM last_billed_at) * 1000 AS last_billed_at_ms FROM containers WHERE id = ${containerId}`,
+    );
+    expect(row.rows[0]).toMatchObject({
       billing_status: "active",
     });
-    expect(row.last_billed_at).toEqual(periodStart);
+    expect(Number(row.rows[0].last_billed_at_ms)).toBe(periodStart.getTime());
   });
 
   test("shutdown warning CAS refuses any durable provider proof", async () => {
@@ -3717,6 +4228,19 @@ describe("compute billing recovery", () => {
     const [intent] = await dbWrite.select().from(containerComputeStopIntents);
     expect(intent).toMatchObject({ status: "provider_confirmed", attempts: 1 });
     expect(intent?.provider_confirmed_at).toBeInstanceOf(Date);
+    const replay = await activeBillingService.cancelResource({
+      organizationId: org.id,
+      resourceId: containerId,
+      resourceType: "container",
+      mode: "stop",
+      authorizeInfrastructureMutation: async () => undefined,
+    });
+    expect(replay).toMatchObject({
+      stoppedBilling: true,
+      resource: { status: "stopped", billingStatus: "suspended" },
+    });
+    expect(await dbWrite.select().from(jobs)).toHaveLength(1);
+    expect(providerStop).toHaveBeenCalledTimes(1);
     providerStop.mockRestore();
   });
 });

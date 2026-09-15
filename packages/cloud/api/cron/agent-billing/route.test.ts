@@ -3,6 +3,7 @@
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { createHmac } from "node:crypto";
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
 
 const runningSandbox = {
   id: "123e4567-e89b-12d3-a456-426614174000",
@@ -24,6 +25,8 @@ const runningSandbox = {
     },
   },
   status: "running",
+  deletion_previous_status: null as string | null,
+  last_backup_at: null as Date | null,
   billing_status: "active",
   last_billed_at: null,
   total_billed: "0",
@@ -320,7 +323,7 @@ describe("agent billing cron waifu lifecycle callbacks", () => {
     suspendFailedSandboxBilling.mockClear();
     listBillableSandboxes.mockClear();
     listBillingOrganizations.mockClear();
-    recordHourlyBilling.mockClear();
+    recordHourlyBilling.mockReset();
     getOrganizationCreditBalance.mockClear();
     scheduleShutdownWarning.mockClear();
     enqueueAgentUnfundedStopForRun.mockClear();
@@ -534,6 +537,78 @@ describe("agent billing cron waifu lifecycle callbacks", () => {
     });
     expectSignedWebhook(init as RequestInit, body.timestamp, bodyText);
   });
+
+  for (const status of ["deletion_pending", "deletion_failed"]) {
+    test(`${status} with insufficient funds retains deletion ownership without sending a shutdown warning`, async () => {
+      listBillableSandboxes.mockResolvedValueOnce({
+        runningSandboxes: [
+          { ...runningSandbox, status, deletion_previous_status: "running" },
+        ],
+        stoppedWithBackups: [],
+      });
+      const response = await app.fetch(
+        new Request("https://api.example.test/", {
+          method: "POST",
+          headers: { "x-cron-secret": "cron-secret" },
+        }),
+        { CRON_SECRET: "cron-secret" },
+      );
+      expect(response.status).toBe(200);
+      expect(recordHourlyBilling).toHaveBeenCalledTimes(1);
+      expect(enqueueAgentSuspendOnce).not.toHaveBeenCalled();
+      expect(sendContainerShutdownWarningEmail).not.toHaveBeenCalled();
+      expect(enqueueAgentUnfundedStopForRun).not.toHaveBeenCalled();
+      expect(webhookFetch).not.toHaveBeenCalled();
+    });
+    for (const priorStatus of ["running", "stopped"]) {
+      test(`${status} from ${priorStatus} settles usage without superseding deletion after a shutdown deadline`, async () => {
+        listBillableSandboxes.mockResolvedValueOnce({
+          runningSandboxes: [
+            {
+              ...runningSandbox,
+              status,
+              deletion_previous_status: priorStatus,
+              last_backup_at: priorStatus === "stopped" ? new Date() : null,
+              billing_status: "shutdown_pending",
+              scheduled_shutdown_at: new Date(Date.now() - 60_000),
+            },
+          ],
+          stoppedWithBackups: [],
+        });
+        recordHourlyBilling.mockImplementationOnce(async () => ({
+          status: "billed",
+          amount: 0.01,
+          amountDecimal: "0.010000",
+          newBalance: 100,
+          transactionId: "deleting-agent-charge",
+        }));
+        const response = await app.fetch(
+          new Request("https://api.example.test/", {
+            method: "POST",
+            headers: { "x-cron-secret": "cron-secret" },
+          }),
+          { CRON_SECRET: "cron-secret" },
+        );
+        expect(response.status).toBe(200);
+        expect(recordHourlyBilling).toHaveBeenCalledWith(
+          expect.objectContaining({
+            sandboxId: runningSandbox.id,
+            hourlyRate:
+              priorStatus === "running"
+                ? AGENT_PRICING.RUNNING_HOURLY_RATE
+                : AGENT_PRICING.IDLE_HOURLY_RATE,
+            billingDescription:
+              priorStatus === "running"
+                ? "Eliza agent hosting (running): Waifu Agent"
+                : "Eliza agent storage (idle): Waifu Agent",
+          }),
+        );
+        expect(enqueueAgentSuspendOnce).not.toHaveBeenCalled();
+        expect(webhookFetch).not.toHaveBeenCalled();
+        expect(sendContainerShutdownWarningEmail).not.toHaveBeenCalled();
+      });
+    }
+  }
 
   test("does not suspend billing if the durable stop enqueue fails", async () => {
     const scheduledShutdownAt = new Date(Date.now() - 60_000);

@@ -19,10 +19,12 @@ process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "true";
 
 import { afterAll, afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { InferenceAdmissionSnapshot } from "./inference-auth-cache";
+import * as revocationActual from "./inference-credential-revocation";
 import type { OrganizationPolicyStamp, OrganizationQuotaPolicy } from "./organization-quota-policy";
 import * as quotaActual from "./organization-quota-policy";
 
 const quotaSnapshot = { ...quotaActual };
+const revocationSnapshot = { ...revocationActual };
 
 let authChainCalls = 0;
 let moderationCalls = 0;
@@ -118,6 +120,7 @@ mock.module("./inference-app-key-scope", () => ({
   },
 }));
 mock.module("./inference-credential-revocation", () => ({
+  ...revocationSnapshot,
   isInferenceStrongRevocationEnabled: () =>
     process.env.INFERENCE_STRONG_REVOCATION_ENABLED === "true",
   InferenceCredentialRevokedError: class InferenceCredentialRevokedError extends Error {},

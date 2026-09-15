@@ -5,7 +5,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -150,7 +150,7 @@ describe("tracked pre-pull commands", () => {
     { runtimeValue: "false", status: 0, recovers: false },
     { runtimeValue: "", status: 0, recovers: false },
     { runtimeValue: "true", status: 124, recovers: false },
-  ])("executes recovery only with successful active-daemon proof: %j", (probe) => {
+  ])("executes recovery only with successful active-daemon proof: %j", async (probe) => {
     const directory = mkdtempSync(join(tmpdir(), "docker-live-restore-proof-"));
     const journal = join(directory, "mutations");
     writeFileSync(journal, "");
@@ -165,15 +165,28 @@ describe("tracked pre-pull commands", () => {
       for (const [name, source] of Object.entries(executables)) {
         writeFileSync(join(directory, name), source, { mode: 0o700 });
       }
-      const result = spawnSync("/bin/sh", ["-c", buildPrePullSelfHealRecoverCommand()], {
-        env: {
-          ...process.env,
-          PATH: `${directory}:${process.env.PATH}`,
-          PROBE_VALUE: probe.runtimeValue,
-          PROBE_STATUS: String(probe.status),
-          MUTATION_JOURNAL: journal,
-        },
-        encoding: "utf8",
+      const result = await new Promise<{ status: number }>((resolve, reject) => {
+        execFile(
+          "/bin/sh",
+          ["-c", buildPrePullSelfHealRecoverCommand()],
+          {
+            env: {
+              ...process.env,
+              PATH: `${directory}:${process.env.PATH}`,
+              PROBE_VALUE: probe.runtimeValue,
+              PROBE_STATUS: String(probe.status),
+              MUTATION_JOURNAL: journal,
+            },
+            timeout: 10_000,
+          },
+          (error) => {
+            if (error && (error.killed || typeof error.code !== "number")) {
+              reject(error);
+              return;
+            }
+            resolve({ status: error ? Number(error.code) : 0 });
+          },
+        );
       });
       if (probe.recovers) {
         expect(result.status).toBe(0);

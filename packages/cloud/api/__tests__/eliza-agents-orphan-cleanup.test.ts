@@ -138,6 +138,7 @@ function postAgent() {
       method: "POST",
       headers: {
         "content-type": "application/json",
+        "X-Eliza-Dedicated-Price": "dedicated-compute-v1:USD:0.150000:0.300000",
         "X-API-Key": "test-key",
       },
       body: JSON.stringify({

@@ -863,21 +863,27 @@ describe("0321-0328 and 0370-0371 agent sandbox replacement attempts", () => {
     });
   }
 
-  test("admits only the authority-scoped deterministic legacy and exact-restore names", async () => {
+  test("admits the authority-scoped deterministic legacy name", async () => {
     const legacy = await database();
     await insertAttempt(legacy);
     await recordIntentLocator(legacy, `agent-${AGENT_ID}`);
+  }, 15_000);
 
+  test("admits the authority-scoped deterministic exact-restore name", async () => {
     const restore = await database();
     await insertRestoreAttempt(restore);
     await recordIntentLocator(restore, `agent-restore-${AGENT_ID}-${RESTORE_ATTEMPT_ID}`);
+  }, 15_000);
 
+  test("rejects a legacy name for exact-restore authority", async () => {
     const restoreUsingLegacyName = await database();
     await insertRestoreAttempt(restoreUsingLegacyName);
     await expect(recordIntentLocator(restoreUsingLegacyName, `agent-${AGENT_ID}`)).rejects.toThrow(
       /locator_shape_check/,
     );
+  }, 15_000);
 
+  test("rejects an exact-restore name for legacy authority", async () => {
     const legacyUsingRestoreName = await database();
     await insertAttempt(legacyUsingRestoreName);
     await expect(
