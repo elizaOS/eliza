@@ -331,8 +331,8 @@ export function iterateTrajectoryLlmCalls(
 				stepKind: step.kind,
 				callIndex,
 				timestamp:
-					toFiniteNumber(call.timestamp, Number.NaN) ||
-					toFiniteNumber(step.timestamp) ||
+					toOptionalFiniteNumber(call.timestamp) ??
+					toOptionalFiniteNumber(step.timestamp) ??
 					trajectory.startTime,
 				tags: normalizeTags(call.tags),
 				promptTokens: toFiniteNumber(call.promptTokens),
