@@ -545,6 +545,53 @@ describe("replacement-pattern safety ($-expansion)", () => {
  * shared by the cloud logger's redact.context and the log-sink redactor, so
  * "which field names are secret" is defined once (#12229 M6).
  */
+describe("redactSensitiveText (JWT and webhook shapes)", () => {
+	it("masks a compact JWS under a neutral key name", () => {
+		// The name-based net cannot reach this: a session JWT is routinely echoed
+		// under a neutral key, or inside a serialized provider error body.
+		const jwt =
+			"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1MSJ9.aBcDeFgHiJkLmNoPqRsTuVwXyZ012345";
+		const out = redactSensitiveText(`token exchange failed for ${jwt}`);
+		expect(out).not.toContain(jwt);
+		expect(out).toContain("token exchange failed for");
+	});
+
+	it("masks Discord and Slack incoming-webhook URLs", () => {
+		// Both are complete post credentials with no second factor, and neither
+		// carries a userinfo component, so the `://user@host` rule never sees them.
+		const discord =
+			"https://discord.com/api/webhooks/123456789012/AbCdEf-GhIjKlMnOpQrStUvWxYz";
+		// Assembled at runtime rather than written as a literal: a literal Slack
+		// webhook URL in a committed file trips GitHub push protection, which is
+		// itself a fair demonstration of why this shape is worth masking.
+		const slack = `https://hooks.slack.com/${"services"}/T00000000/B00000000/AbCdEfGhIjKlMnOpQrStUvWx`;
+		expect(redactSensitiveText(`POST ${discord}`)).not.toContain(discord);
+		expect(redactSensitiveText(`POST ${slack}`)).not.toContain(slack);
+	});
+
+	it("leaves dotted and URL lookalikes intact", () => {
+		// The floors and the literal `eyJ` prefix are what keep these visible; a
+		// looser shape rule would start masking ordinary identifiers and links.
+		for (const benign of [
+			"a.b.c",
+			"eyJhbGciOiJIUzI1NiJ9",
+			"com.example.app.Service",
+			"1.2.3-rc.1",
+			"user.name.surname",
+			"2026-09-03T06:00:00.000Z",
+			"https://discord.com/channels/123456789/987654321",
+			"https://hooks.slack.com/docs",
+			"SGVsbG8gd29ybGQgdGhpcyBpcyBiYXNlNjQ=",
+			// Dotted, and it even opens with the JWS prefix — only the per-segment
+			// floor keeps it visible. Dropping that floor is what turns this rule
+			// into one that masks ordinary identifiers.
+			"eyJ.a.b",
+		]) {
+			expect(redactSensitiveText(benign), benign).toBe(benign);
+		}
+	});
+});
+
 describe("isSensitiveKeyName", () => {
 	it("flags credential-named keys regardless of case/separator", () => {
 		for (const key of [
