@@ -101,6 +101,13 @@ Apple Intelligence is enabled. We expose this as an *opportunistic*
 fast-path. If unavailable, the existing llama-cpp-capacitor local Eliza-1
 vision path stays as the default.
 
+The bridge probes `SystemLanguageModel.default.availability` and generates
+through `LanguageModelSession.respond(to:options:)`, compiled only when the
+SDK can import `FoundationModels` (Xcode 26+) and executed only on iOS 26+;
+older SDKs and devices report `foundation_model_unavailable`. The framework
+exposes no token accounting, so `FoundationModelResult.tokensIn/tokensOut`
+are omitted. Not yet validated on a device (see the checklist below).
+
 Entitlement and Info.plist updates are listed below.
 
 ## What does NOT work

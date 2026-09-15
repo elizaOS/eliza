@@ -214,10 +214,10 @@ describe("apple-foundation adapter", () => {
     const found = getAppleFoundationAdapter();
     expect(found).toBe(adapter);
     expect(found!.name).toBe("apple-foundation");
-    // The runtime side that wires up `registerAppleFoundationAdapter` does
-    // so only when the iOS bridge probe reports `foundationModel:true`. The
-    // adapter exposes a structural `LocalInferenceRuntimeService`-compatible
-    // surface — `generate` is the relevant entry point.
+    // `tryRegisterAppleFoundationAdapter` (src/runtime/apple-foundation-fast-path.ts)
+    // registers here at iOS boot only when the bridge probe reports
+    // `foundationModel:true`; the local text handler then consults
+    // `getAppleFoundationAdapter()` per call. `generate` is the entry point.
     expect(typeof found!.generate).toBe("function");
   });
 });

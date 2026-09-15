@@ -27,11 +27,19 @@
  * `docs/IOS_CONSTRAINTS.md`.
  */
 
+import { ElizaError } from "@elizaos/core";
 import type {
 	FoundationModelOptions,
 	FoundationModelResult,
 	IosComputerUseBridge,
 } from "@elizaos/plugin-computeruse/mobile/ios-bridge";
+
+/** `ElizaError.code` when the bridge answers a generate call with `ok: false`; `context.bridgeCode` carries the bridge's own code. */
+export const APPLE_FOUNDATION_GENERATE_FAILED =
+	"APPLE_FOUNDATION_GENERATE_FAILED";
+/** `ElizaError.code` when the adapter is invoked with no Capacitor bridge to call. */
+export const APPLE_FOUNDATION_BRIDGE_MISSING =
+	"APPLE_FOUNDATION_BRIDGE_MISSING";
 
 export interface AppleFoundationGenerateArgs {
 	readonly prompt: string;
@@ -42,6 +50,14 @@ export interface AppleFoundationAdapter {
 	readonly name: "apple-foundation";
 	available(): boolean;
 	generate(args: AppleFoundationGenerateArgs): Promise<FoundationModelResult>;
+	/**
+	 * Forget the cached availability so the next `available()` re-probes the
+	 * bridge. The routing layer calls this when a generate call reports the OS
+	 * model unavailable after an earlier probe said otherwise (Apple
+	 * Intelligence toggled off, model evicted); the fast path then stays off
+	 * until a fresh probe answers yes again.
+	 */
+	invalidateAvailability(): void;
 }
 
 /**
@@ -51,8 +67,15 @@ export interface AppleFoundationAdapter {
  */
 export function createAppleFoundationAdapter(
 	getBridge: () => IosComputerUseBridge | null,
+	options: {
+		/**
+		 * Result of a probe the caller has already awaited. Seeds `available()`
+		 * so the first call is deterministic and the device is not probed twice.
+		 */
+		readonly knownAvailable?: boolean;
+	} = {},
 ): AppleFoundationAdapter {
-	let probedAvailable: boolean | null = null;
+	let probedAvailable: boolean | null = options.knownAvailable ?? null;
 	let probing: Promise<boolean> | null = null;
 
 	async function probe(): Promise<boolean> {
@@ -82,8 +105,9 @@ export function createAppleFoundationAdapter(
 		async generate(args): Promise<FoundationModelResult> {
 			const bridge = getBridge();
 			if (!bridge) {
-				throw new Error(
+				throw new ElizaError(
 					"apple-foundation adapter invoked but Capacitor ComputerUse plugin is not registered.",
+					{ code: APPLE_FOUNDATION_BRIDGE_MISSING },
 				);
 			}
 			const result = await bridge.foundationModelGenerate({
@@ -91,11 +115,19 @@ export function createAppleFoundationAdapter(
 				...(args.options ? { options: args.options } : {}),
 			});
 			if (!result.ok) {
-				throw new Error(
+				throw new ElizaError(
 					`apple-foundation generate failed: ${result.code} — ${result.message}`,
+					{
+						code: APPLE_FOUNDATION_GENERATE_FAILED,
+						context: { bridgeCode: result.code, bridgeMessage: result.message },
+					},
 				);
 			}
 			return result.data;
+		},
+		invalidateAvailability(): void {
+			probedAvailable = null;
+			probing = null;
 		},
 	};
 }

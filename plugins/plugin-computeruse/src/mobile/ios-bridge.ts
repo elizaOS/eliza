@@ -52,6 +52,7 @@ export type IosBridgeErrorCode =
   | "intent_invocation_failed"
   | "vision_no_text" // OCR ran but found nothing
   | "foundation_model_unavailable" // Apple Intelligence disabled / OS too old
+  | "foundation_model_error" // the system model refused or failed the request (guardrail, context window, locale)
   | "internal_error";
 
 // ── 1. ReplayKit foreground (own-app) capture ────────────────────────────────
@@ -256,8 +257,13 @@ export interface FoundationModelOptions {
 
 export interface FoundationModelResult {
   readonly text: string;
-  readonly tokensIn: number;
-  readonly tokensOut: number;
+  /**
+   * Token accounting is absent when the framework does not report it. The
+   * FoundationModels API exposes no token counts, so the Swift bridge omits
+   * both fields rather than estimating them.
+   */
+  readonly tokensIn?: number;
+  readonly tokensOut?: number;
   readonly elapsedMs: number;
 }
 

@@ -39,7 +39,11 @@ efficiency." There is no separate per-platform runtime to add.
 - **Apple Foundation Models** (`src/backends/apple-foundation.ts`): an
   **opportunistic** iOS-26 text adapter, never the owned backend (native/AGENTS.md
   §11). Out-of-process OS model services cannot satisfy the single-runtime
-  contract.
+  contract. `src/runtime/apple-foundation-fast-path.ts` registers it at iOS boot
+  when the `ComputerUse` bridge probe reports `foundationModel:true`, and the
+  local text handler routes only plain short `TEXT_SMALL` / `TEXT_COMPLETION`
+  calls to it (never planner, structured, or streaming calls);
+  `ELIZA_APPLE_FOUNDATION_FAST_PATH=0` disables it.
 
 ### 2a. Every voice/vision model is already on its optimal backend — MEASURED, no ANE win to capture
 
