@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import https from "node:https";
 import path from "node:path";
@@ -360,8 +361,10 @@ function downloadFile(
 					return;
 				}
 				settled = true;
-				file.close();
-				resolve();
+				file.close((error) => {
+					if (error) reject(error);
+					else resolve();
+				});
 			};
 
 			// Gated HuggingFace repos (and ungated ones whose LFS redirects hit
@@ -459,11 +462,10 @@ export async function ensureModel(
 	const safeRepo = sanitizeModelRepo(repo);
 	const safeFilename = sanitizeModelFilename(filename);
 	const modelPath = resolveModelPath(modelsDir, safeFilename);
-	if (force) safeUnlink(modelPath);
 
 	onProgress?.("checking", safeFilename);
 
-	if (fs.existsSync(modelPath)) {
+	if (!force && fs.existsSync(modelPath)) {
 		onProgress?.("ready", "model already downloaded");
 		return modelPath;
 	}
@@ -491,7 +493,15 @@ export async function ensureModel(
 			}
 		: undefined;
 
-	await downloadFile(url, modelPath, 5, downloadOnProgress);
+	// A concurrent warmup/probe treats the final path as a ready model. Never
+	// expose in-progress bytes there, or replace a working model on failed refresh.
+	const temporaryPath = `${modelPath}.${randomUUID()}.download`;
+	try {
+		await downloadFile(url, temporaryPath, 5, downloadOnProgress);
+		await fs.promises.rename(temporaryPath, modelPath);
+	} finally {
+		safeUnlink(temporaryPath);
+	}
 	log.info(`${getLogPrefix()} Embedding model downloaded: ${modelPath}`);
 	return modelPath;
 }
