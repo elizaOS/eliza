@@ -73,7 +73,7 @@ function makeDomain() {
     readEffectiveScheduleState: vi.fn(async () => null),
     refreshEffectiveScheduleState: vi.fn(async () => null),
     processReminders: vi.fn(async () => ({ now: NOW, attempts: [] })),
-    processSleepCycleCheckins: vi.fn(async () => undefined),
+    processSleepCycleCheckins: vi.fn(async () => []),
     runTelemetryMaintenanceIfDue: vi.fn(async () => undefined),
   };
   Object.assign(domain as unknown as Record<string, unknown>, overrides);
