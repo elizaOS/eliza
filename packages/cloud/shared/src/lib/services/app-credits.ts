@@ -1829,7 +1829,7 @@ export class AppCreditsService {
         .select()
         .from(redeemableEarningsLedger)
         .where(
-          sql`${redeemableEarningsLedger.metadata}->>'chargeTransactionId' = ${params.reservationTransactionId}`,
+          sql`lower(${redeemableEarningsLedger.metadata}->>'chargeTransactionId') = ${reservation.id}`,
         )
         .for("update");
       const originalCreator = originalCreatorRows[0];
@@ -1841,11 +1841,11 @@ export class AppCreditsService {
             originalCreator.user_id !== creatorUserId ||
             originalCreator.entry_type !== "earning" ||
             originalCreator.earnings_source !== "miniapp" ||
-            originalCreator.metadata.app_id !== params.appId ||
-            originalCreator.metadata.transaction_user_id !== params.userId ||
+            normalizeUuidIdentity(originalCreator.metadata.app_id) !== factAppId ||
+            normalizeUuidIdentity(originalCreator.metadata.transaction_user_id) !== factUserId ||
             originalCreator.metadata.earnings_type !== "inference_markup" ||
             originalCreator.metadata.original_source_id !==
-              `app-charge:${params.reservationTransactionId}:inference_markup:deduct` ||
+              `app-charge:${reservation.id}:inference_markup:deduct` ||
             !new Decimal(originalCreator.amount).equals(initialCreatorAmount)
       ) {
         throw new ElizaError("App settlement lacks its committed creator earning authority", {

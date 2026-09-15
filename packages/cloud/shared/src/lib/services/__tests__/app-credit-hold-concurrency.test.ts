@@ -120,15 +120,16 @@ async function seedOrg(balance: string): Promise<string> {
   return org.id;
 }
 
-async function seedUser(organizationId: string): Promise<string> {
+async function seedUser(organizationId: string, id?: string): Promise<string> {
   const [user] = await dbWrite
     .insert(users)
-    .values({ steward_user_id: uniq("steward"), organization_id: organizationId })
+    .values({ id, steward_user_id: uniq("steward"), organization_id: organizationId })
     .returning();
   return user.id;
 }
 
 async function seedApp(args: {
+  id?: string;
   organizationId: string;
   createdByUserId: string;
   inferenceMarkupPercentage: number;
@@ -136,6 +137,7 @@ async function seedApp(args: {
   const [app] = await dbWrite
     .insert(apps)
     .values({
+      id: args.id,
       name: uniq("app"),
       slug: uniq("app"),
       organization_id: args.organizationId,
@@ -876,6 +878,48 @@ for (const scenario of [
       expect(receipt.redeemable_ledger_entry_id).toBeNull();
       if (scenario.creator === 0) expect(receipt.creator_original_ledger_entry_id).toBeNull();
       else expect(receipt.outcome).toBe("uncollected_overage");
+    },
+    PGLITE_TIMEOUT,
+  );
+}
+
+for (const uppercaseReservationInputs of [false, true]) {
+  test(
+    `creator settlement accepts UUID case with uppercase reserve=${uppercaseReservationInputs}`,
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const organizationId = await seedOrg("1.000000");
+      const suffix = uppercaseReservationInputs ? "1" : "0";
+      const userId = await seedUser(organizationId, `abcdef00-0000-4000-8000-00000000002${suffix}`);
+      const app = await seedApp({
+        id: `abcdef00-0000-4000-8000-00000000003${suffix}`,
+        organizationId,
+        createdByUserId: userId,
+        inferenceMarkupPercentage: 25,
+      });
+      await dbWrite.insert(appUsers).values({ app_id: app.id, user_id: userId });
+      const reservation = await appCreditsService.reserveInferenceCredits({
+        appId: uppercaseReservationInputs ? app.id.toUpperCase() : app.id,
+        userId: uppercaseReservationInputs ? userId.toUpperCase() : userId,
+        organizationId,
+        estimatedBaseCost: 0.02,
+        description: "UUID case control",
+        idempotencyKey: uniq("uuid"),
+        app,
+      });
+      if (!reservation.reservationTransactionId) throw new Error("Reservation authority missing");
+      await appCreditsService.reconcileCredits({
+        appId: uppercaseReservationInputs ? app.id : app.id.toUpperCase(),
+        userId: uppercaseReservationInputs ? userId : userId.toUpperCase(),
+        organizationId,
+        estimatedBaseCost: 0.02,
+        actualBaseCost: 0.003,
+        description: "UUID case control",
+        reservationTransactionId: reservation.reservationTransactionId.toUpperCase(),
+        app,
+      });
+      expect(await orgBalance(organizationId)).toBe(0.99625);
+      expect(await creatorRedeemableBalance(userId)).toBe(0.0007);
     },
     PGLITE_TIMEOUT,
   );

@@ -109,7 +109,7 @@ BEGIN
     IF initial_creator_amount = 0 THEN
       IF NEW.creator_original_ledger_entry_id IS NOT NULL OR EXISTS (
         SELECT 1 FROM redeemable_earnings_ledger
-        WHERE metadata->>'chargeTransactionId' = NEW.reservation_transaction_id::text
+        WHERE lower(metadata->>'chargeTransactionId') = NEW.reservation_transaction_id::text
       ) THEN
         RAISE EXCEPTION 'subunit original app earning must have explicit absent ledger authority'
           USING ERRCODE = '23514', CONSTRAINT = 'app_reservation_creator_original_match';
@@ -121,14 +121,14 @@ BEGIN
          OR original_creator.user_id IS DISTINCT FROM NEW.creator_user_id
          OR original_creator.entry_type IS DISTINCT FROM 'earning'
          OR original_creator.earnings_source IS DISTINCT FROM 'miniapp'
-         OR original_creator.metadata->>'chargeTransactionId' IS DISTINCT FROM NEW.reservation_transaction_id::text
-         OR original_creator.metadata->>'app_id' IS DISTINCT FROM NEW.app_id::text
-         OR original_creator.metadata->>'transaction_user_id' IS DISTINCT FROM NEW.user_id::text
+         OR lower(original_creator.metadata->>'chargeTransactionId') IS DISTINCT FROM NEW.reservation_transaction_id::text
+         OR lower(original_creator.metadata->>'app_id') IS DISTINCT FROM NEW.app_id::text
+         OR lower(original_creator.metadata->>'transaction_user_id') IS DISTINCT FROM NEW.user_id::text
          OR original_creator.metadata->>'earnings_type' IS DISTINCT FROM 'inference_markup'
          OR original_creator.metadata->>'original_source_id' IS DISTINCT FROM
               'app-charge:' || NEW.reservation_transaction_id::text || ':inference_markup:deduct'
          OR (SELECT count(*) FROM redeemable_earnings_ledger
-              WHERE metadata->>'chargeTransactionId' = NEW.reservation_transaction_id::text) <> 1 THEN
+              WHERE lower(metadata->>'chargeTransactionId') = NEW.reservation_transaction_id::text) <> 1 THEN
         RAISE EXCEPTION 'app creator original earning identity does not match reservation'
           USING ERRCODE = '23514', CONSTRAINT = 'app_reservation_creator_original_match';
       END IF;

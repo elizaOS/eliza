@@ -13,8 +13,8 @@ const organizationId = "00000000-0000-4000-8000-000000000001";
 const otherOrganizationId = "00000000-0000-4000-8000-000000000002";
 const reservationId = "00000000-0000-4000-8000-000000000010";
 const adjustmentId = "00000000-0000-4000-8000-000000000011";
-const appId = "00000000-0000-4000-8000-000000000020";
-const userId = "00000000-0000-4000-8000-000000000021";
+const appId = "abcdef00-0000-4000-8000-000000000020";
+const userId = "abcdef00-0000-4000-8000-000000000021";
 const creatorId = "00000000-0000-4000-8000-000000000022";
 const creatorLedgerId = "00000000-0000-4000-8000-000000000030";
 const appProjectionId = "00000000-0000-4000-8000-000000000031";
@@ -430,7 +430,7 @@ test("v2 fractional refund conserves the committed creator earning and protects 
         VALUES ('${monetizedAdjustmentId}', '${organizationId}', 0.02125, 'refund', 'reconcile-refund:${monetizedReservationId}');
       INSERT INTO redeemable_earnings_ledger(id,user_id,amount,earnings_source,entry_type,metadata)
         VALUES ('${originalId}','${creatorId}',0.005,'miniapp','earning',
-          '{"chargeTransactionId":"${monetizedReservationId}","app_id":"${appId}","transaction_user_id":"${userId}","earnings_type":"inference_markup","original_source_id":"app-charge:${monetizedReservationId}:inference_markup:deduct"}'),
+          '{"chargeTransactionId":"${monetizedReservationId}","app_id":"${appId.toUpperCase()}","transaction_user_id":"${userId.toUpperCase()}","earnings_type":"inference_markup","original_source_id":"app-charge:${monetizedReservationId}:inference_markup:deduct"}'),
         ('${creatorLedgerId}','${creatorId}',-0.0042,'miniapp','adjustment','{}');
     `);
     const receipt = `INSERT INTO app_reservation_settlements (
