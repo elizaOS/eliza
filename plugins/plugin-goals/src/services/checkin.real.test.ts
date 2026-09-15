@@ -16,7 +16,12 @@
  *  6. an invalid empty owner update preserves goal, audit and scheduled state.
  */
 
-import { type HandlerCallback, type Memory, ModelType } from "@elizaos/core";
+import {
+  type HandlerCallback,
+  type Memory,
+  ModelType,
+  NotificationService,
+} from "@elizaos/core";
 import {
   createTestRuntimeWithModelProvider,
   type ModelProviderTestRuntime,
@@ -171,12 +176,10 @@ describe("goals check-ins on the scheduling spine (deterministic model-provider 
     }
 
     const rejected = await update({});
-    expect
-      .soft(rejected)
-      .toMatchObject({
-        success: false,
-        data: { action: "update", error: "missing_fields" },
-      });
+    expect.soft(rejected).toMatchObject({
+      success: false,
+      data: { action: "update", error: "missing_fields" },
+    });
     expect.soft(await goals.getGoal(goalId)).toEqual(beforeGoal);
     expect.soft(await audits()).toEqual(beforeAudits);
     expect
@@ -206,6 +209,14 @@ describe("goals check-ins on the scheduling spine (deterministic model-provider 
 
   it("creates a check-in task on goal create, fires it at the owner's local hour, and records the response into goal progress", async () => {
     const harness = await makeHarness();
+    await harness.runtime.registerService(NotificationService);
+    await harness.runtime.getServiceLoadPromise(
+      NotificationService.serviceType,
+    );
+    const notifications = harness.runtime.getService<NotificationService>(
+      NotificationService.serviceType,
+    );
+    if (!notifications) throw new Error("NotificationService did not start");
     const goals = createOwnerGoalsService(harness.runtime);
 
     // 1. goal created → check-in task exists.
@@ -243,7 +254,7 @@ describe("goals check-ins on the scheduling spine (deterministic model-provider 
       {
         name: "goal-checkin-dispatch-body",
         match: {
-          modelType: ModelType.TEXT_LARGE,
+          modelType: ModelType.TEXT_SMALL,
           prompt:
             /A scheduled task just fired[\s\S]*Run a goal check-in for "Run a marathon"/,
         },
@@ -254,7 +265,7 @@ describe("goals check-ins on the scheduling spine (deterministic model-provider 
       {
         name: "goal-checkin-dispatch-title",
         match: {
-          modelType: ModelType.TEXT_LARGE,
+          modelType: ModelType.TEXT_SMALL,
           prompt:
             /Write a concise notification title[\s\S]*How is your marathon training going\?/,
         },
@@ -268,6 +279,15 @@ describe("goals check-ins on the scheduling spine (deterministic model-provider 
       now: () => new Date(occurrenceAtIso),
     });
     const fired = await firingRunner.fire(task.taskId);
+    expect(
+      notifications
+        .list()
+        .find((notification) => notification.data?.taskId === task.taskId),
+    ).toMatchObject({
+      title: "Marathon training check-in",
+      body: "How is your marathon training going? Share any wins or blockers.",
+      data: { taskId: task.taskId },
+    });
     expect(fired.state.status).toBe("fired");
 
     // 3. owner's response → task completed + goal progress recorded.
