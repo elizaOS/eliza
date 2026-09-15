@@ -86,7 +86,10 @@ export class PluginActivatorService extends Service {
 	private pollingInterval: ReturnType<typeof setInterval> | null = null;
 	private activePoll: Promise<void> | null = null;
 	private activationPromises: Map<string, Promise<boolean>> = new Map();
+	private activeSecretChanges: Set<Promise<void>> = new Set();
+	private activeReadyNotifications: Set<Promise<void>> = new Set();
 	private unsubscribeSecretChanges: (() => void) | null = null;
+	private stopping = false;
 
 	/** Registered plugins with their callbacks */
 	private registeredPlugins: Map<string, RegisteredPlugin> = new Map();
@@ -215,7 +218,13 @@ export class PluginActivatorService extends Service {
 
 		this.unsubscribeSecretChanges = this.secretsService.onAnySecretChanged(
 			async (key, value, context) => {
-				await this.onSecretChanged(key, value, context);
+				const change = this.onSecretChanged(key, value, context);
+				this.activeSecretChanges.add(change);
+				try {
+					await change;
+				} finally {
+					this.activeSecretChanges.delete(change);
+				}
 			},
 		);
 	}
@@ -225,6 +234,10 @@ export class PluginActivatorService extends Service {
 	 */
 	async stop(): Promise<void> {
 		logger.info("[PluginActivator] Stopping");
+		// Publish the shutdown intent before unsubscribing or awaiting any in-flight
+		// work. Suspended poll/change handlers use this to stop starting new secret
+		// lookups and to suppress callbacks while the service drains.
+		this.stopping = true;
 
 		if (this.pollingInterval) {
 			clearInterval(this.pollingInterval);
@@ -236,10 +249,16 @@ export class PluginActivatorService extends Service {
 			this.unsubscribeSecretChanges = null;
 		}
 
+		// A notification that started before shutdown may finish, but stop() must
+		// not return or clear subscriber state while that callback is still live.
+		// The per-iteration fences below prevent any later callback from starting.
+		await Promise.allSettled([...this.activeSecretChanges]);
+
 		if (this.activePoll) {
 			await this.activePoll;
 		}
 		await Promise.allSettled(this.activationPromises.values());
+		await Promise.allSettled(this.activeReadyNotifications);
 
 		this.pendingPlugins.clear();
 		this.activatedPlugins.clear();
@@ -257,12 +276,22 @@ export class PluginActivatorService extends Service {
 
 	/**
 	 * Register a plugin for activation when secrets are ready
+	 *
+	 * @returns `true` when activated (or already active); `false` when queued for
+	 * missing secrets or ignored because shutdown has started.
 	 */
 	async registerPlugin(
 		plugin: PluginWithSecrets,
 		activationCallback?: () => Promise<void>,
 	): Promise<boolean> {
 		const pluginId = plugin.name;
+
+		if (this.stopping) {
+			logger.debug(
+				`[PluginActivator] Ignoring registration for ${pluginId} during shutdown`,
+			);
+			return false;
+		}
 
 		if (this.activatedPlugins.has(pluginId)) {
 			logger.debug(`[PluginActivator] Plugin ${pluginId} already activated`);
@@ -294,6 +323,12 @@ export class PluginActivatorService extends Service {
 
 		// Check current secret status
 		const status = await this.checkPluginRequirements(plugin);
+		if (this.stopping) {
+			// stop() may have cleared state while the requirement lookup was in
+			// flight. Do not let the resumed registration repopulate the service.
+			this.registeredPlugins.delete(pluginId);
+			return false;
+		}
 
 		if (status.ready) {
 			// All secrets available, activate now
@@ -362,12 +397,18 @@ export class PluginActivatorService extends Service {
 
 	/**
 	 * Activate a plugin
+	 *
+	 * @returns `false` when shutdown has started; otherwise the activation result.
 	 */
 	private activatePlugin(
 		pluginId: string,
 		plugin: PluginWithSecrets,
 		callback?: () => Promise<void>,
 	): Promise<boolean> {
+		if (this.stopping) {
+			return Promise.resolve(false);
+		}
+
 		const existingActivation = this.activationPromises.get(pluginId);
 		if (existingActivation) {
 			return existingActivation;
@@ -397,15 +438,21 @@ export class PluginActivatorService extends Service {
 		plugin: PluginWithSecrets,
 		callback?: () => Promise<void>,
 	): Promise<boolean> {
+		if (this.stopping) {
+			return false;
+		}
+
 		try {
 			// Call the activation callback
 			if (callback) {
 				await callback();
+				if (this.stopping) return false;
 			}
 
 			// Call plugin's onSecretsReady if defined
 			if (plugin.onSecretsReady) {
 				await plugin.onSecretsReady(this.runtime);
+				if (this.stopping) return false;
 			}
 
 			this.activatedPlugins.add(pluginId);
@@ -417,6 +464,7 @@ export class PluginActivatorService extends Service {
 			const listeners = this.secretsReadyListeners.get(pluginId);
 			if (listeners) {
 				for (const listener of listeners) {
+					if (this.stopping) return false;
 					try {
 						await listener(this.runtime);
 					} catch (error) {
@@ -434,7 +482,7 @@ export class PluginActivatorService extends Service {
 				}
 			}
 
-			return true;
+			return !this.stopping;
 		} catch (error) {
 			const errorMessage =
 				error instanceof Error ? error.message : String(error);
@@ -537,8 +585,8 @@ export class PluginActivatorService extends Service {
 		value: string | null,
 		context: SecretContext,
 	): Promise<void> {
-		// Only process global secret changes for plugin activation
-		if (context.level !== "global") {
+		// Once stop() publishes shutdown intent, no new secret work may start.
+		if (this.stopping || context.level !== "global") {
 			return;
 		}
 
@@ -552,13 +600,22 @@ export class PluginActivatorService extends Service {
 			);
 
 			for (const pluginId of affectedPlugins) {
+				if (this.stopping) {
+					return;
+				}
+
 				const pending = this.pendingPlugins.get(pluginId);
 				if (!pending) {
 					continue;
 				}
 
-				// Check if all required secrets are now available
+				// Check if all required secrets are now available. Re-check stopping
+				// after the await so a suspended lookup cannot advance to another
+				// plugin or activation after shutdown has started.
 				const missing = await this.getMissingSecrets(pending.requiredSecrets);
+				if (this.stopping) {
+					return;
+				}
 				if (this.pendingPlugins.get(pluginId) !== pending) {
 					continue;
 				}
@@ -571,7 +628,11 @@ export class PluginActivatorService extends Service {
 			}
 		}
 
-		// Notify all activated plugins that depend on this secret
+		// A change handler may have been suspended while stop() unsubscribed.
+		// Never dispatch plugin/listener notifications into a draining service.
+		if (this.stopping) {
+			return;
+		}
 		await this.notifySecretChanged(key, value);
 	}
 
@@ -584,6 +645,10 @@ export class PluginActivatorService extends Service {
 	): Promise<void> {
 		// Notify registered plugins with onSecretChanged callback
 		for (const [pluginId, registered] of this.registeredPlugins) {
+			if (this.stopping) {
+				return;
+			}
+
 			// Only notify if this plugin depends on this secret
 			if (!registered.secretKeys.includes(key)) {
 				continue;
@@ -625,6 +690,10 @@ export class PluginActivatorService extends Service {
 		const specificListeners = this.secretChangedListeners.get(key);
 		if (specificListeners) {
 			for (const listener of specificListeners) {
+				if (this.stopping) {
+					return;
+				}
+
 				try {
 					await listener(key, value, this.runtime);
 				} catch (error) {
@@ -649,6 +718,10 @@ export class PluginActivatorService extends Service {
 		const globalListeners = this.secretChangedListeners.get("__ALL_SECRETS__");
 		if (globalListeners) {
 			for (const listener of globalListeners) {
+				if (this.stopping) {
+					return;
+				}
+
 				try {
 					await listener(key, value, this.runtime);
 				} catch (error) {
@@ -704,7 +777,7 @@ export class PluginActivatorService extends Service {
 
 	/** Start one observed poll without overlapping a still-running cycle. */
 	private pollPendingPlugins(): void {
-		if (this.activePoll) {
+		if (this.stopping || this.activePoll) {
 			return;
 		}
 
@@ -731,13 +804,17 @@ export class PluginActivatorService extends Service {
 	 * Check all pending plugins
 	 */
 	private async checkPendingPlugins(): Promise<void> {
-		if (this.pendingPlugins.size === 0) {
+		if (this.stopping || this.pendingPlugins.size === 0) {
 			return;
 		}
 
 		const now = Date.now();
 
 		for (const [pluginId, pending] of this.pendingPlugins) {
+			if (this.stopping) {
+				return;
+			}
+
 			// Check timeout
 			if (this.activatorConfig.maxWaitMs > 0) {
 				const elapsed = now - pending.registeredAt;
@@ -750,8 +827,13 @@ export class PluginActivatorService extends Service {
 				}
 			}
 
-			// Check if secrets are now available
+			// Check if secrets are now available. Returning after the await is
+			// deliberate: it prevents the loop from starting the next lookup once
+			// shutdown was requested while this one was suspended.
 			const missing = await this.getMissingSecrets(pending.requiredSecrets);
+			if (this.stopping) {
+				return;
+			}
 			if (this.pendingPlugins.get(pluginId) !== pending) {
 				continue;
 			}
@@ -822,6 +904,7 @@ export class PluginActivatorService extends Service {
 	/**
 	 * Subscribe to secrets ready event for a specific plugin.
 	 * The callback will be invoked when all required secrets for the plugin become available.
+	 * Registrations during or after shutdown are ignored.
 	 *
 	 * @param pluginId - Plugin identifier to subscribe to
 	 * @param callback - Callback to invoke when secrets are ready
@@ -831,28 +914,40 @@ export class PluginActivatorService extends Service {
 		pluginId: string,
 		callback: (runtime: IAgentRuntime) => Promise<void>,
 	): () => void {
+		if (this.stopping) return () => undefined;
+
 		const listeners = this.secretsReadyListeners.get(pluginId) ?? [];
 		listeners.push(callback);
 		this.secretsReadyListeners.set(pluginId, listeners);
 
-		// If already activated, call immediately
+		// Track before invoking: the callback's synchronous prefix can request stop().
 		if (this.activatedPlugins.has(pluginId)) {
-			callback(this.runtime).catch((error) => {
-				// error-policy:J7 This immediate listener notification is detached from
-				// registration; report callback failure without creating an unhandled rejection.
-				this.runtime.reportError(
-					"PluginActivator.secretsReadyListener",
-					error,
-					{
-						pluginId,
-					},
-				);
-				const errorMessage =
-					error instanceof Error ? error.message : String(error);
-				logger.error(
-					`[PluginActivator] onSecretsReady callback failed for ${pluginId}: ${errorMessage}`,
-				);
+			let finishNotification!: () => void;
+			const notification = new Promise<void>((resolve) => {
+				finishNotification = resolve;
 			});
+			this.activeReadyNotifications.add(notification);
+			void (async () => {
+				try {
+					await callback(this.runtime);
+				} catch (error) {
+					// error-policy:J7 Report detached callback failures without an
+					// unhandled rejection; finally releases shutdown's drain.
+					this.runtime.reportError(
+						"PluginActivator.secretsReadyListener",
+						error,
+						{ pluginId },
+					);
+					const errorMessage =
+						error instanceof Error ? error.message : String(error);
+					logger.error(
+						`[PluginActivator] onSecretsReady callback failed for ${pluginId}: ${errorMessage}`,
+					);
+				} finally {
+					this.activeReadyNotifications.delete(notification);
+					finishNotification();
+				}
+			})();
 		}
 
 		return () => {
@@ -872,6 +967,7 @@ export class PluginActivatorService extends Service {
 	/**
 	 * Subscribe to secret changed events for a specific secret key.
 	 * The callback will be invoked whenever the specified secret changes.
+	 * Registrations during or after shutdown are ignored.
 	 *
 	 * @param secretKey - Secret key to subscribe to
 	 * @param callback - Callback to invoke when secret changes
@@ -885,6 +981,8 @@ export class PluginActivatorService extends Service {
 			runtime: IAgentRuntime,
 		) => Promise<void>,
 	): () => void {
+		if (this.stopping) return () => undefined;
+
 		const listeners = this.secretChangedListeners.get(secretKey) ?? [];
 		listeners.push(callback);
 		this.secretChangedListeners.set(secretKey, listeners);
@@ -906,6 +1004,7 @@ export class PluginActivatorService extends Service {
 	/**
 	 * Subscribe to all secret changed events.
 	 * The callback will be invoked whenever any secret changes.
+	 * Registrations during or after shutdown are ignored.
 	 *
 	 * @param callback - Callback to invoke when any secret changes
 	 * @returns Unsubscribe function
@@ -917,6 +1016,8 @@ export class PluginActivatorService extends Service {
 			runtime: IAgentRuntime,
 		) => Promise<void>,
 	): () => void {
+		if (this.stopping) return () => undefined;
+
 		// Use a special key for global listeners
 		const globalKey = "__ALL_SECRETS__";
 		const listeners = this.secretChangedListeners.get(globalKey) ?? [];
