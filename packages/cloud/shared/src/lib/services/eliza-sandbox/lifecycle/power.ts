@@ -97,6 +97,33 @@ export interface SandboxPowerHost {
   }>;
 }
 
+/**
+ * The agent's latest compute funding window by (period_start, id) DESC — the
+ * same ordering every latest-window read in this file uses. Suspend routing
+ * consults its retirement binding to distinguish a committed funded stop
+ * awaiting reclaim from expiry's unbacked stop-in-place; picking any other
+ * row would route on a stale window. Exported so the real-PostgreSQL suite
+ * can pin this query's ordering against adversarial physical row order.
+ */
+export async function latestAgentComputeFundingWindow(
+  db: Pick<typeof dbWrite, "select">,
+  agentId: string,
+  orgId: string,
+): Promise<{ retirementBackupId: string | null } | undefined> {
+  const [latest] = await db
+    .select({ retirementBackupId: agentComputeFunding.retirement_backup_id })
+    .from(agentComputeFunding)
+    .where(
+      and(
+        eq(agentComputeFunding.agent_id, agentId),
+        eq(agentComputeFunding.organization_id, orgId),
+      ),
+    )
+    .orderBy(desc(agentComputeFunding.period_start), desc(agentComputeFunding.id))
+    .limit(1);
+  return latest;
+}
+
 export class SandboxPower {
   constructor(private readonly host: SandboxPowerHost) {}
 
@@ -568,17 +595,19 @@ export class SandboxPower {
       expectedLifecycleRevision !== undefined &&
       (await this.host.getProvider()).computeFundingCapability === "host-lease-v1"
     ) {
-      const [latest] = await dbWrite
-        .select({ id: agentComputeFunding.id })
-        .from(agentComputeFunding)
-        .where(
-          and(
-            eq(agentComputeFunding.agent_id, agentId),
-            eq(agentComputeFunding.organization_id, orgId),
-          ),
-        )
-        .limit(1);
-      if (latest) {
+      const latest = await latestAgentComputeFundingWindow(dbWrite, agentId, orgId);
+      // Paid retirement is a funding-state decision, not a funding-history one.
+      // Settled windows persist forever, so routing on row existence would send
+      // every post-funded agent into the sleep lifecycle, which refuses the two
+      // states expiry reconciliation deliberately produces (stopped in place
+      // without a retirement binding, and running with no open window) that the
+      // in-place and stopped fast paths below settle and confirm. Route only an
+      // open window, or a stopped record whose latest window is retirement-bound
+      // (the unfunded reclaim-from-backup crash-retry path).
+      if (
+        fundedSource ||
+        (snapshotSource.status === "stopped" && latest?.retirementBackupId != null)
+      ) {
         const sleep = await this.executeSleepWithStopAuthority(agentId, orgId, {
           jobId,
           lifecycleRevision: expectedLifecycleRevision,
