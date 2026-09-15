@@ -445,8 +445,8 @@ through `DISCOVER_TOOLS names=[]`, and loads schemas by exact name. Voice, group
 and coding paths retain the complete inline reference. Discovery checks the current actor, delivery audience, connector
 policy, and action validation under the action's declared routing contexts. This
 catalog is rebuilt for each turn. Direct text places its complete current content
-before changing history and provider text so an identical authorized catalog can
-reuse the model's prefix cache. It remains a dynamic segment, outside the system
+after history and before the current-turn boundary so changing action availability
+does not invalidate the preceding history prefix. It remains a dynamic segment, outside the system
 prefix; role, availability and registration changes still rebuild it normally.
 The names-only index sorts complete names consistently; the planner's ranked
 action list and complete reference retain their original order.
