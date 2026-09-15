@@ -4723,7 +4723,9 @@ describe("reviewed workspace deletion — real database and disk", () => {
       });
       expect(interrupted.status).toBe(500);
       expect(fs.existsSync(oldBackup.path)).toBe(false);
-      expect(fs.readFileSync(currentBackup.path)).toEqual(currentBackupBytes);
+      expect(
+        fs.readFileSync(currentBackup.path).equals(currentBackupBytes),
+      ).toBe(true);
       expect(
         (await readFamilyDeletionJob(runtime, SELF_ENTITY_ID))?.state,
       ).toBe("backup_pending");
@@ -4763,7 +4765,9 @@ describe("reviewed workspace deletion — real database and disk", () => {
       });
       expect(replay.status, await replay.clone().text()).toBe(200);
       expect(await replay.json()).toEqual(complete);
-      expect(fs.readFileSync(currentBackup.path)).toEqual(currentBackupBytes);
+      expect(
+        fs.readFileSync(currentBackup.path).equals(currentBackupBytes),
+      ).toBe(true);
       const storage = runtime.getService<IFileStorageService>(
         ServiceType.REMOTE_FILES,
       );

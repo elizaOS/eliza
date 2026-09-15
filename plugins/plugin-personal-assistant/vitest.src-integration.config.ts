@@ -1,7 +1,7 @@
 /**
- * Run real-store personal-assistant integration cases with the package's source
- * aliases and fixture setup. Named test-directory cases join the src glob so
- * the maintained package integration command executes their runtime contracts.
+ * Runs personal-assistant integration scenarios against real database, file,
+ * backup and scheduling boundaries. Canonical state paths keep fixture storage
+ * and backup authority aligned. Named test-directory cases join the src glob.
  */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,8 +17,23 @@ const packageRootFromRepo = path
   .split(path.sep)
   .join("/");
 
+const baseAliases = baseConfig.resolve?.alias;
+if (!Array.isArray(baseAliases)) {
+  throw new Error("The personal-assistant source aliases are required");
+}
+
 export default defineConfig({
   ...baseConfig,
+  resolve: {
+    ...baseConfig.resolve,
+    alias: [
+      {
+        find: /^@elizaos\/agent\/config\/paths$/,
+        replacement: path.join(elizaRoot, "packages/agent/src/config/paths.ts"),
+      },
+      ...baseAliases,
+    ],
+  },
   test: {
     ...baseConfig.test,
     include: [
