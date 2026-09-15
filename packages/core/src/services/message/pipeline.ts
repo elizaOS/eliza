@@ -14,6 +14,7 @@ import type { V5MessageRuntimeInput } from "./turn-input.js";
 
 export type { V5MessageRuntimeInput } from "./turn-input.js";
 
+import { promotedSubactionParent } from "../../actions/promote-subactions";
 import { DISCOVER_TOOLS_NAME } from "../../actions/to-tool";
 import { ElizaError } from "../../errors";
 import { runShouldRespondInjectionGate } from "../../features/trust/should-respond-risk-gate";
@@ -33,6 +34,8 @@ import { appendContextEvent } from "../../runtime/context-object";
 import { type EvaluatorEffects, runEvaluator } from "../../runtime/evaluator";
 import {
 	type FactsAndRelationshipsRunResult,
+	type FactsStageExecutedTool,
+	planNamesMemoryMutation,
 	runFactsAndRelationshipsStage,
 } from "../../runtime/facts-and-relationships";
 import { getLocalizedExamplesProvider } from "../../runtime/localized-examples-provider";
@@ -40,13 +43,12 @@ import {
 	getMessageHandlerReply,
 	routeMessageHandlerOutput,
 } from "../../runtime/message-handler";
-import { DEFAULT_CONTEXT_WINDOW_TOKENS } from "../../runtime/model-input-budget";
 import {
-	buildInitialPlannerModelInputBudget,
 	type PlannerLoopResult,
 	type PlannerRuntime,
 	type PlannerToolCall,
 	type PlannerToolResult,
+	PostEffectEvaluationError,
 	PROGRESS_ONLY_ANSWER_REJECT,
 	runPlannerLoop,
 } from "../../runtime/planner-loop";
@@ -65,6 +67,7 @@ import {
 } from "../../runtime/trajectory-recorder";
 import { withSemanticStageFanOut } from "../../runtime/trajectory-semantic-stage-sink";
 import { getTrajectoryContext } from "../../trajectory-context";
+import { createUnavailableGroundedActionReply } from "../../types/action-reply";
 import type {
 	Action,
 	HandlerCallback,
@@ -72,13 +75,14 @@ import type {
 } from "../../types/components";
 import type { ContextEvent } from "../../types/context-object";
 import type { MessageReplyRecoveryContext } from "../../types/message-service";
-import { type GenerateTextParams, ModelType } from "../../types/model";
+import type { GenerateTextParams } from "../../types/model";
 import type { JsonValue } from "../../types/primitives";
 import { ChannelType } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
 import {
 	attachAvailableContexts,
 	CONTEXT_ROUTING_STATE_KEY,
+	getContextRoutingFromState,
 } from "../../utils/context-routing";
 import { getUserMessageText } from "../../utils/message-text";
 import { isProviderContextOverflowFailure } from "../../utils/model-errors";
@@ -94,6 +98,7 @@ import {
 	collectV5PlannerCandidateActions,
 	getMessageHandlerCandidateActions,
 	getMessageHandlerParentActionHints,
+	mergeAgentContexts,
 	privacyDenialReplyForReasons,
 	stringArrayProperty,
 } from "./action-surface.js";
@@ -121,7 +126,6 @@ import {
 	collectBudgetedStageOneCandidateActions,
 	collectPlannerTools,
 	collectPreviousActionResults,
-	decideUmbrellaPlannerBudget,
 	executeV5PlannedToolCall,
 } from "./planned-tool.js";
 import {
@@ -161,6 +165,7 @@ import {
 import { subAgentCompletionRelayBody } from "./task-completion-relay.js";
 import {
 	appendDiscoveredPlannerTools,
+	collectDiscoveryCatalogActions,
 	createPlannerToolDiscoveryAction,
 } from "./tool-discovery.js";
 import { recordFactsAndRelationshipsStage } from "./trajectory-stages.js";
@@ -345,6 +350,9 @@ export async function runV5MessageRuntimeStage1(
 		error?: unknown;
 	} | null> = Promise.resolve(null);
 	let settledFactsOutcome: Awaited<typeof factsTask> | undefined;
+	let releaseFactsStage:
+		| ((executedTools: readonly FactsStageExecutedTool[]) => void)
+		| undefined;
 	let messageHandlerStageTask: Promise<void> = Promise.resolve();
 	try {
 		const {
@@ -422,13 +430,24 @@ export async function runV5MessageRuntimeStage1(
 			// canonical assistant-history settlement. A failed settlement must
 			// not freeze or acknowledge a partial conversation snapshot.
 			if (!memoryWorker?.ownsDeferredFacts?.(args.message)) {
-				const startedAt = Date.now();
-				factsTask = runFactsAndRelationshipsStage({
-					runtime: args.runtime,
-					message: args.message,
-					state: args.state,
-					extract: messageHandler.extract,
-				})
+				let startedAt = Date.now();
+				const extract = messageHandler.extract;
+				const executedToolsGate = planNamesMemoryMutation(messageHandler.plan)
+					? new Promise<readonly FactsStageExecutedTool[]>((resolve) => {
+							releaseFactsStage = resolve;
+						})
+					: Promise.resolve<readonly FactsStageExecutedTool[]>([]);
+				factsTask = executedToolsGate
+					.then((executedTools) => {
+						startedAt = Date.now();
+						return runFactsAndRelationshipsStage({
+							runtime: args.runtime,
+							message: args.message,
+							state: args.state,
+							extract,
+							executedTools,
+						});
+					})
 					.then((result) => ({ startedAt, endedAt: Date.now(), result }))
 					.catch((error) => {
 						// error-policy:J7 Facts persistence is detached from reply delivery;
@@ -1103,11 +1122,32 @@ export async function runV5MessageRuntimeStage1(
 				selectedActionFamilies.length < plannerCandidateActions.length)
 				? selectedActionFamilies
 				: undefined;
+		const discoveryCatalogActions = progressiveActions
+			? collectDiscoveryCatalogActions({
+					actions: args.runtime.actions ?? [],
+					message: args.message,
+					selectedContexts,
+					userRoles: [senderRole],
+				})
+			: [];
 		if (progressiveActions) {
 			progressiveActions.push(
 				createPlannerToolDiscoveryAction(
-					plannerCandidateActions,
+					discoveryCatalogActions,
 					(discoveredActions) => {
+						// A loaded family's declared contexts join the turn's routing
+						// state so its validate() (hasActionContext) sees them at
+						// dispatch, exactly as the executor gate already merges them.
+						// Contexts are only added; the primary context is unchanged.
+						const routing = getContextRoutingFromState(plannerState);
+						plannerState.values[CONTEXT_ROUTING_STATE_KEY] = {
+							primaryContext:
+								routing.primaryContext ?? selectedContexts[0] ?? "general",
+							secondaryContexts: mergeAgentContexts(
+								routing.secondaryContexts,
+								...discoveredActions.map((action) => action.contexts),
+							),
+						};
 						const existingNames = new Set(
 							exposedPlannerActions.map((action) => action.name),
 						);
@@ -1159,8 +1199,18 @@ export async function runV5MessageRuntimeStage1(
 			localizedExamples: localizedExamples ?? undefined,
 		});
 		if (progressiveActions) {
+			// The discovery tool is planner protocol, not a capability family; keep
+			// it out of the tier-A parent summary rendered into the planner context.
+			actionSurface.summary.tierAParents =
+				actionSurface.summary.tierAParents.filter(
+					(name) =>
+						normalizeActionIdentifier(name) !==
+						normalizeActionIdentifier("DISCOVER_TOOLS"),
+				);
+		}
+		if (progressiveActions) {
 			actionSurface.summary.discoverableActionCount =
-				plannerCandidateActions.length;
+				discoveryCatalogActions.length;
 			actionSurface.summary.discoveryToolName = "DISCOVER_TOOLS";
 		}
 		const exposedPlannerActions = (
@@ -1321,119 +1371,19 @@ export async function runV5MessageRuntimeStage1(
 				),
 			logger: args.runtime.logger as PlannerRuntime["logger"],
 		};
-		let plannerTools = collectPlannerTools(
+		const plannerTools = collectPlannerTools(
 			plannerContextWithDecision,
 			undefined,
 			{
 				canonicalFamilies: true,
-				candidateActions: getMessageHandlerCandidateActions(messageHandler),
 			},
 		);
-		let budgetedPlannerContextWithDecision = plannerContextWithDecision;
+		// No dispatch-budget preflight: the planner receives every authorized
+		// action the progressive surface exposes plus DISCOVER_TOOLS, and the model
+		// transport rejects at its real input boundary. An estimate is diagnostic,
+		// not permission to discard authorized tools (message-runtime-umbrella-budget).
+		const budgetedPlannerContextWithDecision = plannerContextWithDecision;
 		const plannerProviderAttributionState = plannerState;
-		const preflightConfig = {
-			...args.plannerLoopConfig,
-			contextWindowTokens:
-				args.plannerLoopConfig?.contextWindowTokens ??
-				args.runtime
-					.getModelRegistrations?.()
-					.find(
-						(registration) =>
-							registration.modelType === ModelType.ACTION_PLANNER &&
-							typeof registration.metadata?.contextWindowTokens === "number",
-					)?.metadata?.contextWindowTokens ??
-				DEFAULT_CONTEXT_WINDOW_TOKENS,
-		};
-		const initialBudget = buildInitialPlannerModelInputBudget({
-			runtime: plannerRuntime,
-			context: plannerContextWithDecision,
-			config: preflightConfig,
-			tools: plannerTools,
-			codingMode: args.codingMode === true,
-		});
-		if (
-			args.codingMode !== true &&
-			initialBudget.estimatedInputTokens > initialBudget.dispatchThresholdTokens
-		) {
-			// Preserve every authorized parent and every explicit model candidate.
-			// The existing sub-planner exposes the selected parent's children with
-			// their full schemas. Do not expand those same schemas globally too.
-			const parentNames = new Set(
-				actionSurface.summary.tierAParents.map(normalizeActionIdentifier),
-			);
-			const actionLookup = buildRuntimeActionLookup({
-				actions: exposedPlannerActions,
-			});
-			for (const name of getMessageHandlerCandidateActions(messageHandler)) {
-				const action = resolveRuntimeAction(actionLookup, name);
-				if (action) parentNames.add(normalizeActionIdentifier(action.name));
-			}
-			const umbrellaActions = exposedPlannerActions.filter((action) =>
-				parentNames.has(normalizeActionIdentifier(action.name)),
-			);
-			if (
-				umbrellaActions.length > 0 &&
-				umbrellaActions.length < exposedPlannerActions.length
-			) {
-				const umbrellaContext = await createV5MessageContextObject({
-					...args,
-					includeContextCatalog: contextCatalogRead,
-					state: plannerState,
-					selectedContexts,
-					includeTools: true,
-					userRoles: [senderRole],
-					availableContexts,
-					preselectedActions: umbrellaActions,
-					actionSurface: {
-						exposedActionNames: parentNames,
-						summary: {
-							...actionSurface.summary,
-							exposedActionCount: umbrellaActions.length,
-							fallback: "umbrella-parent-budget",
-						},
-					},
-					ambientTurn,
-					extraProviderExclusions: ambientTurnProviderExclusions(
-						args.runtime,
-						args.message,
-					),
-				});
-				umbrellaContext.metadata = {
-					...umbrellaContext.metadata,
-					providerDiscoveryEnabled,
-					historyReferenceEncoding: providerDiscoveryEnabled,
-					loadedContextProviders,
-				};
-				if (messageHandler.plan.completionContext) {
-					umbrellaContext.metadata = {
-						...umbrellaContext.metadata,
-						completionContext: { ...messageHandler.plan.completionContext },
-					};
-				}
-				const context = appendContextEvent(
-					umbrellaContext,
-					plannerDecisionEvent,
-				);
-				const tools = collectPlannerTools(context, umbrellaActions, {
-					expandSubActions: false,
-				});
-				const budget = buildInitialPlannerModelInputBudget({
-					runtime: plannerRuntime,
-					context,
-					config: preflightConfig,
-					tools,
-				});
-				if (
-					decideUmbrellaPlannerBudget({
-						umbrella: budget,
-						current: initialBudget,
-					}) !== "not-smaller"
-				) {
-					budgetedPlannerContextWithDecision = context;
-					plannerTools = tools;
-				}
-			}
-		}
 		const benchmarkForcingToolCall = isBenchmarkForcingToolCall(args.message);
 		// Only HARD-enforce a non-terminal tool when Stage 1 both flagged the turn
 		// tool-required AND named at least one candidate action. A bare
@@ -1476,9 +1426,20 @@ export async function runV5MessageRuntimeStage1(
 			// exposed and runnable.
 			if (exposedActionMatches(plannerToolActions, normalized)) return true;
 			const resolved = resolveRuntimeAction(stageOneActionLookup, name);
+			if (resolved === undefined) return false;
+			if (plannerToolNames.has(normalizeActionIdentifier(resolved.name))) {
+				return true;
+			}
+			// The canonical surface represents a promoted alias through its
+			// umbrella's alias contract instead of a second native tool
+			// (collectCanonicalPlannerActions), so a Stage-1 hint naming
+			// CALENDAR_UPDATE_EVENT still names an exposed, runnable operation while
+			// CALENDAR is on the wire. Reading it as unresolvable would silently drop
+			// hard-tool enforcement for exactly the turns Stage 1 routed precisely.
+			const umbrella = promotedSubactionParent(resolved);
 			return (
-				resolved !== undefined &&
-				plannerToolNames.has(normalizeActionIdentifier(resolved.name))
+				umbrella !== undefined &&
+				plannerToolNames.has(normalizeActionIdentifier(umbrella))
 			);
 		};
 		const stageOneNamedAToolForThisTurn =
@@ -1997,6 +1958,7 @@ export async function runV5MessageRuntimeStage1(
 						invokeDeterministicToolCall,
 					)
 				: await invokePlannerLoop(plannerContextAfterEarlyReply);
+			releaseFactsStage?.(settledPlannerToolResults);
 			getStreamingContext()?.abortSignal?.throwIfAborted();
 		} catch (error) {
 			// Cancellation belongs to the interrupted-turn boundary, even after preliminary delivery.
@@ -2013,37 +1975,85 @@ export async function runV5MessageRuntimeStage1(
 			// its call/token/provider limit before a grounded terminal result; doing
 			// so makes CLI/ACP report partial work as success.
 			if (args.codingMode === true) throw error;
-			const preservedAnswer = prePatchStageOneReplyIsUngroundedAppliedClaim
-				? undefined
-				: prePatchStageOneReply?.trim();
-			if (
-				!preservedAnswer ||
-				PROGRESS_ONLY_ANSWER_REJECT.test(preservedAnswer)
-			) {
-				// No answer-shaped Stage-1 text to rescue with — but a tool that
-				// already completed this turn may still own the user-facing result
-				// (observed live: the post-tool evaluator died on an intermittent
-				// provider 400 and the canned transient-failure reply replaced a
-				// result the turn had already produced). Deliver the preserved tool
-				// result; the canned line remains only when there is genuinely
-				// nothing user-facing to deliver.
-				const preservedToolResult = preservedSettledToolResult(
-					settledPlannerToolResults,
-					deliveredVisibleTexts,
-				);
-				if (!preservedToolResult) {
-					// #18208: a task_complete relay turn carries the sub-agent's
-					// finished result in its own body — the last preserved source
-					// before conceding to the canned failure reply.
-					const relayBody = subAgentCompletionRelayBody(
-						args.message?.content?.text,
+			if (error instanceof PostEffectEvaluationError) {
+				// error-policy:J1 Preserve a distinct internal failure, not a provider
+				// outage or successful reply. The common terminal path below captures
+				// full evidence for reply-only recovery without rerunning any tools.
+				endStatus = "errored";
+				args.runtime.reportError("MessageService.plannerLoop", error, {
+					roomId: args.message.roomId,
+				});
+				const replyFailure = createUnavailableGroundedActionReply({
+					kind: "reply_generation_error",
+					code: error.code,
+				}).failure;
+				const effectResult = [
+					...error.trajectory.archivedSteps,
+					...error.trajectory.steps,
+				]
+					.reverse()
+					.find(
+						(step) =>
+							step.result?.transcriptVisibility === "internal" &&
+							step.result.effectReceipts?.length,
+					)?.result;
+				if (!effectResult) throw error;
+				effectResult.replyFailure = replyFailure;
+				plannerResult = {
+					status: "finished",
+					trajectory: error.trajectory,
+					terminalFailure: replyFailure,
+				};
+			} else {
+				const preservedAnswer = prePatchStageOneReplyIsUngroundedAppliedClaim
+					? undefined
+					: prePatchStageOneReply?.trim();
+				if (
+					!preservedAnswer ||
+					PROGRESS_ONLY_ANSWER_REJECT.test(preservedAnswer)
+				) {
+					// No answer-shaped Stage-1 text to rescue with — but a tool that
+					// already completed this turn may still own the user-facing result
+					// (observed live: the post-tool evaluator died on an intermittent
+					// provider 400 and the canned transient-failure reply replaced a
+					// result the turn had already produced). Deliver the preserved tool
+					// result; the canned line remains only when there is genuinely
+					// nothing user-facing to deliver.
+					const preservedToolResult = preservedSettledToolResult(
+						settledPlannerToolResults,
+						deliveredVisibleTexts,
 					);
-					if (!relayBody) {
-						throw error;
+					if (!preservedToolResult) {
+						// #18208: a task_complete relay turn carries the sub-agent's
+						// finished result in its own body — the last preserved source
+						// before conceding to the canned failure reply.
+						const relayBody = subAgentCompletionRelayBody(
+							args.message?.content?.text,
+						);
+						if (!relayBody) {
+							throw error;
+						}
+						// error-policy:J4 a completed sub-agent result is a designed
+						// degrade when the relay turn's planning fails; report the loop
+						// failure and deliver the result the sub-agent already produced.
+						endStatus = "errored";
+						args.runtime.reportError("MessageService.plannerLoop", error, {
+							roomId: args.message.roomId,
+						});
+						return {
+							kind: "direct_reply",
+							messageHandler,
+							result: createV5ReplyStrategyResult({
+								...args,
+								state: plannerState,
+								text: relayBody,
+								thought: messageHandler.thought,
+							}),
+						};
 					}
-					// error-policy:J4 a completed sub-agent result is a designed
-					// degrade when the relay turn's planning fails; report the loop
-					// failure and deliver the result the sub-agent already produced.
+					// error-policy:J4 a completed tool's user-facing result is a designed
+					// degrade when later planning/evaluation fails; report the loop
+					// failure and deliver the tool's known-good text.
 					endStatus = "errored";
 					args.runtime.reportError("MessageService.plannerLoop", error, {
 						roomId: args.message.roomId,
@@ -2054,14 +2064,24 @@ export async function runV5MessageRuntimeStage1(
 						result: createV5ReplyStrategyResult({
 							...args,
 							state: plannerState,
-							text: relayBody,
+							text: preservedToolResult.userFacingText,
 							thought: messageHandler.thought,
+							// Only byte-exact canonical action text may skip the voice
+							// gate; ordinary tool output stays eligible for re-voicing.
+							...(preservedToolResult.verifiedUserFacing === true
+								? { agentVoiced: true }
+								: {}),
+							...(preservedToolResult.userFacingEffectReceiptIds?.length
+								? {
+										effectReceiptIds:
+											preservedToolResult.userFacingEffectReceiptIds,
+									}
+								: {}),
 						}),
 					};
 				}
-				// error-policy:J4 a completed tool's user-facing result is a designed
-				// degrade when later planning/evaluation fails; report the loop
-				// failure and deliver the tool's known-good text.
+				// error-policy:J4 A completed Stage-1 answer is a designed degrade when
+				// later planning fails; report the planner failure and deliver known-good text.
 				endStatus = "errored";
 				args.runtime.reportError("MessageService.plannerLoop", error, {
 					roomId: args.message.roomId,
@@ -2072,39 +2092,12 @@ export async function runV5MessageRuntimeStage1(
 					result: createV5ReplyStrategyResult({
 						...args,
 						state: plannerState,
-						text: preservedToolResult.userFacingText,
+						text: preservedAnswer,
 						thought: messageHandler.thought,
-						// Only byte-exact canonical action text may skip the voice
-						// gate; ordinary tool output stays eligible for re-voicing.
-						...(preservedToolResult.verifiedUserFacing === true
-							? { agentVoiced: true }
-							: {}),
-						...(preservedToolResult.userFacingEffectReceiptIds?.length
-							? {
-									effectReceiptIds:
-										preservedToolResult.userFacingEffectReceiptIds,
-								}
-							: {}),
+						agentVoiced: true,
 					}),
 				};
 			}
-			// error-policy:J4 A completed Stage-1 answer is a designed degrade when
-			// later planning fails; report the planner failure and deliver known-good text.
-			endStatus = "errored";
-			args.runtime.reportError("MessageService.plannerLoop", error, {
-				roomId: args.message.roomId,
-			});
-			return {
-				kind: "direct_reply",
-				messageHandler,
-				result: createV5ReplyStrategyResult({
-					...args,
-					state: plannerState,
-					text: preservedAnswer,
-					thought: messageHandler.thought,
-					agentVoiced: true,
-				}),
-			};
 		}
 
 		// The planner's terminal prose may ship without executing REPLY. Validate
@@ -2256,6 +2249,8 @@ export async function runV5MessageRuntimeStage1(
 		endStatus = isProviderContextOverflowFailure(err) ? "finished" : "errored";
 		throw err;
 	} finally {
+		// A turn that never reached the planner still runs the stage as before.
+		releaseFactsStage?.([]);
 		// Trajectory persistence is diagnostic work. Preserve stage ordering in
 		// its own task without adding filesystem latency to the user-visible turn.
 		const finalizeTrajectory = async (waitForFacts: boolean) => {

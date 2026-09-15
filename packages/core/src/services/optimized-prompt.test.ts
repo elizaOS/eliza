@@ -96,6 +96,36 @@ describe("OptimizedPromptService — symlink-based versioning", () => {
 		await rm(storeRoot, { recursive: true, force: true });
 	});
 
+	it("rejects an artifact for a changed caller baseline before and after reload", async () => {
+		const artifact = makeArtifact(1);
+		await service.setPrompt("action_planner", artifact);
+		for (const current of [service, createService()]) {
+			current.setStoreRoot(storeRoot);
+			current.setDisabledTasksFromEnv(undefined);
+			await current.refresh();
+			expect(
+				resolveOptimizedPrompt(current, "action_planner", artifact.baseline),
+			).toBe(artifact.prompt);
+			for (const changed of [`${artifact.baseline}\n`, "new caller contract"]) {
+				expect(() =>
+					resolveOptimizedPrompt(current, "action_planner", changed),
+				).toThrow(
+					expect.objectContaining({
+						code: "OPTIMIZED_PROMPT_BASELINE_MISMATCH",
+					}),
+				);
+			}
+			current.setDisabledTasksFromEnv("action_planner");
+			expect(
+				resolveOptimizedPrompt(
+					current,
+					"action_planner",
+					"new caller contract",
+				),
+			).toBe("new caller contract");
+		}
+	});
+
 	it("writes vN.json files and points the current/previous/previous2 symlinks", async () => {
 		const dir = join(storeRoot, "action_planner");
 		const v1Path = await service.setPrompt("action_planner", makeArtifact(1));
@@ -435,6 +465,97 @@ describe("OptimizedPromptService — symlink-based versioning", () => {
 		const live = service.getPrompt("action_planner");
 		expect(live).not.toBeNull();
 		expect(live?.prompt).toBe("optimized prompt v3");
+	});
+
+	it("restores the baseline after the first promotion across refresh and restart without deleting history", async () => {
+		const artifactPath = await service.setPrompt(
+			"action_planner",
+			makeArtifact(1),
+		);
+		const originalBytes = await readFile(artifactPath, "utf8");
+		await service.setPrompt("response", {
+			...makeArtifact(1),
+			task: "response",
+		});
+		await service.restoreBaseline("action_planner");
+		expect(
+			resolveOptimizedPrompt(service, "action_planner", "current baseline"),
+		).toBe("current baseline");
+		expect(service.getPrompt("response")?.prompt).toBe("optimized prompt v1");
+		expect(await readFile(artifactPath, "utf8")).toBe(originalBytes);
+		// Legacy discovery must not undo an explicit baseline choice when the pointer disappears.
+		await rm(join(storeRoot, "action_planner", OPTIMIZED_PROMPT_CURRENT_LINK));
+		const restarted = createService();
+		restarted.setStoreRoot(storeRoot);
+		await restarted.refresh();
+		expect(restarted.getPrompt("action_planner")).toBeNull();
+		expect(restarted.getMetadata("action_planner")).toBeNull();
+		await expect(restarted.rollback("action_planner")).rejects.toMatchObject({
+			code: "OPTIMIZED_PROMPT_BASELINE_ACTIVE",
+		});
+		await restarted.setPrompt("action_planner", makeArtifact(2));
+		await restarted.refresh();
+		expect(restarted.getPrompt("action_planner")?.prompt).toBe(
+			"optimized prompt v2",
+		);
+		expect(await readFile(artifactPath, "utf8")).toBe(originalBytes);
+	});
+
+	it("serializes baseline restoration with explicit promotion", async () => {
+		await service.setPrompt("action_planner", makeArtifact(1));
+		await Promise.all([
+			service.restoreBaseline("action_planner"),
+			service.setPrompt("action_planner", makeArtifact(2)),
+		]);
+		await service.refresh();
+		expect(service.getPrompt("action_planner")?.prompt).toBe(
+			"optimized prompt v2",
+		);
+		await Promise.all([
+			service.setPrompt("action_planner", makeArtifact(3)),
+			service.restoreBaseline("action_planner"),
+		]);
+		await service.refresh();
+		expect(service.getPrompt("action_planner")).toBeNull();
+	});
+
+	it("reports a damaged baseline activation record without reviving a candidate", async () => {
+		await service.setPrompt("action_planner", makeArtifact(1));
+		await service.restoreBaseline("action_planner");
+		writeFileSync(
+			join(storeRoot, "action_planner", "activation-baseline"),
+			"broken",
+		);
+		const reportError = vi.fn();
+		const restarted = new OptimizedPromptService({
+			reportError,
+		} as unknown as IAgentRuntime);
+		restarted.setStoreRoot(storeRoot);
+		await restarted.refresh();
+		expect(restarted.getPrompt("action_planner")).toBeNull();
+		expect(reportError).toHaveBeenCalledWith(
+			"OptimizedPromptService.refreshTask",
+			expect.objectContaining({
+				code: "OPTIMIZED_PROMPT_BASELINE_ACTIVATION_INVALID",
+			}),
+			expect.objectContaining({ task: "action_planner" }),
+		);
+	});
+
+	it("leaves the live artifact intact when baseline activation cannot be authenticated", async () => {
+		await service.setPrompt("action_planner", makeArtifact(1));
+		delete process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY;
+		await expect(
+			service.restoreBaseline("action_planner"),
+		).rejects.toMatchObject({
+			code: "OPTIMIZED_PROMPT_INTEGRITY_KEY_UNAVAILABLE",
+		});
+		expect(service.getPrompt("action_planner")?.prompt).toBe(
+			"optimized prompt v1",
+		);
+		expect(
+			existsSync(join(storeRoot, "action_planner", "activation-baseline")),
+		).toBe(false);
 	});
 
 	it("rollback flips current and previous so the predecessor becomes live", async () => {

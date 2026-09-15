@@ -480,10 +480,11 @@ describe("incremental extractor evidence", () => {
 	it("attributes historical identity observations to their original sources, not the batch trigger", async () => {
 		const runtime = await makeRuntime();
 		const upsertIdentity = vi.fn(async () => {});
+		const upsertExtractedIdentity = vi.fn(async () => {});
 		const getService = runtime.getService.bind(runtime);
 		vi.spyOn(runtime, "getService").mockImplementation((name) =>
 			name === "relationships"
-				? ({ upsertIdentity } as never)
+				? ({ upsertIdentity, upsertExtractedIdentity } as never)
 				: getService(name),
 		);
 		const runOptions = options("identity:historical");
@@ -504,10 +505,14 @@ describe("incremental extractor evidence", () => {
 			{ identities: [{ ...identity, sourceMessageId: OTHER }] },
 			runOptions,
 		);
-		expect(upsertIdentity).toHaveBeenCalledWith(
+		expect(upsertExtractedIdentity).toHaveBeenCalledWith(
 			USER,
 			expect.objectContaining({ handle: "example", source: "reflection" }),
-			[OTHER],
+			expect.objectContaining({
+				sourceMessageId: OTHER,
+				sourceRevisions: runOptions.extraction.sourceRevisions,
+				evidenceId: "identity:historical",
+			}),
 		);
 		// Legacy staged output keeps its prior write identity, rather than silently
 		// changing already-persisted evidence during a retry.

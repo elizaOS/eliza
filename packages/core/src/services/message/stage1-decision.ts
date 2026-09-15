@@ -4,6 +4,7 @@ import {
 	createHandleResponseTool,
 	HANDLE_RESPONSE_TOOL_NAME,
 } from "../../actions/to-tool";
+import { ElizaError } from "../../errors";
 import { recordInferenceSpan, timeInferenceSpan } from "../../inference-timing";
 import { getCandidateActionBackstopRules } from "../../runtime/candidate-action-backstop";
 import { withRequiredCompletionSourceIdentity } from "../../runtime/completion-context";
@@ -277,15 +278,17 @@ export async function generateStage1Decision(
 		];
 	};
 	let messageHandlerTools = createMessageHandlerTools();
+	// Discovery continues the same scoped workflow, even as its input expands.
+	const stage1ConversationId = args.message.roomId
+		? JSON.stringify([args.runtime.agentId, args.message.roomId, "stage1"])
+		: undefined;
 	const messageHandlerProviderOptions = withModelInputBudgetProviderOptions(
 		cacheProviderOptions({
 			prefixHash: stage1PrefixHash,
 			segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
 			promptSegments: messageHandlerInput.promptSegments,
 			// Keep shared-room agents and pipeline stages on separate cache slots.
-			conversationId: args.message.roomId
-				? JSON.stringify([args.runtime.agentId, args.message.roomId, "stage1"])
-				: undefined,
+			conversationId: stage1ConversationId,
 		}),
 		buildModelInputBudget({
 			messages: messageHandlerInput.messages,
@@ -626,9 +629,7 @@ export async function generateStage1Decision(
 			prefixHash: stage1PrefixHash,
 			segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
 			promptSegments: messageHandlerInput.promptSegments,
-			conversationId: args.message.roomId
-				? String(args.message.roomId)
-				: undefined,
+			conversationId: stage1ConversationId,
 		});
 		// Full restoration returns to the ordinary selection contract. Keep the
 		// actual tool schema aligned with the newly rendered history policy.
@@ -673,6 +674,21 @@ export async function generateStage1Decision(
 		? undefined
 		: args.runtime.getLastResolvedModelProvider?.(ModelType.RESPONSE_HANDLER);
 	const rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
+	if (
+		routingRepairAttempted &&
+		rawFieldParsed?.replyEffectStatus === "non_applied" &&
+		getStage1RoutingRepair(rawFieldParsed)
+	) {
+		// A repeated preview/pending-work conflict cannot authorize effects or a
+		// terminal reply. Keep the recorded model attempts and reject before fields.
+		throw new ElizaError(
+			"Stage-1 preview still declares pending work after repair; retry with a consistent routing decision",
+			{
+				code: "STAGE1_ROUTING_CONFLICT",
+				context: { messageId: args.message.id },
+			},
+		);
+	}
 	// An explicit continuation turn ("finish my request", "that is good")
 	// carries no inferable intent of its own, so candidate inference runs on
 	// the nearest pending prior user request instead. The substitution feeds

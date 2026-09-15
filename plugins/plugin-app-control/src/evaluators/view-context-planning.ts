@@ -96,10 +96,18 @@ export const viewContinuationField: ResponseHandlerFieldEvaluator<ContextualNavi
 				"navigationOnly",
 			],
 		},
-		shouldRun: ({ runtime, message }) =>
-			!messageHasNoViewSurface(message) &&
-			runtime.actions.some((action) => action.name === "VIEWS"),
-		parse(value) {
+		shouldRun: ({ runtime, message }) => {
+			const active =
+				!messageHasNoViewSurface(message) &&
+				runtime.actions.some((action) => action.name === "VIEWS");
+			// Inactive fields skip parsing and must not retain an earlier decision.
+			if (!active) stageOneIntents.delete(message);
+			return active;
+		},
+		parse(value, { message }) {
+			// Every dispatch replaces the prior attempt, including missing or invalid
+			// output for which the registry will skip handle().
+			stageOneIntents.delete(message);
 			if (!value || typeof value !== "object" || Array.isArray(value))
 				return null;
 			const record = value as Record<string, unknown>;
@@ -183,6 +191,25 @@ export const viewContinuationField: ResponseHandlerFieldEvaluator<ContextualNavi
 
 const WHOLE_CODE_FENCE = /^```(?:json)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/i;
 
+// Programmatic transports (REST message API, OpenAI/Anthropic-compat) render
+// no view to the caller, so a decision to navigate could never reach them.
+const PROGRAMMATIC_TRANSPORT_SOURCES = new Set([
+	"agent_message_api",
+	"compat_openai",
+	"compat_anthropic",
+]);
+
+/** True when the turn arrived over a transport that shows the caller no view. */
+export function messageArrivedOverProgrammaticTransport(
+	message: Memory,
+): boolean {
+	const source = message.content?.source;
+	return (
+		typeof source === "string" &&
+		PROGRAMMATIC_TRANSPORT_SOURCES.has(source.toLowerCase())
+	);
+}
+
 /** Unwrap only a complete code fence; never discard prose or competing decisions. */
 function unwrapJsonObjectText(raw: string): string {
 	const trimmed = raw.trim();
@@ -245,6 +272,7 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 			messageHandler.processMessage === "RESPOND" &&
 			!messageHandler.plan.deterministicToolCall &&
 			!messageHasNoViewSurface(message) &&
+			!messageArrivedOverProgrammaticTransport(message) &&
 			runtime.actions.some((action) => action.name === "VIEWS") &&
 			userRequestMessageText(message).trim().length > 0
 		);

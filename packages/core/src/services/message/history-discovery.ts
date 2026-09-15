@@ -50,6 +50,15 @@ export function withReviewedHistorySelection(schema: JSONSchema): JSONSchema {
 export const HISTORY_REFERENCE_PREFIX = "history:";
 export const ALL_HISTORY_REFERENCE = "history:all";
 const HISTORY_SEARCH_PREFIX = "history:search:";
+const QUOTATION_ENDS = new Map([
+	['"', '"'],
+	["'", "'"],
+	["“", "”"],
+	["‘", "’"],
+	["`", "`"],
+	["«", "»"],
+	["「", "」"],
+]);
 
 export interface HistoryDiscovery {
 	sourceSetId: string;
@@ -164,6 +173,29 @@ export function requestedHistory(
 	];
 	if (selected.some((id) => !bound.sources.some((source) => source.id === id)))
 		return [ALL_HISTORY_REFERENCE];
+	const reply = raw?.replyText;
+	const quoted =
+		typeof reply === "string" && /["'“‘`«「]/.test(reply)
+			? bound.sources.filter(({ id, event }) => {
+					if (
+						projection.visibleEventIds.has(event.id) ||
+						projection.loadedSourceIds.has(id)
+					)
+						return false;
+					const { content, metadata } = event.segment;
+					if (quotesCompleteSource(reply, content)) return true;
+					const speaker = metadata?.speakerName;
+					const prefix =
+						typeof speaker === "string" ? `${speaker}: ` : undefined;
+					// A displayed speaker prefix need not be quoted. This only finds
+					// a read candidate; load the complete original with its identity.
+					return (
+						!!prefix &&
+						content.startsWith(prefix) &&
+						quotesCompleteSource(reply, content.slice(prefix.length))
+					);
+				})
+			: [];
 	return [
 		...new Set([
 			...requested,
@@ -177,8 +209,38 @@ export function requestedHistory(
 					);
 				})
 				.map((id) => `${HISTORY_REFERENCE_PREFIX}${id}`),
+			...quoted.map(({ id }) => `${HISTORY_REFERENCE_PREFIX}${id}`),
 		]),
 	];
+}
+
+/** A draft can copy an entire original from a visible assistant recap while
+ * selecting only that recap. Materialize matching deferred originals through
+ * the normal read barrier before dispatch. A literal match is a read candidate,
+ * not a certificate of authorship, authority or semantic answer correctness.
+ * No partial/fuzzy match, source rewrite or interpretation of the user's intent
+ * is involved. Duplicate original occurrences remain separate read candidates. */
+function quotesCompleteSource(reply: string, content: string): boolean {
+	if (!content || content.length + 2 > reply.length) return false;
+	for (
+		let at = reply.indexOf(content);
+		at >= 0;
+		at = reply.indexOf(content, at + 1)
+	) {
+		let before = at - 1;
+		let after = at + content.length;
+		// Quotation layout may put a newline outside the source text. These
+		// cursors inspect only the draft framing; source bytes stay untouched.
+		while (before >= 0 && /\s/u.test(reply[before])) before--;
+		while (after < reply.length && /\s/u.test(reply[after])) after++;
+		if (
+			before >= 0 &&
+			after < reply.length &&
+			QUOTATION_ENDS.get(reply[before]) === reply[after]
+		)
+			return true;
+	}
+	return false;
 }
 
 /** An incomplete selection may accompany contradictory routing rather than a

@@ -22,6 +22,7 @@ import {
 } from "../streaming-context";
 import type { EvaluationResult } from "../types/components";
 import type { ContextEvent } from "../types/context-object";
+import { activeCommittedEffectReceipts } from "../types/effects";
 import {
 	type ChatMessage,
 	getModelFallbackChain,
@@ -314,6 +315,28 @@ export async function runEvaluator(
 		params.provider,
 	);
 	const redactDiagnosticText = composeToolDiagnosticRedactor(params.runtime);
+	const availableReceiptIds = activeCommittedEffectReceipts(
+		[
+			...(params.trajectory.archivedSteps ?? []),
+			...params.trajectory.steps,
+		].flatMap((step) => step.result?.effectReceipts ?? []),
+	)
+		.map((receipt) => receipt.receiptId)
+		.filter((id) => redactDiagnosticText(id) === id);
+	// Match the canonical proof boundary without changing the recorded results
+	// or forgiving invalid IDs returned by a provider that ignores its schema.
+	const responseSchema = {
+		...evaluatorSchema,
+		properties: {
+			...evaluatorSchema.properties,
+			effectReceiptIds: {
+				...evaluatorSchema.properties?.effectReceiptIds,
+				...(availableReceiptIds.length
+					? { items: { type: "string", enum: availableReceiptIds } }
+					: { enum: [[]] }),
+			},
+		},
+	};
 	const initialBudgetOptions = budgetResolution.contextWindowTokens
 		? evaluatorBudgetOptions(budgetResolution.contextWindowTokens)
 		: {};
@@ -473,7 +496,7 @@ export async function runEvaluator(
 				() => {
 					const modelRequest = {
 						messages: callInput.messages,
-						responseSchema: evaluatorSchema,
+						responseSchema,
 						promptSegments: callInput.promptSegments,
 						providerOptions,
 						prepareModelAttempt: (

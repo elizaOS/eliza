@@ -122,6 +122,105 @@ async function run(ctx: ResponseHandlerEvaluatorContext) {
 }
 
 describe("same-turn contextual navigation", () => {
+	function fieldDispatcher(ctx: ResponseHandlerEvaluatorContext) {
+		const registry = new ResponseHandlerFieldRegistry();
+		registry.register(viewContinuationField);
+		return (rawParsed: Record<string, unknown>) =>
+			registry.dispatch({
+				rawParsed,
+				runtime: ctx.runtime,
+				message: ctx.message,
+				state: ctx.state,
+				senderRole: "USER",
+				turnSignal: new AbortController().signal,
+			});
+	}
+
+	it.each(["none", "requested"])(
+		"discards a %s judgment when a later dispatch cannot supply a valid field",
+		async (disposition) => {
+			for (const retry of ["malformed", "absent", "unresolved", "inactive"]) {
+				const ctx = context("Show Observatory and read my calendar", {
+					disposition: "forbidden",
+					reason: "Fresh judgment after discarded output",
+				});
+				Object.assign(ctx.message.content, {
+					source: "client_chat",
+					channelType: "DM",
+				});
+				ctx.messageHandler.plan.candidateActions = ["CALENDAR", "VIEWS_SHOW"];
+				const dispatch = fieldDispatcher(ctx);
+				await dispatch({
+					visualContinuation: {
+						disposition,
+						viewId: disposition === "requested" ? "observatory" : "",
+						singleViewOnly: false,
+						navigationOnly: false,
+						reason: "Discarded attempt",
+					},
+				});
+				const actions = ctx.runtime.actions;
+				if (retry === "inactive") ctx.runtime.actions = [];
+				await dispatch(
+					retry === "absent"
+						? {}
+						: {
+								visualContinuation:
+									retry === "unresolved"
+										? {
+												disposition: "unresolved",
+												viewId: "",
+												reason: "Unsure",
+											}
+										: null,
+							},
+				);
+				ctx.runtime.actions = actions;
+				const before = prompts.length;
+				const result = await run(ctx);
+				expect(prompts.length - before, retry).toBe(1);
+				expect(result.errors).toEqual([]);
+				expect(result.navigationBlock).toBe("forbidden");
+				expect(ctx.messageHandler.plan.candidateActions).toContain("CALENDAR");
+				expect(ctx.messageHandler.plan.reply).toBe("premature response");
+			}
+		},
+	);
+
+	it("uses a valid replacement once and leaves independent message decisions intact", async () => {
+		const first = context("Keep this screen", {
+			disposition: "none",
+			reason: "Fresh",
+		});
+		const other = context("Leave the other screen alone", {});
+		const dispatch = fieldDispatcher(first);
+		await dispatch({
+			visualContinuation: { disposition: "none", viewId: "", reason: "Old" },
+		});
+		await fieldDispatcher(other)({
+			visualContinuation: {
+				disposition: "forbidden",
+				viewId: "",
+				reason: "Other turn",
+			},
+		});
+		await dispatch({
+			visualContinuation: {
+				disposition: "forbidden",
+				viewId: "",
+				reason: "Latest decision",
+			},
+		});
+		await run(first);
+		await run(other);
+		expect(prompts).toEqual([]);
+		expect(requestedPaths).toEqual([]);
+		expect(JSON.stringify(first.messageHandler)).toContain("Latest decision");
+		expect(JSON.stringify(first.messageHandler)).not.toContain("Old");
+		await run(first);
+		expect(prompts).toHaveLength(1);
+	});
+
 	async function runWithField(
 		ctx: ResponseHandlerEvaluatorContext,
 		value: unknown,
