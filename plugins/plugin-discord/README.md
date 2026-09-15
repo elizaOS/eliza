@@ -16,6 +16,10 @@ A Discord connector plugin for elizaOS, enabling rich integration with Discord s
 - Event-driven architecture with comprehensive event handling
 - History backfill with efficient batch processing
 
+Connector inventory reports a bot account as connected only when its live gateway
+is ready with the currently configured token. A saved token or stale inventory
+row alone does not establish readiness; disabled accounts remain disabled.
+
 ## Installation
 
 As this is a workspace package, it is installed as part of the elizaOS monorepo:
