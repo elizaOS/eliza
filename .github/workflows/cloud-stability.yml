@@ -39,7 +39,7 @@ concurrency:
 jobs:
   deterministic-keyless:
     runs-on: ubuntu-24.04
-    timeout-minutes: 252
+    timeout-minutes: 257
     env:
       CI: "true"
       NODE_ENV: test
@@ -60,6 +60,9 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/cloud-setup-test-env
         timeout-minutes: 20
+      - name: Build PDF service required by the scenario
+        timeout-minutes: 5
+        run: bun run --cwd plugins/plugin-pdf build
       - name: Build and install source-bound native authority
         id: native
         timeout-minutes: 10
@@ -116,7 +119,7 @@ jobs:
 
   real-model-mock-services:
     runs-on: ubuntu-24.04
-    timeout-minutes: 252
+    timeout-minutes: 257
     env:
       CI: "true"
       NODE_ENV: test
@@ -137,6 +140,9 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/cloud-setup-test-env
         timeout-minutes: 20
+      - name: Build PDF service required by the scenario
+        timeout-minutes: 5
+        run: bun run --cwd plugins/plugin-pdf build
       - name: Build and install source-bound native authority
         id: native
         timeout-minutes: 10
