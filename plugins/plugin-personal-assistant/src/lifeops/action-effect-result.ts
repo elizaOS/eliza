@@ -128,6 +128,13 @@ export async function completeLifeOpsEffect(
   }
   const canonical: ActionResult = {
     ...result,
+    // The exact sentence below IS the transcript: a handler's "internal"
+    // marker (meant for its machine-facing result text) must not carry over,
+    // or the runtime treats the selected reply as internal and drops its
+    // delivery record — live 2026-09-14: 40 API-room calendar replies reached
+    // the caller but were never persisted as agent messages, so later prompts
+    // showed the user's requests with no answers.
+    transcriptVisibility: undefined,
     text,
     userFacingText: text,
     verifiedUserFacing: true,
