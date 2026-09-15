@@ -199,6 +199,13 @@ export class MeetingTranscriptWriter {
   private lastWriteAt = 0;
   private pendingFlush: ReturnType<typeof setTimeout> | null = null;
   private finalized = false;
+  /**
+   * Serializes every store write. `updateMemory` calls chained through this
+   * promise always apply in issue order, so an earlier throttled "recording"
+   * flush can never overtake and clobber the terminal "ready" write when both
+   * are in flight on a pooled SQL adapter / PGlite (out-of-order completion).
+   */
+  private writeChain: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly runtime: MeetingTranscriptRuntime,
@@ -289,13 +296,30 @@ export class MeetingTranscriptWriter {
   }
 
   /**
+   * Append a store write to {@link writeChain} so writes always apply in issue
+   * order. The chain itself absorbs rejections so one failed write never stalls
+   * the queue; the caller observes its own result through the returned promise.
+   */
+  private enqueueWrite(write: () => Promise<void>): Promise<void> {
+    const result = this.writeChain.then(write);
+    this.writeChain = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  /**
    * Incremental store write. Invoked via `void this.flush()` (fire-and-forget)
    * from the throttle path, so it must never reject — a DB hiccup would surface
    * as an unhandled promise rejection. All failures are caught and logged here;
-   * the next update simply retries.
+   * the next update simply retries. The actual `updateMemory` call runs inside
+   * the serialized {@link writeChain}, and re-checks `finalized` at execution
+   * time: once `finalize()` has run, a still-queued incremental write must not
+   * re-issue the stale "recording" row over the finalized "ready" record.
    */
-  private async flush(): Promise<void> {
-    if (this.finalized || !this.transcript) return;
+  private flush(): Promise<void> {
+    if (this.finalized || !this.transcript) return Promise.resolve();
     this.lastWriteAt = this.now();
     const next: Transcript = {
       ...this.transcript,
@@ -305,31 +329,34 @@ export class MeetingTranscriptWriter {
     };
     this.transcript = next;
     const { content, metadata } = transcriptContentAndMetadata(next);
-    try {
-      const ok = await this.runtime.updateMemory({
-        id: this.transcriptId,
-        content,
-        metadata,
-      });
-      if (!ok) {
+    return this.enqueueWrite(async () => {
+      if (this.finalized) return;
+      try {
+        const ok = await this.runtime.updateMemory({
+          id: this.transcriptId,
+          content,
+          metadata,
+        });
+        if (!ok) {
+          logger.warn(
+            {
+              transcriptId: this.transcriptId,
+              sessionId: this.input?.sessionId,
+            },
+            "[MeetingService] incremental transcript update hit a missing row",
+          );
+        }
+      } catch (err) {
         logger.warn(
           {
             transcriptId: this.transcriptId,
             sessionId: this.input?.sessionId,
+            error: err instanceof Error ? err.message : String(err),
           },
-          "[MeetingService] incremental transcript update hit a missing row",
+          "[MeetingService] incremental transcript update failed",
         );
       }
-    } catch (err) {
-      logger.warn(
-        {
-          transcriptId: this.transcriptId,
-          sessionId: this.input?.sessionId,
-          error: err instanceof Error ? err.message : String(err),
-        },
-        "[MeetingService] incremental transcript update failed",
-      );
-    }
+    });
   }
 
   /** Final write: status "ready", timings, participants, audio + knowledge mirror. */
@@ -345,6 +372,12 @@ export class MeetingTranscriptWriter {
       clearTimeout(this.pendingFlush);
       this.pendingFlush = null;
     }
+    // Drain any incremental flush already dispatched (or queued) before this
+    // finalize. `finalized` is now set, so a queued flush skips its write; a
+    // flush already awaiting `updateMemory` settles here first. Either way the
+    // terminal "ready" write below is issued last and cannot be clobbered by a
+    // late "recording" write completing out of order on a pooled adapter.
+    await this.writeChain;
 
     const endedAt = this.now();
     if (input.audioWav && input.retainedAudio) {
