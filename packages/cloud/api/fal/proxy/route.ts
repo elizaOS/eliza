@@ -22,7 +22,7 @@ import {
   getGenerativeExecutionContext,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
 import type { BillingContext } from "@/lib/services/ai-billing";
 import {
   calculateVideoGenerationCostFromCatalog,
@@ -36,7 +36,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const falHandler = createRouteHandler({
   allowedUrlPatterns: DEFAULT_ALLOWED_URL_PATTERNS,
-  allowedEndpoints: ["fal-ai/**", "bytedance/**", "wan/**"],
+  allowedEndpoints: ["fal-ai/**", "bytedance/**", "minimax/**", "wan/**"],
   allowUnauthorizedRequests: false,
   isAuthenticated: async () => true,
   resolveFalAuth: resolveApiKeyFromEnv,
@@ -50,6 +50,10 @@ const invokeFalProxy = (c: Context<AppEnv>): Promise<Response> =>
 const app = new Hono<AppEnv>();
 
 function normalizeFalPricingModel(endpoint: string): string | null {
+  if (getSupportedVideoModelDefinition(endpoint)) {
+    return endpoint;
+  }
+
   const variantSuffixes = [
     "/image-to-video",
     "/first-last-frame-to-video",
@@ -87,6 +91,28 @@ function readNumber(body: unknown, keys: string[]): number | undefined {
   return undefined;
 }
 
+function readH3Duration(
+  body: Record<string, unknown>,
+  defaultDuration: number,
+): number {
+  // The raw proxy forwards provider JSON unchanged. Host-route aliases cannot
+  // select the quote because the provider does not consume those fields.
+  if ("durationSeconds" in body || "duration_seconds" in body) {
+    throw new ApiError(
+      400,
+      "validation_error",
+      "Use the provider duration field",
+    );
+  }
+  if (!("duration" in body)) return defaultDuration;
+  const value = body.duration;
+  const duration = typeof value === "number" ? value : Number.NaN;
+  if (!Number.isSafeInteger(duration) || duration <= 0) {
+    throw new ApiError(400, "validation_error", "Invalid provider duration");
+  }
+  return duration;
+}
+
 function readBoolean(body: unknown, keys: string[]): boolean | undefined {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     return undefined;
@@ -114,7 +140,7 @@ function readString(body: unknown, keys: string[]): string | undefined {
   for (const key of keys) {
     const value = (body as Record<string, unknown>)[key];
     if (typeof value === "string" && value.trim().length > 0) {
-      return value.trim().toLowerCase();
+      return value.trim();
     }
   }
 
@@ -137,13 +163,46 @@ async function priceFalMutation(c: Context<AppEnv>): Promise<{
   }
 
   const defaults = getDefaultVideoBillingDimensions(model);
-  const body = await c.req.raw
+  const isH3Max = model === "minimax/h3-max/image-to-video";
+  const body: unknown = await c.req.raw
     .clone()
     .json()
-    .catch(() => ({}));
-  const durationSeconds =
-    readNumber(body, ["durationSeconds", "duration_seconds", "duration"]) ??
-    defaults.durationSeconds;
+    .catch(() => {
+      // error-policy:J3 H3 rejects malformed JSON below before any admission.
+      return undefined;
+    });
+  if (isH3Max && (!body || typeof body !== "object" || Array.isArray(body))) {
+    throw new ApiError(
+      400,
+      "validation_error",
+      "Provider body must be a JSON object",
+    );
+  }
+  const h3Body = isH3Max ? (body as Record<string, unknown>) : undefined;
+  if (h3Body) {
+    if (
+      "resolution" in h3Body &&
+      (typeof h3Body.resolution !== "string" ||
+        !["480P", "768P", "1080P"].includes(h3Body.resolution))
+    ) {
+      throw new ApiError(400, "validation_error", "Invalid H3 Max resolution");
+    }
+    if (
+      ["audio", "generate_audio", "voiceControl", "voice_control"].some(
+        (key) => key in h3Body,
+      )
+    ) {
+      throw new ApiError(
+        400,
+        "validation_error",
+        "H3 Max does not support audio controls",
+      );
+    }
+  }
+  const durationSeconds = h3Body
+    ? readH3Duration(h3Body, defaults.durationSeconds)
+    : (readNumber(body, ["durationSeconds", "duration_seconds", "duration"]) ??
+      defaults.durationSeconds);
   const dimensions = {
     ...defaults.dimensions,
     ...(readString(body, ["resolution"])
@@ -198,7 +257,9 @@ const handle: Handler<AppEnv> = async (c) => {
     } catch (error) {
       // error-policy:J1 translate pricing input and catalog failures at the
       // route boundary before any credit admission or provider dispatch.
-      if (error instanceof Error && error.message === "missing_target") {
+      if (error instanceof ApiError) {
+        pendingResponse = failureResponse(c, error);
+      } else if (error instanceof Error && error.message === "missing_target") {
         pendingResponse = c.json({ error: "Invalid request" }, 400);
       } else if (
         error instanceof Error &&

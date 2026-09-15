@@ -1,6 +1,10 @@
 /** Handles authenticated video generation, billing, and pending-job reconciliation. */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import {
+  ElizaError,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -39,6 +43,7 @@ import {
   getDefaultVideoBillingDimensions,
 } from "@/lib/services/ai-pricing";
 import {
+  DEFAULT_IMAGE_TO_VIDEO_MODEL_IDS,
   DEFAULT_VIDEO_MODEL_IDS,
   getSupportedVideoModelDefinition,
   SUPPORTED_VIDEO_MODEL_IDS,
@@ -99,11 +104,35 @@ function providerDisplayName(
   return definition.provider === "fal" ? "Fal" : definition.provider;
 }
 
-function requireDefaultVideoModelDefinitions(): SupportedVideoModelDefinition[] {
-  return DEFAULT_VIDEO_MODEL_IDS.map((modelId) => {
+function requireDefaultVideoModelDefinitions(
+  referenceUrl?: string,
+  audio?: boolean,
+): SupportedVideoModelDefinition[] {
+  const modelIds = referenceUrl
+    ? DEFAULT_IMAGE_TO_VIDEO_MODEL_IDS
+    : DEFAULT_VIDEO_MODEL_IDS;
+  return modelIds.map((modelId) => {
     const definition = getSupportedVideoModelDefinition(modelId);
     if (!definition) {
       throw new Error(`Default video model is not supported: ${modelId}`);
+    }
+    if (
+      audio !== undefined &&
+      definition.fixedAudio !== undefined &&
+      audio !== definition.fixedAudio
+    ) {
+      // Preserve the existing audio-control contract when the new primary
+      // cannot honor a silent request.
+      const compatibleModelId = referenceUrl
+        ? "bytedance/seedance-2.5/image-to-video"
+        : "bytedance/seedance-2.5/text-to-video";
+      const compatible = getSupportedVideoModelDefinition(compatibleModelId);
+      if (!compatible)
+        throw new ElizaError("The default with media controls is unavailable", {
+          code: "VIDEO_DEFAULT_MODEL_UNAVAILABLE",
+          context: { modelId: compatibleModelId },
+        });
+      return compatible;
     }
     return definition;
   });
@@ -180,12 +209,21 @@ app.post("/", async (c) => {
         ? [requestedDefinition]
         : request?.model
           ? []
-          : requireDefaultVideoModelDefinitions()
+          : requireDefaultVideoModelDefinitions(
+              request?.referenceUrl,
+              request?.audio,
+            )
       : [];
     const apiKeys = collectVideoProviderApiKeys(c.env);
-    const providerCandidates = getConfiguredVideoProviderCandidates(
+    const configuredProviderCandidates = getConfiguredVideoProviderCandidates(
       definitions,
       apiKeys,
+    );
+    const providerCandidates = configuredProviderCandidates.filter(
+      ({ definition }) =>
+        request?.durationSeconds === undefined ||
+        definition.minDurationSeconds === undefined ||
+        request.durationSeconds >= definition.minDurationSeconds,
     );
     let pendingResponse: Response | undefined;
     if (!requestResult.success) {
@@ -197,6 +235,53 @@ app.post("/", async (c) => {
         `Unsupported video model: ${requestResult.data.model}`,
         "validation_error",
         { supportedModels: SUPPORTED_VIDEO_MODEL_IDS },
+      );
+    } else if (
+      requestedDefinition?.requiresReferenceImage &&
+      !requestResult.data.referenceUrl
+    ) {
+      pendingResponse = jsonError(
+        c,
+        400,
+        "referenceUrl is required for image-to-video generation",
+        "validation_error",
+      );
+    } else if (
+      requestedDefinition?.fixedAudio !== undefined &&
+      requestResult.data.audio !== undefined &&
+      requestResult.data.audio !== requestedDefinition.fixedAudio
+    ) {
+      pendingResponse = jsonError(
+        c,
+        400,
+        "The selected video model cannot change its audio setting",
+        "validation_error",
+      );
+    } else if (
+      requestResult.data.voiceControl === true &&
+      definitions.some(
+        (definition) => definition.supportsVoiceControl === false,
+      )
+    ) {
+      pendingResponse = jsonError(
+        c,
+        400,
+        "The selected video model does not support voice control",
+        "validation_error",
+      );
+    } else if (
+      requestResult.data.durationSeconds !== undefined &&
+      ((requestedDefinition?.minDurationSeconds !== undefined &&
+        requestResult.data.durationSeconds <
+          requestedDefinition.minDurationSeconds) ||
+        (configuredProviderCandidates.length > 0 &&
+          providerCandidates.length === 0))
+    ) {
+      pendingResponse = jsonError(
+        c,
+        400,
+        "durationSeconds is below the selected video model's minimum; Seedance 2.5 requires at least 4 seconds",
+        "validation_error",
       );
     } else if (providerCandidates.length === 0) {
       const message = requestedDefinition
