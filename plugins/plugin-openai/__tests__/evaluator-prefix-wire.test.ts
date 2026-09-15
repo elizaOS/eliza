@@ -220,9 +220,7 @@ it.each([
         expect(schemaMatch).toBeTruthy();
         expect(schemaMatch?.[1]).toBe(JSON.stringify(mergedSchema));
         const visibleSchema = JSON.parse(schemaMatch?.[1] ?? "null");
-        expect(visibleSchema.properties.store.properties.text.description).toBe(
-          schemaDescription
-        );
+        expect(visibleSchema.properties.store.properties.text.description).toBe(schemaDescription);
         expect(user).not.toContain("## Output Shape");
         expect(user?.indexOf("## Output JSON Schema")).toBeLessThan(
           user?.indexOf("Latest message:") ?? -1
