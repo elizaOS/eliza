@@ -90,7 +90,7 @@ it("carries nested constraints through extraction and retains planner values", a
       actionDescription: action.description,
       paramSchema: action.parameters ?? [],
       existingParams: {},
-      requiredFields: ["selection"],
+      requiredFields: ["selection"] as const,
     };
     const result = await extractActionParamsViaLlm(args);
     expect(calls).toBe(1);
