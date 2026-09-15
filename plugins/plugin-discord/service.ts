@@ -1528,6 +1528,12 @@ export class DiscordService extends Service implements IDiscordService {
 			get clientReadyPromise() {
 				return state?.clientReadyPromise ?? parent.clientReadyPromise;
 			},
+			trackInFlightTurn: (messageId: string, promise: Promise<unknown>) =>
+				parent.trackInFlightTurn(messageId, promise),
+			trackStatusReaction: (
+				messageId: string,
+				controller: StatusReactionController,
+			) => parent.trackStatusReaction(messageId, controller),
 			admitInboundMessage: (messageId: string, channelId: string) =>
 				parent.admitInboundMessage(messageId, channelId, accountId()),
 			accountToken: state?.account.token,
