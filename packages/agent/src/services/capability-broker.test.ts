@@ -7,6 +7,7 @@
  * cases, and the audit file is read back from disk.
  */
 import {
+  appendFileSync,
   existsSync,
   mkdtempSync,
   readFileSync,
@@ -180,6 +181,28 @@ describe("CapabilityBroker", () => {
       expect(typeof line.policyKey).toBe("string");
       expect(typeof line.ts).toBe("string");
     }
+  });
+
+  it("keeps a decision readable after a crash-torn audit line", () => {
+    const auditFilePath = path.join(stateDir, "audit", "capability.jsonl");
+    const broker = new CapabilityBroker({
+      stateDir,
+      auditFilePath,
+      mode: () => "local-safe",
+      distributionProfile: () => "unrestricted",
+    });
+    broker.check({ kind: "fs", op: "read", target: "/tmp/one" });
+    // An append interrupted before its trailing newline. A plain append would
+    // put the next decision on this same line, and the audit reader would
+    // discard both.
+    appendFileSync(auditFilePath, '{"ts":"2026-01-01T00:00:00.000Z","kind":');
+    broker.check({ kind: "fs", op: "read", target: "/tmp/two" });
+
+    const rawLines = readFileSync(auditFilePath, "utf8").trim().split("\n");
+    expect(rawLines).toHaveLength(3);
+    expect(rawLines[1]).toBe('{"ts":"2026-01-01T00:00:00.000Z","kind":');
+    const last = JSON.parse(rawLines[2]) as AuditedDecision;
+    expect(last.target).toBe("/tmp/two");
   });
 
   it("recentDecisions(n) returns last n entries", () => {
