@@ -5,6 +5,9 @@ import { PGlite } from "@electric-sql/pglite";
 
 const migrationUrl = new URL("./0268_app_reservation_settlement_authority.sql", import.meta.url);
 const migrationSql = await Bun.file(migrationUrl).text();
+const endpointMigrationSql = await Bun.file(
+  new URL("./0395_app_creator_settlement_endpoints.sql", import.meta.url),
+).text();
 
 const organizationId = "00000000-0000-4000-8000-000000000001";
 const otherOrganizationId = "00000000-0000-4000-8000-000000000002";
@@ -88,6 +91,7 @@ describe("0268 app reservation settlement authority", () => {
     const db = await prerequisiteDb();
     try {
       await db.exec(migrationSql);
+      await db.exec(endpointMigrationSql);
       await db.exec(`
         INSERT INTO app_reservation_settlements (
           reservation_transaction_id, organization_id, app_id, user_id,
@@ -196,6 +200,7 @@ describe("0268 app reservation settlement authority", () => {
     const db = await prerequisiteDb();
     try {
       await db.exec(migrationSql);
+      await db.exec(endpointMigrationSql);
       await db.exec(`
         INSERT INTO credit_transactions(id, organization_id, amount, type, metadata)
         VALUES (
@@ -294,6 +299,7 @@ describe("0268 app reservation settlement authority", () => {
     const wrongMarkerId = "00000000-0000-4000-8000-000000000053";
     try {
       await db.exec(migrationSql);
+      await db.exec(endpointMigrationSql);
       await db.exec(`
         INSERT INTO credit_transactions(id, organization_id, amount, type, metadata, settled_at)
         VALUES
@@ -339,6 +345,7 @@ describe("0268 app reservation settlement authority", () => {
     const db = await prerequisiteDb();
     try {
       await db.exec(migrationSql);
+      await db.exec(endpointMigrationSql);
       await expect(
         db.exec(`
           INSERT INTO app_reservation_settlements (
@@ -380,3 +387,154 @@ describe("0268 app reservation settlement authority", () => {
     }
   });
 });
+
+/** Applies both actual migrations before validating the creator endpoint receipt. */
+test("v2 fractional refund conserves the committed creator earning and protects its authority", async () => {
+  const db = await prerequisiteDb();
+  try {
+    await db.exec(migrationSql);
+    await db.exec(`INSERT INTO app_reservation_settlements (
+      reservation_transaction_id, organization_id, app_id, user_id,
+      terminal_source, outcome, reserved_base_cost, actual_base_cost,
+      markup_percentage, reserved_total_cost, actual_total_cost,
+      organization_adjustment, creator_adjustment, platform_adjustment,
+      credit_transaction_id
+    ) VALUES ('${reservationId}', '${organizationId}', '${appId}', '${userId}',
+      'provider', 'refund', 0.03, 0.01, 0, 0.03, 0.01, -0.02, 0, -0.02, '${adjustmentId}')`);
+    const historical = await db.query(
+      "SELECT to_jsonb(r) AS receipt FROM app_reservation_settlements r ORDER BY reservation_transaction_id",
+    );
+    expect(historical.rows.length).toBeGreaterThan(0);
+    await db.exec(endpointMigrationSql);
+    const upgraded =
+      await db.query(`SELECT to_jsonb(r) - 'creator_rule_version' - 'creator_original_ledger_entry_id' - 'creator_initial_amount' - 'creator_final_amount' AS receipt
+      FROM app_reservation_settlements r ORDER BY reservation_transaction_id`);
+    expect(upgraded.rows).toEqual(historical.rows);
+    await expect(
+      db.exec(
+        `UPDATE app_reservation_settlements SET actual_base_cost=0.02 WHERE reservation_transaction_id='${reservationId}'`,
+      ),
+    ).rejects.toThrow("immutable");
+    await expect(
+      db.exec(
+        `INSERT INTO app_reservation_settlements SELECT * FROM app_reservation_settlements WHERE reservation_transaction_id='${reservationId}'`,
+      ),
+    ).rejects.toThrow("duplicate key");
+    const originalId = "00000000-0000-4000-8000-000000000050";
+    await db.exec(`
+      INSERT INTO credit_transactions(id, organization_id, amount, type, metadata) VALUES (
+        '${monetizedReservationId}', '${organizationId}', -0.025, 'debit',
+        '{"type":"app_chat_reservation","settlement_marker":"app_chat_reservation_v1","appId":"${appId}","userId":"${userId}","creatorUserId":"${creatorId}","reserved_amount":0.02,"markupPercentage":25}'
+      );
+      INSERT INTO credit_transactions(id, organization_id, amount, type, stripe_payment_intent_id)
+        VALUES ('${monetizedAdjustmentId}', '${organizationId}', 0.02125, 'refund', 'reconcile-refund:${monetizedReservationId}');
+      INSERT INTO redeemable_earnings_ledger(id,user_id,amount,earnings_source,entry_type,metadata)
+        VALUES ('${originalId}','${creatorId}',0.005,'miniapp','earning',
+          '{"chargeTransactionId":"${monetizedReservationId}","app_id":"${appId}","transaction_user_id":"${userId}","earnings_type":"inference_markup","original_source_id":"app-charge:${monetizedReservationId}:inference_markup:deduct"}'),
+        ('${creatorLedgerId}','${creatorId}',-0.0042,'miniapp','adjustment','{}');
+    `);
+    const receipt = `INSERT INTO app_reservation_settlements (
+      reservation_transaction_id,organization_id,app_id,user_id,creator_user_id,terminal_source,outcome,
+      reserved_base_cost,actual_base_cost,markup_percentage,reserved_total_cost,actual_total_cost,
+      organization_adjustment,creator_adjustment,platform_adjustment,credit_transaction_id,
+      redeemable_ledger_entry_id,creator_rule_version,creator_original_ledger_entry_id,creator_initial_amount,creator_final_amount
+    ) VALUES ('${monetizedReservationId}','${organizationId}','${appId}','${userId}','${creatorId}',
+      'provider','refund',0.02,0.003,25,0.025,0.00375,-0.02125,-0.00425,-0.017,
+      '${monetizedAdjustmentId}','${creatorLedgerId}',2,'${originalId}',0.005,0.0007)`;
+    await expect(db.exec(receipt)).rejects.toThrow("creator ledger does not match");
+    await db.exec(
+      `UPDATE redeemable_earnings_ledger SET amount=-0.0043 WHERE id='${creatorLedgerId}'`,
+    );
+    for (const field of ["app_id", "transaction_user_id", "chargeTransactionId"]) {
+      const before = await db.query<{ metadata: Record<string, string> }>(
+        `SELECT metadata FROM redeemable_earnings_ledger WHERE id='${originalId}'`,
+      );
+      await db.exec(
+        `UPDATE redeemable_earnings_ledger SET metadata=jsonb_set(metadata,'{${field}}','"${otherOrganizationId}"') WHERE id='${originalId}'`,
+      );
+      await expect(db.exec(receipt)).rejects.toThrow("original earning identity");
+      await db.query(`UPDATE redeemable_earnings_ledger SET metadata=$1 WHERE id=$2`, [
+        JSON.stringify(before.rows[0].metadata),
+        originalId,
+      ]);
+    }
+    await db.exec(`UPDATE redeemable_earnings_ledger SET user_id=NULL WHERE id='${originalId}'`);
+    await expect(db.exec(receipt)).rejects.toThrow("original earning identity");
+    await db.exec(
+      `UPDATE redeemable_earnings_ledger SET user_id='${creatorId}' WHERE id='${originalId}'`,
+    );
+    await db.exec(receipt);
+    const sum = await db.query(
+      "SELECT sum(amount)::text AS amount FROM redeemable_earnings_ledger",
+    );
+    expect(sum.rows).toEqual([{ amount: "0.0007" }]);
+    await expect(
+      db.exec(`UPDATE redeemable_earnings_ledger SET amount=0.006 WHERE id='${originalId}'`),
+    ).rejects.toThrow("immutable");
+    await expect(
+      db.exec(`DELETE FROM redeemable_earnings_ledger WHERE id='${originalId}'`),
+    ).rejects.toThrow();
+  } finally {
+    await db.close();
+  }
+}, 60000);
+
+for (const caseData of [
+  {
+    label: "subunit refund",
+    markup: 0.01,
+    held: 0.020002,
+    actual: 0,
+    total: 0,
+    delta: -0.020002,
+    creatorDelta: -0.000002,
+    platformDelta: -0.02,
+    final: 0,
+    outcome: "refund",
+  },
+  {
+    label: "uncollected overage",
+    markup: 0.01,
+    held: 0.020002,
+    actual: 2,
+    total: 2.0002,
+    delta: 1.980198,
+    creatorDelta: 0.000198,
+    platformDelta: 1.98,
+    final: 0,
+    outcome: "uncollected_overage",
+  },
+]) {
+  test(`v2 migration rejects fabricated creator authority for ${caseData.label}`, async () => {
+    const db = await prerequisiteDb();
+    try {
+      await db.exec(migrationSql);
+      await db.exec(endpointMigrationSql);
+      await db.exec(`INSERT INTO credit_transactions(id,organization_id,amount,type,metadata) VALUES (
+        '${monetizedReservationId}','${organizationId}',-${caseData.held},'debit',
+        '{"type":"app_chat_reservation","settlement_marker":"app_chat_reservation_v1","appId":"${appId}","userId":"${userId}","creatorUserId":"${creatorId}","reserved_amount":0.02,"markupPercentage":${caseData.markup}}')`);
+      if (caseData.outcome === "refund")
+        await db.exec(`INSERT INTO credit_transactions(id,organization_id,amount,type,stripe_payment_intent_id) VALUES (
+        '${monetizedAdjustmentId}','${organizationId}',${-caseData.delta},'refund','reconcile-refund:${monetizedReservationId}')`);
+      const receipt = `INSERT INTO app_reservation_settlements (
+        reservation_transaction_id,organization_id,app_id,user_id,creator_user_id,terminal_source,outcome,
+        reserved_base_cost,actual_base_cost,markup_percentage,reserved_total_cost,actual_total_cost,
+        organization_adjustment,creator_adjustment,platform_adjustment,credit_transaction_id,
+        creator_rule_version,creator_initial_amount,creator_final_amount
+      ) VALUES ('${monetizedReservationId}','${organizationId}','${appId}','${userId}','${creatorId}','provider','${caseData.outcome}',
+        0.02,${caseData.actual},${caseData.markup},${caseData.held},${caseData.total},${caseData.delta},${caseData.creatorDelta},${caseData.platformDelta},
+        ${caseData.outcome === "refund" ? `'${monetizedAdjustmentId}'` : "NULL"},2,0,0)`;
+      await db.exec(`INSERT INTO redeemable_earnings_ledger(id,user_id,amount,earnings_source,entry_type,metadata) VALUES (
+        '${creatorLedgerId}','${creatorId}',0,'miniapp','earning','{"chargeTransactionId":"${monetizedReservationId}"}')`);
+      await expect(db.exec(receipt)).rejects.toThrow("absent ledger authority");
+      await db.exec(`DELETE FROM redeemable_earnings_ledger WHERE id='${creatorLedgerId}'`);
+      await db.exec(receipt);
+      const rows = await db.query(
+        `SELECT creator_final_amount::text AS amount, redeemable_ledger_entry_id FROM app_reservation_settlements WHERE reservation_transaction_id='${monetizedReservationId}'`,
+      );
+      expect(rows.rows).toEqual([{ amount: "0.0000", redeemable_ledger_entry_id: null }]);
+    } finally {
+      await db.close();
+    }
+  }, 60000);
+}

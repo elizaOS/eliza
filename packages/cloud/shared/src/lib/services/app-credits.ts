@@ -19,7 +19,7 @@ import {
 import { apps, appUsers } from "../../db/schemas/apps";
 import { creditTransactions } from "../../db/schemas/credit-transactions";
 import { organizations } from "../../db/schemas/organizations";
-import { redeemableEarnings } from "../../db/schemas/redeemable-earnings";
+import { redeemableEarnings, redeemableEarningsLedger } from "../../db/schemas/redeemable-earnings";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { getRequestIdempotencyKey } from "../runtime/request-context";
@@ -1820,6 +1820,49 @@ export class AppCreditsService {
         inference_markup_percentage: markupPercentage.toNumber(),
         persistAppEarnings: Boolean(currentApp),
       };
+      const initialCreatorAmount = reservedBase
+        .mul(markupPercentage)
+        .div(100)
+        .toDecimalPlaces(6, Decimal.ROUND_HALF_UP)
+        .toDecimalPlaces(4, Decimal.ROUND_DOWN);
+      const originalCreatorRows = await tx
+        .select()
+        .from(redeemableEarningsLedger)
+        .where(
+          sql`${redeemableEarningsLedger.metadata}->>'chargeTransactionId' = ${params.reservationTransactionId}`,
+        )
+        .for("update");
+      const originalCreator = originalCreatorRows[0];
+      if (
+        initialCreatorAmount.isZero()
+          ? originalCreatorRows.length !== 0
+          : originalCreatorRows.length !== 1 ||
+            !originalCreator ||
+            originalCreator.user_id !== creatorUserId ||
+            originalCreator.entry_type !== "earning" ||
+            originalCreator.earnings_source !== "miniapp" ||
+            originalCreator.metadata.app_id !== params.appId ||
+            originalCreator.metadata.transaction_user_id !== params.userId ||
+            originalCreator.metadata.earnings_type !== "inference_markup" ||
+            originalCreator.metadata.original_source_id !==
+              `app-charge:${params.reservationTransactionId}:inference_markup:deduct` ||
+            !new Decimal(originalCreator.amount).equals(initialCreatorAmount)
+      ) {
+        throw new ElizaError("App settlement lacks its committed creator earning authority", {
+          code: "APP_CREATOR_SETTLEMENT_AUTHORITY_MISMATCH",
+          context: { reservationTransactionId: params.reservationTransactionId, organizationId },
+        });
+      }
+      const collectsActual =
+        !organizationAdjustment.gt(0) || new Decimal(lockedOrg.balance).gte(organizationAdjustment);
+      const finalCreatorAmount = collectsActual
+        ? actualBase
+            .mul(markupPercentage)
+            .div(100)
+            .toDecimalPlaces(6, Decimal.ROUND_HALF_UP)
+            .toDecimalPlaces(4, Decimal.ROUND_DOWN)
+        : initialCreatorAmount;
+      const creatorLedgerAdjustment = finalCreatorAmount.minus(initialCreatorAmount);
       const identityMetadata = {
         ...params.metadata,
         reservation_transaction_id: params.reservationTransactionId,
@@ -1840,11 +1883,11 @@ export class AppCreditsService {
           refundAmount: organizationAdjustment.abs().toNumber(),
           scope: "AppCreditsService.settleAppReservation",
         });
-        if (creatorAdjustment.lt(0) && creatorUserId) {
+        if (creatorLedgerAdjustment.lt(0) && creatorUserId) {
           const reversal = await this.reverseCreatorEarnings(
             params.appId,
             params.userId,
-            creatorAdjustment.abs().toNumber(),
+            creatorLedgerAdjustment.abs().toNumber(),
             platformAdjustment.abs().toNumber(),
             "reconcile_refund",
             identityMetadata,
@@ -1882,12 +1925,12 @@ export class AppCreditsService {
           newBalance = debit.newBalance;
           resultOutcome = "overage";
           creditTransactionId = debit.transaction.id;
-          if (creatorAdjustment.gt(0) && creatorUserId) {
+          if (creatorLedgerAdjustment.gt(0) && creatorUserId) {
             const earning = await this.recordCreatorEarnings(
               params.appId,
               params.userId,
               "inference_markup",
-              creatorAdjustment.toNumber(),
+              creatorLedgerAdjustment.toNumber(),
               platformAdjustment.toNumber(),
               "reconcile_charge",
               identityMetadata,
@@ -1910,6 +1953,10 @@ export class AppCreditsService {
           app_id: params.appId,
           user_id: params.userId,
           creator_user_id: creatorUserId,
+          creator_rule_version: 2,
+          creator_original_ledger_entry_id: originalCreator?.id ?? null,
+          creator_initial_amount: initialCreatorAmount.toFixed(4),
+          creator_final_amount: finalCreatorAmount.toFixed(4),
           terminal_source: terminalSource,
           outcome: resultOutcome,
           reserved_base_cost: reservedBase.toFixed(6),

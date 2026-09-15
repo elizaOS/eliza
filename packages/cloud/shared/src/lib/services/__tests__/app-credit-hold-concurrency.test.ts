@@ -797,3 +797,86 @@ describe("reconcileCredits — refund ↔ creator-earnings-reversal pairing (#10
 test("pglite schema applied — never a silent skip", () => {
   expect(pgliteReady).toBe(true);
 });
+
+test(
+  "settlement conserves creator endpoints across a fractional markup refund",
+  async () => {
+    expect(pgliteReady).toBe(true);
+    const organizationId = await seedOrg("1.000000");
+    const userId = await seedUser(organizationId);
+    const app = await seedApp({
+      organizationId,
+      createdByUserId: userId,
+      inferenceMarkupPercentage: 25,
+    });
+    await dbWrite.insert(appUsers).values({ app_id: app.id, user_id: userId });
+    const reservation = await appCreditsService.reserveInferenceCredits({
+      appId: app.id,
+      userId,
+      organizationId,
+      estimatedBaseCost: 0.02,
+      description: "Synthetic current-base rounding control",
+      idempotencyKey: "current-app-precision",
+      metadata: { model: "fixture", requestId: "transport-current-app-precision" },
+      app,
+    });
+    const original = await dbWrite
+      .select()
+      .from(redeemableEarningsLedger)
+      .where(eq(redeemableEarningsLedger.user_id, userId));
+    expect(original.map((entry) => entry.amount)).toEqual(["0.0050"]);
+    const result = await reservation.reconcile(0.003);
+    expect(result.actualCost).toBe(0.00375);
+    expect(await orgBalance(organizationId)).toBe(0.99625);
+    expect(await creatorRedeemableBalance(userId)).toBe(0.0007);
+    const movements = await dbWrite
+      .select()
+      .from(redeemableEarningsLedger)
+      .where(eq(redeemableEarningsLedger.user_id, userId));
+    expect(movements.map((entry) => entry.amount).sort()).toEqual(["-0.0043", "0.0050"]);
+    await reservation.reconcile(0.003);
+    expect(await creatorRedeemableBalance(userId)).toBe(0.0007);
+    expect(await creatorEarningLedgerCount(userId)).toBe(1);
+  },
+  PGLITE_TIMEOUT,
+);
+
+for (const scenario of [
+  { label: "subunit creator hold refund", markup: 0.01, actual: 0, creator: 0 },
+  { label: "uncollected overage", markup: 25, actual: 2, creator: 0.005 },
+]) {
+  test(
+    `settlement does not invent earnings for ${scenario.label}`,
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const organizationId = await seedOrg("1.000000");
+      const userId = await seedUser(organizationId);
+      const app = await seedApp({
+        organizationId,
+        createdByUserId: userId,
+        inferenceMarkupPercentage: scenario.markup,
+      });
+      await dbWrite.insert(appUsers).values({ app_id: app.id, user_id: userId });
+      const reservation = await appCreditsService.reserveInferenceCredits({
+        appId: app.id,
+        userId,
+        organizationId,
+        estimatedBaseCost: 0.02,
+        description: scenario.label,
+        idempotencyKey: uniq("endpoint"),
+        app,
+      });
+      await reservation.reconcile(scenario.actual);
+      expect(await creatorRedeemableBalance(userId)).toBe(scenario.creator);
+      const [receipt] = await dbWrite
+        .select()
+        .from(appReservationSettlements)
+        .where(eq(appReservationSettlements.user_id, userId));
+      expect(receipt.creator_final_amount).toBe(scenario.creator.toFixed(4));
+      expect(receipt.redeemable_ledger_entry_id).toBeNull();
+      if (scenario.creator === 0) expect(receipt.creator_original_ledger_entry_id).toBeNull();
+      else expect(receipt.outcome).toBe("uncollected_overage");
+    },
+    PGLITE_TIMEOUT,
+  );
+}
