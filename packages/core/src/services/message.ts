@@ -35,6 +35,7 @@ export {
 	evaluatePlannedReplyEgress,
 	type PlannedReplyClaimKind,
 	type PlannedReplyEgressDecision,
+	parseReplyRecoveryHistorySelection,
 	plannedReplyHasClaimGroundingReceipt,
 	resolvePlannedReplyEgress,
 } from "./message/egress-policy.js";

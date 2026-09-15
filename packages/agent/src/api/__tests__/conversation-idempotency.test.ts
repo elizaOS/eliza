@@ -358,10 +358,16 @@ function createReplyRecoveryHarness(
     unknownCommit?: boolean;
     pending?: boolean;
     failureKind?: "provider_issue" | "reply_generation_error";
+    selectedHistory?: boolean;
   } = {},
 ) {
   const harness = createHarness();
   const runtime = harness.state.runtime as AgentRuntime;
+  const selectedContext =
+    "original-context-evidence: keep the red note unchanged";
+  const fullContext = options.selectedHistory
+    ? `${selectedContext}\nUnrelated complete original dialogue.`
+    : selectedContext;
   const receipt: EffectReceipt = {
     receiptId: "reply-recovery-receipt",
     operation: "qa.note.create",
@@ -442,7 +448,20 @@ function createReplyRecoveryHarness(
         terminalFailure: failure,
         actionResults: [result],
         replyRecovery: {
-          context: "original-context-evidence: keep the red note unchanged",
+          context: fullContext,
+          ...(options.selectedHistory
+            ? {
+                historySelection: {
+                  context: selectedContext,
+                  fullContextHash: createHash("sha256")
+                    .update(fullContext)
+                    .digest("hex"),
+                  contextHash: createHash("sha256")
+                    .update(selectedContext)
+                    .digest("hex"),
+                },
+              }
+            : {}),
           pendingToolCalls: options.pending
             ? [
                 {
@@ -585,6 +604,62 @@ describe("conversation-route chat idempotency wiring", () => {
   afterEach(() => {
     vi.clearAllMocks();
   });
+
+  it.each(["selected", "restore", "stale"] as const)(
+    "preserves %s recovery history through durable route reload",
+    async (mode) => {
+      const h = createReplyRecoveryHarness({ selectedHistory: true });
+      const first = await runRoute("POST", SEND_PATH, h.state, {
+        text: "Create the QA note.",
+        clientMessageId: `selected-recovery-${mode}`,
+      });
+      const outcome = first.captured.payload as {
+        messageId: string;
+        userMessageId: string;
+      };
+      const source = h.storedMemories.find(
+        (m) => m.id === outcome.userMessageId,
+      )!;
+      const marker = source.content.chatIdempotency as {
+        replyRecoveryJson: string;
+      };
+      if (mode === "stale") {
+        const saved = JSON.parse(marker.replyRecoveryJson);
+        saved.historySelection.context = "Tampered selected context.";
+        marker.replyRecoveryJson = JSON.stringify(saved);
+      }
+      if (mode === "restore")
+        h.generateReply.mockResolvedValueOnce(
+          JSON.stringify({
+            contextRequest: "full",
+            response: "Ignore this accompanying draft.",
+          }),
+        );
+      resetChatDedupe();
+      const retryPath = `${SEND_PATH}/${outcome.messageId}/retry-reply`;
+      const result = await runRoute("POST", retryPath, h.state, {});
+      expect(result.captured.payload).toMatchObject({
+        text: "Created the QA note.",
+        messageId: outcome.messageId,
+      });
+      expect(h.generateReply).toHaveBeenCalledTimes(mode === "restore" ? 2 : 1);
+      const calls = h.generateReply.mock.calls as unknown as Array<
+        [unknown, { prompt: string }]
+      >;
+      expect(
+        calls[0][1].prompt.includes("Unrelated complete original dialogue."),
+      ).toBe(mode === "stale");
+      if (mode === "restore")
+        expect(calls[1][1].prompt).toContain(
+          "Unrelated complete original dialogue.",
+        );
+      expect(h.effects).toEqual(["qa-reply-note"]);
+      expect(h.storedMemories).toHaveLength(2);
+      const after = await runRoute("POST", retryPath, h.state, {});
+      expect(after.captured.payload).toEqual(result.captured.payload);
+      expect(h.generateReply).toHaveBeenCalledTimes(mode === "restore" ? 2 : 1);
+    },
+  );
 
   it.each(
     [
@@ -1092,57 +1167,64 @@ describe("conversation-route chat idempotency wiring", () => {
     ).toEqual(laterMessage);
   });
 
-  it("rechecks scoped recipients after generation and rejects malformed declared disclosure", async () => {
-    const harness = createReplyRecoveryHarness();
-    const first = await runRoute("POST", SEND_PATH, harness.state, {
-      text: "create QA note",
-      clientMessageId: "scoped-reply",
-    });
-    const outcome = first.captured.payload as {
-      messageId: UUID;
-      userMessageId: UUID;
-    };
-    const user = harness.storedMemories.find(
-      (memory) => memory.id === outcome.userMessageId,
-    );
-    if (!user) throw new Error("user memory missing");
-    const marker = user.content.chatIdempotency as {
-      replyRecoveryJson: string;
-    };
-    const evidence = JSON.parse(marker.replyRecoveryJson);
-    evidence.actionResults[0].data.disclosureSubject = {
-      scope: "owner-private",
-      grants: [{ entityId: USER_ID, mode: "full" }],
-    };
-    marker.replyRecoveryJson = JSON.stringify(evidence);
-    const runtime = harness.state.runtime as AgentRuntime;
-    harness.generateReply.mockImplementationOnce(async () => {
-      vi.spyOn(runtime, "getParticipantsForRoom").mockResolvedValue([
-        USER_ID,
-        AGENT_ID,
-        stringToUuid("new-viewer"),
-      ]);
-      return JSON.stringify({
-        response: "Created the QA note.",
-        effectReceiptIds: ["reply-recovery-receipt"],
+  it.each([false, true])(
+    "rechecks scoped recipients before restoration=%s or delivery and rejects malformed disclosure",
+    async (restore) => {
+      const harness = createReplyRecoveryHarness({ selectedHistory: restore });
+      const first = await runRoute("POST", SEND_PATH, harness.state, {
+        text: "create QA note",
+        clientMessageId: "scoped-reply",
       });
-    });
-    const retryPath = `${SEND_PATH}/${outcome.messageId}/retry-reply`;
-    const denied = await runRoute("POST", retryPath, harness.state, {});
-    expect(harness.generateReply).toHaveBeenCalledTimes(1);
-    expect(denied.record.writes.join("")).toContain("error 403");
-    expect(
-      harness.storedMemories.find((memory) => memory.id === outcome.messageId)
-        ?.content.replyRecoveryAvailable,
-    ).toBe(true);
-    expect(JSON.parse(marker.replyRecoveryJson).reply).toBeUndefined();
-    evidence.actionResults[0].data.disclosureSubject = null;
-    marker.replyRecoveryJson = JSON.stringify(evidence);
-    const malformed = await runRoute("POST", retryPath, harness.state, {});
-    expect(malformed.record.writes.join("")).toContain("error 409");
-    expect(harness.generateReply).toHaveBeenCalledTimes(1);
-    expect(harness.effects).toHaveLength(1);
-  });
+      const outcome = first.captured.payload as {
+        messageId: UUID;
+        userMessageId: UUID;
+      };
+      const user = harness.storedMemories.find(
+        (memory) => memory.id === outcome.userMessageId,
+      );
+      if (!user) throw new Error("user memory missing");
+      const marker = user.content.chatIdempotency as {
+        replyRecoveryJson: string;
+      };
+      const evidence = JSON.parse(marker.replyRecoveryJson);
+      evidence.actionResults[0].data.disclosureSubject = {
+        scope: "owner-private",
+        grants: [{ entityId: USER_ID, mode: "full" }],
+      };
+      marker.replyRecoveryJson = JSON.stringify(evidence);
+      const runtime = harness.state.runtime as AgentRuntime;
+      harness.generateReply.mockImplementationOnce(async () => {
+        vi.spyOn(runtime, "getParticipantsForRoom").mockResolvedValue([
+          USER_ID,
+          AGENT_ID,
+          stringToUuid("new-viewer"),
+        ]);
+        return JSON.stringify(
+          restore
+            ? { contextRequest: "full" }
+            : {
+                response: "Created the QA note.",
+                effectReceiptIds: ["reply-recovery-receipt"],
+              },
+        );
+      });
+      const retryPath = `${SEND_PATH}/${outcome.messageId}/retry-reply`;
+      const denied = await runRoute("POST", retryPath, harness.state, {});
+      expect(harness.generateReply).toHaveBeenCalledTimes(1);
+      expect(denied.record.writes.join("")).toContain("error 403");
+      expect(
+        harness.storedMemories.find((memory) => memory.id === outcome.messageId)
+          ?.content.replyRecoveryAvailable,
+      ).toBe(true);
+      expect(JSON.parse(marker.replyRecoveryJson).reply).toBeUndefined();
+      evidence.actionResults[0].data.disclosureSubject = null;
+      marker.replyRecoveryJson = JSON.stringify(evidence);
+      const malformed = await runRoute("POST", retryPath, harness.state, {});
+      expect(malformed.record.writes.join("")).toContain("error 409");
+      expect(harness.generateReply).toHaveBeenCalledTimes(1);
+      expect(harness.effects).toHaveLength(1);
+    },
+  );
 
   it.each(["replayed-noop", "rollback", "invalid-receipt"] as const)(
     "uses canonical receipt authority for %s recovery",
@@ -1204,10 +1286,14 @@ describe("conversation-route chat idempotency wiring", () => {
     },
   );
 
-  it.each(["user-edit", "assistant-edit", "assistant-delete"] as const)(
-    "preserves concurrent %s during reply generation",
-    async (change) => {
-      const harness = createReplyRecoveryHarness();
+  it.each(
+    ["user-edit", "assistant-edit", "assistant-delete"].flatMap((change) =>
+      [false, true].map((restore) => ({ change, restore })),
+    ),
+  )(
+    "preserves concurrent $change before restoration=$restore or reply delivery",
+    async ({ change, restore }) => {
+      const harness = createReplyRecoveryHarness({ selectedHistory: restore });
       const first = await runRoute("POST", SEND_PATH, harness.state, {
         text: "create QA note",
         clientMessageId: `concurrent-${change}`,
@@ -1232,10 +1318,14 @@ describe("conversation-route chat idempotency wiring", () => {
               text: "Concurrent user edit must survive",
             },
           };
-        return JSON.stringify({
-          response: "Created the QA note.",
-          effectReceiptIds: ["reply-recovery-receipt"],
-        });
+        return JSON.stringify(
+          restore
+            ? { contextRequest: "full" }
+            : {
+                response: "Created the QA note.",
+                effectReceiptIds: ["reply-recovery-receipt"],
+              },
+        );
       });
       const result = await runRoute(
         "POST",
@@ -1244,6 +1334,7 @@ describe("conversation-route chat idempotency wiring", () => {
         {},
       );
       expect(result.record.writes.join("")).toContain("error 409");
+      expect(harness.generateReply).toHaveBeenCalledTimes(1);
       const current = harness.storedMemories.find(
         (memory) => memory.id === targetId,
       );

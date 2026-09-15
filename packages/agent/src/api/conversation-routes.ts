@@ -47,6 +47,7 @@ import {
   normalizeActionFailureProvenance,
   normalizeActionReplyFailure,
   normalizeEffectReceipts,
+  parseReplyRecoveryHistorySelection,
   projectCompleteToolValueForModel,
   type RoleGrantSource,
   type RolesWorldMetadata,
@@ -1592,8 +1593,13 @@ function parseDurableConversationReplyRecovery(
         ))
     )
       return null;
+    const historySelection = parseReplyRecoveryHistorySelection(
+      value.historySelection,
+      value.context,
+    );
     return {
       context: value.context,
+      ...(historySelection ? { historySelection } : {}),
       pendingToolCalls: value.pendingToolCalls,
       evaluatorOutputs: value.evaluatorOutputs,
       ownerExclusiveDisclosureUsed: value.ownerExclusiveDisclosureUsed,
@@ -4604,6 +4610,33 @@ export async function handleConversationRoutes(
             reply: "",
             actionResults: recovery.actionResults,
             recovery,
+            beforeContextRestore: async () => {
+              await authorizeRecoveryAudience();
+              const currentSources = await runtime.getMemoriesByIds(
+                [userId, assistantId],
+                "messages",
+              );
+              assertCurrent();
+              const currentUser = currentSources.find(
+                (source) => source.id === userId,
+              );
+              const currentAssistant = currentSources.find(
+                (source) => source.id === assistantId,
+              );
+              if (
+                !currentUser ||
+                !currentAssistant ||
+                conversationReplyContentHash(currentUser.content) !==
+                  recovery.userContentHash ||
+                conversationReplyContentHash(currentAssistant.content) !==
+                  originalAssistantHash
+              ) {
+                throw new ElizaError(
+                  "The original turn changed before reply context restoration",
+                  { code: "CHAT_REPLY_RECOVERY_CONFLICT" },
+                );
+              }
+            },
           }));
         if (
           reply.effectReceiptIds.length > 0 &&

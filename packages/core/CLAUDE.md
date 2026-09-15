@@ -294,4 +294,11 @@ Delivered navigation reply reuse may match the canonical viewId carried by the s
 
 Structured failure replies may reuse exact-repeat dialogue references over the RECENT_MESSAGES provider's complete formatted entries. Require exact reconstruction of the legacy transcript before encoding; custom or mismatched states keep the complete string. Retain every occurrence, timestamp, speaker, thought, action and attachment field already present in that transcript. Small histories keep their original rendering. This path does not select history, read deferred sources, change failure classification or replay effects.
 
+Durable reply-only recovery keeps the complete rendered context and may also
+retain its validated Stage-1 history selection, bound to both rendered values.
+Legacy, stale, malformed, coding and restored-full contexts use full evidence.
+The recovery model may request contextRequest=full once; ignore any accompanying
+draft, revalidate the host recovery audience/lease, and execute no tools. Keep
+current constraints, requests, pending work and receipts in both renderings.
+
 When direct-text context discovery has no projected history, native contextRequests choices match every currently available provider/catalog reference. With no deferred references the field is exactly []; this is an availability contract, not a history or output-length cap. Rebuild it after each authorized read so loaded references cannot be requested again. Literal history search retains its open schema while the source-bound projection exists. Custom non-string/whole-array-enum field contracts, group/voice/coding paths and runtime validation remain unchanged.
