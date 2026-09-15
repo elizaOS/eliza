@@ -18,6 +18,7 @@ process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
+import { installOrganizationPolicyTestSchema } from "../../../db/repositories/organization-policy-test-fixture";
 import { agentBackupObjects } from "../../../db/schemas/agent-backup-catalog";
 import { agentComputeStopIntents } from "../../../db/schemas/agent-compute-stop-intents";
 import { agentNodeIncarnationHistories } from "../../../db/schemas/agent-node-incarnation-histories";
@@ -122,6 +123,8 @@ beforeAll(async () => {
   };
   const { apply } = await pushSchema(schema as never, dbWrite as never);
   await apply();
+  const { getPgliteClientForTests } = await import("../../../db/client");
+  await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
   await applyLifecycleRevisionMigration();
 }, TEST_TIMEOUT);
 

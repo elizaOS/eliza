@@ -7,14 +7,12 @@
  * resetting an active quota window. The object never queries Postgres or Redis.
  */
 
-import { runWithDbCacheAsync } from "@/db/client";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
 import { isAffiliateBillingAttribution } from "@/lib/services/affiliate-billing-attribution";
 import type { InferenceBalanceFence } from "@/lib/services/credits";
-import {
-  type InferenceAdmissionRecoveryContext,
-  type InferenceAdmissionRecoveryResult,
-  recoverExpiredInferenceAdmissionLease,
+import type {
+  InferenceAdmissionRecoveryContext,
+  InferenceAdmissionRecoveryResult,
 } from "@/lib/services/inference-admission-recovery";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -1507,6 +1505,7 @@ export class InferenceAdmissionGate {
   }
 
   async fetch(request: Request): Promise<Response> {
+    const handlerStartedAt = performance.now();
     if (request.method !== "POST") {
       return new Response("Method not allowed", { status: 405 });
     }
@@ -1608,13 +1607,21 @@ export class InferenceAdmissionGate {
         this.release(body as LeaseIdentityRequest),
       );
     }
-    if (path === "/rate-limit") {
-      return await this.serializeRateLimit(() =>
-        this.rateLimit(body as RateLimitRequest),
+    if (path === "/rate-limit" || path === "/rate-limit-warm") {
+      const response = await this.serializeRateLimit(() =>
+        path === "/rate-limit"
+          ? this.rateLimit(body as RateLimitRequest)
+          : this.warmRateLimit(),
       );
-    }
-    if (path === "/rate-limit-warm") {
-      return await this.serializeRateLimit(() => this.warmRateLimit());
+      // Internal binding telemetry only. This includes body parsing and our
+      // queue, but excludes time before handler entry and the platform output
+      // gate that commits storage before delivering the response. Do not label
+      // the difference from caller elapsed time as network time alone.
+      response.headers.set(
+        "x-eliza-gate-handler-ms",
+        String(Math.max(0, performance.now() - handlerStartedAt)),
+      );
+      return response;
     }
     if (path === "/rate-limit-v2-cutover") {
       return await this.serializeRateLimit(() =>
@@ -1856,6 +1863,15 @@ export class InferenceAdmissionGate {
     if (expired.length === 0) return;
     const results = await Promise.allSettled(
       expired.map(async ({ requestId, lease }) => {
+        // Recovery is alarm-only. Keep its database, pricing, and provider
+        // dependencies out of Worker startup and ordinary admission requests.
+        const [
+          { runWithDbCacheAsync },
+          { recoverExpiredInferenceAdmissionLease },
+        ] = await Promise.all([
+          import("@/db/client"),
+          import("@/lib/services/inference-admission-recovery"),
+        ]);
         const inferenceBalanceFence: InferenceBalanceFence = {
           // Alarm recovery charges the exact active estimate, so the existing
           // lease already fences this amount. The authoritative revision below

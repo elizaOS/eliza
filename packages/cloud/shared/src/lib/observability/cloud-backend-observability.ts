@@ -149,6 +149,7 @@ export async function observeInferenceDependency<T>(
   dependency: "policy_lock" | "policy_read" | "transaction" | "durable_object",
   operation: string,
   fn: () => Promise<T>,
+  handlerTiming?: (result: T) => number | undefined,
 ): Promise<T> {
   const context = requestAls.getStore();
   if (
@@ -159,8 +160,10 @@ export async function observeInferenceDependency<T>(
   }
   const startedAt = performance.now();
   let outcome: "returned" | "threw" = "threw";
+  let completedResult: T | undefined;
   try {
     const result = await fn();
+    completedResult = result;
     outcome = "returned";
     return result;
   } finally {
@@ -169,12 +172,18 @@ export async function observeInferenceDependency<T>(
       // Operations are static caller labels, never SQL, credentials, prompts,
       // responses, or error messages. Nested spans overlap; do not add them.
       try {
+        const handlerMs =
+          outcome === "returned" && handlerTiming ? handlerTiming(completedResult as T) : undefined;
         logger.audit("[InferenceAdmission] dependency timing", {
           traceId: context.traceId,
           dependency,
           operation,
           durationMs,
           outcome,
+          ...(typeof handlerMs === "number" &&
+            Number.isFinite(handlerMs) &&
+            handlerMs >= 0 &&
+            handlerMs <= durationMs && { handlerMs }),
         });
       } catch {
         // error-policy:J6 diagnostic sink failure must not replace the exact
