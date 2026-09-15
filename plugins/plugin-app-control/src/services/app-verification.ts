@@ -76,7 +76,14 @@ export type VerificationCheckKind =
 export type VerificationCheck =
 	| { kind: "typecheck" }
 	| { kind: "lint" }
-	| { kind: "test"; filter?: string }
+	| {
+			kind: "test";
+			/**
+			 * Literal test-name filter. On Windows, shell metacharacters are rejected
+			 * because npm scripts require dispatch through the package-manager shim.
+			 */
+			filter?: string;
+	  }
 	| { kind: "build" }
 	| { kind: "launch"; appName: string }
 	| {
@@ -354,7 +361,11 @@ async function runTests(
 	filter: string | undefined,
 ): Promise<CheckResult> {
 	const start = nowMs();
-	if (filter && /[\0\r\n"&|<>()^%!]/u.test(filter)) {
+	if (
+		process.platform === "win32" &&
+		filter &&
+		/[\0\r\n"&|<>()^%!]/u.test(filter)
+	) {
 		throw new Error("Test filter contains shell metacharacters");
 	}
 	const { file, args } = packageScriptCommand(pm, "test");
