@@ -16,6 +16,13 @@ import {
   parseJudgeScore,
 } from "./cerebras-judge.ts";
 
+import {
+  compareJudgeModels,
+  getJudgeModelObserver,
+  type JudgeIndependence,
+  type ObservedJudgeModel,
+} from "./judge-model-observer.ts";
+
 const JUDGE_PROMPT_TEMPLATE = `Score the candidate response against the rubric from 0.0 (fails completely) to 1.0 (fully satisfies).
 
 The candidate may contain both natural-language replies and structured execution evidence such as action traces, result payloads, browser-task status, intervention requests, connector dispatches, and artifacts. Treat that structured evidence as primary proof of whether the flow actually happened. Do not require the assistant prose itself to restate every connector name when the trace already proves execution.
@@ -46,6 +53,9 @@ async function isCerebrasJudgeEnabled(): Promise<boolean> {
 }
 
 export interface JudgeEvidence {
+  actorModels: ObservedJudgeModel[];
+  judgeModels: ObservedJudgeModel[];
+  independence: JudgeIndependence;
   prompt: string;
   transport: "runtime" | "cerebras";
   attempts: Array<{ raw: string; accepted: boolean }>;
@@ -134,7 +144,11 @@ export async function judgeTextWithLlm(
     ? new CerebrasJudge()
     : null;
 
+  const observer = getJudgeModelObserver(runtime);
   const evidence: JudgeEvidence = {
+    actorModels: observer?.actorModels() ?? [],
+    judgeModels: [],
+    independence: "unknown",
     prompt,
     transport: cerebrasJudge ? "cerebras" : "runtime",
     attempts: [],
@@ -146,17 +160,36 @@ export async function judgeTextWithLlm(
       const response = await cerebrasJudge.judge(prompt, {
         temperature: 0,
       });
+      evidence.judgeModels.push(
+        response.identity ?? {
+          provider: null,
+          model: null,
+          source: "unavailable",
+        },
+      );
       lastRaw = response.raw;
       result = judgeResponseToResult(response);
     } else {
-      const output = await runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt,
-        temperature: 0,
-      });
+      const call = () =>
+        runtime.useModel(ModelType.TEXT_LARGE, { prompt, temperature: 0 });
+      const observed = observer
+        ? await observer.judge(call)
+        : {
+            value: await call(),
+            models: [
+              { provider: null, model: null, source: "unavailable" as const },
+            ],
+          };
+      evidence.judgeModels.push(...observed.models);
+      const output = observed.value;
       const raw = typeof output === "string" ? output : JSON.stringify(output);
       lastRaw = raw;
       result = parseJudgeJson(raw);
     }
+    evidence.independence = compareJudgeModels(
+      evidence.actorModels,
+      evidence.judgeModels,
+    );
     evidence.attempts.push({ raw: lastRaw, accepted: result !== null });
     if (result) {
       if (attempt > 1) {

@@ -1,15 +1,7 @@
 /**
- * Judge-independence governance (#9310).
- *
- * When no independent Cerebras judge is configured, judge.ts falls back to the
- * runtime's own TEXT_LARGE model — the model under test grades itself. These
- * tests prove that self-grading is fail-loud-visible:
- *
- *   - the scenario report is stamped `judgeSelfGraded: true`,
- *   - `SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1` turns the self-graded scenario
- *     into a failure (the nightly live lane sets it),
- *   - deterministic-proxy lanes (fixture-served judges) are NOT stamped,
- *   - scenarios that never ran a judge are NOT stamped.
+ * Exercises scenario grading and serialized evidence with deterministic judge
+ * outputs. Missing model identity remains unknown and fails the strict gate;
+ * explicit fixture lanes and scenarios without judgments are distinguished.
  */
 
 import type { AgentRuntime } from "@elizaos/core";
@@ -78,7 +70,7 @@ describe("judge self-grading governance (#9310)", () => {
     vi.unstubAllEnvs();
   });
 
-  it("stamps judgeSelfGraded when the runtime fallback judge scored the run", async () => {
+  it("reports unknown identity when the fallback emits no model observations", async () => {
     const report = await runScenario(
       judgedScenario("judge-self-graded-stamp"),
       createJudgedRuntime(),
@@ -95,12 +87,15 @@ describe("judge self-grading governance (#9310)", () => {
       },
     ]);
     expect(report.status).toBe("passed");
-    expect(report.judgeSelfGraded).toBe(true);
+    expect(report.judgeIndependence).toBe("unknown");
+    expect(report.judgeSelfGraded).toBeUndefined();
     // The stamp survives the JSON report consumers read.
-    expect(JSON.parse(JSON.stringify(report)).judgeSelfGraded).toBe(true);
+    expect(JSON.parse(JSON.stringify(report)).judgeIndependence).toBe(
+      "unknown",
+    );
   });
 
-  it("fails self-graded scenarios under SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1", async () => {
+  it("fails identity-unverified scenarios under SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1", async () => {
     vi.stubEnv("SCENARIO_JUDGE_REQUIRE_INDEPENDENT", "1");
     const report = await runScenario(
       judgedScenario("judge-self-graded-strict"),
@@ -108,7 +103,8 @@ describe("judge self-grading governance (#9310)", () => {
       RUN_OPTS,
     );
     expect(report.status).toBe("failed");
-    expect(report.judgeSelfGraded).toBe(true);
+    expect(report.judgeIndependence).toBe("unknown");
+    expect(report.judgeSelfGraded).toBeUndefined();
     const failure = report.failedAssertions.find(
       (f) => f.label === "judgeIndependence",
     );

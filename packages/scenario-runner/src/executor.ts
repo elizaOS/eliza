@@ -66,6 +66,7 @@ import {
   isJudgeIndependent,
   judgeIndependenceRequired,
 } from "./judge-independence.ts";
+import { JudgeModelObserver } from "./judge-model-observer.ts";
 import {
   beginScenarioModelFixtureAttempt,
   scenarioModelFixtureMode,
@@ -2765,7 +2766,7 @@ async function runJudgeRubricFinalCheck(
   }
 }
 
-export async function runScenario(
+async function runObservedScenario(
   scenario: ScenarioDefinition,
   runtime: AgentRuntime,
   opts: ExecutorOptions,
@@ -2891,7 +2892,7 @@ export async function runScenario(
     }
     if (!(await isJudgeIndependent())) {
       preflightProblems.push(
-        "independent judge is unavailable; configure its dedicated provider credentials",
+        "independent judge identity has not been observed; credentials alone cannot qualify this execution",
       );
     }
     if (!opts.runDir) {
@@ -3367,24 +3368,60 @@ export async function runScenario(
 
   if (judgeScores.length > 0) {
     report.judgeScore = Math.min(...judgeScores);
-    // Judge-independence governance (#9310): a judge score produced without
-    // independent judge credentials (and outside the deterministic-proxy
-    // fixture lanes) came from the model under test grading itself. Stamp it
-    // fail-loud-visible; strict mode turns it into a failure.
-    if (!deterministicJudgeFixturesActive() && !(await isJudgeIndependent())) {
-      report.judgeSelfGraded = true;
+    // Identity evidence is separate from transport configuration and fixture scoring.
+    const judgments = [
+      ...report.turns.flatMap((turn) => (turn.judgment ? [turn.judgment] : [])),
+      ...report.finalChecks.flatMap((check) =>
+        check.judgment ? [check.judgment] : [],
+      ),
+    ];
+    if (!deterministicJudgeFixturesActive()) {
+      report.judgeIndependence =
+        judgments.length &&
+        judgments.every(
+          (result) => result.evidence.independence === "independent",
+        )
+          ? "independent"
+          : judgments.some(
+                (result) => result.evidence.independence === "self-graded",
+              )
+            ? "self-graded"
+            : "unknown";
+    }
+    if (
+      !deterministicJudgeFixturesActive() &&
+      report.judgeIndependence !== "independent"
+    ) {
+      if (report.judgeIndependence === "self-graded")
+        report.judgeSelfGraded = true;
       logger.warn(
-        `[scenario-runner] ${scenario.id}: judge scores were produced by the model under test (self-graded) — set CEREBRAS_API_KEY for an independent judge`,
+        `[scenario-runner] ${scenario.id}: judge independence was not established from observed model identities; inspect judgment evidence`,
       );
       if (judgeIndependenceRequired()) {
         report.status = "failed";
         report.failedAssertions.push({
           label: "judgeIndependence",
           detail:
-            "SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1: judge scores came from the model under test (self-graded); configure CEREBRAS_API_KEY / EVAL_CEREBRAS_API_KEY so scenarios are graded independently",
+            "SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1: observed identities do not establish independence from the model under test; CEREBRAS_API_KEY alone is insufficient",
         });
       }
     }
   }
   return report;
+}
+
+/** Isolate actor/judge observations for one scenario and always detach them. */
+export async function runScenario(
+  scenario: ScenarioDefinition,
+  runtime: AgentRuntime,
+  opts: ExecutorOptions,
+): Promise<ScenarioReport> {
+  if (typeof runtime.useModel !== "function")
+    return runObservedScenario(scenario, runtime, opts);
+  const observer = new JudgeModelObserver(runtime);
+  try {
+    return await runObservedScenario(scenario, runtime, opts);
+  } finally {
+    observer.close();
+  }
 }

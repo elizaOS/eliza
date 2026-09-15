@@ -339,12 +339,11 @@ export interface ScenarioReport {
    */
   judgeScore?: number;
   /**
-   * True when the LLM-judge scores above were produced by the model under
-   * test itself (no independent Cerebras judge configured and no
-   * deterministic judge fixtures active) — the run self-graded (#9310).
-   * `SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1` turns this into a failure.
+   * True when observed actor and judge identities share a model.
+   * Missing identity is reported separately as judgeIndependence=unknown.
    */
   judgeSelfGraded?: boolean;
+  judgeIndependence?: "independent" | "self-graded" | "unknown";
 }
 
 export interface AggregateReport {
