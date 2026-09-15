@@ -61,7 +61,6 @@ Primary action for addressed messaging surfaces: DMs, group chats, channels, roo
 | `subject` | no | string | Optional subject for email-like draft operations. |
 | `messageId` | no | string | Platform message ID, full message ID, or stored memory ID for react/edit/delete/pin/respond/manage. |
 | `draftId` | no | string | Draft identifier for action=send_draft or action=schedule_draft_send. |
-| `confirmed` | no | boolean | Whether the user explicitly confirmed sending for action=send_draft. |
 | `sendAt` | no | string | Scheduled send time for action=schedule_draft_send. |
 | `emoji` | no | string | Reaction value for action=react. |
 | `pin` | no | boolean | Pin state for action=pin. Use false to unpin when supported. |

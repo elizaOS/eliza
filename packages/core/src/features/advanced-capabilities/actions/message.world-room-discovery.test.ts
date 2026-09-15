@@ -39,6 +39,11 @@ const worlds: World[] = [
 		name: "Discord Guild",
 		agentId: AGENT,
 		messageServerId: "00000000-0000-0000-0000-000000000031" as UUID,
+		// #25284: the MESSAGE umbrella now resolves the caller's principal
+		// role before dispatching; these topology tests exercise discovery
+		// logic, not the role floor, so the fixture sender holds ADMIN in
+		// the world its room resolves to.
+		metadata: { roles: { [DISCORD_OWNER]: "ADMIN" } },
 	},
 	{
 		id: TELEGRAM_WORLD,
@@ -161,6 +166,10 @@ function harness(channelType: ChannelType = ChannelType.DM): Harness {
 		),
 		getRoomsByIds,
 		getWorldsByIds,
+		// #25284: the umbrella resolves the caller's role through the room's
+		// world; resolve from the fixture set so the granted ADMIN above is
+		// visible to the admission check.
+		getWorld: vi.fn(async (worldId: UUID) => worldById.get(worldId) ?? null),
 	} as unknown as IAgentRuntime;
 	const message = {
 		id: "00000000-0000-0000-0000-000000000041" as UUID,
