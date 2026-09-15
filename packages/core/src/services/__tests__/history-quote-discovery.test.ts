@@ -75,6 +75,7 @@ describe("deferred originals quoted by a Stage-1 draft", () => {
 
 	it("does not turn words, partial quotes or paraphrases into source matches", () => {
 		const { context, projection, raw } = fixture();
+		raw.completionContext.relevantSourceIds = ["h3"];
 		for (const replyText of [
 			original,
 			'You said "the mug is blue".',
@@ -84,6 +85,28 @@ describe("deferred originals quoted by a Stage-1 draft", () => {
 				requestedHistory(context, projection, { ...raw, replyText }, []),
 			).toEqual([]);
 		}
+	});
+
+	it("reads exact originals quoted by selected assistant evidence even for a paraphrased draft", () => {
+		const { context, projection, raw } = fixture();
+		raw.replyText = "The original color was green.";
+		expect(requestedHistory(context, projection, raw, [])).toEqual([
+			"history:h1",
+		]);
+		// An unrelated, unselected recap does not trigger speculative reads.
+		raw.completionContext.relevantSourceIds = ["h3"];
+		expect(requestedHistory(context, projection, raw, [])).toEqual([]);
+	});
+
+	it("does not infer source dependencies from a selected user's quoted text", () => {
+		const { context, projection, raw } = fixture();
+		const recap = context.events[1];
+		if (recap.type !== "segment") throw new Error("Missing recap fixture");
+		recap.segment.label = "prior_message:user";
+		projection.sourceSetId = completionContextSources(context).sourceSetId;
+		raw.completionContext.sourceSetId = projection.sourceSetId;
+		raw.replyText = "I can discuss that quotation.";
+		expect(requestedHistory(context, projection, raw, [])).toEqual([]);
 	});
 
 	it("does not reread supplied sources or enter a quote read loop", () => {

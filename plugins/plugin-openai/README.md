@@ -15,6 +15,12 @@ OpenAI model-provider plugin for [elizaOS](https://github.com/elizaos/eliza). Ad
 
 Works with any OpenAI-compatible endpoint: OpenAI, Cerebras, EvoLink, OpenRouter, local servers, etc.
 
+For Cerebras `qwen-3.8-27b`, ordinary calls default to no reasoning. A per-call
+`providerOptions.eliza.thinking="on"` enables low reasoning unless a reasoning
+effort is already configured. An explicit `providerOptions.openai.reasoningEffort`
+still wins. This opt-in does not change reasoning defaults for other endpoints
+or model identifiers.
+
 ## Enabling the plugin
 
 Add `@elizaos/plugin-openai` to your character's plugin list:

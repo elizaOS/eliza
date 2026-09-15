@@ -478,7 +478,18 @@ function resolveProviderOptions(
   const elizaThinking = (rawProviderOptions?.eliza as { thinking?: unknown } | undefined)?.thinking;
   const thinkingOffEffort =
     elizaThinking === "off" ? resolveThinkingOffReasoningEffort(runtime, modelName) : undefined;
-  const effectiveReasoningEffort = thinkingOffEffort ?? reasoningEffort;
+  // Original-source reconciliation can explicitly request reasoning without
+  // changing ordinary Qwen calls. Keep the wire capability endpoint-specific.
+  const thinkingOnEffort =
+    elizaThinking === "on" &&
+    isCerebrasMode(runtime) &&
+    modelName &&
+    normalizeCerebrasModelId(modelName) === "qwen-3.8-27b"
+      ? reasoningEffort && reasoningEffort !== "none"
+        ? reasoningEffort
+        : "low"
+      : undefined;
+  const effectiveReasoningEffort = thinkingOffEffort ?? thinkingOnEffort ?? reasoningEffort;
 
   if (
     !rawProviderOptions &&

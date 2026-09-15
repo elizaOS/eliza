@@ -1391,62 +1391,73 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(rows).toEqual(before);
 	});
 
-	it("repairs conflicting direct-answer intents before dispatching fields or entering the planner", async () => {
-		const quote = "Correction: the mug is violet; keep the yellow notebook.";
-		const runtime = makeRuntime([
-			stage1Response({
-				contexts: ["simple"],
-				intents: ["quote the correction"],
-				replyText: quote,
-				facts: ["Unaccepted draft extraction"],
-				extra: { replyEffectStatus: "none" },
-			}),
-			stage1Response({
-				contexts: ["simple"],
-				replyText: quote,
-				extra: { replyEffectStatus: "none" },
-			}),
-		]);
-		const dispatch = vi.spyOn(runtime.responseHandlerFieldRegistry, "dispatch");
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({
-				text: `Quote this supplied correction exactly: ${quote}`,
-				channelType: ChannelType.DM,
-			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-		});
-		expect(result.kind).toBe("direct_reply");
-		if (result.kind === "direct_reply")
-			expect(result.result.responseContent?.text).toBe(quote);
-		expect(dispatch).toHaveBeenCalledTimes(1);
-		expect(dispatch.mock.calls[0]?.[0].rawParsed.facts).toEqual([]);
-		const calls = useModelCalls(runtime);
-		expect(calls.map(([model]) => model)).toEqual([
-			ModelType.RESPONSE_HANDLER,
-			ModelType.RESPONSE_HANDLER,
-		]);
-		const [first, repaired] = calls.map(
-			([, params]) =>
-				params as {
-					messages: Array<{ role: string; content: string }>;
-					tools: Array<{ name: string }>;
-					providerOptions: { eliza: { prefixHash: string } };
-				},
-		);
-		expect(repaired.messages.slice(0, first.messages.length)).toEqual(
-			first.messages,
-		);
-		expect(repaired.messages.at(-1)?.content).toContain(quote);
-		expect(repaired.messages.at(-1)?.content).toContain(
-			"Unaccepted draft extraction",
-		);
-		expect(repaired.tools.map(({ name }) => name)).toEqual(["HANDLE_RESPONSE"]);
-		expect(repaired.providerOptions.eliza.prefixHash).toBe(
-			first.providerOptions.eliza.prefixHash,
-		);
-	});
+	it.each(["simple", "general"])(
+		"repairs conflicting %s answer intents before dispatching fields or entering the planner",
+		async (context) => {
+			const quote = "Correction: the mug is violet; keep the yellow notebook.";
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: [context],
+					intents: ["quote the correction"],
+					replyText: quote,
+					facts: ["Unaccepted draft extraction"],
+					extra: {
+						replyEffectStatus: "none",
+						visualContinuation: { disposition: "none" },
+					},
+				}),
+				stage1Response({
+					contexts: ["simple"],
+					replyText: quote,
+					extra: { replyEffectStatus: "none" },
+				}),
+			]);
+			const dispatch = vi.spyOn(
+				runtime.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: `Quote this supplied correction exactly: ${quote}`,
+					channelType: ChannelType.DM,
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply")
+				expect(result.result.responseContent?.text).toBe(quote);
+			expect(dispatch).toHaveBeenCalledTimes(1);
+			expect(dispatch.mock.calls[0]?.[0].rawParsed.facts).toEqual([]);
+			const calls = useModelCalls(runtime);
+			expect(calls.map(([model]) => model)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+			const [first, repaired] = calls.map(
+				([, params]) =>
+					params as {
+						messages: Array<{ role: string; content: string }>;
+						tools: Array<{ name: string }>;
+						providerOptions: { eliza: { prefixHash: string } };
+					},
+			);
+			expect(repaired.messages.slice(0, first.messages.length)).toEqual(
+				first.messages,
+			);
+			expect(repaired.messages.at(-1)?.content).toContain(quote);
+			expect(repaired.messages.at(-1)?.content).toContain(
+				"Unaccepted draft extraction",
+			);
+			expect(repaired.tools.map(({ name }) => name)).toEqual([
+				"HANDLE_RESPONSE",
+			]);
+			expect(repaired.providerOptions.eliza.prefixHash).toBe(
+				first.providerOptions.eliza.prefixHash,
+			);
+		},
+	);
 
 	it("bounds contradictory routing correction and preserves pending-action guards", async () => {
 		const intents = ["open notes", "update the selected note"];

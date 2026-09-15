@@ -174,8 +174,21 @@ export function requestedHistory(
 	if (selected.some((id) => !bound.sources.some((source) => source.id === id)))
 		return [ALL_HISTORY_REFERENCE];
 	const reply = raw?.replyText;
+	// A selected assistant recap can quote the original evidence even when the
+	// new draft paraphrases it. Resolve those exact source dependencies through
+	// the same authorized read barrier instead of treating the recap as proof.
+	const quotationTexts = [
+		...(typeof reply === "string" ? [reply] : []),
+		...bound.sources
+			.filter(
+				(source) =>
+					selected.includes(source.id) &&
+					source.event.segment.label === "prior_message:agent",
+			)
+			.map((source) => source.event.segment.content),
+	].filter((text) => /["'“‘`«「]/.test(text));
 	const quoted =
-		typeof reply === "string" && /["'“‘`«「]/.test(reply)
+		quotationTexts.length > 0
 			? bound.sources.filter(({ id, event }) => {
 					if (
 						projection.visibleEventIds.has(event.id) ||
@@ -183,7 +196,10 @@ export function requestedHistory(
 					)
 						return false;
 					const { content, metadata } = event.segment;
-					if (quotesCompleteSource(reply, content)) return true;
+					if (
+						quotationTexts.some((text) => quotesCompleteSource(text, content))
+					)
+						return true;
 					const speaker = metadata?.speakerName;
 					const prefix =
 						typeof speaker === "string" ? `${speaker}: ` : undefined;
@@ -192,7 +208,9 @@ export function requestedHistory(
 					return (
 						!!prefix &&
 						content.startsWith(prefix) &&
-						quotesCompleteSource(reply, content.slice(prefix.length))
+						quotationTexts.some((text) =>
+							quotesCompleteSource(text, content.slice(prefix.length)),
+						)
 					);
 				})
 			: [];

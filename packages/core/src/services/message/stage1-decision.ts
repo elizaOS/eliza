@@ -457,6 +457,7 @@ export async function generateStage1Decision(
 	// its draft, extraction fields, or action candidates. Each provider can be
 	// expanded once; there is no action-planner loop for reading provider text.
 	let routingRepairAttempted = false;
+	let historyReadForDecision = false;
 	while (discoveryEnabled) {
 		const parsedDecision = extractMessageHandlerRawParsed(rawMessageHandler);
 		const explicit = readHistoryContextRequests(
@@ -585,6 +586,7 @@ export async function generateStage1Decision(
 			Object.assign(context, refreshedContext, { id: context.id });
 			if (history)
 				history = loadHistoryReferences(context, history, historyRequested);
+			if (historyRequested.length) historyReadForDecision = true;
 			discovery = projectDiscoverableContext(
 				context,
 				args.state,
@@ -645,6 +647,9 @@ export async function generateStage1Decision(
 					eliza: {
 						...(stage1ProviderOptions.eliza as object),
 						...(expandedCacheOptions.eliza as object),
+						// Reconcile newly read originals with prior recaps. Initial
+						// calls and unrelated context discovery keep their fast mode.
+						thinking: historyReadForDecision ? "on" : "off",
 					},
 				},
 				buildModelInputBudget({
