@@ -47,7 +47,8 @@ export async function generateCodexToolResponse(
   };
   const raw = await session.generate(
     `${system}\n\n${body}\n\nEliza tool definitions (complete):\n${JSON.stringify(tools)}\nTool choice: ${JSON.stringify(choice)}\nReturn the structured response. Tool calls are decisions for Eliza to execute, not actions you have completed. Do not execute tools yourself. Required means at least one tool call; none means no tool calls.`,
-    outputSchema
+    outputSchema,
+    params.signal
   );
   const result: unknown = JSON.parse(raw);
   if (

@@ -760,7 +760,9 @@ async function generateViaCli(
               params
             )
           : getCodexSdkSession(runtime, model, false, timeoutConfiguration, env).generate(
-              framedBody
+              framedBody,
+              undefined,
+              params.signal
             ),
       {
         backend,
@@ -841,7 +843,11 @@ async function planViaCli(
     const routeBody = `${clean.system ?? ""}\n\n${clean.prompt ?? ""}`;
     const key = codexSessionKey(runtime, model, true);
     return withAccountRotation(
-      (env) => getCodexSdkSession(runtime, model, true, timeoutConfiguration, env).route(routeBody),
+      (env) =>
+        getCodexSdkSession(runtime, model, true, timeoutConfiguration, env).route(
+          routeBody,
+          params.signal
+        ),
       {
         backend,
         getValue: (k) => getSetting(runtime, k),
