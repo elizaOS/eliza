@@ -84,6 +84,16 @@ describe("judge self-grading governance (#9310)", () => {
       createJudgedRuntime(),
       RUN_OPTS,
     );
+    const persisted = JSON.parse(JSON.stringify(report));
+    expect(persisted.finalChecks[0].judgment.evidence.prompt).toContain(
+      "run completed cleanly",
+    );
+    expect(persisted.finalChecks[0].judgment.evidence.attempts).toEqual([
+      {
+        raw: JSON.stringify({ score: 0.9, reason: "self-graded fallback" }),
+        accepted: true,
+      },
+    ]);
     expect(report.status).toBe("passed");
     expect(report.judgeSelfGraded).toBe(true);
     // The stamp survives the JSON report consumers read.
@@ -104,6 +114,22 @@ describe("judge self-grading governance (#9310)", () => {
     );
     expect(failure?.detail).toContain("model under test");
     expect(failure?.detail).toContain("CEREBRAS_API_KEY");
+  });
+
+  it("retains every invalid final-check response in the serialized report", async () => {
+    const runtime = createJudgedRuntime();
+    const raw = `${"invalid response ".repeat(10000)}tail`;
+    runtime.useModel = vi.fn(async () => raw) as AgentRuntime["useModel"];
+    const report = await runScenario(
+      judgedScenario("judge-invalid-evidence"),
+      runtime,
+      RUN_OPTS,
+    );
+    const persisted = JSON.parse(JSON.stringify(report));
+    expect(persisted.status).toBe("failed");
+    expect(persisted.finalChecks[0].judgeFailure.attempts).toEqual(
+      Array.from({ length: 3 }, () => ({ raw, accepted: false })),
+    );
   });
 
   it("does not stamp deterministic-proxy lanes (fixtures answer the judge)", async () => {

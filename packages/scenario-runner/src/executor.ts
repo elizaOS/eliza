@@ -55,7 +55,12 @@ import {
 import { actionMatchesScenarioExpectation } from "./action-families.ts";
 import { runFinalCheck } from "./final-checks/index.ts";
 import { attachInterceptor } from "./interceptor.ts";
-import { judgeTextWithLlm } from "./judge.ts";
+import {
+  type JudgeEvidence,
+  JudgeParseError,
+  type JudgeResult,
+  judgeTextWithLlm,
+} from "./judge.ts";
 import {
   deterministicJudgeFixturesActive,
   isJudgeIndependent,
@@ -2465,6 +2470,8 @@ function turnUsesStatusResponse(turnKind: string): boolean {
 }
 
 interface TurnAssertionResult {
+  judgment?: JudgeResult;
+  judgeFailure?: JudgeEvidence;
   failures: string[];
   /** Numeric `responseJudge` score when the turn ran an LLM judge (#8795). */
   judgeScore?: number;
@@ -2478,6 +2485,8 @@ async function runTurnAssertions(
 ): Promise<TurnAssertionResult> {
   const failures: string[] = [];
   let judgeScore: number | undefined;
+  let judgment: JudgeResult | undefined;
+  let judgeFailure: JudgeEvidence | undefined;
   const kind = typeof turn.kind === "string" ? turn.kind : "message";
 
   if (execution.syntheticFailure === true) {
@@ -2678,6 +2687,7 @@ async function runTurnAssertions(
         buildExecutionJudgeCandidate(turn, execution),
         rubric.rubric,
       );
+      judgment = judged;
       judgeScore = judged.score;
       if (judged.score < threshold) {
         failures.push(
@@ -2685,13 +2695,20 @@ async function runTurnAssertions(
         );
       }
     } catch (err) {
+      // error-policy:J1 expose invalid judgment evidence in the scenario report.
+      if (err instanceof JudgeParseError) judgeFailure = err.evidence;
       failures.push(
         `responseJudge: judge failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
 
-  return { failures, ...(judgeScore !== undefined ? { judgeScore } : {}) };
+  return {
+    failures,
+    judgment,
+    judgeFailure,
+    ...(judgeScore !== undefined ? { judgeScore } : {}),
+  };
 }
 
 async function runJudgeRubricFinalCheck(
@@ -2725,6 +2742,7 @@ async function runJudgeRubricFinalCheck(
         status: "failed",
         detail: `score ${judged.score.toFixed(2)} < ${threshold}: ${judged.reason}`,
         score: judged.score,
+        judgment: judged,
       };
     }
     return {
@@ -2733,12 +2751,15 @@ async function runJudgeRubricFinalCheck(
       status: "passed",
       detail: `score ${judged.score.toFixed(2)} ≥ ${threshold}`,
       score: judged.score,
+      judgment: judged,
     };
   } catch (err) {
+    // error-policy:J1 preserve parse failure evidence at the scenario boundary.
     return {
       label: name ?? "judgeRubric",
       type: "judgeRubric",
       status: "failed",
+      ...(err instanceof JudgeParseError ? { judgeFailure: err.evidence } : {}),
       detail: `judge failed: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
@@ -3189,8 +3210,12 @@ export async function runScenario(
       execution.actionsCalled = actionsThisTurn;
       ctx.turns.push(execution);
 
-      const { failures: failedAssertions, judgeScore: turnJudgeScore } =
-        await runTurnAssertions(turn, execution, runtime, opts.minJudgeScore);
+      const {
+        failures: failedAssertions,
+        judgeScore: turnJudgeScore,
+        judgment,
+        judgeFailure,
+      } = await runTurnAssertions(turn, execution, runtime, opts.minJudgeScore);
       if (turnJudgeScore !== undefined) {
         judgeScores.push(turnJudgeScore);
       }
@@ -3208,6 +3233,8 @@ export async function runScenario(
         ...(execution.validation ? { validation: execution.validation } : {}),
         durationMs: execution.durationMs ?? 0,
         failedAssertions,
+        judgment,
+        judgeFailure,
         ...(turnJudgeScore !== undefined ? { judgeScore: turnJudgeScore } : {}),
         ...(voiceRun?.audioArtifacts && voiceRun.audioArtifacts.length > 0
           ? { audioArtifacts: voiceRun.audioArtifacts }

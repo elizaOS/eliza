@@ -65,12 +65,16 @@ interface ChatCompletionShape {
   }>;
 }
 
-/** Clamp a finite number to [0, 1]; returns 0 for non-finite inputs. */
-function clamp01(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  if (value < 0) return 0;
-  if (value > 1) return 1;
-  return value;
+/** Accept complete numeric values in [0, 1] without clipping invalid judgments. */
+export function parseJudgeScore(value: unknown): number | undefined {
+  if (typeof value !== "number" && typeof value !== "string") return undefined;
+  if (
+    typeof value === "string" &&
+    !/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(value)
+  )
+    return undefined;
+  const score = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(score) && score >= 0 && score <= 1 ? score : undefined;
 }
 
 /**
@@ -274,14 +278,9 @@ export class CerebrasJudge {
     const json = tolerantJsonParse(raw);
     const response: JudgeResponse = { raw, json };
     if (json) {
-      const scoreField = json.score;
-      const score =
-        typeof scoreField === "number"
-          ? scoreField
-          : Number.parseFloat(String(scoreField ?? ""));
-      if (Number.isFinite(score)) {
-        response.score = clamp01(score);
-      }
+      const score = parseJudgeScore(json.score);
+      if (Object.hasOwn(json, "score") && score === undefined) return response;
+      if (score !== undefined) response.score = score;
       const explicitVerdict = normalizeVerdict(json.verdict);
       if (explicitVerdict) {
         response.verdict = explicitVerdict;
