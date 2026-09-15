@@ -82,6 +82,7 @@ export interface ChatToolCallEvent {
  * - `provider_issue` — provider/auth/infrastructure; often retryable.
  * - `generation_timeout` — turn wall-clock expired; retryable.
  * - `rate_limited` — throttle; retryable after a pause.
+ * - `reply_generation_error` — internal reply failure; do not replay settled actions.
  * - `handler_error` — action handler failed; not a generic Retry affordance.
  * - `persistence_error` — save boundary failed; not a generic Retry affordance.
  * - `local_inference` — local model path issue; may recover after load/retry.
@@ -98,6 +99,7 @@ export const CHAT_FAILURE_KINDS = [
   "provider_issue",
   "generation_timeout",
   "rate_limited",
+  "reply_generation_error",
   "handler_error",
   "persistence_error",
   "local_inference",

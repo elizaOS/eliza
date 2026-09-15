@@ -839,10 +839,15 @@ describe("identical-duplicate notes", () => {
   }
 
   it("makes concurrent identical creates one replayable logical note", async () => {
-    const runtime = await harness();
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    const before = service.snapshot();
     const results = await Promise.all(
       Array.from({ length: 4 }, () =>
-        run(runtime, { action: "create", content: "i need to buy milk" }),
+        execute(runtime, {
+          name: "NOTES_CREATE",
+          params: { content: "i need to buy milk" },
+        }),
       ),
     );
 
@@ -852,6 +857,31 @@ describe("identical-duplicate notes", () => {
     expect(
       results.filter((result) => result.data?.replayed === true),
     ).toHaveLength(3);
+    for (const result of results) {
+      expect(result.success).toBe(true);
+      expect(result.effectReceipts).toHaveLength(1);
+      const receipt = result.effectReceipts?.[0];
+      expect(receipt?.resource.id).toBe(result.data?.noteId);
+      if (result.data?.replayed) {
+        expect(receipt).toMatchObject({
+          outcome: "noop",
+          idempotency: { key: result.data.noteId, replayed: true },
+        });
+        expect(receipt).not.toHaveProperty("commit");
+      } else {
+        expect(receipt).toMatchObject({
+          outcome: "applied",
+          idempotency: { key: null, replayed: false },
+          commit: { kind: "durable", id: result.data?.noteId },
+        });
+      }
+    }
+    expect(service.snapshot().revision).toBe(before.revision + 1);
+    const saved = await fs.readFile(service.store.filePath, "utf8");
+    const snapshot = service.snapshot();
+    await run(runtime, { action: "create", content: "i need to buy milk" });
+    expect(service.snapshot()).toEqual(snapshot);
+    expect(await fs.readFile(service.store.filePath, "utf8")).toBe(saved);
     const listed = await run(runtime, { action: "list" });
     expect(listed.data).toMatchObject({ count: 1, total: 1 });
   });

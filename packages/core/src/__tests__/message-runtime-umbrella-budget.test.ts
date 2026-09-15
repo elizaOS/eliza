@@ -230,7 +230,9 @@ describe("complete planner dispatch above the estimated window", () => {
 		expect(discoveryParams.tools.map(({ name }) => name)).toContain(
 			"DISCOVER_TOOLS",
 		);
-		expect(discoveryParams.tools.map(({ name }) => name)).not.toContain(
+		// This child has its own handler, so a parent name cannot replace its
+		// callable contract. Only virtual children can share one parent tool.
+		expect(discoveryParams.tools.map(({ name }) => name)).toContain(
 			"CALENDAR_DELETE",
 		);
 		const plannerParams = useModelCalls(runtime)[2]?.[1] as {

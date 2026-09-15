@@ -5,6 +5,8 @@
  * agent is merely overhearing and should not act on it). All name/id resolution
  * runs against the room's entity list, without an LLM call.
  */
+
+import type { RelationshipsService } from "../services/relationships.ts";
 import type { Entity, UUID } from "../types/index";
 import type { Memory } from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";
@@ -86,6 +88,21 @@ export async function applyAddressedTo(
 		);
 
 		if (existing) {
+			const service =
+				typeof runtime.getService === "function"
+					? (runtime.getService("relationships") as RelationshipsService | null)
+					: null;
+			if (service?.supportsRelationshipEvidence?.()) {
+				await service.mergeIndependentRelationshipFields(existing.id, {
+					tags: [...ADDRESSED_RELATIONSHIP_TAGS],
+					metadata: {
+						lastInteractionAt: nowIso,
+						source: ADDRESSED_METADATA_SOURCE,
+					},
+				});
+				updated += 1;
+				continue;
+			}
 			const existingMetadata =
 				(existing.metadata as Record<string, unknown> | undefined) ?? {};
 			await runtime.updateRelationship({

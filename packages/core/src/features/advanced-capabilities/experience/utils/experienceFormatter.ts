@@ -41,9 +41,15 @@ export function formatExperienceForPrompt(
 	// and all other provenance remain complete.
 	const reason =
 		experience.result || experience.extractionReason || "past experience";
+	const rationale =
+		experience.extractionReason &&
+		experience.extractionReason !== reason &&
+		experience.extractionReason !== experience.learning
+			? `\nRATIONALE: ${experience.extractionReason}`
+			: "";
 	return `${prefix}DO: ${experience.learning}
 WHEN: ${experience.context || experience.action || "similar situation"}
-WHY: ${reason === experience.learning ? "Same text as DO above." : reason}
+WHY: ${reason === experience.learning ? "Same text as DO above." : reason}${rationale}
 META: id=${experience.id}; domain=${experience.domain}; confidence=${Math.round(
 		experience.confidence * 100,
 	)}%; importance=${Math.round(experience.importance * 100)}%; keywords=${keywords}`;

@@ -289,6 +289,10 @@
   padding-bottom: 20px;
 }
 .developer-run-selector {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 8px;
   flex-shrink: 0;
   padding-bottom: 8px;
   color: var(--muted);
@@ -297,7 +301,7 @@
 .developer-run-selector label,
 .developer-call-selector label {
   display: block;
-  margin-bottom: 4px;
+  margin: 0;
   font-size: 12px;
   color: var(--muted);
 }
@@ -318,11 +322,19 @@
   font-size: 13px;
 }
 .developer-call-selector {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 8px;
   flex-shrink: 0;
   margin-bottom: 10px;
 }
+.developer-run-selector p,
 .developer-call-selector p {
-  margin-top: 6px;
+  grid-column: 1 / -1;
+}
+.developer-call-selector p {
+  margin: 0;
 }
 .developer-call-text {
   gap: 8px;
@@ -349,10 +361,12 @@
   font-size: 12px;
   line-height: 1.6;
 }
-/* Diagnostics already owns scrolling. Its unconstrained text blocks must not
-   intercept wheel/touch gestures in a second, non-scrollable container. */
+/* Bound complete provider payloads so the timeline remains reachable. Allow
+   scroll chaining at the text boundary so wheel/touch input can leave it. */
 .developer-reply-inspector .developer-diagnostics-scroll .developer-raw-text {
-  overflow: visible;
+  min-width: 0;
+  max-height: 50dvh;
+  overflow: auto;
   overscroll-behavior: auto;
 }
 .developer-evidence-footer {
