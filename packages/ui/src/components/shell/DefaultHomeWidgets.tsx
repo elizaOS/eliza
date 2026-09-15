@@ -103,6 +103,7 @@ function WeatherTile(): React.JSX.Element {
           type="button"
           variant="weatherPrompt"
           size="content"
+          className="max-w-full whitespace-normal"
           data-testid="home-weather-enable"
           onClick={() => weather.requestLocation()}
           aria-label={
