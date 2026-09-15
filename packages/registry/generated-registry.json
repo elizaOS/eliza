@@ -1746,6 +1746,50 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "opticparse-eliza-plugin": {
+      "git": {
+        "repo": "parastejpal987-cmyk/opticparse-public",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "opticparse-eliza-plugin",
+        "v0": null,
+        "v1": null,
+        "v2": "1.1.2"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Vision-based web scraping and phishing-detection plugin with x402 micropayments.",
+      "homepage": "https://opticparse.com",
+      "topics": [
+        "web-scraping",
+        "vision",
+        "phishing-detection",
+        "x402"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "plugin-agentscoin": {
       "git": {
         "repo": "axiosdevs/plugin-agentscoin",

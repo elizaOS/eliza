@@ -1,0 +1,14 @@
+{
+  "package": "opticparse-eliza-plugin",
+  "repository": "github:parastejpal987-cmyk/opticparse-public",
+  "kind": "plugin",
+  "description": "Vision-based web scraping and phishing-detection plugin with x402 micropayments.",
+  "homepage": "https://opticparse.com",
+  "version": "1.1.2",
+  "tags": [
+    "web-scraping",
+    "vision",
+    "phishing-detection",
+    "x402"
+  ]
+}
