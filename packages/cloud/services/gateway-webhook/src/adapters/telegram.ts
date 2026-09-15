@@ -13,6 +13,7 @@ import {
   TELEGRAM_VOICE_MAX_DURATION_SECONDS,
   TelegramApiResponseError,
   type TelegramConnectorEvent,
+  telegramReplyWithMedia,
   verifyTelegramWebhook,
 } from "@elizaos/cloud-services-common/telegram-connector";
 import { resolveConnectorAccountId } from "../connector-account";
@@ -165,11 +166,13 @@ export const telegramAdapter: PlatformAdapter = {
     );
   },
 
-  async sendReplyWithReceipt(config, event, text, deliveryHooks) {
+  async sendReplyWithReceipt(config, event, text, deliveryHooks, mediaUrls) {
     return sendTelegramReply(
       config,
       asTelegramEvent(event),
-      text,
+      event.chatType === "private" && !event.membershipChange
+        ? telegramReplyWithMedia(text, mediaUrls)
+        : text,
       logger,
       deliveryHooks,
     );

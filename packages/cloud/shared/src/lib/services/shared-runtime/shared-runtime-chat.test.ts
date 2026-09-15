@@ -2138,6 +2138,30 @@ describe("SharedRuntimeChatService", () => {
     expect(h.history()).toHaveLength(historyAfterFirst);
   });
 
+  test("replays a completed no-response turn without redispatching the runtime", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    const { store } = memoryTurnClaims();
+    turn = {
+      ...turn,
+      degraded: false,
+      responded: false,
+      reply: "",
+      history: [{ role: "user", content: "hello" }],
+    };
+    const options = { ...h, turnClaims: store };
+    const first = await service.bridge(agent, keyedRpc, options);
+    await Promise.all(h.background);
+    // A connector whose provider rejected egress asks for the same turn again.
+    const replay = await service.bridge(agent, keyedRpc, options);
+    await Promise.all(h.background);
+    expect(first.result).toMatchObject({ text: "", responded: false });
+    expect(replay.result).toMatchObject({ text: "", responded: false });
+    expect(turnCalls).toBe(1);
+    expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
+    expect(billCalls).toHaveLength(1);
+  });
+
   test("isolates concurrent rooms sharing a clientMessageId and replays within one room", async () => {
     process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
     const service = new SharedRuntimeChatService();

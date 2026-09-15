@@ -1923,6 +1923,9 @@ app.post("/", async (c) => {
           organizationId: account.organizationId,
         },
         reply: guardGroupReply(result.text, groupParticipantRoster),
+        ...(result.responded === false
+          ? { responded: false, responseReason: result.responseReason }
+          : {}),
         ...(result.mediaUrls ? { mediaUrls: result.mediaUrls } : {}),
         ...(groupDeliveryAuthority
           ? {

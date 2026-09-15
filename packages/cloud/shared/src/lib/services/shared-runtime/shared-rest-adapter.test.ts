@@ -339,6 +339,29 @@ describe("shared-rest-adapter — messages", () => {
     });
   });
 
+  test("POST preserves a no-response terminal for connector delivery policy", async () => {
+    coordinateSharedBridge.mockResolvedValue({
+      jsonrpc: "2.0",
+      id: "silent-turn",
+      result: { text: "", responded: false, reason: "private model detail" },
+    });
+    const out = await sharedRestMessageSend(
+      SHARED_AGENT,
+      AGENT,
+      "hello",
+      "Eliza",
+      EXECUTION_CTX,
+      NAMESPACE,
+    );
+    expect(out).toEqual({
+      text: "",
+      agentName: "Eliza",
+      responded: false,
+      responseReason: "no_response",
+    });
+    expect(JSON.stringify(out)).not.toContain("private model detail");
+  });
+
   test("POST preserves generated media URLs as structured connector output", async () => {
     coordinateSharedBridge.mockResolvedValue({
       jsonrpc: "2.0",

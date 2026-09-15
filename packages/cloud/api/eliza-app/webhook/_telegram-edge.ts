@@ -10,7 +10,8 @@ import {
   identityLinkReply,
 } from "@elizaos/cloud-services-common/identity-link-code";
 import {
-  PERSONAL_SHARED_FAILURE_REPLY,
+  personalSharedFailureReply,
+  personalSharedNoResponseFailure,
   readPersonalSharedFailureMetadata,
 } from "@elizaos/cloud-services-common/personal-shared-failure";
 import { executeResponseAttempts } from "@elizaos/cloud-services-common/response-attempts";
@@ -25,6 +26,7 @@ import {
   type TelegramConnectorConfig,
   type TelegramConnectorEvent,
   TelegramIdentityAttestationError,
+  telegramReplyWithMedia,
   verifyTelegramWebhook,
 } from "@elizaos/cloud-services-common/telegram-connector";
 import {
@@ -1146,7 +1148,29 @@ export async function handlePersonalTelegramEdge(
                   "Personal Shared edge turn returned no reply",
                 );
               }
-              reply = candidate;
+              const deliveredReply =
+                event.chatType === "private" && !event.membershipChange
+                  ? telegramReplyWithMedia(
+                      candidate,
+                      payload &&
+                        typeof payload === "object" &&
+                        "data" in payload
+                        ? (payload.data as { mediaUrls?: unknown } | null)
+                            ?.mediaUrls
+                        : undefined,
+                    )
+                  : candidate;
+              if (
+                event.chatType === "private" &&
+                !event.membershipChange &&
+                deliveredReply.trim().length === 0
+              ) {
+                throw new PersonalTelegramPreEgressError(
+                  "Personal Shared private turn completed without a reply",
+                  { failure: personalSharedNoResponseFailure() },
+                );
+              }
+              reply = deliveredReply;
             }
           } catch (error) {
             // error-policy:J4 only the typed, expected pre-egress failure
@@ -1188,7 +1212,7 @@ export async function handlePersonalTelegramEdge(
             await sendTelegramReply(
               config,
               event,
-              PERSONAL_SHARED_FAILURE_REPLY,
+              personalSharedFailureReply(fallbackFailure),
               logger,
               deliveryHooks,
             );
