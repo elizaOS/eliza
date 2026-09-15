@@ -27,7 +27,7 @@ describe("account deletion full-schema foreign-key policy", () => {
       .update(descriptors.map(serializeDescriptor).join("\n"))
       .digest("hex");
 
-    expect(descriptors).toHaveLength(255);
+    expect(descriptors).toHaveLength(256);
     expect(digest).toBe(ACCOUNT_DELETION_FOREIGN_KEY_SNAPSHOT_SHA256);
   });
 
@@ -37,7 +37,7 @@ describe("account deletion full-schema foreign-key policy", () => {
       action: classifyAccountDeletionForeignKey(descriptor),
     }));
 
-    expect(classified).toHaveLength(255);
+    expect(classified).toHaveLength(256);
     expect(classified.every(({ action }) => Boolean(action))).toBe(true);
     expect(classified.filter(({ action }) => action === "reconcile_external_resource").length).toBe(
       75,
@@ -45,6 +45,21 @@ describe("account deletion full-schema foreign-key policy", () => {
     expect(classified.filter(({ action }) => action === "transfer_shared_resource").length).toBe(
       11,
     );
+  });
+
+  test("retains the billing identity obligation after an operational agent is deleted", () => {
+    const subject = listAccountDeletionForeignKeys().find(
+      ({ sourceTable, sourceColumns }) =>
+        sourceTable === "agent_compute_subjects" && sourceColumns === "organization_id",
+    );
+    expect(subject).toEqual({
+      sourceTable: "agent_compute_subjects",
+      sourceColumns: "organization_id",
+      targetTable: "organizations",
+      targetColumns: "id",
+      onDelete: "restrict",
+    });
+    expect(classifyAccountDeletionForeignKey(subject!)).toBe("anonymize_retained_record");
   });
 
   test("requires provider reconciliation before deleting sandbox replacement attempts", () => {

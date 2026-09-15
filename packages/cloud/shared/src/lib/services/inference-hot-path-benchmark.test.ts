@@ -118,6 +118,7 @@ mock.module("./inference-app-key-scope", () => ({
   },
 }));
 mock.module("./inference-credential-revocation", () => ({
+  InferenceCredentialRevocationUnavailableError: class InferenceCredentialRevocationUnavailableError extends Error {},
   isInferenceStrongRevocationEnabled: () =>
     process.env.INFERENCE_STRONG_REVOCATION_ENABLED === "true",
   InferenceCredentialRevokedError: class InferenceCredentialRevokedError extends Error {},
