@@ -164,8 +164,12 @@ const AOSP_LLAMA_PROVIDER = "eliza-aosp-llama";
 const LOCAL_INFERENCE_HANDLER_INSTALLED = Symbol.for(
 	"elizaos.local-inference.handlers-installed",
 );
+const DEDICATED_EMBEDDING_HANDLER_INSTALLED = Symbol.for(
+	"elizaos.local-inference.dedicated-embedding-installed",
+);
 type RuntimeWithLocalInferenceFlag = RuntimeWithModelRegistration & {
 	[LOCAL_INFERENCE_HANDLER_INSTALLED]?: boolean;
+	[DEDICATED_EMBEDDING_HANDLER_INSTALLED]?: boolean;
 };
 /**
  * Same band as cloud / direct provider plugins. Tie-breaks between
@@ -1497,6 +1501,31 @@ export async function ensureLocalInferenceHandler(
 ): Promise<void> {
 	const runtimeMode = getRuntimeMode(runtime);
 	if (!shouldRegisterLocalInferenceHandlers(runtimeMode)) {
+		// A provisioned Dedicated runtime can keep text generation in the cloud
+		// while explicitly owning embeddings locally. The collector yields the
+		// cloud embedding slot for this same opt-in, so skipping both providers
+		// leaves durable memory without vectors. Register only the fused embedder:
+		// cloud clients must not activate local text, voice, or model loaders.
+		if (
+			runtimeMode === "cloud" &&
+			readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1" &&
+			readAliasedEnv("ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS") === "1" &&
+			process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS?.trim().toLowerCase() !==
+				"true" &&
+			!isLocalEmbeddingDisabledByEnv()
+		) {
+			const target = runtime as RuntimeWithLocalInferenceFlag;
+			if (!target[DEDICATED_EMBEDDING_HANDLER_INSTALLED]) {
+				target.registerModel(
+					ModelType.TEXT_EMBEDDING,
+					makeFusedEmbeddingHandler(),
+					LOCAL_INFERENCE_PROVIDER,
+					LOCAL_INFERENCE_PRIORITY,
+				);
+				target[DEDICATED_EMBEDDING_HANDLER_INSTALLED] = true;
+			}
+			return;
+		}
 		logger.info(
 			`[local-inference] Runtime mode is ${runtimeMode}; skipping local model handler registration`,
 		);
