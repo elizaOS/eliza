@@ -125,6 +125,11 @@ the advanced inspector retains global pagination. Raw payloads remain on demand.
 Token attribution requires a recorded reply link; unlinked legacy messages and
 background notices never borrow the preceding request's counts.
 
+The Home weather tile distinguishes location denial, timeout/unavailability, and
+forecast failure. An explicit retry shows loading while coordinates are pending;
+a temporary location failure does not erase a remembered successful grant.
+Automatic Home loading still never requests location permission.
+
 ## Development
 
 ```bash
