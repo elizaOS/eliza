@@ -1,36 +1,17 @@
 /**
- * OptimizedPromptService — runtime cache of native-optimizer artifacts.
+ * Serves authenticated, versioned prompt artifacts to runtime consumers.
+ * The caller supplies its complete baseline; absent or explicitly disabled
+ * artifacts retain that baseline without changing dynamic context.
  *
- * Offline MIPRO/GEPA/bootstrap-fewshot optimizers write a JSON artifact per task
- * into `<stateDir>/optimized-prompts/<task>/`. The runtime consults this service
- * before constructing the system prompt for one of the core decision
- * tasks and substitutes the optimized prompt (plus any few-shot
- * demonstrations) when an artifact is available.
+ * Each task owns vN.json files and MAC sidecars in the canonical state store.
+ * current/previous/previous2 select retained versions; five versions remain.
+ * setPrompt validates and activates a new version, rollback swaps optimized
+ * predecessors, and restoreBaseline persists an authenticated baseline choice
+ * without deleting history. A later setPrompt clears that choice.
  *
- * On-disk layout (per task):
- *   <stateDir>/optimized-prompts/<task>/
- *     v1.json, v2.json, ..., vN.json   — concrete artifact files (last 5 retained)
- *     current   -> vN.json              — symlink; the live prompt
- *     previous  -> vN-1.json            — symlink; the immediate predecessor
- *     previous2 -> vN-2.json            — symlink; one further back
- *
- * Service contract:
- *   - `getPrompt(task)` — synchronous accessor, returns the loaded prompt or
- *     null. Cheap to call; reads the in-memory cache. Does not refresh.
- *   - `setPrompt(task, artifact)` — atomically writes a new artifact as the
- *     next `vN.json`, repoints the `current` / `previous` / `previous2`
- *     symlinks, prunes to the last 5 versions, and refreshes the cache.
- *   - `rollback(task)` — flip `current` and `previous` symlinks, then
- *     refresh the cache.
- *   - `getMetadata(task)` — quick view of optimizer + score for diagnostics.
- *   - `refresh()` — re-scan the disk store. Called automatically by `start()`.
- *
- * Loading rule: for each task, the `current` symlink wins. When `current`
- * is missing (e.g. a corrupted store) we fall back to scanning the directory
- * and selecting the most recent `generatedAt`.
- *
- * Core owns the on-disk artifact format so offline producers and every runtime
- * consumer share one stable contract without a plugin dependency.
+ * Accessors read the cache. Startup and explicit refresh reload the store.
+ * The activation-baseline record takes precedence over current and legacy
+ * timestamp discovery so a first-promotion rollback survives restart.
  */
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
@@ -55,6 +36,7 @@ export const OPTIMIZED_PROMPT_CURRENT_LINK = "current";
 export const OPTIMIZED_PROMPT_PREVIOUS_LINK = "previous";
 export const OPTIMIZED_PROMPT_PREVIOUS2_LINK = "previous2";
 export const OPTIMIZED_PROMPT_RETAIN_VERSIONS = 5;
+const BASELINE_ACTIVATION_FILE = "activation-baseline";
 
 const VERSION_FILE_PATTERN = /^v(\d+)\.json$/;
 const VERSION_CLAIM_PATTERN = /^\.v(\d+)\.json\.claim$/;
@@ -850,6 +832,8 @@ export class OptimizedPromptService extends Service {
 			// symlinks are repointed so we never delete a file the symlinks
 			// still reference.
 			await pruneOldVersions(dir, allVersions);
+			// An explicit successful promotion supersedes a persisted baseline choice.
+			await removeIfExists(join(dir, BASELINE_ACTIVATION_FILE));
 		} catch (err) {
 			// error-policy:J2 Remove incomplete artifact parts before preserving
 			// the atomic publication failure.
@@ -880,6 +864,34 @@ export class OptimizedPromptService extends Service {
 		return finalPath;
 	}
 
+	/** Persist baseline activation without deleting any candidate or version history. */
+	async restoreBaseline(task: OptimizedPromptTask): Promise<void> {
+		if (!OPTIMIZED_PROMPT_TASKS.includes(task)) {
+			throw new ElizaError("Unknown optimized prompt task", {
+				code: "OPTIMIZED_PROMPT_TASK_INVALID",
+				context: { task },
+			});
+		}
+		const dir = join(this.storeRoot, task);
+		await runExclusive(dir, async () => {
+			const payload = JSON.stringify({
+				task,
+				mode: "baseline",
+				mac: computeArtifactMac(`optimized-prompt-baseline:v1:${task}`),
+			});
+			mkdirSync(dir, { recursive: true });
+			const target = join(dir, BASELINE_ACTIVATION_FILE);
+			const temporary = `${target}.tmp-${uniqueTempSuffix()}`;
+			try {
+				await writeFile(temporary, payload, { mode: 0o600 });
+				await rename(temporary, target);
+			} finally {
+				await removeFileBestEffort(temporary);
+			}
+			delete this.cache[task];
+		});
+	}
+
 	/**
 	 * Flip the `current` and `previous` symlinks. After this call,
 	 * `getPrompt(task)` returns the artifact that was previously second-most
@@ -894,6 +906,12 @@ export class OptimizedPromptService extends Service {
 		if (!existsSync(dir)) {
 			throw new Error(
 				`[OptimizedPromptService] no artifact directory for task=${task}`,
+			);
+		}
+		if (await baselineActivationRequested(dir, task)) {
+			throw new ElizaError(
+				"The baseline is active; use setPrompt to explicitly activate a reviewed candidate",
+				{ code: "OPTIMIZED_PROMPT_BASELINE_ACTIVE", context: { task } },
 			);
 		}
 		const currentTarget = await readLinkOrNull(
@@ -991,6 +1009,7 @@ export class OptimizedPromptService extends Service {
 	): Promise<CachedEntry | null> {
 		const dir = join(this.storeRoot, task);
 		if (!existsSync(dir)) return null;
+		if (await baselineActivationRequested(dir, task)) return null;
 
 		// Preferred path: read via the `current` symlink. This is the
 		// declared live version after a `setPrompt` or `rollback` call.
@@ -1330,4 +1349,47 @@ async function loadArtifactFromPath(
 		return null;
 	}
 	return artifact;
+}
+
+/** An authenticated baseline choice suppresses both current and legacy artifact discovery. */
+async function baselineActivationRequested(
+	dir: string,
+	task: OptimizedPromptTask,
+): Promise<boolean> {
+	let text: string;
+	try {
+		text = await readFile(join(dir, BASELINE_ACTIVATION_FILE), "utf8");
+	} catch (error) {
+		// error-policy:J4 A missing activation record retains the existing artifact policy.
+		if (nodeErrorCode(error) === "ENOENT") return false;
+		throw error;
+	}
+	let value: unknown;
+	try {
+		value = JSON.parse(text);
+	} catch (cause) {
+		// error-policy:J2 A damaged activation record must not revive an old candidate.
+		throw new ElizaError("Baseline activation record is malformed", {
+			code: "OPTIMIZED_PROMPT_BASELINE_ACTIVATION_INVALID",
+			cause,
+			context: { task },
+		});
+	}
+	if (
+		!isStringRecord(value) ||
+		value.task !== task ||
+		value.mode !== "baseline" ||
+		typeof value.mac !== "string" ||
+		Object.keys(value).length !== 3 ||
+		!verifyArtifactMac(`optimized-prompt-baseline:v1:${task}`, value.mac)
+	) {
+		throw new ElizaError(
+			"Baseline activation record failed integrity validation",
+			{
+				code: "OPTIMIZED_PROMPT_BASELINE_ACTIVATION_INVALID",
+				context: { task },
+			},
+		);
+	}
+	return true;
 }

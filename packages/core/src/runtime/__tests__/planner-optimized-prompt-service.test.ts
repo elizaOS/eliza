@@ -74,10 +74,18 @@ it("uses only the registered service and checks its baseline before a model requ
 	await service.setPrompt("action_planner", artifact);
 	await run();
 	expect(requests[1]).toContain("ACTIVE_REVIEWED_INSTRUCTION");
+	await service.restoreBaseline("action_planner");
+	await run();
+	expect(requests[2]).not.toContain("ACTIVE_REVIEWED_INSTRUCTION");
+	service = new OptimizedPromptService();
+	service.setStoreRoot(store);
+	await service.refresh();
+	await run();
+	expect(requests[3]).not.toContain("ACTIVE_REVIEWED_INSTRUCTION");
 	await service.setPrompt("action_planner", {
 		...artifact,
 		baseline: `${plannerTemplate}\nchanged`,
 	});
 	await expect(run()).rejects.toThrow("different baseline");
-	expect(requests).toHaveLength(2);
+	expect(requests).toHaveLength(4);
 });

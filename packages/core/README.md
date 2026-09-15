@@ -642,3 +642,17 @@ existing reconciliation-lease bypass and invalidate the room cache on success.
 
 Runtime memory creation fills an omitted agent ID with the current runtime agent,
 matching SQL ownership defaults in the ephemeral adapter as well.
+
+### Restoring the unoptimized baseline
+
+`OptimizedPromptService.restoreBaseline(task)` explicitly returns a task to its
+caller's baseline, including after a first promotion with no previous artifact.
+It preserves version files and writes an authenticated `activation-baseline`
+record in the existing task directory. Refresh/restart honors this choice even
+if `current` disappears; legacy directory scanning cannot reactivate a candidate.
+A later successful `setPrompt` clears the baseline choice. `rollback` continues
+to swap optimized predecessors and rejects while the baseline is active.
+
+The activation record requires a runtime version that supports `restoreBaseline`;
+older runtimes do not recognize it. Keep the existing `OPTIMIZED_PROMPT_DISABLE`
+startup setting in place when deliberately downgrading such a deployment.
