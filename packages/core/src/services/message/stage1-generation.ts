@@ -30,7 +30,8 @@ export function getStage1RoutingRepair(
 ): string | undefined {
 	if (
 		parsed?.shouldRespond !== "RESPOND" ||
-		parsed.replyEffectStatus !== "none" ||
+		(parsed.replyEffectStatus !== "none" &&
+			parsed.replyEffectStatus !== "non_applied") ||
 		parsed.requiresTool === true ||
 		typeof parsed.replyText !== "string" ||
 		parsed.replyText.trim().length === 0 ||
@@ -45,8 +46,8 @@ export function getStage1RoutingRepair(
 		return undefined;
 	return [
 		"response_contract_repair:",
-		"Your previous HANDLE_RESPONSE conflicts: simple context with a reply and replyEffectStatus=none declares a completed conversational answer, but nonempty intents declare pending runtime work. This is validation of that response, not a new user request. Nothing in it has been delivered or executed.",
-		'Return HANDLE_RESPONSE with a consistent decision for the original request. If the supplied context and reply complete it, preserve the answer and use intents=[], candidateActionNames=[], contexts=["simple"], replyEffectStatus="none". If any action or external-state read remains, retain every pending outcome and route to the applicable planning contexts and known action candidates; mark a promised action reply pending. Do not discard pending actions to make the reply terminal, invent tool names, or claim an unverified effect. Use contextRequests if an advertised reference is needed.',
+		"Your previous HANDLE_RESPONSE conflicts: simple context with a reply and replyEffectStatus=none or non_applied declares a completed conversational answer or a turn-ending preview, but nonempty intents declare pending runtime work. This is validation of that response, not a new user request. Nothing in it has been delivered or executed.",
+		'Return HANDLE_RESPONSE with a consistent decision for the original request. If the supplied context and reply complete it, preserve the answer and use intents=[], candidateActionNames=[], contexts=["simple"], replyEffectStatus="none". A preview that must wait for the user keeps replyEffectStatus="non_applied" with intents=[]; a directive whose details the user already stated is not waiting on anything. If any action or external-state read remains, retain every pending outcome and route to the applicable planning contexts and known action candidates; mark a promised action reply pending. Do not discard pending actions to make the reply terminal, invent tool names, or claim an unverified effect. Use contextRequests if an advertised reference is needed.',
 		"previous_model_response:",
 		JSON.stringify(parsed),
 	].join("\n");
