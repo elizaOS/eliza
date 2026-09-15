@@ -185,3 +185,5 @@ the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
 under test.
+
+Successful snapshot/state/get observations are internal read-only results. This lets the existing planner continue pending dependent work with the complete returned data; it does not certify task completion, bypass failures, or classify navigation/click/type as reads.

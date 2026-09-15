@@ -169,6 +169,13 @@ export function trajectoryStepsToMessages(
 			pagesIncluded++;
 		}
 		const rawResultText = toolMessageContent(safeResult);
+		const parsedResult: unknown = JSON.parse(rawResultText);
+		// Only remove formatting from our canonical serialization. Strings,
+		// receipts and every result field retain their complete values.
+		const resultText =
+			JSON.stringify(parsedResult, null, 2) === rawResultText
+				? JSON.stringify(parsedResult)
+				: rawResultText;
 		messages.push({
 			role: "tool",
 			content: [
@@ -176,7 +183,7 @@ export function trajectoryStepsToMessages(
 					type: "tool-result",
 					toolCallId,
 					toolName: step.toolCall.name,
-					output: { type: "text", value: rawResultText },
+					output: { type: "text", value: resultText },
 				},
 			],
 		});

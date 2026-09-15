@@ -170,7 +170,7 @@ export const contextRequestsFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "contextRequests",
 	description:
-		'Read only deferred references whose advertised contents are needed to decide or write this response. Use exact context_discovery names, contexts=["simple"], replyText="", and no action candidates; the runtime loads complete authorized bodies and asks for a new decision. Request needed bodies together. Return [] when supplied context suffices. This field reads reference text; it does not discover or execute app actions. Follow each reference notice for its purpose and when a read is needed.',
+		'Use exact advertised references only when needed, following their notices; batch reads. Prefer READ_CONTEXT when offered. Otherwise use this field with contexts=["simple"], empty replyText and no action candidates; [] if supplied context suffices. Reads load complete authorized bodies for a new decision, never discover or execute app actions.',
 	descriptionCompressed:
 		'Request needed context_discovery names before answering; replyText="". [] if supplied evidence suffices. Context reads need no action planning.',
 	priority: 14,
@@ -285,7 +285,7 @@ export const replyEffectStatusFieldEvaluator: ResponseHandlerFieldEvaluator<Repl
 	{
 		name: "replyEffectStatus",
 		description:
-			'Classify replyText\'s current-request work claims in any language, including indirect wording ("on the books", "quedó listo"). pending=work still to perform this turn, including live lookup/navigation even alongside an answered recall question. applied=claimed newly completed external change (save/send/schedule/payment/booking/device action/delegation), never execution proof. non_applied=terminal failure, unavailable, cancelled, declined, or an action preview/clarification/conditional offer awaiting a later user answer. A proposed save awaiting separate confirmation is non_applied, not none or pending; if other work remains to perform this turn, use pending. none=answer/explanation/general question with no current action decision; recalling advice, quoting past actions or reporting existing facts alone is none. A new saved reminder is applied; recall plus promised navigation is pending.',
+			"Classify replyText's current-request work using the schema, including indirect claims in any language (e.g. 'on the books', 'quedó listo'). An applied-change claim is never execution proof. A newly saved reminder is applied; recall plus promised navigation is pending. Historical advice/actions or existing facts alone are none.",
 		descriptionCompressed:
 			"Current-request work status in replyText: pending work (including lookup/navigation), claimed new applied change, terminal non_applied outcome, or none. Recall of earlier advice/actions alone is none; wording and language do not determine routing.",
 		priority: 25,

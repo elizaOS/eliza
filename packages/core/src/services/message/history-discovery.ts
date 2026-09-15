@@ -146,6 +146,7 @@ export function requestedHistory(
 	projection: HistoryDiscovery | undefined,
 	raw: Record<string, unknown> | null,
 	explicit: readonly string[],
+	explicitRead = false,
 ): string[] {
 	if (!projection) return [];
 	const bound = completionContextSources(context);
@@ -164,6 +165,9 @@ export function requestedHistory(
 		)
 	)
 		return [ALL_HISTORY_REFERENCE];
+	// Native read decisions select references, not completion sources. Their
+	// names were authorized above; the ordinary fresh read barrier still runs.
+	if (explicitRead) return requested;
 	if (explicit.length > 0 && requested.length === 0) return [];
 	if (
 		!selection ||
@@ -284,6 +288,43 @@ export function canRepairIncompleteHistorySelection(
 	if (
 		bound.sourceSetId !== projection.sourceSetId ||
 		selection.sourceSetId !== bound.sourceSetId
+	)
+		return false;
+	return [
+		...selection.relevantSourceIds,
+		...selection.constraintSourceIds,
+		...selection.referentSourceIds,
+		...selection.pendingIntentSourceIds,
+	].every((id) => {
+		const source = bound.sources.find((row) => row.id === id);
+		return (
+			!!source &&
+			(projection.visibleEventIds.has(source.event.id) ||
+				projection.loadedSourceIds.has(id))
+		);
+	});
+}
+
+/** A malformed binding is never accepted. An otherwise complete selection of
+ * supplied originals may be regenerated once before restoring all history. */
+export function canRepairHistoryIdentity(
+	context: ContextObject,
+	projection: HistoryDiscovery | undefined,
+	raw: Record<string, unknown> | null,
+): boolean {
+	if (!projection) return false;
+	const selection = parseCompletionContextSelection(raw?.completionContext);
+	if (
+		!selection ||
+		!selection.complete ||
+		selection.mode !== "selected" ||
+		!/^[0-9a-f]{64}$/.test(selection.sourceSetId)
+	)
+		return false;
+	const bound = completionContextSources(context);
+	if (
+		bound.sourceSetId !== projection.sourceSetId ||
+		selection.sourceSetId === bound.sourceSetId
 	)
 		return false;
 	return [

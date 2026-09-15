@@ -69,6 +69,67 @@ describe("TrajectoryDetailView recorded usage", () => {
     api.copy.mockReset();
   });
 
+  it("separates retained history from each recorded model input", async () => {
+    const text =
+      "# Conversation Messages (78 retained)\nprivate diagnostic transcript";
+    const fixture = detail();
+    api.getTrajectoryDetail.mockResolvedValue({
+      ...fixture,
+      llmCalls: fixture.llmCalls.map((call, index) => ({
+        ...call,
+        userPrompt: `combined prompt ${index}`,
+        messages: [{ role: "user", content: `actual input ${index}` }],
+      })),
+      providerAccesses: [
+        {
+          id: "history",
+          providerName: "RECENT_MESSAGES",
+          purpose: "compose_state",
+          data: { text, textLength: text.length, outcome: "success" },
+        },
+      ],
+    });
+    render(
+      <TrajectoryDetailView
+        trajectoryId="recorded-correction"
+        collapsibleCalls
+      />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Context & timeline" }),
+      ).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Context & timeline" }));
+    expect(screen.getByText(/78 messages retained/)).toBeTruthy();
+    const disclosure = screen
+      .getByText("Show full retained transcript")
+      .closest("details");
+    expect(disclosure?.open).toBe(false);
+    fireEvent.click(screen.getByText("Show full retained transcript"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copy Retained transcript" }),
+    );
+    expect(api.copy).toHaveBeenLastCalledWith(text);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Model input" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    expect(
+      screen.getByRole("region", { name: "Recorded model input" }).textContent,
+    ).toBe("[user] actual input 0");
+    fireEvent.change(screen.getByRole("combobox", { name: "Model call" }), {
+      target: { value: "call-1" },
+    });
+    expect(
+      screen.getByRole("region", { name: "Recorded model input" }).textContent,
+    ).toBe("[user] actual input 1");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copy Recorded model input" }),
+    );
+    expect(api.copy).toHaveBeenLastCalledWith("[user] actual input 1");
+  });
+
   it("reports whole-run clipboard completion only after the full payload is copied", async () => {
     const recorded = detail();
     api.getTrajectoryDetail.mockResolvedValue(recorded);

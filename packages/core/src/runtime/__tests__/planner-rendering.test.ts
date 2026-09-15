@@ -58,6 +58,27 @@ function readViewFor(text: string) {
 }
 
 describe("trajectoryStepsToMessages", () => {
+	it("removes only JSON formatting and keeps the cached prefix stable", () => {
+		const step = stepWithResult(1, '  exact\n\ttext "quoted" 🦊  ');
+		step.result = {
+			...step.result,
+			data: {
+				jsonText: '{ "duplicate": 1, "duplicate": 2 }',
+				rows: [{ id: "original", values: [null, false, 1.25, "  \n"] }],
+			},
+		};
+		const original = structuredClone(step);
+		const expected = JSON.parse(toolMessageContent(step.result));
+		const messages = trajectoryStepsToMessages([step]);
+		const rendered = getRenderedResultValue(messages);
+		expect(JSON.parse(rendered)).toEqual(expected);
+		expect(rendered).toBe(JSON.stringify(expected));
+		expect(step).toEqual(original);
+		expect(
+			trajectoryStepsToMessages([step, stepWithResult(2, "next")]).slice(0, 2),
+		).toEqual(messages);
+	});
+
 	it("renders a result larger than the former cap in full", () => {
 		const result = `HEAD_SENTINEL${"x".repeat(150_000)}TAIL_SENTINEL`;
 		const steps = [stepWithResult(1, result)];

@@ -47,6 +47,52 @@ async function runBrowserAction(args: {
 }
 
 describe("BROWSER action", () => {
+  it.each(["snapshot", "state", "get"])(
+    "marks successful %s observations for dependent planning",
+    async (action) => {
+      const payload = { text: "Exact page text\nwith spacing  preserved." };
+      const { result, service } = await runBrowserAction({
+        parameters: { action, selector: "h1" },
+        service: browserService(payload),
+      });
+      expect(service?.execute).toHaveBeenCalledTimes(1);
+      expect(result).toMatchObject({
+        success: true,
+        transcriptVisibility: "internal",
+        data: { readOnlyOperation: true, result: payload },
+      });
+      expect(result?.turnComplete).toBeUndefined();
+    },
+  );
+
+  it.each(["navigate", "click", "type"])(
+    "does not classify %s effects as read-only",
+    async (action) => {
+      const { result } = await runBrowserAction({
+        parameters: {
+          action,
+          url: "https://example.com",
+          selector: "input",
+          text: "hi",
+        },
+      });
+      expect(result?.success).toBe(true);
+      expect(result?.data?.readOnlyOperation).toBeUndefined();
+    },
+  );
+
+  it("does not certify a failed page read or replay it", async () => {
+    const service = browserService();
+    service.execute.mockRejectedValue(new Error("Page unavailable"));
+    const { result } = await runBrowserAction({
+      parameters: { action: "snapshot" },
+      service,
+    });
+    expect(service.execute).toHaveBeenCalledTimes(1);
+    expect(result?.success).toBe(false);
+    expect(result?.data?.readOnlyOperation).toBeUndefined();
+  });
+
   it.each([
     [
       "Open https://example.com. Keep records unchanged.",

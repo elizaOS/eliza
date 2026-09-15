@@ -587,7 +587,14 @@ export function collectPlannerTools(
 				const { properties = {}, ...schema } = normalizeActionJsonSchema(alias);
 				return {
 					name: alias.name,
-					description: alias.description,
+					...(parent.description &&
+					alias.description.startsWith(parent.description)
+						? {
+								descriptionSuffix: alias.description.slice(
+									parent.description.length,
+								),
+							}
+						: { description: alias.description }),
 					routingHint: alias.routingHint,
 					strict: alias.toolSchemaStrict ?? true,
 					parameters: {
@@ -603,7 +610,7 @@ export function collectPlannerTools(
 					},
 				};
 			});
-			parentTool.description += `\nGenerated aliases represented by this umbrella: call this tool using the alias's pinned discriminator. Each alias parameter object uses exactly parentParameterNames from this tool's complete properties, including descriptions and defaults; propertyOverrides replaces only differing properties. Other schema fields (including required) are explicit. Complete alias contracts:\n${JSON.stringify(aliasContracts)}`;
+			parentTool.description += `\nGenerated aliases represented by this umbrella: call this tool using the alias's pinned discriminator. Each alias parameter object uses exactly parentParameterNames from this tool's complete properties, including descriptions and defaults; propertyOverrides replaces only differing properties. Other schema fields (including required) are explicit. descriptionSuffix appends to this shared description; an explicit description replaces it. Shared description: ${JSON.stringify(parent.description)}\nComplete alias contracts:\n${JSON.stringify(aliasContracts)}`;
 		}
 	}
 	const terminalNames = new Set(

@@ -22,6 +22,71 @@ const runtime = {} as IAgentRuntime;
 const message = {} as Memory;
 
 describe("planner tool discovery", () => {
+	it.each(["NOTES", "NOTES_READ"])(
+		"describes %s without loading schemas or unrelated families",
+		async (name) => {
+			const detail = "Exact description Ω\n".repeat(1000);
+			let loads = 0;
+			const discovery = createPlannerToolDiscoveryAction(
+				[
+					{ name: "NOTES", description: detail, subActions: ["NOTES_READ"] },
+					{ name: "NOTES_READ", description: detail },
+					{ name: "UNRELATED", description: "Other content" },
+				],
+				() => {
+					loads++;
+				},
+			);
+			const result = await discovery.handler?.(runtime, message, undefined, {
+				parameters: { names: [name], mode: "describe" },
+			});
+			expect(result?.success).toBe(true);
+			expect(result?.data?.readOnlyOperation).toBe(true);
+			expect(result?.data?.catalog).toEqual([
+				expect.objectContaining({
+					name,
+					description: detail,
+					children: name === "NOTES" ? ["NOTES_READ"] : [],
+				}),
+			]);
+			expect(loads).toBe(0);
+		},
+	);
+
+	it("refreshes descriptions and rejects revoked mixed requests without stale data", async () => {
+		let loads = 0;
+		const requests: string[][] = [];
+		const discovery = createPlannerToolDiscoveryAction(
+			[
+				{ name: "ALLOWED", description: "Old" },
+				{ name: "REVOKED", description: "Private stale description" },
+			],
+			() => {
+				loads++;
+			},
+			async (names) => {
+				requests.push(names);
+				return [{ name: "ALLOWED", description: "Fresh complete description" }];
+			},
+		);
+		const denied = await discovery.handler?.(runtime, message, undefined, {
+			parameters: { names: ["ALLOWED", "REVOKED"], mode: "describe" },
+		});
+		expect(denied?.success).toBe(false);
+		expect(denied?.data).toBeUndefined();
+		const allowed = await discovery.handler?.(runtime, message, undefined, {
+			parameters: { names: ["ALLOWED"], mode: "describe" },
+		});
+		expect(allowed?.data?.catalog).toEqual([
+			expect.objectContaining({
+				name: "ALLOWED",
+				description: "Fresh complete description",
+			}),
+		]);
+		expect(requests).toEqual([["ALLOWED", "REVOKED"], ["ALLOWED"]]);
+		expect(loads).toBe(0);
+	});
+
 	it.each(["USER", "GUEST"] as const)(
 		"admits observed document hints through canonical role gates for %s",
 		async (role) => {
@@ -545,10 +610,11 @@ describe("planner tool discovery", () => {
 	it.each([
 		{ names: ["VIEWS", "UNAUTHORIZED"] },
 		{ names: [null] },
+		{ names: ["VIEWS"], mode: "unknown" },
 		{ names: ["views"] },
 	])(
 		"rejects invalid or unavailable names atomically: %j",
-		async ({ names }) => {
+		async (parameters) => {
 			let loaded = false;
 			const discovery = createPlannerToolDiscoveryAction(
 				[{ name: "VIEWS", description: "Navigate" }],
@@ -557,7 +623,7 @@ describe("planner tool discovery", () => {
 				},
 			);
 			const result = await discovery.handler?.(runtime, message, undefined, {
-				parameters: { names },
+				parameters,
 			});
 			expect(result?.success).toBe(false);
 			expect(loaded).toBe(false);

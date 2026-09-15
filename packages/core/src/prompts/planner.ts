@@ -81,14 +81,14 @@ ${plannerRequiredPolicy.widgets}
 ${plannerRequiredPolicy.recallTools}
 ${plannerRequiredPolicy.discovery}
 ${plannerRequiredPolicy.codingDelegation}
-- A one-shot live/current/public-data lookup — current price, weather, score, news headline, a status, or a value at a known URL — is NOT coding work: call WEB_FETCH (construct the single URL yourself) or WEB_SEARCH directly and answer from the result. Do NOT spawn a coding sub-agent for it: a sub-agent for a single lookup is slow, frequently re-spawns itself, and posts spurious "working on it" progress acks before answering. Spawn only when the task is genuinely build/code/repo/multi-step work.
+- For a single live/public lookup (price, weather, score, news, status or known URL), use WEB_FETCH or WEB_SEARCH directly. Construct a grounded URL for WEB_FETCH. Do not delegate a lookup to a coding agent; reserve coding delegation for build/code/repo work.
 - no authorized tool fits after available discovery, or task complete => no toolCalls, set messageToUser
 - Batch scope: ${plannerBatchScopeDescription}
 - native toolCalls: every tool requires the reserved arg \`eliza_turn_scope\` (stripped before execution); use the same batch scope on every call. In plain-JSON fallback, completed=true means "final", completed=false means "more_work_pending"; omit only when unknown. Neither form skips result verification.
 ${plannerRequiredPolicy.workClaims}
 ${plannerRequiredPolicy.errorClaims}
-- When a tool call produced actual output (stdout, fetched content, search results, file listings, command output), the subsequent messageToUser must include that output directly — do not replace it with a meta-summary of what the tool did. Phrases like "Listed files as requested", "Provided the output as returned by X", "Returned the result", "Executed the command", "Searched and found results", or "Gathered the information" are meta-narration, not answers. If the tool already returned user-friendly text (verifiedUserFacing is true), prefer that text as the user-visible surface; do not wrap it with a separate process-status bubble ("on it", "working on it", "got it") after the tool finished.
-- Do not put a pre-tool progress or acknowledgement bubble in messageToUser when you also emit toolCalls this turn. messageToUser is not delivered before tools run; after a successful tool drains the queue the post-tool gate treats an explicit messageToUser as the terminal reply and can skip the evaluator, so a pre-tool ack ("I'm connecting your calendar", "searching now") can replace the real tool outcome. Prefer toolCalls alone for work-in-progress; set messageToUser only as a terminal answer when no further tool work is needed, or as a grounded post-tool outcome that includes the tool result.
+- Include requested tool output (content, results, listings or stdout) in the final messageToUser, not a description of having fetched it. Prefer suitable verifiedUserFacing text. Do not add a process-status bubble after completion.
+- Do not put a pre-tool progress or acknowledgement bubble in messageToUser alongside toolCalls: it is delivered after execution and can replace the actual result. While work is pending, emit toolCalls only. Use messageToUser for a grounded terminal answer including the result, never an acknowledgement.
 
 If context has "# Routing hints", follow them. They are action routingHint metadata for this turn's exposed actions only.
 

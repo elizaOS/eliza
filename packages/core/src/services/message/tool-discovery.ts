@@ -49,7 +49,7 @@ export function createPlannerToolDiscoveryAction(
 		name: DISCOVER_TOOLS_NAME,
 		description:
 			"Load complete tool schemas from the authorized name index below when an exposed tool does not cover an intent. " +
-			"Pass exact child names to load those operations, or parent names to load their complete authorized families. Pass names=[] to read the complete family descriptions and routing hints if the names alone are ambiguous. " +
+			"Pass exact child names to load those operations, or parent names to load their complete authorized families. For capability questions, use mode=describe with exact names from the index to read their complete descriptions without loading schemas. Use names=[] only when you need the complete catalog across families. " +
 			(resolveAdditionalActions
 				? "The inline index lists families admitted for the current routing contexts. If the needed domain is absent or its name is unknown, names=[] reads a fresh catalog across routing contexts. Other exact registered names may also be requested; the same permission, context, account-policy and availability checks must admit them before loading. "
 				: "") +
@@ -62,19 +62,30 @@ export function createPlannerToolDiscoveryAction(
 			),
 		parameters: [
 			{
+				name: "mode",
+				description:
+					"load (default) adds exact named schemas; describe reads only their complete descriptions. Neither executes domain work.",
+				required: false,
+				schema: { type: "string", enum: ["load", "describe"] },
+			},
+			{
 				name: "names",
 				description:
-					"Exact authorized parent or child tool names to load; [] reads the full catalog descriptions without loading tools.",
+					"Exact authorized parent or child names to load or describe; [] reads all catalog descriptions without loading tools.",
 				required: true,
 				schema: { type: "array", items: { type: "string" } },
 			},
 		],
 		validate: async () => true,
 		handler: async (_runtime, _message, _state, options) => {
+			const mode = isObjectRecord(options?.parameters)
+				? options.parameters.mode
+				: undefined;
 			const names = isObjectRecord(options?.parameters)
 				? options.parameters.names
 				: undefined;
 			if (
+				(mode !== undefined && mode !== "load" && mode !== "describe") ||
 				!Array.isArray(names) ||
 				!names.every(
 					(name): name is string => typeof name === "string" && name.length > 0,
@@ -86,18 +97,41 @@ export function createPlannerToolDiscoveryAction(
 						"Select exact names from the authorized discovery catalog. No tools were loaded.",
 				};
 			}
-			if (names.length === 0) {
+			if (names.length === 0 || mode === "describe") {
 				// A mistaken Stage-1 domain must not make another authorized
 				// domain undiscoverable. This explicit read refreshes admission;
 				// it neither loads schemas nor changes execution permission.
-				const completeCatalog = resolveAdditionalActions
-					? catalogFor(await resolveAdditionalActions([]))
-					: catalog;
+				const freshActions = resolveAdditionalActions
+					? await resolveAdditionalActions(names)
+					: [...authorizedActions];
+				const admittedNames = new Set(
+					freshActions.map((action) => action.name),
+				);
+				if (!names.every((name) => admittedNames.has(name))) {
+					return {
+						success: false,
+						error:
+							"Requested descriptions were not admitted by current capability and permission checks. No tools were loaded. Use names=[] to inspect the current authorized catalog.",
+					};
+				}
+				const completeCatalog = catalogFor(
+					names.length === 0
+						? freshActions
+						: collectBudgetedStageOneCandidateActions({
+								actions: freshActions,
+								candidateActions: names,
+								contexts: [],
+								deferUnselectedContexts: true,
+							}),
+				);
 				return {
 					success: true,
 					transcriptVisibility: "internal",
 					modelReplyRequired: true,
-					text: "Complete authorized catalog descriptions. Select exact names to load schemas; no domain work was performed.",
+					text:
+						names.length === 0
+							? "Complete authorized catalog descriptions. Select exact names to load schemas; no domain work was performed."
+							: "Complete descriptions for the requested authorized tools. Other families remain discoverable with names=[]. No schemas were loaded or domain work performed.",
 					data: {
 						readOnlyOperation: true,
 						catalog: completeCatalog.parents.map((parent) => ({

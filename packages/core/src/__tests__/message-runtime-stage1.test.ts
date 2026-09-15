@@ -507,6 +507,50 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
+	it("compacts inactive arrays only until a context read and never dispatches their operations", async () => {
+		const { runtime, message, state } = await reviewedHistoryFixture("ADMIN");
+		const handle = vi.fn();
+		runtime.responseHandlerFieldRegistry.register({
+			name: "inactiveOps",
+			description: "Operations for active work only.",
+			schema: {
+				type: "array",
+				items: { type: "object", properties: { action: { type: "string" } } },
+			},
+			priority: 1,
+			shouldRun: () => false,
+			handle,
+		});
+		let calls = 0;
+		runtime.useModel = vi.fn(
+			async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+				calls++;
+				const params = args[1] as { tools: Array<{ parameters: JSONSchema }> };
+				const field = params.tools[0].parameters.properties?.inactiveOps;
+				if (calls === 1) expect(field?.enum).toEqual([[]]);
+				else {
+					expect(field?.enum).toBeUndefined();
+					expect(field?.items).toMatchObject({ type: "object" });
+				}
+				return stage1Response({
+					contexts: ["simple"],
+					contextRequests: calls === 1 ? ["history:all"] : [],
+					replyText: calls === 1 ? "" : "Ready.",
+					extra: { inactiveOps: [], replyEffectStatus: "none" },
+				});
+			},
+		) as IAgentRuntime["useModel"];
+		const response = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state,
+			responseId: message.id as UUID,
+		});
+		expect(response.kind).toBe("direct_reply");
+		expect(calls).toBe(2);
+		expect(handle).not.toHaveBeenCalled();
+	});
+
 	it.each(["history:h2", "history:search:blueberry"])(
 		"refreshes role-gated field prompts and processing after %s",
 		async (reference) => {
@@ -1310,6 +1354,211 @@ describe("runV5MessageRuntimeStage1", () => {
 				expect(result.result.responseContent?.text).toBe(answer);
 		},
 	);
+
+	it.each([
+		"target",
+		"literal",
+		"full",
+		"changed",
+		"mixed",
+		"extra",
+		"unknown",
+	])(
+		"resolves native context reads before any field dispatch: %s",
+		async (mode) => {
+			const { runtime, message, rows, state } = await reviewedHistoryFixture();
+			message.content.text =
+				"Recall the old literal label without changing records.";
+			const dispatch = vi.spyOn(
+				runtime.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			let calls = 0;
+			runtime.useModel = vi.fn(
+				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+					calls++;
+					if (calls > 2) throw new Error("Unexpected extra context-read call");
+					expect(dispatch).not.toHaveBeenCalled();
+					const input = args[1] as {
+						messages: Array<{ content: string }>;
+						tools: unknown;
+					};
+					const text = input.messages.map((m) => m.content).join("\n");
+					if (calls === 1) {
+						expect(JSON.stringify(input.tools)).toContain(
+							'"name":"READ_CONTEXT"',
+						);
+						expect(text).not.toContain(rows[1].content.text?.trim());
+						if (mode === "changed")
+							rows[1].content.text = "The corrected literal label is plum.";
+						const contextRequests = [
+							mode === "literal"
+								? "history:search:blueberry"
+								: mode === "full"
+									? "history:all"
+									: mode === "unknown"
+										? "not-authorized"
+										: "history:h2",
+						];
+						return {
+							text: "Undelivered read prose",
+							toolCalls: [
+								{
+									toolName: "READ_CONTEXT",
+									input: {
+										contextRequests,
+										...(mode === "extra"
+											? { facts: ["Never persist this"] }
+											: {}),
+									},
+								},
+								...(mode === "mixed"
+									? [
+											{
+												toolName: "HANDLE_RESPONSE",
+												input: { replyText: "Never deliver this" },
+											},
+										]
+									: []),
+							],
+						};
+					}
+					expect(text).toContain(rows[1].content.text?.trim());
+					if (["full", "changed"].includes(mode))
+						expect(text).toContain(rows[2].content.text);
+					else expect(text).not.toContain(rows[2].content.text);
+					return stage1Response({
+						replyText: "Read original evidence.",
+						extra: {
+							completionContext: {
+								mode: "relevant_prior_dialogue",
+								complete: true,
+								sourceSetId: text.match(
+									/completion_source_set: ([a-f0-9]{64})/,
+								)?.[1],
+								relevantSourceIds: ["h2"],
+								constraintSourceIds: ["h1"],
+								referentSourceIds: [],
+								pendingIntentSourceIds: [],
+							},
+						},
+					});
+				},
+			) as IAgentRuntime["useModel"];
+			const run = () =>
+				runV5MessageRuntimeStage1({
+					runtime,
+					message,
+					state,
+					responseId: message.id as UUID,
+					stage1DecisionOnly: true,
+				});
+			if (["mixed", "extra", "unknown"].includes(mode)) {
+				await expect(run()).rejects.toThrow();
+				expect(dispatch).not.toHaveBeenCalled();
+				expect(calls).toBe(1);
+			} else {
+				await run();
+				expect(calls).toBe(2);
+				expect(dispatch).toHaveBeenCalledTimes(1);
+				expect(dispatch.mock.calls[0]?.[0].rawParsed.replyText).toBe(
+					"Read original evidence.",
+				);
+			}
+		},
+	);
+
+	it.each([
+		"corrected",
+		"repeated",
+		"incomplete",
+		"explicit",
+		"deferred",
+		"unknown",
+		"malformed",
+	])("bounds source identity repair before processing: %s", async (mode) => {
+		const { runtime, message, rows, state } = await reviewedHistoryFixture();
+		message.content.text = "Hello.";
+		const before = structuredClone(rows);
+		const dispatch = vi.spyOn(runtime.responseHandlerFieldRegistry, "dispatch");
+		const inputs: string[] = [];
+		const repairable = ![
+			"explicit",
+			"deferred",
+			"unknown",
+			"malformed",
+		].includes(mode);
+		runtime.useModel = vi.fn(
+			async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+				const input = args[1] as {
+					messages: Array<{ role: string; content: string }>;
+					tools: unknown;
+				};
+				const text = input.messages.map((m) => m.content).join("\n");
+				inputs.push(text);
+				const call = inputs.length;
+				if (call > 3) throw new Error("Unbounded identity repair");
+				expect(dispatch).not.toHaveBeenCalled();
+				const sourceSetId = text.match(
+					/completion_source_set: ([a-f0-9]{64})/,
+				)?.[1];
+				const repairCall = call === 2 && repairable;
+				const full = call > (repairable ? 2 : 1);
+				if (full) expect(text).toContain(rows[1].content.text?.trim());
+				else expect(text).not.toContain(rows[1].content.text?.trim());
+				if (repairCall) {
+					expect(text).toContain("source_identity_repair:");
+					expect(JSON.stringify(input.tools)).toContain(
+						`"enum":["${sourceSetId}"]`,
+					);
+				} else {
+					expect(text).not.toContain("source_identity_repair:");
+					expect(JSON.stringify(input.tools)).not.toContain(
+						`"enum":["${sourceSetId}"]`,
+					);
+				}
+				const rejected = call === 1 || (repairCall && mode !== "corrected");
+				return stage1Response({
+					replyText: rejected ? "Unaccepted draft." : "Hello.",
+					facts: rejected ? ["Never process this extraction"] : [],
+					contextRequests:
+						call === 1 && mode === "explicit" ? ["history:all"] : [],
+					extra: {
+						completionContext: {
+							mode: "relevant_prior_dialogue",
+							sourceSetId:
+								call === 1 || (repairCall && mode === "repeated")
+									? "0".repeat(64)
+									: sourceSetId,
+							complete: !(repairCall && mode === "incomplete"),
+							relevantSourceIds:
+								call === 1 && mode === "deferred"
+									? ["h2"]
+									: call === 1 && mode === "unknown"
+										? ["h999"]
+										: [],
+							constraintSourceIds: ["h1"],
+							referentSourceIds: call === 1 && mode === "malformed" ? [42] : [],
+							pendingIntentSourceIds: [],
+						},
+					},
+				});
+			},
+		) as IAgentRuntime["useModel"];
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state,
+			responseId: message.id as UUID,
+			stage1DecisionOnly: true,
+		});
+		expect(inputs).toHaveLength(
+			["repeated", "incomplete"].includes(mode) ? 3 : 2,
+		);
+		expect(dispatch).toHaveBeenCalledTimes(1);
+		expect(dispatch.mock.calls[0]?.[0].rawParsed.facts).toEqual([]);
+		expect(rows).toEqual(before);
+	});
 
 	it.each([
 		"repair",
@@ -10253,7 +10502,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(runtime.useModel).toHaveBeenCalledTimes(1);
 	});
 
-	it("routes high-stakes direct-message crisis prompts through Stage 1 instead of the fast reply path", async () => {
+	it("returns a model-authored high-stakes direct reply without a planner call", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: ["simple"],
@@ -10276,15 +10525,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(result.kind).toBe("direct_reply");
 		const firstCall = useModelCalls(runtime)[0];
 		expect(firstCall?.[0]).toBe(ModelType.RESPONSE_HANDLER);
-		const params = firstCall?.[1] as {
-			messages?: Array<{ role?: string; content?: string | null }>;
-		};
-		const systemContent =
-			params.messages?.find((m) => m.role === "system")?.content ?? "";
-		expect(systemContent).toContain("Personal-crisis rule:");
-		expect(systemContent).toContain(
-			"The deferral is the complete simple reply",
-		);
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
 	});
 
 	it("keeps arithmetic word questions on the simple direct-reply path", async () => {
