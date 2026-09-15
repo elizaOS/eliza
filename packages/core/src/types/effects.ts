@@ -639,6 +639,21 @@ function isCommittedEffectReceipt(
 	);
 }
 
+/** Current-turn commits available for proof selection, excluding rollbacks.
+ * Availability alone never binds a receipt to a reply or proves its claims. */
+export function activeCommittedEffectReceipts(
+	receipts: readonly EffectReceipt[],
+): readonly CommittedEffectReceipt[] {
+	const normalized = normalizeEffectReceipts(receipts);
+	const reverted = revertedEffectReceiptIds(normalized);
+	return Object.freeze(
+		normalized.filter(
+			(receipt): receipt is CommittedEffectReceipt =>
+				isCommittedEffectReceipt(receipt) && !reverted.has(receipt.receiptId),
+		),
+	);
+}
+
 /**
  * Resolve the receipts bound to exact action-owned user-facing text. Every ID
  * must exist, prove committed desired state (applied, or a replayed no-op
@@ -651,14 +666,12 @@ export function resolveAppliedUserFacingEffectReceipts(
 ): readonly CommittedEffectReceipt[] | null {
 	const resolved = resolveUserFacingEffectReceipts(result, allTurnReceipts);
 	if (!resolved) return null;
-	const normalizedReceipts = normalizeEffectReceipts(allTurnReceipts);
-	const reverted = revertedEffectReceiptIds(normalizedReceipts);
-	if (
-		resolved.some(
-			(receipt) =>
-				!isCommittedEffectReceipt(receipt) || reverted.has(receipt.receiptId),
-		)
-	) {
+	const availableIds = new Set(
+		activeCommittedEffectReceipts(allTurnReceipts).map(
+			(receipt) => receipt.receiptId,
+		),
+	);
+	if (resolved.some((receipt) => !availableIds.has(receipt.receiptId))) {
 		return null;
 	}
 	return Object.freeze(resolved as CommittedEffectReceipt[]);

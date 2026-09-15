@@ -412,6 +412,101 @@ async function seededPiiSession(): Promise<{
 }
 
 describe("runV5MessageRuntimeStage1", () => {
+	it.each(["unchanged", "edited", "revoked"])(
+		"reads a fully quoted deferred source before dispatching the draft: %s",
+		async (mode) => {
+			const { runtime, message, rows, state } = await reviewedHistoryFixture();
+			const before = structuredClone(rows);
+			const dispatch = vi.spyOn(
+				runtime.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			if (mode !== "unchanged") {
+				runtime.composeState = async () => {
+					const fresh = structuredClone(state);
+					fresh.data.providers = {
+						RECENT_MESSAGES: {
+							data: {
+								recentMessages:
+									mode === "revoked"
+										? rows.filter((row) => row.id !== rows[1].id)
+										: rows.map((row, i) =>
+												i === 1
+													? {
+															...row,
+															content: {
+																text: "The corrected label is cranberry.",
+															},
+														}
+													: row,
+											),
+							},
+						},
+					};
+					return fresh;
+				};
+			}
+			let calls = 0;
+			runtime.useModel = vi.fn(
+				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+					calls++;
+					if (calls > 2) throw new Error("Unexpected quote read loop");
+					expect(dispatch).not.toHaveBeenCalled();
+					const text = (
+						args[1] as { messages: Array<{ content: string }> }
+					).messages
+						.map((entry) => entry.content)
+						.join("\n");
+					if (calls === 1 || mode !== "unchanged")
+						expect(text).not.toContain(rows[1].content.text);
+					if (calls === 2 && mode === "unchanged") {
+						expect(text).toContain("context_loaded: history:h2");
+						expect(text).toContain(rows[1].content.text);
+					}
+					if (calls === 2 && mode === "edited")
+						expect(text).toContain("The corrected label is cranberry.");
+					return stage1Response({
+						contexts: ["simple"],
+						contextRequests: [],
+						replyText:
+							calls === 1
+								? `You said: “${rows[1].content.text}”`
+								: "The current originals are now supplied; nothing changed.",
+						facts: calls === 1 ? ["Do not process this discarded draft."] : [],
+						extra: {
+							completionContext: {
+								mode: "relevant_prior_dialogue",
+								sourceSetId: text.match(
+									/completion_source_set: ([a-f0-9]{64})/,
+								)?.[1],
+								complete: true,
+								relevantSourceIds:
+									calls === 2 && mode === "unchanged" ? ["h2"] : [],
+								constraintSourceIds: ["h1"],
+								referentSourceIds: [],
+								pendingIntentSourceIds: [],
+							},
+						},
+					});
+				},
+			) as IAgentRuntime["useModel"];
+			const response = await runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state,
+				responseId: message.id as UUID,
+			});
+			expect(response.kind).toBe("direct_reply");
+			if (response.kind === "direct_reply")
+				expect(response.result.responseContent?.text).toBe(
+					"The current originals are now supplied; nothing changed.",
+				);
+			expect(calls).toBe(2);
+			expect(dispatch).toHaveBeenCalledTimes(1);
+			expect(rows).toEqual(before);
+		},
+	);
+
 	it.each(["history:h2", "history:search:blueberry"])(
 		"refreshes role-gated field prompts and processing after %s",
 		async (reference) => {
