@@ -210,7 +210,7 @@ describe("durable background memory", () => {
 			}
 		},
 	);
-	it.each([relationshipEvaluator, identityEvaluator, successEvaluator])(
+	it.each([relationshipEvaluator, identityEvaluator])(
 		"holds $name source reconciliation before inference without acknowledging the evidence",
 		async (entry) => {
 			for (const mutation of ["edit", "delete"]) {
@@ -256,6 +256,47 @@ describe("durable background memory", () => {
 					expect(model).not.toHaveBeenCalled();
 				}
 			}
+		},
+	);
+	it.each(["edit", "delete"])(
+		"reconciles success reflections after source %s before consuming new evidence",
+		async (mutation) => {
+			const { runtime, service, message } = await setup();
+			runtime.registerEvaluator(successEvaluator);
+			runtime.useModel = vi.fn(async () =>
+				JSON.stringify({ success: { completed: true, reason: "Answered." } }),
+			) as AgentRuntime["useModel"];
+			const options = { phase: "post_turn" as const, didRespond: true };
+			expect((await service.run(message, state, options)).errors).toEqual([]);
+			const [old] = await runtime.getMemories({
+				tableName: "memories",
+				roomId: message.roomId,
+				unique: false,
+			});
+			if (!old?.id || !message.id) throw new Error("Missing stored evidence");
+			const next = {
+				...message,
+				id: stringToUuid(`success-reconcile-${mutation}`),
+				createdAt: 20,
+				content: { text: "hi" },
+			};
+			await runtime.upsertMemory(next, "messages");
+			if (mutation === "edit")
+				await runtime.updateMemory({
+					id: message.id,
+					content: { text: "Correction: I live in Paris." },
+				});
+			else await runtime.deleteMemory(message.id);
+			const result = await service.run(next, state, options);
+			expect(result.errors).toEqual([]);
+			expect(result.processedEvaluators).toContain("success");
+			const retired = await runtime.getMemoryById(old.id);
+			expect(retired && isActiveMemoryEvidence(retired)).toBe(false);
+			expect((await service.run(next, state, options)).errors).toEqual([]);
+			const current = await runtime.getMemoryById(message.id);
+			if (mutation === "edit")
+				expect(current?.content.text).toBe("Correction: I live in Paris.");
+			else expect(current).toBeNull();
 		},
 	);
 

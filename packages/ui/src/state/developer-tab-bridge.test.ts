@@ -137,6 +137,42 @@ describe("developer app-tab relay", () => {
     await promise;
   });
 
+  it("does not replay unchanged pre-send history over the developer transcript", async () => {
+    const app = mount("app", false);
+    const dev = mount("dev", true);
+    const old: ConversationMessage = {
+      id: "durable-prior-reply",
+      role: "assistant",
+      text: "Earlier reply",
+      timestamp: 1,
+    };
+    app.setMessages([old]);
+    const promise = dev.bridge.send("app", "hello", "conv");
+    try {
+      // An app tab may retain an older snapshot of a row already refreshed in
+      // dev. Starting a new turn does not make that history a new stream update.
+      expect(dev.host.messages).not.toHaveBeenCalled();
+      const user: ConversationMessage = {
+        id: "optimistic-user",
+        role: "user",
+        text: "hello",
+        timestamp: 2,
+      };
+      app.stream([old, user]);
+      expect(dev.host.messages).toHaveBeenCalledExactlyOnceWith(
+        "conv",
+        [user],
+        [],
+      );
+      const updated = { ...old, text: "Authoritative updated reply" };
+      app.stream([updated, user]);
+      expect(dev.host.messages).toHaveBeenLastCalledWith("conv", [updated], []);
+    } finally {
+      app.finish();
+      await promise;
+    }
+  });
+
   it("binds stop to the selected app and in-flight request", async () => {
     const app = mount("app", false);
     const other = mount("other", false);

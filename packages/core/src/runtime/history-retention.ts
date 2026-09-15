@@ -201,10 +201,14 @@ export function applyHistoryRetentionReview(
 		Array.isArray(output.dependencyGroups) &&
 			output.dependencyGroups.every(
 				(g) =>
-					stringIds(g) && g.length > 0 && g.every((id) => retained.has(id)),
+					stringIds(g) && g.length > 0 && g.every((id) => supplied.has(id)),
 			),
-		"Dependency closure missing from retained originals",
+		"Invalid dependency group",
 	);
+	// A declared dependency takes precedence over a conflicting deferral. Keep
+	// the whole group visible; never resolve the contradiction by dropping it.
+	for (const group of output.dependencyGroups)
+		for (const id of group) retained.add(id);
 	const cp: HistoryRetentionCheckpoint = {
 		version: 1,
 		scopeHash: scopeHash(prepared.scope),

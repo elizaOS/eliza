@@ -74,7 +74,10 @@ export function getRoomTranscript(
 	return loading;
 }
 
-export function formatRecentMessages(memories: Memory[]): string {
+export function formatRecentMessages(
+	memories: Memory[],
+	includeMessageIds = false,
+): string {
 	const lines: string[] = [];
 	for (const memory of memories) {
 		if (isSyntheticConversationArtifactMemory(memory)) continue;
@@ -87,7 +90,9 @@ export function formatRecentMessages(memories: Memory[]): string {
 			(typeof memory.content.name === "string" && memory.content.name) ||
 			memory.entityId ||
 			"someone";
-		lines.push(`- ${senderName}: ${text}`);
+		lines.push(
+			`- ${includeMessageIds ? `[messageId=${memory.id ?? "unavailable"}] ` : ""}${senderName}: ${text}`,
+		);
 	}
 	return lines.length > 0 ? lines.join("\n") : "(none)";
 }

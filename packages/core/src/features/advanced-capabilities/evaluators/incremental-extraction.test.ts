@@ -12,6 +12,7 @@ import {
 	type RegisteredEvaluator,
 	type UUID,
 } from "../../../types/index.ts";
+import { isActiveMemoryEvidence } from "../../../utils/extraction-evidence.ts";
 import { makeFakeRuntime } from "../personality/__tests__/test-helpers.ts";
 import { PersonalityStore } from "../personality/services/personality-store.ts";
 import { recordFactCandidate } from "./_factCandidates.ts";
@@ -22,6 +23,7 @@ import {
 	relationshipEvaluator,
 	successEvaluator,
 } from "./reflection-items.ts";
+import { getTaskCompletionCacheKey } from "./task-completion.ts";
 
 const USER = "00000000-0000-4000-8000-000000000001" as UUID;
 const OTHER = "00000000-0000-4000-8000-000000000002" as UUID;
@@ -475,6 +477,152 @@ describe("incremental extractor evidence", () => {
 		expect((await runtime.getMemoryById(id))?.metadata?.confidence).toBe(0.7);
 	});
 
+	it("attributes historical identity observations to their original sources, not the batch trigger", async () => {
+		const runtime = await makeRuntime();
+		const upsertIdentity = vi.fn(async () => {});
+		const getService = runtime.getService.bind(runtime);
+		vi.spyOn(runtime, "getService").mockImplementation((name) =>
+			name === "relationships"
+				? ({ upsertIdentity } as never)
+				: getService(name),
+		);
+		const runOptions = options("identity:historical");
+		runOptions.extraction.messages = [
+			{ ...turn, id: OTHER, content: { text: "My GitHub handle is example." } },
+			{ ...turn, content: { text: "Thanks." } },
+		];
+		runOptions.extraction.sourceRevisions[OTHER] = "historical-revision";
+		const identity = {
+			entityId: USER,
+			platform: "github",
+			handle: "example",
+			confidence: 0.9,
+		};
+		await process(
+			runtime,
+			identityEvaluator,
+			{ identities: [{ ...identity, sourceMessageId: OTHER }] },
+			runOptions,
+		);
+		expect(upsertIdentity).toHaveBeenCalledWith(
+			USER,
+			expect.objectContaining({ handle: "example", source: "reflection" }),
+			[OTHER],
+		);
+		// Legacy staged output keeps its prior write identity, rather than silently
+		// changing already-persisted evidence during a retry.
+		await process(
+			runtime,
+			identityEvaluator,
+			{ identities: [identity] },
+			runOptions,
+		);
+		expect(upsertIdentity).toHaveBeenLastCalledWith(USER, expect.anything(), [
+			MESSAGE,
+		]);
+	});
+
+	it.each(["unknown", "agent", "other-room", "reference-only"])(
+		"rejects %s identity evidence before any side effects",
+		async (kind) => {
+			const runtime = await makeRuntime();
+			const upsertIdentity = vi.fn(async () => {});
+			const getService = runtime.getService.bind(runtime);
+			vi.spyOn(runtime, "getService").mockImplementation((name) =>
+				name === "relationships"
+					? ({ upsertIdentity } as never)
+					: getService(name),
+			);
+			const runOptions = options("identity:invalid");
+			if (kind !== "unknown")
+				runOptions.extraction.messages.push({
+					...turn,
+					id: OTHER,
+					entityId: kind === "agent" ? runtime.agentId : USER,
+					roomId: kind === "other-room" ? OTHER : ROOM,
+				});
+			if (kind !== "reference-only")
+				runOptions.extraction.sourceRevisions[OTHER] = "revision";
+			const identity = {
+				entityId: USER,
+				platform: "github",
+				handle: "example",
+				confidence: 0.9,
+			};
+			await expect(
+				process(
+					runtime,
+					identityEvaluator,
+					{
+						identities: [
+							{ ...identity, sourceMessageId: MESSAGE },
+							{ ...identity, sourceMessageId: OTHER },
+						],
+					},
+					runOptions,
+				),
+			).rejects.toMatchObject({ code: "EVALUATOR_IDENTITY_SOURCE_REQUIRED" });
+			expect(upsertIdentity).not.toHaveBeenCalled();
+		},
+	);
+
+	it("requires citations for fresh identity output while preserving staged legacy parsing", async () => {
+		const runtime = await makeRuntime();
+		const context = {
+			runtime,
+			message: turn,
+			state: STATE,
+			options: options(),
+		};
+		const prepared = await identityEvaluator.prepare?.(context);
+		if (!prepared)
+			throw new Error("Identity evaluator did not prepare context");
+		expect(identityEvaluator.prompt?.({ ...context, prepared })).toContain(
+			`[messageId=${MESSAGE}]`,
+		);
+		const sharedPrompt = identityEvaluator.prompt?.({
+			...context,
+			prepared,
+			shared: { roomTranscriptRendered: true, actionResultsText: "" },
+		});
+		expect(sharedPrompt).toContain('see "Room transcript"');
+		expect(sharedPrompt).not.toContain(turn.content.text);
+		const output = {
+			identities: [
+				{
+					entityId: USER,
+					platform: "github",
+					handle: "example",
+					confidence: 0.9,
+				},
+			],
+		};
+		expect(
+			identityEvaluator.parse?.(output, {
+				...context,
+				prepared,
+				outputSource: "model",
+			}),
+		).toBeNull();
+		expect(
+			identityEvaluator.parse?.(output, {
+				...context,
+				prepared,
+				outputSource: "staged",
+			}),
+		).toEqual(output);
+		const cited = {
+			identities: [{ ...output.identities[0], sourceMessageId: MESSAGE }],
+		};
+		expect(
+			identityEvaluator.parse?.(cited, {
+				...context,
+				prepared,
+				outputSource: "model",
+			}),
+		).toEqual(cited);
+	});
+
 	it("replays relationship effects once and preserves complete semantics", async () => {
 		const runtime = await makeRuntime();
 		const output = {
@@ -565,6 +713,156 @@ describe("incremental extractor evidence", () => {
 				unique: false,
 			}),
 		).toHaveLength(1);
+	});
+
+	it("retires an edited completion and its cache while retaining originals and other derived records", async () => {
+		const runtime = await makeRuntime();
+		await runtime.createMemory(
+			{ ...turn, agentId: runtime.agentId },
+			"messages",
+		);
+		await process(
+			runtime,
+			successEvaluator,
+			{ completed: true, reason: "Done" },
+			options("success:edited"),
+		);
+		const [reflection] = await runtime.getMemories({
+			tableName: "memories",
+			roomId: ROOM,
+			unique: false,
+		});
+		const unrelated = {
+			...reflection,
+			id: "00000000-0000-4000-8000-000000000098" as UUID,
+			metadata: {
+				...reflection.metadata,
+				messageId: OTHER,
+				extractionSourceRevisions: { other: "unchanged" },
+				extractionEvidenceIds: ["other"],
+			},
+		};
+		await runtime.createMemory(unrelated, "memories");
+		const protectedRecord = {
+			...reflection,
+			id: "00000000-0000-4000-8000-000000000097" as UUID,
+			metadata: { ...reflection.metadata, verificationStatus: "confirmed" },
+		};
+		await runtime.createMemory(protectedRecord, "memories");
+		const args = {
+			runtime,
+			message: turn,
+			state: STATE,
+			options: {},
+			reconciliation: {
+				id: "edited",
+				changedMessageIds: [MESSAGE],
+				removedMessageIds: [],
+				currentSourceRevisions: { [MESSAGE]: "revision2", other: "unchanged" },
+			},
+		};
+		const reconcile = successEvaluator.reconcileEvidence;
+		expect(reconcile).toBeTypeOf("function");
+		const result = await reconcile?.(args);
+		expect(result).toEqual({ reprocessSourceIds: [MESSAGE] });
+		if (!reflection.id) throw new Error("Missing stored reflection ID");
+		const retired = await runtime.getMemoryById(reflection.id);
+		expect(retired && isActiveMemoryEvidence(retired)).toBe(false);
+		expect(await runtime.getMemoryById(unrelated.id)).toEqual(unrelated);
+		expect(await runtime.getMemoryById(protectedRecord.id)).toEqual(
+			protectedRecord,
+		);
+		expect(await runtime.getMemoryById(MESSAGE)).toMatchObject({
+			content: turn.content,
+		});
+		expect(
+			await runtime.getCache(getTaskCompletionCacheKey(MESSAGE)),
+		).toBeUndefined();
+		await expect(reconcile?.(args)).resolves.toEqual(result);
+	});
+
+	it("retains a newer cached assessment and refuses a failed retirement write", async () => {
+		const runtime = await makeRuntime();
+		await process(
+			runtime,
+			successEvaluator,
+			{ completed: true, reason: "Old" },
+			options("success:removed"),
+		);
+		const key = getTaskCompletionCacheKey(MESSAGE);
+		const newer = {
+			source: "reflection",
+			evaluatedAt: Date.now() + 1000,
+			completed: false,
+			reason: "New",
+			assessed: true,
+		};
+		await runtime.setCache(key, newer);
+		const args = {
+			runtime,
+			message: turn,
+			state: STATE,
+			options: {},
+			reconciliation: {
+				id: "removed",
+				changedMessageIds: [],
+				removedMessageIds: [MESSAGE],
+				currentSourceRevisions: {},
+			},
+		};
+		const update = vi.spyOn(runtime, "updateMemory").mockResolvedValue(false);
+		await expect(
+			successEvaluator.reconcileEvidence?.(args),
+		).rejects.toMatchObject({ code: "EVALUATOR_RECONCILIATION_WRITE_FAILED" });
+		update.mockRestore();
+		await expect(successEvaluator.reconcileEvidence?.(args)).resolves.toEqual({
+			reprocessSourceIds: [],
+		});
+		expect(await runtime.getCache(key)).toEqual(newer);
+	});
+
+	it("reconciles a legacy completion by its trigger and fails closed on cache deletion failure", async () => {
+		const runtime = await makeRuntime();
+		await process(runtime, successEvaluator, {
+			completed: true,
+			reason: "Done",
+		});
+		const [record] = await runtime.getMemories({
+			tableName: "memories",
+			roomId: ROOM,
+			unique: false,
+		});
+		if (!record.id) throw new Error("Missing reflection");
+		await runtime.updateMemory({
+			id: record.id,
+			metadata: { ...record.metadata, extractionSourceRevisions: {} },
+		});
+		const args = {
+			runtime,
+			message: turn,
+			state: STATE,
+			options: {},
+			reconciliation: {
+				id: "legacy-edit",
+				changedMessageIds: [MESSAGE],
+				removedMessageIds: [],
+				currentSourceRevisions: { [MESSAGE]: "revision2" },
+			},
+		};
+		const removeCache = vi
+			.spyOn(runtime, "deleteCache")
+			.mockResolvedValue(false);
+		await expect(
+			successEvaluator.reconcileEvidence?.(args),
+		).rejects.toMatchObject({ code: "EVALUATOR_RECONCILIATION_WRITE_FAILED" });
+		const unretired = await runtime.getMemoryById(record.id);
+		expect(unretired && isActiveMemoryEvidence(unretired)).toBe(true);
+		removeCache.mockRestore();
+		await expect(successEvaluator.reconcileEvidence?.(args)).resolves.toEqual({
+			reprocessSourceIds: [MESSAGE],
+		});
+		const retired = await runtime.getMemoryById(record.id);
+		expect(retired && isActiveMemoryEvidence(retired)).toBe(false);
 	});
 
 	it("flags attributable facts for review and does not claim deleted source reconciliation", async () => {

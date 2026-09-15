@@ -303,7 +303,17 @@ export function renderMessageHandlerModelInput(
 					},
 				]
 			: []),
-		...loadedHistorySegments(context, history),
+		...loadedHistorySegments(
+			context,
+			history,
+			history?.loadedSourceIds.size
+				? new Set(
+						priorDialogueSegments.flatMap((segment) =>
+							segment.id ? [segment.id] : [],
+						),
+					)
+				: undefined,
+		),
 		...turnTailSegments,
 	];
 	const stableWireSegments = [
