@@ -4,6 +4,7 @@
  * assignments, and the registry are mocked; no model loads.
  */
 
+import { Module } from "node:module";
 import {
 	AgentRuntime,
 	ModelType,
@@ -11,6 +12,24 @@ import {
 	type ServiceClass,
 } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const fusedState = vi.hoisted(() => ({
+	embedSupported: vi.fn(() => true),
+	embed: vi.fn(() => new Float32Array([0.25, 0.5])),
+	create: vi.fn(() => 1),
+	destroy: vi.fn(),
+	close: vi.fn(),
+}));
+vi.mock("./fused-embedding-bundle", () => ({
+	resolveFusedEmbeddingBundleRoot: vi.fn(() => "/test/embedding-bundle"),
+}));
+vi.mock("../services/desktop-fused-ffi-backend-runtime", () => ({
+	resolveFusedLibraryPath: vi.fn(() => "/test/libelizainference"),
+}));
+vi.mock("../services/voice/ffi-bindings", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../services/voice/ffi-bindings")>()),
+	loadElizaInferenceFfi: vi.fn(() => fusedState),
+}));
 
 const modeState = vi.hoisted(() => ({ mode: "local" }));
 const assignmentsState = vi.hoisted(() => ({
@@ -228,6 +247,54 @@ beforeEach(() => {
 });
 
 describe("ensureLocalInferenceHandler", () => {
+	it("retries failed embedding initialization but reuses hardware selection after loading", async () => {
+		const resolver = Module as unknown as {
+			_resolveFilename: (request: string, ...args: unknown[]) => string;
+		};
+		const originalResolve = resolver._resolveFilename;
+		const resolveSpy = vi
+			.spyOn(resolver, "_resolveFilename")
+			.mockImplementation((request, ...args) =>
+				request === "bun:ffi"
+					? "bun:ffi"
+					: originalResolve.call(resolver, request, ...args),
+			);
+		try {
+			const { runtime, registrations } = makeRuntime();
+			await ensureLocalInferenceHandler(runtime);
+			const handler = findRegisteredHandler(
+				registrations,
+				ModelType.TEXT_EMBEDDING,
+			);
+			vi.mocked(probeHardware).mockClear();
+			fusedState.embedSupported.mockReturnValueOnce(false);
+			await expect(handler(runtime, { text: "first" })).rejects.toThrow(
+				"TEXT_EMBEDDING unavailable",
+			);
+			expect(fusedState.close).toHaveBeenCalledTimes(1);
+			await expect(handler(runtime, { text: "second" })).resolves.toEqual([
+				0.25, 0.5,
+			]);
+			expect(probeHardware).toHaveBeenCalledTimes(2);
+			vi.stubEnv("ELIZA_EMBED_POOLING", "cls");
+			await expect(handler(runtime, { text: "warm" })).resolves.toEqual([
+				0.25, 0.5,
+			]);
+			expect(probeHardware).toHaveBeenCalledTimes(2);
+			expect(fusedState.create).toHaveBeenCalledTimes(1);
+			const { ELIZA_POOLING_CLS } = await import(
+				"../services/voice/ffi-bindings"
+			);
+			expect(fusedState.embed).toHaveBeenLastCalledWith({
+				ctx: 1,
+				text: "warm",
+				pooling: ELIZA_POOLING_CLS,
+			});
+		} finally {
+			resolveSpy.mockRestore();
+		}
+	});
+
 	it("registers only embeddings for an opted-in provisioned cloud runtime", async () => {
 		vi.stubEnv("ELIZA_CLOUD_PROVISIONED", "1");
 		vi.stubEnv("ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS", "1");
