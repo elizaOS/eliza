@@ -1727,6 +1727,26 @@ describe("MEMORY op:delete by query", () => {
     expect(rows).toHaveLength(0);
   });
 
+  it("fails a target-less update whose implied target matches nothing and points the planner at MEMORY_CREATE", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, { text: "nubs lives on a boat", entityId: USER_ID });
+
+    const result = await runAction(
+      runtime,
+      makeMessage({ text: "remember that my favorite tea is oolong" }),
+      {
+        action: "update",
+        text: "The user's favorite tea is oolong.",
+        confirm: true,
+      },
+    );
+
+    expect(result.success, JSON.stringify(result)).toBe(false);
+    expect(result.data).toMatchObject({ error: "MEMORY_NOT_FOUND" });
+    expect(JSON.stringify(result)).toContain("MEMORY_CREATE");
+    expect(rows).toHaveLength(1);
+  });
+
   it("updates the prior fact a target-less update implies from the user's words", async () => {
     const { runtime, rows } = makeRuntime();
     const priorId = seedFact(rows, {
