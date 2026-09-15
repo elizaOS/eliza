@@ -3478,9 +3478,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("re-asks once when Stage 1 ends an addressed question with STOP and an empty plan (live 2026-09-15: 'what's the capital of chile?' shipped the canned deferral)", async () => {
+	it("re-asks once when Stage 1 declares RESPOND with an empty answer and no pending work", async () => {
 		const runtime = makeRuntime([
-			stage1Response({ shouldRespond: "STOP", contexts: [] }),
+			stage1Response({ contexts: ["simple"], replyText: "" }),
 			stage1Response({ contexts: ["simple"], replyText: "Santiago." }),
 		]);
 		const result = await runV5MessageRuntimeStage1({
@@ -3507,12 +3507,14 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(repairInput.messages.at(-1)?.content).toContain(
 			"response_contract_repair:",
 		);
-		expect(repairInput.messages.at(-1)?.content).toContain("without answering");
+		expect(repairInput.messages.at(-1)?.content).toContain(
+			"neither an answer nor pending work",
+		);
 	});
 
-	it("keeps the deferral when the repaired re-ask still ends the turn without an answer (#11504)", async () => {
+	it("allows a corrected empty RESPOND to end with terminal STOP", async () => {
 		const runtime = makeRuntime([
-			stage1Response({ shouldRespond: "STOP", contexts: [] }),
+			stage1Response({ contexts: ["simple"], replyText: "" }),
 			stage1Response({ shouldRespond: "STOP", contexts: [] }),
 		]);
 		const result = await runV5MessageRuntimeStage1({
@@ -3524,13 +3526,105 @@ describe("runV5MessageRuntimeStage1", () => {
 			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
+		expect(result).toMatchObject({ kind: "terminal", action: "STOP" });
+		expect(useModelCalls(runtime)).toHaveLength(2);
+	});
+
+	it.each([
+		"不要回复",
+		"No respondas",
+		"Please cease responding",
+		"one line: what's the capital of chile?",
+	])(
+		"keeps a model STOP terminal without a language-dependent retry: %s",
+		async (text) => {
+			const runtime = makeRuntime([
+				stage1Response({ shouldRespond: "STOP", contexts: [] }),
+				stage1Response({
+					contexts: ["simple"],
+					replyText: "This must never be delivered.",
+				}),
+			]);
+			const handler = vi.fn(async () => ({
+				success: true,
+				text: "Unexpected domain effect",
+			}));
+			runtime.actions = [
+				{
+					name: "NOTES_CREATE",
+					description: "Create a saved note.",
+					validate: async () => true,
+					handler,
+				},
+			];
+			const callback = vi.fn(async () => []);
+			const onResponseHandlerEarlyReply = vi.fn();
+			const onSettledActionResult = vi.fn();
+			const result = await runV5MessageRuntimeStage1({
+				callback,
+				onResponseHandlerEarlyReply,
+				onSettledActionResult,
+				runtime,
+				message: makeMessage({ text, channelType: ChannelType.DM }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(callback).not.toHaveBeenCalled();
+			expect(onResponseHandlerEarlyReply).not.toHaveBeenCalled();
+			expect(onSettledActionResult).not.toHaveBeenCalled();
+			expect(handler).not.toHaveBeenCalled();
+			expect(result).toMatchObject({ kind: "terminal", action: "STOP" });
+			expect(useModelCalls(runtime).map(([type]) => type)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+			]);
+		},
+	);
+
+	it("re-asks a STOP once on an addressed turn only with ELIZA_STAGE1_TERMINAL_REASK, honoring a repeated STOP", async () => {
+		const setting = { ELIZA_STAGE1_TERMINAL_REASK: "1" };
+		const recovered = makeRuntime(
+			[
+				stage1Response({ shouldRespond: "STOP", contexts: [] }),
+				stage1Response({ contexts: ["simple"], replyText: "Santiago." }),
+			],
+			setting,
+		);
+		const result = await runV5MessageRuntimeStage1({
+			runtime: recovered,
+			message: makeMessage({
+				text: "one line: what's the capital of chile?",
+				channelType: ChannelType.DM,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
 		expect(result.kind).toBe("direct_reply");
 		if (result.kind === "direct_reply") {
-			expect(result.result.responseContent?.text).toBe(
-				"I'm not sure how to answer that.",
-			);
+			expect(result.result.responseContent?.text).toBe("Santiago.");
 		}
-		expect(useModelCalls(runtime)).toHaveLength(2);
+		expect(useModelCalls(recovered).map(([type]) => type)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+
+		const confirmed = makeRuntime(
+			[
+				stage1Response({ shouldRespond: "STOP", contexts: [] }),
+				stage1Response({ shouldRespond: "STOP", contexts: [] }),
+			],
+			setting,
+		);
+		const stopped = await runV5MessageRuntimeStage1({
+			runtime: confirmed,
+			message: makeMessage({
+				text: "ok that's all",
+				channelType: ChannelType.DM,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(stopped).toMatchObject({ kind: "terminal", action: "STOP" });
+		expect(useModelCalls(confirmed)).toHaveLength(2);
 	});
 
 	it("still defers empty, whitespace, refusal-stub, and degenerate-run replies (#11504)", async () => {
@@ -10272,8 +10366,7 @@ describe("runV5MessageRuntimeStage1", () => {
 
 			const result = await runV5MessageRuntimeStage1({
 				runtime,
-				// STOP is terminal only for an actual disengage request; a STOP
-				// verdict on an ordinary message routes on (live misfires 2026-09-11/12).
+				// Explicit disengagement retains immediate terminal behavior.
 				message: makeMessage(
 					action === "STOP" ? { text: "ok stop, leave me alone" } : {},
 				),

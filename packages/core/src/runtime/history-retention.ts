@@ -35,6 +35,7 @@ export type HistoryRetentionPrepared = {
 	evidenceId: string;
 	prefix: Source[];
 	candidates: Source[];
+	linkedSourceGroups: string[][];
 	sourceSetId: string;
 };
 
@@ -117,6 +118,33 @@ export function validateHistoryRetention(
 	return structuredClone(cp);
 }
 
+/** Preserve explicit request/reply relationships, without inferring links from prose. */
+function includeLinkedSources(
+	retained: Set<string>,
+	groups: readonly string[][],
+): void {
+	const neighbors = new Map<string, Set<string>>();
+	for (const group of groups) {
+		const first = group[0];
+		for (const id of group.slice(1)) {
+			if (!neighbors.has(first)) neighbors.set(first, new Set());
+			if (!neighbors.has(id)) neighbors.set(id, new Set());
+			neighbors.get(first)?.add(id);
+			neighbors.get(id)?.add(first);
+		}
+	}
+	const pending = [...retained];
+	while (pending.length) {
+		const id = pending.pop();
+		if (id === undefined) break;
+		for (const linked of neighbors.get(id) ?? []) {
+			if (retained.has(linked)) continue;
+			retained.add(linked);
+			pending.push(linked);
+		}
+	}
+}
+
 /** The caller supplies the end of its complete ordered evidence page; this is
  * not a source cap. Every later original stays inline and pending for review. */
 export function prepareHistoryRetention(
@@ -125,6 +153,7 @@ export function prepareHistoryRetention(
 	stored: unknown,
 	evidenceId: string,
 	reviewEnd: number,
+	linkedEventGroups: readonly string[][] = [],
 ): HistoryRetentionPrepared {
 	requireValue(
 		context.metadata?.roomId === scope.roomId && evidenceId.length > 0,
@@ -144,10 +173,31 @@ export function prepareHistoryRetention(
 	);
 	const prefix = structuredClone(sources.slice(0, reviewEnd));
 	const retained = new Set(previous?.retainedEventIds ?? []);
-	const candidates = prefix.filter(
-		(s, i) =>
-			!previous || i >= previous.reviewedCount || retained.has(s.event.id),
+	const byEvent = new Map(prefix.map((source) => [source.event.id, source.id]));
+	requireValue(
+		linkedEventGroups.every((group) => stringIds(group) && group.length > 1),
+		"Invalid linked originals",
 	);
+	const allLinkedSourceGroups = linkedEventGroups
+		.filter((group) => group.every((id) => byEvent.has(id)))
+		.map((group) => group.map((id) => byEvent.get(id) as string));
+	const candidateIds = new Set(
+		prefix
+			.filter(
+				(source, i) =>
+					!previous ||
+					i >= previous.reviewedCount ||
+					retained.has(source.event.id),
+			)
+			.map((source) => source.id),
+	);
+	// A linked reply may have been deferred by an older reviewer. Supply its
+	// complete original again before asking for a new classification.
+	includeLinkedSources(candidateIds, allLinkedSourceGroups);
+	const linkedSourceGroups = allLinkedSourceGroups.filter((group) =>
+		group.some((id) => candidateIds.has(id)),
+	);
+	const candidates = prefix.filter((source) => candidateIds.has(source.id));
 	const expectedStoredHash = hashStableJson(stored ?? null);
 	const sourceSetId = hashStableJson({
 		scopeHash: scopeHash(scope),
@@ -155,6 +205,7 @@ export function prepareHistoryRetention(
 		expectedStoredHash,
 		prefixHash: sourcePrefixHash(scope, prefix),
 		candidates,
+		linkedSourceGroups,
 	});
 	return {
 		scope: structuredClone(scope),
@@ -163,6 +214,7 @@ export function prepareHistoryRetention(
 		evidenceId,
 		prefix,
 		candidates,
+		linkedSourceGroups,
 		sourceSetId,
 	};
 }
@@ -209,6 +261,7 @@ export function applyHistoryRetentionReview(
 	// the whole group visible; never resolve the contradiction by dropping it.
 	for (const group of output.dependencyGroups)
 		for (const id of group) retained.add(id);
+	includeLinkedSources(retained, prepared.linkedSourceGroups);
 	const cp: HistoryRetentionCheckpoint = {
 		version: 1,
 		scopeHash: scopeHash(prepared.scope),

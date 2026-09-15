@@ -32,7 +32,6 @@ import type { MessageHandlerResult } from "../../types/components";
 import type { GenerateTextResult } from "../../types/model";
 import { ModelType } from "../../types/model";
 import { ChannelType } from "../../types/primitives";
-import { getUserMessageText } from "../../utils/message-text";
 import { getEvaluatorProgressState } from "../evaluator-progress.ts";
 import { HISTORY_RETENTION_EVALUATOR } from "../history-retention.ts";
 import { CODING_SUB_AGENT_CONTEXTS } from "./action-surface.js";
@@ -74,6 +73,7 @@ import {
 	isEmptyStage1Result,
 	parseMessageHandlerModelOutput,
 	readStage1EmptyRetryLimit,
+	readStage1TerminalReaskSetting,
 	shouldRetryStage1Generation,
 	shouldUseStage1PlannerFallback,
 	synthesizePlannerFallbackFromStage1Failure,
@@ -290,7 +290,6 @@ export async function generateStage1Decision(
 			prefixHash: stage1PrefixHash,
 			segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
 			promptSegments: messageHandlerInput.promptSegments,
-			// Keep shared-room agents and pipeline stages on separate cache slots.
 			conversationId: stage1ConversationId,
 		}),
 		buildModelInputBudget({
@@ -456,16 +455,14 @@ export async function generateStage1Decision(
 		)) as string | GenerateTextResult;
 		stage1RetryReason = getStage1RetryReason(rawMessageHandler);
 	}
-	// A parseable decision that ends an addressed turn without an answer gets
-	// one repaired re-ask on every channel (the discovery loop below is direct
-	// text only). An unusable re-ask keeps the original decision so the
-	// deferral contract (#11504) is unchanged.
+	// An explicit RESPOND without an answer or pending work gets one repaired
+	// re-ask. STOP and IGNORE remain terminal in every language. The retry
+	// still passes through ordinary terminal routing and reply validation.
 	// Voice keeps its complete path: its spoken answer need not sit in replyText.
-	let stage1StopConfirmed = false;
 	if (!args.codingMode && !voiceDirectMessageChannel) {
 		const unusableRepair = getStage1UnusableDecisionRepair(
 			extractMessageHandlerRawParsed(rawMessageHandler),
-			getUserMessageText(args.message),
+			{ reaskTerminal: readStage1TerminalReaskSetting(args.runtime) },
 		);
 		if (
 			unusableRepair &&
@@ -517,18 +514,8 @@ export async function generateStage1Decision(
 					),
 				},
 			)) as string | GenerateTextResult;
-			const repairedParsed = extractMessageHandlerRawParsed(repaired);
-			if (repairedParsed) {
+			if (extractMessageHandlerRawParsed(repaired)) {
 				rawMessageHandler = repaired;
-				// A repeated STOP/IGNORE is the model's considered disengage
-				// verdict, in words the stop lexicon may not recognize; honor it.
-				const verdict = repairedParsed.shouldRespond;
-				stage1StopConfirmed =
-					(verdict === "STOP" || verdict === "IGNORE") &&
-					getStage1UnusableDecisionRepair(
-						repairedParsed,
-						getUserMessageText(args.message),
-					) !== undefined;
 			}
 		}
 	}
@@ -964,7 +951,6 @@ export async function generateStage1Decision(
 
 	return {
 		messageHandler,
-		stage1StopConfirmed,
 		providerDiscoveryEnabled: discoveryEnabled,
 		loadedContextProviders: [...loadedContext],
 		contextCatalogRead,

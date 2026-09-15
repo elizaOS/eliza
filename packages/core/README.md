@@ -680,3 +680,5 @@ to swap optimized predecessors and rejects while the baseline is active.
 The activation record requires a runtime version that supports `restoreBaseline`;
 older runtimes do not recognize it. Keep the existing `OPTIMIZED_PROMPT_DISABLE`
 startup setting in place when deliberately downgrading such a deployment.
+
+History retention also preserves recorded request/reply links. A selected original brings its linked outcome into the same review and retained set; completed exchanges can still be deferred together. These links come from stored agent replies, not inferred adjacency or prose. Existing checkpoints keep their source binding; no originals are rewritten.

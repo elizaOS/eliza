@@ -361,7 +361,6 @@ export async function runV5MessageRuntimeStage1(
 			inferenceMessageText,
 			parsedResponseHandlerReply,
 			messageHandlerEndedAt,
-			stage1StopConfirmed,
 			providerDiscoveryEnabled,
 			loadedContextProviders,
 			contextCatalogRead,
@@ -697,7 +696,6 @@ export async function runV5MessageRuntimeStage1(
 			candidateActionsClearedByEvaluators:
 				responseHandlerEvaluation.candidateActionsClearedByEvaluators,
 			messageText: getUserMessageText(args.message) ?? "",
-			confirmedStop: stage1StopConfirmed,
 		});
 		if (args.stage1DecisionOnly) {
 			return {

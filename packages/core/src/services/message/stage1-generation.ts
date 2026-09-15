@@ -1,9 +1,6 @@
 /** Classifies Stage 1 retry conditions and recovers complete direct or planner responses from model output. */
 
-import {
-	isStopRequestText,
-	parseMessageHandlerOutput,
-} from "../../runtime/message-handler";
+import { parseMessageHandlerOutput } from "../../runtime/message-handler";
 import type { Action, MessageHandlerResult } from "../../types/components";
 import type { Memory } from "../../types/memory";
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "../../types/message-source";
@@ -57,21 +54,27 @@ export function getStage1RoutingRepair(
 }
 
 /**
- * A parseable decision that ends an addressed turn without an answer: STOP or
- * IGNORE when the user's text asks for no disengagement, or a simple route with
- * an empty reply and no pending work. One repaired re-ask precedes the
- * unusable-reply deferral; a second unusable decision keeps that deferral.
- * Live 2026-09-15 (tj-ed320c8d542cac): "one line: what's the capital of
- * chile?" returned STOP with an empty plan and shipped "I'm not sure how to
- * answer that." Rejections and refusal stubs are not covered here: they carry
- * a reply, and the deferral owns them (#11504).
+ * An explicit RESPOND decision with no answer or pending work may receive
+ * one model correction. STOP and IGNORE retain their terminal meaning without
+ * attempting to classify disengagement from the language of the request.
+ * Corrected output still passes normal terminal routing and reply validation.
  */
 export function getStage1UnusableDecisionRepair(
 	parsed: Record<string, unknown> | null,
-	messageText: string | undefined,
+	options?: {
+		/**
+		 * Small-model deployments (ELIZA_STAGE1_TERMINAL_REASK): a STOP or IGNORE
+		 * on a directly addressed turn is also re-asked once; a repeated verdict
+		 * is honored. Off by default: STOP and IGNORE stay terminal as returned.
+		 */
+		reaskTerminal?: boolean;
+	},
 ): string | undefined {
 	if (!parsed) return undefined;
 	const shouldRespond = parsed.shouldRespond;
+	const terminalReask =
+		options?.reaskTerminal === true &&
+		(shouldRespond === "STOP" || shouldRespond === "IGNORE");
 	const replyText =
 		typeof parsed.replyText === "string" ? parsed.replyText.trim() : "";
 	const contexts = Array.isArray(parsed.contexts) ? parsed.contexts : [];
@@ -87,8 +90,7 @@ export function getStage1UnusableDecisionRepair(
 		? parsed.contextRequests
 		: [];
 	const endedWithoutAnswer =
-		((shouldRespond === "STOP" || shouldRespond === "IGNORE") &&
-			!isStopRequestText(messageText)) ||
+		terminalReask ||
 		(shouldRespond === "RESPOND" &&
 			replyText.length === 0 &&
 			parsed.requiresTool !== true &&
@@ -99,8 +101,10 @@ export function getStage1UnusableDecisionRepair(
 	if (!endedWithoutAnswer) return undefined;
 	return [
 		"response_contract_repair:",
-		"Your previous HANDLE_RESPONSE ended the turn without answering. STOP and IGNORE apply only to an explicit request to disengage or to overheard talk, and a simple reply must be the complete nonempty answer; the user addressed you directly with a request. This is validation of that response, not a new user request. Nothing in it has been delivered or executed.",
-		'Return HANDLE_RESPONSE with a consistent decision for the original request: either answer it simply with a nonempty replyText, intents=[], candidateActionNames=[], contexts=["simple"], replyEffectStatus="none", or route it to the applicable planning contexts with the known action candidates and a pending reply. Do not end the turn with an empty reply, invent tool names, or claim an unverified effect.',
+		terminalReask
+			? `Your previous HANDLE_RESPONSE ended a directly addressed turn with ${String(shouldRespond)}. STOP applies only to an explicit request to disengage and IGNORE only to talk that is not meant for you. Reconsider the original request and all its instructions. This is validation of that response, not a new user request. Nothing in it has been delivered or executed.`
+			: "Your previous HANDLE_RESPONSE declared RESPOND but provided neither an answer nor pending work. A simple response must contain the complete nonempty answer. Reconsider the original request and all its instructions. This is validation of that response, not a new user request. Nothing in it has been delivered or executed.",
+		'Return HANDLE_RESPONSE with a consistent decision for the original request: either answer it simply with a nonempty replyText, intents=[], candidateActionNames=[], contexts=["simple"], replyEffectStatus="none", or route it to the applicable planning contexts with the known action candidates and a pending reply. If the original request calls for disengagement or silence, use STOP or IGNORE without a reply or actions. Otherwise do not declare RESPOND with an empty reply and no pending work. Do not invent tool names or claim an unverified effect.',
 		"previous_model_response:",
 		JSON.stringify(parsed),
 	].join("\n");
@@ -141,6 +145,20 @@ export function getStage1RetryReason(
 		return null;
 	}
 	return "malformed HANDLE_RESPONSE tool call";
+}
+
+/**
+ * ELIZA_STAGE1_TERMINAL_REASK: re-ask a STOP/IGNORE once on a directly
+ * addressed turn (small planners answered STOP to plain questions, live
+ * 2026-09-11/15). Off by default; a repeated verdict is honored either way.
+ */
+export function readStage1TerminalReaskSetting(
+	runtime: IAgentRuntime,
+): boolean {
+	const raw = runtime.getSetting?.("ELIZA_STAGE1_TERMINAL_REASK");
+	if (raw === undefined || raw === null) return false;
+	if (typeof raw === "boolean") return raw;
+	return /^(?:1|true|yes|on)$/i.test(String(raw).trim());
 }
 
 export function readStage1EmptyRetryLimit(runtime: IAgentRuntime): number {
