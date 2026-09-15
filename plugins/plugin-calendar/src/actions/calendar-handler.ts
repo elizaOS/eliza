@@ -2836,6 +2836,19 @@ export function resolveUpdateTimeRange(args: {
   // paired end the stored duration carries over below.
   let endAt =
     args.explicitEnd ?? (args.explicitStart ? undefined : args.extractedEnd);
+  // A planner end beside a planner start is the user's range only when the
+  // user stated a range or a duration; "move it to friday at 4pm" states one
+  // time, and the stored duration decides the end (live 2026-09-15: the
+  // planner's end 17:00 beside start 16:00 stretched a 30-minute event to an
+  // hour and the receipt could no longer verify as a plain move).
+  if (
+    args.explicitStart &&
+    args.explicitEnd &&
+    args.requestText &&
+    !requestStatesEndOrDuration(args.requestText)
+  ) {
+    endAt = undefined;
+  }
   if (startAt && args.requestText && args.timeZone?.trim()) {
     const snapped = snapWeekdayMoveToTargetDay({
       requestText: args.requestText,
@@ -3018,6 +3031,20 @@ export function parseStatedClockTimes(text: string): StatedClockTimes {
  * An update's destination is what the user asked for ("move my 3pm dentist
  * to 4pm" moves it to 4pm): the last "to" clause that names a clock time.
  */
+/**
+ * The user's words state where the event ends: a "from … to …" or "4pm to 5pm"
+ * range, several clock times, an "until"/"through" bound, or a duration
+ * phrase. Anything else states at most one time and keeps the stored length.
+ */
+export function requestStatesEndOrDuration(requestText: string): boolean {
+  const stated = parseStatedClockTimes(requestText);
+  if (stated.kind === "several") return true;
+  if (stated.kind === "one" && stated.end) return true;
+  return /\b(?:until|till|thru|through)\b|\b(?:for|lasting)\s+(?:an?\s+|\d+(?:\.\d+)?\s*)(?:hours?|hrs?|minutes?|mins?)\b|\b\d+(?:\.\d+)?\s*(?:hours?|hrs?|minutes?|mins?)\s+long\b|\b(?:half|quarter)\s+(?:an\s+)?hour\b/i.test(
+    requestText,
+  );
+}
+
 function statedUpdateDestinationText(text: string): string {
   const segments = text.split(CALENDAR_DESTINATION_CLAUSE_PATTERN);
   for (let index = segments.length - 1; index > 0; index -= 1) {
