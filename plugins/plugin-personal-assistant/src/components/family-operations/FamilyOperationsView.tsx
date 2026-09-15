@@ -158,6 +158,8 @@ function AgreementUploadCard({
       setFile(null);
       await refresh();
     } catch (cause) {
+      // error-policy:J1 Show the failed upload without retaining active progress.
+      setProgress(null);
       setError(cause instanceof Error ? cause.message : "Upload failed");
     }
   };
@@ -1343,6 +1345,8 @@ export function FamilyOperationsView({
         background:
           "radial-gradient(circle at 8% 0%, var(--accent-subtle), transparent 35%), var(--bg)",
         padding: "clamp(14px, 3vw, 28px)",
+        paddingBottom:
+          "calc(clamp(14px, 3vw, 28px) + var(--eliza-chat-clearance, 5.25rem))",
       }}
     >
       <div

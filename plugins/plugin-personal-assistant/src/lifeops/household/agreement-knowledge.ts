@@ -252,6 +252,9 @@ export class AgreementKnowledgeError extends ElizaError {
   }
 }
 
+/** An ingestion failure whose operation settled before any source persistence began. */
+export class AgreementSourceUnchangedError extends AgreementKnowledgeError {}
+
 function requiredText(value: unknown, field: string): string {
   const text = toText(value).trim();
   if (!text) {
@@ -1200,7 +1203,7 @@ export class AgreementKnowledgeService {
     } catch (error) {
       // error-policy:J2 Extraction has settled without creating persistent sources.
       await this.settleIngestionOperation(operationId, error);
-      throw new AgreementKnowledgeError(
+      throw new AgreementSourceUnchangedError(
         `The complete parenting-agreement PDF could not be extracted: ${error instanceof Error ? error.message : String(error)}`,
         "AGREEMENT_INVALID_CONTRACT",
         undefined,

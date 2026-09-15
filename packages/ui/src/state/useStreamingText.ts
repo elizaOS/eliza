@@ -78,6 +78,7 @@ export type StreamingTextModification =
       failureKind?: ChatFailureKind;
       /** Authoritative terminal failure details from the runtime. */
       terminalFailure?: ChatTerminalFailure;
+      replyRecoveryAvailable?: boolean;
       /**
        * Optional structured "connect another account" request to stamp on the
        * completed turn so the renderer can swap in the AccountConnectBlock.
@@ -114,6 +115,7 @@ export type StreamingTextModification =
       failureKind: ChatFailureKind;
       /** Authoritative terminal failure details from the runtime. */
       terminalFailure?: ChatTerminalFailure;
+      replyRecoveryAvailable?: boolean;
     }
   | {
       messageId: string;
@@ -199,6 +201,7 @@ function computeNextMessage(
         sameInterruption &&
         sameFailure &&
         sameTerminalFailure &&
+        message.replyRecoveryAvailable === mod.replyRecoveryAvailable &&
         sameAccountConnect &&
         sameCapabilityHandoff &&
         sameReasoning &&
@@ -237,6 +240,11 @@ function computeNextMessage(
       } else if (message.terminalFailure !== undefined) {
         delete next.terminalFailure;
       }
+      if (mod.replyRecoveryAvailable === true) {
+        next.replyRecoveryAvailable = true;
+      } else {
+        delete next.replyRecoveryAvailable;
+      }
       if (mod.accountConnect) {
         next.accountConnect = mod.accountConnect;
       } else if (message.accountConnect !== undefined) {
@@ -272,12 +280,14 @@ function computeNextMessage(
     case "fail": {
       if (
         message.failureKind === mod.failureKind &&
-        message.terminalFailure === mod.terminalFailure
+        message.terminalFailure === mod.terminalFailure &&
+        message.replyRecoveryAvailable === mod.replyRecoveryAvailable
       )
         return null;
       return {
         ...message,
         failureKind: mod.failureKind,
+        replyRecoveryAvailable: mod.replyRecoveryAvailable,
         ...(mod.terminalFailure
           ? { terminalFailure: mod.terminalFailure }
           : {}),

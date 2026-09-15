@@ -523,6 +523,9 @@ export class ProviderStateComposer {
 			currentProviderResults[freshResult.providerName] = {
 				...freshResult,
 				text: redactedText,
+				discoveryText: freshResult.discoveryText
+					? this.runtime.redactSecrets(freshResult.discoveryText)
+					: freshResult.discoveryText,
 				values:
 					freshResult.values && typeof freshResult.values === "object"
 						? Object.fromEntries(

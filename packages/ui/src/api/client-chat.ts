@@ -317,6 +317,7 @@ declare module "./client-base" {
       noResponseReason?: "ignored";
       failureKind?: ChatFailureKind;
       terminalFailure?: ChatTerminalFailure;
+      replyRecoveryAvailable?: boolean;
       localInference?: LocalInferenceChatMetadata;
       actionResults?: ChatActionResultSummary[];
     }>;
@@ -334,6 +335,7 @@ declare module "./client-base" {
       usage?: ChatTokenUsage;
       failureKind?: ChatFailureKind;
       terminalFailure?: ChatTerminalFailure;
+      replyRecoveryAvailable?: boolean;
       localInference?: LocalInferenceChatMetadata;
       actionResults?: ChatActionResultSummary[];
     }>;
@@ -478,6 +480,16 @@ declare module "./client-base" {
       id: string,
       messageId: string,
     ): Promise<{ ok: boolean; deletedCount: number }>;
+    retryConversationReply(
+      id: string,
+      messageId: string,
+    ): Promise<{
+      text: string;
+      agentName: string;
+      messageId: string;
+      userMessageId: string;
+      actionResults?: ChatActionResultSummary[];
+    }>;
     sendConversationMessage(
       id: string,
       text: string,
@@ -501,6 +513,7 @@ declare module "./client-base" {
       failureKind?: ChatFailureKind;
       /** Typed terminal coding/runtime failure; authoritative over reply prose. */
       terminalFailure?: ChatTerminalFailure;
+      replyRecoveryAvailable?: boolean;
       /** Structured "connect another account" request from CONNECT_ACCOUNT. */
       accountConnect?: AccountConnectRequest;
       localInference?: LocalInferenceChatMetadata;
@@ -555,6 +568,7 @@ declare module "./client-base" {
       failureKind?: ChatFailureKind;
       /** See sendConversationMessage above. */
       terminalFailure?: ChatTerminalFailure;
+      replyRecoveryAvailable?: boolean;
       /** See sendConversationMessage above. */
       accountConnect?: AccountConnectRequest;
       localInference?: LocalInferenceChatMetadata;
@@ -1308,6 +1322,17 @@ ElizaClient.prototype.deleteConversationMessage = async function (
       messageId,
     )}`,
     { method: "DELETE" },
+  );
+};
+
+ElizaClient.prototype.retryConversationReply = async function (
+  this: ElizaClient,
+  id,
+  messageId,
+) {
+  return this.fetch(
+    `/api/conversations/${encodeURIComponent(id)}/messages/${encodeURIComponent(messageId)}/retry-reply`,
+    { method: "POST", body: JSON.stringify({}) },
   );
 };
 

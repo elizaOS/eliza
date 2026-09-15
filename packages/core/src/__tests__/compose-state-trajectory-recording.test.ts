@@ -84,7 +84,7 @@ describe("composeState under trajectory recording", () => {
 	});
 
 	it("retains complete redacted text on fresh and reused reads without logging private internal data", async () => {
-		const secret = "sk-trajectory-recording-secret-canary-1234567890";
+		const secret = "sk-trajectory-recording-secret-canary-1234567890"; // gitleaks:allow -- synthetic redaction canary
 		const runtime = new AgentRuntime({
 			character: { name: "Recorded provider" } as Character,
 			settings: { OPENAI_API_KEY: secret },

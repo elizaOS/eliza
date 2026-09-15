@@ -147,3 +147,13 @@ from validation on its isolated head. Full current-head screenshot, video,
 OCR and log evidence and the repository verification gate remain requirements
 for final acceptance. Recorded input/output counts are not first-token timing
 or proof that foreground latency and quota costs are fully optimized.
+
+## Reply-only recovery telemetry
+
+A fresh reply-only recovery is a separate `client_chat` trajectory with
+`metadata.replyRecovery=true`, linked to the original user message and assistant
+row. It records the real generation and recovery persistence, with independent
+usage and duration. Prepared/cached retries do not create model runs. The chat
+footer keeps the original run and each recovery separate; the Trajectories run
+selector exposes their complete inputs and outputs. Failed recovery attempts
+remain inspectable. This does not replay actions or change their saved evidence.

@@ -860,6 +860,9 @@ export function useChatSend(deps: UseChatSendDeps) {
             ? { replyToMessageId: data.userMessageId }
             : {}),
           ...(data.failureKind ? { failureKind: data.failureKind } : {}),
+          ...(data.replyRecoveryAvailable === true
+            ? { replyRecoveryAvailable: true }
+            : {}),
           ...(data.terminalFailure
             ? { terminalFailure: data.terminalFailure }
             : {}),
@@ -879,6 +882,9 @@ export function useChatSend(deps: UseChatSendDeps) {
             ? {
                 mode: "fail",
                 failureKind: data.failureKind,
+                ...(data.replyRecoveryAvailable === true
+                  ? { replyRecoveryAvailable: true }
+                  : {}),
                 ...(data.terminalFailure
                   ? { terminalFailure: data.terminalFailure }
                   : {}),
@@ -901,6 +907,9 @@ export function useChatSend(deps: UseChatSendDeps) {
             ? { replyToMessageId: data.userMessageId }
             : {}),
           ...(data.failureKind ? { failureKind: data.failureKind } : {}),
+          ...(data.replyRecoveryAvailable === true
+            ? { replyRecoveryAvailable: true }
+            : {}),
           ...(data.terminalFailure
             ? { terminalFailure: data.terminalFailure }
             : {}),
@@ -919,6 +928,9 @@ export function useChatSend(deps: UseChatSendDeps) {
           messageId: assistantMessageId,
           mode: "fail",
           failureKind: data.failureKind,
+          ...(data.replyRecoveryAvailable === true
+            ? { replyRecoveryAvailable: true }
+            : {}),
           ...(data.terminalFailure
             ? { terminalFailure: data.terminalFailure }
             : {}),
@@ -3287,6 +3299,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     // ptySessionsRef is a stable ref object — only include the ref itself, not .current
   }, [interruptActiveChatPipeline, ptySessionsRef]);
 
+  const replyRecoveriesRef = useRef(new Set<string>());
   const handleChatRetry = useCallback(
     async (assistantMsgId: string) => {
       const currentMessages = conversationMessagesRef.current;
@@ -3295,6 +3308,44 @@ export function useChatSend(deps: UseChatSendDeps) {
         (m) => m.id === assistantMsgId && m.role === "assistant",
       );
       if (assistantIdx < 0) return;
+      const assistantMessage = currentMessages[assistantIdx];
+      const convId = activeConversationIdRef.current;
+      const recoveryKey = `${convId}:${assistantMsgId}`;
+      if (replyRecoveriesRef.current.has(recoveryKey)) return;
+      if (assistantMessage.replyRecoveryAvailable === true) {
+        if (!convId || assistantMsgId.startsWith("temp-")) return;
+        replyRecoveriesRef.current.add(recoveryKey);
+        try {
+          const reply = await client.retryConversationReply(
+            convId,
+            assistantMsgId,
+          );
+          if (reply.messageId !== assistantMsgId) {
+            throw new Error("Reply recovery returned a different message");
+          }
+          applyStreamingModificationForConversation(convId, {
+            messageId: assistantMsgId,
+            mode: "complete",
+            fullText: reply.text,
+          });
+        } catch (err) {
+          // error-policy:J4 keep the durable failure and recovery control when
+          // the reply service is unavailable; never resend its original action.
+          setActionNotice(
+            `Could not regenerate reply: ${err instanceof Error ? err.message : "network error"}`,
+            "error",
+            4200,
+          );
+        } finally {
+          replyRecoveriesRef.current.delete(recoveryKey);
+        }
+        return;
+      }
+      // A stale caller cannot turn a permanent presentation failure into an
+      // action replay when durable reply recovery was not advertised.
+      if (assistantMessage.terminalFailure?.transient === false) return;
+      if (!assistantMessage.failureKind && !assistantMessage.interrupted)
+        return;
       let userIdx = -1;
       for (let i = assistantIdx - 1; i >= 0; i--) {
         if (currentMessages[i].role === "user") {
@@ -3307,7 +3358,6 @@ export function useChatSend(deps: UseChatSendDeps) {
       const retryText = userMsg.text;
       if (!retryText) return;
 
-      const convId = activeConversationIdRef.current;
       const canTruncate =
         Boolean(convId) &&
         userMsg.source !== "local_command" &&
@@ -3377,6 +3427,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     [
       sendChatText,
       sendChatTextInternal,
+      applyStreamingModificationForConversation,
       setConversationMessages,
       conversationMessagesRef,
       activeConversationIdRef,
