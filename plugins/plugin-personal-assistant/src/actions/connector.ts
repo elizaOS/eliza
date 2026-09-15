@@ -17,7 +17,10 @@ import type {
   MessageConnector,
   State,
 } from "@elizaos/core";
-import type { LifeOpsGoogleCapability } from "../contracts/index.js";
+import {
+  LIFEOPS_GOOGLE_CAPABILITIES,
+  type LifeOpsGoogleCapability,
+} from "../contracts/index.js";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops/access.js";
 import { getConnectorRegistry } from "../lifeops/connectors/index.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
@@ -1731,6 +1734,19 @@ export const connectorAction: Action & {
       description: "google/x connect only: OAuth redirect URL override.",
       required: false,
       schema: { type: "string" as const },
+    },
+    {
+      name: "capabilities",
+      description:
+        "google connect only: narrow the OAuth request to these LifeOps Google capabilities (for example google.calendar.read for calendar-only access). Omit to request the provider's default scope set.",
+      required: false,
+      schema: {
+        type: "array" as const,
+        items: {
+          type: "string" as const,
+          enum: [...LIFEOPS_GOOGLE_CAPABILITIES],
+        },
+      },
     },
   ],
 
