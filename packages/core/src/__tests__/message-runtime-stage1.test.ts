@@ -3504,7 +3504,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(repairInput.messages.at(-1)?.content).toContain("without answering");
 	});
 
-	it("keeps the deferral when the repaired re-ask still ends the turn without an answer (#11504)", async () => {
+	it("retains terminal STOP after one unsuccessful corrective re-ask", async () => {
 		const runtime = makeRuntime([
 			stage1Response({ shouldRespond: "STOP", contexts: [] }),
 			stage1Response({ shouldRespond: "STOP", contexts: [] }),
@@ -3518,12 +3518,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
-		expect(result.kind).toBe("direct_reply");
-		if (result.kind === "direct_reply") {
-			expect(result.result.responseContent?.text).toBe(
-				"I'm not sure how to answer that.",
-			);
-		}
+		expect(result).toMatchObject({ kind: "terminal", action: "STOP" });
 		expect(useModelCalls(runtime)).toHaveLength(2);
 	});
 
@@ -10254,8 +10249,7 @@ describe("runV5MessageRuntimeStage1", () => {
 
 			const result = await runV5MessageRuntimeStage1({
 				runtime,
-				// STOP is terminal only for an actual disengage request; a STOP
-				// verdict on an ordinary message routes on (live misfires 2026-09-11/12).
+				// Explicit disengagement retains immediate terminal behavior.
 				message: makeMessage(
 					action === "STOP" ? { text: "ok stop, leave me alone" } : {},
 				),

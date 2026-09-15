@@ -9,7 +9,6 @@ import { recordInferenceSpan, timeInferenceSpan } from "../../inference-timing";
 import { getCandidateActionBackstopRules } from "../../runtime/candidate-action-backstop";
 import { withRequiredCompletionSourceIdentity } from "../../runtime/completion-context";
 import { computePrefixHashes, hashString } from "../../runtime/context-hash";
-import { getUserMessageText } from "../../utils/message-text";
 import { getMessageHandlerReply } from "../../runtime/message-handler";
 import {
 	buildModelInputBudget,
@@ -33,6 +32,7 @@ import type { MessageHandlerResult } from "../../types/components";
 import type { GenerateTextResult } from "../../types/model";
 import { ModelType } from "../../types/model";
 import { ChannelType } from "../../types/primitives";
+import { getUserMessageText } from "../../utils/message-text";
 import { getEvaluatorProgressState } from "../evaluator-progress.ts";
 import { HISTORY_RETENTION_EVALUATOR } from "../history-retention.ts";
 import { CODING_SUB_AGENT_CONTEXTS } from "./action-surface.js";
@@ -456,8 +456,8 @@ export async function generateStage1Decision(
 	}
 	// A parseable decision that ends an addressed turn without an answer gets
 	// one repaired re-ask on every channel (the discovery loop below is direct
-	// text only). An unusable re-ask keeps the original decision so the
-	// deferral contract (#11504) is unchanged.
+	// text only). The retry still passes through ordinary terminal routing
+	// and reply validation; it cannot turn STOP into a canned response.
 	// Voice keeps its complete path: its spoken answer need not sit in replyText.
 	if (!args.codingMode && !voiceDirectMessageChannel) {
 		const unusableRepair = getStage1UnusableDecisionRepair(

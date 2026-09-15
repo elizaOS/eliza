@@ -57,14 +57,10 @@ export function getStage1RoutingRepair(
 }
 
 /**
- * A parseable decision that ends an addressed turn without an answer: STOP or
- * IGNORE when the user's text asks for no disengagement, or a simple route with
- * an empty reply and no pending work. One repaired re-ask precedes the
- * unusable-reply deferral; a second unusable decision keeps that deferral.
- * Live 2026-09-15 (tj-ed320c8d542cac): "one line: what's the capital of
- * chile?" returned STOP with an empty plan and shipped "I'm not sure how to
- * answer that." Rejections and refusal stubs are not covered here: they carry
- * a reply, and the deferral owns them (#11504).
+ * A parseable decision that ends an addressed turn without an answer may
+ * receive one model correction. Explicit disengagement, complete replies and
+ * pending work retain their ordinary paths. The corrected output still passes
+ * through normal terminal routing and reply validation.
  */
 export function getStage1UnusableDecisionRepair(
 	parsed: Record<string, unknown> | null,
