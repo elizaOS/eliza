@@ -15,6 +15,7 @@ let requests: { path: string; auth?: string; body: Record<string, unknown> }[];
 let primaryStatus: number;
 let fallbackStatus: number;
 let partialStream: boolean;
+let retryAfter: string | undefined;
 
 beforeAll(async () => {
   server = createServer((request, response) => {
@@ -38,7 +39,10 @@ beforeAll(async () => {
         return;
       }
       if (status !== 200) {
-        response.writeHead(status, { "content-type": "application/json", "retry-after": "60" });
+        response.writeHead(status, {
+          "content-type": "application/json",
+          ...(retryAfter === undefined ? {} : { "retry-after": retryAfter }),
+        });
         response.end(
           JSON.stringify({
             error: {
@@ -111,6 +115,7 @@ beforeEach(() => {
   primaryStatus = 429;
   fallbackStatus = 200;
   partialStream = false;
+  retryAfter = "60";
   vi.stubEnv("ELIZA_MOCK_OPENAI_BASE", undefined);
   vi.stubEnv("ELIZA_TRAJECTORY_STRICT", "0");
   vi.stubEnv("ELIZA_TRAJECTORY_LOGGING", "0");
@@ -219,6 +224,35 @@ describe("explicit OpenRouter fallback", () => {
     expect(response.providerMetadata?.provider).toBe("openrouter");
     expect(requests).toHaveLength(2);
   });
+
+  it.each(["generate", "stream", "structured", "buffered"])(
+    "uses the authorized fallback after the first headerless 429 in the %s lane",
+    async (lane) => {
+      retryAfter = undefined;
+      if (lane === "buffered") vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", "1");
+      const { runtime: agent } = runtime();
+      const value = await handleTextSmall(
+        agent,
+        lane === "generate"
+          ? params
+          : {
+              ...(lane === "stream" ? { prompt: "Go home" } : params),
+              stream: true,
+              streamStructured: lane === "structured",
+            }
+      );
+      if (lane !== "generate")
+        for await (const _chunk of (value as TextStreamResult).textStream) {
+          /* Drain actual SDK stream. */
+        }
+      expect(requests.map((x) => x.path)).toEqual([
+        "/primary/v1/chat/completions",
+        "/fallback/v1/chat/completions",
+      ]);
+      expect(requests[1].body.messages).toEqual(requests[0].body.messages);
+      expect(requests[1].body.tools).toEqual(requests[0].body.tools);
+    }
+  );
 
   it("never crosses providers after a partial stream reaches the caller", async () => {
     const { runtime: agent } = runtime();

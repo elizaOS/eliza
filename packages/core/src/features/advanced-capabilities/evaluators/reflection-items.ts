@@ -59,6 +59,11 @@ import type {
 import { MemoryType } from "../../../types/memory.ts";
 import type { JsonValue } from "../../../types/primitives.ts";
 import { stableStringify } from "../../../utils/deterministic.ts";
+import {
+	hasNoPersonalExtractionSources,
+	isActiveMemoryEvidence,
+	isProtectedMemoryEvidence,
+} from "../../../utils/extraction-evidence.ts";
 import { isSyntheticConversationArtifactMemory } from "../../../utils/synthetic-conversation-artifact.ts";
 import { stringToUuid } from "../../../utils.ts";
 import {
@@ -67,6 +72,10 @@ import {
 	factClaimsEquivalent,
 } from "../fact-keywords.ts";
 import { recordFactCandidate } from "./_factCandidates.ts";
+import {
+	reconcileFactEvidence,
+	reconcileSuccessEvidence,
+} from "./extraction-reconciliation.ts";
 import {
 	type AddCurrentOp,
 	type AddDurableOp,
@@ -275,8 +284,15 @@ const identitySchema: JSONSchema = {
 					platform: { type: "string" },
 					handle: { type: "string" },
 					confidence: { type: "number" },
+					sourceMessageId: { type: "string" },
 				},
-				required: ["entityId", "platform", "handle", "confidence"],
+				required: [
+					"entityId",
+					"platform",
+					"handle",
+					"confidence",
+					"sourceMessageId",
+				],
 				additionalProperties: false,
 			},
 		},
@@ -321,6 +337,8 @@ const IdentityUpdateSchema = z.object({
 	platform: z.string().min(1),
 	handle: z.string().min(1),
 	confidence: z.number().min(0).max(1),
+	// Older staged outputs retain their original trigger-based replay contract.
+	sourceMessageId: z.string().min(1).optional(),
 });
 
 const IdentityOutputSchema = z.object({
@@ -632,7 +650,8 @@ async function prepareFacts(
 	const seen = new Set<string>();
 	const knownFacts: Memory[] = [];
 	for (const fact of [...roomFacts, ...entityFacts]) {
-		if (!fact.id || seen.has(fact.id)) continue;
+		if (!fact.id || seen.has(fact.id) || !isActiveMemoryEvidence(fact))
+			continue;
 		seen.add(fact.id);
 		knownFacts.push(fact);
 	}
@@ -717,13 +736,15 @@ export function extractionEvidenceMetadata(
 						),
 					)
 				: {}),
+			...extraction.referenceRevisions,
 			...extraction.sourceRevisions,
 		},
 	};
 }
 
-/** Cite only the speaker's selected evidence, never another participant or a
- * historical reference row. This narrowed map is persisted as provenance. */
+/** Cite only the speaker's selected evidence. Supplied agent dialogue remains
+ * reference context, so changing an accepted proposal invalidates the fact.
+ * Other participants' statements never become this user's personal evidence. */
 export function personalExtractionEvidence(
 	message: Memory,
 	extraction: EvaluatorRunOptions["extraction"],
@@ -752,6 +773,24 @@ export function personalExtractionEvidence(
 	return {
 		...extraction,
 		messages: messages.filter((row): row is Memory => Boolean(row)),
+		referenceRevisions: {
+			...extraction.referenceRevisions,
+			...Object.fromEntries(
+				extraction.messages
+					.filter(
+						(row) =>
+							row.id &&
+							row.entityId === message.agentId &&
+							row.roomId === message.roomId &&
+							!ids.includes(row.id) &&
+							Object.hasOwn(extraction.sourceRevisions, row.id),
+					)
+					.map((row) => [
+						String(row.id),
+						extraction.sourceRevisions[String(row.id)],
+					]),
+			),
+		},
 		sourceRevisions: Object.fromEntries(
 			ids.map((id) => [id, extraction.sourceRevisions[id]]),
 		),
@@ -808,6 +847,7 @@ export async function reviewChangedExtractionSources(
 	if (!extraction) return 0;
 	let reviewed = 0;
 	for (const fact of facts) {
+		if (isProtectedMemoryEvidence(fact)) continue;
 		const metadata = fact.metadata as CustomMetadata | undefined;
 		const revisions = metadata?.extractionSourceRevisions;
 		if (!revisions || typeof revisions !== "object" || Array.isArray(revisions))
@@ -1206,6 +1246,40 @@ async function applyRelationshipUpdates(
 	return applied;
 }
 
+function assertIdentitySources(
+	runtime: IAgentRuntime,
+	message: Memory,
+	prepared: ReflectionPrepared,
+	identities: IdentityUpdate[],
+	options: EvaluatorRunOptions,
+): void {
+	for (const identity of identities) {
+		if (identity.sourceMessageId === undefined) continue;
+		const source = prepared.recentMessages.find(
+			(row) => row.id === identity.sourceMessageId,
+		);
+		if (
+			!asUuidOrNull(identity.sourceMessageId) ||
+			!source ||
+			source.entityId === runtime.agentId ||
+			source.roomId !== message.roomId ||
+			isSyntheticConversationArtifactMemory(source) ||
+			(options.extraction &&
+				!Object.hasOwn(
+					options.extraction.sourceRevisions,
+					identity.sourceMessageId,
+				))
+		) {
+			throw new ElizaError(
+				"Identity extraction requires an original selected non-agent source",
+				{
+					code: "EVALUATOR_IDENTITY_SOURCE_REQUIRED",
+				},
+			);
+		}
+	}
+}
+
 async function applyIdentityUpdates(
 	runtime: IAgentRuntime,
 	identities: IdentityUpdate[],
@@ -1226,7 +1300,6 @@ async function applyIdentityUpdates(
 	const knownEntityIds = new Set(
 		entities.map((entity) => entity.id).filter((id): id is UUID => Boolean(id)),
 	);
-	const evidenceMessageIds: UUID[] = messageId ? [messageId] : [];
 	let applied = 0;
 	for (const identity of identities) {
 		if (identity.confidence < IDENTITY_CONFIDENCE_THRESHOLD) continue;
@@ -1235,6 +1308,7 @@ async function applyIdentityUpdates(
 		const platform = identity.platform.trim().toLowerCase();
 		const handle = identity.handle.trim();
 		if (!platform || !handle) continue;
+		const sourceId = asUuidOrNull(identity.sourceMessageId) ?? messageId;
 		await relationshipsService.upsertIdentity(
 			entityId,
 			{
@@ -1244,7 +1318,7 @@ async function applyIdentityUpdates(
 				confidence: identity.confidence,
 				source: "reflection",
 			},
-			evidenceMessageIds,
+			sourceId ? [sourceId] : [],
 		);
 		applied += 1;
 	}
@@ -1352,6 +1426,8 @@ Fact stores:
 - current: now/near-term state. Categories: feeling, physical_state, working_on, going_through, schedule_context.
 
 Rules:
+- Fiction, examples, roleplay, and hypothetical stories are not personal facts about the speaker. Do not store them as personal memories.
+- Explicit requests to remember, edit, or forget a fact are owned by the MEMORY action; do not duplicate or undo that requested operation. Independently stated new facts can still be extracted.
 - Only extract claims grounded in this speaker's own new messages. Other participants, historical reference messages, and stored facts are context, not new evidence to reinforce or new claims about this speaker.
 - In incremental extraction, EVERY operation must include sourceMessageIds citing selected new message IDs authored by this speaker. Never cite reference messages or other speakers. Omit unsupported operations.
 - No meaningful new/changed fact -> {"ops":[]}.
@@ -1387,7 +1463,11 @@ ${formatKnownLines(current, "current")}`,
 
 export const factMemoryEvaluator: Evaluator<ExtractorOutput, FactPrepared> = {
 	name: "factMemory",
+	resolveOutputWhen: hasNoPersonalExtractionSources,
+	resolveOutput: () => ({ ops: [] }),
+	reconcileEvidence: reconcileFactEvidence,
 	incremental: true,
+	background: true,
 	description:
 		"Extracts durable/current fact-store ops from recent conversation.",
 	priority: EvaluatorPriority.REFLECTION_FACTS,
@@ -1544,11 +1624,13 @@ export const relationshipEvaluator: Evaluator<
 > = {
 	name: "relationships",
 	incremental: true,
+	background: true,
 	description: "Extracts relationship updates between known room participants.",
 	priority: EvaluatorPriority.REFLECTION_RELATIONSHIPS,
 	providers: ["CONVERSATION_PROXIMITY"],
 	schema: relationshipSchema,
 	async shouldRun({ message, options }) {
+		assertExtractionSourcesUnchanged(options.extraction);
 		return canEvaluateMessage(message, options);
 	},
 	async prepare({ runtime, message, options }) {
@@ -1589,9 +1671,11 @@ export const relationshipEvaluator: Evaluator<
 function renderIdentityPromptSegments({
 	prepared,
 	shared,
+	options,
 }: {
 	prepared: ReflectionPrepared;
 	shared?: EvaluatorSharedPromptContext;
+	options: EvaluatorRunOptions;
 }): PromptSegment[] {
 	return [
 		{
@@ -1603,13 +1687,18 @@ Rules:
 - Do not invent identities or emit ambient public-figure mentions.
 - platform is lowercase, such as twitter, github, telegram, discord, bluesky, farcaster, linkedin.
 - confidence 0-1: higher for self-claims, lower for second-hand.
+- sourceMessageId must be the original non-agent message explicitly asserting this identity, from the selected extraction messages. Never cite the triggering message merely because it triggered this batch. Emit separate observations when distinct messages assert the same identity; do not count unrelated context as corroboration.
 - Nothing mentioned -> {"identities":[]}.
 
 `,
 			stable: true,
 		},
 		{
-			content: `${recentMessagesSection(shared, prepared.recentMessages)}
+			content: `${
+				shared?.roomTranscriptRendered && options.extraction
+					? recentMessagesSection(shared, prepared.recentMessages)
+					: `Recent messages:\n${formatRecentMessages(prepared.recentMessages, true)}`
+			}
 
 ${entitiesSection(shared, prepared.entities)}`,
 			stable: false,
@@ -1623,10 +1712,12 @@ export const identityEvaluator: Evaluator<
 > = {
 	name: "identities",
 	incremental: true,
+	background: true,
 	description: "Extracts platform identities for known room participants.",
 	priority: EvaluatorPriority.REFLECTION_IDENTITY,
 	schema: identitySchema,
 	async shouldRun({ message, options }) {
+		assertExtractionSourcesUnchanged(options.extraction);
 		return canEvaluateMessage(message, options);
 	},
 	async prepare({ runtime, message, options }) {
@@ -1639,15 +1730,36 @@ export const identityEvaluator: Evaluator<
 			.map((segment) => segment.content)
 			.join("");
 	},
-	parse(output) {
+	parse(output, context) {
 		const result = IdentityOutputSchema.safeParse(output);
-		return result.success ? result.data : null;
+		if (!result.success) return null;
+		if (
+			context?.outputSource === "model" &&
+			result.data.identities.some((identity) => !identity.sourceMessageId)
+		)
+			return null;
+		if (context)
+			assertIdentitySources(
+				context.runtime,
+				context.message,
+				context.prepared,
+				result.data.identities,
+				context.options,
+			);
+		return result.data;
 	},
 	processors: [
 		{
 			name: "applyIdentityUpdates",
 			async process({ runtime, message, prepared, output, options }) {
 				await reviewChangedExtractionSources(runtime, [], options.extraction);
+				assertIdentitySources(
+					runtime,
+					message,
+					prepared,
+					output.identities,
+					options,
+				);
 				const identitiesUpserted = await applyIdentityUpdates(
 					runtime,
 					output.identities,
@@ -1708,10 +1820,13 @@ ${actionResultsSection}`,
 export const successEvaluator: Evaluator<SuccessOutput, SuccessPrepared> = {
 	name: "success",
 	incremental: true,
+	background: true,
+	reconcileEvidence: reconcileSuccessEvidence,
 	description: "Evaluates whether user task is complete this turn.",
 	priority: EvaluatorPriority.REFLECTION_SUCCESS,
 	schema: successSchema,
 	async shouldRun({ message, options }) {
+		assertExtractionSourcesUnchanged(options.extraction);
 		return canEvaluateMessage(message, options);
 	},
 	async prepare({ runtime, message, state, options }) {

@@ -343,10 +343,9 @@ describe("recentConversationsProvider", () => {
     expect(result.text).not.toContain(`roomId=${ROOM_ID}`);
   });
 
-  it("collapses connector record-of-send echoes per room while keeping distinct repeated turns", async () => {
-    // Live 2026-09-05: every Discord reply is persisted by core and again by the
-    // connector (~100 ms later, metadata.platformMessageId); the eager form
-    // rendered both copies for every room.
+  it("preserves distinct source occurrences and collapses only identical source copies", async () => {
+    // Connector records carry distinct IDs and platform provenance. Identical
+    // visible text does not make those sources interchangeable.
     const otherRoom = "00000000-0000-0000-0000-0000000000d1" as UUID;
     const rows = [
       {
@@ -391,6 +390,8 @@ describe("recentConversationsProvider", () => {
         createdAt: 40,
       },
     ] as Memory[];
+    rows.push(structuredClone(rows[1]));
+    const originalRows = structuredClone(rows);
     const runtime = makeRuntime({
       actions: [],
       getRoomsForParticipants: vi.fn(async () => [ROOM_ID, otherRoom]),
@@ -409,9 +410,10 @@ describe("recentConversationsProvider", () => {
     const agentLines = (result.text ?? "")
       .split("\n")
       .filter((line) => line.includes("done — you're on Home."));
-    expect(agentLines).toHaveLength(2);
+    expect(agentLines).toHaveLength(3);
     expect((result.text ?? "").split("go home")).toHaveLength(3);
-    expect(result.values?.recentConversationCount).toBe(4);
+    expect(result.values?.recentConversationCount).toBe(5);
+    expect(rows).toEqual(originalRows);
   });
 
   it("keeps safe attachment recall while excluding capability URLs", async () => {

@@ -4,6 +4,10 @@ import { v4 } from "uuid";
 import { HANDLE_RESPONSE_TOOL_NAME } from "../../actions/to-tool";
 import { messageHandlerTemplate } from "../../prompts";
 import {
+	COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS,
+	completionContextSources,
+} from "../../runtime/completion-context";
+import {
 	normalizePromptSegments,
 	renderContextObject,
 	segmentBlock,
@@ -25,7 +29,24 @@ import {
 	listAvailableContextsForRole,
 	resolveStage1SenderRole,
 } from "./addressing.js";
-import { createV5MessageContextObject } from "./context-assembly.js";
+import {
+	buildCurrentTurnBoundary,
+	createV5MessageContextObject,
+} from "./context-assembly.js";
+import {
+	CONTEXT_CATALOG_REFERENCE,
+	formatAvailableContextsForPrompt,
+} from "./context-catalog.js";
+import {
+	type HistoryDiscovery,
+	historyReferenceNotice,
+	loadedHistorySegments,
+	REVIEWED_HISTORY_SELECTION_INSTRUCTIONS,
+} from "./history-discovery.js";
+import {
+	labelHistorySources,
+	shortenHistoryRoleLabels,
+} from "./history-wire.js";
 import {
 	ambientTurnProviderExclusions,
 	composeResponseState,
@@ -33,6 +54,42 @@ import {
 
 export const CODE_SNIPPET_VALIDITY_INSTRUCTION =
 	"For code snippets, prioritize syntactically valid runnable code over impossible formatting constraints. If a tight line count would require invalid syntax, provide a valid version and briefly note the constraint tradeoff.";
+
+export {
+	CONTEXT_CATALOG_REFERENCE,
+	formatAvailableContextsForPrompt,
+} from "./context-catalog.js";
+
+export interface ContextCatalogReference {
+	text: string;
+	notice: string;
+	loaded: boolean;
+}
+
+/** Default direct-text routing can read the complete authorized catalog through
+ * the same pre-effect context-request boundary as provider references. */
+export function createContextCatalogReference(
+	runtime: OptimizedPromptRuntimeLike,
+	contexts: readonly ContextDefinition[],
+): ContextCatalogReference | undefined {
+	if (
+		resolveOptimizedPromptForRuntime(
+			runtime,
+			selectMessageHandlerTask(contexts),
+			messageHandlerTemplate,
+		) !== messageHandlerTemplate
+	)
+		return undefined;
+	const text = formatAvailableContextsForPrompt(contexts);
+	const notice = [
+		contexts.map(({ id }) => id).join(", "),
+		`context_discovery: ${CONTEXT_CATALOG_REFERENCE}`,
+		'All authorized routing-context names are listed above. Full labels, aliases, hierarchy, sensitivity and complete descriptions are available by contextRequests=["CONTEXT_CATALOG"], with contexts=["simple"], empty replyText and no action candidates. Request the catalog when those descriptions are needed to choose or explain a context; use the known names directly when the supplied instructions and live context already determine the route. This reads reference text, never app data or actions. Context names do not confer permission.',
+	].join("\n");
+	return notice.length < text.length
+		? { text, notice, loaded: false }
+		: undefined;
+}
 
 export const VOICE_ENGAGEMENT_RULES = [
 	"- shouldRespond=RESPOND for a completed caller question, request, substantive statement, or conversational continuation.",
@@ -42,27 +99,23 @@ export const VOICE_ENGAGEMENT_RULES = [
 	"- Do not use IGNORE merely because the answer is brief, uncertain, or requires a tool.",
 ].join("\n");
 
-/**
- * Format the role-filtered context catalog as a compact bullet list for the
- * Stage 1 prompt: one `- id: description` line per context. The catalog is
- * already role-filtered, and the former label/alias/parent/gate/sensitivity/
- * cache suffix had no reader (3.3K chars per Stage-1 call on the 43-context
- * owner catalog, live 2026-09-13).
- */
-export function formatAvailableContextsForPrompt(
-	contexts: readonly ContextDefinition[],
-): string {
-	if (contexts.length === 0) {
-		return "(no contexts registered)";
+export function formatRoleGateForPrompt(
+	roleGate: ContextDefinition["roleGate"],
+): string | undefined {
+	if (!roleGate) {
+		return undefined;
 	}
-	return contexts
-		.map((definition) => {
-			const description = definition.description?.trim();
-			return description
-				? `- ${definition.id}: ${description}`
-				: `- ${definition.id}`;
-		})
-		.join("\n");
+	if (roleGate.minRole) {
+		return `role>=${roleGate.minRole}`;
+	}
+	const anyOf = [...(roleGate.roles ?? []), ...(roleGate.anyOf ?? [])];
+	if (anyOf.length > 0) {
+		return `role=${anyOf.join("|")}`;
+	}
+	if (roleGate.allOf?.length) {
+		return `role_all=${roleGate.allOf.join("+")}`;
+	}
+	return undefined;
 }
 
 /**
@@ -92,6 +145,7 @@ export function renderMessageHandlerInstructions(
 		directMessage?: boolean;
 		voiceDirectMessage?: boolean;
 		responseHandlerFields?: string;
+		contextCatalog?: ContextCatalogReference;
 	},
 ): string {
 	const baseline = resolveOptimizedPromptForRuntime(
@@ -103,7 +157,9 @@ export function renderMessageHandlerInstructions(
 		state: {
 			agentName: runtime.character.name?.trim() || "the agent",
 			directMessage: options?.directMessage ? "true" : "",
-			availableContexts: formatAvailableContextsForPrompt(availableContexts),
+			availableContexts:
+				options?.contextCatalog?.notice ??
+				formatAvailableContextsForPrompt(availableContexts),
 			handleResponseToolName: HANDLE_RESPONSE_TOOL_NAME,
 		},
 		template: baseline,
@@ -140,12 +196,29 @@ export function renderMessageHandlerModelInput(
 		voiceDirectMessage?: boolean;
 		groupTriage?: boolean;
 		responseHandlerFields?: string;
+		contextCatalog?: ContextCatalogReference;
+		history?: HistoryDiscovery;
 	},
 ): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
 } {
 	const rendered = renderContextObject(context);
+	const completionSources = options?.voiceDirectMessage
+		? undefined
+		: completionContextSources(context);
+	const completionSourceIds = new Map(
+		completionSources?.sources.map(({ id, event }) => [event.id, id]),
+	);
+	const directText =
+		options?.directMessage &&
+		!options.voiceDirectMessage &&
+		!options.groupTriage;
+	const history =
+		directText &&
+		options.history?.sourceSetId === completionSources?.sourceSetId
+			? options.history
+			: undefined;
 	const instructions = renderMessageHandlerInstructions(
 		runtime,
 		availableContexts,
@@ -157,35 +230,105 @@ export function renderMessageHandlerModelInput(
 	const dynamicSegments = rendered.promptSegments.filter(
 		(segment) => !segment.stable,
 	);
-	const currentTurnBoundary = dynamicSegments.filter(
-		(segment) => segment.id === "current-turn-boundary",
-	);
+	const currentTurnBoundary = dynamicSegments
+		.filter((segment) => segment.id === "current-turn-boundary")
+		.map((segment) =>
+			history
+				? {
+						...segment,
+						content: buildCurrentTurnBoundary({
+							hasMemoryRecallSurface: false,
+							hasOriginalReferences: true,
+						}),
+					}
+				: segment,
+		);
 	const remainingDynamicSegments = dynamicSegments.filter(
 		(segment) => segment.id !== "current-turn-boundary",
 	);
-	const priorDialogueSegments = remainingDynamicSegments.filter(
-		(segment) => segment.label?.startsWith("prior_message:") === true,
+	const priorDialogueSegments = labelHistorySources(
+		remainingDynamicSegments.filter(
+			(segment) =>
+				segment.label?.startsWith("prior_message:") === true &&
+				(!history ||
+					!segment.id ||
+					!completionSourceIds.has(segment.id) ||
+					history.visibleEventIds.has(segment.id)),
+		),
+		completionSourceIds,
 	);
 	const dynamicProviderSegments = remainingDynamicSegments.filter(
 		(segment) => segment.label?.startsWith("provider:") === true,
 	);
+	// This fresh, authorized catalog often stays identical across turns. Put its
+	// complete text before changing dialogue/providers for prefix-cache reuse,
+	// without marking it stable or reusing any previous authorization decision.
+	const actionCatalogSegments = directText
+		? remainingDynamicSegments.filter(
+				(segment) =>
+					segment.id === "available-actions" &&
+					segment.label === "available_actions",
+			)
+		: [];
 	const turnTailSegments = remainingDynamicSegments.filter(
 		(segment) =>
 			segment.label?.startsWith("prior_message:") !== true &&
-			segment.label?.startsWith("provider:") !== true,
+			segment.label?.startsWith("provider:") !== true &&
+			!actionCatalogSegments.includes(segment),
 	);
 	// The boundary follows untrusted dialogue so stored messages cannot supersede
 	// it with structural-looking text. Providers remain adjacent after that
 	// boundary, preserving their reusable prefix before the current message.
 	const orderedDynamicSegments = [
-		...priorDialogueSegments,
+		...actionCatalogSegments,
+		...(directText
+			? shortenHistoryRoleLabels(priorDialogueSegments, completionSourceIds)
+			: priorDialogueSegments),
 		...currentTurnBoundary,
+		...(completionSources?.sources.length
+			? [
+					{
+						content: `completion_source_set: ${completionSources.sourceSetId}\nThe [hN] labels above belong to this source set. Return completionContext according to history_source_selection.${historyReferenceNotice(context, history)}`,
+						stable: false,
+					},
+				]
+			: []),
 		...dynamicProviderSegments,
+		...(options?.contextCatalog?.loaded
+			? [
+					{
+						id: "context-catalog-read",
+						content: `context_loaded: ${CONTEXT_CATALOG_REFERENCE}\nThe complete requested reference follows; do not request it again.\n${options.contextCatalog.text}`,
+						stable: false,
+					},
+				]
+			: []),
+		...loadedHistorySegments(
+			context,
+			history,
+			history?.loadedSourceIds.size
+				? new Set(
+						priorDialogueSegments.flatMap((segment) =>
+							segment.id ? [segment.id] : [],
+						),
+					)
+				: undefined,
+		),
 		...turnTailSegments,
 	];
 	const stableWireSegments = [
 		...stableSegments,
 		{ content: `message_handler_stage:\n${instructions}`, stable: true },
+		...(completionSources?.sources.length
+			? [
+					{
+						content: history
+							? REVIEWED_HISTORY_SELECTION_INSTRUCTIONS
+							: COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS,
+						stable: true,
+					},
+				]
+			: []),
 	];
 	const promptSegments = normalizePromptSegments([
 		...stableWireSegments,
@@ -209,9 +352,10 @@ export function renderMessageHandlerModelInput(
 /**
  * Render only the *stable* part of the Stage-1 (`HANDLE_RESPONSE`) model
  * input for a given room — the system prompt + tool/action schema block +
- * the `available_actions` discovery catalog (rendered for the agent's own
- * OWNER-role sender, the single-owner voice device) + the stable provider
- * blocks. This is the prefix that does NOT depend on
+ * every segment context-assembly marks stable (rendered for the agent's own
+ * OWNER-role sender, the single-owner voice device, with the action
+ * discovery catalog composed through the same gates as the live render) +
+ * the stable provider blocks. This is the prefix that does NOT depend on
  * the user's turn, so it is the exact text the local-inference KV cache
  * should be pre-warmed with the instant a voice session opens or VAD
  * detects speech onset (item I1/C1 of the voice swarm).
@@ -255,9 +399,11 @@ export async function renderMessageHandlerStablePrefix(
 		runtime,
 		message: syntheticMessage,
 		state,
-		// The discovery catalog is a stable segment of the live Stage-1 system
-		// message (context-assembly.ts); the pre-warm renders it through the
-		// same gates so the prefix stays byte-identical to the live render.
+		// The pre-warm composes the action discovery catalog through the same
+		// gates as the live Stage-1 render (context-assembly.ts) so whichever
+		// segments that render marks stable stay byte-identical to the live
+		// prefix; a catalog it marks dynamic is filtered out below like any
+		// other per-turn segment.
 		includeActionDiscovery: true,
 		userRoles: [senderRole],
 		availableContexts,

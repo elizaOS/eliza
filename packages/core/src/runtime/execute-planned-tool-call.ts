@@ -70,6 +70,8 @@ export interface PlannedToolCall {
 
 export interface ExecutePlannedToolCallContext {
 	message: Memory;
+	/** The parent turn will synthesize from complete action results. */
+	replyOwner?: "planner";
 	state?: State;
 	activeContexts?: readonly AgentContext[];
 	userRoles?: readonly RoleGateRole[];
@@ -907,9 +909,16 @@ export async function executePlannedToolCall(
 									handlerOptions.parameters,
 								);
 							}
-							return runWithActionRoutingContext(
-								{ actionName: action.name, modelClass: action.modelClass },
-								() =>
+							const routingContext = {
+								actionName: action.name,
+								modelClass: action.modelClass,
+								replyOwner: action.suppressActionResultClipboard
+									? undefined
+									: executorCtx.replyOwner,
+								messageId: executorCtx.message.id,
+							};
+							try {
+								return await runWithActionRoutingContext(routingContext, () =>
 									action.handler(
 										runtime,
 										executorCtx.message,
@@ -918,7 +927,11 @@ export async function executePlannedToolCall(
 										actionCallback,
 										executorCtx.responses,
 									),
-							);
+								);
+							} finally {
+								// Detached work cannot hand a reply to an already-settled action.
+								routingContext.replyOwner = undefined;
+							}
 						},
 					}),
 				{

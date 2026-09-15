@@ -118,6 +118,7 @@ export * from "./utils/channel-utils";
 export * from "./utils/description-compressed-lint";
 export { stableStringify } from "./utils/deterministic";
 export * from "./utils/environment";
+export * from "./utils/extraction-evidence";
 export * from "./utils/html-raw-text";
 export * from "./utils/model-errors";
 export * from "./utils/prompt-compression";
@@ -130,3 +131,8 @@ export * from "./validation";
 export const isBrowser = false;
 export const isNode = false;
 export const isEdge = true;
+
+export {
+	isPermanentQuotaError,
+	providerRetryAfterMs,
+} from "./utils/model-retry";

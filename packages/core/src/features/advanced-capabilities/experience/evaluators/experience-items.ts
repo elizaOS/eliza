@@ -13,8 +13,8 @@
  * auto-record confidence threshold.
  */
 
+import { ElizaError } from "../../../../errors.ts";
 import { logger } from "../../../../logger.ts";
-import { stringifyForDiagnostics } from "../../../../runtime/json-output.ts";
 import { renderStoredEnvelopesForPrompt } from "../../../../security/external-content";
 import { EvaluatorPriority } from "../../../../services/evaluator-priorities.ts";
 import { assertExtractionSourcesUnchanged } from "../../../../services/evaluator-progress.ts";
@@ -24,6 +24,8 @@ import {
 } from "../../../../services/evaluator-transcript.ts";
 import type {
 	Evaluator,
+	EvaluatorEvidenceReconciliation,
+	EvaluatorRunContext,
 	IAgentRuntime,
 	JSONSchema,
 	Memory,
@@ -258,12 +260,6 @@ function normalizeLearningKey(text: string): string {
 		.trim();
 }
 
-function safeText(value: unknown): string {
-	if (typeof value === "string") return value;
-	if (value === null || value === undefined) return "";
-	return stringifyForDiagnostics(value);
-}
-
 function isSyntheticMemory(memory: Memory): boolean {
 	return isSyntheticConversationArtifactMemory(memory);
 }
@@ -276,6 +272,40 @@ function hasExplicitExperienceRequest(text: string): boolean {
 	return /\b(?:remember|store|learn|note)\s+(?:this|that|this lesson|this pattern|for next time|going forward)\b/i.test(
 		text,
 	);
+}
+
+/** Outcome metadata alone is not a lesson. Inspect values for failure or
+ * learning evidence without treating JSON keys such as success/error as prose. */
+function hasActionExperienceSignal(result: unknown): boolean {
+	const pending = [result];
+	const seen = new Set<object>();
+	while (pending.length > 0) {
+		const value = pending.pop();
+		if (typeof value === "string") {
+			if (
+				/\b(?:error|failed|failure|exception|timeout|blocked|fixed|verified|validated|root cause|lesson learned|workaround|regression|postmortem|correction|discovered|unexpected)\b/i.test(
+					value,
+				)
+			)
+				return true;
+			continue;
+		}
+		if (value instanceof Error) return true;
+		if (typeof value !== "object" || value === null || seen.has(value))
+			continue;
+		seen.add(value);
+		if (Array.isArray(value)) {
+			for (const entry of value) pending.push(entry);
+		} else if (isRecord(value)) {
+			if (
+				value.success === false ||
+				(typeof value.error === "string" && value.error.trim() !== "")
+			)
+				return true;
+			for (const entry of Object.values(value)) pending.push(entry);
+		}
+	}
+	return false;
 }
 
 function scoreExperienceSignals(input: {
@@ -333,12 +363,7 @@ function scoreExperienceSignals(input: {
 	}
 
 	for (const result of input.actionResults ?? []) {
-		const text = safeText(result).toLowerCase();
-		if (
-			/\b(?:error|failed|failure|exception|timeout|blocked|success|completed|fixed|verified|validated)\b/.test(
-				text,
-			)
-		) {
+		if (hasActionExperienceSignal(result)) {
 			reasons.add("action result outcome");
 			break;
 		}
@@ -372,12 +397,64 @@ function sanitizeConversationText(
 		.trim();
 }
 
+async function reconcileExperienceEvidence({
+	runtime,
+	message,
+	reconciliation,
+}: EvaluatorRunContext & {
+	reconciliation: EvaluatorEvidenceReconciliation;
+}): Promise<{ reprocessSourceIds: string[] }> {
+	const service = runtime.getService<ExperienceService>("EXPERIENCE");
+	if (!service)
+		throw new ElizaError(
+			"Experience service unavailable during reconciliation",
+			{ code: "EVALUATOR_RECONCILIATION_UNAVAILABLE" },
+		);
+	const reprocess = new Set<string>();
+	for (const experience of await service.listExperiences({
+		includeInactive: true,
+	})) {
+		if (
+			experience.agentId !== runtime.agentId ||
+			experience.sourceRoomId !== message.roomId ||
+			experience.extractionMethod !== "experience_evaluator"
+		)
+			continue;
+		const revisions = experience.sourceMessageRevisions ?? {};
+		const changed = Object.keys(revisions).some(
+			(id) =>
+				reconciliation.changedMessageIds.includes(id) ||
+				reconciliation.removedMessageIds.includes(id),
+		);
+		const pending =
+			reconciliation.pendingEvidenceId !== undefined &&
+			experience.extractionEvidenceId === reconciliation.pendingEvidenceId;
+		if (!pending && !changed) continue;
+		for (const id of Object.keys(revisions))
+			if (reconciliation.currentSourceRevisions[id] !== undefined)
+				reprocess.add(id);
+		if (experience.extractionStatus === "source_invalidated") continue;
+		if (
+			!(await service.updateExperience(experience.id, {
+				extractionStatus: "source_invalidated",
+				extractionReconciliationId: reconciliation.id,
+			}))
+		)
+			throw new ElizaError("Experience retirement failed", {
+				code: "EVALUATOR_RECONCILIATION_WRITE_FAILED",
+			});
+	}
+	return { reprocessSourceIds: [...reprocess] };
+}
+
 export const experiencePatternEvaluator: Evaluator<
 	ExperienceOutput,
 	ExperiencePrepared
 > = {
 	name: "experiencePatterns",
+	reconcileEvidence: reconcileExperienceEvidence,
 	incremental: true,
+	background: true,
 	description:
 		"Extracts reusable agent lessons from validated conversation events.",
 	priority: EvaluatorPriority.EXPERIENCE,
@@ -394,6 +471,8 @@ export const experiencePatternEvaluator: Evaluator<
 			// The incremental journal retains skipped evidence; cadence must not
 			// acknowledge a batch before its processors have persisted it.
 			return (
+				options.extraction.isBackfill ||
+				(options.extraction.remainingSourceCount ?? 0) > 0 ||
 				scoreExperienceSignals({
 					latestText: getMessageText(message),
 					responseTexts: (options.responses ?? []).map(getMessageText),
@@ -606,6 +685,7 @@ ${formatExistingExperiences(prepared.existingExperiences)}`;
 									),
 									extractionEvidenceId: options.extraction.evidenceId,
 									sourceMessageRevisions: {
+										...options.extraction.referenceRevisions,
 										...options.extraction.sourceRevisions,
 									},
 								}

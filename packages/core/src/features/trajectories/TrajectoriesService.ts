@@ -82,6 +82,7 @@ type TrajectorySqlExecutor = (sqlText: string) => Promise<TrajectorySqlResult>;
 // ============================================================================
 
 export interface TrajectoryListOptions {
+	roomId?: string;
 	limit?: number;
 	offset?: number;
 	status?: "active" | "completed" | "error" | "timeout" | "terminated";
@@ -3219,6 +3220,11 @@ export class TrajectoriesService extends Service {
 		const whereClauses: string[] = [
 			`agent_id = ${sqlLiteral(this.runtime.agentId)}`,
 		];
+		if (options.roomId) {
+			whereClauses.push(
+				`metadata_json->>'roomId' = ${sqlLiteral(options.roomId)}`,
+			);
+		}
 		if (options.status) {
 			whereClauses.push(`status = ${sqlLiteral(options.status)}`);
 		}
@@ -3377,12 +3383,12 @@ export class TrajectoriesService extends Service {
 		const statsResult = await this.executeRawSql(`
       SELECT
         count(*)::int AS total_trajectories,
-        COALESCE(sum(step_count), 0)::int AS total_steps,
-        COALESCE(sum(llm_call_count), 0)::int AS total_llm_calls,
-        COALESCE(sum(total_prompt_tokens), 0)::int AS total_prompt_tokens,
-        COALESCE(sum(total_completion_tokens), 0)::int AS total_completion_tokens,
-        COALESCE(sum(total_cache_read_input_tokens), 0)::int AS total_cache_read_input_tokens,
-        COALESCE(sum(total_cache_creation_input_tokens), 0)::int AS total_cache_creation_input_tokens,
+        COALESCE(sum(step_count), 0)::bigint AS total_steps,
+        COALESCE(sum(llm_call_count), 0)::bigint AS total_llm_calls,
+        COALESCE(sum(total_prompt_tokens), 0)::bigint AS total_prompt_tokens,
+        COALESCE(sum(total_completion_tokens), 0)::bigint AS total_completion_tokens,
+        COALESCE(sum(total_cache_read_input_tokens), 0)::bigint AS total_cache_read_input_tokens,
+        COALESCE(sum(total_cache_creation_input_tokens), 0)::bigint AS total_cache_creation_input_tokens,
         COALESCE(avg(duration_ms), 0)::int AS avg_duration_ms,
         COALESCE(avg(total_reward), 0)::real AS avg_reward
       FROM trajectories

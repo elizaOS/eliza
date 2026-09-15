@@ -57,9 +57,12 @@ export function defaultFetchTimeoutMs(
     return DEFAULT_FETCH_TIMEOUT_MS;
   }
   const pathname = requestPathname(path);
+  // Reply-only recovery awaits text generation just like a new chat turn.
   if (
     pathname === "/api/inbox/messages" ||
-    /^\/api\/conversations\/[^/]+\/messages(?:\/stream)?$/.test(pathname)
+    /^\/api\/conversations\/[^/]+\/messages(?:\/stream|\/[^/]+\/retry-reply)?$/.test(
+      pathname,
+    )
   ) {
     return CHAT_MESSAGE_FETCH_TIMEOUT_MS;
   }

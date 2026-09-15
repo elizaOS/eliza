@@ -85,7 +85,11 @@ credential to a browser build, changes embeddings or voice, activates a local
 model, or substitutes a canned reply.
 
 OpenRouter recovery is limited to HTTP 429/cooldown failures before any output
-has reached the caller. Auth/schema failures and partial streams stay explicit;
+has reached the caller. With that explicit fallback configured, the first eligible
+429 yields immediately even without Retry-After; it does not repeat the same
+rate-limited request through transient backoff first. Other transient errors
+retain bounded retries, and installations without a fallback keep their prior
+retry policy. Auth/schema failures and partial streams stay explicit;
 an aborted call never starts a fallback. Each endpoint has an independent
 credential-scoped cooldown, and Cerebras becomes primary again when its window
 expires. OpenRouter routing requires all request parameters, denies providers
@@ -254,6 +258,15 @@ await runtime.useModel(ModelType.TEXT_LARGE, {
   },
 });
 ```
+
+For Cerebras, `providerOptions.cerebras.promptCacheKey` (or `prompt_cache_key`)
+takes precedence over the OpenAI key. An explicit empty Cerebras options object
+suppresses the legacy OpenAI key. Core supplies a stable conversation-and-stage
+routing key when a conversation ID is available, so unrelated chats do not share
+one routing hint merely because their system instructions match. Prefix changes
+do not change that routing key. Calls that only supply the OpenAI key remain supported. This does not alter prompt text,
+token counts, or permissions; Cerebras still matches actual prompt prefixes and
+controls cache retention. See [Cerebras prompt caching](https://inference-docs.cerebras.ai/capabilities/prompt-caching).
 
 ## Free-form record/map tool arguments
 

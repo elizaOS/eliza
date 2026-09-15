@@ -136,11 +136,9 @@ export const recentConversationsProvider: Provider = {
         roomIds,
         accessContext,
       });
-      // Per room, the canonical RECENT_MESSAGES dedupe pass (consecutive
-      // identical rows from one sender; repeated assistant texts within one
-      // assistant run): connector record-of-send rows duplicate every delivered
-      // reply, and this eager form rendered both copies for every room (live:
-      // 378 duplicate entries, ~7K tokens, in one Stage-1 prompt).
+      // Share RECENT_MESSAGES source hygiene: only identical copies of the
+      // same source ID collapse. Distinct connector records and repeated turns
+      // keep their provenance even when their visible text is identical.
       const byRoom = new Map<string, Memory[]>();
       for (const memory of memories) {
         if (

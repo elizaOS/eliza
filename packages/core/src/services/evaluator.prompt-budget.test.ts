@@ -28,7 +28,6 @@ import type {
 import { EvaluatorService } from "./evaluator";
 
 const ENTITY_ID = "00000000-0000-0000-0000-000000000002";
-const OUTLINE_HEADING = "## Output Shape\n";
 const SCHEMA_TEXT_HEADING = "## Output JSON Schema\n";
 
 type CapturedCall = { prompt: string; params: Record<string, unknown> };
@@ -106,12 +105,8 @@ function captureModel(
 	return calls;
 }
 
-function turnContext(prompt: string): string {
-	return prompt.slice(prompt.indexOf("Evaluate just-finished turn"));
-}
-
 describe("post-turn evaluator prompt size", () => {
-	it("sends the merged schema structurally and renders only a compact outline in the prompt", async () => {
+	it("sends the merged schema structurally and keeps the complete compact contract in the prompt", async () => {
 		const runtime = makeRuntime();
 		runtime.registerEvaluator(section("alpha"));
 		runtime.registerEvaluator(section("beta", { schema: betaSchema }));
@@ -126,28 +121,30 @@ describe("post-turn evaluator prompt size", () => {
 		expect(result.processedEvaluators).toEqual(["alpha", "beta"]);
 		expect(calls).toHaveLength(1);
 		const call = calls[0];
-		expect(call?.params.responseSchema).toEqual({
+		const mergedSchema = {
 			type: "object",
 			properties: { alpha: alphaSchema, beta: betaSchema },
 			required: ["alpha", "beta"],
 			additionalProperties: false,
-		});
+		};
+		expect(call?.params.responseSchema).toEqual(mergedSchema);
 		expect(call?.params.responseFormat).toEqual({ type: "json_object" });
 		const prompt = call?.prompt ?? "";
+		// Compact JSON, never the indented form: the same contract without the
+		// indentation that consumed thousands of input tokens per call.
 		expect(prompt).toContain(
-			`${OUTLINE_HEADING}The structured response format enforces the exact JSON schema. Return one object with exactly these keys:\n- alpha: {ok: boolean, mood?: happy|sad}\n- beta: {items: array}\n\n`,
+			`${SCHEMA_TEXT_HEADING}${JSON.stringify(mergedSchema)}\n\n`,
 		);
-		expect(prompt).not.toContain(SCHEMA_TEXT_HEADING);
-		expect(prompt).not.toContain('"additionalProperties"');
-		expect(prompt.indexOf(OUTLINE_HEADING)).toBeLessThan(
+		expect(prompt).not.toContain(stringifyForModel(mergedSchema));
+		expect(prompt.indexOf(SCHEMA_TEXT_HEADING)).toBeLessThan(
 			prompt.indexOf("Latest message:"),
 		);
 		expect(prompt.indexOf("### beta")).toBeLessThan(
-			prompt.indexOf(OUTLINE_HEADING),
+			prompt.indexOf(SCHEMA_TEXT_HEADING),
 		);
 	});
 
-	it("spells the schema out in text only for the JSON-object and plain fallbacks", async () => {
+	it("keeps the identical complete contract on the JSON-object and plain fallbacks", async () => {
 		const runtime = makeRuntime();
 		runtime.registerEvaluator(section("alpha"));
 		const calls = captureModel(runtime, (call) => {
@@ -169,21 +166,14 @@ describe("post-turn evaluator prompt size", () => {
 		});
 		expect(plain?.params).not.toHaveProperty("responseSchema");
 		expect(plain?.params).not.toHaveProperty("responseFormat");
-		const schemaText = `${SCHEMA_TEXT_HEADING}${stringifyForModel(structural?.params.responseSchema)}\n\n`;
-		expect(structural?.prompt).not.toContain(SCHEMA_TEXT_HEADING);
-		for (const fallback of [jsonObject, plain]) {
-			expect(fallback?.prompt).toContain(schemaText);
-			expect(fallback?.prompt).not.toContain(OUTLINE_HEADING);
-			// Same turn context on every rung; only the contract rendering differs.
-			expect(turnContext(fallback?.prompt ?? "")).toBe(
-				turnContext(structural?.prompt ?? ""),
-			);
-			expect(fallback?.prompt.indexOf(SCHEMA_TEXT_HEADING)).toBeLessThan(
-				fallback?.prompt.indexOf("Latest message:") ?? -1,
-			);
-		}
-		expect(jsonObject?.prompt).toBe(plain?.prompt);
-
+		const schemaText = `${SCHEMA_TEXT_HEADING}${JSON.stringify(structural?.params.responseSchema)}\n\n`;
+		expect(structural?.prompt).toContain(schemaText);
+		// Same prompt on every rung; only the wire contract differs.
+		expect(jsonObject?.prompt).toBe(structural?.prompt);
+		expect(plain?.prompt).toBe(structural?.prompt);
+		expect(structural?.prompt.indexOf(SCHEMA_TEXT_HEADING)).toBeLessThan(
+			structural?.prompt.indexOf("Latest message:") ?? -1,
+		);
 		// A schema-specific rejection arms the memo: the next turn skips straight
 		// to the JSON-object request and its prompt carries the schema text.
 		await new EvaluatorService(runtime).run(makeMessage());

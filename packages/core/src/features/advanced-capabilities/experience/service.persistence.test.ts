@@ -45,6 +45,45 @@ function storedExperience(): Memory {
 }
 
 describe("ExperienceService persistence boundaries", () => {
+	it("retains a retired experience across hydration but excludes it from normal and related retrieval", async () => {
+		let stored = storedExperience();
+		const runtime = createMockRuntime({
+			agentId: AGENT_ID,
+			getMemories: vi.fn(async () => [stored]),
+			getMemoryById: vi.fn(async () => stored),
+			upsertMemory: vi.fn(async (row) => {
+				stored = structuredClone(row);
+			}),
+		});
+		const service = new ExperienceService(runtime);
+		await service.recordExperience({
+			id: EXPERIENCE_ID,
+			learning: "unused existing ID",
+		});
+		await service.updateExperience(EXPERIENCE_ID, {
+			extractionStatus: "source_invalidated",
+			extractionReconciliationId: "repair-1",
+		});
+		expect(await service.listExperiences()).toEqual([]);
+		expect(await service.getExperience(EXPERIENCE_ID)).toMatchObject({
+			learning: "persisted learning",
+			extractionStatus: "source_invalidated",
+		});
+		const restarted = new ExperienceService(runtime);
+		await restarted.recordExperience({
+			id: EXPERIENCE_ID,
+			learning: "unused existing ID",
+		});
+		expect(await restarted.listExperiences()).toEqual([]);
+		expect(
+			await restarted.listExperiences({ includeInactive: true }),
+		).toHaveLength(1);
+		expect(
+			(await restarted.getExperience(EXPERIENCE_ID))
+				?.extractionReconciliationId,
+		).toBe("repair-1");
+	});
+
 	it("reuses a supplied ID without embedding or writing it again", async () => {
 		const records = new Map<UUID, Memory>();
 		const useModel = vi.fn(async () => [0.1, 0.2]);

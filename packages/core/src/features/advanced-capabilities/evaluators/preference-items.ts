@@ -27,6 +27,7 @@
  * (advanced capabilities off), the fact lane still works and slot ops are
  * dropped with a debug log — the counters in the processor result record it.
  */
+
 import { v4 } from "uuid";
 import { ElizaError } from "../../../errors.ts";
 import { logger } from "../../../logger.ts";
@@ -49,6 +50,10 @@ import { asUUID } from "../../../types/index.ts";
 import type { CustomMetadata, FactMetadata } from "../../../types/memory.ts";
 import { MemoryType } from "../../../types/memory.ts";
 import { stableStringify } from "../../../utils/deterministic.ts";
+import {
+	hasNoPersonalExtractionSources,
+	isActiveMemoryEvidence,
+} from "../../../utils/extraction-evidence.ts";
 import { isSyntheticConversationArtifactMemory } from "../../../utils/synthetic-conversation-artifact.ts";
 import { stringToUuid } from "../../../utils.ts";
 import {
@@ -70,9 +75,11 @@ import {
 	TRAIT_VALUES,
 	VERBOSITY_VALUES,
 } from "../personality/types.ts";
+import { reconcileFactEvidence } from "./extraction-reconciliation.ts";
 import {
 	type AddDirectiveOp,
 	type AddPreferenceFactOp,
+	PREFERENCE_SCOPES,
 	type PreferenceExtractorOutput,
 	parsePreferenceOutputTolerant,
 	type RetractTraitOp,
@@ -99,47 +106,86 @@ import {
 // via ranked retrieval.
 const SLOT_CONFIDENCE_THRESHOLD = 0.8;
 
+const preferenceEvidenceProperties: Record<string, JSONSchema> = {
+	scope: {
+		type: "string",
+		enum: [...PREFERENCE_SCOPES],
+		description:
+			"Applicability of the original preference. Only across_conversations may change persistent user preferences. Preserve explicit conversation/task limits; uncertain scope must not become persistent.",
+	},
+	sourceMessageIds: { type: "array", items: { type: "string" } },
+	evidence: { type: "string" },
+};
+
+const preferenceConfidenceSchema: JSONSchema = {
+	type: "number",
+	description: "Honest confidence from 0 to 1.",
+};
+
 const preferenceOpsSchema: JSONSchema = {
 	type: "object",
 	properties: {
 		ops: {
 			type: "array",
 			items: {
-				type: "object",
-				properties: {
-					op: {
-						type: "string",
-						enum: [
-							"set_trait",
-							"add_directive",
-							"add_preference_fact",
-							"retract_trait",
-						],
+				// Each operation advertises the fields its parser requires. A flat
+				// optional-field object permits outputs that repeatedly fail parsing.
+				anyOf: [
+					{
+						type: "object",
+						properties: {
+							...preferenceEvidenceProperties,
+							op: { type: "string", enum: ["set_trait"] },
+							trait: { type: "string", enum: [...TRAIT_VALUES] },
+							// Trait/value pairing remains validated by the parser.
+							value: {
+								type: "string",
+								enum: [
+									...VERBOSITY_VALUES,
+									...TONE_VALUES,
+									...FORMALITY_VALUES,
+								],
+							},
+							confidence: preferenceConfidenceSchema,
+						},
+						required: ["op", "scope", "trait", "value", "confidence"],
+						additionalProperties: false,
 					},
-					trait: { type: "string", enum: [...TRAIT_VALUES] },
-					// One flat enum across all three traits: a per-trait value union
-					// is not expressible under the strict structured-output invariants
-					// (see reflection-items.ts header). Trait/value pairing is
-					// validated in parsePreferenceOutputTolerant instead.
-					value: {
-						type: "string",
-						enum: [...VERBOSITY_VALUES, ...TONE_VALUES, ...FORMALITY_VALUES],
+					{
+						type: "object",
+						properties: {
+							...preferenceEvidenceProperties,
+							op: { type: "string", enum: ["add_directive"] },
+							text: { type: "string" },
+							confidence: preferenceConfidenceSchema,
+						},
+						required: ["op", "scope", "text", "confidence"],
+						additionalProperties: false,
 					},
-					confidence: { type: "number" },
-					sourceMessageIds: { type: "array", items: { type: "string" } },
-					evidence: { type: "string" },
-					text: { type: "string" },
-					claim: { type: "string" },
-					// No maxItems: strict structured-output validators reject array
-					// length constraints — the 16-keyword cap is enforced in code.
-					keywords: {
-						type: "array",
-						items: { type: "string" },
+					{
+						type: "object",
+						properties: {
+							...preferenceEvidenceProperties,
+							op: { type: "string", enum: ["add_preference_fact"] },
+							claim: { type: "string" },
+							keywords: { type: "array", items: { type: "string" } },
+							confidence: preferenceConfidenceSchema,
+						},
+						required: ["op", "scope", "claim"],
+						additionalProperties: false,
 					},
-					reason: { type: "string" },
-				},
-				required: ["op"],
-				additionalProperties: false,
+					{
+						type: "object",
+						properties: {
+							...preferenceEvidenceProperties,
+							op: { type: "string", enum: ["retract_trait"] },
+							trait: { type: "string", enum: [...TRAIT_VALUES] },
+							reason: { type: "string" },
+						},
+						required: ["op", "scope", "trait"],
+						additionalProperties: false,
+					},
+				],
 			},
 		},
 	},
@@ -173,7 +219,11 @@ function readFactMetadata(memory: Memory): FactMetadata {
 
 function isDurablePreferenceFact(memory: Memory): boolean {
 	const meta = readFactMetadata(memory);
-	return meta.category === "preference" && meta.kind !== "current";
+	return (
+		isActiveMemoryEvidence(memory) &&
+		meta.category === "preference" &&
+		meta.kind !== "current"
+	);
 }
 
 /**
@@ -505,7 +555,11 @@ export const preferenceEvaluator: Evaluator<
 	PreferencePrepared
 > = {
 	name: "preferences",
+	resolveOutputWhen: hasNoPersonalExtractionSources,
+	resolveOutput: () => ({ ops: [] }),
+	reconcileEvidence: reconcileFactEvidence,
 	incremental: true,
+	background: true,
 	description:
 		"Extracts user preferences about the agent, views, and interaction style from ordinary conversation.",
 	priority: EvaluatorPriority.REFLECTION_PREFERENCES,
@@ -528,7 +582,7 @@ export const preferenceEvaluator: Evaluator<
 		// everything usable through the fact lane.
 		const slotOps = prepared.slot
 			? `- set_trait: reply style that clearly maps to a closed trait value. verbosity: terse|normal|verbose. tone: warm|neutral|direct|cold. formality: casual|professional|formal.
-- add_directive: standing reply-style rule with no trait mapping ("no emojis", "one question at a time", "don't stack messages"). Short imperative text, max 200 chars.
+- add_directive: standing reply-style rule with no trait mapping ("no emojis", "one question at a time", "don't stack messages"). Preserve the complete rule and its qualifiers.
 - retract_trait: the user pushes back on an inferred trait shown below.
 `
 			: "";
@@ -542,9 +596,10 @@ ${slotOps}- add_preference_fact: preferences that are knowledge rather than repl
 
 Rules:
 - Only the speaker's own expressed preferences. Not the agent's suggestions, not hypotheticals, not third parties.
+- Classify every operation's scope from its original evidence: across_conversations for a lasting preference; conversation for this chat; task for the current task, reply, example or temporary instruction; uncertain when its applicability is unresolved. Never broaden "for the rest of this conversation" into a lasting preference or treat a task-specific correction as a permanent trait retraction. Only across_conversations operations are persisted. Other instructions remain in their complete original dialogue; do not strip their scope or copy them into a lasting preference fact. General style preferences and passive style complaints may be lasting when no temporary restriction is expressed.
 - In incremental extraction, EVERY operation must include sourceMessageIds citing selected new message IDs authored by this speaker. Never cite reference messages or other speakers. Omit unsupported operations.
 - New evidence must come from this speaker's newly selected messages. Historical reference text and known preferences are context only; do not reinforce them just because they appear.
-- confidence 0-1, honest; slot ops below 0.8 are discarded.
+${prepared.slot ? "- set_trait and add_directive require numeric confidence from 0 to 1; never omit it. Slot ops below 0.8 are discarded. Confidence is unused for retract_trait.\n" : ""}- Confidence is optional for add_preference_fact; when present it must be an honest number from 0 to 1.
 - No preference expressed -> {"ops":[]}.
 - Never emit anything about muting, ignoring, or when ${agentName} may reply.
 
@@ -558,10 +613,18 @@ ${formatKnownPreferences(prepared.knownPreferenceFacts)}
 ${recentMessagesSection(shared, prepared.recentMessages)}`;
 	},
 	parse(output, context) {
-		// Tolerant, op-by-op — drops are logged inside
-		// parsePreferenceOutputTolerant (this parse contract has no
-		// runtime/logger). Null only when the envelope isn't { ops: [...] }.
-		const parsed = parsePreferenceOutputTolerant(output);
+		// Incremental progress covers the complete evidence batch. Reject a
+		// partially valid section before staging or effects so it remains work.
+		const parsed = parsePreferenceOutputTolerant(output, {
+			requireComplete: Boolean(context?.options.extraction),
+		});
+		// JSON-object/fallback providers may ignore the wire schema. Enforce
+		// scope on fresh model output too, while replaying the old stored contract.
+		if (
+			context?.outputSource === "model" &&
+			parsed?.ops.some((op) => op.scope === undefined)
+		)
+			return null;
 		if (parsed && context)
 			assertPersonalExtractionOperations(
 				context.message,
@@ -579,6 +642,13 @@ ${recentMessagesSection(shared, prepared.recentMessages)}`;
 					options.extraction,
 					output.ops,
 				);
+				// Scope is semantic model output, not a keyword heuristic. Keep local
+				// instructions in canonical dialogue; this writer owns persistent preferences.
+				// Missing scope belongs to legacy/staged outputs from the older contract.
+				const persistentOps = output.ops.filter(
+					(op) => op.scope === undefined || op.scope === "across_conversations",
+				);
+				const notPersistedForScope = output.ops.length - persistentOps.length;
 				const store = getPersonalityStore(runtime);
 				const userId = message.entityId;
 				// Pre-run snapshot for trait gates — see applySetTrait.
@@ -588,7 +658,7 @@ ${recentMessagesSection(shared, prepared.recentMessages)}`;
 				// processor and may have just inserted `preference` rows the
 				// prepare-time snapshot cannot see — deduping against the snapshot
 				// would double-store the same preference in one turn.
-				const hasFactOps = output.ops.some(
+				const hasFactOps = persistentOps.some(
 					(op) => op.op === "add_preference_fact",
 				);
 				const freshFacts = hasFactOps
@@ -622,7 +692,7 @@ ${recentMessagesSection(shared, prepared.recentMessages)}`;
 				let factsStrengthened = 0;
 				let skipped = 0;
 				let droppedNoStore = 0;
-				for (const op of output.ops) {
+				for (const op of persistentOps) {
 					const evidenceId = options.extraction
 						? `${options.extraction.evidenceId}:${stringToUuid(stableStringify(op))}`
 						: undefined;
@@ -692,6 +762,7 @@ ${recentMessagesSection(shared, prepared.recentMessages)}`;
 					);
 				}
 				const counters = {
+					notPersistedForScope,
 					traitsSet,
 					traitsRetracted,
 					directivesAdded,

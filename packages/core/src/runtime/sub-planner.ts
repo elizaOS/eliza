@@ -62,38 +62,6 @@ function buildSubPlannerActionLookup(
 	return lookup;
 }
 
-/**
- * One native tool per child plus one per simile: the planner loop counts a
- * call to a name outside this list as an unavailable tool before the execute
- * wrapper can resolve it, so a simile the model uses must be listed. A
- * promoted family never reaches here (promotedFamilySurface), which is where
- * the copies were expensive: 12 simile copies of the umbrella schema were
- * ~70K of the live CALENDAR sub-planner's 125K-character surface (2026-09-14).
- */
-function buildSubPlannerTools(actions: readonly Action[]): ToolDefinition[] {
-	const canonicalTools = buildPlannerToolsFromActions(actions);
-	const toolsByName = new Map(canonicalTools.map((tool) => [tool.name, tool]));
-	const tools: ToolDefinition[] = [...canonicalTools];
-	for (const action of actions) {
-		const canonical = toolsByName.get(action.name);
-		if (!canonical) continue;
-		for (const simile of action.similes ?? []) {
-			if (typeof simile !== "string" || simile.trim().length === 0) continue;
-			const name = simile.trim();
-			if (toolsByName.has(name)) continue;
-			const aliasTool = {
-				...canonical,
-				name,
-				description:
-					`${canonical.description ?? action.description ?? ""}\nAlias for ${action.name}.`.trim(),
-			};
-			toolsByName.set(name, aliasTool);
-			tools.push(aliasTool);
-		}
-	}
-	return tools;
-}
-
 interface PromotedFamilySurface {
 	tool: ToolDefinition;
 	discriminator: string;
@@ -359,11 +327,14 @@ export async function runSubPlanner(
 	);
 	// Sub-planner exposes each child action directly as its own native tool
 	// (same surface as the top-level planner), or a promoted family as the
-	// umbrella itself with the discriminator required. The universal
+	// umbrella itself with the discriminator required. Similes are runtime
+	// aliases: the planner loop maps them onto the exposed canonical name from
+	// the sub-planner tool events and the lookup below accepts them, but they
+	// must not duplicate full native schemas on the wire. The universal
 	// terminal-sentinel tools (REPLY / IGNORE / STOP) are always exposed so
 	// the model has a stable way to end the sub-planner pass.
 	const tools: ToolDefinition[] = [
-		...(family ? [family.tool] : buildSubPlannerTools(childActions)),
+		...(family ? [family.tool] : buildPlannerToolsFromActions(childActions)),
 		...CORE_PLANNER_TERMINALS,
 	];
 	const execute = params.execute ?? executePlannedToolCall;
@@ -437,10 +408,10 @@ export async function runSubPlanner(
 				toolCall.name = child.name;
 			}
 			const resolvedChildAction =
+				childActions.find((action) => action.name === toolCall.name) ??
 				childActionLookup.get(
 					normalizeSubPlannerActionIdentifier(toolCall.name),
 				) ??
-				childActions.find((action) => action.name === toolCall.name) ??
 				null;
 			if (!resolvedChildAction) {
 				return {

@@ -40,24 +40,27 @@ export function formatExperienceForPrompt(
 	// (experience-items.ts), so on the live store every WHY line repeated DO
 	// character for character: 32 items × ~330 chars in each planner and
 	// evaluator call of a "general" turn (2026-09-14). A WHY that only
-	// repeats DO says nothing; the extraction rationale stands in when there
-	// is one, else the line is omitted.
-	const why = whyLine(experience);
+	// repeats DO says nothing: the distinct extraction rationale stands in
+	// when there is one; otherwise an explicit local reference replaces the
+	// duplicate so distinct reasons and all other provenance remain complete.
 	return `${prefix}DO: ${experience.learning}
 WHEN: ${experience.context || experience.action || "similar situation"}
-${why ? `WHY: ${why}\n` : ""}META: id=${experience.id}; domain=${experience.domain}; confidence=${Math.round(
+WHY: ${whyLine(experience)}
+META: id=${experience.id}; domain=${experience.domain}; confidence=${Math.round(
 		experience.confidence * 100,
 	)}%; importance=${Math.round(experience.importance * 100)}%; keywords=${keywords}`;
 }
 
-function whyLine(experience: Experience): string | undefined {
+function whyLine(experience: Experience): string {
 	const normalize = (text: string) => text.trim().replace(/\s+/g, " ");
 	const learning = normalize(experience.learning ?? "");
 	const result = normalize(experience.result ?? "");
 	if (result && result !== learning) return experience.result;
-	const reason = normalize(experience.extractionReason ?? "");
-	if (reason && reason !== learning) return experience.extractionReason;
-	return undefined;
+	const extractionReason = experience.extractionReason ?? "";
+	const reason = normalize(extractionReason);
+	if (reason && reason !== learning) return extractionReason;
+	if (result || reason) return "Same text as DO above.";
+	return "past experience";
 }
 
 export function formatExperienceList(experiences: Experience[]): string {

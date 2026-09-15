@@ -11,6 +11,54 @@ const ENTITY_ID = "00000000-0000-0000-0000-0000000000e1" as UUID;
 const ROOM_ID = "00000000-0000-0000-0000-0000000000f1" as UUID;
 
 describe("MemoryService incremental storage capability", () => {
+	it("hides retired derived memories from retrieval while preserving full audit reads and explicit memories", async () => {
+		const base = {
+			agentId: ENTITY_ID,
+			entityId: ENTITY_ID,
+			category: LongTermMemoryCategory.SEMANTIC,
+			createdAt: new Date(0),
+			updatedAt: new Date(0),
+		};
+		const records = [
+			{
+				...base,
+				id: ROOM_ID,
+				content: "old derived fact",
+				metadata: { extractionStatus: "source_invalidated" },
+			},
+			{
+				...base,
+				id: ENTITY_ID,
+				content: "explicit memory",
+				source: "MEMORY",
+				metadata: { extractionStatus: "source_invalidated" },
+			},
+		];
+		const storage = {
+			storeLongTermMemory: vi.fn(),
+			getLongTermMemories: vi.fn(async () => records),
+		};
+		const runtime = createMockRuntime({
+			hasService: (name) => name === "memoryStorage",
+			getService: () => null,
+			getServiceLoadPromise: vi.fn(
+				async () => storage,
+			) as unknown as IAgentRuntime["getServiceLoadPromise"],
+		});
+		const service = new MemoryService(runtime);
+		await service.initialize(runtime);
+		expect(
+			(await service.getLongTermMemories(ENTITY_ID, undefined, 1)).map(
+				(row) => row.content,
+			),
+		).toEqual(["explicit memory"]);
+		expect(
+			await service.getLongTermMemories(ENTITY_ID, undefined, undefined, {
+				includeInactive: true,
+			}),
+		).toHaveLength(2);
+	});
+
 	it("holds unsupported provider storage explicitly while keeping legacy writes available", async () => {
 		const storeLongTermMemory = vi.fn(async (input) => ({
 			...input,

@@ -284,8 +284,7 @@ export class CapacitorNativeSurfaceShell implements NativeSurfaceShell {
       typeof result.url !== "string" ||
       typeof result.title !== "string" ||
       typeof result.text !== "string" ||
-      result.text.length > 16_000 ||
-      typeof result.truncated !== "boolean"
+      result.truncated !== false
     ) {
       throw new Error("Native Browser returned an invalid page read.");
     }

@@ -118,7 +118,7 @@ describe("formatExperienceForPrompt", () => {
 		expect(text).toContain("META: id=e1");
 	});
 
-	it("omits a WHY that only repeats DO and falls back to the extraction rationale (live store: result == learning)", () => {
+	it("replaces a WHY that only repeats DO with the extraction rationale or a local reference (live store: result == learning)", () => {
 		const duplicate = formatExperienceForPrompt(
 			exp({
 				id: "e2" as Experience["id"],
@@ -134,7 +134,9 @@ describe("formatExperienceForPrompt", () => {
 				result: " learned  something useful ",
 			}),
 		);
-		expect(bare).not.toContain("WHY:");
-		expect(bare).toMatch(/WHEN: ctx\nMETA: id=e3/);
+		expect(bare).not.toContain("WHY: learned");
+		expect(bare).toMatch(
+			/WHEN: ctx\nWHY: Same text as DO above\.\nMETA: id=e3/,
+		);
 	});
 });

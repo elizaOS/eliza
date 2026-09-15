@@ -5,23 +5,18 @@ import { OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS } from "../../security/trust
 import type { ContextEvent } from "../../types/context-object";
 import type { Memory } from "../../types/memory";
 import { MESSAGE_SOURCE_SUB_AGENT } from "../../types/message-source";
-import type { Media } from "../../types/primitives";
+import { ChannelType } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
 import type { State } from "../../types/state";
 import { extractUserText, getUserMessageText } from "../../utils/message-text";
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../../utils/well-formed";
-import {
-	isToolDerivedAssistantContent,
-	resolveExplicitContinuationRequestText,
-} from "./direct-action-heuristics";
+import { toWellFormedUnicode } from "../../utils/well-formed";
+import { resolveExplicitContinuationRequestText } from "./direct-action-heuristics";
 import { parseSubAgentTaskCompleteRelay } from "./task-completion-relay.js";
 
 export function asProviderRecord(value: unknown):
 	| {
 			text?: unknown;
+			discoveryText?: unknown;
 			providerName?: unknown;
 	  }
 	| undefined {
@@ -30,6 +25,7 @@ export function asProviderRecord(value: unknown):
 	}
 	return value as {
 		text?: unknown;
+		discoveryText?: unknown;
 		providerName?: unknown;
 	};
 }
@@ -93,100 +89,9 @@ export function priorDialogueContent(text: string, speaker?: string): string {
 	return `${speaker}: ${text}`;
 }
 
-export const ATTACHMENT_TEXT_MAX_CHARS = 4_000;
-export const ATTACHMENTS_TOTAL_MAX_CHARS = 12_000;
-
-export type AttachmentTextCaps = {
-	perAttachment: number;
-	total: number;
-};
-
-function positiveIntegerSetting(
-	runtime: Pick<IAgentRuntime, "getSetting"> | undefined,
-	key: string,
-	fallback: number,
-): number {
-	const value =
-		typeof runtime?.getSetting === "function"
-			? runtime.getSetting(key)
-			: undefined;
-	const parsed =
-		typeof value === "number"
-			? value
-			: typeof value === "string"
-				? Number.parseInt(value, 10)
-				: Number.NaN;
-	return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : fallback;
-}
-
-/** Render-time caps for inlined attachment text; stored attachments stay complete. */
-export function attachmentTextCaps(
-	runtime?: Pick<IAgentRuntime, "getSetting">,
-): AttachmentTextCaps {
-	return {
-		perAttachment: positiveIntegerSetting(
-			runtime,
-			"ATTACHMENT_TEXT_MAX_CHARS",
-			ATTACHMENT_TEXT_MAX_CHARS,
-		),
-		total: positiveIntegerSetting(
-			runtime,
-			"ATTACHMENTS_TOTAL_MAX_CHARS",
-			ATTACHMENTS_TOTAL_MAX_CHARS,
-		),
-	};
-}
-
-function truncateHead(text: string, maxChars: number): string {
-	if (text.length <= maxChars) return text;
-	const head = truncateWellFormed(text, maxChars);
-	return `${head}${head ? " " : ""}[truncated ${text.length - head.length} chars]`;
-}
-
-/**
- * Caps each attachment's `text` and `description` at `perAttachment`
- * characters and the message's inlined attachment text at `total`,
- * head-preserving with a `[truncated N chars]` marker. Returns the input
- * array when nothing changes.
- */
-export function capAttachmentsForContext(
-	attachments: Media[] | undefined,
-	caps: AttachmentTextCaps,
-): Media[] | undefined {
-	if (!attachments?.length) return attachments;
-	let remaining = Math.max(0, caps.total);
-	let changed = false;
-	const capField = (value: string | undefined): string | undefined => {
-		if (!value) return value;
-		const limit = Math.min(caps.perAttachment, remaining);
-		remaining -= Math.min(value.length, limit);
-		return truncateHead(value, limit);
-	};
-	const capped = attachments.map((attachment) => {
-		const text = capField(attachment.text);
-		const description = capField(attachment.description);
-		if (text === attachment.text && description === attachment.description) {
-			return attachment;
-		}
-		changed = true;
-		return {
-			...attachment,
-			...(text === undefined ? {} : { text }),
-			...(description === undefined ? {} : { description }),
-		};
-	});
-	return changed ? capped : attachments;
-}
-
-export function verifiedCrossRoomContent(
-	memory: Memory,
-	caps?: AttachmentTextCaps,
-): string {
+export function verifiedCrossRoomContent(memory: Memory): string {
 	const text = getUserMessageText(memory);
-	const attachments = caps
-		? capAttachmentsForContext(memory.content.attachments, caps)
-		: memory.content.attachments;
-	const attachmentText = (attachments ?? [])
+	const attachmentText = (memory.content.attachments ?? [])
 		.map((attachment) => {
 			const label =
 				attachment.filename ??
@@ -201,50 +106,7 @@ export function verifiedCrossRoomContent(
 	return [text, attachmentText].filter(Boolean).join(" ");
 }
 
-/**
- * How many of the agent's own prior turns the tool-planner context renders.
- * Enough to cover the pending question/preview plus a short back-and-forth,
- * small enough to keep the stale-answer surface and token cost bounded.
- */
-export const PLANNER_MAX_OWN_REPLY_TURNS = 4;
-/** Default newest-first window: enough for a live thread, not a room's history. */
-export const PRIOR_DIALOGUE_MAX_MESSAGES = 60;
-export const PRIOR_DIALOGUE_MAX_CHARS = 30_000;
-
-/**
- * Trim `dialogue` (oldest first) in place to the newest rows that fit both
- * limits; returns how many rows were dropped. A row's cost is its rendered
- * text length, so one pasted wall of text cannot evict an entire thread by
- * count alone, and a thread of one-liners is not cut short by characters.
- */
-export function applyPriorDialogueBudget(
-	dialogue: Memory[],
-	budget: { maxMessages: number; maxChars: number },
-): number {
-	const maxMessages = Math.max(1, Math.floor(budget.maxMessages));
-	const maxChars = Math.max(1, Math.floor(budget.maxChars));
-	let kept = 0;
-	let chars = 0;
-	for (let index = dialogue.length - 1; index >= 0; index--) {
-		const text = getUserMessageText(dialogue[index]) ?? "";
-		if (kept >= maxMessages || (kept > 0 && chars + text.length > maxChars)) {
-			const omitted = index + 1;
-			dialogue.splice(0, omitted);
-			return omitted;
-		}
-		kept++;
-		chars += text.length;
-	}
-	return 0;
-}
-
-/**
- * Structural marker for an assistant memory whose text is a tool-derived
- * answer rather than plain dialogue: it carries merged action-callback
- * history, or its recorded actions include a real tool (anything beyond the
- * reply/none envelope). The planner context excludes these rows so a stale
- * tool-derived answer is never parroted in place of a fresh tool run.
- */
+/** Preserve ordered user and assistant dialogue while excluding non-dialogue artifacts. */
 export function appendPriorDialogueEvents(
 	events: ContextEvent[],
 	runtime: IAgentRuntime,
@@ -252,23 +114,6 @@ export function appendPriorDialogueEvents(
 	currentMessage: Memory,
 	options?: {
 		includeOwnReplies?: boolean;
-		/**
-		 * Planner mode: keep ordinary own replies (questions, previews, acks —
-		 * what "yes"/"finish it" refers to) while excluding tool-derived own
-		 * answers structurally (stale-answer hazard) and bounding how many own
-		 * turns render.
-		 */
-		excludeToolDerivedOwnReplies?: boolean;
-		maxOwnReplies?: number;
-		/**
-		 * Newest-first budget for the rendered window. RECENT_MESSAGES supplies
-		 * the complete room transcript; rendering all of it re-read 400+ rows
-		 * (~140K characters, ~35K tokens) on every Stage-1 call of a busy room
-		 * (live 2026-09-13) and tripped the provider's per-minute token limit.
-		 * Older rows stay in memory search; a note tells the model they exist.
-		 */
-		maxMessages?: number;
-		maxChars?: number;
 	},
 ): void {
 	const includeOwnReplies = options?.includeOwnReplies ?? false;
@@ -293,24 +138,7 @@ export function appendPriorDialogueEvents(
 			if (!memory || typeof memory !== "object") return false;
 			const m = memory as Memory;
 			if (m.id && currentMessage.id && m.id === currentMessage.id) return false;
-			// The agent's own prior replies stay in the chat-recall window
-			// (role-tagged prior_message:agent below): the current_turn_boundary
-			// contract tells the model these blocks are its only chat-recall
-			// source, so dropping its own turns made it confabulate about what it
-			// previously said. The tool planner keeps ordinary own dialogue too
-			// (the question/preview a continuation turn refers to) but excludes
-			// tool-derived own answers structurally so it never parrots a stale
-			// tool result instead of running the fresh check. The artifact guards
-			// below still strip non-dialogue agent output for every sender.
-			if (m.entityId === runtime.agentId) {
-				if (!includeOwnReplies) return false;
-				if (
-					options?.excludeToolDerivedOwnReplies === true &&
-					isToolDerivedAssistantContent(m.content)
-				) {
-					return false;
-				}
-			}
+			if (m.entityId === runtime.agentId && !includeOwnReplies) return false;
 			if (
 				typeof m.content?.source === "string" &&
 				m.content.source.includes("sub-agent")
@@ -344,38 +172,6 @@ export function appendPriorDialogueEvents(
 				: 0;
 			return aTime - bTime;
 		});
-	// Bound how many of the agent's own turns render (newest win): the planner
-	// needs the immediate question/preview a continuation refers to, not the
-	// agent's whole side of a long conversation.
-	const maxOwnReplies = options?.maxOwnReplies;
-	if (maxOwnReplies !== undefined) {
-		let ownRepliesKept = 0;
-		for (let index = dialogue.length - 1; index >= 0; index--) {
-			if (dialogue[index]?.entityId !== runtime.agentId) continue;
-			ownRepliesKept++;
-			if (ownRepliesKept > maxOwnReplies) {
-				dialogue.splice(index, 1);
-			}
-		}
-	}
-	const omitted = applyPriorDialogueBudget(dialogue, {
-		maxMessages: options?.maxMessages ?? PRIOR_DIALOGUE_MAX_MESSAGES,
-		maxChars: options?.maxChars ?? PRIOR_DIALOGUE_MAX_CHARS,
-	});
-	if (omitted > 0) {
-		events.push({
-			id: "prior-dialogue-window",
-			type: "segment",
-			source: "prior-dialogue",
-			createdAt: dialogue[0]?.createdAt,
-			segment: {
-				id: "prior-dialogue-window",
-				label: "system",
-				content: `prior_dialogue_window: ${omitted} earlier message(s) in this room are not shown. Use memory search for anything older than the messages below; never guess at omitted history.`,
-				stable: false,
-			},
-		});
-	}
 	for (const memory of dialogue) {
 		const text = getUserMessageText(memory);
 		if (!text) continue;
@@ -411,22 +207,16 @@ export function appendPriorDialogueEvents(
 		Array.isArray((data as { recentInteractions?: unknown }).recentInteractions)
 			? (data as { recentInteractions: unknown[] }).recentInteractions
 			: [];
-	const attachmentCaps = attachmentTextCaps(runtime);
 	for (const candidate of recentInteractions) {
 		if (!candidate || typeof candidate !== "object") continue;
 		const memory = candidate as Memory;
 		if (memory.roomId === currentMessage.roomId) continue;
 		if (memory.content?.type === "action_result") continue;
 		if (isSubAgentCompletionArtifact(memory)) continue;
-		if (
-			memory.entityId === runtime.agentId &&
-			(!includeOwnReplies ||
-				(options?.excludeToolDerivedOwnReplies === true &&
-					isToolDerivedAssistantContent(memory.content)))
-		) {
+		if (memory.entityId === runtime.agentId && !includeOwnReplies) {
 			continue;
 		}
-		const content = verifiedCrossRoomContent(memory, attachmentCaps);
+		const content = verifiedCrossRoomContent(memory);
 		if (!content || looksLikePriorDialogueArtifact(content)) continue;
 		const isOwnReply = memory.entityId === runtime.agentId;
 		const speakerName = isOwnReply
@@ -457,29 +247,41 @@ export function appendPriorDialogueEvents(
 
 export function currentMessageContentForContext(
 	message: Memory,
-	runtime?: Pick<IAgentRuntime, "getSetting">,
 ): Memory["content"] {
 	const currentText = getUserMessageText(message);
 	const content = message.content;
-	if (!content || typeof content !== "object") return content;
-	const attachments = capAttachmentsForContext(
-		content.attachments,
-		attachmentTextCaps(runtime),
-	);
-	const text =
+	if (!content || typeof content !== "object") {
+		return content;
+	}
+	const projected =
 		currentText &&
 		typeof content.text === "string" &&
 		content.text !== currentText
-			? currentText
-			: content.text;
-	if (text === content.text && attachments === content.attachments) {
-		return content;
+			? { ...content, text: currentText }
+			: content;
+	if (
+		content.source !== "client_chat" ||
+		content.channelType !== ChannelType.DM
+	) {
+		return projected;
 	}
-	return {
-		...content,
-		text,
-		...(attachments === content.attachments ? {} : { attachments }),
-	};
+	// These client-chat carriers belong to replay protection and UI dispatch,
+	// not the model's request. Never mutate the Memory used by persistence,
+	// recovery or action execution, and retain every other content/metadata key.
+	const modelContent = { ...projected };
+	delete modelContent.chatIdempotency;
+	const metadata = modelContent.metadata;
+	if (
+		metadata &&
+		typeof metadata === "object" &&
+		!Array.isArray(metadata) &&
+		"viewClientId" in metadata
+	) {
+		const modelMetadata = { ...metadata };
+		delete modelMetadata.viewClientId;
+		modelContent.metadata = modelMetadata;
+	}
+	return modelContent;
 }
 
 export function readMessageContentString(
@@ -804,6 +606,9 @@ export function appendStateProviderEvents(
 			source: "composeState",
 			name: resolvedName,
 			text,
+			...(typeof provider.discoveryText === "string"
+				? { discoveryText: provider.discoveryText }
+				: {}),
 			cacheStable: cacheStableByName.get(resolvedName.toUpperCase()),
 		});
 	}

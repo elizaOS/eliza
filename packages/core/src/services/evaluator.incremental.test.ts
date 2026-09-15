@@ -42,40 +42,48 @@ function harness() {
 }
 
 describe("managed incremental evaluators", () => {
-	it("replays a staged null section exactly when its parser accepts it", async () => {
-		const { runtime, service, addMessage } = harness();
-		let fail = true;
-		runtime.registerEvaluator({
-			name: "nullable",
-			description: "Null is an accepted wire value",
-			incremental: true,
-			schema: { type: ["object", "null"] },
-			shouldRun: async () => true,
-			prompt: () => "Return null",
-			parse: (raw) => (raw === null ? {} : null),
-			processors: [
-				{
-					process: async () => {
-						if (fail) throw new Error("injected write failure");
+	it.each(["model", "runtime"])(
+		"replays a staged null %s section exactly when its parser accepts it",
+		async (source) => {
+			const { runtime, service, addMessage } = harness();
+			let fail = true;
+			const resolveOutput = vi.fn(() => null);
+			runtime.registerEvaluator({
+				name: "nullable",
+				...(source === "runtime" ? { resolveOutput } : {}),
+				description: "Null is an accepted wire value",
+				incremental: true,
+				schema: { type: ["object", "null"] },
+				shouldRun: async () => true,
+				prompt: () => "Return null",
+				parse: (raw) => (raw === null ? {} : null),
+				processors: [
+					{
+						process: async () => {
+							if (fail) throw new Error("injected write failure");
+						},
 					},
-				},
-			],
-		});
-		runtime.useModel = vi.fn(async () => ({
-			nullable: null,
-		})) as AgentRuntime["useModel"];
-		const message = await addMessage("Evidence", 1);
-		expect(
-			(await service.run(message, undefined, { phase: "post_turn" })).errors,
-		).toHaveLength(1);
-		fail = false;
-		const retried = await service.run(structuredClone(message), undefined, {
-			phase: "post_turn",
-		});
-		expect(retried.errors).toEqual([]);
-		expect(retried.processedEvaluators).toEqual(["nullable"]);
-		expect(runtime.useModel).toHaveBeenCalledTimes(1);
-	});
+				],
+			});
+			runtime.useModel = vi.fn(async () => ({
+				nullable: null,
+			})) as AgentRuntime["useModel"];
+			const message = await addMessage("Evidence", 1);
+			expect(
+				(await service.run(message, undefined, { phase: "post_turn" })).errors,
+			).toHaveLength(1);
+			fail = false;
+			const retried = await service.run(structuredClone(message), undefined, {
+				phase: "post_turn",
+			});
+			expect(retried.errors).toEqual([]);
+			expect(retried.processedEvaluators).toEqual(["nullable"]);
+			expect(runtime.useModel).toHaveBeenCalledTimes(
+				source === "runtime" ? 0 : 1,
+			);
+			expect(resolveOutput).toHaveBeenCalledTimes(source === "runtime" ? 1 : 0);
+		},
+	);
 
 	it("keeps an unrelated extractor working when another saved batch becomes stale", async () => {
 		const { runtime, service, addMessage } = harness();
@@ -161,7 +169,7 @@ describe("managed incremental evaluators", () => {
 			id: old.id,
 			content: {
 				...old.content,
-				chatIdempotency: { outcome: "TRANSPORT_ACK_CANARY" },
+				chatIdempotency: { outcome: "TRANSPORT_ACK_CANARY".repeat(15_000) },
 			},
 		});
 		runtime.useModel = vi.fn(async () => ({
@@ -202,6 +210,11 @@ describe("managed incremental evaluators", () => {
 				unique: false,
 			}),
 		).toHaveLength(2);
+		expect(
+			(await runtime.getMemoryById(old.id))?.content.chatIdempotency,
+		).toEqual({
+			outcome: "TRANSPORT_ACK_CANARY".repeat(15_000),
+		});
 		const replay = await service.run(structuredClone(current), state, {
 			phase: "post_turn",
 			semanticSignal: true,
@@ -296,11 +309,17 @@ describe("managed incremental evaluators", () => {
 			"### backfill\nIncremental evidence contract: process all evidence records above.",
 		);
 		expect(prompt).toContain(
-			`### current\nIncremental evidence contract: process only message IDs ${JSON.stringify([current.id], null, 2)}.`,
+			"### current\nIncremental evidence contract: process only the exact source IDs in evidence-set-1 defined above.",
 		);
 		if (typeof prompt !== "string")
 			throw new Error("Expected evaluator prompt");
+		expect(
+			JSON.parse(prompt.match(/evidence-set-1: (\[[\s\S]*?\])/)?.[1] ?? "null"),
+		).toEqual([current.id]);
 		expect(prompt.match(/OLDER_SHARED_EVIDENCE/g)).toHaveLength(1);
+		expect(
+			prompt.match(/Attribute personal facts only to their actual speaker/g),
+		).toHaveLength(1);
 	});
 
 	it("excludes replay-only evidence from a fresh extractor's prompt without changing the durable replay", async () => {

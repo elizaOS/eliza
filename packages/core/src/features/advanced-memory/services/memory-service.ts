@@ -33,6 +33,7 @@ import {
 	type UUID,
 } from "../../../types/index.ts";
 import type { MemoryStorageProvider } from "../../../types/memory-storage.ts";
+import { isActiveMemoryEvidence } from "../../../utils/extraction-evidence.ts";
 import type {
 	LongTermMemory,
 	LongTermMemoryCategory,
@@ -366,6 +367,7 @@ export class MemoryService extends Service {
 		entityId: UUID,
 		category?: LongTermMemoryCategory,
 		limit?: number,
+		options: { includeInactive?: boolean } = {},
 	): Promise<LongTermMemory[]> {
 		if (limit !== undefined && limit <= 0) return [];
 		const storage = await this.getStorage();
@@ -376,7 +378,6 @@ export class MemoryService extends Service {
 				entityIds.map((relatedEntityId) =>
 					storage.getLongTermMemories(this.runtime.agentId, relatedEntityId, {
 						category,
-						...(limit === undefined ? {} : { limit }),
 					}),
 				),
 			)
@@ -387,6 +388,7 @@ export class MemoryService extends Service {
 		// not `limit` copies of the same one.
 		const deduped = new Map<UUID, LongTermMemory>();
 		for (const memory of memories) {
+			if (!options.includeInactive && !isActiveMemoryEvidence(memory)) continue;
 			if (!deduped.has(memory.id)) deduped.set(memory.id, memory);
 		}
 		const sorted = [...deduped.values()].sort(

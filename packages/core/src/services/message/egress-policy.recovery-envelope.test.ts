@@ -1,8 +1,19 @@
+/**
+ * Recovery envelope handed to the in-character rewrite when a planned reply is
+ * rejected. The envelope carries only the validator's evidence contract: the
+ * financial observation providers that ground a corrected quantity (plus the
+ * CURRENT_TIME observation for a rejected stated time), never the turn's whole
+ * provider store (live 2026-09-11 05:35Z: ~380K chars of room history rode
+ * along on a completed_side_effect recovery and the rewrite request exceeded
+ * the provider's context limit). A rejected stated time is answered from the
+ * provider's own rendering without a second model pass.
+ */
 import { describe, expect, it, vi } from "vitest";
 import type { ActionResult, IAgentRuntime, Memory } from "../../types";
 import { resolvePlannedReplyEgress } from "./egress-policy";
 
 const PROVIDER_MARKER = "complete-provider-evidence-marker";
+const WALLET_MARKER = "wallet-observation-evidence-marker";
 
 function makeRuntime(rewriteText: string) {
 	const useModel = vi.fn(async () =>
@@ -46,8 +57,14 @@ const providers = {
 	Parameters<typeof resolvePlannedReplyEgress>[0]["providers"]
 >;
 
+function rewritePrompt(useModel: ReturnType<typeof makeRuntime>["useModel"]) {
+	return String(
+		(useModel.mock.calls[0]?.[1] as { prompt?: string })?.prompt ?? "",
+	);
+}
+
 describe("resolvePlannedReplyEgress recovery envelope", () => {
-	it("does not ship the provider map when correcting an unproven side-effect claim", async () => {
+	it("does not ship the provider store when correcting an unproven side-effect claim", async () => {
 		const { runtime, useModel } = useModelHarness("The event is gone.");
 		await resolvePlannedReplyEgress({
 			runtime,
@@ -57,14 +74,12 @@ describe("resolvePlannedReplyEgress recovery envelope", () => {
 			actionResults: [] as ActionResult[],
 		}).catch(() => undefined);
 		expect(useModel).toHaveBeenCalled();
-		const prompt = String(
-			(useModel.mock.calls[0]?.[1] as { prompt?: string })?.prompt ?? "",
-		);
+		const prompt = rewritePrompt(useModel);
 		expect(prompt).toContain("completed_side_effect");
 		expect(prompt).not.toContain(PROVIDER_MARKER);
 	});
 
-	it("ships the provider map when correcting an unsupported holding", async () => {
+	it("ships only the wallet observation evidence when correcting an unsupported holding", async () => {
 		const { runtime, useModel } = useModelHarness(
 			"I could not verify that balance.",
 		);
@@ -75,7 +90,7 @@ describe("resolvePlannedReplyEgress recovery envelope", () => {
 			providers: {
 				...providers,
 				"solana-wallet": {
-					text: "",
+					text: `${WALLET_MARKER} observed 2 SOL`,
 					values: {},
 					data: { items: [{ symbol: "SOL", uiAmount: 2 }], totalSol: "2" },
 				},
@@ -83,11 +98,12 @@ describe("resolvePlannedReplyEgress recovery envelope", () => {
 			actionResults: [] as ActionResult[],
 		}).catch(() => undefined);
 		expect(useModel).toHaveBeenCalled();
-		const prompt = String(
-			(useModel.mock.calls[0]?.[1] as { prompt?: string })?.prompt ?? "",
-		);
+		const prompt = rewritePrompt(useModel);
 		expect(prompt).toContain("financial_holding");
-		expect(prompt).toContain(PROVIDER_MARKER);
+		// The validator's own evidence grounds the corrected quantity in full.
+		expect(prompt).toContain(WALLET_MARKER);
+		// The room history provider is not part of that evidence contract.
+		expect(prompt).not.toContain(PROVIDER_MARKER);
 	});
 });
 
@@ -104,6 +120,7 @@ describe("resolvePlannedReplyEgress stated time", () => {
 			reply:
 				"Sunday, November 22, 2026 at 5:01:28 PM EST. (in your local time)",
 			providers: {
+				...providers,
 				CURRENT_TIME: {
 					text: "",
 					values: {},

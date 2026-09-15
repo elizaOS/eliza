@@ -248,6 +248,71 @@ describe("experiencePatternEvaluator", () => {
 		expect(runtime.getMemories).not.toHaveBeenCalled();
 	});
 
+	describe.each([false, true])(
+		"action evidence (incremental=%s)",
+		(incremental) => {
+			it.each([
+				{ result: { success: true }, admitted: false },
+				{
+					result: {
+						success: true,
+						text: "Notes is open.",
+						error: null,
+						data: { status: "completed", viewId: "notes" },
+					},
+					admitted: false,
+				},
+				{ result: { success: false }, admitted: true },
+				{ result: { error: "Permission denied" }, admitted: true },
+				{
+					result: { success: true, data: { attempts: [{ success: false }] } },
+					admitted: true,
+				},
+				{
+					result: {
+						success: true,
+						text: "Fixed the stale parser; regression verified.",
+					},
+					admitted: true,
+				},
+				{
+					result: {
+						data: { diagnostics: ["Timeout while waiting for delivery."] },
+					},
+					admitted: true,
+				},
+			])(
+				"admits $result only when it carries a signal",
+				async ({ result, admitted }) => {
+					const runtime = makeRuntime();
+					const message = makeMemory("open notes");
+					const options: EvaluatorRunOptions = incremental
+						? {
+								extraction: {
+									isBackfill: false,
+									messages: [message],
+									sourceRevisions: {},
+									changedMessageIds: [],
+									removedMessageIds: [],
+									evidenceId: "navigation-evidence",
+								},
+							}
+						: {};
+					await expect(
+						experiencePatternEvaluator.shouldRun({
+							runtime,
+							message,
+							state: makeState([result]),
+							options,
+						}),
+					).resolves.toBe(admitted);
+					expect(runtime.getMemories).not.toHaveBeenCalled();
+					if (incremental) expect(runtime.setCache).not.toHaveBeenCalled();
+				},
+			);
+		},
+	);
+
 	it("runs immediately when the turn contains an explicit reusable lesson", async () => {
 		const runtime = makeRuntime();
 		const shouldRun = await experiencePatternEvaluator.shouldRun({

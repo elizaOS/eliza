@@ -39,6 +39,28 @@ Browser automation and companion bridge plugin for elizaOS. Adds the `BROWSER` a
 
 **MANAGE_BROWSER_BRIDGE** — Manages the Chrome, Firefox, and Safari companion extension. Subactions: `install` (build + reveal + open manager), `reveal_folder` (open the build folder in Finder/Explorer), `open_manager` (the selected browser's extension manager), `refresh` (report the complete paired-companion inventory, exact count, and settings). Owner-only.
 
+Promoted Browser operations expose login fields (`domain`, `username`, `submit`)
+only for `BROWSER_AUTOFILL_LOGIN`, and URL-wait fields (`pattern`,
+`pollIntervalMs`) only for `BROWSER_WAIT_FOR_URL`. These fields belong to the
+specialized handlers, not ordinary workspace commands. The parent `BROWSER`
+retains every parameter, and target selection, vault authorization and URL-wait
+validation still run in the shared handlers.
+
+Promoted operations also restrict tab, scroll, keyboard, drag, cursor and typing
+options to their applicable operations. Navigation no longer repeats those
+interaction-only fields. The parent still exposes the full contract, every
+authorized child remains discoverable, and common target, tab ID and timeout
+arguments remain available. This changes schema exposure, not command dispatch.
+
+The `script` parameter remains on the parent and `BROWSER_WAIT`, where a
+target may accept a wait predicate under its existing script policy. Other
+promoted operations do not consume it. Web script execution stays disabled;
+desktop script execution still requires explicit opt-in.
+
+When a model omits `url`, the dispatcher recognizes the first explicit HTTP(S)
+link in the current message using standard linkification boundaries. Sentence
+punctuation is excluded; explicit `url` arguments retain their exact value.
+
 ### Browser targets
 
 The plugin uses a pluggable target registry in `BrowserService`. Targets are selected automatically by availability and score:

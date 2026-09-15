@@ -13,12 +13,15 @@
 import { ElizaError } from "../errors.ts";
 import { hashStableJson } from "../runtime/context-hash.ts";
 import type {
+	EvaluatorEvidenceReconciliation,
 	EvaluatorRunOptions,
 	IAgentRuntime,
+	JsonValue,
 	Memory,
 	UUID,
 } from "../types/index.ts";
 import { isPlainObject } from "../utils/type-guards.ts";
+import { evaluatorEvidenceByteLength } from "./evaluator-evidence-page.ts";
 
 // Bump when extraction/progress semantics require an explicit new backfill.
 const EXTRACTION_VERSION = 1;
@@ -41,6 +44,7 @@ export function assertExtractionSourcesUnchanged(
 }
 
 export interface EvaluatorProgressSnapshot {
+	progressState?: JsonValue;
 	messages: Memory[];
 	isBackfill: boolean;
 	triggerMessage: Memory;
@@ -50,6 +54,11 @@ export interface EvaluatorProgressSnapshot {
 	evidenceId: string;
 	/** Present only for a durably staged, validated model section. */
 	pendingOutput?: unknown;
+	pendingInputBinding?: string;
+	referenceRevisions: Record<string, string>;
+	hasEarlierEvidence: boolean;
+	/** Unprocessed sources remain durable work, never acknowledged by this batch. */
+	remainingSourceCount: number;
 }
 
 interface ProgressScope {
@@ -61,6 +70,7 @@ interface ProgressScope {
 }
 
 interface EvidenceBatch {
+	referenceRevisions?: Record<string, string>;
 	isBackfill: boolean;
 	triggerMessageId: UUID;
 	sourceRevisions: Record<string, string>;
@@ -69,12 +79,18 @@ interface EvidenceBatch {
 	evidenceId: string;
 	/** Full observed revision map; later arrivals must not be acknowledged. */
 	retainedRevisions: Record<string, string>;
+	/** Ordered continuation, present only for a resource-bounded evidence batch. */
+	deferredRevisions?: Record<string, string>;
 }
 
 interface ProgressRecord {
 	scope: ProgressScope;
 	completed: Record<string, string>;
-	pending?: EvidenceBatch & { output: unknown };
+	progressState?: JsonValue;
+	pending?: EvidenceBatch & { output: unknown; inputBinding?: string };
+	/** Initial evidence retains migration semantics through every backfill batch. */
+	backfillRevisions?: Record<string, string>;
+	lastReconciliationId?: string;
 }
 
 const snapshotState = new WeakMap<
@@ -87,6 +103,37 @@ const snapshotState = new WeakMap<
 		batch: EvidenceBatch;
 	}
 >();
+
+function progressScope(
+	runtime: IAgentRuntime,
+	message: Pick<Memory, "roomId" | "entityId">,
+	evaluatorName: string,
+): ProgressScope {
+	return {
+		agentId: runtime.agentId,
+		roomId: message.roomId,
+		entityId: message.entityId,
+		evaluatorName,
+		version: EXTRACTION_VERSION,
+	};
+}
+
+/** Read committed evaluator state only. Pending model output is never exposed
+ * as a usable foreground checkpoint. Callers still validate current sources. */
+export async function getEvaluatorProgressState(
+	runtime: IAgentRuntime,
+	message: Pick<Memory, "roomId" | "entityId">,
+	evaluatorName: string,
+): Promise<JsonValue | undefined> {
+	const scope = progressScope(runtime, message, evaluatorName);
+	const record = readRecord(
+		await runtime.getCache<unknown>(
+			`evaluator-progress:${hashStableJson(scope)}`,
+		),
+		scope,
+	);
+	return structuredClone(record?.progressState);
+}
 
 function sourceMemory(
 	memory: Memory,
@@ -116,7 +163,7 @@ function sourceMemory(
 
 /** Fingerprint authored evidence, not inference/retrieval bookkeeping. Unknown
  * plugin-authored metadata is retained so meaningful extensions still count. */
-function sourceRevision(memory: Memory): string {
+export function evaluatorSourceRevision(memory: Memory): string {
 	const source = structuredClone(memory);
 	delete source.embedding;
 	delete source.similarity;
@@ -161,7 +208,10 @@ function assertBatchSourcesCurrent(
 	batch: EvidenceBatch,
 	current: Record<string, string>,
 ): void {
-	const changed = Object.entries(batch.sourceRevisions)
+	const changed = Object.entries({
+		...batch.sourceRevisions,
+		...batch.referenceRevisions,
+	})
 		.filter(([id, revision]) => current[id] !== revision)
 		.map(([id]) => id);
 	const restored = batch.removedMessageIds.filter((id) =>
@@ -222,7 +272,9 @@ function readRecord(
 	if (
 		!isPlainObject(value) ||
 		hashStableJson(value.scope) !== hashStableJson(scope) ||
-		!isRevisionMap(value.completed)
+		!isRevisionMap(value.completed) ||
+		(value.backfillRevisions !== undefined &&
+			!isRevisionMap(value.backfillRevisions))
 	) {
 		throw invalid();
 	}
@@ -231,15 +283,28 @@ function readRecord(
 		if (
 			!isPlainObject(pending) ||
 			typeof pending.isBackfill !== "boolean" ||
+			(pending.inputBinding !== undefined &&
+				typeof pending.inputBinding !== "string") ||
 			Object.hasOwn(pending, "messages") ||
 			!isRevisionMap(pending.sourceRevisions) ||
 			!isRevisionMap(pending.retainedRevisions) ||
+			(pending.referenceRevisions !== undefined &&
+				!isRevisionMap(pending.referenceRevisions)) ||
 			typeof pending.triggerMessageId !== "string" ||
 			!Object.hasOwn(pending.retainedRevisions, pending.triggerMessageId) ||
 			!Array.isArray(pending.changedMessageIds) ||
 			!Array.isArray(pending.removedMessageIds) ||
 			!Object.hasOwn(pending, "output") ||
 			pending.output === undefined
+		)
+			throw invalid();
+		if (
+			pending.referenceRevisions &&
+			Object.entries(pending.referenceRevisions).some(
+				([id, revision]) =>
+					(pending.retainedRevisions as Record<string, string>)[id] !==
+					revision,
+			)
 		)
 			throw invalid();
 		const completed = value.completed;
@@ -255,13 +320,28 @@ function readRecord(
 		const expectedEdits = Object.keys(expectedSources)
 			.filter((id) => Object.hasOwn(completed, id))
 			.sort();
+		const deferred = pending.deferredRevisions;
+		if (deferred !== undefined && !isRevisionMap(deferred)) throw invalid();
+		const pendingSources = pending.sourceRevisions;
+		if (
+			deferred &&
+			Object.keys(deferred).some((id) => Object.hasOwn(pendingSources, id))
+		)
+			throw invalid();
 		if (
 			hashStableJson(expectedSources) !==
-				hashStableJson(pending.sourceRevisions) ||
+				hashStableJson({ ...pending.sourceRevisions, ...deferred }) ||
 			hashStableJson(expectedRemovals) !==
 				hashStableJson(pending.removedMessageIds) ||
 			hashStableJson(expectedEdits) !==
-				hashStableJson(pending.changedMessageIds)
+				hashStableJson(
+					[
+						...pending.changedMessageIds,
+						...Object.keys(deferred ?? {}).filter((id) =>
+							Object.hasOwn(completed, id),
+						),
+					].sort(),
+				)
 		)
 			throw invalid();
 		if (
@@ -278,13 +358,58 @@ function readRecord(
 	return structuredClone(value) as unknown as ProgressRecord;
 }
 
-/** All new/edited records and explicit removals, independently per extractor. */
-export async function prepareEvaluatorProgress(
+/** New unprocessed messages have no derived effects to reconcile. In-flight
+ * unstaged inference is already fenced by its authoritative source recheck. */
+export async function hasEvaluatorSourceProgress(
 	runtime: IAgentRuntime,
 	message: Memory,
 	evaluatorNames: readonly string[],
+	sourceIds: readonly string[],
+): Promise<boolean> {
+	for (const evaluatorName of evaluatorNames) {
+		const scope = progressScope(runtime, message, evaluatorName);
+		const record = readRecord(
+			await runtime.getCache<unknown>(
+				`evaluator-progress:${hashStableJson(scope)}`,
+			),
+			scope,
+		);
+		if (
+			record &&
+			sourceIds.some(
+				(id) =>
+					Object.hasOwn(record.completed, id) ||
+					Object.hasOwn(record.pending?.sourceRevisions ?? {}, id) ||
+					Object.hasOwn(record.pending?.referenceRevisions ?? {}, id),
+			)
+		)
+			return true;
+	}
+	return false;
+}
+
+interface EvaluatorProgressOptions {
+	maxEvidenceBytes?: number;
+	/** Reconcile stored effects without admitting a model batch or requiring a surviving trigger. */
+	reconcileOnly?: boolean;
+	reconcile?: (
+		plan: EvaluatorEvidenceReconciliation,
+	) => Promise<{ reprocessSourceIds: string[] }>;
+}
+
+/** Capture one complete immutable source snapshot for independent extractors
+ * in the same leased batch. Reusing it avoids repeated cloning/fingerprinting;
+ * it never caches a transcript across batches or shares evaluator checkpoints. */
+export function prepareEvaluatorProgressForTranscript(
+	runtime: IAgentRuntime,
+	triggerMessage: Memory,
 	completeMessages: readonly Memory[],
-): Promise<Map<string, EvaluatorProgressSnapshot>> {
+) {
+	const message = {
+		id: triggerMessage.id,
+		roomId: triggerMessage.roomId,
+		entityId: triggerMessage.entityId,
+	};
 	if (!message.id || !message.roomId || !message.entityId || !runtime.agentId) {
 		throw new ElizaError(
 			"Incremental extraction requires a persisted trigger and owner scope",
@@ -307,10 +432,59 @@ export async function prepareEvaluatorProgress(
 		sources.set(id, source);
 	}
 	const retainedRevisions = Object.fromEntries(
-		[...sources].map(([id, source]) => [id, sourceRevision(source)]),
+		[...sources].map(([id, source]) => [id, evaluatorSourceRevision(source)]),
 	);
+	const boundMessage = { ...message, id: message.id };
+	return (
+		evaluatorNames: readonly string[],
+		options: EvaluatorProgressOptions = {},
+	) =>
+		prepareProgressFromSources(
+			runtime,
+			boundMessage,
+			evaluatorNames,
+			sources,
+			retainedRevisions,
+			options,
+		);
+}
+
+/** All new/edited records and explicit removals, independently per extractor. */
+export async function prepareEvaluatorProgress(
+	runtime: IAgentRuntime,
+	message: Memory,
+	evaluatorNames: readonly string[],
+	completeMessages: readonly Memory[],
+	options: EvaluatorProgressOptions = {},
+): Promise<Map<string, EvaluatorProgressSnapshot>> {
+	return prepareEvaluatorProgressForTranscript(
+		runtime,
+		message,
+		completeMessages,
+	)(evaluatorNames, options);
+}
+
+async function prepareProgressFromSources(
+	runtime: IAgentRuntime,
+	message: Pick<Memory, "roomId" | "entityId"> & { id: UUID },
+	evaluatorNames: readonly string[],
+	sources: ReadonlyMap<string, Memory>,
+	retainedRevisions: Record<string, string>,
+	options: EvaluatorProgressOptions,
+): Promise<Map<string, EvaluatorProgressSnapshot>> {
+	if (
+		options.maxEvidenceBytes !== undefined &&
+		(!Number.isSafeInteger(options.maxEvidenceBytes) ||
+			options.maxEvidenceBytes <= 0)
+	)
+		throw new ElizaError("Evidence batch size must be a positive byte count", {
+			code: "EVALUATOR_BATCH_LIMIT_INVALID",
+		});
 	const trigger = sources.get(message.id);
-	if (!trigger || trigger.entityId !== message.entityId)
+	if (
+		!options.reconcileOnly &&
+		(!trigger || trigger.entityId !== message.entityId)
+	)
 		throw new ElizaError(
 			"Original extraction trigger is absent from authoritative room history",
 			{
@@ -331,7 +505,131 @@ export async function prepareEvaluatorProgress(
 			version: EXTRACTION_VERSION,
 		};
 		const key = `evaluator-progress:${hashStableJson(scope)}`;
-		const record = readRecord(await runtime.getCache<unknown>(key), scope);
+		let record = readRecord(await runtime.getCache<unknown>(key), scope);
+		if (record?.lastReconciliationId) {
+			const auditKey = `evaluator-reconciliation:${record.lastReconciliationId}`;
+			const audit = await runtime.getCache<unknown>(auditKey);
+			if (!isPlainObject(audit))
+				throw new ElizaError("Reconciled progress lost its audit record", {
+					code: "EVALUATOR_RECONCILIATION_AUDIT_MISSING",
+				});
+			if (
+				audit.status === "prepared" &&
+				!(await runtime.setCache(auditKey, {
+					...audit,
+					status: "completed",
+					recoveredFromProgress: true,
+				}))
+			)
+				throw new ElizaError("Reconciliation receipt recovery failed", {
+					code: "EVALUATOR_RECONCILIATION_WRITE_FAILED",
+				});
+		}
+
+		if (record && options.reconcile) {
+			const observed = {
+				...record.completed,
+				...record.pending?.sourceRevisions,
+				...record.pending?.referenceRevisions,
+			};
+			const changedMessageIds = Object.keys(observed).filter(
+				(id) =>
+					retainedRevisions[id] !== undefined &&
+					retainedRevisions[id] !== observed[id],
+			);
+			const removedMessageIds = Object.keys(observed).filter(
+				(id) => retainedRevisions[id] === undefined,
+			);
+			if (changedMessageIds.length || removedMessageIds.length) {
+				const changedIds = [...changedMessageIds, ...removedMessageIds];
+				const id = hashStableJson({
+					scope,
+					previous: record,
+					changes: Object.fromEntries(
+						changedIds.map((id) => [id, retainedRevisions[id] ?? null]),
+					),
+				});
+				const plan: EvaluatorEvidenceReconciliation = {
+					id,
+					changedMessageIds,
+					removedMessageIds,
+					currentSourceRevisions: { ...retainedRevisions },
+					...(record.pending
+						? { pendingEvidenceId: record.pending.evidenceId }
+						: {}),
+				};
+				const auditKey = `evaluator-reconciliation:${id}`;
+				if (
+					!(await runtime.getCache(auditKey)) &&
+					!(await runtime.setCache(auditKey, {
+						scope,
+						previous: record,
+						changes: plan,
+						status: "prepared",
+					}))
+				)
+					throw new ElizaError(
+						"Reconciliation original could not be durably preserved",
+						{ code: "EVALUATOR_RECONCILIATION_WRITE_FAILED" },
+					);
+				const outcome = await options.reconcile(plan);
+				if (
+					outcome.reprocessSourceIds.some(
+						(id) => !Object.hasOwn(retainedRevisions, id),
+					)
+				)
+					throw new ElizaError(
+						"Reconciliation requested a source outside its captured room",
+						{ code: "EVALUATOR_RECONCILIATION_INVALID_OUTPUT" },
+					);
+				if (
+					hashStableJson(
+						readRecord(await runtime.getCache<unknown>(key), scope),
+					) !== hashStableJson(record)
+				)
+					throw new ElizaError("Progress changed during reconciliation", {
+						code: "EVALUATOR_PROGRESS_CONFLICT",
+					});
+				const reprocess = new Set([
+					...changedIds,
+					...outcome.reprocessSourceIds,
+				]);
+				const {
+					pending: _retired,
+					progressState: _invalidatedState,
+					...retained
+				} = record;
+				const reconciled: ProgressRecord = {
+					...retained,
+					completed: Object.fromEntries(
+						Object.entries(record.completed).filter(
+							([id]) => !reprocess.has(id),
+						),
+					),
+					lastReconciliationId: id,
+				};
+				if (!(await runtime.setCache(key, reconciled)))
+					throw new ElizaError("Reconciled progress was not persisted", {
+						code: "EVALUATOR_RECONCILIATION_WRITE_FAILED",
+					});
+				// The prepared journal always retains the exact original even if this
+				// final receipt fails. The progress pointer is authoritative completion.
+				if (
+					!(await runtime.setCache(auditKey, {
+						scope,
+						previous: record,
+						changes: plan,
+						status: "completed",
+						reprocessSourceIds: [...reprocess],
+					}))
+				)
+					throw new ElizaError("Reconciliation receipt was not persisted", {
+						code: "EVALUATOR_RECONCILIATION_WRITE_FAILED",
+					});
+				record = reconciled;
+			}
+		}
+		if (options.reconcileOnly) continue;
 		const completed = record?.completed ?? {};
 		let batch: EvidenceBatch;
 		if (record?.pending) {
@@ -342,12 +640,50 @@ export async function prepareEvaluatorProgress(
 				(source) =>
 					completed[source.id as UUID] !== retainedRevisions[source.id as UUID],
 			);
-			const sourceRevisions = Object.fromEntries(
-				messages.map((source) => [
-					source.id as UUID,
-					retainedRevisions[source.id as UUID],
-				]),
-			);
+			const selected: Memory[] = [];
+			const deferred: Memory[] = [];
+			let bytes = 0;
+			for (const source of messages) {
+				const size = evaluatorEvidenceByteLength(source);
+				if (
+					options.maxEvidenceBytes !== undefined &&
+					size > options.maxEvidenceBytes
+				)
+					throw new ElizaError(
+						"One complete evidence record exceeds the configured batch boundary",
+						{
+							code: "EVALUATOR_SOURCE_TOO_LARGE",
+							context: {
+								sourceId: source.id,
+								bytes: size,
+								limit: options.maxEvidenceBytes,
+							},
+						},
+					);
+				if (
+					deferred.length ||
+					(options.maxEvidenceBytes !== undefined &&
+						bytes + size > options.maxEvidenceBytes)
+				)
+					deferred.push(source);
+				else {
+					selected.push(source);
+					bytes += size;
+				}
+			}
+			const revisionsOf = (rows: Memory[]) =>
+				Object.fromEntries(
+					rows.map((source) => [
+						source.id as UUID,
+						retainedRevisions[source.id as UUID],
+					]),
+				);
+			const sourceRevisions = revisionsOf(selected);
+			const isBackfill =
+				record === undefined ||
+				Object.keys(record.backfillRevisions ?? {}).some((id) =>
+					Object.hasOwn(sourceRevisions, id),
+				);
 			const removedMessageIds = Object.keys(completed)
 				.filter((id) => !sources.has(id))
 				.sort() as UUID[];
@@ -355,14 +691,17 @@ export async function prepareEvaluatorProgress(
 				.filter((id) => Object.hasOwn(completed, id))
 				.sort() as UUID[];
 			batch = {
-				isBackfill: record === undefined,
+				isBackfill,
 				triggerMessageId: message.id,
 				sourceRevisions,
 				changedMessageIds,
 				removedMessageIds,
-				retainedRevisions,
+				retainedRevisions: { ...retainedRevisions },
+				...(deferred.length
+					? { deferredRevisions: revisionsOf(deferred) }
+					: {}),
 				evidenceId: evidenceId(scope, completed, {
-					isBackfill: record === undefined,
+					isBackfill,
 					triggerMessageId: message.id,
 					sourceRevisions,
 					removedMessageIds,
@@ -374,15 +713,23 @@ export async function prepareEvaluatorProgress(
 				structuredClone(sources.get(id) as Memory),
 			),
 			isBackfill: batch.isBackfill,
+			progressState: structuredClone(record?.progressState),
 			triggerMessage: structuredClone(
 				sources.get(batch.triggerMessageId) as Memory,
 			),
 			sourceRevisions: { ...batch.sourceRevisions },
+			referenceRevisions: { ...batch.referenceRevisions },
+			hasEarlierEvidence:
+				[...sources.keys()].indexOf(Object.keys(batch.sourceRevisions)[0]) > 0,
 			changedMessageIds: [...batch.changedMessageIds],
 			removedMessageIds: [...batch.removedMessageIds],
 			evidenceId: batch.evidenceId,
+			remainingSourceCount: Object.keys(batch.deferredRevisions ?? {}).length,
 			...(record?.pending
-				? { pendingOutput: structuredClone(record.pending.output) }
+				? {
+						pendingOutput: structuredClone(record.pending.output),
+						pendingInputBinding: record.pending.inputBinding,
+					}
 				: {}),
 		};
 		snapshotState.set(snapshot, {
@@ -395,6 +742,32 @@ export async function prepareEvaluatorProgress(
 		snapshots.set(evaluatorName, snapshot);
 	}
 	return snapshots;
+}
+
+/** Bind caller-requested historical context to the same source freshness guard.
+ * References inform meaning but are not new evidence and never advance progress. */
+export function bindEvaluatorReferenceEvidence(
+	runtime: IAgentRuntime,
+	snapshot: EvaluatorProgressSnapshot,
+	messages: readonly Memory[],
+): void {
+	const state = requireSnapshot(runtime, snapshot);
+	if (state.expected?.pending)
+		throw new ElizaError("Cannot change staged reference evidence", {
+			code: "EVALUATOR_PROGRESS_CONFLICT",
+		});
+	for (const message of messages) {
+		const source = sourceMemory(message, state.scope);
+		const id = source.id as string;
+		const revision = evaluatorSourceRevision(source);
+		if (state.batch.retainedRevisions[id] !== revision)
+			throw new ElizaError(
+				"Requested reference changed after evidence capture",
+				{ code: "EVALUATOR_PROGRESS_STALE_EVIDENCE", severity: "ephemeral" },
+			);
+		snapshot.referenceRevisions[id] = revision;
+	}
+	state.batch.referenceRevisions = { ...snapshot.referenceRevisions };
 }
 
 function requireSnapshot(
@@ -453,7 +826,7 @@ async function assertSourcesCurrent(
 					code: "EVALUATOR_PROGRESS_INVALID_SOURCE",
 				},
 			);
-		revisions[id] = sourceRevision(source);
+		revisions[id] = evaluatorSourceRevision(source);
 	}
 	assertBatchSourcesCurrent(state.batch, revisions);
 }
@@ -463,6 +836,7 @@ export async function stageEvaluatorOutput(
 	runtime: IAgentRuntime,
 	snapshot: EvaluatorProgressSnapshot,
 	output: unknown,
+	inputBinding?: string,
 ): Promise<void> {
 	const state = requireSnapshot(runtime, snapshot);
 	if (output === undefined)
@@ -473,7 +847,9 @@ export async function stageEvaluatorOutput(
 	await assertSourcesCurrent(runtime, state);
 	if (state.expected?.pending) {
 		if (
-			hashStableJson(output) !== hashStableJson(state.expected.pending.output)
+			hashStableJson(output) !==
+				hashStableJson(state.expected.pending.output) ||
+			inputBinding !== state.expected.pending.inputBinding
 		)
 			throw new ElizaError(
 				"Cannot replace staged evaluator output before reconciliation",
@@ -485,8 +861,19 @@ export async function stageEvaluatorOutput(
 	}
 	const record: ProgressRecord = {
 		scope: state.scope,
+		progressState: structuredClone(state.expected?.progressState),
+		...(state.expected?.lastReconciliationId
+			? { lastReconciliationId: state.expected.lastReconciliationId }
+			: {}),
 		completed: state.expected?.completed ?? {},
-		pending: { ...state.batch, output: structuredClone(output) },
+		pending: {
+			...state.batch,
+			output: structuredClone(output),
+			...(inputBinding ? { inputBinding } : {}),
+		},
+		backfillRevisions:
+			state.expected?.backfillRevisions ??
+			(state.expected === undefined ? state.batch.retainedRevisions : {}),
 	};
 	if (!(await runtime.setCache(state.key, record)))
 		throw new ElizaError("Evaluator output was not durably staged", {
@@ -500,6 +887,7 @@ export async function stageEvaluatorOutput(
 export async function commitEvaluatorProgress(
 	runtime: IAgentRuntime,
 	snapshot: EvaluatorProgressSnapshot,
+	progressState?: JsonValue,
 ): Promise<void> {
 	const state = requireSnapshot(runtime, snapshot);
 	await assertCurrent(runtime, state);
@@ -513,7 +901,27 @@ export async function commitEvaluatorProgress(
 	await assertSourcesCurrent(runtime, state);
 	const record: ProgressRecord = {
 		scope: state.scope,
-		completed: state.batch.retainedRevisions,
+		progressState: structuredClone(
+			progressState === undefined
+				? state.expected.progressState
+				: progressState,
+		),
+		...(state.expected?.lastReconciliationId
+			? { lastReconciliationId: state.expected.lastReconciliationId }
+			: {}),
+		completed: Object.fromEntries(
+			Object.entries({
+				...state.expected.completed,
+				...state.batch.sourceRevisions,
+			}).filter(([id]) => !state.batch.removedMessageIds.includes(id as UUID)),
+		),
+		backfillRevisions: Object.fromEntries(
+			Object.entries(state.expected.backfillRevisions ?? {}).filter(
+				([id]) =>
+					!Object.hasOwn(state.batch.sourceRevisions, id) &&
+					!state.batch.removedMessageIds.includes(id as UUID),
+			),
+		),
 	};
 	if (!(await runtime.setCache(state.key, record)))
 		throw new ElizaError("Evaluator progress was not durably committed", {

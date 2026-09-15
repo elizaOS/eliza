@@ -350,6 +350,14 @@ export class ExperienceService extends Service {
 				typeof rawData?.correctedBelief === "string"
 					? rawData.correctedBelief
 					: undefined,
+			extractionStatus:
+				rawData?.extractionStatus === "source_invalidated"
+					? "source_invalidated"
+					: undefined,
+			extractionReconciliationId:
+				typeof rawData?.extractionReconciliationId === "string"
+					? rawData.extractionReconciliationId
+					: undefined,
 			sourceMessageIds: this.asOptionalUuidArray(rawData?.sourceMessageIds),
 			sourceMessageRevisions:
 				rawData?.sourceMessageRevisions &&
@@ -470,6 +478,10 @@ export class ExperienceService extends Service {
 		if (experience.sourceMessageIds !== undefined) {
 			data.sourceMessageIds = experience.sourceMessageIds;
 		}
+		if (experience.extractionStatus !== undefined)
+			data.extractionStatus = experience.extractionStatus;
+		if (experience.extractionReconciliationId !== undefined)
+			data.extractionReconciliationId = experience.extractionReconciliationId;
 		if (experience.sourceMessageRevisions !== undefined) {
 			data.sourceMessageRevisions = { ...experience.sourceMessageRevisions };
 		}
@@ -886,7 +898,12 @@ export class ExperienceService extends Service {
 			const related = Array.from(relatedIds)
 				.map((id) => this.experiences.get(id))
 				.filter((exp): exp is Experience => exp !== undefined)
-				.filter((exp) => !results.some((r) => r.id === exp.id));
+				.filter(
+					(exp) =>
+						(query.includeInactive ||
+							exp.extractionStatus !== "source_invalidated") &&
+						!results.some((r) => r.id === exp.id),
+				);
 
 			results.push(...related);
 		}
@@ -903,7 +920,11 @@ export class ExperienceService extends Service {
 		candidates: Experience[],
 		query: ExperienceQuery,
 	): Experience[] {
-		let filtered = candidates;
+		let filtered = query.includeInactive
+			? candidates
+			: candidates.filter(
+					(row) => row.extractionStatus !== "source_invalidated",
+				);
 
 		if (query.type) {
 			const types = Array.isArray(query.type) ? query.type : [query.type];
@@ -949,16 +970,10 @@ export class ExperienceService extends Service {
 	}
 
 	/**
-	 * Find similar experiences using vector search + reranking.
-	 *
-	 * Reranking strategy:
-	 *   Vector similarity is the dominant signal (70%) — an irrelevant experience
-	 *   should never outrank a relevant one just because it has high confidence.
-	 *   Quality signals (confidence, importance) act as tiebreakers among
-	 *   similarly-relevant results (30% combined).
-	 *
-	 *   A minimum similarity threshold filters out noise so quality signals
-	 *   can't promote genuinely irrelevant experiences.
+	 * Rank retrieval candidates by vector similarity, then quality on equal
+	 * similarity. Confidence cannot promote a weaker match above a stronger one.
+	 * The existing cosine floor is only a broad candidate filter, not proof of
+	 * applicability; the caller/model still reviews the situation before using it.
 	 */
 	async findSimilarExperiences(
 		text: string,
@@ -989,11 +1004,15 @@ export class ExperienceService extends Service {
 			return this.fallbackSort(limit);
 		}
 
-		// Minimum cosine similarity to be considered a candidate at all.
-		// Prevents high-quality but irrelevant experiences from appearing.
+		// Preserve the candidate set: do not introduce an uncalibrated cutoff
+		// that could hide a relevant earlier situation.
 		const SIMILARITY_FLOOR = 0.05;
 
-		const scored: Array<{ experience: Experience; score: number }> = [];
+		const scored: Array<{
+			experience: Experience;
+			similarity: number;
+			quality: number;
+		}> = [];
 		const now = Date.now();
 
 		for (const experience of this.experiences.values()) {
@@ -1032,14 +1051,10 @@ export class ExperienceService extends Service {
 				recencyFactor * 0.12 +
 				accessFactor * 0.08;
 
-			// Final reranking score: similarity dominates (70%), quality tiebreaks (30%)
-			const rerankScore = similarity * 0.7 + qualityScore * 0.3;
-
-			scored.push({ experience, score: rerankScore });
+			scored.push({ experience, similarity, quality: qualityScore });
 		}
 
-		// Sort by combined reranking score (highest first)
-		scored.sort((a, b) => b.score - a.score);
+		scored.sort((a, b) => b.similarity - a.similarity || b.quality - a.quality);
 		const ranked = scored.map((item) => item.experience);
 		const results = limit === undefined ? ranked : ranked.slice(0, limit);
 
