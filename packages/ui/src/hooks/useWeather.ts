@@ -44,6 +44,8 @@ export type WeatherFailure =
   | "weather-unavailable";
 
 class WeatherLocationError extends ElizaError {
+  override readonly name = "WeatherLocationError";
+
   constructor(
     readonly reason: WeatherFailure,
     options?: ErrorOptions,
@@ -56,7 +58,6 @@ class WeatherLocationError extends ElizaError {
         cause: options?.cause,
       },
     );
-    this.name = "WeatherLocationError";
   }
 }
 
