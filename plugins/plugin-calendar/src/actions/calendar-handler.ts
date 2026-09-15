@@ -248,8 +248,13 @@ function calendarIdDetail(
 
 function plannerWindowDetail(
   details: Record<string, unknown> | undefined,
+  timeZone: string,
 ): { timeMin: string; timeMax: string } | undefined {
-  return normalizePlannerCalendarWindow(details?.timeMin, details?.timeMax);
+  return normalizePlannerCalendarWindow(
+    details?.timeMin,
+    details?.timeMax,
+    timeZone,
+  );
 }
 
 // Whether the planner supplied a window we can actually search with. This has
@@ -261,10 +266,15 @@ function plannerWindowDetail(
 function plannerWindowUsable(
   details: Record<string, unknown> | undefined,
   llmPlan: CalendarLlmPlan,
+  timeZone: string,
 ): boolean {
   return Boolean(
-    plannerWindowDetail(details) ??
-      normalizePlannerCalendarWindow(llmPlan.timeMin, llmPlan.timeMax),
+    plannerWindowDetail(details, timeZone) ??
+      normalizePlannerCalendarWindow(
+        llmPlan.timeMin,
+        llmPlan.timeMax,
+        timeZone,
+      ),
   );
 }
 
@@ -607,6 +617,7 @@ function normalizeCalendarSubaction(value: unknown): CalendarSubaction | null {
 
 function buildCalendarPlanFromParsed(
   parsed: Record<string, unknown>,
+  timeZone: string,
 ): CalendarLlmPlan | null {
   const subaction = normalizeCalendarSubaction(parsed.subaction);
   const shouldAct =
@@ -651,8 +662,7 @@ function buildCalendarPlanFromParsed(
         ? parsed.title.trim()
         : undefined,
     tripLocation,
-    timeMin: normalizeIsoDateTime(parsed.timeMin),
-    timeMax: normalizeIsoDateTime(parsed.timeMax),
+    ...normalizePlannerCalendarWindow(parsed.timeMin, parsed.timeMax, timeZone),
     windowLabel: normalizeWindowLabel(parsed.windowLabel ?? parsed.label),
   };
 }
@@ -1572,6 +1582,7 @@ function resolveCalendarIntentInput(
 function resolveStructuredCalendarSubaction(
   params: CalendarActionParams,
   details: Record<string, unknown> | undefined,
+  timeZone: string,
 ): CalendarSubaction | null {
   if (detailString(details, "eventId")) {
     if (
@@ -1603,7 +1614,7 @@ function resolveStructuredCalendarSubaction(
     detailString(details, "query") ||
     (params.queries?.length ?? 0) > 0 ||
     (detailArray(details, "queries")?.length ?? 0) > 0 ||
-    plannerWindowDetail(details)
+    plannerWindowDetail(details, timeZone)
   ) {
     return "search_events";
   }
@@ -2752,60 +2763,6 @@ function normalizeWindowLabel(value: unknown): string | undefined {
   return cleaned.length > 0 && cleaned.length <= 80 ? cleaned : undefined;
 }
 
-function utcDateOnly(value: Date): LocalDateOnly {
-  return {
-    year: value.getUTCFullYear(),
-    month: value.getUTCMonth() + 1,
-    day: value.getUTCDate(),
-  };
-}
-
-function isUtcStartOfDay(value: Date): boolean {
-  return (
-    value.getUTCHours() === 0 &&
-    value.getUTCMinutes() === 0 &&
-    value.getUTCSeconds() === 0 &&
-    value.getUTCMilliseconds() === 0
-  );
-}
-
-function isUtcEndOfDay(value: Date): boolean {
-  return (
-    value.getUTCHours() === 23 &&
-    value.getUTCMinutes() === 59 &&
-    value.getUTCSeconds() === 59
-  );
-}
-
-function resolveCalendarLlmLocalDateWindow(
-  timeMin: string,
-  timeMax: string,
-  timeZone: string,
-): { timeMin: string; timeMax: string } | null {
-  const start = new Date(timeMin);
-  const end = new Date(timeMax);
-  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
-    return null;
-  }
-  if (!isUtcStartOfDay(start)) {
-    return null;
-  }
-
-  const startDate = utcDateOnly(start);
-  const endExclusiveDate = isUtcStartOfDay(end)
-    ? utcDateOnly(end)
-    : isUtcEndOfDay(end)
-      ? addDaysToLocalDate(utcDateOnly(end), 1)
-      : null;
-  if (!endExclusiveDate) {
-    return null;
-  }
-  if (compareLocalDates(endExclusiveDate, startDate) <= 0) {
-    return null;
-  }
-  return buildLocalDateRange(timeZone, startDate, endExclusiveDate);
-}
-
 function resolveCalendarLlmWindow(
   timeZone: string,
   llmPlan: CalendarLlmPlan | undefined,
@@ -2813,6 +2770,7 @@ function resolveCalendarLlmWindow(
   const window = normalizePlannerCalendarWindow(
     llmPlan?.timeMin,
     llmPlan?.timeMax,
+    timeZone,
   );
   if (!window) {
     return null;
@@ -2831,10 +2789,8 @@ function resolveCalendarLlmWindow(
   }
 
   return {
-    ...(resolveCalendarLlmLocalDateWindow(timeMin, timeMax, timeZone) ?? {
-      timeMin,
-      timeMax,
-    }),
+    timeMin,
+    timeMax,
     label:
       normalizeWindowLabel(llmPlan?.windowLabel) ?? "for the requested window",
   };
@@ -2862,9 +2818,9 @@ function resolveCalendarWindow(
   label: string;
   explicitWindow: boolean;
 } {
-  const plannerWindow = plannerWindowDetail(details);
   const calendarId = calendarIdDetail(details);
   const timeZone = resolveCalendarTimeZone(details, fallbackTimeZone);
+  const plannerWindow = plannerWindowDetail(details, timeZone);
   const forceSync = detailBoolean(details, "forceSync");
   if (plannerWindow) {
     return {
@@ -2944,9 +2900,9 @@ function resolveTripWindowRequest(
   llmPlan?: CalendarLlmPlan,
   fallbackTimeZone: string = resolveDefaultTimeZone(),
 ): GetLifeOpsCalendarFeedRequest {
-  const plannerWindow = plannerWindowDetail(details);
   const calendarId = calendarIdDetail(details);
   const timeZone = resolveCalendarTimeZone(details, fallbackTimeZone);
+  const plannerWindow = plannerWindowDetail(details, timeZone);
   const forceSync = detailBoolean(details, "forceSync");
 
   if (plannerWindow) {
@@ -3079,7 +3035,7 @@ export async function extractCalendarPlanWithLlm(
 
   const parseResponse = (raw: string): CalendarLlmPlan | null => {
     const parsed = parseCalendarJsonRecord<Record<string, unknown>>(raw);
-    return parsed ? buildCalendarPlanFromParsed(parsed) : null;
+    return parsed ? buildCalendarPlanFromParsed(parsed, timeZone) : null;
   };
 
   const plannerResult = await runLifeOpsJsonModel<Record<string, unknown>>({
@@ -3099,7 +3055,7 @@ export async function extractCalendarPlanWithLlm(
   }
 
   const parsedPlan = plannerResult.parsed
-    ? buildCalendarPlanFromParsed(plannerResult.parsed)
+    ? buildCalendarPlanFromParsed(plannerResult.parsed, timeZone)
     : null;
   if (parsedPlan) {
     return finalizeCalendarPlan({
@@ -4551,6 +4507,7 @@ const calendarAction: CalendarHandlerAction = {
     const structuredSubaction = resolveStructuredCalendarSubaction(
       params,
       details,
+      planningTimeZone,
     );
     const hasExplicitCalendarExecutionInput = Boolean(
       explicitSubaction ||
@@ -5119,7 +5076,11 @@ const calendarAction: CalendarHandlerAction = {
               },
             });
           }
-          const feedRequest = plannerWindowUsable(details, llmPlan)
+          const feedRequest = plannerWindowUsable(
+            details,
+            llmPlan,
+            planningTimeZone,
+          )
             ? resolveCalendarWindow(
                 intent,
                 details,
@@ -5484,7 +5445,11 @@ const calendarAction: CalendarHandlerAction = {
               }),
             });
           }
-          const feedRequest = plannerWindowUsable(details, llmPlan)
+          const feedRequest = plannerWindowUsable(
+            details,
+            llmPlan,
+            planningTimeZone,
+          )
             ? resolveCalendarWindow(
                 intent,
                 details,
@@ -6085,8 +6050,8 @@ const calendarAction: CalendarHandlerAction = {
           effectiveCalendarId: calendarIdDetail(details) ?? "unset",
           timeMin: detailString(details, "timeMin") ?? "unset",
           timeMax: detailString(details, "timeMax") ?? "unset",
-          effectiveWindow: plannerWindowDetail(details)
-            ? `${plannerWindowDetail(details)?.timeMin}..${plannerWindowDetail(details)?.timeMax}`
+          effectiveWindow: plannerWindowDetail(details, planningTimeZone)
+            ? `${plannerWindowDetail(details, planningTimeZone)?.timeMin}..${plannerWindowDetail(details, planningTimeZone)?.timeMax}`
             : "unset",
           timeZone: detailString(details, "timeZone") ?? "unset",
           mode: detailString(details, "mode") ?? "unset",
