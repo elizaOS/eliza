@@ -321,7 +321,7 @@ export function VoiceWorkbenchShell() {
           <a
             href={artifactUrl}
             download="voice-workbench-evidence.json"
-            className="inline-block rounded bg-orange-600 px-3 py-2 text-white hover:bg-orange-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-orange-400"
+            className="keyboard-focus-surface inline-block rounded bg-orange-600 px-3 py-2 text-white hover:bg-orange-700"
           >
             Download complete playback evidence
           </a>
