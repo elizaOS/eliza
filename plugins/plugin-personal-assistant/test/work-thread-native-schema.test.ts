@@ -1,3 +1,4 @@
+/** Exercise real native-tool schema normalization and argument restoration for work-thread operations. */
 import type { ActionParameterSchema } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { buildPlannerToolsFromActions } from "../../../packages/core/src/actions/to-tool.js";
