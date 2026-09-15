@@ -105,6 +105,9 @@ vi.mock("../../../hooks", () => ({
 vi.mock("../../../hooks/useAuthStatus", () => ({
   useIsAuthenticated: () => authMock.authenticated,
 }));
+vi.mock("../../../hooks/useRole", () => ({
+  useRole: () => ({ isOwner: true }),
+}));
 
 vi.mock("../../../state", () => ({
   useAppSelectorShallow: <T,>(selector: (state: typeof mockState) => T): T =>

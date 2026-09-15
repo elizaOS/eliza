@@ -134,6 +134,9 @@ function createDurableVaultService(vaultEntries: Map<string, string>) {
       if (value === undefined) throw new Error(`vault miss: ${key}`);
       return value;
     },
+    async remove(key: string): Promise<void> {
+      vaultEntries.delete(key);
+    },
   };
 }
 

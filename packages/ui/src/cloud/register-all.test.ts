@@ -32,6 +32,7 @@ describe("registerAllCloudSurfaces (sync public API contract)", () => {
     for (const p of [
       "cloud/earnings",
       "cloud/affiliates",
+      "cloud/security",
       "cloud/settings",
       "cloud/settings/connections",
     ]) {

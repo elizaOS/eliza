@@ -79,11 +79,24 @@ export function ChatBubble({
             : "transparent"
         }
         padding={
+          appearance === "firstRun"
+            ? "comfortable"
+            : appearance === "default" && !bare && tone === "user"
+              ? "compact"
+              : undefined
+        }
+        wallpaperText={appearance !== "firstRun"}
+        border={
           appearance === "default" && !bare && tone === "user"
-            ? "compact"
+            ? "subtle"
             : undefined
         }
-        wallpaperText
+        radius={
+          appearance === "firstRun" ||
+          (appearance === "default" && !bare && tone === "user")
+            ? "xlarge"
+            : undefined
+        }
         className={cn(
           // whitespace-pre-wrap keeps newlines; overflow-wrap breaks long URLs /
           // hashes / paths so they can't blow out the bubble width on a phone.
@@ -91,7 +104,7 @@ export function ChatBubble({
           appearance === "default" && !bare && tone === "assistant" && "py-1",
           // Message text must remain selectable for normal highlight/copy.
           "select-text [-webkit-touch-callout:default]",
-          WALLPAPER_FLOAT_SHADOW,
+          appearance !== "firstRun" && WALLPAPER_FLOAT_SHADOW,
           className,
         )}
         data-chat-source={normalizedSource ?? undefined}

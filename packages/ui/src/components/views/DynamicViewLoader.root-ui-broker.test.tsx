@@ -70,6 +70,23 @@ describe("root @elizaos/ui import is broker-scoped, not an escape hatch (#14237)
     window.localStorage.clear();
   });
 
+  it("does not adopt a replacement scope while an external import is awaiting", async () => {
+    const pending = hostImport("@elizaos/ui/app-navigate-view");
+    setActiveSurfaceRealmScope(
+      new SurfaceRealmScope(
+        resolveSurfaceManifest({ surface: { capabilities: ["navigate"] } }),
+        "replacement",
+        backing,
+        () => {
+          throw new Error("Replacement owner was borrowed");
+        },
+      ),
+    );
+    const external = await pending;
+    const navigate = external.navigateBrowserPath as (path: string) => void;
+    expect(() => navigate("/borrowed")).toThrow(SurfaceRealmDeniedError);
+  });
+
   it("root navigateBrowserPath is the scope-brokered wrapper (denied without the grant), like the subpath", async () => {
     const rootMod = await hostImport("@elizaos/ui");
     const navigate = rootMod.navigateBrowserPath as (path: string) => void;

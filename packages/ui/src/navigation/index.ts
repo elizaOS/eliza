@@ -26,8 +26,10 @@ import {
   appShellPageMatchesPath,
   listAppShellPages,
 } from "../app-shell-registry";
+import { resolveBuiltinTabIdForPathAlias } from "../builtin-tab-registry";
 import { userAgentHasElizaOSMarker } from "../platform/aosp-user-agent";
 import { type BuiltinTab, mapBuiltinRoutes } from "./builtin-route-descriptors";
+import { isDeveloperWorkspaceRoute } from "./developer-route";
 import { resolveDefaultLandingTab } from "./main-tab";
 
 export {
@@ -40,6 +42,7 @@ export {
   type ResolvedBuiltinRouteDescriptor,
   resolveBuiltinRouteDescriptor,
 } from "./builtin-route-descriptors";
+export { isDeveloperWorkspaceRoute } from "./developer-route";
 
 type RuntimeImportMeta = ImportMeta & {
   env?: Record<string, unknown>;
@@ -207,6 +210,7 @@ export const LAUNCHER_AOSP_ONLY_VIEW_IDS = [
 
 interface WindowNavigationLocation {
   protocol: string;
+  hostname?: string;
   search: string;
   hash: string;
   pathname: string;
@@ -232,11 +236,16 @@ export function isAppWindowRoute(
 
 export function shouldUseHashNavigation(
   location:
-    | Pick<WindowNavigationLocation, "protocol" | "search">
+    | (Pick<WindowNavigationLocation, "protocol" | "search"> &
+        Partial<Pick<WindowNavigationLocation, "hostname" | "pathname">>)
     | undefined = getWindowNavigationLocation(),
 ): boolean {
   if (!location) return false;
-  return location.protocol === "file:" || isAppWindowRoute(location);
+  return (
+    location.protocol === "file:" ||
+    isAppWindowRoute(location) ||
+    isDeveloperWorkspaceRoute(location)
+  );
 }
 
 export function getWindowNavigationPath(
@@ -246,7 +255,8 @@ export function getWindowNavigationPath(
 ): string {
   if (!location) return "/";
   return shouldUseHashNavigation(location)
-    ? location.hash.replace(/^#/, "") || "/"
+    ? location.hash.replace(/^#/, "") ||
+        (isDeveloperWorkspaceRoute(location) ? "/chat" : "/")
     : location.pathname;
 }
 
@@ -335,7 +345,11 @@ export {
 export const TAB_PATHS = mapBuiltinRoutes((descriptor) => descriptor.path);
 
 const PATH_TO_TAB = new Map(
-  Object.entries(TAB_PATHS).map(([tab, p]) => [p, tab as Tab]),
+  Object.values(
+    mapBuiltinRoutes(
+      (descriptor) => [descriptor.path, descriptor.canonicalId] as const,
+    ),
+  ),
 );
 
 function normalizePathForLookup(pathname: string, basePath = ""): string {
@@ -358,6 +372,25 @@ export function pathForTab(tab: Tab, basePath = ""): string {
   const base = normalizeBasePath(basePath);
   const p = TAB_PATHS[tab as BuiltinTab] ?? `/${tab}`;
   return base ? `${base}${p}` : p;
+}
+
+export interface LegacyBuiltinRouteResolution {
+  tab: Tab;
+  canonicalPath: string;
+}
+
+/**
+ * Resolve a retired builtin route through the builtin metadata registry. The
+ * canonical destination is always derived from `TAB_PATHS`, so aliases cannot
+ * drift into a second renderer or platform-specific routing table.
+ */
+export function resolveLegacyBuiltinRoute(
+  pathname: string,
+  basePath = "",
+): LegacyBuiltinRouteResolution | null {
+  const normalized = normalizePathForLookup(pathname, basePath);
+  const tab = resolveBuiltinTabIdForPathAlias(normalized) as Tab | null;
+  return tab ? { tab, canonicalPath: pathForTab(tab, basePath) } : null;
 }
 
 export function isRouteRootPath(pathname: string, basePath = ""): boolean {
@@ -440,6 +473,9 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   if (normalized === "/tutorial") {
     return "chat";
   }
+
+  const legacyBuiltinRoute = resolveLegacyBuiltinRoute(pathname, basePath);
+  if (legacyBuiltinRoute) return legacyBuiltinRoute.tab;
 
   // /views — legacy launcher alias; renders the combined Home/Launcher.
   if (normalized === "/views" || normalized.startsWith("/views/")) {

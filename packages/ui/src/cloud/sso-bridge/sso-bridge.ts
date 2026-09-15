@@ -45,12 +45,14 @@
  * next sync), and the explicit app-origin logout marker prevents a bounce.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
 import {
   readStoredStewardToken,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { shellLocalStorage } from "../../surface-realm-channel";
+import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { appModeNavigation } from "../app-mode/app-mode";
 import { decodeJwtPayload } from "../lib/jwt";
 import { invalidateStewardServerCookieSyncMarker } from "../lib/steward-session-cookie-sync-marker";
@@ -146,6 +148,39 @@ export function sanitizeBridgeReturnTo(
   const path = value.split(/[?#]/, 1)[0];
   if (path === SSO_BRIDGE_PATH) return "/";
   return value;
+}
+
+/**
+ * Local recovery URL for an unexpected bridge failure. Keep the original
+ * same-origin destination so retrying authentication does not discard a deep
+ * link such as `/chat`, while applying the same open-redirect and loop guards
+ * as the cross-origin handshake itself.
+ */
+export function buildSsoBridgeErrorUrl(
+  reason: "auth_failed" | "sync_failed",
+  returnTo: string,
+): string {
+  const params = new URLSearchParams({
+    reason,
+    returnTo: sanitizeBridgeReturnTo(returnTo),
+  });
+  return `/auth/error?${params.toString()}`;
+}
+
+/**
+ * Recovery from a mint-host error must restart on the paired app host. A
+ * same-origin `/login` on the marketing host cannot restore app-only paths
+ * such as `/chat`: its authenticated catch-all intentionally hands users to
+ * `/cloud` instead. The hostname is resolved only through the fixed bridge
+ * pair allowlist, and the destination remains a sanitized app-local path.
+ */
+export function pairedAppLoginUrlForMintHost(
+  hostname: string,
+  returnTo: string,
+): string | null {
+  const appOrigin = pairedAppOrigin(hostname);
+  if (!appOrigin) return null;
+  return `${appOrigin}/login?returnTo=${encodeURIComponent(sanitizeBridgeReturnTo(returnTo))}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -567,12 +602,10 @@ export async function performSsoExchange(
 }
 
 /**
- * Destroy a code this origin refuses to exchange (state mismatch, missing
- * verifier). The server consumes atomically BEFORE checking the verifier, so
- * presenting the bare code burns it: without this, an abandoned handshake
- * leaves a live code sitting in the address bar and both origins' request
- * logs for the rest of its TTL. Fire-and-forget — the reply is always 401 and
- * failure to burn only restores the pre-existing exposure.
+ * Destroy a code this document refuses to hand off or exchange. The dedicated
+ * endpoint accepts either exact bridge origin but can only consume: it never
+ * returns a session. Keepalive lets the tiny fire-and-forget POST survive the
+ * fallback navigation; failure leaves only the code's short server TTL.
  */
 export function burnSsoBridgeCode(
   code: string,
@@ -581,15 +614,31 @@ export function burnSsoBridgeCode(
 ): void {
   const base = apiBaseForHostname(hostname);
   if (!base || !isWellFormedSsoCode(code)) return;
-  void fetchFn(`${base}/api/auth/sso-bridge/exchange`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code }),
-  }).catch(() => {
-    // error-policy:J6 best-effort destruction of an already-abandoned code;
-    // the code still dies on its own 60s TTL.
-  });
+  try {
+    void fetchFn(`${base}/api/auth/sso-bridge/burn`, {
+      method: "POST",
+      credentials: "include",
+      keepalive: true,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    }).catch((error) => {
+      // error-policy:J6 best-effort destruction of an already-abandoned code;
+      // report the failure while the code's 60s TTL remains the final boundary.
+      reportRendererDiagnostic({
+        scope: "steward.sso-bridge.code-burn",
+        error,
+        severity: "warning",
+      });
+    });
+  } catch (error) {
+    // error-policy:J6 a fetch adapter may reject synchronously during teardown;
+    // report it and rely on the same short server-side expiry boundary.
+    reportRendererDiagnostic({
+      scope: "steward.sso-bridge.code-burn",
+      error,
+      severity: "warning",
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -603,20 +652,21 @@ export function burnSsoBridgeCode(
  * marker, and the paired origin's surviving session would silently undo it
  * (re-planting the domain cookies via its background session sync). Order
  * matters: the local logged-out marker lands synchronously first (auto-bridge
- * is suppressed even if the network never answers), the server logout request
- * is ISSUED while the session cookies are still in the jar (it ends the
- * server-side sessions AND stamps the server logout marker that blocks
- * minting, exchanging, and cookie re-planting for pre-logout tokens), and the
- * local scrub stays synchronous so the login page never renders over a
- * half-signed-out session. On hostnames outside the deployed map (local dev)
+ * is suppressed even if the network never answers), and the server logout
+ * request completes while the local token is still available for a retry. A
+ * successful response confirms the server logout marker before the local
+ * credential scrub can move the app to its login route. On hostnames outside
+ * the deployed map (local dev)
  * the server call is skipped and this degrades to the local scrub, exactly
- * the previous local behavior. The returned promise settles with the
- * server teardown; callers may ignore it.
+ * the previous local behavior. A hosted non-success response or transport
+ * failure rejects so explicit sign-out cannot claim success over a server
+ * session that may still be live.
  */
 export async function signOutFromSsoBridgedHost(
   hostname: string = window.location.hostname,
   fetchFn: typeof fetch = fetch,
 ): Promise<void> {
+  const stewardToken = readStoredStewardToken();
   // Invalidate before even issuing the server logout request: fetch adapters
   // may have synchronous hooks, and no re-entrant token publication may reuse
   // proof from the authority epoch being ended.
@@ -627,12 +677,23 @@ export async function signOutFromSsoBridgedHost(
     ? fetchFn(`${base}/api/auth/logout`, {
         method: "POST",
         credentials: "include",
-      }).catch(() => undefined)
-    : // error-policy:J6 best-effort server teardown — the local marker is
-      // already set and the local scrub below always runs.
-      Promise.resolve(undefined);
+        headers: {
+          "Content-Type": "application/json",
+          ...(stewardToken ? { Authorization: `Bearer ${stewardToken}` } : {}),
+        },
+      })
+    : Promise.resolve(undefined);
+  const response = await serverLogout;
+  if (response && !response.ok) {
+    throw new ElizaError(
+      `Eliza Cloud could not end the browser session (${response.status}).`,
+      {
+        code: "HOSTED_LOGOUT_UNCONFIRMED",
+        context: { status: response.status, hostname },
+      },
+    );
+  }
   await clearStaleStewardSession();
-  await serverLogout;
 }
 
 /**
@@ -645,6 +706,7 @@ export async function prepareSsoAccountSwitch(
   hostname: string = window.location.hostname,
   fetchFn: typeof fetch = fetch,
 ): Promise<void> {
+  const stewardToken = readStoredStewardToken();
   invalidateStewardServerCookieSyncMarker();
   markSsoLoggedOut();
   const base = apiBaseForHostname(hostname);
@@ -656,6 +718,10 @@ export async function prepareSsoAccountSwitch(
   const serverLogout = fetchFn(`${base}/api/auth/logout`, {
     method: "POST",
     credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(stewardToken ? { Authorization: `Bearer ${stewardToken}` } : {}),
+    },
   });
   await clearStaleStewardSession();
   const response = await serverLogout;

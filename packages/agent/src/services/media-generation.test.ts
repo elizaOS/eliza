@@ -10,12 +10,12 @@ import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const configMock = vi.hoisted(() => ({
-  loadElizaConfig: vi.fn(),
+  loadEffectiveElizaConfig: vi.fn(),
   isElizaCloudServiceSelectedInConfig: vi.fn(() => false),
 }));
 
 vi.mock("../config/config.ts", () => ({
-  loadElizaConfig: configMock.loadElizaConfig,
+  loadEffectiveElizaConfig: configMock.loadEffectiveElizaConfig,
 }));
 
 vi.mock("@elizaos/shared", async () => {
@@ -62,7 +62,7 @@ describe("AgentMediaGenerationService media generation", () => {
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    configMock.loadElizaConfig.mockReturnValue({
+    configMock.loadEffectiveElizaConfig.mockReturnValue({
       media: {
         video: {
           mode: "own-key",
@@ -115,7 +115,7 @@ describe("AgentMediaGenerationService media generation", () => {
       modelType === ModelType.IMAGE ? imageModel : undefined,
     );
     configMock.isElizaCloudServiceSelectedInConfig.mockReturnValue(true);
-    configMock.loadElizaConfig.mockReturnValue({
+    configMock.loadEffectiveElizaConfig.mockReturnValue({
       cloud: {
         apiKey: "eliza_cloud_key",
         baseUrl: "https://api.elizacloud.ai/api/v1",
@@ -169,7 +169,7 @@ describe("AgentMediaGenerationService media generation", () => {
       modelType === ModelType.VIDEO ? videoModel : undefined,
     );
     configMock.isElizaCloudServiceSelectedInConfig.mockReturnValue(true);
-    configMock.loadElizaConfig.mockReturnValue({
+    configMock.loadEffectiveElizaConfig.mockReturnValue({
       media: {
         video: {
           mode: "cloud",
@@ -228,7 +228,7 @@ describe("AgentMediaGenerationService media generation", () => {
       modelType === ModelType.AUDIO ? audioModel : undefined,
     );
     configMock.isElizaCloudServiceSelectedInConfig.mockReturnValue(true);
-    configMock.loadElizaConfig.mockReturnValue({
+    configMock.loadEffectiveElizaConfig.mockReturnValue({
       media: {
         audio: {
           mode: "cloud",
@@ -286,7 +286,7 @@ describe("AgentMediaGenerationService media generation", () => {
       modelType === ModelType.TEXT_TO_SPEECH ? ttsModel : undefined,
     );
     configMock.isElizaCloudServiceSelectedInConfig.mockReturnValue(true);
-    configMock.loadElizaConfig.mockReturnValue({
+    configMock.loadEffectiveElizaConfig.mockReturnValue({
       media: {
         audio: {
           mode: "cloud",
@@ -337,7 +337,7 @@ describe("AgentMediaGenerationService media generation", () => {
     const useModel = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     configMock.isElizaCloudServiceSelectedInConfig.mockReturnValue(true);
-    configMock.loadElizaConfig.mockReturnValue({
+    configMock.loadEffectiveElizaConfig.mockReturnValue({
       media: {
         image: {
           mode: "own-key",
@@ -389,7 +389,7 @@ describe("AgentMediaGenerationService media generation", () => {
 
   it("reports cloud image generation unavailable when no image model is registered", async () => {
     configMock.isElizaCloudServiceSelectedInConfig.mockReturnValue(true);
-    configMock.loadElizaConfig.mockReturnValue({
+    configMock.loadEffectiveElizaConfig.mockReturnValue({
       media: {
         image: {
           mode: "cloud",
@@ -423,7 +423,7 @@ describe("AgentMediaGenerationService media generation", () => {
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    configMock.loadElizaConfig.mockReturnValue({
+    configMock.loadEffectiveElizaConfig.mockReturnValue({
       media: {
         video: {
           mode: "own-key",

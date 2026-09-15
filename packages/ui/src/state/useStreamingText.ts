@@ -72,10 +72,13 @@ export type StreamingTextModification =
       mode: "complete";
       /** Final reconciled assistant text from the server. */
       fullText: string;
+      /** The transport settled, but generation ended before a complete reply. */
+      interrupted?: boolean;
       /** Optional server-flagged failure class to stamp alongside the text. */
       failureKind?: ChatFailureKind;
       /** Authoritative terminal failure details from the runtime. */
       terminalFailure?: ChatTerminalFailure;
+      replyRecoveryAvailable?: boolean;
       /**
        * Optional structured "connect another account" request to stamp on the
        * completed turn so the renderer can swap in the AccountConnectBlock.
@@ -89,6 +92,8 @@ export type StreamingTextModification =
       assistantEphemeral?: boolean;
       /** Persisted server id replacing the optimistic temp-resp-* stream id. */
       persistedMessageId?: string;
+      /** Server-confirmed user turn that owns this reply, including ephemeral failures. */
+      replyToMessageId?: string;
     }
   | {
       messageId: string;
@@ -110,6 +115,7 @@ export type StreamingTextModification =
       failureKind: ChatFailureKind;
       /** Authoritative terminal failure details from the runtime. */
       terminalFailure?: ChatTerminalFailure;
+      replyRecoveryAvailable?: boolean;
     }
   | {
       messageId: string;
@@ -172,6 +178,8 @@ function computeNextMessage(
     }
     case "complete": {
       const sameText = message.text === mod.fullText;
+      const sameInterruption =
+        (message.interrupted === true) === (mod.interrupted === true);
       const sameFailure = message.failureKind === mod.failureKind;
       const sameTerminalFailure =
         message.terminalFailure === mod.terminalFailure;
@@ -185,15 +193,21 @@ function computeNextMessage(
       const sameId =
         mod.persistedMessageId === undefined ||
         message.id === mod.persistedMessageId;
+      const sameReplyTo =
+        mod.replyToMessageId === undefined ||
+        message.replyToMessageId === mod.replyToMessageId;
       if (
         sameText &&
+        sameInterruption &&
         sameFailure &&
         sameTerminalFailure &&
+        message.replyRecoveryAvailable === mod.replyRecoveryAvailable &&
         sameAccountConnect &&
         sameCapabilityHandoff &&
         sameReasoning &&
         sameAssistantEphemeral &&
         sameId &&
+        sameReplyTo &&
         message.provisional === undefined
       ) {
         return null;
@@ -202,12 +216,20 @@ function computeNextMessage(
         {
           ...message,
           ...(mod.persistedMessageId ? { id: mod.persistedMessageId } : {}),
+          ...(mod.replyToMessageId
+            ? { replyToMessageId: mod.replyToMessageId }
+            : {}),
           text: mod.fullText,
         },
-        // Terminal reconciliation: the text is now the turn's final message —
-        // never provisional, so voice output may speak it.
+        // Terminal text is no longer provisional; interruption remains a
+        // separate status that prevents treating a partial as a complete reply.
         false,
       );
+      if (mod.interrupted) {
+        next.interrupted = true;
+      } else if (message.interrupted !== undefined) {
+        delete next.interrupted;
+      }
       if (mod.failureKind) {
         next.failureKind = mod.failureKind;
       } else if (message.failureKind !== undefined) {
@@ -217,6 +239,11 @@ function computeNextMessage(
         next.terminalFailure = mod.terminalFailure;
       } else if (message.terminalFailure !== undefined) {
         delete next.terminalFailure;
+      }
+      if (mod.replyRecoveryAvailable === true) {
+        next.replyRecoveryAvailable = true;
+      } else {
+        delete next.replyRecoveryAvailable;
       }
       if (mod.accountConnect) {
         next.accountConnect = mod.accountConnect;
@@ -253,12 +280,14 @@ function computeNextMessage(
     case "fail": {
       if (
         message.failureKind === mod.failureKind &&
-        message.terminalFailure === mod.terminalFailure
+        message.terminalFailure === mod.terminalFailure &&
+        message.replyRecoveryAvailable === mod.replyRecoveryAvailable
       )
         return null;
       return {
         ...message,
         failureKind: mod.failureKind,
+        replyRecoveryAvailable: mod.replyRecoveryAvailable,
         ...(mod.terminalFailure
           ? { terminalFailure: mod.terminalFailure }
           : {}),

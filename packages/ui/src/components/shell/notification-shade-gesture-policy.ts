@@ -4,6 +4,7 @@
  * or pointer semantics.
  */
 
+import { isInteractiveGestureTarget } from "../../utils/interactive-gesture-target";
 import { PULL_COMMIT_PX } from "./notification-shade-presentation";
 
 export const MAX_RENDERED_ROWS = 100;
@@ -27,18 +28,6 @@ export const SHADE_MIN_FLICK_DISTANCE_PX = 22;
 export const SHADE_FLICK_VELOCITY_PX_PER_MS = 0.45;
 export const SHADE_MIN_VELOCITY_SAMPLE_MS = 16;
 export const NOTIFICATION_COUNT_RESTORE_MS = SHADE_SETTLE_MS;
-
-const INTERACTIVE_GESTURE_TARGET_SELECTOR =
-  "button, a, input, textarea, select, [role='button'], [contenteditable='true']";
-
-export function isInteractiveGestureTarget(
-  target: EventTarget | null,
-): boolean {
-  return (
-    target instanceof Element &&
-    target.closest(INTERACTIVE_GESTURE_TARGET_SELECTOR) !== null
-  );
-}
 
 export function isClickBelowNotificationCards(
   target: EventTarget | null,

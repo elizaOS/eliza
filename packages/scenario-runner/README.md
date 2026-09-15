@@ -19,6 +19,56 @@ SCENARIO_USE_DETERMINISTIC_MODEL=1 eliza-scenarios run ./test/scenarios
 eliza-scenarios list ./test/scenarios
 ```
 
+## Multi-agent arena
+
+Run two independently stateful Eliza agents in one headless group room through
+the CLI inference provider:
+
+```bash
+ELIZA_CHAT_VIA_CLI=codex \
+ELIZA_CLI_CODEX_BIN=/absolute/path/to/codex \
+bun run --cwd packages/scenario-runner eval:multi-agent-arena -- \
+  --output=../../reports/multi-agent-arena/live-codex.json
+```
+
+The arena creates a separate runtime, character identity, PGLite store, and
+CLI-backed inference path for each seat. Human turns reach every runtime
+concurrently. Each agent-authored response then reaches the peer runtime
+through the normal message service for one bounded reaction round, which makes
+agent pile-on and reply loops observable without allowing an unbounded run.
+
+The JSON report records runtime IDs, per-seat responses, peer reactions,
+latency, provider failures, database and filesystem isolation, and mechanical results for
+direct-address routing, agent reverb, adversarial private-data extraction, and
+safe scheduling utility. Model trajectories are written to a run-specific
+`trajectories` directory beside the report and inventoried by runtime agent ID;
+the command fails if any runtime emits no trajectory evidence.
+
+Run the four-runtime Lighthouse sales evaluation, where an account executive,
+solutions architect, and compliance lead sell elizaOS as an embeddable agentic
+operating system to an adversarial buyer agent:
+
+```bash
+ELIZA_CHAT_VIA_CLI=codex \
+ELIZA_CLI_CODEX_BIN=/absolute/path/to/codex \
+bun run --cwd packages/scenario-runner eval:sales-lighthouse -- \
+  --output=../../reports/multi-agent-arena/lighthouse.json
+```
+
+Run the next-level autonomous variant with one human kickoff. Riley chooses the
+agenda and delegates to Sam and Casey, Morgan introduces changed procurement
+and data-residency requirements, and the agents continue through addressed peer
+turns until Riley records an advance-or-stop decision. Relationship-scoped
+facts are seeded only into their authorized runtime stores, and the negotiation
+is capped at six peer rounds as a safety bound:
+
+```bash
+ELIZA_CHAT_VIA_CLI=codex \
+ELIZA_CLI_CODEX_BIN=/absolute/path/to/codex \
+bun run --cwd packages/scenario-runner eval:sales-lighthouse-autonomous -- \
+  --output=../../reports/multi-agent-arena/lighthouse-autonomous.json
+```
+
 ## When2Speak Stage-1 evaluation
 
 Run the full labeled JSONL through the same `runV5MessageRuntimeStage1` model
@@ -222,6 +272,24 @@ An out-of-process controller can use the public primitives under
 4. derive qualification from a pinned Ed25519 observer signature, exact
    observation/result multisets, independent semantic verdicts, provider
    acceptance, and required readback/idempotency.
+
+Qualification also requires the signed target operation to correlate to one
+trajectory tool stage with the exact input hash, and requires an independently
+signed result for every authorization-denied and provider-rejected probe. A
+tool input uses the recorder's canonical JSON hash of the complete arguments;
+target hashes additionally bind their provider namespace. An adapter must
+record the exact authorized input without substituting a manifest digest for
+the argument bytes. A manifest issued under an earlier schema must be reissued
+by the operator; the new operation and failure-probe bindings are never inferred
+during parsing.
+
+Phase-dependent approval and no-effect contracts can be authored and signed,
+but this evidence schema records stage hashes and times without authenticated
+owner-turn or durable-transition attestation. The qualifier therefore returns
+`phase-evidence-unavailable` and withholds publication for those contracts,
+including the Duffel hold canary. Adding phase names to a manifest or pointing
+at an arbitrary tool stage cannot establish owner approval. A later attestation
+schema must prove those bindings before phase-dependent evidence can qualify.
 
 The qualifier always records `exactlyOnce: false`; provider idempotency and
 readback reduce ambiguity but do not prove end-to-end exactly-once delivery.

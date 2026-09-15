@@ -640,7 +640,7 @@ describe("production manifest persistence", () => {
     expect(await target.getCache(key)).toBeUndefined();
   });
 
-  it("rejects insufficient inbox capacity before mutating manifest state", async () => {
+  it("persists and resets complete notification manifests without an item-count boundary", async () => {
     const target = runtime();
     const service = target.getService(ServiceType.NOTIFICATION);
     expect(service).toBeInstanceOf(NotificationService);
@@ -653,33 +653,40 @@ describe("production manifest persistence", () => {
         id: `notification-${index}`,
         title: `Owned ${index}`,
       }));
-      await expect(
-        applyProductionManifest(target, oversized),
-      ).rejects.toMatchObject({
-        code: "SCENARIO_MANIFEST_CAPACITY_EXCEEDED",
-      });
+      const oversizedReceipt = await applyProductionManifest(target, oversized);
+      expect(oversizedReceipt.notificationIds).toHaveLength(301);
+      const oversizedSnapshot = await readProductionManifestSnapshot(
+        target,
+        oversizedReceipt,
+      );
+      expect(oversizedSnapshot.notifications).toHaveLength(301);
+      expect(notifications.listIncludingExpired()).toHaveLength(301);
       expect(
-        await target.getWorldsByIds([
-          stringToUuid(
-            "scenario-manifest:notification-capacity-oversized:world",
-          ),
-        ]),
-      ).toEqual([]);
+        await target.getWorldsByIds([oversizedReceipt.worldId]),
+      ).toHaveLength(1);
+      await resetProductionManifest(target, oversizedReceipt);
+      expect(notifications.listIncludingExpired()).toHaveLength(0);
 
       for (let index = 0; index < 299; index += 1) {
         await notifications.notify({ title: `Unrelated ${index}` });
       }
       const input = manifest("notification-capacity");
-      await expect(
-        applyProductionManifest(target, input),
-      ).rejects.toMatchObject({
-        code: "SCENARIO_MANIFEST_CAPACITY_EXCEEDED",
-      });
+      const receipt = await applyProductionManifest(target, input);
+      const snapshot = await readProductionManifestSnapshot(target, receipt);
+      expect(snapshot.notifications).toHaveLength(2);
+      expect(receipt.notificationIds).toHaveLength(2);
+      expect(await target.getWorldsByIds([receipt.worldId])).toHaveLength(1);
+      expect(notifications.listIncludingExpired()).toHaveLength(
+        299 +
+          (input.notifications?.length ?? 0) +
+          (input.approvals?.length ?? 0),
+      );
       expect(
-        await target.getWorldsByIds([
-          stringToUuid("scenario-manifest:notification-capacity:world"),
-        ]),
-      ).toEqual([]);
+        notifications
+          .listIncludingExpired()
+          .filter((entry) => entry.title.startsWith("Unrelated ")),
+      ).toHaveLength(299);
+      await resetProductionManifest(target, receipt);
       expect(notifications.listIncludingExpired()).toHaveLength(299);
       expect(
         notifications

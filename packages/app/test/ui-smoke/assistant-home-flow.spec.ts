@@ -11,6 +11,7 @@ import {
   installPageDiagnosticsGuard,
   openAppPath,
   seedAppStorage,
+  UI_SMOKE_CPU_ONLY_HARDWARE,
 } from "./helpers";
 import { navigateHomeLauncher } from "./helpers/launcher-navigation";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
@@ -73,6 +74,36 @@ async function fulfillJson(
   });
 }
 
+async function installAssistantPersonalElizaRoute(
+  page: Page,
+): Promise<() => void> {
+  let releasePersonalIdentity: (() => void) | undefined;
+  const personalIdentityGate = new Promise<void>((resolve) => {
+    releasePersonalIdentity = resolve;
+  });
+  await page.route("**/api/v1/eliza/personal", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await personalIdentityGate;
+    await fulfillJson(route, {
+      success: true,
+      data: {
+        identity: {
+          id: "personal:11111111-1111-5111-8111-111111111111",
+          displayName: "Eliza Cloud",
+          runtime: "dedicated",
+          activeAgentId: "22222222-2222-4222-8222-222222222222",
+          apiBase:
+            "https://22222222-2222-4222-8222-222222222222.cloud.eliza.app",
+        },
+      },
+    });
+  });
+  return () => releasePersonalIdentity?.();
+}
+
 async function installAssistantFlowRoutes(page: Page): Promise<{
   messages: Array<{
     id: string;
@@ -81,11 +112,13 @@ async function installAssistantFlowRoutes(page: Page): Promise<{
     timestamp: number;
   }>;
   streamRequests: string[];
+  personalRequests: string[];
 }> {
   await installDefaultAppRoutes(page);
   let conversationCreated = false;
   let messageSequence = 0;
   const streamRequests: string[] = [];
+  const personalRequests: string[] = [];
   const messages: Array<{
     id: string;
     role: "user" | "assistant";
@@ -115,6 +148,43 @@ async function installAssistantFlowRoutes(page: Page): Promise<{
       sessionId: "assistant-flow-cloud-login",
       browserUrl:
         "https://www.elizacloud.ai/auth/cli-login?session=assistant-flow-cloud-login",
+    });
+  });
+  // Cloud onboarding resolves the authenticated Personal identity directly
+  // against the control-plane host. Keep that boundary deterministic and point
+  // its agent runtime back at this same-origin smoke stack; an unmocked request
+  // would escape to production and fail CORS instead of exercising the flow.
+  await page.route("**/api/v1/eliza/personal", async (route) => {
+    const request = route.request();
+    const method = request.method();
+    const url = request.url();
+    personalRequests.push(`${method} ${url}`);
+    if (
+      method !== "GET" ||
+      url !== "https://api.eliza.app/api/v1/eliza/personal"
+    ) {
+      await route.fulfill({
+        status: 502,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "unexpected personal identity request" }),
+      });
+      return;
+    }
+    const pageUrl = page.url();
+    const origin = pageUrl.startsWith("http")
+      ? new URL(pageUrl).origin
+      : new URL(route.request().url()).origin;
+    await fulfillJson(route, {
+      success: true,
+      data: {
+        identity: {
+          id: "personal:00000000-0000-5000-8000-000000000001",
+          displayName: "Playwright Smoke",
+          runtime: "dedicated",
+          activeAgentId: "agent-assistant-flow",
+          apiBase: origin,
+        },
+      },
     });
   });
   await page.route("**/api/cloud/login/status**", async (route) => {
@@ -162,6 +232,30 @@ async function installAssistantFlowRoutes(page: Page): Promise<{
       replayed: true,
     });
   });
+  await page.route("**/api/character", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, {
+      character: {
+        name: "Eliza",
+        bio: ["Assistant flow test agent"],
+        system: "You are Eliza",
+        adjectives: ["helpful"],
+        style: { all: [], chat: [], post: [] },
+        postExamples: [],
+        messageExamples: [],
+      },
+    });
+  });
+  await page.route("**/api/apps/overlay-presence", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, { ok: true, app: null, present: false });
+  });
   await page.route("**/api/local-inference/hub", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -186,7 +280,7 @@ async function installAssistantFlowRoutes(page: Page): Promise<{
         updatedAt: new Date(0).toISOString(),
       },
       downloads: [],
-      hardware: { status: "unsupported" },
+      hardware: UI_SMOKE_CPU_ONLY_HARDWARE,
       assignments: {},
       textReadiness: {
         updatedAt: new Date(0).toISOString(),
@@ -405,7 +499,7 @@ async function installAssistantFlowRoutes(page: Page): Promise<{
     },
   );
 
-  return { messages, streamRequests };
+  return { messages, streamRequests, personalRequests };
 }
 
 async function screenshot(page: Page, name: string): Promise<void> {
@@ -754,6 +848,8 @@ async function installChatSpeechRecognitionShim(page: Page): Promise<void> {
 }
 
 test.describe("assistant home app flow", () => {
+  test.use({ serviceWorkers: "block" });
+
   test.beforeEach(({ page }) => {
     installPageDiagnosticsGuard(page);
   });
@@ -762,11 +858,83 @@ test.describe("assistant home app flow", () => {
     await expectNoPageDiagnostics(page, testInfo.title);
   });
 
+  test("keeps the Cloud tutorial choices visible in the open first-run sheet", async ({
+    page,
+  }) => {
+    await installAssistantFlowRoutes(page);
+    await page.addInitScript(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+      localStorage.setItem("elizaos:first-run:force-fresh", "1");
+      localStorage.setItem("eliza:voice:prefix-done", "1");
+      localStorage.setItem("eliza:mobile-runtime-mode", "local");
+      localStorage.setItem("eliza:enable-runtime-chooser", "1");
+    });
+    await page.route("**/api/first-run/status", async (route) => {
+      await fulfillJson(route, { complete: false, cloudProvisioned: false });
+    });
+    // Install the Personal route before navigation so a startup probe cannot
+    // escape to the real Cloud host. Hold its response until the chooser is
+    // visibly committed, preserving the exact fresh-first-run transition.
+    const releasePersonalIdentity =
+      await installAssistantPersonalElizaRoute(page);
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    const firstRunOverlay = page.getByTestId("chat-overlay");
+    await expect(firstRunOverlay).toBeVisible({ timeout: 20_000 });
+    const cloudRuntime = page.getByTestId("choice-__first_run__:runtime:cloud");
+    await expect(cloudRuntime).toBeVisible({ timeout: 20_000 });
+
+    await page.evaluate(() => {
+      localStorage.setItem(
+        "steward_session_token",
+        "assistant-flow-cloud-token",
+      );
+      localStorage.setItem(
+        "steward_session_active_scope",
+        "eliza-cloud:production",
+      );
+      localStorage.setItem(
+        "steward_session_token_scope",
+        "eliza-cloud:production",
+      );
+    });
+    await cloudRuntime.evaluate((node: HTMLElement) => node.click());
+    releasePersonalIdentity();
+    const onboardingProbe = page.getByTestId("onboarding-state-probe");
+    await expect(onboardingProbe).toContainText("onboarding-step:tutorial", {
+      timeout: 60_000,
+    });
+    await expect(onboardingProbe).toContainText("__first_run__:tutorial:start");
+    await expect(onboardingProbe).toContainText("__first_run__:tutorial:skip");
+
+    // Binding the selected Cloud identity advances startup independently of
+    // the conductor's final tutorial choice. The committed first-run epoch
+    // keeps the sheet open so both accessible choices remain actionable.
+    await expect(firstRunOverlay).toHaveAttribute("data-open", "true");
+    await expect(page.getByTestId("chat-sheet")).toHaveAttribute(
+      "data-variant",
+      "open",
+    );
+    await expect(
+      page.getByTestId("choice-__first_run__:tutorial:start"),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Take the tutorial" }),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("choice-__first_run__:tutorial:skip"),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Skip for now" }),
+    ).toBeVisible();
+  });
+
   test("captures first-run, assistant home, chat suppression, and view pill states", async ({
     page,
   }) => {
     await rm(SCREENSHOT_DIR, { force: true, recursive: true });
-    await installAssistantFlowRoutes(page);
+    const initialAssistantApi = await installAssistantFlowRoutes(page);
 
     await page.addInitScript(() => {
       const clearKey = "eliza:ui-smoke:first-run-clear-done";
@@ -798,6 +966,12 @@ test.describe("assistant home app flow", () => {
       timeout: 20_000,
     });
     await screenshot(page, "01-first-run-clouds");
+    await page.getByTestId("choice-__first_run__:runtime:cloud").click();
+    await expect
+      .poll(() => initialAssistantApi.personalRequests.length, {
+        timeout: 15_000,
+      })
+      .toBeGreaterThan(0);
 
     await page.unroute("**/api/first-run/status");
     await seedAssistantFlowStorage(page);
@@ -830,7 +1004,7 @@ test.describe("assistant home app flow", () => {
       }
     });
     await installReadyDesktopStatusBridge(page);
-    await installAssistantFlowRoutes(page);
+    const readyAssistantApi = await installAssistantFlowRoutes(page);
 
     await openReadyChat(page);
     const rootChatInput = assistantComposer(page);
@@ -871,14 +1045,25 @@ test.describe("assistant home app flow", () => {
 
     await openAppPath(page, "/wallet");
     await expect(
-      page.getByTestId("wallets-sidebar").getByRole("button", {
-        name: /^Tokens$/,
-      }),
+      page
+        .getByRole("tablist", { name: "Wallet asset type" })
+        .getByRole("tab", { name: "Tokens", selected: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "RPC settings", exact: true }),
+      page.getByRole("button", { name: "Show wallet details", exact: true }),
     ).toBeVisible();
     await screenshot(page, "07-wallet-view-with-pill");
+    const personalRequests = [
+      ...initialAssistantApi.personalRequests,
+      ...readyAssistantApi.personalRequests,
+    ];
+    expect(personalRequests.length).toBeGreaterThan(0);
+    expect(
+      personalRequests.every(
+        (request) =>
+          request === "GET https://api.eliza.app/api/v1/eliza/personal",
+      ),
+    ).toBe(true);
   });
 
   test("drives the assistant home voice path with a scripted browser STT turn", async ({

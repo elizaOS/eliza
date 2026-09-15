@@ -15,6 +15,7 @@ import {
   spyOn,
   test,
 } from "bun:test";
+import { readFileSync } from "node:fs";
 import { eq, sql } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../db/client";
 import { agentBillingRepository } from "../../db/repositories/agent-billing";
@@ -24,6 +25,7 @@ import {
   agentSandboxesRepository,
   type ProvisioningAdmissionCapture,
 } from "../../db/repositories/agent-sandboxes";
+import { installOrganizationPolicyTestSchema } from "../../db/repositories/organization-policy-test-fixture";
 import {
   type AgentBackupDeltaData,
   type AgentBackupStateData,
@@ -434,6 +436,16 @@ async function expectPostReconstructRefusal(
   expect(fetchMock).not.toHaveBeenCalled();
 }
 
+async function installHeartbeatRevisionMigration(): Promise<void> {
+  const migration = readFileSync(
+    new URL("../../db/migrations/0386_agent_heartbeat_lifecycle_revision.sql", import.meta.url),
+    "utf8",
+  );
+  for (const statement of migration.split("--> statement-breakpoint")) {
+    if (statement.trim()) await dbWrite.execute(sql.raw(statement));
+  }
+}
+
 beforeAll(async () => {
   if (!CAN_USE_ISOLATED_PGLITE) {
     pgliteReady = false;
@@ -443,6 +455,9 @@ beforeAll(async () => {
     for (const ddl of PROVISIONING_JOB_TEST_TABLES) {
       await dbWrite.execute(sql.raw(ddl));
     }
+    await installHeartbeatRevisionMigration();
+    const { getPgliteClientForTests } = await import("../../db/client");
+    await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
   } catch {
     pgliteReady = false;
   }
@@ -1880,10 +1895,6 @@ describe("ElizaSandboxService running restore authority", () => {
     const before = await durableGeneration(sandbox.id);
     const fetchMock = installRestoreFetch({ expectedState: state("missing-trigger") });
     globalThis.fetch = fetchMock;
-    const triggerDdl = PROVISIONING_JOB_TEST_TABLES.find((ddl) =>
-      ddl.startsWith("CREATE TRIGGER agent_sandboxes_lifecycle_revision_trigger"),
-    );
-    if (!triggerDdl) throw new Error("Lifecycle trigger test DDL is missing");
 
     await dbWrite.execute(
       sql.raw(
@@ -1897,7 +1908,7 @@ describe("ElizaSandboxService running restore authority", () => {
       expect(fetchMock).not.toHaveBeenCalled();
       expect(await durableGeneration(sandbox.id)).toEqual(before);
     } finally {
-      await dbWrite.execute(sql.raw(triggerDdl));
+      await installHeartbeatRevisionMigration();
     }
   });
 

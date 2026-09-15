@@ -127,6 +127,9 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
     "POST",
     "/api/auth/bootstrap/exchange",
   ),
+  // Public at this outer gate only so the route can authenticate the native
+  // desktop through its stricter loopback + owned one-shot socket proof.
+  publicExact("auth.desktop-bootstrap", "POST", "/api/auth/desktop-bootstrap"),
   publicExact("auth.setup", "POST", "/api/auth/setup"),
   publicExact("auth.login.password", "POST", "/api/auth/login/password"),
   publicExact("auth.status", "GET", "/api/auth/status"),
@@ -143,6 +146,7 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
   publicExactAnyMethod("pool.status", "/api/pool/status"),
 
   sessionExact("runtime.mode", "GET", "/api/runtime/mode"),
+  sessionExact("auth.guest-pair-code", "POST", "/api/auth/guest-pair-code"),
   sessionExact("cloud.status", "GET", "/api/cloud/status"),
   sessionExact("cloud.credits", "GET", "/api/cloud/credits"),
   sessionExact("cloud.login", "POST", "/api/cloud/login"),

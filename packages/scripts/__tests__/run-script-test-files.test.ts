@@ -4,7 +4,10 @@ import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseIsolatedScriptTestArgs } from "../run-script-test-files.mjs";
+import {
+  isSerialScriptTest,
+  parseIsolatedScriptTestArgs,
+} from "../run-script-test-files.mjs";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const driver = path.resolve(scriptDirectory, "..", "run-script-test-files.mjs");
@@ -66,5 +69,39 @@ describe("isolated script-test runner arguments", () => {
     );
     expect(result.stderr).not.toContain("timed out");
     expect(result.stderr).not.toContain("TimeoutOverflowWarning");
+  });
+
+  test("the CLI names a failing test file", () => {
+    const missingTestFile = "packages/scripts/__tests__/missing-script-test.ts";
+    const result = spawnSync(
+      process.execPath,
+      [driver, "--concurrency=1", "--", missingTestFile],
+      { encoding: "utf8" },
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      `[script-tests] failed: ${missingTestFile}`,
+    );
+  });
+});
+
+describe("isolated script-test runner shared-workspace boundary", () => {
+  test("serializes the run-all-tests contract family only", () => {
+    expect(
+      isSerialScriptTest(
+        "packages/scripts/__tests__/run-all-tests-result-ledger.test.ts",
+      ),
+    ).toBe(true);
+    expect(
+      isSerialScriptTest(
+        "packages/scripts/__tests__/run-all-tests-plan-source-contract.test.ts",
+      ),
+    ).toBe(true);
+    expect(
+      isSerialScriptTest(
+        "packages/scripts/__tests__/script-test-inventory.test.ts",
+      ),
+    ).toBe(false);
   });
 });

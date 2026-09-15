@@ -128,7 +128,7 @@ describe("core flat package entrypoints", () => {
 			},
 		});
 
-		expect(outdirs).toEqual(["dist/node"]);
+		expect(outdirs).toEqual(["dist/node", "dist/node"]);
 		expect(declarationOptions).toEqual([{ skipTesting: true }]);
 	});
 });

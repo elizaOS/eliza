@@ -11,7 +11,10 @@
  * `/login?returnTo=…` page instead. Touch-primary web browsers skip the popup
  * attempt outright — a capability hint (coarse pointer + no hover), not a
  * user-agent sniff — because even a popup that opens there is a disorienting
- * tab switch. Native (Capacitor) keeps the external Browser plugin and desktop
+ * tab switch. Loopback staging uses a hosted CLI session instead of local
+ * `/login`: the staging tenant intentionally rejects localhost OAuth callbacks,
+ * while the hosted flow can safely return its claimed session to localhost.
+ * Native (Capacitor) keeps the external Browser plugin, while desktop
  * (Electrobun) keeps the RPC external-open; neither is popup-hostile.
  *
  * The same-tab round trip needs no new flow: the `/login` page sanitizes and
@@ -25,6 +28,15 @@ import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { configuredStewardApiUrlOverride } from "../cloud/shell/steward-config";
 import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "../cloud/shell/steward-url";
 import { preOpenWindow } from "../utils/openExternalUrl";
+import {
+  isPlainWebPlatform,
+  loopbackStewardDevelopmentTarget,
+} from "./loopback-steward-development";
+
+export {
+  isCliReturnLoopbackWebOrigin,
+  isLoopbackStagingStewardDevelopment,
+} from "./loopback-steward-development";
 
 export const CLOUD_LOGIN_POPUP_NAME = "eliza-cloud-auth";
 
@@ -133,24 +145,6 @@ export function __resetPreparedDesktopCloudLoginSessionForTests(): void {
   preparedDesktopLogin = null;
 }
 
-function isCapacitorNativeRuntime(): boolean {
-  if (typeof globalThis === "undefined") return false;
-  const capacitor = (
-    globalThis as {
-      Capacitor?: { isNativePlatform?: () => boolean };
-    }
-  ).Capacitor;
-  return Boolean(capacitor?.isNativePlatform?.());
-}
-
-/** Plain web page — no native/desktop external-open affordance to prefer. */
-function isPlainWebPlatform(): boolean {
-  if (typeof window === "undefined") return false;
-  if (isCapacitorNativeRuntime()) return false;
-  if (isElectrobunRuntime()) return false;
-  return true;
-}
-
 /**
  * Capability hint for popup-hostile browsers: a touch-primary device with no
  * hover (phones/tablets in any browser engine). Deliberately not a user-agent
@@ -169,9 +163,9 @@ export function isTouchPrimaryWebBrowser(): boolean {
 /**
  * Whether this page's origin can complete a same-origin Steward `/login` round
  * trip: the hosted elizacloud web hosts (steward-url.ts host map) or any host
- * with an explicit Steward API override. Elsewhere (self-hosted dashboards,
- * localhost dev) the `/login` page may have no reachable Steward API, so the
- * legacy device-code flow with its copyable fallback link stays the degrade.
+ * with an explicit Steward API override. A localhost staging override is
+ * deliberately handled by the hosted CLI-session flow because Steward does
+ * not allow localhost OAuth callbacks.
  */
 export function hasSameOriginStewardLogin(): boolean {
   if (typeof window === "undefined") return false;
@@ -190,12 +184,14 @@ export function preOpenCloudLoginWindow(): Window | null {
   // the app WebView, not the system browser. The eventual login URL goes
   // through desktopOpenExternal instead (see useCloudState).
   if (isElectrobunRuntime()) return null;
-  if (
-    isPlainWebPlatform() &&
-    hasSameOriginStewardLogin() &&
-    isTouchPrimaryWebBrowser()
-  ) {
-    return null;
+  if (isPlainWebPlatform() && hasSameOriginStewardLogin()) {
+    const loopbackTarget = loopbackStewardDevelopmentTarget();
+    if (
+      (loopbackTarget === "staging" && isTouchPrimaryWebBrowser()) ||
+      (loopbackTarget === null && isTouchPrimaryWebBrowser())
+    ) {
+      return null;
+    }
   }
   return preOpenWindow(CLOUD_LOGIN_POPUP_NAME);
 }
@@ -252,13 +248,19 @@ export function releaseClaimedCloudLoginWindow(): void {
  * `/login` page instead of driving the popup device-code flow. True on plain
  * web with a same-origin Steward login when the popup handle is dead (blocked
  * at pre-open — the browser-agnostic runtime signal — or never attempted) or
- * when the touch-primary hint prefers same-tab outright.
+ * when the touch-primary hint prefers same-tab outright. Loopback development
+ * never uses local `/login`: staging uses a hosted CLI session and other
+ * targets retain their agent-proxied pairing contract.
  */
 export function shouldUseSameTabCloudLogin(
   prePoppedWindow: Window | null,
+  options: { hasAgentProxy?: boolean } = {},
 ): boolean {
   if (!isPlainWebPlatform()) return false;
   if (!hasSameOriginStewardLogin()) return false;
+  const loopbackTarget = loopbackStewardDevelopmentTarget();
+  if (loopbackTarget !== null) return false;
+  if (options.hasAgentProxy) return false;
   if (isTouchPrimaryWebBrowser()) return true;
   return !prePoppedWindow || prePoppedWindow.closed;
 }
@@ -272,10 +274,11 @@ export function shouldUseSameTabCloudLogin(
 export function buildSameTabCloudLoginPath(location?: {
   pathname: string;
   search: string;
+  hash?: string;
 }): string {
   const loc =
     location ?? (typeof window !== "undefined" ? window.location : undefined);
-  const current = loc ? `${loc.pathname}${loc.search}` : "";
+  const current = loc ? `${loc.pathname}${loc.search}${loc.hash ?? ""}` : "";
   const returnTo =
     current.startsWith("/") &&
     !current.startsWith("//") &&

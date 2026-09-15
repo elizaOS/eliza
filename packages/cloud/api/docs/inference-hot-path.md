@@ -114,11 +114,18 @@ cannot safely be replayed as asynchronous hydration.
 
 On a Worker cache miss:
 
-- the request receives a retryable warming response;
-- the authoritative lookup is registered with `waitUntil`;
-- concurrent hydration is single-flight by identity; and
-- no provider request starts until a later request observes the populated
-  cache.
+- the authoritative lookup is registered with `waitUntil` and consumed directly
+  under a 2.5-second request deadline;
+- the origin decision is used without a second KV read, while its projection
+  write remains asynchronous behind a standalone strong-check barrier;
+- concurrent request and refresh hydration is single-flight by identity until
+  that projection settles; and
+- request-consumed decisions carry their credential into the atomic admission
+  lease. The route then calls the real rate limiter exactly once.
+
+An authoritative denial is returned directly and blocks admission. A deadline,
+dependency failure, or cache outage retains the retryable warming response; the
+retained continuation may still populate the projection for a later request.
 
 When the gate is enabled, cache errors never fabricate authorization and never
 join a Postgres fallback to the request promise. Invalidation is only cache
@@ -180,8 +187,9 @@ Residual exposure bound: an authorization-relevant mutation that evicts no
 cache entry (none is currently known for the session path; for the API-key
 path a user-level ban does not revoke the key or its validation entry) is
 bounded by the 30s idle TTL and the 5-minute sliding-refresh cap, after which
-the entry must re-hydrate through the authoritative gate. Cache-only misses
-never authorize — they warm under `waitUntil` and return a retryable 503.
+the entry must re-hydrate through the authoritative gate. A combined-cache miss
+can authorize only from its bounded, strong-boundary-checked origin
+continuation; it cannot authorize from missing or unavailable cache state.
 
 ## Organization admission protocol
 
@@ -278,10 +286,11 @@ Staging and production inference require:
 - `INFERENCE_HOT_PATH_CACHES="true"`.
 
 `INFERENCE_AUTH_CACHE_ENABLED="true"` is inert unless
-`INFERENCE_STRONG_REVOCATION_ENABLED="true"`. The strong flag remains false in
-checked-in staging and production configuration until rollout evidence is
-approved, so authoritative authorization remains the default. The thin entry
-has its own `THIN_INFERENCE_ENTRY_ENABLED` rollout control.
+`INFERENCE_STRONG_REVOCATION_ENABLED="true"`. Staging enables the strong flag
+to soak the revocation-fenced positive cache; production keeps it false until
+the staged latency and revocation evidence is approved, so authoritative
+authorization remains the production default. The thin entry has its own
+`THIN_INFERENCE_ENTRY_ENABLED` rollout control.
 The thin entry lazily evaluates only the matched generative route module rather
 than the monolithic API router. Either flag remains an independent rollback
 control.

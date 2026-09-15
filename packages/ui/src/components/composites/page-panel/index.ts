@@ -8,7 +8,11 @@ import { ContentState } from "./content-state";
 import { PagePanelCollapsibleSection } from "./page-panel-collapsible-section";
 import { PageEmptyState } from "./page-panel-empty";
 import { PagePanelFeatureEmpty } from "./page-panel-feature-empty";
-import { PagePanelContentArea, PagePanelFrame } from "./page-panel-frame";
+import {
+  PagePanelContentArea,
+  PagePanelContentRail,
+  PagePanelFrame,
+} from "./page-panel-frame";
 import {
   MetaPill,
   PageActionRail,
@@ -35,6 +39,7 @@ export const PagePanel = Object.assign(PagePanelRoot, {
   CollapsibleSection: PagePanelCollapsibleSection,
   ContentState,
   ContentArea: PagePanelContentArea,
+  ContentRail: PagePanelContentRail,
   Header: PanelHeader,
   Frame: PagePanelFrame,
   Meta: MetaPill,

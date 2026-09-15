@@ -16,7 +16,10 @@ describe("Instagram connector history", () => {
       createdAt: index,
     })) as Memory[];
     const getMemories = vi.fn(async () => memories);
-    const runtime = { getMemories } as unknown as IAgentRuntime;
+    const runtime = {
+      getMemories,
+      getRoom: vi.fn(async () => ({ channelId: "thread-1" })),
+    } as unknown as IAgentRuntime;
     const service = Object.create(InstagramService.prototype) as InstagramService;
 
     const result = await service.fetchConnectorMessages(

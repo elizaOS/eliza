@@ -81,8 +81,6 @@ const outputCompletenessBoundaryCalls: Record<string, readonly RegExp[]> = {
 		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
 	"packages/cloud/shared/src/lib/services/telegram-automation/app-automation.ts":
 		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
-	"packages/cloud/shared/src/lib/services/eliza-app/connection-enforcement.ts":
-		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
 	"packages/cloud/shared/src/lib/services/app-promotion-assets.ts": [
 		/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/,
 	],
@@ -95,17 +93,12 @@ const outputCompletenessBoundaryCalls: Record<string, readonly RegExp[]> = {
 	"packages/cloud/shared/src/lib/services/provisioning-agent-chat.ts": [
 		/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/,
 	],
-	"packages/cloud/shared/src/lib/services/room-title.ts": [
-		/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/,
-	],
 	"packages/cloud/shared/src/lib/services/seo.ts": [
 		/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/,
 	],
 	"packages/cloud/shared/src/lib/services/twitter-automation/app-automation.ts":
 		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
 	"packages/cloud/shared/src/lib/services/shared-runtime/shared-eliza-runtime.ts":
-		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
-	"packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-chat.ts":
 		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
 	"packages/cloud/shared/src/lib/services/eliza-app/describe-inbound-media.ts":
 		[/isModelOutputLimitFinishReason\(completion\.finishReason\)/],
@@ -114,7 +107,71 @@ const outputCompletenessBoundaryCalls: Record<string, readonly RegExp[]> = {
 	],
 };
 
+const directModelDispatchPatterns = [
+	/from\s+["']ai["']|import\(["']ai["']\)/,
+	/from\s+["'][^"']*providers\/language-model["']|import\(["'][^"']*providers\/language-model["']\)/,
+	/\bgenerateText\s*\(/,
+	/\bstreamText\s*\(/,
+] as const;
+
+const nonDirectModelDispatchBoundaries: Record<
+	string,
+	{
+		readonly requiredPatterns: readonly RegExp[];
+	}
+> = {
+	"packages/cloud/shared/src/lib/services/eliza-app/connection-enforcement.ts":
+		{
+			requiredPatterns: [/code:\s*"CONNECTION_ENFORCEMENT_LLM_DISABLED"/],
+		},
+	"packages/cloud/shared/src/lib/services/room-title.ts": {
+		requiredPatterns: [/const title = generateFallbackTitle\(text\)/],
+	},
+	"packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-chat.ts":
+		{
+			requiredPatterns: [
+				/await runSharedAgentTurn\(\{/,
+				/runSharedAgentTurnStream\(\{/,
+			],
+		},
+};
+
 const guardedSources: Record<string, readonly RegExp[]> = {
+	"plugins/plugin-agent-skills/src/security/skill-scanner.ts": [
+		/matchEvidence\s*=\s*source\.slice\(/,
+	],
+	"plugins/plugin-cloud-apps/src/client.ts": [
+		/appReferenceLogView[\s\S]{0,500}\.slice\(/,
+		/appReferenceLogView[\s\S]{0,500}truncateWellFormed/,
+	],
+	"plugins/plugin-personal-assistant/src/lifeops/service-helpers-reminder.ts": [
+		/normalizeSemanticReason[\s\S]{0,500}\.slice\(/,
+		/normalizeSemanticReason[\s\S]{0,500}truncateWellFormed/,
+	],
+	"packages/scenario-runner/src/final-checks/index.ts": [
+		/actionCallSummary[\s\S]{0,900}\.slice\(/,
+		/blob\.slice\(/,
+	],
+	"packages/scenario-runner/src/judge.ts": [/raw\.slice\(/, /const preview/],
+	"packages/scenario-runner/src/reporter.ts": [
+		/truncateText/,
+		/toolInputPreview/,
+		/toolOutputPreview/,
+		/responsePreview/,
+		/toolSearchTopResults/,
+		/toolSearch\.results\.slice\(/,
+		/\.slice\(0,\s*140\)/,
+	],
+	"packages/scenario-runner/src/runtime-factory.ts": [
+		/ownerMessage\.slice\(/,
+		/const clamped/,
+	],
+	"packages/scenario-runner/src/scenario-assertions/calendar-assertions.ts": [
+		/blob\.slice\(/,
+	],
+	"packages/scenario-runner/src/scenario-assertions/effect-assertions.ts": [
+		/JSON\.stringify\(a\.result\?\.data[^\n]*\.slice\(/,
+	],
 	"packages/agent/src/services/agent-export.ts": [
 		/limit:\s*Number\.MAX_SAFE_INTEGER/,
 		/getMemoriesByWorldId\(/,
@@ -1023,6 +1080,8 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/scenario-runner/src/executor.ts": [
 		/serialized\.slice\(/,
 		/stringifyForJudge\([^,\n]+,\s*\d/,
+		/plannerBlob\.slice\(/,
+		/plannerPreview/,
 	],
 	"packages/app-core/src/services/account-pool-broker.ts": [
 		/trimmed\.slice\(0,\s*128\)/,
@@ -1254,6 +1313,27 @@ describe("prompt integrity policy", () => {
 			);
 			for (const pattern of requiredPatterns) {
 				expect(source, `${relativePath} must match ${pattern}`).toMatch(
+					pattern,
+				);
+			}
+		}
+	});
+
+	it("keeps disabled, deterministic, and delegated paths free of direct model dispatches", () => {
+		for (const [relativePath, policy] of Object.entries(
+			nonDirectModelDispatchBoundaries,
+		)) {
+			const source = readFileSync(
+				resolve(repositoryRoot, relativePath),
+				"utf8",
+			);
+			for (const pattern of policy.requiredPatterns) {
+				expect(source, `${relativePath} must match ${pattern}`).toMatch(
+					pattern,
+				);
+			}
+			for (const pattern of directModelDispatchPatterns) {
+				expect(source, `${relativePath} must not match ${pattern}`).not.toMatch(
 					pattern,
 				);
 			}

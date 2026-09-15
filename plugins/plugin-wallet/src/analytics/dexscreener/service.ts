@@ -7,12 +7,10 @@
  * direct `DEXSCREENER_API_URL` is configured, and self rate-limits between
  * requests via `DEXSCREENER_RATE_LIMIT_DELAY`.
  */
-import {
-  cloudServiceApisBaseUrl,
-  toRuntimeSettings,
-} from "@elizaos/cloud-routing";
+import { cloudServiceApisBaseUrl } from "@elizaos/cloud-routing";
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
+import { toWalletCloudRoutingSettings } from "../cloud-routing-authority";
 import { dexScreenerErrorMessage } from "./errors";
 import type {
   DexScreenerBoostedToken,
@@ -64,7 +62,7 @@ export class DexScreenerService extends Service {
       apiUrl = customBase.replace(/\/+$/, "");
     } else {
       const cloud = cloudServiceApisBaseUrl(
-        toRuntimeSettings(runtime),
+        toWalletCloudRoutingSettings(runtime),
         "dexscreener",
       );
       if (cloud !== null) {

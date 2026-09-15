@@ -3,7 +3,7 @@
  * first-run config and resolves the initial active-server record so a returning
  * user skips re-onboarding. Reads via the injected probe client.
  */
-import { isElizaCloudControlPlaneAgentlessBase } from "../utils/cloud-agent-base";
+import { isTrustedHostedCloudOnboardingBase } from "../utils/cloud-agent-base";
 import { asRecord, readString } from "./config-readers";
 import { asApiLikeError } from "./parsers";
 import {
@@ -116,17 +116,18 @@ async function interpretAnsweredFirstRunStatus(
 /**
  * Whether the boot-time existing-install probe (GET /api/first-run/status +
  * /api/config) should run for `origin`. The probe detects a returning
- * local/self-hosted install so the user skips re-onboarding. On a bare Eliza
- * Cloud control-plane origin (cloud.eliza.app, with legacy aliases during migration) the
- * same-origin API is the managed cloud endpoint: it requires auth and hosts no
- * unauthenticated local install to detect, so probing it only yields 401
- * console noise during fresh onboarding (#16242). Skip it there — the in-chat
- * first-run conductor owns Cloud sign-in.
+ * local/self-hosted install so the user skips re-onboarding. On a trusted
+ * hosted Cloud onboarding base, the same-origin API is the managed cloud
+ * endpoint: it requires auth and hosts no unauthenticated local install to
+ * detect, so probing it only yields 401 console noise during fresh onboarding
+ * (#16242, #30375). Skip it there — the in-chat first-run conductor owns Cloud
+ * sign-in. Cloud-only branding does not grant this trust to arbitrary hosts.
  */
 export function shouldProbeExistingLocalInstall(
   origin: string | null | undefined,
+  cloudOnlyBranding = false,
 ): boolean {
-  return !isElizaCloudControlPlaneAgentlessBase(origin ?? "");
+  return !isTrustedHostedCloudOnboardingBase(origin ?? "", cloudOnlyBranding);
 }
 
 function currentOrigin(): string | null {
@@ -136,6 +137,8 @@ function currentOrigin(): string | null {
 export async function detectExistingFirstRunConnection(args: {
   client: ExistingFirstRunProbeClient;
   timeoutMs: number;
+  /** Authoritative boot branding used to recognize hosted Pages aliases. */
+  cloudOnlyBranding?: boolean;
   /**
    * Set when a committed on-device runtime (mobile `local` / `cloud-hybrid`)
    * is persisted, so the native service IS bringing the bundled agent up. That
@@ -153,11 +156,16 @@ export async function detectExistingFirstRunConnection(args: {
     return null;
   }
 
-  // Skip the probe on a bare Cloud control-plane origin: the same-origin API is
-  // auth-gated, so first-run/status + config only 401 during fresh onboarding
-  // (#16242). Gated here rather than at the restore call site so every caller
-  // inherits it and the guard is testable in isolation.
-  if (!shouldProbeExistingLocalInstall(currentOrigin())) {
+  // Skip the probe on a trusted hosted Cloud onboarding base: the same-origin
+  // API is auth-gated, so first-run/status + config only 401 during fresh
+  // onboarding (#16242, #30375). Gated here rather than at the restore call
+  // site so every caller inherits it and the guard is testable in isolation.
+  if (
+    !shouldProbeExistingLocalInstall(
+      currentOrigin(),
+      args.cloudOnlyBranding === true,
+    )
+  ) {
     return null;
   }
 
@@ -173,8 +181,19 @@ export async function detectExistingFirstRunConnection(args: {
         status = await args.client.getFirstRunStatus();
       } catch (err) {
         if (!args.waitForBootingAgent) {
-          // error-policy:J4 fresh-install probe — an unreachable agent means
-          // "no existing install detected" and first-run proceeds normally.
+          const api = asApiLikeError(err);
+          if (api?.status === 401 || api?.status === 403) {
+            // error-policy:J4 an auth-gated same-origin response proves that a
+            // standalone agent exists. Restore that authority so the normal
+            // backend poll can render pairing instead of misclassifying a
+            // fresh browser as a new Cloud install.
+            return {
+              activeServer: LOCAL_ACTIVE_SERVER,
+              detectedExistingInstall: true,
+            } satisfies ExistingFirstRunProbeResult;
+          }
+          // error-policy:J4 a transport failure on a genuinely fresh install
+          // means "no existing install detected" and first-run proceeds.
           return null;
         }
         // The committed on-device agent is still booting only when the probe

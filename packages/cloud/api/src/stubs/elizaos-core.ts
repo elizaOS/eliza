@@ -10,6 +10,25 @@
 const NOT_AVAILABLE =
   "@elizaos/core runtime APIs are not available in the Cloudflare Workers API bundle. Route agent runtime work through the agent-server sidecar.";
 
+// Worker-safe mirror of the pure error-code literal consumed by
+// plugin-elizacloud while the Worker bundle aliases @elizaos/core to this
+// compatibility surface.
+export const ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED =
+  "ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED";
+
+// Worker-safe mirror of core's inference correlation contract. The gateway,
+// dedicated proxy, and cloud plugin all use this closed schema at the
+// untrusted HTTP boundary, so the bundle alias must preserve its exact shape.
+export const INFERENCE_TRACE_ID_PATTERN = /^[0-9a-f]{32}$/;
+
+export function isInferenceTraceId(value: unknown): value is string {
+  return typeof value === "string" && INFERENCE_TRACE_ID_PATTERN.test(value);
+}
+
+export function mintInferenceTraceId(): string {
+  return crypto.randomUUID().replaceAll("-", "");
+}
+
 // Worker-safe mirrors of the pure prompt fragments re-exported by core. The
 // cloud native-planner template interpolates them during bundle construction.
 export const groupResponsePrecedencePolicy = `response_precedence:
@@ -647,7 +666,7 @@ const workerLogger = {
 export const logger = workerLogger;
 export const elizaLogger = workerLogger;
 
-export const DEFAULT_CEREBRAS_TEXT_MODEL = "gemma-4-31b";
+export const DEFAULT_CEREBRAS_TEXT_MODEL = "qwen-3.8-27b";
 export const DEFAULT_ELIZA_CLOUD_TEXT_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
 export const DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
 export const DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
@@ -1625,6 +1644,7 @@ export const addHeader = (header: string, body: string) =>
   body ? `${header}\n${body}` : "";
 
 export const UUID = (value?: string): string => asUUID(value ?? "");
+export const registerProviderModels = throwingExport("registerProviderModels");
 export const composeActionExamples = throwingExport("composeActionExamples");
 export const formatActions = throwingExport("formatActions");
 export const formatActionNames = throwingExport("formatActionNames");
@@ -2005,6 +2025,7 @@ export type MediaGenerationResponse = Record<string, unknown>;
 export default {
   logger,
   elizaLogger,
+  ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
   DEFAULT_CEREBRAS_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,

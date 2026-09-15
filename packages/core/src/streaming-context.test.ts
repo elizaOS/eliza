@@ -19,10 +19,12 @@ import {
 	emitStreamingHook,
 	getModelStreamChunkDeliveryDepth,
 	getStreamingContext,
+	getTurnActionConstraint,
 	runInsideModelStreamChunkDelivery,
 	runWithStreamingContext,
 	runWithSuppressedModelStream,
 	type StreamingContext,
+	setTurnActionConstraint,
 } from "./streaming-context.ts";
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -292,5 +294,66 @@ describe("model stream chunk delivery depth", () => {
 
 	it("returns the callback's value", () => {
 		expect(runInsideModelStreamChunkDelivery(() => "v")).toBe("v");
+	});
+});
+
+describe("trusted execution constraints", () => {
+	const identity = {
+		messageId: "incoming-1",
+		roomId: "room-1",
+		actorId: "actor-1",
+		action: "VIEWS",
+	};
+	it("preserves actor-bound denial and cancellation when nested model streaming is detached", async () => {
+		const controller = new AbortController();
+		await runWithStreamingContext(
+			{ messageId: "response-1", abortSignal: controller.signal },
+			async () => {
+				setTurnActionConstraint({
+					...identity,
+					operations: ["show"],
+					disposition: "deny",
+					reason: "no navigation",
+				});
+				await runWithStreamingContext(undefined, async () => {
+					await tick();
+					expect(getTurnActionConstraint(identity, "show")?.disposition).toBe(
+						"deny",
+					);
+					expect(
+						getTurnActionConstraint({ ...identity, actorId: "other" }, "show"),
+					).toBeUndefined();
+					expect(getTurnActionConstraint(identity, "interact")).toBeUndefined();
+					controller.abort();
+					expect(getStreamingContext()?.abortSignal?.aborted).toBe(true);
+				});
+			},
+		);
+		expect(getTurnActionConstraint(identity, "show")).toBeUndefined();
+	});
+	it("keeps concurrent turns isolated and rejects policy writes outside an execution scope", async () => {
+		expect(() =>
+			setTurnActionConstraint({
+				...identity,
+				operations: ["show"],
+				disposition: "deny",
+				reason: "no navigation",
+			}),
+		).toThrow();
+		const results = await Promise.all(
+			["allow", "deny"].map(async (disposition) =>
+				runWithStreamingContext({ messageId: disposition }, async () => {
+					setTurnActionConstraint({
+						...identity,
+						operations: ["show"],
+						disposition: disposition as "allow" | "deny",
+						reason: disposition,
+					});
+					await tick();
+					return getTurnActionConstraint(identity, "show")?.disposition;
+				}),
+			),
+		);
+		expect(results).toEqual(["allow", "deny"]);
 	});
 });

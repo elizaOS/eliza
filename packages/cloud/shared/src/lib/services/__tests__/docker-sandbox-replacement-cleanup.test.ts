@@ -3,20 +3,24 @@
  * windows, exact attempt identity, VPN recovery, and capacity-neutral cleanup.
  */
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { generateKeyPairSync } from "node:crypto";
 import { dockerNodesRepository } from "../../../db/repositories/docker-nodes";
 import type { DockerNode } from "../../../db/schemas/docker-nodes";
 import * as nodeAutoscaler from "../containers/node-autoscaler";
 import { dockerNodeManager } from "../docker-node-manager";
 import * as dockerPortAllocation from "../docker-port-allocation";
-import { DockerSandboxProvider } from "../docker-sandbox-provider";
+import { DockerSandboxProvider, requiredHeadscaleIngressFailure } from "../docker-sandbox-provider";
 import {
   getReplacementCandidateObservedReceipt,
+  getReplacementControlSecretEnvPath,
+  getReplacementControlVaultPassphrasePath,
   getReplacementDockerCreateQuiescentReceipt,
   getReplacementSecretArtifactsCleanupReceipt,
 } from "../docker-sandbox-utils";
 import { DockerSSHClient } from "../docker-ssh";
 import { type HeadscaleNode, headscaleClient } from "../headscale-client";
 import { headscaleIntegration } from "../headscale-integration";
+import { jobErrorText } from "../job-error-text";
 import {
   type SandboxCreateConfig,
   type SandboxHandle,
@@ -232,6 +236,9 @@ function replacementCreateConfig(
     organizationId: "22222222-2222-4222-8222-222222222222",
     executionTier: "dedicated-always",
     environmentVars: {},
+    // This suite controls provider transports; actual committed funding and
+    // host leases are exercised by the PostgreSQL/SSH integration suite.
+    startFundedContainer: async () => {},
     ...overrides,
   };
 }
@@ -240,6 +247,7 @@ function replacementProvider(options?: { now?: () => number }): DockerSandboxPro
   spyOn(dockerNodesRepository, "findByIdOnPrimary").mockResolvedValue(NODE);
   return new DockerSandboxProvider({
     replacementVpnSettleDelay: async () => {},
+    headscaleDockerBindingDelay: async () => {},
     ...(options?.now ? { now: options.now } : {}),
   });
 }
@@ -249,6 +257,46 @@ afterEach(() => {
 });
 
 describe("DockerSandboxProvider replacement cleanup", () => {
+  test("a configured test organization cannot bypass runtime funding", async () => {
+    const savedTestOrgs = process.env.CONTAINERS_TEST_ORG_IDS;
+    const config = replacementCreateConfig({ startFundedContainer: undefined });
+    process.env.CONTAINERS_TEST_ORG_IDS = config.organizationId;
+    const selectNode = spyOn(dockerNodeManager, "getAvailableNode");
+    const getSshClient = spyOn(DockerSSHClient, "getClient");
+    try {
+      await expect(replacementProvider().create(config)).rejects.toMatchObject({
+        code: "SANDBOX_COMPUTE_FUNDING_REQUIRED",
+      });
+      expect(selectNode).not.toHaveBeenCalled();
+      expect(getSshClient).not.toHaveBeenCalled();
+    } finally {
+      if (savedTestOrgs === undefined) delete process.env.CONTAINERS_TEST_ORG_IDS;
+      else process.env.CONTAINERS_TEST_ORG_IDS = savedTestOrgs;
+    }
+  });
+
+  test.each([undefined, ATTEMPT_ID])(
+    "rejects missing runtime funding before placement or remote effects (attempt %s)",
+    async (replacementAttemptId) => {
+      const provider = replacementProvider();
+      const selectNode = spyOn(dockerNodeManager, "getAvailableNode");
+      const getSshClient = spyOn(DockerSSHClient, "getClient");
+      const intent = mock(async () => {});
+      await expect(
+        provider.create(
+          replacementCreateConfig({
+            replacementAttemptId,
+            startFundedContainer: undefined,
+            onReplacementCreateIntent: intent,
+          }),
+        ),
+      ).rejects.toMatchObject({ code: "SANDBOX_COMPUTE_FUNDING_REQUIRED" });
+      expect(selectNode).not.toHaveBeenCalled();
+      expect(getSshClient).not.toHaveBeenCalled();
+      expect(intent).not.toHaveBeenCalled();
+    },
+  );
+
   test("advertises exact-success replacement settlement support", () => {
     expect(replacementProvider().replacementCreateSettlementCapability).toBe("exact-success");
   });
@@ -344,6 +392,56 @@ describe("DockerSandboxProvider replacement cleanup", () => {
 
     expect(persistIntent).toHaveBeenCalledWith(legacyIntent);
     expect(persistCreated).toHaveBeenCalledWith(legacyCreated);
+  });
+
+  test("preserves a precise remote failure for durable replacements that settle after health", async () => {
+    const provider = replacementProvider();
+    const precise = new Error(
+      "Docker candidate cannot complete required Headscale registration: auth_required",
+    );
+    spyOn(
+      provider as unknown as {
+        _createOnce: (
+          config: SandboxCreateConfig,
+          tracker?: { causes: unknown[] },
+        ) => Promise<SandboxHandle>;
+      },
+      "_createOnce",
+    ).mockImplementation(async (config, tracker) => {
+      const intent = replacementIntentHandle(config.replacementAttemptId);
+      const created = replacementHandle(config.replacementAttemptId);
+      await config.onReplacementCreateIntent?.(intent);
+      await config.onReplacementCreated?.(created);
+      tracker?.causes.push(precise);
+      throw new SandboxReplacementCleanupUnresolvedError(
+        {
+          sandboxId: created.sandboxId,
+          nodeId: NODE.node_id,
+          containerName: CONTAINER_NAME,
+          replacementAttemptId: config.replacementAttemptId ?? null,
+          containerId: CONTAINER_ID,
+          vpnNodeId: null,
+        },
+        requiredHeadscaleIngressFailure(
+          "Headscale routing is required, but the sandbox did not register a headscale_ip.",
+          tracker?.causes ?? [],
+        ),
+      );
+    });
+
+    const error = await provider
+      .create(
+        replacementCreateConfig({
+          replacementAttemptId: ATTEMPT_ID,
+          onReplacementCreateIntent: async () => {},
+          onReplacementCreated: async () => {},
+        }),
+      )
+      .catch((caught: unknown) => caught);
+
+    expect(jobErrorText(error)).toContain(
+      "caused by: Error: Docker candidate cannot complete required Headscale registration: auth_required",
+    );
   });
 
   test("rejects unpaired exact-success callbacks before effects", async () => {
@@ -1107,6 +1205,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
           organizationId: "22222222-2222-4222-8222-222222222222",
           executionTier: "dedicated-always",
           environmentVars: {},
+          startFundedContainer: async () => {},
           replacementAttemptId: ATTEMPT_ID,
           onReplacementCreateAttemptStarted: async (started) => {
             events.push("attempt-started");
@@ -1274,20 +1373,24 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     const getAutoscaler = spyOn(nodeAutoscaler, "getNodeAutoscaler");
     const internals = provider as unknown as {
       provisionAutoscaledNodeForAgent: (
-        input: { image: string; platform?: string },
+        input: { image: string; platform?: string; requiredMemoryMb: number },
         tracker: { causes: unknown[] },
       ) => Promise<DockerNode | null>;
     };
 
     try {
       getAutoscaler.mockReturnValue({
-        provisionNode: async () => {
+        provisionNode: async (request: nodeAutoscaler.ProvisionRequest) => {
+          expect(request).toMatchObject({ serverType: "ccx13", capacity: 1 });
           throw provisionFailure;
         },
       } as never);
       const failedTracker = { causes: [] as unknown[] };
       await expect(
-        internals.provisionAutoscaledNodeForAgent({ image: "eliza-agent:test" }, failedTracker),
+        internals.provisionAutoscaledNodeForAgent(
+          { image: "eliza-agent:test", requiredMemoryMb: 6144 },
+          failedTracker,
+        ),
       ).resolves.toBeNull();
       expect(failedTracker.causes).toEqual([provisionFailure]);
 
@@ -1297,11 +1400,31 @@ describe("DockerSandboxProvider replacement cleanup", () => {
           hostname: "192.0.2.50",
         }),
       } as never);
+      const findNode = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(NODE);
+      const ready = spyOn(dockerNodeManager, "ensureNodeReady").mockResolvedValue(true);
+      const readyTracker = { causes: [] as unknown[] };
+      await expect(
+        internals.provisionAutoscaledNodeForAgent(
+          { image: "eliza-agent:test", platform: "linux/amd64", requiredMemoryMb: 6144 },
+          readyTracker,
+        ),
+      ).resolves.toBe(NODE);
+      expect(ready).toHaveBeenCalledWith(NODE, {
+        requiredPlatform: "linux/amd64",
+        requiredMemoryMb: 6144,
+      });
+      expect(readyTracker.causes).toEqual([]);
+      findNode.mockRestore();
+      ready.mockRestore();
+
       let nowCalls = 0;
       spyOn(Date, "now").mockImplementation(() => (nowCalls++ === 0 ? 0 : 300_000));
       const timeoutTracker = { causes: [] as unknown[] };
       await expect(
-        internals.provisionAutoscaledNodeForAgent({ image: "eliza-agent:test" }, timeoutTracker),
+        internals.provisionAutoscaledNodeForAgent(
+          { image: "eliza-agent:test", requiredMemoryMb: 6144 },
+          timeoutTracker,
+        ),
       ).resolves.toBeNull();
       expect(timeoutTracker.causes).toHaveLength(1);
       expect(timeoutTracker.causes[0]).toMatchObject({
@@ -1487,7 +1610,6 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     )) {
       delete process.env[key];
     }
-
     const pullFailure = new Error("docker pull response became ambiguous");
     spyOn(dockerNodeManager, "getAvailableNode").mockResolvedValue(NODE);
     spyOn(dockerPortAllocation, "getUsedDockerHostPorts").mockResolvedValue(new Set());
@@ -1538,7 +1660,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     expect(error).toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
     expect(error).toMatchObject({
       replacementAttemptId: ATTEMPT_ID,
-      containerId: CONTAINER_ID.slice(0, 12),
+      containerId: CONTAINER_ID,
     });
     expect((error as Error).cause).toBeInstanceOf(AggregateError);
     expect(((error as Error).cause as AggregateError).errors).toContain(pullFailure);
@@ -1670,7 +1792,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
       },
       previousNodeId: PREVIOUS_VPN_NODE_ID,
     });
-    let renameCompletion: unknown;
+    let renameCompletion: unknown = { outcome: "not-needed" };
     spyOn(headscaleIntegration, "waitForVPNRegistration").mockImplementation(
       async () =>
         ({
@@ -1679,10 +1801,25 @@ describe("DockerSandboxProvider replacement cleanup", () => {
           ...(renameCompletion === undefined ? {} : { rename: renameCompletion }),
         }) as never,
     );
+    let containerTailnetIp = "100.64.0.42";
+    let transientEmptyTailnetReads = 0;
+    let simulatedNow = Date.now();
+    let slowTailnetQueries = false;
     const ssh = {
-      exec: mock(async (command: string) =>
-        command.includes("tailscale --socket=/tmp/tailscaled.sock ip -4") ? "100.64.0.42\n" : "",
-      ),
+      disconnect: mock(async () => {}),
+      exec: mock(async (command: string, timeoutMs?: number) => {
+        if (!command.includes("tailscale --socket=/tmp/tailscaled.sock ip -4")) return "";
+        if (slowTailnetQueries) {
+          if (timeoutMs === undefined) throw new Error("Missing SSH command timeout");
+          simulatedNow += timeoutMs;
+          throw new Error("Local tailscaled command timed out");
+        }
+        if (transientEmptyTailnetReads > 0) {
+          transientEmptyTailnetReads -= 1;
+          return "\n";
+        }
+        return `${containerTailnetIp}\n`;
+      }),
       execStdin: mock(async (command: string) => {
         if (command.includes("docker create")) return CONTAINER_ID;
         if (command.includes("steward-agent-register")) {
@@ -1694,6 +1831,84 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     spyOn(DockerSSHClient, "getClient").mockReturnValue(ssh as unknown as DockerSSHClient);
 
     try {
+      transientEmptyTailnetReads = 2;
+      const delayedBinding = await replacementProvider().create(
+        replacementCreateConfig({
+          replacementAttemptId: ATTEMPT_ID,
+          dockerImage: "eliza-agent:test",
+          environmentVars: {
+            ELIZAOS_CLOUD_BASE_URL: "https://api.example.test/api/v1",
+          },
+          reclaimStaleVpnNode: false,
+          onReplacementCreateAttemptStarted: async () => {},
+          onReplacementCreateIntent: async () => {},
+          onReplacementCreated: async () => {},
+          onReplacementVpnRegistered: async () => {},
+          onReplacementCreateSettled: async () => {},
+        }),
+      );
+      expect(delayedBinding.metadata?.vpnNodeId).toBe(EXACT_VPN_NODE_ID);
+      expect(transientEmptyTailnetReads).toBe(0);
+
+      slowTailnetQueries = true;
+      const beforeSlowQueries = simulatedNow;
+      const timedOutBinding = await replacementProvider({ now: () => simulatedNow })
+        .create(
+          replacementCreateConfig({
+            replacementAttemptId: ATTEMPT_ID,
+            dockerImage: "eliza-agent:test",
+            environmentVars: { ELIZAOS_CLOUD_BASE_URL: "https://api.example.test/api/v1" },
+            reclaimStaleVpnNode: false,
+            onReplacementCreateAttemptStarted: async () => {},
+            onReplacementCreateIntent: async () => {},
+            onReplacementCreated: async () => {},
+            onReplacementVpnRegistered: async () => {},
+            onReplacementCreateSettled: async () => {},
+          }),
+        )
+        .catch((caught: unknown) => caught);
+      expect(timedOutBinding).toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
+      expect((timedOutBinding as SandboxReplacementCleanupUnresolvedError).vpnNodeId).toBe(
+        EXACT_VPN_NODE_ID,
+      );
+      // The failed binding also performs a bounded 20-second diagnostic probe.
+      // Both stages must settle before the outer provision budget expires.
+      expect(simulatedNow - beforeSlowQueries).toBeLessThanOrEqual(160_000);
+      slowTailnetQueries = false;
+
+      containerTailnetIp = "100.64.0.99";
+      const identityMismatch = await replacementProvider()
+        .create(
+          replacementCreateConfig({
+            replacementAttemptId: ATTEMPT_ID,
+            dockerImage: "eliza-agent:test",
+            environmentVars: {
+              ELIZAOS_CLOUD_BASE_URL: "https://api.example.test/api/v1",
+            },
+            reclaimStaleVpnNode: false,
+            onReplacementCreateAttemptStarted: async () => {},
+            onReplacementCreateIntent: async () => {},
+            onReplacementCreated: async () => {},
+            onReplacementVpnRegistered: async () => {},
+            onReplacementCreateSettled: async () => {},
+          }),
+        )
+        .catch((caught: unknown) => caught);
+      expect(identityMismatch).toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
+      expect((identityMismatch as SandboxReplacementCleanupUnresolvedError).vpnNodeId).toBe(
+        EXACT_VPN_NODE_ID,
+      );
+      expect((identityMismatch as Error).cause).toBeInstanceOf(AggregateError);
+      expect(
+        ((identityMismatch as Error).cause as AggregateError).errors.some(
+          (cause: unknown) =>
+            cause instanceof Error &&
+            "code" in cause &&
+            cause.code === "SANDBOX_HEADSCALE_DOCKER_IDENTITY_MISMATCH",
+        ),
+      ).toBe(true);
+      containerTailnetIp = "100.64.0.42";
+
       const renameFailure = new Error("rename response was lost");
       for (const scenario of ["unresolved", "unknown"] as const) {
         renameCompletion =
@@ -1780,6 +1995,11 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     )) {
       delete process.env[key];
     }
+    process.env.AGENT_TOKEN_PRIVATE_KEY_PEM = generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+      publicKeyEncoding: { type: "spki", format: "pem" },
+    }).privateKey as string;
 
     spyOn(dockerNodeManager, "getAvailableNode").mockResolvedValue(NODE);
     spyOn(dockerPortAllocation, "getUsedDockerHostPorts").mockResolvedValue(new Set());
@@ -1828,7 +2048,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
           },
           onReplacementCreated: async (candidate) => {
             events.push("created");
-            expect(candidate.metadata?.containerId).toBe(CONTAINER_ID.slice(0, 12));
+            expect(candidate.metadata?.containerId).toBe(CONTAINER_ID);
           },
           onReplacementCreateSettled: async () => {
             events.push("settled");
@@ -1838,14 +2058,19 @@ describe("DockerSandboxProvider replacement cleanup", () => {
 
       expect(handle.metadata).toMatchObject({
         replacementAttemptId: ATTEMPT_ID,
-        containerId: CONTAINER_ID.slice(0, 12),
+        containerId: CONTAINER_ID,
         replacementSecretCleanupVersion: 1,
       });
       expect(handle.metadata?.vpnNodeId).toBeUndefined();
       expect(events).toEqual(["started", "intent", "created", "settled"]);
       expect(prepareVpn).not.toHaveBeenCalled();
       expect(waitForVpn).not.toHaveBeenCalled();
-      expect(commands.some((command) => command.includes("docker create"))).toBe(true);
+      const dockerCreateCommand = commands.find((command) => command.includes("docker create"));
+      expect(dockerCreateCommand).toBeDefined();
+      expect(dockerCreateCommand).toContain(getReplacementControlSecretEnvPath(ATTEMPT_ID));
+      expect(dockerCreateCommand).toContain(getReplacementControlVaultPassphrasePath(ATTEMPT_ID));
+      expect(dockerCreateCommand).not.toContain(`${VOLUME_PATH}/.container-env-${ATTEMPT_ID}`);
+      expect(commands.some((command) => command.includes("steward-agent-register"))).toBe(false);
       expect(
         commands.some((command) =>
           command.includes("tailscale --socket=/tmp/tailscaled.sock ip -4"),
@@ -1859,270 +2084,301 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     }
   });
 
-  test("binds one exact attempt through intent, Docker label, enrichments, handle, and settlement", async () => {
-    const controlledEnvironment = [
-      "ENVIRONMENT",
-      "HEADSCALE_API_KEY",
-      ...HEADSCALE_ENDPOINT_ENVIRONMENT_KEYS,
-      "STEWARD_API_URL",
-      "AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK",
-      "AGENT_TOKEN_PRIVATE_KEY_PEM",
-      "ELIZA_AGENT_TOKEN_PRIVATE_KEY_PEM",
-      "ELIZA_CLOUD_SERVICE_TOKEN",
-      "AGENT_TOKEN_SERVICE_TOKEN",
-      "STEWARD_ENABLE_TRADE_PLUGIN",
-    ] as const;
-    const savedEnvironment = new Map(
-      controlledEnvironment.map((key) => [key, process.env[key]] as const),
-    );
-    process.env.ENVIRONMENT = "production";
-    process.env.HEADSCALE_API_KEY = "headscale-test-key";
-    for (const key of controlledEnvironment.filter(
-      (key) => key !== "ENVIRONMENT" && key !== "HEADSCALE_API_KEY",
-    )) {
-      delete process.env[key];
-    }
-    process.env.STEWARD_API_URL = "https://steward.example.test";
-
-    const events: string[] = [];
-    const callbackHandles: SandboxHandle[] = [];
-    let strictCleanupIdentity:
-      | {
-          sandboxId: string;
-          nodeId: unknown;
-          nodeRecordId: unknown;
-          nodeHostname: unknown;
-          nodeSshPort: unknown;
-          nodeSshUser: unknown;
-          nodeHostKeyFingerprint: unknown;
-          replacementSecretCleanupVersion: unknown;
-          containerName: unknown;
-          replacementAttemptId: unknown;
-          vpnNodeName: unknown;
-          previousVpnNodeId: unknown;
-          vpnRegistrationStartedAt: unknown;
-          allocationCounted: unknown;
-          containerId: unknown;
-          vpnNodeId: unknown;
-        }
-      | undefined;
-    const persistStrictCleanupStage = async (
-      stage: "intent" | "created" | "vpn",
-      candidate: SandboxHandle,
-    ): Promise<void> => {
-      const metadata = candidate.metadata ?? {};
-      const incoming = {
-        sandboxId: candidate.sandboxId,
-        nodeId: metadata.nodeId,
-        nodeRecordId: metadata.nodeRecordId,
-        nodeHostname: metadata.hostname,
-        nodeSshPort: metadata.nodeSshPort,
-        nodeSshUser: metadata.nodeSshUser,
-        nodeHostKeyFingerprint: metadata.nodeHostKeyFingerprint,
-        replacementSecretCleanupVersion: metadata.replacementSecretCleanupVersion,
-        containerName: metadata.containerName,
-        replacementAttemptId: metadata.replacementAttemptId,
-        vpnNodeName: metadata.vpnNodeName ?? null,
-        previousVpnNodeId: metadata.previousVpnNodeId ?? null,
-        vpnRegistrationStartedAt: metadata.vpnRegistrationStartedAt ?? null,
-        allocationCounted: metadata.allocationCounted,
-        containerId: metadata.containerId ?? null,
-        vpnNodeId: metadata.vpnNodeId ?? null,
-      };
-      if (strictCleanupIdentity) {
-        for (const key of [
-          "sandboxId",
-          "nodeId",
-          "nodeRecordId",
-          "nodeHostname",
-          "nodeSshPort",
-          "nodeSshUser",
-          "nodeHostKeyFingerprint",
-          "replacementSecretCleanupVersion",
-          "containerName",
-          "replacementAttemptId",
-          "vpnNodeName",
-          "previousVpnNodeId",
-          "vpnRegistrationStartedAt",
-          "allocationCounted",
-        ] as const) {
-          if (strictCleanupIdentity[key] !== incoming[key]) {
-            throw new Error(`strict cleanup identity changed at ${stage}: ${key}`);
-          }
-        }
-        if (
-          strictCleanupIdentity.containerId !== null &&
-          incoming.containerId !== strictCleanupIdentity.containerId
-        ) {
-          throw new Error(`strict Docker identity changed at ${stage}`);
-        }
-        if (
-          strictCleanupIdentity.vpnNodeId !== null &&
-          incoming.vpnNodeId !== strictCleanupIdentity.vpnNodeId
-        ) {
-          throw new Error(`strict VPN identity changed at ${stage}`);
-        }
-        strictCleanupIdentity = {
-          ...incoming,
-          containerId: strictCleanupIdentity.containerId ?? incoming.containerId,
-          vpnNodeId: strictCleanupIdentity.vpnNodeId ?? incoming.vpnNodeId,
-        };
-      } else {
-        strictCleanupIdentity = incoming;
-      }
-      events.push(`persist-${stage}`);
-      callbackHandles.push(candidate);
-    };
-    let dockerCreateCommand = "";
-    spyOn(dockerNodeManager, "getAvailableNode").mockResolvedValue(NODE);
-    spyOn(dockerPortAllocation, "getUsedDockerHostPorts").mockResolvedValue(new Set());
-    spyOn(stewardTenantConfig, "ensureStewardTenant").mockImplementation(async () => {
-      events.push("steward");
-      return { tenantId: "tenant-test", isNew: false };
-    });
-    spyOn(headscaleIntegration, "prepareContainerVPN").mockImplementation(async () => {
-      events.push("headscale-prepare");
-      return {
-        preAuthKey: "preauth-test",
-        envVars: {
-          HEADSCALE_URL: "https://headscale.example.test",
-          TS_AUTHKEY: "preauth-test",
-          TS_HOSTNAME: "replacement-11111111-111",
-          TS_STATE_DIR: "/var/lib/tailscale",
-          TS_EXTRA_ARGS: "--accept-routes",
-        },
-        previousNodeId: PREVIOUS_VPN_NODE_ID,
-      };
-    });
-    spyOn(headscaleIntegration, "waitForVPNRegistration").mockImplementation(async () => {
-      events.push("vpn-registration");
-      return {
-        ip: "100.64.0.42",
-        nodeId: EXACT_VPN_NODE_ID,
-        rename: { outcome: "succeeded" },
-      };
-    });
-    const ssh = {
-      exec: mock(async (command: string) => {
-        if (command.includes("docker network inspect")) events.push("network-ready");
-        if (command.startsWith("docker start")) events.push("docker-start");
-        if (command.includes("tailscale --socket=/tmp/tailscaled.sock ip -4")) {
-          events.push("tailnet-bound");
-          return "100.64.0.42\n";
-        }
-        return "";
-      }),
-      execStdin: mock(async (command: string) => {
-        if (command.includes("docker create")) {
-          events.push("docker-create");
-          dockerCreateCommand = command;
-          return CONTAINER_ID;
-        }
-        if (command.includes("steward-agent-register")) {
-          events.push("steward-register");
-          return JSON.stringify({ token: "steward-token" });
-        }
-        return "";
-      }),
-    };
-    spyOn(DockerSSHClient, "getClient").mockImplementation(() => {
-      events.push("ssh-client");
-      return ssh as unknown as DockerSSHClient;
-    });
-    const provider = replacementProvider({ now: () => Date.parse(REGISTRATION_STARTED_AT) });
-
-    let handle: SandboxHandle;
-    try {
-      handle = await provider.create(
-        replacementCreateConfig({
-          replacementAttemptId: ATTEMPT_ID,
-          dockerImage: "eliza-agent:test",
-          environmentVars: {
-            ELIZAOS_CLOUD_BASE_URL: "https://api.example.test/api/v1",
-          },
-          reclaimStaleVpnNode: false,
-          onReplacementCreateAttemptStarted: async (started) => {
-            events.push("attempt-started");
-            expect(started).toEqual({ replacementAttemptId: ATTEMPT_ID });
-            expect(Object.isFrozen(started)).toBe(true);
-          },
-          onReplacementCreateIntent: async (intentHandle) => {
-            await persistStrictCleanupStage("intent", intentHandle);
-          },
-          onReplacementCreated: async (createdHandle) => {
-            await persistStrictCleanupStage("created", createdHandle);
-          },
-          onReplacementVpnRegistered: async (vpnHandle) => {
-            await persistStrictCleanupStage("vpn", vpnHandle);
-          },
-          onReplacementCreateSettled: async (settlement) => {
-            events.push(`settlement-${settlement.outcome}`);
-            expect(settlement.replacementAttemptId).toBe(ATTEMPT_ID);
-            expect(Object.isFrozen(settlement)).toBe(true);
-          },
-        }),
+  test.each(["funded", "rejected"] as const)(
+    "binds one exact attempt through intent, Docker label, enrichments, handle, and settlement (%s)",
+    async (fundingMode) => {
+      const controlledEnvironment = [
+        "ENVIRONMENT",
+        "HEADSCALE_API_KEY",
+        ...HEADSCALE_ENDPOINT_ENVIRONMENT_KEYS,
+        "STEWARD_API_URL",
+        "AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK",
+        "AGENT_TOKEN_PRIVATE_KEY_PEM",
+        "ELIZA_AGENT_TOKEN_PRIVATE_KEY_PEM",
+        "ELIZA_CLOUD_SERVICE_TOKEN",
+        "AGENT_TOKEN_SERVICE_TOKEN",
+        "STEWARD_ENABLE_TRADE_PLUGIN",
+      ] as const;
+      const savedEnvironment = new Map(
+        controlledEnvironment.map((key) => [key, process.env[key]] as const),
       );
-    } finally {
-      for (const [key, value] of savedEnvironment) {
-        if (value === undefined) delete process.env[key];
-        else process.env[key] = value;
+      process.env.ENVIRONMENT = "production";
+      process.env.HEADSCALE_API_KEY = "headscale-test-key";
+      for (const key of controlledEnvironment.filter(
+        (key) => key !== "ENVIRONMENT" && key !== "HEADSCALE_API_KEY",
+      )) {
+        delete process.env[key];
       }
-    }
+      process.env.STEWARD_API_URL = "https://steward.example.test";
 
-    expect(events[0]).toBe("attempt-started");
-    expect(events.indexOf("attempt-started")).toBeLessThan(events.indexOf("steward"));
-    expect(events.indexOf("attempt-started")).toBeLessThan(events.indexOf("headscale-prepare"));
-    expect(events.indexOf("attempt-started")).toBeLessThan(events.indexOf("ssh-client"));
-    expect(events.indexOf("headscale-prepare")).toBeLessThan(events.indexOf("persist-intent"));
-    expect(events.indexOf("steward-register")).toBeLessThan(events.indexOf("persist-intent"));
-    expect(events.indexOf("network-ready")).toBeLessThan(events.indexOf("persist-intent"));
-    expect(events.indexOf("persist-intent")).toBeLessThan(events.indexOf("docker-create"));
-    expect(events.indexOf("persist-created")).toBeLessThan(events.indexOf("docker-start"));
-    expect(events.indexOf("vpn-registration")).toBeLessThan(events.indexOf("tailnet-bound"));
-    expect(events.indexOf("tailnet-bound")).toBeLessThan(events.indexOf("persist-vpn"));
-    expect(events.at(-1)).toBe("settlement-succeeded");
-    expect(dockerCreateCommand).toContain(`ai.elizaos.replacement-attempt=${ATTEMPT_ID}`);
-    expect(callbackHandles).toHaveLength(3);
-    expect(callbackHandles.map((candidate) => candidate.metadata?.replacementAttemptId)).toEqual([
-      ATTEMPT_ID,
-      ATTEMPT_ID,
-      ATTEMPT_ID,
-    ]);
-    expect(callbackHandles[0]?.metadata).toMatchObject({
-      vpnNodeName: "replacement-11111111-111",
-      vpnRegistrationStartedAt: REGISTRATION_STARTED_AT,
-      previousVpnNodeId: PREVIOUS_VPN_NODE_ID,
-    });
-    expect(callbackHandles[1]?.metadata).toMatchObject({
-      containerId: CONTAINER_ID.slice(0, 12),
-      vpnNodeName: "replacement-11111111-111",
-      vpnRegistrationStartedAt: REGISTRATION_STARTED_AT,
-      previousVpnNodeId: PREVIOUS_VPN_NODE_ID,
-    });
-    expect(callbackHandles[2]?.metadata).toMatchObject({
-      containerId: CONTAINER_ID.slice(0, 12),
-      vpnNodeId: EXACT_VPN_NODE_ID,
-      replacementAttemptId: ATTEMPT_ID,
-    });
-    expect(handle.metadata).toMatchObject({
-      containerId: CONTAINER_ID.slice(0, 12),
-      vpnNodeId: EXACT_VPN_NODE_ID,
-      replacementAttemptId: ATTEMPT_ID,
-    });
-    expect(strictCleanupIdentity).toMatchObject({
-      nodeRecordId: NODE.id,
-      nodeHostname: NODE.hostname,
-      nodeSshPort: NODE.ssh_port,
-      nodeSshUser: NODE.ssh_user,
-      nodeHostKeyFingerprint: NODE.host_key_fingerprint,
-      replacementSecretCleanupVersion: 1,
-      replacementAttemptId: ATTEMPT_ID,
-      containerId: CONTAINER_ID.slice(0, 12),
-      vpnNodeId: EXACT_VPN_NODE_ID,
-      vpnNodeName: "replacement-11111111-111",
-      vpnRegistrationStartedAt: REGISTRATION_STARTED_AT,
-    });
-  });
+      const events: string[] = [];
+      const callbackHandles: SandboxHandle[] = [];
+      let strictCleanupIdentity:
+        | {
+            sandboxId: string;
+            nodeId: unknown;
+            nodeRecordId: unknown;
+            nodeHostname: unknown;
+            nodeSshPort: unknown;
+            nodeSshUser: unknown;
+            nodeHostKeyFingerprint: unknown;
+            replacementSecretCleanupVersion: unknown;
+            containerName: unknown;
+            replacementAttemptId: unknown;
+            vpnNodeName: unknown;
+            previousVpnNodeId: unknown;
+            vpnRegistrationStartedAt: unknown;
+            allocationCounted: unknown;
+            containerId: unknown;
+            vpnNodeId: unknown;
+          }
+        | undefined;
+      const persistStrictCleanupStage = async (
+        stage: "intent" | "created" | "vpn",
+        candidate: SandboxHandle,
+      ): Promise<void> => {
+        const metadata = candidate.metadata ?? {};
+        const incoming = {
+          sandboxId: candidate.sandboxId,
+          nodeId: metadata.nodeId,
+          nodeRecordId: metadata.nodeRecordId,
+          nodeHostname: metadata.hostname,
+          nodeSshPort: metadata.nodeSshPort,
+          nodeSshUser: metadata.nodeSshUser,
+          nodeHostKeyFingerprint: metadata.nodeHostKeyFingerprint,
+          replacementSecretCleanupVersion: metadata.replacementSecretCleanupVersion,
+          containerName: metadata.containerName,
+          replacementAttemptId: metadata.replacementAttemptId,
+          vpnNodeName: metadata.vpnNodeName ?? null,
+          previousVpnNodeId: metadata.previousVpnNodeId ?? null,
+          vpnRegistrationStartedAt: metadata.vpnRegistrationStartedAt ?? null,
+          allocationCounted: metadata.allocationCounted,
+          containerId: metadata.containerId ?? null,
+          vpnNodeId: metadata.vpnNodeId ?? null,
+        };
+        if (strictCleanupIdentity) {
+          for (const key of [
+            "sandboxId",
+            "nodeId",
+            "nodeRecordId",
+            "nodeHostname",
+            "nodeSshPort",
+            "nodeSshUser",
+            "nodeHostKeyFingerprint",
+            "replacementSecretCleanupVersion",
+            "containerName",
+            "replacementAttemptId",
+            "vpnNodeName",
+            "previousVpnNodeId",
+            "vpnRegistrationStartedAt",
+            "allocationCounted",
+          ] as const) {
+            if (strictCleanupIdentity[key] !== incoming[key]) {
+              throw new Error(`strict cleanup identity changed at ${stage}: ${key}`);
+            }
+          }
+          if (
+            strictCleanupIdentity.containerId !== null &&
+            incoming.containerId !== strictCleanupIdentity.containerId
+          ) {
+            throw new Error(`strict Docker identity changed at ${stage}`);
+          }
+          if (
+            strictCleanupIdentity.vpnNodeId !== null &&
+            incoming.vpnNodeId !== strictCleanupIdentity.vpnNodeId
+          ) {
+            throw new Error(`strict VPN identity changed at ${stage}`);
+          }
+          strictCleanupIdentity = {
+            ...incoming,
+            containerId: strictCleanupIdentity.containerId ?? incoming.containerId,
+            vpnNodeId: strictCleanupIdentity.vpnNodeId ?? incoming.vpnNodeId,
+          };
+        } else {
+          strictCleanupIdentity = incoming;
+        }
+        events.push(`persist-${stage}`);
+        callbackHandles.push(candidate);
+      };
+      let dockerCreateCommand = "";
+      spyOn(dockerNodeManager, "getAvailableNode").mockResolvedValue(NODE);
+      spyOn(dockerPortAllocation, "getUsedDockerHostPorts").mockResolvedValue(new Set());
+      spyOn(stewardTenantConfig, "ensureStewardTenant").mockImplementation(async () => {
+        events.push("steward");
+        return { tenantId: "tenant-test", isNew: false };
+      });
+      spyOn(headscaleIntegration, "prepareContainerVPN").mockImplementation(async () => {
+        events.push("headscale-prepare");
+        return {
+          preAuthKey: "preauth-test",
+          envVars: {
+            HEADSCALE_URL: "https://headscale.example.test",
+            TS_AUTHKEY: "preauth-test",
+            TS_HOSTNAME: "replacement-11111111-111",
+            TS_STATE_DIR: "/var/lib/tailscale",
+            TS_EXTRA_ARGS: "--accept-routes",
+          },
+          previousNodeId: PREVIOUS_VPN_NODE_ID,
+        };
+      });
+      let registrationOptions:
+        | Parameters<typeof headscaleIntegration.waitForVPNRegistration>[2]
+        | undefined;
+      spyOn(headscaleIntegration, "waitForVPNRegistration").mockImplementation(
+        async (_nodeName, _timeoutMs, options) => {
+          events.push("vpn-registration");
+          registrationOptions = options;
+          return {
+            ip: "100.64.0.42",
+            nodeId: EXACT_VPN_NODE_ID,
+            rename: { outcome: "succeeded" },
+          };
+        },
+      );
+      const ssh = {
+        exec: mock(async (command: string) => {
+          if (command.includes("docker network inspect")) events.push("network-ready");
+          if (command.startsWith("docker start")) events.push("docker-start");
+          if (command.includes("tailscale --socket=/tmp/tailscaled.sock ip -4")) {
+            events.push("tailnet-bound");
+            return "100.64.0.42\n";
+          }
+          return "";
+        }),
+        execStdin: mock(async (command: string) => {
+          if (command.includes("docker create")) {
+            events.push("docker-create");
+            dockerCreateCommand = command;
+            return CONTAINER_ID;
+          }
+          if (command.includes("steward-agent-register")) {
+            events.push("steward-register");
+            return JSON.stringify({ token: "steward-token" });
+          }
+          return "";
+        }),
+      };
+      spyOn(DockerSSHClient, "getClient").mockImplementation(() => {
+        events.push("ssh-client");
+        return ssh as unknown as DockerSSHClient;
+      });
+      const provider = replacementProvider({ now: () => Date.parse(REGISTRATION_STARTED_AT) });
+
+      let handle: SandboxHandle | undefined;
+      let rejected: unknown;
+      try {
+        handle = await provider.create(
+          replacementCreateConfig({
+            replacementAttemptId: ATTEMPT_ID,
+            dockerImage: "eliza-agent:test",
+            environmentVars: {
+              ELIZAOS_CLOUD_BASE_URL: "https://api.example.test/api/v1",
+            },
+            reclaimStaleVpnNode: false,
+            onReplacementCreateAttemptStarted: async (started) => {
+              events.push("attempt-started");
+              expect(started).toEqual({ replacementAttemptId: ATTEMPT_ID });
+              expect(Object.isFrozen(started)).toBe(true);
+            },
+            onReplacementCreateIntent: async (intentHandle) => {
+              await persistStrictCleanupStage("intent", intentHandle);
+            },
+            onReplacementCreated: async (createdHandle) => {
+              await persistStrictCleanupStage("created", createdHandle);
+            },
+            startFundedContainer: async (createdHandle: SandboxHandle) => {
+              events.push("funded-start");
+              expect(createdHandle.metadata?.containerId).toBe(CONTAINER_ID);
+              if (fundingMode === "rejected") throw new Error("funding rejected before start");
+            },
+            onReplacementVpnRegistered: async (vpnHandle) => {
+              await persistStrictCleanupStage("vpn", vpnHandle);
+            },
+            onReplacementCreateSettled: async (settlement) => {
+              events.push(`settlement-${settlement.outcome}`);
+              expect(settlement.replacementAttemptId).toBe(ATTEMPT_ID);
+              expect(Object.isFrozen(settlement)).toBe(true);
+            },
+          }),
+        );
+      } catch (error) {
+        // error-policy:J1 retain the deliberately rejected funding outcome for assertions.
+        if (fundingMode !== "rejected") throw error;
+        rejected = error;
+      } finally {
+        for (const [key, value] of savedEnvironment) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
+      }
+
+      expect(events).not.toContain("docker-start");
+      expect(events.indexOf("persist-created")).toBeLessThan(events.indexOf("funded-start"));
+      if (fundingMode === "rejected") {
+        expect(rejected).toBeDefined();
+        expect(events).not.toContain("settlement-succeeded");
+        return;
+      }
+      if (!handle) throw new Error("Missing successful provider handle");
+      const expectedContainerId = CONTAINER_ID;
+      expect(events[0]).toBe("attempt-started");
+      expect(events.indexOf("attempt-started")).toBeLessThan(events.indexOf("steward"));
+      expect(events.indexOf("attempt-started")).toBeLessThan(events.indexOf("headscale-prepare"));
+      expect(events.indexOf("attempt-started")).toBeLessThan(events.indexOf("ssh-client"));
+      expect(events.indexOf("headscale-prepare")).toBeLessThan(events.indexOf("persist-intent"));
+      expect(events.indexOf("steward-register")).toBeLessThan(events.indexOf("persist-intent"));
+      expect(events.indexOf("network-ready")).toBeLessThan(events.indexOf("persist-intent"));
+      expect(events.indexOf("persist-intent")).toBeLessThan(events.indexOf("docker-create"));
+      expect(events.indexOf("persist-created")).toBeLessThan(events.indexOf("funded-start"));
+      expect(events.indexOf("vpn-registration")).toBeLessThan(events.indexOf("tailnet-bound"));
+      expect(registrationOptions?.registrationStartedAt?.toISOString()).toBe(
+        REGISTRATION_STARTED_AT,
+      );
+      expect(events.indexOf("tailnet-bound")).toBeLessThan(events.indexOf("persist-vpn"));
+      expect(events.at(-1)).toBe("settlement-succeeded");
+      expect(dockerCreateCommand).toContain(`ai.elizaos.replacement-attempt=${ATTEMPT_ID}`);
+      expect(callbackHandles).toHaveLength(3);
+      expect(callbackHandles.map((candidate) => candidate.metadata?.replacementAttemptId)).toEqual([
+        ATTEMPT_ID,
+        ATTEMPT_ID,
+        ATTEMPT_ID,
+      ]);
+      expect(callbackHandles[0]?.metadata).toMatchObject({
+        vpnNodeName: "replacement-11111111-111",
+        vpnRegistrationStartedAt: REGISTRATION_STARTED_AT,
+        previousVpnNodeId: PREVIOUS_VPN_NODE_ID,
+      });
+      expect(callbackHandles[1]?.metadata).toMatchObject({
+        containerId: expectedContainerId,
+        vpnNodeName: "replacement-11111111-111",
+        vpnRegistrationStartedAt: REGISTRATION_STARTED_AT,
+        previousVpnNodeId: PREVIOUS_VPN_NODE_ID,
+      });
+      expect(callbackHandles[2]?.metadata).toMatchObject({
+        containerId: expectedContainerId,
+        vpnNodeId: EXACT_VPN_NODE_ID,
+        replacementAttemptId: ATTEMPT_ID,
+      });
+      expect(handle.metadata).toMatchObject({
+        containerId: expectedContainerId,
+        vpnNodeId: EXACT_VPN_NODE_ID,
+        replacementAttemptId: ATTEMPT_ID,
+      });
+      expect(strictCleanupIdentity).toMatchObject({
+        nodeRecordId: NODE.id,
+        nodeHostname: NODE.hostname,
+        nodeSshPort: NODE.ssh_port,
+        nodeSshUser: NODE.ssh_user,
+        nodeHostKeyFingerprint: NODE.host_key_fingerprint,
+        replacementSecretCleanupVersion: 1,
+        replacementAttemptId: ATTEMPT_ID,
+        containerId: expectedContainerId,
+        vpnNodeId: EXACT_VPN_NODE_ID,
+        vpnNodeName: "replacement-11111111-111",
+        vpnRegistrationStartedAt: REGISTRATION_STARTED_AT,
+      });
+    },
+  );
 
   test("verifies attempt label and id before exact-node cleanup without releasing capacity", async () => {
     const { primary: findNode } = stubNodeLookup();
@@ -2907,30 +3163,34 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     expect(deleteVpn).toHaveBeenCalledWith("1408");
   });
 
-  test("fails closed when multiple new VPN registrations match the same intent", async () => {
+  test("retires every VPN registration in the exact failed-intent window", async () => {
     stubNodeLookup();
     stubSsh(async () => {
       throw new Error(`Error: No such object: ${CONTAINER_NAME}`);
     });
-    spyOn(headscaleClient, "listNodesStrict").mockResolvedValue([
-      headscaleNode("1409", "agent-replacement", "2026-07-23T00:05:01.000Z"),
-      headscaleNode("1410", "agent-replacement-ab12cd34", "2026-07-23T00:05:02.000Z"),
-    ]);
+    const listNodes = spyOn(headscaleClient, "listNodesStrict")
+      .mockResolvedValueOnce([
+        headscaleNode("1409", "agent-replacement", "2026-07-23T00:05:01.000Z"),
+        headscaleNode("1410", "agent-replacement-ab12cd34", "2026-07-23T00:05:02.000Z"),
+      ])
+      .mockResolvedValue([]);
     const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
     const provider = replacementProvider();
 
-    await expect(
-      provider.stopOnSpecificNodeForReplacement(
-        NODE.node_id,
-        CONTAINER_NAME,
-        null,
-        legacyReplacementIdentity(),
-      ),
-    ).rejects.toThrow("2 matching registrations");
-    expect(deleteVpn).not.toHaveBeenCalled();
+    await provider.stopOnSpecificNodeForReplacement(
+      NODE.node_id,
+      CONTAINER_NAME,
+      null,
+      legacyReplacementIdentity(),
+    );
+
+    expect(listNodes).toHaveBeenCalledTimes(4);
+    expect(deleteVpn).toHaveBeenCalledTimes(2);
+    expect(deleteVpn).toHaveBeenNthCalledWith(1, "1409");
+    expect(deleteVpn).toHaveBeenNthCalledWith(2, "1410");
   });
 
-  test("fails closed when ambiguity appears after an initially empty Headscale list", async () => {
+  test("retires retry fan-out that appears after an initially empty Headscale list", async () => {
     stubNodeLookup();
     stubSsh(async () => {
       throw new Error(`Error: No such object: ${CONTAINER_NAME}`);
@@ -2940,7 +3200,58 @@ describe("DockerSandboxProvider replacement cleanup", () => {
       .mockResolvedValueOnce([
         headscaleNode("1411", "agent-replacement", "2026-07-23T00:05:01.000Z"),
         headscaleNode("1412", "agent-replacement-ab12cd34", "2026-07-23T00:05:02.000Z"),
-      ]);
+      ])
+      .mockResolvedValue([]);
+    const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
+    const provider = replacementProvider();
+
+    await provider.stopOnSpecificNodeForReplacement(
+      NODE.node_id,
+      CONTAINER_NAME,
+      null,
+      legacyReplacementIdentity(),
+    );
+
+    expect(listNodes).toHaveBeenCalledTimes(4);
+    expect(deleteVpn).toHaveBeenCalledTimes(2);
+    expect(deleteVpn).toHaveBeenNthCalledWith(1, "1411");
+    expect(deleteVpn).toHaveBeenNthCalledWith(2, "1412");
+  });
+
+  test("preserves a same-name VPN registration created after the failed intent window", async () => {
+    stubNodeLookup();
+    stubSsh(async () => {
+      throw new Error(`Error: No such object: ${CONTAINER_NAME}`);
+    });
+    const laterNode = headscaleNode(
+      "1413",
+      "agent-replacement-ab12cd34",
+      "2026-07-23T00:12:00.000Z",
+    );
+    const listNodes = spyOn(headscaleClient, "listNodesStrict").mockResolvedValue([laterNode]);
+    const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
+    const provider = replacementProvider();
+
+    await provider.stopOnSpecificNodeForReplacement(
+      NODE.node_id,
+      CONTAINER_NAME,
+      null,
+      legacyReplacementIdentity(),
+    );
+
+    expect(listNodes).toHaveBeenCalledTimes(4);
+    expect(deleteVpn).not.toHaveBeenCalled();
+  });
+
+  test("fails closed before deleting an implausibly large VPN registration set", async () => {
+    stubNodeLookup();
+    stubSsh(async () => {
+      throw new Error(`Error: No such object: ${CONTAINER_NAME}`);
+    });
+    const registrations = Array.from({ length: 33 }, (_, index) =>
+      headscaleNode(String(1500 + index), "agent-replacement-ab12cd34", "2026-07-23T00:05:01.000Z"),
+    );
+    spyOn(headscaleClient, "listNodesStrict").mockResolvedValue(registrations);
     const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
     const provider = replacementProvider();
 
@@ -2951,8 +3262,8 @@ describe("DockerSandboxProvider replacement cleanup", () => {
         null,
         legacyReplacementIdentity(),
       ),
-    ).rejects.toThrow("2 matching registrations");
-    expect(listNodes).toHaveBeenCalledTimes(2);
+    ).rejects.toThrow("matching registration count exceeds the cleanup bound");
+
     expect(deleteVpn).not.toHaveBeenCalled();
   });
 
@@ -3009,6 +3320,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
         organizationId: "22222222-2222-4222-8222-222222222222",
         executionTier: "dedicated-always",
         environmentVars: {},
+        startFundedContainer: async () => {},
         onReplacementCreateIntent: async () => {},
       }),
     ).rejects.toThrow("port is already allocated");
@@ -3046,6 +3358,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
         organizationId: "22222222-2222-4222-8222-222222222222",
         executionTier: "dedicated-always",
         environmentVars: {},
+        startFundedContainer: async () => {},
       }),
     ).rejects.toBe(unresolved);
     expect(createOnce).toHaveBeenCalledTimes(1);

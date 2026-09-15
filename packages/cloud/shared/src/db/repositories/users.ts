@@ -9,6 +9,7 @@ import {
   sharedRuntimeWorldId,
   sharedTodoStorageScope,
 } from "../../lib/services/shared-runtime/shared-runtime-storage-identity";
+import { isUntouchedSignupOpeningBalance, SIGNUP_CREDIT_POLICY } from "../../lib/signup-credits";
 import type { DbTransaction } from "../client";
 import { type SqlExecutor, sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
@@ -275,16 +276,20 @@ function hasOnlyEmptySettings(value: unknown): boolean {
   );
 }
 
-function isZeroBalance(value: unknown): boolean {
+function signupOpeningBalanceAmount(value: unknown): number | undefined {
   const amount = typeof value === "number" ? value : Number(String(value));
-  return Number.isFinite(amount) && amount === 0;
+  return Number.isFinite(amount) ? amount : undefined;
 }
 
 function isPristineProvisionalOrganization(organization: Organization): boolean {
+  const balanceUsd = signupOpeningBalanceAmount(organization.credit_balance);
   return (
     organization.is_active &&
-    isZeroBalance(organization.credit_balance) &&
-    organization.balance_revision === 0 &&
+    balanceUsd !== undefined &&
+    isUntouchedSignupOpeningBalance({
+      balanceUsd,
+      balanceRevision: organization.balance_revision,
+    }) &&
     hasOnlyEmptySettings(organization.settings) &&
     organization.stripe_customer_id === null &&
     organization.billing_email === null &&
@@ -1412,6 +1417,24 @@ export class UsersRepository {
       // deleting the source account would orphan it, so convergence stops.
       if (sourceSchedulingState.has_state) return { status: "phone_account_mature" };
 
+      let retainedOrganization = targetOrganization;
+      const sourceOpeningBalance = signupOpeningBalanceAmount(sourceOrganization.credit_balance);
+      const targetOpeningBalance = signupOpeningBalanceAmount(targetOrganization.credit_balance);
+      if (
+        sourceOpeningBalance === SIGNUP_CREDIT_POLICY.automaticGrantUsd &&
+        targetOpeningBalance === SIGNUP_CREDIT_POLICY.legacyOpeningBalanceUsd
+      ) {
+        const [updatedOrganization] = await tx
+          .update(organizations)
+          .set({ credit_balance: SIGNUP_CREDIT_POLICY.openingBalanceUsd })
+          .where(eq(organizations.id, targetOrganization.id))
+          .returning();
+        if (!updatedOrganization) {
+          throw new Error("Telegram target organization changed during convergence");
+        }
+        retainedOrganization = updatedOrganization;
+      }
+
       const [canonicalStewardOwner] = await tx
         .select({ id: users.id })
         .from(users)
@@ -1532,7 +1555,7 @@ export class UsersRepository {
         status: "committed",
         receipt,
         user: mergedUser,
-        organization: targetOrganization,
+        organization: retainedOrganization,
       };
     });
   }
@@ -1824,7 +1847,7 @@ export class UsersRepository {
         .values({
           name: params.organizationName,
           slug: params.organizationSlug,
-          credit_balance: "0.00",
+          credit_balance: SIGNUP_CREDIT_POLICY.openingBalanceUsd,
         })
         .returning();
       if (!organization) {
@@ -2292,7 +2315,7 @@ export class UsersRepository {
         .values({
           name: params.organizationName,
           slug: params.organizationSlug,
-          credit_balance: "0.00",
+          credit_balance: SIGNUP_CREDIT_POLICY.openingBalanceUsd,
         })
         .returning();
       if (!organization) throw new Error(`Failed to create ${label} personal organization`);

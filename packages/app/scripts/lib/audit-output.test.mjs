@@ -1,7 +1,10 @@
-/** Proves app-audit cleanup cannot target the filesystem, repository, or app root. */
+/** Proves aesthetic-audit cleanup cannot target filesystem or workspace roots. */
 import { describe, expect, it } from "bun:test";
 import path from "node:path";
-import { resolveAuditAppOutput } from "./audit-output.mjs";
+import {
+  resolveAuditAppOutput,
+  resolveAuditCloudOutput,
+} from "./audit-output.mjs";
 
 describe("resolveAuditAppOutput", () => {
   const appDir = path.resolve("/workspace/repo/packages/app");
@@ -18,6 +21,9 @@ describe("resolveAuditAppOutput", () => {
         configured: "evidence/current",
       }),
     ).toBe(path.join(appDir, "evidence/current"));
+    expect(resolveAuditCloudOutput({ appDir, repoRoot })).toBe(
+      path.join(appDir, "aesthetic-audit-output-cloud"),
+    );
   });
 
   it("rejects destructive roots", () => {

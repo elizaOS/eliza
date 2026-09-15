@@ -109,11 +109,11 @@ export interface ChatMessageProps {
    */
   onLongPressCopy?: (text: string) => void;
   /**
-   * Retry a recoverable failed assistant turn (glass) — re-sends the preceding
-   * user turn. Rendered as an always-visible pill (not gated behind the reveal
-   * row) so a stalled turn isn't a dead end.
+   * Recover a failed assistant turn using its typed retry contract. Durable
+   * reply recovery must not resend the user turn. The control remains visible
+   * without opening the message action row.
    */
-  onRetry?: (messageId: string) => void;
+  onRetry?: (messageId: string) => void | Promise<void>;
   /** True while THIS message's audio is playing (glass Play ↔ Stop). */
   playing?: boolean;
   /** Collapse glass motion to quick fades (OS reduce-motion). */
@@ -468,6 +468,7 @@ function arePropsEqual(
     a.voiceSpeaker === b.voiceSpeaker &&
     a.failureKind === b.failureKind &&
     a.terminalFailure === b.terminalFailure &&
+    a.replyRecoveryAvailable === b.replyRecoveryAvailable &&
     a.attachments === b.attachments &&
     // Inline tool-call rows: a mode:"tool" stream update replaces `toolEvents`
     // by reference while every other compared field stays identical, so without
@@ -514,6 +515,7 @@ export const ChatMessage = memo(function ChatMessage({
   const [editBubbleWidth, setEditBubbleWidth] = useState<number | null>(null);
   const [draftText, setDraftText] = useState(message.text);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [retryPending, setRetryPending] = useState(false);
   const articleRef = useRef<HTMLDivElement | null>(null);
   const editTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const tapStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -937,6 +939,7 @@ export const ChatMessage = memo(function ChatMessage({
     // hook the shell tests key off.
     if (
       isAssistant &&
+      !message.replyRecoveryAvailable &&
       (message.failureKind === "no_provider" ||
         message.failureKind === "insufficient_credits")
     ) {
@@ -998,16 +1001,16 @@ export const ChatMessage = memo(function ChatMessage({
     const hasInteractiveWidget =
       isAssistant && messageHasInteractiveWidget(message.text);
     const bubbleInteractive = hasActions && !isEditing && !hasInteractiveWidget;
-    // A recoverable assistant failure gets a one-tap Retry that re-sends the
-    // preceding user turn. Permanent gates stay on the shared non-retry
-    // contract (`no_provider`, credits, missing capability).
+    // Durable reply recovery is distinct from retrying an action. The server
+    // advertises it only when authoritative stored results can ground a reply.
     const canRetry =
       isAssistant &&
       !!onRetry &&
-      !!message.failureKind &&
-      (message.terminalFailure
-        ? message.terminalFailure.transient
-        : isRetryableChatFailureKind(message.failureKind));
+      (message.replyRecoveryAvailable === true ||
+        (!!message.failureKind &&
+          (message.terminalFailure
+            ? message.terminalFailure.transient
+            : isRetryableChatFailureKind(message.failureKind))));
 
     const toggleRevealed = () => {
       if (!hasActions || isEditing) return;
@@ -1020,6 +1023,14 @@ export const ChatMessage = memo(function ChatMessage({
     const handleBubbleClick = (e: MouseEvent<HTMLDivElement>) => {
       if (!bubbleInteractive) return;
       if (isNestedInteractiveTarget(e.currentTarget, e.target)) return;
+      // Hover already reveals desktop actions. Treat the following click as an
+      // idempotent reveal so it cannot hide and immediately recreate the row or
+      // resemble a Copy activation. Touch has no hover reveal, so it keeps the
+      // explicit toggle used to dismiss the row.
+      if (supportsHover) {
+        setShowActions(true);
+        return;
+      }
       toggleRevealed();
     };
     const handleBubbleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -1081,25 +1092,28 @@ export const ChatMessage = memo(function ChatMessage({
             data-chat-selectable="true"
             className={cn(
               isFirstRun &&
-                "flex w-full flex-col gap-4 whitespace-normal text-chat-lead text-white",
+                "flex w-full flex-col gap-4 whitespace-normal text-chat-lead",
             )}
           >
             {renderContent?.(message, renderContext) ??
               children ??
               message.text}
           </div>
+          {isAssistant && message.interrupted ? (
+            <div className="mt-2">
+              <Badge variant="outline" tone="danger">
+                {labels.responseInterrupted ?? "Response interrupted"}
+              </Badge>
+            </div>
+          ) : null}
         </>
       );
 
     const bubbleExtraClassName = cn(
       // Tapping a bubble with actions reveals its row (pointer affordance).
       bubbleInteractive && "cursor-pointer",
-      // Give first-run the same conversational bubble structure as chat, with
-      // enough room and contrast for its next-step action. Intrinsic width keeps
-      // short greetings from stretching across the full onboarding column;
-      // longer copy still wraps at the row's existing 22rem maximum.
-      isFirstRun &&
-        "w-fit max-w-full px-4 py-3.5 backdrop-blur-md sm:px-5 sm:py-4",
+      // Intrinsic width keeps short greetings within the onboarding column.
+      isFirstRun && "w-fit max-w-full",
       // Ordinary assistant replies use shadcn's full-width ghost treatment.
       isFlatAssistant && "w-full px-0 py-1",
       // Align the user bubble's bordered text edge with the flat assistant
@@ -1159,7 +1173,11 @@ export const ChatMessage = memo(function ChatMessage({
             hasActionLane &&
               "transition-[padding-bottom] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:duration-100",
             hasActionLane &&
-              (supportsHover ? "pb-6" : accessoryVisible ? "pb-9" : "pb-0"),
+              (supportsHover
+                ? "pb-6"
+                : accessoryVisible
+                  ? "pb-6 pointer-coarse:pb-11"
+                  : "pb-0"),
             isFirstRun
               ? "max-w-[22rem] items-start"
               : isUser
@@ -1171,6 +1189,7 @@ export const ChatMessage = memo(function ChatMessage({
             <ChatBubble
               appearance={bubbleAppearance}
               variant="glass"
+              source={normalizedSource}
               bare={isFlatAssistant}
               tone={isUser ? "user" : "assistant"}
               {...(holdHandlers ?? {})}
@@ -1197,6 +1216,7 @@ export const ChatMessage = memo(function ChatMessage({
             <ChatBubble
               appearance={bubbleAppearance}
               variant="glass"
+              source={normalizedSource}
               bare={isFlatAssistant}
               tone={isUser ? "user" : "assistant"}
               tabIndex={-1}
@@ -1285,22 +1305,35 @@ export const ChatMessage = memo(function ChatMessage({
               </MessageRowFooter>
             </motion.div>
           ) : null}
-          {/* Retry a recoverable failure by re-sending the preceding user turn.
-              Always visible on the failed turn (not gated behind the reveal
-              row) so a stalled turn isn't a dead end the user has to retype. */}
+          {/* Recovery stays visible beside the failed turn. */}
           {canRetry ? (
             <Button
               variant="surfaceAccent"
               size="badge"
               data-testid="thread-line-retry"
-              aria-label="Retry"
-              onClick={(e) => {
+              aria-label={
+                message.replyRecoveryAvailable ? "Regenerate reply" : "Retry"
+              }
+              disabled={retryPending}
+              onClick={async (e) => {
                 e.stopPropagation();
-                onRetry?.(message.id);
+                if (retryPending) return;
+                setRetryPending(true);
+                try {
+                  await onRetry?.(message.id);
+                } finally {
+                  setRetryPending(false);
+                }
               }}
             >
               <RotateCcw className="size-3.5" aria-hidden />
-              Retry
+              {retryPending
+                ? message.replyRecoveryAvailable
+                  ? "Regenerating reply…"
+                  : "Working…"
+                : message.replyRecoveryAvailable
+                  ? "Regenerate reply"
+                  : "Retry"}
             </Button>
           ) : null}
         </MessageRowContent>

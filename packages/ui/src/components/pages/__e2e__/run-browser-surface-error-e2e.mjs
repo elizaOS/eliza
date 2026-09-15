@@ -280,7 +280,7 @@ for (const [vpName, viewport] of [
   );
   assert(
     (await page
-      .locator("text=system WebView cannot provide the isolation")
+      .locator("text=can’t keep in-app browsing isolated")
       .count()) === 1,
     `${vpName}/permanent: capability explanation renders`,
   );

@@ -62,8 +62,11 @@ const sharedRestMessageSend = mock(async (..._args: unknown[]) => ({
 const namespace = {
   getByName: mock(() => ({ fetch: mock(async () => new Response()) })),
 };
+const retainedTasks: Promise<unknown>[] = [];
 const runtimeExecutionCtx = {
-  waitUntil: mock((_promise: Promise<unknown>) => undefined),
+  waitUntil: mock((promise: Promise<unknown>) => {
+    retainedTasks.push(promise);
+  }),
 };
 
 // Network edges of the describe helper: the SSRF-guarded fetch and the
@@ -216,7 +219,9 @@ async function deliver(
   expect(response.status).toBe(200);
   expect(response.headers.get("X-Eliza-Failure-Stage")).toBeNull();
   expect(sharedRestMessageSend).toHaveBeenCalledTimes(1);
-  return sharedRestMessageSend.mock.calls[0]?.[2] as string;
+  const delivered = sharedRestMessageSend.mock.calls[0]?.[2] as string;
+  await Promise.all(retainedTasks.splice(0));
+  return delivered;
 }
 
 async function ledgerRow(messageId: string) {
@@ -246,13 +251,28 @@ async function quotaRows() {
   return rows;
 }
 
-const ENRICHED = `${RAW_MEDIA_MESSAGE}\n\n[Attached image description]\n${DESCRIPTION}`;
+const ENRICHED =
+  `${RAW_MEDIA_MESSAGE}\n\n[Attached image description]\n${DESCRIPTION}` +
+  `\n\n[Attached image URL]\n${MEDIA_URL}`;
 
 beforeAll(async () => {
   const database = getPgliteClientForTests();
   await database.exec(`
-    CREATE TABLE organizations (id uuid PRIMARY KEY);
-    CREATE TABLE users (id uuid PRIMARY KEY);
+    CREATE TABLE organizations (
+      id uuid PRIMARY KEY,
+      is_active boolean NOT NULL DEFAULT true
+    );
+    CREATE TABLE users (
+      id uuid PRIMARY KEY,
+      organization_id uuid REFERENCES organizations(id),
+      is_active boolean NOT NULL DEFAULT true,
+      deleted_at timestamp
+    );
+    CREATE TABLE user_moderation_status (
+      user_id uuid PRIMARY KEY REFERENCES users(id),
+      status text NOT NULL DEFAULT 'clean',
+      total_violations integer NOT NULL DEFAULT 0
+    );
   `);
   const migration = await Bun.file(
     new URL(
@@ -270,8 +290,10 @@ beforeEach(async () => {
       users,
       organizations CASCADE;
     INSERT INTO organizations (id) VALUES ('${ORG_A}'), ('${ORG_B}');
-    INSERT INTO users (id) VALUES ('${USER_A}'), ('${USER_B}');
+    INSERT INTO users (id, organization_id)
+      VALUES ('${USER_A}', '${ORG_A}'), ('${USER_B}', '${ORG_B}');
   `);
+  retainedTasks.length = 0;
   safeFetch.mockClear();
   safeFetch.mockImplementation(
     async () =>
@@ -416,6 +438,19 @@ describe("inbound media admission ledger through the messaging route", () => {
     expect(safeFetch).not.toHaveBeenCalled();
     expect(generateText).not.toHaveBeenCalled();
     expect(await ledgerRow("message-5")).toBeUndefined();
+  });
+
+  test("one combined standing denial blocks the provider before claim or quota mutation", async () => {
+    await getPgliteClientForTests().query(
+      "UPDATE users SET is_active = false WHERE id = $1",
+      [USER_A],
+    );
+
+    expect(await deliver("message-standing-denied")).toBe(RAW_MEDIA_MESSAGE);
+    expect(safeFetch).not.toHaveBeenCalled();
+    expect(generateText).not.toHaveBeenCalled();
+    expect(await ledgerRow("message-standing-denied")).toBeUndefined();
+    expect(await quotaRows()).toEqual([]);
   });
 
   test("a ledger outage fails closed: raw turn, 200, no spend", async () => {

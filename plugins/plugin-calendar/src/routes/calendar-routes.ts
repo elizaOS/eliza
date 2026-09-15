@@ -13,12 +13,18 @@
 import type {
   CreateLifeOpsCalendarEventRequest,
   CreateLifeOpsIcsCalendarSourceRequest,
+  CreateLifeOpsLinkedCalendarLinkRequest,
+  DisconnectLifeOpsLinkedCalendarRequest,
   GetLifeOpsCalendarFeedRequest,
   LifeOpsCalendarEventUpdate,
   LifeOpsCalendarRecurrenceScope,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   ListLifeOpsCalendarsRequest,
+  PurgeLifeOpsCalendarImportedDataRequest,
+  ResolveLifeOpsLinkedCalendarConflictRequest,
+  RunLifeOpsLinkedCalendarReconciliationRequest,
+  SeedLifeOpsCalendarRequest,
   SetLifeOpsCalendarIncludedRequest,
   UpdateLifeOpsIcsCalendarSourceRequest,
 } from "@elizaos/shared";
@@ -32,7 +38,10 @@ export type CalendarRouteRateLimitKey =
   | "calendar_delete"
   | "calendar_source_read"
   | "calendar_source_write"
-  | "calendar_source_sync";
+  | "calendar_source_sync"
+  | "calendar_imported_data_purge"
+  | "calendar_link_read"
+  | "calendar_link_write";
 
 /** The calendar method surface the route handlers invoke. */
 export interface CalendarRouteService {
@@ -84,6 +93,15 @@ export interface CalendarRouteService {
   ): Promise<unknown>;
   deleteIcsCalendarSource(sourceId: string): Promise<void>;
   syncIcsCalendarSource(sourceId: string): Promise<unknown>;
+  purgeImportedCalendarData(
+    request: PurgeLifeOpsCalendarImportedDataRequest,
+  ): Promise<unknown>;
+  seedImportedCalendarData(
+    requestUrl: URL,
+    request: SeedLifeOpsCalendarRequest,
+  ): Promise<unknown>;
+  listLinkedCalendarEvents(): Promise<unknown>;
+  getLinkedCalendarEvent(linkId: string): Promise<unknown>;
 }
 
 /** Host-provided HTTP plumbing. */
@@ -124,6 +142,81 @@ export async function handleCalendarRoutes(
   const { method, pathname, url } = deps;
   const q = url.searchParams;
 
+  if (method === "GET" && pathname === "/api/lifeops/calendar/links") {
+    if (deps.rateLimit("calendar_link_read")) return true;
+    return deps.runRoute(async (service) => {
+      deps.json({ links: await service.listLinkedCalendarEvents() });
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/calendar/links") {
+    if (deps.rateLimit("calendar_link_write")) return true;
+    const body =
+      await deps.readJsonBody<CreateLifeOpsLinkedCalendarLinkRequest>();
+    if (!body) return true;
+    return deps.runRoute(async () => {
+      deps.json(await deps.mutationGateway.linkCalendar(url, body), 201);
+    });
+  }
+
+  const linkedActionMatch = pathname.match(
+    /^\/api\/lifeops\/calendar\/links\/([^/]+)(?:\/(reconcile|resolve|disconnect))?$/,
+  );
+  if (linkedActionMatch) {
+    const linkId = deps.decodePathComponent(linkedActionMatch[1], "link id");
+    if (!linkId) return true;
+    const action = linkedActionMatch[2];
+    if (method === "GET" && action === undefined) {
+      if (deps.rateLimit("calendar_link_read")) return true;
+      return deps.runRoute(async (service) => {
+        deps.json({ link: await service.getLinkedCalendarEvent(linkId) });
+      });
+    }
+    if (method === "POST" && action) {
+      if (deps.rateLimit("calendar_link_write")) return true;
+      if (action === "reconcile") {
+        const body =
+          await deps.readJsonBody<RunLifeOpsLinkedCalendarReconciliationRequest>();
+        if (!body) return true;
+        return deps.runRoute(async () => {
+          deps.json(
+            await deps.mutationGateway.reconcileLinkedCalendar(
+              url,
+              linkId,
+              body,
+            ),
+          );
+        });
+      }
+      if (action === "resolve") {
+        const body =
+          await deps.readJsonBody<ResolveLifeOpsLinkedCalendarConflictRequest>();
+        if (!body) return true;
+        return deps.runRoute(async () => {
+          deps.json(
+            await deps.mutationGateway.resolveLinkedCalendarConflict(
+              url,
+              linkId,
+              body,
+            ),
+          );
+        });
+      }
+      const body =
+        await deps.readJsonBody<DisconnectLifeOpsLinkedCalendarRequest>();
+      if (!body) return true;
+      return deps.runRoute(async () => {
+        deps.json(
+          await deps.mutationGateway.disconnectLinkedCalendar(
+            url,
+            linkId,
+            body,
+          ),
+        );
+      });
+    }
+  }
+
   if (
     method === "GET" &&
     pathname === "/api/lifeops/calendar/meeting-auto-join"
@@ -162,6 +255,28 @@ export async function handleCalendarRoutes(
         grantId: q.get("grantId") ?? undefined,
       };
       deps.json(await service.getCalendarFeed(url, request));
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/calendar/seed") {
+    if (deps.rateLimit("calendar_source_sync")) return true;
+    const body = await deps.readJsonBody<SeedLifeOpsCalendarRequest>();
+    if (!body) return true;
+    return deps.runRoute(async (service) => {
+      deps.json(await service.seedImportedCalendarData(url, body));
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/calendar/imported-data/purge"
+  ) {
+    if (deps.rateLimit("calendar_imported_data_purge")) return true;
+    const body =
+      await deps.readJsonBody<PurgeLifeOpsCalendarImportedDataRequest>();
+    if (!body) return true;
+    return deps.runRoute(async (service) => {
+      deps.json(await service.purgeImportedCalendarData(body));
     });
   }
 
@@ -346,6 +461,7 @@ export async function handleCalendarRoutes(
           description: body.notes,
           startAt: body.startAt,
           endAt: body.endAt,
+          allDay: body.allDay,
           timeZone: body.timeZone,
           location: body.location,
           attendees: body.attendees,

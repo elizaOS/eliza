@@ -84,7 +84,6 @@ const COMMANDS: SlashCommandCatalogItem[] = [
     requiresAuth: false,
     requiresElevated: false,
     surfaces: ["gui"],
-    // Single infinite thread (#13531): the overlay treats clear-chat as inert.
     target: { kind: "client", clientAction: "clear-chat" },
     source: "builtin",
   },
@@ -99,8 +98,7 @@ const COMMANDS: SlashCommandCatalogItem[] = [
     requiresAuth: false,
     requiresElevated: false,
     surfaces: ["gui"],
-    // A client command the overlay STILL forwards — exercises the generic
-    // client-action dispatch path now that clear-chat is inert (#13531).
+    // A second client command exercises the generic client-action dispatch path.
     target: { kind: "client", clientAction: "open-command-palette" },
     source: "builtin",
   },
@@ -149,7 +147,7 @@ function renderOverlay(
   render(<ChatOverlay controller={controller} slash={slash} />);
   expect(
     (screen.getByLabelText("message") as HTMLTextAreaElement).placeholder,
-  ).toBe("Message Eliza");
+  ).toBe("Hey Eliza…");
   return {
     controller,
     input: screen.getByLabelText("message") as HTMLInputElement,
@@ -209,9 +207,7 @@ describe("ChatOverlay slash commands", () => {
   it("Enter on a client command runs the client action", () => {
     const slash = makeSlash();
     const { input, controller } = renderOverlay(slash);
-    // `/commands` → open-command-palette, a client action the overlay still
-    // forwards (clear-chat is intentionally inert under one-infinite-thread,
-    // #13531).
+    // `/commands` → open-command-palette.
     fireEvent.change(input, { target: { value: "/commands" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(slash.openCommandPalette).toHaveBeenCalled();
@@ -223,28 +219,34 @@ describe("ChatOverlay slash commands", () => {
     const { input, controller } = renderOverlay(slash);
     fireEvent.change(input, { target: { value: "/clear" } });
     fireEvent.keyDown(input, { key: "Enter" });
+    expect(controller.clearConversation).not.toHaveBeenCalled();
     expect(slash.clearChat).not.toHaveBeenCalled();
     expect(controller.send).not.toHaveBeenCalled();
     // The draft is still consumed (the command resolved), not left in the box.
     expect(input.value).toBe("");
   });
 
-  it("natural navigation stays inert when the feature flag is off", () => {
+  it("keeps exact natural navigation model-owned", () => {
     const slash = makeSlash();
     const { input, controller } = renderOverlay(slash);
     fireEvent.change(input, { target: { value: "open settings" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(controller.send).toHaveBeenCalledWith("open settings");
     expect(slash.navigateSettings).not.toHaveBeenCalled();
+    expect(input.value).toBe("");
   });
 
-  it("feature-flagged natural navigation runs through the client command path", () => {
+  it("keeps non-exact navigation requests model-owned", () => {
     const slash = makeSlash({ naturalShortcutsEnabled: true });
     const { input, controller } = renderOverlay(slash);
-    fireEvent.change(input, { target: { value: "open settings" } });
+    fireEvent.change(input, {
+      target: { value: "open settings and explain every option" },
+    });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(slash.navigateSettings).toHaveBeenCalledWith(undefined);
-    expect(controller.send).not.toHaveBeenCalled();
+    expect(slash.navigateSettings).not.toHaveBeenCalled();
+    expect(controller.send).toHaveBeenCalledWith(
+      "open settings and explain every option",
+    );
     expect(input.value).toBe("");
   });
 

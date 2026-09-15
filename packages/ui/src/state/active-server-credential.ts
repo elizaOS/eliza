@@ -5,7 +5,11 @@
  */
 
 import { setStorageValue } from "../bridge/storage-bridge";
-import { getActiveProfile, updateAgentProfile } from "./agent-profiles";
+import {
+  getActiveProfile,
+  updateAgentProfile,
+  upsertAndActivateAgentProfile,
+} from "./agent-profiles";
 import {
   createPersistedActiveServer,
   loadPersistedActiveServer,
@@ -19,17 +23,30 @@ export async function persistActiveServerCredential(
   pairedApiBase?: string,
 ): Promise<void> {
   const activeServer = loadPersistedActiveServer();
-  const fallbackRemote = pairedApiBase?.trim()
+  const explicitPairingBase = pairedApiBase?.trim() || null;
+  const sameOriginPairingBase =
+    (!activeServer || activeServer.kind === "local") &&
+    typeof window !== "undefined" &&
+    (window.location.protocol === "http:" ||
+      window.location.protocol === "https:")
+      ? window.location.origin
+      : null;
+  const pairingBase = explicitPairingBase ?? sameOriginPairingBase;
+  const fallbackRemote = pairingBase
     ? createPersistedActiveServer({
         kind: "remote",
-        apiBase: pairedApiBase,
+        apiBase: pairingBase,
         accessToken: token,
       })
     : null;
+  // An explicit pairing base is the credential authority. A stale active
+  // Cloud/profile selection must never redirect that newly minted remote
+  // bearer into its own record.
   const credentialTarget =
-    activeServer && activeServer.kind !== "local"
+    fallbackRemote ??
+    (activeServer && activeServer.kind !== "local"
       ? { ...activeServer, accessToken: token }
-      : fallbackRemote;
+      : null);
   if (credentialTarget) {
     const authenticatedServer = credentialTarget;
     savePersistedActiveServer(authenticatedServer);
@@ -43,8 +60,21 @@ export async function persistActiveServerCredential(
   }
 
   const activeProfile = getActiveProfile();
-  if (activeProfile && activeProfile.kind !== "local") {
+  const sameCredentialTarget =
+    activeProfile &&
+    credentialTarget &&
+    activeProfile.kind === credentialTarget.kind &&
+    activeProfile.apiBase?.replace(/\/+$/, "") ===
+      credentialTarget.apiBase?.replace(/\/+$/, "");
+  if (sameCredentialTarget && activeProfile) {
     updateAgentProfile(activeProfile.id, { accessToken: token });
+  } else if (credentialTarget?.kind === "remote") {
+    upsertAndActivateAgentProfile({
+      kind: "remote",
+      label: credentialTarget.label,
+      apiBase: credentialTarget.apiBase,
+      accessToken: token,
+    });
   }
 }
 

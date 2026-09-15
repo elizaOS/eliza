@@ -191,6 +191,9 @@ export const readAuthStatusViaHttp: AuthStatusReader = async (port) => {
   if (typeof body.passwordConfigured === "boolean") {
     snap.passwordConfigured = body.passwordConfigured;
   }
+  if (typeof body.instanceId === "string" && body.instanceId.length > 0) {
+    snap.instanceId = body.instanceId;
+  }
   return snap;
 };
 

@@ -263,11 +263,18 @@ describe("voice-session ws upgrade (happy path)", () => {
     expect(buildCapturedSession().config.usageStore).toBe(durableStoreValue);
   });
 
-  test("falls back to the in-memory store when no durable store is available", async () => {
+  test("uses the in-memory store only for an explicit mock runtime", async () => {
     durableStoreValue = null;
-    const res = await upgrade();
+    const res = await upgrade({ MOCK_REDIS: "1" });
     expect(res.status).toBe(101);
     expect(buildCapturedSession().config.usageStore).not.toBeNull();
+  });
+
+  test("denies production provider startup when atomic metering is unavailable", async () => {
+    durableStoreValue = null;
+    const res = await upgrade();
+    expect(res.status).toBe(503);
+    expect(attachCalls).toHaveLength(0);
   });
 
   test("still upgrades when the live registry is under the ceiling; admitSession reflects it", async () => {

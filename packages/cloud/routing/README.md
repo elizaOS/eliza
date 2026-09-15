@@ -51,7 +51,7 @@ const response = await fetch(`${route.baseUrl}/completions`, {
 
 ## Per-feature routing policies
 
-Users can pin individual feature categories to `local`, `cloud`, or `auto` via env vars:
+Users can pin individual feature categories to `local`, `cloud`, or `auto` via env vars. Values are case-insensitive and whitespace-tolerant; blank or absent settings use `auto`. Explicitly invalid values throw `RoutingPolicyError` (`CLOUD_ROUTING_POLICY_INVALID`) before route selection so callers can surface the configuration error.
 
 | Feature | Env var |
 |---|---|

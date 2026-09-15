@@ -64,6 +64,28 @@ function titleAppearsAsNamedPhrase(text: string, title: string): boolean {
   ).test(normalizedText);
 }
 
+function queryMatches(
+  notes: readonly StickyNote[],
+  value: string,
+): Array<{ index: number; note: StickyNote }> {
+  const target = normalizedLookup(value);
+  if (!target) return [];
+  const indexed = notes.map((note, index) => ({ index, note }));
+  const exactTitle = indexed.filter(
+    ({ note }) => normalizedLookup(note.title) === target,
+  );
+  if (exactTitle.length > 0) return exactTitle;
+  const contained = indexed.filter(({ note }) =>
+    normalizedLookup(`${note.title} ${note.body} ${note.color}`).includes(
+      target,
+    ),
+  );
+  if (contained.length > 0) return contained;
+  return indexed.filter(({ note }) =>
+    titleAppearsAsNamedPhrase(value, note.title),
+  );
+}
+
 function lookupError(
   code:
     | "NOTES_NOT_FOUND"
@@ -122,16 +144,7 @@ function resolveNoteIndex(
   const exact = notes
     .map((note, index) => ({ index, note }))
     .filter(({ note }) => normalizedLookup(note.title) === target);
-  const candidates =
-    selector === "title" || exact.length > 0
-      ? exact
-      : notes
-          .map((note, index) => ({ index, note }))
-          .filter(({ note }) =>
-            normalizedLookup(
-              `${note.title} ${note.body} ${note.color}`,
-            ).includes(target),
-          );
+  const candidates = selector === "title" ? exact : queryMatches(notes, value);
   if (candidates.length === 0) {
     throw lookupError("NOTES_NOT_FOUND", selector, value, []);
   }
@@ -167,6 +180,43 @@ function applyNotePatch(
   updatedAt: string,
 ): StickyNote {
   const updated: StickyNote = { ...existing, updatedAt };
+  if (patch.textEdit) {
+    const { field, oldText, newText } = patch.textEdit;
+    const original = existing[field];
+    const first = original.indexOf(oldText);
+    const ambiguous = first >= 0 && original.indexOf(oldText, first + 1) >= 0;
+    if (first < 0 || ambiguous) {
+      throw new ElizaError(
+        first < 0
+          ? "The exact old text is absent from the current note; read it before choosing another edit. Nothing changed."
+          : "The old text matches more than once; include enough surrounding text to identify one occurrence. Nothing changed.",
+        {
+          code:
+            first < 0
+              ? "NOTES_EDIT_TEXT_NOT_FOUND"
+              : "NOTES_EDIT_TEXT_AMBIGUOUS",
+          context: { noteId: existing.id, field },
+          severity: "ephemeral",
+        },
+      );
+    }
+    // A replacement callback keeps $&, $1 and similar text literal. The
+    // match is checked under the same store barrier that commits the update.
+    const replacement = original.replace(oldText, () => newText);
+    const validated = parseUpdateNoteInput({ [field]: replacement });
+    if (validated[field] !== replacement) {
+      throw new ElizaError(
+        "The exact edit would require whitespace normalization; nothing changed.",
+        {
+          code: "NOTES_EDIT_NORMALIZATION_REQUIRED",
+          context: { noteId: existing.id, field },
+          severity: "ephemeral",
+        },
+      );
+    }
+    updated[field] = replacement;
+    return updated;
+  }
   if (patch.title !== undefined) updated.title = patch.title;
   if (patch.body !== undefined) updated.body = patch.body;
   if (patch.color !== undefined) updated.color = patch.color;
@@ -260,6 +310,11 @@ export class NotesService extends Service {
       });
     }
     return note;
+  }
+
+  findNotesByQuery(value: string): StickyNote[] {
+    const notes = this.snapshot().notes;
+    return queryMatches(notes, value).map(({ note }) => note);
   }
 
   async createNoteWithCommit(inputValue: unknown): Promise<{

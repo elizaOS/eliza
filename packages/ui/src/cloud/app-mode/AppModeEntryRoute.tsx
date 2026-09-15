@@ -27,7 +27,6 @@ import { loadPersistedActiveServer } from "../../state/persistence";
 import { useAgents } from "../instances/lib/data/eliza-agents";
 import { useSessionAuth } from "../lib/use-session-auth";
 import {
-  clearSsoLoggedOut,
   redirectToSsoBridge,
   shouldAutoBridgeToSso,
 } from "../sso-bridge/sso-bridge";
@@ -83,12 +82,7 @@ export function AppModeEntryRoute({
   const [ssoBridging, setSsoBridging] = useState<boolean | null>(null);
   useEffect(() => {
     if (!ready) return;
-    if (authenticated) {
-      // Any live sign-in on this origin re-arms auto-bridging for the future
-      // (the logged-out marker's job ends at the next real login).
-      clearSsoLoggedOut();
-      return;
-    }
+    if (authenticated) return;
     if (ssoDecisionRef.current) return;
     ssoDecisionRef.current = true;
     if (!shouldAutoBridgeToSso()) {

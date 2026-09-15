@@ -42,7 +42,7 @@ process.argv = [
   "--platform",
   "unit-test",
 ];
-const smoke = await import("./mobile-local-chat-smoke.mjs");
+const smoke = await import("./mobile-local-chat-smoke.mjs?full-contract");
 process.argv = originalArgv;
 
 let server;

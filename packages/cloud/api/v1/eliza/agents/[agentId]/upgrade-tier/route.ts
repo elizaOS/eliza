@@ -36,7 +36,7 @@
  *    re-arms, for stopped/sleeping/dead-job targets) durable state.
  */
 
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
@@ -47,6 +47,7 @@ import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
 import {
   createTierUpgradeTargetWithProvision,
   findLiveTierUpgradeTarget,
+  PersonalDedicatedAuthorityRetainedError,
   PersonalDedicatedSelectionRequiredError,
 } from "@/lib/services/agent-tier-upgrade-target";
 import { buildDefaultAgentCharacterConfig } from "@/lib/services/default-agent-character";
@@ -69,11 +70,14 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CORS_METHODS = "GET, POST, OPTIONS";
-const DEDICATED_QUOTE_VERSION = "personal-dedicated-v1";
+const DEDICATED_QUOTE_VERSION = "personal-dedicated-v2";
 
 const ActivationBody = z.object({
   action: z.literal("activate_dedicated"),
   quoteId: z.string().regex(/^[a-f0-9]{64}$/),
+  minimumActivationChargeUsd: z.literal(
+    AGENT_PRICING.MINIMUM_ACTIVATION_CHARGE,
+  ),
 });
 
 type AgentRow = NonNullable<
@@ -83,6 +87,35 @@ type AgentRow = NonNullable<
 type AuthedUser = Awaited<
   ReturnType<typeof requireAuthOrApiKeyWithOrg>
 >["user"];
+
+type ProvisioningExecutionContext = Pick<
+  Context<AppEnv>["executionCtx"],
+  "waitUntil"
+>;
+
+async function retainProvisioningNudge(
+  env: AppEnv["Bindings"],
+  executionCtx: ProvisioningExecutionContext | undefined,
+  context: {
+    sharedAgentId: string;
+    dedicatedAgentId: string;
+    orgId: string;
+    jobId: string;
+  },
+): Promise<void> {
+  const trigger = provisioningJobService
+    .triggerImmediate(env)
+    .catch((error) => {
+      // error-policy:J7 the committed job remains owned by the daemon; retain
+      // the failed latency nudge as an operational diagnostic at this boundary.
+      logger.warn("[agent-upgrade-tier] Immediate provisioning nudge failed", {
+        ...context,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  if (executionCtx) executionCtx.waitUntil(trigger);
+  else await trigger;
+}
 
 interface UpgradeSource {
   id: string;
@@ -168,6 +201,7 @@ async function quoteIdFor(
     sourceAgentId,
     balance.toFixed(6),
     AGENT_PRICING.RUNNING_HOURLY_RATE.toFixed(6),
+    AGENT_PRICING.MINIMUM_ACTIVATION_CHARGE.toFixed(6),
     AGENT_PRICING.UPGRADE_MINIMUM_BALANCE.toFixed(6),
   ].join(":");
   const digest = await crypto.subtle.digest(
@@ -204,6 +238,7 @@ async function dedicatedQuote(
     currentMode: "shared" as const,
     targetMode: "dedicated" as const,
     hourlyRateUsd: AGENT_PRICING.RUNNING_HOURLY_RATE,
+    minimumActivationChargeUsd: AGENT_PRICING.MINIMUM_ACTIVATION_CHARGE,
     dailyRateUsd: AGENT_PRICING.DAILY_RUNNING_COST,
     minimumBalanceUsd,
     minimumRunwayDays: AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS,
@@ -268,6 +303,7 @@ async function respondToLiveTarget(
   user: AuthedUser,
   env: AppEnv["Bindings"],
   confirmedQuoteId: string,
+  executionCtx: ProvisioningExecutionContext | undefined,
 ): Promise<Response> {
   logger.info("[agent-upgrade-tier] Reattaching to in-flight upgrade", {
     sharedAgentId,
@@ -341,9 +377,11 @@ async function respondToLiveTarget(
     agentName: target.agent_name ?? target.id,
   });
   if (reattach.created) {
-    void provisioningJobService.triggerImmediate(env).catch(() => {
-      // error-policy:J5 fire-and-forget nudge; the job is persisted and the
-      // provisioning cron is the safety net (failure logged in the service).
+    await retainProvisioningNudge(env, executionCtx, {
+      sharedAgentId,
+      dedicatedAgentId: target.id,
+      orgId: user.organization_id,
+      jobId: reattach.job.id,
     });
   }
   return json(
@@ -390,6 +428,7 @@ async function __hono_GET(
       data: await dedicatedQuote(source, user, existingTarget),
     });
   } catch (error) {
+    // error-policy:J1 translate authentication and quote failures at HTTP.
     return applyCorsHeaders(errorToResponse(error), CORS_METHODS);
   }
 }
@@ -398,6 +437,7 @@ async function __hono_POST(
   request: Request,
   env: AppEnv["Bindings"],
   { params }: { params: Promise<{ agentId: string }> },
+  executionCtx: ProvisioningExecutionContext | undefined,
 ) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
@@ -410,6 +450,7 @@ async function __hono_POST(
     const sourceError = invalidUpgradeSource(source);
     if (sourceError) return sourceError;
 
+    // error-policy:J3 malformed JSON is an explicitly invalid confirmation.
     const confirmation = ActivationBody.safeParse(
       await request.json().catch(() => null),
     );
@@ -437,6 +478,7 @@ async function __hono_POST(
         user,
         env,
         confirmation.data.quoteId,
+        executionCtx,
       );
     }
 
@@ -509,6 +551,7 @@ async function __hono_POST(
     >;
     try {
       result = await createTierUpgradeTargetWithProvision({
+        quotaAdmission: "organization",
         sourceAgentId: source.id,
         organizationId: user.organization_id,
         userId: user.id,
@@ -521,6 +564,8 @@ async function __hono_POST(
         ),
       });
     } catch (error) {
+      // error-policy:J1 translate known activation refusals; propagate others
+      // to the outer HTTP error boundary.
       if (error instanceof AgentQuotaExceededError) {
         logger.warn("[agent-upgrade-tier] Upgrade blocked: org quota", {
           sharedAgentId: source.id,
@@ -550,6 +595,18 @@ async function __hono_POST(
           409,
         );
       }
+      if (error instanceof PersonalDedicatedAuthorityRetainedError) {
+        return json(
+          {
+            success: false,
+            code: "dedicated_activation_reset_required",
+            error:
+              "This Personal Eliza has retained Dedicated activation history. Reconcile or reset the retired target before starting another Dedicated activation.",
+            retryable: false,
+          },
+          409,
+        );
+      }
       throw error;
     }
 
@@ -562,14 +619,17 @@ async function __hono_POST(
         user,
         env,
         confirmation.data.quoteId,
+        executionCtx,
       );
     }
     const dedicated = result.agent;
     const job = result.job;
 
-    void provisioningJobService.triggerImmediate(env).catch(() => {
-      // error-policy:J5 fire-and-forget nudge; the job is persisted and the
-      // provisioning cron is the safety net (failure logged in the service).
+    await retainProvisioningNudge(env, executionCtx, {
+      sharedAgentId: source.id,
+      dedicatedAgentId: dedicated.id,
+      orgId: user.organization_id,
+      jobId: job.id,
     });
 
     logger.info("[agent-upgrade-tier] Upgrade started", {
@@ -602,6 +662,7 @@ async function __hono_POST(
       202,
     );
   } catch (error) {
+    // error-policy:J1 preserve the structured HTTP failure contract.
     return applyCorsHeaders(errorToResponse(error), CORS_METHODS);
   }
 }
@@ -613,9 +674,22 @@ __hono_app.get("/", async (c) =>
     params: Promise.resolve({ agentId: c.req.param("agentId")! }),
   }),
 );
-__hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, c.env, {
-    params: Promise.resolve({ agentId: c.req.param("agentId")! }),
-  }),
-);
+__hono_app.post("/", async (c) => {
+  let executionCtx: ProvisioningExecutionContext | undefined;
+  try {
+    executionCtx = c.executionCtx;
+  } catch {
+    // error-policy:J4 non-Worker Hono adapters lack this context; the route
+    // awaits the nudge before returning instead of leaving work unobserved.
+    executionCtx = undefined;
+  }
+  return __hono_POST(
+    c.req.raw,
+    c.env,
+    {
+      params: Promise.resolve({ agentId: c.req.param("agentId")! }),
+    },
+    executionCtx,
+  );
+});
 export default __hono_app;

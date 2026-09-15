@@ -3,6 +3,11 @@ import { afterAll, describe, expect, mock, test } from "bun:test";
 
 const assertSafeForPublicUse = mock(async () => undefined);
 const markProviderDispatched = mock(async () => undefined);
+const requireGenerativeRouteCaller = mock(async () => ({
+  user: { id: "user-1", organization_id: "org-1" },
+  apiKeyId: null,
+  admissionSnapshot: null,
+}));
 const realFetch = globalThis.fetch;
 const fetchMock = mock(
   async (...args: Parameters<typeof fetch>): Promise<Response> => {
@@ -24,11 +29,7 @@ const fetchMock = mock(
 globalThis.fetch = fetchMock as unknown as typeof fetch;
 
 mock.module("@/api-app/lib/generative-route-auth", () => ({
-  requireGenerativeRouteCaller: async () => ({
-    user: { id: "user-1", organization_id: "org-1" },
-    apiKeyId: null,
-    admissionSnapshot: null,
-  }),
+  requireGenerativeRouteCaller,
   admitFlatGenerativeOperation: async () => ({
     reservation: undefined,
     settleUnknown: undefined,
@@ -138,6 +139,11 @@ describe("POST /api/v1/voice/tts malformed JSON", () => {
     });
     expect(assertSafeForPublicUse).not.toHaveBeenCalled();
     expect(markProviderDispatched).not.toHaveBeenCalled();
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(1);
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ deferStrongCredentialCheck: false }),
+    );
   });
 
   test("canonical JSON still synthesizes speech", async () => {
@@ -150,6 +156,10 @@ describe("POST /api/v1/voice/tts malformed JSON", () => {
       { CARTESIA_API_KEY: "cartesia-key" },
     );
     expect(response.status).toBe(200);
+    expect(requireGenerativeRouteCaller).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ deferStrongCredentialCheck: true }),
+    );
     expect(markProviderDispatched).toHaveBeenCalled();
   });
 });

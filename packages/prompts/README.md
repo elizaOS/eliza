@@ -2,6 +2,14 @@
 
 Shared prompt templates and action specs for elizaOS.
 
+The Stage-1 message-handler template uses the registered flat response schema:
+`contexts`, `intents`, `candidateActionNames`, `facts`, `relationships`, and
+`addressedTo`. Routing is derived by the runtime; the model is not asked to
+invent retired `simple`, `requiresTool`, `parentActionHints`, `contextSlices`,
+or nested `extract` fields. Complete history, provider data, context catalogs,
+and registered field descriptions remain the responsibility of their existing
+renderers. Changing this template does not truncate those inputs.
+
 ## Overview
 
 This package is the single source of truth for prompt templates used by the runtime. Prompts are authored directly in `src/index.ts`.
@@ -56,6 +64,10 @@ The generated publish manifest rewrites every source-facing condition to
 compiled JavaScript and declarations in `dist/`, so the release tarball never
 publishes TypeScript source as runtime code.
 
+The repository runs this package's tests serially because they rebuild and
+temporarily remove `dist/` while checking consumer resolution. Concurrent
+workspace tests may still be importing that compiled package.
+
 ## Usage
 
 Runtime code imports the templates through `@elizaos/core`, which re-exports them and provides `composePrompt` to fill the `{{...}}` placeholders:
@@ -97,3 +109,5 @@ bun run check:secrets
 ```
 
 Scans `packages/prompts/src/**/*.ts`, plugin prompt TS modules (paths matching `prompts/**/*.ts`, `workflow-prompts/**/*.ts`, etc.), and a few explicit files — see `scripts/check-secrets.js`.
+
+The default handler groups routing, reply, crisis and authority rules without repeating the same constraints. Literal recall from supplied evidence can answer directly; live records and effects still plan. Registered field contracts and source selection remain complete.

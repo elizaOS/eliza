@@ -42,6 +42,11 @@ const PROVIDER_LOGO_IDS = new Set([
   "zai",
 ]);
 
+const PLUGIN_VISUAL_LAYOUT_STYLES = {
+  md: { height: "2.75rem", width: "2.75rem" },
+  lg: { height: "3.5rem", width: "3.5rem" },
+} as const;
+
 /**
  * Resolve the strongest available visual for a plugin and render it as a square
  * tile. Resolution order: brand SVG logo (connectors) → AI-provider brand PNG →
@@ -56,7 +61,6 @@ export function PluginVisual({
   size?: "md" | "lg";
 }) {
   const [imgFailed, setImgFailed] = useState(false);
-  const dimension = size === "lg" ? "h-14 w-14" : "h-11 w-11";
   const glyph = size === "lg" ? "h-7 w-7" : "h-6 w-6";
   const monogramText = size === "lg" ? "text-lg" : "text-base";
 
@@ -66,7 +70,8 @@ export function PluginVisual({
       <Card
         variant="connectorAvatar"
         tone="text"
-        className={`flex ${dimension} shrink-0 items-center justify-center`}
+        layoutStyle={PLUGIN_VISUAL_LAYOUT_STYLES[size]}
+        className="flex shrink-0 items-center justify-center"
       >
         <BrandIcon className={glyph} />
       </Card>
@@ -79,7 +84,8 @@ export function PluginVisual({
       <Card
         variant="connectorAvatar"
         padding="compact"
-        className={`flex ${dimension} shrink-0 items-center justify-center`}
+        layoutStyle={PLUGIN_VISUAL_LAYOUT_STYLES[size]}
+        className="flex shrink-0 items-center justify-center"
       >
         <img
           src={logo}
@@ -99,7 +105,8 @@ export function PluginVisual({
         <Card
           variant="connectorAvatar"
           padding="compact"
-          className={`flex ${dimension} shrink-0 items-center justify-center`}
+          layoutStyle={PLUGIN_VISUAL_LAYOUT_STYLES[size]}
+          className="flex shrink-0 items-center justify-center"
         >
           <img
             src={imageSrc}
@@ -117,7 +124,8 @@ export function PluginVisual({
     return (
       <Card
         variant="connectorAvatar"
-        className={`flex ${dimension} shrink-0 items-center justify-center`}
+        layoutStyle={PLUGIN_VISUAL_LAYOUT_STYLES[size]}
+        className="flex shrink-0 items-center justify-center"
       >
         <Glyph className={glyph} />
       </Card>
@@ -128,14 +136,15 @@ export function PluginVisual({
   return (
     <Card
       variant="connectorAvatar"
-      className={`flex ${dimension} shrink-0 select-none items-center justify-center font-bold tracking-tight ${monogramText}`}
+      layoutStyle={PLUGIN_VISUAL_LAYOUT_STYLES[size]}
+      className="flex shrink-0 select-none items-center justify-center font-bold tracking-tight"
       visualStyle={{
         background: pluginTileGradient(plugin),
       }}
       wallpaperText
       aria-hidden="true"
     >
-      {pluginMonogram(plugin)}
+      <span className={monogramText}>{pluginMonogram(plugin)}</span>
     </Card>
   );
 }

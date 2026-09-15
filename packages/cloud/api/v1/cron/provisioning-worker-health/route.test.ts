@@ -21,7 +21,9 @@
  * Also asserts the failure-isolation boundary (#22548): the two monitors are
  * independent questions sharing a schedule, so a rejection in either one must
  * NOT prevent the other from running and alerting, while the cron still
- * answers with a structured failure.
+ * answers with a structured failure. A fulfilled unreachable fleet makes the
+ * aggregate response unhealthy even with a fresh daemon heartbeat, while the
+ * daemon-only sub-signal remains observable.
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -225,6 +227,36 @@ describe("provisioning-worker-health cron route", () => {
     expect(body.stale).toBe(false);
 
     expect(fetchCalls.some((c) => c.url === SLACK_WEBHOOK)).toBe(false);
+  });
+
+  test("fresh heartbeat with an unreachable dedicated fleet -> overall unhealthy while heartbeat stays healthy", async () => {
+    checkProvisioningWorkerHealth.mockResolvedValueOnce({
+      ok: true,
+      required: true,
+      lastHeartbeatAt: new Date(Date.now() - 1_000).toISOString(),
+    });
+    fleetCensus = [
+      { execution_tier: "dedicated-always", status: "error", count: 26 },
+    ];
+
+    const response = await hitCron();
+    expect(response.status).toBe(200);
+
+    const body = (await response.json()) as {
+      healthy: boolean;
+      heartbeatHealthy: boolean;
+      fleet: { unreachable: boolean };
+    };
+    expect(body.healthy).toBe(false);
+    expect(body.heartbeatHealthy).toBe(true);
+    expect(body.fleet.unreachable).toBe(true);
+
+    // Exercise the real fleet monitor's alert path, not a route-local stub.
+    const slackPost = fetchCalls.find((c) => c.url === SLACK_WEBHOOK);
+    expect(slackPost).toBeDefined();
+    expect(JSON.stringify(slackPost?.body)).toContain(
+      "Dedicated agent fleet is unreachable",
+    );
   });
 
   test("daemon not required (e.g. local) -> healthy:true, silent", async () => {

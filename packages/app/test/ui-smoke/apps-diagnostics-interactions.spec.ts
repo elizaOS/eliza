@@ -13,7 +13,7 @@ import {
 } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
-  await seedAppStorage(page);
+  await seedAppStorage(page, { "eliza:developerMode": "1" });
   await installDefaultAppRoutes(page);
 });
 
@@ -28,10 +28,7 @@ test("logs page search really filters entries and clear restores them", async ({
   const entries = page.getByTestId("log-entry");
   await expect(entries).toHaveCount(1);
 
-  // #8597 moved the logs search box into the floating chat composer: while Logs
-  // is open the composer adopts the "Search logs..." placeholder and feeds the
-  // live query into the view via onQuery.
-  const search = page.getByPlaceholder(/Search logs/i);
+  const search = page.getByRole("combobox", { name: "message", exact: true });
   await search.fill("zzqq-no-such-log-line");
   await expect(entries).toHaveCount(0);
 
@@ -40,9 +37,11 @@ test("logs page search really filters entries and clear restores them", async ({
   await expect(entries).toHaveCount(1);
 
   // Clear filters resets the view's filter state and restores the full list. It
-  // clears the view's searchQuery (not the shared composer draft), so assert on
-  // the restored entries rather than the composer value.
-  await view.getByRole("button", { name: /clear/i }).click();
+  // lives inside the compact filter menu and clears the view's searchQuery (not
+  // the shared composer draft), so assert on the restored entries rather than
+  // the composer value.
+  await view.locator('[data-agent-id="logs-filter"]').click();
+  await page.getByRole("button", { name: /clear filters/i }).click();
   await expect(entries).toHaveCount(1);
 });
 

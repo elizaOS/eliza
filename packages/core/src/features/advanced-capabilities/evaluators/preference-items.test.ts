@@ -10,6 +10,7 @@
  * (in-memory FakeRuntime).
  */
 import { describe, expect, it, vi } from "vitest";
+import { validateSchema } from "../../../actions/validate-tool-args.ts";
 import { logger } from "../../../logger.ts";
 import type {
 	EvaluatorProcessorContext,
@@ -438,28 +439,60 @@ describe("applyPreferenceOps directives", () => {
 		expect(slot.source).toBe("agent_inferred");
 	});
 
-	it("dedupes a lexically similar directive instead of appending a near-copy", async () => {
+	it("preserves a distinct directive despite overlapping reply vocabulary", async () => {
 		const fake = makeFakeRuntime({ agentId: AGENT });
 		await fake.store.addDirective({
 			userId: USER,
 			agentId: AGENT,
 			actorId: USER,
-			directive: "no emojis in replies",
+			directive: "use formal replies",
 		});
 		const result = await processOps(
 			fake,
 			mustParse({
-				ops: [{ op: "add_directive", text: "avoid emojis", confidence: 0.9 }],
+				ops: [
+					{
+						op: "add_directive",
+						text: "avoid formal replies",
+						confidence: 0.9,
+					},
+				],
 			}),
 		);
 		expect(fake.store.getSlot(USER, AGENT).custom_directives).toEqual([
-			"no emojis in replies",
+			"use formal replies",
+			"avoid formal replies",
 		]);
-		expect(result?.data).toMatchObject({ directivesAdded: 0, skipped: 1 });
+		expect(result?.data).toMatchObject({ directivesAdded: 1 });
 	});
 });
 
 describe("applyPreferenceOps preference facts", () => {
+	it.each([
+		["prefers tea over coffee", "prefers coffee over tea"],
+		["likes oat milk", "does not like oat milk"],
+	])("stores a distinct preference: %s / %s", async (storedClaim, newClaim) => {
+		const fake = makeFakeRuntime({ agentId: AGENT });
+		const existing = preferenceFact(
+			"00000000-0000-4000-8000-0000000000af",
+			storedClaim,
+			[],
+		);
+		fake.memories.set("facts", [existing]);
+		const result = await processOps(
+			fake,
+			mustParse({
+				ops: [{ op: "add_preference_fact", claim: newClaim, keywords: [] }],
+			}),
+			{ knownPreferenceFacts: [existing] },
+		);
+		const rows = fake.memories.get("facts") ?? [];
+		expect(rows.map((row) => row.content.text)).toEqual([
+			storedClaim,
+			newClaim,
+		]);
+		expect(result?.data).toMatchObject({ factsAdded: 1, factsStrengthened: 0 });
+	});
 	it("writes a durable preference fact row with extractor provenance", async () => {
 		const fake = makeFakeRuntime({ agentId: AGENT });
 		const result = await processOps(
@@ -517,6 +550,177 @@ describe("applyPreferenceOps preference facts", () => {
 			(rows[0].metadata as { confidence?: number }).confidence,
 		).toBeCloseTo(0.8);
 		expect(result?.data).toMatchObject({ factsAdded: 0, factsStrengthened: 1 });
+	});
+
+	it("promotes the same-message Stage-1 observation to the durable preference instead of adding a twin", async () => {
+		const fake = makeFakeRuntime({ agentId: AGENT });
+		const stageFact: Memory = {
+			id: "00000000-0000-4000-8000-0000000000c1" as UUID,
+			entityId: USER,
+			agentId: AGENT,
+			roomId: ROOM,
+			content: { text: "prefers morning check-ins", type: "fact" },
+			metadata: {
+				type: "custom",
+				source: "facts_and_relationships_stage",
+				messageId: makeMessage().id,
+				kind: "current",
+				category: "uncategorized",
+				confidence: 0.6,
+				keywords: ["prefers", "morning", "check", "ins"],
+			},
+			createdAt: Date.now() - 1_000,
+		};
+		fake.memories.set("facts", [stageFact]);
+		const result = await processOps(
+			fake,
+			mustParse({
+				ops: [
+					{
+						op: "add_preference_fact",
+						claim: "the user prefers morning check-ins",
+						keywords: ["morning", "check-ins"],
+						confidence: 0.85,
+					},
+				],
+			}),
+			{ knownPreferenceFacts: [] },
+		);
+		const rows = fake.memories.get("facts") ?? [];
+		expect(rows).toHaveLength(1);
+		expect(rows[0].id).toBe(stageFact.id);
+		expect(rows[0].content.text).toBe("prefers morning check-ins");
+		expect(rows[0].metadata).toMatchObject({
+			kind: "durable",
+			category: "preference",
+			promotedBy: "preference_extractor",
+			confidence: 0.85,
+		});
+		expect((rows[0].metadata as { keywords?: string[] }).keywords).toEqual(
+			expect.arrayContaining(["morning", "check", "ins"]),
+		);
+		expect(result?.data).toMatchObject({ factsAdded: 0, factsStrengthened: 1 });
+	});
+
+	it("never promotes a same-message row whose subject the room could not resolve", async () => {
+		const fake = makeFakeRuntime({ agentId: AGENT });
+		const unresolved: Memory = {
+			id: "00000000-0000-4000-8000-0000000000c4" as UUID,
+			entityId: USER,
+			agentId: AGENT,
+			roomId: ROOM,
+			content: { text: "prefers morning check-ins", type: "fact" },
+			metadata: {
+				type: "custom",
+				source: "facts_and_relationships_stage",
+				messageId: makeMessage().id,
+				subject: "Carol",
+				subjectResolved: false,
+				kind: "current",
+				category: "uncategorized",
+				keywords: ["prefers", "morning", "check", "ins"],
+			},
+			createdAt: Date.now() - 1_000,
+		};
+		fake.memories.set("facts", [unresolved]);
+		const result = await processOps(
+			fake,
+			mustParse({
+				ops: [
+					{
+						op: "add_preference_fact",
+						claim: "prefers morning check-ins",
+						keywords: ["morning", "check-ins"],
+					},
+				],
+			}),
+			{ knownPreferenceFacts: [] },
+		);
+		const rows = fake.memories.get("facts") ?? [];
+		expect(rows).toHaveLength(2);
+		expect(rows[0].metadata).toMatchObject({
+			kind: "current",
+			subject: "Carol",
+			subjectResolved: false,
+		});
+		expect(result?.data).toMatchObject({ factsAdded: 1, factsStrengthened: 0 });
+	});
+
+	it("never promotes or strengthens a row with the opposite polarity", async () => {
+		const fake = makeFakeRuntime({ agentId: AGENT });
+		const negated: Memory = {
+			id: "00000000-0000-4000-8000-0000000000c3" as UUID,
+			entityId: USER,
+			agentId: AGENT,
+			roomId: ROOM,
+			content: { text: "dislikes morning check-ins", type: "fact" },
+			metadata: {
+				type: "custom",
+				source: "facts_and_relationships_stage",
+				messageId: makeMessage().id,
+				kind: "current",
+				category: "uncategorized",
+				keywords: ["dislikes", "morning", "check", "ins"],
+			},
+			createdAt: Date.now() - 1_000,
+		};
+		fake.memories.set("facts", [negated]);
+		const result = await processOps(
+			fake,
+			mustParse({
+				ops: [
+					{
+						op: "add_preference_fact",
+						claim: "prefers morning check-ins",
+						keywords: ["morning", "check-ins"],
+					},
+				],
+			}),
+			{ knownPreferenceFacts: [] },
+		);
+		const rows = fake.memories.get("facts") ?? [];
+		expect(rows).toHaveLength(2);
+		expect(rows[0].content.text).toBe("dislikes morning check-ins");
+		expect(rows[0].metadata).toMatchObject({ kind: "current" });
+		expect(result?.data).toMatchObject({ factsAdded: 1, factsStrengthened: 0 });
+	});
+
+	it("leaves a Stage-1 observation from another message alone and stores the preference separately", async () => {
+		const fake = makeFakeRuntime({ agentId: AGENT });
+		const olderStageFact: Memory = {
+			id: "00000000-0000-4000-8000-0000000000c2" as UUID,
+			entityId: USER,
+			agentId: AGENT,
+			roomId: ROOM,
+			content: { text: "prefers morning check-ins", type: "fact" },
+			metadata: {
+				type: "custom",
+				source: "facts_and_relationships_stage",
+				messageId: "00000000-0000-4000-8000-0000000000ff",
+				kind: "current",
+				category: "uncategorized",
+				keywords: ["prefers", "morning", "check", "ins"],
+			},
+			createdAt: Date.now() - 1_000,
+		};
+		fake.memories.set("facts", [olderStageFact]);
+		const result = await processOps(
+			fake,
+			mustParse({
+				ops: [
+					{
+						op: "add_preference_fact",
+						claim: "prefers morning check-ins",
+						keywords: ["morning", "check-ins"],
+					},
+				],
+			}),
+			{ knownPreferenceFacts: [] },
+		);
+		const rows = fake.memories.get("facts") ?? [];
+		expect(rows).toHaveLength(2);
+		expect(rows[0].metadata).toMatchObject({ kind: "current" });
+		expect(result?.data).toMatchObject({ factsAdded: 1, factsStrengthened: 0 });
 	});
 
 	it("dedupes against a preference row the fact evaluator inserted in the same turn (post-prepare)", async () => {
@@ -674,4 +878,133 @@ describe("preferenceEvaluator gates and prompt", () => {
 		expect(prompt).not.toContain("add_directive");
 		expect(prompt).toContain("add_preference_fact");
 	});
+});
+
+describe("preference wire operation requirements", () => {
+	it.each(["conversation", "task", "uncertain"])(
+		"keeps %s instructions out of persistent traits, directives, and facts",
+		async (scope) => {
+			const fake = makeFakeRuntime({ agentId: AGENT });
+			await fake.store.applyTrait({
+				scope: "user",
+				userId: USER,
+				agentId: AGENT,
+				actorId: AGENT,
+				trait: "verbosity",
+				value: "verbose",
+				source: "agent_inferred",
+			});
+			const before = fake.store.getSlot(USER, AGENT);
+			const output = mustParse({
+				ops: [
+					{
+						op: "set_trait",
+						scope,
+						trait: "tone",
+						value: "cold",
+						confidence: 1,
+					},
+					{ op: "retract_trait", scope, trait: "verbosity" },
+					{
+						op: "add_directive",
+						scope,
+						text: "Wait for APPROVE VIOLET in this conversation.",
+						confidence: 1,
+					},
+					{
+						op: "add_preference_fact",
+						scope,
+						claim: "Use Calendar for this task only.",
+					},
+				],
+			});
+			const result = await processOps(fake, output);
+			expect(fake.store.getSlot(USER, AGENT)).toEqual(before);
+			expect(fake.memories.get("facts") ?? []).toEqual([]);
+			expect(result?.data).toMatchObject({ notPersistedForScope: 4 });
+		},
+	);
+	it("persists an explicitly classified cross-conversation preference", async () => {
+		const fake = makeFakeRuntime({ agentId: AGENT });
+		await processOps(
+			fake,
+			mustParse({
+				ops: [
+					{
+						op: "add_directive",
+						scope: "across_conversations",
+						text: "No emojis",
+						confidence: 0.9,
+					},
+				],
+			}),
+		);
+		expect(fake.store.getSlot(USER, AGENT).custom_directives).toEqual([
+			"No emojis",
+		]);
+	});
+
+	const cases = [
+		{
+			op: {
+				op: "set_trait",
+				trait: "verbosity",
+				value: "terse",
+				confidence: 0.9,
+			},
+			required: ["trait", "value", "confidence"],
+		},
+		{
+			op: { op: "add_directive", text: "No emojis", confidence: 0.9 },
+			required: ["text", "confidence"],
+		},
+		{
+			op: { op: "add_preference_fact", claim: "Prefers morning check-ins" },
+			required: ["claim"],
+		},
+		{ op: { op: "retract_trait", trait: "verbosity" }, required: ["trait"] },
+	];
+	for (const entry of cases) {
+		it(`requires a valid scope on new ${entry.op.op} output while preserving staged legacy output`, () => {
+			const schema = preferenceEvaluator.schema;
+			if (!schema) throw new Error("Missing preference schema");
+			const legacy = { ops: [entry.op] };
+			const missing: string[] = [];
+			validateSchema(schema, legacy, "", missing);
+			expect(missing.length).toBeGreaterThan(0);
+			expect(
+				parsePreferenceOutputTolerant(legacy, { requireComplete: true }),
+			).not.toBeNull();
+			const invalid = { ops: [{ ...entry.op, scope: "invented_scope" }] };
+			const errors: string[] = [];
+			validateSchema(schema, invalid, "", errors);
+			expect(errors.length).toBeGreaterThan(0);
+			expect(
+				parsePreferenceOutputTolerant(invalid, { requireComplete: true }),
+			).toBeNull();
+		});
+		it(`requires parser fields for ${entry.op.op} before dispatch`, () => {
+			const schema = preferenceEvaluator.schema;
+			if (!schema) throw new Error("Missing preference schema");
+			const scopedOp = { ...entry.op, scope: "across_conversations" };
+			const output = { ops: [scopedOp] };
+			const errors: string[] = [];
+			validateSchema(schema, output, "", errors);
+			expect(errors).toEqual([]);
+			expect(
+				parsePreferenceOutputTolerant(output, { requireComplete: true }),
+			).not.toBeNull();
+			for (const field of entry.required) {
+				const incomplete: Record<string, unknown> = { ...scopedOp };
+				delete incomplete[field];
+				const invalid = { ops: [incomplete] };
+				const missing: string[] = [];
+				validateSchema(schema, invalid, "", missing);
+				expect(missing.length).toBeGreaterThan(0);
+				expect(
+					parsePreferenceOutputTolerant(invalid, { requireComplete: true }),
+				).toBeNull();
+			}
+		});
+	}
 });

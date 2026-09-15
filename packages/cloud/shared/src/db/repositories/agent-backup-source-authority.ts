@@ -70,6 +70,12 @@ export interface AgentBackupManifestSourceAuthorityLocator {
   containerId: string;
 }
 
+export interface AgentBackupManifestSourceOccurrenceAuthority {
+  source: AgentBackupManifestV2Source;
+  /** Append-only token; node incarnation UUIDs are reusable after ABA. */
+  nodeHistoryId: string;
+}
+
 function validateLocator(
   input: AgentBackupManifestSourceAuthorityLocator,
 ): AgentBackupManifestSourceAuthorityLocator {
@@ -83,13 +89,13 @@ function validateLocator(
 
 /**
  * Resolve exact source identity inside a caller-owned primary transaction.
- * The key-share lock prevents re-registration/reboot authority from changing
- * until the caller has durably snapshotted the returned vector.
+ * The no-key-update lock prevents re-registration/reboot authority from
+ * changing until the caller has durably snapshotted the returned vector.
  */
-export async function resolveAgentBackupManifestSourceAuthorityInTransaction(
+export async function resolveAgentBackupManifestSourceOccurrenceAuthorityInTransaction(
   tx: DbTransaction,
   input: AgentBackupManifestSourceAuthorityLocator,
-): Promise<AgentBackupManifestV2Source> {
+): Promise<AgentBackupManifestSourceOccurrenceAuthority> {
   const locator = validateLocator(input);
   const [node] = await tx
     .select({
@@ -99,6 +105,7 @@ export async function resolveAgentBackupManifestSourceAuthorityInTransaction(
       infrastructureProvider: dockerNodes.infrastructure_provider,
       providerServerId: dockerNodes.provider_server_id,
       nodeIncarnation: dockerNodes.node_incarnation,
+      nodeHistoryId: dockerNodes.current_node_history_id,
       hostKeyFingerprint: dockerNodes.host_key_fingerprint,
     })
     .from(dockerNodes)
@@ -116,6 +123,7 @@ export async function resolveAgentBackupManifestSourceAuthorityInTransaction(
     !node ||
     node.infrastructureProvider !== "hetzner" ||
     node.nodeIncarnation !== locator.nodeIncarnation ||
+    !node.nodeHistoryId ||
     !node.hostKeyFingerprint?.trim()
   ) {
     throw new AgentBackupSourceAuthorityError(
@@ -131,18 +139,31 @@ export async function resolveAgentBackupManifestSourceAuthorityInTransaction(
     containerId: locator.containerId,
   };
   if (node.fleetKind === "robot" && node.providerServerId === null) {
-    return Object.freeze({ kind: "robot" as const, ...base });
+    return Object.freeze({
+      source: Object.freeze({ kind: "robot" as const, ...base }),
+      nodeHistoryId: node.nodeHistoryId,
+    });
   }
   if (node.fleetKind === "cloud" && node.providerServerId !== null) {
     return Object.freeze({
-      kind: "cloud" as const,
-      ...base,
-      providerServerId: requireCanonicalProviderServerId(node.providerServerId),
+      source: Object.freeze({
+        kind: "cloud" as const,
+        ...base,
+        providerServerId: requireCanonicalProviderServerId(node.providerServerId),
+      }),
+      nodeHistoryId: node.nodeHistoryId,
     });
   }
   throw new AgentBackupSourceAuthorityError(
     "Backup source node has an incomplete or contradictory Robot/Cloud authority",
   );
+}
+
+export async function resolveAgentBackupManifestSourceAuthorityInTransaction(
+  tx: DbTransaction,
+  input: AgentBackupManifestSourceAuthorityLocator,
+): Promise<AgentBackupManifestV2Source> {
+  return (await resolveAgentBackupManifestSourceOccurrenceAuthorityInTransaction(tx, input)).source;
 }
 
 /** Resolve against the primary, never a replica or JSON metadata projection. */

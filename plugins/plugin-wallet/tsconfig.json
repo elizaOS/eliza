@@ -13,6 +13,10 @@
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "noEmit": true,
+    "paths": {
+      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/src/*"]
+    },
     "types": ["node", "bun"]
   },
   "include": ["src/**/*.ts"],

@@ -8,6 +8,7 @@ import {
   __setAuthStatusForTests,
   type AuthStatusState,
 } from "../hooks/useAuthStatus";
+import { RoleProvider } from "../hooks/useRole";
 import {
   HOME_WIDGET_MOCK_PLUGINS,
   installHomeWidgetFetchMock,
@@ -30,6 +31,7 @@ const STORY_AUTHENTICATED_SESSION: AuthStatusState = {
   session: { id: "story-session", kind: "local", expiresAt: null },
   access: { mode: "local", passwordConfigured: false, ownerConfigured: true },
 };
+const STORY_OWNER_ROLE = { role: "OWNER" } as const;
 
 /**
  * Publish the authenticated session BEFORE `children` render (a `useState`
@@ -48,7 +50,7 @@ export function WithAuthenticatedSession({
     return null;
   });
   useEffect(() => () => restoreAuth.current?.(), []);
-  return <>{children}</>;
+  return <RoleProvider {...STORY_OWNER_ROLE}>{children}</RoleProvider>;
 }
 
 /**

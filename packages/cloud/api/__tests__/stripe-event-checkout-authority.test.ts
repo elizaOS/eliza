@@ -29,6 +29,19 @@ const addCredits = mock(async () => ({ newBalance: 999 }));
 const calculateRevenueSplits = mock(async () => ({ splits: [] }));
 const createInvoice = mock(async () => undefined);
 
+// Terminal authority has independent real-DB consumer coverage; these fixtures own purchased-credit dispatch.
+mock.module("@/lib/services/stripe-scheduled-cancellation-lifecycle", () => ({
+  reconcileStripeScheduledCancellationLifecycle: async () => {
+    throw new Error(
+      "Scheduled subscription lifecycle unavailable in legacy fixture",
+    );
+  },
+}));
+mock.module("@/lib/services/stripe-terminal-lifecycle", () => ({
+  reconcileStripeTerminalLifecycle: async () => {
+    throw new Error("Subscription lifecycle unavailable in legacy fixture");
+  },
+}));
 mock.module("@/db/helpers", () => ({ dbRead: {} }));
 mock.module("@/db/repositories/organizations", () => ({
   organizationsRepository: {
@@ -69,6 +82,8 @@ mock.module("@/lib/services/org-rate-limits", () => ({
   invalidateOrgTierCache: mock(async () => undefined),
 }));
 mock.module("@/lib/services/provisioning-jobs", () => ({
+  CONTAINER_BACKED_TARGET_REJECTION_REASON:
+    "agent_job_target_not_container_backed",
   provisioningJobService: {},
 }));
 mock.module("@/lib/services/redeemable-earnings", () => ({
@@ -267,6 +282,7 @@ describe("Stripe Checkout queue authority", () => {
           data: {
             object: {
               id: "pi_bypass",
+              invoice: null,
               metadata: {
                 organization_id: "attacker-org",
                 credits: "9999.00",

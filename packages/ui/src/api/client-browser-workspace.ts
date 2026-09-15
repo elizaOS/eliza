@@ -14,7 +14,9 @@ import { ElizaClient } from "./client-base";
 
 declare module "./client-base" {
   interface ElizaClient {
-    getBrowserWorkspace(): Promise<BrowserWorkspaceSnapshot>;
+    getBrowserWorkspace(
+      request?: Pick<RequestInit, "signal">,
+    ): Promise<BrowserWorkspaceSnapshot>;
     openBrowserWorkspaceTab(request: OpenBrowserWorkspaceTabRequest): Promise<{
       tab: BrowserWorkspaceTab;
     }>;
@@ -25,7 +27,10 @@ declare module "./client-base" {
     showBrowserWorkspaceTab(id: string): Promise<{ tab: BrowserWorkspaceTab }>;
     hideBrowserWorkspaceTab(id: string): Promise<{ tab: BrowserWorkspaceTab }>;
     closeBrowserWorkspaceTab(id: string): Promise<{ closed: boolean }>;
-    snapshotBrowserWorkspaceTab(id: string): Promise<{ data: string }>;
+    snapshotBrowserWorkspaceTab(
+      id: string,
+      request?: Pick<RequestInit, "signal">,
+    ): Promise<{ data: string }>;
   }
 }
 
@@ -41,7 +46,10 @@ async function requestDesktopBrowserWorkspace<T>(options: {
   return invokeDesktopBridgeRequest<T>(options);
 }
 
-ElizaClient.prototype.getBrowserWorkspace = async function (this: ElizaClient) {
+ElizaClient.prototype.getBrowserWorkspace = async function (
+  this: ElizaClient,
+  request?: Pick<RequestInit, "signal">,
+) {
   const bridged =
     await requestDesktopBrowserWorkspace<BrowserWorkspaceSnapshot>({
       rpcMethod: "browserWorkspaceGetSnapshot",
@@ -51,7 +59,10 @@ ElizaClient.prototype.getBrowserWorkspace = async function (this: ElizaClient) {
     return bridged;
   }
 
-  return this.fetch("/api/browser-workspace");
+  return this.fetch(
+    "/api/browser-workspace",
+    request?.signal ? { signal: request.signal } : undefined,
+  );
 };
 
 ElizaClient.prototype.openBrowserWorkspaceTab = async function (
@@ -171,6 +182,7 @@ ElizaClient.prototype.closeBrowserWorkspaceTab = async function (
 ElizaClient.prototype.snapshotBrowserWorkspaceTab = async function (
   this: ElizaClient,
   id,
+  request?: Pick<RequestInit, "signal">,
 ) {
   const bridged = await requestDesktopBrowserWorkspace<{ data: string }>({
     rpcMethod: "browserWorkspaceSnapshotTab",
@@ -183,5 +195,6 @@ ElizaClient.prototype.snapshotBrowserWorkspaceTab = async function (
 
   return this.fetch(
     `/api/browser-workspace/tabs/${encodeURIComponent(id)}/snapshot`,
+    request?.signal ? { signal: request.signal } : undefined,
   );
 };

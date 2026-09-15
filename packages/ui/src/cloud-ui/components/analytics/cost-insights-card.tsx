@@ -2,8 +2,8 @@
  * Cloud analytics card summarizing cost trend, progress, and alerts.
  */
 import { Badge } from "../../../components/ui/badge";
+import { Card } from "../../../components/ui/card";
 import { Progress } from "../../../components/ui/progress";
-import { BrandCard } from "../brand/brand-card";
 import { CostAlerts, type CostAlertsTrending } from "./cost-alerts";
 
 interface CostInsightsCardProps {
@@ -32,7 +32,7 @@ export function CostInsightsCard({
         : `${costTrending.daysUntilBalanceZero}d`;
 
   return (
-    <BrandCard corners={false} className="border-border bg-card">
+    <Card variant="brand" surface="card">
       <div className="flex flex-col gap-2 p-6 pb-4">
         <div className="flex items-center gap-3">
           <h3 className="text-base font-semibold text-white">Cost outlook</h3>
@@ -83,7 +83,7 @@ export function CostInsightsCard({
 
         <CostAlerts costTrending={costTrending} creditBalance={creditBalance} />
       </div>
-    </BrandCard>
+    </Card>
   );
 }
 

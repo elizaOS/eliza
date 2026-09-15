@@ -2192,6 +2192,461 @@
       "when": 1794254400020,
       "tag": "0329_personal_dedicated_adoption_selections",
       "breakpoints": true
+    },
+    {
+      "idx": 313,
+      "version": "7",
+      "when": 1794254400021,
+      "tag": "0330_remote_session_two_phase_activation",
+      "breakpoints": true
+    },
+    {
+      "idx": 314,
+      "version": "7",
+      "when": 1794254400022,
+      "tag": "0331_remote_host_managed_network",
+      "breakpoints": true
+    },
+    {
+      "idx": 315,
+      "version": "7",
+      "when": 1794254400023,
+      "tag": "0332_remote_target_initiated_pairing",
+      "breakpoints": true
+    },
+    {
+      "idx": 316,
+      "version": "7",
+      "when": 1794254400024,
+      "tag": "0333_remote_host_connection_mode_check",
+      "breakpoints": true
+    },
+    {
+      "idx": 317,
+      "version": "7",
+      "when": 1794254400025,
+      "tag": "0334_billing_cancel_intent_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 318,
+      "version": "7",
+      "when": 1794254400026,
+      "tag": "0335_billing_cancel_commands",
+      "breakpoints": true
+    },
+    {
+      "idx": 319,
+      "version": "7",
+      "when": 1794254400027,
+      "tag": "0336_billing_cancel_command_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 320,
+      "version": "7",
+      "when": 1794254400028,
+      "tag": "0337_billing_cancel_guard_functions",
+      "breakpoints": true
+    },
+    {
+      "idx": 321,
+      "version": "7",
+      "when": 1794254400029,
+      "tag": "0338_billing_cancel_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 322,
+      "version": "7",
+      "when": 1794254400030,
+      "tag": "0339_container_stop_terminal_billing_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 323,
+      "version": "7",
+      "when": 1794254400031,
+      "tag": "0340_synthetic_world_commands",
+      "breakpoints": true
+    },
+    {
+      "idx": 324,
+      "version": "7",
+      "when": 1794254400032,
+      "tag": "0341_agent_backup_admission_cursors",
+      "breakpoints": true
+    },
+    {
+      "idx": 325,
+      "version": "7",
+      "when": 1794254400033,
+      "tag": "0342_retire_agent_backup_admission_protocol_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 326,
+      "version": "7",
+      "when": 1794254400034,
+      "tag": "0343_billing_cancel_account_deletion_detach",
+      "breakpoints": true
+    },
+    {
+      "idx": 327,
+      "version": "7",
+      "when": 1794254400035,
+      "tag": "0344_billing_cancel_account_deletion_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 328,
+      "version": "7",
+      "when": 1794254400036,
+      "tag": "0345_billing_cancel_key_command_subject_consistency",
+      "breakpoints": true
+    },
+    {
+      "idx": 329,
+      "version": "7",
+      "when": 1794254400037,
+      "tag": "0346_agent_backup_admission_sandbox_source_stamp",
+      "breakpoints": true
+    },
+    {
+      "idx": 330,
+      "version": "7",
+      "when": 1794254400038,
+      "tag": "0347_agent_backup_admission_node_source_stamp",
+      "breakpoints": true
+    },
+    {
+      "idx": 331,
+      "version": "7",
+      "when": 1794254400039,
+      "tag": "0348_agent_backup_admission_snapshot_visibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 332,
+      "version": "7",
+      "when": 1794254400040,
+      "tag": "0349_agent_backup_admission_cohort_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 333,
+      "version": "7",
+      "when": 1794254400041,
+      "tag": "0350_agent_backup_admission_cohort_seed",
+      "breakpoints": true
+    },
+    {
+      "idx": 334,
+      "version": "7",
+      "when": 1794254400042,
+      "tag": "0351_agent_backup_admission_work_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 335,
+      "version": "7",
+      "when": 1794254400043,
+      "tag": "0352_agent_backup_admission_work_shapes",
+      "breakpoints": true
+    },
+    {
+      "idx": 336,
+      "version": "7",
+      "when": 1794254400044,
+      "tag": "0353_agent_backup_admission_work_state_shapes",
+      "breakpoints": true
+    },
+    {
+      "idx": 337,
+      "version": "7",
+      "when": 1794254400045,
+      "tag": "0354_agent_backup_admission_work_stage_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 338,
+      "version": "7",
+      "when": 1794254400046,
+      "tag": "0355_agent_backup_admission_work_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 339,
+      "version": "7",
+      "when": 1794254400047,
+      "tag": "0356_agent_backup_admission_work_identity_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 340,
+      "version": "7",
+      "when": 1794254400048,
+      "tag": "0357_agent_backup_admission_work_state_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 341,
+      "version": "7",
+      "when": 1794254400049,
+      "tag": "0358_agent_backup_admission_work_delete_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 342,
+      "version": "7",
+      "when": 1794254400050,
+      "tag": "0359_agent_backup_admission_shard_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 343,
+      "version": "7",
+      "when": 1794254400051,
+      "tag": "0360_agent_backup_admission_claim_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 344,
+      "version": "7",
+      "when": 1794254400052,
+      "tag": "0361_agent_backup_admission_claim_seed",
+      "breakpoints": true
+    },
+    {
+      "idx": 345,
+      "version": "7",
+      "when": 1794254400053,
+      "tag": "0362_agent_backup_admission_claim_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 346,
+      "version": "7",
+      "when": 1794254400054,
+      "tag": "0363_agent_backup_admission_claim_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 347,
+      "version": "7",
+      "when": 1794254400055,
+      "tag": "0364_agent_backup_admission_claim_eligibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 348,
+      "version": "7",
+      "when": 1794254400056,
+      "tag": "0365_agent_backup_admission_unsettled_schedule_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 349,
+      "version": "7",
+      "when": 1794254400057,
+      "tag": "0366_agent_backup_admission_enrollment_source_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 350,
+      "version": "7",
+      "when": 1794254400058,
+      "tag": "0367_agent_backup_admission_enrollment_watermark_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 351,
+      "version": "7",
+      "when": 1794254400059,
+      "tag": "0368_agent_backup_admission_enrollment_source_stamp",
+      "breakpoints": true
+    },
+    {
+      "idx": 352,
+      "version": "7",
+      "when": 1794254400060,
+      "tag": "0369_agent_backup_admission_recovery_cursor",
+      "breakpoints": true
+    },
+    {
+      "idx": 353,
+      "version": "7",
+      "when": 1794254400061,
+      "tag": "0370_agent_sandbox_replacement_restore_locator",
+      "breakpoints": true
+    },
+    {
+      "idx": 354,
+      "version": "7",
+      "when": 1794254400062,
+      "tag": "0371_agent_vault_key_seed_receipts_per_replacement",
+      "breakpoints": true
+    },
+    {
+      "idx": 355,
+      "version": "7",
+      "when": 1794254400063,
+      "tag": "0372_agent_backup_restore_exact_image_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 356,
+      "version": "7",
+      "when": 1796083200000,
+      "tag": "0373_subscription_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 357,
+      "version": "7",
+      "when": 1796083200001,
+      "tag": "0374_subscription_funding_transaction_uniqueness",
+      "breakpoints": true
+    },
+    {
+      "idx": 358,
+      "version": "7",
+      "when": 1796083200002,
+      "tag": "0375_voice_clone_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 359,
+      "version": "7",
+      "when": 1796083200003,
+      "tag": "0376_outreachr_delegations",
+      "breakpoints": true
+    },
+    {
+      "idx": 360,
+      "version": "7",
+      "when": 1796083200004,
+      "tag": "0377_agent_backup_restore_v3_candidates",
+      "breakpoints": true
+    },
+    {
+      "idx": 361,
+      "version": "7",
+      "when": 1796083200005,
+      "tag": "0378_agent_backup_restore_v3_candidate_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 362,
+      "version": "7",
+      "when": 1796083200006,
+      "tag": "0379_subscription_account_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 363,
+      "version": "7",
+      "when": 1796083200007,
+      "tag": "0380_organization_policy_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 364,
+      "version": "7",
+      "when": 1796083200008,
+      "tag": "0381_app_billing_registration",
+      "breakpoints": true
+    },
+    {
+      "idx": 365,
+      "version": "7",
+      "when": 1796083200009,
+      "tag": "0382_subscription_notice_intents",
+      "breakpoints": true
+    },
+    {
+      "idx": 366,
+      "version": "7",
+      "when": 1796083200010,
+      "tag": "0383_subscription_cancellation_result",
+      "breakpoints": true
+    },
+    {
+      "idx": 367,
+      "version": "7",
+      "when": 1796083200011,
+      "tag": "0384_subscription_cancellation_undo",
+      "breakpoints": true
+    },
+    {
+      "idx": 368,
+      "version": "7",
+      "when": 1796083200012,
+      "tag": "0385_subscription_reconciliation",
+      "breakpoints": true
+    },
+    {
+      "idx": 369,
+      "version": "7",
+      "when": 1796083200013,
+      "tag": "0386_agent_heartbeat_lifecycle_revision",
+      "breakpoints": true
+    },
+    {
+      "idx": 370,
+      "version": "7",
+      "when": 1796083200014,
+      "tag": "0387_agent_compute_funding",
+      "breakpoints": true
+    },
+    {
+      "idx": 371,
+      "version": "7",
+      "when": 1796083200015,
+      "tag": "0388_agent_compute_funded_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 372,
+      "version": "7",
+      "when": 1796083200016,
+      "tag": "0389_agent_compute_stop_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 373,
+      "version": "7",
+      "when": 1796083200017,
+      "tag": "0390_agent_compute_runtime_readiness",
+      "breakpoints": true
+    },
+    {
+      "idx": 374,
+      "version": "7",
+      "when": 1796083200018,
+      "tag": "0391_agent_compute_subjects",
+      "breakpoints": true
+    },
+    {
+      "idx": 375,
+      "version": "7",
+      "when": 1796083200019,
+      "tag": "0392_agent_compute_retirement_backup",
+      "breakpoints": true
+    },
+    {
+      "idx": 376,
+      "version": "7",
+      "when": 1796083200020,
+      "tag": "0393_agent_compute_activation_minimum",
+      "breakpoints": true
+    },
+    {
+      "idx": 377,
+      "version": "7",
+      "when": 1796083200021,
+      "tag": "0394_agent_billing_activation_minimum",
+      "breakpoints": true
     }
   ]
 }

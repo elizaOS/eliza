@@ -231,13 +231,13 @@ final class ElizaVoiceNative {
     static native int nativeKokoroSampleRate(long ctxHandle);
 
     /**
-     * Synthesize {@code text} with the fused Kokoro-82M head (ABI v10), loading
+     * Synthesize precomputed {@code ipa} with the fused Kokoro-82M head (ABI v15), loading
      * the GGUF + voice preset on first use. Returns 24 kHz fp32 PCM. This is the
      * on-device voice the Android app speaks with — TalkMode delegates here (via
      * the bionic inference host) instead of falling back to the platform TTS.
      */
-    static native float[] nativeKokoroSynthesize(
-            long ctxHandle, String ggufPath, String voiceBinPath, String text, float speed);
+    static native float[] nativeKokoroSynthesizeIpa(
+            long ctxHandle, String ggufPath, String voiceBinPath, String ipa, float speed);
 
     // ── Batch ASR + mmproj vision (the agent's STT / screen-recognition path) ──
 

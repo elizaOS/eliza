@@ -54,6 +54,7 @@ export {
 } from "./dispatch-route.ts";
 export * from "./documents-service-loader.ts";
 export * from "./early-logs.ts";
+export { dispatchApiRoute } from "./in-process-api.ts";
 export * from "./memory-bounds.ts";
 export * from "./memory-routes.ts";
 export * from "./model-catalog.ts";
@@ -67,6 +68,7 @@ export * from "./provider-switch-config.ts";
 export * from "./rate-limiter.ts";
 export * from "./registry-routes.ts";
 export * from "./registry-service.ts";
+export * from "./runtime-management-routes.ts";
 // `runtime-plugin-routes.ts` exports `matchPluginRoutePath` (used by plugin
 // authors and their tests) and the request-handling helper
 // `tryHandleRuntimePluginRoute` (used by

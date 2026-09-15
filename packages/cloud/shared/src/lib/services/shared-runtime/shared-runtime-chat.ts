@@ -8,7 +8,6 @@
 
 import crypto from "node:crypto";
 import {
-  assertModelOutputComplete,
   ChannelType,
   ElizaError,
   MESSAGE_SOURCE_CLIENT_CHAT,
@@ -67,7 +66,10 @@ import {
   isKnownPreDispatchProviderConfigurationError,
   isKnownUnacceptedProviderError,
 } from "../inference-provider-outcome";
-import { admitOrganizationInference } from "../organization-inference-admission";
+import {
+  admitOrganizationInference,
+  InferenceAdmissionUnavailableError,
+} from "../organization-inference-admission";
 import { isCanonicalPersonalSharedAgent } from "./personal-shared-identity";
 import {
   estimatePersonalSharedSeedanceCostUsd,
@@ -88,12 +90,7 @@ import {
 } from "./run-shared-agent-turn";
 import { projectSharedAgentCharacter } from "./shared-agent-character";
 import { capabilityWallActionResult } from "./shared-capability-wall";
-import {
-  buildSharedFactsContext,
-  extractSharedTurnFacts,
-  SHARED_FACTS_EXTRACTION_TIMEOUT_MS,
-  sharedFactsEnabled,
-} from "./shared-facts";
+import { buildSharedFactsContext, sharedFactsEnabled } from "./shared-facts";
 import { createSharedMemoryStore, type SharedMemoryStore } from "./shared-memory-store";
 import {
   buildSharedRecallContext,
@@ -103,7 +100,10 @@ import {
 } from "./shared-recall";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
-import { sharedRuntimeModelHistoryMessages } from "./shared-runtime-history-policy";
+import {
+  parseSharedReminderActionProvenance,
+  sharedRuntimeModelHistoryMessages,
+} from "./shared-runtime-history-policy";
 import { normalizeSharedRuntimeRoom } from "./shared-runtime-room-identity";
 import {
   replayedSharedProviderTiming,
@@ -144,7 +144,6 @@ const SSE_TRANSPORT_READY_COMMENT = ": ready\n\n";
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
 const PROVIDER_CANCELLATION_OBSERVE_MS = 5_000;
 const SHARED_STREAM_TERMINAL_DEADLINE_MS = 75_000;
-const PERSONAL_SHARED_RATE_LIMIT = { windowMs: 60_000, maxRequests: 60 } as const;
 const PERSONAL_SHARED_IMAGE_MODEL_ID = "fal-ai/flux/schnell";
 const linkedCharacterMemoryCache = new InMemoryLRUCache<UserCharacter>(256, 60_000);
 
@@ -423,9 +422,7 @@ function personalSharedMediaPort(
       actionOrdinal += 1;
       let rateLimited: Response | null;
       try {
-        rateLimited = await enforceOrgRateLimit(agent.organization_id, "strict", {
-          config: PERSONAL_SHARED_RATE_LIMIT,
-        });
+        rateLimited = await enforceOrgRateLimit(agent.organization_id, "strict");
       } catch (error) {
         // error-policy:J1 translate the cache-only rate-limit boundary into
         // the Shared runtime's single retryable warming signal.
@@ -760,68 +757,6 @@ function combinedTurnContext(
   return parts.length ? parts.join("\n\n") : undefined;
 }
 
-/**
- * P4 post-turn facts extraction, strictly off the response path (same shape as
- * the P5 trace recorder): one small extraction call through the SAME platform
- * model path the turn used, deduped against known facts, written as durable
- * `facts` rows. Runs only for landed user turns while the flag is on; any
- * failure is warned and dropped so knowledge accumulation can never fail or
- * slow a delivered reply.
- */
-function extractSharedTurnFactsOffPath(
-  executionCtx: BridgeExecutionContext | undefined,
-  store: SharedMemoryStore | null,
-  character: SharedAgentCharacter,
-  userMessage: string,
-  assistantReply: string,
-): void {
-  if (!store || !sharedFactsEnabled()) return;
-  const model = resolveSharedAgentTurnModel(character.model);
-  if (!model) return;
-  void settleOffResponsePath(executionCtx, async () => {
-    try {
-      const [{ generateText }, { getInteractiveCerebrasLanguageModel }, knownFacts] =
-        await Promise.all([
-          import("ai"),
-          import("../../providers/language-model"),
-          store.listFacts(),
-        ]);
-      const facts = await extractSharedTurnFacts({
-        agentName: character.name,
-        userMessage,
-        assistantReply,
-        knownFacts,
-        generate: async (prompt) => {
-          const result = await generateText({
-            model: getInteractiveCerebrasLanguageModel(model),
-            prompt,
-            temperature: 0,
-            maxRetries: 0,
-            // A stalled provider request must not pin the waitUntil task open;
-            // the deadline surfaces as a distinct AbortError in the J7 warn.
-            abortSignal: AbortSignal.timeout(SHARED_FACTS_EXTRACTION_TIMEOUT_MS),
-          });
-          assertModelOutputComplete({
-            finishReason: result.finishReason,
-            provider: "cerebras",
-            model,
-          });
-          return result.text;
-        },
-      });
-      if (facts.length) await store.recordFacts(facts);
-    } catch (error) {
-      // error-policy:J7 knowledge extraction is off-path enrichment; its
-      // failure must never surface into the already-delivered turn.
-      logger.warn(
-        `[shared-runtime-chat] facts extraction failed for this turn: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
-  });
-}
-
 function stableUuid(raw: string): string {
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw)) {
     return raw;
@@ -1128,7 +1063,7 @@ async function admitTurn(
       executionCtx,
       config:
         funding === "platform"
-          ? PERSONAL_SHARED_RATE_LIMIT
+          ? undefined
           : inferenceRateLimitConfig(admissionSnapshot, "completions"),
     });
   } catch (error) {
@@ -1164,11 +1099,15 @@ async function admitTurn(
       estimatedOutputTokens: 500,
       executionCtx,
       admissionSnapshot,
+      atomicProviderBoundary: Boolean(executionCtx),
     });
   } catch (error) {
     // error-policy:J1 translate the billing-cache boundary into the shared
     // runtime's retryable cache-warming signal.
-    if (error instanceof InferenceBalanceCacheWarmingError) {
+    if (
+      error instanceof InferenceAdmissionUnavailableError ||
+      error instanceof InferenceBalanceCacheWarmingError
+    ) {
       throw new SharedRuntimeCacheWarmingError("Billing authorization is warming. Retry shortly.");
     }
     throw error;
@@ -1308,8 +1247,28 @@ function observeProviderCancellationOffPath(
   });
 }
 
+function providerBoundaryAdmissionFailure(
+  error: unknown,
+): InsufficientCreditsError | InferenceAdmissionUnavailableError | null {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  for (let depth = 0; depth < 12 && current !== undefined; depth += 1) {
+    if (seen.has(current)) return null;
+    seen.add(current);
+    if (
+      current instanceof InsufficientCreditsError ||
+      current instanceof InferenceAdmissionUnavailableError
+    ) {
+      return current;
+    }
+    current = current instanceof Error ? current.cause : undefined;
+  }
+  return null;
+}
+
 function isProvablyZeroProviderFailure(error: unknown): boolean {
   return (
+    providerBoundaryAdmissionFailure(error) !== null ||
     isInferenceAdmissionDispatchMarkError(error) ||
     isKnownPreDispatchProviderConfigurationError(error) ||
     isKnownUnacceptedProviderError(error)
@@ -1507,6 +1466,22 @@ export class SharedRuntimeChatService {
         error,
         "bridge provider invocation failed",
       );
+      const admissionFailure = providerBoundaryAdmissionFailure(error);
+      if (admissionFailure instanceof InsufficientCreditsError) {
+        return {
+          jsonrpc: "2.0",
+          id: rpc.id,
+          error: {
+            code: BRIDGE_INSUFFICIENT_CREDITS_CODE,
+            message: `Insufficient credits. Required: $${admissionFailure.required.toFixed(4)}, Available: $${admissionFailure.available.toFixed(4)}`,
+          },
+        };
+      }
+      if (admissionFailure instanceof InferenceAdmissionUnavailableError) {
+        throw new SharedRuntimeCacheWarmingError(
+          "Billing authorization is warming. Retry shortly.",
+        );
+      }
       throw error;
     }
 
@@ -1521,9 +1496,6 @@ export class SharedRuntimeChatService {
       history,
       options.channel,
     );
-    if (!turn.degraded && turn.responded !== false && messageRole === "user") {
-      extractSharedTurnFactsOffPath(options.executionCtx, memoryStore, character, text, turn.reply);
-    }
     let turnCompleted = false;
     let turnIsProvablyFree = false;
     try {
@@ -1795,6 +1767,17 @@ export class SharedRuntimeChatService {
       if (turnTimedOut) {
         return withTurnTimingHeaders(sseError("Shared runtime stream timed out"), timings);
       }
+      const admissionFailure = providerBoundaryAdmissionFailure(error);
+      if (admissionFailure instanceof InsufficientCreditsError) {
+        throw new InsufficientCreditsApiError(
+          `Insufficient credits. Required: $${admissionFailure.required.toFixed(4)}, Available: $${admissionFailure.available.toFixed(4)}`,
+        );
+      }
+      if (admissionFailure instanceof InferenceAdmissionUnavailableError) {
+        throw new SharedRuntimeCacheWarmingError(
+          "Billing authorization is warming. Retry shortly.",
+        );
+      }
       throw error;
     }
     if (turn.degraded) {
@@ -1873,6 +1856,11 @@ export class SharedRuntimeChatService {
     }
 
     const encoder = new TextEncoder();
+    const terminalReminderAction = parseSharedReminderActionProvenance(
+      turn.history?.findLast(
+        (message) => message.role === "assistant" && message.id === messageIds.assistant,
+      )?.reminderAction,
+    );
     const makeTurnMessages = (
       reply: string,
       interrupted: boolean,
@@ -1891,6 +1879,9 @@ export class SharedRuntimeChatService {
           createdAt: sentAt + 1,
           interrupted,
           ...(grounding ? { grounding } : {}),
+          ...(terminalReminderAction && !interrupted
+            ? { reminderAction: terminalReminderAction }
+            : {}),
         });
       }
       return messages;
@@ -1952,15 +1943,6 @@ export class SharedRuntimeChatService {
               });
             }
           });
-        }
-        if (!interrupted && messageRole === "user" && reply.trim()) {
-          extractSharedTurnFactsOffPath(
-            options.executionCtx,
-            streamMemoryStore,
-            character,
-            text,
-            reply,
-          );
         }
         await afterWrite?.();
         finalized = true;

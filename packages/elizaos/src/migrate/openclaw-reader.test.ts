@@ -113,6 +113,21 @@ describe("missing and bare homes", () => {
     expect(source.warnings[0]).toContain(missing);
   });
 
+  it.each(["SOUL.md", "MEMORY.md"])(
+    "rejects a directory supplied as the %s source file",
+    (name) => {
+      const home = makeHome();
+      fs.mkdirSync(path.join(home, name));
+      expect(() => readOcAgentHome(home, "kai")).toThrow();
+    },
+  );
+
+  it("rejects a non-directory memory store instead of importing an empty history", () => {
+    const home = makeHome();
+    write(home, "memory", "misplaced memory data");
+    expect(() => readOcAgentHome(home, "kai")).toThrow();
+  });
+
   it("warns exactly once for an existing but completely bare home", () => {
     const home = makeHome();
     const source = readOcAgentHome(home, "kai");
@@ -354,7 +369,8 @@ describe("sqlite memory stores", () => {
       write(home, "memory/2026-06-01.md", "markdown-day");
       writeSqliteStore(path.join(home, "memory"), "store-a", [
         ["2026-07-01.md", 0, "day one"],
-        ["2026-07-01.md", 0, "DUPLICATE CHUNK SAME LINE"],
+        ["2026-07-01.md", 0, "distinct same-line content"],
+        ["2026-07-01.md", 0, "day one"],
         ["2026-07-01.md", 1, "more day"],
         ["journal.md", 0, "JB"],
         ["kai-awareness.md", 0, "AW"],
@@ -370,8 +386,9 @@ describe("sqlite memory stores", () => {
       const ingested = source.dailyLogs.find(
         (log) => log.filename === "2026-07-01.md",
       );
-      expect(ingested?.text).toBe("day one\nmore day");
-      expect(ingested?.text).not.toContain("DUPLICATE");
+      expect(ingested?.text).toBe(
+        "day one\ndistinct same-line content\nmore day",
+      );
       expect(source.namedMemory.find((m) => m.key === "journal")).toMatchObject(
         { filename: "journal.md", text: "JB" },
       );

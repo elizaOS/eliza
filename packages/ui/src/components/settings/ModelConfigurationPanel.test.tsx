@@ -12,6 +12,7 @@
  */
 
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ModelCatalog,
@@ -21,8 +22,25 @@ import type {
 interface CapturedAgentElement {
   id: string;
   options?: string[];
+  getValue?: () => unknown;
   onFill?: (value: string) => void;
   onActivate?: () => void;
+}
+
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason?: unknown) => void;
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve: (value: T) => void = () => {};
+  let reject: (reason?: unknown) => void = () => {};
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }
 
 const { clientMock, agentElements } = vi.hoisted(() => ({
@@ -37,6 +55,7 @@ const { clientMock, agentElements } = vi.hoisted(() => ({
     string,
     {
       options?: string[];
+      getValue?: () => unknown;
       onFill?: (v: string) => void;
       onActivate?: () => void;
     }
@@ -65,6 +84,7 @@ vi.mock("../../agent-surface", () => ({
   useAgentElement: (spec: CapturedAgentElement) => {
     agentElements.set(spec.id, {
       options: spec.options,
+      getValue: spec.getValue,
       onFill: spec.onFill,
       onActivate: spec.onActivate,
     });
@@ -178,6 +198,36 @@ function fixtureConfig(): ModelsConfigResponse {
   };
 }
 
+function fixtureCatalogWithSmallModel(model: string): ModelCatalog {
+  const catalog = fixtureCatalog();
+  return {
+    providers: {
+      ...catalog.providers,
+      cerebras: [
+        {
+          id: model,
+          display: model,
+          efforts: ["low"],
+          roles: ["small"],
+        },
+      ],
+    },
+  };
+}
+
+function fixtureConfigWithSmallModel(model: string): ModelsConfigResponse {
+  const config = fixtureConfig();
+  return {
+    targets: {
+      ...config.targets,
+      small: {
+        ...config.targets.small,
+        OPENAI_SMALL_MODEL: { value: model, source: "process.env" },
+      },
+    },
+  };
+}
+
 function fill(agentId: string, value: string) {
   const element = agentElements.get(agentId);
   if (!element?.onFill) throw new Error(`no onFill captured for ${agentId}`);
@@ -208,13 +258,212 @@ beforeEach(() => {
   clientMock.getModelsConfig.mockResolvedValue(fixtureConfig());
   clientMock.updateModelsConfig.mockReset();
   clientMock.getStatus.mockReset();
-  clientMock.getStatus.mockResolvedValue({ state: "running" });
+  clientMock.getStatus
+    .mockResolvedValueOnce({ state: "running", startedAt: 1 })
+    .mockResolvedValue({ state: "running", startedAt: 2 });
   clientMock.restartAgent.mockReset();
 });
 
 afterEach(() => cleanup());
 
 describe("catalog load states", () => {
+  it("reserves the ready panel geometry while the catalog loads", async () => {
+    const catalog = deferred<unknown>();
+    const config = deferred<ModelsConfigResponse>();
+    clientMock.getModelsCatalog.mockReset().mockReturnValue(catalog.promise);
+    clientMock.getModelsConfig.mockReset().mockReturnValue(config.promise);
+
+    render(<ModelConfigurationPanel />);
+
+    expect(
+      screen.getByRole("status", { name: "Loading model catalog…" }),
+    ).toBeTruthy();
+    expect(
+      document.querySelectorAll('[data-slot="settings-row"]'),
+    ).toHaveLength(12);
+
+    await act(async () => {
+      catalog.resolve({ providers: {}, catalog: fixtureCatalog() });
+      config.resolve(fixtureConfig());
+    });
+    await waitFor(() =>
+      expect(agentElements.has("models-small-provider")).toBe(true),
+    );
+  });
+
+  it.each(["catalog", "config"] as const)(
+    "cancels the pending sibling when the %s request fails and can retry",
+    async (failedRequest) => {
+      const failed = deferred<never>();
+      let siblingCancelled = false;
+      const pending = (init: RequestInit) =>
+        new Promise<never>((_resolve, reject) => {
+          init.signal?.addEventListener(
+            "abort",
+            () => {
+              siblingCancelled = true;
+              reject(new DOMException("Aborted", "AbortError"));
+            },
+            { once: true },
+          );
+        });
+      const failing =
+        failedRequest === "catalog"
+          ? clientMock.getModelsCatalog
+          : clientMock.getModelsConfig;
+      const sibling =
+        failedRequest === "catalog"
+          ? clientMock.getModelsConfig
+          : clientMock.getModelsCatalog;
+      failing.mockImplementationOnce(() => failed.promise);
+      sibling.mockImplementationOnce(pending);
+      render(<ModelConfigurationPanel />);
+      await act(async () => failed.reject(new Error("bootstrap unavailable")));
+      await waitFor(() =>
+        expect(screen.getByText(/bootstrap unavailable/)).toBeTruthy(),
+      );
+      expect(siblingCancelled).toBe(true);
+      act(() => agentButton("models-retry").click());
+      await waitFor(() =>
+        expect(agentElements.has("models-small-provider")).toBe(true),
+      );
+      expect(screen.queryByText(/bootstrap unavailable/)).toBeNull();
+    },
+  );
+
+  it("reaches ready after the StrictMode effect lifecycle replay", async () => {
+    render(
+      <StrictMode>
+        <ModelConfigurationPanel />
+      </StrictMode>,
+    );
+
+    await waitFor(() =>
+      expect(agentElements.has("models-small-provider")).toBe(true),
+    );
+    expect(screen.queryByText("Loading model catalog…")).toBeNull();
+    const firstCatalogSignal = clientMock.getModelsCatalog.mock.calls[0]?.[0]
+      ?.signal as AbortSignal | undefined;
+    const currentCatalogSignal = clientMock.getModelsCatalog.mock.calls[1]?.[0]
+      ?.signal as AbortSignal | undefined;
+    const firstConfigSignal = clientMock.getModelsConfig.mock.calls[0]?.[0]
+      ?.signal as AbortSignal | undefined;
+    const currentConfigSignal = clientMock.getModelsConfig.mock.calls[1]?.[0]
+      ?.signal as AbortSignal | undefined;
+    expect(firstCatalogSignal?.aborted).toBe(true);
+    expect(firstConfigSignal?.aborted).toBe(true);
+    expect(currentCatalogSignal?.aborted).toBe(false);
+    expect(currentConfigSignal?.aborted).toBe(false);
+  });
+
+  it("keeps the current StrictMode load when the stale load succeeds later", async () => {
+    const staleCatalog = deferred<unknown>();
+    const staleConfig = deferred<ModelsConfigResponse>();
+    const currentCatalog = deferred<unknown>();
+    const currentConfig = deferred<ModelsConfigResponse>();
+    clientMock.getModelsCatalog
+      .mockReset()
+      .mockReturnValueOnce(staleCatalog.promise)
+      .mockReturnValueOnce(currentCatalog.promise);
+    clientMock.getModelsConfig
+      .mockReset()
+      .mockReturnValueOnce(staleConfig.promise)
+      .mockReturnValueOnce(currentConfig.promise);
+
+    render(
+      <StrictMode>
+        <ModelConfigurationPanel />
+      </StrictMode>,
+    );
+    await waitFor(() => {
+      expect(clientMock.getModelsCatalog).toHaveBeenCalledTimes(2);
+      expect(clientMock.getModelsConfig).toHaveBeenCalledTimes(2);
+    });
+
+    await act(async () => {
+      currentCatalog.resolve({ providers: {}, catalog: fixtureCatalog() });
+      currentConfig.resolve(fixtureConfig());
+    });
+    await waitFor(() =>
+      expect(agentElements.has("models-small-provider")).toBe(true),
+    );
+
+    await act(async () => {
+      staleCatalog.resolve({ providers: {}, catalog: { providers: {} } });
+      staleConfig.resolve(fixtureConfig());
+    });
+    expect(
+      screen.queryByText(
+        "No configurable models were reported by the runtime.",
+      ),
+    ).toBeNull();
+    expect(screen.queryByText("Loading model catalog…")).toBeNull();
+  });
+
+  it("keeps the current StrictMode load when the stale load fails later", async () => {
+    const staleCatalog = deferred<unknown>();
+    const staleConfig = deferred<ModelsConfigResponse>();
+    const currentCatalog = deferred<unknown>();
+    const currentConfig = deferred<ModelsConfigResponse>();
+    clientMock.getModelsCatalog
+      .mockReset()
+      .mockReturnValueOnce(staleCatalog.promise)
+      .mockReturnValueOnce(currentCatalog.promise);
+    clientMock.getModelsConfig
+      .mockReset()
+      .mockReturnValueOnce(staleConfig.promise)
+      .mockReturnValueOnce(currentConfig.promise);
+
+    render(
+      <StrictMode>
+        <ModelConfigurationPanel />
+      </StrictMode>,
+    );
+    await waitFor(() => {
+      expect(clientMock.getModelsCatalog).toHaveBeenCalledTimes(2);
+      expect(clientMock.getModelsConfig).toHaveBeenCalledTimes(2);
+    });
+
+    await act(async () => {
+      currentCatalog.resolve({ providers: {}, catalog: fixtureCatalog() });
+      currentConfig.resolve(fixtureConfig());
+    });
+    await waitFor(() =>
+      expect(agentElements.has("models-small-provider")).toBe(true),
+    );
+
+    await act(async () => {
+      staleCatalog.reject(new Error("stale catalog failure"));
+      staleConfig.resolve(fixtureConfig());
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText("Loading model catalog…")).toBeNull();
+  });
+
+  it("ignores a pending load after unmount", async () => {
+    const catalog = deferred<unknown>();
+    const config = deferred<ModelsConfigResponse>();
+    clientMock.getModelsCatalog.mockReset().mockReturnValue(catalog.promise);
+    clientMock.getModelsConfig.mockReset().mockReturnValue(config.promise);
+    const view = render(<ModelConfigurationPanel />);
+    const catalogSignal = clientMock.getModelsCatalog.mock.calls[0]?.[0]
+      ?.signal as AbortSignal | undefined;
+    const configSignal = clientMock.getModelsConfig.mock.calls[0]?.[0]
+      ?.signal as AbortSignal | undefined;
+    expect(screen.getByText("Loading model catalog…")).toBeTruthy();
+
+    view.unmount();
+    expect(catalogSignal?.aborted).toBe(true);
+    expect(configSignal?.aborted).toBe(true);
+    await act(async () => {
+      catalog.resolve({ providers: {}, catalog: fixtureCatalog() });
+      config.resolve(fixtureConfig());
+    });
+
+    expect(document.body.textContent).not.toContain("GPT-5.6-Terra");
+    expect(agentElements.has("models-small-provider")).toBe(false);
+  });
+
   it("renders a loading state while the catalog fetch is pending", async () => {
     let resolveCatalog: (value: unknown) => void = () => {};
     clientMock.getModelsCatalog.mockReturnValue(
@@ -237,11 +486,174 @@ describe("catalog load states", () => {
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("catalog unreachable");
 
-    agentButton("models-retry").click();
+    act(() => agentButton("models-retry").click());
     await waitFor(() =>
       expect(agentElements.has("models-small-provider")).toBe(true),
     );
   });
+
+  it.each([
+    ["catalog", "retry"],
+    ["config", "retry"],
+    ["catalog", "unmount"],
+    ["config", "unmount"],
+  ] as const)(
+    "cancels the pending sibling after %s fails and preserves %s ownership",
+    async (failedRequest, completion) => {
+      const catalog = deferred<unknown>();
+      const config = deferred<ModelsConfigResponse>();
+      const retryCatalog = deferred<unknown>();
+      const retryConfig = deferred<ModelsConfigResponse>();
+      clientMock.getModelsCatalog
+        .mockReset()
+        .mockReturnValueOnce(catalog.promise)
+        .mockReturnValueOnce(retryCatalog.promise);
+      clientMock.getModelsConfig
+        .mockReset()
+        .mockReturnValueOnce(config.promise)
+        .mockReturnValueOnce(retryConfig.promise);
+
+      const view = render(<ModelConfigurationPanel />);
+      const catalogSignal = clientMock.getModelsCatalog.mock.calls[0]?.[0]
+        ?.signal as AbortSignal;
+      const configSignal = clientMock.getModelsConfig.mock.calls[0]?.[0]
+        ?.signal as AbortSignal;
+      expect(catalogSignal.aborted).toBe(false);
+      expect(configSignal).toBe(catalogSignal);
+
+      await act(async () => {
+        const failed = failedRequest === "catalog" ? catalog : config;
+        failed.reject(new Error(`${failedRequest} unreachable`));
+      });
+      expect((await screen.findByRole("alert")).textContent).toContain(
+        `${failedRequest} unreachable`,
+      );
+      expect(catalogSignal.aborted).toBe(true);
+      expect(configSignal.aborted).toBe(true);
+
+      act(() => agentButton("models-retry").click());
+      const retryCatalogSignal = clientMock.getModelsCatalog.mock.calls[1]?.[0]
+        ?.signal as AbortSignal;
+      const retryConfigSignal = clientMock.getModelsConfig.mock.calls[1]?.[0]
+        ?.signal as AbortSignal;
+      expect(retryCatalogSignal).not.toBe(catalogSignal);
+      expect(retryConfigSignal).toBe(retryCatalogSignal);
+      expect(retryCatalogSignal.aborted).toBe(false);
+
+      // A transport may settle its abort rejection after the retry starts.
+      // That old sibling must not replace the retry's loading/error state.
+      await act(async () => {
+        const sibling = failedRequest === "catalog" ? config : catalog;
+        sibling.reject(new DOMException("Aborted", "AbortError"));
+      });
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.getByText("Loading model catalog…")).toBeTruthy();
+      expect(retryCatalogSignal.aborted).toBe(false);
+
+      if (completion === "unmount") {
+        view.unmount();
+        expect(retryCatalogSignal.aborted).toBe(true);
+        expect(retryConfigSignal.aborted).toBe(true);
+        await act(async () => {
+          retryCatalog.reject(new DOMException("Aborted", "AbortError"));
+          retryConfig.reject(new DOMException("Aborted", "AbortError"));
+        });
+        expect(view.container.childElementCount).toBe(0);
+      } else {
+        await act(async () => {
+          retryCatalog.resolve({
+            providers: {},
+            catalog: fixtureCatalogWithSmallModel("retry-small"),
+          });
+          retryConfig.resolve(fixtureConfigWithSmallModel("retry-small"));
+        });
+        await waitFor(() =>
+          expect(agentElements.get("models-small-model")?.getValue?.()).toBe(
+            "retry-small",
+          ),
+        );
+        expect(screen.queryByRole("alert")).toBeNull();
+        expect(screen.queryByText("Loading model catalog…")).toBeNull();
+        expect(retryCatalogSignal.aborted).toBe(false);
+      }
+      expect(clientMock.getModelsCatalog).toHaveBeenCalledTimes(2);
+      expect(clientMock.getModelsConfig).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it.each(["success", "error"] as const)(
+    "keeps the newer overlapping Retry result when the older load settles with %s",
+    async (olderSettlement) => {
+      const olderCatalog = deferred<unknown>();
+      const olderConfig = deferred<ModelsConfigResponse>();
+      const newerCatalog = deferred<unknown>();
+      const newerConfig = deferred<ModelsConfigResponse>();
+      clientMock.getModelsCatalog
+        .mockReset()
+        .mockRejectedValueOnce(new Error("initial catalog failure"))
+        .mockReturnValueOnce(olderCatalog.promise)
+        .mockReturnValueOnce(newerCatalog.promise);
+      clientMock.getModelsConfig
+        .mockReset()
+        .mockResolvedValueOnce(fixtureConfig())
+        .mockReturnValueOnce(olderConfig.promise)
+        .mockReturnValueOnce(newerConfig.promise);
+
+      render(<ModelConfigurationPanel />);
+      expect((await screen.findByRole("alert")).textContent).toContain(
+        "initial catalog failure",
+      );
+      const retry = agentElements.get("models-retry")?.onActivate;
+      expect(retry).toBeTypeOf("function");
+
+      act(() => {
+        retry?.();
+        retry?.();
+      });
+      await waitFor(() => {
+        expect(clientMock.getModelsCatalog).toHaveBeenCalledTimes(3);
+        expect(clientMock.getModelsConfig).toHaveBeenCalledTimes(3);
+      });
+
+      await act(async () => {
+        newerCatalog.resolve({
+          providers: {},
+          catalog: fixtureCatalogWithSmallModel("current-small"),
+        });
+        newerConfig.resolve(fixtureConfigWithSmallModel("current-small"));
+      });
+      await waitFor(() =>
+        expect(agentElements.get("models-small-model")?.getValue?.()).toBe(
+          "current-small",
+        ),
+      );
+      expect(agentElements.get("models-small-model")?.options).toEqual([
+        "current-small",
+      ]);
+
+      await act(async () => {
+        if (olderSettlement === "success") {
+          olderCatalog.resolve({
+            providers: {},
+            catalog: fixtureCatalogWithSmallModel("stale-small"),
+          });
+          olderConfig.resolve(fixtureConfigWithSmallModel("stale-small"));
+          return;
+        }
+        olderCatalog.reject(new Error("stale catalog failure"));
+        olderConfig.resolve(fixtureConfigWithSmallModel("stale-small"));
+      });
+
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.queryByText("Loading model catalog…")).toBeNull();
+      expect(agentElements.get("models-small-model")?.options).toEqual([
+        "current-small",
+      ]);
+      expect(agentElements.get("models-small-model")?.getValue?.()).toBe(
+        "current-small",
+      );
+    },
+  );
 
   it("renders a readable error for a runtime that predates the model-config API", async () => {
     // An older runtime (or a shapeless stub) answers without the catalog /
@@ -341,21 +753,6 @@ describe("prefill and option filtering", () => {
     ]);
   });
 
-  it("keeps a configured opencode model visible even when not in the suggestion list", async () => {
-    await renderReady();
-
-    fill("models-coding-backend", "opencode");
-    expect(agentElements.get("models-coding-model")?.options).toEqual([
-      "custom-oss-model",
-      "gemma-4-31b",
-      "zai-glm-4.7",
-      "plain-model",
-    ]);
-    expect(
-      document.querySelector('[data-agent-id="models-coding-effort"]'),
-    ).toBeNull();
-  });
-
   it("renders a free-form model input for the eliza-code backend", async () => {
     await renderReady();
 
@@ -431,6 +828,68 @@ describe("active-provider scoping", () => {
 });
 
 describe("chat save flow", () => {
+  it.each(["small", "large"] as const)(
+    "saves %s after an unavailable pre-save status without prematurely confirming restart",
+    async (target) => {
+      await renderReady();
+      clientMock.updateModelsConfig.mockResolvedValue({
+        kind: "applied",
+        restart: true,
+      });
+      const replacement = deferred<{ state: string; startedAt: number }>();
+      clientMock.getStatus
+        .mockReset()
+        .mockRejectedValueOnce(new Error("status unreachable"))
+        .mockResolvedValueOnce({ state: "running", startedAt: 1 })
+        .mockResolvedValueOnce({ state: "stopped" })
+        .mockReturnValue(replacement.promise);
+
+      act(() => agentButton(`models-${target}-save`).click());
+      expect(clientMock.updateModelsConfig).not.toHaveBeenCalled();
+      act(() => agentButton(`models-${target}-confirm-restart`).click());
+      await waitFor(() =>
+        expect(clientMock.updateModelsConfig).toHaveBeenCalledWith(
+          expect.objectContaining({ target }),
+        ),
+      );
+      expect(await screen.findByText("Restarting agent…")).toBeTruthy();
+      expect(screen.queryByText("Saved")).toBeNull();
+      await waitFor(
+        () => expect(clientMock.getStatus).toHaveBeenCalledTimes(4),
+        {
+          timeout: 3000,
+        },
+      );
+      expect(screen.queryByText("Saved")).toBeNull();
+
+      await act(async () =>
+        replacement.resolve({ state: "running", startedAt: 2 }),
+      );
+      expect(await screen.findByText("Saved")).toBeTruthy();
+      expect(clientMock.updateModelsConfig).toHaveBeenCalledTimes(1);
+      expect(clientMock.restartAgent).not.toHaveBeenCalled();
+    },
+  );
+
+  it("shows a failed write after an unavailable pre-save status", async () => {
+    await renderReady();
+    clientMock.getStatus.mockRejectedValue(new Error("status unreachable"));
+    clientMock.updateModelsConfig.mockRejectedValue(
+      new Error("Settings write denied"),
+    );
+
+    act(() => agentButton("models-small-save").click());
+    act(() => agentButton("models-small-confirm-restart").click());
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Settings write denied",
+    );
+    expect(clientMock.updateModelsConfig).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Saved")).toBeNull();
+    expect(screen.queryByText("Restarting agent…")).toBeNull();
+    expect(clientMock.restartAgent).not.toHaveBeenCalled();
+  });
+
   it("requires an explicit restart confirmation before posting, then polls status", async () => {
     clientMock.updateModelsConfig.mockResolvedValue({
       kind: "applied",
@@ -439,11 +898,14 @@ describe("chat save flow", () => {
       keys: ["OPENAI_SMALL_MODEL", "OPENAI_REASONING_EFFORT"],
     });
     let resolveStatus: (value: unknown) => void = () => {};
-    clientMock.getStatus.mockReturnValue(
-      new Promise((resolve) => {
-        resolveStatus = resolve;
-      }),
-    );
+    clientMock.getStatus
+      .mockReset()
+      .mockResolvedValueOnce({ state: "running", startedAt: 1 })
+      .mockReturnValue(
+        new Promise((resolve) => {
+          resolveStatus = resolve;
+        }),
+      );
     await renderReady();
 
     act(() => agentButton("models-small-save").click());
@@ -466,11 +928,74 @@ describe("chat save flow", () => {
     expect(clientMock.restartAgent).not.toHaveBeenCalled();
 
     await act(async () => {
-      resolveStatus({ state: "running" });
+      resolveStatus({ state: "running", startedAt: 2 });
     });
     expect(await screen.findByText("Saved")).toBeTruthy();
     // Source notes refresh from the server after a successful write.
     expect(clientMock.getModelsConfig).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([false, true])(
+    "refreshes shared effort while preserving sibling edits: %s",
+    async (editSibling) => {
+      const response = deferred<ModelsConfigResponse>();
+      await renderReady();
+      const config = fixtureConfig();
+      for (const target of ["small", "large"] as const) {
+        config.targets[target].OPENAI_REASONING_EFFORT = {
+          value: "medium",
+          source: "config.env",
+        };
+      }
+      clientMock.getModelsConfig.mockReturnValue(response.promise);
+      clientMock.updateModelsConfig.mockResolvedValue({
+        kind: "applied",
+        restart: true,
+      });
+      fill("models-small-effort", "medium");
+      act(() => agentButton("models-small-save").click());
+      act(() => agentButton("models-small-confirm-restart").click());
+      await waitFor(() =>
+        expect(clientMock.getModelsConfig).toHaveBeenCalledTimes(2),
+      );
+      if (editSibling) fill("models-large-effort", "high");
+      await act(async () => response.resolve(config));
+      expect(await screen.findByText("Saved")).toBeTruthy();
+      expect(agentElements.get("models-small-effort")?.getValue?.()).toBe(
+        "medium",
+      );
+      expect(agentElements.get("models-large-effort")?.getValue?.()).toBe(
+        editSibling ? "high" : "medium",
+      );
+      expect(clientMock.updateModelsConfig).toHaveBeenCalledTimes(1);
+      expect(clientMock.restartAgent).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps waiting when status still describes the previous runtime", async () => {
+    clientMock.updateModelsConfig.mockResolvedValue({
+      kind: "applied",
+      restart: true,
+    });
+    const replacement = deferred<{ state: string; startedAt: number }>();
+    clientMock.getStatus
+      .mockReset()
+      .mockResolvedValueOnce({ state: "running", startedAt: 1 })
+      .mockResolvedValueOnce({ state: "running", startedAt: 1 })
+      .mockReturnValue(replacement.promise);
+    await renderReady();
+    act(() => agentButton("models-small-save").click());
+    act(() => agentButton("models-small-confirm-restart").click());
+    expect(await screen.findByText("Restarting agent…")).toBeTruthy();
+    expect(screen.queryByText("Saved")).toBeNull();
+    await waitFor(() => expect(clientMock.getStatus).toHaveBeenCalledTimes(3), {
+      timeout: 2000,
+    });
+    await act(async () =>
+      replacement.resolve({ state: "running", startedAt: 2 }),
+    );
+    expect(await screen.findByText("Saved")).toBeTruthy();
+    expect(clientMock.restartAgent).not.toHaveBeenCalled();
   });
 
   it("cancels an armed restart confirmation without posting", async () => {
@@ -518,33 +1043,47 @@ describe("chat save flow", () => {
 });
 
 describe("coding save flow", () => {
-  it("saves without confirmation or restart and shows the no-restart copy", async () => {
-    clientMock.updateModelsConfig.mockResolvedValue({
-      kind: "applied",
-      restart: false,
-      keys: ["ELIZA_CODEX_MODEL_POWERFUL", "ELIZA_CODEX_EFFORT"],
-    });
-    await renderReady();
+  it.each([true, false])(
+    "saves coding settings without changing chat when chat controls are visible: %s",
+    async (showChatModels) => {
+      clientMock.updateModelsConfig.mockResolvedValue({
+        kind: "applied",
+        restart: false,
+        keys: ["ELIZA_CODEX_MODEL_POWERFUL", "ELIZA_CODEX_EFFORT"],
+      });
+      render(<ModelConfigurationPanel showChatModels={showChatModels} />);
+      await waitFor(() =>
+        expect(agentElements.has("models-coding-save")).toBe(true),
+      );
+      if (!showChatModels) {
+        expect(
+          document.querySelector('[data-agent-id="models-small-provider"]'),
+        ).toBeNull();
+        expect(
+          document.querySelector('[data-agent-id="models-large-provider"]'),
+        ).toBeNull();
+      }
 
-    act(() => agentButton("models-coding-save").click());
-    await waitFor(() =>
-      expect(clientMock.updateModelsConfig).toHaveBeenCalledWith({
-        target: "coding",
-        backend: "codex",
-        model: "gpt-5.6-terra",
-        effort: "medium",
-        // codex is the persisted ELIZA_DEFAULT_AGENT_TYPE, so the default
-        // switch is prefilled on.
-        defaultBackend: "codex",
-      }),
-    );
+      act(() => agentButton("models-coding-save").click());
+      await waitFor(() =>
+        expect(clientMock.updateModelsConfig).toHaveBeenCalledWith({
+          target: "coding",
+          backend: "codex",
+          model: "gpt-5.6-terra",
+          effort: "medium",
+          // codex is the persisted ELIZA_DEFAULT_AGENT_TYPE, so the default
+          // switch is prefilled on.
+          defaultBackend: "codex",
+        }),
+      );
 
-    expect(
-      await screen.findByText("Saved. Applies to the next coding task."),
-    ).toBeTruthy();
-    expect(clientMock.getStatus).not.toHaveBeenCalled();
-    expect(clientMock.restartAgent).not.toHaveBeenCalled();
-  });
+      expect(
+        await screen.findByText("Saved. Applies to the next coding task."),
+      ).toBeTruthy();
+      expect(clientMock.getStatus).not.toHaveBeenCalled();
+      expect(clientMock.restartAgent).not.toHaveBeenCalled();
+    },
+  );
 
   it("posts the eliza-code wire value with a free-form model and no effort", async () => {
     clientMock.updateModelsConfig.mockResolvedValue({

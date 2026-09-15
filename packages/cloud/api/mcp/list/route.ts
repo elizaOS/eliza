@@ -12,13 +12,13 @@ import {
   PLATFORM_MCP_TOOL_PRICING,
 } from "@elizaos/cloud-shared/billing";
 import { Hono } from "hono";
-
 import {
   INTEGRATION_TRUST,
   integrationHealth,
   plannerVisibleFeatures,
   resolveIntegrationAvailability,
 } from "@/api-app/lib/mcp/integration-catalog";
+import { CEREBRAS_DEFAULT_TEXT_MODEL } from "@/lib/models/catalog";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 // MCP definitions with their tools and schemas
@@ -90,13 +90,14 @@ const mcpDefinitions = [
           model: {
             type: "enum",
             options: [
+              CEREBRAS_DEFAULT_TEXT_MODEL,
               "gemma-4-31b",
               "gpt-5-mini",
               "claude-sonnet-5",
               "gemini-2.0-flash-001",
             ],
             optional: true,
-            default: "gemma-4-31b",
+            default: CEREBRAS_DEFAULT_TEXT_MODEL,
             description: "The AI model to use for generation",
           },
           maxLength: {

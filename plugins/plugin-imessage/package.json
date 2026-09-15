@@ -75,6 +75,36 @@
   },
   "agentConfig": {
     "pluginParameters": {
+      "IMESSAGE_TRANSPORT": {
+        "type": "string",
+        "description": "Transport: native or blooio",
+        "required": false,
+        "sensitive": false
+      },
+      "IMESSAGE_BLOOIO_API_KEY": {
+        "type": "string",
+        "description": "Blooio API key",
+        "required": false,
+        "sensitive": true
+      },
+      "IMESSAGE_BLOOIO_WEBHOOK_SECRET": {
+        "type": "string",
+        "description": "Blooio webhook signing secret",
+        "required": false,
+        "sensitive": true
+      },
+      "IMESSAGE_BLOOIO_FROM_NUMBER": {
+        "type": "string",
+        "description": "Blooio sender phone number",
+        "required": false,
+        "sensitive": false
+      },
+      "IMESSAGE_BLOOIO_CHANNEL_ID": {
+        "type": "string",
+        "description": "Blooio channel accepted by this agent",
+        "required": false,
+        "sensitive": false
+      },
       "IMESSAGE_DB_PATH": {
         "type": "string",
         "description": "Path to database file",
@@ -119,6 +149,31 @@
       }
     },
     "configUiHints": {
+      "IMESSAGE_TRANSPORT": {
+        "label": "Transport",
+        "order": 1,
+        "group": "connection"
+      },
+      "IMESSAGE_BLOOIO_API_KEY": {
+        "label": "Blooio API key",
+        "order": 2,
+        "group": "connection"
+      },
+      "IMESSAGE_BLOOIO_WEBHOOK_SECRET": {
+        "label": "Webhook secret",
+        "order": 3,
+        "group": "connection"
+      },
+      "IMESSAGE_BLOOIO_FROM_NUMBER": {
+        "label": "Sender number",
+        "order": 4,
+        "group": "connection"
+      },
+      "IMESSAGE_BLOOIO_CHANNEL_ID": {
+        "label": "Channel ID",
+        "order": 5,
+        "group": "connection"
+      },
       "IMESSAGE_DB_PATH": {
         "label": "Database path",
         "order": 2,

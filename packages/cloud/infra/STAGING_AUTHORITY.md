@@ -227,8 +227,9 @@ QA account. A mocked webhook is test evidence, not staging ingress evidence.
 
 ### Discord gateway
 
-`.github/workflows/cloud-gateway-discord.yml` says explicitly that it validates
-configuration and tests but does not deploy. The current operator path,
+`.github/workflows/cloud-gateway-discord.yml` validates source and tests only;
+it neither reads staging configuration nor deploys. Configuration must be
+verified separately through an attested operator path. The current operator path,
 `packages/cloud/services/gateway-discord/scripts/deploy-railway.sh`, uploads a
 staged bundle but does not embed a commit, capture a Railway deployment ID, or
 emit an image digest receipt. The Railway service has no connected repository

@@ -59,6 +59,14 @@ const getById = mock(async () => ({
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
 }));
+mock.module("@/api-app/lib/paid-route-standing", () => ({
+  requirePaidRouteStanding: async () => ({
+    user: await requireUserOrApiKeyWithOrg(),
+    apiKeyId: null,
+    authSource: "combined_cache",
+    appScopeId: null,
+  }),
+}));
 mock.module("@/lib/auth/app-key-scope", () => ({ isAppKeyOutOfScope }));
 mock.module("@/lib/services/apps", () => ({
   appsService: { getById },

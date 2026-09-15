@@ -80,7 +80,7 @@ describe("UsersRepository Telegram account promotion (real PGlite)", () => {
     await closeDatabaseConnectionsForTests();
   });
 
-  test("promotes the continuation-bound account without replacing its user, org, or $0 balance", async () => {
+  test("promotes the continuation-bound account without replacing its user, org, or zero balance", async () => {
     const telegramId = "100000201";
     const provisional = await createTelegramAccount(telegramId);
 

@@ -4,10 +4,12 @@
  * dangling symlinks and read errors.
  */
 import assert from "node:assert";
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { cpSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import { formatSkillsForPrompt } from "../src/formatter.js";
 import {
   loadSkillEntries,
@@ -32,6 +34,25 @@ describe("loadSkillsFromDir", () => {
     });
     assert.deepStrictEqual(result.skills, []);
     assert.deepStrictEqual(result.diagnostics, []);
+  });
+
+  it("visits cyclic and aliased directories once while retaining nested skills", () => {
+    const tempDir = createTempDir("skill-loader-cycle");
+    try {
+      const skillDir = join(tempDir, "real-skill");
+      mkdirSync(skillDir);
+      writeFileSync(
+        join(skillDir, "SKILL.md"),
+        "---\nname: real-skill\ndescription: Nested instructions\n---\nbody",
+      );
+      symlinkSync(tempDir, join(skillDir, "cycle"), "dir");
+      symlinkSync(skillDir, join(tempDir, "alias"), "dir");
+      const result = loadSkillsFromDir({ dir: tempDir, source: "test" });
+      assert.strictEqual(result.skills.length, 1);
+      assert.strictEqual(result.skills[0].description, "Nested instructions");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   it("loads valid skills from direct markdown files and SKILL.md subdirectories", () => {
@@ -225,6 +246,53 @@ invalid: : : yaml syntax error
 });
 
 describe("loadSkills and loadSkillEntries", () => {
+  it("loads explicit paths from an installation without bundled skills", () => {
+    const fixtureRoot = createTempDir("skills-no-bundle");
+    try {
+      const packageRoot = resolve(
+        dirname(fileURLToPath(import.meta.url)),
+        "..",
+      );
+      const installation = join(fixtureRoot, "installation");
+      cpSync(join(packageRoot, "src"), join(installation, "src"), {
+        recursive: true,
+      });
+      symlinkSync(
+        resolve(packageRoot, "../../node_modules"),
+        join(installation, "node_modules"),
+        "dir",
+      );
+      const skillPath = join(fixtureRoot, "explicit.md");
+      writeFileSync(
+        skillPath,
+        "---\nname: explicit\ndescription: Explicit installation skill\n---\nbody",
+      );
+      const runner = join(installation, "check.ts");
+      writeFileSync(
+        runner,
+        [
+          'import { loadSkills } from "./src/loader.ts";',
+          `const result = loadSkills({ includeDefaults: false, skillPaths: [${JSON.stringify(skillPath)}] });`,
+          "console.log(JSON.stringify(result.skills.map(skill => skill.description)));",
+        ].join("\n"),
+      );
+      const env = { ...process.env };
+      env.ELIZAOS_BUNDLED_SKILLS_DIR = join(
+        fixtureRoot,
+        "unused-missing-bundle",
+      );
+      const output = execFileSync(process.execPath, [runner], {
+        env,
+        encoding: "utf8",
+      });
+      assert.deepStrictEqual(JSON.parse(output.trim()), [
+        "Explicit installation skill",
+      ]);
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
   it("detects name collisions across skill sources", () => {
     const tempDir1 = createTempDir("skill-source-1");
     const tempDir2 = createTempDir("skill-source-2");
@@ -371,6 +439,78 @@ disable-model-invocation: true
       assert.strictEqual(entry.invocation.disableModelInvocation, true);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("state skill namespace selection", () => {
+  it("keeps managed, active and explicitly selected stores distinct", () => {
+    const root = createTempDir("skill-state-selection");
+    const empty = join(root, "empty");
+    mkdirSync(empty);
+    const writeSkill = (directory: string, name: string) => {
+      mkdirSync(join(directory, name), { recursive: true });
+      writeFileSync(
+        join(directory, name, "SKILL.md"),
+        `---\nname: ${name}\ndescription: Selected fixture\n---\nbody`,
+      );
+    };
+    const managed = join(root, "skills");
+    const active = join(managed, "curated", "active");
+    const proposed = join(managed, "curated", "proposed");
+    writeSkill(managed, "managed-skill");
+    writeSkill(active, "active-skill");
+    writeSkill(proposed, "draft-skill");
+    symlinkSync(active, join(managed, "active-alias"), "dir");
+    symlinkSync(proposed, join(managed, "draft-alias"), "dir");
+    try {
+      const options = { agentDir: root, cwd: empty, bundledSkillsDir: empty };
+      const result = loadSkills(options);
+      assert.deepStrictEqual(
+        result.skills
+          .map(({ name, source }) => ({ name, source }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+        [
+          { name: "active-skill", source: "curated" },
+          { name: "managed-skill", source: "managed" },
+        ],
+      );
+      const explicit = loadSkills({ ...options, skillPaths: [proposed] });
+      assert.ok(
+        explicit.skills.some(
+          (skill) => skill.name === "draft-skill" && skill.source === "path",
+        ),
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves default managed state after module import", () => {
+    const root = createTempDir("skill-state-current");
+    const previous = process.env.ELIZA_STATE_DIR;
+    const managed = join(root, "skills", "current-state");
+    mkdirSync(managed, { recursive: true });
+    writeFileSync(
+      join(managed, "SKILL.md"),
+      "---\nname: current-state\ndescription: Current state fixture\n---\nbody",
+    );
+    try {
+      process.env.ELIZA_STATE_DIR = root;
+      const result = loadSkills({
+        cwd: root,
+        bundledSkillsDir: join(root, "empty"),
+      });
+      assert.ok(
+        result.skills.some(
+          (skill) =>
+            skill.name === "current-state" && skill.source === "managed",
+        ),
+      );
+    } finally {
+      if (previous === undefined) delete process.env.ELIZA_STATE_DIR;
+      else process.env.ELIZA_STATE_DIR = previous;
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });

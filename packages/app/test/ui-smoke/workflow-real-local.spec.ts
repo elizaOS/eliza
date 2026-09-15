@@ -104,7 +104,7 @@ test.describe("real local workflow journey", () => {
     );
 
     await page.getByRole("button", { name: "New automation" }).click();
-    await page.getByRole("button", { name: "New workflow" }).click();
+    await page.getByRole("menuitem", { name: "New workflow" }).click();
     await expect(page.getByTestId("workflow-studio")).toBeVisible();
     await expect(page.getByTestId("smithers-canvas")).toBeVisible();
 

@@ -24,6 +24,7 @@ import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities"
 import type { WorkbenchTodo } from "../../../api/client-types-config";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
+import { useRole } from "../../../hooks/useRole";
 import { useAppSelectorShallow } from "../../../state";
 import type { TranslateFn } from "../../../types";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
@@ -309,6 +310,7 @@ function WorkbenchTodoItems({
  */
 function useAtRiskGoal(): AttentionGoal | null {
   const authenticated = useIsAuthenticated();
+  const { isOwner } = useRole();
   const [goals, setGoals] = useState<AttentionGoal[] | null>(null);
   const activeLoadRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
@@ -325,7 +327,7 @@ function useAtRiskGoal(): AttentionGoal | null {
       activeLoadRef.current?.abort();
       const controller = new AbortController();
       activeLoadRef.current = controller;
-      void loadGoalsForGlance(authenticated, controller.signal)
+      void loadGoalsForGlance(authenticated && isOwner, controller.signal)
         .then((next) => {
           if (controller.signal.aborted || !mountedRef.current) return;
           if (next == null) {
@@ -340,7 +342,7 @@ function useAtRiskGoal(): AttentionGoal | null {
           }
         });
     },
-    [authenticated],
+    [authenticated, isOwner],
   );
 
   useEffect(() => {
@@ -371,6 +373,7 @@ function useTodayTodos(): {
   complete: (id: string) => void;
 } {
   const authenticated = useIsAuthenticated();
+  const { isOwner } = useRole();
   const [todos, setTodos] = useState<TodayTodo[] | null>(null);
   const [now, setNow] = useState(0);
   const [completingIds, setCompletingIds] = useState<ReadonlySet<string>>(
@@ -391,7 +394,7 @@ function useTodayTodos(): {
       activeLoadRef.current?.abort();
       const controller = new AbortController();
       activeLoadRef.current = controller;
-      void loadTodayTodosForGlance(authenticated, controller.signal)
+      void loadTodayTodosForGlance(authenticated && isOwner, controller.signal)
         .then((next) => {
           if (controller.signal.aborted || !mountedRef.current) return;
           setNow(Date.now());
@@ -407,7 +410,7 @@ function useTodayTodos(): {
           }
         });
     },
-    [authenticated],
+    [authenticated, isOwner],
   );
 
   useEffect(() => {

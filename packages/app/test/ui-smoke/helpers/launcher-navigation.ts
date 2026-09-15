@@ -17,21 +17,52 @@ async function railGestureY(
   page: Page,
   target: Locator,
   currentPage: LauncherPage,
+  x: number,
 ): Promise<number> {
   const box = await target.boundingBox();
   if (!box) throw new Error(`${currentPage} launcher page has no bounding box`);
-  if (currentPage === "launcher") return box.y + box.height * 0.14;
 
   // Notification rows own their own horizontal dismiss gesture. Starting in
-  // the header keeps launcher navigation on the parent rail on narrow screens.
+  // the header usually keeps launcher navigation on the parent rail on narrow
+  // screens. Test-only badges can overlay that coordinate, though, so resolve
+  // an actual hit-tested point inside the active rail half before pressing.
   const notificationCenter = page.getByTestId("home-notification-center");
   const notificationBox =
-    (await notificationCenter.count()) > 0
+    currentPage === "home" && (await notificationCenter.count()) > 0
       ? await notificationCenter.boundingBox()
       : null;
-  return notificationBox && notificationBox.y > box.y
-    ? (box.y + notificationBox.y) / 2
-    : box.y + box.height * 0.14;
+  const preferredY =
+    notificationBox && notificationBox.y > box.y
+      ? (box.y + notificationBox.y) / 2
+      : box.y + box.height * 0.14;
+  const candidates = [
+    preferredY,
+    ...[0.14, 0.22, 0.32, 0.42, 0.52, 0.62].map(
+      (ratio) => box.y + box.height * ratio,
+    ),
+  ];
+  const targetTestId = `home-launcher-${currentPage}-page`;
+  const usableY = await page.evaluate(
+    ({ candidates, targetTestId, x }) => {
+      for (const y of candidates) {
+        const hit = document.elementFromPoint(x, y);
+        if (
+          hit?.closest(`[data-testid="${targetTestId}"]`) &&
+          !hit.closest("[data-notif-row]")
+        ) {
+          return y;
+        }
+      }
+      return null;
+    },
+    { candidates, targetTestId, x },
+  );
+  if (usableY === null) {
+    throw new Error(
+      `${currentPage} launcher page has no unobstructed drag point`,
+    );
+  }
+  return usableY;
 }
 
 async function dragRail(
@@ -47,7 +78,7 @@ async function dragRail(
   const direction = currentPage === "home" ? -1 : 1;
   const startX = box.x + box.width * (currentPage === "home" ? 0.72 : 0.28);
   const endX = startX + direction * box.width * 0.54;
-  const y = await railGestureY(page, target, currentPage);
+  const y = await railGestureY(page, target, currentPage, startX);
   const touchCapable = await page.evaluate(
     () =>
       navigator.maxTouchPoints > 0 ||
@@ -94,6 +125,10 @@ async function dragRail(
   await page.mouse.down();
   for (let step = 1; step <= 8; step += 1) {
     await page.mouse.move(startX + ((endX - startX) * step) / 8, y);
+    // Let the renderer observe motion across real frames. A zero-duration drag
+    // can begin and end within one busy frame, so the pager never sees enough
+    // velocity or displacement to commit even though CDP delivered every move.
+    await page.waitForTimeout(16);
   }
   await page.mouse.up();
 }

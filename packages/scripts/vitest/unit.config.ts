@@ -32,17 +32,6 @@ const unitAliasEntries: ModuleAlias[] = [
         "index.ts",
       ),
     },
-    {
-      find: "@elizaos/plugin-cli",
-      replacement: path.join(
-        elizaWorkspaceRoot,
-        "plugins",
-        "plugin-cli",
-        "typescript",
-        "src",
-        "index.ts",
-      ),
-    },
   ]),
   ...getOptionalResolvedAliases(
     localElizaCoreReplacement

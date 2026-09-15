@@ -8,16 +8,20 @@
  */
 
 import {
+	CANONICAL_ROLE_RANK,
 	type EffectReceipt,
 	ElizaError,
 	normalizeEffectReceipts,
 	normalizeUserFacingEffectReceiptIds,
 	type RoleGate,
+	type RoleGateRole,
 	type ViewCapability,
 	type ViewCapabilityParameter,
+	type ViewScopedAction,
 	type ViewType,
 } from "@elizaos/core";
 import { getAppControlApiBase } from "../loopback-api.js";
+import { navigationRequestSignal } from "./navigation-execution.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
 
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -38,6 +42,8 @@ export interface ViewSummary {
 	heroImageUrl?: string;
 	available: boolean;
 	capabilities?: ViewCapability[];
+	/** Static discovery metadata, not proof of selection or permission to act. */
+	scopedActions?: ViewScopedAction[];
 	visibleInManager?: boolean;
 	developerOnly?: boolean;
 }
@@ -325,6 +331,57 @@ function parseViewCapability(entry: unknown): ViewCapability | null {
 	};
 }
 
+function parseViewScopedAction(entry: unknown): ViewScopedAction | null {
+	if (
+		!isObject(entry) ||
+		typeof entry.name !== "string" ||
+		!entry.name.trim() ||
+		typeof entry.description !== "string" ||
+		!Array.isArray(entry.steps)
+	) {
+		return null;
+	}
+	const parameters = entry.parameters;
+	const similes = entry.similes;
+	if (
+		(parameters !== undefined &&
+			(!Array.isArray(parameters) ||
+				!parameters.every((value: unknown) => typeof value === "string"))) ||
+		(similes !== undefined &&
+			(!Array.isArray(similes) ||
+				!similes.every((value: unknown) => typeof value === "string")))
+	) {
+		return null;
+	}
+	const steps: ViewScopedAction["steps"] = [];
+	for (const step of entry.steps) {
+		// Never advertise a partial sequence when one declared step is invalid.
+		if (
+			!isObject(step) ||
+			(step.kind !== "agent-click" &&
+				step.kind !== "agent-fill" &&
+				step.kind !== "agent-focus") ||
+			typeof step.target !== "string" ||
+			!step.target.trim() ||
+			(step.value !== undefined && typeof step.value !== "string")
+		) {
+			return null;
+		}
+		steps.push({
+			kind: step.kind,
+			target: step.target,
+			...(step.value !== undefined ? { value: step.value } : {}),
+		});
+	}
+	return {
+		name: entry.name,
+		description: entry.description,
+		steps,
+		...(parameters !== undefined ? { parameters: [...parameters] } : {}),
+		...(similes !== undefined ? { similes: [...similes] } : {}),
+	};
+}
+
 export function parseViewSummary(entry: Record<string, unknown>): ViewSummary {
 	const id = entry.id;
 	const label = entry.label;
@@ -373,6 +430,14 @@ export function parseViewSummary(entry: Record<string, unknown>): ViewSummary {
 					(capability): capability is ViewCapability => capability !== null,
 				)
 		: undefined;
+	// The role-filtered registry already supplies these declarations. Keep their
+	// complete control contract in show/open receipts so the evaluator can find
+	// remaining UI work; the existing active-view and caller gates still apply.
+	const scopedActions = Array.isArray(entry.scopedActions)
+		? entry.scopedActions
+				.map(parseViewScopedAction)
+				.filter((action): action is ViewScopedAction => action !== null)
+		: undefined;
 
 	return {
 		id,
@@ -388,9 +453,39 @@ export function parseViewSummary(entry: Record<string, unknown>): ViewSummary {
 		heroImageUrl,
 		available,
 		capabilities,
+		...(scopedActions !== undefined ? { scopedActions } : {}),
 		visibleInManager,
 		developerOnly,
+		roleGate: parseViewRoleGate(entry.roleGate),
 	};
+}
+
+/** Preserve catalog authorization metadata and reject malformed gates. */
+function parseViewRoleGate(value: unknown): RoleGate | undefined {
+	if (value === undefined) return undefined;
+	if (!isObject(value))
+		throw new ElizaError("Invalid view role gate", {
+			code: "VIEW_CATALOG_INVALID",
+		});
+	function role(input: unknown): RoleGateRole {
+		if (typeof input === "string" && Object.hasOwn(CANONICAL_ROLE_RANK, input))
+			return input as RoleGateRole;
+		throw new ElizaError("Invalid view gate role", {
+			code: "VIEW_CATALOG_INVALID",
+		});
+	}
+	const gate: RoleGate = {};
+	if (value.minRole !== undefined) gate.minRole = role(value.minRole);
+	for (const field of ["roles", "anyOf", "allOf", "noneOf"] as const) {
+		const entry = value[field];
+		if (entry === undefined) continue;
+		if (!Array.isArray(entry))
+			throw new ElizaError("Invalid view role list", {
+				code: "VIEW_CATALOG_INVALID",
+			});
+		gate[field] = entry.map(role);
+	}
+	return gate;
 }
 
 function parseViewList(body: unknown): ViewSummary[] {
@@ -502,7 +597,7 @@ export function createViewsClient(): ViewsClient {
 			const response = await fetch(url, {
 				method: "GET",
 				headers: createViewsRequestHeaders(),
-				signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+				signal: navigationRequestSignal(REQUEST_TIMEOUT_MS),
 			});
 			if (!response.ok) {
 				throw new Error(`Failed to list views: HTTP ${response.status}`);
@@ -515,7 +610,7 @@ export function createViewsClient(): ViewsClient {
 			const response = await fetch(`${getApiBase()}/api/views/current`, {
 				method: "GET",
 				headers: createViewsRequestHeaders(),
-				signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+				signal: navigationRequestSignal(REQUEST_TIMEOUT_MS),
 			});
 			if (!response.ok) {
 				throw new Error(`Failed to get current view: HTTP ${response.status}`);
@@ -531,7 +626,7 @@ export function createViewsClient(): ViewsClient {
 					method: "POST",
 					headers: createViewsRequestHeaders(),
 					body: JSON.stringify({ path: opts.path, viewType: opts.viewType }),
-					signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+					signal: navigationRequestSignal(REQUEST_TIMEOUT_MS),
 				},
 			);
 			// 501/404 = the shell has no navigate route; opening still succeeded.

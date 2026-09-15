@@ -33,6 +33,7 @@ let creditGateResult: { allowed: boolean; balance: number; error?: string } = {
   allowed: true,
   balance: 10,
 };
+const checkAgentCreditGate = mock(async () => creditGateResult);
 let workerHealthResult:
   | { ok: true; required: false }
   | {
@@ -170,7 +171,7 @@ mock.module("@/lib/services/agent-tier-upgrade-target", () => ({
   findActivePersonalDedicatedTarget,
 }));
 mock.module("@/lib/services/agent-billing-gate", () => ({
-  checkAgentCreditGate: async () => creditGateResult,
+  checkAgentCreditGate,
 }));
 mock.module("@/lib/services/provisioning-worker-health", () => ({
   checkProvisioningWorkerHealth: async () => workerHealthResult,
@@ -410,6 +411,7 @@ describe("personal Shared messaging deliveries", () => {
     enqueueAgentResumeOnce.mockClear();
     enqueueAgentWakeOnce.mockClear();
     triggerImmediate.mockClear();
+    checkAgentCreditGate.mockClear();
     creditGateResult = { allowed: true, balance: 10 };
     workerHealthResult = { ok: true, required: false };
   });
@@ -620,7 +622,7 @@ describe("personal Shared messaging deliveries", () => {
       const response = await request(
         valid,
         "Bearer test-secret",
-        "22222222-2222-4222-8222-222222222222",
+        "22222222222242228222222222222222",
       );
 
       expect(response.status).toBe(500);
@@ -628,12 +630,14 @@ describe("personal Shared messaging deliveries", () => {
         "shared_runtime",
       );
       expect(response.headers.get("x-eliza-failure-name")).toBe("TypeError");
+      expect(response.headers.get("x-eliza-retryable")).toBe("false");
       expect(errorLog).toHaveBeenCalledWith(
         "[personal-shared-messaging] delivery failed",
         {
-          traceId: "22222222-2222-4222-8222-222222222222",
+          traceId: "22222222222242228222222222222222",
           stage: "shared_runtime",
           errorName: "TypeError",
+          retryable: false,
         },
       );
       expect(JSON.stringify(errorLog.mock.calls)).not.toContain(
@@ -665,12 +669,63 @@ describe("personal Shared messaging deliveries", () => {
     expect(response.headers.get("x-eliza-failure-name")).toBe(
       "SharedRuntimeCacheWarmingError",
     );
+    expect(response.headers.get("x-eliza-retryable")).toBe("true");
     await expect(response.json()).resolves.toEqual({
       success: false,
       error: "Shared Eliza is warming. Retry this turn shortly.",
       code: "service_unavailable",
       retryable: true,
     });
+  });
+
+  test("preserves a transient AgentRuntime cause as a retryable 503", async () => {
+    const { SharedRuntimeTurnError } = await import(
+      "@/lib/services/shared-runtime/shared-runtime-errors"
+    );
+    const provider = Object.assign(new Error("private provider body"), {
+      name: "AI_APICallError",
+      statusCode: 503,
+    });
+    sharedRestMessageSend.mockImplementationOnce(async () => {
+      throw new SharedRuntimeTurnError("private turn identity", provider);
+    });
+
+    const response = await request(valid);
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("retry-after")).toBe("1");
+    expect(response.headers.get("x-eliza-failure-name")).toBe(
+      "SharedRuntimeTurnError",
+    );
+    expect(response.headers.get("x-eliza-failure-cause-name")).toBe(
+      "SharedRuntimeProviderUnavailableError",
+    );
+    expect(response.headers.get("x-eliza-retryable")).toBe("true");
+    expect(await response.text()).not.toContain("private provider body");
+  });
+
+  test("keeps an action-contract failure terminal and sanitized", async () => {
+    const { SharedRuntimeTurnError } = await import(
+      "@/lib/services/shared-runtime/shared-runtime-errors"
+    );
+    const cause = new Error(
+      "Eliza Shared runtime completed an executable REMINDERS request without an action result",
+    );
+    sharedRestMessageSend.mockImplementationOnce(async () => {
+      throw new SharedRuntimeTurnError("private turn identity", cause);
+    });
+
+    const response = await request(valid);
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get("x-eliza-failure-name")).toBe(
+      "SharedRuntimeTurnError",
+    );
+    expect(response.headers.get("x-eliza-failure-cause-name")).toBe(
+      "SharedRuntimeActionContractError",
+    );
+    expect(response.headers.get("x-eliza-retryable")).toBe("false");
+    expect(await response.text()).not.toContain("REMINDERS");
   });
 
   test("classifies a both-path account resolution failure as a retryable 503", async () => {
@@ -1872,87 +1927,29 @@ describe("personal Shared messaging deliveries", () => {
     expect(runtimeWaitUntil).not.toHaveBeenCalled();
   });
 
-  test("idempotently resumes stopped Dedicated and asks the gateway to retry", async () => {
-    activeTarget = {
-      id: "00000000-0000-4000-8000-000000000020",
-      status: "stopped",
-    };
-
-    const response = await request(valid);
-    expect(response.status).toBe(503);
-    expect(await response.json()).toMatchObject({
-      code: "dedicated_starting",
-      retryable: true,
-      data: {
-        action: "resume",
-        activeAgentId: "00000000-0000-4000-8000-000000000020",
-        alreadyInProgress: false,
-        jobId: "resume-job-1",
-      },
-    });
-    expect(response.headers.get("retry-after")).toBe("5");
-    expect(enqueueAgentResumeOnce).toHaveBeenCalledWith({
-      agentId: "00000000-0000-4000-8000-000000000020",
-      organizationId: "00000000-0000-4000-8000-000000000001",
-      userId: "00000000-0000-4000-8000-000000000002",
-    });
-    expect(triggerImmediate).toHaveBeenCalledTimes(1);
-    expect(sharedRestMessageSend).not.toHaveBeenCalled();
-    expect(bridge).not.toHaveBeenCalled();
-  });
-
-  test("wakes sleeping Dedicated without reopening Shared", async () => {
-    activeTarget = {
-      id: "00000000-0000-4000-8000-000000000020",
-      status: "sleeping",
-    };
-    enqueueAgentWakeOnce.mockImplementationOnce(async () => ({
-      created: false,
-      job: { id: "wake-job-existing" },
-      appliedRestoreBackupId: null,
-      appliedForceFreshBoot: false,
-    }));
-
-    const response = await request(valid);
-    expect(response.status).toBe(503);
-    expect(await response.json()).toMatchObject({
-      code: "dedicated_starting",
-      retryable: true,
-      data: {
-        action: "wake",
-        alreadyInProgress: true,
-        jobId: "wake-job-existing",
-      },
-    });
-    expect(enqueueAgentWakeOnce).toHaveBeenCalledTimes(1);
-    expect(enqueueAgentResumeOnce).not.toHaveBeenCalled();
-    expect(sharedRestMessageSend).not.toHaveBeenCalled();
-    expect(bridge).not.toHaveBeenCalled();
-  });
-
-  test("keeps paid-compute wake fail-closed when the account is unfunded", async () => {
-    activeTarget = {
-      id: "00000000-0000-4000-8000-000000000020",
-      status: "stopped",
-    };
-    creditGateResult = {
-      allowed: false,
-      balance: 0,
-      error: "Add funds before resuming Dedicated.",
-    };
-
-    const response = await request(valid);
-    expect(response.status).toBe(402);
-    expect(await response.json()).toMatchObject({
-      code: "insufficient_credits",
-      retryable: false,
-      currentBalance: 0,
-    });
-    expect(enqueueAgentResumeOnce).not.toHaveBeenCalled();
-    expect(enqueueAgentWakeOnce).not.toHaveBeenCalled();
-    expect(sharedRestMessageSend).not.toHaveBeenCalled();
-    expect(bridge).not.toHaveBeenCalled();
-  });
+  for (const status of ["stopped", "sleeping"] as const) {
+    for (const balance of [0, 10]) {
+      test(`${status} Dedicated requires app price review even with balance ${balance}`, async () => {
+        activeTarget = { id: "00000000-0000-4000-8000-000000000020", status };
+        creditGateResult = { allowed: balance > 0, balance };
+        const response = await request(valid);
+        expect(response.status).toBe(428);
+        expect(await response.json()).toMatchObject({
+          code: "DEDICATED_PRICE_CONFIRMATION_REQUIRED",
+          error:
+            "Open Eliza to review the current price and start your Dedicated agent.",
+          retryable: false,
+        });
+        expect(response.headers.get("retry-after")).toBeNull();
+        expect(checkAgentCreditGate).not.toHaveBeenCalled();
+        expect(enqueueAgentResumeOnce).not.toHaveBeenCalled();
+        expect(enqueueAgentWakeOnce).not.toHaveBeenCalled();
+        expect(triggerImmediate).not.toHaveBeenCalled();
+        expect(sharedRestMessageSend).not.toHaveBeenCalled();
+        expect(bridge).not.toHaveBeenCalled();
+      });
+    }
+  }
 
   test("surfaces a Dedicated bridge failure without reopening Shared", async () => {
     activeTarget = {

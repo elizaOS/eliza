@@ -17,7 +17,6 @@ import type { EventPayload } from "../types/events";
 import { EventType } from "../types/events";
 import type {
 	HookEligibilityResult,
-	HookFrontmatter,
 	HookHandler,
 	HookLoadResult,
 	HookMetadata,
@@ -45,75 +44,6 @@ function getCurrentPlatform(): string {
 	return typeof process !== "undefined" && process.platform
 		? process.platform
 		: "unknown";
-}
-
-/**
- * Parse YAML-like frontmatter from HOOK.md content
- */
-function _parseFrontmatter(content: string): HookFrontmatter {
-	const frontmatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
-	if (!frontmatterMatch) {
-		return {};
-	}
-
-	const frontmatterText = frontmatterMatch[1];
-	const result: HookFrontmatter = {};
-
-	// Parse simple YAML-like key-value pairs
-	const lines = frontmatterText.split("\n");
-	let currentKey: string | null = null;
-	let currentArray: string[] | null = null;
-
-	for (const line of lines) {
-		const trimmed = line.trim();
-		if (!trimmed || trimmed.startsWith("#")) continue;
-
-		// Check for array item
-		if (trimmed.startsWith("- ") && currentKey && currentArray !== null) {
-			currentArray.push(trimmed.slice(2).trim());
-			continue;
-		}
-
-		// Check for key-value pair
-		const kvMatch = trimmed.match(/^(\w+):\s*(.*)$/);
-		if (kvMatch) {
-			const [, key, value] = kvMatch;
-
-			// Save previous array if any
-			if (currentKey && currentArray !== null) {
-				(result as Record<string, unknown>)[currentKey] = currentArray;
-			}
-
-			currentKey = key;
-
-			if (value) {
-				// Simple value
-				currentArray = null;
-				if (value === "true") {
-					(result as Record<string, unknown>)[key] = true;
-				} else if (value === "false") {
-					(result as Record<string, unknown>)[key] = false;
-				} else if (/^\d+$/.test(value)) {
-					(result as Record<string, unknown>)[key] = parseInt(value, 10);
-				} else {
-					(result as Record<string, unknown>)[key] = value.replace(
-						/^["']|["']$/g,
-						"",
-					);
-				}
-			} else {
-				// Start of array
-				currentArray = [];
-			}
-		}
-	}
-
-	// Save last array if any
-	if (currentKey && currentArray !== null) {
-		(result as Record<string, unknown>)[currentKey] = currentArray;
-	}
-
-	return result;
 }
 
 /**

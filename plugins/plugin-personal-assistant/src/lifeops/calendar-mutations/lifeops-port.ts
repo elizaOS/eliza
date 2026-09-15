@@ -11,6 +11,7 @@ import {
 } from "@elizaos/plugin-calendar";
 import {
   normalizeCalendarAttendees,
+  normalizeCalendarDateOnly,
   normalizeCalendarTimeZone,
 } from "@elizaos/plugin-calendar/internal/calendar-normalize";
 import {
@@ -151,6 +152,26 @@ function validateDeterministicPayload(payload: CalendarMutationPayload): void {
           "endsAtMs must be after startsAtMs.",
         );
       }
+      if (payload.allDay) {
+        const startDate = normalizeCalendarDateOnly(
+          payload.allDay.startDate,
+          "allDay.startDate",
+        );
+        const endDateExclusive = normalizeCalendarDateOnly(
+          payload.allDay.endDateExclusive,
+          "allDay.endDateExclusive",
+        );
+        if (
+          endDateExclusive <= startDate ||
+          payload.startsAtMs !== Date.parse(`${startDate}T00:00:00.000Z`) ||
+          payload.endsAtMs !== Date.parse(`${endDateExclusive}T00:00:00.000Z`)
+        ) {
+          throw new CalendarMutationPreflightError(
+            "CALENDAR_MUTATION_INVALID_PAYLOAD",
+            "The approved all-day range does not match its immutable date boundaries.",
+          );
+        }
+      }
       normalizeCalendarAttendees(
         payload.attendees.map(calendarAttendeeRequest),
       );
@@ -214,6 +235,22 @@ function validateDeterministicPayload(payload: CalendarMutationPayload): void {
           "CALENDAR_MUTATION_INVALID_PAYLOAD",
           "The approved event end must be after its start.",
         );
+      }
+      if (payload.patch.allDay) {
+        const startDate = normalizeCalendarDateOnly(
+          payload.patch.allDay.startDate,
+          "patch.allDay.startDate",
+        );
+        const endDateExclusive = normalizeCalendarDateOnly(
+          payload.patch.allDay.endDateExclusive,
+          "patch.allDay.endDateExclusive",
+        );
+        if (endDateExclusive <= startDate) {
+          throw new CalendarMutationPreflightError(
+            "CALENDAR_MUTATION_INVALID_PAYLOAD",
+            "The approved all-day patch end must follow its start.",
+          );
+        }
       }
       if (payload.patch.attendees !== null) {
         normalizeCalendarAttendees(
@@ -1074,8 +1111,20 @@ export function createLifeOpsCalendarMutationPort(
             grantId: preflight.sourceId,
             calendarId: preflight.calendarId,
             title: payload.title,
-            startAt: new Date(payload.startsAtMs).toISOString(),
-            endAt: new Date(payload.endsAtMs).toISOString(),
+            ...(!payload.allDay
+              ? {
+                  startAt: new Date(payload.startsAtMs).toISOString(),
+                  endAt: new Date(payload.endsAtMs).toISOString(),
+                }
+              : {}),
+            ...(payload.allDay
+              ? {
+                  allDay: {
+                    startDate: payload.allDay.startDate,
+                    endDateExclusive: payload.allDay.endDateExclusive,
+                  },
+                }
+              : {}),
             ...(payload.timeZone !== null && payload.timeZone !== undefined
               ? { timeZone: payload.timeZone }
               : {}),
@@ -1174,12 +1223,20 @@ export function createLifeOpsCalendarMutationPort(
             ...(payload.patch.location !== null
               ? { location: payload.patch.location }
               : {}),
-            ...(payload.patch.startsAtMs !== null
+            ...(payload.patch.allDay
+              ? {
+                  allDay: {
+                    startDate: payload.patch.allDay.startDate,
+                    endDateExclusive: payload.patch.allDay.endDateExclusive,
+                  },
+                }
+              : {}),
+            ...(payload.patch.startsAtMs !== null && !payload.patch.allDay
               ? {
                   startAt: new Date(payload.patch.startsAtMs).toISOString(),
                 }
               : {}),
-            ...(payload.patch.endsAtMs !== null
+            ...(payload.patch.endsAtMs !== null && !payload.patch.allDay
               ? { endAt: new Date(payload.patch.endsAtMs).toISOString() }
               : {}),
             ...(payload.patch.timeZone !== null &&

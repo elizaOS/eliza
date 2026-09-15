@@ -17,6 +17,7 @@ import {
   render,
   screen,
 } from "@testing-library/react";
+import { createRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mutations are optimistic writes through the API client - mock the transport,
@@ -27,7 +28,9 @@ vi.mock("../../api/client", () => ({
       notifications: [],
       unreadCount: 0,
     })),
+    listPendingActions: vi.fn(async () => ({ pending: [] })),
     onWsEvent: vi.fn(),
+    onAuthorityChange: vi.fn(() => () => {}),
     // notificationProbesEnabled reads the configured base URL before every
     // hydration request; empty string = same-origin (probes enabled).
     getBaseUrl: vi.fn(() => ""),
@@ -39,6 +42,8 @@ vi.mock("../../api/client", () => ({
 }));
 
 const navigateDeepLink = vi.hoisted(() => vi.fn());
+const dispatchChatOpen = vi.hoisted(() => vi.fn());
+const dispatchChatPrefill = vi.hoisted(() => vi.fn());
 
 /** Typed authenticated owner fixture for the auth-gated hydration probes. */
 const AUTHENTICATED_OWNER: AuthStatusState = {
@@ -56,8 +61,13 @@ vi.mock("../../state/notifications/navigate-deep-link", async (orig) => ({
   ...(await orig()),
   navigateDeepLink,
 }));
+vi.mock("../../events", () => ({
+  NETWORK_STATUS_CHANGE_EVENT: "eliza:network-status-change",
+  dispatchChatOpen,
+  dispatchChatPrefill,
+}));
 
-import type { AgentNotification } from "@elizaos/core";
+import type { AgentNotification, PendingUserAction } from "@elizaos/core";
 import { client } from "../../api/client";
 import {
   __resetAuthStatusForTests,
@@ -70,6 +80,7 @@ import {
   __resetNotificationStoreForTests,
   __setHydratedForTests,
   __setHydrationFailureForTests,
+  removeNotification,
 } from "../../state/notifications/notification-store";
 import {
   dampenPull,
@@ -79,7 +90,6 @@ import {
   notificationGroupKey,
   notificationGroupLabel,
   notificationPullRevealProgress,
-  notificationScrollFadeEdges,
   orderDashboardNotifications,
   PULL_COMMIT_PX,
   STACK_FOLD_SETTLE_MS,
@@ -89,42 +99,38 @@ import {
   notificationPullOvershootOffset,
   PULL_TRAVEL_PX,
 } from "./notification-shade-presentation";
+import {
+  readPersistedResolvedPendingActionIds,
+  resolvedPendingActionIdsStorageKey,
+  usePendingActions,
+} from "./pending-action-notifications";
 
 let seq = 0;
 let restoreMatchMediaForTest: (() => void) | null = null;
 
-describe("notificationScrollFadeEdges", () => {
-  it("reports only edges with hidden content across the full scroll range", () => {
-    expect(
-      notificationScrollFadeEdges({
-        scrollTop: 0,
-        scrollHeight: 100,
-        clientHeight: 100,
-      }),
-    ).toEqual({ overflow: false, top: false, bottom: false });
-    expect(
-      notificationScrollFadeEdges({
-        scrollTop: 0,
-        scrollHeight: 300,
-        clientHeight: 100,
-      }),
-    ).toEqual({ overflow: true, top: false, bottom: true });
-    expect(
-      notificationScrollFadeEdges({
-        scrollTop: 80,
-        scrollHeight: 300,
-        clientHeight: 100,
-      }),
-    ).toEqual({ overflow: true, top: true, bottom: true });
-    expect(
-      notificationScrollFadeEdges({
-        scrollTop: 199.5,
-        scrollHeight: 300,
-        clientHeight: 100,
-      }),
-    ).toEqual({ overflow: true, top: true, bottom: false });
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
   });
-});
+  return { promise, resolve };
+}
+
+function PendingActionRenderProbe({
+  onRender,
+}: {
+  onRender: (state: { loaded: boolean; titles: readonly string[] }) => void;
+}) {
+  const state = usePendingActions();
+  onRender({
+    loaded: state.loaded,
+    titles: state.pending.map((item) => item.title),
+  });
+  return null;
+}
 
 function staticMediaQuery(media: string, matches: boolean): MediaQueryList {
   return {
@@ -263,8 +269,13 @@ function setOverflowingListGeometry(list: HTMLElement): void {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  window.localStorage.clear();
   seq = 0;
   vi.mocked(client.getBaseUrl).mockReset().mockReturnValue("");
+  vi.mocked(client.listPendingActions)
+    .mockReset()
+    .mockResolvedValue({ pending: [] });
+  vi.mocked(client.removeNotification).mockClear();
 });
 
 afterEach(() => {
@@ -275,6 +286,9 @@ afterEach(() => {
   __resetNotificationStoreForTests();
   __resetAuthStatusForTests();
   navigateDeepLink.mockClear();
+  dispatchChatOpen.mockClear();
+  dispatchChatPrefill.mockClear();
+  window.localStorage.clear();
 });
 
 describe("orderDashboardNotifications", () => {
@@ -684,6 +698,43 @@ describe("notificationPullRevealProgress", () => {
 });
 
 describe("NotificationsHomeCenter", () => {
+  it("renders late hydration and removes replaced groups", async () => {
+    const { unmount } = renderRestedNotifications();
+    expect(screen.queryByTestId("home-notification-list")).toBeNull();
+    const first = makeNotification({
+      source: "calendar",
+      title: "Calendar item",
+    });
+    try {
+      await act(async () => {
+        __setHydratedForTests(true);
+        __ingestNotificationForTests(first);
+        await Promise.resolve();
+      });
+      const list = screen.getByTestId("home-notification-list");
+      const oldGroup = list.firstElementChild;
+      if (!oldGroup) throw new Error("Notification group was not rendered");
+      expect(screen.getByText("Calendar item")).not.toBeNull();
+
+      await act(async () => {
+        await removeNotification(first.id);
+        __ingestNotificationForTests(
+          makeNotification({ source: "browser", title: "Browser item" }),
+        );
+      });
+      expect(oldGroup.isConnected).toBe(false);
+      const newGroup = list.firstElementChild;
+      if (!newGroup)
+        throw new Error("Replacement notification group was not rendered");
+      expect(screen.getByText("Browser item")).not.toBeNull();
+      expect(screen.queryByText("Calendar item")).toBeNull();
+      unmount();
+      expect(newGroup.isConnected).toBe(false);
+    } finally {
+      unmount();
+    }
+  });
+
   it("renders nothing while the empty inbox is still hydrating", () => {
     const { container } = renderRestedNotifications();
     expect(container.firstChild).toBeNull();
@@ -756,42 +807,6 @@ describe("NotificationsHomeCenter", () => {
     expect(client.getBaseUrl).toHaveBeenCalled();
     expect(client.listNotifications).not.toHaveBeenCalled();
     expect(screen.queryByTestId("notifications-empty")).toBeNull();
-  });
-
-  it("applies directional fades only where notification content is hidden", () => {
-    __ingestNotificationForTests(makeNotification());
-    render(<NotificationsHomeCenter />);
-    const list = screen.getByTestId("home-notification-list");
-    Object.defineProperties(list, {
-      clientHeight: { configurable: true, value: 100 },
-      scrollHeight: { configurable: true, value: 300 },
-    });
-
-    list.scrollTop = 0;
-    fireEvent.scroll(list);
-    expect(list.hasAttribute("data-scroll-overflow")).toBe(true);
-    expect(list.hasAttribute("data-scroll-fade-top")).toBe(false);
-    expect(list.hasAttribute("data-scroll-fade-bottom")).toBe(true);
-    expect(list.className).not.toContain("scroll-fade");
-
-    list.scrollTop = 80;
-    fireEvent.scroll(list);
-    expect(list.hasAttribute("data-scroll-fade-top")).toBe(true);
-    expect(list.hasAttribute("data-scroll-fade-bottom")).toBe(true);
-
-    list.scrollTop = 200;
-    fireEvent.scroll(list);
-    expect(list.hasAttribute("data-scroll-fade-top")).toBe(true);
-    expect(list.hasAttribute("data-scroll-fade-bottom")).toBe(false);
-
-    Object.defineProperty(list, "scrollHeight", {
-      configurable: true,
-      value: 100,
-    });
-    fireEvent.scroll(list);
-    expect(list.hasAttribute("data-scroll-overflow")).toBe(false);
-    expect(list.hasAttribute("data-scroll-fade-top")).toBe(false);
-    expect(list.hasAttribute("data-scroll-fade-bottom")).toBe(false);
   });
 
   it("reveals a subtle empty status through the normal pull gesture", () => {
@@ -1051,6 +1066,274 @@ describe("NotificationsHomeCenter", () => {
     expect(screen.queryByText("Dismiss me")).toBeNull();
   });
 
+  it("keeps unresolved choices in the normal shade and routes a typed reply", async () => {
+    const pendingAction: PendingUserAction = {
+      id: "request-1",
+      kind: "choice",
+      source: "lifeops",
+      title: "Send the weekly report?",
+      createdAt: 1_700_000_000_000,
+      options: [
+        { id: "approve", label: "Yes" },
+        { id: "later", label: "Ask me later", isCancel: true },
+      ],
+    };
+    __setAuthStatusForTests(AUTHENTICATED_OWNER);
+    __setHydratedForTests(true);
+    vi.mocked(client.listPendingActions).mockResolvedValueOnce({
+      pending: [pendingAction],
+    });
+
+    renderRestedNotifications();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const row = screen.getByTestId("notification-row");
+    const swipe = screen.getByTestId("notification-row-swipe");
+    expect(swipe.getAttribute("data-notification-dismissible")).toBe("false");
+    fireEvent.pointerDown(swipe, {
+      pointerType: "touch",
+      pointerId: 1,
+      clientX: 120,
+      clientY: 20,
+    });
+    fireEvent.pointerMove(swipe, {
+      pointerType: "touch",
+      pointerId: 1,
+      clientX: 10,
+      clientY: 20,
+    });
+    fireEvent.pointerUp(swipe, {
+      pointerType: "touch",
+      pointerId: 1,
+      clientX: 10,
+      clientY: 20,
+    });
+    expect(swipe.style.transform).not.toContain("120%");
+
+    fireEvent.click(row);
+    const options = screen.getByTestId("pending-action-options");
+    expect(options.getAttribute("aria-label")).toBe(
+      "Respond to: Send the weekly report?",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Yes" }));
+    expect(dispatchChatPrefill).toHaveBeenCalledWith({
+      text: "Approve: Send the weekly report?",
+      select: true,
+    });
+    expect(client.removeNotification).not.toHaveBeenCalled();
+    expect(screen.getByText("Send the weekly report?")).toBeTruthy();
+  });
+
+  it("keeps canonical resolution terminal after the notification center remounts", async () => {
+    const pendingAction: PendingUserAction = {
+      id: "request-remount",
+      kind: "approval",
+      source: "lifeops",
+      title: "Approve the durable transition?",
+      createdAt: 1_700_000_000_000,
+    };
+    __setAuthStatusForTests(AUTHENTICATED_OWNER);
+    __setHydratedForTests(true);
+    __ingestNotificationForTests(
+      makeNotification({
+        title: "Approval needed",
+        category: "approval",
+        source: "lifeops",
+        groupKey: "approval:request-remount",
+        data: { requestId: "request-remount" },
+        readAt: null,
+      }),
+    );
+    vi.mocked(client.listPendingActions)
+      .mockResolvedValueOnce({ pending: [pendingAction] })
+      .mockResolvedValue({ pending: [] });
+
+    const firstMount = renderRestedNotifications();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Approve the durable transition?")).toBeTruthy();
+
+    await act(async () => {
+      vi.advanceTimersByTime(20_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Approval needed")).toBeNull();
+    const persisted = readPersistedResolvedPendingActionIds(
+      window.localStorage,
+      resolvedPendingActionIdsStorageKey(AUTHENTICATED_OWNER.identity.id, ""),
+    );
+    expect(persisted.status).toBe("valid");
+    if (persisted.status !== "valid") {
+      throw new Error("Expected a durable resolution fence");
+    }
+    expect(persisted.ids).toContain("request-remount");
+
+    firstMount.unmount();
+    renderRestedNotifications();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Approval needed")).toBeNull();
+  });
+
+  it("ignores an older same-owner poll that resolves after newer canonical state", async () => {
+    const pendingAction: PendingUserAction = {
+      id: "request-order",
+      kind: "approval",
+      source: "lifeops",
+      title: "Approve the ordered transition?",
+      createdAt: 1_700_000_000_000,
+    };
+    const older = deferred<{ pending: PendingUserAction[] }>();
+    const newer = deferred<{ pending: PendingUserAction[] }>();
+    __setAuthStatusForTests(AUTHENTICATED_OWNER);
+    __setHydratedForTests(true);
+    __ingestNotificationForTests(
+      makeNotification({
+        title: "Approval needed",
+        category: "approval",
+        source: "lifeops",
+        groupKey: "approval:request-order",
+        data: { requestId: "request-order" },
+        readAt: null,
+      }),
+    );
+    vi.mocked(client.listPendingActions)
+      .mockResolvedValueOnce({ pending: [pendingAction] })
+      .mockImplementationOnce(() => older.promise)
+      .mockImplementationOnce(() => newer.promise);
+
+    renderRestedNotifications();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Approve the ordered transition?")).toBeTruthy();
+
+    act(() => vi.advanceTimersByTime(20_000));
+    act(() => vi.advanceTimersByTime(20_000));
+    await act(async () => {
+      newer.resolve({ pending: [] });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Approval needed")).toBeNull();
+
+    await act(async () => {
+      older.resolve({ pending: [pendingAction] });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Approval needed")).toBeNull();
+    expect(screen.queryByText("Approve the ordered transition?")).toBeNull();
+  });
+
+  it("drops an old-owner response after the authenticated owner changes", async () => {
+    const ownerAResponse = deferred<{ pending: PendingUserAction[] }>();
+    const ownerB: AuthStatusState = {
+      ...AUTHENTICATED_OWNER,
+      identity: { ...AUTHENTICATED_OWNER.identity, id: "u-2" },
+      session: { ...AUTHENTICATED_OWNER.session, id: "s-2" },
+    };
+    __setAuthStatusForTests(AUTHENTICATED_OWNER);
+    __setHydratedForTests(true);
+    vi.mocked(client.listPendingActions)
+      .mockImplementationOnce(() => ownerAResponse.promise)
+      .mockResolvedValue({ pending: [] });
+
+    renderRestedNotifications();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      __setAuthStatusForTests(ownerB);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    ownerAResponse.resolve({
+      pending: [
+        {
+          id: "owner-a-request",
+          kind: "approval",
+          source: "lifeops",
+          title: "Owner A only",
+          createdAt: 1_700_000_000_000,
+        },
+      ],
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("Owner A only")).toBeNull();
+    expect(
+      window.localStorage.getItem(
+        resolvedPendingActionIdsStorageKey(ownerB.identity.id, ""),
+      ) ?? "",
+    ).not.toContain("owner-a-request");
+  });
+
+  it("never exposes a committed owner snapshot during an account switch", async () => {
+    const ownerBResponse = deferred<{ pending: PendingUserAction[] }>();
+    const ownerB: AuthStatusState = {
+      ...AUTHENTICATED_OWNER,
+      identity: { ...AUTHENTICATED_OWNER.identity, id: "u-2" },
+      session: { ...AUTHENTICATED_OWNER.session, id: "s-2" },
+    };
+    const renders: Array<{ loaded: boolean; titles: readonly string[] }> = [];
+    __setAuthStatusForTests(AUTHENTICATED_OWNER);
+    vi.mocked(client.listPendingActions)
+      .mockResolvedValueOnce({
+        pending: [
+          {
+            id: "owner-a-committed",
+            kind: "approval",
+            source: "lifeops",
+            title: "Owner A committed",
+            createdAt: 1_700_000_000_000,
+          },
+        ],
+      })
+      .mockImplementationOnce(() => ownerBResponse.promise);
+
+    render(
+      <PendingActionRenderProbe onRender={(state) => renders.push(state)} />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(renders.at(-1)).toEqual({
+      loaded: true,
+      titles: ["Owner A committed"],
+    });
+
+    renders.length = 0;
+    act(() => {
+      __setAuthStatusForTests(ownerB);
+    });
+    expect(renders.length).toBeGreaterThan(0);
+    expect(
+      renders.every(
+        (state) => !state.loaded && !state.titles.includes("Owner A committed"),
+      ),
+    ).toBe(true);
+
+    await act(async () => {
+      ownerBResponse.resolve({ pending: [] });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  });
+
   it("acting on a row removes it; surviving rows keep their stable order", () => {
     __ingestNotificationForTests(
       makeNotification({
@@ -1153,6 +1436,38 @@ describe("NotificationsHomeCenter", () => {
     // Coalesced arrivals speak through their title/body; no bare number rides
     // the notification header.
     expect(screen.queryByTestId("notification-count-chip")).toBeNull();
+  });
+
+  it("renders a white connector mark for a known notification source", () => {
+    __ingestNotificationForTests(
+      makeNotification({
+        source: "discord",
+        category: "message",
+        title: "New Discord message",
+      }),
+    );
+    renderRestedNotifications();
+
+    const sourceIcon = screen.getByTestId("notification-source-icon");
+    expect(sourceIcon.dataset.notificationSourceVisual).toBe("brand");
+    expect(sourceIcon.dataset.source).toBe("discord");
+    expect(sourceIcon.className).toContain("text-white");
+    expect(sourceIcon.querySelector("svg")).toBeTruthy();
+  });
+
+  it("uses the notification category icon instead of a producer initial", () => {
+    __ingestNotificationForTests(
+      makeNotification({
+        source: "lifeops",
+        category: "health",
+        title: "Health check",
+      }),
+    );
+    renderRestedNotifications();
+
+    const sourceIcon = screen.getByTestId("notification-source-icon");
+    expect(sourceIcon.dataset.notificationSourceVisual).toBe("category");
+    expect(sourceIcon.querySelector("svg.lucide-heart-pulse")).toBeTruthy();
   });
 });
 
@@ -1819,6 +2134,36 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(onOpenRequestHandled).toHaveBeenCalledTimes(2);
   });
 
+  it("preserves the shade for pager-consumed clicks and other pages", () => {
+    seedTriage();
+    const homeRef = createRef<HTMLDivElement>();
+    render(
+      <>
+        <div ref={homeRef}>
+          <NotificationsHomeCenter emptyGestureTargetRef={homeRef} />
+          <button
+            type="button"
+            onClickCapture={(event) => event.stopPropagation()}
+          >
+            Swipe release
+          </button>
+          <button type="button">Home background</button>
+        </div>
+        <button type="button">Views</button>
+      </>,
+    );
+    const list = screen.getByTestId("home-notification-list");
+    fireEvent.click(screen.getByText("Swipe release"));
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    fireEvent.click(screen.getByText("Views"));
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    fireEvent.click(screen.getByText("Home background"));
+    finishShadeCollapse();
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    fireEvent.click(screen.getByText("Views"));
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+  });
+
   it("ignores a chat pull release over the notification area", () => {
     seedTriage();
     render(
@@ -2204,14 +2549,6 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     // must never move an already-visible priority stack to compensate for them.
     expect(mailGroup?.style.transform).toBe("translate3d(0, 0px, 0)");
     const css = list.parentElement?.querySelector("style")?.textContent ?? "";
-    const activeDragRule = css.match(
-      /\.eliza-notif-scroll\[data-shade-dragging\]\s*\{([^}]*)\}/,
-    )?.[1];
-    expect(activeDragRule).not.toContain("mask-image");
-    const releaseSettleRule = css.match(
-      /\.eliza-notif-scroll\[data-shade-release-settling\]\s*\{([^}]*)\}/,
-    )?.[1];
-    expect(releaseSettleRule).not.toContain("mask-image");
     // A pull may animate compositor properties, but changing which element
     // paints the fill produces a visible first-frame color/rim discontinuity.
     const gestureMaterialRules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
@@ -3026,11 +3363,6 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       true,
     );
     expect(list.getAttribute("data-shade-preview")).toBe("expanding");
-    const shadeCss = center.querySelector("style")?.textContent ?? "";
-    const previewRowAnimationGuard = shadeCss.match(
-      /\.eliza-notif-scroll \[data-notification-pull-reveal\] \.eliza-notif-row,[^{]+\{([^}]*)\}/,
-    )?.[1];
-    expect(previewRowAnimationGuard).toContain("animation: none !important");
     expect(
       previewGroups.every((group) => {
         const content = group.querySelector<HTMLElement>(

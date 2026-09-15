@@ -8,6 +8,8 @@ import { describe, expect, it, vi } from "vitest";
 import { DexScreenerService } from "./service";
 
 vi.mock("@elizaos/core", () => ({
+  formatError: (error: unknown) =>
+    error instanceof Error ? error.message : String(error),
   Service: class Service {
     runtime: unknown;
 

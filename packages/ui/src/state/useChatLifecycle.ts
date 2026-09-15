@@ -18,6 +18,7 @@ import type {
 import { type AgentStatus, client, type StreamEventEnvelope } from "../api";
 import { isIosInProcessLocalAgentBase } from "../api/ios-local-agent-transport";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../bridge";
+import { deliverSystemNotification } from "../bridge/notification-delivery";
 import { dispatchElizaCloudStatusUpdated } from "../events";
 import {
   isMobileLocalAgentIpcBase,
@@ -503,15 +504,22 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       urgency?: "normal" | "critical" | "low";
       silent?: boolean;
     }) => {
-      try {
-        await invokeDesktopBridgeRequest<{ id: string }>({
-          rpcMethod: "desktopShowNotification",
-          ipcChannel: "desktop:showNotification",
-          params: options,
-        });
-      } catch {
-        /* ignore desktop notification failures */
-      }
+      await deliverSystemNotification(
+        {
+          id: `lifecycle-${crypto.randomUUID()}`,
+          title: options.title,
+          body: options.body,
+          priority:
+            options.urgency === "critical"
+              ? "urgent"
+              : options.urgency === "low"
+                ? "low"
+                : "normal",
+          requestPermission: false,
+          silent: options.silent,
+        },
+        { allowHiddenWeb: true },
+      );
     },
     [],
   );

@@ -22,6 +22,7 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  PromoteSubactionsOptions,
   State,
 } from "@elizaos/core";
 import {
@@ -44,7 +45,12 @@ import {
   isElizaCalendarGrant,
   isMicrosoftCalendarGrantId,
 } from "@elizaos/plugin-calendar";
-import { CALENDAR_DETAILS_PARAMETER_SCHEMA } from "@elizaos/plugin-calendar/calendar-action-schema";
+import {
+  CALENDAR_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA,
+} from "@elizaos/plugin-calendar/calendar-action-schema";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
@@ -368,6 +374,7 @@ export function createCalendarMutationApprovalGateway(options?: {
         title: args.request.title,
         startsAtMs: requireCalendarTimestamp(args.request.startAt, "startAt"),
         endsAtMs: requireCalendarTimestamp(args.request.endAt, "endAt"),
+        allDay: args.request.allDay ?? null,
         timeZone: args.request.timeZone ?? null,
         durationMinutes: args.request.durationMinutes ?? null,
         windowPreset: args.request.windowPreset ?? null,
@@ -400,7 +407,9 @@ export function createCalendarMutationApprovalGateway(options?: {
         action: "schedule_event",
         provider: boundCalendarProviderForGrant(args.request.grantId),
         payload,
-        reason: `Create "${approvalSafeLabel(payload.title)}" at ${new Date(payload.startsAtMs).toISOString()} on the bound calendar${travel}, ${notification}.`,
+        reason: payload.allDay
+          ? `Create "${approvalSafeLabel(payload.title)}" as an all-day event from ${payload.allDay.startDate} through ${payload.allDay.endDateExclusive} (exclusive) on the bound calendar${travel}, ${notification}.`
+          : `Create "${approvalSafeLabel(payload.title)}" at ${new Date(payload.startsAtMs).toISOString()} on the bound calendar${travel}, ${notification}.`,
       });
     },
     async modify(args) {
@@ -435,6 +444,7 @@ export function createCalendarMutationApprovalGateway(options?: {
           endsAtMs: args.request.endAt
             ? requireCalendarTimestamp(args.request.endAt, "endAt")
             : null,
+          allDay: args.request.allDay ?? null,
           timeZone: args.request.timeZone ?? null,
           attendees:
             args.request.attendees?.map((attendee) => ({
@@ -1142,8 +1152,10 @@ async function guardProtectedSleepCreate(args: {
 
 const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
   feed: {
-    description: "List events. Time window: today, this week.",
-    descriptionCompressed: "list events time-window",
+    description:
+      "Read the full unfiltered agenda for a date or time range. Use details.timeMin/timeMax and timeZone. A date-only request or no-keyword-filter request belongs here, not search_events.",
+    descriptionCompressed:
+      "full unfiltered agenda/date/time-range; dates are bounds, not keywords",
     required: [],
     optional: ["intent", "details"],
   },
@@ -1154,8 +1166,10 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
     optional: ["intent", "details"],
   },
   search_events: {
-    description: "Search events: title, attendee, location, date.",
-    descriptionCompressed: "search events title|attendee|location|date",
+    description:
+      "Filter events by a user-requested title, attendee, location, or keyword, optionally within a time range. For all events on a date or an unfiltered agenda use feed; never turn the date into a title search.",
+    descriptionCompressed:
+      "content-filter title|attendee|location|keyword; full/date-only agenda -> feed",
     required: [],
     optional: ["intent", "query", "queries", "details"],
   },
@@ -1553,6 +1567,8 @@ export const calendarAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
   name: ACTION_NAME,
+  // Keep optional operation-specific details optional in provider tool schemas.
+  toolSchemaStrict: false,
   similes: [
     "CALENDAR",
     "SCHEDULE",
@@ -1735,38 +1751,68 @@ export const calendarAction: Action & {
     {
       name: "title",
       description:
-        "Event title for create_event. TOP-LEVEL flat. " +
+        "Event title for create_event, the NEW name when update_event renames an event, or the existing target title for delete_event when query and details.eventId are absent. " +
+        "For update_event identify the existing event with `query` (its own words, e.g. 'piano lesson'), `details.oldTitle`, or `details.eventId` from a search_events/feed result; title never selects an update target. TOP-LEVEL flat. " +
         "NEVER inside `details`. " +
-        "Example: `{ subaction: 'create_event', title: 'Dentist', details: { start: '...', end: '...' } }`.",
+        "Example: `{ subaction: 'create_event', title: 'Dentist', details: { start: '...', end: '...' } }`. " +
+        "Move example: `{ subaction: 'update_event', query: 'piano lesson', details: { start: '...', end: '...' } }`.",
       descriptionCompressed:
-        "title TOP-LEVEL; NOT details. create_event needs title + details.start/end",
+        "title TOP-LEVEL; NOT details. create_event: title; update_event: NEW name only, target = query/oldTitle/eventId; delete_event: target title when query/eventId absent",
       required: false,
+      // Live 2026-09-05 23:32: the promoted CALENDAR_DELETE_EVENT child rejected
+      // a top-level title ("Unexpected argument 'title'") that the parent
+      // accepts, so a valid structured delete failed before any lookup.
+      subactions: ["create_event", "update_event", "delete_event"],
       schema: { type: "string" as const },
     },
     {
       name: "query",
       description:
-        "Search phrase for search_events/travel_itinerary: flight, dentist, Denver.",
+        "Event-content search phrase for search_events/travel_itinerary: flight, dentist, Denver. Dates and agenda/schedule words are not content filters; for a full day agenda use feed and omit query/queries. " +
+        "update_event/delete_event: the TARGET event in its own words (e.g. 'piano lesson') whenever details.eventId is not known. An update may also identify its target with details.oldTitle; a delete may use the existing title when query and eventId are absent.",
       required: false,
+      subactions: [
+        "feed",
+        "next_event",
+        "search_events",
+        "update_event",
+        "delete_event",
+        "trip_window",
+        "bulk_reschedule",
+      ],
       schema: { type: "string" as const },
     },
     {
       name: "queries",
-      description: "Optional search_events phrases array. Combined/deduped.",
+      description:
+        "Optional event-content filters for search_events. Combined/deduped. Do not use dates as keywords; an unfiltered agenda uses feed with time bounds.",
       required: false,
+      subactions: ["search_events", "trip_window"],
       schema: { type: "array" as const, items: { type: "string" as const } },
     },
     {
       name: "details",
       description:
+        "For feed/search_events: details.timeMin/timeMax bound the date range and details.timeZone supplies its IANA timezone. For a full agenda use feed without query/queries. " +
         "Structured fields for create_event/update_event/delete_event. " +
-        "`start`/`end` ISO-8601; aliases `startAt`/`endAt` accepted. " +
+        "`start`/`end`: local wall-clock ISO-8601 WITHOUT any offset or Z (e.g. 2026-09-10T18:00:00 for 6pm); never convert to UTC. When supplying the owner's local new start/end, explicitly include `details.timeZone` with the owner's configured IANA timezone; an update otherwise interprets them in the existing event's timezone, which may differ. If the user names another timezone, use that IANA zone for these values. Aliases `startAt`/`endAt` and `startTime`/`endTime` accepted. " +
+        "For a move or reschedule the time the user names ('to 6pm') is the new `start`; keep the event's previous duration for `end` unless the user gives a new end. " +
+        "`details.date` selects the target event's current day, never the destination day of a move. " +
         "create_event: `{ subaction: 'create_event', title: 'Dentist', details: { calendarId: 'cal_primary', start: '...', end: '...', location: '...' } }`. " +
         "update_event: `{ subaction: 'update_event', details: { eventId: 'event_00040', calendarId: 'cal_primary', start: '...', end: '...' } }`. " +
         "check_availability/propose_times time-window fields TOP LEVEL, not `details`.",
       descriptionCompressed:
-        "details create|update|delete: calendarId,start/end,eventId,location; title/window TOP",
+        "details create|update|delete: calendarId,start/end,eventId,location; owner-local start/end require owner's IANA timeZone; date = target's current day; title/window TOP",
       required: false,
+      subactions: [
+        "feed",
+        "next_event",
+        "search_events",
+        "create_event",
+        "update_event",
+        "delete_event",
+        "trip_window",
+      ],
       schema: CALENDAR_DETAILS_PARAMETER_SCHEMA,
     },
     {
@@ -1776,6 +1822,7 @@ export const calendarAction: Action & {
         "Example: `{ subaction: 'propose_times', durationMinutes: 30, slotCount: 3, windowStart: '...', windowEnd: '...' }`. " +
         "Do NOT wrap propose_times args in `details`.",
       required: false,
+      subactions: ["propose_times"],
       schema: { type: "number" as const },
     },
     {
@@ -1783,24 +1830,28 @@ export const calendarAction: Action & {
       description:
         "propose_times days ahead. Default 7. Ignored with windowStart/windowEnd.",
       required: false,
+      subactions: ["propose_times"],
       schema: { type: "number" as const },
     },
     {
       name: "slotCount",
       description: "propose_times slot count. Default 3.",
       required: false,
+      subactions: ["propose_times"],
       schema: { type: "number" as const },
     },
     {
       name: "windowStart",
       description: "propose_times window earliest start. ISO-8601.",
       required: false,
+      subactions: ["propose_times"],
       schema: { type: "string" as const },
     },
     {
       name: "windowEnd",
       description: "propose_times window latest end. ISO-8601.",
       required: false,
+      subactions: ["propose_times"],
       schema: { type: "string" as const },
     },
     {
@@ -1810,6 +1861,7 @@ export const calendarAction: Action & {
         "Example: `{ subaction: 'check_availability', startAt: '2026-05-14T09:00:00Z', endAt: '2026-05-14T10:00:00Z' }`. " +
         "Do NOT wrap check_availability args in `details`.",
       required: false,
+      subactions: ["check_availability"],
       schema: { type: "string" as const },
     },
     {
@@ -1817,12 +1869,14 @@ export const calendarAction: Action & {
       description:
         "TOP-LEVEL flat. check_availability end. ISO-8601. See `startAt`.",
       required: false,
+      subactions: ["check_availability"],
       schema: { type: "string" as const },
     },
     {
       name: "timeZone",
       description: "IANA timeZone for update_preferences hours.",
       required: false,
+      subactions: ["check_availability", "propose_times", "update_preferences"],
       schema: { type: "string" as const },
     },
     {
@@ -1832,6 +1886,7 @@ export const calendarAction: Action & {
         "Example: `{ subaction: 'update_preferences', preferredStartLocal: '09:00', preferredEndLocal: '17:00', blackoutWindows: [...] }`. " +
         "Do NOT wrap update_preferences args in `details`.",
       required: false,
+      subactions: ["update_preferences"],
       schema: { type: "string" as const },
     },
     {
@@ -1839,18 +1894,21 @@ export const calendarAction: Action & {
       description:
         "TOP-LEVEL flat for update_preferences. Latest end local HH:MM 24h. See `preferredStartLocal`.",
       required: false,
+      subactions: ["update_preferences"],
       schema: { type: "string" as const },
     },
     {
       name: "defaultDurationMinutes",
       description: "Default duration minutes (5–480).",
       required: false,
+      subactions: ["update_preferences"],
       schema: { type: "number" as const },
     },
     {
       name: "travelBufferMinutes",
       description: "Buffer minutes before/after meetings (0–240).",
       required: false,
+      subactions: ["update_preferences"],
       schema: { type: "number" as const },
     },
     {
@@ -1860,20 +1918,21 @@ export const calendarAction: Action & {
       descriptionCompressed:
         "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
       required: false,
+      subactions: ["update_preferences"],
+      // Shape is documented, not schema-enforced: the planner fills every key
+      // it sees, and a strict item schema rejected a whole `search_events`
+      // call over junk it invented here (live: startLocal "00"). The handler's
+      // normalizeLifeOpsMeetingPreferencesPatch strictly validates the entire
+      // requested array before update_preferences writes anything. Read
+      // operations do not consume this operation-specific field.
       schema: {
         type: "array" as const,
         items: {
           type: "object" as const,
           properties: {
             label: { type: "string" as const },
-            startLocal: {
-              type: "string" as const,
-              pattern: "^[0-2][0-9]:[0-5][0-9]$",
-            },
-            endLocal: {
-              type: "string" as const,
-              pattern: "^[0-2][0-9]:[0-5][0-9]$",
-            },
+            startLocal: { type: "string" as const },
+            endLocal: { type: "string" as const },
             daysOfWeek: {
               type: "array" as const,
               items: {
@@ -1883,7 +1942,6 @@ export const calendarAction: Action & {
               },
             },
           },
-          required: ["label", "startLocal", "endLocal"],
         },
       },
     },
@@ -2007,4 +2065,45 @@ export const calendarAction: Action & {
       },
     ],
   ] as ActionExample[][],
+};
+
+/** Author the read contract at the domain boundary; promotion still owns
+ * discriminator pinning, delegation and the inherited authorization gates. */
+export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
+  overrides: {
+    ...Object.fromEntries(
+      (
+        [
+          ["feed", CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA],
+          ["search_events", CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA],
+        ] as const
+      ).map(([name, schema]) => [
+        name,
+        {
+          parameters: calendarAction.parameters?.map((parameter) =>
+            parameter.name === "details"
+              ? {
+                  ...parameter,
+                  description:
+                    "Optional calendar read bounds, IANA timezone, exact connector/calendar scope and refresh controls. Omit unknown values. Feed reads use selected calendars; searches include hidden calendars unless explicitly restricted.",
+                  schema,
+                }
+              : parameter,
+          ),
+        },
+      ]),
+    ),
+    next_event: {
+      parameters: calendarAction.parameters?.map((parameter) =>
+        parameter.name === "details"
+          ? {
+              ...parameter,
+              description:
+                "Optional exact calendar selection and IANA timezone for the next-event read. Omit unknown values; the configured timezone and selected calendar feed are the defaults.",
+              schema: CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
+            }
+          : parameter,
+      ),
+    },
+  },
 };

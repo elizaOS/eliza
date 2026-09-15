@@ -33,6 +33,7 @@ export { calendarAction } from "./actions/calendar.js";
 export { connectorAction } from "./actions/connector.js";
 export { credentialsAction } from "./actions/credentials.js";
 export { entityAction } from "./actions/entity.js";
+export { familyWorkflowsAction } from "./actions/family-workflows.js";
 export { householdCoordinationAction } from "./actions/household-coordination.js";
 export {
   ownerAlarmsAction,

@@ -19,13 +19,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // --- collaborator doubles (hoisted so vi.mock factories can close over them) ---
 
 const navigateMock = vi.hoisted(() => vi.fn());
 const searchParamsRef = vi.hoisted(() => ({
-  current: new URLSearchParams("session=sess-1"),
+  current: new URLSearchParams("session=bbbbbbbb-2222-4333-8444-cccccccccccc"),
 }));
 vi.mock("react-router-dom", () => ({
   useNavigate: () => navigateMock,
@@ -73,17 +74,44 @@ vi.mock("../../../shell/StewardProvider", () => ({
 
 vi.mock("../../lib/use-page-title", () => ({ usePageTitle: () => {} }));
 
+vi.mock("../../../../components/primitives", () => ({
+  Button: ({
+    asChild,
+    children,
+    className,
+    onClick,
+  }: {
+    asChild?: boolean;
+    children: ReactNode;
+    className?: string;
+    onClick?: () => void;
+  }) =>
+    asChild ? (
+      children
+    ) : (
+      <button type="button" className={className} onClick={onClick}>
+        {children}
+      </button>
+    ),
+}));
+
 import { ApiError } from "../../../lib/api-client";
 import CliLoginPage from "./cli-login-page";
 
-const GUARD_KEY = "eliza-cloud-cli-login-autosignin:sess-1";
+const SESSION_ID = "bbbbbbbb-2222-4333-8444-cccccccccccc";
+const SECOND_SESSION_ID = "aaaaaaaa-1111-4222-8333-dddddddddddd";
+const GUARD_KEY = `eliza-cloud-cli-login-autosignin:${SESSION_ID}`;
+const TRUSTED_APP_LAUNCH_KEY = `eliza-cloud-cli-login-trusted-app-launch:${SESSION_ID}`;
+const APP_RETURN_TO = `http://127.0.0.1:2138/?elizaCloudLogin=complete&elizaCloudLoginSession=${SESSION_ID}`;
 const SIGN_IN_HREF = `/login?returnTo=${encodeURIComponent(
-  "/auth/cli-login?session=sess-1",
+  `/auth/cli-login?session=${SESSION_ID}`,
 )}`;
 const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
   window,
   "location",
 );
+const testSessionStorage = window.sessionStorage;
+let currentDocumentReferrer = "";
 
 function resetSessionAuth() {
   sessionAuthRef.current = {
@@ -124,14 +152,19 @@ beforeEach(() => {
   navigateMock.mockReset();
   apiFetchMock.mockReset();
   clearStaleStewardSession.mockReset();
-  searchParamsRef.current = new URLSearchParams("session=sess-1");
+  searchParamsRef.current = new URLSearchParams({ session: SESSION_ID });
   resetSessionAuth();
-  sessionStorage.clear();
+  testSessionStorage.clear();
+  localStorage.clear();
+  currentDocumentReferrer = "";
+  vi.spyOn(document, "referrer", "get").mockImplementation(
+    () => currentDocumentReferrer,
+  );
 });
 
 afterEach(() => {
-  cleanup();
   restoreLocation();
+  cleanup();
   vi.restoreAllMocks();
   delete (window as { opener?: unknown }).opener;
 });
@@ -151,7 +184,7 @@ describe("CliLoginPage", () => {
       }),
     );
     expect(navigateMock).toHaveBeenCalledTimes(1);
-    expect(sessionStorage.getItem(GUARD_KEY)).toBe("1");
+    expect(testSessionStorage.getItem(GUARD_KEY)).toBe("1");
     // Renders the neutral "Signing in" state, never the old CLI panel/button.
     expect(screen.getByText("Signing in")).toBeTruthy();
     expect(screen.queryByText("CLI Authentication")).toBeNull();
@@ -161,7 +194,7 @@ describe("CliLoginPage", () => {
   });
 
   it("does NOT redirect again when the guard is already set — shows the manual sign-in fallback (loop-safety)", async () => {
-    sessionStorage.setItem(GUARD_KEY, "1");
+    testSessionStorage.setItem(GUARD_KEY, "1");
 
     render(<CliLoginPage />);
 
@@ -195,7 +228,7 @@ describe("CliLoginPage", () => {
 
   it("names the requesting client's host on the interstitial when returnTo is present", async () => {
     searchParamsRef.current = new URLSearchParams({
-      session: "sess-1",
+      session: SESSION_ID,
       returnTo: "http://localhost:2138/chat?firstRun=1",
     });
     authenticate();
@@ -204,6 +237,96 @@ describe("CliLoginPage", () => {
 
     expect(screen.getByText(/"localhost:2138"/)).toBeTruthy();
     expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("finishes a matching localhost Eliza app launch without a second authorization click", async () => {
+    searchParamsRef.current = new URLSearchParams({
+      session: SESSION_ID,
+      returnTo: APP_RETURN_TO,
+    });
+    currentDocumentReferrer = "http://127.0.0.1:2138/";
+    authenticate();
+    apiFetchMock.mockResolvedValue({
+      json: async () => ({ keyPrefix: "ek_live_abc" }),
+    });
+    delete (window as { opener?: unknown }).opener;
+    const replace = stubLocationReplace();
+    vi.spyOn(window, "close").mockImplementation(() => {});
+
+    render(<CliLoginPage />);
+
+    expect(screen.getByText("Returning to Eliza")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Authorize" })).toBeNull();
+    await waitFor(() =>
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        `/api/auth/cli-session/${SESSION_ID}/complete`,
+        expect.objectContaining({ method: "POST" }),
+      ),
+    );
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(APP_RETURN_TO));
+    expect(testSessionStorage.getItem(TRUSTED_APP_LAUNCH_KEY)).toBeNull();
+  });
+
+  it("does not trust a copied app callback link without the matching localhost referrer", async () => {
+    searchParamsRef.current = new URLSearchParams({
+      session: SESSION_ID,
+      returnTo: APP_RETURN_TO,
+    });
+    currentDocumentReferrer = "https://attacker.example/forward";
+    authenticate();
+
+    render(<CliLoginPage />);
+
+    expect(
+      screen.getByRole("heading", { name: "Authorize CLI Sign-In?" }),
+    ).toBeTruthy();
+    expect(apiFetchMock).not.toHaveBeenCalled();
+    expect(testSessionStorage.getItem(TRUSTED_APP_LAUNCH_KEY)).toBeNull();
+  });
+
+  it("does not trust a localhost referrer when the callback names another session", () => {
+    searchParamsRef.current = new URLSearchParams({
+      session: SESSION_ID,
+      returnTo: APP_RETURN_TO.replace(SESSION_ID, SECOND_SESSION_ID),
+    });
+    currentDocumentReferrer = "http://127.0.0.1:2138/";
+    authenticate();
+
+    render(<CliLoginPage />);
+
+    expect(
+      screen.getByRole("heading", { name: "Authorize CLI Sign-In?" }),
+    ).toBeTruthy();
+    expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("remembers the trusted local launch across the hosted login round trip", async () => {
+    searchParamsRef.current = new URLSearchParams({
+      session: SESSION_ID,
+      returnTo: APP_RETURN_TO,
+    });
+    currentDocumentReferrer = "http://127.0.0.1:2138/chat";
+
+    const first = render(<CliLoginPage />);
+    await waitFor(() =>
+      expect(testSessionStorage.getItem(TRUSTED_APP_LAUNCH_KEY)).toBe("1"),
+    );
+    first.unmount();
+
+    currentDocumentReferrer = "https://staging.eliza.app/login";
+    authenticate();
+    apiFetchMock.mockResolvedValue({
+      json: async () => ({ keyPrefix: "ek_live_abc" }),
+    });
+    delete (window as { opener?: unknown }).opener;
+    const replace = stubLocationReplace();
+    vi.spyOn(window, "close").mockImplementation(() => {});
+
+    render(<CliLoginPage />);
+
+    expect(screen.queryByRole("button", { name: "Authorize" })).toBeNull();
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(APP_RETURN_TO));
+    expect(testSessionStorage.getItem(TRUSTED_APP_LAUNCH_KEY)).toBeNull();
   });
 
   it("requires fresh confirmation after a session link changes away and back", async () => {
@@ -217,7 +340,9 @@ describe("CliLoginPage", () => {
     await user.click(screen.getByRole("button", { name: "Authorize" }));
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(1));
 
-    searchParamsRef.current = new URLSearchParams("session=sess-2");
+    searchParamsRef.current = new URLSearchParams({
+      session: SECOND_SESSION_ID,
+    });
     rerender(<CliLoginPage />);
     await waitFor(() =>
       expect(
@@ -225,18 +350,15 @@ describe("CliLoginPage", () => {
       ).toBeTruthy(),
     );
 
-    searchParamsRef.current = new URLSearchParams("session=sess-1");
+    searchParamsRef.current = new URLSearchParams({ session: SESSION_ID });
     rerender(<CliLoginPage />);
     await waitFor(() =>
       expect(
-        screen.getByRole("heading", { name: "Authorize CLI Sign-In?" }),
+        screen.getByRole("heading", { name: "Authentication Complete!" }),
       ).toBeTruthy(),
     );
     await Promise.resolve();
     expect(apiFetchMock).toHaveBeenCalledTimes(1);
-
-    await user.click(screen.getByRole("button", { name: "Authorize" }));
-    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(2));
   });
 
   it("Cancel abandons the flow with no POST and a distinct cancelled state", async () => {
@@ -273,15 +395,15 @@ describe("CliLoginPage", () => {
       expect(screen.getByText("Authentication Complete!")).toBeTruthy(),
     );
     expect(apiFetchMock).toHaveBeenCalledWith(
-      "/api/auth/cli-session/sess-1/complete",
+      `/api/auth/cli-session/${SESSION_ID}/complete`,
       expect.objectContaining({ method: "POST" }),
     );
     expect(apiFetchMock).toHaveBeenCalledTimes(1);
     expect(postMessage).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Close window" })).toBeTruthy();
     expect(
-      screen.queryByRole("link", { name: "Continue to dashboard" }),
-    ).toBeNull();
+      screen.getByRole("link", { name: "Return to App" }).getAttribute("href"),
+    ).toBe("/");
+    expect(screen.queryByRole("button", { name: "Close window" })).toBeNull();
     expect(screen.queryByText("API Key Details")).toBeNull();
     expect(screen.queryByText("ek_live_abc")).toBeNull();
     expect(navigateMock).not.toHaveBeenCalled();
@@ -291,7 +413,7 @@ describe("CliLoginPage", () => {
   it("with a live opener, notifies and closes without navigating returnTo (no second app shell)", async () => {
     const user = userEvent.setup();
     searchParamsRef.current = new URLSearchParams({
-      session: "sess-1",
+      session: SESSION_ID,
       returnTo: "http://localhost:2138/chat?firstRun=1",
     });
     authenticate();
@@ -313,7 +435,7 @@ describe("CliLoginPage", () => {
       expect(screen.getByText("Authentication Complete!")).toBeTruthy(),
     );
     expect(postMessage).toHaveBeenCalledWith(
-      { type: "eliza-cloud-auth-complete", sessionId: "sess-1" },
+      { type: "eliza-cloud-auth-complete", sessionId: SESSION_ID },
       "http://localhost:2138",
     );
     expect(closeSpy).toHaveBeenCalledTimes(1);
@@ -327,7 +449,7 @@ describe("CliLoginPage", () => {
     // surface, but hasLiveOpener would be false. Must not location.replace.
     const user = userEvent.setup();
     searchParamsRef.current = new URLSearchParams({
-      session: "sess-1",
+      session: SESSION_ID,
       returnTo: "http://localhost:2138/chat?firstRun=1",
     });
     authenticate();
@@ -361,7 +483,7 @@ describe("CliLoginPage", () => {
   it("without an opener, redirects authenticated app-launched sessions to sanitized returnTo", async () => {
     const user = userEvent.setup();
     searchParamsRef.current = new URLSearchParams({
-      session: "sess-1",
+      session: SESSION_ID,
       returnTo: "http://localhost:2138/chat?firstRun=1",
     });
     authenticate();
@@ -388,7 +510,7 @@ describe("CliLoginPage", () => {
   it("allows the production apex app as a returnTo target", async () => {
     const user = userEvent.setup();
     searchParamsRef.current = new URLSearchParams({
-      session: "sess-1",
+      session: SESSION_ID,
       returnTo: "https://elizacloud.ai/chat?elizaCloudLogin=complete",
     });
     authenticate();
@@ -414,7 +536,7 @@ describe("CliLoginPage", () => {
   it("ignores untrusted returnTo origins and keeps the success fallback", async () => {
     const user = userEvent.setup();
     searchParamsRef.current = new URLSearchParams({
-      session: "sess-1",
+      session: SESSION_ID,
       returnTo: "https://evil.example.test/chat",
     });
     authenticate();
@@ -458,6 +580,24 @@ describe("CliLoginPage", () => {
     expect(apiFetchMock).not.toHaveBeenCalled();
     expect(navigateMock).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Close Window" })).toBeNull();
+  });
+
+  it("fails closed before authorization when the session id is path-shaped", () => {
+    searchParamsRef.current = new URLSearchParams({
+      session: "../logout?force=1",
+    });
+    authenticate();
+
+    render(<CliLoginPage />);
+
+    expect(
+      screen.getByRole("heading", { name: "Authentication Error" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Invalid authentication link. Missing session ID."),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Authorize" })).toBeNull();
+    expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
   it("surfaces a completion failure as the error panel", async () => {

@@ -111,10 +111,10 @@ describe("renderDiscordInteractions", () => {
 	it("strips dashboard-only markers from parsed fallback prose", () => {
 		const id = "abc12345-def6-7890-abcd-ef1234567890";
 		const out = renderDiscordInteractions({
-			text: `[TASK:${id}]Ship it [CONFIG:@elizaos/plugin-gmail][/TASK]`,
+			text: `Task created.\n[TASK:${id}]Ship it [CONFIG:@elizaos/plugin-gmail][/TASK]`,
 		} as Content);
-		expect(out.text).toBe("Ship it");
 		expect(out.text).not.toContain("[CONFIG:");
+		expect(out.text).toBe("Task created.\n\nShip it");
 		expect(out.components).toHaveLength(0);
 	});
 
@@ -234,13 +234,13 @@ describe("buildDiscordReplyPayload — canonical resolver derivation (#14527)", 
 		);
 	});
 
-	it("degrades to prose (no dropped-silent button) when no app origin is set", () => {
+	it("keeps the surrounding prose when no app origin is set", () => {
 		const out = buildDiscordReplyPayload(makeRuntime({}), {
-			text: `[TASK:${TASK_ID}]Ship it[/TASK]`,
+			text: `Task created.\n[TASK:${TASK_ID}]Ship it[/TASK]`,
 		} as Content);
 		expect(out.components).toHaveLength(0);
 		expect(out.needsFreeTextReply).toBe(true);
-		expect(out.text).toContain("Ship it");
+		expect(out.text).toBe("Task created.\n\nShip it");
 	});
 
 	it("still renders choice buttons regardless of app-origin config", () => {

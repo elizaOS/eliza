@@ -560,7 +560,7 @@ describe("protected Headscale arm workflow", () => {
 
   test("pins staging and production deploys to their canonical branch SHA", () => {
     const sourceGate = step("Validate protected deploy source").run;
-    expect(sourceGate).toContain('staging) expected_ref="refs/heads/develop"');
+    expect(sourceGate).toContain('staging) expected_ref="refs/heads/staging"');
     expect(sourceGate).toContain('production) expected_ref="refs/heads/main"');
     expect(sourceGate).toContain('if [ "$GITHUB_REF" != "$expected_ref" ]');
 

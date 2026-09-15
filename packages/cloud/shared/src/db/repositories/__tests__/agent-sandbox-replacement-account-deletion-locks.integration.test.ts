@@ -202,6 +202,7 @@ beforeAll(async () => {
         locator_container_recorded_at timestamptz,
         locator_vpn_node_id text,
         locator_vpn_recorded_at timestamptz,
+        provider_started_at timestamptz,
         provider_succeeded_at timestamptz,
         provider_receipt_digest text,
         lifecycle_committed_at timestamptz,
@@ -413,12 +414,12 @@ realPostgres("replacement attempt PostgreSQL lock and lease barriers", () => {
     const organizationId = randomUUID();
     const agentId = randomUUID();
     const attemptId = randomUUID();
-    const activationGeneration = randomUUID();
+    const restoreAttemptId = randomUUID();
+    const activationGeneration = restoreAttemptId;
     const lifecycleJobId = randomUUID();
     const lifecycleExecutionGeneration = randomUUID();
     const leaseId = randomUUID();
     const backupId = randomUUID();
-    const restoreAttemptId = randomUUID();
     const fencingToken = randomUUID();
     const operationId = randomUUID();
     const sourceActivationGeneration = randomUUID();
@@ -491,7 +492,7 @@ realPostgres("replacement attempt PostgreSQL lock and lease barriers", () => {
           attemptId,
           organizationId,
           agentId,
-          operationKind: "upgrade",
+          operationKind: "provision",
           lifecycleRevision: "7",
           activationGeneration,
           lifecycleJobId,

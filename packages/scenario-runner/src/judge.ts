@@ -96,12 +96,8 @@ function parseJudgeJson(raw: string): JudgeResult | null {
 export class JudgeParseError extends Error {
   readonly raw: string;
   constructor(attempts: number, raw: string) {
-    const preview =
-      raw.length <= 300
-        ? raw
-        : `${raw.slice(0, 150)} … ${raw.slice(-100)} (${raw.length} chars)`;
     super(
-      `[scenario-judge] model did not return a parseable JSON object after ${attempts} attempt(s). Raw: ${preview}`,
+      `[scenario-judge] model did not return a parseable JSON object after ${attempts} attempt(s). Raw: ${raw}`,
     );
     this.name = "JudgeParseError";
     this.raw = raw;
@@ -113,15 +109,13 @@ export async function judgeTextWithLlm(
   candidate: string,
   rubric: string,
 ): Promise<JudgeResult> {
-  const prompt = JUDGE_PROMPT_TEMPLATE.replace("{rubric}", rubric).replace(
-    "{candidate}",
-    candidate,
+  const prompt = JUDGE_PROMPT_TEMPLATE.replace(
+    /\{rubric\}|\{candidate\}/g,
+    (placeholder) => (placeholder === "{rubric}" ? rubric : candidate),
   );
 
-  // Standing direction: scenario judging runs on Cerebras gpt-oss-120b so
-  // the agent under test is never used to grade itself. Falls back to the
-  // runtime's TEXT_LARGE provider when Cerebras isn't configured (unit
-  // tests pass a test runtime; CI without the key keeps working).
+  // Prefer an independent judge when configured so the agent's provider does
+  // not grade its own response; other hosts use their registered TEXT_LARGE model.
   const cerebrasJudge = (await isCerebrasJudgeEnabled())
     ? new CerebrasJudge()
     : null;

@@ -4,7 +4,7 @@ Capacitor plugin that exposes Android's `ContactsContract` to an Eliza agent's J
 
 ## Purpose / role
 
-This is a [Capacitor](https://capacitorjs.com/) plugin (not an elizaOS `Plugin` object). It does not register elizaOS actions, providers, or evaluators directly. Instead it exposes a typed JS bridge (`Contacts`) that elizaOS actions in other packages can call to read, create, and import contacts on Android. On web/node the bridge returns empty results or throws for write operations.
+This is a [Capacitor](https://capacitorjs.com/) plugin (not an elizaOS `Plugin` object). It does not register elizaOS actions, providers, or evaluators directly. Instead it exposes a typed JS bridge (`Contacts`) that elizaOS actions in other packages can call to read, create, and import contacts on Android. On web/node the bridge explicitly rejects unsupported reads, writes and permission operations.
 
 The plugin is opt-in: it must be registered with Capacitor in the host Android app and imported explicitly by any elizaOS action that needs it.
 
@@ -30,7 +30,7 @@ This is a Capacitor bridge plugin, not an elizaOS plugin. It exposes one global 
 | `createContact(options)` | Android | Requires `WRITE_CONTACTS`. `displayName` required; accepts `phoneNumber`/`phoneNumbers` and `emailAddress`/`emailAddresses`. Returns `{ id: string }`. |
 | `importVCard(options)` | Android | Requires `WRITE_CONTACTS`. Parses RFC 6350 vCard text (handles line folding, `FN`/`N`/`TEL`/`EMAIL` fields, `\`-escapes). Returns `{ imported: ImportedContactSummary[] }`. |
 
-Web fallback (`ContactsWeb`): `listContacts` returns `{ contacts: [] }`, `createContact`/`importVCard` throw.
+Web fallback (`ContactsWeb`): reads, writes and permission operations reject with Capacitor code `UNAVAILABLE`; an unsupported address book is never reported as empty or granted.
 
 ## Layout
 
@@ -39,7 +39,7 @@ plugins/plugin-native-contacts/
   src/
     index.ts          — registerPlugin("ElizaContacts") + re-exports everything from definitions
     definitions.ts    — all TypeScript interfaces (ContactSummary, ContactsPlugin, …)
-    web.ts            — ContactsWeb (web fallback: listContacts=[], writes throw)
+    web.ts            — ContactsWeb (unsupported-platform reads/writes/permissions)
   android/
     src/main/
       AndroidManifest.xml                         — READ_CONTACTS + WRITE_CONTACTS permissions
@@ -90,8 +90,8 @@ Add the interface/type to `src/definitions.ts` and re-export via `src/index.ts` 
 
 - **Capacitor, not elizaOS Plugin.** Import `Contacts` from this package and call its methods; do not try to load it via `elizaOS`'s plugin loader.
 - **Instrumented test (issue #9967).** The `ContactsContract` query lives in `ContactsReader` and is covered by an on-device **write→read round-trip** (`android/src/androidTest/.../ContactsReaderInstrumentedTest.kt`, `GrantPermissionRule`): insert a contact → read it back → assert name+phone → clean up. Run via `./gradlew :elizaos-capacitor-contacts:connectedDebugAndroidTest` from `packages/app-core/platforms/android`. `listContacts` and `createContact`'s summary both delegate to the reader (JS shape unchanged).
-- **Android only for writes.** `createContact` and `importVCard` are hard-fails on web. Design any elizaOS action that calls them to check the platform first.
-- **Permissions are feature-gated, not app-required.** The plugin declares the `contacts` alias (`READ_CONTACTS`/`WRITE_CONTACTS`) in `@CapacitorPlugin(permissions=…)`, so the Capacitor base `Plugin` auto-provides `checkPermissions()` / `requestPermissions()` (`{ contacts: PermissionState }`; web returns `granted`). The Contacts view calls `requestPermissions()` on first open (idempotent — already-granted never re-prompts) and shows a grant-in-settings message if denied. Nothing requests contacts at app launch. The bridge methods still reject if not granted (defensive); do NOT add a launch-time or app-wide contacts gate.
+- **Android only.** Contacts reads, writes and permission operations fail explicitly on web. Design any elizaOS action that calls them to check the platform first.
+- **Permissions are feature-gated, not app-required.** The plugin declares the `contacts` alias (`READ_CONTACTS`/`WRITE_CONTACTS`) in `@CapacitorPlugin(permissions=…)`, so the Capacitor base `Plugin` auto-provides `checkPermissions()` / `requestPermissions()` (`{ contacts: PermissionState }`; web rejects with `UNAVAILABLE`). The Contacts view calls `requestPermissions()` on first open (idempotent — already-granted never re-prompts) and shows a grant-in-settings message if denied. Nothing requests contacts at app launch. The bridge methods still reject if not granted (defensive); do NOT add a launch-time or app-wide contacts gate.
 - **Complete by default.** `listContacts` returns every matching contact unless the caller explicitly requests a positive pagination limit.
 - **vCard parser is internal.** `parseVCards` in `ContactsPlugin.kt` handles RFC 6350 line folding and the `FN`/`N`/`TEL`/`EMAIL` properties. It intentionally ignores other vCard fields. Photo data is not imported.
 - **Build output.** The published package ships `dist/esm/` (ESM, consumed by bundlers) and `dist/plugin.cjs.js` (CJS). The `bun`/`development` export condition points directly to `src/index.ts` for zero-build dev.

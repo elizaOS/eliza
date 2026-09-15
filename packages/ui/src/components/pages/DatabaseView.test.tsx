@@ -115,6 +115,22 @@ describe("DatabaseView", () => {
     expect(clientMock.getDatabaseTables).not.toHaveBeenCalled();
   });
 
+  it("keeps the page layout disconnected state exclusive", async () => {
+    clientMock.getDatabaseStatus.mockResolvedValue({
+      ...connectedStatus,
+      connected: false,
+      tableCount: 0,
+    });
+
+    render(<DatabaseView layout="page" />);
+
+    expect(
+      await screen.findByText("databaseview.StartAgentToUseDatabase"),
+    ).toBeTruthy();
+    expect(screen.queryByText("databaseview.NoTableSelected")).toBeNull();
+    expect(clientMock.getDatabaseTables).not.toHaveBeenCalled();
+  });
+
   it("surfaces a status-load error message to the user when getDatabaseStatus rejects", async () => {
     clientMock.getDatabaseStatus.mockRejectedValue(
       new Error("boom: cannot reach db"),

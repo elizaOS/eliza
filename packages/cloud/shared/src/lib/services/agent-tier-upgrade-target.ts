@@ -117,6 +117,7 @@ export interface CreateTierUpgradeTargetParams {
   environmentVars?: Record<string, string>;
   characterId?: string;
   maxNonTerminalAgents: number;
+  quotaAdmission?: "organization";
 }
 
 export type TierUpgradeTargetResult =
@@ -326,6 +327,50 @@ export class PersonalDedicatedAdoptionError extends ElizaError {
 
 export class PersonalDedicatedSelectionRequiredError extends ElizaError {
   override readonly name = "PersonalDedicatedSelectionRequiredError";
+}
+
+/**
+ * A source-owned authority receipt deliberately survives target deletion as an
+ * audit tombstone. Starting a second target behind that receipt would either
+ * rewrite history or collide with the source-unique authority constraint, so
+ * the ordinary mint path must stop before preparing credentials. An explicit
+ * operator reconciliation may retire the tombstone after proving the target
+ * is absent; request-serving code never does that implicitly. Lineage is
+ * organization/source scoped because another same-organization operator may
+ * invoke the row-backed route; the receipt user identifies its target owner,
+ * not a separate lineage that the operator may recreate.
+ */
+export class PersonalDedicatedAuthorityRetainedError extends ElizaError {
+  override readonly name = "PersonalDedicatedAuthorityRetainedError";
+}
+
+async function assertNoRetainedUpgradeAuthorityInTx(
+  tx: DbTransaction,
+  params: Pick<CreateTierUpgradeTargetParams, "organizationId" | "sourceAgentId">,
+): Promise<void> {
+  const [authority] = await tx
+    .select({ id: personalDedicatedUpgradeAuthorities.id })
+    .from(personalDedicatedUpgradeAuthorities)
+    .where(
+      and(
+        eq(personalDedicatedUpgradeAuthorities.organization_id, params.organizationId),
+        eq(personalDedicatedUpgradeAuthorities.source_agent_id, params.sourceAgentId),
+        eq(personalDedicatedUpgradeAuthorities.schema_version, 1),
+      ),
+    )
+    .limit(1);
+  if (authority) {
+    throw new PersonalDedicatedAuthorityRetainedError(
+      "Dedicated activation authority is retained after its target became unavailable",
+      {
+        code: "PERSONAL_DEDICATED_AUTHORITY_RETAINED",
+        context: {
+          organizationId: params.organizationId,
+          sourceAgentId: params.sourceAgentId,
+        },
+      },
+    );
+  }
 }
 
 async function assertNoExistingAdoptionCandidateInTx(
@@ -1767,6 +1812,7 @@ export async function createTierUpgradeTargetWithProvision(
     );
     const existing = await findLiveTargetInTx(tx, params.organizationId, params.sourceAgentId);
     if (existing) return existing;
+    await assertNoRetainedUpgradeAuthorityInTx(tx, params);
     await assertNoExistingAdoptionCandidateInTx(tx, params);
     // Refuse over-quota upgrades before any credential is minted. The locked
     // insert transaction below re-asserts this authoritatively.
@@ -1818,11 +1864,13 @@ export async function createTierUpgradeTargetWithProvision(
 
       const existing = await findLiveTargetInTx(tx, params.organizationId, params.sourceAgentId);
       if (existing) return { created: false as const, agent: existing };
+      await assertNoRetainedUpgradeAuthorityInTx(tx, params);
       await assertNoExistingAdoptionCandidateInTx(tx, params);
 
       await assertOrgAgentQuota(tx, params.organizationId, params.maxNonTerminalAgents);
 
       const canonical = buildAgentSandboxInsertValues({
+        quotaAdmission: "organization",
         organizationId: params.organizationId,
         userId: params.userId,
         agentName: params.agentName,

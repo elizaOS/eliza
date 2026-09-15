@@ -13,6 +13,8 @@
  * preserve those provider-specific identifiers verbatim for callers
  * that switch on them.
  */
+import type { ResponseReplayPolicy } from "@elizaos/cloud-services-common/response-attempts";
+import { computeBackoffMs, sleepWithAbort } from "@elizaos/cloud-services-common/retry";
 import type { ProviderHttpError } from "./types";
 
 export interface ProviderLabel {
@@ -62,41 +64,8 @@ export interface ProviderRetryOptions {
   maxRetries?: number;
   /** Base delay for exponential backoff (ms). */
   baseDelayMs?: number;
-}
-
-function sleep(ms: number, signal?: AbortSignal | null): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(new DOMException("Aborted", "AbortError"));
-      return;
-    }
-    const timer = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    const onAbort = () => {
-      clearTimeout(timer);
-      reject(new DOMException("Aborted", "AbortError"));
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
-}
-
-/** Honor `Retry-After` (seconds or HTTP-date); fall back to capped exp backoff + jitter. */
-function computeBackoffMs(attempt: number, baseDelayMs: number, retryAfter: string | null): number {
-  if (retryAfter) {
-    const asNumber = Number(retryAfter);
-    if (Number.isFinite(asNumber) && asNumber >= 0) {
-      return Math.min(asNumber * 1000, PROVIDER_MAX_BACKOFF_DELAY_MS);
-    }
-    const asDate = Date.parse(retryAfter);
-    if (!Number.isNaN(asDate)) {
-      return Math.min(Math.max(asDate - Date.now(), 0), PROVIDER_MAX_BACKOFF_DELAY_MS);
-    }
-  }
-  const exp = Math.min(baseDelayMs * 2 ** attempt, PROVIDER_MAX_BACKOFF_DELAY_MS);
-  // Full jitter so concurrent callers don't synchronize their retries.
-  return Math.floor(Math.random() * exp);
+  /** Semantic replay authorization; defaults to the historical idempotent policy. */
+  replayPolicy?: ResponseReplayPolicy;
 }
 
 /**
@@ -117,9 +86,10 @@ export async function providerFetchWithTimeout(
   label: ProviderLabel,
   retry?: ProviderRetryOptions,
 ): Promise<Response> {
-  const maxRetries = isReplayable(options)
-    ? (retry?.maxRetries ?? PROVIDER_DEFAULT_MAX_RETRIES)
-    : 0;
+  const maxRetries =
+    isReplayable(options) && retry?.replayPolicy !== "never"
+      ? (retry?.maxRetries ?? PROVIDER_DEFAULT_MAX_RETRIES)
+      : 0;
   const baseDelayMs = retry?.baseDelayMs ?? DEFAULT_BASE_DELAY_MS;
   const callerSignal = options.signal ?? null;
 
@@ -140,8 +110,13 @@ export async function providerFetchWithTimeout(
         error && typeof error === "object" && "retryAfter" in error
           ? ((error as { retryAfter?: string }).retryAfter ?? null)
           : null;
-      const delayMs = computeBackoffMs(attempt, baseDelayMs, retryAfter);
-      await sleep(delayMs, callerSignal);
+      const delayMs = computeBackoffMs({
+        attempt,
+        baseDelayMs,
+        capMs: PROVIDER_MAX_BACKOFF_DELAY_MS,
+        retryAfter,
+      });
+      await sleepWithAbort(delayMs, callerSignal);
     }
   }
   throw lastError;

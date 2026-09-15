@@ -12,6 +12,10 @@
  * env while the deferred hydrate runs.
  */
 import { logger } from "@elizaos/core";
+import {
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudStewardOperationalTuple,
+} from "@elizaos/shared";
 
 import { sharedVault } from "../services/vault-mirror";
 import { deriveAgentVaultId } from "./agent-vault-id";
@@ -175,7 +179,20 @@ export async function hydrateWalletKeysFromNodePlatformSecureStore(): Promise<vo
     }
   }
 
-  // ── 3. Steward OS-keystore reads (unchanged) ─────────────────────
+  // ── 3. Steward OS-keystore reads ─────────────────────────────────
+  // A development launcher owns this entire operational tuple. Project its
+  // frozen values back after persisted-config merging and never consult the OS
+  // store: default-staging/offline stay disabled, while explicit targets
+  // cannot be redirected or completed by a late keychain value.
+  if (resolveDevCloudStewardOperationalTuple()) {
+    for (const [envKey] of stewardOsPairs()) {
+      const launchValue = resolveDevCloudAuthorityEnvValue(String(envKey));
+      if (launchValue?.trim()) process.env[envKey] = launchValue;
+      else delete process.env[envKey];
+    }
+    return;
+  }
+
   if (!isWalletOsStoreReadEnabled()) return;
   try {
     const store = createNodePlatformSecureStore();

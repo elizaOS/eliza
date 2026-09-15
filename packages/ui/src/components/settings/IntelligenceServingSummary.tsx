@@ -8,7 +8,11 @@
 
 import { Cloud, Cpu, Server } from "lucide-react";
 import type { ComponentType } from "react";
-import type { ServingAxes, ServingRuntime } from "./resolveServingAxes";
+import {
+  type ServingAxes,
+  type ServingRuntime,
+  servingProviderLabel,
+} from "./resolveServingAxes";
 import { SettingsRow } from "./settings-layout";
 
 type Translate = (key: string, vars?: Record<string, unknown>) => string;
@@ -68,16 +72,21 @@ function inferenceValue(axes: ServingAxes, t: Translate): string {
     case "external":
       // Name the provider the server reported; never claim "This device".
       return (
-        axes.activeChatProvider ??
+        servingProviderLabel(axes.activeChatProvider) ??
         t("providerswitcher.servingInferenceExternal", {
           defaultValue: "External provider",
         })
       );
     case "unknown":
-      return t("providerswitcher.servingInferenceUnknown", {
-        defaultValue: "Checking…",
+      return t("providerswitcher.servingInferenceUnconfirmed", {
+        defaultValue: "Unconfirmed",
       });
     case "local":
+      if (axes.runtime === "remote") {
+        return t("providerswitcher.servingInferenceRemote", {
+          defaultValue: "Remote host",
+        });
+      }
       return t("providerswitcher.servingInferenceLocal", {
         defaultValue: "This device",
       });
@@ -86,9 +95,9 @@ function inferenceValue(axes: ServingAxes, t: Translate): string {
 
 function inferenceDescription(axes: ServingAxes, t: Translate): string {
   if (axes.inferenceFallback) {
-    return t("providerswitcher.servingInferenceFallbackDescription", {
+    return t("providerswitcher.servingInferenceSignInRequired", {
       defaultValue:
-        "Eliza Cloud is selected but not signed in, so chat replies are computed locally until you sign in.",
+        "Sign in to Eliza Cloud to use the selected chat provider. A local fallback has not been confirmed.",
     });
   }
   switch (axes.inference) {
@@ -108,11 +117,16 @@ function inferenceDescription(axes: ServingAxes, t: Translate): string {
               "Chat replies are computed by an external provider, not on this device.",
           });
     case "unknown":
-      return t("providerswitcher.servingInferenceUnknownDescription", {
-        defaultValue:
-          "Waiting for the agent to report which provider is answering chat.",
+      return t("providerswitcher.servingInferenceUnconfirmedDescription", {
+        defaultValue: "The agent has not confirmed a serving chat provider.",
       });
     case "local":
+      if (axes.runtime === "remote") {
+        return t("providerswitcher.servingInferenceRemoteDescription", {
+          defaultValue:
+            "Chat replies are computed by a model running with your remote agent.",
+        });
+      }
       return t("providerswitcher.servingInferenceLocalDescription", {
         defaultValue: "Chat replies are computed by the on-device model.",
       });

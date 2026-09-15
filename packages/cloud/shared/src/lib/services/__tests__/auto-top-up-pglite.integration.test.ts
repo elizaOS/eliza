@@ -445,20 +445,36 @@ beforeAll(async () => {
       id uuid PRIMARY KEY,
       name text NOT NULL,
       slug text NOT NULL UNIQUE,
-      credit_balance numeric(12,6) NOT NULL DEFAULT 0,
+      credit_balance numeric(16,6) NOT NULL DEFAULT 0,
       balance_revision bigint NOT NULL DEFAULT 0,
+      balance_decrease_revision bigint NOT NULL DEFAULT 0,
+      auto_top_up_covered_balance_decrease_revision bigint,
       settings jsonb NOT NULL DEFAULT '{}'::jsonb,
       stripe_customer_id text,
       billing_email text,
+      stripe_payment_method_id text,
       stripe_default_payment_method text,
       auto_top_up_enabled boolean NOT NULL DEFAULT false,
       auto_top_up_threshold numeric(10,2),
       auto_top_up_amount numeric(10,2),
+      pay_as_you_go_from_earnings boolean NOT NULL DEFAULT true,
+      steward_tenant_id text UNIQUE,
+      steward_tenant_api_key text,
+      account_lifecycle_state text NOT NULL DEFAULT 'active',
+      account_lifecycle_revision bigint NOT NULL DEFAULT 0,
+      account_deletion_request_id uuid,
+      paid_work_fenced_at timestamp,
       is_active boolean NOT NULL DEFAULT true,
-      updated_at timestamp NOT NULL DEFAULT now()
+      created_at timestamp NOT NULL DEFAULT now(),
+      updated_at timestamp NOT NULL DEFAULT now(),
+      CONSTRAINT credit_balance_non_negative CHECK (credit_balance >= 0),
+      CONSTRAINT organizations_account_lifecycle_state_check
+        CHECK (account_lifecycle_state IN ('active', 'deletion_recovery', 'deletion_irreversible'))
     );
     CREATE UNIQUE INDEX organizations_stripe_customer_authority_unique
       ON organizations(stripe_customer_id) WHERE stripe_customer_id IS NOT NULL;
+    CREATE INDEX organizations_account_deletion_request_idx
+      ON organizations(account_deletion_request_id);
     CREATE TABLE credit_transactions (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -484,6 +500,7 @@ beforeAll(async () => {
     "0215_auto_top_up_attempts.sql",
     "0216_auto_top_up_cutover_control.sql",
     "0217_guard_auto_top_up_cutover_lifecycle.sql",
+    "0318_provider_admissions.sql",
   ]) {
     const migration = await readFile(
       new URL(`../../../db/migrations/${migrationName}`, import.meta.url),

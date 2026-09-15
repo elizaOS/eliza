@@ -115,7 +115,9 @@ export function ConditionalWalletProviders({
       }
     >
       <Suspense fallback={<div aria-busy="true" className="min-h-dvh" />}>
-        <LazyStewardWalletProviders>{children}</LazyStewardWalletProviders>
+        <LazyStewardWalletProviders enableEvm enableSolana>
+          {children}
+        </LazyStewardWalletProviders>
       </Suspense>
     </ChunkLoadErrorBoundary>
   );

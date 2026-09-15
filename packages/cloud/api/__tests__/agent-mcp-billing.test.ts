@@ -7,10 +7,13 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { Hono } from "hono";
+import { ApiError } from "@/lib/api/cloud-worker-errors";
 // `mock.module` is process-global: spread the real auth module so this file's
 // partial mock (only `requireUserOrApiKeyWithOrg`) does not drop the other auth
 // exports (e.g. `requireUserOrApiKey`) for later test files in the same run.
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
+import * as organizationInferenceAdmissionActual from "@/lib/services/organization-inference-admission";
 
 const ORG_ID = "00000000-0000-4000-8000-0000000000aa";
 const USER_ID = "00000000-0000-4000-8000-0000000000bb";
@@ -78,6 +81,28 @@ const admitOrganizationInference = mock(
     };
   },
 );
+const inferenceCredential = {
+  kind: "api_key" as const,
+  credentialId: "key-1",
+  userId: USER_ID,
+};
+let routeExecutionCtx:
+  | { waitUntil(promise: Promise<unknown>): void }
+  | undefined;
+const requireGenerativeRouteCaller = mock(
+  async (
+    _c?: unknown,
+    _options?: { deferStrongCredentialCheck?: boolean },
+  ) => ({
+    user: { id: USER_ID, organization_id: ORG_ID },
+    apiKeyId: null,
+    appScopeId: null,
+    authSource: "compatibility" as const,
+    credential: inferenceCredential,
+  }),
+);
+const charactersGetById = mock();
+const assertInferenceCredentialActive = mock(async () => undefined);
 class InsufficientCreditsError extends Error {
   constructor(
     public readonly required: number,
@@ -92,21 +117,30 @@ mock.module("@/lib/services/credits", () => ({
   InsufficientCreditsError,
 }));
 mock.module("@/lib/services/organization-inference-admission", () => ({
+  ...organizationInferenceAdmissionActual,
   admitOrganizationInference,
 }));
 
 mock.module("@/api-app/lib/generative-route-auth", () => ({
-  getGenerativeExecutionContext: () => undefined,
-  requireGenerativeRouteCaller: async () => ({
-    user: { id: USER_ID, organization_id: ORG_ID },
-    apiKeyId: null,
-    appScopeId: null,
-    authSource: "compatibility",
-  }),
+  asGenerativeCacheApiError: (error: unknown) =>
+    error instanceof ApiError ? error : null,
+  getGenerativeExecutionContext: () => routeExecutionCtx,
+  resolveInferenceCredentialAdmissionDenial: () => null,
+  requireGenerativeRouteCaller,
+}));
+
+mock.module("@/lib/services/inference-credential-revocation", () => ({
+  assertInferenceCredentialActive,
 }));
 
 mock.module("@/lib/services/characters/characters", () => ({
-  charactersService: { getById: mock() },
+  charactersService: {
+    getById: charactersGetById,
+    getByIdCacheOnly: async (id: string) => ({
+      kind: "ready" as const,
+      character: await charactersGetById(id),
+    }),
+  },
 }));
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
@@ -127,7 +161,12 @@ mock.module("@/lib/utils/logger", () => ({
   },
 }));
 
-const { handleToolCall } = await import("../agents/[id]/mcp/route");
+const { default: mcpRoute, handleToolCall } = await import(
+  "../agents/[id]/mcp/route"
+);
+
+const app = new Hono();
+app.route("/agents/:id/mcp", mcpRoute);
 
 function textStream(text: string) {
   return (async function* stream() {
@@ -138,6 +177,7 @@ function textStream(text: string) {
 function makeContext() {
   return {
     env: {},
+    get: () => undefined,
     json: (body: unknown, status?: number) =>
       Response.json(body, { status: status ?? 200 }),
   };
@@ -149,6 +189,8 @@ function makeCharacter() {
     name: "Markup Agent",
     user_id: "owner-1",
     organization_id: "creator-org",
+    is_public: true,
+    mcp_enabled: true,
     monetization_enabled: true,
     inference_markup_percentage: "500",
     system: null,
@@ -184,11 +226,48 @@ async function callChat() {
       arguments: { message: "hello", model: "gpt-5-mini" },
     },
     "rpc-1",
-    { id: USER_ID, organization_id: ORG_ID },
+    {
+      id: USER_ID,
+      organization_id: ORG_ID,
+      credentialForAdmission: () => inferenceCredential,
+    },
+  );
+}
+
+function callRouteChat() {
+  return app.request(
+    "/agents/agent-1/mcp",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "tools/call",
+        params: {
+          name: "chat",
+          arguments: { message: "hello", model: "gpt-5-mini" },
+        },
+        id: "rpc-1",
+      }),
+    },
+    {},
   );
 }
 
 beforeEach(() => {
+  routeExecutionCtx = undefined;
+  requireGenerativeRouteCaller.mockReset();
+  requireGenerativeRouteCaller.mockResolvedValue({
+    user: { id: USER_ID, organization_id: ORG_ID },
+    apiKeyId: null,
+    appScopeId: null,
+    authSource: "compatibility",
+    credential: inferenceCredential,
+  });
+  charactersGetById.mockReset();
+  assertInferenceCredentialActive.mockReset();
+  assertInferenceCredentialActive.mockResolvedValue(undefined);
+  charactersGetById.mockResolvedValue(makeCharacter());
   getLanguageModel.mockClear();
   streamText.mockReset();
   resolveAnthropicThinkingBudgetTokens.mockReset();
@@ -201,7 +280,8 @@ beforeEach(() => {
   recordCreatorEarnings.mockReset();
   reserve.mockReset();
   admitOrganizationInference.mockClear();
-  markProviderDispatched.mockClear();
+  markProviderDispatched.mockReset();
+  markProviderDispatched.mockResolvedValue(undefined);
 
   estimateRequestCost.mockResolvedValue(0.01);
   calculateCost.mockResolvedValue({ totalCost: 0.01 });
@@ -217,12 +297,74 @@ beforeEach(() => {
 });
 
 describe("Agent MCP billing", () => {
+  test("standing denial precedes character lookup and preserves its safe reason", async () => {
+    requireGenerativeRouteCaller.mockRejectedValueOnce(
+      new ApiError(403, "access_denied", "Organization is inactive", {
+        reason: "organization_inactive",
+      }),
+    );
+
+    const response = await app.request("/agents/agent-1/mcp", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{malformed",
+    });
+    const body = (await response.json()) as {
+      jsonrpc?: string;
+      error?: { code: number; message: string; data?: { reason?: string } };
+      id?: string | number | null;
+    };
+
+    expect(response.status).toBe(403);
+    expect(body).toEqual({
+      jsonrpc: "2.0",
+      error: {
+        code: -32002,
+        message: "Organization is inactive",
+        data: { reason: "organization_inactive" },
+      },
+      id: null,
+    });
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ deferStrongCredentialCheck: true }),
+    );
+    expect(charactersGetById).not.toHaveBeenCalled();
+    expect(admitOrganizationInference).not.toHaveBeenCalled();
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
+  test("checks the deferred credential once when JSON parsing terminates before any resource or provider work", async () => {
+    const response = await app.request("/agents/agent-1/mcp", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{malformed",
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: { code: -32700, message: "Parse error" },
+    });
+    expect(assertInferenceCredentialActive).toHaveBeenCalledTimes(1);
+    expect(assertInferenceCredentialActive).toHaveBeenCalledWith(
+      ORG_ID,
+      inferenceCredential,
+    );
+    expect(admitOrganizationInference).not.toHaveBeenCalled();
+    expect(reserve).not.toHaveBeenCalled();
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
   test("reserves the marked-up estimate before invoking the model", async () => {
     const reconcile = makeReservation({ adjustmentType: "none" });
 
-    const response = await callChat();
+    const response = await callRouteChat();
 
     expect(response.status).toBe(200);
+    expect(admitOrganizationInference).toHaveBeenCalledWith(
+      expect.objectContaining({ credential: inferenceCredential }),
+    );
+    expect(assertInferenceCredentialActive).not.toHaveBeenCalled();
     expect(reserve).toHaveBeenCalledTimes(1);
     const reserveParams = reserve.mock.calls[0]?.[0] as { amount: number };
     expect(reserveParams).toMatchObject({
@@ -248,6 +390,27 @@ describe("Agent MCP billing", () => {
     expect(reconcile.mock.invocationCallOrder[0]).toBeLessThan(
       recordCreatorEarnings.mock.invocationCallOrder[0],
     );
+  });
+
+  test("Worker chat opts into atomic admission at the provider boundary", async () => {
+    const retained: Promise<unknown>[] = [];
+    routeExecutionCtx = {
+      waitUntil(promise) {
+        retained.push(Promise.resolve(promise));
+      },
+    };
+    makeReservation({ adjustmentType: "none" });
+
+    const response = await callRouteChat();
+
+    expect(response.status).toBe(200);
+    expect(admitOrganizationInference).toHaveBeenCalledWith(
+      expect.objectContaining({
+        executionCtx: routeExecutionCtx,
+        atomicProviderBoundary: true,
+      }),
+    );
+    await Promise.all(retained);
   });
 
   // Billing uses a conservative estimate without turning that estimate into a
@@ -412,8 +575,8 @@ describe("Agent MCP billing", () => {
     expect(streamText).not.toHaveBeenCalled();
   });
 
-  test("missing provider usage fails and refunds instead of fabricating zero metering", async () => {
-    const reconcile = makeReservation({ adjustmentType: "refund" });
+  test("missing provider usage settles the reserved estimate instead of fabricating zero metering", async () => {
+    const reconcile = makeReservation({ adjustmentType: "none" });
     streamText.mockResolvedValue({
       textStream: textStream("unmetered output"),
       usage: Promise.resolve({
@@ -430,11 +593,12 @@ describe("Agent MCP billing", () => {
 
     expect(body.error?.code).toBe(-32000);
     expect(reconcile).toHaveBeenCalledTimes(1);
-    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(reconcile.mock.calls[0]?.[0]).toBeCloseTo(0.06, 12);
+    expect(markProviderDispatched).toHaveBeenCalledTimes(1);
     expect(recordCreatorEarnings).not.toHaveBeenCalled();
   });
 
-  test("a provider error refunds the reservation and returns -32000", async () => {
+  test("a provider rejection settles the reserved estimate and returns -32000", async () => {
     const reconcile = makeReservation({ adjustmentType: "none" });
     streamText.mockRejectedValue(new Error("provider unavailable"));
 
@@ -445,8 +609,63 @@ describe("Agent MCP billing", () => {
 
     expect(body.error?.code).toBe(-32000);
     expect(body.error?.message).toBe("provider unavailable");
-    // The whole reservation is refunded (reconcile(0)); no creator earnings.
-    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(reconcile.mock.calls[0]?.[0]).toBeCloseTo(0.06, 12);
+    expect(markProviderDispatched).toHaveBeenCalledTimes(1);
     expect(recordCreatorEarnings).not.toHaveBeenCalled();
+  });
+
+  test("incomplete provider output settles the reserved estimate", async () => {
+    const reconcile = makeReservation({ adjustmentType: "none" });
+    streamText.mockResolvedValue({
+      textStream: textStream("partial output"),
+      finishReason: Promise.resolve("length"),
+      usage: Promise.resolve({
+        inputTokens: 100,
+        outputTokens: 25,
+        totalTokens: 125,
+      }),
+    });
+
+    const response = await callChat();
+    const body = (await response.json()) as {
+      error?: { code: number; message: string };
+    };
+
+    expect(body.error?.code).toBe(-32000);
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(reconcile.mock.calls[0]?.[0]).toBeCloseTo(0.06, 12);
+    expect(recordCreatorEarnings).not.toHaveBeenCalled();
+  });
+
+  test("a dispatch-marker failure refunds before provider dispatch", async () => {
+    const reconcile = makeReservation({ adjustmentType: "refund" });
+    markProviderDispatched.mockRejectedValue(new Error("marker unavailable"));
+
+    const response = await callChat();
+
+    expect(response.status).toBe(200);
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(streamText).not.toHaveBeenCalled();
+    expect(recordCreatorEarnings).not.toHaveBeenCalled();
+  });
+
+  test("a typed late dispatch denial remains a retryable JSON-RPC admission failure", async () => {
+    const reconcile = makeReservation({ adjustmentType: "refund" });
+    markProviderDispatched.mockRejectedValue(
+      new ApiError(
+        503,
+        "service_unavailable",
+        "dispatch admission unavailable",
+      ),
+    );
+
+    const response = await callChat();
+    const body = (await response.json()) as { error?: { code: number } };
+
+    expect(response.status).toBe(503);
+    expect(body.error?.code).toBe(-32004);
+    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(streamText).not.toHaveBeenCalled();
   });
 });

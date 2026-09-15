@@ -19,6 +19,8 @@ import { calendarHttpRoutes } from "./routes/plugin-routes.js";
 import { CalendarService } from "./service/CalendarService.js";
 import { CalendarMigrationService } from "./service/migration.js";
 import { calendarSchema } from "./service/schema.js";
+import { CALENDAR_VIEW_CAPABILITIES } from "./view-capabilities.js";
+import { serverInteract } from "./view-interact.js";
 
 /**
  * First-class calendar plugin. Owns the calendar domain that previously lived
@@ -56,6 +58,10 @@ export const calendarPlugin: Plugin = {
     {
       id: "calendar",
       label: "Calendar",
+      // Calendar data is owner-private (the LifeOps CALENDAR umbrella stamps
+      // the owner-exclusive disclosure gate on the action surface); the view's
+      // server capabilities follow the Notes precedent and stay owner-gated.
+      roleGate: { minRole: "OWNER" },
       description:
         "Chat-first calendar over unified Google, Microsoft, Apple, and ICS events.",
       icon: "CalendarDays",
@@ -69,9 +75,25 @@ export const calendarPlugin: Plugin = {
         header: "fullscreen",
         capabilities: ["agent-surface"],
       },
+      // Server-executed capabilities (no mounted renderer required): the views
+      // route prefers `serverInteract` for these declared non-standard ids, so
+      // "create a new event for today" resolves to a real CalendarService write
+      // with an effect receipt instead of a dead capability surface.
+      capabilities: CALENDAR_VIEW_CAPABILITIES,
+      serverInteract,
       componentExport: "CalendarView",
       tags: ["calendar", "schedule", "events"],
+      responseContext: { primaryContext: "calendar" },
       relatedActions: ["CALENDAR", "CALENDAR_SOURCES", "CONFLICT_DETECT"],
+      scopedActions: [
+        {
+          name: "VIEW_CALENDAR_SELECT_VISIBLE_DAY",
+          description:
+            "Show the agenda for a day in the currently displayed calendar grid. Requires date in YYYY-MM-DD format. Reading or searching events does not select a day in the UI; use this action to show it. For a date outside the displayed grid, navigate the calendar month controls first.",
+          parameters: ["date"],
+          steps: [{ kind: "agent-click", target: "calendar-day-{{date}}" }],
+        },
+      ],
       visibleInManager: true,
       desktopTabEnabled: true,
     },

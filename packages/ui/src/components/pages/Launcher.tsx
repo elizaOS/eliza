@@ -54,6 +54,8 @@ const LAUNCHER_RESPONSIVE_CSS = `
 export interface LauncherProps {
   entries: ViewEntry[];
   loading?: boolean;
+  error?: Error | null;
+  onRetry?: () => void;
   onLaunch: (entry: ViewEntry) => void;
   className?: string;
   /** Render at natural height inside Home's app scroll region. */
@@ -161,6 +163,8 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
 export function Launcher({
   entries,
   loading = false,
+  error = null,
+  onRetry,
   onLaunch,
   className,
   embedded = false,
@@ -178,6 +182,10 @@ export function Launcher({
   );
 
   const showSkeleton = loading && entries.length === 0;
+  const showError = !showSkeleton && error !== null && entries.length === 0;
+  const showSourceStatus =
+    !showSkeleton && error !== null && entries.length > 0;
+  const showEmpty = !showSkeleton && !showError && entries.length === 0;
 
   return (
     <div
@@ -219,14 +227,79 @@ export function Launcher({
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="grid w-full grid-cols-3 gap-x-4 gap-y-5 min-[360px]:grid-cols-4 max-sm:portrait:gap-y-8 sm:grid-cols-5">
-                {entries.map((entry) => (
-                  <div key={entry.id} className="flex justify-center">
-                    <IconTile entry={entry} onLaunch={handleLaunch} />
-                  </div>
-                ))}
+            ) : showError ? (
+              <div
+                role="alert"
+                data-testid="launcher-error"
+                className="mx-auto flex min-h-48 max-w-sm flex-col items-center justify-center gap-3 px-5 text-center"
+              >
+                <div
+                  className={cn("text-sm font-semibold", WALLPAPER_TEXT.base)}
+                >
+                  Couldn&apos;t load apps
+                </div>
+                <p className={cn("text-xs", WALLPAPER_TEXT.muted)}>
+                  Check the connection and try again.
+                </p>
+                {onRetry ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="overlayEdge"
+                    onClick={onRetry}
+                  >
+                    Retry
+                  </Button>
+                ) : null}
               </div>
+            ) : showEmpty ? (
+              <div
+                role="status"
+                data-testid="launcher-empty"
+                className="mx-auto flex min-h-48 max-w-sm flex-col items-center justify-center gap-2 px-5 text-center"
+              >
+                <div
+                  className={cn("text-sm font-semibold", WALLPAPER_TEXT.base)}
+                >
+                  No apps available
+                </div>
+                <p className={cn("text-xs", WALLPAPER_TEXT.muted)}>
+                  Available apps and views will appear here.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="grid w-full grid-cols-3 gap-x-4 gap-y-5 min-[360px]:grid-cols-4 max-sm:portrait:gap-y-8 sm:grid-cols-5">
+                  {entries.map((entry) => (
+                    <div key={entry.id} className="flex justify-center">
+                      <IconTile entry={entry} onLaunch={handleLaunch} />
+                    </div>
+                  ))}
+                </div>
+                {showSourceStatus ? (
+                  <div
+                    role="status"
+                    data-testid="launcher-source-status"
+                    className={cn(
+                      "mx-auto flex min-h-11 items-center gap-2 text-xs",
+                      WALLPAPER_TEXT.muted,
+                    )}
+                  >
+                    <span>More apps unavailable</span>
+                    {onRetry ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="overlayEdge"
+                        className="min-h-9"
+                        onClick={onRetry}
+                      >
+                        Retry
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </>
             )}
           </div>
         </div>

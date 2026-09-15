@@ -42,6 +42,19 @@ const getByStripeInvoiceId = mock(async () => null);
 const createInvoice = mock(async () => undefined);
 const logPaymentReceived = mock(async () => undefined);
 
+// Terminal authority has independent real-DB consumer coverage; these fixtures own purchased-credit dispatch.
+mock.module("@/lib/services/stripe-scheduled-cancellation-lifecycle", () => ({
+  reconcileStripeScheduledCancellationLifecycle: async () => {
+    throw new Error(
+      "Scheduled subscription lifecycle unavailable in legacy fixture",
+    );
+  },
+}));
+mock.module("@/lib/services/stripe-terminal-lifecycle", () => ({
+  reconcileStripeTerminalLifecycle: async () => {
+    throw new Error("Subscription lifecycle unavailable in legacy fixture");
+  },
+}));
 mock.module("@/db/helpers", () => ({ dbRead: {} }));
 mock.module("@/db/repositories/organizations", () => ({
   organizationsRepository: {
@@ -126,6 +139,8 @@ function paymentIntentDelivery(params?: {
     customer_account: null,
     description: null,
     excluded_payment_method_types: null,
+    // Acacia explicitly distinguishes a one-time payment from missing linkage.
+    invoice: null,
     last_payment_error: null,
     latest_charge: null,
     livemode: true,
@@ -158,7 +173,7 @@ function paymentIntentDelivery(params?: {
     statement_descriptor_suffix: null,
     status: "succeeded",
     transfer_group: null,
-  } satisfies Stripe.PaymentIntent;
+  } satisfies Stripe.PaymentIntent & { invoice: null };
   const event = {
     id: `evt_${id}`,
     object: "event",

@@ -14,6 +14,7 @@ const cardVariants = cva("rounded-sm bg-card/70 text-card-fg", {
   variants: {
     variant: {
       default: "",
+      messageSearch: "rounded-search bg-card",
       flatPadded: "bg-card p-4",
       outlinedPadded: "border border-border bg-card p-4",
       reportPanel: "border border-border/70 bg-background/85",
@@ -36,7 +37,6 @@ const cardVariants = cva("rounded-sm bg-card/70 text-card-fg", {
       appFallback: "bg-background text-muted-foreground",
       launcherIcon:
         "relative overflow-hidden rounded-2xl border border-border-launcher-icon bg-bg-launcher-icon text-txt-launcher-icon backdrop-blur-[18px] group-hover:bg-bg-launcher-icon-hover group-focus-visible:border-accent group-focus-visible:bg-bg-launcher-icon-focus !shadow-launcher-icon before:pointer-events-none before:absolute before:inset-0 before:rounded-2xl before:bg-launcher-icon-sheen before:content-['']",
-      accountConnect: "border border-border/60 bg-card p-3 text-sm",
       attachmentFrame:
         "overflow-hidden rounded-lg border border-border bg-card",
       attachmentHeader: "rounded-none border-b border-border bg-transparent",

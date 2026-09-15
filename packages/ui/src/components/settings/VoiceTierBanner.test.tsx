@@ -52,4 +52,19 @@ describe("VoiceTierBanner", () => {
     render(<VoiceTierBanner tier="GOOD" />);
     expect(screen.queryByTestId("voice-tier-summary")).toBeNull();
   });
+
+  it("states the configured Cartesia serving path without claiming gateway health", () => {
+    render(
+      <VoiceTierBanner tier="MAX" realtimeVoiceConfigured compact={false} />,
+    );
+    expect(screen.getByTestId("voice-tier-title").textContent).toBe(
+      "Realtime voice is set to use Cartesia.",
+    );
+    expect(screen.getByTestId("voice-tier-description").textContent).toContain(
+      "when the voice gateway is available",
+    );
+    expect(screen.getByTestId("voice-tier-description").textContent).toContain(
+      "agent model stays on this device",
+    );
+  });
 });

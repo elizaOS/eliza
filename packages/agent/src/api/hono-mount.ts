@@ -102,22 +102,28 @@ export function resetHonoMountCache(): void {
 // reader, so it needs its own guard: without it a POST to any Hono-eligible
 // plugin routeHandler with an unbounded body is fully buffered into an
 // ArrayBuffer with no 413, hanging or OOM-ing the process.
-const MAX_HONO_BODY_BYTES = 1024 * 1024; // 1 MiB
+export const DEFAULT_MAX_HONO_BODY_BYTES = 1024 * 1024; // 1 MiB
 
 interface ReadNodeBodyResult {
   body: ArrayBuffer | null;
   tooLarge: boolean;
 }
 
-async function readNodeBody(req: IncomingMessage): Promise<ReadNodeBodyResult> {
+async function readNodeBody(
+  req: IncomingMessage,
+  maxBodyBytes: number,
+): Promise<ReadNodeBodyResult> {
   const method = (req.method ?? "GET").toUpperCase();
   if (method === "GET" || method === "HEAD") {
     return { body: null, tooLarge: false };
   }
 
   const declaredLength = Number(req.headers["content-length"]);
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_HONO_BODY_BYTES) {
-    req.pause();
+  if (Number.isFinite(declaredLength) && declaredLength > maxBodyBytes) {
+    // Drain without retaining bytes so the peer can finish its write and read
+    // the 413 response. Pausing or destroying here turns a valid HTTP rejection
+    // into EPIPE/ECONNRESET for clients that are still sending the declared body.
+    req.resume();
     return { body: null, tooLarge: true };
   }
 
@@ -150,12 +156,11 @@ async function readNodeBody(req: IncomingMessage): Promise<ReadNodeBodyResult> {
     const onData = (chunk: Buffer | Uint8Array | string) => {
       const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       total += buf.byteLength;
-      if (total > MAX_HONO_BODY_BYTES) {
+      if (total > maxBodyBytes) {
         cleanup();
-        // Pause immediately, but keep the socket alive until the 413 response
-        // is flushed. Destroying IncomingMessage here resets the connection and
-        // turns the promised HTTP response into ECONNRESET for real clients.
-        req.pause();
+        // Stop retaining bytes but keep draining the request. This preserves the
+        // memory cap while allowing a real client to receive the promised 413.
+        req.resume();
         resolve({ body: null, tooLarge: true });
         return;
       }
@@ -248,20 +253,20 @@ function normalizeRoutePathname(pathname: string): string {
     : collapsed;
 }
 
-function hasHonoEligibleRoute(
+function findHonoEligibleRoute(
   runtime: IAgentRuntime,
   method: string,
   pathname: string,
-): boolean {
+): Route | null {
   const upper = method.toUpperCase();
   for (const route of runtime.routes as Route[]) {
     if (route.type === "STATIC") continue;
     if (route.type !== upper) continue;
     if (!route.routeHandler) continue;
     if (matchPluginRoutePath(route.path, pathname) === null) continue;
-    return true;
+    return route;
   }
-  return false;
+  return null;
 }
 
 export async function tryHandleHonoRuntimeRoute(options: {
@@ -289,24 +294,25 @@ export async function tryHandleHonoRuntimeRoute(options: {
     })(),
   );
 
-  if (!hasHonoEligibleRoute(runtime, method, pathname)) {
+  const matchedRoute = findHonoEligibleRoute(runtime, method, pathname);
+  if (!matchedRoute) {
     return false;
   }
 
   const app = getHonoApp(runtime);
 
-  const { body: bodyBytes, tooLarge } = await readNodeBody(req);
+  const maxBodyBytes = matchedRoute.maxBodyBytes ?? DEFAULT_MAX_HONO_BODY_BYTES;
+  const { body: bodyBytes, tooLarge } = await readNodeBody(req, maxBodyBytes);
   if (tooLarge) {
-    // The request body exceeded the 1 MiB cap. Respond 413 without dispatching
-    // to Hono — the body was never fully buffered and the request was destroyed.
+    // The request body exceeded this route's cap. Respond 413 without
+    // dispatching to Hono. Remaining bytes are discarded without retention.
     res.statusCode = 413;
     res.setHeader("content-type", "application/json");
     res.setHeader("connection", "close");
-    res.once("finish", () => req.destroy());
     res.end(
       JSON.stringify({
         error: "Request body too large",
-        maxBytes: MAX_HONO_BODY_BYTES,
+        maxBytes: maxBodyBytes,
       }),
     );
     return true;

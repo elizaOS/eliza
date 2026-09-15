@@ -29,7 +29,9 @@ import {
   jsonRpcError,
   jsonRpcSuccess,
   type Message,
+  type MessageSendParams,
   type Task,
+  type TaskGetParams,
   type TaskState,
 } from "../../types/a2a";
 import { logger } from "../../utils/logger";
@@ -38,7 +40,10 @@ import {
   A2AJsonRpcRequestSchema,
   jsonRpcIdFromUnknown,
   UntrustedA2AMessageSendParamsSchema,
+  UntrustedA2ATaskGetParamsSchema,
 } from "./request-validation";
+
+import { projectTaskHistory } from "./task-history";
 
 function getBaseUrl(c: AppContext): string {
   return c.env.NEXT_PUBLIC_APP_URL || new URL(c.req.url).origin;
@@ -184,17 +189,36 @@ async function executePlatformSkill(c: AppContext, skill: string, args: Record<s
     case "cloud.billing.cancel_resource": {
       const resourceId = typeof args.resourceId === "string" ? args.resourceId : "";
       if (!resourceId) throw new Error("resourceId is required");
+      const resourceType =
+        args.resourceType === "container" || args.resourceType === "agent_sandbox"
+          ? args.resourceType
+          : undefined;
+      if (!resourceType) throw new Error("resourceType is required");
+      if (args.mode !== undefined && args.mode !== "stop") {
+        throw new Error("Only mode=stop supports durable billing cancellation");
+      }
+      if (
+        !Number.isSafeInteger(args.expectedLifecycleRevision) ||
+        Number(args.expectedLifecycleRevision) < 0
+      ) {
+        throw new Error("expectedLifecycleRevision is required");
+      }
+      const idempotencyKey =
+        typeof args.idempotencyKey === "string"
+          ? args.idempotencyKey
+          : (c.req.header("idempotency-key") ?? "");
       const user = await requireCurrentBillingManagerSession(c);
-      return activeBillingService.cancelResource({
+      return activeBillingService.requestCancellation({
         organizationId: user.organization_id,
+        requestedByUserId: user.id,
         resourceId,
-        resourceType:
-          args.resourceType === "container" || args.resourceType === "agent_sandbox"
-            ? args.resourceType
-            : undefined,
-        mode: args.mode === "delete" ? "delete" : "stop",
+        resourceType,
+        expectedLifecycleRevision: Number(args.expectedLifecycleRevision),
+        idempotencyKey,
+        triggerEnv: c.env,
         authorizeInfrastructureMutation: async () => {
-          await requireCurrentBillingManagerSession(c);
+          const current = await requireCurrentBillingManagerSession(c);
+          return current.steward_id;
         },
       });
     }
@@ -218,7 +242,10 @@ async function executePlatformSkill(c: AppContext, skill: string, args: Record<s
 }
 
 export async function handlePlatformMessageSend(c: AppContext, params: unknown) {
-  const validated = UntrustedA2AMessageSendParamsSchema.parse(params);
+  return sendValidatedPlatformMessage(c, UntrustedA2AMessageSendParamsSchema.parse(params));
+}
+
+async function sendValidatedPlatformMessage(c: AppContext, validated: MessageSendParams) {
   const { message } = validated;
   const paramsMetadata = validated.metadata ?? {};
   const data = { ...extractData(message), ...paramsMetadata };
@@ -253,22 +280,20 @@ export async function handlePlatformMessageSend(c: AppContext, params: unknown) 
     }),
   ];
   if (user) await storePlatformTask(task, user);
-  return task;
+  return projectTaskHistory(task, validated.configuration?.historyLength);
 }
 
 export async function handlePlatformTasksGet(c: AppContext, params: Record<string, unknown>) {
+  return getValidatedPlatformTask(c, UntrustedA2ATaskGetParamsSchema.parse(params));
+}
+
+async function getValidatedPlatformTask(c: AppContext, { id, historyLength }: TaskGetParams) {
   const user = await requireUserOrApiKeyWithOrg(c);
-  const id = typeof params.id === "string" ? params.id : "";
   const entry = await a2aTaskStoreService.get(id, user.organization_id);
   if (!entry) {
     throw new Error(`Task not found: ${id}`);
   }
-  const task = { ...entry.task };
-  const historyLength = typeof params.historyLength === "number" ? params.historyLength : undefined;
-  if (historyLength !== undefined && task.history) {
-    task.history = task.history.slice(-historyLength);
-  }
-  return task;
+  return projectTaskHistory(entry.task, historyLength);
 }
 
 export async function handlePlatformTasksCancel(c: AppContext, params: Record<string, unknown>) {
@@ -306,10 +331,13 @@ export async function handlePlatformA2aJsonRpc(c: AppContext, input: unknown) {
       case "message/send": {
         const params = UntrustedA2AMessageSendParamsSchema.safeParse(request.params);
         if (!params.success) return jsonRpcError(-32602, "Invalid params", id);
-        return jsonRpcSuccess(await handlePlatformMessageSend(c, params.data), id);
+        return jsonRpcSuccess(await sendValidatedPlatformMessage(c, params.data), id);
       }
-      case "tasks/get":
-        return jsonRpcSuccess(await handlePlatformTasksGet(c, request.params ?? {}), id);
+      case "tasks/get": {
+        const params = UntrustedA2ATaskGetParamsSchema.safeParse(request.params);
+        if (!params.success) return jsonRpcError(-32602, "Invalid params", id);
+        return jsonRpcSuccess(await getValidatedPlatformTask(c, params.data), id);
+      }
       case "tasks/cancel":
         return jsonRpcSuccess(await handlePlatformTasksCancel(c, request.params ?? {}), id);
       case "agent/getAuthenticatedExtendedCard":

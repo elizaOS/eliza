@@ -5,6 +5,7 @@
  * without re-implementing the boundary.
  */
 import * as React from "react";
+import { isChunkLoadError } from "../../utils/chunk-load-recovery";
 import { Button } from "./button";
 import { Card } from "./card";
 
@@ -83,6 +84,11 @@ export class ErrorBoundary extends React.Component<
   }
 
   resetErrorBoundary = () => {
+    if (isChunkLoadError(this.state.error)) {
+      // Import rejections persist in the document's module map; a user retry needs a fresh navigation.
+      window.location.reload();
+      return;
+    }
     this.setState({ error: null });
   };
 

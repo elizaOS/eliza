@@ -72,12 +72,16 @@ Disable the bundled coding CLIs at image-build time with
 - **Logging is hand-rolled JSON-lines** to stdout/stderr via the local `log()`
   helper (this is a standalone service with no `@elizaos/core` dependency), not
   the framework logger. Messages are prefixed `[CodingRemoteRunner]`.
-- **Command output is bounded** by a ring-buffer (`BoundedOutput`) that keeps the
-  tail; a timed-out command is killed (`SIGTERM`) and reported with exit code
-  `124` and `timedOut: true`.
-- **Runtime-agnostic process exec.** `runCommand` uses `Bun.spawn` when running
-  under Bun and falls back to Node's `child_process.spawn` otherwise; tests
-  override execution by passing a `commandRunner` into `createHandler`.
+- **Command output remains complete.** Each stream is retained up to the configured
+  `ELIZA_REMOTE_RUNNER_MAX_COMMAND_OUTPUT_BYTES` resource limit. Exceeding it
+  terminates the command and returns HTTP 413 without partial stdout/stderr;
+  callers can increase the limit or write large output to a workspace file.
+- **Process ownership.** Node's `child_process.spawn` runs commands under both
+  Bun and Node. On timeout, POSIX process groups receive SIGTERM followed by
+  SIGKILL after 250ms. Windows retains direct child termination. Timeout results retain
+  complete captured output and report `exitCode: 124`, `timedOut: true`.
+  Real subprocess tests cover output integrity and POSIX process-group teardown;
+  Windows descendant termination is not covered by the POSIX process-group contract.
 - **No build step / no published artifact.** `private: true`, runs directly from
   `src/index.ts`; `typecheck` uses `tsc`. The handler is a plain Web
   `Request`/`Response` function, so it is testable without binding a port.

@@ -66,6 +66,8 @@ export interface ShellMessage {
   failureKind?: ChatFailureKind;
   /** Complete typed terminal failure used for truthful transient retry state. */
   terminalFailure?: ChatTerminalFailure;
+  /** Server confirms durable evidence supports regenerating only this reply. */
+  replyRecoveryAvailable?: boolean;
   /** Agent reasoning/thought for this turn, rendered as a collapsed block. */
   reasoning?: string;
   /** Inline tool-call rows for this turn, streamed live from the chat SSE `tool`
@@ -116,7 +118,8 @@ export const SHELL_RENDER_WINDOW_STEP = 50;
  * no-provider / insufficient-credits UI, which is often content-less — a
  * rate-limit or provider stall fails before any token streams, so dropping it
  * would hide the failure AND its retry affordance entirely), and the in-flight
- * assistant turn while a reply is streaming (phase === "responding"), so its
+ * interrupted assistant receipt, and the in-flight assistant turn while a reply
+ * is streaming (phase === "responding"), so its
  * bubble can show the breathing dots anchored where the text will fill in. Pure
  * + DOM-free so the render window can measure the loaded-renderable count
  * without a second filter definition.
@@ -132,6 +135,7 @@ export function filterRenderableShellMessages(
       m.secretRequest !== undefined ||
       m.capabilityHandoff !== undefined ||
       m.failureKind !== undefined ||
+      (m.role === "assistant" && m.interrupted === true) ||
       (m.role === "assistant" && phase === "responding"),
   );
 }

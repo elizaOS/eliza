@@ -41,6 +41,7 @@ import type {
 } from "@elizaos/core";
 import {
   describeUserReference,
+  ElizaError,
   FOLLOW_UP_CAPABLE_ACTION_TAG,
   findEntityByName,
   getEntityDetails,
@@ -128,6 +129,7 @@ interface RelationshipActivityItem {
 }
 
 interface RelationshipsServiceLike {
+  createContact?: import("@elizaos/core/services/relationships").RelationshipsService["createContact"];
   addContact?(
     entityId: UUID,
     categories: string[],
@@ -787,44 +789,50 @@ async function handleCreate(
   };
 
   try {
-    // Create entity if it doesn't exist already (handle externally-provided ids).
-    const existing = await runtime.getEntityById(entityId).catch(() => null);
-    if (!existing) {
-      const ok = await runtime.createEntity(entity);
-      if (!ok) {
+    const categories = readStringArray(params.categories);
+    const tags = readStringArray(params.tags);
+    const preferences = readRecord(params.preferences);
+    const customFields = readRecord(params.customFields);
+    const promoted = Boolean(categories || tags || preferences || customFields);
+    let outcome: "created" | "saved" | "existing";
+    let persistedEntity: Entity;
+    let contact:
+      | Awaited<
+          ReturnType<NonNullable<RelationshipsServiceLike["createContact"]>>
+        >["contact"]
+      | undefined;
+    if (promoted) {
+      const relationships = getRelationshipsService(runtime);
+      if (!relationships?.createContact) {
+        return fail(
+          "The relationships service is unavailable; no contact was created.",
+          "RELATIONSHIPS_UNAVAILABLE",
+          "create",
+        );
+      }
+      const receipt = await relationships.createContact(entity, {
+        categories: categories ?? ["acquaintance"],
+        tags: tags ?? [],
+        preferences: { ...preferences, ...(notes ? { notes } : {}) },
+        customFields: { ...customFields, displayName: name },
+      });
+      outcome = "saved";
+      persistedEntity = receipt.entity;
+      contact = receipt.contact;
+    } else {
+      const existing = await runtime.getEntityById(entityId);
+      outcome = existing ? "existing" : "created";
+      if (!existing && !(await runtime.createEntity(entity))) {
         return fail(
           `Failed to create contact "${name}".`,
           "CREATE_FAILED",
           "create",
         );
       }
+      persistedEntity = existing ?? entity;
     }
-
-    // Optionally promote to a richer contact via RelationshipsService when
-    // categories / tags / preferences / customFields are supplied — this is
-    // the legacy ADD_CONTACT semantic.
-    const categories = readStringArray(params.categories);
-    const tags = readStringArray(params.tags);
-    const preferences = readRecord(params.preferences);
-    const customFields = readRecord(params.customFields);
-    let promoted = false;
-
-    const relationships = getRelationshipsService(runtime);
-    if (
-      relationships?.addContact &&
-      (categories || tags || preferences || customFields)
-    ) {
-      const addCategories = categories ?? ["acquaintance"];
-      const addPrefs: Record<string, string> = { ...(preferences ?? {}) };
-      if (notes) addPrefs.notes = notes;
-      await relationships.addContact(entityId, addCategories, addPrefs, {
-        displayName: name,
-      });
-      promoted = true;
-    }
-
     return {
-      text: `Created contact "${name}" (entityId: ${entityId}).`,
+      text: `${outcome === "created" ? "Created" : "Saved"} contact "${name}" (entityId: ${entityId}).`,
       success: true,
       values: { success: true, entityId, name },
       data: {
@@ -832,16 +840,19 @@ async function handleCreate(
         op: "create",
         entityId,
         name,
-        metadata,
+        metadata: persistedEntity.metadata,
         promoted,
+        outcome,
+        ...(contact ? { contact } : {}),
       },
     };
   } catch (error) {
+    // error-policy:J1 The action boundary reports failure without claiming a complete contact write.
     const errMsg = error instanceof Error ? error.message : String(error);
-    logger.error("[CONTACT:create] Error:", errMsg);
+    runtime.reportError("contact:create", error, { entityId });
     return fail(
       `Failed to create contact: ${errMsg}`,
-      "CREATE_FAILED",
+      error instanceof ElizaError ? error.code : "CREATE_FAILED",
       "create",
     );
   }
@@ -983,7 +994,7 @@ async function handleUpdate(
 async function handleUpdateContactInfo(
   runtime: IAgentRuntime,
   params: ContactParams,
-  callback: HandlerCallback | undefined,
+  _callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
   const relationships = getRelationshipsService(runtime);
   if (!relationships?.searchContacts || !relationships.updateContact) {
@@ -1102,26 +1113,10 @@ async function handleUpdateContactInfo(
   }
 
   const responseText = `I've updated ${contactName}'s contact information.`;
-  if (callback) {
-    await callback({
-      text: responseText,
-      action: CONTACT_ACTION,
-      metadata: {
-        contactId: contact.entityId,
-        updatedFields: Object.keys(updateData),
-      },
-    });
-  }
-
-  // The update confirmation is the complete answer to a single-operation
-  // turn: verified + turnComplete make the callback the sole delivery instead
-  // of double-messaging with the evaluator.
   return {
     success: true,
     text: responseText,
-    userFacingText: responseText,
-    verifiedUserFacing: true,
-    turnComplete: true,
+    modelReplyRequired: true,
     values: {
       contactId: contact.entityId,
       updatedFieldsStr: Object.keys(updateData).join(","),
@@ -1141,7 +1136,7 @@ async function handleUpdateComponent(
   state: State,
   source: string,
   data: Record<string, unknown>,
-  callback: HandlerCallback | undefined,
+  _callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
   const sourceEntityId = message.entityId;
   const agentId = runtime.agentId;
@@ -1186,17 +1181,10 @@ async function handleUpdateComponent(
     });
 
     const updatedText = `I've updated the ${componentType} information for ${entityName}.`;
-    if (callback) {
-      await callback({ text: updatedText, action: CONTACT_ACTION });
-    }
-    // Same single-delivery contract as handleUpdate: the confirmation is the
-    // complete answer to the turn.
     return {
       success: true,
       text: updatedText,
-      userFacingText: updatedText,
-      verifiedUserFacing: true,
-      turnComplete: true,
+      modelReplyRequired: true,
       values: {
         success: true,
         entityId,
@@ -1231,15 +1219,10 @@ async function handleUpdateComponent(
   });
 
   const addedText = `I've added new ${componentType} information for ${entityName}.`;
-  if (callback) {
-    await callback({ text: addedText, action: CONTACT_ACTION });
-  }
   return {
     success: true,
     text: addedText,
-    userFacingText: addedText,
-    verifiedUserFacing: true,
-    turnComplete: true,
+    modelReplyRequired: true,
     values: {
       success: true,
       entityId,
@@ -1336,17 +1319,10 @@ async function handleDelete(
       );
     }
     const removedText = `I've removed ${contactName} from your contacts.`;
-    if (callback) {
-      await callback({ text: removedText, action: CONTACT_ACTION });
-    }
-    // The removal confirmation is the complete answer to a single-operation
-    // turn: verified + turnComplete make the callback the sole delivery.
     return {
       success: true,
       text: removedText,
-      userFacingText: removedText,
-      verifiedUserFacing: true,
-      turnComplete: true,
+      modelReplyRequired: true,
       values: { contactId: contact.entityId },
       data: {
         actionName: CONTACT_ACTION,

@@ -82,6 +82,8 @@ export function smokeStoryModules(
      * browser story gate's `needs-runtime` path and the live `audit:app`.
      */
     skip?: string[];
+    /** Stories whose play function measures layout; the browser story gate owns it. */
+    browserOnlyPlay?: string[];
     /**
      * `"<Module>/<Story>"` keys whose render deliberately exercises a React
      * error boundary. React reports caught errors through `onCaughtError`; the
@@ -95,6 +97,7 @@ export function smokeStoryModules(
     options.wrap ??
     ((node: ReactNode) => <TooltipProvider>{node}</TooltipProvider>);
   const skip = new Set(options.skip ?? []);
+  const browserOnlyPlay = new Set(options.browserOnlyPlay ?? []);
   const expectCaughtError = new Set(options.expectCaughtError ?? []);
   const restoreMediaMethods: Array<() => void> = [];
 
@@ -199,7 +202,7 @@ export function smokeStoryModules(
               }) => void | Promise<void>;
             }
           ).play;
-          if (typeof play === "function") {
+          if (typeof play === "function" && !browserOnlyPlay.has(storyKey)) {
             await play({ canvasElement: container });
           }
         });

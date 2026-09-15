@@ -696,3 +696,27 @@ describe("tryHandleRuntimePluginRoute forwards a matching plugin route", () => {
     expect(response.status).toBe(200);
   });
 });
+
+describe("database lazy dispatch", () => {
+  it("accepts the real caller shape without a duplicate method field", async () => {
+    let body = "";
+    const res = {
+      statusCode: 0,
+      setHeader: vi.fn(),
+      end: (value: string) => {
+        body = value;
+      },
+    } as unknown as http.ServerResponse;
+    const handled = await handleDatabaseRouteGroup({
+      req: { method: "GET" } as http.IncomingMessage,
+      res,
+      pathname: "/api/database/status",
+      state: { runtime: null } as Parameters<
+        typeof handleDatabaseRouteGroup
+      >[0]["state"],
+    });
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(body)).toMatchObject({ connected: false });
+  });
+});

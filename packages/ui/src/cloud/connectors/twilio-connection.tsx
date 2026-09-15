@@ -9,7 +9,7 @@
 
 import { ExternalLink, Loader2, MessageSquare, Phone } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
+import { toast } from "../../bridge/toast";
 import {
   ConnectionCallout,
   ConnectionCard,

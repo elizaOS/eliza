@@ -130,18 +130,23 @@ import type {
   LifeOpsConnectorGrant,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
+  LifeOpsDefinitionCreationResult,
   LifeOpsDefinitionRecord,
+  LifeOpsDefinitionTransitionResult,
   LifeOpsGmailBatchReplyDraftsFeed,
   LifeOpsGmailBatchReplySendResult,
   LifeOpsGmailEventIngestResult,
+  LifeOpsGmailImportedDataPurgeReceipt,
   LifeOpsGmailManageResult,
   LifeOpsGmailMessageSummary,
   LifeOpsGmailNeedsResponseFeed,
   LifeOpsGmailRecommendationsFeed,
   LifeOpsGmailReplyDraft,
   LifeOpsGmailSearchFeed,
+  LifeOpsGmailSeedReceipt,
   LifeOpsGmailSpamReviewFeed,
   LifeOpsGmailSpamReviewItem,
+  LifeOpsGmailSyncHealth,
   LifeOpsGmailTriageFeed,
   LifeOpsGmailUnrespondedFeed,
   LifeOpsGoalExperienceLoop,
@@ -154,6 +159,7 @@ import type {
   LifeOpsOccurrenceExplanation,
   LifeOpsOccurrenceView,
   LifeOpsOverview,
+  LifeOpsTodoView,
   LifeOpsWeeklyGoalReview,
   LifeOpsWorkflowRecord,
   LifeOpsWorkflowRun,
@@ -161,8 +167,10 @@ import type {
   LifeOpsXDm,
   LifeOpsXPostResponse,
   ManageLifeOpsGmailMessagesRequest,
+  PurgeLifeOpsGmailImportedDataRequest,
   RecordLifeOpsProgressRequest,
   RecordLifeOpsProgressResult,
+  SeedLifeOpsGmailRequest,
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
@@ -180,6 +188,7 @@ import type {
 } from "../contracts/index.js";
 import { loadLifeOpsAppState } from "./app-state.js";
 import { resolveDefaultTimeZone } from "./defaults.js";
+import type { DefinitionCreationContext } from "./definition-creation-identity.js";
 import { BrowserDomain } from "./domains/browser-service.js";
 import { CalendarDomain } from "./domains/calendar-service.js";
 import { DefinitionsDomain } from "./domains/definitions-service.js";
@@ -697,6 +706,33 @@ export class LifeOpsService extends LifeOpsServiceBase {
         grantId,
       ),
   });
+
+  seedGmailMessages(
+    requestUrl: URL,
+    request: SeedLifeOpsGmailRequest,
+    now?: Date,
+  ): Promise<LifeOpsGmailSeedReceipt> {
+    return this.gmailDomain.seedGmailMessages(requestUrl, request, now);
+  }
+
+  getGmailSyncHealth(
+    requestUrl: URL,
+    request: {
+      side?: LifeOpsConnectorSide;
+      mode?: LifeOpsConnectorMode;
+      grantId: string;
+    },
+  ): Promise<LifeOpsGmailSyncHealth> {
+    return this.gmailDomain.getGmailSyncHealth(requestUrl, request);
+  }
+
+  purgeGmailImportedData(
+    requestUrl: URL,
+    request: PurgeLifeOpsGmailImportedDataRequest,
+    now?: Date,
+  ): Promise<LifeOpsGmailImportedDataPurgeReceipt> {
+    return this.gmailDomain.purgeGmailImportedData(requestUrl, request, now);
+  }
 
   getGmailTriage(
     requestUrl: URL,
@@ -1669,10 +1705,26 @@ export class LifeOpsService extends LifeOpsServiceBase {
     return this.definitionsDomain.getDefinition(definitionId);
   }
 
+  async getTodos(): Promise<LifeOpsTodoView[]> {
+    const overview = await this.getOverview();
+    return this.definitionsDomain.getTodos(overview.owner.occurrences);
+  }
+
+  completeTodo(
+    definitionId: string,
+  ): Promise<LifeOpsDefinitionTransitionResult> {
+    return this.definitionsDomain.transitionTodo(definitionId, "completed");
+  }
+
+  reopenTodo(definitionId: string): Promise<LifeOpsDefinitionTransitionResult> {
+    return this.definitionsDomain.transitionTodo(definitionId, "active");
+  }
+
   createDefinition(
     request: CreateLifeOpsDefinitionRequest,
-  ): Promise<LifeOpsDefinitionRecord> {
-    return this.definitionsDomain.createDefinition(request);
+    context?: DefinitionCreationContext,
+  ): Promise<LifeOpsDefinitionCreationResult> {
+    return this.definitionsDomain.createDefinition(request, context);
   }
 
   updateDefinition(
@@ -2789,8 +2841,9 @@ export class LifeOpsService extends LifeOpsServiceBase {
         "LIFEOPS_INBOX_PRIORITY_SCORING",
       );
       if (
-        typeof scoringOverride === "string" &&
-        scoringOverride.trim().toLowerCase() === "false"
+        scoringOverride === false ||
+        (typeof scoringOverride === "string" &&
+          scoringOverride.trim().toLowerCase() === "false")
       ) {
         return { enabled: false, model: null };
       }

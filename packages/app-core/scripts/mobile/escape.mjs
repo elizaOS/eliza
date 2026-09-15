@@ -19,3 +19,8 @@ export function escapeXmlText(value) {
 export function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+/** Escape app configuration values for generated Java string literals. */
+export function escapeJavaString(value) {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}

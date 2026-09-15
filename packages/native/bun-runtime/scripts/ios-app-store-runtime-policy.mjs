@@ -91,16 +91,6 @@ const forbiddenRuntimeStringPatterns = [
   /\bunsigned-executable-memory\b/i,
 ];
 
-const _forbiddenRuntimeImports = [
-  ...new Set(
-    forbiddenRuntimeImportGroups.flatMap((group) =>
-      group.patterns
-        .map((pattern) => pattern.source.match(/^\^(_[A-Za-z0-9_]+)\$$/)?.[1])
-        .filter(Boolean),
-    ),
-  ),
-];
-
 export function findForbiddenRuntimeImportGroups(importOutput) {
   const symbols = new Set(
     String(importOutput)

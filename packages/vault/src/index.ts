@@ -132,6 +132,7 @@ export type {
   RoutingScopeKind,
 } from "./profiles.js";
 export {
+  RoutingConfigError,
   readRoutingConfig,
   resolveActiveValue,
   writeRoutingConfig,
@@ -156,6 +157,8 @@ export {
   VaultMissError,
 } from "./vault.js";
 export {
+  type MirrorSensitiveValueOutcome,
+  mirrorSensitiveValueIfAbsent,
   VaultWriteVerificationError,
   writeSensitiveValueIfAbsentVerified,
   writeSensitiveValueVerified,

@@ -98,8 +98,21 @@ beforeAll(async () => {
   ({ dbWrite } = await import("../helpers"));
   const database = getPgliteClientForTests();
   await database.exec(`
-    CREATE TABLE organizations (id uuid PRIMARY KEY);
-    CREATE TABLE users (id uuid PRIMARY KEY);
+    CREATE TABLE organizations (
+      id uuid PRIMARY KEY,
+      is_active boolean NOT NULL DEFAULT true
+    );
+    CREATE TABLE users (
+      id uuid PRIMARY KEY,
+      organization_id uuid REFERENCES organizations(id),
+      is_active boolean NOT NULL DEFAULT true,
+      deleted_at timestamp
+    );
+    CREATE TABLE user_moderation_status (
+      user_id uuid PRIMARY KEY REFERENCES users(id),
+      status text NOT NULL DEFAULT 'clean',
+      total_violations integer NOT NULL DEFAULT 0
+    );
   `);
   const migration = await Bun.file(
     new URL("../migrations/0310_personal_shared_inbound_media_admission.sql", import.meta.url),
@@ -114,7 +127,8 @@ beforeEach(async () => {
       users,
       organizations CASCADE;
     INSERT INTO organizations (id) VALUES ('${ORG_A}'), ('${ORG_B}');
-    INSERT INTO users (id) VALUES ('${USER_A}'), ('${USER_B}');
+    INSERT INTO users (id, organization_id)
+      VALUES ('${USER_A}', '${ORG_A}'), ('${USER_B}', '${ORG_B}');
   `);
 });
 
@@ -123,6 +137,66 @@ afterAll(async () => {
 });
 
 describe("personalSharedInboundMediaRepository admission ledger", () => {
+  test("combined account standing denies every bad-standing shape before claim or quota", async () => {
+    const missingUser = "72000000-0000-4000-8000-000000000099";
+    expect(await admission({ sourceMessageId: "standing-missing", userId: missingUser })).toEqual({
+      kind: "standing_denied",
+      reason: "account_missing",
+    });
+
+    await getPgliteClientForTests().query("UPDATE users SET is_active = false WHERE id = $1", [
+      USER_A,
+    ]);
+    expect(await admission({ sourceMessageId: "standing-user" })).toEqual({
+      kind: "standing_denied",
+      reason: "account_inactive",
+    });
+    await getPgliteClientForTests().query("UPDATE users SET is_active = true WHERE id = $1", [
+      USER_A,
+    ]);
+
+    expect(
+      await admission({
+        sourceMessageId: "standing-membership",
+        organizationId: ORG_B,
+      }),
+    ).toEqual({ kind: "standing_denied", reason: "membership_missing" });
+
+    await getPgliteClientForTests().query(
+      "UPDATE organizations SET is_active = false WHERE id = $1",
+      [ORG_A],
+    );
+    expect(await admission({ sourceMessageId: "standing-organization" })).toEqual({
+      kind: "standing_denied",
+      reason: "organization_inactive",
+    });
+    await getPgliteClientForTests().query(
+      "UPDATE organizations SET is_active = true WHERE id = $1",
+      [ORG_A],
+    );
+
+    await getPgliteClientForTests().query(
+      `INSERT INTO user_moderation_status (user_id, status, total_violations)
+       VALUES ($1, 'clean', 5)`,
+      [USER_A],
+    );
+    expect(await admission({ sourceMessageId: "standing-moderation" })).toEqual({
+      kind: "standing_denied",
+      reason: "moderation_blocked",
+    });
+
+    expect(await quotaRows()).toEqual([]);
+    for (const sourceMessageId of [
+      "standing-missing",
+      "standing-user",
+      "standing-membership",
+      "standing-organization",
+      "standing-moderation",
+    ]) {
+      expect(await ledgerRow(sourceMessageId)).toBeUndefined();
+    }
+  });
+
   test("claims a message once and consumes both daily ceilings atomically", async () => {
     const claim = await claimOf("msg-1", { imageCount: 2 });
     expect(claim.attempt).toBe(1);
@@ -212,6 +286,7 @@ describe("personalSharedInboundMediaRepository admission ledger", () => {
     expect(
       await admission({
         sourceMessageId: "msg-identity-pending",
+        organizationId: ORG_B,
         userId: USER_B,
       }),
     ).toEqual({ kind: "identity_mismatch" });

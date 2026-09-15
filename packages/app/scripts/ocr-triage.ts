@@ -23,12 +23,15 @@
  * installed `tesseract.js` package so CI and local verification do not depend on
  * Homebrew/apt state. Every pixel-broken regression fails the gate directly.
  */
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import sharp from "sharp";
 import { OVERLAY_NATIVE_OR_CANVAS_SLUGS } from "../test/ui-smoke/aesthetic-audit-rules";
 import {
   type EvaluateArgs,
   evaluateOcrContent,
+  OCR_RELIABLE_CONFIDENCE_FLOOR,
   type OcrContentFinding,
   type OcrExpectation,
   type OcrResult,
@@ -48,6 +51,7 @@ import {
   analyzeImageFile,
   closeOcrEngines,
   ocrImage,
+  ocrImageRegion,
   resolveOcrEngine,
 } from "./mvp-visual-verify/ocr.mjs";
 
@@ -122,6 +126,7 @@ export interface TriageEntry {
   meanConfidence: number;
   selectedMode: string | null;
   attempts: OcrResult["attempts"];
+  positiveSegments?: string[];
   pixelBlank: boolean;
   pixelBlankReasons: string[];
 }
@@ -194,7 +199,11 @@ export function selectSemanticallyBestOcrAttempt<T extends OcrResult>(
       candidateRequiredAllMisses < bestRequiredAllMisses ||
       (candidateRequiredAllMisses === bestRequiredAllMisses &&
         finding.missingRequired.length < bestFinding.missingRequired.length);
-    if (preservesSafetySignals && provesMoreSemantics) {
+    if (
+      !finding.ocrInconclusive &&
+      preservesSafetySignals &&
+      provesMoreSemantics
+    ) {
       bestRecord = candidate;
       bestFinding = finding;
     }
@@ -214,7 +223,7 @@ export function selectSemanticallyBestOcrAttempt<T extends OcrResult>(
       (combinedRequiredAllMisses === requiredAllMisses(bestFinding) &&
         combinedFinding.missingRequired.length <
           bestFinding.missingRequired.length);
-    if (combinedProvesMoreSemantics) {
+    if (!combinedFinding.ocrInconclusive && combinedProvesMoreSemantics) {
       bestRecord = combined;
       bestFinding = combinedFinding;
     }
@@ -467,6 +476,46 @@ export async function runOcrTriage(argv: string[]): Promise<TriageResult> {
       rec = selection.record;
       finding = selection.finding;
     }
+    if (!args.ocr && finding.missingRequired.length > 0 && rep.ocrControls) {
+      const bytes = readFileSync(rec.path);
+      const metadata = await sharp(bytes).metadata();
+      const controls = rep.ocrControls;
+      if (
+        createHash("sha256").update(bytes).digest("hex") !==
+          controls.screenshotSha256 ||
+        metadata.width !== controls.width ||
+        metadata.height !== controls.height
+      ) {
+        throw new Error(
+          `OCR control geometry does not match screenshot ${rec.path}`,
+        );
+      }
+      // Supplement the full-frame transcript, including all original safety
+      // signals. A covered or absent control contributes only its actual pixels.
+      rec = { ...rec, positiveSegments: [rec.text] };
+      for (const [index, rectangle] of controls.rectangles.entries()) {
+        const attempt = await ocrImageRegion(bytes, rectangle);
+        attempt.mode = `control-region:${index}`;
+        const text = `${rec.text}\n${attempt.text}`;
+        rec = {
+          ...rec,
+          text,
+          lines: text.split("\n").filter(Boolean),
+          words: rec.words + attempt.words,
+          positiveSegments:
+            attempt.meanConfidence >= OCR_RELIABLE_CONFIDENCE_FLOOR
+              ? [...(rec.positiveSegments ?? []), attempt.text]
+              : rec.positiveSegments,
+          selectedMode: `${rec.selectedMode ?? "selected"}+${attempt.mode}`,
+          attempts: [...(rec.attempts ?? []), attempt],
+        };
+      }
+      finding = evaluateOcrContent({
+        ocr: rec,
+        ...policyInput,
+        exemptFromBlank,
+      });
+    }
     const domVerdict = rep.verdict ?? null;
     const domPassed = domVerdict === "good" || domVerdict === "needs-eyeball";
     entries.push({
@@ -482,6 +531,7 @@ export async function runOcrTriage(argv: string[]): Promise<TriageResult> {
       meanConfidence: rec.meanConfidence,
       selectedMode: rec.selectedMode ?? null,
       attempts: rec.attempts,
+      positiveSegments: rec.positiveSegments,
       pixelBlank: rec.pixelBlank,
       pixelBlankReasons: rec.pixelBlankReasons,
     });

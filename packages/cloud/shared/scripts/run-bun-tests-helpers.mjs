@@ -22,6 +22,16 @@ export const DEFAULT_QUARANTINED_SUITES = [
   "src/lib/services/pairing-token.native.integration.test.ts",
 ];
 
+/**
+ * Suites whose top-level `mock.module` registrations replace broad runtime
+ * dependencies for the lifetime of the Bun process. Bun's `--isolate` keeps
+ * test globals separate but does not restore those process-wide module mocks,
+ * so these suites need a process boundary from their alphabetical neighbors.
+ */
+export const DEFAULT_PROCESS_ISOLATED_SUITES = [
+  "src/lib/services/shared-runtime/shared-runtime-chat.test.ts",
+];
+
 /** Total attempts for the quarantined pass (first run + retries). */
 export const DEFAULT_MAX_QUARANTINE_ATTEMPTS = 3;
 const MAX_QUARANTINE_ATTEMPTS_CEILING = 5;
@@ -121,13 +131,25 @@ function chunk(items, size) {
  * Deterministically group ordinary tests, then PGlite-heavy tests. Process exit
  * between batches is the reclamation boundary for Bun/JSC and PGlite WASM.
  */
-export function buildTestBatches(testFiles, pgliteTestFiles, batchSizes) {
+export function buildTestBatches(
+  testFiles,
+  pgliteTestFiles,
+  batchSizes,
+  processIsolatedTestFiles = [],
+) {
   const pglite = new Set(pgliteTestFiles);
-  const ordinaryFiles = testFiles.filter((file) => !pglite.has(file)).sort();
-  const pgliteFiles = testFiles.filter((file) => pglite.has(file)).sort();
+  const processIsolated = new Set(processIsolatedTestFiles);
+  const ordinaryFiles = testFiles
+    .filter((file) => !pglite.has(file) && !processIsolated.has(file))
+    .sort();
+  const pgliteFiles = testFiles
+    .filter((file) => pglite.has(file) && !processIsolated.has(file))
+    .sort();
+  const isolatedFiles = testFiles.filter((file) => processIsolated.has(file)).sort();
   return [
     ...chunk(ordinaryFiles, batchSizes.ordinary).map((files) => ({ kind: "ordinary", files })),
     ...chunk(pgliteFiles, batchSizes.pglite).map((files) => ({ kind: "pglite", files })),
+    ...isolatedFiles.map((file) => ({ kind: "process-isolated", files: [file] })),
   ];
 }
 

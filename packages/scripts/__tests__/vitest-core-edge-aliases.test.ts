@@ -52,4 +52,19 @@ describe("@elizaos/core/edge package-test aliases", () => {
       path.join(repoRoot, "plugins/plugin-app-manager/src/index.ts"),
     );
   });
+
+  test.each([
+    [
+      "@elizaos/core/contracts/first-run-options",
+      "packages/core/src/contracts/first-run-options.ts",
+    ],
+    ["@elizaos/core/runtime-env", "packages/core/src/runtime-env.ts"],
+  ])(
+    "shared package config resolves %s to its source leaf",
+    (specifier, file) => {
+      expect(resolveAlias(defaultConfig, specifier)).toBe(
+        path.join(repoRoot, file),
+      );
+    },
+  );
 });

@@ -12,6 +12,10 @@ import {
   type UserCharacter,
   userCharactersRepository,
 } from "../../../db/repositories";
+import {
+  readOrganizationQuotaPolicyInTransaction,
+  requireOrganizationResourceLimit,
+} from "../organization-quota-policy";
 
 export type { UserCharacter } from "../../../db/repositories";
 
@@ -27,10 +31,7 @@ import { ValidationError } from "../../api/cloud-worker-errors";
 import { cache } from "../../cache/client";
 import { InMemoryLRUCache } from "../../cache/in-memory-lru-cache";
 import { CacheKeys, CacheTTL } from "../../cache/keys";
-import {
-  type CloudCharacterLimitSource,
-  resolveMaxCloudCharactersForOrg,
-} from "../../constants/cloud-character-quota";
+import { type CloudCharacterLimitSource } from "../../constants/cloud-character-quota";
 import type { ElizaCharacter } from "../../types/eliza-character";
 import {
   generateUniqueUsername,
@@ -77,7 +78,7 @@ export interface CharacterCreationQuotaReceipt {
   currentBefore: number;
   currentAfter: number;
   limit: number;
-  limitSource: CloudCharacterLimitSource;
+  limitSource: CloudCharacterLimitSource | "subscription-entitlement";
 }
 
 export interface CharacterCreationReceipt {
@@ -129,13 +130,13 @@ export class CloudCharacterQuotaExceededError extends ElizaError {
   readonly organizationId: string;
   readonly current: number;
   readonly limit: number;
-  readonly limitSource: CloudCharacterLimitSource;
+  readonly limitSource: CloudCharacterLimitSource | "subscription-entitlement";
 
   constructor(params: {
     organizationId: string;
     current: number;
     limit: number;
-    limitSource: CloudCharacterLimitSource;
+    limitSource: CloudCharacterLimitSource | "subscription-entitlement";
   }) {
     super(
       `Agent quota exceeded. Your organization has reached the maximum of ${params.limit} agents.`,
@@ -549,10 +550,24 @@ export class CharactersService {
 
       let quota: CharacterCreationQuotaReceipt | undefined;
       if (policy.mode === "metered") {
-        const resolution = resolveMaxCloudCharactersForOrg(
-          Number(organization.creditBalance),
-          organization.settings,
+        const currentPolicy = await readOrganizationQuotaPolicyInTransaction(
+          tx,
+          data.organization_id,
         );
+        const limit = Number(requireOrganizationResourceLimit(currentPolicy, "characters"));
+        const observation = currentPolicy.limits.characters;
+        if (
+          observation.status !== "available" ||
+          (observation.source !== "subscription-entitlement" &&
+            observation.source !== "organization.settings.max_agents" &&
+            observation.source !== "organizations.credit_balance")
+        ) {
+          throw new ElizaError("Character quota provenance is unavailable", {
+            code: "RESOURCE_POLICY_UNAVAILABLE",
+          });
+        }
+        const resolution: { limit: number; source: CharacterCreationQuotaReceipt["limitSource"] } =
+          { limit, source: observation.source };
         if (current >= resolution.limit) {
           throw new CloudCharacterQuotaExceededError({
             organizationId: data.organization_id,

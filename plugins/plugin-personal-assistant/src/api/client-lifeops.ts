@@ -24,6 +24,7 @@ import type {
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGmailReplyDraftRequest,
   CreateLifeOpsGoalRequest,
+  DisconnectLifeOpsGoogleConnectorRequest,
   GetLifeOpsGmailRecommendationsRequest,
   GetLifeOpsGmailSearchRequest,
   GetLifeOpsGmailSpamReviewRequest,
@@ -38,17 +39,21 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsDefinitionRecord,
   LifeOpsGmailEventIngestResult,
+  LifeOpsGmailImportedDataPurgeReceipt,
   LifeOpsGmailManageResult,
   LifeOpsGmailNeedsResponseFeed,
   LifeOpsGmailRecommendationsFeed,
   LifeOpsGmailReplyDraft,
   LifeOpsGmailSearchFeed,
+  LifeOpsGmailSeedReceipt,
   LifeOpsGmailSpamReviewFeed,
   LifeOpsGmailSpamReviewItem,
+  LifeOpsGmailSyncHealth,
   LifeOpsGmailTriageFeed,
   LifeOpsGmailUnrespondedFeed,
   LifeOpsGoalRecord,
   LifeOpsGoalReview,
+  LifeOpsGoogleConnectorStatus,
   LifeOpsHealthConnectorProvider,
   LifeOpsHealthConnectorStatus,
   LifeOpsHealthSummaryResponse,
@@ -69,12 +74,16 @@ import type {
   LifeOpsSleepRegularityResponse,
   LifeOpsSocialHabitSummary,
   ManageLifeOpsGmailMessagesRequest,
+  PurgeLifeOpsGmailImportedDataRequest,
+  SeedLifeOpsGmailRequest,
   SendLifeOpsDiscordMessageRequest,
   SendLifeOpsDiscordMessageResponse,
   SendLifeOpsGmailReplyRequest,
   SendLifeOpsIMessageRequest,
   SendLifeOpsWhatsAppMessageRequest,
   SnoozeLifeOpsOccurrenceRequest,
+  StartLifeOpsGoogleConnectorRequest,
+  StartLifeOpsGoogleConnectorResponse,
   UpdateLifeOpsBrowserSessionProgressRequest,
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGmailSpamReviewItemRequest,
@@ -131,6 +140,15 @@ export type {
 // `declare module "@elizaos/ui"` merge below only covers root-barrel
 // importers, so they re-type their client view with a Pick of this interface.
 export interface LifeOpsElizaClientMethods {
+  getLifeOpsGoogleConnectorAccounts(options?: {
+    side?: LifeOpsConnectorSide;
+  }): Promise<{ accounts: LifeOpsGoogleConnectorStatus[] }>;
+  startLifeOpsGoogleConnector(
+    data: StartLifeOpsGoogleConnectorRequest,
+  ): Promise<StartLifeOpsGoogleConnectorResponse>;
+  disconnectLifeOpsGoogleConnector(
+    data: DisconnectLifeOpsGoogleConnectorRequest,
+  ): Promise<LifeOpsGoogleConnectorStatus>;
   getLifeOpsOverview(): Promise<LifeOpsOverview>;
   getLifeOpsPaymentsDashboard(data?: {
     windowDays?: number | null;
@@ -320,6 +338,17 @@ export interface LifeOpsElizaClientMethods {
   getLifeOpsGmailTriage(
     options?: GetLifeOpsGmailTriageRequest,
   ): Promise<LifeOpsGmailTriageFeed>;
+  getLifeOpsGmailSyncHealth(options: {
+    grantId: string;
+    side?: LifeOpsConnectorSide;
+    mode?: LifeOpsConnectorMode;
+  }): Promise<LifeOpsGmailSyncHealth>;
+  purgeLifeOpsGmailImportedData(
+    data: PurgeLifeOpsGmailImportedDataRequest,
+  ): Promise<LifeOpsGmailImportedDataPurgeReceipt>;
+  seedLifeOpsGmail(
+    data: SeedLifeOpsGmailRequest,
+  ): Promise<LifeOpsGmailSeedReceipt>;
   getLifeOpsGmailSearch(
     options: GetLifeOpsGmailSearchRequest,
   ): Promise<LifeOpsGmailSearchFeed>;
@@ -451,6 +480,38 @@ declare module "@elizaos/ui/api/client-base" {
 
 const lifeOpsClientPrototype = ElizaClient.prototype as ElizaClient &
   LifeOpsElizaClientMethods;
+
+lifeOpsClientPrototype.getLifeOpsGoogleConnectorAccounts = async function (
+  this: ElizaClient,
+  options = {},
+) {
+  const params = new URLSearchParams();
+  if (options.side) params.set("side", options.side);
+  const query = params.toString();
+  return this.fetch<{ accounts: LifeOpsGoogleConnectorStatus[] }>(
+    `/api/lifeops/connectors/google/status${query ? `?${query}` : ""}`,
+  );
+};
+
+lifeOpsClientPrototype.startLifeOpsGoogleConnector = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch<StartLifeOpsGoogleConnectorResponse>(
+    "/api/lifeops/connectors/google/connect",
+    { method: "POST", body: JSON.stringify(data) },
+  );
+};
+
+lifeOpsClientPrototype.disconnectLifeOpsGoogleConnector = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch<LifeOpsGoogleConnectorStatus>(
+    "/api/lifeops/connectors/google/disconnect",
+    { method: "POST", body: JSON.stringify(data) },
+  );
+};
 
 lifeOpsClientPrototype.getLifeOpsOverview = async function (this: ElizaClient) {
   return this.fetch("/api/lifeops/overview");
@@ -963,6 +1024,38 @@ lifeOpsClientPrototype.getLifeOpsGmailTriage = async function (
   const query = params.toString();
   return this.fetch<LifeOpsGmailTriageFeed>(
     `/api/lifeops/gmail/triage${query ? `?${query}` : ""}`,
+  );
+};
+
+lifeOpsClientPrototype.getLifeOpsGmailSyncHealth = async function (
+  this: ElizaClient,
+  options,
+) {
+  const params = new URLSearchParams({ grantId: options.grantId });
+  if (options.side) params.set("side", options.side);
+  if (options.mode) params.set("mode", options.mode);
+  return this.fetch<LifeOpsGmailSyncHealth>(
+    `/api/lifeops/gmail/sync-health?${params.toString()}`,
+  );
+};
+
+lifeOpsClientPrototype.seedLifeOpsGmail = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch<LifeOpsGmailSeedReceipt>("/api/lifeops/gmail/seed", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+lifeOpsClientPrototype.purgeLifeOpsGmailImportedData = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch<LifeOpsGmailImportedDataPurgeReceipt>(
+    "/api/lifeops/gmail/imported-data/purge",
+    { method: "POST", body: JSON.stringify(data) },
   );
 };
 

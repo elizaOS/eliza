@@ -7,6 +7,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+import { installOrganizationPolicyTestSchema } from "../../../db/repositories/organization-policy-test-fixture";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -150,6 +151,8 @@ beforeAll(async () => {
     dbWrite as never,
   );
   await apply();
+  const { getPgliteClientForTests } = await import("../../../db/client");
+  await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
 }, PGLITE_TIMEOUT);
 
 afterAll(async () => {

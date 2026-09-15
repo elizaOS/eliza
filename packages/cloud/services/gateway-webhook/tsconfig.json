@@ -3,6 +3,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "customConditions": ["eliza-source"],
     "esModuleInterop": true,
     "strict": true,
     "skipLibCheck": true,

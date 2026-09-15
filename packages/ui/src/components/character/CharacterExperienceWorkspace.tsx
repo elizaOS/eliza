@@ -10,6 +10,19 @@ import { memo, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 import { Input } from "../ui/input";
 import { StatusDot } from "../ui/status-badge";
 import { Textarea } from "../ui/textarea";
@@ -546,7 +559,7 @@ const ExperienceGraphPanel = memo(function ExperienceGraphPanel({
   );
 });
 
-const ExperienceQueueRow = memo(function ExperienceQueueRow({
+export const ExperienceQueueRow = memo(function ExperienceQueueRow({
   experience,
   isSelected,
   onSelect,
@@ -556,13 +569,6 @@ const ExperienceQueueRow = memo(function ExperienceQueueRow({
   onSelect: (experienceId: string) => void;
 }) {
   const title = experience.learning || experience.result || experience.context;
-  const reviewReasons = [
-    clampScore(experience.importance) >= 0.75 ? "high importance" : null,
-    clampScore(experience.confidence) < 0.65 ? "low confidence" : null,
-    experience.previousBelief || experience.correctedBelief
-      ? "belief changed"
-      : null,
-  ].filter(Boolean);
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: `experience-row-${experience.id}`,
     role: "list-item",
@@ -581,31 +587,42 @@ const ExperienceQueueRow = memo(function ExperienceQueueRow({
       data-state={isSelected ? "on" : "off"}
       aria-pressed={isSelected}
       data-testid={`experience-row-${experience.id}`}
-      className="w-full min-w-0"
+      className="w-full min-w-0 rounded-none border-b border-border/40 px-0 py-3 last:border-b-0"
       onClick={() => onSelect(experience.id)}
       {...agentProps}
     >
-      <div className="flex min-w-0 items-start gap-2">
+      <div className="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-2">
         <OutcomeDot
           outcome={experience.outcome}
           review={needsReview(experience)}
         />
-        <h4 className="line-clamp-2 text-sm font-semibold text-txt">{title}</h4>
-      </div>
-      <div className="grid w-full grid-cols-2 gap-2 text-xs text-muted">
-        <span>Importance {formatPercent(experience.importance)}</span>
-        <span>Confidence {formatPercent(experience.confidence)}</span>
-      </div>
-      <p className="line-clamp-2 text-sm text-muted-strong">
-        {experience.context}
-      </p>
-      <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted">
-        <span>{experience.type}</span>
-        {experience.domain ? <span>· {experience.domain}</span> : null}
-        <span>· {formatTimestamp(experience.createdAt)}</span>
-        {reviewReasons.length > 0 ? (
-          <span>· {reviewReasons.join(", ")}</span>
-        ) : null}
+        <div className="min-w-0 space-y-1.5">
+          <h4 className="line-clamp-2 text-sm font-semibold text-txt">
+            {title}
+          </h4>
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <span className="text-muted">
+              Importance{" "}
+              <strong className="font-medium text-muted-strong">
+                {formatPercent(experience.importance)}
+              </strong>
+            </span>
+            <span className="text-muted">
+              Confidence{" "}
+              <strong className="font-medium text-muted-strong">
+                {formatPercent(experience.confidence)}
+              </strong>
+            </span>
+          </div>
+          <p className="line-clamp-1 text-sm text-muted-strong md:line-clamp-2">
+            {experience.context}
+          </p>
+          <div className="line-clamp-1 text-xs text-muted">
+            {experience.type}
+            {experience.domain ? ` · ${experience.domain}` : ""}
+            {` · ${formatTimestamp(experience.createdAt)}`}
+          </div>
+        </div>
       </div>
     </Button>
   );
@@ -669,6 +686,7 @@ export function CharacterExperienceWorkspace({
 }) {
   const { t } = useTranslation();
   const [reviewFilter, setReviewFilter] = useState<ReviewFilter>("all");
+  const [graphOpen, setGraphOpen] = useState(false);
 
   const selectedExperience = useMemo(
     () => selectedOrFirst(experiences, selectedExperienceId),
@@ -754,7 +772,7 @@ export function CharacterExperienceWorkspace({
   );
 
   const { ref: reviewRef, agentProps: reviewAgentProps } =
-    useAgentElement<HTMLDivElement>({
+    useAgentElement<HTMLButtonElement>({
       id: "experience-filter-review",
       role: "select",
       label: t("character.reviewFilter"),
@@ -856,6 +874,10 @@ export function CharacterExperienceWorkspace({
     );
   }
 
+  const selectedReviewLabel =
+    REVIEW_FILTERS.find((option) => option.value === reviewFilter)?.label ??
+    "All";
+
   return (
     /* Flat — no card/border. The shell owns the page's horizontal padding. */
     <section className="flex min-w-0 flex-col gap-4">
@@ -869,7 +891,7 @@ export function CharacterExperienceWorkspace({
           </div>
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-4">
+        <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 lg:grid-cols-4">
           <StatTile
             label="Captured"
             value={String(stats.total)}
@@ -892,34 +914,50 @@ export function CharacterExperienceWorkspace({
           />
         </div>
 
-        <div
-          ref={reviewRef}
-          className="mt-4 flex flex-wrap gap-1"
-          {...reviewAgentProps}
-        >
-          {REVIEW_FILTERS.map((option) => (
-            <Button
-              key={option.value}
-              variant="selection"
-              size="pillDense"
-              data-state={reviewFilter === option.value ? "on" : "off"}
-              aria-pressed={reviewFilter === option.value}
-              onClick={() => setReviewFilter(option.value)}
-            >
-              {option.label}
-            </Button>
-          ))}
+        <div className="mt-4 flex min-w-0 items-center justify-between gap-3">
+          <span className="text-sm text-muted">Review status</span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                ref={reviewRef}
+                type="button"
+                size="dense"
+                variant="ghostMuted"
+                className="min-w-36 justify-between"
+                aria-label={`Filter review status, ${selectedReviewLabel} selected`}
+                {...reviewAgentProps}
+              >
+                <span>{selectedReviewLabel}</span>
+                <span aria-hidden="true">▾</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-48">
+              <DropdownMenuLabel>Review status</DropdownMenuLabel>
+              <DropdownMenuRadioGroup
+                value={reviewFilter}
+                onValueChange={(value) => {
+                  const option = REVIEW_FILTERS.find(
+                    (candidate) => candidate.value === value,
+                  );
+                  if (option) setReviewFilter(option.value);
+                }}
+              >
+                {REVIEW_FILTERS.map((option) => (
+                  <DropdownMenuRadioItem
+                    key={option.value}
+                    value={option.value}
+                  >
+                    {option.label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
-      <ExperienceGraphPanel
-        experiences={filteredExperiences}
-        selectedExperienceId={visibleSelectedExperience?.id ?? null}
-        onSelectExperience={onSelectExperience}
-      />
-
       <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(19rem,25rem)_minmax(0,1fr)]">
-        <div className="flex min-h-[28rem] min-w-0 flex-col overflow-hidden">
+        <div className="flex min-h-[28rem] min-w-0 flex-col overflow-hidden xl:border-r xl:border-border/40 xl:pr-4">
           <div className="px-4 py-3">
             <div className="text-sm font-semibold text-txt">Review queue</div>
           </div>
@@ -942,32 +980,30 @@ export function CharacterExperienceWorkspace({
         </div>
 
         {visibleSelectedExperience ? (
-          <div className="flex min-w-0 flex-col gap-4 p-4">
-            <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 items-start gap-2">
-                  <OutcomeDot
-                    outcome={visibleSelectedExperience.outcome}
-                    review={needsReview(visibleSelectedExperience)}
-                  />
-                  <h4 className="text-lg font-semibold leading-snug text-txt">
-                    {visibleSelectedExperience.learning ||
-                      visibleSelectedExperience.result ||
-                      visibleSelectedExperience.context}
-                  </h4>
-                </div>
-                <p className="mt-1 text-xs text-muted">
-                  {visibleSelectedExperience.type}
-                  {visibleSelectedExperience.domain
-                    ? ` · ${visibleSelectedExperience.domain}`
-                    : ""}
-                  {` · Created ${formatTimestamp(visibleSelectedExperience.createdAt)}`}
-                  {visibleSelectedExperience.updatedAt
-                    ? ` · Updated ${formatTimestamp(visibleSelectedExperience.updatedAt)}`
-                    : ""}
-                </p>
+          <div className="flex min-w-0 flex-col gap-4 py-4 xl:pl-4">
+            <div className="min-w-0 space-y-3">
+              <div className="flex min-w-0 items-start gap-2">
+                <OutcomeDot
+                  outcome={visibleSelectedExperience.outcome}
+                  review={needsReview(visibleSelectedExperience)}
+                />
+                <h4 className="text-lg font-semibold leading-snug text-txt">
+                  {visibleSelectedExperience.learning ||
+                    visibleSelectedExperience.result ||
+                    visibleSelectedExperience.context}
+                </h4>
               </div>
-              <div className="flex items-center gap-2">
+              <p className="text-xs text-muted">
+                {visibleSelectedExperience.type}
+                {visibleSelectedExperience.domain
+                  ? ` · ${visibleSelectedExperience.domain}`
+                  : ""}
+                {` · Created ${formatTimestamp(visibleSelectedExperience.createdAt)}`}
+                {visibleSelectedExperience.updatedAt
+                  ? ` · Updated ${formatTimestamp(visibleSelectedExperience.updatedAt)}`
+                  : ""}
+              </p>
+              <div className="flex items-center justify-end gap-2">
                 {onDeleteExperience ? (
                   <Button
                     ref={deleteRef}
@@ -1008,7 +1044,7 @@ export function CharacterExperienceWorkspace({
               </div>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(16rem,0.8fr)]">
+            <div className="grid gap-4 2xl:grid-cols-[minmax(0,1.2fr)_minmax(16rem,0.8fr)]">
               <div className="space-y-4">
                 <div className="min-w-0">
                   <div className="text-xs text-muted">Learned takeaway</div>
@@ -1016,7 +1052,7 @@ export function CharacterExperienceWorkspace({
                     {visibleSelectedExperience.learning || "Not recorded."}
                   </p>
                 </div>
-                <div className="grid gap-3 md:grid-cols-3">
+                <div className="grid gap-3 2xl:grid-cols-3">
                   <EvidencePanel
                     title="Context"
                     body={visibleSelectedExperience.context}
@@ -1032,7 +1068,7 @@ export function CharacterExperienceWorkspace({
                 </div>
               </div>
 
-              <div className="space-y-4 lg:pl-4">
+              <div className="space-y-4 2xl:pl-4">
                 <ScoreBar
                   label="Importance"
                   value={visibleSelectedExperience.importance}
@@ -1221,6 +1257,34 @@ export function CharacterExperienceWorkspace({
           </div>
         ) : null}
       </div>
+
+      <Collapsible
+        open={graphOpen}
+        onOpenChange={setGraphOpen}
+        className="border-t border-border/40 pt-4"
+      >
+        <div className="flex min-w-0 items-center justify-between gap-4">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-txt">Experience map</h3>
+            <p className="mt-1 text-xs text-muted">
+              Explore connections among the {filteredExperiences.length} shown
+              experiences.
+            </p>
+          </div>
+          <CollapsibleTrigger asChild>
+            <Button type="button" variant="outline" size="sm">
+              {graphOpen ? "Hide map" : "Show map"}
+            </Button>
+          </CollapsibleTrigger>
+        </div>
+        <CollapsibleContent className="pt-2">
+          <ExperienceGraphPanel
+            experiences={filteredExperiences}
+            selectedExperienceId={visibleSelectedExperience?.id ?? null}
+            onSelectExperience={onSelectExperience}
+          />
+        </CollapsibleContent>
+      </Collapsible>
     </section>
   );
 }

@@ -139,6 +139,13 @@ export const GUARDED_REAL_LIVE_SUITES = [
     optIn: "RUN_LIVE_ACPX",
   },
   {
+    file: "plugins/plugin-agent-orchestrator/src/__tests__/task-agent-live.live.test.ts",
+    optIn: "ORCHESTRATOR_LIVE",
+    probe: "authenticated Claude Code or Codex CLI",
+    notes:
+      "real sequential-session and optional browser smoke through the production PGLite runtime and orchestrator services",
+  },
+  {
     file: "plugins/plugin-anthropic/__tests__/anthropic-drift.real.test.ts",
     requires: ["ANTHROPIC_API_KEY"],
     blocked:

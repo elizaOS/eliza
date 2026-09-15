@@ -7,8 +7,9 @@
 import type http from "node:http";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import type { SecretsManager } from "@elizaos/vault";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ElizaConfig } from "../config/config.ts";
+import { resetDevCloudEnvAuthorityForTests } from "../config/dev-cloud-env-authority.ts";
 import type {
   OperationIntent,
   RuntimeOperation,
@@ -26,11 +27,22 @@ const CLOUD_ENV_KEYS = [
   "ANTHROPIC_API_KEY",
   "OPENAI_BASE_URL",
   "OPENAI_API_KEY",
+  "ELIZA_DEV_SOURCE",
+  "ELIZA_DEV_CLOUD_ENV_AUTHORITY",
+  "ELIZA_DEV_CLOUD_TARGET",
+  "ELIZAOS_CLOUD_BASE_URL",
+  "ELIZAOS_CLOUD_API_KEY",
+  "ELIZAOS_CLOUD_ENABLED",
 ] as const;
 
 const originalCloudEnv = Object.fromEntries(
   CLOUD_ENV_KEYS.map((key) => [key, process.env[key]]),
 );
+
+beforeEach(() => {
+  resetDevCloudEnvAuthorityForTests();
+  for (const key of CLOUD_ENV_KEYS) delete process.env[key];
+});
 
 afterEach(() => {
   for (const key of CLOUD_ENV_KEYS) {
@@ -38,6 +50,7 @@ afterEach(() => {
     if (original === undefined) delete process.env[key];
     else process.env[key] = original;
   }
+  resetDevCloudEnvAuthorityForTests();
 });
 
 function operation(
@@ -104,8 +117,9 @@ function makeContext(args: {
   headers?: http.IncomingHttpHeaders;
   manager?: RuntimeOperationManager;
   secretsManager?: SecretsManager;
+  config?: ElizaConfig;
 }) {
-  const config = {} as ElizaConfig;
+  const config = args.config ?? ({} as ElizaConfig);
   const json = vi.fn();
   const error = vi.fn();
   const readJsonBody = vi.fn();
@@ -281,6 +295,57 @@ describe("handleProviderSwitchRoutes", () => {
     expect(process.env.ANTHROPIC_API_KEY).toBe("cloud-key");
     expect(config.cloud?.apiKey).toBe("cloud-key");
   });
+
+  it.each([
+    "staging-default",
+    "offline",
+    "staging-explicit",
+    "production",
+    "self-hosted",
+  ] as const)(
+    "rejects elizacloud switching under %s authority without side effects",
+    async (authority) => {
+      process.env.ELIZA_DEV_SOURCE = "1";
+      process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = authority;
+      process.env.ELIZAOS_CLOUD_BASE_URL =
+        "https://api-staging.eliza.app/api/v1";
+      process.env.ELIZAOS_CLOUD_API_KEY = "";
+      const manager = managerReturning({
+        kind: "accepted",
+        operation: operation("op-blocked-cloud"),
+      });
+      const durableConfig = {
+        cloud: {
+          apiKey: "durable-unrelated-key",
+          serviceKey: "durable-unrelated-service-key",
+          baseUrl: "https://durable.example/api/v1",
+        },
+      } as ElizaConfig;
+      const durableBefore = structuredClone(durableConfig);
+      const { ctx, config, error, saveElizaConfig } = makeContext({
+        body: { provider: "elizacloud", apiKey: "request-production-key" },
+        manager,
+        config: durableConfig,
+      });
+
+      await expect(handleProviderSwitchRoutes(ctx)).resolves.toBe(true);
+
+      expect(error).toHaveBeenCalledWith(
+        ctx.res,
+        expect.stringContaining(
+          "owned by the immutable local dev launch target",
+        ),
+        409,
+      );
+      expect(manager.start).not.toHaveBeenCalled();
+      expect(saveElizaConfig).not.toHaveBeenCalled();
+      expect(config).toEqual(durableBefore);
+      expect(process.env.OPENAI_BASE_URL).toBeUndefined();
+      expect(process.env.OPENAI_API_KEY).toBeUndefined();
+      expect(process.env.ANTHROPIC_BASE_URL).toBeUndefined();
+      expect(process.env.ANTHROPIC_API_KEY).toBeUndefined();
+    },
+  );
 
   it.each([
     ["pending", true],

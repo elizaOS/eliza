@@ -1,6 +1,6 @@
 /**
  * Shared view status surfaces — the loading skeleton, the recoverable
- * "Failed to load view" error card, and the platform-restricted card.
+ * plain-language recovery card, and the platform-restricted card.
  *
  * These were originally private to `DynamicViewLoader`, but EVERY way of
  * dynamically loading a view (the remote-bundle `DynamicViewLoader` AND the
@@ -10,16 +10,11 @@
  * rather than inventing a second error surface.
  */
 
-import {
-  AlertTriangle,
-  ArrowLeft,
-  Ban,
-  LoaderCircle,
-  RotateCw,
-} from "lucide-react";
+import { AlertTriangle, ArrowLeft, Ban, RotateCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { shellHistory } from "../../surface-realm-channel";
+import { PageLoadingState } from "../composites/page-panel";
 import { Alert } from "../ui/alert.tsx";
 import { Badge } from "../ui/badge.tsx";
 import { Button } from "../ui/button.tsx";
@@ -42,17 +37,20 @@ export function ViewStatusFrame({
   title,
   children,
   actions,
+  diagnosticId,
 }: {
-  tone: "loading" | "error" | "restricted";
+  tone: "loading" | "error" | "restricted" | "unavailable";
   icon: ReactNode;
   title: ReactNode;
   children?: ReactNode;
   actions?: ReactNode;
+  diagnosticId?: string;
 }) {
   return (
     <div
       className="flex flex-1 min-h-0 min-w-0 items-center justify-center p-6"
       data-view-status={tone}
+      data-view-id={diagnosticId}
     >
       <Alert
         variant={
@@ -95,10 +93,11 @@ export function ViewStatusFrame({
 export function ViewLoadingSkeleton() {
   const { t } = useTranslation();
   return (
-    <ViewStatusFrame
-      tone="loading"
-      icon={<LoaderCircle className="size-5 animate-spin" aria-hidden="true" />}
-      title={t("dynamicviewloader.loading", { defaultValue: "Loading view…" })}
+    <PageLoadingState
+      heading={t("dynamicviewloader.loading", {
+        defaultValue: "Loading view…",
+      })}
+      className="min-h-[12rem] flex-1"
     />
   );
 }
@@ -107,39 +106,42 @@ export function ViewRecoveryActions({
   onRetry,
   onBack,
 }: {
-  onRetry: () => void;
-  onBack: () => void;
+  onRetry?: () => void;
+  onBack?: () => void;
 }) {
   const { t } = useTranslation();
   return (
     <>
-      <Button
-        type="button"
-        variant="outline"
-        size="tiny"
-        className="gap-1"
-        onClick={onRetry}
-      >
-        <RotateCw className="size-3.5" aria-hidden="true" />
-        {t("dynamicviewloader.retry", { defaultValue: "Retry" })}
-      </Button>
-      <Button
-        type="button"
-        variant="ghostMuted"
-        size="tiny"
-        className="gap-1"
-        onClick={onBack}
-      >
-        <ArrowLeft className="size-3.5" aria-hidden="true" />
-        {t("dynamicviewloader.back", { defaultValue: "Back to views" })}
-      </Button>
+      {onRetry ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="tiny"
+          className="gap-1"
+          onClick={onRetry}
+        >
+          <RotateCw className="size-3.5" aria-hidden="true" />
+          {t("dynamicviewloader.retry", { defaultValue: "Retry" })}
+        </Button>
+      ) : null}
+      {onBack ? (
+        <Button
+          type="button"
+          variant="ghostMuted"
+          size="tiny"
+          className="gap-1"
+          onClick={onBack}
+        >
+          <ArrowLeft className="size-3.5" aria-hidden="true" />
+          {t("dynamicviewloader.back", { defaultValue: "Back to views" })}
+        </Button>
+      ) : null}
     </>
   );
 }
 
 export function ViewErrorState({
   viewId,
-  error,
   onRetry,
   onBack,
 }: {
@@ -152,27 +154,23 @@ export function ViewErrorState({
   return (
     <ViewStatusFrame
       tone="error"
+      diagnosticId={viewId}
       icon={<AlertTriangle className="size-5" aria-hidden="true" />}
       title={t("dynamicviewloader.error.title", {
-        defaultValue: "Failed to load view",
+        defaultValue: "This view couldn’t open",
       })}
       actions={
-        onRetry && onBack ? (
+        onRetry || onBack ? (
           <ViewRecoveryActions onRetry={onRetry} onBack={onBack} />
         ) : undefined
       }
     >
       <span>
-        {t("dynamicviewloader.viewId", {
-          viewId,
-          defaultValue: "View ID: {{viewId}}",
+        {t("dynamicviewloader.error.body", {
+          defaultValue:
+            "Try again. If it still doesn’t open, return to your apps.",
         })}
       </span>
-      {error?.message ? (
-        <span className="mt-1 block break-words font-mono text-xs">
-          {error.message}
-        </span>
-      ) : null}
     </ViewStatusFrame>
   );
 }
@@ -182,21 +180,56 @@ export function ViewRestrictedState({ viewId }: { viewId: string }) {
   return (
     <ViewStatusFrame
       tone="restricted"
+      diagnosticId={viewId}
       icon={<Ban className="size-5" aria-hidden="true" />}
       title={t("dynamicviewloader.restricted.title", {
-        defaultValue: "View not available on this platform",
+        defaultValue: "This view isn’t included here",
       })}
     >
       <span>
         {t("dynamicviewloader.restricted.body", {
           defaultValue:
-            "Dynamic views cannot be loaded on iOS or Android store builds.",
+            "Open it from the desktop or web app, or install a mobile build that includes it.",
+        })}
+      </span>
+    </ViewStatusFrame>
+  );
+}
+
+export function ViewUnavailableState({
+  viewId,
+  onRetry,
+  onBack = navigateToViews,
+}: {
+  viewId: string;
+  onRetry?: () => void;
+  onBack?: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <ViewStatusFrame
+      tone="unavailable"
+      diagnosticId={viewId}
+      icon={<Ban className="size-5" aria-hidden="true" />}
+      title={t("dynamicviewloader.unavailable.title", {
+        defaultValue: "View unavailable",
+      })}
+      actions={
+        onRetry ? (
+          <ViewRecoveryActions onRetry={onRetry} onBack={onBack} />
+        ) : undefined
+      }
+    >
+      <span>
+        {t("dynamicviewloader.unavailable.body", {
+          defaultValue:
+            "This app is unavailable here. Install or enable it, then try again.",
         })}
       </span>
       <span className="mt-1 block">
-        {t("dynamicviewloader.viewId", {
+        {t("dynamicviewloader.unavailable.appLabel", {
           viewId,
-          defaultValue: "View ID: {{viewId}}",
+          defaultValue: "App: {{viewId}}",
         })}
       </span>
     </ViewStatusFrame>

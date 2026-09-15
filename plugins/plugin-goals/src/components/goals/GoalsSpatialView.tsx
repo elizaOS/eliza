@@ -16,7 +16,16 @@
  * goal" chat affordance on the empty state.
  */
 
-import { Button, Card, HStack, List, Text, VStack } from "@elizaos/ui/spatial";
+import {
+  Button,
+  Card,
+  Divider,
+  Field,
+  HStack,
+  List,
+  Text,
+  VStack,
+} from "@elizaos/ui/spatial";
 import {
   GOAL_STATUSES,
   type GoalItem,
@@ -55,22 +64,11 @@ const STATUS_LABELS: Record<GoalStatus, string> = {
   satisfied: "Achieved",
 };
 
-const REVIEW_LABELS: Record<GoalReviewState, string> = {
-  idle: "not reviewed",
-  on_track: "on track",
-  at_risk: "at risk",
-  needs_attention: "needs attention",
-};
-
-// Width-1 review marker — filled vs hollow vs cross, never emoji or a checkmark.
-//   on_track       → ● (settled)
-//   at_risk / needs_attention → x (flagged)
-//   idle           → ○ (not yet reviewed)
-const REVIEW_GLYPH: Record<GoalReviewState, string> = {
-  idle: "○",
-  on_track: "●",
-  at_risk: "x",
-  needs_attention: "x",
+const REVIEW_LABEL: Record<GoalReviewState, string> = {
+  idle: "Not reviewed",
+  on_track: "On track",
+  at_risk: "At risk",
+  needs_attention: "Needs attention",
 };
 
 const REVIEW_TONE: Record<GoalReviewState, "muted" | "success" | "danger"> = {
@@ -112,7 +110,7 @@ export function GoalsSpatialView({
   const active = new Set(snapshot.activeStatuses);
 
   return (
-    <Card gap={1} padding={1}>
+    <Card gap={1} padding={1} grow={1} shrink={0}>
       {snapshot.status === "loading" ? (
         <Text tone="muted" style="caption">
           Loading goals
@@ -167,14 +165,19 @@ function GoalsReadyBody({
 
   if (snapshot.goals.length === 0) {
     return (
-      <>
-        <Text bold>None</Text>
+      <VStack grow={1} justify="center" align="center" gap={1} padding={2}>
+        <Text bold align="center">
+          No goals yet
+        </Text>
+        <Text tone="muted" style="caption" align="center">
+          Set an outcome and Eliza will help you keep it moving.
+        </Text>
         <HStack gap={1}>
           <Button agent="new" onPress={dispatch("new")}>
             Set a goal
           </Button>
         </HStack>
-      </>
+      </VStack>
     );
   }
 
@@ -196,19 +199,22 @@ function GoalsReadyBody({
         </Text>
       ) : null}
 
-      <HStack gap={1} wrap>
-        {GOAL_STATUSES.map((status) => (
-          <Button
-            key={status}
-            variant={active.has(status) ? "solid" : "outline"}
-            tone={active.has(status) ? "primary" : "default"}
-            agent={`filter:${status}`}
-            onPress={dispatch(`filter:${status}`)}
-          >
-            {STATUS_LABELS[status]}
-          </Button>
-        ))}
-      </HStack>
+      <Field
+        kind="select"
+        label="Status"
+        value={active.size === 1 ? STATUS_LABELS[[...active][0]] : "All goals"}
+        options={[
+          "All goals",
+          ...GOAL_STATUSES.map((status) => STATUS_LABELS[status]),
+        ]}
+        agent="goal-status-filter"
+        onChange={(label) => {
+          const selected = GOAL_STATUSES.find(
+            (status) => STATUS_LABELS[status] === label,
+          );
+          dispatch(`filter-set:${selected ?? "all"}`)();
+        }}
+      />
 
       {groups.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
@@ -230,9 +236,10 @@ function GoalsStatusGroup({
 }) {
   return (
     <>
-      <Text style="caption" tone="muted">
-        {STATUS_LABELS[group.status]} ({group.goals.length})
+      <Text bold style="caption">
+        {`${STATUS_LABELS[group.status]} (${group.goals.length})`}
       </Text>
+      <Divider />
       <List gap={0}>
         {group.goals.map((goal) => (
           <GoalRow key={goal.id} goal={goal} />
@@ -247,33 +254,19 @@ function GoalRow({ goal }: { goal: GoalItem }) {
   if (goal.cadenceKind) meta.push(goal.cadenceKind);
   if (goal.target) meta.push(goal.target);
   if (goal.linkedCount > 0) meta.push(`${goal.linkedCount} linked`);
+  meta.push(formatDate(goal.updatedAt));
 
   return (
-    <HStack gap={1} align="center">
-      <Text tone={REVIEW_TONE[goal.reviewState]} wrap={false}>
-        {REVIEW_GLYPH[goal.reviewState]}
-      </Text>
+    <HStack gap={2} align="center">
       <VStack gap={0} grow={1}>
         <Text bold wrap={false}>
           {goal.title}
         </Text>
-        {meta.length > 0 ? (
-          <Text style="caption" tone="muted" wrap={false}>
-            {meta.join(" · ")}
-          </Text>
-        ) : null}
-      </VStack>
-      <VStack gap={0}>
-        <Text
-          style="caption"
-          tone={REVIEW_TONE[goal.reviewState]}
-          wrap={false}
-          align="end"
-        >
-          {REVIEW_LABELS[goal.reviewState]}
+        <Text style="caption" tone={REVIEW_TONE[goal.reviewState]}>
+          {REVIEW_LABEL[goal.reviewState]}
         </Text>
-        <Text style="caption" tone="muted" wrap={false} align="end">
-          {formatDate(goal.updatedAt)}
+        <Text style="caption" tone="muted" wrap={false}>
+          {meta.join(" · ")}
         </Text>
       </VStack>
     </HStack>

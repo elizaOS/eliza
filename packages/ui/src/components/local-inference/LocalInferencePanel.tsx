@@ -93,7 +93,7 @@ export function LocalInferencePanel() {
           | {
               type: "snapshot";
               downloads: DownloadJob[];
-              active: ActiveModelState;
+              active?: ActiveModelState;
             }
           | {
               type: "progress" | "completed" | "failed" | "cancelled";
@@ -107,7 +107,9 @@ export function LocalInferencePanel() {
               ? {
                   ...prev,
                   downloads: payload.downloads,
-                  active: payload.active,
+                  ...(payload.active === undefined
+                    ? {}
+                    : { active: payload.active }),
                 }
               : prev,
           );
@@ -403,7 +405,13 @@ export function LocalInferencePanel() {
         />
       )}
 
-      <VoiceModelUpdatesSection />
+      <AdvancedSettingsDisclosure
+        title={t("localinference.voiceModelUpdates", {
+          defaultValue: "Voice model updates",
+        })}
+      >
+        <VoiceModelUpdatesSection />
+      </AdvancedSettingsDisclosure>
 
       <AdvancedSettingsDisclosure
         title={t("localinference.devicesTitle", {

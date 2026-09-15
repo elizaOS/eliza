@@ -69,8 +69,8 @@ export default function GetStartedPage(): React.JSX.Element {
   const [platformIdentity, setPlatformIdentity] =
     useState<MessagingContinuationPreview | null>(null);
   const [
-    telegramClaimPersistenceRecovered,
-    setTelegramClaimPersistenceRecovered,
+    continuationPersistenceRecovered,
+    setContinuationPersistenceRecovered,
   ] = useState(false);
   // StrictMode double-mount guard: the redemption POST must run once.
   const startedRef = useRef(false);
@@ -84,7 +84,7 @@ export default function GetStartedPage(): React.JSX.Element {
     );
     if (!token) return null;
 
-    const purpose =
+    const purpose: "link" | typeof TELEGRAM_ACCOUNT_CLAIM_PURPOSE =
       searchParams.get("accountClaim") === "telegram"
         ? TELEGRAM_ACCOUNT_CLAIM_PURPOSE
         : "link";
@@ -105,28 +105,23 @@ export default function GetStartedPage(): React.JSX.Element {
     urlContinuation?.purpose === TELEGRAM_ACCOUNT_CLAIM_PURPOSE
       ? urlContinuation.token
       : peekPendingOnboardingSession(TELEGRAM_ACCOUNT_CLAIM_PURPOSE);
-  const telegramClaimPersistenceBlocked = Boolean(
+  const continuationPersistenceBlocked = Boolean(
     session.ready &&
       !session.authenticated &&
-      urlContinuation?.purpose === TELEGRAM_ACCOUNT_CLAIM_PURPOSE &&
+      urlContinuation &&
       !urlContinuation.persisted &&
-      !telegramClaimPersistenceRecovered,
+      !continuationPersistenceRecovered,
   );
 
-  const retryTelegramClaimPersistence = useCallback(() => {
-    if (
-      !urlContinuation ||
-      urlContinuation.purpose !== TELEGRAM_ACCOUNT_CLAIM_PURPOSE
-    ) {
-      return;
-    }
+  const retryContinuationPersistence = useCallback(() => {
+    if (!urlContinuation) return;
     if (
       storePendingOnboardingSession(
         urlContinuation.token,
-        TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
+        urlContinuation.purpose,
       )
     ) {
-      setTelegramClaimPersistenceRecovered(true);
+      setContinuationPersistenceRecovered(true);
     }
   }, [urlContinuation]);
 
@@ -200,7 +195,7 @@ export default function GetStartedPage(): React.JSX.Element {
   if (
     session.ready &&
     !session.authenticated &&
-    !telegramClaimPersistenceBlocked
+    !continuationPersistenceBlocked
   ) {
     // The token is already persisted in storage; the URL param never needs to
     // survive the login round trip.
@@ -216,9 +211,11 @@ export default function GetStartedPage(): React.JSX.Element {
     return <Navigate to="/join" replace />;
   }
 
-  const renderedPhase = telegramClaimPersistenceBlocked ? "error" : phase;
-  const renderedError = telegramClaimPersistenceBlocked
-    ? "Allow browser storage, then try again. Your Telegram account was not changed."
+  const renderedPhase = continuationPersistenceBlocked ? "error" : phase;
+  const renderedError = continuationPersistenceBlocked
+    ? urlContinuation?.purpose === TELEGRAM_ACCOUNT_CLAIM_PURPOSE
+      ? "Allow browser storage, then try again. Your Telegram account was not changed."
+      : "Allow browser storage, then try again. Your messaging connection was not changed."
     : error;
 
   return (
@@ -317,8 +314,8 @@ export default function GetStartedPage(): React.JSX.Element {
               size="wide"
               type="button"
               onClick={() => {
-                if (telegramClaimPersistenceBlocked) {
-                  retryTelegramClaimPersistence();
+                if (continuationPersistenceBlocked) {
+                  retryContinuationPersistence();
                   return;
                 }
                 if (telegramClaimToken) {

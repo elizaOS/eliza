@@ -108,6 +108,10 @@ beforeAll(async () => {
         pay_as_you_go_from_earnings boolean NOT NULL DEFAULT true,
         steward_tenant_id text UNIQUE,
         steward_tenant_api_key text,
+        account_lifecycle_state text NOT NULL DEFAULT 'active',
+        account_lifecycle_revision bigint NOT NULL DEFAULT 0,
+        account_deletion_request_id uuid,
+        paid_work_fenced_at timestamp,
         is_active boolean NOT NULL DEFAULT true,
         created_at timestamp NOT NULL DEFAULT now(),
         updated_at timestamp NOT NULL DEFAULT now()
@@ -267,6 +271,7 @@ beforeAll(async () => {
         shutdown_warning_sent_at timestamp,
         scheduled_shutdown_at timestamp,
         total_billed numeric(10,2) NOT NULL DEFAULT '0.00',
+        lifecycle_revision bigint NOT NULL DEFAULT 0,
         created_at timestamp NOT NULL DEFAULT now(),
         updated_at timestamp NOT NULL DEFAULT now()
       )`,

@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { KeepAliveViewHost } from "../KeepAliveViewHost";
 import { trackSubscription } from "../../../perf/resource-counters";
+import { TranslationCtx } from "../../../state/TranslationContext.hooks";
 import {
   registerViewPolicy,
   viewLifecycleController,
@@ -199,4 +200,19 @@ function Harness(): React.JSX.Element {
 }
 
 const root = document.getElementById("root");
-if (root) createRoot(root).render(<Harness />);
+if (root) {
+  createRoot(root).render(
+    <TranslationCtx.Provider
+      value={{
+        t: (key, values) =>
+          typeof values?.defaultValue === "string"
+            ? values.defaultValue
+            : key,
+        uiLanguage: "en",
+        setUiLanguage: () => {},
+      }}
+    >
+      <Harness />
+    </TranslationCtx.Provider>,
+  );
+}

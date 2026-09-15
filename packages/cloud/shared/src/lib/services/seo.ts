@@ -19,7 +19,12 @@ import { getLanguageModel } from "../providers/language-model";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
 import { safeFetch } from "../security/safe-fetch";
 import { logger } from "../utils/logger";
-import { creditsService } from "./credits";
+import {
+  type FlatProviderOperation,
+  type GenerativeOperationContext,
+  retainGenerativeTask,
+  runFlatProviderOperation,
+} from "./generative-operation";
 
 const SEO_REQUEST_TIMEOUT_MS = 30_000;
 
@@ -55,6 +60,7 @@ export type CreateSeoRequestParams = {
   idempotencyKey?: string;
   locationCode?: number;
   query?: string;
+  operationContext?: GenerativeOperationContext;
 };
 
 export type SeoRequestResult = {
@@ -82,24 +88,6 @@ function ensureEnv(variable: string, description: string): string {
 function parseJson<T>(raw: string): T {
   const parsed = JSON.parse(raw) as T;
   return parsed;
-}
-
-async function chargeCredits(
-  organizationId: string,
-  amount: number,
-  description: string,
-  metadata?: Record<string, unknown>,
-): Promise<void> {
-  if (amount <= 0) return;
-  const result = await creditsService.deductCredits({
-    organizationId,
-    amount,
-    description,
-    metadata,
-  });
-  if (!result.success) {
-    throw new Error("Insufficient credits for SEO operation");
-  }
 }
 
 async function callDataForSeoKeywords(
@@ -370,16 +358,6 @@ export class SeoService {
     const providerCalls: SeoProviderCall[] = [];
     let totalCost = 0;
 
-    const charge = async (
-      amount: number,
-      description: string,
-      metadata?: Record<string, unknown>,
-    ) => {
-      if (amount <= 0) return;
-      await chargeCredits(request.organization_id, amount, description, metadata);
-      totalCost += amount;
-    };
-
     const recordCall = async (
       call: Omit<NewSeoProviderCall, "created_at">,
       fn: () => Promise<Record<string, unknown>>,
@@ -390,10 +368,35 @@ export class SeoService {
       });
       let payload: Record<string, unknown>;
       try {
-        payload = await fn();
-        await seoProviderCallsRepository.updateStatus(created.id, "completed", {
+        const cost = Number(call.cost ?? 0);
+        const operation: FlatProviderOperation = {
+          provider: call.provider,
+          billingSource: call.provider === "claude" ? "anthropic" : "gateway",
+          model:
+            call.provider === "claude"
+              ? "anthropic/claude-sonnet-4.6"
+              : `seo/${call.provider}/${call.operation}`,
+          operation: `seo_${call.operation}`,
+          cost,
+          metadata: { requestId: request.id, seoProviderCallId: created.id },
+        };
+        if (cost > 0) {
+          if (!params.operationContext) {
+            throw new Error("Paid SEO provider operation requires generative admission");
+          }
+          payload = await runFlatProviderOperation(params.operationContext, operation, fn);
+          totalCost += cost;
+        } else {
+          payload = await fn();
+        }
+        const statusWrite = seoProviderCallsRepository.updateStatus(created.id, "completed", {
           response_payload: payload,
         });
+        if (params.operationContext) {
+          await retainGenerativeTask(params.operationContext, operation, statusWrite);
+        } else {
+          await statusWrite;
+        }
         providerCalls.push({
           ...created,
           status: "completed",
@@ -402,9 +405,24 @@ export class SeoService {
         return payload;
       } catch (error) {
         const message = error instanceof Error ? error.message : "Provider call failed";
-        await seoProviderCallsRepository.updateStatus(created.id, "failed", {
+        const statusWrite = seoProviderCallsRepository.updateStatus(created.id, "failed", {
           error: message,
         });
+        if (params.operationContext) {
+          await retainGenerativeTask(
+            params.operationContext,
+            {
+              provider: call.provider,
+              billingSource: call.provider === "claude" ? "anthropic" : "gateway",
+              model: `seo/${call.provider}/${call.operation}`,
+              operation: `seo_${call.operation}_status_failed`,
+              cost: 0,
+            },
+            statusWrite,
+          );
+        } else {
+          await statusWrite;
+        }
         throw error;
       }
     };
@@ -430,9 +448,6 @@ export class SeoService {
             request.page_url ?? undefined,
             request.keywords ?? undefined,
           );
-          await charge(SEO_PRICING.claudeGenerationFloor, "SEO meta generation (Claude)", {
-            request_id: request.id,
-          });
           const artifact = await seoArtifactsRepository.create({
             request_id: request.id,
             type: "meta",
@@ -466,9 +481,6 @@ export class SeoService {
             request.page_url ?? undefined,
             request.keywords ?? undefined,
           );
-          await charge(SEO_PRICING.claudeGenerationFloor, "SEO schema generation (Claude)", {
-            request_id: request.id,
-          });
           const artifact = await seoArtifactsRepository.create({
             request_id: request.id,
             type: "schema",
@@ -502,9 +514,6 @@ export class SeoService {
                 request.locale,
                 params.locationCode,
               );
-              await charge(SEO_PRICING.keywordResearch, "SEO keyword research (DataForSEO)", {
-                request_id: request.id,
-              });
               const artifact = await seoArtifactsRepository.create({
                 request_id: request.id,
                 type: "keywords",
@@ -541,9 +550,6 @@ export class SeoService {
                 locale: request.locale,
                 device: request.device,
                 searchEngine: request.search_engine,
-              });
-              await charge(SEO_PRICING.serpSnapshot, "SEO SERP snapshot (SerpApi)", {
-                request_id: request.id,
               });
               const artifact = await seoArtifactsRepository.create({
                 request_id: request.id,
@@ -649,27 +655,62 @@ export class SeoService {
           throw new Error(`Unsupported SEO request type: ${request.type}`);
       }
 
-      await db
+      const completedAt = new Date();
+      const statusWrite = db
         .update(seoRequests)
         .set({
           status: "completed",
           total_cost: String(totalCost),
-          updated_at: new Date(),
-          completed_at: new Date(),
+          updated_at: completedAt,
+          completed_at: completedAt,
         })
         .where(eq(seoRequests.id, request.id));
-
-      const fresh = await seoRequestsRepository.findById(request.id);
+      if (params.operationContext) {
+        await retainGenerativeTask(
+          params.operationContext,
+          {
+            provider: "seo",
+            billingSource: "gateway",
+            model: "seo/request",
+            operation: "seo_request_status_completed",
+            cost: 0,
+          },
+          statusWrite,
+        );
+      } else {
+        await statusWrite;
+      }
       return {
-        request: fresh || request,
+        request: {
+          ...request,
+          status: "completed",
+          total_cost: String(totalCost),
+          updated_at: completedAt,
+          completed_at: completedAt,
+        },
         artifacts,
         providerCalls,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : "SEO request failed";
-      await seoRequestsRepository.updateStatus(request.id, "failed", {
+      const statusWrite = seoRequestsRepository.updateStatus(request.id, "failed", {
         error: message,
       });
+      if (params.operationContext) {
+        await retainGenerativeTask(
+          params.operationContext,
+          {
+            provider: "seo",
+            billingSource: "gateway",
+            model: "seo/request",
+            operation: "seo_request_status_failed",
+            cost: 0,
+          },
+          statusWrite,
+        );
+      } else {
+        await statusWrite;
+      }
       logger.error("[SeoService] request failed", {
         requestId: request.id,
         error: message,

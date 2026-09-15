@@ -152,6 +152,8 @@ describe("watch-sms-gateway-readiness CLI timing boundary", () => {
       path.join(os.tmpdir(), "sms-watch-marker-"),
     );
     const fakeCurl = path.join(fakeDir, "curl");
+    const fakeIoreg = path.join(fakeDir, "ioreg");
+    fs.writeFileSync(fakeIoreg, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     fs.writeFileSync(
       fakeCurl,
       // Busy-wait in the shell itself (no sleep child to orphan): SIGKILL on
@@ -163,7 +165,7 @@ describe("watch-sms-gateway-readiness CLI timing boundary", () => {
       const startedAt = Date.now();
       const result = spawnSync(
         process.execPath,
-        [SCRIPT, "--timeout", "1", "--interval", "2"],
+        [SCRIPT, "--timeout", "2", "--interval", "3"],
         {
           encoding: "utf8",
           timeout: 15_000,
@@ -174,9 +176,9 @@ describe("watch-sms-gateway-readiness CLI timing boundary", () => {
       expect(result.signal).toBeNull(); // exits on its own, not our timeout
       expect(result.status).not.toBe(0);
       expect(`${result.stdout}${result.stderr}`).toContain(
-        "Timed out waiting 1s",
+        "Timed out waiting 2s",
       );
-      expect(elapsedMs).toBeLessThan(3_500);
+      expect(elapsedMs).toBeLessThan(4_500);
 
       // The fake probe really ran, and its process did not survive SIGKILL.
       const pidFile = path.join(markerDir, "curl.pid");

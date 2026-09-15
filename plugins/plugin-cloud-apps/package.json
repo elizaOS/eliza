@@ -65,7 +65,8 @@
     "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
-    "@elizaos/cloud-sdk": "workspace:*"
+    "@elizaos/cloud-sdk": "workspace:*",
+    "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
     "@elizaos/core": "workspace:*",

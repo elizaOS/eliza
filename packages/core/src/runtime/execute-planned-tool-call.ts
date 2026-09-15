@@ -69,6 +69,8 @@ export interface PlannedToolCall {
 
 export interface ExecutePlannedToolCallContext {
 	message: Memory;
+	/** The parent turn will synthesize from complete action results. */
+	replyOwner?: "planner";
 	state?: State;
 	activeContexts?: readonly AgentContext[];
 	userRoles?: readonly RoleGateRole[];
@@ -386,6 +388,9 @@ export function projectActionResultForClipboard(
 		...(result.failureProvenance !== undefined
 			? { failureProvenance: result.failureProvenance }
 			: {}),
+		...(result.replyFailure !== undefined
+			? { replyFailure: result.replyFailure }
+			: {}),
 		...(Object.keys(safeControlData).length > 0
 			? { data: safeControlData }
 			: {}),
@@ -436,6 +441,9 @@ function projectSettledResultForObserver(
 			: {}),
 		...(projected.failureProvenance !== undefined
 			? { failureProvenance: projected.failureProvenance }
+			: {}),
+		...(projected.replyFailure !== undefined
+			? { replyFailure: projected.replyFailure }
 			: {}),
 		data: controlData,
 		...(projected.turnComplete !== undefined
@@ -554,6 +562,16 @@ export async function executePlannedToolCall(
 	options: ExecutePlannedToolCallOptions = {},
 ): Promise<ActionResult> {
 	options.abortSignal?.throwIfAborted();
+	// Perf probe (#latency): per-segment wall clock for one executed tool call,
+	// logged as a single summary line. Diagnostic only; never alters behavior.
+	const perfT0 = Date.now();
+	const perfMarks: [string, number][] = [];
+	let perfPrev = perfT0;
+	const perfMark = (label: string) => {
+		const now = Date.now();
+		perfMarks.push([label, now - perfPrev]);
+		perfPrev = now;
+	};
 	// Diagnostic projection for every copy of the arguments that leaves the
 	// execution path (streaming observers, lifecycle events, trajectories).
 	// The handler itself receives the exact validated values.
@@ -580,6 +598,7 @@ export async function executePlannedToolCall(
 	}
 
 	const executorCtx = await withResolvedUserRoles(runtime, ctx);
+	perfMark("roles");
 	const gateFailure = actionGateFailure(action, executorCtx);
 	if (gateFailure) {
 		return emitToolResult(
@@ -630,6 +649,7 @@ export async function executePlannedToolCall(
 			executorCtx.state,
 			executorCtx.userRoles,
 		));
+	perfMark("aliases");
 	const validation = validateToolArgs(
 		action,
 		resolveEntityAliasRefs(entityAliases, argsForValidation),
@@ -726,6 +746,7 @@ export async function executePlannedToolCall(
 		}
 	}
 
+	perfMark("validate");
 	const accountPolicy = await evaluateConnectorAccountPolicies(
 		runtime,
 		action,
@@ -745,6 +766,7 @@ export async function executePlannedToolCall(
 			),
 		);
 	}
+	perfMark("accountPolicy");
 	options.abortSignal?.throwIfAborted();
 
 	const messageId = executorCtx.message.id as UUID | undefined;
@@ -764,9 +786,15 @@ export async function executePlannedToolCall(
 		actionStatus: "executing" as const,
 		source: executorCtx.message.content.source,
 	};
+	// ACTION_STARTED is a lifecycle notification. Its dispatch runs alongside
+	// the handler instead of in front of it (live: 30-145 ms of subscriber
+	// work per tool call before the handler could begin); ACTION_COMPLETED
+	// below awaits this dispatch first, so subscribers still observe the two
+	// events settle in order.
+	let actionStartedDispatch: Promise<void> = Promise.resolve();
 	if (typeof runtime.emitEvent === "function") {
 		const worldId = await getActionEventWorldId();
-		await runtime
+		actionStartedDispatch = runtime
 			.emitEvent(EventType.ACTION_STARTED, {
 				runtime,
 				...(messageId ? { messageId } : {}),
@@ -821,6 +849,7 @@ export async function executePlannedToolCall(
 					);
 				}
 			: executorCtx.callback;
+	perfMark("startedEvent");
 	let resultForEvent = await runWithMessageTrajectoryContext(
 		runtime,
 		executorCtx.message,
@@ -864,9 +893,16 @@ export async function executePlannedToolCall(
 									handlerOptions.parameters,
 								);
 							}
-							return runWithActionRoutingContext(
-								{ actionName: action.name, modelClass: action.modelClass },
-								() =>
+							const routingContext = {
+								actionName: action.name,
+								modelClass: action.modelClass,
+								replyOwner: action.suppressActionResultClipboard
+									? undefined
+									: executorCtx.replyOwner,
+								messageId: executorCtx.message.id,
+							};
+							try {
+								return await runWithActionRoutingContext(routingContext, () =>
 									action.handler(
 										runtime,
 										executorCtx.message,
@@ -875,7 +911,11 @@ export async function executePlannedToolCall(
 										actionCallback,
 										executorCtx.responses,
 									),
-							);
+								);
+							} finally {
+								// Detached work cannot hand a reply to an already-settled action.
+								routingContext.replyOwner = undefined;
+							}
 						},
 					}),
 				{
@@ -890,6 +930,7 @@ export async function executePlannedToolCall(
 	);
 	// The handler result is the completion barrier. Publish it before event
 	// emission or disclosure revalidation can strand a committed side effect.
+	perfMark("handler");
 	publishSettledResult(runtime, action, resultForEvent, onSettledResult);
 	if (ownerExclusive) {
 		const disclosure = await revalidateOwnerExclusiveDisclosure(
@@ -910,6 +951,7 @@ export async function executePlannedToolCall(
 
 	if (typeof runtime.emitEvent === "function") {
 		const worldId = await getActionEventWorldId();
+		await actionStartedDispatch;
 		await runtime
 			.emitEvent(EventType.ACTION_COMPLETED, {
 				runtime,
@@ -964,6 +1006,19 @@ export async function executePlannedToolCall(
 				privacyDenied: true,
 				privacyReason: disclosure.reason,
 			});
+		}
+	}
+	perfMark("post");
+	{
+		const perfTotal = Date.now() - perfT0;
+		if (perfTotal > 400) {
+			runtime.logger.info(
+				{ src: "execute-planned-tool-call" },
+				`[perf-probe] tool=${action.name} total=${perfTotal}ms ${perfMarks
+					.filter(([, ms]) => ms >= 5)
+					.map(([label, ms]) => `${label}=${ms}ms`)
+					.join(" ")}`,
+			);
 		}
 	}
 	return emitToolResult(toolCall, redactDiagnosticText, resultForEvent, {
@@ -1079,6 +1134,7 @@ function actionResultToStreamingResult(
 		userFacingText: result.userFacingText,
 		verifiedUserFacing: result.verifiedUserFacing,
 		effectReceipts: result.effectReceipts,
+		replyFailure: result.replyFailure,
 		userFacingEffectReceiptIds: result.userFacingEffectReceiptIds,
 		error: result.error ? stringifyError(result.error) : undefined,
 		data: options.suppressData

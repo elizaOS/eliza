@@ -11,8 +11,7 @@ import { type UserWithOrganization, usersRepository } from "../../db/repositorie
 import type { ApiKey } from "../../db/schemas/api-keys";
 import type { Organization } from "../../db/schemas/organizations";
 import { AuthenticationError, ForbiddenError } from "../api/errors";
-import { apiKeysService } from "./api-keys";
-import { usersService } from "./users";
+import type { InferenceAuthRejectionReason } from "./inference-auth-cache";
 
 export interface InferenceApiKeyAuthTimingObserver {
   keyLookup(durationMs: number): void;
@@ -20,11 +19,9 @@ export interface InferenceApiKeyAuthTimingObserver {
 }
 
 export interface InferenceApiKeyAuthOptions {
-  /** Cache failures and authenticated probes must measure authoritative storage. */
-  bypassCache?: boolean;
   timing?: InferenceApiKeyAuthTimingObserver;
   /** Marks typed credential/account rejection without intercepting the throw. */
-  rejected?(): void;
+  rejected?(reason: InferenceAuthRejectionReason): void;
 }
 
 export interface InferenceApiKeyAuthResult {
@@ -39,77 +36,78 @@ export interface InferenceApiKeyAuthResult {
 function reject(
   options: InferenceApiKeyAuthOptions,
   error: AuthenticationError | ForbiddenError,
+  reason: InferenceAuthRejectionReason,
 ): never {
-  options.rejected?.();
+  options.rejected?.(reason);
   throw error;
 }
 
-async function findApiKey(rawKey: string, bypassCache: boolean): Promise<ApiKey | null> {
-  if (!bypassCache) return await apiKeysService.validateApiKey(rawKey);
-
+async function findApiKey(rawKey: string): Promise<ApiKey | null> {
   const keyHash = createHash("sha256").update(rawKey).digest("hex");
-  return (await apiKeysRepository.findActiveByHashConsistent(keyHash)) ?? null;
+  return (await apiKeysRepository.findByHashConsistent(keyHash)) ?? null;
 }
 
-async function findUser(
-  userId: string,
-  bypassCache: boolean,
-): Promise<UserWithOrganization | undefined> {
-  return bypassCache
-    ? await usersRepository.findWithOrganization(userId)
-    : await usersService.getWithOrganization(userId);
+async function findUser(userId: string): Promise<UserWithOrganization | undefined> {
+  return await usersRepository.findWithOrganizationForWrite(userId);
 }
 
 /**
- * Preserve the general API-key boundary's error classes, messages, ordering,
- * and usage accounting while exposing per-hop timings to bounded telemetry.
+ * Preserve the general API-key boundary's error classes, messages, and
+ * ordering while exposing per-hop timings to bounded telemetry. The caller
+ * owns retained usage accounting after the authorization result is consumed.
  */
 export async function requireInferenceApiKeyWithOrg(
   rawKey: string,
   options: InferenceApiKeyAuthOptions = {},
 ): Promise<InferenceApiKeyAuthResult> {
-  const bypassCache = options.bypassCache === true;
   const keyStartedAt = performance.now();
   let apiKey: ApiKey | null;
   try {
-    apiKey = await findApiKey(rawKey, bypassCache);
+    apiKey = await findApiKey(rawKey);
   } finally {
     options.timing?.keyLookup(performance.now() - keyStartedAt);
   }
   if (!apiKey) {
-    reject(options, new AuthenticationError("Invalid or expired API key"));
+    reject(options, new AuthenticationError("Invalid or expired API key"), "credential_invalid");
   }
-  if (!apiKey.is_active) {
-    reject(options, new ForbiddenError("API key is inactive"));
+  if (apiKey.deleted_at) {
+    reject(options, new AuthenticationError("Invalid or expired API key"), "credential_invalid");
   }
   if (apiKey.expires_at && new Date(apiKey.expires_at) < new Date()) {
-    reject(options, new AuthenticationError("API key has expired"));
+    reject(options, new AuthenticationError("API key has expired"), "credential_invalid");
+  }
+  if (!apiKey.is_active) {
+    reject(options, new ForbiddenError("API key is inactive"), "credential_inactive");
   }
 
   const userStartedAt = performance.now();
   let user: UserWithOrganization | undefined;
   try {
-    user = await findUser(apiKey.user_id, bypassCache);
+    user = await findUser(apiKey.user_id);
   } finally {
     options.timing?.userOrgLookup(performance.now() - userStartedAt);
   }
   if (!user) {
-    reject(options, new AuthenticationError("User associated with API key not found"));
+    reject(
+      options,
+      new AuthenticationError("User associated with API key not found"),
+      "membership_missing",
+    );
   }
   if (!user.is_active) {
-    reject(options, new ForbiddenError("User account is inactive"));
-  }
-  if (!user.organization?.is_active) {
-    reject(options, new ForbiddenError("Organization is inactive"));
+    reject(options, new ForbiddenError("User account is inactive"), "account_inactive");
   }
   if (!user.organization_id || !user.organization) {
     reject(
       options,
       new ForbiddenError("This feature requires a full account. Please sign up to continue."),
+      "membership_missing",
     );
   }
+  if (!user.organization.is_active) {
+    reject(options, new ForbiddenError("Organization is inactive"), "organization_inactive");
+  }
 
-  void apiKeysService.incrementUsageDebounced(apiKey.id);
   return {
     user: user as InferenceApiKeyAuthResult["user"],
     apiKey,

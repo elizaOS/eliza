@@ -22,7 +22,7 @@ describe("defaultCodexAcpCommand", () => {
         "-y",
         "--prefix",
         "/tmp/eliza coding agent",
-        "--package=@agentclientprotocol/codex-acp@1.1.2",
+        "--package=@agentclientprotocol/codex-acp@1.10.0",
         "--",
         "codex-acp",
       ],
@@ -57,6 +57,12 @@ describe("defaultCodexAcpCommand", () => {
     expect(
       resolveCodexAcpCommand(
         "npx -y @zed-industries/codex-acp@0.14.0",
+        isolated,
+      ),
+    ).toBe(isolated);
+    expect(
+      resolveCodexAcpCommand(
+        "npx -y @agentclientprotocol/codex-acp@1.10.0",
         isolated,
       ),
     ).toBe(isolated);

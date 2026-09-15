@@ -11,15 +11,25 @@ import { Hono } from "hono";
 const SOLANA_TOKEN = "So11111111111111111111111111111111111111112";
 const EXPECTED_TOKEN_TRADE_TYPES = ["swap", "add", "remove", "all"] as const;
 
-type ExecuteWithBody =
-  typeof import("@/lib/services/proxy/engine").executeWithBody;
+const preparedBodies: Array<{
+  method: string;
+  params: Record<string, string>;
+}> = [];
+const executePreflight = mock(async (_c: unknown, preflight: () => unknown) => {
+  const prepared = await preflight();
+  if (prepared instanceof Response) return prepared;
+  preparedBodies.push(
+    (
+      prepared as {
+        body: { method: string; params: Record<string, string> };
+      }
+    ).body,
+  );
+  return Response.json({ success: true });
+});
 
-const executeWithBody = mock(async (..._args: Parameters<ExecuteWithBody>) =>
-  Response.json({ success: true }),
-);
-
-mock.module("@/lib/services/proxy/engine", () => ({
-  executeWithBody,
+mock.module("@/api-app/lib/guarded-paid-proxy", () => ({
+  executeGuardedPaidProxyWithPreflight: executePreflight,
 }));
 mock.module("@/lib/services/proxy/cors", () => ({
   applyCorsHeaders: (response: Response) => response,
@@ -43,7 +53,8 @@ function trades(query = "") {
 
 describe("GET /api/v1/market/trades token-trade type identity", () => {
   beforeEach(() => {
-    executeWithBody.mockClear();
+    executePreflight.mockClear();
+    preparedBodies.length = 0;
   });
 
   test.each(["", "?tx_type="])(
@@ -51,11 +62,8 @@ describe("GET /api/v1/market/trades token-trade type identity", () => {
     async (query) => {
       const response = await trades(query);
       expect(response.status).toBe(200);
-      expect(executeWithBody).toHaveBeenCalledTimes(1);
-      const body = executeWithBody.mock.calls[0][3] as {
-        method: string;
-        params: Record<string, string>;
-      };
+      expect(executePreflight).toHaveBeenCalledTimes(1);
+      const body = preparedBodies[0];
       expect(body.method).toBe("getTokenTrades");
       expect(body.params.address).toBe(SOLANA_TOKEN);
       expect(body.params.tx_type).toBeUndefined();
@@ -72,8 +80,8 @@ describe("GET /api/v1/market/trades token-trade type identity", () => {
     async (txType) => {
       const response = await trades(`?tx_type=${txType}`);
       expect(response.status).toBe(200);
-      expect(executeWithBody).toHaveBeenCalledTimes(1);
-      expect(executeWithBody.mock.calls[0][3]).toMatchObject({
+      expect(executePreflight).toHaveBeenCalledTimes(1);
+      expect(preparedBodies[0]).toMatchObject({
         params: { tx_type: txType },
       });
     },
@@ -90,7 +98,8 @@ describe("GET /api/v1/market/trades token-trade type identity", () => {
       };
       expect(body.error).toBe("Invalid tx_type");
       expect(body.details).toContain("swap, add, remove, all");
-      expect(executeWithBody).not.toHaveBeenCalled();
+      expect(executePreflight).toHaveBeenCalledTimes(1);
+      expect(preparedBodies).toHaveLength(0);
     },
   );
 });

@@ -5,10 +5,11 @@
  * per-agent settings, canonical Slack connector policy, and knowledge directories.
  */
 import {
+  AgentRuntime,
   connectorAccountCredentialSettingKey,
   connectorBaseCredentialSettingKey,
 } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ElizaConfig } from "../config/config.ts";
 import { ElizaSchema } from "../config/zod-schema.ts";
@@ -409,5 +410,34 @@ describe("connector policy projection", () => {
 
     const envOnly = buildCharacterFromConfig(CONFIG);
     expect(envOnly.settings?.slack).toBeUndefined();
+  });
+});
+
+describe("Google OAuth runtime configuration", () => {
+  it("makes service-provided credentials and callback authority available to runtime consumers", () => {
+    vi.stubEnv("GOOGLE_CLIENT_ID", "pilot.apps.googleusercontent.com");
+    vi.stubEnv("GOOGLE_CLIENT_SECRET", "synthetic-oauth-secret");
+    vi.stubEnv(
+      "GOOGLE_REDIRECT_URI",
+      "https://pilot.example/api/connectors/google/oauth/callback",
+    );
+    vi.stubEnv("ELIZA_EXTERNAL_BASE_URL", "https://pilot.example");
+    try {
+      const character = buildCharacterFromConfig(CONFIG);
+      const runtime = new AgentRuntime({ character });
+      expect(runtime.getSetting("GOOGLE_CLIENT_ID")).toBe(
+        "pilot.apps.googleusercontent.com",
+      );
+      expect(runtime.getSetting("GOOGLE_CLIENT_SECRET")).toBe(
+        "synthetic-oauth-secret",
+      );
+      expect(
+        new URL(String(runtime.getSetting("GOOGLE_REDIRECT_URI"))).origin,
+      ).toBe(runtime.getSetting("ELIZA_EXTERNAL_BASE_URL"));
+      expect(character.settings?.GOOGLE_CLIENT_SECRET).toBeUndefined();
+      expect(character.secrets?.GOOGLE_REDIRECT_URI).toBeUndefined();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

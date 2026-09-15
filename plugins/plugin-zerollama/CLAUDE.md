@@ -12,7 +12,7 @@ This plugin registers **model handlers only** — no actions, providers, service
 
 | Model type | Handler | Description |
 |---|---|---|
-| `ModelType.TEXT_EMBEDDING` | `handleTextEmbedding` | Vector embeddings via AI SDK `embed` + `ollama-ai-provider-v2`. Auto-pulls model if missing. |
+| `ModelType.TEXT_EMBEDDING` | `handleTextEmbedding` | Vector embeddings via AI SDK `embed` + `ollama-ai-provider-v2`. Reports missing models without downloading. |
 | `ModelType.TEXT_NANO` | `handleTextNano` | Cheapest/fastest text; defaults to `OLLAMA_NANO_MODEL` → `NANO_MODEL` → small model. |
 | `ModelType.TEXT_SMALL` | `handleTextSmall` | Small text; defaults to `eliza-1-2b`. |
 | `ModelType.TEXT_MEDIUM` | `handleTextMedium` | Medium text; defaults to small model when no medium override is set. |
@@ -39,7 +39,7 @@ plugins/plugin-zerollama/
   index.browser.ts           Browser entry (dist target)
   auto-enable.ts             shouldEnable() — reads OLLAMA_BASE_URL/OLLAMA_API_ENDPOINT/OLLAMA_API_URL; no runtime imports
   models/
-    availability.ts          Checks model availability and pulls missing models
+    availability.ts          Checks model availability without downloading models
     text.ts                  handleTextWithModelType and all exported text handlers
     embedding.ts             handleTextEmbedding
     audio.ts                 handleTextToSpeech, handleTranscription
@@ -108,7 +108,7 @@ All vars are read by `utils/config.ts` via `runtime.getSetting(key)` first, then
 ## Conventions / gotchas
 
 - **`ollama-ai-provider-v2` is required.** The old `ollama-ai-provider` exposed AI SDK model spec v1; `ai@6` only accepts v2+. Do not downgrade or swap the dependency.
-- **`ensureModelAvailable`** fires before every inference call. It tries `/api/show`; if the model is absent it issues `/api/pull` (blocking, `stream: false`). This adds latency on first use.
+- **`ensureModelAvailable`** checks `/api/show` before inference. A 404 raises `OLLAMA_MODEL_NOT_INSTALLED`; other failures remain lookup errors. It never calls `/api/pull`: installing a provider or selecting a model does not authorize a download.
 - **Streaming + `RESPONSE_HANDLER` / `ACTION_PLANNER`:** When `stream: true` and tools are present, `textStream` yields only a single chunk — the first tool's `arguments` JSON. This is intentional so `parseMessageHandlerOutput` receives a clean JSON string. Do not yield arbitrary text deltas for planner types. If the model returns **no** tool call (common on zerollama, where `tool_choice` is deliberately omitted from the native wire), both paths fall back to yielding the full accumulated plan text instead of nothing — the native `zerollamaChatStream` mirrors the AI-SDK sibling's `fallbackText` yield in `models/text.ts` — so core's textStream-only accumulator still receives the plan the model produced rather than parsing an empty string.
 - **`AI_SDK_LOG_WARNINGS`** is set to `false` at module load to suppress Vercel AI SDK noise in tight loops / desktop shells. Unset it in dev if you need SDK diagnostics.
 - **Browser build:** `package.json` exports a `browser` entry (`dist/browser/index.browser.js`). Keep `auto-enable.ts` free of Node-only imports.

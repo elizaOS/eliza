@@ -10,7 +10,7 @@
  *    boot config before redirecting to `/`.
  */
 
-import { toast } from "sonner";
+import { toast } from "../../../bridge/toast";
 import { apiWithStatus } from "../../lib/api-client";
 import { isSafeNavigationUrl } from "../../lib/navigation-url";
 

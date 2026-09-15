@@ -119,6 +119,14 @@ export {
 	roleAction,
 	updateRoleAction,
 } from "./features/advanced-capabilities/actions/role";
+export {
+	buildFactKeywordsForStorage,
+	buildFactSearchText,
+	factClaimsEquivalent,
+	factLexicalSimilarity,
+	factPolarityDiffers,
+	readStoredFactKeywords,
+} from "./features/advanced-capabilities/fact-keywords";
 export * from "./features/advanced-memory";
 export {
 	AUTONOMY_SERVICE_TYPE,
@@ -252,6 +260,7 @@ export {
 	normalizeActionName,
 	type RuntimeActionLike,
 } from "./runtime/action-catalog";
+export { actionGateRejection } from "./runtime/action-gate";
 export { warnOnUnmatchedActionRolePolicyKeys } from "./runtime/action-role-policy";
 export * from "./runtime/builtin-field-evaluators";
 export {
@@ -495,13 +504,17 @@ export * from "./utils/deterministic";
 // Export browser-compatible utilities
 export * from "./utils/environment";
 export { getEnv } from "./utils/environment";
+export * from "./utils/extraction-evidence";
 export { formatError } from "./utils/format-error";
 export * from "./utils/html-raw-text";
 /** Single-lane local inference scheduling: interactive-over-background gate + device-class background budgets (#11914). */
 export * from "./utils/inference-priority-gate";
+export * from "./utils/inflection-term-keys";
 export {
 	assertModelOutputComplete,
 	isModelOutputLimitFinishReason,
+	isModelProviderError,
+	modelProviderErrorDetail,
 } from "./utils/model-errors";
 // Export Node-specific utilities
 export * from "./utils/project-memory-scope";
@@ -530,3 +543,8 @@ export * from "./validation";
 // Node-specific exports
 export const isBrowser = false;
 export const isNode = true;
+
+export {
+	isPermanentQuotaError,
+	providerRetryAfterMs,
+} from "./utils/model-retry";

@@ -1908,6 +1908,23 @@ describe("AutoTopUpService settings compatibility", () => {
   beforeEach(() => {
     findOrganizationById.mockResolvedValue(makeOrganization());
   });
+  test("missing organization rejects settings updates as unavailable", async () => {
+    findOrganizationById.mockResolvedValueOnce(undefined);
+    await expect(
+      new AutoTopUpService().updateSettings("org-1", { enabled: false }, async () => undefined),
+    ).rejects.toMatchObject({ code: "BILLING_SETTINGS_UNAVAILABLE" });
+    expect(updateOrganization).not.toHaveBeenCalled();
+    expect(invalidateOrganizationCache).not.toHaveBeenCalled();
+    expect(onOrganizationUpdated).not.toHaveBeenCalled();
+  });
+
+  test("empty settings preserve storage and cache state", async () => {
+    await new AutoTopUpService().updateSettings("org-1", {}, async () => undefined);
+    expect(updateOrganization).not.toHaveBeenCalled();
+    expect(invalidateOrganizationCache).not.toHaveBeenCalled();
+    expect(onOrganizationUpdated).not.toHaveBeenCalled();
+  });
+
   test("reads the existing billing settings without unsealing charging", async () => {
     const result = await new AutoTopUpService().getSettings("org-1");
 
@@ -1953,12 +1970,69 @@ describe("AutoTopUpService settings compatibility", () => {
     });
   });
 
-  test("persists validated decimal settings", async () => {
-    await new AutoTopUpService().updateSettings("org-1", {
-      enabled: true,
-      amount: 25,
-      threshold: 10,
+  test("rechecks authority after validation and commits both billing toggles together", async () => {
+    const order: string[] = [];
+    findBlockingByOrganization.mockImplementationOnce(async () => {
+      order.push("validation");
+      return null;
     });
+    const authorize = mock(async () => {
+      order.push("authority");
+      expect(updateOrganization).not.toHaveBeenCalled();
+    });
+    await new AutoTopUpService().updateSettings(
+      "org-1",
+      {
+        enabled: true,
+        amount: 25,
+        threshold: 10,
+        payAsYouGoFromEarnings: false,
+      },
+      authorize,
+    );
+    expect(order).toEqual(["validation", "authority"]);
+    expect(updateOrganization).toHaveBeenCalledTimes(1);
+    expect(updateOrganization).toHaveBeenCalledWith(
+      "org-1",
+      expect.objectContaining({
+        auto_top_up_enabled: true,
+        auto_top_up_amount: "25.00",
+        pay_as_you_go_from_earnings: false,
+      }),
+    );
+  });
+
+  test("a revoked manager after asynchronous validation cannot persist either setting", async () => {
+    const denial = new Error("Current authority denied");
+    await expect(
+      new AutoTopUpService().updateSettings(
+        "org-1",
+        {
+          enabled: true,
+          amount: 25,
+          threshold: 10,
+          payAsYouGoFromEarnings: false,
+        },
+        async () => {
+          throw denial;
+        },
+      ),
+    ).rejects.toBe(denial);
+    expect(findBlockingByOrganization).toHaveBeenCalledWith("org-1");
+    expect(updateOrganization).not.toHaveBeenCalled();
+    expect(onOrganizationUpdated).not.toHaveBeenCalled();
+  });
+
+  test("persists validated decimal settings", async () => {
+    await new AutoTopUpService().updateSettings(
+      "org-1",
+      {
+        enabled: true,
+        amount: 25,
+        threshold: 10,
+      },
+      async () => undefined,
+    );
 
     expect(updateOrganization).toHaveBeenCalledWith(
       "org-1",
@@ -1976,9 +2050,9 @@ describe("AutoTopUpService settings compatibility", () => {
       makeOrganization({ stripe_default_payment_method: null }),
     );
 
-    await expect(new AutoTopUpService().updateSettings("org-1", { enabled: true })).rejects.toThrow(
-      "Cannot enable auto top-up without a default payment method",
-    );
+    await expect(
+      new AutoTopUpService().updateSettings("org-1", { enabled: true }, async () => undefined),
+    ).rejects.toThrow("Cannot enable auto top-up without a default payment method");
     expect(updateOrganization).not.toHaveBeenCalled();
   });
 
@@ -1988,7 +2062,9 @@ describe("AutoTopUpService settings compatibility", () => {
       status: "manual_review",
     });
 
-    await expect(new AutoTopUpService().updateSettings("org-1", { enabled: true })).rejects.toThrow(
+    await expect(
+      new AutoTopUpService().updateSettings("org-1", { enabled: true }, async () => undefined),
+    ).rejects.toThrow(
       "Cannot enable auto top-up while an earlier card payment requires reconciliation",
     );
     expect(updateOrganization).not.toHaveBeenCalled();
@@ -2000,7 +2076,9 @@ describe("AutoTopUpService settings compatibility", () => {
       status: "manual_review",
     });
 
-    await expect(new AutoTopUpService().updateSettings("org-1", { enabled: true })).rejects.toThrow(
+    await expect(
+      new AutoTopUpService().updateSettings("org-1", { enabled: true }, async () => undefined),
+    ).rejects.toThrow(
       "Cannot enable auto top-up while an earlier card payment requires reconciliation",
     );
     expect(updateOrganization).not.toHaveBeenCalled();
@@ -2016,7 +2094,11 @@ describe("AutoTopUpService settings compatibility", () => {
     );
 
     await expect(
-      new AutoTopUpService().updateSettings("org-1", { enabled: true, amount: 25 }),
+      new AutoTopUpService().updateSettings(
+        "org-1",
+        { enabled: true, amount: 25 },
+        async () => undefined,
+      ),
     ).rejects.toThrow("Valid auto top-up values are required to replace corrupt settings");
     expect(updateOrganization).not.toHaveBeenCalled();
   });
@@ -2030,10 +2112,14 @@ describe("AutoTopUpService settings compatibility", () => {
       }),
     );
 
-    await new AutoTopUpService().updateSettings("org-1", {
-      enabled: true,
-      amount: 25,
-    });
+    await new AutoTopUpService().updateSettings(
+      "org-1",
+      {
+        enabled: true,
+        amount: 25,
+      },
+      async () => undefined,
+    );
 
     expect(updateOrganization).toHaveBeenCalledWith(
       "org-1",
@@ -2054,10 +2140,14 @@ describe("AutoTopUpService settings compatibility", () => {
       }),
     );
 
-    await new AutoTopUpService().updateSettings("org-1", {
-      enabled: true,
-      threshold: 8,
-    });
+    await new AutoTopUpService().updateSettings(
+      "org-1",
+      {
+        enabled: true,
+        threshold: 8,
+      },
+      async () => undefined,
+    );
 
     expect(updateOrganization).toHaveBeenCalledWith(
       "org-1",
@@ -2078,11 +2168,15 @@ describe("AutoTopUpService settings compatibility", () => {
       }),
     );
 
-    await new AutoTopUpService().updateSettings("org-1", {
-      enabled: true,
-      amount: 25,
-      threshold: 10,
-    });
+    await new AutoTopUpService().updateSettings(
+      "org-1",
+      {
+        enabled: true,
+        amount: 25,
+        threshold: 10,
+      },
+      async () => undefined,
+    );
 
     expect(updateOrganization).toHaveBeenCalledWith(
       "org-1",
@@ -2103,9 +2197,9 @@ describe("AutoTopUpService settings compatibility", () => {
       }),
     );
 
-    await expect(new AutoTopUpService().updateSettings("org-1", { enabled: true })).rejects.toThrow(
-      "Auto top-up amount must be at least $1",
-    );
+    await expect(
+      new AutoTopUpService().updateSettings("org-1", { enabled: true }, async () => undefined),
+    ).rejects.toThrow("Auto top-up amount must be at least $1");
     expect(updateOrganization).not.toHaveBeenCalled();
   });
 
@@ -2118,7 +2212,7 @@ describe("AutoTopUpService settings compatibility", () => {
       }),
     );
 
-    await new AutoTopUpService().updateSettings("org-1", { enabled: true });
+    await new AutoTopUpService().updateSettings("org-1", { enabled: true }, async () => undefined);
 
     expect(updateOrganization).toHaveBeenCalledWith(
       "org-1",
@@ -2138,7 +2232,7 @@ describe("AutoTopUpService settings compatibility", () => {
       }),
     );
 
-    await new AutoTopUpService().updateSettings("org-1", { amount: 10 });
+    await new AutoTopUpService().updateSettings("org-1", { amount: 10 }, async () => undefined);
 
     expect(updateOrganization).toHaveBeenCalledWith(
       "org-1",
@@ -2155,9 +2249,9 @@ describe("AutoTopUpService settings compatibility", () => {
       }),
     );
 
-    await expect(new AutoTopUpService().updateSettings("org-1", { amount: 25 })).rejects.toThrow(
-      "Valid auto top-up values are required to replace corrupt settings",
-    );
+    await expect(
+      new AutoTopUpService().updateSettings("org-1", { amount: 25 }, async () => undefined),
+    ).rejects.toThrow("Valid auto top-up values are required to replace corrupt settings");
     expect(updateOrganization).not.toHaveBeenCalled();
   });
 
@@ -2169,7 +2263,7 @@ describe("AutoTopUpService settings compatibility", () => {
       }),
     );
 
-    await new AutoTopUpService().updateSettings("org-1", { enabled: false });
+    await new AutoTopUpService().updateSettings("org-1", { enabled: false }, async () => undefined);
 
     expect(updateOrganization).toHaveBeenCalledWith(
       "org-1",

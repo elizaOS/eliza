@@ -68,6 +68,7 @@ const baseAgent: NormalizedAgentDetailDto = {
   webUiUrl: null,
   activeJob: null,
   errorCount: 0,
+  meshAddressPresent: true,
   walletAddress: null,
   walletProvider: null,
   walletStatus: "none",
@@ -151,7 +152,7 @@ describe("AgentDetailPage product detail", () => {
       "Agent Logs",
       "Docker Logs",
       "Save Snapshot",
-      "$0.01/hr",
+      "$0.15/hr",
       "Wallet",
       "Transactions",
       "Policies",
@@ -172,7 +173,7 @@ describe("AgentDetailPage product detail", () => {
     renderPage({ ...baseAgent, executionTier: "dedicated-always" });
 
     expect(screen.getByText("Dedicated Agent")).toBeTruthy();
-    expect(screen.getByText("$0.01/hr")).toBeTruthy();
+    expect(screen.getByText("$0.15/hr")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Open Web UI" })).toBeTruthy();
     expect(screen.queryByText("Shared Agent")).toBeNull();
     expect(screen.queryByText("Free")).toBeNull();

@@ -102,6 +102,19 @@ describe("prompt template exports", () => {
     }
   });
 
+  it("keeps UI navigation replies destination-specific", () => {
+    assert.ok(
+      prompts.messageHandlerTemplate.includes(
+        "UI navigation still belongs to Eliza",
+      ),
+    );
+    assert.ok(
+      prompts.messageHandlerTemplate.includes(
+        'never use a generic bare acknowledgement such as "On it."',
+      ),
+    );
+  });
+
   it("renders model context completely without escaping or recursive expansion", () => {
     const providerContext = `${"context-line-<&>-".repeat(8192)}END`;
     const agentName = "Aster {{providers}} <&>";

@@ -60,6 +60,9 @@ function writeScenario(
       domain: "cli-test",
       lane: "pr-deterministic",
       turns: [],
+      ...(overrides.executionProfile === "provider-qualified"
+        ? { evidenceScope: "provider-certification" }
+        : {}),
       ...overrides,
     })};\n`,
   );

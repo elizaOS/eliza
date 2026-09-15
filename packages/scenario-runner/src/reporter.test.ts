@@ -195,6 +195,7 @@ describe("writeScenarioRunViewer", () => {
       `scenario-viewer-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     );
     const trajectoryDir = path.join(runDir, "trajectories", "agent-1");
+    const completeTail = "viewer-complete-evidence-tail";
     mkdirSync(trajectoryDir, { recursive: true });
     writeFileSync(
       path.join(trajectoryDir, "traj-1.json"),
@@ -202,7 +203,24 @@ describe("writeScenarioRunViewer", () => {
         trajectoryId: "traj-1",
         agentId: "agent-1",
         scenarioId: "todos.create-basic",
-        stages: [],
+        stages: [
+          {
+            stageId: "complete-stage",
+            kind: "model",
+            model: { response: `${"r".repeat(700)}${completeTail}` },
+            tool: {
+              input: `${"i".repeat(700)}${completeTail}`,
+              output: `${"o".repeat(700)}${completeTail}`,
+            },
+            toolSearch: {
+              query: { text: `${"q".repeat(700)}${completeTail}` },
+              results: Array.from({ length: 8 }, (_, index) => ({
+                name: `result-${index}`,
+                rank: index + 1,
+              })),
+            },
+          },
+        ],
       }),
       "utf-8",
     );
@@ -244,6 +262,12 @@ describe("writeScenarioRunViewer", () => {
     expect(data).toContain("eliza_native_v1");
     expect(data).toContain("traj-1.json");
     expect(payload.report.artifactPaths).toEqual(aggregate.artifactPaths);
+    const stage = payload.trajectories.summaries[0].stages[0];
+    expect(stage.response).toContain(completeTail);
+    expect(stage.toolInput).toContain(completeTail);
+    expect(stage.toolOutput).toContain(completeTail);
+    expect(stage.toolSearchQuery).toContain(completeTail);
+    expect(stage.toolSearchResults).toHaveLength(8);
   });
 
   it("renders an <audio controls> cell for turns carrying audioArtifacts (#8934)", () => {
@@ -696,6 +720,7 @@ describe("scenario report aggregation", () => {
       .spyOn(process.stdout, "write")
       .mockImplementation(() => true);
     const report = aggregateReport();
+    const distinguishingTail = "stdout-failure-tail";
     report.scenarios[0] = {
       ...report.scenarios[0],
       status: "failed",
@@ -703,7 +728,7 @@ describe("scenario report aggregation", () => {
         {
           type: "responseIncludesAny",
           passed: false,
-          detail: "bad | value\nsecond line",
+          detail: `bad | value\n${"x".repeat(300)}${distinguishingTail}`,
         } as never,
       ],
     };
@@ -712,8 +737,10 @@ describe("scenario report aggregation", () => {
 
     const output = write.mock.calls.map(([chunk]) => String(chunk)).join("");
     expect(output).toContain("| todos.create-basic | failed | 1000ms |");
-    expect(output).toContain("bad \\| value second line");
-    expect(output).not.toContain("bad | value\nsecond line");
+    expect(output).toContain(
+      `bad \\| value ${"x".repeat(300)}${distinguishingTail}`,
+    );
+    expect(output).not.toContain("bad | value\n");
   });
 });
 

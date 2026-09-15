@@ -741,7 +741,7 @@ async function generateEmbeddingsBatch(
 				const chunk = batch[i];
 				const embedding = embeddings[i];
 
-				if (embedding && embedding.length > 0 && embedding[0] !== 0) {
+				if (embedding && embedding.length > 0) {
 					results.push({
 						embedding,
 						success: true,

@@ -5,10 +5,13 @@
  */
 
 import {
+  AlertTriangle,
   ChevronRight,
+  Cloud,
   type LucideIcon,
   type LucideProps,
   Puzzle,
+  RefreshCw,
 } from "lucide-react";
 import {
   forwardRef,
@@ -62,6 +65,7 @@ import {
   resolveIcon,
 } from "../pages/plugin-list-utils";
 import { Button } from "../ui/button";
+import { Skeleton } from "../ui/skeleton";
 import { SettingsSwitchRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 import {
@@ -70,6 +74,7 @@ import {
   openConnectorDetailHash,
   readSettingsHashRoute,
   replaceConnectorDetailHash,
+  replaceSettingsHashRoute,
   type SettingsRoute,
 } from "./settings-route";
 
@@ -170,6 +175,118 @@ function statusToneClass(tone: "ok" | "warn" | "muted" | "danger"): string {
     default:
       return "text-muted";
   }
+}
+
+const PLUGIN_REGISTRY_WARMING_MESSAGE = "Plugin registry is still loading";
+
+function openManagedCloudConnections(): void {
+  replaceSettingsHashRoute({
+    kind: "section",
+    sectionId: "cloud-connectors",
+  });
+  window.dispatchEvent(new Event("popstate"));
+}
+
+function ManagedCloudConnectionsGroup() {
+  const t = useAppSelector((s) => s.t);
+  return (
+    <SettingsGroup>
+      <SettingsRow
+        icon={Cloud}
+        label={t("connectors.managed.title", {
+          defaultValue: "Managed cloud connections",
+        })}
+        description={t("connectors.managed.description", {
+          defaultValue:
+            "OAuth, bot, and messaging gateways hosted by Eliza Cloud.",
+        })}
+        onClick={openManagedCloudConnections}
+        buttonProps={{ "data-testid": "managed-cloud-connections" }}
+      />
+    </SettingsGroup>
+  );
+}
+
+function ConnectorCatalogLoading() {
+  const t = useAppSelector((s) => s.t);
+  return (
+    <SettingsStack
+      data-testid="connectors-loading"
+      role="status"
+      aria-label={t("connectors.loading", {
+        defaultValue: "Loading connectors",
+      })}
+    >
+      <SettingsGroup>
+        {["first", "second", "third"].map((key) => (
+          <SettingsRow
+            key={key}
+            label={<Skeleton className="h-4 w-32 max-w-full" />}
+            description={<Skeleton className="mt-1 h-3 w-20 max-w-full" />}
+          />
+        ))}
+      </SettingsGroup>
+      <ManagedCloudConnectionsGroup />
+    </SettingsStack>
+  );
+}
+
+function ConnectorCatalogError({
+  error,
+  onRetry,
+}: {
+  error: string;
+  onRetry: () => void;
+}) {
+  const t = useAppSelector((s) => s.t);
+  return (
+    <SettingsStack data-testid="connectors-error" role="alert">
+      <SettingsGroup>
+        <SettingsRow
+          icon={AlertTriangle}
+          tone="danger"
+          label={t("connectors.loadError.title", {
+            defaultValue: "Couldn’t load connectors",
+          })}
+          description={error}
+          control={
+            <Button variant="outline" size="sm" onClick={onRetry}>
+              <RefreshCw className="size-4" aria-hidden />
+              {t("common.tryAgain", { defaultValue: "Try again" })}
+            </Button>
+          }
+        />
+      </SettingsGroup>
+      <ManagedCloudConnectionsGroup />
+    </SettingsStack>
+  );
+}
+
+function ConnectorCatalogEmpty({ onRefresh }: { onRefresh: () => void }) {
+  const t = useAppSelector((s) => s.t);
+  return (
+    <SettingsStack data-testid="connectors-empty">
+      <SettingsGroup>
+        <SettingsRow
+          icon={Puzzle}
+          label={t("connectors.empty.title", {
+            defaultValue: "No connectors reported",
+          })}
+          description={t("connectors.empty.description", {
+            defaultValue:
+              "This runtime did not return any visible connector plugins.",
+          })}
+          control={
+            <Button variant="outline" size="sm" onClick={onRefresh}>
+              <RefreshCw className="size-4" aria-hidden />
+              {t("common.refresh", { defaultValue: "Refresh" })}
+            </Button>
+          }
+        />
+      </SettingsGroup>
+      <ManagedCloudConnectionsGroup />
+    </SettingsStack>
+  );
 }
 
 function ConnectorListRow({
@@ -529,11 +646,17 @@ function ConnectorsIndex({
   connectors,
   hiddenConnectors,
   channelMode,
+  refreshError,
+  isRefreshing,
+  onRefresh,
   onOpen,
 }: {
   connectors: PluginInfo[];
   hiddenConnectors: PluginInfo[];
   channelMode: ConnectorChannelMode;
+  refreshError: string | null;
+  isRefreshing: boolean;
+  onRefresh: () => void;
   onOpen: (id: string) => void;
 }) {
   const t = useAppSelector((s) => s.t);
@@ -559,6 +682,37 @@ function ConnectorsIndex({
 
   return (
     <SettingsStack data-testid="connectors-index">
+      {refreshError ? (
+        <SettingsGroup>
+          <SettingsRow
+            icon={AlertTriangle}
+            tone="danger"
+            label={t("connectors.refreshError.title", {
+              defaultValue: "Couldn’t refresh connectors",
+            })}
+            description={refreshError}
+            control={
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isRefreshing}
+                onClick={onRefresh}
+              >
+                <RefreshCw
+                  className={cn("size-4", isRefreshing && "animate-spin")}
+                  aria-hidden
+                />
+                {isRefreshing
+                  ? t("common.refreshing", { defaultValue: "Refreshing" })
+                  : t("common.tryAgain", { defaultValue: "Try again" })}
+              </Button>
+            }
+          />
+        </SettingsGroup>
+      ) : null}
+
+      <ManagedCloudConnectionsGroup />
+
       <div className="flex flex-col items-start gap-1">
         <ConnectorChannelModeSwitch />
         <p className="text-xs-tight text-muted">
@@ -612,8 +766,13 @@ function ConnectorsIndex({
 
 export function ConnectorsSection() {
   const plugins = useAppSelector((s) => s.plugins);
+  const pluginsLoaded = useAppSelector((s) => s.pluginsLoaded);
+  const isLoadingPlugins = useAppSelector((s) => s.isLoadingPlugins);
+  const pluginsLoadError = useAppSelector((s) => s.pluginsLoadError);
+  const loadPlugins = useAppSelector((s) => s.loadPlugins);
   const t = useAppSelector((s) => s.t);
   const channelMode = useConnectorChannelMode();
+  const coldLoadRetryStartedRef = useRef(false);
   const route = useSettingsRoute();
   const detailId =
     route.kind === "connector-detail"
@@ -677,6 +836,30 @@ export function ConnectorsSection() {
     backFromConnectorDetail();
   }, []);
 
+  const refreshConnectors = useCallback(() => {
+    void loadPlugins();
+  }, [loadPlugins]);
+
+  // The local app-core route intentionally answers 503 + Retry-After while its
+  // registry module cold-loads. The shared plugin loader preserves that as an
+  // error, so this connector-owned surface performs one bounded follow-up once
+  // the advertised two-second window has elapsed.
+  useEffect(() => {
+    if (
+      pluginsLoaded ||
+      isLoadingPlugins ||
+      pluginsLoadError !== PLUGIN_REGISTRY_WARMING_MESSAGE ||
+      coldLoadRetryStartedRef.current
+    ) {
+      return;
+    }
+    coldLoadRetryStartedRef.current = true;
+    const retryTimer = window.setTimeout(() => {
+      void loadPlugins();
+    }, 2_000);
+    return () => window.clearTimeout(retryTimer);
+  }, [isLoadingPlugins, loadPlugins, pluginsLoadError, pluginsLoaded]);
+
   // Focus / deep-link events navigate to detail (no accordion open).
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -696,34 +879,49 @@ export function ConnectorsSection() {
       document.removeEventListener(FOCUS_CONNECTOR_EVENT, handleFocusConnector);
   }, [focusDetail]);
 
-  if (allConnectorPlugins.length === 0) {
+  if (!pluginsLoaded) {
+    if (isLoadingPlugins || !pluginsLoadError) {
+      return <ConnectorCatalogLoading />;
+    }
     return (
-      <SettingsStack data-testid="connectors-index">
-        <p className="text-sm text-muted">
-          {t("pluginsview.NoConnectorsAvailable", {
-            defaultValue: "No connectors available.",
-          })}
-        </p>
-      </SettingsStack>
+      <ConnectorCatalogError
+        error={pluginsLoadError}
+        onRetry={refreshConnectors}
+      />
     );
+  }
+
+  if (allConnectorPlugins.length === 0) {
+    if (isLoadingPlugins) return <ConnectorCatalogLoading />;
+    return <ConnectorCatalogEmpty onRefresh={refreshConnectors} />;
   }
 
   if (detailId) {
     if (!detailPlugin) {
       return (
-        <div className="space-y-3" data-testid="connector-not-found">
-          <p className="text-sm text-muted">
-            {t("connectors.detail.notFound", {
-              defaultValue: 'Connector "{{id}}" was not found.',
-              id: detailId,
-            })}
-          </p>
-          <Button variant="outline" size="sm" onClick={backToIndex}>
-            {t("connectors.detail.backToList", {
-              defaultValue: "Back to Connectors",
-            })}
-          </Button>
-        </div>
+        <SettingsStack data-testid="connector-not-found" role="alert">
+          <SettingsGroup>
+            <SettingsRow
+              icon={AlertTriangle}
+              tone="danger"
+              label={t("connectors.detail.notFound", {
+                defaultValue: 'Connector "{{id}}" was not found.',
+                id: detailId,
+              })}
+              description={t("connectors.detail.notFoundHelp", {
+                defaultValue:
+                  "It may be hidden in the other channel mode or unavailable in this runtime.",
+              })}
+              control={
+                <Button variant="outline" size="sm" onClick={backToIndex}>
+                  {t("connectors.detail.backToList", {
+                    defaultValue: "Back to Connectors",
+                  })}
+                </Button>
+              }
+            />
+          </SettingsGroup>
+        </SettingsStack>
       );
     }
     return <ConnectorDetailPage plugin={detailPlugin} onBack={backToIndex} />;
@@ -734,6 +932,9 @@ export function ConnectorsSection() {
       connectors={connectorPlugins}
       hiddenConnectors={hiddenConnectors}
       channelMode={channelMode}
+      refreshError={pluginsLoadError}
+      isRefreshing={isLoadingPlugins}
+      onRefresh={refreshConnectors}
       onOpen={openDetail}
     />
   );

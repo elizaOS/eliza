@@ -4,6 +4,10 @@
 
 import { readAliasedEnv } from "../utils/env.js";
 import {
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "./dev-cloud-env-authority.js";
+import {
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
   type ElizaCloudEnvironment,
@@ -16,11 +20,11 @@ const STAGING_CLOUD_SITE_URL = ELIZA_DOMAIN_CONTRACTS.staging.cloudAppOrigin;
 /**
  * True when this process was started from the repo's dev entrypoint.
  *
- * `bun run dev` sets `ELIZA_DEV_SOURCE=1` (root `package.json`) and nothing
- * else does; `bun run start` sets neither it nor `NODE_ENV=development`. We key
- * on the explicit flag rather than `NODE_ENV` because `NODE_ENV=development`
- * is set by many harnesses (tests, benchmarks, tooling) that should keep
- * talking to whatever cloud they were configured for.
+ * The local dev launchers set `ELIZA_DEV_SOURCE=1` on their child processes;
+ * `bun run start` sets neither it nor `NODE_ENV=development`. We key on the
+ * explicit flag rather than `NODE_ENV` because `NODE_ENV=development` is set
+ * by many harnesses (tests, benchmarks, tooling) that should keep talking to
+ * whatever cloud they were configured for.
  */
 export function isDevCloudTarget(): boolean {
   return readAliasedEnv("ELIZA_DEV_SOURCE") === "1";
@@ -62,6 +66,27 @@ function controlPlaneEnvironment(
   }
 }
 
+/**
+ * Compare redirect targets using only the URLs being redirected, never ambient
+ * launcher configuration. Canonical HTTPS aliases within one deployment share
+ * a scope; custom hosts retain their exact origin and canonical HTTP is unsafe.
+ */
+export function resolveCloudRedirectScope(rawUrl: string): string | null {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    const environment = controlPlaneEnvironment(parsed.hostname.toLowerCase());
+    if (environment) {
+      return parsed.protocol === "https:" ? `eliza-cloud:${environment}` : null;
+    }
+    return `origin:${parsed.origin}`;
+  } catch {
+    return null;
+  }
+}
+
 function isLoopbackHost(hostname: string): boolean {
   const normalized = hostname.toLowerCase();
   return (
@@ -94,18 +119,25 @@ function normalizeMalformedCandidate(candidate: string): string {
 
 export function normalizeCloudSiteUrl(rawUrl?: string): string {
   // Allow cloud-provisioned containers to override the base URL via env var
-  const envOverride = readAliasedEnv("ELIZAOS_CLOUD_BASE_URL");
+  const devCloudAuthority = resolveDevCloudEnvAuthority();
+  const envOverride = devCloudAuthority
+    ? resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_BASE_URL")
+    : readAliasedEnv("ELIZAOS_CLOUD_BASE_URL");
   const candidate = envOverride || rawUrl?.trim() || defaultCloudSiteUrl();
 
   try {
     const parsed = new URL(candidate);
     const pathname = trimApiPath(parsed.pathname);
     const host = parsed.hostname.toLowerCase();
-    const preserveLocalOrigin = isLoopbackHost(host);
+    // A launcher-validated self-hosted tuple may intentionally use a LAN HTTP
+    // origin and non-default port. Preserve the frozen origin exactly so the
+    // backend cannot silently diverge from the renderer's accepted endpoint.
+    const preserveConfiguredOrigin =
+      isLoopbackHost(host) || devCloudAuthority === "self-hosted";
 
     parsed.hash = "";
     parsed.search = "";
-    if (!preserveLocalOrigin) {
+    if (!preserveConfiguredOrigin) {
       parsed.protocol = "https:";
       parsed.port = "";
     }

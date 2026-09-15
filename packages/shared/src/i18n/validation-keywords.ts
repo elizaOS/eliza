@@ -11,10 +11,14 @@
  */
 export {
   collectKeywordTermMatches,
+  collectPreparedKeywordTermMatches,
   findKeywordTermMatch,
   getValidationKeywordLocaleTerms,
   getValidationKeywordTerms,
+  hasPreparedKeywordTermMatch,
   normalizeKeywordMatchText,
+  type PreparedKeywordTerm,
+  prepareKeywordTerms,
   splitKeywordDoc,
   textIncludesKeywordTerm,
   VALIDATION_KEYWORD_DOCS,

@@ -48,6 +48,7 @@ const POLICY_BY_LANGUAGE: Record<UiLanguage, LocalePolicy> = {
       { value: "no due date", wordBounded: true },
       { value: "no deadline", wordBounded: true },
       { value: "without a deadline", wordBounded: true },
+      { value: "without any deadline", wordBounded: true },
       { value: "no date", wordBounded: true },
       { value: "without a due date", wordBounded: true },
       { value: "without due date", wordBounded: true },
@@ -420,6 +421,115 @@ export function textContradictsExplicitUndatedTodo(text: string): boolean {
   return undatedTodoDirectiveState(text) === "scheduled_after_explicit";
 }
 
+export interface UndatedTodoAuthority {
+  explicit: boolean;
+  contradicts: boolean;
+  operationScoped: boolean;
+}
+
+function escapedTitle(title: string): string {
+  return title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Attribute no-date authority to an explicitly named Todo in an authored list.
+ * This projection is only for deterministic write authorization: callers keep
+ * the complete user message in every model prompt. Unknown target relationships
+ * remain in the policy input, so an unbound later correction cannot disappear.
+ */
+export function resolveUndatedTodoAuthority(
+  text: string,
+  title: string | null | undefined,
+): UndatedTodoAuthority {
+  const result = (
+    source: string,
+    operationScoped: boolean,
+  ): UndatedTodoAuthority => {
+    const state = undatedTodoDirectiveState(source);
+    return {
+      explicit: state === "explicit",
+      contradicts: state === "scheduled_after_explicit",
+      operationScoped,
+    };
+  };
+  if (!title?.trim()) return result(text, false);
+  const listStart = /^\s*(?:\d+[.)]|[-*])\s+/u;
+  const blocks = text.split(/(?=^\s*(?:\d+[.)]|[-*])\s+)/mu);
+  if (blocks.filter((block) => listStart.test(block)).length < 2)
+    return result(text, false);
+  const clauses = blocks.flatMap((block) => {
+    const listed = listStart.test(block);
+    return block
+      .replace(listStart, "")
+      .split(/(?<=[.!?;])\s+|\n/u)
+      .map((source) => ({ source, listed, block }));
+  });
+  const namedCreation = new RegExp(
+    String.raw`\b(?:create|add|save|make)\s+(?:an?\s+)?(?:owner\s+)?(?:(?:undated|unscheduled)\s+)?(?:todo|task)\s+(?:titled|named|called)\s*["'“‘]${escapedTitle(title.trim())}["'”’](?=\s|[.,;!?]|$)`,
+    "iu",
+  );
+  const selected = clauses.filter(
+    (clause) => clause.listed && namedCreation.test(clause.source),
+  );
+  if (selected.length !== 1) return result(text, false);
+  const creationsInSelectedBlock = selected[0].block.match(
+    /\b(?:create|add|save|make)\s+(?:an?\s+)?(?:owner\s+)?(?:(?:undated|unscheduled)\s+)?(?:todo|task)\s+(?:titled|named|called)\s*["'“‘]/giu,
+  );
+  if (creationsInSelectedBlock?.length !== 1) return result(text, false);
+  const selectedTitle = normalizeKeywordMatchText(title);
+  const namesSelectedTitle = (source: string) =>
+    new RegExp(
+      `(?<![\\p{L}\\p{N}_])${escapedTitle(selectedTitle)}(?![\\p{L}\\p{N}_])`,
+      "u",
+    ).test(normalizeKeywordMatchText(source));
+  const authorityClauses = clauses.filter((clause) => {
+    if (clause.block === selected[0].block) return true;
+    const source = clause.source;
+    const otherTodo = clause.block.match(
+      /\b(?:todo|task)\s+(?:titled|named|called)\s+(?:"([^"\n]+)"|“([^”\n]+)”|'([^'\n]+)'|‘([^’\n]+)’)(?=\s|[.,;!?]|$)/iu,
+    );
+    const otherTitle =
+      otherTodo?.[1] ?? otherTodo?.[2] ?? otherTodo?.[3] ?? otherTodo?.[4];
+    const crossTodoReference =
+      /\b(?:first|previous|earlier|original|other|former|latter|second|third|last|that)\s+(?:todo|task|one|item)\b|\b(?:todo|task|item)\s+(?:from|in)\s+(?:step|item)\s+\d+\b/iu.test(
+        source,
+      );
+    if (
+      otherTitle &&
+      normalizeKeywordMatchText(otherTitle) !== selectedTitle &&
+      !namesSelectedTitle(source) &&
+      !crossTodoReference
+    )
+      return false;
+    // A second directive with a pronoun or the selected title may correct the
+    // Todo even when its sentence also mentions a different resource.
+    const correction = source.match(
+      /\b(?:but|actually|instead|rather|however|then|and)\b([\s\S]*)/iu,
+    );
+    if (
+      correction &&
+      (/\b(?:it|its|this|that|todo|task)\b/iu.test(correction[1]) ||
+        namesSelectedTitle(correction[1]))
+    )
+      return true;
+    const explicitCalendarOperation =
+      /\b(?:create|add|read|list|update|change|move|reschedule|verify|check|open)\b[\s\S]*\b(?:calendar|event)\b/iu.test(
+        source,
+      );
+    if (
+      explicitCalendarOperation &&
+      !/\b(?:todo|task)\b/iu.test(source) &&
+      !namesSelectedTitle(source)
+    )
+      return false;
+    return true;
+  });
+  return result(
+    authorityClauses.map((clause) => clause.source).join("\n"),
+    true,
+  );
+}
+
 const PROMPT_EXAMPLES = LOCALE_POLICIES.map(
   (policy) => `${policy.label}: ${policy.promptExample}`,
 ).join("; ");
@@ -430,5 +540,6 @@ export const UNDATED_TODO_EXTRACTION_GUIDANCE = [
   `    Explicit examples by locale: ${PROMPT_EXAMPLES}.`,
   "    Interpret corrections in order: the last explicit no-date or negated no-date directive wins.",
   "    After the final no-date directive, any non-negated date, weekday, time, recurrence, or relative offset means the Todo is scheduled. A merely omitted date is not unscheduled.",
+  "    In a numbered workflow, bind each directive to its named Todo; timing explicitly assigned to a separate calendar event or a different named Todo does not schedule this Todo. Later corrections to this Todo still win.",
   "    Temporal words in the Todo title are not a schedule (for example, a title named Tomorrow followed by an explicit no-date request).",
 ].join("\n");

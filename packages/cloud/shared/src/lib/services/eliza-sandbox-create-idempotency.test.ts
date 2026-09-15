@@ -8,8 +8,10 @@
  * mint distinct agents.
  *
  * `dbWrite` is a Proxy spyOn can't intercept, so this file mock.modules the
- * helpers with a chainable tx builder that captures the generated SQL — exactly
- * the boundary the real transaction sits behind. Everything else is real.
+ * helpers with a controlled transaction and primary policy-read boundary.
+ * Resource validation, reuse, quota counting and insertion remain real service
+ * logic. Real SQL quota and tenant behavior are covered by the migrated
+ * eliza-sandbox-coding-container-quota suite; this trace checks lock ordering.
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
@@ -19,8 +21,13 @@ import { PgDialect } from "drizzle-orm/pg-core";
 import * as realHelpersNs from "../../db/helpers";
 import type { AgentSandbox, NewAgentSandbox } from "../../db/repositories/agent-sandboxes";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
+import * as quotaActual from "./organization-quota-policy";
 
 // ---- captured tx state, reconfigured per test ----
+let sandboxLimit: bigint | null = 5n;
+let nonEagerLimit = 2n;
+let admissionTrace: string[] = [];
+const quotaSnapshot = { ...quotaActual };
 let existingRows: AgentSandbox[] = [];
 let insertedRows: NewAgentSandbox[] = [];
 let capturedSelectWhere: SQL | undefined;
@@ -38,22 +45,19 @@ let lockKeys: string[] = [];
 
 const txExecute = mock(async (sql: SQL) => {
   executeCalls += 1;
-  try {
-    const { sql: text, params } = new PgDialect().sqlToQuery(sql);
-    if (text.includes("pg_advisory_xact_lock")) {
-      lockKeys.push(String(params[1] ?? ""));
-    } else if (text.includes("set_config")) {
-      deadlineParams.push(params.map(String));
-    }
-  } catch {
-    // non-advisory-lock execute (none today) — ignore for ordering capture
+  const { sql: text, params } = new PgDialect().sqlToQuery(sql);
+  if (text.includes("pg_advisory_xact_lock")) {
+    lockKeys.push(String(params[1] ?? ""));
+    admissionTrace.push(`lock:${String(params[1])}`);
+  } else if (text.includes("set_config")) {
+    deadlineParams.push(params.map(String));
   }
   return { rows: [] };
 });
 
 // reuse guard:  select().from().where(clause).orderBy().for("update").limit() -> existingRows
 // cap count:    select({count}).from().where(clause) [awaited]               -> countRows
-const txSelect = mock(() => {
+const txSelect = mock((fields?: { id?: unknown; count?: unknown }) => {
   const chain = {
     from: () => chain,
     where: (clause: SQL) => {
@@ -64,13 +68,17 @@ const txSelect = mock(() => {
     for: () => chain,
     limit: () => existingRows,
     // biome-ignore lint/suspicious/noThenProperty: Drizzle's count chain is awaited at `.where()`, so this mock must be thenable.
-    then: (resolve: (rows: Array<{ count: number }>) => unknown) => resolve(countRows),
+    then: (resolve: (rows: Array<{ count: number } | { id: string }>) => unknown) => {
+      admissionTrace.push(fields?.id ? "organization-lock" : "count");
+      return resolve(fields?.id ? [{ id: ORG_A }] : countRows);
+    },
   } as Record<string, unknown>;
   return chain;
 });
 
 // tx.insert().values(data).returning() -> [the row that would be created]
 const txInsertValues = mock((data: NewAgentSandbox) => {
+  admissionTrace.push("insert");
   insertedRows.push(data);
   const created: AgentSandbox = {
     ...baseRow(),
@@ -97,6 +105,56 @@ const realHelpersSnapshot = { ...realHelpersNs };
 // shared helpers/client bindings under every OTHER suite in a multi-file run
 // (the changed-files coverage lane co-runs suites in one process).
 beforeAll(() => {
+  mock.module("./organization-quota-policy", () => ({
+    ...quotaSnapshot,
+    readOrganizationQuotaPolicyInTransaction: async (
+      transaction: unknown,
+      organizationId: string,
+    ): Promise<quotaActual.OrganizationQuotaPolicy> => {
+      if (transaction !== tx || organizationId !== ORG_A)
+        throw new Error("Unexpected quota transaction or tenant");
+      admissionTrace.push("policy-read");
+      const unavailable = { status: "unavailable" as const, code: "RESOURCE_POLICY_UNAVAILABLE" };
+      return {
+        authority: {
+          generation: "1",
+          source: "legacy",
+          sourceSubscriptionId: null,
+          sourceRevision: null,
+          projectionRevision: null,
+          catalogVersion: null,
+          effectiveFrom: "2026-01-01T00:00:00.000Z",
+          effectiveUntil: null,
+        },
+        tier: { status: "unavailable", code: "UNUSED_TIER_BOUNDARY" },
+        subscriptionFunded: false,
+        tierSourceCreditTotal: "0",
+        observedAt: "2026-06-24T00:00:00.000Z",
+        balance: { status: "available", value: { balanceUsd: 0, revision: "1" } },
+        overrides: {
+          completionsRpm: null,
+          embeddingsRpm: null,
+          standardRpm: null,
+          strictRpm: null,
+        },
+        limits: {
+          characters: unavailable,
+          containers: unavailable,
+          apps: unavailable,
+          storage: unavailable,
+          sandboxes:
+            sandboxLimit === null
+              ? unavailable
+              : { status: "available", limit: sandboxLimit, source: "legacy-sandbox-policy" },
+          nonEagerSandboxes: {
+            status: "available",
+            limit: nonEagerLimit,
+            source: "default_free_tier",
+          },
+        },
+      };
+    },
+  }));
   mock.module("../../db/helpers", () => ({
     db: dbWriteMock,
     dbRead: { select: () => ({}), query: {} },
@@ -118,6 +176,7 @@ beforeAll(() => {
 // the same process — a leaked module mock patches itself into later suites'
 // imports.
 afterAll(() => {
+  mock.module("./organization-quota-policy", () => quotaSnapshot);
   mock.module("../../db/helpers", () => realHelpersSnapshot);
 });
 
@@ -173,6 +232,9 @@ function baseRow(): AgentSandbox {
 }
 
 function resetTx(): void {
+  sandboxLimit = 5n;
+  nonEagerLimit = 2n;
+  admissionTrace = [];
   existingRows = [];
   insertedRows = [];
   capturedSelectWhere = undefined;
@@ -358,21 +420,14 @@ describe("ElizaSandboxService.createAgent — forceCreate per-org quota (#11023)
 
     expect(res.idempotent).toBe(false);
     expect(insertedRows.length).toBe(1);
-    // The count + insert ran inside the transaction that first took the org
-    // advisory lock — so the check and the write are atomic (no TOCTOU).
     expect(transaction).toHaveBeenCalledTimes(1);
-    expect(executeCalls).toBe(2);
-    expect(deadlineParams).toEqual([["10000ms", "30000ms"]]);
-    // The count scoped to this org AND to the quota-counted statuses. The
-    // filter uses inArray → the status values are query PARAMS, not inline
-    // literals; and the quota count is intentionally BROADER than the reuse
-    // guard (it counts every resource-holding non-terminal status).
-    expect(capturedSelectWhere).toBeDefined();
-    const { sql, params } = new PgDialect().sqlToQuery(capturedSelectWhere as SQL);
-    expect(sql).toContain("organization_id");
-    for (const status of ["pending", "provisioning", "running", "stopped", "sleeping"]) {
-      expect(params).toContain(status);
-    }
+    expect(admissionTrace).toEqual([
+      "lock:agent-create",
+      "organization-lock",
+      "policy-read",
+      "count",
+      "insert",
+    ]);
   });
 
   test("a fresh create AT the cap is refused with AgentQuotaExceededError and NO insert (fleet-DoS closed)", async () => {
@@ -395,8 +450,12 @@ describe("ElizaSandboxService.createAgent — forceCreate per-org quota (#11023)
       }),
     ).rejects.toBeInstanceOf(AgentQuotaExceededError);
 
-    // The lock was taken (so the count was authoritative) but NO row was inserted.
-    expect(executeCalls).toBe(2);
+    expect(admissionTrace).toEqual([
+      "lock:agent-create",
+      "organization-lock",
+      "policy-read",
+      "count",
+    ]);
     expect(deadlineParams).toEqual([["10000ms", "30000ms"]]);
     expect(insertedRows.length).toBe(0);
   });
@@ -456,15 +515,14 @@ describe("ElizaSandboxService.createCodingContainerAgent — same per-org quota 
     // strict org→image order keeps this path deadlock-free vs createAgent.
     expect(lockKeys).toEqual(["agent-create", "coding-container:ghcr.io/elizaos/tool:v1"]);
     expect(deadlineParams).toEqual([["10000ms", "30000ms"]]);
-    // The quota count scoped to the org + quota-counted statuses ran under the
-    // lock. inArray parameterizes the status values (params, not inline SQL),
-    // and the count is intentionally BROADER than the reuse guard.
-    expect(capturedSelectWhere).toBeDefined();
-    const { sql, params } = new PgDialect().sqlToQuery(capturedSelectWhere as SQL);
-    expect(sql).toContain("organization_id");
-    for (const status of ["pending", "provisioning", "running", "stopped", "sleeping"]) {
-      expect(params).toContain(status);
-    }
+    expect(admissionTrace).toEqual([
+      "lock:agent-create",
+      "lock:coding-container:ghcr.io/elizaos/tool:v1",
+      "organization-lock",
+      "policy-read",
+      "count",
+      "insert",
+    ]);
   });
 
   test("a distinct-image create AT the cap is refused with AgentQuotaExceededError and NO insert", async () => {
@@ -643,5 +701,78 @@ describe("assertOrgAgentQuota — boundary at the cap (#15943)", () => {
     });
     expect(res.idempotent).toBe(false);
     expect(insertedRows.length).toBe(1);
+  });
+});
+
+describe("current primary sandbox policy at creation", () => {
+  test("a stale caller ceiling cannot admit above the current primary ceiling", async () => {
+    const { ElizaSandboxService, AgentQuotaExceededError } = await import(
+      "./eliza-sandbox.ts?actual"
+    );
+    sandboxLimit = 1n;
+    countRows = [{ count: 1 }];
+    await expect(
+      new ElizaSandboxService().createAgent({
+        organizationId: ORG_A,
+        userId: USER,
+        agentName: "stale-cap",
+        executionTier: "custom",
+        dockerImage: "ghcr.io/elizaos/agent:latest",
+        maxNonTerminalAgents: 999,
+      }),
+    ).rejects.toBeInstanceOf(AgentQuotaExceededError);
+    expect(admissionTrace).toEqual([
+      "lock:agent-create",
+      "organization-lock",
+      "policy-read",
+      "count",
+    ]);
+    expect(insertedRows).toEqual([]);
+  });
+
+  test("unavailable primary limits reject before counting or inserting", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    sandboxLimit = null;
+    await expect(
+      new ElizaSandboxService().createCodingContainerAgent({
+        organizationId: ORG_A,
+        userId: USER,
+        agentName: "unavailable",
+        executionTier: "custom",
+        dockerImage: "ghcr.io/elizaos/tool:v1",
+        maxNonTerminalAgents: 999,
+      }),
+    ).rejects.toMatchObject({ code: "RESOURCE_POLICY_UNAVAILABLE" });
+    expect(admissionTrace).toEqual([
+      "lock:agent-create",
+      "lock:coding-container:ghcr.io/elizaos/tool:v1",
+      "organization-lock",
+      "policy-read",
+    ]);
+    expect(insertedRows).toEqual([]);
+  });
+
+  test("non-eager creation consumes its own limit while eager capacity remains available", async () => {
+    const { ElizaSandboxService, AgentQuotaExceededError } = await import(
+      "./eliza-sandbox.ts?actual"
+    );
+    countRows = [{ count: 2 }];
+    const service = new ElizaSandboxService();
+    const input = {
+      organizationId: ORG_A,
+      userId: USER,
+      agentName: "mode",
+      executionTier: "custom" as const,
+      dockerImage: "ghcr.io/elizaos/agent:latest",
+      maxNonTerminalAgents: 999,
+    };
+    await expect(service.createAgent({ ...input, quotaMode: "non-eager" })).rejects.toBeInstanceOf(
+      AgentQuotaExceededError,
+    );
+    expect(insertedRows).toEqual([]);
+    const result = await service.createAgent({ ...input, quotaMode: "eager" });
+    expect(result.idempotent).toBe(false);
+    expect(insertedRows).toHaveLength(1);
+    expect(result.agent.id).toBe("created-1");
   });
 });

@@ -152,11 +152,8 @@
     "packages/homepage/public/brand/people/demo-samira.webp",
     "packages/homepage/public/brand/people/demo-tasha.webp",
     "packages/homepage/public/brand/people/demo-theo.webp",
-    "packages/homepage/public/eliza-app-profile-image.png",
     "packages/homepage/public/eliza-app-profile-image.webp",
     "packages/homepage/public/eliza-logo.webp",
-    "packages/homepage/public/elizapfp.png",
-    "packages/homepage/public/elizapfp.webp",
     "packages/homepage/public/elizawallpaper.webp",
     "packages/homepage/public/favicon-16x16.png",
     "packages/homepage/public/favicon-180x180.png",
@@ -167,7 +164,6 @@
     "packages/homepage/public/grain.webp",
     "packages/homepage/public/install.ps1",
     "packages/homepage/public/install.sh",
-    "packages/homepage/public/models/iphone.glb",
     "packages/homepage/public/site.webmanifest",
     "packages/homepage/public/tbg.webp"
   ]

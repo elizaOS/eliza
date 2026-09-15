@@ -90,6 +90,7 @@ export const nodeExternals = [
   "agentkeepalive",
   "uuid",
   "@elizaos/core",
+  "@elizaos/shared",
   "@electric-sql/pglite",
   "zod",
   "fs",
@@ -151,6 +152,7 @@ export async function buildPluginSql(
     minify: false,
     external: [
       "@elizaos/core",
+      "@elizaos/shared",
       "@electric-sql/pglite",
       "@electric-sql/pglite/vector",
       "@electric-sql/pglite/contrib/fuzzystrmatch",

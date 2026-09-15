@@ -13,12 +13,16 @@ import type {
   RuntimeDurableObjectStub,
 } from "../../types/cloud-worker-env";
 import { getCloudAwareEnv, getCloudBinding } from "../runtime/cloud-bindings";
+import type { InferenceAuthRejectionReason } from "./inference-auth-cache";
 
 const GATE_BINDING = "INFERENCE_ADMISSION_GATES";
 const GATE_ORIGIN = "https://inference-admission.internal";
-const OPERATION_TIMEOUT_MS = 1_500;
+const CREDENTIAL_CHECK_TIMEOUT_MS = 1_500;
+// Lifecycle writes need time to reach the object and confirm durable
+// state; request-time credential checks retain their shorter failure budget.
+const LIFECYCLE_MUTATION_TIMEOUT_MS = 10_000;
 
-type CredentialCheck =
+export type InferenceCredentialCheck =
   | { kind: "api_key"; credentialId: string; userId: string }
   | { kind: "steward_session"; userId: string; stewardUserId: string; issuedAt: number };
 
@@ -54,11 +58,56 @@ export class InferenceCredentialRevokedError extends ElizaError {
   }
 }
 
+/** Map the strong-boundary reason onto the bounded public standing taxonomy. */
+export function inferenceCredentialRevocationReason(reason: string): InferenceAuthRejectionReason {
+  switch (reason) {
+    case "organization_disabled":
+      return "organization_inactive";
+    case "subject_account_disabled":
+      return "account_inactive";
+    case "subject_membership_disabled":
+      return "membership_missing";
+    case "subject_moderation_disabled":
+      return "moderation_blocked";
+    case "credential_revoked":
+    case "session_revoked":
+    case "session_binding_revoked":
+      return "credential_inactive";
+    default:
+      return "credential_invalid";
+  }
+}
+
 /** The revocation boundary is independently default-off for staged rollout. */
 export function isInferenceStrongRevocationEnabled(
   env: Record<string, unknown> = getCloudAwareEnv(),
 ): boolean {
   return env.INFERENCE_STRONG_REVOCATION_ENABLED === "true";
+}
+
+/** Only fixed type labels and native boolean flags may enter the indexed log message. */
+function describeBoundaryCause(error: unknown): string {
+  const causeType =
+    error instanceof TypeError
+      ? "TypeError"
+      : error instanceof DOMException && error.name === "AbortError"
+        ? "AbortError"
+        : error instanceof DOMException && error.name === "TimeoutError"
+          ? "TimeoutError"
+          : error instanceof Error
+            ? "Error"
+            : "unclassified";
+  const parts = [`causeType=${causeType}`];
+  if (error instanceof Error) {
+    for (const flag of ["retryable", "overloaded", "remote"]) {
+      // Inspect data properties so an exception's custom getters cannot break diagnostics.
+      const descriptor = Object.getOwnPropertyDescriptor(error, flag);
+      if (descriptor && typeof descriptor.value === "boolean") {
+        parts.push(`${flag}=${descriptor.value}`);
+      }
+    }
+  }
+  return parts.join(" ");
 }
 
 function gateStub(organizationId: string): RuntimeDurableObjectStub {
@@ -68,20 +117,33 @@ function gateStub(organizationId: string): RuntimeDurableObjectStub {
       "Inference revocation Durable Object binding is missing",
     );
   }
-  return namespace.getByName(organizationId);
+  try {
+    return namespace.getByName(organizationId);
+  } catch (error) {
+    // error-policy:J2 preserve lookup failures separately from requests to the object.
+    throw new InferenceCredentialRevocationUnavailableError(
+      `Inference revocation Durable Object lookup failed ${describeBoundaryCause(error)}`,
+      { cause: error },
+    );
+  }
 }
 
 async function gateRequest(
   organizationId: string,
   path: string,
   body: Record<string, unknown>,
-  allowExplicitDenial = false,
+  operation: "check" | "mutation",
 ): Promise<RevocationResponse> {
+  const stub = gateStub(organizationId);
+  const allowExplicitDenial = operation === "check";
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), OPERATION_TIMEOUT_MS);
+  const timeout = setTimeout(
+    () => controller.abort(),
+    operation === "check" ? CREDENTIAL_CHECK_TIMEOUT_MS : LIFECYCLE_MUTATION_TIMEOUT_MS,
+  );
   let response: Response;
   try {
-    response = await gateStub(organizationId).fetch(
+    response = await stub.fetch(
       new Request(`${GATE_ORIGIN}${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -92,7 +154,7 @@ async function gateRequest(
   } catch (error) {
     // error-policy:J2 transport failure must stay fail-closed with its cause.
     throw new InferenceCredentialRevocationUnavailableError(
-      "Inference revocation boundary is unavailable",
+      `Inference revocation boundary is unavailable deadlineExceeded=${controller.signal.aborted} ${describeBoundaryCause(error)}`,
       { cause: error },
     );
   } finally {
@@ -131,10 +193,10 @@ async function gateRequest(
 /** Fail closed unless the strong boundary confirms this credential is active. */
 export async function assertInferenceCredentialActive(
   organizationId: string,
-  credential: CredentialCheck,
+  credential: InferenceCredentialCheck,
 ): Promise<void> {
   if (!isInferenceStrongRevocationEnabled()) return;
-  const result = await gateRequest(organizationId, "/credential/check", credential, true);
+  const result = await gateRequest(organizationId, "/credential/check", credential, "check");
   if (result.allowed !== true) {
     throw new InferenceCredentialRevokedError(result.reason ?? "revoked");
   }
@@ -146,7 +208,7 @@ async function commitMutation(
   body: Record<string, unknown>,
 ): Promise<void> {
   if (!isInferenceStrongRevocationEnabled()) return;
-  const result = await gateRequest(organizationId, path, body);
+  const result = await gateRequest(organizationId, path, body, "mutation");
   if (result.committed !== true) {
     throw new InferenceCredentialRevocationUnavailableError(
       "Inference revocation boundary did not confirm the mutation",

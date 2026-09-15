@@ -1523,11 +1523,11 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeKokoroSampleRate(JNIEnv*, jclass,
 }
 
 JNIEXPORT jfloatArray JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeKokoroSynthesize(JNIEnv* env, jclass,
+Java_ai_elizaos_app_ElizaVoiceNative_nativeKokoroSynthesizeIpa(JNIEnv* env, jclass,
                                                             jlong ctxHandle,
                                                             jstring jGguf,
                                                             jstring jVoiceBin,
-                                                            jstring jText,
+                                                            jstring jIpa,
                                                             jfloat speed) {
     auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
     if (!ctx) {
@@ -1536,7 +1536,12 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeKokoroSynthesize(JNIEnv* env, jclass,
     }
     const std::string gguf = from_jstring(env, jGguf);
     const std::string voiceBin = from_jstring(env, jVoiceBin);
-    const std::string text = from_jstring(env, jText);
+    // Native input is capped at 510 tokens including two padding tokens.
+    if (!jIpa || env->GetStringLength(jIpa) == 0 || env->GetStringLength(jIpa) > 508) {
+        throw_runtime(env, "kokoroSynthesizeIpa: expected 1..508 IPA symbols", nullptr);
+        return nullptr;
+    }
+    const std::string ipa = from_jstring(env, jIpa);
     char* err = nullptr;
     // style_dim 256 for Kokoro v1.0. Reloads only when the model/voice changed
     // (the FFI caches the resident model + voice preset).
@@ -1544,20 +1549,25 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeKokoroSynthesize(JNIEnv* env, jclass,
         throw_runtime(env, "kokoro_load failed", err);
         return nullptr;
     }
-    // Cap at 30 s @ 24 kHz — far longer than any single reply phrase.
-    const size_t cap = 24000u * 30u;
-    std::vector<float> pcm(cap);
+    float* pcm = nullptr;
+    size_t samples = 0;
     err = nullptr;
-    int n = eliza_inference_kokoro_synthesize(
-        ctx, text.c_str(), text.size(), speed, pcm.data(), cap, &err);
-    if (n < 0) {
-        throw_runtime(env, "kokoro_synthesize failed", err);
+    const int rc = eliza_inference_kokoro_synthesize_ipa_alloc(
+        ctx, ipa.c_str(), ipa.size(), speed, &pcm, &samples, &err);
+    if (rc != 0) {
+        throw_runtime(env, "kokoro_synthesize_ipa failed", err);
         return nullptr;
     }
+    if (!pcm || samples == 0 || samples > static_cast<size_t>(INT32_MAX)) {
+        eliza_inference_free_pcm(pcm);
+        throw_runtime(env, "kokoro_synthesize_ipa returned invalid sample count", nullptr);
+        return nullptr;
+    }
+    const jsize n = static_cast<jsize>(samples);
     jfloatArray out = env->NewFloatArray(n);
-    if (!out) return nullptr;
-    env->SetFloatArrayRegion(out, 0, n, pcm.data());
-    LOGI("nativeKokoroSynthesize: %zu chars -> %d samples", text.size(), n);
+    if (out) env->SetFloatArrayRegion(out, 0, n, pcm);
+    eliza_inference_free_pcm(pcm);
+    LOGI("nativeKokoroSynthesizeIpa: %zu IPA bytes -> %d samples", ipa.size(), n);
     return out;
 }
 

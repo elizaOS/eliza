@@ -1,6 +1,6 @@
 // Defines the org storage quota Drizzle table shape used by cloud repositories and services.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import { bigint, index, pgTable, timestamp, uuid } from "drizzle-orm/pg-core";
+import { bigint, boolean, index, pgTable, timestamp, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 
 /**
@@ -21,6 +21,7 @@ export const orgStorageQuota = pgTable(
       .primaryKey()
       .references(() => organizations.id, { onDelete: "cascade" }),
 
+    limit_override_authorized: boolean("limit_override_authorized").notNull().default(false),
     bytes_used: bigint("bytes_used", { mode: "bigint" }).notNull().default(0n),
 
     bytes_limit: bigint("bytes_limit", { mode: "bigint" })

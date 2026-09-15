@@ -16,11 +16,11 @@
 import { createHash, randomBytes } from "node:crypto";
 import {
   type ConnectorAccount,
+  type ConnectorAccountCredentialRefRecord,
   type ConnectorAccountManager,
   type ConnectorAccountPatch,
   type ConnectorAccountProvider,
   type ConnectorAccountPurpose,
-  type ConnectorAccountRole,
   type ConnectorOAuthCallbackRequest,
   type ConnectorOAuthCallbackResult,
   type ConnectorOAuthStartRequest,
@@ -28,9 +28,15 @@ import {
   ElizaError,
   type IAgentRuntime,
   logger,
+  type UUID,
 } from "@elizaos/core";
+import { OAuth2Client } from "google-auth-library";
 import { GOOGLE_OAUTH_PROVIDER_METADATA } from "./auth.js";
-import { persistConnectorCredentialRefs } from "./connector-credential-refs.js";
+import {
+  CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES,
+  CONNECTOR_VAULT_SERVICE_TYPES,
+  persistConnectorCredentialRefs,
+} from "./connector-credential-refs.js";
 import { createGmailMessageConnector } from "./gmail-message-connector.js";
 import { resolveGoogleConnectorOAuthCallbackUrl } from "./google-oauth-callback.js";
 import {
@@ -44,6 +50,8 @@ import {
 import { GOOGLE_SERVICE_NAME } from "./types.js";
 
 const GOOGLE_USERINFO_ENDPOINT = "https://openidconnect.googleapis.com/v1/userinfo";
+const GOOGLE_OAUTH_REVOKED_AT_METADATA_KEY = "oauthRevokedAt";
+type GoogleConnectorRole = "OWNER" | "AGENT" | "TEAM";
 
 /** Maximum time allowed for one Google OAuth or userinfo request. */
 export const GOOGLE_OAUTH_FETCH_TIMEOUT_MS = 15_000;
@@ -67,6 +75,7 @@ interface GoogleTokenResponse {
 
 interface GoogleIdentity {
   sub?: string;
+  nonce?: string;
   email?: string;
   email_verified?: boolean;
   name?: string;
@@ -74,6 +83,10 @@ interface GoogleIdentity {
   family_name?: string;
   picture?: string;
   locale?: string;
+}
+
+interface GoogleIdTokenVerifier {
+  verifyIdToken(options: { idToken: string; audience: string }): Promise<{ getPayload(): unknown }>;
 }
 
 interface GoogleCalendarWatchRevocationService {
@@ -95,6 +108,21 @@ function createCodeVerifier(): string {
   return randomBytes(64).toString("base64url");
 }
 
+function createOidcNonce(): string {
+  return randomBytes(32).toString("base64url");
+}
+
+/**
+ * Derives the durable connector-account key for a newly authorized Google
+ * identity. The provider subject is stable across email/name changes, while
+ * the role keeps an owner grant distinct from an intentionally separate agent
+ * grant for the same Google account.
+ */
+export function stableGoogleConnectorAccountId(subject: string, role: GoogleConnectorRole): string {
+  const digest = createHash("sha256").update(`${role}\u0000${subject}`).digest("hex").slice(0, 32);
+  return `acct_google_${digest}`;
+}
+
 function createCodeChallenge(codeVerifier: string): string {
   return createHash("sha256").update(codeVerifier).digest("base64url");
 }
@@ -107,6 +135,391 @@ function nonEmptyString(value: unknown): string | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+interface ResolvedCredentialSecret {
+  secret: string;
+  remove(): Promise<void>;
+}
+
+type OAuthCredentialRefSnapshot = ConnectorAccountCredentialRefRecord;
+
+function credentialAdapter(runtime: IAgentRuntime) {
+  return runtime.adapter as typeof runtime.adapter & {
+    deleteConnectorAccountCredentialRefs(params: { accountId: UUID }): Promise<number>;
+  };
+}
+
+async function restoreCredentialRefs(
+  runtime: IAgentRuntime,
+  accountId: string,
+  refs: OAuthCredentialRefSnapshot[]
+): Promise<void> {
+  await credentialAdapter(runtime).deleteConnectorAccountCredentialRefs({
+    accountId: accountId as UUID,
+  });
+  for (const ref of refs) {
+    await runtime.adapter.setConnectorAccountCredentialRef({
+      accountId: accountId as UUID,
+      credentialType: ref.credentialType,
+      vaultRef: ref.vaultRef,
+      ...(ref.metadata ? { metadata: ref.metadata } : {}),
+      ...(ref.expiresAt != null ? { expiresAt: ref.expiresAt } : {}),
+      ...(ref.lastVerifiedAt != null ? { lastVerifiedAt: ref.lastVerifiedAt } : {}),
+    });
+  }
+}
+
+async function removeCredentialIfPresent(runtime: IAgentRuntime, vaultRef: string): Promise<void> {
+  try {
+    const stored = await resolveCredentialSecret(runtime, vaultRef);
+    await stored.remove();
+  } catch (error) {
+    // error-policy:J4 A failed OAuth commit may not have reached the vault;
+    // absence is the expected rollback state, while every other cleanup error
+    // remains fatal to compensation.
+    if (error instanceof ElizaError && error.code === "GOOGLE_OAUTH_CREDENTIAL_NOT_FOUND") return;
+    throw error;
+  }
+}
+
+async function clearGoogleAccountCredentials(
+  runtime: IAgentRuntime,
+  account: ConnectorAccount
+): Promise<void> {
+  const refs = await runtime.adapter.listConnectorAccountCredentialRefs({
+    accountId: account.id as UUID,
+  });
+  const failures: unknown[] = [];
+  for (const ref of refs) {
+    try {
+      await removeCredentialIfPresent(runtime, ref.vaultRef);
+    } catch (error) {
+      // error-policy:J2 A shared-grant revocation invalidates every sibling;
+      // retain each local cleanup failure while continuing the bounded sweep.
+      failures.push(error);
+    }
+  }
+  if (failures.length > 0) {
+    throw new AggregateError(failures, `Google vault cleanup failed for ${account.id}`);
+  }
+  try {
+    const deleted = await credentialAdapter(runtime).deleteConnectorAccountCredentialRefs({
+      accountId: account.id as UUID,
+    });
+    if (deleted !== refs.length) {
+      failures.push(
+        new Error(
+          `Deleted ${deleted} of ${refs.length} Google connector credential refs for ${account.id}`
+        )
+      );
+    }
+  } catch (error) {
+    // error-policy:J2 Durable-ref cleanup is part of the same shared-grant
+    // invalidation and must remain visible with any vault cleanup failures.
+    failures.push(error);
+  }
+  if (failures.length > 0) {
+    throw new AggregateError(failures, `Google credential cleanup failed for ${account.id}`);
+  }
+}
+
+async function degradeGoogleAccountsAfterRevocation(args: {
+  runtime: IAgentRuntime;
+  manager: ConnectorAccountManager;
+  externalId?: string;
+  reason: string;
+}): Promise<void> {
+  const accounts = (await args.manager.listAccounts(GOOGLE_SERVICE_NAME)).filter(
+    (account) => !args.externalId || nonEmptyString(account.externalId) === args.externalId
+  );
+  const failures: unknown[] = [];
+  const revokedAt = new Date().toISOString();
+  const calendarService = args.runtime.getService("calendar");
+  for (const account of accounts) {
+    if (isGoogleCalendarWatchRevocationService(calendarService)) {
+      try {
+        await calendarService.revokeGoogleCalendarWatchesByAccount(account.id);
+      } catch (error) {
+        // error-policy:J2 A project-wide Google revocation invalidates every
+        // sibling role; retain watch cleanup failures while degrading all rows.
+        failures.push(error);
+      }
+    }
+    const metadata = isRecord(account.metadata) ? { ...account.metadata } : {};
+    delete metadata.credentialRefs;
+    delete metadata.oauthCredentialRefs;
+    try {
+      await args.manager.getStorage().upsertAccount({
+        ...account,
+        status: "error",
+        metadata: {
+          ...metadata,
+          [GOOGLE_OAUTH_REVOKED_AT_METADATA_KEY]: revokedAt,
+          oauthUnavailableReason: args.reason,
+        },
+        updatedAt: Date.now(),
+      });
+    } catch (error) {
+      // error-policy:J2 Row degradation and credential cleanup are independent
+      // fail-closed obligations; preserve a failed row write and continue.
+      failures.push(error);
+    }
+    try {
+      await clearGoogleAccountCredentials(args.runtime, account);
+    } catch (error) {
+      // error-policy:J2 Continue the sibling sweep and report every incomplete
+      // cleanup on one terminal error.
+      failures.push(error);
+    }
+  }
+  if (failures.length > 0) {
+    throw new AggregateError(failures, "Google shared-grant sibling degradation was incomplete");
+  }
+}
+
+async function compensateOAuthCompletion(args: {
+  runtime: IAgentRuntime;
+  manager: ConnectorAccountManager;
+  tokens: GoogleTokenResponse;
+  originalError: unknown;
+  existingAccount: ConnectorAccount | null;
+  priorCredentialRefs: OAuthCredentialRefSnapshot[];
+  externalId?: string;
+  pendingAccountId?: string;
+  attemptedVaultRef?: string;
+}): Promise<never> {
+  const compensationErrors: unknown[] = [];
+  const revocationToken = nonEmptyString(args.tokens.refresh_token) ?? args.tokens.access_token;
+  let revocationAttempted = false;
+  let grantRevoked = false;
+  try {
+    revocationAttempted = true;
+    await revokeGoogleOAuthGrantWithFetch(revocationToken);
+    grantRevoked = true;
+  } catch (error) {
+    // error-policy:J2 Retain remote compensation failure alongside the
+    // original post-exchange failure so a live grant is never reported as
+    // successfully rolled back.
+    compensationErrors.push(error);
+  }
+
+  if (args.attemptedVaultRef) {
+    try {
+      await removeCredentialIfPresent(args.runtime, args.attemptedVaultRef);
+    } catch (error) {
+      // error-policy:J2 Local secret cleanup failure is accumulated with the
+      // authoritative completion failure and any remote revocation failure.
+      compensationErrors.push(error);
+    }
+  }
+
+  const rollbackAccountId = args.pendingAccountId ?? args.existingAccount?.id;
+  if (revocationAttempted) {
+    try {
+      if (args.existingAccount) {
+        await args.manager.getStorage().upsertAccount(args.existingAccount);
+      }
+      const externalId =
+        nonEmptyString(args.existingAccount?.externalId) ??
+        args.externalId ??
+        (rollbackAccountId
+          ? nonEmptyString(
+              (await args.manager.getAccount(GOOGLE_SERVICE_NAME, rollbackAccountId))?.externalId
+            )
+          : undefined);
+      // A token exchange can succeed before the ID token is authenticated. If
+      // revocation then occurs without a trusted subject, every local Google
+      // account is conservatively unavailable because any one may share the
+      // project-wide grant that Google invalidated.
+      await degradeGoogleAccountsAfterRevocation({
+        runtime: args.runtime,
+        manager: args.manager,
+        externalId,
+        reason: externalId
+          ? "reauthorization_compensation_revoked_combined_grant"
+          : "unattributed_compensation_revoked_google_grant",
+      });
+      if (rollbackAccountId && !args.existingAccount) {
+        await args.manager.getStorage().deleteAccount(GOOGLE_SERVICE_NAME, rollbackAccountId);
+      }
+    } catch (error) {
+      // error-policy:J2 Account/ref restoration failure is retained; callers
+      // must see that compensation was incomplete rather than the initial
+      // validation or writer failure alone.
+      compensationErrors.push(error);
+    }
+  } else if (rollbackAccountId) {
+    try {
+      if (args.existingAccount) {
+        await restoreCredentialRefs(args.runtime, rollbackAccountId, args.priorCredentialRefs);
+        await args.manager.getStorage().upsertAccount(args.existingAccount);
+      } else {
+        await restoreCredentialRefs(args.runtime, rollbackAccountId, []);
+        await args.manager.getStorage().deleteAccount(GOOGLE_SERVICE_NAME, rollbackAccountId);
+      }
+    } catch (error) {
+      // error-policy:J2 Account/ref restoration failure is retained; callers
+      // must see that compensation was incomplete rather than the initial
+      // validation or writer failure alone.
+      compensationErrors.push(error);
+    }
+  }
+
+  if (compensationErrors.length === 0) throw args.originalError;
+  throw new ElizaError("Google OAuth completion failed and compensation was incomplete.", {
+    code: "GOOGLE_OAUTH_COMPLETION_COMPENSATION_FAILED",
+    cause: new AggregateError(
+      [args.originalError, ...compensationErrors],
+      "Google OAuth completion and compensation failed"
+    ),
+    context: {
+      accountId: rollbackAccountId,
+      revocationAttempted,
+      grantRevoked,
+      compensationFailureCount: compensationErrors.length,
+    },
+    severity: "fatal",
+  });
+}
+
+function runtimeService(runtime: IAgentRuntime, names: readonly string[]): unknown {
+  for (const name of names) {
+    const service = runtime.getService?.(name);
+    if (service) return service;
+  }
+  return null;
+}
+
+async function resolveCredentialSecret(
+  runtime: IAgentRuntime,
+  vaultRef: string
+): Promise<ResolvedCredentialSecret> {
+  const candidates = [
+    runtimeService(runtime, CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES),
+    runtimeService(runtime, CONNECTOR_VAULT_SERVICE_TYPES),
+  ].filter((candidate, index, all) => candidate && all.indexOf(candidate) === index);
+  const errors: unknown[] = [];
+  for (const candidate of candidates) {
+    const store = candidate as {
+      get?: (
+        key: string,
+        options?: { reveal?: boolean; caller?: string }
+      ) => Promise<string | null> | string | null;
+      reveal?: (key: string, caller?: string) => Promise<string> | string;
+      has?: (key: string) => Promise<boolean> | boolean;
+      remove?: (key: string) => Promise<void> | void;
+    };
+    if (typeof store.remove !== "function") continue;
+    try {
+      if (typeof store.has === "function" && !(await store.has(vaultRef))) {
+        continue;
+      }
+      const value =
+        typeof store.reveal === "function"
+          ? await store.reveal(vaultRef, "plugin-google-workspace:disconnect")
+          : await store.get?.(vaultRef, {
+              reveal: true,
+              caller: "plugin-google-workspace:disconnect",
+            });
+      if (typeof value === "string" && value.length > 0) {
+        return {
+          secret: value,
+          remove: async () => {
+            await store.remove?.(vaultRef);
+          },
+        };
+      }
+    } catch (error) {
+      // error-policy:J2 Every candidate failure is retained and the final
+      // typed error identifies the ref without exposing credential material.
+      errors.push(error);
+    }
+  }
+  if (candidates.length > 0 && errors.length === 0) {
+    throw new ElizaError("Google connector credential was already removed.", {
+      code: "GOOGLE_OAUTH_CREDENTIAL_NOT_FOUND",
+      context: { vaultRef },
+    });
+  }
+  throw new ElizaError("Google connector credential could not be read for secure deletion.", {
+    code: "GOOGLE_OAUTH_CREDENTIAL_CLEANUP_UNAVAILABLE",
+    context: { vaultRef, candidateCount: candidates.length },
+    cause: errors[0],
+    severity: "fatal",
+  });
+}
+
+function revocationTokenFromSecret(secret: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(secret);
+  } catch (error) {
+    // error-policy:J3 Stored credential material is untrusted at this boundary;
+    // malformed data becomes a typed failure and is never treated as revoked.
+    throw new ElizaError("Google OAuth credential payload is malformed.", {
+      code: "GOOGLE_OAUTH_CREDENTIAL_MALFORMED",
+      cause: error,
+      severity: "fatal",
+    });
+  }
+  if (!isRecord(parsed)) {
+    throw new ElizaError("Google OAuth credential payload is malformed.", {
+      code: "GOOGLE_OAUTH_CREDENTIAL_MALFORMED",
+      severity: "fatal",
+    });
+  }
+  const token = nonEmptyString(parsed.refresh_token) ?? nonEmptyString(parsed.access_token);
+  if (!token) {
+    throw new ElizaError("Google OAuth credential has no revocable token.", {
+      code: "GOOGLE_OAUTH_REVOCATION_TOKEN_MISSING",
+      severity: "fatal",
+    });
+  }
+  return token;
+}
+
+export async function revokeGoogleOAuthGrantWithFetch(
+  token: string,
+  fetchImpl: typeof fetch = globalThis.fetch,
+  timeoutMs: number = GOOGLE_OAUTH_FETCH_TIMEOUT_MS
+): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetchImpl(GOOGLE_OAUTH_PROVIDER_METADATA.revokeEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ token }).toString(),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (error) {
+    // error-policy:J2 Network and timeout failures must remain distinguishable
+    // from a confirmed revocation, while preserving their original cause.
+    throw new ElizaError("Google OAuth revocation request failed.", {
+      code: "GOOGLE_OAUTH_REVOCATION_REQUEST_FAILED",
+      cause: error,
+      severity: "fatal",
+    });
+  }
+  if (!response.ok) {
+    let errorCode: string | undefined;
+    try {
+      const body: unknown = await response.json();
+      errorCode = isRecord(body) ? nonEmptyString(body.error) : undefined;
+    } catch {
+      // error-policy:J3 A malformed provider error body never becomes success.
+      errorCode = undefined;
+    }
+    // Google's documented invalid_token response means the token is expired
+    // or already revoked, so the grant no longer authorizes API access and the
+    // idempotent disconnect may safely continue local cleanup.
+    if (errorCode === "invalid_token") return;
+    throw new ElizaError(`Google OAuth revocation failed with ${response.status}.`, {
+      code: "GOOGLE_OAUTH_REVOCATION_FAILED",
+      context: { status: response.status, errorCode },
+      severity: "fatal",
+    });
+  }
 }
 
 function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
@@ -323,7 +736,7 @@ function requestedScopesFromMetadata(metadata: unknown): string[] {
   return scopes;
 }
 
-function roleFromMetadata(metadata: unknown): ConnectorAccountRole {
+function roleFromMetadata(metadata: unknown): GoogleConnectorRole {
   const record =
     metadata && typeof metadata === "object" && !Array.isArray(metadata)
       ? (metadata as Record<string, unknown>)
@@ -344,25 +757,157 @@ function roleFromMetadata(metadata: unknown): ConnectorAccountRole {
       record.requestedRole ??
       record.agentGoogleSide
   );
-  if (!raw) return "OWNER";
+  if (!raw) {
+    throw new ElizaError("Google connector account role is required.", {
+      code: "GOOGLE_CONNECTOR_ROLE_REQUIRED",
+      severity: "fatal",
+    });
+  }
   const normalized = raw.toUpperCase();
   if (normalized === "OWNER" || normalized === "AGENT" || normalized === "TEAM") {
     return normalized;
   }
-  return "OWNER";
+  throw new ElizaError("Google connector account role is invalid.", {
+    code: "GOOGLE_CONNECTOR_ROLE_INVALID",
+    context: { role: raw },
+    severity: "fatal",
+  });
 }
 
-function parseIdTokenClaims(idToken: string | undefined): GoogleIdentity {
-  if (!idToken) return {};
-  const segments = idToken.split(".");
-  if (segments.length < 2) return {};
-  try {
-    const payload = Buffer.from(segments[1] ?? "", "base64url").toString("utf-8");
-    const parsed = JSON.parse(payload) as GoogleIdentity;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
+async function resolveOAuthRoleAtStart(
+  request: ConnectorOAuthStartRequest,
+  manager: ConnectorAccountManager
+): Promise<GoogleConnectorRole> {
+  const accountId = nonEmptyString(request.accountId);
+  if (!accountId) {
+    return roleFromMetadata(request.metadata);
   }
+  const account = await manager.getAccount(GOOGLE_SERVICE_NAME, accountId);
+  if (!account) {
+    throw new ElizaError(
+      "Google OAuth cannot reauthorize a connector account that no longer exists.",
+      {
+        code: "GOOGLE_OAUTH_REAUTH_ACCOUNT_NOT_FOUND",
+        context: { accountId },
+        severity: "fatal",
+      }
+    );
+  }
+  return roleFromMetadata({ role: account.role });
+}
+
+function parseIdTokenHeader(idToken: string): Record<string, unknown> {
+  const segments = idToken.split(".");
+  if (segments.length !== 3) {
+    throw new ElizaError("Google ID token is malformed.", {
+      code: "GOOGLE_OAUTH_ID_TOKEN_INVALID",
+      severity: "fatal",
+    });
+  }
+  try {
+    const header: unknown = JSON.parse(
+      Buffer.from(segments[0] ?? "", "base64url").toString("utf-8")
+    );
+    if (!isRecord(header)) {
+      throw new Error("ID token header is not an object.");
+    }
+    return header;
+  } catch (error) {
+    // error-policy:J3 A malformed JWT header is untrusted provider input.
+    throw new ElizaError("Google ID token header is invalid.", {
+      code: "GOOGLE_OAUTH_ID_TOKEN_INVALID",
+      cause: error,
+      severity: "fatal",
+    });
+  }
+}
+
+export async function verifyGoogleIdTokenWithVerifier(
+  args: {
+    idToken: string;
+    clientId: string;
+    expectedNonce: string;
+    nowMs?: number;
+  },
+  verifier: GoogleIdTokenVerifier = new OAuth2Client() as GoogleIdTokenVerifier
+): Promise<GoogleIdentity> {
+  const header = parseIdTokenHeader(args.idToken);
+  if (header.alg !== "RS256" || !nonEmptyString(header.kid)) {
+    throw new ElizaError("Google ID token uses an unsupported signing header.", {
+      code: "GOOGLE_OAUTH_ID_TOKEN_INVALID",
+      context: {
+        algorithm: nonEmptyString(header.alg),
+        hasKeyId: Boolean(nonEmptyString(header.kid)),
+      },
+      severity: "fatal",
+    });
+  }
+
+  let payload: unknown;
+  try {
+    const ticket = await verifier.verifyIdToken({
+      idToken: args.idToken,
+      audience: args.clientId,
+    });
+    payload = ticket.getPayload();
+  } catch (error) {
+    // error-policy:J2 Preserve the signature/JWKS verifier as the typed cause.
+    throw new ElizaError("Google ID token signature verification failed.", {
+      code: "GOOGLE_OAUTH_ID_TOKEN_INVALID",
+      cause: error,
+      severity: "fatal",
+    });
+  }
+  if (!isRecord(payload)) {
+    throw new ElizaError("Google ID token payload is missing.", {
+      code: "GOOGLE_OAUTH_ID_TOKEN_INVALID",
+      severity: "fatal",
+    });
+  }
+
+  const issuer = nonEmptyString(payload.iss);
+  const audience = nonEmptyString(payload.aud);
+  const expiration = typeof payload.exp === "number" ? payload.exp : Number.NaN;
+  const issuedAt = typeof payload.iat === "number" ? payload.iat : Number.NaN;
+  const nowSeconds = Math.floor((args.nowMs ?? Date.now()) / 1000);
+  if (
+    (issuer !== "https://accounts.google.com" && issuer !== "accounts.google.com") ||
+    audience !== args.clientId ||
+    !Number.isSafeInteger(expiration) ||
+    expiration <= nowSeconds ||
+    !Number.isSafeInteger(issuedAt) ||
+    issuedAt > nowSeconds + 300
+  ) {
+    throw new ElizaError("Google ID token claims are invalid.", {
+      code: "GOOGLE_OAUTH_ID_TOKEN_INVALID",
+      context: {
+        issuer,
+        audienceMatches: audience === args.clientId,
+        hasValidExpiration: Number.isSafeInteger(expiration) && expiration > nowSeconds,
+        hasValidIssuedAt: Number.isSafeInteger(issuedAt) && issuedAt <= nowSeconds + 300,
+      },
+      severity: "fatal",
+    });
+  }
+  if (nonEmptyString(payload.nonce) !== args.expectedNonce) {
+    throw new ElizaError("Google OAuth identity nonce did not match the authorization request.", {
+      code: "GOOGLE_OAUTH_NONCE_MISMATCH",
+      severity: "fatal",
+    });
+  }
+
+  return {
+    sub: nonEmptyString(payload.sub),
+    nonce: nonEmptyString(payload.nonce),
+    email: nonEmptyString(payload.email),
+    email_verified:
+      typeof payload.email_verified === "boolean" ? payload.email_verified : undefined,
+    name: nonEmptyString(payload.name),
+    given_name: nonEmptyString(payload.given_name),
+    family_name: nonEmptyString(payload.family_name),
+    picture: nonEmptyString(payload.picture),
+    locale: nonEmptyString(payload.locale),
+  };
 }
 
 export async function fetchGoogleUserInfoWithFetch(
@@ -450,7 +995,7 @@ async function exchangeAuthorizationCode(args: {
 export function createGoogleConnectorAccountProvider(
   runtime: IAgentRuntime
 ): ConnectorAccountProvider {
-  return {
+  const provider: ConnectorAccountProvider = {
     provider: GOOGLE_SERVICE_NAME,
     label: GOOGLE_OAUTH_PROVIDER_METADATA.label,
 
@@ -467,10 +1012,13 @@ export function createGoogleConnectorAccountProvider(
       // Persistence is owned by the manager; this adapter just normalizes the
       // patch into a Google-shaped account so role/purpose/status defaults are
       // sensible when an upstream caller creates the row before OAuth runs.
+      const role = roleFromMetadata({ role: input.role });
+      const externalId = nonEmptyString(input.externalId);
       return {
         ...input,
         provider: GOOGLE_SERVICE_NAME,
-        role: input.role ?? "OWNER",
+        ...(externalId ? { accountKey: stableGoogleConnectorAccountId(externalId, role) } : {}),
+        role,
         purpose: input.purpose ?? ["messaging", "calendar", "drive", "meet"],
         accessGate: input.accessGate ?? "open",
         status: input.status ?? "pending",
@@ -480,24 +1028,205 @@ export function createGoogleConnectorAccountProvider(
     patchAccount: async (
       accountId: string,
       patch: ConnectorAccountPatch,
-      _manager: ConnectorAccountManager
+      manager: ConnectorAccountManager
     ) => {
+      const existing = await manager.getAccount(GOOGLE_SERVICE_NAME, accountId);
+      if (!existing) {
+        return { ...patch, provider: GOOGLE_SERVICE_NAME };
+      }
+
+      const existingExternalId = nonEmptyString(existing.externalId);
+      if (
+        patch.externalId !== undefined &&
+        nonEmptyString(patch.externalId) !== existingExternalId
+      ) {
+        throw new ElizaError("Google connector external identity can only be changed by OAuth.", {
+          code: "GOOGLE_CONNECTOR_EXTERNAL_ID_IMMUTABLE",
+          context: { accountId },
+          severity: "fatal",
+        });
+      }
+      const role = roleFromMetadata({ role: patch.role ?? existing.role });
+      const nextAccountKey = existingExternalId
+        ? stableGoogleConnectorAccountId(existingExternalId, role)
+        : nonEmptyString(existing.accountKey);
+      if (nextAccountKey && nextAccountKey !== existing.accountKey) {
+        const conflictingAccount = await manager.getAccount(GOOGLE_SERVICE_NAME, nextAccountKey);
+        if (conflictingAccount && conflictingAccount.id !== existing.id) {
+          throw new ElizaError("A Google connector account already owns this subject and role.", {
+            code: "GOOGLE_CONNECTOR_ROLE_ACCOUNT_CONFLICT",
+            context: { accountId, conflictingAccountId: conflictingAccount.id, role },
+            severity: "fatal",
+          });
+        }
+      }
       if (patch.status === "revoked" || patch.status === "disabled") {
         const calendarService = runtime.getService("calendar");
         if (isGoogleCalendarWatchRevocationService(calendarService)) {
           await calendarService.revokeGoogleCalendarWatchesByAccount(accountId);
         }
       }
-      return { ...patch, provider: GOOGLE_SERVICE_NAME };
+      return {
+        ...existing,
+        ...patch,
+        provider: GOOGLE_SERVICE_NAME,
+        ...(existingExternalId && nextAccountKey
+          ? {
+              accountKey: nextAccountKey,
+              externalId: existingExternalId,
+            }
+          : {}),
+        role,
+      };
     },
 
-    deleteAccount: async (accountId: string, _manager: ConnectorAccountManager): Promise<void> => {
+    deleteAccount: async (accountId: string, manager: ConnectorAccountManager): Promise<void> => {
+      const account = await manager.getAccount(GOOGLE_SERVICE_NAME, accountId);
+      if (!account) {
+        return;
+      }
+      const metadata = isRecord(account.metadata) ? account.metadata : {};
+      const alreadyRevoked = Boolean(
+        nonEmptyString(metadata[GOOGLE_OAUTH_REVOKED_AT_METADATA_KEY])
+      );
+      const refs = await runtime.adapter.listConnectorAccountCredentialRefs({
+        accountId: account.id as UUID,
+      });
+      const hasOAuthTokenRef = refs.some((ref) => ref.credentialType === "oauth.tokens");
+      const externalId = nonEmptyString(account.externalId);
+      const siblingAccounts = externalId
+        ? (await manager.listAccounts(GOOGLE_SERVICE_NAME)).filter(
+            (candidate) =>
+              candidate.id !== account.id && nonEmptyString(candidate.externalId) === externalId
+          )
+        : [];
+      const siblingRefSets = await Promise.all(
+        siblingAccounts.map(async (candidate) => ({
+          account: candidate,
+          refs: await runtime.adapter.listConnectorAccountCredentialRefs({
+            accountId: candidate.id as UUID,
+          }),
+        }))
+      );
+      const sharedGrantStillInUse = siblingRefSets.some(({ refs: siblingRefs }) =>
+        siblingRefs.some((ref) => ref.credentialType === "oauth.tokens")
+      );
+      if (!alreadyRevoked && !externalId) {
+        throw new ElizaError("Connected Google account has no stable external identity.", {
+          code: "GOOGLE_OAUTH_EXTERNAL_ID_MISSING",
+          context: { accountId },
+          severity: "fatal",
+        });
+      }
       const calendarService = runtime.getService("calendar");
       if (isGoogleCalendarWatchRevocationService(calendarService)) {
         await calendarService.revokeGoogleCalendarWatchesByAccount(accountId);
       }
-      // Credential cleanup is the credential store's responsibility; the
-      // manager removes the account row after this resolves.
+      if (!alreadyRevoked && hasOAuthTokenRef) {
+        const resolved = await Promise.all(
+          refs.map(async (ref) => ({
+            ref,
+            stored: await resolveCredentialSecret(runtime, ref.vaultRef),
+          }))
+        );
+        const oauth = resolved.find(({ ref }) => ref.credentialType === "oauth.tokens");
+        if (!oauth) {
+          throw new ElizaError("Connected Google account has no persisted OAuth token set.", {
+            code: "GOOGLE_OAUTH_CREDENTIAL_REF_MISSING",
+            context: { accountId },
+            severity: "fatal",
+          });
+        }
+        if (sharedGrantStillInUse) {
+          await clearGoogleAccountCredentials(runtime, account);
+        } else {
+          await revokeGoogleOAuthGrantWithFetch(revocationTokenFromSecret(oauth.stored.secret));
+          await degradeGoogleAccountsAfterRevocation({
+            runtime,
+            manager,
+            externalId,
+            reason: "last_role_disconnect_revoked_shared_grant",
+          });
+        }
+      } else if (account.status === "connected" && !alreadyRevoked) {
+        throw new ElizaError("Connected Google account has no persisted OAuth token set.", {
+          code: "GOOGLE_OAUTH_CREDENTIAL_REF_MISSING",
+          context: { accountId },
+          severity: "fatal",
+        });
+      } else if (refs.length > 0) {
+        for (const ref of refs) {
+          let stored: ResolvedCredentialSecret;
+          try {
+            stored = await resolveCredentialSecret(runtime, ref.vaultRef);
+          } catch (error) {
+            // error-policy:J4 An already-revoked retry may encounter a secret
+            // removed by its prior attempt; the durable ref deletion below is
+            // the authoritative local cleanup and remains mandatory.
+            if (
+              !alreadyRevoked ||
+              !(error instanceof ElizaError) ||
+              error.code !== "GOOGLE_OAUTH_CREDENTIAL_NOT_FOUND"
+            ) {
+              throw error;
+            }
+            continue;
+          }
+          await stored.remove();
+        }
+      }
+      const remainingRefs = await runtime.adapter.listConnectorAccountCredentialRefs({
+        accountId: account.id as UUID,
+      });
+      const deletedRefs = await credentialAdapter(runtime).deleteConnectorAccountCredentialRefs({
+        accountId: account.id as UUID,
+      });
+      if (deletedRefs !== remainingRefs.length) {
+        throw new ElizaError("Google connector credential refs were not deleted completely.", {
+          code: "GOOGLE_OAUTH_CREDENTIAL_REF_CLEANUP_INCOMPLETE",
+          context: { accountId, expected: remainingRefs.length, deleted: deletedRefs },
+          severity: "fatal",
+        });
+      }
+      // The manager removes the now-revoked account row only after this
+      // provider callback confirms remote and local credential cleanup.
+    },
+
+    compensateOAuthCompletion: async (_request, result, _cause, manager) => {
+      const accountId = nonEmptyString(
+        (result.account as Partial<ConnectorAccount> | undefined)?.id
+      );
+      if (!accountId) return;
+      const account = await manager.getAccount(GOOGLE_SERVICE_NAME, accountId);
+      if (!account) return;
+      const externalId = nonEmptyString(account.externalId);
+      if (!externalId) {
+        throw new ElizaError("Google OAuth compensation has no stable external identity.", {
+          code: "GOOGLE_OAUTH_EXTERNAL_ID_MISSING",
+          context: { accountId },
+          severity: "fatal",
+        });
+      }
+      const refs = await runtime.adapter.listConnectorAccountCredentialRefs({
+        accountId: account.id as UUID,
+      });
+      const oauthRef = refs.find((ref) => ref.credentialType === "oauth.tokens");
+      if (!oauthRef) {
+        throw new ElizaError("Google OAuth compensation has no persisted token set.", {
+          code: "GOOGLE_OAUTH_CREDENTIAL_REF_MISSING",
+          context: { accountId },
+          severity: "fatal",
+        });
+      }
+      const stored = await resolveCredentialSecret(runtime, oauthRef.vaultRef);
+      await revokeGoogleOAuthGrantWithFetch(revocationTokenFromSecret(stored.secret));
+      await degradeGoogleAccountsAfterRevocation({
+        runtime,
+        manager,
+        externalId,
+        reason: "account_persistence_compensation_revoked_shared_grant",
+      });
+      await manager.getStorage().deleteAccount(GOOGLE_SERVICE_NAME, accountId);
     },
 
     startOAuth: async (
@@ -509,12 +1238,16 @@ export function createGoogleConnectorAccountProvider(
       // an unreachable callback fails here instead of stranding the grant.
       const config = readClientConfig(runtime, request.servedOrigin);
       const redirectUri = config.redirectUri;
+      // Validate authorization before issuing a consent URL. A new grant must
+      // carry an explicit role; reauthorization retains only the stored role.
+      const requestedRole = await resolveOAuthRoleAtStart(request, manager);
       const capabilities = normalizeRequestedCapabilities(
         await resolveRequestedScopes(request, manager)
       );
       const oauthScopes = scopesForGoogleCapabilities(capabilities);
       const codeVerifier = createCodeVerifier();
       const codeChallenge = createCodeChallenge(codeVerifier);
+      const oidcNonce = createOidcNonce();
 
       const params = new URLSearchParams({
         client_id: config.clientId,
@@ -522,6 +1255,7 @@ export function createGoogleConnectorAccountProvider(
         response_type: "code",
         scope: oauthScopes.join(" "),
         state: request.flow.state,
+        nonce: oidcNonce,
         access_type: "offline",
         prompt: "consent",
         code_challenge: codeChallenge,
@@ -538,9 +1272,11 @@ export function createGoogleConnectorAccountProvider(
         codeVerifier,
         metadata: {
           ...request.metadata,
+          requestedRole,
           requestedCapabilities: capabilities,
           requestedScopes: oauthScopes,
           redirectUri,
+          oidcNonce,
         },
       };
     },
@@ -562,6 +1298,26 @@ export function createGoogleConnectorAccountProvider(
         ) ??
         config.redirectUri;
 
+      const requestedAccountId = nonEmptyString(request.flow.accountId);
+      let existingAccount = requestedAccountId
+        ? await manager.getAccount(GOOGLE_SERVICE_NAME, requestedAccountId)
+        : null;
+      if (requestedAccountId && !existingAccount) {
+        throw new ElizaError(
+          "Google OAuth cannot reauthorize a connector account that no longer exists.",
+          {
+            code: "GOOGLE_OAUTH_REAUTH_ACCOUNT_NOT_FOUND",
+            context: { accountId: requestedAccountId },
+            severity: "fatal",
+          }
+        );
+      }
+      let priorCredentialRefs: OAuthCredentialRefSnapshot[] = existingAccount
+        ? await runtime.adapter.listConnectorAccountCredentialRefs({
+            accountId: existingAccount.id as UUID,
+          })
+        : [];
+
       const tokens = await exchangeAuthorizationCode({
         clientId: config.clientId,
         clientSecret: config.clientSecret,
@@ -570,148 +1326,268 @@ export function createGoogleConnectorAccountProvider(
         codeVerifier: request.flow.codeVerifier,
       });
 
-      const grantedScopes = parseScopeString(tokens.scope);
-      const normalizedGrant =
-        grantedScopes.length > 0
-          ? normalizeGrantedCapabilities(grantedScopes)
-          : {
-              capabilities: normalizeRequestedCapabilities(
-                requestedScopesFromMetadata(request.flow.metadata)
-              ),
-              ignoredScopes: [],
-            };
-      const grantedCapabilities = normalizedGrant.capabilities;
-      if (normalizedGrant.ignoredScopes.length > 0) {
-        logger.warn(
-          {
-            src: "plugin:google:oauth",
-            ignoredScopes: normalizedGrant.ignoredScopes,
-          },
-          "[GoogleConnectorAccountProvider] Ignoring unmapped scopes returned by Google"
-        );
-      }
-      if (grantedCapabilities.length === 0) {
-        throw new ElizaError(
-          "Google OAuth completed without a usable Gmail, Calendar, Drive, or Meet capability.",
-          {
-            code: "GOOGLE_OAUTH_CAPABILITY_NOT_GRANTED",
-            context: {
-              grantedScopes,
+      let pendingAccountId: string | undefined;
+      let attemptedVaultRef: string | undefined;
+      let verifiedExternalId: string | undefined;
+      try {
+        const grantedScopes = parseScopeString(tokens.scope);
+        const normalizedGrant =
+          grantedScopes.length > 0
+            ? normalizeGrantedCapabilities(grantedScopes)
+            : {
+                capabilities: normalizeRequestedCapabilities(
+                  requestedScopesFromMetadata(request.flow.metadata)
+                ),
+                ignoredScopes: [],
+              };
+        const grantedCapabilities = normalizedGrant.capabilities;
+        if (normalizedGrant.ignoredScopes.length > 0) {
+          logger.warn(
+            {
+              src: "plugin:google:oauth",
               ignoredScopes: normalizedGrant.ignoredScopes,
             },
-            severity: "fatal",
-          }
+            "[GoogleConnectorAccountProvider] Ignoring unmapped scopes returned by Google"
+          );
+        }
+        if (grantedCapabilities.length === 0) {
+          throw new ElizaError(
+            "Google OAuth completed without a usable Gmail, Calendar, Drive, or Meet capability.",
+            {
+              code: "GOOGLE_OAUTH_CAPABILITY_NOT_GRANTED",
+              context: {
+                grantedScopes,
+                ignoredScopes: normalizedGrant.ignoredScopes,
+              },
+              severity: "fatal",
+            }
+          );
+        }
+        const purposes = purposesForCapabilities(grantedCapabilities);
+
+        const expectedOidcNonce = nonEmptyString(
+          (request.flow.metadata as Record<string, unknown> | undefined)?.oidcNonce
         );
-      }
-      const purposes = purposesForCapabilities(grantedCapabilities);
+        if (!expectedOidcNonce) {
+          throw new ElizaError("Google OAuth callback is missing its OpenID Connect nonce.", {
+            code: "GOOGLE_OAUTH_NONCE_MISSING",
+            severity: "fatal",
+          });
+        }
+        const idToken = nonEmptyString(tokens.id_token);
+        if (!idToken) {
+          throw new ElizaError("Google OAuth token response is missing its ID token.", {
+            code: "GOOGLE_OAUTH_ID_TOKEN_MISSING",
+            severity: "fatal",
+          });
+        }
+        const verifiedIdentity = await verifyGoogleIdTokenWithVerifier({
+          idToken,
+          clientId: config.clientId,
+          expectedNonce: expectedOidcNonce,
+        });
+        let identity = verifiedIdentity;
+        if (!nonEmptyString(identity.sub) || !nonEmptyString(identity.email)) {
+          const userInfo = await fetchGoogleUserInfo(tokens.access_token);
+          const verifiedSubject = nonEmptyString(identity.sub);
+          const userInfoSubject = nonEmptyString(userInfo.sub);
+          if (verifiedSubject && userInfoSubject && verifiedSubject !== userInfoSubject) {
+            throw new ElizaError(
+              "Google ID token and authenticated userinfo identify different accounts.",
+              {
+                code: "GOOGLE_OAUTH_IDENTITY_MISMATCH",
+                severity: "fatal",
+              }
+            );
+          }
+          identity = {
+            ...identity,
+            ...userInfo,
+            sub: verifiedSubject ?? userInfoSubject,
+            nonce: verifiedIdentity.nonce,
+          };
+        }
 
-      let identity = parseIdTokenClaims(tokens.id_token);
-      if (!identity.email) {
-        identity = { ...identity, ...(await fetchGoogleUserInfo(tokens.access_token)) };
-      }
-
-      const externalId = nonEmptyString(identity.sub) ?? nonEmptyString(identity.email);
-      if (!externalId) {
-        throw new Error("Google identity payload did not include sub or email.");
-      }
-      const expiresAt = Date.now() + tokens.expires_in * 1000;
-      const oauthCredentialVersion = String(Date.now());
-      const accountMetadata = {
-        email: identity.email ?? null,
-        emailVerified: identity.email_verified ?? null,
-        name: identity.name ?? null,
-        picture: identity.picture ?? null,
-        locale: identity.locale ?? null,
-        grantedCapabilities,
-        grantedScopes:
-          grantedScopes.length > 0
-            ? grantedScopes
-            : scopesForGoogleCapabilities(grantedCapabilities),
-        identityScopes: [...GOOGLE_IDENTITY_SCOPES],
-        tokenType: tokens.token_type ?? "Bearer",
-        hasRefreshToken: Boolean(tokens.refresh_token),
-        expiresAt,
-        oauthCredentialVersion,
-      };
-      const pendingAccount = await manager.upsertAccount(
-        GOOGLE_SERVICE_NAME,
-        {
-          provider: GOOGLE_SERVICE_NAME,
-          role: roleFromMetadata(request.flow.metadata),
-          purpose: purposes,
-          accessGate: "open",
-          status: "pending",
-          externalId,
-          displayHandle: nonEmptyString(identity.email) ?? nonEmptyString(identity.name),
-          label:
-            nonEmptyString(identity.name) ??
-            nonEmptyString(identity.email) ??
-            GOOGLE_OAUTH_PROVIDER_METADATA.label,
-          metadata: accountMetadata,
-        },
-        request.flow.accountId
-      );
-      const credentialPersist = await persistConnectorCredentialRefs({
-        runtime,
-        manager,
-        provider: GOOGLE_SERVICE_NAME,
-        accountIdForRef: pendingAccount.id,
-        storageAccountId: pendingAccount.id,
-        caller: "plugin-google-workspace",
-        credentials: [
+        const externalId = nonEmptyString(identity.sub);
+        if (!externalId) {
+          throw new ElizaError("Google identity payload did not include a stable subject.", {
+            code: "GOOGLE_OAUTH_IDENTITY_SUBJECT_MISSING",
+            severity: "fatal",
+          });
+        }
+        verifiedExternalId = externalId;
+        const requestedRole = existingAccount
+          ? roleFromMetadata({ role: existingAccount.role })
+          : roleFromMetadata(request.flow.metadata);
+        const existingExternalId = nonEmptyString(existingAccount?.externalId);
+        if (existingExternalId && existingExternalId !== externalId) {
+          throw new ElizaError(
+            "Google OAuth returned a different account than the connector being reauthorized.",
+            {
+              code: "GOOGLE_OAUTH_ACCOUNT_IDENTITY_MISMATCH",
+              context: { accountId: requestedAccountId },
+              severity: "fatal",
+            }
+          );
+        }
+        const providerAccountKey = stableGoogleConnectorAccountId(externalId, requestedRole);
+        if (!existingAccount) {
+          const identityMatches = (await manager.listAccounts(GOOGLE_SERVICE_NAME)).filter(
+            (account) =>
+              nonEmptyString(account.externalId) === externalId &&
+              roleFromMetadata({ role: account.role }) === requestedRole
+          );
+          if (identityMatches.length > 1) {
+            throw new ElizaError(
+              "Google OAuth found multiple connector accounts for the same subject and role.",
+              {
+                code: "GOOGLE_OAUTH_ACCOUNT_IDENTITY_AMBIGUOUS",
+                context: { externalId, role: requestedRole },
+                severity: "fatal",
+              }
+            );
+          }
+          existingAccount = identityMatches[0] ?? null;
+          if (existingAccount) {
+            priorCredentialRefs = await runtime.adapter.listConnectorAccountCredentialRefs({
+              accountId: existingAccount.id as UUID,
+            });
+          }
+        }
+        const accountId = existingAccount?.id ?? providerAccountKey;
+        const expiresAt = Date.now() + tokens.expires_in * 1000;
+        const oauthCredentialVersion = String(Date.now());
+        const accountMetadata = {
+          email: identity.email ?? null,
+          emailVerified: identity.email_verified ?? null,
+          name: identity.name ?? null,
+          picture: identity.picture ?? null,
+          locale: identity.locale ?? null,
+          grantedCapabilities,
+          grantedScopes:
+            grantedScopes.length > 0
+              ? grantedScopes
+              : scopesForGoogleCapabilities(grantedCapabilities),
+          identityScopes: [...GOOGLE_IDENTITY_SCOPES],
+          tokenType: tokens.token_type ?? "Bearer",
+          hasRefreshToken: Boolean(tokens.refresh_token),
+          expiresAt,
+          oauthCredentialVersion,
+        };
+        // Set the rollback target before the storage call: an adapter may commit
+        // the pending row and then throw, and compensation must still restore or
+        // remove that partially committed account.
+        pendingAccountId = accountId;
+        const pendingAccount = await manager.upsertAccount(
+          GOOGLE_SERVICE_NAME,
           {
-            credentialType: "oauth.tokens",
-            value: JSON.stringify({
-              access_token: tokens.access_token,
-              ...(tokens.refresh_token ? { refresh_token: tokens.refresh_token } : {}),
-              ...(tokens.id_token ? { id_token: tokens.id_token } : {}),
-              token_type: tokens.token_type ?? "Bearer",
-              scope:
-                grantedScopes.length > 0
-                  ? grantedScopes.join(" ")
-                  : scopesForGoogleCapabilities(grantedCapabilities).join(" "),
-              expiry_date: expiresAt,
-            }),
-            expiresAt,
-            metadata: {
-              provider: GOOGLE_SERVICE_NAME,
-              hasRefreshToken: Boolean(tokens.refresh_token),
+            ...(existingAccount ?? {}),
+            provider: GOOGLE_SERVICE_NAME,
+            accountKey: providerAccountKey,
+            role: existingAccount?.role ?? requestedRole,
+            purpose: purposes,
+            accessGate: "open",
+            status: "pending",
+            externalId,
+            displayHandle: nonEmptyString(identity.email) ?? nonEmptyString(identity.name),
+            label:
+              nonEmptyString(identity.name) ??
+              nonEmptyString(identity.email) ??
+              GOOGLE_OAUTH_PROVIDER_METADATA.label,
+            metadata: accountMetadata,
+          },
+          accountId
+        );
+        pendingAccountId = pendingAccount.id;
+        const credentialRefAccountSegment = `${pendingAccount.id}-${randomBytes(12).toString("hex")}`;
+        const credentialPersist = await persistConnectorCredentialRefs({
+          runtime,
+          manager,
+          provider: GOOGLE_SERVICE_NAME,
+          // A unique attempt ref preserves the prior reauthorization credential
+          // until both the new secret and its durable ref commit successfully.
+          accountIdForRef: credentialRefAccountSegment,
+          storageAccountId: pendingAccount.id,
+          caller: "plugin-google-workspace",
+          credentials: [
+            {
+              credentialType: "oauth.tokens",
+              value: JSON.stringify({
+                access_token: tokens.access_token,
+                ...(tokens.refresh_token ? { refresh_token: tokens.refresh_token } : {}),
+                ...(tokens.id_token ? { id_token: tokens.id_token } : {}),
+                token_type: tokens.token_type ?? "Bearer",
+                scope:
+                  grantedScopes.length > 0
+                    ? grantedScopes.join(" ")
+                    : scopesForGoogleCapabilities(grantedCapabilities).join(" "),
+                expiry_date: expiresAt,
+              }),
+              expiresAt,
+              metadata: {
+                provider: GOOGLE_SERVICE_NAME,
+                hasRefreshToken: Boolean(tokens.refresh_token),
+              },
+            },
+          ],
+        });
+        attemptedVaultRef = credentialPersist.refs.find(
+          (ref) => ref.credentialType === "oauth.tokens"
+        )?.vaultRef;
+
+        const accountPatch: ConnectorAccountPatch & {
+          provider: string;
+          id: string;
+        } = {
+          ...pendingAccount,
+          id: pendingAccount.id,
+          provider: GOOGLE_SERVICE_NAME,
+          status: "connected",
+          metadata: {
+            ...accountMetadata,
+            credentialRefs: credentialPersist.refs,
+            credentialRefStorage: {
+              vaultAvailable: credentialPersist.vaultAvailable,
+              storageAvailable: credentialPersist.storageAvailable,
             },
           },
-        ],
-      });
+        };
 
-      const accountPatch: ConnectorAccountPatch & {
-        provider: string;
-        id: string;
-      } = {
-        ...pendingAccount,
-        id: pendingAccount.id,
-        provider: GOOGLE_SERVICE_NAME,
-        status: "connected",
-        metadata: {
-          ...accountMetadata,
-          credentialRefs: credentialPersist.refs,
-          credentialRefStorage: {
-            vaultAvailable: credentialPersist.vaultAvailable,
-            storageAvailable: credentialPersist.storageAvailable,
+        for (const priorRef of priorCredentialRefs) {
+          if (!credentialPersist.refs.some((ref) => ref.vaultRef === priorRef.vaultRef)) {
+            await removeCredentialIfPresent(runtime, priorRef.vaultRef);
+          }
+        }
+
+        logger.info(
+          {
+            src: "plugin:google:connector",
+            externalId,
+            capabilities: grantedCapabilities,
           },
-        },
-      };
+          "Google OAuth completed"
+        );
 
-      logger.info(
-        {
-          src: "plugin:google:connector",
-          externalId,
-          capabilities: grantedCapabilities,
-        },
-        "Google OAuth completed"
-      );
-
-      return {
-        account: accountPatch,
-        flow: { status: "completed" },
-      };
+        return {
+          account: accountPatch,
+          flow: { status: "completed" },
+        };
+      } catch (error) {
+        // error-policy:J2 Every failure after token exchange runs the same
+        // remote/local compensation path and retains the original cause.
+        return compensateOAuthCompletion({
+          runtime,
+          manager,
+          tokens,
+          originalError: error,
+          existingAccount,
+          priorCredentialRefs,
+          externalId: verifiedExternalId,
+          pendingAccountId,
+          attemptedVaultRef,
+        });
+      }
     },
   };
+  return provider;
 }

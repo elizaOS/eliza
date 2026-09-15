@@ -13,6 +13,7 @@ import {
   MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS,
   mergeSharedRuntimeHistoryMessages,
   parseSharedPublicWebGrounding,
+  parseSharedReminderActionProvenance,
   type SharedRuntimeHistoryMessageLike,
   selectSharedRuntimeContext,
   sharedPublicWebGrounding,
@@ -78,6 +79,102 @@ describe("shared runtime history merge policy", () => {
     expect(
       mergeSharedRuntimeHistoryMessages([grounded], [{ ...grounded, grounding: undefined }]),
     ).toEqual([grounded]);
+  });
+
+  test("a stale same-message snapshot cannot erase validated reminder action provenance", () => {
+    const reminderAction = {
+      actionName: "REMINDERS" as const,
+      operation: "update" as const,
+      success: true,
+      taskIds: ["task-1"],
+      deliveryScope: '{"chatId":"123"}',
+    };
+    const complete = {
+      id: "assistant-reminder-1",
+      role: "assistant" as const,
+      content: "Updated reminder: Stretch",
+      createdAt: 3,
+      reminderAction,
+    };
+
+    expect(
+      mergeSharedRuntimeHistoryMessages([complete], [{ ...complete, reminderAction: undefined }]),
+    ).toEqual([complete]);
+    expect(parseSharedReminderActionProvenance(reminderAction)).toEqual(reminderAction);
+  });
+
+  test("bounds and authenticates ordered reminder ambiguity candidates", () => {
+    const ambiguity = {
+      actionName: "REMINDERS" as const,
+      operation: "delete" as const,
+      success: false,
+      requiresSelection: true as const,
+      taskIds: [],
+      candidateTaskIds: ["candidate-a", "candidate-a", "candidate-b"],
+      deliveryScope: '{"chatId":"123"}',
+    };
+
+    expect(parseSharedReminderActionProvenance(ambiguity)).toMatchObject({
+      requiresSelection: true,
+      candidateTaskIds: ["candidate-a", "candidate-b"],
+    });
+    expect(
+      parseSharedReminderActionProvenance({
+        ...ambiguity,
+        requiresSelection: undefined,
+      }),
+    ).toBeUndefined();
+    expect(
+      parseSharedReminderActionProvenance({
+        ...ambiguity,
+        success: true,
+      }),
+    ).toBeUndefined();
+    expect(
+      parseSharedReminderActionProvenance({
+        ...ambiguity,
+        candidateTaskIds: Array.from({ length: 101 }, (_, index) => `candidate-${index}`),
+      }),
+    ).toBeUndefined();
+  });
+
+  test("drops malformed or conflicting reminder action provenance", () => {
+    const base = {
+      id: "assistant-reminder-conflict",
+      role: "assistant" as const,
+      content: "Updated reminder: Stretch",
+      createdAt: 3,
+    };
+    const first = {
+      ...base,
+      reminderAction: {
+        actionName: "REMINDERS" as const,
+        operation: "update" as const,
+        success: true,
+        taskIds: ["task-1"],
+        deliveryScope: '{"chatId":"123"}',
+      },
+    };
+    const conflicting = {
+      ...base,
+      reminderAction: {
+        ...first.reminderAction,
+        taskIds: ["task-2"],
+      },
+    };
+    const malformed = {
+      ...base,
+      id: "assistant-reminder-malformed",
+      reminderAction: {
+        ...first.reminderAction,
+        deliveryScope: "",
+      },
+    };
+
+    expect(mergeSharedRuntimeHistoryMessages([first], [conflicting])).toEqual([base]);
+    expect(mergeSharedRuntimeHistoryMessages([], [malformed])).toEqual([
+      { ...base, id: "assistant-reminder-malformed" },
+    ]);
   });
 
   test("stale snapshots merge by id, reject invalid entries, and retain every turn", () => {

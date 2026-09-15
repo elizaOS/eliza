@@ -26,6 +26,7 @@ import {
 	getConnectorWorldIdMetadataKeys,
 	normalizeConnectorSource,
 } from "./connectors.ts";
+import { worldMetadataValueEquals } from "./database/world-metadata-cas";
 import { createUniqueUuid } from "./entities";
 import { ElizaError } from "./errors.ts";
 import { logger } from "./logger";
@@ -50,7 +51,19 @@ import { stringToUuid, validateUuid } from "./utils.ts";
 
 export type RoleName = "OWNER" | "ADMIN" | "USER" | "GUEST";
 
-export type RoleGrantSource = "owner" | "manual" | "connector_admin";
+/**
+ * Provenance of an explicit `roles[entityId]` grant. "session" marks a grant
+ * minted at chat ingress for an authenticated machine-session (paired-device)
+ * principal: it is capped at USER by construction, kept distinct from "manual"
+ * so it never confers manual-grant private access, and its reachability is
+ * gated per turn by the HTTP session boundary (a revoked/expired session can
+ * no longer act as the granted entity).
+ */
+export type RoleGrantSource =
+	| "owner"
+	| "manual"
+	| "connector_admin"
+	| "session";
 
 /**
  * Canonical rank for every role tier across the codebase — the single source of
@@ -170,7 +183,12 @@ function normalizeConnectorAdminWhitelist(
 function normalizeRoleGrantSource(
 	raw: string | undefined | null,
 ): RoleGrantSource | null {
-	if (raw === "owner" || raw === "manual" || raw === "connector_admin") {
+	if (
+		raw === "owner" ||
+		raw === "manual" ||
+		raw === "connector_admin" ||
+		raw === "session"
+	) {
 		return raw;
 	}
 	return null;
@@ -1514,6 +1532,13 @@ export async function setEntityRoleCas(
 		const replacement: RolesWorldMetadata = structuredClone(expectedSnapshot);
 		recordRoleGrant(replacement, targetEntityId, newRole, source);
 		options.mutateMetadata?.(replacement);
+		// The requested state is already committed. Writing it again would only
+		// append an audit row and bump the world revision — live 2026-09-06: 6,184
+		// no-op connector-admin re-grants grew one world's metadata to 1.5 MB and
+		// its revision to 7,050, racing every first request after boot.
+		if (worldMetadataValueEquals(expectedSnapshot, replacement)) {
+			return { status: "committed", roles: { ...(replacement.roles ?? {}) } };
+		}
 
 		const result = await runtime.adapter.compareAndSwapWorldMetadata({
 			worldId: world.id,

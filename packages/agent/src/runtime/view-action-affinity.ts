@@ -23,6 +23,7 @@ export interface ActiveViewElement {
   label: string;
   value?: string;
   focused?: boolean;
+  visible?: boolean;
 }
 
 /** Minimal description of the view the shell is currently showing. */
@@ -309,7 +310,9 @@ export function renderActiveViewContextBlock(view: ActiveViewContext): string {
       lines.push(`- ${action.name}: ${action.description}`);
     }
   }
-  const elements = view.elements ?? [];
+  const elements = (view.elements ?? []).filter(
+    (element) => element.visible !== false,
+  );
   if (elements.length > 0) {
     // Focused element first, then declared order.
     const ordered = [...elements].sort(

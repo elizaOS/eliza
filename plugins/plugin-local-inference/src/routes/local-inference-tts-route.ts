@@ -176,7 +176,11 @@ export async function handleLocalInferenceTtsRoute(
 		});
 		return true;
 	}
-	if (method !== "POST" || url.pathname !== "/api/tts/local-inference") {
+	const phonemizeOnly = url.pathname === "/api/tts/local-inference/phonemize";
+	if (
+		method !== "POST" ||
+		(!phonemizeOnly && url.pathname !== "/api/tts/local-inference")
+	) {
 		return false;
 	}
 
@@ -192,6 +196,46 @@ export async function handleLocalInferenceTtsRoute(
 			: "";
 	if (!text) {
 		sendJson(res, 400, { error: "Missing text" });
+		return true;
+	}
+
+	if (phonemizeOnly) {
+		// Android's fused build has no eSpeak. Never substitute pseudo phonemes.
+		const language = body.language ?? "en-US";
+		if (
+			typeof language !== "string" ||
+			!["en", "en-us"].includes(language.toLowerCase())
+		) {
+			sendJson(res, 400, {
+				error: "Android Kokoro phonemization currently supports en-US only",
+			});
+			return true;
+		}
+		try {
+			const { NpmPhonemizePhonemizer } = await import(
+				"../services/voice/kokoro/phonemizer"
+			);
+			const phonemizer = await NpmPhonemizePhonemizer.tryLoad();
+			if (phonemizer?.id !== "phonemizer") {
+				throw new Error("Bundled eSpeak phonemizer is unavailable");
+			}
+			const { phonemes: ipa } = await phonemizer.phonemize(text, "a");
+			if (!ipa.trim()) throw new Error("Phonemizer returned no IPA");
+			// The pinned native graph caps wrapped input at 510 symbols (two pads).
+			// Limit IPA to 508 codepoints, a conservative token bound. Reject the whole phrase
+			// instead of letting the native tokenizer silently retain a prefix.
+			if (Array.from(ipa).length > 508) {
+				sendJson(res, 400, {
+					error: "Speech exceeds Kokoro's 508-symbol phrase boundary",
+				});
+				return true;
+			}
+			sendJson(res, 200, { ipa, language: "en-US", phonemizer: phonemizer.id });
+		} catch (error) {
+			sendJson(res, 503, {
+				error: `Kokoro phonemization failed: ${error instanceof Error ? error.message : String(error)}`,
+			});
+		}
 		return true;
 	}
 

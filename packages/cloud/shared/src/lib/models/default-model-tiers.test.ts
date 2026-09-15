@@ -1,5 +1,5 @@
 // Regression guards for the dedicated-agent default text tiers and the retired
-// gpt-4o defaults. Both tiers stay on the supported Cerebras-native Gemma model;
+// gpt-4o defaults. Both tiers stay on the supported Cerebras-native Qwen model;
 // applyManagedAgentInferenceEnvDefaults re-pins them on every blue/green fleet
 // upgrade (#8434), so planner/reasoning cannot fall through to GLM. gpt-4o is
 // no longer served as a default anywhere on the cloud surface.
@@ -13,17 +13,18 @@ import {
 
 describe("dedicated-agent default text tiers", () => {
   test("small stays the cheap Cerebras default", () => {
-    expect(CEREBRAS_DEFAULT_TEXT_SMALL_MODEL).toBe("gemma-4-31b");
+    expect(CEREBRAS_DEFAULT_TEXT_SMALL_MODEL).toBe("qwen-3.8-27b");
   });
 
-  test("large is pinned to the same supported Cerebras Gemma model", () => {
-    expect(CEREBRAS_DEFAULT_TEXT_LARGE_MODEL).toBe("gemma-4-31b");
+  test("large is pinned to the same supported Cerebras Qwen model", () => {
+    expect(CEREBRAS_DEFAULT_TEXT_LARGE_MODEL).toBe("qwen-3.8-27b");
     expect(CEREBRAS_DEFAULT_TEXT_LARGE_MODEL).toBe(CEREBRAS_DEFAULT_TEXT_SMALL_MODEL);
   });
 
   test("both tiers route cerebras-native (bare ids, no gateway decoration)", () => {
     expect(CEREBRAS_NATIVE_TEXT_MODELS).toContain(CEREBRAS_DEFAULT_TEXT_SMALL_MODEL);
     expect(CEREBRAS_NATIVE_TEXT_MODELS).toContain(CEREBRAS_DEFAULT_TEXT_LARGE_MODEL);
+    expect(CEREBRAS_NATIVE_TEXT_MODELS).toContain("gemma-4-31b");
   });
 });
 

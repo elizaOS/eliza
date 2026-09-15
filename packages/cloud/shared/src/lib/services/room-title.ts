@@ -1,12 +1,13 @@
-// Coordinates cloud service room title behavior behind route handlers.
-import { assertModelOutputComplete } from "@elizaos/core";
-import { generateText } from "ai";
+/**
+ * Assigns deterministic conversation titles without a second model dispatch.
+ * Title generation is best-effort metadata and must not create an unmetered
+ * provider call after the user-visible response has already completed.
+ */
 import { memoriesRepository, roomsRepository } from "../../db/repositories";
-import { getLanguageModel } from "../providers/language-model";
 import { logger } from "../utils/logger";
 
 /**
- * Generate an AI-powered title for a room based on the first user message.
+ * Generate a deterministic title for a room based on the first user message.
  * Only generates if room currently has default title ("New Chat").
  *
  * @param roomId - The room ID to generate title for
@@ -48,46 +49,7 @@ export async function generateRoomTitle(roomId: string): Promise<string | null> 
     return null;
   }
 
-  // Generate AI title
-  let title: string;
-
-  try {
-    const prompt = `Create a brief 3-5 word title summarizing this message topic. Output ONLY the title, no quotes or explanation.
-
-Message: ${text}
-
-Title:`;
-
-    logger.info(`[RoomTitle] Generating AI title for room ${roomId}`);
-
-    const result = await generateText({
-      model: getLanguageModel("openai/gpt-5-mini"),
-      prompt,
-    });
-    assertModelOutputComplete({
-      finishReason: result.finishReason,
-      provider: "openai",
-      model: "gpt-5-mini",
-    });
-
-    // Normalizes the generated title
-    title = result.text
-      .trim()
-      .replace(/^["']|["']$/g, "") // Remove quotes
-      .replace(/^Title:\s*/i, "") // Remove "Title:" prefix if present
-      .replace(/[.!?]$/, ""); // Remove trailing punctuation
-
-    logger.info(`[RoomTitle] AI generated: "${title}"`);
-
-    // Validate title is reasonable
-    if (!title || title.length < 3 || title.length > 50 || title.includes("\n")) {
-      logger.warn(`[RoomTitle] Invalid AI title, using fallback`);
-      title = generateFallbackTitle(text);
-    }
-  } catch (error) {
-    logger.error(`[RoomTitle] AI generation failed:`, error);
-    title = generateFallbackTitle(text);
-  }
+  const title = generateFallbackTitle(text);
 
   await roomsRepository.update(roomId, { name: title });
 

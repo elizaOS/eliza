@@ -19,6 +19,7 @@ import {
   useIntervalWhenDocumentVisible,
 } from "../../../hooks";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
+import { useRole } from "../../../hooks/useRole";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import type { WidgetProps } from "../../../widgets/types";
@@ -210,6 +211,7 @@ export function CalendarUpcomingWidget({
   // (the loading tile behind the sign-in overlay); the probe re-fires when the
   // phase flips because it participates in the callback deps below.
   const authenticated = useIsAuthenticated();
+  const { isOwner } = useRole();
 
   const probeConnection = useCallback(
     async (signal?: AbortSignal) => {
@@ -219,7 +221,7 @@ export function CalendarUpcomingWidget({
         setEvents([]);
         return false;
       }
-      if (!authenticated) return false;
+      if (!authenticated || !isOwner) return false;
 
       try {
         const res = await client.listConnectorAccounts(
@@ -247,7 +249,7 @@ export function CalendarUpcomingWidget({
         return false;
       }
     },
-    [authenticated],
+    [authenticated, isOwner],
   );
 
   const loadEvents = useCallback(async (signal?: AbortSignal) => {

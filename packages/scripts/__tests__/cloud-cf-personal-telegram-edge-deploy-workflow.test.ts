@@ -18,6 +18,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = new URL("../../../", import.meta.url);
+const SUBPROCESS_TIMEOUT_MS = 15_000;
+const SUBPROCESS_TEST_TIMEOUT_MS = 60_000;
 const source = readFileSync(
   new URL(
     ".github/workflows/activate-personal-shared-telegram-edge.yml",
@@ -89,10 +91,10 @@ function validateTarget(
       ...process.env,
       DESIRED_ENABLED: "true",
       EDGE_SECRET_NAME: "PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED",
-      EXPECTED_BRANCH: "develop",
+      EXPECTED_BRANCH: "staging",
       EXPECTED_SOURCE_SHA: "a".repeat(40),
       GATEWAY_URL: "https://gateway-webhook-stg-staging.up.railway.app",
-      GITHUB_REF: "refs/heads/develop",
+      GITHUB_REF: "refs/heads/staging",
       GITHUB_REPOSITORY: "elizaOS/eliza",
       HEALTH_URL: "https://api-staging.eliza.app/api/health",
       PRODUCTION_APPROVAL_COMMENT_URL: "",
@@ -102,6 +104,7 @@ function validateTarget(
     },
     stderr: "pipe",
     stdout: "pipe",
+    timeout: SUBPROCESS_TIMEOUT_MS,
   });
 }
 
@@ -160,6 +163,7 @@ function verifyGatewayProof(
       environment: "staging",
       deploymentId,
       service: "gateway-webhook-stg",
+      telegramIdentity: "attested",
     }),
   );
   writeFileSync(
@@ -232,6 +236,10 @@ case "$url" in
     printf '{"error":"unauthorized","project":"eliza-app","status":"enforced"}' > "$output"
     printf '401'
     ;;
+  */ready/telegram-identity/eliza-app)
+    printf '{"project":"eliza-app","status":"attested"}' > "$output"
+    printf '200'
+    ;;
   *) exit 2 ;;
 esac
 `,
@@ -250,7 +258,7 @@ esac
       {
         env: {
           ...process.env,
-          EXPECTED_BRANCH: "develop",
+          EXPECTED_BRANCH: "staging",
           EXPECTED_GATEWAY_SERVICE_NAME: "gateway-webhook-stg",
           EXPECTED_SOURCE_SHA: sourceSha,
           GATEWAY_URL: "https://gateway.example",
@@ -268,6 +276,7 @@ esac
         },
         stderr: "pipe",
         stdout: "pipe",
+        timeout: SUBPROCESS_TIMEOUT_MS,
       },
     );
   } finally {
@@ -329,6 +338,7 @@ printf '200'`,
         },
         stderr: "pipe",
         stdout: "pipe",
+        timeout: SUBPROCESS_TIMEOUT_MS,
       },
     );
     expect(existsSync(rollbackMarker)).toBe(true);
@@ -368,6 +378,7 @@ function exerciseUnavailableDisableProof(): ReturnType<typeof Bun.spawnSync> {
         },
         stderr: "pipe",
         stdout: "pipe",
+        timeout: SUBPROCESS_TIMEOUT_MS,
       },
     );
     if (!existsSync(removalMarker)) {
@@ -381,7 +392,9 @@ function exerciseUnavailableDisableProof(): ReturnType<typeof Bun.spawnSync> {
   }
 }
 
-describe("Personal Shared Telegram edge deploy", () => {
+describe("Personal Shared Telegram edge deploy", {
+  timeout: SUBPROCESS_TEST_TIMEOUT_MS,
+}, () => {
   test("authorizes before entering one protected mutation lock and canonical endpoint set", () => {
     const inputs = workflow.on?.workflow_dispatch?.inputs;
     expect(inputs?.environment).toEqual({
@@ -414,7 +427,7 @@ describe("Personal Shared Telegram edge deploy", () => {
       "${{ inputs.environment == 'production' && 'production' || 'staging' }}",
     );
     expect(job?.env?.EXPECTED_BRANCH).toBe(
-      "${{ inputs.environment == 'production' && 'main' || 'develop' }}",
+      "${{ inputs.environment == 'production' && 'main' || 'staging' }}",
     );
     expect(job?.env?.EDGE_SECRET_NAME).toBe(
       "${{ inputs.environment == 'production' && 'PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED' || 'PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED' }}",

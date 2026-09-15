@@ -1,23 +1,26 @@
 /**
  * The Settings view (`/settings`) adapts its information architecture to the
- * available workspace. At 1024px and wider it renders a persistent grouped
- * settings rail beside the active section. On narrower screens it preserves the
- * existing iOS/Android-style hub → subview flow and shared back header.
+ * available workspace. Web and desktop surfaces use the persistent grouped
+ * settings workspace from 700px upward; native iOS/Android surfaces preserve
+ * the familiar hub → subview flow at every viewport width.
  *
- * Section content is lazy-loaded and gated by `isViewVisible`; `initialSection`
- * deep-links a specific section. Also reusable in modal form (`inModal`).
+ * Section content is lazy-loaded and filtered by declarative host capabilities
+ * plus normal product visibility; `initialSection` deep-links a specific
+ * section. Also reusable in modal form (`inModal`).
  */
+
 import { isViewVisible } from "@elizaos/core";
 import { isPermissionId, type PermissionId } from "@elizaos/shared";
 import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useState,
   useSyncExternalStore,
 } from "react";
 import { useAgentElement } from "../../agent-surface";
-import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
+import { reportUserViewSwitch } from "../../chat/view-navigation-report";
 import { isManagedCloudRuntime } from "../../cloud/managed-cloud-runtime";
 import { getBootConfig } from "../../config/boot-config-store";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
@@ -25,15 +28,27 @@ import { ContentLayout } from "../../layouts/content-layout";
 import { cn } from "../../lib/utils";
 import { getWindowNavigationPath } from "../../navigation";
 import { isAndroidCloudBuild } from "../../platform/android-runtime";
+import { getFrontendPlatform } from "../../platform/platform-guards";
 import { useAppSelector, useAppSelectorShallow } from "../../state";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
+import { PagePanel } from "../composites/page-panel";
 import { PermissionPrimingModal } from "../permissions/PermissionPrimingModal";
 import { resolvePrimingSet } from "../permissions/permission-priming";
-import { CloudSettingsPanel } from "../settings/cloud-panel/CloudSettingsPanel";
 import { DesktopSettingsNavigation } from "../settings/DesktopSettingsNavigation";
 import { SettingsHubList } from "../settings/SettingsHubList";
 import {
+  resolveSettingsExperience,
+  settingsSectionMatchesExperience,
+} from "../settings/settings-experience";
+import { buildSettingsNavigationGroups } from "../settings/settings-navigation-model";
+import {
+  resolveSettingsRuntimeCapabilities,
+  type SettingsRuntimeCapabilities,
+  settingsRuntimeHasCapability,
+} from "../settings/settings-runtime-capabilities";
+import {
   getSettingsSectionRegistryVersion,
+  settingsSectionIsAvailable,
   subscribeSettingsSections,
 } from "../settings/settings-section-registry";
 import {
@@ -46,12 +61,13 @@ import {
   readSettingsHashSection,
   replaceConnectorDetailHash,
   replaceSettingsHash,
+  replaceSettingsHashRoute,
   type SettingsRoute,
   type SettingsSectionDef,
   settingsSectionLabel,
   settingsSectionTitle,
 } from "../settings/settings-sections";
-import { navigateBackToLauncher, ViewHeader } from "../shared/ViewHeader";
+import { navigateBackToLauncher, ViewBackButton } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
@@ -93,7 +109,7 @@ function SettingsSectionLoading({ title }: { title: string }) {
 }
 
 /**
- * The active section's body. The uniform `ViewHeader` lives at the view root
+ * The active section's body. Compact navigation lives at the view root
  * (not per-section), so this only renders the lazy section component behind a
  * transparent Suspense + error boundary. One opaque token surface for the whole
  * view — no per-section `theme-cloud bg-black` islands (#13452).
@@ -102,6 +118,7 @@ function SettingsSectionContent({
   section,
   t,
   anchored = true,
+  compactInset = false,
 }: {
   section: SettingsSectionDef;
   t: Translate;
@@ -111,13 +128,16 @@ function SettingsSectionContent({
   // `false` here to keep that id unique. Mobile/modal render the body alone and
   // keep the anchor on it (default).
   anchored?: boolean;
+  /** Keep compact detail cards on the same 16px content rail as the hub. */
+  compactInset?: boolean;
 }) {
   const Component = section.Component;
   const title = settingsSectionTitle(section, t);
   return (
     <div
       id={anchored ? section.id : undefined}
-      className={section.bodyClassName}
+      data-slot="settings-section-content"
+      className={cn(section.bodyClassName, compactInset && "!px-4")}
     >
       <ErrorBoundary
         key={section.id}
@@ -233,69 +253,70 @@ export function SettingsView({
   initialSection,
   navigatePayload,
   navigateSequence = 0,
+  runtimeCapabilities: injectedRuntimeCapabilities,
 }: {
   inModal?: boolean;
   onClose?: () => void;
   initialSection?: string;
   navigatePayload?: unknown;
   navigateSequence?: number;
-} = {}) {
-  // Gate: explicitly cloud-only desktop builds render the consolidated
-  // CloudSettingsPanel instead of the legacy registry-driven view. Managed
-  // Cloud web runtimes also resolve cloudOnly branding in production, so the
-  // branding flag alone cannot distinguish them; the Electrobun runtime check
-  // keeps web and mobile cloud builds on the legacy view and its Cloud
-  // sections. This check lives in a thin wrapper so each branch has its own
-  // hook tree — an early return inside the legacy body would trigger React
-  // error #300 (hooks-count mismatch) if the boot config settles after first
-  // render.
-  const cloudOnlyBranding = getBootConfig().branding.cloudOnly === true;
-
-  if (cloudOnlyBranding && !inModal && isElectrobunRuntime()) {
-    return <CloudSettingsPanel />;
-  }
-  return (
-    <LegacySettingsView
-      inModal={inModal}
-      initialSection={initialSection}
-      navigatePayload={navigatePayload}
-      navigateSequence={navigateSequence}
-    />
-  );
-}
-
-function LegacySettingsView({
-  inModal,
-  initialSection,
-  navigatePayload,
-  navigateSequence = 0,
-}: {
-  inModal?: boolean;
-  onClose?: () => void;
-  initialSection?: string;
-  navigatePayload?: unknown;
-  navigateSequence?: number;
+  /** Deterministic host-capability override for embedders and tests. */
+  runtimeCapabilities?: SettingsRuntimeCapabilities;
 } = {}) {
   const { t, loadPlugins, walletEnabled } = useAppSelectorShallow((s) => ({
     t: s.t,
     loadPlugins: s.loadPlugins,
     walletEnabled: s.walletEnabled,
   }));
-  const plugins = useAppSelector((s) => s.plugins);
   const runtimeTarget = useAppSelector((s) => s.startupCoordinator.target);
   const cloudOnlyBranding = getBootConfig().branding.cloudOnly === true;
   const managedCloudRuntime =
     isManagedCloudRuntime(runtimeTarget) || cloudOnlyBranding;
+  const settingsExperience = resolveSettingsExperience(managedCloudRuntime);
   const enabledKinds = useEnabledViewKinds();
-  const isDesktop = useMediaQuery("(min-width: 1024px)");
-  useSyncExternalStore(
+  const frontendPlatform = getFrontendPlatform();
+  const androidCloudBuild = isAndroidCloudBuild();
+  const isNativeCompactSettings =
+    frontendPlatform === "ios" || frontendPlatform === "android";
+  const isWideSettingsViewport = useMediaQuery("(min-width: 700px)");
+  const isWideSettings = isWideSettingsViewport && !isNativeCompactSettings;
+  const runtimeCapabilities = useMemo(
+    () => injectedRuntimeCapabilities ?? resolveSettingsRuntimeCapabilities(),
+    [injectedRuntimeCapabilities],
+  );
+  const detachedSettingsShell =
+    !inModal &&
+    settingsRuntimeHasCapability(
+      runtimeCapabilities,
+      "detached-settings-shell",
+    );
+  const registryVersion = useSyncExternalStore(
     subscribeSettingsSections,
     getSettingsSectionRegistryVersion,
     getSettingsSectionRegistryVersion,
   );
-  const [activeSection, setActiveSection] = useState<string | null>(
-    () => initialSection ?? readSettingsHashSection(),
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the registry version is the external-store invalidation token for this list snapshot.
+  const allSections = useMemo(
+    () => getAllSettingsSections(),
+    [registryVersion],
   );
+  const availableSections = useMemo(
+    () =>
+      allSections.filter(
+        (section) =>
+          (!section.androidCloudOnly || androidCloudBuild) &&
+          settingsSectionIsAvailable(section, runtimeCapabilities),
+      ),
+    [allSections, androidCloudBuild, runtimeCapabilities],
+  );
+  const availableSectionIds = useMemo(
+    () => new Set(availableSections.map((section) => section.id)),
+    [availableSections],
+  );
+  const [activeSection, setActiveSection] = useState<string | null>(() => {
+    const requested = initialSection ?? readSettingsHashSection();
+    return requested && availableSectionIds.has(requested) ? requested : null;
+  });
   const [settingsRoute, setSettingsRoute] = useState<SettingsRoute>(() =>
     readSettingsHashRoute(),
   );
@@ -303,20 +324,36 @@ function LegacySettingsView({
     null,
   );
 
-  const visibleSections = getAllSettingsSections().filter((section) => {
-    if (section.id === "wallet-rpc" && walletEnabled === false) return false;
-    if (section.cloudOnly && !managedCloudRuntime) return false;
-    if (section.androidCloudOnly && !isAndroidCloudBuild()) return false;
-    if (section.hideOnManagedCloud && managedCloudRuntime) return false;
-    if (!isViewVisible(section, enabledKinds)) return false;
-    if (section.hideOnCloud && isAndroidCloudBuild()) return false;
-    return true;
-  });
-  const visibleSectionIds = new Set(
-    visibleSections.map((section) => section.id),
+  const visibleSections = useMemo(
+    () =>
+      availableSections.filter((section) => {
+        if (section.id === "wallet-rpc" && walletEnabled === false)
+          return false;
+        if (!settingsSectionMatchesExperience(section, settingsExperience)) {
+          return false;
+        }
+        if (!isViewVisible(section, enabledKinds)) return false;
+        if (section.hideOnCloud && androidCloudBuild) return false;
+        return true;
+      }),
+    [
+      androidCloudBuild,
+      availableSections,
+      enabledKinds,
+      settingsExperience,
+      walletEnabled,
+    ],
+  );
+  const visibleSectionIds = useMemo(
+    () => new Set(visibleSections.map((section) => section.id)),
+    [visibleSections],
   );
   const grouped: GroupedSettingsSections =
     groupSettingsSections(visibleSections);
+  const navigationGrouped = buildSettingsNavigationGroups(
+    grouped,
+    activeSection,
+  );
 
   useEffect(() => {
     void loadPlugins();
@@ -326,6 +363,7 @@ function LegacySettingsView({
   // → structured hash the connectors body already understands.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (!availableSectionIds.has("connectors")) return;
     const path = getWindowNavigationPath();
     const connectorsPath = path.match(
       /^\/(?:settings\/)?connectors(?:\/([a-z0-9-]+))?\/?$/i,
@@ -349,13 +387,22 @@ function LegacySettingsView({
       return;
     }
     window.dispatchEvent(new Event("popstate"));
-  }, []);
+  }, [availableSectionIds]);
 
-  const openSection = useCallback((sectionId: string) => {
-    setActiveSection(sectionId);
-    replaceSettingsHash(sectionId);
-    setSettingsRoute({ kind: "section", sectionId });
-  }, []);
+  const openSection = useCallback(
+    (sectionId: string) => {
+      if (!availableSectionIds.has(sectionId)) {
+        setActiveSection(null);
+        setSettingsRoute({ kind: "hub" });
+        replaceSettingsHashRoute({ kind: "hub" });
+        return;
+      }
+      setActiveSection(sectionId);
+      replaceSettingsHash(sectionId);
+      setSettingsRoute({ kind: "section", sectionId });
+    },
+    [availableSectionIds],
+  );
 
   const backToHub = useCallback(() => {
     setActiveSection(null);
@@ -379,6 +426,10 @@ function LegacySettingsView({
     // from deep links / focus events — parse before treating it as a flat id.
     const route = parseSettingsHash(initialSection);
     if (route.kind === "connector-detail") {
+      if (!availableSectionIds.has("connectors")) {
+        openSection("connectors");
+        return;
+      }
       setActiveSection("connectors");
       setSettingsRoute(route);
       replaceConnectorDetailHash(route.connectorId);
@@ -390,7 +441,7 @@ function LegacySettingsView({
     if (route.kind === "section") {
       openSection(route.sectionId);
     }
-  }, [initialSection, openSection]);
+  }, [availableSectionIds, initialSection, openSection]);
 
   useEffect(() => {
     const permission = readSettingsPermissionRequest(navigatePayload);
@@ -411,7 +462,7 @@ function LegacySettingsView({
       if (
         nextSection &&
         (visibleSectionIds.has(nextSection) ||
-          getAllSettingsSections().some((s) => s.id === nextSection))
+          availableSectionIds.has(nextSection))
       ) {
         setActiveSection(nextSection);
       } else {
@@ -424,28 +475,48 @@ function LegacySettingsView({
       window.removeEventListener("hashchange", handleLocationChange);
       window.removeEventListener("popstate", handleLocationChange);
     };
-  }, [visibleSectionIds]);
+  }, [availableSectionIds, visibleSectionIds]);
+
+  // Capability requirements are hard availability boundaries, unlike
+  // developer/preview visibility. An unavailable deep link must never mount a
+  // desktop bridge section on a portable runtime.
+  useEffect(() => {
+    const requestedSection =
+      settingsRoute.kind === "hub" ? null : settingsRoute.sectionId;
+    if (
+      (!activeSection || availableSectionIds.has(activeSection)) &&
+      (!requestedSection || availableSectionIds.has(requestedSection))
+    ) {
+      return;
+    }
+    setActiveSection(null);
+    setSettingsRoute({ kind: "hub" });
+    replaceSettingsHashRoute({ kind: "hub" });
+  }, [activeSection, availableSectionIds, settingsRoute]);
 
   // Explicit navigation (hash / initialSection / agent anchor) resolves
-  // against the full registry, not just the visible hub rows: hidden sections
-  // stay registered exactly so their deep-links keep working (the mvp-hidden
-  // contract). The hub itself only lists visible sections.
-  const registeredActiveSection = activeSection
-    ? (getAllSettingsSections().find(
-        (section) => section.id === activeSection,
-      ) ?? null)
-    : null;
+  // against the capability-eligible registry, not just the visible hub rows:
+  // hidden sections stay registered so their deep-links keep working (the
+  // mvp-hidden contract), while unavailable native modules and Android Cloud
+  // account controls remain hard stops. The hub itself only lists visible
+  // sections.
   const activeSectionDef: SettingsSectionDef | null = activeSection
     ? (visibleSections.find((section) => section.id === activeSection) ??
-      (registeredActiveSection?.androidCloudOnly && !isAndroidCloudBuild()
-        ? null
-        : registeredActiveSection))
+      availableSections.find((section) => section.id === activeSection) ??
+      null)
     : null;
   // A desktop workspace always has useful content beside its persistent rail.
   // This presentational default does not write a hash, so the mobile root still
   // opens on the exact same hub when the viewport becomes narrow.
-  const desktopSectionDef = activeSectionDef ?? visibleSections[0] ?? null;
-  const displayedSectionDef = isDesktop ? desktopSectionDef : activeSectionDef;
+  const desktopSectionDef =
+    activeSectionDef ?? navigationGrouped[0]?.items[0] ?? null;
+  const displayedSectionDef = isWideSettings
+    ? desktopSectionDef
+    : activeSectionDef;
+
+  useEffect(() => {
+    reportUserViewSwitch("settings", "/settings", displayedSectionDef?.id);
+  }, [displayedSectionDef?.id]);
 
   // Mobile keeps the uniform top bar: the hub shows "Settings" and a section
   // shows its title with a back action. Connector detail is one level deeper
@@ -455,31 +526,16 @@ function LegacySettingsView({
     settingsRoute.kind === "connector-detail"
       ? settingsRoute.connectorId
       : null;
-  const connectorDetailName = connectorDetailId
-    ? (plugins.find((p) => p.id === connectorDetailId)?.name ??
-      connectorDetailId)
-    : null;
-  const headerTitle = connectorDetailName
-    ? connectorDetailName
-    : activeSectionDef
-      ? settingsSectionTitle(activeSectionDef, t)
-      : settingsTitle;
-  const onBack = connectorDetailId
-    ? backToConnectorsIndex
-    : activeSectionDef
-      ? backToHub
-      : navigateBackToLauncher;
+  const onBack = connectorDetailId ? backToConnectorsIndex : backToHub;
   const backLabel = connectorDetailId
     ? "Back to Connectors"
-    : activeSectionDef
-      ? "Back to Settings"
-      : "Back to launcher";
-  const desktopSidebar = isDesktop ? (
+    : "Back to Settings";
+  const desktopSidebar = isWideSettings ? (
     <DesktopSettingsNavigation
-      grouped={grouped}
+      grouped={navigationGrouped}
       activeId={desktopSectionDef?.id ?? null}
       onSelect={openSection}
-      onBack={navigateBackToLauncher}
+      onBack={detachedSettingsShell ? undefined : navigateBackToLauncher}
       settingsLabel={settingsTitle}
       label={(labelKey, fallback) => t(labelKey, { defaultValue: fallback })}
     />
@@ -487,24 +543,33 @@ function LegacySettingsView({
 
   return (
     <ShellViewAgentSurface viewId="settings">
+      {detachedSettingsShell ? (
+        <div
+          aria-hidden="true"
+          className="settings-window-drag-strip"
+          data-window-titlebar="true"
+        />
+      ) : null}
       <ContentLayout
         inModal={inModal}
         className={cn(
-          !inModal && !isDesktop && "mb-[var(--eliza-chat-clearance,5.25rem)]",
+          "settings-surface settings-canvas",
+          !inModal && !isWideSettings && "min-h-0",
+          detachedSettingsShell && "pt-8",
         )}
-        contentClassName={isDesktop ? "px-0 pt-0" : "max-sm:pt-1"}
-        sidebar={desktopSidebar}
-        sidebarCollapsible={false}
+        contentClassName="!overflow-hidden !px-0 !pb-0 !pt-0"
       >
         <div
           data-testid="settings-shell"
+          data-settings-presentation={
+            isNativeCompactSettings ? "compact-native" : "workspace"
+          }
           className={cn(
-            "flex w-full",
-            isDesktop
-              ? "min-h-full flex-row"
-              : "h-full min-h-0 flex-col overflow-hidden",
+            "flex h-full min-h-0 w-full overflow-hidden",
+            isWideSettings ? "flex-row" : "flex-col",
           )}
         >
+          {desktopSidebar}
           {/* Agent-surface anchors: the agent addresses every section by
               `section-<id>` regardless of which one is shown. */}
           <div className="hidden">
@@ -519,64 +584,81 @@ function LegacySettingsView({
             ))}
           </div>
 
+          {!isWideSettings ? (
+            <div
+              className={cn(
+                isNativeCompactSettings && "pt-[var(--safe-area-top,0px)]",
+              )}
+            >
+              {activeSectionDef || connectorDetailId ? (
+                <nav
+                  aria-label={settingsTitle}
+                  data-testid="view-header"
+                  className="flex shrink-0 items-center px-1.5 py-2 sm:px-1.5"
+                >
+                  <ViewBackButton onBack={onBack} label={backLabel} />
+                </nav>
+              ) : null}
+            </div>
+          ) : null}
+
           <div
+            data-scroll-cert-scroller={!isWideSettings ? "" : undefined}
+            data-testid="settings-scroll-region"
             className={cn(
               "min-w-0 flex-1",
-              isDesktop
-                ? "pb-32"
-                : "eliza-chat-scroll max-h-[calc(100dvh-var(--eliza-chat-clearance,5.25rem)-5rem)] min-h-0 overflow-y-auto pb-4",
+              isWideSettings
+                ? "settings-dotted-canvas eliza-chat-scroll min-h-0 overflow-y-auto"
+                : "settings-canvas eliza-chat-scroll min-h-0 overflow-y-auto",
             )}
           >
-            {isDesktop ? (
-              <main
+            {isWideSettings ? (
+              <PagePanel.ContentRail
                 data-testid="desktop-settings-work-area"
-                className="mx-auto w-full max-w-[90rem] px-6 pb-10 pt-6 xl:px-8 xl:pt-8"
+                width="compact"
+                className="pb-12 pt-12"
               >
                 {desktopSectionDef ? (
                   // The `#<section.id>` anchor wraps the title header + body so
                   // the section's accessible title (the h1) lives inside the
                   // section's deep-link anchor, not as a detached sibling above
                   // it. Header stays outside `bodyClassName` padding, so this is
-                  // structural only — no visual change.
-                  <div id={desktopSectionDef.id}>
-                    <header className="mb-8 border-b border-border/60 pb-5">
-                      <p className="text-xs font-medium text-muted">
-                        {settingsTitle}
-                      </p>
-                      <h1 className="mt-1 text-xl font-semibold tracking-tight text-txt-strong">
-                        {settingsSectionTitle(desktopSectionDef, t)}
-                      </h1>
-                    </header>
+                  // structural only. The active rail row provides visual
+                  // context; the h1 remains available to assistive technology.
+                  <section
+                    id={desktopSectionDef.id}
+                    aria-labelledby={`settings-section-title-${desktopSectionDef.id}`}
+                  >
+                    <h1
+                      id={`settings-section-title-${desktopSectionDef.id}`}
+                      className="sr-only"
+                    >
+                      {settingsSectionTitle(desktopSectionDef, t)}
+                    </h1>
                     <SettingsSectionContent
                       section={desktopSectionDef}
                       t={t}
                       anchored={false}
                     />
-                  </div>
+                  </section>
                 ) : null}
-              </main>
+              </PagePanel.ContentRail>
+            ) : activeSectionDef ? (
+              <SettingsSectionContent
+                section={activeSectionDef}
+                t={t}
+                compactInset
+              />
             ) : (
-              <>
-                <ViewHeader
-                  title={headerTitle}
-                  onBack={onBack}
-                  backLabel={backLabel}
-                  className="px-0"
-                />
-                {activeSectionDef ? (
-                  <SettingsSectionContent section={activeSectionDef} t={t} />
-                ) : (
-                  /* The hub IS the mobile main screen. Tapping a row swaps in
-                     the section subview; the shared header returns here. */
-                  <SettingsHubList
-                    grouped={grouped}
-                    onSelect={openSection}
-                    label={(labelKey, fallback) =>
-                      t(labelKey, { defaultValue: fallback })
-                    }
-                  />
-                )}
-              </>
+              /* The hub IS the mobile main screen. Tapping a row swaps in
+                 the section subview; the shared header returns here. */
+              <SettingsHubList
+                grouped={navigationGrouped}
+                onSelect={openSection}
+                label={(labelKey, fallback) =>
+                  t(labelKey, { defaultValue: fallback })
+                }
+              />
             )}
           </div>
           {primePermission ? (

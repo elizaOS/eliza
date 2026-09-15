@@ -29,6 +29,7 @@ import {
   canRequesterManageDocumentDirectGrants,
   canRequesterMutateDocument,
   DatabaseAdapter,
+  type DeleteConnectorAccountCredentialRefsParams,
   type DeleteConnectorAccountParams,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
   type DocumentCompareAndSwapParams,
@@ -101,7 +102,7 @@ import {
   type WorldMetadataMutationResult,
   worldMetadataValueEquals,
 } from "@elizaos/core";
-import { sanitizeJsonObject } from "./sanitize-json";
+import { sanitizeJsonObject, serializeJsonb } from "./sanitize-json";
 import { worldRoleAuditTable } from "./schema/worldRoleAudit";
 import {
   readTaskDueAt,
@@ -506,6 +507,7 @@ import {
   isNull,
   lt,
   lte,
+  notInArray,
   or,
   type SQL,
   type SQLWrapper,
@@ -673,6 +675,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   protected migrationService?: DatabaseMigrationService;
   private migrationRunPromise: Promise<void> | null = null;
   private readonly migratedSchemaEntries = new Map<string, Map<string, unknown>>();
+  private transactionWrites?: Array<() => void>;
+  private transactionEntityContext?: UUID | null;
+
+  /** Defers external write publication until the outermost SQL transaction commits. */
+  protected publishCommittedWrite(write: () => void): void {
+    if (this.transactionWrites) this.transactionWrites.push(write);
+    else write();
+  }
+
   private _connectorAccountStore?: ConnectorAccountStore;
   private messageSearchTrigramAvailable: boolean | null = null;
   private lastDocumentListStatement?: {
@@ -2792,6 +2803,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   async getMemories(params: {
     entityId?: UUID;
+    authorEntityIds?: UUID[];
     agentId?: UUID;
     limit?: number;
     count?: number;
@@ -2802,6 +2814,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     start?: number;
     end?: number;
     roomId?: UUID;
+    excludeRoomIds?: UUID[];
     worldId?: UUID;
     textContains?: string;
     orderBy?: "createdAt";
@@ -2860,8 +2873,20 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
       // RLS handles access control - no explicit entityId filter needed
 
+      if (params.authorEntityIds) {
+        conditions.push(
+          params.authorEntityIds.length === 0
+            ? sql`false`
+            : inArray(memoryTable.entityId, params.authorEntityIds)
+        );
+      }
+
       if (roomId) {
         conditions.push(eq(memoryTable.roomId, roomId));
+      }
+
+      if (params.excludeRoomIds && params.excludeRoomIds.length > 0) {
+        conditions.push(notInArray(memoryTable.roomId, params.excludeRoomIds));
       }
 
       // Add worldId condition
@@ -2894,9 +2919,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         conditions.push(eq(memoryTable.unique, true));
       }
 
-      if (agentId) {
-        conditions.push(eq(memoryTable.agentId, agentId));
-      }
+      // An adapter is bound to one agent; a read that names no agent is a read
+      // of that agent's memories. Relying on RLS alone leaked one agent's facts
+      // into another agent's prompt on a database without RLS policies (live
+      // 2026-09-06: the owner's facts stored by a second agent rendered in the
+      // first agent's FACTS block and could not be forgotten from it).
+      conditions.push(eq(memoryTable.agentId, agentId ?? this.agentId));
 
       if (textContains) {
         // Push the keyword filter into the store as a case-insensitive ILIKE;
@@ -4079,11 +4107,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   ): Promise<void> {
     // Ensure we always pass a JSON string to the SQL bind parameter; if we pass an
     // object directly PG sees `[object Object]` and fails the `::jsonb` cast.
-    const contentToInsert =
-      typeof memory.content === "string" ? memory.content : JSON.stringify(memory.content);
+    const contentToInsert = serializeJsonb(memory.content, {
+      documentText: tableName === "documents",
+    });
 
-    const metadataToInsert =
-      typeof memory.metadata === "string" ? memory.metadata : JSON.stringify(memory.metadata ?? {});
+    const metadataToInsert = serializeJsonb(memory.metadata ?? {});
 
     const inserted = await tx
       .insert(memoryTable)
@@ -4164,13 +4192,19 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         await this.db.transaction(async (tx) => {
           // Update memory content if provided
           if (memory.content) {
-            const contentToUpdate =
-              typeof memory.content === "string" ? memory.content : JSON.stringify(memory.content);
+            // The stored row owns its content policy; caller-supplied metadata
+            // cannot turn ordinary memories into unbounded document sources.
+            // Lock the row so its identity/type stays fixed through this write.
+            const [existing] = await tx
+              .select({ type: memoryTable.type })
+              .from(memoryTable)
+              .where(eq(memoryTable.id, memory.id))
+              .for("update");
+            const contentToUpdate = serializeJsonb(memory.content, {
+              documentText: existing?.type === "documents",
+            });
 
-            const metadataToUpdate =
-              typeof memory.metadata === "string"
-                ? memory.metadata
-                : JSON.stringify(memory.metadata ?? {});
+            const metadataToUpdate = serializeJsonb(memory.metadata ?? {});
 
             await tx
               .update(memoryTable)
@@ -4183,10 +4217,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
               .where(eq(memoryTable.id, memory.id));
           } else if (memory.metadata) {
             // Update only metadata if content is not provided
-            const metadataToUpdate =
-              typeof memory.metadata === "string"
-                ? memory.metadata
-                : JSON.stringify(memory.metadata);
+            const metadataToUpdate = serializeJsonb(memory.metadata);
 
             await tx
               .update(memoryTable)
@@ -4450,9 +4481,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       if (params.entityId) {
         conditions.push(eq(memoryTable.entityId, params.entityId));
       }
-      if (params.agentId) {
-        conditions.push(eq(memoryTable.agentId, params.agentId));
-      }
+      conditions.push(eq(memoryTable.agentId, params.agentId ?? this.agentId));
       if (params.unique) {
         conditions.push(eq(memoryTable.unique, true));
       }
@@ -6618,11 +6647,76 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
   async transaction<T>(
     callback: (tx: IDatabaseAdapter<DrizzleDatabase>) => Promise<T>,
-    _options?: { entityContext?: UUID }
+    options?: { entityContext?: UUID }
   ): Promise<T> {
-    // Delegate to the callback with this adapter as the transaction context.
-    // True DB-level transactions are handled by drizzle's this.db.transaction() in individual methods.
-    return callback(this as IDatabaseAdapter<DrizzleDatabase>);
+    const writes: Array<() => void> = [];
+    const entityContext = options?.entityContext ?? this.transactionEntityContext ?? null;
+    const result = await this.withEntityContext(entityContext, async (db) => {
+      // The facade shares immutable adapter configuration but never replaces
+      // the global connection or its connection-bound store cache.
+      const scoped = Object.create(this) as BaseDrizzleAdapter;
+      scoped.db = db;
+      scoped.transactionWrites = writes;
+      scoped.transactionEntityContext = entityContext;
+      scoped._connectorAccountStore = undefined;
+      scoped.withDatabase = (operation) => operation();
+      scoped.withEntityContext = (requestedEntity, operation) => {
+        if (
+          entityContext !== null &&
+          requestedEntity !== null &&
+          requestedEntity !== entityContext
+        ) {
+          throw new ElizaError("A transaction cannot change its entity context.", {
+            code: "TRANSACTION_ENTITY_CONTEXT_MISMATCH",
+            context: { entityContext, requestedEntity },
+          });
+        }
+        return db.transaction(async (savepoint) => {
+          // System transactions may call entity-scoped methods for multiple
+          // entities. A child scope must restore the parent's RLS setting.
+          if (
+            entityContext === null &&
+            requestedEntity !== null &&
+            this.databaseBackend !== "pglite" &&
+            process.env.ENABLE_DATA_ISOLATION === "true"
+          ) {
+            const before = await savepoint.execute(
+              sql`SELECT current_setting('app.entity_id', true) AS entity_id`
+            );
+            await savepoint.execute(
+              sql`SELECT set_config('app.entity_id', ${requestedEntity}, true)`
+            );
+            const value = await operation(savepoint);
+            await savepoint.execute(
+              sql`SELECT set_config('app.entity_id', ${before.rows[0]?.entity_id ?? ""}, true)`
+            );
+            return value;
+          }
+          return operation(savepoint);
+        });
+      };
+      return callback(scoped);
+    });
+    const publicationErrors: unknown[] = [];
+    for (const write of writes) {
+      try {
+        this.publishCommittedWrite(write);
+      } catch (error) {
+        // error-policy:J2 attempt every committed publication before reporting the committed failure.
+        publicationErrors.push(error);
+      }
+    }
+    if (publicationErrors.length > 0) {
+      throw new ElizaError(
+        "SQL committed, but publishing its writes failed. Do not replay the transaction.",
+        {
+          code: "TRANSACTION_PUBLICATION_FAILED",
+          context: { committed: true, failedPublications: publicationErrors.length },
+          cause: new AggregateError(publicationErrors, "Committed write publication failed"),
+        }
+      );
+    }
+    return result;
   }
 
   // ── Component batch methods ───────────────────────────────────────────
@@ -7589,6 +7683,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     params: ListConnectorAccountCredentialRefsParams
   ): Promise<ConnectorAccountCredentialRefRecord[]> {
     return this.getConnectorAccountStore().listCredentialRefs(params);
+  }
+
+  async deleteConnectorAccountCredentialRefs(
+    params: DeleteConnectorAccountCredentialRefsParams
+  ): Promise<number> {
+    return this.getConnectorAccountStore().deleteCredentialRefs(params);
   }
 
   async appendConnectorAccountAuditEvent(

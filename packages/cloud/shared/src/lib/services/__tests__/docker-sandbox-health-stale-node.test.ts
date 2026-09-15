@@ -139,3 +139,103 @@ describe("pollSshDockerHealth follows agent re-placement (#15203)", () => {
     getClient.mockRestore();
   });
 });
+
+describe("candidate health before canonical placement commit", () => {
+  const handle = {
+    sandboxId: `agent-${NEW_NODE.agentId}`,
+    bridgeUrl: "http://candidate.example",
+    healthUrl: "http://candidate.example/api",
+    metadata: {
+      provider: "docker",
+      ...NEW_NODE,
+      containerName: `agent-${NEW_NODE.agentId}`,
+      nodeSshPort: 2222,
+      nodeSshUser: "candidate-user",
+      nodeHostKeyFingerprint: "SHA256:candidate-pin",
+    },
+  };
+
+  test("fresh candidate probes its captured node despite retained old canonical placement", async () => {
+    const provider = new DockerSandboxProvider();
+    const internals = provider as unknown as PollInternals;
+    const hydrate = spyOn(internals, "hydrateContainerFromDb").mockResolvedValue(OLD_NODE);
+    const { getClient, probedHosts } = fakeSshByHost(NEW_NODE.hostname);
+    expect(await provider.checkHealth(handle, { kind: "candidate" })).toBe(true);
+    expect(probedHosts).toEqual([NEW_NODE.hostname]);
+    expect(getClient).toHaveBeenCalledWith(
+      NEW_NODE.hostname,
+      2222,
+      "SHA256:candidate-pin",
+      "candidate-user",
+    );
+    expect(hydrate).not.toHaveBeenCalled();
+  });
+
+  test("healthy canonical predecessor cannot certify an unhealthy candidate", async () => {
+    const provider = new DockerSandboxProvider();
+    const hydrate = spyOn(
+      provider as unknown as PollInternals,
+      "hydrateContainerFromDb",
+    ).mockResolvedValue(OLD_NODE);
+    const { probedHosts } = fakeSshByHost(OLD_NODE.hostname);
+    let now = 0;
+    spyOn(Date, "now").mockImplementation(() => {
+      now += 1000;
+      return now;
+    });
+    stubPollWaits();
+    const outcome = await provider.checkHealthDetailed(handle, { kind: "candidate" });
+    expect(outcome).toEqual({ ready: false, verdict: "not_ready" });
+    expect(probedHosts.length).toBeGreaterThan(0);
+    expect(new Set(probedHosts)).toEqual(new Set([NEW_NODE.hostname]));
+    expect(hydrate).not.toHaveBeenCalled();
+  });
+
+  test("failed candidate tailnet keeps SSH fallback on the candidate and reports unresolved ingress", async () => {
+    const provider = new DockerSandboxProvider();
+    const hydrate = spyOn(
+      provider as unknown as PollInternals,
+      "hydrateContainerFromDb",
+    ).mockResolvedValue(OLD_NODE);
+    spyOn(
+      provider as unknown as { pollTailnetHealth: () => Promise<boolean> },
+      "pollTailnetHealth",
+    ).mockResolvedValue(false);
+    const { probedHosts } = fakeSshByHost(NEW_NODE.hostname);
+    const outcome = await provider.checkHealthDetailed(
+      { ...handle, metadata: { ...handle.metadata, headscaleIp: "100.64.0.9" } },
+      { kind: "candidate" },
+    );
+    expect(outcome).toEqual({ ready: false, verdict: "ingress_unresolved" });
+    expect(probedHosts).toEqual([NEW_NODE.hostname]);
+    expect(hydrate).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    { ...handle, metadata: undefined },
+    { ...handle, sandboxId: "agent-different" },
+    { ...handle, metadata: { ...handle.metadata, agentId: "different" } },
+    { ...handle, metadata: { ...handle.metadata, agentId: "bad/id" } },
+    { ...handle, metadata: { ...handle.metadata, nodeSshPort: 0 } },
+    { ...handle, metadata: { ...handle.metadata, nodeSshUser: "" } },
+    { ...handle, metadata: { ...handle.metadata, bridgePort: 0 } },
+    { ...handle, metadata: { ...handle.metadata, hostname: "" } },
+  ])(
+    "incomplete or mismatched candidate rejects before any canonical lookup or SSH",
+    async (candidate) => {
+      const provider = new DockerSandboxProvider();
+      const hydrate = spyOn(
+        provider as unknown as PollInternals,
+        "hydrateContainerFromDb",
+      ).mockResolvedValue(OLD_NODE);
+      const { getClient } = fakeSshByHost(NEW_NODE.hostname);
+      await expect(
+        provider.checkHealthDetailed(candidate, { kind: "candidate" }),
+      ).rejects.toMatchObject({
+        code: "SANDBOX_CANDIDATE_HEALTH_PLACEMENT_INVALID",
+      });
+      expect(hydrate).not.toHaveBeenCalled();
+      expect(getClient).not.toHaveBeenCalled();
+    },
+  );
+});

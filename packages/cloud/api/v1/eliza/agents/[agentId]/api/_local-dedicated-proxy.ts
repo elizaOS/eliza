@@ -108,7 +108,8 @@ export async function proxyLocalDedicatedOrNext(
   }
 
   const target = new URL(runtimeBase);
-  target.pathname = `/api${path}`;
+  const runtimePath = target.pathname.replace(/\/+$/, "");
+  target.pathname = `${runtimePath}/api${path}`;
   target.search = new URL(c.req.url).search;
   const headers = new Headers(c.req.raw.headers);
   headers.delete("cookie");

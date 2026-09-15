@@ -303,6 +303,73 @@ describe("Shared group reminder action", () => {
     });
   });
 
+  it("keeps immutable group authority in scope when the owner display label changes", async () => {
+    const currentDelivery = {
+      ...telegramGroupDelivery,
+      ownerLabel: "New display name",
+    };
+    const persistedDelivery = {
+      ...telegramGroupDelivery,
+      ownerLabel: "Old display name",
+    };
+    const { options, scheduleWithResult } = harness(currentDelivery);
+    const persisted = {
+      ...scheduledTask({
+        kind: "reminder",
+        promptInstructions: "Stand-up starts",
+        trigger: { kind: "once", atIso: "2026-08-14T20:05:00.000Z" },
+        priority: "medium",
+        escalation: {
+          steps: [{ delayMinutes: 0, channelKey: "current_dm" }],
+        },
+        output: {
+          destination: "channel",
+          target: "current_dm",
+          fallback: { body: "Stand-up starts" },
+        },
+        subject: { kind: "self", id: "personal:user-1" },
+        idempotencyKey: "persisted-group-semantic-key",
+        respectsGlobalPause: true,
+        source: "user_chat",
+        createdBy: "personal:user-1",
+        ownerVisible: true,
+        metadata: { delivery: persistedDelivery },
+        executionProfile: "notify-only",
+      }),
+      taskId: "persisted-group-reminder",
+    };
+    options.runner.list = vi.fn(async () => [persisted]);
+    scheduleWithResult.mockResolvedValue({
+      task: persisted,
+      commit: { logId: "persisted-group-log", occurredAtIso: NOW },
+      replayed: true,
+    });
+    const [action] = createSharedRemindersEdgePlugin(options).actions ?? [];
+
+    const result = await action?.handler(
+      {} as IAgentRuntime,
+      { id: "group-label-update" } as Memory,
+      undefined,
+      {
+        parameters: {
+          operation: "create",
+          reminderText: "Stand-up starts",
+          inMinutes: 5,
+        },
+      },
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      data: { deduplicated: true, replayed: true },
+    });
+    expect(scheduleWithResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idempotencyKey: "persisted-group-semantic-key",
+      }),
+    );
+  });
+
   it("reserves the fire-time owner prefix inside the connector text budget", async () => {
     const budget = sharedReminderMaxBodyLength(telegramGroupDelivery);
     expect(budget).toBe(

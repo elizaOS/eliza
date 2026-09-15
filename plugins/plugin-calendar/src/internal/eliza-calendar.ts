@@ -114,6 +114,7 @@ export function createElizaCalendarEvent(args: {
   startAt: string;
   endAt: string;
   timeZone: string;
+  isAllDay: boolean;
   attendees: readonly CreateLifeOpsCalendarEventAttendee[];
   now: Date;
 }): LifeOpsCalendarEvent {
@@ -164,7 +165,7 @@ export function createElizaCalendarEvent(args: {
     status: "confirmed",
     startAt: args.startAt,
     endAt: args.endAt,
-    isAllDay: false,
+    isAllDay: args.isAllDay,
     timezone: args.timeZone,
     htmlLink: null,
     conferenceLink: null,
@@ -190,6 +191,7 @@ export function updateElizaCalendarEvent(args: {
   startAt?: string;
   endAt?: string;
   timeZone?: string;
+  isAllDay?: boolean;
   attendees?: readonly CreateLifeOpsCalendarEventAttendee[];
   now: Date;
 }): LifeOpsCalendarEvent {
@@ -236,6 +238,7 @@ export function updateElizaCalendarEvent(args: {
     startAt,
     endAt,
     timezone: args.timeZone ?? args.event.timezone,
+    isAllDay: args.isAllDay ?? args.event.isAllDay,
     attendees:
       args.attendees === undefined
         ? args.event.attendees

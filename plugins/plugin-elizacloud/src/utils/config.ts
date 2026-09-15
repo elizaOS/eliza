@@ -5,6 +5,10 @@ import {
   DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 } from "@elizaos/core";
+import {
+  captureDevCloudEnvAuthoritySnapshot,
+  type DevCloudEnvAuthority,
+} from "@elizaos/shared";
 
 export const DEFAULT_ELIZA_CLOUD_LARGE_MODEL =
   DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL;
@@ -39,6 +43,14 @@ export function isProxyMode(runtime: IAgentRuntime): boolean {
 
 export type EndpointSettingReader = (key: string) => string | undefined;
 
+/** Atomic Cloud endpoint and credential choice used by outbound SDK clients. */
+export interface CloudSdkAuthorityTuple {
+  readonly authority: DevCloudEnvAuthority | null;
+  readonly apiBaseUrl: string;
+  readonly apiKey: string | undefined;
+  readonly outboundAllowed: boolean;
+}
+
 /** Pure endpoint policy shared by inference and diagnostic surfaces. */
 export function resolveElizaCloudBaseURL(
   readSetting: EndpointSettingReader,
@@ -55,7 +67,7 @@ export function resolveElizaCloudBaseURL(
   );
 }
 
-export function getBaseURL(runtime: IAgentRuntime): string {
+function resolveUnmanagedBaseURL(runtime: IAgentRuntime): string {
   return resolveElizaCloudBaseURL(
     (key) => {
       const runtimeValue = runtime.getSetting(key);
@@ -69,7 +81,7 @@ export function getBaseURL(runtime: IAgentRuntime): string {
   );
 }
 
-export function getEmbeddingBaseURL(runtime: IAgentRuntime): string {
+function resolveUnmanagedEmbeddingBaseURL(runtime: IAgentRuntime): string {
   const embeddingURL = isBrowser()
     ? getSetting(runtime, "ELIZAOS_CLOUD_BROWSER_EMBEDDING_URL") ||
       getSetting(runtime, "ELIZAOS_CLOUD_BROWSER_BASE_URL")
@@ -79,11 +91,106 @@ export function getEmbeddingBaseURL(runtime: IAgentRuntime): string {
     return embeddingURL;
   }
   logger.debug("[ELIZAOS_CLOUD] Falling back to general base URL for embeddings.");
-  return getBaseURL(runtime);
+  return resolveUnmanagedBaseURL(runtime);
+}
+
+function resolveUnmanagedApiKey(runtime: IAgentRuntime): string | undefined {
+  return getSetting(runtime, "ELIZAOS_CLOUD_API_KEY");
+}
+
+function resolveUnmanagedEmbeddingApiKey(
+  runtime: IAgentRuntime,
+): string | undefined {
+  const embeddingApiKey = getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_API_KEY");
+  if (embeddingApiKey) {
+    logger.debug("[ELIZAOS_CLOUD] Using specific embedding API key (present)");
+    return embeddingApiKey;
+  }
+  logger.debug("[ELIZAOS_CLOUD] Falling back to general API key for embeddings.");
+  return resolveUnmanagedApiKey(runtime);
+}
+
+function frozenValue(
+  values: Readonly<Record<string, string | undefined>>,
+  key: string,
+): string | undefined {
+  const value = values[key]?.trim();
+  return value || undefined;
+}
+
+/**
+ * Resolve one immutable endpoint/credential tuple for a Cloud SDK operation.
+ *
+ * A development launcher authority owns the complete tuple. Runtime settings
+ * and later `process.env` mutations must not replace either half. The two
+ * deliberately unauthenticated targets also block SDK traffic entirely.
+ */
+export function resolveCloudSdkAuthorityTuple(
+  runtime: IAgentRuntime,
+  embedding = false,
+): CloudSdkAuthorityTuple {
+  const snapshot =
+    !isBrowser() && typeof process !== "undefined"
+      ? captureDevCloudEnvAuthoritySnapshot(process.env)
+      : null;
+
+  if (!snapshot) {
+    const apiBaseUrl = embedding
+      ? resolveUnmanagedEmbeddingBaseURL(runtime)
+      : resolveUnmanagedBaseURL(runtime);
+    const apiKey = isBrowser()
+      ? undefined
+      : embedding
+        ? resolveUnmanagedEmbeddingApiKey(runtime)
+        : resolveUnmanagedApiKey(runtime);
+    return Object.freeze({
+      authority: null,
+      apiBaseUrl,
+      apiKey,
+      outboundAllowed: true,
+    });
+  }
+
+  const blocked =
+    snapshot.authority === "staging-default" || snapshot.authority === "offline";
+  const embeddingBaseUrl = embedding
+    ? frozenValue(snapshot.values, "ELIZAOS_CLOUD_EMBEDDING_URL")
+    : undefined;
+  const apiBaseUrl =
+    embeddingBaseUrl ??
+    frozenValue(snapshot.values, "ELIZAOS_CLOUD_BASE_URL") ??
+    "";
+  const embeddingApiKey = embedding
+    ? frozenValue(snapshot.values, "ELIZAOS_CLOUD_EMBEDDING_API_KEY")
+    : undefined;
+  const apiKey = blocked
+    ? undefined
+    : embeddingApiKey ?? frozenValue(snapshot.values, "ELIZAOS_CLOUD_API_KEY");
+
+  if (embeddingBaseUrl) {
+    logger.debug(
+      `[ELIZAOS_CLOUD] Using launcher-authorized embedding base URL: ${embeddingBaseUrl}`,
+    );
+  }
+
+  return Object.freeze({
+    authority: snapshot.authority,
+    apiBaseUrl,
+    apiKey,
+    outboundAllowed: !blocked && Boolean(apiBaseUrl),
+  });
+}
+
+export function getBaseURL(runtime: IAgentRuntime): string {
+  return resolveCloudSdkAuthorityTuple(runtime).apiBaseUrl;
+}
+
+export function getEmbeddingBaseURL(runtime: IAgentRuntime): string {
+  return resolveCloudSdkAuthorityTuple(runtime, true).apiBaseUrl;
 }
 
 export function getApiKey(runtime: IAgentRuntime): string | undefined {
-  return getSetting(runtime, "ELIZAOS_CLOUD_API_KEY");
+  return resolveCloudSdkAuthorityTuple(runtime).apiKey;
 }
 
 /**
@@ -162,13 +269,7 @@ export function isCloudSttAvailable(runtime: IAgentRuntime): boolean {
 }
 
 export function getEmbeddingApiKey(runtime: IAgentRuntime): string | undefined {
-  const embeddingApiKey = getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_API_KEY");
-  if (embeddingApiKey) {
-    logger.debug("[ELIZAOS_CLOUD] Using specific embedding API key (present)");
-    return embeddingApiKey;
-  }
-  logger.debug("[ELIZAOS_CLOUD] Falling back to general API key for embeddings.");
-  return getApiKey(runtime);
+  return resolveCloudSdkAuthorityTuple(runtime, true).apiKey;
 }
 
 export function getSmallModel(runtime: IAgentRuntime): string {

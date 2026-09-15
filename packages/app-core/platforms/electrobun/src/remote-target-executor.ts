@@ -1,8 +1,16 @@
 /**
- * Maps remote commands onto a deliberately tiny loopback API allowlist. It
- * never exposes a generic URL, filesystem, process, or shell primitive and
- * rejects every action except the read-only agent status probe.
+ * Maps remote commands onto the shared, deliberately bounded agent API
+ * allowlist. It never exposes a generic URL, filesystem, process, or shell
+ * primitive; the paired controller can reach only the routes required for the
+ * selected runtime's readiness and conversation surface.
  */
+import {
+  classifyRemoteAgentRequestPath,
+  parseRemoteAgentRequest,
+  REMOTE_AGENT_CHAT_TIMEOUT_MS,
+  REMOTE_AGENT_RESPONSE_LIMIT_BYTES,
+  type RemoteAgentRequest,
+} from "@elizaos/shared/contracts/remote-agent-request";
 import type { RemoteJsonValue } from "@elizaos/shared/contracts/remote-control";
 import type {
   RemoteTargetCommandExecutor,
@@ -10,7 +18,7 @@ import type {
 } from "./remote-target-runner";
 import type { RemoteTargetFetch } from "./remote-target-transport";
 
-const LOCAL_RESPONSE_LIMIT_BYTES = 262_144;
+const LOCAL_RESPONSE_LIMIT_BYTES = REMOTE_AGENT_RESPONSE_LIMIT_BYTES;
 const LOCAL_REQUEST_TIMEOUT_MS = 5_000;
 
 export function normalizeRemoteTargetLoopbackBase(value: string): string {
@@ -73,12 +81,12 @@ export class LoopbackRemoteTargetExecutor
     }
     this.apiToken = input.apiToken;
     this.fetchImpl = input.fetchImpl ?? globalThis.fetch;
-    this.timeoutMs = input.timeoutMs ?? LOCAL_REQUEST_TIMEOUT_MS;
+    this.timeoutMs = input.timeoutMs;
   }
 
   private readonly apiToken: string;
   private readonly fetchImpl: RemoteTargetFetch;
-  private readonly timeoutMs: number;
+  private readonly timeoutMs: number | undefined;
 
   async execute(input: {
     action:
@@ -91,32 +99,42 @@ export class LoopbackRemoteTargetExecutor
     payload: RemoteJsonValue;
     executionId: string;
   }): Promise<RemoteTargetEffectResult> {
-    const statusRequest =
-      (input.action === "agent.status" && isEmptyObject(input.payload)) ||
-      (input.action === "agent.request" &&
-        isAllowlistedStatusRequest(input.payload));
-    if (!statusRequest) {
+    let request: RemoteAgentRequest;
+    try {
+      if (input.action === "agent.status" && isEmptyObject(input.payload)) {
+        request = parseRemoteAgentRequest({
+          path: "/api/health",
+          method: "GET",
+          headers: {},
+        });
+      } else if (input.action === "agent.request") {
+        request = parseRemoteAgentRequest(input.payload);
+      } else {
+        throw new Error("Remote action is not allowlisted.");
+      }
+    } catch {
       return {
         status: "rejected",
         errorCode: "REMOTE_ACTION_NOT_ALLOWLISTED",
       };
     }
+    const route = classifyRemoteAgentRequestPath(request.path, request.method);
+    const timeoutMs =
+      this.timeoutMs ??
+      (route === "conversation-message-stream"
+        ? REMOTE_AGENT_CHAT_TIMEOUT_MS
+        : LOCAL_REQUEST_TIMEOUT_MS);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const path =
-        input.action === "agent.request" &&
-        typeof input.payload === "object" &&
-        input.payload !== null &&
-        !Array.isArray(input.payload)
-          ? String(input.payload.path)
-          : "/api/health";
-      const response = await this.fetchImpl(`${this.apiBase}${path}`, {
-        method: "GET",
+      const response = await this.fetchImpl(`${this.apiBase}${request.path}`, {
+        method: request.method,
         headers: {
+          ...request.headers,
           Authorization: `Bearer ${this.apiToken}`,
           "X-Eliza-Remote-Execution-Id": input.executionId,
         },
+        ...(request.body !== undefined ? { body: request.body } : {}),
         cache: "no-store",
         redirect: "error",
         signal: controller.signal,
@@ -125,7 +143,7 @@ export class LoopbackRemoteTargetExecutor
       if (Number.isFinite(declared) && declared > LOCAL_RESPONSE_LIMIT_BYTES) {
         return {
           status: "rejected",
-          errorCode: "REMOTE_LOCAL_STATUS_UNAVAILABLE",
+          errorCode: "REMOTE_LOCAL_RESPONSE_UNAVAILABLE",
         };
       }
       const chunks: Uint8Array[] = [];
@@ -141,7 +159,7 @@ export class LoopbackRemoteTargetExecutor
               await reader.cancel();
               return {
                 status: "rejected",
-                errorCode: "REMOTE_LOCAL_STATUS_TOO_LARGE",
+                errorCode: "REMOTE_LOCAL_RESPONSE_TOO_LARGE",
               };
             }
             chunks.push(item.value);
@@ -163,7 +181,7 @@ export class LoopbackRemoteTargetExecutor
         // error-policy:J3 local HTTP bytes still cross an untrusted boundary.
         return {
           status: "rejected",
-          errorCode: "REMOTE_LOCAL_STATUS_INVALID",
+          errorCode: "REMOTE_LOCAL_RESPONSE_INVALID",
         };
       }
       const contentType = response.headers.get("content-type");

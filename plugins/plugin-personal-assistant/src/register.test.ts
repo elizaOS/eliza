@@ -16,16 +16,24 @@ const h = vi.hoisted(() => ({
   // imports of the capture) install methods onto ElizaClient.prototype at
   // module scope; give the mock a real class so those installs land.
   ElizaClient: class ElizaClient {},
+  authoritySubscribers: new Set<() => void>(),
   getStatus: vi.fn(async () => ({ state: "running" })),
   captureLifeOpsActivitySignal: vi.fn(async () => ({
     signal: { id: "sig-1" },
   })),
   isApiError: vi.fn((_error: unknown) => false),
   isAuthenticatedNow: vi.fn(() => true),
+  getAuthStatusSnapshot: vi.fn(() => ({
+    phase: "authenticated",
+    identity: { id: "test-user" },
+    session: { id: "test-session" },
+    access: { role: "OWNER" },
+  })),
   subscribeAuthStatus: vi.fn(() => () => undefined),
   isElectrobunRuntime: vi.fn(() => false),
   loadDesktopWorkspaceSnapshot: vi.fn(async () => ({ supported: false })),
   capacitorGetPlatform: vi.fn(() => "web"),
+  capacitorIsPluginAvailable: vi.fn(() => true),
   capacitorIsNative: vi.fn(() => false),
   mobile: {
     checkPermissions: vi.fn(async () => ({ status: "granted" })),
@@ -66,6 +74,12 @@ vi.mock("@elizaos/ui/api", () => ({
   APP_PAUSE_EVENT: "eliza:app-pause",
   APP_RESUME_EVENT: "eliza:app-resume",
   client: {
+    getBaseUrl: () => "http://fixture.local",
+    getAuthorityRevision: () => 0,
+    onAuthorityChange: (listener: () => void) => {
+      h.authoritySubscribers.add(listener);
+      return () => h.authoritySubscribers.delete(listener);
+    },
     getStatus: h.getStatus,
     captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
   },
@@ -74,6 +88,12 @@ vi.mock("@elizaos/ui/bridge", () => ({
   APP_PAUSE_EVENT: "eliza:app-pause",
   APP_RESUME_EVENT: "eliza:app-resume",
   client: {
+    getBaseUrl: () => "http://fixture.local",
+    getAuthorityRevision: () => 0,
+    onAuthorityChange: (listener: () => void) => {
+      h.authoritySubscribers.add(listener);
+      return () => h.authoritySubscribers.delete(listener);
+    },
     getStatus: h.getStatus,
     captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
   },
@@ -88,6 +108,12 @@ vi.mock("@elizaos/ui/events", () => ({
   APP_PAUSE_EVENT: "eliza:app-pause",
   APP_RESUME_EVENT: "eliza:app-resume",
   client: {
+    getBaseUrl: () => "http://fixture.local",
+    getAuthorityRevision: () => 0,
+    onAuthorityChange: (listener: () => void) => {
+      h.authoritySubscribers.add(listener);
+      return () => h.authoritySubscribers.delete(listener);
+    },
     getStatus: h.getStatus,
     captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
   },
@@ -108,14 +134,43 @@ vi.mock("@elizaos/ui/browser", () => ({
   APP_PAUSE_EVENT: "eliza:app-pause",
   APP_RESUME_EVENT: "eliza:app-resume",
   client: {
+    getBaseUrl: () => "http://fixture.local",
+    getAuthorityRevision: () => 0,
+    onAuthorityChange: (listener: () => void) => {
+      h.authoritySubscribers.add(listener);
+      return () => h.authoritySubscribers.delete(listener);
+    },
     getStatus: h.getStatus,
     captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
   },
 }));
 
+vi.mock("@elizaos/ui/auth-status", () => ({
+  APP_PAUSE_EVENT: "eliza:app-pause",
+  APP_RESUME_EVENT: "eliza:app-resume",
+  ElizaClient: h.ElizaClient,
+  client: {
+    getBaseUrl: () => "http://fixture.local",
+    getAuthorityRevision: () => 0,
+    onAuthorityChange: (listener: () => void) => {
+      h.authoritySubscribers.add(listener);
+      return () => h.authoritySubscribers.delete(listener);
+    },
+    getStatus: h.getStatus,
+    captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
+  },
+  isApiError: h.isApiError,
+  isAuthenticatedNow: h.isAuthenticatedNow,
+  getAuthStatusSnapshot: h.getAuthStatusSnapshot,
+  isElectrobunRuntime: h.isElectrobunRuntime,
+  loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
+  subscribeAuthStatus: h.subscribeAuthStatus,
+}));
+
 vi.mock("@capacitor/core", () => ({
   Capacitor: {
     getPlatform: h.capacitorGetPlatform,
+    isPluginAvailable: h.capacitorIsPluginAvailable,
     isNativePlatform: h.capacitorIsNative,
   },
 }));
@@ -176,8 +231,10 @@ describe("personal-assistant renderer registration entry", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    h.authoritySubscribers.clear();
     h.getStatus.mockResolvedValue({ state: "running" });
     h.capacitorGetPlatform.mockReturnValue("web");
+    h.capacitorIsPluginAvailable.mockReturnValue(true);
     h.capacitorIsNative.mockReturnValue(false);
     h.mobile.checkPermissions.mockResolvedValue({ status: "granted" });
     h.mobile.addListener.mockImplementation(

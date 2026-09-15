@@ -48,7 +48,12 @@ const ABSOLUTE_RFC3339 =
 export interface OwnerCalendarMutationGatewayDeps {
   readonly calendar?: Pick<
     CalendarService,
-    "getConditionalCalendarMutationTarget"
+    | "getConditionalCalendarMutationTarget"
+    | "executeLinkedCalendarLink"
+    | "executeLinkedCalendarReconciliation"
+    | "executeLinkedCalendarConflictResolution"
+    | "executeLinkedCalendarDisconnect"
+    | "executeLinkedCalendarProviderChanges"
   >;
   readonly port?: CalendarMutationPort;
   readonly approvalQueue?: ApprovalQueue;
@@ -405,7 +410,12 @@ export class OwnerCalendarMutationGatewayService
 
   private calendar(): Pick<
     CalendarService,
-    "getConditionalCalendarMutationTarget"
+    | "getConditionalCalendarMutationTarget"
+    | "executeLinkedCalendarLink"
+    | "executeLinkedCalendarReconciliation"
+    | "executeLinkedCalendarConflictResolution"
+    | "executeLinkedCalendarDisconnect"
+    | "executeLinkedCalendarProviderChanges"
   > {
     if (this.deps.calendar) return this.deps.calendar;
     const service = this.runtime.getService<CalendarService>(
@@ -457,6 +467,13 @@ export class OwnerCalendarMutationGatewayService
       title: request.title,
       startsAtMs,
       endsAtMs,
+      allDay:
+        range.isAllDay && range.startDate && range.endDateExclusive
+          ? {
+              startDate: range.startDate,
+              endDateExclusive: range.endDateExclusive,
+            }
+          : null,
       timeZone: range.timeZone,
       durationMinutes: request.durationMinutes ?? null,
       windowPreset: request.windowPreset ?? null,
@@ -562,6 +579,7 @@ export class OwnerCalendarMutationGatewayService
             request.endAt !== undefined
               ? requireAbsoluteTimestamp(request.endAt, "endAt")
               : null,
+          allDay: request.allDay ?? null,
           timeZone: request.timeZone ?? null,
           attendees:
             request.attendees?.map((attendee) => ({
@@ -666,5 +684,64 @@ export class OwnerCalendarMutationGatewayService
       cancellationMode: request.cancellationMode,
       event: null,
     };
+  }
+
+  async linkCalendar(
+    _requestUrl: URL,
+    request: Parameters<CalendarOwnerMutationGateway["linkCalendar"]>[1],
+  ) {
+    requireOperationKey(request.idempotencyKey);
+    return this.calendar().executeLinkedCalendarLink(request);
+  }
+
+  async reconcileLinkedCalendar(
+    _requestUrl: URL,
+    linkId: string,
+    request: Parameters<
+      CalendarOwnerMutationGateway["reconcileLinkedCalendar"]
+    >[2],
+  ) {
+    requireOperationKey(request.idempotencyKey);
+    return this.calendar().executeLinkedCalendarReconciliation(
+      requireOperationKey(linkId),
+      request,
+    );
+  }
+
+  async resolveLinkedCalendarConflict(
+    _requestUrl: URL,
+    linkId: string,
+    request: Parameters<
+      CalendarOwnerMutationGateway["resolveLinkedCalendarConflict"]
+    >[2],
+  ) {
+    requireOperationKey(request.idempotencyKey);
+    return this.calendar().executeLinkedCalendarConflictResolution(
+      requireOperationKey(linkId),
+      request,
+    );
+  }
+
+  async disconnectLinkedCalendar(
+    _requestUrl: URL,
+    linkId: string,
+    request: Parameters<
+      CalendarOwnerMutationGateway["disconnectLinkedCalendar"]
+    >[2],
+  ) {
+    requireOperationKey(request.idempotencyKey);
+    return this.calendar().executeLinkedCalendarDisconnect(
+      requireOperationKey(linkId),
+      request,
+    );
+  }
+
+  async reconcileLinkedCalendarProviderChanges(
+    _requestUrl: URL,
+    providerEventIds: readonly string[],
+  ): Promise<void> {
+    await this.calendar().executeLinkedCalendarProviderChanges(
+      providerEventIds,
+    );
   }
 }

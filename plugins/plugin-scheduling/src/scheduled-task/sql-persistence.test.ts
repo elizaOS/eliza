@@ -7,6 +7,7 @@
  */
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime } from "@elizaos/core";
+import type { CarveOutDatabase } from "@elizaos/plugin-sql";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DispatchResult } from "../dispatch-types.js";
 import {
@@ -39,6 +40,21 @@ function rawQueryText(query: RawSqlQuery): string {
   return String(query.queryChunks.map((chunk) => chunk.value ?? "").join(""));
 }
 
+function carveOutDatabase(pg: PGlite): CarveOutDatabase {
+  const execute = async (statement: string) =>
+    (await pg.query<Record<string, unknown>>(statement)).rows;
+  return {
+    execute,
+    transaction: (operation) =>
+      pg.transaction((transaction) =>
+        operation(
+          async (statement) =>
+            (await transaction.query<Record<string, unknown>>(statement)).rows,
+        ),
+      ),
+  };
+}
+
 interface RuntimeHarness {
   runtime: IAgentRuntime;
   pg: PGlite;
@@ -50,6 +66,16 @@ async function createRuntimeHarness(): Promise<RuntimeHarness> {
   const pg = new PGlite();
   const db = {
     execute: (query: RawSqlQuery) => pg.query(rawQueryText(query)),
+    transaction: <T>(
+      operation: (transaction: {
+        execute(query: RawSqlQuery): Promise<unknown>;
+      }) => Promise<T>,
+    ) =>
+      pg.transaction((transaction) =>
+        operation({
+          execute: (query) => transaction.query(rawQueryText(query)),
+        }),
+      ),
   };
   let service: ScheduledTaskRunnerService | null = null;
   const runtime = {
@@ -62,10 +88,7 @@ async function createRuntimeHarness(): Promise<RuntimeHarness> {
     reportError: vi.fn(),
   } as unknown as IAgentRuntime;
 
-  await migrateSchedulingTables(async (sql) => {
-    const result = await pg.query<Record<string, unknown>>(sql);
-    return result.rows;
-  });
+  await migrateSchedulingTables(carveOutDatabase(pg));
   return {
     runtime,
     pg,
@@ -223,6 +246,65 @@ describe("scheduling SQL persistence", () => {
   );
 
   it(
+    "persists one immutable pre-effect intent without a lifecycle log",
+    async () => {
+      const harness = await createRuntimeHarness();
+      harnesses.push(harness);
+      const { runner } = await startSqlRunner(harness);
+      const created = await runner.scheduleWithResult(
+        receiptReminderInput("intent-reservation-task"),
+      );
+      const options = {
+        idempotencyKey: "clear-message:manifest",
+        context: { taskIds: [created.task.taskId] },
+      };
+
+      const reserved = await runner.reserveApplyIntent(
+        created.task.taskId,
+        options,
+      );
+      const replayed = await runner.reserveApplyIntent(
+        created.task.taskId,
+        options,
+      );
+
+      expect(reserved.replayed).toBe(false);
+      expect(replayed.replayed).toBe(true);
+      await expect(
+        runner.reserveApplyIntent(created.task.taskId, {
+          ...options,
+          context: { taskIds: [created.task.taskId, "later-task"] },
+        }),
+      ).rejects.toThrow("conflicting context");
+      const persisted = await harness.pg.query<{
+        status: string;
+        logs: number;
+        metadata_json: string;
+      }>(`
+        SELECT
+          state_json::jsonb ->> 'status' AS status,
+          (SELECT COUNT(*)::int
+             FROM app_scheduling.life_scheduled_task_log
+            WHERE agent_id = 'agent-sql-persist'
+              AND task_id = '${created.task.taskId}') AS logs,
+          metadata_json
+        FROM app_scheduling.life_scheduled_tasks
+        WHERE agent_id = 'agent-sql-persist'
+          AND id = '${created.task.taskId}'
+      `);
+      expect(persisted.rows[0]?.status).toBe("scheduled");
+      expect(persisted.rows[0]?.logs).toBe(1);
+      const metadata = JSON.parse(persisted.rows[0]?.metadata_json ?? "{}") as {
+        schedulingApplyIntents?: Record<string, unknown>;
+      };
+      expect(Object.values(metadata.schedulingApplyIntents ?? {})).toEqual([
+        options.context,
+      ]);
+    },
+    SQL_PERSISTENCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
     "replays one lifecycle receipt after the atomic commit outlives an observation failure",
     async () => {
       const harness = await createRuntimeHarness();
@@ -360,8 +442,14 @@ describe("scheduling SQL persistence", () => {
         pipeline: { onComplete: [child as never] },
       });
       const requests = [
-        { idempotencyKey: "message-distinct-a:complete" },
-        { idempotencyKey: "message-distinct-b:complete" },
+        {
+          idempotencyKey: "message-distinct-a:complete",
+          receiptContext: { manifest: "manifest-a" },
+        },
+        {
+          idempotencyKey: "message-distinct-b:complete",
+          receiptContext: { manifest: "manifest-b" },
+        },
       ] as const;
 
       const applied = await Promise.all(
@@ -405,6 +493,12 @@ describe("scheduling SQL persistence", () => {
       if (!receiptMarkers)
         throw new Error("expected lifecycle receipt markers");
       expect(Object.keys(receiptMarkers)).toHaveLength(2);
+      expect(Object.values(receiptMarkers)).toEqual(
+        expect.arrayContaining([
+          { manifest: "manifest-a" },
+          { manifest: "manifest-b" },
+        ]),
+      );
 
       const replayed = await Promise.all(
         requests.map((options) =>
@@ -623,10 +717,9 @@ describe("scheduling SQL persistence", () => {
       )`,
       );
 
-      const results = await migrateSchedulingTables(async (sql) => {
-        const result = await harness.pg.query<Record<string, unknown>>(sql);
-        return result.rows;
-      });
+      const results = await migrateSchedulingTables(
+        carveOutDatabase(harness.pg),
+      );
 
       expect(results.map((result) => result.outcome)).toEqual([
         "copied",
@@ -843,10 +936,7 @@ describe("scheduling SQL persistence", () => {
           DROP CONSTRAINT life_scheduled_tasks_pkey,
           ADD CONSTRAINT life_scheduled_tasks_pkey PRIMARY KEY (id)
       `);
-      await migrateSchedulingTables(async (sql) => {
-        const result = await harness.pg.query<Record<string, unknown>>(sql);
-        return result.rows;
-      });
+      await migrateSchedulingTables(carveOutDatabase(harness.pg));
       const executeSql = async (sql: string) =>
         (await harness.pg.query<Record<string, unknown>>(sql)).rows;
       const sourceStore = createSchedulingSqlScheduledTaskStore({

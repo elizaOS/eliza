@@ -179,7 +179,7 @@ describe("service agent provisioning route", () => {
     enqueueAgentProvision.mockClear();
   });
 
-  test("creates a funded wallet-owned cloud agent without minting signup credit", async () => {
+  test("creates a wallet-owned cloud agent with the fixed signup credit", async () => {
     const response = await app.fetch(
       new Request("https://api.example.test/", {
         method: "POST",
@@ -219,7 +219,7 @@ describe("service agent provisioning route", () => {
           },
           billing: {
             mode: "owner_credits",
-            initialReserveUsd: 5,
+            initialReserveUsd: 0,
           },
           container: {
             image: "registry.example.test/waifu-agent:latest",
@@ -412,9 +412,24 @@ describe("service agent provisioning route", () => {
       cloudAgentId: "cloud-agent-1",
       characterId: "character-1",
       containerId: "container-worker",
-      containerUrl: "https://runtime.example.test",
-      bridgeUrl: "https://runtime.example.test",
+      containerUrl: "https://cloud-agent-1.cloud.eliza.app",
+      bridgeUrl: "https://cloud-agent-1.cloud.eliza.app",
+      webUiUrl: "https://cloud-agent-1.cloud.eliza.app",
       status: "running",
+      token_address: "0x0000000000000000000000000000000000000009",
+      token_chain: "bsc",
+      token_name: "Waifu Smoke",
+      token_ticker: "WSMOKE",
+      account: {
+        primaryWalletAddress: "0x0000000000000000000000000000000000000001",
+        walletKeyRef: null,
+        organizationId: "agent-wallet-org",
+        userId: "agent-wallet-user",
+        isNewAccount: true,
+        initialCreditsGranted: false,
+        initialFreeCreditsUsd: 0,
+        welcomeBonusWithheld: false,
+      },
     });
     expect(createAgent).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -495,7 +510,7 @@ describe("service agent provisioning route", () => {
           character: { name: "Smoke Agent" },
           billing: {
             mode: "owner_credits",
-            initialReserveUsd: 5,
+            initialReserveUsd: 0,
           },
           container: {
             image: "registry.example.test/waifu-agent:latest",
@@ -537,7 +552,7 @@ describe("service agent provisioning route", () => {
           },
           billing: {
             mode: "owner_credits",
-            initialReserveUsd: 5,
+            initialReserveUsd: 0,
           },
           container: {
             image: "registry.example.test/waifu-agent:latest",
@@ -582,7 +597,7 @@ describe("service agent provisioning route", () => {
           },
           billing: {
             mode: "owner_credits",
-            initialReserveUsd: 5,
+            initialReserveUsd: 0,
           },
           container: {
             image: "registry.example.test/waifu-agent:latest",
@@ -629,7 +644,7 @@ describe("service agent provisioning route", () => {
           },
           billing: {
             mode: "owner_credits",
-            initialReserveUsd: 5,
+            initialReserveUsd: 0,
           },
           container: {
             image: "registry.example.test/waifu-agent:latest",
@@ -687,7 +702,7 @@ describe("service agent provisioning route", () => {
           },
           billing: {
             mode: "owner_credits",
-            initialReserveUsd: 5,
+            initialReserveUsd: 0,
           },
           container: {
             image: "registry.example.test/waifu-agent:latest",

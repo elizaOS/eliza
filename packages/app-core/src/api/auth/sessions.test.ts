@@ -305,10 +305,11 @@ describe("denyOnAuthStoreError", () => {
     expect(denyOnAuthStoreError("findActiveSession")(error)).toBeNull();
     expect(errorSpy).toHaveBeenCalledTimes(1);
     const [context, message] = errorSpy.mock.calls[0] as [
-      { scope?: string; error?: string; stack?: string },
+      { scope?: string; cause?: string; error?: string; stack?: string },
       string,
     ];
     expect(context.scope).toBe("findActiveSession");
+    expect(context.cause).toBe("(no cause)");
     expect(context.error).toBe("auth db connection refused");
     expect(context.stack).toEqual(expect.any(String));
     expect(message).toContain(
@@ -328,6 +329,24 @@ describe("denyOnAuthStoreError", () => {
     ];
     expect(context.error).toBe("plain-string");
     expect(context.stack).toBeUndefined();
+  });
+
+  it("preserves the nested infrastructure cause ahead of the outer query", () => {
+    const errorSpy = vi
+      .spyOn(logger, "error")
+      .mockImplementation(() => undefined as never);
+    const error = new Error("Failed query: SELECT * FROM auth_sessions", {
+      cause: new Error("remaining connection slots are reserved"),
+    });
+
+    expect(denyOnAuthStoreError("findActiveSession")(error)).toBeNull();
+    const [context] = errorSpy.mock.calls[0] as [
+      { cause?: string; error?: string; stack?: string },
+      string,
+    ];
+    expect(context.cause).toBe("remaining connection slots are reserved");
+    expect(context.error).toBe("Failed query: SELECT * FROM auth_sessions");
+    expect(context.stack).toEqual(expect.any(String));
   });
 });
 

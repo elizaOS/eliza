@@ -32,6 +32,10 @@ export default defineConfig({
   ...baseConfig,
   resolve: {
     ...baseConfig.resolve,
+    // The package imports UI source through workspace links. Resolving those
+    // links to their physical package paths keeps react-router-dom beside its
+    // transitive react-router dependency in Bun's isolated install layout.
+    preserveSymlinks: false,
     alias: [
       {
         find: /^react$/,
@@ -52,6 +56,10 @@ export default defineConfig({
       {
         find: /^react-dom\/client$/,
         replacement: require.resolve("react-dom/client"),
+      },
+      {
+        find: /^@elizaos\/core\/errors$/,
+        replacement: path.resolve(here, "../../packages/core/src/errors.ts"),
       },
       ...baseAliases,
     ],

@@ -406,7 +406,7 @@ final class ElizaBionicInferenceServer {
                 return embed(bundleDir, req.optString("text", ""));
             }
             if ("tts".equals(op)) {
-                return tts(bundleDir, req.optString("text", ""),
+                return tts(bundleDir, req.optString("ipa", ""), req.optString("language", ""),
                     (float) req.optDouble("speed", 1.0));
             }
             if ("asr".equals(op)) {
@@ -842,7 +842,7 @@ final class ElizaBionicInferenceServer {
     }
 
     /**
-     * Synthesize {@code text} with the fused Kokoro-82M head and return base64
+     * Synthesize precomputed {@code ipa} with the fused Kokoro-82M head and return base64
      * fp32 PCM at the model's native rate. This is the on-device voice the
      * Android app speaks with: TalkMode delegates here instead of falling back to
      * the platform TextToSpeech (the HTTP /api/tts/local-inference path can't
@@ -850,9 +850,16 @@ final class ElizaBionicInferenceServer {
      * the system voice). Resolves the Kokoro GGUF + voice preset from the bundle's
      * {@code tts/kokoro/} dir.
      */
-    private String tts(String bundleDir, String text, float speed) throws org.json.JSONException {
-        if (text.trim().isEmpty()) {
-            return errorJson("tts: empty text");
+    private String tts(String bundleDir, String ipa, String language, float speed) throws org.json.JSONException {
+        if (!"en-US".equals(language) || ipa.trim().isEmpty()) {
+            return errorJson("tts: requires en-US IPA from the bundled phonemizer");
+        }
+        // Reserve both pads within the pinned graph's 510-token input.
+        if (ipa.codePointCount(0, ipa.length()) > 508) {
+            return errorJson("tts: IPA exceeds Kokoro's 508-symbol phrase boundary");
+        }
+        if (!Float.isFinite(speed) || speed <= 0f) {
+            return errorJson("tts: speed must be finite and positive");
         }
         File kokoroDir = new File(bundleDir, "tts/kokoro");
         String gguf = firstMatch(kokoroDir, ".gguf");
@@ -868,8 +875,8 @@ final class ElizaBionicInferenceServer {
         synchronized (residentLock) {
             final long ctx = ensureResidentCtx(bundleDir);
             try {
-                float[] pcm = ElizaVoiceNative.nativeKokoroSynthesize(
-                    ctx, gguf, voiceBin, text, speed <= 0f ? 1.0f : speed);
+                float[] pcm = ElizaVoiceNative.nativeKokoroSynthesizeIpa(
+                    ctx, gguf, voiceBin, ipa, speed);
                 int sampleRate = ElizaVoiceNative.nativeKokoroSampleRate(ctx);
                 // Pack fp32 PCM little-endian and base64 it for the JSON frame.
                 ByteBuffer buf = ByteBuffer.allocate(pcm.length * 4).order(ByteOrder.LITTLE_ENDIAN);
@@ -877,7 +884,7 @@ final class ElizaBionicInferenceServer {
                     buf.putFloat(v);
                 }
                 String b64 = Base64.encodeToString(buf.array(), Base64.NO_WRAP);
-                Log.i(TAG, "TTS (kokoro) from agent: " + text.length() + " chars -> "
+                Log.i(TAG, "TTS (kokoro IPA) from agent: " + ipa.length() + " chars -> "
                     + pcm.length + " samples @ " + sampleRate + " Hz");
                 return new JSONObject()
                     .put("ok", true)

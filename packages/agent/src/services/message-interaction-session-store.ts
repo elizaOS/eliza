@@ -1265,6 +1265,7 @@ export class FileMessageInteractionSessionStore
 
   private async transaction<T>(
     operation: (document: SessionFile) => T | Promise<T>,
+    options: { opportunisticPrune?: boolean } = {},
   ): Promise<T> {
     const owner = await this.acquireLock();
     let result: T | undefined;
@@ -1272,7 +1273,9 @@ export class FileMessageInteractionSessionStore
     try {
       await this.assertDirectoryIdentity();
       const document = await this.readFile();
-      this.prune(document, this.clock());
+      if (options.opportunisticPrune !== false) {
+        this.prune(document, this.clock());
+      }
       result = await operation(document);
       await this.assertDirectoryIdentity();
       await this.writeFile(document);
@@ -1475,21 +1478,24 @@ export class FileMessageInteractionSessionStore
 
   async deleteExpired(before: number): Promise<number> {
     safeInteger(before, "before", 0);
-    return this.transaction((document) => {
-      let deleted = 0;
-      for (const [reference, session] of Object.entries(document.sessions)) {
-        const terminalAt =
-          session.consume.state === "completed"
-            ? Date.parse(session.consume.completedAt)
-            : session.consume.state === "committed"
-              ? Date.parse(session.consume.committedAt)
-              : Date.parse(session.expiresAt);
-        if (terminalAt <= before) {
-          delete document.sessions[reference];
-          deleted += 1;
+    return this.transaction(
+      (document) => {
+        let deleted = 0;
+        for (const [reference, session] of Object.entries(document.sessions)) {
+          const terminalAt =
+            session.consume.state === "completed"
+              ? Date.parse(session.consume.completedAt)
+              : session.consume.state === "committed"
+                ? Date.parse(session.consume.committedAt)
+                : Date.parse(session.expiresAt);
+          if (terminalAt <= before) {
+            delete document.sessions[reference];
+            deleted += 1;
+          }
         }
-      }
-      return deleted;
-    });
+        return deleted;
+      },
+      { opportunisticPrune: false },
+    );
   }
 }

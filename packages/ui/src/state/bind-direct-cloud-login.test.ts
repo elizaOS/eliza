@@ -7,11 +7,35 @@ import { bindDirectCloudLoginToPersonalAgent } from "./bind-direct-cloud-login";
 import { loadPersistedActiveServer } from "./persistence";
 
 const PERSONAL_ID = "personal:00000000-0000-5000-8000-000000000001";
-const API_BASE =
-  "https://api.eliza.app/api/v1/eliza/agents/personal%3A00000000-0000-5000-8000-000000000001";
+const DEDICATED_ID = "00000000-0000-4000-8000-000000000020";
+const API_BASE = `https://${DEDICATED_ID}.cloud.eliza.app`;
 
 describe("bindDirectCloudLoginToPersonalAgent", () => {
   beforeEach(() => localStorage.clear());
+
+  it("leaves fresh activation to visible onboarding after authentication", async () => {
+    const client = {
+      getPersonalSharedEliza: vi.fn(async () => ({
+        personalElizaId: PERSONAL_ID,
+        activeAgentId: PERSONAL_ID,
+        agentName: "Eliza",
+        apiBase: "https://api.eliza.app/api/v1/eliza/personal",
+        runtime: "shared" as const,
+      })),
+      setBaseUrl: vi.fn(),
+      setToken: vi.fn(),
+    };
+    await expect(
+      bindDirectCloudLoginToPersonalAgent({
+        client,
+        cloudApiBase: "https://api.eliza.app",
+        token: "signed-in-token",
+      }),
+    ).resolves.toBeUndefined();
+    expect(loadPersistedActiveServer()).toBeNull();
+    expect(client.setBaseUrl).not.toHaveBeenCalled();
+    expect(client.setToken).not.toHaveBeenCalled();
+  });
 
   it("replaces a stale staging target and repoints the live client", async () => {
     localStorage.setItem(
@@ -27,10 +51,10 @@ describe("bindDirectCloudLoginToPersonalAgent", () => {
     const client = {
       getPersonalSharedEliza: vi.fn(async () => ({
         personalElizaId: PERSONAL_ID,
-        activeAgentId: PERSONAL_ID,
+        activeAgentId: DEDICATED_ID,
         agentName: "Eliza",
         apiBase: API_BASE,
-        runtime: "shared" as const,
+        runtime: "dedicated" as const,
       })),
       setBaseUrl: vi.fn(),
       setToken: vi.fn(),
@@ -46,7 +70,8 @@ describe("bindDirectCloudLoginToPersonalAgent", () => {
       id: `cloud:${PERSONAL_ID}`,
       apiBase: API_BASE,
       accessToken: "production-token",
-      cloudRuntime: "shared",
+      cloudRuntimeAgentId: DEDICATED_ID,
+      cloudRuntime: "dedicated",
     });
     expect(getActiveProfile()).toMatchObject({
       cloudAgentId: PERSONAL_ID,

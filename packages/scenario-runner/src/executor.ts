@@ -2225,6 +2225,13 @@ async function executeApiTurn(args: {
           apiServer: args.apiServer,
           variables: args.variables,
         });
+  const configuredHeaders = args.turn.headers
+    ? ((await resolveTemplateValue({
+        value: args.turn.headers,
+        apiServer: args.apiServer,
+        variables: args.variables,
+      })) as Record<string, string>)
+    : undefined;
 
   const startedAt = Date.now();
   const timeoutMs =
@@ -2253,8 +2260,10 @@ async function executeApiTurn(args: {
   try {
     response = await fetch(`${args.apiServer.baseUrl}${path}`, {
       method,
-      headers:
-        body === undefined ? undefined : { "content-type": "application/json" },
+      headers: {
+        ...(body === undefined ? {} : { "content-type": "application/json" }),
+        ...configuredHeaders,
+      },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: controller.signal,
     });
@@ -2621,7 +2630,7 @@ async function runTurnAssertions(
     plannerExcludes.length > 0
   ) {
     const plannerBlob = buildPlannerAssertionBlob(execution);
-    const plannerPreview = JSON.stringify(plannerBlob.slice(0, 500));
+    const plannerEvidence = JSON.stringify(plannerBlob);
     if (plannerIncludesAll.length > 0) {
       const missing = plannerIncludesAll.filter(
         (pattern) => !matchesTurnMatcher(plannerBlob, pattern),
@@ -2630,7 +2639,7 @@ async function runTurnAssertions(
         failures.push(
           `plannerIncludesAll: expected planner trace to include ${formatTurnMatcher(
             missing[0] as TurnMatcher,
-          )}, saw ${plannerPreview}`,
+          )}, saw ${plannerEvidence}`,
         );
       }
     }
@@ -2642,7 +2651,7 @@ async function runTurnAssertions(
         failures.push(
           `plannerIncludesAny: expected planner trace to include any of [${formatTurnMatchers(
             plannerIncludesAny,
-          )}], saw ${plannerPreview}`,
+          )}], saw ${plannerEvidence}`,
         );
       }
     }
@@ -2654,7 +2663,7 @@ async function runTurnAssertions(
         failures.push(
           `plannerExcludes: expected planner trace to exclude [${formatTurnMatchers(
             hits,
-          )}], saw ${plannerPreview}`,
+          )}], saw ${plannerEvidence}`,
         );
       }
     }

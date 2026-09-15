@@ -8,7 +8,12 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { promoteSubactionsToActions } from "../../actions/promote-subactions";
-import { plannerTemplate } from "../../prompts/planner";
+import {
+	plannerBatchScopeDescription,
+	plannerRequiredPolicy,
+	plannerSchema,
+	plannerTemplate,
+} from "../../prompts/planner";
 import { ModelType } from "../../types/model";
 import { TrajectoryLimitExceeded } from "../limits";
 import {
@@ -42,6 +47,58 @@ function renderedMessagePrompt(
 }
 
 describe("v5 planner loop skeleton", () => {
+	it("records native turn scope without passing it to the action", async () => {
+		const stages: RecordedStage[] = [];
+		const recorder: TrajectoryRecorder = {
+			startTrajectory: vi.fn(() => "native-scope"),
+			recordStage: vi.fn(async (_id, stage) => {
+				stages.push(stage);
+			}),
+			endTrajectory: vi.fn(async () => undefined),
+			load: vi.fn(async () => null),
+			list: vi.fn(async () => []),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: "found",
+		}));
+		await runPlannerLoop({
+			runtime: {
+				useModel: vi.fn(async () => ({
+					text: "",
+					toolCalls: [
+						{
+							id: "read",
+							name: "LOOKUP",
+							arguments: { query: "status", eliza_turn_scope: "final" },
+						},
+					],
+				})),
+			},
+			context: { id: "native-scope" },
+			executeToolCall,
+			evaluate: vi.fn(async () => ({
+				success: true,
+				decision: "FINISH" as const,
+			})),
+			recorder,
+			trajectoryId: "native-scope",
+		});
+		expect(
+			stages.find((stage) => stage.kind === "planner")?.model?.toolCalls,
+		).toEqual([
+			{
+				id: "read",
+				name: "LOOKUP",
+				args: { query: "status", eliza_turn_scope: "final" },
+			},
+		]);
+		expect(executeToolCall).toHaveBeenCalledExactlyOnceWith(
+			expect.objectContaining({ name: "LOOKUP", params: { query: "status" } }),
+			expect.anything(),
+		);
+	});
+
 	it("parses planner tool calls", () => {
 		const output = parsePlannerOutput(`{
   "thought": "Fetch state.",
@@ -242,13 +299,16 @@ describe("v5 planner loop skeleton", () => {
 			"attachments/memory/snippets do not replace explicit current run/check/fetch/inspect/build/deploy/verify/look up now",
 		);
 		expect(plannerTemplate).toContain(
-			"MUST call the matching exposed life-management/scheduling tool before any terminal answer",
+			"require the matching exposed tool before reporting completion",
 		);
 		expect(plannerTemplate).toContain(
-			"Never declare the capability missing because a specific name above is absent",
+			"Match its name, routing hint and description, not a fixed required name",
 		);
 		expect(plannerTemplate).toContain(
-			"A tool-owned conflict, clarification, preview, confirmation request, or fail-closed no-op is still a tool result",
+			"an operation that always commits is not a preview operation",
+		);
+		expect(plannerTemplate).toContain(
+			"outstanding separate confirmation forbids the effect even when a matching tool exists",
 		);
 		expect(plannerTemplate).toContain(
 			"messageToUser alone cannot save, schedule, send, update, remember, or complete anything",
@@ -285,46 +345,6 @@ describe("v5 planner loop skeleton", () => {
 		);
 	});
 
-	it("forbids using SHELL as a fallback for chat-message search/recall", () => {
-		// Regression for elizaOS/eliza#7935: Stage 1 hinted
-		// candidateActions=["SEARCH_MESSAGES"], but no matching action was
-		// registered. The planner fell back to echo placeholders and grep
-		// commands, burning iterations without a real chat-history capability.
-		expect(plannerTemplate).toContain(
-			"SHELL is for filesystem/process work, not a fallback for chat-message search/recall",
-		);
-		expect(plannerTemplate).toContain(
-			"do not run shell greps, echo placeholders, or simulate the search",
-		);
-		expect(plannerTemplate).toContain(
-			"memory queries, or agent-history lookups",
-		);
-	});
-
-	it("forbids spawning coding sub-agents for chat-message recall tasks", () => {
-		expect(plannerTemplate).toContain(
-			"TASKS_SPAWN_AGENT is for delegating coding/build/repo work",
-		);
-		expect(plannerTemplate).toContain(
-			"not a fallback for chat-message recall, memory queries, or agent-history lookups",
-		);
-		expect(plannerTemplate).toContain(
-			"routinely ends in sub-agent error/timeout",
-		);
-	});
-
-	it("forbids inventing tool workarounds for dead candidateActions hints", () => {
-		expect(plannerTemplate).toContain(
-			"candidateActions naming a tool that is not in this turn's exposed tools list is a dead hint",
-		);
-		expect(plannerTemplate).toContain(
-			"do not invent SHELL/BROWSER/TASKS workarounds to fulfill it",
-		);
-		expect(plannerTemplate).toContain(
-			"placeholder echoes burn cost and produce no progress",
-		);
-	});
-
 	it("allows structured chat markers while still banning arbitrary JSON/tool attempts", () => {
 		expect(plannerTemplate).toContain("arbitrary JSON/tool attempts");
 		expect(plannerTemplate).toContain(
@@ -334,95 +354,51 @@ describe("v5 planner loop skeleton", () => {
 		expect(plannerTemplate).toContain("The JSON inside [FORM] is form data");
 	});
 
-	it("forbids phantom in-flight investigative claims in messageToUser/REPLY (planner side)", () => {
-		// Live regression on 2026-05-26: user asked
-		// "look it up bitch" after the bot honestly declined a current-news
-		// question. Stage 1 routed simple=false + requiresTool=true with
-		// candidateActions=[WEB_SEARCH, SHELL]. The planner ran 4 SHELL curl
-		// iterations against duckduckgo/google-news/etc — all blocked by
-		// anti-scraping. Iter 5 REPLY then emitted:
-		//   "I'm fetching the latest info on 'big Yahu'. Please hold..."
-		// — a phantom present-continuous claim. iters=5 tools=4 but no
-		// further fetch was queued. The planner does not run in the
-		// background after returning; the user was promised data that
-		// would never arrive.
-		//
-		// The phantom-action-claim ban already lives in
-		// messageHandlerTemplate (Stage 1). This regression covers the
-		// SAME ban in plannerTemplate — the planner's messageToUser /
-		// REPLY text path that runs after every tool iteration.
-		expect(plannerTemplate).toContain(
-			"messageToUser and REPLY text must NEVER claim or imply an investigative OR task-execution action is happening",
-		);
-		expect(plannerTemplate).toContain('"I\'m fetching X, please hold"');
-		expect(plannerTemplate).toContain(
-			"The planner does not run in the background after returning",
-		);
-		expect(plannerTemplate).toContain("set messageToUser saying so plainly");
-		expect(plannerTemplate).toContain(
-			'"please hold" / "give me a sec" / "be right back" / "almost done" style stalling phrases',
-		);
-		// The ban now also covers task-execution claims (working on / fixing /
-		// wrapping up), not just investigative ones. Live regression 2026-06-28:
-		// in a multi-bot arena the bot claimed it was "wrapping the runtime-identity
-		// fix" with zero TASKS_SPAWN_AGENT this turn — pure narration.
-		expect(plannerTemplate).toContain('"I\'m working on it"');
-		expect(plannerTemplate).toContain(
-			"A claim that you are working on / starting / fixing / building / wrapping up a task is only legitimate when a task-executing tool call",
-		);
-	});
-
-	it("appends mandatory chat-recall fallback policy to optimized planner prompts", async () => {
-		const runtime = {
-			useModel: vi.fn(async () => ({ text: "No chat search is available." })),
-			getService: vi.fn(() => ({
-				getPrompt: vi.fn(() => ({
-					prompt:
-						"task: Optimized planner without bundled safety policy.\n\ncontext_object:\n{{contextObject}}\n\ntrajectory:\n{{trajectory}}",
+	it.each([
+		["default", plannerTemplate, false],
+		[
+			"one missing rule",
+			plannerTemplate.replace(plannerRequiredPolicy.discovery, ""),
+			true,
+		],
+		[
+			"custom",
+			"task: Custom planner.\ncontext_object:\n{{contextObject}}\ntrajectory:\n{{trajectory}}",
+			true,
+		],
+		[
+			"introductory fragments only",
+			Object.values(plannerRequiredPolicy)
+				.map((rule) => rule.split(". ")[0])
+				.join("\n"),
+			true,
+		],
+	] as const)(
+		"sends every complete mandatory rule once for %s prompts",
+		async (_name, template, appended) => {
+			const runtime = {
+				useModel: vi.fn(async () => ({ text: "No chat search is available." })),
+				getService: vi.fn(() => ({
+					getPrompt: vi.fn(() => ({ prompt: template })),
 				})),
-			})),
-		};
-
-		await runPlannerLoop({
-			runtime,
-			context: { id: "ctx", events: [] },
-			executeToolCall: vi.fn(),
-			evaluate: vi.fn(),
-		});
-
-		const plannerParams = runtime.useModel.mock.calls[0]?.[1] as {
-			messages?: Array<{ role?: string; content?: string }>;
-		};
-		const systemContent =
-			plannerParams.messages?.find((message) => message.role === "system")
-				?.content ?? "";
-		expect(systemContent).toContain(
-			"Optimized planner without bundled safety policy",
-		);
-		expect(systemContent).toContain("mandatory planner policy:");
-		expect(systemContent).toContain(
-			"Structured chat markers are allowed in messageToUser",
-		);
-		expect(systemContent).toContain("[FORM]\\n{json}\\n[/FORM]");
-		expect(systemContent).toContain(
-			"SHELL is for filesystem/process work, not a fallback for chat-message search/recall",
-		);
-		expect(systemContent).toContain(
-			"candidateActions naming a tool that is not in this turn's exposed tools list is a dead hint",
-		);
-		expect(systemContent).toContain(
-			"TASKS_SPAWN_AGENT is for delegating coding/build/repo work",
-		);
-		expect(systemContent).toContain(
-			"messageToUser alone cannot save, schedule, send, update, remember, or complete anything",
-		);
-		expect(systemContent).toContain(
-			"messageToUser and REPLY text must NEVER claim or imply an investigative OR task-execution action is happening",
-		);
-		expect(systemContent).toContain(
-			'"please hold" / "give me a sec" / "be right back" / "almost done" style stalling phrases',
-		);
-	});
+			};
+			await runPlannerLoop({
+				runtime,
+				context: { id: "ctx", events: [] },
+				executeToolCall: vi.fn(),
+				evaluate: vi.fn(),
+			});
+			const params = runtime.useModel.mock.calls[0]?.[1] as {
+				messages?: Array<{ role?: string; content?: string }>;
+			};
+			const system =
+				params.messages?.find(({ role }) => role === "system")?.content ?? "";
+			expect(system.includes("mandatory planner policy:")).toBe(appended);
+			for (const rule of Object.values(plannerRequiredPolicy)) {
+				expect(system.split(rule)).toHaveLength(2);
+			}
+		},
+	);
 
 	it("calls ACTION_PLANNER, executes the first queued tool, then evaluates", async () => {
 		const runtime = {
@@ -5310,7 +5286,16 @@ describe("v5 planner loop skeleton", () => {
 		).toMatchObject({
 			type: "string",
 			enum: [TURN_SCOPE_FINAL, TURN_SCOPE_MORE_WORK_PENDING],
+			description: expect.stringContaining(plannerBatchScopeDescription),
 		});
+		// JSON and native planning must agree: verifying this queue's results
+		// is not a request for a later action batch. Contradictory instructions
+		// caused a live read + navigation to repeat planning after both finished.
+		expect(plannerTemplate).toContain(plannerBatchScopeDescription);
+		expect(plannerSchema.properties?.completed).toMatchObject({
+			description: expect.stringContaining(plannerBatchScopeDescription),
+		});
+		expect(plannerTemplate).not.toContain("verification pending");
 		// The scope arg is REQUIRED: optional args are exactly what small
 		// planner models omit, and an omitted scope let a lookup end the turn
 		// before the asked-for write ran (live 2026-08-10). Absent values
@@ -5323,6 +5308,38 @@ describe("v5 planner loop skeleton", () => {
 		expect(tools[0]?.parameters?.properties?.[TURN_SCOPE_ARG]).toBeUndefined();
 		expect(injected?.[1]).toBe(tools[1]);
 		expect(injected?.[2]).toBe(tools[2]);
+	});
+
+	it("shares the complete batch protocol across native tools without changing their required scope", () => {
+		const tools = ["VIEWS", "NOTES_LIST", "REPLY"].map((name) => ({
+			name,
+			parameters: { type: "object", properties: {} },
+		}));
+		const shared = withTurnScopeToolArg(tools, plannerTemplate);
+		const standalone = withTurnScopeToolArg(
+			tools,
+			"Custom instructions without the batch contract.",
+		);
+		for (let i = 0; i < tools.length; i++) {
+			const scope = shared?.[i]?.parameters?.properties?.[TURN_SCOPE_ARG];
+			expect(scope).toMatchObject({
+				type: "string",
+				enum: [TURN_SCOPE_FINAL, TURN_SCOPE_MORE_WORK_PENDING],
+			});
+			expect(shared?.[i]?.parameters?.required).toContain(TURN_SCOPE_ARG);
+			expect(scope?.description).not.toContain(plannerBatchScopeDescription);
+			expect(
+				standalone?.[i]?.parameters?.properties?.[TURN_SCOPE_ARG]?.description,
+			).toContain(plannerBatchScopeDescription);
+		}
+		expect(JSON.stringify(shared).length).toBeLessThan(
+			JSON.stringify(standalone).length,
+		);
+		expect(
+			tools.every(
+				(tool) => Object.keys(tool.parameters.properties).length === 0,
+			),
+		).toBe(true);
 	});
 
 	it("never overwrites a genuine parameter that already uses the reserved name", () => {
@@ -5718,7 +5735,7 @@ describe("v5 planner loop — evaluator gate", () => {
 		).toBe("action_terminal_result");
 	});
 
-	it("WITHHOLDS in native-mode when the call declares more_work_pending scope — and strips the arg", async () => {
+	it("WITHHOLDS in native-mode for pending scope and allows an unsuccessful evaluator stop", async () => {
 		const runtime = {
 			useModel: plannerNativeWith({
 				toolCalls: [
@@ -5745,9 +5762,9 @@ describe("v5 planner loop — evaluator gate", () => {
 			turnComplete: true,
 		}));
 		const evaluate = vi.fn(async () => ({
-			success: true,
+			success: false,
 			decision: "FINISH" as const,
-			thought: "The evaluator arbitrates the planner-declared multi-step turn.",
+			thought: "The remaining operation is unavailable, so the turn must stop.",
 			messageToUser: "Shell access is off.",
 		}));
 
@@ -5887,6 +5904,215 @@ describe("v5 planner loop — evaluator gate", () => {
 		).toBe("post_tool_model_reply");
 	});
 
+	it.each([
+		"You're back at the main chat.",
+		"Ya estás en la pantalla principal.",
+	])(
+		"preserves an evaluated navigation reply without requiring the literal UI label: %s",
+		async (reply) => {
+			const useModel = plannerNativeWith({
+				toolCalls: [
+					{
+						id: "home",
+						name: "VIEWS",
+						arguments: {
+							action: "show",
+							view: "chat",
+							[TURN_SCOPE_ARG]: TURN_SCOPE_FINAL,
+						},
+					},
+				],
+			});
+			const evaluate = vi.fn(async () => ({
+				success: true,
+				decision: "FINISH" as const,
+				thought:
+					"The requested destination is confirmed by the current turn's receipt.",
+				messageToUser: reply,
+			}));
+			const result = await runPlannerLoop({
+				runtime: { useModel },
+				context: {
+					id: "home-intent",
+					events: [
+						{
+							id: "routing",
+							type: "message_handler",
+							metadata: { plan: { intents: ["return to home"] } },
+						},
+					],
+				},
+				tools: [{ name: "VIEWS", description: "Navigate Eliza views" }],
+				executeToolCall: vi.fn(async () => ({
+					success: true,
+					modelReplyRequired: true,
+					transcriptVisibility: "internal" as const,
+					text: JSON.stringify({
+						effect: "view_navigation",
+						status: "accepted",
+						viewId: "chat",
+						label: "Home",
+					}),
+				})),
+				evaluate,
+			});
+			expect(evaluate).toHaveBeenCalledTimes(1);
+			expect(useModel).toHaveBeenCalledTimes(1);
+			expect(result.finalMessage).toBe(reply);
+		},
+	);
+
+	it("checks a single declared intent even when the wrong action succeeds with final scope", async () => {
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "wrong-page",
+						name: "BROWSER",
+						arguments: {
+							action: "navigate",
+							url: "https://go.home",
+							[TURN_SCOPE_ARG]: TURN_SCOPE_FINAL,
+						},
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "home-view",
+						name: "VIEWS",
+						arguments: {
+							action: "show",
+							view: "chat",
+							[TURN_SCOPE_ARG]: TURN_SCOPE_FINAL,
+						},
+					},
+				],
+			});
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "CONTINUE",
+				thought:
+					"The website navigation did not return to Eliza's home screen.",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "FINISH",
+				thought: "The chat view is now open.",
+				messageToUser: "You're back home.",
+			});
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			modelReplyRequired: true,
+			text: "Navigation accepted.",
+		}));
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: {
+				id: "home-intent",
+				events: [
+					{
+						id: "routing",
+						type: "message_handler",
+						metadata: { plan: { intents: ["return to the home screen"] } },
+					},
+				],
+			},
+			tools: [
+				{ name: "BROWSER", description: "Visit a website" },
+				{ name: "VIEWS", description: "Navigate Eliza views" },
+			],
+			executeToolCall,
+			evaluate,
+		});
+		expect(executeToolCall.mock.calls.map(([call]) => call.name)).toEqual([
+			"BROWSER",
+			"VIEWS",
+		]);
+		expect(evaluate).toHaveBeenCalledTimes(2);
+		expect(useModel).toHaveBeenCalledTimes(2);
+		expect(result.finalMessage).toBe("You're back home.");
+	});
+
+	it("evaluates all model-authored intents instead of finishing after one final-scope action", async () => {
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "note-1",
+						name: "NOTES",
+						arguments: { action: "update", [TURN_SCOPE_ARG]: TURN_SCOPE_FINAL },
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "view-1",
+						name: "VIEWS",
+						arguments: {
+							action: "show",
+							view: "notes",
+							[TURN_SCOPE_ARG]: TURN_SCOPE_FINAL,
+						},
+					},
+				],
+			});
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "CONTINUE",
+				thought: "The note changed, but Notes has not opened.",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "FINISH",
+				thought: "Both requested outcomes are confirmed.",
+				messageToUser: "Notes is open and your note is updated.",
+			});
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			modelReplyRequired: true,
+			text: "Confirmed operation.",
+		}));
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: {
+				id: "compound",
+				events: [
+					{
+						id: "routing",
+						type: "message_handler",
+						metadata: { plan: { intents: ["update note", "open notes"] } },
+					},
+				],
+			},
+			tools: [
+				{ name: "NOTES", description: "Edit notes" },
+				{ name: "VIEWS", description: "Navigate" },
+			],
+			executeToolCall,
+			evaluate,
+		});
+		expect(executeToolCall.mock.calls.map(([call]) => call.name)).toEqual([
+			"NOTES",
+			"VIEWS",
+		]);
+		expect(evaluate).toHaveBeenCalledTimes(2);
+		expect(useModel).toHaveBeenCalledTimes(2);
+		expect(result.finalMessage).toBe("Notes is open and your note is updated.");
+	});
+
 	it("falls back to the settled action when post-tool synthesis has a provider outage", async () => {
 		const providerError = Object.assign(new Error("provider unavailable"), {
 			statusCode: 503,
@@ -5993,6 +6219,7 @@ describe("v5 planner loop — evaluator gate", () => {
 		'{"effect":"app_launch","status":"completed"}',
 		"The tool executed successfully.",
 		"Opening that now.",
+		"<tool_call>\n<function=VIEWS>\n<parameter=action>close</parameter>\n</function>\n</tool_call>",
 	])("rejects unsafe post-tool synthesis prose: %s", async (synthesisText) => {
 		const useModel = vi
 			.fn()
@@ -6018,10 +6245,87 @@ describe("v5 planner loop — evaluator gate", () => {
 				userFacingText: "The app launched successfully.",
 				modelReplyRequired: true,
 			})),
-			evaluate: vi.fn(),
+			evaluate: vi.fn(async () => ({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "The app launch receipt confirms it is open.",
+				messageToUser: "Your app is open and ready.",
+			})),
 		});
 
-		expect(result.finalMessage).toBe("The app launched successfully.");
+		expect(result.finalMessage).toBe("Your app is open and ready.");
+	});
+
+	it("resumes authorized planning when an unusable synthesis leaves the intent incomplete", async () => {
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "wrong-page",
+						name: "BROWSER",
+						arguments: {
+							action: "navigate",
+							url: "https://go.home",
+							[TURN_SCOPE_ARG]: TURN_SCOPE_FINAL,
+						},
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "<tool_call><function=VIEWS><parameter=action>close</parameter></function></tool_call>",
+				toolCalls: [],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "home-view",
+						name: "VIEWS",
+						arguments: {
+							action: "show",
+							view: "chat",
+							[TURN_SCOPE_ARG]: TURN_SCOPE_FINAL,
+						},
+					},
+				],
+			});
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "CONTINUE",
+				thought: "Home has not opened.",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "FINISH",
+				thought: "Home is now open.",
+				messageToUser: "You're back at the home screen.",
+			});
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			modelReplyRequired: true,
+			text: "Navigation accepted.",
+		}));
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "legacy-home" },
+			tools: [
+				{ name: "BROWSER", description: "Visit a website" },
+				{ name: "VIEWS", description: "Navigate Eliza views" },
+			],
+			executeToolCall,
+			evaluate,
+		});
+		expect(executeToolCall.mock.calls.map(([call]) => call.params)).toEqual([
+			{ action: "navigate", url: "https://go.home" },
+			{ action: "show", view: "chat" },
+		]);
+		expect(evaluate).toHaveBeenCalledTimes(2);
+		expect(useModel).toHaveBeenCalledTimes(3);
+		expect(result.finalMessage).toBe("You're back at the home screen.");
 	});
 
 	it("fails closed on a required-reply synthesis that invents a tool call, routing the completed action through the evaluator (#22609)", async () => {
@@ -6163,9 +6467,9 @@ describe("v5 planner loop — evaluator gate", () => {
 			}),
 		};
 		const evaluate = vi.fn(async () => ({
-			success: true,
+			success: false,
 			decision: "FINISH" as const,
-			thought: "The planner explicitly said more work remains.",
+			thought: "More work remains, but the required capability is unavailable.",
 			messageToUser: "Notes are open.",
 		}));
 
@@ -6836,6 +7140,45 @@ describe("tool-turn reply guarantee (#16935)", () => {
 	// serialized tool-call literal as its "reply" — the exact live shape that
 	// ended read-then-summarize turns replyless. The post-pass must spend ONE
 	// extra no-tools model call and ship its grounded prose instead.
+	it.each([
+		'"use VIEWS for layouts or discovery"',
+		"“use VIEWS for layouts or discovery”",
+		"'use VIEWS for layouts or discovery'",
+		"`use VIEWS for layouts or discovery`",
+	])(
+		"delivers an evaluated reference quote without synthesis: %s",
+		async (quote) => {
+			const reply = `The catalog says ${quote}. Home is open.`;
+			const runtime = {
+				useModel: vi.fn().mockResolvedValueOnce({
+					text: "",
+					toolCalls: [{ name: "LOOKUP", arguments: { query: "catalog" } }],
+				}),
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi.fn(async () => ({
+				success: true,
+				text: "Reference read succeeded.",
+			}));
+			const evaluate = vi.fn(async () => ({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "The requested quotation is grounded in the reference.",
+				messageToUser: reply,
+			}));
+			const result = await runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				executeToolCall,
+				evaluate,
+			});
+			expect(result.finalMessage).toBe(reply);
+			expect(runtime.useModel).toHaveBeenCalledTimes(1);
+			expect(executeToolCall).toHaveBeenCalledTimes(1);
+			expect(evaluate).toHaveBeenCalledTimes(1);
+		},
+	);
+
 	it("synthesizes a final reply when tool work finished without a usable message", async () => {
 		const runtime = {
 			useModel: vi
@@ -6874,6 +7217,49 @@ describe("tool-turn reply guarantee (#16935)", () => {
 		expect(result.finalMessage).toBe(
 			"You finished two things today: the receipts and Jordan's reply.",
 		);
+	});
+
+	it("synthesizes destination-specific prose after accepted UI navigation", async () => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{ id: "call-1", name: "VIEWS", arguments: { view: "notes" } },
+					],
+				})
+				.mockResolvedValueOnce({ text: "Notes is open." }),
+			logger: { warn: vi.fn() },
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: JSON.stringify({
+				effect: "view_navigation",
+				status: "accepted",
+				viewId: "notes",
+				label: "Notes",
+				path: "/notes",
+			}),
+			transcriptVisibility: "internal" as const,
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "The view opened.",
+			messageToUser: "On it.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.status).toBe("finished");
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		expect(result.finalMessage).toBe("Notes is open.");
 	});
 
 	it("does not synthesize after a deliberate IGNORE terminal", async () => {

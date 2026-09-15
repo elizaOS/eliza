@@ -343,3 +343,26 @@ describe("DOCUMENT structural extraction on hardened messages", () => {
 		expect(filePath.length).toBeLessThanOrEqual(121);
 	});
 });
+
+describe("DOCUMENT model-owned replies", () => {
+	it("returns a successful deletion to the planner without emitting a canned reply", async () => {
+		const service = makeService();
+		const callback = vi.fn();
+		const response = await documentAction.handler(
+			makeRuntime(service),
+			makeMessage("delete the test document"),
+			undefined,
+			options({ action: "delete", id: DOC_ID }),
+			callback,
+		);
+		expect(service.deleteDocument).toHaveBeenCalledWith(
+			DOC_ID,
+			expect.anything(),
+		);
+		expect(response.success).toBe(true);
+		expect(response.values).toMatchObject({ documentId: DOC_ID });
+		expect(callback).not.toHaveBeenCalled();
+		expect(response.turnComplete).not.toBe(true);
+		expect(response.verifiedUserFacing).not.toBe(true);
+	});
+});

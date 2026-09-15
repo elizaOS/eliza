@@ -6,17 +6,39 @@
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
+  CalendarPage,
   CalendarView,
   calendarPlugin,
   calendarSourcesAction,
-  SimpleCalendarView,
 } from "./index.js";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000901";
 
 describe("@elizaos/plugin-calendar root registration", () => {
   it("exports one canonical shipped Calendar implementation", () => {
-    expect(CalendarView).toBe(SimpleCalendarView);
+    expect(CalendarView).toBe(CalendarPage);
+  });
+
+  it("declares owner-gated server capabilities through server interaction", () => {
+    const view = calendarPlugin.views?.find(({ id }) => id === "calendar");
+    expect(view?.roleGate).toEqual({ minRole: "OWNER" });
+    expect(typeof view?.serverInteract).toBe("function");
+    expect(view?.capabilities?.map(({ id }) => id)).toEqual([
+      "get-events",
+      "create-event",
+    ]);
+    const createEvent = view?.capabilities?.find(
+      ({ id }) => id === "create-event",
+    );
+    expect(createEvent?.params?.title).toMatchObject({
+      type: "string",
+      required: true,
+    });
+    expect(createEvent?.params?.startAt).toMatchObject({
+      type: "string",
+      required: true,
+    });
+    expect(createEvent?.description).toMatch(/built-in/i);
   });
 
   it("registers one callable canonical CALENDAR_SOURCES action", async () => {

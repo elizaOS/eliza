@@ -3,7 +3,10 @@
  * readiness. Expensive model work is serialized per process and remains an
  * optimization; the model handlers retain ownership of first-use failures.
  */
-import { configureLocalEmbeddingPlugin, loadElizaConfig } from "@elizaos/agent";
+import {
+  configureLocalEmbeddingPlugin,
+  loadEffectiveElizaConfig,
+} from "@elizaos/agent";
 import {
   type AgentRuntime,
   isTruthyEnvValue,
@@ -101,7 +104,7 @@ async function warmupEmbeddingModelImpl(
     return;
   }
 
-  const config = loadElizaConfig();
+  const config = loadEffectiveElizaConfig();
   await configureLocalEmbeddingPlugin({} as Plugin, config);
 
   const preset = localInference.detectEmbeddingPreset();

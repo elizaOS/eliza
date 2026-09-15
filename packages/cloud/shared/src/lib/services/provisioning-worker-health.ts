@@ -86,9 +86,9 @@ export async function checkProvisioningWorkerHealth(
     return { ok: true, required: false };
   }
 
-  let raw: string | null;
+  let raw: unknown;
   try {
-    raw = (await redis.get(PROVISIONING_WORKER_HEARTBEAT_KEY)) as string | null;
+    raw = await redis.get(PROVISIONING_WORKER_HEARTBEAT_KEY);
   } catch (error) {
     return {
       ok: false,
@@ -112,20 +112,25 @@ export async function checkProvisioningWorkerHealth(
     };
   }
 
-  let lastHeartbeatAt = raw;
+  let lastHeartbeatAt = typeof raw === "string" ? raw : undefined;
   let capabilities: readonly string[] = [];
+  let parsed: unknown = raw;
   try {
-    const parsed = JSON.parse(raw) as { timestamp?: unknown; capabilities?: unknown };
-    if (typeof parsed.timestamp === "string") lastHeartbeatAt = parsed.timestamp;
-    if (
-      Array.isArray(parsed.capabilities) &&
-      parsed.capabilities.every((capability) => typeof capability === "string")
-    ) {
-      capabilities = parsed.capabilities;
-    }
+    if (typeof raw === "string") parsed = JSON.parse(raw);
   } catch {
-    // Legacy workers publish a bare ISO timestamp. It remains a valid liveness
-    // signal but advertises no versioned execution capabilities.
+    // error-policy:J3 Legacy workers publish a bare ISO timestamp, which is
+    // valid liveness but intentionally carries no execution capabilities.
+    parsed = null;
+  }
+  if (parsed !== null && typeof parsed === "object") {
+    const heartbeat = parsed as { timestamp?: unknown; capabilities?: unknown };
+    if (typeof heartbeat.timestamp === "string") lastHeartbeatAt = heartbeat.timestamp;
+    if (
+      Array.isArray(heartbeat.capabilities) &&
+      heartbeat.capabilities.every((capability) => typeof capability === "string")
+    ) {
+      capabilities = heartbeat.capabilities;
+    }
   }
 
   return { ok: true, required: true, lastHeartbeatAt, capabilities };

@@ -652,6 +652,19 @@ describe("resolvePackageEntry", () => {
     );
   });
 
+  it("keeps the installed fallback import for unsupported export arrays and ignores workspace-only metadata", async () => {
+    await writeJson(path.join(pkgRoot, "package.json"), {
+      type: "module",
+      exports: { ".": ["./not-used-array-entry.js"] },
+      elizaos: { plugin: { workspaceSource: { ".": "../../outside.ts" } } },
+    });
+    const entry = path.join(pkgRoot, "index.mjs");
+    await fs.writeFile(entry, 'export const marker = "installed-fallback";\n');
+    const resolved = await resolvePackageEntry(pkgRoot);
+    const loaded = await import(pathToFileURL(resolved).href);
+    expect(loaded.marker).toBe("installed-fallback");
+  });
+
   it("uses a string exports value for subpath .", async () => {
     await writeJson(path.join(pkgRoot, "package.json"), {
       exports: "./from-string-exports.js",

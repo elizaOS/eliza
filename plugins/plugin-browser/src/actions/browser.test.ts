@@ -3,6 +3,8 @@
  */
 
 import type { HandlerCallback } from "@elizaos/core";
+import { promoteSubactionsToActions } from "@elizaos/core";
+import { validateToolArgs } from "@elizaos/core/actions/validate-tool-args";
 import { describe, expect, it, vi } from "vitest";
 import { BROWSER_SERVICE_TYPE } from "../browser-service.js";
 import { browserAction } from "./browser.js";
@@ -17,7 +19,8 @@ function runtimeWithService(service: unknown) {
 
 function browserService(result: Record<string, unknown> = {}) {
   return {
-    execute: vi.fn(async (command) => ({
+    execute: vi.fn(async (command, targetId?: string) => ({
+      targetId: targetId ?? "workspace",
       mode: "workspace",
       subaction: command.subaction,
       ...result,
@@ -44,6 +47,445 @@ async function runBrowserAction(args: {
 }
 
 describe("BROWSER action", () => {
+  it.each([
+    [
+      "Open https://example.com. Keep records unchanged.",
+      "https://example.com",
+    ],
+    ["Open (https://example.com/a_(b)).", "https://example.com/a_(b)"],
+    ["Open [Example](https://example.com/page).", "https://example.com/page"],
+    ["Open <https://example.com/a.>", "https://example.com/a."],
+    ["Open https://example.com/a%2E.", "https://example.com/a%2E"],
+    ["Open `https://example.com/a`.", "https://example.com/a"],
+    ['Open "https://example.com/a."', "https://example.com/a."],
+    [
+      "Open `https://example.com/first` then https://example.com/second.",
+      "https://example.com/first",
+    ],
+    [
+      "Open https://example.com/first then https://example.com/second.",
+      "https://example.com/first",
+    ],
+  ])("extracts the intended URL from prose: %s", async (messageText, url) => {
+    const { service } = await runBrowserAction({
+      parameters: { action: "open" },
+      messageText,
+    });
+    expect(service?.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ subaction: "open", url }),
+      undefined,
+      undefined,
+    );
+  });
+
+  it("preserves punctuation in an explicit URL argument", async () => {
+    const url = "https://example.com./path.?q=yes!";
+    const { service } = await runBrowserAction({
+      parameters: { action: "open", url },
+      messageText: "Open https://different.example.",
+    });
+    expect(service?.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ subaction: "open", url }),
+      undefined,
+      undefined,
+    );
+  });
+
+  it("does not replace an invalid first URL with another destination", async () => {
+    const service = browserService();
+    service.execute.mockRejectedValue(new Error("Invalid URL"));
+    const { result } = await runBrowserAction({
+      service,
+      parameters: { action: "open" },
+      messageText: "Open https://:invalid then https://example.com.",
+    });
+    expect(service.execute).toHaveBeenCalledTimes(1);
+    expect(service.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ url: "https://:invalid" }),
+      undefined,
+      undefined,
+    );
+    expect(result?.success).toBe(false);
+  });
+
+  it("dispatches promoted open without unrelated login or URL-wait fields", async () => {
+    const open = promoteSubactionsToActions(browserAction).find(
+      (action) => action.name === "BROWSER_OPEN",
+    );
+    expect(open).toBeDefined();
+    if (!open) throw new Error("Promoted open action is required");
+    const validation = validateToolArgs(open, {
+      url: "https://example.com/",
+      target: "custom-browser",
+      id: "tab-1",
+    });
+    expect(validation.valid).toBe(true);
+    const service = browserService();
+    await open.handler?.(
+      runtimeWithService(service) as never,
+      { content: { text: "Open https://example.com/" } } as never,
+      undefined,
+      { parameters: validation.args } as never,
+    );
+    expect(service.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subaction: "open",
+        url: "https://example.com/",
+        id: "tab-1",
+        show: true,
+      }),
+      "custom-browser",
+      undefined,
+    );
+    for (const name of [
+      "domain",
+      "username",
+      "submit",
+      "pattern",
+      "pollIntervalMs",
+    ]) {
+      expect(
+        open.parameters?.some((parameter) => parameter.name === name),
+      ).toBe(false);
+    }
+  });
+
+  it.each([
+    [
+      "scroll",
+      { direction: "left", pixels: 375 },
+      { direction: "left", pixels: 375 },
+    ],
+    [
+      "drag",
+      { selector: "#from", targetSelector: "#to" },
+      { selector: "#from", value: "#to" },
+    ],
+    [
+      "press",
+      { selector: "#input", key: "Escape" },
+      { selector: "#input", key: "Escape" },
+    ],
+    [
+      "realistic_type",
+      { selector: "#input", text: "abc", perCharDelayMs: 17, replace: true },
+      {
+        subaction: "realistic-type",
+        perCharDelayMs: 17,
+        replace: true,
+        text: "abc",
+      },
+    ],
+    [
+      "cursor_move",
+      { x: 12, y: 34, cursorDurationMs: 75 },
+      { subaction: "cursor-move", x: 12, y: 34, cursorDurationMs: 75 },
+    ],
+    [
+      "tab",
+      { tabAction: "switch", id: "tab-2" },
+      { tabAction: "switch", id: "tab-2" },
+    ],
+    [
+      "wait",
+      { script: "document.readyState === 'complete'", timeoutMs: 250 },
+      { script: "document.readyState === 'complete'", timeoutMs: 250 },
+    ],
+  ] as const)(
+    "preserves %s operation arguments after promotion",
+    async (action, inputs, command) => {
+      const child = promoteSubactionsToActions(browserAction).find(
+        (entry) => entry.name === `BROWSER_${action.toUpperCase()}`,
+      );
+      if (!child) throw new Error(`Missing promoted ${action}`);
+      const validation = validateToolArgs(child, {
+        ...inputs,
+        target: "custom-browser",
+      });
+      expect(validation.valid).toBe(true);
+      expect(validation.args).toMatchObject(inputs);
+      const service = browserService();
+      await child.handler?.(
+        runtimeWithService(service) as never,
+        { content: { text: "Perform the specified operation." } } as never,
+        undefined,
+        { parameters: validation.args } as never,
+      );
+      expect(service.execute).toHaveBeenCalledWith(
+        expect.objectContaining(command),
+        "custom-browser",
+        undefined,
+      );
+    },
+  );
+
+  it("omits interaction-only fields from navigation while retaining the full parent contract", () => {
+    const navigate = promoteSubactionsToActions(browserAction).find(
+      (entry) => entry.name === "BROWSER_NAVIGATE",
+    );
+    if (!navigate) throw new Error("Missing promoted navigate");
+    for (const name of [
+      "tabAction",
+      "key",
+      "pixels",
+      "direction",
+      "targetSelector",
+      "script",
+      "cursorDurationMs",
+      "perCharDelayMs",
+      "replace",
+      "x",
+      "y",
+    ]) {
+      expect(
+        browserAction.parameters?.some((parameter) => parameter.name === name),
+      ).toBe(true);
+      expect(
+        navigate.parameters?.some((parameter) => parameter.name === name),
+      ).toBe(false);
+    }
+    expect(
+      validateToolArgs(navigate, {
+        url: "https://example.com/",
+        target: "workspace",
+        id: "tab-1",
+        timeoutMs: 1250,
+      }).args,
+    ).toMatchObject({
+      url: "https://example.com/",
+      target: "workspace",
+      id: "tab-1",
+      timeoutMs: 1250,
+    });
+  });
+
+  it.each([
+    [
+      "BROWSER_AUTOFILL_LOGIN",
+      "autofill_login",
+      { domain: "example.com", username: "alice", submit: false },
+    ],
+    [
+      "BROWSER_WAIT_FOR_URL",
+      "wait_for_url",
+      { pattern: "/done$/", pollIntervalMs: 75 },
+    ],
+  ] as const)(
+    "keeps %s inputs available through the child and parent",
+    (name, action, inputs) => {
+      const child = promoteSubactionsToActions(browserAction).find(
+        (entry) => entry.name === name,
+      );
+      expect(child).toBeDefined();
+      if (!child) throw new Error("Promoted browser operation is required");
+      for (const operation of [child, browserAction]) {
+        const result = validateToolArgs(operation, { ...inputs, action });
+        expect(result.valid).toBe(true);
+        expect(result.args).toMatchObject(inputs);
+      }
+    },
+  );
+
+  it("rejects a URL on an element read instead of returning the previous page", async () => {
+    const callback = vi.fn();
+    const { result, service } = await runBrowserAction({
+      parameters: {
+        action: "get",
+        selector: "h1",
+        url: "https://example.com/",
+      },
+      callback,
+    });
+    expect(result).toMatchObject({
+      success: false,
+      transcriptVisibility: "internal",
+      text: expect.stringContaining("navigate"),
+    });
+    expect(service?.execute).not.toHaveBeenCalled();
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it("allows automatic target selection and plugin-registered target IDs", async () => {
+    const automatic = validateToolArgs(browserAction, {
+      action: "snapshot",
+      target: "",
+    });
+    expect(automatic.valid).toBe(true);
+    expect(automatic.args).not.toHaveProperty("target");
+    const { service } = await runBrowserAction({ parameters: automatic.args });
+    expect(service?.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ subaction: "snapshot" }),
+      undefined,
+      undefined,
+    );
+    expect(
+      validateToolArgs(browserAction, {
+        action: "snapshot",
+        target: "custom-registered-browser",
+      }).valid,
+    ).toBe(true);
+  });
+
+  it("accepts an omitted tab operation without weakening enum validation", async () => {
+    const validation = validateToolArgs(browserAction, {
+      action: "snapshot",
+      id: "btab_1",
+      tabAction: "",
+    });
+    expect(validation.valid).toBe(true);
+    expect(validation.args).not.toHaveProperty("tabAction");
+    const { service, result } = await runBrowserAction({
+      parameters: validation.args,
+    });
+    expect(result?.success).toBe(true);
+    expect(service?.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ subaction: "snapshot", id: "btab_1" }),
+      undefined,
+      undefined,
+    );
+    expect(
+      validateToolArgs(browserAction, {
+        action: "tab",
+        tabAction: "erase-everything",
+      }).valid,
+    ).toBe(false);
+  });
+
+  it.each(["navigate", "snapshot", "back", "forward", "scroll"])(
+    "dispatches %s when the model leaves the optional direction empty",
+    async (action) => {
+      const validation = validateToolArgs(browserAction, {
+        action,
+        target: "workspace",
+        id: "btab_1",
+        url: "https://example.com",
+        direction: "",
+        tabAction: "",
+      });
+      expect(validation.valid).toBe(true);
+      expect(validation.args).not.toHaveProperty("direction");
+      expect(validation.args).not.toHaveProperty("tabAction");
+      const { service, result } = await runBrowserAction({
+        parameters: validation.args,
+      });
+      expect(service?.execute).toHaveBeenCalledTimes(1);
+      expect(service?.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subaction: action,
+          id: "btab_1",
+          direction: undefined,
+        }),
+        "workspace",
+        undefined,
+      );
+      expect(result?.success).toBe(true);
+      if (action === "scroll") expect(result?.text).toContain("Scrolled down");
+    },
+  );
+
+  it("omits declared optional sentinels without dropping empty text", async () => {
+    const validation = validateToolArgs(browserAction, {
+      action: "fill",
+      selector: "#query",
+      text: "",
+      target: "",
+      direction: "",
+      tabAction: "",
+    });
+    expect(validation.valid).toBe(true);
+    expect(validation.args).toMatchObject({ text: "" });
+    for (const name of ["target", "direction", "tabAction"]) {
+      expect(validation.args).not.toHaveProperty(name);
+    }
+    const { service } = await runBrowserAction({ parameters: validation.args });
+    expect(service?.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subaction: "fill",
+        selector: "#query",
+        text: "",
+      }),
+      undefined,
+      undefined,
+    );
+  });
+
+  it.each(["down", "left", "right", "up"])(
+    "preserves explicit scroll direction %s through validation and dispatch",
+    async (direction) => {
+      const validation = validateToolArgs(browserAction, {
+        action: "scroll",
+        direction,
+        pixels: 480,
+      });
+      expect(validation.valid).toBe(true);
+      const { service } = await runBrowserAction({
+        parameters: validation.args,
+      });
+      expect(service?.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subaction: "scroll",
+          direction,
+          pixels: 480,
+        }),
+        undefined,
+        undefined,
+      );
+    },
+  );
+
+  it.each(["back", "forward", "diagonal", "null"])(
+    "rejects non-scroll direction %s rather than treating it as omitted",
+    (direction) => {
+      const validation = validateToolArgs(browserAction, {
+        action: "scroll",
+        direction,
+      });
+      expect(validation.valid).toBe(false);
+      expect(validation.args).toBeUndefined();
+      expect(validation.invalidParameterNames).toEqual(["direction"]);
+    },
+  );
+
+  it("still rejects an empty or unsupported operation selector", () => {
+    for (const action of ["", "erase-everything"]) {
+      const validation = validateToolArgs(browserAction, { action });
+      expect(validation.valid).toBe(false);
+      expect(validation.invalidParameterNames).toEqual(["action"]);
+    }
+  });
+
+  it.each([
+    { action: "snapshot", selector: undefined },
+    { action: "get", selector: "h1" },
+  ])(
+    "dispatches $action using its explicit page-read contract",
+    async (parameters) => {
+      const service = browserService({ value: "Example Domain" });
+      const { result } = await runBrowserAction({ service, parameters });
+      expect(service.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subaction: parameters.action,
+          selector: parameters.selector,
+        }),
+        undefined,
+        undefined,
+      );
+      expect(result?.success).toBe(true);
+      expect(result?.data.result.value).toBe("Example Domain");
+    },
+  );
+
+  it("routes page-reading planner aliases to the canonical browser action", () => {
+    expect(browserAction.similes).toEqual(
+      expect.arrayContaining([
+        "BROWSER_GET_CONTEXT",
+        "BROWSER_GET_PAGE_STATE",
+        "BROWSER_READ_PAGE",
+        "BROWSER_SNAPSHOT",
+      ]),
+    );
+  });
+
   it("normalizes legacy action aliases and forwards target overrides", async () => {
     const service = browserService({
       tabs: [
@@ -66,6 +508,7 @@ describe("BROWSER action", () => {
         tabAction: "list",
       }),
       "bridge",
+      undefined,
     );
     expect(result).toEqual(
       expect.objectContaining({
@@ -75,6 +518,7 @@ describe("BROWSER action", () => {
           success: true,
           mode: "workspace",
           subaction: "tab",
+          targetId: "bridge",
         },
       }),
     );
@@ -97,6 +541,7 @@ describe("BROWSER action", () => {
         url: "https://example.com/path",
       }),
       undefined,
+      undefined,
     );
     expect(result?.data.command).toEqual(
       expect.objectContaining({
@@ -107,10 +552,16 @@ describe("BROWSER action", () => {
     );
     expect(result).toMatchObject({
       text: "Opened example.com/path.",
-      userFacingText: "Opened example.com/path.",
-      verifiedUserFacing: true,
       turnComplete: true,
+      modelReplyRequired: true,
+      values: {
+        targetId: "workspace",
+        viewId: "browser",
+        viewPath: "/browser",
+      },
     });
+    expect(result).not.toHaveProperty("userFacingText");
+    expect(result).not.toHaveProperty("verifiedUserFacing");
     expect(browserAction.suppressEarlyReply).toBe(true);
   });
 
@@ -171,10 +622,11 @@ describe("BROWSER action", () => {
     expect(callback).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       text: "Opened example.com.",
-      userFacingText: "Opened example.com.",
-      verifiedUserFacing: true,
       turnComplete: true,
+      modelReplyRequired: true,
     });
+    expect(result).not.toHaveProperty("userFacingText");
+    expect(result).not.toHaveProperty("verifiedUserFacing");
   });
 
   it("does not fail the browser action when compact progress delivery fails", async () => {
@@ -227,6 +679,7 @@ describe("BROWSER action", () => {
         url: "https://example.com",
       }),
       undefined,
+      undefined,
     );
   });
 
@@ -260,6 +713,7 @@ describe("BROWSER action", () => {
         cursorDurationMs: 120,
       }),
       undefined,
+      undefined,
     );
     expect(service.execute).toHaveBeenNthCalledWith(
       2,
@@ -272,6 +726,7 @@ describe("BROWSER action", () => {
         replace: true,
       }),
       undefined,
+      undefined,
     );
   });
 
@@ -281,16 +736,15 @@ describe("BROWSER action", () => {
     const closeService = browserService({ closed: true });
     const cursorService = browserService({ value: { x: 10.4, y: 20.6 } });
 
-    await expect(
-      runBrowserAction({
-        service: valueService,
-        parameters: { action: "state" },
-      }),
-    ).resolves.toMatchObject({
-      result: {
-        text: 'Browser state result (workspace):\n{\n  "ok": true\n}',
-      },
+    const state = await runBrowserAction({
+      service: valueService,
+      parameters: { action: "state" },
     });
+    expect(state.result).toMatchObject({
+      text: 'Browser state result (workspace):\n{\n  "ok": true\n}',
+    });
+    expect(state.result).not.toHaveProperty("verifiedUserFacing");
+    expect(state.result).not.toHaveProperty("userFacingText");
     await expect(
       runBrowserAction({
         service: snapshotService,
@@ -540,6 +994,7 @@ describe("BROWSER restored interaction vocabulary (#18259)", () => {
         subaction: "scroll",
       }),
       undefined,
+      undefined,
     );
     expect(result?.success).toBe(true);
     expect(result?.text).toContain("Scrolled up");
@@ -551,6 +1006,7 @@ describe("BROWSER restored interaction vocabulary (#18259)", () => {
     expect(service.execute).toHaveBeenCalledWith(
       expect.objectContaining({ pixels: 240, subaction: "scroll" }),
       undefined,
+      undefined,
     );
 
     const directional = browserService({ value: { axis: "y", value: 240 } });
@@ -560,6 +1016,7 @@ describe("BROWSER restored interaction vocabulary (#18259)", () => {
     });
     expect(directional.execute).toHaveBeenCalledWith(
       expect.objectContaining({ direction: "down", subaction: "scroll" }),
+      undefined,
       undefined,
     );
   });
@@ -576,6 +1033,7 @@ describe("BROWSER restored interaction vocabulary (#18259)", () => {
     expect(service.execute).toHaveBeenCalledWith(
       expect.objectContaining({ selector: "#footer", subaction: "scrollinto" }),
       undefined,
+      undefined,
     );
     expect(result?.text).toContain("Scrolled #footer into view");
   });
@@ -591,6 +1049,7 @@ describe("BROWSER restored interaction vocabulary (#18259)", () => {
 
     expect(service.execute).toHaveBeenCalledWith(
       expect.objectContaining({ selector: "#menu", subaction: "hover" }),
+      undefined,
       undefined,
     );
     expect(result?.text).toContain("Hovering over #menu");
@@ -616,6 +1075,7 @@ describe("BROWSER restored interaction vocabulary (#18259)", () => {
         value: "#column",
       }),
       undefined,
+      undefined,
     );
     expect(result?.text).toContain("Dragged #card to #column");
   });
@@ -635,6 +1095,7 @@ describe("BROWSER restored interaction vocabulary (#18259)", () => {
         value: "travel",
       }),
       undefined,
+      undefined,
     );
 
     const clearing = browserService({
@@ -650,6 +1111,7 @@ describe("BROWSER restored interaction vocabulary (#18259)", () => {
         subaction: "fill",
         value: "",
       }),
+      undefined,
       undefined,
     );
     expect(result?.text).toContain("Cleared #query");

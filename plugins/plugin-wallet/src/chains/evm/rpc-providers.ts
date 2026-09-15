@@ -2,6 +2,7 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { resolveDevCloudAuthorityEnvValue, resolveDevCloudEnvAuthority } from "@elizaos/shared";
 
 function hasStringSetting(runtime: IAgentRuntime, key: string): boolean {
   const value = runtime.getSetting(key);
@@ -34,16 +35,23 @@ function getCharacterSecret(runtime: IAgentRuntime, key: string): string | undef
   );
 }
 
-function getCloudApiKey(runtime: IAgentRuntime): string | undefined {
-  return (
+function resolveCloudRpcConfig(runtime: IAgentRuntime): { apiKey: string; baseUrl: string } | null {
+  if (resolveDevCloudEnvAuthority()) {
+    const apiKey = resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_API_KEY")?.trim();
+    const baseUrl = resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_BASE_URL")?.trim();
+    return apiKey && baseUrl ? { apiKey, baseUrl } : null;
+  }
+
+  const apiKey =
     getStringSetting(runtime, "ELIZAOS_CLOUD_API_KEY") ??
     getCharacterSecret(runtime, "ELIZAOS_CLOUD_API_KEY") ??
-    (process.env.ELIZAOS_CLOUD_API_KEY?.trim() || undefined)
-  );
-}
-
-function hasCloudRpcAccess(runtime: IAgentRuntime): boolean {
-  return Boolean(getCloudApiKey(runtime));
+    (process.env.ELIZAOS_CLOUD_API_KEY?.trim() || undefined);
+  if (!apiKey) return null;
+  const baseUrl =
+    getStringSetting(runtime, "ELIZAOS_CLOUD_BASE_URL") ??
+    (process.env.ELIZAOS_CLOUD_BASE_URL?.trim() || undefined) ??
+    "https://api.eliza.app/api/v1";
+  return { apiKey, baseUrl };
 }
 
 export type RPCProviderName = "alchemy" | "infura" | "ankr" | "elizacloud";
@@ -263,15 +271,9 @@ export function initRPCProviderManager(runtime: IAgentRuntime): RPCProviderManag
   const ankrKey = getStringSetting(runtime, "ANKR_API_KEY");
   if (ankrKey) providers.push(createAnkrProvider(ankrKey));
 
-  if (hasCloudRpcAccess(runtime)) {
-    const cloudKey = getCloudApiKey(runtime);
-    if (cloudKey) {
-      const cloudBase =
-        getStringSetting(runtime, "ELIZAOS_CLOUD_BASE_URL") ??
-        (process.env.ELIZAOS_CLOUD_BASE_URL?.trim() || undefined) ??
-        "https://api.eliza.app/api/v1";
-      providers.push(createElizaCloudProvider(cloudKey, cloudBase));
-    }
+  const cloud = resolveCloudRpcConfig(runtime);
+  if (cloud) {
+    providers.push(createElizaCloudProvider(cloud.apiKey, cloud.baseUrl));
   }
 
   if (preferred) {
@@ -362,7 +364,7 @@ export function validateRPCProviderConfig(runtime: IAgentRuntime): {
   if (hasStringSetting(runtime, "ALCHEMY_API_KEY")) configuredProviders.push("alchemy");
   if (hasStringSetting(runtime, "INFURA_API_KEY")) configuredProviders.push("infura");
   if (hasStringSetting(runtime, "ANKR_API_KEY")) configuredProviders.push("ankr");
-  if (hasCloudRpcAccess(runtime)) configuredProviders.push("elizacloud");
+  if (resolveCloudRpcConfig(runtime)) configuredProviders.push("elizacloud");
 
   // Check for any per-chain custom RPC URLs
   let hasCustomRpc = false;

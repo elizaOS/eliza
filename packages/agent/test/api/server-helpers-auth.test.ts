@@ -85,6 +85,8 @@ describe("applyCors", () => {
     expect(allowedHeaders).toContain("X-ElizaOS-UI-Language");
     expect(allowedHeaders).toContain("X-ElizaOS-Token");
     expect(allowedHeaders).toContain("X-Waifu-Chat-Access-Token");
+    expect(allowedHeaders).toContain("X-ElizaOS-Turn-Correlation");
+    expect(allowedHeaders).toContain("X-ElizaOS-Turn-Attempt");
   });
 
   it("never enables ambient browser credentials for reflected cloud origins", () => {

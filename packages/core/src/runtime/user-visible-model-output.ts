@@ -73,7 +73,10 @@ export type UserVisibleModelOutput =
 	  }
 	| {
 			kind: "invalid";
-			reason: "reply-envelope-without-text" | "reply-envelope-too-deep";
+			reason:
+				| "reply-envelope-without-text"
+				| "reply-envelope-too-deep"
+				| "reply-control-characters";
 			fieldPath: readonly UserVisibleReplyField[];
 	  };
 
@@ -85,7 +88,27 @@ export type UserVisibleModelOutput =
 export function sanitizeUserVisibleModelOutput(
 	value: string | undefined,
 ): UserVisibleModelOutput {
-	return inspectValue(value, [], 0);
+	const output = inspectValue(value, [], 0);
+	if (output.kind === "text") {
+		// Check the final display text, not decoded values inside ordinary JSON:
+		// escaped control-character data is valid, raw controls in prose are not.
+		// Reject the whole reply so recovery can render it from its evidence;
+		// deleting characters could leave damaged words while claiming success.
+		for (const character of output.text) {
+			const code = character.charCodeAt(0);
+			if (
+				(code < 32 && code !== 9 && code !== 10 && code !== 13) ||
+				(code >= 127 && code <= 159)
+			) {
+				return {
+					kind: "invalid",
+					reason: "reply-control-characters",
+					fieldPath: output.fieldPath,
+				};
+			}
+		}
+	}
+	return output;
 }
 
 export function looksLikeActionEnvelopeJson(text: string): boolean {
@@ -261,6 +284,15 @@ function classifyControlRecord(
 	record: Record<string, unknown>,
 ): { envelope: UserVisibleControlEnvelope; malformed: boolean } | undefined {
 	const action = typeof record.action === "string" ? record.action.trim() : "";
+	// A reply field is not a callable action. Qwen emitted this shape during
+	// no-tools recovery; keep it in the protocol channel, not visible prose.
+	if (action === "messageToUser") {
+		return {
+			envelope: "planner",
+			malformed:
+				!isPlainObject(record.args) || typeof record.args.message !== "string",
+		};
+	}
 	if (TOOL_ACTION_NAME.test(action)) {
 		return {
 			envelope: "action",
@@ -281,6 +313,9 @@ function classifyControlRecord(
 
 	if (
 		Object.hasOwn(record, "toolCalls") ||
+		(typeof record.plannerCompleted === "boolean" &&
+			(record.turnScope === "final" ||
+				record.turnScope === "more_work_pending")) ||
 		(typeof record.completed === "boolean" &&
 			(typeof record.thought === "string" ||
 				REPLY_FIELDS.some((field) => Object.hasOwn(record, field))))
@@ -352,11 +387,17 @@ function classifyMalformedControl(
 ): UserVisibleControlEnvelope | undefined {
 	if (!text.startsWith("{")) return undefined;
 	const candidate = text;
+	if (/"action"\s*:\s*"messageToUser"/.test(candidate)) return "planner";
 	const action = candidate.match(
 		/"action"\s*:\s*"((?:functions\.)?[A-Z][A-Z0-9_.:-]*)"/,
 	)?.[1];
 	if (action) return "action";
 	if (/"toolCalls"\s*:/.test(candidate)) return "planner";
+	if (
+		/"plannerCompleted"\s*:\s*(?:true|false)/.test(candidate) &&
+		/"turnScope"\s*:\s*"(?:final|more_work_pending)"/.test(candidate)
+	)
+		return "planner";
 	const evaluatorDecision =
 		/"(?:decision|route)"\s*:\s*"(?:FINISH|CONTINUE|NEXT_RECOMMENDED)"/i.test(
 			candidate,

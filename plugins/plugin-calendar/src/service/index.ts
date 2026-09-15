@@ -50,12 +50,30 @@ export {
   createLifeOpsReminderPlan,
 } from "./gate.js";
 export {
+  GoogleLinkedCalendarProviderPort,
+  type LinkedCalendarCheckpointStore,
+  type LinkedCalendarEventRecord,
+  type LinkedCalendarLocalPort,
+  type LinkedCalendarLocalSnapshot,
+  type LinkedCalendarOperation,
+  type LinkedCalendarProviderPort,
+  type LinkedCalendarProviderSnapshot,
+  type LinkedCalendarReconcileOutcome,
+  LinkedCalendarReconciler,
+  LinkedCalendarRepository,
+  type LinkedCalendarSemanticEvent,
+  type LinkedCalendarState,
+  linkedCalendarSemanticHash,
+  linkedCalendarSnapshotFromGoogle,
+} from "./linked-calendar-sync.js";
+export {
   CALENDAR_MIGRATION_SERVICE_TYPE,
   CalendarMigrationService,
   ensureCalendarFeedPreferenceTable,
   ensureGoogleCalendarWatchChannelTable,
   ensureIcsCalendarSourceTable,
   ensureIcsSecretCleanupTable,
+  ensureLinkedCalendarEventTable,
   MIGRATED_CALENDAR_TABLES,
 } from "./migration.js";
 export {
@@ -67,4 +85,5 @@ export {
   calendarSources,
   calendarSyncStates,
   googleCalendarWatchChannels,
+  linkedCalendarEvents,
 } from "./schema.js";

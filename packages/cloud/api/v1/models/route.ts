@@ -19,7 +19,8 @@ const app = new Hono<AppEnv>();
 
 app.get("/", async (c) => {
   try {
-    // Probe auth/session — failure here must not turn a catalog read into 500.
+    // Resolve optional identity for request telemetry and first-session user sync.
+    // The catalog remains public when identity resolution is unavailable.
     await getCurrentUser(c).catch(() => null);
 
     if (!hasAnyAiProviderConfigured()) {

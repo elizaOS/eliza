@@ -1,4 +1,4 @@
-// Exercises lib test runtime automation behavior with deterministic script fixtures.
+/** Resolves executable Node runtimes and subprocess environments for repository test launchers. */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";

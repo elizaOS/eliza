@@ -31,7 +31,6 @@ import {
   resolveBundletoolInvocation,
   runCheckedBundletool,
 } from "./lib/android-cloud-artifact-audit.mjs";
-import { ElizaError as ScriptElizaError } from "./lib/eliza-error.mjs";
 import {
   assertAndroidArtifactOmitsLp3ManifestMarkers,
   assertAndroidArtifactRetainsBackgroundRunnerJniBridge,
@@ -70,18 +69,7 @@ const ANDROID_APP_GRADLE = fs.readFileSync(
   new URL("../platforms/android/app/build.gradle", import.meta.url),
   "utf8",
 );
-const MOBILE_BUILD_SOURCE = fs.readFileSync(
-  new URL("./run-mobile-build.mjs", import.meta.url),
-  "utf8",
-);
-const AAB_AUDIT_SOURCE = fs.readFileSync(
-  new URL("./lib/android-cloud-artifact-audit.mjs", import.meta.url),
-  "utf8",
-);
-const ELIZA_ERROR_SOURCE = fs.readFileSync(
-  new URL("./lib/eliza-error.mjs", import.meta.url),
-  "utf8",
-);
+
 const REAL_AAB_FIXTURE = fileURLToPath(
   new URL(
     "../test/fixtures/android/install-time-permanent-modules.aab",
@@ -286,8 +274,28 @@ function writeSyntheticCloudAab(
       "clean synthetic DEX io/ionic/android_js_engine/NativeWebAPI",
       "utf8",
     ),
+    "base/lib/arm64-v8a/libdatastore_shared_counter.so": Buffer.from(
+      "synthetic AndroidX DataStore JNI arm64-v8a",
+      "utf8",
+    ),
+    "base/lib/armeabi-v7a/libdatastore_shared_counter.so": Buffer.from(
+      "synthetic AndroidX DataStore JNI armeabi-v7a",
+      "utf8",
+    ),
+    "base/lib/x86/libdatastore_shared_counter.so": Buffer.from(
+      "synthetic AndroidX DataStore JNI x86",
+      "utf8",
+    ),
+    "base/lib/x86_64/libdatastore_shared_counter.so": Buffer.from(
+      "synthetic AndroidX DataStore JNI x86_64",
+      "utf8",
+    ),
     "base/manifest/AndroidManifest.xml": Buffer.from(
       "compiled manifest placeholder",
+      "utf8",
+    ),
+    "base/res/drawable-nodpi-v4/eliza_cloud_splash_mark.png": Buffer.from(
+      "synthetic transparent splash mark",
       "utf8",
     ),
     "base/assets/capacitor.config.json": Buffer.from("{}", "utf8"),
@@ -1023,24 +1031,27 @@ describe("pinned bundletool provisioning", () => {
 });
 
 describe("Android artifact boundary selection", () => {
-  it("keeps script imports local while preserving the canonical core error identity", () => {
-    expect(MOBILE_BUILD_SOURCE).toContain('from "./lib/eliza-error.mjs"');
-    expect(AAB_AUDIT_SOURCE).toContain('from "./eliza-error.mjs"');
-    expect(MOBILE_BUILD_SOURCE).not.toContain('from "@elizaos/core"');
-    expect(AAB_AUDIT_SOURCE).not.toContain('from "@elizaos/core"');
-    expect(MOBILE_BUILD_SOURCE).not.toContain("/core/src/errors.ts");
-    expect(AAB_AUDIT_SOURCE).not.toContain("/core/src/errors.ts");
-    expect(ELIZA_ERROR_SOURCE).toContain(
-      'import.meta.resolve("@elizaos/core")',
+  it("preserves the canonical error identity when a real artifact cannot be opened", () => {
+    const temporaryDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "mobile-error-boundary-"),
     );
-    expect(ELIZA_ERROR_SOURCE).toContain("/core/src/errors.ts");
-    expect(ELIZA_ERROR_SOURCE).toContain(
-      "export const ElizaError = coreErrors.ElizaError",
-    );
-    expect(ELIZA_ERROR_SOURCE).not.toContain(
-      "export class ElizaError extends Error",
-    );
-    expect(ScriptElizaError).toBe(CoreElizaError);
+    const missingArtifact = path.join(temporaryDir, "missing.apk");
+    try {
+      expect(() => snapshotAndroidArtifact(missingArtifact)).toThrow(
+        CoreElizaError,
+      );
+      expect(() => snapshotAndroidArtifact(missingArtifact)).toThrowError(
+        expect.objectContaining({
+          cause: expect.objectContaining({ code: "ENOENT" }),
+          context: expect.objectContaining({
+            artifact: missingArtifact,
+            subsystem: "mobile-build",
+          }),
+        }),
+      );
+    } finally {
+      fs.rmSync(temporaryDir, { recursive: true, force: true });
+    }
   });
 
   it("rejects every known packaged local-runtime payload family", () => {
@@ -1452,7 +1463,7 @@ describe("Android Cloud outer audit boundary", () => {
     }
   });
 
-  it("keeps the Play AAB native-free when Background Runner is stripped", () => {
+  it("accepts the exact packaged DataStore JNI set after Background Runner is stripped", () => {
     const temporaryDir = fs.mkdtempSync(
       path.join(os.tmpdir(), "eliza-outer-aab-no-background-runner-jni-"),
     );
@@ -1475,6 +1486,40 @@ describe("Android Cloud outer audit boundary", () => {
       expect(log.mock.calls.at(-1)?.[0]).toContain(
         "android-cloud artifact audit passed",
       );
+    } finally {
+      fs.rmSync(temporaryDir, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects native code beyond the exact packaged DataStore JNI set", () => {
+    const temporaryDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-outer-aab-extra-jni-"),
+    );
+    const log = vi.fn();
+    try {
+      const artifact = writeSyntheticCloudAab(temporaryDir, {
+        extraEntries: {
+          "base/lib/arm64-v8a/libunexpected.so": Buffer.from(
+            "unexpected JNI payload",
+            "utf8",
+          ),
+        },
+      });
+
+      expect(() =>
+        auditAndroidCloudArtifact(
+          { artifact, env: {}, javaHome: JAVA_HOME },
+          { inspectAndroidAppBundleImpl: () => syntheticAabEvidence(), log },
+        ),
+      ).toThrow(
+        expect.objectContaining({
+          code: "ANDROID_PLAY_NATIVE_LIBRARY_ALLOWLIST_FAILED",
+          message: expect.stringContaining(
+            "base/lib/arm64-v8a/libunexpected.so",
+          ),
+        }),
+      );
+      expect(log).not.toHaveBeenCalled();
     } finally {
       fs.rmSync(temporaryDir, { force: true, recursive: true });
     }

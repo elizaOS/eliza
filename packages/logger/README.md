@@ -1,18 +1,8 @@
 # @elizaos/logger
 
-The standalone structured logger for elizaOS, extracted from `@elizaos/core`.
-
-## Why this package exists
-
-`@elizaos/core` is the agent runtime — its browser bundle is ~2 MB. Renderer and
-UI code that only wanted a logger used to `import { logger } from "@elizaos/core"`,
-which dragged that entire runtime bundle into the app's eager first-paint graph
-(the prebuilt core bundle is not tree-shakeable, so importing one symbol pulls
-all of it). Splitting the logger into its own leaf package lets those consumers
-import logging without the runtime.
-
-`@elizaos/core` re-exports everything here from `./logger`, so existing
-`import { logger } from "@elizaos/core"` call sites keep working unchanged.
+Standalone structured logging for elizaOS. Renderer and UI consumers import
+`@elizaos/logger` to avoid loading the core runtime bundle. Server consumers can
+also use the compatible `@elizaos/core` re-export.
 
 ## Usage
 

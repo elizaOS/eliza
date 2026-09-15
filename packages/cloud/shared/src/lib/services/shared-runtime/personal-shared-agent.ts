@@ -93,7 +93,7 @@ export function personalDedicatedAgentApiBase(
   // credential leak. Production's configured domain always wins above.
   return baseDomain === undefined
     ? null
-    : (localRestApiBase(target.health_url) ?? localBridgeApiBase(target.bridge_url));
+    : (localBridgeApiBase(target.bridge_url) ?? localRestApiBase(target.health_url));
 }
 
 /**

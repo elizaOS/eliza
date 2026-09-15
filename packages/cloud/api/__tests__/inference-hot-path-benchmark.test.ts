@@ -10,6 +10,14 @@ process.env.INFERENCE_AUTH_CACHE_ENABLED = "true";
 
 class BenchmarkStorage {
   private readonly values = new Map<string, unknown>();
+  readonly kv = {
+    get: <T>(key: string): T | undefined =>
+      this.values.get(key) as T | undefined,
+    put: (key: string, value: unknown): void => {
+      this.values.set(key, structuredClone(value));
+    },
+    delete: (key: string): boolean => this.values.delete(key),
+  };
 
   async get<T>(key: string): Promise<T | undefined> {
     await Promise.resolve();
@@ -60,7 +68,7 @@ function createGate(): InferenceAdmissionGate {
 
 function post(
   gate: InferenceAdmissionGate,
-  path: "/hydrate" | "/rate-limit" | "/lease" | "/dispatch" | "/settle",
+  path: "/hydrate" | "/rate-limit" | "/lease-dispatched" | "/settle",
   body: Record<string, unknown>,
 ): Promise<Response> {
   return gate.fetch(
@@ -102,12 +110,13 @@ test("warm exact rate plus monetary lease remains a bounded cache-local operatio
       windowMs: 60_000,
       maxRequests: iterations + 1,
     });
-    const lease = await post(gate, "/lease", {
+    const dispatch = await post(gate, "/lease-dispatched", {
       organizationId: "org-benchmark",
       requestId,
       balanceUsd: 100,
       balanceRevision: "1",
       estimatedCostUsd,
+      preProviderCancellationToken: `cancel-${requestId}`,
       recovery: {
         version: 1,
         kind: "organization",
@@ -121,11 +130,9 @@ test("warm exact rate plus monetary lease remains a bounded cache-local operatio
         accounting: { kind: "direct_debit" },
       },
     });
-    const dispatch = await post(gate, "/dispatch", { requestId });
     durationsMs.push(performance.now() - startedAt);
 
     expect(rate.status).toBe(200);
-    expect(lease.status).toBe(200);
     expect(dispatch.status).toBe(200);
 
     // Settlement represents post-provider work and is deliberately excluded
@@ -148,7 +155,7 @@ test("warm exact rate plus monetary lease remains a bounded cache-local operatio
   if (process.env.REPORT_INFERENCE_BENCHMARK === "true") {
     process.stdout.write(
       `${JSON.stringify({
-        benchmark: "inference_durable_object_rate_lease_and_dispatch",
+        benchmark: "inference_durable_object_rate_and_atomic_lease_dispatch",
         iterations,
         p50Ms: Number(p50Ms.toFixed(3)),
         p95Ms: Number(p95Ms.toFixed(3)),

@@ -125,6 +125,7 @@ async function seedActorsAndAgents(count: number) {
       user_id: actor.id,
       agent_name: `HTTP Canary ${index}`,
       status: "running",
+      execution_tier: "dedicated-always",
       sandbox_id: `http-sandbox-${index}`,
       node_id: `http-node-${index}`,
       container_name: `http-agent-${index}`,

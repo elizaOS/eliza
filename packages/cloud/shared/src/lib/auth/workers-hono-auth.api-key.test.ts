@@ -126,6 +126,7 @@ mock.module("../utils/logger", () => ({
 const {
   apiKeyScopeHashPrefix,
   getCurrentUser,
+  readStewardSessionToken,
   requireAdmin,
   requireApiKeyCredential,
   requireCurrentBillingManagerSession,
@@ -212,6 +213,24 @@ beforeEach(() => {
 });
 
 describe("Workers API-key auth", () => {
+  test("selects a bearer Steward JWT for session teardown", () => {
+    const context = contextWithHeaders({
+      authorization: "Bearer header.payload.signature",
+      cookie: "steward-token=cookie.jwt.signature",
+    });
+
+    expect(readStewardSessionToken(context as never)).toBe("header.payload.signature");
+  });
+
+  test("does not mistake an API-key bearer for a Steward session", () => {
+    const context = contextWithHeaders({
+      authorization: "Bearer eliza_live_key",
+      cookie: "steward-token=cookie.jwt.signature",
+    });
+
+    expect(readStewardSessionToken(context as never)).toBe("cookie.jwt.signature");
+  });
+
   test("returns a service-unavailable error when API-key storage throws", async () => {
     await expect(
       requireUserOrApiKey(contextWithApiKey("eliza_live_key") as never),

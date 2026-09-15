@@ -79,6 +79,7 @@ import {
   normalizeWalletRpcSelections,
   WALLET_RPC_PROVIDER_OPTIONS,
 } from "@elizaos/shared";
+import { getBootConfig as getBootConfigForNativeUpdate } from "../config/boot-config-store";
 import type {
   BrowserWorkspaceSnapshot,
   BrowserWorkspaceTab,
@@ -282,3 +283,32 @@ import { ElizaClient as _ElizaClient } from "./client-base";
 // @elizaos/ui export) makes augmented methods visible to callers. The
 // prototype has all methods at runtime via the augmenting side-effect imports.
 export const client: ElizaClient = new _ElizaClient();
+
+if (typeof window !== "undefined") {
+  window.addEventListener("eliza:desktop-api-base-updated", (event: Event) => {
+    const detail = (
+      event as CustomEvent<{ previousBase: string | null; base: string }>
+    ).detail;
+    if (!detail || typeof detail.base !== "string") return;
+    const current = client.getBaseUrl().replace(/\/+$/, "");
+    if (
+      current !== detail.previousBase &&
+      current !== detail.base &&
+      current !== ""
+    )
+      return;
+    const config = getBootConfigForNativeUpdate();
+    const nativeWindow = window as typeof window & {
+      __ELIZA_DESKTOP_LOCAL_API_BASE__?: string;
+      __ELIZA_DESKTOP_EXTERNAL_API_BASE__?: string;
+    };
+    const binding =
+      nativeWindow.__ELIZA_DESKTOP_LOCAL_API_BASE__ ??
+      nativeWindow.__ELIZA_DESKTOP_EXTERNAL_API_BASE__;
+    if (binding !== detail.base || config.apiBase !== detail.base) return;
+    const token = config.apiToken?.trim() || null;
+    // Native publication already excludes unchanged base/token pairs. Lazy
+    // getters can show the new config while the old WebSocket is still open.
+    client.repointBaseUrl(detail.base, token);
+  });
+}

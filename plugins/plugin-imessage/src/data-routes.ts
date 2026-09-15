@@ -34,6 +34,10 @@ const IMESSAGE_SERVICE_NAME = "imessage";
  * module so the route file stays loosely coupled.
  */
 interface IMessageServiceLike {
+  handleBlooioWebhook?(
+    rawBody: string,
+    signature: string | undefined
+  ): Promise<"accepted" | "ignored" | "unauthorized">;
   getRecentMessages(limit?: number): Promise<
     Array<{
       id: string;
@@ -107,6 +111,38 @@ interface IMessageServiceLike {
     }
   ): Promise<boolean>;
   deleteContact(personId: string): Promise<boolean>;
+}
+
+function readHeader(req: RouteRequest, name: string): string | undefined {
+  const value = req.headers?.[name.toLowerCase()] ?? req.headers?.[name];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+async function handleBlooioWebhook(
+  req: RouteRequest,
+  res: RouteResponse,
+  runtime: IAgentRuntime
+): Promise<void> {
+  const service = resolveService(runtime);
+  if (!service?.handleBlooioWebhook) {
+    res
+      .status(503)
+      .json(buildSetupError("service_unavailable", "imessage Blooio transport is unavailable"));
+    return;
+  }
+  if (typeof req.rawBody !== "string" || req.rawBody.length === 0) {
+    res.status(400).json(buildSetupError("bad_request", "raw webhook body is required"));
+    return;
+  }
+  const result = await service.handleBlooioWebhook(
+    req.rawBody,
+    readHeader(req, "x-blooio-signature")
+  );
+  if (result === "unauthorized") {
+    res.status(401).json(buildSetupError("unauthorized", "invalid Blooio webhook signature"));
+    return;
+  }
+  res.status(200).json({ received: true, dispatched: result === "accepted" });
 }
 
 function isIMessageServiceLike(service: unknown): service is IMessageServiceLike {
@@ -475,6 +511,17 @@ async function handleDeleteContact(
 }
 
 export const imessageDataRoutes: Route[] = [
+  {
+    name: "imessage-blooio-webhook",
+    type: "POST",
+    path: "/api/imessage/webhook/blooio",
+    handler: handleBlooioWebhook,
+    rawPath: true,
+    public: true,
+    publicReason: "Blooio webhook delivery is authenticated by its HMAC signature.",
+    publicWrite:
+      "Inbound Blooio webhook POST authenticated by the X-Blooio-Signature header, not the local gate.",
+  },
   {
     type: "GET",
     path: "/api/imessage/messages",

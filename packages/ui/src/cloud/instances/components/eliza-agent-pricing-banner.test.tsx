@@ -29,7 +29,7 @@ describe("ElizaAgentPricingBanner", () => {
     );
 
     expect(screen.getByText("$0.00/mo")).toBeTruthy();
-    expect(screen.getByText("Shared Agent is free")).toBeTruthy();
+    expect(screen.getByText("Shared message ingress is free")).toBeTruthy();
     expect(screen.queryByText("0 running · 0 idle")).toBeNull();
     expect(screen.queryByText("Low balance")).toBeNull();
     expect(screen.queryByText(/Min\./)).toBeNull();

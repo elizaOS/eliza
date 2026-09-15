@@ -288,22 +288,35 @@ describeE2E("/api/agents/:id/a2a", () => {
     expect(res.status).toBe(404);
   });
 
-  test("POST without auth on unknown agent returns 404 (handler short-circuits before auth)", async () => {
+  test("POST without auth returns 401 before agent lookup", async () => {
     const res = await api.post(`/api/agents/${UNOWNED_AGENT_ID}/a2a`, {
       jsonrpc: "2.0",
       method: "chat",
       id: 1,
       params: {},
     });
-    // The route's flow: lookup agent first → 404 if missing → only then auth.
+    expect(res.status).toBe(401);
+  });
+
+  test("POST with valid auth on unknown agent returns 404", async () => {
+    const res = await api.post(
+      `/api/agents/${UNOWNED_AGENT_ID}/a2a`,
+      {
+        jsonrpc: "2.0",
+        method: "chat",
+        id: 1,
+        params: {},
+      },
+      { headers: bearerHeaders() },
+    );
     expect(res.status).toBe(404);
   });
 
-  test("POST with malformed JSON-RPC body to unknown agent returns 404 (agent check first)", async () => {
+  test("POST with malformed body and no auth returns 401 before validation", async () => {
     const res = await api.post(`/api/agents/${UNOWNED_AGENT_ID}/a2a`, {
       not: "a valid jsonrpc envelope",
     });
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(401);
   });
 
   test("GET returns the public card for an A2A-enabled seeded agent", async () => {
@@ -627,20 +640,33 @@ describeE2E("/api/agents/:id/mcp", () => {
     expect(res.status).toBe(404);
   });
 
-  test("POST without auth on unknown agent returns 404 (agent check before auth)", async () => {
+  test("POST without auth returns 401 before agent lookup", async () => {
     const res = await api.post(`/api/agents/${UNOWNED_AGENT_ID}/mcp`, {
       jsonrpc: "2.0",
       method: "tools/list",
       id: 1,
     });
+    expect(res.status).toBe(401);
+  });
+
+  test("POST with valid auth on unknown agent returns 404", async () => {
+    const res = await api.post(
+      `/api/agents/${UNOWNED_AGENT_ID}/mcp`,
+      {
+        jsonrpc: "2.0",
+        method: "tools/list",
+        id: 1,
+      },
+      { headers: bearerHeaders() },
+    );
     expect(res.status).toBe(404);
   });
 
-  test("POST with malformed JSON-RPC body returns 404 on unknown agent", async () => {
+  test("POST with malformed body and no auth returns 401 before validation", async () => {
     const res = await api.post(`/api/agents/${UNOWNED_AGENT_ID}/mcp`, {
       not: "a valid jsonrpc envelope",
     });
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(401);
   });
 });
 

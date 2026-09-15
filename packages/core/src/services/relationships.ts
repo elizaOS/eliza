@@ -853,6 +853,119 @@ export class RelationshipsService extends Service {
 		}
 	}
 
+	private newContactInfo(
+		entityId: UUID,
+		fields: Pick<
+			ContactInfo,
+			"categories" | "tags" | "preferences" | "customFields"
+		>,
+	): ContactInfo {
+		return {
+			entityId,
+			...fields,
+			privacyLevel: "private",
+			lastModified: new Date().toISOString(),
+			handles: [],
+			interactions: [],
+			relationshipStatus: "active",
+		};
+	}
+
+	/** Creates an entity and its complete contact record in one adapter transaction. */
+	async createContact(
+		entity: Entity,
+		fields: Pick<
+			ContactInfo,
+			"categories" | "tags" | "preferences" | "customFields"
+		>,
+	): Promise<{ entity: Entity; contact: ContactInfo }> {
+		if (!entity.id || entity.agentId !== this.runtime.agentId) {
+			throw new ElizaError("Contact entity must belong to the current agent.", {
+				code: "CONTACT_ENTITY_INVALID",
+				context: { entityId: entity.id },
+			});
+		}
+		const entityId = entity.id;
+		const contact = this.newContactInfo(entityId, fields);
+		const component: Component = {
+			id: stringToUuid(`contact-${entityId}-${this.runtime.agentId}`),
+			type: "contact_info",
+			agentId: this.runtime.agentId,
+			entityId,
+			roomId: this.getRelationshipsRoomId(),
+			worldId: this.getRelationshipsWorldId(),
+			sourceEntityId: this.runtime.agentId,
+			data: contactInfoToMetadata(contact),
+			createdAt: Date.now(),
+		};
+		const receipt = await this.runtime.transaction(async (tx) => {
+			const existing = (await tx.getEntitiesByIds([entityId]))[0];
+			if (existing && existing.agentId !== this.runtime.agentId) {
+				throw new ElizaError("Contact entity belongs to a different agent.", {
+					code: "CONTACT_ENTITY_INVALID",
+					context: { entityId },
+				});
+			}
+			if ((await tx.getComponentsByIds([component.id])).length > 0) {
+				throw new ElizaError(
+					"Contact already exists; use CONTACT update to change its fields.",
+					{
+						code: "CONTACT_ALREADY_EXISTS",
+						context: { entityId },
+					},
+				);
+			}
+			if (
+				!existing &&
+				!(await tx.createEntities([entity])).includes(entityId)
+			) {
+				throw new ElizaError(
+					"The database did not create the contact entity.",
+					{
+						code: "CONTACT_ENTITY_CREATE_FAILED",
+						context: { entityId },
+					},
+				);
+			}
+			if (!(await tx.createComponents([component])).includes(component.id)) {
+				throw new ElizaError(
+					"The database did not persist the contact fields.",
+					{
+						code: "CONTACT_FIELDS_CREATE_FAILED",
+						context: { entityId },
+					},
+				);
+			}
+			const persisted = (await tx.getEntitiesByIds([entityId]))[0];
+			if (!persisted)
+				throw new ElizaError("Contact entity readback failed.", {
+					code: "CONTACT_ENTITY_READBACK_FAILED",
+					context: { entityId },
+				});
+			return { entity: persisted, contact };
+		});
+		this.setCacheWithLimit(
+			this.contactInfoCache,
+			entityId,
+			contact,
+			RelationshipsService.CONTACT_CACHE_LIMIT,
+		);
+		try {
+			const payload = {
+				runtime: this.runtime,
+				entityId,
+				source: "relationships",
+			};
+			await this.runtime.emitEvent(EntityLifecycleEvent.UPDATED, payload);
+		} catch (error) {
+			// error-policy:J7 The committed contact receipt stays authoritative if lifecycle diagnostics fail.
+			this.runtime.reportError("relationships:contact-created", error, {
+				entityId,
+			});
+		}
+		return receipt;
+	}
+
 	// Contact Management Methods
 	async addContact(
 		entityId: UUID,
@@ -860,18 +973,12 @@ export class RelationshipsService extends Service {
 		preferences?: ContactPreferences,
 		customFields?: Record<string, JsonValue>,
 	): Promise<ContactInfo> {
-		const contactInfo: ContactInfo = {
-			entityId,
+		const contactInfo = this.newContactInfo(entityId, {
 			categories,
-			tags: [],
 			preferences: preferences ?? {},
-			customFields: customFields ?? ({} as Record<string, JsonValue>),
-			privacyLevel: "private",
-			lastModified: new Date().toISOString(),
-			handles: [],
-			interactions: [],
-			relationshipStatus: "active",
-		};
+			customFields: customFields ?? {},
+			tags: [],
+		});
 
 		// Save as component
 		await this.runtime.createComponent({
@@ -1930,7 +2037,10 @@ export class RelationshipsService extends Service {
 				confidence = GREATEST(entity_identities.confidence, EXCLUDED.confidence),
 				verified = entity_identities.verified OR EXCLUDED.verified,
 				last_seen = now(),
-				source = COALESCE(EXCLUDED.source, entity_identities.source),
+				source = CASE
+					WHEN EXCLUDED.source = 'reflection' THEN entity_identities.source
+					ELSE COALESCE(EXCLUDED.source, entity_identities.source)
+				END,
 				evidence_message_ids = (
 					SELECT to_jsonb(array_agg(DISTINCT element))
 					FROM jsonb_array_elements_text(
@@ -2094,7 +2204,23 @@ export class RelationshipsService extends Service {
 				ON CONFLICT ON CONSTRAINT unique_entity_identity DO UPDATE SET
 					confidence = GREATEST(entity_identities.confidence, EXCLUDED.confidence),
 					verified = entity_identities.verified OR EXCLUDED.verified,
-					last_seen = GREATEST(entity_identities.last_seen, EXCLUDED.last_seen)`,
+					first_seen = LEAST(entity_identities.first_seen, EXCLUDED.first_seen),
+					last_seen = GREATEST(entity_identities.last_seen, EXCLUDED.last_seen),
+					source = CASE
+						WHEN entity_identities.source IS NOT NULL AND entity_identities.source <> 'reflection'
+							THEN entity_identities.source
+						WHEN EXCLUDED.source IS NOT NULL AND EXCLUDED.source <> 'reflection'
+							THEN EXCLUDED.source
+						WHEN entity_identities.source IS NULL OR EXCLUDED.source IS NULL THEN NULL
+						ELSE 'reflection'
+					END,
+					evidence_message_ids = (
+						SELECT COALESCE(to_jsonb(array_agg(DISTINCT element)), '[]'::jsonb)
+						FROM jsonb_array_elements_text(
+							COALESCE(entity_identities.evidence_message_ids, '[]'::jsonb)
+							|| COALESCE(EXCLUDED.evidence_message_ids, '[]'::jsonb)
+						) AS element
+					)`,
 			);
 			await this.execSql(
 				`DELETE FROM entity_identities

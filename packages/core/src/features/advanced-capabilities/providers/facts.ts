@@ -10,22 +10,11 @@
  * header; room-pool facts about other participants render under a neutral
  * room header, so relay/webhook turns keep room recall without the room's
  * facts being misattributed to the bridge sender.
- * Lexical BM25 stays the primary lane, but it is no longer the only one: a
- * bounded semantic lane (local gte-small embedding of the query, one embed
- * call plus the same bounded fact-table searches the old total-miss widen
- * path used) is ALWAYS unioned in, so facts that are meaning-related but
- * lexically disjoint from the query ("Connor is a Zcash core dev" vs a
- * "convent/season/grove" turn) still surface. In-turn evidence text — the
- * current message's attachment/link-preview text and any action results
- * already on the composed state — contributes query tokens too, so content
- * the agent just read participates in retrieval within the same turn.
- * A keyword-miss on durable facts still falls back to the highest-prior
- * candidates so direct recall works.
- * Sender-owned `preference` facts get a separate bounded always-on lane
- * because standing preferences should be visible on every turn even with zero
- * lexical overlap ("brief replies" never BM25-matches "what's next?"); the
- * lane gate is structural (extractor-assigned category + ownership + prior),
- * and the responding model decides which surfaced preferences apply.
+ * Ranking only changes order; every readable active fact is retained, with no
+ * embedding call or top-k cutoff. The optional Stage-1 discovery view keeps
+ * complete sender preferences, identity and categorized corrections inline;
+ * other facts remain available as a complete freshly authorized context read.
+ * Other consumers and raw provider recordings retain the complete text.
  */
 import { ElizaError } from "../../../errors.ts";
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
@@ -39,6 +28,7 @@ import type {
 	ProviderResult,
 	State,
 } from "../../../types/index.ts";
+import { isActiveMemoryEvidence } from "../../../utils/extraction-evidence.ts";
 import {
 	buildFactQueryText,
 	scoreFactKeywordRelevance,
@@ -57,6 +47,12 @@ const spec = requireProviderSpec("FACTS");
  */
 const CURRENT_DECAY_DAYS = 14;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+/**
+ * Older room observations receive a separate heading so the model does not
+ * mistake them for current events. Their complete text stays available;
+ * age changes the label, not the amount of context sent to the model.
+ */
+const ROOM_CURRENT_LAPSE_MS = CURRENT_DECAY_DAYS * MS_PER_DAY;
 
 const DEFAULT_FACT_CONFIDENCE = 0.6;
 
@@ -436,10 +432,19 @@ const factsProvider: Provider = {
 					worldId: message.worldId,
 					unique: false,
 				}),
+				// `entityId` is only the RLS principal; the author filter is what
+				// scopes the pool to this identity's own facts. Live 2026-09-05 on a
+				// database without RLS policies, the principal-only query returned
+				// the entire facts table (127 rows from every Discord channel) for
+				// each cluster member, and all of it rendered on every turn.
 				...relatedEntityIds.map((entityId) =>
 					runtime.getMemories({
 						tableName: "facts",
 						entityId,
+						authorEntityIds: [entityId],
+						// The owner entity is shared across this owner's agents; the
+						// pool must be this agent's own facts.
+						agentId: runtime.agentId,
 						unique: false,
 					}),
 				),
@@ -448,7 +453,9 @@ const factsProvider: Provider = {
 
 			const minimizePrivateFacts = shouldMinimizePrivateFactsForTurn(message);
 			const dedupedPool = dedupeById([...roomFacts, ...entityFacts]).filter(
-				(memory) => !minimizePrivateFacts || !isMarkedPrivateFact(memory),
+				(memory) =>
+					isActiveMemoryEvidence(memory) &&
+					(!minimizePrivateFacts || !isMarkedPrivateFact(memory)),
 			);
 			const { durable: durableCandidates, current: currentCandidates } =
 				partitionByKind(dedupedPool);
@@ -516,7 +523,13 @@ const factsProvider: Provider = {
 			);
 			const roomDurable = durableFacts.filter((m) => !isAboutSender(m));
 			const senderCurrent = currentFacts.filter(isAboutSender);
-			const roomCurrent = currentFacts.filter((m) => !isAboutSender(m));
+			const roomCurrentAll = currentFacts.filter((m) => !isAboutSender(m));
+			const isLapsedRoomCurrent = (memory: Memory): boolean => {
+				const ts = readEffectiveTimestampMs(memory);
+				return ts !== null && nowMs - ts > ROOM_CURRENT_LAPSE_MS;
+			};
+			const roomCurrent = roomCurrentAll.filter((m) => !isLapsedRoomCurrent(m));
+			const roomCurrentLapsed = roomCurrentAll.filter(isLapsedRoomCurrent);
 
 			const sections: string[] = [];
 			if (senderPreferences.length > 0) {
@@ -546,8 +559,32 @@ const factsProvider: Provider = {
 					`What's currently happening in this room:\n${formatLines(roomCurrent, "current")}`,
 				);
 			}
+			if (roomCurrentLapsed.length > 0) {
+				sections.push(
+					`Older observations about other participants (do not assume these are still current):\n${formatLines(roomCurrentLapsed, "current")}`,
+				);
+			}
 
 			const text = sections.join("\n\n");
+			// Keep standing preferences, identity and explicit corrections inline.
+			// Other complete facts are read on demand by the existing response
+			// handler, before a personal claim; no stored record is removed.
+			const standingFacts = allFacts.filter(
+				(memory) =>
+					isAboutSender(memory) &&
+					["preference", "identity", "qa-correction", "correction"].includes(
+						readCategory(memory),
+					),
+			);
+			const categories = [...new Set(allFacts.map(readCategory))].sort();
+			const discoveryText = [
+				`context_discovery: FACTS\n${allFacts.length} saved facts are available in full (${categories.join(", ")}). For remembered details absent from supplied dialogue, return contextRequests=["FACTS"] with an empty reply before choosing a broader memory search. The runtime supplies the complete facts and asks you again. Search history afterward only if facts cannot answer or exact source records are required. Stored observations are not proof of current app state. Supplied dialogue/corrections may already answer; ordinary conversation needs no fact read.`,
+				standingFacts.length
+					? `Standing preferences, identity and corrections (complete):\n${standingFacts.map((fact) => formatLines([fact], readFactKind(fact))).join("\n")}`
+					: "",
+			]
+				.filter(Boolean)
+				.join("\n\n");
 			const formattedFacts = [
 				formatLines(durableFacts, "durable"),
 				formatLines(currentFacts, "current"),
@@ -563,6 +600,7 @@ const factsProvider: Provider = {
 					currentFacts,
 				},
 				text,
+				discoveryText,
 			};
 		} catch (cause) {
 			// error-policy:J2 Add provider scope before the message boundary reports the failed turn.

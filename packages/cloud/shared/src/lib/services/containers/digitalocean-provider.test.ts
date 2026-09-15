@@ -553,7 +553,7 @@ describe("DigitalOceanComputeProvider volumes", () => {
 });
 
 // ---------------------------------------------------------------------------
-// waitForAction — poll loop, success, error (no throw), timeout
+// waitForAction — poll loop, success, terminal error, timeout
 // ---------------------------------------------------------------------------
 
 describe("DigitalOceanComputeProvider waitForAction", () => {
@@ -576,12 +576,12 @@ describe("DigitalOceanComputeProvider waitForAction", () => {
     expect(h.recorded.length).toBe(2);
   });
 
-  test("returns an errored action WITHOUT throwing", async () => {
+  test("rejects a terminal errored action", async () => {
     const h = makeHarness();
     h.queueJson({ action: { id: 52, status: "errored", type: "create" } });
-    const action = await h.provider.waitForAction(52);
-    expect(action.status).toBe("error"); // errored → error
-    expect(action.error).toMatchObject({ code: "errored" });
+    await expect(h.provider.waitForAction(52)).rejects.toMatchObject({
+      code: "server_error",
+    });
   });
 
   test("throws transport_error when the deadline is already past (no fetch)", async () => {

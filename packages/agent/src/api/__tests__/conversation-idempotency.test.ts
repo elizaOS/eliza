@@ -25,16 +25,20 @@
  * this suite order-independent and guarantees the REAL guard + routes run.
  */
 
+import { createHash } from "node:crypto";
 import http from "node:http";
 import type {
   Action,
+  ActionResult,
   AgentRuntime,
+  Content,
   EffectReceipt,
   Memory,
   Service,
 } from "@elizaos/core";
 import {
   executePlannedToolCall,
+  getTrajectoryContext,
   logger,
   RoomHandlerQueue,
   stringToUuid,
@@ -65,15 +69,24 @@ let resetChatDedupe: () => void;
 let getChatDedupeTtlMs: () => number;
 let markChatMessageSeen: typeof import("../chat-routes.ts")["isDuplicateChatMessage"];
 let setChatOutcome: typeof import("../chat-routes.ts")["setChatMessageIdOutcome"];
+let roomDeliverySettlement: typeof import("@elizaos/core")["roomDeliverySettlement"];
+let trackPostDeliveryTask: typeof import("@elizaos/core")["trackPostDeliveryTask"];
+let canonicalEvaluatorMessages: typeof import("../../../../core/src/services/evaluator-transcript.ts")["canonicalEvaluatorMessages"];
 
 beforeAll(async () => {
   vi.resetModules();
+  ({ roomDeliverySettlement, trackPostDeliveryTask } = await import(
+    "@elizaos/core"
+  ));
   const chatRoutes = await import("../chat-routes.ts");
   resetChatDedupe = chatRoutes.__resetChatDedupeForTests;
   getChatDedupeTtlMs = chatRoutes.__getChatDedupeTtlMsForTests;
   markChatMessageSeen = chatRoutes.isDuplicateChatMessage;
   setChatOutcome = chatRoutes.setChatMessageIdOutcome;
   ({ handleConversationRoutes } = await import("../conversation-routes.ts"));
+  ({ canonicalEvaluatorMessages } = await import(
+    "../../../../core/src/services/evaluator-transcript.ts"
+  ));
 });
 
 // Symmetric hygiene: drop this suite's real module graph from the shared
@@ -324,6 +337,119 @@ interface CapturedJson {
   payload: unknown;
 }
 
+/** Real executor and route storage with a deterministic failed completion seam. */
+function createReplyRecoveryHarness(
+  options: { unknownCommit?: boolean; pending?: boolean } = {},
+) {
+  const harness = createHarness();
+  const runtime = harness.state.runtime as AgentRuntime;
+  const receipt: EffectReceipt = {
+    receiptId: "reply-recovery-receipt",
+    operation: "qa.note.create",
+    resource: { kind: "qa.note", id: "qa-reply-note" },
+    artifacts: [],
+    outcome: "applied",
+    idempotency: { key: "qa-reply-create", replayed: false },
+    observedAt: "2026-09-08T20:00:00.000Z",
+    commit: {
+      kind: "durable",
+      id: "qa-reply-note",
+      committedAt: "2026-09-08T20:00:00.000Z",
+    },
+  };
+  const effects: string[] = [];
+  const action: Action = {
+    name: "QA_CREATE_NOTE",
+    description: "Create the isolated test note",
+    similes: [],
+    examples: [],
+    tags: ["capability:write", "effect:receipt-required"],
+    validate: async () => true,
+    handler: async () => {
+      effects.push("qa-reply-note");
+      return {
+        success: true,
+        transcriptVisibility: "internal",
+        effectReceipts: [receipt],
+        data: {
+          noteId: "qa-reply-note",
+          completeDetail: "complete-result-evidence",
+          apiKey: "private-recovery-fixture-key",
+          ...(options.unknownCommit
+            ? { reconciliationRequired: true, committed: "unknown" }
+            : {}),
+        },
+      };
+    },
+  };
+  runtime.actions.push(action);
+  const failure = {
+    kind: "provider_issue",
+    code: "EVALUATOR_REPLY_GENERATION_FAILED",
+    message: "Reply unavailable; recorded outcomes are preserved.",
+    transient: false,
+  } as const;
+  harness.handleMessage.mockImplementation(
+    async (
+      _runtime: AgentRuntime,
+      message: Memory,
+      _callback: unknown,
+      processingOptions?: {
+        onSettledActionResult?: (result: ActionResult) => void;
+      },
+    ) => {
+      const result = await executePlannedToolCall(
+        runtime,
+        {
+          message,
+          state: { values: {}, data: {}, text: "" },
+          userRoles: ["OWNER"],
+          activeContexts: ["general"],
+        },
+        { name: action.name, params: {} },
+        {
+          actions: [action],
+          onSettledResult: processingOptions?.onSettledActionResult,
+        },
+      );
+      result.replyFailure = failure;
+      return {
+        didRespond: false,
+        responseContent: null,
+        responseMessages: [],
+        terminalFailure: failure,
+        actionResults: [result],
+        replyRecovery: {
+          context: "original-context-evidence: keep the red note unchanged",
+          pendingToolCalls: options.pending
+            ? [
+                {
+                  id: "pending-read",
+                  name: "READ_NOTE",
+                  arguments: { id: "other-note" },
+                },
+              ]
+            : [],
+          evaluatorOutputs: [
+            { pendingIntents: options.pending ? ["read other note"] : [] },
+          ],
+          ownerExclusiveDisclosureUsed: false,
+        },
+      };
+    },
+  );
+  const generateReply = vi.fn(async () =>
+    JSON.stringify({
+      response: options.pending
+        ? "Created the QA note. Reading the other note is still pending."
+        : "Created the QA note.",
+      effectReceiptIds: [receipt.receiptId],
+    }),
+  );
+  runtime.useModel = generateReply as AgentRuntime["useModel"];
+  return { ...harness, effects, generateReply };
+}
+
 /** Drive one request through the real route handler and await its durable terminal result. */
 async function runRoute(
   method: string,
@@ -436,6 +562,1004 @@ describe("conversation-route chat idempotency wiring", () => {
   });
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it.each([
+    { label: "JSON", path: SEND_PATH },
+    { label: "SSE", path: STREAM_PATH },
+  ])(
+    "$label: recovers only prose from durable evidence across concurrency and process cache loss",
+    async ({ path, label }) => {
+      const harness = createReplyRecoveryHarness({ pending: true });
+      const { state, storedMemories, effects, generateReply, handleMessage } =
+        harness;
+      const body = {
+        text: "Create the QA note, then read the other note. Keep the red note unchanged.",
+        clientMessageId: `durable-reply-${label}`,
+      };
+      const first = await runRoute("POST", path, state, body);
+      const outcome = (
+        label === "JSON"
+          ? first.captured.payload
+          : parseDataFrames(first.record).find((frame) => frame.type === "done")
+      ) as {
+        messageId: string;
+        userMessageId: string;
+        replyRecoveryAvailable?: boolean;
+      };
+      expect(outcome.replyRecoveryAvailable).toBe(true);
+      expect(effects).toEqual(["qa-reply-note"]);
+      expect(JSON.stringify(outcome)).not.toContain(
+        "original-context-evidence",
+      );
+      const user = storedMemories.find(
+        (memory) => memory.id === outcome.userMessageId,
+      );
+      const marker = user?.content.chatIdempotency as {
+        replyRecoveryJson: string;
+      };
+      expect(marker.replyRecoveryJson).toContain("complete-result-evidence");
+      expect(marker.replyRecoveryJson).not.toContain(
+        "private-recovery-fixture-key",
+      );
+      const loaded = await runRoute(
+        "GET",
+        "/api/conversations/conv-1/messages",
+        state,
+        {},
+      );
+      expect(JSON.stringify(loaded.captured.payload)).not.toContain(
+        "replyRecoveryJson",
+      );
+      expect(JSON.stringify(loaded.captured.payload)).toContain(
+        '"replyRecoveryAvailable":true',
+      );
+      const retryPath = `${SEND_PATH}/${outcome.messageId}/retry-reply`;
+      const retries = await Promise.all([
+        runRoute("POST", retryPath, state, {}),
+        runRoute("POST", retryPath, state, {}),
+      ]);
+      for (const retry of retries)
+        expect(retry.captured.payload).toMatchObject({
+          text: "Created the QA note. Reading the other note is still pending.",
+          messageId: outcome.messageId,
+          userMessageId: outcome.userMessageId,
+        });
+      expect(generateReply).toHaveBeenCalledTimes(1);
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      expect(effects).toEqual(["qa-reply-note"]);
+      expect(storedMemories).toHaveLength(2);
+      expect(JSON.stringify(generateReply.mock.calls)).toContain(
+        "original-context-evidence",
+      );
+      expect(JSON.stringify(generateReply.mock.calls)).toContain(
+        "complete-result-evidence",
+      );
+      expect(JSON.stringify(generateReply.mock.calls)).toContain(
+        "pending-read",
+      );
+      // The old in-process terminal is still a failed cached outcome; normal
+      // same-key JSON/SSE retries must consult the authoritative updated marker.
+      const originalReplay = await runRoute("POST", path, state, body);
+      const replayOutcome =
+        label === "JSON"
+          ? originalReplay.captured.payload
+          : parseDataFrames(originalReplay.record).find(
+              (frame) => frame.type === "done",
+            );
+      expect(JSON.stringify(replayOutcome)).toContain("Created the QA note");
+      expect(JSON.stringify(replayOutcome)).not.toContain(
+        "replyRecoveryAvailable",
+      );
+      resetChatDedupe();
+      const restarted = await runRoute("POST", retryPath, state, {});
+      expect(restarted.captured.payload).toEqual(retries[0].captured.payload);
+      expect(generateReply).toHaveBeenCalledTimes(1);
+      expect(effects).toHaveLength(1);
+    },
+  );
+
+  it("records failed and successful recovery attempts separately, without recording cached retries", async () => {
+    const h = createReplyRecoveryHarness();
+    const first = await runRoute("POST", SEND_PATH, h.state, {
+      text: "create QA note",
+      clientMessageId: "recovery-trajectories",
+    });
+    const outcome = first.captured.payload as {
+      messageId: string;
+      userMessageId: string;
+    };
+    const attempts: {
+      id: string;
+      metadata: Record<string, unknown>;
+      status?: string;
+    }[] = [];
+    const recorder = {
+      isEnabled: () => true,
+      startTrajectory: async (
+        _agent: string,
+        options: { metadata: Record<string, unknown> },
+      ) => {
+        const id = `recovery-${attempts.length + 1}`;
+        attempts.push({ id, metadata: options.metadata });
+        return id;
+      },
+      startStep: (id: string) => id,
+      logLlmCall: () => {},
+      endTrajectory: async (id: string, status: string) => {
+        const attempt = attempts.find((entry) => entry.id === id);
+        if (!attempt) throw new Error("Unknown recovery attempt");
+        attempt.status = status;
+      },
+    };
+    const runtime = h.state.runtime as AgentRuntime;
+    const getService = runtime.getService.bind(runtime);
+    runtime.getService = ((name: string) =>
+      name === "trajectories"
+        ? recorder
+        : getService(name)) as AgentRuntime["getService"];
+    const modelRuns: (string | undefined)[] = [];
+    h.generateReply.mockImplementation(async () => {
+      modelRuns.push(getTrajectoryContext()?.trajectoryStepId);
+      if (modelRuns.length === 1) throw new Error("provider unavailable");
+      return JSON.stringify({
+        response: "Created the QA note.",
+        effectReceiptIds: ["reply-recovery-receipt"],
+      });
+    });
+    const retryPath = `${SEND_PATH}/${outcome.messageId}/retry-reply`;
+    await runRoute("POST", retryPath, h.state, {});
+    const recovered = await Promise.all([
+      runRoute("POST", retryPath, h.state, {}),
+      runRoute("POST", retryPath, h.state, {}),
+    ]);
+    expect(recovered[0].captured.payload).toEqual(
+      recovered[1].captured.payload,
+    );
+    expect(modelRuns).toEqual(["recovery-1", "recovery-2"]);
+    expect(attempts.map((attempt) => attempt.status)).toEqual([
+      "error",
+      "completed",
+    ]);
+    for (const attempt of attempts)
+      expect(attempt.metadata).toMatchObject({
+        messageId: outcome.userMessageId,
+        assistantMessageId: outcome.messageId,
+        roomId: ROOM_ID,
+        replyRecovery: true,
+      });
+    expect(h.effects).toEqual(["qa-reply-note"]);
+    expect(h.handleMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("retains the missing reply on model failure and rejects forged input, unknown commits and foreign callers", async () => {
+    const harness = createReplyRecoveryHarness();
+    const first = await runRoute("POST", SEND_PATH, harness.state, {
+      text: "create QA note",
+      clientMessageId: "recover-failure",
+    });
+    const outcome = first.captured.payload as {
+      messageId: string;
+      userMessageId: string;
+    };
+    const retryPath = `${SEND_PATH}/${outcome.messageId}/retry-reply`;
+    harness.generateReply.mockRejectedValueOnce(
+      new Error("provider unavailable"),
+    );
+    const failed = await runRoute("POST", retryPath, harness.state, {});
+    expect(failed.record.writes.join("")).toContain("error 503");
+    expect(
+      harness.storedMemories.find((memory) => memory.id === outcome.messageId)
+        ?.content.replyRecoveryAvailable,
+    ).toBe(true);
+    const forged = await runRoute("POST", retryPath, harness.state, {
+      actionResults: [{ success: true }],
+    });
+    expect(forged.record.writes.join("")).toContain("error 400");
+    const user = harness.storedMemories.find(
+      (memory) => memory.id === outcome.userMessageId,
+    );
+    if (!user) throw new Error("test user memory missing");
+    const originalEntity = user.entityId;
+    user.entityId = stringToUuid("another-user");
+    const foreign = await runRoute("POST", retryPath, harness.state, {});
+    expect(foreign.record.writes.join("")).toContain("error 403");
+    user.entityId = originalEntity;
+    const recovered = await runRoute("POST", retryPath, harness.state, {});
+    expect(recovered.captured.payload).toMatchObject({
+      text: "Created the QA note.",
+    });
+    expect(harness.effects).toHaveLength(1);
+
+    const unknown = createReplyRecoveryHarness({ unknownCommit: true });
+    const unknownFirst = await runRoute("POST", SEND_PATH, unknown.state, {
+      text: "create QA note",
+      clientMessageId: "unknown-commit",
+    });
+    const unknownOutcome = unknownFirst.captured.payload as {
+      messageId: string;
+      replyRecoveryAvailable?: boolean;
+    };
+    expect(unknownOutcome.replyRecoveryAvailable).toBeUndefined();
+    const unknownRetry = await runRoute(
+      "POST",
+      `${SEND_PATH}/${unknownOutcome.messageId}/retry-reply`,
+      unknown.state,
+      {},
+    );
+    expect(unknownRetry.record.writes.join("")).toContain("error 409");
+    expect(unknown.generateReply).not.toHaveBeenCalled();
+    expect(unknown.effects).toHaveLength(1);
+  });
+
+  it("makes a newly recovered reply canonical dialogue while preserving unrelated metadata", async () => {
+    const harness = createReplyRecoveryHarness();
+    const originalCreate = harness.createMemory.getMockImplementation() as
+      | ((memory: Memory) => Promise<UUID>)
+      | undefined;
+    if (!originalCreate) throw new Error("create seam unavailable");
+    const staleFailure = {
+      elizaSyntheticFailure: true,
+      syntheticChatFailure: true,
+      failureKind: "provider_issue",
+      chatFailureKind: "provider_issue",
+    };
+    harness.createMemory.mockImplementation(async (memory: Memory) => {
+      if (memory.entityId === AGENT_ID) {
+        memory.content = {
+          ...memory.content,
+          ...staleFailure,
+          preservedContent: "original provenance",
+          metadata: {
+            ...staleFailure,
+            preservedNested: { source: "original provider" },
+          },
+        };
+        memory.metadata = {
+          ...staleFailure,
+          preservedMetadata: "original provenance",
+        };
+      }
+      return originalCreate(memory);
+    });
+    const first = await runRoute("POST", SEND_PATH, harness.state, {
+      text: "create QA note",
+      clientMessageId: "canonical-recovered-dialogue",
+    });
+    const outcome = first.captured.payload as { messageId: UUID };
+    const assistant = () => {
+      const memory = harness.storedMemories.find(
+        (entry) => entry.id === outcome.messageId,
+      );
+      if (!memory) throw new Error("assistant memory unavailable");
+      return memory;
+    };
+    const failedSnapshot = structuredClone(assistant());
+    expect(canonicalEvaluatorMessages([assistant()], AGENT_ID)).toEqual([]);
+    const retryPath = `${SEND_PATH}/${outcome.messageId}/retry-reply`;
+    harness.generateReply.mockRejectedValueOnce(
+      new Error("provider unavailable"),
+    );
+    const failed = await runRoute("POST", retryPath, harness.state, {});
+    expect(failed.record.writes.join("")).toContain("error 503");
+    expect(assistant()).toEqual(failedSnapshot);
+    expect(canonicalEvaluatorMessages([assistant()], AGENT_ID)).toEqual([]);
+
+    const recovered = await runRoute("POST", retryPath, harness.state, {});
+    expect(recovered.captured.payload).toMatchObject({
+      text: "Created the QA note.",
+      messageId: outcome.messageId,
+    });
+    expect(canonicalEvaluatorMessages([assistant()], AGENT_ID)).toEqual([
+      assistant(),
+    ]);
+    expect(assistant().content.preservedContent).toBe("original provenance");
+    expect(assistant().content.metadata).toEqual({
+      preservedNested: { source: "original provider" },
+    });
+    expect(assistant().metadata).toEqual({
+      preservedMetadata: "original provenance",
+    });
+    for (const key of Object.keys(staleFailure))
+      expect(assistant().content).not.toHaveProperty(key);
+    const recoveredSnapshot = structuredClone(assistant());
+    harness.updateMemory.mockClear();
+    resetChatDedupe();
+    const replay = await runRoute("POST", retryPath, harness.state, {});
+    expect(replay.captured.payload).toEqual(recovered.captured.payload);
+    expect(assistant()).toEqual(recoveredSnapshot);
+    expect(harness.updateMemory).not.toHaveBeenCalled();
+    expect(harness.generateReply).toHaveBeenCalledTimes(2);
+    expect(harness.effects).toHaveLength(1);
+  });
+
+  it("preserves legacy staged metadata and keeps its completed replay read-only", async () => {
+    const harness = createReplyRecoveryHarness();
+    const first = await runRoute("POST", SEND_PATH, harness.state, {
+      text: "create QA note",
+      clientMessageId: "legacy-staged-reply",
+    });
+    const outcome = first.captured.payload as {
+      messageId: UUID;
+      userMessageId: UUID;
+    };
+    const failedAssistant = harness.storedMemories.find(
+      (memory) => memory.id === outcome.messageId,
+    );
+    if (!failedAssistant) throw new Error("assistant memory unavailable");
+    expect(failedAssistant.content.metadata).toMatchObject({
+      elizaSyntheticFailure: true,
+      chatFailureKind: "provider_issue",
+    });
+    const legacyContent: Content = {
+      ...failedAssistant.content,
+      text: "Created the QA note.",
+      inReplyTo: outcome.userMessageId,
+      effectReceiptIds: ["reply-recovery-receipt"],
+      agentVoiced: true,
+    };
+    // Fixture for the already-shipped preparation format, including its old
+    // metadata. This is durable input from the previous version, not a repair.
+    for (const key of [
+      "terminalFailure",
+      "failureKind",
+      "replyFailure",
+      "replyRecoveryAvailable",
+      "elizaSyntheticFailure",
+      "interrupted",
+      "transcriptVisibility",
+    ])
+      delete legacyContent[key];
+    const sortedFixture = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(sortedFixture);
+      if (value && typeof value === "object")
+        return Object.fromEntries(
+          Object.entries(value)
+            .sort(([left], [right]) =>
+              left < right ? -1 : left > right ? 1 : 0,
+            )
+            .map(([key, entry]) => [key, sortedFixture(entry)]),
+        );
+      return value;
+    };
+    const legacyHash = createHash("sha256")
+      .update(JSON.stringify(sortedFixture(legacyContent)))
+      .digest("hex");
+    const originalUpdate = harness.updateMemory.getMockImplementation() as
+      | ((memory: Partial<Memory> & { id: UUID }) => Promise<boolean>)
+      | undefined;
+    if (!originalUpdate) throw new Error("update seam unavailable");
+    let interruptFirstAssistantWrite = true;
+    harness.updateMemory.mockImplementation(
+      async (memory: Partial<Memory> & { id: UUID }) => {
+        const marker = memory.content?.chatIdempotency as
+          | { replyRecoveryJson?: string }
+          | undefined;
+        if (
+          interruptFirstAssistantWrite &&
+          memory.id === outcome.userMessageId &&
+          marker?.replyRecoveryJson
+        ) {
+          const evidence = JSON.parse(marker.replyRecoveryJson);
+          if (evidence.reply) {
+            evidence.reply.contentHash = legacyHash;
+            marker.replyRecoveryJson = JSON.stringify(evidence);
+          }
+        }
+        if (interruptFirstAssistantWrite && memory.id === outcome.messageId) {
+          interruptFirstAssistantWrite = false;
+          throw new Error("legacy interruption after prepared prose commit");
+        }
+        return originalUpdate(memory);
+      },
+    );
+    const retryPath = `${SEND_PATH}/${outcome.messageId}/retry-reply`;
+    const interrupted = await runRoute("POST", retryPath, harness.state, {});
+    expect(interrupted.record.writes.join("")).toContain("error 503");
+    resetChatDedupe();
+    const recovered = await runRoute("POST", retryPath, harness.state, {});
+    expect(recovered.captured.payload).toMatchObject({
+      text: legacyContent.text,
+    });
+    const legacyAssistant = harness.storedMemories.find(
+      (memory) => memory.id === outcome.messageId,
+    );
+    expect(legacyAssistant?.content).toEqual(legacyContent);
+    expect(
+      canonicalEvaluatorMessages([legacyAssistant as Memory], AGENT_ID),
+    ).toEqual([]);
+    const completedSnapshot = structuredClone(harness.storedMemories);
+    harness.updateMemory.mockClear();
+    resetChatDedupe();
+    const replay = await runRoute("POST", retryPath, harness.state, {});
+    expect(replay.captured.payload).toEqual(recovered.captured.payload);
+    expect(harness.updateMemory).not.toHaveBeenCalled();
+    expect(structuredClone(harness.storedMemories)).toEqual(completedSnapshot);
+    expect(harness.generateReply).toHaveBeenCalledTimes(1);
+    expect(harness.effects).toHaveLength(1);
+  });
+
+  it("reuses prepared prose after the assistant write fails, preserving later history and rejecting edited or malformed authority", async () => {
+    const harness = createReplyRecoveryHarness();
+    const first = await runRoute("POST", SEND_PATH, harness.state, {
+      text: "create QA note",
+      clientMessageId: "prepared-reply",
+    });
+    const outcome = first.captured.payload as {
+      messageId: UUID;
+      userMessageId: UUID;
+    };
+    const retryPath = `${SEND_PATH}/${outcome.messageId}/retry-reply`;
+    const laterMessage: Memory = {
+      id: stringToUuid("later-user-turn"),
+      entityId: USER_ID,
+      agentId: AGENT_ID,
+      roomId: ROOM_ID,
+      content: { text: "Keep this later conversation turn" },
+      createdAt: Date.now() + 1,
+    };
+    harness.storedMemories.push(laterMessage);
+    const originalUpdate = harness.updateMemory.getMockImplementation() as
+      | ((memory: Partial<Memory> & { id: UUID }) => Promise<boolean>)
+      | undefined;
+    if (!originalUpdate) throw new Error("update seam unavailable");
+    let rejectAssistantWrite = true;
+    harness.updateMemory.mockImplementation(
+      async (memory: Partial<Memory> & { id: UUID }) => {
+        if (
+          rejectAssistantWrite &&
+          memory.id === outcome.messageId &&
+          memory.content?.text === "Created the QA note."
+        ) {
+          rejectAssistantWrite = false;
+          throw new Error("simulated interruption after prepared prose commit");
+        }
+        return originalUpdate(memory);
+      },
+    );
+    const failed = await runRoute("POST", retryPath, harness.state, {});
+    expect(failed.record.writes.join("")).toContain("error 503");
+    expect(harness.generateReply).toHaveBeenCalledTimes(1);
+    expect(
+      canonicalEvaluatorMessages(harness.storedMemories, AGENT_ID).some(
+        (memory) => memory.id === outcome.messageId,
+      ),
+    ).toBe(false);
+    resetChatDedupe();
+    const user = harness.storedMemories.find(
+      (memory) => memory.id === outcome.userMessageId,
+    );
+    if (!user) throw new Error("user memory unavailable");
+    const originalText = user.content.text;
+    user.content.text = "Edited request with a different target";
+    const edited = await runRoute("POST", retryPath, harness.state, {});
+    expect(edited.record.writes.join("")).toContain("error 409");
+    user.content.text = originalText;
+    const marker = user.content.chatIdempotency as {
+      replyRecoveryJson: string;
+    };
+    const originalEvidence = marker.replyRecoveryJson;
+    marker.replyRecoveryJson = '{"actionResults":[{"success":true}]}';
+    const malformed = await runRoute("POST", retryPath, harness.state, {});
+    expect(malformed.record.writes.join("")).toContain("error 409");
+    marker.replyRecoveryJson = originalEvidence;
+    const recovered = await runRoute("POST", retryPath, harness.state, {});
+    expect(recovered.captured.payload).toMatchObject({
+      text: "Created the QA note.",
+      messageId: outcome.messageId,
+    });
+    expect(harness.generateReply).toHaveBeenCalledTimes(1);
+    expect(harness.effects).toHaveLength(1);
+    expect(
+      canonicalEvaluatorMessages(harness.storedMemories, AGENT_ID).find(
+        (memory) => memory.id === outcome.messageId,
+      )?.content.text,
+    ).toBe("Created the QA note.");
+    expect(harness.storedMemories).toHaveLength(3);
+    expect(
+      harness.storedMemories.find((memory) => memory.id === laterMessage.id),
+    ).toEqual(laterMessage);
+  });
+
+  it("rechecks scoped recipients after generation and rejects malformed declared disclosure", async () => {
+    const harness = createReplyRecoveryHarness();
+    const first = await runRoute("POST", SEND_PATH, harness.state, {
+      text: "create QA note",
+      clientMessageId: "scoped-reply",
+    });
+    const outcome = first.captured.payload as {
+      messageId: UUID;
+      userMessageId: UUID;
+    };
+    const user = harness.storedMemories.find(
+      (memory) => memory.id === outcome.userMessageId,
+    );
+    if (!user) throw new Error("user memory missing");
+    const marker = user.content.chatIdempotency as {
+      replyRecoveryJson: string;
+    };
+    const evidence = JSON.parse(marker.replyRecoveryJson);
+    evidence.actionResults[0].data.disclosureSubject = {
+      scope: "owner-private",
+      grants: [{ entityId: USER_ID, mode: "full" }],
+    };
+    marker.replyRecoveryJson = JSON.stringify(evidence);
+    const runtime = harness.state.runtime as AgentRuntime;
+    harness.generateReply.mockImplementationOnce(async () => {
+      vi.spyOn(runtime, "getParticipantsForRoom").mockResolvedValue([
+        USER_ID,
+        AGENT_ID,
+        stringToUuid("new-viewer"),
+      ]);
+      return JSON.stringify({
+        response: "Created the QA note.",
+        effectReceiptIds: ["reply-recovery-receipt"],
+      });
+    });
+    const retryPath = `${SEND_PATH}/${outcome.messageId}/retry-reply`;
+    const denied = await runRoute("POST", retryPath, harness.state, {});
+    expect(harness.generateReply).toHaveBeenCalledTimes(1);
+    expect(denied.record.writes.join("")).toContain("error 403");
+    expect(
+      harness.storedMemories.find((memory) => memory.id === outcome.messageId)
+        ?.content.replyRecoveryAvailable,
+    ).toBe(true);
+    expect(JSON.parse(marker.replyRecoveryJson).reply).toBeUndefined();
+    evidence.actionResults[0].data.disclosureSubject = null;
+    marker.replyRecoveryJson = JSON.stringify(evidence);
+    const malformed = await runRoute("POST", retryPath, harness.state, {});
+    expect(malformed.record.writes.join("")).toContain("error 409");
+    expect(harness.generateReply).toHaveBeenCalledTimes(1);
+    expect(harness.effects).toHaveLength(1);
+  });
+
+  it.each(["replayed-noop", "rollback", "invalid-receipt"] as const)(
+    "uses canonical receipt authority for %s recovery",
+    async (variant) => {
+      const harness = createReplyRecoveryHarness();
+      const first = await runRoute("POST", SEND_PATH, harness.state, {
+        text: "create QA note",
+        clientMessageId: `receipt-${variant}`,
+      });
+      const outcome = first.captured.payload as {
+        messageId: UUID;
+        userMessageId: UUID;
+      };
+      const user = harness.storedMemories.find(
+        (memory) => memory.id === outcome.userMessageId,
+      );
+      if (!user) throw new Error("user memory missing");
+      const marker = user.content.chatIdempotency as {
+        replyRecoveryJson: string;
+      };
+      const evidence = JSON.parse(marker.replyRecoveryJson);
+      const receipts = evidence.actionResults[0].effectReceipts;
+      if (variant === "replayed-noop") {
+        receipts[0].outcome = "noop";
+        receipts[0].reason = "verified earlier commit";
+        receipts[0].idempotency.replayed = true;
+        delete receipts[0].commit;
+      } else if (variant === "rollback") {
+        const rollback = {
+          ...receipts[0],
+          receiptId: "rollback-receipt",
+          outcome: "rolled_back",
+          rollback: {
+            receiptId: "undo-transaction",
+            revertedReceiptIds: [receipts[0].receiptId],
+            rolledBackAt: "2026-09-08T20:01:00.000Z",
+          },
+        };
+        delete rollback.commit;
+        receipts.push(rollback);
+      } else receipts[0].commit.id = null;
+      marker.replyRecoveryJson = JSON.stringify(evidence);
+      const retry = await runRoute(
+        "POST",
+        `${SEND_PATH}/${outcome.messageId}/retry-reply`,
+        harness.state,
+        {},
+      );
+      if (variant === "replayed-noop") {
+        expect(retry.captured.payload).toMatchObject({
+          text: "Created the QA note.",
+        });
+        expect(harness.generateReply).toHaveBeenCalledTimes(1);
+      } else {
+        expect(retry.record.writes.join("")).toContain("error 409");
+        expect(harness.generateReply).not.toHaveBeenCalled();
+      }
+      expect(harness.effects).toHaveLength(1);
+    },
+  );
+
+  it.each(["user-edit", "assistant-edit", "assistant-delete"] as const)(
+    "preserves concurrent %s during reply generation",
+    async (change) => {
+      const harness = createReplyRecoveryHarness();
+      const first = await runRoute("POST", SEND_PATH, harness.state, {
+        text: "create QA note",
+        clientMessageId: `concurrent-${change}`,
+      });
+      const outcome = first.captured.payload as {
+        messageId: UUID;
+        userMessageId: UUID;
+      };
+      const targetId =
+        change === "user-edit" ? outcome.userMessageId : outcome.messageId;
+      harness.generateReply.mockImplementationOnce(async () => {
+        const index = harness.storedMemories.findIndex(
+          (memory) => memory.id === targetId,
+        );
+        if (change === "assistant-delete")
+          harness.storedMemories.splice(index, 1);
+        else
+          harness.storedMemories[index] = {
+            ...harness.storedMemories[index],
+            content: {
+              ...harness.storedMemories[index].content,
+              text: "Concurrent user edit must survive",
+            },
+          };
+        return JSON.stringify({
+          response: "Created the QA note.",
+          effectReceiptIds: ["reply-recovery-receipt"],
+        });
+      });
+      const result = await runRoute(
+        "POST",
+        `${SEND_PATH}/${outcome.messageId}/retry-reply`,
+        harness.state,
+        {},
+      );
+      expect(result.record.writes.join("")).toContain("error 409");
+      const current = harness.storedMemories.find(
+        (memory) => memory.id === targetId,
+      );
+      if (change === "assistant-delete") expect(current).toBeUndefined();
+      else
+        expect(current?.content.text).toBe("Concurrent user edit must survive");
+      expect(harness.effects).toHaveLength(1);
+    },
+  );
+
+  it.each(["before-recovery", "after-recovery"] as const)(
+    "does not overwrite an assistant edit %s",
+    async (when) => {
+      const harness = createReplyRecoveryHarness();
+      const first = await runRoute("POST", SEND_PATH, harness.state, {
+        text: "create QA note",
+        clientMessageId: `assistant-edit-${when}`,
+      });
+      const outcome = first.captured.payload as { messageId: UUID };
+      const retryPath = `${SEND_PATH}/${outcome.messageId}/retry-reply`;
+      if (when === "after-recovery")
+        await runRoute("POST", retryPath, harness.state, {});
+      const index = harness.storedMemories.findIndex(
+        (memory) => memory.id === outcome.messageId,
+      );
+      harness.storedMemories[index] = {
+        ...harness.storedMemories[index],
+        content: {
+          ...harness.storedMemories[index].content,
+          text: "User's edited assistant text",
+        },
+      };
+      const writesBefore = harness.updateMemory.mock.calls.length;
+      resetChatDedupe();
+      const retry = await runRoute("POST", retryPath, harness.state, {});
+      expect(retry.record.writes.join("")).toContain("error 409");
+      expect(retry.captured.payload).toBeUndefined();
+      expect(retry.record.writes.join("")).not.toContain(
+        "Created the QA note.",
+      );
+      expect(harness.storedMemories[index].content.text).toBe(
+        "User's edited assistant text",
+      );
+      expect(harness.updateMemory.mock.calls).toHaveLength(writesBefore);
+      expect(harness.generateReply).toHaveBeenCalledTimes(
+        when === "after-recovery" ? 1 : 0,
+      );
+      expect(harness.effects).toHaveLength(1);
+    },
+  );
+
+  it.each([
+    { label: "SSE", path: STREAM_PATH },
+    { label: "JSON", path: SEND_PATH },
+  ])(
+    "$label: freezes post-turn evidence only after final reply, correlation and callback history persist",
+    async ({ label, path }) => {
+      const { state, handleMessage, storedMemories } = createHarness();
+      const persistedId = stringToUuid(`settled-evidence-${label}`);
+      let extractionSnapshot: Memory | undefined;
+      let triggerId: UUID | undefined;
+      handleMessage.mockImplementationOnce(
+        async (
+          runtime: AgentRuntime,
+          message: Memory,
+          callback: (
+            content: { text: string },
+            actionName?: string,
+          ) => Promise<unknown>,
+        ) => {
+          triggerId = message.id;
+          const persisted: Memory = {
+            id: persistedId,
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            roomId: message.roomId,
+            createdAt: Date.now(),
+            content: {
+              text: "Final note reply",
+              inReplyTo: stringToUuid(`${message.id}:${runtime.agentId}`),
+            },
+          };
+          await runtime.createMemory(persisted, "messages");
+          const settled = roomDeliverySettlement(
+            runtime,
+            message.roomId,
+            runtime.roomHandlerQueue.currentLease(message.roomId),
+          );
+          trackPostDeliveryTask(runtime, "test-evidence-freeze", async () => {
+            if (!(await settled)) return;
+            extractionSnapshot = structuredClone(
+              storedMemories.find((memory) => memory.id === persistedId),
+            );
+          });
+          await callback({ text: "Delivered note evidence" }, "READ_NOTE");
+          await Promise.resolve();
+          expect(extractionSnapshot).toBeUndefined();
+          return {
+            didRespond: true,
+            responseContent: persisted.content,
+            responseMessages: [persisted],
+            persistedResponseMessageIds: [persistedId],
+            actionResults: [
+              {
+                actionName: "READ_NOTE",
+                success: true,
+                text: "Delivered note evidence",
+              },
+            ],
+          };
+        },
+      );
+      const response = await runRoute("POST", path, state, {
+        text: "Read the note",
+        clientMessageId: `evidence-${label}`,
+      });
+      const deliveredText =
+        label === "SSE"
+          ? parseDataFrames(response.record).find(
+              (frame) => frame.type === "done",
+            )?.fullText
+          : (response.captured.payload as { text?: string }).text;
+      expect(typeof deliveredText).toBe("string");
+      expect(extractionSnapshot).toMatchObject({
+        id: persistedId,
+        content: {
+          text: deliveredText,
+          inReplyTo: triggerId,
+          actionCallbackHistory: ["Delivered note evidence"],
+        },
+      });
+      expect(
+        storedMemories.filter((memory) => memory.id === persistedId),
+      ).toHaveLength(1);
+    },
+  );
+
+  it.each([
+    { label: "SSE", path: STREAM_PATH },
+    { label: "JSON", path: SEND_PATH },
+  ])(
+    "$label: failed assistant reconciliation cancels extraction without deadlocking the route",
+    async ({ label, path }) => {
+      const { state, handleMessage, updateMemory } = createHarness();
+      let extractionCount = 0;
+      handleMessage.mockImplementationOnce(
+        async (runtime: AgentRuntime, message: Memory) => {
+          const persisted: Memory = {
+            id: stringToUuid(`failed-settled-evidence-${label}`),
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            roomId: message.roomId,
+            createdAt: Date.now(),
+            content: {
+              text: "Final reply",
+              inReplyTo: stringToUuid(`${message.id}:${runtime.agentId}`),
+            },
+          };
+          await runtime.createMemory(persisted, "messages");
+          const settled = roomDeliverySettlement(
+            runtime,
+            message.roomId,
+            runtime.roomHandlerQueue.currentLease(message.roomId),
+          );
+          trackPostDeliveryTask(
+            runtime,
+            "test-failed-evidence-freeze",
+            async () => {
+              if (await settled) extractionCount += 1;
+            },
+          );
+          updateMemory.mockRejectedValueOnce(
+            new Error("assistant reconciliation failed"),
+          );
+          return {
+            didRespond: true,
+            responseContent: persisted.content,
+            responseMessages: [persisted],
+            persistedResponseMessageIds: [persisted.id],
+          };
+        },
+      );
+      await runRoute("POST", path, state, {
+        text: "Remember this",
+        clientMessageId: `failed-evidence-${label}`,
+      });
+      expect(extractionCount).toBe(0);
+      expect(
+        (state.runtime as AgentRuntime).roomHandlerQueue.pendingFor(ROOM_ID),
+      ).toBe(0);
+    },
+  );
+  it("delivers durable JSON before room work finishes and fences the next turn", async () => {
+    const { trackPostDeliveryTask } = await import("@elizaos/core");
+    const { state, handleMessage, storedMemories } = createHarness();
+    const runtime = state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    const gate = Promise.withResolvers<void>();
+    let reflected = false;
+    handleMessage.mockImplementationOnce(async () => {
+      void trackPostDeliveryTask(
+        runtime,
+        "deferred-room-reflection",
+        async () => {
+          await gate.promise;
+          expect(
+            runtime.roomHandlerQueue.ownsLease(
+              ROOM_ID,
+              runtime.roomHandlerQueue.currentLease(ROOM_ID),
+            ),
+          ).toBe(true);
+          reflected = true;
+        },
+      );
+      return {
+        didRespond: true,
+        responseContent: { text: "First reply." },
+        responseMessages: [],
+      };
+    });
+    handleMessage.mockImplementationOnce(async () => {
+      expect(reflected).toBe(true);
+      return {
+        didRespond: true,
+        responseContent: { text: "Second reply." },
+        responseMessages: [],
+      };
+    });
+    const body = { text: "first turn", clientMessageId: "json-early-first" };
+    const { res, record } = createMockRes();
+    const json = vi.fn((response: http.ServerResponse, _payload: unknown) =>
+      response.end(),
+    );
+    const ctx = {
+      req: createReq("POST", SEND_PATH),
+      res,
+      method: "POST",
+      pathname: SEND_PATH,
+      state,
+      readJsonBody: async () => body,
+      json,
+      error: vi.fn(),
+    } as unknown as ConversationRouteContext;
+    let settled = false;
+    const first = handleConversationRoutes(ctx).then(() => {
+      settled = true;
+    });
+    let second: ReturnType<typeof runRoute> | undefined;
+    try {
+      await vi.waitFor(() => expect(record.ended).toBe(true));
+      expect(settled).toBe(false);
+      expect(reflected).toBe(false);
+      expect(state.activeChatTurnCount).toBe(1);
+      expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(1);
+      expect(json).toHaveBeenCalledTimes(1);
+      const outcome = json.mock.calls[0][1];
+      expect(outcome).toMatchObject({
+        text: "First reply.",
+        messageId: expect.any(String),
+      });
+      expect(storedMemories).toContainEqual(
+        expect.objectContaining({
+          content: expect.objectContaining({ text: "First reply." }),
+        }),
+      );
+      const replay = await runRoute("POST", SEND_PATH, state, body);
+      expect(replay.captured.payload).toEqual(outcome);
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+
+      second = runRoute("POST", SEND_PATH, state, {
+        text: "second turn",
+        clientMessageId: "json-early-second",
+      });
+      await vi.waitFor(() =>
+        expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(2),
+      );
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      gate.resolve();
+      const [, secondResult] = await Promise.all([first, second]);
+      expect(secondResult.captured.payload).toMatchObject({
+        text: "Second reply.",
+      });
+      expect(handleMessage).toHaveBeenCalledTimes(2);
+      expect(json).toHaveBeenCalledTimes(1);
+      expect(state.activeChatTurnCount).toBe(0);
+      expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
+      expect(runtime.reportError).not.toHaveBeenCalled();
+      // After a cache loss, the settled durable marker still suppresses replay.
+      resetChatDedupe();
+      const durableReplay = await runRoute("POST", SEND_PATH, state, body);
+      expect(durableReplay.captured.payload).toEqual(outcome);
+      expect(handleMessage).toHaveBeenCalledTimes(2);
+    } finally {
+      gate.resolve();
+      await Promise.all([first, second]);
+    }
+  });
+
+  it("preserves delivered JSON and durable retries after a room drain failure", async () => {
+    const { quarantinePostDeliveryTasks } = await import("@elizaos/core");
+    const { state, handleMessage, storedMemories } = createHarness();
+    const runtime = state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    handleMessage.mockImplementationOnce(async () => {
+      quarantinePostDeliveryTasks(runtime, new Error("reflection cancelled"));
+      return {
+        didRespond: true,
+        responseContent: { text: "Completed action." },
+        responseMessages: [],
+      };
+    });
+    const body = {
+      text: "perform action",
+      clientMessageId: "json-drain-failure",
+    };
+    const { res } = createMockRes();
+    const json = vi.fn((response: http.ServerResponse, _payload: unknown) =>
+      response.end(),
+    );
+    const error = vi.fn();
+    await handleConversationRoutes({
+      req: createReq("POST", SEND_PATH),
+      res,
+      method: "POST",
+      pathname: SEND_PATH,
+      state,
+      readJsonBody: async () => body,
+      json,
+      error,
+    } as unknown as ConversationRouteContext);
+    expect(json).toHaveBeenCalledTimes(1);
+    const outcome = json.mock.calls[0][1];
+    expect(outcome).toMatchObject({ text: "Completed action." });
+    expect(error).not.toHaveBeenCalled();
+    expect(runtime.reportError).toHaveBeenCalledWith(
+      "ConversationJson.postDelivery",
+      expect.objectContaining({ code: "POST_DELIVERY_DRAIN_CANCELLED" }),
+      expect.objectContaining({ conversationId: "conv-1" }),
+    );
+    expect(state.activeChatTurnCount).toBe(0);
+    expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
+    const persistedCount = storedMemories.length;
+    resetChatDedupe();
+    const replay = await runRoute("POST", SEND_PATH, state, body);
+    expect(replay.captured.payload).toEqual(outcome);
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(storedMemories).toHaveLength(persistedCount);
   });
 
   it("cordons and drains the old runtime before a same-room replacement turn starts", async () => {
@@ -1070,7 +2194,29 @@ describe("conversation-route chat idempotency wiring", () => {
     expect(receipt).toBeDefined();
     expect((receipt?.content as { text?: string } | undefined)?.text).toBe("");
 
+    const reloaded = await runRoute("GET", SEND_PATH, state, {});
+    expect(reloaded.captured.payload).toMatchObject({
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          id: firstDone?.messageId,
+          text: "",
+          interrupted: true,
+        }),
+      ]),
+    });
+
     const persistsAfterAbort = createMemory.mock.calls.length;
+    const hydrated = await runRoute("GET", SEND_PATH, state, {});
+    expect(hydrated.captured.payload).toMatchObject({
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          id: firstDone?.messageId,
+          role: "assistant",
+          text: "",
+          interrupted: true,
+        }),
+      ]),
+    });
     const retry = await runRoute("POST", STREAM_PATH, state, body);
     // The retried key adopts the interrupted outcome: no second generation,
     // no second persisted pair, the exact same terminal frame.
@@ -1118,11 +2264,102 @@ describe("conversation-route chat idempotency wiring", () => {
       interrupted: true,
     });
 
+    const hydrated = await runRoute("GET", SEND_PATH, state, {});
+    expect(hydrated.captured.payload).toMatchObject({
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          id: firstDone?.messageId,
+          text: "partial re",
+          interrupted: true,
+        }),
+      ]),
+    });
     const retry = await runRoute("POST", STREAM_PATH, state, body);
     expect(handleMessage).toHaveBeenCalledTimes(1);
     expect(
       parseDataFrames(retry.record).find((frame) => frame.type === "done"),
     ).toEqual(firstDone);
+  });
+
+  it("GET: preserves empty interrupted diagnostics beside a genuine model reply", async () => {
+    const { state, handleMessage, createMemory, updateMemory, storedMemories } =
+      createHarness();
+    handleMessage.mockImplementationOnce(async () => {
+      throw Object.assign(new Error("generation cancelled"), {
+        code: "TURN_ABORTED",
+      });
+    });
+    const aborted = await runRoute("POST", STREAM_PATH, state, {
+      text: "cancelled turn",
+      clientMessageId: "hydrate-aborted-diagnostics",
+    });
+    const interruptedId = parseDataFrames(aborted.record).find(
+      (frame) => frame.type === "done",
+    )?.messageId;
+    const receipt = storedMemories.find(
+      (memory) => memory.id === interruptedId,
+    );
+    if (!receipt?.id)
+      throw new Error("Expected a persisted interrupted receipt");
+    const terminalFailure = {
+      kind: "provider_issue",
+      message: "Generation was interrupted during shutdown.",
+      transient: true,
+      code: "TURN_ABORTED",
+    };
+    if (!state.runtime) throw new Error("Expected the test runtime");
+    await state.runtime.updateMemory({
+      ...receipt,
+      id: receipt.id,
+      content: {
+        ...receipt.content,
+        failureKind: terminalFailure.kind,
+        terminalFailure,
+      },
+    });
+    const completed = await runRoute("POST", STREAM_PATH, state, {
+      text: "a new turn",
+      clientMessageId: "hydrate-genuine-reply",
+    });
+    const completedDone = parseDataFrames(completed.record).find(
+      (frame) => frame.type === "done",
+    );
+    expect(completedDone?.fullText).toBe("ok");
+    expect(completedDone?.messageId).toBeTruthy();
+    const persistedBeforeRead = new Map(
+      storedMemories.map((memory) => [
+        memory.id,
+        structuredClone(memory.content),
+      ]),
+    );
+    const writesBeforeRead = createMemory.mock.calls.length;
+    const updatesBeforeRead = updateMemory.mock.calls.length;
+
+    const hydrated = await runRoute("GET", SEND_PATH, state, {});
+
+    expect(hydrated.captured.payload).toMatchObject({
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          id: interruptedId,
+          role: "assistant",
+          text: "",
+          interrupted: true,
+          failureKind: terminalFailure.kind,
+          terminalFailure,
+        }),
+        expect.objectContaining({
+          id: completedDone?.messageId,
+          role: "assistant",
+          text: completedDone?.fullText,
+        }),
+      ]),
+    });
+    expect(handleMessage).toHaveBeenCalledTimes(2);
+    expect(createMemory).toHaveBeenCalledTimes(writesBeforeRead);
+    expect(updateMemory).toHaveBeenCalledTimes(updatesBeforeRead);
+    expect(
+      new Map(storedMemories.map((memory) => [memory.id, memory.content])),
+    ).toEqual(persistedBeforeRead);
   });
 
   it("SSE: a persisted interrupted receipt survives outcome-marker settlement failure and restart", async () => {
@@ -1294,6 +2531,170 @@ describe("conversation-route chat idempotency wiring", () => {
       }),
     ]);
   });
+
+  it.each(["read-only", "earlier-write", "unresolved-commit"] as const)(
+    "SSE: settled %s evidence survives a later missing-note failure without replay",
+    async (variant) => {
+      const { state, handleMessage, storedMemories } = createHarness();
+      const runtime = state.runtime as AgentRuntime;
+      const readResult: ActionResult = {
+        success: true,
+        data: {
+          readOnlyOperation: true,
+          notes: [{ id: "qa-b", title: "QA note B", body: "silver thermos" }],
+        },
+      };
+      const failedUpdate: ActionResult = {
+        success: false,
+        error: 'No sticky note matches "note-qa-missing".',
+      };
+      const writeReceipt: EffectReceipt = {
+        receiptId: "prior-write-proof",
+        operation: "notes.create",
+        resource: { kind: "note", id: "initial-note" },
+        artifacts: [],
+        outcome: "applied",
+        idempotency: { key: "prior-write", replayed: false },
+        observedAt: "2026-09-08T20:00:00.000Z",
+        commit: {
+          kind: "durable",
+          id: "initial-note",
+          committedAt: "2026-09-08T20:00:00.000Z",
+        },
+      };
+      const priorResult: ActionResult =
+        variant === "unresolved-commit"
+          ? {
+              success: false,
+              data: {
+                readOnlyOperation: true,
+                reconciliationRequired: true,
+                retryable: false,
+              },
+              replyFailure: {
+                kind: "provider_issue",
+                code: "OUTCOME_UNCONFIRMED",
+                message:
+                  "The earlier write outcome is unconfirmed. Do not repeat it.",
+                transient: false,
+              },
+            }
+          : {
+              success: true,
+              // Receipt evidence outranks even contradictory legacy metadata.
+              data: { readOnlyOperation: true },
+              effectReceipts: [writeReceipt],
+              verifiedUserFacing: true,
+              userFacingText: "Created the initial note.",
+              userFacingEffectReceiptIds: [writeReceipt.receiptId],
+            };
+      const resultsByName: Array<[string, ActionResult]> = [
+        ...(variant === "read-only"
+          ? []
+          : ([["NOTES_CREATE", priorResult]] as Array<[string, ActionResult]>)),
+        ["NOTES_LIST", readResult],
+        ["NOTES_UPDATE", failedUpdate],
+      ];
+      const actions: Action[] = resultsByName.map(([name, result]) => ({
+        name,
+        description: name,
+        // Promoted children inherit these mixed parent capabilities.
+        tags: ["capability:read", "capability:write", "capability:delete"],
+        validate: async () => true,
+        handler: vi.fn(async () => result),
+      }));
+      runtime.actions.push(...actions);
+      const settled: ActionResult[] = [];
+      handleMessage.mockImplementation(
+        async (
+          _runtime: AgentRuntime,
+          message: Memory,
+          _callback: unknown,
+          options?: { onSettledActionResult?: (result: ActionResult) => void },
+        ) => {
+          for (const action of actions) {
+            await executePlannedToolCall(
+              runtime,
+              {
+                message,
+                state: { values: {}, data: {}, text: "" },
+                userRoles: ["OWNER"],
+                activeContexts: ["general"],
+              },
+              { name: action.name, params: {} },
+              {
+                actions,
+                onSettledResult: (result) => {
+                  settled.push(result);
+                  options?.onSettledActionResult?.(result);
+                },
+              },
+            );
+          }
+          throw new Error(
+            "grounded reply unavailable after missing-note rejection",
+          );
+        },
+      );
+      const body = {
+        text: "Read QA note B, then update the missing note; do not create or substitute it.",
+        clientMessageId: `partial-failure-${variant}`,
+      };
+      const first = await runRoute("POST", STREAM_PATH, state, body);
+      const done = parseDataFrames(first.record).find(
+        (frame) => frame.type === "done",
+      );
+      expect(done?.messageId).toBeTruthy();
+      expect(settled.at(-2)?.data?.readOnlyOperation).toBe(true);
+      expect(settled.at(-1)?.success).toBe(false);
+      expect(settled.at(-1)?.effectReceipts ?? []).toEqual([]);
+      if (variant === "read-only") {
+        expect(done?.fullText).not.toContain("The action finished");
+        expect(done?.failureKind).toBeTruthy();
+        const assistant = storedMemories.find(
+          (memory) => memory.id === done?.messageId,
+        );
+        expect(assistant?.content.replyRecoveryAvailable).toBeUndefined();
+        expect(assistant?.content.replyFailure).toBeUndefined();
+        expect(assistant?.content.actions ?? []).not.toContain("NOTES_LIST");
+      } else {
+        expect(done?.fullText).toBe(
+          variant === "earlier-write"
+            ? "Created the initial note."
+            : priorResult.replyFailure?.message,
+        );
+        expect(done?.actionResults).toEqual([
+          expect.objectContaining({
+            actionName: "NOTES_CREATE",
+            success: priorResult.success,
+          }),
+          expect.objectContaining({ actionName: "NOTES_LIST", success: true }),
+          expect.objectContaining({
+            actionName: "NOTES_UPDATE",
+            success: false,
+          }),
+        ]);
+        expect(settled[0]?.effectReceipts ?? []).toEqual(
+          priorResult.effectReceipts ?? [],
+        );
+      }
+      for (const memory of storedMemories) {
+        expect(memory.content.chatIdempotency ?? {}).not.toHaveProperty(
+          "replyRecoveryJson",
+        );
+      }
+      const replay = await runRoute("POST", STREAM_PATH, state, body);
+      expect(
+        parseDataFrames(replay.record).find((frame) => frame.type === "done"),
+      ).toMatchObject({
+        fullText: done?.fullText,
+        messageId: done?.messageId,
+      });
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      for (const action of actions)
+        expect(action.handler).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it.each([
     { failure: "transport abort", abortTransport: true },
@@ -1742,8 +3143,24 @@ describe("conversation-route chat idempotency wiring", () => {
     }
   });
 
-  it("rapid identical wallet guidance persists distinct rows on stream and JSON routes", async () => {
+  it("rapid identical model replies persist distinct rows on stream and JSON routes", async () => {
     const { state, handleMessage, storedMemories } = createHarness();
+    const modelReply = "Your wallet address is available in Wallet.";
+    handleMessage.mockImplementation(
+      async (
+        _runtime: unknown,
+        _message: unknown,
+        _callback: unknown,
+        options?: { onStreamChunk?: (chunk: string) => Promise<void> | void },
+      ) => {
+        await options?.onStreamChunk?.(modelReply);
+        return {
+          didRespond: true,
+          responseContent: { text: modelReply },
+          responseMessages: [],
+        };
+      },
+    );
     const requests = [
       [STREAM_PATH, "wallet-stream-a"],
       [STREAM_PATH, "wallet-stream-b"],
@@ -1761,7 +3178,7 @@ describe("conversation-route chat idempotency wiring", () => {
         const done = parseDataFrames(result.record).find(
           (frame) => frame.type === "done",
         );
-        expect(done?.fullText).toContain("Detected wallets");
+        expect(done?.fullText).toBe(modelReply);
         expect(done?.messageId).toBeTruthy();
         messageIds.push(String(done?.messageId));
       } else {
@@ -1769,18 +3186,21 @@ describe("conversation-route chat idempotency wiring", () => {
           text?: string;
           messageId?: string;
         };
-        expect(payload.text).toContain("Detected wallets");
+        expect(payload.text).toBe(modelReply);
         expect(payload.messageId).toBeTruthy();
         messageIds.push(String(payload.messageId));
       }
     }
 
-    expect(handleMessage).not.toHaveBeenCalled();
+    expect(handleMessage).toHaveBeenCalledTimes(requests.length);
     expect(new Set(messageIds)).toHaveProperty("size", 4);
     for (const messageId of messageIds) {
       expect(
         storedMemories.some(
-          (memory) => memory.id === messageId && memory.entityId === AGENT_ID,
+          (memory) =>
+            memory.id === messageId &&
+            memory.entityId === AGENT_ID &&
+            memory.content.text === modelReply,
         ),
       ).toBe(true);
     }

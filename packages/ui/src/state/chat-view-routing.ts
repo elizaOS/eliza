@@ -5,7 +5,9 @@
  */
 
 import { asRecord } from "@elizaos/shared";
+import { readSettingsHashSectionId } from "../components/settings/settings-route";
 import { getWindowNavigationPath, type Tab } from "../navigation";
+import { getClientBrowserSurface } from "../platform/browser-surface";
 
 const CONTEXT_ROUTING_METADATA_KEY = "__responseContext";
 
@@ -60,6 +62,51 @@ export function resolveChatViewRouting(
   navigationPath: string,
 ): ChatViewRouting {
   const viewPath = normalizeViewPath(navigationPath).toLowerCase();
+  // Fullscreen plugin pages keep the shell's generic `views` tab selected.
+  // Resolve their real domain from the rendered route before the tab switch so
+  // chat and voice turns carry the focused context instead of the broad Apps
+  // catalog. This is also the transport-independent path used by deep links,
+  // reloads, command navigation, and agent-driven navigation.
+  if (viewPath === "/notes" || viewPath.startsWith("/notes/")) {
+    return {
+      view: "notes",
+      primaryContext: "notes",
+      secondaryContexts: [],
+      capabilities: [],
+    };
+  }
+  if (viewPath === "/calendar" || viewPath.startsWith("/calendar/")) {
+    return {
+      view: "calendar",
+      primaryContext: "calendar",
+      secondaryContexts: [],
+      capabilities: [],
+    };
+  }
+  if (viewPath === "/wallet" || viewPath.startsWith("/wallet/")) {
+    return {
+      view: "wallet",
+      primaryContext: "wallet",
+      secondaryContexts: [],
+      capabilities: [],
+    };
+  }
+  if (viewPath === "/apps/tasks" || viewPath.startsWith("/apps/tasks/")) {
+    return {
+      view: "projects",
+      primaryContext: "code",
+      secondaryContexts: ["automation"],
+      capabilities: [],
+    };
+  }
+  if (viewPath === "/apps/memories" || viewPath.startsWith("/apps/memories/")) {
+    return {
+      view: "memories",
+      primaryContext: "memory",
+      secondaryContexts: [],
+      capabilities: [],
+    };
+  }
   if (viewPath === "/orchestrator" || viewPath.startsWith("/orchestrator/")) {
     return {
       view: "orchestrator",
@@ -116,8 +163,8 @@ export function resolveChatViewRouting(
       return {
         view: "wallet",
         primaryContext: "wallet",
-        secondaryContexts: ["documents"],
-        capabilities: ["wallet", "portfolio", "transactions"],
+        secondaryContexts: [],
+        capabilities: [],
       };
     case "plugins":
     case "runtime":
@@ -146,7 +193,7 @@ export function resolveChatViewRouting(
         view: dynamicViewNameFromPath(viewPath),
         primaryContext: "apps",
         secondaryContexts: ["admin", "documents"],
-        capabilities: ["view-actions", "inspect-view", "navigate-view"],
+        capabilities: [],
       };
     default:
       return {
@@ -174,11 +221,15 @@ export function buildChatViewMetadata(
     viewRouting.primaryContext,
   ]);
 
+  const subview = tab === "settings" ? readSettingsHashSectionId() : null;
+
   return {
     ...(metadata ?? {}),
     uiView: viewRouting.view,
+    ...(subview ? { uiViewSubview: subview } : {}),
     uiTab: tab,
     uiViewPath: normalizedViewPath,
+    uiBrowserSurface: getClientBrowserSurface(),
     uiViewCapabilities: viewRouting.capabilities,
     uiTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     [CONTEXT_ROUTING_METADATA_KEY]: {

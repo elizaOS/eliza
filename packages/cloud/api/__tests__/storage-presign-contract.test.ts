@@ -34,6 +34,15 @@ class TestStorageReadCapabilityConfigurationError extends Error {
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
 }));
+const requirePaidRouteStanding = mock(async () => ({
+  user: await requireUserOrApiKeyWithOrg(),
+  apiKeyId: null,
+  authSource: "combined_cache",
+  appScopeId: null,
+}));
+mock.module("@/api-app/lib/paid-route-standing", () => ({
+  requirePaidRouteStanding,
+}));
 mock.module("@/lib/services/storage/native-storage-read", () => ({
   executeNativeStoragePresign,
   NativeStorageReadError: TestNativeStorageReadError,
@@ -58,6 +67,7 @@ app.route(ROUTE_PATH, presignRoute);
 
 beforeEach(() => {
   requireUserOrApiKeyWithOrg.mockReset();
+  requirePaidRouteStanding.mockClear();
   executeNativeStoragePresign.mockReset();
   getServiceMethodCost.mockReset();
   mintStorageReadCapabilityUrl.mockReset();
@@ -154,6 +164,39 @@ test("missing signer authority stops before pricing, provider, or settlement", a
     { BLOB: { head: mock() }, R2_PUBLIC_HOST: "https://blob.example" },
   );
   expect(response.status).toBe(503);
+  expect(getServiceMethodCost).not.toHaveBeenCalled();
+  expect(executeNativeStoragePresign).not.toHaveBeenCalled();
+  expect(mintStorageReadCapabilityUrl).not.toHaveBeenCalled();
+});
+
+test("standing denial suppresses pricing, R2 access, settlement, and capability minting", async () => {
+  requirePaidRouteStanding.mockRejectedValueOnce(
+    Object.assign(new Error("Organization is inactive"), {
+      status: 403,
+      details: { reason: "organization_inactive" },
+    }),
+  );
+
+  const response = await app.request(
+    ROUTE_PATH,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "Idempotency-Key": "presign-denied",
+        "X-Storage-Object-Key": "private/voice.ogg",
+      },
+      body: JSON.stringify({ operation: "get" }),
+    },
+    {
+      BLOB: { head: mock() },
+      R2_PUBLIC_HOST: "https://blob.example",
+      STORAGE_READ_SIGNING_SECRETS: "active-secret-that-is-long-enough",
+    },
+  );
+
+  expect(response.status).not.toBe(200);
+  expect(requirePaidRouteStanding).toHaveBeenCalledTimes(1);
   expect(getServiceMethodCost).not.toHaveBeenCalled();
   expect(executeNativeStoragePresign).not.toHaveBeenCalled();
   expect(mintStorageReadCapabilityUrl).not.toHaveBeenCalled();

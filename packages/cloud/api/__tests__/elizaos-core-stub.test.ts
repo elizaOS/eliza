@@ -6,9 +6,6 @@ import {
 } from "@elizaos/prompts";
 
 import {
-  DEFAULT_CEREBRAS_TEXT_MODEL,
-  DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
-  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   fetchWithSsrfGuard,
   getInferenceTimer,
   groupResponsePrecedencePolicy,
@@ -27,14 +24,6 @@ describe("elizaos-core Worker stub", () => {
       canonicalGroupResponsePrecedencePolicy,
     );
     expect(registerResponsePolicy).toBe(canonicalRegisterResponsePolicy);
-  });
-
-  test("exports the Eliza Cloud default text model aliases used by plugin-elizacloud", () => {
-    expect(DEFAULT_CEREBRAS_TEXT_MODEL).toBe("gemma-4-31b");
-    expect(DEFAULT_ELIZA_CLOUD_TEXT_MODEL).toBe(DEFAULT_CEREBRAS_TEXT_MODEL);
-    expect(DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL).toBe(
-      DEFAULT_CEREBRAS_TEXT_MODEL,
-    );
   });
 
   test("runWithTrajectoryPurpose runs the callback and returns its result", async () => {

@@ -23,6 +23,13 @@ export interface RuntimeDurableObjectNamespace {
 }
 
 export interface Bindings {
+  /** Registered Outreachr app, narrow BFF client secret digest, and exact hosted origin. */
+  OUTREACHR_APP_ID?: string;
+  OUTREACHR_CLIENT_SECRET_SHA256?: string;
+  OUTREACHR_ORIGIN?: string;
+  OUTREACHR_STRIPE_SOL_PRICE?: string;
+  OUTREACHR_STRIPE_ASTRA_PRICE?: string;
+  OUTREACHR_STRIPE_WEBHOOK_SECRET?: string;
   // ---- Deployment environment ----
   /**
    * Wrangler environment name (`"production"` | `"staging"`); unset in local
@@ -327,7 +334,10 @@ export interface Bindings {
   SQL_HEAVY_PAYLOAD_MAX_INLINE_BYTES?: string;
   LLM_TRAJECTORY_STORAGE?: string;
 
-  // ---- Steward (auth provider) ----
+  // ---- First-party login ----
+  /** Authoritative base URL of the owned @elizaos/login service. */
+  LOGIN_API_URL?: string;
+  /** Legacy upstream binding accepted during deployment migration. */
   STEWARD_API_URL?: string;
   /** Server-side base URL mirror for SSR fetches that don't go through the SDK. */
   NEXT_PUBLIC_STEWARD_API_URL?: string;
@@ -420,6 +430,8 @@ export interface Bindings {
 
   // ---- Stripe ----
   STRIPE_SECRET_KEY?: string;
+  /** Explicit approved per-revision notice dispatches; omission leaves durable notices policy-unavailable. */
+  SUBSCRIPTION_NOTICE_APPROVED_DISPATCHES_JSON?: string;
   STRIPE_WEBHOOK_SECRET?: string;
   /**
    * Test-only Stripe-compatible loopback origin. The Stripe client accepts it
@@ -450,6 +462,8 @@ export interface Bindings {
 
   // ---- Cron auth ----
   CRON_SECRET?: string;
+  /** Exact `"1"` enables the scheduler-branded V3 backup admission caller. */
+  AGENT_BACKUP_ADMISSION_CALLER_ENABLED?: string;
 
   // ---- App config ----
   NEXT_PUBLIC_APP_URL?: string;
@@ -528,6 +542,10 @@ export interface Bindings {
   /** Collision-free secret used by the protected production edge cutover; inert outside production. */
   PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED?: string;
   ELIZA_APP_TELEGRAM_BOT_TOKEN?: string;
+  /** Public bot id selected by the protected environment and attested through getMe. */
+  ELIZA_APP_TELEGRAM_BOT_ID?: string;
+  /** Public bot username selected by the protected environment and attested through getMe. */
+  ELIZA_APP_TELEGRAM_BOT_USERNAME?: string;
   ELIZA_APP_TELEGRAM_WEBHOOK_SECRET?: string;
   // Dedicated shared secret stamped onto forwarded webhook calls so the internal
   // gateway can reject traffic that didn't transit the BFF forwarder (finding
@@ -580,7 +598,7 @@ export interface Bindings {
   // Tier-3 deferred admission (#9899): "true" moves the durable admission WRITE
   // (ledger insert / KV pending charge) off the pre-forward critical path via
   // executionCtx.waitUntil, keeping a cached balance gate (15s org-balance hint
-  // + in-isolate refusal blocklist) on-path. Requires INFERENCE_OPTIMISTIC_BILLING.
+  // + revision-aware Durable Object lease) on-path. Requires INFERENCE_OPTIMISTIC_BILLING.
   INFERENCE_DEFERRED_ADMISSION?: string;
   // Tier-3 in-isolate decision caches (#9899): "true" enables the org
   // rate-limit lease (convergent — leased requests are carried back into the

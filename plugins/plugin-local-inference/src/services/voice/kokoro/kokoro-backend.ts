@@ -28,6 +28,7 @@ import type {
 } from "../types";
 import type { KokoroRuntime } from "./kokoro-runtime";
 import { resolvePhonemizer } from "./phonemizer";
+import { prepareKokoroPhrases } from "./prepare-phrases";
 import type {
 	KokoroBackendOptions,
 	KokoroPhonemizer,
@@ -168,7 +169,11 @@ export class KokoroTtsBackend implements TtsBackend, StreamingTtsBackend {
 		const phonemizer = await this.ensurePhonemizer();
 		args.onKernelTick?.();
 		const speakText = prepareKokoroSpeakText(args.phrase.text);
-		const phonemes = await phonemizer.phonemize(speakText, voice.lang);
+		const phrases = await prepareKokoroPhrases(
+			speakText,
+			voice.lang,
+			phonemizer,
+		);
 		if (args.cancelSignal.cancelled) {
 			args.onChunk({
 				pcm: new Float32Array(0),
@@ -185,51 +190,58 @@ export class KokoroTtsBackend implements TtsBackend, StreamingTtsBackend {
 		// listener before the full phrase finishes decoding.
 		const limit = this.streamingChunkSamples;
 		let cancelled = false;
-		const result = await this.runtime.synthesize({
-			text: speakText,
-			phonemes,
-			phonemizerId: phonemizer.id,
-			voice,
-			cancelSignal: args.cancelSignal,
-			onChunk: ({ pcm, isFinal }) => {
-				args.onKernelTick?.();
-				if (cancelled || args.cancelSignal.cancelled) {
-					cancelled = true;
-					return true;
-				}
-				if (pcm.length === 0) {
-					// Pass through tail markers from the runtime — the final tail is
-					// emitted by us below, so swallow runtime-side finals to avoid
-					// double-tails.
-					if (!isFinal) return false;
+		for (const prepared of phrases) {
+			if (cancelled || args.cancelSignal.cancelled) {
+				cancelled = true;
+				break;
+			}
+			const result = await this.runtime.synthesize({
+				text: prepared.text,
+				phonemes: prepared.phonemes,
+				phonemizerId: phonemizer.id,
+				voice,
+				cancelSignal: args.cancelSignal,
+				onChunk: ({ pcm, isFinal }) => {
+					args.onKernelTick?.();
+					if (cancelled || args.cancelSignal.cancelled) {
+						cancelled = true;
+						return true;
+					}
+					if (pcm.length === 0) {
+						// Pass through tail markers from the runtime — the final tail is
+						// emitted by us below, so swallow runtime-side finals to avoid
+						// double-tails.
+						if (!isFinal) return false;
+						return false;
+					}
+					for (let off = 0; off < pcm.length; off += limit) {
+						if (args.cancelSignal.cancelled) {
+							cancelled = true;
+							return true;
+						}
+						const end = Math.min(pcm.length, off + limit);
+						const slice = pcm.subarray(off, end);
+						const want = args.onChunk({
+							pcm: slice,
+							sampleRate: this.runtime.sampleRate,
+							isFinal: false,
+						});
+						if (want === true || args.cancelSignal.cancelled) {
+							cancelled = true;
+							return true;
+						}
+					}
 					return false;
-				}
-				for (let off = 0; off < pcm.length; off += limit) {
-					if (args.cancelSignal.cancelled) {
-						cancelled = true;
-						return true;
-					}
-					const end = Math.min(pcm.length, off + limit);
-					const slice = pcm.subarray(off, end);
-					const want = args.onChunk({
-						pcm: slice,
-						sampleRate: this.runtime.sampleRate,
-						isFinal: false,
-					});
-					if (want === true || args.cancelSignal.cancelled) {
-						cancelled = true;
-						return true;
-					}
-				}
-				return false;
-			},
-		});
+				},
+			});
+			cancelled = cancelled || result.cancelled;
+		}
 		args.onChunk({
 			pcm: new Float32Array(0),
 			sampleRate: this.runtime.sampleRate,
 			isFinal: true,
 		});
-		return { cancelled: cancelled || result.cancelled };
+		return { cancelled };
 	}
 
 	dispose(): void {

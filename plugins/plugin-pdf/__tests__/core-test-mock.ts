@@ -19,6 +19,9 @@ vi.mock("@elizaos/core", () => {
 	}
 
 	return {
+		ModelType: {
+			IMAGE_DESCRIPTION: "IMAGE_DESCRIPTION",
+		},
 		Service,
 		ServiceType: {
 			PDF: "pdf",

@@ -10,23 +10,24 @@ internal object TalkModeAndroidBridgeContract {
     fun localAgentTtsFrame(
         requestId: String,
         token: String,
-        body: JSONObject
+        body: JSONObject,
+        phonemizeOnly: Boolean = false
     ): String = JSONObject().apply {
         put("id", requestId)
         put("method", "http_request")
         put("payload", JSONObject().apply {
             put("method", "POST")
-            put("path", "/api/tts/local-inference")
+            put("path", if (phonemizeOnly) "/api/tts/local-inference/phonemize" else "/api/tts/local-inference")
             put("headers", JSONObject().apply {
                 put("Authorization", "Bearer $token")
                 put("Content-Type", "application/json")
-                put("Accept", "audio/wav")
+                put("Accept", if (phonemizeOnly) "application/json" else "audio/wav")
             })
             put("body", body)
         })
     }.toString()
 
-    fun decodeLocalAgentWavResponse(
+    fun decodeLocalAgentBodyResponse(
         line: String,
         decodeBase64: (String) -> ByteArray
     ): ByteArray {
@@ -45,7 +46,7 @@ internal object TalkModeAndroidBridgeContract {
         }
         val bytes = decodeBase64(result.optString("bodyBase64"))
         if (bytes.isEmpty()) {
-            throw IllegalStateException("Local agent TTS returned no audio")
+            throw IllegalStateException("Local agent TTS returned an empty body")
         }
         return bytes
     }

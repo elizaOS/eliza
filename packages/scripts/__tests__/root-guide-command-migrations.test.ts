@@ -1,10 +1,7 @@
 /**
- * Stale-reference regression check for the root guide's "Removed root command
- * migrations" table. #17012 left several rows pointing at `audit:test-integrity*`
- * scripts that no longer existed (#17003); this contract fails whenever a
- * migration target references a `bun run` script that is absent from the named
- * package manifest or a `bun test <path>` file that is gone. Deterministic:
- * reads CLAUDE.md and package manifests from the repository checkout only.
+ * Validates documented command migrations against live manifests and paths.
+ * The deterministic parser exercises annotations and command arguments so
+ * prose in the guide cannot silently remove a replacement from validation.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -27,20 +24,21 @@ interface MigrationTarget {
 
 /** Parse every `Use instead` cell of the migrations table into checkable refs. */
 function parseMigrationTargets(guide: string): MigrationTarget[] {
-  const section = guide.split("### Removed root command migrations")[1];
-  expect(section, "migrations section present in CLAUDE.md").toBeTruthy();
+  const remainder = guide.split("### Removed root command migrations")[1];
+  if (remainder === undefined)
+    throw new Error("Missing command migrations section");
+  const section = remainder.split(/\n#{1,3} /, 1)[0];
   const targets: MigrationTarget[] = [];
-  for (const line of (section ?? "").split("\n")) {
+  for (const line of section.split("\n")) {
     if (!line.startsWith("| `bun run ")) continue;
     const cells = line.split("|").map((cell) => cell.trim());
-    // | `removed` | replacement prose or `command` |
     const replacement = cells[2] ?? "";
-    const match = replacement.match(/^`([^`]+)`$/);
-    if (!match) continue; // prose rows ("retired ...; no replacement") are fine
+    const match = replacement.match(/^`([^`]+)`(?:\s|$)/);
+    if (!match) continue; // Retired commands may have no executable replacement.
     const command = match[1];
-    const cwdRun = command.match(/^bun run --cwd (\S+) (\S+)$/);
-    const rootRun = command.match(/^bun run (\S+)$/);
-    const bunTest = command.match(/^bun test (\S+)$/);
+    const cwdRun = command.match(/^bun run --cwd (\S+) ([^\s-]\S*)(?:\s|$)/);
+    const rootRun = command.match(/^bun run ([^\s-]\S*)(?:\s|$)/);
+    const bunTest = command.match(/^bun test ([^\s-]\S*)(?:\s|$)/);
     const nodeRun = command.match(/^node (\S+)/);
     if (cwdRun) {
       targets.push({ raw: command, packageDir: cwdRun[1], script: cwdRun[2] });
@@ -50,6 +48,8 @@ function parseMigrationTargets(guide: string): MigrationTarget[] {
       targets.push({ raw: command, packageDir: ".", testFile: bunTest[1] });
     } else if (nodeRun) {
       targets.push({ raw: command, packageDir: ".", testFile: nodeRun[1] });
+    } else {
+      throw new Error(`Unsupported migration command: ${command}`);
     }
   }
   return targets;
@@ -59,8 +59,30 @@ describe("root guide removed-command migrations", () => {
   const guide = readFileSync(path.join(REPO_ROOT, "CLAUDE.md"), "utf8");
   const targets = parseMigrationTargets(guide);
 
-  it("parses a non-trivial migration table", () => {
-    expect(targets.length).toBeGreaterThan(10);
+  it("validates annotated replacements and commands with arguments", () => {
+    const parsed = parseMigrationTargets(
+      [
+        "### Removed root command migrations",
+        "| `bun run old` | `bun run test:plugin 'plugin-example'` (requires credentials) |",
+        "| `bun run old-ui` | `bun run --cwd packages/app test:e2e` (requires browsers) |",
+        "## Another table",
+        "| `bun run unrelated` | `bun run unrelated` |",
+      ].join("\n"),
+    );
+    expect(
+      parsed.map(({ packageDir, script }) => ({ packageDir, script })),
+    ).toEqual([
+      { packageDir: ".", script: "test:plugin" },
+      { packageDir: "packages/app", script: "test:e2e" },
+    ]);
+  });
+
+  it("rejects executable replacements it cannot validate", () => {
+    expect(() =>
+      parseMigrationTargets(
+        "### Removed root command migrations\n| `bun run old` | `bun run --filter foo test` |",
+      ),
+    ).toThrow("Unsupported migration command");
   });
 
   it.each(targets.map((target) => [target.raw, target] as const))(

@@ -11,8 +11,9 @@ This package owns one intentionally focused Cloud surface:
 
 The persisted schema retains a derived first-line label plus body for stable
 lookup and compatibility with existing notes. That split is deterministic:
-planner capabilities accept one `content` value and never ask a model to invent
-a separate title or summary. The view renders the combined content as one field.
+planner capabilities prefer one `content` value, while the chat action also
+losslessly normalizes providers that preserve an explicitly requested title and
+body as separate arguments. The view renders the combined content as one field.
 
 Managed dedicated agents load the runtime plugin through the `lean-chat`
 profile. The app build loads `src/register.ts` through the manifest-driven app
@@ -50,3 +51,14 @@ views or event state to this package.
 - `clear-notes` validates `expectedRevision` inside the store write barrier, so
   a note committed between confirmation and commit aborts the clear instead of
   being wiped. The dispatch-time snapshot check is only a fast path.
+
+Saved-note prompt content is encoded as complete JSON strings with canonical label/newline/body boundaries; never flatten it into a display dash that can corrupt a partial update.
+
+Direct-text planner/completion context can use the provider-owned exact title/count index. Complete note bodies remain in the authorized provider result and are retrieved through the shared context-restoration protocol or NOTES before body recall or replacement. Never turn labels into inferred body text; keep full JSON-string line boundaries on retrieval.
+
+Literal chat updates may supply textEdit with a field, exact oldText and newText.
+Validate this alternative at the existing boundary and match under the store
+write barrier. Require a unique current match and preserve every other character;
+reject ambiguous, absent, conflicting or normalization-dependent edits without a
+write. Full replacement and legacy caller contracts remain supported. This is
+structured tool input, never a natural-language shortcut or a second write path.

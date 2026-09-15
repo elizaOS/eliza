@@ -13,6 +13,7 @@ import http from "node:http";
 import { Socket } from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { __resetRuntimeModeSnapshotCacheForTests } from "@elizaos/agent/api/runtime-mode/runtime-mode";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CompatRuntimeState } from "./compat-route-shared";
@@ -45,6 +46,7 @@ const targetHits: Array<{
 }> = [];
 
 beforeEach(async () => {
+  __resetRuntimeModeSnapshotCacheForTests();
   saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
   // Force a non-loopback peer + no token so the request is unauthenticated.
   delete process.env.ELIZA_API_TOKEN;
@@ -110,6 +112,7 @@ afterEach(async () => {
     else process.env[k] = saved[k];
   }
   vi.restoreAllMocks();
+  __resetRuntimeModeSnapshotCacheForTests();
 });
 
 function unauthReq(method: string, pathname: string): http.IncomingMessage {
@@ -283,6 +286,30 @@ describe("compat dispatcher default-deny (H5)", () => {
       error: "db_unavailable",
       reason: "db_unavailable",
     });
+  });
+
+  it("lets desktop bootstrap reach its one-shot proof handler before session auth", async () => {
+    const cap = captureRes();
+    const handled = await handleElizaCompatRoute(
+      trustedLoopbackReq("POST", "/api/auth/desktop-bootstrap"),
+      cap.res,
+      STATE,
+    );
+
+    expect(handled).toBe(true);
+    expect(cap.status()).toBe(503);
+    expect(cap.json()).toEqual({ error: "db_unavailable" });
+
+    const remote = captureRes();
+    const remoteHandled = await handleElizaCompatRoute(
+      unauthReq("POST", "/api/auth/desktop-bootstrap"),
+      remote.res,
+      STATE,
+    );
+
+    expect(remoteHandled).toBe(true);
+    expect(remote.status()).toBe(403);
+    expect(remote.json()).toEqual({ error: "desktop_bootstrap_forbidden" });
   });
 
   it("denies remote-mode cloud mutations before the forwarder sees unauthenticated callers", async () => {

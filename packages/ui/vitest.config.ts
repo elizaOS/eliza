@@ -71,6 +71,10 @@ export default defineConfig({
     dedupe: ["react", "react-dom"],
     alias: [
       {
+        find: /^@elizaos\/login$/,
+        replacement: resolve(monorepoRoot, "packages/login/src/sdk/index.ts"),
+      },
+      {
         find: /^@elizaos\/ui$/,
         replacement: resolve(uiSrc, "index.ts"),
       },

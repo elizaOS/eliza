@@ -400,7 +400,7 @@ jobs:
       "packages/scripts/run-script-test-files.mjs",
       "--config=packages/scripts/bunfig.script-tests.toml",
     ]);
-    expect(command).toContain("--concurrency=2");
+    expect(command).toContain("--concurrency=1");
     expect(
       command.findIndex((argument) => argument.startsWith("--junit=")),
     ).toBeLessThan(command.indexOf("packages/scripts/example.test.ts"));
@@ -908,6 +908,11 @@ jobs:
     const result = buildScriptTestInventory();
     expect(result.discoveredCount).toBeGreaterThan(90);
     expect(result.excluded).toEqual([
+      {
+        file: "packages/cloud/scripts/admin/run-integration-tests.test.mjs",
+        reason:
+          "the root test:cloud:integration command owns this Node node:sqlite lifecycle suite",
+      },
       {
         file: "packages/scripts/__tests__/release-verdaccio.integration.test.ts",
         reason:

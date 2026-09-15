@@ -37,14 +37,25 @@ export type SharedCapabilityResolution =
     };
 
 const NON_EXECUTION_CONTEXT =
-  /^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(?:do\s+not|don't|dont|never|explain|describe|define|translate|teach\s+me|tell\s+me\s+how|show\s+me\s+how|how\s+(?:do|would|can|to)|what\s+(?:is|are|would|happens?)|why\s+(?:do|would|can|is|are)|if\s+(?:i|we|you)|before\s+you)\b/i;
+  /^(?:please\s+)?(?:(?:(?:can|could|would)\s+you\s+(?:please\s+)?(?:not|avoid|refrain\s+from|explain|describe|define|translate|tell\s+me\s+how|show\s+me\s+how))|(?:i\s+)?(?:do\s+not|don['’]?t|dont)(?:\s+want\s+(?:you\s+)?to)?|never|explain|describe|define|translate|teach\s+me|tell\s+me\s+how|show\s+me\s+how|how\s+(?:do|would|can|to)|what\s+(?:is|are|would|happens?)|why\s+(?:do|would|can|is|are)|if\s+(?:i|we|you)|before\s+you)\b/i;
+
+/** A final explicit retraction cancels the executable clauses before it. */
+export function hasTrailingSharedActionCancellation(message: string | undefined): boolean {
+  const text = (message ?? "").trim();
+  return Boolean(
+    text &&
+      /(?:\b(?:actually|wait)[\s,]*(?:(?:do\s+not|don['’]?t|dont)(?:\s+(?:do\s+(?:that|it)|(?:update|change|delete|remove|dismiss|cancel|complete|snooze|set|create|schedule)\s+(?:that|it)))?|never\s+mind)|\b(?:never\s+mind|cancel\s+(?:that|it)|forget\s+(?:that|it)|scratch\s+that))\s*[.!?]*$/iu.test(
+        text,
+      ),
+  );
+}
 
 const RULES: ReadonlyArray<SharedCapabilityWall & { pattern: RegExp }> = [
   {
     capability: "reminders",
     label: "Reminders",
     pattern:
-      /\b(?:remind\s+me|(?:set|create|add|schedule|cancel|delete|change|list|show)\b[\s\S]{0,36}\breminders?)\b/i,
+      /\b(?:remind\s+me|(?:set|create|add|schedule|cancel|delete|remove|dismiss|change|update|edit|reschedule|snooze|complete|list|show|clear|clean)\b[\s\S]{0,48}\breminders?)\b/i,
     constraint:
       "This transport has no trusted reminder delivery, so it cannot create, change, list, or deliver reminders.",
   },
@@ -211,7 +222,7 @@ export function resolveSharedCapabilityIntent(
   capabilities: { reminders?: boolean; todos?: boolean } = {},
 ): SharedCapabilityResolution | null {
   const text = (message ?? "").trim();
-  if (!text) return null;
+  if (!text || hasTrailingSharedActionCancellation(text)) return null;
   const matches = RULES.flatMap((rule, priority) => matchesForRule(rule, priority, text)).sort(
     (left, right) => left.index - right.index || left.priority - right.priority,
   );

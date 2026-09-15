@@ -104,7 +104,7 @@ describe("z.ai failure surfaces (real ai + @ai-sdk/openai-compatible, stubbed tr
     const runtime = createRuntime(fetchMock as unknown as typeof fetch);
 
     await expect(handleTextSmall(runtime, { prompt: "hi" })).rejects.toMatchObject({
-      code: "MODEL_INCOMPLETE_OUTPUT",
+      code: "MODEL_OUTPUT_INCOMPLETE",
     });
     expect(emitEventOf(runtime)).not.toHaveBeenCalled();
   });

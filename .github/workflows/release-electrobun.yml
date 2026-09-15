@@ -537,6 +537,8 @@ jobs:
 
       - name: Run repository postinstall patches
         run: bun run postinstall
+        env:
+          ELIZA_SKIP_FUSED_INFERENCE_SETUP: ""
 
       - name: Align version with release tag
         run: |
@@ -1448,7 +1450,13 @@ jobs:
             exit 1
           fi
 
+      # Advisory unlike the Linux and Windows packaged smokes, which fail the
+      # job. Keep the id so the diagnostics upload below can key off this
+      # step's own outcome: continue-on-error means a smoke failure never makes
+      # failure() true, so a condition on failure() alone can never collect the
+      # evidence for the failure it was written for.
       - name: Smoke test packaged macOS app
+        id: macos-packaged-smoke
         if: matrix.platform.os == 'macos' && steps.build-electrobun-app.outputs.fallback != 'true'
         continue-on-error: true
         env:
@@ -1573,8 +1581,22 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      - name: Report advisory macOS smoke failure
+        if: >-
+          steps.macos-packaged-smoke.outcome == 'failure' &&
+          matrix.platform.os == 'macos'
+        run: |
+          echo "::warning title=Packaged macOS smoke failed::The packaged macOS app smoke test failed. This step is advisory (continue-on-error), so the release job stays green — see the uploaded macOS smoke diagnostics artifact."
+          {
+            echo "### Packaged macOS smoke: FAILED (advisory)"
+            echo
+            echo "\`bun run test:desktop:packaged\` failed on macOS. The step is \`continue-on-error: true\`, so this did not fail the release job."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload macOS smoke diagnostics
-        if: failure() && matrix.platform.os == 'macos'
+        if: >-
+          (failure() || steps.macos-packaged-smoke.outcome == 'failure') &&
+          matrix.platform.os == 'macos'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: electrobun-${{ matrix.platform.artifact-name }}-smoke-diagnostics

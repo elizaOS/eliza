@@ -167,12 +167,15 @@ export interface ConfiguredInferenceTierSnapshot {
   selectorKey: string;
   /**
    * Input observed by the current tier selector after its legacy metadata
-   * exclusions. Economic qualification remains undecided by #23019.
+   * exclusions. Null means subscription policy selected the rates without a
+   * historical credit selector. Economic qualification remains undecided by #23019.
    */
-  tierSourceCreditTotalObserved: ExactBillingValue & {
-    unit: "usd";
-    currency: "USD";
-  };
+  tierSourceCreditTotalObserved:
+    | (ExactBillingValue & {
+        unit: "usd";
+        currency: "USD";
+      })
+    | null;
   overrides: {
     completionsRpm: string | null;
     embeddingsRpm: string | null;
@@ -205,6 +208,22 @@ export interface AccountTierSnapshot {
 export type ActiveComputeResourceType = "container" | "agent_sandbox";
 export type ActiveComputeBillingInterval = "hour" | "day";
 
+export type ActiveComputeCancellationBlockerCode =
+  | "interactive_session_required"
+  | "billing_account_ineligible"
+  | "owner_or_admin_role_required";
+
+/** Server-owned mutation descriptor; clients render it without inferring policy. */
+export interface ActiveComputeCancellationControlSnapshot {
+  displayAction: "stop" | "stop_compute";
+  method: "POST";
+  mode: "stop";
+  endpoint: string;
+  expectedLifecycleRevision: number;
+  eligible: boolean;
+  blockers: ActiveComputeCancellationBlockerCode[];
+}
+
 export interface ActiveComputeRateSegmentSnapshot {
   workloadKind: "agent" | "container";
   billingState: "running" | "backup";
@@ -221,6 +240,7 @@ export interface ActiveComputeResourceSnapshot {
   lastBilledAt: string | null;
   nextBillingAt: string | null;
   estimatedNextBillingAt: string | null;
+  cancellationControl: ActiveComputeCancellationControlSnapshot;
   rateSegment: Observed<ActiveComputeRateSegmentSnapshot>;
   ratePerHour: Observed<
     ExactBillingValue & { unit: "usd_per_hour"; currency: "USD" }
@@ -278,10 +298,71 @@ export interface AccountBillingLimitsV2 {
   };
 }
 
+/** Email submission evidence for the current canceled revision; acceptance is not recipient delivery. */
+export interface SubscriptionCancellationNoticeSnapshot {
+  sourceLifecycleRevision: string;
+  state:
+    | "policy_unavailable"
+    | "scheduled"
+    | "dispatching"
+    | "accepted"
+    | "rejected"
+    | "uncertain"
+    | "unavailable"
+    | "superseded"
+    | "reconciliation_required";
+  updatedAt: string;
+  channel: "email";
+  delivery: "not_observed";
+}
+
+/** Organization infrastructure billing only; never an app subscriber's merchant account. */
+export interface OrganizationSubscriptionSnapshot {
+  planKey: "plus_monthly" | "pro_monthly";
+  catalogVersion: string;
+  lifecycleRevision: string;
+  projectionRevision: string;
+  state:
+    | "pending"
+    | "incomplete"
+    | "active"
+    | "grace"
+    | "past_due"
+    | "unpaid"
+    | "canceled"
+    | "incomplete_expired";
+  currentPeriodStart: string;
+  currentPeriodEnd: string;
+  cancelAtPeriodEnd: boolean;
+  pendingPlanKey: "plus_monthly" | "pro_monthly" | null;
+  /** These are persisted lifecycle timestamps, not a forecast of the next charge or access. */
+  graceExpiresAt: string | null;
+  dunningStartedAt: string | null;
+  cancellationNotice: Observed<SubscriptionCancellationNoticeSnapshot>;
+  allowance: Observed<{
+    sourceLifecycleRevision: string;
+    periodStart: string;
+    periodEnd: string;
+    expiresAt: string;
+    state: "open" | "expired" | "clawed_back" | "closed";
+    granted: string;
+    adjustments: string;
+    unreserved: string;
+    reserved: string;
+    settled: string;
+    expired: string;
+    clawedBack: string;
+    /** Exact USD eligible for new allowance-funded spending at the snapshot clock. Denied authority is unavailable; retained ledger amounts above remain observable. */
+    effectiveRemaining: Observed<string>;
+    currency: "USD";
+  }>;
+}
+
 export interface AccountBillingSnapshotV2 {
   snapshotStartedAt: string;
   snapshotCompletedAt: string;
   balance: Observed<AccountBalanceSnapshot>;
+  subscription: Observed<OrganizationSubscriptionSnapshot>;
   paymentMethodPresence: Observed<PaymentMethodPresenceSnapshot>;
   billingReadiness: Observed<BillingReadinessSnapshot>;
   autoTopUp: AutoTopUpSnapshot;

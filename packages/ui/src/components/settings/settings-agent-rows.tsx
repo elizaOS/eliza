@@ -201,6 +201,7 @@ export function SettingsSelectRow({
 }: SettingsSelectRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
   const flattened = flattenSelectOptions(options, groups);
+  const selectedOption = flattened.find((option) => option.value === value);
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: agentId,
     role: "select",
@@ -225,7 +226,9 @@ export function SettingsSelectRow({
         data-testid={testId}
         {...selectAgentProps}
       >
-        <SelectValue placeholder={placeholder} />
+        <SelectValue placeholder={placeholder}>
+          {selectedOption?.label}
+        </SelectValue>
       </SettingsSelectTrigger>
       <SelectContent className={contentClassName}>
         {groups && groups.length > 0

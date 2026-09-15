@@ -5577,6 +5577,7 @@ export class RemindersDomain {
       reminderLimit?: number;
       workflowLimit?: number;
       scheduledTaskLimit?: number;
+      sleepCycleCheckins?: boolean;
     } = {},
   ): Promise<{
     now: string;
@@ -5833,12 +5834,14 @@ export class RemindersDomain {
           limit: scheduledTaskLimit,
         }),
     );
-    await runSubsystem("sleep_cycle_checkins", undefined, () =>
-      this.processSleepCycleCheckins({
-        now,
-        currentSchedule,
-      }),
-    );
+    if (request.sleepCycleCheckins !== false) {
+      await runSubsystem("sleep_cycle_checkins", undefined, () =>
+        this.processSleepCycleCheckins({
+          now,
+          currentSchedule,
+        }),
+      );
+    }
     await this.runTelemetryMaintenanceIfDue(now);
     return {
       now: now.toISOString(),

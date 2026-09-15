@@ -8,11 +8,13 @@ const mocks = vi.hoisted(() => ({
   savePersistedActiveServer: vi.fn(),
   setStorageValue: vi.fn(),
   updateAgentProfile: vi.fn(),
+  upsertAndActivateAgentProfile: vi.fn(),
 }));
 
 vi.mock("./agent-profiles", () => ({
   getActiveProfile: mocks.getActiveProfile,
   updateAgentProfile: mocks.updateAgentProfile,
+  upsertAndActivateAgentProfile: mocks.upsertAndActivateAgentProfile,
 }));
 
 vi.mock("./persistence", () => ({

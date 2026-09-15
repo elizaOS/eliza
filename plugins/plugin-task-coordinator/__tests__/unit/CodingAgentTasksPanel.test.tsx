@@ -1,17 +1,5 @@
+/** Exercises task listing, detail controls, and polling recovery with mocked client boundaries. */
 // @vitest-environment jsdom
-//
-// Behavioral + data-display tests for CodingAgentTasksPanel (the task-coordinator
-// gui/xr view, src/CodingAgentTasksPanel.tsx). Renders it with realistic
-// CodingAgentTaskThread / CodingAgentTaskThreadDetail fixtures and
-// assert: (a) the populated list shows specific titles/subtitles + total/active/
-// done count chips + session/decision chips; (b) typing in search re-fetches
-// with that search; (c) the show-archived toggle re-fetches with includeArchived
-// and flips aria-pressed; (d) an empty result renders TaskEmptyState; (e)
-// clicking a card opens ThreadDetailPane with the fixture's acceptance/session/
-// artifact/decision/transcript values + the counts row; (f) Delete archives the
-// thread and Reopen reopens an archived one; (g) the back chip returns to the
-// list. We mock @elizaos/ui's client + useApp + Button and @elizaos/ui/agent-
-// surface's useAgentElement so the component's own behavior is under test.
 import {
   cleanup,
   fireEvent,
@@ -44,7 +32,10 @@ vi.mock("@elizaos/ui/agent-surface", () => ({
   useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
 }));
 
-vi.mock("@elizaos/ui/api", () => ({
+vi.mock("@elizaos/ui/api", async () => ({
+  ApiError: (
+    await import("../../../../packages/ui/src/api/client-types-core.js")
+  ).ApiError,
   client: {
     listCodingAgentTaskThreads: (...a: unknown[]) =>
       listCodingAgentTaskThreads(...a),
@@ -91,17 +82,106 @@ vi.mock("@elizaos/ui/api", () => ({
       {children}
     </button>
   ),
+  Card: ({
+    children,
+    ...rest
+  }: { children: ReactNode } & Record<string, unknown>) => (
+    <div {...rest}>{children}</div>
+  ),
+  Input: (props: Record<string, unknown>) => <input {...props} />,
+  Separator: (props: Record<string, unknown>) => <div {...props} />,
+  StatusPulseDot: (props: Record<string, unknown>) => <span {...props} />,
+  DropdownMenu: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  DropdownMenuTrigger: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  DropdownMenuContent: ({
+    children,
+    ...rest
+  }: { children: ReactNode } & Record<string, unknown>) => (
+    <div {...rest}>{children}</div>
+  ),
+  DropdownMenuItem: ({
+    children,
+    onSelect,
+    ...rest
+  }: {
+    children: ReactNode;
+    onSelect?: () => void;
+  } & Record<string, unknown>) => (
+    <button type="button" onClick={() => onSelect?.()} {...rest}>
+      {children}
+    </button>
+  ),
 }));
+
+vi.mock("@elizaos/ui", () => {
+  return {
+    client: {
+      listCodingAgentTaskThreads: (...a: unknown[]) =>
+        listCodingAgentTaskThreads(...a),
+      getCodingAgentTaskThread: (...a: unknown[]) =>
+        getCodingAgentTaskThread(...a),
+      archiveCodingAgentTaskThread: (...a: unknown[]) =>
+        archiveCodingAgentTaskThread(...a),
+      reopenCodingAgentTaskThread: (...a: unknown[]) =>
+        reopenCodingAgentTaskThread(...a),
+      listProjects: vi.fn(async () => ({ projects: [] })),
+    },
+    Button: ({
+      children,
+      onClick,
+      disabled,
+      unstyled: _unstyled,
+      variant: _variant,
+      size: _size,
+      ...rest
+    }: {
+      children: ReactNode;
+      onClick?: () => void;
+      disabled?: boolean;
+      [key: string]: unknown;
+    }) => (
+      <button type="button" onClick={onClick} disabled={disabled} {...rest}>
+        {children}
+      </button>
+    ),
+    Card: ({
+      children,
+      variant: _variant,
+      ...rest
+    }: { children: ReactNode; variant?: string } & Record<string, unknown>) => (
+      <div {...rest}>{children}</div>
+    ),
+    Input: ({
+      variant: _variant,
+      density: _density,
+      adornment: _adornment,
+      ...rest
+    }: Record<string, unknown>) => <input {...rest} />,
+    Separator: () => <hr />,
+    StatusPulseDot: () => <span aria-hidden="true" />,
+    DropdownMenu: ({ children }: { children: ReactNode }) => (
+      <div>{children}</div>
+    ),
+    DropdownMenuTrigger: ({ children }: { children: ReactNode }) => (
+      <div>{children}</div>
+    ),
+    DropdownMenuContent: ({ children }: { children: ReactNode }) => (
+      <div>{children}</div>
+    ),
+    DropdownMenuItem: ({ children }: { children: ReactNode }) => (
+      <div>{children}</div>
+    ),
+  };
+});
 
 vi.mock("@elizaos/ui/state", () => ({
   useAppSelectorShallow: (selector: (s: Record<string, unknown>) => unknown) =>
     selector(mockAppValue),
 }));
-
-vi.mock("@elizaos/ui/components/ui/button", async () => {
-  const apiMock = await import("@elizaos/ui/api");
-  return { Button: apiMock.Button };
-});
 
 import { CodingAgentTasksPanel } from "../../src/CodingAgentTasksPanel";
 
@@ -327,6 +407,27 @@ function panel(): HTMLElement {
 }
 
 describe("CodingAgentTasksPanel — list", () => {
+  it("retains tasks while a background refresh fails and clears the error after recovery", async () => {
+    listCodingAgentTaskThreads.mockResolvedValue([ACTIVE_THREAD]);
+    render(<CodingAgentTasksPanel />);
+    await screen.findByText("Fix the broken CI build");
+    listCodingAgentTaskThreads.mockRejectedValueOnce(
+      new Error("Task backend unavailable"),
+    );
+    expect(
+      await screen.findByText(
+        /Task backend unavailable/,
+        {},
+        { timeout: 7000 },
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("Fix the broken CI build")).toBeTruthy();
+    await waitFor(
+      () => expect(screen.queryByText(/Task backend unavailable/)).toBeNull(),
+      { timeout: 7000 },
+    );
+  }, 15000);
+
   it("renders each thread's title + subtitle and the total/active/done count chips", async () => {
     listCodingAgentTaskThreads.mockResolvedValue([
       ACTIVE_THREAD,

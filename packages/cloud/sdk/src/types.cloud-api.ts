@@ -13,6 +13,24 @@ export interface ApiSuccessEnvelope<TData> {
   data: TData;
 }
 
+/** Safe command state for period-end cancellation of the current organization subscription. */
+export interface OrganizationSubscriptionCancellationDto {
+  commandId: string;
+  subscriptionId: string;
+  status: "PREPARED" | "OUTCOME_UNKNOWN" | "APPLIED" | "FAILED" | "SUPERSEDED";
+  expectedSubscriptionRevision: string;
+  resultSubscriptionRevision: string | null;
+}
+
+export interface OrganizationSubscriptionCancellationRequest {
+  subscriptionId: string;
+  expectedSubscriptionRevision: number;
+  idempotencyKey: string;
+}
+
+export type OrganizationSubscriptionCancellationResponse =
+  ApiSuccessEnvelope<OrganizationSubscriptionCancellationDto>;
+
 export interface CurrentUserOrganizationDto {
   id: string;
   name: string;
@@ -233,6 +251,8 @@ export type AgentWalletStatus = "active" | "pending" | "none" | "error";
 
 export interface AgentDetailDto extends AgentListItemDto {
   errorCount: number;
+  /** True when the control plane has persisted private mesh routing authority. */
+  meshAddressPresent: boolean;
   walletAddress: string | null;
   walletProvider: string | null;
   walletStatus: AgentWalletStatus;
@@ -598,3 +618,24 @@ export interface ConnectedAccountPageDto {
 export interface ConnectedAccountDetailDto {
   account: ConnectedAccountDto;
 }
+
+/** A page reflects one primary observation; following a cursor does not freeze command state across requests. */
+export interface PendingSubscriptionCommandsDto {
+  observedAt: string;
+  items: Array<{
+    commandId: string;
+    subscriptionId: string;
+    kind: "cancel" | "resume";
+    status: "PREPARED" | "OUTCOME_UNKNOWN";
+    expectedSubscriptionRevision: string;
+    createdAt: string;
+    lease: "not_started" | "unleased" | "active" | "expired";
+    source: {
+      state: "current" | "changed" | "unavailable";
+      currentSubscriptionRevision: string | null;
+    };
+  }>;
+  nextCursor: string | null;
+}
+export type PendingSubscriptionCommandsResponse =
+  ApiSuccessEnvelope<PendingSubscriptionCommandsDto>;

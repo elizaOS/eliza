@@ -17,8 +17,16 @@
  */
 
 import { Capacitor } from "@capacitor/core";
+import type {
+  LoginAuthResult,
+  LoginMfaRequiredResult,
+  LoginProviders,
+  LoginTelegramLoginPayload,
+} from "@elizaos/login";
+import { LoginApiError, LoginAuth } from "@elizaos/login";
 import {
   buildStewardOAuthAuthorizeUrl as buildStewardOAuthAuthorizeUrlCore,
+  clearStoredStewardToken,
   generateStewardOAuthState,
   hasStewardAuthedCookie,
   peekStewardOAuthState,
@@ -26,13 +34,6 @@ import {
   StewardSessionError,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
-import type {
-  StewardAuthResult,
-  StewardMfaRequiredResult,
-  StewardProviders,
-  StewardTelegramLoginPayload,
-} from "@stwd/sdk";
-import { StewardApiError, StewardAuth } from "@stwd/sdk";
 import type { CountryCode } from "libphonenumber-js/min";
 import { AlertCircle, Phone } from "lucide-react";
 import {
@@ -50,7 +51,7 @@ import {
   useNavigate,
   useSearchParams,
 } from "react-router-dom";
-import { toast } from "sonner";
+import { toast } from "../../../../bridge/toast";
 import {
   DiscordIcon,
   TelegramIcon,
@@ -65,12 +66,14 @@ import {
   SelectTrigger,
 } from "../../../../components/ui/select";
 import { openExternalUrl } from "../../../../utils/openExternalUrl";
+import { hasHydratableStewardToken } from "../../../lib/steward-session";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
   configuredStewardTenantId,
   DEFAULT_STEWARD_TENANT_ID,
 } from "../../../shell/steward-config";
 import { resolveBrowserStewardApiUrl } from "../../../shell/steward-url";
+import { clearSsoLoggedOut } from "../../../sso-bridge/sso-bridge";
 import { getErrorMessage } from "../../lib/error-message";
 import {
   consumePendingOAuthReturnTo,
@@ -139,10 +142,6 @@ const Github = ({ className }: { className?: string }) => (
 );
 
 const STEWARD_TENANT_ID = configuredStewardTenantId(DEFAULT_STEWARD_TENANT_ID);
-const PLAYWRIGHT_TEST_AUTH_ENABLED =
-  import.meta.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
-  (typeof process !== "undefined" &&
-    process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true");
 /**
  * Optional local-stack API key for the "Continue with local test account"
  * shortcut. It is never bundled by default: the operator who arms
@@ -160,10 +159,6 @@ function readLocalDedicatedTestApiKey(): string | null {
   if (typeof fromNext === "string" && fromNext.trim()) return fromNext.trim();
   return null;
 }
-const LOCAL_DEDICATED_TEST_API_KEY = readLocalDedicatedTestApiKey();
-const LOCAL_DEDICATED_TEST_SIGN_IN_ENABLED =
-  PLAYWRIGHT_TEST_AUTH_ENABLED && LOCAL_DEDICATED_TEST_API_KEY !== null;
-
 type AuthStep =
   | "idle"
   | "loading"
@@ -186,6 +181,7 @@ async function persistStewardToken(token: string): Promise<void> {
       "Eliza Cloud sign-in needs browser storage. Enable storage for this site and try again.",
     );
   }
+  clearSsoLoggedOut();
 }
 
 /**
@@ -267,7 +263,7 @@ const WalletButtons = lazy(() =>
   import("./wallet-buttons").then((m) => ({ default: m.WalletButtons })),
 );
 
-function hasAnyWalletProvider(providers: StewardProviders): boolean {
+function hasAnyWalletProvider(providers: LoginProviders): boolean {
   return Boolean(providers.siwe || providers.siws);
 }
 
@@ -280,7 +276,7 @@ const STEWARD_OAUTH_PROVIDERS = [
 ] as const satisfies readonly StewardOAuthProvider[];
 
 function isStewardOAuthProviderEnabled(
-  providers: StewardProviders,
+  providers: LoginProviders,
   provider: StewardOAuthProvider,
 ): boolean {
   if (providers.oauth?.includes(provider)) return true;
@@ -288,7 +284,7 @@ function isStewardOAuthProviderEnabled(
   return providers[provider] === true;
 }
 
-const DEFAULT_PROVIDERS: StewardProviders = {
+const DEFAULT_PROVIDERS: LoginProviders = {
   passkey: true,
   email: true,
   sms: false,
@@ -307,8 +303,8 @@ const STEWARD_PROVIDER_DISCOVERY_TIMEOUT_MS = 15_000;
 type LoginTranslator = ReturnType<typeof useCloudT>;
 
 function requireCompletedAuth(
-  result: StewardAuthResult | StewardMfaRequiredResult,
-): StewardAuthResult {
+  result: LoginAuthResult | LoginMfaRequiredResult,
+): LoginAuthResult {
   if ("mfaRequired" in result) {
     throw new Error("MFA required. This client does not support it yet.");
   }
@@ -445,8 +441,8 @@ function describeEmailLoginError(error: unknown, fallback: string): string {
   return getErrorMessage(error, fallback);
 }
 
-let cachedStewardProviders: StewardProviders | null = null;
-let stewardProvidersPromise: Promise<StewardProviders> | null = null;
+let cachedStewardProviders: LoginProviders | null = null;
+let stewardProvidersPromise: Promise<LoginProviders> | null = null;
 let stewardProvidersRequestGeneration = 0;
 
 function discardStewardProvidersRequest(): void {
@@ -467,7 +463,7 @@ function providersSessionCacheKey(): string {
   return `${PROVIDERS_SESSION_CACHE_PREFIX}:${STEWARD_TENANT_ID}`;
 }
 
-function normalizeStewardProviders(value: unknown): StewardProviders | null {
+function normalizeStewardProviders(value: unknown): LoginProviders | null {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
@@ -513,7 +509,7 @@ function normalizeStewardProviders(value: unknown): StewardProviders | null {
   };
 }
 
-function readSessionCachedProviders(): StewardProviders | null {
+function readSessionCachedProviders(): LoginProviders | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.sessionStorage.getItem(providersSessionCacheKey());
@@ -528,7 +524,7 @@ function readSessionCachedProviders(): StewardProviders | null {
   }
 }
 
-function writeSessionCachedProviders(providers: StewardProviders): void {
+function writeSessionCachedProviders(providers: LoginProviders): void {
   if (typeof window === "undefined") return;
   try {
     window.sessionStorage.setItem(
@@ -544,10 +540,12 @@ function writeSessionCachedProviders(providers: StewardProviders): void {
 }
 
 function loadStewardProviders(auth: {
-  getProviders: () => Promise<StewardProviders>;
-}): Promise<StewardProviders> {
-  if (cachedStewardProviders) return Promise.resolve(cachedStewardProviders);
+  getProviders: () => Promise<LoginProviders>;
+}): Promise<LoginProviders> {
   const requestGeneration = stewardProvidersRequestGeneration;
+  // Cached capabilities may paint non-wallet controls early, but they are not
+  // current authorization. Always query Steward so wallet providers remain
+  // gated on this document's live tenant configuration.
   stewardProvidersPromise ??= auth.getProviders().then(
     (loadedProviders) => {
       // error-policy:J3 SDK response data is an untrusted transport boundary.
@@ -577,8 +575,8 @@ function loadStewardProviders(auth: {
 }
 
 function loadStewardProvidersWithTimeout(auth: {
-  getProviders: () => Promise<StewardProviders>;
-}): Promise<StewardProviders> {
+  getProviders: () => Promise<LoginProviders>;
+}): Promise<LoginProviders> {
   return new Promise((resolve, reject) => {
     const timeoutId = window.setTimeout(() => {
       reject(
@@ -597,6 +595,16 @@ function loadStewardProvidersWithTimeout(auth: {
 }
 
 export default function StewardLoginSection() {
+  // Resolve the build-time test switches for each mounted section. Vite still
+  // replaces these values in production builds, while tests can exercise each
+  // supported configuration without invalidating React's module instance.
+  const PLAYWRIGHT_TEST_AUTH_ENABLED =
+    import.meta.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
+    (typeof process !== "undefined" &&
+      process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true");
+  const LOCAL_DEDICATED_TEST_API_KEY = readLocalDedicatedTestApiKey();
+  const LOCAL_DEDICATED_TEST_SIGN_IN_ENABLED =
+    PLAYWRIGHT_TEST_AUTH_ENABLED && LOCAL_DEDICATED_TEST_API_KEY !== null;
   const t = useCloudT();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -612,7 +620,7 @@ export default function StewardLoginSection() {
 
   const auth = useMemo(() => {
     const privateSession = new Map<string, string>();
-    return new StewardAuth({
+    return new LoginAuth({
       baseUrl: stewardApiUrl,
       tenantId: STEWARD_TENANT_ID,
       // Steward writes successful exchanges into its configured storage before
@@ -717,11 +725,19 @@ export default function StewardLoginSection() {
     string | null
   >(null);
   const [providerDiscoveryAttempt, setProviderDiscoveryAttempt] = useState(0);
-  const [providers, setProviders] = useState<StewardProviders | null>(
+  const providerDiscoveryEpochRef = useRef(0);
+  const [providers, setProviders] = useState<LoginProviders | null>(
     () =>
       cachedStewardProviders ??
       readSessionCachedProviders() ??
       (PLAYWRIGHT_TEST_AUTH_ENABLED ? DEFAULT_PROVIDERS : null),
+  );
+  // A sessionStorage/module snapshot is a paint accelerator, not an
+  // authorization signal. Wallet provider mounts can auto-reconnect persisted
+  // browser state, so require a successful live discovery for this document
+  // before exposing either wallet intent.
+  const [walletProvidersConfirmed, setWalletProvidersConfirmed] = useState(
+    PLAYWRIGHT_TEST_AUTH_ENABLED,
   );
   const [passkeyCapability, setPasskeyCapability] =
     useState<WebPasskeyCapability | null>(
@@ -742,11 +758,21 @@ export default function StewardLoginSection() {
   const hasIdentityProviders =
     enabledOAuthProviders.length > 0 || providers?.telegram === true;
   const emailEnabled = providers !== null && providers.email !== false;
-  const showWallets = providers !== null && hasAnyWalletProvider(providers);
+  const showWallets =
+    walletProvidersConfirmed &&
+    providers !== null &&
+    hasAnyWalletProvider(providers);
   const showPasskey =
     providers !== null &&
     providers.passkey !== false &&
     passkeyCapability?.usable === true;
+  const hasUsableNonWalletProvider =
+    providers !== null &&
+    (emailEnabled ||
+      providers.sms === true ||
+      showPasskey ||
+      hasIdentityProviders ||
+      LOCAL_DEDICATED_TEST_SIGN_IN_ENABLED);
 
   const abortSharedEmailSessionRecovery = useCallback(() => {
     const pending = sharedSessionRecoveryRef.current;
@@ -799,11 +825,20 @@ export default function StewardLoginSection() {
       event: PageTransitionEvent,
     ) => {
       if (!event.persisted) return;
+      // A BFCache restoration resumes this exact React tree; it does not
+      // remount the section or rerun discovery. Revoke live wallet authority
+      // before doing anything else so persisted adapters cannot auto-reconnect
+      // under a capability result from the prior page lifetime.
+      providerDiscoveryEpochRef.current += 1;
+      discardStewardProvidersRequest();
+      setWalletProvidersConfirmed(false);
+      setProviderDiscoveryError(null);
+      setProvidersLoaded(false);
+      setProviderDiscoveryAttempt((current) => current + 1);
       setLoading((current) => {
         if (
-          current === "google" ||
-          current === "discord" ||
-          current === "github"
+          current !== null &&
+          STEWARD_OAUTH_PROVIDERS.some((provider) => provider === current)
         ) {
           return null;
         }
@@ -811,10 +846,10 @@ export default function StewardLoginSection() {
       });
     };
 
-    // OAuth owns the current document, but browser Back may revive this React
-    // tree from the back/forward cache with its pre-navigation loading state.
-    // A fresh load already starts idle; only a persisted history restoration
-    // needs to release the provider lock (#20385).
+    // OAuth and wallet authority belong to the current document lifetime, but
+    // browser Back may revive this React tree from the back/forward cache. A
+    // fresh load already starts unconfirmed; only a persisted restoration must
+    // explicitly release the OAuth lock and rediscover wallet capability.
     window.addEventListener("pageshow", recoverOAuthIntentAfterHistoryRestore);
     return () => {
       window.removeEventListener(
@@ -838,40 +873,49 @@ export default function StewardLoginSection() {
     // effect re-runs, so the retry surface still gets live discovery.
     if (completingCallback) return;
     let cancelled = false;
+    const discoveryEpoch = providerDiscoveryEpochRef.current;
+    const stillOwnsDiscovery = () =>
+      !cancelled && providerDiscoveryEpochRef.current === discoveryEpoch;
     loadStewardProvidersWithTimeout(auth)
       .then((loadedProviders) => {
-        if (!cancelled) {
+        if (stillOwnsDiscovery()) {
           setProviderDiscoveryError(null);
           setProviders(loadedProviders);
+          setWalletProvidersConfirmed(true);
         }
       })
       .catch((providerError: unknown) => {
+        if (!stillOwnsDiscovery()) return;
         discardStewardProvidersRequest();
-        if (cancelled) return;
-        // error-policy:J4 with a session-cached provider set already rendered,
-        // a failed background reconcile keeps the usable cached form instead
-        // of blasting an error over working sign-in options; a first-load
-        // failure (nothing rendered yet) still surfaces the error.
-        if (readSessionCachedProviders() === null) {
-          setProviderDiscoveryError(
-            getErrorMessage(providerError, "Steward provider discovery failed"),
-          );
-        }
+        // A cached non-wallet method can remain usable, but wallet mounts stay
+        // gated on live discovery. Always retain the failure so wallet-only
+        // tenants receive a recovery surface instead of an empty form, while
+        // mixed tenants can show the same retry non-destructively.
+        setProviderDiscoveryError(
+          getErrorMessage(providerError, "Steward provider discovery failed"),
+        );
       })
       .finally(() => {
-        if (!cancelled) setProvidersLoaded(true);
+        if (stillOwnsDiscovery()) setProvidersLoaded(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [auth, completingCallback, providerDiscoveryAttempt]);
+  }, [
+    auth,
+    completingCallback,
+    providerDiscoveryAttempt,
+    PLAYWRIGHT_TEST_AUTH_ENABLED,
+  ]);
 
   const retryProviderDiscovery = useCallback(() => {
     // Return to the reserved loading geometry and trigger a fresh server query;
     // never render a fabricated subset of sign-in methods.
+    providerDiscoveryEpochRef.current += 1;
     discardStewardProvidersRequest();
     setProviderDiscoveryError(null);
     setProvidersLoaded(false);
+    setWalletProvidersConfirmed(false);
     setProviderDiscoveryAttempt((attempt) => attempt + 1);
   }, []);
 
@@ -886,7 +930,7 @@ export default function StewardLoginSection() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [PLAYWRIGHT_TEST_AUTH_ENABLED]);
 
   useEffect(() => {
     const code = consumeStewardCodeFromQuery();
@@ -997,13 +1041,21 @@ export default function StewardLoginSection() {
     return () => {
       cancelled = true;
     };
-  }, [navigate, pathname, searchParams]);
+  }, [navigate, pathname, searchParams, PLAYWRIGHT_TEST_AUTH_ENABLED]);
 
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
     if (searchParams.get("switchAccount") === "1") return;
-    if (searchParams.get("code") || searchParams.get("error")) {
+    if (searchParams.get("code")) {
       setSessionRecoveryComplete(true);
+      return;
+    }
+    if (searchParams.get("error")) {
+      // The callback-cleanup effect removes the error query before this hook
+      // starts passive session recovery. Keep the provider controls gated
+      // across that navigation edge so a stale stored session cannot race a
+      // newly-started OTP flow during the intervening render.
+      setSessionRecoveryComplete(false);
       return;
     }
 
@@ -1012,7 +1064,16 @@ export default function StewardLoginSection() {
 
     const tryRecoverSession = async () => {
       try {
-        const storedToken = readStoredStewardToken();
+        let storedToken = readStoredStewardToken();
+        if (storedToken && !hasHydratableStewardToken()) {
+          // Expired, malformed, and identity-less local proofs cannot restore
+          // a session. Clear them before any network call so an unusable token
+          // cannot hide fresh sign-in controls behind session sync. A valid
+          // HttpOnly cookie is independent and still recovers below.
+          await clearStoredStewardToken();
+          storedToken = null;
+          window.dispatchEvent(new CustomEvent("steward-token-sync"));
+        }
         if (storedToken) {
           try {
             // Session recovery establishes auth only. A pending Telegram claim
@@ -1060,7 +1121,7 @@ export default function StewardLoginSection() {
     return () => {
       cancelled = true;
     };
-  }, [searchParams]);
+  }, [searchParams, PLAYWRIGHT_TEST_AUTH_ENABLED]);
 
   useEffect(() => {
     const errorCode = searchParams.get("error");
@@ -1083,6 +1144,7 @@ export default function StewardLoginSection() {
   useEffect(() => {
     if (
       step !== "email-sent" ||
+      loading === "email" ||
       !emailChallenge?.challengeId ||
       !emailChallenge.pollSecret
     ) {
@@ -1162,6 +1224,7 @@ export default function StewardLoginSection() {
   }, [
     emailChallenge,
     emailCheckState,
+    loading,
     recoverSharedEmailSession,
     searchParams,
     step,
@@ -1169,7 +1232,10 @@ export default function StewardLoginSection() {
   ]);
 
   useEffect(() => {
-    if (step !== "email-sent" || !email.trim()) return;
+    // A code submitted here consumes the same challenge that link polling
+    // observes. Let its verification and cookie sync finish before treating a
+    // consumed challenge as a sign-in completed in another tab.
+    if (step !== "email-sent" || loading === "email" || !email.trim()) return;
     let cancelled = false;
     const unsubscribe = subscribeStewardEmailLoginComplete(email, (message) => {
       void (async () => {
@@ -1210,7 +1276,7 @@ export default function StewardLoginSection() {
       cancelled = true;
       unsubscribe();
     };
-  }, [email, recoverSharedEmailSession, step]);
+  }, [email, loading, recoverSharedEmailSession, step]);
 
   useEffect(() => {
     const tracksEmailExpiry = step === "email-sent" && emailChallenge !== null;
@@ -1308,7 +1374,7 @@ export default function StewardLoginSection() {
   function isBrowserOwnedWebAuthnFailure(e: unknown, msg: string): boolean {
     return (
       (typeof DOMException !== "undefined" && e instanceof DOMException) ||
-      (e instanceof StewardApiError &&
+      (e instanceof LoginApiError &&
         e.status === 0 &&
         (msg.includes("webauthn authentication") ||
           msg.includes("webauthn registration")))
@@ -1330,7 +1396,7 @@ export default function StewardLoginSection() {
 
   function isPasskeyAlreadyRegistered(e: unknown): boolean {
     const msg = getErrorMessage(e, "").toLowerCase();
-    if (e instanceof StewardApiError && e.status === 409) {
+    if (e instanceof LoginApiError && e.status === 409) {
       const data = e.data;
       if (
         typeof data === "object" &&
@@ -1715,7 +1781,12 @@ export default function StewardLoginSection() {
   );
 
   useEffect(() => {
-    const requestedProvider = searchParams.get("nativeProvider");
+    // React Router does not observe raw history.replaceState calls. Read the
+    // live address bar so Strict Mode's second effect setup sees the marker
+    // removed by the first setup instead of launching a competing PKCE flow.
+    const requestedProvider = new URLSearchParams(window.location.search).get(
+      "nativeProvider",
+    );
     if (!requestedProvider || !providersLoaded) return;
 
     // Consume the marker before starting any async work so reloads, provider
@@ -1734,7 +1805,7 @@ export default function StewardLoginSection() {
     );
     if (!provider) return;
     void handleOAuth(provider);
-  }, [enabledOAuthProviders, handleOAuth, providersLoaded, searchParams]);
+  }, [enabledOAuthProviders, handleOAuth, providersLoaded]);
 
   function handleTelegramError(message: string) {
     setError(message);
@@ -1746,7 +1817,7 @@ export default function StewardLoginSection() {
     );
   }
 
-  async function handleTelegramAuth(payload: StewardTelegramLoginPayload) {
+  async function handleTelegramAuth(payload: LoginTelegramLoginPayload) {
     setLoading("telegram");
     setError(null);
     try {
@@ -2344,12 +2415,15 @@ export default function StewardLoginSection() {
     );
   }
 
-  // A fresh browser has no authoritative provider set to render when discovery
-  // fails. Showing DEFAULT_PROVIDERS here used to make the same Steward login
-  // look like a second email/passkey-only product and could hide enabled OAuth
-  // methods. Fail visibly and retry discovery instead. A valid session-cached
-  // set takes the separate background-reconcile path above and remains usable.
-  if (providerDiscoveryError || providers === null) {
+  // A fresh browser — or a wallet-only cached tenant whose wallets cannot be
+  // activated without live confirmation — has no usable provider set when
+  // discovery fails. Fail visibly with a retry rather than rendering an empty
+  // email shell. Mixed cached tenants keep their non-wallet methods below and
+  // receive the non-destructive retry warning in the normal form.
+  if (
+    providers === null ||
+    (providerDiscoveryError !== null && !hasUsableNonWalletProvider)
+  ) {
     return (
       <ReservedLoginFrame>
         <div
@@ -2397,6 +2471,30 @@ export default function StewardLoginSection() {
 
   return (
     <div className="space-y-4">
+      {providerDiscoveryError && (
+        <Alert variant="warning">
+          <AlertCircle aria-hidden="true" />
+          <AlertDescription>
+            <p>
+              {t("cloud.login.providerDiscovery.message", {
+                defaultValue:
+                  "Retry to load the sign-in methods enabled for this Eliza Cloud account.",
+              })}
+            </p>
+            <Button
+              variant="outlineMuted"
+              type="button"
+              className="hosted-signin-focus-emphasis mt-2 min-h-touch w-full"
+              onClick={retryProviderDiscovery}
+            >
+              {t("cloud.login.providerDiscovery.retry", {
+                defaultValue: "Retry sign-in options",
+              })}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {callbackError && (
         <Alert variant="destructive">
           <AlertCircle />
@@ -2805,11 +2903,16 @@ export default function StewardLoginSection() {
                   </div>
                 }
               >
-                <StewardWalletProviders>
+                <StewardWalletProviders
+                  enableEvm={providers.siwe === true}
+                  enableSolana={providers.siws === true}
+                >
                   <WalletButtons
                     auth={auth}
                     autoStart={autoStartWallet}
                     disabled={isLoading}
+                    siwe={providers.siwe === true}
+                    siws={providers.siws === true}
                     loadingProvider={
                       loading === "ethereum" || loading === "solana"
                         ? (loading as WalletKind)

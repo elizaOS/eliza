@@ -12,6 +12,10 @@ process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { installAgentNodeOccurrenceTriggerForTests } from "../../agent-node-occurrence-test-support";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
+import {
+  agentBackupNodeAdmissionCursors,
+  agentBackupOrganizationAdmissionCursors,
+} from "../../schemas/agent-backup-admission";
 import { agentBackupCatalogAuthorities } from "../../schemas/agent-backup-catalog";
 import { agentNodeIncarnationHistories } from "../../schemas/agent-node-incarnation-histories";
 import { agentSandboxBackups, agentSandboxes } from "../../schemas/agent-sandboxes";
@@ -152,6 +156,8 @@ beforeAll(async () => {
         users,
         userCharacters,
         agentNodeIncarnationHistories,
+        agentBackupOrganizationAdmissionCursors,
+        agentBackupNodeAdmissionCursors,
         dockerNodes,
         agentSandboxes,
         agentSandboxBackups,
@@ -180,6 +186,8 @@ beforeAll(async () => {
 beforeEach(async () => {
   expect(schemaFailure).toBe("");
   await dbWrite.delete(agentSandboxBackups);
+  await dbWrite.delete(agentBackupNodeAdmissionCursors);
+  await dbWrite.delete(agentBackupOrganizationAdmissionCursors);
   await dbWrite.delete(agentBackupCatalogAuthorities);
   await dbWrite.delete(agentSandboxes);
   await dbWrite.delete(dockerNodes);

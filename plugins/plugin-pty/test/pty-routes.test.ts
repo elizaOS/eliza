@@ -6,6 +6,7 @@
  */
 import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";
+import { resetDevCloudEnvAuthorityForTests } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ptyRoutes } from "../routes/pty-routes";
 import { PtyService } from "../services/pty-service";
@@ -67,20 +68,35 @@ function ctx(
   };
 }
 
-// Keep the eliza-code bin resolution deterministic + isolate API-key env.
-let savedBin: string | undefined;
-let savedKey: string | undefined;
+// Keep the eliza-code bin resolution deterministic and isolate every Cloud
+// authority/key/base input the route or child-spec policy can consult.
+const CLOUD_ENV_KEYS = [
+  "ELIZA_CODE_BIN",
+  "ELIZA_DEV_SOURCE",
+  "ELIZA_DEV_CLOUD_ENV_AUTHORITY",
+  "ELIZA_DEV_CLOUD_TARGET",
+  "ELIZAOS_CLOUD_API_KEY",
+  "ELIZAOS_CLOUD_BASE_URL",
+  "PTY_ELIZA_CLOUD_API_KEY",
+  "PTY_ALLOWED_BASE_URLS",
+  "PTY_ELIZA_CLOUD_BASE_URL_ALLOWLIST",
+] as const;
+const savedCloudEnv = Object.fromEntries(
+  CLOUD_ENV_KEYS.map((key) => [key, process.env[key]]),
+) as Record<(typeof CLOUD_ENV_KEYS)[number], string | undefined>;
+
 beforeEach(() => {
-  savedBin = process.env.ELIZA_CODE_BIN;
-  savedKey = process.env.PTY_ELIZA_CLOUD_API_KEY;
+  resetDevCloudEnvAuthorityForTests();
+  for (const key of CLOUD_ENV_KEYS) delete process.env[key];
   process.env.ELIZA_CODE_BIN = EXISTING_FILE;
-  delete process.env.PTY_ELIZA_CLOUD_API_KEY;
 });
 afterEach(() => {
-  if (savedBin === undefined) delete process.env.ELIZA_CODE_BIN;
-  else process.env.ELIZA_CODE_BIN = savedBin;
-  if (savedKey === undefined) delete process.env.PTY_ELIZA_CLOUD_API_KEY;
-  else process.env.PTY_ELIZA_CLOUD_API_KEY = savedKey;
+  for (const key of CLOUD_ENV_KEYS) {
+    const value = savedCloudEnv[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  resetDevCloudEnvAuthorityForTests();
 });
 
 describe("POST /api/pty/sessions", () => {
@@ -294,6 +310,86 @@ describe("POST /api/pty/sessions", () => {
     );
     expect(res.status).toBe(200);
     expect(h.calls[0].opts.env?.OPENAI_API_KEY).toBe("sk-body");
+  });
+
+  it.each(["staging-default", "offline"] as const)(
+    "403s the Eliza Cloud lane under %s authority despite body/runtime/process overrides",
+    async (authority) => {
+      process.env.ELIZA_DEV_SOURCE = "1";
+      process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = authority;
+      process.env.ELIZAOS_CLOUD_API_KEY = "inherited-production-key";
+      process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.eliza.app/api/v1";
+      process.env.PTY_ELIZA_CLOUD_API_KEY = "process-pty-key";
+      const h = makeHarness({
+        settings: {
+          ELIZAOS_CLOUD_API_KEY: "runtime-canonical-key",
+          ELIZAOS_CLOUD_BASE_URL: "https://runtime.example/api/v1",
+          PTY_ELIZA_CLOUD_API_KEY: "runtime-pty-key",
+          PTY_ALLOWED_BASE_URLS: "https://attacker.example/v1",
+        },
+      });
+
+      const res = await routeByName("pty-spawn-session")(
+        ctx(h.runtime, {
+          kind: "eliza-code",
+          cwd: process.cwd(),
+          apiKey: "body-key",
+          baseUrl: "https://attacker.example/v1",
+        }),
+      );
+
+      expect(res.status).toBe(403);
+      expect((res.body as { error: string }).error).toMatch(/disabled/i);
+      expect(h.calls).toHaveLength(0);
+    },
+  );
+
+  it("uses only the frozen explicit staging tuple across body/runtime/process overrides", async () => {
+    process.env.ELIZA_DEV_SOURCE = "1";
+    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "staging-explicit";
+    process.env.ELIZAOS_CLOUD_API_KEY = "staging-launch-key";
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api-staging.eliza.app/api/v1";
+    process.env.PTY_ELIZA_CLOUD_API_KEY = "process-pty-key";
+    const h = makeHarness({
+      settings: {
+        ELIZAOS_CLOUD_API_KEY: "runtime-canonical-key",
+        ELIZAOS_CLOUD_BASE_URL: "https://runtime.example/api/v1",
+        PTY_ELIZA_CLOUD_API_KEY: "runtime-pty-key",
+        PTY_ALLOWED_BASE_URLS: "https://attacker.example/v1",
+      },
+    });
+
+    const first = await routeByName("pty-spawn-session")(
+      ctx(h.runtime, {
+        kind: "eliza-code",
+        cwd: process.cwd(),
+        apiKey: "body-key",
+        // Deliberately not allowlisted by the route. Authority must ignore it
+        // before parsing rather than reject or adopt it.
+        baseUrl: "https://untrusted.example/v1",
+      }),
+    );
+    expect(first.status).toBe(200);
+    expect(h.calls[0].opts.env?.OPENAI_API_KEY).toBe("staging-launch-key");
+    expect(h.calls[0].opts.env?.OPENAI_BASE_URL).toBe(
+      "https://api-staging.eliza.app/v1",
+    );
+
+    process.env.ELIZAOS_CLOUD_API_KEY = "late-production-key";
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.eliza.app/api/v1";
+    const second = await routeByName("pty-spawn-session")(
+      ctx(h.runtime, {
+        kind: "eliza-code",
+        cwd: process.cwd(),
+        apiKey: "second-body-key",
+        baseUrl: "not a URL",
+      }),
+    );
+    expect(second.status).toBe(200);
+    expect(h.calls[1].opts.env?.OPENAI_API_KEY).toBe("staging-launch-key");
+    expect(h.calls[1].opts.env?.OPENAI_BASE_URL).toBe(
+      "https://api-staging.eliza.app/v1",
+    );
   });
 
   it("uses operator-pinned tier model fallbacks", async () => {

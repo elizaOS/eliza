@@ -71,7 +71,8 @@ function connectedResult() {
 describe("JoinPage sign-out cleanup ownership", () => {
   beforeEach(() => {
     runJoinFlowMock.mockReset();
-    signOutMock.mockClear();
+    signOutMock.mockReset();
+    signOutMock.mockResolvedValue(undefined);
     replaceMock.mockClear();
   });
 
@@ -101,5 +102,25 @@ describe("JoinPage sign-out cleanup ownership", () => {
     });
     await waitFor(() => expect(signOutMock).toHaveBeenCalledTimes(1));
     expect(replaceMock).toHaveBeenCalledWith("/login");
+  });
+
+  it("keeps the user on a retryable error state when hosted logout is refused", async () => {
+    runJoinFlowMock.mockRejectedValue(new Error("agent unavailable"));
+    signOutMock.mockRejectedValue(
+      new Error("Eliza Cloud could not end the browser session (403)."),
+    );
+    render(<JoinPage />);
+    await screen.findByText("agent unavailable");
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+
+    await screen.findByRole("heading", { name: "Couldn't sign out" });
+    await screen.findByText("Could not sign out safely. Please try again.");
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    expect(
+      (screen.getByRole("button", { name: "Sign out" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    expect(replaceMock).not.toHaveBeenCalledWith("/login");
   });
 });

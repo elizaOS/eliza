@@ -138,7 +138,10 @@ describe("CapacitorLlamaAdapter.generateStream", () => {
       timings: { predicted_ms: 50 },
     });
 
-    await expect(generation).rejects.toThrow(/partial text/);
+    await expect(generation).rejects.toMatchObject({
+      code: "MODEL_OUTPUT_INCOMPLETE",
+      message: expect.stringContaining("no partial response was returned"),
+    });
   });
 
   it("ends with an error+done pair when the native call rejects", async () => {

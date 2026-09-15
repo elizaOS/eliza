@@ -8,7 +8,7 @@ import type {
   PostInboxMessageRequest,
 } from "@elizaos/shared";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
-import { ElizaClient } from "./client-base";
+import { ElizaClient, isRemoteRelayRestAdapterBase } from "./client-base";
 import type {
   AccountConnectRequest,
   ApiError,
@@ -83,6 +83,7 @@ import type {
   WorkbenchVfsSnapshot,
 } from "./client-types";
 import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
+import { isDesktopLocalApiBaseUrl } from "./desktop-local-api-base";
 
 type DocumentListOptions = {
   limit?: number;
@@ -290,6 +291,7 @@ function buildTrajectoryParams(
   const params = new URLSearchParams();
   setTruthyNumberParam(params, "limit", options?.limit);
   setTruthyNumberParam(params, "offset", options?.offset);
+  setTruthyStringParam(params, "roomId", options?.roomId);
   setTruthyStringParam(params, "source", options?.source);
   setTruthyStringParam(params, "scenarioId", options?.scenarioId);
   setTruthyStringParam(params, "batchId", options?.batchId);
@@ -315,6 +317,7 @@ declare module "./client-base" {
       noResponseReason?: "ignored";
       failureKind?: ChatFailureKind;
       terminalFailure?: ChatTerminalFailure;
+      replyRecoveryAvailable?: boolean;
       localInference?: LocalInferenceChatMetadata;
       actionResults?: ChatActionResultSummary[];
     }>;
@@ -332,6 +335,7 @@ declare module "./client-base" {
       usage?: ChatTokenUsage;
       failureKind?: ChatFailureKind;
       terminalFailure?: ChatTerminalFailure;
+      replyRecoveryAvailable?: boolean;
       localInference?: LocalInferenceChatMetadata;
       actionResults?: ChatActionResultSummary[];
     }>;
@@ -476,6 +480,16 @@ declare module "./client-base" {
       id: string,
       messageId: string,
     ): Promise<{ ok: boolean; deletedCount: number }>;
+    retryConversationReply(
+      id: string,
+      messageId: string,
+    ): Promise<{
+      text: string;
+      agentName: string;
+      messageId: string;
+      userMessageId: string;
+      actionResults?: ChatActionResultSummary[];
+    }>;
     sendConversationMessage(
       id: string,
       text: string,
@@ -485,6 +499,7 @@ declare module "./client-base" {
     ): Promise<{
       text: string;
       agentName: string;
+      interrupted?: boolean;
       transcriptVisibility?: "internal";
       blocks?: ContentBlock[];
       noResponseReason?: "ignored";
@@ -498,6 +513,7 @@ declare module "./client-base" {
       failureKind?: ChatFailureKind;
       /** Typed terminal coding/runtime failure; authoritative over reply prose. */
       terminalFailure?: ChatTerminalFailure;
+      replyRecoveryAvailable?: boolean;
       /** Structured "connect another account" request from CONNECT_ACCOUNT. */
       accountConnect?: AccountConnectRequest;
       localInference?: LocalInferenceChatMetadata;
@@ -523,10 +539,13 @@ declare module "./client-base" {
       onToolEvent?: (event: ChatToolCallEvent) => void,
       /** Additive: caller-supplied idempotency key reused across an auto-retry. */
       clientMessageId?: string,
+      /** Settled receipts before terminal bookkeeping; the stream stays open. */
+      onReplyReady?: (actionResults: ChatActionResultSummary[]) => void,
     ): Promise<{
       text: string;
       agentName: string;
       completed: boolean;
+      interrupted?: boolean;
       transcriptVisibility?: "internal";
       /** Agent reasoning/thought for this turn, when the model emitted one. */
       reasoning?: string;
@@ -549,6 +568,7 @@ declare module "./client-base" {
       failureKind?: ChatFailureKind;
       /** See sendConversationMessage above. */
       terminalFailure?: ChatTerminalFailure;
+      replyRecoveryAvailable?: boolean;
       /** See sendConversationMessage above. */
       accountConnect?: AccountConnectRequest;
       localInference?: LocalInferenceChatMetadata;
@@ -768,8 +788,12 @@ declare module "./client-base" {
     refreshRegistry(): Promise<void>;
     getTrajectories(
       options?: TrajectoryListOptions,
+      init?: RequestInit,
     ): Promise<TrajectoryListResult>;
-    getTrajectoryDetail(trajectoryId: string): Promise<TrajectoryDetailResult>;
+    getTrajectoryDetail(
+      trajectoryId: string,
+      options?: RequestInit & { includePayloads?: boolean },
+    ): Promise<TrajectoryDetailResult>;
     getTrajectoryStats(): Promise<TrajectoryStats>;
     getTrajectoryConfig(): Promise<TrajectoryConfig>;
     updateTrajectoryConfig(
@@ -995,7 +1019,13 @@ async function invokeLocalDesktopChatRpc<T>(
   baseUrl: string,
   options: { rpcMethod: string; ipcChannel: string; params?: unknown },
 ): Promise<T | null> {
-  if (isDesktopExternalApiBaseUrl(baseUrl)) return null;
+  if (
+    !isDesktopLocalApiBaseUrl(baseUrl) ||
+    isDesktopExternalApiBaseUrl(baseUrl) ||
+    isRemoteRelayRestAdapterBase(baseUrl)
+  ) {
+    return null;
+  }
   return invokeDesktopBridgeRequest<T>(options);
 }
 
@@ -1107,7 +1137,9 @@ ElizaClient.prototype.getConversationMessages = async function (
   return {
     messages: response.messages.map((message) => {
       if (message.role !== "assistant") return message;
-      const text = this.normalizeAssistantText(message.text);
+      const text = this.normalizeAssistantText(message.text, {
+        interrupted: message.interrupted,
+      });
       return text === message.text ? message : { ...message, text };
     }),
     ...(typeof response.hasMore === "boolean"
@@ -1293,6 +1325,17 @@ ElizaClient.prototype.deleteConversationMessage = async function (
   );
 };
 
+ElizaClient.prototype.retryConversationReply = async function (
+  this: ElizaClient,
+  id,
+  messageId,
+) {
+  return this.fetch(
+    `/api/conversations/${encodeURIComponent(id)}/messages/${encodeURIComponent(messageId)}/retry-reply`,
+    { method: "POST", body: JSON.stringify({}) },
+  );
+};
+
 ElizaClient.prototype.sendConversationMessage = async function (
   this: ElizaClient,
   id,
@@ -1304,6 +1347,7 @@ ElizaClient.prototype.sendConversationMessage = async function (
   const response = await this.fetch<{
     text: string;
     agentName: string;
+    interrupted?: boolean;
     transcriptVisibility?: "internal";
     blocks?: ContentBlock[];
     noResponseReason?: "ignored";
@@ -1326,7 +1370,9 @@ ElizaClient.prototype.sendConversationMessage = async function (
     text:
       response.noResponseReason === "ignored"
         ? ""
-        : this.normalizeAssistantText(response.text),
+        : this.normalizeAssistantText(response.text, {
+            interrupted: response.interrupted,
+          }),
   };
 };
 
@@ -1342,6 +1388,7 @@ ElizaClient.prototype.sendConversationMessageStream = async function (
   onStatus?,
   onToolEvent?,
   clientMessageId?,
+  onReplyReady?,
 ) {
   return this.streamChatEndpoint(
     `/api/conversations/${encodeURIComponent(id)}/messages/stream`,
@@ -1354,6 +1401,7 @@ ElizaClient.prototype.sendConversationMessageStream = async function (
     onStatus,
     onToolEvent,
     clientMessageId,
+    onReplyReady,
   );
 };
 
@@ -2026,17 +2074,23 @@ ElizaClient.prototype.refreshRegistry = async function (this: ElizaClient) {
 ElizaClient.prototype.getTrajectories = async function (
   this: ElizaClient,
   options?,
+  init?,
 ) {
   const params = buildTrajectoryParams(options);
   const query = params.toString();
-  return this.fetch(`/api/trajectories${query ? `?${query}` : ""}`);
+  return this.fetch(`/api/trajectories${query ? `?${query}` : ""}`, init);
 };
 
 ElizaClient.prototype.getTrajectoryDetail = async function (
   this: ElizaClient,
   trajectoryId,
+  options?,
 ) {
-  return this.fetch(`/api/trajectories/${encodeURIComponent(trajectoryId)}`);
+  const { includePayloads = true, ...init } = options ?? {};
+  return this.fetch(
+    `/api/trajectories/${encodeURIComponent(trajectoryId)}${includePayloads ? "" : "?includePayloads=0"}`,
+    init,
+  );
 };
 
 ElizaClient.prototype.getTrajectoryStats = async function (this: ElizaClient) {

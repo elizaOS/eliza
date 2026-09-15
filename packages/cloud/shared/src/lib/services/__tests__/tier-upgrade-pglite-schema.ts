@@ -36,6 +36,18 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "updated_at" timestamp NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
 )`,
+  `CREATE TABLE IF NOT EXISTS "provider_admissions" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "organization_id" uuid NOT NULL,
+  "operation_kind" text NOT NULL,
+  "operation_id" uuid NOT NULL,
+  "admitted_at" timestamptz NOT NULL,
+  "released_at" timestamptz
+)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "provider_admissions_operation_idx"
+  ON "provider_admissions" ("operation_kind", "operation_id")`,
+  `CREATE INDEX IF NOT EXISTS "provider_admissions_active_organization_idx"
+  ON "provider_admissions" ("organization_id", "released_at")`,
   `CREATE TABLE IF NOT EXISTS "users" (
   "id" uuid NOT NULL DEFAULT gen_random_uuid(),
   "email" text,
@@ -204,6 +216,7 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "last_backup_at" timestamptz,
   "last_backup_attempt_at" timestamptz,
   "backup_unsupported_reason" text,
+  "backup_admission_xid" xid8 NOT NULL DEFAULT '0'::xid8,
   "last_heartbeat_at" timestamptz,
   "error_message" text,
   "error_count" integer NOT NULL DEFAULT 0,
@@ -387,6 +400,7 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "source_node_record_id" uuid,
   "source_node_id" text,
   "source_node_incarnation" uuid,
+  "source_node_history_id" uuid,
   "source_provider_server_id" text,
   "source_provider_handle" text,
   "source_container_id" text,
@@ -580,6 +594,9 @@ EXECUTE FUNCTION advance_agent_sandbox_lifecycle_revision()`,
   "organization_id" uuid NOT NULL,
   "agent_id" uuid NOT NULL,
   "lifecycle_revision" bigint NOT NULL,
+  "authorization" text NOT NULL DEFAULT 'billing_request',
+  "retained_backup_billing" boolean NOT NULL DEFAULT false,
+  "retained_backup_rate_per_hour" numeric(18,6),
   "status" text NOT NULL DEFAULT 'pending',
   "job_id" uuid REFERENCES "jobs"("id") ON DELETE SET NULL,
   "attempts" integer NOT NULL DEFAULT 0,
@@ -592,11 +609,21 @@ EXECUTE FUNCTION advance_agent_sandbox_lifecycle_revision()`,
   "updated_at" timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT "agent_compute_stop_intents_status_check" CHECK (
     "status" IN ('pending', 'dispatching', 'retry', 'terminal_attention', 'provider_confirmed', 'superseded')
+  ),
+  CONSTRAINT "agent_compute_stop_intents_authorization_check" CHECK (
+    "authorization" IN ('billing_request', 'user_request')
+  ),
+  CONSTRAINT "agent_compute_stop_intents_retained_backup_billing_check" CHECK (
+    ("retained_backup_billing" = true AND "retained_backup_rate_per_hour" > 0)
+    OR ("retained_backup_billing" = false AND "retained_backup_rate_per_hour" IS NULL)
   )
 )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "agent_compute_stop_intents_active_unique"
   ON "agent_compute_stop_intents" ("organization_id", "agent_id")
   WHERE "status" IN ('pending', 'dispatching', 'retry', 'terminal_attention')`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "agent_compute_stop_intents_user_request_unique"
+  ON "agent_compute_stop_intents" ("organization_id", "agent_id", "lifecycle_revision")
+  WHERE "authorization" = 'user_request'`,
   `CREATE INDEX IF NOT EXISTS "agent_compute_stop_intents_recovery_idx"
   ON "agent_compute_stop_intents" ("status", "next_attempt_at")
   WHERE "status" IN ('pending', 'retry', 'terminal_attention')`,

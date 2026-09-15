@@ -26,8 +26,10 @@
 import type { AgentExecutionTier } from "@elizaos/cloud-sdk";
 import {
   AGENT_PRICING,
+  DEDICATED_COMPUTE_PRICE_HEADER,
   formatHourlyRate,
   formatUSD,
+  getDedicatedComputePriceAcceptance,
 } from "@elizaos/cloud-sdk/browser-contracts";
 import {
   AlertDialog,
@@ -38,7 +40,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  BrandButton,
 } from "@elizaos/ui/cloud-ui";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -53,8 +54,8 @@ import {
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { toast } from "sonner";
 import { client, ElizaClient } from "../../../api";
+import { toast } from "../../../bridge/toast";
 import { Alert } from "../../../components/ui/alert";
 import { Button } from "../../../components/ui/button";
 import { getBootConfig } from "../../../config/boot-config";
@@ -66,6 +67,7 @@ import { apiWithStatus, readCloudBearerToken } from "../../lib/api-client";
 import { useT } from "../lib/i18n";
 import { openWebUIWithPairing } from "../lib/open-web-ui";
 import { useJobPoller } from "../lib/use-job-poller";
+import { DedicatedStartConfirmation } from "./dedicated-start-confirmation";
 
 interface ElizaAgentActionsProps {
   agentId: string;
@@ -78,6 +80,7 @@ interface DedicatedActivationQuote {
   quoteId: string;
   sourceAgentId: string;
   hourlyRateUsd: number;
+  minimumActivationChargeUsd: number;
   dailyRateUsd: number;
   minimumBalanceUsd: number;
   minimumRunwayDays: number;
@@ -107,6 +110,9 @@ export function ElizaAgentActions({
   const [loading, setLoading] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
+  const [startAction, setStartAction] = useState<"resume" | "wake" | null>(
+    null,
+  );
   const [showUpgradeConfirm, setShowUpgradeConfirm] = useState(false);
   const [upgradeQuote, setUpgradeQuote] =
     useState<DedicatedActivationQuote | null>(null);
@@ -204,6 +210,14 @@ export function ElizaAgentActions({
       if (httpStatus < 200 || httpStatus >= 300 || !data?.data) {
         throw new Error(data?.error ?? `HTTP ${httpStatus}`);
       }
+      if (
+        !Number.isFinite(data.data.minimumActivationChargeUsd) ||
+        data.data.minimumActivationChargeUsd < 0
+      ) {
+        throw new Error(
+          "The current Dedicated charge could not be loaded. Refresh and try again.",
+        );
+      }
       return data.data;
     },
     enabled: canUpgrade,
@@ -244,7 +258,18 @@ export function ElizaAgentActions({
       const { status: httpStatus, data } = await apiWithStatus<{
         data?: { jobId?: string };
         error?: string;
-      }>(url, { method, json });
+      }>(url, {
+        method,
+        json,
+        ...(isDedicated && ["resume", "wake", "provision"].includes(action)
+          ? {
+              headers: {
+                [DEDICATED_COMPUTE_PRICE_HEADER]:
+                  getDedicatedComputePriceAcceptance(),
+              },
+            }
+          : {}),
+      });
       const jobId = data?.data?.jobId;
 
       // 409 — operation already in flight; attach to the existing job when the
@@ -397,6 +422,7 @@ export function ElizaAgentActions({
         json: {
           action: "activate_dedicated",
           quoteId: upgradeQuote.quoteId,
+          minimumActivationChargeUsd: upgradeQuote.minimumActivationChargeUsd,
         },
       });
 
@@ -573,8 +599,8 @@ export function ElizaAgentActions({
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex flex-wrap gap-3">
             {hasStandaloneWebUi && (
-              <BrandButton
-                variant="primary"
+              <Button
+                variant="default"
                 size="sm"
                 className="min-h-touch"
                 onClick={() => void openWebUIWithPairing(agentId)}
@@ -583,12 +609,12 @@ export function ElizaAgentActions({
                 {t("cloud.containers.agentActions.openWebUi", {
                   defaultValue: "Open Web UI",
                 })}
-              </BrandButton>
+              </Button>
             )}
 
             {canUpgrade && (
-              <BrandButton
-                variant="primary"
+              <Button
+                variant="default"
                 size="sm"
                 className="min-h-touch"
                 onClick={() => void reviewDedicatedQuote()}
@@ -615,15 +641,17 @@ export function ElizaAgentActions({
                     : t("cloud.containers.agentActions.upgrade", {
                         defaultValue: "Upgrade to Dedicated",
                       })}
-              </BrandButton>
+              </Button>
             )}
 
             {isStopped && (
-              <BrandButton
-                variant="primary"
+              <Button
+                variant="default"
                 size="sm"
                 className="min-h-touch"
-                onClick={() => doAction("resume")}
+                onClick={() =>
+                  isDedicated ? setStartAction("resume") : doAction("resume")
+                }
                 disabled={!!loading || isBusy}
               >
                 {loading === "resume" ? (
@@ -634,15 +662,17 @@ export function ElizaAgentActions({
                 {t("cloud.containers.agentActions.resume", {
                   defaultValue: "Resume Agent",
                 })}
-              </BrandButton>
+              </Button>
             )}
 
             {canWake && (
-              <BrandButton
-                variant="primary"
+              <Button
+                variant="default"
                 size="sm"
                 className="min-h-touch"
-                onClick={() => doAction("wake")}
+                onClick={() =>
+                  isDedicated ? setStartAction("wake") : doAction("wake")
+                }
                 disabled={!!loading || isBusy}
                 title={t("cloud.containers.agentActions.reactivateHint", {
                   defaultValue:
@@ -657,11 +687,11 @@ export function ElizaAgentActions({
                 {t("cloud.containers.agentActions.reactivate", {
                   defaultValue: "Reactivate Agent",
                 })}
-              </BrandButton>
+              </Button>
             )}
 
             {isRunning && isDedicated && (
-              <BrandButton
+              <Button
                 variant="outline"
                 size="sm"
                 className="min-h-touch"
@@ -676,13 +706,13 @@ export function ElizaAgentActions({
                 {t("cloud.containers.agentActions.suspend", {
                   defaultValue: "Suspend Agent",
                 })}
-              </BrandButton>
+              </Button>
             )}
           </div>
 
           <div className="flex flex-wrap gap-2 lg:justify-end">
             {canSleep && (
-              <BrandButton
+              <Button
                 variant="outline"
                 size="sm"
                 className="min-h-touch"
@@ -701,7 +731,7 @@ export function ElizaAgentActions({
                 {t("cloud.containers.agentActions.deactivate", {
                   defaultValue: "Deactivate Agent",
                 })}
-              </BrandButton>
+              </Button>
             )}
 
             {isDedicated && !showDeleteConfirm ? (
@@ -744,16 +774,16 @@ export function ElizaAgentActions({
                     defaultValue: "Yes, delete",
                   })}
                 </Button>
-                <BrandButton
-                  variant="outline"
+                <Button
+                  variant="outlineMuted"
                   size="sm"
                   onClick={() => setShowDeleteConfirm(false)}
-                  className="min-h-touch text-white/60"
+                  className="min-h-touch"
                 >
                   {t("cloud.containers.agentActions.cancel", {
                     defaultValue: "Cancel",
                   })}
-                </BrandButton>
+                </Button>
               </Alert>
             ) : null}
           </div>
@@ -855,6 +885,18 @@ export function ElizaAgentActions({
         )}
       </div>
 
+      <DedicatedStartConfirmation
+        open={startAction !== null}
+        disabled={!!loading || isBusy}
+        onOpenChange={(open) => {
+          if (!open) setStartAction(null);
+        }}
+        onConfirm={() => {
+          const action = startAction;
+          setStartAction(null);
+          if (action) void doAction(action);
+        }}
+      />
       {/* Upgrade confirmation renders the immutable server quote. No compute
           starts until the user confirms that exact quote. */}
       <AlertDialog
@@ -888,6 +930,13 @@ export function ElizaAgentActions({
                         daily: formatUSD(upgradeQuote.dailyRateUsd),
                         rate: formatHourlyRate(upgradeQuote.hourlyRateUsd),
                       })}
+                </span>
+                <span className="mt-3 block text-txt-strong">
+                  {t("cloud.join.dedicatedActivationMinimum", {
+                    defaultValue:
+                      "Minimum charge per successful start: {{minimum}}. Applies again after stopping and restarting.",
+                    minimum: formatUSD(upgradeQuote.minimumActivationChargeUsd),
+                  })}
                 </span>
                 <span className="mt-3 block text-txt-strong">
                   {t("cloud.containers.agentActions.upgradeBalance", {
@@ -996,6 +1045,12 @@ export function ElizaAgentActions({
                 {t("cloud.containers.agentActions.deactivateBody2", {
                   defaultValue:
                     "Eliza retains your agent data during deactivation. If deactivation cannot complete, the agent stays running and billing continues.",
+                })}
+              </span>
+              <span className="block mt-2">
+                {t("cloud.containers.agentActions.deactivateMinimum", {
+                  defaultValue:
+                    "Any remaining activation minimum is charged when you stop.",
                 })}
               </span>
               <span className="block mt-2">

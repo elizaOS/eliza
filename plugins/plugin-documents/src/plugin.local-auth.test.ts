@@ -3,7 +3,12 @@
  * preserving caller-provided and untrusted HTTP access contexts unchanged.
  */
 
-import type { AccessContext, AgentRuntime, UUID } from "@elizaos/core";
+import {
+  type AccessContext,
+  type AgentRuntime,
+  resolveOwnerEntityIdOrDefault,
+  type UUID,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { resolveTrustedLocalDocumentAccessContext } from "./plugin.js";
 
@@ -41,7 +46,9 @@ describe("resolveTrustedLocalDocumentAccessContext", () => {
       resolveTrustedLocalDocumentAccessContext({
         accessContext: undefined,
         isTrustedLocal: false,
-        runtime: runtime(() => OWNER_ID),
+        runtime: runtime((key) =>
+          key === "ELIZA_ADMIN_ENTITY_ID" ? OWNER_ID : undefined,
+        ),
       }),
     ).toBeUndefined();
   });
@@ -51,7 +58,9 @@ describe("resolveTrustedLocalDocumentAccessContext", () => {
       resolveTrustedLocalDocumentAccessContext({
         accessContext: undefined,
         isTrustedLocal: true,
-        runtime: runtime(() => OWNER_ID),
+        runtime: runtime((key) =>
+          key === "ELIZA_ADMIN_ENTITY_ID" ? OWNER_ID : undefined,
+        ),
       }),
     ).toMatchObject({
       requesterEntityId: OWNER_ID,
@@ -61,7 +70,7 @@ describe("resolveTrustedLocalDocumentAccessContext", () => {
     });
   });
 
-  it("uses the runtime agent as the trusted local self actor", () => {
+  it("uses the same owner as client chat when no owner is configured", () => {
     expect(
       resolveTrustedLocalDocumentAccessContext({
         accessContext: undefined,
@@ -69,7 +78,9 @@ describe("resolveTrustedLocalDocumentAccessContext", () => {
         runtime: runtime(),
       }),
     ).toEqual({
-      requesterEntityId: AGENT_ID,
+      requesterEntityId: resolveOwnerEntityIdOrDefault(runtime()),
+      role: "OWNER",
+      isOwner: true,
       source: "trusted-local",
     });
   });

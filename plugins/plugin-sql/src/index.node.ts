@@ -9,6 +9,9 @@
  */
 import type { IDatabaseAdapter, UUID } from "@elizaos/core";
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
+
+export * from "./carve-out-migration";
+
 import {
   createAdapterReadinessError,
   describeAdapterReadinessError,

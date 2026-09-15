@@ -37,6 +37,22 @@ export interface AppleCalendarSummary {
   foregroundColor: string | null;
   timeZone: string | null;
   selected: boolean;
+  sourceIdentifier: string | null;
+  sourceTitle: string | null;
+  sourceType: string | null;
+}
+
+export interface AppleCalendarReminder {
+  relativeOffsetSeconds: number | null;
+  absoluteDate: string | null;
+  locationTitle: string | null;
+}
+
+export interface AppleCalendarRecurrenceRule {
+  frequency: "daily" | "weekly" | "monthly" | "yearly" | "unknown";
+  interval: number;
+  occurrenceCount: number | null;
+  endDate: string | null;
 }
 
 export interface AppleCalendarAttendee {
@@ -74,6 +90,14 @@ export interface AppleCalendarEvent {
   conferenceLink: string | null;
   organizer: Record<string, unknown> | null;
   attendees: AppleCalendarAttendee[];
+  iCalUID: string | null;
+  originalStartAt: string | null;
+  lastModifiedAt: string | null;
+  recurrenceRules: AppleCalendarRecurrenceRule[];
+  reminders: AppleCalendarReminder[];
+  sourceIdentifier: string | null;
+  sourceTitle: string | null;
+  sourceType: string | null;
 }
 
 export interface AppleCalendarBaseResult {
@@ -177,4 +201,8 @@ export interface AppleCalendarPlugin {
   deleteEvent(
     input: AppleCalendarDeleteEventInput,
   ): Promise<AppleCalendarBaseResult>;
+  addListener(
+    eventName: "calendarStoreChanged",
+    listener: (event: { observedAt: string }) => void,
+  ): Promise<{ remove: () => Promise<void> }>;
 }

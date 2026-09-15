@@ -8,7 +8,8 @@ import type { WorkspaceLayoutProps } from "../workspace-layout/workspace-layout-
 
 export interface PageLayoutProps
   extends Omit<WorkspaceLayoutProps, "headerPlacement" | "sidebar"> {
-  sidebar: React.ReactElement<SidebarProps>;
+  /** Optional master-navigation pane; omit it for loading and unavailable states. */
+  sidebar?: React.ReactElement<SidebarProps>;
 }
 
 export interface PageLayoutMobileDrawerProps {

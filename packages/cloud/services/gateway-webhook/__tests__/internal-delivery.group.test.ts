@@ -7,9 +7,15 @@
  */
 
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { credentialFingerprint } from "../src/connector-account";
 import { deliverInternalMessage } from "../src/internal-delivery";
 import type { GatewayRedis } from "../src/redis";
+import {
+  configureTelegramIdentity,
+  resetTelegramIdentityAttestation,
+  TELEGRAM_CONNECTOR_ACCOUNT_ID,
+  TELEGRAM_TEST_TOKEN,
+  withTelegramIdentity,
+} from "./telegram-identity-fixture";
 
 type RedisSetOptions = { ex?: number; nx?: boolean };
 
@@ -49,22 +55,32 @@ class MemoryRedis implements GatewayRedis {
 
 const originalFetch = globalThis.fetch;
 const originalToken = process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN;
+const originalBotId = process.env.ELIZA_APP_TELEGRAM_BOT_ID;
+const originalBotUsername = process.env.ELIZA_APP_TELEGRAM_BOT_USERNAME;
+const originalWebhookSecret = process.env.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET;
 const originalBlooioKey = process.env.ELIZA_APP_BLOOIO_API_KEY;
 const originalBlooioNumber = process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER;
-const TELEGRAM_TEST_TOKEN = "telegram-test-token";
-const TELEGRAM_CONNECTOR_ACCOUNT_ID = `bot:${credentialFingerprint(TELEGRAM_TEST_TOKEN)}`;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
   if (originalToken === undefined)
     delete process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN;
   else process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = originalToken;
+  if (originalBotId === undefined) delete process.env.ELIZA_APP_TELEGRAM_BOT_ID;
+  else process.env.ELIZA_APP_TELEGRAM_BOT_ID = originalBotId;
+  if (originalBotUsername === undefined)
+    delete process.env.ELIZA_APP_TELEGRAM_BOT_USERNAME;
+  else process.env.ELIZA_APP_TELEGRAM_BOT_USERNAME = originalBotUsername;
+  if (originalWebhookSecret === undefined)
+    delete process.env.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET;
+  else process.env.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET = originalWebhookSecret;
   if (originalBlooioKey === undefined)
     delete process.env.ELIZA_APP_BLOOIO_API_KEY;
   else process.env.ELIZA_APP_BLOOIO_API_KEY = originalBlooioKey;
   if (originalBlooioNumber === undefined)
     delete process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER;
   else process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = originalBlooioNumber;
+  resetTelegramIdentityAttestation();
   mock.restore();
 });
 
@@ -125,19 +141,19 @@ describe("internal proactive group delivery", () => {
   });
 
   test("sends a Telegram group reminder to its negative chat id unchanged", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = TELEGRAM_TEST_TOKEN;
+    configureTelegramIdentity();
     const redis = new MemoryRedis();
     const bodies: Array<Record<string, unknown>> = [];
-    globalThis.fetch = mock(
+    globalThis.fetch = withTelegramIdentity(
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const outgoing = new Request(input, init);
         expect(outgoing.url).toBe(
-          "https://api.telegram.org/bottelegram-test-token/sendMessage",
+          `https://api.telegram.org/bot${TELEGRAM_TEST_TOKEN}/sendMessage`,
         );
         bodies.push((await outgoing.json()) as Record<string, unknown>);
         return Response.json({ ok: true, result: { message_id: 71 } });
       },
-    ) as typeof fetch;
+    );
 
     const response = await deliverInternalMessage(
       request({
@@ -163,19 +179,19 @@ describe("internal proactive group delivery", () => {
   });
 
   test("keeps a Telegram group reminder inside its forum topic", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    configureTelegramIdentity();
     const redis = new MemoryRedis();
     const bodies: Array<Record<string, unknown>> = [];
-    globalThis.fetch = mock(
+    globalThis.fetch = withTelegramIdentity(
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const outgoing = new Request(input, init);
         expect(outgoing.url).toBe(
-          "https://api.telegram.org/bottelegram-test-token/sendMessage",
+          `https://api.telegram.org/bot${TELEGRAM_TEST_TOKEN}/sendMessage`,
         );
         bodies.push((await outgoing.json()) as Record<string, unknown>);
         return Response.json({ ok: true, result: { message_id: 72 } });
       },
-    ) as typeof fetch;
+    );
 
     const response = await deliverInternalMessage(
       request({

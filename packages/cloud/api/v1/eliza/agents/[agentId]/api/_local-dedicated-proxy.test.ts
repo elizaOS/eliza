@@ -319,6 +319,23 @@ describe("proxyLocalDedicatedOrNext", () => {
     expect(resolveSharedAgentCalls).toBe(1);
   });
 
+  test("preserves an agent-scoped loopback bridge path", async () => {
+    const bridgeBase = `${RUNTIME_ORIGIN}/api/compat/agents/sandbox-1`;
+    sandboxes.set(
+      AGENT,
+      runningSandbox({
+        bridge_url: bridgeBase,
+      }),
+    );
+    const response = await request(
+      `/api/v1/eliza/agents/${AGENT}/api/conversations/conv-1/messages`,
+    );
+    expect(response.status).toBe(200);
+    expect(upstreamCalls.map((call) => call.url)).toEqual([
+      `${bridgeBase}/api/conversations/conv-1/messages`,
+    ]);
+  });
+
   test("answers preflight locally without touching the runtime", async () => {
     sandboxes.set(AGENT, runningSandbox());
     const response = await request(`/api/v1/eliza/agents/${AGENT}/api/status`, {

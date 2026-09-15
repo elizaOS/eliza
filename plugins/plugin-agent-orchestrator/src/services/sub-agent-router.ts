@@ -4341,10 +4341,15 @@ export function pruneOldestTracked(
 }
 
 function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
-  const get = (runtime as { getSetting?: (k: string) => string | undefined })
-    .getSetting;
+  const get = (
+    runtime as { getSetting?: (k: string) => string | boolean | undefined }
+  ).getSetting;
   if (typeof get === "function") {
     const v = get.call(runtime, key);
+    // AgentRuntime.getSetting normalizes "true"/"false" strings to booleans,
+    // so a caller configuring e.g. ACPX_SUB_AGENT_ROUTER_DISABLED="true"
+    // arrives here as a boolean. Map it back to its canonical string form.
+    if (typeof v === "boolean") return v ? "true" : "false";
     if (typeof v === "string" && v.length > 0) return v;
   }
   const env = process.env[key];

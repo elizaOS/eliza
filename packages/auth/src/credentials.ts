@@ -56,7 +56,6 @@ const DEFAULT_ACCOUNT_ID = "default";
 
 /** Buffer before expiry to trigger refresh (5 minutes) */
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
-const invalidClaudeCodeRefreshTokens = new Set<string>();
 
 /** Stable failure categories for callers that manage account-pool health. */
 export type AccessTokenFailureKind =
@@ -645,20 +644,14 @@ interface ClaudeCodeCredentialBlob {
   source: string;
 }
 
-function isClaudeCodeInvalidGrantError(err: unknown): boolean {
-  const message = err instanceof Error ? err.message : String(err);
-  return /\binvalid_grant\b/i.test(message);
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 /**
- * Try to read a Claude Code OAuth credential blob from its explicit local
- * file. Does NOT validate expiry — that's the caller's job (so it can decide
- * whether to refresh via the refresh token).
- *
- * Note that Claude Code's runtime keeps the live access token in memory and
- * refreshes it via the refresh token on demand — the persisted access token
- * will often be expired even though the user is actively using Claude Code.
- * That's why we always need to be ready to refresh.
+ * Read and validate local Claude Code credential metadata for status and discovery.
+ * Persisted access tokens may be expired while the CLI refreshes its own login;
+ * callers distinguish presence from validity without exchanging the credential.
  */
 function readClaudeCodeOAuthBlob(): ClaudeCodeCredentialBlob | null {
   const parse = (
@@ -666,24 +659,57 @@ function readClaudeCodeOAuthBlob(): ClaudeCodeCredentialBlob | null {
     source: string,
   ): ClaudeCodeCredentialBlob | null => {
     try {
-      const parsed = JSON.parse(raw) as {
-        claudeAiOauth?: {
-          accessToken?: string;
-          access_token?: string;
-          refreshToken?: string;
-          refresh_token?: string;
-          expiresAt?: number;
-          expires_at?: number;
-        };
-      };
+      const parsed: unknown = JSON.parse(raw);
+      if (!isRecord(parsed)) return null;
       const oauth = parsed.claudeAiOauth;
-      if (!oauth) return null;
+      if (!isRecord(oauth)) return null;
+      const accessTokenFields = [oauth.accessToken, oauth.access_token].filter(
+        (value) => value !== undefined,
+      );
+      if (
+        accessTokenFields.length === 0 ||
+        accessTokenFields.some(
+          (value) => typeof value !== "string" || !value.trim(),
+        )
+      ) {
+        return null;
+      }
       const accessToken = oauth.accessToken ?? oauth.access_token;
-      if (typeof accessToken !== "string" || !accessToken.trim()) return null;
+      if (typeof accessToken !== "string") return null;
+      const refreshTokenFields = [
+        oauth.refreshToken,
+        oauth.refresh_token,
+      ].filter((value) => value !== undefined);
+      if (
+        refreshTokenFields.some(
+          (value) => value !== null && typeof value !== "string",
+        )
+      ) {
+        return null;
+      }
+      const refreshTokenValue =
+        oauth.refreshToken ?? oauth.refresh_token ?? null;
+      const refreshToken =
+        typeof refreshTokenValue === "string" ? refreshTokenValue : null;
+      const expiresAtFields = [oauth.expiresAt, oauth.expires_at].filter(
+        (value) => value !== undefined,
+      );
+      if (
+        expiresAtFields.some(
+          (value) =>
+            value !== null &&
+            (typeof value !== "number" || !Number.isFinite(value) || value < 0),
+        )
+      ) {
+        return null;
+      }
+      const expiresAtValue = oauth.expiresAt ?? oauth.expires_at ?? null;
+      const expiresAt =
+        typeof expiresAtValue === "number" ? expiresAtValue : null;
       return {
         accessToken: accessToken.trim(),
-        refreshToken: oauth.refreshToken ?? oauth.refresh_token ?? null,
-        expiresAt: oauth.expiresAt ?? oauth.expires_at ?? null,
+        refreshToken,
+        expiresAt,
         source,
       };
     } catch {
@@ -712,58 +738,6 @@ function readClaudeCodeOAuthBlob(): ClaudeCodeCredentialBlob | null {
   return null;
 }
 
-/**
- * Import a usable Anthropic OAuth access token from Claude Code's stored
- * credentials. If the persisted access token is still valid, returns it
- * directly. If it has expired, attempts to refresh via the persisted refresh
- * token. Returns null if no credentials are available, the token is expired
- * with no refresh token, or the refresh fails.
- */
-async function importClaudeCodeOAuthToken(): Promise<string | null> {
-  const blob = readClaudeCodeOAuthBlob();
-  if (!blob) return null;
-
-  const expired =
-    typeof blob.expiresAt === "number" && blob.expiresAt <= Date.now();
-
-  if (!expired) {
-    logger.info(`[auth] Imported OAuth token from Claude Code ${blob.source}`);
-    return blob.accessToken;
-  }
-
-  if (!blob.refreshToken) {
-    logger.info(
-      `[auth] Claude Code OAuth token from ${blob.source} is expired and no refresh token is available. Run "claude auth login" to refresh.`,
-    );
-    return null;
-  }
-
-  const refreshTokenCacheKey = `${blob.source}:${blob.refreshToken}`;
-  if (invalidClaudeCodeRefreshTokens.has(refreshTokenCacheKey)) {
-    return null;
-  }
-
-  try {
-    const refreshed = await refreshAnthropicToken(blob.refreshToken);
-    logger.info(`[auth] Refreshed Claude Code OAuth token from ${blob.source}`);
-    return refreshed.access;
-  } catch (err) {
-    // error-policy:J4 an optional external credential that cannot refresh is
-    // reported and marked unavailable; no healthy token is fabricated.
-    if (isClaudeCodeInvalidGrantError(err)) {
-      invalidClaudeCodeRefreshTokens.add(refreshTokenCacheKey);
-      logger.info(
-        `[auth] Claude Code OAuth refresh token from ${blob.source} is invalid or revoked. Run "claude auth login" to refresh.`,
-      );
-      return null;
-    }
-    logger.warn(
-      `[auth] Failed to refresh expired Claude Code OAuth token from ${blob.source}: ${String(err)}. Run "claude auth login" to refresh.`,
-    );
-    return null;
-  }
-}
-
 interface SubscriptionCredentialConfig {
   agents?: {
     defaults?: { subscriptionProvider?: string; model?: { primary?: string } };
@@ -786,9 +760,8 @@ function isSubscriptionCredentialApplicationDisabled(): boolean {
  *
  * Reads stored accounts from disk and derives `model.primary` for runtime
  * subscription providers (currently only `openai-codex`). Performs no network
- * I/O, so it is safe to await on the blocking boot path. The network-touching
- * Claude Code OAuth import is handled separately by
- * {@link applySubscriptionCredentialsDeferred}.
+ * I/O, so it is safe to await on the blocking boot path. Local Claude Code
+ * credential discovery is handled by {@link applySubscriptionCredentialsDeferred}.
  *
  * None of the Anthropic / Codex / Gemini / coding-plan branches mutate `config`
  * or `process.env` — they are purely informational logging. The only config
@@ -905,10 +878,9 @@ export function applySubscriptionCredentialsLocal(
  * Called at startup to make credentials available to elizaOS plugins.
  *
  * Combines the local-only model.primary derivation
- * ({@link applySubscriptionCredentialsLocal}) with the network-touching Claude
- * Code OAuth probe ({@link applySubscriptionCredentialsDeferred}). The cold-boot
- * path calls the two halves separately so the network probe can run off the
- * blocking path; other callers (API routes, hot reload) use this combined form.
+ * ({@link applySubscriptionCredentialsLocal}) with local Claude Code credential
+ * discovery ({@link applySubscriptionCredentialsDeferred}). Startup can call
+ * either phase separately; API routes and hot reload use this combined form.
  *
  * **Claude subscription tokens are NOT applied to the runtime environment.**
  * Anthropic's TOS only permits Claude subscription tokens to be used through
@@ -927,24 +899,20 @@ export async function applySubscriptionCredentials(
 }
 
 /**
- * Deferred, network-touching part of subscription credential application.
+ * Discover locally stored Claude Code credentials for startup diagnostics.
  *
- * When no stored Anthropic subscription account exists, this probes for a
- * Claude Code CLI OAuth token (which may require a network refresh) so it can
- * log that a subscription is available for coding agents. It mutates neither
- * `config` nor `process.env` — the token stays reserved for spawned Claude
- * Code CLI sessions — so it can run off the blocking boot path.
+ * The CLI owns its credential lifecycle, including refreshing expired tokens.
+ * Discovery reads its file without exchanging or importing credentials and
+ * reports presence without claiming that the provider accepted the login.
  */
 export async function applySubscriptionCredentialsDeferred(): Promise<void> {
   if (isSubscriptionCredentialApplicationDisabled()) return;
-
   if (listProviderAccounts("anthropic-subscription").length > 0) return;
 
-  const claudeImported = await importClaudeCodeOAuthToken();
-  if (claudeImported) {
+  if (readClaudeCodeOAuthBlob()) {
     logger.info(
-      "[auth] Anthropic subscription detected via Claude Code CLI — available for coding agents. " +
-        "Not applied to runtime env. Add an API key or connect Eliza Cloud for the main agent.",
+      "[auth] Detected local Claude Code CLI credentials. The CLI manages refresh. " +
+        "Add an API key or connect Eliza Cloud for the main agent.",
     );
   }
 }

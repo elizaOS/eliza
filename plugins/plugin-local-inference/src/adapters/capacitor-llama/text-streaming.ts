@@ -49,9 +49,15 @@ function createThinkTagStreamFilter(): {
 
 			const openAt = indexOfIgnoreCase(buffer, openMarker);
 			if (openAt === -1) {
-				const emitLength = final
+				let emitLength = final
 					? buffer.length
 					: Math.max(0, buffer.length - safeOpenTail);
+				if (!final && emitLength > 0 && emitLength < buffer.length) {
+					const code = buffer.charCodeAt(emitLength - 1);
+					if (code >= 0xd800 && code <= 0xdbff) {
+						emitLength -= 1;
+					}
+				}
 				if (emitLength > 0) {
 					out.push(buffer.slice(0, emitLength));
 					buffer = buffer.slice(emitLength);

@@ -410,6 +410,24 @@ describe("Notes capabilities", () => {
     });
   });
 
+  it("splits a colon-labelled one-line create-note into title and body", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    // Live planner output for "create a note titled Demo Checklist saying
+    // mic, charger, water" arrives as one colon-joined content line.
+    const created = await interact(
+      "create-note",
+      { content: "Demo Checklist: mic, charger, water" },
+      service,
+    );
+    expect(created).toMatchObject({
+      success: true,
+      text: "Created note “Demo Checklist”.",
+    });
+    expect(service.listNotes()).toMatchObject([
+      { title: "Demo Checklist", body: "mic, charger, water" },
+    ]);
+  });
+
   it("drives full note CRUD against the durable service", async () => {
     const service = await serviceFor(await temporaryStateFile());
 

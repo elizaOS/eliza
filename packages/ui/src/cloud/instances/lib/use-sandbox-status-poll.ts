@@ -110,7 +110,7 @@ export function useSandboxStatusPoll(
       isLoading: true,
     });
 
-    const poll = async () => {
+    const poll = async (allowHidden = false) => {
       if (!isCurrentEffect()) return;
       if (TERMINAL_STATES.has(status)) {
         stop();
@@ -118,6 +118,7 @@ export function useSandboxStatusPoll(
       }
       if (
         typeof document !== "undefined" &&
+        !allowHidden &&
         document.visibilityState !== "visible"
       )
         return;
@@ -202,7 +203,10 @@ export function useSandboxStatusPoll(
       }
     };
 
-    void poll();
+    // Always load once on mount so a backgrounded tab does not retain the
+    // previous agent's status indefinitely. Only recurring battery work is
+    // visibility-gated.
+    void poll(true);
 
     interval = setInterval(() => void poll(), intervalMs);
 
@@ -270,10 +274,11 @@ export function useSandboxListPoll(
     let requestGeneration = 0;
     let requestController: AbortController | null = null;
 
-    const poll = async () => {
+    const poll = async (allowHidden = false) => {
       if (cancelled) return;
       if (
         typeof document !== "undefined" &&
+        !allowHidden &&
         document.visibilityState !== "visible"
       )
         return;
@@ -314,7 +319,9 @@ export function useSandboxListPoll(
       }
     };
 
-    void poll();
+    // Preserve the initial authoritative refresh even if the tab mounts in
+    // the background; later interval ticks pause until it is visible.
+    void poll(true);
 
     intervalRef.current = setInterval(() => void poll(), intervalMs);
 

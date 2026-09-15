@@ -44,6 +44,9 @@ function walk(dir) {
 }
 
 const filter = process.argv[2];
+// The package-local child cwd does not inherit the repository-root bunfig.toml,
+// so preserve the root unit-test timeout explicitly for every isolated process.
+const TEST_TIMEOUT_MS = "60000";
 // Each file still runs in its own `bun test` process (mock.module isolation).
 let files = walk(pkgRoot).sort();
 if (filter) files = files.filter((f) => f.includes(filter));
@@ -60,7 +63,7 @@ console.log(
 const failed = [];
 for (const file of files) {
   const rel = path.relative(pkgRoot, file);
-  const res = spawnSync("bun", ["test", file], {
+  const res = spawnSync("bun", ["test", file, "--timeout", TEST_TIMEOUT_MS], {
     stdio: "inherit",
     cwd: pkgRoot,
     env: process.env,

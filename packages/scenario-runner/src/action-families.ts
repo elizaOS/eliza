@@ -1,10 +1,7 @@
 /**
- * Fuzzy action-name matching for scenario assertions. A scenario's expected
- * action name rarely matches the runtime's emitted name character-for-character
- * (casing, `ACTION_` prefixes, singular/plural, token order), so final checks
- * compare through `actionsAreScenarioEquivalent` / `actionMatchesScenarioExpectation`
- * instead of string equality. Matching is token-based: names are normalized to
- * lowercase alphanumerics and compared for equality, prefix, or suffix overlap.
+ * Matches scenario action expectations against normalized runtime action names.
+ * Parent/subaction token prefixes and provider-qualified suffixes are supported;
+ * token order and singular/plural forms remain significant.
  */
 function normalizeActionName(value: string): string {
   return value
@@ -73,10 +70,6 @@ export function actionsAreScenarioEquivalent(
   //      CALENDAR_CREATE_EVENT), so a provider prefix on the actual action still
   //      matches the expectation. Single-token suffixes are deliberately
   //      excluded; otherwise SEND_EMAIL would satisfy an EMAIL expectation.
-  // This deliberately rejects the unbounded separator-stripped `includes`/token
-  // -subset over-match where a strictly more generic candidate (LIFE, MESSAGE,
-  // INBOX) was credited for a more specific expectation (LIFEOPS, READ_MESSAGES,
-  // INBOX_TRIAGE) on a non-token boundary.
   const leftTokens = actionTokenList(candidate);
   const rightTokens = actionTokenList(expected);
   if (leftTokens.length === 0 || rightTokens.length === 0) {

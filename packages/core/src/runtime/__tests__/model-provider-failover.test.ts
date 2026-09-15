@@ -1,15 +1,25 @@
 /**
  * Exercises `AgentRuntime.useModel` provider failover: an exhausted
  * (rate-limited) provider falls through to the next registration, an
- * `ELIZA_BRAIN_PROVIDER` pin is preferred yet still failed past when limited,
+ * `ELIZA_BRAIN_PROVIDER` pin never switches providers when limited,
  * and neither ordinary errors nor an explicitly requested provider trigger
  * failover. A real runtime over the in-memory adapter drives stub handlers that
  * throw the live subscription-limit envelope — no network model call.
  */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
+import { ElizaError } from "../../errors";
 import { AgentRuntime } from "../../runtime";
-import { type Character, ModelType } from "../../types";
+import { ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED } from "../../services/message/fallback-reply";
+import { runWithStreamingContext } from "../../streaming-context";
+import {
+	type Character,
+	type GenerateTextParams,
+	type IAgentRuntime,
+	MODEL_PROVIDER_ATTEMPTS,
+	type ModelProviderAttempt,
+	ModelType,
+} from "../../types";
 
 function makeRuntime(settings: Record<string, string> = {}): AgentRuntime {
 	return new AgentRuntime({
@@ -26,6 +36,13 @@ function makeRuntime(settings: Record<string, string> = {}): AgentRuntime {
 /** The exact subscription-limit error the cli-inference SDK session throws live. */
 const CLI_INFERENCE_LIMIT_ERROR =
 	"[cli-inference:sdk] subscription rate limit reached: You've hit your session limit · resets 9:30pm (UTC)";
+
+function cloudWarmingExhausted(): ElizaError {
+	return new ElizaError("cloud gateway warming budget exhausted", {
+		code: ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
+		severity: "ephemeral",
+	});
+}
 
 describe("AgentRuntime.useModel provider failover", () => {
 	it("tries the next registered provider when the preferred provider is exhausted", async () => {
@@ -82,35 +99,30 @@ describe("AgentRuntime.useModel provider failover", () => {
 		expect(backupHandler).not.toHaveBeenCalled();
 	});
 
-	it("fails over past an ELIZA_BRAIN_PROVIDER override when it is rate-limited", async () => {
-		// The owner pinned the chat brain to the subscription CLI route. When that
-		// provider throws its limit envelope the pin must NOT strand the brain —
-		// the remaining registered providers are the backup tier (#10893).
-		const runtime = makeRuntime({ ELIZA_BRAIN_PROVIDER: "cli-inference" });
-		const exhaustedHandler = vi.fn(async () => {
-			throw new Error(CLI_INFERENCE_LIMIT_ERROR);
-		});
-		const backupHandler = vi.fn(async () => "backup response");
+	it.each(["elizacloud", "eliza-local-inference"])(
+		"never switches a rate-limited brain pin to %s",
+		async (backup) => {
+			const runtime = makeRuntime({ ELIZA_BRAIN_PROVIDER: "cli-inference" });
+			const exhaustedHandler = vi.fn(async () => {
+				throw new Error(CLI_INFERENCE_LIMIT_ERROR);
+			});
+			const backupHandler = vi.fn(async () => "backup response");
 
-		runtime.registerModel(
-			ModelType.TEXT_LARGE,
-			exhaustedHandler,
-			"cli-inference",
-			100,
-		);
-		runtime.registerModel(
-			ModelType.TEXT_LARGE,
-			backupHandler,
-			"elizacloud",
-			10,
-		);
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				exhaustedHandler,
+				"cli-inference",
+				100,
+			);
+			runtime.registerModel(ModelType.TEXT_LARGE, backupHandler, backup, 10);
 
-		await expect(
-			runtime.useModel(ModelType.TEXT_LARGE, { prompt: "hello" }),
-		).resolves.toBe("backup response");
-		expect(exhaustedHandler).toHaveBeenCalledTimes(1);
-		expect(backupHandler).toHaveBeenCalledTimes(1);
-	});
+			await expect(
+				runtime.useModel(ModelType.TEXT_LARGE, { prompt: "hello" }),
+			).rejects.toThrow(CLI_INFERENCE_LIMIT_ERROR);
+			expect(exhaustedHandler).toHaveBeenCalledTimes(1);
+			expect(backupHandler).not.toHaveBeenCalled();
+		},
+	);
 
 	it("still prefers the ELIZA_BRAIN_PROVIDER override when it is healthy", async () => {
 		const runtime = makeRuntime({ ELIZA_BRAIN_PROVIDER: "cli-inference" });
@@ -198,6 +210,7 @@ describe("AgentRuntime.useModel provider failover", () => {
 		const unavailableLocalHandler = vi.fn(async () => {
 			throw Object.assign(new Error("native binding unavailable"), {
 				code: "LOCAL_INFERENCE_UNAVAILABLE",
+				reason: "backend_unavailable",
 			});
 		});
 		const directHandler = vi.fn(async () => "direct response");
@@ -220,6 +233,114 @@ describe("AgentRuntime.useModel provider failover", () => {
 		).resolves.toBe("direct response");
 		expect(unavailableLocalHandler).toHaveBeenCalledTimes(1);
 		expect(directHandler).toHaveBeenCalledTimes(1);
+	});
+
+	it("spends a warming budget once and skips later registrations from that provider", async () => {
+		const runtime = makeRuntime();
+		const exhaustedCloudHandler = vi.fn(async () => {
+			throw cloudWarmingExhausted();
+		});
+		const duplicateCloudHandler = vi.fn(async () => "duplicate cloud response");
+		const distinctProviderHandler = vi.fn(async () => "distinct response");
+
+		runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			exhaustedCloudHandler,
+			"elizaOSCloud",
+			100,
+		);
+		runtime.registerModel(
+			ModelType.TEXT_NANO,
+			duplicateCloudHandler,
+			"elizaOSCloud",
+			100,
+		);
+		runtime.registerModel(
+			ModelType.TEXT_SMALL,
+			distinctProviderHandler,
+			"openai",
+			10,
+		);
+
+		await expect(
+			runtime.useModel(ModelType.RESPONSE_HANDLER, { prompt: "hello" }),
+		).resolves.toBe("distinct response");
+		expect(exhaustedCloudHandler).toHaveBeenCalledTimes(1);
+		expect(duplicateCloudHandler).not.toHaveBeenCalled();
+		expect(distinctProviderHandler).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps ordinary 503 failover registration-scoped within the same provider", async () => {
+		const runtime = makeRuntime();
+		const ordinaryUnavailable = vi.fn(async () => {
+			throw Object.assign(new Error("ordinary upstream outage"), {
+				status: 503,
+			});
+		});
+		const sameProviderFallback = vi.fn(async () => "same provider recovered");
+		const distinctProviderFallback = vi.fn(async () => "distinct response");
+
+		runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			ordinaryUnavailable,
+			"elizaOSCloud",
+			100,
+		);
+		runtime.registerModel(
+			ModelType.TEXT_NANO,
+			sameProviderFallback,
+			"elizaOSCloud",
+			100,
+		);
+		runtime.registerModel(
+			ModelType.TEXT_SMALL,
+			distinctProviderFallback,
+			"openai",
+			10,
+		);
+
+		await expect(
+			runtime.useModel(ModelType.RESPONSE_HANDLER, { prompt: "hello" }),
+		).resolves.toBe("same provider recovered");
+		expect(ordinaryUnavailable).toHaveBeenCalledTimes(1);
+		expect(sameProviderFallback).toHaveBeenCalledTimes(1);
+		expect(distinctProviderFallback).not.toHaveBeenCalled();
+	});
+
+	it("does not turn caller abort into provider failover", async () => {
+		const runtime = makeRuntime();
+		const abortReason = new DOMException("turn cancelled", "AbortError");
+		const abortedHandler = vi.fn(async () => {
+			throw abortReason;
+		});
+		const sameProviderFallback = vi.fn(async () => "same provider response");
+		const distinctProviderFallback = vi.fn(async () => "distinct response");
+
+		runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			abortedHandler,
+			"elizaOSCloud",
+			100,
+		);
+		runtime.registerModel(
+			ModelType.TEXT_NANO,
+			sameProviderFallback,
+			"elizaOSCloud",
+			100,
+		);
+		runtime.registerModel(
+			ModelType.TEXT_SMALL,
+			distinctProviderFallback,
+			"openai",
+			10,
+		);
+
+		await expect(
+			runtime.useModel(ModelType.RESPONSE_HANDLER, { prompt: "hello" }),
+		).rejects.toBe(abortReason);
+		expect(abortedHandler).toHaveBeenCalledTimes(1);
+		expect(sameProviderFallback).not.toHaveBeenCalled();
+		expect(distinctProviderFallback).not.toHaveBeenCalled();
 	});
 
 	it("does not switch providers when a provider is explicitly requested", async () => {
@@ -322,5 +443,255 @@ describe("AgentRuntime.useModel provider failover", () => {
 		expect(err.message).not.toContain("[object Object]");
 		expect(err.message).toContain("provider melted");
 		expect(err.cause).toBe(opaqueFailure);
+	});
+});
+
+describe("local text fallback admission and error provenance", () => {
+	const unavailable = () =>
+		Object.assign(new Error("No local model is active"), {
+			code: "LOCAL_INFERENCE_UNAVAILABLE",
+			reason: "backend_unavailable",
+		});
+
+	function rejectLocalAdmission(runtime: AgentRuntime) {
+		runtime.registerPipelineHook({
+			id: "test:local-readiness",
+			phase: "pre_model",
+			handler: async (_runtime, context) => {
+				if (
+					context.phase === "pre_model" &&
+					context.provider === "eliza-local-inference"
+				) {
+					throw unavailable();
+				}
+			},
+		});
+	}
+
+	it("preserves the dispatched 429 when inactive local fallbacks are rejected before dispatch", async () => {
+		const runtime = makeRuntime();
+		const limited = Object.assign(new Error("Cerebras token limit"), {
+			status: 429,
+		});
+		let attempts: ModelProviderAttempt[] = [];
+		const cloud = vi.fn(
+			async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
+				attempts = params[MODEL_PROVIDER_ATTEMPTS] ?? [];
+				throw limited;
+			},
+		);
+		const local = vi.fn(async () => "must not dispatch");
+		const report = vi.spyOn(runtime, "reportError");
+		runtime.registerModel(ModelType.TEXT_SMALL, cloud, "openai", 100);
+		runtime.registerModel(
+			ModelType.TEXT_SMALL,
+			local,
+			"eliza-local-inference",
+			-100,
+		);
+		runtime.registerModel(
+			ModelType.TEXT_LARGE,
+			local,
+			"eliza-local-inference",
+			-100,
+		);
+		rejectLocalAdmission(runtime);
+
+		await expect(
+			runtime.useModel(ModelType.TEXT_SMALL, { prompt: "complete input" }),
+		).rejects.toBe(limited);
+		expect(local).not.toHaveBeenCalled();
+		expect(cloud).toHaveBeenCalledTimes(1);
+		expect(attempts).toEqual([
+			{
+				modelType: ModelType.TEXT_SMALL,
+				provider: "openai",
+				handler: cloud,
+				error: limited,
+			},
+		]);
+		expect(report).not.toHaveBeenCalled();
+	});
+
+	it("continues to a healthy provider after rejecting an inactive local registration", async () => {
+		const runtime = makeRuntime();
+		const local = vi.fn(async () => "must not dispatch");
+		const cloud = vi.fn(async () => "healthy response");
+		runtime.registerModel(
+			ModelType.TEXT_LARGE,
+			local,
+			"eliza-local-inference",
+			100,
+		);
+		runtime.registerModel(ModelType.TEXT_LARGE, cloud, "openai", 10);
+		rejectLocalAdmission(runtime);
+		await expect(
+			runtime.useModel(ModelType.TEXT_LARGE, { prompt: "complete input" }),
+		).resolves.toBe("healthy response");
+		expect(local).not.toHaveBeenCalled();
+		expect(cloud).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not fail over past an explicitly pinned inactive local provider", async () => {
+		const runtime = makeRuntime();
+		const local = vi.fn(async () => "must not dispatch");
+		const cloud = vi.fn(async () => "must not dispatch");
+		runtime.registerModel(
+			ModelType.TEXT_LARGE,
+			local,
+			"eliza-local-inference",
+			10,
+		);
+		runtime.registerModel(ModelType.TEXT_LARGE, cloud, "openai", 100);
+		rejectLocalAdmission(runtime);
+		await expect(
+			runtime.useModel(
+				ModelType.TEXT_LARGE,
+				{ prompt: "input" },
+				"eliza-local-inference",
+			),
+		).rejects.toMatchObject({ code: "LOCAL_INFERENCE_UNAVAILABLE" });
+		expect(local).not.toHaveBeenCalled();
+		expect(cloud).not.toHaveBeenCalled();
+	});
+
+	it("preserves a bare provider 429 and its provider attribution if local becomes unavailable during dispatch", async () => {
+		const runtime = makeRuntime();
+		const limited = { status: 429, message: "Cerebras token limit" };
+		let attempts: ModelProviderAttempt[] = [];
+		const cloud = vi.fn(
+			async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
+				attempts = params[MODEL_PROVIDER_ATTEMPTS] ?? [];
+				throw limited;
+			},
+		);
+		const localError = unavailable();
+		const local = vi.fn(async () => {
+			throw localError;
+		});
+		runtime.registerModel(ModelType.TEXT_LARGE, cloud, "openai", 100);
+		runtime.registerModel(
+			ModelType.TEXT_LARGE,
+			local,
+			"eliza-local-inference",
+			10,
+		);
+		await expect(
+			runtime.useModel(ModelType.TEXT_LARGE, { prompt: "input" }),
+		).rejects.toMatchObject({
+			code: "MODEL_PROVIDER_FAILED",
+			cause: limited,
+			context: { provider: "openai", modelKey: ModelType.TEXT_LARGE },
+		});
+		expect(local).toHaveBeenCalledTimes(1);
+		expect(
+			attempts.map(({ provider, error }) => ({ provider, error })),
+		).toEqual([
+			{ provider: "openai", error: limited },
+			{ provider: "eliza-local-inference", error: localError },
+		]);
+	});
+
+	it.each([
+		new Error("invalid request payload"),
+		Object.assign(new Error("local input was invalid"), {
+			code: "LOCAL_INFERENCE_UNAVAILABLE",
+			reason: "invalid_input",
+		}),
+		Object.assign(new Error("local output was invalid"), {
+			code: "LOCAL_INFERENCE_UNAVAILABLE",
+			reason: "invalid_output",
+		}),
+	])(
+		"keeps a terminal request/output error authoritative: %s",
+		async (terminal) => {
+			const runtime = makeRuntime();
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				async () => {
+					throw Object.assign(new Error("rate limit"), { status: 429 });
+				},
+				"openai",
+				100,
+			);
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				async () => {
+					throw terminal;
+				},
+				"eliza-local-inference",
+				10,
+			);
+			const healthy = vi.fn(async () => "must not hide validation failure");
+			runtime.registerModel(ModelType.TEXT_LARGE, healthy, "third-provider", 0);
+			await expect(
+				runtime.useModel(ModelType.TEXT_LARGE, { prompt: "input" }),
+			).rejects.toBe(terminal);
+			expect(healthy).not.toHaveBeenCalled();
+		},
+	);
+	it("keeps a local failure authoritative once fallback output has started", async () => {
+		const runtime = makeRuntime();
+		const localError = unavailable();
+		runtime.registerModel(
+			ModelType.TEXT_LARGE,
+			async () => {
+				throw Object.assign(new Error("rate limit"), { status: 429 });
+			},
+			"openai",
+			100,
+		);
+		runtime.registerModel(
+			ModelType.TEXT_LARGE,
+			async () => ({
+				textStream: (async function* () {
+					yield "partial output";
+					throw localError;
+				})(),
+				text: Promise.resolve("partial output"),
+				usage: Promise.resolve(undefined),
+				finishReason: Promise.resolve("stop"),
+			}),
+			"eliza-local-inference",
+			10,
+		);
+		const chunks: string[] = [];
+		await expect(
+			runWithStreamingContext(
+				{
+					messageId: "fallback-output",
+					onStreamChunk: (chunk) => chunks.push(chunk),
+				},
+				() => runtime.useModel(ModelType.TEXT_LARGE, { prompt: "input" }),
+			),
+		).rejects.toBe(localError);
+		expect(chunks).toEqual(["partial output"]);
+	});
+
+	it("retains ordinary pre-model hook failure isolation", async () => {
+		const runtime = makeRuntime();
+		const hookError = new Error("optional hook failed");
+		runtime.registerPipelineHook({
+			id: "test:ordinary-hook",
+			phase: "pre_model",
+			handler: async () => {
+				throw hookError;
+			},
+		});
+		const report = vi.spyOn(runtime, "reportError");
+		runtime.registerModel(
+			ModelType.TEXT_LARGE,
+			async () => "healthy response",
+			"eliza-local-inference",
+			10,
+		);
+		await expect(
+			runtime.useModel(ModelType.TEXT_LARGE, { prompt: "input" }),
+		).resolves.toBe("healthy response");
+		expect(report).toHaveBeenCalledWith(
+			"AgentRuntime.pipelineHook",
+			hookError,
+			expect.objectContaining({ phase: "pre_model" }),
+		);
 	});
 });

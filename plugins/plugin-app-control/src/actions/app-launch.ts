@@ -14,7 +14,7 @@ import {
 	readStringOption,
 	targetReferenceLogView,
 } from "../params.js";
-import { formatAppCandidates, resolveInstalledApp } from "../resolve.js";
+import { resolveInstalledApp } from "../resolve.js";
 import {
 	type BrowserNavigationResult,
 	openLaunchUrlInBrowserView,
@@ -35,22 +35,14 @@ export async function runLaunch({
 	client,
 	message,
 	options,
-	callback,
 	openBrowserView = openLaunchUrlInBrowserView,
 }: RunLaunchInput): Promise<ActionResult> {
 	const target = extractLaunchTarget(message, options);
 	if (!target) {
-		// The clarification IS the designed ask the user must answer: verified +
-		// turnComplete make it the turn's sole delivery instead of pairing it
-		// with a second evaluator reply.
-		const text = 'Which app should I launch? For example: "launch shopify".';
-		await callback?.({ text });
 		return {
 			success: true,
-			text: "No app name found in the launch request; asked the user which app to launch",
-			userFacingText: text,
-			verifiedUserFacing: true,
-			turnComplete: true,
+			text: "App name missing. Ask the user which installed app to launch.",
+			modelReplyRequired: true,
 			values: { awaitingAppName: true },
 		};
 	}
@@ -59,19 +51,11 @@ export async function runLaunch({
 	const resolution = resolveInstalledApp(target, installed);
 
 	if (resolution.kind === "ambiguous") {
-		// Same contract as the missing-name clarify: the candidate menu is the
-		// complete answer the user must pick from.
 		const candidates = resolution.candidates ?? [];
-		const text = `${describeTargetReference(target, "that app")} matches multiple apps:\n${formatAppCandidates(
-			candidates,
-		)}\nPlease specify which one.`;
-		await callback?.({ text });
 		return {
 			success: true,
-			text: `"${targetReferenceLogView(target)}" matched multiple installed apps; asked the user to pick one`,
-			userFacingText: text,
-			verifiedUserFacing: true,
-			turnComplete: true,
+			text: `"${targetReferenceLogView(target)}" matched multiple installed apps; ask the user to pick one`,
+			modelReplyRequired: true,
 			values: { awaitingAppChoice: true },
 			data: { candidates },
 		};
@@ -79,13 +63,10 @@ export async function runLaunch({
 
 	if (resolution.kind === "none") {
 		const text = `No installed app matches ${describeTargetReference(target, "that app")}. Try \`mode=list\` to see what's available, or \`mode=create\` to scaffold a new one.`;
-		await callback?.({ text });
 		return {
 			success: false,
 			text,
-			userFacingText: text,
-			verifiedUserFacing: true,
-			turnComplete: true,
+			modelReplyRequired: true,
 			data: { target: targetReferenceLogView(target) },
 		};
 	}
@@ -102,13 +83,10 @@ export async function runLaunch({
 		logger.warn(
 			`[plugin-app-control] APP/launch ${appName} failed: ${message}`,
 		);
-		await callback?.({ text });
 		return {
 			success: false,
 			text,
-			userFacingText: text,
-			verifiedUserFacing: true,
-			turnComplete: true,
+			modelReplyRequired: true,
 			error: message,
 		};
 	}
@@ -121,14 +99,10 @@ export async function runLaunch({
 	logger.info(
 		`[plugin-app-control] APP/launch ${appName} runId=${runId ?? "<none>"}`,
 	);
-	const safeFallbackText = browserNavigation.safeMarkdownLaunchUrl
-		? `The app launched successfully. [Open the app](${browserNavigation.safeMarkdownLaunchUrl})`
-		: "The app launched successfully.";
 
 	return {
 		success: true,
 		text: JSON.stringify({ effect: "app_launch", status: "completed" }),
-		modelReplyFallback: safeFallbackText,
 		transcriptVisibility: "internal",
 		// The effect is already complete. Give Eliza a bounded receipt and let the
 		// model own the conversational wording instead of posting canned action copy.

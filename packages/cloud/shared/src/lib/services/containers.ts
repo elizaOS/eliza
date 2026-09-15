@@ -5,7 +5,7 @@
  */
 
 import { eq } from "drizzle-orm";
-import type { Database } from "../../db/client";
+import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/client";
 import {
   type Container,
@@ -78,7 +78,7 @@ export class ContainersService {
     return await containersRepository.checkQuota(organizationId);
   }
 
-  async createWithQuotaCheck(data: NewContainer, transaction?: Database): Promise<Container> {
+  async createWithQuotaCheck(data: NewContainer, transaction?: DbTransaction): Promise<Container> {
     return await containersRepository.createWithQuotaCheck(data, transaction);
   }
 

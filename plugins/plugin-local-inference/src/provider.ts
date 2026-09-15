@@ -17,7 +17,6 @@
 import {
 	type AudioStreamResult,
 	applyBackgroundInferenceBudget,
-	canonicalPromptForModelCall,
 	EventType,
 	type GenerateTextParams,
 	getInferencePriorityGate,
@@ -269,22 +268,35 @@ type PromptSegmentLike = {
 function renderPromptContent(content: unknown): string {
 	if (typeof content === "string") return content;
 	if (Array.isArray(content)) {
-		return content
-			.map((part) => {
-				if (typeof part === "string") return part;
-				if (
-					part &&
-					typeof part === "object" &&
-					typeof (part as { text?: unknown }).text === "string"
-				) {
-					return (part as { text: string }).text;
-				}
-				return "";
-			})
-			.filter(Boolean)
-			.join("\n");
+		const textParts = content.map((part) => {
+			if (typeof part === "string") return part;
+			if (
+				part &&
+				typeof part === "object" &&
+				(part as { type?: unknown }).type === "text" &&
+				typeof (part as { text?: unknown }).text === "string"
+			) {
+				return (part as { text: string }).text;
+			}
+			return null;
+		});
+		if (textParts.every((part) => part !== null)) {
+			return textParts.join("\n");
+		}
+		// Tool-call/result parts carry structured fields that cannot be flattened
+		// into text without losing native tool semantics.
+		return JSON.stringify(content);
 	}
-	return "";
+	return content === undefined ? "" : JSON.stringify(content);
+}
+
+function renderPromptMessages(messages: readonly MessageLike[]): string {
+	return messages
+		.map((message) => {
+			const role = typeof message.role === "string" ? message.role : "message";
+			return `${role}:\n${renderPromptContent(message.content)}`;
+		})
+		.join("\n\n");
 }
 
 function promptFromParams(params: GenerateTextParams): string {
@@ -296,7 +308,7 @@ function promptFromParams(params: GenerateTextParams): string {
 		typeof params.prompt === "string" && params.prompt.length > 0
 			? params.prompt
 			: Array.isArray(record.messages) && record.messages.length > 0
-				? canonicalPromptForModelCall({ messages: record.messages })
+				? renderPromptMessages(record.messages)
 				: Array.isArray(record.promptSegments) &&
 						record.promptSegments.length > 0
 					? record.promptSegments

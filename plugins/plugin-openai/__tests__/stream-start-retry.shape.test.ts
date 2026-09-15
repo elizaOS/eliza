@@ -11,7 +11,7 @@
  * generators are single-use), no network; the live Cerebras failure this
  * fences rode the incident log.
  */
-import { EventType, logger } from "@elizaos/core";
+import { EventType, InferenceTurnTimer, logger, runWithInferenceTiming } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const aiMocks = vi.hoisted(() => ({
@@ -19,7 +19,8 @@ const aiMocks = vi.hoisted(() => ({
   streamText: vi.fn(),
 }));
 
-vi.mock("ai", () => ({
+vi.mock("ai", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("ai")>()),
   generateText: aiMocks.generateText,
   streamText: aiMocks.streamText,
   jsonSchema: (schema: unknown) => ({ jsonSchema: schema }),
@@ -123,9 +124,11 @@ describe("live-stream start retry", () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.restoreAllMocks();
   });
 
   it("retries a transient onError-with-empty-stream failure and delivers the second attempt", async () => {
+    const timer = new InferenceTurnTimer({ turnId: "retry-stream", label: "fixture" });
     let call = 0;
     aiMocks.streamText.mockImplementation((args: { onError: (a: { error: unknown }) => void }) => {
       call++;
@@ -135,13 +138,28 @@ describe("live-stream start retry", () => {
     });
 
     const { handleTextSmall } = await import("../models/text");
-    const stream = (await handleTextSmall(createRuntime(), {
-      prompt: "hi",
-      stream: true,
-    } as never)) as { textStream: AsyncIterable<string> };
+    const stream = (await runWithInferenceTiming(timer, () =>
+      handleTextSmall(createRuntime(), {
+        prompt: "hi",
+        stream: true,
+      } as never)
+    )) as { textStream: AsyncIterable<string> };
 
     await expect(collect(stream)).resolves.toEqual(["hel", "lo"]);
     expect(aiMocks.streamText).toHaveBeenCalledTimes(2);
+    const points = timer.summary().spans.filter((span) => span.name.startsWith("openai.stream."));
+    expect(
+      points
+        .filter((span) => span.name === "openai.stream.mode")
+        .map((span) => span.meta?.streamAttempt)
+    ).toEqual([1, 2]);
+    expect(
+      points
+        .filter((span) => span.name === "openai.stream.first-adapter-delivery")
+        .map((span) => span.meta?.streamAttempt)
+    ).toEqual([2]);
+    expect(new Set(points.map((span) => span.meta?.streamCallId)).size).toBe(1);
+    expect(points.every((span) => span.durationMs === 0)).toBe(true);
   }, 20_000);
 
   it("survives a sustained transient burst: five stream-start failures, sixth attempt delivers", async () => {
@@ -332,6 +350,7 @@ describe("live-stream start retry", () => {
 
   it("buffered planner stream (FULL_ACTION_SURFACE): transient failure retries and replays the buffered text", async () => {
     process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = "1";
+    const timer = new InferenceTurnTimer({ turnId: "full-surface-stream", label: "fixture" });
     try {
       let call = 0;
       // consumeStreamWithTransientRetry does not await streamText — return
@@ -363,14 +382,26 @@ describe("live-stream start retry", () => {
       );
 
       const { handleTextSmall } = await import("../models/text");
-      const stream = (await handleTextSmall(createRuntime(), {
-        prompt: "plan",
-        stream: true,
-      } as never)) as { textStream: AsyncIterable<string>; text: Promise<string> };
+      const stream = (await runWithInferenceTiming(timer, () =>
+        handleTextSmall(createRuntime(), {
+          prompt: "plan",
+          stream: true,
+        } as never)
+      )) as { textStream: AsyncIterable<string>; text: Promise<string> };
 
       await expect(collect(stream)).resolves.toEqual(["planned output"]);
       await expect(stream.text).resolves.toBe("planned output");
       expect(aiMocks.streamText).toHaveBeenCalledTimes(2);
+      const points = timer.summary().spans.filter((span) => span.name.startsWith("openai.stream."));
+      expect(
+        points
+          .filter((span) => span.name === "openai.stream.mode")
+          .map((span) => span.meta?.streamAttempt)
+      ).toEqual([1, 2]);
+      expect(points.every((span) => span.meta?.mode === "buffered-full-surface")).toBe(true);
+      expect(
+        points.filter((span) => span.name === "openai.stream.first-adapter-delivery")
+      ).toHaveLength(1);
     } finally {
       delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
     }
@@ -394,16 +425,36 @@ describe("live-stream start retry", () => {
       ],
     });
     const rawChunks = [wireText.slice(0, 24), wireText.slice(24)];
-    aiMocks.streamText.mockImplementation(() => successResult(rawChunks));
+    let now = 1000;
+    const date = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const timer = new InferenceTurnTimer({ turnId: "transform-stream", label: "fixture" });
+    aiMocks.streamText.mockImplementation(
+      (args: { onChunk?: (event: { chunk: { type: string; text: string } }) => void }) => ({
+        ...successResult(rawChunks),
+        textStream: (async function* () {
+          for (const [index, chunk] of rawChunks.entries()) {
+            now = index === 0 ? 1100 : 1400;
+            args.onChunk?.({ chunk: { type: "text-delta", text: chunk } });
+            yield chunk;
+          }
+        })(),
+      })
+    );
 
     const onStreamChunk = vi.fn();
     const { handleActionPlanner } = await import("../models/text");
-    const stream = (await handleActionPlanner(createRuntime(), {
-      messages: [{ role: "user", content: "Plan" }],
-      responseSchema: plannerResponseSchema(),
-      stream: true,
-      onStreamChunk,
-    } as never)) as { textStream: AsyncIterable<string>; text: Promise<string> };
+    const stream = (await runWithInferenceTiming(timer, () =>
+      handleActionPlanner(createRuntime(), {
+        messages: [{ role: "user", content: "Plan" }],
+        responseSchema: plannerResponseSchema(),
+        stream: true,
+        onStreamChunk,
+      } as never)
+    )) as { textStream: AsyncIterable<string>; text: Promise<string> };
+    expect(
+      timer.summary().spans.some((span) => span.name === "openai.stream.first-adapter-delivery")
+    ).toBe(false);
+    now = 1600;
 
     const restoredText = JSON.stringify({
       thought: "Need a tool.",
@@ -421,6 +472,16 @@ describe("live-stream start retry", () => {
     expect(onStreamChunk).toHaveBeenCalledWith(restoredText);
     expect(onStreamChunk).not.toHaveBeenCalledWith(rawChunks[0]);
     expect(onStreamChunk).not.toHaveBeenCalledWith(rawChunks[1]);
+    const points = timer.summary().spans.filter((span) => span.name.startsWith("openai.stream."));
+    expect(points.map((span) => [span.name, span.startMs])).toEqual([
+      ["openai.stream.mode", 0],
+      ["openai.stream.first-sdk-delta", 100],
+      ["openai.stream.first-adapter-delivery", 600],
+    ]);
+    expect(
+      points.every((span) => span.meta?.mode === "buffered-transform" && span.durationMs === 0)
+    ).toBe(true);
+    date.mockRestore();
   }, 20_000);
 
   it("non-streaming with native tools (the coding-build path): transient failure retries and tool calls survive", async () => {
@@ -562,6 +623,7 @@ describe("transient retry: abort-aware backoff", () => {
 
   it("buffered-stream lane: abort mid-backoff rejects the planner call and stops retrying", async () => {
     process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = "1";
+    const timer = new InferenceTurnTimer({ turnId: "cancelled-stream", label: "fixture" });
     try {
       const controller = new AbortController();
       // consumeStreamWithTransientRetry does not await streamText — return
@@ -579,15 +641,23 @@ describe("transient retry: abort-aware backoff", () => {
       );
 
       const { handleTextSmall } = await import("../models/text");
-      const pending = handleTextSmall(createRuntime(), {
-        prompt: "plan",
-        stream: true,
-        signal: controller.signal,
-      } as never);
+      const pending = runWithInferenceTiming(timer, () =>
+        handleTextSmall(createRuntime(), {
+          prompt: "plan",
+          stream: true,
+          signal: controller.signal,
+        } as never)
+      );
       setTimeout(() => controller.abort(new Error("cancelled mid-backoff")), 80);
 
       await expect(pending).rejects.toMatchObject({ message: "cancelled mid-backoff" });
       expect(aiMocks.streamText).toHaveBeenCalledTimes(1);
+      expect(
+        timer
+          .summary()
+          .spans.filter((span) => span.name.startsWith("openai.stream."))
+          .map((span) => span.name)
+      ).toEqual(["openai.stream.mode"]);
     } finally {
       delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
     }

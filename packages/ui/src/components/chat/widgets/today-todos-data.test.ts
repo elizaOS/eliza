@@ -192,6 +192,7 @@ describe("fetchTodayTodos", () => {
     );
 
     const pending = fetchTodayTodos(caller.signal);
+    await vi.waitFor(() => expect(requestSignal).toBeDefined());
     caller.abort();
 
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });

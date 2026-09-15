@@ -1,21 +1,18 @@
 /**
- * Decodes and plays generated voice bytes through the shared Web Audio graph.
+ * Plays prepared voice audio through the shared Web Audio graph.
  * Provider fetchers own authentication and caching; this module owns the one
  * analyser, playback-reference tap, timeout, teardown, and telemetry lifecycle
  * that every decoded-audio provider must follow.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { ttsDebug, ttsDebugTextPreview } from "../utils/tts-debug";
 import {
   type PlaybackFramePump,
   type PlaybackFrameTap,
   PlaybackTapLifecycle,
 } from "./playback-frame-pump";
-import {
-  type SpeakTask,
-  toArrayBuffer,
-  type VoicePlaybackStartEvent,
-} from "./voice-chat-types";
+import type { SpeakTask, VoicePlaybackStartEvent } from "./voice-chat-types";
 
 interface MutableCell<T> {
   current: T;
@@ -23,7 +20,7 @@ interface MutableCell<T> {
 
 export interface DecodedVoicePlaybackOptions {
   context: AudioContext;
-  audioBytes: Uint8Array;
+  audioBuffer: AudioBuffer;
   generation: number;
   generationRef: MutableCell<number>;
   provider: VoicePlaybackStartEvent["provider"];
@@ -44,7 +41,7 @@ export interface DecodedVoicePlaybackOptions {
 
 export async function playDecodedVoiceAudio({
   context,
-  audioBytes,
+  audioBuffer,
   generation,
   generationRef,
   provider,
@@ -62,8 +59,6 @@ export async function playDecodedVoiceAudio({
   emitPlaybackStart,
   tracePlayback = false,
 }: DecodedVoicePlaybackOptions): Promise<void> {
-  if (generation !== generationRef.current) return;
-  const audioBuffer = await context.decodeAudioData(toArrayBuffer(audioBytes));
   if (generation !== generationRef.current) return;
 
   const analyser = context.createAnalyser();
@@ -93,15 +88,38 @@ export async function playDecodedVoiceAudio({
     });
   const tapLifecycle = new PlaybackTapLifecycle(playbackFrameTapRef);
   await tapLifecycle.attach(tapPromise);
+  if (generation !== generationRef.current) {
+    tapLifecycle.finish();
+    source.disconnect();
+    analyser.disconnect();
+    return;
+  }
 
-  await new Promise<void>((resolve) => {
+  await new Promise<void>((resolve, reject) => {
     let finished = false;
     const playStartMs = performance.now();
+    const audioEndsAt = context.currentTime + audioBuffer.duration;
+    let watchdog: ReturnType<typeof setTimeout> | null = null;
     let wrappedFinish: (() => void) | null = null;
 
-    const finish = () => {
+    const clearWatchdog = () => {
+      if (watchdog === null) return;
+      if (speechTimeoutRef.current === watchdog) clearSpeechTimers();
+      else clearTimeout(watchdog);
+      watchdog = null;
+    };
+
+    const closedContextError = () =>
+      new ElizaError("Audio playback context closed before speech completed", {
+        code: "VOICE_PLAYBACK_CONTEXT_CLOSED",
+        context: { provider },
+      });
+
+    const finish = (error?: ElizaError) => {
       if (finished) return;
       finished = true;
+      context.removeEventListener("statechange", handleContextStateChange);
+      clearWatchdog();
       tapLifecycle.finish();
       if (wrappedFinish && activeTaskFinishRef.current === wrappedFinish) {
         activeTaskFinishRef.current = null;
@@ -128,8 +146,8 @@ export async function playDecodedVoiceAudio({
           error: error instanceof Error ? error.message : String(error),
         });
       }
-      clearSpeechTimers();
-      resolve();
+      if (error) reject(error);
+      else resolve();
     };
 
     wrappedFinish = () => {
@@ -140,8 +158,45 @@ export async function playDecodedVoiceAudio({
           elapsedMs: Math.round(performance.now() - playStartMs),
         });
       }
-      finish();
+      finish(
+        generation === generationRef.current && context.state === "closed"
+          ? closedContextError()
+          : undefined,
+      );
     };
+
+    const armWatchdog = () => {
+      clearWatchdog();
+      if (finished || context.state !== "running") return;
+      // Wall time can advance while the audio clock is paused. Only retire
+      // playback once its audio deadline has passed; resume rearms this guard.
+      watchdog = setTimeout(
+        () => {
+          if (finished) return;
+          if (generation !== generationRef.current) {
+            finish();
+          } else if (context.state === "closed") {
+            finish(closedContextError());
+          } else if (context.currentTime >= audioEndsAt) {
+            wrappedFinish?.();
+          } else {
+            armWatchdog();
+          }
+        },
+        Math.max(
+          2500,
+          Math.ceil((audioEndsAt - context.currentTime) * 1000) + 1200,
+        ),
+      );
+      speechTimeoutRef.current = watchdog;
+    };
+
+    function handleContextStateChange() {
+      if (finished) return;
+      if (generation !== generationRef.current) finish();
+      else if (context.state === "closed") finish(closedContextError());
+      else armWatchdog();
+    }
 
     if (tracePlayback) {
       ttsDebug("play:web-audio:start", {
@@ -155,22 +210,35 @@ export async function playDecodedVoiceAudio({
       });
     }
 
-    activeTaskFinishRef.current = wrappedFinish;
-    source.onended = wrappedFinish;
-    tapLifecycle.start(playStartMs);
-    speechTimeoutRef.current = setTimeout(
-      wrappedFinish,
-      Math.max(2500, Math.ceil(audioBuffer.duration * 1000) + 1200),
-    );
-
-    source.start(0);
-    emitPlaybackStart({
-      text,
-      segment: task.segment,
-      provider,
-      cached,
-      startedAtMs: playStartMs,
-      ...task.telemetry,
-    });
+    try {
+      activeTaskFinishRef.current = wrappedFinish;
+      source.onended = wrappedFinish;
+      tapLifecycle.start(playStartMs);
+      context.addEventListener("statechange", handleContextStateChange);
+      if (context.state === "closed") {
+        finish(closedContextError());
+        return;
+      }
+      source.start(0);
+      handleContextStateChange();
+      if (finished) return;
+      emitPlaybackStart({
+        text,
+        segment: task.segment,
+        provider,
+        cached,
+        startedAtMs: playStartMs,
+        ...task.telemetry,
+      });
+    } catch (error) {
+      // error-policy:J2 Preserve setup failure after releasing playback ownership.
+      finish(
+        new ElizaError("Buffered speech playback could not start", {
+          code: "VOICE_PLAYBACK_START_FAILED",
+          cause: error,
+          context: { provider },
+        }),
+      );
+    }
   });
 }

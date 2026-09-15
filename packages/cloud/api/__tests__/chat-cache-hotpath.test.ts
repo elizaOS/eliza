@@ -5,6 +5,11 @@
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
+const admissionActual = {
+  ...(await import("@/lib/services/organization-inference-admission")),
+};
+const creditsActual = { ...(await import("@/lib/services/credits")) };
+
 const aiActual = require("ai") as Record<string, unknown>;
 const languageModelActual = await import("@/lib/providers/language-model");
 
@@ -141,6 +146,9 @@ mock.module("@/lib/services/inference-auth-context", () => ({
 
 const settle = mock(async () => null);
 const settleUnknown = mock(async () => null);
+const markProviderDispatched = mock(async () => {
+  callOrder.push("mark");
+});
 const admitOrganizationInference = mock(
   async (_params: Record<string, unknown>) => {
     callOrder.push("admission");
@@ -148,11 +156,13 @@ const admitOrganizationInference = mock(
       mode: "deferred_reservation",
       settle,
       settleUnknown,
+      markProviderDispatched,
       reservation: RESERVATION,
     };
   },
 );
 mock.module("@/lib/services/organization-inference-admission", () => ({
+  ...admissionActual,
   admitOrganizationInference,
 }));
 
@@ -176,6 +186,7 @@ const billUsage = mock(
 mock.module("@/lib/services/ai-billing", () => ({ billUsage }));
 
 mock.module("@/lib/services/credits", () => ({
+  ...creditsActual,
   creditsService: {
     createAnonymousReservation: mock(() => ({
       reservedAmount: 0,
@@ -228,6 +239,7 @@ beforeEach(() => {
   billUsage.mockClear();
   settle.mockClear();
   settleUnknown.mockClear();
+  markProviderDispatched.mockClear();
   admitOrganizationInference.mockClear();
   getCurrentUser.mockClear();
   getAnonymousUser.mockClear();
@@ -256,6 +268,35 @@ beforeEach(() => {
 });
 
 describe("/v1/chat Worker cache hot path", () => {
+  test("malformed request resolves auth once without deferral or provider admission", async () => {
+    const executionCtx = {
+      waitUntil() {},
+      passThroughOnException() {},
+      props: {},
+    } as unknown as ExecutionContext;
+    const response = await chatRoute.fetch(
+      new Request("https://api.test/", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer eliza_cached",
+        },
+        body: JSON.stringify({ messages: [] }),
+      }),
+      {} as never,
+      executionCtx,
+    );
+
+    expect(response.status).toBe(400);
+    expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
+    expect(resolveInferenceAuthContext).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ deferStrongCredentialCheck: false }),
+    );
+    expect(admitOrganizationInference).not.toHaveBeenCalled();
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
   test("enabled Worker admission rejects a missing execution context without database fallback", async () => {
     const response = await chatRoute.fetch(
       new Request("https://api.test/", {
@@ -275,6 +316,79 @@ describe("/v1/chat Worker cache hot path", () => {
     expect(resolveInferenceAuthContext).not.toHaveBeenCalled();
     expect(getCurrentUser).not.toHaveBeenCalled();
     expect(getAnonymousUser).not.toHaveBeenCalled();
+    expect(admitOrganizationInference).not.toHaveBeenCalled();
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
+  test("preserves a cached standing 503 before admission or provider dispatch", async () => {
+    authResolutionImpl = async () => ({
+      kind: "rejected" as const,
+      status: 503 as const,
+    });
+    const executionCtx = {
+      waitUntil() {},
+      passThroughOnException() {},
+      props: {},
+    } as unknown as ExecutionContext;
+
+    const response = await chatRoute.fetch(
+      new Request("https://api.test/", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer eliza_cached",
+        },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: "hello" }],
+        }),
+      }),
+      {} as never,
+      executionCtx,
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("1");
+    await expect(response.json()).resolves.toMatchObject({
+      code: "service_unavailable",
+      reason: "authorization_unavailable",
+    });
+    expect(admitOrganizationInference).not.toHaveBeenCalled();
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
+  test("returns a typed cached standing reason before provider dispatch", async () => {
+    authResolutionImpl = async () => ({
+      kind: "rejected" as const,
+      status: 403 as const,
+      reason: "credential_inactive" as const,
+    });
+    const executionCtx = {
+      waitUntil() {},
+      passThroughOnException() {},
+      props: {},
+    } as unknown as ExecutionContext;
+
+    const response = await chatRoute.fetch(
+      new Request("https://api.test/", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer eliza_cached",
+        },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: "hello" }],
+        }),
+      }),
+      {} as never,
+      executionCtx,
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "API key is inactive",
+      code: "access_denied",
+      reason: "credential_inactive",
+    });
     expect(admitOrganizationInference).not.toHaveBeenCalled();
     expect(streamText).not.toHaveBeenCalled();
   });
@@ -306,7 +420,7 @@ describe("/v1/chat Worker cache hot path", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(callOrder).toEqual(["rate-limit", "admission", "provider"]);
+    expect(callOrder).toEqual(["rate-limit", "admission", "mark", "provider"]);
     expect(getCurrentUser).not.toHaveBeenCalled();
     expect(getAnonymousUser).not.toHaveBeenCalled();
     expect(reserveAnonymousMessageSlot).not.toHaveBeenCalled();
@@ -324,6 +438,7 @@ describe("/v1/chat Worker cache hot path", () => {
         affiliateCode: "affiliate-a",
         executionCtx,
         estimatedOutputTokens: 500,
+        atomicProviderBoundary: true,
       }),
     );
 

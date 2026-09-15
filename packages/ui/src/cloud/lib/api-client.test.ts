@@ -34,9 +34,12 @@ vi.mock("../../api/desktop-http-transport", () => ({
 }));
 
 import {
+  configureStoredStewardTokenScope,
   STEWARD_SESSION_CHANGE_EVENT,
   STEWARD_TOKEN_KEY,
+  STEWARD_TOKEN_SCOPE_KEY,
   type StewardSessionChangeDetail,
+  writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { setBootConfig } from "../../config/boot-config";
 import { ApiError, api, apiWithStatus } from "./api-client";
@@ -84,12 +87,20 @@ async function expectCrossOriginThrow(
 
 describe("cloud api-client transport bridge", () => {
   beforeEach(() => {
-    setBootConfig({ branding: {}, cloudApiBase: "https://www.elizacloud.ai" });
+    setBootConfig({
+      branding: {},
+      cloudApiBase: "https://www.elizacloud.ai",
+    });
+    configureStoredStewardTokenScope("https://www.elizacloud.ai");
     capacitorState.isNative = false;
     setElectrobun(false);
     capacitorMocks.request.mockReset();
     desktopTransportMocks.request.mockReset();
     window.localStorage.setItem(STEWARD_TOKEN_KEY, STEWARD_TOKEN);
+    window.localStorage.setItem(
+      STEWARD_TOKEN_SCOPE_KEY,
+      "eliza-cloud:production",
+    );
     setCookie("eliza_csrf=cloud-dashboard-csrf; path=/");
   });
 
@@ -101,6 +112,85 @@ describe("cloud api-client transport bridge", () => {
   });
 
   // --- WEB: must stay same-origin-only (the load-bearing assertion) ----------
+
+  describe("explicit localhost staging account transport", () => {
+    const originalLocation = window.location;
+    beforeEach(async () => {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: {
+          protocol: "http:",
+          hostname: "127.0.0.1",
+          origin: "http://127.0.0.1:21486",
+          href: "http://127.0.0.1:21486/cloud/billing",
+        },
+      });
+      vi.stubEnv("VITE_STEWARD_API_URL", "https://staging.eliza.app/steward");
+      vi.stubEnv("VITE_STEWARD_TENANT_ID", "elizacloud-staging");
+      configureStoredStewardTokenScope("https://api-staging.eliza.app");
+      await writeStoredStewardToken("eliza_loopback_account_test_key");
+    });
+    afterEach(() => {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: originalLocation,
+      });
+      vi.unstubAllEnvs();
+    });
+    it("routes account reads and writes to staging using only the scoped Cloud bearer", async () => {
+      const request = vi.spyOn(globalThis, "fetch").mockImplementation(
+        async () =>
+          new Response("{}", {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+      );
+      await api("/api/v1/credits/balance");
+      await api("/api/v1/containers/test/resume", { method: "POST", json: {} });
+      expect(request.mock.calls.map(([url]) => url)).toEqual([
+        "https://api-staging.eliza.app/api/v1/credits/balance",
+        "https://api-staging.eliza.app/api/v1/containers/test/resume",
+      ]);
+      for (const [, init] of request.mock.calls) {
+        expect(init?.credentials).toBe("omit");
+        expect(new Headers(init?.headers).get("Authorization")).toBe(
+          "Bearer eliza_loopback_account_test_key",
+        );
+        expect(new Headers(init?.headers).has("x-eliza-csrf")).toBe(false);
+      }
+      expect(capacitorMocks.request).not.toHaveBeenCalled();
+    });
+    it("preserves the same-origin cookie authority before a CLI key is claimed", async () => {
+      await writeStoredStewardToken(STEWARD_TOKEN);
+      const request = vi.spyOn(globalThis, "fetch").mockImplementation(
+        async () =>
+          new Response("{}", {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+      );
+      await api("/api/v1/user");
+      expect(request).toHaveBeenCalledWith(
+        "/api/v1/user",
+        expect.objectContaining({
+          credentials: "include",
+        }),
+      );
+      await expectCrossOriginThrow(
+        api("https://api-staging.eliza.app/api/v1/user"),
+      );
+      expect(request).toHaveBeenCalledTimes(1);
+    });
+    it.each([
+      "https://api.eliza.app/api/v1/user",
+      "https://evil.example/api/v1/user",
+      "https://api-staging.eliza.app:444/api/v1/user",
+    ])("rejects credential forwarding to %s", async (url) => {
+      const request = vi.spyOn(globalThis, "fetch");
+      await expectCrossOriginThrow(api(url));
+      expect(request).not.toHaveBeenCalled();
+    });
+  });
 
   describe("web runtime", () => {
     it("STILL throws CROSS_ORIGIN_API_URL on a cross-origin Cloud API URL", async () => {
@@ -145,6 +235,30 @@ describe("cloud api-client transport bridge", () => {
       expect(
         new Headers((calledInit as RequestInit).headers).get("x-eliza-csrf"),
       ).toBeNull();
+    });
+
+    it("never sends a token from the previous localhost Cloud target", async () => {
+      setBootConfig({
+        branding: {},
+        cloudApiBase: "https://api-staging.eliza.app",
+      });
+      configureStoredStewardTokenScope("https://api-staging.eliza.app");
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(JSON.stringify({ apps: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+      await api("/api/v1/apps");
+
+      const [, calledInit] = fetchSpy.mock.calls[0];
+      expect(
+        new Headers((calledInit as RequestInit).headers).get("Authorization"),
+      ).toBeNull();
+      expect(window.localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(
+        STEWARD_TOKEN,
+      );
     });
   });
 
@@ -254,6 +368,37 @@ describe("cloud api-client transport bridge", () => {
       expect((err as ApiError).status).toBe(403);
       expect((err as ApiError).code).toBe("FORBIDDEN");
     });
+
+    it("rejects a hung Capacitor request when its signal aborts", async () => {
+      let markStarted!: () => void;
+      const started = new Promise<void>((resolve) => {
+        markStarted = resolve;
+      });
+      capacitorMocks.request.mockImplementation(() => {
+        markStarted();
+        return new Promise(() => {});
+      });
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+      const controller = new AbortController();
+      const pending = api("/api/v1/apps", {
+        method: "POST",
+        json: { name: "Bounded native request" },
+        signal: controller.signal,
+      });
+      await started;
+      const timeoutError = new DOMException(
+        "The operation timed out",
+        "TimeoutError",
+      );
+      const rejected = expect(pending).rejects.toBe(timeoutError);
+
+      controller.abort(timeoutError);
+
+      await rejected;
+      expect(capacitorMocks.request).toHaveBeenCalledTimes(1);
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(desktopTransportMocks.request).not.toHaveBeenCalled();
+    });
   });
 
   // --- ELECTROBUN: same native-aware gate via the Electrobun detector --------
@@ -280,7 +425,7 @@ describe("cloud api-client transport bridge", () => {
       expect(desktopTransportMocks.request).toHaveBeenCalledWith(
         "https://api.eliza.app/api/v1/apps",
         expect.objectContaining({ body: null }),
-        undefined,
+        { timeoutMs: 30_000 },
       );
       const requestInit = desktopTransportMocks.request.mock.calls[0]?.[1] as
         | RequestInit
@@ -288,6 +433,53 @@ describe("cloud api-client transport bridge", () => {
       expect(new Headers(requestInit?.headers).get("Authorization")).toBe(
         `Bearer ${STEWARD_TOKEN}`,
       );
+    });
+
+    it("rejects a hung desktop POST when its signal aborts without retrying it", async () => {
+      let markStarted!: () => void;
+      const started = new Promise<void>((resolve) => {
+        markStarted = resolve;
+      });
+      desktopTransportMocks.request.mockImplementation(() => {
+        markStarted();
+        return new Promise<Response>(() => {});
+      });
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+      const controller = new AbortController();
+
+      const pending = api(
+        "/api/v1/billing/resources/11111111-1111-4111-8111-111111111111/cancel?resourceType=container",
+        {
+          method: "POST",
+          json: { expectedLifecycleRevision: 7, mode: "stop" },
+          signal: controller.signal,
+        },
+      );
+      await started;
+      const timeoutError = new DOMException(
+        "The operation timed out",
+        "TimeoutError",
+      );
+      const rejected = expect(pending).rejects.toBe(timeoutError);
+
+      controller.abort(timeoutError);
+
+      await rejected;
+      expect(desktopTransportMocks.request).toHaveBeenCalledTimes(1);
+      expect(desktopTransportMocks.request).toHaveBeenCalledWith(
+        "https://api.eliza.app/api/v1/billing/resources/11111111-1111-4111-8111-111111111111/cancel?resourceType=container",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            expectedLifecycleRevision: 7,
+            mode: "stop",
+          }),
+          signal: controller.signal,
+        }),
+        { timeoutMs: 30_000 },
+      );
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(capacitorMocks.request).not.toHaveBeenCalled();
     });
 
     it("STILL throws CROSS_ORIGIN_API_URL for a non-allowlisted host", async () => {

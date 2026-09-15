@@ -1,18 +1,32 @@
-/** Read-only active compute costs from the canonical billing snapshot v2. */
+/** Active compute costs and server-projected controls from billing snapshot v2. */
 
 "use client";
 
 import type { Observed } from "@elizaos/cloud-sdk/account-billing-snapshot";
-import { BrandCard, Button } from "@elizaos/ui/cloud-ui";
+import { Button, CornerBrackets } from "@elizaos/ui/cloud-ui";
 import {
   AlertCircle,
   Box,
   Calculator,
+  CheckCircle2,
   Clock3,
+  Loader2,
   RefreshCw,
   ServerCog,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { Alert } from "../../../components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "../../../components/ui/alert-dialog";
 import { Badge } from "../../../components/ui/badge";
 import { Card } from "../../../components/ui/card";
 import { Skeleton } from "../../../components/ui/skeleton";
@@ -22,7 +36,14 @@ import type {
   BillingSnapshotResource,
   BillingSnapshotV2View,
 } from "../data/billing-snapshot";
+import {
+  type ActiveComputeCancellationViewState,
+  billingCancellationIdentityKey,
+} from "../lib/billing-resource-cancellation-view";
 import { formatExactUsd } from "../lib/format-exact-usd";
+
+export type { ActiveComputeCancellationViewState } from "../lib/billing-resource-cancellation-view";
+export { billingCancellationIdentityKey } from "../lib/billing-resource-cancellation-view";
 
 export type BillingSnapshotViewState =
   | { kind: "loading" }
@@ -39,6 +60,13 @@ export type BillingSnapshotViewState =
 interface ActiveComputeCardProps {
   state: BillingSnapshotViewState;
   onRetry: () => void;
+  /** Exact authenticated authority; rotates resource-local dialog state. */
+  cancellationAuthorityKey?: string;
+  cancellationStates?: Readonly<
+    Record<string, ActiveComputeCancellationViewState>
+  >;
+  onRequestCancellation?: (resource: BillingSnapshotResource) => void;
+  onCheckCancellationReceipt?: (resource: BillingSnapshotResource) => void;
 }
 
 type Translator = ReturnType<typeof useCloudT>;
@@ -107,10 +135,26 @@ function billingCursorLabel(value: string | null, emptyLabel: string): string {
 function ResourceCard({
   resource,
   t,
+  cancellationAuthorityKey,
+  cancellationState,
+  onRequestCancellation,
+  onCheckCancellationReceipt,
 }: {
   resource: BillingSnapshotResource;
   t: Translator;
+  cancellationAuthorityKey: string;
+  cancellationState: ActiveComputeCancellationViewState | undefined;
+  onRequestCancellation?: (resource: BillingSnapshotResource) => void;
+  onCheckCancellationReceipt?: (resource: BillingSnapshotResource) => void;
 }) {
+  const cancellationStatusRef = useRef<HTMLDivElement>(null);
+  const cancellationBlockerRef = useRef<HTMLDivElement>(null);
+  const cancellationTriggerRef = useRef<HTMLButtonElement>(null);
+  const submittedFromDialogRef = useRef(false);
+  const cancellationDialogWasOpenRef = useRef(false);
+  const openedCancellationSignatureRef = useRef<string | null>(null);
+  const pendingDialogFocusRef = useRef(false);
+  const [cancellationDialogOpen, setCancellationDialogOpen] = useState(false);
   const ResourceIcon = resource.resourceType === "container" ? Box : ServerCog;
   const typeLabel =
     resource.resourceType === "container"
@@ -118,6 +162,150 @@ function ResourceCard({
       : t("cloud.billing.compute.agentSandbox", {
           defaultValue: "Agent sandbox",
         });
+  const control = resource.cancellationControl;
+  const isAgent = resource.resourceType === "agent_sandbox";
+  const actionLabel = isAgent
+    ? t("cloud.billing.compute.cancel.suspend", {
+        defaultValue: "Stop compute",
+      })
+    : t("cloud.billing.compute.cancel.stop", { defaultValue: "Stop" });
+  const canOfferCancellation =
+    cancellationState === undefined ||
+    cancellationState.kind === "ambiguous" ||
+    cancellationState.kind === "rejected";
+  const isRetry =
+    cancellationState?.kind === "ambiguous" ||
+    cancellationState?.kind === "rejected";
+  const canSubmit =
+    control.eligible &&
+    onRequestCancellation !== undefined &&
+    canOfferCancellation;
+  const cancellationAuthoritySignature = `${cancellationAuthorityKey}:${billingCancellationIdentityKey(resource)}:${control.endpoint}`;
+  const authorityStillMatches =
+    !cancellationDialogOpen ||
+    openedCancellationSignatureRef.current === cancellationAuthoritySignature;
+  const canRenderCancellationDialog =
+    control.eligible && canOfferCancellation && authorityStillMatches;
+  const isPending =
+    cancellationState?.kind === "submitting" ||
+    cancellationState?.kind === "accepted";
+
+  useEffect(() => {
+    if (cancellationDialogWasOpenRef.current && !canRenderCancellationDialog) {
+      submittedFromDialogRef.current = false;
+      pendingDialogFocusRef.current = true;
+      setCancellationDialogOpen(false);
+    }
+    cancellationDialogWasOpenRef.current =
+      cancellationDialogOpen && canRenderCancellationDialog;
+  }, [canRenderCancellationDialog, cancellationDialogOpen]);
+
+  const receiptId =
+    cancellationState && "receiptId" in cancellationState
+      ? cancellationState.receiptId
+      : undefined;
+  const cancellationMessage = (() => {
+    switch (cancellationState?.kind) {
+      case "submitting":
+        return t("cloud.billing.compute.cancel.submittingDetail", {
+          defaultValue:
+            "Submitting the durable request. Billing is still active.",
+        });
+      case "accepted":
+        return isAgent
+          ? t("cloud.billing.compute.cancel.acceptedAgentDetail", {
+              defaultValue:
+                "Request accepted. Compute charges continue until provider confirmation; any retained backup remains billable until it is deleted.",
+            })
+          : t("cloud.billing.compute.cancel.acceptedDetail", {
+              defaultValue:
+                "Request accepted. Billing remains active until provider confirmation.",
+            });
+      case "provider_confirmed":
+        if (
+          cancellationState.retainedBackupBilling.status === "billable" &&
+          cancellationState.retainedBackupBilling.ratePerHour !== null
+        ) {
+          return t("cloud.billing.compute.cancel.confirmedBackupDetail", {
+            rate: formatExactUsd(
+              cancellationState.retainedBackupBilling.ratePerHour.toFixed(6),
+            ),
+            defaultValue:
+              "Provider confirmed compute stopped. The retained backup remains billable at {{rate}}/hour until it is deleted.",
+          });
+        }
+        return t("cloud.billing.compute.cancel.confirmedDetail", {
+          defaultValue:
+            "Provider confirmed compute stopped. No retained backup billing remains for this resource.",
+        });
+      case "conflict":
+        return t("cloud.billing.compute.cancel.conflictDetail", {
+          defaultValue:
+            "The resource changed before this request completed. Refresh and review its current state.",
+        });
+      case "terminal_attention":
+        return t("cloud.billing.compute.cancel.attentionDetail", {
+          defaultValue:
+            "The compute stop needs operator attention. Provider absence is not confirmed, so billing continues.",
+        });
+      case "ambiguous":
+        return t("cloud.billing.compute.cancel.ambiguousDetail", {
+          defaultValue:
+            "The response was lost or unavailable. Retry safely with the same request identity.",
+        });
+      case "receipt_unavailable":
+        return isAgent
+          ? t("cloud.billing.compute.cancel.receiptUnavailableAgentDetail", {
+              defaultValue:
+                "The request was accepted, but its latest receipt could not be read. Compute charges and any retained-backup billing continue until confirmed otherwise.",
+            })
+          : t("cloud.billing.compute.cancel.receiptUnavailableDetail", {
+              defaultValue:
+                "The request was accepted, but its latest receipt could not be read. Billing remains active until provider confirmation.",
+            });
+      case "rejected":
+        return t("cloud.billing.compute.cancel.rejectedDetail", {
+          defaultValue:
+            "The request was rejected. Refresh the billing snapshot before trying again.",
+        });
+      default:
+        return null;
+    }
+  })();
+  const cancellationIsAlert =
+    cancellationState?.kind === "conflict" ||
+    cancellationState?.kind === "terminal_attention" ||
+    cancellationState?.kind === "ambiguous" ||
+    cancellationState?.kind === "receipt_unavailable" ||
+    cancellationState?.kind === "rejected";
+  const cancellationBlockerMessage = control.blockers.includes(
+    "billing_account_ineligible",
+  )
+    ? t("cloud.billing.compute.cancel.accountIneligible", {
+        defaultValue:
+          "This account or organization is not eligible to manage billing for this resource.",
+      })
+    : control.blockers.includes("interactive_session_required")
+      ? t("cloud.billing.compute.cancel.interactiveRequired", {
+          defaultValue:
+            "Sign in with an interactive account session to manage billing for this resource.",
+        })
+      : t("cloud.billing.compute.cancel.managerRequired", {
+          defaultValue:
+            "Only organization owners and admins can manage billing for this resource.",
+        });
+
+  useEffect(() => {
+    if (cancellationDialogOpen || !pendingDialogFocusRef.current) return;
+    pendingDialogFocusRef.current = false;
+    if (cancellationMessage) {
+      cancellationStatusRef.current?.focus();
+    } else if (!control.eligible) {
+      cancellationBlockerRef.current?.focus();
+    } else {
+      cancellationTriggerRef.current?.focus();
+    }
+  }, [cancellationDialogOpen, cancellationMessage, control.eligible]);
 
   return (
     <Card asChild variant="brandSurface" padding="comfortable">
@@ -251,6 +439,178 @@ function ResourceCard({
             </div>
           </dl>
         </Card>
+
+        {onRequestCancellation ? (
+          <Card asChild variant="billingTopDivider">
+            <div className="mt-4 space-y-3">
+              {!control.eligible ? (
+                <Alert
+                  ref={cancellationBlockerRef}
+                  tabIndex={-1}
+                  role="status"
+                  variant="default"
+                >
+                  {cancellationBlockerMessage}
+                </Alert>
+              ) : null}
+
+              {cancellationMessage ? (
+                <Alert
+                  ref={cancellationStatusRef}
+                  tabIndex={-1}
+                  role={cancellationIsAlert ? "alert" : "status"}
+                  aria-live={cancellationIsAlert ? "assertive" : "polite"}
+                  variant={
+                    cancellationState?.kind === "provider_confirmed"
+                      ? "dashboardSuccess"
+                      : cancellationIsAlert
+                        ? "warningStrong"
+                        : "default"
+                  }
+                >
+                  <div className="flex items-start gap-2">
+                    {isPending ? (
+                      <Loader2
+                        className="mt-0.5 h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none"
+                        aria-hidden="true"
+                      />
+                    ) : cancellationState?.kind === "provider_confirmed" ? (
+                      <CheckCircle2
+                        className="mt-0.5 h-4 w-4 shrink-0"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <AlertCircle
+                        className="mt-0.5 h-4 w-4 shrink-0"
+                        aria-hidden="true"
+                      />
+                    )}
+                    <div className="min-w-0">
+                      <p>{cancellationMessage}</p>
+                      {receiptId ? (
+                        <p className="mt-2 break-all font-mono text-xs">
+                          {t("cloud.billing.compute.cancel.receipt", {
+                            receiptId,
+                            defaultValue: "Receipt: {{receiptId}}",
+                          })}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                </Alert>
+              ) : null}
+
+              {control.eligible &&
+              cancellationState?.kind === "receipt_unavailable" ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="keyboard-focus-surface min-h-11 min-w-11 font-mono"
+                  onClick={() => onCheckCancellationReceipt?.(resource)}
+                  disabled={!onCheckCancellationReceipt}
+                >
+                  <RefreshCw aria-hidden="true" />
+                  {t("cloud.billing.compute.cancel.checkStatus", {
+                    defaultValue: "Check status",
+                  })}
+                </Button>
+              ) : null}
+
+              {canRenderCancellationDialog ? (
+                <AlertDialog
+                  open={cancellationDialogOpen}
+                  onOpenChange={(open) => {
+                    if (open) {
+                      openedCancellationSignatureRef.current =
+                        cancellationAuthoritySignature;
+                      cancellationDialogWasOpenRef.current = true;
+                    }
+                    setCancellationDialogOpen(open);
+                  }}
+                >
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      ref={cancellationTriggerRef}
+                      type="button"
+                      variant="dangerOutline"
+                      className="keyboard-focus-surface min-h-11 min-w-11 font-mono"
+                      disabled={!canSubmit}
+                    >
+                      {isRetry
+                        ? t("cloud.billing.compute.cancel.retryRequest", {
+                            defaultValue: "Retry request",
+                          })
+                        : actionLabel}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent
+                    onCloseAutoFocus={(event) => {
+                      if (!submittedFromDialogRef.current) return;
+                      submittedFromDialogRef.current = false;
+                      event.preventDefault();
+                      cancellationStatusRef.current?.focus();
+                    }}
+                  >
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>
+                        {isAgent
+                          ? t(
+                              "cloud.billing.compute.cancel.confirmSuspendTitle",
+                              {
+                                defaultValue: "Stop compute for this agent?",
+                              },
+                            )
+                          : t("cloud.billing.compute.cancel.confirmStopTitle", {
+                              defaultValue: "Stop this container?",
+                            })}
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        {isAgent
+                          ? t(
+                              "cloud.billing.compute.cancel.confirmAgentDetail",
+                              {
+                                resourceName: resource.name,
+                                defaultValue:
+                                  "This sends a durable compute-stop request for {{resourceName}}. Compute charges continue until provider confirmation, and its retained backup remains billable until deleted.",
+                              },
+                            )
+                          : t("cloud.billing.compute.cancel.confirmDetail", {
+                              resourceName: resource.name,
+                              defaultValue:
+                                "This sends a durable stop request for {{resourceName}}. Billing continues until the provider confirms the stop.",
+                            })}
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel className="keyboard-focus-surface min-h-11">
+                        {t("cloud.billing.compute.cancel.keepRunning", {
+                          defaultValue: "Keep running",
+                        })}
+                      </AlertDialogCancel>
+                      <AlertDialogAction asChild>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          className="keyboard-focus-surface min-h-11"
+                          onClick={() => {
+                            submittedFromDialogRef.current = true;
+                            onRequestCancellation(resource);
+                          }}
+                        >
+                          {isRetry
+                            ? t("cloud.billing.compute.cancel.confirmRetry", {
+                                defaultValue: "Retry safely",
+                              })
+                            : actionLabel}
+                        </Button>
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              ) : null}
+            </div>
+          </Card>
+        ) : null}
       </li>
     </Card>
   );
@@ -286,14 +646,15 @@ function RetryButton({
 
 function LoadingCard({ t }: { t: Translator }) {
   return (
-    <BrandCard
-      cornerSize="sm"
+    <Card
+      variant="brand"
       role="status"
       aria-busy="true"
       aria-label={t("cloud.billing.compute.loading", {
         defaultValue: "Loading active compute",
       })}
     >
+      <CornerBrackets size="sm" />
       <div className="relative z-10 space-y-5">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-2">
@@ -307,7 +668,7 @@ function LoadingCard({ t }: { t: Translator }) {
           <Skeleton className="h-40 w-full" />
         </div>
       </div>
-    </BrandCard>
+    </Card>
   );
 }
 
@@ -315,6 +676,10 @@ function LoadingCard({ t }: { t: Translator }) {
 export function ActiveComputeCardView({
   state,
   onRetry,
+  cancellationAuthorityKey = "",
+  cancellationStates = {},
+  onRequestCancellation,
+  onCheckCancellationReceipt,
 }: ActiveComputeCardProps) {
   const t = useCloudT();
 
@@ -324,7 +689,8 @@ export function ActiveComputeCardView({
     const paused = state.kind === "paused";
     const retrying = state.kind === "error" && state.retrying;
     return (
-      <BrandCard cornerSize="sm">
+      <Card variant="brand">
+        <CornerBrackets size="sm" />
         <div className="relative z-10 flex flex-col items-start gap-4 sm:flex-row sm:justify-between">
           <div role="alert" className="flex min-w-0 items-start gap-3">
             <AlertCircle
@@ -358,7 +724,7 @@ export function ActiveComputeCardView({
             <RetryButton onRetry={onRetry} retrying={retrying} t={t} />
           ) : null}
         </div>
-      </BrandCard>
+      </Card>
     );
   }
 
@@ -411,7 +777,8 @@ export function ActiveComputeCardView({
               });
 
   return (
-    <BrandCard cornerSize="sm" aria-busy={state.refreshing || undefined}>
+    <Card variant="brand" aria-busy={state.refreshing || undefined}>
+      <CornerBrackets size="sm" />
       <div className="relative z-10 space-y-5">
         <p
           role="status"
@@ -539,6 +906,12 @@ export function ActiveComputeCardView({
                   key={`${resource.resourceType}:${resource.resourceId}`}
                   resource={resource}
                   t={t}
+                  cancellationAuthorityKey={cancellationAuthorityKey}
+                  cancellationState={
+                    cancellationStates[billingCancellationIdentityKey(resource)]
+                  }
+                  onRequestCancellation={onRequestCancellation}
+                  onCheckCancellationReceipt={onCheckCancellationReceipt}
                 />
               ))}
             </ul>
@@ -603,6 +976,6 @@ export function ActiveComputeCardView({
           </Card>
         ) : null}
       </div>
-    </BrandCard>
+    </Card>
   );
 }

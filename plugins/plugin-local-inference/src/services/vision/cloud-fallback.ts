@@ -11,6 +11,11 @@ import type {
 	ImageDescriptionParams,
 	ImageDescriptionResult,
 } from "@elizaos/core";
+import {
+	resolveCloudApiBaseUrl,
+	resolveDevCloudAuthorityEnvValue,
+	resolveDevCloudEnvAuthority,
+} from "@elizaos/shared";
 
 export type VisionFallbackReason =
 	| "local-unavailable"
@@ -155,6 +160,11 @@ export function normalizeVisionDescription(
 }
 
 function resolveCloudToken(options: VisionCloudFallbackOptions): string | null {
+	if (resolveDevCloudEnvAuthority()) {
+		return (
+			resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_API_KEY")?.trim() || null
+		);
+	}
 	return (
 		options.token?.trim() ||
 		options.apiKey?.trim() ||
@@ -165,6 +175,13 @@ function resolveCloudToken(options: VisionCloudFallbackOptions): string | null {
 }
 
 function resolveCloudBaseUrl(options: VisionCloudFallbackOptions): string {
+	if (resolveDevCloudEnvAuthority()) {
+		// This legacy endpoint appends `/v1/vision/describe` below, while the
+		// shared resolver returns the canonical control-plane `/api/v1` base.
+		// Resolve through the authority-aware helper, then retain this client's
+		// established root-relative endpoint contract.
+		return resolveCloudApiBaseUrl().replace(/\/api\/v1\/?$/, "");
+	}
 	return (
 		options.baseUrl?.trim() ||
 		process.env.ELIZA_CLOUD_BASE_URL?.trim() ||

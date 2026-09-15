@@ -1,6 +1,6 @@
 # @elizaos/capacitor-contacts
 
-Capacitor plugin providing an Android `ContactsContract` bridge for elizaOS agents. Enables reading, creating, and importing contacts on Android from TypeScript/JavaScript code. On web and Node.js the plugin provides an explicit fallback that returns empty contact lists and rejects writes.
+Capacitor plugin providing an Android `ContactsContract` bridge for elizaOS agents. Enables reading, creating, and importing contacts on Android from TypeScript/JavaScript code. On web and Node.js the plugin provides an explicit unsupported-platform fallback: reads, writes and permission operations reject with Capacitor code `UNAVAILABLE`.
 
 ## What it does
 
@@ -13,7 +13,7 @@ Capacitor plugin providing an Android `ContactsContract` bridge for elizaOS agen
 | Platform | `listContacts` | `createContact` | `importVCard` |
 |----------|---------------|----------------|---------------|
 | Android  | Full          | Full           | Full          |
-| Web/Node | Returns `[]`  | Throws         | Throws        |
+| Web/Node | Unavailable   | Unavailable    | Unavailable   |
 
 ## Requirements
 

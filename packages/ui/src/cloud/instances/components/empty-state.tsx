@@ -1,10 +1,10 @@
 /**
- * Empty state for the agent library when no cloud agent exists yet. Uses
- * BrandButton's default primary hover (darker orange).
+ * Empty state for the agent library when no cloud agent exists yet. Uses the
+ * canonical Button's default darker-orange hover.
  */
 "use client";
 
-import { BrandButton, EmptyState } from "@elizaos/ui/cloud-ui";
+import { Button, EmptyState } from "@elizaos/ui/cloud-ui";
 import { Bot, Plus } from "lucide-react";
 import { useT } from "../lib/i18n";
 
@@ -25,12 +25,12 @@ function AgentsEmptyState({ onCreateNew }: EmptyStateProps) {
           "Create your first agent to start chatting. It only takes a minute.",
       })}
       action={
-        <BrandButton variant="primary" onClick={onCreateNew}>
+        <Button variant="default" onClick={onCreateNew}>
           <Plus className="size-4" />
           {t("cloud.myAgents.createFirstAgent", {
             defaultValue: "Create your first agent",
           })}
-        </BrandButton>
+        </Button>
       }
     />
   );

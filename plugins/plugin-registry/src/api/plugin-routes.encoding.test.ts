@@ -22,7 +22,8 @@ vi.mock("@elizaos/agent", () => ({
   validatePluginConfig: mocks.validatePluginConfig,
 }));
 
-vi.mock("@elizaos/core", () => ({
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
   logger: {
     debug: vi.fn(),
     info: vi.fn(),
@@ -31,17 +32,20 @@ vi.mock("@elizaos/core", () => ({
   },
 }));
 
-vi.mock("@elizaos/shared", () => {
+vi.mock("@elizaos/shared", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/shared")>();
   const schema = {
     safeParse: (value: unknown) => ({ success: true, data: value }),
   };
 
   return {
+    ...actual,
     asRecord: (value: unknown) =>
       value && typeof value === "object" && !Array.isArray(value)
         ? (value as Record<string, unknown>)
         : null,
     isElizaSettingsDebugEnabled: vi.fn(() => false),
+    resolveDevCloudEnvAuthority: vi.fn(() => false),
     PostPluginCoreToggleRequestSchema: schema,
     PostPluginInstallRequestSchema: schema,
     PostPluginUninstallRequestSchema: schema,

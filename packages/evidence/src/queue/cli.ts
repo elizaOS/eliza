@@ -126,7 +126,7 @@ async function runWorkerCommand(argv: string[], io: CliIo): Promise<number> {
   io.out(
     `[gpu-queue] done: ${counts.completed} completed, ${counts.failed} failed, ${counts.skipped} skipped, ${counts.requeued} requeued`,
   );
-  return 0;
+  return counts.failed > 0 ? 1 : 0;
 }
 
 function runEnqueueCommand(argv: string[], io: CliIo): number {

@@ -98,6 +98,12 @@ interface ConversationMessageOverlayRecord {
   hasBeenVisible: boolean;
   /** Only a terminally rekeyed durable row may retire on absence evidence. */
   terminalDurable: boolean;
+  /** Durable user rows known before this send, not rows first seen on reconnect. */
+  precedingServerUserIds?: Set<string>;
+  /** Earlier queued users may acquire their durable ids after this registration. */
+  precedingUserRecords?: readonly ConversationMessageOverlayRecord[];
+  /** Survives retirement/re-homing while a queued successor still references us. */
+  resolvedServerUserId?: string;
 }
 
 type ConversationMessageOverlay = Map<string, ConversationMessageOverlayRecord>;
@@ -154,8 +160,22 @@ function captureRegisteredConversationMessageOverlay(
       record.consecutiveNewestMisses = 0;
     }
     record.hasBeenVisible = true;
-    if (!message.id.startsWith("temp-")) record.terminalDurable = true;
+    if (!message.id.startsWith("temp-")) {
+      record.terminalDurable = true;
+      rememberResolvedOverlayUser(record, message);
+    }
   }
+}
+
+function rememberResolvedOverlayUser(
+  record: ConversationMessageOverlayRecord,
+  message: ConversationMessage,
+): void {
+  if (message.role !== "user" || message.id.startsWith("temp-")) return;
+  record.resolvedServerUserId = message.id;
+  // Once this user has a durable id, it no longer needs weak-match ancestry.
+  // Release the chain while successors retain this small identity record.
+  record.precedingUserRecords = undefined;
 }
 
 function overlayMessages(
@@ -252,13 +272,15 @@ function findNearestPriorUser(
 function resolvedLocalOverlayServerIndexes(
   serverMessages: ConversationMessage[],
   currentMessages: ConversationMessage[],
-  overlayLineages: ReadonlySet<string>,
+  overlay: ConversationMessageOverlay,
 ): Map<string, number> {
+  const overlayLineages = new Set(overlay.keys());
   const resolvedServerIndexes = new Map<string, number>();
   const serverIndexById = new Map<string, number>();
   serverMessages.forEach((message, index) => {
     serverIndexById.set(message.id, index);
   });
+  const currentServerUserIndexes = new Set<number>();
   const usedServerUserIndexes = new Set<number>();
   const usedServerAssistantIndexes = new Set<number>();
   currentMessages.forEach((message) => {
@@ -266,7 +288,7 @@ function resolvedLocalOverlayServerIndexes(
     const serverIndex = serverIndexById.get(message.id);
     if (typeof serverIndex !== "number") return;
     if (message.role === "user") {
-      usedServerUserIndexes.add(serverIndex);
+      currentServerUserIndexes.add(serverIndex);
     } else if (message.role === "assistant") {
       usedServerAssistantIndexes.add(serverIndex);
     }
@@ -286,10 +308,30 @@ function resolvedLocalOverlayServerIndexes(
       serverUserIndexByLocalId.set(message.id, exactServerIndex);
       return;
     }
+    const lineage = localConversationMessageLineage(message);
+    const record = lineage ? overlay.get(lineage) : undefined;
+    const precedingIds = record?.precedingServerUserIds;
+    const excludedIndexes = new Set(usedServerUserIndexes);
+    if (precedingIds) {
+      for (const id of precedingIds) {
+        const index = serverIndexById.get(id);
+        if (index !== undefined) excludedIndexes.add(index);
+      }
+      for (const predecessor of record?.precedingUserRecords ?? []) {
+        const index = predecessor.resolvedServerUserId
+          ? serverIndexById.get(predecessor.resolvedServerUserId)
+          : undefined;
+        if (index !== undefined) excludedIndexes.add(index);
+      }
+    } else {
+      // Without a pre-send canonical window, retain the conservative current-
+      // window guard. Never infer that an unseen older repeat belongs to us.
+      for (const index of currentServerUserIndexes) excludedIndexes.add(index);
+    }
     const serverIndex = findMatchingServerMessageIndex(
       serverMessages,
       message,
-      usedServerUserIndexes,
+      excludedIndexes,
     );
     if (serverIndex < 0) return;
     usedServerUserIndexes.add(serverIndex);
@@ -357,10 +399,24 @@ function mergeMessagesChronologically(
     );
     if (insertionIndex < 0) insertionIndex = merged.length;
 
+    // A terminal receipt is stronger ordering evidence than client/server
+    // clocks. An ephemeral reply must never precede its recorded request.
+    const replyToPosition =
+      message.role === "assistant" && message.replyToMessageId
+        ? merged.findIndex(
+            (candidate) =>
+              candidate.message.role === "user" &&
+              candidate.message.id === message.replyToMessageId,
+          )
+        : -1;
+    if (replyToPosition >= 0) {
+      insertionIndex = Math.max(insertionIndex, replyToPosition + 1);
+    }
     const lineage = localConversationMessageLineage(message);
-    const predecessorServerIndex = lineage
-      ? causalServerPredecessors?.get(lineage)
-      : undefined;
+    const predecessorServerIndex =
+      lineage && !message.replyToMessageId
+        ? causalServerPredecessors?.get(lineage)
+        : undefined;
     if (typeof predecessorServerIndex === "number") {
       const predecessorPosition = merged.findIndex(
         (candidate) => candidate.serverIndex === predecessorServerIndex,
@@ -393,18 +449,15 @@ function reconcileConversationMessagesWithOverlay(
   const serverIndexById = new Map(
     serverMessages.map((message, index) => [message.id, index]),
   );
-  const overlayLineages = new Set(overlay.keys());
-  // Text/time fallback is safe only against the visible transcript that
-  // preceded this network response: it marks already-rendered server rows as
-  // consumed, so a repeated pending "yes" cannot bind to an older "yes". A
-  // cache paint has no new response boundary and therefore settles by exact id
-  // only.
+  // A cache/around paint settles by exact id only. A canonical network response
+  // may also match registered local turns, excluding rows known before each
+  // send rather than newly fetched copies of those same pending turns.
   const resolvedOverlayServerIndexes =
     options?.localContext && options.allowTextFallback
       ? resolvedLocalOverlayServerIndexes(
           serverMessages,
           options.localContext,
-          overlayLineages,
+          overlay,
         )
       : new Map<string, number>();
   const causalServerPredecessors = new Map<string, number>();
@@ -463,6 +516,7 @@ function reconcileConversationMessagesWithOverlay(
       // only a canonical newest-history endpoint that followed this exact
       // overlay revision may retire overlay state.
       if (newestRequestCanConsumeRevision) {
+        rememberResolvedOverlayUser(record, serverMessages[exactServerIndex]);
         overlay.delete(lineage);
       } else {
         preserveOwnedMessage(exactServerIndex, lineage, message);
@@ -486,6 +540,10 @@ function reconcileConversationMessagesWithOverlay(
       }
       matchedLineages.add(lineage);
       if (newestRequestCanConsumeRevision) {
+        rememberResolvedOverlayUser(
+          record,
+          serverMessages[fallbackServerIndex],
+        );
         overlay.delete(lineage);
       } else {
         preserveOwnedMessage(fallbackServerIndex, lineage, message);
@@ -780,7 +838,9 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   // Once an around window commits, cache paint alone cannot prove that its
   // omitted rows were already consumed. Require one exact-id-only newest
   // response before re-enabling weaker text/time convergence.
-  const textFallbackBlockedConversationIdsRef = useRef<Set<string>>(new Set());
+  const textFallbackBlockedConversationIdsRef = useRef<
+    Map<string, "around" | "mutation">
+  >(new Map());
   const conversationMessageOwnerGenerationRef = useRef(0);
   // Shared by newest and around loads: every visible request supersedes every
   // older visible request, even when ownership itself did not change.
@@ -1035,6 +1095,57 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         }
       }
 
+      // Capture the newest window before registering these rows. Reconnect can
+      // temporarily paint a durable copy beside its optimistic lineage; that
+      // newly seen id must not become an exclusion for its own pending send.
+      const cached =
+        conversationId === null
+          ? undefined
+          : conversationMessageCacheRef.current.get(conversationId);
+      const visible =
+        visibleConversationMessagesContentOwnerRef.current === conversationId
+          ? conversationMessagesRef.current
+          : [];
+      const requestedLineages = new Set(lineages);
+      const precedingUsers = [...(cached ?? []), ...visible].filter(
+        (message) =>
+          message.role === "user" &&
+          !requestedLineages.has(
+            localConversationMessageLineage(message) ?? "",
+          ),
+      );
+      const precedingServerUserIds =
+        (cached !== undefined ||
+          conversationId === null ||
+          (loadedConversationIdRef.current === conversationId &&
+            visibleConversationMessagesContentOwnerRef.current ===
+              conversationId &&
+            !textFallbackBlockedConversationIdsRef.current.has(
+              conversationId,
+            ))) &&
+        (conversationId === null ||
+          textFallbackBlockedConversationIdsRef.current.get(conversationId) !==
+            "mutation")
+          ? new Set(
+              precedingUsers
+                .filter((message) => !message.id.startsWith("temp-"))
+                .map((message) => message.id),
+            )
+          : undefined;
+      const precedingUserRecords = [...overlay]
+        .filter(
+          ([lineage, record]) =>
+            !requestedLineages.has(lineage) && record.message?.role === "user",
+        )
+        .map(([, record]) => record);
+      const precedingUserContext = () => ({
+        precedingServerUserIds:
+          precedingServerUserIds === undefined
+            ? undefined
+            : new Set(precedingServerUserIds),
+        precedingUserRecords,
+      });
+
       // Some exact rows are born only after an awaited create (action sends and
       // 404 replay). If their destination is already off-screen there is no
       // visible store to capture. Seed only the caller-supplied objects and
@@ -1063,6 +1174,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           consecutiveNewestMisses: 0,
           hasBeenVisible: true,
           terminalDurable: !message.id.startsWith("temp-"),
+          ...precedingUserContext(),
         });
       }
       if (conversationId !== null && overlay.size > 0) {
@@ -1080,6 +1192,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           consecutiveNewestMisses: 0,
           hasBeenVisible: false,
           terminalDurable: false,
+          ...precedingUserContext(),
         });
       }
       visibleConversationMessagesContentOwnerRef.current = conversationId;
@@ -1092,6 +1205,61 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       }
     },
     [conversationMessagesRef],
+  );
+
+  const getConversationMessagesSnapshot = useCallback(
+    (conversationId: string): ConversationMessage[] | undefined => {
+      if (
+        activeConversationIdRef.current !== conversationId ||
+        visibleConversationMessagesOwnerRef.current !== conversationId ||
+        visibleConversationMessagesContentOwnerRef.current !== conversationId
+      )
+        return undefined;
+      return conversationMessagesRef.current;
+    },
+    [activeConversationIdRef, conversationMessagesRef],
+  );
+
+  const applyConversationMessageStream = useCallback(
+    (
+      conversationId: string,
+      changed: ConversationMessage[],
+      removed: string[],
+    ) => {
+      const previous = getConversationMessagesSnapshot(conversationId);
+      if (!previous) return;
+      const removedIds = new Set(removed);
+      const rows = new Map(
+        previous
+          .filter((row) => !removedIds.has(row.id))
+          .map((row) => [row.id, row]),
+      );
+      for (const row of changed) rows.set(row.id, row);
+      const orderedRows = [...rows.values()].sort(
+        (a, b) => a.timestamp - b.timestamp,
+      );
+      setConversationMessages(
+        mergeMessagesChronologically(
+          orderedRows.filter((row) => row.assistantEphemeral !== true),
+          orderedRows.filter((row) => row.assistantEphemeral === true),
+        ),
+      );
+      // Relayed optimistic and ephemeral rows need the same history-refresh
+      // protection as locally sent rows. Durable history is not an overlay.
+      registerConversationMessageOverlay(
+        conversationId,
+        changed.flatMap((row) => {
+          const lineage = localConversationMessageLineage(row);
+          return lineage ? [lineage] : [];
+        }),
+        changed,
+      );
+    },
+    [
+      getConversationMessagesSnapshot,
+      registerConversationMessageOverlay,
+      setConversationMessages,
+    ],
   );
 
   const isConversationMessagesOwnershipCurrent = useCallback(
@@ -1196,7 +1364,10 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       // non-canonical. The first newest response after it must reconcile by
       // exact ids only; otherwise a stale row with repeated text can consume a
       // replacement optimistic turn.
-      textFallbackBlockedConversationIdsRef.current.add(conversationId);
+      textFallbackBlockedConversationIdsRef.current.set(
+        conversationId,
+        "mutation",
+      );
       if (
         canonicalNewestConversationMessageContentOwnerRef.current ===
         conversationId
@@ -1374,7 +1545,10 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   }, [setConversations]);
 
   const loadConversationMessages = useCallback(
-    async (convId: string): Promise<LoadConversationMessagesResult> => {
+    async function loadNewestConversationMessages(
+      convId: string,
+      confirmGuardedRead = true,
+    ): Promise<LoadConversationMessagesResult> {
       // This is the visible transcript loader, not a background fetch. A late
       // send/retry failure can request reconciliation after the user has moved
       // on; reject it before invalidating the current fence, claiming ownership,
@@ -1446,8 +1620,11 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       // server clone. Materialize that pre-request state before snapshotting so
       // the response fence compares against the exact revision it followed.
       captureVisibleConversationMessageOverlay(convId);
+      const textFallbackBarrier =
+        textFallbackBlockedConversationIdsRef.current.get(convId);
       const textFallbackContextIsCanonical =
-        canonicalNewestConversationMessageContentOwnerRef.current === convId &&
+        (canonicalNewestConversationMessageContentOwnerRef.current === convId ||
+          loadedConversationIdRef.current === convId) &&
         visibleConversationMessagesContentOwnerRef.current === convId &&
         !textFallbackBlockedConversationIdsRef.current.has(convId);
 
@@ -1500,6 +1677,33 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         loadedConversationIdRef.current = convId;
         setConversationMessages(nextMessages);
         markConversationHistoryApplied(true);
+        // A guarded around-window recovery establishes canonical history but
+        // cannot retire a temp user on that first response. Confirm once when
+        // that history contains a safely matchable copy of a registered turn.
+        // Do not poll merely pending sends, and never bypass a newer owner/load.
+        if (
+          confirmGuardedRead &&
+          !textFallbackContextIsCanonical &&
+          textFallbackBarrier !== "mutation" &&
+          currentOverlay &&
+          isCurrentConversationMessageFence(fence)
+        ) {
+          const candidates = resolvedLocalOverlayServerIndexes(
+            serverMessages,
+            nextMessages,
+            currentOverlay,
+          );
+          const hasUnresolvedUserCopy = [...currentOverlay].some(
+            ([lineage, record]) =>
+              record.message?.role === "user" &&
+              record.message.id.startsWith("temp-") &&
+              record.precedingServerUserIds !== undefined &&
+              fence.overlayRevisionsAtStart.get(lineage) === record.revision &&
+              candidates.has(record.message.id),
+          );
+          if (hasUnresolvedUserCopy)
+            return loadNewestConversationMessages(convId, false);
+        }
         return { ok: true };
       } catch (err) {
         // A newer load aborted this one (fast swipe); the newer load owns the
@@ -1653,7 +1857,9 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         greetingFiredRef.current =
           hasConversationBootstrapMessage(nextMessages);
         canonicalNewestConversationMessageContentOwnerRef.current = null;
-        textFallbackBlockedConversationIdsRef.current.add(convId);
+        if (!textFallbackBlockedConversationIdsRef.current.has(convId)) {
+          textFallbackBlockedConversationIdsRef.current.set(convId, "around");
+        }
         visibleConversationMessagesContentOwnerRef.current = convId;
         conversationMessagesRef.current = nextMessages;
         loadedConversationIdRef.current = convId;
@@ -2042,6 +2248,8 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     isConversationMessagesOwnershipCurrent,
     getConversationMessagesOwnershipGeneration,
     registerConversationMessageOverlay,
+    getConversationMessagesSnapshot,
+    applyConversationMessageStream,
     applyConversationMessageOverlayModification,
     removeConversationMessageStateMessages,
     discardConversationMessageState,

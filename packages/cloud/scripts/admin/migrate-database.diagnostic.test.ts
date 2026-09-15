@@ -1,5 +1,6 @@
+/** Exercises admin-copy failure diagnostics through real Bun CLI children and persisted PGlite migration state. */
+
 import { describe, expect, mock, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -11,11 +12,8 @@ mock.module("./local-dev-helpers", () => ({
   loadEnvFiles: mock(),
 }));
 
-const {
-  DESTINATION_MIGRATION_SCRIPT,
-  databaseMigrationFatalDiagnostic,
-  withDatabaseMigrationStage,
-} = await import("./migrate-database");
+const { databaseMigrationFatalDiagnostic, withDatabaseMigrationStage } =
+  await import("./migrate-database");
 
 const scriptPath = path.join(import.meta.dir, "migrate-database.ts");
 const repositoryRoot = path.resolve(import.meta.dir, "../../../..");
@@ -33,17 +31,24 @@ interface JournalEntry {
   breakpoints: boolean;
 }
 
-function runAdminScript(args: string[], environment: NodeJS.ProcessEnv) {
-  return spawnSync(
-    process.execPath,
-    ["--conditions=eliza-source", scriptPath, ...args],
+async function runAdminScript(args: string[], environment: NodeJS.ProcessEnv) {
+  const child = Bun.spawn(
+    [process.execPath, "--conditions=eliza-source", scriptPath, ...args],
     {
       cwd: repositoryRoot,
       env: environment,
-      encoding: "utf8",
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
       timeout: 60_000,
     },
   );
+  const [stdout, stderr, status] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  return { stdout, stderr, status };
 }
 
 async function seedLegacyPhoneJsonFailure(
@@ -102,6 +107,8 @@ async function seedLegacyPhoneJsonFailure(
       throw new Error("Required migration journal entries are missing");
     }
 
+    const hashes: string[] = [];
+    const timestamps: number[] = [];
     for (const entry of journal.entries.slice(
       checkpointIndex,
       phoneMigrationIndex,
@@ -111,29 +118,23 @@ async function seedLegacyPhoneJsonFailure(
         "utf8",
       );
       const hash = createHash("sha256").update(source).digest("hex");
-      await database.query(
-        `INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
-         VALUES ($1, $2)`,
-        [hash, entry.when],
-      );
+      hashes.push(hash);
+      timestamps.push(entry.when);
     }
+    await database.query(
+      `INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
+       SELECT * FROM unnest($1::text[], $2::bigint[])`,
+      [hashes, timestamps],
+    );
   } finally {
     await database.close();
   }
 }
 
 describe("migrate-database fatal diagnostics", () => {
-  test("resolves the real destination migration runner independent of cwd", async () => {
-    expect(path.isAbsolute(DESTINATION_MIGRATION_SCRIPT)).toBe(true);
-    expect(path.basename(DESTINATION_MIGRATION_SCRIPT)).toBe(
-      "migrate-with-diagnostics.ts",
-    );
-    expect(await Bun.file(DESTINATION_MIGRATION_SCRIPT).exists()).toBe(true);
-  });
-
-  test("classifies the real CLI argument stage without logging rejected input", () => {
+  test("classifies the real CLI argument stage without logging rejected input", async () => {
     const secretArgument = "--diagnostic-secret-must-not-leak";
-    const result = runAdminScript([secretArgument], process.env);
+    const result = await runAdminScript([secretArgument], process.env);
     const output = `${result.stdout}${result.stderr}`;
 
     expect(result.status).toBe(1);
@@ -143,8 +144,8 @@ describe("migrate-database fatal diagnostics", () => {
     expect(output).not.toContain("Unknown argument");
   });
 
-  test("classifies the real CLI configuration stage", () => {
-    const result = runAdminScript([], {
+  test("classifies the real CLI configuration stage", async () => {
+    const result = await runAdminScript([], {
       ...process.env,
       DATABASE_URL: "",
       NEW_DATABASE_URL: "",
@@ -161,6 +162,7 @@ describe("migrate-database fatal diagnostics", () => {
     expect(output).not.toContain("cause");
   });
 
+  // Fixture creation and verification surround the separately bounded CLI child.
   test("redacts a malformed legacy JSON token through the real 0295 child failure path", async () => {
     const privateToken = "PHONE_JSON_PRIVATE_SENTINEL_7f43cbb2";
     const dataDirectory = await mkdtemp(
@@ -182,7 +184,7 @@ describe("migrate-database fatal diagnostics", () => {
       };
       delete environment.DATABASE_IDENTITY_ENVIRONMENT;
 
-      const result = runAdminScript([], environment);
+      const result = await runAdminScript([], environment);
       const output = `${result.stdout}${result.stderr}`;
 
       expect(result.status, output).toBe(1);
@@ -215,7 +217,7 @@ describe("migrate-database fatal diagnostics", () => {
     } finally {
       await rm(dataDirectory, { recursive: true, force: true });
     }
-  }, 60_000);
+  }, 120_000);
 
   test("keeps a bounded pointer classification through the table-copy stage", async () => {
     const secretMessage = "provider payload secret must not leak";

@@ -12,13 +12,14 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { parseCloudLiveContinuityEvidence } from "../../app/test/cloud-live-continuity-contract.ts";
 
 export const PAGES_AUTHORITY_SCHEMA =
   "elizaos.cloudflare.pages-deployment-authority/v1";
 export const PAGES_PUBLIC_CHECK_SCHEMA =
   "elizaos.cloudflare.pages-public-check/v1";
 export const DEPLOYED_BROWSER_SMOKE_SCHEMA =
-  "elizaos.cloud.deployed-browser-smoke/v1";
+  "elizaos.cloud.deployed-browser-smoke/v3";
 export const DEPLOYED_RENDERER_PROOF_SCHEMA =
   "elizaos.cloud.deployed-renderer-proof/v1";
 
@@ -68,35 +69,50 @@ const PUBLIC_RENDERER_KEYS = [
 ];
 const PUBLIC_API_KEYS = ["commit", "environment", "origin"];
 const REMOTE_SMOKE_KEYS = [
+  "chatCorrelation",
   "cloudApiOrigin",
   "cloudEnvironment",
   "outcome",
+  "referenceBinding",
   "rendererBuildId",
   "rendererManifestCommit",
   "rendererOrigin",
   "schema",
   "sourceSha",
 ];
+const CHAT_CORRELATION_KEYS = [
+  "preforward",
+  "providerRequestIdSha256",
+  "serverTiming",
+  "traceId",
+];
+const REFERENCE_BINDING_KEYS = ["apiBase", "runtime"];
+const TRACE_ID = /^[0-9a-f]{32}$/;
+const SAFE_TIMING_METRICS = new Set([
+  "cloud_worker",
+  "gateway_preforward",
+  "upstream_headers",
+  "dedicated_auth",
+  "dedicated_ownership",
+  "dedicated_routing",
+  "dedicated_proxy_dispatch",
+  "dedicated_total",
+]);
+const REQUIRED_DEDICATED_TIMING_METRICS = [
+  "dedicated_auth",
+  "dedicated_ownership",
+  "dedicated_routing",
+  "dedicated_proxy_dispatch",
+  "dedicated_total",
+];
+const SAFE_TIMING_DURATION = /^\d+(?:\.\d+)?$/;
+const SAFE_PREFORWARD =
+  /^total=\d+(?:\.\d+)?;auth=\d+(?:\.\d+)?;mid=\d+(?:\.\d+)?;reserve=\d+(?:\.\d+)?;setup=\d+(?:\.\d+)?$/;
 const LATENCY_KEYS = [
   "definition",
   "firstTurnLatencyMs",
   "lane",
   "metric",
-  "schemaVersion",
-];
-const CONTINUITY_KEYS = [
-  "apiBaseReused",
-  "challengeTurnCount",
-  "cleanupDisposition",
-  "conversationHistoryDisposition",
-  "forbiddenAgentMutationCount",
-  "freshContextHistoryPassed",
-  "lane",
-  "noAdditionalChatSendAfterChallenge",
-  "personalIdentityEndpointPassed",
-  "personalIdentityReused",
-  "reloadHistoryPassed",
-  "runtimeBindingReused",
   "schemaVersion",
 ];
 const PROOF_KEYS = [
@@ -188,6 +204,42 @@ function requireHttpsUrl(value, label) {
     fail(`${label} must be a bare HTTPS origin`);
   }
   return parsed.origin;
+}
+
+function requireDedicatedApiBase(value, label) {
+  const origin = requireHttpsUrl(value, label);
+  const hostname = new URL(origin).hostname;
+  const suffix = ".cloud-staging.eliza.app";
+  const agentId = hostname.endsWith(suffix)
+    ? hostname.slice(0, -suffix.length)
+    : "";
+  if (!UUID.test(agentId)) {
+    fail(`${label} must be a staging Dedicated agent origin`);
+  }
+  return origin;
+}
+
+function requireDedicatedServerTiming(value, label) {
+  const raw = requireString(value, label);
+  if (raw.length > 4_096) fail(`${label} is invalid`);
+  const names = new Set();
+  for (const metric of raw.split(", ")) {
+    const match = metric.match(/^([^;]+);dur=(.+)$/);
+    if (
+      !match ||
+      !SAFE_TIMING_METRICS.has(match[1]) ||
+      !SAFE_TIMING_DURATION.test(match[2]) ||
+      Number(match[2]) > 3_600_000 ||
+      names.has(match[1])
+    ) {
+      fail(`${label} is invalid`);
+    }
+    names.add(match[1]);
+  }
+  if (!REQUIRED_DEDICATED_TIMING_METRICS.every((name) => names.has(name))) {
+    fail(`${label} lacks required Dedicated phases`);
+  }
+  return raw;
 }
 
 function requireIsoTimestamp(value, label) {
@@ -288,7 +340,11 @@ function parseWorkflow(value, label = "workflow") {
  * closed, publishable identity needed by later release jobs. Session-local CLI
  * arguments and log paths are deliberately validated and discarded.
  */
-export function parseWranglerPagesDeploymentOutput(
+export function parseWranglerPagesDeploymentOutput(raw, options) {
+  return readWranglerPagesDeploymentIdentity(raw, options).authority;
+}
+
+function readWranglerPagesDeploymentIdentity(
   raw,
   {
     expectedProject,
@@ -300,6 +356,7 @@ export function parseWranglerPagesDeploymentOutput(
     runId,
     runAttempt,
   },
+  allowMissingAlias = false,
 ) {
   const [sessionValue, summaryValue, detailedValue] = parseNdjson(raw);
   parseWranglerSession(sessionValue, {
@@ -312,10 +369,12 @@ export function parseWranglerPagesDeploymentOutput(
     ["deployment_id", "pages_project", "timestamp", "type", "url", "version"],
     "pages-deploy record",
   );
+  const missingAlias =
+    isRecord(detailedValue) && !Object.hasOwn(detailedValue, "alias");
   const detailed = requireExactKeys(
     detailedValue,
     [
-      "alias",
+      ...(allowMissingAlias && missingAlias ? [] : ["alias"]),
       "deployment_id",
       "deployment_trigger",
       "environment",
@@ -352,7 +411,10 @@ export function parseWranglerPagesDeploymentOutput(
     detailed.url,
     "detailed deployment URL",
   );
-  const aliasUrl = requireHttpsUrl(detailed.alias, "deployment alias");
+  const aliasUrl =
+    allowMissingAlias && missingAlias
+      ? null
+      : requireHttpsUrl(detailed.alias, "deployment alias");
   const commitMetadata = requireExactKeys(
     requireExactKeys(
       detailed.deployment_trigger,
@@ -377,7 +439,8 @@ export function parseWranglerPagesDeploymentOutput(
   }
   if (project !== expectedProject) fail("Pages project does not match release");
   if (sourceSha !== expectedCommit) fail("commit hash does not match release");
-  if (aliasUrl !== expectedAlias) fail("Pages alias does not match release");
+  if (aliasUrl !== null && aliasUrl !== expectedAlias)
+    fail("Pages alias does not match release");
   if (detailed.environment !== expectedEnvironment) {
     fail("Pages environment does not match release");
   }
@@ -390,25 +453,132 @@ export function parseWranglerPagesDeploymentOutput(
     fail("deployment URL is not owned by the expected Pages project");
   }
   const expectedAliasHost = `${expectedBranch}.${project}.pages.dev`;
-  if (new URL(aliasUrl).hostname !== expectedAliasHost) {
+  if (
+    new URL(aliasUrl ?? requireHttpsUrl(expectedAlias, "expected alias"))
+      .hostname !== expectedAliasHost
+  ) {
     fail("Pages alias is not owned by the expected release branch");
   }
 
   return {
-    schema: PAGES_AUTHORITY_SCHEMA,
-    sourceSha,
-    workflow: {
-      runId: requirePositiveInteger(runId, "run ID"),
-      runAttempt: requirePositiveInteger(runAttempt, "run attempt"),
+    deploymentId,
+    authority: {
+      schema: PAGES_AUTHORITY_SCHEMA,
+      sourceSha,
+      workflow: {
+        runId: requirePositiveInteger(runId, "run ID"),
+        runAttempt: requirePositiveInteger(runAttempt, "run attempt"),
+      },
+      project,
+      branch: requireString(expectedBranch, "expected branch", PROJECT),
+      pagesEnvironment: expectedEnvironment,
+      productionBranch: expectedProductionBranch,
+      deploymentUrl,
+      aliasUrl,
+      deploymentIdSha256: sha256(deploymentId),
     },
-    project,
-    branch: requireString(expectedBranch, "expected branch", PROJECT),
-    pagesEnvironment: expectedEnvironment,
-    productionBranch: expectedProductionBranch,
-    deploymentUrl,
-    aliasUrl,
-    deploymentIdSha256: sha256(deploymentId),
   };
+}
+
+/**
+ * Wrangler may report deploy success before Pages exposes its branch alias.
+ * Preserve the original records; reconcile only that absent field against the
+ * exact provider resource. Nothing publishable is returned until it matches.
+ */
+export async function resolveWranglerPagesDeploymentOutput(
+  raw,
+  options,
+  {
+    // biome-ignore lint/suspicious/noUndeclaredEnvVars: Direct protected CLI invocation is never Turbo-cached.
+    accountId = process.env.CLOUDFLARE_ACCOUNT_ID,
+    // biome-ignore lint/suspicious/noUndeclaredEnvVars: Direct protected CLI invocation is never Turbo-cached.
+    apiToken = process.env.CLOUDFLARE_API_TOKEN,
+    fetchImpl = globalThis.fetch,
+    sleep = (ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms)),
+  } = {},
+) {
+  const { deploymentId, authority } = readWranglerPagesDeploymentIdentity(
+    raw,
+    options,
+    true,
+  );
+  if (authority.aliasUrl !== null) return authority;
+
+  requireString(accountId, "Cloudflare account ID", /^[0-9a-f]{32}$/);
+  requireString(apiToken, "Cloudflare API token");
+  const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/${authority.project}/deployments/${deploymentId}`;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    if (attempt > 0) await sleep(1000);
+    let response;
+    try {
+      response = await fetchImpl(url, {
+        headers: { Authorization: `Bearer ${apiToken}` },
+        redirect: "error",
+        signal: AbortSignal.timeout(5000),
+      });
+    } catch {
+      // error-policy:J3 transport failure rejects release proof without exposing credentials.
+      fail("Pages deployment identity lookup failed");
+    }
+    if (!response.ok)
+      fail(`Pages deployment identity lookup returned HTTP ${response.status}`);
+    let rawPayload;
+    try {
+      rawPayload = await response.json();
+    } catch {
+      // error-policy:J3 never include a raw provider error body in release logs.
+      fail("Pages deployment identity response was not readable JSON");
+    }
+    const payload = requireRecord(rawPayload, "Pages API response");
+    if (payload.success !== true)
+      fail("Pages deployment identity lookup was not successful");
+    const deployment = requireRecord(payload.result, "Pages API deployment");
+    const metadata = requireRecord(
+      requireRecord(
+        deployment.deployment_trigger,
+        "Pages API deployment trigger",
+      ).metadata,
+      "Pages API deployment metadata",
+    );
+    const stage = requireRecord(
+      deployment.latest_stage,
+      "Pages API deployment stage",
+    );
+    for (const [label, observed, expected] of [
+      ["deployment ID", deployment.id, deploymentId],
+      ["project", deployment.project_name, authority.project],
+      ["URL", deployment.url, authority.deploymentUrl],
+      ["source", metadata.commit_hash, authority.sourceSha],
+      ["branch", metadata.branch, authority.branch],
+      ["clean commit", metadata.commit_dirty, false],
+      ["environment", deployment.environment, authority.pagesEnvironment],
+      [
+        "production branch",
+        deployment.production_branch,
+        authority.productionBranch,
+      ],
+      ["stage", stage.name, "deploy"],
+      ["stage status", stage.status, "success"],
+    ]) {
+      if (observed !== expected)
+        fail(`Pages API ${label} differs from release identity`);
+    }
+    const aliases = deployment.aliases ?? [];
+    if (
+      !Array.isArray(aliases) ||
+      aliases.some((alias) => typeof alias !== "string")
+    ) {
+      fail("Pages API aliases must be a string array");
+    }
+    const alias = aliases.find((value) => value === options.expectedAlias);
+    if (alias) {
+      return parsePagesDeploymentAuthority({
+        ...authority,
+        aliasUrl: requireHttpsUrl(alias, "Pages API alias"),
+      });
+    }
+  }
+  fail("Pages branch alias did not appear within the bounded identity lookup");
 }
 
 export function parsePagesDeploymentAuthority(value) {
@@ -671,6 +841,19 @@ export function parseDeployedBrowserSmoke(value) {
   ) {
     fail("remote browser smoke did not close successfully");
   }
+  const correlation = requireExactKeys(
+    smoke.chatCorrelation,
+    CHAT_CORRELATION_KEYS,
+    "remoteSmoke.chatCorrelation",
+  );
+  const referenceBinding = requireExactKeys(
+    smoke.referenceBinding,
+    REFERENCE_BINDING_KEYS,
+    "remoteSmoke.referenceBinding",
+  );
+  if (referenceBinding.runtime !== "dedicated") {
+    fail("remoteSmoke.referenceBinding.runtime must be dedicated");
+  }
   return {
     schema: DEPLOYED_BROWSER_SMOKE_SCHEMA,
     sourceSha: requireString(smoke.sourceSha, "remoteSmoke.sourceSha", SHA40),
@@ -696,6 +879,40 @@ export function parseDeployedBrowserSmoke(value) {
       smoke.cloudEnvironment,
       "remoteSmoke.cloudEnvironment",
     ),
+    referenceBinding: {
+      runtime: "dedicated",
+      apiBase: requireDedicatedApiBase(
+        referenceBinding.apiBase,
+        "remoteSmoke.referenceBinding.apiBase",
+      ),
+    },
+    chatCorrelation: {
+      traceId: requireString(
+        correlation.traceId,
+        "remoteSmoke.chatCorrelation.traceId",
+        TRACE_ID,
+      ),
+      serverTiming: requireDedicatedServerTiming(
+        correlation.serverTiming,
+        "remoteSmoke.chatCorrelation.serverTiming",
+      ),
+      preforward:
+        correlation.preforward === null
+          ? null
+          : requireString(
+              correlation.preforward,
+              "remoteSmoke.chatCorrelation.preforward",
+              SAFE_PREFORWARD,
+            ),
+      providerRequestIdSha256:
+        correlation.providerRequestIdSha256 === null
+          ? null
+          : requireString(
+              correlation.providerRequestIdSha256,
+              "remoteSmoke.chatCorrelation.providerRequestIdSha256",
+              SHA256,
+            ),
+    },
     outcome: "success",
   };
 }
@@ -722,31 +939,6 @@ function parseLatency(value) {
   };
 }
 
-function parseContinuity(value) {
-  const continuity = requireExactKeys(value, CONTINUITY_KEYS, "continuity");
-  const expected = {
-    schemaVersion: 1,
-    lane: RECEIPT_LANE,
-    challengeTurnCount: 1,
-    noAdditionalChatSendAfterChallenge: true,
-    personalIdentityEndpointPassed: true,
-    reloadHistoryPassed: true,
-    freshContextHistoryPassed: true,
-    personalIdentityReused: true,
-    runtimeBindingReused: true,
-    apiBaseReused: true,
-    forbiddenAgentMutationCount: 0,
-    cleanupDisposition: "no-test-owned-agent",
-    conversationHistoryDisposition: "preserved",
-  };
-  for (const [key, expectedValue] of Object.entries(expected)) {
-    if (continuity[key] !== expectedValue) {
-      fail(`continuity.${key} is invalid`);
-    }
-  }
-  return expected;
-}
-
 export function createDeployedRendererProof({
   authority: authorityValue,
   preflight: preflightValue,
@@ -759,7 +951,7 @@ export function createDeployedRendererProof({
   const preflight = parsePagesPublicCheck(preflightValue, "preflight");
   const remoteSmoke = parseDeployedBrowserSmoke(remoteSmokeValue);
   const latency = parseLatency(latencyValue);
-  const continuity = parseContinuity(continuityValue);
+  const continuity = parseCloudLiveContinuityEvidence(continuityValue);
   const postflight = parsePagesPublicCheck(postflightValue, "postflight");
 
   for (const [label, observed] of [
@@ -887,7 +1079,7 @@ async function main(argv) {
         "run-attempt",
       ]),
     );
-    const authority = parseWranglerPagesDeploymentOutput(
+    const authority = await resolveWranglerPagesDeploymentOutput(
       await readFile(resolve(values.get("input")), "utf8"),
       {
         expectedProject: values.get("expected-project"),

@@ -296,14 +296,34 @@ describe("getFeaturePolicy", () => {
     ).toBe("cloud");
   });
 
-  it("falls back to the default policy when the value is invalid", () => {
-    expect(
-      getFeaturePolicy(
-        runtime({ ELIZAOS_CLOUD_ROUTING_LLM: "nonsense" }),
-        "llm",
-      ),
-    ).toBe(DEFAULT_FEATURE_POLICY);
-  });
+  it.each(["nonsense", false, 1])(
+    "rejects explicitly invalid policy %s before selecting a route",
+    (value) => {
+      const settings = runtime({
+        ELIZAOS_CLOUD_ROUTING_LLM: value,
+        ELIZAOS_CLOUD_API_KEY: "cloud-key",
+        ELIZAOS_CLOUD_ENABLED: true,
+      });
+      expect(() => resolveFeatureCloudRoute(settings, "llm", spec)).toThrow(
+        expect.objectContaining({
+          code: "CLOUD_ROUTING_POLICY_INVALID",
+          context: { feature: "llm", settingKey: "ELIZAOS_CLOUD_ROUTING_LLM" },
+        }),
+      );
+      expect(() => getFeaturePolicyMap(settings)).toThrow(
+        /must be local, cloud, or auto/,
+      );
+    },
+  );
+
+  it.each(["", "  ", null, undefined])(
+    "uses default for blank or absent policy %s",
+    (value) => {
+      expect(
+        getFeaturePolicy(runtime({ ELIZAOS_CLOUD_ROUTING_LLM: value }), "llm"),
+      ).toBe(DEFAULT_FEATURE_POLICY);
+    },
+  );
 
   it("falls back to the default policy when the value is unset", () => {
     expect(getFeaturePolicy(runtime({}), "llm")).toBe(DEFAULT_FEATURE_POLICY);

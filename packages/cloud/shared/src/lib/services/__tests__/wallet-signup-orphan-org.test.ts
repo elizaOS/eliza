@@ -1,6 +1,6 @@
 /**
- * Wallet signup creates a zero-balance organization and its owner atomically.
- * Database triggers exercise rollback and retry behavior against real PGlite transactions.
+ * Wallet signup creates an opening-balance organization and its owner atomically.
+ * Database triggers exercise rollback, retry, and legacy orphan adoption against real PGlite transactions.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
@@ -118,14 +118,14 @@ beforeEach(async () => {
   await flushWalletLookupCache();
 });
 
-describe("wallet signup atomic zero-balance creation", () => {
+describe("wallet signup atomic opening-balance creation", () => {
   test("PGlite harness is available", () => {
     if (!pgliteReady) throw pgliteError;
     expect(pgliteReady).toBe(true);
   });
 
   test(
-    "EVM signup rolls back the organization when owner creation fails, then retries at $0",
+    "EVM signup rolls back the organization when owner creation fails, then creates an unfunded account on retry",
     async () => {
       if (!pgliteReady) throw pgliteError;
 
@@ -152,7 +152,7 @@ describe("wallet signup atomic zero-balance creation", () => {
   );
 
   test(
-    "Solana signup rolls back the organization when owner creation fails, then retries at $0",
+    "Solana signup rolls back the organization when owner creation fails, then creates an unfunded account on retry",
     async () => {
       if (!pgliteReady) throw pgliteError;
 
@@ -181,7 +181,7 @@ describe("wallet signup atomic zero-balance creation", () => {
   );
 
   test(
-    "a pre-existing zero-balance wallet organization is adopted without a credit write",
+    "a legacy zero-balance wallet organization is adopted without adding signup funds",
     async () => {
       if (!pgliteReady) throw pgliteError;
 
@@ -202,6 +202,23 @@ describe("wallet signup atomic zero-balance creation", () => {
       expect(await countRows("users")).toBe(1);
       expect(await countRows("credit_transactions")).toBe(0);
       expect(await orgBalanceBySlug(slug)).toBe(0);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test.each(["5.00", "42.25"])(
+    "adopting an existing wallet organization preserves its %s balance without a new grant",
+    async (balance) => {
+      if (!pgliteReady) throw pgliteError;
+      const slug = `wallet-${EVM_ADDRESS_2.toLowerCase()}`;
+      await dbWrite.execute(
+        `INSERT INTO organizations (name, slug, credit_balance) VALUES ('Funded', '${slug}', '${balance}');`,
+      );
+      const result = await walletSignup.findOrCreateUserByWalletAddress(EVM_ADDRESS_2);
+      expect(result.initialCreditsGranted).toBe(false);
+      expect(result.initialFreeCreditsUsd).toBe(0);
+      expect(await orgBalanceBySlug(slug)).toBe(Number(balance));
+      expect(await countRows("credit_transactions")).toBe(0);
     },
     PGLITE_TIMEOUT,
   );

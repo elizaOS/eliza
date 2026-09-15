@@ -4,10 +4,16 @@
  * travel-buffer computation, so the calendar handler receives those capabilities
  * through this typed dependency object instead of importing LifeOps internals.
  */
-import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import type {
+  GroundedActionReply,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
 import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,
+  LifeOpsCalendarAllDayRange,
   LifeOpsCalendarEvent,
   LifeOpsCalendarRecurrenceScope,
 } from "@elizaos/shared";
@@ -150,6 +156,7 @@ export interface CalendarMutationUpdateRequest {
   readonly location?: string;
   readonly startAt?: string;
   readonly endAt?: string;
+  readonly allDay?: LifeOpsCalendarAllDayRange;
   readonly timeZone?: string;
   readonly attendees?: CreateLifeOpsCalendarEventAttendee[];
   readonly recurrence?: string[];
@@ -216,10 +223,12 @@ export interface CalendarActionDeps {
   }): Promise<string[]>;
   /**
    * Render the final human-facing reply through the host's model boundary.
-   * Hosts that omit this optional presentation seam receive the canonical,
-   * already-grounded action reply without changing action settlement.
+   * Missing or unavailable rendering preserves action settlement and returns a
+   * typed reply failure; canonical context is never substituted as model prose.
    */
-  renderGroundedReply?(args: CalendarGroundedReplyArgs): Promise<string>;
+  renderGroundedReply?(
+    args: CalendarGroundedReplyArgs,
+  ): Promise<GroundedActionReply>;
   /** Optional travel-buffer integration (LifeOps travel domain). */
   travelBuffer?: CalendarTravelBufferDep;
   /**

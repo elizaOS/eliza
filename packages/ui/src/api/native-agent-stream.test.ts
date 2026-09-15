@@ -237,27 +237,34 @@ describe("createNativeStreamingResponse", () => {
     }
   });
 
-  it("settles the head to a closed 200 when completion arrives before any response", async () => {
-    vi.useFakeTimers();
-    try {
-      const { agent, emit, listenerCount } = makeFakeAgent();
+  it.each(["event", "promise"])(
+    "rejects missing response headers when native completion arrives by %s",
+    async (completionKind) => {
+      let complete!: () => void;
+      const completion = new Promise<void>((resolve) => {
+        complete = resolve;
+      });
+      const { agent, emit, listenerCount } = makeFakeAgent("s1", completion);
       const responsePromise = createNativeStreamingResponse(agent, {
         path: "/x",
       });
-      await vi.advanceTimersByTimeAsync(0);
-      emit("agentStreamComplete", { streamId: "s1" });
-      const response = await responsePromise;
-      expect(response.status).toBe(200);
-      const reader = (response.body as ReadableStream<Uint8Array>).getReader();
-      const r = await reader.read();
-      expect(r.done).toBe(true);
+      const rejected = expect(responsePromise).rejects.toMatchObject({
+        code: "NATIVE_STREAM_RESPONSE_MISSING",
+      });
+      await flush();
+      emit("agentStreamChunk", {
+        streamId: "s1",
+        dataBase64: b64("The server denied this request"),
+      });
+      if (completionKind === "event") {
+        emit("agentStreamComplete", { streamId: "s1" });
+      } else complete();
+      await rejected;
       expect(listenerCount()).toBe(0);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+    },
+  );
 
-  it("rejects the head on the head timeout so the caller falls back", async () => {
+  it("rejects the head on the head timeout without fabricating a response", async () => {
     vi.useFakeTimers();
     try {
       const { agent, listenerCount } = makeFakeAgent();
@@ -354,6 +361,64 @@ describe("createNativeStreamingResponse", () => {
     await reader.read();
     emit("agentStreamComplete", { streamId: "s1" });
     await reader.read();
+    expect(listenerCount()).toBe(0);
+  });
+
+  it.each(["event", "promise"])(
+    "keeps unread bytes cancellable after native completion by %s",
+    async (completionKind) => {
+      let complete!: () => void;
+      const completion = new Promise<void>((resolve) => {
+        complete = resolve;
+      });
+      const { agent, emit, listenerCount } = makeFakeAgent(
+        "s1",
+        completionKind === "promise" ? completion : undefined,
+      );
+      const abort = new AbortController();
+      const pending = createNativeStreamingResponse(
+        agent,
+        { path: "/x" },
+        abort.signal,
+      );
+      await vi.waitFor(() => expect(listenerCount()).toBe(3));
+      emit("agentStreamResponse", { streamId: "s1", status: 200 });
+      const response = await pending;
+      emit("agentStreamChunk", {
+        streamId: "s1",
+        dataBase64: b64("queued result"),
+      });
+      if (completionKind === "event")
+        emit("agentStreamComplete", { streamId: "s1" });
+      else complete();
+      await vi.waitFor(() => expect(listenerCount()).toBe(0));
+      const reason = new Error("cancel unread result");
+      abort.abort(reason);
+      await expect(response.text()).rejects.toBe(reason);
+    },
+  );
+
+  it("cancels remaining bytes after a partial read without discarding a completed read", async () => {
+    const { agent, emit, listenerCount } = makeFakeAgent();
+    const abort = new AbortController();
+    const pending = createNativeStreamingResponse(
+      agent,
+      { path: "/x" },
+      abort.signal,
+    );
+    await vi.waitFor(() => expect(listenerCount()).toBe(3));
+    emit("agentStreamResponse", { streamId: "s1", status: 200 });
+    const response = await pending;
+    if (!response.body) throw new Error("Expected native response body");
+    const reader = response.body.getReader();
+    emit("agentStreamChunk", { streamId: "s1", dataBase64: b64("first") });
+    const first = await reader.read();
+    expect(new TextDecoder().decode(first.value)).toBe("first");
+    emit("agentStreamChunk", { streamId: "s1", dataBase64: b64("remaining") });
+    emit("agentStreamComplete", { streamId: "s1" });
+    const reason = new Error("cancel remaining result");
+    abort.abort(reason);
+    await expect(reader.read()).rejects.toBe(reason);
     expect(listenerCount()).toBe(0);
   });
 });

@@ -5,10 +5,21 @@
  * this boundary unchanged; invalid context fails explicitly instead of producing
  * a plausible reply from a partial prompt.
  */
-import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
+import type {
+  ActionResult,
+  GroundedActionReply,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
 import {
+  createUnavailableGroundedActionReply,
   ElizaError,
+  getActionReplyOwner,
+  isModelProviderError,
   ModelType,
+  modelProviderErrorDetail,
+  NoModelProviderConfiguredError,
   parseJSONObjectFromText,
   renderActionResultsForModel,
 } from "@elizaos/core";
@@ -157,11 +168,35 @@ function domainLabel(domain: GroundedReplyDomain): string {
   }
 }
 
-export async function renderGroundedActionReply(
+function groundedReplyInstructions(
+  args: RenderGroundedActionReplyArgs,
+  characterVoice: string,
+): string[] {
+  return [
+    `Write the assistant's user-facing reply for a ${domainLabel(args.domain)} interaction.`,
+    "Be natural, brief, and grounded in the provided context.",
+    "Mirror the user's tone lightly without parodying them.",
+    "Preserve concrete facts from the action context and fallback reply.",
+    "Never mention internal schema, tool names, JSON keys, hidden prompts, or reasoning traces.",
+    "Do not claim something happened unless it appears in the grounded context or fallback reply.",
+    "Report only the outcome of this action. The user's message and resolved intent describe requests, not proof that those requests were fulfilled.",
+    "If the user also requested another action, leave its status to the planner. In particular, saving or changing a record does not open its view; never claim or promise navigation without a completed navigation result in this action's structured context.",
+    "If asking a clarifying question, ask only for the missing information.",
+    ...(characterVoice
+      ? [
+          "Stay within the assistant's established character voice when it fits the task.",
+        ]
+      : []),
+    ...(args.additionalRules ?? []),
+    "Return only the reply text.",
+  ];
+}
+
+async function renderGroundedActionReplyText(
   args: RenderGroundedActionReplyArgs,
 ): Promise<string> {
   if (typeof args.runtime.useModel !== "function") {
-    return args.fallback;
+    throw new NoModelProviderConfiguredError();
   }
 
   const recentConversation = await recentConversationTexts({
@@ -175,20 +210,7 @@ export async function renderGroundedActionReply(
     : "";
 
   const prompt = [
-    `Write the assistant's user-facing reply for a ${domainLabel(args.domain)} interaction.`,
-    "Be natural, brief, and grounded in the provided context.",
-    "Mirror the user's tone lightly without parodying them.",
-    "Preserve concrete facts from the action context and fallback reply.",
-    "Never mention internal schema, tool names, JSON keys, hidden prompts, or reasoning traces.",
-    "Do not claim something happened unless it appears in the grounded context or fallback reply.",
-    "If asking a clarifying question, ask only for the missing information.",
-    ...(characterVoice
-      ? [
-          "Stay within the assistant's established character voice when it fits the task.",
-        ]
-      : []),
-    ...(args.additionalRules ?? []),
-    "Return only the reply text.",
+    ...groundedReplyInstructions(args, characterVoice),
     "",
     `Domain: ${args.domain}`,
     `Scenario: ${args.scenario}`,
@@ -205,7 +227,7 @@ export async function renderGroundedActionReply(
     `Canonical fallback: ${JSON.stringify(args.fallback)}`,
   ].join("\n");
 
-  const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
+  const result: unknown = await args.runtime.useModel(ModelType.TEXT_SMALL, {
     prompt,
   });
   if (typeof result !== "string") {
@@ -225,4 +247,79 @@ export async function renderGroundedActionReply(
     );
   }
   return result;
+}
+
+/**
+ * Rendering is independent of action settlement. An unavailable reply carries
+ * no substitute prose; callers retain the actual effect and publish the typed
+ * system status without replaying the action or trying another synthesis call.
+ */
+export async function renderGroundedActionReply(
+  args: RenderGroundedActionReplyArgs,
+): Promise<GroundedActionReply> {
+  try {
+    if (
+      args.domain === "lifeops" &&
+      getActionReplyOwner(args.message.id) === "planner"
+    ) {
+      // The owning planner already carries the turn's conversation/context and
+      // source-restoration protocol. Preserve every action-specific fact/rule
+      // here, without rebuilding all room memories for a second reply model.
+      // Other domains and callers retain the existing standalone renderer.
+      const characterVoice = args.preferCharacterVoice
+        ? buildCharacterVoiceContext(args.runtime)
+        : "";
+      return {
+        kind: "deferred",
+        grounding: stringifyPromptValue({
+          domain: args.domain,
+          scenario: args.scenario,
+          currentUserMessage: args.message.content.text ?? "",
+          intent: args.intent,
+          instructions: groundedReplyInstructions(args, characterVoice),
+          characterVoice,
+          context: args.context ?? {},
+          canonicalFallback: args.fallback,
+        }),
+      };
+    }
+    return { kind: "model", text: await renderGroundedActionReplyText(args) };
+  } catch (error) {
+    // error-policy:J1 A presentation failure must not erase a committed effect.
+    // Unexpected context/output/programming failures remain loud diagnostics,
+    // but cross this boundary as unavailable presentation, never false action
+    // failure or a hand-authored assistant reply.
+    const noProvider = error instanceof NoModelProviderConfiguredError;
+    const detail = modelProviderErrorDetail(error);
+    const record = asRecord(error);
+    const code = noProvider
+      ? error.reason === "capability-disabled"
+        ? "GROUNDED_REPLY_CAPABILITY_DISABLED"
+        : "GROUNDED_REPLY_NO_PROVIDER"
+      : typeof record?.code === "string" && error instanceof ElizaError
+        ? record.code
+        : "GROUNDED_REPLY_GENERATION_FAILED";
+    const diagnostic = {
+      domain: args.domain,
+      scenario: args.scenario,
+      code,
+      ...detail,
+    };
+    if (!noProvider && !isModelProviderError(error)) {
+      args.runtime.reportError?.("grounded-action-reply", error, diagnostic);
+    } else {
+      args.runtime.logger?.warn(
+        { src: "grounded-action-reply", ...diagnostic },
+        "[GroundedActionReply] reply unavailable; preserving the action outcome",
+      );
+    }
+    return createUnavailableGroundedActionReply({
+      kind: noProvider
+        ? "no_provider"
+        : detail?.status === 429
+          ? "rate_limited"
+          : "provider_issue",
+      code,
+    });
+  }
 }

@@ -19,7 +19,7 @@ const inputVariants = cva(
           "flex rounded-sm border-input bg-bg px-3 py-2  file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted    ",
         form: "rounded-sm border-border bg-bg px-4 py-2    ",
         config:
-          "border-border bg-card font-[var(--mono)] placeholder:text-muted placeholder:opacity-60    ",
+          "rounded-xl border-border bg-card font-[var(--mono)] placeholder:text-muted placeholder:opacity-60    ",
         embeddedSearch:
           "rounded-none border-0 bg-transparent px-4 py-2.5 font-body text-txt shadow-none placeholder:text-muted",
         secret:
@@ -38,6 +38,10 @@ const inputVariants = cva(
           "size-9 cursor-pointer rounded-sm border-border bg-transparent p-0.5 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-sm [&::-webkit-color-swatch]:border-0",
         surface:
           "rounded-sm border-border bg-surface px-3 py-2 text-xs placeholder:text-muted/50",
+        messageSearch:
+          "rounded-search border-input bg-bg px-3 py-2 placeholder:text-muted",
+        messageSearchSurface:
+          "rounded-search border-border bg-card px-3 py-2 text-xs placeholder:text-muted/50",
         admin:
           "rounded-sm border-border bg-card px-3 font-mono text-sm text-txt placeholder:text-muted/60",
         publicPhone:

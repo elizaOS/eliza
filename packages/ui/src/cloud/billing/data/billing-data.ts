@@ -18,6 +18,8 @@ import { BILLING_SNAPSHOT_V2_QUERY_KEY } from "./billing-snapshot";
 
 interface AuthGate {
   enabled: boolean;
+  isReady: boolean;
+  isAuthenticated: boolean;
   userId: string | null;
 }
 
@@ -25,6 +27,8 @@ function useAuthGate(enabled = true): AuthGate {
   const session = useSessionAuth();
   return {
     enabled: enabled && session.ready && session.authenticated,
+    isReady: session.ready,
+    isAuthenticated: session.authenticated,
     userId: session.user?.id ?? null,
   };
 }
@@ -68,7 +72,8 @@ export function useBillingUser(
   return {
     ...query,
     user: query.data ?? null,
-    isAuthenticated: gate.enabled,
+    isReady: gate.isReady,
+    isAuthenticated: gate.isAuthenticated,
   };
 }
 
@@ -131,7 +136,7 @@ export function useInvoice(
 ) {
   const gate = useAuthGate(Boolean(id && organizationId));
   return useQuery({
-    queryKey: authKey(["invoice", id], gate),
+    queryKey: authKey(["invoice", id, "organization", organizationId], gate),
     queryFn: async () => {
       if (!id) throw new ApiError(400, "MISSING_ID", "Invoice ID is required");
       if (!organizationId) {

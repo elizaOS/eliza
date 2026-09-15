@@ -4,7 +4,7 @@
  * getLastFailedPluginDetails() accessor from @elizaos/agent (and that an empty
  * accessor yields no failures), exercised against a real temp state dir.
  */
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -30,6 +30,58 @@ describe("buildBootHistoryPayload — failed plugins", () => {
     getLastFailedPluginDetails.mockReset();
     getLastFailedPluginDetails.mockReturnValue([]);
   });
+
+  it("reads complete persisted telemetry from the supplied state directory", async () => {
+    const stateDir = await mkdtemp(path.join(tmpdir(), "eliza-boot-history-"));
+    try {
+      const record = {
+        phases: [{ name: "plugins", durationMs: 17 }],
+        detail: "x".repeat(10000),
+      };
+      await mkdir(path.join(stateDir, "telemetry", "boot"), {
+        recursive: true,
+      });
+      await writeFile(
+        path.join(stateDir, "telemetry", "boot", "latest.json"),
+        JSON.stringify(record),
+      );
+      const payload = await buildBootHistoryPayload({
+        ELIZA_STATE_DIR: stateDir,
+      });
+      expect(payload.latestBoot).toEqual(record);
+      expect(payload.memory).toBeNull();
+      expect(payload.restarts).toBeNull();
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["malformed", "directory"])(
+    "rejects %s telemetry instead of reporting absent history",
+    async (kind) => {
+      const stateDir = await mkdtemp(
+        path.join(tmpdir(), "eliza-boot-history-"),
+      );
+      const filePath = path.join(stateDir, "telemetry", "boot", "latest.json");
+      try {
+        await mkdir(path.dirname(filePath), { recursive: true });
+        if (kind === "directory") await mkdir(filePath);
+        else await writeFile(filePath, "{broken");
+        await expect(
+          buildBootHistoryPayload({ ELIZA_STATE_DIR: stateDir }),
+        ).rejects.toMatchObject({
+          code:
+            kind === "directory"
+              ? "BOOT_HISTORY_READ_FAILED"
+              : "BOOT_HISTORY_INVALID_JSON",
+          context: { filePath },
+          cause: expect.any(Error),
+        });
+      } finally {
+        await rm(stateDir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("surfaces failures returned by the agent accessor", async () => {
     const stateDir = await mkdtemp(path.join(tmpdir(), "eliza-boot-history-"));

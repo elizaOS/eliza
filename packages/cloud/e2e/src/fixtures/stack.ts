@@ -155,16 +155,24 @@ async function waitForTcp(
 
 async function waitForHttpOk(
   url: string,
-  opts: { timeoutMs?: number; intervalMs?: number; label?: string } = {},
+  opts: {
+    timeoutMs?: number;
+    intervalMs?: number;
+    requestTimeoutMs?: number;
+    label?: string;
+  } = {},
 ): Promise<void> {
   const timeoutMs = opts.timeoutMs ?? 90_000;
   const intervalMs = opts.intervalMs ?? 500;
+  const requestTimeoutMs = opts.requestTimeoutMs ?? 2_000;
   const label = opts.label ?? url;
   const start = Date.now();
   let lastErr: unknown;
   while (Date.now() - start < timeoutMs) {
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(2_000) });
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(requestTimeoutMs),
+      });
       if (res.status < 500) return;
       lastErr = new Error(`status ${res.status}`);
     } catch (err) {
@@ -294,6 +302,12 @@ export interface StartCloudStackOptions {
    */
   mockLlmEchoContext?: boolean;
   /**
+   * Expose the mock LLM as the Worker's OpenRouter-compatible gateway as well
+   * as its OpenAI-compatible provider. Defaults to false so OpenAI fault
+   * fixtures cannot silently fall back to the same loopback provider.
+   */
+  mockLlmOpenRouter?: boolean;
+  /**
    * Boot a stateful Stripe-compatible loopback provider. The Worker receives
    * the synthetic key and endpoint only under its explicit Cloud E2E gates.
    */
@@ -323,31 +337,37 @@ export async function startCloudStack(
   const pgDataDir = join(dataDir, "pgdata");
   await mkdir(pgDataDir, { recursive: true });
 
-  const hetznerPort = await pickFreePort();
-  const controlPlanePort = await pickFreePort();
   const pglitePort = await pickFreePort();
   const apiPort = opts.apiPort ?? (await pickFreePort());
   const frontendPort = opts.frontendPort ?? (await pickFreePort());
 
   // 1. In-process mocks
   const hetzner = await startHetznerMock({
-    port: hetznerPort,
+    // Let the listening server claim its ephemeral port atomically. Probing a
+    // free port and closing the probe first leaves a race with parallel CI.
+    port: 0,
     actionMs: Number(process.env.MOCK_HETZNER_ACTION_MS ?? "30"),
   });
   const controlPlane = await startControlPlaneMock({
-    port: controlPlanePort,
+    port: 0,
     hetznerUrl: hetzner.url,
     tickMs: Number(process.env.CONTROL_PLANE_TICK_MS ?? "50"),
   });
   const steward = await startStewardMock();
   const mockLlm =
-    opts.mockLlm || opts.mockLlmEchoContext
+    opts.mockLlm || opts.mockLlmEchoContext || opts.mockLlmOpenRouter
       ? await startMockLlm({ echoContext: opts.mockLlmEchoContext ?? false })
       : undefined;
   const mockLlmEnv: Record<string, string> = mockLlm
     ? {
         OPENAI_API_KEY: "mock-llm-key",
         OPENAI_BASE_URL: mockLlm.url,
+        ...(opts.mockLlmOpenRouter
+          ? {
+              OPENROUTER_API_KEY: "mock-llm-key",
+              OPENROUTER_BASE_URL: mockLlm.url,
+            }
+          : {}),
       }
     : {};
   const sharedEnv = buildSharedEnv(
@@ -505,7 +525,7 @@ export async function startCloudStack(
         spawnLogged(
           "frontend",
           BUN,
-          ["run", "dev", "--", "--host", "127.0.0.1"],
+          ["run", "dev", "--", "--host", "127.0.0.1", "--cloud-target=offline"],
           {
             env: frontendEnv,
             cwd: frontendDir,
@@ -519,6 +539,10 @@ export async function startCloudStack(
     await withFakeStripeBootstrapRollback(fakeStripe, () =>
       waitForHttpOk(frontendUrl, {
         timeoutMs: 120_000,
+        // The first Vite document request may wait for dependency optimization
+        // and source transforms; aborting it every two seconds prevents the
+        // readiness probe itself from ever observing a healthy cold start.
+        requestTimeoutMs: 60_000,
         label: "frontend",
       }),
     );

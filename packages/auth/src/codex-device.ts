@@ -65,15 +65,31 @@ export function codexDeviceLoginUsesShell(
   return platform === "win32";
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isNonBlankString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 function expiryFromJwt(token: string): number {
   try {
-    const payload = JSON.parse(
+    const payload: unknown = JSON.parse(
       Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"),
-    ) as { exp?: unknown };
-    if (typeof payload.exp !== "number" || !Number.isFinite(payload.exp)) {
-      throw new Error("Codex access token has no finite exp claim");
+    );
+    if (!isRecord(payload)) {
+      throw new Error("Codex access token payload must be an object");
     }
-    return payload.exp * 1000;
+    const exp = payload.exp;
+    if (typeof exp !== "number" || !Number.isFinite(exp) || exp <= 0) {
+      throw new Error("Codex access token has no positive finite exp claim");
+    }
+    const expires = exp * 1000;
+    if (!Number.isFinite(expires) || expires <= 0) {
+      throw new Error("Codex access token expiry exceeds the numeric range");
+    }
+    return expires;
   } catch (cause) {
     // error-policy:J2 context-adding rethrow — fabricating an expiry can make an
     // invalid token look healthy and delay required reauthentication.
@@ -231,26 +247,33 @@ export function startCodexDeviceLogin(): Promise<CodexDeviceFlow> {
       }
       let parsedCredentials: OAuthCredentials;
       try {
-        const parsed = JSON.parse(
+        const parsed: unknown = JSON.parse(
           readFileSync(path.join(codexHome, "auth.json"), "utf8"),
-        ) as {
-          tokens?: {
-            access_token?: string;
-            refresh_token?: string;
-            id_token?: string;
-          };
-        };
-        const access = parsed.tokens?.access_token;
-        const refresh = parsed.tokens?.refresh_token;
-        if (!access || !refresh)
-          throw new Error("Codex device login returned no tokens");
+        );
+        if (!isRecord(parsed) || !isRecord(parsed.tokens)) {
+          throw new Error("Codex device login returned no token object");
+        }
+        const access = parsed.tokens.access_token;
+        const refresh = parsed.tokens.refresh_token;
+        const rawIdToken = parsed.tokens.id_token;
+        if (!isNonBlankString(access) || !isNonBlankString(refresh)) {
+          throw new Error(
+            "Codex device login returned invalid access or refresh tokens",
+          );
+        }
+        if (
+          rawIdToken !== undefined &&
+          rawIdToken !== null &&
+          typeof rawIdToken !== "string"
+        ) {
+          throw new Error("Codex device login returned an invalid ID token");
+        }
+        const idToken = rawIdToken || undefined;
         parsedCredentials = {
           access,
           refresh,
           expires: expiryFromJwt(access),
-          ...(parsed.tokens?.id_token
-            ? { idToken: parsed.tokens.id_token }
-            : {}),
+          ...(idToken ? { idToken } : {}),
         };
       } catch (cause) {
         // error-policy:J2 context-adding translation — credential-file and JWT

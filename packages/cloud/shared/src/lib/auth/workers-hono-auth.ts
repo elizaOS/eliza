@@ -48,6 +48,12 @@ function looksLikeJwt(token: string): boolean {
   return parts.length === 3 && parts.every((p) => p.length > 0);
 }
 
+/** Returns the Steward JWT presented by a browser session, never an API key. */
+export function readStewardSessionToken(c: AppContext): string | null {
+  const bearer = readBearer(c);
+  return bearer && looksLikeJwt(bearer) ? bearer : readStewardCookie(c);
+}
+
 function isLoopbackHostname(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
 }
@@ -235,15 +241,21 @@ export async function getCurrentUser(c: AppContext): Promise<AuthedUser | null> 
     return testUser;
   }
 
-  const bearer = readBearer(c);
-  const cookieToken = readStewardCookie(c);
-  const token = bearer && looksLikeJwt(bearer) ? bearer : cookieToken;
+  const token = readStewardSessionToken(c);
 
   if (!token) {
     c.set("user", null);
     return null;
   }
 
+  return getCurrentUserForStewardToken(c, token);
+}
+
+/** Resolves a user from an already-selected Steward session credential. */
+export async function getCurrentUserForStewardToken(
+  c: AppContext,
+  token: string,
+): Promise<AuthedUser | null> {
   const claims = await verifyStewardTokenCached(c.env, token);
   if (!claims) {
     c.set("user", null);

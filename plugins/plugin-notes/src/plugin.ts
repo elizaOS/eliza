@@ -4,13 +4,18 @@
  * interaction transport to the shared VIEWS system.
  */
 
-import type { ContextDefinition, Plugin } from "@elizaos/core";
+import {
+  type ContextDefinition,
+  type Plugin,
+  promoteSubactionsToActions,
+} from "@elizaos/core";
 import { notesAction } from "./action.js";
 import { NOTES_CAPABILITIES } from "./capabilities.js";
 import { serverInteract } from "./interact.js";
 import { notesProvider } from "./provider.js";
 import { notesRoutes } from "./routes.js";
 import { NotesService } from "./service.js";
+import { NOTES_SURFACE } from "./surface.js";
 
 /**
  * Stage 1 classifies a turn into registered CONTEXTS, not actions: a context
@@ -23,7 +28,7 @@ const NOTES_CONTEXT: ContextDefinition = {
   id: "notes",
   label: "Notes",
   description:
-    "The user's saved notes — short facts and reminders-to-self they asked to write down ('note that…', 'jot this down') and read back ('what notes do i have', 'do i have a note about…', 'what did my note say'). Covers reading, searching, updating, and deleting those notes. A note is not a long-form document, not a todo, and not a calendar event; a notes read must never classify as documents, contacts, or memory.",
+    "The user's saved Notes records, including temporary or titled notes. All Notes record operations use context notes and a promoted action candidate: create -> NOTES_CREATE; read an exact ID -> NOTES_GET; search, list, or count -> NOTES_LIST; edit or replace -> NOTES_UPDATE; remove -> NOTES_DELETE. Name the matching child instead of the NOTES umbrella so its required fields reach the planner. Explicit Notes records belong here; generic requests to remember durable facts or preferences use memory, and document/file work uses documents. A note is not a todo or calendar event. Add a navigation candidate only when opening the view is also requested: prefer VIEWS_SHOW when available; use VIEWS for layouts or discovery.",
   descriptionCompressed:
     "User's saved notes: write down, read back, search, update, delete",
   sensitivity: "personal",
@@ -39,7 +44,11 @@ export const notesPlugin: Plugin = {
   async init(_config, runtime) {
     runtime.contexts.tryRegister(NOTES_CONTEXT);
   },
-  actions: [notesAction],
+  actions: [
+    ...promoteSubactionsToActions(notesAction, {
+      overrides: { get: { similes: ["NOTES_GET_NOTE"] } },
+    }),
+  ],
   providers: [notesProvider],
   services: [NotesService],
   routes: notesRoutes,
@@ -62,10 +71,12 @@ export const notesPlugin: Plugin = {
         "scratchpad",
         "view switching",
       ],
+      responseContext: { primaryContext: "notes" },
       bundlePath: "dist/views/bundle.js",
       componentExport: "NotesView",
-      surface: { header: "fullscreen" },
+      surface: NOTES_SURFACE,
       capabilities: NOTES_CAPABILITIES,
+      relatedActions: ["NOTES"],
       serverInteract,
       visibleInManager: true,
       desktopTabEnabled: true,

@@ -48,9 +48,9 @@ function PipelineConnector({ dimmed }: { dimmed?: boolean }) {
       className={`flex items-center ${dimmed ? "opacity-30" : "opacity-60"}`}
     >
       <svg
-        width="36"
+        width="24"
         height="12"
-        viewBox="0 0 36 12"
+        viewBox="0 0 24 12"
         fill="none"
         className="shrink-0"
         aria-hidden="true"
@@ -59,14 +59,14 @@ function PipelineConnector({ dimmed }: { dimmed?: boolean }) {
         <line
           x1="0"
           y1="6"
-          x2="28"
+          x2="17"
           y2="6"
           stroke="currentColor"
           strokeWidth="1.5"
           className="text-muted"
         />
         <path
-          d="M28 2 L34 6 L28 10"
+          d="M17 2 L23 6 L17 10"
           stroke="currentColor"
           strokeWidth="1.5"
           strokeLinecap="round"
@@ -91,9 +91,11 @@ function PipelineNodeButton({
   const Icon = node.icon;
 
   const iconColor = {
-    active: selected ? "text-accent-fg" : "text-muted-strong",
-    skipped: "text-muted/50",
-    error: "text-danger/80",
+    active: selected
+      ? "text-[color:var(--settings-foreground)]"
+      : "text-[color:var(--settings-muted)]",
+    skipped: "text-[color:var(--settings-muted)] opacity-50",
+    error: selected ? "text-accent-foreground" : "text-danger",
   };
 
   const countTone = {
@@ -108,23 +110,26 @@ function PipelineNodeButton({
       size="card"
       data-state={selected ? "on" : "off"}
       onClick={onClick}
-      className="min-w-[90px] items-center"
+      className="min-w-[6.5rem] items-center"
     >
       <Icon className={`size-5 ${iconColor[node.status]}`} />
-      <span
-        className={`text-2xs font-semibold uppercase tracking-[0.12em] whitespace-nowrap ${
-          selected ? "text-accent-fg" : "text-muted-strong"
-        }`}
-      >
+      <span className="whitespace-nowrap text-xs font-medium">
         {node.label}
       </span>
       <Badge
-        variant="secondary"
+        asChild
+        variant={
+          node.status === "error" && selected ? "destructive" : "secondary"
+        }
         size="compact"
-        tone={countTone[node.status]}
-        className="px-2 py-0.5 text-2xs font-bold leading-none"
+        tone={
+          node.status === "error" && selected
+            ? "default"
+            : countTone[node.status]
+        }
+        className="px-2 py-0.5 text-xs font-medium normal-case leading-none"
       >
-        {node.id === "input" ? "\u2713" : node.callCount}
+        <span>{node.id === "input" ? "Ready" : `${node.callCount} calls`}</span>
       </Badge>
     </Button>
   );
@@ -140,7 +145,7 @@ export function TrajectoryPipelineGraph({
   onStageClick,
 }: TrajectoryPipelineGraphProps) {
   return (
-    <div className="flex items-center gap-1 overflow-x-auto py-1">
+    <div className="flex items-center overflow-x-auto py-1">
       {nodes.map((node, i) => (
         <div key={node.id} className="contents">
           {i > 0 && (

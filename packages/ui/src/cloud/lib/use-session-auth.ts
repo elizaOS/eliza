@@ -15,13 +15,14 @@
 
 import { Capacitor } from "@capacitor/core";
 import { getElizaApiToken } from "@elizaos/shared";
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import { useContext, useEffect, useState } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config";
 import {
   LocalStewardAuthContext,
   type LocalStewardAuthValue,
+  tokenIsExpired,
 } from "../shell/StewardProvider";
 import { normalizeCloudApiKeyToken } from "./cloud-api-key-token";
 import { decodeJwtPayload } from "./jwt";
@@ -114,7 +115,6 @@ function decodeStewardToken(token: string): {
   id: string;
   email: string;
   walletAddress?: string;
-  exp?: number;
 } | null {
   const payload = decodeJwtPayload(token);
   if (!payload) return null;
@@ -122,7 +122,6 @@ function decodeStewardToken(token: string): {
     id: payload.userId ?? payload.sub ?? "",
     email: payload.email ?? "",
     walletAddress: payload.address ?? undefined,
-    exp: payload.exp,
   };
 }
 
@@ -130,11 +129,15 @@ function decodeStewardToken(token: string): {
 function readStewardSessionFromStorage(): StewardSessionUser {
   if (typeof window === "undefined") return null;
   try {
-    const token = localStorage.getItem(STEWARD_TOKEN_KEY);
+    const token = readStoredStewardToken();
     if (!token) return null;
+    // Keep reload-time identity gating aligned with the canonical Steward
+    // validator. Steward always issues `exp`; accepting an expiry-less foreign
+    // or malformed JWT here would falsely open authenticated Cloud surfaces
+    // until the provider runtime eventually rejects it.
+    if (tokenIsExpired(token)) return null;
     const decoded = decodeStewardToken(token);
     if (!decoded?.id) return null;
-    if (decoded.exp && decoded.exp * 1000 < Date.now()) return null;
     return {
       id: decoded.id,
       email: decoded.email,
@@ -195,17 +198,19 @@ export function useSessionAuth(): SessionAuthState {
     };
   }, []);
 
-  const providerUser: StewardSessionUser = providerAuth.user
-    ? {
-        id: providerAuth.user.id,
-        email: providerAuth.user.email ?? "",
-        walletAddress: providerAuth.user.walletAddress,
-      }
-    : null;
+  const providerUserId = providerAuth.user?.id.trim();
+  const providerUser: StewardSessionUser =
+    providerAuth.isAuthenticated && providerAuth.user && providerUserId
+      ? {
+          id: providerUserId,
+          email: providerAuth.user.email ?? "",
+          walletAddress: providerAuth.user.walletAddress,
+        }
+      : null;
 
   const user = providerUser ?? storageUser ?? apiKeyUser ?? testUser;
   const authenticated =
-    providerAuth.isAuthenticated ||
+    providerUser !== null ||
     storageUser !== null ||
     apiKeyUser !== null ||
     testUser !== null;

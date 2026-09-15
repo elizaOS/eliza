@@ -18,9 +18,6 @@ import { apps } from "@/db/schemas";
 import { type AppConfig, appConfig } from "@/db/schemas/app-config";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
-import { discordAppAutomationService } from "@/lib/services/discord-automation/app-automation";
-import { telegramAppAutomationService } from "@/lib/services/telegram-automation/app-automation";
-import { twitterAppAutomationService } from "@/lib/services/twitter-automation/app-automation";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -53,6 +50,30 @@ interface ProcessResult {
   success: boolean;
   messageId?: string;
   error?: string;
+}
+
+const MISSING_SCHEDULED_ADMISSION =
+  "Scheduled AI generation requires a persisted delegated admission context";
+
+function rejectUntrustedScheduledGeneration(
+  app: App,
+  platform: ProcessResult["platform"],
+): ProcessResult {
+  logger.warn("[SocialAutomation Cron] Blocked scheduled provider generation", {
+    appId: app.id,
+    organizationId: app.organization_id,
+    createdByUserId: app.created_by_user_id,
+    apiKeyId: app.api_key_id,
+    platform,
+    reason: "missing_delegated_admission_snapshot",
+  });
+  return {
+    appId: app.id,
+    appName: app.name,
+    platform,
+    success: false,
+    error: MISSING_SCHEDULED_ADMISSION,
+  };
 }
 
 /**
@@ -145,19 +166,9 @@ async function processDiscordAutomation({
   const isDue = isAnnouncementDue(automationConfig, "announcement", app.id);
   if (!isDue) return null;
 
-  const result = await discordAppAutomationService.postAnnouncement(
-    app.organization_id,
-    app.id,
-  );
-
-  return {
-    appId: app.id,
-    appName: app.name,
-    platform: "discord",
-    success: result.success,
-    messageId: result.messageId,
-    error: result.error,
-  };
+  // App ownership columns identify a candidate principal, but do not prove
+  // current standing or carry the combined cache snapshot required to admit.
+  return rejectUntrustedScheduledGeneration(app, "discord");
 }
 
 async function processTelegramAutomation({
@@ -171,19 +182,7 @@ async function processTelegramAutomation({
   const isDue = isAnnouncementDue(automationConfig, "announcement", app.id);
   if (!isDue) return null;
 
-  const result = await telegramAppAutomationService.postAnnouncement(
-    app.organization_id,
-    app.id,
-  );
-
-  return {
-    appId: app.id,
-    appName: app.name,
-    platform: "telegram",
-    success: result.success,
-    messageId: result.messageId?.toString(),
-    error: result.error,
-  };
+  return rejectUntrustedScheduledGeneration(app, "telegram");
 }
 
 async function processTwitterAutomation({
@@ -196,19 +195,7 @@ async function processTwitterAutomation({
   const isDue = isAnnouncementDue(automationConfig, "post", app.id);
   if (!isDue) return null;
 
-  const result = await twitterAppAutomationService.postAppTweet(
-    app.organization_id,
-    app.id,
-  );
-
-  return {
-    appId: app.id,
-    appName: app.name,
-    platform: "twitter",
-    success: result.success,
-    messageId: result.tweetId,
-    error: result.error,
-  };
+  return rejectUntrustedScheduledGeneration(app, "twitter");
 }
 
 /**

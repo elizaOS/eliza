@@ -10,6 +10,7 @@
  * access gates, credential refs) are never accepted from HTTP bodies, and
  * secret-shaped metadata keys are stripped on write and redacted on read.
  */
+
 import type http from "node:http";
 import {
   CONNECTOR_JSON_UNBOUNDED,
@@ -31,6 +32,7 @@ import {
   parseCanonicalInteger,
   type ReadJsonBodyOptions,
 } from "@elizaos/shared";
+import { extractRows } from "@elizaos/shared/db/raw-sql";
 import type { infer as ZodInfer } from "zod";
 import * as zod from "zod";
 import {
@@ -73,6 +75,7 @@ export interface ConnectorAccountRouteAuthorizationRequest {
 }
 
 const CONNECTORS_PREFIX = "/api/connectors/";
+const OAUTH_REDIRECT_STATUS = 303;
 
 const metadataSchema = z.record(z.string(), z.unknown()).optional();
 const privacyLevelSchema = z.enum([
@@ -109,6 +112,77 @@ const CLIENT_RESERVED_METADATA_KEYS = new Set([
   "role",
   "status",
 ]);
+
+function configuredConnectorOrigin(ctx: ConnectorAccountRouteContext): string {
+  const configuredExternalBase = ctx.state.runtime?.getSetting?.(
+    "ELIZA_EXTERNAL_BASE_URL",
+  );
+  if (
+    typeof configuredExternalBase === "string" &&
+    configuredExternalBase.trim()
+  ) {
+    return configuredExternalBase.trim();
+  }
+  return resolveDirectRequestOrigin(ctx.req);
+}
+
+function nonEmptyMetadataString(
+  metadata: Metadata | undefined,
+  key: string,
+): string | undefined {
+  const value = metadata?.[key];
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
+/**
+ * OAuth return targets come from the initiating browser and are persisted in
+ * flow metadata. Treat them as untrusted at the callback boundary: only an
+ * http(s) target on the exact externally served origin may become a Location
+ * header. Root-relative paths are resolved against that same authority.
+ */
+function resolveSafeConnectorOAuthReturnUrl(
+  value: unknown,
+  servedOrigin: string,
+): string | null {
+  if (typeof value !== "string" || !value.trim() || !servedOrigin) return null;
+  try {
+    const served = new URL(servedOrigin);
+    if (
+      (served.protocol !== "http:" && served.protocol !== "https:") ||
+      served.username !== "" ||
+      served.password !== ""
+    ) {
+      return null;
+    }
+    const target = new URL(value.trim(), served.origin);
+    if (
+      (target.protocol !== "http:" && target.protocol !== "https:") ||
+      target.username !== "" ||
+      target.password !== "" ||
+      target.origin !== served.origin
+    ) {
+      return null;
+    }
+    return target.toString();
+  } catch {
+    // error-policy:J3 OAuth return targets are untrusted input; malformed or
+    // cross-origin values retain the normal JSON callback response.
+    return null;
+  }
+}
+
+function sendConnectorOAuthRedirect(
+  res: http.ServerResponse,
+  location: string,
+): void {
+  res.statusCode = OAUTH_REDIRECT_STATUS;
+  res.setHeader("Location", location);
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.end();
+}
 
 const accountInputSchema = z.object({
   id: z.string().trim().min(1).max(200).optional(),
@@ -575,25 +649,6 @@ interface ConnectorAccountAuditReader {
   };
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function extractRows(value: unknown): Record<string, unknown>[] {
-  if (Array.isArray(value)) {
-    return value
-      .map(asRecord)
-      .filter((row): row is Record<string, unknown> => row !== null);
-  }
-  const record = asRecord(value);
-  if (!record || !Array.isArray(record.rows)) return [];
-  return record.rows
-    .map(asRecord)
-    .filter((row): row is Record<string, unknown> => row !== null);
-}
-
 function sqlQuote(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
@@ -1050,16 +1105,7 @@ export async function handleConnectorAccountRoutes(
         // A configured external base is the authority behind a reverse proxy.
         // Otherwise use the direct TLS/Host request that passed the server Host
         // gate; arbitrary X-Forwarded-* headers must not bless a callback.
-        const configuredExternalBase = ctx.state.runtime?.getSetting?.(
-          "ELIZA_EXTERNAL_BASE_URL",
-        );
-        const normalizedExternalBase =
-          typeof configuredExternalBase === "string" &&
-          configuredExternalBase.trim()
-            ? configuredExternalBase.trim()
-            : undefined;
-        const servedOrigin =
-          normalizedExternalBase ?? resolveDirectRequestOrigin(req);
+        const servedOrigin = configuredConnectorOrigin(ctx);
         const flow = await manager.startOAuth(provider, {
           ...parsed.data,
           ...(servedOrigin ? { servedOrigin } : {}),
@@ -1117,6 +1163,22 @@ export async function handleConnectorAccountRoutes(
           body: body ?? undefined,
         });
         const serializedFlow = serializeFlow(result.flow);
+        if (method === "GET" && result.flow.status === "completed") {
+          const servedOrigin = configuredConnectorOrigin(ctx);
+          const redirectUrl =
+            resolveSafeConnectorOAuthReturnUrl(
+              result.redirectUrl,
+              servedOrigin,
+            ) ??
+            resolveSafeConnectorOAuthReturnUrl(
+              nonEmptyMetadataString(result.flow.metadata, "redirectUrl"),
+              servedOrigin,
+            );
+          if (redirectUrl) {
+            sendConnectorOAuthRedirect(res, redirectUrl);
+            return true;
+          }
+        }
         json(res, {
           provider,
           ok: true,

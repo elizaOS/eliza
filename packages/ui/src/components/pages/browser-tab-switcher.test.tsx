@@ -119,6 +119,9 @@ describe("BrowserTabFoldControl", () => {
       />,
     );
     const control = screen.getByTestId("browser-workspace-tab-fold-control");
+    expect(
+      screen.getByTestId("browser-workspace-tabs-icon").getAttribute("class"),
+    ).toContain("lucide-copy");
     expect(control.textContent).toContain("DuckDuckGo");
     expect(
       screen.getByTestId("browser-workspace-tab-count").textContent,
@@ -174,6 +177,25 @@ describe("BrowserTabSwitcher", () => {
     expect(
       within(dialog).getByRole("tablist", { name: "App Tabs" }),
     ).toBeTruthy();
+  });
+
+  it("uses a compact grid and hides the lone section label from sight", () => {
+    renderSwitcher({
+      folded: foldBrowserTabs(
+        [tab({ id: "solo", label: "Google", section: "user" })],
+        "solo",
+        SECTION_LABELS,
+      ),
+      activeTabId: "solo",
+    });
+    const dialog = screen.getByTestId("browser-workspace-tab-switcher");
+    const tablist = within(dialog).getByRole("tablist", { name: "User Tabs" });
+    expect(tablist.className).toContain("grid-cols-2");
+    expect(within(dialog).getByText("User Tabs").className).toContain(
+      "sr-only",
+    );
+    expect(within(dialog).getByText("solo.example")).toBeTruthy();
+    expect(dialog.textContent).not.toContain("https://solo.example");
   });
 
   it("keeps the active tab visible and marked aria-selected", () => {

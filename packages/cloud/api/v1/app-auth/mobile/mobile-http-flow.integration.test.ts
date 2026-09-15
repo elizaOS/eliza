@@ -13,6 +13,7 @@ import {
   test,
 } from "bun:test";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { Hono } from "hono";
 import type { AppEnv, Bindings } from "@/types/cloud-worker-env";
 
@@ -83,9 +84,8 @@ const mobileAppAuth = await import("@/lib/services/mobile-app-auth");
 const { apiKeysService } = await import("@/lib/services/api-keys");
 const { apiKeysRepository } = await import("@/db/repositories/api-keys");
 const { resetKmsClientForTests } = await import("@/db/crypto/kms-client");
-const { closeDatabaseConnectionsForTests, dbWrite } = await import(
-  "@/db/client"
-);
+const { closeDatabaseConnectionsForTests, dbWrite, getPgliteClientForTests } =
+  await import("@/db/client");
 
 const app = new Hono<AppEnv>();
 app.route("/api/v1/app-auth/connect", connectRoute);
@@ -281,6 +281,14 @@ beforeAll(async () => {
       expires_at timestamptz NOT NULL DEFAULT (now() + interval '7 years')
     )`,
   ]);
+  const registrationMigration = await readFile(
+    new URL(
+      "../../../../shared/src/db/migrations/0381_app_billing_registration.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  await getPgliteClientForTests().exec(registrationMigration);
 }, 60_000);
 
 afterAll(async () => {

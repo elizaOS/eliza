@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Best-effort installer for the native camera/vision tools the runtime shells
+ * Checks optional camera/vision tools; installation requires --install. The runtime shells
  * out to: imagesnap via Homebrew on macOS, fswebcam via apt on Linux (skipped
  * when sudo needs a TTY), ffmpeg via winget on Windows; prints manual
  * instructions when a package manager is unavailable.
@@ -198,6 +198,23 @@ function main() {
     process.env.ELIZA_NO_VISION_DEPS === "1" ||
     process.env.ELIZA_NO_VISION_DEPS === "1";
   if (disableFlag) {
+    return;
+  }
+
+  if (!process.argv.includes("--install")) {
+    const tool =
+      platform === "darwin"
+        ? "imagesnap"
+        : platform === "linux"
+          ? "fswebcam"
+          : platform === "win32"
+            ? "ffmpeg"
+            : null;
+    if (tool && !which(tool)) {
+      console.warn(
+        `${logPrefix} Optional vision tool ${tool} is missing. Install it explicitly with: node packages/app-core/scripts/ensure-vision-deps.mjs --install`,
+      );
+    }
     return;
   }
 

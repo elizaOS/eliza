@@ -28,8 +28,8 @@ vi.mock("./passkey-capability", () => ({
     Promise.resolve({ usable: false, reason: "native-without-bridge" }),
 }));
 
-vi.mock("@stwd/sdk", () => ({
-  StewardAuth: class {
+vi.mock("@elizaos/login", () => ({
+  LoginAuth: class {
     getProviders() {
       return Promise.resolve({
         passkey: false,
@@ -52,7 +52,10 @@ vi.mock("@stwd/sdk", () => ({
   },
 }));
 
-vi.mock("@elizaos/shared/steward-session-client", () => ({
+vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@elizaos/shared/steward-session-client")
+  >()),
   hasStewardAuthedCookie: () => false,
   readStoredStewardToken: () => null,
   writeStoredStewardToken: () => undefined,

@@ -5,12 +5,38 @@ set -eu
 # the full rationale on reconnect-first + distinct auth-expired signaling). The
 # only delta is the final privilege drop to CLOUD_AGENT_RUN_AS_USER via gosu.
 TS_AUTHKEY_EXPIRED_EXIT_CODE=78
+TS_UP_TIMEOUT_SECONDS="${TS_UP_TIMEOUT_SECONDS:-120}"
+
+ts_interactive_auth_required() {
+  case "$1" in
+    *'"authurl": "http'*|*'"authurl":"http'*|*"authurl=true"*|*"authurl is http"*) return 0 ;;
+    *"needsmachineauth"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 ts_authkey_permanent_failure() {
   case "$1" in
     *"authkey expired"*|*"auth key expired"*|*"key expired"*) return 0 ;;
     *"authkey already used"*|*"auth key already used"*) return 0 ;;
     *"invalid key"*|*"invalid authkey"*|*"invalid auth key"*) return 0 ;;
+    *) ts_interactive_auth_required "$1" ;;
+  esac
+}
+
+ts_daemon_running_with_ip() {
+  if command -v timeout >/dev/null 2>&1; then
+    ts_status_snapshot="$(timeout 2 tailscale --socket="$ts_socket" status --json 2>/dev/null || true)"
+  else
+    ts_status_snapshot="$(tailscale --socket="$ts_socket" status --json 2>/dev/null || true)"
+  fi
+  ts_status_compact="$(printf '%s' "$ts_status_snapshot" | tr -d '[:space:]')"
+  case "$ts_status_compact" in
+    *'"BackendState":"Running"'*) ;;
+    *) return 1 ;;
+  esac
+  case "$ts_status_compact" in
+    *'"TailscaleIPs":["'*) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -40,11 +66,89 @@ ts_try_fetch_fresh_authkey() {
 }
 
 ts_up() {
-  ts_up_output="$(
-    # shellcheck disable=SC2086
-    tailscale --socket="$ts_socket" up "$@" 2>&1
-  )" && ts_up_rc=0 || ts_up_rc=$?
-  [ -n "$ts_up_output" ] && printf '%s\n' "$ts_up_output" >&2
+  ts_up_output_file="/tmp/tailscale-up.$$.log"
+  : > "$ts_up_output_file"
+  chmod 600 "$ts_up_output_file"
+  ts_daemon_log_start_line=$(( $(wc -l < /tmp/tailscaled.log 2>/dev/null || printf '0') + 1 ))
+
+  # JSON exposes interactive state when the CLI prints it. With --auth-key the
+  # CLI suppresses that URL, so also inspect tailscaled's private log for the
+  # RegisterReq authURL=true response. A fresh daemon normally passes through
+  # NeedsLogin and may report machineAuthorized=false before the auth-key
+  # exchange completes; neither transient signal is terminal by itself. Never
+  # copy the raw authorization URL to container logs. The independent outer
+  # deadline bounds a CLI that ignores --timeout after the daemon is ready.
+  # shellcheck disable=SC2086
+  tailscale --socket="$ts_socket" up \
+    --json \
+    --timeout="${TS_UP_TIMEOUT_SECONDS}s" \
+    "$@" \
+    >"$ts_up_output_file" 2>&1 &
+  ts_up_pid=$!
+  ts_up_auth_required=0
+  ts_up_interactive_auth=0
+  ts_up_daemon_ready=0
+  ts_up_outer_timeout=0
+  ts_up_outer_deadline=$(( $(date +%s) + TS_UP_TIMEOUT_SECONDS + 2 ))
+  ts_up_probe_iteration=1
+
+  while kill -0 "$ts_up_pid" 2>/dev/null; do
+    ts_up_snapshot="$(cat "$ts_up_output_file" 2>/dev/null || true)"
+    ts_daemon_snapshot="$(tail -n +"$ts_daemon_log_start_line" /tmp/tailscaled.log 2>/dev/null || true)"
+    ts_up_snapshot_lower="$(printf '%s\n%s' "$ts_up_snapshot" "$ts_daemon_snapshot" | tr '[:upper:]' '[:lower:]')"
+    if [ -n "$ts_up_snapshot_lower" ] && ts_authkey_permanent_failure "$ts_up_snapshot_lower"; then
+      ts_up_auth_required=1
+      if ts_interactive_auth_required "$ts_up_snapshot_lower"; then
+        ts_up_interactive_auth=1
+      fi
+      kill "$ts_up_pid" 2>/dev/null || true
+      break
+    fi
+    if [ "$ts_up_probe_iteration" -eq 0 ] && ts_daemon_running_with_ip; then
+      ts_up_daemon_ready=1
+      kill "$ts_up_pid" 2>/dev/null || true
+      sleep 0.1
+      kill -KILL "$ts_up_pid" 2>/dev/null || true
+      break
+    fi
+    if [ "$(date +%s)" -ge "$ts_up_outer_deadline" ]; then
+      ts_up_outer_timeout=1
+      kill "$ts_up_pid" 2>/dev/null || true
+      sleep 0.1
+      kill -KILL "$ts_up_pid" 2>/dev/null || true
+      break
+    fi
+    ts_up_probe_iteration=$(( (ts_up_probe_iteration + 1) % 10 ))
+    sleep 0.1
+  done
+
+  if wait "$ts_up_pid"; then
+    ts_up_rc=0
+  else
+    ts_up_rc=$?
+  fi
+  ts_up_output="$(cat "$ts_up_output_file" 2>/dev/null || true)"
+  rm -f "$ts_up_output_file"
+  if [ "$ts_up_daemon_ready" -eq 1 ]; then
+    ts_up_rc=0
+    echo "[cloud-agent-entrypoint] tailscale daemon reached Running with a mesh address; continuing after the CLI did not exit" >&2
+  elif [ "$ts_up_outer_timeout" -eq 1 ]; then
+    ts_up_rc=124
+    echo "[cloud-agent-entrypoint] tailscale up exceeded its outer bootstrap deadline" >&2
+  fi
+  ts_daemon_snapshot="$(tail -n +"$ts_daemon_log_start_line" /tmp/tailscaled.log 2>/dev/null || true)"
+  ts_up_output_lower="$(printf '%s\n%s' "$ts_up_output" "$ts_daemon_snapshot" | tr '[:upper:]' '[:lower:]')"
+  if [ -n "$ts_up_output_lower" ] && ts_authkey_permanent_failure "$ts_up_output_lower"; then
+    ts_up_auth_required=1
+    if ts_interactive_auth_required "$ts_up_output_lower"; then
+      ts_up_interactive_auth=1
+    fi
+  fi
+  if [ "$ts_up_auth_required" -eq 1 ]; then
+    ts_up_rc=1
+  else
+    [ -n "$ts_up_output" ] && printf '%s\n' "$ts_up_output" >&2
+  fi
   return 0
 }
 
@@ -63,12 +167,23 @@ start_tailscale_if_configured() {
     exit 1
   fi
 
+  case "$TS_UP_TIMEOUT_SECONDS" in
+    ''|*[!0-9]*|0)
+      echo "[cloud-agent-entrypoint] TS_UP_TIMEOUT_SECONDS must be a positive integer" >&2
+      exit 1
+      ;;
+  esac
+
   ts_state_dir="${TS_STATE_DIR:-/var/lib/tailscale}"
   ts_socket="${TS_SOCKET:-/tmp/tailscaled.sock}"
   ts_hostname="${TS_HOSTNAME:-${SANDBOX_AGENT_ID:-${STEWARD_AGENT_ID:-$(hostname)}}}"
   ts_state_file="${ts_state_dir}/tailscaled.state"
   ts_authkey_expired_marker="${ts_state_dir}/authkey-expired"
   mkdir -p "$ts_state_dir"
+  ts_had_persisted_state=0
+  if [ -s "$ts_state_file" ]; then
+    ts_had_persisted_state=1
+  fi
   rm -f "$ts_socket"
   rm -f "$ts_authkey_expired_marker"
 
@@ -100,7 +215,7 @@ start_tailscale_if_configured() {
 
   # 1) RECONNECT-FIRST on persisted node identity (no auth key presented).
   # shellcheck disable=SC2086
-  if [ -s "$ts_state_file" ]; then
+  if [ "$ts_had_persisted_state" -eq 1 ]; then
     ts_up --hostname="$ts_hostname" $login_server_arg ${TS_EXTRA_ARGS:-}
     if [ "$ts_up_rc" -eq 0 ]; then
       echo "[cloud-agent-entrypoint] reconnected to headscale on persisted node identity" >&2
@@ -117,7 +232,7 @@ start_tailscale_if_configured() {
   fi
 
   ts_up_lower="$(printf '%s' "$ts_up_output" | tr '[:upper:]' '[:lower:]')"
-  if ts_authkey_permanent_failure "$ts_up_lower"; then
+  if [ "$ts_up_auth_required" -eq 1 ] || ts_authkey_permanent_failure "$ts_up_lower"; then
     # 3) SELF-HEAL via re-key hook (opt-in).
     fresh_key="$(ts_try_fetch_fresh_authkey "$ts_hostname")"
     if [ -n "$fresh_key" ]; then
@@ -130,6 +245,9 @@ start_tailscale_if_configured() {
     fi
 
     # 4) DISTINCT AUTH-EXPIRED SIGNAL.
+    if [ "$ts_up_interactive_auth" -eq 1 ]; then
+      echo "[cloud-agent-entrypoint] tailscale requires interactive authorization (AuthURL/NeedsMachineAuth); unattended mesh join rejected" >&2
+    fi
     echo "[cloud-agent-entrypoint] FATAL: headscale auth key expired/rejected and no persisted identity could reconnect; node needs re-keying" >&2
     printf 'auth_expired hostname=%s\n' "$ts_hostname" > "$ts_authkey_expired_marker" 2>/dev/null || true
     exit "$TS_AUTHKEY_EXPIRED_EXIT_CODE"

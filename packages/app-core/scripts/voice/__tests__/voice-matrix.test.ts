@@ -26,21 +26,29 @@ function runVoiceMatrix(args: string[], env: NodeJS.ProcessEnv = {}) {
   return { outDir, report, result };
 }
 
+function executable(file: string, source: string) {
+  fs.writeFileSync(file, source, { mode: 0o755 });
+}
+
 describe("voice matrix CLI", () => {
   test("fails closed when a platform/id filter selects no cells", () => {
-    const { report, result } = runVoiceMatrix([
-      "--platform",
-      "ios.sim.voice-roundtrip",
-      "--require-green",
-    ]);
+    const filterCanary = "FILTER_CANARY_room-private-9911";
+    const { report, result } = runVoiceMatrix(
+      ["--platform", filterCanary, "--require-green"],
+      { ELIZA_VOICE_MATRIX_SESSION_ID: "voice-matrix-session-123" },
+    );
 
     expect(result.status).toBe(1);
+    expect(report.schema).toBe("eliza_voice_live_matrix_v2");
+    expect(report.revision).toMatch(/^[0-9a-f]{40}$/);
+    expect(report.sessionId).toBe("voice-matrix-session-123");
     expect(report.selection).toEqual({
-      platformFilters: ["ios.sim.voice-roundtrip"],
+      filterCount: 1,
       matched: 0,
-      error: "no voice matrix cells matched --platform=ios.sim.voice-roundtrip",
+      errorCode: "NO_MATCH",
     });
     expect(report.cells).toHaveLength(0);
+    expect(JSON.stringify(report)).not.toContain(filterCanary);
   });
 
   test("accepts the iOS voice roundtrip cell id filter", () => {
@@ -51,9 +59,9 @@ describe("voice matrix CLI", () => {
 
     expect(result.status).toBe(0);
     expect(report.selection).toEqual({
-      platformFilters: ["ios.sim-or-device.voice-roundtrip"],
+      filterCount: 1,
       matched: 1,
-      error: null,
+      errorCode: null,
     });
     expect(report.cells).toHaveLength(1);
     expect(report.cells[0].id).toBe("ios.sim-or-device.voice-roundtrip");
@@ -72,8 +80,7 @@ describe("voice matrix CLI", () => {
     expect(missingCloud.result.status).toBe(0);
     expect(missingCloud.report.cells[0].probe).toEqual({
       available: false,
-      reason:
-        "ELIZAOS_CLOUD_API_KEY is required for the live Railway browser round-trip",
+      code: "WEB_LIVE_CREDENTIAL_MISSING",
     });
 
     const provisioned = runVoiceMatrix(
@@ -121,5 +128,53 @@ describe("voice matrix CLI", () => {
     expect(report.cells[0].command).toEqual(
       expect.arrayContaining(["--grep", "voice failure paths"]),
     );
+  });
+
+  test("projects command diagnostics without host identity or raw output", () => {
+    const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "voice-matrix-bin-"));
+    const stdoutCanary = "MODEL_RESPONSE_CANARY_room-7788";
+    const stderrCanary = "STDERR_CANARY_trajectory-9911";
+    executable(
+      path.join(binDir, "bun"),
+      `#!/bin/sh\nprintf '%s\\n' '${stdoutCanary}'\nprintf '%s\\n' '${stderrCanary}' >&2\nkill -TERM $$\n`,
+    );
+
+    const runnerOsCanary = "RUNNER_OS_CANARY_private-host";
+    const runnerArchCanary = "RUNNER_ARCH_CANARY_private-host";
+
+    const { outDir, report, result } = runVoiceMatrix(
+      ["--run", "--platform", "web.failure-paths"],
+      {
+        PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+        RUNNER_OS: runnerOsCanary,
+        RUNNER_ARCH: runnerArchCanary,
+      },
+    );
+    const serialized = [
+      JSON.stringify(report),
+      fs.readFileSync(path.join(outDir, "voice-matrix.md"), "utf8"),
+      fs.readFileSync(path.join(outDir, "index.html"), "utf8"),
+      result.stdout,
+      result.stderr,
+    ].join("\n");
+
+    expect(result.status).toBe(1);
+    expect(report.host).not.toHaveProperty("hostname");
+    expect(report.cells[0].execution).toEqual({
+      exitCode: null,
+      signalCode: "TERMINATED",
+      code: "COMMAND_SIGNALLED",
+    });
+    expect(report.cells[0].probe).toEqual({
+      available: true,
+      code: "WEB_FAKE_DEVICE_AVAILABLE",
+    });
+    expect(serialized).not.toContain(os.hostname());
+    expect(serialized).not.toContain(stdoutCanary);
+    expect(serialized).not.toContain(stderrCanary);
+    expect(serialized).not.toContain(runnerOsCanary);
+    expect(serialized).not.toContain(runnerArchCanary);
+    expect(serialized).not.toContain("stdoutTail");
+    expect(serialized).not.toContain("stderrTail");
   });
 });

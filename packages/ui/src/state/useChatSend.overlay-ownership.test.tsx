@@ -5,15 +5,21 @@ import { act, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
+  ChatActionResultSummary,
   ChatToolCallEvent,
   CodingAgentSession,
   Conversation,
   ConversationMessage,
   ImageAttachment,
 } from "../api";
+import { resetCompletedActionNavigationForTests } from "../completed-action-navigation";
+import { NAVIGATE_VIEW_EVENT } from "../events";
+import { dispatchConversationResync } from "./AppContext.hooks";
 import type { AutonomyEventStore, AutonomyRunHealthMap } from "./autonomy";
+import { hydrateInitialConversation } from "./useChatCallbacks";
 import { type UseChatSendDeps, useChatSend } from "./useChatSend";
 import { type DataLoadersDeps, useDataLoaders } from "./useDataLoaders";
+import { useResyncReconcile } from "./useResyncReconcile";
 
 const mocks = vi.hoisted(() => ({
   client: {
@@ -23,7 +29,9 @@ const mocks = vi.hoisted(() => ({
     getConfig: vi.fn(async () => ({ ui: {} })),
     getConversationMessages: vi.fn(),
     listCustomActions: vi.fn(),
-    listConversations: vi.fn(async () => ({ conversations: [] })),
+    listConversations: vi.fn(async () => ({
+      conversations: [] as Conversation[],
+    })),
     renameConversation: vi.fn(async () => undefined),
     sendConversationMessageStream: vi.fn(),
     sendWsMessage: vi.fn(),
@@ -216,6 +224,75 @@ beforeEach(() => {
 });
 
 describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
+  it.each(["main", "action"])(
+    "rejects a %s ready receipt after a real A to B to A ownership change",
+    async (kind) => {
+      const actionResults: ChatActionResultSummary[] = [
+        {
+          actionName: "VIEWS",
+          success: true,
+          values: { mode: "show", viewId: "calendar" },
+        },
+      ];
+      const terminal = { text: "Completed", completed: true, actionResults };
+      let finish: ((value: typeof terminal) => void) | undefined;
+      let ready: ((value: ChatActionResultSummary[]) => void) | undefined;
+      mocks.client.getConversationMessages.mockResolvedValue({ messages: [] });
+      mocks.client.sendConversationMessageStream.mockImplementation(
+        (...args: unknown[]) => {
+          ready = args[10] as typeof ready;
+          return new Promise((resolve) => {
+            finish = resolve;
+          });
+        },
+      );
+      const harness = makeHarness();
+      harness.activeConversationIdRef.current = "conv-a";
+      const hook = mountComposed(harness);
+      const navigate = vi.fn();
+      window.addEventListener(NAVIGATE_VIEW_EVENT, navigate);
+      let send: Promise<void> | undefined;
+      try {
+        act(() => {
+          hook.result.current.loaders.claimConversationMessagesOwnership(
+            "conv-a",
+          );
+          send =
+            kind === "action"
+              ? hook.result.current.send.sendActionMessage("Open Calendar")
+              : hook.result.current.send.sendChatText("Open Calendar");
+        });
+        await flushPendingWork();
+        expect(ready).toEqual(expect.any(Function));
+        act(() => {
+          hook.result.current.loaders.claimConversationMessagesOwnership(
+            "conv-b",
+          );
+          harness.activeConversationIdRef.current = "conv-b";
+          hook.result.current.loaders.claimConversationMessagesOwnership(
+            "conv-a",
+          );
+          harness.activeConversationIdRef.current = "conv-a";
+          ready?.(actionResults);
+        });
+        expect(navigate).not.toHaveBeenCalled();
+        await act(async () => {
+          finish?.(terminal);
+          await send;
+        });
+        expect(navigate).not.toHaveBeenCalled();
+      } finally {
+        await act(async () => {
+          finish?.(terminal);
+          await send;
+        });
+        window.removeEventListener(NAVIGATE_VIEW_EVENT, navigate);
+        hook.unmount();
+        resetCompletedActionNavigationForTests();
+      }
+    },
+  );
+
   it("performs a true cold first-send handoff without assigning loadedConversationIdRef in the test", async () => {
     mocks.client.createConversation.mockResolvedValue({
       conversation: conversation("conv-a"),
@@ -938,6 +1015,386 @@ describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
       { id: "temp-partial-a", text: "A question" },
       { id: "temp-resp-partial-a", text: "A partial survives" },
     ]);
+  });
+
+  it.each([false, true])(
+    "reconciles a persisted user after pre-done abort and scheduled delivery (earlier identical turn: %s)",
+    async (earlierIdenticalTurn) => {
+      const text = "Go home. Which website did we read earlier?";
+      const startedAt = Date.now();
+      const previousUser: ConversationMessage = {
+        id: "previous-user",
+        role: "user",
+        text: earlierIdenticalTurn ? text : "Read Example Domain",
+        timestamp: startedAt - 2_000,
+      };
+      const previousAssistant: ConversationMessage = {
+        id: "previous-assistant",
+        role: "assistant",
+        text: "We read Example Domain.",
+        timestamp: startedAt - 1_000,
+      };
+      const serverMessages = [previousUser, previousAssistant];
+      mocks.client.getConversationMessages.mockImplementation(async () => ({
+        messages: [...serverMessages],
+      }));
+      mocks.client.sendConversationMessageStream.mockImplementation(
+        (...args: unknown[]) => {
+          serverMessages.push({
+            id: "persisted-interrupted-user",
+            role: "user",
+            text: args[1] as string,
+            timestamp: Date.now(),
+          });
+          const signal = args[4] as AbortSignal;
+          return new Promise((_resolve, reject) => {
+            signal.addEventListener(
+              "abort",
+              () => reject(new DOMException("Aborted", "AbortError")),
+              { once: true },
+            );
+          });
+        },
+      );
+      const harness = makeHarness();
+      harness.activeConversationIdRef.current = "conv-a";
+      const hook = mountComposed(harness);
+      let send: Promise<void> | undefined;
+      try {
+        await act(async () => {
+          await hook.result.current.loaders.loadConversationMessages("conv-a");
+        });
+        act(() => {
+          send = hook.result.current.send.sendChatText(text, {
+            conversationId: "conv-a",
+            clientMessageId: "interrupted-user",
+          });
+        });
+        await flushPendingWork();
+        expect(
+          mocks.client.sendConversationMessageStream,
+        ).toHaveBeenCalledTimes(1);
+        expect(
+          serverMessages.filter(
+            (message) => message.id === "persisted-interrupted-user",
+          ),
+        ).toHaveLength(1);
+        const controller = harness.sendDepsBase.chatAbortRef.current;
+        expect(controller).not.toBeNull();
+        await act(async () => {
+          controller?.abort();
+          await send;
+        });
+        expect(mocks.client.abortConversationTurn).toHaveBeenCalledWith(
+          "conv-a",
+          "ui-chat-abort",
+        );
+
+        const scheduled: ConversationMessage = {
+          id: "independent-scheduled-assistant",
+          role: "assistant",
+          text: "Your independently scheduled brief is ready.",
+          timestamp: Date.now() + 1,
+          source: "lifeops-scheduled-task",
+        };
+        serverMessages.push(scheduled);
+        // The ready-phase proactive-message consumer appends this independent
+        // durable row; it does not rekey or otherwise settle the chat user row.
+        act(() => {
+          harness.setConversationMessages((previous) => [
+            ...previous,
+            scheduled,
+          ]);
+        });
+        // First resume: cached old history plus the interrupted overlay, then
+        // canonical newest history. Repeat to exercise the newly warmed cache.
+        for (let reload = 0; reload < 2; reload += 1) {
+          await act(async () => {
+            await hook.result.current.loaders.loadConversationMessages(
+              "conv-a",
+            );
+          });
+          expect(
+            harness.conversationMessagesRef.current.map(
+              (message) => message.id,
+            ),
+          ).toEqual([
+            "previous-user",
+            "previous-assistant",
+            "persisted-interrupted-user",
+            "independent-scheduled-assistant",
+          ]);
+        }
+      } finally {
+        harness.sendDepsBase.chatAbortRef.current?.abort();
+        await send;
+        hook.unmount();
+      }
+    },
+  );
+
+  it.each([
+    "startup",
+    "startup-repeat",
+    "plain",
+    "cached-pending",
+    "around",
+  ] as const)(
+    "automatically reconciles persisted users after interrupted SSE and one reconnect (%s history)",
+    async (historyMode) => {
+      const text =
+        "Read-only recovery check Juniper. Explain rain without tools.";
+      const serverMessages: ConversationMessage[] = [
+        {
+          id: "prior-user",
+          role: "user",
+          text: historyMode === "startup-repeat" ? text : "Earlier question",
+          timestamp: Date.now() - 2_000,
+        },
+      ];
+      let historyUnavailable = false;
+      mocks.client.getConversationMessages.mockImplementation(async () => {
+        if (historyUnavailable)
+          throw Object.assign(new Error("API restarting"), { status: 502 });
+        return { messages: [...serverMessages] };
+      });
+      let finishStream:
+        | ((value: { text: string; completed: boolean }) => void)
+        | undefined;
+      mocks.client.sendConversationMessageStream.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finishStream = resolve;
+          }),
+      );
+      const harness = makeHarness();
+      harness.activeConversationIdRef.current = "conv-a";
+      const hook = mountComposed(harness);
+      const resync = renderHook(() =>
+        useResyncReconcile({
+          activeConversationIdRef: harness.activeConversationIdRef,
+          loadConversationMessages:
+            hook.result.current.loaders.loadConversationMessages,
+        }),
+      );
+      let send: Promise<void> | undefined;
+      try {
+        if (historyMode.startsWith("startup")) {
+          mocks.client.listConversations.mockResolvedValue({
+            conversations: [conversation("conv-a")],
+          });
+          await act(async () => {
+            await hydrateInitialConversation({
+              client: mocks.client,
+              conversationHydrationEpochRef:
+                harness.sendDepsBase.conversationHydrationEpochRef,
+              activeConversationIdRef: harness.activeConversationIdRef,
+              greetingFiredRef: harness.loaderDeps.greetingFiredRef,
+              conversationMessagesRef: harness.conversationMessagesRef,
+              loadedConversationIdRef:
+                hook.result.current.loaders.loadedConversationIdRef,
+              claimConversationMessagesOwnership:
+                hook.result.current.loaders.claimConversationMessagesOwnership,
+              setConversations: harness.sendDepsBase.setConversations,
+              setActiveConversationId:
+                harness.sendDepsBase.setActiveConversationId,
+              setConversationMessages: harness.setConversationMessages,
+              uiLanguage: "en",
+              seedSyntheticGreeting: false,
+            });
+          });
+        } else {
+          await act(async () => {
+            await hook.result.current.loaders.loadConversationMessages(
+              "conv-a",
+            );
+          });
+        }
+        if (historyMode === "around") {
+          await act(async () => {
+            await hook.result.current.loaders.loadConversationMessagesAround(
+              "conv-a",
+              "prior-user",
+            );
+          });
+        }
+        act(() => {
+          send = hook.result.current.send.sendChatText(text, {
+            conversationId: "conv-a",
+            clientMessageId: "restart-user",
+          });
+        });
+        await flushPendingWork();
+        if (historyMode === "cached-pending") {
+          await act(async () => {
+            await hook.result.current.loaders.loadConversationMessages(
+              "conv-a",
+            );
+          });
+        }
+        serverMessages.push({
+          id: "durable-restart-user",
+          role: "user",
+          text,
+          timestamp: Date.now(),
+        });
+        historyUnavailable = true;
+        await act(async () => {
+          finishStream?.({ text: "", completed: false });
+          await send;
+        });
+        expect(harness.sendDepsBase.setChatSending).toHaveBeenLastCalledWith(
+          false,
+        );
+        historyUnavailable = false;
+        const historyCallsBeforeReconnect =
+          mocks.client.getConversationMessages.mock.calls.length;
+        act(() => {
+          dispatchConversationResync({
+            conversationId: "conv-a",
+            reason: "connection-recovered",
+          });
+        });
+        await vi.waitFor(() =>
+          expect(
+            harness.conversationMessagesRef.current
+              .filter(
+                (message) => message.role === "user" && message.text === text,
+              )
+              .map((message) => message.id),
+          ).toEqual(
+            historyMode === "startup-repeat"
+              ? ["prior-user", "durable-restart-user"]
+              : ["durable-restart-user"],
+          ),
+        );
+        expect(
+          mocks.client.getConversationMessages.mock.calls.length -
+            historyCallsBeforeReconnect,
+        ).toBe(historyMode === "around" ? 2 : 1);
+        expect(
+          harness.conversationMessagesRef.current.some((message) =>
+            message.id.startsWith("temp-resp-"),
+          ),
+        ).toBe(false);
+        expect(
+          mocks.client.sendConversationMessageStream,
+        ).toHaveBeenCalledTimes(1);
+      } finally {
+        finishStream?.({ text: "", completed: false });
+        await send;
+        resync.unmount();
+        hook.unmount();
+      }
+    },
+  );
+
+  it("keeps identical cold-open queued sends distinct across the created-id handoff", async () => {
+    let resolveCreate:
+      | ((value: { conversation: Conversation }) => void)
+      | undefined;
+    mocks.client.createConversation.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCreate = resolve;
+        }),
+    );
+    let serverMessages: ConversationMessage[] = [];
+    mocks.client.getConversationMessages.mockImplementation(async () => ({
+      messages: [...serverMessages],
+    }));
+    const finishStreams: Array<
+      (value: { text: string; completed: boolean }) => void
+    > = [];
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishStreams.push(resolve);
+        }),
+    );
+    const harness = makeHarness();
+    const hook = mountComposed(harness);
+    let first: Promise<void> | undefined;
+    let second: Promise<void> | undefined;
+    try {
+      act(() => {
+        first = hook.result.current.send.sendChatText("yes", {
+          clientMessageId: "cold-first",
+        });
+        second = hook.result.current.send.sendChatText("yes", {
+          clientMessageId: "cold-second",
+        });
+      });
+      await flushPendingWork();
+      await act(async () => {
+        resolveCreate?.({ conversation: conversation("conv-created") });
+      });
+      await vi.waitFor(() => expect(finishStreams).toHaveLength(1));
+      serverMessages = [
+        {
+          id: "durable-cold-first",
+          role: "user",
+          text: "yes",
+          timestamp: Date.now(),
+        },
+      ];
+      // Reconcile the first turn while the second still belongs to the cold
+      // queue, before drain rehomes that second overlay to the created id.
+      for (let reload = 0; reload < 2; reload += 1) {
+        await act(async () => {
+          await hook.result.current.loaders.loadConversationMessages(
+            "conv-created",
+          );
+        });
+      }
+      await act(async () => {
+        finishStreams[0]?.({ text: "", completed: false });
+        await first;
+      });
+      await vi.waitFor(() => expect(finishStreams).toHaveLength(2));
+      for (let reload = 0; reload < 2; reload += 1) {
+        await act(async () => {
+          await hook.result.current.loaders.loadConversationMessages(
+            "conv-created",
+          );
+        });
+      }
+      expect(
+        harness.conversationMessagesRef.current
+          .filter((message) => message.role === "user")
+          .map((message) => message.id)
+          .sort(),
+      ).toEqual(["durable-cold-first", "temp-cold-second"]);
+      serverMessages.push({
+        id: "durable-cold-second",
+        role: "user",
+        text: "yes",
+        timestamp: Date.now(),
+      });
+      await act(async () => {
+        finishStreams[1]?.({ text: "", completed: false });
+        await second;
+      });
+      await act(async () => {
+        await hook.result.current.loaders.loadConversationMessages(
+          "conv-created",
+        );
+      });
+      expect(
+        harness.conversationMessagesRef.current
+          .filter((message) => message.role === "user")
+          .map((message) => message.id),
+      ).toEqual(["durable-cold-first", "durable-cold-second"]);
+      expect(mocks.client.createConversation).toHaveBeenCalledTimes(1);
+      expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(
+        2,
+      );
+    } finally {
+      for (const finish of finishStreams)
+        finish({ text: "", completed: false });
+      await Promise.all([first, second]);
+      hook.unmount();
+    }
   });
 
   it("keeps an async local command valid across a same-id reload", async () => {

@@ -33,7 +33,7 @@ function validateFixture(
 const canonicalAdmission = `name: PR Static Smoke
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [develop, staging, main]
     types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
     types: [checks_requested]
@@ -43,7 +43,7 @@ jobs: {}
 const developPush = `name: Develop Full
 on:
   push:
-    branches: [develop]
+    branches: [develop, staging, main]
 jobs: {}
 `;
 
@@ -53,7 +53,7 @@ describe("workflow trigger policy", () => {
       validateFixture(`name: Test
 on:
   push:
-    branches: [develop]
+    branches: [develop, staging, main]
   workflow_dispatch:
 jobs: {}
 `),
@@ -69,7 +69,7 @@ jobs: {}
           : "    workflows: [CI]\n    types: [completed]";
       expect(() =>
         validateFixture(
-          `on:\n  push:\n    branches: [develop]\n  ${eventName}:\n${eventConfig}\njobs: {}\n`,
+          `on:\n  push:\n    branches: [develop, staging, main]\n  ${eventName}:\n${eventConfig}\njobs: {}\n`,
         ),
       ).toThrow(/is forbidden/);
     },
@@ -77,7 +77,7 @@ jobs: {}
 
   test("accepts tag-only release pushes", () => {
     const root = buildRepo({
-      "develop-full.yml": `on:\n  push:\n    branches: [develop]\njobs: {}\n`,
+      "develop-full.yml": `on:\n  push:\n    branches: [develop, staging, main]\njobs: {}\n`,
       "release.yml": `on:\n  push:\n    tags: ["v*"]\njobs: {}\n`,
     });
     try {
@@ -98,7 +98,7 @@ jobs: {}
   ])("rejects the PR-adjacent %s trigger", (eventName) => {
     expect(() =>
       validateFixture(
-        `on:\n  push:\n    branches: [develop]\n  ${eventName}:\njobs: {}\n`,
+        `on:\n  push:\n    branches: [develop, staging, main]\n  ${eventName}:\njobs: {}\n`,
       ),
     ).toThrow(/forbidden pull-request event trigger/);
   });
@@ -106,7 +106,7 @@ jobs: {}
   test("reserves pull_request for PR Static Smoke", () => {
     expect(() =>
       validateFixture(
-        "on:\n  push:\n    branches: [develop]\n  pull_request:\n    branches: [develop, main]\n    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]\njobs: {}\n",
+        "on:\n  push:\n    branches: [develop, staging, main]\n  pull_request:\n    branches: [develop, staging, main]\n    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]\njobs: {}\n",
       ),
     ).toThrow(/pull_request is reserved for pr-static-smoke\.yml/);
   });
@@ -129,7 +129,7 @@ jobs: {}
   test("fails closed when PR Static Smoke loses either admission trigger", () => {
     const variants = [
       canonicalAdmission.replace(
-        / {2}pull_request:\n {4}branches: \[develop, main\]\n {4}types: \[opened, synchronize, reopened, ready_for_review\]\n/,
+        / {2}pull_request:\n {4}branches: \[develop, staging, main\]\n {4}types: \[opened, synchronize, reopened, ready_for_review\]\n/,
         "",
       ),
       canonicalAdmission.replace(
@@ -155,7 +155,7 @@ jobs: {}
   test("reserves merge_group for PR Static Smoke", () => {
     expect(() =>
       validateFixture(
-        `on:\n  push:\n    branches: [develop]\n  merge_group:\n    types: [checks_requested]\njobs: {}\n`,
+        `on:\n  push:\n    branches: [develop, staging, main]\n  merge_group:\n    types: [checks_requested]\njobs: {}\n`,
       ),
     ).toThrow(/merge_group is reserved/);
   });
@@ -170,7 +170,7 @@ jobs: {}
     for (const branches of ["[main]", "[develop, main]"]) {
       expect(() =>
         validateFixture(`on:\n  push:\n    branches: ${branches}\njobs: {}\n`),
-      ).toThrow(/push branches must be exactly \[develop\]/);
+      ).toThrow(/push branches must be exactly \[develop, staging, main\]/);
     }
   });
 

@@ -36,6 +36,9 @@ export async function bindDirectCloudLoginToPersonalAgent(options: {
     cloudApiBase: options.cloudApiBase,
     authToken: options.token,
   });
+  // Authentication can reconnect existing Dedicated compute. First-run owns
+  // the visible hosting quote for an account that still needs activation.
+  if (personal.runtime !== "dedicated") return;
   const server = createPersistedActiveServer({
     kind: "cloud",
     id: `cloud:${personal.personalElizaId}`,

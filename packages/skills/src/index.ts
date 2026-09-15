@@ -1,26 +1,4 @@
-/**
- * @elizaos/skills - Bundled skills and skill loading utilities for elizaOS agents
- *
- * This package provides:
- * - Bundled skills (markdown files with instructions for specific tasks)
- * - Skill loading and discovery utilities
- * - Prompt formatting for LLM integration
- * - Command specification building for chat interfaces
- *
- * @example
- * ```typescript
- * import { getSkillsDir, loadSkills, formatSkillsForPrompt } from "@elizaos/skills";
- *
- * // Get path to bundled skills
- * const skillsPath = getSkillsDir();
- *
- * // Load all skills from default locations
- * const { skills, diagnostics } = loadSkills();
- *
- * // Format for LLM prompt
- * const prompt = formatSkillsForPrompt(skills);
- * ```
- */
+/** Public loading, formatting and bundle-location contracts for skill consumers. */
 
 export {
   buildSkillCommandSpecs,
@@ -41,6 +19,7 @@ export {
 } from "./frontmatter.js";
 export { loadSkillEntries, loadSkills, loadSkillsFromDir } from "./loader.js";
 export {
+  BUNDLED_SKILLS_OVERRIDE_INVALID,
   clearSkillsDirCache,
   getCuratedActiveDir,
   getProposedSkillsDir,

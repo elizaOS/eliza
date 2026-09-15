@@ -101,8 +101,11 @@ export function toCalendarSourceHealthRows(
   now = new Date(),
 ): CalendarSourceHealthRow[] {
   return sources.map((source) => {
-    const provider = PROVIDER_LABELS[source.key.provider];
     const summary = source.summary.trim();
+    // Older/local feed producers may omit the provider discriminator at
+    // runtime. Keep the health strip readable without fabricating provider
+    // identity: an unknown source is still a calendar, never "undefined".
+    const provider = PROVIDER_LABELS[source.key.provider] ?? "Calendar";
     const presentation = sourcePresentation(source, now);
     return {
       id: sourceId(source),

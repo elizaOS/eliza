@@ -1,7 +1,7 @@
 /**
- * Converts successful VIEWS action summaries from a completed chat turn into
- * shell navigation. Chat streams exist on every runtime transport, so this is
- * the reliable handoff when a platform intentionally runs without WebSockets.
+ * Converts successful view-opening action summaries from a completed chat turn
+ * into shell navigation. Chat streams exist on every runtime transport, so this
+ * is the reliable handoff when a platform intentionally runs without WebSockets.
  */
 
 import { ElizaError } from "@elizaos/core";
@@ -64,13 +64,41 @@ export function findViewActionHandoff(
     )?.toUpperCase();
     const values = readOwnValue(result, "values");
     const mode = readString(readOwnValue(values, "mode"))?.toLowerCase();
+    const subaction = readString(
+      readOwnValue(values, "subaction"),
+    )?.toLowerCase();
+    const targetId = readString(
+      readOwnValue(values, "targetId"),
+    )?.toLowerCase();
     const viewId = readString(readOwnValue(values, "viewId"));
     const isViewsHandoff =
       actionName === "VIEWS" && (mode === "show" || mode === "open");
     const isAppBrowserHandoff =
       actionName === "APP" && mode === "launch" && viewId === "browser";
-    if ((isViewsHandoff || isAppBrowserHandoff) && viewId) {
-      const viewPath = readString(readOwnValue(values, "viewPath"));
+    const isBrowserWorkspaceHandoff =
+      (actionName === "BROWSER" ||
+        actionName === "BROWSER_OPEN" ||
+        actionName === "BROWSER_NAVIGATE" ||
+        actionName === "BROWSER_SHOW") &&
+      targetId === "workspace" &&
+      (subaction === "open" ||
+        subaction === "navigate" ||
+        subaction === "show") &&
+      viewId === "browser";
+    if (
+      (isViewsHandoff || isAppBrowserHandoff || isBrowserWorkspaceHandoff) &&
+      viewId
+    ) {
+      const actionUrl = readString(readOwnValue(values, "url"));
+      const declaredViewPath = readString(readOwnValue(values, "viewPath"));
+      // Native mobile browser tabs are intentionally client-owned, while the
+      // browser action executes in the remote workspace. Carry the verified
+      // destination through the existing browser deep link so the mounted
+      // native view can mirror the completed action as well.
+      const viewPath =
+        isBrowserWorkspaceHandoff && actionUrl
+          ? `/browser?browse=${encodeURIComponent(actionUrl)}`
+          : declaredViewPath;
       const subview = readString(readOwnValue(values, "subview"));
       const completedActionHandoffId = normalizeCompletedActionHandoffId(
         readOwnValue(values, "completedActionHandoffId"),

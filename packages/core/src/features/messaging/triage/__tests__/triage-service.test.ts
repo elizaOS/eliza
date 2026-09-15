@@ -135,22 +135,26 @@ describe("TriageService registry and routing", () => {
 	it("bounds the message-to-adapter route cache at production capacity", async () => {
 		const store = new MessageRefStore();
 		const service = new TriageService(store);
-		const refs = Array.from({ length: 5_001 }, (_, index) =>
-			message(`route-${index}`, "gmail", { receivedAtMs: index }),
-		);
-		service.register(
-			adapter("gmail", {
-				listMessages: async () => refs,
-			}),
-		);
+		const gmail = adapter("gmail", {
+			listMessages: async () =>
+				Array.from({ length: 5_001 }, (_, index) =>
+					message(`route-${index}`, "gmail", { receivedAtMs: index }),
+				),
+		});
+		service.register(gmail);
 
 		await service.triage(runtime(), { sources: ["gmail"], nowMs: 10_000 });
 
-		expect(service.getAdapterForMessage("route-0")).toBeUndefined();
-		expect(service.getAdapterForMessage("route-5000")).toBe(
-			service.getAdapter("gmail"),
+		// Cache is a 5000-entry FIFO. Store retains every triaged ref (#28112).
+		expect(service.__adapterRouteCacheSizeForTests()).toBe(5_000);
+		expect(service.__hasAdapterRouteCacheEntryForTests("route-0")).toBe(false);
+		expect(service.__hasAdapterRouteCacheEntryForTests("route-5000")).toBe(
+			true,
 		);
-		expect(store.listMessages()).toHaveLength(5_000);
+		expect(store.listMessages()).toHaveLength(5_001);
+		// Evicted cache entries still route through the authoritative store.
+		expect(service.getAdapterForMessage("route-0")).toBe(gmail);
+		expect(service.getAdapterForMessage("route-5000")).toBe(gmail);
 	});
 
 	it("keeps one lazy singleton until it is explicitly reset", () => {

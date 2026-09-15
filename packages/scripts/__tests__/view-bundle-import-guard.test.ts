@@ -66,23 +66,19 @@ function fixture() {
 describe("view bundle import guard", () => {
   // First test in the file pays module-import warmup on a loaded CI runner
   // (observed >7s), so it carries an explicit timeout above the 5s default.
-  test(
-    "reports a configured bundle that was not built",
-    async () => {
-      const { options } = fixture();
-      const result = await validateViewBundles({
-        ...options,
-        enforceFreshOutputs: true,
-      });
-      expect(result.bundleCount).toBe(0);
-      expect(result.expectedBundleCount).toBe(1);
-      expect(result.missingBundles).toHaveLength(1);
-      expect(result.violations).toEqual([]);
-      expect(result.unexpectedChunks).toEqual([]);
-      expect(result.unexpectedArtifacts).toEqual([]);
-    },
-    30_000,
-  );
+  test("reports a configured bundle that was not built", async () => {
+    const { options } = fixture();
+    const result = await validateViewBundles({
+      ...options,
+      enforceFreshOutputs: true,
+    });
+    expect(result.bundleCount).toBe(0);
+    expect(result.expectedBundleCount).toBe(1);
+    expect(result.missingBundles).toHaveLength(1);
+    expect(result.violations).toEqual([]);
+    expect(result.unexpectedChunks).toEqual([]);
+    expect(result.unexpectedArtifacts).toEqual([]);
+  }, 30_000);
 
   test("reports unsupported imports from a real emitted bundle", async () => {
     const { absoluteDir, options } = fixture();
@@ -412,6 +408,71 @@ describe("view bundle import guard", () => {
     ).toThrow("mismatched relative specifier");
   });
 
+  test("accepts optional named importer scope arguments without accepting required arguments", () => {
+    const loader = (parameters: string) => `
+      async function importUiRootCompat(${parameters}) { return {}; }
+      const HOST_EXTERNAL_IMPORTERS = { "@elizaos/ui": importUiRootCompat };
+      function resolveHostExternal(specifier) { return HOST_EXTERNAL_IMPORTERS[specifier]; }
+      function importHostExternalForScope(specifier, scope) {
+        return resolveHostExternal(specifier)(scope);
+      }
+      export const hostImport = (specifier) => importHostExternalForScope(specifier, null);
+    `;
+    for (const parameters of ["", "scope = null", "scope?: unknown"]) {
+      expect(hostExternalSpecifiersFromSources(loader(parameters), [])).toEqual(
+        new Set(["@elizaos/ui"]),
+      );
+    }
+    for (const parameters of [
+      "scope",
+      "scope: unknown",
+      "scope = null, required: unknown",
+      "...scopes: unknown[]",
+      "{ scope }?: { scope?: unknown }",
+      "[scope]?: unknown[]",
+      "{ scope } = {}",
+      "[scope] = []",
+    ]) {
+      expect(() =>
+        hostExternalSpecifiersFromSources(loader(parameters), []),
+      ).toThrow("expected callable importer");
+    }
+    expect(() =>
+      hostExternalSpecifiersFromSources(
+        `
+      const HOST_EXTERNAL_IMPORTERS = { react: (scope = null) => import("react") };
+      export function hostImport(specifier) { return HOST_EXTERNAL_IMPORTERS[specifier](); }
+    `,
+        [],
+      ),
+    ).toThrow("may not require arguments");
+  });
+
+  test("requires scoped importer lookup to be called, not hidden in an unused closure", () => {
+    const loader = (body: string) => `
+      const HOST_EXTERNAL_IMPORTERS = { react: () => import("react") };
+      function importHostExternalForScope(specifier, scope) {
+        return HOST_EXTERNAL_IMPORTERS[specifier](scope);
+      }
+      export function hostImport(specifier) { ${body} }
+    `;
+    expect(
+      hostExternalSpecifiersFromSources(
+        loader("return importHostExternalForScope(specifier, null);"),
+        [],
+      ),
+    ).toEqual(new Set(["react"]));
+    for (const body of [
+      "return () => importHostExternalForScope(specifier, null);",
+      "const unused = () => importHostExternalForScope(specifier, null); return {};",
+      "const importHostExternalForScope = () => ({}); return importHostExternalForScope(specifier, null);",
+    ]) {
+      expect(() => hostExternalSpecifiersFromSources(loader(body), [])).toThrow(
+        "not consumed by the exported hostImport call path",
+      );
+    }
+  });
+
   test("rejects shadowed, non-callable, dead-branch, and mismatched registrations", () => {
     const loader = `
       const HOST_EXTERNAL_IMPORTERS = { react: () => import("react") };
@@ -496,5 +557,6 @@ describe("view bundle import guard", () => {
     const specifiers = await getHostExternalSpecifiers();
     expect(specifiers.size).toBeGreaterThan(0);
     expect(specifiers).toContain("react");
+    expect(specifiers).toContain("@elizaos/ui/components/shared/ViewHeader");
   });
 });

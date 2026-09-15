@@ -51,8 +51,8 @@ vi.mock("../../lib/steward-session", () => ({
   syncStewardSessionCookie: () => Promise.resolve(),
 }));
 
-vi.mock("@stwd/sdk", () => ({
-  StewardAuth: class {
+vi.mock("@elizaos/login", () => ({
+  LoginAuth: class {
     getSession() {
       return null;
     }
@@ -193,6 +193,14 @@ describe("StewardLoginSection provider discovery truth", () => {
     await waitFor(() => expect(harness.getProvidersCalls).toBe(1));
     expect(screen.queryByText("Sign-in options couldn't load")).toBeNull();
     expect(screen.getByRole("button", { name: "Discord" })).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Retry to load the sign-in methods enabled for this Eliza Cloud account.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Retry sign-in options" }),
+    ).toBeTruthy();
   });
 
   it("rejects a malformed successful response without fabricating providers", async () => {

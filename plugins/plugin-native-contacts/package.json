@@ -56,7 +56,7 @@
     ],
     "runtime": "both",
     "platformDetails": {
-      "browser": "Web fallback returns an empty contacts list.",
+      "browser": "Web fallback rejects unsupported contacts access.",
       "android": true
     }
   },

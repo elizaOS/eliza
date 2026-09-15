@@ -495,6 +495,9 @@ export interface StoredFile {
 	size: number;
 }
 
+/** A stored file that has no pre-authenticated served URL. */
+export interface StoredPrivateFile extends Omit<StoredFile, "url"> {}
+
 /** A stored file as listed by the Files surface. */
 export interface StoredFileListItem extends StoredFile {
 	/** Creation/last-served timestamp (ms since epoch). */
@@ -521,6 +524,18 @@ export abstract class IFileStorageService extends Service {
 		bytes: Buffer | Uint8Array,
 		mimeType: string,
 	): Promise<StoredFile>;
+
+	/** Persist sensitive bytes without creating a pre-authenticated media URL. */
+	abstract storePrivate(
+		bytes: Buffer | Uint8Array,
+		mimeType: string,
+	): Promise<StoredPrivateFile>;
+
+	/** Read exact private bytes by their opaque content-addressed filename. */
+	abstract readPrivate(fileName: string): Promise<Buffer | null>;
+
+	/** Delete private bytes after their authorized lifecycle ends. */
+	abstract deletePrivate(fileName: string): Promise<boolean>;
 
 	/** Persist a `data:` URL's bytes; returns null for non-data URLs. */
 	abstract storeDataUrl(dataUrl: string): Promise<StoredFile | null>;

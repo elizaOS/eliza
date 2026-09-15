@@ -28,7 +28,11 @@ export type { CreateServerInput, CreateVolumeInput, ProvisionedServer } from "./
 
 const OFFICIAL_HCLOUD_API_BASE = "https://api.hetzner.cloud/v1";
 const REQUEST_TIMEOUT_MS = 30_000;
+const LIFECYCLE_TIMEOUT_MS = 60_000;
+const ACTION_POLL_INTERVAL_MS = 1_500;
+const RESOURCE_READBACK_POLL_INTERVAL_MS = 250;
 const MAX_REQUEST_TIMEOUT_MS = 2_147_483_647;
+const NO_CONTENT = Symbol("hetzner-no-content");
 
 export type HetznerCloudErrorCode =
   | "missing_token"
@@ -54,6 +58,33 @@ export class HetznerCloudError extends Error {
   ) {
     super(message);
     this.name = "HetznerCloudError";
+  }
+}
+
+export class HetznerAcceptedResourceError extends HetznerCloudError {
+  readonly compensation: "succeeded" | "failed";
+
+  constructor(
+    public readonly resourceType: "server" | "volume",
+    public readonly resourceId: number,
+    public readonly primaryError: unknown,
+    public readonly compensationError?: unknown,
+  ) {
+    const compensation = compensationError ? "failed" : "succeeded";
+    const cause = compensationError
+      ? new AggregateError(
+          [primaryError, compensationError],
+          `Hetzner ${resourceType} ${resourceId} create and compensation both failed`,
+        )
+      : primaryError;
+    super(
+      primaryError instanceof HetznerCloudError ? primaryError.code : "server_error",
+      `Hetzner accepted ${resourceType} ${resourceId}, but settlement failed and compensation ${compensation}`,
+      primaryError instanceof HetznerCloudError ? primaryError.status : undefined,
+      cause,
+    );
+    this.name = "HetznerAcceptedResourceError";
+    this.compensation = compensation;
   }
 }
 
@@ -117,6 +148,7 @@ export interface HetznerAction {
   command: string;
   status: "running" | "success" | "error";
   progress: number;
+  resources?: Array<{ id: number; type: string }>;
   error: { code: string; message: string } | null;
 }
 
@@ -146,15 +178,18 @@ export class HetznerCloudClient implements ComputeProvider {
   private readonly token: string;
   private readonly apiBaseUrl: string;
   private readonly requestTimeoutMs: number;
+  private readonly lifecycleTimeoutMs: number;
 
   private constructor(
     token: string,
     apiBaseUrl = HCLOUD_API_BASE,
     requestTimeoutMs = REQUEST_TIMEOUT_MS,
+    lifecycleTimeoutMs = LIFECYCLE_TIMEOUT_MS,
   ) {
     this.token = token;
     this.apiBaseUrl = apiBaseUrl.replace(/\/+$/, "");
     this.requestTimeoutMs = requestTimeoutMs;
+    this.lifecycleTimeoutMs = lifecycleTimeoutMs;
   }
 
   /**
@@ -175,10 +210,19 @@ export class HetznerCloudClient implements ComputeProvider {
   }
 
   /** Construct a client with an explicit token pinned to the configured Hetzner origin. */
-  static withToken(token: string, options: { requestTimeoutMs?: number } = {}): HetznerCloudClient {
+  static withToken(
+    token: string,
+    options: { requestTimeoutMs?: number; lifecycleTimeoutMs?: number } = {},
+  ): HetznerCloudClient {
     validateToken(token);
     validateRequestTimeout(options.requestTimeoutMs);
-    return new HetznerCloudClient(token, HCLOUD_API_BASE, options.requestTimeoutMs);
+    validateRequestTimeout(options.lifecycleTimeoutMs, "lifecycleTimeoutMs");
+    return new HetznerCloudClient(
+      token,
+      HCLOUD_API_BASE,
+      options.requestTimeoutMs,
+      options.lifecycleTimeoutMs,
+    );
   }
 
   /**
@@ -189,10 +233,15 @@ export class HetznerCloudClient implements ComputeProvider {
    */
   static withTestTransport(
     token: string,
-    options: { apiBaseUrl: string; requestTimeoutMs?: number },
+    options: {
+      apiBaseUrl: string;
+      requestTimeoutMs?: number;
+      lifecycleTimeoutMs?: number;
+    },
   ): HetznerCloudClient {
     validateToken(token);
     validateRequestTimeout(options.requestTimeoutMs);
+    validateRequestTimeout(options.lifecycleTimeoutMs, "lifecycleTimeoutMs");
     if (process.env.NODE_ENV !== "test") {
       throw new HetznerCloudError(
         "invalid_input",
@@ -203,6 +252,7 @@ export class HetznerCloudClient implements ComputeProvider {
       token,
       validateLoopbackTestApiBaseUrl(options.apiBaseUrl),
       options.requestTimeoutMs,
+      options.lifecycleTimeoutMs,
     );
   }
 
@@ -265,10 +315,24 @@ export class HetznerCloudClient implements ComputeProvider {
   }
 
   async getServer(serverId: number): Promise<HetznerServer | null> {
+    validateResourceId(serverId, "serverId");
+    return this.getServerWithin(serverId, deadlineAfter(this.requestTimeoutMs));
+  }
+
+  private async getServerWithin(serverId: number, deadline: number): Promise<HetznerServer | null> {
     try {
-      const data = await this.request<{ server: HetznerServer }>("GET", `/servers/${serverId}`);
-      return mapHetznerServer(data.server);
+      const data = requireEnvelope(
+        await this.request<unknown>("GET", `/servers/${serverId}`, undefined, deadline),
+        "server readback",
+      );
+      const server = mapHetznerServer(
+        requireObject(data.server, "server readback resource") as unknown as HetznerServer,
+      );
+      assertExactResourceId(server.id, serverId, "server");
+      return server;
     } catch (err) {
+      // error-policy:J4 exact resource absence is the designed by-id read
+      // result; every other provider or transport failure remains exceptional.
       if (err instanceof HetznerCloudError && err.code === "not_found") return null;
       throw err;
     }
@@ -303,43 +367,125 @@ export class HetznerCloudClient implements ComputeProvider {
       body.labels = input.labels;
     }
 
-    const data = await this.request<{
-      server: HetznerServer;
-      root_password: string | null;
-    }>("POST", "/servers", body);
+    const deadline = deadlineAfter(this.lifecycleTimeoutMs);
+    const data = requireEnvelope(
+      await this.request<unknown>("POST", "/servers", body, deadline),
+      "create server",
+    );
+    const createdServer = requireObject(data.server, "created server");
+    const serverId = requireResourceId(createdServer.id, "created server");
+    try {
+      if (data.root_password !== null && typeof data.root_password !== "string") {
+        throw malformedEnvelope("create server root_password is invalid");
+      }
+      await this.settleReturnedActions(
+        data.action,
+        data.next_actions,
+        deadline,
+        { id: serverId, type: "server" },
+        true,
+      );
+      const server = await this.waitForServerRunningWithin(serverId, deadline);
 
-    logger.info("[hcloud] Created server", {
-      serverId: data.server.id,
-      name: data.server.name,
-      type: input.serverType,
-      location: input.location,
-    });
+      logger.info("[hcloud] Created server", {
+        serverId,
+        name: server.name,
+        type: input.serverType,
+        location: input.location,
+      });
 
-    return {
-      server: mapHetznerServer(data.server),
-      rootPassword: data.root_password,
-    };
+      return {
+        server,
+        rootPassword: data.root_password,
+      };
+    } catch (error) {
+      // error-policy:J2 the provider already accepted a billable resource. A
+      // fresh bounded delete is the only safe compensation authority, and the
+      // typed wrapper retains both the settlement and cleanup failures.
+      return this.compensateAcceptedResource("server", serverId, error);
+    }
+  }
+
+  private async waitForServerRunningWithin(
+    serverId: number,
+    deadline: number,
+  ): Promise<HetznerServer> {
+    while (Date.now() < deadline) {
+      const server = await this.getServerWithin(serverId, deadline);
+      if (server?.status === "running") return server;
+      if (!server || !["initializing", "starting"].includes(server.status)) {
+        throw new HetznerCloudError(
+          "server_error",
+          `Hetzner Cloud API created server ${serverId} but exact readback entered ${server?.status ?? "absent"}`,
+        );
+      }
+      await waitWithinDeadline(deadline);
+    }
+    throw new HetznerCloudError(
+      "transport_error",
+      `Hetzner Cloud API created server ${serverId} but it did not reach running before the operation deadline`,
+    );
   }
 
   async deleteServer(serverId: number): Promise<void> {
-    await this.request<unknown>("DELETE", `/servers/${serverId}`);
+    validateResourceId(serverId, "serverId");
+    const deadline = deadlineAfter(this.lifecycleTimeoutMs);
+    let deleteResponse: unknown | typeof NO_CONTENT;
+    try {
+      deleteResponse = await this.request<unknown>(
+        "DELETE",
+        `/servers/${serverId}`,
+        undefined,
+        deadline,
+        true,
+      );
+    } catch (error) {
+      // error-policy:J4 an exact target 404 is the provider's explicit
+      // idempotent-absence result; action-poll 404s are never handled here.
+      if (error instanceof HetznerCloudError && error.code === "not_found") return;
+      throw error;
+    }
+    if (deleteResponse !== NO_CONTENT) {
+      const data = requireEnvelope(deleteResponse, "delete server");
+      await this.settleReturnedActions(
+        data.action,
+        Object.hasOwn(data, "next_actions") ? data.next_actions : [],
+        deadline,
+        { id: serverId, type: "server" },
+        true,
+      );
+    }
+    if ((await this.getServerWithin(serverId, deadline)) !== null) {
+      throw new HetznerCloudError(
+        "server_error",
+        `Hetzner Cloud API delete action completed but server ${serverId} still exists`,
+      );
+    }
     logger.info("[hcloud] Deleted server", { serverId });
   }
 
   async powerOff(serverId: number): Promise<HetznerAction> {
-    const data = await this.request<{ action: HetznerAction }>(
-      "POST",
-      `/servers/${serverId}/actions/poweroff`,
+    validateResourceId(serverId, "serverId");
+    const data = requireEnvelope(
+      await this.request<unknown>("POST", `/servers/${serverId}/actions/poweroff`),
+      "power-off server",
     );
-    return data.action;
+    return requireAcceptedAction(data.action, {
+      expectedResource: { id: serverId, type: "server" },
+      requireResources: true,
+    });
   }
 
   async powerOn(serverId: number): Promise<HetznerAction> {
-    const data = await this.request<{ action: HetznerAction }>(
-      "POST",
-      `/servers/${serverId}/actions/poweron`,
+    validateResourceId(serverId, "serverId");
+    const data = requireEnvelope(
+      await this.request<unknown>("POST", `/servers/${serverId}/actions/poweron`),
+      "power-on server",
     );
-    return data.action;
+    return requireAcceptedAction(data.action, {
+      expectedResource: { id: serverId, type: "server" },
+      requireResources: true,
+    });
   }
 
   // ----------------------------------------------------------------------
@@ -361,36 +507,140 @@ export class HetznerCloudClient implements ComputeProvider {
   }
 
   async getVolume(volumeId: number): Promise<HetznerVolume | null> {
+    validateResourceId(volumeId, "volumeId");
+    return this.getVolumeWithin(volumeId, deadlineAfter(this.requestTimeoutMs));
+  }
+
+  private async getVolumeWithin(volumeId: number, deadline: number): Promise<HetznerVolume | null> {
     try {
-      const data = await this.request<{ volume: HetznerVolume }>("GET", `/volumes/${volumeId}`);
-      return data.volume;
+      const data = requireEnvelope(
+        await this.request<unknown>("GET", `/volumes/${volumeId}`, undefined, deadline),
+        "volume readback",
+      );
+      const volume = requireObject(
+        data.volume,
+        "volume readback resource",
+      ) as unknown as HetznerVolume;
+      assertExactResourceId(volume.id, volumeId, "volume");
+      return volume;
     } catch (err) {
+      // error-policy:J4 exact resource absence is the designed by-id read
+      // result; every other provider or transport failure remains exceptional.
       if (err instanceof HetznerCloudError && err.code === "not_found") return null;
       throw err;
     }
   }
 
   async createVolume(input: CreateVolumeInput): Promise<HetznerVolume> {
+    if (input.serverId !== undefined) {
+      validateResourceId(input.serverId, "serverId");
+    }
+    if (input.automount === true && input.serverId === undefined) {
+      throw new HetznerCloudError(
+        "invalid_input",
+        "Hetzner createVolume automount requires serverId",
+      );
+    }
     const body: Record<string, unknown> = {
       name: input.name,
       size: input.sizeGb,
-      location: input.location,
       format: input.format ?? "ext4",
     };
-    if (input.serverId) body.server = input.serverId;
-    if (input.automount === false) body.automount = false;
+    if (input.serverId === undefined) body.location = input.location;
+    else body.server = input.serverId;
+    if (input.automount !== undefined) body.automount = input.automount;
     if (input.labels && Object.keys(input.labels).length > 0) {
       body.labels = input.labels;
     }
 
-    const data = await this.request<{ volume: HetznerVolume }>("POST", "/volumes", body);
-    logger.info("[hcloud] Created volume", {
-      volumeId: data.volume.id,
-      name: data.volume.name,
-      sizeGb: input.sizeGb,
-      location: input.location,
-    });
-    return data.volume;
+    const deadline = deadlineAfter(this.lifecycleTimeoutMs);
+    const data = requireEnvelope(
+      await this.request<unknown>("POST", "/volumes", body, deadline),
+      "create volume",
+    );
+    const createdVolume = requireObject(data.volume, "created volume");
+    const volumeId = requireResourceId(createdVolume.id, "created volume");
+    try {
+      await this.settleReturnedActions(
+        data.action,
+        data.next_actions,
+        deadline,
+        { id: volumeId, type: "volume" },
+        false,
+      );
+      const volume = await this.waitForVolumeAvailableWithin(volumeId, deadline);
+      const expectedServer = input.serverId ?? null;
+      if (volume.server !== expectedServer) {
+        throw new HetznerCloudError(
+          "server_error",
+          `Hetzner Cloud API created volume ${volumeId} with unexpected server attachment`,
+        );
+      }
+      const hasDevice = typeof volume.linux_device === "string" && volume.linux_device.length > 0;
+      if (
+        (expectedServer === null && volume.linux_device !== null) ||
+        (expectedServer !== null && !hasDevice)
+      ) {
+        throw new HetznerCloudError(
+          "server_error",
+          `Hetzner Cloud API created volume ${volumeId} with inconsistent device state`,
+        );
+      }
+      logger.info("[hcloud] Created volume", {
+        volumeId,
+        name: volume.name,
+        sizeGb: input.sizeGb,
+        location: input.location,
+      });
+      return volume;
+    } catch (error) {
+      // error-policy:J2 see createServer: the accepted volume ID authorizes an
+      // independent compensating delete and the wrapper preserves both errors.
+      return this.compensateAcceptedResource("volume", volumeId, error);
+    }
+  }
+
+  private async waitForVolumeAvailableWithin(
+    volumeId: number,
+    deadline: number,
+  ): Promise<HetznerVolume> {
+    while (Date.now() < deadline) {
+      const volume = await this.getVolumeWithin(volumeId, deadline);
+      if (volume?.status === "available") return volume;
+      if (!volume || volume.status !== "creating") {
+        throw new HetznerCloudError(
+          "server_error",
+          `Hetzner Cloud API created volume ${volumeId} but exact readback entered ${volume?.status ?? "absent"}`,
+        );
+      }
+      await waitWithinDeadline(deadline);
+    }
+    throw new HetznerCloudError(
+      "transport_error",
+      `Hetzner Cloud API created volume ${volumeId} but it did not reach available before the operation deadline`,
+    );
+  }
+
+  private async compensateAcceptedResource<T>(
+    resourceType: "server" | "volume",
+    resourceId: number,
+    primaryError: unknown,
+  ): Promise<T> {
+    let compensationError: unknown;
+    try {
+      if (resourceType === "server") await this.deleteServer(resourceId);
+      else await this.deleteVolume(resourceId);
+    } catch (error) {
+      // error-policy:J2 the typed accepted-resource error below carries both
+      // failures so the primary settlement fault cannot be masked by cleanup.
+      compensationError = error;
+    }
+    throw new HetznerAcceptedResourceError(
+      resourceType,
+      resourceId,
+      primaryError,
+      compensationError,
+    );
   }
 
   async attachVolume(
@@ -398,39 +648,147 @@ export class HetznerCloudClient implements ComputeProvider {
     serverId: number,
     automount = false,
   ): Promise<HetznerAction> {
-    const data = await this.request<{ action: HetznerAction }>(
-      "POST",
-      `/volumes/${volumeId}/actions/attach`,
-      { server: serverId, automount },
+    validateResourceId(volumeId, "volumeId");
+    validateResourceId(serverId, "serverId");
+    const data = requireEnvelope(
+      await this.request<unknown>("POST", `/volumes/${volumeId}/actions/attach`, {
+        server: serverId,
+        automount,
+      }),
+      "attach volume",
     );
-    return data.action;
+    return requireAcceptedAction(data.action, {
+      expectedResource: { id: volumeId, type: "volume" },
+      requireResources: true,
+    });
   }
 
   async detachVolume(volumeId: number): Promise<HetznerAction> {
-    const data = await this.request<{ action: HetznerAction }>(
-      "POST",
-      `/volumes/${volumeId}/actions/detach`,
+    validateResourceId(volumeId, "volumeId");
+    const data = requireEnvelope(
+      await this.request<unknown>("POST", `/volumes/${volumeId}/actions/detach`),
+      "detach volume",
     );
-    return data.action;
+    return requireAcceptedAction(data.action, {
+      expectedResource: { id: volumeId, type: "volume" },
+      requireResources: true,
+    });
   }
 
   async deleteVolume(volumeId: number): Promise<void> {
-    await this.request<unknown>("DELETE", `/volumes/${volumeId}`);
+    validateResourceId(volumeId, "volumeId");
+    const deadline = deadlineAfter(this.lifecycleTimeoutMs);
+    let deleteResponse: unknown | typeof NO_CONTENT;
+    try {
+      deleteResponse = await this.request<unknown>(
+        "DELETE",
+        `/volumes/${volumeId}`,
+        undefined,
+        deadline,
+        true,
+      );
+    } catch (error) {
+      // error-policy:J4 an exact target 404 is the provider's explicit
+      // idempotent-absence result.
+      if (error instanceof HetznerCloudError && error.code === "not_found") return;
+      throw error;
+    }
+    if (deleteResponse !== NO_CONTENT) {
+      const data = requireEnvelope(deleteResponse, "delete volume");
+      await this.settleReturnedActions(
+        data.action,
+        Object.hasOwn(data, "next_actions") ? data.next_actions : [],
+        deadline,
+        { id: volumeId, type: "volume" },
+        true,
+      );
+    }
+    if ((await this.getVolumeWithin(volumeId, deadline)) !== null) {
+      throw new HetznerCloudError(
+        "server_error",
+        `Hetzner Cloud API delete completed but volume ${volumeId} still exists`,
+      );
+    }
     logger.info("[hcloud] Deleted volume", { volumeId });
   }
 
-  /** Poll an action until it completes (success or error). */
+  /** Poll an action until terminal success, rejecting terminal provider errors. */
   async waitForAction(actionId: number, timeoutMs = 60_000): Promise<HetznerAction> {
-    const deadline = Date.now() + timeoutMs;
+    validateResourceId(actionId, "actionId");
+    validateRequestTimeout(timeoutMs, "timeoutMs");
+    return this.waitForActionUntil(actionId, deadlineAfter(timeoutMs));
+  }
+
+  private async waitForActionUntil(
+    actionId: number,
+    deadline: number,
+    expectedResource?: { id: number; type: string },
+  ): Promise<HetznerAction> {
     while (Date.now() < deadline) {
-      const data = await this.request<{ action: HetznerAction }>("GET", `/actions/${actionId}`);
-      if (data.action.status !== "running") return data.action;
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const data = requireEnvelope(
+        await this.request<unknown>("GET", `/actions/${actionId}`, undefined, deadline),
+        "action readback",
+      );
+      const action = parseActionEnvelope(data.action, {
+        expectedId: actionId,
+        expectedResource,
+        requireResources: true,
+      });
+      if (action.status === "success") return action;
+      if (action.status === "error") throw actionFailure(action);
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(ACTION_POLL_INTERVAL_MS, remaining)),
+      );
     }
     throw new HetznerCloudError(
       "transport_error",
-      `Hetzner action ${actionId} did not complete within ${timeoutMs}ms`,
+      `Hetzner action ${actionId} did not complete before the operation deadline`,
     );
+  }
+
+  private async settleReturnedActions(
+    primary: unknown,
+    nextActionsValue: unknown,
+    deadline: number,
+    expectedPrimaryResource: { id: number; type: string },
+    primaryRequired: boolean,
+  ): Promise<void> {
+    if (!Array.isArray(nextActionsValue)) {
+      throw malformedEnvelope("lifecycle response is missing next_actions");
+    }
+    const actions: Array<{
+      action: HetznerAction;
+      expectedResource?: { id: number; type: string };
+    }> = [];
+    if (primary === null || primary === undefined) {
+      if (primaryRequired) throw malformedEnvelope("lifecycle response is missing action");
+    } else {
+      actions.push({
+        action: parseActionEnvelope(primary, {
+          expectedResource: expectedPrimaryResource,
+          requireResources: true,
+        }),
+        expectedResource: expectedPrimaryResource,
+      });
+    }
+    for (const rawAction of nextActionsValue) {
+      actions.push({
+        action: parseActionEnvelope(rawAction, { requireResources: true }),
+      });
+    }
+    const actionIds = new Set<number>();
+    for (const entry of actions) {
+      if (actionIds.has(entry.action.id)) {
+        throw malformedEnvelope("lifecycle response contains a duplicate action ID");
+      }
+      actionIds.add(entry.action.id);
+      if (entry.action.status === "error") throw actionFailure(entry.action);
+      if (entry.action.status === "running") {
+        await this.waitForActionUntil(entry.action.id, deadline, entry.expectedResource);
+      }
+    }
   }
 
   // ----------------------------------------------------------------------
@@ -468,12 +826,34 @@ export class HetznerCloudClient implements ComputeProvider {
     method: "GET" | "POST" | "DELETE" | "PUT",
     path: string,
     body?: unknown,
-  ): Promise<T> {
+    deadline?: number,
+  ): Promise<T>;
+  private async request<T>(
+    method: "GET" | "POST" | "DELETE" | "PUT",
+    path: string,
+    body: unknown,
+    deadline: number,
+    distinguishNoContent: true,
+  ): Promise<T | typeof NO_CONTENT>;
+  private async request<T>(
+    method: "GET" | "POST" | "DELETE" | "PUT",
+    path: string,
+    body?: unknown,
+    deadline = deadlineAfter(this.requestTimeoutMs),
+    distinguishNoContent = false,
+  ): Promise<T | typeof NO_CONTENT> {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      throw new HetznerCloudError(
+        "transport_error",
+        `Hetzner Cloud API ${method} ${path} exceeded its operation deadline`,
+      );
+    }
+    const requestDeadline = Date.now() + Math.min(this.requestTimeoutMs, remaining);
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), this.requestTimeoutMs);
-    let response: Response;
+    const timer = setTimeout(() => ac.abort(), requestDeadline - Date.now());
     try {
-      response = await fetch(`${this.apiBaseUrl}${path}`, {
+      const response = await fetch(`${this.apiBaseUrl}${path}`, {
         method,
         headers: {
           Authorization: `Bearer ${this.token}`,
@@ -482,50 +862,211 @@ export class HetznerCloudClient implements ComputeProvider {
         body: body !== undefined ? JSON.stringify(body) : undefined,
         signal: ac.signal,
       });
-    } catch (err) {
+      assertRequestWithinDeadline(method, path, requestDeadline);
+
+      if (response.status === 204) {
+        return distinguishNoContent ? NO_CONTENT : (undefined as T);
+      }
+
+      const text = await response.text();
+      assertRequestWithinDeadline(method, path, requestDeadline);
+      let parsed: unknown;
+      try {
+        parsed = text ? JSON.parse(text) : undefined;
+      } catch {
+        // error-policy:J3 provider bytes must parse as the declared JSON
+        // envelope; malformed payloads never become successful defaults.
+        throw new HetznerCloudError(
+          "server_error",
+          `Hetzner Cloud API ${method} ${path} returned non-JSON: ${truncateWellFormed(toWellFormedUnicode(text), 200)}`,
+          response.status,
+        );
+      }
+      assertRequestWithinDeadline(method, path, requestDeadline);
+
+      if (!response.ok) {
+        const errorPayload =
+          parsed && typeof parsed === "object" && "error" in parsed
+            ? (parsed as { error: { code?: string; message?: string } }).error
+            : undefined;
+        const code = mapStatusToCode(response.status, errorPayload?.code);
+        throw new HetznerCloudError(
+          code,
+          errorPayload?.message ??
+            `Hetzner Cloud API ${method} ${path} failed with status ${response.status}`,
+          response.status,
+          undefined,
+          code === "rate_limited" ? parseRetryMetadata(response.headers) : undefined,
+        );
+      }
+
+      return parsed as T;
+    } catch (error) {
+      if (error instanceof HetznerCloudError) throw error;
+      // error-policy:J2 preserve the underlying fetch or body-read failure at
+      // the typed provider transport boundary.
       throw new HetznerCloudError(
         "transport_error",
-        `Hetzner Cloud API ${method} ${path} failed: ${err instanceof Error ? err.message : String(err)}`,
+        `Hetzner Cloud API ${method} ${path} failed: ${error instanceof Error ? error.message : String(error)}`,
         undefined,
-        err,
+        error,
       );
     } finally {
       clearTimeout(timer);
     }
+  }
+}
 
-    if (response.status === 204) {
-      return undefined as T;
+interface ActionEnvelopeOptions {
+  expectedId?: number;
+  expectedResource?: { id: number; type: string };
+  requireResources?: boolean;
+}
+
+function requireEnvelope(value: unknown, operation: string): Record<string, unknown> {
+  return requireObject(value, `${operation} response`);
+}
+
+function requireObject(value: unknown, field: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw malformedEnvelope(`${field} is not an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function parseActionEnvelope(value: unknown, options: ActionEnvelopeOptions = {}): HetznerAction {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw malformedEnvelope("action is not an object");
+  }
+  const action = value as Partial<HetznerAction>;
+  if (!Number.isSafeInteger(action.id) || (action.id as number) <= 0) {
+    throw malformedEnvelope("action has an invalid ID");
+  }
+  if (options.expectedId !== undefined && action.id !== options.expectedId) {
+    throw malformedEnvelope("action readback returned a different ID");
+  }
+  if (typeof action.command !== "string" || action.command.trim() === "") {
+    throw malformedEnvelope("action has an invalid command");
+  }
+  if (action.status !== "running" && action.status !== "success" && action.status !== "error") {
+    throw malformedEnvelope("action has an invalid status");
+  }
+  if (
+    !Number.isFinite(action.progress) ||
+    !Number.isInteger(action.progress) ||
+    (action.progress as number) < 0 ||
+    (action.progress as number) > 100
+  ) {
+    throw malformedEnvelope("action has invalid progress");
+  }
+  if (action.status === "error") {
+    if (
+      !action.error ||
+      typeof action.error.code !== "string" ||
+      action.error.code.trim() === "" ||
+      typeof action.error.message !== "string" ||
+      action.error.message.trim() === ""
+    ) {
+      throw malformedEnvelope("failed action is missing its provider error");
     }
+  } else if (action.error !== null) {
+    throw malformedEnvelope("non-failed action contains an error");
+  }
 
-    const text = await response.text();
-    let parsed: unknown;
-    try {
-      parsed = text ? JSON.parse(text) : undefined;
-    } catch {
-      throw new HetznerCloudError(
-        "server_error",
-        `Hetzner Cloud API ${method} ${path} returned non-JSON: ${truncateWellFormed(toWellFormedUnicode(text), 200)}`,
-        response.status,
-      );
+  const resources = action.resources;
+  if (options.requireResources && !Array.isArray(resources)) {
+    throw malformedEnvelope("action is missing resource bindings");
+  }
+  if (resources !== undefined) {
+    if (!Array.isArray(resources)) {
+      throw malformedEnvelope("action has malformed resource bindings");
     }
-
-    if (!response.ok) {
-      const errorPayload =
-        parsed && typeof parsed === "object" && "error" in parsed
-          ? (parsed as { error: { code?: string; message?: string } }).error
-          : undefined;
-      const code = mapStatusToCode(response.status, errorPayload?.code);
-      throw new HetznerCloudError(
-        code,
-        errorPayload?.message ??
-          `Hetzner Cloud API ${method} ${path} failed with status ${response.status}`,
-        response.status,
-        undefined,
-        code === "rate_limited" ? parseRetryMetadata(response.headers) : undefined,
-      );
+    for (const resource of resources) {
+      if (
+        !resource ||
+        !Number.isSafeInteger(resource.id) ||
+        resource.id <= 0 ||
+        typeof resource.type !== "string" ||
+        resource.type.trim() === ""
+      ) {
+        throw malformedEnvelope("action has malformed resource bindings");
+      }
     }
+  }
+  if (
+    options.expectedResource &&
+    !resources?.some(
+      (resource) =>
+        resource.id === options.expectedResource?.id &&
+        resource.type === options.expectedResource.type,
+    )
+  ) {
+    throw malformedEnvelope("action is not bound to the exact requested resource");
+  }
+  return action as HetznerAction;
+}
 
-    return parsed as T;
+function requireAcceptedAction(value: unknown, options: ActionEnvelopeOptions): HetznerAction {
+  const action = parseActionEnvelope(value, options);
+  if (action.status === "error") throw actionFailure(action);
+  return action;
+}
+
+function actionFailure(action: HetznerAction): HetznerCloudError {
+  return new HetznerCloudError(
+    "server_error",
+    `Hetzner action ${action.id} failed (${action.error?.code}): ${action.error?.message}`,
+  );
+}
+
+function malformedEnvelope(detail: string): HetznerCloudError {
+  return new HetznerCloudError(
+    "server_error",
+    `Hetzner Cloud API returned a malformed lifecycle response: ${detail}`,
+  );
+}
+
+function validateResourceId(value: number, field: string): void {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new HetznerCloudError("invalid_input", `${field} must be a positive safe integer`);
+  }
+}
+
+function requireResourceId(value: unknown, resource: string): number {
+  if (!Number.isSafeInteger(value) || (value as number) <= 0) {
+    throw malformedEnvelope(`${resource} has an invalid ID`);
+  }
+  return value as number;
+}
+
+function assertExactResourceId(value: unknown, expected: number, resource: string): void {
+  if (value !== expected) {
+    throw malformedEnvelope(`${resource} readback returned a different ID`);
+  }
+}
+
+function deadlineAfter(timeoutMs: number): number {
+  return Date.now() + timeoutMs;
+}
+
+async function waitWithinDeadline(deadline: number): Promise<void> {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) return;
+  await new Promise((resolve) =>
+    setTimeout(resolve, Math.min(RESOURCE_READBACK_POLL_INTERVAL_MS, remaining)),
+  );
+}
+
+function assertRequestWithinDeadline(
+  method: "GET" | "POST" | "DELETE" | "PUT",
+  path: string,
+  deadline: number,
+): void {
+  if (Date.now() >= deadline) {
+    throw new HetznerCloudError(
+      "transport_error",
+      `Hetzner Cloud API ${method} ${path} exceeded its request deadline`,
+    );
   }
 }
 
@@ -616,12 +1157,12 @@ function validateToken(token: string): void {
   }
 }
 
-function validateRequestTimeout(value: number | undefined): void {
+function validateRequestTimeout(value: number | undefined, field = "requestTimeoutMs"): void {
   if (value === undefined) return;
   if (!Number.isSafeInteger(value) || value < 1 || value > MAX_REQUEST_TIMEOUT_MS) {
     throw new HetznerCloudError(
       "invalid_input",
-      `requestTimeoutMs must be a positive safe integer no greater than ${MAX_REQUEST_TIMEOUT_MS}`,
+      `${field} must be a positive safe integer no greater than ${MAX_REQUEST_TIMEOUT_MS}`,
     );
   }
 }

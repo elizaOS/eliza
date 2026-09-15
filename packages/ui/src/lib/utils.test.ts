@@ -9,6 +9,13 @@ import { describe, expect, it } from "vitest";
 
 import { cn } from "./utils";
 
+it("search corners replace the base radius without removing the surface", () => {
+  expect(cn("rounded-sm bg-card", "rounded-search")).toBe(
+    "bg-card rounded-search",
+  );
+  expect(cn("rounded-search", "rounded-full")).toBe("rounded-full");
+});
+
 const CUSTOM_SIZES = [
   "text-3xs",
   "text-2xs",

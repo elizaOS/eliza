@@ -1376,7 +1376,7 @@ function normalizeSemanticConfidence(value: unknown): number {
 
 function normalizeSemanticReason(value: unknown): string {
   return typeof value === "string" && value.trim().length > 0
-    ? value.trim().slice(0, 120)
+    ? value.trim()
     : "semantic_classifier";
 }
 

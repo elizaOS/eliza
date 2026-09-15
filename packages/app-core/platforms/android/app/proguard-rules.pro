@@ -6,6 +6,16 @@
 -keep @com.getcapacitor.annotation.CapacitorPlugin class * { *; }
 -keep class com.getcapacitor.community.** { *; }
 
+# AgentPlugin resolves these host methods by reflection. Preserve the exact
+# signatures used by the WebView's local-agent transport in minified builds.
+-keepclassmembers class ai.elizaos.app.ElizaAgentService {
+    public static void start(android.content.Context);
+    public static void stop(android.content.Context);
+    public static java.lang.String localAgentToken();
+    public static java.lang.String requestLocalAgent(java.lang.String);
+    public static void requestLocalAgentStream(java.lang.String, java.util.function.Consumer);
+}
+
 # Background Runner's bundled JS engine resolves this namespace from native
 # code, so R8 cannot discover the references from Java bytecode.
 -keep class io.ionic.android_js_engine.** { *; }

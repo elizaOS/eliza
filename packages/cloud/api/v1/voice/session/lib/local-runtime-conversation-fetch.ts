@@ -8,9 +8,14 @@
 import {
   LOCAL_VOICE_RUNTIME_AGENT_HEADER,
   LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
+  parseVoiceUiContext,
   REALTIME_VOICE_CLIENT_TRANSPORT,
+  type VoiceUiContext,
 } from "@elizaos/shared";
-import { VOICE_STREAM_PROTOCOL } from "@/lib/voice-session/eliza-sse-bridge";
+import {
+  VOICE_CHANNEL_TYPE,
+  VOICE_STREAM_PROTOCOL,
+} from "@/lib/voice-session/eliza-sse-bridge";
 
 const CLOUD_CONVERSATION_STREAM_PATH =
   /^\/api\/v1\/eliza\/agents\/([^/]+)\/api\/conversations\/([^/]+)\/messages\/stream$/;
@@ -83,6 +88,7 @@ export function createLocalRuntimeConversationFetch(
       origin,
     );
     const body = parseRequestBody(init?.body);
+    const { uiClientId, ...messageMetadata } = body.metadata;
     const sourceHeaders = new Headers(init?.headers);
     const headers = new Headers();
     for (const name of FORWARDED_HEADER_NAMES) {
@@ -91,6 +97,10 @@ export function createLocalRuntimeConversationFetch(
     }
     headers.set("Content-Type", "application/json");
     headers.set("Accept", "text/event-stream");
+    // Preserve the speaking renderer's routing identity through the existing
+    // request-scoped API seam, not persisted history or a new model tool arg.
+    // The authenticated voice session and bound runtime scope still own auth.
+    if (uiClientId) headers.set("X-ElizaOS-Client-Id", uiClientId);
     // These values come from the startup-validated scope, never the untrusted
     // cloud request headers. The loopback host uses them as an atomic runtime
     // generation fence at its enqueue boundary.
@@ -100,7 +110,7 @@ export function createLocalRuntimeConversationFetch(
     return fetchImpl(target, {
       ...init,
       headers,
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, metadata: messageMetadata }),
       redirect: "error",
     });
   }) as typeof fetch;
@@ -147,9 +157,12 @@ function resolveRequestUrl(input: RequestInfo | URL): URL {
 
 function parseRequestBody(body: BodyInit | null | undefined): {
   text: string;
+  channelType: typeof VOICE_CHANNEL_TYPE;
   messageRole?: "system";
   clientMessageId?: string;
-  metadata: { clientTransport: typeof REALTIME_VOICE_CLIENT_TRANSPORT };
+  metadata: VoiceUiContext & {
+    clientTransport: typeof REALTIME_VOICE_CLIENT_TRANSPORT;
+  };
   streamProtocol: typeof VOICE_STREAM_PROTOCOL;
 } {
   if (typeof body !== "string") {
@@ -186,6 +199,10 @@ function parseRequestBody(body: BodyInit | null | undefined): {
         "local voice conversation delta stream protocol is required",
       );
     }
+    const uiContext = parseVoiceUiContext(metadata);
+    if (!uiContext) {
+      throw new LocalRuntimeConversationFetchError("invalid voice UI context");
+    }
     if (parsed.messageRole !== undefined && parsed.messageRole !== "system") {
       throw new LocalRuntimeConversationFetchError(
         "local voice conversation message role must be system",
@@ -205,13 +222,17 @@ function parseRequestBody(body: BodyInit | null | undefined): {
     }
     return {
       text: parsed.text,
+      channelType: VOICE_CHANNEL_TYPE,
       ...(parsed.messageRole === undefined
         ? {}
         : { messageRole: parsed.messageRole }),
       ...(parsed.clientMessageId === undefined
         ? {}
         : { clientMessageId: parsed.clientMessageId }),
-      metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
+      metadata: {
+        ...uiContext,
+        clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
+      },
       streamProtocol: parsed.streamProtocol,
     };
   } catch (error) {

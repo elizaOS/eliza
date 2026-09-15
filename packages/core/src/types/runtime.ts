@@ -41,6 +41,7 @@ import type {
 } from "./environment";
 import type { RegisteredEvaluator } from "./evaluator";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
+import type { IdentityClaim } from "./identity";
 import type { Memory, MemoryMetadata } from "./memory";
 import type { IMessageService } from "./message-service";
 import type {
@@ -255,6 +256,8 @@ export interface MessageConnectorQueryContext {
 
 export interface MessageConnectorTarget {
 	target: TargetInfo;
+	/** Connector-owned opaque key for auditing an identity-claim mapping. */
+	identityDeliveryKey?: string;
 	label?: string;
 	kind?: MessageTargetKind;
 	description?: string;
@@ -444,6 +447,16 @@ export interface MessageConnector {
 		query: string,
 		context: MessageConnectorQueryContext,
 	) => Promise<MessageConnectorTarget[]> | MessageConnectorTarget[];
+	/**
+	 * Convert a verified provider claim into this connector's concrete delivery
+	 * target. Handles are display data, so the shared runtime never guesses that
+	 * a handle or provider subject is a channel, chat, phone number, or address.
+	 */
+	resolveIdentityClaimTarget?: (
+		claim: IdentityClaim,
+		context: MessageConnectorQueryContext,
+		canonicalPrincipalId: UUID,
+	) => Promise<MessageConnectorTarget | null> | MessageConnectorTarget | null;
 	listRecentTargets?: (
 		context: MessageConnectorQueryContext,
 	) => Promise<MessageConnectorTarget[]> | MessageConnectorTarget[];

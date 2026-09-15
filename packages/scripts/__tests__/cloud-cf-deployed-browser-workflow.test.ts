@@ -85,9 +85,9 @@ const authorityUpload = requireStep(
   "Publish closed Pages deployment authority",
 );
 const deployedJob = requireJob("deployed-renderer-staging");
-const oneShotPrerequisite = requireStep(
+const rendererPrerequisite = requireStep(
   deployedJob,
-  "Require one-shot staging release prerequisites",
+  "Require deployed-renderer staging release prerequisites",
 );
 const authorityDownload = requireStep(
   deployedJob,
@@ -167,21 +167,16 @@ describe("Cloudflare deployed browser workflow contract", () => {
     expect(freshnessStep.run).toContain(
       `for served_url in "${shellExpansion("served_frontends[@]")}"`,
     );
-    expect(freshnessStep.run).toContain("https://develop.eliza-app.pages.dev");
+    expect(freshnessStep.run).toContain("https://staging.eliza-app.pages.dev");
   });
 
-  test("runs only after the staging deploy and public routing gates", () => {
+  test("runs only when the caller requests the staging proof", () => {
     expect(deployedJob.needs).toEqual(["deploy-app", "verify-routing"]);
     expect(deployedJob.environment).toBe("staging");
-    expect(deployedJob.if).toContain("inputs.target_environment == 'staging'");
-    expect(deployedJob.if).toContain(
-      "vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1'",
-    );
-    expect(deployedJob.if).toContain(
-      "needs.deploy-app.outputs.pages_deployed == 'true'",
-    );
-    expect(deployedJob.if).toContain(
-      "needs.verify-routing.result == 'success'",
+    expect(deployedJob.if).toBe(
+      githubExpression(
+        "!cancelled() && inputs.target_environment == 'staging' && inputs.run_deployed_renderer_staging == true",
+      ),
     );
     expect(deployJob.outputs?.pages_authority_artifact).toBe(
       `pages-deployment-authority-${githubExpression("github.run_id")}-${githubExpression("github.run_attempt")}`,
@@ -215,11 +210,13 @@ describe("Cloudflare deployed browser workflow contract", () => {
     expect(calledInput?.default).toBe(false);
     expect(releaseJob?.with?.[inputName]).toBe(
       githubExpression(
-        "github.event_name == 'workflow_dispatch' && inputs.run_deployed_renderer_staging == true",
+        "github.event_name == 'workflow_dispatch' && inputs.environment == 'staging' && (inputs.run_deployed_renderer_staging == true || (inputs.effect_digest != '' && vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1'))",
       ),
     );
     expect(admissionStep?.env?.RUN_DEPLOYED_RENDERER_STAGING).toBe(
-      releaseJob?.with?.[inputName],
+      githubExpression(
+        "github.event_name == 'workflow_dispatch' && inputs.run_deployed_renderer_staging == true",
+      ),
     );
     expect(sourceValidationStep?.env?.RUN_DEPLOYED_RENDERER_STAGING).toBe(
       githubExpression("inputs.run_deployed_renderer_staging == true"),
@@ -237,29 +234,23 @@ describe("Cloudflare deployed browser workflow contract", () => {
     expect(admissionStep?.run).toContain(
       '"--run-deployed-renderer-staging=$RUN_DEPLOYED_RENDERER_STAGING"',
     );
-    expect(deployedJob.if).toContain(
-      "inputs.run_deployed_renderer_staging == true",
+    expect(deployedJob.if).toBe(
+      githubExpression(
+        "!cancelled() && inputs.target_environment == 'staging' && inputs.run_deployed_renderer_staging == true",
+      ),
     );
-    expect(deployedJob.if).toContain(
-      "vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1' && needs.deploy-app.result == 'success'",
-    );
-    expect(deployedJob.if).toContain(
-      "|| (github.event_name == 'workflow_dispatch' && inputs.run_deployed_renderer_staging == true)",
-    );
-    expect(oneShotPrerequisite.if).toBe(
-      githubExpression("inputs.run_deployed_renderer_staging == true"),
-    );
-    expect(oneShotPrerequisite.env).toEqual({
+    expect(rendererPrerequisite.if).toBeUndefined();
+    expect(rendererPrerequisite.env).toEqual({
       DEPLOY_APP_RESULT: githubExpression("needs.deploy-app.result"),
       PAGES_DEPLOYED: githubExpression(
         "needs.deploy-app.outputs.pages_deployed",
       ),
       VERIFY_ROUTING_RESULT: githubExpression("needs.verify-routing.result"),
     });
-    expect(oneShotPrerequisite.run).toContain(
+    expect(rendererPrerequisite.run).toContain(
       '[ "$PAGES_DEPLOYED" != "true" ]',
     );
-    expect(oneShotPrerequisite.run).toContain("exit 1");
+    expect(rendererPrerequisite.run).toContain("exit 1");
     expect(deployWorkflow.on?.schedule).toBeUndefined();
   });
 
@@ -278,13 +269,19 @@ describe("Cloudflare deployed browser workflow contract", () => {
     expect(browserStep.env?.ELIZAOS_CLOUD_API_KEY).toBe(
       "$" + "{{ secrets.ELIZAOS_CLOUD_API_KEY }}",
     );
+    expect(
+      browserStep.env?.ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION,
+    ).toBe("1");
+    expect(deployedJob.if).toContain(
+      "inputs.run_deployed_renderer_staging == true",
+    );
     expect(browserStep.run).toContain(
       "--config playwright.cloud-deployed.config.ts",
     );
     expect(browserStep.run).not.toContain("webServer");
   });
 
-  test("combines every strict observation before deriving receipt v3", () => {
+  test("combines every strict observation before deriving receipt v4", () => {
     for (const input of [
       '--authority "$AUTHORITY_PATH"',
       '--preflight "$PREFLIGHT_PATH"',
@@ -340,7 +337,7 @@ describe("Cloudflare deployed browser workflow contract", () => {
 
   test("retains only privacy-safe failed output from remote Chromium", () => {
     expect(deployedConfig).toContain(
-      'const DEPLOYED_RENDERER_ALIAS = "https://develop.eliza-app.pages.dev"',
+      'const DEPLOYED_RENDERER_ALIAS = "https://staging.eliza-app.pages.dev"',
     );
     expect(deployedConfig).toContain("workers: 1");
     expect(deployedConfig).toContain("retries: 0");
@@ -355,7 +352,7 @@ describe("Cloudflare deployed browser workflow contract", () => {
     expect(smokeSpec).toContain("ELIZA_UI_SMOKE_DEPLOYED_RENDERER");
     expect(smokeSpec).toContain("cloudflare-pages-alias");
     expect(smokeSpec).toContain("elizaos.renderer.build/v1");
-    expect(smokeSpec).toContain("https://develop.eliza-app.pages.dev");
+    expect(smokeSpec).toContain("https://staging.eliza-app.pages.dev");
     expect(smokeSpec).toContain('context.on("requestfailed"');
     expect(smokeSpec).toContain(
       `privacy-safe-${shellExpansion("phase")}-history-network-diagnostics.json`,

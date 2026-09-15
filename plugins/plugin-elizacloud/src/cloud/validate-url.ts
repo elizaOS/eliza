@@ -1,6 +1,10 @@
 import dns from "node:dns";
 import net from "node:net";
 import { promisify } from "node:util";
+import {
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/shared";
 
 const dnsLookupAll = promisify(dns.lookup);
 
@@ -122,6 +126,23 @@ function isBlockedIp(ip: string): boolean {
   return false;
 }
 
+function normalizeSelfHostedAuthorityUrl(rawUrl: string): string | null {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    parsed.hash = "";
+    parsed.search = "";
+    parsed.pathname = parsed.pathname
+      .replace(/\/api\/v1\/?$/i, "")
+      .replace(/\/+$/, "");
+    return parsed.toString().replace(/\/+$/, "");
+  } catch {
+    return null;
+  }
+}
+
 export async function validateCloudBaseUrl(
   rawUrl: string,
 ): Promise<string | null> {
@@ -130,6 +151,24 @@ export async function validateCloudBaseUrl(
     parsed = new URL(rawUrl);
   } catch {
     return `Invalid cloud base URL: "${rawUrl}"`;
+  }
+
+  // The dev launcher has already validated and frozen a self-hosted endpoint.
+  // Permit that exact origin/path (including LAN HTTP and a custom port), but
+  // do not turn development mode into a generic SSRF bypass for request-supplied
+  // URLs: anything that differs from the launch tuple is rejected here.
+  if (resolveDevCloudEnvAuthority() === "self-hosted") {
+    const launcherBaseUrl = resolveDevCloudAuthorityEnvValue(
+      "ELIZAOS_CLOUD_BASE_URL",
+    );
+    const normalizedLauncher = launcherBaseUrl
+      ? normalizeSelfHostedAuthorityUrl(launcherBaseUrl)
+      : null;
+    const normalizedCandidate = normalizeSelfHostedAuthorityUrl(rawUrl);
+    if (normalizedLauncher && normalizedCandidate === normalizedLauncher) {
+      return null;
+    }
+    return `Cloud base URL "${rawUrl}" does not match the immutable self-hosted development launch target.`;
   }
 
   if (parsed.protocol !== "https:") {

@@ -122,7 +122,7 @@ public class MainActivity extends BridgeActivity {
         // is no longer visible (app moved to background or fully covered),
         // so background instances don't drain battery. Same flag set by
         // every video / voice-calling app (Snapchat, YouTube, Zoom, Meet).
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        keepScreenAwake();
 
         // Hide the bottom system navigation bar (the white gesture pill) for a
         // clean, full-bleed agent home — iOS-style. We hide ONLY the navigation
@@ -184,13 +184,28 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
+    public void onResume() {
+        super.onResume();
+        // Some vendor Android builds clear window flags while switching tasks
+        // or returning from an out-of-process browser surface. Restore the
+        // demo-mode wake contract every time Eliza becomes foreground again.
+        keepScreenAwake();
+        applyImmersiveNavigationBar();
+    }
+
+    @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         // The system restores the nav bar after dialogs / resume; re-hide it
         // whenever we regain focus so the full-bleed home stays clean.
         if (hasFocus) {
+            keepScreenAwake();
             applyImmersiveNavigationBar();
         }
+    }
+
+    private void keepScreenAwake() {
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
 
     /**

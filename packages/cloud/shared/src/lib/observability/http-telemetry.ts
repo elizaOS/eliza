@@ -6,19 +6,13 @@
  * provider and dedicated-agent propagation is tracked separately.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, isInferenceTraceId, mintInferenceTraceId } from "@elizaos/core";
 import type { InferenceAuthTelemetry } from "../services/inference-auth-context";
 
 export const ELIZA_TRACE_ID_HEADER = "X-Eliza-Trace-Id";
 export const ELIZA_PREFORWARD_HEADER = "X-Eliza-Preforward-Ms";
 export const ELIZA_TELEMETRY_HEADER = "X-Eliza-Telemetry";
 export const ELIZA_AUTH_TRACE_HEADER = "X-Eliza-Auth-Trace";
-
-const OPAQUE_TRACE_ID =
-  /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
-const W3C_TRACEPARENT_V00 = /^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$/;
-const ZERO_TRACE_ID = "0".repeat(32);
-const ZERO_PARENT_ID = "0".repeat(16);
 
 export interface ServerTimingMetric {
   name: string;
@@ -40,19 +34,17 @@ export interface GatewayHandoffTelemetry {
   emit(): void;
 }
 
-/** Resolve an opaque correlation id without retaining caller-chosen text. */
+/**
+ * Resolve the closed-schema gateway correlation id without retaining caller
+ * text that cannot safely cross the dedicated proxy → agent → gateway path.
+ *
+ * This is an untrusted HTTP boundary. Legacy UUIDs, uppercase values, and
+ * `traceparent` are deliberately not normalized here; compatibility code must
+ * normalize only after a caller has established a trusted internal boundary.
+ */
 export function resolveElizaTraceId(headers: Headers): string {
-  const supplied = headers.get(ELIZA_TRACE_ID_HEADER)?.trim();
-  if (supplied && OPAQUE_TRACE_ID.test(supplied) && supplied.toLowerCase() !== ZERO_TRACE_ID) {
-    return supplied.toLowerCase();
-  }
-
-  const traceparent = headers.get("traceparent")?.trim();
-  const match = traceparent?.match(W3C_TRACEPARENT_V00);
-  if (match && match[1] !== ZERO_TRACE_ID && match[2] !== ZERO_PARENT_ID) {
-    return match[1];
-  }
-  return crypto.randomUUID();
+  const supplied = headers.get(ELIZA_TRACE_ID_HEADER);
+  return isInferenceTraceId(supplied) ? supplied : mintInferenceTraceId();
 }
 
 function sanitizeToken(value: string): string {
@@ -227,8 +219,11 @@ export function withInferenceAuthTelemetry(
  * transforms a response body into another wire format.
  */
 export function copyHttpTelemetryHeaders(from: Headers, to: Headers): void {
+  const traceId = from.get(ELIZA_TRACE_ID_HEADER);
+  if (isInferenceTraceId(traceId)) {
+    to.set(ELIZA_TRACE_ID_HEADER, traceId);
+  }
   for (const name of [
-    ELIZA_TRACE_ID_HEADER,
     ELIZA_PREFORWARD_HEADER,
     ELIZA_AUTH_TRACE_HEADER,
     "Server-Timing",

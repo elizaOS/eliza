@@ -1,17 +1,7 @@
 /** Exercises local-runtime conversation path decoding with downstream fetch isolated. */
-import { beforeAll, describe, expect, mock, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 
-const TRANSPORT = "realtime-voice-client";
-
-mock.module("@elizaos/shared", () => ({
-  LOCAL_VOICE_RUNTIME_AGENT_HEADER: "X-Eliza-Local-Voice-Agent-Id",
-  LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER:
-    "X-Eliza-Local-Voice-Conversation-Id",
-  REALTIME_VOICE_CLIENT_TRANSPORT: TRANSPORT,
-}));
-mock.module("@/lib/voice-session/eliza-sse-bridge", () => ({
-  VOICE_STREAM_PROTOCOL: "delta-v2",
-}));
+import { REALTIME_VOICE_CLIENT_TRANSPORT as TRANSPORT } from "@elizaos/shared";
 
 const VALID_BODY = JSON.stringify({
   text: "hello locally",

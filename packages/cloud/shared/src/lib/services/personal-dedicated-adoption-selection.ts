@@ -1,13 +1,16 @@
 /**
- * Admin-reviewed selection of one existing personal Dedicated candidate.
+ * Admin-reviewed selection and explicit re-review of one existing personal
+ * Dedicated candidate.
  *
  * This boundary is deliberately non-billable: it writes only a durable
- * selection receipt. It never changes the agent row, creates a lifecycle job,
- * starts compute, finalizes personal cutover, or removes another candidate.
+ * selection receipt. Re-review replaces only a stale receipt after a fresh
+ * fingerprint-bound operator decision. Neither path changes an agent row,
+ * creates a lifecycle job, starts compute, finalizes personal cutover, or
+ * removes another candidate.
  */
 
 import { ElizaError } from "@elizaos/core";
-import { and, asc, eq, inArray, notExists, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, ne, notExists, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/helpers";
 import type { AgentSandbox, AgentSandboxStatus } from "../../db/repositories/agent-sandboxes";
@@ -71,6 +74,25 @@ export interface PersonalDedicatedSelectionExecuteInput extends PersonalDedicate
   expectedStateDisposition: PersonalDedicatedStateDisposition;
 }
 
+export type PersonalDedicatedSelectionRereviewInput = PersonalDedicatedSelectionInput;
+
+export interface PersonalDedicatedSelectionRereviewExecuteInput
+  extends PersonalDedicatedSelectionRereviewInput {
+  expectedReceiptFingerprint: string;
+  expectedReceiptUpdatedAt: string;
+  expectedPreviousRetainedAgentId: string;
+  expectedInventoryFingerprint: string;
+  expectedStateDisposition: PersonalDedicatedStateDisposition;
+}
+
+export interface PersonalDedicatedSelectionRereviewPreview
+  extends PersonalDedicatedSelectionPreview {
+  receiptFingerprint: string;
+  receiptUpdatedAt: string;
+  previousRetainedAgentId: string;
+  replacesTarget: boolean;
+}
+
 function selectionError(
   code:
     | "PERSONAL_DEDICATED_SELECTION_NOT_FOUND"
@@ -103,6 +125,23 @@ function unselectedCandidateWhere(organizationId: string, userId: string) {
         .select({ id: personalDedicatedAdoptionSelections.id })
         .from(personalDedicatedAdoptionSelections)
         .where(eq(personalDedicatedAdoptionSelections.dedicated_agent_id, agentSandboxes.id)),
+    ),
+  );
+}
+
+function rereviewCandidateWhere(organizationId: string, userId: string, selectionId: string) {
+  return and(
+    adoptableUnmarkedTargetWhere(organizationId, userId),
+    notExists(
+      dbWrite
+        .select({ id: personalDedicatedAdoptionSelections.id })
+        .from(personalDedicatedAdoptionSelections)
+        .where(
+          and(
+            eq(personalDedicatedAdoptionSelections.dedicated_agent_id, agentSandboxes.id),
+            ne(personalDedicatedAdoptionSelections.id, selectionId),
+          ),
+        ),
     ),
   );
 }
@@ -674,7 +713,299 @@ export async function executePersonalDedicatedSelection(
   }
 }
 
+function rereviewPreviewFromCurrent(params: {
+  input: PersonalDedicatedSelectionRereviewInput;
+  receipt: typeof personalDedicatedAdoptionSelections.$inferSelect;
+  retained: AgentSandbox;
+  candidates: AgentSandbox[];
+  inventoryFingerprint: string;
+  stateDisposition: PersonalDedicatedStateDisposition;
+}): PersonalDedicatedSelectionRereviewPreview {
+  return {
+    inventoryFingerprint: params.inventoryFingerprint,
+    receiptFingerprint: params.receipt.inventory_fingerprint,
+    receiptUpdatedAt: params.receipt.updated_at.toISOString(),
+    previousRetainedAgentId: params.receipt.dedicated_agent_id,
+    retainedAgentId: params.retained.id,
+    retainedStatus: params.retained.status,
+    retainedLifecycleRevision: params.retained.lifecycle_revision,
+    stateDisposition: params.stateDisposition,
+    candidateCount: params.candidates.length,
+    alreadySelected: true,
+    replacesTarget: params.receipt.dedicated_agent_id !== params.input.retainedAgentId,
+    startsCompute: false,
+    createsJob: false,
+    deletesRows: false,
+    changesCutover: false,
+  };
+}
+
+function assertReceiptCanBeRereviewed(
+  params: PersonalDedicatedSelectionRereviewInput,
+  receipt: typeof personalDedicatedAdoptionSelections.$inferSelect,
+): void {
+  if (receipt.restore_fence_hash || receipt.restore_fence_started_at) {
+    throw selectionError(
+      "PERSONAL_DEDICATED_SELECTION_CONFLICT",
+      "The Dedicated selection has active restore authority",
+      params,
+    );
+  }
+}
+
+function assertRereviewChangesReceipt(
+  params: PersonalDedicatedSelectionRereviewInput,
+  receipt: typeof personalDedicatedAdoptionSelections.$inferSelect,
+  preview: PersonalDedicatedSelectionRereviewPreview,
+  activationAuthority: ReturnType<typeof personalDedicatedActivationAuthority>,
+): void {
+  const receiptAuthority = personalDedicatedActivationAuthorityFromReceipt(
+    receipt.activation_kind,
+    receipt.activation_backup_id,
+    receipt.activation_backup_hash,
+    receipt.activation_backup_chain,
+  );
+  if (
+    !preview.replacesTarget &&
+    receipt.inventory_fingerprint === preview.inventoryFingerprint &&
+    receipt.candidate_count === preview.candidateCount &&
+    receipt.state_disposition === preview.stateDisposition &&
+    personalDedicatedActivationAuthorityKey(receiptAuthority) ===
+      personalDedicatedActivationAuthorityKey(activationAuthority)
+  ) {
+    throw selectionError(
+      "PERSONAL_DEDICATED_SELECTION_CONFLICT",
+      "The Dedicated selection is already current",
+      params,
+    );
+  }
+}
+
+/**
+ * Recompute the current owner inventory for an explicit operator re-review.
+ * This is read-only and never treats the stale receipt itself as authority.
+ */
+export async function previewPersonalDedicatedSelectionRereview(
+  params: PersonalDedicatedSelectionRereviewInput,
+): Promise<PersonalDedicatedSelectionRereviewPreview> {
+  const receipt = await findSelection(params);
+  if (!receipt) {
+    throw selectionError(
+      "PERSONAL_DEDICATED_SELECTION_NOT_FOUND",
+      "The stale Dedicated selection was not found",
+      params,
+    );
+  }
+  assertReceiptCanBeRereviewed(params, receipt);
+  if (await findAuthority(params)) {
+    throw selectionError(
+      "PERSONAL_DEDICATED_SELECTION_CONFLICT",
+      "This personal Dedicated source already has activation authority",
+      params,
+    );
+  }
+
+  const candidates = await dbWrite
+    .select()
+    .from(agentSandboxes)
+    .where(rereviewCandidateWhere(params.organizationId, params.userId, receipt.id))
+    .orderBy(asc(agentSandboxes.id))
+    .limit(MAX_REVIEWABLE_CANDIDATES + 1);
+  const retained = assertStableAmbiguousInventory(params, candidates);
+  const activeJob = await findActiveCandidateLifecycleJob(
+    dbWrite,
+    params.organizationId,
+    candidates.map((candidate) => candidate.id),
+  );
+  if (activeJob) {
+    throw selectionError(
+      "PERSONAL_DEDICATED_SELECTION_ACTIVE_JOB",
+      "The reviewed Dedicated inventory has active lifecycle work",
+      params,
+    );
+  }
+  const backups = await readBackupProvenance(candidates.map((candidate) => candidate.id));
+  const inventoryFingerprint = await personalDedicatedInventoryFingerprint({
+    ...params,
+    candidates,
+    backups,
+  });
+  const activationAuthority = personalDedicatedActivationAuthority(
+    params.organizationId,
+    retained.id,
+    backups,
+  );
+  const stateDisposition = personalDedicatedStateDisposition(
+    params.organizationId,
+    retained.id,
+    backups,
+  );
+  const preview = rereviewPreviewFromCurrent({
+    input: params,
+    receipt,
+    retained,
+    candidates,
+    inventoryFingerprint,
+    stateDisposition,
+  });
+  assertRereviewChangesReceipt(params, receipt, preview, activationAuthority);
+  return preview;
+}
+
+/**
+ * Replace one stale selection only after a fresh explicit operator review.
+ * The transaction changes only the receipt; no agent, job, billing, or
+ * cutover state is written.
+ */
+export async function executePersonalDedicatedSelectionRereview(
+  params: PersonalDedicatedSelectionRereviewExecuteInput,
+): Promise<PersonalDedicatedSelectionRereviewPreview> {
+  return await dbWrite.transaction(async (tx) => {
+    await configureElizaLifecycleTransaction(tx);
+    await tx.execute(elizaAgentCreateAdvisoryLockSql(params.organizationId));
+    await tx.execute(
+      elizaAgentTierUpgradeAdvisoryLockSql(params.organizationId, params.sourceAgentId),
+    );
+
+    const [receipt] = await tx
+      .select()
+      .from(personalDedicatedAdoptionSelections)
+      .where(
+        and(
+          eq(personalDedicatedAdoptionSelections.organization_id, params.organizationId),
+          eq(personalDedicatedAdoptionSelections.user_id, params.userId),
+          eq(personalDedicatedAdoptionSelections.source_agent_id, params.sourceAgentId),
+          eq(personalDedicatedAdoptionSelections.schema_version, 1),
+        ),
+      )
+      .limit(1)
+      .for("update");
+    if (!receipt) {
+      throw selectionError(
+        "PERSONAL_DEDICATED_SELECTION_NOT_FOUND",
+        "The stale Dedicated selection was not found",
+        params,
+      );
+    }
+    assertReceiptCanBeRereviewed(params, receipt);
+    if (
+      receipt.inventory_fingerprint !== params.expectedReceiptFingerprint ||
+      receipt.updated_at.toISOString() !== params.expectedReceiptUpdatedAt ||
+      receipt.dedicated_agent_id !== params.expectedPreviousRetainedAgentId
+    ) {
+      throw selectionError(
+        "PERSONAL_DEDICATED_SELECTION_INVENTORY_CHANGED",
+        "The stale Dedicated receipt changed after preview",
+        params,
+      );
+    }
+    const [authority] = await tx
+      .select({ id: personalDedicatedUpgradeAuthorities.id })
+      .from(personalDedicatedUpgradeAuthorities)
+      .where(
+        and(
+          eq(personalDedicatedUpgradeAuthorities.organization_id, params.organizationId),
+          eq(personalDedicatedUpgradeAuthorities.user_id, params.userId),
+          eq(personalDedicatedUpgradeAuthorities.source_agent_id, params.sourceAgentId),
+          eq(personalDedicatedUpgradeAuthorities.schema_version, 1),
+        ),
+      )
+      .limit(1)
+      .for("update");
+    if (authority) {
+      throw selectionError(
+        "PERSONAL_DEDICATED_SELECTION_CONFLICT",
+        "This personal Dedicated source already has activation authority",
+        params,
+      );
+    }
+
+    const unlockedCandidates = await tx
+      .select({ id: agentSandboxes.id })
+      .from(agentSandboxes)
+      .where(rereviewCandidateWhere(params.organizationId, params.userId, receipt.id))
+      .orderBy(asc(agentSandboxes.id))
+      .limit(MAX_REVIEWABLE_CANDIDATES + 1);
+    for (const candidate of unlockedCandidates) {
+      await tx.execute(elizaProvisionAdvisoryLockSql(params.organizationId, candidate.id));
+    }
+    const candidates = await tx
+      .select()
+      .from(agentSandboxes)
+      .where(rereviewCandidateWhere(params.organizationId, params.userId, receipt.id))
+      .orderBy(asc(agentSandboxes.id))
+      .limit(MAX_REVIEWABLE_CANDIDATES + 1)
+      .for("update");
+    const retained = assertStableAmbiguousInventory(params, candidates);
+    const backups = await readBackupProvenanceInTx(
+      tx,
+      candidates.map((candidate) => candidate.id),
+    );
+    const inventoryFingerprint = await personalDedicatedInventoryFingerprint({
+      ...params,
+      candidates,
+      backups,
+    });
+    const activationAuthority = personalDedicatedActivationAuthority(
+      params.organizationId,
+      retained.id,
+      backups,
+    );
+    const stateDisposition = personalDedicatedStateDisposition(
+      params.organizationId,
+      retained.id,
+      backups,
+    );
+    const preview = rereviewPreviewFromCurrent({
+      input: params,
+      receipt,
+      retained,
+      candidates,
+      inventoryFingerprint,
+      stateDisposition,
+    });
+    assertRereviewChangesReceipt(params, receipt, preview, activationAuthority);
+    if (
+      inventoryFingerprint !== params.expectedInventoryFingerprint ||
+      stateDisposition !== params.expectedStateDisposition
+    ) {
+      throw selectionError(
+        "PERSONAL_DEDICATED_SELECTION_INVENTORY_CHANGED",
+        "The Dedicated inventory changed after re-review",
+        params,
+      );
+    }
+    const activeJob = await findActiveCandidateLifecycleJob(
+      tx,
+      params.organizationId,
+      candidates.map((candidate) => candidate.id),
+    );
+    if (activeJob) {
+      throw selectionError(
+        "PERSONAL_DEDICATED_SELECTION_ACTIVE_JOB",
+        "The reviewed Dedicated inventory has active lifecycle work",
+        params,
+      );
+    }
+
+    await tx
+      .update(personalDedicatedAdoptionSelections)
+      .set({
+        dedicated_agent_id: retained.id,
+        state_disposition: stateDisposition,
+        ...personalDedicatedActivationAuthorityReceiptColumns(activationAuthority),
+        inventory_fingerprint: inventoryFingerprint,
+        candidate_count: candidates.length,
+        updated_at: new Date(),
+      })
+      .where(eq(personalDedicatedAdoptionSelections.id, receipt.id));
+    return preview;
+  });
+}
+
 export const personalDedicatedAdoptionSelectionService = {
   preview: previewPersonalDedicatedSelection,
   execute: executePersonalDedicatedSelection,
+  previewRereview: previewPersonalDedicatedSelectionRereview,
+  executeRereview: executePersonalDedicatedSelectionRereview,
 };

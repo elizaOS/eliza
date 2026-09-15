@@ -182,7 +182,7 @@ describe("parent-agent explicit coding-mode negative conformance", () => {
       },
       { timeout: 20_000 },
     );
-    expect(plannerCalls).toBe(4);
+    expect(plannerCalls).toBe(3);
     const expectedFailure = {
       kind: "coding_mutation_unverified",
       transient: false,

@@ -1,15 +1,13 @@
 "use client";
 
+import type { LoginProviders } from "@elizaos/login";
 /**
  * App-authorize screen content: Steward login (Discord/Google) and the return-to handoff.
  */
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
-  STEWARD_TOKEN_KEY,
 } from "@elizaos/shared/steward-session-client";
-import { DiscordIcon, GoogleIcon, StewardLogin, useAuth } from "@stwd/react";
-import type { StewardProviders } from "@stwd/sdk";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invalidateStewardServerCookieSyncMarker } from "../../../cloud/lib/steward-session-cookie-sync-marker";
@@ -25,9 +23,15 @@ import {
 } from "../../../components/ui/avatar";
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
+import {
+  DiscordIcon,
+  GoogleIcon,
+  LoginForm,
+  useAuth,
+} from "../../../login/index";
 import Image from "../../runtime/image";
 import { useRouter, useSearchParams } from "../../runtime/navigation";
-import { BrandButton, BrandCard, CornerBrackets } from "../primitives";
+import { CornerBrackets } from "../primitives";
 import {
   buildAppAuthorizeCancelRedirect,
   buildAppAuthorizeCompletionRedirect,
@@ -67,7 +71,7 @@ type AppAuthorizeAuthState = {
   isAuthenticated: boolean;
   isLoading: boolean;
   isProvidersLoading: boolean;
-  providers: StewardProviders | null;
+  providers: LoginProviders | null;
   signInWithOAuth: AppAuthorizeOAuthSignIn;
   signOut: () => unknown;
 };
@@ -80,7 +84,7 @@ function isPlaywrightTestAuthEnabled(): boolean {
   );
 }
 
-const TEST_AUTH_PROVIDERS: StewardProviders = {
+const TEST_AUTH_PROVIDERS: LoginProviders = {
   passkey: true,
   email: true,
   siwe: false,
@@ -199,9 +203,7 @@ function parseMobileAuthorizeRequest(
 function readPlaywrightTestToken(): string {
   if (typeof window === "undefined") return "playwright-test-token";
   try {
-    return (
-      window.localStorage.getItem(STEWARD_TOKEN_KEY) ?? "playwright-test-token"
-    );
+    return readStoredStewardToken() ?? "playwright-test-token";
   } catch {
     return "playwright-test-token";
   }
@@ -328,7 +330,10 @@ function AuthorizeFlow({
   const [error, setError] = useState<string | null>(null);
   const mobileAuthorizationStarted = useRef(false);
 
-  useEffect(storeCurrentAppAuthorizeReturnTo, []);
+  useEffect(() => {
+    if (status !== "ready") return;
+    storeCurrentAppAuthorizeReturnTo();
+  }, [status]);
 
   // Validate app + redirect_uri exactly once on mount.
   useEffect(() => {
@@ -648,9 +653,9 @@ function AuthorizationErrorFrame({
       </Card>
       <h3 className="text-lg font-semibold text-white">Authorization Error</h3>
       <p className="text-sm text-white/60 max-w-xs text-center">{error}</p>
-      <BrandButton variant="outline" onClick={onHome} className="mt-4">
+      <Button variant="outline" onClick={onHome} className="mt-4">
         {actionLabel}
-      </BrandButton>
+      </Button>
     </Frame>
   );
 }
@@ -670,12 +675,12 @@ function Frame({ children }: { children: React.ReactNode }) {
         aria-hidden
       />
       <div className="relative z-10 flex flex-1 items-center justify-center p-4">
-        <BrandCard className="w-full max-w-md">
+        <Card variant="brand" className="w-full max-w-md">
           <CornerBrackets size="md" className="opacity-50" />
           <div className="relative z-10 flex flex-col items-center gap-6 py-8 px-2">
             {children}
           </div>
-        </BrandCard>
+        </Card>
       </div>
     </div>
   );
@@ -729,9 +734,9 @@ function SignedInActions({
 }) {
   return (
     <div className="flex w-full flex-col items-center gap-3">
-      <BrandButton onClick={onAuthorize} className="w-full">
+      <Button onClick={onAuthorize} className="w-full">
         Authorize {appName}
-      </BrandButton>
+      </Button>
       <InlineCancelButton onCancel={onCancel} />
     </div>
   );
@@ -746,7 +751,7 @@ function SignedOutActions({
 }: {
   activeTenantId: string | null;
   onCancel: () => void;
-  providers: StewardProviders | null;
+  providers: LoginProviders | null;
   providersReady: boolean;
   signInWithOAuth: AppAuthorizeOAuthSignIn;
 }) {
@@ -790,7 +795,7 @@ function SignedOutActions({
     <div className="flex w-full flex-col items-center gap-4">
       {providersReady ? (
         <>
-          <StewardLogin
+          <LoginForm
             variant="inline"
             showPasskey={showPasskey}
             showEmail={showEmail}

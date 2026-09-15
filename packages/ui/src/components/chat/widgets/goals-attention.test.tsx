@@ -18,6 +18,9 @@ const { authMock, intervalMock } = vi.hoisted(() => ({
 vi.mock("../../../hooks/useAuthStatus", () => ({
   useIsAuthenticated: () => authMock.authenticated,
 }));
+vi.mock("../../../hooks/useRole", () => ({
+  useRole: () => ({ isOwner: true }),
+}));
 
 vi.mock("../../../hooks", () => ({
   useIntervalWhenDocumentVisible: (callback: () => void) => {

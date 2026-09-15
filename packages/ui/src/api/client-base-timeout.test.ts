@@ -150,16 +150,31 @@ describe("ElizaClient request timeout policy", () => {
       { timeoutMs: 30_000 },
     );
 
+    const snapshot = {
+      catalog: [],
+      installed: [],
+      hardware: {
+        totalRamGb: 16,
+        freeRamGb: 8,
+        gpu: null,
+        cpuCores: 8,
+        platform: "linux",
+        arch: "x64",
+        appleSilicon: false,
+        recommendedBucket: "mid",
+        source: "os-fallback",
+      },
+    };
     response.resolve(
-      new Response(JSON.stringify({ catalog: [], installed: [] }), {
+      new Response(JSON.stringify(snapshot), {
         status: 200,
         headers: { "content-type": "application/json" },
       }),
     );
 
     await expect(Promise.all([first, second])).resolves.toEqual([
-      { catalog: [], installed: [] },
-      { catalog: [], installed: [] },
+      snapshot,
+      snapshot,
     ]);
   });
 });

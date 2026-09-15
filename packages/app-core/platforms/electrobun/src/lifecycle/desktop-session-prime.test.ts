@@ -12,6 +12,13 @@ import {
 
 const authBridgeState = vi.hoisted(() => ({
   loadOrCreateDesktopSession: vi.fn(),
+  actualLoadPersisted: undefined as
+    | undefined
+    | ((env?: NodeJS.ProcessEnv) => {
+        sessionId: string;
+        csrfToken: string;
+        expiresAt: number;
+      } | null),
   actualLoad: undefined as
     | undefined
     | ((deps: { apiBase: string }) => Promise<{
@@ -88,8 +95,9 @@ vi.mock("electrobun/bun", () => ({
 vi.mock("../native/auth-bridge", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../native/auth-bridge")>();
   authBridgeState.actualLoad = actual.loadOrCreateDesktopSession;
-  authBridgeState.loadOrCreateDesktopSession.mockImplementation(
-    actual.loadOrCreateDesktopSession,
+  authBridgeState.actualLoadPersisted = actual.loadPersistedSession;
+  authBridgeState.loadOrCreateDesktopSession.mockImplementation(() =>
+    actual.loadPersistedSession(process.env),
   );
   return {
     ...actual,
@@ -99,6 +107,7 @@ vi.mock("../native/auth-bridge", async (importOriginal) => {
 
 import { logger } from "../logger";
 import {
+  createDesktopSessionGenerationTracker,
   markDesktopSessionStale,
   primeDesktopSessionAuth,
 } from "./desktop-session-prime";
@@ -111,6 +120,7 @@ const ENV_KEYS = [
 ] as const;
 
 const LOOPBACK_API = "http://127.0.0.1:31337";
+const REBOUND_LOOPBACK_API = "http://127.0.0.1:31338";
 const RENDERER_ORIGIN = "http://127.0.0.1:5173";
 
 const originalEnv = new Map<string, string | undefined>();
@@ -173,15 +183,15 @@ describe("desktop-session-prime", () => {
       };
     });
     authBridgeState.loadOrCreateDesktopSession.mockReset();
-    authBridgeState.loadOrCreateDesktopSession.mockImplementation(
-      (deps: { apiBase: string }) => {
-        const actualLoad = authBridgeState.actualLoad;
-        if (!actualLoad) {
-          throw new Error("auth-bridge actual load was not captured");
-        }
-        return actualLoad(deps);
-      },
-    );
+    authBridgeState.loadOrCreateDesktopSession.mockImplementation(() => {
+      const actualLoadPersisted = authBridgeState.actualLoadPersisted;
+      if (!actualLoadPersisted) {
+        throw new Error(
+          "auth-bridge persisted-session loader was not captured",
+        );
+      }
+      return actualLoadPersisted(process.env);
+    });
     vi.mocked(logger.warn).mockClear();
     vi.mocked(logger.info).mockClear();
     markDesktopSessionStale();
@@ -203,14 +213,104 @@ describe("desktop-session-prime", () => {
     markDesktopSessionStale();
   });
 
+  it("invalidates authority only when the running backend generation changes", () => {
+    const changed = createDesktopSessionGenerationTracker();
+
+    expect(changed({ state: "starting", port: null, startedAt: null })).toBe(
+      false,
+    );
+    expect(changed({ state: "running", port: 31_337, startedAt: 1_000 })).toBe(
+      true,
+    );
+    expect(changed({ state: "running", port: 31_337, startedAt: 1_000 })).toBe(
+      false,
+    );
+    expect(changed({ state: "running", port: 31_337, startedAt: 2_000 })).toBe(
+      true,
+    );
+    expect(changed({ state: "running", port: 31_338, startedAt: 2_000 })).toBe(
+      true,
+    );
+  });
+
   it("skips the bridge and cookie jar after a successful prime", async () => {
     seedPersistedSession();
 
-    await primeDesktopSessionAuth(LOOPBACK_API, LOOPBACK_API);
-    await primeDesktopSessionAuth(LOOPBACK_API, LOOPBACK_API);
+    await expect(
+      primeDesktopSessionAuth(LOOPBACK_API, LOOPBACK_API),
+    ).resolves.toBe(true);
+    await expect(
+      primeDesktopSessionAuth(LOOPBACK_API, LOOPBACK_API),
+    ).resolves.toBe(true);
 
     expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledTimes(1);
     expect(electrobunState.defaultCookies).toHaveLength(2);
+  });
+
+  it("coalesces concurrent prime calls onto one socket proof", async () => {
+    let resolveSession!: (
+      session: ReturnType<typeof seedPersistedSession>,
+    ) => void;
+    authBridgeState.loadOrCreateDesktopSession.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSession = resolve;
+        }),
+    );
+
+    const first = primeDesktopSessionAuth(LOOPBACK_API, LOOPBACK_API);
+    const second = primeDesktopSessionAuth(LOOPBACK_API, LOOPBACK_API);
+
+    expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledTimes(1);
+    resolveSession({
+      sessionId: "coalesced-session",
+      csrfToken: "coalesced-csrf",
+      expiresAt: Date.now() + 86_400_000,
+    });
+    await Promise.all([first, second]);
+
+    expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledTimes(1);
+    expect(electrobunState.defaultCookies).toHaveLength(2);
+  });
+
+  it("re-proves once when a generation turns stale during an in-flight prime", async () => {
+    let resolveFirst!: (
+      session: ReturnType<typeof seedPersistedSession>,
+    ) => void;
+    authBridgeState.loadOrCreateDesktopSession
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({
+        sessionId: "fresh-generation-session",
+        csrfToken: "fresh-generation-csrf",
+        expiresAt: Date.now() + 86_400_000,
+      });
+
+    const first = primeDesktopSessionAuth(LOOPBACK_API, LOOPBACK_API);
+    markDesktopSessionStale();
+    const second = primeDesktopSessionAuth(
+      REBOUND_LOOPBACK_API,
+      REBOUND_LOOPBACK_API,
+    );
+    resolveFirst({
+      sessionId: "stale-generation-session",
+      csrfToken: "stale-generation-csrf",
+      expiresAt: Date.now() + 86_400_000,
+    });
+    await Promise.all([first, second]);
+
+    expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledTimes(2);
+    expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenLastCalledWith(
+      {
+        apiBase: REBOUND_LOOPBACK_API,
+        reusePersistedSession: false,
+      },
+    );
+    expect(electrobunState.defaultCookies).toHaveLength(4);
   });
 
   it("re-runs the bridge after markDesktopSessionStale", async () => {
@@ -227,12 +327,17 @@ describe("desktop-session-prime", () => {
   it("leaves the jar empty and stays unprimed when the bridge produces no session", async () => {
     process.env.ELIZA_STATE_DIR = createStateDir();
 
-    await primeDesktopSessionAuth("https://agent.example.com", RENDERER_ORIGIN);
-    await primeDesktopSessionAuth("https://agent.example.com", RENDERER_ORIGIN);
+    await expect(
+      primeDesktopSessionAuth("https://agent.example.com", RENDERER_ORIGIN),
+    ).resolves.toBe(false);
+    await expect(
+      primeDesktopSessionAuth("https://agent.example.com", RENDERER_ORIGIN),
+    ).resolves.toBe(false);
 
     expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledTimes(2);
     expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledWith({
       apiBase: "https://agent.example.com",
+      reusePersistedSession: false,
     });
     expect(logger.info).toHaveBeenCalledWith(
       "[Main] Desktop auth bridge produced no session; renderer will use the standard login flow.",
@@ -242,7 +347,7 @@ describe("desktop-session-prime", () => {
   });
 
   it("warns with the Error message when the bridge throws and stays unprimed", async () => {
-    authBridgeState.loadOrCreateDesktopSession.mockRejectedValueOnce(
+    authBridgeState.loadOrCreateDesktopSession.mockRejectedValue(
       new Error("disk exploded"),
     );
 
@@ -426,6 +531,24 @@ describe("desktop-session-prime", () => {
       SESSION_COOKIE_NAME,
       CSRF_COOKIE_NAME,
     ]);
+  });
+
+  it("stays unprimed when the cookie jar rejects either authority cookie", async () => {
+    seedPersistedSession();
+    electrobunState.defaultSet.mockImplementation((cookie: StoredCookie) => {
+      electrobunState.defaultCookies.push({ ...cookie });
+      return cookie.name !== CSRF_COOKIE_NAME;
+    });
+
+    await primeDesktopSessionAuth(LOOPBACK_API, LOOPBACK_API);
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      `[Main] Desktop auth cookie install failed: [DesktopAuthBridge] cookie jar rejected desktop authority for ${LOOPBACK_API}`,
+    );
+    expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledWith({
+      apiBase: LOOPBACK_API,
+      reusePersistedSession: false,
+    });
   });
 
   it("stringifies a non-Error cookie-install throw", async () => {

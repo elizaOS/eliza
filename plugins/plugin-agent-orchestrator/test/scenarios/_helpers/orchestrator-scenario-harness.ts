@@ -690,6 +690,10 @@ class OrchestratorScenarioHarness {
           source: "scenario-runner",
           deviceProfile: profile.id,
         },
+        acceptanceCriteria: [
+          `${profile.id} delegates to a coding sub-agent`,
+          "the selected host account metadata is persisted",
+        ],
       })) as TaskDetail;
       const detail = (await this.taskService.spawnAgentForTask(task.id, {
         label: profile.id === "desktop" ? "Ada" : "Lin",
@@ -976,7 +980,7 @@ export function registerCalibratedJudgeFixture(
       modelType: ModelType.TEXT_LARGE,
       prompt: (value: string) =>
         value.includes("Score the candidate response against the rubric") &&
-        value.includes("Respond with ONLY a compact JSON object"),
+        value.includes("Respond with ONLY a JSON object on one line"),
     },
     response: (call: DeterministicModelCall) => {
       const prompt = call.params.prompt ?? "";

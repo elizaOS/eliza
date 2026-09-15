@@ -416,6 +416,8 @@ export type AgentWalletStatus = "active" | "pending" | "none" | "error";
 
 export interface AgentDetailDto extends AgentListItemDto {
   errorCount: number;
+  /** True when the control plane has persisted private mesh routing authority. */
+  meshAddressPresent: boolean;
   walletAddress: string | null;
   walletProvider: string | null;
   walletStatus: AgentWalletStatus;

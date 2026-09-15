@@ -287,9 +287,12 @@ export const calculateAction: Action = {
 		}
 		try {
 			const { text, exact } = evaluateArithmetic(expression);
+			const rendered = `${expression} = ${text}${exact ? "" : " (floating-point; 15 significant digits)"}`;
+			// Keep the exact result as planner evidence. The evaluator owns the
+			// conversational answer and checks for explanations or further work.
 			return {
 				success: true,
-				text: `${expression} = ${text}${exact ? "" : " (floating-point; 15 significant digits)"}`,
+				text: rendered,
 				values: { success: true, result: text, exact },
 				data: { actionName: "CALCULATE", expression, result: text, exact },
 			};

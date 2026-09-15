@@ -19,6 +19,8 @@
  */
 
 /** Wire protocol version. Bumped only on breaking control-frame changes. */
+import type { VoiceUiContext } from "@elizaos/shared";
+
 export const VOICE_SESSION_PROTOCOL_VERSION = 1 as const;
 
 /** Uplink/downlink codecs negotiated in `hello`. */
@@ -50,6 +52,15 @@ export interface ClientAudioMetaFrame {
   channels: number;
 }
 
+export interface ClientAudioCapabilitiesFrame {
+  t: "audio_capabilities";
+  mode: "continuous_handoff";
+  echoCancellation: boolean;
+  noiseSuppression: boolean;
+  autoGainControl: boolean;
+  referenceAwarePlayback: boolean;
+}
+
 export interface ClientBargeInFrame {
   t: "barge_in";
 }
@@ -59,8 +70,10 @@ export interface ClientByeFrame {
 }
 
 export type ClientControlFrame =
+  | { t: "ui_context"; context: VoiceUiContext }
   | ClientHelloFrame
   | ClientAudioMetaFrame
+  | ClientAudioCapabilitiesFrame
   | ClientBargeInFrame
   | ClientByeFrame;
 
@@ -68,6 +81,7 @@ export type ClientControlFrame =
 
 export interface ServerReadyEvent {
   t: "ready";
+  uiContext?: boolean;
   sessionId: string;
   traceId: string;
 }
@@ -101,6 +115,32 @@ export interface ServerSpeakingStartEvent {
 
 export interface ServerSpeakingEndEvent {
   t: "speaking_end";
+  traceId: string;
+}
+
+export interface ServerAssistantPlayingEvent {
+  t: "assistant_playing";
+  active: boolean;
+  traceId: string;
+}
+
+export interface ServerVoiceMetricEvent {
+  t: "human_double_talk" | "echo_rejected" | "user_eos" | "next_reply_ready";
+  traceId: string;
+}
+
+export interface ServerHandoffRequestedEvent {
+  t: "handoff_requested";
+  fromTraceId: string;
+  toTraceId: string;
+  crossfadeMs: number;
+  traceId: string;
+}
+
+export interface ServerHandoffCompletedEvent {
+  t: "handoff_completed";
+  fromTraceId: string;
+  toTraceId: string;
   traceId: string;
 }
 
@@ -144,6 +184,10 @@ export type ServerControlFrame =
   | ServerLlmFirstTextEvent
   | ServerSpeakingStartEvent
   | ServerSpeakingEndEvent
+  | ServerAssistantPlayingEvent
+  | ServerVoiceMetricEvent
+  | ServerHandoffRequestedEvent
+  | ServerHandoffCompletedEvent
   | ServerNavigateViewEvent
   | ServerInterruptedEvent
   | ServerErrorEvent
@@ -235,6 +279,13 @@ const SERVER_TYPES: ReadonlySet<string> = new Set<ServerControlType>([
   "llm_first_text",
   "speaking_start",
   "speaking_end",
+  "assistant_playing",
+  "human_double_talk",
+  "echo_rejected",
+  "user_eos",
+  "next_reply_ready",
+  "handoff_requested",
+  "handoff_completed",
   "navigate_view",
   "interrupted",
   "error",

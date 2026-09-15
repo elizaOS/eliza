@@ -41,6 +41,11 @@ import {
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import {
+  applyDevCloudConfigAuthority,
+  createDevCloudConfigAuthorityView,
+  resolveDevCloudEnvAuthority,
+} from "../config/dev-cloud-env-authority.ts";
+import {
   CORE_PLUGINS,
   ELIZAOS_ANDROID_CORE_PLUGINS,
   ELIZAOS_ANDROID_TERMINAL_PLUGINS,
@@ -75,7 +80,10 @@ function gitpathologistPackageAvailable(): boolean {
  * Agent orchestrator ships as the standalone @elizaos/plugin-agent-orchestrator package;
  * Eliza loads it via STATIC_ELIZA_PLUGINS["agent-orchestrator"].
  */
-function orchestratorCompatPluginRequested(config: ElizaConfig): boolean {
+function orchestratorCompatPluginRequested(
+  config: ElizaConfig,
+  isCloudContainer: boolean,
+): boolean {
   const agentEntry = config.agents?.list?.[0];
   const fromEntry = agentEntry?.agentOrchestrator;
   const fromDefaults = config.agents?.defaults?.agentOrchestrator;
@@ -97,7 +105,7 @@ function orchestratorCompatPluginRequested(config: ElizaConfig): boolean {
   // match a local desktop agent instead of requiring a per-container env
   // opt-in. Explicit config/env opt-outs above still win, and lean-chat
   // containers force-drop it via LEAN_CHAT_EXCLUDED_PLUGINS regardless.
-  if (readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1") {
+  if (isCloudContainer) {
     return true;
   }
   return [
@@ -132,7 +140,7 @@ function isUsableCloudApiKey(value: unknown): value is string {
   return (
     trimmed.length > 0 &&
     trimmed.toUpperCase() !== "[REDACTED]" &&
-    !trimmed.startsWith("vault://")
+    !trimmed.toLowerCase().startsWith("vault://")
   );
 }
 
@@ -255,7 +263,7 @@ function isDirectlyRoutableProviderPlugin(
 function isTruthyCloudEnvValue(raw: string | undefined): boolean {
   if (!raw) return false;
   const value = raw.trim().toLowerCase();
-  return value === "1" || value === "true" || value === "yes";
+  return value === "1" || value === "true" || value === "yes" || value === "on";
 }
 
 function isStoreBuildVariant(): boolean {
@@ -434,11 +442,20 @@ function shouldLoadGoogleWorkspace(
 export function collectPluginNames(
   config: ElizaConfig,
   reasons?: PluginLoadReasons,
+  forceIncludePluginNames: readonly string[] = [],
 ): Set<string> {
+  config = createDevCloudConfigAuthorityView(config);
   const legacyLocalOnlyInference =
     config.cloud?.inferenceMode === "local" ||
     config.cloud?.services?.inference === false;
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);
+  const devCloudSnapshot = applyDevCloudConfigAuthority(
+    config as Record<string, unknown>,
+  );
+  const devCloudAuthority =
+    devCloudSnapshot?.authority ?? resolveDevCloudEnvAuthority();
+  const effectiveCloudEnvValue = (key: string): string | undefined =>
+    devCloudSnapshot ? devCloudSnapshot.values[key] : process.env[key];
   const deploymentTarget = resolveDeploymentTargetInConfig(
     config as Record<string, unknown>,
   );
@@ -452,7 +469,9 @@ export function collectPluginNames(
   const hasCanonicalRuntimeConfig = hasExplicitCanonicalRuntimeConfig(
     config as Record<string, unknown>,
   );
-  const isCloudContainer = readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1";
+  const isCloudContainer = devCloudSnapshot
+    ? devCloudSnapshot.values.ELIZA_CLOUD_PROVISIONED?.trim() === "1"
+    : readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1";
   const storeBuild = isStoreBuildVariant();
   const cloudExplicitlyDisabled = config.cloud?.enabled === false;
   // `ELIZA_LOCAL_LLAMA=1` is the AOSP / on-device signal that the in-process
@@ -471,8 +490,8 @@ export function collectPluginNames(
   const cloudPluginRequestedByEnv =
     !hasCanonicalRuntimeConfig &&
     !cloudExplicitlyDisabled &&
-    (Boolean(process.env.ELIZAOS_CLOUD_API_KEY?.trim()) ||
-      isTruthyCloudEnvValue(process.env.ELIZAOS_CLOUD_ENABLED));
+    (Boolean(effectiveCloudEnvValue("ELIZAOS_CLOUD_API_KEY")?.trim()) ||
+      isTruthyCloudEnvValue(effectiveCloudEnvValue("ELIZAOS_CLOUD_ENABLED")));
   const cloudEffectivelyEnabled =
     resolveCloudPluginRequirement(cloudTopology, cloudPluginRequestedByEnv) ||
     isCloudContainer;
@@ -480,7 +499,7 @@ export function collectPluginNames(
     | (Record<string, unknown> & { vars?: Record<string, unknown> })
     | undefined;
   const hasUsableCloudApiKey = [
-    process.env.ELIZAOS_CLOUD_API_KEY,
+    effectiveCloudEnvValue("ELIZAOS_CLOUD_API_KEY"),
     config.cloud?.apiKey,
     _configEnv?.ELIZAOS_CLOUD_API_KEY,
     _configEnv?.vars?.ELIZAOS_CLOUD_API_KEY,
@@ -496,6 +515,27 @@ export function collectPluginNames(
   const cloudHandlesInference =
     cloudTopology.services.inference &&
     (hasUsableCloudApiKey || isCloudContainer);
+  const devCloudCredentialAvailable = hasUsableCloudApiKey;
+  const devCloudActivationBlocked =
+    devCloudAuthority === "staging-default" || devCloudAuthority === "offline";
+  const devCloudPluginEnabled = Boolean(
+    devCloudAuthority &&
+      !devCloudActivationBlocked &&
+      (devCloudCredentialAvailable || isCloudContainer),
+  );
+  const devInferencePolicy = effectiveCloudEnvValue(
+    "ELIZAOS_CLOUD_USE_INFERENCE",
+  )
+    ?.trim()
+    .toLowerCase();
+  const hasDirectTextRoute =
+    serviceRouting?.llmText?.transport === "direct" &&
+    Boolean(serviceRouting.llmText.backend);
+  const devCloudOwnsInference = Boolean(
+    devCloudPluginEnabled &&
+      (isTruthyCloudEnvValue(devInferencePolicy) ||
+        (devInferencePolicy !== "false" && !hasDirectTextRoute)),
+  );
   const pluginEntries = (config.plugins as Record<string, unknown> | undefined)
     ?.entries as Record<string, { enabled?: boolean }> | undefined;
 
@@ -506,7 +546,10 @@ export function collectPluginNames(
       markerIndex >= 0
         ? pluginPackageName.slice(markerIndex + marker.length)
         : pluginPackageName;
-    return pluginEntries?.[pluginId]?.enabled === false;
+    return (
+      pluginEntries?.[pluginId]?.enabled === false ||
+      pluginEntries?.[pluginPackageName]?.enabled === false
+    );
   };
 
   const providerPluginIdSet = new Set(
@@ -586,7 +629,10 @@ export function collectPluginNames(
   // never gets it; privileged AOSP adds it through
   // ELIZAOS_ANDROID_TERMINAL_PLUGINS above so it can use the bundled Bun service
   // and Android shell process model.
-  if (!onMobile && orchestratorCompatPluginRequested(config)) {
+  if (
+    !onMobile &&
+    orchestratorCompatPluginRequested(config, isCloudContainer)
+  ) {
     // Only the BACKEND is gated to non-mobile + an explicit request. The
     // operator-console view (@elizaos/plugin-task-coordinator) is seeded for
     // all platforms via MOBILE_VIEW_PLUGINS above (views-only, degrades
@@ -604,11 +650,7 @@ export function collectPluginNames(
   // PTY_SERVICE and waits for a terminal to connect; plugin-cli-inference's
   // model map is inert unless ELIZA_CHAT_VIA_CLI selects a backend. lean-chat
   // containers stay lean: these are in LEAN_CHAT_EXCLUDED_PLUGINS.
-  if (
-    !onMobile &&
-    !leanChat &&
-    readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1"
-  ) {
+  if (!onMobile && !leanChat && isCloudContainer) {
     pluginsToLoad.add("@elizaos/plugin-pty");
     track(
       "@elizaos/plugin-pty",
@@ -717,6 +759,32 @@ export function collectPluginNames(
   }
 
   const applyProviderPrecedence = (): void => {
+    const directlyRoutedProviderPlugins = new Set(
+      Object.values(serviceRouting ?? {}).flatMap((route) => {
+        if (route?.transport !== "direct" || !route.backend) return [];
+        const pluginName = providerPluginNameFromBackend(route.backend);
+        return isDirectlyRoutableProviderPlugin(route.backend, pluginName)
+          ? [pluginName]
+          : [];
+      }),
+    );
+    if (devCloudAuthority) {
+      if (devCloudPluginEnabled) {
+        pluginsToLoad.add("@elizaos/plugin-elizacloud");
+        if (devCloudOwnsInference) {
+          removeDirectModelProviderSurfaces(pluginsToLoad);
+          // Cloud may own text while direct plugins still own embeddings,
+          // media, TTS, or another explicitly routed capability.
+          for (const pluginName of directlyRoutedProviderPlugins) {
+            pluginsToLoad.add(pluginName);
+          }
+        }
+      } else {
+        pluginsToLoad.delete("@elizaos/plugin-elizacloud");
+      }
+      return;
+    }
+
     if (deploymentTarget.runtime === "remote") {
       removeAllModelProviderSurfaces(pluginsToLoad);
       return;
@@ -727,15 +795,6 @@ export function collectPluginNames(
       // owner supplies the text brain directly. The canonical llmText route is
       // the arbitration signal; stripping direct providers here would make the
       // persisted route impossible to execute and let Cloud inference win.
-      const directlyRoutedProviderPlugins = new Set(
-        Object.values(serviceRouting ?? {}).flatMap((route) => {
-          if (route?.transport !== "direct" || !route.backend) return [];
-          const pluginName = providerPluginNameFromBackend(route.backend);
-          return isDirectlyRoutableProviderPlugin(route.backend, pluginName)
-            ? [pluginName]
-            : [];
-        }),
-      );
       // Ambient credentials may belong to other tools or stale configuration;
       // the canonical route matrix is the sole ownership signal in Cloud mode.
       removeDirectModelProviderSurfaces(pluginsToLoad);
@@ -849,8 +908,19 @@ export function collectPluginNames(
     }
   }
 
+  // Host-selected providers must enter the same topology policy as every
+  // other source. Adding them later in resolvePlugins bypassed the final
+  // cloud/remote/local-only precedence sweep, allowing a stale ambient API key
+  // to resurrect a provider that the canonical route matrix had suppressed.
+  for (const pluginName of forceIncludePluginNames) {
+    const resolved = resolvePluginPackageAlias(pluginName);
+    pluginsToLoad.add(resolved);
+    track(resolved, "host-selected provider");
+  }
+
   // Re-apply provider precedence so later additive paths (entries, features,
-  // installs) cannot accidentally re-introduce suppressed providers.
+  // installs, host selections) cannot accidentally re-introduce suppressed
+  // providers.
   applyProviderPrecedence();
 
   // Enforce feature gating last so allow-list entries cannot bypass it.
@@ -958,7 +1028,9 @@ export function collectPluginNames(
     // explicitly pinned it true) so the two providers don't both register.
     const localEmbeddingsOptIn =
       readAliasedEnv("ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS") === "1" &&
-      process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS?.trim().toLowerCase() !== "true";
+      effectiveCloudEnvValue("ELIZAOS_CLOUD_USE_EMBEDDINGS")
+        ?.trim()
+        .toLowerCase() !== "true";
     for (const name of LEAN_CHAT_EXCLUDED_PLUGINS) {
       if (localEmbeddingsOptIn && name === "@elizaos/plugin-local-inference") {
         // Keep the local embedder; ensure it wins TEXT_EMBEDDING over cloud.
@@ -969,7 +1041,7 @@ export function collectPluginNames(
         );
         // Yield the cloud embedding slot so plugin-elizacloud does not also
         // register TEXT_EMBEDDING (registerCloudEmbeddingModels checks this).
-        if (!process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS) {
+        if (!devCloudAuthority && !process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS) {
           process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
         }
         continue;
@@ -991,7 +1063,53 @@ export function collectPluginNames(
     );
   }
 
+  // Persisted plugin entries and platform gates are not allowed to override
+  // the launcher-owned development Cloud policy.
+  if (devCloudAuthority) applyProviderPrecedence();
+
+  withholdPluginsComposedByPersonalAssistant(pluginsToLoad, track);
   return pluginsToLoad;
+}
+
+/**
+ * Plugins whose same-named actions `@elizaos/plugin-personal-assistant`
+ * composes itself: CALENDAR and CONFLICT_DETECT from the calendar plugin,
+ * OWNER_GOALS from the goals plugin. The assistant's init registers both
+ * plugins and withholds those names (`ensureLifeOpsCalendarPluginRegistered`,
+ * `ensureLifeOpsGoalsPluginRegistered` in
+ * `plugins/plugin-personal-assistant/src/plugin.ts`), but only when they are
+ * not already in the runtime. `AgentRuntime.initialize` registers the
+ * non-core plugins concurrently, so a standalone calendar or goals entry in
+ * the same load set registers its actions while the assistant's init is still
+ * awaiting, the runtime's first-wins collision policy keeps the standalone
+ * action, and the composed surface (travel buffers, approval gateway,
+ * bulk_reschedule) is silently skipped (#30943). Cross-plugin `override` is
+ * neutralized by the plugin lifecycle (#12658) and array order does not
+ * survive concurrent registration, so the only deterministic lever is to let
+ * the assistant register these plugins itself.
+ */
+const PLUGINS_COMPOSED_BY_PERSONAL_ASSISTANT: readonly string[] = [
+  "@elizaos/plugin-calendar",
+  "@elizaos/plugin-goals",
+];
+
+/**
+ * Remove the standalone entries for plugins the personal assistant registers
+ * itself, in place, when the assistant is in the load set. Every other entry
+ * is untouched; without the assistant the set is unchanged.
+ */
+export function withholdPluginsComposedByPersonalAssistant(
+  pluginsToLoad: Set<string>,
+  track?: (pluginName: string, reason: string) => void,
+): void {
+  if (!pluginsToLoad.has("@elizaos/plugin-personal-assistant")) return;
+  for (const name of PLUGINS_COMPOSED_BY_PERSONAL_ASSISTANT) {
+    if (!pluginsToLoad.delete(name)) continue;
+    track?.(
+      name,
+      "registered by plugin-personal-assistant with its composed action names withheld (#30943)",
+    );
+  }
 }
 
 function resolveCloudPluginRequirement(

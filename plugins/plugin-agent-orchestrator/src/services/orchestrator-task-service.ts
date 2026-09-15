@@ -164,6 +164,7 @@ import {
   type OrchestratorRoomRoster,
   type OrchestratorRoomRosterOverview,
   type OrchestratorTaskDocument,
+  type OrchestratorTaskEvent,
   type OrchestratorTaskPriority,
   type OrchestratorTaskRecord,
   type OrchestratorTaskSession,
@@ -229,6 +230,7 @@ import {
 import {
   AdmissionQueueFullError,
   type ApprovalPreset,
+  isSessionPromptable,
   SessionCapError,
   type SessionInfo,
   type SpawnResult,
@@ -1295,12 +1297,12 @@ export class OrchestratorTaskService extends Service {
 
   /** Retry persisted coordinator-review deliveries after a runtime restart. */
   async recoverCompletionBarriers(): Promise<number> {
-    const tasks = await this.store.listTasks();
+    const taskDocs = await this.store.listTaskDocuments();
     let recovered = 0;
-    for (const task of tasks) {
+    for (const doc of taskDocs) {
+      const task = doc.task;
       if (!task.completionCoordinatorSessionId) continue;
-      const doc = await this.store.getTask(task.id);
-      const coordinator = doc?.sessions.find(
+      const coordinator = doc.sessions.find(
         (session) => session.sessionId === task.completionCoordinatorSessionId,
       );
       if (!coordinator?.aggregateCompletionRequestedAt) continue;
@@ -1338,13 +1340,10 @@ export class OrchestratorTaskService extends Service {
     const acp = acpOverride ?? this.acp();
     if (!acp) throw new Error("ACP service unavailable for Smithers recovery");
 
-    const [acpSessions, taskRecords] = await Promise.all([
+    const [acpSessions, taskDocs] = await Promise.all([
       acp.listSessions(),
-      this.store.listTasks({}),
+      this.store.listTaskDocuments({}),
     ]);
-    const taskDocs = (
-      await Promise.all(taskRecords.map((task) => this.store.getTask(task.id)))
-    ).filter((doc): doc is OrchestratorTaskDocument => doc !== null);
     const acpById = new Map(
       acpSessions.map((session) => [session.id, session]),
     );
@@ -3609,13 +3608,28 @@ export class OrchestratorTaskService extends Service {
   }
 
   async listTasks(filter: TaskListFilter = {}): Promise<TaskThreadDto[]> {
-    const records = await this.store.listTasks(filter);
-    const docs = await Promise.all(
-      records.map((record) => this.store.getTask(record.id)),
+    return (await this.store.listTaskDocuments(filter)).map(toTaskThread);
+  }
+
+  async listTaskDetails(
+    filter: TaskListFilter = {},
+  ): Promise<TaskThreadDetailDto[]> {
+    const docs = await this.store.listTaskDocuments(filter);
+    for (const doc of docs) assertProjectIdRegistered(doc.task.projectId);
+    const details = docs.map(toTaskThreadDetail);
+    if (!details.some((detail) => detail.admission)) return details;
+    const { queuedTaskIds } = await this.getAdmissionSnapshot();
+    const positions = new Map(
+      queuedTaskIds.map((taskId, index) => [taskId, index + 1]),
     );
-    return docs
-      .filter((doc): doc is OrchestratorTaskDocument => doc !== null)
-      .map(toTaskThread);
+    return details.map((detail) => {
+      if (!detail.admission) return detail;
+      detail.admission = {
+        ...detail.admission,
+        position: positions.get(detail.id) ?? 0,
+      };
+      return detail;
+    });
   }
 
   async getTask(taskId: string): Promise<TaskThreadDetailDto | null> {
@@ -5159,12 +5173,13 @@ export class OrchestratorTaskService extends Service {
       senderKind: "user",
       direction: "stdin",
     });
-    const active = doc.sessions.filter(
+    let active = doc.sessions.filter(
       (s) => !TERMINAL_TASK_SESSION_STATUSES.has(s.status),
     );
     const forwardedTo: string[] = [];
     const failedTo: Array<{ sessionId: string; error: string }> = [];
     const acp = this.acp();
+    if (acp) active = await this.liveTaskSessions(doc, acp);
     if (!acp) {
       const error = "ACP service unavailable";
       if (active.length > 0) {
@@ -5335,9 +5350,12 @@ export class OrchestratorTaskService extends Service {
       return this.getTask(taskId);
     }
 
+    const acp = this.acp();
+    const liveSessions = acp ? await this.liveTaskSessions(doc, acp) : [];
     const sessionId =
       input.sessionId ??
       source?.sessionId ??
+      liveSessions.at(-1)?.sessionId ??
       latestActiveSession(doc)?.sessionId;
     if (!sessionId) {
       throw new RecoveryConflictError(
@@ -5346,7 +5364,10 @@ export class OrchestratorTaskService extends Service {
     }
     const session = doc.sessions.find((item) => item.sessionId === sessionId);
     if (!session) throw new RecoveryConflictError("Session not found");
-    if (TERMINAL_TASK_SESSION_STATUSES.has(session.status)) {
+    if (
+      TERMINAL_TASK_SESSION_STATUSES.has(session.status) &&
+      !liveSessions.some((item) => item.sessionId === sessionId)
+    ) {
       throw new RecoveryConflictError(
         "Cannot retry in a terminal session; use new-session mode",
       );
@@ -6507,10 +6528,7 @@ export class OrchestratorTaskService extends Service {
   // ---- aggregate ---------------------------------------------------------
 
   async getStatus(): Promise<OrchestratorStatus> {
-    const records = await this.store.listTasks({ includeArchived: false });
-    const docs = (
-      await Promise.all(records.map((record) => this.store.getTask(record.id)))
-    ).filter((doc): doc is OrchestratorTaskDocument => doc !== null);
+    const docs = await this.store.listTaskDocuments({ includeArchived: false });
 
     const byStatus = {
       open: 0,
@@ -6551,10 +6569,7 @@ export class OrchestratorTaskService extends Service {
   }
 
   async getAccountOverview(): Promise<OrchestratorAccountOverview> {
-    const records = await this.store.listTasks({ includeArchived: false });
-    const docs = (
-      await Promise.all(records.map((record) => this.store.getTask(record.id)))
-    ).filter((doc): doc is OrchestratorTaskDocument => doc !== null);
+    const docs = await this.store.listTaskDocuments({ includeArchived: false });
 
     const assignments: OrchestratorAccountAssignment[] = [];
     for (const doc of docs) {
@@ -6621,10 +6636,7 @@ export class OrchestratorTaskService extends Service {
    * one sub-agent session are included (an empty room has no roster to show).
    */
   async getRoomRoster(): Promise<OrchestratorRoomRosterOverview> {
-    const records = await this.store.listTasks({ includeArchived: false });
-    const docs = (
-      await Promise.all(records.map((record) => this.store.getTask(record.id)))
-    ).filter((doc): doc is OrchestratorTaskDocument => doc !== null);
+    const docs = await this.store.listTaskDocuments({ includeArchived: false });
 
     const orchestratorLabel = this.runtime.character?.name ?? "Orchestrator";
     const rooms: OrchestratorRoomRoster[] = [];
@@ -6713,14 +6725,14 @@ export class OrchestratorTaskService extends Service {
   private async stopActiveSessions(
     doc: OrchestratorTaskDocument,
   ): Promise<void> {
-    const active = doc.sessions.filter(
+    const durableActive = doc.sessions.filter(
       (s) => !TERMINAL_TASK_SESSION_STATUSES.has(s.status),
     );
-    if (active.length === 0) return;
     const acp = this.acp();
     if (!acp) {
+      if (durableActive.length === 0) return;
       await Promise.all(
-        active.map((session) =>
+        durableActive.map((session) =>
           this.store.updateSession(session.sessionId, {
             status: "stop_failed",
           }),
@@ -6731,6 +6743,8 @@ export class OrchestratorTaskService extends Service {
         "ACP service unavailable; cannot stop active sessions",
       );
     }
+    const active = await this.liveTaskSessions(doc, acp);
+    if (active.length === 0) return;
     const failures: Array<{ sessionId: string; error: string }> = [];
     await Promise.all(
       active.map(async (session) => {
@@ -6753,10 +6767,12 @@ export class OrchestratorTaskService extends Service {
           });
           return;
         }
-        await this.store.updateSession(session.sessionId, {
-          status: "stopped",
-          stoppedAt: Date.now(),
-        });
+        if (!TERMINAL_TASK_SESSION_STATUSES.has(session.status)) {
+          await this.store.updateSession(session.sessionId, {
+            status: "stopped",
+            stoppedAt: Date.now(),
+          });
+        }
       }),
     );
     if (failures.length > 0) {
@@ -6770,6 +6786,26 @@ export class OrchestratorTaskService extends Service {
         }`,
       );
     }
+  }
+
+  /** Resolve task-session consumers against current ACP state when available. */
+  private async liveTaskSessions(
+    doc: OrchestratorTaskDocument,
+    acp: AcpService,
+  ): Promise<OrchestratorTaskSession[]> {
+    const live: OrchestratorTaskSession[] = [];
+    for (const session of doc.sessions) {
+      const current = await acp.getSession(session.sessionId);
+      if (current && !TERMINAL_SESSION_STATUSES.has(current.status)) {
+        live.push(session);
+      } else if (
+        !current &&
+        !TERMINAL_TASK_SESSION_STATUSES.has(session.status)
+      ) {
+        live.push(session);
+      }
+    }
+    return live;
   }
 
   // ---- stuck-task reaper -------------------------------------------------
@@ -6815,11 +6851,17 @@ export class OrchestratorTaskService extends Service {
     try {
       const thresholdMs = this.stuckTaskReapThresholdMs();
       const acp = this.acp();
-      const records = await this.store.listTasks({ includeArchived: false });
-      for (const record of records) {
-        if (record.status !== "active" || record.paused) continue;
-        const doc = await this.store.getTask(record.id);
-        if (doc?.task.status !== "active" || doc.task.paused) continue;
+      const docs = await this.store.listTaskDocuments({
+        includeArchived: false,
+        status: "active",
+      });
+      for (const candidate of docs) {
+        // The bulk snapshot is candidate discovery only. A session may attach
+        // while the scan is in flight, so the destructive decision must use a
+        // fresh document read immediately before evaluating liveness/idleness.
+        const doc = await this.store.getTask(candidate.task.id);
+        if (!doc) continue;
+        if (doc.task.status !== "active" || doc.task.paused) continue;
 
         const liveRows = doc.sessions.filter(
           (s) => !TERMINAL_TASK_SESSION_STATUSES.has(s.status),
@@ -6853,17 +6895,9 @@ export class OrchestratorTaskService extends Service {
         const idleMs = nowMs - latestActivityMs;
         if (idleMs < thresholdMs) continue;
 
-        // Repair rows the bridge never saw go terminal, so DTOs stop counting
-        // phantom "active" sessions for the interrupted task.
-        for (const row of deadRows) {
-          await this.store.updateSession(row.sessionId, {
-            status: "stopped",
-            stoppedAt: nowMs,
-          });
-        }
-        await this.store.addEvent({
+        const event = {
           id: randomUUID(),
-          taskId: record.id,
+          taskId: doc.task.id,
           eventType: "task_stalled_reaped",
           summary: `No live sub-agent session and no activity for ${Math.round(
             idleMs / 60_000,
@@ -6875,14 +6909,26 @@ export class OrchestratorTaskService extends Service {
           },
           timestamp: nowMs,
           createdAt: nowIso(),
+        } satisfies OrchestratorTaskEvent;
+        const interrupted = await this.store.interruptStuckTaskIfUnchanged({
+          taskId: doc.task.id,
+          expectedTaskUpdatedAt: doc.task.updatedAt,
+          expectedSessions: doc.sessions.map((session) => ({
+            sessionId: session.sessionId,
+            status: session.status,
+            updatedAt: session.updatedAt,
+          })),
+          deadSessionIds: deadRows.map((row) => row.sessionId),
+          event,
+          nowMs,
         });
-        await this.advanceTaskStatus(record.id, "interrupted");
-        this.emitChange(record.id);
+        if (!interrupted) continue;
+        this.emitChange(doc.task.id);
         this.log("info", "stuck task reaped to interrupted", {
-          taskId: record.id,
+          taskId: doc.task.id,
           idleMs,
         });
-        reaped.push(record.id);
+        reaped.push(doc.task.id);
       }
     } catch (err) {
       // error-policy:J7 background reconcile tick — a store/ACP hiccup is
@@ -6890,6 +6936,7 @@ export class OrchestratorTaskService extends Service {
       this.log("warn", "stuck-task reap pass failed", {
         error: err instanceof Error ? err.message : String(err),
       });
+      this.runtime.reportError("OrchestratorTask.reapStuckTasks", err);
     } finally {
       this.stuckTaskReapInFlight = false;
     }
@@ -7278,7 +7325,7 @@ export class OrchestratorTaskService extends Service {
     const sessions = await acp.listSessions();
     const candidates: Array<{ id: string; createdAt: number }> = [];
     for (const session of sessions) {
-      if (TERMINAL_SESSION_STATUSES.has(session.status)) continue;
+      if (!isSessionPromptable(session.status)) continue;
       // Resolve via `resolveTaskId`, not the in-memory `sessionTaskIndex`
       // directly: after a parent restart the index is empty but pre-restart
       // keepAlive sessions are still live, so the session→task mapping only
@@ -7309,10 +7356,15 @@ export class OrchestratorTaskService extends Service {
     const victim = candidates[0];
     if (!victim) return false;
     try {
-      // Mark the stop administrative BEFORE stopping so the swarm
-      // coordinator's `stopped` synthesis reads it as lifecycle plumbing.
-      await markSessionAdministrativelyStopped(acp, victim.id, "idle_reclaim");
-      await acp.stopSession(victim.id);
+      const taskId = await this.resolveTaskId(victim.id);
+      if (!taskId) return false;
+      const owner = await this.store.getTask(taskId);
+      if (!owner || !TERMINAL_TASK_STATUSES.has(owner.task.status))
+        return false;
+      const stopped = await acp.stopPromptableSession(victim.id, () =>
+        markSessionAdministrativelyStopped(acp, victim.id, "idle_reclaim"),
+      );
+      if (!stopped) return false;
       this.log("info", "reclaimed idle keepAlive session for queued task", {
         sessionId: victim.id,
       });

@@ -10,12 +10,25 @@
 
 import { APICallError, embed, embedMany, RetryError } from "ai";
 import { Hono } from "hono";
+import {
+  resolveInferenceAuthStandingDenial,
+  resolveInferenceCredentialAdmissionDenial,
+} from "@/api-app/lib/generative-route-auth";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   enforceOrgRateLimit,
   OrgRateLimitCacheNotReadyError,
 } from "@/lib/middleware/rate-limit";
+import {
+  bindGatewayHandoffTelemetry,
+  type GatewayHandoffTelemetry,
+  type GatewayPreforwardTiming,
+  resolveElizaTraceId,
+  snapshotGatewayPreforwardTiming,
+  withGatewayPreforwardTelemetry,
+  withInferenceAuthTelemetry,
+} from "@/lib/observability/http-telemetry";
 import {
   estimateTokens,
   getProviderFromModel,
@@ -30,10 +43,15 @@ import {
 } from "@/lib/providers/language-model";
 import { billUsage, InsufficientCreditsError } from "@/lib/services/ai-billing";
 import type { CreditReservation } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-snapshot";
 import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
-import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
+import {
+  type InferenceAuthTelemetry,
+  resolveInferenceAuthContext,
+} from "@/lib/services/inference-auth-context";
 import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
+import type { InferenceCredentialCheck } from "@/lib/services/inference-credential-revocation";
 import { isPassthroughEmbeddingsEnabled } from "@/lib/services/inference-passthrough";
 import { isKnownUnacceptedProviderError } from "@/lib/services/inference-provider-outcome";
 import {
@@ -58,6 +76,18 @@ interface EmbeddingsRequest {
 const app = new Hono<AppEnv>();
 
 app.post("/", async (c) => {
+  const telemetryStartedAt = performance.now();
+  const traceId = resolveElizaTraceId(c.req.raw.headers);
+  let authTelemetry: InferenceAuthTelemetry | undefined;
+  let preforwardTiming: GatewayPreforwardTiming | undefined;
+  const attachTelemetry = (response: Response): Response => {
+    const withAuth = authTelemetry
+      ? withInferenceAuthTelemetry(response, traceId, authTelemetry)
+      : response;
+    return preforwardTiming
+      ? withGatewayPreforwardTelemetry(withAuth, traceId, preforwardTiming)
+      : withAuth;
+  };
   let settleReservation: OrganizationInferenceAdmission["settle"] | undefined;
   let settleUnknown:
     | OrganizationInferenceAdmission["settleUnknown"]
@@ -68,6 +98,9 @@ app.post("/", async (c) => {
   let billingReservation: CreditReservation | undefined;
   let executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined;
   let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
+  let admissionCredential: InferenceCredentialCheck | undefined;
+  let providerRequestId: string | undefined;
+  let providerModel: string | undefined;
   try {
     const candidate = c.executionCtx;
     executionCtx =
@@ -97,6 +130,29 @@ app.post("/", async (c) => {
   let billed = false;
   let providerDispatched = false;
   try {
+    let guardOrganizationId: string | undefined;
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => guardOrganizationId,
+      credential: () => admissionCredential,
+    });
+    const request = (await c.req
+      .json()
+      .catch(() => null)) as EmbeddingsRequest | null;
+    const requestIsValid = Boolean(request?.model && request.input);
+    const invalidRequestResponse = !requestIsValid
+      ? c.json(
+          {
+            error: {
+              message: "Missing required fields: model and input",
+              type: "invalid_request_error",
+              param: !request?.model ? "model" : "input",
+              code: "missing_required_parameter",
+            },
+          },
+          400,
+        )
+      : undefined;
+
     // Resolve auth (+ org + moderation) in a SINGLE cache read for API-key
     // inference requests (#9899) — the same fast-path as /v1/chat/completions.
     // This route is on the agent reply hot path: the always-on
@@ -108,8 +164,13 @@ app.post("/", async (c) => {
     let user: { id: string; organization_id: string };
     let apiKeyId: string | null;
     const resolution = await resolveInferenceAuthContext(c.req.raw, {
+      traceId,
       executionCtx,
       cacheOnly: Boolean(executionCtx),
+      deferStrongCredentialCheck: Boolean(executionCtx) && requestIsValid,
+      onTelemetry: (telemetry) => {
+        authTelemetry = telemetry;
+      },
     });
     if (resolution.kind === "warming") {
       return c.json(
@@ -124,37 +185,40 @@ app.post("/", async (c) => {
       );
     }
     if (resolution.kind === "suspended") {
+      const denial = resolveInferenceAuthStandingDenial(resolution, {
+        route: "embeddings",
+        traceId: c.get("traceId") ?? c.get("requestId"),
+      });
       return c.json(
         {
           error: {
-            message:
-              "Your account has been suspended due to policy violations.",
-            type: "account_suspended",
-            code: "moderation_violation",
+            message: denial.message,
+            type: denial.type,
+            code: denial.code,
+            details: { reason: denial.reason },
           },
         },
-        403,
+        denial.status,
       );
     }
     if (resolution.kind === "rejected") {
+      const denial = resolveInferenceAuthStandingDenial(resolution, {
+        route: "embeddings",
+        traceId: c.get("traceId") ?? c.get("requestId"),
+      });
       return c.json(
         {
           error: {
-            message:
-              resolution.status === 403
-                ? "Account or organization access is disabled."
-                : "Authentication required.",
-            type:
-              resolution.status === 403
-                ? "permission_error"
-                : "authentication_error",
-            code:
-              resolution.status === 403
-                ? "access_denied"
-                : "authentication_required",
+            message: denial.message,
+            type: denial.type,
+            code: denial.code,
+            details: { reason: denial.reason },
           },
         },
-        resolution.status,
+        denial.status,
+        denial.retryAfterSeconds
+          ? { "Retry-After": String(denial.retryAfterSeconds) }
+          : undefined,
       );
     }
     if (resolution.kind === "authorized") {
@@ -162,8 +226,10 @@ app.post("/", async (c) => {
         id: resolution.ctx.userId,
         organization_id: resolution.ctx.orgId,
       };
+      guardOrganizationId = user.organization_id;
       apiKeyId = resolution.ctx.apiKeyId;
       admissionSnapshot = resolution.ctx.admission;
+      admissionCredential = resolution.credential;
     } else {
       if (executionCtx) {
         return c.json(
@@ -184,6 +250,7 @@ app.post("/", async (c) => {
       apiKeyId = c.get("apiKeyId") ?? null;
     }
 
+    const tAuth = performance.now();
     const orgRateLimitPromise = user.organization_id
       ? enforceOrgRateLimit(user.organization_id, "embeddings", {
           cacheOnly: Boolean(executionCtx),
@@ -195,11 +262,8 @@ app.post("/", async (c) => {
     // Guard a malformed/empty body to a 400 instead of a 500 (mirrors the agents
     // routes). An unguarded parse throws a SyntaxError that failureResponse maps
     // to 500 on this always-on agent-recall hot path.
-    const requestPromise = c.req.json().catch(() => {
-      // error-policy:J3 malformed JSON becomes an explicit invalid-request
-      // signal and is never interpreted as a valid empty payload.
-      return null;
-    }) as Promise<EmbeddingsRequest | null>;
+    if (!request?.model || !request.input) return invalidRequestResponse!;
+
     let orgRateLimited: Response | null;
     try {
       orgRateLimited = await orgRateLimitPromise;
@@ -227,21 +291,6 @@ app.post("/", async (c) => {
       throw error;
     }
     if (orgRateLimited) return orgRateLimited;
-    const request = await requestPromise;
-
-    if (!request?.model || !request.input) {
-      return c.json(
-        {
-          error: {
-            message: "Missing required fields: model and input",
-            type: "invalid_request_error",
-            param: !request?.model ? "model" : "input",
-            code: "missing_required_parameter",
-          },
-        },
-        400,
-      );
-    }
 
     if (Array.isArray(request.input) && request.input.length === 0) {
       return c.json(
@@ -275,6 +324,7 @@ app.post("/", async (c) => {
     }
 
     const model = request.model;
+    providerModel = model;
     const provider = getProviderFromModel(model);
     const normalizedModel = normalizeModelName(model);
     const billingSource = resolveEmbeddingProviderSource();
@@ -298,7 +348,9 @@ app.post("/", async (c) => {
     const estimatedInputTokens = estimateTokens(inputText);
 
     const requestId = crypto.randomUUID();
+    providerRequestId = requestId;
     const affiliateCode = c.req.header("X-Affiliate-Code") ?? null;
+    const tBeforeReserve = performance.now();
     try {
       const admission = await admitOrganizationInference({
         context: {
@@ -316,6 +368,8 @@ app.post("/", async (c) => {
         affiliateCode,
         executionCtx,
         admissionSnapshot,
+        credential: credentialGuard.credentialForAdmission(),
+        atomicProviderBoundary: Boolean(executionCtx),
       });
       settleReservation = admission.settle;
       settleUnknown = admission.settleUnknown;
@@ -324,6 +378,23 @@ app.post("/", async (c) => {
     } catch (error) {
       // error-policy:J1 the route boundary exposes cached credit decisions and
       // cache readiness without falling through to authoritative storage.
+      const denial = resolveInferenceCredentialAdmissionDenial(error, {
+        route: "embeddings",
+        traceId: c.get("traceId") ?? c.get("requestId"),
+      });
+      if (denial) {
+        return c.json(
+          {
+            error: {
+              message: denial.message,
+              type: denial.type,
+              code: denial.code,
+              details: { reason: denial.reason },
+            },
+          },
+          denial.status,
+        );
+      }
       if (error instanceof InsufficientCreditsError) {
         return c.json(
           {
@@ -336,9 +407,33 @@ app.post("/", async (c) => {
           402,
         );
       }
+      if (error instanceof InferenceAdmissionUnavailableError) {
+        logger.error(
+          "[Embeddings] inference admission transport failed closed",
+          {
+            traceId: c.get("traceId") ?? c.get("requestId"),
+            error: error.message,
+            cause:
+              error.cause instanceof Error
+                ? `${error.cause.name}: ${error.cause.message}`
+                : undefined,
+          },
+        );
+        return c.json(
+          {
+            error: {
+              message:
+                "Inference admission is temporarily unavailable. Retry shortly.",
+              type: "service_unavailable",
+              code: "inference_admission_unavailable",
+            },
+          },
+          503,
+          { "Retry-After": "1" },
+        );
+      }
       if (error instanceof InferenceBalanceCacheWarmingError) {
         const unavailable =
-          error instanceof InferenceAdmissionUnavailableError ||
           error instanceof InferencePricingCacheUnavailableError ||
           error instanceof InferenceAffiliateCacheUnavailableError;
         return c.json(
@@ -358,6 +453,29 @@ app.post("/", async (c) => {
       }
       throw error;
     }
+
+    const tAfterReserve = performance.now();
+    // Match chat timing: stop before the direct fetch / SDK invocation, after
+    // argument construction and the existing provider-dispatch admission gate.
+    const handoffTelemetry: GatewayHandoffTelemetry = {
+      capture: () => {
+        const handoffAt = performance.now();
+        preforwardTiming = snapshotGatewayPreforwardTiming({
+          authMs: tAuth - telemetryStartedAt,
+          middleMs: tBeforeReserve - tAuth,
+          reserveMs: tAfterReserve - tBeforeReserve,
+          setupMs: handoffAt - tAfterReserve,
+          totalMs: handoffAt - telemetryStartedAt,
+        });
+      },
+      emit: () => {
+        logger.info("[Embeddings][preforward]", {
+          traceId,
+          model,
+          ...preforwardTiming,
+        });
+      },
+    };
 
     // billUsage receives the admission settler so affiliate earnings remain
     // clamped to what the authoritative asynchronous reservation collected.
@@ -393,7 +511,10 @@ app.post("/", async (c) => {
     if (passthroughUpstream) {
       await markProviderDispatched?.();
       providerDispatched = true;
-      const upstreamResponse = await fetch(passthroughUpstream.url, {
+      const upstreamResponse = await bindGatewayHandoffTelemetry(
+        handoffTelemetry,
+        (init: RequestInit) => fetch(passthroughUpstream.url, init),
+      )({
         method: "POST",
         headers: {
           Authorization: `Bearer ${passthroughUpstream.apiKey}`,
@@ -425,7 +546,10 @@ app.post("/", async (c) => {
       const embeddingModel = getTextEmbeddingModel(model);
       await markProviderDispatched?.();
       providerDispatched = true;
-      const result = await embedMany({
+      const result = await bindGatewayHandoffTelemetry(
+        handoffTelemetry,
+        embedMany,
+      )({
         model: embeddingModel,
         values: request.input,
       });
@@ -435,7 +559,10 @@ app.post("/", async (c) => {
       const embeddingModel = getTextEmbeddingModel(model);
       await markProviderDispatched?.();
       providerDispatched = true;
-      const result = await embed({
+      const result = await bindGatewayHandoffTelemetry(
+        handoffTelemetry,
+        embed,
+      )({
         model: embeddingModel,
         value: request.input,
       });
@@ -534,28 +661,32 @@ app.post("/", async (c) => {
     // probes distinguish the paths without log access (same convention as
     // /v1/chat/completions).
     if (passthroughBody) {
-      return new Response(passthroughBody, {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-          "X-Eliza-Inference-Path": "passthrough",
-        },
-      });
+      return attachTelemetry(
+        new Response(passthroughBody, {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "X-Eliza-Inference-Path": "passthrough",
+          },
+        }),
+      );
     }
 
-    return c.json({
-      object: "list",
-      data: embeddings.map((embedding, index) => ({
-        object: "embedding",
-        embedding,
-        index,
-      })),
-      model,
-      usage: {
-        prompt_tokens: actualTokens,
-        total_tokens: actualTokens,
-      },
-    });
+    return attachTelemetry(
+      c.json({
+        object: "list",
+        data: embeddings.map((embedding, index) => ({
+          object: "embedding",
+          embedding,
+          index,
+        })),
+        model,
+        usage: {
+          prompt_tokens: actualTokens,
+          total_tokens: actualTokens,
+        },
+      }),
+    );
   } catch (error) {
     // error-policy:J1 route boundary — this catch cancels admitted credit on a
     // provider failure and translates the failure into a structured response.
@@ -592,6 +723,62 @@ app.post("/", async (c) => {
       } else {
         await observedRelease;
       }
+    }
+
+    const credentialDenial = resolveInferenceCredentialAdmissionDenial(error, {
+      route: "embeddings",
+      traceId: c.get("traceId") ?? c.get("requestId"),
+    });
+    if (credentialDenial) {
+      return c.json(
+        {
+          error: {
+            message: credentialDenial.message,
+            type: credentialDenial.type,
+            code: credentialDenial.code,
+            details: { reason: credentialDenial.reason },
+          },
+        },
+        credentialDenial.status,
+      );
+    }
+
+    if (error instanceof InsufficientCreditsError) {
+      return c.json(
+        {
+          error: {
+            message: `Insufficient credits. Required: $${error.required.toFixed(4)}`,
+            type: "insufficient_quota",
+            code: "insufficient_balance",
+          },
+        },
+        402,
+      );
+    }
+    if (error instanceof InferenceAdmissionUnavailableError) {
+      logger.error("[Embeddings] provider-boundary admission failed closed", {
+        traceId: c.get("traceId") ?? c.get("requestId"),
+        requestId: providerRequestId,
+        model: providerModel,
+        phase: "provider_dispatch",
+        error: error.message,
+        cause:
+          error.cause instanceof Error
+            ? `${error.cause.name}: ${error.cause.message}`
+            : undefined,
+      });
+      return c.json(
+        {
+          error: {
+            message:
+              "Inference admission is temporarily unavailable. Retry shortly.",
+            type: "service_unavailable",
+            code: "inference_admission_unavailable",
+          },
+        },
+        503,
+        { "Retry-After": "1" },
+      );
     }
 
     logger.error("[Embeddings] Error", {

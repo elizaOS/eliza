@@ -16,6 +16,7 @@ import { toWellFormedUnicode } from "../../utils/well-formed";
 import { AUTONOMY_SERVICE_TYPE, type AutonomyService } from "./service";
 
 const MAX_AUTONOMY_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const ADMIN_HISTORY_LIMIT = 15;
 
 /**
  * Admin Chat Provider
@@ -68,13 +69,28 @@ export const adminChatProvider: Provider = {
 			}
 
 			const adminUUID = stringToUuid(adminUserId);
+			// `entityId` establishes the Admin's RLS context across every room they
+			// participate in. Author and internal-room predicates are separate store
+			// filters, applied before ordering/LIMIT, so the privileged prompt gets one
+			// globally newest bounded window without lifetime room enumeration or
+			// leaking third-party group-room turns.
 			const adminMessages = await runtime.getMemories({
+				agentId: runtime.agentId,
 				entityId: adminUUID,
+				authorEntityIds: [adminUUID, runtime.agentId],
+				excludeRoomIds: [autonomousRoomId],
+				limit: ADMIN_HISTORY_LIMIT,
+				orderBy: "createdAt",
+				orderDirection: "desc",
 				unique: false,
 				tableName: "memories",
 			});
+			const trustedAdminMessages = (adminMessages ?? []).filter(
+				(memory) =>
+					memory.entityId === adminUUID || memory.entityId === runtime.agentId,
+			);
 
-			if (!adminMessages || adminMessages.length === 0) {
+			if (trustedAdminMessages.length === 0) {
 				return {
 					text: "[ADMIN_CHAT_HISTORY]\nNo recent messages found with admin user.\n[/ADMIN_CHAT_HISTORY]",
 					data: {
@@ -86,10 +102,13 @@ export const adminChatProvider: Provider = {
 				};
 			}
 
-			const sortedMessages = adminMessages.sort(
-				(a, b) => (a.createdAt || 0) - (b.createdAt || 0),
-			);
-			const historyMessages = sortedMessages;
+			// Adapters should honor the descending query limit. Bound again before
+			// rendering so a non-compliant adapter cannot inflate the model prompt,
+			// then restore chronological order for a readable conversation.
+			const historyMessages = [...trustedAdminMessages]
+				.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+				.slice(0, ADMIN_HISTORY_LIMIT)
+				.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 			const conversationHistory = historyMessages
 				.map((msg) => {
 					const isFromAdmin = msg.entityId === adminUUID;
@@ -109,8 +128,8 @@ export const adminChatProvider: Provider = {
 				.join("\n");
 
 			const recentAdminMessages: Memory[] = [];
-			for (let i = sortedMessages.length - 1; i >= 0; i -= 1) {
-				const msg = sortedMessages[i];
+			for (let i = historyMessages.length - 1; i >= 0; i -= 1) {
+				const msg = historyMessages[i];
 				if (msg.entityId !== adminUUID) continue;
 				recentAdminMessages.push(msg);
 				if (recentAdminMessages.length === 3) break;
@@ -126,21 +145,21 @@ export const adminChatProvider: Provider = {
 			const now = Date.now();
 
 			return {
-				text: `[ADMIN_CHAT_HISTORY]\nRecent conversation with admin user (${adminMessages.length} total messages):\n\n${conversationHistory}\n\n${adminMoodContext}\n[/ADMIN_CHAT_HISTORY]`,
+				text: `[ADMIN_CHAT_HISTORY]\nRecent conversation with admin user (${historyMessages.length} recent messages):\n\n${conversationHistory}\n\n${adminMoodContext}\n[/ADMIN_CHAT_HISTORY]`,
 				data: {
 					adminConfigured: true,
-					messageCount: adminMessages.length,
+					messageCount: historyMessages.length,
 					adminUserId,
 					recentMessageCount: recentAdminMessages.length,
 					lastAdminMessage: toWellFormedUnicode(lastAdminMessageText),
-					conversationActive: adminMessages.some(
+					conversationActive: historyMessages.some(
 						(m) => now - (m.createdAt || 0) < 3600000,
 					),
 					historyWindowCount: historyMessages.length,
 				},
 				values: {
 					adminConfigured: true,
-					adminHistoryCount: adminMessages.length,
+					adminHistoryCount: historyMessages.length,
 					adminHistoryWindowCount: historyMessages.length,
 				},
 			};

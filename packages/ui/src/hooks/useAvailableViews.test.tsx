@@ -12,21 +12,32 @@ import { emitViewEvent } from "../views/view-event-bus";
 import { VIEW_EVENTS } from "../views/view-event-types";
 import { __resetResourceCache } from "./resource-cache";
 import {
+  mergeViewRegistryEntries,
   useAvailableViews,
   useRoutableViews,
   type ViewRegistryEntry,
   withBuiltinShellViews,
 } from "./useAvailableViews";
 
-const { client, fetchWithCsrf, getFrontendPlatform } = vi.hoisted(() => ({
-  client: {
-    getBaseUrl: vi.fn(() => ""),
-  },
-  fetchWithCsrf: vi.fn(),
-  getFrontendPlatform: vi.fn(() => "desktop"),
-}));
+const { authorityState, client, fetchWithCsrf, getFrontendPlatform } =
+  vi.hoisted(() => {
+    const authorityState = { listeners: new Set<() => void>() };
+    return {
+      authorityState,
+      client: {
+        getBaseUrl: vi.fn(() => ""),
+        onBaseUrlChange: vi.fn((onChange: () => void) => {
+          authorityState.listeners.add(onChange);
+          return () => authorityState.listeners.delete(onChange);
+        }),
+      },
+      fetchWithCsrf: vi.fn(),
+      getFrontendPlatform: vi.fn(() => "desktop"),
+    };
+  });
 
 vi.mock("../api", () => ({ client }));
+vi.mock("../api/client", () => ({ client }));
 vi.mock("../api/csrf-client", () => ({ fetchWithCsrf }));
 vi.mock("../platform/platform-guards", () => ({ getFrontendPlatform }));
 
@@ -63,6 +74,7 @@ describe("useAvailableViews", () => {
   beforeEach(() => {
     resetUiRegistryHostForTests();
     __resetResourceCache();
+    authorityState.listeners.clear();
     client.getBaseUrl.mockReturnValue("");
     fetchWithCsrf.mockReset();
     getFrontendPlatform.mockReset();
@@ -252,6 +264,38 @@ describe("useAvailableViews", () => {
         id: "calendar",
         bundleUrl: "/api/views/calendar/bundle.js",
         pluginName: "test-plugin",
+      }),
+    );
+  });
+
+  it("promotes an executable signed page over unavailable runtime metadata", () => {
+    const merged = mergeViewRegistryEntries(
+      [
+        view("calendar", {
+          available: false,
+          path: "/calendar",
+          bundleUrl: "/api/views/calendar/bundle.js",
+          description: "Runtime-owned calendar metadata",
+        }),
+      ],
+      [
+        [
+          view("calendar", {
+            available: true,
+            path: "/calendar",
+            pluginName: "@elizaos/plugin-calendar",
+          }),
+        ],
+      ],
+    );
+
+    expect(merged).toContainEqual(
+      expect.objectContaining({
+        id: "calendar",
+        available: true,
+        description: "Runtime-owned calendar metadata",
+        pluginName: "test-plugin",
+        bundleUrl: undefined,
       }),
     );
   });
@@ -525,6 +569,46 @@ describe("useAvailableViews", () => {
     });
 
     expect(result.current.views[0]?.id).toBe("fresh");
+  });
+
+  it("drops the prior registry immediately and ignores a stale response across agent switches", async () => {
+    const agentB = deferredResponse();
+    const agentC = deferredResponse();
+    client.getBaseUrl.mockReturnValue("https://agent-a.test");
+    fetchWithCsrf
+      .mockResolvedValueOnce(response(200, { views: [view("agent-a")] }))
+      .mockReturnValueOnce(agentB.promise)
+      .mockReturnValueOnce(agentC.promise);
+
+    const { result } = renderHook(() => useAvailableViews());
+    await waitFor(() => expect(result.current.views[0]?.id).toBe("agent-a"));
+
+    act(() => {
+      client.getBaseUrl.mockReturnValue("https://agent-b.test");
+      for (const onChange of authorityState.listeners) onChange();
+    });
+
+    // No committed render under B may expose A's registry while B loads.
+    expect(result.current.views).toEqual([]);
+    expect(result.current.loading).toBe(true);
+    await waitFor(() => expect(fetchWithCsrf).toHaveBeenCalledTimes(2));
+
+    act(() => {
+      client.getBaseUrl.mockReturnValue("https://agent-c.test");
+      for (const onChange of authorityState.listeners) onChange();
+    });
+    expect(result.current.views).toEqual([]);
+    await waitFor(() => expect(fetchWithCsrf).toHaveBeenCalledTimes(3));
+
+    agentC.resolve(response(200, { views: [view("agent-c")] }));
+    await waitFor(() => expect(result.current.views[0]?.id).toBe("agent-c"));
+
+    agentB.resolve(response(200, { views: [view("stale-agent-b")] }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.views[0]?.id).toBe("agent-c");
   });
 
   it("refreshes immediately and polls until unmounted", async () => {

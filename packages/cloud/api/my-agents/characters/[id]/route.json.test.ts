@@ -19,10 +19,15 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
   }),
 }));
 
+const cacheClientActualModule = await import("@/lib/cache/client");
+
 mock.module("@/lib/cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     del: async () => undefined,
     delPattern: async () => undefined,
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 

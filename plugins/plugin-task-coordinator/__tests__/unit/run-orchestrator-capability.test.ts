@@ -25,7 +25,7 @@ const m = {
   postOrchestratorTaskMessage: vi.fn(),
 };
 
-vi.mock("@elizaos/ui", () => ({
+vi.mock("@elizaos/ui/api", () => ({
   client: new Proxy(
     {},
     {

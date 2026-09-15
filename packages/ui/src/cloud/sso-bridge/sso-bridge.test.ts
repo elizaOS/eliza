@@ -77,6 +77,7 @@ function clearCookies(): void {
   for (const part of document.cookie.split(";")) {
     const name = part.split("=")[0]?.trim();
     if (name)
+      // biome-ignore lint/suspicious/noDocumentCookie: jsdom must clear the synchronous cookie jar the bridge reads.
       document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
   }
 }
@@ -512,14 +513,13 @@ describe("performSsoExchange", () => {
 });
 
 describe("burnSsoBridgeCode", () => {
-  it("fires a verifier-less exchange POST that destroys the code server-side", () => {
-    const { fn, calls } = fetchStub(() => json(401, { error: "invalid_code" }));
-    burnSsoBridgeCode(CODE, "cloud.eliza.app", fn);
+  it("fires a keepalive destruction-only POST from either bridge origin", () => {
+    const { fn, calls } = fetchStub(() => new Response(null, { status: 204 }));
+    burnSsoBridgeCode(CODE, "eliza.app", fn);
     expect(calls).toHaveLength(1);
-    expect(calls[0].url).toBe(
-      "https://cloud.eliza.app/api/auth/sso-bridge/exchange",
-    );
+    expect(calls[0].url).toBe("https://eliza.app/api/auth/sso-bridge/burn");
     expect(JSON.parse(String(calls[0].init?.body))).toEqual({ code: CODE });
+    expect(calls[0].init?.keepalive).toBe(true);
   });
 
   it("is inert for malformed codes and unmapped hosts", () => {
@@ -531,6 +531,32 @@ describe("burnSsoBridgeCode", () => {
 });
 
 describe("signOutFromSsoBridgedHost", () => {
+  it("retains local authority until hosted logout is confirmed", async () => {
+    const token = liveToken();
+    localStorage.setItem(STEWARD_TOKEN_KEY, token);
+    let resolveLogout: ((response: Response) => void) | undefined;
+    const pendingLogout = new Promise<Response>((resolve) => {
+      resolveLogout = resolve;
+    });
+    const fn = (() => pendingLogout) as typeof fetch;
+
+    const signOut = signOutFromSsoBridgedHost("cloud.eliza.app", fn);
+    await Promise.resolve();
+
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(token);
+    let settled = false;
+    void signOut.finally(() => {
+      settled = true;
+    });
+    expect(settled).toBe(false);
+
+    resolveLogout?.(json(200, { success: true }));
+    await signOut;
+
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+    expect(settled).toBe(true);
+  });
+
   it("marks logged-out synchronously, ends the server session, scrubs locally", async () => {
     const token = liveToken();
     localStorage.setItem(STEWARD_TOKEN_KEY, token);
@@ -558,8 +584,55 @@ describe("signOutFromSsoBridgedHost", () => {
       await signOutFromSsoBridgedHost("cloud.eliza.app", fn);
       expect(isSsoLoggedOut()).toBe(true);
       expect(calls[0].url).toBe("https://cloud.eliza.app/api/auth/logout");
+      expect(calls[0].init).toMatchObject({
+        method: "POST",
+        credentials: "include",
+      });
+      expect(new Headers(calls[0].init?.headers).get("content-type")).toBe(
+        "application/json",
+      );
+      expect(new Headers(calls[0].init?.headers).get("authorization")).toBe(
+        `Bearer ${token}`,
+      );
       expect(proofAtServerLogoutIssue).toBe(false);
       expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("rejects when the hosted session cannot be ended", async () => {
+    const token = liveToken();
+    localStorage.setItem(STEWARD_TOKEN_KEY, token);
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (() =>
+      Promise.resolve(new Response(null, { status: 204 }))) as typeof fetch;
+    try {
+      const { fn } = fetchStub(() =>
+        json(403, { error: "csrf_marker_required" }),
+      );
+      await expect(
+        signOutFromSsoBridgedHost("cloud.eliza.app", fn),
+      ).rejects.toThrow("could not end the browser session (403)");
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(token);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("rejects when the hosted logout request cannot reach the server", async () => {
+    const token = liveToken();
+    localStorage.setItem(STEWARD_TOKEN_KEY, token);
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (() =>
+      Promise.resolve(new Response(null, { status: 204 }))) as typeof fetch;
+    try {
+      const networkFailure = new TypeError("network unavailable");
+      const fn = (() => Promise.reject(networkFailure)) as typeof fetch;
+      await expect(
+        signOutFromSsoBridgedHost("cloud.eliza.app", fn),
+      ).rejects.toBe(networkFailure);
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(token);
     } finally {
       globalThis.fetch = realFetch;
     }
@@ -580,6 +653,30 @@ describe("prepareSsoAccountSwitch", () => {
       );
       expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
       expect(isSsoLoggedOut()).toBe(true);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("authorizes the non-simple account-switch logout request", async () => {
+    const token = liveToken();
+    localStorage.setItem(STEWARD_TOKEN_KEY, token);
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (() =>
+      Promise.resolve(new Response(null, { status: 204 }))) as typeof fetch;
+    try {
+      const { fn, calls } = fetchStub(() => json(200, { success: true }));
+      await prepareSsoAccountSwitch("eliza.app", fn);
+      expect(calls[0].init).toMatchObject({
+        method: "POST",
+        credentials: "include",
+      });
+      expect(new Headers(calls[0].init?.headers).get("content-type")).toBe(
+        "application/json",
+      );
+      expect(new Headers(calls[0].init?.headers).get("authorization")).toBe(
+        `Bearer ${token}`,
+      );
     } finally {
       globalThis.fetch = realFetch;
     }

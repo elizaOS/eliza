@@ -28,6 +28,7 @@ describe("desktopHttpTransportForUrl", () => {
       status: 200,
       headers: { "content-type": "application/json" },
       body: '{"ok":true}',
+      bodyBase64: "",
     });
     const request = { desktopHttpRequest };
     bridgeMock.getElectrobunRendererRpc.mockReturnValue({ request });

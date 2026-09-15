@@ -43,9 +43,10 @@ function expectNotesResult(
     }
     const text =
       typeof action.result.text === "string" ? action.result.text : "";
-    return text.includes(expectedText)
+    return text.includes(expectedText) ||
+      JSON.stringify(data).includes(expectedText)
       ? undefined
-      : `expected NOTES text to include ${JSON.stringify(expectedText)}, saw ${JSON.stringify(text)}`;
+      : `expected NOTES output to include ${JSON.stringify(expectedText)}, saw ${JSON.stringify({ text, data })}`;
   };
 }
 

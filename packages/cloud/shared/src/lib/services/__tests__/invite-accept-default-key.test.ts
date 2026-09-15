@@ -240,6 +240,14 @@ beforeAll(async () => {
     const { personalAccountConvergences } = await import(
       "../../../db/schemas/personal-account-convergences"
     );
+    const {
+      personalSharedGroupBindings,
+      personalSharedGroupClaims,
+      personalSharedGroupDeliveryAttempts,
+      personalSharedGroupDeliveryReceipts,
+      personalSharedGroupJoinChallenges,
+      personalSharedGroupParticipants,
+    } = await import("../../../db/schemas/personal-shared-groups");
     const { apiKeys } = await import("../../../db/schemas/api-keys");
     const { creditTransactions } = await import("../../../db/schemas/credit-transactions");
     const { userCharacters } = await import("../../../db/schemas/user-characters");
@@ -268,6 +276,12 @@ beforeAll(async () => {
         users,
         userIdentities,
         personalAccountConvergences,
+        personalSharedGroupClaims,
+        personalSharedGroupBindings,
+        personalSharedGroupJoinChallenges,
+        personalSharedGroupDeliveryReceipts,
+        personalSharedGroupParticipants,
+        personalSharedGroupDeliveryAttempts,
         organizationInvites,
         apiKeys,
         creditTransactions,

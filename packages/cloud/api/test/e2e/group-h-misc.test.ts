@@ -371,10 +371,22 @@ describeE2E("Group H — GET /api/v1/apis/dexscreener/*", () => {
   });
 
   test("happy path: proxies the keyless public DexScreener upstream", async () => {
-    const res = await api.get(
-      "/api/v1/apis/dexscreener/latest/dex/search?q=SOL",
-      { headers: bearerHeaders() },
-    );
+    const getDexScreener = () =>
+      api.get("/api/v1/apis/dexscreener/latest/dex/search?q=SOL", {
+        headers: bearerHeaders(),
+      });
+    let res = await getDexScreener();
+    // This lane deliberately crosses the live public upstream boundary. Retry
+    // only its explicit transient gateway outcomes; authentication, validation,
+    // and application failures remain immediately visible.
+    for (
+      let attempt = 1;
+      attempt < 3 && [502, 503, 504].includes(res.status);
+      attempt++
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      res = await getDexScreener();
+    }
     // DexScreener needs no API key — the proxy must really forward and
     // return upstream JSON.
     expect(res.status).toBe(200);
@@ -425,10 +437,30 @@ describeE2E("Group H — POST /api/cron/agent-billing", () => {
 // /api/crypto/payments/:id/confirm — session/owner-required
 // ─────────────────────────────────────────────────────────────────────────
 describeE2E("Group H — POST /api/crypto/payments/:id/confirm", () => {
-  test("auth gate: missing credentials → 401", async () => {
-    const res = await api.post("/api/crypto/payments/missing-id/confirm", {
-      transactionHash: VALID_ETH_TX_HASH,
+  test("browser preflight returns credentialed CORS without route bootstrap", async () => {
+    const origin = "https://staging.eliza-app.pages.dev";
+    const res = await fetch(url("/api/crypto/payments/missing-id/confirm"), {
+      method: "OPTIONS",
+      headers: {
+        Origin: origin,
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type, x-eliza-csrf",
+      },
     });
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBe(origin);
+    expect(res.headers.get("access-control-allow-credentials")).toBe("true");
+    expect(res.headers.get("access-control-allow-methods")).toContain("POST");
+    expect(res.headers.get("access-control-allow-headers")).toContain(
+      "X-Eliza-CSRF",
+    );
+  });
+
+  test("auth gate: missing credentials → 401", async () => {
+    const res = await api.post(
+      "/api/crypto/payments/00000000-0000-0000-0000-000000000000/confirm",
+      { transactionHash: VALID_ETH_TX_HASH },
+    );
     expect(res.status).toBe(401);
   });
 
@@ -441,6 +473,24 @@ describeE2E("Group H — POST /api/crypto/payments/:id/confirm", () => {
     // requireUserWithOrg is session-based; API keys never satisfy it.
     expect(res.status).toBe(401);
   });
+
+  testSession(
+    "validation: with a session, malformed payment id → 400",
+    async () => {
+      if (!sessionCookie) throw new Error("session cookie missing");
+      const res = await api.post(
+        "/api/crypto/payments/not-a-uuid/confirm",
+        { transactionHash: VALID_ETH_TX_HASH },
+        {
+          headers: sameOriginBrowserHeaders({
+            Cookie: sessionCookie,
+            "Content-Type": "application/json",
+          }),
+        },
+      );
+      expect(res.status).toBe(400);
+    },
+  );
 
   testSession(
     "happy path: with a session, unknown payment id → 404",

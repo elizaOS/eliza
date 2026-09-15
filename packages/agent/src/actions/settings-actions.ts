@@ -36,6 +36,7 @@ import {
 import {
   getFirstRunProviderOption,
   normalizeFirstRunProviderId,
+  resolveDevCloudEnvAuthority,
 } from "@elizaos/shared";
 import {
   applyFirstRunConnectionConfig,
@@ -186,6 +187,15 @@ async function handleUpdateAiProvider(
       "UNKNOWN_PROVIDER",
       `Unknown AI provider: ${rawProvider}. Use one from the first-run catalog (anthropic, openai, openrouter, gemini, grok, groq, deepseek, mistral, together, ollama, zai, elizacloud).`,
       { provider: rawProvider },
+    );
+  }
+
+  const devCloudAuthority = resolveDevCloudEnvAuthority();
+  if (normalizedProvider === "elizacloud" && devCloudAuthority) {
+    return fail(
+      "DEV_CLOUD_AUTHORITY_ACTIVE",
+      "Cloud provider activation is owned by the immutable local dev launch target; restart with the intended target and credential.",
+      { provider: normalizedProvider, authority: devCloudAuthority },
     );
   }
 

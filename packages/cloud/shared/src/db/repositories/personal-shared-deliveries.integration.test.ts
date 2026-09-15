@@ -20,6 +20,7 @@ import {
 } from "../../lib/services/eliza-agent-config";
 import { elizaAppUserService } from "../../lib/services/eliza-app/user-service";
 import { personalSharedAgentId } from "../../lib/services/shared-runtime/personal-shared-agent";
+import { SIGNUP_CREDIT_POLICY } from "../../lib/signup-credits";
 import { closeDatabaseConnectionsForTests, dbWrite, getPgliteClientForTests } from "../client";
 import { agentSandboxes } from "../schemas/agent-sandboxes";
 import { apiKeys } from "../schemas/api-keys";
@@ -360,7 +361,7 @@ describe("Telegram personal Shared repeat delivery", () => {
     expect(first.organizationId).not.toBe(second.organizationId);
   });
 
-  test("concurrent first contacts converge on one zero-credit account", async () => {
+  test("concurrent first contacts converge on one signup-credit account", async () => {
     const input = telegramInput("714700104");
     const [first, second] = await Promise.all([
       elizaAppUserService.resolvePersonalDelivery(input),
@@ -384,7 +385,7 @@ describe("Telegram personal Shared repeat delivery", () => {
     expect(canonical).toEqual([{ id: first.userId }]);
     expect(projections).toEqual([{ userId: first.userId }]);
     expect(organization).toHaveLength(1);
-    expect(Number(organization[0]?.credit_balance)).toBe(0);
+    expect(Number(organization[0]?.credit_balance)).toBe(SIGNUP_CREDIT_POLICY.automaticGrantUsd);
   });
 });
 
@@ -623,7 +624,7 @@ describe("Discord personal Shared repeat delivery", () => {
     expect(first.organizationId).not.toBe(second.organizationId);
   });
 
-  test("concurrent first contacts converge on one zero-cost account", async () => {
+  test("concurrent first contacts converge on one signup-credit account", async () => {
     const input = discordInput("814700106");
     const [first, second] = await Promise.all([
       elizaAppUserService.resolvePersonalDelivery(input),
@@ -647,7 +648,7 @@ describe("Discord personal Shared repeat delivery", () => {
     expect(canonical).toEqual([{ id: first.userId }]);
     expect(projections).toEqual([{ userId: first.userId }]);
     expect(organization).toHaveLength(1);
-    expect(Number(organization[0]?.credit_balance)).toBe(0);
+    expect(Number(organization[0]?.credit_balance)).toBe(SIGNUP_CREDIT_POLICY.automaticGrantUsd);
     expect(await dbWrite.select().from(apiKeys)).toHaveLength(0);
     expect(await dbWrite.select().from(agentSandboxes)).toHaveLength(0);
   });

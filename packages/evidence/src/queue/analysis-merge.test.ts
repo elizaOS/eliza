@@ -1,11 +1,8 @@
-// The per-subject merge into analysis.json, driven on a REAL filesystem. The
-// load path is unit-tested (create-when-absent, refuse-corrupt), and the
-// concurrency guarantee is proven the only way it can be — with genuinely
-// separate OS processes: N `bun` children merge N distinct analyzers into one
-// analysis.json at once, and every result must survive. Without the O_EXCL lock
-// this is a lost-update race (temp+rename is atomic per write but not per
-// read-modify-write across processes), so the child-race test is the regression
-// guard for that bug.
+/**
+ * Verifies analysis merges through real filesystem readback and separate Bun
+ * processes. Invalid or mismatched documents retain their original bytes, and
+ * every analyzer result must survive serialization and concurrent writers.
+ */
 
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -13,6 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
+import { EvidenceError } from "../errors.ts";
 import { mergeAnalyzerResult } from "./analysis-merge.ts";
 
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "evidence-merge-"));
@@ -98,6 +96,100 @@ describe("mergeAnalyzerResult (single process)", () => {
       }),
     ).toThrow(/not valid JSON/);
   });
+
+  it.each([
+    { schema: 1, artifact: "visual/x/shot.png", results: [] },
+    { schema: 1, artifact: "visual/x/shot.png", results: null },
+    { schema: 1, results: {} },
+    { schema: 1, artifact: 42, results: {} },
+  ])("preserves an invalid existing document: %j", (document) => {
+    const dir = newDir();
+    const analysisPath = path.join(dir, "shot.png.analysis.json");
+    const original = `${JSON.stringify(document, null, 2)}\n`;
+    fs.writeFileSync(analysisPath, original);
+
+    expect(() =>
+      mergeAnalyzerResult({
+        analysisPath,
+        artifact: "visual/x/shot.png",
+        analyzerId: "ocr.unlimited",
+        result: { status: "ran", durationMs: 1, data: { text: "new text" } },
+      }),
+    ).toThrowError(
+      expect.objectContaining({
+        name: "EvidenceError",
+        code: "ANALYSIS_MERGE_CORRUPT",
+      }),
+    );
+    expect(fs.readFileSync(analysisPath, "utf8")).toBe(original);
+    expect(fs.readdirSync(dir)).toEqual([path.basename(analysisPath)]);
+  });
+
+  it("refuses to attribute a result to another subject without replacing its bytes", () => {
+    const dir = newDir();
+    const analysisPath = path.join(dir, "shot.png.analysis.json");
+    const original = `${JSON.stringify(
+      {
+        schema: 1,
+        artifact: "visual/other/shot.png",
+        results: {
+          "ocr.unlimited": {
+            status: "ran",
+            durationMs: 1,
+            data: { text: "old text" },
+          },
+        },
+      },
+      null,
+      2,
+    )}\n`;
+    fs.writeFileSync(analysisPath, original);
+
+    expect(() =>
+      mergeAnalyzerResult({
+        analysisPath,
+        artifact: "visual/x/shot.png",
+        analyzerId: "ocr.unlimited",
+        result: { status: "ran", durationMs: 1, data: { text: "new text" } },
+      }),
+    ).toThrowError(
+      expect.objectContaining({
+        name: EvidenceError.name,
+        code: "ANALYSIS_MERGE_ARTIFACT_MISMATCH",
+        context: {
+          analysisPath,
+          artifact: "visual/x/shot.png",
+          existingArtifact: "visual/other/shot.png",
+        },
+      }),
+    );
+    expect(fs.readFileSync(analysisPath, "utf8")).toBe(original);
+    expect(fs.readdirSync(dir)).toEqual([path.basename(analysisPath)]);
+  });
+
+  it.each(["__proto__", "constructor", "toString"])(
+    "persists and replaces analyzer results named %s alongside ordinary results",
+    (analyzerId) => {
+      const analysisPath = path.join(newDir(), "shot.png.analysis.json");
+      for (const [id, text] of [
+        [analyzerId, "first"],
+        ["ocr.unlimited", "ordinary"],
+        [analyzerId, "replacement"],
+      ]) {
+        mergeAnalyzerResult({
+          analysisPath,
+          artifact: "visual/x/shot.png",
+          analyzerId: id,
+          result: { status: "ran", durationMs: 1, data: { text } },
+        });
+      }
+
+      const onDisk = JSON.parse(fs.readFileSync(analysisPath, "utf8"));
+      expect(Object.hasOwn(onDisk.results, analyzerId)).toBe(true);
+      expect(onDisk.results[analyzerId].data.text).toBe("replacement");
+      expect(onDisk.results["ocr.unlimited"].data.text).toBe("ordinary");
+    },
+  );
 });
 
 /** Run one merge in a separate OS process via bun so the race is real. */

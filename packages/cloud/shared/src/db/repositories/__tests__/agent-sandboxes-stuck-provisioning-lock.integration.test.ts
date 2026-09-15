@@ -38,6 +38,7 @@ import type {
   CommitAgentSandboxReplacementLifecycleAdoptionInput,
   StartAgentSandboxReplacementAttemptInput,
 } from "../agent-sandbox-replacement-attempts";
+import { installOrganizationPolicyTestSchema } from "../organization-policy-test-fixture";
 
 const SKIP_REASON =
   "[cloud lifecycle locks] SKIPPED - no real PostgreSQL available. " +
@@ -591,6 +592,7 @@ realPostgres("cloud lifecycle lock proofs", () => {
     const migrationClient = new Client({ connectionString: isolatedDsn });
     await migrationClient.connect();
     try {
+      await installOrganizationPolicyTestSchema((query) => migrationClient.query(query));
       await migrationClient.query(
         await readFile(
           new URL("../../migrations/0183_lifecycle_execution_fence.sql", import.meta.url),

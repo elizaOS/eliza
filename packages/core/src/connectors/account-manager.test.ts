@@ -143,6 +143,46 @@ describe("ConnectorAccountManager", () => {
 		expect(accounts[0]?.metadata).toEqual({ provider: true, stored: true });
 	});
 
+	it("rejects an ambiguous external alias while resolving an exact account key", async () => {
+		const manager = getConnectorAccountManager(makeRuntime());
+		const shared = {
+			provider: "google",
+			purpose: ["automation" as const],
+			accessGate: "open" as const,
+			status: "connected" as const,
+			externalId: "shared-google-subject",
+			createdAt: 1,
+			updatedAt: 1,
+		};
+		manager.registerProvider({
+			provider: "google",
+			listAccounts: () => [
+				{
+					...shared,
+					id: "owner-account",
+					accountKey: "owner-key",
+					role: "OWNER",
+				},
+				{
+					...shared,
+					id: "agent-account",
+					accountKey: "agent-key",
+					role: "AGENT",
+				},
+			],
+		});
+
+		await expect(
+			manager.getAccount("google", "agent-key"),
+		).resolves.toMatchObject({
+			id: "agent-account",
+			role: "AGENT",
+		});
+		await expect(
+			manager.getAccount("google", "shared-google-subject"),
+		).resolves.toBeNull();
+	});
+
 	it("resolves provider-synthesized accounts by id even before persistence", async () => {
 		const runtime = makeRuntime();
 		const manager = getConnectorAccountManager(runtime);
@@ -207,6 +247,152 @@ describe("ConnectorAccountManager", () => {
 				code: "code-2",
 			}),
 		).rejects.toThrow(/already used|unknown|expired/i);
+	});
+
+	it("serializes concurrent OAuth callbacks through final account persistence", async () => {
+		const storage = new InMemoryConnectorAccountStorage();
+		const persistAccount = storage.upsertAccount.bind(storage);
+		let signalFirstWrite!: () => void;
+		let releaseFirstWrite!: () => void;
+		const firstWriteEntered = new Promise<void>((resolve) => {
+			signalFirstWrite = resolve;
+		});
+		const firstWriteRelease = new Promise<void>((resolve) => {
+			releaseFirstWrite = resolve;
+		});
+		let writeCount = 0;
+		storage.upsertAccount = async (account) => {
+			writeCount += 1;
+			if (writeCount === 1) {
+				signalFirstWrite();
+				await firstWriteRelease;
+			}
+			return persistAccount(account);
+		};
+
+		const firstRuntime = makeRuntime();
+		const secondRuntime = makeRuntime();
+		(firstRuntime as unknown as { agentId: string }).agentId = "shared-agent";
+		(secondRuntime as unknown as { agentId: string }).agentId = "shared-agent";
+		const firstManager = getConnectorAccountManager(firstRuntime);
+		const secondManager = getConnectorAccountManager(secondRuntime);
+		firstManager.setStorage(storage);
+		secondManager.setStorage(storage);
+		const callbackCodes: string[] = [];
+		const provider = {
+			provider: "oauth-serialized-success",
+			startOAuth: () => ({ authUrl: "https://auth.example/start" }),
+			completeOAuth: (request) => {
+				callbackCodes.push(request.code ?? "");
+				return {
+					account: {
+						id: "shared-oauth-account",
+						provider: "oauth-serialized-success",
+						role: "OWNER",
+						purpose: ["messaging"],
+						accessGate: "open",
+						status: "connected",
+						createdAt: 1,
+						updatedAt: 1,
+					},
+				};
+			},
+		};
+		firstManager.registerProvider(provider);
+		secondManager.registerProvider(provider);
+		const firstFlow = await firstManager.startOAuth("oauth-serialized-success");
+		const secondFlow = await secondManager.startOAuth(
+			"oauth-serialized-success",
+		);
+
+		const first = firstManager.completeOAuth("oauth-serialized-success", {
+			state: firstFlow.state,
+			code: "code-1",
+		});
+		await firstWriteEntered;
+		const second = secondManager.completeOAuth("oauth-serialized-success", {
+			state: secondFlow.state,
+			code: "code-2",
+		});
+		await Promise.resolve();
+
+		expect(callbackCodes).toEqual(["code-1"]);
+		releaseFirstWrite();
+		await expect(Promise.all([first, second])).resolves.toHaveLength(2);
+		expect(callbackCodes).toEqual(["code-1", "code-2"]);
+		await expect(
+			firstManager.listAccounts("oauth-serialized-success"),
+		).resolves.toHaveLength(1);
+	});
+
+	it("keeps a committed OAuth account when the queued callback fails", async () => {
+		const storage = new InMemoryConnectorAccountStorage();
+		const persistAccount = storage.upsertAccount.bind(storage);
+		let signalFirstWrite!: () => void;
+		let releaseFirstWrite!: () => void;
+		const firstWriteEntered = new Promise<void>((resolve) => {
+			signalFirstWrite = resolve;
+		});
+		const firstWriteRelease = new Promise<void>((resolve) => {
+			releaseFirstWrite = resolve;
+		});
+		storage.upsertAccount = async (account) => {
+			signalFirstWrite();
+			await firstWriteRelease;
+			storage.upsertAccount = persistAccount;
+			return persistAccount(account);
+		};
+
+		const manager = getConnectorAccountManager(makeRuntime());
+		manager.setStorage(storage);
+		const callbackCodes: string[] = [];
+		manager.registerProvider({
+			provider: "oauth-serialized-failure",
+			startOAuth: () => ({ authUrl: "https://auth.example/start" }),
+			completeOAuth: (request) => {
+				callbackCodes.push(request.code ?? "");
+				if (request.code === "code-2")
+					throw new Error("second callback rejected");
+				return {
+					account: {
+						id: "committed-oauth-account",
+						provider: "oauth-serialized-failure",
+						role: "OWNER",
+						purpose: ["messaging"],
+						accessGate: "open",
+						status: "connected",
+						createdAt: 1,
+						updatedAt: 1,
+					},
+				};
+			},
+		});
+		const firstFlow = await manager.startOAuth("oauth-serialized-failure");
+		const secondFlow = await manager.startOAuth("oauth-serialized-failure");
+
+		const first = manager.completeOAuth("oauth-serialized-failure", {
+			state: firstFlow.state,
+			code: "code-1",
+		});
+		await firstWriteEntered;
+		const second = manager.completeOAuth("oauth-serialized-failure", {
+			state: secondFlow.state,
+			code: "code-2",
+		});
+		const secondRejection =
+			expect(second).rejects.toThrow(/completion failed/i);
+		await Promise.resolve();
+
+		expect(callbackCodes).toEqual(["code-1"]);
+		releaseFirstWrite();
+		await expect(first).resolves.toMatchObject({
+			account: { id: "committed-oauth-account" },
+		});
+		await secondRejection;
+		expect(callbackCodes).toEqual(["code-1", "code-2"]);
+		await expect(
+			manager.getAccount("oauth-serialized-failure", "committed-oauth-account"),
+		).resolves.toMatchObject({ status: "connected" });
 	});
 
 	it("preserves PKCE code verifier through database-backed OAuth flow storage", async () => {
@@ -405,6 +591,53 @@ describe("durable storage binding", () => {
 			provider: "google",
 			externalId: "user@example.com",
 			status: "connected",
+		});
+	});
+
+	it("round-trips a provider-owned account key separately from the external identity", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.initialize();
+		const manager = getConnectorAccountManager(makeRuntime(adapter));
+		const stableKey = "acct_google_role_bound_key";
+
+		const account = await manager.upsertAccount("google", {
+			...GOOGLE_ACCOUNT,
+			id: stableKey,
+			accountKey: stableKey,
+			externalId: "shared-google-subject",
+		});
+
+		expect(account.accountKey).toBe(stableKey);
+		await expect(
+			adapter.getConnectorAccount({
+				provider: "google",
+				accountKey: stableKey,
+			}),
+		).resolves.toMatchObject({
+			accountKey: stableKey,
+			externalId: "shared-google-subject",
+		});
+	});
+
+	it("preserves stored identity fields when a provider returns a partial patch", async () => {
+		const manager = getConnectorAccountManager(makeRuntime());
+		await manager.upsertAccount("google", {
+			...GOOGLE_ACCOUNT,
+			accountKey: "acct_google_owner_key",
+			externalId: "google-owner-subject",
+		});
+		manager.registerProvider({
+			provider: "google",
+			patchAccount: async () => ({ status: "disabled" }),
+		});
+
+		await expect(
+			manager.patchAccount("google", GOOGLE_ACCOUNT.id, { status: "disabled" }),
+		).resolves.toMatchObject({
+			accountKey: "acct_google_owner_key",
+			externalId: "google-owner-subject",
+			role: "OWNER",
+			status: "disabled",
 		});
 	});
 

@@ -13,8 +13,10 @@ describe("UI_CONTEXT", () => {
 					metadata: {
 						uiView: "notes",
 						uiTab: "views",
+						uiViewSubview: "general",
 						uiViewPath: "/notes",
 						uiViewCapabilities: ["view-actions", "inspect-view"],
+						uiViewActionNames: ["NOTES"],
 						__responseContext: {
 							primaryContext: "apps",
 							secondaryContexts: ["general"],
@@ -27,14 +29,21 @@ describe("UI_CONTEXT", () => {
 
 		expect(result.text).toContain("view: notes");
 		expect(result.text).toContain("path: /notes");
+		expect(result.text).toContain("subview_id: general");
 		expect(result.text).toContain(
 			"view_capabilities: view-actions, inspect-view",
 		);
-		expect(result.text).toContain("select the VIEWS action");
+		expect(result.text).toContain("view_actions: NOTES");
+		expect(result.text).toContain(
+			"Treat view_capabilities as available context, not as a request",
+		);
+		expect(result.text).toContain("it does not contain its displayed content");
+		expect(result.text).toContain("Opening a view is not a record operation");
 		expect(result.data).toMatchObject({
 			uiView: "notes",
 			uiViewPath: "/notes",
 			uiViewCapabilities: ["view-actions", "inspect-view"],
+			uiViewActionNames: ["NOTES"],
 		});
 	});
 

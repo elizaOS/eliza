@@ -1,9 +1,14 @@
 import * as http from "node:http";
+import { resetDevCloudEnvAuthorityForTests } from "@elizaos/shared";
 import { afterEach, describe, expect, it } from "vitest";
-import { handleCloudBillingRoute } from "../src/routes/cloud-billing-routes";
+import { fetchUpstream, handleCloudBillingRoute } from "../src/routes/cloud-billing-routes";
 
 const originalNodeEnv = process.env.NODE_ENV;
 const originalCloudBaseUrl = process.env.ELIZAOS_CLOUD_BASE_URL;
+const originalCloudApiKey = process.env.ELIZAOS_CLOUD_API_KEY;
+const originalDevSource = process.env.ELIZA_DEV_SOURCE;
+const originalDevAuthority = process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY;
+const originalDevTarget = process.env.ELIZA_DEV_CLOUD_TARGET;
 const originalFetch = globalThis.fetch;
 
 function listen(server: http.Server): Promise<string> {
@@ -32,9 +37,59 @@ afterEach(() => {
   } else {
     process.env.ELIZAOS_CLOUD_BASE_URL = originalCloudBaseUrl;
   }
+  for (const [key, value] of [
+    ["ELIZAOS_CLOUD_API_KEY", originalCloudApiKey],
+    ["ELIZA_DEV_SOURCE", originalDevSource],
+    ["ELIZA_DEV_CLOUD_ENV_AUTHORITY", originalDevAuthority],
+    ["ELIZA_DEV_CLOUD_TARGET", originalDevTarget],
+  ] as const) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  resetDevCloudEnvAuthorityForTests();
 });
 
 describe("handleCloudBillingRoute money proxies", () => {
+  it("never forwards launcher credentials across a hostile redirect", async () => {
+    resetDevCloudEnvAuthorityForTests();
+    process.env.ELIZA_DEV_SOURCE = "1";
+    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "staging-explicit";
+    process.env.ELIZA_DEV_CLOUD_TARGET = "staging";
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api-staging.eliza.app/api/v1";
+    process.env.ELIZAOS_CLOUD_API_KEY = "frozen-staging-key";
+
+    const upstreamCalls: Array<{
+      authorization: string | null;
+      url: string;
+    }> = [];
+    globalThis.fetch = (async (input, init = {}) => {
+      upstreamCalls.push({
+        authorization: new Headers(init.headers).get("Authorization"),
+        url: String(input),
+      });
+      return new Response(null, {
+        status: 302,
+        headers: { location: "https://attacker.example/collect" },
+      });
+    }) as typeof fetch;
+
+    await expect(
+      fetchUpstream(
+        "https://cloud-staging.eliza.app/api/v1/credits/summary",
+        "GET",
+        { Authorization: "Bearer frozen-staging-key" },
+        undefined
+      )
+    ).rejects.toMatchObject({ code: "REDIRECT" });
+
+    expect(upstreamCalls).toEqual([
+      {
+        authorization: "Bearer frozen-staging-key",
+        url: "https://cloud-staging.eliza.app/api/v1/credits/summary",
+      },
+    ]);
+  });
+
   it("forwards x402 payment requests and preserves payment headers", async () => {
     process.env.NODE_ENV = "development";
     delete process.env.ELIZAOS_CLOUD_BASE_URL;

@@ -166,95 +166,114 @@ export function OverviewTab(props: OverviewTabProps) {
   );
 
   return (
-    <div className="space-y-3">
-      {protection ? <ProtectionCard protection={protection} /> : null}
-      <div className="flex items-center justify-between pb-1">
-        <p className="text-2xs text-muted">
-          {t("vault.overview.routeHint", {
-            defaultValue:
-              "Sensitive values route to the first enabled backend.",
-          })}
-        </p>
-        <Button
-          ref={redetectRef}
-          {...redetectAgentProps}
-          variant="ghost"
-          size="icon-sm"
-          onClick={onReload}
-          aria-label={t("vault.overview.redetect", {
-            defaultValue: "Re-detect backends",
-          })}
-          title={t("vault.overview.redetect", {
-            defaultValue: "Re-detect backends",
-          })}
-        >
-          <RefreshCw className="size-3.5" aria-hidden />
-        </Button>
-      </div>
-
-      <div className="space-y-1.5">
-        {orderedBackends(backends, preferences).map((backend) => (
-          <BackendRow
-            key={backend.id}
-            backend={backend}
-            enabled={isEnabled(backend.id)}
-            isPrimary={preferences.enabled[0] === backend.id}
-            position={preferences.enabled.indexOf(backend.id)}
-            totalEnabled={preferences.enabled.length}
-            methods={
-              backend.id === "in-house"
-                ? []
-                : (installMethods[backend.id as InstallableBackendId] ?? [])
-            }
-            installSheetOpen={installSheet === backend.id}
-            signinSheetOpen={signinSheet === backend.id}
-            onToggle={(on) => setEnabled(backend.id, on)}
-            onMoveUp={() => moveUp(backend.id)}
-            onMoveDown={() => moveDown(backend.id)}
-            onOpenInstallSheet={() =>
-              setInstallSheet(backend.id as InstallableBackendId)
-            }
-            onOpenSigninSheet={() =>
-              setSigninSheet(backend.id as InstallableBackendId)
-            }
-            onCloseSheets={() => {
-              setInstallSheet(null);
-              setSigninSheet(null);
-            }}
-            onInstallComplete={() => {
-              setInstallSheet(null);
-              onInstallComplete();
-            }}
-            onSigninComplete={() => {
-              setSigninSheet(null);
-              onSigninComplete();
-            }}
-            onSignout={() => onSignout(backend.id as InstallableBackendId)}
-          />
-        ))}
-      </div>
-
-      <Card
-        variant="topDivider"
-        className="flex items-center justify-end gap-2 pt-2"
+    <div className="w-full space-y-4">
+      <p
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
       >
-        <Button
-          ref={saveRef}
-          {...saveAgentProps}
-          variant="default"
-          size="sm"
-          onClick={onSave}
-          disabled={saving}
-        >
-          {saving
-            ? t("vault.overview.saving", { defaultValue: "Saving…" })
-            : savedAt !== null
-              ? t("vault.overview.saved", { defaultValue: "Saved" })
-              : t("vault.overview.savePreferences", {
-                  defaultValue: "Save preferences",
-                })}
-        </Button>
-      </Card>
+        {saving
+          ? "Saving Vault preferences."
+          : savedAt !== null
+            ? "Vault preferences saved."
+            : ""}
+      </p>
+      {protection ? <ProtectionCard protection={protection} /> : null}
+      <section aria-labelledby="vault-backends-heading">
+        <div className="flex flex-wrap items-start justify-between gap-3 pb-3">
+          <div className="min-w-[min(100%,30rem)] flex-1 space-y-1">
+            <h2
+              id="vault-backends-heading"
+              className="text-sm font-semibold text-txt"
+            >
+              Secret backends
+            </h2>
+            <p className="text-xs text-muted">
+              {t("vault.overview.routeHint", {
+                defaultValue:
+                  "Sensitive values route to the first enabled backend.",
+              })}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              ref={redetectRef}
+              {...redetectAgentProps}
+              variant="ghost"
+              size="sm"
+              onClick={onReload}
+              aria-label={t("vault.overview.redetect", {
+                defaultValue: "Re-detect backends",
+              })}
+              title={t("vault.overview.redetect", {
+                defaultValue: "Re-detect backends",
+              })}
+            >
+              <RefreshCw className="size-3.5" aria-hidden />
+              Refresh
+            </Button>
+            <Button
+              ref={saveRef}
+              {...saveAgentProps}
+              variant="default"
+              size="sm"
+              onClick={onSave}
+              disabled={saving}
+            >
+              {saving
+                ? t("vault.overview.saving", { defaultValue: "Saving…" })
+                : savedAt !== null
+                  ? t("vault.overview.saved", { defaultValue: "Saved" })
+                  : t("vault.overview.savePreferences", {
+                      defaultValue: "Save preferences",
+                    })}
+            </Button>
+          </div>
+        </div>
+
+        <div className="divide-y divide-line-subtle border-y border-line-subtle">
+          {orderedBackends(backends, preferences).map((backend) => (
+            <BackendRow
+              key={backend.id}
+              backend={backend}
+              enabled={isEnabled(backend.id)}
+              isPrimary={preferences.enabled[0] === backend.id}
+              position={preferences.enabled.indexOf(backend.id)}
+              totalEnabled={preferences.enabled.length}
+              methods={
+                backend.id === "in-house"
+                  ? []
+                  : (installMethods[backend.id as InstallableBackendId] ?? [])
+              }
+              installSheetOpen={installSheet === backend.id}
+              signinSheetOpen={signinSheet === backend.id}
+              onToggle={(on) => setEnabled(backend.id, on)}
+              onMoveUp={() => moveUp(backend.id)}
+              onMoveDown={() => moveDown(backend.id)}
+              onOpenInstallSheet={() =>
+                setInstallSheet(backend.id as InstallableBackendId)
+              }
+              onOpenSigninSheet={() =>
+                setSigninSheet(backend.id as InstallableBackendId)
+              }
+              onCloseSheets={() => {
+                setInstallSheet(null);
+                setSigninSheet(null);
+              }}
+              onInstallComplete={() => {
+                setInstallSheet(null);
+                onInstallComplete();
+              }}
+              onSigninComplete={() => {
+                setSigninSheet(null);
+                onSigninComplete();
+              }}
+              onSignout={() => onSignout(backend.id as InstallableBackendId)}
+            />
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
@@ -439,14 +458,8 @@ export function BackendRow(props: BackendRowProps) {
   const installableId = backend.id as InstallableBackendId;
 
   return (
-    <Card
-      variant="transparent"
-      surface="card"
-      border={enabled ? "standard" : "subtle"}
-      padding="compact"
-      className={enabled ? "py-2.5" : "py-2.5 opacity-70"}
-    >
-      <div className="flex items-center gap-3">
+    <div className={enabled ? "p-3 sm:p-4" : "p-3 opacity-70 sm:p-4"}>
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2">
         <Checkbox
           ref={enableRef}
           {...enableAgentProps}
@@ -459,9 +472,9 @@ export function BackendRow(props: BackendRowProps) {
           })}
         />
 
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-sm font-medium text-txt">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-sm font-medium text-txt">
               {backend.label}
             </span>
             <StatusPill tone={tone} text={status} />
@@ -541,40 +554,43 @@ export function BackendRow(props: BackendRowProps) {
               {t("vault.backend.signOut", { defaultValue: "Sign out" })}
             </Button>
           )}
-          {enabled && backend.available && backend.signedIn !== false && (
-            <>
-              <Button
-                ref={moveUpRef}
-                {...moveUpAgentProps}
-                variant="ghost"
-                size="icon-sm"
-                onClick={onMoveUp}
-                disabled={position <= 0}
-                title={t("vault.backend.moveUp", { defaultValue: "Move up" })}
-                aria-label={t("vault.backend.moveUp", {
-                  defaultValue: "Move up",
-                })}
-              >
-                <ChevronUp className="size-3.5" aria-hidden />
-              </Button>
-              <Button
-                ref={moveDownRef}
-                {...moveDownAgentProps}
-                variant="ghost"
-                size="icon-sm"
-                onClick={onMoveDown}
-                disabled={position < 0 || position >= totalEnabled - 1}
-                title={t("vault.backend.moveDown", {
-                  defaultValue: "Move down",
-                })}
-                aria-label={t("vault.backend.moveDown", {
-                  defaultValue: "Move down",
-                })}
-              >
-                <ChevronDown className="size-3.5" aria-hidden />
-              </Button>
-            </>
-          )}
+          {enabled &&
+            backend.available &&
+            backend.signedIn !== false &&
+            totalEnabled > 1 && (
+              <>
+                <Button
+                  ref={moveUpRef}
+                  {...moveUpAgentProps}
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={onMoveUp}
+                  disabled={position <= 0}
+                  title={t("vault.backend.moveUp", { defaultValue: "Move up" })}
+                  aria-label={t("vault.backend.moveUp", {
+                    defaultValue: "Move up",
+                  })}
+                >
+                  <ChevronUp className="size-3.5" aria-hidden />
+                </Button>
+                <Button
+                  ref={moveDownRef}
+                  {...moveDownAgentProps}
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={onMoveDown}
+                  disabled={position < 0 || position >= totalEnabled - 1}
+                  title={t("vault.backend.moveDown", {
+                    defaultValue: "Move down",
+                  })}
+                  aria-label={t("vault.backend.moveDown", {
+                    defaultValue: "Move down",
+                  })}
+                >
+                  <ChevronDown className="size-3.5" aria-hidden />
+                </Button>
+              </>
+            )}
         </div>
       </div>
 
@@ -595,7 +611,7 @@ export function BackendRow(props: BackendRowProps) {
           onComplete={onSigninComplete}
         />
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -792,6 +808,7 @@ export function InstallSheet({
           {...closeAgentProps}
           variant="ghost"
           size="sm"
+          className="self-start"
           onClick={close}
           disabled={running}
         >

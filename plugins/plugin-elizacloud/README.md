@@ -106,10 +106,10 @@ Get an API key from
 | `ELIZAOS_CLOUD_API_KEY` | API key used for authenticated Cloud requests | Required |
 | `ELIZAOS_CLOUD_BASE_URL` | Eliza Cloud API base URL | `https://api.eliza.app/api/v1` |
 | `ELIZAOS_CLOUD_ENABLED` | Enables container provisioning, device auth, bridge, and backup services | `false` |
-| `ELIZAOS_CLOUD_NANO_MODEL` | Nano/cheapest model override | `NANO_MODEL` or `gemma-4-31b` |
-| `ELIZAOS_CLOUD_SMALL_MODEL` | Small/fast model override | `SMALL_MODEL` or `gemma-4-31b` |
+| `ELIZAOS_CLOUD_NANO_MODEL` | Nano/cheapest model override | `NANO_MODEL` or `qwen-3.8-27b` |
+| `ELIZAOS_CLOUD_SMALL_MODEL` | Small/fast model override | `SMALL_MODEL` or `qwen-3.8-27b` |
 | `ELIZAOS_CLOUD_MEDIUM_MODEL` | Medium planning model override | `MEDIUM_MODEL` or small model |
-| `ELIZAOS_CLOUD_LARGE_MODEL` | Large model override | `LARGE_MODEL` or `gemma-4-31b` |
+| `ELIZAOS_CLOUD_LARGE_MODEL` | Large model override | `LARGE_MODEL` or `qwen-3.8-27b` |
 | `ELIZAOS_CLOUD_MEGA_MODEL` | Mega model override | `MEGA_MODEL` or large model |
 | `ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL` | Response handler model override | small model |
 | `ELIZAOS_CLOUD_ACTION_PLANNER_MODEL` | Action planner model override | large model |
@@ -129,6 +129,12 @@ Get an API key from
 Browser builds must not receive secrets directly. Use
 `ELIZAOS_CLOUD_BROWSER_BASE_URL` and `ELIZAOS_CLOUD_BROWSER_EMBEDDING_URL` for
 browser-only proxy endpoints.
+
+The default text model is Cerebras `qwen-3.8-27b`. Native interactive calls
+send `reasoning_effort: "none"`; `ELIZAOS_CLOUD_REASONING_EFFORT` can explicitly
+select `none`, `low`, `medium`, or `high` for Qwen. Runtime thinking-off intent
+still takes precedence. Speech recognition and synthesis use their separate
+audio providers, not the text model.
 
 ## Usage Examples
 

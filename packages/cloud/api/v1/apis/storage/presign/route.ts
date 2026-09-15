@@ -4,13 +4,13 @@
  */
 import { Hono } from "hono";
 import { z } from "zod";
+import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
 import {
   mintStorageReadCapabilityUrl,
   StorageReadCapabilityConfigurationError,
   validateStorageReadCapabilityConfiguration,
 } from "@/api-app/storage-read-capability";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { getServiceMethodCost } from "@/lib/services/proxy/pricing";
 import {
   executeNativeStoragePresign,
@@ -43,7 +43,9 @@ function validLogicalKey(value: string): string | undefined {
 
 app.post("/", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
+    const { user } = await requirePaidRouteStanding(c, {
+      route: "storage.presign",
+    });
     const raw = await c.req.json().catch(() => {
       // error-policy:J3 malformed request JSON remains an explicit invalid result.
       return null;

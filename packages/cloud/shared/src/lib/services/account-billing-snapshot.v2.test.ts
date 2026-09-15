@@ -17,10 +17,46 @@ import {
 const PRIMARY_OBSERVED_AT = "2026-08-20T12:00:00.000Z";
 const DEFAULT_STORAGE_LIMIT = 5n * 1024n * 1024n * 1024n;
 
+function resolvedLimits(
+  values: Partial<
+    Record<
+      "characters" | "sandboxes" | "nonEagerSandboxes" | "containers" | "apps" | "storage",
+      bigint
+    >
+  > = {},
+) {
+  const defaults = {
+    characters: 5n,
+    sandboxes: 100n,
+    nonEagerSandboxes: 5n,
+    containers: 5n,
+    apps: 25n,
+    storage: 9007199254741000n,
+    ...values,
+  };
+  const available = (limit: bigint) => ({
+    status: "available" as const,
+    limit,
+    source: "resolved-organization-policy",
+  });
+  return {
+    characters: available(defaults.characters),
+    sandboxes: available(defaults.sandboxes),
+    nonEagerSandboxes: available(defaults.nonEagerSandboxes),
+    containers: available(defaults.containers),
+    apps: available(defaults.apps),
+    storage: available(defaults.storage),
+  };
+}
+
 function healthyPrimary(
   overrides: Partial<PrimaryAccountBillingReadModel> = {},
 ): PrimaryAccountBillingReadModel {
   return {
+    subscription: { state: "none" },
+    allowanceFunding: { status: "available", period: undefined },
+    policyObservedAt: PRIMARY_OBSERVED_AT,
+    policyLimits: resolvedLimits(),
     observedAt: PRIMARY_OBSERVED_AT,
     organization: {
       creditBalance: "9.000000",
@@ -81,6 +117,7 @@ function healthyPrimary(
         name: "exact-rate-container",
         status: "running",
         billingStatus: "active",
+        lifecycleRevision: 7,
         unitPrice: 99,
         billingInterval: "day",
         lastBilledAt: "2026-08-20T10:00:00.000Z",
@@ -112,10 +149,6 @@ function healthySources(
 ): AccountBillingSnapshotSources {
   return {
     primary: async () => primary,
-    appLimit: () => 25,
-    maxCloudCharacters: () => 5,
-    maxNonTerminalAgents: (balance) => (balance === undefined ? 5 : 100),
-    maxContainers: () => 5,
     runtimeTierCache: async () => ({
       kind: "ready",
       tier: {
@@ -127,7 +160,13 @@ function healthySources(
       },
     }),
     autoTopUpRuntimeEnabled: () => true,
-    defaultStorageBytesLimit: DEFAULT_STORAGE_LIMIT,
+    cancellationAuthority: {
+      authMethod: "session",
+      role: "owner",
+      userActive: true,
+      userAnonymous: false,
+      organizationActive: true,
+    },
     now: () => new Date("2026-08-20T12:00:01.000Z"),
     ...overrides,
   };
@@ -283,6 +322,16 @@ describe("buildAccountBillingSnapshot v2", () => {
             status: "available",
             value: { value: "2.962944", unit: "usd_per_day", currency: "USD" },
           },
+          cancellationControl: {
+            displayAction: "stop",
+            method: "POST",
+            mode: "stop",
+            endpoint:
+              "/api/v1/billing/resources/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/cancel?resourceType=container",
+            expectedLifecycleRevision: 7,
+            eligible: true,
+            blockers: [],
+          },
         },
       ],
     });
@@ -318,6 +367,151 @@ describe("buildAccountBillingSnapshot v2", () => {
     expect(JSON.stringify(snapshot)).not.toContain('"tierName"');
   });
 
+  test.each([
+    {
+      name: "owner interactive session",
+      authority: {
+        authMethod: "session" as const,
+        role: "owner",
+        userActive: true,
+        userAnonymous: false,
+        organizationActive: true,
+      },
+      eligible: true,
+      blockers: [],
+    },
+    {
+      name: "admin interactive session",
+      authority: {
+        authMethod: "session" as const,
+        role: "admin",
+        userActive: true,
+        userAnonymous: false,
+        organizationActive: true,
+      },
+      eligible: true,
+      blockers: [],
+    },
+    {
+      name: "member interactive session",
+      authority: {
+        authMethod: "session" as const,
+        role: "member",
+        userActive: true,
+        userAnonymous: false,
+        organizationActive: true,
+      },
+      eligible: false,
+      blockers: ["owner_or_admin_role_required"],
+    },
+    {
+      name: "API key owner",
+      authority: {
+        authMethod: "api_key" as const,
+        role: "owner",
+        userActive: true,
+        userAnonymous: false,
+        organizationActive: true,
+      },
+      eligible: false,
+      blockers: ["interactive_session_required"],
+    },
+    {
+      name: "anonymous owner interactive session",
+      authority: {
+        authMethod: "session" as const,
+        role: "owner",
+        userActive: true,
+        userAnonymous: true,
+        organizationActive: true,
+      },
+      eligible: false,
+      blockers: ["billing_account_ineligible"],
+    },
+    {
+      name: "anonymous admin interactive session",
+      authority: {
+        authMethod: "session" as const,
+        role: "admin",
+        userActive: true,
+        userAnonymous: true,
+        organizationActive: true,
+      },
+      eligible: false,
+      blockers: ["billing_account_ineligible"],
+    },
+    {
+      name: "inactive owner interactive session",
+      authority: {
+        authMethod: "session" as const,
+        role: "owner",
+        userActive: false,
+        userAnonymous: false,
+        organizationActive: true,
+      },
+      eligible: false,
+      blockers: ["billing_account_ineligible"],
+    },
+    {
+      name: "active admin session in an inactive organization",
+      authority: {
+        authMethod: "session" as const,
+        role: "admin",
+        userActive: true,
+        userAnonymous: false,
+        organizationActive: false,
+      },
+      eligible: false,
+      blockers: ["billing_account_ineligible"],
+    },
+    {
+      name: "unknown authentication and role",
+      authority: {
+        authMethod: null,
+        role: null,
+        userActive: false,
+        userAnonymous: true,
+        organizationActive: false,
+      },
+      eligible: false,
+      blockers: [
+        "interactive_session_required",
+        "billing_account_ineligible",
+        "owner_or_admin_role_required",
+      ],
+    },
+  ])("projects fail-closed cancellation eligibility for $name", async (fixture) => {
+    const snapshot = await buildAccountBillingSnapshot(
+      healthySources(healthyPrimary(), {
+        cancellationAuthority: fixture.authority,
+      }),
+    );
+
+    expect(snapshot.v2.activeCompute.resources.status).toBe("available");
+    if (snapshot.v2.activeCompute.resources.status !== "available") {
+      throw new Error("active compute resources unexpectedly unavailable");
+    }
+    expect(snapshot.v2.activeCompute.resources.value[0]?.cancellationControl).toEqual({
+      displayAction: "stop",
+      method: "POST",
+      mode: "stop",
+      endpoint:
+        "/api/v1/billing/resources/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/cancel?resourceType=container",
+      expectedLifecycleRevision: 7,
+      eligible: fixture.eligible,
+      blockers: fixture.blockers,
+    });
+  });
+
+  test("fails the snapshot closed when cancellation compare-and-set state is invalid", async () => {
+    const primary = healthyPrimary();
+    primary.activeResources[0]!.lifecycleRevision = Number.NaN;
+
+    await expect(buildAccountBillingSnapshot(healthySources(primary))).rejects.toMatchObject({
+      code: "INVALID_ACCOUNT_LIMIT_SOURCE",
+    });
+  });
+
   test("preserves N-1, N, and N+1 parity for each landed count authority", async () => {
     const cases = [
       { used: "4", expectedState: "available", expectedRemaining: "1" },
@@ -334,8 +528,8 @@ describe("buildAccountBillingSnapshot v2", () => {
             containerCounts: { used: fixture.used, reserved: "0", deleting: "0" },
             appCount: fixture.used,
             storageQuota: { bytesUsed: fixture.used, bytesLimit: "5" },
+            policyLimits: resolvedLimits({ apps: 5n, storage: 5n }),
           }),
-          { appLimit: () => 5 },
         ),
       );
       expect(snapshot.cloudCharacters.state).toBe(fixture.expectedState);
@@ -366,7 +560,7 @@ describe("buildAccountBillingSnapshot v2", () => {
     }
   });
 
-  test("keeps exact six-decimal balance boundaries aligned with canonical tier helpers", async () => {
+  test("preserves exact balances while rendering transaction-resolved caps", async () => {
     const cases = [
       { balance: "0.999999", characters: 5, sandboxes: 5, containers: 1 },
       { balance: "1.000000", characters: 20, sandboxes: 20, containers: 5 },
@@ -378,26 +572,19 @@ describe("buildAccountBillingSnapshot v2", () => {
       { balance: "100.000000", characters: 500, sandboxes: 500, containers: 100 },
       { balance: "100.000001", characters: 500, sandboxes: 500, containers: 100 },
     ];
-    const tierIndex = (balance: number): number =>
-      balance >= 100 ? 3 : balance >= 10 ? 2 : balance >= 1 ? 1 : 0;
-
     for (const fixture of cases) {
       const primary = healthyPrimary({
         organization: {
           ...healthyPrimary().organization,
           creditBalance: fixture.balance,
         },
-      });
-      const snapshot = await buildAccountBillingSnapshot(
-        healthySources(primary, {
-          // These tables mirror the landed helpers' tested 1/10/100 balance
-          // thresholds while keeping this test isolated from Bun route mocks.
-          maxCloudCharacters: (balance) => [5, 20, 100, 500][tierIndex(balance)]!,
-          maxNonTerminalAgents: (balance) =>
-            balance === undefined ? 5 : [5, 20, 100, 500][tierIndex(balance)]!,
-          maxContainers: (balance) => [1, 5, 25, 100][tierIndex(balance)]!,
+        policyLimits: resolvedLimits({
+          characters: BigInt(fixture.characters),
+          sandboxes: BigInt(fixture.sandboxes),
+          containers: BigInt(fixture.containers),
         }),
-      );
+      });
+      const snapshot = await buildAccountBillingSnapshot(healthySources(primary));
 
       expect(snapshot.cloudCharacters.limit).toBe(fixture.characters);
       expect(snapshot.agentSandboxes.eagerManagedCreate.limit).toBe(fixture.sandboxes);
@@ -440,8 +627,8 @@ describe("buildAccountBillingSnapshot v2", () => {
       error: { code: "invalid_balance_authority", retryable: false },
     });
     expect(balanceSnapshot.v2.limits.cloudCharacters.limit).toMatchObject({
-      status: "unavailable",
-      error: { code: "character_limit_unavailable", retryable: false },
+      status: "available",
+      value: { value: "5" },
     });
     expect(autoTopUpSnapshot.v2.autoTopUp.configuration).toMatchObject({
       status: "unavailable",
@@ -610,7 +797,12 @@ describe("buildAccountBillingSnapshot v2", () => {
 
   test("projects a fresh organization's canonical lazy storage default in v1 and v2", async () => {
     const snapshot = await buildAccountBillingSnapshot(
-      healthySources(healthyPrimary({ storageQuota: null })),
+      healthySources(
+        healthyPrimary({
+          storageQuota: null,
+          policyLimits: resolvedLimits({ storage: DEFAULT_STORAGE_LIMIT }),
+        }),
+      ),
     );
 
     expect(snapshot.storage).toEqual({
@@ -627,12 +819,12 @@ describe("buildAccountBillingSnapshot v2", () => {
       },
       limit: {
         status: "available",
-        source: "org-storage-quota-default",
+        source: "resolved-organization-policy",
         value: { value: DEFAULT_STORAGE_LIMIT.toString(), unit: "byte" },
       },
       remaining: {
         status: "available",
-        source: "org-storage-quota-default",
+        source: "resolved-organization-policy",
         value: { value: DEFAULT_STORAGE_LIMIT.toString(), unit: "byte" },
       },
       reserved: {
@@ -642,20 +834,25 @@ describe("buildAccountBillingSnapshot v2", () => {
     });
   });
 
-  test("fails closed on an invalid lazy storage default in both projections", async () => {
-    const snapshot = await buildAccountBillingSnapshot({
-      ...healthySources(healthyPrimary({ storageQuota: null })),
-      defaultStorageBytesLimit: -1n,
-    });
-
-    expect(snapshot.storage).toEqual({
-      source: "org-storage-quota",
-      state: "unavailable",
-      reason: "source read failed",
-    });
+  test("unknown paid storage ceiling retains measured usage without a default grant", async () => {
+    const snapshot = await buildAccountBillingSnapshot(
+      healthySources(
+        healthyPrimary({
+          policyLimits: {
+            ...resolvedLimits(),
+            storage: { status: "unavailable", code: "resource_policy_unavailable" },
+          },
+        }),
+      ),
+    );
+    expect(snapshot.storage.state).toBe("unavailable");
     expect(snapshot.v2.limits.storage.used).toMatchObject({
+      status: "available",
+      value: { value: "9007199254740993" },
+    });
+    expect(snapshot.v2.limits.storage.limit).toMatchObject({
       status: "unavailable",
-      error: { code: "storage_quota_invalid", retryable: false },
+      error: { code: "resource_policy_unavailable" },
     });
   });
 
@@ -815,7 +1012,7 @@ describe("buildAccountBillingSnapshot v2", () => {
               name: "missing-rate-agent",
               status: "running",
               billingInterval: "hour",
-              cancelAction: "suspend_billing",
+              cancelAction: "stop_compute",
               cancelEndpoint: `/api/v1/billing/resources/${agentId}/cancel?resourceType=agent_sandbox`,
             },
           ],
@@ -886,5 +1083,40 @@ describe("buildAccountBillingSnapshot v2", () => {
         }),
       ),
     ).rejects.toBeInstanceOf(TypeError);
+  });
+});
+
+test("paid policy gaps stay unavailable while exact balance and counts remain observable", async () => {
+  const primary = healthyPrimary();
+  primary.policyLimits = {
+    ...resolvedLimits(),
+    characters: { status: "unavailable", code: "resource_policy_unavailable" },
+    sandboxes: { status: "unavailable", code: "resource_policy_unavailable" },
+    nonEagerSandboxes: { status: "unavailable", code: "resource_policy_unavailable" },
+    apps: { status: "unavailable", code: "resource_policy_unavailable" },
+  };
+  if (primary.configuredTier.status !== "available") throw new Error("Expected configured fixture");
+  primary.configuredTier.tierSourceCreditTotal = null;
+  primary.policyObservedAt = "2026-08-20T12:00:01.000Z";
+  const snapshot = await buildAccountBillingSnapshot(healthySources(primary));
+  expect(snapshot.v2.tier.configured).toMatchObject({
+    status: "available",
+    observedAt: primary.policyObservedAt,
+    value: { tierSourceCreditTotalObserved: null },
+  });
+  expect(snapshot.v2.limits.cloudCharacters.limit).toMatchObject({
+    status: "unavailable",
+    observedAt: primary.policyObservedAt,
+    error: { code: "resource_policy_unavailable" },
+  });
+  expect(snapshot.v2.limits.cloudCharacters.used).toMatchObject({
+    status: "available",
+    value: { value: "4" },
+  });
+  expect(snapshot.v2.limits.agentSandboxes.eagerManagedCreate.limit.status).toBe("unavailable");
+  expect(snapshot.v2.limits.apps.limit.status).toBe("unavailable");
+  expect(snapshot.v2.balance).toMatchObject({
+    status: "available",
+    observedAt: PRIMARY_OBSERVED_AT,
   });
 });

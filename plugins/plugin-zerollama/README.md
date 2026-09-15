@@ -10,8 +10,12 @@ speech and transcription endpoints. A zerollama server is detected from
 
 - Bun 1.3.14 / Node 24.15.0, as pinned by this repository.
 - An Ollama-compatible HTTP server reachable by the agent process.
-- At least one installed text model. Missing requested models are pulled by the
-  server before their first call.
+- Install the selected text and embedding models on the server before use.
+  A missing model returns a setup error; inference never downloads it.
+
+This optional provider does not install Ollama, start its daemon, or register
+a background login service. Eliza’s in-process local inference does not require
+Ollama. Enabling this provider connects to a server you manage explicitly.
 
 ## Configuration
 

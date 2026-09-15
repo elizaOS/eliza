@@ -96,6 +96,7 @@ export type DeferredLifeDefinitionDraft = {
    */
   sourceMessageId?: string;
   request: {
+    idempotencyKey?: string;
     cadence?: LifeOpsCadence;
     description?: string;
     goalRef?: string;
@@ -267,6 +268,10 @@ export function coerceDeferredLifeDraft(
   }
 
   if (operation === "create_definition") {
+    const idempotencyKey = request.idempotencyKey;
+    if (idempotencyKey !== undefined && typeof idempotencyKey !== "string") {
+      return null;
+    }
     const kind =
       typeof request.kind === "string"
         ? (request.kind as CreateLifeOpsDefinitionRequest["kind"])
@@ -286,6 +291,7 @@ export function coerceDeferredLifeDraft(
       operation,
       sourceMessageId,
       request: {
+        idempotencyKey,
         cadence,
         description:
           typeof request.description === "string"
@@ -808,30 +814,27 @@ export async function extractDeferredLifeDraftFollowupWithLlm(args: {
     recentConversation.join("\n").trim() || "(empty)",
   ].join("\n");
 
-  try {
-    const result = await runWithTrajectoryPurpose(
-      "lifeops-deferred-draft",
-      () =>
-        args.runtime.useModel(ModelType.TEXT_LARGE, {
-          prompt,
-        }),
-    );
-    const raw = typeof result === "string" ? result : "";
-    const parsed = parseJsonModelRecord<Record<string, unknown>>(raw);
-    const mode =
-      parsed && typeof parsed.mode === "string"
-        ? parsed.mode.trim().toLowerCase()
-        : "";
-    switch (mode) {
-      case "confirm":
-      case "edit":
-      case "cancel":
-        return mode;
-      default:
-        return null;
-    }
-  } catch {
-    return null;
+  // A failed classification cannot mean "unrelated": that would start a new
+  // extraction and may replace the pending draft. Let action settlement retain
+  // the provider failure, including terminal context overflow, without effects.
+  const result = await runWithTrajectoryPurpose("lifeops-deferred-draft", () =>
+    args.runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt,
+    }),
+  );
+  const raw = typeof result === "string" ? result : "";
+  const parsed = parseJsonModelRecord<Record<string, unknown>>(raw);
+  const mode =
+    parsed && typeof parsed.mode === "string"
+      ? parsed.mode.trim().toLowerCase()
+      : "";
+  switch (mode) {
+    case "confirm":
+    case "edit":
+    case "cancel":
+      return mode;
+    default:
+      return null;
   }
 }
 

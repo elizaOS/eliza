@@ -56,9 +56,10 @@ can never drift:
   (measured, not taste); the whole liquid-glass system is neutral white/black
   only. **No refraction** — a panel this size would visibly warp the text behind
   it (refraction is reserved for the small notification cards).
-- **Edge** — the shared `LIQUID_GLASS_EDGE_SHADOW` bevel (bright top-left rim over
-  a soft bottom-right shade) + `LIQUID_GLASS_SHEEN` specular highlight. Depth is
-  inset light, never an outer drop shadow (the shell's flat surface system).
+- **Edge** — the crisp, uniform strong perimeter remains. There is no
+  directional bevel, top separator, broad sheen/image wash, or transcript fade
+  beneath the grabber: those layers stacked into a distracting interior glow.
+  The outline and drag handle carry the affordance without decorative lighting.
 
 Per-platform tiers are owned by `glass/useNativeGlass.ts`: `native` (real
 `UIGlassEffect` on iOS 26+, Material panel on Android 12+, element transparent),

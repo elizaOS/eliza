@@ -35,7 +35,15 @@ const ENV_KEY = "SANDBOX_REGISTRY_REDIS_URL";
 const FIELD_ENCRYPTION_KEY = "SECRETS_MASTER_KEY";
 const BRIDGE_FALLBACK_KEY = "AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK";
 const AGENT_BASE_DOMAIN_KEY = "ELIZA_CLOUD_AGENT_BASE_DOMAIN";
+const VPN_REGISTRATION_TIMEOUT_KEY = "VPN_REGISTRATION_TIMEOUT_MS";
 const CONTAINERS_SSH_KEY = "CONTAINERS_SSH_KEY";
+const STEWARD_API_URL = "STEWARD_API_URL";
+const STEWARD_PLATFORM_KEYS = "STEWARD_PLATFORM_KEYS";
+const AGENT_TOKEN_PRIVATE_KEY_PEM = "AGENT_TOKEN_PRIVATE_KEY_PEM";
+const AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64 = "AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64";
+const AGENT_TOKEN_PRIVATE_KEY_TRANSPORT_FIXTURE = Buffer.from(
+  "-----BEGIN PRIVATE KEY-----\nfixture\n-----END PRIVATE KEY-----\n",
+).toString("base64");
 const DELETION_AUTHORITY_SECRET_NAMES = [
   "AGENT_BACKUP_R2_ACCESS_KEY_ID",
   "AGENT_BACKUP_R2_SECRET_ACCESS_KEY",
@@ -276,10 +284,17 @@ function runAtomicReconcile(options: {
   const assignmentNames = new Set([
     ...loopEnvironmentNames,
     ...Object.keys(DELETION_AUTHORITY_DEFAULTS),
+    AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64,
   ]);
   const assignments = [...assignmentNames].map(
     (name) =>
-      `${name}=${shellLiteral(values[name] ?? DELETION_AUTHORITY_DEFAULTS[name] ?? "")}`,
+      `${name}=${shellLiteral(
+        values[name] ??
+          DELETION_AUTHORITY_DEFAULTS[name] ??
+          (name === AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64
+            ? AGENT_TOKEN_PRIVATE_KEY_TRANSPORT_FIXTURE
+            : ""),
+      )}`,
   );
   const script = [
     "set -euo pipefail",
@@ -368,10 +383,27 @@ describe("provisioning deployment EnvironmentFile wiring", () => {
       `${CONTAINERS_SSH_KEY}: \${{ secrets.${CONTAINERS_SSH_KEY} }}`,
     );
     const forwarded = workflowEnvs();
-    for (const name of [ENV_KEY, FIELD_ENCRYPTION_KEY, CONTAINERS_SSH_KEY]) {
+    for (const name of [
+      ENV_KEY,
+      FIELD_ENCRYPTION_KEY,
+      CONTAINERS_SSH_KEY,
+      STEWARD_API_URL,
+      STEWARD_PLATFORM_KEYS,
+    ]) {
       expect(forwarded).toContain(name);
       expect(workflow).toContain(`"${name}=$${name}"`);
     }
+    expect(forwarded).toContain(AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64);
+    expect(forwarded).toContain("CONTAINERS_PREPULL_SELF_HEAL_RESTART");
+    expect(workflow).toContain(
+      '"CONTAINERS_PREPULL_SELF_HEAL_RESTART=$CONTAINERS_PREPULL_SELF_HEAL_RESTART"',
+    );
+    expect(workflow).toContain(
+      "needs.determine-env.outputs.environment == 'staging' && 'true' || 'false'",
+    );
+    expect(workflow).toContain(
+      `"${AGENT_TOKEN_PRIVATE_KEY_PEM}=$${AGENT_TOKEN_PRIVATE_KEY_PEM}"`,
+    );
   });
 
   it("uses empty inherited environments and closed root checks", () => {
@@ -385,6 +417,9 @@ describe("provisioning deployment EnvironmentFile wiring", () => {
     );
     expect(workflow).not.toContain("lookup_environment_setting");
     expect(workflow).not.toContain('sudo cat "$ENV_FILE"');
+    expect(workflow).toContain(
+      "git status --porcelain --ignore-submodules=all",
+    );
     expect(workflow).toContain("AGENT_BACKUP_CATALOG_RUNTIME_ENABLED=0");
     expect(workflow).toContain('DATABASE_URL="$DATABASE_URL"');
     expect(workflow).toContain(
@@ -574,6 +609,45 @@ describe("provisioning deployment EnvironmentFile wiring", () => {
       "Agent router base-domain drift. Values were not printed.",
     );
   });
+
+  it("owns and verifies a VPN observation budget longer than the container join budget", () => {
+    const forwarded = workflowEnvs();
+    const configured = Bun.YAML.parse(workflow) as {
+      jobs: Record<string, { env?: Record<string, string> }>;
+    };
+    const budget = Object.values(configured.jobs)
+      .map((job) => job.env?.[VPN_REGISTRATION_TIMEOUT_KEY])
+      .find((value) => value !== undefined);
+    if (!budget) throw new Error("Missing worker VPN registration budget");
+    // Boot the real consumer with the workflow value. A copied literal check
+    // allowed the deploy's 180-second value to drift below the runtime minimum.
+    execFileSync(
+      process.execPath,
+      [
+        "--eval",
+        `await import(${JSON.stringify(
+          path.join(
+            repoRoot,
+            "packages/cloud/shared/src/lib/services/headscale-integration.ts",
+          ),
+        )});`,
+      ],
+      {
+        cwd: repoRoot,
+        env: { ...process.env, [VPN_REGISTRATION_TIMEOUT_KEY]: budget },
+        timeout: 30_000,
+        stdio: "pipe",
+      },
+    );
+    expect(forwarded).toContain(VPN_REGISTRATION_TIMEOUT_KEY);
+    expect(workflow).toContain(
+      `"${VPN_REGISTRATION_TIMEOUT_KEY}=$${VPN_REGISTRATION_TIMEOUT_KEY}"`,
+    );
+    expect(workflow).toContain(`"$ENV_FILE" ${VPN_REGISTRATION_TIMEOUT_KEY}`);
+    expect(workflow).toContain(
+      "Provisioning host VPN registration timeout drift. Values were not printed.",
+    );
+  });
 });
 
 describe("atomic workflow block (executed verbatim)", () => {
@@ -586,6 +660,9 @@ describe("atomic workflow block (executed verbatim)", () => {
     expect(lookupSystemdEnvironmentValue(result.host, ENV_KEY)).toBe(value);
     expect(result.host.match(new RegExp(`^${ENV_KEY}=`, "gm"))).toHaveLength(1);
     expect(result.host).toContain("UNRELATED=preserved\n");
+    expect(
+      lookupSystemdEnvironmentValue(result.host, AGENT_TOKEN_PRIVATE_KEY_PEM),
+    ).toBe("-----BEGIN PRIVATE KEY-----\\nfixture\\n-----END PRIVATE KEY-----");
   });
 
   it("preserves an existing value when GitHub supplies an empty setting", () => {

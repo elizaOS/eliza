@@ -5,11 +5,11 @@
 
 ARG APP_PORT=2138
 ARG APP_BRIDGE_PORT=18790
-ARG TAILSCALE_VERSION=1.90.8
+ARG TAILSCALE_VERSION=1.98.3
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Builder: precompile the standalone TS entrypoint to a single JS bundle so the
-# runtime image starts with plain `node entrypoint.js` — no `tsx` transpile on
+# runtime image starts with plain `node entrypoint.mjs` — no `tsx` transpile on
 # the container cold-start path (issue #8812 F6). cloud-agent-shared.ts is
 # inlined; every bare package import (`@elizaos/*`, `drizzle-orm`, node
 # builtins) stays external via --packages=external and resolves from
@@ -27,7 +27,7 @@ COPY eliza/packages/shared/src/restart-exit-code.json /shared/src/restart-exit-c
 RUN npx --yes esbuild@0.28.1 cloud-agent-entrypoint.ts \
       --bundle --platform=node --format=esm --target=node24 \
       --packages=external \
-      --outfile=entrypoint.js
+      --outfile=entrypoint.mjs
 
 FROM node:24-bookworm-slim
 
@@ -62,7 +62,7 @@ WORKDIR /app
 # Copy the prebuilt JS entrypoint (cloud-agent-shared.ts inlined by the builder
 # stage). The container runs this with plain `node` — no `tsx` transpile on the
 # cold-start path.
-COPY --from=entrypoint-build /build/entrypoint.js ./entrypoint.js
+COPY --from=entrypoint-build /build/entrypoint.mjs ./entrypoint.mjs
 COPY eliza/packages/app-core/deploy/cloud-agent-docker-entrypoint.sh /usr/local/bin/cloud-agent-docker-entrypoint
 RUN chmod +x /usr/local/bin/cloud-agent-docker-entrypoint
 
@@ -96,4 +96,4 @@ EXPOSE ${APP_BRIDGE_PORT}
 RUN useradd -m agent && chown -R agent:agent /app
 
 ENTRYPOINT ["cloud-agent-docker-entrypoint"]
-CMD ["node", "entrypoint.js"]
+CMD ["node", "entrypoint.mjs"]

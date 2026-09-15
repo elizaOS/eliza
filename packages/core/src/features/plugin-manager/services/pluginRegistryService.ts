@@ -12,6 +12,13 @@ import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { promisify } from "node:util";
+import type { NormalizedRegistryEntry } from "@elizaos/registry/runtime-kernel";
+import {
+	CORE_REGISTRY_SEARCH_POLICY,
+	decodeRuntimeRegistry,
+	isRegistryCacheFresh,
+	searchRegistryEntries,
+} from "@elizaos/registry/runtime-kernel";
 import { ElizaError } from "../../../errors.ts";
 import { logger } from "../../../logger.ts";
 import type { PluginMetadata } from "../types.ts";
@@ -35,64 +42,6 @@ const LOCAL_PLUGINS_DIR = "plugins";
 // get the real promisified binding; edge paths fail at use instead.
 const execFileAsync =
 	typeof execFile === "function" ? promisify(execFile) : (undefined as never);
-
-// ---------------------------------------------------------------------------
-// Wire types for the generated-registry.json format
-// ---------------------------------------------------------------------------
-
-interface GeneratedRegistryEntry {
-	git: {
-		repo: string;
-		v0: { version: string | null; branch: string | null };
-		v1: { version: string | null; branch: string | null };
-		v2: { version: string | null; branch: string | null };
-	};
-	npm: {
-		repo: string;
-		v0: string | null;
-		v1: string | null;
-		v2: string | null;
-		v0CoreRange: string | null;
-		v1CoreRange: string | null;
-		v2CoreRange: string | null;
-	};
-	supports: { v0: boolean; v1: boolean; v2: boolean };
-	description: string;
-	homepage: string | null;
-	topics: string[];
-	stargazers_count: number;
-	language: string;
-	origin?: string;
-	source?: string;
-	support?: string;
-	builtIn?: boolean;
-	firstParty?: boolean;
-	thirdParty?: boolean;
-	status?: string;
-	kind?: string;
-	registryKind?: string;
-	directory?: string | null;
-	app?: {
-		displayName?: string;
-		category?: string;
-		launchType?: "connect" | "local" | "url" | "overlay" | string;
-		launchUrl?: string | null;
-		icon?: string | null;
-		capabilities?: string[];
-		viewer?: {
-			url: string;
-			embedParams?: Record<string, string>;
-			postMessageAuth?: boolean;
-			sandbox?: string;
-		};
-	};
-}
-
-interface GeneratedRegistryFile {
-	lastUpdatedAt: string;
-	registry: Record<string, GeneratedRegistryEntry>;
-	apps?: Record<string, GeneratedRegistryEntry>;
-}
 
 // ---------------------------------------------------------------------------
 // Normalised plugin representation
@@ -186,34 +135,19 @@ export function resetRegistryCache(): void {
 // Fetching & parsing
 // ---------------------------------------------------------------------------
 
-function entryToPlugin(
-	name: string,
-	e: GeneratedRegistryEntry & { kind?: string },
-): RegistryPlugin {
+function entryToPlugin(e: NormalizedRegistryEntry): RegistryPlugin {
 	return {
-		name,
-		gitRepo: e.git.repo,
-		gitUrl: `https://github.com/${e.git.repo}.git`,
+		name: e.name,
+		gitRepo: e.gitRepo,
+		gitUrl: e.gitUrl,
 		directory: e.directory ?? null,
-		description: e.description || "",
+		description: e.description,
 		homepage: e.homepage,
-		topics: e.topics || [],
-		stars: e.stargazers_count || 0,
-		language: e.language || "TypeScript",
-		npm: {
-			package: e.npm.repo,
-			v0Version: e.npm.v0,
-			v1Version: e.npm.v1,
-			v2Version: e.npm.v2,
-			v0CoreRange: e.npm.v0CoreRange,
-			v1CoreRange: e.npm.v1CoreRange,
-			v2CoreRange: e.npm.v2CoreRange,
-		},
-		git: {
-			v0Branch: e.git.v0.branch ?? null,
-			v1Branch: e.git.v1.branch ?? null,
-			v2Branch: e.git.v2.branch ?? null,
-		},
+		topics: e.topics,
+		stars: e.stars,
+		language: e.language,
+		npm: e.npm,
+		git: e.git,
 		supports: e.supports,
 		kind: e.kind,
 		registryKind: e.registryKind,
@@ -414,9 +348,9 @@ async function fetchGeneratedRegistry(): Promise<Map<string, RegistryPlugin>> {
 		});
 	}
 
-	let data: GeneratedRegistryFile;
+	let data: unknown;
 	try {
-		data = (await response.json()) as GeneratedRegistryFile;
+		data = await response.json();
 	} catch (err) {
 		// error-policy:J2 distinguish the internal deadline from malformed data
 		if (isTimeoutError(signal.reason) || isTimeoutError(err)) {
@@ -440,16 +374,12 @@ async function fetchGeneratedRegistry(): Promise<Map<string, RegistryPlugin>> {
 			context: { url: GENERATED_REGISTRY_URL },
 		});
 	}
-	const plugins = new Map<string, RegistryPlugin>();
-	for (const [name, entry] of Object.entries(data.registry)) {
-		plugins.set(name, entryToPlugin(name, entry));
-	}
-	if (data.apps) {
-		for (const [name, entry] of Object.entries(data.apps)) {
-			plugins.set(name, entryToPlugin(name, { ...entry, kind: "app" }));
-		}
-	}
-	return plugins;
+	return new Map(
+		[...decodeRuntimeRegistry(data)].map(([name, entry]) => [
+			name,
+			entryToPlugin(entry),
+		]),
+	);
 }
 
 /**
@@ -459,7 +389,10 @@ async function fetchGeneratedRegistry(): Promise<Map<string, RegistryPlugin>> {
  * Cached in-memory for 1 hour.
  */
 export async function loadRegistry(): Promise<Map<string, RegistryPlugin>> {
-	if (registryCache && Date.now() - registryCache.timestamp < CACHE_DURATION) {
+	if (
+		registryCache &&
+		isRegistryCacheFresh(registryCache.timestamp, CACHE_DURATION)
+	) {
 		return registryCache.plugins;
 	}
 
@@ -538,53 +471,22 @@ function toMetadata(p: RegistryPlugin): PluginMetadata {
 // Search
 // ---------------------------------------------------------------------------
 
-function computeSearchScore(plugin: RegistryPlugin, query: string): number {
-	const lq = query.toLowerCase();
-	const terms = lq.split(/\s+/).filter((t) => t.length > 1);
-	const ln = plugin.name.toLowerCase();
-	const ld = plugin.description.toLowerCase();
-
-	let score = 0;
-
-	if (ln === lq || ln === `@elizaos/${lq}`) score += 100;
-	else if (ln.includes(lq)) score += 50;
-
-	if (ld.includes(lq)) score += 30;
-	for (const t of plugin.topics) if (t.toLowerCase().includes(lq)) score += 25;
-
-	for (const term of terms) {
-		if (ln.includes(term)) score += 15;
-		if (ld.includes(term)) score += 10;
-		for (const t of plugin.topics)
-			if (t.toLowerCase().includes(term)) score += 8;
-	}
-
-	// Popularity bonus only when there's already a text match
-	if (score > 0) {
-		if (plugin.stars > 100) score += 5;
-		if (plugin.stars > 500) score += 5;
-		if (plugin.stars > 1000) score += 5;
-	}
-
-	return score;
-}
-
 export async function searchPluginsByContent(
 	query: string,
 	limit = 10,
 ): Promise<PluginSearchResult[]> {
 	const registry = await loadRegistry();
-	const scored: Array<{ plugin: RegistryPlugin; score: number }> = [];
-
-	for (const plugin of registry.values()) {
-		const score = computeSearchScore(plugin, query);
-		if (score > 0) scored.push({ plugin, score });
-	}
-
-	scored.sort((a, b) => b.score - a.score || b.plugin.stars - a.plugin.stars);
+	const scored = searchRegistryEntries(
+		registry.values(),
+		query,
+		limit,
+		undefined,
+		undefined,
+		CORE_REGISTRY_SEARCH_POLICY,
+	);
 	const maxScore = scored[0]?.score || 1;
 
-	return scored.slice(0, limit).map(({ plugin, score }) => ({
+	return scored.map(({ entry: plugin, score }) => ({
 		name: plugin.name,
 		description: plugin.description,
 		score: score / maxScore,
@@ -626,18 +528,19 @@ export async function searchNonAppPlugins(
 	limit = 10,
 ): Promise<PluginSearchResult[]> {
 	const registry = await loadRegistry();
-	const scored: Array<{ plugin: RegistryPlugin; score: number }> = [];
-
-	for (const plugin of registry.values()) {
-		if (plugin.kind === "app" || plugin.displayName) continue;
-		const score = computeSearchScore(plugin, query);
-		if (score > 0) scored.push({ plugin, score });
-	}
-
-	scored.sort((a, b) => b.score - a.score || b.plugin.stars - a.plugin.stars);
+	const scored = searchRegistryEntries(
+		Array.from(registry.values()).filter(
+			(plugin) => plugin.kind !== "app" && !plugin.displayName,
+		),
+		query,
+		limit,
+		undefined,
+		undefined,
+		CORE_REGISTRY_SEARCH_POLICY,
+	);
 	const maxScore = scored[0]?.score || 1;
 
-	return scored.slice(0, limit).map(({ plugin, score }) => ({
+	return scored.map(({ entry: plugin, score }) => ({
 		name: plugin.name,
 		description: plugin.description,
 		score: score / maxScore,

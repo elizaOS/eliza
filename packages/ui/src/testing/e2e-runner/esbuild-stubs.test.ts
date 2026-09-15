@@ -118,6 +118,23 @@ describe("stubElizaCore", () => {
 
     expect(evaluated).toBe("fixture reply");
   });
+
+  it("exports a concrete fail-closed shortcut matcher for chat fixtures", async () => {
+    const bundle = await bundleWithCoreStub(`
+      import { matchShortcut } from "@elizaos/core";
+      export const observed = {
+        type: typeof matchShortcut,
+        result: matchShortcut([], "send fixture message", { allowNatural: true }),
+      };
+    `);
+
+    const evaluated = new Function(`${bundle}; return fixture.observed;`)() as {
+      type: string;
+      result: unknown;
+    };
+
+    expect(evaluated).toEqual({ type: "function", result: null });
+  });
 });
 
 describe("stubNodeBuiltins", () => {

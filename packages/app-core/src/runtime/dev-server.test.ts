@@ -20,6 +20,7 @@ import {
 const startApiServer = vi.fn();
 const startEliza = vi.fn();
 const shutdownRuntime = vi.fn();
+const prepareDevTrajectoryRecovery = vi.fn();
 const attemptPgliteAutoReset = vi.fn();
 const getPgliteRecoveryRetrySkipPlugins = vi.fn();
 const startDeferredLocalEmbeddingWarmup = vi.fn();
@@ -34,6 +35,8 @@ vi.mock("../api/server", () => ({
 vi.mock("./eliza", () => ({
   startEliza: (...args: unknown[]) => startEliza(...args),
   shutdownRuntime: (...args: unknown[]) => shutdownRuntime(...args),
+  prepareDevTrajectoryRecovery: (...args: unknown[]) =>
+    prepareDevTrajectoryRecovery(...args),
   attemptPgliteAutoReset: (...args: unknown[]) =>
     attemptPgliteAutoReset(...args),
   getPgliteRecoveryRetrySkipPlugins: (...args: unknown[]) =>
@@ -60,6 +63,8 @@ vi.mock("dotenv", () => ({
 }));
 
 type ProcessEvent =
+  | "message"
+  | "disconnect"
   | "SIGINT"
   | "SIGTERM"
   | "unhandledRejection"
@@ -86,6 +91,7 @@ type StartupUpdate = {
 };
 
 const ENV_KEYS = [
+  "ELIZA_DEV_TRAJECTORY_RECOVERY",
   "ELIZA_API_PROCESS_SPAWNED_AT_MS",
   "ELIZA_PROCESS_SPAWNED_AT_MS",
   "ELIZA_API_PORT",
@@ -109,6 +115,8 @@ let baseListeners: ListenerSnapshot = snapshotListeners();
 
 function snapshotListeners(): ListenerSnapshot {
   return {
+    message: new Set(process.listeners("message") as Listener[]),
+    disconnect: new Set(process.listeners("disconnect") as Listener[]),
     SIGINT: new Set(process.listeners("SIGINT") as Listener[]),
     SIGTERM: new Set(process.listeners("SIGTERM") as Listener[]),
     unhandledRejection: new Set(
@@ -258,6 +266,7 @@ beforeEach(() => {
   installProcessExitMock();
   startEliza.mockResolvedValue(makeRuntime());
   shutdownRuntime.mockResolvedValue(undefined);
+  prepareDevTrajectoryRecovery.mockResolvedValue("prepared");
   attemptPgliteAutoReset.mockResolvedValue(null);
   getPgliteRecoveryRetrySkipPlugins.mockReturnValue([]);
   startDeferredLocalEmbeddingWarmup.mockReturnValue(undefined);
@@ -306,6 +315,45 @@ afterEach(() => {
 });
 
 describe.sequential("dev-server process entry", () => {
+  it("waits for enrolled recovery before publishing the runtime and clears inherited enrollment", async () => {
+    let release!: (value: string) => void;
+    prepareDevTrajectoryRecovery.mockReturnValueOnce(
+      new Promise<string>((resolve) => {
+        release = resolve;
+      }),
+    );
+    const loaded = await loadDevServer({ ELIZA_DEV_TRAJECTORY_RECOVERY: "1" });
+    await vi.waitFor(() =>
+      expect(prepareDevTrajectoryRecovery).toHaveBeenCalledOnce(),
+    );
+    expect(loaded.updateRuntime).not.toHaveBeenCalled();
+    expect(process.env.ELIZA_DEV_TRAJECTORY_RECOVERY).toBeUndefined();
+    release("prepared");
+    await waitForRuntimeReady();
+    expect(loaded.updateRuntime).toHaveBeenCalledOnce();
+  });
+
+  it("disposes an enrolled runtime when ownership registration fails", async () => {
+    prepareDevTrajectoryRecovery.mockRejectedValueOnce(
+      new Error("Trajectory recovery parent disconnected"),
+    );
+    const loaded = await loadDevServer({
+      ELIZA_DEV_TRAJECTORY_RECOVERY: "1",
+    });
+    await vi.waitFor(() =>
+      expect(shutdownRuntime).toHaveBeenCalledWith(
+        expect.anything(),
+        "dev-server trajectory recovery failed",
+      ),
+    );
+    expect(loaded.updateRuntime).not.toHaveBeenCalled();
+    expect(loaded.error).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "trajectory recovery failed before runtime readiness",
+      ),
+    );
+  });
+
   it("anchors startup timing to the first finite positive spawn-env timestamp", async () => {
     const spawnedAt = Date.now() - 40;
     const loaded = await loadDevServer({

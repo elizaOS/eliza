@@ -14,6 +14,7 @@ import {
   test,
 } from "bun:test";
 import { runInNewContext } from "node:vm";
+import { hasDbCacheContext } from "@/db/client";
 import * as agentSandboxesActual from "@/db/repositories/agent-sandboxes";
 import { AuthenticationError, ForbiddenError } from "@/lib/api/errors";
 import * as authActual from "@/lib/auth";
@@ -31,11 +32,13 @@ let authResult:
   | "forbidden"
   | "unexpected" = "throw";
 let sandboxResult: Record<string, unknown> | null = null;
+let sandboxLookupError: Error | null = null;
 let creditGateResult: { allowed: boolean; balance: number; error?: string } = {
   allowed: true,
   balance: 100,
 };
 let enqueueCalls = 0;
+let wasStoppedByUser = false;
 type BrowserClaim =
   | {
       status: "claimed";
@@ -52,6 +55,10 @@ const browserClaimCalls: Array<{
   binding: { agentId: string; expectedOrigin: string };
 }> = [];
 const authRequests: Request[] = [];
+const authDbCacheContexts: boolean[] = [];
+const sandboxDbCacheContexts: boolean[] = [];
+const warnCalls: Array<{ message: string; context: unknown }> = [];
+const errorCalls: Array<{ message: string; context: unknown }> = [];
 
 mock.module("@/lib/runtime/cloud-bindings", () => ({
   ...cloudBindingsActual,
@@ -61,6 +68,7 @@ mock.module("@/lib/auth", () => ({
   ...authActual,
   requireAuthOrApiKeyWithOrg: async (request: Request) => {
     authRequests.push(request);
+    authDbCacheContexts.push(hasDbCacheContext());
     if (authResult === "throw") throw new AuthenticationError("unauthorized");
     if (authResult === "forbidden") throw new ForbiddenError("forbidden");
     if (authResult === "unexpected") throw new Error("auth dependency failed");
@@ -71,7 +79,12 @@ mock.module("@/db/repositories/agent-sandboxes", () => ({
   ...agentSandboxesActual,
   agentSandboxesRepository: {
     ...agentSandboxesActual.agentSandboxesRepository,
-    findByIdAndOrg: async () => sandboxResult,
+    wasStoppedByUser: async () => wasStoppedByUser,
+    findByIdAndOrg: async () => {
+      sandboxDbCacheContexts.push(hasDbCacheContext());
+      if (sandboxLookupError) throw sandboxLookupError;
+      return sandboxResult;
+    },
   },
 }));
 mock.module("@/lib/services/provisioning-jobs", () => ({
@@ -112,8 +125,12 @@ mock.module("@/lib/utils/logger", () => ({
   ...loggerActual,
   logger: {
     ...loggerActual.logger,
-    warn() {},
-    error() {},
+    warn(message: string, context?: unknown) {
+      warnCalls.push({ message, context });
+    },
+    error(message: string, context?: unknown) {
+      errorCalls.push({ message, context });
+    },
     info() {},
     debug() {},
   },
@@ -150,6 +167,7 @@ afterAll(() => {
 
 const {
   handleDedicatedAgentProxy,
+  createOwnedDedicatedVoiceConversationFetch,
   dedicatedProxyOriginHeadersTimeoutMs,
   __dedicatedProxyTestHooks,
 } = await import("../src/dedicated-agent-proxy");
@@ -238,15 +256,338 @@ beforeEach(() => {
   fetchImpl = null;
   authResult = "throw";
   sandboxResult = null;
+  sandboxLookupError = null;
   creditGateResult = { allowed: true, balance: 100 };
   enqueueCalls = 0;
+  wasStoppedByUser = false;
   browserClaimResult = { status: "invalid" };
   browserClaimError = null;
   browserClaimCalls.length = 0;
   authRequests.length = 0;
+  authDbCacheContexts.length = 0;
+  sandboxDbCacheContexts.length = 0;
+  warnCalls.length = 0;
+  errorCalls.length = 0;
   rateLimitResult = { success: true };
   rateLimitError = null;
   rateLimitKeys.length = 0;
+});
+
+describe("dedicated-agent-proxy — scoped voice conversation transport", () => {
+  const ORGANIZATION_ID = "22222222-2222-4222-8222-222222222222";
+  const USER_ID = "33333333-3333-4333-8333-333333333333";
+  const CONVERSATION_ID = "44444444-4444-4444-8444-444444444444";
+  const claims = {
+    agentId: AGENT,
+    conversationId: CONVERSATION_ID,
+    organizationId: ORGANIZATION_ID,
+    userId: USER_ID,
+  };
+
+  test("reuses the owned agent-router stream and swaps every Cloud credential", async () => {
+    sandboxResult = {
+      ...runningDedicated,
+      organization_id: ORGANIZATION_ID,
+      user_id: USER_ID,
+    };
+    const resolved = await createOwnedDedicatedVoiceConversationFetch(
+      {
+        AGENT_ROUTER_ORIGIN_HOST: "cp.example.test",
+        ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud.eliza.app",
+      } as never,
+      claims,
+    );
+    expect(resolved.kind).toBe("dedicated");
+    if (resolved.kind !== "dedicated") {
+      throw new Error("expected an owned Dedicated voice transport");
+    }
+
+    const response = await resolved.fetch(
+      `https://voice.internal/api/v1/eliza/agents/${AGENT}/api/conversations/${CONVERSATION_ID}/messages/stream`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer voice-service",
+          Cookie: "cloud-session=secret",
+          "Content-Type": "application/json",
+          "X-API-Key": "cloud-api-key",
+          "X-Eliza-Csrf": "cloud-csrf",
+        },
+        body: JSON.stringify({ text: "go to settings" }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const upstream = requireCapturedRequest();
+    expect(upstream.url).toBe(
+      `https://cp.example.test/api/conversations/${CONVERSATION_ID}/messages/stream`,
+    );
+    expect(upstream.headers.get("authorization")).toBe(
+      "Bearer agent-secret-token",
+    );
+    expect(upstream.headers.get("x-forwarded-host")).toBe(
+      `${AGENT}.cloud.eliza.app`,
+    );
+    expect(upstream.headers.get("cookie")).toBeNull();
+    expect(upstream.headers.get("x-api-key")).toBeNull();
+    expect(upstream.headers.get("x-eliza-csrf")).toBeNull();
+    await expect(upstream.json()).resolves.toEqual({
+      text: "go to settings",
+    });
+  });
+
+  test("falls through only for the exact owned Shared tier", async () => {
+    sandboxResult = {
+      ...runningDedicated,
+      organization_id: ORGANIZATION_ID,
+      user_id: USER_ID,
+      execution_tier: "shared",
+    };
+    await expect(
+      createOwnedDedicatedVoiceConversationFetch(ENV, claims),
+    ).resolves.toEqual({ kind: "not_dedicated" });
+
+    sandboxResult = {
+      ...runningDedicated,
+      organization_id: ORGANIZATION_ID,
+      user_id: "different-user",
+    };
+    const denied = await createOwnedDedicatedVoiceConversationFetch(
+      ENV,
+      claims,
+    );
+    expect(denied.kind).toBe("dedicated");
+    if (denied.kind !== "dedicated") {
+      throw new Error("expected a terminal scoped response");
+    }
+    const response = await denied.fetch("https://voice.internal/ignored");
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "agent_not_found",
+    });
+    expect(captured).toBeNull();
+  });
+
+  test("fails closed for an unrecognized non-container execution tier", async () => {
+    sandboxResult = {
+      ...runningDedicated,
+      organization_id: ORGANIZATION_ID,
+      user_id: USER_ID,
+      execution_tier: "future-runtime-tier",
+    };
+    const denied = await createOwnedDedicatedVoiceConversationFetch(
+      ENV,
+      claims,
+    );
+    expect(denied.kind).toBe("dedicated");
+    if (denied.kind !== "dedicated") {
+      throw new Error("expected a terminal fail-closed response");
+    }
+
+    const response = await denied.fetch("https://voice.internal/ignored");
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "agent_unavailable",
+    });
+    expect(captured).toBeNull();
+  });
+});
+
+describe("dedicated-agent-proxy — trace ingress", () => {
+  test("echoes the trace and emits secret-free auth, ownership, routing, and dispatch timings", async () => {
+    authResult = {
+      user: { id: "private-user", organization_id: "private-org" },
+    };
+    sandboxResult = runningDedicated;
+    fetchImpl = async () =>
+      new Response("ok", {
+        status: 200,
+        headers: {
+          "Server-Timing": "gateway;dur=12",
+          "X-Eliza-Preforward-Ms": "total=8;auth=1;mid=2;reserve=3;setup=2",
+          "X-Eliza-Provider-Request-Id": "req_cerebras-123",
+        },
+      });
+    const traceId = "0123456789abcdef0123456789abcdef";
+    const request = new Request(
+      makeRequest(
+        "private-cloud-token",
+        undefined,
+        { "X-Eliza-Trace-Id": traceId },
+        "/api/conversations/private/messages/stream",
+      ),
+      { method: "POST" },
+    );
+
+    const response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+
+    expect(response.headers.get("x-eliza-trace-id")).toBe(traceId);
+    expect(response.headers.get("x-eliza-preforward-ms")).toBe(
+      "total=8;auth=1;mid=2;reserve=3;setup=2",
+    );
+    expect(response.headers.get("x-eliza-provider-request-id")).toBe(
+      "req_cerebras-123",
+    );
+    const serverTiming = response.headers.get("server-timing") ?? "";
+    expect(serverTiming).toContain("gateway;dur=12");
+    for (const phase of ["auth", "ownership", "routing", "proxy_dispatch"]) {
+      expect(serverTiming).toMatch(
+        new RegExp(`dedicated_${phase};dur=\\d+(?:\\.\\d+)?`),
+      );
+    }
+    expect(serverTiming).toMatch(/dedicated_total;dur=\d+(?:\.\d+)?/);
+
+    const timingLog = warnCalls.find(
+      ({ message }) =>
+        message === "[dedicated-proxy] correlated chat phase timings",
+    );
+    expect(timingLog?.context).toEqual({
+      traceId,
+      status: 200,
+      phases: {
+        auth: expect.any(Number),
+        ownership: expect.any(Number),
+        routing: expect.any(Number),
+        proxy_dispatch: expect.any(Number),
+      },
+      totalMs: expect.any(Number),
+    });
+    expect(JSON.stringify(timingLog)).not.toMatch(
+      /private-cloud-token|agent-secret-token|private-user|private-org/,
+    );
+  });
+
+  test("forwards only a strict trace and no caller telemetry instrumentation", async () => {
+    const request = makeRequest("agent-local-token", undefined, {
+      "X-Eliza-Telemetry": "caller-controlled",
+      "X-ElizaOS-Turn-Correlation": "caller-controlled",
+      "X-ElizaOS-Turn-Attempt": "99",
+      "X-Eliza-Trace-Id": "0123456789abcdef0123456789abcdef",
+    });
+
+    const response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+
+    expect(response.status).toBe(200);
+    const upstream = requireCapturedRequest();
+    expect(upstream.headers.get("x-eliza-trace-id")).toBe(
+      "0123456789abcdef0123456789abcdef",
+    );
+    expect(upstream.headers.get("x-eliza-telemetry")).toBeNull();
+    expect(upstream.headers.get("x-elizaos-turn-correlation")).toBeNull();
+    expect(upstream.headers.get("x-elizaos-turn-attempt")).toBeNull();
+  });
+
+  test("drops an invalid trace before the agent mints its replacement", async () => {
+    const invalidTrace = "0123456789ABCDEF0123456789ABCDEF";
+    const request = makeRequest("agent-local-token", undefined, {
+      "X-Eliza-Trace-Id": invalidTrace,
+    });
+
+    await handleDedicatedAgentProxy(request, ENV, urlOf(request), AGENT);
+
+    expect(requireCapturedRequest().headers.get("x-eliza-trace-id")).toBeNull();
+    expect(JSON.stringify(warnCalls)).not.toContain(invalidTrace);
+  });
+
+  test("does not write the always-on timing log for a traced non-chat request", async () => {
+    const request = makeRequest("agent-local-token", undefined, {
+      "X-Eliza-Trace-Id": "0123456789abcdef0123456789abcdef",
+    });
+
+    await handleDedicatedAgentProxy(request, ENV, urlOf(request), AGENT);
+
+    expect(warnCalls).toEqual([]);
+  });
+
+  test("does not write the always-on timing log for unauthenticated traced chat requests", async () => {
+    const traceId = "0123456789abcdef0123456789abcdef";
+    const tracedChat = (headers: HeadersInit) => {
+      const requestHeaders = new Headers(headers);
+      requestHeaders.set("X-Eliza-Trace-Id", traceId);
+      return new Request(
+        makeRequest(
+          undefined,
+          undefined,
+          requestHeaders,
+          "/api/conversations/private/messages/stream",
+        ),
+        { method: "POST" },
+      );
+    };
+
+    authResult = "throw";
+    let request = tracedChat({ authorization: "Bearer eliza_cloud_api_key" });
+    let response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+    expect(response.status).toBe(401);
+    expect(warnCalls).toEqual([]);
+
+    authResult = "forbidden";
+    request = tracedChat({ authorization: "Bearer rejected-cloud-token" });
+    response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+    expect(response.status).toBe(403);
+    expect(warnCalls).toEqual([]);
+  });
+
+  test("retains the always-on timing log for authenticated warming responses", async () => {
+    authResult = {
+      user: { id: "private-user", organization_id: "private-org" },
+    };
+    sandboxResult = { ...runningDedicated, status: "stopped" };
+    const traceId = "0123456789abcdef0123456789abcdef";
+    const request = new Request(
+      makeRequest(
+        "private-cloud-token",
+        undefined,
+        { "X-Eliza-Trace-Id": traceId },
+        "/api/conversations/private/messages/stream",
+      ),
+      { method: "POST" },
+    );
+
+    const response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+
+    expect(response.status).toBe(202);
+    expect(warnCalls).toEqual([
+      {
+        message: "[dedicated-proxy] correlated chat phase timings",
+        context: {
+          traceId,
+          status: 202,
+          phases: {
+            auth: expect.any(Number),
+            ownership: expect.any(Number),
+            routing: expect.any(Number),
+          },
+          totalMs: expect.any(Number),
+        },
+      },
+    ]);
+  });
 });
 
 function executePairHandoff(html: string): {
@@ -779,6 +1120,8 @@ describe("dedicated-agent-proxy — unified auth", () => {
 
     expect(res.status).toBe(200);
     expect(authRequests).toHaveLength(1);
+    expect(authDbCacheContexts).toEqual([true]);
+    expect(sandboxDbCacheContexts).toEqual([true]);
     expect(authRequests[0]?.headers.get("cookie")).toBeNull();
     expect(captured).not.toBeNull();
     // The container gets the agent's own token, NOT the cloud token.
@@ -890,16 +1233,19 @@ describe("dedicated-agent-proxy — unified auth", () => {
     expect(captured).toBeNull();
   });
 
-  test("shared-tier row on a dedicated host → 403 at the edge, no injection", async () => {
+  test("non-container row on a dedicated host → 403 at the edge, no injection", async () => {
     authResult = { user: { id: "u1", organization_id: "org1" } };
-    sandboxResult = {
-      ...runningDedicated,
-      execution_tier: "shared",
-    };
-    const r = makeRequest("cloud-token");
-    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
-    expect(res.status).toBe(403);
-    expect(captured).toBeNull();
+    for (const executionTier of ["shared", "future-runtime-tier"]) {
+      captured = null;
+      sandboxResult = {
+        ...runningDedicated,
+        execution_tier: executionTier,
+      };
+      const r = makeRequest("cloud-token");
+      const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+      expect(res.status).toBe(403);
+      expect(captured).toBeNull();
+    }
   });
 
   test("static asset pass-through strips parent-domain Cloud cookies", async () => {
@@ -941,6 +1287,55 @@ describe("dedicated-agent-proxy — unified auth", () => {
     expect(await res.json()).toMatchObject({
       code: "agent_credential_unavailable",
     });
+    expect(captured).toBeNull();
+  });
+
+  test("owner credential lookup failure logs the validated trace", async () => {
+    authResult = { user: { id: "u1", organization_id: "org1" } };
+    sandboxLookupError = new Error("sandbox lookup failed");
+    const traceId = "0123456789abcdef0123456789abcdef";
+    const r = makeRequest("cloud-token", undefined, {
+      "X-Eliza-Trace-Id": traceId,
+    });
+
+    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+
+    expect(res.status).toBe(503);
+    expect(errorCalls).toContainEqual({
+      message: "[dedicated-proxy] owner credential resolution failed",
+      context: {
+        agentId: AGENT,
+        orgId: "org1",
+        traceId,
+        error: "sandbox lookup failed",
+      },
+    });
+    expect(captured).toBeNull();
+  });
+
+  test("an open app cannot restart an agent shut down by its user", async () => {
+    authResult = { user: { id: "u1", organization_id: "org1" } };
+    sandboxResult = { ...runningDedicated, status: "stopped" };
+    wasStoppedByUser = true;
+    const request = makeRequest(
+      "cloud-token",
+      "https://app-staging.elizacloud.ai",
+    );
+    const response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      code: "agent_stopped",
+      data: { status: "stopped" },
+    });
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "https://app-staging.elizacloud.ai",
+    );
+    expect(enqueueCalls).toBe(0);
     expect(captured).toBeNull();
   });
 
@@ -1196,6 +1591,17 @@ describe("dedicated-agent-proxy — CORS + unroutable short-circuit (#15347)", (
     expect(res.headers.get("access-control-allow-origin")).toBe(ORIGIN);
     expect(res.headers.get("access-control-allow-credentials")).toBeNull();
     expect(res.headers.get("access-control-allow-methods")).toContain("POST");
+    expect(res.headers.get("access-control-allow-headers")).toContain(
+      "x-eliza-trace-id",
+    );
+    expect(res.headers.get("access-control-allow-headers")).not.toContain(
+      "x-eliza-telemetry",
+    );
+    expect(res.headers.get("access-control-expose-headers")).toContain(
+      "x-eliza-trace-id",
+    );
+    expect(res.headers.get("access-control-max-age")).toBe("600");
+    expect(res.headers.get("cache-control")).toBe("no-store");
     expect(captured).toBeNull(); // preflight is answered at the edge
   });
 
@@ -1226,6 +1632,7 @@ describe("dedicated-agent-proxy — CORS + unroutable short-circuit (#15347)", (
     expect(
       deniedPreflight.headers.get("access-control-allow-origin"),
     ).toBeNull();
+    expect(deniedPreflight.headers.get("access-control-max-age")).toBeNull();
 
     const request = makeRequest("victim-cloud-token", attackerOrigin, {
       cookie: "steward-token=victim-session",
@@ -1411,7 +1818,10 @@ describe("dedicated-agent-proxy — stream-aware origin timeout", () => {
         );
       });
 
-    const r = makeRequest("cloud-token", ORIGIN);
+    const traceId = "0123456789abcdef0123456789abcdef";
+    const r = makeRequest("cloud-token", ORIGIN, {
+      "X-Eliza-Trace-Id": traceId,
+    });
     // Old behavior: this await THROWS (client saw CF 1101 / empty body).
     const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
 
@@ -1422,6 +1832,15 @@ describe("dedicated-agent-proxy — stream-aware origin timeout", () => {
     const body = (await res.json()) as { code?: string; success?: boolean };
     expect(body.success).toBe(false);
     expect(body.code).toBe("agent_timeout");
+    expect(warnCalls).toContainEqual({
+      message: "[dedicated-proxy] origin did not respond within timeout",
+      context: {
+        host: "cp.example.test",
+        path: "/api/status",
+        timeoutMs: 20,
+        traceId,
+      },
+    });
   });
 
   test("non-timeout fetch failures still propagate (fail-closed pass-through untouched)", async () => {

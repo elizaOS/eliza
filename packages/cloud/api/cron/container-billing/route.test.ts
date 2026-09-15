@@ -1,23 +1,8 @@
 /**
- * Container-billing cron driver coverage.
- *
- * The daily container-billing cron (`route.ts`) is the real-money debit driver
- * for hosted containers, and it had no test. It owns the orchestration that the
- * pure policy/repository units can't cover on their own:
- *  - computing each container's dailyCost,
- *  - the earnings-first-then-credits split,
- *  - draining the in-memory earnings/credit pools ACROSS containers in the same
- *    org within a single run,
- *  - the documented fallback that charges the full day to credits when the
- *    earnings conversion throws (a prior bug-fix — guarded here against
- *    regression),
- *  - isolating a per-container failure so the rest of the run still bills,
- *  - skipping an already-billed period without charging.
- *
- * Mirrors the sibling `agent-billing/route.test.ts`: mock ONLY the repo/data
- * seam (`listBillableContainers`, `listBillingOrganizations`,
- * `recordSuccessfulDailyBilling`, earnings/users) and drive the REAL Hono route
- * handler so the real split + pool-drain + fallback orchestration executes.
+ * Exercises the real Hono container-billing route and billing policy with
+ * deterministic repository, mail, authorization and provider-job seams.
+ * Invalid monetary inputs must stop before warning, shutdown or settlement
+ * dispatch while independent valid containers continue through the run.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -34,7 +19,7 @@ const listBillableContainers = mock(
 const listBillingOrganizations = mock(
   async (_ids: string[]): Promise<unknown[]> => [],
 );
-const scheduleShutdownWarning = mock(async () => undefined);
+const scheduleShutdownWarning = mock(async () => true);
 const recordBillingFailure = mock(async () => undefined);
 const suspendContainer = mock(async () => undefined);
 type RecordSuccessfulBillingResult = Awaited<
@@ -65,6 +50,24 @@ const convertToCredits = mock(async (_params: unknown) => ({
   ledgerEntryId: "ledger-mock",
 }));
 const getBalance = mock(async (_userId: string) => ({ availableBalance: 0 }));
+const listRecoverableContainerStopIntents = mock(
+  async (_now: Date) => [] as unknown[],
+);
+const rearmRecoverableContainerStopIntentOnce = mock(
+  async (_input: unknown) => ({
+    id: "recovered-stop-job",
+    rearmed: true,
+  }),
+);
+const enqueueContainerStopOnce = mock(async () => ({
+  requested: true,
+  id: "stop-job",
+  created: true,
+}));
+const triggerImmediate = mock(async (_env: unknown) => undefined);
+const sendContainerShutdownWarningEmail = mock(
+  async (_input: unknown) => undefined,
+);
 
 const listByOrganization = mock(
   async (
@@ -110,16 +113,15 @@ mock.module("@/lib/services/redeemable-earnings", () => ({
 
 mock.module("@/lib/services/email", () => ({
   emailService: {
-    sendContainerShutdownWarningEmail: mock(async () => undefined),
+    sendContainerShutdownWarningEmail,
   },
 }));
 
 mock.module("@/lib/services/container-stop-job-service", () => ({
   enqueueContainerStop: mock(async () => undefined),
-  enqueueContainerStopOnce: mock(async () => ({
-    id: "stop-job",
-    created: true,
-  })),
+  enqueueContainerStopOnce,
+  listRecoverableContainerStopIntents,
+  rearmRecoverableContainerStopIntentOnce,
 }));
 
 mock.module("@/lib/services/container-jobs-writer", () => ({
@@ -128,7 +130,7 @@ mock.module("@/lib/services/container-jobs-writer", () => ({
 
 mock.module("@/lib/services/provisioning-jobs", () => ({
   provisioningJobService: {
-    triggerImmediate: mock(async () => undefined),
+    triggerImmediate,
   },
 }));
 
@@ -161,37 +163,6 @@ mock.module("@/lib/constants/pricing", () => ({
   },
   calculateDailyContainerCost: () => 0.67,
   CONTAINER_LIMITS: {},
-}));
-
-mock.module("@/lib/services/container-billing-policy", () => ({
-  computeContainerBillingPlan: (input: {
-    dailyCost: number;
-    currentBalance: number;
-    ownerEarningsAvailable: number;
-    payAsYouGoFromEarnings: boolean;
-  }) => {
-    const earningsEligible = input.payAsYouGoFromEarnings
-      ? input.ownerEarningsAvailable
-      : 0;
-    const totalAvailable = input.currentBalance + earningsEligible;
-    if (totalAvailable < input.dailyCost) {
-      return {
-        action: "insufficient" as const,
-        fromEarnings: 0,
-        fromCredits: 0,
-        totalAvailable,
-        earningsEligible,
-      };
-    }
-    const fromEarnings = Math.min(earningsEligible, input.dailyCost);
-    return {
-      action: "billed" as const,
-      fromEarnings,
-      fromCredits: input.dailyCost - fromEarnings,
-      totalAvailable,
-      earningsEligible,
-    };
-  },
 }));
 
 const { default: app } = await import("./route");
@@ -251,6 +222,11 @@ describe("container-billing cron", () => {
     convertToCredits.mockReset();
     getBalance.mockReset();
     listByOrganization.mockReset();
+    listRecoverableContainerStopIntents.mockReset();
+    rearmRecoverableContainerStopIntentOnce.mockReset();
+    enqueueContainerStopOnce.mockReset();
+    triggerImmediate.mockReset();
+    sendContainerShutdownWarningEmail.mockReset();
 
     // Default happy-path behaviors.
     recordSuccessfulDailyBilling.mockImplementation(async (input) => ({
@@ -266,6 +242,19 @@ describe("container-billing cron", () => {
       ledgerEntryId: "ledger-mock",
     }));
     getBalance.mockImplementation(async () => ({ availableBalance: 0 }));
+    listRecoverableContainerStopIntents.mockImplementation(async () => []);
+    rearmRecoverableContainerStopIntentOnce.mockImplementation(async () => ({
+      id: "recovered-stop-job",
+      rearmed: true,
+    }));
+    enqueueContainerStopOnce.mockImplementation(async () => ({
+      requested: true,
+      id: "stop-job",
+      created: true,
+    }));
+    triggerImmediate.mockImplementation(async () => undefined);
+    scheduleShutdownWarning.mockImplementation(async () => true);
+    sendContainerShutdownWarningEmail.mockImplementation(async () => undefined);
     listByOrganization.mockImplementation(async () => [
       {
         id: "owner-user",
@@ -274,6 +263,144 @@ describe("container-billing cron", () => {
         created_at: new Date("2020-01-01T00:00:00Z"),
       },
     ]);
+  });
+
+  test.each(["active", "shutdown_pending"])(
+    "isolates a non-finite stored balance before %s side effects",
+    async (billingStatus) => {
+      const healthyOrgId = "22222222-2222-2222-2222-222222222222";
+      listBillableContainers.mockResolvedValueOnce([
+        makeContainer({
+          id: "invalid-balance",
+          billing_status: billingStatus,
+          scheduled_shutdown_at: new Date("2020-01-01T00:00:00Z"),
+        }),
+        makeContainer({ id: "healthy", organization_id: healthyOrgId }),
+      ]);
+      listBillingOrganizations.mockResolvedValueOnce([
+        makeOrg({ credit_balance: "NaN" }),
+        makeOrg({ id: healthyOrgId }),
+      ]);
+
+      const response = await runCron();
+      const result = (await response.json()) as {
+        data: {
+          errors: number;
+          containersBilled: number;
+          results: { containerId: string; action: string; error?: string }[];
+        };
+      };
+      expect(response.status).toBe(200);
+      expect(result.data.errors).toBe(1);
+      expect(result.data.containersBilled).toBe(1);
+      expect(result.data.results).toEqual([
+        expect.objectContaining({
+          containerId: "invalid-balance",
+          action: "error",
+          error: expect.stringContaining("currentBalance"),
+        }),
+        expect.objectContaining({ containerId: "healthy", action: "billed" }),
+      ]);
+      expect(recordSuccessfulDailyBilling).toHaveBeenCalledTimes(1);
+      expect(recordSuccessfulDailyBilling.mock.calls[0][0].containerId).toBe(
+        "healthy",
+      );
+      expect(scheduleShutdownWarning).not.toHaveBeenCalled();
+      expect(recordBillingFailure).not.toHaveBeenCalled();
+      expect(sendContainerShutdownWarningEmail).not.toHaveBeenCalled();
+      expect(enqueueContainerStopOnce).not.toHaveBeenCalled();
+      expect(triggerImmediate).not.toHaveBeenCalled();
+      expect(convertToCredits).not.toHaveBeenCalled();
+    },
+  );
+
+  test("recovers a provider-confirmed user stop even when no container is billable", async () => {
+    const providerCutoff = new Date("2026-08-26T10:00:00.000Z");
+    listRecoverableContainerStopIntents.mockImplementation(async () => [
+      {
+        id: "intent-user-proof",
+        organization_id: ORG_ID,
+        container_id: "container-user-proof",
+        lifecycle_revision: 42,
+        authorization: "user_request",
+        status: "terminal_attention",
+        provider_confirmed_at: providerCutoff,
+        // Explicit user cancellations do not have a scheduled shutdown; the
+        // recovery seam is intent-scoped and must not depend on that field.
+      },
+    ]);
+    listBillableContainers.mockImplementation(async () => []);
+
+    const response = await runCron();
+    expect(response.status).toBe(200);
+    expect(rearmRecoverableContainerStopIntentOnce).toHaveBeenCalledTimes(1);
+    expect(rearmRecoverableContainerStopIntentOnce).toHaveBeenCalledWith({
+      intentId: "intent-user-proof",
+      containerId: "container-user-proof",
+      organizationId: ORG_ID,
+      lifecycleRevision: 42,
+      now: expect.any(Date),
+    });
+    expect(triggerImmediate).toHaveBeenCalledTimes(1);
+    expect(listBillingOrganizations).not.toHaveBeenCalled();
+  });
+
+  test("returns a structured degraded response when the recovery scan fails", async () => {
+    listRecoverableContainerStopIntents.mockRejectedValueOnce(
+      new Error("scan secret must not escape"),
+    );
+    listBillableContainers.mockResolvedValueOnce([]);
+
+    const response = await runCron();
+    const bodyText = await response.text();
+
+    expect(response.status).toBe(500);
+    expect(bodyText).not.toContain("scan secret must not escape");
+    expect(JSON.parse(bodyText)).toMatchObject({
+      success: false,
+      code: "container_stop_recovery_degraded",
+      data: {
+        stopRecovery: {
+          status: "degraded",
+          scanned: 0,
+          rearmed: 0,
+          failures: 1,
+        },
+      },
+    });
+  });
+
+  test("returns a structured degraded response when one recovery rearm fails", async () => {
+    listRecoverableContainerStopIntents.mockResolvedValueOnce([
+      {
+        id: "intent-poison",
+        organization_id: ORG_ID,
+        container_id: "container-poison",
+        lifecycle_revision: 43,
+      } as never,
+    ]);
+    rearmRecoverableContainerStopIntentOnce.mockRejectedValueOnce(
+      new Error("poison detail must not escape"),
+    );
+    listBillableContainers.mockResolvedValueOnce([]);
+
+    const response = await runCron();
+    const bodyText = await response.text();
+
+    expect(response.status).toBe(500);
+    expect(bodyText).not.toContain("poison detail must not escape");
+    expect(JSON.parse(bodyText)).toMatchObject({
+      success: false,
+      code: "container_stop_recovery_degraded",
+      data: {
+        stopRecovery: {
+          status: "degraded",
+          scanned: 1,
+          rearmed: 0,
+          failures: 1,
+        },
+      },
+    });
   });
 
   test("bills a single container at the $0.67 daily cost, charged purely to credits when no earnings", async () => {
@@ -479,6 +606,28 @@ describe("container-billing cron", () => {
     expect(json.data.errors).toBe(0);
     expect(json.data.results[0].action).toBe("skipped");
     expect(json.data.results[0].error).toContain("Already billed");
+  });
+
+  test("a lost shutdown-warning CAS publishes no email or failure receipt", async () => {
+    listBillableContainers.mockImplementation(async () => [makeContainer()]);
+    listBillingOrganizations.mockImplementation(async () => [
+      makeOrg({ credit_balance: "0" }),
+    ]);
+    scheduleShutdownWarning.mockImplementation(async () => false);
+
+    const response = await runCron();
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as {
+      data: { results: { action: string; error?: string }[] };
+    };
+
+    expect(scheduleShutdownWarning).toHaveBeenCalledTimes(1);
+    expect(sendContainerShutdownWarningEmail).not.toHaveBeenCalled();
+    expect(recordBillingFailure).not.toHaveBeenCalled();
+    expect(json.data.results[0]).toMatchObject({
+      action: "skipped",
+      error: "Container state changed before shutdown warning",
+    });
   });
 
   test("filters invalid member timestamps so corrupt created_at cannot hijack earnings source", async () => {

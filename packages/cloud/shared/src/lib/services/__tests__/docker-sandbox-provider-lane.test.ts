@@ -8,6 +8,7 @@ import "./app-docker-cmd.test.ts";
 import "./docker-ensure-network.test.ts";
 import "./docker-port-allocation.test.ts";
 import "./docker-sandbox-already-gone.test.ts";
+import "./docker-sandbox-exact-restore.test.ts";
 import "./docker-sandbox-headscale-route.test.ts";
 import "./docker-sandbox-health-fallback.test.ts";
 import "./docker-sandbox-health-stale-node.test.ts";

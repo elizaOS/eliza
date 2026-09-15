@@ -52,7 +52,6 @@ import {
   isOnboardingReplayRequested,
   wasForceFreshResetApplied,
 } from "../platform";
-import { isViteDevUiShell } from "../platform/vite-dev-ui-shell";
 import {
   buildCloudSharedAgentApiBase,
   buildDedicatedCloudAgentApiBase,
@@ -78,6 +77,7 @@ import {
   savePersistedFirstRunComplete,
 } from "./persistence";
 import {
+  isLoopbackHostname,
   isTrustedCloudApiBaseUrl,
   isTrustedRestoreApiBaseUrl,
 } from "./runtime-url-trust";
@@ -281,11 +281,6 @@ function isMobileLocalActiveServer(
   if (mobileRuntimeMode === "remote-mac") return false;
 
   return isMobileLocalAgentApiBase(server.apiBase);
-}
-
-function isLoopbackHostname(hostname: string): boolean {
-  const h = hostname.toLowerCase();
-  return h === "127.0.0.1" || h === "localhost" || h === "::1";
 }
 
 // Re-resolve a persisted loopback apiBase against whatever port the
@@ -582,6 +577,9 @@ export async function applyRestoredConnection(args: {
     const isAgentlessControlPlane = isElizaCloudControlPlaneAgentlessBase(
       resolved.apiBase,
     );
+    const isManagedSharedControlPlane = isManagedCloudSharedAgentBase(
+      resolved.apiBase,
+    );
     const initialToken = usesLocalDockerCredential
       ? resolved.accessToken || null
       : isAgentlessControlPlane
@@ -624,11 +622,7 @@ export async function applyRestoredConnection(args: {
     // refresh it BEFORE handing it to the client so a returning user never
     // boots into a permanently-401ing session (see resolveRestoredStewardToken).
     const stewardToken = await stewardTokenPromise;
-    if (
-      isManagedCloudSharedAgentBase(resolved.apiBase) &&
-      !stewardToken &&
-      !nativeOwnerApiKey
-    ) {
+    if (isManagedSharedControlPlane && !stewardToken && !nativeOwnerApiKey) {
       // Terminal refresh failure or a missing account session makes the saved
       // shared target unsafe. Clear every account-scoped mirror before startup
       // can reinstall the provision-time token or poll the previous agent.
@@ -641,11 +635,11 @@ export async function applyRestoredConnection(args: {
     // pre-refresh JWT can be expired, while native/Electrobun restores may
     // intentionally rely on a host-injected Cloud owner key instead.
     const controlPlaneOwnerToken = stewardToken ?? nativeOwnerApiKey;
-    const tierRepairPromise = isDedicatedCloudAgentBase(
-      restoredActiveServer.apiBase,
-    )
-      ? reconcileLegacyDedicatedCloudApiBase(resolved, controlPlaneOwnerToken)
-      : Promise.resolve(null);
+    const tierRepairPromise =
+      !isManagedSharedControlPlane &&
+      isDedicatedCloudAgentBase(restoredActiveServer.apiBase)
+        ? reconcileLegacyDedicatedCloudApiBase(resolved, controlPlaneOwnerToken)
+        : Promise.resolve(null);
     // Dedicated agent subdomains and explicit local-Docker pair targets use an
     // agent-local bearer for `/api/*`. The edge-owned dedicated path can keep
     // its Steward recovery fallback; a loopback process must never receive a
@@ -653,11 +647,16 @@ export async function applyRestoredConnection(args: {
     clientRef.setToken(
       usesLocalDockerCredential
         ? resolved.accessToken || null
-        : isDedicatedCloudAgentBase(resolved.apiBase)
-          ? resolved.accessToken || stewardToken || null
-          : isAgentlessControlPlane
-            ? stewardToken || nativeOwnerApiKey || null
-            : stewardToken || nativeOwnerApiKey || resolved.accessToken || null,
+        : isManagedSharedControlPlane
+          ? stewardToken || nativeOwnerApiKey || null
+          : isDedicatedCloudAgentBase(resolved.apiBase)
+            ? resolved.accessToken || stewardToken || null
+            : isAgentlessControlPlane
+              ? stewardToken || nativeOwnerApiKey || null
+              : stewardToken ||
+                nativeOwnerApiKey ||
+                resolved.accessToken ||
+                null,
     );
     void tierRepairPromise.then((repaired) => {
       if (!repaired || repaired.apiBase === resolved.apiBase) return;
@@ -682,7 +681,10 @@ export async function applyRestoredConnection(args: {
     return;
   }
 
-  if (isMobileLocalActiveServer(restoredActiveServer)) {
+  if (
+    isMobileLocalAgentIpcUrl(restoredActiveServer.apiBase) ||
+    (isNative && isMobileLocalActiveServer(restoredActiveServer))
+  ) {
     // Bundled mobile on-device agent (`eliza-local-agent://ipc`): a native
     // Capacitor IPC identity, not a network host — no socket dial, no bearer
     // token. Route the client at the IPC base; the full-Bun engine starts
@@ -897,12 +899,13 @@ export async function runRestoringSession(
     (isAndroid || isIOS) &&
     isCommittedOnDeviceMobileRuntimeMode(readPersistedMobileRuntimeMode());
   const shouldProbeExistingInstall =
-    !forceFreshFirstRun && !persistedActiveServer && !isViteDevUiShell();
+    !forceFreshFirstRun && !persistedActiveServer;
   let probed: ExistingFirstRunProbeResult | null = null;
   if (shouldProbeExistingInstall) {
     try {
       probed = await detectExistingFirstRunConnection({
         client,
+        cloudOnlyBranding: getBootConfig().branding.cloudOnly === true,
         timeoutMs: isDesktop
           ? Math.min(getBackendStartupTimeoutMs(), 30_000)
           : committedMobileOnDeviceMode

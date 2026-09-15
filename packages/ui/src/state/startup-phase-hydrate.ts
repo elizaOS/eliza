@@ -7,6 +7,11 @@
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
 import {
+  isRuntimeManagementOperation,
+  type RuntimeManagementRequest,
+  type RuntimeManagementResult,
+} from "@elizaos/shared";
+import {
   normalizeShellNavigateViewPayload,
   SHELL_NAVIGATE_VIEW_WS_EVENT,
 } from "@elizaos/shared/events";
@@ -19,6 +24,7 @@ import {
   type StreamEventEnvelope,
 } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import { fetchWithCsrf } from "../api/csrf-client";
 import { mapServerTasksToSessions } from "../chat/coding-agent-session-state";
 import { dispatchCompletedActionNavigation } from "../completed-action-navigation";
 import { prefetchAppsCatalog } from "../components/apps/load-apps-catalog";
@@ -39,12 +45,14 @@ import {
 import { isTransientOptionalFetchFailure } from "../utils";
 import { recoverMissedCurrentView } from "../view-action-handoff";
 import { emitViewEvent } from "../views/view-event-bus";
+import { dispatchConversationResync } from "./AppContext.hooks";
 import type { ActionTone } from "./action-notice";
 import {
   loadAgentProfileRegistry,
   resolveAgentProfileByQuery,
 } from "./agent-profiles";
 import {
+  type LoadConversationMessagesResult,
   loadAvatarIndex,
   normalizeAvatarIndex,
   parseAgentStatusEvent,
@@ -58,6 +66,11 @@ export interface HydratingDeps {
   setStartupError: (v: null) => void;
   setFirstRunLoading: (v: boolean) => void;
   hydrateInitialConversationState: () => Promise<string | null>;
+  activeConversationIdRef: React.RefObject<string | null>;
+  loadedConversationIdRef: React.RefObject<string | null>;
+  loadConversationMessages: (
+    convId: string,
+  ) => Promise<LoadConversationMessagesResult>;
   requestGreetingWhenRunningRef: React.RefObject<
     (convId: string) => Promise<void>
   >;
@@ -76,6 +89,15 @@ export interface HydratingDeps {
   setTab: (t: Tab) => void;
   setTabRaw: (t: Tab) => void;
   initialTabSetRef: React.MutableRefObject<boolean>;
+}
+
+const ACTIVE_CONVERSATION_STORAGE_KEY = "eliza:chat:activeConversationId";
+const DIRECT_CLOUD_HYDRATION_RETRY_MS = 500;
+
+function waitForDirectCloudHydrationRetry(): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, DIRECT_CLOUD_HYDRATION_RETRY_MS);
+  });
 }
 
 export interface ReadyPhaseDeps {
@@ -178,6 +200,52 @@ export async function runHydrating(
       void deps.requestGreetingWhenRunningRef.current(greetConvId);
     }
   };
+  const reconcileDirectCloudConversation = async (): Promise<void> => {
+    const persistedConversationId = window.localStorage.getItem(
+      ACTIVE_CONVERSATION_STORAGE_KEY,
+    );
+    let initialHydrationFailed = false;
+    try {
+      await hydrateConversation();
+    } catch (error) {
+      initialHydrationFailed = true;
+      warn("conversation history", error);
+    }
+
+    if (
+      initialHydrationFailed ||
+      (!deps.activeConversationIdRef.current && persistedConversationId)
+    ) {
+      await waitForDirectCloudHydrationRetry();
+      await hydrateConversation();
+    }
+
+    const activeConversationId = deps.activeConversationIdRef.current;
+    if (
+      !activeConversationId ||
+      deps.loadedConversationIdRef.current === activeConversationId
+    ) {
+      return;
+    }
+
+    const firstLoad = await deps.loadConversationMessages(activeConversationId);
+    if (
+      firstLoad.ok ||
+      deps.activeConversationIdRef.current !== activeConversationId ||
+      deps.loadedConversationIdRef.current === activeConversationId
+    ) {
+      return;
+    }
+
+    await waitForDirectCloudHydrationRetry();
+    const retryConversationId = deps.activeConversationIdRef.current;
+    if (
+      retryConversationId &&
+      deps.loadedConversationIdRef.current !== retryConversationId
+    ) {
+      await deps.loadConversationMessages(retryConversationId);
+    }
+  };
 
   if (appShellRoutesSupported) {
     await hydrateConversation();
@@ -186,7 +254,7 @@ export async function runHydrating(
     // then fetch messages. The active conversation ID is persisted locally, so
     // history restoration is not required to paint a usable chat shell. Keep
     // restoring the exact same state, but do it behind first paint.
-    void hydrateConversation().catch((err: unknown) => {
+    void reconcileDirectCloudConversation().catch((err: unknown) => {
       warn("conversation history", err);
     });
   }
@@ -372,6 +440,15 @@ export function bindReadyPhase(
   // enters "running". Driven by the live status event below, with the poll
   // interval as a catch-all — no fixed delay guessing how long boot takes.
   let ptyRunning = false;
+  let conversationResyncPending = false;
+  const reconcileConversationAfterReconnect = (running: boolean): void => {
+    if (!running || !conversationResyncPending) return;
+    conversationResyncPending = false;
+    dispatchConversationResync({
+      conversationId: depsRef.current?.activeConversationIdRef.current ?? null,
+      reason: "connection-recovered",
+    });
+  };
   const hydrateOnRunning = (running: boolean) => {
     if (running && !ptyRunning) {
       ptyRunning = true;
@@ -394,6 +471,7 @@ export function bindReadyPhase(
     }
     const running = depsRef.current?.agentRunningRef.current ?? false;
     hydrateOnRunning(running);
+    reconcileConversationAfterReconnect(running);
     if (running && depsRef.current?.hasPtySessionsRef.current) doHydratePty();
   }, 5_000);
 
@@ -406,7 +484,20 @@ export function bindReadyPhase(
       if (e) dispatchAppEmoteEvent(e);
     },
   );
-  const unbindWsReconnect = client.onWsEvent("ws-reconnected", () =>
+  const unbindWsReconnect = client.onWsEvent("ws-reconnected", () => {
+    const conversationId =
+      depsRef.current?.activeConversationIdRef.current ?? null;
+    client.sendWsMessage({
+      type: "active-conversation",
+      conversationId,
+    });
+    // The API socket can reopen before the restarted agent has restored its
+    // persisted conversations. Reloading on the socket edge can therefore
+    // replace a healthy visible transcript with a premature empty response.
+    // Hold the canonical tail refresh until the status stream says the agent is
+    // running; the existing five-second readiness catch-all covers a missed
+    // status frame without polling conversation history.
+    conversationResyncPending = true;
     Promise.resolve().then(() => {
       hydratePty();
       void depsRef.current?.loadWalletConfig();
@@ -416,8 +507,8 @@ export function bindReadyPhase(
         // recovery rejection; the next lifecycle event retries it.
         logger.warn({ error }, "[startup] current view recovery failed");
       });
-    }),
-  );
+    });
+  });
   const unbindSysWarn = client.onWsEvent(
     "system-warning",
     (data: Record<string, unknown>) => {
@@ -453,7 +544,9 @@ export function bindReadyPhase(
           void d.pollCloudCredits();
           ptyRunning = false; // force re-hydrate now that the agent restarted
         }
-        hydrateOnRunning(ns.state === "running");
+        const running = ns.state === "running";
+        hydrateOnRunning(running);
+        reconcileConversationAfterReconnect(running);
       }
       if (typeof data.pendingRestart === "boolean")
         d.setPendingRestart((p: boolean) =>
@@ -605,6 +698,112 @@ export function bindReadyPhase(
         `Switched the app to "${result.profile.label}".`,
         "success",
       );
+    },
+  );
+
+  // Owner-approved Devices & Runtimes operations use an explicit first-shell
+  // claim before execution. This prevents two connected renderer tabs from
+  // applying the same pairing/revoke/SSH mutation after one agent request.
+  const unbindManageRuntime = client.onWsEvent(
+    "shell:manage-runtime",
+    (data: Record<string, unknown>) => {
+      const requestId =
+        typeof data.requestId === "string" ? data.requestId : null;
+      const rawRequest =
+        data.request !== null &&
+        typeof data.request === "object" &&
+        !Array.isArray(data.request)
+          ? (data.request as Record<string, unknown>)
+          : null;
+      if (
+        !requestId ||
+        !rawRequest ||
+        !isRuntimeManagementOperation(rawRequest.op)
+      ) {
+        return;
+      }
+      const request = rawRequest as unknown as RuntimeManagementRequest;
+      const originBase =
+        typeof client.getBaseUrl === "function" ? client.getBaseUrl() : "";
+
+      void (async () => {
+        const claimResponse = await fetchWithCsrf(
+          `${originBase}/api/runtime/manage/claim`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ requestId }),
+          },
+        );
+        const claim = (await claimResponse.json().catch(() => {
+          // error-policy:J3 an invalid claim response remains explicitly invalid.
+          return null;
+        })) as { claimed?: boolean; claimToken?: string } | null;
+        if (!claimResponse.ok) {
+          throw new Error("The runtime operation could not claim this app.");
+        }
+        if (claim?.claimed !== true || !claim.claimToken) {
+          return;
+        }
+
+        let result: RuntimeManagementResult;
+        try {
+          const { executeRuntimeManagementCommand } = await import(
+            "../platform/runtime-management"
+          );
+          result = await executeRuntimeManagementCommand(request);
+        } catch (cause) {
+          // error-policy:J1 the shell boundary returns an explicit failed result.
+          result = {
+            ok: false,
+            op: request.op,
+            error:
+              cause instanceof Error && cause.message.trim()
+                ? cause.message
+                : "The runtime operation failed before it could start.",
+          };
+        }
+        const resultResponse = await fetchWithCsrf(
+          `${originBase}/api/runtime/manage/result`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              requestId,
+              claimToken: claim.claimToken,
+              ok: result.ok,
+              data: result.data,
+              error: result.error,
+            }),
+          },
+        );
+        if (!resultResponse.ok) {
+          throw new Error(
+            result.ok
+              ? "The runtime operation completed locally, but Eliza could not verify the result."
+              : "The runtime operation failed locally, and Eliza could not receive the failure details.",
+          );
+        }
+        depsRef.current?.setActionNotice(
+          result.ok
+            ? "Devices & Runtimes updated."
+            : (result.error ?? "The runtime operation failed."),
+          result.ok ? "success" : "error",
+        );
+      })().catch((cause) => {
+        // error-policy:J4 surface bridge failure as a visible error state.
+        depsRef.current?.setActionNotice(
+          cause instanceof Error && cause.message.trim()
+            ? cause.message
+            : "The runtime management bridge failed.",
+          "error",
+        );
+        logger.warn(
+          `[startup-phase-hydrate] runtime management bridge failed: ${
+            cause instanceof Error ? cause.message : String(cause)
+          }`,
+        );
+      });
     },
   );
 
@@ -943,6 +1142,7 @@ export function bindReadyPhase(
     unbindShellNavigateView();
     unbindModelSwitch();
     unbindSwitchAgent();
+    unbindManageRuntime();
     unbindViewEvent();
     unbindViewInteract();
     unbindDeviceControl();

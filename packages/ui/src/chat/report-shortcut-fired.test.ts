@@ -14,10 +14,7 @@ vi.mock("../utils/eliza-globals", () => ({
   getElizaApiToken: () => "test-token",
 }));
 
-import {
-  reportShortcutFired,
-  reportUserViewSwitch,
-} from "./useSlashCommandController";
+import { reportShortcutFired } from "./useSlashCommandController";
 
 const fetchMock = vi.fn(() => Promise.resolve(new Response("{}")));
 
@@ -50,22 +47,6 @@ describe("reportShortcutFired (#8792)", () => {
     expect(init.signal).toBeInstanceOf(AbortSignal);
   });
 
-  it("POSTs a view switch to /api/views/:id/navigate with a deadline", () => {
-    reportUserViewSwitch("wallet", "/wallet");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [
-      string,
-      RequestInit,
-    ];
-    expect(url).toBe("http://localhost:31337/api/views/wallet/navigate");
-    expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body as string)).toEqual({
-      source: "user",
-      path: "/wallet",
-    });
-    expect(init.signal).toBeInstanceOf(AbortSignal);
-  });
-
   it("omits context when not provided", () => {
     reportShortcutFired("show-keyboard-shortcuts");
     const [, init] = fetchMock.mock.calls[0] as unknown as [
@@ -83,11 +64,8 @@ describe("reportShortcutFired (#8792)", () => {
   });
 });
 
-describe("slash-command report request deadlines", () => {
-  it.each([
-    ["view switch", () => reportUserViewSwitch("wallet", "/wallet")],
-    ["shortcut", () => reportShortcutFired("open-command-palette")],
-  ])("bounds and consumes the %s response", async (_label, report) => {
+describe("shortcut report request deadlines", () => {
+  it("bounds and consumes the response", async () => {
     const nativeTimeout = AbortSignal.timeout.bind(AbortSignal);
     const budgets: number[] = [];
     vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
@@ -122,7 +100,7 @@ describe("slash-command report request deadlines", () => {
       arrayBuffer,
     } as unknown as Response);
 
-    report();
+    reportShortcutFired("open-command-palette");
 
     await vi.waitFor(() => expect(arrayBuffer).toHaveBeenCalledTimes(1));
     await aborted;

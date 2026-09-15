@@ -16,7 +16,6 @@
  */
 
 import { type ReactNode, useMemo } from "react";
-import { reportUserViewSwitch } from "../../../chat/useSlashCommandController";
 import { dispatchNavigateViewEvent } from "../../../events";
 import { cn } from "../../../lib/utils";
 import { useAppSelectorShallow } from "../../../state";
@@ -26,9 +25,9 @@ import { StatusDot } from "../../ui/status-badge";
 
 /**
  * Navigation for home widgets: tapping a card opens the relevant full surface.
- * `openView` mirrors the home tile path (the `eliza:navigate:view` rail +
- * proactive-decider report), `openTab` switches a builtin tab. Stable across
- * renders so it never breaks a widget's memoization.
+ * `openView` mirrors the home tile path through the `eliza:navigate:view` rail;
+ * `openTab` switches a builtin tab. The shell reports whichever route actually
+ * renders, so this stays stable and transport-agnostic across widgets.
  */
 export function useWidgetNavigation(): {
   openView: (path: string, viewId?: string) => void;
@@ -38,12 +37,10 @@ export function useWidgetNavigation(): {
   return useMemo(
     () => ({
       openView(path, viewId) {
-        dispatchNavigateViewEvent({ viewPath: path });
-        reportUserViewSwitch(viewId ?? path, path);
+        dispatchNavigateViewEvent({ viewId, viewPath: path });
       },
       openTab(tab) {
         setTab?.(tab as never);
-        reportUserViewSwitch(tab);
       },
     }),
     [setTab],
@@ -51,9 +48,6 @@ export function useWidgetNavigation(): {
 }
 
 export type HomeWidgetTone = "default" | "danger" | "warn";
-
-export const HOME_WIDGET_SOLID_TILE_CLASS =
-  "group relative flex h-auto w-full overflow-hidden rounded-2xl border border-[color:color-mix(in_srgb,var(--brand-white)_20%,var(--brand-black))] bg-[var(--brand-black)] text-left text-[var(--brand-white)]";
 
 const TONE_VALUE_CLASS: Record<HomeWidgetTone, string> = {
   default: "text-[var(--brand-white)]",
@@ -94,7 +88,7 @@ export function HomeWidgetCard({
 }: HomeWidgetCardProps): React.JSX.Element {
   return (
     <Button
-      variant="surface"
+      variant="homeWidget"
       size="card"
       align="start"
       data-testid={testId}

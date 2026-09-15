@@ -1,6 +1,7 @@
 /**
- * Super-admin boundary for resolving duplicate existing personal Dedicated
- * inventory without provisioning, billing, cutover, or deleting any row.
+ * Super-admin boundary for selecting or explicitly re-reviewing duplicate
+ * personal Dedicated inventory without provisioning, billing, cutover, or
+ * deleting any compute row.
  */
 
 import { Hono } from "hono";
@@ -16,7 +17,6 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const commonRequest = {
-  action: z.literal("select_existing_personal_dedicated"),
   targetOwnerOrganizationId: z.string().uuid(),
   targetOwnerUserId: z.string().uuid(),
   retainedAgentId: z.string().uuid(),
@@ -26,6 +26,7 @@ const commonRequest = {
 const previewRequestSchema = z
   .object({
     ...commonRequest,
+    action: z.literal("select_existing_personal_dedicated"),
     dryRun: z.literal(true),
   })
   .strict();
@@ -33,6 +34,7 @@ const previewRequestSchema = z
 const executeRequestSchema = z
   .object({
     ...commonRequest,
+    action: z.literal("select_existing_personal_dedicated"),
     dryRun: z.literal(false),
     inventoryFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
     stateDisposition: z.enum([
@@ -43,7 +45,37 @@ const executeRequestSchema = z
   })
   .strict();
 
-const requestSchema = z.union([previewRequestSchema, executeRequestSchema]);
+const rereviewPreviewRequestSchema = z
+  .object({
+    ...commonRequest,
+    action: z.literal("rereview_existing_personal_dedicated"),
+    dryRun: z.literal(true),
+  })
+  .strict();
+
+const rereviewExecuteRequestSchema = z
+  .object({
+    ...commonRequest,
+    action: z.literal("rereview_existing_personal_dedicated"),
+    dryRun: z.literal(false),
+    receiptFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+    receiptUpdatedAt: z.string().datetime({ offset: true }),
+    previousRetainedAgentId: z.string().uuid(),
+    inventoryFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+    stateDisposition: z.enum([
+      "verified_backup_present",
+      "fresh_boot_no_verified_backup",
+    ]),
+    confirmation: z.literal("rereview_without_provisioning_or_deleting"),
+  })
+  .strict();
+
+const requestSchema = z.union([
+  previewRequestSchema,
+  executeRequestSchema,
+  rereviewPreviewRequestSchema,
+  rereviewExecuteRequestSchema,
+]);
 const LOCAL_DEV_ADMIN_USER_ID = "00000000-0000-4000-8000-000000000001";
 const LOCAL_DEV_ADMIN_EMAIL = "local-dev-admin@localhost";
 
@@ -51,7 +83,7 @@ interface AdminPersonalDedicatedSelectionRouteDependencies {
   requireAdmin: typeof requireAdmin;
   selectionService: Pick<
     typeof personalDedicatedAdoptionSelectionService,
-    "preview" | "execute"
+    "preview" | "execute" | "previewRereview" | "executeRereview"
   >;
   logger: Pick<typeof logger, "info">;
 }
@@ -135,13 +167,25 @@ export function createAdminPersonalDedicatedSelectionRoute(
             : user.id,
         reason: input.reason,
       };
-      const result = input.dryRun
-        ? await dependencies.selectionService.preview(common)
-        : await dependencies.selectionService.execute({
-            ...common,
-            expectedInventoryFingerprint: input.inventoryFingerprint,
-            expectedStateDisposition: input.stateDisposition,
-          });
+      const rereview = input.action === "rereview_existing_personal_dedicated";
+      const result = rereview
+        ? input.dryRun
+          ? await dependencies.selectionService.previewRereview(common)
+          : await dependencies.selectionService.executeRereview({
+              ...common,
+              expectedReceiptFingerprint: input.receiptFingerprint,
+              expectedReceiptUpdatedAt: input.receiptUpdatedAt,
+              expectedPreviousRetainedAgentId: input.previousRetainedAgentId,
+              expectedInventoryFingerprint: input.inventoryFingerprint,
+              expectedStateDisposition: input.stateDisposition,
+            })
+        : input.dryRun
+          ? await dependencies.selectionService.preview(common)
+          : await dependencies.selectionService.execute({
+              ...common,
+              expectedInventoryFingerprint: input.inventoryFingerprint,
+              expectedStateDisposition: input.stateDisposition,
+            });
 
       dependencies.logger.info(
         "[admin-personal-dedicated-selection] Selection decision accepted",
@@ -153,6 +197,7 @@ export function createAdminPersonalDedicatedSelectionRoute(
           dryRun: input.dryRun,
           alreadySelected: result.alreadySelected,
           candidateCount: result.candidateCount,
+          operation: rereview ? "rereview" : "select",
         },
       );
 

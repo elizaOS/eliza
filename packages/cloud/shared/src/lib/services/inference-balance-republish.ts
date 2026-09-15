@@ -9,48 +9,48 @@
  * graph for a single helper (and breaking callers that mock `db/helpers` at
  * its previous, narrower boundary).
  *
- * Its dependencies are exactly the three the ledger already carries or that are
- * leaves: `credits`, `inference-auth-cache`, and the isolate-local
- * `inference-admission-refusal`.
+ * Its dependency is the cache projection leaf already used by both settlers.
  */
 
-import { creditsService } from "./credits";
-import { clearOrgAdmissionRefused } from "./inference-admission-refusal";
 import { republishOrgBalanceHint } from "./inference-auth-cache";
 
 /**
  * Republish the gate hint with authoritative state after a committed inference
  * debit.
  *
- * A debit necessarily runs `CacheInvalidation.onCreditMutation`, which DELETES
- * `CacheKeys.inference.orgBalance`. That delete is correct for mutations whose
- * caller cannot know the resulting balance (top-ups, refunds, admin
- * adjustments), but the inference settler is the one mutation that both lowers
- * the balance and immediately knows the new value. Leaving the key absent made
- * the *next* turn a full miss, and on the Worker hot path a full miss is read
- * `cacheOnly` — a hard, user-visible 503 "Billing authorization is warming",
- * not a slow read. Every settled turn therefore armed a guaranteed failure for
- * the following turn (observed on staging as a strict 200/503 alternation).
+ * Credit mutations normally run `CacheInvalidation.onCreditMutation`, which
+ * deletes `CacheKeys.inference.orgBalance`. That delete is correct for callers
+ * that cannot know the resulting balance (top-ups, refunds, admin adjustments).
+ * A DO-fenced inference debit instead keeps the last valid projection present
+ * only through this authoritative overwrite; legacy inference settlers still
+ * delete then seed it here. Leaving the key absent until a later request made
+ * the *next* Worker turn a full `cacheOnly` miss — a hard, user-visible 503
+ * "Billing authorization is warming", not a slow read.
  *
- * `lowerOrgBalanceHint` cannot repair this: it is lower-only and bails when no
- * entry exists, so after the delete it is always a no-op.
+ * `lowerOrgBalanceHint` cannot repair the delete path: it is lower-only and
+ * bails when no entry exists, so after eviction it is always a no-op.
  *
- * Republishing authoritatively (balance AND revision) costs nothing net: the
- * identical `getOrganizationBalanceSnapshot` read already happened moments
- * later as the 503's background hydration. This only moves that read off the
- * next request's critical path, and it keeps the revision fresh rather than
- * preserving a stale one.
+ * The debit statement returns both the committed balance and trigger-advanced
+ * revision. Passing that atomic result here avoids a post-debit primary read
+ * while keeping the revision fresh rather than preserving a stale one.
  *
- * The write is min-clamped (`republishOrgBalanceHint`) so the #9899 over-admit
- * bound survives: a concurrent debit that published a STRICTER gate while this
- * snapshot was in flight is never raised back up.
+ * Republication is one write with no cache readback. The cache is a projection,
+ * not the monetary authority: Worker dispatch is fenced by the serialized,
+ * revision-aware InferenceAdmissionGate Durable Object. Non-Worker callers use
+ * the atomic DB-ledger admission or reserve synchronously; the legacy KV lane
+ * is never allowed to dispatch from this projection. Older snapshots therefore
+ * cannot reopen an active gate even if concurrent writers reach Redis out of order.
  */
-export async function republishOrgBalanceHintAfterDebit(organizationId: string): Promise<void> {
-  // Captured BEFORE the authoritative read, matching `refreshOrgBalanceHint`:
-  // the timestamp marks when the read started, so a delayed old query can never
-  // masquerade as fresher than a debit that committed while it was in flight.
+export async function republishOrgBalanceHintAfterDebit(
+  organizationId: string,
+  balanceUsd: number,
+  balanceRevision: string,
+  options: {
+    publishAuthoritativeBalance?: (balanceUsd: number, balanceRevision: string) => Promise<void>;
+  } = {},
+): Promise<void> {
   const balanceAt = Date.now();
-  const snapshot = await creditsService.getOrganizationBalanceSnapshot(organizationId);
-  await republishOrgBalanceHint(organizationId, snapshot.balanceUsd, balanceAt, snapshot.revision);
-  clearOrgAdmissionRefused(organizationId);
+  // Fence the committed revision before exposing its eventually consistent hint.
+  await options.publishAuthoritativeBalance?.(balanceUsd, balanceRevision);
+  await republishOrgBalanceHint(organizationId, balanceUsd, balanceAt, balanceRevision);
 }

@@ -317,10 +317,12 @@ export function createImageGenerationExecutor(deps: ImageGenerationDependencies)
     const storedImages: StoredImage[] = [];
     const generationIds: string[] = [];
     let billingUncertain = false;
+    let providerDispatchStarted = false;
     try {
-      await admission?.markProviderDispatched?.();
       const provider = deps.getProvider(definition.billingSource);
+      await admission?.markProviderDispatched?.();
       for (let index = 0; index < request.numImages; index += 1) {
+        providerDispatchStarted = true;
         const generated = await generateProviderImage(request, input.providerKeys, provider);
         const key = `generations/images/${input.actor.organizationId}/${input.actor.userId}/${deps.randomUuid()}.${extensionForMimeType(generated.mimeType)}`;
         const stored = await deps.putObject(input.bindings, {
@@ -444,12 +446,37 @@ export function createImageGenerationExecutor(deps: ImageGenerationDependencies)
       if (!billingUncertain) {
         await cleanupFailedGeneration(deps, input.bindings, storedImages, generationIds);
         try {
-          await admission?.settle(0);
+          if (providerDispatchStarted) {
+            logger.error(
+              "[ImageGeneration] Post-dispatch transaction failed; requesting conservative settlement",
+              {
+                requestId: billingContext.requestId,
+                organizationId: input.actor.organizationId,
+                userId: input.actor.userId,
+                model: request.model,
+                provider: definition.provider,
+                billingSource: definition.billingSource,
+                generatedImageCount: storedImages.length,
+                requestedImageCount: request.numImages,
+                settlementMode: "unknown",
+                error: error instanceof Error ? error.message : String(error),
+              },
+            );
+            await admission?.settleUnknown();
+          } else {
+            await admission?.settle(0);
+          }
         } catch (settlementError) {
           // error-policy:J7 reservation-release failure is observable but must
           // not replace the causal transaction failure reported to the caller.
-          logger.error("[ImageGeneration] Failed to release rejected image admission", {
+          logger.error("[ImageGeneration] Failed to reconcile rejected image admission", {
             requestId: billingContext.requestId,
+            organizationId: input.actor.organizationId,
+            userId: input.actor.userId,
+            model: request.model,
+            provider: definition.provider,
+            billingSource: definition.billingSource,
+            settlementMode: providerDispatchStarted ? "unknown" : "release",
             error:
               settlementError instanceof Error ? settlementError.message : String(settlementError),
           });

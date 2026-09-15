@@ -144,6 +144,10 @@ describe("smoke view bundle provenance over HTTP (#15791)", () => {
     expect(byId.get("orchestrator")?.surface).toEqual({
       capabilities: ["agent-surface"],
     });
+    expect(byId.get("wallet")?.surface).toEqual({
+      background: "shared",
+      capabilities: ["agent-surface", "wallpaper"],
+    });
     expect(byId.get("task-coordinator")?.surface).toBeUndefined();
     expect(byId.has("feed")).toBe(false);
   });

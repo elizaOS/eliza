@@ -1,8 +1,10 @@
 /** Verifies Cloud Worker routing and thin-inference dispatch with deterministic fixtures. */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import type { Hono } from "hono";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import cloudApiWorker, {
   decorateFullAppDispatchResponse,
+  dispatchFullApp,
   getFrontendAliasApiProxyTarget,
   getFrontendAliasProxyTarget,
   getGeneratedAgentId,
@@ -29,15 +31,198 @@ test("preserves Workerd WebSocket upgrade responses without rewrapping", () => {
   expect(
     decorateFullAppDispatchResponse(
       upgrade,
-      "11111111-1111-4111-8111-111111111111",
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       12,
       8,
     ),
   ).toBe(upgrade);
 });
 
+test("gates crypto payment confirmation before cold shard loading", async () => {
+  const env = { ENVIRONMENT: "staging" } as AppEnv["Bindings"];
+  const executionCtx = {
+    waitUntil: () => undefined,
+    passThroughOnException: () => undefined,
+  } as unknown as ExecutionContext;
+  const loadFullApp = mock(async () => {
+    throw new Error("payment shard must not load");
+  });
+
+  const missingCredentials = await dispatchFullApp(
+    new Request(
+      "https://api.eliza.app/api/crypto/payments/missing-id/confirm",
+      { method: "POST" },
+    ),
+    env,
+    executionCtx,
+    loadFullApp,
+  );
+  const apiKeyCredentials = await dispatchFullApp(
+    new Request(
+      "https://api.eliza.app/api/crypto/payments/missing-id/confirm",
+      {
+        method: "POST",
+        headers: { authorization: "Bearer eliza_test" },
+      },
+    ),
+    env,
+    executionCtx,
+    loadFullApp,
+  );
+  const unrelatedCookie = await dispatchFullApp(
+    new Request(
+      "https://api.eliza.app/api/crypto/payments/missing-id/confirm",
+      {
+        method: "POST",
+        headers: { cookie: "analytics-id=not-a-session" },
+      },
+    ),
+    env,
+    executionCtx,
+    loadFullApp,
+  );
+  const malformedBearer = await dispatchFullApp(
+    new Request(
+      "https://api.eliza.app/api/crypto/payments/missing-id/confirm",
+      {
+        method: "POST",
+        headers: { authorization: "Bearer not-a-jwt" },
+      },
+    ),
+    env,
+    executionCtx,
+    loadFullApp,
+  );
+  const disabledTestSession = await dispatchFullApp(
+    new Request(
+      "https://api.eliza.app/api/crypto/payments/missing-id/confirm",
+      {
+        method: "POST",
+        headers: { cookie: "eliza-test-session=payload.signature" },
+      },
+    ),
+    env,
+    executionCtx,
+    loadFullApp,
+  );
+  const productionTestSession = await dispatchFullApp(
+    new Request(
+      "https://api.eliza.app/api/crypto/payments/missing-id/confirm",
+      {
+        method: "POST",
+        headers: { cookie: "eliza-test-session=payload.signature" },
+      },
+    ),
+    {
+      ENVIRONMENT: "production",
+      PLAYWRIGHT_TEST_AUTH: "true",
+    } as AppEnv["Bindings"],
+    executionCtx,
+    loadFullApp,
+  );
+
+  expect(missingCredentials.status).toBe(401);
+  expect(await missingCredentials.json()).toMatchObject({
+    code: "authentication_required",
+  });
+  expect(apiKeyCredentials.status).toBe(401);
+  expect(await apiKeyCredentials.json()).toMatchObject({
+    code: "session_auth_required",
+  });
+  expect(unrelatedCookie.status).toBe(401);
+  expect(malformedBearer.status).toBe(401);
+  expect(disabledTestSession.status).toBe(401);
+  expect(productionTestSession.status).toBe(401);
+  expect(loadFullApp).not.toHaveBeenCalled();
+
+  const sessionFetch = mock(async () =>
+    Response.json({ error: "Payment not found" }, { status: 404 }),
+  );
+  const loadSessionApp = mock(
+    async () => ({ fetch: sessionFetch }) as unknown as Hono<AppEnv>,
+  );
+  const sessionCredentials = await dispatchFullApp(
+    new Request(
+      "https://api.eliza.app/api/crypto/payments/missing-id/confirm",
+      {
+        method: "POST",
+        headers: { cookie: "steward-token-staging=session" },
+      },
+    ),
+    env,
+    executionCtx,
+    loadSessionApp,
+  );
+
+  expect(sessionCredentials.status).toBe(404);
+  expect(loadSessionApp).toHaveBeenCalledTimes(1);
+  expect(sessionFetch).toHaveBeenCalledTimes(1);
+
+  const enabledTestSession = await dispatchFullApp(
+    new Request(
+      "https://api.eliza.app/api/crypto/payments/missing-id/confirm",
+      {
+        method: "POST",
+        headers: { cookie: "eliza-test-session=payload.signature" },
+      },
+    ),
+    {
+      ENVIRONMENT: "test",
+      NODE_ENV: "test",
+      PLAYWRIGHT_TEST_AUTH: "true",
+    } as AppEnv["Bindings"],
+    executionCtx,
+    loadSessionApp,
+  );
+
+  expect(enabledTestSession.status).toBe(404);
+  expect(loadSessionApp).toHaveBeenCalledTimes(2);
+  expect(sessionFetch).toHaveBeenCalledTimes(2);
+});
+
+test("answers crypto payment confirmation preflight before shard loading", async () => {
+  const env = { ENVIRONMENT: "staging" } as AppEnv["Bindings"];
+  const executionCtx = {
+    waitUntil: () => undefined,
+    passThroughOnException: () => undefined,
+  } as unknown as ExecutionContext;
+  const loadFullApp = mock(async () => {
+    throw new Error("payment shard must not load for preflight");
+  });
+
+  const response = await dispatchFullApp(
+    new Request(
+      "https://api.eliza.app/api/crypto/payments/missing-id/confirm",
+      {
+        method: "OPTIONS",
+        headers: {
+          origin: "https://staging.eliza-app.pages.dev",
+          "access-control-request-method": "POST",
+          "access-control-request-headers": "content-type, x-eliza-csrf",
+        },
+      },
+    ),
+    env,
+    executionCtx,
+    loadFullApp,
+  );
+
+  expect(response.status).toBe(204);
+  expect(response.headers.get("access-control-allow-origin")).toBe(
+    "https://staging.eliza-app.pages.dev",
+  );
+  expect(response.headers.get("access-control-allow-credentials")).toBe("true");
+  expect(response.headers.get("access-control-allow-methods")).toContain(
+    "POST",
+  );
+  expect(response.headers.get("access-control-allow-headers")).toContain(
+    "X-Eliza-CSRF",
+  );
+  expect(loadFullApp).not.toHaveBeenCalled();
+});
+
 test("dispatches provider webhooks without full-app bootstrap", async () => {
-  const traceId = "11111111-1111-4111-8111-111111111111";
+  const traceId = "11111111111141118111111111111111";
   const env = {
     ENVIRONMENT: "test",
     NODE_ENV: "test",
@@ -101,22 +286,36 @@ test("matches only supported provider webhook routes", () => {
   expect(isElizaAppWebhookPath("/api/eliza-app/webhook")).toBe(false);
 });
 
-test("matches only the managed Discord gateway route", () => {
+test("matches only dependency-bounded managed Discord gateway routes", () => {
+  expect(isInternalDiscordGatewayPath("/api/internal/auth/token")).toBe(true);
   expect(
     isInternalDiscordGatewayPath("/api/internal/discord/eliza-app/messages"),
+  ).toBe(true);
+  expect(
+    isInternalDiscordGatewayPath(
+      "/api/internal/discord/eliza-app/pending-greetings",
+    ),
   ).toBe(true);
   expect(
     isInternalDiscordGatewayPath("/api/internal/discord/eliza-app/messages/"),
   ).toBe(false);
   expect(
     isInternalDiscordGatewayPath(
+      "/api/internal/discord/eliza-app/pending-greetings/",
+    ),
+  ).toBe(false);
+  expect(
+    isInternalDiscordGatewayPath(
       "/api/internal/discord/eliza-app/messages/admin",
     ),
   ).toBe(false);
+  expect(isInternalDiscordGatewayPath("/api/internal/auth/token/refresh")).toBe(
+    false,
+  );
 });
 
 test("dispatches managed Discord turns without full-app bootstrap", async () => {
-  const traceId = "33333333-3333-4333-8333-333333333333";
+  const traceId = "33333333333343338333333333333333";
   const env = {
     ENVIRONMENT: "test",
     NODE_ENV: "test",
@@ -170,6 +369,90 @@ test("dispatches managed Discord turns without full-app bootstrap", async () => 
   );
   expect(warmResponse.headers.get("server-timing")).not.toContain(
     "discord_module_init",
+  );
+});
+
+test("dispatches proactive greeting claims without full-app bootstrap", async () => {
+  const traceId = "44444444444444444444444444444444";
+  const env = {
+    ENVIRONMENT: "test",
+    NODE_ENV: "test",
+    REDIS_RATE_LIMITING: "false",
+    CACHE_ENABLED: "false",
+    THIN_INFERENCE_ENTRY_ENABLED: "false",
+    BLOB: {},
+  } as unknown as AppEnv["Bindings"];
+  const executionCtx = {
+    waitUntil: () => undefined,
+    passThroughOnException: () => undefined,
+  } as unknown as ExecutionContext;
+
+  const response = await cloudApiWorker.fetch(
+    new Request(
+      "https://api.eliza.app/api/internal/discord/eliza-app/pending-greetings",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-eliza-trace-id": traceId,
+        },
+        body: JSON.stringify({ action: "claim" }),
+      },
+    ),
+    env,
+    executionCtx,
+  );
+
+  expect(response.status).toBe(401);
+  expect(response.headers.get("x-eliza-trace-id")).toBe(traceId);
+  expect(response.headers.get("x-eliza-discord-path")).toBe("thin");
+  expect(response.headers.get("server-timing")).toContain(
+    "discord_entry_dispatch",
+  );
+  expect(response.headers.get("server-timing")).not.toContain(
+    "full_app_dispatch",
+  );
+});
+
+test("dispatches gateway token exchange without full-app bootstrap", async () => {
+  const traceId = "55555555555555555555555555555555";
+  const env = {
+    ENVIRONMENT: "test",
+    NODE_ENV: "test",
+    REDIS_RATE_LIMITING: "false",
+    CACHE_ENABLED: "false",
+    THIN_INFERENCE_ENTRY_ENABLED: "false",
+    BLOB: {},
+  } as unknown as AppEnv["Bindings"];
+  const executionCtx = {
+    waitUntil: () => undefined,
+    passThroughOnException: () => undefined,
+  } as unknown as ExecutionContext;
+
+  const response = await cloudApiWorker.fetch(
+    new Request("https://api.eliza.app/api/internal/auth/token", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-eliza-trace-id": traceId,
+      },
+      body: JSON.stringify({
+        pod_name: "gateway-test",
+        service: "gateway-discord",
+      }),
+    }),
+    env,
+    executionCtx,
+  );
+
+  expect(response.status).toBe(503);
+  expect(response.headers.get("x-eliza-trace-id")).toBe(traceId);
+  expect(response.headers.get("x-eliza-discord-path")).toBe("thin");
+  expect(response.headers.get("server-timing")).toContain(
+    "discord_entry_dispatch",
+  );
+  expect(response.headers.get("server-timing")).not.toContain(
+    "full_app_dispatch",
   );
 });
 
@@ -232,7 +515,7 @@ test("preserves provider authentication on the thin webhook path", async () => {
 });
 
 test("correlates and times dispatch outside full-app middleware", async () => {
-  const traceId = "22222222-2222-4222-8222-222222222222";
+  const traceId = "22222222222242228222222222222222";
   const env = {
     ENVIRONMENT: "test",
     NODE_ENV: "test",
@@ -1009,7 +1292,7 @@ describe("cloud-api worker entrypoint", () => {
     );
 
     expect(target?.toString()).toBe(
-      "https://develop.eliza-app.pages.dev/dashboard?tab=agents",
+      "https://staging.eliza-app.pages.dev/dashboard?tab=agents",
     );
   });
 
@@ -1029,7 +1312,7 @@ describe("cloud-api worker entrypoint", () => {
     );
 
     expect(target?.toString()).toBe(
-      "https://develop.eliza-app.pages.dev/?runtime=first-run",
+      "https://staging.eliza-app.pages.dev/?runtime=first-run",
     );
   });
 
@@ -1174,7 +1457,7 @@ describe("cloud-api worker entrypoint", () => {
     expect(text).not.toContain("never-return-this-webhook-secret");
   });
 
-  test("reports only value-free staging session cutover readiness", async () => {
+  test("reports configuration separately without inferring operational readiness", async () => {
     const response = await cloudApiWorker.fetch(
       new Request("https://api-staging.eliza.app/api/health", {
         headers: { host: "api-staging.eliza.app" },
@@ -1206,8 +1489,9 @@ describe("cloud-api worker entrypoint", () => {
       commit: "cutover-commit",
       environment: "staging",
       stagingSessionExchange: {
+        configured: true,
         enabled: true,
-        ready: true,
+        ready: false,
         version: "v1",
       },
     });
@@ -1237,7 +1521,12 @@ describe("cloud-api worker entrypoint", () => {
       {} as never,
     );
     expect(await malformedResponse.json()).toMatchObject({
-      stagingSessionExchange: { enabled: true, ready: false, version: "v1" },
+      stagingSessionExchange: {
+        configured: false,
+        enabled: true,
+        ready: false,
+        version: "v1",
+      },
     });
 
     const serviceCollisionResponse = await cloudApiWorker.fetch(
@@ -1264,7 +1553,45 @@ describe("cloud-api worker entrypoint", () => {
       {} as never,
     );
     expect(await serviceCollisionResponse.json()).toMatchObject({
-      stagingSessionExchange: { enabled: true, ready: false, version: "v1" },
+      stagingSessionExchange: {
+        configured: false,
+        enabled: true,
+        ready: false,
+        version: "v1",
+      },
+    });
+
+    const disabledConfiguredResponse = await cloudApiWorker.fetch(
+      new Request("https://api-staging.eliza.app/api/health", {
+        headers: { host: "api-staging.eliza.app" },
+      }),
+      {
+        NODE_ENV: "production",
+        ENVIRONMENT: "staging",
+        STAGING_SESSION_EXCHANGE_ENABLED: "false",
+        STAGING_SESSION_EXCHANGE_VERSION: "v1",
+        STAGING_SESSION_EXCHANGE_SIGNING_SECRET:
+          "never-return-this-secret-0123456789abcdef",
+        ELIZA_SERVICE_JWT_SECRET:
+          "separate-service-bridge-secret-0123456789abcdef",
+        STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID: "staging-qa-v1-test",
+        STEWARD_TENANT_ID: "staging-tenant",
+        STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS:
+          "33333333-3333-4333-8333-333333333333",
+        STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS:
+          "11111111-1111-4111-8111-111111111111",
+        STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS:
+          "22222222-2222-4222-8222-222222222222",
+      } as never,
+      {} as never,
+    );
+    expect(await disabledConfiguredResponse.json()).toMatchObject({
+      stagingSessionExchange: {
+        configured: true,
+        enabled: false,
+        ready: false,
+        version: "v1",
+      },
     });
   });
 
@@ -1485,7 +1812,7 @@ describe("cloud-api worker entrypoint", () => {
     expect(config.migrations).toBeUndefined();
   });
 
-  test("binds the global native limiter in every Worker environment and keeps inference routes gate-free", async () => {
+  test("binds the global native limiter for general routes and keeps inference shells gate-free", async () => {
     type RateLimitBinding = {
       name?: string;
       simple?: { limit?: number; period?: number };
@@ -1516,8 +1843,8 @@ describe("cloud-api worker entrypoint", () => {
 
     // #17805 retired the per-route native gates from the generative hot path:
     // rate policy rides the IAC v2 admission snapshot through the org-level
-    // limiter. The inference route sources must stay free of per-route native
-    // bindings, while both Worker app builders keep the global gate.
+    // limiter. The inference route sources and thin shell must stay free of
+    // native bindings, while the general bootstrap app keeps the global gate.
     const [
       chat,
       completions,
@@ -1539,6 +1866,6 @@ describe("cloud-api worker entrypoint", () => {
       expect(source).not.toContain("bindingName:");
     }
     expect(bootstrapApp).toContain('bindingName: "GLOBAL_RATE_LIMITER"');
-    expect(inferenceApp).toContain('bindingName: "GLOBAL_RATE_LIMITER"');
+    expect(inferenceApp).not.toContain('bindingName: "GLOBAL_RATE_LIMITER"');
   });
 });

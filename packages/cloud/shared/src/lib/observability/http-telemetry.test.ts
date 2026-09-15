@@ -18,49 +18,31 @@ import {
 } from "./http-telemetry";
 
 describe("HTTP telemetry", () => {
-  test("preserves an opaque caller trace id", () => {
+  test("adopts an exact lower-case 32-hex caller trace id", () => {
     const headers = new Headers({
-      [ELIZA_TRACE_ID_HEADER]: "123E4567-E89B-42D3-A456-426614174000",
+      [ELIZA_TRACE_ID_HEADER]: "0123456789abcdef0123456789abcdef",
     });
-    expect(resolveElizaTraceId(headers)).toBe("123e4567-e89b-42d3-a456-426614174000");
-  });
-
-  test("preserves UUIDv7 trace ids", () => {
-    const headers = new Headers({
-      [ELIZA_TRACE_ID_HEADER]: "01890F47-6C4A-7B2D-8F31-123456789ABC",
-    });
-    expect(resolveElizaTraceId(headers)).toBe("01890f47-6c4a-7b2d-8f31-123456789abc");
-  });
-
-  test("uses the W3C trace id when the application header is absent", () => {
-    const headers = new Headers({
-      traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
-    });
-    expect(resolveElizaTraceId(headers)).toBe("4bf92f3577b34da6a3ce929d0e0e4736");
+    expect(resolveElizaTraceId(headers)).toBe("0123456789abcdef0123456789abcdef");
   });
 
   test.each([
-    "00-00000000000000000000000000000000-00f067aa0ba902b7-01",
-    "00-4bf92f3577b34da6a3ce929d0e0e4736-0000000000000000-01",
-    "ff-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
-    "00-4BF92F3577B34DA6A3CE929D0E0E4736-00F067AA0BA902B7-01",
-    "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01-abcd",
-  ])("rejects invalid W3C v00 traceparent %s", (traceparent) => {
-    expect(resolveElizaTraceId(new Headers({ traceparent }))).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
-    );
-  });
-
-  test.each([
+    "123E4567-E89B-42D3-A456-426614174000",
+    "0123456789ABCDEF0123456789ABCDEF",
     "bad value\n",
     "customer-email@example.com",
     "turn_12345678",
-    "00000000000000000000000000000000",
-  ])("rejects caller-chosen trace text %s and generates a UUID", (traceId) => {
+  ])("mints rather than normalizing invalid caller trace text %s", (traceId) => {
     const headers = new Headers({ [ELIZA_TRACE_ID_HEADER]: traceId });
-    expect(resolveElizaTraceId(headers)).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
-    );
+    const resolved = resolveElizaTraceId(headers);
+    expect(resolved).toMatch(/^[0-9a-f]{32}$/);
+    expect(resolved).not.toBe(traceId);
+  });
+
+  test("mints instead of adopting a caller traceparent", () => {
+    const traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+    const resolved = resolveElizaTraceId(new Headers({ traceparent }));
+    expect(resolved).toMatch(/^[0-9a-f]{32}$/);
+    expect(resolved).not.toBe("4bf92f3577b34da6a3ce929d0e0e4736");
   });
 
   test.each([
@@ -107,8 +89,13 @@ describe("HTTP telemetry", () => {
     appendServerTiming(headers, [{ name: "cloud worker", durationMs: 8.126 }]);
     expect(headers.get("Server-Timing")).toBe("agent;dur=12, cloud_worker;dur=8.13");
 
-    setHttpTelemetryHeaders(headers, "turn_12345678", [], "https://app.elizacloud.ai");
-    expect(headers.get(ELIZA_TRACE_ID_HEADER)).toBe("turn_12345678");
+    setHttpTelemetryHeaders(
+      headers,
+      "0123456789abcdef0123456789abcdef",
+      [],
+      "https://app.elizacloud.ai",
+    );
+    expect(headers.get(ELIZA_TRACE_ID_HEADER)).toBe("0123456789abcdef0123456789abcdef");
     expect(headers.get("Timing-Allow-Origin")).toBe("https://app.elizacloud.ai");
   });
 
@@ -121,7 +108,7 @@ describe("HTTP telemetry", () => {
       reserveMs: 5,
       setupMs: 6.5,
     });
-    setGatewayPreforwardTelemetryHeaders(headers, "turn_12345678", snapshot);
+    setGatewayPreforwardTelemetryHeaders(headers, "0123456789abcdef0123456789abcdef", snapshot);
 
     expect(snapshot).toEqual({
       totalMs: 42.13,
@@ -196,7 +183,7 @@ describe("HTTP telemetry", () => {
         "Server-Timing": "provider_queue;dur=7",
       },
     });
-    const wrapped = withGatewayPreforwardTelemetry(provider, "turn_12345678", {
+    const wrapped = withGatewayPreforwardTelemetry(provider, "0123456789abcdef0123456789abcdef", {
       totalMs: 12,
       authMs: 3,
       middleMs: 4,
@@ -277,7 +264,7 @@ describe("HTTP telemetry", () => {
 
   test("copies every safe compatibility-route telemetry header", () => {
     const from = new Headers({
-      "X-Eliza-Trace-Id": "turn_12345678",
+      "X-Eliza-Trace-Id": "0123456789abcdef0123456789abcdef",
       "X-Eliza-Preforward-Ms": "total=12",
       "X-Eliza-Auth-Trace": "v=1;read=hit",
       "X-Eliza-Inference-Path": "passthrough",
@@ -289,12 +276,25 @@ describe("HTTP telemetry", () => {
 
     copyHttpTelemetryHeaders(from, to);
 
-    expect(to.get("X-Eliza-Trace-Id")).toBe("turn_12345678");
+    expect(to.get("X-Eliza-Trace-Id")).toBe("0123456789abcdef0123456789abcdef");
     expect(to.get("X-Eliza-Preforward-Ms")).toBe("total=12");
     expect(to.get("X-Eliza-Auth-Trace")).toBe("v=1;read=hit");
     expect(to.get("Server-Timing")).toBe("gateway_preforward;dur=12");
     expect(to.get("Timing-Allow-Origin")).toBe("https://app.elizacloud.ai");
     expect(to.get("X-Eliza-Inference-Path")).toBe("passthrough");
     expect(to.get("Authorization")).toBeNull();
+  });
+
+  test("does not copy an invalid trace id from a compatibility response", () => {
+    const from = new Headers({
+      "X-Eliza-Trace-Id": "123E4567-E89B-42D3-A456-426614174000",
+      "X-Eliza-Preforward-Ms": "total=12",
+    });
+    const to = new Headers();
+
+    copyHttpTelemetryHeaders(from, to);
+
+    expect(to.get("X-Eliza-Trace-Id")).toBeNull();
+    expect(to.get("X-Eliza-Preforward-Ms")).toBe("total=12");
   });
 });

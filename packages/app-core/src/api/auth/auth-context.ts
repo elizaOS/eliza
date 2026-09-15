@@ -7,13 +7,20 @@
  *   3. bootstrap-token bearer (delegates to existing
  *      `ensureAuthSessionOrBootstrap` semantics in `../auth.ts`).
  *
- * Hard rule: this helper fails closed on every error. A DB lookup throw, a
- * malformed cookie, a CSRF mismatch — all return null. We do NOT swallow an
- * error and pretend the request was authenticated.
+ * Hard rule: this helper fails closed on every error. By default a DB lookup
+ * throw, malformed cookie, or CSRF mismatch returns null. HTTP boundaries that
+ * distinguish infrastructure outages from invalid credentials may opt into
+ * propagating store failures so they can return a retryable 503 instead of a
+ * credential-invalidating 401. No failure ever authenticates the request.
  */
 
 import type http from "node:http";
-import type { RuntimeEnvRecord } from "@elizaos/shared";
+import {
+  isLoopbackBindHost,
+  isLoopbackRemoteAddress,
+  proxyClientHeaderBlocksLocalTrust,
+  type RuntimeEnvRecord,
+} from "@elizaos/shared";
 import type {
   AuthIdentityRow,
   AuthSessionRow,
@@ -43,6 +50,30 @@ export interface EnsureSessionOptions {
    * bootstrap bearer (i.e. anything outside the dedicated exchange route).
    */
   allowBootstrapBearer?: boolean;
+  /**
+   * `deny` preserves the general guard contract by translating store failures
+   * to an unauthenticated result. `throw` lets an outer transport boundary
+   * distinguish a temporary store outage from a genuine missing session.
+   */
+  storeFailureMode?: "deny" | "throw";
+}
+
+export const DESKTOP_LOOPBACK_SESSION_SCOPE = "desktop:loopback";
+
+function firstHeaderValue(value: string | string[] | undefined): string | null {
+  if (Array.isArray(value)) return value[0]?.trim() || null;
+  return value?.trim() || null;
+}
+
+function sessionAllowedForRequest(
+  session: AuthSessionRow,
+  req: Pick<http.IncomingMessage, "headers" | "socket">,
+): boolean {
+  if (!session.scopes.includes(DESKTOP_LOOPBACK_SESSION_SCOPE)) return true;
+  if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) return false;
+  if (proxyClientHeaderBlocksLocalTrust(req.headers)) return false;
+  const host = firstHeaderValue(req.headers.host);
+  return host !== null && isLoopbackBindHost(host);
 }
 
 /**
@@ -58,17 +89,21 @@ export async function ensureSessionForRequest(
   const { store } = options;
   const now = options.now ?? Date.now();
   const allowBootstrap = options.allowBootstrapBearer ?? true;
+  const handleStoreFailure = (error: unknown): null => {
+    if (options.storeFailureMode === "throw") throw error;
+    return null;
+  };
 
   // 1. cookie session
   const cookieSessionId = parseSessionCookie(req);
   if (cookieSessionId) {
     const session = await findActiveSession(store, cookieSessionId, now).catch(
-      () => null,
+      handleStoreFailure,
     );
-    if (session) {
+    if (session && sessionAllowedForRequest(session, req)) {
       const identity = await store
         .findIdentity(session.identityId)
-        .catch(() => null);
+        .catch(handleStoreFailure);
       if (identity) {
         return { session, identity, source: "cookie" };
       }
@@ -84,12 +119,12 @@ export async function ensureSessionForRequest(
   if (bearer) {
     // 2a. session-id bearer (machine sessions and SPA fallback).
     const session = await findActiveSession(store, bearer, now).catch(
-      () => null,
+      handleStoreFailure,
     );
-    if (session) {
+    if (session && sessionAllowedForRequest(session, req)) {
       const identity = await store
         .findIdentity(session.identityId)
-        .catch(() => null);
+        .catch(handleStoreFailure);
       if (identity) {
         return { session, identity, source: "bearer-session" };
       }

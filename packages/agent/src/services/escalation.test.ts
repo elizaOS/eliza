@@ -114,6 +114,7 @@ function makeRuntime(options?: {
   cacheGetError?: Error;
   cacheSetError?: Error;
   cacheDeleteError?: Error;
+  reportedErrors?: unknown[];
 }): {
   runtime: IAgentRuntime;
   cache: CacheStore;
@@ -129,6 +130,9 @@ function makeRuntime(options?: {
 
   const runtime = {
     agentId,
+    reportError: (_scope: string, error: unknown) => {
+      options?.reportedErrors?.push(error);
+    },
     character: { name: `agent-${agentId}` },
     sendHandlers,
     getSetting: (key: string) =>
@@ -302,12 +306,16 @@ describe("registerEscalationChannel", () => {
     ]);
   });
 
-  test("returns false when config load or save throws", () => {
+  test("exposes config load or save failures to the pairing caller", () => {
     configState.throwOnLoad = true;
-    expect(registerEscalationChannel("discord")).toBe(false);
+    expect(() => registerEscalationChannel("discord")).toThrow(
+      "could not be registered",
+    );
     configState.throwOnLoad = false;
     configState.throwOnSave = true;
-    expect(registerEscalationChannel("discord")).toBe(false);
+    expect(() => registerEscalationChannel("discord")).toThrow(
+      "could not be registered",
+    );
   });
 });
 
@@ -333,12 +341,14 @@ describe("EscalationService.startEscalation", () => {
   });
 
   test("coalesces a second start on the same agent into the active escalation", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const { runtime, cache } = makeRuntime();
     const first = await EscalationService.startEscalation(
       runtime,
       "reason 1",
       "first burst",
     );
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
     const second = await EscalationService.startEscalation(
       runtime,
       "reason 2",
@@ -351,6 +361,73 @@ describe("EscalationService.startEscalation", () => {
     expect((cache.get(CACHE_KEY) as { text: string }).text).toBe(
       "first burst\n---\nsecond burst",
     );
+    await vi.advanceTimersByTimeAsync(3 * 60_000);
+    expect(first.currentStep).toBe(1);
+  });
+
+  test("concurrent starts and coalescing preserve every message in the same durable escalation", async () => {
+    const { runtime, sends, cache } = makeRuntime({
+      handlers: ["client_chat"],
+    });
+    const states = await Promise.all([
+      EscalationService.startEscalation(runtime, "one", "first"),
+      EscalationService.startEscalation(runtime, "two", "second"),
+      EscalationService.startEscalation(runtime, "three", "third"),
+    ]);
+    expect(new Set(states.map((state) => state.id)).size).toBe(1);
+    expect(sends).toHaveLength(1);
+    expect(EscalationService.getActiveEscalationSync(runtime)?.text).toBe(
+      "first\n---\nsecond\n---\nthird",
+    );
+    expect(cache.get(CACHE_KEY)).toEqual(states[0]);
+    expect(states[0]?.reason).toBe("one; two; three");
+  });
+
+  test("start resumes a persisted escalation after process state is cleared", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { runtime, sends, cache } = makeRuntime({
+      handlers: ["client_chat"],
+    });
+    const initial = await EscalationService.startEscalation(
+      runtime,
+      "before restart",
+      "original message",
+    );
+    EscalationService._reset();
+    expect(cache.has(CACHE_KEY)).toBe(true);
+    expect(EscalationService.getActiveEscalationSync(runtime)).toBeNull();
+
+    const resumed = await EscalationService.startEscalation(
+      runtime,
+      "after restart",
+      "additional message",
+    );
+    expect(resumed.id).toBe(initial.id);
+    expect(sends).toHaveLength(1);
+    expect(EscalationService._hasPendingTimerBucket(AGENT_ID)).toBe(true);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(sends).toHaveLength(2);
+    expect(sends[1]?.content.text).toBe(
+      "original message\n---\nadditional message",
+    );
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(sends).toHaveLength(3);
+    expect(cache.has(CACHE_KEY)).toBe(false);
+    expect(EscalationService.getActiveEscalationSync(runtime)).toBeNull();
+    expect(EscalationService._hasPendingTimerBucket(AGENT_ID)).toBe(false);
+  });
+
+  test("a cache read failure during start cannot overwrite a persisted escalation", async () => {
+    const { runtime, sends, cache } = makeRuntime({
+      cacheGetError: new Error("cache down"),
+    });
+    const persisted = { text: "unavailable prior state" };
+    cache.set(CACHE_KEY, persisted);
+    await expect(
+      EscalationService.startEscalation(runtime, "new", "replacement"),
+    ).rejects.toMatchObject({ code: "ESCALATION_LOAD_FAILED" });
+    expect(cache.get(CACHE_KEY)).toEqual(persisted);
+    expect(sends).toEqual([]);
   });
 
   test("falls through a failed first channel and records the first successful send", async () => {
@@ -457,22 +534,70 @@ describe("EscalationService.startEscalation", () => {
     expect(skipped.channelsSent).toEqual([]);
   });
 
-  test("still returns state when cache persist throws", async () => {
-    const { runtime } = makeRuntime({
-      cacheSetError: new Error("cache full"),
+  test("rejects an initial cache failure before publishing or delivering an escalation", async () => {
+    const cause = new Error("cache full");
+    const { runtime, sends } = makeRuntime({
+      cacheSetError: cause,
+      handlers: ["client_chat"],
     });
-    const state = await EscalationService.startEscalation(
-      runtime,
-      "persist",
-      "ok",
-    );
-    expect(state.resolved).toBe(false);
-    expect(EscalationService.getActiveEscalationSync(runtime)?.id).toBe(
-      state.id,
-    );
+    await expect(
+      EscalationService.startEscalation(runtime, "persist", "ping"),
+    ).rejects.toMatchObject({
+      code: "ESCALATION_PERSIST_FAILED",
+      cause,
+      context: { deliveryAttempted: false },
+    });
+    expect(sends).toEqual([]);
+    expect(EscalationService.getActiveEscalationSync(runtime)).toBeNull();
+    expect(EscalationService._hasPendingTimerBucket(AGENT_ID)).toBe(false);
   });
 
-  test("does not schedule a follow-up when there is one channel and maxRetries is 1", async () => {
+  test("a failed coalescing write preserves the previous durable and visible message", async () => {
+    const options: { cacheSetError?: Error } = {};
+    const { runtime, cache } = makeRuntime(options);
+    const state = await EscalationService.startEscalation(
+      runtime,
+      "first",
+      "original",
+    );
+    options.cacheSetError = new Error("cache full");
+    await expect(
+      EscalationService.startEscalation(runtime, "second", "new text"),
+    ).rejects.toMatchObject({ code: "ESCALATION_PERSIST_FAILED" });
+    expect(state.text).toBe("original");
+    expect(state.reason).toBe("first");
+    expect(cache.get(CACHE_KEY)).toEqual(state);
+    options.cacheSetError = undefined;
+    await EscalationService.startEscalation(runtime, "second", "new text");
+    expect(state.text).toBe("original\n---\nnew text");
+  });
+
+  test("a post-delivery cache failure exposes the delivery attempt and retains its receipt state", async () => {
+    const options: Parameters<typeof makeRuntime>[0] = {
+      handlers: ["client_chat"],
+    };
+    options.sendImpl = () => {
+      options.cacheSetError = new Error("cache failed after send");
+      return deliveredOutcome();
+    };
+    const { runtime, sends, cache } = makeRuntime(options);
+    await expect(
+      EscalationService.startEscalation(runtime, "persist", "ping"),
+    ).rejects.toMatchObject({
+      code: "ESCALATION_PERSIST_FAILED",
+      context: { deliveryAttempted: true },
+    });
+    expect(sends).toHaveLength(1);
+    expect(
+      EscalationService.getActiveEscalationSync(runtime)?.channelsSent,
+    ).toEqual(["client_chat"]);
+    expect(
+      (cache.get(CACHE_KEY) as { channelsSent: string[] }).channelsSent,
+    ).toEqual([]);
+    expect(EscalationService._hasPendingTimerBucket(AGENT_ID)).toBe(true);
+  });
+
+  test("a single attempt still schedules its final acknowledgment check", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     configState.current = {
       agents: {
@@ -481,7 +606,9 @@ describe("EscalationService.startEscalation", () => {
     };
     const { runtime } = makeRuntime();
     await EscalationService.startEscalation(runtime, "once", "no retry");
-    expect(vi.getTimerCount()).toBe(0);
+    expect(vi.getTimerCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(EscalationService.getActiveEscalationSync(runtime)).toBeNull();
     expect(EscalationService._hasPendingTimerBucket(AGENT_ID)).toBe(false);
   });
 
@@ -555,7 +682,7 @@ describe("EscalationService.checkEscalation", () => {
     expect(state.currentStep).toBe(1);
   });
 
-  test("continues retrying when room lookup throws", async () => {
+  test("does not infer an unanswered owner message when room lookup fails", async () => {
     const { runtime } = makeRuntime({
       roomsError: new Error("rooms unavailable"),
     });
@@ -564,9 +691,11 @@ describe("EscalationService.checkEscalation", () => {
       "rooms",
       "ping",
     );
-    await EscalationService.checkEscalation(runtime, state.id);
+    await expect(
+      EscalationService.checkEscalation(runtime, state.id),
+    ).rejects.toThrow("rooms unavailable");
     expect(state.resolved).toBe(false);
-    expect(state.currentStep).toBe(1);
+    expect(state.currentStep).toBe(0);
   });
 
   test("gives up once currentStep reaches maxRetries and drops the cache row", async () => {
@@ -646,11 +775,19 @@ describe("EscalationService.resolve, cache, and rehydrate", () => {
   });
 
   test("resolveEscalation without a runtime scans every agent bucket", async () => {
-    const { runtime } = makeRuntime();
+    const { runtime, cache } = makeRuntime();
     const state = await EscalationService.startEscalation(runtime, "scan", "x");
     await EscalationService.resolveEscalation(state.id);
     expect(EscalationService.getActiveEscalationSync(runtime)).toBeNull();
     expect(EscalationService._hasPendingTimerBucket(AGENT_ID)).toBe(false);
+    expect(cache.has(CACHE_KEY)).toBe(false);
+    const next = await EscalationService.startEscalation(
+      runtime,
+      "new",
+      "new message",
+    );
+    expect(next.id).not.toBe(state.id);
+    expect(next.text).toBe("new message");
   });
 
   test("resolveEscalation is a no-op when the escalation is already resolved", async () => {
@@ -692,11 +829,13 @@ describe("EscalationService.resolve, cache, and rehydrate", () => {
     );
   });
 
-  test("getActiveEscalation returns null when cache load throws", async () => {
+  test("getActiveEscalation exposes cache load failures instead of reporting no escalation", async () => {
     const { runtime } = makeRuntime({
       cacheGetError: new Error("cache down"),
     });
-    expect(await EscalationService.getActiveEscalation(runtime)).toBeNull();
+    await expect(
+      EscalationService.getActiveEscalation(runtime),
+    ).rejects.toMatchObject({ code: "ESCALATION_LOAD_FAILED" });
   });
 
   test("rehydrateFromDb inserts missing cache state once and ignores an empty cache", async () => {
@@ -721,7 +860,7 @@ describe("EscalationService.resolve, cache, and rehydrate", () => {
     );
   });
 
-  test("_resetDb deletes the agent cache row even when deleteCache throws", async () => {
+  test("_resetDb deletes the agent cache row and exposes teardown failures", async () => {
     const ok = makeRuntime();
     ok.cache.set(CACHE_KEY, { id: "x" });
     await EscalationService._resetDb(ok.runtime);
@@ -730,12 +869,12 @@ describe("EscalationService.resolve, cache, and rehydrate", () => {
     const failing = makeRuntime({
       cacheDeleteError: new Error("cannot delete"),
     });
-    await expect(
-      EscalationService._resetDb(failing.runtime),
-    ).resolves.toBeUndefined();
+    await expect(EscalationService._resetDb(failing.runtime)).rejects.toThrow(
+      "cannot delete",
+    );
   });
 
-  test("getActiveEscalationSync skips resolved leftovers still sitting in the map", async () => {
+  test("exhausting retries releases the agent's active state bucket", async () => {
     configState.current = {
       agents: {
         defaults: { escalation: { channels: ["client_chat"], maxRetries: 1 } },
@@ -749,13 +888,13 @@ describe("EscalationService.resolve, cache, and rehydrate", () => {
     );
     await EscalationService.checkEscalation(runtime, state.id);
     expect(state.resolved).toBe(true);
-    expect(EscalationService._hasActiveEscalationBucket(AGENT_ID)).toBe(true);
+    expect(EscalationService._hasActiveEscalationBucket(AGENT_ID)).toBe(false);
     expect(EscalationService.getActiveEscalationSync(runtime)).toBeNull();
   });
 });
 
 describe("EscalationService timers", () => {
-  test("scheduled check advances the step and clears the timer bucket when it does not reschedule", async () => {
+  test("the final scheduled check clears exhausted state without sending again", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     configState.current = {
       agents: {
@@ -768,7 +907,9 @@ describe("EscalationService timers", () => {
         },
       },
     };
-    const { runtime } = makeRuntime();
+    const { runtime, sends, cache } = makeRuntime({
+      handlers: ["client_chat"],
+    });
     const state = await EscalationService.startEscalation(
       runtime,
       "timer",
@@ -778,20 +919,68 @@ describe("EscalationService timers", () => {
 
     await vi.advanceTimersByTimeAsync(60_000);
 
+    expect(sends).toHaveLength(2);
     expect(state.currentStep).toBe(1);
     expect(state.resolved).toBe(false);
+    expect(EscalationService._hasPendingTimerBucket(AGENT_ID)).toBe(true);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(state.resolved).toBe(true);
+    expect(sends).toHaveLength(2);
+    expect(cache.has(CACHE_KEY)).toBe(false);
+    expect(EscalationService.getActiveEscalationSync(runtime)).toBeNull();
     expect(EscalationService._hasPendingTimerBucket(AGENT_ID)).toBe(false);
   });
 
-  test("config load failure during start still uses the client_chat default", async () => {
+  test("config load failure rejects before selecting default delivery channels", async () => {
     configState.throwOnLoad = true;
-    const { runtime } = makeRuntime();
+    const { runtime, sends } = makeRuntime();
+    await expect(
+      EscalationService.startEscalation(runtime, "no config", "x"),
+    ).rejects.toMatchObject({ code: "ESCALATION_CONFIG_FAILED" });
+    expect(sends).toEqual([]);
+    expect(EscalationService.getActiveEscalationSync(runtime)).toBeNull();
+  });
+
+  test("scheduled lookup failures remain observable and retry after storage recovers", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const options = {
+      roomsError: new Error("rooms unavailable") as Error | undefined,
+      reportedErrors: [] as unknown[],
+    };
+    const { runtime } = makeRuntime(options);
     const state = await EscalationService.startEscalation(
       runtime,
-      "no config",
-      "x",
+      "retry",
+      "ping",
     );
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(options.reportedErrors).toEqual([options.roomsError]);
+    expect(state.currentStep).toBe(0);
+    expect(EscalationService._hasPendingTimerBucket(AGENT_ID)).toBe(true);
+    options.roomsError = undefined;
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(state.currentStep).toBe(1);
+  });
+
+  test("failed resolution leaves its active state and timer available for a durable retry", async () => {
+    const options: { cacheDeleteError?: Error } = {};
+    const { runtime, cache } = makeRuntime(options);
+    const state = await EscalationService.startEscalation(
+      runtime,
+      "resolve",
+      "ping",
+    );
+    options.cacheDeleteError = new Error("cannot delete");
+    await expect(
+      EscalationService.resolveEscalation(state.id, runtime),
+    ).rejects.toMatchObject({ code: "ESCALATION_PERSIST_FAILED" });
     expect(state.resolved).toBe(false);
-    expect(state.channelsSent).toEqual([]);
+    expect(cache.has(CACHE_KEY)).toBe(true);
+    expect(EscalationService._hasPendingTimerBucket(AGENT_ID)).toBe(true);
+    options.cacheDeleteError = undefined;
+    await EscalationService.resolveEscalation(state.id, runtime);
+    expect(cache.has(CACHE_KEY)).toBe(false);
+    expect(EscalationService.getActiveEscalationSync(runtime)).toBeNull();
+    expect(EscalationService._hasPendingTimerBucket(AGENT_ID)).toBe(false);
   });
 });

@@ -6,6 +6,12 @@
  */
 
 export type CalendarViewMode = "day" | "week" | "month";
+export interface CalendarIssue {
+  kind: string;
+  message: string;
+  retryable: boolean;
+  upgradeRequired: boolean;
+}
 export type CalendarSurfaceStatus =
   | "loading"
   | "empty"
@@ -21,6 +27,7 @@ export interface UseCalendarWeekResult {
   status: CalendarSurfaceStatus;
   loading: boolean;
   refreshing: boolean;
+  issue: CalendarIssue | null;
   error: string | null;
   viewMode: CalendarViewMode;
   setViewMode: (mode: CalendarViewMode) => void;
@@ -28,6 +35,7 @@ export interface UseCalendarWeekResult {
   windowStart: Date;
   windowEnd: Date;
   refresh: () => Promise<void>;
+  goToDate: (date: Date) => void;
   goToToday: () => void;
   goPrevious: () => void;
   goNext: () => void;

@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import * as React from "react";
 import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { ScrollArea } from "../../components/ui/scroll-area";
 import {
@@ -26,7 +28,7 @@ import {
 } from "../../components/ui/select";
 import { Skeleton } from "../../components/ui/skeleton";
 import { cn } from "../lib/utils";
-import { BrandButton, BrandCard } from "./brand";
+import { CornerBrackets } from "./brand/corner-brackets";
 
 type BadgeVariant = React.ComponentProps<typeof Badge>["variant"];
 type BadgeTone = React.ComponentProps<typeof Badge>["tone"];
@@ -236,7 +238,8 @@ export function LogViewer({
   }, [lines]);
 
   return (
-    <BrandCard className={cn("relative ", className)} cornerSize="sm">
+    <Card variant="brand" className={cn("relative ", className)}>
+      <CornerBrackets size="sm" />
       <div className="relative z-10 space-y-6">
         <div className="flex flex-col gap-4 border-b border-border pb-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -292,7 +295,7 @@ export function LogViewer({
               </Select>
             )}
             {onToggleStreaming && (
-              <BrandButton
+              <Button
                 aria-label={
                   streamingTitle ??
                   (streaming?.active ? "Stop streaming logs" : "Stream logs")
@@ -309,10 +312,10 @@ export function LogViewer({
                 ) : (
                   <WifiOff className="size-4" />
                 )}
-              </BrandButton>
+              </Button>
             )}
             {onRefresh && (
-              <BrandButton
+              <Button
                 aria-label={refreshTitle}
                 variant="outline"
                 size="sm"
@@ -322,10 +325,10 @@ export function LogViewer({
                 <RefreshCw
                   className={cn("size-4", loading && "animate-spin")}
                 />
-              </BrandButton>
+              </Button>
             )}
             {onCopyAll && (
-              <BrandButton
+              <Button
                 aria-label={copyTitle}
                 variant="outline"
                 size="sm"
@@ -334,10 +337,10 @@ export function LogViewer({
                 title={copyTitle}
               >
                 <Copy className="size-4" />
-              </BrandButton>
+              </Button>
             )}
             {onDownload && (
-              <BrandButton
+              <Button
                 aria-label={downloadTitle}
                 variant="outline"
                 size="sm"
@@ -346,7 +349,7 @@ export function LogViewer({
                 title={downloadTitle}
               >
                 <Download className="size-4" />
-              </BrandButton>
+              </Button>
             )}
           </div>
         </div>
@@ -422,7 +425,7 @@ export function LogViewer({
             </p>
             <p className="text-xs text-white/60">{error}</p>
             {showRetryOnError && onRetry && (
-              <BrandButton
+              <Button
                 variant="outline"
                 size="sm"
                 onClick={onRetry}
@@ -430,7 +433,7 @@ export function LogViewer({
               >
                 <RefreshCw className="mr-2 size-4" />
                 {retryLabel}
-              </BrandButton>
+              </Button>
             )}
           </div>
         ) : !hasData ? (
@@ -521,7 +524,7 @@ export function LogViewer({
                     );
                   })()}
                   {onCopyEntry && (
-                    <BrandButton
+                    <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => onCopyEntry(entry)}
@@ -529,7 +532,7 @@ export function LogViewer({
                       title="Copy log line"
                     >
                       <Copy className="size-3" />
-                    </BrandButton>
+                    </Button>
                   )}
                 </div>
               ))}
@@ -562,6 +565,6 @@ export function LogViewer({
           </div>
         )}
       </div>
-    </BrandCard>
+    </Card>
   );
 }

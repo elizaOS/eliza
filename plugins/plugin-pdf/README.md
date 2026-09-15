@@ -44,6 +44,20 @@ const pdfService = runtime.getService<PdfService>(ServiceType.PDF);
 
 ### Methods
 
+**`extractCompleteDocument(pdfBuffer, options?): Promise<PdfCompleteDocument>`**
+
+Use this contract when every page must be accounted for. It renders every page
+for strict `IMAGE_DESCRIPTION` transcription, then asks vision to reconcile the
+rendered page with complete flattened native text, valid positioned native text
+items, and optional OCR evidence. The service preserves each evidence channel
+with page provenance; it never treats native text alone as proof that graphical,
+handwritten, or layout-dependent content was captured. A genuinely empty page
+is `blank` only when parser evidence and the rendered-page vision result agree.
+A render, model, OCR, reconciliation, or extraction failure rejects the whole
+document with the page number instead of returning partial content as complete.
+There is no semantic file-size or page-count ceiling. Callers may observe
+durable progress through `onPageComplete`.
+
 **`convertPdfToText(pdfBuffer: Buffer): Promise<string>`**
 
 Extracts all text from every page as a single cleaned string.
@@ -79,6 +93,12 @@ page's text. An oversized `endPage` on an in-range `startPage` is clamped down
 to the final page, so `{ startPage: 2, endPage: 99 }` on a 3-page document
 extracts pages 2–3.
 
+**`convertPdfToPositionedText(pdfBuffer: Buffer): Promise<PdfPositionedTextDocument>`**
+
+Returns every non-empty PDF text item with its page, text, x/y origin, width,
+and height. Use this for layout-sensitive documents such as multi-column
+calendars where flattening the page would lose which heading owns a row.
+
 **`getDocumentInfo(pdfBuffer: Buffer): Promise<PdfDocumentInfo>`**
 
 Returns full document information: page count, per-page dimensions + text, and metadata (title, author, subject, keywords, creator, producer, creation/modification dates).
@@ -91,8 +111,12 @@ Returns full document information: page count, per-page dimensions + text, and m
 PdfConversionResult   // { success, text?, pageCount?, error? }
 PdfExtractionOptions  // { startPage?, endPage?, preserveWhitespace?, cleanContent? }
 PdfPageInfo           // { pageNumber, width, height, text }
+PdfPositionedTextItem // { page, text, x, y, width, height }
+PdfPositionedTextDocument // { pageCount, items }
 PdfMetadata           // { title?, author?, subject?, keywords?, creator?, producer?, creationDate?, modificationDate? }
 PdfDocumentInfo       // { pageCount, metadata, text, pages }
+PdfCompletePage       // page, geometry, method, native/positioned/OCR/vision evidence, text
+PdfCompleteDocument   // { complete: true, pageCount, pages, text }
 ```
 
 ## Platform Support
@@ -102,4 +126,3 @@ Builds for both Node.js and browser environments. The `exports` field in `packag
 ## Dependencies
 
 - [`unpdf`](https://github.com/unjs/unpdf) — PDF parsing (wraps PDF.js for Node + browser)
-

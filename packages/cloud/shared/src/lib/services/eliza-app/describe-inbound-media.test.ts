@@ -167,7 +167,7 @@ describe("describeInboundImageMedia — enrichment path", () => {
 
     expect(description).toBe("a cat on a keyboard");
     expect(safeFetch.mock.calls.map((call) => call[0])).toEqual([URL_A, URL_B]);
-    expect(getLanguageModel).toHaveBeenCalledWith("gemma-4-31b");
+    expect(getLanguageModel).toHaveBeenCalledWith("qwen-3.8-27b");
     const options = generateText.mock.calls[0]?.[0] as {
       messages: Array<{
         role: string;
@@ -175,7 +175,7 @@ describe("describeInboundImageMedia — enrichment path", () => {
           { type: "text"; text: string } | { type: "image"; image: Uint8Array; mediaType: string }
         >;
       }>;
-      maxOutputTokens: number;
+      abortSignal: AbortSignal;
     };
     expect(options.messages).toHaveLength(1);
     const [textPart, imageA, imageB] = options.messages[0].content;
@@ -190,7 +190,7 @@ describe("describeInboundImageMedia — enrichment path", () => {
       image: bytesB,
       mediaType: "image/png",
     });
-    expect(options.maxOutputTokens).toBeGreaterThan(0);
+    expect(options.abortSignal).toBeInstanceOf(AbortSignal);
   });
 
   test("every media fetch forbids redirects so hops cannot leave the allowlist", async () => {

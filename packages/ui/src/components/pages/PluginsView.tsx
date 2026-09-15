@@ -1242,7 +1242,7 @@ function PluginListView({
         {visiblePlugins.length === 0 ? (
           <PagePanel.Empty
             variant="surface"
-            className="min-h-[18rem] px-5 py-10"
+            className="min-h-[18rem] px-5 py-10 [@media(max-height:480px)]:min-h-[9rem] [@media(max-height:480px)]:py-3"
             description={
               hasActivePluginFilters
                 ? `Try a different search or category filter for ${resultLabel}.`
@@ -1367,9 +1367,7 @@ function PluginListView({
         <PagePanel.ContentArea>
           <main className="chat-native-scrollbar flex h-full flex-col overflow-y-auto px-4 pb-32 pt-5 sm:px-6 lg:px-8">
             <header className="mb-5">
-              <h1 className="text-2xl font-semibold tracking-tight text-txt">
-                {pluginSectionTitle}
-              </h1>
+              <h1 className="sr-only">{pluginSectionTitle}</h1>
 
               <ChatSearchHint
                 noun="plugins"
@@ -1409,7 +1407,7 @@ function PluginListView({
             {sorted.length === 0 && isLoadingPlugins ? (
               <PagePanel.Loading
                 variant="surface"
-                className="min-h-[18rem] px-5 py-10"
+                className="min-h-[18rem] px-5 py-10 [@media(max-height:480px)]:min-h-[9rem] [@media(max-height:480px)]:py-3"
                 heading={t("pluginsview.LoadingTitle", {
                   defaultValue: "Loading {{label}}…",
                   label: label.toLowerCase(),
@@ -1418,7 +1416,7 @@ function PluginListView({
             ) : sorted.length === 0 && pluginsLoadError ? (
               <PagePanel.Empty
                 variant="surface"
-                className="min-h-[18rem] px-5 py-10"
+                className="min-h-[18rem] px-5 py-10 [@media(max-height:480px)]:min-h-[9rem] [@media(max-height:480px)]:py-3"
                 description={t("pluginsview.LoadFailedDesc", {
                   defaultValue:
                     "Couldn't load {{label}}: {{error}}. Check your connection and try again.",
@@ -1444,7 +1442,7 @@ function PluginListView({
             ) : sorted.length === 0 && pluginsLoaded ? (
               <PagePanel.Empty
                 variant="surface"
-                className="min-h-[18rem] px-5 py-10"
+                className="min-h-[18rem] px-5 py-10 [@media(max-height:480px)]:min-h-[9rem] [@media(max-height:480px)]:py-3"
                 description={t("pluginsview.NoneAvailableDesc", {
                   defaultValue: "No {{label}} are available right now.",
                   label: resultLabel,
@@ -1457,7 +1455,7 @@ function PluginListView({
             ) : sorted.length === 0 ? (
               <PagePanel.Loading
                 variant="surface"
-                className="min-h-[18rem] px-5 py-10"
+                className="min-h-[18rem] px-5 py-10 [@media(max-height:480px)]:min-h-[9rem] [@media(max-height:480px)]:py-3"
                 heading={t("pluginsview.LoadingTitle", {
                   defaultValue: "Loading {{label}}…",
                   label: label.toLowerCase(),
@@ -1466,7 +1464,7 @@ function PluginListView({
             ) : visiblePlugins.length === 0 ? (
               <PagePanel.Empty
                 variant="surface"
-                className="min-h-[16rem] px-5 py-10"
+                className="min-h-[16rem] px-5 py-10 [@media(max-height:480px)]:min-h-[9rem] [@media(max-height:480px)]:py-3"
                 description={
                   showSubgroupFilters
                     ? t("pluginsview.NoPluginsMatchCategory", {

@@ -2,8 +2,10 @@
  * Tests for the third-party registry tooling: `validateRegistryEntry` accepts a
  * well-formed entry and rejects the reserved @elizaos scope, non-GitHub repos,
  * unknown kinds, and unknown fields; `generateRegistry` produces the wire
- * format. Runs against the real entries/third-party sources on disk.
+ * format, while bundled mobile imports cannot trigger on-disk regeneration.
+ * Runs against the real entries/third-party sources on disk.
  */
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -164,6 +166,31 @@ describe("toGeneratedEntry", () => {
 });
 
 describe("on-disk entries", () => {
+  it.each([
+    {
+      name: "environment marker",
+      setup: 'process.env.ELIZA_DISABLE_DIRECT_RUN = "1";',
+    },
+    {
+      name: "mobile bundle marker",
+      setup: "globalThis.__ELIZA_MOBILE_BUNDLE__ = true;",
+    },
+  ])("does not regenerate when the $name is set", ({ setup }) => {
+    const generatePath = path.join(packageRoot, "src", "generate.ts");
+    const script = [
+      `process.argv[1] = ${JSON.stringify(generatePath)};`,
+      setup,
+      `await import(${JSON.stringify(generatePath)});`,
+    ].join("\n");
+
+    expect(
+      execFileSync(process.execPath, ["-e", script], {
+        encoding: "utf8",
+        timeout: 30_000,
+      }),
+    ).toBe("");
+  });
+
   it("all entries are valid and generate a complete registry", () => {
     const entries = loadThirdPartyEntries();
     expect(entries.length).toBeGreaterThan(0);

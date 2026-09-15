@@ -23,6 +23,7 @@ import { TurnControllerRegistry } from "../runtime/turn-controller";
 import { createMockRuntime } from "../testing/mock-runtime";
 import type { Room } from "../types/environment";
 import type { Memory } from "../types/memory";
+import { ModelType } from "../types/model";
 import {
 	asUUID,
 	ChannelType,
@@ -195,40 +196,63 @@ describe("connector turn failing on a provider context overflow", () => {
 		}
 	});
 
-	it("delivers the honest smaller-range reply for the raw live rejection", async () => {
-		const failure = makeLiveOverflowError();
-		const { runtime, result, visibleTexts } = await runTurn(
-			makeMessage(),
-			makeRoom(ChannelType.GROUP),
-			failure,
-		);
+	it.each([ChannelType.GROUP, ChannelType.VOICE_DM])(
+		"delivers the honest smaller-range reply after the raw provider rejection on %s",
+		async (channelType) => {
+			const failure = makeLiveOverflowError();
+			const message = makeMessage({ channelType });
+			const { runtime, result, deliveries, visibleTexts } = await runTurn(
+				message,
+				makeRoom(channelType),
+				failure,
+			);
 
-		expect(result.didRespond).toBe(true);
-		expect(visibleTexts).toHaveLength(1);
-		expect(visibleTexts[0]).toMatch(
-			/more context than my model can take in one call/i,
-		);
-		expect(visibleTexts[0]).toMatch(/smaller range|narrower/i);
-		expect(visibleTexts[0]).not.toMatch(/something went wrong/i);
-		expect(runtime.reportError).toHaveBeenCalledWith(
-			"MessageService.v5Runtime",
-			failure,
-			expect.objectContaining({ roomId: ROOM }),
-		);
-	});
+			// The request reached the model boundary unchanged before its rejection;
+			// this does not claim an estimated token budget rejected it pre-dispatch.
+			const stage1Call = vi
+				.mocked(runtime.useModel)
+				.mock.calls.find(
+					([modelType]) => modelType === ModelType.RESPONSE_HANDLER,
+				);
+			expect(stage1Call).toBeDefined();
+			expect(JSON.stringify(stage1Call?.[1])).toContain(message.content.text);
+			expect(result.didRespond).toBe(true);
+			expect(visibleTexts).toHaveLength(1);
+			expect(visibleTexts[0]).toMatch(
+				/more context than my model can take in one call/i,
+			);
+			expect(visibleTexts[0]).toMatch(/smaller range|narrower/i);
+			expect(visibleTexts[0]).not.toMatch(/something went wrong/i);
+			expect(
+				deliveries.find((content) => content.elizaSyntheticFailure === true),
+			).toMatchObject({
+				failureKind: "context_overflow",
+				transient: false,
+				doNotPersist: true,
+			});
+			expect(runtime.reportError).toHaveBeenCalledWith(
+				"MessageService.v5Runtime",
+				failure,
+				expect.objectContaining({ roomId: ROOM }),
+			);
+		},
+	);
 
-	it("delivers the same honest reply for the typed PROVIDER_CONTEXT_OVERFLOW error", async () => {
-		const { visibleTexts } = await runTurn(
-			makeMessage({ channelType: ChannelType.DM }),
-			makeRoom(ChannelType.DM),
-			makeTypedOverflowError(),
-		);
+	it.each([ChannelType.DM, ChannelType.VOICE_DM])(
+		"delivers the same honest reply for the typed PROVIDER_CONTEXT_OVERFLOW error on %s",
+		async (channelType) => {
+			const { visibleTexts } = await runTurn(
+				makeMessage({ channelType }),
+				makeRoom(channelType),
+				makeTypedOverflowError(),
+			);
 
-		expect(visibleTexts).toHaveLength(1);
-		expect(visibleTexts[0]).toMatch(
-			/more context than my model can take in one call/i,
-		);
-	});
+			expect(visibleTexts).toHaveLength(1);
+			expect(visibleTexts[0]).toMatch(
+				/more context than my model can take in one call/i,
+			);
+		},
+	);
 
 	it("marks the synthetic reply with the structural context_overflow kind", async () => {
 		const { deliveries } = await runTurn(

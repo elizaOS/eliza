@@ -107,6 +107,52 @@ describe("buildReplyTargetFromMessage", () => {
   });
 });
 
+describe("ChatMessage reply-generation failure recovery", () => {
+  it.each(["provider_issue", "rate_limited", "no_provider"] as const)(
+    "does not resend a settled action after %s, but permits explicitly retryable failures",
+    (kind) => {
+      const onRetry = vi.fn();
+      const terminalFailure = {
+        kind,
+        code: "GROUNDED_REPLY_GENERATION_FAILED",
+        message: "Reply unavailable; recorded action outcomes are preserved.",
+        transient: false,
+      };
+      const message = makeMessage({
+        role: "assistant",
+        text: terminalFailure.message,
+        failureKind: kind,
+        terminalFailure,
+      });
+      const view = render(
+        <ChatMessage appearance="glass" message={message} onRetry={onRetry} />,
+      );
+
+      expect(screen.getByText(terminalFailure.message)).not.toBeNull();
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+      expect(onRetry).not.toHaveBeenCalled();
+
+      view.rerender(
+        <ChatMessage
+          appearance="glass"
+          message={{
+            ...message,
+            failureKind: "provider_issue",
+            terminalFailure: {
+              ...terminalFailure,
+              kind: "provider_issue",
+              transient: true,
+            },
+          }}
+          onRetry={onRetry}
+        />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      expect(onRetry).toHaveBeenCalledExactlyOnceWith(message.id);
+    },
+  );
+});
+
 describe("ChatReplyPill", () => {
   it("identifies the target and fires cancel", () => {
     const onCancel = vi.fn();

@@ -28,6 +28,8 @@ const RUNTIME_BOUNDARIES = {
     /packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]services[\\/]shared-runtime[\\/]shared-eliza-runtime\.ts$/,
   sharedRuntimeChat:
     /packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]services[\\/]shared-runtime[\\/]shared-runtime-chat\.ts$/,
+  sharedRuntimeErrors:
+    /packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]services[\\/]shared-runtime[\\/]shared-runtime-errors\.ts$/,
   cachedAgentDates:
     /packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]services[\\/]shared-runtime[\\/]cached-agent-dates\.ts$/,
   tierUpgradeTarget:
@@ -54,6 +56,7 @@ const RUNTIME_STUBS = {
     }
   `,
   coreEdge: `
+    export class ElizaError extends Error {}
     export const ChannelType = {
       SELF: "SELF",
       DM: "DM",
@@ -146,6 +149,7 @@ const RUNTIME_STUBS = {
       },
     };
   `,
+  sharedRuntimeErrors: "export class SharedRuntimeTurnError extends Error {}",
   tierUpgradeTarget:
     "export async function findActivePersonalDedicatedTarget() { return null; }",
 } as const;
@@ -235,7 +239,7 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
           plugins: [{
             name: "shared-cutover-reminder-runtime-boundaries",
             setup(build) {
-              build.onResolve({ filter: /^@elizaos\\/core\\/edge$/ }, () => ({
+              build.onResolve({ filter: /^@elizaos\\/core(?:\\/edge)?$/ }, () => ({
                 path: "core-edge",
                 namespace: "shared-cutover-test-stub",
               }));
@@ -260,6 +264,10 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
               build.onLoad(
                 { filter: boundary(${JSON.stringify(RUNTIME_BOUNDARIES.sharedRuntimeChat.source)}) },
                 () => ({ loader: "ts", contents: ${JSON.stringify(RUNTIME_STUBS.sharedRuntimeChat)} }),
+              );
+              build.onLoad(
+                { filter: boundary(${JSON.stringify(RUNTIME_BOUNDARIES.sharedRuntimeErrors.source)}) },
+                () => ({ loader: "ts", contents: ${JSON.stringify(RUNTIME_STUBS.sharedRuntimeErrors)} }),
               );
               build.onLoad(
                 { filter: boundary(${JSON.stringify(RUNTIME_BOUNDARIES.cachedAgentDates.source)}) },
@@ -323,7 +331,6 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
         `Failed to bundle Shared cutover reminder test Worker:\n${bundleStderr}${bundleStdout}`,
       );
     }
-
     miniflare = new Miniflare({
       compatibilityDate: "2026-06-01",
       compatibilityFlags: ["nodejs_compat"],

@@ -1544,18 +1544,46 @@ describe("agent sandbox replacement attempts", () => {
 
   test("freezes exact live restore authority and never expires the replacement fence with its lease", async () => {
     const restoreAuthority = await seedRestoreLease();
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        activation_generation: RESTORE_ATTEMPT_ID,
+        activation_previous_generation: ACTIVATION_GENERATION,
+        activation_lifecycle_revision: 8n,
+        activation_purpose: "restore",
+        activation_backup_id: BACKUP_ID,
+        activation_backup_hash: BACKUP_DIGEST,
+      })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+    const exactStart = startInput({
+      operationKind: "provision",
+      lifecycleRevision: "8",
+      activationGeneration: RESTORE_ATTEMPT_ID,
+      restoreAuthority,
+    });
+    const exactContainerName = `agent-restore-${AGENT_ID}-${RESTORE_ATTEMPT_ID}`;
+    const exactLocator = (
+      stage: "intent" | "created" | "final",
+    ): AgentSandboxReplacementLocatorInput =>
+      locator(stage, {
+        sandboxId: exactContainerName,
+        containerName: exactContainerName,
+        vpnNodeName: null,
+        vpnRegistrationStartedAt: null,
+        previousVpnNodeId: null,
+        vpnNodeId: null,
+      });
     await expect(
-      startAgentSandboxReplacementAttempt(
-        startInput({
-          restoreAuthority: {
-            ...restoreAuthority,
-            expiresAt: new Date(restoreAuthority.expiresAt.getTime() + 1),
-          },
-        }),
-      ),
+      startAgentSandboxReplacementAttempt({
+        ...exactStart,
+        restoreAuthority: {
+          ...restoreAuthority,
+          expiresAt: new Date(restoreAuthority.expiresAt.getTime() + 1),
+        },
+      }),
     ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
 
-    const started = await startAgentSandboxReplacementAttempt(startInput({ restoreAuthority }));
+    const started = await startAgentSandboxReplacementAttempt(exactStart);
     expect(started.attempt).toMatchObject({
       restore_lease_id: RESTORE_LEASE_ID,
       restore_backup_id: BACKUP_ID,
@@ -1572,37 +1600,94 @@ describe("agent sandbox replacement attempts", () => {
       restoreAuthority.expiresAt.getTime(),
     );
 
+    await recordAgentSandboxReplacementIntent(reference(), exactLocator("intent"));
+    await expect(
+      recordAgentSandboxReplacementCleanupProven(reference(), CLEANUP_DIGEST),
+    ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
+    expect((await getAgentSandboxReplacementAttempt(reference()))?.state).toBe(
+      "in_flight_unresolved",
+    );
+    await dbWrite
+      .update(agentSandboxReplacementAttempts)
+      .set({ provider_started_at: new Date(), updated_at: new Date() })
+      .where(eq(agentSandboxReplacementAttempts.id, ATTEMPT_ID));
+    await expect(
+      recordAgentSandboxReplacementCreated(reference(), exactLocator("created")),
+    ).rejects.toThrow(/locked restore settlement boundary/i);
+    await expect(
+      recordAgentSandboxReplacementVpnRegistered(reference(), exactLocator("final")),
+    ).rejects.toThrow(/locked restore settlement boundary/i);
+    await expect(
+      recordAgentSandboxReplacementProviderSucceeded(
+        reference(),
+        exactLocator("final"),
+        PROVIDER_DIGEST,
+      ),
+    ).rejects.toThrow(/locked restore settlement boundary/i);
+
+    // The exact composed provider boundary is exercised by the restore
+    // quarantine suite. Seed its resulting immutable rows here so this test can
+    // continue proving lease expiry and lifecycle adoption independently.
+    const providerRecordedAt = new Date(Date.now() + 1);
+    await dbWrite
+      .update(agentSandboxReplacementAttempts)
+      .set({
+        locator_container_id: CONTAINER_ID,
+        locator_container_recorded_at: providerRecordedAt,
+        updated_at: providerRecordedAt,
+      })
+      .where(eq(agentSandboxReplacementAttempts.id, ATTEMPT_ID));
+    await dbWrite
+      .update(agentSandboxReplacementAttempts)
+      .set({
+        state: "provider_succeeded",
+        provider_succeeded_at: providerRecordedAt,
+        provider_receipt_digest: PROVIDER_DIGEST,
+        updated_at: providerRecordedAt,
+      })
+      .where(eq(agentSandboxReplacementAttempts.id, ATTEMPT_ID));
+    await expect(
+      recordAgentSandboxReplacementCreated(reference(), exactLocator("created")),
+    ).rejects.toThrow(/locked restore settlement boundary/i);
+    await expect(
+      recordAgentSandboxReplacementProviderSucceeded(
+        reference(),
+        exactLocator("final"),
+        PROVIDER_DIGEST,
+      ),
+    ).rejects.toThrow(/locked restore settlement boundary/i);
+
     await dbWrite
       .update(agentBackupRestoreLeases)
       .set({ expires_at: new Date(Date.now() - 1_000), released_at: new Date() })
       .where(eq(agentBackupRestoreLeases.id, RESTORE_LEASE_ID));
     expect((await getAgentSandboxReplacementAttempt(reference()))?.state).toBe(
-      "in_flight_unresolved",
+      "provider_succeeded",
     );
     await expect(
       startAgentSandboxReplacementAttempt(startInput({ attemptId: OTHER_ATTEMPT_ID })),
     ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
 
-    await persistSuccessfulProviderAttemptAfterExistingStart(ATTEMPT_ID);
+    const exactAdoption = adoptionInput(ATTEMPT_ID, {
+      operationKind: "provision",
+      lifecycleRevision: "8",
+      activationGeneration: RESTORE_ATTEMPT_ID,
+      restoreAuthority,
+      locator: exactLocator("final"),
+    });
     await expect(
       dbWrite.transaction((tx) =>
-        commitAgentSandboxReplacementLifecycleAdoptionInTransaction(
-          tx,
-          adoptionInput(ATTEMPT_ID, {
-            restoreAuthority: {
-              ...restoreAuthority,
-              expiresAt: new Date(restoreAuthority.expiresAt.getTime() + 1),
-            },
-          }),
-        ),
+        commitAgentSandboxReplacementLifecycleAdoptionInTransaction(tx, {
+          ...exactAdoption,
+          restoreAuthority: {
+            ...restoreAuthority,
+            expiresAt: new Date(restoreAuthority.expiresAt.getTime() + 1),
+          },
+        }),
       ),
     ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
     expect(
-      (
-        await recordAgentSandboxReplacementLifecycleCommitted(
-          adoptionInput(ATTEMPT_ID, { restoreAuthority }),
-        )
-      ).attempt.state,
+      (await recordAgentSandboxReplacementLifecycleCommitted(exactAdoption)).attempt.state,
     ).toBe("lifecycle_committed");
   });
 

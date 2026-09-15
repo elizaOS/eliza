@@ -50,11 +50,15 @@ export const FINAL_CHECK_KEYS = new Map(
       "name",
       "observerId",
       "provider",
+      "connectorProvider",
       "accountId",
       "operation",
       "resourceId",
       "state",
       "minCount",
+      "transitionGroupId",
+      "transitionIndex",
+      "trajectoryPhase",
     ],
     durableDraftObserved: [
       "type",
@@ -72,6 +76,7 @@ export const FINAL_CHECK_KEYS = new Map(
       "name",
       "observerId",
       "provider",
+      "connectorProvider",
       "accountId",
       "operation",
       "resourceId",
@@ -83,12 +88,15 @@ export const FINAL_CHECK_KEYS = new Map(
       "name",
       "observerId",
       "provider",
+      "connectorProvider",
       "accountId",
       "operation",
       "resourceId",
       "state",
       "minCount",
       "intervalCoversScenario",
+      "intervalEndsBeforeReferencedStage",
+      "trajectoryPhase",
     ],
     scheduledTaskObserved: [
       "type",
@@ -203,10 +211,30 @@ export const DEFAULT_SCENARIO_LANE = "live-only";
  */
 export const DEFAULT_SCENARIO_EXECUTION_PROFILE = "simulated";
 
+/** Conservative behavioral claim assumed for legacy scenario definitions. */
+export const DEFAULT_SCENARIO_EVIDENCE_SCOPE = "runner-fixture";
+
 const SCENARIO_LANES = new Set(["pr-deterministic", "live-only"]);
 const SCENARIO_EXECUTION_PROFILES = new Set([
   "simulated",
   "provider-qualified",
+]);
+const SCENARIO_EVIDENCE_SCOPES = new Set([
+  "runner-fixture",
+  "domain-contract",
+  "model-behavior",
+  "connector-contract",
+  "provider-certification",
+]);
+const SCENARIO_EVIDENCE_SCOPE_LABELS = new Map([
+  ["runner-fixture", "runner fixture (diagnostic only)"],
+  ["domain-contract", "domain contract (not provider evidence)"],
+  ["model-behavior", "model behavior (not provider evidence)"],
+  ["connector-contract", "connector contract (simulated provider boundary)"],
+  [
+    "provider-certification",
+    "provider certification (qualified external evidence)",
+  ],
 ]);
 const SCENARIO_TIERS = new Set(["T1", "T2", "T3", "T4"]);
 const SCENARIO_STATUSES = new Set(["active", "pending"]);
@@ -253,6 +281,39 @@ export function scenarioExecutionProfile(value) {
     );
   }
   return executionProfile;
+}
+
+/** Return whether a value belongs to the closed evidence-scope vocabulary. */
+export function isScenarioEvidenceScope(value) {
+  return typeof value === "string" && SCENARIO_EVIDENCE_SCOPES.has(value);
+}
+
+/** Resolve the behavioral claim without allowing provider trust inflation. */
+export function scenarioEvidenceScope(value) {
+  const evidenceScope = value?.evidenceScope ?? DEFAULT_SCENARIO_EVIDENCE_SCOPE;
+  if (!isScenarioEvidenceScope(evidenceScope)) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" has invalid evidenceScope "${evidenceScope}"; expected one of ${[...SCENARIO_EVIDENCE_SCOPES].join(", ")}`,
+    );
+  }
+  const executionProfile = scenarioExecutionProfile(value);
+  if (
+    (evidenceScope === "provider-certification") !==
+    (executionProfile === "provider-qualified")
+  ) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" has incompatible evidenceScope "${evidenceScope}" and executionProfile "${executionProfile}"; provider certification requires provider-qualified execution and provider-qualified execution requires provider-certification scope`,
+    );
+  }
+  return evidenceScope;
+}
+
+/** Return the report label that states the scope's trust limit explicitly. */
+export function scenarioEvidenceScopeLabel(value) {
+  if (!isScenarioEvidenceScope(value)) {
+    throw new Error(`invalid scenario evidence scope "${String(value)}"`);
+  }
+  return SCENARIO_EVIDENCE_SCOPE_LABELS.get(value);
 }
 
 /** Resolve and validate the optional persona-scenario complexity tier. */
@@ -674,6 +735,7 @@ export function scenario(value) {
     scenarioLane(value);
     // Provider evidence cannot be claimed by a deterministic execution profile.
     scenarioExecutionProfile(value);
+    scenarioEvidenceScope(value);
     // Validate optional LifeOps/persona tier metadata when authored.
     scenarioTier(value);
     // Validate pending/active inventory status before loader filtering relies on it.

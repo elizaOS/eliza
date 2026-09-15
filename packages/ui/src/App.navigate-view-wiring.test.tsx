@@ -1,4 +1,8 @@
-/** Verifies App navigate-view event wiring through the package's configured test harness. */
+/**
+ * Verifies rendered App navigation with deterministic service/page fixtures.
+ * Launcher-back cases compose the real AppProvider navigation hooks, history,
+ * and surface-realm guards; older event cases retain their tab spy.
+ */
 // @vitest-environment jsdom
 
 /**
@@ -21,17 +25,62 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import type * as React from "react";
+import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentButton, getViewRegistry } from "./agent-surface";
 import { registerAppShellPage } from "./app-shell-registry";
+import { ViewBackButton } from "./components/shared/ViewHeader";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "./config/boot-config";
+import { DEFAULT_BRANDING } from "./config/branding-base";
+import { BrandingContext } from "./config/branding-react.hooks";
+import type { AuthStatusState } from "./hooks/useAuthStatus";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
+import {
+  getWindowNavigationPath,
+  resolveInitialTabForPath,
+  type Tab,
+} from "./navigation";
 import { resetUiRegistryHostForTests } from "./registry-host";
-import { getActiveSurfaceRealmScope } from "./surface-realm-broker";
+import { useNavigationPathSync } from "./state/useAppProviderEffects";
+import { useNavigationState } from "./state/useNavigationState";
+import {
+  getActiveSurfaceRealmScope,
+  SurfaceRealmDeniedError,
+} from "./surface-realm-broker";
 import { shellHistory } from "./surface-realm-channel";
 
+const NavigationHarnessContext = React.createContext<{
+  tab: Tab;
+  setTab: ReturnType<typeof useNavigationState>["setTab"];
+  navigation: ReturnType<typeof useNavigationState>["navigation"];
+} | null>(null);
+
+function AppWithRealNavigation() {
+  // Match AppProvider's actual state + navigation composition. No test event
+  // listener or manual rerender may stand in for the production path sync.
+  const [tab, setTabRaw] = React.useState<Tab>(() =>
+    resolveInitialTabForPath(getWindowNavigationPath(), "chat"),
+  );
+  const [, setAppsSubTab] = React.useState<"browse" | "running" | "games">(
+    "browse",
+  );
+  const { setTab, navigation } = useNavigationState({
+    tab,
+    setTabRaw,
+    uiShellMode: "native",
+    hasActiveGameRun: false,
+    setAppsSubTab,
+  });
+  useNavigationPathSync({ tab, setTabRaw });
+  return (
+    <NavigationHarnessContext.Provider value={{ tab, setTab, navigation }}>
+      <App />
+    </NavigationHarnessContext.Provider>
+  );
+}
+
 const appState = vi.hoisted(() => ({
+  backendConnectionState: "connected",
   firstRunComplete: true,
   retryStartup: vi.fn(),
   setTab: vi.fn(),
@@ -52,8 +101,30 @@ const authStatusMock = vi.hoisted(() => ({
   use: vi.fn(),
 }));
 
-const cloudOriginMock = vi.hoisted(() => ({
-  agentless: false,
+const authenticatedAuthStatus = vi.hoisted(
+  () =>
+    ({
+      phase: "authenticated",
+      identity: {
+        id: "test-user",
+        displayName: "Test User",
+        kind: "owner",
+      },
+      session: {
+        id: "test-session",
+        kind: "local",
+        expiresAt: null,
+      },
+      access: {
+        mode: "local",
+        passwordConfigured: true,
+        ownerConfigured: true,
+      },
+    }) satisfies AuthStatusState,
+);
+
+const cloudSessionState = vi.hoisted(() => ({
+  authenticated: false,
 }));
 
 const desktopTabsMock = vi.hoisted(() => ({
@@ -308,7 +379,10 @@ vi.mock("./hooks/useAuthStatus", () => ({
   useAuthStatus: (options: { skip?: boolean } = {}) => {
     authStatusMock.use(options);
     return {
-      state: { phase: authStatusMock.phase },
+      state:
+        authStatusMock.phase === "authenticated"
+          ? authenticatedAuthStatus
+          : { phase: authStatusMock.phase },
       refetch: authStatusMock.refetch,
     };
   },
@@ -326,24 +400,20 @@ vi.mock("./hooks/useAuthStatus", () => ({
   // same static phase in AuthStatusState shape.
   getAuthStatusSnapshot: () =>
     authStatusMock.phase === "authenticated"
-      ? {
-          phase: "authenticated",
-          identity: { id: "test-user" },
-          session: { id: "test-session" },
-          access: {},
-        }
+      ? authenticatedAuthStatus
       : { phase: "unauthenticated" },
   subscribeAuthStatus: () => vi.fn(),
 }));
 
-vi.mock("./utils/cloud-agent-base", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("./utils/cloud-agent-base")>();
-  return {
-    ...actual,
-    isElizaCloudControlPlaneAgentlessBase: () => cloudOriginMock.agentless,
-  };
-});
+vi.mock("./cloud/lib/use-session-auth", () => ({
+  useSessionAuth: () => ({
+    ready: true,
+    authenticated: cloudSessionState.authenticated,
+    user: cloudSessionState.authenticated
+      ? { id: "cloud-user", email: "cloud@example.test" }
+      : null,
+  }),
+}));
 
 vi.mock("./first-run/use-first-run-conductor", () => ({
   FirstRunConductorMount: () => <div data-testid="first-run-conductor-mount" />,
@@ -392,7 +462,7 @@ vi.mock("./state", async () => {
     appRuns: [],
     appsSubTab: "browse",
     agentStatus: null,
-    backendConnection: { state: "connected" },
+    backendConnection: { state: appState.backendConnectionState },
     copyToClipboard: vi.fn(),
     databaseSubTab: "overview",
     dismissSystemWarning: vi.fn(),
@@ -404,7 +474,7 @@ vi.mock("./state", async () => {
     firstRunComplete: appState.firstRunComplete,
     firstRunName: "",
     ownerName: "Test Owner",
-    plugins: [],
+    plugins: appState.plugins,
     retryStartup: appState.retryStartup,
     setActionNotice: vi.fn(),
     setState: vi.fn(),
@@ -432,15 +502,19 @@ vi.mock("./state", async () => {
     uiTheme: "light",
     uiThemeMode: "system",
   });
+  function useAppValue() {
+    const navigation = React.useContext(NavigationHarnessContext);
+    return { ...getAppValue(), ...navigation };
+  }
   return {
     ACCENT_PRESETS,
-    useApp: () => getAppValue(),
+    useApp: useAppValue,
     useAppSelector: <T,>(
-      selector: (s: ReturnType<typeof getAppValue>) => T,
-    ): T => selector(getAppValue()),
+      selector: (s: ReturnType<typeof useAppValue>) => T,
+    ): T => selector(useAppValue()),
     useAppSelectorShallow: <T,>(
-      selector: (s: ReturnType<typeof getAppValue>) => T,
-    ): T => selector(getAppValue()),
+      selector: (s: ReturnType<typeof useAppValue>) => T,
+    ): T => selector(useAppValue()),
   };
 });
 
@@ -554,10 +628,38 @@ vi.mock("./hooks/useIsDeveloperMode", () => ({
 }));
 
 import { App } from "./App";
+import { navigateBackToLauncher } from "./components/shared/ViewHeader";
 
 function navigateView(detail: Record<string, unknown>) {
   act(() => {
     window.dispatchEvent(createNavigateViewEvent(detail));
+  });
+}
+
+const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
+  window,
+  "location",
+);
+
+function setWindowLocation(url: string): void {
+  const parsed = new URL(url);
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: {
+      href: parsed.href,
+      origin: parsed.origin,
+      protocol: parsed.protocol,
+      host: parsed.host,
+      hostname: parsed.hostname,
+      port: parsed.port,
+      pathname: parsed.pathname,
+      search: parsed.search,
+      hash: parsed.hash,
+      assign: vi.fn(),
+      replace: vi.fn(),
+      reload: vi.fn(),
+      toString: () => parsed.href,
+    },
   });
 }
 
@@ -568,16 +670,18 @@ describe("App navigate-view event wiring", () => {
     // App with first-run complete and covers the surfaces under test — mark it
     // already shown.
     window.localStorage.setItem("eliza:permissions-primed", "1");
+    window.localStorage.removeItem("steward_session_token");
     setBootConfig(DEFAULT_BOOT_CONFIG);
     Reflect.deleteProperty(window, "__ELIZAOS_API_BASE__");
     Reflect.deleteProperty(window, "__ELIZA_API_TOKEN__");
     Reflect.deleteProperty(window, "__ELIZAOS_API_TOKEN__");
     appState.firstRunComplete = true;
+    appState.backendConnectionState = "connected";
     appState.startupPhase = "ready";
     appState.tab = "chat";
     appState.plugins = [];
     authStatusMock.phase = "authenticated";
-    cloudOriginMock.agentless = false;
+    cloudSessionState.authenticated = false;
     mediaQueryState.matches = false;
     electrobunRuntimeState.enabled = true;
     desktopTabsState.tabs = [];
@@ -598,22 +702,210 @@ describe("App navigate-view event wiring", () => {
     cleanup();
     resetUiRegistryHostForTests();
     vi.unstubAllGlobals();
+    if (originalLocationDescriptor) {
+      Object.defineProperty(window, "location", originalLocationDescriptor);
+    }
   });
 
-  it("keeps an unauthenticated shared Cloud app inside first-run onboarding", () => {
+  async function mountedRemoteNavigation() {
+    mockAvailableViews[0] = {
+      ...remoteLedgerView,
+      surface: { capabilities: ["navigate"] },
+    };
+    appState.tab = "views";
+    window.history.replaceState(null, "", remoteLedgerView.path);
+    const rendered = render(<App />);
+    await waitFor(() =>
+      expect(getActiveSurfaceRealmScope()?.viewId).toBe(remoteLedgerView.id),
+    );
+    const actual = await vi.importActual<
+      typeof import("./components/views/DynamicViewLoader")
+    >("./components/views/DynamicViewLoader");
+    const external = await actual.hostImport("@elizaos/ui/app-navigate-view");
+    const navigate = external.navigateBrowserPath;
+    if (typeof navigate !== "function")
+      throw new Error("Host navigation external is unavailable");
+    return { rendered, navigate };
+  }
+
+  it("keeps a mounted remote view's real navigation handle through an equivalent registry refresh", async () => {
+    const { rendered, navigate } = await mountedRemoteNavigation();
+    await act(async () => {
+      mockAvailableViews[0] = {
+        ...mockAvailableViews[0],
+        surface: { capabilities: ["navigate"] },
+      };
+      registerAppShellPage({
+        id: "unrelated-refresh",
+        pluginId: "@test/refresh",
+        label: "Refresh",
+        path: "/refresh",
+        Component: () => null,
+      });
+    });
+    rendered.rerender(<App />);
+    act(() => navigate("/settings"));
+    expect(window.location.pathname).toBe("/settings");
+  });
+
+  it.each(["view", "policy", "bundle", "plugin"] as const)(
+    "revokes a mounted remote handle after actual %s replacement",
+    async (change) => {
+      const { rendered, navigate } = await mountedRemoteNavigation();
+      await act(async () => {
+        if (change === "view") {
+          appState.tab = "settings";
+          shellHistory.replaceState(null, "", "/settings");
+          window.dispatchEvent(new PopStateEvent("popstate"));
+        } else {
+          mockAvailableViews[0] = {
+            ...mockAvailableViews[0],
+            ...(change === "policy" ? { surface: { capabilities: [] } } : {}),
+            ...(change === "bundle"
+              ? { bundleUrl: "/api/views/replacement/bundle.js" }
+              : {}),
+            ...(change === "plugin" ? { pluginName: "@test/replacement" } : {}),
+          };
+        }
+        registerAppShellPage({
+          id: "replacement-refresh",
+          pluginId: "@test/refresh",
+          label: "Refresh",
+          path: "/refresh",
+          Component: () => null,
+        });
+      });
+      rendered.rerender(<App />);
+      expect(() => navigate("/inventory")).toThrow(SurfaceRealmDeniedError);
+      expect(window.location.pathname).not.toBe("/inventory");
+      if (change === "view") {
+        appState.tab = "views";
+        shellHistory.replaceState(null, "", remoteLedgerView.path);
+        window.dispatchEvent(new PopStateEvent("popstate"));
+        rendered.rerender(<App />);
+        expect(() => navigate("/inventory")).toThrow(SurfaceRealmDeniedError);
+      }
+    },
+  );
+
+  it.each(["component", "loader"] as const)(
+    "revokes old host navigation after registered %s replacement",
+    async (change) => {
+      const First = () => <div>Original owned page</div>;
+      const Second = () => <div>Replacement owned page</div>;
+      const registration = {
+        id: "owned-host",
+        pluginId: "@test/owned-host",
+        label: "Owned host",
+        path: "/apps/owned-host",
+        surface: { capabilities: ["navigate"] as const },
+        ...(change === "component"
+          ? { Component: First }
+          : { loader: async () => ({ default: First }) }),
+      };
+      registerAppShellPage(registration);
+      appState.tab = "views";
+      window.history.replaceState(null, "", "/apps/owned-host");
+      const rendered = render(<AppWithRealNavigation />);
+      await waitFor(() =>
+        expect(getActiveSurfaceRealmScope()?.viewId).toBe("owned-host"),
+      );
+      const actual = await vi.importActual<
+        typeof import("./components/views/DynamicViewLoader")
+      >("./components/views/DynamicViewLoader");
+      const external = await actual.hostImport("@elizaos/ui/app-navigate-view");
+      const navigate = external.navigateBrowserPath;
+      if (typeof navigate !== "function")
+        throw new Error("Host navigation external is unavailable");
+      await act(async () => {
+        registerAppShellPage({
+          ...registration,
+          ...(change === "component"
+            ? { Component: Second }
+            : { loader: async () => ({ default: Second }) }),
+        });
+      });
+      rendered.rerender(<AppWithRealNavigation />);
+      expect(() => navigate("/inventory")).toThrow(SurfaceRealmDeniedError);
+      expect(window.location.pathname).toBe("/apps/owned-host");
+    },
+  );
+
+  it.each(["base", "credential"] as const)(
+    "revokes a remote handle on actual client %s authority replacement",
+    async (change) => {
+      const { client: actualClient } = await import("./api/client");
+      const previousBase = actualClient.getBaseUrl();
+      const previousToken = actualClient.getRestAuthToken();
+      actualClient.setBaseUrl("http://127.0.0.1:49181");
+      actualClient.setToken("synthetic-scope-owner-a");
+      const { navigate } = await mountedRemoteNavigation();
+      try {
+        await act(async () => {
+          if (change === "base")
+            actualClient.setBaseUrl("http://127.0.0.1:49182");
+          else actualClient.setToken("synthetic-scope-owner-b");
+        });
+        expect(() => navigate("/inventory")).toThrow(SurfaceRealmDeniedError);
+        expect(window.location.pathname).not.toBe("/inventory");
+      } finally {
+        cleanup();
+        actualClient.setBaseUrl(previousBase);
+        actualClient.setToken(previousToken);
+      }
+    },
+  );
+
+  it("keeps the exact branded staging Pages alias inside first-run onboarding", () => {
     window.history.replaceState(null, "", "/?shellMode=full");
+    setWindowLocation("https://develop.eliza-app.pages.dev/?shellMode=full");
     appState.firstRunComplete = false;
     appState.startupPhase = "first-run-required";
     authStatusMock.phase = "unauthenticated";
-    cloudOriginMock.agentless = true;
+    window.localStorage.setItem(
+      "steward_session_token",
+      "existing-steward-session",
+    );
 
-    render(<App />);
+    render(
+      <BrandingContext.Provider
+        value={{ ...DEFAULT_BRANDING, cloudOnly: true }}
+      >
+        <App />
+      </BrandingContext.Provider>,
+    );
 
     expect(authStatusMock.use).toHaveBeenCalledWith(
       expect.objectContaining({ skip: true }),
     );
     expect(screen.getByTestId("first-run-conductor-mount")).toBeTruthy();
     expect(screen.queryByText("Open this agent from Eliza Cloud")).toBeNull();
+  });
+
+  it.each([
+    ["unbranded Pages alias", "https://develop.eliza-app.pages.dev/", false],
+    ["arbitrary branded self-host", "https://agent.example.com/", true],
+  ])("keeps the App auth gate for an %s", (_name, origin, cloudOnly) => {
+    window.history.replaceState(null, "", "/?shellMode=full");
+    setWindowLocation(`${origin}?shellMode=full`);
+    appState.firstRunComplete = false;
+    appState.startupPhase = "first-run-required";
+    authStatusMock.phase = "unauthenticated";
+    window.localStorage.setItem(
+      "steward_session_token",
+      "existing-steward-session",
+    );
+
+    render(
+      <BrandingContext.Provider value={{ ...DEFAULT_BRANDING, cloudOnly }}>
+        <App />
+      </BrandingContext.Provider>,
+    );
+
+    expect(authStatusMock.use).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: false }),
+    );
+    expect(screen.queryByTestId("first-run-conductor-mount")).toBeNull();
   });
 
   it("restores a deep route after an auth-startup retry commits the default chat path", async () => {
@@ -713,6 +1005,78 @@ describe("App navigate-view event wiring", () => {
     ).toBe(true);
   });
 
+  it("renders Files with its canonical shell-owned page scroller", async () => {
+    appState.tab = "files";
+    window.history.replaceState(null, "", "/apps/files");
+
+    const { container } = render(<App />);
+
+    await waitFor(() => {
+      expect(
+        container.querySelector('[data-page-kind="content"]'),
+      ).not.toBeNull();
+    });
+    const frame = container.querySelector('[data-page-kind="content"]');
+    expect(frame?.getAttribute("data-page-width")).toBe("standard");
+    expect(frame?.getAttribute("data-scroll-owner")).toBe("shell");
+    expect(
+      frame
+        ?.querySelector("[data-page-content]")
+        ?.getAttribute("data-page-gutter"),
+    ).toBe("standard");
+    expect(container.querySelectorAll("[data-scroll-owner]")).toHaveLength(1);
+    expect(frame?.className.includes("overflow-y-auto")).toBe(true);
+  });
+
+  it("renders Automations with one framed gutter, clearance, and view scroller", async () => {
+    appState.tab = "automations";
+    window.history.replaceState(null, "", "/automations");
+
+    const { container } = render(<App />);
+    const automations = await screen.findByTestId(
+      "automations-layout",
+      {},
+      { timeout: 10_000 },
+    );
+    const frame = automations.closest<HTMLElement>("[data-page-kind]");
+    const pageContent = frame?.querySelector<HTMLElement>(
+      ":scope > [data-page-content]",
+    );
+    const body = screen.getByTestId("automations-scroll-region");
+
+    expect(frame?.getAttribute("data-page-kind")).toBe("content");
+    expect(frame?.getAttribute("data-page-width")).toBe("standard");
+    expect(frame?.getAttribute("data-scroll-owner")).toBe("view");
+    expect(pageContent?.getAttribute("data-page-gutter")).toBe("none");
+    expect(pageContent?.className).not.toContain("px-4");
+    expect(body.className).toContain("max-w-5xl");
+    expect(body.className).toContain("px-4");
+
+    const clearanceOwners = Array.from(
+      frame?.querySelectorAll<HTMLElement>("*") ?? [],
+    ).filter((element) =>
+      element
+        .getAttribute("class")
+        ?.includes("pb-[var(--eliza-chat-clearance,5.25rem)]"),
+    );
+    expect(clearanceOwners).toEqual([automations]);
+    expect(automations.getAttribute("data-chat-clearance-aware")).toBe("true");
+    expect(automations.className).not.toContain(
+      "pe-[var(--eliza-chat-side-clearance,0px)]",
+    );
+    expect(automations.className).not.toContain(
+      "[@media(orientation:landscape)_and_(max-height:520px)]:pb-0",
+    );
+
+    expect(body.getAttribute("data-framed-page-scroll")).toBe("page");
+    expect(body.getAttribute("data-shell-scroll-region")).toBeNull();
+    expect(body.className).toContain("overflow-y-auto");
+    expect(
+      frame?.querySelectorAll('[data-shell-scroll-region="true"]'),
+    ).toHaveLength(0);
+    expect(container.querySelectorAll("[data-scroll-owner]")).toHaveLength(1);
+  });
+
   it("keeps the ambient chat route outside canonical page framing", () => {
     appState.tab = "chat";
     window.history.replaceState(null, "", "/chat");
@@ -721,6 +1085,22 @@ describe("App navigate-view event wiring", () => {
 
     expect(container.querySelectorAll("[data-page-kind]")).toHaveLength(0);
     expect(container.querySelectorAll("[data-scroll-owner]")).toHaveLength(0);
+  });
+
+  it("renders an explicit unavailable state instead of healthy Home for an absent surface", async () => {
+    appState.tab = "phone";
+    window.history.replaceState(null, "", "/phone");
+
+    const { container } = render(<App />);
+
+    await waitFor(() => {
+      expect(
+        container.querySelector(
+          '[data-view-status="unavailable"][data-view-id="phone"]',
+        ),
+      ).toBeTruthy();
+    });
+    expect(container.querySelector('[data-testid="home-screen"]')).toBeNull();
   });
 
   it("frames the immersive background editor exactly once", async () => {
@@ -798,6 +1178,32 @@ describe("App navigate-view event wiring", () => {
         }),
       );
     });
+    const settingsPageContent = (
+      await screen.findByTestId("settings-view")
+    ).closest<HTMLElement>("[data-page-content]");
+    expect(settingsPageContent).not.toBeNull();
+    expect(settingsPageContent?.getAttribute("data-page-gutter")).toBe("none");
+    expect(
+      settingsPageContent
+        ?.closest<HTMLElement>("[data-page-kind]")
+        ?.getAttribute("data-page-width"),
+    ).toBe("full");
+    expect(settingsPageContent?.className).toContain(
+      "pb-[var(--eliza-chat-clearance,5.25rem)]",
+    );
+    expect(settingsPageContent?.className).not.toContain(
+      "pe-[var(--eliza-chat-side-clearance,0px)]",
+    );
+    expect(settingsPageContent?.className).toContain("settings-surface");
+    expect(settingsPageContent?.className).toContain("settings-canvas");
+    const routedMain = screen.getByTestId("settings-view").closest("main");
+    expect(routedMain?.className).not.toContain("px-2");
+    expect(routedMain?.className).not.toContain("pt-[var(--view-pad-top)]");
+    expect(
+      screen
+        .getByTestId("settings-view")
+        .closest<HTMLElement>("[data-app-shell-root]")?.style.paddingTop,
+    ).toBe("0px");
   });
 
   it("pins remote views and opens remote view windows through App wiring", async () => {
@@ -857,9 +1263,7 @@ describe("App navigate-view event wiring", () => {
     );
     expect(loader.getAttribute("data-view-id")).toBe("remote-ledger");
     expect(loader.getAttribute("data-view-type")).toBe("gui");
-    expect(queryByTestId("view-header")?.textContent).toContain(
-      "Remote Ledger",
-    );
+    expect(queryByTestId("view-header")).toBeNull();
     expect(
       container
         .querySelector('[data-shell-content-region="true"] [data-page-content]')
@@ -869,28 +1273,107 @@ describe("App navigate-view event wiring", () => {
       container
         .querySelector('[data-shell-content-region="true"] [data-page-content]')
         ?.className.includes("pe-[var(--eliza-chat-side-clearance"),
-    ).toBe(true);
+    ).toBe(false);
     expect(getByTestId("app-opaque-background")).toBeTruthy();
     expect(queryByTestId("app-background-shader")).toBeNull();
   });
 
-  it("renders the same shell-owned header for an in-process normal page", async () => {
+  it("keeps an in-process page's own header without adding a duplicate shell header", async () => {
     registerAppShellPage({
       id: "signed-normal",
       pluginId: "@local/plugin-signed-normal",
       label: "Signed Normal",
       path: "/apps/signed-normal",
-      Component: () => <div data-testid="signed-normal-content" />,
+      Component: () => (
+        <section data-testid="signed-normal-content">
+          <h1>Signed Normal</h1>
+        </section>
+      ),
     });
     appState.tab = "apps";
     window.history.replaceState(null, "", "/apps/signed-normal");
 
-    const { getByTestId, getAllByTestId } = render(<App />);
+    const { getByTestId, getAllByRole, queryByTestId } = render(<App />);
 
     await waitFor(() => getByTestId("signed-normal-content"));
-    expect(getAllByTestId("view-header")).toHaveLength(1);
-    expect(getByTestId("view-header").textContent).toContain("Signed Normal");
+    expect(getAllByRole("heading", { name: "Signed Normal" })).toHaveLength(1);
+    expect(queryByTestId("view-header")).toBeNull();
   });
+
+  it.each([
+    { strictMode: false, entry: "direct" },
+    { strictMode: true, entry: "direct" },
+    { strictMode: false, entry: "navigate-view" },
+    { strictMode: true, entry: "navigate-view" },
+  ])(
+    "returns a registered fixture to the launcher using its own back control ($entry, StrictMode=$strictMode)",
+    async ({ strictMode, entry }) => {
+      electrobunRuntimeState.enabled = false;
+      registerAppShellPage({
+        id: "notes",
+        pluginId: "@elizaos/plugin-notes",
+        label: "Notes",
+        path: "/notes",
+        surface: { header: "normal", capabilities: [] },
+        Component: () => (
+          // This fixture exercises a view-owned control's real guarded-history
+          // path; it does not assert that the production Notes page has one.
+          <section aria-label="Notes fixture">
+            <h1>Notes</h1>
+            <ViewBackButton />
+            <p>A saved note</p>
+          </section>
+        ),
+      });
+      window.history.replaceState(
+        null,
+        "",
+        entry === "direct" ? "/notes" : "/views",
+      );
+      render(
+        strictMode ? (
+          <React.StrictMode>
+            <AppWithRealNavigation />
+          </React.StrictMode>
+        ) : (
+          <AppWithRealNavigation />
+        ),
+      );
+      if (entry === "navigate-view") {
+        await screen.findByTestId("launcher-surface");
+        navigateView({ viewId: "notes", viewPath: "/notes" });
+      }
+
+      await screen.findByRole("region", { name: "Notes fixture" });
+      expect(screen.getAllByRole("heading", { name: "Notes" })).toHaveLength(1);
+      expect(screen.queryByTestId("view-header")).toBeNull();
+      expect(getActiveSurfaceRealmScope()?.viewId).toBe("notes");
+      // Prove the guard is armed, not just that a scope-shaped object exists.
+      expect(() => window.history.pushState(null, "", "/views")).toThrow(
+        SurfaceRealmDeniedError,
+      );
+      expect(window.location.pathname).toBe("/notes");
+
+      act(() => navigateBackToLauncher());
+
+      await waitFor(() => {
+        expect(window.location.pathname).toBe("/views");
+        expect(screen.getByTestId("launcher-surface")).toBeTruthy();
+        expect(
+          screen.queryByRole("region", { name: "Notes fixture" }),
+        ).toBeNull();
+        expect(getActiveSurfaceRealmScope()?.viewId).not.toBe("notes");
+      });
+      // A second real browser event must not resurrect stale provider tab state.
+      act(() => window.dispatchEvent(new PopStateEvent("popstate")));
+      expect(window.location.pathname).toBe("/views");
+      expect(screen.getByTestId("launcher-surface")).toBeTruthy();
+      expect(
+        screen.queryByRole("region", { name: "Notes fixture" }),
+      ).toBeNull();
+      expect(appState.setTab).not.toHaveBeenCalled();
+    },
+  );
 
   it("keeps modal remote pages headerless without treating them as fullscreen", async () => {
     mockAvailableViews.push(modalView);
@@ -903,7 +1386,7 @@ describe("App navigate-view event wiring", () => {
     expect(queryByTestId("view-header")).toBeNull();
     expect(
       container
-        .querySelector('[data-shell-content-region="true"]')
+        .querySelector('[data-shell-content-region="true"] [data-page-content]')
         ?.className.includes("pb-[var(--eliza-chat-clearance"),
     ).toBe(true);
     expect(
@@ -911,6 +1394,31 @@ describe("App navigate-view event wiring", () => {
         .paddingTop,
     ).not.toBe("0px");
   });
+
+  it.each(["/documents", "/knowledge"])(
+    "keeps the legacy Knowledge route %s on the canonical plugin surface",
+    async (path) => {
+      registerAppShellPage({
+        id: "documents",
+        pluginId: "@elizaos/plugin-documents",
+        label: "Knowledge",
+        path: "/documents",
+        pathPatterns: ["/character/documents"],
+        surface: { header: "fullscreen" },
+        tabAffinity: "documents",
+        Component: () => <div data-testid="documents-view" />,
+      });
+      appState.tab = "documents";
+      window.history.replaceState(null, "", path);
+
+      const { findByTestId, queryByTestId } = render(<App />);
+
+      expect(
+        await findByTestId("documents-view", undefined, { timeout: 5_000 }),
+      ).toBeTruthy();
+      expect(queryByTestId("dynamic-view-loader")).toBeNull();
+    },
+  );
 
   it("prefers an exact remote plugin route over its native wallet fallback", async () => {
     mockAvailableViews.push(walletMarketView);
@@ -934,7 +1442,7 @@ describe("App navigate-view event wiring", () => {
     expect(queryByTestId("native-wallet-fallback")).toBeNull();
   });
 
-  it("keeps remote Cloud rendering and capability ownership together when metadata conflicts", async () => {
+  it("keeps signed-out remote Cloud rendering and capability ownership together for the plugin audit fixture", async () => {
     registerAppShellPage({
       id: "cloud",
       pluginId: "@elizaos/ui:cloud",
@@ -974,6 +1482,119 @@ describe("App navigate-view event wiring", () => {
     ]).toEqual([]);
   });
 
+  it.each([
+    ["root", "/cloud"],
+    ["nested", "/cloud/billing"],
+  ])(
+    "gives an authenticated Steward session authoritative %s Cloud dashboard ownership",
+    async (_label, path) => {
+      registerAppShellPage({
+        id: "cloud",
+        pluginId: "@elizaos/ui",
+        label: "Cloud",
+        path: "/cloud",
+        pathPatterns: ["/cloud/*"],
+        surface: {
+          capabilities: ["navigate"],
+          layout: {
+            kind: "immersive",
+            topology: "ambient",
+            width: "full",
+            scroll: "view",
+            gutter: "none",
+          },
+        },
+        tabAffinity: "cloud",
+        Component: () => <div data-testid="managed-cloud-page" />,
+      });
+      mockAvailableViews.push({
+        id: "remote-cloud-imposter",
+        label: "Remote Cloud Imposter",
+        available: true,
+        pluginName: "@local/plugin-cloud-imposter",
+        path,
+        bundleUrl: "/api/views/remote-cloud-imposter/bundle.js",
+        viewType: "gui",
+      });
+      cloudSessionState.authenticated = true;
+      appState.tab = "cloud";
+      window.history.replaceState(null, "", path);
+
+      const { container, getByTestId, queryByTestId } = render(<App />);
+
+      await waitFor(() => getByTestId("managed-cloud-page"));
+      expect(queryByTestId("dynamic-view-loader")).toBeNull();
+      expect(container.querySelectorAll("[data-page-kind]")).toHaveLength(0);
+      await waitFor(() => {
+        expect(getActiveSurfaceRealmScope()?.viewId).toBe("cloud");
+      });
+      expect([
+        ...(getActiveSurfaceRealmScope()?.manifest.capabilities ?? []),
+      ]).toEqual(["navigate"]);
+      expect(getActiveSurfaceRealmScope()?.manifest.layout.topology).toBe(
+        "ambient",
+      );
+    },
+  );
+
+  it.each([
+    "restoring-session",
+    "polling-backend",
+    "pairing-required",
+    "error",
+    "starting-runtime",
+    "ready",
+  ])(
+    "keeps authenticated account management available during agent %s",
+    async (phase) => {
+      registerAppShellPage({
+        id: "cloud",
+        pluginId: "@elizaos/ui",
+        label: "Cloud",
+        path: "/cloud",
+        pathPatterns: ["/cloud/*"],
+        surface: { capabilities: ["navigate"] },
+        Component: () => <div data-testid="managed-cloud-page" />,
+      });
+      cloudSessionState.authenticated = true;
+      authStatusMock.phase = "unauthenticated";
+      appState.startupPhase = phase;
+      appState.backendConnectionState = "disconnected";
+      appState.tab = "cloud";
+      window.history.replaceState(null, "", "/cloud/agents");
+
+      render(<App />);
+
+      await screen.findByTestId("managed-cloud-page");
+      expect(appState.retryStartup).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { authenticated: false, owner: "@elizaos/ui" },
+    { authenticated: true, owner: "@elizaos/plugin-elizacloud" },
+  ])(
+    "keeps agent startup gates for $owner with Cloud auth=$authenticated",
+    ({ authenticated, owner }) => {
+      registerAppShellPage({
+        id: "cloud",
+        pluginId: owner,
+        label: "Cloud",
+        path: "/cloud",
+        pathPatterns: ["/cloud/*"],
+        Component: () => <div data-testid="managed-cloud-page" />,
+      });
+      cloudSessionState.authenticated = authenticated;
+      appState.startupPhase = "polling-backend";
+      appState.tab = "cloud";
+      window.history.replaceState(null, "", "/cloud/agents");
+
+      render(<App />);
+
+      expect(screen.queryByTestId("managed-cloud-page")).toBeNull();
+    },
+  );
+
   it("gives an in-process wallet page a live agent-surface registry", async () => {
     registerAppShellPage({
       id: "wallet.inventory",
@@ -997,6 +1618,52 @@ describe("App navigate-view event wiring", () => {
       getViewRegistry("wallet.inventory", "gui")?.describe("wallet-refresh")
         ?.label,
     ).toBe("Refresh wallet");
+    const walletButton = screen.getByRole("button", {
+      name: "Refresh wallet",
+    });
+    const walletContentRegion = walletButton.closest<HTMLElement>(
+      '[data-shell-content-region="true"]',
+    );
+    expect(walletContentRegion).not.toBeNull();
+    expect(
+      walletContentRegion?.querySelector('[data-shell-scroll-region="true"]'),
+    ).toBeNull();
+    const routedMain = walletButton.closest("main");
+    expect(routedMain?.className).not.toContain("px-2");
+    expect(routedMain?.className).not.toContain("pt-[var(--view-pad-top)]");
+    expect(
+      walletButton.closest<HTMLElement>("[data-app-shell-root]")?.style
+        .paddingTop,
+    ).toBe("0px");
+  });
+
+  it("hands a cold wallet deep link to a deferred app-shell registration", async () => {
+    appState.tab = "inventory";
+    window.history.replaceState(null, "", "/wallet");
+
+    render(<App />);
+
+    expect(
+      (await screen.findByTestId("dynamic-plugin-page-loading")).textContent,
+    ).toBe("Loading wallet.inventory…");
+
+    act(() => {
+      registerAppShellPage({
+        id: "wallet.inventory",
+        pluginId: "@elizaos/plugin-wallet:ui",
+        label: "Wallet",
+        path: "/inventory",
+        tabAffinity: "inventory",
+        Component: () => (
+          <div data-testid="deferred-wallet-page">Wallet ready</div>
+        ),
+      });
+    });
+
+    expect(
+      (await screen.findByTestId("deferred-wallet-page")).textContent,
+    ).toBe("Wallet ready");
+    expect(screen.queryByTestId("dynamic-plugin-page-loading")).toBeNull();
   });
 
   it.each(["/inventory", "/wallet/activity", "/wallet/markets"])(
@@ -1062,12 +1729,20 @@ describe("App navigate-view event wiring", () => {
     window.history.replaceState(null, "", "/notes");
 
     try {
-      const { getByTestId, queryByTestId } = render(<App />);
+      const { container, getByTestId, queryByTestId } = render(<App />);
 
       await waitFor(() => getByTestId("signed-notes"));
       expect(queryByTestId("dynamic-view-loader")).toBeNull();
       expect(queryByTestId("view-header")).toBeNull();
       expect(dynamicViewLoaderMock.render).not.toHaveBeenCalled();
+      const frame = container.querySelector('[data-page-kind="workspace"]');
+      expect(frame?.getAttribute("data-page-width")).toBe("full");
+      expect(
+        frame
+          ?.querySelector("[data-page-content]")
+          ?.getAttribute("data-page-gutter"),
+      ).toBe("none");
+      expect(container.querySelectorAll("[data-page-kind]")).toHaveLength(1);
     } finally {
       platform.mockRestore();
     }
@@ -1082,6 +1757,22 @@ describe("App navigate-view event wiring", () => {
 
     await waitFor(() => getByTestId("dynamic-view-loader"));
     expect(queryByTestId("view-header")).toBeNull();
+    const frame = container.querySelector('[data-page-kind="workspace"]');
+    expect(frame?.getAttribute("data-page-width")).toBe("full");
+    expect(frame?.getAttribute("data-scroll-owner")).toBe("view");
+    expect(
+      frame
+        ?.querySelector("[data-page-content]")
+        ?.getAttribute("data-page-gutter"),
+    ).toBe("none");
+    expect(container.querySelectorAll("[data-page-kind]")).toHaveLength(1);
+    expect(getActiveSurfaceRealmScope()?.manifest.layout).toEqual({
+      kind: "workspace",
+      topology: "framed",
+      width: "full",
+      scroll: "view",
+      gutter: "none",
+    });
     expect(
       container
         .querySelector('[data-shell-content-region="true"] [data-page-content]')
@@ -1122,6 +1813,25 @@ describe("App navigate-view event wiring", () => {
     expect(loader.getAttribute("data-frame-url")).toBe(
       "/api/views/sandboxed-frame/frame.html",
     );
+  });
+
+  it("keeps an unavailable registered route in its loader for retry instead of the view manager", async () => {
+    mockAvailableViews.push({
+      ...remoteLedgerView,
+      id: "unavailable-ledger",
+      path: "/unavailable-ledger",
+      available: false,
+    });
+    appState.tab = "views";
+    window.history.replaceState(null, "", "/unavailable-ledger");
+    render(<App />);
+    await waitFor(() => {
+      expect(dynamicViewLoaderMock.render).toHaveBeenCalledWith(
+        expect.objectContaining({ viewId: "unavailable-ledger" }),
+        undefined,
+      );
+    });
+    expect(window.location.pathname).toBe("/unavailable-ledger");
   });
 
   it("renders no global corner back button on app routes (removed in favor of per-page back affordances + browser/OS back)", async () => {
@@ -1213,6 +1923,94 @@ describe("App navigate-view event wiring", () => {
       );
     });
     expect(window.location.pathname).toBe("/apps/remote-ledger");
+  });
+
+  it("replays a failed cold-start view report once after reconnect and still clears Home", async () => {
+    appState.tab = "views";
+    appState.startupPhase = "polling-backend";
+    appState.backendConnectionState = "connecting";
+    window.history.replaceState(null, "", "/notes");
+    mockAvailableViews.push(notesFullscreenView);
+    setBootConfig({ ...DEFAULT_BOOT_CONFIG, apiBase: "http://agent.local" });
+
+    let viewNavigationAttempts = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/commands")) {
+        return new Response(JSON.stringify({ commands: [] }), {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+      if (url.includes("/api/custom-actions")) {
+        return new Response(JSON.stringify({ actions: [] }), {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+      if (url.includes("/api/views/")) {
+        viewNavigationAttempts += 1;
+        if (viewNavigationAttempts === 1) {
+          throw new Error("offline");
+        }
+      }
+      return new Response("{}", { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const rendered = render(<App />);
+    const viewNavigationCalls = () =>
+      fetchMock.mock.calls.filter(([input]) =>
+        String(input).includes("/api/views/"),
+      );
+
+    expect(viewNavigationCalls()).toHaveLength(0);
+
+    appState.startupPhase = "ready";
+    appState.backendConnectionState = "connected";
+    rendered.rerender(<App />);
+
+    await waitFor(() => {
+      expect(viewNavigationCalls()).toHaveLength(1);
+    });
+
+    appState.backendConnectionState = "reconnecting";
+    rendered.rerender(<App />);
+    expect(viewNavigationCalls()).toHaveLength(1);
+
+    appState.backendConnectionState = "connected";
+    rendered.rerender(<App />);
+
+    await waitFor(() => {
+      expect(viewNavigationCalls()).toHaveLength(2);
+    });
+    expect(viewNavigationCalls()[1]).toEqual([
+      "http://agent.local/api/views/notes/navigate",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ source: "user", path: "/notes" }),
+      }),
+    ]);
+
+    rendered.rerender(<App />);
+    await act(async () => Promise.resolve());
+    expect(viewNavigationCalls()).toHaveLength(2);
+
+    act(() => {
+      shellHistory.replaceState(null, "", "/chat");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+
+    await waitFor(() => {
+      expect(viewNavigationCalls()).toHaveLength(3);
+    });
+    expect(viewNavigationCalls()[2]).toEqual([
+      "http://agent.local/api/views/__all__/navigate",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ source: "user", action: "close-all" }),
+      }),
+    ]);
   });
 
   it("renders split-view events as a live dynamic view layout", async () => {

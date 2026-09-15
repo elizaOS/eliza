@@ -149,6 +149,9 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   "plugin-scheduling": existing(
     "plugins/plugin-scheduling/src/routes/scheduled-tasks.test.ts",
   ),
+  "plugin-sql": existing(
+    "plugins/plugin-sql/src/__tests__/integration/identity-person-link-attestation.real.test.ts",
+  ),
   "plugin-wallet": existing(
     "plugins/plugin-wallet/src/api/wallet-routes.test.ts",
   ),

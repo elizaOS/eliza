@@ -15,7 +15,6 @@ node_modules
 /packages/ui/src/**/__e2e__/output-*/
 /packages/ui/src/agent-surface/__e2e__/output/
 /packages/ui/scripts/duplicate-components-report.json
-/packages/ui/scripts/duplicate-molecular-components-report.json
 /packages/ui/scripts/design-system-compliance-report.md
 /packages/ui/scripts/stories-coverage-report.json
 /packages/ui/scripts/stories-coverage-report.md

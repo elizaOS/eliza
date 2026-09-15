@@ -28,6 +28,11 @@ import {
   organizationBalanceRevisionSequence,
   organizations,
 } from "@/db/schemas/organizations";
+import {
+  personalSharedGroupBindings,
+  personalSharedGroupJoinChallenges,
+  personalSharedGroupParticipants,
+} from "@/db/schemas/personal-shared-groups";
 import { userIdentities } from "@/db/schemas/user-identities";
 import { users } from "@/db/schemas/users";
 import { hasCloudBindingsContext } from "@/lib/runtime/cloud-bindings";
@@ -61,6 +66,9 @@ beforeAll(async () => {
         users,
         userIdentities,
         identityLinkCodes,
+        personalSharedGroupBindings,
+        personalSharedGroupJoinChallenges,
+        personalSharedGroupParticipants,
       } as never,
       dbWrite as never,
     );

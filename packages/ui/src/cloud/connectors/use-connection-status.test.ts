@@ -93,7 +93,7 @@ describe("useConnectionStatus — three-state probe (#12784/#13419)", () => {
     expect(result.current.isError).toBe(true);
     expect(result.current.errorMessage).toBe("Service Unavailable");
     expect(result.current.status).toBeNull();
-    expect(toastErrorMock).toHaveBeenCalledWith("Service Unavailable");
+    expect(toastErrorMock).not.toHaveBeenCalled();
   });
 
   it("falls back to the provided default message for a non-ApiError failure", async () => {
@@ -109,9 +109,7 @@ describe("useConnectionStatus — three-state probe (#12784/#13419)", () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
 
     expect(result.current.errorMessage).toBe("Failed to fetch WhatsApp status");
-    expect(toastErrorMock).toHaveBeenCalledWith(
-      "Failed to fetch WhatsApp status",
-    );
+    expect(toastErrorMock).not.toHaveBeenCalled();
   });
 
   it("clears the error state after a successful retry", async () => {

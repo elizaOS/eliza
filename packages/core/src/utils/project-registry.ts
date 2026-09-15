@@ -1,24 +1,9 @@
 /**
- * Project registry persisted in `<stateDir>/projects.json`.
- *
- * A Project is a named, durable binding to a local working directory (and, when
- * known, its git remote/branch): the first-class replacement for the single
- * global workspace-folder config (`workspace-folder-config.ts`), which handled
- * only the degenerate one-project case and got overwritten on every re-pick.
- *
- * Storage is a JSON file rather than a DB table on purpose: workspace resolution
- * runs at module-import time (`workspace-resolution.ts`) before any DB exists,
- * and the Electrobun renderer writes the active project cross-process pre-boot.
- * A file in the shared per-user state dir is the only bridge both sides can see.
- * This mirrors `workspace-folder-config.ts` in shape and atomic-write style.
- *
- * `localPath` is the identity key for a project (realpath-compared against a
- * task's resolved workdir to bind it). `cloudAppId` binds the project to an
- * Eliza Cloud app: the orchestrator broker writes it here on an `apps.create`
- * success for a task on this project (#14119), and a later task reads it back to
- * update that app instead of minting a duplicate. The VFS `projectId`
- * (`virtual-filesystem.ts`) is a separate workbench-sandbox namespace and is
- * intentionally unrelated to a ProjectRecord id.
+ * Persists project bindings in the shared state directory for the agent runtime
+ * and desktop picker. Workspace resolution runs before database startup, so
+ * both processes exchange this state through an atomically replaced JSON file.
+ * Local paths identify projects; cloud app ids bind subsequent tasks to an
+ * existing deployment. Workbench VFS project ids are a separate namespace.
  */
 
 import { createHash, randomUUID } from "node:crypto";
@@ -30,6 +15,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { ElizaError } from "../errors.ts";
 import { resolveStateDir } from "./state-dir.ts";
 import { readWorkspaceFolderConfig } from "./workspace-folder-config.ts";
 
@@ -62,15 +48,7 @@ export interface ProjectRecord {
 	lastOpenedAt: string;
 }
 
-/**
- * `stringToUuid` seed prefix for a project's memory world, mirroring
- * `PROJECT_WORLD_PREFIX` in `project-memory-scope.ts` where the canonical
- * derivation lives. Kept next to the record it stamps for documentation, but
- * the world itself is derived ONLY through core's per-agent
- * `projectWorldId(agentId, id)` (#14171) — `stringToUuid("project:<id>:<agentId>")`
- * — never `stringToUuid(prefix + id)` alone, which would drop the agent scope
- * and reintroduce the cross-agent collision #14171 fixed.
- */
+/** Compatibility prefix; derive world ids through per-agent `projectWorldId(agentId, id)`. */
 export const PROJECT_WORLD_ID_PREFIX = "project:";
 
 export interface ProjectRegistry {
@@ -210,32 +188,51 @@ function canonicalizeLocalPath(localPath: string): string {
 	}
 }
 
-/**
- * The on-disk registry's `version` when the file is present and parses to a JSON
- * object, else `null` (absent/unreadable/non-object). Lets writers distinguish a
- * genuinely-absent registry from a FUTURE-version one they must not clobber:
- * `isProjectRegistry` rejects both as `null`, but only the latter holds a user's
- * projects a downgrade would silently drop.
- */
+/** Reject unreadable or invalid persisted state before any replacement write. */
 function readRegistryVersionOnDisk(env: NodeJS.ProcessEnv): number | null {
 	const filePath = projectRegistryPath(env);
 	let raw: string;
 	try {
 		raw = readFileSync(filePath, "utf8");
-	} catch {
-		// error-policy:J4 absent registry — no version to guard against.
-		return null;
+	} catch (cause) {
+		// error-policy:J2 only an absent registry permits first-run creation.
+		if (cause instanceof Error && "code" in cause && cause.code === "ENOENT")
+			return null;
+		throw new ElizaError("Cannot read the project registry before writing", {
+			code: "PROJECT_REGISTRY_READ_FAILED",
+			context: { filePath },
+			cause,
+		});
 	}
+	let parsed: unknown;
 	try {
-		const parsed = JSON.parse(raw) as unknown;
-		if (parsed !== null && typeof parsed === "object") {
-			const version = (parsed as Record<string, unknown>).version;
-			return typeof version === "number" ? version : null;
-		}
-	} catch {
-		// error-policy:J3 corrupt JSON — no readable version; treat as unversioned.
+		parsed = JSON.parse(raw);
+	} catch (cause) {
+		// error-policy:J2 preserve corrupt state for operator recovery.
+		throw new ElizaError(
+			"Refusing to overwrite malformed project registry JSON",
+			{
+				code: "PROJECT_REGISTRY_INVALID",
+				context: { filePath },
+				cause,
+			},
+		);
 	}
-	return null;
+	if (
+		parsed !== null &&
+		typeof parsed === "object" &&
+		"version" in parsed &&
+		typeof parsed.version === "number" &&
+		parsed.version > 1
+	)
+		return parsed.version;
+	if (!isProjectRegistry(parsed)) {
+		throw new ElizaError("Refusing to overwrite an invalid project registry", {
+			code: "PROJECT_REGISTRY_INVALID",
+			context: { filePath },
+		});
+	}
+	return parsed.version;
 }
 
 /**

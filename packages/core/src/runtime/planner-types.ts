@@ -8,6 +8,7 @@ import type {
 	ActionFailureKind,
 	ActionFailureProvenance,
 } from "../types/action-failure";
+import type { ActionReplyFailure } from "../types/action-reply";
 import type { EvaluationResult } from "../types/components";
 import type { ContextObject } from "../types/context-object";
 import type { EffectReceipt } from "../types/effects";
@@ -40,6 +41,8 @@ export type EvaluatorModelResult =
 	| (Partial<GenerateTextResult> & { object?: unknown });
 
 export interface EvaluatorRuntime {
+	/** Same fresh provider read used by the planner restoration protocol. */
+	restoreProviderContext?(context: ContextObject): Promise<ContextObject>;
 	/** True when useModel invokes prepareModelAttempt before every provider handler. */
 	supportsModelAttemptPreparation?: boolean;
 	/** Optional model registry access used to resolve evaluator context ceilings. */
@@ -86,6 +89,10 @@ export interface EvaluatorEffects {
 }
 
 export type EvaluatorOutput = EvaluationResult & {
+	/** Model-selected proof for messageToUser; egress resolves these against this turn's results. */
+	effectReceiptIds?: readonly string[];
+	/** Captured final REPLY text and its own model-selected proof during missing-reply recovery. */
+	plannerReply?: { text: string; effectReceiptIds: readonly string[] };
 	nextTool?: PlannerToolCall;
 	/** The model response violated the evaluator protocol. */
 	protocolFailure?: true;
@@ -95,6 +102,8 @@ export type EvaluatorOutput = EvaluationResult & {
 
 export interface PlannerRuntime {
 	getService?(service: string): unknown;
+	/** Reauthorize deferred provider reads before restoring model context. */
+	restoreProviderContext?(context: ContextObject): Promise<ContextObject>;
 	/** Optional per-agent setting lookup used by guarded runtime features. */
 	getSetting?(key: string): string | boolean | number | null;
 	reportError?(
@@ -130,6 +139,17 @@ export interface PlannerRuntime {
 
 export interface PlannerToolResult {
 	success: boolean;
+	/**
+	 * Verdict the sub-planner's own evaluator reached over this umbrella
+	 * action's recorded child results (same planner context, same declared
+	 * intents). A FINISH here is a completed intent evaluation; the outer loop
+	 * may adopt it instead of judging the same results a second time.
+	 */
+	subPlannerEvaluation?: {
+		decision: "FINISH";
+		success: boolean;
+		messageToUser?: string;
+	};
 	/**
 	 * Diagnostic / log-shaped projection of the tool's output. Goes into
 	 * the trajectory and the planner's tool-result message. Used by the
@@ -192,9 +212,13 @@ export interface PlannerToolResult {
 	data?: Record<string, unknown>;
 	/** Model-bound projection of `data`; complete data remains on the result. */
 	promptData?: Record<string, unknown>;
+	/** Producer-declared complete model projection; absent preserves both fields. */
+	promptDataMode?: "replace-data";
 	error?: unknown;
 	/** Typed boundary provenance retained through planner retry exhaustion. */
 	failureProvenance?: ActionFailureProvenance;
+	/** Reply unavailable is independent of the completed tool outcome. */
+	replyFailure?: ActionReplyFailure;
 	/**
 	 * Action-owned completion signal that is honored only for a single executed
 	 * tool after the plan queue drains and the successful result carries verified
@@ -246,6 +270,7 @@ export interface PlannerTerminalFailure {
 		| "coding_mutation_unverified"
 		| "coding_verification_failed"
 		| "coding_tool_failure"
+		| ActionReplyFailure["kind"]
 		| ActionFailureKind;
 	transient: boolean;
 	message: string;

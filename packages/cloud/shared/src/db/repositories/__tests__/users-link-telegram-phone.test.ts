@@ -112,7 +112,7 @@ describe("UsersRepository.linkTelegramAndPhoneIdentity (real PGlite)", () => {
     await closeDatabaseConnectionsForTests();
   });
 
-  test("concurrent trusted first texts create one zero-balance personal account", async () => {
+  test("concurrent trusted first texts create one personal unfunded account", async () => {
     const phone = "+14155550100";
     const attempts = await Promise.all(
       Array.from({ length: 8 }, (_, index) =>

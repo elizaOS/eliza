@@ -12,6 +12,7 @@ import {
   FIRST_RUN_SIGN_IN_PROMPT,
 } from "../../first-run/first-run-greeting";
 import { cn } from "../../lib/utils";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { CapabilityHandoffBlock } from "../chat/CapabilityHandoffBlock";
 import { InlineWidgetText } from "../chat/InlineWidgetText";
 import { MessageAttachments } from "../chat/MessageAttachments";
@@ -57,6 +58,7 @@ function OverlayAssistantTurnBody({
   message: ChatMessageData;
   turnStatus: ChatTurnStatus | null;
 }) {
+  const { t } = useTranslation();
   // Liveness consumes this marker as a prose-reply signal, so derive it from
   // the same normalized segments InlineWidgetText renders, not widget chrome.
   const renderedSegments = useParsedSegments(
@@ -70,11 +72,16 @@ function OverlayAssistantTurnBody({
     <MessageAttachments attachments={message.attachments} />
   ) : null;
   const pending =
+    !message.interrupted &&
     !message.text.trim() &&
     !message.attachments?.length &&
     !message.secretRequest &&
     !message.capabilityHandoff;
-  const phase = pending ? "status" : "reply";
+  const phase = message.interrupted
+    ? "interrupted"
+    : pending
+      ? "status"
+      : "reply";
   return (
     <div
       className="grid min-h-[1.4375rem] w-full min-w-0"
@@ -99,6 +106,16 @@ function OverlayAssistantTurnBody({
             <div className="pointer-events-auto">
               <CapabilityHandoffBlock request={message.capabilityHandoff} />
             </div>
+          ) : null}
+          {message.interrupted ? (
+            <p
+              className={cn(
+                "text-sm text-muted-strong",
+                hasRenderedProse && "mt-1",
+              )}
+            >
+              {t("chatmessage.ResponseInterrupte")}
+            </p>
           ) : null}
         </div>
       )}
@@ -213,6 +230,9 @@ export function shellToChatMessageData(m: ShellMessage): ChatMessageData {
     ...(m.interrupted ? { interrupted: true } : {}),
     ...(m.failureKind ? { failureKind: m.failureKind } : {}),
     ...(m.terminalFailure ? { terminalFailure: m.terminalFailure } : {}),
+    ...(m.replyRecoveryAvailable === true
+      ? { replyRecoveryAvailable: true }
+      : {}),
     ...(m.attachments ? { attachments: m.attachments } : {}),
     ...(m.secretRequest ? { secretRequest: m.secretRequest } : {}),
     ...(m.capabilityHandoff ? { capabilityHandoff: m.capabilityHandoff } : {}),
@@ -254,6 +274,37 @@ export function isFirstRunShellMessage(m: ShellMessage): boolean {
   );
 }
 
+/**
+ * Select the newest first-run turn by semantic timestamp, using transcript
+ * order as the deterministic tie-break and fallback for legacy missing dates.
+ */
+export function selectSemanticNewestFirstRunMessage(
+  messages: readonly ShellMessage[],
+): ShellMessage | undefined {
+  let newest: { message: ShellMessage; index: number } | null = null;
+  for (const [index, message] of messages.entries()) {
+    if (!isFirstRunShellMessage(message)) continue;
+    if (!newest) {
+      newest = { message, index };
+      continue;
+    }
+    const candidateTime = Number.isFinite(message.createdAt)
+      ? message.createdAt
+      : null;
+    const newestTime = Number.isFinite(newest.message.createdAt)
+      ? newest.message.createdAt
+      : null;
+    const candidateIsNewer =
+      candidateTime != null &&
+      newestTime != null &&
+      candidateTime !== newestTime
+        ? candidateTime > newestTime
+        : index > newest.index;
+    if (candidateIsNewer) newest = { message, index };
+  }
+  return newest?.message;
+}
+
 export function selectFirstRunDisplayMessages(
   messages: readonly ShellMessage[],
   showFallback: boolean,
@@ -263,9 +314,13 @@ export function selectFirstRunDisplayMessages(
     return showFallback ? FIRST_RUN_SIGN_IN_FALLBACK_MESSAGES : [];
   }
 
-  const latest = firstRunMessages.at(-1);
+  const latest = selectSemanticNewestFirstRunMessage(firstRunMessages);
   if (!latest) return [];
-  const previous = firstRunMessages.at(-2);
+  const latestIndex = firstRunMessages.indexOf(latest);
+  const earlierMessages = firstRunMessages.filter(
+    (_message, index) => index !== latestIndex,
+  );
+  const previous = selectSemanticNewestFirstRunMessage(earlierMessages);
 
   // A free-text answer is additive context, not a replacement for the live
   // setup control. Keep the most recent choice-bearing turn immediately above
@@ -273,10 +328,9 @@ export function selectFirstRunDisplayMessages(
   // Earlier choices stay hidden after the conductor advances because each
   // step seeds a newer choice-bearing turn.
   if (latest.id.startsWith("first-run:reply:choice:")) {
-    const activeChoice = firstRunMessages
-      .slice()
-      .reverse()
-      .find((message) => message.content.includes("[CHOICE:"));
+    const activeChoice = selectSemanticNewestFirstRunMessage(
+      earlierMessages.filter((message) => message.content.includes("[CHOICE:")),
+    );
     if (activeChoice && activeChoice !== latest) return [activeChoice, latest];
   }
 

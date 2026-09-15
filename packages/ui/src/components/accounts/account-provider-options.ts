@@ -108,6 +108,22 @@ export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
     description: "Direct Moonshot API key for Kimi models.",
     eligibility: ["chat", "API key"],
   },
+  {
+    id: "openrouter-api",
+    name: "OpenRouter",
+    category: "chat",
+    description:
+      "OpenRouter credits or BYOK for model inference and coding agents. Choose a model when starting a coding agent.",
+    eligibility: ["model inference", "code-agent", "API key"],
+  },
+  {
+    id: "xai-api",
+    name: "xAI API",
+    category: "chat",
+    description:
+      "Metered xAI API access for Grok model inference and coding agents; separate from Grok subscription login.",
+    eligibility: ["model inference", "code-agent", "API key"],
+  },
 ];
 
 export function getAccountProviderOption(

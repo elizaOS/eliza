@@ -4,7 +4,7 @@
  * components/ui — other components (alert-dialog, banner, …) reuse
  * `buttonVariants` rather than restyling their own buttons. `asChild` renders
  * the styling onto a Radix Slot child so links can adopt button appearance.
- * Accent-orange resting → darker-orange hover per the brand hover system.
+ * The accentDarkHover variant pairs darker-orange hover with a readable label.
  *
  * On coarse-pointer (touch) surfaces the compact sizes compose a 44px hit floor
  * (`pointer-coarse:min-h/min-w-touch` = `--min-touch-target`) so the rendered
@@ -31,6 +31,8 @@ const buttonVariants = cva(
         // orange fill so far that its dark label loses contrast (45% failed).
         default:
           "bg-accent text-accent-fg hover:bg-accent-hover disabled:bg-accent/80 disabled:text-accent-fg",
+        accentDarkHover:
+          "bg-accent text-accent-fg hover:bg-accent-muted hover:text-inverse disabled:bg-accent/80 disabled:text-accent-fg",
         surface:
           "bg-card text-txt-strong hover:bg-surface disabled:text-muted-strong",
         surfaceAccent:
@@ -38,18 +40,20 @@ const buttonVariants = cva(
         surfaceDestructive:
           "bg-destructive-subtle text-danger hover:bg-destructive-subtle/70 disabled:text-muted-strong",
         destructive:
-          "bg-destructive text-destructive-fg hover:bg-destructive/85 disabled:bg-destructive/65 disabled:text-destructive-fg",
+          "bg-destructive-solid text-destructive-fg hover:bg-destructive-solid-hover disabled:bg-destructive-solid/65 disabled:text-destructive-fg",
         outline:
           "border border-border bg-card text-txt-strong hover:border-border-strong hover:bg-surface hover:text-txt-strong disabled:border-border/60 disabled:bg-card disabled:text-muted-strong",
         secondary:
           "bg-bg-accent text-txt-strong hover:bg-surface disabled:text-muted-strong",
         ghost:
-          "text-txt-strong hover:bg-surface hover:text-txt-strong disabled:text-muted-strong",
+          "bg-transparent text-muted-strong hover:bg-transparent hover:text-txt-strong disabled:text-muted-strong",
         link: "text-accent underline-offset-4 hover:underline disabled:text-muted-strong",
         selection:
-          "bg-transparent text-txt-strong hover:bg-accent-subtle data-[state=on]:bg-accent-subtle data-[state=on]:text-txt-strong",
+          "bg-transparent text-muted-strong hover:bg-transparent hover:text-txt-strong data-[state=on]:bg-accent-subtle data-[state=on]:hover:bg-accent-subtle data-[state=on]:text-txt-strong",
+        settingsRow:
+          "bg-transparent text-muted hover:bg-transparent hover:text-txt-strong data-[state=on]:bg-bg-hover data-[state=on]:hover:bg-bg-hover data-[state=on]:text-txt-strong",
         choice:
-          "border border-border-strong bg-card text-txt-strong hover:border-accent hover:bg-surface disabled:opacity-40 aria-disabled:opacity-40 data-[state=on]:border-accent data-[state=on]:bg-accent data-[state=on]:text-accent-fg data-[state=on]:disabled:opacity-100 data-[state=on]:aria-disabled:opacity-100",
+          "border border-border-strong bg-card text-card-foreground hover:border-accent hover:bg-bg-choice-hover disabled:opacity-40 aria-disabled:opacity-40 data-[state=on]:border-accent data-[state=on]:bg-accent data-[state=on]:text-accent-fg data-[state=on]:disabled:opacity-100 data-[state=on]:aria-disabled:opacity-100",
         publicRow:
           "h-full min-w-0 flex-1 justify-start gap-4 rounded-none bg-transparent p-0 text-left text-inverse-foreground whitespace-normal hover:bg-transparent hover:text-inverse",
         publicTile:
@@ -64,13 +68,18 @@ const buttonVariants = cva(
           "h-auto w-full justify-start whitespace-normal rounded-sm bg-transparent px-3 py-2 text-left font-mono text-xs-tight text-muted-strong hover:bg-surface hover:text-txt",
         dangerOutline:
           "border border-danger/30 bg-transparent text-danger hover:border-danger/50 hover:bg-danger/10 hover:text-danger",
-        ghostMuted: "bg-transparent text-muted hover:bg-surface hover:text-txt",
+        searchResult:
+          "rounded-search bg-transparent text-muted hover:bg-bg-card-hover hover:text-txt data-[surface=card]:bg-card data-[surface=card]:text-txt-strong data-[surface=card]:hover:bg-bg-card-hover data-[state=on]:bg-bg-card-hover data-[state=on]:text-txt-strong disabled:text-muted-strong",
+        ghostMuted:
+          "bg-transparent text-muted hover:bg-transparent hover:text-txt",
+        selectionNeutral:
+          "bg-transparent text-muted-strong hover:bg-transparent hover:text-txt-strong data-[state=on]:bg-surface data-[state=on]:hover:bg-surface data-[state=on]:text-txt-strong",
         externalLink:
           "h-auto bg-transparent p-0 text-left text-xs font-normal text-accent underline-offset-2 hover:bg-transparent hover:underline",
         sectionToggle:
-          "h-auto w-full justify-start gap-2 rounded-sm bg-transparent px-3 py-2 text-left hover:bg-bg-hover",
+          "h-auto w-full justify-start gap-2 rounded-sm bg-transparent px-3 py-2 text-left text-muted-strong hover:bg-transparent hover:text-txt-strong",
         dangerGhost:
-          "bg-transparent text-muted hover:bg-danger/10 hover:text-danger",
+          "bg-transparent text-muted hover:bg-transparent hover:text-danger",
         outlineMuted:
           "border border-border bg-card text-muted-strong hover:border-border-strong hover:bg-surface hover:text-txt",
         mutedLink:
@@ -83,12 +92,12 @@ const buttonVariants = cva(
         transparent: "bg-transparent hover:bg-transparent",
         chatGestureTarget:
           "rounded-none border-0 bg-transparent hover:bg-transparent",
+        homeWidget:
+          "group relative flex h-auto w-full overflow-hidden rounded-2xl border border-border-launcher-icon bg-bg-wallpaper-overlay text-left text-txt-launcher-icon hover:bg-bg-launcher-icon-hover",
         disclosureMuted:
           "w-full justify-between bg-transparent text-xs text-muted hover:bg-transparent hover:text-txt",
         overlayEdge:
           "bg-transparent text-inverse/55 hover:bg-transparent hover:text-inverse",
-        memorySidebar:
-          "border border-border bg-card/40 text-txt hover:bg-card/70",
       },
       size: {
         default:
@@ -104,28 +113,40 @@ const buttonVariants = cva(
         tile: "min-h-12 flex-col gap-1 px-2 py-2 text-xs",
         card: "min-h-20 flex-col items-stretch p-3",
         content: "h-auto w-auto min-w-0 p-0",
-        compact: "h-9 rounded-sm px-3 text-xs",
-        dense: "h-8 rounded-sm px-3 text-xs",
-        regularCompact: "h-9 rounded-sm px-3 text-sm",
-        tiny: "h-7 rounded-sm px-2.5 text-xs",
-        wide: "h-10 rounded-sm px-6 text-sm",
-        micro: "h-6 rounded-sm px-2 py-0 text-xs",
-        tinyWide: "h-7 rounded-sm px-3 text-xs-tight",
-        pill: "h-9 rounded-full px-4 text-xs-tight font-bold tracking-[0.12em]",
+        compact:
+          "h-9 rounded-sm px-3 text-xs pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
+        dense:
+          "h-8 rounded-sm px-3 text-xs pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
+        regularCompact:
+          "h-9 rounded-sm px-3 text-sm pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
+        tiny: "h-7 rounded-sm px-2.5 text-xs pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
+        wide: "h-10 rounded-sm px-6 text-sm pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
+        micro:
+          "h-6 rounded-sm px-2 py-0 text-xs pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
+        tinyWide:
+          "h-7 rounded-sm px-3 text-xs-tight pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
+        pill: "h-9 rounded-full px-4 text-xs-tight font-bold tracking-[0.12em] pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
         badge:
-          "h-auto rounded-full px-3 py-1.5 text-2xs font-bold tracking-[0.14em]",
-        denseWide: "h-8 rounded-sm px-4 text-xs-tight font-semibold",
+          "h-auto rounded-full px-3 py-1.5 text-2xs font-bold tracking-[0.14em] pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
+        denseWide:
+          "h-8 rounded-sm px-4 text-xs-tight font-semibold pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
         eventRow: "h-auto min-h-11 w-full items-start gap-1 p-0",
-        formAction: "h-10 rounded-sm px-4 text-xs-tight font-semibold",
+        formAction:
+          "h-10 rounded-sm px-4 text-xs-tight font-semibold pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
         disclosure:
-          "size-5 shrink-0 rounded-sm p-0 text-left text-xs text-muted",
-        pillDense: "h-8 rounded-full px-3 text-xs-tight font-semibold",
+          "size-5 shrink-0 rounded-sm p-0 text-left text-xs text-muted pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
+        pillDense:
+          "h-8 rounded-full px-3 text-xs-tight font-semibold pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
         fill: "h-full w-full rounded-sm p-0",
-        inlineIcon: "h-auto px-2 py-0 text-xs",
+        inlineIcon:
+          "h-auto px-2 py-0 text-xs pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
         rowContent: "h-auto gap-3 rounded-none p-0 font-normal",
-        "icon-xs": "size-6 rounded-sm p-0",
-        carouselControl: "size-8 rounded-sm p-0",
-        pageDrawerTrigger: "h-9.5 rounded-sm px-3 text-sm font-semibold",
+        "icon-xs":
+          "size-6 rounded-sm p-0 pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
+        carouselControl:
+          "size-8 rounded-sm p-0 pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
+        pageDrawerTrigger:
+          "h-9.5 rounded-sm px-3 text-sm font-semibold pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
         publicTile:
           "h-18 w-full justify-start gap-4 rounded-xs px-5 text-left whitespace-normal",
         memorySidebar:

@@ -15,7 +15,7 @@ import {
   MONTHLY_IDLE_COST,
   MONTHLY_RUNNING_COST,
 } from "@elizaos/cloud-sdk/browser-contracts";
-import { BrandCard, CornerBrackets, StatusBadge } from "@elizaos/ui/cloud-ui";
+import { Card, CornerBrackets, StatusBadge } from "@elizaos/ui/cloud-ui";
 import { Clock, DollarSign, TrendingDown, Zap } from "lucide-react";
 import { useT } from "../lib/i18n";
 
@@ -50,7 +50,7 @@ export function ElizaAgentPricingBanner({
     creditBalance < AGENT_PRICING.LOW_CREDIT_WARNING;
 
   return (
-    <BrandCard className="relative overflow-hidden">
+    <Card variant="brand" className="relative overflow-hidden">
       <CornerBrackets size="sm" className="opacity-30" />
 
       <div className="relative z-10">
@@ -94,6 +94,12 @@ export function ElizaAgentPricingBanner({
             <p className="text-2xs text-white/30 font-mono">
               {formatMonthlyEstimate(AGENT_PRICING.RUNNING_HOURLY_RATE)}
             </p>
+            <p className="text-xs text-white/72">
+              {t("cloud.containers.pricingBanner.activationMinimum", {
+                defaultValue: "{{minimum}} minimum per successful start",
+                minimum: formatUSD(AGENT_PRICING.MINIMUM_ACTIVATION_CHARGE),
+              })}
+            </p>
           </div>
 
           {/* Idle rate */}
@@ -136,7 +142,7 @@ export function ElizaAgentPricingBanner({
                   })
                 : sharedCount > 0
                   ? t("cloud.containers.pricingBanner.sharedFree", {
-                      defaultValue: "Shared Agent is free",
+                      defaultValue: "Shared message ingress is free",
                     })
                   : t("cloud.containers.pricingBanner.noAgents", {
                       defaultValue: "No agents",
@@ -170,6 +176,6 @@ export function ElizaAgentPricingBanner({
           </div>
         </div>
       </div>
-    </BrandCard>
+    </Card>
   );
 }

@@ -4,6 +4,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearStoredStewardToken,
+  configureStoredStewardTokenScope,
   exchangeStewardCode,
   hasStewardAuthedCookie,
   readStoredStewardToken,
@@ -15,6 +16,7 @@ import {
   STEWARD_REFRESH_TOKEN_KEY,
   STEWARD_SESSION_CHANGE_EVENT,
   STEWARD_TOKEN_KEY,
+  STEWARD_TOKEN_SCOPE_KEY,
   type StewardSessionChangeDetail,
   sanitizeTelegramAccountClaimContinuation,
   stewardAuthedCookieName,
@@ -107,6 +109,92 @@ describe("steward session marker cookie", () => {
 describe("Steward session storage transitions", () => {
   afterEach(() => {
     localStorage.clear();
+    const globalSlot = globalThis as Record<PropertyKey, unknown>;
+    delete globalSlot[Symbol.for("elizaos.app.boot-config")];
+    delete globalSlot.__ELIZAOS_APP_BOOT_CONFIG__;
+  });
+
+  function setLocalCloudTarget(cloudApiBase: string): void {
+    configureStoredStewardTokenScope(cloudApiBase);
+  }
+
+  it("quarantines a loopback token after switching Cloud environments", async () => {
+    setLocalCloudTarget("https://api.eliza.app/api/v1");
+    await writeStoredStewardToken("production-token");
+
+    expect(readStoredStewardToken()).toBe("production-token");
+    expect(localStorage.getItem(STEWARD_TOKEN_SCOPE_KEY)).toBe(
+      "eliza-cloud:production",
+    );
+
+    setLocalCloudTarget("https://api-staging.eliza.app/api/v1");
+
+    expect(readStoredStewardToken()).toBeNull();
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe("production-token");
+  });
+
+  it("binds a new loopback login to the newly configured environment", async () => {
+    setLocalCloudTarget("https://api.eliza.app");
+    await writeStoredStewardToken("production-token");
+    setLocalCloudTarget("https://cloud-staging.eliza.app");
+
+    await writeStoredStewardToken("staging-token");
+
+    expect(readStoredStewardToken()).toBe("staging-token");
+    expect(localStorage.getItem(STEWARD_TOKEN_SCOPE_KEY)).toBe(
+      "eliza-cloud:staging",
+    );
+  });
+
+  it("fails closed for a legacy unscoped token on a configured loopback app", () => {
+    setLocalCloudTarget("https://api-staging.eliza.app");
+    localStorage.setItem(STEWARD_TOKEN_KEY, "legacy-production-token");
+
+    expect(readStoredStewardToken()).toBeNull();
+  });
+
+  it("keeps custom loopback targets isolated by exact origin", async () => {
+    setLocalCloudTarget("http://127.0.0.1:8787/api/v1");
+    await writeStoredStewardToken("self-hosted-token");
+    expect(readStoredStewardToken()).toBe("self-hosted-token");
+
+    setLocalCloudTarget("http://127.0.0.1:8788/api/v1");
+    expect(readStoredStewardToken()).toBeNull();
+  });
+
+  it("does not publish a new scope before protected persistence succeeds", async () => {
+    setLocalCloudTarget("https://api.eliza.app");
+    await writeStoredStewardToken("production-token");
+    setLocalCloudTarget("https://api-staging.eliza.app");
+    let rejectPersistence: (error: Error) => void = () => {};
+    const pendingPersistence = new Promise<void>((_resolve, reject) => {
+      rejectPersistence = reject;
+    });
+    const unregister = registerStewardTokenPersistence(async (token) => {
+      await pendingPersistence;
+      window.localStorage.setItem(STEWARD_TOKEN_KEY, token);
+    });
+
+    try {
+      const write = writeStoredStewardToken("staging-token");
+      await Promise.resolve();
+      expect(readStoredStewardToken()).toBeNull();
+      expect(localStorage.getItem(STEWARD_TOKEN_SCOPE_KEY)).toBe(
+        "eliza-cloud:production",
+      );
+
+      rejectPersistence(new Error("protected write rejected"));
+      await expect(write).rejects.toMatchObject({
+        name: "StewardTokenPersistenceError",
+      });
+
+      expect(readStoredStewardToken()).toBeNull();
+      expect(localStorage.getItem(STEWARD_TOKEN_SCOPE_KEY)).toBe(
+        "eliza-cloud:production",
+      );
+    } finally {
+      unregister();
+    }
   });
 
   it("publishes ordered typed transitions after canonical writes and clears", async () => {

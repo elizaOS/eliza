@@ -14,7 +14,7 @@ import * as channelPluginMapModule from "./channel-plugin-map";
 import { CHANNEL_PLUGIN_MAP } from "./channel-plugin-map";
 
 const expectedChannelPluginMap: Record<string, string> = {
-  blooio: "@elizaos/plugin-blooio",
+  blooio: "@elizaos/plugin-imessage",
   discord: "@elizaos/plugin-discord",
   discordLocal: "@elizaos/plugin-discord",
   googlechat: "@elizaos/plugin-google-workspace",
@@ -38,7 +38,7 @@ describe("CHANNEL_PLUGIN_MAP", () => {
   });
 
   it("resolves every shipped channel name to its owning plugin package", () => {
-    expect(CHANNEL_PLUGIN_MAP.blooio).toBe("@elizaos/plugin-blooio");
+    expect(CHANNEL_PLUGIN_MAP.blooio).toBe("@elizaos/plugin-imessage");
     expect(CHANNEL_PLUGIN_MAP.discord).toBe("@elizaos/plugin-discord");
     expect(CHANNEL_PLUGIN_MAP.discordLocal).toBe("@elizaos/plugin-discord");
     expect(CHANNEL_PLUGIN_MAP.googlechat).toBe(

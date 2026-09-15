@@ -10,6 +10,7 @@ import {
   createElement,
   type JSX,
   memo,
+  type ReactNode,
   useCallback,
   useEffect,
   useRef,
@@ -17,6 +18,7 @@ import {
 } from "react";
 import { useSharedNow } from "../../hooks/useSharedNow";
 import { cn } from "../../lib/utils";
+import { categoryIcon } from "../../state/notifications/category-icon";
 import { formatRelativeTimeShort } from "../../utils/format";
 import { NOTIFICATION_PRIORITY_RANK } from "../../widgets/home-priority";
 import {
@@ -24,6 +26,7 @@ import {
   hasChatSourceMeta,
   normalizeChatSourceKey,
 } from "../composites/chat/chat-source.helpers";
+import { getBrandIcon } from "../conversations/brand-icons";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { notificationPullRevealStyle } from "./notification-shade-presentation";
@@ -43,6 +46,12 @@ export function orderDashboardNotifications(
       (NOTIFICATION_PRIORITY_RANK[b.priority] ?? 1) -
       (NOTIFICATION_PRIORITY_RANK[a.priority] ?? 1);
     if (byPriority !== 0) return byPriority;
+    const aPending = typeof a.data?.pendingActionId === "string";
+    const bPending = typeof b.data?.pendingActionId === "string";
+    if (aPending !== bPending) return aPending ? -1 : 1;
+    if (aPending && bPending && a.createdAt !== b.createdAt) {
+      return a.createdAt - b.createdAt;
+    }
     if (b.createdAt !== a.createdAt) return b.createdAt - a.createdAt;
     return a.id.localeCompare(b.id);
   });
@@ -163,11 +172,13 @@ export function ClearConfirmationContent({
 }
 
 function NotificationSourceIcon({
+  category,
   count,
   countVisibility = 1,
   decorative = false,
   source,
 }: {
+  category: NotificationCategory;
   count?: number;
   countVisibility?: number;
   decorative?: boolean;
@@ -176,18 +187,14 @@ function NotificationSourceIcon({
   const meta = getChatSourceMeta(source);
   const Icon = meta.Icon;
   const registered = hasChatSourceMeta(source);
+  const BrandIcon = registered ? null : getBrandIcon(source);
   const glyph = registered ? (
     <Icon className="size-5" />
-  ) : decorative ? (
-    <span
-      data-notification-stack-preview-source-initial={
-        meta.label.trim().charAt(0).toUpperCase() || "E"
-      }
-      className="text-sm font-semibold text-white/85"
-    />
+  ) : BrandIcon ? (
+    <BrandIcon className="size-5" />
   ) : (
-    <span aria-hidden className="text-sm font-semibold text-white/85">
-      {meta.label.trim().charAt(0).toUpperCase() || "E"}
+    <span aria-hidden className="flex size-5 items-center justify-center">
+      {categoryIcon(category)}
     </span>
   );
   const counter =
@@ -229,6 +236,11 @@ function NotificationSourceIcon({
         {
           "data-testid": decorative ? undefined : "notification-source-icon",
           "data-source": normalizeChatSourceKey(source) ?? undefined,
+          "data-notification-source-visual": registered
+            ? "registered"
+            : BrandIcon
+              ? "brand"
+              : "category",
           role: "img",
           "aria-hidden": decorative ? true : undefined,
           "aria-label": decorative
@@ -238,8 +250,7 @@ function NotificationSourceIcon({
               : meta.label,
           title: decorative ? undefined : meta.label,
           className: cn(
-            "eliza-notif-source-icon relative flex size-10 shrink-0 items-center justify-center",
-            registered && meta.iconClassName,
+            "eliza-notif-source-icon relative flex size-10 shrink-0 items-center justify-center text-white",
           ),
         },
         glyph,
@@ -270,6 +281,7 @@ function NotificationStackPreviewContent({
       className="pointer-events-none flex min-h-touch min-w-0 items-center gap-3 px-3 py-2 text-left"
     >
       <NotificationSourceIcon
+        category={notification.category}
         source={notification.source}
         count={stackCount}
         decorative
@@ -309,6 +321,8 @@ function NotificationStackPreviewTime({
 
 export interface NotificationRowProps {
   notification: AgentNotification;
+  actionContent?: ReactNode;
+  dismissible?: boolean;
   stackKey?: string;
   stackCount?: number;
   stackCountVisibility?: number;
@@ -344,6 +358,8 @@ export function rowPropsEqual(
     a.body === b.body &&
     a.deepLink === b.deepLink &&
     a.source === b.source &&
+    previous.actionContent === next.actionContent &&
+    previous.dismissible === next.dismissible &&
     previous.stackKey === next.stackKey &&
     previous.stackCount === next.stackCount &&
     previous.stackCountVisibility === next.stackCountVisibility &&
@@ -400,6 +416,8 @@ export function __setNotificationRowRenderObserverForTests(
 /** One notification card with tap/open and horizontal dismiss behavior. */
 export const NotificationRow = memo(function NotificationRow({
   notification,
+  actionContent,
+  dismissible = true,
   stackKey,
   stackCount,
   stackCountVisibility,
@@ -437,6 +455,7 @@ export const NotificationRow = memo(function NotificationRow({
 
   const commitDismiss = useCallback(
     (direction: "left" | "right") => {
+      if (!dismissible) return;
       suppressClick.current = true;
       setDismissing(direction);
       dismissTimer.current = window.setTimeout(
@@ -444,18 +463,22 @@ export const NotificationRow = memo(function NotificationRow({
         NOTIFICATION_ROW_DISMISS_COMMIT_MS,
       );
     },
-    [notification.id, onDismiss],
+    [dismissible, notification.id, onDismiss],
   );
 
-  const onPointerDown = useCallback((event: React.PointerEvent) => {
-    suppressClick.current = false;
-    gesture.current = {
-      id: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      axis: "none",
-    };
-  }, []);
+  const onPointerDown = useCallback(
+    (event: React.PointerEvent) => {
+      suppressClick.current = false;
+      if (!dismissible) return;
+      gesture.current = {
+        id: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        axis: "none",
+      };
+    },
+    [dismissible],
+  );
 
   const onPointerMove = useCallback((event: React.PointerEvent) => {
     const current = gesture.current;
@@ -545,6 +568,7 @@ export const NotificationRow = memo(function NotificationRow({
     >
       <div
         data-testid="notification-row-swipe"
+        data-notification-dismissible={dismissible ? "true" : "false"}
         data-swipe-dragging={dragging ? "" : undefined}
         style={{
           transform: dismissing
@@ -564,7 +588,7 @@ export const NotificationRow = memo(function NotificationRow({
       >
         <Button
           type="button"
-          variant="surface"
+          variant="transparent"
           size="row"
           align="start"
           data-testid="notification-row"
@@ -590,6 +614,7 @@ export const NotificationRow = memo(function NotificationRow({
           className="eliza-notif-row-content min-w-0"
         >
           <NotificationSourceIcon
+            category={notification.category}
             source={notification.source}
             count={stackCount}
             countVisibility={stackCountVisibility}
@@ -613,6 +638,14 @@ export const NotificationRow = memo(function NotificationRow({
             ) : null}
           </span>
         </Button>
+        {actionContent ? (
+          <div
+            className="ml-14 flex min-w-0 flex-wrap items-center gap-1.5 px-3 pb-3"
+            data-notification-actions=""
+          >
+            {actionContent}
+          </div>
+        ) : null}
       </div>
       {stackPeeks
         ? STACK_PEEK_LAYERS.slice(0, stackPeeks.count).map((layer, index) => {

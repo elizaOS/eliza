@@ -2,10 +2,10 @@
 import { Hono } from "hono";
 import { z } from "zod";
 
+import { requireGenerativeRouteCaller } from "@/api-app/lib/generative-route-auth";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "@/db/repositories/characters";
 import { conversationsRepository } from "@/db/repositories/conversations";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { findActivePersonalDedicatedTarget } from "@/lib/services/agent-tier-upgrade-target";
 import {
   isPersonalSharedAgentId,
@@ -78,7 +78,14 @@ app.post("/", async (c) => {
     return c.json({ error: "voice session signing not configured" }, 503);
   }
 
-  const auth = await requireUserOrApiKeyWithOrg(c);
+  // The signed <=120s bootstrap token is the WebSocket's standing proof. Mint
+  // it only from the one combined identity/admission decision so provider
+  // start never joins a stale token to a second auth/cache read.
+  const caller = await requireGenerativeRouteCaller(c, {
+    rateLimitEndpoint: "standard",
+    awaitWarmingMs: 1_500,
+  });
+  const auth = caller.user;
 
   let body: z.infer<typeof MintBody>;
   try {

@@ -5,8 +5,12 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
+import {
+  asGenerativeCacheApiError,
+  getGenerativeOperationContext,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
   rateLimit,
@@ -16,6 +20,7 @@ import {
   listHostedBrowserSessions,
   logHostedBrowserFailure,
 } from "@/lib/services/browser-tools";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -33,50 +38,68 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.get("/", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
+    const caller = await requireGenerativeRouteCaller(c);
+    const { user } = caller;
     const sessions = await listHostedBrowserSessions({
       apiKeyId: null,
       organizationId: user.organization_id,
       requestSource: "api",
       userId: user.id,
+      operationContext: getGenerativeOperationContext(c, caller),
     });
     return c.json({ sessions });
   } catch (error) {
     logHostedBrowserFailure("browser_list", error);
-    return failureResponse(c, error);
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
 });
 
 app.post("/", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
     const decodedBody = await decodeRequestJson(c.req);
+    let pendingResponse: Response | undefined;
+    let body: z.infer<typeof createSessionSchema> | undefined;
     if (!decodedBody.ok) {
       // error-policy:J3 malformed JSON is invalid request input.
-      return c.json({ error: "Invalid JSON body" }, 400);
-    }
-    const rawBody = decodedBody.value;
-    const bodyResult = createSessionSchema.safeParse(rawBody);
-    if (!bodyResult.success) {
-      return c.json(
-        {
-          error: "Invalid browser session request",
-          details: bodyResult.error.flatten(),
-        },
-        400,
-      );
+      pendingResponse = c.json({ error: "Invalid JSON body" }, 400);
+    } else {
+      const bodyResult = createSessionSchema.safeParse(decodedBody.value);
+      if (bodyResult.success) {
+        body = bodyResult.data;
+      } else {
+        pendingResponse = c.json(
+          {
+            error: "Invalid browser session request",
+            details: bodyResult.error.flatten(),
+          },
+          400,
+        );
+      }
     }
 
-    const session = await createHostedBrowserSession(bodyResult.data, {
-      apiKeyId: null,
+    const caller = await requireGenerativeRouteCaller(c, {
+      deferStrongCredentialCheck: pendingResponse === undefined,
+    });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
+    });
+    if (pendingResponse) return pendingResponse;
+    const { user } = caller;
+
+    const session = await createHostedBrowserSession(body!, {
+      apiKeyId: caller.apiKeyId,
       organizationId: user.organization_id,
       requestSource: "api",
       userId: user.id,
+      operationContext: getGenerativeOperationContext(c, caller, {
+        credentialForAdmission: () => credentialGuard.credentialForAdmission(),
+      }),
     });
     return c.json({ session });
   } catch (error) {
     logHostedBrowserFailure("browser_create", error);
-    return failureResponse(c, error);
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
 });
 

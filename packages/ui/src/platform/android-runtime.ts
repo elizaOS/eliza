@@ -81,6 +81,31 @@ export function isAndroidLauncherBuild(): boolean {
 }
 
 /**
+ * True only for the dedicated LP3 VPS fallback renderer. Its Android 14
+ * system WebView can keep page code in an out-of-app renderer but predates
+ * androidx.webkit multi-profile storage, so Browser tabs deliberately request
+ * one shared browser profile instead of a per-tab profile. The mobile build
+ * orchestrator owns this compile-time flag; ordinary Android builds remain on
+ * isolated storage.
+ */
+export function resolveAndroidLp3SharedBrowserStorage(
+  env: RuntimeEnv,
+): boolean {
+  return (
+    readString(env, ["VITE_ELIZA_ANDROID_LP3_SHARED_BROWSER_STORAGE"]) === "1"
+  );
+}
+
+export function usesAndroidLp3SharedBrowserStorage(): boolean {
+  const env =
+    typeof import.meta !== "undefined" &&
+    (import.meta as { env?: RuntimeEnv }).env
+      ? ((import.meta as { env: RuntimeEnv }).env as RuntimeEnv)
+      : {};
+  return resolveAndroidLp3SharedBrowserStorage(env);
+}
+
+/**
  * True on the Android builds that ship the on-device agent runtime
  * (`android` sideload / `android-system`): a native Android shell that is not
  * the cloud-locked Play-Store variant. These builds' whole point is the local

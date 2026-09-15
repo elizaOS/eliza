@@ -104,6 +104,16 @@ describe("JoinPage managed-app SSO handoff", () => {
     expect(replacedUrls).toEqual([]);
   });
 
+  it("does not erase an in-flight logout marker while old auth is still rendered", async () => {
+    authenticatedRef.current = true;
+    markSsoLoggedOut();
+    runJoinFlowMock.mockResolvedValue({ agentId: "agent-1" });
+    render(<JoinPage />);
+
+    await waitFor(() => expect(runJoinFlowMock).toHaveBeenCalledTimes(1));
+    expect(localStorage.getItem("eliza_sso_logged_out")).toBe("1");
+  });
+
   it("restarts a join request cancelled by the StrictMode probe", async () => {
     authenticatedRef.current = true;
     runJoinFlowMock

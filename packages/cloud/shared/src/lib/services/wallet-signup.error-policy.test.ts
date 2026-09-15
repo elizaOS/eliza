@@ -17,6 +17,7 @@ const EVM_ADDRESS = `0x${"cd".repeat(20)}`;
 let getByWallet: (addr: string) => Promise<unknown>;
 let findBySlug: (slug: string) => Promise<unknown>;
 let orgCreate: (input: unknown) => Promise<unknown>;
+let orgUpdateInput: unknown;
 let userCreate: (input: { organization_id: string; role: string }) => Promise<unknown>;
 
 mock.module("../../db/repositories/organizations", () => ({
@@ -53,6 +54,17 @@ mock.module("../../db/helpers", () => ({
           }),
         }),
       }),
+      update: () => ({
+        set: (input: unknown) => ({
+          where: () => ({
+            returning: async () => {
+              orgUpdateInput = input;
+              const org = await findBySlug("wallet-slug");
+              return org ? [org] : [];
+            },
+          }),
+        }),
+      }),
     }),
 }));
 mock.module("./organizations", () => ({
@@ -79,6 +91,7 @@ beforeEach(() => {
   getByWallet = async () => null;
   findBySlug = async () => null;
   orgCreate = async () => null;
+  orgUpdateInput = undefined;
   userCreate = async () => {
     throw new Error("userCreate not configured");
   };
@@ -101,10 +114,14 @@ describe("wallet-signup fail-closed error policy", () => {
   });
 
   test("org create conflict is a DESIGNED race recovery to the winning org", async () => {
-    const racedOrg = { id: "org-raced", slug: "wallet-slug" };
+    const racedOrg = { id: "org-raced", slug: "wallet-slug", credit_balance: "5.000000" };
     getByWallet = async () => null;
     findBySlug = async () => racedOrg;
-    orgCreate = async () => null;
+    let organizationInput: unknown;
+    orgCreate = async (input) => {
+      organizationInput = input;
+      return null;
+    };
     userCreate = async (input) => ({
       id: "user-1",
       organization_id: input.organization_id,
@@ -116,6 +133,8 @@ describe("wallet-signup fail-closed error policy", () => {
     expect(res.isNewAccount).toBe(true);
     expect(res.user.organization).toBe(racedOrg as never);
     expect(res.user.organization_id).toBe("org-raced");
+    expect(organizationInput).toEqual(expect.objectContaining({ credit_balance: "0.00" }));
+    expect(orgUpdateInput).toBeUndefined();
     expect(res.initialCreditsGranted).toBe(false);
     expect(res.initialFreeCreditsUsd).toBe(0);
   });

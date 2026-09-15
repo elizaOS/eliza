@@ -19,6 +19,7 @@ import {
 } from "@elizaos/agent";
 import { getHostExecutionCapabilities } from "@elizaos/app-core/services/task-host-capabilities";
 import {
+  ElizaError,
   type IAgentRuntime,
   inspectSendHandlerResult,
   logger,
@@ -43,8 +44,6 @@ import {
   createConsolidationRegistry,
   createEscalationLadderRegistry,
   createScheduledTaskRunner,
-  createSchedulingSqlScheduledTaskLogStore,
-  createSchedulingSqlScheduledTaskStore,
   createTaskGateRegistry,
   getAnchorRegistry,
   getScheduledTaskRunner,
@@ -63,12 +62,21 @@ import {
   type ScheduledTaskRunnerDepsBundle,
   type ScheduledTaskRunnerHandle,
 } from "@elizaos/plugin-scheduling";
+import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { assembleMorningBrief } from "../../default-packs/morning-brief.js";
 import { getChannelRegistry } from "../channels/index.js";
 import type { DispatchResult } from "../connectors/contract.js";
 import { decideDispatchPolicy } from "../connectors/dispatch-policy.js";
 import { getConnectorRegistry } from "../connectors/registry.js";
 import { resolveDefaultTimeZone } from "../defaults.js";
+import { FAMILY_BACKUP_CLEANUP_OPERATION } from "../family-workflows/backup-cleanup-schedule.js";
+import {
+  FAMILY_MONTHLY_SYSTEM_OPERATION,
+  getFamilyWorkflowRuntimeService,
+} from "../family-workflows/index.js";
+import { withFamilyScheduledExecution } from "../family-workflows/scheduled-execution.js";
+import { createFamilySchedulingStores } from "../family-workflows/scheduled-store.js";
+import { purgeFamilyBackupCleanup } from "../family-workflows/workspace-deletion.js";
 import { resolveGlobalPauseStore } from "../global-pause/store.js";
 import { registerHouseholdGrantExpiryWarningGate } from "../household/grant-expiry-warning.js";
 import { HouseholdCoordinationRepository } from "../household/repository.js";
@@ -313,10 +321,7 @@ function makeRepositoryBackedStores(
   runtime: IAgentRuntime,
   agentId: string,
 ): RepositoryBackedStores {
-  return {
-    store: createSchedulingSqlScheduledTaskStore({ runtime, agentId }),
-    logStore: createSchedulingSqlScheduledTaskLogStore({ runtime, agentId }),
-  };
+  return createFamilySchedulingStores(runtime, agentId);
 }
 
 function defaultOwnerFactsProvider(
@@ -535,6 +540,10 @@ function isLocalAgentBackupDispatch(
   return record.metadata?.systemOperation === LOCAL_AGENT_BACKUP_OPERATION;
 }
 
+function isFamilyMonthlyDispatch(record: ScheduledTaskDispatchRecord): boolean {
+  return record.metadata?.systemOperation === FAMILY_MONTHLY_SYSTEM_OPERATION;
+}
+
 function targetNeedsOwnerResolution(
   channelKey: string,
   target: string | undefined,
@@ -686,6 +695,32 @@ export function createProductionScheduledTaskDispatcher(opts: {
         });
       }
 
+      if (
+        record.metadata?.systemOperation === FAMILY_BACKUP_CLEANUP_OPERATION
+      ) {
+        const jobId = record.metadata.deletionJobId;
+        const sha256 = record.metadata.backupReviewSha256;
+        if (typeof jobId !== "string" || typeof sha256 !== "string")
+          throw new ElizaError(
+            "[FamilyDeletion] Scheduled cleanup identity is missing",
+            {
+              code: "FAMILY_DELETION_BACKUP_REVIEW_REQUIRED",
+            },
+          );
+        const job = await purgeFamilyBackupCleanup(
+          opts.runtime,
+          SELF_ENTITY_ID,
+          {
+            jobId,
+            sha256,
+          },
+        );
+        return {
+          ok: true,
+          messageId: `family-backup-cleanup:${job.id}:${sha256}`,
+        };
+      }
+
       if (isLocalAgentBackupDispatch(record)) {
         const backup = await createLocalAgentBackup(
           opts.runtime,
@@ -705,6 +740,23 @@ export function createProductionScheduledTaskDispatcher(opts: {
         return {
           ok: true,
           messageId: `agent-backup:${backup.fileName}`,
+        };
+      }
+
+      if (isFamilyMonthlyDispatch(record)) {
+        const service = getFamilyWorkflowRuntimeService(opts.runtime);
+        if (!service) {
+          return {
+            ok: false,
+            reason: "disconnected",
+            userActionable: false,
+            message: "Family workflow runtime service is unavailable.",
+          };
+        }
+        const result = await service.runMonthly("scheduled");
+        return {
+          ok: true,
+          messageId: `family-monthly:${result.periodKey}:${result.runId}`,
         };
       }
 
@@ -1189,6 +1241,8 @@ function buildLifeOpsRunnerDeps(
 
   return {
     store: stores.store,
+    executionBoundary: (task, execute) =>
+      withFamilyScheduledExecution(opts.runtime, task, execute, opts.agentId),
     logStore: stores.logStore,
     gates,
     completionChecks,
@@ -1252,6 +1306,9 @@ export function createRuntimeScheduledTaskRunner(
       ? { hostCapabilities: deps.hostCapabilities }
       : {}),
     dispatcher: deps.dispatcher,
+    ...(deps.executionBoundary
+      ? { executionBoundary: deps.executionBoundary }
+      : {}),
   });
 }
 

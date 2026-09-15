@@ -144,6 +144,50 @@ describe("SAVED_NOTES provider", () => {
     expect(
       filterProvidersByContextGate([notesProvider], ["general"], ["OWNER"]),
     ).toEqual([notesProvider]);
+    expect(
+      filterProvidersByContextGate([notesProvider], ["notes"], ["OWNER"]),
+    ).toEqual([notesProvider]);
+  });
+
+  it("indexes current IDs and labels while retaining complete bodies for context reads", async () => {
+    const body = "Exact body\n  spacing and punctuation!?";
+    const service = await serviceWithNotes([
+      `Lookup label\n${body}`,
+      "Second label",
+    ]);
+    const runtime = await runtimeWith(service);
+    const result = await notesProvider.get(
+      runtime,
+      recallMessage(runtime, "open notes"),
+      EMPTY_STATE,
+    );
+    expect(result.discoveryText).toContain('"Lookup label"');
+    expect(result.discoveryText).toContain('"Second label"');
+    expect(result.discoveryText).toContain("Exact note count: 2");
+    expect(result.discoveryText).not.toContain("Exact body");
+    const identities = service
+      .listNotes()
+      .map(({ id, title }) => ({ id, title }));
+    expect(
+      result.discoveryText
+        ?.split("\n")
+        .filter((line) => line.startsWith("- "))
+        .map((line) => JSON.parse(line.slice(2))),
+    ).toEqual(identities);
+    for (const { id } of identities) expect(result.text).toContain(id);
+    expect(result.text).toContain(JSON.stringify(`Lookup label\n${body}`));
+    expect(
+      service.listNotes().find((note) => note.title === "Lookup label")?.body,
+    ).toBe(body);
+    await service.deleteNote(identities[0].id);
+    const after = await notesProvider.get(
+      runtime,
+      recallMessage(runtime, "read my notes"),
+      EMPTY_STATE,
+    );
+    expect(after.discoveryText).not.toContain(identities[0].id);
+    expect(after.discoveryText).toContain(identities[1].id);
+    expect(after.discoveryText).toContain("Exact note count: 1");
   });
 
   it("surfaces a saved note through composeState so recall does not depend on memory search", async () => {
@@ -171,7 +215,11 @@ describe("SAVED_NOTES provider", () => {
   it("is routed to the contexts a recall turn actually selects", () => {
     // "make a note …" routes general and "who is alex again" routes memory;
     // a notes-only gate would have reproduced the bug on the recall turn.
-    expect(registeredNotesProvider().contexts).toEqual(["general", "memory"]);
+    expect(registeredNotesProvider().contexts).toEqual([
+      "notes",
+      "general",
+      "memory",
+    ]);
   });
 
   it("renders designed-empty distinctly from unavailable", async () => {
@@ -248,11 +296,36 @@ describe("SAVED_NOTES provider", () => {
 
     const text = renderSavedNotesText(notes);
 
-    expect(text).toContain("- note 0");
-    expect(text).toContain("- note 19");
-    expect(text).toContain("- note 20");
-    expect(text).toContain("- note 22");
+    expect(text).toContain("Exact note count: 23.");
+    expect(text).toContain('- "note 0"');
+    expect(text).toContain('- "note 19"');
+    expect(text).toContain('- "note 20"');
+    expect(text).toContain('- "note 22"');
     expect(text).not.toContain("not shown");
+  });
+
+  it("round-trips label and multiline body without inventing a display separator", async () => {
+    const content =
+      'Packing label\nFirst line — keep this dash.\n\n"Quoted" line with \\ slash and 🦊';
+    const service = await serviceWithNotes([content, "Label only"]);
+    const runtime = await runtimeWith(service);
+    runtime.registerProvider(registeredNotesProvider());
+    const state = await runtime.composeState(
+      recallMessage(runtime, "change just one word"),
+      ["SAVED_NOTES"],
+      true,
+    );
+    const encoded = state.text
+      .split("\n")
+      .filter((line) => line.startsWith("- "));
+    const decoded = encoded.map((line) => JSON.parse(line.slice(2)));
+    expect(decoded).toContain(content);
+    expect(decoded).toContain("Label only");
+    expect(
+      parseNoteContent(
+        decoded.find((value) => value.startsWith("Packing label")),
+      ),
+    ).toEqual(parseNoteContent(content));
   });
 
   it("renders a complete oversized note body", () => {
@@ -285,7 +358,9 @@ describe("SAVED_NOTES provider", () => {
         updatedAt: "2026-08-14T12:00:00.000Z",
       },
     ]);
-    const noteLine = text.split("\n").find((line) => line.startsWith("- x"));
+    const noteLine = text
+      .split("\n")
+      .find((line) => line.startsWith('- "x\\n'));
     expect(noteLine).toBeDefined();
     if (noteLine) {
       expect(isWellFormedText(noteLine)).toBe(true);
@@ -323,7 +398,9 @@ describe("SAVED_NOTES provider", () => {
     ]);
     expect(text).toContain("🦊");
     expect(isWellFormedText(text)).toBe(true);
-    const noteLine = text.split("\n").find((line) => line.startsWith("- t"));
+    const noteLine = text
+      .split("\n")
+      .find((line) => line.startsWith('- "t\\n'));
     expect(noteLine).toBeDefined();
     if (noteLine) {
       expect(isWellFormedText(noteLine)).toBe(true);

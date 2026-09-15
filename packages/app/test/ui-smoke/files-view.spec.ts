@@ -55,10 +55,12 @@ const FILES_FIXTURE = {
 
 const VIEWPORTS = [
   { name: "desktop", width: 1440, height: 1000 },
-  { name: "mobile", width: 390, height: 844 },
+  { name: "tablet", width: 1024, height: 768 },
+  { name: "portrait", width: 390, height: 844 },
+  { name: "landscape", width: 844, height: 390 },
 ] as const;
 
-test.describe("Files view visual + smoke (desktop + mobile)", () => {
+test.describe("Files view visual + smoke (responsive matrix)", () => {
   for (const vp of VIEWPORTS) {
     test(`files ${vp.name}`, async ({ page }) => {
       const screenshotDir =
@@ -106,6 +108,31 @@ test.describe("Files view visual + smoke (desktop + mobile)", () => {
           },
         )
         .toBeGreaterThan(10);
+
+      // PageFrame is the sole outer-gutter owner. Framed navigation and the
+      // continuous list must inherit that rendered edge instead of adding a
+      // second compact-screen inset.
+      const pageContent = page.locator("[data-page-content]");
+      const filesList = page.getByTestId("files-grid");
+      const showLabel = page.getByText("Show", { exact: true });
+      const [pageBox, listBox, showBox, pagePaddingLeft] = await Promise.all([
+        pageContent.boundingBox(),
+        filesList.boundingBox(),
+        showLabel.boundingBox(),
+        pageContent.evaluate((element) =>
+          Number.parseFloat(getComputedStyle(element).paddingLeft),
+        ),
+      ]);
+      expect(pageBox).not.toBeNull();
+      expect(listBox).not.toBeNull();
+      expect(showBox).not.toBeNull();
+      const inheritedContentEdge = (pageBox?.x ?? 0) + pagePaddingLeft;
+      expect(
+        Math.abs((listBox?.x ?? 0) - inheritedContentEdge),
+      ).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs((showBox?.x ?? 0) - inheritedContentEdge),
+      ).toBeLessThanOrEqual(1);
 
       await captureScreenshotWithQualityRetry(page, `files ${vp.name}`, {
         fullPage: false,

@@ -14,8 +14,10 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FIRST_RUN_SIGN_IN_PROMPT } from "./first-run-greeting";
+import { registerPendingFirstRunTextConsumer } from "./first-run-pending-text";
 
 const mocks = vi.hoisted(() => ({
+  openDesktopSettingsWindow: vi.fn(async () => undefined),
   client: {
     listLocalAgentBackups: vi.fn(
       async (): Promise<LocalAgentBackupMetadata[]> => [],
@@ -50,7 +52,7 @@ const mocks = vi.hoisted(() => ({
         activeAgentId: PERSONAL_ELIZA_ID,
         agentName: "Eliza Cloud",
         apiBase: PERSONAL_ELIZA_API_BASE,
-        runtime: "shared" as const,
+        runtime: "dedicated" as const,
       }),
     ),
     submitFirstRun: vi.fn(async () => undefined),
@@ -83,6 +85,15 @@ const mocks = vi.hoisted(() => ({
   deviceRamTier: null as
     | import("./device-ram-tier").DeviceRamTierAssessment
     | null,
+}));
+
+Object.assign(mocks.client, {
+  ensurePersonalDedicatedEliza: mocks.client.getPersonalSharedEliza,
+});
+
+vi.mock("../utils/desktop-workspace", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/desktop-workspace")>()),
+  openDesktopSettingsWindow: mocks.openDesktopSettingsWindow,
 }));
 
 vi.mock("../api/client", async (importOriginal) => {
@@ -145,7 +156,7 @@ vi.mock("../state/cloud-login-launch", async (importOriginal) => {
 import type { ConversationMessage, LocalAgentBackupMetadata } from "../api";
 import { DEFAULT_BRANDING } from "../config/branding-base";
 import { BrandingContext } from "../config/branding-react.hooks";
-import { APP_RESUME_EVENT, CHAT_PREFILL_EVENT } from "../events";
+import { APP_RESUME_EVENT } from "../events";
 import { __setAppValueForTests } from "../state/app-store";
 import {
   ConversationMessagesCtx,
@@ -250,6 +261,8 @@ function seedAppStore(overrides: Record<string, unknown> = {}): AppStoreSpies {
     firstRunComplete: false,
     firstRunName: "Eliza",
     elizaCloudConnected: true,
+    elizaCloudLoginBusy: false,
+    elizaCloudLoginFallbackUrl: null,
     uiLanguage: "en",
     ...spies,
     ...overrides,
@@ -268,9 +281,15 @@ function seedAppStore(overrides: Record<string, unknown> = {}): AppStoreSpies {
  * seeded onboarding turns are observable exactly as the overlay would render
  * them. `setConversationMessages` applies functional updaters for real.
  */
-function renderConductor(options?: { cloudOnly?: boolean }) {
+function renderConductor(options?: {
+  cloudOnly?: boolean;
+  statefulTranscript?: boolean;
+}) {
   const transcript: { current: ConversationMessage[] } = { current: [] };
-  const value: ConversationMessagesValue = {
+  let replaceTranscript = (messages: ConversationMessage[]) => {
+    transcript.current = messages;
+  };
+  const staticValue: ConversationMessagesValue = {
     conversationMessages: [],
     removeConversationMessage: () => {},
     prependConversationMessages: () => {},
@@ -279,7 +298,13 @@ function renderConductor(options?: { cloudOnly?: boolean }) {
         typeof updater === "function" ? updater(transcript.current) : updater;
     },
   };
-  const wrapper = ({ children }: { children: React.ReactNode }) =>
+  const BrandingWrapper = ({
+    children,
+    conversationValue,
+  }: {
+    children?: React.ReactNode;
+    conversationValue: ConversationMessagesValue;
+  }) =>
     React.createElement(
       BrandingContext.Provider,
       {
@@ -290,14 +315,40 @@ function renderConductor(options?: { cloudOnly?: boolean }) {
       },
       React.createElement(
         ConversationMessagesCtx.Provider,
-        { value },
+        { value: conversationValue },
         children,
       ),
     );
+  const StaticWrapper = ({ children }: { children: React.ReactNode }) =>
+    React.createElement(
+      BrandingWrapper,
+      { conversationValue: staticValue },
+      children,
+    );
+  const StatefulWrapper = ({ children }: { children: React.ReactNode }) => {
+    const [messages, setMessages] = React.useState<ConversationMessage[]>([]);
+    transcript.current = messages;
+    replaceTranscript = setMessages;
+    const value = React.useMemo<ConversationMessagesValue>(
+      () => ({
+        conversationMessages: messages,
+        removeConversationMessage: () => {},
+        prependConversationMessages: () => {},
+        setConversationMessages: setMessages,
+      }),
+      [messages],
+    );
+    return React.createElement(
+      BrandingWrapper,
+      { conversationValue: value },
+      children,
+    );
+  };
+  const wrapper = options?.statefulTranscript ? StatefulWrapper : StaticWrapper;
   const utils = renderHook(() => useFirstRunConductor(), { wrapper });
   const turn = (id: string): ConversationMessage | undefined =>
     transcript.current.find((message) => message.id === id);
-  return { transcript, turn, ...utils };
+  return { transcript, turn, replaceTranscript, ...utils };
 }
 
 async function waitForTurn(
@@ -315,6 +366,7 @@ async function waitForTurn(
 beforeEach(() => {
   ensureLocalStorage().clear();
   vi.clearAllMocks();
+  mocks.openDesktopSettingsWindow.mockResolvedValue(undefined);
   // jsdom's window.open is unimplemented and logs a console error the setup
   // gate would flag; the flow launchers claim a real popup on every runtime /
   // provider pick, so default it to the popup-blocked (null) signal. Tests
@@ -332,7 +384,7 @@ beforeEach(() => {
     activeAgentId: PERSONAL_ELIZA_ID,
     agentName: "Eliza Cloud",
     apiBase: PERSONAL_ELIZA_API_BASE,
-    runtime: "shared" as const,
+    runtime: "dedicated" as const,
   });
   mocks.client.getCloudCompatAgents.mockResolvedValue({
     success: true,
@@ -767,6 +819,45 @@ describe("useFirstRunConductor", () => {
     unmount();
   });
 
+  it("does not provision when required client auth is transiently unverifiable", async () => {
+    localStorage.removeItem("steward_session_token");
+    const handleInteractiveCloudLogin = vi.fn(async () => {
+      localStorage.setItem("steward_session_token", "retained-cloud-token");
+      const transient = new Error(
+        "Eliza Cloud is temporarily unavailable. Retry in a moment.",
+      );
+      transient.name = "CloudSessionVerificationTransientError";
+      throw transient;
+    });
+    seedAppStore({
+      elizaCloudConnected: false,
+      handleInteractiveCloudLogin,
+    });
+    const { transcript, turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+
+    await waitFor(() => {
+      expect(handleInteractiveCloudLogin).toHaveBeenCalledWith({
+        requireClientAuth: true,
+      });
+      expect(
+        transcript.current.some(
+          (message) =>
+            message.id.startsWith("first-run:error:") &&
+            message.text.includes("temporarily unavailable"),
+        ),
+      ).toBe(true);
+    });
+    expect(mocks.client.getPersonalSharedEliza).not.toHaveBeenCalled();
+    expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
+    expect(localStorage.getItem("steward_session_token")).toBe(
+      "retained-cloud-token",
+    );
+    unmount();
+  });
+
   it("resumes an interrupted cloud login on relaunch (no greeting restart) when the durable marker + connection are present", async () => {
     // Simulate the device flow AFTER the eviction+relaunch: the resume marker
     // was persisted before the external browser login evicted the WebView, and
@@ -824,7 +915,12 @@ describe("useFirstRunConductor", () => {
     first.unmount();
     localStorage.setItem("steward_session_token", "cloud-token");
     const prefill = vi.fn();
-    window.addEventListener(CHAT_PREFILL_EVENT, prefill);
+    const unregisterPrefill = registerPendingFirstRunTextConsumer(
+      (text, acknowledge) => {
+        prefill({ detail: { text, select: true } });
+        acknowledge();
+      },
+    );
     const secondSpies = seedAppStore({ elizaCloudConnected: true });
     const second = renderConductor();
     try {
@@ -854,7 +950,7 @@ describe("useFirstRunConductor", () => {
       expect(prefill).toHaveBeenCalledTimes(1);
       third.unmount();
     } finally {
-      window.removeEventListener(CHAT_PREFILL_EVENT, prefill);
+      unregisterPrefill();
     }
   });
 
@@ -935,6 +1031,105 @@ describe("useFirstRunConductor", () => {
     );
     await waitForTurn(turn, "first-run:tutorial");
     expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
+  it("keeps recovery choices visible when failed Dedicated startup delivers late progress", async () => {
+    let progress: ((status: string, detail?: string) => void) | undefined;
+    mocks.client.getPersonalSharedEliza.mockImplementationOnce(
+      async (options) => {
+        progress = options.onProgress as typeof progress;
+        throw new Error("Dedicated startup timed out");
+      },
+    );
+    seedAppStore();
+    const { transcript, turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+    tryHandleFirstRunAction("__first_run__:runtime:cloud");
+    await waitFor(() => {
+      expect(transcript.current.at(-1)?.id).toMatch(/^first-run:error:/);
+    });
+    const recovery = transcript.current.at(-1);
+    expect(recovery?.text).toContain("__first_run__:error:retry=");
+    expect(progress).toBeTypeOf("function");
+    act(() =>
+      progress?.("starting", "Your Dedicated agent is still starting…"),
+    );
+    expect(transcript.current.at(-1)).toBe(recovery);
+    unmount();
+  });
+
+  it("shows current connection progress on retry and ignores the abandoned attempt", async () => {
+    const progress: Array<(status: string, detail?: string) => void> = [];
+    mocks.client.getPersonalSharedEliza.mockImplementation((options) => {
+      progress.push(
+        options.onProgress as (status: string, detail?: string) => void,
+      );
+      progress.at(-1)?.("starting", "Waiting for your Dedicated agent");
+      return progress.length === 1
+        ? Promise.reject(new Error("Dedicated startup timed out"))
+        : new Promise(() => {});
+    });
+    seedAppStore();
+    const { transcript, turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+    tryHandleFirstRunAction("__first_run__:runtime:cloud");
+    await waitFor(() => {
+      expect(transcript.current.at(-1)?.id).toMatch(/^first-run:error:/);
+    });
+
+    // The sign-in retry action has its own early dispatch path. It must
+    // clear the old error latch and make an identical phase current again.
+    tryHandleFirstRunAction("__first_run__:cloud-login:retry");
+    await waitFor(() => expect(progress).toHaveLength(2));
+    expect(transcript.current.at(-1)?.text).toBe(
+      "Waiting for your Dedicated agent",
+    );
+    expect(turn("first-run:cloud-login-waiting")).toBeUndefined();
+    act(() => progress[0]?.("starting", "Abandoned attempt still starting"));
+    expect(transcript.current.at(-1)?.text).toBe(
+      "Waiting for your Dedicated agent",
+    );
+    act(() => progress[1]?.("starting", "Connecting to the running agent"));
+    expect(transcript.current.at(-1)?.text).toBe(
+      "Connecting to the running agent",
+    );
+    unmount();
+  });
+
+  it("keeps native Settings recovery retryable until the window opens, then returns the overlay to chat", async () => {
+    windowWithElectrobun.__electrobunWindowId = 1;
+    mocks.client.getPersonalSharedEliza.mockRejectedValueOnce(
+      new Error("Couldn't reach Eliza Cloud"),
+    );
+    const spies = seedAppStore();
+    const { transcript, turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+    tryHandleFirstRunAction("__first_run__:runtime:cloud");
+    await waitFor(() => {
+      expect(
+        transcript.current.some((m) => m.id.startsWith("first-run:error:")),
+      ).toBe(true);
+    });
+    mocks.openDesktopSettingsWindow.mockRejectedValueOnce(
+      new Error("Window unavailable"),
+    );
+    tryHandleFirstRunAction("__first_run__:error:settings");
+    await waitFor(() => {
+      expect(
+        transcript.current.some((m) =>
+          m.text.includes("Settings could not open"),
+        ),
+      ).toBe(true);
+    });
+    expect(spies.completeFirstRun).not.toHaveBeenCalled();
+    expect(spies.setTab).not.toHaveBeenCalledWith("settings");
+    tryHandleFirstRunAction("__first_run__:error:settings");
+    await waitFor(() =>
+      expect(spies.completeFirstRun).toHaveBeenCalledWith("chat"),
+    );
+    expect(mocks.openDesktopSettingsWindow).toHaveBeenCalledTimes(2);
+    expect(spies.setTab).not.toHaveBeenCalledWith("settings");
     unmount();
   });
 
@@ -1023,7 +1218,7 @@ describe("useFirstRunConductor", () => {
       activeAgentId: string;
       agentName: string;
       apiBase: string;
-      runtime: "shared";
+      runtime: "dedicated";
     }) => void = () => {};
     mocks.client.getPersonalSharedEliza.mockImplementation(
       () =>
@@ -1056,7 +1251,7 @@ describe("useFirstRunConductor", () => {
       activeAgentId: PERSONAL_ELIZA_ID,
       agentName: "Eliza Cloud",
       apiBase: PERSONAL_ELIZA_API_BASE,
-      runtime: "shared",
+      runtime: "dedicated",
     });
     await waitForTurn(turn, "first-run:tutorial");
     expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(1);
@@ -1178,11 +1373,11 @@ describe("useFirstRunConductor", () => {
     unmount();
   });
 
-  it("closes the gesture-claimed popup when an already-authenticated cloud provision skips login", async () => {
-    // Token + connection are live (beforeEach defaults), so getCloudAuthToken
-    // short-circuits and interactive login never consumes the claimed handle.
+  it("does not open a popup when an already-authenticated cloud provision skips login", async () => {
+    // Token + connection are live (beforeEach defaults), so this gesture enters
+    // silent provisioning and has no interactive login window to retain.
     const close = vi.fn();
-    vi.spyOn(window, "open").mockReturnValue({
+    const openSpy = vi.spyOn(window, "open").mockReturnValue({
       closed: false,
       close,
     } as unknown as Window);
@@ -1191,8 +1386,27 @@ describe("useFirstRunConductor", () => {
     await waitForTurn(turn, "first-run:greeting");
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
     await waitFor(() => {
-      expect(close).toHaveBeenCalledTimes(1);
+      expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(1);
     });
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("keeps the popup closed while stored-token Dedicated activation remains pending", async () => {
+    mocks.client.getPersonalSharedEliza.mockImplementation(
+      async () => await new Promise(() => undefined),
+    );
+    const openSpy = vi.spyOn(window, "open");
+    seedAppStore();
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await waitFor(() => {
+      expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(1);
+    });
+    expect(openSpy).not.toHaveBeenCalled();
     unmount();
   });
 
@@ -1683,10 +1897,233 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     // attempt cancel this request without changing that server-side policy.
     expect(
       Object.keys(mocks.client.getPersonalSharedEliza.mock.calls[0][0]).sort(),
-    ).toEqual(["authToken", "cloudApiBase", "signal"]);
+    ).toEqual([
+      "authToken",
+      "cloudApiBase",
+      "onProgress",
+      "requestDedicatedActivationConfirmation",
+      "requestDedicatedAdoptionConfirmation",
+      "signal",
+    ]);
     expect(
       mocks.client.getPersonalSharedEliza.mock.calls[0][0]?.signal,
     ).toBeInstanceOf(AbortSignal);
+    unmount();
+  });
+
+  it("reviews a fresh Dedicated quote before completing app onboarding", async () => {
+    const quoteId = "fresh-dedicated-quote";
+    const dedicatedAgentId = "00000000-0000-4000-8000-000000000030";
+    const activate = vi.fn();
+    mocks.client.getPersonalSharedEliza.mockImplementationOnce(
+      async (options: Record<string, unknown>) => {
+        const request = options.requestDedicatedActivationConfirmation as (
+          quote: Record<string, unknown>,
+          context: { signal?: AbortSignal },
+        ) => Promise<Record<string, unknown> | null>;
+        const confirmation = await request(
+          {
+            quoteId,
+            sourceAgentId: PERSONAL_ELIZA_ID,
+            hourlyRateUsd: 0.15,
+            dailyRateUsd: 3.6,
+            minimumActivationChargeUsd: 0.3,
+            minimumBalanceUsd: 10.8,
+            minimumRunwayDays: 3,
+            balanceUsd: 10,
+            deficitUsd: 0,
+            canActivate: true,
+            requiresConfirmation: true,
+            action: "activate_dedicated",
+          },
+          { signal: options.signal as AbortSignal },
+        );
+        activate(confirmation);
+        return {
+          personalElizaId: PERSONAL_ELIZA_ID,
+          agentId: PERSONAL_ELIZA_ID,
+          activeAgentId: dedicatedAgentId,
+          agentName: "Eliza Cloud",
+          apiBase: `https://${dedicatedAgentId}.cloud.eliza.app`,
+          runtime: "dedicated" as const,
+        };
+      },
+    );
+    const spies = seedAppStore({ elizaCloudConnected: true });
+    const { turn, unmount } = renderConductor();
+    const review = await waitForTurn(turn, "first-run:dedicated-adoption");
+    expect(review.text).toContain("Start your Dedicated Eliza?");
+    expect(review.text).toContain("$3.60/day ($0.15/hour)");
+    expect(review.text).toContain("$10.00");
+    expect(review.text).toContain("$10.80");
+    expect(review.text).not.toContain(quoteId);
+    expect(activate).not.toHaveBeenCalled();
+    expect(spies.completeFirstRun).not.toHaveBeenCalled();
+
+    act(() => {
+      expect(
+        tryHandleFirstRunAction("__first_run__:dedicated-adoption:confirm"),
+      ).toBe(true);
+    });
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledExactlyOnceWith({
+        action: "activate_dedicated",
+        quoteId,
+      });
+      expect(spies.completeFirstRun).toHaveBeenCalledWith("chat");
+    });
+    unmount();
+  });
+
+  it("shows the exact safe Dedicated terms and waits for a visible confirmation gesture", async () => {
+    const quoteId = "b".repeat(64);
+    const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
+    mocks.client.getPersonalSharedEliza.mockImplementationOnce(
+      async (options: Record<string, unknown>) => {
+        const request = options.requestDedicatedAdoptionConfirmation as (
+          quote: Record<string, unknown>,
+          context: { reason: "initial"; signal?: AbortSignal },
+        ) => Promise<Record<string, unknown> | null>;
+        const confirmation = await request(
+          {
+            quoteId,
+            dedicatedAgentId,
+            adoptionState: "available",
+            status: "error",
+            startsCompute: true,
+            hourlyRateUsd: 0.15,
+            dailyRateUsd: 3.6,
+            minimumActivationChargeUsd: 0.3,
+            minimumBalanceUsd: 10.8,
+            minimumRunwayDays: 3,
+            balanceUsd: 115.54,
+            deficitUsd: 0,
+            stateDisposition: "verified_backup_present",
+            canAdopt: true,
+            requiresCatalogRestore: false,
+            requiresConfirmation: true,
+            action: "adopt_existing_dedicated",
+          },
+          {
+            reason: "initial",
+            signal: options.signal as AbortSignal,
+          },
+        );
+        expect(confirmation).toEqual({
+          action: "adopt_existing_dedicated",
+          quoteId,
+        });
+        return {
+          personalElizaId: PERSONAL_ELIZA_ID,
+          agentId: PERSONAL_ELIZA_ID,
+          activeAgentId: dedicatedAgentId,
+          agentName: "Eliza Cloud",
+          apiBase: `https://${dedicatedAgentId}.cloud.eliza.app`,
+          runtime: "dedicated" as const,
+        };
+      },
+    );
+    const spies = seedAppStore({ elizaCloudConnected: true });
+    const { turn, unmount } = renderConductor();
+
+    const confirmationTurn = await waitForTurn(
+      turn,
+      "first-run:dedicated-adoption",
+    );
+    expect(confirmationTurn.text).toContain("$3.60/day ($0.15/hour)");
+    expect(confirmationTurn.text).toContain("Balance: $115.54");
+    expect(confirmationTurn.text).toContain("$10.80 required");
+    expect(confirmationTurn.text).toContain("confirm=Start Dedicated");
+    expect(confirmationTurn.text).toContain(
+      "Your verified backup will be restored",
+    );
+    expect(confirmationTurn.text).not.toContain(quoteId);
+    expect(confirmationTurn.text).not.toContain(dedicatedAgentId);
+    expect(spies.completeFirstRun).not.toHaveBeenCalled();
+
+    expect(
+      tryHandleFirstRunAction("__first_run__:dedicated-adoption:confirm"),
+    ).toBe(true);
+    await waitFor(() =>
+      expect(spies.completeFirstRun).toHaveBeenCalledWith("chat"),
+    );
+    unmount();
+  });
+
+  it("restores pending Dedicated consent after server history replaces the onboarding transcript", async () => {
+    const quoteId = "c".repeat(64);
+    mocks.client.getPersonalSharedEliza.mockImplementationOnce(
+      async (options: Record<string, unknown>) => {
+        const request = options.requestDedicatedAdoptionConfirmation as (
+          quote: Record<string, unknown>,
+          context: { reason: "initial"; signal?: AbortSignal },
+        ) => Promise<Record<string, unknown> | null>;
+        await request(
+          {
+            quoteId,
+            dedicatedAgentId: "00000000-0000-4000-8000-000000000021",
+            adoptionState: "available",
+            status: "stopped",
+            startsCompute: true,
+            hourlyRateUsd: 0.15,
+            dailyRateUsd: 3.6,
+            minimumActivationChargeUsd: 0.3,
+            minimumBalanceUsd: 10.8,
+            minimumRunwayDays: 3,
+            balanceUsd: 10,
+            deficitUsd: 0,
+            stateDisposition: "verified_backup_present",
+            canAdopt: true,
+            requiresCatalogRestore: false,
+            requiresConfirmation: true,
+            action: "adopt_existing_dedicated",
+          },
+          { reason: "initial", signal: options.signal as AbortSignal },
+        );
+        return {
+          personalElizaId: PERSONAL_ELIZA_ID,
+          agentId: PERSONAL_ELIZA_ID,
+          activeAgentId: "00000000-0000-4000-8000-000000000021",
+          agentName: "Eliza Cloud",
+          apiBase: "https://dedicated.example.test",
+          runtime: "dedicated" as const,
+        };
+      },
+    );
+    const spies = seedAppStore({ elizaCloudConnected: true });
+    const { replaceTranscript, transcript, unmount } = renderConductor({
+      statefulTranscript: true,
+    });
+
+    await waitFor(() => {
+      expect(
+        transcript.current.some((message) =>
+          message.text.includes("Use your existing Dedicated agent?"),
+        ),
+      ).toBe(true);
+    });
+    act(() => {
+      replaceTranscript([
+        {
+          id: "server-history",
+          role: "assistant",
+          text: "Persisted server history",
+          timestamp: 1,
+        } as ConversationMessage,
+      ]);
+    });
+    await waitFor(() => {
+      expect(transcript.current.map((message) => message.id)).toContain(
+        "first-run:dedicated-adoption",
+      );
+    });
+
+    expect(
+      tryHandleFirstRunAction("__first_run__:dedicated-adoption:confirm"),
+    ).toBe(true);
+    await waitFor(() =>
+      expect(spies.completeFirstRun).toHaveBeenCalledWith("chat"),
+    );
     unmount();
   });
 
@@ -2078,6 +2515,7 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
       ).toBe(true);
     });
     expect(spies.completeFirstRun).not.toHaveBeenCalled();
+    expect(spies.handleInteractiveCloudLogin).not.toHaveBeenCalled();
 
     // No runaway: give any residual auto-resume loop a window, then prove the
     // provisioning was attempted a bounded number of times and does not keep
@@ -2217,7 +2655,12 @@ describe("useFirstRunConductor — free-text replies (#12178 composer unlock)", 
   it("restores every complete typed request to the real composer after setup", async () => {
     seedAppStore();
     const prefill = vi.fn();
-    window.addEventListener(CHAT_PREFILL_EVENT, prefill);
+    const unregisterPrefill = registerPendingFirstRunTextConsumer(
+      (text, acknowledge) => {
+        prefill({ detail: { text, select: true } });
+        acknowledge();
+      },
+    );
     const { turn, unmount } = renderConductor();
     try {
       await waitForTurn(turn, "first-run:greeting");
@@ -2250,7 +2693,7 @@ describe("useFirstRunConductor — free-text replies (#12178 composer unlock)", 
         ),
       );
     } finally {
-      window.removeEventListener(CHAT_PREFILL_EVENT, prefill);
+      unregisterPrefill();
       unmount();
     }
   });
@@ -2508,6 +2951,74 @@ describe("bounded cloud sign-in wait (#19255)", () => {
     return { handleInteractiveCloudLogin, resolvers };
   }
 
+  it("shows the current sign-in fallback during a pending login and removes it when the session ends", async () => {
+    vi.useFakeTimers();
+    localStorage.removeItem("steward_session_token");
+    const { handleInteractiveCloudLogin } = pendingLogin();
+    seedAppStore({ elizaCloudConnected: false, handleInteractiveCloudLogin });
+    const { turn, unmount } = renderConductor();
+    await act(async () => vi.advanceTimersByTimeAsync(50));
+    act(() => {
+      tryHandleFirstRunAction("__first_run__:runtime:cloud");
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(50));
+    const fallbackUrl =
+      "https://cloud-staging.eliza.app/auth/cli-login?session=owned-session";
+    act(() => {
+      seedAppStore({
+        elizaCloudConnected: false,
+        elizaCloudLoginBusy: true,
+        elizaCloudLoginFallbackUrl: fallbackUrl,
+        handleInteractiveCloudLogin,
+      });
+    });
+    expect(turn("first-run:cloud-login-waiting")?.text).toContain(
+      "__first_run__:cloud-login:continue=Continue sign-in",
+    );
+    expect(turn("first-run:cloud-login-waiting")?.text).not.toContain(
+      fallbackUrl,
+    );
+    expect(mocks.client.getPersonalSharedEliza).not.toHaveBeenCalled();
+
+    act(() => {
+      seedAppStore({
+        elizaCloudConnected: false,
+        elizaCloudLoginBusy: false,
+        elizaCloudLoginFallbackUrl: null,
+        handleInteractiveCloudLogin,
+      });
+    });
+    expect(turn("first-run:cloud-login-waiting")?.text).not.toContain(
+      "cloud-login:continue",
+    );
+    unmount();
+  });
+
+  it("does not render an unsafe sign-in URL as an onboarding link", async () => {
+    vi.useFakeTimers();
+    localStorage.removeItem("steward_session_token");
+    const { handleInteractiveCloudLogin } = pendingLogin();
+    seedAppStore({
+      elizaCloudConnected: false,
+      elizaCloudLoginBusy: true,
+      elizaCloudLoginFallbackUrl: "javascript:alert(1)",
+      handleInteractiveCloudLogin,
+    });
+    const { turn, unmount } = renderConductor();
+    await act(async () => vi.advanceTimersByTimeAsync(50));
+    act(() => {
+      tryHandleFirstRunAction("__first_run__:runtime:cloud");
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(50));
+    expect(turn("first-run:cloud-login-waiting")?.text).not.toContain(
+      "javascript:",
+    );
+    expect(turn("first-run:cloud-login-waiting")?.text).not.toContain(
+      "cloud-login:continue",
+    );
+    unmount();
+  });
+
   it("deadline converts the visible wait into the recovery choice and the aborted attempt cannot provision or complete", async () => {
     vi.useFakeTimers();
     localStorage.removeItem("steward_session_token");
@@ -2521,7 +3032,7 @@ describe("bounded cloud sign-in wait (#19255)", () => {
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
     await act(async () => vi.advanceTimersByTimeAsync(50));
     expect(turn("first-run:cloud-login-waiting")?.text).toContain(
-      "Waiting for sign-in in the browser we opened… Finish there, then this chat will continue.",
+      "Finish signing in to continue here.",
     );
     expect(turn("first-run:cloud-login-waiting")?.text).toContain(
       "__first_run__:cloud-login:retry=Open sign-in again",
@@ -2579,7 +3090,7 @@ describe("bounded cloud sign-in wait (#19255)", () => {
     unmount();
   });
 
-  it("an attempt aborted during personal-Eliza resolution cannot persist or complete after a retry starts", async () => {
+  it("keeps already-authenticated Dedicated activation alive beyond the OAuth deadline", async () => {
     vi.useFakeTimers();
     localStorage.removeItem("eliza:enable-runtime-chooser");
     localStorage.removeItem("steward_session_token");
@@ -2589,7 +3100,7 @@ describe("bounded cloud sign-in wait (#19255)", () => {
       activeAgentId: PERSONAL_ELIZA_ID,
       agentName: "Eliza Cloud",
       apiBase: PERSONAL_ELIZA_API_BASE,
-      runtime: "shared" as const,
+      runtime: "dedicated" as const,
     };
     const resolveJoin: Array<(value: typeof personalEliza) => void> = [];
     mocks.client.getPersonalSharedEliza.mockImplementation(
@@ -2613,35 +3124,75 @@ describe("bounded cloud sign-in wait (#19255)", () => {
     expect(signalA).toBeInstanceOf(AbortSignal);
     expect(signalA?.aborted).toBe(false);
 
-    // The deadline abandons A and transfers ownership to a retry B.
+    // The OAuth-only deadline must not govern this already-authenticated
+    // Personal/Dedicated activation. Its own client contract owns the longer
+    // bounded cold-start window.
     await act(async () => vi.advanceTimersByTimeAsync(90_000));
-    expect(signalA?.aborted).toBe(true);
-    expect(turn("first-run:cloud-login-waiting")?.text).toContain(
-      "didn't finish",
-    );
-    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
-    await act(async () => vi.advanceTimersByTimeAsync(50));
-    expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(2);
+    expect(signalA?.aborted).toBe(false);
+    expect(turn("first-run:cloud-login-waiting")).toBeUndefined();
 
-    // A's network boundary ignores cancellation and resolves late. The
-    // post-await abort checkpoint must stop every persistence/completion side
-    // effect while B remains the current attempt.
+    // The same owned attempt may complete and is the only one allowed to
+    // persist the Dedicated binding.
     await act(async () => {
       resolveJoin[0]?.(personalEliza);
-      await vi.advanceTimersByTimeAsync(50);
-    });
-    expect(spies.completeFirstRun).not.toHaveBeenCalled();
-    expect(localStorage.getItem("elizaos:active-server")).toBeNull();
-
-    // B can still settle normally and is the only attempt allowed to commit.
-    await act(async () => {
-      resolveJoin[1]?.(personalEliza);
       await vi.advanceTimersByTimeAsync(50);
     });
     expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
     expect(localStorage.getItem("elizaos:active-server")).toContain(
       PERSONAL_ELIZA_ID,
     );
+    unmount();
+  });
+
+  it("retires the OAuth deadline before a slow Dedicated activation begins", async () => {
+    vi.useFakeTimers();
+    localStorage.removeItem("eliza:enable-runtime-chooser");
+    localStorage.removeItem("steward_session_token");
+    const personalEliza = {
+      personalElizaId: PERSONAL_ELIZA_ID,
+      agentId: PERSONAL_ELIZA_ID,
+      activeAgentId: PERSONAL_ELIZA_ID,
+      agentName: "Eliza Cloud",
+      apiBase: PERSONAL_ELIZA_API_BASE,
+      runtime: "dedicated" as const,
+    };
+    let resolveJoin: ((value: typeof personalEliza) => void) | null = null;
+    mocks.client.getPersonalSharedEliza.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveJoin = resolve;
+        }),
+    );
+    const handleInteractiveCloudLogin = vi.fn(async () => {
+      localStorage.setItem("steward_session_token", "cloud-token");
+    });
+    const spies = seedAppStore({
+      elizaCloudConnected: false,
+      handleInteractiveCloudLogin,
+    });
+    const { turn, unmount } = renderConductor();
+    await act(async () => vi.advanceTimersByTimeAsync(50));
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await act(async () => vi.advanceTimersByTimeAsync(50));
+    expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
+    expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(1);
+    const signal = mocks.client.getPersonalSharedEliza.mock.calls[0]?.[0]
+      ?.signal as AbortSignal | undefined;
+
+    await act(async () => vi.advanceTimersByTimeAsync(90_000));
+    expect(signal?.aborted).toBe(false);
+    expect(turn("first-run:cloud-login-waiting")).toBeUndefined();
+
+    await act(async () => {
+      resolveJoin?.(personalEliza);
+      await vi.advanceTimersByTimeAsync(50);
+    });
+    expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem("elizaos:active-server")).toContain(
+      PERSONAL_ELIZA_ID,
+    );
+    localStorage.removeItem("steward_session_token");
     unmount();
   });
 

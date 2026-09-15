@@ -2,6 +2,7 @@
 import type { Content, IAgentRuntime, TargetInfo } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { ClientBase } from "../base";
+import { SearchMode } from "../client";
 import type { AuthenticatedTwitterSession } from "../client/auth";
 import { countTwitterWeightedLength } from "../tweet-length";
 import type { TwitterClientState } from "../types";
@@ -361,8 +362,8 @@ describe("XService trusted account routing", () => {
     expect(getClient).toHaveBeenCalledWith("secondary");
     expect(fetchSearchTweets).toHaveBeenCalledWith(
       "multi-account routing",
-      20,
-      expect.anything(),
+      100,
+      SearchMode.Latest,
       undefined,
     );
   });

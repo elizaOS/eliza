@@ -28,6 +28,18 @@ export interface DirectActionRoutingRule {
 	readonly requiredActionTags: readonly string[];
 	/** Contexts to add when the route is selected. */
 	readonly contexts: readonly AgentContext[];
+	/**
+	 * Fail-closed reply used when this exact intent is owned by the rule but no
+	 * eligible action is available for the current actor/turn. This is opt-in:
+	 * rules without an unavailable contract preserve their existing Stage-1
+	 * fallback behavior.
+	 */
+	readonly unavailable?: {
+		/** Stable machine-readable identifier, also included in diagnostics. */
+		readonly code: string;
+		/** Honest user-facing reply; must not claim that an action ran. */
+		readonly reply: string;
+	};
 	/** True only for a current-turn request owned by this route. */
 	matches(messageText: string): boolean;
 }

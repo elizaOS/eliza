@@ -1,3 +1,4 @@
+/** Verifies coding-container request forwarding and boundary failures with a deterministic transport stub. */
 import { describe, expect, it } from "vitest";
 import { CloudContainerService } from "../src/services/cloud-container";
 import type {
@@ -6,7 +7,9 @@ import type {
   SyncCloudCodingContainerRequest,
 } from "../src/types/cloud";
 
-function serviceWithClient(client: { post: (path: string, body: unknown) => Promise<unknown> }) {
+function serviceWithClient(client: {
+  requestData: (method: string, path: string, options: { json: unknown }) => Promise<unknown>;
+}) {
   const service = new CloudContainerService({} as never);
   (service as unknown as { authService: unknown }).authService = {
     isAuthenticated: () => true,
@@ -28,7 +31,8 @@ describe("CloudContainerService coding-container methods", () => {
       },
     };
     const service = serviceWithClient({
-      post: async (path, body) => {
+      requestData: async (method, path, { json: body }) => {
+        expect(method).toBe("POST");
         calls.push({ path, body });
         return {
           success: true,
@@ -65,7 +69,8 @@ describe("CloudContainerService coding-container methods", () => {
       },
     };
     const service = serviceWithClient({
-      post: async (path, body) => {
+      requestData: async (method, path, { json: body }) => {
+        expect(method).toBe("POST");
         calls.push({ path, body });
         return {
           success: true,
@@ -95,7 +100,8 @@ describe("CloudContainerService coding-container methods", () => {
       patches: [{ path: "src/app.ts", format: "unified-diff", patch: "@@ -1 +1" }],
     };
     const service = serviceWithClient({
-      post: async (path, body) => {
+      requestData: async (method, path, { json: body }) => {
+        expect(method).toBe("POST");
         calls.push({ path, body });
         return {
           success: true,
@@ -140,7 +146,7 @@ describe("CloudContainerService coding-container methods", () => {
 
   it("fails closed for missing backend coding-container endpoints", async () => {
     const service = serviceWithClient({
-      post: async () => {
+      requestData: async () => {
         throw { statusCode: 501 };
       },
     });

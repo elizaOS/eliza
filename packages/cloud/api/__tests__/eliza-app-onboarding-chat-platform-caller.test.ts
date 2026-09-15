@@ -33,12 +33,17 @@ const publicElizaAppProvisioningPayload =
 
 const sessionCache = new Map<string, unknown>();
 
+const cacheClientActualModule = await import("@/lib/cache/client");
+
 mock.module("@/lib/cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     get: mock(async (key: string) => sessionCache.get(key) ?? null),
     set: mock(async (key: string, value: unknown) => {
       sessionCache.set(key, value);
     }),
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 

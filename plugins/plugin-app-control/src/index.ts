@@ -16,17 +16,22 @@ import { agentSwitchAction } from "./actions/agent-switch.js";
 import { appAction, createAppAction } from "./actions/app.js";
 import { backgroundAction } from "./actions/background.js";
 import { modelSwitchAction } from "./actions/model-switch.js";
+import { runtimeManagementAction } from "./actions/runtime-management.js";
 import { settingsAction } from "./actions/settings.js";
 import {
 	closeAllViewsAction,
 	closeViewAction,
+	showViewAction,
 	viewsAction,
 } from "./actions/views.js";
 import { createViewsClient } from "./actions/views-client.js";
-import { createChoiceShortcutEvaluator } from "./evaluators/create-choice-shortcut.js";
-import { viewContextEvaluator } from "./evaluators/view-context.js";
+import {
+	viewContextPlanningEvaluator,
+	viewContinuationField,
+} from "./evaluators/view-context-planning.js";
 import { availableAppsProvider } from "./providers/available-apps.js";
 import { currentViewProvider } from "./providers/current-view.js";
+import { pendingAppControlChoicesProvider } from "./providers/pending-choices.js";
 import {
 	applyCurrentViewComposeHook,
 	CURRENT_VIEW_HOOK_ID,
@@ -65,6 +70,13 @@ export {
 	sanctionedModelError,
 } from "./actions/model-switch.js";
 export {
+	createRuntimeManagementAction,
+	parseRuntimeManagementRequest,
+	type RuntimeManagementActionDeps,
+	type RuntimeManagementFn,
+	runtimeManagementAction,
+} from "./actions/runtime-management.js";
+export {
 	createSettingsAction,
 	parseBooleanValue,
 	parseSettingsRequest,
@@ -89,8 +101,10 @@ export type { ViewsMode } from "./actions/views.js";
 export {
 	closeAllViewsAction,
 	closeViewAction,
+	createShowViewAction,
 	createViewsAction,
 	createViewsAliasAction,
+	showViewAction,
 	viewsAction,
 } from "./actions/views.js";
 export type { ViewSummary } from "./actions/views-client.js";
@@ -107,6 +121,10 @@ export {
 	CONTEXT_VIEWS,
 	viewContextEvaluator,
 } from "./evaluators/view-context.js";
+export {
+	type ContextualNavigationIntent,
+	viewContextPlanningEvaluator,
+} from "./evaluators/view-context-planning.js";
 export { viewFollowupRoutingEvaluator } from "./evaluators/view-followup-routing.js";
 export { currentViewProvider } from "./providers/current-view.js";
 export {
@@ -151,27 +169,24 @@ export const appControlPlugin: Plugin = {
 	actions: [
 		appAction,
 		viewsAction,
+		showViewAction,
 		closeViewAction,
 		closeAllViewsAction,
 		backgroundAction,
 		modelSwitchAction,
 		agentSwitchAction,
+		runtimeManagementAction,
 		settingsAction,
 	],
-	// Model-owned view-switch cascade:
-	//  1. PLAN   — the response handler/planner selects VIEWS from the registered
-	//     action contract, including explicit multilingual navigation requests.
-	//  2. ACTION — viewsAction resolves the selected target and navigates.
-	//  3. POST   — viewContextEvaluator (small model) catches contextual intent
-	//     the user never spelled out ("fix the login bug" -> task-coordinator).
-	//     Its gate defers whenever resolveIntentView already matches a direct
-	//     surface (the rigid matchViewCommand matcher, or the legacy intent
-	//     rules it falls back to), so it never contends with the action.
-	evaluators: [viewContextEvaluator],
-	// Persisted choice widgets are an explicit continuation protocol. Ordinary
-	// view navigation and follow-up language stays with Stage 1 and the planner.
-	responseHandlerEvaluators: [createChoiceShortcutEvaluator],
-	providers: [availableAppsProvider, currentViewProvider],
+	// Contextual navigation joins domain work in the same planner action queue.
+	evaluators: [],
+	responseHandlerEvaluators: [viewContextPlanningEvaluator],
+	responseHandlerFieldEvaluators: [viewContinuationField],
+	providers: [
+		availableAppsProvider,
+		currentViewProvider,
+		pendingAppControlChoicesProvider,
+	],
 	services: [
 		AppRegistryService,
 		AppVerificationService,
@@ -215,6 +230,7 @@ export const appControlPlugin: Plugin = {
 			description: "Browse and open available views contributed by plugins",
 			icon: "LayoutGrid",
 			path: "/views",
+			responseContext: { primaryContext: "system" },
 			modalities: ["gui"],
 			bundlePath: "dist/views/bundle.js",
 			// First-party instrumented view (data-agent-id controls): grant the

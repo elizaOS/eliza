@@ -170,6 +170,8 @@ describe("shared agent messages route", () => {
       DEFAULT_NAMESPACE,
       undefined,
       "organization-credits",
+      undefined,
+      "say hi",
     );
   });
 
@@ -194,6 +196,8 @@ describe("shared agent messages route", () => {
       DEFAULT_NAMESPACE,
       "client-id-4",
       "organization-credits",
+      undefined,
+      "say hi",
     );
   });
 
@@ -251,6 +255,8 @@ describe("shared agent messages route", () => {
       namespace,
       undefined,
       "organization-credits",
+      undefined,
+      "say hi",
     );
   });
 

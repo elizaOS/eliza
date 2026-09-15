@@ -3,6 +3,7 @@ import {
   isCloudInferenceSelectedInConfig,
   migrateLegacyRuntimeConfig,
 } from "@elizaos/core";
+import { resolveDevCloudEnvAuthority } from "@elizaos/shared";
 import { type CloudRouteState as AutonomousCloudRouteState, handleCloudRoute as handleAutonomousCloudRoute, } from "./cloud-routes-autonomous.js";
 import {
   buildHomeRemoteRunnerAccessUrl,
@@ -74,6 +75,26 @@ type RelayStatusService = {
 };
 
 const CLOUD_LOGIN_POLL_TIMEOUT_MS = 10_000;
+
+function cloudLoginMutationBlockReason(): string | null {
+  return resolveDevCloudEnvAuthority()
+    ? "Cloud login cannot persist credentials owned by the immutable local development launch target"
+    : null;
+}
+
+function isCloudConnectionMutationRoute(
+  pathname: string,
+  method: string,
+): boolean {
+  return (
+    (method === "POST" &&
+      (pathname === "/api/cloud/login" ||
+        pathname === "/api/cloud/login/persist" ||
+        pathname === "/api/cloud/disconnect")) ||
+    (method === "GET" && pathname === "/api/cloud/login/status")
+  );
+}
+
 const DEFAULT_CLOUD_ROUTE_SERVICES: CloudRouteServices = {
   applyCanonicalSetupConfig,
   createIntegrationTelemetrySpan: () => undefined,
@@ -273,6 +294,13 @@ async function persistCloudLoginStatus(args: {
    */
   forceInferenceEnabled?: boolean;
 }): Promise<string | null> {
+  if (cloudLoginMutationBlockReason()) {
+    logger.warn(
+      "[cloud-login] Ignoring credential persistence that differs from the development launcher Cloud profile",
+    );
+    return null;
+  }
+
   if (
     args.epochAtPollStart !== undefined &&
     args.epochAtPollStart !== cloudDisconnectEpoch
@@ -477,6 +505,15 @@ export async function handleCloudRoute(
   method: string,
   state: CloudRouteState,
 ): Promise<boolean> {
+  const authorityBlockReason = cloudLoginMutationBlockReason();
+  if (
+    authorityBlockReason &&
+    isCloudConnectionMutationRoute(pathname, method)
+  ) {
+    sendJson(res, { ok: false, error: authorityBlockReason }, 409);
+    return true;
+  }
+
   const services = getCloudRouteServices(state);
 
   const codingContainerHandled = await handleCloudCodingContainerRoute(

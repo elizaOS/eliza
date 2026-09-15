@@ -4,7 +4,6 @@
 import { describe, expect, it } from "vitest";
 import {
   decideSpendAuthorization,
-  SELF_SPEND_COMMANDS,
   stripSpendHints,
 } from "./spend-allowance.ts";
 

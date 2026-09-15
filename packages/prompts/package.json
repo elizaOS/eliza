@@ -70,6 +70,7 @@
         "order": 2,
         "script": "build:package"
       },
+      "testSerial": true,
       "testLanes": [
         "server"
       ]

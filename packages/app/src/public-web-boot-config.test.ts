@@ -5,7 +5,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
-  config: { cloudApiBase: "https://eliza.app", marker: "preserved" },
+  config: {
+    cloudApiBase: "https://eliza.app",
+    marker: "preserved",
+  } as { cloudApiBase: string; marker: string },
   setCalls: [] as Array<Record<string, unknown>>,
 }));
 

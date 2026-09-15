@@ -11,7 +11,7 @@ import { createActionRow, createEmbed, DISCORD_BLURPLE } from "../../utils/disco
 import { logger } from "../../utils/logger";
 import { DISCORD_AUTOMATION_DEFAULTS, getDiscordConfigWithDefaults } from "../automation-constants";
 import { buildCharacterSystemPrompt, getCharacterPromptContext } from "../character-prompt-helper";
-import { creditsService } from "../credits";
+import { type GenerativeOperationContext, runFlatProviderOperation } from "../generative-operation";
 import { discordAutomationService } from "./index";
 import type { DiscordAutomationConfig, DiscordAutomationStatus, PostResult } from "./types";
 
@@ -167,10 +167,13 @@ class DiscordAppAutomationService {
     };
   }
 
-  async generateAnnouncement(organizationId: string, app: App): Promise<string> {
-    // All throwable prep (character-context DB fetch, prompt build) runs BEFORE
-    // the deduction: nothing may throw between the charge and the refunding try,
-    // or the user is charged for a generation that never ran (#11685).
+  async generateAnnouncement(
+    organizationId: string,
+    app: App,
+    operationContext?: GenerativeOperationContext,
+  ): Promise<string> {
+    // Complete throwable prompt preparation before admission so validation or
+    // character lookup failures never reserve a provider operation.
     const config = app.discord_automation as DiscordAutomationConfig;
     const vibeStyle = config?.vibeStyle || "professional and engaging";
 
@@ -222,42 +225,35 @@ Write in a ${vibeStyle} style. Keep it concise and engaging.
 Use appropriate emojis sparingly (1-2 max). Do not use excessive formatting.
 Maximum ${MAX_ANNOUNCEMENT_LENGTH} characters. Do not include the URL in your response - it will be added automatically.`;
 
-    const deduction = await creditsService.deductCredits({
-      organizationId,
-      amount: DISCORD_POST_COST,
-      description: `Discord AI announcement: ${app.name}`,
-      metadata: { appId: app.id, type: "discord_announcement" },
-    });
-
-    if (!deduction.success) {
-      throw new Error(
-        `Insufficient credits for AI generation. Required: $${DISCORD_POST_COST.toFixed(4)}`,
-      );
+    if (!operationContext || operationContext.organizationId !== organizationId) {
+      throw new Error("Discord AI generation requires trusted generative admission context");
     }
 
-    try {
-      const result = await generateText({
-        model: openai("gpt-5-mini"),
-        system: systemPrompt,
-        prompt:
-          "Create a compelling Discord announcement about this app that would engage a community. Focus on what makes it unique and valuable.",
-      });
-      assertModelOutputComplete({
-        finishReason: result.finishReason,
+    return await runFlatProviderOperation(
+      operationContext,
+      {
         provider: "openai",
         model: "gpt-5-mini",
-      });
-
-      return result.text;
-    } catch (error) {
-      await creditsService.refundCredits({
-        organizationId,
-        amount: DISCORD_POST_COST,
-        description: "Refund for failed Discord AI generation",
-        metadata: { appId: app.id, type: "discord_announcement_refund" },
-      });
-      throw error;
-    }
+        billingSource: "openai",
+        operation: "discord_automation_announcement",
+        cost: DISCORD_POST_COST,
+        metadata: { appId: app.id, type: "discord_announcement" },
+      },
+      async () => {
+        const result = await generateText({
+          model: openai("gpt-5-mini"),
+          system: systemPrompt,
+          prompt:
+            "Create a compelling Discord announcement about this app that would engage a community. Focus on what makes it unique and valuable.",
+        });
+        assertModelOutputComplete({
+          finishReason: result.finishReason,
+          provider: "openai",
+          model: "gpt-5-mini",
+        });
+        return result.text;
+      },
+    );
   }
 
   /**
@@ -289,6 +285,7 @@ Maximum ${MAX_ANNOUNCEMENT_LENGTH} characters. Do not include the URL in your re
     organizationId: string,
     appId: string,
     text?: string,
+    operationContext?: GenerativeOperationContext,
   ): Promise<PostResult> {
     const app = await this.getAppForOrg(organizationId, appId);
     const config = app.discord_automation as DiscordAutomationConfig;
@@ -313,7 +310,8 @@ Maximum ${MAX_ANNOUNCEMENT_LENGTH} characters. Do not include the URL in your re
       };
     }
 
-    const messageText = text || (await this.generateAnnouncement(organizationId, app));
+    const messageText =
+      text || (await this.generateAnnouncement(organizationId, app, operationContext));
 
     // Get promotional image if available
     const promotionalImageUrl = this.getPromotionalImage(app);

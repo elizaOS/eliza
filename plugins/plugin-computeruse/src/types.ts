@@ -177,6 +177,8 @@ export interface ComputerUseResult {
   success: boolean;
   message?: string;
   error?: string;
+  /** Stable diagnostic identifier for callers; prose in `error` may evolve. */
+  errorCode?: string;
   permissionDenied?: boolean;
   permissionType?: PermissionType;
   approvalRequired?: boolean;

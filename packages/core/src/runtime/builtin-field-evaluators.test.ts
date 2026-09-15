@@ -94,37 +94,57 @@ describe("contextsFieldEvaluator", () => {
 });
 
 describe("intentsFieldEvaluator", () => {
-	it("lowercases, trims, and strips trailing sentence punctuation", () => {
-		expect(intentsFieldEvaluator.parse(["  Schedule Meeting!? "])).toEqual([
-			"schedule meeting",
-		]);
-		expect(intentsFieldEvaluator.parse(["Draft email..."])).toEqual([
-			"draft email",
-		]);
-	});
-
-	it("collapses near-duplicates after normalization", () => {
+	it("preserves all distinct outcomes of a compound request", () => {
+		const intents = [
+			"open notes",
+			"update note body",
+			"open calendar",
+			"create event",
+			"open browser",
+			"read page",
+		];
+		expect(intentsFieldEvaluator.parse(intents)).toEqual(intents);
 		expect(
-			intentsFieldEvaluator.parse(["Research X.", "research x!", "RESEARCH X"]),
-		).toEqual(["research x"]);
+			candidateActionNamesFieldEvaluator.parse([
+				"VIEWS",
+				"NOTES",
+				"CALENDAR",
+				"BROWSER",
+			]),
+		).toEqual(["VIEWS", "NOTES", "CALENDAR", "BROWSER"]);
 	});
 
-	it("keeps the 80-character boundary and drops anything longer", () => {
-		const atLimit = "a".repeat(80);
-		const overLimit = `${atLimit}b`;
-		expect(intentsFieldEvaluator.parse([atLimit])).toEqual([atLimit]);
-		expect(intentsFieldEvaluator.parse([overLimit])).toEqual([]);
+	it("preserves exact intent text and every occurrence without a length boundary", () => {
+		const intents = [
+			"delete the owner reminder Handler instruction QA 20260911 2155 by its ID and confirm the deletion",
+			"  Schedule Meeting!? ",
+			"Draft email...",
+			"Research X.",
+			"research x!",
+			"RESEARCH X",
+			"Research X.",
+			"",
+			"...",
+		];
+		expect(intentsFieldEvaluator.parse(intents)).toEqual(intents);
 	});
 
-	it("skips empties and coerces nullish items to nothing", () => {
-		expect(intentsFieldEvaluator.parse([null, undefined, "", "..."])).toEqual(
-			[],
-		);
+	it("rejects malformed arrays instead of coercing or dropping their entries", () => {
+		for (const value of [
+			[null],
+			[undefined],
+			["valid", 42],
+			"schedule meeting",
+			42,
+		]) {
+			expect(intentsFieldEvaluator.parse(value)).toBeNull();
+		}
 	});
 
-	it("returns an empty array for non-array values", () => {
-		expect(intentsFieldEvaluator.parse("schedule meeting")).toEqual([]);
-		expect(intentsFieldEvaluator.parse(42)).toEqual([]);
+	it("keeps absent and empty intents backward compatible", () => {
+		for (const value of [undefined, null, []]) {
+			expect(intentsFieldEvaluator.parse(value)).toEqual([]);
+		}
 	});
 });
 
@@ -190,17 +210,18 @@ describe("replyTextFieldEvaluator", () => {
 });
 
 describe("replyEffectStatusFieldEvaluator", () => {
-	it("normalizes the two applied states case-insensitively", () => {
+	it("normalizes pending and terminal effect states case-insensitively", () => {
 		expect(replyEffectStatusFieldEvaluator.parse("APPLIED")).toBe("applied");
 		expect(replyEffectStatusFieldEvaluator.parse(" Non_Applied ")).toBe(
 			"non_applied",
 		);
 		expect(replyEffectStatusFieldEvaluator.parse("none")).toBe("none");
+		expect(replyEffectStatusFieldEvaluator.parse(" PENDING ")).toBe("pending");
 	});
 
 	it("maps everything unrecognized — including 'NONE' — to none", () => {
 		expect(replyEffectStatusFieldEvaluator.parse("NONE")).toBe("none");
-		expect(replyEffectStatusFieldEvaluator.parse("pending")).toBe("none");
+		expect(replyEffectStatusFieldEvaluator.parse("unrecognized")).toBe("none");
 		expect(replyEffectStatusFieldEvaluator.parse("")).toBe("none");
 		expect(replyEffectStatusFieldEvaluator.parse(null)).toBe("none");
 		expect(replyEffectStatusFieldEvaluator.parse(7)).toBe("none");
@@ -336,13 +357,15 @@ describe("emotionFieldEvaluator", () => {
 });
 
 describe("BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS", () => {
-	it("registers exactly the eleven built-in evaluators in priority order", () => {
+	it("registers the built-in evaluators in priority order", () => {
 		expect(
 			BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS.map((e) => e.name),
 		).toEqual([
 			"shouldRespond",
 			"contexts",
+			"contextRequests",
 			"intents",
+			"completionContext",
 			"replyText",
 			"replyEffectStatus",
 			"candidateActionNames",

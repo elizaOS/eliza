@@ -34,6 +34,10 @@ import {
 } from "@elizaos/shared/config/plugin-manifest";
 
 import { type ElizaConfig, saveElizaConfig } from "../config/config.ts";
+import {
+  isDevCloudConfigAuthorityView,
+  resolveDevCloudEnvAuthority,
+} from "../config/dev-cloud-env-authority.ts";
 import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
 import { resolveStateDir, resolveUserPath } from "../config/paths.ts";
 import type { PluginInstallRecord } from "../config/types.eliza.ts";
@@ -65,6 +69,8 @@ import {
   STATIC_ELIZA_PLUGINS,
   scanDropInPlugins,
 } from "./plugin-types.ts";
+
+export { isWorkspacePluginSourceFallbackAllowed } from "./workspace-plugin-source.ts";
 
 /** {name,error} for a plugin that failed to load on the last resolve pass. */
 export interface FailedPluginDetail {
@@ -238,38 +244,42 @@ async function stageDependencyIntoNodeModules(params: {
   dependencyName: string;
   sourceNodeModulesDir: string;
   targetNodeModulesDir: string;
-}): Promise<boolean> {
+}): Promise<string | null> {
   const sourcePath = packageNodeModulesEntryPath(
     params.sourceNodeModulesDir,
     params.dependencyName,
   );
   if (!(await pathEntryExists(sourcePath))) {
-    return false;
+    return null;
   }
+
+  const sourcePackageRoot =
+    (await resolveSymlinkTargetIfPresent(sourcePath)) ?? sourcePath;
 
   const targetPath = packageNodeModulesEntryPath(
     params.targetNodeModulesDir,
     params.dependencyName,
   );
   if (await pathEntryExists(targetPath)) {
-    return true;
+    return sourcePackageRoot;
   }
 
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
   const stat = await fs.lstat(sourcePath);
   if (stat.isSymbolicLink()) {
-    return copySymlinkedPackageForStaging(
+    const staged = await copySymlinkedPackageForStaging(
       sourcePath,
       targetPath,
       params.dependencyName,
     );
+    return staged ? sourcePackageRoot : null;
   }
   if (!stat.isDirectory()) {
-    return false;
+    return null;
   }
 
   await copyPluginTreeWithoutEscapingSymlinks(sourcePath, targetPath);
-  return true;
+  return sourcePackageRoot;
 }
 
 function rewriteDistExportTargetToSource(value: unknown): unknown {
@@ -385,13 +395,13 @@ async function stageWorkspaceSourceDependencyIntoNodeModules(params: {
   dependencyName: string;
   sourceNodeModulesDir: string;
   targetNodeModulesDir: string;
-}): Promise<boolean> {
+}): Promise<string | null> {
   const sourcePath = packageNodeModulesEntryPath(
     params.sourceNodeModulesDir,
     params.dependencyName,
   );
   if (!(await pathEntryExists(sourcePath))) {
-    return false;
+    return null;
   }
 
   const resolvedSourcePath =
@@ -402,7 +412,7 @@ async function stageWorkspaceSourceDependencyIntoNodeModules(params: {
     !(await pathEntryExists(sourceSrcPath)) ||
     !(await pathEntryExists(sourcePackageJsonPath))
   ) {
-    return false;
+    return null;
   }
   if (
     !(await sourcePackageContainsRootEntrypointImports({
@@ -410,7 +420,7 @@ async function stageWorkspaceSourceDependencyIntoNodeModules(params: {
       sourcePackageRoot: resolvedSourcePath,
     }))
   ) {
-    return false;
+    return null;
   }
 
   const targetPath = packageNodeModulesEntryPath(
@@ -418,7 +428,7 @@ async function stageWorkspaceSourceDependencyIntoNodeModules(params: {
     params.dependencyName,
   );
   if (await pathEntryExists(targetPath)) {
-    return true;
+    return resolvedSourcePath;
   }
 
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
@@ -443,7 +453,7 @@ async function stageWorkspaceSourceDependencyIntoNodeModules(params: {
     dependencyName: params.dependencyName,
     targetPackageRoot: targetPath,
   });
-  return true;
+  return resolvedSourcePath;
 }
 
 async function ensureStagedPackageDependencies(params: {
@@ -451,7 +461,16 @@ async function ensureStagedPackageDependencies(params: {
   packageName: string;
   packageRoot: string;
   stagedPackageRoot: string;
+  ancestorPackageRoots?: ReadonlySet<string>;
 }): Promise<void> {
+  const canonicalPackageRoot = await fs.realpath(params.packageRoot);
+  const ancestorPackageRoots = params.ancestorPackageRoots ?? new Set<string>();
+  if (ancestorPackageRoots.has(canonicalPackageRoot)) {
+    return;
+  }
+  const dependencyAncestorRoots = new Set(ancestorPackageRoots);
+  dependencyAncestorRoots.add(canonicalPackageRoot);
+
   const stagedNodeModulesPath = path.join(
     params.stagedPackageRoot,
     "node_modules",
@@ -489,9 +508,9 @@ async function ensureStagedPackageDependencies(params: {
       await fs.rm(stagedDependencyPath, { recursive: true, force: true });
     }
 
-    let staged = false;
+    let stagedSourceRoot: string | null = null;
     for (const sourceNodeModulesDir of sourceNodeModulesDirs) {
-      staged = shouldStageFromSource
+      stagedSourceRoot = shouldStageFromSource
         ? await stageWorkspaceSourceDependencyIntoNodeModules({
             dependencyName: dependency.name,
             sourceNodeModulesDir,
@@ -502,16 +521,29 @@ async function ensureStagedPackageDependencies(params: {
             sourceNodeModulesDir,
             targetNodeModulesDir: stagedNodeModulesPath,
           });
-      if (staged) {
+      if (stagedSourceRoot) {
         break;
       }
     }
 
-    if (!staged && !dependency.optional) {
+    if (!stagedSourceRoot && !dependency.optional) {
       logger.warn(
         `[eliza] Staged plugin ${params.packageName} is missing declared dependency ${dependency.name}`,
       );
+      continue;
     }
+
+    if (!stagedSourceRoot) continue;
+    await ensureStagedPackageDependencies({
+      installRoot: params.installRoot,
+      packageName: dependency.name,
+      packageRoot: stagedSourceRoot,
+      stagedPackageRoot: packageNodeModulesEntryPath(
+        stagedNodeModulesPath,
+        dependency.name,
+      ),
+      ancestorPackageRoots: dependencyAncestorRoots,
+    });
   }
 }
 
@@ -542,27 +574,6 @@ function resolveWorkspaceRoots(): string[] {
   // setup:upstreams symlinks handle plugin resolution for development. Set
   // ELIZA_WORKSPACE_ROOT explicitly for external override scenarios.
   return uniquePaths([process.cwd()]);
-}
-
-/**
- * Whether the runtime may fall back to importing a plugin's unbuilt workspace
- * `src/` tree (bypassing package `exports`/`dist`) when normal resolution fails.
- *
- * Dev-only escape hatch: a production build must resolve plugins through the
- * bundle or node_modules, never a sibling `src/` tree. Honors the existing
- * `ELIZA_DISABLE_WORKSPACE_PLUGIN_OVERRIDES` kill switch, refuses in a
- * production runtime (mirrors crash-injection's production signal), and allows
- * an explicit `ELIZA_ALLOW_WORKSPACE_PLUGIN_SRC=1` override for production
- * debugging.
- */
-export function isWorkspacePluginSourceFallbackAllowed(
-  env: NodeJS.ProcessEnv = process.env,
-): boolean {
-  if (env.ELIZA_DISABLE_WORKSPACE_PLUGIN_OVERRIDES === "1") return false;
-  const isProduction =
-    env.NODE_ENV === "production" || env.ELIZA_BUILD_VARIANT === "production";
-  if (isProduction) return env.ELIZA_ALLOW_WORKSPACE_PLUGIN_SRC === "1";
-  return true;
 }
 
 function getWorkspacePluginOverridePath(pluginName: string): string | null {
@@ -2272,6 +2283,48 @@ const blockingPhaseClaimedProviderNames = new Set<string>();
 const blockingPhaseLoadedPluginNames = new Set<string>();
 let blockingPhaseFailedPlugins: readonly FailedPluginDetail[] = [];
 
+function appManifestPluginPackageName(pluginId: string): string {
+  return resolvePluginPackageAlias(
+    pluginId.includes("/")
+      ? pluginId
+      : `@elizaos/${pluginId.startsWith("plugin-") ? pluginId : `plugin-${pluginId}`}`,
+  );
+}
+
+function isPluginExplicitlyEnabled(
+  config: ElizaConfig,
+  pluginPackageName: string,
+): boolean {
+  const entries = config.plugins?.entries ?? {};
+  return Object.entries(entries).some(([pluginId, entry]) => {
+    if (entry?.enabled !== true) return false;
+    return appManifestPluginPackageName(pluginId) === pluginPackageName;
+  });
+}
+
+/**
+ * Project a disabled plugin down to its deterministic boot-time registration
+ * seam. App-manifest metadata is the trust declaration that this init hook only
+ * registers intent ownership; all executable capability surfaces stay absent.
+ */
+function projectRoutingOnlyPlugin(plugin: Plugin): Plugin {
+  if (!plugin.init) {
+    throw new ElizaError(
+      `Plugin ${plugin.name} declares routingOnlyWhenDisabled but has no init hook`,
+      {
+        code: "PLUGIN_ROUTING_ONLY_INIT_MISSING",
+        context: { pluginName: plugin.name },
+      },
+    );
+  }
+  return {
+    name: plugin.name,
+    description: plugin.description,
+    ...(plugin.packageName ? { packageName: plugin.packageName } : {}),
+    init: plugin.init.bind(plugin),
+  };
+}
+
 export async function resolvePlugins(
   config: ElizaConfig,
   opts?: {
@@ -2365,27 +2418,50 @@ export async function resolvePlugins(
     logger.debug(`[eliza] Plugin auto-enable: ${changes.join("; ")}`);
   }
 
+  const forceIncludePluginNames = new Set(
+    (opts?.forceIncludePluginNames ?? []).map(resolvePluginPackageAlias),
+  );
   // Provenance for "why is this package in the load set?" — surfaced when an
   // optional plugin fails to resolve so logs point at config/env, not "eliza broke".
+  // Forced providers enter the collector before its final topology precedence
+  // sweep; they must not bypass cloud/remote/local-only ownership policy.
   const loadReasons: PluginLoadReasons = new Map();
-  const pluginsToLoad = collectPluginNames(config, loadReasons);
+  const pluginsToLoad = collectPluginNames(
+    config,
+    loadReasons,
+    Array.from(forceIncludePluginNames),
+  );
   const corePluginSet = new Set<string>(CORE_PLUGINS);
   const blockingPluginSet = new Set<string>(BLOCKING_CORE_PLUGINS);
+  const routingOwnershipPluginNames = new Set<string>();
+  const routingOnlyPluginNames = new Set<string>();
   for (const [pluginId, appDefault] of Object.entries(
     appManifest?.defaults ?? {},
   )) {
-    if (appDefault.requiredForReady === true) {
-      blockingPluginSet.add(
-        resolvePluginPackageAlias(
-          pluginId.includes("/")
-            ? pluginId
-            : `@elizaos/${pluginId.startsWith("plugin-") ? pluginId : `plugin-${pluginId}`}`,
-        ),
-      );
+    const pluginPackageName = appManifestPluginPackageName(pluginId);
+    if (
+      appDefault.requiredForReady === true ||
+      appDefault.routingOnlyWhenDisabled === true
+    ) {
+      blockingPluginSet.add(pluginPackageName);
+    }
+    if (appDefault.routingOnlyWhenDisabled === true) {
+      routingOwnershipPluginNames.add(pluginPackageName);
+    }
+    if (
+      appDefault.routingOnlyWhenDisabled === true &&
+      !isPluginExplicitlyEnabled(config, pluginPackageName)
+    ) {
+      routingOnlyPluginNames.add(pluginPackageName);
+      pluginsToLoad.add(pluginPackageName);
+      if (!loadReasons.has(pluginPackageName)) {
+        loadReasons.set(
+          pluginPackageName,
+          `elizaos.app.defaults[${JSON.stringify(pluginId)}].routingOnlyWhenDisabled`,
+        );
+      }
     }
   }
-  const forceIncludePluginNames = new Set(opts?.forceIncludePluginNames ?? []);
-
   // Build a mutable map of install records so we can merge drop-in discoveries
   const installRecords: Record<string, PluginInstallRecord> = {
     ...(config.plugins?.installs ?? {}),
@@ -2405,6 +2481,21 @@ export async function resolvePlugins(
     );
   }
   for (const pluginName of denyList) {
+    const routingOwnerPackageName = pluginName.includes("/")
+      ? resolvePluginPackageAlias(pluginName)
+      : appManifestPluginPackageName(pluginName);
+    if (routingOwnershipPluginNames.has(routingOwnerPackageName)) {
+      throw new ElizaError(
+        `Plugin ${routingOwnerPackageName} owns required disabled-capability routing and cannot be denied`,
+        {
+          code: "PLUGIN_ROUTING_ONLY_DENIED",
+          context: {
+            pluginName: routingOwnerPackageName,
+            deniedAs: pluginName,
+          },
+        },
+      );
+    }
     pluginsToLoad.delete(pluginName);
     const canonical = resolvePluginPackageAlias(pluginName);
     if (canonical !== pluginName) {
@@ -2736,21 +2827,38 @@ export async function resolvePlugins(
       const pluginInstance = findRuntimePluginExport(mod);
 
       if (pluginInstance) {
+        const routingOnly = routingOnlyPluginNames.has(pluginName);
+        const pluginForRegistration = routingOnly
+          ? projectRoutingOnlyPlugin(pluginInstance)
+          : pluginInstance;
         // Generic pre-init hook: a plugin owning a load-time dependency (e.g.
         // plugin-browser's optional stagehand-server) prepares it here, before
         // its services start. Runs for every plugin that declares `preflight`,
         // so the resolver no longer special-cases any plugin by name (#12665).
-        await pluginInstance.preflight?.();
+        // A routing-only projection must execute only `init`; importing the
+        // disabled plugin must not prepare or start any capability dependency.
+        if (!routingOnly) await pluginInstance.preflight?.();
         // Wrap the plugin's init function with an error boundary.
         // Core plugins re-throw on init failure; optional plugins degrade gracefully.
         const wrappedPlugin = wrapPluginWithErrorBoundary(
           pluginName,
-          pluginInstance,
+          pluginForRegistration,
           { isCore },
         );
-        logger.debug(`[eliza] ✓ Loaded plugin: ${pluginName}`);
+        logger.debug(
+          `[eliza] ✓ Loaded plugin: ${pluginName}${routingOnly ? " (routing-only while disabled)" : ""}`,
+        );
         return { name: pluginName, plugin: wrappedPlugin };
       } else {
+        if (routingOnlyPluginNames.has(pluginName)) {
+          throw new ElizaError(
+            `Routing-only plugin ${pluginName} did not export a valid Plugin object`,
+            {
+              code: "PLUGIN_ROUTING_ONLY_EXPORT_MISSING",
+              context: { pluginName },
+            },
+          );
+        }
         const msg = `[eliza] Plugin ${pluginName} did not export a valid Plugin object`;
         failedPlugins.push({
           name: pluginName,
@@ -2764,6 +2872,17 @@ export async function resolvePlugins(
         return null;
       }
     } catch (err) {
+      if (routingOnlyPluginNames.has(pluginName)) {
+        if (err instanceof ElizaError) throw err;
+        throw new ElizaError(
+          `Required routing-only plugin ${pluginName} failed to load`,
+          {
+            code: "PLUGIN_ROUTING_ONLY_LOAD_FAILED",
+            cause: err,
+            context: { pluginName },
+          },
+        );
+      }
       // error-policy:J4 plugin resolution records the unavailable plugin in
       // failedPlugins; required core-plugin validation fails boot afterward.
       const msg = formatError(err);
@@ -2919,6 +3038,13 @@ export async function resolvePlugins(
   // Persist repaired install records so subsequent startups stop importing
   // from stale install directories.
   if (repairedInstallRecords.size > 0) {
+    const devCloudAuthority = resolveDevCloudEnvAuthority();
+    if (devCloudAuthority && isDevCloudConfigAuthorityView(config)) {
+      logger.info(
+        `[eliza] Repaired ${repairedInstallRecords.size} plugin install record(s) in the ephemeral ${devCloudAuthority} development config view`,
+      );
+      return plugins;
+    }
     try {
       saveElizaConfig(config);
       logger.info(

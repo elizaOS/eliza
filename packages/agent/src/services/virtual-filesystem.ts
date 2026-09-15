@@ -16,12 +16,13 @@ import crypto from "node:crypto";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { ElizaError, type ElizaErrorOptions, logger } from "@elizaos/core";
 import { writeJsonAtomic } from "@elizaos/core/atomic-json";
 import { resolveStateDir } from "../config/paths.ts";
 
 const DEFAULT_QUOTA_BYTES = 50 * 1024 * 1024;
 const DEFAULT_MAX_FILE_BYTES = 10 * 1024 * 1024;
-const writeLocks = new Map<string, Promise<void>>();
+const projectOperations = new Map<string, Promise<void>>();
 
 export type VirtualFilesystemDiffStatus = "added" | "modified" | "deleted";
 
@@ -84,10 +85,18 @@ interface IndexedEntry extends VirtualFilesystemEntry {
   hash?: string;
 }
 
-export class VirtualFilesystemError extends Error {
+interface PendingRollback {
+  version: 1;
+  stageName: string;
+  backupName: string;
+  rollback: VirtualFilesystemRollback;
+}
+
+export class VirtualFilesystemError extends ElizaError {
+  override readonly name = "VirtualFilesystemError";
   constructor(
     message: string,
-    public readonly code:
+    override readonly code:
       | "PATH_TRAVERSAL"
       | "INVALID_PATH"
       | "NOT_FOUND"
@@ -95,10 +104,14 @@ export class VirtualFilesystemError extends Error {
       | "NOT_DIRECTORY"
       | "SYMLINK_DENIED"
       | "QUOTA_EXCEEDED"
-      | "SNAPSHOT_NOT_FOUND",
+      | "SNAPSHOT_NOT_FOUND"
+      | "INVALID_SNAPSHOT"
+      | "VFS_STORAGE_FAILED"
+      | "ROLLBACK_FAILED"
+      | "ROLLBACK_RECOVERY_FAILED",
+    options: Omit<ElizaErrorOptions, "code"> = {},
   ) {
-    super(message);
-    this.name = "VirtualFilesystemError";
+    super(message, { ...options, code });
   }
 }
 
@@ -129,38 +142,79 @@ export class VirtualFilesystemService {
   }
 
   async initialize(): Promise<void> {
-    await fsp.mkdir(this.filesRoot, { recursive: true, mode: 0o700 });
-    await fsp.mkdir(this.snapshotsRoot, { recursive: true, mode: 0o700 });
+    await this.withStorageOperation(async () => {});
+  }
+
+  /**
+   * Serialize an operation against this project's files, including direct Git
+   * writes. The callback must use disk operations, not re-enter public VFS
+   * methods. Pending restores are recovered before the callback can see files.
+   * This coordinates service instances within the host process.
+   */
+  async withProjectOperation<T>(operation: () => Promise<T>): Promise<T> {
+    const key = path.resolve(this.projectRoot);
+    const previous = projectOperations.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const queued = previous.then(() => current);
+    projectOperations.set(key, queued);
+    await previous;
+    try {
+      await this.recoverPendingRollback();
+      await fsp.mkdir(this.filesRoot, { recursive: true, mode: 0o700 });
+      await fsp.mkdir(this.snapshotsRoot, { recursive: true, mode: 0o700 });
+      await this.assertDirectory(this.filesRoot);
+      const snapshots = await fsp.lstat(this.snapshotsRoot);
+      if (snapshots.isSymbolicLink()) {
+        throw new VirtualFilesystemError(
+          "Invalid snapshot storage directory",
+          "INVALID_SNAPSHOT",
+        );
+      }
+      return await operation();
+    } finally {
+      release();
+      if (projectOperations.get(key) === queued) projectOperations.delete(key);
+    }
+  }
+
+  private async withStorageOperation<T>(
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await this.withProjectOperation(operation);
+    } catch (cause) {
+      // error-policy:J2 The service preserves domain failures and wraps disk
+      // failures so routes distinguish unavailable storage from invalid input.
+      if (cause instanceof ElizaError) throw cause;
+      throw new VirtualFilesystemError(
+        "VFS storage operation failed",
+        "VFS_STORAGE_FAILED",
+        {
+          cause,
+          context: { projectId: this.projectId },
+        },
+      );
+    }
   }
 
   async writeFile(
     virtualPath: string,
     contents: string | Uint8Array,
   ): Promise<VirtualFilesystemEntry> {
-    const previous = writeLocks.get(this.projectRoot) ?? Promise.resolve();
-    let release!: () => void;
-    const current = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const queued = previous.then(() => current);
-    writeLocks.set(this.projectRoot, queued);
-    await previous;
-    try {
-      const data =
-        typeof contents === "string"
-          ? Buffer.from(contents)
-          : Buffer.from(contents);
+    return this.withStorageOperation(async () => {
+      const data = Buffer.from(contents);
       if (data.byteLength > this.maxFileBytes) {
         throw new VirtualFilesystemError(
           `File exceeds max file size of ${this.maxFileBytes} bytes`,
           "QUOTA_EXCEEDED",
         );
       }
-
       const target = this.resolvePath(virtualPath);
       await this.ensureSafeParentDirectory(target);
       await this.rejectSymlinkIfExists(target);
-
       const existingSize = await this.fileSizeIfExists(target);
       const current = await this.measureFiles();
       const nextBytes = current.bytes - existingSize + data.byteLength;
@@ -170,119 +224,139 @@ export class VirtualFilesystemService {
           "QUOTA_EXCEEDED",
         );
       }
-
       await fsp.mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
       await fsp.writeFile(target, data, { mode: 0o600 });
       return this.entryFor(target);
-    } finally {
-      release();
-      if (writeLocks.get(this.projectRoot) === queued) {
-        writeLocks.delete(this.projectRoot);
-      }
-    }
+    });
+  }
+
+  async mkdir(
+    virtualPath: string,
+    options: { recursive?: boolean } = {},
+  ): Promise<void> {
+    return this.withStorageOperation(async () => {
+      const target = this.resolvePath(virtualPath);
+      await this.ensureSafeParentDirectory(target);
+      await this.rejectSymlinkIfExists(target);
+      await fsp.mkdir(target, {
+        recursive: Boolean(options.recursive),
+        mode: 0o700,
+      });
+    });
   }
 
   async readFile(
     virtualPath: string,
     encoding: BufferEncoding = "utf-8",
   ): Promise<string> {
-    const target = this.resolvePath(virtualPath);
-    await this.assertFile(target);
-    return fsp.readFile(target, encoding);
+    return this.withStorageOperation(async () => {
+      const target = this.resolvePath(virtualPath);
+      await this.assertFile(target);
+      return fsp.readFile(target, encoding);
+    });
   }
 
   async readFileBytes(virtualPath: string): Promise<Buffer> {
-    const target = this.resolvePath(virtualPath);
-    await this.assertFile(target);
-    return fsp.readFile(target);
+    return this.withStorageOperation(async () => {
+      const target = this.resolvePath(virtualPath);
+      await this.assertFile(target);
+      return fsp.readFile(target);
+    });
   }
 
   async list(
     virtualPath = ".",
     options: { recursive?: boolean } = {},
   ): Promise<VirtualFilesystemEntry[]> {
-    const target = this.resolvePath(virtualPath);
-    await this.assertDirectory(target);
-    const entries = await this.listEntries(target, Boolean(options.recursive));
-    return entries.sort((a, b) => a.path.localeCompare(b.path));
+    return this.withStorageOperation(async () => {
+      const target = this.resolvePath(virtualPath);
+      await this.assertDirectory(target);
+      const entries = await this.listEntries(
+        target,
+        Boolean(options.recursive),
+      );
+      return entries.sort((a, b) => a.path.localeCompare(b.path));
+    });
   }
 
   async delete(
     virtualPath: string,
     options: { recursive?: boolean } = {},
   ): Promise<void> {
-    const target = this.resolvePath(virtualPath);
-    await this.ensureSafeParentDirectory(target);
-    await this.rejectSymlinkIfExists(target);
-    try {
-      await fsp.rm(target, {
-        recursive: Boolean(options.recursive),
-        force: false,
-      });
-    } catch (error) {
-      if (isNodeErrno(error, "ENOENT")) {
-        throw new VirtualFilesystemError("Path not found", "NOT_FOUND");
+    return this.withStorageOperation(async () => {
+      const target = this.resolvePath(virtualPath);
+      await this.ensureSafeParentDirectory(target);
+      await this.rejectSymlinkIfExists(target);
+      try {
+        await fsp.rm(target, {
+          recursive: Boolean(options.recursive),
+          force: false,
+        });
+      } catch (error) {
+        // error-policy:J2 Preserve missing-path classification and disk failures.
+        if (isNodeErrno(error, "ENOENT")) {
+          throw new VirtualFilesystemError("Path not found", "NOT_FOUND");
+        }
+        throw error;
       }
-      throw error;
-    }
+    });
   }
 
   async createSnapshot(note?: string): Promise<VirtualFilesystemSnapshot> {
-    await this.initialize();
+    return this.withStorageOperation(() => this.createSnapshotUnlocked(note));
+  }
+
+  private async createSnapshotUnlocked(
+    note?: string,
+  ): Promise<VirtualFilesystemSnapshot> {
     const id = snapshotId(this.now());
     const snapshotDir = path.join(this.snapshotsRoot, id);
-    const snapshotFilesRoot = path.join(snapshotDir, "files");
-    await fsp.mkdir(snapshotFilesRoot, { recursive: true, mode: 0o700 });
-    await fsp.cp(this.filesRoot, snapshotFilesRoot, {
-      recursive: true,
-      errorOnExist: false,
-      force: true,
-      dereference: false,
-    });
-
-    const stats = await this.measureTree(snapshotFilesRoot);
-    const snapshot: VirtualFilesystemSnapshot = {
-      id,
-      projectId: this.projectId,
-      createdAt: this.now().toISOString(),
-      root: snapshotFilesRoot,
-      filesBytes: stats.bytes,
-      fileCount: stats.fileCount,
-      ...(note ? { note } : {}),
-    };
-    await writeJsonAtomic(path.join(snapshotDir, "snapshot.json"), snapshot);
-    return snapshot;
+    const stage = await fsp.mkdtemp(path.join(this.projectRoot, ".snapshot-"));
+    try {
+      const stagedFiles = path.join(stage, "files");
+      await fsp.cp(this.filesRoot, stagedFiles, {
+        recursive: true,
+        dereference: false,
+      });
+      const stats = await this.measureTree(stagedFiles);
+      const snapshot: VirtualFilesystemSnapshot = {
+        id,
+        projectId: this.projectId,
+        createdAt: this.now().toISOString(),
+        root: path.join(snapshotDir, "files"),
+        filesBytes: stats.bytes,
+        fileCount: stats.fileCount,
+        ...(note !== undefined ? { note } : {}),
+      };
+      await writeJsonAtomic(path.join(stage, "snapshot.json"), snapshot);
+      await fsp.rename(stage, snapshotDir);
+      return snapshot;
+    } finally {
+      await this.cleanupStaging(stage);
+    }
   }
 
   async getSnapshot(id: string): Promise<VirtualFilesystemSnapshot> {
-    const snapshot = await this.readSnapshot(id);
-    if (!snapshot) {
-      throw new VirtualFilesystemError(
-        `Snapshot not found: ${id}`,
-        "SNAPSHOT_NOT_FOUND",
-      );
-    }
-    return snapshot;
+    return this.withStorageOperation(() => this.readSnapshot(id));
   }
 
   async listSnapshots(): Promise<VirtualFilesystemSnapshot[]> {
-    await this.initialize();
-    const entries = await fsp.readdir(this.snapshotsRoot, {
-      withFileTypes: true,
-    });
-    const snapshots: VirtualFilesystemSnapshot[] = [];
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const snapshot = await this.readSnapshot(entry.name);
-      if (snapshot) snapshots.push(snapshot);
-    }
-    return snapshots.sort((a, b) => {
-      const aTime = Date.parse(a.createdAt);
-      const bTime = Date.parse(b.createdAt);
-      const aSafe = Number.isFinite(aTime) ? aTime : 0;
-      const bSafe = Number.isFinite(bTime) ? bTime : 0;
-      if (bSafe !== aSafe) return bSafe - aSafe;
-      return a.id.localeCompare(b.id);
+    return this.withStorageOperation(async () => {
+      const entries = await fsp.readdir(this.snapshotsRoot, {
+        withFileTypes: true,
+      });
+      const snapshots: VirtualFilesystemSnapshot[] = [];
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const snapshot = await this.readSnapshot(entry.name);
+        snapshots.push(snapshot);
+      }
+      return snapshots.sort((a, b) => {
+        const aTime = Date.parse(a.createdAt);
+        const bTime = Date.parse(b.createdAt);
+        if (bTime !== aTime) return bTime - aTime;
+        return a.id.localeCompare(b.id);
+      });
     });
   }
 
@@ -290,53 +364,189 @@ export class VirtualFilesystemService {
     beforeSnapshotId: string,
     afterSnapshotId: string,
   ): Promise<VirtualFilesystemDiffEntry[]> {
-    const before = await this.snapshotFilesRoot(beforeSnapshotId);
-    const after = await this.snapshotFilesRoot(afterSnapshotId);
-    const beforeIndex = await this.indexTree(before);
-    const afterIndex = await this.indexTree(after);
-    return diffIndexes(beforeIndex, afterIndex);
+    return this.withStorageOperation(async () => {
+      const before = await this.snapshotFilesRoot(beforeSnapshotId);
+      const after = await this.snapshotFilesRoot(afterSnapshotId);
+      const beforeIndex = await this.indexTree(before);
+      const afterIndex = await this.indexTree(after);
+      return diffIndexes(beforeIndex, afterIndex);
+    });
   }
 
   async diffCurrent(snapshotId: string): Promise<VirtualFilesystemDiffEntry[]> {
-    const before = await this.snapshotFilesRoot(snapshotId);
-    const beforeIndex = await this.indexTree(before);
-    const afterIndex = await this.indexTree(this.filesRoot);
-    return diffIndexes(beforeIndex, afterIndex);
+    return this.withStorageOperation(async () => {
+      const before = await this.snapshotFilesRoot(snapshotId);
+      const beforeIndex = await this.indexTree(before);
+      const afterIndex = await this.indexTree(this.filesRoot);
+      return diffIndexes(beforeIndex, afterIndex);
+    });
   }
 
   async rollback(snapshotId: string): Promise<VirtualFilesystemRollback> {
-    const snapshotRoot = await this.snapshotFilesRoot(snapshotId);
-    const previous = await this.createSnapshot(`pre-rollback:${snapshotId}`);
-    await fsp.rm(this.filesRoot, { recursive: true, force: true });
-    await fsp.mkdir(this.filesRoot, { recursive: true, mode: 0o700 });
-    await fsp.cp(snapshotRoot, this.filesRoot, {
-      recursive: true,
-      errorOnExist: false,
-      force: true,
-      dereference: false,
+    return this.withStorageOperation(async () => {
+      const snapshot = await this.readSnapshot(snapshotId);
+      const source = await this.snapshotFilesRoot(snapshotId);
+      await this.validateSnapshotTree(snapshot, source);
+      const stageName = `.rollback-stage-${crypto.randomUUID()}`;
+      const backupName = `.rollback-backup-${crypto.randomUUID()}`;
+      const stage = path.join(this.projectRoot, stageName);
+      let pending: PendingRollback | undefined;
+      let journalWritten = false;
+      let committed = false;
+      try {
+        await fsp.cp(source, stage, { recursive: true, dereference: false });
+        await this.validateSnapshotTree(snapshot, stage);
+        const previous = await this.createSnapshotUnlocked(
+          `pre-rollback:${snapshotId}`,
+        );
+        const rollback: VirtualFilesystemRollback = {
+          snapshotId,
+          projectId: this.projectId,
+          rolledBackAt: this.now().toISOString(),
+          previousSnapshotId: previous.id,
+        };
+        pending = { version: 1, stageName, backupName, rollback };
+        await writeJsonAtomic(this.pendingRollbackPath, pending);
+        journalWritten = true;
+        await fsp.rename(
+          this.filesRoot,
+          path.join(this.projectRoot, backupName),
+        );
+        await fsp.rename(stage, this.filesRoot);
+        // This atomic metadata write is the commit marker. Until it succeeds,
+        // recovery restores the previous directory after any interruption.
+        await writeJsonAtomic(
+          path.join(this.projectRoot, "last-rollback.json"),
+          rollback,
+        );
+        committed = true;
+        await this.recoverPendingRollback(true);
+        return rollback;
+      } catch (cause) {
+        // error-policy:J2 Failed restores retain the original live tree. If
+        // recovery also fails, retain the journal and both causes for retry.
+        if (journalWritten) {
+          try {
+            await this.recoverPendingRollback(committed);
+          } catch (recoveryCause) {
+            // error-policy:J2 Recovery failure keeps durable evidence intact.
+            throw new VirtualFilesystemError(
+              "VFS rollback recovery failed; retry initialization after repairing storage",
+              "ROLLBACK_RECOVERY_FAILED",
+              {
+                cause: new AggregateError([cause, recoveryCause]),
+                context: { projectId: this.projectId, snapshotId, committed },
+                severity: "fatal",
+              },
+            );
+          }
+          if (committed && pending) return pending.rollback;
+        } else {
+          await this.cleanupStaging(stage);
+        }
+        throw new VirtualFilesystemError(
+          "VFS rollback failed; the previous workspace is preserved",
+          "ROLLBACK_FAILED",
+          {
+            cause,
+            context: { projectId: this.projectId, snapshotId },
+          },
+        );
+      }
     });
+  }
 
-    const rollback: VirtualFilesystemRollback = {
-      snapshotId,
-      projectId: this.projectId,
-      rolledBackAt: this.now().toISOString(),
-      previousSnapshotId: previous.id,
-    };
-    await writeJsonAtomic(
-      path.join(this.projectRoot, "last-rollback.json"),
-      rollback,
-    );
-    return rollback;
+  private get pendingRollbackPath(): string {
+    return path.join(this.projectRoot, ".pending-rollback.json");
+  }
+
+  private async recoverPendingRollback(
+    knownCommitted?: boolean,
+  ): Promise<void> {
+    const raw = await readJsonFile(this.pendingRollbackPath);
+    if (raw === undefined) return;
+    const pending = parsePendingRollback(raw, this.projectId);
+    const stage = path.join(this.projectRoot, pending.stageName);
+    const backup = path.join(this.projectRoot, pending.backupName);
+    const committed =
+      knownCommitted ??
+      rollbackMatches(
+        await readJsonFile(path.join(this.projectRoot, "last-rollback.json")),
+        pending.rollback,
+      );
+    const previous = await lstatOrNull(backup);
+    if (previous && (!previous.isDirectory() || previous.isSymbolicLink())) {
+      throw new VirtualFilesystemError(
+        "Invalid VFS rollback backup directory",
+        "ROLLBACK_RECOVERY_FAILED",
+        { severity: "fatal" },
+      );
+    }
+    if (committed) {
+      await this.assertDirectory(this.filesRoot);
+      await fsp.rm(backup, { recursive: true, force: true });
+    } else if (previous) {
+      await fsp.rm(stage, { recursive: true, force: true });
+      if (await lstatOrNull(this.filesRoot))
+        await fsp.rename(this.filesRoot, stage);
+      await fsp.rename(backup, this.filesRoot);
+    } else {
+      // Before the first rename, the live directory is still the original.
+      // Do not manufacture an empty tree if recovery evidence is incomplete.
+      await this.assertDirectory(this.filesRoot);
+    }
+    await fsp.rm(stage, { recursive: true, force: true });
+    await fsp.rm(this.pendingRollbackPath);
+  }
+
+  private async cleanupStaging(stage: string): Promise<void> {
+    try {
+      await fsp.rm(stage, { recursive: true, force: true });
+    } catch (error) {
+      // error-policy:J6 An unpublished staging directory is teardown-only;
+      // leave it for inspection without replacing the primary operation error.
+      logger.warn(
+        { projectId: this.projectId, stage, error },
+        "[VirtualFilesystem] Failed to remove staging directory",
+      );
+    }
+  }
+
+  private async validateSnapshotTree(
+    snapshot: VirtualFilesystemSnapshot,
+    root: string,
+  ): Promise<void> {
+    const stats = await this.measureTree(root, true);
+    if (
+      stats.bytes !== snapshot.filesBytes ||
+      stats.fileCount !== snapshot.fileCount
+    ) {
+      throw new VirtualFilesystemError(
+        "Snapshot files do not match saved metadata",
+        "INVALID_SNAPSHOT",
+        {
+          context: { projectId: this.projectId, snapshotId: snapshot.id },
+        },
+      );
+    }
+    if (stats.bytes > this.quotaBytes) {
+      throw new VirtualFilesystemError(
+        "Snapshot exceeds the current project quota",
+        "QUOTA_EXCEEDED",
+      );
+    }
   }
 
   async quota(): Promise<VirtualFilesystemQuota> {
-    const stats = await this.measureFiles();
-    return {
-      usedBytes: stats.bytes,
-      fileCount: stats.fileCount,
-      quotaBytes: this.quotaBytes,
-      maxFileBytes: this.maxFileBytes,
-    };
+    return this.withStorageOperation(async () => {
+      const stats = await this.measureFiles();
+      return {
+        usedBytes: stats.bytes,
+        fileCount: stats.fileCount,
+        quotaBytes: this.quotaBytes,
+        maxFileBytes: this.maxFileBytes,
+      };
+    });
   }
 
   resolveVirtualPath(virtualPath: string): string {
@@ -357,37 +567,39 @@ export class VirtualFilesystemService {
   async exportFiles(
     snapshotId?: string,
   ): Promise<VirtualFilesystemExportFile[]> {
-    const root = snapshotId
-      ? await this.snapshotFilesRoot(snapshotId)
-      : this.filesRoot;
-    const files: VirtualFilesystemExportFile[] = [];
-    const walk = async (dir: string): Promise<void> => {
-      for (const dirent of await fsp.readdir(dir, { withFileTypes: true })) {
-        const realPath = path.join(dir, dirent.name);
-        if (dirent.isSymbolicLink()) {
-          throw new VirtualFilesystemError(
-            "Symlinks are not allowed in the VFS",
-            "SYMLINK_DENIED",
-          );
+    return this.withStorageOperation(async () => {
+      const root = snapshotId
+        ? await this.snapshotFilesRoot(snapshotId)
+        : this.filesRoot;
+      const files: VirtualFilesystemExportFile[] = [];
+      const walk = async (dir: string): Promise<void> => {
+        for (const dirent of await fsp.readdir(dir, { withFileTypes: true })) {
+          const realPath = path.join(dir, dirent.name);
+          if (dirent.isSymbolicLink()) {
+            throw new VirtualFilesystemError(
+              "Symlinks are not allowed in the VFS",
+              "SYMLINK_DENIED",
+            );
+          }
+          if (dirent.isDirectory()) {
+            await walk(realPath);
+            continue;
+          }
+          if (!dirent.isFile()) continue;
+          const stat = await fsp.lstat(realPath);
+          const bytes = await fsp.readFile(realPath);
+          files.push({
+            path: toVirtualPath(realPath, root),
+            type: "file",
+            size: stat.size,
+            mtimeMs: stat.mtimeMs,
+            bytes,
+          });
         }
-        if (dirent.isDirectory()) {
-          await walk(realPath);
-          continue;
-        }
-        if (!dirent.isFile()) continue;
-        const stat = await fsp.lstat(realPath);
-        const bytes = await fsp.readFile(realPath);
-        files.push({
-          path: toVirtualPath(realPath, root),
-          type: "file",
-          size: stat.size,
-          mtimeMs: stat.mtimeMs,
-          bytes,
-        });
-      }
-    };
-    await walk(root);
-    return files.sort((a, b) => a.path.localeCompare(b.path));
+      };
+      await walk(root);
+      return files.sort((a, b) => a.path.localeCompare(b.path));
+    });
   }
 
   private resolvePath(virtualPath: string): string {
@@ -510,9 +722,13 @@ export class VirtualFilesystemService {
     return this.measureTree(this.filesRoot);
   }
 
-  private async measureTree(root: string): Promise<TreeStats> {
+  private async measureTree(
+    root: string,
+    enforceFileLimit = false,
+  ): Promise<TreeStats> {
     const stat = await lstatOrNull(root);
-    if (!stat) return { bytes: 0, fileCount: 0 };
+    if (!stat)
+      throw new VirtualFilesystemError("VFS tree is missing", "NOT_FOUND");
     if (stat.isSymbolicLink()) {
       throw new VirtualFilesystemError(
         "Symlinks are not allowed in the VFS",
@@ -520,17 +736,26 @@ export class VirtualFilesystemService {
       );
     }
     if (stat.isFile()) {
+      if (enforceFileLimit && stat.size > this.maxFileBytes) {
+        throw new VirtualFilesystemError(
+          "Snapshot file exceeds the current file size limit",
+          "QUOTA_EXCEEDED",
+        );
+      }
       return { bytes: stat.size, fileCount: 1 };
     }
     if (!stat.isDirectory()) {
-      return { bytes: 0, fileCount: 0 };
+      throw new VirtualFilesystemError(
+        "Unsupported file type in VFS tree",
+        "NOT_FILE",
+      );
     }
 
     let bytes = 0;
     let fileCount = 0;
     for (const entry of await fsp.readdir(root, { withFileTypes: true })) {
       const child = path.join(root, entry.name);
-      const stats = await this.measureTree(child);
+      const stats = await this.measureTree(child, enforceFileLimit);
       bytes += stats.bytes;
       fileCount += stats.fileCount;
     }
@@ -552,30 +777,64 @@ export class VirtualFilesystemService {
     return stat.size;
   }
 
-  private async readSnapshot(
-    id: string,
-  ): Promise<VirtualFilesystemSnapshot | null> {
+  private async readSnapshot(id: string): Promise<VirtualFilesystemSnapshot> {
     const normalizedId = normalizeSnapshotId(id);
-    const metadataPath = path.join(
-      this.snapshotsRoot,
-      normalizedId,
-      "snapshot.json",
-    );
-    const raw = await fsp.readFile(metadataPath, "utf-8").catch(() => null);
-    return raw ? (JSON.parse(raw) as VirtualFilesystemSnapshot) : null;
+    const snapshotDir = path.join(this.snapshotsRoot, normalizedId);
+    const directory = await lstatOrNull(snapshotDir);
+    if (!directory) {
+      throw new VirtualFilesystemError(
+        `Snapshot not found: ${id}`,
+        "SNAPSHOT_NOT_FOUND",
+      );
+    }
+    if (!directory.isDirectory() || directory.isSymbolicLink()) {
+      throw new VirtualFilesystemError(
+        "Invalid saved snapshot directory",
+        "INVALID_SNAPSHOT",
+      );
+    }
+    const raw = await readJsonFile(path.join(snapshotDir, "snapshot.json"));
+    if (
+      !isRecord(raw) ||
+      raw.id !== normalizedId ||
+      raw.projectId !== this.projectId ||
+      !isTimestamp(raw.createdAt) ||
+      typeof raw.root !== "string" ||
+      !raw.root ||
+      !isNonnegativeInteger(raw.filesBytes) ||
+      !isNonnegativeInteger(raw.fileCount) ||
+      (raw.note !== undefined && typeof raw.note !== "string")
+    ) {
+      throw new VirtualFilesystemError(
+        "Invalid saved snapshot metadata",
+        "INVALID_SNAPSHOT",
+        {
+          context: { projectId: this.projectId, snapshotId: normalizedId },
+        },
+      );
+    }
+    return {
+      id: normalizedId,
+      projectId: this.projectId,
+      createdAt: raw.createdAt,
+      root: path.join(this.snapshotsRoot, normalizedId, "files"),
+      filesBytes: raw.filesBytes,
+      fileCount: raw.fileCount,
+      ...(raw.note !== undefined ? { note: raw.note } : {}),
+    };
   }
 
   private async snapshotFilesRoot(id: string): Promise<string> {
-    const snapshot = await this.getSnapshot(id);
-    const root = path.join(
-      this.snapshotsRoot,
-      normalizeSnapshotId(snapshot.id),
-      "files",
-    );
-    if (!isWithin(this.snapshotsRoot, root)) {
+    const snapshot = await this.readSnapshot(id);
+    const root = path.join(this.snapshotsRoot, snapshot.id, "files");
+    const stat = await lstatOrNull(root);
+    if (!stat?.isDirectory() || stat.isSymbolicLink()) {
       throw new VirtualFilesystemError(
-        "Snapshot path escapes snapshot root",
-        "PATH_TRAVERSAL",
+        "Snapshot files are unavailable",
+        "INVALID_SNAPSHOT",
+        {
+          context: { projectId: this.projectId, snapshotId: snapshot.id },
+        },
       );
     }
     return root;
@@ -650,7 +909,7 @@ function normalizeVirtualPath(input: string): string {
 }
 
 function normalizeSnapshotId(id: string): string {
-  if (!/^[a-zA-Z0-9._-]+$/.test(id)) {
+  if (id === "." || id === ".." || !/^[a-zA-Z0-9._-]+$/.test(id)) {
     throw new VirtualFilesystemError("Invalid snapshot id", "INVALID_PATH");
   }
   return id;
@@ -673,7 +932,8 @@ async function lstatOrNull(realPath: string) {
   try {
     return await fsp.lstat(realPath);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    // error-policy:J4 Only an absent path is an expected unavailable result.
+    if (isNodeErrno(error, "ENOENT")) return null;
     throw error;
   }
 }
@@ -729,4 +989,129 @@ function diffIndexes(
     }
   }
   return diff;
+}
+
+async function readJsonFile(filename: string): Promise<unknown> {
+  let raw: string;
+  try {
+    if ((await fsp.lstat(filename)).isSymbolicLink()) {
+      throw new VirtualFilesystemError(
+        "Invalid VFS metadata file",
+        "INVALID_SNAPSHOT",
+      );
+    }
+    raw = await fsp.readFile(filename, "utf8");
+  } catch (cause) {
+    // error-policy:J4 Only an absent record is unavailable; other read failures
+    // must remain distinct from an empty snapshot collection.
+    if (cause instanceof VirtualFilesystemError) throw cause;
+    if (isNodeErrno(cause, "ENOENT")) return undefined;
+    throw new VirtualFilesystemError(
+      "Failed to read VFS metadata",
+      "VFS_STORAGE_FAILED",
+      {
+        cause,
+        context: { filename },
+      },
+    );
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (cause) {
+    // error-policy:J3 Malformed persisted JSON is an explicit invalid state.
+    throw new VirtualFilesystemError(
+      "Invalid VFS metadata JSON",
+      "INVALID_SNAPSHOT",
+      {
+        cause,
+        context: { filename },
+      },
+    );
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isTimestamp(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    Number.isFinite(Date.parse(value)) &&
+    new Date(value).toISOString() === value
+  );
+}
+
+function isNonnegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function rollbackMatches(
+  value: unknown,
+  expected: VirtualFilesystemRollback,
+): boolean {
+  if (value === undefined) return false;
+  const stored = parseRollback(value, expected.projectId);
+  return (
+    stored.snapshotId === expected.snapshotId &&
+    stored.previousSnapshotId === expected.previousSnapshotId &&
+    stored.rolledBackAt === expected.rolledBackAt
+  );
+}
+
+function parseRollback(
+  value: unknown,
+  projectId: string,
+): VirtualFilesystemRollback {
+  if (
+    !isRecord(value) ||
+    value.projectId !== projectId ||
+    typeof value.snapshotId !== "string" ||
+    !isTimestamp(value.rolledBackAt) ||
+    (value.previousSnapshotId !== undefined &&
+      typeof value.previousSnapshotId !== "string")
+  ) {
+    throw new VirtualFilesystemError(
+      "Invalid VFS rollback metadata",
+      "ROLLBACK_RECOVERY_FAILED",
+      { severity: "fatal" },
+    );
+  }
+  return {
+    projectId,
+    snapshotId: normalizeSnapshotId(value.snapshotId),
+    rolledBackAt: value.rolledBackAt,
+    ...(value.previousSnapshotId !== undefined
+      ? { previousSnapshotId: normalizeSnapshotId(value.previousSnapshotId) }
+      : {}),
+  };
+}
+
+function parsePendingRollback(
+  value: unknown,
+  projectId: string,
+): PendingRollback {
+  if (
+    !isRecord(value) ||
+    value.version !== 1 ||
+    typeof value.stageName !== "string" ||
+    !/^\.rollback-stage-[a-f0-9-]{36}$/.test(value.stageName) ||
+    typeof value.backupName !== "string" ||
+    !/^\.rollback-backup-[a-f0-9-]{36}$/.test(value.backupName) ||
+    !isRecord(value.rollback) ||
+    typeof value.rollback.previousSnapshotId !== "string"
+  ) {
+    throw new VirtualFilesystemError(
+      "Invalid pending VFS rollback metadata",
+      "ROLLBACK_RECOVERY_FAILED",
+      { severity: "fatal" },
+    );
+  }
+  const rollback = parseRollback(value.rollback, projectId);
+  return {
+    version: 1,
+    stageName: value.stageName,
+    backupName: value.backupName,
+    rollback,
+  };
 }

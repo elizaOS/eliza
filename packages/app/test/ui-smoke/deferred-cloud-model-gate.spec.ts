@@ -12,6 +12,7 @@ import {
   installPageDiagnosticsGuard,
   openAppPath,
   seedAppStorage,
+  UI_SMOKE_CPU_ONLY_HARDWARE,
 } from "./helpers";
 
 test.describe("deferred Eliza Cloud model registration", () => {
@@ -82,6 +83,7 @@ test.describe("deferred Eliza Cloud model registration", () => {
           status: 200,
           contentType: "application/json",
           body: JSON.stringify({
+            hardware: UI_SMOKE_CPU_ONLY_HARDWARE,
             textReadiness: {
               slots: {
                 TEXT_SMALL: {

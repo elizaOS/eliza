@@ -7,11 +7,11 @@
  * the `ci:device` label actually reaches BOTH bundle-owning runners
  * (android-e2e.mjs / ios-e2e.mjs) with `--output` inside the uploaded artifact
  * root, that the uploads run `if: always()` so an induced failure still ships
- * a bundle, that the bundle producers emit the required inline/, logs/,
- * summary.json, and junit.xml members, and that the Android-only cadence has a
- * least-privilege stable-issue failure signal without scheduling iOS. The
- * workflow stays credential-free for fork PRs with pinned toolchains and
- * SHA-pinned actions.
+ * a bundle, that Android keeps bootstrap logs beside an atomically published
+ * allowlisted evidence directory, that the bundle producers emit their
+ * required members, and that the Android-only cadence has a least-privilege
+ * stable-issue failure signal without scheduling iOS. The workflow stays
+ * credential-free for fork PRs with pinned toolchains and SHA-pinned actions.
  * Parses the real workflow YAML; deterministic, no network or devices.
  */
 import { describe, expect, test } from "bun:test";
@@ -179,7 +179,9 @@ describe("device-e2e workflow trigger reaches both bundle producers (#19640)", (
     );
     const script = runner.with?.script ?? "";
     expect(script).toContain("packages/app/scripts/android-e2e.mjs");
-    expect(script).toContain('--output "$ELIZA_DEVICE_BUNDLE_ROOT/android"');
+    expect(script).toContain(
+      '--output "$ELIZA_DEVICE_BUNDLE_ROOT/android/evidence"',
+    );
     expect(script).toContain("--start-host-agent");
     expect(script).toContain("--host-emulator-probes");
     expect(script).toContain("--skip-local-chat");
@@ -205,13 +207,16 @@ describe("device-e2e workflow trigger reaches both bundle producers (#19640)", (
     );
   });
 
-  test("both uploads run if: always() and cover the exact --output roots", () => {
+  test("both uploads run if: always() and cover their runner evidence", () => {
     const androidBootstrap = findStep(
       requireJob(androidJob, "android-device-bundle"),
       (step) => step.name === "Initialize Android artifact root",
       "Android artifact bootstrap",
     );
     expect(androidBootstrap.run).toContain("workflow-bootstrap.txt");
+    expect(androidBootstrap.run).toContain(
+      '"$ELIZA_DEVICE_BUNDLE_ROOT/android/logs"',
+    );
     expect(androidBootstrap.run).toContain('"$GITHUB_SHA"');
     const android = findStep(
       requireJob(androidJob, "android-device-bundle"),
@@ -285,7 +290,7 @@ describe("Android probe partitioning (#13580)", () => {
     );
   });
 
-  test("invalid host/local selection exits nonzero with a finalized failed bundle", () => {
+  test("invalid host/local selection exits nonzero without exporting unbound diagnostics", () => {
     const output = mkdtempSync(path.join(os.tmpdir(), "eliza-android-lane-"));
     try {
       const result = spawnSync(
@@ -308,24 +313,27 @@ describe("Android probe partitioning (#13580)", () => {
       );
 
       expect(result.status).toBe(1);
-      expect(result.stderr).toContain(
+      expect(`${result.stdout}\n${result.stderr}`).toContain(
+        "phase=runner status=failed code=ANDROID_E2E_FAILED",
+      );
+      expect(`${result.stdout}\n${result.stderr}`).not.toContain(
         "--host-emulator-probes requires ELIZA_ANDROID_BACKEND=host",
       );
-      expect(existsSync(path.join(output, "summary.json"))).toBe(true);
-      expect(existsSync(path.join(output, "junit.xml"))).toBe(true);
-      const summary = JSON.parse(
-        readFileSync(path.join(output, "summary.json"), "utf8"),
-      ) as { result: string; steps: Array<{ name: string; status: string }> };
-      expect(summary.result).toBe("failed");
-      expect(summary.steps).toContainEqual(
-        expect.objectContaining({
-          name: "validate Android lane selection",
-          status: "failed",
-        }),
-      );
+      // The lane-selection failure precedes an installed renderer identity.
+      // The privacy projection therefore refuses to publish an unbound bundle.
+      expect(existsSync(path.join(output, "summary.json"))).toBe(false);
+      expect(existsSync(path.join(output, "junit.xml"))).toBe(false);
     } finally {
       rmSync(output, { recursive: true, force: true });
     }
+  });
+
+  test("the Windows default evidence output is a fresh runner-temp child", () => {
+    expect(androidRunnerSource).toContain('process.platform === "win32"');
+    expect(androidRunnerSource).toContain(
+      "process.env.RUNNER_TEMP?.trim() || os.tmpdir()",
+    );
+    expect(androidRunnerSource).toContain("eliza-android-evidence-");
   });
 });
 
@@ -374,7 +382,11 @@ describe("ARM64 local-runtime workflow (#13580)", () => {
       (step) => step.name === "Fail-closed ARM64 device preflight",
       "ARM64 preflight",
     );
-    expect(preflight.run).toContain("arm64-local-preflight.sh 2>&1");
+    expect(preflight.run).toContain("arm64-local-preflight.sh");
+    expect(preflight.run).toContain(
+      '> "$ELIZA_DEVICE_BUNDLE_ROOT/preflight/arm64-preflight.log" 2>&1',
+    );
+    expect(preflight.run).not.toMatch(/\|\s*tee/);
     expect(preflight.run).toContain("arm64-preflight.log");
     const runner = findStep(
       job,
@@ -384,7 +396,7 @@ describe("ARM64 local-runtime workflow (#13580)", () => {
     expect(runner.run).toContain("packages/app/scripts/android-e2e.mjs");
     expect(runner.run).toContain("--no-emulator-boot");
     expect(runner.run).toContain(
-      '--output "$ELIZA_DEVICE_BUNDLE_ROOT/android-arm64-local"',
+      '--output "$ELIZA_DEVICE_BUNDLE_ROOT/runtime"',
     );
     const upload = findStep(
       job,
@@ -396,7 +408,7 @@ describe("ARM64 local-runtime workflow (#13580)", () => {
       `android-arm64-local-runtime-bundle-${workflowExpression("github.run_id")}-${workflowExpression("github.run_attempt")}`,
     );
     expect(upload.with?.path).toContain(
-      "device-e2e-artifacts/android-arm64-local/**",
+      `device-e2e-artifacts/${workflowExpression("github.run_id")}-${workflowExpression("github.run_attempt")}/**`,
     );
     expect(upload.with?.["if-no-files-found"]).toBe("error");
   });

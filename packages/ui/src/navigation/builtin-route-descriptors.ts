@@ -23,8 +23,24 @@ export type BuiltinRouteSurfaceDeclaration =
 interface CanonicalBuiltinRouteDescriptor {
   readonly path: string;
   readonly layout: PageLayoutManifest;
+  /** Retired browser paths that redirect to this canonical route. */
+  readonly legacyPaths?: readonly string[];
   readonly surface?: BuiltinRouteSurfaceDeclaration;
+  /** Dynamic children composed by this builtin's host-owned renderer. */
+  readonly dynamicChildren?: readonly BuiltinDynamicViewDescriptor[];
 }
+
+interface BuiltinDynamicViewDescriptor {
+  readonly viewId: string;
+  readonly bundleUrl: string;
+  readonly componentExport: string;
+}
+
+export const DATABASE_VECTOR_VIEW = Object.freeze({
+  viewId: "vector-browser",
+  bundleUrl: "/api/views/vector-browser/bundle.js",
+  componentExport: "VectorBrowserView",
+});
 
 interface BuiltinRouteAliasDescriptor {
   readonly aliasOf: string;
@@ -69,6 +85,13 @@ const CONTENT_LAYOUT: PageLayoutManifest = Object.freeze({
   gutter: "standard",
 });
 
+const SHELL_CONTENT_LAYOUT: PageLayoutManifest = Object.freeze({
+  kind: "content",
+  width: "standard",
+  scroll: "shell",
+  gutter: "standard",
+});
+
 const SHELL_WIDE_CONTENT_LAYOUT: PageLayoutManifest = Object.freeze({
   kind: "content",
   width: "wide",
@@ -81,6 +104,14 @@ const WORKSPACE_LAYOUT: PageLayoutManifest = Object.freeze({
   width: "wide",
   scroll: "view",
   gutter: "standard",
+});
+
+/** Routes whose rendered view owns its canonical FramedPage width and gutter. */
+const FRAMED_PAGE_LAYOUT: PageLayoutManifest = Object.freeze({
+  kind: "content",
+  width: "standard",
+  scroll: "view",
+  gutter: "none",
 });
 
 const FULL_WORKSPACE_LAYOUT: PageLayoutManifest = Object.freeze({
@@ -109,6 +140,7 @@ const AMBIENT_IMMERSIVE_LAYOUT: PageLayoutManifest = Object.freeze({
 export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
   chat: {
     path: "/chat",
+    legacyPaths: ["/home"],
     layout: AMBIENT_IMMERSIVE_LAYOUT,
     surface: IMMERSIVE_WALLPAPER_SURFACE,
   },
@@ -116,7 +148,7 @@ export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
   messages: { path: "/messages", layout: FULL_WORKSPACE_LAYOUT },
   contacts: { path: "/contacts", layout: WORKSPACE_LAYOUT },
   camera: { path: "/camera", layout: FULL_WORKSPACE_LAYOUT },
-  tasks: { path: "/apps/tasks", layout: WORKSPACE_LAYOUT },
+  tasks: { path: "/apps/tasks", layout: FRAMED_PAGE_LAYOUT },
   browser: {
     path: "/browser",
     layout: FULL_WORKSPACE_LAYOUT,
@@ -141,33 +173,49 @@ export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
     layout: IMMERSIVE_LAYOUT,
     surface: { shared: (path) => path === "/views" },
   },
-  character: { path: "/character", layout: WORKSPACE_LAYOUT },
+  character: { path: "/character", layout: FRAMED_PAGE_LAYOUT },
   "character-select": {
     path: "/character/select",
-    layout: WORKSPACE_LAYOUT,
+    layout: FRAMED_PAGE_LAYOUT,
   },
-  automations: { path: "/automations", layout: WORKSPACE_LAYOUT },
+  automations: { path: "/automations", layout: FRAMED_PAGE_LAYOUT },
   triggers: { aliasOf: "automations" },
   inventory: { path: "/wallet", layout: SHELL_WIDE_CONTENT_LAYOUT },
-  documents: { path: "/character/documents", layout: WORKSPACE_LAYOUT },
-  files: { path: "/apps/files", layout: CONTENT_LAYOUT },
+  documents: {
+    path: "/character/documents",
+    layout: WORKSPACE_LAYOUT,
+    legacyPaths: ["/documents", "/knowledge"],
+  },
+  files: { path: "/apps/files", layout: SHELL_CONTENT_LAYOUT },
   plugins: { path: "/apps/plugins", layout: WORKSPACE_LAYOUT },
   skills: { path: "/apps/skills", layout: WORKSPACE_LAYOUT },
   trajectories: { path: "/apps/trajectories", layout: WORKSPACE_LAYOUT },
   transcripts: { path: "/apps/transcripts", layout: CONTENT_LAYOUT },
-  relationships: { path: "/apps/relationships", layout: WORKSPACE_LAYOUT },
-  experience: { path: "/character/experience", layout: CONTENT_LAYOUT },
+  relationships: {
+    path: "/apps/relationships",
+    layout: WORKSPACE_LAYOUT,
+    legacyPaths: ["/rolodex"],
+  },
+  experience: { path: "/character/experience", layout: FRAMED_PAGE_LAYOUT },
   "character-skills": {
     path: "/character/skills",
-    layout: CONTENT_LAYOUT,
+    layout: FRAMED_PAGE_LAYOUT,
   },
-  memories: { path: "/apps/memories", layout: WORKSPACE_LAYOUT },
-  rolodex: { path: "/rolodex", layout: CONTENT_LAYOUT },
+  memories: {
+    path: "/apps/memories",
+    layout: FRAMED_PAGE_LAYOUT,
+    surface: { background: "opaque" },
+  },
+  rolodex: { aliasOf: "relationships" },
   runtime: { path: "/apps/runtime", layout: WORKSPACE_LAYOUT },
-  database: { path: "/apps/database", layout: WORKSPACE_LAYOUT },
+  database: {
+    path: "/apps/database",
+    layout: FRAMED_PAGE_LAYOUT,
+    dynamicChildren: [DATABASE_VECTOR_VIEW],
+  },
   desktop: { path: "/desktop", layout: FULL_WORKSPACE_LAYOUT },
-  settings: { path: "/settings", layout: WORKSPACE_LAYOUT },
-  vault: { path: "/vault", layout: CONTENT_LAYOUT },
+  settings: { path: "/settings", layout: FULL_WORKSPACE_LAYOUT },
+  vault: { path: "/vault", layout: FRAMED_PAGE_LAYOUT },
   logs: { path: "/apps/logs", layout: CONTENT_LAYOUT },
   background: {
     path: "/background",

@@ -14,10 +14,16 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAppShellPage } from "../../app-shell-registry";
 import { resetUiRegistryHostForTests } from "../../registry-host";
 import { isWalletSectionPath, WalletSectionNav } from "./WalletSectionNav";
+
+const platformMocks = vi.hoisted(() => ({ platform: "web" }));
+
+vi.mock("../../platform/platform-guards", () => ({
+  getFrontendPlatform: () => platformMocks.platform,
+}));
 
 function registerWalletSectionPages(): void {
   registerAppShellPage({
@@ -53,6 +59,7 @@ function registerWalletSectionPages(): void {
 }
 
 beforeEach(() => {
+  platformMocks.platform = "web";
   resetUiRegistryHostForTests();
   registerWalletSectionPages();
 });
@@ -101,16 +108,15 @@ describe("isWalletSectionPath", () => {
 });
 
 describe("WalletSectionNav", () => {
-  it("renders a centered Wallet title header with an icon-only back button", () => {
+  it("moves the safe-area inset inside the Wallet header on native", () => {
+    platformMocks.platform = "android";
     render(<WalletSectionNav activePath="/inventory" />);
-    // Uniform ViewHeader geometry (#13451/#13592): centered title + bare back.
-    const header = screen.getByTestId("view-header");
+
     expect(
-      within(header).getByRole("heading", { name: "Wallet" }),
-    ).toBeTruthy();
-    expect(
-      within(header).getByRole("button", { name: "Back to launcher" }),
-    ).toBeTruthy();
+      screen
+        .getByTestId("wallet-section-header-inset")
+        .className.includes("safe-area-top"),
+    ).toBe(true);
   });
 
   it("suppresses the secondary strip when only one group member is registered", () => {
@@ -126,8 +132,6 @@ describe("WalletSectionNav", () => {
       loader: async () => ({ default: () => null }),
     });
     render(<WalletSectionNav activePath="/wallet" />);
-    // Header present, but no switchable strip with a single member.
-    expect(screen.getByTestId("view-header")).toBeTruthy();
     expect(screen.queryByTestId("section-nav-wallet")).toBeNull();
   });
 

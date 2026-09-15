@@ -14,7 +14,6 @@ import {
   clearStoredAppAuthorizeReturnTo,
   readStoredAppAuthorizeReturnTo,
 } from "../../../../cloud-ui/components/auth/authorize-return";
-import { BrandButton } from "../../../../cloud-ui/components/brand/brand-button";
 import { Button } from "../../../../components/primitives";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
@@ -125,6 +124,25 @@ function describeVerificationError(
       });
 }
 
+/**
+ * Remove the one-time proof and its identity hint from the visible URL without
+ * notifying React Router. The callback already captured both values for this
+ * render; retaining unrelated query state and the hash keeps observability and
+ * same-page anchors intact while secrets leave history and copy/paste early.
+ */
+function stripEmailCallbackSecretsFromAddressBar(): void {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("token") && !url.searchParams.has("email")) return;
+  url.searchParams.delete("token");
+  url.searchParams.delete("email");
+  window.history.replaceState(
+    window.history.state,
+    "",
+    `${url.pathname}${url.search}${url.hash}`,
+  );
+}
+
 // `public: true` routes render WITHOUT the per-route Steward wrapper (see
 // `CloudRouteElement` / `app-authorize-page` #9881), so this page must mount the
 // shell's `StewardAuthProvider` itself. Otherwise the magic-link verify has no
@@ -179,6 +197,10 @@ function EmailCallbackContent() {
     if (attemptedRef.current) return;
     attemptedRef.current = true;
 
+    const token = searchParams.get("token");
+    const callbackEmail = searchParams.get("email");
+    stripEmailCallbackSecretsFromAddressBar();
+
     if (!auth) {
       setStatus("error");
       setError(
@@ -201,8 +223,6 @@ function EmailCallbackContent() {
       setStatus("success");
     };
 
-    const token = searchParams.get("token");
-    const callbackEmail = searchParams.get("email");
     if (!token || !callbackEmail) {
       setStatus("error");
       setError(
@@ -363,12 +383,12 @@ function EmailCallbackContent() {
           {t("cloud.emailCallback.signedIn", { defaultValue: "Signed in" })}
         </h1>
         <p className="text-sm text-muted">{successCopy}</p>
-        <BrandButton
+        <Button
           className="mt-2"
           onClick={() => navigate(destination, { replace: true })}
         >
           {buttonCopy}
-        </BrandButton>
+        </Button>
       </Frame>
     );
   }

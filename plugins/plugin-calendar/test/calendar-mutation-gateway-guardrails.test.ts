@@ -2,7 +2,7 @@
  * Conversational calendar writes fail closed when approval or authoritative
  * source context is unavailable; provider CRUD is never a fallback.
  */
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+import type { Action, IAgentRuntime, Memory } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -66,6 +66,11 @@ function deps(
     runTextModel: vi.fn(async () => null),
     runJsonModel: vi.fn(async () => null),
     recentConversationTexts: vi.fn(async () => []),
+    // Deterministic presentation fixture, not a live-model response.
+    renderGroundedReply: async ({ fallback }) => ({
+      kind: "model",
+      text: fallback,
+    }),
     ...(gateway ? { mutationGateway: gateway } : {}),
   };
 }
@@ -83,6 +88,31 @@ function completeFeed() {
   };
 }
 
+function expectInternalFailure(
+  result: Awaited<ReturnType<Action["handler"]>>,
+  callback: ReturnType<typeof vi.fn>,
+  facts: string,
+): void {
+  expect(result).toMatchObject({
+    success: false,
+    transcriptVisibility: "internal",
+    turnComplete: false,
+    effectReceipts: [expect.objectContaining({ outcome: "failed" })],
+    data: {
+      replyContext: {
+        domain: "calendar",
+        intent: expect.any(String),
+        scenario: expect.any(String),
+        facts: expect.stringContaining(facts),
+        context: expect.any(Object),
+      },
+    },
+  });
+  expect(result).not.toHaveProperty("text");
+  expect(result).not.toHaveProperty("userFacingText");
+  expect(callback).not.toHaveBeenCalled();
+}
+
 describe("calendar conversational mutation gateway guardrails", () => {
   it("fails explicitly when the approval gateway is missing", async () => {
     const service = {
@@ -90,6 +120,7 @@ describe("calendar conversational mutation gateway guardrails", () => {
       updateCalendarEvent: vi.fn(),
     };
     const action = createCalendarActionRunner(deps());
+    const callback = vi.fn(async () => []);
 
     const result = await action.handler(
       runtime(service),
@@ -106,10 +137,14 @@ describe("calendar conversational mutation gateway guardrails", () => {
           },
         },
       },
+      callback,
     );
 
-    expect(result?.success).toBe(false);
-    expect(result?.text).toContain("owner-approval gateway is not running");
+    expectInternalFailure(
+      result,
+      callback,
+      "owner-approval gateway is not running",
+    );
     expect(service.updateCalendarEvent).not.toHaveBeenCalled();
   });
 
@@ -145,6 +180,7 @@ describe("calendar conversational mutation gateway guardrails", () => {
       }),
       runJsonModel,
     });
+    const callback = vi.fn(async () => []);
 
     const result = await action.handler(
       runtime(service),
@@ -160,11 +196,11 @@ describe("calendar conversational mutation gateway guardrails", () => {
           },
         },
       },
+      callback,
     );
 
-    expect(result?.success).toBe(false);
-    expect(result?.text).toContain("complete, fresh view");
-    expect(runJsonModel).toHaveBeenCalledTimes(1);
+    expectInternalFailure(result, callback, "complete, fresh view");
+    expect(runJsonModel).not.toHaveBeenCalled();
     expect(service.prepareCalendarEventCreate).not.toHaveBeenCalled();
     expect(schedule).not.toHaveBeenCalled();
     expect(service.createCalendarEvent).not.toHaveBeenCalled();

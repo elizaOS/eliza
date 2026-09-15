@@ -171,12 +171,13 @@ function createAsyncContextStorage<T>(): AsyncContextStorage<T> {
 	if (
 		typeof process !== "undefined" &&
 		typeof process.versions !== "undefined" &&
-		typeof process.versions.node !== "undefined"
+		typeof process.versions.node !== "undefined" &&
+		typeof process.getBuiltinModule === "function"
 	) {
 		try {
-			// eslint-disable-next-line @typescript-eslint/no-require-imports
-			const { AsyncLocalStorage } =
-				require("node:async_hooks") as typeof import("node:async_hooks");
+			const { AsyncLocalStorage } = process.getBuiltinModule(
+				"node:async_hooks",
+			) as typeof import("node:async_hooks");
 			const storage = new AsyncLocalStorage<T>();
 			return {
 				run<R>(store: T, callback: () => R): R {

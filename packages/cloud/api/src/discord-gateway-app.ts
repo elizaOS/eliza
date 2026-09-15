@@ -1,5 +1,6 @@
 /**
- * Dependency-bounded Hono shell for authenticated managed Discord turns.
+ * Dependency-bounded Hono shell for gateway authentication and managed
+ * Discord turns.
  *
  * The Railway gateway already owns provider ingress and retries. This shell
  * preserves the Cloud request context, security headers, and internal JWT
@@ -22,7 +23,9 @@ import { runWithRequestContext } from "@/lib/runtime/request-context";
 import { setRuntimeR2Bucket } from "@/lib/storage/r2-runtime-binding";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import gatewayToken from "../internal/auth/token/route";
 import managedDiscordMessages from "../internal/discord/eliza-app/messages/route";
+import pendingDiscordGreetings from "../internal/discord/eliza-app/pending-greetings/route";
 
 export function createDiscordGatewayApp(): Hono<AppEnv> {
   const app = new Hono<AppEnv>({ strict: false });
@@ -78,7 +81,12 @@ export function createDiscordGatewayApp(): Hono<AppEnv> {
     ),
   );
 
+  app.route("/api/internal/auth/token", gatewayToken);
   app.route("/api/internal/discord/eliza-app/messages", managedDiscordMessages);
+  app.route(
+    "/api/internal/discord/eliza-app/pending-greetings",
+    pendingDiscordGreetings,
+  );
 
   app.notFound((c) =>
     c.json(

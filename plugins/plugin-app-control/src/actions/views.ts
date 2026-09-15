@@ -36,6 +36,11 @@ import {
 	targetReferenceLogView,
 	userRequestMessageText,
 } from "../params.js";
+import {
+	type NavigationReceipt,
+	navigationDispatchBlock,
+	navigationRequestSignal,
+} from "./navigation-execution.js";
 import { matchViewCommand } from "./view-command-matcher.js";
 import { readViewInteractionClientId } from "./view-delivery.js";
 import {
@@ -245,6 +250,7 @@ const VIEW_ACTION_CONTEXTS = [
 	"files",
 	"terminal",
 	"email",
+	"notes",
 	"calendar",
 	"contacts",
 	"tasks",
@@ -445,6 +451,20 @@ function inferMode(
 		readStringOption(options, "action") ?? readStringOption(options, "mode");
 	const trimmed = viewRequestText(text).trim();
 	const normalizedExplicit = explicit?.trim().toLowerCase().replace(/-/g, "_");
+	// A planner read must stay a read even when the user asks to keep a split,
+	// window, or pinned surface visible while querying its current state.
+	if (
+		normalizedExplicit === "list" ||
+		normalizedExplicit === "current" ||
+		normalizedExplicit === "search"
+	) {
+		return normalizedExplicit;
+	}
+	// The planner owns explicit navigation. Incidental words such as "right
+	// now" must not turn a show call into a split layout or another operation.
+	if (normalizedExplicit === "show" || normalizedExplicit === "open") {
+		return normalizedExplicit;
+	}
 	// An explicit request to (re)generate a view's icon/image wins over the
 	// generic edit/create/update verbs that share its phrasing — regenerating an
 	// icon is a direct asset write, not a coding-agent edit.
@@ -759,6 +779,7 @@ const CAPABILITY_PARAM_RESERVED_KEYS = new Set([
 	"intent",
 	"editTarget",
 	"choice",
+	"taskId",
 	"confirm",
 	"sha",
 	"pluginName",
@@ -993,12 +1014,9 @@ function isViewNavigationRequest(
 	const explicitTarget = readViewTargetOption(options);
 	// A schema-valid planner decision owns the operation boundary. Text scoring
 	// may infer a capability only when the planner did not explicitly choose
-	// navigation to a named target; target validity belongs to the navigation
-	// boundary so stale ids fail honestly instead of becoming mutations.
-	if (
-		(normalizedExplicit === "show" || normalizedExplicit === "open") &&
-		explicitTarget
-	) {
+	// navigation; missing or stale targets belong to the navigation boundary
+	// and must fail honestly instead of becoming foreground-view operations.
+	if (normalizedExplicit === "show" || normalizedExplicit === "open") {
 		return true;
 	}
 	if (
@@ -1089,10 +1107,9 @@ function resolveViewCapability({
 		);
 		if (currentExact) return currentExact;
 		if (exactCandidates.length === 1) return exactCandidates[0];
-		// An explicit capability without an explicit view may resolve only by its
-		// declared id. Letting fuzzy scoring reinterpret an unknown capability on
-		// the foreground view can turn a Calendar request into a Notes mutation.
-		if (!requestedView) return null;
+		// Explicit planner choices resolve by declared id only. Message-text
+		// scoring must never turn an unknown UI interaction into a record write.
+		return null;
 	}
 
 	const sourceText = [actionToken ?? text, explicitCapability]
@@ -1195,6 +1212,10 @@ function correctCapabilityOperationFamily(
 		};
 	}
 
+	// A selected read must never become a write or UI mutation because a
+	// prerequisite, prohibition or later step contains another operation verb.
+	if (selectedFamily === "read") return { kind: "capability", capability };
+
 	// Preserve the planner's explicit selection when its family has any
 	// token support in the request. This prevents rewriting an explicit
 	// delete-note to get-note just because the request also contained
@@ -1209,14 +1230,13 @@ function correctCapabilityOperationFamily(
 
 	// The selected capability's family has NO token support in the
 	// request — a potential mismatch. Before correcting, enforce the
-	// asymmetric-risk rule: never lexically escalate read→delete.
-	// Silently upgrading a read into a destructive action destroys data;
-	// a missed correction on a non-destructive family is at worst a
-	// retryable action.
+	// asymmetric-risk rule: never lexically escalate into delete.
+	// Surrounding tokens cannot authorize destructive escalation; the
+	// planner must select that operation itself.
 	const requestedFamily = [...requestedFamilies][0];
 	const correctedIsDestructive = requestedFamily === "delete";
 	if (correctedIsDestructive && !selectedIsDestructive) {
-		// Read→delete (or create/update/select→delete) escalation is
+		// Create/update/select→delete escalation is
 		// prohibited. Return the original capability unchanged rather
 		// than guessing destructive intent from lexical tokens.
 		return { kind: "capability", capability };
@@ -1870,9 +1890,13 @@ function normalizeLooseTerm(value: string): string {
 		.trim();
 }
 
-function textMentionsTerm(normalizedText: string, term: string): boolean {
+function textMentionsTerm(
+	normalizedText: string,
+	term: string,
+	minimumLength = 3,
+): boolean {
 	const normalizedTerm = normalizeLooseTerm(term);
-	if (normalizedTerm.length < 3) return false;
+	if (normalizedTerm.length < minimumLength) return false;
 	const re = new RegExp(`(?:^|\\W)${escapeRegExp(normalizedTerm)}(?:\\W|$)`);
 	return re.test(normalizedText);
 }
@@ -1940,6 +1964,9 @@ function preferLayoutModeOverCapability({
 	options?: Record<string, unknown>;
 	views: readonly ViewSummary[];
 }): "split" | "tile" | null {
+	// The planner's declared capability is authoritative. Positional words in
+	// a read request (for example "title at the top") are not layout commands.
+	if (readStringOption(options, "capability")?.trim()) return null;
 	const trimmed = viewRequestText(text).trim();
 	if (!trimmed || hasCapabilityPayloadOptions(options)) return null;
 
@@ -1968,32 +1995,55 @@ function resolveLayoutTargets(
 	}
 
 	const requestText = viewRequestText(text);
-	const lower = requestText.toLowerCase();
 	const normalizedText = normalizeLooseTerm(requestText);
-	const textResolved: ViewSummary[] = [];
+	const identityResolved: ViewSummary[] = [];
+	const tagResolved: ViewSummary[] = [];
 	for (const view of views) {
-		const id = view.id.toLowerCase();
-		const label = view.label.toLowerCase();
-		const normalizedLabel = normalizeLooseTerm(label);
+		const normalizedLabel = normalizeLooseTerm(view.label);
 		const labelIsGenericSurface = VIEW_SURFACE_TOKENS.has(normalizedLabel);
-		const terms = [
-			id,
-			...(labelIsGenericSurface ? [] : [label]),
-			...(view.tags ?? []).filter(
-				(tag) => !VIEW_SURFACE_TOKENS.has(normalizeLooseTerm(tag)),
-			),
-		];
 		if (
-			lower.includes(id) ||
-			(!labelIsGenericSurface && label.length >= 3 && lower.includes(label)) ||
-			terms.some((term) => textMentionsTerm(normalizedText, term))
+			textMentionsTerm(normalizedText, view.id, 1) ||
+			(!labelIsGenericSurface && textMentionsTerm(normalizedText, view.label))
 		) {
-			textResolved.push(view);
+			identityResolved.push(view);
+		} else if (
+			(view.tags ?? []).some(
+				(tag) =>
+					!VIEW_SURFACE_TOKENS.has(normalizeLooseTerm(tag)) &&
+					textMentionsTerm(normalizedText, tag),
+			)
+		) {
+			tagResolved.push(view);
 		}
 	}
 
 	const explicitUnique = uniqueByViewId(explicitResolved);
-	const textUnique = uniqueByViewId(textResolved);
+	const identityUnique = uniqueByViewId(identityResolved);
+	const identityIds = new Set(identityUnique.map((view) => view.id));
+	const declaredIdentities = explicitUnique.filter((view) =>
+		identityIds.has(view.id),
+	);
+	// A complete declared subset belongs to this step. Other named views may
+	// be excluded by the user or belong to a later step; their mere occurrence
+	// must not expand the action. Likewise, trim unmentioned names from polluted
+	// planner options when the user supplies a complete exact pair.
+	if (declaredIdentities.length >= 2) return declaredIdentities;
+	// A complete step can name its targets only in structured arguments. Other
+	// prose identities may be exclusions, so do not union or substitute them.
+	if (explicitUnique.length >= 2) return explicitUnique;
+	// A named pair owns its layout membership even when the planner supplied
+	// extra targets. Broad tags in another clause (including a data restriction
+	// such as "leave reminders unchanged") must not add unrelated panes.
+	if (identityUnique.length >= 2) return identityUnique;
+	// Preserve legacy tag/alias resolution only when neither the user nor the
+	// structured step identifies a complete layout, e.g. "notes and calender".
+	const mentionedIds = new Set([
+		...identityIds,
+		...tagResolved.map((view) => view.id),
+	]);
+	const textUnique = uniqueByViewId(
+		views.filter((view) => mentionedIds.has(view.id)),
+	);
 	return textUnique.length >= 2
 		? textUnique
 		: textUnique.length === 1 && explicitUnique.length <= 1
@@ -2216,6 +2266,7 @@ async function runViewsClose({
 	const text = userRequestMessageText(message);
 	if (isCloseAllRequest(text, options)) {
 		const result = await navigateViewWithShellAction(
+			{ message, options },
 			"__all__",
 			"close-all",
 			"Closed all views.",
@@ -2276,6 +2327,7 @@ async function runViewsClose({
 	}
 
 	const result = await navigateViewWithShellAction(
+		{ message, options },
 		viewId,
 		"close",
 		`Closed ${label ?? viewId}.`,
@@ -2299,7 +2351,7 @@ async function runViewsClose({
 async function runViewsLayout({
 	client,
 	message,
-	mode,
+	mode: requestedMode,
 	options,
 	viewType,
 	callback,
@@ -2314,6 +2366,12 @@ async function runViewsLayout({
 	// Security-unwrapped user words — never the raw (possibly enveloped)
 	// content.text; the envelope's warning contains verbs the extractors match.
 	const text = userRequestMessageText(message);
+	// The shell renders tile mode as a grid. An explicit row/column request
+	// must carry split mode as well as its orientation to reach that renderer.
+	const mode =
+		requestedMode === "tile" && readLayoutValue("", options) !== "grid"
+			? "split"
+			: requestedMode;
 	const views = await client.listViews({ viewType });
 	const placement =
 		mode === "split" ? readPlacementValue(text, options) : undefined;
@@ -2363,6 +2421,7 @@ async function runViewsLayout({
 		? (primary.viewType ?? viewType)
 		: (viewType ?? primary.viewType);
 	const result = await navigateViewLayout({
+		context: { message, options },
 		viewId: primary.id,
 		action,
 		viewIds,
@@ -2384,7 +2443,6 @@ async function runViewsLayout({
 	return {
 		success: result.ok,
 		text: result.text,
-		continueChain: false,
 		values: {
 			mode,
 			viewIds,
@@ -2401,34 +2459,66 @@ async function runViewsLayout({
 	};
 }
 
-function withViewsUserFacingText(result: ActionResult): ActionResult {
-	if (result.success !== true && result.userFacingText === undefined) {
-		return result;
-	}
-	if (
-		result.transcriptVisibility === "internal" &&
-		result.userFacingText === undefined
-	) {
-		return result;
-	}
+function isViewsInteractivePayload(text: string): boolean {
+	return ["[CHOICE:", "[FORM]", "[CONFIG:"].some((marker) =>
+		text.trim().startsWith(marker),
+	);
+}
+
+/** Only an interactive UI payload owns delivery; ordinary receipts go to the model. */
+function withViewsInteractivePayload(result: ActionResult): ActionResult {
 	const text = typeof result.text === "string" ? result.text.trim() : "";
-	if (!text) return result;
+	if (!isViewsInteractivePayload(text)) {
+		const {
+			userFacingText: _userFacingText,
+			verifiedUserFacing: _verifiedUserFacing,
+			...evidence
+		} = result;
+		return {
+			...evidence,
+			turnComplete: false,
+			...(result.success ? { modelReplyRequired: true } : {}),
+		};
+	}
 	return {
 		...result,
-		userFacingText: result.userFacingText ?? text,
-		verifiedUserFacing:
-			result.success === true
-				? (result.verifiedUserFacing ?? true)
-				: result.verifiedUserFacing,
+		userFacingText: text,
+		verifiedUserFacing: result.success === true,
 	};
 }
 
+function ownerRequiredViewMutation(mode: "create" | "delete"): ActionResult {
+	return {
+		success: false,
+		text: `Owner authorization is required for the VIEWS ${mode} operation.`,
+		transcriptVisibility: "internal",
+		values: { error: "FORBIDDEN", mode },
+	};
+}
+
+function asViewInteractionDataValue(
+	value: unknown,
+): object | string | number | boolean | null | undefined {
+	if (value === null || value === undefined) return value;
+	if (typeof value === "object") return value;
+	if (
+		typeof value === "string" ||
+		typeof value === "number" ||
+		typeof value === "boolean"
+	) {
+		return value;
+	}
+	return String(value);
+}
+
 const VIEWS_ROUTING_HINT = [
-	"UI view/window/panel/app navigation and layout -> VIEWS.",
-	"View switching is a common proactive response in app chat: use action=show when the user asks to open, show, switch to, or pull up a matching surface, including a bare surface name in any language.",
-	"Use VIEWS for navigation, close/hide, the view manager, split/tile/window/pin layouts, and capabilities that the selected view actually declares.",
-	"Opening the Calendar surface uses VIEWS action=show; reading or changing calendar events uses the CALENDAR action because the first-party Calendar view is read-only.",
-	"Sticky Notes operations use the registered Notes capabilities. Create and update pass the complete user-authored note in the single content field; never invent a separate title or body. Do not route Notes to documents or Knowledge.",
+	"Opening one known app view -> VIEWS_SHOW with view and navigationStepId. UI layouts, catalog discovery and other operations -> VIEWS.",
+	"Eliza's home screen is the chat view: return home with VIEWS_SHOW view=chat when available, otherwise VIEWS action=show view=chat. The views-manager is the app list, not home. App navigation never requires turning the user's words into a website URL.",
+	"UI Context identifies the open view and its capabilities, not its displayed contents. Answer identity-only questions from that context. To describe visible text, balances, settings, or selections, first inspect the view with get-text or list-elements, or use its domain read action. Configuration diagnostics are not evidence of what the screen displays.",
+	"For a request to open, show, switch to, or pull up one known surface, including a bare surface name in any language, prefer VIEWS_SHOW when available; VIEWS action=show is the fallback.",
+	"Use VIEWS for close/hide, the view manager, split/tile/window/pin layouts, and explicit capabilities that the selected view declares when no dedicated domain action owns the data.",
+	"Opening the Calendar surface uses VIEWS_SHOW when available, otherwise VIEWS action=show; reading or changing calendar events uses CALENDAR. Opening Calendar does not select the requested date. To show a particular day's agenda, open Calendar, then invoke its declared VIEW_CALENDAR_SELECT_VISIBLE_DAY tool directly with date, never as an interact capability. If that tool is not exposed, inspect the view's declared scoped-action steps and execute them with VIEWS interact (agent-click uses params.id); navigate the month first if needed. An event read does not prove UI selection. Verify the displayed selection before saying that day is open.",
+	"Reading, searching, creating, updating, or deleting note records uses NOTES, not VIEWS. Pass the complete user-authored note in the single content field; never invent a separate title or body. Do not route Notes to documents or Knowledge.",
 	"Phone flashlight requests use action=interact view=device-control capability=set-flashlight with params={enabled:true|false}; never claim success before the capability returns success.",
 	"For declared domain capabilities, use action=interact with an explicit view and capability. Semantic record capabilities are required; agent-fill and agent-click are only for an explicitly requested form-control interaction. Pass parameters in params rather than dotted keys.",
 	"Close/hide means VIEWS action=close, never delete/remove.",
@@ -2444,8 +2534,13 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 
 	return {
 		name: "VIEWS",
+		subActions: ["VIEWS_SHOW"],
 		contexts: [...VIEW_ACTION_CONTEXTS],
-		contextGate: { anyOf: [...VIEW_ACTION_CONTEXTS] },
+		// `browser` stays out of `contexts` so browser/web retrieval cannot make
+		// VIEWS hijack live-information turns. It is allowed at execution time,
+		// however, because the response handler can correctly select VIEWS for an
+		// explicit request to open the in-app Browser surface.
+		contextGate: { anyOf: [...VIEW_ACTION_CONTEXTS, "browser"] },
 		roleGate: { minRole: "USER" },
 		similes: [
 			"VIEW",
@@ -2597,14 +2692,15 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"torch",
 		],
 		description:
-			"Manage and navigate UI views. List available views, report the current view, open or close a view, search views, show the view manager, arrange layouts, and invoke capabilities that a view declares, including Notes and native device controls. Calendar event reads and writes belong to the CALENDAR action; VIEWS only opens the Calendar surface.",
+			"Manage Eliza UI views. For opening one known view, prefer the registered VIEWS_SHOW child; this parent covers layouts, catalog discovery and other operations. Home is view=chat. List available views, report the current view, open or close a view, search views, show the view manager (app list, not home), arrange layouts, and invoke explicit capabilities that a view declares when no dedicated domain action owns the data, including native device controls. Notes records belong to NOTES and calendar events belong to CALENDAR; VIEWS opens those surfaces. action=interact invokes a capability without opening its view. An explicit open-and-edit request requires show/open navigation as well as the data operation.",
 		descriptionCompressed:
-			"navigate/close/arrange UI views; invoke declared Notes/device capabilities; Calendar records use CALENDAR",
+			"show/open navigates UI; interact invokes capabilities without navigation; Notes data uses NOTES, Calendar data uses CALENDAR; open-and-edit requires both operations",
 		routingHint: VIEWS_ROUTING_HINT,
 		allowAdditionalParameters: true,
 		toolSchemaStrict: false,
-		// Every mode reports its authoritative outcome through its handler
-		// callback, after the shell or capability boundary has actually settled.
+		// Navigation and layout modes report their authoritative outcome through
+		// their handler callback. Data-bearing capability interactions stay
+		// internal and request a model-written finishing pass.
 		suppressEarlyReply: true,
 		suppressPostActionContinuation: true,
 
@@ -2630,7 +2726,21 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			{
 				name: "view",
 				description:
-					"View name, label, or id (show / open / close / edit / delete).",
+					"View name, label, or id (show / open / close / edit / delete). The home/main chat screen is chat; views-manager is the app list.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "navigationIntent",
+				description:
+					"Use planner-step for an explicit target within a contextual or compound plan; include both view and navigationStepId. The per-step target takes precedence over unrelated original-message clauses.",
+				required: false,
+				schema: { type: "string", enum: ["planner-step"] },
+			},
+			{
+				name: "navigationStepId",
+				description:
+					"Required with navigationIntent=planner-step. Supply a unique nonempty step identity, such as open-notes-1, to track navigation separately from domain receipts.",
 				required: false,
 				schema: { type: "string" },
 			},
@@ -2725,7 +2835,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			{
 				name: "capability",
 				description:
-					"Declared capability to invoke on the view (interact mode), e.g. 'create-note', 'get-notes', 'set-flashlight', 'click-button', 'get-state', 'refresh', or 'focus-element'. Use semantic capabilities for domain record mutations and native device controls; agent-fill/agent-click are only for deliberate form-control interaction, not record creation, updates, or deletion.",
+					"Exact capability id declared by the target view (interact mode), or a standard agent-surface operation such as agent-click with params.id from the view's controls/scoped steps. Never invent a capability name. Use semantic capabilities for domain record mutations and native device controls; agent-fill/agent-click are only for deliberate form-control interaction, not record creation, updates, or deletion.",
 				required: false,
 				schema: { type: "string" },
 			},
@@ -2834,6 +2944,13 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				schema: { type: "string" },
 			},
 			{
+				name: "taskId",
+				description:
+					"Exact pending VIEWS create-choice task ID from app_control_choices. Required when more than one view creation is pending; use with choice.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
 				name: "choice",
 				description:
 					"Override choice reply (`new` | `edit-N` | `cancel`) for create-mode follow-up turns.",
@@ -2871,7 +2988,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 
 			// Multi-turn create follow-up: choice reply matches a pending intent task.
 			if (isChoiceReply(text)) {
-				if (await hasPendingViewsCreateIntent(runtime, roomId)) return true;
+				if (await hasPendingViewsCreateIntent(runtime, roomId)) {
+					return ownerCheck(runtime, message);
+				}
 			}
 
 			// Multi-turn delete follow-up: structured confirm boolean matches a
@@ -2922,7 +3041,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				// room; execution-time validate re-checks with the planner's options,
 				// so every mode-carrying call above still resolves normally.
 				if (!mode) {
-					if (await hasPendingViewsCreateIntent(runtime, roomId)) return true;
+					if (await hasPendingViewsCreateIntent(runtime, roomId)) {
+						return ownerCheck(runtime, message);
+					}
 					if (await hasPendingDeleteConfirm(runtime, roomId)) {
 						return ownerCheck(runtime, message);
 					}
@@ -2939,10 +3060,22 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			message: Memory,
 			_state?: State,
 			options?: Record<string, unknown>,
-			callback?: HandlerCallback,
+			deliveryCallback?: HandlerCallback,
 		): Promise<ActionResult> => {
+			// Only interactive payloads bypass the model's grounded final reply.
+			const callback: HandlerCallback | undefined = deliveryCallback
+				? async (content, actionName) =>
+						isViewsInteractivePayload(content.text ?? "")
+							? deliveryCallback(content, actionName)
+							: []
+				: undefined;
+			let navigationSelected = false;
+			const shellContext = {
+				message,
+				options: normalizeActionOptions(options),
+			};
 			const run = async (): Promise<ActionResult> => {
-				const actionOptions = normalizeActionOptions(options);
+				const actionOptions = shellContext.options;
 				const client = clientFactory();
 				// Security-unwrapped user words — never the raw (possibly enveloped)
 				// content.text; the envelope's warning contains verbs the extractors match.
@@ -2950,9 +3083,14 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				const roomId =
 					typeof message.roomId === "string" ? message.roomId : runtime.agentId;
 
-				// Multi-turn follow-up: choice reply for an in-progress create flow.
-				if (isChoiceReply(text)) {
+				const mode = inferMode(text, actionOptions);
+				// A pending flow cannot change the operation explicitly selected by
+				// the planner, especially the navigation-only VIEWS_SHOW child.
+				if ((!mode || mode === "create") && isChoiceReply(text)) {
 					if (await hasPendingViewsCreateIntent(runtime, roomId)) {
+						if (!(await ownerCheck(runtime, message))) {
+							return ownerRequiredViewMutation("create");
+						}
 						const views = await client.listViews();
 						return runViewsCreate({
 							runtime,
@@ -2967,10 +3105,14 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 
 				// Multi-turn follow-up: structured confirmation for a pending delete.
 				if (
-					isDeleteConfirmation(actionOptions) ||
-					isDeleteCancellation(actionOptions)
+					(!mode || mode === "delete") &&
+					(isDeleteConfirmation(actionOptions) ||
+						isDeleteCancellation(actionOptions))
 				) {
 					if (await hasPendingDeleteConfirm(runtime, roomId)) {
+						if (!(await ownerCheck(runtime, message))) {
+							return ownerRequiredViewMutation("delete");
+						}
 						const views = await client.listViews();
 						return runViewsDelete({
 							runtime,
@@ -2983,7 +3125,6 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					}
 				}
 
-				const mode = inferMode(text, actionOptions);
 				const viewType = readViewTypeOption(text, actionOptions);
 				if (!mode) {
 					const reply =
@@ -3040,6 +3181,22 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					`[plugin-app-control] VIEWS requestedMode=${mode} effectiveMode=${effectiveMode} action=${readStringOption(actionOptions, "action") ?? "inferred"} view=${readViewTargetOption(actionOptions) ?? "none"} resolvedCapability=${forcedResolvedCapability ? `${forcedResolvedCapability.view.id}:${forcedResolvedCapability.capability.id}` : "none"}`,
 				);
 
+				navigationSelected = [
+					"close",
+					"manager",
+					"pin",
+					"window",
+					"split",
+					"tile",
+				].includes(effectiveMode);
+				if (navigationSelected) {
+					const blocked = blockedShellNavigation(
+						{ message, options: actionOptions },
+						readStringOption(actionOptions, "view"),
+					);
+					if (blocked) return { success: false, text: blocked.text };
+				}
+
 				switch (effectiveMode) {
 					case "list":
 						return runViewsList({ client, viewType });
@@ -3049,7 +3206,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						const resultText = currentView
 							? `Current view: ${currentView.viewLabel} (${currentView.viewType}) — ${currentView.viewId}${currentView.viewPath ? ` at ${currentView.viewPath}` : ""}.`
 							: "No current view has been reported yet.";
-						await callback?.({ text: resultText });
+
 						return {
 							success: true,
 							text: resultText,
@@ -3071,6 +3228,10 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							viewType,
 							callback,
 							originatingClientId: readViewInteractionClientId(message),
+							resolveCallerRoles: async () =>
+								(await ownerCheck(runtime, message))
+									? ["OWNER"]
+									: resolveViewCallerRoles(runtime, message),
 						});
 
 					case "close":
@@ -3096,6 +3257,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							available: true,
 						};
 						const result = await navigateToPath(
+							{ message, options: actionOptions },
 							managerView.path,
 							managerView.label,
 						);
@@ -3240,23 +3402,22 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 								};
 								capability = matches[0].id;
 							} else if (matches.length === 0 && !standardCapability) {
-								// Generated action labels may be a unique semantic alias for
-								// a declared catalog capability. Keep the view target fixed so
-								// this cannot dispatch across an unrelated surface.
-								const alias = resolveViewCapability({
-									views,
-									text: `${capability} ${text}`,
-									options: {
-										...actionOptions,
-										capability: undefined,
-										view: viewId,
-									},
-									viewType,
-									currentViewId: viewId,
-								});
-								if (alias?.view.id === resolvedView.id) {
-									resolvedCapability = alias;
-									capability = alias.capability.id;
+								const scopedAction = resolvedView.scopedActions?.find(
+									(action) => action.name === capability,
+								);
+								if (scopedAction) {
+									// A known action in the capability slot is a no-effect
+									// preflight error, never an alias for another operation.
+									return {
+										success: false,
+										transcriptVisibility: "internal",
+										text: `"${capability}" is a view-scoped action name, not a VIEWS interact capability. No interaction was dispatched. Invoke that action by name only if it is exposed in your tool list. Otherwise use VIEWS action=interact on this view for each declared step: step.kind is capability, step.target is params.id, and step.value is params.value for agent-fill. Substitute declared parameter references with the supplied values. A successful interaction result is still required to prove the requested UI change.`,
+										data: {
+											coachingFailure: true,
+											viewId,
+											scopedAction,
+										},
+									};
 								}
 							}
 						}
@@ -3315,8 +3476,13 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							// interaction failure below).
 							return {
 								success: false,
-								text: `Cannot invoke capability "${capability}" on view "${viewId}": the view catalog does not declare that capability.`,
+								text: `Cannot invoke capability "${capability}" on view "${viewId}": the view catalog does not declare that capability. No interaction was dispatched. Choose a declared capability or use the exact agent-surface steps from a scoped action; step.kind is the capability and step.target is params.id.`,
 								transcriptVisibility: "internal",
+								data: {
+									viewId,
+									capabilities: resolvedView?.capabilities ?? [],
+									scopedActions: resolvedView?.scopedActions ?? [],
+								},
 							};
 						}
 						if (!resolvedCapability && standardCapability)
@@ -3403,20 +3569,26 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						const effectContract = interaction.success
 							? readViewInteractionEffectContract(interaction.result)
 							: undefined;
-						// Failure text is a catalog-internal diagnostic ("Cannot invoke
-						// capability X on view Y") — it goes back to the planner via the
-						// result, never straight to the user.
-						if (interaction.success) {
-							await callback?.({ text: resultText });
-						}
+						const interactionPayload =
+							interaction.result !== null &&
+							typeof interaction.result === "object" &&
+							!Array.isArray(interaction.result) &&
+							"result" in interaction.result
+								? (interaction.result as Record<string, unknown>).result
+								: interaction.result;
+						// Capability results are structured facts for the planner, not a
+						// preformatted chat reply. Keep both success and failure text off the
+						// user callback and require one model-owned finishing pass on success.
+						// This preserves a consistent Eliza voice while receipts keep mutation
+						// claims grounded in the actual view interaction.
 						return {
 							success: interaction.success,
 							text: resultText,
+							transcriptVisibility: "internal",
 							...(interaction.success
 								? {
-										userFacingText: resultText,
-										verifiedUserFacing: true,
-										turnComplete: true,
+										modelReplyRequired: true,
+										turnComplete: false,
 									}
 								: {}),
 							...(effectContract ?? {}),
@@ -3431,12 +3603,18 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 								viewType: resolvedViewType ?? "gui",
 								capability,
 								params,
+								result: asViewInteractionDataValue(interactionPayload),
 								...(receipt ? { receipt } : {}),
 							},
 						};
 					}
 
 					case "create": {
+						// Planner-supplied choices can continue a pending task even when
+						// the user's words are not a literal new/edit-N/cancel token.
+						if (!(await ownerCheck(runtime, message))) {
+							return ownerRequiredViewMutation("create");
+						}
 						const views = await client.listViews();
 						return runViewsCreate({
 							runtime,
@@ -3482,6 +3660,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 
 					case "delete":
 					case "remove": {
+						if (!(await ownerCheck(runtime, message))) {
+							return ownerRequiredViewMutation("delete");
+						}
 						const views = await client.listViews();
 						return runViewsDelete({
 							runtime,
@@ -3525,6 +3706,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							pinView.viewType ??
 							(await resolveViewTypeForId(client, pinView.id));
 						const pinResult = await pinViewAsTab(
+							{ message, options: actionOptions },
 							pinView.id,
 							resolvedViewType === "gui" ? undefined : resolvedViewType,
 						);
@@ -3574,6 +3756,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							windowView.viewType ??
 							(await resolveViewTypeForId(client, windowView.id));
 						const windowResult = await openViewInWindow(
+							{ message, options: actionOptions },
 							windowView.id,
 							resolvedViewType === "gui" ? undefined : resolvedViewType,
 							alwaysOnTop,
@@ -3609,7 +3792,34 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				}
 			};
 
-			return withViewsUserFacingText(await run());
+			try {
+				const result = await run();
+				const blocked =
+					navigationSelected && !result.success
+						? blockedShellNavigation(shellContext, null)
+						: undefined;
+				return withViewsInteractivePayload(
+					blocked
+						? {
+								success: false,
+								text: blocked.text,
+								data: { navigation: blocked.receipt },
+							}
+						: result,
+				);
+			} catch (error) {
+				// error-policy:J1 translate canonical cancellation at the navigation action boundary; other failures remain explicit.
+				const blocked = navigationSelected
+					? blockedShellNavigation(shellContext, null)
+					: undefined;
+				if (blocked)
+					return {
+						success: false,
+						text: blocked.text,
+						data: { navigation: blocked.receipt },
+					};
+				throw error;
+			}
 		},
 
 		examples: [
@@ -3788,6 +3998,50 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 	};
 }
 
+/** Single-destination navigation with a complete planner-step contract. The
+ * parent remains discoverable for layouts, catalog reads and interactions. */
+export function createShowViewAction(deps: ViewsActionDeps = {}): Action {
+	const parent = createViewsAction(deps);
+	const navigationOptions = (options?: Record<string, unknown>) => {
+		const params = normalizeActionOptions(options);
+		return {
+			action: "show",
+			navigationIntent: "planner-step",
+			view: readStringOption(params, "view"),
+			navigationStepId: readStringOption(params, "navigationStepId"),
+		};
+	};
+	return {
+		...parent,
+		name: "VIEWS_SHOW",
+		subActions: undefined,
+		similes: [],
+		examples: [],
+		description:
+			"Open one authorized app view in the originating user's app. Supply the catalog view ID (Home is chat) and a unique navigation step ID. This only navigates: it never reads or changes records, selects a calendar date, or proves domain work complete. For another operation, compound layout or unknown destination, discover VIEWS. Respect the full request's navigation and destination restrictions; use the delivery receipt to report the outcome.",
+		descriptionCompressed: "Open one authorized app view; navigation only.",
+		routingHint:
+			"Opening one known app view -> VIEWS_SHOW with view and navigationStepId. Layouts, catalog discovery and interactions -> VIEWS. Domain records still use their owning tools.",
+		parameters: parent.parameters
+			?.filter(({ name }) => name === "view" || name === "navigationStepId")
+			.map((parameter) => ({ ...parameter, required: true })),
+		allowAdditionalParameters: false,
+		// This closed child has only required arguments; the polymorphic
+		// parent's opt-out would disable strictness for the entire planner call.
+		toolSchemaStrict: true,
+		validate: (runtime, message, state, options) =>
+			parent.validate(runtime, message, state, navigationOptions(options)),
+		handler: (runtime, message, state, options, callback) =>
+			parent.handler(
+				runtime,
+				message,
+				state,
+				navigationOptions(options),
+				callback,
+			),
+	};
+}
+
 export function createViewsAliasAction(
 	name: "CLOSE_VIEW" | "CLOSE_ALL_VIEWS",
 	deps: ViewsActionDeps = {},
@@ -3825,6 +4079,7 @@ export function createViewsAliasAction(
 	return {
 		...action,
 		name,
+		subActions: undefined,
 		parameters: targetParameters,
 		allowAdditionalParameters: false,
 		tags: closeAll
@@ -3858,6 +4113,29 @@ export function createViewsAliasAction(
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+type ShellNavigationContext = {
+	message: Memory;
+	options?: Record<string, unknown>;
+};
+
+function blockedShellNavigation(
+	context: ShellNavigationContext,
+	viewId: string | null,
+): ShellNavResult | undefined {
+	const status = navigationDispatchBlock(
+		context.message,
+		context.options?.navigationIntent === "planner-step",
+	);
+	if (!status) return undefined;
+	const receipt: NavigationReceipt = {
+		effect: "view_navigation",
+		stepId: readStringOption(context.options, "navigationStepId"),
+		viewId,
+		status,
+	};
+	return { ok: false, text: JSON.stringify(receipt), receipt };
+}
+
 /**
  * Outcome of a shell-navigation request. `ok` is true when the shell accepted
  * the request (2xx) or genuinely does not implement the route (501/404) — the
@@ -3866,14 +4144,18 @@ export function createViewsAliasAction(
  * so the action surfaces a failure instead of claiming the UI changed.
  */
 interface ShellNavResult {
+	receipt?: NavigationReceipt;
 	ok: boolean;
 	text: string;
 }
 
 async function navigateToPath(
+	context: ShellNavigationContext,
 	pathStr: string,
 	label: string,
 ): Promise<ShellNavResult> {
+	const blocked = blockedShellNavigation(context, null);
+	if (blocked) return blocked;
 	const base = getAppControlApiBase();
 
 	try {
@@ -3881,7 +4163,7 @@ async function navigateToPath(
 			method: "POST",
 			headers: createViewsRequestHeaders(),
 			body: JSON.stringify({ path: pathStr }),
-			signal: AbortSignal.timeout(5_000),
+			signal: navigationRequestSignal(5_000),
 		});
 		if (resp.ok || resp.status === 501 || resp.status === 404) {
 			return { ok: true, text: `Navigated to ${label}.` };
@@ -3890,6 +4172,9 @@ async function navigateToPath(
 			`[plugin-app-control] VIEWS/manager navigate returned ${resp.status}`,
 		);
 	} catch (err) {
+		// error-policy:J1 translate navigation transport failure without dispatching after cancellation.
+		const blocked = blockedShellNavigation(context, null);
+		if (blocked) return blocked;
 		logger.warn(
 			`[plugin-app-control] VIEWS/manager navigate failed: ${err instanceof Error ? err.message : String(err)}`,
 		);
@@ -3902,6 +4187,7 @@ async function navigateToPath(
 }
 
 async function navigateViewWithShellAction(
+	context: ShellNavigationContext,
 	viewId: string,
 	action: "pin-tab" | "open-window" | "close" | "close-all",
 	successText: string,
@@ -3909,6 +4195,8 @@ async function navigateViewWithShellAction(
 	viewType?: ViewType,
 	alwaysOnTop = false,
 ): Promise<ShellNavResult> {
+	const blocked = blockedShellNavigation(context, null);
+	if (blocked) return blocked;
 	const base = getAppControlApiBase();
 
 	try {
@@ -3918,7 +4206,7 @@ async function navigateViewWithShellAction(
 				method: "POST",
 				headers: createViewsRequestHeaders(),
 				body: JSON.stringify({ action, viewType, alwaysOnTop }),
-				signal: AbortSignal.timeout(5_000),
+				signal: navigationRequestSignal(5_000),
 			},
 		);
 		if (resp.ok || resp.status === 501 || resp.status === 404) {
@@ -3928,6 +4216,9 @@ async function navigateViewWithShellAction(
 			`[plugin-app-control] VIEWS/${action} navigate returned ${resp.status}`,
 		);
 	} catch (err) {
+		// error-policy:J1 translate navigation transport failure without dispatching after cancellation.
+		const blocked = blockedShellNavigation(context, null);
+		if (blocked) return blocked;
 		logger.warn(
 			`[plugin-app-control] VIEWS/${action} navigate failed: ${err instanceof Error ? err.message : String(err)}`,
 		);
@@ -3937,6 +4228,7 @@ async function navigateViewWithShellAction(
 }
 
 async function navigateViewLayout({
+	context,
 	viewId,
 	action,
 	viewIds,
@@ -3947,6 +4239,7 @@ async function navigateViewLayout({
 	fallbackText,
 }: {
 	viewId: string;
+	context: ShellNavigationContext;
 	action: "split-view" | "tile-views";
 	viewIds: string[];
 	layout: "horizontal" | "vertical" | "grid";
@@ -3955,6 +4248,8 @@ async function navigateViewLayout({
 	successText: string;
 	fallbackText: string;
 }): Promise<ShellNavResult> {
+	const blocked = blockedShellNavigation(context, null);
+	if (blocked) return blocked;
 	const base = getAppControlApiBase();
 
 	try {
@@ -3970,7 +4265,7 @@ async function navigateViewLayout({
 					...(placement ? { placement } : {}),
 					...(viewType ? { viewType } : {}),
 				}),
-				signal: AbortSignal.timeout(5_000),
+				signal: navigationRequestSignal(5_000),
 			},
 		);
 		if (resp.ok || resp.status === 501 || resp.status === 404) {
@@ -3980,6 +4275,9 @@ async function navigateViewLayout({
 			`[plugin-app-control] VIEWS/${action} navigate returned ${resp.status}`,
 		);
 	} catch (err) {
+		// error-policy:J1 translate navigation transport failure without dispatching after cancellation.
+		const blocked = blockedShellNavigation(context, null);
+		if (blocked) return blocked;
 		logger.warn(
 			`[plugin-app-control] VIEWS/${action} navigate failed: ${err instanceof Error ? err.message : String(err)}`,
 		);
@@ -3989,10 +4287,12 @@ async function navigateViewLayout({
 }
 
 function pinViewAsTab(
+	context: ShellNavigationContext,
 	viewId: string,
 	viewType?: ViewType,
 ): Promise<ShellNavResult> {
 	return navigateViewWithShellAction(
+		context,
 		viewId,
 		"pin-tab",
 		`Pinned ${viewType ?? "gui"} view "${viewId}" as a desktop tab.`,
@@ -4002,11 +4302,13 @@ function pinViewAsTab(
 }
 
 function openViewInWindow(
+	context: ShellNavigationContext,
 	viewId: string,
 	viewType?: ViewType,
 	alwaysOnTop = false,
 ): Promise<ShellNavResult> {
 	return navigateViewWithShellAction(
+		context,
 		viewId,
 		"open-window",
 		`Opened ${viewType ?? "gui"} view "${viewId}" in a separate window.`,
@@ -4200,5 +4502,6 @@ async function broadcastViewEvent(
 
 export const viewsAction: Action = createViewsAction();
 export const closeViewAction: Action = createViewsAliasAction("CLOSE_VIEW");
+export const showViewAction: Action = createShowViewAction();
 export const closeAllViewsAction: Action =
 	createViewsAliasAction("CLOSE_ALL_VIEWS");

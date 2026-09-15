@@ -4,10 +4,16 @@
  * each inventing their own localStorage contract, which is how the Android
  * auth summary drift escaped review.
  */
+import {
+  STEWARD_ACTIVE_SCOPE_KEY,
+  STEWARD_TOKEN_KEY,
+  STEWARD_TOKEN_SCOPE_KEY,
+} from "@elizaos/shared/steward-session-client";
 import type { Page } from "@playwright/test";
 
-export const STEWARD_SESSION_TOKEN_KEY = "steward_session_token";
+export const STEWARD_SESSION_TOKEN_KEY = STEWARD_TOKEN_KEY;
 export const UI_SMOKE_STEWARD_OPAQUE_TOKEN = "ui-smoke-onboarding-cloud-token";
+const DEFAULT_STEWARD_SCOPE = "eliza-cloud:production";
 
 type StewardSessionOptions = {
   token?: string;
@@ -16,6 +22,7 @@ type StewardSessionOptions = {
   userId?: string;
   email?: string;
   exp?: number;
+  scope?: string;
 };
 
 function base64Url(input: string): string {
@@ -53,10 +60,18 @@ export async function seedStewardSession(
 ): Promise<string> {
   const token = createStewardSessionToken(opts);
   await page.addInitScript(
-    ({ key, value }) => {
+    ({ activeScopeKey, key, scope, tokenScopeKey, value }) => {
       window.localStorage.setItem(key, value);
+      window.localStorage.setItem(tokenScopeKey, scope);
+      window.localStorage.setItem(activeScopeKey, scope);
     },
-    { key: STEWARD_SESSION_TOKEN_KEY, value: token },
+    {
+      activeScopeKey: STEWARD_ACTIVE_SCOPE_KEY,
+      key: STEWARD_SESSION_TOKEN_KEY,
+      scope: opts.scope ?? DEFAULT_STEWARD_SCOPE,
+      tokenScopeKey: STEWARD_TOKEN_SCOPE_KEY,
+      value: token,
+    },
   );
   return token;
 }
@@ -68,10 +83,18 @@ export async function setStewardSession(
 ): Promise<string> {
   const token = createStewardSessionToken(opts);
   await page.evaluate(
-    ({ key, value }) => {
+    ({ activeScopeKey, key, scope, tokenScopeKey, value }) => {
       window.localStorage.setItem(key, value);
+      window.localStorage.setItem(tokenScopeKey, scope);
+      window.localStorage.setItem(activeScopeKey, scope);
     },
-    { key: STEWARD_SESSION_TOKEN_KEY, value: token },
+    {
+      activeScopeKey: STEWARD_ACTIVE_SCOPE_KEY,
+      key: STEWARD_SESSION_TOKEN_KEY,
+      scope: opts.scope ?? DEFAULT_STEWARD_SCOPE,
+      tokenScopeKey: STEWARD_TOKEN_SCOPE_KEY,
+      value: token,
+    },
   );
   return token;
 }

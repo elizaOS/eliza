@@ -21,6 +21,11 @@ import {
   organizationBalanceRevisionSequence,
   organizations,
 } from "../../../db/schemas/organizations";
+import {
+  personalSharedGroupBindings,
+  personalSharedGroupJoinChallenges,
+  personalSharedGroupParticipants,
+} from "../../../db/schemas/personal-shared-groups";
 import { userIdentities } from "../../../db/schemas/user-identities";
 import { users } from "../../../db/schemas/users";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
@@ -62,6 +67,9 @@ beforeAll(async () => {
         users,
         userIdentities,
         identityLinkCodes,
+        personalSharedGroupBindings,
+        personalSharedGroupJoinChallenges,
+        personalSharedGroupParticipants,
       } as never,
       dbWrite as never,
     );
@@ -75,6 +83,9 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   expect(pgliteReady).toBe(true);
+  await dbWrite.delete(personalSharedGroupParticipants);
+  await dbWrite.delete(personalSharedGroupJoinChallenges);
+  await dbWrite.delete(personalSharedGroupBindings);
   await dbWrite.delete(identityLinkCodes);
   await dbWrite.delete(userIdentities);
   await dbWrite.delete(users);

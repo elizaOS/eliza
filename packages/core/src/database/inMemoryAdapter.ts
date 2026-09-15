@@ -36,6 +36,7 @@ import type {
 	ConnectorAccountRecord,
 	ConsumeOAuthFlowStateParams,
 	CreateOAuthFlowStateParams,
+	DeleteConnectorAccountCredentialRefsParams,
 	DeleteConnectorAccountParams,
 	DeleteOAuthFlowStateParams,
 	DocumentCompareAndSwapParams,
@@ -1182,6 +1183,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 
 	async getMemories(params: {
 		entityId?: UUID;
+		authorEntityIds?: UUID[];
 		agentId?: UUID;
 		limit?: number;
 		count?: number;
@@ -1192,6 +1194,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		start?: number;
 		end?: number;
 		roomId?: UUID;
+		excludeRoomIds?: UUID[];
 		worldId?: UUID;
 		metadata?: Record<string, unknown>;
 		textContains?: string;
@@ -1219,9 +1222,29 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		if (params.agentId) {
 			all = all.filter((memory) => memory.agentId === params.agentId);
 		}
-		// `entityId` selects the SQL/RLS isolation context; it is not a memory-row
-		// predicate. Process-local storage has no RLS session to establish, so the
-		// agent boundary above is the matching isolation behavior.
+		if (params.entityId) {
+			const participantRoomIds =
+				this.roomsByParticipant.get(String(params.entityId)) ??
+				new Set<string>();
+			const agentOwnedDocument =
+				params.tableName === "documents" ||
+				params.tableName === "document_fragments";
+			all = all.filter(
+				(memory) =>
+					participantRoomIds.has(String(memory.roomId)) ||
+					(agentOwnedDocument && memory.agentId === params.entityId),
+			);
+		}
+		if (params.authorEntityIds) {
+			const authorEntityIds = new Set(params.authorEntityIds);
+			all = all.filter((memory) => authorEntityIds.has(memory.entityId));
+		}
+		if (params.excludeRoomIds) {
+			const excludedRoomIds = new Set(params.excludeRoomIds);
+			all = all.filter((memory) => !excludedRoomIds.has(memory.roomId));
+		}
+		// `entityId` selects the SQL/RLS isolation principal; author filtering is a
+		// separate narrowing predicate above.
 		if (params.unique) {
 			all = all.filter((memory) => memory.unique);
 		}
@@ -1312,11 +1335,18 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		);
 	}
 
-	async getMemoriesByIds(ids: UUID[]): Promise<Memory[]> {
+	async getMemoriesByIds(ids: UUID[], tableName?: string): Promise<Memory[]> {
 		const out: Memory[] = [];
 		for (const id of ids) {
 			const m = this.memoriesById.get(String(id));
-			if (m) out.push(m);
+			if (
+				m &&
+				(tableName === undefined ||
+					this.memoriesByRoom
+						.get(roomTableKey(tableName, m.roomId))
+						?.some((row) => row.id === m.id))
+			)
+				out.push(m);
 		}
 		return out;
 	}
@@ -2637,14 +2667,66 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			provider: params.provider,
 			accountKey: params.accountKey,
 		});
-		const existingId = params.id
-			? String(params.id)
-			: this.connectorAccountIdsByKey.get(lookupKey);
+		const requestedRole = params.role ?? "OWNER";
+		const existingByExternalRole =
+			params.externalId != null
+				? Array.from(this.connectorAccountsById.values()).find(
+						(account) =>
+							account.agentId === agentId &&
+							account.provider === params.provider &&
+							account.externalId === params.externalId &&
+							account.role === requestedRole &&
+							account.deletedAt == null,
+					)
+				: undefined;
+		const existingByAccountKeyId = this.connectorAccountIdsByKey.get(lookupKey);
+		const requestedId = params.id ? String(params.id) : undefined;
+		const existingByRequestedId = requestedId
+			? this.connectorAccountsById.get(requestedId)
+			: undefined;
+		if (existingByRequestedId?.deletedAt != null) {
+			throw new Error(
+				"Connector account id already belongs to a deleted account",
+			);
+		}
+
+		let existingId: string | undefined;
+		if (existingByRequestedId) {
+			if (
+				existingByAccountKeyId &&
+				existingByAccountKeyId !== existingByRequestedId.id
+			) {
+				throw new Error(
+					"Connector account id and account key resolve to different accounts",
+				);
+			}
+			if (
+				existingByExternalRole &&
+				existingByExternalRole.id !== existingByRequestedId.id
+			) {
+				throw new Error(
+					"Connector account id and external identity resolve to different accounts",
+				);
+			}
+			existingId = existingByRequestedId.id;
+		} else if (params.externalId != null) {
+			if (
+				existingByAccountKeyId &&
+				existingByAccountKeyId !== existingByExternalRole?.id
+			) {
+				throw new Error(
+					"Connector account key and external identity resolve to different accounts",
+				);
+			}
+			existingId = existingByExternalRole?.id;
+		} else {
+			existingId = existingByAccountKeyId;
+		}
 		const existing = existingId
 			? this.connectorAccountsById.get(existingId)
 			: undefined;
 		const now = Date.now();
-		const id = params.id ?? existing?.id ?? randomUuid();
+		const id = existing?.id ?? params.id ?? randomUuid();
 		const profile = cloneConnectorJsonObject(
 			params.profile !== undefined ? params.profile : existing?.profile,
 		);
@@ -2811,6 +2893,19 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				...credential,
 				metadata: cloneConnectorJsonObject(credential.metadata),
 			}));
+	}
+
+	async deleteConnectorAccountCredentialRefs(
+		params: DeleteConnectorAccountCredentialRefsParams,
+	): Promise<number> {
+		let deleted = 0;
+		for (const [key, credential] of this.connectorCredentialRefs) {
+			if (credential.accountId === params.accountId) {
+				this.connectorCredentialRefs.delete(key);
+				deleted += 1;
+			}
+		}
+		return deleted;
 	}
 
 	async appendConnectorAccountAuditEvent(

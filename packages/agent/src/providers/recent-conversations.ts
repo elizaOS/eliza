@@ -1,10 +1,11 @@
 /**
- * Provider that exposes complete authorized cross-platform conversation
- * history with a lossless retrieval manifest for models whose input boundary
- * cannot admit the eager representation. RECENT_MESSAGES owns the current-room
- * transcript when present. Suppressed
- * inside automation and page-scoped rooms, which carry their own context.
- * Gated to ADMIN (enforced by applyPluginRoleGating).
+ * Exposes an authorized cross-platform conversation manifest with an explicit
+ * storage-backed recall contract. Current dialogue stays in RECENT_MESSAGES;
+ * relevant-conversations independently recalls matching historical evidence.
+ * No stored record is shortened or removed. When no permitted memory-read
+ * action exists, the complete authorized transcript remains inline instead.
+ * Automation/page rooms are excluded and owner-private disclosure is checked
+ * before identity expansion or history reads.
  */
 import type {
   IAgentRuntime,
@@ -17,7 +18,9 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
+  actionGateRejection,
   buildCrossWorldConversationAccessContext,
+  dedupeHygienicDialogueMessages,
   markOwnerExclusiveDisclosureUsed,
   OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
   recordOwnerExclusiveSuppression,
@@ -58,9 +61,8 @@ export const recentConversationsProvider: Provider = {
   descriptionCompressed:
     "authorized conversation room manifest search stored cross platform history",
   dynamic: true,
-  // Cross-world continuity must be available to the response router itself;
-  // waiting for a memory/messaging context selection is too late for a direct
-  // recall answer. The owner-private audience gate below remains authoritative.
+  // The response router needs the recall contract before it chooses contexts,
+  // including for implicit follow-ups that do not contain a recall keyword.
   alwaysInResponseState: true,
   position: 5,
   relevanceKeywords: getValidationKeywordTerms(
@@ -134,11 +136,31 @@ export const recentConversationsProvider: Provider = {
         roomIds,
         accessContext,
       });
-      const sorted = memories
-        .filter(
-          (memory) =>
+      // Share RECENT_MESSAGES source hygiene: only identical copies of the
+      // same source ID collapse. Distinct connector records and repeated turns
+      // keep their provenance even when their visible text is identical.
+      const byRoom = new Map<string, Memory[]>();
+      for (const memory of memories) {
+        if (
+          !(
             Boolean(memory.content.text) ||
-            (memory.content.attachments?.length ?? 0) > 0,
+            (memory.content.attachments?.length ?? 0) > 0
+          )
+        ) {
+          continue;
+        }
+        const bucket = byRoom.get(memory.roomId) ?? [];
+        bucket.push(memory);
+        byRoom.set(memory.roomId, bucket);
+      }
+      const sorted = [...byRoom.values()]
+        .flatMap((roomMemories) =>
+          dedupeHygienicDialogueMessages(
+            roomMemories.sort(
+              (left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0),
+            ),
+            runtime.agentId,
+          ),
         )
         .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0));
       if (sorted.length === 0) {
@@ -171,29 +193,53 @@ export const recentConversationsProvider: Provider = {
           label: toWellFormedUnicode(roomSourceTag(room)),
         };
       });
+      const recallAction = runtime.actions?.find((action) => {
+        if (action.name !== "MEMORY_SEARCH" && action.name !== "MEMORY") {
+          return false;
+        }
+        const rejection = actionGateRejection(action, {
+          message,
+          userRoles: accessContext.role ? [accessContext.role] : [],
+          // This manifest tells the response router to select memory when
+          // needed; context selection has not happened yet. Every other gate
+          // must already admit the action, and execution rechecks all gates.
+          activeContexts: ["memory"],
+        });
+        return rejection === undefined;
+      });
       const manifestLines = [
         "Stored conversation manifest:",
         `${sorted.length} stored message(s) across ${rooms.length} authorized room(s).`,
-        "Message bodies are not included here. Use MEMORY_SEARCH for complete historical recall.",
+        "This is a room index, not a summary or a claim about what was said. Full message bodies remain stored.",
+        "Use current dialogue and relevant recalled evidence for continuity. If an answer needs history not already present, select the memory context and retrieve it before answering; do not guess or treat this index as empty history.",
+        `Read with ${recallAction?.name ?? "MEMORY_SEARCH"}${recallAction?.name === "MEMORY" ? " action=search" : ""}, type=messages and an exact roomId below. query optionally narrows by text; omit query to read the whole room. For large results request limit and follow nextOffset/snapshot with identical filters until the needed range is complete. Never treat a page as all history.`,
         ...rooms.map((room) => `- ${room.label} roomId=${room.id}`),
       ];
-      const eagerLines = ["Recent conversations:"];
-      for (const memory of sorted) {
-        const room = roomCache.get(memory.roomId) ?? null;
-        const text = toWellFormedUnicode(memory.content.text ?? "");
-        const attachments = attachmentPromptSummary(
-          memory.content.attachments ?? [],
-        );
-        eagerLines.push(
-          `${roomSourceTag(room)} ${formatRelativeTimestampPrefix(memory.createdAt)}${formatSpeakerLabel(runtime, memory)}: ${[text, attachments].filter(Boolean).join(" ")}`,
-        );
-      }
-
       markOwnerExclusiveDisclosureUsed(message);
 
+      const manifestText = manifestLines.join("\n");
+      let text = manifestText;
+      if (!recallAction) {
+        const lines = [
+          "Stored conversations (complete inline history; no permitted memory retrieval action is registered):",
+        ];
+        for (const memory of sorted) {
+          const room = roomCache.get(memory.roomId) ?? null;
+          const body = toWellFormedUnicode(memory.content.text ?? "");
+          const attachments = attachmentPromptSummary(
+            memory.content.attachments ?? [],
+          );
+          lines.push(
+            `${roomSourceTag(room)} ${formatRelativeTimestampPrefix(memory.createdAt)}${formatSpeakerLabel(runtime, memory)}: ${[body, attachments].filter(Boolean).join(" ")}`,
+          );
+        }
+        text = lines.join("\n");
+      }
       return {
-        text: eagerLines.join("\n"),
-        overflowText: manifestLines.join("\n"),
+        text,
+        // A missing retrieval capability must not become an overflow-time
+        // permission bypass or an inaccessible body-free replacement.
+        ...(recallAction ? { overflowText: manifestText } : {}),
         values: {
           recentConversationCount: sorted.length,
           recentConversationRoomCount: rooms.length,

@@ -42,7 +42,11 @@ import {
   mirrorPluginSensitiveToVault,
   sharedVault,
 } from "@elizaos/app-core/services/vault-mirror";
-import { type AgentRuntime, logger } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  logger,
+  resolveNativeRuntimeFeatureFromPluginName,
+} from "@elizaos/core";
 import {
   type ConfigField,
   loadRegistry,
@@ -55,6 +59,7 @@ import {
   clearPluginParamValues,
   collectAgentScopedPluginParamValues,
 } from "./bridge-plugin-settings.ts";
+import { devCloudPluginMutationRejection } from "./dev-cloud-plugin-authority.ts";
 
 const require = createRequire(import.meta.url);
 
@@ -1150,6 +1155,9 @@ function isPluginLoaded(
   ]);
 
   for (const loadedName of loadedNames) {
+    // Native runtime features do not establish npm plugin ownership.
+    if (npmName && resolveNativeRuntimeFeatureFromPluginName(loadedName))
+      continue;
     if (expectedNames.has(loadedName)) {
       return true;
     }
@@ -1360,6 +1368,11 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
     const pluginId = normalizePluginId(pluginName);
     const existing = plugins.get(pluginId);
     if (existing) {
+      if (
+        existing.npmName &&
+        resolveNativeRuntimeFeatureFromPluginName(pluginName)
+      )
+        continue;
       existing.isActive = true;
       const persistedEnabled = readPluginEntryEnabled(
         pluginId,
@@ -1512,6 +1525,17 @@ export function persistCompatPluginMutation(
   status: number;
   payload: Record<string, unknown>;
 } {
+  const authorityRejection = devCloudPluginMutationRejection(
+    plugin.parameters ?? [],
+    body,
+  );
+  if (authorityRejection) {
+    return {
+      status: 409,
+      payload: { ok: false, error: authorityRejection },
+    };
+  }
+
   const config = loadElizaConfig();
   const configRecord = config as Record<string, unknown>;
   config.plugins ??= {};

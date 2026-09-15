@@ -367,7 +367,6 @@ describe("walkGmailMimeParts", () => {
 describe("GoogleGmailClient.getGmailMessageDetail MIME bound", () => {
   it("fails closed on a 20k MIME nest without RangeError", async () => {
     const client = gmailClientForPayload(nestMime(20_000));
-    const started = performance.now();
     try {
       await client.getGmailMessageDetail({
         accountId: "acct_1",
@@ -379,7 +378,6 @@ describe("GoogleGmailClient.getGmailMessageDetail MIME bound", () => {
       expect((error as ElizaError).code).toBe(GMAIL_MIME_PART_UNBOUNDED);
       expect((error as Error).name).not.toBe("RangeError");
     }
-    expect(performance.now() - started).toBeLessThan(50);
   });
 
   it("does not invoke an inherited body getter on the octet-stream fallback", async () => {

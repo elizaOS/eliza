@@ -6,8 +6,10 @@ container mutations here when `CONTAINER_CONTROL_PLANE_URL` is configured.
 
 ## Run
 
+From the repository root:
+
 ```bash
-PORT=8791 bun run --cwd services/container-control-plane start
+PORT=8791 bun run --cwd packages/cloud/services/container-control-plane start
 ```
 
 Point the Worker at it:

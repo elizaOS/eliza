@@ -107,9 +107,15 @@ const delegatedJobs = [
 
 describe("Develop Full workflow authority", () => {
   test("is the latest-tip develop-push authority", () => {
-    expect(workflow.on).toEqual({ push: { branches: ["develop"] } });
+    expect(workflow.on.push).toEqual({
+      branches: ["develop", "staging", "main"],
+    });
+    expect(workflow.on.workflow_dispatch.inputs.source_sha.required).toBe(true);
+    expect(workflow.on.workflow_dispatch.inputs.effect_digest.required).toBe(
+      true,
+    );
     expect(workflow.concurrency).toEqual({
-      group: "develop-full",
+      group: "promotion-full-${{ github.ref_name }}",
       "cancel-in-progress": true,
     });
   });
@@ -121,7 +127,7 @@ describe("Develop Full workflow authority", () => {
     for (const name of delegatedJobs) {
       const job = workflow.jobs?.[name];
       expect(job?.uses).toMatch(/^\.\/\.github\/workflows\/.+\.yml$/);
-      if (name === "platform-smoke") {
+      if (name === "platform-smoke" || name === "cloud-gateway-discord") {
         expect(job?.secrets).toBeUndefined();
       } else {
         expect(job?.secrets).toBe("inherit");

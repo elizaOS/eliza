@@ -1,30 +1,14 @@
 # face-cpp
 
-Standalone C library + GGUF conversion scripts that port BlazeFace
-(face detection) and a 128-d face embedding network (FaceNet-style
-or ArcFace-mini) onto the elizaOS/llama.cpp fork's ggml dispatcher.
-The native runtime replaces the ONNX-backed `face-detector-mediapipe.ts`
-path and provides the face-embedding surface needed to retire the
-`face-recognition.ts` face-api.js / TensorFlow.js stack after production
-parity rollout.
+Native C library for BlazeFace detection and 128-dimensional face embeddings
+from GGUF models. `@elizaos/plugin-vision` consumes its detector and embedder
+ABI. The runtime uses portable scalar CPU kernels and reports the
+`ggml-cpu-ref` backend.
 
-Today the model entry points in `include/face/face.h` are implemented by
-`src/face_model.c` with pure-C scalar BlazeFace and embedder forwards.
-The model-independent helpers are real and tested:
-
-- `face_blazeface_make_anchors` — 896-anchor table for the
-  128x128 BlazeFace front model.
-- `face_blazeface_decode` — decode raw model outputs to
-  source-pixel detections.
-- `face_align_5pt` — 5-point similarity warp + bilinear sampler
-  producing a 112x112 RGB face crop.
-- `face_embed_distance` / `face_embed_distance_l2` — cosine and L2
-  distance over unit-norm 128-d embeddings.
-
-The full port plan — upstream pins, GGUF conversion approach, fork
-integration steps, replacement path for the TS bindings — lives in
-[`AGENTS.md`](AGENTS.md). Read that before changing anything in this
-directory.
+Detection and embedding have separate opaque session handles. Embedding
+comparisons require normalized vectors from the same model family; switching
+families requires re-embedding stored profiles. See [CLAUDE.md](CLAUDE.md) for
+ABI constraints, upstream pins, and integration verification requirements.
 
 ## Build
 
@@ -41,12 +25,12 @@ include/face/face.h           Public C ABI (frozen — see AGENTS.md).
 src/face_model.c              Native CPU model runtime.
 src/face_blazeface.c          BlazeFace forward path.
 src/face_embed.c              128-d embedder forward path.
-src/face_anchor_decode.c      BlazeFace anchor table + decoder (real).
-src/face_align.c              5-point affine warp + bilinear sampler (real).
-src/face_distance.c           Cosine + L2 distance helpers (real).
+src/face_anchor_decode.c      BlazeFace anchor table + decoder.
+src/face_align.c              5-point affine warp + bilinear sampler.
+src/face_distance.c           Cosine + L2 distance helpers.
 scripts/blazeface_to_gguf.py  BlazeFace converter.
 scripts/face_embed_to_gguf.py Embedder converter.
-test/face_abi_smoke.c         Build-only smoke test for the public ABI.
+test/face_abi_smoke.c         ABI compatibility smoke test.
 test/face_anchor_test.c       Behavioural test for the anchor pipeline.
 test/face_align_test.c        Behavioural test for the 5-point aligner.
 test/face_distance_test.c     Behavioural test for the distance helpers.

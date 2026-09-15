@@ -34,7 +34,7 @@ export type { TokenUsageForCost } from "./pricing-types";
  * so consumers can disambiguate cost numbers computed against different
  * snapshots.
  */
-export const PRICE_TABLE_ID = "eliza-v1-2026-08-14" as const;
+export const PRICE_TABLE_ID = "eliza-v1-2026-09-04" as const;
 export type PriceTableId = typeof PRICE_TABLE_ID;
 
 /**
@@ -186,6 +186,15 @@ export const MODEL_PRICES_USD_PER_M_TOKENS: Record<
 	},
 
 	// ---- Cerebras -----------------------------------------------------------
+	// Qwen source: https://inference-docs.cerebras.ai/models/qwen-3.8-27b
+	// (captured 2026-09-04). Published paid-tier rates; no separate cache rate.
+	"qwen-3.8-27b": {
+		provider: "cerebras",
+		input: 0.99,
+		output: 1.49,
+		cacheRead: 0,
+		cacheWrite: 0,
+	},
 	// Source: https://api.cerebras.ai/public/v1/models/{model_id} (captured
 	// 2026-08-14). These rates also match the forced Cerebras rows used by the
 	// cloud billing ledger in packages/cloud/shared.
@@ -328,6 +337,10 @@ export const MODEL_CONTEXT_WINDOW_TOKENS: Record<string, number> = {
 	// model card's larger figure is not what Cerebras serves; the public free
 	// tier caps at 65k.)
 	"gemma-4-31b": 131_072,
+	// Paid-tier serving limit; Free Trial is 65,536. Operators on the free
+	// tier can declare the lower ceiling via MODEL_CONTEXT_WINDOWS_JSON.
+	// Source: https://inference-docs.cerebras.ai/models/qwen-3.8-27b (2026-09-04).
+	"qwen-3.8-27b": 131_072,
 	"qwen-3-235b-a22b-instruct-2507": 64_000,
 	"zai-glm-4.7": 131_000,
 	"llama3.1-8b": 32_000,

@@ -260,6 +260,7 @@ describe("gallery pagination pass-through", () => {
     expect(listGenerations).toHaveBeenCalledWith("org-1", "completed", {
       userId: "user-1",
       type: undefined,
+      requireStorageUrl: true,
       limit: 38,
       offset: 12,
     });
@@ -274,6 +275,7 @@ describe("gallery pagination pass-through", () => {
     expect(listGenerations).toHaveBeenCalledWith("org-1", "completed", {
       userId: "user-1",
       type: undefined,
+      requireStorageUrl: true,
       limit: 101,
       offset: 0,
     });

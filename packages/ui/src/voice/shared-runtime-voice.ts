@@ -1,28 +1,12 @@
 /**
- * Shared-tier voice fallback (#15395 / umbrella #15310 failure mode #11).
- *
- * The PWA voice loop targets agent-container routes (`/api/tts/cloud`,
- * `/api/asr/cloud`) that only exist inside a dedicated agent server. A
- * shared-runtime cloud agent (`node_id: null`, no container, no routable
- * subdomain) 404s on every one of those calls, so voice is structurally
- * unavailable there even though chat works (chat has a server-side
- * shared-runtime proxy; voice does not).
- *
- * This module is the client-side unblock (Option 2 from the issue): when the
- * active agent base is a shared-runtime cloud base
- * (`<cloudApiBase>/api/v1/eliza/agents/<agentId>`), route voice to the cloud
- * API worker's provider-agnostic v1 routes, which DO exist on the worker and
- * are already priced through the credit ledger:
- *
- *   - TTS: POST `<cloudApiBase>/api/v1/voice/tts`  (JSON `{ text, voiceId?, modelId? }` → audio bytes)
- *   - STT: POST `<cloudApiBase>/api/v1/voice/stt`  (multipart `audio` File → `{ transcript }`)
- *
- * The dedicated-tier path is untouched: `sharedRuntimeVoiceOrigin` returns
- * `null` for any non-shared base, so the existing `/api/tts/cloud` /
- * `/api/asr/cloud` calls fire exactly as before when the agent has its own
- * container.
+ * Resolves Cloud speech endpoints for shared runtimes, direct Cloud sessions,
+ * and dedicated agent proxies. Shared runtimes use the Cloud API voice routes;
+ * dedicated agents can proxy speech through their own authenticated API.
+ * Known marketing and legacy Cloud hosts resolve to the matching API authority,
+ * while explicit custom origins remain configurable.
  */
 
+import { resolveDirectCloudAuthApiBase } from "../api/direct-cloud-endpoints";
 import { getBootConfig } from "../config/boot-config-store";
 import { normalizeDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
 import { getElizaApiBase } from "../utils/eliza-globals";
@@ -113,8 +97,8 @@ export function sharedRuntimeTtsUrl(origin: string): string {
  * v1 voice routes hang off the bare origin, so we strip a trailing `/api/v1`
  * (some hosts pass the API base with the version path) and any trailing
  * slashes. Returns `null` when boot config has no usable https origin — the
- * caller then keeps the on-device proxy path. Reading from boot config (not a
- * hardcoded production URL) keeps staging/custom cloud environments correct.
+ * caller then keeps the on-device proxy path. Known site aliases are mapped
+ * to their environment’s API origin; custom origins remain unchanged.
  */
 export function configuredCloudVoiceOrigin(): string | null {
   const raw = getBootConfig().cloudApiBase?.trim();
@@ -123,7 +107,9 @@ export function configuredCloudVoiceOrigin(): string | null {
     .replace(/\/+$/, "")
     .replace(/\/api\/v1$/i, "")
     .replace(/\/+$/, "");
-  return /^https?:\/\//i.test(origin) ? origin : null;
+  return /^https?:\/\//i.test(origin)
+    ? resolveDirectCloudAuthApiBase(origin)
+    : null;
 }
 
 /** How a forced-cloud TTS request was routed (drives the request + debug). */

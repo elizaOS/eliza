@@ -430,7 +430,7 @@ function matchesFixture(
 	}
 	if (
 		match.input &&
-		!matchesText(
+		!matchesInput(
 			match.input,
 			call.latestUserText || call.params.prompt || "",
 			call,
@@ -476,6 +476,33 @@ function matchesFixture(
 			return false;
 	}
 	return true;
+}
+
+function matchesInput(
+	matcher: DeterministicTextMatcher,
+	value: string,
+	call: DeterministicModelCall,
+): boolean {
+	if (matchesText(matcher, value, call)) return true;
+	const isToolResultSynthesis = value.startsWith(
+		"Tool work for this turn is complete but no user-facing reply was produced.",
+	);
+	const isFailureSynthesis =
+		value.startsWith("The ") &&
+		value.includes(
+			" step failed and the turn is ending without a usable result.",
+		);
+	if (!isToolResultSynthesis && !isFailureSynthesis) return false;
+	const messages = call.params.messages;
+	if (!Array.isArray(messages)) return false;
+	for (let index = messages.length - 2; index >= 0; index -= 1) {
+		const message = messages[index];
+		if (message?.role !== "user") continue;
+		const priorInput = contentToText(message.content);
+		if (priorInput.startsWith("event:evaluation:")) continue;
+		return matchesText(matcher, priorInput, call);
+	}
+	return false;
 }
 
 function matchesText(

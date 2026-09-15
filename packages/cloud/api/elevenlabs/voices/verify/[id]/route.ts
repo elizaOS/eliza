@@ -1,6 +1,10 @@
-// Handles cloud API elevenlabs voices verify id route traffic with route-local auth expectations.
-//
-// Verification reports whether a cloned voice is usable. It distinguishes THREE
+/**
+ * Verifies cloned ElevenLabs voices behind the combined account-standing and
+ * provider-admission boundary. The upstream lookup and synthesis probe share
+ * one admitted operation, so verification performs one identity-cache read
+ * and one asynchronous zero-cost settlement without a cache readback.
+ *
+ * Verification reports whether a cloned voice is usable. It distinguishes THREE
 // outcomes so callers never conflate "voice legitimately not ready yet" with
 // "ElevenLabs is broken" (#12787 / #12182):
 //   - voice missing FROM ElevenLabs (upstream 404) => a real "still processing /
@@ -13,20 +17,26 @@
 //     poll forever against a broken service believing the voice just wasn't done.
 //   - the TTS smoke call is a best-effort readiness probe: its result feeds
 //     `canGenerateTTS`, but a NON-2xx HTTP response or a thrown fetch must read
-//     as "cannot generate" (observably), never silently count as success.
+ *     as "cannot generate" (observably), never silently count as success.
+ */
 
 import {
   ElevenLabsError,
   ElevenLabsTimeoutError,
 } from "@elevenlabs/elevenlabs-js";
 import { Hono } from "hono";
+import {
+  asGenerativeCacheApiError,
+  getGenerativeOperationContext,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
 import { ApiError } from "@/lib/api/cloud-worker-errors";
 import { getErrorStatusCode, nextJsonFromCaughtError } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { getElevenLabsService } from "@/lib/services/elevenlabs";
+import { runFlatProviderOperation } from "@/lib/services/generative-operation";
 import { voiceCloningService } from "@/lib/services/voice-cloning";
 import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 /**
  * An ElevenLabs lookup that 404s means the voice row exists in our DB but the
@@ -136,14 +146,13 @@ async function probeTtsReadiness(
  * @param context - Route context containing the voice ID parameter.
  * @returns Voice verification status including readiness, TTS capability, and fine-tuning information.
  */
-async function __hono_GET(
-  request: Request,
-  context: { params: Promise<{ id: string }> },
-) {
+async function __hono_GET(c: AppContext) {
   try {
-    const { user } = await requireAuthOrApiKeyWithOrg(request);
-    const params = await context.params;
-    const voiceId = params.id;
+    const caller = await requireGenerativeRouteCaller(c, {
+      compatibility: "raw",
+    });
+    const { user } = caller;
+    const voiceId = c.req.param("id")!;
 
     logger.info(`[Voice Verify API] Verifying voice ${voiceId}`);
 
@@ -166,39 +175,62 @@ async function __hono_GET(
       throw new Error("ELEVENLABS_API_KEY environment variable is required");
     }
 
-    let elevenLabsVoice: Awaited<ReturnType<typeof elevenlabs.getVoiceById>>;
-    try {
-      elevenLabsVoice = await elevenlabs.getVoiceById(voice.elevenlabsVoiceId);
-    } catch (error) {
-      if (isUpstreamVoiceAbsent(error)) {
-        // error-policy:J4 upstream 404 is an EXPECTED not-ready state for a
-        // freshly-created professional voice — degrade to a distinct
-        // "still processing" verdict (not a synthesis failure, not a 500).
-        logger.info("[Voice Verify API] Voice not yet present in ElevenLabs", {
-          voiceId: voice.id,
+    const verification = await runFlatProviderOperation(
+      getGenerativeOperationContext(c, caller),
+      {
+        provider: "elevenlabs",
+        billingSource: "gateway",
+        model: "elevenlabs/voice-verification",
+        operation: "voice_verify",
+        cost: 0,
+      },
+      async () => {
+        let elevenLabsVoice: Awaited<
+          ReturnType<typeof elevenlabs.getVoiceById>
+        >;
+        try {
+          elevenLabsVoice = await elevenlabs.getVoiceById(
+            voice.elevenlabsVoiceId,
+          );
+        } catch (error) {
+          if (isUpstreamVoiceAbsent(error)) return { kind: "absent" } as const;
+          throw toUpstreamBoundaryError(error);
+        }
+        return {
+          kind: "ready" as const,
+          elevenLabsVoice,
+          canGenerateTTS: await probeTtsReadiness(
+            voice.elevenlabsVoiceId,
+            apiKey,
+          ),
+        };
+      },
+    );
+
+    if (verification.kind === "absent") {
+      // error-policy:J4 upstream 404 is an EXPECTED not-ready state for a
+      // freshly-created professional voice — degrade to a distinct verdict.
+      logger.info("[Voice Verify API] Voice not yet present in ElevenLabs", {
+        voiceId: voice.id,
+        elevenlabsVoiceId: voice.elevenlabsVoiceId,
+      });
+      return Response.json({
+        success: true,
+        voice: {
+          id: voice.id,
+          name: voice.name,
           elevenlabsVoiceId: voice.elevenlabsVoiceId,
-        });
-        return Response.json({
-          success: true,
-          voice: {
-            id: voice.id,
-            name: voice.name,
-            elevenlabsVoiceId: voice.elevenlabsVoiceId,
-            cloneType: voice.cloneType,
-          },
-          status: {
-            isReady: false,
-            canGenerateTTS: false,
-            message: "Voice is still being processed. Please wait.",
-          },
-        });
-      }
-      // A real upstream failure (transport / 401 / 429 / 5xx) is NOT a
-      // "still processing" state. Rethrow to the J1 boundary (carrying the
-      // real upstream status) so the caller gets a structured failure and
-      // stops polling a broken service.
-      throw toUpstreamBoundaryError(error);
+          cloneType: voice.cloneType,
+        },
+        status: {
+          isReady: false,
+          canGenerateTTS: false,
+          message: "Voice is still being processed. Please wait.",
+        },
+      });
     }
+
+    const { elevenLabsVoice, canGenerateTTS } = verification;
 
     // For professional voices, check fine-tuning status
     const isProfessional = voice.cloneType === "professional";
@@ -211,11 +243,6 @@ async function __hono_GET(
 
     // Probe a one-word synthesis to confirm the voice actually generates. A
     // non-2xx or thrown fetch reads observably as canGenerateTTS=false.
-    const canGenerateTTS = await probeTtsReadiness(
-      voice.elevenlabsVoiceId,
-      apiKey,
-    );
-
     return Response.json({
       success: true,
       voice: {
@@ -245,14 +272,10 @@ async function __hono_GET(
     if (getErrorStatusCode(error) >= 500) {
       logger.error("[Voice Verify API] Error:", error);
     }
-    return nextJsonFromCaughtError(error);
+    return nextJsonFromCaughtError(asGenerativeCacheApiError(error) ?? error);
   }
 }
 
 const __hono_app = new Hono<AppEnv>();
-__hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, {
-    params: Promise.resolve({ id: c.req.param("id")! }),
-  }),
-);
+__hono_app.get("/", __hono_GET);
 export default __hono_app;

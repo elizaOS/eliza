@@ -7,6 +7,7 @@ import {
   inferHeadscaleUser,
   inferTailscaleHostname,
   normalizeHeadscaleSegment,
+  resolveRegistrationTimeoutMs,
 } from "./headscale-integration";
 
 const savedEnv = { ...process.env };
@@ -106,7 +107,11 @@ describe("Headscale container credentials", () => {
       ephemeral: false,
       aclTags: ["tag:agent"],
     });
+    expect(request).not.toHaveProperty("user");
+    expect(request).not.toHaveProperty("ensureUser");
     expect(prepared.preAuthKey).toBe("test-preauth-key");
+    expect(prepared.envVars.TS_FORCE_NOISE_443).toBe("1");
+    expect(prepared.envVars.TS_UP_TIMEOUT_SECONDS).toBe("300");
   });
 
   test("removes a stale persistent registration before issuing a replacement key", async () => {
@@ -257,6 +262,80 @@ describe("Headscale node lookup is keyed on the node name (not the agentId)", ()
     expect(nodeName).not.toBe("11111111-1111-4111-8111-111111111111");
   });
 
+  test("waitForVPNRegistration aborts immediately on a proven terminal candidate", async () => {
+    let lookups = 0;
+    let probes = 0;
+    const fake = {
+      getNodeByNameOrSuffixed: async () => {
+        lookups += 1;
+        return null;
+      },
+    } as unknown as HeadscaleClient;
+
+    await expect(
+      new HeadscaleIntegration(fake).waitForVPNRegistration(nodeName, 5_000, {
+        probeTerminalCandidateFailure: async () => {
+          probes += 1;
+          return new Error("candidate requires interactive Headscale authorization");
+        },
+      }),
+    ).rejects.toThrow("candidate requires interactive Headscale authorization");
+    expect(lookups).toBe(1);
+    expect(probes).toBe(1);
+  });
+
+  test("waitForVPNRegistration preserves the normal budget while the candidate is pending", async () => {
+    let probes = 0;
+    const fake = {
+      getNodeByNameOrSuffixed: async () => null,
+    } as unknown as HeadscaleClient;
+
+    await expect(
+      new HeadscaleIntegration(fake).waitForVPNRegistration(nodeName, 25, {
+        probeTerminalCandidateFailure: async () => {
+          probes += 1;
+          return null;
+        },
+      }),
+    ).resolves.toBeNull();
+    expect(probes).toBeGreaterThanOrEqual(1);
+  });
+
+  test("waitForVPNRegistration returns a routed IP before consulting the terminal probe", async () => {
+    let probes = 0;
+    const fake = {
+      getNodeByNameOrSuffixed: async (name: string) => ({
+        id: "73",
+        name,
+        ipAddresses: ["100.64.0.73"],
+      }),
+    } as unknown as HeadscaleClient;
+
+    await expect(
+      new HeadscaleIntegration(fake).waitForVPNRegistration(nodeName, 1_000, {
+        probeTerminalCandidateFailure: async () => {
+          probes += 1;
+          return new Error("must not override a successful registration");
+        },
+      }),
+    ).resolves.toMatchObject({ ip: "100.64.0.73", nodeId: "73" });
+    expect(probes).toBe(0);
+  });
+
+  test("waitForVPNRegistration selects IPv4 independently of Headscale address order", async () => {
+    const fake = {
+      getNodeByNameOrSuffixed: async (name: string) => ({
+        id: "74",
+        name,
+        ipAddresses: ["fd7a:115c:a1e0::74", "100.64.0.74"],
+      }),
+    } as unknown as HeadscaleClient;
+
+    await expect(
+      new HeadscaleIntegration(fake).waitForVPNRegistration(nodeName, 1_000),
+    ).resolves.toMatchObject({ ip: "100.64.0.74", nodeId: "74" });
+  });
+
   test("waitForVPNRegistration rejects malformed runtime node identity", async () => {
     for (const malformedNode of [
       { id: "", name: nodeName, ipAddresses: ["100.64.0.7"] },
@@ -270,6 +349,11 @@ describe("Headscale node lookup is keyed on the node name (not the agentId)", ()
       { id: "1", name: nodeName, ipAddresses: ["192.100.0.7"] },
       { id: "1", name: nodeName, ipAddresses: ["100.128.0.7"] },
       { id: "1", name: nodeName, ipAddresses: [42] },
+      {
+        id: "1",
+        name: nodeName,
+        ipAddresses: ["100.64.0.7", "100.64.0.8"],
+      },
     ]) {
       const fake = {
         getNodeByNameOrSuffixed: async () => malformedNode,
@@ -448,6 +532,24 @@ describe("waitForVPNRegistration adopts Headscale collision-renamed nodes (real 
     expect(renames).toEqual([`https://headscale.example/api/v1/node/8/rename/${baseName}`]);
   });
 
+  test("adopts a suffixed node that registered after attempt start but before polling", async () => {
+    const registrationStartedAt = new Date(Date.now() - 5_000);
+    const renames = stubHeadscale([
+      makeNode("3", baseName, "100.64.0.56", new Date(Date.now() - 60 * 60 * 1000)),
+      makeNode("8", `${baseName}-cnpx9uop`, "100.64.0.8", new Date(Date.now() - 1_000)),
+    ]);
+
+    const registration = await integration().waitForVPNRegistration(baseName, 5_000, {
+      excludeNodeId: "3",
+      registrationStartedAt,
+    });
+
+    expect(registration?.nodeId).toBe("8");
+    expect(registration?.ip).toBe("100.64.0.8");
+    expect(registration?.rename).toEqual({ outcome: "succeeded" });
+    expect(renames).toEqual([`https://headscale.example/api/v1/node/8/rename/${baseName}`]);
+  });
+
   test("a 5xx rename-back remains explicitly unresolved without losing adoption", async () => {
     // While the green node still holds the base name Headscale rejects the
     // rename; registration is already secured and must succeed regardless.
@@ -570,7 +672,21 @@ describe("normalizeHeadscaleSegment + registration-timeout default", () => {
     expect(normalizeHeadscaleSegment(undefined)).toBeNull();
   });
 
-  test("DEFAULT_REGISTRATION_TIMEOUT_MS falls back to 180s when env is unset", () => {
-    expect(DEFAULT_REGISTRATION_TIMEOUT_MS).toBe(180_000);
+  test("DEFAULT_REGISTRATION_TIMEOUT_MS falls back to 360s when env is unset", () => {
+    expect(DEFAULT_REGISTRATION_TIMEOUT_MS).toBe(360_000);
+  });
+
+  test("rejects an override shorter than the container join observation budget", () => {
+    expect(() => resolveRegistrationTimeoutMs("5000")).toThrow(
+      "VPN_REGISTRATION_TIMEOUT_MS must be at least 360000",
+    );
+    expect(() => resolveRegistrationTimeoutMs("180000ms")).toThrow(
+      "VPN_REGISTRATION_TIMEOUT_MS must be a positive integer",
+    );
+  });
+
+  test("allows operators to extend but not shorten the observation budget", () => {
+    expect(resolveRegistrationTimeoutMs(undefined)).toBe(360_000);
+    expect(resolveRegistrationTimeoutMs("420000")).toBe(420_000);
   });
 });

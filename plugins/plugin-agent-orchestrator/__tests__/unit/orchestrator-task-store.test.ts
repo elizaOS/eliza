@@ -17,6 +17,7 @@ import {
 import type {
   CreateTaskInput,
   OrchestratorTaskDocument,
+  OrchestratorTaskEvent,
   OrchestratorTaskPlanRevision,
   OrchestratorTaskSession,
 } from "../../src/services/orchestrator-task-types.js";
@@ -39,6 +40,11 @@ function createInput(
   overrides: Partial<CreateTaskInput> = {},
 ): CreateTaskInput {
   return { title: "Ship feature", goal: "Implement and verify", ...overrides };
+}
+
+function must<T>(value: T | null | undefined, label: string): T {
+  if (value == null) throw new Error(`Missing ${label}`);
+  return value;
 }
 
 function sessionFor(
@@ -77,6 +83,30 @@ function sessionFor(
   };
 }
 
+function stuckReapInput(doc: OrchestratorTaskDocument) {
+  const event: OrchestratorTaskEvent = {
+    id: "reap-event",
+    taskId: doc.task.id,
+    eventType: "task_stalled_reaped",
+    summary: "stuck task",
+    data: {},
+    timestamp: 2,
+    createdAt: new Date("2026-05-20T12:01:00.000Z").toISOString(),
+  };
+  return {
+    taskId: doc.task.id,
+    expectedTaskUpdatedAt: doc.task.updatedAt,
+    expectedSessions: doc.sessions.map((session) => ({
+      sessionId: session.sessionId,
+      status: session.status,
+      updatedAt: session.updatedAt,
+    })),
+    deadSessionIds: doc.sessions.map((session) => session.sessionId),
+    event,
+    nowMs: 2,
+  };
+}
+
 function planRevisionFor(
   taskId: string,
   overrides: Partial<OrchestratorTaskPlanRevision> = {},
@@ -102,6 +132,7 @@ function planRevisionFor(
  */
 class FakeSqlAdapter {
   readonly rows = new Map<string, Record<string, unknown>>();
+  beforeConditionalUpdate?: () => Promise<void> | void;
   private projectColumn = false;
 
   async execute(sql: string, params: unknown[] = []): Promise<void> {
@@ -129,6 +160,39 @@ class FakeSqlAdapter {
         lastActivityAt,
         document,
       ] = params;
+      this.rows.set(id as string, {
+        id,
+        status,
+        archived,
+        priority,
+        title,
+        project_id: projectId,
+        search_text: searchText,
+        updated_at: updatedAt,
+        last_activity_at: lastActivityAt,
+        document,
+      });
+      return;
+    }
+    if (head === "UPDATE") {
+      const beforeConditionalUpdate = this.beforeConditionalUpdate;
+      this.beforeConditionalUpdate = undefined;
+      await beforeConditionalUpdate?.();
+      const [
+        status,
+        archived,
+        priority,
+        title,
+        projectId,
+        searchText,
+        updatedAt,
+        lastActivityAt,
+        document,
+        id,
+        expectedDocument,
+      ] = params;
+      const current = this.rows.get(id as string);
+      if (!current || current.document !== expectedDocument) return;
       this.rows.set(id as string, {
         id,
         status,
@@ -502,6 +566,54 @@ describe("InMemoryTaskStore", () => {
 });
 
 describe("FileTaskStore", () => {
+  it("persists one atomic stuck-task reap and rejects a stale snapshot", async () => {
+    const file = await tempFile();
+    const staleWriter = new FileTaskStore(file);
+    const { task } = await staleWriter.createTask(
+      createInput({ title: "file reap" }),
+    );
+    await staleWriter.updateTask(task.id, {
+      status: "active",
+      lastActivityAt: 1,
+    });
+    await staleWriter.addSession(sessionFor(task.id));
+    const snapshot = await staleWriter.getTask(task.id);
+    expect(snapshot).not.toBeNull();
+
+    const liveWriter = new FileTaskStore(file);
+    await liveWriter.addSession(
+      sessionFor(task.id, { id: "row-2", sessionId: "late-session" }),
+    );
+    expect(
+      await staleWriter.interruptStuckTaskIfUnchanged(
+        stuckReapInput(must(snapshot, "file task snapshot")),
+      ),
+    ).toBe(false);
+    const current = await staleWriter.getTask(task.id);
+    expect(current).not.toBeNull();
+    expect(current?.sessions.map((session) => session.sessionId)).toContain(
+      "late-session",
+    );
+    expect(current?.task.status).toBe("active");
+    expect(current?.events).toHaveLength(0);
+    const input = stuckReapInput(must(current, "current file task"));
+    input.deadSessionIds = ["session-1", "late-session"];
+    expect(await staleWriter.interruptStuckTaskIfUnchanged(input)).toBe(true);
+
+    const reopened = new FileTaskStore(file);
+    const persisted = await reopened.getTask(task.id);
+    expect(persisted?.task.status).toBe("interrupted");
+    expect(persisted?.sessions.map((session) => session.status)).toEqual([
+      "stopped",
+      "stopped",
+    ]);
+    expect(
+      persisted?.events.filter(
+        (event) => event.eventType === "task_stalled_reaped",
+      ),
+    ).toHaveLength(1);
+  });
+
   it("serializes first-touch loads so concurrent operations cannot hydrate over each other", async () => {
     const file = await tempFile();
     const seed = new FileTaskStore(file);
@@ -663,6 +775,124 @@ class PgliteBareScanRejectingAdapter extends FakeSqlAdapter {
 }
 
 describe("RuntimeDbTaskStore", () => {
+  it("persists an atomic stuck-task reap through the runtime DB backend", async () => {
+    const adapter = new FakeSqlAdapter();
+    const staleWriter = new RuntimeDbTaskStore(adapter);
+    const { task } = await staleWriter.createTask(
+      createInput({ title: "runtime DB reap" }),
+    );
+    await staleWriter.updateTask(task.id, {
+      status: "active",
+      lastActivityAt: 1,
+    });
+    await staleWriter.addSession(sessionFor(task.id));
+    const snapshot = await staleWriter.getTask(task.id);
+    expect(snapshot).not.toBeNull();
+
+    const liveWriter = new RuntimeDbTaskStore(adapter);
+    adapter.beforeConditionalUpdate = () =>
+      liveWriter.addSession(
+        sessionFor(task.id, { id: "row-2", sessionId: "late-session" }),
+      );
+    expect(
+      await staleWriter.interruptStuckTaskIfUnchanged(
+        stuckReapInput(must(snapshot, "runtime DB task snapshot")),
+      ),
+    ).toBe(false);
+
+    const current = await staleWriter.getTask(task.id);
+    expect(current?.sessions.map((session) => session.sessionId)).toContain(
+      "late-session",
+    );
+    expect(current?.task.status).toBe("active");
+    expect(current?.events).toHaveLength(0);
+    const input = stuckReapInput(must(current, "current runtime DB task"));
+    input.deadSessionIds = ["session-1", "late-session"];
+    expect(await staleWriter.interruptStuckTaskIfUnchanged(input)).toBe(true);
+
+    const reopened = new RuntimeDbTaskStore(adapter);
+    const persisted = await reopened.getTask(task.id);
+    expect(persisted?.task.status).toBe("interrupted");
+    expect(persisted?.sessions[0]).toMatchObject({
+      status: "stopped",
+      stoppedAt: 2,
+    });
+    expect(
+      persisted?.events.filter(
+        (event) => event.eventType === "task_stalled_reaped",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("compares against the exact legacy runtime DB document serialization", async () => {
+    const adapter = new FakeSqlAdapter();
+    const store = new RuntimeDbTaskStore(adapter);
+    const { task } = await store.createTask(
+      createInput({ title: "legacy runtime DB reap" }),
+    );
+    await store.updateTask(task.id, {
+      status: "active",
+      lastActivityAt: 1,
+    });
+    await store.addSession(sessionFor(task.id));
+
+    const row = must(adapter.rows.get(task.id), "runtime DB row");
+    const legacyDocument = JSON.parse(String(row.document)) as Record<
+      string,
+      unknown
+    >;
+    delete legacyDocument.planRevisions;
+    row.document = JSON.stringify(legacyDocument);
+
+    const snapshot = must(await store.getTask(task.id), "legacy task snapshot");
+    expect(snapshot.planRevisions).toEqual([]);
+    expect(
+      await store.interruptStuckTaskIfUnchanged(stuckReapInput(snapshot)),
+    ).toBe(true);
+
+    const persisted = must(await store.getTask(task.id), "reaped legacy task");
+    expect(persisted.task.status).toBe("interrupted");
+    expect(persisted.planRevisions).toEqual([]);
+    expect(
+      persisted.events.filter(
+        (event) => event.eventType === "task_stalled_reaped",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("hydrates a filtered task collection with one SQL query instead of one point read per task", async () => {
+    const seenSql: string[] = [];
+    const adapter = new FakeSqlAdapter();
+    const capturing = {
+      execute: (sql: string, params?: unknown[]) =>
+        adapter.execute(sql, params),
+      all: (sql: string, params?: unknown[]) => {
+        seenSql.push(sql);
+        return adapter.all(sql, params);
+      },
+    };
+    const store = new RuntimeDbTaskStore(capturing);
+    const first = await store.createTask(
+      createInput({ title: "first", projectId: "project-a" }),
+    );
+    const second = await store.createTask(
+      createInput({ title: "second", projectId: "project-a" }),
+    );
+    await store.createTask(
+      createInput({ title: "other", projectId: "project-b" }),
+    );
+
+    seenSql.length = 0;
+    const docs = await store.listTaskDocuments({ projectId: "project-a" });
+
+    expect(new Set(docs.map((doc) => doc.task.id))).toEqual(
+      new Set([first.task.id, second.task.id]),
+    );
+    expect(seenSql).toHaveLength(1);
+    expect(seenSql[0]).toContain("project_id = ?");
+    expect(seenSql[0]).not.toContain("WHERE id = ?");
+  });
+
   it("resolves a session without a `document LIKE` query so pglite/postgres do not fail (#11641)", async () => {
     // On pglite the old `SELECT document FROM orchestrator_tasks WHERE document
     // LIKE ?` threw, spamming a failed-query warn on every session event and

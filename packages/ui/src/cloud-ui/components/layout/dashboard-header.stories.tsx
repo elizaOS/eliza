@@ -3,7 +3,7 @@
  */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Bell, Plus, Search } from "lucide-react";
-import { BrandButton } from "../brand";
+import { Button } from "../../../components/ui/button";
 import { DashboardHeader } from "./dashboard-header";
 
 const meta = {
@@ -41,18 +41,18 @@ export const WithActions: Story = {
       title: "Agents",
       actions: (
         <div className="flex items-center gap-2">
-          <BrandButton
+          <Button
             aria-label="Search"
             variant="ghost"
             size="icon"
             className="size-8"
           >
             <Search className="size-4" />
-          </BrandButton>
-          <BrandButton variant="primary" className="h-8 gap-2 px-3">
+          </Button>
+          <Button variant="default" className="h-8 gap-2 px-3">
             <Plus className="size-4" />
             <span>New Agent</span>
-          </BrandButton>
+          </Button>
         </div>
       ),
     },
@@ -72,9 +72,9 @@ export const AnonymousWithCustomCta: Story = {
     pageInfo: { title: "Pricing" },
     isAnonymous: true,
     anonymousCta: (
-      <BrandButton variant="primary" className="h-8 px-3 md:h-10 md:px-4">
+      <Button variant="default" className="h-8 px-3 md:h-10 md:px-4">
         Get Started
-      </BrandButton>
+      </Button>
     ),
   },
 };
@@ -84,14 +84,14 @@ export const WithRightContent: Story = {
     pageInfo: { title: "Dashboard" },
     rightContent: (
       <div className="flex items-center gap-2">
-        <BrandButton
+        <Button
           aria-label="Notifications"
           variant="ghost"
           size="icon"
           className="size-8"
         >
           <Bell className="size-4" />
-        </BrandButton>
+        </Button>
         <div className="size-8 rounded-full bg-gradient-to-br from-orange-500 to-orange-700" />
       </div>
     ),
@@ -104,9 +104,9 @@ export const LongTitle: Story = {
       title:
         "A really long page title that should truncate on smaller viewports",
       actions: (
-        <BrandButton variant="primary" className="h-8 px-3">
+        <Button variant="default" className="h-8 px-3">
           Save
-        </BrandButton>
+        </Button>
       ),
     },
   },

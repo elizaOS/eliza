@@ -1,15 +1,16 @@
 # @elizaos/plugin-imessage
 
-iMessage connector for Eliza agents on macOS — local inbound reads from chat.db and outbound delivery through Apple's Messages automation surface.
+iMessage connector for Eliza agents using native macOS Messages or a channel-isolated Blooio webhook and API transport.
 
 ## Purpose / role
 
-Adds iMessage send/receive capability to an Eliza agent running on macOS without BlueBubbles, a third-party daemon, a network service, or an auxiliary CLI. The plugin registers `IMessageService`, which polls `~/Library/Messages/chat.db` for inbound messages and delivers outbound messages through the built-in `osascript` interface to Messages.app. It also registers the service as a `MessageConnector` so the standard `MESSAGE` operation routes through it. Auto-enabled when `config.connectors.imessage` is present and not explicitly disabled; opt-in otherwise.
+Adds iMessage send/receive capability through either local macOS Messages or Blooio. `IMessageService` polls `~/Library/Messages/chat.db` and uses `osascript` in native mode; in Blooio mode it verifies signed webhook deliveries, requires an exact configured channel id, and sends through the v4 message API. It registers the same `MessageConnector` in both modes.
 
 ## Plugin surface
 
 **Services**
 - `IMessageService` (`src/service.ts`) — core service; polls chat.db, dispatches inbound messages through `runtime.messageService.handleMessage`, sends through Messages.app via AppleScript, and registers the `MessageConnector` with `resolveTargets`, `listRecentTargets`, `listRooms`, `fetchMessages`, `searchMessages`, `getChatContext`, `getUserContext`. Static `serviceType = "imessage"`.
+- `src/blooio-transport.ts` — Blooio v4 payload parsing, signature verification, channel isolation, and outbound delivery receipts.
 
 **Actions** — none registered. Sending goes through the `MessageConnector` path (`MESSAGE` / `operation=send`).
 
@@ -25,6 +26,7 @@ Adds iMessage send/receive capability to an Eliza agent running on macOS without
 *Data routes* (`src/data-routes.ts`):
 - `GET    /api/imessage/messages` — recent messages (`?chatId=&limit=`)
 - `POST   /api/imessage/messages` — send a message (`{ to|chatId, text, mediaUrl? }`)
+- `POST   /api/imessage/webhook/blooio` — signed Blooio `message.received` delivery
 - `GET    /api/imessage/chats` — list chats (DMs + groups) from chat.db
 - `GET    /api/imessage/contacts` — list Apple Contacts (full detail)
 - `POST   /api/imessage/contacts` — create a contact (CNContactStore)
@@ -93,6 +95,11 @@ All read via `runtime.getSetting(key)` with `process.env[key]` fallback. None re
 | `IMESSAGE_ALLOW_FROM` | `""` | Comma-separated E.164 phones or iCloud emails for allowlist |
 | `IMESSAGE_ENABLED` | `"true"` | Set to `"false"` to disable |
 | `IMESSAGE_BACKFILL` | `0` | Number of rows before the current DB tip to replay on startup |
+| `IMESSAGE_TRANSPORT` | `"native"` | `native` or `blooio` |
+| `IMESSAGE_BLOOIO_API_KEY` | fallback `BLOOIO_API_KEY` | Required in Blooio mode |
+| `IMESSAGE_BLOOIO_WEBHOOK_SECRET` | fallback `BLOOIO_WEBHOOK_SECRET` | Required in Blooio mode |
+| `IMESSAGE_BLOOIO_FROM_NUMBER` | fallback `BLOOIO_FROM_NUMBER` | Required in Blooio mode |
+| `IMESSAGE_BLOOIO_CHANNEL_ID` | none | Required exact channel accepted in Blooio mode |
 | `ELIZA_NATIVE_PERMISSIONS_DYLIB` | `""` | Path to the native permissions dylib used for CNContactStore access |
 
 Config block in character settings:
@@ -132,7 +139,7 @@ Config block in character settings:
 
 ## Conventions / gotchas
 
-- **macOS only.** `IMessageService.start()` throws `IMessageNotSupportedError` on non-darwin platforms. The plugin still loads on other platforms but the service never starts; all route handlers return 503.
+- **Transport gate.** Native mode throws `IMessageNotSupportedError` on non-darwin platforms. Blooio mode runs on Linux but fails startup unless all Blooio settings are present.
 - **chat.db requires Full Disk Access.** Without it, `openChatDb` returns `null` and the service runs send-only. Guide the user to `System Settings > Privacy & Security > Full Disk Access`. The `createFullDiskAccessAction()` helper in `chatdb-reader.ts` builds the structured action object the UI needs.
 - **Sending requires Automation permission.** The first user-triggered send may produce macOS's Automation prompt for Messages. Service startup does not probe Messages.app, so enabling inbound reads cannot launch Messages or create unrelated permission pressure.
 - **Contacts permission is lazy.** `loadContacts()` is NOT called at service start — it fires on the first inbound message that needs handle→name resolution. This avoids a macOS TCC dialog at app launch.
@@ -142,7 +149,7 @@ Config block in character settings:
 - **Attachment ownership.** Downloaded inbound files are copied from the Messages attachment directory into `IFileStorageService` before Memory creation, so only canonical `/api/media/<sha256>.<ext>` handles enter runtime state. Outbound media-store handles use `runtime.fetch`; remote URLs use the core SSRF-guarded connector resolver; both paths are byte-capped and staged only for the duration of the Messages send.
 - **DM `pairing` uses the core PairingService.** The connector has no pairing handshake of its own; unknown DM senders are held until the owner approves their pairing code. The pairing-code reply is an autonomous outbound text, so it is only sent when `IMESSAGE_AUTO_REPLY=true` (the same consent gate as agent-generated replies); pending requests are always visible in the pairing UI.
 - **Message chunking.** Messages over 4000 chars (`MAX_IMESSAGE_MESSAGE_LENGTH`) are split at newlines or spaces and sent as sequential AppleScript calls. A supplied attachment is sent exactly once after all text chunks succeed.
-- **Transport ownership.** This plugin is the only supported iMessage connector. It has no external bridge, daemon, relay, or auxiliary-CLI configuration.
+- **Transport ownership.** This plugin owns native and Blooio iMessage transport. BlueBubbles remains separate. A Blooio webhook must be channel-scoped; the plugin also enforces the configured channel id after signature verification.
 - **No npm build deps.** Only `@elizaos/core` and `zod` at runtime. The build uses `build.ts` (not a tsdown config file) invoked via `bun run build.ts`.
 
 ## Verification

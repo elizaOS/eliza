@@ -11,6 +11,7 @@
 
 import type { PermissionState } from "@elizaos/shared";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -20,7 +21,11 @@ import {
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationMessage } from "../../api/client-types-chat";
-import { CONNECT_EVENT } from "../../events";
+import {
+  CONNECT_EVENT,
+  type ConnectRequestResult,
+  listenForConnectRequests,
+} from "../../events";
 import { __setAppValueForTests } from "../../state/app-store";
 import { AppContext } from "../../state/useApp";
 
@@ -52,7 +57,9 @@ vi.mock("../../api/client", () => ({
   client: clientMock,
 }));
 
-import { MessageContent } from "./MessageContent";
+import { MessageContent, SensitiveRequestBlock } from "./MessageContent";
+
+const connectionCleanups: Array<() => void> = [];
 
 function baseMessage(
   overrides: Partial<ConversationMessage>,
@@ -270,6 +277,7 @@ function pendingRemoteConnectRequest(): ConversationMessage["secretRequest"] {
 describe("MessageContent sensitive requests", () => {
   afterEach(() => {
     cleanup();
+    for (const stop of connectionCleanups.splice(0)) stop();
     __setAppValueForTests(null);
   });
 
@@ -620,58 +628,69 @@ describe("MessageContent sensitive requests", () => {
     window.open = originalOpen;
   });
 
-  it("remote_connect submit dispatches CONNECT_EVENT with the normalized URL and never touches the secret store", async () => {
-    const connectEvents: unknown[] = [];
-    const onConnect = (event: Event) => {
-      connectEvents.push((event as CustomEvent).detail);
-    };
-    document.addEventListener(CONNECT_EVENT, onConnect);
-
-    render(
-      <MessageContent
-        message={baseMessage({ secretRequest: pendingRemoteConnectRequest() })}
-      />,
-    );
-
-    const urlInput = screen.getByLabelText(
-      "Remote agent URL",
-    ) as HTMLInputElement;
-    expect(urlInput.type).toBe("text");
-    const tokenInput = screen.getByLabelText(
-      "Access token (optional)",
-    ) as HTMLInputElement;
-    expect(tokenInput.type).toBe("password");
-
-    // Trailing slash proves normalizeRemoteAgentUrl ran before dispatch.
-    fireEvent.change(urlInput, {
-      target: { value: "https://agent.example.com:31337/" },
-    });
-    fireEvent.change(tokenInput, { target: { value: "tok-123" } });
-    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("sensitive-request-status").textContent).toBe(
-        "Saved",
+  it.each(["https://agent.example.com:31337/", "agent.example.com:31337/"])(
+    "remote_connect submits %s without writing the secret store",
+    async (address) => {
+      connectionCleanups.push(
+        listenForConnectRequests(() => ({ status: "connected" })),
       );
-    });
+      const connectEvents: unknown[] = [];
+      const onConnect = (event: Event) => {
+        connectEvents.push((event as CustomEvent).detail);
+      };
+      document.addEventListener(CONNECT_EVENT, onConnect);
 
-    expect(connectEvents).toEqual([
-      {
-        gatewayUrl: "https://agent.example.com:31337",
-        token: "tok-123",
-        completeFirstRun: true,
-        skipConfirm: true,
-      },
-    ]);
-    // The URL + token point the app at a remote runtime — they must NEVER be
-    // written to the agent secret store or tunneled.
-    expect(updateSecretsMock).not.toHaveBeenCalled();
-    expect(tunnelCredentialMock).not.toHaveBeenCalled();
+      render(
+        <MessageContent
+          message={baseMessage({
+            secretRequest: pendingRemoteConnectRequest(),
+          })}
+        />,
+      );
 
-    document.removeEventListener(CONNECT_EVENT, onConnect);
-  });
+      const urlInput = screen.getByLabelText(
+        "Remote agent URL",
+      ) as HTMLInputElement;
+      expect(urlInput.type).toBe("text");
+      const tokenInput = screen.getByLabelText(
+        "Access token (optional)",
+      ) as HTMLInputElement;
+      expect(tokenInput.type).toBe("password");
+
+      // Trailing slash proves normalizeRemoteAgentUrl ran before dispatch.
+      fireEvent.change(urlInput, {
+        target: { value: address },
+      });
+      fireEvent.change(tokenInput, { target: { value: "tok-123" } });
+      fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("sensitive-request-status").textContent).toBe(
+          "Saved",
+        );
+      });
+
+      expect(connectEvents).toEqual([
+        {
+          gatewayUrl: "https://agent.example.com:31337",
+          token: "tok-123",
+          completeFirstRun: true,
+          skipConfirm: true,
+        },
+      ]);
+      // The URL + token point the app at a remote runtime — they must NEVER be
+      // written to the agent secret store or tunneled.
+      expect(updateSecretsMock).not.toHaveBeenCalled();
+      expect(tunnelCredentialMock).not.toHaveBeenCalled();
+
+      document.removeEventListener(CONNECT_EVENT, onConnect);
+    },
+  );
 
   it("remote_connect omits an empty token from the CONNECT_EVENT detail", async () => {
+    connectionCleanups.push(
+      listenForConnectRequests(() => ({ status: "connected" })),
+    );
     const connectEvents: unknown[] = [];
     const onConnect = (event: Event) => {
       connectEvents.push((event as CustomEvent).detail);
@@ -709,41 +728,158 @@ describe("MessageContent sensitive requests", () => {
     document.removeEventListener(CONNECT_EVENT, onConnect);
   });
 
-  it("remote_connect surfaces an invalid-URL error, keeps the form editable, and does not dispatch", async () => {
-    const connectEvents: unknown[] = [];
-    const onConnect = (event: Event) => {
-      connectEvents.push((event as CustomEvent).detail);
-    };
-    document.addEventListener(CONNECT_EVENT, onConnect);
-
-    const { container } = render(
+  it("keeps remote credentials editable until adoption succeeds and permits retry after failure", async () => {
+    let finish!: (result: ConnectRequestResult) => void;
+    const attempts: string[] = [];
+    connectionCleanups.push(
+      listenForConnectRequests((detail) => {
+        attempts.push(detail.gatewayUrl);
+        return new Promise<ConnectRequestResult>((resolve) => {
+          finish = resolve;
+        });
+      }),
+    );
+    render(
       <MessageContent
         message={baseMessage({ secretRequest: pendingRemoteConnectRequest() })}
       />,
     );
-
     fireEvent.change(screen.getByLabelText("Remote agent URL"), {
-      target: { value: "ftp://agent.example.com" },
+      target: { value: "https://paused.example" },
+    });
+    fireEvent.change(screen.getByLabelText("Access token (optional)"), {
+      target: { value: "synthetic-owner" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
-
-    await waitFor(() => {
-      expect(container.textContent).toContain(
-        "Remote agents must use HTTP or HTTPS.",
-      );
-    });
-
-    // No dispatch, no secret-store write, and the form is still pending +
-    // editable so the user can correct the typo.
-    expect(connectEvents).toEqual([]);
-    expect(updateSecretsMock).not.toHaveBeenCalled();
     expect(screen.getByTestId("sensitive-request-status").textContent).toBe(
       "Pending",
     );
-    expect(screen.getByLabelText("Remote agent URL")).toBeTruthy();
-
-    document.removeEventListener(CONNECT_EVENT, onConnect);
+    await act(async () => {
+      finish({
+        status: "failed",
+        message: "Start the remote agent, then try again.",
+      });
+    });
+    expect(
+      screen.getByText("Start the remote agent, then try again."),
+    ).toBeTruthy();
+    expect(
+      (screen.getByLabelText("Remote agent URL") as HTMLInputElement).value,
+    ).toBe("https://paused.example");
+    expect(
+      (screen.getByLabelText("Access token (optional)") as HTMLInputElement)
+        .value,
+    ).toBe("synthetic-owner");
+    expect(
+      (screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    await act(async () => {
+      finish({ status: "connected" });
+    });
+    expect(screen.getByTestId("sensitive-request-status").textContent).toBe(
+      "Saved",
+    );
+    expect(screen.queryByLabelText("Remote agent URL")).toBeNull();
+    expect(attempts).toEqual([
+      "https://paused.example",
+      "https://paused.example",
+    ]);
+    expect(updateSecretsMock).not.toHaveBeenCalled();
   });
+
+  it("does not apply an old completion or finally to a replaced form request", async () => {
+    const completions: Array<(result: ConnectRequestResult) => void> = [];
+    connectionCleanups.push(
+      listenForConnectRequests(
+        () =>
+          new Promise<ConnectRequestResult>((resolve) => {
+            completions.push(resolve);
+          }),
+      ),
+    );
+    const first = pendingRemoteConnectRequest();
+    const second = pendingRemoteConnectRequest();
+    if (!first || !second) throw new Error("Remote form fixture required");
+    const { rerender } = render(<SensitiveRequestBlock request={first} />);
+    fireEvent.change(screen.getByLabelText("Remote agent URL"), {
+      target: { value: "https://a.example" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    rerender(<SensitiveRequestBlock request={second} />);
+    fireEvent.change(screen.getByLabelText("Remote agent URL"), {
+      target: { value: "https://b.example" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    await act(async () => {
+      completions[0]({ status: "connected" });
+    });
+    expect(screen.getByTestId("sensitive-request-status").textContent).toBe(
+      "Pending",
+    );
+    expect(
+      (screen.getByLabelText("Remote agent URL") as HTMLInputElement).value,
+    ).toBe("https://b.example");
+    expect(
+      (
+        screen.getByRole("button", {
+          name: /Connecting|Saving/,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    await act(async () => {
+      completions[1]({ status: "connected" });
+    });
+    expect(screen.getByTestId("sensitive-request-status").textContent).toBe(
+      "Saved",
+    );
+  });
+
+  it.each([
+    ["ftp://agent.example.com", "Remote agents must use HTTP or HTTPS."],
+    [
+      "https://synthetic-user:synthetic-password@agent.example.com",
+      "Use the access token field instead of credentials in the remote URL.",
+    ],
+  ])(
+    "remote_connect rejects invalid URL %s and keeps the form editable",
+    async (address, message) => {
+      const connectEvents: unknown[] = [];
+      const onConnect = (event: Event) => {
+        connectEvents.push((event as CustomEvent).detail);
+      };
+      document.addEventListener(CONNECT_EVENT, onConnect);
+
+      const { container } = render(
+        <MessageContent
+          message={baseMessage({
+            secretRequest: pendingRemoteConnectRequest(),
+          })}
+        />,
+      );
+
+      fireEvent.change(screen.getByLabelText("Remote agent URL"), {
+        target: { value: address },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+
+      await waitFor(() => {
+        expect(container.textContent).toContain(message);
+      });
+
+      // No dispatch, no secret-store write, and the form is still pending +
+      // editable so the user can correct the typo.
+      expect(connectEvents).toEqual([]);
+      expect(updateSecretsMock).not.toHaveBeenCalled();
+      expect(screen.getByTestId("sensitive-request-status").textContent).toBe(
+        "Pending",
+      );
+      expect(screen.getByLabelText("Remote agent URL")).toBeTruthy();
+
+      document.removeEventListener(CONNECT_EVENT, onConnect);
+    },
+  );
 
   it("degrades a blocked OAuth popup to same-tab navigation on plain web (#15143)", () => {
     const openMock = vi.fn().mockReturnValue(null);

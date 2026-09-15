@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   canonicalizeRemoteControlValue,
   isEncryptedRemoteControlEnvelope,
+  isRemoteConnectionMode,
   isRemoteControlIdentifier,
   isSignedRemoteCommand,
   REMOTE_CONTROL_ENVELOPE_ALGORITHM,
@@ -115,5 +116,27 @@ describe("remote-control contract", () => {
     expect(isEncryptedRemoteControlEnvelope({ ...envelope, sequence: 0 })).toBe(
       false,
     );
+  });
+});
+
+describe("remote connection-mode allowlist", () => {
+  it("admits relay and rejects normalization or unsupported transports", () => {
+    expect(isRemoteConnectionMode("relay")).toBe(true);
+    for (const rejected of [
+      "RELAY",
+      "relay ",
+      " relay",
+      "headscale",
+      "tunnel",
+      "direct",
+      "ssh",
+      "",
+      0,
+      null,
+      undefined,
+      {},
+    ]) {
+      expect(isRemoteConnectionMode(rejected)).toBe(false);
+    }
   });
 });

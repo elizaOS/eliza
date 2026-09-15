@@ -8,6 +8,11 @@
  */
 
 import type { Provider } from "@elizaos/core";
+import { asRecord } from "@elizaos/shared";
+import {
+  BROWSER_SERVICE_TYPE,
+  type BrowserService,
+} from "../browser-service.js";
 import {
   getBrowserWorkspaceMode,
   listBrowserWorkspaceTabs,
@@ -28,13 +33,33 @@ export const browserWorkspaceProvider: Provider = {
   // context (#12094 item 3: gate travels with the provider so a rename can't
   // silently drop it).
   roleGate: { minRole: "OWNER" },
-  get: async () => {
+  get: async (runtime, message) => {
+    if (asRecord(message.content?.metadata)?.uiBrowserSurface === "native") {
+      return {
+        text: JSON.stringify({
+          browser_workspace: {
+            target: "native-client",
+            description:
+              "The requesting client's native Browser page. BROWSER open/navigate/show target this client's Browser view. For open-and-read, navigate to the requested URL then read the native page to verify it loaded. A read alone does not open a closed view; use VIEWS show Browser first when needed. Use BROWSER snapshot or get text/title/url to observe it. Do not use Mac workspace tab IDs or assume their page content matches this client.",
+            supportedReads: ["snapshot", "get text", "get title", "get url"],
+          },
+        }),
+        data: { nativeClient: true, availableTargetIds: ["native-client"] },
+      };
+    }
     try {
       const mode = getBrowserWorkspaceMode();
       const tabs = await listBrowserWorkspaceTabs();
+      const service = runtime.getService<BrowserService>(BROWSER_SERVICE_TYPE);
+      const targets = service ? await service.resolveTargets() : [];
       const text = JSON.stringify(
         {
           [PROVIDER_NAME]: {
+            target: "workspace",
+            availableTargets: targets.map((target) => ({
+              id: target.id,
+              description: target.description,
+            })),
             mode,
             tabCount: tabs.length,
             tabs: tabs.map((tab) => ({
@@ -52,6 +77,7 @@ export const browserWorkspaceProvider: Provider = {
         text,
         data: {
           available: true,
+          availableTargetIds: targets.map((target) => target.id),
           mode,
           tabs,
         },

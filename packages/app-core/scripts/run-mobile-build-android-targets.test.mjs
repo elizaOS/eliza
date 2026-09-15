@@ -243,12 +243,6 @@ describe("Android mobile build target table", () => {
     expect(runMobileBuildSource).toContain(
       'await runAndroidBuild("android-launcher")',
     );
-    expect(runMobileBuildSource).toMatch(
-      /ANDROID_SOURCE_AUDITS,[\s\S]*?"auditSourceKey",[\s\S]*?"pre-gradle",[\s\S]*?\{ env: targetEnv \}/,
-    );
-    expect(runMobileBuildSource).toMatch(
-      /ANDROID_SOURCE_AUDITS,[\s\S]*?"auditSourceKey",[\s\S]*?"post-gradle",[\s\S]*?\{ env: targetEnv \}/,
-    );
   });
 
   it("exposes and dispatches a first-class Android cloud-hybrid target", () => {

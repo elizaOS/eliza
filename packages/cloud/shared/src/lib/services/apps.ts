@@ -12,12 +12,17 @@ import {
   type NewApp,
   withAppCacheFences,
 } from "../../db/repositories/apps";
+import { lockOrganizationPolicy } from "../../db/repositories/organization-policy-generation";
 import {
   getAppByIdHydrationGeneration,
   getInferenceAppById,
   invalidateInferenceAppByIdState,
   setInferenceAppById,
 } from "./inference-app-memory-cache";
+import {
+  readOrganizationQuotaPolicyInTransaction,
+  requireOrganizationResourceLimit,
+} from "./organization-quota-policy";
 
 // Re-export the app row types so consumers (and tests) can import them from the
 // service module rather than reaching into the repository directly.
@@ -30,7 +35,6 @@ import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
 import { managedDomainsService } from "./managed-domains";
 
-const DEFAULT_MAX_APPS_PER_ORG = 25;
 const appByIdHydrations = new Map<string, Promise<void>>();
 
 export interface AppCacheExecutionContext {
@@ -61,28 +65,7 @@ function isNoneMarker(value: unknown): value is { __none: true } {
   );
 }
 
-/**
- * Read-only view of the per-org app ceiling for the account-limits snapshot
- * (#19777) — the same resolution `assertCanCreateForOrganization` enforces.
- */
-export function getMaxAppsPerOrg(): number {
-  const raw = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
-  if (raw === undefined) return DEFAULT_MAX_APPS_PER_ORG;
-
-  const value = raw.trim();
-  const parsed = Number(value);
-  if (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new ElizaError("ELIZA_CLOUD_MAX_APPS_PER_ORG must be a positive safe integer", {
-      code: "INVALID_MAX_APPS_PER_ORG",
-      context: {
-        environmentVariable: "ELIZA_CLOUD_MAX_APPS_PER_ORG",
-      },
-      severity: "fatal",
-    });
-  }
-
-  return parsed;
-}
+export { getMaxAppsPerOrg } from "../constants/app-quota";
 
 export class AppNameConflictError extends Error {
   constructor(
@@ -350,22 +333,30 @@ export class AppsService {
    */
   async invalidateCache(appId: string, apiKeyId?: string, slug?: string): Promise<void> {
     invalidateInferenceAppByIdState(appId);
-    await withAppCacheFences({ appId, apiKeyId, slug }, async () => {
-      const promises: Promise<void>[] = [
-        cache.del(CacheKeys.app.byId(appId)),
-        cache.del(CacheKeys.app.costMarkup(appId)),
-      ];
+    try {
+      await withAppCacheFences({ appId, apiKeyId, slug }, async () => {
+        const promises: Promise<void>[] = [
+          cache.del(CacheKeys.app.byId(appId)),
+          cache.del(CacheKeys.app.costMarkup(appId)),
+        ];
 
-      if (apiKeyId) {
-        promises.push(cache.del(CacheKeys.app.byApiKeyId(apiKeyId)));
-      }
+        if (apiKeyId) {
+          promises.push(cache.del(CacheKeys.app.byApiKeyId(apiKeyId)));
+        }
 
-      if (slug) {
-        promises.push(cache.del(CacheKeys.app.bySlug(slug)));
-      }
+        if (slug) {
+          promises.push(cache.del(CacheKeys.app.bySlug(slug)));
+        }
 
-      await Promise.all(promises);
-    });
+        await Promise.all(promises);
+      });
+    } finally {
+      // A read can race the asynchronous shared-cache delete and repopulate
+      // this isolate's LRU with the stale row. Clear it again after completion;
+      // deletes remain commutative across isolates and cannot resurrect an
+      // older approval or monetization state.
+      invalidateInferenceAppByIdState(appId);
+    }
     logger.debug("[Apps] Invalidated app cache", { appId });
   }
 
@@ -416,19 +407,23 @@ export class AppsService {
   }
 
   async assertCanCreateForOrganization(organizationId: string): Promise<{ limit: number }> {
-    const limit = getMaxAppsPerOrg();
-    const currentCount = await appsRepository.countByOrganization(organizationId);
+    return writeTransaction(async (tx) => {
+      await lockOrganizationPolicy(tx, organizationId);
+      const policy = await readOrganizationQuotaPolicyInTransaction(tx, organizationId);
+      const limit = Number(requireOrganizationResourceLimit(policy, "apps"));
+      const currentCount = await appsRepository.countByOrganization(organizationId, tx);
 
-    if (currentCount >= limit) {
-      logger.warn("[Apps] Rejected app create at organization cap", {
-        organizationId,
-        currentCount,
-        limit,
-      });
-      throw new AppCreationLimitError(organizationId, limit);
-    }
+      if (currentCount >= limit) {
+        logger.warn("[Apps] Rejected app create at organization cap", {
+          organizationId,
+          currentCount,
+          limit,
+        });
+        throw new AppCreationLimitError(organizationId, limit);
+      }
 
-    return { limit };
+      return { limit };
+    });
   }
 
   async create(data: {
@@ -456,8 +451,10 @@ export class AppsService {
       throw new Error("Failed to generate unique slug");
     }
 
-    const limit = getMaxAppsPerOrg();
     const created = await writeTransaction(async (tx) => {
+      await lockOrganizationPolicy(tx, data.organization_id);
+      const policy = await readOrganizationQuotaPolicyInTransaction(tx, data.organization_id);
+      const limit = Number(requireOrganizationResourceLimit(policy, "apps"));
       const provisionalApp = await appsRepository.createIfOrganizationBelowLimit(
         {
           name: data.name,

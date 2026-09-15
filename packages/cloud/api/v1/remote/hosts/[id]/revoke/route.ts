@@ -1,4 +1,8 @@
-/** Revokes an owner-scoped host and drains a bounded page of relay authority. */
+/**
+ * Revokes an owner-scoped host and drains a bounded page of relay authority.
+ * Revocation and pending Headscale cleanup are recovery operations and remain
+ * available while new paid/external work is fenced by account standing.
+ */
 
 import { Hono } from "hono";
 import { isRemotePairingUuid } from "@/db/crypto/remote-pairing-code";
@@ -7,6 +11,10 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { parseRemoteHostCredential } from "../../../host-auth";
+import {
+  cleanupManagedNetwork,
+  managedNetworkConfig,
+} from "../../../managed-network";
 
 const app = new Hono<AppEnv>();
 
@@ -36,6 +44,29 @@ app.post("/", async (c) => {
     }
     if (!result)
       return c.json({ success: false, error: "Host not found" }, 404);
+    if (!result.cleanup.more && result.host.headscale_cleanup_pending) {
+      const config = managedNetworkConfig(
+        c.env as unknown as Record<string, unknown>,
+      );
+      if (!config) {
+        await remoteHostsRepository.recordManagedCleanupFailure({
+          hostId: result.host.id,
+          organizationId: result.host.organization_id,
+          userId: result.host.user_id,
+          message: "Headscale cleanup configuration is unavailable.",
+        });
+        throw new Error(
+          "Managed-network cleanup is waiting for Headscale configuration.",
+        );
+      }
+      await cleanupManagedNetwork({
+        host: result.host,
+        organizationId: result.host.organization_id,
+        userId: result.host.user_id,
+        config,
+        repository: remoteHostsRepository,
+      });
+    }
     return c.json({
       success: true,
       data: {

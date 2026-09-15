@@ -367,6 +367,7 @@ class RuntimeGitHubPullRequestSource implements OpenPullRequestSource {
 
 interface TaskServiceLike {
   listTasks(): Promise<Array<{ id: string }>>;
+  listTaskDetails?(): Promise<TaskThreadDetailDto[]>;
   getTask(taskId: string): Promise<TaskThreadDetailDto | null>;
   createTask(input: CreateTaskInput): Promise<TaskThreadDetailDto>;
   updateTask(
@@ -825,10 +826,14 @@ export class WaveSupervisor extends Service {
   private async loadWaveTasks(): Promise<TaskThreadDetailDto[]> {
     const service = this.taskService();
     if (!service) return [];
+    if (service.listTaskDetails) {
+      return (await service.listTaskDetails()).filter((task) =>
+        Boolean(readWaveId(task.metadata)),
+      );
+    }
     const summaries = await service.listTasks();
-    const details = await Promise.all(
-      summaries.map((task) => service.getTask(task.id)),
-    );
+    const details: Array<TaskThreadDetailDto | null> = [];
+    for (const task of summaries) details.push(await service.getTask(task.id));
     return details.filter(
       (task): task is TaskThreadDetailDto =>
         task !== null && Boolean(readWaveId(task.metadata)),

@@ -20,6 +20,7 @@ import { build } from "esbuild";
 import { chromium } from "playwright";
 
 const here = dirname(fileURLToPath(import.meta.url));
+const repoRoot = join(here, "../../../../../..");
 const stylesDir = join(here, "../../../styles");
 const outDir = join(here, "output-permission-priming");
 await mkdir(outDir, { recursive: true });
@@ -106,6 +107,15 @@ module.exports = { ElizaError };
 const stubCore = {
   name: "stub-core",
   setup(b) {
+    b.onResolve(
+      { filter: /^@elizaos\/core\/contracts\/first-run-options$/ },
+      () => ({
+        path: join(
+          repoRoot,
+          "packages/core/src/contracts/first-run-options.ts",
+        ),
+      }),
+    );
     b.onResolve({ filter: /^@elizaos\/core($|\/)/ }, () => ({ path: coreStub }));
   },
 };
@@ -133,7 +143,14 @@ const result = await build({
   platform: "browser",
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts" },
-  define: { "process.env.NODE_ENV": '"production"' },
+  // This is a browser-only fixture. The modal graph can reach shared styling
+  // helpers that probe Node environment variables at module initialization;
+  // keep those probes deterministic instead of leaving a missing `process`
+  // global that prevents React from mounting.
+  define: {
+    "process.env.NODE_ENV": '"production"',
+    "process.env": "{}",
+  },
   plugins: [stubClient, stubCore, shimNodeBuiltins],
   write: false,
 });

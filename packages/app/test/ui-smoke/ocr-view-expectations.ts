@@ -51,6 +51,16 @@ const VIEW_REGISTRY_FALLBACK: OcrExpectation = {
   requireAny: ["ready views", "gui ready"],
 };
 
+const VIEW_UNAVAILABLE_FALLBACK: OcrExpectation = {
+  requireAll: [
+    "View unavailable",
+    "This app is unavailable here",
+    "Install or enable it",
+    "App",
+  ],
+  requireAny: ["Retry", "Back to views"],
+};
+
 export const VIEW_OCR_POLICIES = {
   "builtin-chat": expected({
     requireAny: [
@@ -61,8 +71,8 @@ export const VIEW_OCR_POLICIES = {
   }),
   "builtin-camera": exempt(
     "native-platform-gated",
-    "The camera is an AOSP-native surface, so the browser audit intentionally renders the launcher fallback.",
-    LAUNCHER_FALLBACK,
+    "The camera is an AOSP-native surface, so the browser audit intentionally renders the truthful unavailable state.",
+    VIEW_UNAVAILABLE_FALLBACK,
   ),
   "builtin-tasks": expected({
     requireAll: ["Tasks"],
@@ -89,7 +99,7 @@ export const VIEW_OCR_POLICIES = {
     ],
   }),
   "builtin-apps": expected({
-    requireAll: ["Projects"],
+    requireAll: ["Apps"],
     requireAny: [
       "elizaOS apps",
       "Advanced",
@@ -103,6 +113,10 @@ export const VIEW_OCR_POLICIES = {
   "builtin-character": expected({
     requireAny: ["Personality", "Relationships", "Knowledge", "Skills"],
   }),
+  "builtin-relationships": expected({
+    requireAll: ["Relationships"],
+    requireAny: ["People", "Organizations"],
+  }),
   "builtin-character-select": expected({
     requireAny: [
       "Name",
@@ -115,7 +129,7 @@ export const VIEW_OCR_POLICIES = {
     ],
   }),
   "builtin-automations": expected({
-    requireAll: ["Automations"],
+    requireAll: ["Show"],
     requireAny: [
       "Nothing scheduled yet",
       "Active",
@@ -133,14 +147,15 @@ export const VIEW_OCR_POLICIES = {
     requireAny: ["Wallet", "USDC", "Tokens", "Perps"],
   }),
   "builtin-documents": expected({
-    requireAny: ["Add Knowledge", "Search knowledge", "Knowledge"],
+    requireAll: ["Library", "Add"],
+    requireAny: ["Docs", "No documents yet"],
   }),
   "builtin-character-skills": expected({
-    requireAll: ["Character", "Skills"],
+    requireAll: ["Skills"],
     requireAny: ["proposed", "active", "abilities", "Browse the catalog"],
   }),
   "builtin-experience": expected({
-    requireAll: ["Character"],
+    requireAll: ["Experience"],
     requireAny: ["Captured", "Avg importance", "need review"],
   }),
   "builtin-files": expected({
@@ -158,8 +173,7 @@ export const VIEW_OCR_POLICIES = {
     ],
   }),
   "builtin-trajectories": expected({
-    requireAll: ["Trajectories"],
-    requireAny: ["No trajectories yet", "Browse"],
+    requireAny: ["No trajectories yet", "No recorded activity yet", "Browse"],
   }),
   "builtin-transcripts": expected({
     requireAll: ["Live meeting"],
@@ -184,7 +198,9 @@ export const VIEW_OCR_POLICIES = {
       "Filter by type",
     ],
   }),
-  "builtin-rolodex": expected(LAUNCHER_FALLBACK),
+  "builtin-rolodex": expected({
+    requireAny: ["People", "Organizations", "Graph"],
+  }),
   "builtin-runtime": expected({
     requireAny: ["Plugins", "Actions", "Providers"],
   }),
@@ -203,17 +219,14 @@ export const VIEW_OCR_POLICIES = {
     requireAny: ["Desktop workspace", "Electrobun desktop runtime"],
   }),
   "builtin-settings": expected({
-    requireAll: ["Settings"],
     requireAny: ["Models & Providers", "Voice", "Appearance", "Basics"],
   }),
   "builtin-vault": expected({
-    // The audit intentionally captures routed views with the chat sheet open.
-    // Vault's non-interactive identity stays visible for orientation while its
-    // subtitle and every sensitive control are occluded in short landscapes.
-    requireAll: ["Vault"],
+    // The shared title bar is intentionally absent; verify the visible
+    // credential workspace description rather than requiring a removed title.
+    requireAll: ["Encrypted credentials", "references"],
   }),
   "builtin-logs": expected({
-    requireAll: ["Logs"],
     requireAny: ["INFO", "smoke", "All levels", "Search logs", "All tags"],
   }),
   "builtin-background": expected({
@@ -221,13 +234,13 @@ export const VIEW_OCR_POLICIES = {
     requireAny: ["Ocean Deep", "Alpine Dawn", "Ember Night"],
   }),
   "plugin-cloud-gui": expected({
-    requireAll: ["Eliza Cloud"],
-    requireAny: ["Credits", "Hosted agents", "API keys", "Connected"],
+    requireAll: ["Connected", "Credits"],
+    requireAny: ["Hosted agents", "API keys"],
   }),
   // Preserve the disconnected state as a separate production-bundle capture;
   // connected account fixtures must not erase sign-in recovery coverage.
   "plugin-cloud-signed-out-gui": expected({
-    requireAll: ["Eliza Cloud", "Connect in Settings"],
+    requireAll: ["Connect to view credits", "Connect in Settings"],
     requireAny: [
       "credits",
       "hosted agents",
@@ -240,7 +253,7 @@ export const VIEW_OCR_POLICIES = {
     requireAny: ["address book", "phone, or email", "search"],
   }),
   "plugin-focus-gui": expected({
-    requireAll: ["Idle"],
+    requireAll: ["No focus session active"],
   }),
   "plugin-calendar-gui": expected({
     requireAny: [
@@ -258,10 +271,14 @@ export const VIEW_OCR_POLICIES = {
       "December",
     ],
   }),
+  "plugin-family-operations-gui": expected({
+    requireAny: ["Family Operations", "Private owner workspace"],
+  }),
   "plugin-computer-use-sessions-gui": expected({
-    requireAll: ["Computer sessions", "Research browser"],
+    requireAll: ["Computer sessions", "Linux sandbox"],
     requireAny: [
-      "Linux sandbox",
+      "Research",
+      "Browser",
       "Sequence 12",
       "Cursor 640, 360",
       "Open floating",
@@ -281,7 +298,6 @@ export const VIEW_OCR_POLICIES = {
     VIEW_REGISTRY_FALLBACK,
   ),
   "plugin-health-gui": expected({
-    requireAll: ["Health"],
     requireAny: ["Last sleep", "Regularity", "Baseline"],
   }),
   "plugin-inbox-gui": expected({
@@ -297,7 +313,7 @@ export const VIEW_OCR_POLICIES = {
     requireAny: ["Set default SMS", "bridge-only", "compose"],
   }),
   "plugin-maps-gui": expected({
-    requireAll: ["Maps", "Find somewhere worth going"],
+    requireAll: ["Find somewhere worth going"],
     requireAny: ["provider-neutral", "Search a place"],
     forbid: ["Google Maps", "Mapbox"],
   }),
@@ -323,8 +339,8 @@ export const VIEW_OCR_POLICIES = {
   }),
   "plugin-cockpit-gui": exempt(
     "unregistered-remote-bundle",
-    "The Cockpit GUI has no remote bundle in the hermetic browser audit, so the launcher fallback is the only observable surface.",
-    LAUNCHER_FALLBACK,
+    "The Cockpit GUI has no remote bundle in the hermetic browser audit, so the truthful unavailable state is the only observable surface.",
+    VIEW_UNAVAILABLE_FALLBACK,
   ),
   "plugin-trajectory-logger-gui": expected({
     requireAny: ["Back to apps", "HANDLE", "PLAN"],

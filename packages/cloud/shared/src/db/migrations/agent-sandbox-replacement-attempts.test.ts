@@ -18,6 +18,8 @@ const migrationUrls = [
   "0326_agent_sandbox_replacement_attempt_identity_guard.sql",
   "0327_agent_sandbox_replacement_attempt_locator_guard.sql",
   "0328_agent_sandbox_replacement_attempt_state_guard.sql",
+  "0370_agent_sandbox_replacement_restore_locator.sql",
+  "0371_agent_vault_key_seed_receipts_per_replacement.sql",
 ].map((migration) => new URL(`./${migration}`, import.meta.url));
 const journalUrl = new URL("./meta/_journal.json", import.meta.url);
 const databases: PGlite[] = [];
@@ -46,6 +48,7 @@ const RESTORE_OPERATION_ID = "90000000-0000-4000-8000-000000000001";
 const RESTORE_SOURCE_GENERATION = "a0000000-0000-4000-8000-000000000001";
 const DIGEST = "a".repeat(64);
 const LIFECYCLE_DIGEST = "b".repeat(64);
+const CLEANUP_DIGEST = "c".repeat(64);
 const NODE_RECORD_ID = "b0000000-0000-4000-8000-000000000001";
 const NODE_INCARNATION = "c0000000-0000-4000-8000-000000000001";
 const NODE_HISTORY_ID = "d0000000-0000-4000-8000-000000000001";
@@ -88,7 +91,19 @@ const EXPECTED_CONSTRAINT_DEFINITIONS = {
       AND locator_allocation_counted = true
       AND locator_recorded_at IS NOT NULL
       AND locator_sandbox_id = locator_container_name
-      AND locator_container_name = ('agent-'::text || agent_id::text)
+      AND (num_nonnulls(restore_lease_id, restore_backup_id, restore_attempt_id,
+          restore_lease_owner_id, restore_lease_generation, restore_catalog_epoch,
+          restore_copy_role, restore_operation_id, restore_source_activation_generation,
+          restore_source_lifecycle_revision, restore_manifest_sha256,
+          restore_lease_expires_at) = 0
+        AND locator_container_name = ('agent-'::text || agent_id::text)
+        OR num_nonnulls(restore_lease_id, restore_backup_id, restore_attempt_id,
+          restore_lease_owner_id, restore_lease_generation, restore_catalog_epoch,
+          restore_copy_role, restore_operation_id, restore_source_activation_generation,
+          restore_source_lifecycle_revision, restore_manifest_sha256,
+          restore_lease_expires_at) = 12
+        AND locator_container_name = ((('agent-restore-'::text || agent_id::text) || '-'::text)
+          || restore_attempt_id::text))
       AND btrim(locator_node_id) <> ''::text
       AND octet_length(locator_node_id) <= 255
       AND btrim(locator_node_hostname) <> ''::text
@@ -139,6 +154,20 @@ const EXPECTED_CONSTRAINT_DEFINITIONS = {
     ON DELETE RESTRICT
   `),
   agent_sandbox_replacement_attempts_pkey: "PRIMARY KEY (id)",
+  agent_sandbox_replacement_attempts_provider_start_shape_check: normalizeDefinition(`
+    CHECK (((restore_attempt_id IS NULL AND provider_started_at IS NULL
+      OR restore_attempt_id IS NOT NULL
+        AND (provider_started_at IS NULL OR locator_recorded_at IS NOT NULL
+          AND provider_started_at >= locator_recorded_at))
+      AND (restore_attempt_id IS NULL OR locator_container_id IS NULL
+        OR provider_started_at IS NOT NULL)
+      AND (restore_attempt_id IS NULL OR provider_succeeded_at IS NULL
+        OR provider_started_at IS NOT NULL)
+      AND (provider_started_at IS NULL OR provider_succeeded_at IS NULL
+        OR provider_succeeded_at >= provider_started_at)
+      AND (provider_started_at IS NULL OR cleanup_proven_at IS NULL
+        OR cleanup_proven_at >= provider_started_at)) IS TRUE)
+  `),
   agent_sandbox_replacement_attempts_restore_lease_fkey: normalizeDefinition(`
     FOREIGN KEY (restore_lease_id, organization_id, agent_id, restore_backup_id,
       restore_attempt_id, restore_lease_owner_id, restore_lease_generation,
@@ -169,7 +198,12 @@ const EXPECTED_CONSTRAINT_DEFINITIONS = {
       AND restore_source_lifecycle_revision >= 0::numeric
       AND restore_source_lifecycle_revision <= '18446744073709551615'::numeric
       AND restore_manifest_sha256 ~ '^[0-9a-f]{64}$'::text
+      AND operation_kind = 'provision'::text
+      AND activation_generation = restore_attempt_id
       AND restore_lease_expires_at > created_at) IS TRUE)
+  `),
+  agent_sandbox_replacement_attempts_seed_authority_unique: normalizeDefinition(`
+    UNIQUE (id, organization_id, agent_id, restore_attempt_id)
   `),
   agent_sandbox_replacement_attempts_settlement_shape_check: normalizeDefinition(`
     CHECK ((state = 'in_flight_unresolved'::text
@@ -195,6 +229,18 @@ const EXPECTED_CONSTRAINT_DEFINITIONS = {
       AND lifecycle_receipt_digest ~ '^[0-9a-f]{64}$'::text
       AND cleanup_proven_at IS NULL
       AND cleanup_receipt_digest IS NULL
+      OR state = 'cleanup_in_progress'::text
+      AND restore_attempt_id IS NOT NULL
+      AND locator_recorded_at IS NOT NULL
+      AND (provider_succeeded_at IS NULL) = (provider_receipt_digest IS NULL)
+      AND (provider_succeeded_at IS NULL
+        OR locator_container_id IS NOT NULL
+          AND provider_succeeded_at >= locator_container_recorded_at
+          AND provider_receipt_digest ~ '^[0-9a-f]{64}$'::text)
+      AND lifecycle_committed_at IS NULL
+      AND lifecycle_receipt_digest IS NULL
+      AND cleanup_proven_at IS NULL
+      AND cleanup_receipt_digest IS NULL
       OR state = 'cleanup_proven'::text
       AND (provider_succeeded_at IS NULL) = (provider_receipt_digest IS NULL)
       AND (provider_receipt_digest IS NULL
@@ -218,18 +264,24 @@ const EXPECTED_INDEX_DEFINITIONS = {
   agent_sandbox_replacement_attempts_active_agent_uidx: normalizeDefinition(`
     CREATE UNIQUE INDEX agent_sandbox_replacement_attempts_active_agent_uidx
     ON agent_sandbox_replacement_attempts USING btree (organization_id, agent_id)
-    WHERE state = ANY (ARRAY['in_flight_unresolved'::text, 'provider_succeeded'::text])
+    WHERE state = ANY (ARRAY['in_flight_unresolved'::text, 'provider_succeeded'::text,
+      'cleanup_in_progress'::text])
   `),
   agent_sandbox_replacement_attempts_active_generation_uidx: normalizeDefinition(`
     CREATE UNIQUE INDEX agent_sandbox_replacement_attempts_active_generation_uidx
     ON agent_sandbox_replacement_attempts USING btree
       (organization_id, agent_id, activation_generation)
     WHERE state = ANY (ARRAY['in_flight_unresolved'::text, 'provider_succeeded'::text,
-      'lifecycle_committed'::text])
+      'lifecycle_committed'::text, 'cleanup_in_progress'::text])
   `),
   agent_sandbox_replacement_attempts_pkey: normalizeDefinition(`
     CREATE UNIQUE INDEX agent_sandbox_replacement_attempts_pkey
     ON agent_sandbox_replacement_attempts USING btree (id)
+  `),
+  agent_sandbox_replacement_attempts_seed_authority_unique: normalizeDefinition(`
+    CREATE UNIQUE INDEX agent_sandbox_replacement_attempts_seed_authority_unique
+    ON agent_sandbox_replacement_attempts USING btree
+      (id, organization_id, agent_id, restore_attempt_id)
   `),
 } satisfies Record<string, string>;
 
@@ -271,6 +323,61 @@ async function database(migrationCount: number = migrationUrls.length): Promise<
         activation_generation, lifecycle_revision, expected_manifest_sha256
       )
     );
+    CREATE TABLE agent_vault_key_seed_receipts (
+      id uuid PRIMARY KEY,
+      organization_id uuid NOT NULL,
+      agent_id uuid NOT NULL,
+      restore_attempt_id uuid NOT NULL,
+      backup_id uuid,
+      operation_id uuid,
+      source_activation_generation uuid,
+      source_lifecycle_revision numeric(20, 0),
+      manifest_sha256 text,
+      target_activation_generation uuid,
+      receipt_digest text,
+      docker_node_record_id uuid,
+      node_incarnation uuid,
+      node_history_id uuid,
+      CONSTRAINT agent_vault_key_seed_receipts_attempt_unique
+        UNIQUE (organization_id, restore_attempt_id),
+      CONSTRAINT agent_vault_key_seed_receipts_receipt_authority_unique UNIQUE (
+        id, organization_id, agent_id, restore_attempt_id, backup_id, operation_id,
+        source_activation_generation, source_lifecycle_revision, manifest_sha256,
+        target_activation_generation, receipt_digest
+      )
+    );
+    CREATE TABLE agent_activation_publications (
+      id uuid PRIMARY KEY,
+      organization_id uuid NOT NULL,
+      agent_id uuid NOT NULL,
+      activation_generation uuid NOT NULL,
+      purpose text NOT NULL,
+      backup_id uuid,
+      backup_manifest_sha256 text,
+      activation_receipt_sha256 text NOT NULL,
+      container_id text NOT NULL,
+      node_id text NOT NULL,
+      node_history_id uuid NOT NULL,
+      docker_node_record_id uuid NOT NULL,
+      node_incarnation uuid NOT NULL
+    );
+    CREATE TABLE agent_backup_restore_receipts (
+      id uuid PRIMARY KEY,
+      organization_id uuid NOT NULL,
+      agent_id uuid NOT NULL,
+      restore_attempt_id uuid NOT NULL,
+      backup_id uuid NOT NULL,
+      operation_id uuid NOT NULL,
+      source_activation_generation uuid NOT NULL,
+      source_lifecycle_revision numeric(20, 0) NOT NULL,
+      manifest_sha256 text NOT NULL,
+      seed_receipt_id uuid NOT NULL,
+      seed_receipt_digest text NOT NULL,
+      target_activation_generation uuid NOT NULL,
+      activation_purpose text NOT NULL,
+      activation_publication_id uuid NOT NULL,
+      activation_receipt_sha256 text NOT NULL
+    );
     INSERT INTO organizations (id) VALUES ('${ORGANIZATION_ID}');
     INSERT INTO agent_node_incarnation_histories
       (id, docker_node_record_id, node_incarnation)
@@ -310,8 +417,41 @@ async function insertAttempt(
   );
 }
 
-async function recordProviderSuccess(db: PGlite, attemptId: string = ATTEMPT_ID): Promise<void> {
-  const sandboxId = `agent-${AGENT_ID}`;
+async function insertRestoreAttempt(db: PGlite, attemptId = ATTEMPT_ID): Promise<void> {
+  await db.query(
+    `INSERT INTO agent_sandbox_replacement_attempts (
+       id, organization_id, agent_id, operation_kind, lifecycle_revision,
+       activation_generation, restore_lease_id, restore_backup_id,
+       restore_attempt_id, restore_lease_owner_id, restore_lease_generation,
+       restore_catalog_epoch, restore_copy_role, restore_operation_id,
+       restore_source_activation_generation, restore_source_lifecycle_revision,
+       restore_manifest_sha256, restore_lease_expires_at
+     ) VALUES (
+       $1::uuid, $2::uuid, $3::uuid, 'provision', 7, $4::uuid, $5::uuid,
+       $6::uuid, $7::uuid, 'restore-worker', $8::uuid, 3, 'primary', $9::uuid,
+       $10::uuid, 6, $11, clock_timestamp() + interval '1 hour'
+     )`,
+    [
+      attemptId,
+      ORGANIZATION_ID,
+      AGENT_ID,
+      RESTORE_ATTEMPT_ID,
+      RESTORE_LEASE_ID,
+      BACKUP_ID,
+      RESTORE_ATTEMPT_ID,
+      RESTORE_GENERATION,
+      RESTORE_OPERATION_ID,
+      RESTORE_SOURCE_GENERATION,
+      DIGEST,
+    ],
+  );
+}
+
+async function recordIntentLocator(
+  db: PGlite,
+  containerName: string,
+  attemptId: string = ATTEMPT_ID,
+): Promise<void> {
   await db.query(
     `UPDATE agent_sandbox_replacement_attempts SET
        locator_sandbox_id = $1, locator_node_id = 'node-1',
@@ -322,8 +462,12 @@ async function recordProviderSuccess(db: PGlite, attemptId: string = ATTEMPT_ID)
        locator_secret_cleanup_version = 1, locator_allocation_counted = TRUE,
        locator_recorded_at = clock_timestamp(), updated_at = clock_timestamp()
      WHERE id = $5::uuid`,
-    [sandboxId, NODE_RECORD_ID, NODE_INCARNATION, NODE_HISTORY_ID, attemptId],
+    [containerName, NODE_RECORD_ID, NODE_INCARNATION, NODE_HISTORY_ID, attemptId],
   );
+}
+
+async function recordProviderSuccess(db: PGlite, attemptId: string = ATTEMPT_ID): Promise<void> {
+  await recordIntentLocator(db, `agent-${AGENT_ID}`, attemptId);
   await db.query(
     `UPDATE agent_sandbox_replacement_attempts SET
        locator_container_id = $1, locator_container_recorded_at = clock_timestamp(),
@@ -373,18 +517,31 @@ afterEach(async () => {
   await Promise.all(databases.splice(0).map((db) => db.close()));
 });
 
-describe("0321-0328 agent sandbox replacement attempts", () => {
+describe("0321-0328 and 0370-0371 agent sandbox replacement attempts", () => {
   test("occupies one ordered journal range and matches the merged schema surface", async () => {
     const journal = (await Bun.file(journalUrl).json()) as {
       entries: Array<{ idx: number; tag: string }>;
     };
-    expect(journal.entries.at(-1)).toMatchObject({
-      idx: 311,
-      tag: "0328_agent_sandbox_replacement_attempt_state_guard",
+    expect(
+      journal.entries.find(
+        ({ tag }) => tag === "0371_agent_vault_key_seed_receipts_per_replacement",
+      ),
+    ).toMatchObject({
+      idx: 354,
+      tag: "0371_agent_vault_key_seed_receipts_per_replacement",
     });
-    expect(journal.entries.slice(-8).map(({ tag }) => tag)).toEqual(
-      migrationUrls.map(migrationTag),
+    const expectedTags = migrationUrls.map(migrationTag);
+    const initialRangeTags = expectedTags.slice(0, 8);
+    const rangeStart = journal.entries.findIndex(({ tag }) => tag === initialRangeTags[0]);
+    expect(rangeStart).toBeGreaterThanOrEqual(0);
+    const range = journal.entries.slice(rangeStart, rangeStart + initialRangeTags.length);
+    expect(range.map(({ idx }) => idx)).toEqual(
+      Array.from({ length: initialRangeTags.length }, (_, offset) => 304 + offset),
     );
+    expect(range.map(({ tag }) => tag)).toEqual(initialRangeTags);
+    const matchingEntries = journal.entries.filter(({ tag }) => expectedTags.includes(tag));
+    expect(matchingEntries.map(({ tag }) => tag)).toEqual(expectedTags);
+    expect(matchingEntries).toHaveLength(expectedTags.length);
 
     const db = await database();
     const schema = getTableConfig(agentSandboxReplacementAttempts);
@@ -449,6 +606,7 @@ describe("0321-0328 agent sandbox replacement attempts", () => {
 
     const schemaConstraintNames = [
       ...schema.checks.map(({ name }) => name),
+      ...schema.uniqueConstraints.map(({ name }) => name),
       "agent_sandbox_replacement_attempts_node_occurrence_fkey",
       "agent_sandbox_replacement_attempts_restore_lease_fkey",
     ];
@@ -487,6 +645,7 @@ describe("0321-0328 agent sandbox replacement attempts", () => {
       "agent_sandbox_replacement_attempts_guard_identity",
       "agent_sandbox_replacement_attempts_guard_insert",
       "agent_sandbox_replacement_attempts_guard_locator",
+      "agent_sandbox_replacement_attempts_guard_provider_start",
       "agent_sandbox_replacement_attempts_guard_state",
       "agent_sandbox_replacement_attempts_guard_truncate",
     ]);
@@ -646,9 +805,9 @@ describe("0321-0328 agent sandbox replacement attempts", () => {
     await expect(
       db.query("DELETE FROM agent_sandbox_replacement_attempts WHERE id = $1::uuid", [ATTEMPT_ID]),
     ).rejects.toThrow(/cannot be deleted before terminal owner erasure/);
-    await expect(db.exec("TRUNCATE TABLE agent_sandbox_replacement_attempts")).rejects.toThrow(
-      /cannot be truncated/,
-    );
+    await expect(
+      db.exec("TRUNCATE TABLE agent_sandbox_replacement_attempts CASCADE"),
+    ).rejects.toThrow(/cannot be truncated/);
     await expect(
       db.query(
         `UPDATE agent_sandbox_replacement_attempts
@@ -704,10 +863,407 @@ describe("0321-0328 agent sandbox replacement attempts", () => {
     });
   }
 
+  test("admits only the authority-scoped deterministic legacy and exact-restore names", async () => {
+    const legacy = await database();
+    await insertAttempt(legacy);
+    await recordIntentLocator(legacy, `agent-${AGENT_ID}`);
+
+    const restore = await database();
+    await insertRestoreAttempt(restore);
+    await recordIntentLocator(restore, `agent-restore-${AGENT_ID}-${RESTORE_ATTEMPT_ID}`);
+
+    const restoreUsingLegacyName = await database();
+    await insertRestoreAttempt(restoreUsingLegacyName);
+    await expect(recordIntentLocator(restoreUsingLegacyName, `agent-${AGENT_ID}`)).rejects.toThrow(
+      /locator_shape_check/,
+    );
+
+    const legacyUsingRestoreName = await database();
+    await insertAttempt(legacyUsingRestoreName);
+    await expect(
+      recordIntentLocator(
+        legacyUsingRestoreName,
+        `agent-restore-${AGENT_ID}-${RESTORE_ATTEMPT_ID}`,
+      ),
+    ).rejects.toThrow(/locator_shape_check/);
+  }, 15_000);
+
+  test("retains one immutable provider-start marker before exact-restore Docker enrichment", async () => {
+    const restore = await database();
+    await insertRestoreAttempt(restore);
+    await recordIntentLocator(restore, `agent-restore-${AGENT_ID}-${RESTORE_ATTEMPT_ID}`);
+    const started = await restore.query<{ provider_started_at: Date }>(`
+      UPDATE agent_sandbox_replacement_attempts
+      SET provider_started_at = clock_timestamp(), updated_at = clock_timestamp()
+      WHERE id = '${ATTEMPT_ID}'::uuid
+      RETURNING provider_started_at
+    `);
+    expect(started.rows[0]?.provider_started_at).toBeInstanceOf(Date);
+    await expect(
+      restore.query(`
+        UPDATE agent_sandbox_replacement_attempts
+        SET provider_started_at = provider_started_at + interval '1 second'
+        WHERE id = '${ATTEMPT_ID}'::uuid
+      `),
+    ).rejects.toThrow(/provider start marker is immutable/);
+    await restore.query(
+      `UPDATE agent_sandbox_replacement_attempts
+       SET locator_container_id = $1, locator_container_recorded_at = clock_timestamp(),
+         updated_at = clock_timestamp()
+       WHERE id = $2::uuid`,
+      [DIGEST, ATTEMPT_ID],
+    );
+    await restore.query(
+      `UPDATE agent_sandbox_replacement_attempts
+       SET state = 'provider_succeeded', provider_succeeded_at = clock_timestamp(),
+         provider_receipt_digest = $1, updated_at = clock_timestamp()
+       WHERE id = $2::uuid`,
+      [DIGEST, ATTEMPT_ID],
+    );
+    await restore.query(
+      `UPDATE agent_sandbox_replacement_attempts
+       SET state = 'cleanup_in_progress', updated_at = clock_timestamp()
+       WHERE id = $1::uuid`,
+      [ATTEMPT_ID],
+    );
+    const cleaned = await restore.query<{
+      state: string;
+      provider_receipt_digest: string;
+      cleanup_receipt_digest: string;
+    }>(
+      `UPDATE agent_sandbox_replacement_attempts
+       SET state = 'cleanup_proven', cleanup_proven_at = clock_timestamp(),
+         cleanup_receipt_digest = $1, updated_at = clock_timestamp()
+       WHERE id = $2::uuid
+       RETURNING state, provider_receipt_digest, cleanup_receipt_digest`,
+      [CLEANUP_DIGEST, ATTEMPT_ID],
+    );
+    expect(cleaned.rows[0]).toEqual({
+      state: "cleanup_proven",
+      provider_receipt_digest: DIGEST,
+      cleanup_receipt_digest: CLEANUP_DIGEST,
+    });
+
+    const missingMarker = await database();
+    await insertRestoreAttempt(missingMarker);
+    await recordIntentLocator(missingMarker, `agent-restore-${AGENT_ID}-${RESTORE_ATTEMPT_ID}`);
+    await expect(
+      missingMarker.query(
+        `UPDATE agent_sandbox_replacement_attempts
+         SET locator_container_id = $1, locator_container_recorded_at = clock_timestamp(),
+           updated_at = clock_timestamp()
+         WHERE id = $2::uuid`,
+        [DIGEST, ATTEMPT_ID],
+      ),
+    ).rejects.toThrow(/provider_start_shape_check/);
+
+    const legacy = await database();
+    await insertAttempt(legacy);
+    await recordIntentLocator(legacy, `agent-${AGENT_ID}`);
+    await expect(
+      legacy.query(`
+        UPDATE agent_sandbox_replacement_attempts
+        SET provider_started_at = clock_timestamp()
+        WHERE id = '${ATTEMPT_ID}'::uuid
+      `),
+    ).rejects.toThrow(/requires unresolved exact restore intent/);
+  }, 15_000);
+
+  test("retains legacy seed receipts and admits one new receipt per exact replacement attempt", async () => {
+    const db = await database(migrationUrls.length - 1);
+    const legacyReceiptId = "e0000000-0000-4000-8000-000000000001";
+    const firstReceiptId = "e0000000-0000-4000-8000-000000000002";
+    const secondReceiptId = "e0000000-0000-4000-8000-000000000003";
+    const publicationId = "e0000000-0000-4000-8000-000000000004";
+    const legacyFinalReceiptId = "e0000000-0000-4000-8000-000000000005";
+    const exactFinalReceiptId = "e0000000-0000-4000-8000-000000000006";
+    await db.query(
+      `INSERT INTO agent_vault_key_seed_receipts
+         (id, organization_id, agent_id, restore_attempt_id)
+       VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid)`,
+      [legacyReceiptId, ORGANIZATION_ID, AGENT_ID, RESTORE_ATTEMPT_ID],
+    );
+    await db.query(
+      `INSERT INTO agent_activation_publications (
+         id, organization_id, agent_id, activation_generation, purpose, backup_id,
+         backup_manifest_sha256, activation_receipt_sha256, container_id,
+         node_id, node_history_id, docker_node_record_id, node_incarnation
+       ) VALUES (
+         $1::uuid, $2::uuid, $3::uuid, $4::uuid, 'restore', $5::uuid,
+         $6, $7, $8, 'node-1', $9::uuid, $10::uuid, $11::uuid
+       )`,
+      [
+        publicationId,
+        ORGANIZATION_ID,
+        AGENT_ID,
+        RESTORE_ATTEMPT_ID,
+        BACKUP_ID,
+        DIGEST,
+        LIFECYCLE_DIGEST,
+        DIGEST,
+        NODE_HISTORY_ID,
+        NODE_RECORD_ID,
+        NODE_INCARNATION,
+      ],
+    );
+    await db.query(
+      `INSERT INTO agent_backup_restore_receipts (
+         id, organization_id, agent_id, restore_attempt_id, backup_id, operation_id,
+         source_activation_generation, source_lifecycle_revision, manifest_sha256,
+         seed_receipt_id, seed_receipt_digest, target_activation_generation,
+         activation_purpose, activation_publication_id, activation_receipt_sha256
+       ) VALUES (
+         $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid,
+         $7::uuid, 6, $8, $9::uuid, $10, $4::uuid, 'restore', $11::uuid, $12
+       )`,
+      [
+        legacyFinalReceiptId,
+        ORGANIZATION_ID,
+        AGENT_ID,
+        RESTORE_ATTEMPT_ID,
+        BACKUP_ID,
+        RESTORE_OPERATION_ID,
+        RESTORE_SOURCE_GENERATION,
+        DIGEST,
+        legacyReceiptId,
+        DIGEST,
+        publicationId,
+        LIFECYCLE_DIGEST,
+      ],
+    );
+    await apply(await Bun.file(migrationUrls.at(-1)!).text(), db);
+
+    const legacy = await db.query<{ replacement_attempt_id: string | null }>(
+      `SELECT replacement_attempt_id::text
+       FROM agent_vault_key_seed_receipts WHERE id = $1::uuid`,
+      [legacyReceiptId],
+    );
+    expect(legacy.rows).toEqual([{ replacement_attempt_id: null }]);
+    const legacyFinal = await db.query<{ replacement_attempt_id: string | null }>(
+      `SELECT replacement_attempt_id::text
+       FROM agent_backup_restore_receipts WHERE id = $1::uuid`,
+      [legacyFinalReceiptId],
+    );
+    expect(legacyFinal.rows).toEqual([{ replacement_attempt_id: null }]);
+
+    await insertRestoreAttempt(db);
+    await recordIntentLocator(db, `agent-restore-${AGENT_ID}-${RESTORE_ATTEMPT_ID}`);
+    await expect(
+      db.query(
+        `INSERT INTO agent_vault_key_seed_receipts
+           (id, organization_id, agent_id, restore_attempt_id)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid)`,
+        [firstReceiptId, ORGANIZATION_ID, AGENT_ID, RESTORE_ATTEMPT_ID],
+      ),
+    ).rejects.toThrow(/requires exact replacement attempt authority/);
+    await db.query(
+      `INSERT INTO agent_vault_key_seed_receipts
+         (id, organization_id, agent_id, restore_attempt_id, replacement_attempt_id,
+          backup_id, operation_id, source_activation_generation,
+          source_lifecycle_revision, manifest_sha256, target_activation_generation,
+          receipt_digest, docker_node_record_id, node_incarnation, node_history_id)
+       VALUES (
+         $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid,
+         $7::uuid, $8::uuid, 6, $9, $4::uuid, $10, $11::uuid, $12::uuid, $13::uuid
+       )`,
+      [
+        firstReceiptId,
+        ORGANIZATION_ID,
+        AGENT_ID,
+        RESTORE_ATTEMPT_ID,
+        ATTEMPT_ID,
+        BACKUP_ID,
+        RESTORE_OPERATION_ID,
+        RESTORE_SOURCE_GENERATION,
+        DIGEST,
+        DIGEST,
+        NODE_RECORD_ID,
+        NODE_INCARNATION,
+        NODE_HISTORY_ID,
+      ],
+    );
+    await expect(
+      db.query(
+        `INSERT INTO agent_vault_key_seed_receipts
+           (id, organization_id, agent_id, restore_attempt_id, replacement_attempt_id)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid)`,
+        [secondReceiptId, ORGANIZATION_ID, AGENT_ID, RESTORE_ATTEMPT_ID, ATTEMPT_ID],
+      ),
+    ).rejects.toThrow(/agent_vault_key_seed_receipts_attempt_unique/);
+
+    await expect(
+      db.query(
+        `UPDATE agent_sandbox_replacement_attempts
+         SET state = 'cleanup_proven', cleanup_proven_at = clock_timestamp(),
+           cleanup_receipt_digest = $1, updated_at = clock_timestamp()
+         WHERE id = $2::uuid`,
+        [DIGEST, ATTEMPT_ID],
+      ),
+    ).rejects.toThrow(/state transition is not monotonic/);
+    await db.query(
+      `UPDATE agent_sandbox_replacement_attempts
+       SET state = 'cleanup_in_progress', updated_at = clock_timestamp()
+       WHERE id = $1::uuid`,
+      [ATTEMPT_ID],
+    );
+    await db.query(
+      `UPDATE agent_sandbox_replacement_attempts
+       SET state = 'cleanup_proven', cleanup_proven_at = clock_timestamp(),
+         cleanup_receipt_digest = $1, updated_at = clock_timestamp()
+       WHERE id = $2::uuid`,
+      [DIGEST, ATTEMPT_ID],
+    );
+    await insertRestoreAttempt(db, OTHER_ATTEMPT_ID);
+    await recordIntentLocator(
+      db,
+      `agent-restore-${AGENT_ID}-${RESTORE_ATTEMPT_ID}`,
+      OTHER_ATTEMPT_ID,
+    );
+    await db.query(
+      `UPDATE agent_sandbox_replacement_attempts
+       SET provider_started_at = clock_timestamp(), updated_at = clock_timestamp()
+       WHERE id = $1::uuid`,
+      [OTHER_ATTEMPT_ID],
+    );
+    await db.query(
+      `UPDATE agent_sandbox_replacement_attempts
+       SET locator_container_id = $1, locator_container_recorded_at = clock_timestamp(),
+         updated_at = clock_timestamp()
+       WHERE id = $2::uuid`,
+      [DIGEST, OTHER_ATTEMPT_ID],
+    );
+    await db.query(
+      `UPDATE agent_sandbox_replacement_attempts
+       SET state = 'provider_succeeded', provider_succeeded_at = clock_timestamp(),
+         provider_receipt_digest = $1, updated_at = clock_timestamp()
+       WHERE id = $2::uuid`,
+      [DIGEST, OTHER_ATTEMPT_ID],
+    );
+    await db.query(
+      `INSERT INTO agent_vault_key_seed_receipts
+         (id, organization_id, agent_id, restore_attempt_id, replacement_attempt_id,
+          backup_id, operation_id, source_activation_generation,
+          source_lifecycle_revision, manifest_sha256, target_activation_generation,
+          receipt_digest, docker_node_record_id, node_incarnation, node_history_id)
+       VALUES (
+         $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid,
+         $7::uuid, $8::uuid, 6, $9, $4::uuid, $10, $11::uuid, $12::uuid, $13::uuid
+       )`,
+      [
+        secondReceiptId,
+        ORGANIZATION_ID,
+        AGENT_ID,
+        RESTORE_ATTEMPT_ID,
+        OTHER_ATTEMPT_ID,
+        BACKUP_ID,
+        RESTORE_OPERATION_ID,
+        RESTORE_SOURCE_GENERATION,
+        DIGEST,
+        DIGEST,
+        NODE_RECORD_ID,
+        NODE_INCARNATION,
+        NODE_HISTORY_ID,
+      ],
+    );
+    const receipts = await db.query<{ replacement_attempt_id: string | null }>(`
+      SELECT replacement_attempt_id::text
+      FROM agent_vault_key_seed_receipts
+      ORDER BY id
+    `);
+    expect(receipts.rows.map(({ replacement_attempt_id }) => replacement_attempt_id)).toEqual([
+      null,
+      ATTEMPT_ID,
+      OTHER_ATTEMPT_ID,
+    ]);
+
+    await db.query("DELETE FROM agent_backup_restore_receipts WHERE id = $1::uuid", [
+      legacyFinalReceiptId,
+    ]);
+    const insertFinalReceipt = (
+      replacementAttemptId: string | null,
+      seedReceiptId: string,
+    ): Promise<unknown> =>
+      db.query(
+        `INSERT INTO agent_backup_restore_receipts (
+           id, organization_id, agent_id, restore_attempt_id, backup_id, operation_id,
+           source_activation_generation, source_lifecycle_revision, manifest_sha256,
+           seed_receipt_id, seed_receipt_digest, replacement_attempt_id,
+           target_activation_generation, activation_purpose, activation_publication_id,
+           activation_receipt_sha256
+         ) VALUES (
+           $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid,
+           $7::uuid, 6, $8, $9::uuid, $8, $10::uuid,
+           $4::uuid, 'restore', $11::uuid, $12
+         )`,
+        [
+          exactFinalReceiptId,
+          ORGANIZATION_ID,
+          AGENT_ID,
+          RESTORE_ATTEMPT_ID,
+          BACKUP_ID,
+          RESTORE_OPERATION_ID,
+          RESTORE_SOURCE_GENERATION,
+          DIGEST,
+          seedReceiptId,
+          replacementAttemptId,
+          publicationId,
+          LIFECYCLE_DIGEST,
+        ],
+      );
+    await expect(insertFinalReceipt(null, secondReceiptId)).rejects.toThrow(
+      /requires exact replacement attempt authority/,
+    );
+    await expect(insertFinalReceipt(OTHER_ATTEMPT_ID, secondReceiptId)).rejects.toThrow(
+      /requires its exact adopted replacement chain/,
+    );
+    await commitLifecycle(db, OTHER_ATTEMPT_ID);
+    await expect(insertFinalReceipt(ATTEMPT_ID, firstReceiptId)).rejects.toThrow(
+      /requires its exact adopted replacement chain/,
+    );
+    await db.query(
+      `UPDATE agent_vault_key_seed_receipts
+       SET node_history_id = $1::uuid
+       WHERE id = $2::uuid`,
+      [OTHER_ACTIVATION_GENERATION, secondReceiptId],
+    );
+    await expect(insertFinalReceipt(OTHER_ATTEMPT_ID, secondReceiptId)).rejects.toThrow(
+      /requires its exact adopted replacement chain/,
+    );
+    await db.query(
+      `UPDATE agent_vault_key_seed_receipts
+       SET node_history_id = $1::uuid
+       WHERE id = $2::uuid`,
+      [NODE_HISTORY_ID, secondReceiptId],
+    );
+    await insertFinalReceipt(OTHER_ATTEMPT_ID, secondReceiptId);
+    const finalReceipt = await db.query<{ replacement_attempt_id: string }>(
+      `SELECT replacement_attempt_id::text
+       FROM agent_backup_restore_receipts WHERE id = $1::uuid`,
+      [exactFinalReceiptId],
+    );
+    expect(finalReceipt.rows).toEqual([{ replacement_attempt_id: OTHER_ATTEMPT_ID }]);
+
+    const receiptAuthority = await db.query<{ definition: string }>(`
+      SELECT pg_get_constraintdef(oid, true) AS definition
+      FROM pg_constraint
+      WHERE conrelid = 'agent_vault_key_seed_receipts'::regclass
+        AND conname = 'agent_vault_key_seed_receipts_receipt_authority_unique'
+    `);
+    expect(normalizeDefinition(receiptAuthority.rows[0]?.definition ?? "")).toBe(
+      normalizeDefinition(`UNIQUE (id, organization_id, agent_id, restore_attempt_id,
+        backup_id, operation_id, source_activation_generation, source_lifecycle_revision,
+        manifest_sha256, target_activation_generation, receipt_digest)`),
+    );
+  }, 15_000);
+
   test("binds optional restore authority to one exact durable lease tuple", async () => {
     const db = await database();
     const expiresAt = new Date(Date.now() + 60_000);
-    const insert = (ownerId: string): Promise<unknown> =>
+    const insert = (
+      ownerId: string,
+      operationKind = "provision",
+      activationGeneration = RESTORE_ATTEMPT_ID,
+    ): Promise<unknown> =>
       db.query(
         `INSERT INTO agent_sandbox_replacement_attempts (
           id, organization_id, agent_id, operation_kind, lifecycle_revision,
@@ -717,7 +1273,7 @@ describe("0321-0328 agent sandbox replacement attempts", () => {
           restore_source_activation_generation, restore_source_lifecycle_revision,
           restore_manifest_sha256, restore_lease_expires_at
         ) VALUES (
-          $1::uuid, $2::uuid, $3::uuid, 'upgrade', 7, $4::uuid, $5::uuid,
+          $1::uuid, $2::uuid, $3::uuid, $14, 7, $4::uuid, $5::uuid,
           $6::uuid, $7::uuid, $8, $9::uuid, 3, 'primary', $10::uuid,
           $11::uuid, 6, $12, $13::timestamptz
         )`,
@@ -725,7 +1281,7 @@ describe("0321-0328 agent sandbox replacement attempts", () => {
           ATTEMPT_ID,
           ORGANIZATION_ID,
           AGENT_ID,
-          ACTIVATION_GENERATION,
+          activationGeneration,
           RESTORE_LEASE_ID,
           BACKUP_ID,
           RESTORE_ATTEMPT_ID,
@@ -735,9 +1291,14 @@ describe("0321-0328 agent sandbox replacement attempts", () => {
           RESTORE_SOURCE_GENERATION,
           DIGEST,
           expiresAt,
+          operationKind,
         ],
       );
 
+    await expect(insert("restore-worker", "upgrade")).rejects.toThrow(/restore_shape_check/);
+    await expect(insert("restore-worker", "provision", ACTIVATION_GENERATION)).rejects.toThrow(
+      /restore_shape_check/,
+    );
     await expect(insert("wrong-worker")).rejects.toThrow(/restore_lease_fkey/);
     await insert("restore-worker");
     const rows = await db.query<{ restore_lease_owner_id: string }>(

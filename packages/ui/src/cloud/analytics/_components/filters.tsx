@@ -17,7 +17,7 @@ import { Sparkles } from "lucide-react";
 import { useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  BrandButton,
+  Button,
   Select,
   SelectContent,
   SelectItem,
@@ -149,9 +149,9 @@ export function AnalyticsFilters() {
           const isActive = activeRange === preset.value;
 
           return (
-            <BrandButton
+            <Button
               key={preset.value}
-              variant={isActive ? "primary" : "outline"}
+              variant={isActive ? "default" : "outline"}
               size="sm"
               className={cn(
                 "text-xs font-medium transition-colors",
@@ -170,7 +170,7 @@ export function AnalyticsFilters() {
               }}
             >
               {preset.label}
-            </BrandButton>
+            </Button>
           );
         })}
       </div>

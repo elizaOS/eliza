@@ -19,6 +19,10 @@
  * SCRIPTS read, not from what SKILL.md prose mentions.
  */
 import { sanitizeSpawnEnv } from "@elizaos/core";
+import {
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/shared";
 
 /** Process-level keys a child needs to run. None carries authority. */
 const HOST_ENV_KEYS = [
@@ -56,6 +60,18 @@ const AGENT_SCOPED_ENV_KEYS = [
   "ELIZA_CLOUD_URL",
   "ELIZA_APP_ID",
 ] as const;
+
+const DEV_CLOUD_OWNED_SKILL_ENV_KEYS: ReadonlySet<string> = new Set([
+  "ELIZAOS_CLOUD_API_KEY",
+  "ELIZAOS_CLOUD_BASE_URL",
+  "ELIZA_CLOUD_BASE_URL",
+  "ELIZA_CLOUD_PUBLIC_URL",
+  "ELIZA_CLOUD_URL",
+]);
+
+function isDevCloudOwnedSkillEnvKey(key: string): boolean {
+  return DEV_CLOUD_OWNED_SKILL_ENV_KEYS.has(key.toUpperCase());
+}
 
 /**
  * Credentials a bundled skill script reads or declares in `requires.env`
@@ -95,12 +111,23 @@ export function buildSkillExecutionEnv(
   overlay: Record<string, string>,
 ): Record<string, string> {
   const result: Record<string, string> = {};
+  const devCloudAuthority = resolveDevCloudEnvAuthority(processEnv);
   for (const [key, value] of Object.entries(processEnv)) {
+    if (devCloudAuthority && isDevCloudOwnedSkillEnvKey(key)) continue;
     if (value !== undefined && isInheritableSkillEnvKey(key))
       result[key] = value;
   }
+  if (devCloudAuthority) {
+    for (const key of DEV_CLOUD_OWNED_SKILL_ENV_KEYS) {
+      const value = resolveDevCloudAuthorityEnvValue(key, processEnv);
+      if (value !== undefined) result[key] = value;
+    }
+  }
   for (const [key, value] of Object.entries(sanitizeSpawnEnv(overlay))) {
     if (value === undefined) continue;
+    // A skill-specific overlay must not replace the immutable launcher tuple
+    // or reactivate Cloud for staging-default/offline development.
+    if (devCloudAuthority && isDevCloudOwnedSkillEnvKey(key)) continue;
     // Drop any inherited entry that differs only in case before writing. POSIX
     // treats `GEMINI_API_KEY` and `Gemini_Api_Key` as two variables, so an
     // exact-name overwrite would ship both and a child reading the documented

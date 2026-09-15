@@ -566,14 +566,14 @@ describe("createLedgerDebitSettler — exactly-once inline settlement", () => {
   );
 
   test(
-    "republish failure leaves the debit outcome intact and forces the org off the fast path (#17768)",
+    "republish failure leaves the debit outcome intact and invalidates the projection (#17768)",
     async () => {
       if (!pgliteReady) return;
-      const { creditsService: credits } = await import("../credits");
-      const { isOrgAdmissionRefused } = await import("../inference-admission-refusal");
+      const { cache } = await import("../../cache/client");
       const { readOrgBalanceHint } = await import("../inference-auth-cache");
-      const snap = spyOn(credits, "getOrganizationBalanceSnapshot").mockImplementation(async () => {
-        throw new Error("forced snapshot failure for test");
+      const hintWrite = spyOn(cache, "setWithOutcome").mockResolvedValue({
+        kind: "unavailable",
+        backend: "memory",
       });
       try {
         const reqId = nextRequestId();
@@ -589,10 +589,9 @@ describe("createLedgerDebitSettler — exactly-once inline settlement", () => {
           adjustmentType: "none",
         });
         expect(await readBalance()).toBeCloseTo(7.5, 6);
-        expect(isOrgAdmissionRefused(ORG_ID)).toBe(true);
         expect(await readOrgBalanceHint(ORG_ID)).toBeNull();
       } finally {
-        snap.mockRestore();
+        hintWrite.mockRestore();
       }
     },
     PGLITE_TIMEOUT,

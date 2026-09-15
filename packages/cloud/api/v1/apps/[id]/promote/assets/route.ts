@@ -1,6 +1,12 @@
 // Handles v1 cloud API v1 apps id promote assets route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { z } from "zod";
+import {
+  asGenerativeCacheApiError,
+  getGenerativeOperationContext,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
+import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import type { RouteContext } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
@@ -15,9 +21,10 @@ import {
   appPromotionAssetsService,
 } from "@/lib/services/app-promotion-assets";
 import { appsService } from "@/lib/services/apps";
-import { creditsService } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
+import { retainGenerativeTask } from "@/lib/services/generative-operation";
 import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const GenerateAssetsSchema = z.object({
   sizes: z
@@ -30,21 +37,28 @@ const GenerateAssetsSchema = z.object({
 });
 
 async function __hono_POST(
-  request: Request,
+  c: AppContext,
   { params }: RouteContext<{ id: string }>,
+  caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>,
+  operationOptions: Parameters<typeof getGenerativeOperationContext>[2],
 ) {
-  const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
+  const { user } = caller;
+  const operationContext = getGenerativeOperationContext(
+    c,
+    caller,
+    operationOptions,
+  );
   const { id } = await params;
 
   const app = await appsService.getById(id);
   if (!app || app.organization_id !== user.organization_id) {
     return Response.json({ error: "App not found" }, { status: 404 });
   }
-  if (await isAppKeyOutOfScope(apiKey?.id, id)) {
+  if (caller.appScopeId && caller.appScopeId !== id) {
     return Response.json({ error: "Access denied" }, { status: 403 });
   }
 
-  const body = await request.json();
+  const body = await c.req.json();
   const parsed = GenerateAssetsSchema.safeParse(body);
 
   if (!parsed.success) {
@@ -54,27 +68,8 @@ async function __hono_POST(
     );
   }
 
-  // Calculate cost - 1 social card always generated + 1 banner (if requested)
   const imageCount = 1; // Social cards always generated (includeSocialCards: true)
   const bannerCount = parsed.data.includeAdBanners ? 1 : 0;
-  const totalImageCost = (imageCount + bannerCount) * PROMO_IMAGE_COST;
-  const copyCost =
-    parsed.data.includeCopy !== false ? AD_COPY_GENERATION_COST : 0;
-  const totalCost = totalImageCost + copyCost;
-
-  const deduction = await creditsService.deductCredits({
-    organizationId: user.organization_id,
-    amount: totalCost,
-    description: `Generate promotional assets for ${app.name}`,
-    metadata: { appId: id, imageCount: imageCount + bannerCount },
-  });
-
-  if (!deduction.success) {
-    return Response.json(
-      { error: "Insufficient credits", required: totalCost },
-      { status: 402 },
-    );
-  }
 
   logger.info("[Promote Assets API] Generating assets", {
     appId: id,
@@ -83,25 +78,19 @@ async function __hono_POST(
   });
 
   try {
-    const result = await appPromotionAssetsService.generateAssetBundle(app, {
-      includeSocialCards: true,
-      includeAdBanners: parsed.data.includeAdBanners,
-      includeCopy: parsed.data.includeCopy,
-      targetAudience: parsed.data.targetAudience,
-      customPrompt: parsed.data.customPrompt,
-    });
+    const result = await appPromotionAssetsService.generateAssetBundle(
+      app,
+      {
+        includeSocialCards: true,
+        includeAdBanners: parsed.data.includeAdBanners,
+        includeCopy: parsed.data.includeCopy,
+        targetAudience: parsed.data.targetAudience,
+        customPrompt: parsed.data.customPrompt,
+      },
+      operationContext,
+    );
 
-    // Refund for failed generations
     const successfulImages = result.assets.length;
-    const failedImages = imageCount + bannerCount - successfulImages;
-    if (failedImages > 0) {
-      await creditsService.refundCredits({
-        organizationId: user.organization_id,
-        amount: failedImages * PROMO_IMAGE_COST,
-        description: "Refund for failed asset generations",
-        metadata: { appId: id, failedCount: failedImages },
-      });
-    }
 
     if (successfulImages > 0) {
       const promotionalAssets = result.assets.map((asset) => ({
@@ -111,9 +100,19 @@ async function __hono_POST(
         generatedAt: asset.generatedAt.toISOString(),
       }));
 
-      await appsService.update(id, {
-        promotional_assets: promotionalAssets,
-      });
+      await retainGenerativeTask(
+        operationContext,
+        {
+          provider: "promotion-assets",
+          billingSource: "gateway",
+          model: "promotion-assets/persistence",
+          operation: "promotion_assets_status_write",
+          cost: 0,
+        },
+        appsService.update(id, {
+          promotional_assets: promotionalAssets,
+        }),
+      );
 
       logger.info("[Promote Assets API] Saved promotional assets to app", {
         appId: id,
@@ -131,26 +130,17 @@ async function __hono_POST(
       })),
       copy: result.copy,
       errors: result.errors,
-      creditsUsed: totalCost - failedImages * PROMO_IMAGE_COST,
+      creditsUsed:
+        successfulImages * PROMO_IMAGE_COST +
+        (result.copy ? AD_COPY_GENERATION_COST : 0),
     });
   } catch (error) {
-    // Full refund on complete failure
-    await creditsService.refundCredits({
-      organizationId: user.organization_id,
-      amount: totalCost,
-      description: "Refund for failed asset generation",
-      metadata: { appId: id, reason: "generation_error" },
-    });
-
     logger.error("[Promote Assets API] Generation failed", {
       appId: id,
       error: error instanceof Error ? error.message : "Unknown error",
     });
 
-    return Response.json(
-      { error: "Failed to generate assets. Credits have been refunded." },
-      { status: 500 },
-    );
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
 }
 
@@ -229,9 +219,26 @@ __hono_app.get("/", async (c) =>
     params: Promise.resolve({ id: c.req.param("id")! }),
   }),
 );
-__hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, {
-    params: Promise.resolve({ id: c.req.param("id")! }),
-  }),
-);
+__hono_app.post("/", async (c) => {
+  try {
+    const caller = await requireGenerativeRouteCaller(c, {
+      rateLimitEndpoint: "strict",
+      deferStrongCredentialCheck: true,
+    });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
+    });
+    return await __hono_POST(
+      c,
+      { params: Promise.resolve({ id: c.req.param("id")! }) },
+      caller,
+      {
+        credentialForAdmission: () => credentialGuard.credentialForAdmission(),
+      },
+    );
+  } catch (error) {
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
+  }
+});
 export default __hono_app;

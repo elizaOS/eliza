@@ -2,6 +2,61 @@
   "schemaVersion": 1,
   "organisms": [
     {
+      "id": "organism:reply-inspector",
+      "owner": {
+        "kind": "export",
+        "file": "packages/ui/src/components/developer/DeveloperWorkspace.tsx",
+        "symbol": "DeveloperReplyDetails"
+      },
+      "responsibility": "Owns one reply inspector's focused dialog, lazy message lookup, retained usage, Details and Trajectories tab selection, recorded-run loading, retry and cancellation lifecycle.",
+      "dependsOn": [
+        "atom:badge",
+        "atom:button",
+        "atom:card",
+        "atom:codeBlock",
+        "atom:dialog",
+        "atom:nativeSelect",
+        "atom:separator",
+        "atom:table",
+        "atom:tabs",
+        "atom:textarea"
+      ],
+      "grants": [
+        "layout.container",
+        "layout.region",
+        "layout.scroll-owner",
+        "semantics.content",
+        "interaction.select"
+      ],
+      "lifecycleOwner": "message-scoped-reply-inspection"
+    },
+    {
+      "id": "organism:trajectory-inspector",
+      "owner": {
+        "kind": "export",
+        "file": "packages/ui/src/components/pages/TrajectoryDetailView.tsx",
+        "symbol": "TrajectoryDetailView"
+      },
+      "responsibility": "Owns inspection of one recorded run across loading, retry, live revisions, call and step selection, pipeline selection, diagnostics and full-payload copying in page and embedded presentations.",
+      "dependsOn": [
+        "atom:badge",
+        "atom:button",
+        "atom:card",
+        "atom:codeBlock",
+        "atom:nativeSelect",
+        "atom:separator",
+        "atom:tabs"
+      ],
+      "grants": [
+        "layout.container",
+        "layout.region",
+        "layout.scroll-owner",
+        "semantics.content",
+        "interaction.select"
+      ],
+      "lifecycleOwner": "recorded-run-inspection"
+    },
+    {
       "id": "organism:startup-shell",
       "owner": {
         "kind": "export",
@@ -9,13 +64,52 @@
         "symbol": "StartupShell"
       },
       "responsibility": "Owns the application startup lifecycle across loading, failure, pairing, and bootstrap states.",
-      "dependsOn": [],
-      "grants": [
-        "layout.viewport",
-        "layout.region",
-        "semantics.landmark"
+      "dependsOn": [
+        "atom:alert",
+        "atom:badge",
+        "atom:button",
+        "atom:card",
+        "atom:input",
+        "atom:separator"
       ],
+      "grants": ["layout.viewport", "layout.region", "semantics.landmark"],
       "lifecycleOwner": "application-startup"
+    },
+    {
+      "id": "organism:vault-workspace",
+      "owner": {
+        "kind": "export",
+        "file": "packages/ui/src/components/settings/SecretsManagerSection.tsx",
+        "symbol": "VaultWorkspace"
+      },
+      "responsibility": "Owns one Vault activation's shared data loading, mutation refresh, tab and hash navigation, cross-tab focus, scrolling, and dialog or page presentation lifecycle.",
+      "dependsOn": [
+        "atom:alert",
+        "atom:badge",
+        "atom:banner",
+        "atom:button",
+        "atom:card",
+        "atom:checkbox",
+        "atom:dialog",
+        "atom:input",
+        "atom:radioGroup",
+        "atom:select",
+        "atom:separator",
+        "atom:table",
+        "atom:tabs"
+      ],
+      "grants": [
+        "paint.surface",
+        "paint.border",
+        "paint.radius",
+        "interaction.select",
+        "interaction.focus-region",
+        "layout.container",
+        "layout.region",
+        "layout.scroll-owner",
+        "semantics.content"
+      ],
+      "lifecycleOwner": "vault-activation-and-navigation"
     }
   ],
   "pageShells": [

@@ -20,6 +20,21 @@ function accountsClient(body: unknown): ElizaClient {
 }
 
 describe("ElizaClient account replacement transport", () => {
+  it("forwards a caller's abort signal to the inventory transport", async () => {
+    const request = vi.fn(async () => jsonResponse({ providers: [] }));
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    client.setRequestTransport({ request });
+    const controller = new AbortController();
+
+    await client.listAccounts({ signal: controller.signal });
+
+    expect(request).toHaveBeenCalledWith(
+      "http://agent.example:31337/api/accounts",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      { timeoutMs: 10_000 },
+    );
+  });
+
   it("accepts the canonical providers response and preserves server metadata", async () => {
     const body = {
       providers: [
@@ -55,7 +70,7 @@ describe("ElizaClient account replacement transport", () => {
     await expect(accountsClient(body).listAccounts()).resolves.toEqual(body);
   });
 
-  it("rejects server metadata that advertises an unspawnable account provider", async () => {
+  it("rejects a supported account provider assigned to an incompatible coding backend", async () => {
     const body = {
       providers: [
         {
@@ -77,7 +92,7 @@ describe("ElizaClient account replacement transport", () => {
     await expect(accountsClient(body).listAccounts()).rejects.toMatchObject({
       code: ACCOUNTS_RESPONSE_INVALID_CODE,
       context: {
-        path: "response.providers[0].runtimeEligibility.codingAgent.available",
+        path: "response.providers[0].runtimeEligibility.codingAgent.backend",
       },
     });
   });

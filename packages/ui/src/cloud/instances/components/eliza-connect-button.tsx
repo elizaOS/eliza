@@ -4,7 +4,7 @@
  * Button that opens/connects to a cloud agent instance (external link into the
  * running agent).
  */
-import { BrandButton } from "@elizaos/ui/cloud-ui";
+import { Button } from "@elizaos/ui/cloud-ui";
 import { ExternalLink } from "lucide-react";
 import { useT } from "../lib/i18n";
 import { openWebUIWithPairing } from "../lib/open-web-ui";
@@ -16,14 +16,14 @@ interface Props {
 export function ElizaConnectButton({ agentId }: Props) {
   const t = useT();
   return (
-    <BrandButton
-      variant="primary"
+    <Button
+      variant="default"
       size="sm"
       className="min-h-touch"
       onClick={() => openWebUIWithPairing(agentId)}
     >
       <ExternalLink className="size-3.5" />
       {t("cloud.containers.connect.openWebUi", { defaultValue: "Open Web UI" })}
-    </BrandButton>
+    </Button>
   );
 }

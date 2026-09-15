@@ -1,29 +1,10 @@
 /**
- * Cross-platform native notification bridge: shows OS/mobile notifications and
- * routes their tap deep-links back into the app.
- *
- * Two exports with distinct roles in the store's delivery policy (native-first,
- * glass-fallback — see notification-store `deliver`):
- *
- *   - `showNativeNotification` — the OS-native channels, first that succeeds:
- *     `@capacitor/local-notifications` (canonical iOS + Android channels), then
- *     `ElizaIntent` (bespoke iOS companion wired to `UNUserNotificationCenter`).
- *     On native platforms this IS the notification surface.
- *   - `showWebNotification` — the browser `Notification` API, used only as the
- *     hidden-tab fallback on platforms with no native channel (the in-app glass
- *     banner is the visible-tab surface there).
- *
- * Plugins are read from the runtime Capacitor registry (`Capacitor.Plugins`),
- * so this module statically imports nothing optional — the web/desktop bundle
- * is unaffected when the native plugins are absent, and every path no-ops
- * gracefully rather than throwing.
- *
- * Delivery loudness follows the notification's priority: on Android each
- * priority tier maps to its own channel (urgent = heads-up + sound, normal =
- * sound without heads-up, low = silent) because channel importance is fixed at
- * creation and user-adjustable per channel — one channel for everything would
- * make backups heads-up or approvals silent, with no way for the user to tune
- * them apart. Web maps low priority to a silent notification.
+ * Implements mobile OS notification delivery and validated notification-tap routing.
+ * Capacitor LocalNotifications owns iOS and Android delivery; the iOS intent
+ * fallback is used only when another permission request is allowed. Callers own
+ * their fallback UI and inbox when no native channel accepts a request.
+ * Android urgency channels remain user-adjustable; web notifications are a
+ * separate permission-gated API for hidden browser tabs.
  */
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import type { NotificationPriority } from "@elizaos/core";
@@ -49,6 +30,10 @@ export interface NativeNotificationRequest {
    * groupKey collapse) instead of stacking a duplicate. Falls back to `id`.
    */
   groupKey?: string;
+  /** Passive action feedback must not open a permission prompt. */
+  requestPermission?: boolean;
+  /** Desktop compatibility override; mobile sound is controlled by OS channels. */
+  silent?: boolean;
 }
 
 interface LocalNotificationsPluginLike extends Record<string, unknown> {
@@ -280,6 +265,7 @@ async function ensureAndroidChannel(
     ensuredChannels.add(channel.id);
     return { channelId: channel.id, unusable: false };
   } catch {
+    // error-policy:J4 channel unavailable; the caller retains fallback feedback.
     // The channel genuinely could not be created on an 8+ device; a post here
     // would be dropped. An unusable primary route falls through to glass.
     return { channelId: channel.id, unusable: true };
@@ -288,28 +274,25 @@ async function ensureAndroidChannel(
 
 async function tryLocalNotifications(
   req: NativeNotificationRequest,
-): Promise<boolean> {
+): Promise<boolean | "denied"> {
   const plugin =
     getNativePlugin<LocalNotificationsPluginLike>("LocalNotifications");
   if (!hasMethod<LocalNotificationsPluginLike>(plugin, "schedule")) {
     return false;
   }
 
-  // Ensure permission (Android 13+ POST_NOTIFICATIONS / iOS alert grant).
-  if (typeof plugin.checkPermissions === "function") {
-    try {
-      const status = await plugin.checkPermissions();
-      if (
-        status.display !== "granted" &&
-        typeof plugin.requestPermissions === "function"
-      ) {
-        const requested = await plugin.requestPermissions();
-        if (requested.display !== "granted") return false;
-      }
-    } catch {
-      // error-policy:J4 permission probe failed — attempt to schedule anyway;
-      // the OS drops it if ungranted, and the other sinks must not be blocked.
-    }
+  // A denied or unobservable grant must never be reported as delivery.
+  if (typeof plugin.checkPermissions !== "function") return false;
+  const status = await plugin.checkPermissions();
+  if (status.display !== "granted") {
+    if (status.display === "denied") return "denied";
+    if (
+      req.requestPermission === false ||
+      typeof plugin.requestPermissions !== "function"
+    )
+      return false;
+    const requested = await plugin.requestPermissions();
+    if (requested.display !== "granted") return "denied";
   }
 
   const channel = await ensureAndroidChannel(plugin, req.priority);
@@ -342,7 +325,8 @@ async function tryLocalNotifications(
 async function tryElizaIntent(
   req: NativeNotificationRequest,
 ): Promise<boolean> {
-  if (Capacitor.getPlatform() !== "ios") return false;
+  if (Capacitor.getPlatform() !== "ios" || req.requestPermission === false)
+    return false;
   const plugin = getNativePlugin<ElizaIntentPluginLike>("ElizaIntent");
   if (!hasMethod<ElizaIntentPluginLike>(plugin, "receiveIntent")) {
     return false;
@@ -428,7 +412,9 @@ export async function showNativeNotification(
   // channel falls through and an all-failed dispatch returns "none" (the
   // dashboard notification center is the source of truth either way).
   try {
-    if (await tryLocalNotifications(req)) return "local";
+    const local = await tryLocalNotifications(req);
+    if (local === "denied") return "none";
+    if (local) return "local";
   } catch {
     /* fall through to next channel */
   }

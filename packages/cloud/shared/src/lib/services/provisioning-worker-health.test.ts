@@ -89,6 +89,29 @@ describe("provisioning worker health (Redis heartbeat)", () => {
     });
   });
 
+  it("accepts a Redis client that decodes the heartbeat JSON before returning it", async () => {
+    const timestamp = new Date().toISOString();
+    const redis = {
+      async get() {
+        return {
+          timestamp,
+          capabilities: [REVIEWED_BACKUP_RESTORE_CAPABILITY],
+        };
+      },
+    } as unknown as CompatibleRedis;
+
+    const result = await withEnv({}, () =>
+      checkProvisioningWorkerCapability(REVIEWED_BACKUP_RESTORE_CAPABILITY, redis),
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      required: true,
+      lastHeartbeatAt: timestamp,
+      capabilities: [REVIEWED_BACKUP_RESTORE_CAPABILITY],
+    });
+  });
+
   it("distinguishes legacy liveness from the reviewed-backup execution capability", async () => {
     const redis = makeMemoryRedis();
     await redis.set(PROVISIONING_WORKER_HEARTBEAT_KEY, new Date().toISOString());

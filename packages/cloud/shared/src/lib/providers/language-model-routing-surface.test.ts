@@ -115,6 +115,13 @@ describe("resolveAiProviderSource routing precedence", () => {
   test("cerebras-native (bare) → cerebras", () => {
     expect(resolveAiProviderSource("gpt-oss-120b")).toBe("cerebras");
   });
+  test("Qwen default and its Cerebras aliases resolve the direct provider", () => {
+    for (const model of ["qwen-3.8-27b", "cerebras/qwen-3.8-27b", "cerebras:qwen-3.8-27b"]) {
+      expect(resolveAiProviderSource(model)).toBe("cerebras");
+      expect(resolvePooledDirectProviderForModel(model)).toBe("cerebras-api");
+      expect(resolvePassthroughUpstreamForModel(model)?.modelId).toBe("qwen-3.8-27b");
+    }
+  });
   test("decorated cerebras id (:nitro) still → cerebras", () => {
     expect(resolveAiProviderSource("openai/gpt-oss-120b:nitro")).toBe("cerebras");
   });

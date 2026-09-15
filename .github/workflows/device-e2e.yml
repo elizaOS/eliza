@@ -5,13 +5,14 @@ name: Device E2E
 # producers were deleted by the CI consolidation (926dc8b58a1); this workflow
 # owns the current hosted-device route without reviving that sprawl. Each job
 # hands the whole lane to the single bundle-owning runner
-# (android-e2e.mjs / ios-e2e.mjs --output) so
-# build, install, and drive failures after the runner starts land inside one
-# finalized bundle root (inline/, logs/, summary.json, junit.xml). Each job
-# initializes its artifact root immediately after checkout, so a later
-# toolchain or emulator/simulator infrastructure failure still leaves a
-# revision-bound bootstrap record alongside the Actions log. No repository
-# secrets are read anywhere, so fork PRs stay credential-free.
+# (android-e2e.mjs / ios-e2e.mjs --output). Android keeps its bootstrap record
+# at android/logs/workflow-bootstrap.txt and atomically publishes the allowlisted
+# runner proof at android/evidence/{summary.json,junit.xml,media/}; iOS retains
+# its existing full bundle root. Each job initializes its artifact root
+# immediately after checkout, so a later toolchain or emulator/simulator
+# infrastructure failure still leaves a revision-bound bootstrap record
+# alongside the Actions log. No repository secrets are read anywhere, so fork
+# PRs stay credential-free.
 #
 # Reachability: repository policy forbids direct pull-request triggers
 # (audit:workflow-triggers), so canonical ci.yml calls this workflow behind the
@@ -125,7 +126,7 @@ jobs:
           emulator-options: -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect -qemu -cpu qemu64,+avx,+avx2,+f16c,+fma
           # The runner invokes each physical line separately, so keep the
           # branch on one line and delegate the focused proof to a script.
-          script: if [ "$ELIZA_ANDROID_RELEASE_MINIFY_SMOKE" = "1" ]; then bash packages/app/scripts/android-release-minify-smoke.sh; else node packages/app/scripts/android-e2e.mjs --build --skip-local-chat --no-emulator-boot --start-host-agent --host-emulator-probes --output "$ELIZA_DEVICE_BUNDLE_ROOT/android"; fi
+          script: if [ "$ELIZA_ANDROID_RELEASE_MINIFY_SMOKE" = "1" ]; then bash packages/app/scripts/android-release-minify-smoke.sh; else node packages/app/scripts/android-e2e.mjs --build --skip-local-chat --no-emulator-boot --start-host-agent --host-emulator-probes --output "$ELIZA_DEVICE_BUNDLE_ROOT/android/evidence"; fi
 
       - name: Upload Android device bundle
         if: always()

@@ -15,6 +15,7 @@ import { useAgentElement } from "../../agent-surface";
 // authed runtimes (e.g. the Android local agent).
 import { client } from "../../api/client";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { confirmDesktopAction } from "../../utils/desktop-dialogs";
 import { OwnerOnlyNotice, RoleGate } from "../RoleGate";
 import { Button } from "../ui/button";
 import { SettingsInputRow } from "./settings-agent-rows";
@@ -28,6 +29,30 @@ interface RevealPayload {
   value: string;
   source: "bare" | "profile";
   profileId?: string;
+}
+
+interface PublicWalletAddresses {
+  evmAddress: string | null;
+  solanaAddress: string | null;
+}
+
+function normalizePublicAddress(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const address = value.trim();
+  return address.length > 0 ? address : null;
+}
+
+function parsePublicWalletAddresses(
+  value: unknown,
+): PublicWalletAddresses | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const payload = value as Record<string, unknown>;
+  return {
+    evmAddress: normalizePublicAddress(payload.evmAddress),
+    solanaAddress: normalizePublicAddress(payload.solanaAddress),
+  };
 }
 
 function maskValue(value: string): string {
@@ -89,21 +114,77 @@ function tryExtractAgentAddress(rawValue: string): string | null {
   return null;
 }
 
+function walletChainDisplayName(chain: string): string {
+  switch (chain.toLowerCase()) {
+    case "evm":
+      return "EVM";
+    case "sol":
+    case "solana":
+      return "Solana";
+    default:
+      return chain;
+  }
+}
+
+function parseAgentWalletKey(key: string): {
+  encodedAgentId: string;
+  chain: string;
+} | null {
+  const parts = key.split(".");
+  if (parts.length !== 4 || parts[0] !== "agent" || parts[2] !== "wallet") {
+    return null;
+  }
+  return {
+    encodedAgentId: parts[1] ?? "",
+    chain: parts[3] ?? "",
+  };
+}
+
+function normalizeAgentWalletLabel(label: string): string {
+  const match = /^(.*)\s+\((evm|sol|solana)\)$/i.exec(label);
+  if (!match) return label;
+  return `${match[1]} · ${walletChainDisplayName(match[2] ?? "")}`;
+}
+
+function publicAddressForEntry(
+  meta: VaultEntryMeta,
+  addresses: PublicWalletAddresses | null,
+): string | null {
+  if (!addresses) return null;
+  const walletKey = parseAgentWalletKey(meta.key);
+  if (!walletKey) return null;
+  switch (walletKey.chain.toLowerCase()) {
+    case "evm":
+      return addresses.evmAddress;
+    case "solana":
+      return addresses.solanaAddress;
+    default:
+      return null;
+  }
+}
+
 export function entryDisplayLabel(meta: VaultEntryMeta): string {
-  if (meta.label && meta.label !== meta.key) return meta.label;
+  if (meta.label && meta.label !== meta.key) {
+    return normalizeAgentWalletLabel(meta.label);
+  }
   // Make the per-agent agent.<id>.wallet.<chain> shape human-friendly.
-  const parts = meta.key.split(".");
-  if (parts.length === 4 && parts[0] === "agent" && parts[2] === "wallet") {
-    const encodedAgentId = parts[1] ?? "";
+  const walletKey = parseAgentWalletKey(meta.key);
+  if (walletKey) {
     try {
-      return `${decodeURIComponent(encodedAgentId)} (${parts[3]})`;
+      return `agent ${decodeURIComponent(walletKey.encodedAgentId)} · ${walletChainDisplayName(walletKey.chain)}`;
     } catch {
       // error-policy:J4 An invalid persisted key is shown as explicitly
       // unavailable instead of exposing its malformed segment as an agent.
-      return `Unavailable agent (${parts[3]})`;
+      return `Unavailable agent · ${walletChainDisplayName(walletKey.chain)}`;
     }
   }
   return meta.key;
+}
+
+export function entryDisplayDescription(meta: VaultEntryMeta): string {
+  const walletKey = parseAgentWalletKey(meta.key);
+  if (!walletKey) return meta.key;
+  return `${walletChainDisplayName(walletKey.chain)} wallet key`;
 }
 
 /**
@@ -123,6 +204,8 @@ export function WalletKeysSection() {
 function WalletKeysSectionBody() {
   const { t } = useTranslation();
   const [entries, setEntries] = useState<VaultEntryMeta[] | null>(null);
+  const [publicAddresses, setPublicAddresses] =
+    useState<PublicWalletAddresses | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [revealMap, setRevealMap] = useState<Record<string, string>>({});
   const [revealLoading, setRevealLoading] = useState<Record<string, boolean>>(
@@ -192,9 +275,25 @@ function WalletKeysSectionBody() {
     }
   }, [t]);
 
+  const loadPublicAddresses = useCallback(async () => {
+    try {
+      const res = await client.rawRequest("/api/wallet/addresses", undefined, {
+        allowNonOk: true,
+      });
+      if (!res.ok) return;
+      const addresses = parsePublicWalletAddresses(await res.json());
+      if (addresses) setPublicAddresses(addresses);
+    } catch {
+      // error-policy:J4 Public addresses are optional metadata. A runtime
+      // without the wallet route still gets the complete vault-key surface and
+      // its safe fallback descriptions; this never becomes a settings error.
+    }
+  }, []);
+
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadPublicAddresses();
+  }, [load, loadPublicAddresses]);
 
   const onReveal = useCallback(
     async (key: string) => {
@@ -244,12 +343,14 @@ function WalletKeysSectionBody() {
 
   const onDelete = useCallback(
     async (entry: VaultEntryMeta) => {
-      const ok = window.confirm(
-        t("walletkeys.deleteConfirm", {
+      const ok = await confirmDesktopAction({
+        title: t("common.delete"),
+        type: "warning",
+        message: t("walletkeys.deleteConfirm", {
           key: entry.key,
           defaultValue: 'Delete wallet key "{{key}}"? This cannot be undone.',
         }),
-      );
+      });
       if (!ok) return;
       const res = await client.rawRequest(
         `/api/secrets/inventory/${encodeURIComponent(entry.key)}`,
@@ -412,21 +513,25 @@ function WalletKeysSectionBody() {
           {entries.map((entry) => {
             const revealed = revealMap[entry.key];
             const loading = revealLoading[entry.key];
-            const address = revealed ? tryExtractAgentAddress(revealed) : null;
+            const revealedAddress = revealed
+              ? tryExtractAgentAddress(revealed)
+              : null;
+            const publicAddress = publicAddressForEntry(entry, publicAddresses);
             return (
               <WalletKeyRow
                 key={entry.key}
                 entryKey={entry.key}
                 displayLabel={entryDisplayLabel(entry)}
                 secondaryLine={
-                  revealed
-                    ? address
+                  publicAddress ??
+                  (revealed
+                    ? revealedAddress
                       ? t("walletkeys.address", {
-                          address,
+                          address: revealedAddress,
                           defaultValue: "address: {{address}}",
                         })
                       : maskValue(revealed)
-                    : entry.key
+                    : entryDisplayDescription(entry))
                 }
                 revealed={Boolean(revealed)}
                 loading={Boolean(loading)}

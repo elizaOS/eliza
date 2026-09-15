@@ -122,8 +122,14 @@ function isInsideRoot(pathname: string, root: string): boolean {
 	return pathname === root || pathname.startsWith(rootWithSep);
 }
 
-function envReadOnlyRoots(): string[] {
+export interface MobileFsShimOptions {
+	/** Trusted, packaged asset directories that may be read but never written. */
+	readOnlyRoots?: readonly string[];
+}
+
+function envReadOnlyRoots(options: MobileFsShimOptions): string[] {
 	const candidates = [
+		...(options.readOnlyRoots ?? []),
 		process.env.ELIZA_IOS_AGENT_PUBLIC_DIR,
 		process.env.ELIZA_IOS_AGENT_ASSET_DIR,
 		process.env.ELIZA_IOS_AGENT_BUNDLE
@@ -922,7 +928,10 @@ function patchFsModule(): void {
  * ignored.  A second call with a different root throws to prevent accidental
  * privilege escalation.
  */
-export function installMobileFsShim(workspaceRoot: string): void {
+export function installMobileFsShim(
+	workspaceRoot: string,
+	options: MobileFsShimOptions = {},
+): void {
 	if (!workspaceRoot || typeof workspaceRoot !== "string") {
 		throw new Error(
 			"mobile-fs-shim: installMobileFsShim() requires a non-empty workspaceRoot string",
@@ -947,7 +956,7 @@ export function installMobileFsShim(workspaceRoot: string): void {
 	_workspaceRoot = canonical;
 	_workspaceRootReal = realpathIfPossible(canonical);
 	_workspaceRootAlias = androidAliasSibling(canonical) ?? "";
-	_readOnlyRoots = envReadOnlyRoots().filter(
+	_readOnlyRoots = envReadOnlyRoots(options).filter(
 		(root) => !isInsideRoot(root, canonical),
 	);
 	_readOnlyRootReals = _readOnlyRoots.map((root) => realpathIfPossible(root));

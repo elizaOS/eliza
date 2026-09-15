@@ -364,6 +364,56 @@ describe("scenario runtime deterministic model mode", () => {
     );
   });
 
+  it("preserves complete owner instructions in deterministic dispatch output", () => {
+    const distinguishingTail = "scheduled-owner-tail";
+    const ownerInstruction = `${"take a deliberate breath, ".repeat(8)}${distinguishingTail}`;
+    const prompt = [
+      "You are the owner's personal assistant. A scheduled task just fired and you must now write the message to send to the owner.",
+      "Instruction:",
+      `Remind the owner to ${ownerInstruction}`,
+      "",
+      "Message:",
+    ].join("\n");
+
+    const rendered = deterministicScheduledDispatchRenderText(prompt);
+    expect(rendered).toContain(distinguishingTail);
+    expect(rendered).toBe(`Heads up: ${ownerInstruction}`);
+  });
+
+  it("preserves long unframed instructions without returning them verbatim", () => {
+    const ownerInstruction =
+      "Protect the focus window, but send the standup nudge because the owner explicitly marked it urgent.";
+    const prompt = [
+      "You are the owner's personal assistant. A scheduled task just fired and you must now write the message to send to the owner.",
+      "Instruction:",
+      ownerInstruction,
+      "",
+      "Message:",
+    ].join("\n");
+
+    const rendered = deterministicScheduledDispatchRenderText(prompt);
+    expect(rendered).toBe(
+      "Heads up: Protect the focus window — but send the standup nudge because the owner explicitly marked it urgent.",
+    );
+    expect(rendered).not.toContain(ownerInstruction);
+  });
+
+  it("preserves complete long unframed instructions without punctuation", () => {
+    const ownerInstruction =
+      "Protect every uninterrupted focus window while still sending the standup nudge the owner explicitly marked urgent";
+    const prompt = [
+      "You are the owner's personal assistant. A scheduled task just fired and you must now write the message to send to the owner.",
+      "Instruction:",
+      ownerInstruction,
+      "",
+      "Message:",
+    ].join("\n");
+
+    expect(deterministicScheduledDispatchRenderText(prompt)).toBe(
+      "Heads up: Protect — every uninterrupted focus window while still sending the standup nudge the owner explicitly marked urgent",
+    );
+  });
+
   it("resolves the scheduled-dispatch render model call outside the fixture registry", () => {
     const prompt = [
       "You are the owner's personal assistant. A scheduled task just fired and you must now write the message to send to the owner.",

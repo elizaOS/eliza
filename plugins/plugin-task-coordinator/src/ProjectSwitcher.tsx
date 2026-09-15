@@ -20,8 +20,6 @@
  * projectId to the host so the task list stays unfiltered exactly like today.
  */
 
-// Direct subpath (mirrors the sibling panels): the browser barrel doesn't
-// reliably re-export the newer dropdown-menu primitives.
 import {
   Button,
   DropdownMenu,
@@ -69,9 +67,11 @@ export function ProjectSwitcher({
   const { t: appT } = useAppSelectorShallow((s) => ({ t: s.t }));
   const t = appT ?? fallbackTranslate;
   const [state, setState] = useState<ProjectSwitcherState>(INITIAL_STATE);
+  const [reloadVersion, setReloadVersion] = useState(0);
 
   const loadProjects = useCallback(
     async (signal: { cancelled: boolean }) => {
+      setState((current) => ({ ...current, loading: true, error: null }));
       try {
         const { projects, activeProjectId } = await client.listProjects();
         if (signal.cancelled) return;
@@ -88,6 +88,7 @@ export function ProjectSwitcher({
         // are ≥2 projects to switch between (#14112).
         onActiveProjectChange?.(projects.length > 1 ? activeProjectId : null);
       } catch (error) {
+        // error-policy:J4 registry failures remain visible and can be retried.
         if (signal.cancelled) return;
         setState((prev) => ({
           ...prev,
@@ -102,13 +103,14 @@ export function ProjectSwitcher({
     [onActiveProjectChange],
   );
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: A retry explicitly starts a new cancellable registry request.
   useEffect(() => {
     const signal = { cancelled: false };
     void loadProjects(signal);
     return () => {
       signal.cancelled = true;
     };
-  }, [loadProjects]);
+  }, [loadProjects, reloadVersion]);
 
   const handleSelect = useCallback(
     async (projectId: string) => {
@@ -127,6 +129,7 @@ export function ProjectSwitcher({
         }));
         onActiveProjectChange?.(activated.id);
       } catch (error) {
+        // error-policy:J4 failed activation preserves the selected project and shows the error.
         setState((prev) => ({
           ...prev,
           switching: false,
@@ -159,7 +162,8 @@ export function ProjectSwitcher({
         type="button"
         variant="dangerOutline"
         size="dense"
-        disabled
+        onClick={() => setReloadVersion((current) => current + 1)}
+        aria-label="Retry loading projects"
         data-testid="project-switcher-error"
         title={state.error}
         className="max-w-[12rem]"

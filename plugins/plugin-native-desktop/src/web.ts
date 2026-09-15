@@ -294,9 +294,13 @@ export class DesktopWeb extends WebPlugin {
   }
   async setAlwaysOnTop(_options: { flag: boolean }): Promise<void> {}
   async setFullscreen(options: { flag: boolean }): Promise<void> {
-    options.flag
+    // Await the underlying Fullscreen API promise so a rejection
+    // (requestFullscreen without a user gesture, exitFullscreen while not
+    // fullscreen) propagates to the caller instead of resolving with a
+    // fabricated success and escaping as an unhandled rejection.
+    await (options.flag
       ? document.documentElement.requestFullscreen()
-      : document.exitFullscreen();
+      : document.exitFullscreen());
   }
   async setOpacity(_options: { opacity: number }): Promise<void> {}
 

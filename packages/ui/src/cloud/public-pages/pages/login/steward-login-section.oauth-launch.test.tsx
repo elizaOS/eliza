@@ -13,6 +13,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { StrictMode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -34,6 +35,7 @@ const oauthState = vi.hoisted(() => ({
 vi.mock("@capacitor/core", () => ({
   Capacitor: {
     isNativePlatform: () => oauthState.nativePlatform,
+    registerPlugin: () => ({}),
   },
   registerPlugin: () => ({}),
 }));
@@ -68,8 +70,8 @@ vi.mock("@elizaos/shared/steward-session-client", async () => {
   };
 });
 
-vi.mock("@stwd/sdk", () => ({
-  StewardAuth: class {
+vi.mock("@elizaos/login", () => ({
+  LoginAuth: class {
     getSession() {
       return null;
     }
@@ -202,6 +204,16 @@ function renderSection(initialEntry = "/login") {
   );
 }
 
+function renderSectionInStrictMode(initialEntry: string) {
+  return render(
+    <StrictMode>
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <StewardLoginSection />
+      </MemoryRouter>
+    </StrictMode>,
+  );
+}
+
 const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
   window,
   "location",
@@ -294,11 +306,21 @@ describe("StewardLoginSection OAuth launch", () => {
   });
 
   it("auto-launches a validated native provider intent once in the browser", async () => {
-    const replaceState = vi.spyOn(window.history, "replaceState");
+    const replaceState = vi
+      .spyOn(window.history, "replaceState")
+      .mockImplementation((_data, _unused, url) => {
+        const next = new URL(String(url), window.location.origin);
+        Object.assign(window.location, {
+          hash: next.hash,
+          href: next.toString(),
+          pathname: next.pathname,
+          search: next.search,
+        });
+      });
     stubHostedLoginLocation(
       "https://cloud.eliza.app/login?returnTo=%2Fapp-auth%2Fauthorize%3Fstate%3Douter-state&nativeProvider=google",
     );
-    renderSection(
+    renderSectionInStrictMode(
       "/login?returnTo=%2Fapp-auth%2Fauthorize%3Fstate%3Douter-state&nativeProvider=google",
     );
 
@@ -390,40 +412,46 @@ describe("StewardLoginSection OAuth launch", () => {
     );
   });
 
-  it("releases the OAuth provider lock after a back-forward cache restoration", async () => {
-    renderSection();
+  it.each([
+    ["Google", "google"],
+    ["Discord", "discord"],
+    ["GitHub", "github"],
+    ["X", "twitter"],
+    ["Apple", "apple"],
+  ])(
+    "releases the %s OAuth lock after a back-forward cache restoration",
+    async (providerLabel, provider) => {
+      renderSection();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Google" }));
+      fireEvent.click(
+        await screen.findByRole("button", { name: providerLabel }),
+      );
 
-    await waitFor(() =>
-      expect(window.location.href).toContain(
-        "/steward/auth/oauth/google/authorize",
-      ),
-    );
-    expect(
-      (screen.getByRole("button", { name: "Google" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
+      await waitFor(() =>
+        expect(window.location.href).toContain(
+          `/steward/auth/oauth/${provider}/authorize`,
+        ),
+      );
+      const providerButton = screen.getByRole("button", {
+        name: providerLabel,
+      }) as HTMLButtonElement;
+      expect(providerButton.disabled).toBe(true);
 
-    const historyRestore = new Event("pageshow");
-    Object.defineProperty(historyRestore, "persisted", { value: true });
-    fireEvent(window, historyRestore);
+      const historyRestore = new Event("pageshow");
+      Object.defineProperty(historyRestore, "persisted", { value: true });
+      fireEvent(window, historyRestore);
 
-    await waitFor(() =>
-      expect(
-        (screen.getByRole("button", { name: "Google" }) as HTMLButtonElement)
-          .disabled,
-      ).toBe(false),
-    );
-    expect(
-      (screen.getByRole("button", { name: "Discord" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(false);
-    expect(
-      (screen.getByRole("button", { name: "GitHub" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(false);
-  });
+      await waitFor(() =>
+        expect(
+          (
+            screen.getByRole("button", {
+              name: providerLabel,
+            }) as HTMLButtonElement
+          ).disabled,
+        ).toBe(false),
+      );
+    },
+  );
 
   it("keeps the form retryable when browser storage cannot save the verifier", async () => {
     oauthState.storeVerifier = false;

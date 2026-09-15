@@ -33,6 +33,11 @@ function makeDeps(): HydratingDeps {
     setStartupError: vi.fn(),
     setFirstRunLoading: vi.fn(),
     hydrateInitialConversationState: vi.fn(async () => null),
+    activeConversationIdRef: { current: null },
+    loadedConversationIdRef: { current: null },
+    loadConversationMessages: vi.fn(async (_conversationId: string) => ({
+      ok: true as const,
+    })),
     requestGreetingWhenRunningRef: { current: vi.fn(async () => undefined) },
     loadWorkbench: vi.fn(async () => {}),
     loadPlugins: vi.fn(async () => {}),

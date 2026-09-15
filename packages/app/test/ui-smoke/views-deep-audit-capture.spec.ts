@@ -13,6 +13,7 @@ import {
   seedAppStorage,
 } from "./helpers";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
+import { seedBackgroundStorage } from "./helpers/view-background";
 
 const OUT_DIR = path.join(
   process.cwd(),
@@ -277,20 +278,57 @@ test.describe("views deep UX audit capture", () => {
         "elizaos:ui:sidebar:eliza:page-sidebar:wallets:defi:collapsed": "false",
         "elizaos:ui:sidebar:eliza:page-sidebar:wallets:nfts:collapsed": "false",
       });
+      await seedBackgroundStorage(page, {
+        mode: "image",
+        color: "#000000",
+        imageUrl: "/bg-sunset.webp",
+      });
       await installDefaultAppRoutes(page);
 
       await openAppPath(page, "/wallet");
       await expect(page.getByTestId("wallet-shell")).toBeVisible({
         timeout: 60_000,
       });
+      await expect(page.getByTestId("app-background-image")).toBeAttached({
+        timeout: 15_000,
+      });
       const sidebar = await openWalletSidebar(page);
       await screenshot(page, `${viewport.name}-wallet-overview`);
-      for (const tab of ["tokens", "defi", "nfts"] as const) {
+      const detailsButton = sidebar.getByRole("button", {
+        name: "Show wallet details",
+      });
+      if (await detailsButton.isVisible().catch(() => false)) {
+        await detailsButton.click();
+        await screenshot(page, `${viewport.name}-wallet-details`);
+        await sidebar
+          .getByRole("button", { name: "Hide wallet details" })
+          .click();
+      }
+      for (const tab of [
+        "tokens",
+        "defi",
+        "nfts",
+        "activity",
+        "markets",
+      ] as const) {
         const tabButton = sidebar.getByTestId(`wallet-tab-${tab}`);
         if (await tabButton.isVisible().catch(() => false)) {
           await tabButton.click();
           await page.waitForTimeout(300);
           await screenshot(page, `${viewport.name}-wallet-${tab}`);
+        }
+      }
+      const tokensTab = sidebar.getByTestId("wallet-tab-tokens");
+      if (await tokensTab.isVisible().catch(() => false)) {
+        await tokensTab.click();
+        await page.waitForTimeout(300);
+        const tokenMenu = sidebar
+          .getByRole("button", { name: /^Manage / })
+          .first();
+        if (await tokenMenu.isVisible().catch(() => false)) {
+          await tokenMenu.click();
+          await screenshot(page, `${viewport.name}-wallet-token-actions`);
+          await page.keyboard.press("Escape");
         }
       }
     });

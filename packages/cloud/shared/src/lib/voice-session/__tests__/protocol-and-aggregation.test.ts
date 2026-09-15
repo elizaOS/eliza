@@ -9,6 +9,55 @@ import { MAX_AUDIO_FRAME_BYTES, parseClientControlFrame, validateAudioFrame } fr
 import { createVoiceSessionRegistry, type LiveVoiceSession } from "../session-registry";
 
 describe("protocol framing", () => {
+  test("preserves native Browser observation without accepting arbitrary surface hints", () => {
+    expect(
+      parseClientControlFrame(
+        JSON.stringify({
+          t: "ui_context",
+          context: { uiViewPath: "/browser", uiBrowserSurface: "native" },
+        }),
+      ),
+    ).toMatchObject({ ok: true, value: { context: { uiBrowserSurface: "native" } } });
+    expect(
+      parseClientControlFrame(
+        JSON.stringify({ t: "ui_context", context: { uiBrowserSurface: "remote-admin" } }),
+      ),
+    ).toMatchObject({ ok: false });
+  });
+  test("accepts only bounded renderer observations, never client authority", () => {
+    expect(
+      parseClientControlFrame(
+        JSON.stringify({
+          t: "ui_context",
+          context: {
+            uiViewPath: "/notes",
+            uiTimeZone: "America/New_York",
+            uiViewActionNames: ["TRANSFER"],
+            role: "OWNER",
+          },
+        }),
+      ),
+    ).toEqual({
+      ok: true,
+      value: {
+        t: "ui_context",
+        context: {
+          uiViewPath: "/notes",
+          uiTimeZone: "America/New_York",
+        },
+      },
+    });
+    for (const context of [
+      null,
+      [],
+      { uiViewPath: 1 },
+      { uiViewPath: "//evil.test" },
+      { uiViewPath: "/".repeat(2049) },
+    ]) {
+      expect(parseClientControlFrame(JSON.stringify({ t: "ui_context", context })).ok).toBe(false);
+    }
+    expect(parseClientControlFrame(JSON.stringify({ t: "ui_context", context: {} })).ok).toBe(true);
+  });
   test("accepts a well-formed hello", () => {
     const r = parseClientControlFrame(
       JSON.stringify({
@@ -94,6 +143,38 @@ describe("protocol framing", () => {
     const r = parseClientControlFrame(JSON.stringify({ t: "end_audio" }));
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.value.t).toBe("end_audio");
+  });
+
+  test("accepts only fully-typed continuous handoff audio capabilities", () => {
+    expect(
+      parseClientControlFrame(
+        JSON.stringify({
+          t: "audio_capabilities",
+          mode: "continuous_handoff",
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          referenceAwarePlayback: true,
+        }),
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        ok: true,
+        value: expect.objectContaining({ t: "audio_capabilities" }),
+      }),
+    );
+    expect(
+      parseClientControlFrame(
+        JSON.stringify({
+          t: "audio_capabilities",
+          mode: "continuous_handoff",
+          echoCancellation: "yes",
+          noiseSuppression: true,
+          autoGainControl: true,
+          referenceAwarePlayback: true,
+        }),
+      ),
+    ).toEqual(expect.objectContaining({ ok: false }));
   });
 
   test("validateAudioFrame enforces the size ceiling and non-empty", () => {

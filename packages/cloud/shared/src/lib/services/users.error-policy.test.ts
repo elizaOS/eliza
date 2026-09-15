@@ -27,11 +27,16 @@ mock.module("../../db/retry-transient", () => ({
   retryOnTransientDbError: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
 }));
 
+const cacheClientActualModule = await import("../cache/client");
+
 mock.module("../cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     get: mock(async () => undefined),
     set: mock(async () => undefined),
     del: mock(async () => undefined),
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 
@@ -40,6 +45,7 @@ mock.module("../utils/logger", () => ({
 }));
 
 mock.module("./inference-auth-cache", () => ({
+  invalidateInferenceAuthContextByKeyHash: mock(async () => true),
   invalidateInferenceAuthContextsByKeyHashes: mock(async () => undefined),
   invalidateInferenceSessionAuthContexts: mock(async () => undefined),
 }));

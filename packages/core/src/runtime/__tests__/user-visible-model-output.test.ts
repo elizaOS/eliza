@@ -9,6 +9,66 @@ import {
 } from "../user-visible-model-output";
 
 describe("sanitizeUserVisibleModelOutput", () => {
+	it("rejects non-printing characters in final prose and unwrapped replies without rewriting them", () => {
+		const damaged = "It doesn\u001c\u001d\t\u001contain magenta.";
+		for (const value of [
+			damaged,
+			JSON.stringify({ response: { messageToUser: damaged } }),
+		]) {
+			expect(sanitizeUserVisibleModelOutput(value)).toMatchObject({
+				kind: "invalid",
+				reason: "reply-control-characters",
+			});
+		}
+		for (const code of [0, 1, 8, 11, 12, 14, 28, 29, 31, 127, 133, 159]) {
+			expect(
+				sanitizeUserVisibleModelOutput(
+					`before${String.fromCharCode(code)}after`,
+				),
+			).toMatchObject({
+				kind: "invalid",
+				reason: "reply-control-characters",
+			});
+		}
+	});
+	it("preserves ordinary formatting, Unicode and escaped control-character data", () => {
+		for (const text of [
+			"日本語 — ‘green’ 🟢\nFirst\tsecond\r\nNext",
+			String.raw`The escape is \u001c.`,
+			JSON.stringify({ value: "\u001c", explanation: "An escaped separator" }),
+			JSON.stringify(["\u001c", { text: "\u001d", label: "escaped data" }]),
+		]) {
+			expect(sanitizeUserVisibleModelOutput(text)).toMatchObject({
+				kind: "text",
+				text,
+			});
+		}
+	});
+	it.each([
+		'{"plannerCompleted":true,"turnScope":"final"}',
+		'```json\n{"plannerCompleted":true,"turnScope":"final"}\n```',
+		'{"response":{"plannerCompleted":false,"turnScope":"more_work_pending"}}',
+		'{"plannerCompleted":true,"turnScope":"final",',
+	])("keeps completion-control records out of chat: %s", (candidate) => {
+		expect(sanitizeUserVisibleModelOutput(candidate)).toMatchObject({
+			kind: "control",
+			envelope: "planner",
+		});
+	});
+
+	it.each([
+		'{"action":"messageToUser","args":{"message":"Done."}}',
+		'```json\n{"action":"messageToUser","args":{"message":"Done."}}\n```',
+		'{"response":{"action":"messageToUser","args":{"message":"Done."}}}',
+		'{"action":"messageToUser","args":{"message":',
+		'{"action":"messageToUser"}',
+	])("rejects a reply field serialized as a fake action: %s", (candidate) => {
+		expect(sanitizeUserVisibleModelOutput(candidate)).toMatchObject({
+			kind: "control",
+			envelope: "planner",
+		});
+	});
+
 	it("rejects a fenced action envelope even when foreign metadata keys are present", () => {
 		const output = sanitizeUserVisibleModelOutput(
 			'```json\n{"action":"BROWSER","parameters":{"url":"https://example.com"},"status":"retry","toolCallId":"call-1"}\n```',
@@ -156,6 +216,13 @@ describe("sanitizeUserVisibleModelOutput", () => {
 			text: documentedExample,
 			format: "json",
 			fieldPath: [],
+		});
+		const replyActionExample =
+			'{"example":{"action":"messageToUser","args":{"message":"Done."}},"description":"invalid planner example"}';
+		expect(sanitizeUserVisibleModelOutput(replyActionExample)).toMatchObject({
+			kind: "text",
+			text: replyActionExample,
+			format: "json",
 		});
 	});
 

@@ -222,6 +222,7 @@ export type StartupErrorReason =
   | "backend-unreachable"
   | "agent-timeout"
   | "agent-error"
+  | "agent-stopped"
   | "asset-missing"
   | "unknown";
 
@@ -232,6 +233,9 @@ export interface StartupErrorState {
   detail?: string;
   status?: number;
   path?: string;
+  /** Trusted Cloud management destination for an explicitly stopped agent. */
+  cloudManagementUrl?: string;
+  cloudAgentId?: string;
 }
 
 export interface StartupCoordinatorView {
@@ -300,6 +304,14 @@ export type InventoryChainFilters = {
   avax: boolean;
   solana: boolean;
 };
+
+/** Independent lifecycle for a wallet feed; optional feeds can be unsupported without poisoning core balances. */
+export type WalletResourceStatus =
+  | "idle"
+  | "loading"
+  | "ready"
+  | "unavailable"
+  | "error";
 
 export interface AppState {
   // Core
@@ -432,6 +444,12 @@ export interface AppState {
   walletNfts: WalletNftsResponse | null;
   walletLoading: boolean;
   walletNftsLoading: boolean;
+  walletConfigStatus: WalletResourceStatus;
+  walletConfigError: string | null;
+  walletBalancesStatus: WalletResourceStatus;
+  walletBalancesError: string | null;
+  walletNftsStatus: WalletResourceStatus;
+  walletNftsError: string | null;
   inventoryView: "tokens" | "nfts";
   walletExportData: WalletExportResult | null;
   walletExportVisible: boolean;
@@ -727,7 +745,7 @@ export interface AppActions {
    * coding-agent PTY sessions, so it is safe to fire on a voice barge-in.
    */
   interruptActiveChatPipeline: () => void;
-  handleChatRetry: (assistantMsgId: string) => void;
+  handleChatRetry: (assistantMsgId: string) => Promise<void>;
   handleChatEdit: (messageId: string, text: string) => Promise<boolean>;
   /** Persistently delete a single message (#13533): server DELETE + optimistic
    *  UI removal with rollback on failure. Resolves false when the delete failed
@@ -736,6 +754,8 @@ export interface AppActions {
   handleChatClear: () => Promise<void>;
   handleStartDraftConversation: () => Promise<void>;
   handleNewConversation: (title?: string) => Promise<void>;
+  /** Restore the active personal conversation; null means recovery is unavailable. */
+  ensureActiveConversation: () => Promise<string | null>;
   setChatPendingImages: Dispatch<SetStateAction<ImageAttachment[]>>;
   handleSelectConversation: (id: string) => Promise<void>;
   /**
@@ -762,6 +782,8 @@ export interface AppActions {
       conversationId?: string | null;
       images?: ImageAttachment[];
       metadata?: Record<string, unknown>;
+      /** Stable identity for a programmatically relayed logical turn. */
+      clientMessageId?: string;
     },
   ) => Promise<void>;
 

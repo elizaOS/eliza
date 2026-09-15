@@ -207,7 +207,20 @@ export const Buffer = {
   alloc: () => ({}),
   byteLength: () => 0,
 };
-export const promises = {};
+export const promises = {
+  access: anyfn,
+  cp: anyfn,
+  mkdir: anyfn,
+  readFile: anyfn,
+  readdir: () => [],
+  rename: anyfn,
+  rm: anyfn,
+  rmdir: anyfn,
+  stat: anyfn,
+  symlink: anyfn,
+  unlink: anyfn,
+  writeFile: anyfn,
+};
 export const existsSync = () => false;
 export const readFileSync = anyfn;
 export const writeFileSync = anyfn;

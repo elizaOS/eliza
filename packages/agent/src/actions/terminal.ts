@@ -37,12 +37,6 @@ const TERMINAL_TRANSPORT_GRACE_MS = 10_000;
 // byte. Bound the envelope before parsing while preserving the route's exact
 // complete-output contract.
 const MAX_TERMINAL_RESPONSE_BYTES = 25 * 1024 * 1024;
-// Max sanitized stdout, in chars, that may be relayed verbatim as the user-facing
-// message. Small single-line results (a SHA, a count, a path) are useful to
-// echo for "run X and tell me the value" turns; anything larger — or with
-// multiple lines — must NOT be dumped to the (possibly shared) channel.
-const TERMINAL_RELAY_MAX_CHARS = 200;
-
 type TerminalActionParameters = {
   arguments?: JsonValue;
   command?: JsonValue;
@@ -523,29 +517,6 @@ function terminalEffectReceipt(
   };
 }
 
-function terminalUserFacingText(
-  result: CapturedTerminalRun,
-  cleanStdout: string,
-): string {
-  if (result.timedOut) {
-    return `The command timed out${typeof result.maxDurationMs === "number" ? ` after ${result.maxDurationMs} ms` : ""}; I can't verify that it completed.`;
-  }
-  if (result.exitCode !== 0) {
-    return `The command failed with exit code ${result.exitCode}.`;
-  }
-  if (!cleanStdout) {
-    return "The command finished successfully with exit code 0.";
-  }
-  // Treat every JavaScript line terminator as a channel-visible line break.
-  // In particular, terminal programs commonly emit bare carriage returns;
-  // counting only `\n` would let a short multi-line payload bypass the relay cap.
-  const lineCount = cleanStdout.split(/\r\n|[\n\r\u2028\u2029]/u).length;
-  if (cleanStdout.length <= TERMINAL_RELAY_MAX_CHARS && lineCount === 1) {
-    return cleanStdout;
-  }
-  return `The command finished (exit 0) with ${lineCount} line${lineCount === 1 ? "" : "s"} of output; ask me about specifics instead of dumping it into chat.`;
-}
-
 /**
  * One projection boundary for every terminal consumer: runtime-known secrets
  * first (character-configured values), then shape-based tools redaction
@@ -771,19 +742,12 @@ export const terminalAction: Action = {
     );
     const readView = terminalAttachmentReadView(outputAttachment);
 
-    const cleanStdout =
-      capturedRun.exitCode === 0 &&
-      !capturedRun.timedOut &&
-      capturedRun.stderr.trim().length === 0
-        ? capturedRun.stdout.trim()
-        : "";
     const observedAt = new Date().toISOString();
     const effectReceipt = terminalEffectReceipt(
       capturedRun,
       outputAttachment,
       observedAt,
     );
-    const userFacingText = terminalUserFacingText(capturedRun, cleanStdout);
     const succeeded =
       effectReceipt.outcome === "applied" && capturedRun.exitCode === 0;
 
@@ -795,15 +759,8 @@ export const terminalAction: Action = {
         ? (outputAttachment?.attachment.text ?? "")
         : buildCapturedResponseText(capturedRun, outputAttachment),
       success: succeeded,
-      userFacingText,
-      // Raw stdout stays available as the deterministic fallback relay for
-      // "run X" turns, but must not carry the do-not-paraphrase stamp: verified
-      // text outranks and prepends to the evaluator's prose in the final-message
-      // precedence, which shipped bare command output (e.g. a `git ls-remote`
-      // SHA line) as a leading junk paragraph before the natural reply. Only
-      verifiedUserFacing: cleanStdout.length === 0,
+      modelReplyRequired: true,
       effectReceipts: [effectReceipt],
-      userFacingEffectReceiptIds: [effectReceipt.receiptId],
       ...(succeeded
         ? {}
         : {

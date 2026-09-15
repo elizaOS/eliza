@@ -3,11 +3,15 @@
  * The core trajectory API may return larger payloads, but this client types only
  * the fields the widget reads and tolerates extra route fields.
  */
+import type { InferenceTimingDevPayload } from "@elizaos/core";
 
 export interface TrajectoryListItem {
   id: string;
   status: "active" | "completed" | "error";
   llmCallCount: number;
+  startTime?: number;
+  endTime?: number;
+  durationMs?: number;
 }
 
 export interface TrajectoryListResult {
@@ -22,6 +26,10 @@ export interface UILlmCall {
   purpose: string;
   actionType: string;
   stepType: string;
+  timestamp?: number;
+  latencyMs?: number;
+  promptTokens?: number;
+  completionTokens?: number;
 }
 
 export interface UIProviderAccess {
@@ -63,6 +71,14 @@ export interface TrajectoryDetail {
   providerAccesses: UIProviderAccess[];
   toolEvents?: UIToolEvent[];
   evaluationEvents?: UIEvaluationEvent[];
+  semanticStages?: {
+    stageId: string;
+    kind: string;
+    startedAt: number;
+    endedAt?: number;
+    latencyMs?: number;
+    payload: Record<string, unknown>;
+  }[];
 }
 
 function toWellFormedUnicodeLocal(text: string): string {
@@ -196,6 +212,29 @@ export async function fetchTrajectoryDetail(
     ),
   });
   return readJson<TrajectoryDetail>(res);
+}
+
+/** Optional local diagnostics. Join by recorded identity, never timestamp proximity. */
+export async function fetchTrajectoryTiming(
+  id: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<Pick<InferenceTimingDevPayload, "turns" | "flows">> {
+  const res = await fetch("/api/dev/inference-timing?limit=200", {
+    headers: { Accept: "application/json" },
+    signal: composeTrajectoryFetchSignal(
+      options.signal,
+      TRAJECTORY_DETAIL_FETCH_TIMEOUT_MS,
+    ),
+  });
+  const payload = await readJson<InferenceTimingDevPayload>(res);
+  const turns = payload.turns.filter((turn) =>
+    turn.spans.some((span) => span.meta?.trajectoryId === id),
+  );
+  const turnIds = new Set(turns.map((turn) => turn.turnId));
+  return {
+    turns,
+    flows: payload.flows.filter((flow) => turnIds.has(flow.turnId)),
+  };
 }
 
 /**

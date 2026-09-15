@@ -1,24 +1,30 @@
 /**
  * Opens the account-native personal Eliza after Steward authentication.
  *
- * The identity is a rowless Shared service, so this controller only resolves
- * and persists its connection. It never provisions an agent or starts paid
- * compute. The caller owns cancellation and the final navigation into chat.
+ * The stable identity begins on the rowless Shared service, but signed-in app
+ * sessions may persist only its Dedicated runtime. The client owns activation,
+ * readiness polling, and the atomic Shared history cutover.
  */
+
+import type { DedicatedAdoptionConfirmationRequester } from "../../../api/client-cloud";
+import type { DedicatedActivationConfirmationRequester } from "../../../api/dedicated-activation-confirmation";
 
 /** The slice of `ElizaClient` the join flow drives. */
 export interface JoinFlowClient {
-  getPersonalSharedEliza(options: {
+  ensurePersonalDedicatedEliza(options: {
     cloudApiBase: string;
     authToken: string;
     signal?: AbortSignal;
+    onProgress?: (status: string, detail?: string) => void;
+    requestDedicatedAdoptionConfirmation?: DedicatedAdoptionConfirmationRequester;
+    requestDedicatedActivationConfirmation?: DedicatedActivationConfirmationRequester;
   }): Promise<{
     personalElizaId: string;
     agentId: string;
     activeAgentId: string;
     agentName: string;
     apiBase: string;
-    runtime: "shared" | "dedicated";
+    runtime: "dedicated";
   }>;
   setBaseUrl(baseUrl: string | null): void;
   setToken(token: string | null): void;
@@ -45,6 +51,8 @@ export interface RunJoinFlowArgs {
   authToken: string;
   onProgress?: (status: string, detail?: string) => void;
   signal?: AbortSignal;
+  requestDedicatedAdoptionConfirmation?: DedicatedAdoptionConfirmationRequester;
+  requestDedicatedActivationConfirmation?: DedicatedActivationConfirmationRequester;
 }
 
 export interface JoinFlowResult {
@@ -56,27 +64,38 @@ export interface JoinFlowResult {
   runtime: "shared" | "dedicated";
 }
 
-/** Resolve and persist the signed-in account's rowless personal Eliza. */
+/** Resolve and persist the signed-in account's Dedicated personal Eliza. */
 export async function runJoinFlow(
   args: RunJoinFlowArgs,
 ): Promise<JoinFlowResult> {
-  const { client, effects, cloudApiBase, authToken, onProgress, signal } = args;
+  const {
+    client,
+    effects,
+    cloudApiBase,
+    authToken,
+    onProgress,
+    signal,
+    requestDedicatedAdoptionConfirmation,
+    requestDedicatedActivationConfirmation,
+  } = args;
   signal?.throwIfAborted();
   onProgress?.("connecting", "Opening your personal Eliza…");
 
-  const selected = await client.getPersonalSharedEliza({
+  const selected = await client.ensurePersonalDedicatedEliza({
     cloudApiBase,
     authToken,
+    ...(onProgress ? { onProgress } : {}),
     ...(signal ? { signal } : {}),
+    ...(requestDedicatedAdoptionConfirmation
+      ? { requestDedicatedAdoptionConfirmation }
+      : {}),
+    ...(requestDedicatedActivationConfirmation
+      ? { requestDedicatedActivationConfirmation }
+      : {}),
   });
   signal?.throwIfAborted();
 
-  onProgress?.(
-    "connecting",
-    selected.runtime === "dedicated"
-      ? "Connecting to your Dedicated agent…"
-      : "Connecting to Shared…",
-  );
+  onProgress?.("connecting", "Connecting to your Dedicated agent…");
 
   if (
     !selected.personalElizaId ||
@@ -84,6 +103,11 @@ export async function runJoinFlow(
     !selected.activeAgentId
   ) {
     throw new Error("Cloud did not return a personal Eliza to connect to.");
+  }
+  if (selected.runtime !== "dedicated") {
+    throw new Error(
+      "Cloud returned Shared for a signed-in app session; Dedicated is required.",
+    );
   }
 
   client.setBaseUrl(selected.apiBase);

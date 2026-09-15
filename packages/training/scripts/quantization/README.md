@@ -8,7 +8,9 @@ and can be combined or compared on the same fine-tuned checkpoint.
 > **Gemma 4 cutover note.** The eliza-1 base is now Gemma 4 (dense:
 > alternating SWA/global, shared-KV, MQA, dual head dims 512/256, stock q8_0
 > KV). Gemma geometry is the active release target. The shipping Gemma weight
-> quant is stock llama.cpp `Q4_K_M` from `gguf-q4_k_m_apply.py`; TurboQuant
+> quant is stock llama.cpp `Q4_K_M` from `gguf-q4_k_m_apply.py`; that public
+> command and the other K-quant levels are thin profiles over the canonical
+> `gguf_k_quant.py` driver. TurboQuant
 > and QJL are runtime KV-cache experiments, and PolarQuant is a separate
 > weight-quant experiment. Those optional paths must be revalidated per tier
 > before their sidecars can be cited as release provenance.

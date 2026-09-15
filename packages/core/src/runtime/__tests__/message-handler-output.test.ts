@@ -33,6 +33,49 @@ describe("message handler retrieval hint output", () => {
 		expect(replyEffectStatusFieldEvaluator.parse("maybe")).toBe("none");
 	});
 
+	it.each(["pending", "applied", "non_applied", "none"])(
+		"preserves %s reply status through JSON and transcript parsing",
+		(replyEffectStatus) => {
+			const replyText = "The requested work has this model-declared status.";
+			const json = parseMessageHandlerOutput(
+				JSON.stringify({
+					shouldRespond: "RESPOND",
+					contexts: ["simple"],
+					replyText,
+					replyEffectStatus,
+				}),
+			);
+			const transcript = parseMessageHandlerOutput(
+				[
+					"shouldRespond: RESPOND",
+					"contexts: simple",
+					`replyText: ${replyText}`,
+					`replyEffectStatus: ${replyEffectStatus}`,
+				].join("\n"),
+			);
+			for (const parsed of [json, transcript]) {
+				expect(parsed?.plan.replyEffectStatus).toBe(replyEffectStatus);
+				expect(parsed?.plan.reply).toBe(replyText);
+			}
+		},
+	);
+
+	it.each([undefined, null, {}, "unknown", ""])(
+		"does not treat invalid effect status %j as an explicit no-effect decision",
+		(replyEffectStatus) => {
+			const parsed = parseMessageHandlerOutput(
+				JSON.stringify({
+					shouldRespond: "RESPOND",
+					contexts: ["simple"],
+					replyText: "The requested time is Friday at 1 PM.",
+					replyEffectStatus,
+				}),
+			);
+			expect(parsed).not.toBeNull();
+			expect(parsed?.plan.replyEffectStatus).toBeUndefined();
+		},
+	);
+
 	it("strips leaked model tool-call markup out of replyText", () => {
 		// Weak models emit their native tool-call serialization as plain text;
 		// it must never reach the user. Cover closed, truncated-open, and
@@ -112,7 +155,9 @@ describe("message handler retrieval hint output", () => {
 		expect(Object.keys(HANDLE_RESPONSE_SCHEMA.properties ?? {})).toEqual([
 			"shouldRespond",
 			"contexts",
+			"contextRequests",
 			"intents",
+			"completionContext",
 			"replyText",
 			"replyEffectStatus",
 			"candidateActionNames",
@@ -125,7 +170,9 @@ describe("message handler retrieval hint output", () => {
 		expect(HANDLE_RESPONSE_SCHEMA.required).toEqual([
 			"shouldRespond",
 			"contexts",
+			"contextRequests",
 			"intents",
+			"completionContext",
 			"replyText",
 			"replyEffectStatus",
 			"candidateActionNames",
@@ -148,7 +195,9 @@ describe("message handler retrieval hint output", () => {
 		expect(Object.keys(composedSchema.properties ?? {})).toEqual([
 			"shouldRespond",
 			"contexts",
+			"contextRequests",
 			"intents",
+			"completionContext",
 			"replyText",
 			"replyEffectStatus",
 			"candidateActionNames",
@@ -161,11 +210,12 @@ describe("message handler retrieval hint output", () => {
 		expect(composedSchema.properties).toMatchObject({
 			shouldRespond: { type: "string", enum: ["RESPOND", "IGNORE", "STOP"] },
 			contexts: { type: "array" },
+			contextRequests: { type: "array", items: { type: "string" } },
 			intents: { type: "array" },
 			replyText: { type: "string" },
 			replyEffectStatus: {
 				type: "string",
-				enum: ["none", "applied", "non_applied"],
+				enum: ["none", "applied", "non_applied", "pending"],
 			},
 			candidateActionNames: { type: "array" },
 			facts: { type: "array" },

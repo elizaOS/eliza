@@ -11,9 +11,15 @@
  */
 import type http from "node:http";
 import { Readable } from "node:stream";
-import type { Action, IAgentRuntime, ViewScopedAction } from "@elizaos/core";
+import type {
+  Action,
+  IAgentRuntime,
+  Memory,
+  ViewScopedAction,
+} from "@elizaos/core";
 import { type ElizaError, isElizaError } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { validateToolArgs } from "../../../core/src/actions/validate-tool-args.ts";
 import { BUILTIN_VIEWS } from "../api/builtin-views.ts";
 import {
   registerPluginViews,
@@ -182,7 +188,7 @@ function makeRuntime(): {
   };
 }
 
-const fakeMessage = {} as never;
+const fakeMessage = { content: {} } as Memory;
 
 beforeEach(async () => {
   __resetViewScopedActionRegistryForTests();
@@ -236,58 +242,69 @@ describe("view-scoped action validate() gating on the active view", () => {
 });
 
 describe("view-scoped action handler drives the interact protocol", () => {
-  it("targets the active mounted client instead of a mixed view's serverInteract", async () => {
-    const settings = makeInteractiveView(
-      INTERACTIVE_VIEW_ID,
-      new Set(["provider-select", "save-button"]),
-    );
-    await registerPluginViews(
-      {
-        name: TEST_PLUGIN,
-        description: "scoped action fixtures",
-        views: [settings.view],
-      },
-      process.cwd(),
-    );
-    await navigateTo(INTERACTIVE_VIEW_ID);
-    await reportMountedClient(INTERACTIVE_VIEW_ID, "mounted-settings-shell");
-
-    const targetedFrames: Array<Record<string, unknown>> = [];
-    setViewsBroadcastWs(vi.fn(), (clientId, payload) => {
-      expect(clientId).toBe("mounted-settings-shell");
-      const frame = payload as Record<string, unknown>;
-      targetedFrames.push(frame);
-      resolveViewInteractResult({
-        requestId: String(frame.requestId),
-        success: true,
-        result: {
-          ok: true,
-          id: (frame.params as Record<string, unknown> | undefined)?.id,
+  it.each([undefined, "requesting-shell"])(
+    "targets the requesting renderer (%s), falling back to the mounted client",
+    async (requestingClient) => {
+      const settings = makeInteractiveView(
+        INTERACTIVE_VIEW_ID,
+        new Set(["provider-select", "save-button"]),
+      );
+      await registerPluginViews(
+        {
+          name: TEST_PLUGIN,
+          description: "scoped action fixtures",
+          views: [settings.view],
         },
+        process.cwd(),
+      );
+      await navigateTo(INTERACTIVE_VIEW_ID);
+      await reportMountedClient(INTERACTIVE_VIEW_ID, "mounted-settings-shell");
+
+      const targetedFrames: Array<Record<string, unknown>> = [];
+      setViewsBroadcastWs(vi.fn(), (clientId, payload) => {
+        expect(clientId).toBe(requestingClient ?? "mounted-settings-shell");
+        const frame = payload as Record<string, unknown>;
+        targetedFrames.push(frame);
+        resolveViewInteractResult({
+          requestId: String(frame.requestId),
+          success: true,
+          result: {
+            ok: true,
+            id: (frame.params as Record<string, unknown> | undefined)?.id,
+          },
+        });
+        return 1;
       });
-      return 1;
-    });
 
-    const action = buildViewScopedAction(
-      INTERACTIVE_VIEW_ID,
-      settings.view.scopedActions[0],
-    );
-    const result = await action.handler(
-      { agentId: "runtime-owner" } as unknown as IAgentRuntime,
-      fakeMessage,
-      undefined,
-      { parameters: { provider: "anthropic" } },
-    );
+      const action = buildViewScopedAction(
+        INTERACTIVE_VIEW_ID,
+        settings.view.scopedActions[0],
+      );
+      const result = await action.handler(
+        { agentId: "runtime-owner" } as unknown as IAgentRuntime,
+        {
+          ...fakeMessage,
+          content: {
+            ...fakeMessage.content,
+            metadata: requestingClient
+              ? { viewClientId: requestingClient }
+              : undefined,
+          },
+        },
+        undefined,
+        { parameters: { provider: "anthropic" } },
+      );
 
-    expect(result?.success).toBe(true);
-    expect(targetedFrames).toHaveLength(3);
-    expect(targetedFrames.map((frame) => frame.capability)).toEqual([
-      "agent-focus",
-      "agent-fill",
-      "agent-click",
-    ]);
-    expect(settings.interactionRuntimes).toEqual([]);
-  });
+      expect(result?.success).toBe(true);
+      expect(targetedFrames).toHaveLength(3);
+      expect(targetedFrames.map((frame) => frame.capability)).toEqual([
+        "agent-focus",
+        "agent-fill",
+        "agent-click",
+      ]);
+      expect(settings.interactionRuntimes).toEqual([]);
+    },
+  );
 
   it("resolves a named action to the real agent-fill/click sequence", async () => {
     const settings = makeInteractiveView(
@@ -325,6 +342,40 @@ describe("view-scoped action handler drives the interact protocol", () => {
       "agent-fill:provider-select",
       "agent-click:save-button",
     ]);
+  });
+
+  it("selects a parameterized mounted day and rejects missing target parameters", async () => {
+    const calendar = makeInteractiveView(
+      INTERACTIVE_VIEW_ID,
+      new Set(["calendar-day-2026-09-06"]),
+    );
+    await registerPluginViews(
+      {
+        name: TEST_PLUGIN,
+        description: "calendar target",
+        views: [calendar.view],
+      },
+      process.cwd(),
+    );
+    await navigateTo(INTERACTIVE_VIEW_ID);
+    const action = buildViewScopedAction(INTERACTIVE_VIEW_ID, {
+      name: "SELECT_DAY",
+      description: "Select the displayed day",
+      parameters: ["date"],
+      steps: [{ kind: "agent-click", target: "calendar-day-{{date}}" }],
+    });
+    const runtime = { agentId: "runtime-owner" } as unknown as IAgentRuntime;
+    await expect(
+      action.handler(runtime, fakeMessage, undefined, { parameters: {} }),
+    ).rejects.toMatchObject({ code: "VIEW_SCOPED_ACTION_PARAM_MISSING" });
+    expect(calendar.clicked).toEqual([]);
+    const result = await action.handler(runtime, fakeMessage, undefined, {
+      parameters: validateToolArgs(action, { date: "2026-09-06" }).args as {
+        date: string;
+      },
+    });
+    expect(result?.success).toBe(true);
+    expect(calendar.clicked).toEqual(["calendar-day-2026-09-06"]);
   });
 
   it("throws a typed missing-element error when a target useAgentElement id is not mounted", async () => {

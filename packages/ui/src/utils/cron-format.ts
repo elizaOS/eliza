@@ -65,6 +65,17 @@ export function describeCron(expression: string): string | null {
     return `Every ${everyN[1]} minutes`;
   }
 
+  // Clock-aligned hour intervals divide the day evenly. Other step sizes
+  // have an uneven overnight gap, so retain their exact cron expression.
+  const hourStep = hourPart.match(/^\*\/(\d+)$/);
+  if (hourStep && minPart === "0" && domPart === "*" && dowPart === "*") {
+    const hours = Number(hourStep[1]);
+    if (hours > 0 && hours <= 24 && 24 % hours === 0) {
+      return hours === 1 ? "Every hour" : `Every ${hours} hours`;
+    }
+    return null;
+  }
+
   if (
     minPart === "0" &&
     hourPart === "*" &&

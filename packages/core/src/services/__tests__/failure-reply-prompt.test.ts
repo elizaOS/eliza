@@ -367,6 +367,7 @@ describe("isModelProviderFallbackError", () => {
 	it("treats typed local-inference unavailability as a provider failover signal", () => {
 		const error = Object.assign(new Error("native binding unavailable"), {
 			code: "LOCAL_INFERENCE_UNAVAILABLE",
+			reason: "backend_unavailable",
 		});
 
 		expect(

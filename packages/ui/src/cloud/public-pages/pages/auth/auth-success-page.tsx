@@ -43,6 +43,24 @@ function isBrowserLoopbackWebOrigin(): boolean {
 }
 
 /**
+ * Remove the one-time OAuth proof from the visible URL without notifying the
+ * router. The already-resolved candidate retains the value needed for this
+ * verification attempt, while refreshes, copied links, and browser history do
+ * not retain the credential.
+ */
+function stripAuthSuccessProofFromAddressBar(): void {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("proof")) return;
+  url.searchParams.delete("proof");
+  window.history.replaceState(
+    window.history.state,
+    "",
+    `${url.pathname}${url.search}${url.hash}`,
+  );
+}
+
+/**
  * Resolve a Cloud API path. On Cloud / native hosts, same-origin relative paths
  * ride {@link api}. On loopback web the Vite `/api` proxy hits the local agent,
  * which does not host these Cloud OAuth routes — so use the configured Cloud
@@ -596,6 +614,7 @@ export default function AuthSuccessPage() {
   );
 
   useEffect(() => {
+    stripAuthSuccessProofFromAddressBar();
     if (candidate.kind !== "candidate") {
       setView({ phase: "unverified", reason: candidate.reason });
       return;

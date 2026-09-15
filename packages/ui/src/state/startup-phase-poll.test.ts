@@ -5,11 +5,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FirstRunOptions } from "../api";
 import { ANDROID_LOCAL_AGENT_IPC_BASE } from "../first-run/mobile-runtime-mode";
+import { describeStoppedDedicatedCloudAgent } from "./dedicated-cloud-agent-error";
 import { clearPersistedActiveServer } from "./persistence";
 import {
   isRecoverableRemoteBase,
   isTerminalDedicatedCloudAgentErrorState,
   type PollingBackendDeps,
+  resolveStartupCloudControlPlaneBase,
   runPollingBackend,
   shouldFallBackToLocalOrigin,
 } from "./startup-phase-poll";
@@ -178,7 +180,82 @@ afterEach(() => {
   (globalThis as { window?: unknown }).window = originalWindow;
 });
 
+describe("resolveStartupCloudControlPlaneBase", () => {
+  it("keeps a staging agent recovery probe off the production control plane", () => {
+    expect(
+      resolveStartupCloudControlPlaneBase(
+        "https://agent-123.cloud-staging.eliza.app",
+        {
+          bootCloudApiBase: "https://api.eliza.app",
+          pageHostname: "localhost",
+        },
+      ),
+    ).toBe("https://api-staging.eliza.app");
+  });
+
+  it("lets an explicit staging boot target override a stale production agent", () => {
+    expect(
+      resolveStartupCloudControlPlaneBase("https://agent-123.cloud.eliza.app", {
+        bootCloudApiBase: "https://api-staging.eliza.app/api/v1",
+        pageHostname: "localhost",
+      }),
+    ).toBe("https://api-staging.eliza.app");
+  });
+});
+
 describe("runPollingBackend", () => {
+  it("immediately offers management for a stopped Dedicated agent without dropping its binding", async () => {
+    const base = "https://agent-123.cloud-staging.eliza.app";
+    clientMock.getBaseUrl.mockReturnValue(base);
+    clientMock.hasToken.mockReturnValue(true);
+    clientMock.getAuthStatus.mockRejectedValue({
+      status: 409,
+      code: "agent_stopped",
+      message:
+        "This agent is shut down. Start it from Cloud settings when you are ready.",
+    });
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    const server = {
+      id: "remote:agent-123",
+      kind: "remote" as const,
+      label: "Eliza",
+      apiBase: base,
+    };
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: false,
+        defaultTarget: "remote-backend",
+      },
+      {
+        persistedActiveServer: server,
+        restoredActiveServer: server,
+        shouldPreserveCompletedFirstRun: true,
+        hadPriorFirstRun: true,
+      },
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+    expect(deps.setStartupError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "agent-stopped",
+        cloudManagementUrl: "https://cloud-staging.eliza.app/join",
+      }),
+    );
+    expect(dispatch).toHaveBeenCalledWith({ type: "AGENT_STOPPED" });
+    expect(clientMock.getAuthStatus).toHaveBeenCalledTimes(1);
+    expect(clearPersistedActiveServer).not.toHaveBeenCalled();
+    expect(clientMock.setBaseUrl).not.toHaveBeenCalled();
+    expect(clientMock.setToken).not.toHaveBeenCalled();
+  });
+
   it("does not let stale persisted first-run completion override an incomplete backend", async () => {
     const deps = createDeps();
     const dispatch = vi.fn();
@@ -411,7 +488,7 @@ describe("runPollingBackend", () => {
     });
   });
 
-  it("routes a DEV-UI-shell (port 2138) same-origin proxy outage to offline first-run instead of waiting for timeout", async () => {
+  it("preserves an established DEV-UI runtime during a same-origin proxy outage", async () => {
     const deps = createDeps();
     const dispatch = vi.fn();
     (globalThis as { window?: unknown }).window = {
@@ -442,8 +519,8 @@ describe("runPollingBackend", () => {
       dispatch,
       {
         supportsLocalRuntime: false,
-        backendTimeoutMs: 1000,
-        agentReadyTimeoutMs: 1000,
+        backendTimeoutMs: 50,
+        agentReadyTimeoutMs: 50,
         probeForExistingInstall: false,
         defaultTarget: null,
       },
@@ -459,20 +536,13 @@ describe("runPollingBackend", () => {
       { current: null },
     );
 
-    expect(clearPersistedActiveServer).toHaveBeenCalledTimes(1);
-    expect(clientMock.setBaseUrl).toHaveBeenCalledWith(null);
-    expect(deps.setFirstRunOptions).toHaveBeenCalledWith(
-      expect.objectContaining({
-        providers: expect.any(Array),
-        models: expect.any(Object),
-      }),
-    );
-    expect(deps.setFirstRunComplete).toHaveBeenCalledWith(false);
-    expect(deps.setFirstRunLoading).toHaveBeenCalledWith(false);
-    expect(dispatch).toHaveBeenCalledWith({
+    expect(clearPersistedActiveServer).not.toHaveBeenCalled();
+    expect(clientMock.setBaseUrl).not.toHaveBeenCalledWith(null);
+    expect(deps.setFirstRunComplete).not.toHaveBeenCalledWith(false);
+    expect(dispatch).not.toHaveBeenCalledWith({
       type: "BACKEND_UNAVAILABLE_FIRST_RUN",
     });
-    expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+    expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
   });
 
   it("does NOT eject an established hosted-web user to first-run on a transient same-origin 5xx", async () => {
@@ -1743,6 +1813,29 @@ describe("shouldFallBackToLocalOrigin", () => {
       }),
     ).toBe(false);
   });
+
+  it("does NOT abandon a managed Shared agent base for the renderer origin", () => {
+    expect(
+      shouldFallBackToLocalOrigin({
+        ...eligible,
+        clientBaseUrl:
+          "https://api-staging.eliza.app/api/v1/eliza/agents/personal%3A6296260d-6060-5d75-87cc-dabcd298e66b",
+        pageOrigin: "https://cloud-staging.eliza.app",
+        pageProtocol: "https:",
+      }),
+    ).toBe(false);
+  });
+
+  it("does NOT abandon the Cloud control plane for the renderer origin", () => {
+    expect(
+      shouldFallBackToLocalOrigin({
+        ...eligible,
+        clientBaseUrl: "https://api-staging.eliza.app",
+        pageOrigin: "https://cloud-staging.eliza.app",
+        pageProtocol: "https:",
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("runPollingBackend cancellation during options fetch", () => {
@@ -2410,6 +2503,7 @@ describe("runPollingBackend progress-aware native budget + dead-cloud recovery (
       { current: 1 },
       { current: false },
       { current: null },
+      "cloud-managed",
     );
 
     // Recovered to the bundled on-device agent and completed startup.
@@ -2654,12 +2748,17 @@ describe("runPollingBackend progress-aware native budget + dead-cloud recovery (
     const run = runPollingBackend(
       deps,
       dispatch,
-      { ...nativePolicy, nativeConsecutiveFailureBudgetMs: 150 },
+      {
+        ...nativePolicy,
+        nativeConsecutiveFailureBudgetMs: 90_000,
+        remoteNativeConsecutiveFailureBudgetMs: 150,
+      },
       nativeCtx(remoteServer),
       1,
       { current: 1 },
       { current: false },
       { current: null },
+      "remote-backend",
     );
     let settled = false;
     const settledRun = run.finally(() => {
@@ -2685,7 +2784,182 @@ describe("runPollingBackend progress-aware native budget + dead-cloud recovery (
       "eliza:mobile-runtime-mode",
       "local",
     ]);
+    expect(deps.setStartupError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "backend-unreachable",
+        message: expect.stringContaining(
+          "sign-in and chat history are preserved",
+        ),
+      }),
+    );
   });
+
+  it.each(["remote-backend", "cloud-managed"] as const)(
+    "surfaces an unreachable native %s target within its short remote budget without clearing the saved session",
+    async (target) => {
+      vi.useFakeTimers();
+      const deps = createDeps();
+      const dispatch = vi.fn();
+      installNativeWindow({ persistedRuntimeMode: null });
+      clientMock.getBaseUrl.mockReturnValue(
+        target === "cloud-managed"
+          ? deadCloudServer.apiBase
+          : "https://vps.example.test",
+      );
+      clientMock.getAuthStatus.mockReset();
+      clientMock.getAuthStatus.mockRejectedValue(
+        Object.assign(new TypeError("Failed to fetch"), {
+          kind: "network",
+          path: "/api/auth/status",
+        }),
+      );
+
+      const run = runPollingBackend(
+        deps,
+        dispatch,
+        {
+          ...nativePolicy,
+          backendTimeoutMs: 30_000,
+          nativeConsecutiveFailureBudgetMs: 90_000,
+        },
+        nativeCtx(
+          target === "cloud-managed"
+            ? deadCloudServer
+            : {
+                id: "remote:vps",
+                kind: "remote",
+                label: "VPS agent",
+                apiBase: "https://vps.example.test",
+              },
+        ),
+        1,
+        { current: 1 },
+        { current: false },
+        { current: null },
+        target,
+      );
+      let settled = false;
+      const settledRun = run.finally(() => {
+        settled = true;
+      });
+      await vi.advanceTimersByTimeAsync(6_999);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1_001);
+      expect(settled).toBe(true);
+      await settledRun;
+
+      expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+      expect(deps.setStartupError).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: "backend-unreachable" }),
+      );
+      expect(vi.mocked(clearPersistedActiveServer)).not.toHaveBeenCalled();
+      expect(clientMock.setBaseUrl).not.toHaveBeenCalled();
+      expect(clientMock.setToken).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps the full local probe cap when a Cloud target has recovered to mobile IPC", async () => {
+    vi.useFakeTimers();
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    const effectRunRef = { current: 1 };
+    const cancelledRef = { current: false };
+    installNativeWindow({ persistedRuntimeMode: null });
+    clientMock.getBaseUrl.mockReturnValue(ANDROID_LOCAL_AGENT_IPC_BASE);
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockImplementation(
+      () => new Promise<never>(() => {}),
+    );
+
+    const run = runPollingBackend(
+      deps,
+      dispatch,
+      {
+        ...nativePolicy,
+        backendTimeoutMs: 30_000,
+        nativeConsecutiveFailureBudgetMs: 90_000,
+      },
+      nativeCtx(deadCloudServer),
+      1,
+      effectRunRef,
+      cancelledRef,
+      { current: null },
+      "cloud-managed",
+    );
+    let settled = false;
+    const settledRun = run.finally(() => {
+      settled = true;
+    });
+
+    await vi.advanceTimersByTimeAsync(9_000);
+    expect(settled).toBe(false);
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+
+    cancelledRef.current = true;
+    await vi.runAllTimersAsync();
+    await settledRun;
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+  });
+
+  it.each(["remote-backend", "cloud-managed"] as const)(
+    "caps a hung first native %s probe by the short remote budget",
+    async (target) => {
+      vi.useFakeTimers();
+      const deps = createDeps();
+      const dispatch = vi.fn();
+      installNativeWindow({ persistedRuntimeMode: null });
+      clientMock.getBaseUrl.mockReturnValue(
+        target === "cloud-managed"
+          ? deadCloudServer.apiBase
+          : "https://vps.example.test",
+      );
+      clientMock.getAuthStatus.mockReset();
+      clientMock.getAuthStatus.mockImplementation(
+        () => new Promise<never>(() => {}),
+      );
+
+      const run = runPollingBackend(
+        deps,
+        dispatch,
+        {
+          ...nativePolicy,
+          backendTimeoutMs: 30_000,
+          nativeConsecutiveFailureBudgetMs: 90_000,
+        },
+        nativeCtx(
+          target === "cloud-managed"
+            ? deadCloudServer
+            : {
+                id: "remote:vps",
+                kind: "remote",
+                label: "VPS agent",
+                apiBase: "https://vps.example.test",
+              },
+        ),
+        1,
+        { current: 1 },
+        { current: false },
+        { current: null },
+        target,
+      );
+      let settled = false;
+      const settledRun = run.finally(() => {
+        settled = true;
+      });
+
+      await vi.advanceTimersByTimeAsync(6_999);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(settled).toBe(true);
+      await settledRun;
+
+      expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+      expect(deps.setStartupError).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: "backend-unreachable" }),
+      );
+      expect(vi.mocked(clearPersistedActiveServer)).not.toHaveBeenCalled();
+    },
+  );
 
   it("fails a hung probe fast and retries+connects instead of one hang eating the whole budget (#13737)", async () => {
     // The on-device Android boot: the first probe issued while the detached
@@ -3055,3 +3329,37 @@ describe("runPollingBackend hosted-web unreachable dedicated agent (#19627)", ()
     );
   });
 });
+
+it.each([
+  {
+    status: 401,
+    code: "agent_stopped",
+    clientBaseUrl: "https://agent-123.cloud-staging.eliza.app",
+  },
+  {
+    status: 409,
+    code: "lifecycle_conflict",
+    clientBaseUrl: "https://agent-123.cloud-staging.eliza.app",
+  },
+  {
+    status: 409,
+    code: "agent_stopped",
+    clientBaseUrl: "https://self-hosted.example",
+  },
+  {
+    status: 409,
+    code: "agent_stopped",
+    clientBaseUrl:
+      "https://cloud-staging.eliza.app/api/v1/eliza/agents/personal:abc",
+  },
+])(
+  "does not offer managed Dedicated startup for unrelated failures: %j",
+  (failure) => {
+    expect(
+      describeStoppedDedicatedCloudAgent({
+        ...failure,
+        phase: "starting-backend",
+      }),
+    ).toBeNull();
+  },
+);

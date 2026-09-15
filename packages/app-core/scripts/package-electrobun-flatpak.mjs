@@ -3,6 +3,8 @@
  * Packages the already-built Linux Electrobun application tree as a
  * side-loadable Flatpak, preserving the exact desktop runtime tested by the
  * canonical release lane instead of substituting the command-line package.
+ * Pass --artifact-dir=/path/to/output to place the final bundle and its
+ * filesystem-capacity preflight outside the repository.
  */
 
 import { execFileSync } from "node:child_process";
@@ -10,10 +12,12 @@ import {
   chmodSync,
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -22,6 +26,9 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import sharp from "sharp";
+import { resolveLatestElectrobunLinuxBuild } from "./lib/electrobun-linux-build-dir.mjs";
+import { hardenLinuxArtifactPermissions } from "./lib/linux-artifact-permissions.mjs";
+import { normalizeAbsoluteStagedSymlinks } from "./lib/linux-artifact-symlinks.mjs";
 import {
   assertFinalizedFlatpakMetadata,
   assertFlatpakPackagingSpace,
@@ -106,6 +113,140 @@ export function resolveFlatpakRefs({ arch, runtimeRef, sdkRef }) {
   return { runtimeRef: resolvedRuntimeRef, sdkRef: resolvedSdkRef };
 }
 
+function lstatIfPresent(targetPath) {
+  try {
+    return lstatSync(targetPath);
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+/** Canonicalize the stable /var alias that macOS exposes as /private/var. */
+export function canonicalizePlatformPathAlias(
+  targetPath,
+  platform = process.platform,
+) {
+  const resolved = path.resolve(targetPath);
+  if (platform !== "darwin") return resolved;
+  const aliasRoot = path.parse(resolved).root === "/" ? "/var" : null;
+  if (!aliasRoot) return resolved;
+  const relative = path.relative(aliasRoot, resolved);
+  if (
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  ) {
+    return resolved;
+  }
+  const canonicalRoot = realpathSync(aliasRoot);
+  return path.join(canonicalRoot, relative);
+}
+
+/**
+ * Resolve an optional artifact directory and the existing directory whose
+ * filesystem capacity represents it. Explicit paths reject symlink traversal,
+ * filesystem roots, the repository root, and non-directory components.
+ */
+export function resolveFlatpakArtifactDirectory(
+  requestedDirectory,
+  {
+    baseDirectory = repoRoot,
+    defaultDirectory = artifactRoot,
+    defaultCapacityDirectory = electrobunRoot,
+  } = {},
+) {
+  if (requestedDirectory === undefined) {
+    return {
+      artifactDirectory: defaultDirectory,
+      capacityDirectory: defaultCapacityDirectory,
+    };
+  }
+  if (
+    requestedDirectory === "true" ||
+    requestedDirectory.trim().length === 0 ||
+    requestedDirectory.includes("\0")
+  ) {
+    throw new Error(
+      "--artifact-dir requires a non-empty directory path supplied with =",
+    );
+  }
+
+  const resolvedBase = path.resolve(baseDirectory);
+  const artifactDirectory = path.resolve(resolvedBase, requestedDirectory);
+  if (artifactDirectory === path.parse(artifactDirectory).root) {
+    throw new Error("Flatpak artifact directory must not be a filesystem root");
+  }
+  if (artifactDirectory === resolvedBase) {
+    throw new Error(
+      "Flatpak artifact directory must not be the repository root",
+    );
+  }
+
+  let capacityDirectory = artifactDirectory;
+  while (true) {
+    const canonicalCapacityDirectory =
+      canonicalizePlatformPathAlias(capacityDirectory);
+    const stats = lstatIfPresent(canonicalCapacityDirectory);
+    if (stats) {
+      if (stats.isSymbolicLink()) {
+        throw new Error(
+          `Flatpak artifact directory must not traverse a symlink: ${capacityDirectory}`,
+        );
+      }
+      if (!stats.isDirectory()) {
+        throw new Error(
+          `Flatpak artifact directory component is not a directory: ${capacityDirectory}`,
+        );
+      }
+      if (
+        realpathSync(canonicalCapacityDirectory) !== canonicalCapacityDirectory
+      ) {
+        throw new Error(
+          `Flatpak artifact directory must not traverse a symlink: ${capacityDirectory}`,
+        );
+      }
+      break;
+    }
+    const parent = path.dirname(capacityDirectory);
+    if (parent === capacityDirectory) {
+      throw new Error(
+        `Flatpak artifact directory has no existing directory ancestor: ${artifactDirectory}`,
+      );
+    }
+    capacityDirectory = parent;
+  }
+
+  return { artifactDirectory, capacityDirectory };
+}
+
+/** Keep output outside the multi-gigabyte source tree being copied. */
+export function assertFlatpakArtifactDirectoryOutsideBuild(
+  artifactDirectory,
+  buildDirectory,
+) {
+  const canonicalBuildDirectory = realpathSync(
+    canonicalizePlatformPathAlias(buildDirectory),
+  );
+  const canonicalArtifactDirectory =
+    canonicalizePlatformPathAlias(artifactDirectory);
+  const relative = path.relative(
+    canonicalBuildDirectory,
+    canonicalArtifactDirectory,
+  );
+  if (
+    relative === "" ||
+    (!relative.startsWith(`..${path.sep}`) &&
+      relative !== ".." &&
+      !path.isAbsolute(relative))
+  ) {
+    throw new Error(
+      `Flatpak artifact directory must not be inside the build tree: ${artifactDirectory}`,
+    );
+  }
+  return artifactDirectory;
+}
+
 const args = new Map(
   process.argv.slice(2).map((arg) => {
     const [key, ...rest] = arg.replace(/^--/, "").split("=");
@@ -137,18 +278,23 @@ function run(command, commandArgs, options = {}) {
   });
 }
 
-function latestLinuxBuildDir() {
-  const explicit = args.get("build-dir");
-  if (explicit) return path.resolve(repoRoot, explicit);
-
-  const candidates = readdirSync(buildRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && /linux/i.test(entry.name))
-    .map((entry) => path.join(buildRoot, entry.name))
-    .sort((left, right) => statSync(right).mtimeMs - statSync(left).mtimeMs);
-  if (!candidates[0]) {
-    throw new Error(`No Linux Electrobun build found under ${buildRoot}`);
+/** Always reclaim Flatpak app and OSTree staging after success or failure. */
+export async function withFlatpakStagingCleanup(tempRoot, operation) {
+  try {
+    return await operation();
+  } finally {
+    if (existsSync(tempRoot)) {
+      run(process.execPath, [cleanupHelper, tempRoot]);
+    }
   }
-  return candidates[0];
+}
+
+function latestLinuxBuildDir() {
+  return resolveLatestElectrobunLinuxBuild({
+    buildRoot,
+    explicitBuildDir: args.get("build-dir"),
+    repoRoot,
+  });
 }
 
 export function requireLauncher(buildDir) {
@@ -167,6 +313,15 @@ export function requireLauncher(buildDir) {
   return path.relative(buildDir, launcher);
 }
 
+function posixShellQuote(value) {
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
+/** Close umask-dependent write permissions across the completed Flatpak stage. */
+export function hardenFlatpakStagingPermissions(appDir) {
+  return hardenLinuxArtifactPermissions(appDir);
+}
+
 export async function writeMetadata(filesDir, relativeLauncher) {
   mkdirSync(path.join(filesDir, "bin"), { recursive: true });
   mkdirSync(path.join(filesDir, "share/applications"), { recursive: true });
@@ -176,9 +331,13 @@ export async function writeMetadata(filesDir, relativeLauncher) {
   });
 
   const wrapper = path.join(filesDir, "bin/eliza");
+  const launcherPath = path.posix.join(
+    "/app/opt/eliza",
+    relativeLauncher.split(path.sep).join("/"),
+  );
   writeFileSync(
     wrapper,
-    `#!/usr/bin/env sh\nexec /app/opt/eliza/${relativeLauncher} "$@"\n`,
+    `#!/usr/bin/env sh\nexec ${posixShellQuote(launcherPath)} "$@"\n`,
   );
   chmodSync(wrapper, 0o755);
   writeFileSync(
@@ -261,8 +420,10 @@ async function main() {
     );
   }
   if (!existsSync(iconPath)) throw new Error(`Missing app icon: ${iconPath}`);
+  const { artifactDirectory, capacityDirectory } =
+    resolveFlatpakArtifactDirectory(args.get("artifact-dir"));
   const output = path.join(
-    artifactRoot,
+    artifactDirectory,
     `Eliza-${version}-linux-${arch}.flatpak`,
   );
   if (existsSync(output)) {
@@ -272,6 +433,7 @@ async function main() {
   }
 
   const buildDir = latestLinuxBuildDir();
+  assertFlatpakArtifactDirectoryOutsideBuild(artifactDirectory, buildDir);
   const relativeLauncher = requireLauncher(buildDir);
   const inspection = assertLinuxDistributionClaim({
     buildDir,
@@ -282,7 +444,7 @@ async function main() {
   // uses a separate tmpfs. Gate both filesystems before creating either copy.
   const space = assertFlatpakPackagingSpace(
     buildDir,
-    electrobunRoot,
+    capacityDirectory,
     inspection,
   );
   assertFlatpakPackagingSpace(buildDir, os.tmpdir(), inspection);
@@ -290,7 +452,7 @@ async function main() {
   const appDir = path.join(tempRoot, "app");
   const repoDir = path.join(tempRoot, "repo");
 
-  try {
+  await withFlatpakStagingCleanup(tempRoot, async () => {
     run("flatpak", [
       "build-init",
       "--type=app",
@@ -303,11 +465,17 @@ async function main() {
     await cp(buildDir, path.join(appDir, "files/opt/eliza"), {
       recursive: true,
       force: true,
-      dereference: true,
+      dereference: false,
+      verbatimSymlinks: true,
     });
+    normalizeAbsoluteStagedSymlinks(
+      buildDir,
+      path.join(appDir, "files/opt/eliza"),
+    );
     copyBundledLibraries(path.join(appDir, "files"));
     await writeMetadata(path.join(appDir, "files"), relativeLauncher);
     run("flatpak", ["build-finish", ...FLATPAK_FINISH_ARGS, appDir]);
+    hardenFlatpakStagingPermissions(appDir);
     assertFinalizedFlatpakMetadata(path.join(appDir, "metadata"), flatpakRefs);
     run("flatpak", [
       "build-export",
@@ -316,7 +484,7 @@ async function main() {
       appDir,
       "stable",
     ]);
-    mkdirSync(artifactRoot, { recursive: true });
+    mkdirSync(artifactDirectory, { recursive: true });
     run("flatpak", [
       "build-bundle",
       `--arch=${arch}`,
@@ -328,9 +496,7 @@ async function main() {
     console.log(
       `Wrote ${path.relative(repoRoot, output)} (outer Flatpak sandbox verified; ${inspection.glibcCompatibility.elfFileCount} ELF files at or below GLIBC_${inspection.glibcCompatibility.maxAllowedVersion}; Chromium renderer sandbox unavailable; preflight required ${space.requiredBytes} free bytes)`,
     );
-  } finally {
-    run(process.execPath, [cleanupHelper, tempRoot]);
-  }
+  });
 }
 
 if (

@@ -137,7 +137,6 @@ const FULL_APP_SHELL_WIDGET_PLUGIN_IDS: ReadonlySet<string> = new Set([
   "goals",
   "health",
   "inbox",
-  "needs-attention",
   "relationships",
   "todo",
 ]);

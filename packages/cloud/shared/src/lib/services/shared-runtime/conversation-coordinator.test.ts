@@ -251,6 +251,84 @@ describe("shared conversation coordinator", () => {
     });
   });
 
+  test("rehydrates sanitized turn failures before generic 503 handling", async () => {
+    const agent = {
+      id: "agent-1",
+      organization_id: "org-1",
+      user_id: "user-1",
+      execution_tier: "shared",
+    } as never;
+    const rpc = {
+      jsonrpc: "2.0" as const,
+      id: "rpc-1",
+      method: "message.send",
+      params: { text: "hi", roomId: "room-1" },
+    };
+    const executionCtx = { waitUntil() {} };
+    const namespace = {
+      getByName: () => ({
+        fetch: async () =>
+          Response.json(
+            {
+              error: "Shared runtime turn failed.",
+              code: "shared_runtime_turn_failed",
+              failureName: "SharedRuntimeProviderUnavailableError",
+              retryable: true,
+            },
+            { status: 503 },
+          ),
+      }),
+    };
+
+    await expect(
+      coordinateSharedBridge(agent, rpc, { namespace, executionCtx }),
+    ).rejects.toMatchObject({
+      name: "SharedRuntimeTurnError",
+      message: "Shared runtime turn failed.",
+      failureName: "SharedRuntimeProviderUnavailableError",
+      retryable: true,
+    });
+  });
+
+  test("fails closed when turn failure metadata is forged or inconsistent", async () => {
+    const agent = {
+      id: "agent-1",
+      organization_id: "org-1",
+      user_id: "user-1",
+      execution_tier: "shared",
+    } as never;
+    const rpc = {
+      jsonrpc: "2.0" as const,
+      id: "rpc-1",
+      method: "message.send",
+      params: { text: "hi", roomId: "room-1" },
+    };
+    const executionCtx = { waitUntil() {} };
+    const namespace = {
+      getByName: () => ({
+        fetch: async () =>
+          Response.json(
+            {
+              error: "private provider body",
+              code: "shared_runtime_turn_failed",
+              failureName: "SharedRuntimeActionContractError",
+              retryable: true,
+            },
+            { status: 503 },
+          ),
+      }),
+    };
+
+    await expect(
+      coordinateSharedBridge(agent, rpc, { namespace, executionCtx }),
+    ).rejects.toMatchObject({
+      name: "SharedRuntimeTurnError",
+      message: "Shared runtime turn failed.",
+      failureName: "SharedRuntimeUnknownError",
+      retryable: false,
+    });
+  });
+
   test("keeps history import behind the account-commit boundary and makes replay explicit", async () => {
     const operations: string[] = [];
     const names: string[] = [];

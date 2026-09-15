@@ -23,6 +23,7 @@ registerAppRoutePluginLoader(
 
 registerAppShellPage({
   id: "wallet.inventory",
+  agentViewId: "wallet",
   pluginId: "app-wallet",
   label: "Wallet",
   viewKind: "system",
@@ -31,6 +32,10 @@ registerAppShellPage({
   tabAffinity: "inventory",
   group: "wallet",
   order: 50,
+  surface: {
+    background: "opaque",
+    capabilities: [],
+  },
   loader: () =>
     import("./InventoryView.tsx").then((module) => ({
       default: module.InventoryView,

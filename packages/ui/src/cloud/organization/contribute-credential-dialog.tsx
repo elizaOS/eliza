@@ -19,7 +19,6 @@
 import { AlertCircle, KeyRound, Loader2, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import {
-  BrandButton,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -51,7 +50,7 @@ import { organizationErrorMessage } from "./data/use-organization";
 interface ContributeCredentialDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (credential: PooledCredentialDto) => void;
 }
 
 export function ContributeCredentialDialog({
@@ -103,7 +102,7 @@ export function ContributeCredentialDialog({
       });
       setApiKey("");
       setResult(data);
-      onSuccess();
+      onSuccess(data);
     } catch (err) {
       setError(
         organizationErrorMessage(
@@ -147,16 +146,16 @@ export function ContributeCredentialDialog({
             </Card>
 
             <DialogFooter>
-              <BrandButton
+              <Button
                 type="button"
-                variant="primary"
+                variant="default"
                 onClick={handleClose}
                 className="font-mono text-sm"
               >
                 {t("cloud.contributeCredential.done", {
                   defaultValue: "Done",
                 })}
-              </BrandButton>
+              </Button>
             </DialogFooter>
           </>
         ) : (
@@ -283,9 +282,9 @@ export function ContributeCredentialDialog({
                     defaultValue: "Cancel",
                   })}
                 </Button>
-                <BrandButton
+                <Button
                   type="submit"
-                  variant="primary"
+                  variant="default"
                   disabled={isSubmitting}
                   className="font-mono text-sm order-1 sm:order-2"
                 >
@@ -304,7 +303,7 @@ export function ContributeCredentialDialog({
                       })}
                     </>
                   )}
-                </BrandButton>
+                </Button>
               </DialogFooter>
             </SemanticForm>
           </>

@@ -20,6 +20,7 @@
  * `WebSocket` to this shape.
  */
 
+import type { VoiceUiContext } from "@elizaos/shared";
 import { type VoiceSessionTokenClaims, verifyVoiceSessionToken } from "./jwt";
 import type { ServerControlFrame } from "./protocol";
 import {
@@ -48,6 +49,7 @@ export interface VoiceSessionDownlink {
  * while the orchestrator lives next to the merged provider adapters in api.
  */
 export interface VoiceSessionLike {
+  setUiContext?(context: VoiceUiContext): void;
   start(): void;
   pushUplinkAudio(bytes: Uint8Array): void;
   bargeIn(): void;
@@ -60,6 +62,13 @@ export interface VoiceSessionLike {
    * the frame is accepted without forcing every implementation to react.
    */
   endUplink?(): void;
+  setAudioCapabilities?(capabilities: {
+    mode: "continuous_handoff";
+    echoCancellation: boolean;
+    noiseSuppression: boolean;
+    autoGainControl: boolean;
+    referenceAwarePlayback: boolean;
+  }): void;
 }
 
 export interface ServerWebSocketLike {
@@ -82,6 +91,7 @@ export interface VoiceWsHandlerDeps {
     jti: string;
     tokenExpSeconds: number;
     downlink: VoiceSessionDownlink;
+    initialUsageAdmissionMinutes?: number;
   }) => VoiceSessionLike;
   /** Verify override for tests; defaults to the real verifier. */
   verifyToken?: typeof verifyVoiceSessionToken;
@@ -99,6 +109,16 @@ export interface VoiceWsHandlerDeps {
    * live registry. Returns true when a new session may start.
    */
   admitSession?: () => boolean;
+  /**
+   * Atomically records the initial paid-provider window after token standing
+   * and capacity checks, immediately before session construction and start.
+   */
+  admitProviderSession?: (identity: { organizationId: string; userId: string }) => Promise<{
+    admittedMinutes: number;
+    release(): Promise<void>;
+  }>;
+  /** Retain detached rollback work under the owning Worker lifetime. */
+  defer?: (promise: Promise<unknown>) => void;
   now?: () => number;
 }
 
@@ -223,6 +243,9 @@ export function attachVoiceWsHandler(socket: ServerWebSocketLike, deps: VoiceWsH
     // Active session control frames.
     if (!session) return;
     switch (frame.t) {
+      case "ui_context":
+        session.setUiContext?.(frame.context);
+        return;
       case "hello":
         // A second hello is a protocol violation; ignore rather than re-auth.
         safeSend(
@@ -233,6 +256,9 @@ export function attachVoiceWsHandler(socket: ServerWebSocketLike, deps: VoiceWsH
       case "audio_meta":
         // Codec-swap signal (on-mic -> BLE-mic). Phase 1 is pcm16-only; an opus
         // switch is a documented seam. Accept the meta as a no-op for pcm16.
+        return;
+      case "audio_capabilities":
+        session.setAudioCapabilities?.(frame);
         return;
       case "barge_in":
         session.bargeIn();
@@ -322,23 +348,51 @@ export function attachVoiceWsHandler(socket: ServerWebSocketLike, deps: VoiceWsH
       return;
     }
 
+    let providerAdmission: { admittedMinutes: number; release(): Promise<void> } | undefined;
     try {
+      providerAdmission = await deps.admitProviderSession?.({
+        organizationId: verified.claims.organizationId,
+        userId: verified.claims.userId,
+      });
+      if (state !== "awaiting_hello") {
+        if (providerAdmission) {
+          const release = providerAdmission.release();
+          if (deps.defer) deps.defer(release);
+          else void release;
+        }
+        return;
+      }
       session = deps.buildSession({
         claims: verified.claims,
         jti: verified.jti,
         tokenExpSeconds: verified.expSeconds,
         downlink,
+        initialUsageAdmissionMinutes: providerAdmission?.admittedMinutes,
       });
       state = "active";
       session.start();
-    } catch (ignoredError) {
-      void ignoredError;
+    } catch (error) {
+      if (providerAdmission) {
+        const release = providerAdmission.release();
+        if (deps.defer) deps.defer(release);
+        else void release;
+      }
       // Runtime-config failures (e.g. an invalid Cartesia voiceId rejected by
       // the adapter) must surface as a clean retryable error + close, not a
       // hung socket with a consumed token.
       session = null;
       state = "awaiting_hello";
-      fail("session_start_failed", "could not start voice session", 1011);
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? String((error as { code: unknown }).code)
+          : "session_start_failed";
+      fail(
+        code,
+        code === "quota_exhausted"
+          ? "voice realtime quota exhausted"
+          : "could not start voice session",
+        code === "quota_exhausted" ? 1008 : 1011,
+      );
       return;
     }
     // Replay any audio the client pipelined while verification was in flight,

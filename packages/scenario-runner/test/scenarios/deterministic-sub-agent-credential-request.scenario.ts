@@ -22,6 +22,10 @@ import {
   scenario,
 } from "@elizaos/scenario-runner/schema";
 import type { AcpActionService } from "../../../../plugins/plugin-agent-orchestrator/src/actions/common";
+import {
+  CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA,
+  hashCredentialBridgeToken,
+} from "../../../../plugins/plugin-agent-orchestrator/src/services/credential-bridge-auth";
 import type { SessionInfo } from "../../../../plugins/plugin-agent-orchestrator/src/services/types";
 import { codingAgentRoutePlugin } from "../../../../plugins/plugin-agent-orchestrator/src/setup-routes";
 import { handleCredentialTunnelRoute } from "../../../app-core/src/api/credential-tunnel-routes";
@@ -37,6 +41,7 @@ const CHILD_NAME = "Credential Bridge Child";
 const OPENAI_KEY = "OPENAI_API_KEY";
 const SECOND_KEY = "STRIPE_API_KEY";
 const SECRET_VALUE = "sk-scenario-credential-value-10317";
+const CREDENTIAL_BRIDGE_TOKEN = "scenario-credential-bridge-token";
 const ROOM_ID = stringToUuid(`scenario-room:${SCENARIO_ID}:origin`) as UUID;
 const WORLD_ID = stringToUuid(`scenario-world:${SCENARIO_ID}`) as UUID;
 const OWNER_ENTITY_ID = stringToUuid(`scenario-owner:${SCENARIO_ID}`) as UUID;
@@ -96,6 +101,9 @@ function activeSession(): SessionInfo {
       channelId: ROOM_ID,
       source: "owner_app",
       ownerEntityId: OWNER_ENTITY_ID,
+      [CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA]: hashCredentialBridgeToken(
+        CREDENTIAL_BRIDGE_TOKEN,
+      ),
     },
   };
 }
@@ -413,6 +421,7 @@ export default scenario({
       method: "POST",
       path: `/api/coding-agents/${CHILD_SESSION_ID}/credentials/request`,
       body: { credentialKeys: [OPENAI_KEY, SECOND_KEY] },
+      headers: { "x-eliza-session-token": CREDENTIAL_BRIDGE_TOKEN },
       expectedStatus: 200,
       redactResponseFields: ["scopedToken"],
       captures: {
@@ -433,6 +442,7 @@ export default scenario({
         key: OPENAI_KEY,
         value: SECRET_VALUE,
       },
+      headers: { "x-eliza-session-token": CREDENTIAL_BRIDGE_TOKEN },
       expectedStatus: 200,
       assertResponse: expectTunnelSubmit,
       assertTurn: (turn) => expectTurnHasJsonStatus(turn, 200),
@@ -442,6 +452,7 @@ export default scenario({
       name: "child redeems the tunneled credential exactly once",
       method: "GET",
       path: `/api/coding-agents/${CHILD_SESSION_ID}/credentials/${OPENAI_KEY}?token={{capture:scopedToken}}`,
+      headers: { "x-eliza-session-token": CREDENTIAL_BRIDGE_TOKEN },
       expectedStatus: 200,
       redactResponseFields: ["value"],
       assertResponse: expectCredentialRedeemed,
@@ -452,6 +463,7 @@ export default scenario({
       name: "replay of redeemed credential is rejected",
       method: "GET",
       path: `/api/coding-agents/${CHILD_SESSION_ID}/credentials/${OPENAI_KEY}?token={{capture:scopedToken}}`,
+      headers: { "x-eliza-session-token": CREDENTIAL_BRIDGE_TOKEN },
       expectedStatus: 403,
       assertResponse: expectReplayRejected,
       assertTurn: (turn) => expectTurnHasJsonStatus(turn, 403),

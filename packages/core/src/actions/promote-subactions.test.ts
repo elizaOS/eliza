@@ -16,7 +16,10 @@ import {
 	promotedParentRoutingHint,
 	promoteSubactionsToActions,
 } from "./promote-subactions.js";
-import { buildPlannerToolsFromTieredActions } from "./to-tool.js";
+import {
+	buildPlannerToolsFromActions,
+	buildPlannerToolsFromTieredActions,
+} from "./to-tool.js";
 import { validateToolArgs } from "./validate-tool-args.js";
 
 function makeUmbrella(overrides: Partial<Action> = {}): Action {
@@ -97,6 +100,111 @@ describe("promote-subactions helper predicates", () => {
 });
 
 describe("promoteSubactionsToActions parameter slicing", () => {
+	it("uses an authored operation contract without changing sibling schemas or delegation gates", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const validate = vi.fn(async () => false);
+		const parent = makeUmbrella({
+			handler,
+			validate,
+			roleGate: { minRole: "OWNER" },
+		});
+		const originalParameters = structuredClone(parent.parameters);
+		const ordinary = promoteSubactionsToActions(parent);
+		const discriminator = parent.parameters?.[0];
+		if (!discriminator) throw new Error("Missing discriminator fixture");
+		const authored = [
+			discriminator,
+			{
+				name: "details",
+				description: "Read selector",
+				required: false,
+				schema: {
+					type: "object" as const,
+					properties: { id: { type: "string" as const } },
+					additionalProperties: false,
+				},
+			},
+		];
+		const family = promoteSubactionsToActions(parent, {
+			overrides: { read: { parameters: authored } },
+		});
+		const read = findVirtual(family, "WIDGET_READ");
+		expect(parent.parameters).toEqual(originalParameters);
+		expect(findVirtual(family, "WIDGET_CREATE").parameters).toEqual(
+			findVirtual(ordinary, "WIDGET_CREATE").parameters,
+		);
+		expect(read.roleGate).toEqual(parent.roleGate);
+		expect(await read.validate({} as never, {} as never, undefined)).toBe(
+			false,
+		);
+		expect(validate).toHaveBeenCalledOnce();
+		const accepted = validateToolArgs(read, { details: { id: "actual-id" } });
+		expect(accepted.valid).toBe(true);
+		expect(validateToolArgs(read, { details: { id: 3 } }).valid).toBe(false);
+		expect(
+			validateToolArgs(read, { details: { mutation: "delete" } }).valid,
+		).toBe(false);
+		await read.handler({} as never, {} as never, undefined, {
+			parameters: accepted.args,
+		});
+		expect(
+			(handler.mock.calls[0]?.[3] as HandlerOptions | undefined)?.parameters,
+		).toMatchObject({
+			action: "read",
+			subaction: "read",
+			details: { id: "actual-id" },
+		});
+	});
+	it.each([false, true, undefined])(
+		"preserves parent schema strictness %s in promoted native tools",
+		(toolSchemaStrict) => {
+			const family = promoteSubactionsToActions(
+				makeUmbrella({ toolSchemaStrict }),
+			);
+			expect(family.length).toBeGreaterThan(1);
+			for (const action of family) {
+				expect(action.toolSchemaStrict).toBe(toolSchemaStrict);
+			}
+			for (const tool of buildPlannerToolsFromActions(family)) {
+				expect(tool.strict).toBe(toolSchemaStrict ?? true);
+			}
+		},
+	);
+
+	it("marks a parameter required only on the virtuals that list it", () => {
+		const parent = makeUmbrella({
+			parameters: [
+				{
+					name: "action",
+					description: "Widget operation.",
+					required: false,
+					schema: { type: "string", enum: ["create", "read", "delete"] },
+				},
+				{
+					name: "title",
+					description: "Content; required when creating.",
+					required: false,
+					requiredForSubactions: ["create"],
+					schema: { type: "string" },
+				},
+			],
+		});
+		const promoted = promoteSubactionsToActions(parent);
+		const create = promoted.find((a) => a.name === "WIDGET_CREATE");
+		const read = promoted.find((a) => a.name === "WIDGET_READ");
+		const createTitle = create?.parameters?.find((p) => p.name === "title");
+		const readTitle = read?.parameters?.find((p) => p.name === "title");
+		expect(createTitle?.required).toBe(true);
+		expect(readTitle?.required).toBe(false);
+		expect("requiredForSubactions" in (createTitle ?? {})).toBe(false);
+		// The parent umbrella keeps the field optional.
+		expect(parent.parameters?.find((p) => p.name === "title")?.required).toBe(
+			false,
+		);
+		expect(validateToolArgs(create as Action, {}).valid).toBe(false);
+		expect(validateToolArgs(create as Action, { title: "x" }).valid).toBe(true);
+	});
+
 	it("keeps parameters without a subactions list on every virtual", () => {
 		const [, ...virtuals] = promoteSubactionsToActions(makeUmbrella());
 		for (const virtual of virtuals) {

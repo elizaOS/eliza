@@ -15,8 +15,8 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
+import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { getServiceMethodCost } from "@/lib/services/proxy/pricing";
 import {
   executeNativeStorageList,
@@ -39,7 +39,9 @@ const app = new Hono<AppEnv>();
 
 app.get("/", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
+    const { user } = await requirePaidRouteStanding(c, {
+      route: "storage.list",
+    });
     const { organization_id } = user;
 
     const bucket = c.env.BLOB;

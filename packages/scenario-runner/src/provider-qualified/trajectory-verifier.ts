@@ -33,6 +33,12 @@ export interface VerifiedTrajectoryStage {
   sha256: string;
   startedAtIso: string;
   endedAtIso: string;
+  tool?: {
+    name: string;
+    argsSha256: string;
+    resultSha256: string;
+    success: boolean;
+  };
 }
 
 export interface VerifiedScenarioTrajectory {
@@ -151,8 +157,9 @@ function requireExactKeys(
   value: Record<string, unknown>,
   pathLabel: string,
   keys: readonly string[],
+  optional: readonly string[] = [],
 ): void {
-  const expected = new Set(keys);
+  const expected = new Set([...keys, ...optional]);
   const missing = keys.filter((key) => !Object.hasOwn(value, key));
   const unknown = Object.keys(value).filter((key) => !expected.has(key));
   if (missing.length > 0 || unknown.length > 0) {
@@ -333,19 +340,35 @@ export function validateVerifiedScenarioTrajectorySet(
     for (const [stageIndex, rawStage] of trajectory.stages.entries()) {
       const stagePath = `${trajectoryPath}.stages[${stageIndex}]`;
       const stage = asRecord(rawStage, stagePath);
-      requireExactKeys(stage, stagePath, [
-        "stageId",
-        "kind",
-        "sha256",
-        "startedAtIso",
-        "endedAtIso",
-      ]);
+      requireExactKeys(
+        stage,
+        stagePath,
+        ["stageId", "kind", "sha256", "startedAtIso", "endedAtIso"],
+        ["tool"],
+      );
       const stageId = requireString(stage.stageId, `${stagePath}.stageId`);
       if (stageIds.has(stageId)) {
         fail(`${stagePath}.stageId is duplicated`);
       }
       stageIds.add(stageId);
-      requireString(stage.kind, `${stagePath}.kind`);
+      const kind = requireString(stage.kind, `${stagePath}.kind`);
+      if (kind === "tool") {
+        const tool = asRecord(stage.tool, `${stagePath}.tool`);
+        requireExactKeys(tool, `${stagePath}.tool`, [
+          "name",
+          "argsSha256",
+          "resultSha256",
+          "success",
+        ]);
+        requireString(tool.name, `${stagePath}.tool.name`);
+        requireHash(tool.argsSha256, `${stagePath}.tool.argsSha256`);
+        requireHash(tool.resultSha256, `${stagePath}.tool.resultSha256`);
+        if (typeof tool.success !== "boolean") {
+          fail(`${stagePath}.tool.success must be a boolean`);
+        }
+      } else if (stage.tool !== undefined) {
+        fail(`${stagePath}.tool is only valid for a tool stage`);
+      }
       requireHash(stage.sha256, `${stagePath}.sha256`);
       const stageStartedAt = requireCanonicalIso(
         stage.startedAtIso,
@@ -720,6 +743,34 @@ export function verifyScenarioTrajectories(
         stage,
         `trajectory[${fileIndex}].stages[${stageIndex}]`,
       );
+      let tool: VerifiedTrajectoryStage["tool"];
+      if (kind === "tool") {
+        const recordedTool = asRecord(
+          stage.tool,
+          `trajectory[${fileIndex}].stages[${stageIndex}].tool`,
+        );
+        const name = requireString(
+          recordedTool.name,
+          `trajectory[${fileIndex}].stages[${stageIndex}].tool.name`,
+        );
+        if (typeof recordedTool.success !== "boolean") {
+          fail(
+            `trajectory[${fileIndex}].stages[${stageIndex}].tool.success must be a boolean`,
+          );
+        }
+        tool = {
+          name,
+          argsSha256: canonicalSha256(
+            recordedTool.args,
+            `trajectory[${fileIndex}].stages[${stageIndex}].tool.args`,
+          ),
+          resultSha256: canonicalSha256(
+            recordedTool.result,
+            `trajectory[${fileIndex}].stages[${stageIndex}].tool.result`,
+          ),
+          success: recordedTool.success,
+        };
+      }
       stages.push({
         stageId,
         kind,
@@ -728,6 +779,7 @@ export function verifyScenarioTrajectories(
           .digest("hex"),
         startedAtIso: new Date(stageStartedAt).toISOString(),
         endedAtIso: new Date(stageEndedAt).toISOString(),
+        ...(tool === undefined ? {} : { tool }),
       });
     }
     const relativePath = discoveredRelativePaths[fileIndex];

@@ -278,6 +278,7 @@ async function createCodingContainer(
       // namespace would otherwise mint unbounded custom containers on the shared
       // fleet. Bound it by the org's balance tier — the same cap the sibling
       // POST /api/v1/eliza/agents forceCreate path enforces (#11042).
+      quotaAdmission: "organization",
       maxNonTerminalAgents: getMaxNonTerminalAgentsForOrg(creditCheck.balance),
     });
   } catch (error) {

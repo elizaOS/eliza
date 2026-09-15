@@ -841,6 +841,7 @@ describe("scenario executor api turn captures", () => {
               ok: true,
               scopeId: req.params?.scopeId,
               token: body.token,
+              authorization: req.headers?.authorization,
             });
           },
         },
@@ -869,6 +870,7 @@ describe("scenario executor api turn captures", () => {
             name: "redeem",
             method: "POST",
             path: "/redeem/{{capture:scopeId}}",
+            headers: { authorization: "Bearer {{capture:token}}" },
             body: { token: "{{capture:token}}" },
             expectedStatus: 200,
             assertResponse(status, body) {
@@ -882,6 +884,9 @@ describe("scenario executor api turn captures", () => {
               }
               if (record.token !== "token-abc") {
                 return `expected captured token, saw ${String(record.token)}`;
+              }
+              if (record.authorization !== "Bearer token-abc") {
+                return `expected captured authorization header, saw ${String(record.authorization)}`;
               }
               return undefined;
             },
@@ -2226,6 +2231,65 @@ describe("scenario executor action turns", () => {
       detail:
         'selectedActionArguments: expected arguments to include /remote-ledger/, saw "VIEWS {\\"action\\":\\"pin\\",\\"view\\":\\"local-notes\\"} opened local notes"',
     });
+  });
+
+  it("preserves complete planner, action argument, and action result failure evidence", async () => {
+    const distinguishingTail = "scenario-evidence-tail";
+    const longValue = `${"x".repeat(800)}${distinguishingTail}`;
+    const runtime = createRuntime([
+      {
+        name: "VIEWS",
+        description: "test action",
+        validate: vi.fn(async () => true),
+        handler: vi.fn(async () => ({
+          success: false,
+          text: longValue,
+          data: { reason: longValue },
+        })),
+      } as Action,
+    ]);
+
+    const report = await runScenario(
+      {
+        id: "complete-scenario-failure-evidence",
+        title: "Complete scenario failure evidence",
+        domain: "executor",
+        turns: [
+          {
+            kind: "action",
+            name: "open view",
+            actionName: "VIEWS",
+            options: { action: "pin", context: longValue },
+            plannerIncludesAll: ["missing-planner-token"],
+          },
+        ],
+        finalChecks: [
+          {
+            type: "selectedActionArguments",
+            actionName: "VIEWS",
+            includesAll: ["missing-argument-token"],
+          },
+          { type: "actionCalled", actionName: "VIEWS", status: "success" },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.turns[0]?.failedAssertions[0]).toContain(distinguishingTail);
+    const selectedArguments = report.failedAssertions.find(
+      (failure) => failure.label === "selectedActionArguments",
+    );
+    const actionCalled = report.failedAssertions.find(
+      (failure) => failure.label === "actionCalled",
+    );
+    expect(selectedArguments?.detail).toContain(distinguishingTail);
+    expect(actionCalled?.detail).toContain(distinguishingTail);
   });
 
   it("reports expected and actual action names when selectedActionArguments matches no action", async () => {

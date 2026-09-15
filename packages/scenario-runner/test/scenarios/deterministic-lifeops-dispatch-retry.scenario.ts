@@ -486,7 +486,11 @@ export default scenario({
       kind: "tick",
       name: "tick at dueness — dispatch fails typed and parks the retry",
       worker: "lifeops_scheduler",
-      options: { now: TICK_FAIL.toISOString(), scheduledTaskLimit: 50 },
+      options: {
+        now: TICK_FAIL.toISOString(),
+        scheduledTaskLimit: 50,
+        sleepCycleCheckins: false,
+      },
       assertResponse: assertFailTick,
     },
     {
@@ -501,14 +505,22 @@ export default scenario({
       kind: "tick",
       name: "tick before the retry instant — nothing re-attempts early",
       worker: "lifeops_scheduler",
-      options: { now: TICK_EARLY.toISOString(), scheduledTaskLimit: 50 },
+      options: {
+        now: TICK_EARLY.toISOString(),
+        scheduledTaskLimit: 50,
+        sleepCycleCheckins: false,
+      },
       assertResponse: assertEarlyTick,
     },
     {
       kind: "tick",
       name: "tick past the retry instant — the retry delivers",
       worker: "lifeops_scheduler",
-      options: { now: TICK_RETRY.toISOString(), scheduledTaskLimit: 50 },
+      options: {
+        now: TICK_RETRY.toISOString(),
+        scheduledTaskLimit: 50,
+        sleepCycleCheckins: false,
+      },
       assertResponse: assertRetryTick,
     },
     {

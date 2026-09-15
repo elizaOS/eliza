@@ -194,6 +194,44 @@ describe("CONTACT exports and dispatch", () => {
     ).resolves.toBe(false);
   });
 
+  it("rechecks changed messages and conversation data when a state object is reused", async () => {
+    const { runtime } = makeRuntime();
+    const signalState: State = { values: {}, data: {}, text: "" };
+    const currentMessage = message("weather");
+    await expect(
+      contactAction.validate?.(runtime, currentMessage, signalState),
+    ).resolves.toBe(false);
+    currentMessage.content.text = "find contact Alice";
+    await expect(
+      contactAction.validate?.(runtime, currentMessage, signalState),
+    ).resolves.toBe(true);
+    currentMessage.content.text = "weather";
+    await expect(
+      contactAction.validate?.(runtime, currentMessage, signalState),
+    ).resolves.toBe(false);
+
+    signalState.values.recentMessages = "Please find contact Alice.";
+    await expect(
+      contactAction.validate?.(runtime, currentMessage, signalState),
+    ).resolves.toBe(true);
+    signalState.values.recentMessages = "The weather is pleasant.";
+    await expect(
+      contactAction.validate?.(runtime, currentMessage, signalState),
+    ).resolves.toBe(false);
+  });
+
+  it("rechecks a changed message when no composed state is supplied", async () => {
+    const { runtime } = makeRuntime();
+    const currentMessage = message("find contact Alice");
+    await expect(
+      contactAction.validate?.(runtime, currentMessage),
+    ).resolves.toBe(true);
+    currentMessage.content.text = "weather";
+    await expect(
+      contactAction.validate?.(runtime, currentMessage),
+    ).resolves.toBe(false);
+  });
+
   it("prefers action over subaction and op, while rejecting unknown operations", async () => {
     const { runtime, createEntity } = makeRuntime();
     const created = await invoke(runtime, {
@@ -215,9 +253,13 @@ describe("CONTACT exports and dispatch", () => {
 describe("CONTACT create", () => {
   it("creates an entity with sanitized metadata and promotes rich contact data", async () => {
     const entityId = stringToUuid("created-contact");
-    const addContact = vi.fn(async () => true);
+    const createContact = vi.fn(async (entity, fields) => ({
+      entity,
+      contact: { ...fields, entityId: entity.id },
+      created: true,
+    }));
     const { runtime, createEntity } = makeRuntime({
-      relationships: makeGraph({ addContact }),
+      relationships: makeGraph({ createContact }),
     });
 
     const result = await invoke(runtime, {
@@ -245,15 +287,41 @@ describe("CONTACT create", () => {
         company: "Acme",
       },
     });
-    expect(createEntity).toHaveBeenCalledWith(
+    expect(createEntity).not.toHaveBeenCalled();
+    expect(createContact).toHaveBeenCalledWith(
       expect.objectContaining({ id: entityId, names: ["Alice"] }),
+      {
+        categories: ["friend", "founder"],
+        tags: [],
+        preferences: {
+          timezone: "UTC",
+          language: "en",
+          notes: "met at launch",
+        },
+        customFields: { displayName: "Alice" },
+      },
     );
-    expect(addContact).toHaveBeenCalledWith(
-      entityId,
-      ["friend", "founder"],
-      { timezone: "UTC", language: "en", notes: "met at launch" },
-      { displayName: "Alice" },
+  });
+
+  it("propagates entity lookup errors without attempting creation", async () => {
+    const { runtime, createEntity } = makeRuntime();
+    vi.mocked(runtime.getEntityById).mockRejectedValue(
+      new Error("database unavailable"),
     );
+    const result = await invoke(runtime, { action: "create", name: "Alice" });
+    expect(result.success).toBe(false);
+    expect(createEntity).not.toHaveBeenCalled();
+  });
+
+  it("rejects rich creation before writing when the required service is absent", async () => {
+    const { runtime, createEntity } = makeRuntime({ relationships: null });
+    const result = await invoke(runtime, {
+      action: "create",
+      name: "Alice",
+      tags: ["friend"],
+    });
+    expect(result.success).toBe(false);
+    expect(createEntity).not.toHaveBeenCalled();
   });
 
   it("does not recreate an existing explicit entity", async () => {
@@ -294,7 +362,7 @@ describe("CONTACT create", () => {
 });
 
 describe("CONTACT search and read", () => {
-  it("preserves graph ordering, numbers results, and caps the search limit", async () => {
+  it("preserves graph ordering, numbers results, and forwards the requested search limit", async () => {
     const first = {
       ...makePerson(1, "Zed"),
       aliases: ["Z"],
@@ -320,7 +388,7 @@ describe("CONTACT search and read", () => {
     expect(getGraphSnapshot).toHaveBeenCalledWith({
       search: "ali",
       platform: "discord",
-      limit: 25,
+      limit: 500,
     });
     expect(result.text).toContain("  1 | Zed (aka Z)");
     expect(result.text).toContain("  2 | Alice — none");
@@ -508,8 +576,9 @@ describe("CONTACT update", () => {
       { callback },
     );
     expect(added.success).toBe(true);
-    expect(added.turnComplete).toBe(true);
-    expect(callback).toHaveBeenCalledOnce();
+    expect(added.modelReplyRequired).toBe(true);
+    expect(added.userFacingText).toBeUndefined();
+    expect(callback).not.toHaveBeenCalled();
     expect(updateContact).toHaveBeenLastCalledWith(contactId, {
       categories: ["friend", "founder"],
       tags: ["vip", "investor"],
@@ -727,7 +796,7 @@ describe("CONTACT activity", () => {
     expect(tied.map((item) => item.type)).toEqual(["relationship", "identity"]);
   });
 
-  it("uses safe empty defaults and caps oversized pages at 100 items", async () => {
+  it("uses safe empty defaults and preserves explicitly requested page sizes", async () => {
     const empty = makeRuntime();
     const emptyResult = await invoke(empty.runtime, {
       action: "activity",
@@ -738,7 +807,7 @@ describe("CONTACT activity", () => {
       total: 0,
       count: 0,
       offset: 0,
-      limit: 50,
+      limit: undefined,
     });
     expect(emptyResult.text).toContain("(no activity yet)");
 
@@ -752,16 +821,16 @@ describe("CONTACT activity", () => {
     const full = makeRuntime({
       relationships: makeGraph({ getGraphSnapshot }),
     });
-    const capped = await invoke(full.runtime, {
+    const complete = await invoke(full.runtime, {
       action: "activity",
       limit: 1_000,
     });
-    expect(capped.values).toMatchObject({
+    expect(complete.values).toMatchObject({
       total: 101,
-      count: 100,
-      limit: 100,
+      count: 101,
+      limit: 1_000,
     });
-    expect(capped.data).toMatchObject({ hasMore: true });
+    expect(complete.data).toMatchObject({ hasMore: false });
   });
 });
 

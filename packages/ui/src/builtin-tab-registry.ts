@@ -76,6 +76,12 @@ export interface BuiltinTabMetadata {
   /** Semantic page topology consumed by canonical shell implementations. */
   readonly layout: PageLayoutManifest;
   /**
+   * Retired browser paths that still resolve to this tab before the shell
+   * replaces them with the tab's canonical `TAB_PATHS` route. Path aliases
+   * belong here with the builtin owner instead of in renderer/platform code.
+   */
+  readonly pathAliases?: readonly string[];
+  /**
    * Builtin-level surface manifest (or path predicate for tabs whose launcher
    * root differs from their sub-routes). Omitted = no builtin policy (fall
    * through to downstream resolution).
@@ -112,10 +118,12 @@ export const BUILTIN_TAB_METADATA: readonly BuiltinTabMetadata[] =
 
     const aliases = BUILTIN_ALIAS_IDS_BY_CANONICAL.get(id);
     const surface = descriptor.surface;
+    const pathAliases = descriptor.legacyPaths;
     const metadata: BuiltinTabMetadata = {
       id,
       layout: descriptor.layout,
       ...(aliases ? { aliases } : {}),
+      ...(pathAliases ? { pathAliases } : {}),
       ...(surface ? { surface } : {}),
     };
     return [metadata];
@@ -143,6 +151,23 @@ const BUILTIN_TAB_BY_ID: ReadonlyMap<string, BuiltinTabMetadata> = (() => {
   return map;
 })();
 
+/** Fast retired-path -> canonical builtin metadata lookup. */
+const BUILTIN_TAB_BY_PATH_ALIAS: ReadonlyMap<string, BuiltinTabMetadata> =
+  (() => {
+    const map = new Map<string, BuiltinTabMetadata>();
+    for (const entry of BUILTIN_TAB_METADATA) {
+      for (const pathAlias of entry.pathAliases ?? []) {
+        if (map.has(pathAlias)) {
+          throw new Error(
+            `Builtin path alias "${pathAlias}" is claimed by more than one tab`,
+          );
+        }
+        map.set(pathAlias, entry);
+      }
+    }
+    return map;
+  })();
+
 /**
  * Resolve a (possibly aliased) tab id to its canonical builtin id. Tabs that
  * are not declared builtin aliases are returned unchanged, so plugin/dynamic
@@ -157,6 +182,13 @@ export function resolveBuiltinPageLayout(
   tab: string,
 ): PageLayoutManifest | null {
   return resolveBuiltinRouteDescriptor(tab)?.layout ?? null;
+}
+
+/** Resolve a normalized retired browser path to its canonical builtin tab. */
+export function resolveBuiltinTabIdForPathAlias(
+  normalizedPath: string,
+): string | null {
+  return BUILTIN_TAB_BY_PATH_ALIAS.get(normalizedPath)?.id ?? null;
 }
 
 /**
@@ -221,7 +253,7 @@ export function resolveBuiltinRoutedViewManifest(
     surface: layout ? { ...decl, layout } : decl,
   });
   if (manifest.header === "immersive") return null;
-  return manifest;
+  return layout ? { ...manifest, layout } : manifest;
 }
 
 /**
@@ -247,7 +279,8 @@ export function resolveBuiltinSurfaceManifest(
     );
   }
   const layout = resolveBuiltinPageLayout(tab);
-  return resolveSurfaceManifest({
+  const manifest = resolveSurfaceManifest({
     surface: layout ? { ...decl, layout } : decl,
   });
+  return layout ? { ...manifest, layout } : manifest;
 }

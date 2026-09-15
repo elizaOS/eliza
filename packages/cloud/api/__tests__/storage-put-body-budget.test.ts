@@ -53,6 +53,14 @@ mock.module("@/lib/api/cloud-worker-errors", () => ({
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
 }));
+mock.module("@/api-app/lib/paid-route-standing", () => ({
+  requirePaidRouteStanding: async () => ({
+    user: await requireUserOrApiKeyWithOrg(),
+    apiKeyId: null,
+    authSource: "combined_cache",
+    appScopeId: null,
+  }),
+}));
 
 mock.module("@/lib/services/credits", () => ({
   creditsService: { deductCredits },

@@ -1,9 +1,10 @@
 /**
  * Unit coverage for first-shared-turn cache-warming 503 absorption at the
  * request choke point (#18045). Transport stubbed, boot config injected, no
- * live model. Proves the client retries ONLY the two named warming codes with
- * the identical request body (same clientMessageId), honors Retry-After within
- * a bounded budget, and leaves a generic 503 / a 402 as real failures.
+ * live model. Proves the client retries only named pre-admission codes with the
+ * identical request body (same clientMessageId), keeps retryable app-route
+ * startup pending until the server settles it, honors Retry-After, and leaves
+ * a generic 503 / a 402 as real failures. Cache warming remains bounded.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setBootConfig } from "../config/boot-config";
@@ -71,6 +72,337 @@ describe("ElizaClient warming 503 absorption (#18045)", () => {
       expect(call[1]?.body).toBe(SEND_BODY);
     }
     expect(out).toEqual(expect.objectContaining({ ok: true }));
+  });
+
+  it("absorbs the deferred app-route startup gate before a view reads its state", async () => {
+    const request = vi
+      .fn<AgentRequestTransport["request"]>()
+      .mockResolvedValueOnce(
+        jsonResponse(
+          503,
+          {
+            error: "feature_starting",
+            code: "feature_starting",
+            phase: "app-route-tail",
+            status: "runtime_starting",
+            retryable: true,
+          },
+          { "retry-after": "1" },
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          success: true,
+          data: { revision: 0, notes: [] },
+        }),
+      );
+
+    const client = makeClient(request);
+    const pending = client.fetch<{
+      success: boolean;
+      data: { revision: number; notes: unknown[] };
+    }>("/api/notes/state");
+
+    await vi.advanceTimersByTimeAsync(999);
+    expect(request).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+
+    await expect(pending).resolves.toEqual({
+      success: true,
+      data: { revision: 0, notes: [] },
+    });
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a cold feature route pending beyond the shorter cache-warming budget", async () => {
+    let attempts = 0;
+    const request = vi
+      .fn<AgentRequestTransport["request"]>()
+      .mockImplementation(() => {
+        attempts += 1;
+        if (attempts <= 7) {
+          return Promise.resolve(
+            jsonResponse(
+              503,
+              {
+                error: "feature_starting",
+                code: "feature_starting",
+                phase: "agent-deferred-boot",
+                status: "pending",
+                retryable: true,
+              },
+              { "retry-after": "1" },
+            ),
+          );
+        }
+        return Promise.resolve(
+          jsonResponse(200, {
+            success: true,
+            data: { revision: 0, notes: [] },
+          }),
+        );
+      });
+
+    const client = makeClient(request);
+    const pending = client.fetch("/api/notes/state");
+    await vi.runAllTimersAsync();
+
+    await expect(pending).resolves.toMatchObject({ success: true });
+    expect(request).toHaveBeenCalledTimes(8);
+  });
+
+  it("lets a lifecycle-signaled feature route succeed beyond 30 seconds without a custom timeout", async () => {
+    const controller = new AbortController();
+    let attempts = 0;
+    const request = vi
+      .fn<AgentRequestTransport["request"]>()
+      .mockImplementation(() => {
+        attempts += 1;
+        if (attempts <= 31) {
+          return Promise.resolve(
+            jsonResponse(
+              503,
+              {
+                error: "feature_starting",
+                code: "feature_starting",
+                phase: "app-route-tail",
+                status: "pending",
+                retryable: true,
+              },
+              { "retry-after": "1" },
+            ),
+          );
+        }
+        return Promise.resolve(jsonResponse(200, { success: true }));
+      });
+
+    const client = makeClient(request);
+    const pending = client.fetch<{ success: boolean }>("/api/notes/state", {
+      signal: controller.signal,
+    });
+    let settled = false;
+    void pending.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+
+    await vi.advanceTimersByTimeAsync(30_999);
+    expect(settled).toBe(false);
+    expect(request).toHaveBeenCalledTimes(31);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(pending).resolves.toEqual({ success: true });
+    expect(request).toHaveBeenCalledTimes(32);
+  });
+
+  it("cancels a feature route that is still starting beyond 30 seconds", async () => {
+    const controller = new AbortController();
+    const request = vi
+      .fn<AgentRequestTransport["request"]>()
+      .mockImplementation(() =>
+        Promise.resolve(
+          jsonResponse(
+            503,
+            {
+              error: "feature_starting",
+              code: "feature_starting",
+              phase: "agent-deferred-boot",
+              status: "pending",
+              retryable: true,
+            },
+            { "retry-after": "1" },
+          ),
+        ),
+      );
+
+    const client = makeClient(request);
+    const pending = client.fetch("/api/notes/state", {
+      signal: controller.signal,
+    });
+    const rejection = expect(pending).rejects.toMatchObject({
+      kind: "network",
+      message: "Request aborted",
+    });
+
+    await vi.advanceTimersByTimeAsync(30_500);
+    expect(request).toHaveBeenCalledTimes(31);
+    controller.abort("view closed");
+    await rejection;
+
+    const attemptsAtAbort = request.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(request).toHaveBeenCalledTimes(attemptsAtAbort);
+  });
+
+  it("surfaces a terminal feature failure after startup exceeds 30 seconds", async () => {
+    const controller = new AbortController();
+    let attempts = 0;
+    const request = vi
+      .fn<AgentRequestTransport["request"]>()
+      .mockImplementation(() => {
+        attempts += 1;
+        if (attempts <= 31) {
+          return Promise.resolve(
+            jsonResponse(
+              503,
+              {
+                error: "feature_starting",
+                code: "feature_starting",
+                phase: "app-route-tail",
+                status: "pending",
+                retryable: true,
+              },
+              { "retry-after": "1" },
+            ),
+          );
+        }
+        return Promise.resolve(
+          jsonResponse(503, {
+            error: "feature_unavailable",
+            code: "feature_unavailable",
+            phase: "app-route-tail",
+            status: "failed",
+            retryable: false,
+          }),
+        );
+      });
+
+    const client = makeClient(request);
+    const pending = client.fetch("/api/notes/state", {
+      signal: controller.signal,
+    });
+    const rejection = expect(pending).rejects.toMatchObject({
+      status: 503,
+      code: "feature_unavailable",
+      data: expect.objectContaining({ status: "failed", retryable: false }),
+    });
+
+    await vi.advanceTimersByTimeAsync(31_000);
+    await rejection;
+    expect(request).toHaveBeenCalledTimes(32);
+  });
+
+  it("surfaces feature_starting after the default logical request budget", async () => {
+    const request = vi
+      .fn<AgentRequestTransport["request"]>()
+      .mockImplementation(() =>
+        Promise.resolve(
+          jsonResponse(
+            503,
+            {
+              error: "feature_starting",
+              code: "feature_starting",
+              phase: "app-route-tail",
+              status: "runtime_starting",
+              retryable: true,
+            },
+            { "retry-after": "1" },
+          ),
+        ),
+      );
+
+    const client = makeClient(request);
+    const pending = client.fetch("/api/notes/state");
+    const rejection = expect(pending).rejects.toMatchObject({
+      status: 503,
+      code: "feature_starting",
+      data: expect.objectContaining({ retryable: true }),
+    });
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await rejection;
+    expect(request).toHaveBeenCalledTimes(10);
+  });
+
+  it("keeps an explicit timeout authoritative when a lifecycle signal is present", async () => {
+    const controller = new AbortController();
+    const request = vi
+      .fn<AgentRequestTransport["request"]>()
+      .mockImplementation(() =>
+        Promise.resolve(
+          jsonResponse(
+            503,
+            {
+              error: "feature_starting",
+              code: "feature_starting",
+              phase: "app-route-tail",
+              status: "pending",
+              retryable: true,
+            },
+            { "retry-after": "1" },
+          ),
+        ),
+      );
+
+    const client = makeClient(request);
+    const pending = client.fetch(
+      "/api/notes/state",
+      { signal: controller.signal },
+      { timeoutMs: 2_500 },
+    );
+    const rejection = expect(pending).rejects.toMatchObject({
+      status: 503,
+      code: "feature_starting",
+      data: expect.objectContaining({ retryable: true }),
+    });
+
+    await vi.advanceTimersByTimeAsync(2_500);
+    await rejection;
+    expect(controller.signal.aborted).toBe(false);
+    expect(request).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not retry feature_starting when the server marks it terminal", async () => {
+    const request = vi.fn<AgentRequestTransport["request"]>().mockResolvedValue(
+      jsonResponse(503, {
+        error: "feature_starting",
+        code: "feature_starting",
+        phase: "app-route-tail",
+        status: "failed",
+        retryable: false,
+      }),
+    );
+
+    const client = makeClient(request);
+    await expect(client.fetch("/api/notes/state")).rejects.toMatchObject({
+      status: 503,
+      code: "feature_starting",
+      data: expect.objectContaining({ retryable: false }),
+    });
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns retryable feature_starting immediately to allowNonOk probes", async () => {
+    const request = vi.fn<AgentRequestTransport["request"]>().mockResolvedValue(
+      jsonResponse(
+        503,
+        {
+          error: "feature_starting",
+          code: "feature_starting",
+          phase: "app-route-tail",
+          status: "pending",
+          retryable: true,
+        },
+        { "retry-after": "1" },
+      ),
+    );
+
+    const client = makeClient(request);
+    await expect(
+      client.fetch<{ code: string; retryable: boolean }>(
+        "/api/notes/state",
+        undefined,
+        { allowNonOk: true },
+      ),
+    ).resolves.toMatchObject({
+      code: "feature_starting",
+      retryable: true,
+    });
+    expect(request).toHaveBeenCalledTimes(1);
   });
 
   it("marks the first shared turn and each absorbed warming retry", async () => {
@@ -141,6 +473,31 @@ describe("ElizaClient warming 503 absorption (#18045)", () => {
     expect(request).toHaveBeenCalledTimes(1);
     expect((caught as { status?: number }).status).toBe(503);
     expect((caught as { code?: string }).code).toBe("inference_unavailable");
+  });
+
+  it("surfaces a failed app-route registration instead of retrying it as startup", async () => {
+    const request = vi.fn<AgentRequestTransport["request"]>().mockResolvedValue(
+      jsonResponse(503, {
+        error: "feature_unavailable",
+        code: "feature_unavailable",
+        phase: "app-route-tail",
+        status: "failed",
+        retryable: false,
+      }),
+    );
+
+    const client = makeClient(request);
+    let caught: unknown;
+    await client.fetch("/api/notes/state").catch((error) => {
+      caught = error;
+    });
+
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(caught).toMatchObject({
+      status: 503,
+      code: "feature_unavailable",
+      data: expect.objectContaining({ retryable: false }),
+    });
   });
 
   it("does not retry a 402 insufficient_credits gate", async () => {

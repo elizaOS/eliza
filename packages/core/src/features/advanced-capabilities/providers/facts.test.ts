@@ -99,6 +99,52 @@ function makeRuntime(args: {
 }
 
 describe("factsProvider keyword retrieval", () => {
+	it("keeps standing corrections inline and the complete attributed evidence available on demand", async () => {
+		const runtime = makeRuntime({
+			facts: [
+				memory("pref", "Use short replies.", {
+					kind: "durable",
+					category: "preference",
+				}),
+				memory("correction", "Correction: the meeting is Tuesday.", {
+					kind: "current",
+					category: "correction",
+				}),
+				memory("detail", "The old fixture contains an amber folder.", {
+					kind: "current",
+					category: "working_on",
+				}),
+				memory(
+					"other",
+					"Another participant prefers Spanish.",
+					{ kind: "durable", category: "preference" },
+					Date.now(),
+					otherEntityId,
+				),
+			],
+		});
+		const result = await factsProvider.get(
+			runtime,
+			memory("message", "hello"),
+			{ values: {}, data: {}, text: "" },
+		);
+		expect(result.discoveryText).toContain("Use short replies.");
+		expect(result.discoveryText).toContain("[current.correction");
+		expect(result.discoveryText).toContain(
+			"Correction: the meeting is Tuesday.",
+		);
+		expect(result.discoveryText).not.toContain("amber folder");
+		expect(result.discoveryText).not.toContain(
+			"Another participant prefers Spanish.",
+		);
+		expect(result.text).toContain("amber folder");
+		expect(result.text).toContain(
+			"Known facts in this room (about other participants)",
+		);
+		expect(result.text).toContain("Another participant prefers Spanish.");
+		expect(result.data?.facts).toHaveLength(4);
+		expect(runtime.useModel).not.toHaveBeenCalled();
+	});
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});
@@ -942,5 +988,105 @@ describe("factsProvider semantic union (Grove/Zcash replay)", () => {
 		);
 
 		expect(result.text).toContain("Zcash core dev");
+	});
+});
+
+describe("factsProvider room-pool currency", () => {
+	// Old observations must not masquerade as current events or disappear
+	// from the model-facing projection.
+	const DAY_MS = 24 * 60 * 60 * 1000;
+
+	it("labels older room observations separately without dropping their text", async () => {
+		const now = Date.now();
+		const stale = now - 20 * DAY_MS;
+		const fresh = now - 2 * DAY_MS;
+		const roomFacts = [
+			memory(
+				"room-stale-1",
+				"argues that unbounded knowledge does not disqualify AGI",
+				{ kind: "current", category: "uncategorized" },
+				stale,
+				otherEntityId,
+			),
+			memory(
+				"room-stale-2",
+				"shared a link about pancake sorting",
+				{ kind: "current", category: "uncategorized" },
+				stale,
+				otherEntityId,
+			),
+			memory(
+				"room-fresh",
+				"is travelling to Lisbon this week",
+				{ kind: "current", category: "uncategorized" },
+				fresh,
+				otherEntityId,
+			),
+		];
+		const senderStale = memory(
+			"sender-stale",
+			"is training for a marathon",
+			{ kind: "current", category: "uncategorized" },
+			stale,
+		);
+		const runtime = makeRuntime({
+			roomFacts: [...roomFacts, senderStale],
+			entityFacts: [senderStale],
+		});
+
+		const result = await factsProvider.get(
+			runtime,
+			memory("msg-current", "what's new?", { source: "test" }),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(result.text).toContain("is travelling to Lisbon this week");
+		expect(result.text).toContain("is training for a marathon");
+		const olderSection = result.text?.split(
+			"Older observations about other participants (do not assume these are still current):",
+		)[1];
+		expect(olderSection).toContain("shared a link about pancake sorting");
+		expect(olderSection).toContain(
+			"argues that unbounded knowledge does not disqualify AGI",
+		);
+		expect(olderSection).not.toContain("is travelling to Lisbon this week");
+		const data = result.data as { currentFacts: Memory[] };
+		expect(data.currentFacts).toHaveLength(4);
+	});
+
+	it("scopes each identity pool to that identity's own facts, not just the RLS principal", async () => {
+		// Live 2026-09-05: with no RLS policies installed, a principal-only query
+		// returned the whole facts table per cluster member.
+		const runtime = makeRuntime({ roomFacts: [], entityFacts: [] });
+		await factsProvider.get(
+			runtime,
+			memory("msg-current", "anything new?", { source: "test" }),
+			{ values: {}, data: {}, text: "" },
+		);
+		expect(runtime.getMemories).toHaveBeenCalledWith(
+			expect.objectContaining({
+				tableName: "facts",
+				entityId,
+				authorEntityIds: [entityId],
+			}),
+		);
+	});
+
+	it("keeps room current facts with unreadable timestamps listed rather than lapsing them", async () => {
+		const unknownStamp = memory(
+			"room-unknown",
+			"mentioned a conference in Oslo",
+			{ kind: "current", category: "uncategorized" },
+			Number.NaN,
+			otherEntityId,
+		);
+		const runtime = makeRuntime({ roomFacts: [unknownStamp], entityFacts: [] });
+		const result = await factsProvider.get(
+			runtime,
+			memory("msg-current", "anything new?", { source: "test" }),
+			{ values: {}, data: {}, text: "" },
+		);
+		expect(result.text).toContain("mentioned a conference in Oslo");
+		expect(result.text).not.toContain("Older observations");
 	});
 });

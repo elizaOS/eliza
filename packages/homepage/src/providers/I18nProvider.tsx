@@ -15,6 +15,8 @@ import {
   useState,
 } from "react";
 
+import { loadLanguageMessages } from "./language-messages";
+
 export const UI_LANGUAGES = [
   "en",
   "zh-CN",
@@ -35,69 +37,6 @@ const STORAGE_KEY = "elizaos.homepage.lang";
 
 export type MessageDict = Record<string, string>;
 export type TranslationVars = Record<string, unknown>;
-
-const MESSAGES: Record<UiLanguage, MessageDict> = {
-  en: {},
-  "zh-CN": {},
-  ko: {},
-  es: {},
-  pt: {},
-  vi: {},
-  tl: {},
-  ja: {},
-};
-
-const loaders: Record<Exclude<UiLanguage, "en">, () => Promise<MessageDict>> = {
-  "zh-CN": () =>
-    import("../i18n/locales/zh-CN.json")
-      .then((m) => m.default as MessageDict)
-      .catch(() => ({})),
-  ko: () =>
-    import("../i18n/locales/ko.json")
-      .then((m) => m.default as MessageDict)
-      .catch(() => ({})),
-  es: () =>
-    import("../i18n/locales/es.json")
-      .then((m) => m.default as MessageDict)
-      .catch(() => ({})),
-  pt: () =>
-    import("../i18n/locales/pt.json")
-      .then((m) => m.default as MessageDict)
-      .catch(() => ({})),
-  vi: () =>
-    import("../i18n/locales/vi.json")
-      .then((m) => m.default as MessageDict)
-      .catch(() => ({})),
-  tl: () =>
-    import("../i18n/locales/tl.json")
-      .then((m) => m.default as MessageDict)
-      .catch(() => ({})),
-  ja: () =>
-    import("../i18n/locales/ja.json")
-      .then((m) => m.default as MessageDict)
-      .catch(() => ({})),
-};
-
-const inflight = new Map<UiLanguage, Promise<void>>();
-
-function ensureLanguageLoaded(lang: UiLanguage): Promise<void> {
-  if (lang === "en") return Promise.resolve();
-  const existing = MESSAGES[lang];
-  if (existing && Object.keys(existing).length > 0) return Promise.resolve();
-  const pending = inflight.get(lang);
-  if (pending) return pending;
-  const loader = loaders[lang];
-  if (!loader) return Promise.resolve();
-  const promise = loader()
-    .then((dict) => {
-      MESSAGES[lang] = dict;
-    })
-    .finally(() => {
-      inflight.delete(lang);
-    });
-  inflight.set(lang, promise);
-  return promise;
-}
 
 export function normalizeLanguage(input: unknown): UiLanguage {
   if (typeof input !== "string") return DEFAULT_UI_LANGUAGE;
@@ -128,15 +67,13 @@ function interpolate(template: string, vars?: TranslationVars): string {
 
 export type Translator = (key: string, vars?: TranslationVars) => string;
 
-function createTranslator(lang: UiLanguage): Translator {
+function createTranslator(dict: MessageDict): Translator {
   return (key, vars) => {
-    const dict = MESSAGES[lang] ?? {};
-    const fallbackDict = MESSAGES.en;
     const defaultValue =
       typeof vars?.defaultValue === "string" && vars.defaultValue.trim()
         ? vars.defaultValue
         : undefined;
-    const template = dict[key] ?? fallbackDict[key] ?? defaultValue ?? key;
+    const template = dict[key] ?? defaultValue ?? key;
     return interpolate(template, vars);
   };
 }
@@ -180,8 +117,36 @@ export function I18nProvider({
     initialLang ?? resolveInitialLang(),
   );
 
+  const [loaded, setLoaded] = useState<{
+    lang: UiLanguage;
+    messages: MessageDict;
+  } | null>(null);
+  const [failure, setFailure] = useState<{
+    lang: UiLanguage;
+    error: Error;
+  } | null>(null);
+
   useEffect(() => {
-    void ensureLanguageLoaded(lang);
+    let current = true;
+    loadLanguageMessages(lang).then(
+      (messages) => {
+        if (current) setLoaded({ lang, messages });
+      },
+      (cause: unknown) => {
+        // error-policy:J1 async import failures enter the host's React error boundary on render.
+        if (current)
+          setFailure({
+            lang,
+            error: Object.assign(
+              new Error(`Could not load homepage language ${lang}`),
+              { cause },
+            ),
+          });
+      },
+    );
+    return () => {
+      current = false;
+    };
   }, [lang]);
 
   useEffect(() => {
@@ -199,14 +164,15 @@ export function I18nProvider({
         // storage disabled — keep in-memory state
       }
       setLangState(normalized);
-      void ensureLanguageLoaded(normalized);
     };
     return {
       lang,
       setLang: next,
-      t: createTranslator(lang),
+      t: createTranslator(loaded?.lang === lang ? loaded.messages : {}),
     };
-  }, [lang]);
+  }, [lang, loaded]);
+
+  if (failure?.lang === lang) throw failure.error;
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }

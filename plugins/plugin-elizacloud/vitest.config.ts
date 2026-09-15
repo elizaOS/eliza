@@ -16,7 +16,16 @@ const src = (relative: string) => path.join(here, "../../packages", relative);
 // peers.
 export default defineConfig({
 	resolve: {
+		conditions: ["eliza-source"],
 		alias: [
+			{
+				find: /^@elizaos\/plugin-elizacloud\/endpoint-config$/,
+				replacement: path.join(here, "src/utils/config.ts"),
+			},
+			{
+				find: /^@elizaos\/plugin-elizacloud\/models\/(.*)$/,
+				replacement: path.join(here, "src/models/$1.ts"),
+			},
 			{ find: /^@elizaos\/cloud-routing$/, replacement: src("cloud/routing/src/index.ts") },
 			{ find: /^@elizaos\/cloud-sdk$/, replacement: src("cloud/sdk/src/index.ts") },
 			{ find: /^@elizaos\/core$/, replacement: src("core/src/index.node.ts") },

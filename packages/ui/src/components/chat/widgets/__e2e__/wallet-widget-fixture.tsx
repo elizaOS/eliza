@@ -10,9 +10,8 @@
  *     where a failed balance request must not look like an empty wallet.
  *
  *   - `?surface=wallet-section`: mounts the REAL `WalletSectionNav` (real
- *     app-shell page registry, real section tabs) — the decided routed mount
- *     after the home spec demoted the `wallet.balance` resident — and proves
- *     the price rows render on that surface, not only in isolation.
+ *     app-shell page registry, real section tabs) and proves the navigation
+ *     wrapper stays independent from the canonical wallet body.
  */
 import { createRoot } from "react-dom/client";
 import { registerAppShellPage } from "../../../../app-shell-registry";

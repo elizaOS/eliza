@@ -6,6 +6,10 @@ import type { ViewKind } from "@elizaos/core";
 import type { LucideIcon } from "lucide-react";
 import type { ComponentType, LazyExoticComponent } from "react";
 import { getUiRegistryStore } from "../../registry-host";
+import type {
+  SettingsRuntimeCapabilities,
+  SettingsRuntimeCapability,
+} from "./settings-runtime-capabilities";
 import type { SettingsSectionGroup } from "./settings-section-meta";
 
 /**
@@ -30,6 +34,7 @@ export type SettingsSectionTone =
 
 /** Curated, token-safe medallion tints for the section icons. No blue. */
 export type SettingsSectionHue = "accent" | "amber" | "rose" | "slate";
+export type SettingsSectionProminence = "primary" | "secondary";
 
 export interface SettingsSectionDef {
   /** Stable id — URL hash + agent-surface address. */
@@ -63,6 +68,12 @@ export interface SettingsSectionDef {
   group: SettingsSectionGroup | (string & {});
   /** Sort priority within a group (lower first). Built-ins use list order. */
   order?: number;
+  /**
+   * Information-architecture weight. Compact hubs keep secondary destinations
+   * available behind progressive disclosure instead of flattening every
+   * developer and specialist control into the everyday list.
+   */
+  prominence?: SettingsSectionProminence;
   /** Padding override for the section body panel. */
   bodyClassName?: string;
   /**
@@ -90,6 +101,12 @@ export interface SettingsSectionDef {
    */
   cloudOnly?: boolean;
   /**
+   * Host features this section needs in order to function. Requirements are
+   * resolved by the canonical Settings controller, so plugins and built-ins do
+   * not infer a platform from viewport size or user-agent strings.
+   */
+  requires?: readonly SettingsRuntimeCapability[];
+  /**
    * Four-tier visibility category. Supersedes `developerOnly` when set:
    * `system`/`release` always show; `developer`/`preview` follow the Settings
    * toggles. See `ViewKind` in `@elizaos/core`.
@@ -101,6 +118,36 @@ export interface SettingsSectionDef {
    * view renders it behind a `<Suspense>` boundary either way.
    */
   Component: ComponentType | LazyExoticComponent<ComponentType>;
+}
+
+/** Shared navigation policy for destinations that should stay one disclosure away. */
+export function settingsSectionIsSecondary(
+  section: Pick<
+    SettingsSectionDef,
+    "developerOnly" | "prominence" | "viewKind"
+  >,
+): boolean {
+  return (
+    section.prominence === "secondary" ||
+    section.developerOnly === true ||
+    section.viewKind === "developer" ||
+    section.viewKind === "preview"
+  );
+}
+
+/** Partition one registry-driven group without duplicating prominence policy. */
+export function partitionSettingsSections<
+  T extends Pick<
+    SettingsSectionDef,
+    "developerOnly" | "prominence" | "viewKind"
+  >,
+>(sections: readonly T[]): { primary: T[]; secondary: T[] } {
+  const primary: T[] = [];
+  const secondary: T[] = [];
+  for (const section of sections) {
+    (settingsSectionIsSecondary(section) ? secondary : primary).push(section);
+  }
+  return { primary, secondary };
 }
 
 interface SettingsSectionRegistryStore {
@@ -161,4 +208,15 @@ export function getSettingsSection(id: string): SettingsSectionDef | undefined {
  */
 export function getAllSettingsSections(): SettingsSectionDef[] {
   return listSettingsSections();
+}
+
+/** Pure capability gate shared by hub visibility and deep-link resolution. */
+export function settingsSectionIsAvailable(
+  section: SettingsSectionDef,
+  capabilities: SettingsRuntimeCapabilities,
+): boolean {
+  return (
+    section.requires?.every((capability) => capabilities.has(capability)) ??
+    true
+  );
 }

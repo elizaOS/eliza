@@ -1,20 +1,182 @@
 /** Verifies app-shell WebSocket origins for dev proxies and native remotes. */
 
 import { describe, expect, test } from "bun:test";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path, { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
+import { configureDevApiProxy } from "./vite/dev-http-proxy";
 import appViteConfig, {
   ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS,
   androidCloudCuratedAssetsPlugin,
   androidCloudRendererEntryPlugin,
   appDevWsBasePlugin,
   appShellMetadataPlugin,
+  devViewStudioPlugin,
   findAndroidCloudEmittedRoutingFindings,
   resolveAndroidCloudPrebootLockupDataUri,
   resolveAppShellLocalCspSources,
+  resolveLocalRealtimeVoiceDefines,
+  resolveLocalRealtimeVoiceDefinesFromEnv,
   selectAndroidCloudRendererEntry,
   stripAndroidCloudIpcBootstrap,
   stripAndroidCloudPublicAssetReferences,
 } from "./vite.config";
+
+const testDir = path.dirname(fileURLToPath(import.meta.url));
+
+describe("devViewStudioPlugin", () => {
+  test("serves review assets only through the dev server", () => {
+    expect(
+      existsSync(path.join(testDir, "public", "eliza-view-studio.html")),
+    ).toBe(false);
+    expect(
+      existsSync(path.join(testDir, "public", "eliza-proposed-theme.css")),
+    ).toBe(false);
+
+    let middleware:
+      | ((
+          req: { url?: string },
+          res: {
+            setHeader: (name: string, value: string) => void;
+            end: (body: Buffer) => void;
+          },
+          next: () => void,
+        ) => void)
+      | undefined;
+    const plugin = devViewStudioPlugin();
+    expect(plugin.apply).toBe("serve");
+    if (typeof plugin.configureServer !== "function") {
+      throw new Error("view studio dev middleware is missing");
+    }
+    plugin.configureServer({
+      middlewares: {
+        use: (handler: typeof middleware) => (middleware = handler),
+      },
+    } as never);
+
+    const headers = new Map<string, string>();
+    let body: Buffer | undefined;
+    let nextCalled = false;
+    middleware?.(
+      { url: "/eliza-view-studio.html?view=%2Fnotes" },
+      {
+        setHeader: (name, value) => headers.set(name, value),
+        end: (value) => (body = value),
+      },
+      () => (nextCalled = true),
+    );
+
+    expect(nextCalled).toBe(false);
+    expect(headers.get("Cache-Control")).toBe("no-store");
+    expect(body?.toString()).toContain("Eliza View Studio");
+
+    headers.clear();
+    body = undefined;
+    middleware?.(
+      { url: "/eliza-proposed-theme.css" },
+      {
+        setHeader: (name, value) => headers.set(name, value),
+        end: (value) => (body = value),
+      },
+      () => (nextCalled = true),
+    );
+
+    expect(headers.get("Content-Type")).toBe("text/css; charset=utf-8");
+    expect(headers.get("Cache-Control")).toBe("no-store");
+    expect(body?.toString()).toContain("data-eliza-studio-proposed");
+  });
+});
+
+describe("local realtime voice defaults", () => {
+  test("enables realtime and health-probed self-hosted eligibility without force-arming", () => {
+    expect(resolveLocalRealtimeVoiceDefines("serve", 31_338, {})).toEqual({
+      "import.meta.env.VITE_VOICE_REALTIME_WS": JSON.stringify("1"),
+      "import.meta.env.VITE_VOICE_REALTIME_SELF_HOSTED": JSON.stringify("1"),
+    });
+  });
+
+  test("preserves explicit client flag values", () => {
+    expect(
+      resolveLocalRealtimeVoiceDefines("serve", 31_338, {
+        VITE_VOICE_REALTIME_WS: "0",
+        VITE_VOICE_REALTIME_SELF_HOSTED: "false",
+        VITE_VOICE_REALTIME_FORCE: "false",
+      }),
+    ).toEqual({});
+    expect(
+      resolveLocalRealtimeVoiceDefines("serve", 31_338, {
+        VITE_VOICE_REALTIME_WS: "1",
+        VITE_VOICE_REALTIME_SELF_HOSTED: "1",
+      }),
+    ).toEqual({});
+  });
+
+  test("defaults only a missing flag when the other has an explicit opt-out", () => {
+    expect(
+      resolveLocalRealtimeVoiceDefines("serve", 31_338, {
+        VITE_VOICE_REALTIME_WS: "0",
+      }),
+    ).toEqual({
+      "import.meta.env.VITE_VOICE_REALTIME_SELF_HOSTED": JSON.stringify("1"),
+    });
+    expect(
+      resolveLocalRealtimeVoiceDefines("serve", 31_338, {
+        VITE_VOICE_REALTIME_SELF_HOSTED: "0",
+      }),
+    ).toEqual({
+      "import.meta.env.VITE_VOICE_REALTIME_WS": JSON.stringify("1"),
+    });
+  });
+
+  test("does not change builds or dev servers without a gateway", () => {
+    expect(resolveLocalRealtimeVoiceDefines("build", 31_338, {})).toEqual({});
+    expect(resolveLocalRealtimeVoiceDefines("serve", null, {})).toEqual({});
+  });
+
+  test("preserves explicit opt-outs loaded from .env.local", () => {
+    const envDir = mkdtempSync(path.join(os.tmpdir(), "eliza-voice-env-"));
+    const previousWs = process.env.VITE_VOICE_REALTIME_WS;
+    const previousSelfHosted = process.env.VITE_VOICE_REALTIME_SELF_HOSTED;
+    const previousForce = process.env.VITE_VOICE_REALTIME_FORCE;
+    delete process.env.VITE_VOICE_REALTIME_WS;
+    delete process.env.VITE_VOICE_REALTIME_SELF_HOSTED;
+    delete process.env.VITE_VOICE_REALTIME_FORCE;
+
+    try {
+      writeFileSync(
+        path.join(envDir, ".env.local"),
+        "VITE_VOICE_REALTIME_WS=0\nVITE_VOICE_REALTIME_SELF_HOSTED=false\nVITE_VOICE_REALTIME_FORCE=false\n",
+      );
+      expect(
+        resolveLocalRealtimeVoiceDefinesFromEnv(
+          "serve",
+          "development",
+          31_338,
+          envDir,
+        ),
+      ).toEqual({});
+    } finally {
+      if (previousWs === undefined) {
+        delete process.env.VITE_VOICE_REALTIME_WS;
+      } else {
+        process.env.VITE_VOICE_REALTIME_WS = previousWs;
+      }
+      if (previousSelfHosted === undefined) {
+        delete process.env.VITE_VOICE_REALTIME_SELF_HOSTED;
+      } else {
+        process.env.VITE_VOICE_REALTIME_SELF_HOSTED = previousSelfHosted;
+      }
+      if (previousForce === undefined) {
+        delete process.env.VITE_VOICE_REALTIME_FORCE;
+      } else {
+        process.env.VITE_VOICE_REALTIME_FORCE = previousForce;
+      }
+      rmSync(envDir, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("appDevWsBasePlugin", () => {
   test("injects same-origin ws/wss bases without a machine-local address", () => {
@@ -53,6 +215,39 @@ describe("appDevWsBasePlugin", () => {
 });
 
 describe("app shell local connection policy", () => {
+  test("emits manifest icon URLs that resolve to shipped public assets", () => {
+    const emitted: Array<{ fileName?: string; source?: string | Uint8Array }> =
+      [];
+    const hook = appShellMetadataPlugin().generateBundle;
+    if (typeof hook !== "function") {
+      throw new Error("app metadata plugin has no bundle hook");
+    }
+    Reflect.apply(
+      hook,
+      {
+        emitFile(asset: (typeof emitted)[number]) {
+          emitted.push(asset);
+          return asset.fileName ?? "emitted-asset";
+        },
+      },
+      [],
+    );
+
+    const manifestAsset = emitted.find(
+      (asset) => asset.fileName === "site.webmanifest",
+    );
+    const manifest = JSON.parse(String(manifestAsset?.source)) as {
+      icons: Array<{ src: string }>;
+    };
+    expect(manifest.icons.map((icon) => icon.src)).toEqual([
+      "/brand/favicons/android-chrome-192x192.png",
+      "/brand/favicons/android-chrome-512x512.png",
+    ]);
+    for (const icon of manifest.icons) {
+      expect(existsSync(join(import.meta.dir, "public", icon.src))).toBe(true);
+    }
+  });
+
   test("preserves the browser authority through the local API proxy", () => {
     if (typeof appViteConfig !== "function") {
       throw new Error("app Vite config is not callable");
@@ -72,6 +267,7 @@ describe("app shell local connection policy", () => {
     }
 
     expect(apiProxy.changeOrigin).toBe(false);
+    expect(apiProxy.configure).toBe(configureDevApiProxy);
   });
 
   test("permits paired Android transports whose private-LAN host is selected at runtime", () => {

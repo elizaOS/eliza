@@ -22,12 +22,22 @@ import {
 
 type ErrorWithStatus = {
 	code?: unknown;
+	reason?: unknown;
 	status?: unknown;
 	statusCode?: unknown;
 	lastError?: unknown;
 	errors?: unknown;
 	error?: unknown;
 };
+
+/**
+ * Stable provider error code emitted after Eliza Cloud spends its complete
+ * in-handler cache-warming retry budget. Runtime dispatch uses this typed
+ * signal to avoid spending that same budget again through another model
+ * registration backed by the same provider.
+ */
+export const ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED =
+	"ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED";
 
 function asErrorObject(error: unknown): ErrorWithStatus | null {
 	return typeof error === "object" && error !== null
@@ -43,6 +53,16 @@ function unwrapRetryError(error: unknown): unknown {
 		return candidate.errors[candidate.errors.length - 1];
 	}
 	return error;
+}
+
+/** True only for Eliza Cloud's bounded cache-warming exhaustion signal. */
+export function isElizaCloudGatewayWarmingExhaustedError(
+	error: unknown,
+): boolean {
+	return (
+		asErrorObject(unwrapRetryError(error))?.code ===
+		ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED
+	);
 }
 
 function hasHttpStatus(error: unknown, statuses: readonly number[]): boolean {
@@ -271,11 +291,20 @@ export function isModelProviderFallbackError(
 		return false;
 	}
 	const unwrapped = unwrapRetryError(error);
+	if (isElizaCloudGatewayWarmingExhaustedError(unwrapped)) {
+		return true;
+	}
 	// Local inference can disappear after registration (model unload, device
 	// disconnect, or an unavailable native binding). Its typed capability error
-	// means another text provider may safely answer the same request.
-	if (asErrorObject(unwrapped)?.code === "LOCAL_INFERENCE_UNAVAILABLE") {
-		return true;
+	// means another text provider may safely answer the same request. The same
+	// envelope also carries input/output validation failures, which must remain
+	// terminal even when another provider could return a plausible response.
+	const localFailure = asErrorObject(unwrapped);
+	if (localFailure?.code === "LOCAL_INFERENCE_UNAVAILABLE") {
+		return (
+			localFailure.reason === "backend_unavailable" ||
+			localFailure.reason === "capability_unavailable"
+		);
 	}
 	if (isRateLimitError(error)) {
 		return true;
@@ -417,6 +446,8 @@ export function buildFailureReplyPrompt(
 		"Hard rules:",
 		"- Stay in character. Keep your usual voice and tone.",
 		"- NEVER answer the user's question on the merits.",
+		"- Clearly say you could not complete this request. Do not imply the requested action happened or is still running.",
+		"- Do not ask the user to perform the requested action themselves or report what they see; you did not execute it successfully.",
 		"- The trajectory that would have GROUNDED the answer failed, so do not emit answer-shaped tokens from memory or context.",
 		"- Do not provide a SHA, a count, a price, a date, a status, a file path, or a name as if it were verified.",
 		FAILURE_PROMPT_CAUSE_RETRY_RULE[cause],

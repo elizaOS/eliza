@@ -36,11 +36,11 @@ describe("httpTelemetryMiddleware", () => {
     app.get("/ok", (c) => c.json({ ok: true }));
 
     const res = await app.request("/ok", {
-      headers: { "X-Eliza-Trace-Id": "44444444-4444-4444-8444-444444444444" },
+      headers: { "X-Eliza-Trace-Id": "44444444444444444444444444444444" },
     });
 
     expect(res.status).toBe(200);
-    expect(res.headers.get(ELIZA_TRACE_ID_HEADER)).toBe("44444444-4444-4444-8444-444444444444");
+    expect(res.headers.get(ELIZA_TRACE_ID_HEADER)).toBe("44444444444444444444444444444444");
     expect(res.headers.get("Server-Timing")).toContain("cloud_worker;dur=");
     expect(await res.json()).toEqual({ ok: true });
   });
@@ -57,7 +57,7 @@ describe("httpTelemetryMiddleware", () => {
     );
 
     const res = await app.request("/proxied", {
-      headers: { "X-Eliza-Trace-Id": "55555555-5555-4555-8555-555555555555" },
+      headers: { "X-Eliza-Trace-Id": "55555555555555555555555555555555" },
     });
 
     // The healthy proxied response survives with body, status, and upstream
@@ -65,7 +65,7 @@ describe("httpTelemetryMiddleware", () => {
     expect(res.status).toBe(201);
     expect(await res.text()).toBe("proxied-bytes");
     expect(res.headers.get("x-upstream")).toBe("kept");
-    expect(res.headers.get(ELIZA_TRACE_ID_HEADER)).toBe("55555555-5555-4555-8555-555555555555");
+    expect(res.headers.get(ELIZA_TRACE_ID_HEADER)).toBe("55555555555555555555555555555555");
     expect(res.headers.get("Server-Timing")).toContain("cloud_worker;dur=");
   });
 

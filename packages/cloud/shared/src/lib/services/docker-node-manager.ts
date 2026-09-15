@@ -653,14 +653,28 @@ export function buildPrePullReapCommand(pidFile: string, image: string): string 
   return `sh -c ${shellQuote(script)}`;
 }
 
+/** Require the running daemon to confirm live restore before shared-host recovery. */
+export function buildDockerLiveRestoreProofCommand(): string {
+  return `(live_restore="$(timeout -k 2s 20s docker info --format '{{.LiveRestoreEnabled}}')" && test "$live_restore" = true)`;
+}
+
 export function buildPrePullSelfHealRecoverCommand(): string {
   return [
-    "systemctl kill -s SIGKILL docker.service docker.socket 2>/dev/null",
+    "set -e",
+    // A configured value may not have been reloaded by the running daemon.
+    // Missing runtime proof leaves recovery to an operator.
+    buildDockerLiveRestoreProofCommand(),
+    // Kill only the daemon's main process so live-restore can keep workloads
+    // running. A socket unit commonly has no process of its own, so stopping it
+    // is best-effort and must not trip set -e before the required start and
+    // docker-info proof run. Containerd stays running: restarting it broadens
+    // the blast radius without evidence that its API is the wedged boundary.
+    "systemctl kill --kill-who=main -s SIGKILL docker.service 2>/dev/null || true",
+    "systemctl stop docker.socket 2>/dev/null || true",
     "sleep 2",
-    "systemctl restart containerd 2>/dev/null",
-    "sleep 4",
     "systemctl reset-failed docker.service 2>/dev/null",
     "systemctl start docker.service",
+    "timeout -k 2s 20s docker info >/dev/null",
   ].join("; ");
 }
 
@@ -1353,17 +1367,16 @@ export class DockerNodeManager {
     const changes = new Map<string, { before: number; after: number }>();
 
     for (const node of nodes) {
-      const actualCount = await countAllocatedWorkloadsOnNode(node.node_id);
+      // Always enter the primary, node-locked recount. `findEnabled()` is an
+      // operational replica read and must never suppress repair of a divergent
+      // primary counter.
+      const recount = await dockerNodesRepository.setAllocatedCount(node.node_id);
 
-      if (actualCount !== node.allocated_count) {
+      if (recount && recount.before !== recount.after) {
         logger.info(
-          `[docker-node-manager] Sync ${node.node_id}: allocated_count ${node.allocated_count} → ${actualCount}`,
+          `[docker-node-manager] Sync ${node.node_id}: allocated_count ${recount.before} → ${recount.after}`,
         );
-        await dockerNodesRepository.setAllocatedCount(node.node_id, actualCount);
-        changes.set(node.node_id, {
-          before: node.allocated_count,
-          after: actualCount,
-        });
+        changes.set(node.node_id, recount);
       }
     }
 
@@ -1477,8 +1490,8 @@ export class DockerNodeManager {
    *     verifying the process is still a `docker pull` for the same image.
    * (b) If a node keeps failing (its daemon is already wedged) and self-heal
    *     is enabled, restart docker once per cooldown to recover automatically
-   *     instead of paging an operator. `live-restore` (node bootstrap
-   *     daemon.json) keeps running agent containers alive across the restart.
+   *     only when the running daemon confirms live restore. A daemon that
+   *     cannot provide this proof requires operator recovery.
    */
   private async recoverAfterTimedOutPrePull(
     ssh: DockerSSHClient,
@@ -1521,10 +1534,8 @@ export class DockerNodeManager {
       },
     );
     try {
-      // Live staging showed graceful `systemctl restart docker` can hang when
-      // dockerd/containerd content ingest is already wedged. Stamp the cooldown
-      // before attempting the shared-host recovery, then force-kill dockerd and
-      // bounce containerd; live-restore plus container shims keep agents alive.
+      // Stamp the cooldown before the bounded proof and recovery attempt so
+      // an unavailable safety prerequisite cannot create a tight retry loop.
       state.lastSelfHealMs = Date.now();
       prePullFailureState.set(node.node_id, state);
       await ssh.exec(buildPrePullSelfHealRecoverCommand(), 120_000);

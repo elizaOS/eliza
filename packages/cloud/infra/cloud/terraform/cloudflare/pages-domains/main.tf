@@ -22,13 +22,13 @@ locals {
     marketing = {
       project_name = "eliza-app"
       domain       = "staging.eliza.app"
-      cname_target = "develop.eliza-app.pages.dev"
+      cname_target = "staging.eliza-app.pages.dev"
       zone_id      = var.eliza_app_zone_id
     }
     cloud_app = {
       project_name = "eliza-app"
       domain       = "cloud-staging.eliza.app"
-      cname_target = "develop.eliza-app.pages.dev"
+      cname_target = "staging.eliza-app.pages.dev"
       zone_id      = var.eliza_app_zone_id
     }
   }
@@ -80,32 +80,32 @@ locals {
     } : {
     console = {
       domain       = "staging.elizacloud.ai"
-      cname_target = "develop.eliza-app.pages.dev"
+      cname_target = "staging.eliza-app.pages.dev"
       zone_id      = var.elizacloud_ai_zone_id
     }
     app = {
       domain       = "app-staging.elizacloud.ai"
-      cname_target = "develop.eliza-app.pages.dev"
+      cname_target = "staging.eliza-app.pages.dev"
       zone_id      = var.elizacloud_ai_zone_id
     }
     legacy_api = {
       domain       = "api-staging.elizacloud.ai"
-      cname_target = "develop.eliza-app.pages.dev"
+      cname_target = "staging.eliza-app.pages.dev"
       zone_id      = var.elizacloud_ai_zone_id
     }
     legacy_plugins = {
       domain       = "plugins.staging.elizacloud.ai"
-      cname_target = "develop.eliza-app.pages.dev"
+      cname_target = "staging.eliza-app.pages.dev"
       zone_id      = var.elizacloud_ai_zone_id
     }
     legacy_relay = {
       domain       = "relay-staging.elizacloud.ai"
-      cname_target = "develop.eliza-app.pages.dev"
+      cname_target = "staging.eliza-app.pages.dev"
       zone_id      = var.elizacloud_ai_zone_id
     }
     legacy_x402 = {
       domain       = "x402-staging.elizacloud.ai"
-      cname_target = "develop.eliza-app.pages.dev"
+      cname_target = "staging.eliza-app.pages.dev"
       zone_id      = var.elizacloud_ai_zone_id
     }
   }

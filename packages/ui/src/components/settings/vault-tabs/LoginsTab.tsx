@@ -13,6 +13,7 @@ import { useAgentElement } from "../../../agent-surface";
 // authed runtimes (e.g. the Android local agent).
 import { client } from "../../../api/client";
 import { useTranslation } from "../../../state/TranslationContext.hooks";
+import { confirmDesktopAction } from "../../../utils/desktop-dialogs";
 import { Alert } from "../../ui/alert";
 import { Badge, type BadgeProps } from "../../ui/badge";
 import { Button } from "../../ui/button";
@@ -255,13 +256,15 @@ export function LoginsTab() {
   const onDelete = useCallback(
     async (login: SavedLogin) => {
       if (login.source !== "in-house") return;
-      const ok = window.confirm(
-        t("logins.confirmDelete", {
+      const ok = await confirmDesktopAction({
+        title: t("common.delete"),
+        type: "warning",
+        message: t("logins.confirmDelete", {
           domain: login.domain ?? "—",
           username: login.username,
           defaultValue: "Delete saved login for {{domain}} ({{username}})?",
         }),
-      );
+      });
       if (!ok) return;
       setError(null);
       const colon = login.identifier.indexOf(":");
@@ -293,13 +296,13 @@ export function LoginsTab() {
   });
 
   return (
-    <section data-testid="saved-logins-panel" className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-txt">
+    <section data-testid="saved-logins-panel" className="w-full space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-[min(100%,30rem)] flex-1 space-y-1">
+          <h2 className="text-sm font-semibold text-txt">
             {t("logins.title", { defaultValue: "Saved logins" })}
-          </p>
-          <p className="text-2xs text-muted">
+          </h2>
+          <p className="text-xs text-muted">
             {t("logins.description", {
               defaultValue:
                 "Browser autofill from local vault, 1Password, and Bitwarden.",
@@ -311,7 +314,7 @@ export function LoginsTab() {
           {...addLoginAgentProps}
           variant="outline"
           size="sm"
-          className="shrink-0"
+          className="self-start"
           onClick={() => setShowAdd((v) => !v)}
         >
           <Plus className="size-3.5" aria-hidden />
@@ -470,82 +473,82 @@ export function LoginsTab() {
           {t("logins.loading", { defaultValue: "Loading…" })}
         </div>
       ) : logins.length === 0 ? (
-        <Card asChild variant="vaultEmpty" data-testid="saved-logins-empty">
-          <div>
+        <div
+          data-testid="saved-logins-empty"
+          className="flex min-h-40 w-full items-center text-xs text-muted sm:justify-center sm:text-center"
+        >
+          <p className="max-w-md">
             {t("logins.empty", {
               defaultValue:
                 "No saved logins. Add one, or sign in to 1Password / Bitwarden on Overview.",
             })}
-          </div>
-        </Card>
+          </p>
+        </div>
       ) : filtered.length === 0 ? (
-        <Card asChild variant="vaultEmpty" data-testid="saved-logins-no-match">
-          <div>
+        <div
+          data-testid="saved-logins-no-match"
+          className="flex min-h-32 w-full items-center text-xs text-muted sm:justify-center sm:text-center"
+        >
+          <p className="max-w-md">
             {t("logins.noMatch", {
               filter,
               defaultValue: 'No logins match "{{filter}}".',
             })}
-          </div>
-        </Card>
+          </p>
+        </div>
       ) : (
-        <Card
-          asChild
-          variant="transparent"
-          surface="card"
-          border="subtle"
-          className="space-y-1 p-1"
-        >
-          <ul data-testid="saved-logins-list">
+        <div className="overflow-hidden rounded-lg border border-line-subtle bg-bg-card">
+          <ul
+            data-testid="saved-logins-list"
+            className="divide-y divide-line-subtle"
+          >
             {filtered.map((login) => (
-              <Card
-                asChild
+              <li
                 key={`${login.source}:${login.identifier}`}
-                variant="vaultListRow"
+                className="flex items-center gap-2 p-3 sm:px-4"
               >
-                <li className="flex items-center gap-2">
-                  <Badge
-                    variant={SOURCE_PILL_VARIANT[login.source]}
-                    size="micro"
-                    className="shrink-0"
-                  >
-                    {sourceLabel(login.source)}
-                  </Badge>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-medium text-txt">
-                      {login.title}
-                      {login.domain && login.domain !== login.title ? (
-                        <span className="ml-1.5 text-muted">
-                          ({login.domain})
-                        </span>
-                      ) : null}
-                    </p>
-                    <p className="truncate text-2xs text-muted">
-                      {login.username || "—"} · {relativeAge(login.updatedAt)}
-                    </p>
-                  </div>
-                  {login.domain ? (
-                    <AgentAutoallowToggle
-                      domain={login.domain}
-                      allowed={autoallowMap[login.domain] === true}
-                      onChange={(next) =>
-                        void onToggleAutoallow(login.domain ?? "", next)
-                      }
-                    />
-                  ) : null}
-                  {login.source === "in-house" ? (
-                    <DeleteLoginButton
-                      identifier={login.identifier}
-                      target={login.domain ?? login.username}
-                      onDelete={() => void onDelete(login)}
-                    />
-                  ) : (
-                    <ExternalRowAction login={login} />
-                  )}
-                </li>
-              </Card>
+                <Badge
+                  variant={SOURCE_PILL_VARIANT[login.source]}
+                  size="micro"
+                  className="shrink-0"
+                >
+                  {sourceLabel(login.source)}
+                </Badge>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium text-txt">
+                    {login.title}
+                    {login.domain && login.domain !== login.title ? (
+                      <span className="ml-1.5 text-muted">
+                        ({login.domain})
+                      </span>
+                    ) : null}
+                  </p>
+                  <p className="truncate text-2xs text-muted">
+                    {login.username || "—"} · {relativeAge(login.updatedAt)}
+                  </p>
+                </div>
+                {login.domain ? (
+                  <AgentAutoallowToggle
+                    domain={login.domain}
+                    allowed={autoallowMap[login.domain] === true}
+                    onChange={(next) =>
+                      void onToggleAutoallow(login.domain ?? "", next)
+                    }
+                  />
+                ) : null}
+                {login.source === "in-house" ? (
+                  <DeleteLoginButton
+                    identifier={login.identifier}
+                    target={login.domain ?? login.username}
+                    onDelete={() => void onDelete(login)}
+                  />
+                ) : (
+                  <ExternalRowAction login={login} />
+                )}
+              </li>
             ))}
           </ul>
-        </Card>
+        </div>
       )}
     </section>
   );

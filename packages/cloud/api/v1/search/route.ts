@@ -1,16 +1,21 @@
 // Handles v1 cloud API v1 search route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { z } from "zod";
+import {
+  asGenerativeCacheApiError,
+  getGenerativeOperationContext,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { getErrorStatusCode, getSafeErrorMessage } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { executeHostedGoogleSearch } from "@/lib/services/google-search";
 import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const searchRequestSchema = z.object({
   query: z.string().trim().min(1).max(2_000),
@@ -25,21 +30,24 @@ const searchRequestSchema = z.object({
   endDate: z.string().trim().min(1).max(32).optional(),
 });
 
-async function handlePOST(req: Request) {
+async function handlePOST(c: AppContext) {
   try {
-    const authResult = await requireAuthOrApiKeyWithOrg(req);
     let raw: unknown;
+    let pendingResponse: Response | undefined;
     try {
-      raw = await req.json();
+      raw = await c.req.raw.json();
     } catch (error) {
       if (!(error instanceof SyntaxError)) throw error;
       // error-policy:J3 malformed JSON is an explicit invalid request.
-      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+      pendingResponse = Response.json(
+        { error: "Invalid JSON body" },
+        { status: 400 },
+      );
     }
     const bodyResult = searchRequestSchema.safeParse(raw);
 
     if (!bodyResult.success) {
-      return Response.json(
+      pendingResponse ??= Response.json(
         {
           error: "Invalid search request",
           details: bodyResult.error.flatten(),
@@ -48,6 +56,17 @@ async function handlePOST(req: Request) {
       );
     }
 
+    const caller = await requireGenerativeRouteCaller(c, {
+      compatibility: "raw",
+      rateLimitEndpoint: "standard",
+      deferStrongCredentialCheck: pendingResponse === undefined,
+    });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
+    });
+    if (pendingResponse) return pendingResponse;
+    if (!bodyResult.success) throw bodyResult.error;
     const body = bodyResult.data;
     const result = await executeHostedGoogleSearch(
       {
@@ -61,9 +80,10 @@ async function handlePOST(req: Request) {
         endDate: body.endDate,
       },
       {
-        organizationId: authResult.user.organization_id,
-        userId: authResult.user.id,
-        apiKeyId: authResult.apiKey?.id ?? null,
+        ...getGenerativeOperationContext(c, caller, {
+          credentialForAdmission: () =>
+            credentialGuard.credentialForAdmission(),
+        }),
         requestSource: "api",
       },
     );
@@ -73,6 +93,9 @@ async function handlePOST(req: Request) {
     logger.error("[/api/v1/search] Request failed", {
       error: error instanceof Error ? error.message : String(error),
     });
+
+    const admissionError = asGenerativeCacheApiError(error);
+    if (admissionError) return failureResponse(c, admissionError);
 
     return Response.json(
       {
@@ -86,7 +109,7 @@ async function handlePOST(req: Request) {
 const honoRouter = new Hono<AppEnv>();
 honoRouter.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   try {
-    return await handlePOST(c.req.raw);
+    return await handlePOST(c);
   } catch (error) {
     return failureResponse(c, error);
   }

@@ -27,6 +27,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { installOrganizationPolicyTestSchema } from "../../../db/repositories/organization-policy-test-fixture";
 
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
 const CAN_USE_ISOLATED_PGLITE =
@@ -43,7 +44,7 @@ import { userCharacters } from "../../../db/schemas/user-characters";
 import { users } from "../../../db/schemas/users";
 
 const PGLITE_TIMEOUT = 60_000;
-const CAP = 3;
+const CAP = 5;
 const GATEWAY_CAP = 5;
 let pgliteReady = true;
 
@@ -59,7 +60,7 @@ function uniq(p: string): string {
   return `${p}-${seq}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-async function seedOrg(creditBalance = "5.000000"): Promise<string> {
+async function seedOrg(creditBalance = "0.500000"): Promise<string> {
   const [org] = await dbWrite
     .insert(organizations)
     .values({ name: "Org", slug: uniq("org"), credit_balance: creditBalance })
@@ -100,6 +101,8 @@ beforeAll(async () => {
     const schema = { organizations, users, userCharacters, agentSandboxes };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
+    const pg = (await import("../../../db/client")).getPgliteClientForTests();
+    await installOrganizationPolicyTestSchema((query) => pg.exec(query));
   } catch (error) {
     pgliteReady = false;
     console.error(
@@ -115,7 +118,7 @@ afterAll(async () => {
 
 describe("createCodingContainerAgent — per-org quota (#11023)", () => {
   test(
-    "the distinct-image DoS is dead: 6 distinct-image creates at cap 3 → exactly 3 rows, surplus throw AgentQuotaExceededError",
+    "the distinct-image DoS is dead: distinct-image creates at the primary catalog ceiling → exactly the admitted rows, surplus throw AgentQuotaExceededError",
     async () => {
       expect(pgliteReady).toBe(true);
       const orgId = await seedOrg();

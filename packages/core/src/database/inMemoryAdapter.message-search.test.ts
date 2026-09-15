@@ -34,11 +34,12 @@ async function seed(messages: Memory[]): Promise<InMemoryDatabaseAdapter> {
 }
 
 describe("InMemoryDatabaseAdapter — textContains", () => {
-	it("uses entityId as get context while count retains its row predicate", async () => {
+	it("uses entityId as participant-room context while count retains its row predicate", async () => {
 		const adapter = await seed([
 			msg("requester-authored", 1),
 			{ ...msg("other-authored", 2), entityId: otherEntityId },
 		]);
+		await adapter.createRoomParticipants([entityId, otherEntityId], roomId);
 
 		const mine = await adapter.getMemories({
 			entityId,

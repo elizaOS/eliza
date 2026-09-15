@@ -32,7 +32,8 @@ const getDocumentFragments = vi.fn();
 const getTranscript = vi.fn();
 const updateTranscriptPrivacy = vi.fn();
 const deleteTranscriptSourceAudio = vi.fn();
-vi.mock("@elizaos/ui/api/client", () => ({
+vi.mock("@elizaos/ui/api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui/api/client")>()),
   client: {
     getDocument: (...args: unknown[]) => getDocument(...args),
     getDocumentFragments: (...args: unknown[]) => getDocumentFragments(...args),
@@ -105,6 +106,8 @@ describe("DocumentViewer detail load", () => {
     await waitFor(() =>
       expect(screen.getByText("q3-strategy.pdf")).toBeTruthy(),
     );
+    expect(screen.getAllByText("Q3 strategy notes")).toHaveLength(1);
+    expect(screen.queryByText(/position 0/i)).toBeNull();
   });
 
   it("sandboxes the PDF reader iframe (same posture as the chat PdfTile)", async () => {

@@ -67,6 +67,37 @@ describe("selectZombieAgentContainers", () => {
     ];
     expect(selectZombieAgentContainers(rows)).toEqual([]);
   });
+
+  it("never selects a stopped exact-restore candidate", () => {
+    const agentId = "11111111-1111-4111-8111-111111111111";
+    const exactNames = Array.from({ length: 8 }, (_, index) => {
+      const version = index + 1;
+      const restoreAttemptId = `22222222-2222-${version}222-8222-222222222222`;
+      return `agent-restore-${agentId}-${restoreAttemptId}`;
+    });
+    const states = ["created", "exited", "dead"];
+
+    expect(
+      selectZombieAgentContainers(
+        exactNames.flatMap((name) => states.map((state) => ({ name, state }))),
+      ),
+    ).toEqual([]);
+  });
+
+  it("still selects true zombies whose names only resemble exact restore", () => {
+    const agentId = "11111111-1111-4111-8111-111111111111";
+    const rows = [
+      { name: `agent-restore-${agentId}-not-a-uuid`, state: "created" },
+      {
+        name: `agent-restored-${agentId}-22222222-2222-4222-8222-222222222222`,
+        state: "dead",
+      },
+    ];
+
+    expect(selectZombieAgentContainers(rows)).toEqual(
+      rows.map((row) => row.name),
+    );
+  });
 });
 
 describe("parseArgs", () => {

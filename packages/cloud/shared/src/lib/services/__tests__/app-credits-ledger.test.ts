@@ -50,6 +50,28 @@ mock.module("../../../db/repositories/users", () => ({
   },
 }));
 
+const findReservationTransaction = mock();
+const reservationSelectBuilder = {
+  from() {
+    return this;
+  },
+  where() {
+    return this;
+  },
+  async limit() {
+    return findReservationTransaction();
+  },
+};
+
+mock.module("../../../db/helpers", () => ({
+  dbWrite: {
+    select: () => reservationSelectBuilder,
+  },
+  writeTransaction: async () => {
+    throw new Error("atomic app reservation settlement belongs to the PGlite contract suite");
+  },
+}));
+
 const addCredits = mock();
 const reserveAndDeductCredits = mock();
 const refundCredits = mock();
@@ -126,12 +148,17 @@ const cacheGet = mock(async () => null);
 const cacheSet = mock(async () => undefined);
 const cacheDel = mock(async () => undefined);
 
+const cacheClientActualModule = await import("../../cache/client");
+
 mock.module("../../cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     get: cacheGet,
     set: cacheSet,
     del: cacheDel,
     delete: cacheDel,
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 
@@ -163,6 +190,7 @@ beforeEach(() => {
   trackAppUserActivity.mockReset();
   findOrgById.mockReset();
   findUserById.mockReset();
+  findReservationTransaction.mockReset();
   addCredits.mockReset();
   reserveAndDeductCredits.mockReset();
   refundCredits.mockReset();
@@ -176,9 +204,28 @@ beforeEach(() => {
   cacheGet.mockResolvedValue(null);
   cacheSet.mockResolvedValue(undefined);
   cacheDel.mockResolvedValue(undefined);
-
   findAppById.mockResolvedValue(monetizedApp);
   findUserById.mockResolvedValue({ id: USER_ID, organization_id: ORG_ID });
+  // This unit suite owns the legacy ledger seam. Atomic app-chat reservation
+  // receipts are exercised against PGlite in app-chat-sweep-double-refund.test.ts.
+  findReservationTransaction.mockResolvedValue([
+    {
+      organizationId: ORG_ID,
+      amount: "-1.1",
+      type: "debit",
+      metadata: {
+        appId: APP_ID,
+        userId: USER_ID,
+        baseCost: 1,
+        totalCost: 1.1,
+        creatorMarkup: 0.1,
+        markupPercentage: 10,
+        monetizationActive: true,
+        creatorUserId: "creator-1",
+        appName: "SupaKan",
+      },
+    },
+  ]);
   findOrgById.mockResolvedValue({ id: ORG_ID, credit_balance: "42.50" });
   findTransactionByPaymentIntent.mockResolvedValue(null);
   addCredits.mockImplementation(
@@ -204,17 +251,19 @@ beforeEach(() => {
       organizationId: string;
       amount: number;
       metadata?: Record<string, unknown>;
-    }) => ({
-      success: true,
-      newBalance: 41.4,
-      transaction: {
-        id: "tx-2",
-        organization_id: args.organizationId,
-        type: "debit",
-        amount: String(-args.amount),
-        metadata: args.metadata ?? {},
-      },
-    }),
+    }) => {
+      return {
+        success: true,
+        newBalance: 41.4,
+        transaction: {
+          id: "tx-2",
+          organization_id: args.organizationId,
+          type: "debit",
+          amount: String(-args.amount),
+          metadata: args.metadata ?? {},
+        },
+      };
+    },
   );
   refundCredits.mockResolvedValue({ newBalance: 43.6 });
   markReservationSettled.mockResolvedValue(true);

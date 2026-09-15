@@ -5,7 +5,7 @@
  */
 import { LogIn, Menu } from "lucide-react";
 import { memo, type ReactNode } from "react";
-import { BrandButton } from "../brand";
+import { Button } from "../../../components/ui/button";
 
 export interface DashboardHeaderPageInfo {
   title: string;
@@ -33,26 +33,26 @@ function DashboardHeaderComponent({
 }: DashboardHeaderProps) {
   const defaultAnonymousCta = (
     <a href={loginHref}>
-      <BrandButton variant="primary" className="h-8 gap-2 px-3 md:h-10 md:px-4">
+      <Button variant="default" className="h-8 gap-2 px-3 md:h-10 md:px-4">
         <LogIn className="size-4" />
         <span className="hidden md:inline">Sign Up Free</span>
         <span className="md:hidden">Sign Up</span>
-      </BrandButton>
+      </Button>
     </a>
   );
 
   return (
     <header className="flex min-h-14 items-center justify-between gap-2 border-b border-white/14 bg-black px-3 py-2 md:min-h-16 md:gap-4 md:px-6">
       <div className="flex min-w-0 flex-1 items-center gap-3 md:gap-4">
-        <BrandButton
-          variant="ghost"
+        <Button
+          variant="outline"
           size="icon"
-          className="size-8 shrink-0 border border-white/14 bg-transparent md:hidden"
+          className="size-8 shrink-0 md:hidden"
           onClick={onToggleSidebar}
           aria-label="Toggle navigation"
         >
           <Menu className="size-4 text-white" />
-        </BrandButton>
+        </Button>
 
         {pageInfo && (
           <div className="flex min-w-0 flex-1 flex-col">

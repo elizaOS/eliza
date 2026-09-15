@@ -9,6 +9,7 @@
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { inspectPublicRouteOutputs } from "./public-route-outputs.mjs";
 import {
   canonicalRouteMethods,
   findCloudApiRoot,
@@ -95,8 +96,21 @@ async function readGeneratedRouteMethods(cloudRoot) {
     "cloud",
     "sdk",
     "src",
-    "public-routes.ts",
+    "public-routes",
+    "descriptors.generated.ts",
   );
+  const inventory = await inspectPublicRouteOutputs(
+    path.dirname(path.dirname(sourcePath)),
+  );
+  const invalid = [
+    ...inventory.missing,
+    ...inventory.orphaned,
+    ...inventory.foreign,
+  ];
+  if (invalid.length)
+    throw new Error(
+      `Invalid public route output inventory: ${invalid.join(", ")}`,
+    );
   const source = await readFile(sourcePath, "utf8");
   // Tolerant of the generator's multi-line descriptor format, e.g.
   //   "GET /api/v1/models": {
@@ -111,6 +125,8 @@ async function readGeneratedRouteMethods(cloudRoot) {
   const routes = new Map();
 
   for (const match of source.matchAll(endpointRe)) {
+    if (routes.has(match[1]))
+      throw new Error(`Duplicate public route descriptor: ${match[1]}`);
     routes.set(match[1], match[4]);
   }
   return routes;

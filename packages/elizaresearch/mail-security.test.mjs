@@ -7,7 +7,10 @@
 
 import { describe, expect, it } from "bun:test";
 import { generateKeyPairSync } from "node:crypto";
-import { evaluateMailSecurity } from "./mail-security.mjs";
+import {
+  evaluateMailSecurity,
+  resolveMailSecurityRecords,
+} from "./mail-security.mjs";
 
 function publicKeyBase64(type, options) {
   const { publicKey } = generateKeyPairSync(type, options);
@@ -119,10 +122,8 @@ describe("evaluateMailSecurity", () => {
   it("accepts a case-variant Workspace include", () => {
     // Mechanism names and domains are case-insensitive (RFC 7208 s4.6.1).
     expect(
-      check(
-        baseline({ txt: ["v=spf1 Include:_SPF.Google.com ~all"] }),
-        "spf",
-      ).ok,
+      check(baseline({ txt: ["v=spf1 Include:_SPF.Google.com ~all"] }), "spf")
+        .ok,
     ).toBe(true);
   });
 
@@ -132,7 +133,9 @@ describe("evaluateMailSecurity", () => {
     expect(
       check(
         baseline({
-          txt: ["v=spf1 include:_spf.google.com ~all include:evil.example +all"],
+          txt: [
+            "v=spf1 include:_spf.google.com ~all include:evil.example +all",
+          ],
         }),
         "spf",
       ).ok,
@@ -190,13 +193,22 @@ describe("evaluateMailSecurity", () => {
     expect(check(baseline({ mx: [] }), "mx").ok).toBe(false);
   });
 
-  it("joins split TXT character strings before matching", () => {
-    // Resolvers return long keys as chunks; the CLI flattens them, so a
-    // flattened long key must still parse as one valid record.
-    const records = baseline({
-      dkimTxt: [`v=DKIM1;k=rsa;p=${VALID_DKIM_KEY}`],
+  it("joins DNS TXT chunks before evaluating a long DKIM key", async () => {
+    const records = baseline();
+    const key = records.dkimTxt[0];
+    const resolved = await resolveMailSecurityRecords("elizaresearch.ai", {
+      async resolveMx() {
+        return records.mx;
+      },
+      async resolveTxt(name) {
+        if (name.startsWith("google._domainkey."))
+          return [[key.slice(0, 255), key.slice(255)]];
+        if (name.startsWith("_dmarc."))
+          return records.dmarcTxt.map((record) => [record]);
+        return records.txt.map((record) => [record]);
+      },
     });
-    expect(check(records, "dkim").ok).toBe(true);
+    expect(evaluateMailSecurity(resolved).ok).toBe(true);
   });
 
   it("fails a rua destination that is not a mailto URI", () => {
