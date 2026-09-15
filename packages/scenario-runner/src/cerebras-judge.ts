@@ -10,13 +10,16 @@
  * owns transport, retry, tolerant JSON parsing, and a canonical verdict
  * shape. Callers map the canonical shape back to their own return types.
  */
+
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import type { ObservedJudgeModel } from "./judge-model-observer.ts";
 
 /** Canonical verdict alias re-exported for callers that don't pull types.ts. */
 export type CerebrasJudgeVerdict = "PASS" | "FAIL" | "REVIEW";
 
 /** Canonical response shape every Cerebras judge call resolves to. */
 export interface JudgeResponse {
+  identity?: ObservedJudgeModel;
   /** Raw model text — exactly what the API returned, before parsing. */
   raw: string;
   /** Parsed JSON object or null if the model output never parsed. */
@@ -59,18 +62,23 @@ export interface JudgeCallOptions {
 }
 
 interface ChatCompletionShape {
+  model?: string;
   choices?: Array<{
     message?: { content?: string | null };
     finish_reason?: string | null;
   }>;
 }
 
-/** Clamp a finite number to [0, 1]; returns 0 for non-finite inputs. */
-function clamp01(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  if (value < 0) return 0;
-  if (value > 1) return 1;
-  return value;
+/** Accept complete numeric values in [0, 1] without clipping invalid judgments. */
+export function parseJudgeScore(value: unknown): number | undefined {
+  if (typeof value !== "number" && typeof value !== "string") return undefined;
+  if (
+    typeof value === "string" &&
+    !/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(value)
+  )
+    return undefined;
+  const score = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(score) && score >= 0 && score <= 1 ? score : undefined;
 }
 
 /**
@@ -224,7 +232,7 @@ export class CerebrasJudge {
     // CEREBRAS_BASE_URL keeps parity with the lifeops eval-model transport:
     // an OpenAI-compatible proxy (e.g. the Eliza Cloud gateway) can serve the
     // judge on hosts that carry a proxy credential instead of a direct
-    // Cerebras key — judging stays independent of the model under test.
+    // Cerebras key. A proxy backend remains unverified without serving identity.
     this.baseUrl = (
       options.baseUrl ??
       process.env.CEREBRAS_BASE_URL?.trim() ??
@@ -270,18 +278,13 @@ export class CerebrasJudge {
     prompt: string,
     options: JudgeCallOptions = {},
   ): Promise<JudgeResponse> {
-    const raw = await this.callChat(prompt, options);
+    const { raw, identity } = await this.callChat(prompt, options);
     const json = tolerantJsonParse(raw);
-    const response: JudgeResponse = { raw, json };
+    const response: JudgeResponse = { raw, json, identity };
     if (json) {
-      const scoreField = json.score;
-      const score =
-        typeof scoreField === "number"
-          ? scoreField
-          : Number.parseFloat(String(scoreField ?? ""));
-      if (Number.isFinite(score)) {
-        response.score = clamp01(score);
-      }
+      const score = parseJudgeScore(json.score);
+      if (Object.hasOwn(json, "score") && score === undefined) return response;
+      if (score !== undefined) response.score = score;
       const explicitVerdict = normalizeVerdict(json.verdict);
       if (explicitVerdict) {
         response.verdict = explicitVerdict;
@@ -309,7 +312,7 @@ export class CerebrasJudge {
   private async callChat(
     prompt: string,
     options: JudgeCallOptions,
-  ): Promise<string> {
+  ): Promise<{ raw: string; identity: ObservedJudgeModel }> {
     const body: Record<string, unknown> = {
       model: this.model,
       messages: this.buildMessages(prompt, options.systemPrompt),
@@ -364,7 +367,20 @@ export class CerebrasJudge {
             JSON.stringify(data),
           );
         }
-        return data.choices?.[0]?.message?.content ?? "";
+        return {
+          raw: data.choices?.[0]?.message?.content ?? "",
+          identity: {
+            provider:
+              new URL(this.baseUrl).origin === "https://api.cerebras.ai"
+                ? "cerebras"
+                : null,
+            model:
+              typeof data.model === "string" && data.model.trim()
+                ? data.model
+                : null,
+            source: "provider-response",
+          },
+        };
       } catch (err) {
         if (err instanceof CerebrasJudgeError) {
           if (

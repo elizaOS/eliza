@@ -657,9 +657,24 @@ describe("planner-declared pending work", () => {
 				},
 			],
 		});
-		await expect(h.run()).rejects.toThrow(
-			"Unexpected model call RESPONSE_HANDLER after ACTION_PLANNER,RESPONSE_HANDLER",
-		);
+		await expect(h.run()).rejects.toMatchObject({
+			code: "POST_EFFECT_EVALUATION_FAILED",
+			cause: expect.objectContaining({
+				message:
+					"Unexpected model call RESPONSE_HANDLER after ACTION_PLANNER,RESPONSE_HANDLER",
+			}),
+			trajectory: expect.objectContaining({
+				steps: expect.arrayContaining([
+					expect.objectContaining({
+						result: expect.objectContaining({
+							effectReceipts: [
+								expect.objectContaining({ receiptId: "read-effect" }),
+							],
+						}),
+					}),
+				]),
+			}),
+		});
 		expect(h.executed).toEqual(["READ"]);
 	});
 
@@ -1504,6 +1519,71 @@ describe("canonical evaluation of grounded internal receipts", () => {
 			expect(messageToUser).toHaveBeenCalledExactlyOnceWith(reply);
 		},
 	);
+
+	it.each([false, true])(
+		"releases a verified answer after a resolved failure (coaching: %s)",
+		async (coaching) => {
+			const reply = "The requested record was read.";
+			const h = harness({
+				plans: [
+					{ text: "", toolCalls: [call("READ", "more_work_pending")] },
+					{
+						text: "",
+						toolCalls: [call(coaching ? "FEED" : "READ", "more_work_pending")],
+					},
+					{ text: "", toolCalls: [call("REPLY", "final")] },
+				],
+				evaluations: [continueWork("Correct the failed read."), finish(reply)],
+				results: [
+					{
+						success: false,
+						error: "Read rejected",
+						...(coaching ? { data: { coachingFailure: true } } : {}),
+					},
+					{ success: true, text: "Read the requested record." },
+				],
+			});
+			const result = await h.run();
+			expect(result.finalMessage).toBe(reply);
+			expect(modelCalls(h, ModelType.ACTION_PLANNER)).toBe(3);
+			expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(2);
+			expect(h.executed).toEqual(["READ", coaching ? "FEED" : "READ"]);
+			expect(
+				result.trajectory.steps.filter(
+					(step) => step.result?.success === false,
+				),
+			).toHaveLength(1);
+		},
+	);
+
+	it("does not release a success while an unrelated write failure remains unresolved", async () => {
+		const honestReply = "The read succeeded, but the record was not updated.";
+		const h = harness({
+			plans: [
+				{ text: "", toolCalls: [call("UPDATE", "more_work_pending")] },
+				{ text: "", toolCalls: [call("READ", "more_work_pending")] },
+				{ text: "", toolCalls: [call("REPLY", "final")] },
+			],
+			evaluations: [
+				continueWork("Read the record."),
+				finish("Everything succeeded."),
+				finish(honestReply, false),
+			],
+			results: [
+				{
+					success: false,
+					error: "WRITE_DENIED",
+					text: "The update was denied.",
+				},
+				{ success: true, text: "Read the record." },
+			],
+		});
+		const result = await h.run();
+		expect(result.finalMessage).toBe(honestReply);
+		expect(result.evaluator?.success).toBe(false);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(3);
+		expect(h.executed).toEqual(["UPDATE", "READ"]);
+	});
 
 	it("does not treat native prose around an empty scope-release REPLY as a new answer", async () => {
 		const reply = "The calendar event is saved.";

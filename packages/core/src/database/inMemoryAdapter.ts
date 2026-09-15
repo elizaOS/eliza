@@ -1618,6 +1618,34 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		return ids;
 	}
 
+	async updateMemoryEmbedding(
+		update: import("../types/database").MemoryEmbeddingUpdate,
+	): Promise<boolean> {
+		const current = this.memoriesById.get(String(update.id));
+		const expected = update.expected;
+		if (
+			!current ||
+			current.agentId !== expected.agentId ||
+			current.roomId !== expected.roomId ||
+			current.entityId !== expected.entityId ||
+			current.content.text !== expected.text
+		)
+			return false;
+		if (
+			!update.embedding.length ||
+			(this.embeddingDimension !== undefined &&
+				update.embedding.length !== this.embeddingDimension) ||
+			!update.embedding.every(Number.isFinite)
+		)
+			throw new Error("Invalid memory embedding");
+		// updateMemories performs its map writes synchronously, before returning its
+		// promise. No other mutation can interleave with this comparison.
+		await this.updateMemories([
+			{ id: update.id, embedding: [...update.embedding] },
+		]);
+		return true;
+	}
+
 	async updateMemories(
 		memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>,
 	): Promise<void> {

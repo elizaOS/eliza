@@ -34,6 +34,7 @@ import {
   backgroundGenerateImageRoute,
   backgroundUploadImageRoute,
 } from "../api/background-routes.ts";
+import { registerImportedConversationEmbeddingWorker } from "../api/conversation-import-embeddings.ts";
 import { filesRoutes } from "../api/files-routes.ts";
 import {
   mediaFileRoute,
@@ -177,6 +178,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       // The worker must exist before TaskService starts. The host's awaited
       // post-migration maintenance phase creates its idempotent queue row.
       registerAttachmentKnowledgeBackfillWorker(runtime);
+      registerImportedConversationEmbeddingWorker(runtime);
     },
 
     providers: [

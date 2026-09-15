@@ -227,8 +227,9 @@ function renderSharedContext(params: {
 	agentName: string;
 	options: EvaluatorRunOptions;
 	parts: Record<string, string>;
+	blocks: Readonly<Record<string, string>>;
 }): string {
-	const { runtime, message, agentName, options, parts } = params;
+	const { runtime, message, agentName, options, parts, blocks } = params;
 	const part = (name: string, fallback = "(none)") => {
 		const text = toWellFormedUnicode(parts[name] ?? "");
 		return text || fallback;
@@ -260,6 +261,9 @@ ${parts.referenceContext ?? ""}
 
 Provider context:
 ${part("providerContext")}
+${Object.entries(blocks)
+	.map(([heading, text]) => `\n${heading}:\n${text}`)
+	.join("\n")}
 `;
 }
 
@@ -354,10 +358,28 @@ function buildPrompt(params: {
 						)
 					: formatRecentMessages(params.roomTranscript),
 	};
+	// Sections reference a shared copy only when their own complete text matches.
+	// Differing bodies with the same heading remain in their owning section.
+	const declaredBlocks = new Map<string, string>();
+	for (const entry of active) {
+		const blocks = entry.evaluator.sharedBlocks?.({
+			runtime,
+			message: entry.message,
+			state,
+			options: entry.options,
+			prepared: entry.prepared,
+		});
+		for (const [heading, text] of Object.entries(blocks ?? {})) {
+			if (text && !declaredBlocks.has(heading))
+				declaredBlocks.set(heading, text);
+		}
+	}
+	const sharedBlocks = Object.fromEntries(declaredBlocks);
 	const shared = {
 		roomTranscriptRendered:
 			providerConversationRendered || params.roomTranscript !== null,
 		actionResultsText: sharedParts.actionResults,
+		blocks: sharedBlocks,
 	};
 
 	const stable: PromptSegment[] = [
@@ -483,6 +505,7 @@ function buildPrompt(params: {
 		agentName,
 		options,
 		parts: sharedParts,
+		blocks: sharedBlocks,
 	});
 	const promptSegments = [
 		...stable,

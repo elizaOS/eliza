@@ -247,6 +247,11 @@ id/label/path index. Full descriptions and schemas remain available through
 VIEWS list. This cannot dispatch direct navigation or satisfy a prerequisite.
 Other missing, malformed, uncertain, stale or unavailable selections retain the
 separate live-catalog model classifier. No field handler executes navigation.
+Each field dispatch discards the previous same-message decision before parsing,
+including missing, malformed and unresolved replacements. Inactive fields also
+evict it because they skip parsing. A valid replacement is consumed once; other
+messages retain their own decisions. Prompt composition alone does not discard
+an active field result.
 
 Known structured Stage-1 aliases such as `Home` reuse the same canonical target
 vocabulary as VIEWS. An alias is accepted only when its canonical destination

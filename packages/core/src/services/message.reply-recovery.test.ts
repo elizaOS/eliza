@@ -1,8 +1,10 @@
 /** Tests final reply grounding and recovery against real evaluator parsing and receipt validation. */
 import { describe, expect, it, vi } from "vitest";
+import { completionContextSources } from "../runtime/completion-context";
 import { renderContextObject, segmentBlock } from "../runtime/context-renderer";
 import { parseEvaluatorOutput } from "../runtime/evaluator";
 import type { PlannerTrajectory } from "../runtime/planner-types";
+import { runWithStreamingContext } from "../streaming-context";
 import { createMockRuntime } from "../testing/mock-runtime";
 import { type ActionResult, type Memory, ModelType } from "../types";
 import { applyGroundedActionReply } from "../types/action-reply";
@@ -65,6 +67,252 @@ const withdrawnEditReply =
 	"I will not perform that edit. QA note B says silver thermos. The requested update failed because the target note was not found; neither existing note changed.";
 
 describe("model-backed final reply recovery", () => {
+	function selectedRecoveryTrajectory(): PlannerTrajectory {
+		const context: PlannerTrajectory["context"] = {
+			id: "selected-recovery",
+			metadata: { roomId: message.roomId, messageId: message.id },
+			events: [
+				...[
+					"Keep the red note unchanged.",
+					"Correction: bring the burgundy charger, not teal.",
+					"An unrelated completed trip. ".repeat(200),
+				].map((content, index) => ({
+					id: `source-${index}`,
+					type: "segment" as const,
+					source: "prior-dialogue",
+					segment: {
+						id: `source-${index}`,
+						label: "prior_message:user",
+						content,
+						stable: false,
+					},
+				})),
+				{
+					id: "privacy",
+					type: "provider",
+					name: "PRIVACY",
+					text: "Only the verified owner may read these notes.",
+				},
+				{
+					id: "request",
+					type: "message",
+					message: { role: "user", content: message.content },
+				},
+				{ id: "effect", type: "tool_result", metadata: { result: savedNote } },
+			],
+		};
+		context.metadata = {
+			...context.metadata,
+			completionContext: {
+				mode: "selected",
+				complete: true,
+				sourceSetId: completionContextSources(context).sourceSetId,
+				relevantSourceIds: [],
+				constraintSourceIds: ["h1", "h2"],
+				referentSourceIds: [],
+				pendingIntentSourceIds: [],
+			},
+		};
+		return {
+			context,
+			modelBaseContext: context,
+			steps: [],
+			archivedSteps: [],
+			plannedQueue: [{ name: "CALENDAR_READ" }],
+			evaluatorOutputs: [],
+		};
+	}
+
+	it.each([false, true])(
+		"recovers from selected originals with tool-free full restoration=%s",
+		async (restore) => {
+			const trajectory = selectedRecoveryTrajectory();
+			const before = structuredClone(trajectory);
+			const prompts: string[] = [];
+			const reply =
+				"The Picnic note was saved. The calendar read is still pending.";
+			const runtime = createMockRuntime({
+				useModel: vi.fn(async (_type, params) => {
+					prompts.push(String(params.prompt));
+					return JSON.stringify(
+						restore && prompts.length === 1
+							? {
+									contextRequest: "full",
+									response: "Do not deliver this draft.",
+									effectReceiptIds: ["invented"],
+								}
+							: { response: reply, effectReceiptIds: ["note-proof"] },
+					);
+				}),
+				processActions: vi.fn(),
+			});
+			const recovery = JSON.parse(
+				JSON.stringify(
+					capturePlannerReplyRecovery(runtime, message, trajectory),
+				),
+			);
+			expect(recovery.context).toContain("An unrelated completed trip.");
+			expect(recovery.historySelection.context).not.toContain(
+				"An unrelated completed trip.",
+			);
+			await expect(
+				resolvePlannedReplyEgress({
+					runtime,
+					message,
+					reply: "",
+					recovery,
+					actionResults: [savedNote],
+				}),
+			).resolves.toEqual({ text: reply, effectReceiptIds: ["note-proof"] });
+			expect(prompts).toHaveLength(restore ? 2 : 1);
+			expect(prompts[0]).not.toContain("An unrelated completed trip.");
+			for (const prompt of prompts) {
+				expect(prompt).toContain("Keep the red note unchanged.");
+				expect(prompt).toContain("burgundy charger, not teal");
+				expect(prompt).toContain("Only the verified owner");
+				expect(prompt).toContain("CALENDAR_READ");
+				expect(prompt).toContain("note-proof");
+				expect(prompt).toContain(message.content.text);
+			}
+			if (restore) {
+				const line = prompts[1]
+					.split("\n")
+					.find((value) => value.startsWith("Original action payload: "));
+				expect(
+					JSON.parse(line!.replace("Original action payload: ", ""))
+						.replyOnlyRecovery.context,
+				).toBe(recovery.context);
+			}
+			expect(runtime.processActions).not.toHaveBeenCalled();
+			expect(trajectory).toEqual(before);
+		},
+	);
+
+	it("keeps full recovery when the planner restored context or source bindings changed", () => {
+		const runtime = createMockRuntime();
+		const trajectory = selectedRecoveryTrajectory();
+		trajectory.codingMode = true;
+		expect(
+			capturePlannerReplyRecovery(runtime, message, trajectory)
+				.historySelection,
+		).toBeUndefined();
+		trajectory.codingMode = false;
+		trajectory.modelBaseContext = {
+			...trajectory.context,
+			metadata: {
+				...trajectory.context.metadata,
+				completionContext: undefined,
+			},
+		};
+		expect(
+			capturePlannerReplyRecovery(runtime, message, trajectory)
+				.historySelection,
+		).toBeUndefined();
+		trajectory.modelBaseContext = trajectory.context;
+		trajectory.context.events[0] = {
+			...trajectory.context.events[0],
+			metadata: { sourceEdited: true },
+		};
+		expect(
+			capturePlannerReplyRecovery(runtime, message, trajectory)
+				.historySelection,
+		).toBeUndefined();
+	});
+
+	it.each(["selected", "original", "missing"])(
+		"uses complete context for a %s damaged saved projection",
+		async (damaged) => {
+			const runtime = createMockRuntime({
+				useModel: vi.fn(async () =>
+					JSON.stringify({
+						response: "Saved the Picnic note.",
+						effectReceiptIds: ["note-proof"],
+					}),
+				),
+			});
+			const recovery = capturePlannerReplyRecovery(
+				runtime,
+				message,
+				selectedRecoveryTrajectory(),
+			);
+			if (damaged === "selected")
+				recovery.historySelection!.context = "Tampered selected evidence.";
+			if (damaged === "original")
+				recovery.context += "\nNew original evidence.";
+			if (damaged === "missing") delete recovery.historySelection;
+			await resolvePlannedReplyEgress({
+				runtime,
+				message,
+				reply: "",
+				recovery,
+				actionResults: [savedNote],
+			});
+			expect(runtime.useModel).toHaveBeenCalledTimes(1);
+			expect(runtime.useModel).toHaveBeenCalledWith(
+				ModelType.TEXT_SMALL,
+				expect.objectContaining({
+					prompt: expect.stringContaining("An unrelated completed trip."),
+				}),
+			);
+		},
+	);
+
+	it("rejects repeated context requests without returning a draft or repeating actions", async () => {
+		const runtime = createMockRuntime({
+			useModel: vi.fn(async () =>
+				JSON.stringify({ contextRequest: "full", response: "Not an answer." }),
+			),
+			processActions: vi.fn(),
+		});
+		const recovery = capturePlannerReplyRecovery(
+			runtime,
+			message,
+			selectedRecoveryTrajectory(),
+		);
+		await expect(
+			resolvePlannedReplyEgress({
+				runtime,
+				message,
+				reply: "",
+				recovery,
+				actionResults: [savedNote],
+			}),
+		).rejects.toThrow();
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		expect(runtime.processActions).not.toHaveBeenCalled();
+	});
+	it("does not dispatch full context after the original turn is cancelled", async () => {
+		const controller = new AbortController();
+		const cancellation = new Error("Original turn was cancelled");
+		const runtime = createMockRuntime({
+			useModel: vi.fn(async () => {
+				controller.abort(cancellation);
+				return JSON.stringify({ contextRequest: "full" });
+			}),
+			processActions: vi.fn(),
+		});
+		const recovery = capturePlannerReplyRecovery(
+			runtime,
+			message,
+			selectedRecoveryTrajectory(),
+		);
+		await expect(
+			runWithStreamingContext(
+				{ messageId: message.id, abortSignal: controller.signal },
+				() =>
+					resolvePlannedReplyEgress({
+						runtime,
+						message,
+						reply: "",
+						recovery,
+						actionResults: [savedNote],
+					}),
+			),
+		).rejects.toBe(cancellation);
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(runtime.processActions).not.toHaveBeenCalled();
+	});
+
 	it("repairs an unsaved draft without serializing the provider store and retains complete grounding evidence", async () => {
 		const response = "I will not create or change any notes.";
 		let repairPrompt = "";
