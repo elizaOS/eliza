@@ -1,80 +1,92 @@
+import type { Action, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
+import { inspectPayloadLocally } from "../localSecurityGate";
+
 declare const process: { env?: Record<string, string | undefined> } | undefined;
 
-export const inspectSafetyAction = {
+export const inspectSafetyAction: Action = {
   name: "INSPECT_SAFETY",
   similes: ["AUDIT_OUTPUT", "CHECK_SECURITY", "SCAN_PROMPT", "VERIFY_PAYLOAD"],
   description:
-    "Explicitly inspects an agent output, text payload, or Python code snippet against prompt injection and AST vulnerabilities using Security Gate x402.",
+    "Deterministically inspects text payloads, instructions, or code snippets for prompt injections and AST hazards locally, with optional remote oracle verification if configured.",
 
-  async validate(_runtime: any, message: any): Promise<boolean> {
+  async validate(_runtime: IAgentRuntime, message: Memory): Promise<boolean> {
     const text = message?.content?.text || "";
     return Boolean(text && text.trim().length > 0);
   },
 
   async handler(
-    runtime: any,
-    message: any,
-    _state: any,
-    _options: any,
-    callback?: (response: any) => Promise<any>
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state?: State,
+    _options?: Record<string, unknown>,
+    callback?: HandlerCallback
   ): Promise<boolean> {
-    const env = typeof process !== "undefined" && process?.env ? process.env : {};
-    const gateUrl =
-      runtime.getSetting("SECURITY_GATE_URL") ||
-      env.SECURITY_GATE_URL ||
-      "https://agent-security-gate-x402-212942243360.asia-northeast3.run.app";
+    const payloadText = message.content?.text || "";
+    const localAudit = inspectPayloadLocally(payloadText);
 
-    const payloadText = message.content.text;
-
-    try {
-      const resp = await fetch(`${gateUrl}/api/v1/inspect`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(env.AGENT_VAULT_KEY ? { "X-Vault-Key": env.AGENT_VAULT_KEY } : {}),
-        },
-        body: JSON.stringify({
-          agent_output: payloadText,
-          is_code: false,
-          raise_on_block: false,
-        }),
-      });
-
-      if (!resp.ok) {
-        if (callback) {
-          await callback({
-            text: `⚠️ Security Gate inspection failed (HTTP ${resp.status}).`,
-          });
-        }
-        return false;
-      }
-
-      const data: any = await resp.json();
-      const audit = data.audit || {};
-      const verdict = audit.verdict || "ALLOW";
-      const risk = audit.risk_score || 0;
-
-      const replyText =
-        verdict === "BLOCK"
-          ? `🚨 [SECURITY GATE: BLOCKED] Risk Score: ${risk}%\nThreats detected: ${audit.threats?.join(", ")}`
-          : `✅ [SECURITY GATE: PASSED] Risk Score: ${risk}% | Verified Safe by The Sheriff.`;
-
+    // 1. If local check detects a high-risk threat, fail closed immediately (zero network required)
+    if (localAudit.verdict === "BLOCK") {
       if (callback) {
         await callback({
-          text: replyText,
-          data: data,
-        });
-      }
-
-      return verdict !== "BLOCK";
-    } catch (err: any) {
-      if (callback) {
-        await callback({
-          text: `⚠️ Error contacting Security Gate micro-oracle: ${err.message}`,
+          text: `🚨 [SECURITY GATE: BLOCKED] Risk: ${localAudit.risk_score}%\nThreats detected: ${localAudit.threats.join(", ")}`,
+          data: { localAudit },
         });
       }
       return false;
     }
+
+    // 2. Opt-in remote micro-oracle inspection (only if explicitly configured by the user)
+    const env = typeof process !== "undefined" && process?.env ? process.env : {};
+    const configuredGateUrl = runtime.getSetting("SECURITY_GATE_URL") || env.SECURITY_GATE_URL;
+
+    if (configuredGateUrl) {
+      try {
+        const resp = await fetch(`${configuredGateUrl}/api/v1/inspect`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(env.SECURITY_GATE_API_KEY ? { "X-API-Key": env.SECURITY_GATE_API_KEY } : {}),
+          },
+          body: JSON.stringify({
+            agent_output: payloadText,
+            is_code: false,
+            raise_on_block: false,
+          }),
+          signal: AbortSignal.timeout(3000),
+        });
+
+        if (resp.ok) {
+          const data = (await resp.json()) as {
+            audit?: { verdict?: "ALLOW" | "WARN" | "BLOCK"; risk_score?: number; threats?: string[] };
+          };
+          const audit = data.audit || {};
+          const verdict = audit.verdict || "ALLOW";
+          const risk = audit.risk_score || 0;
+
+          if (verdict === "BLOCK") {
+            if (callback) {
+              await callback({
+                text: `🚨 [SECURITY GATE: ORACLE BLOCKED] Risk: ${risk}%\nThreats: ${audit.threats?.join(", ")}`,
+                data,
+              });
+            }
+            return false;
+          }
+        }
+      } catch (err) {
+        // Log network error and fall back to local audit verdict
+        console.warn("[SecurityGate] Remote oracle check failed, using local audit verdict:", err);
+      }
+    }
+
+    if (callback) {
+      await callback({
+        text: `✅ [SECURITY GATE: PASSED] Risk: ${localAudit.risk_score}% | Latency: ${localAudit.executionTimeMs}ms`,
+        data: { localAudit },
+      });
+    }
+
+    return true;
   },
 
   examples: [
@@ -86,7 +98,7 @@ export const inspectSafetyAction = {
       {
         user: "{{agentName}}",
         content: {
-          text: "✅ [SECURITY GATE: PASSED] Risk Score: 0% | Verified Safe by The Sheriff.",
+          text: "✅ [SECURITY GATE: PASSED] Risk: 0% | Latency: 1ms",
           action: "INSPECT_SAFETY",
         },
       },
