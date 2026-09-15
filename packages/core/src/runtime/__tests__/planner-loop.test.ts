@@ -4917,33 +4917,37 @@ describe("v5 planner loop skeleton", () => {
 		expect(result).toBeDefined();
 	});
 
-	it("throws when the same tool failure repeats beyond the configured limit", async () => {
-		const runtime = {
-			useModel: vi.fn(async () => ({
-				text: "",
-				toolCalls: [{ id: "call-1", name: "LOOKUP", arguments: {} }],
-			})),
-		};
-		const executeToolCall = vi.fn(async () => ({
-			success: false,
-			error: "boom",
-		}));
-		const evaluate = vi.fn(async () => ({
-			success: false,
-			decision: "CONTINUE" as const,
-			thought: "Retry.",
-		}));
+	it.each([false, true])(
+		"throws when the same tool failure repeats beyond the configured limit (coaching: %s)",
+		async (coaching) => {
+			const runtime = {
+				useModel: vi.fn(async () => ({
+					text: "",
+					toolCalls: [{ id: "call-1", name: "LOOKUP", arguments: {} }],
+				})),
+			};
+			const executeToolCall = vi.fn(async () => ({
+				success: false,
+				error: "boom",
+				...(coaching ? { data: { coachingFailure: true } } : {}),
+			}));
+			const evaluate = vi.fn(async () => ({
+				success: false,
+				decision: "CONTINUE" as const,
+				thought: "Retry.",
+			}));
 
-		await expect(
-			runPlannerLoop({
-				runtime,
-				context: { id: "ctx" },
-				config: { maxRepeatedFailures: 1 },
-				executeToolCall,
-				evaluate,
-			}),
-		).rejects.toBeInstanceOf(TrajectoryLimitExceeded);
-	});
+			await expect(
+				runPlannerLoop({
+					runtime,
+					context: { id: "ctx" },
+					config: { maxRepeatedFailures: 1 },
+					executeToolCall,
+					evaluate,
+				}),
+			).rejects.toBeInstanceOf(TrajectoryLimitExceeded);
+		},
+	);
 
 	it("surfaces the tool's diagnostic reason (not a bare 'failed') when a success:false result carries no typed error (#14873)", async () => {
 		// SCHEDULED_TASKS and most actions report failure as

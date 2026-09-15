@@ -155,7 +155,8 @@ const CALENDAR_DETAIL_STRING_DESCRIPTIONS: Partial<
     "Event end in the same local wall-clock format as startAt; omit it to use durationMinutes.",
   end: "Event end in the same local wall-clock format as start; omit it to use durationMinutes.",
   timeMin: `Window start as ${LOCAL_WALL_TIME_FORMAT}, or RFC 3339 with an explicit numeric offset.`,
-  timeMax: "Window end (exclusive) in the same format as timeMin.",
+  timeMax:
+    "Window end (exclusive) in the same format as timeMin. For a full day or month, use midnight at the start of the following day or month in the requested timezone, not midnight at the start of its last day.",
   timeZone:
     "IANA timezone for the supplied wall-clock times (e.g. America/New_York): use the user's configured timezone unless they name another. Include it for updates so an existing event's different timezone does not reinterpret the requested new time.",
   date: "Local calendar date YYYY-MM-DD that the TARGET event is on NOW, for update_event/delete_event lookups when the user named that current day. Never the destination day of a move or reschedule: the new time belongs in start/startAt (and end/endAt). A bare weekday name means its next upcoming occurrence from today, never a past date; when the user did not name the target's current day, omit date and let query locate the event. Use start/startAt, not date, for create_event.",
