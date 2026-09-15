@@ -84,6 +84,16 @@ jobs:
             sudo install --owner=root --group=root --mode=0644 "$source_profile" "$profile"
           fi
           sudo apparmor_parser --replace "$profile"
+          # The disposable hosted image may grant runner write access to /opt.
+          # Change only this parent; the installer still verifies every authority path.
+          sudo test ! -L /opt
+          sudo test -d /opt
+          sudo stat -c 'native parent before: %n uid=%u gid=%g mode=%a type=%F' / /opt
+          sudo chown --no-dereference root:root /opt
+          sudo chmod 0755 /opt
+          test "$(sudo stat -c '%u:%g:%a:%F' /opt)" = '0:0:755:directory'
+          # The public receipt belongs to the runner, not the root authority.
+          # shellcheck disable=SC2024
           sudo -n /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
             /usr/bin/python3 -I -S packages/cloud/e2e/scripts/install-native-stability.py \
             --source-root "$GITHUB_WORKSPACE/packages/cloud/e2e/scripts" \
@@ -164,6 +174,16 @@ jobs:
             sudo install --owner=root --group=root --mode=0644 "$source_profile" "$profile"
           fi
           sudo apparmor_parser --replace "$profile"
+          # The disposable hosted image may grant runner write access to /opt.
+          # Change only this parent; the installer still verifies every authority path.
+          sudo test ! -L /opt
+          sudo test -d /opt
+          sudo stat -c 'native parent before: %n uid=%u gid=%g mode=%a type=%F' / /opt
+          sudo chown --no-dereference root:root /opt
+          sudo chmod 0755 /opt
+          test "$(sudo stat -c '%u:%g:%a:%F' /opt)" = '0:0:755:directory'
+          # The public receipt belongs to the runner, not the root authority.
+          # shellcheck disable=SC2024
           sudo -n /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
             /usr/bin/python3 -I -S packages/cloud/e2e/scripts/install-native-stability.py \
             --source-root "$GITHUB_WORKSPACE/packages/cloud/e2e/scripts" \
