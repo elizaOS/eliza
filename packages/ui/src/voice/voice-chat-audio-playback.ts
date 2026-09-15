@@ -13,6 +13,10 @@ import {
   PlaybackTapLifecycle,
 } from "./playback-frame-pump";
 import type { SpeakTask, VoicePlaybackStartEvent } from "./voice-chat-types";
+import type {
+  BufferedVoiceEvidence,
+  VoicePlaybackTerminal,
+} from "./voice-playback-evidence";
 
 interface MutableCell<T> {
   current: T;
@@ -37,6 +41,8 @@ export interface DecodedVoicePlaybackOptions {
   clearSpeechTimers: () => void;
   emitPlaybackStart: (event: VoicePlaybackStartEvent) => void;
   tracePlayback?: boolean;
+  evidence?: BufferedVoiceEvidence;
+  evidenceBufferId?: number;
 }
 
 export async function playDecodedVoiceAudio({
@@ -58,6 +64,8 @@ export async function playDecodedVoiceAudio({
   clearSpeechTimers,
   emitPlaybackStart,
   tracePlayback = false,
+  evidence,
+  evidenceBufferId,
 }: DecodedVoicePlaybackOptions): Promise<void> {
   if (generation !== generationRef.current) return;
 
@@ -115,7 +123,10 @@ export async function playDecodedVoiceAudio({
         context: { provider },
       });
 
-    const finish = (error?: ElizaError) => {
+    const finish = (
+      error?: ElizaError,
+      outcome: VoicePlaybackTerminal = "cancelled",
+    ) => {
       if (finished) return;
       finished = true;
       context.removeEventListener("statechange", handleContextStateChange);
@@ -146,11 +157,12 @@ export async function playDecodedVoiceAudio({
           error: error instanceof Error ? error.message : String(error),
         });
       }
+      evidence?.terminal(error ? "failed" : outcome, context.currentTime);
       if (error) reject(error);
       else resolve();
     };
 
-    wrappedFinish = () => {
+    const finishPlayback = (outcome: VoicePlaybackTerminal) => {
       if (tracePlayback) {
         ttsDebug("play:web-audio:end", {
           provider,
@@ -162,8 +174,10 @@ export async function playDecodedVoiceAudio({
         generation === generationRef.current && context.state === "closed"
           ? closedContextError()
           : undefined,
+        generation !== generationRef.current ? "cancelled" : outcome,
       );
     };
+    wrappedFinish = () => finishPlayback("cancelled");
 
     const armWatchdog = () => {
       clearWatchdog();
@@ -178,7 +192,7 @@ export async function playDecodedVoiceAudio({
           } else if (context.state === "closed") {
             finish(closedContextError());
           } else if (context.currentTime >= audioEndsAt) {
-            wrappedFinish?.();
+            finishPlayback("audio-clock-deadline");
           } else {
             armWatchdog();
           }
@@ -212,7 +226,7 @@ export async function playDecodedVoiceAudio({
 
     try {
       activeTaskFinishRef.current = wrappedFinish;
-      source.onended = wrappedFinish;
+      source.onended = () => finishPlayback("source-ended");
       tapLifecycle.start(playStartMs);
       context.addEventListener("statechange", handleContextStateChange);
       if (context.state === "closed") {
@@ -222,6 +236,13 @@ export async function playDecodedVoiceAudio({
       source.start(0);
       handleContextStateChange();
       if (finished) return;
+      if (evidenceBufferId !== undefined)
+        evidence?.emit({
+          kind: "source-started",
+          bufferId: evidenceBufferId,
+          audioTime: context.currentTime,
+        });
+      if (finished || generation !== generationRef.current) return;
       emitPlaybackStart({
         text,
         segment: task.segment,
