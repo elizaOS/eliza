@@ -204,10 +204,10 @@ async function threadOpsShouldRun(
     }),
   ]);
   if (threads.length > 0 || prompts.length > 0) return true;
-  // Even with no active threads, if the runtime has an active turn for this
-  // room (i.e., a prior handler is still running), the user may want to
-  // abort it. Include the field so abort can be extracted.
-  return ctx.runtime.turnControllers.hasActiveTurn(roomId);
+  // The prompt-building turn is always active, but cannot abort itself.
+  // Include this field for other live work the user can actually interrupt.
+  // New durable threads remain available through the WORK_THREAD action.
+  return ctx.runtime.turnControllers.hasAbortableTurn(roomId);
 }
 
 // ---------------------------------------------------------------------------

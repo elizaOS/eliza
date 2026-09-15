@@ -552,6 +552,42 @@ describe("developer workspace", () => {
     expect(mocks.detail).not.toHaveBeenCalled();
   });
 
+  it("starts a relayed turn at submission without showing the previous turn as live", async () => {
+    vi.setSystemTime(781000);
+    mocks.list.mockResolvedValue({
+      trajectories: [{ ...record, startTime: 1000 }],
+      total: 1,
+    });
+    let settleRelay: (() => void) | undefined;
+    mocks.relay.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          settleRelay = resolve;
+        }),
+    );
+    render(
+      <DeveloperWorkspace>
+        <div>Existing app</div>
+      </DeveloperWorkspace>,
+    );
+    await flush();
+    fireEvent.change(screen.getByLabelText("Message Eliza"), {
+      target: { value: "hi" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await flush();
+    expect(screen.getByRole("status").textContent).toMatch(/· 0\.00s$/);
+    expect(screen.getByText(/Waiting for the run/)).toBeTruthy();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(screen.getByRole("status").textContent).toMatch(/· 1\.00s$/);
+    await act(async () => {
+      settleRelay?.();
+    });
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
   it("never attaches another room's token counts to a reply", async () => {
     mocks.list.mockResolvedValue({
       trajectories: [{ ...record, roomId: "other-room" }],

@@ -617,3 +617,18 @@ the supplied selection does not establish absence. The current-turn boundary
 uses that retrieval policy instead of limiting answers to initially visible
 chat; full-context and tool-planning boundaries remain unchanged. Original
 speaker/correction evidence and current app-record verification stay distinct.
+
+## Conditional embedding persistence
+
+Background embedding results use `updateMemoryEmbedding({id, expected, embedding})`.
+The adapter must atomically compare the stored source text, agent, author and room
+with `expected` before writing. A changed or deleted source returns `false` and
+receives no vector or completion event; database failures throw. Custom database
+adapters must implement this contract when upgrading core. A separate read followed
+by an unconditional update is insufficient. Vector-only runtime writes retain the
+existing reconciliation-lease bypass and invalidate the room cache on success.
+
+Runtime memory creation fills an omitted agent ID with the current runtime agent,
+matching SQL ownership defaults in the ephemeral adapter as well.
+
+History retention also preserves recorded request/reply links. A selected original brings its linked outcome into the same review and retained set; completed exchanges can still be deferred together. These links come from stored agent replies, not inferred adjacency or prose. Existing checkpoints keep their source binding; no originals are rewritten.

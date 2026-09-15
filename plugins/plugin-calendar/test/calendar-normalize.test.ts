@@ -134,6 +134,28 @@ describe("normalizeCalendarDateTimeInTimeZone", () => {
     ).not.toThrow();
   });
 
+  it("preserves ISO end-of-day input across a DST transition", () => {
+    expect(
+      normalizeCalendarDateTimeInTimeZone(
+        "2026-03-08T24:00:00",
+        "timeMax",
+        "America/New_York",
+      ),
+    ).toBe("2026-03-09T04:00:00.000Z");
+  });
+
+  it.each([
+    "2026-09-16T25:00:00",
+    "2026-09-16T24:01:00",
+    "2026-09-16T24:00:00.001",
+    "2026-09-16T12:60:00",
+    "2026-09-16T12:00:60",
+  ])("rejects invalid clock fields as a calendar input error: %s", (value) => {
+    expect(() =>
+      normalizeCalendarDateTimeInTimeZone(value, "timeMin", "UTC"),
+    ).toThrow(CalendarServiceError);
+  });
+
   it("interprets a bare local datetime in the supplied zone", () => {
     // 09:00 local in UTC stays 09:00Z.
     expect(
@@ -163,6 +185,63 @@ describe("resolveCalendarWindow", () => {
     expect(timeMin).toBe("2026-03-04T00:00:00.000Z");
     expect(timeMax).toBe("2026-03-05T00:00:00.000Z");
   });
+
+  it.each([
+    [
+      "UTC",
+      "2026-09-16T00:00:00",
+      "2026-09-17T00:00:00",
+      "2026-09-16T00:00:00.000Z",
+      "2026-09-17T00:00:00.000Z",
+    ],
+    [
+      "Asia/Tokyo",
+      "2026-09-16T00:00:00",
+      "2026-09-17T00:00:00",
+      "2026-09-15T15:00:00.000Z",
+      "2026-09-16T15:00:00.000Z",
+    ],
+    [
+      "America/New_York",
+      "2026-03-08",
+      "2026-03-09",
+      "2026-03-08T05:00:00.000Z",
+      "2026-03-09T04:00:00.000Z",
+    ],
+    [
+      "America/New_York",
+      "2026-11-01T00:00:00",
+      "2026-11-02T00:00:00",
+      "2026-11-01T04:00:00.000Z",
+      "2026-11-02T05:00:00.000Z",
+    ],
+    [
+      "Asia/Tokyo",
+      "2026-09-16T00:00:00Z",
+      "2026-09-17T00:00:00Z",
+      "2026-09-16T00:00:00.000Z",
+      "2026-09-17T00:00:00.000Z",
+    ],
+    [
+      "UTC",
+      "2026-09-16T00:00:00-04:00",
+      "2026-09-17T00:00:00-04:00",
+      "2026-09-16T04:00:00.000Z",
+      "2026-09-17T04:00:00.000Z",
+    ],
+  ])(
+    "resolves wall-clock bounds in %s and preserves explicit instants",
+    (timeZone, requestedTimeMin, requestedTimeMax, timeMin, timeMax) => {
+      expect(
+        resolveCalendarWindow({
+          now,
+          timeZone,
+          requestedTimeMin,
+          requestedTimeMax,
+        }),
+      ).toEqual({ timeMin, timeMax });
+    },
+  );
 
   it("rejects an inverted window", () => {
     expect(() =>

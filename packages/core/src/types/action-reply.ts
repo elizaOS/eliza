@@ -3,7 +3,11 @@ import { getActionRoutingContext } from "../runtime/action-routing-context";
 import type { ActionResult } from "./components";
 
 export interface ActionReplyFailure {
-	kind: "provider_issue" | "rate_limited" | "no_provider";
+	kind:
+		| "provider_issue"
+		| "rate_limited"
+		| "no_provider"
+		| "reply_generation_error";
 	code: string;
 	/** System status, never action-owned conversational fallback prose. */
 	message: string;
@@ -51,7 +55,8 @@ export function normalizeActionReplyFailure(
 	if (
 		(record.kind !== "provider_issue" &&
 			record.kind !== "rate_limited" &&
-			record.kind !== "no_provider") ||
+			record.kind !== "no_provider" &&
+			record.kind !== "reply_generation_error") ||
 		typeof record.code !== "string" ||
 		!record.code.trim() ||
 		typeof record.message !== "string" ||

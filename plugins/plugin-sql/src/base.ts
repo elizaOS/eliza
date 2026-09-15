@@ -4179,6 +4179,51 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     }
   }
 
+  async updateMemoryEmbedding(
+    update: import("@elizaos/core").MemoryEmbeddingUpdate
+  ): Promise<boolean> {
+    const column = this.embeddingDimension;
+    const dimension = Number(column.replace(/^dim/, ""));
+    if (update.embedding.length !== dimension || !update.embedding.every(Number.isFinite)) {
+      throw new Error("Invalid memory embedding for active dimension");
+    }
+    return this.withDatabase(() =>
+      this.db.transaction(async (tx) => {
+        const [current] = await tx
+          .select({ id: memoryTable.id })
+          .from(memoryTable)
+          .where(
+            and(
+              eq(memoryTable.id, update.id),
+              eq(memoryTable.agentId, update.expected.agentId),
+              eq(memoryTable.roomId, update.expected.roomId),
+              eq(memoryTable.entityId, update.expected.entityId),
+              sql`${memoryTable.content}->>'text' = ${update.expected.text}`
+            )
+          )
+          .for("update");
+        if (!current) return false;
+        const vector = update.embedding.map((value) => Number(value.toFixed(6)));
+        const [existing] = await tx
+          .select({ id: embeddingTable.id })
+          .from(embeddingTable)
+          .where(eq(embeddingTable.memoryId, update.id))
+          .limit(1);
+        if (existing) {
+          await tx
+            .update(embeddingTable)
+            .set({ [column]: vector })
+            .where(eq(embeddingTable.memoryId, update.id));
+        } else {
+          await tx
+            .insert(embeddingTable)
+            .values({ id: v4(), memoryId: update.id, [column]: vector });
+        }
+        return true;
+      })
+    );
+  }
+
   /**
    * Updates an existing memory in the database.
    * @param memory The memory object with updated content and optional embedding
@@ -4903,6 +4948,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    * @param {Object} [params.metadata] - The metadata for the relationship.
    * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating whether the relationship was created successfully.
    */
+  private independentRelationshipEvidence(tags: string[], metadata: Record<string, unknown>) {
+    const revision = `independent-write:${v4()}`;
+    return sql`CASE WHEN ${relationshipTable.extractionEvidence} IS NULL THEN NULL ELSE
+      (${relationshipTable.extractionEvidence} - 'overlay') || jsonb_build_object(
+        'baseline', ${JSON.stringify({ tags, metadata })}::jsonb, 'active', true,
+        'observations', COALESCE((SELECT jsonb_object_agg(key,
+          value || jsonb_build_object('retiredBy', COALESCE(value->>'retiredBy', ${revision})))
+          FROM jsonb_each(${relationshipTable.extractionEvidence}->'observations')), '{}'::jsonb)) END`;
+  }
+
   async createRelationship(params: {
     sourceEntityId: UUID;
     targetEntityId: UUID;
@@ -4923,7 +4978,22 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         const inserted = await this.db
           .insert(relationshipTable)
           .values(saveParams)
-          .onConflictDoNothing()
+          .onConflictDoUpdate({
+            target: [
+              relationshipTable.sourceEntityId,
+              relationshipTable.targetEntityId,
+              relationshipTable.agentId,
+            ],
+            set: {
+              tags: saveParams.tags,
+              metadata: saveParams.metadata,
+              extractionEvidence: this.independentRelationshipEvidence(
+                saveParams.tags,
+                saveParams.metadata
+              ),
+            },
+            setWhere: sql`${relationshipTable.extractionEvidence}->>'active' = 'false'`,
+          })
           .returning();
         return inserted.length > 0;
       } catch (error) {
@@ -4957,8 +5027,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .set({
             tags: relationship.tags || [],
             metadata: relationship.metadata || {},
+            extractionEvidence: this.independentRelationshipEvidence(
+              relationship.tags || [],
+              relationship.metadata || {}
+            ),
           })
-          .where(eq(relationshipTable.id, relationship.id));
+          .where(
+            and(
+              eq(relationshipTable.id, relationship.id),
+              eq(relationshipTable.agentId, this.agentId)
+            )
+          );
       } catch (error) {
         // error-policy:J2 context-adding rethrow — attach relationship context.
         throw new ElizaError("updateRelationship failed", {
@@ -4994,11 +5073,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           and(
             eq(relationshipTable.sourceEntityId, sourceEntityId),
             eq(relationshipTable.targetEntityId, targetEntityId),
-            eq(relationshipTable.agentId, this.agentId)
+            eq(relationshipTable.agentId, this.agentId),
+            sql`COALESCE(${relationshipTable.extractionEvidence}->>'active', 'true') <> 'false'`
           )
         );
       if (result.length === 0) return null;
-      const relationship = result[0];
+      const { extractionEvidence: _extractionEvidence, ...relationship } = result[0];
       return {
         ...relationship,
         id: relationship.id as UUID,
@@ -5046,7 +5126,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       );
       let query = sql`
         SELECT * FROM ${relationshipTable}
-        WHERE (${entityFilter})
+        WHERE (${entityFilter}) AND ${relationshipTable.agentId} = ${this.agentId}
+          AND COALESCE(${relationshipTable.extractionEvidence}->>'active', 'true') <> 'false'
       `;
 
       if (tags && tags.length > 0) {
@@ -5066,23 +5147,28 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
       const result = await this.db.execute(query);
 
-      return result.rows.map((relationship: Record<string, unknown>) => ({
-        ...relationship,
-        id: relationship.id as UUID,
-        sourceEntityId: (relationship.source_entity_id || relationship.sourceEntityId) as UUID,
-        targetEntityId: (relationship.target_entity_id || relationship.targetEntityId) as UUID,
-        agentId: (relationship.agent_id || relationship.agentId) as UUID,
-        tags: (relationship.tags ?? []) as string[],
-        metadata: (relationship.metadata ?? {}) as Metadata,
-        createdAt:
-          relationship.created_at || relationship.createdAt
-            ? (relationship.created_at || relationship.createdAt) instanceof Date
-              ? ((relationship.created_at || relationship.createdAt) as Date).toISOString()
-              : new Date(
-                  (relationship.created_at as string) || (relationship.createdAt as string)
-                ).toISOString()
-            : new Date().toISOString(),
-      }));
+      return result.rows.map(
+        ({
+          extraction_evidence: _extractionEvidence,
+          ...relationship
+        }: Record<string, unknown>) => ({
+          ...relationship,
+          id: relationship.id as UUID,
+          sourceEntityId: (relationship.source_entity_id || relationship.sourceEntityId) as UUID,
+          targetEntityId: (relationship.target_entity_id || relationship.targetEntityId) as UUID,
+          agentId: (relationship.agent_id || relationship.agentId) as UUID,
+          tags: (relationship.tags ?? []) as string[],
+          metadata: (relationship.metadata ?? {}) as Metadata,
+          createdAt:
+            relationship.created_at || relationship.createdAt
+              ? (relationship.created_at || relationship.createdAt) instanceof Date
+                ? ((relationship.created_at || relationship.createdAt) as Date).toISOString()
+                : new Date(
+                    (relationship.created_at as string) || (relationship.createdAt as string)
+                  ).toISOString()
+              : new Date().toISOString(),
+        })
+      );
     });
   }
 
@@ -7400,8 +7486,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const result = await this.db
         .select()
         .from(relationshipTable)
-        .where(inArray(relationshipTable.id, relationshipIds));
-      return result.map((relationship) => ({
+        .where(
+          and(
+            inArray(relationshipTable.id, relationshipIds),
+            eq(relationshipTable.agentId, this.agentId),
+            sql`COALESCE(${relationshipTable.extractionEvidence}->>'active', 'true') <> 'false'`
+          )
+        );
+      return result.map(({ extractionEvidence: _extractionEvidence, ...relationship }) => ({
         ...relationship,
         id: relationship.id as UUID,
         sourceEntityId: relationship.sourceEntityId as UUID,

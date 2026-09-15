@@ -47,6 +47,7 @@ import {
 	type PlannerRuntime,
 	type PlannerToolCall,
 	type PlannerToolResult,
+	PostEffectEvaluationError,
 	PROGRESS_ONLY_ANSWER_REJECT,
 	runPlannerLoop,
 } from "../../runtime/planner-loop";
@@ -65,6 +66,7 @@ import {
 } from "../../runtime/trajectory-recorder";
 import { withSemanticStageFanOut } from "../../runtime/trajectory-semantic-stage-sink";
 import { getTrajectoryContext } from "../../trajectory-context";
+import { createUnavailableGroundedActionReply } from "../../types/action-reply";
 import type {
 	Action,
 	HandlerCallback,
@@ -2013,37 +2015,85 @@ export async function runV5MessageRuntimeStage1(
 			// its call/token/provider limit before a grounded terminal result; doing
 			// so makes CLI/ACP report partial work as success.
 			if (args.codingMode === true) throw error;
-			const preservedAnswer = prePatchStageOneReplyIsUngroundedAppliedClaim
-				? undefined
-				: prePatchStageOneReply?.trim();
-			if (
-				!preservedAnswer ||
-				PROGRESS_ONLY_ANSWER_REJECT.test(preservedAnswer)
-			) {
-				// No answer-shaped Stage-1 text to rescue with — but a tool that
-				// already completed this turn may still own the user-facing result
-				// (observed live: the post-tool evaluator died on an intermittent
-				// provider 400 and the canned transient-failure reply replaced a
-				// result the turn had already produced). Deliver the preserved tool
-				// result; the canned line remains only when there is genuinely
-				// nothing user-facing to deliver.
-				const preservedToolResult = preservedSettledToolResult(
-					settledPlannerToolResults,
-					deliveredVisibleTexts,
-				);
-				if (!preservedToolResult) {
-					// #18208: a task_complete relay turn carries the sub-agent's
-					// finished result in its own body — the last preserved source
-					// before conceding to the canned failure reply.
-					const relayBody = subAgentCompletionRelayBody(
-						args.message?.content?.text,
+			if (error instanceof PostEffectEvaluationError) {
+				// error-policy:J1 Preserve a distinct internal failure, not a provider
+				// outage or successful reply. The common terminal path below captures
+				// full evidence for reply-only recovery without rerunning any tools.
+				endStatus = "errored";
+				args.runtime.reportError("MessageService.plannerLoop", error, {
+					roomId: args.message.roomId,
+				});
+				const replyFailure = createUnavailableGroundedActionReply({
+					kind: "reply_generation_error",
+					code: error.code,
+				}).failure;
+				const effectResult = [
+					...error.trajectory.archivedSteps,
+					...error.trajectory.steps,
+				]
+					.reverse()
+					.find(
+						(step) =>
+							step.result?.transcriptVisibility === "internal" &&
+							step.result.effectReceipts?.length,
+					)?.result;
+				if (!effectResult) throw error;
+				effectResult.replyFailure = replyFailure;
+				plannerResult = {
+					status: "finished",
+					trajectory: error.trajectory,
+					terminalFailure: replyFailure,
+				};
+			} else {
+				const preservedAnswer = prePatchStageOneReplyIsUngroundedAppliedClaim
+					? undefined
+					: prePatchStageOneReply?.trim();
+				if (
+					!preservedAnswer ||
+					PROGRESS_ONLY_ANSWER_REJECT.test(preservedAnswer)
+				) {
+					// No answer-shaped Stage-1 text to rescue with — but a tool that
+					// already completed this turn may still own the user-facing result
+					// (observed live: the post-tool evaluator died on an intermittent
+					// provider 400 and the canned transient-failure reply replaced a
+					// result the turn had already produced). Deliver the preserved tool
+					// result; the canned line remains only when there is genuinely
+					// nothing user-facing to deliver.
+					const preservedToolResult = preservedSettledToolResult(
+						settledPlannerToolResults,
+						deliveredVisibleTexts,
 					);
-					if (!relayBody) {
-						throw error;
+					if (!preservedToolResult) {
+						// #18208: a task_complete relay turn carries the sub-agent's
+						// finished result in its own body — the last preserved source
+						// before conceding to the canned failure reply.
+						const relayBody = subAgentCompletionRelayBody(
+							args.message?.content?.text,
+						);
+						if (!relayBody) {
+							throw error;
+						}
+						// error-policy:J4 a completed sub-agent result is a designed
+						// degrade when the relay turn's planning fails; report the loop
+						// failure and deliver the result the sub-agent already produced.
+						endStatus = "errored";
+						args.runtime.reportError("MessageService.plannerLoop", error, {
+							roomId: args.message.roomId,
+						});
+						return {
+							kind: "direct_reply",
+							messageHandler,
+							result: createV5ReplyStrategyResult({
+								...args,
+								state: plannerState,
+								text: relayBody,
+								thought: messageHandler.thought,
+							}),
+						};
 					}
-					// error-policy:J4 a completed sub-agent result is a designed
-					// degrade when the relay turn's planning fails; report the loop
-					// failure and deliver the result the sub-agent already produced.
+					// error-policy:J4 a completed tool's user-facing result is a designed
+					// degrade when later planning/evaluation fails; report the loop
+					// failure and deliver the tool's known-good text.
 					endStatus = "errored";
 					args.runtime.reportError("MessageService.plannerLoop", error, {
 						roomId: args.message.roomId,
@@ -2054,14 +2104,24 @@ export async function runV5MessageRuntimeStage1(
 						result: createV5ReplyStrategyResult({
 							...args,
 							state: plannerState,
-							text: relayBody,
+							text: preservedToolResult.userFacingText,
 							thought: messageHandler.thought,
+							// Only byte-exact canonical action text may skip the voice
+							// gate; ordinary tool output stays eligible for re-voicing.
+							...(preservedToolResult.verifiedUserFacing === true
+								? { agentVoiced: true }
+								: {}),
+							...(preservedToolResult.userFacingEffectReceiptIds?.length
+								? {
+										effectReceiptIds:
+											preservedToolResult.userFacingEffectReceiptIds,
+									}
+								: {}),
 						}),
 					};
 				}
-				// error-policy:J4 a completed tool's user-facing result is a designed
-				// degrade when later planning/evaluation fails; report the loop
-				// failure and deliver the tool's known-good text.
+				// error-policy:J4 A completed Stage-1 answer is a designed degrade when
+				// later planning fails; report the planner failure and deliver known-good text.
 				endStatus = "errored";
 				args.runtime.reportError("MessageService.plannerLoop", error, {
 					roomId: args.message.roomId,
@@ -2072,39 +2132,12 @@ export async function runV5MessageRuntimeStage1(
 					result: createV5ReplyStrategyResult({
 						...args,
 						state: plannerState,
-						text: preservedToolResult.userFacingText,
+						text: preservedAnswer,
 						thought: messageHandler.thought,
-						// Only byte-exact canonical action text may skip the voice
-						// gate; ordinary tool output stays eligible for re-voicing.
-						...(preservedToolResult.verifiedUserFacing === true
-							? { agentVoiced: true }
-							: {}),
-						...(preservedToolResult.userFacingEffectReceiptIds?.length
-							? {
-									effectReceiptIds:
-										preservedToolResult.userFacingEffectReceiptIds,
-								}
-							: {}),
+						agentVoiced: true,
 					}),
 				};
 			}
-			// error-policy:J4 A completed Stage-1 answer is a designed degrade when
-			// later planning fails; report the planner failure and deliver known-good text.
-			endStatus = "errored";
-			args.runtime.reportError("MessageService.plannerLoop", error, {
-				roomId: args.message.roomId,
-			});
-			return {
-				kind: "direct_reply",
-				messageHandler,
-				result: createV5ReplyStrategyResult({
-					...args,
-					state: plannerState,
-					text: preservedAnswer,
-					thought: messageHandler.thought,
-					agentVoiced: true,
-				}),
-			};
 		}
 
 		// The planner's terminal prose may ship without executing REPLY. Validate

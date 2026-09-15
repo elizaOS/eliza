@@ -412,7 +412,13 @@ export async function rewriteActionCallbackInCharacter(args: {
 	jsonPayload?: JsonValue;
 	/** Runtime validation outcome, not a model-authored or payload instruction. */
 	groundingFailure?: PlannedReplyClaimKind | "missing_reply";
-}): Promise<{ text: string; effectReceiptIds: string[] } | null> {
+	/** Only reply recovery with retained originals may opt into this read. */
+	allowFullContextRequest?: boolean;
+}): Promise<{
+	text: string;
+	effectReceiptIds: string[];
+	contextRequest?: "full";
+} | null> {
 	// Failure contract: a failed rewrite must never fabricate wire text — no
 	// meta-narration about formatting ever ships (observed live: a settings
 	// action succeeded and the user received an internal formatting apology).
@@ -445,6 +451,11 @@ export async function rewriteActionCallbackInCharacter(args: {
 	const prompt = [
 		"Compose a user-facing response in the assistant character's voice from the supplied result.",
 		'Return strict JSON only: {"response":"...","effectReceiptIds":[]}.',
+		...(args.allowFullContextRequest
+			? [
+					'Prior dialogue uses the original turn\'s source-bound selection. Complete original context remains available. If a constraint, correction, referent or historical fact is missing or uncertain, return {"contextRequest":"full"} alone before answering. This reads the original context once without executing tools or delivering a draft. Never infer or count omitted messages.',
+				]
+			: []),
 		"",
 		"Rules:",
 		"- Use the character voice and plain natural language.",
@@ -488,7 +499,13 @@ export async function rewriteActionCallbackInCharacter(args: {
 		const parsed = parseJSONObjectFromText(cleaned) as {
 			response?: unknown;
 			effectReceiptIds?: unknown;
+			contextRequest?: unknown;
 		} | null;
+		if (parsed?.contextRequest !== undefined) {
+			return args.allowFullContextRequest && parsed.contextRequest === "full"
+				? { text: "", effectReceiptIds: [], contextRequest: "full" }
+				: fail("invalid_context_request");
+		}
 		const response =
 			typeof parsed?.response === "string" ? parsed.response.trim() : "";
 		if (!response || response === args.text) {

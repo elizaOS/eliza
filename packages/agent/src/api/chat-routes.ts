@@ -1925,6 +1925,10 @@ function stampAppConversationProvenance(
   const accountId = readMetadataString("accountId") ?? runtime.agentId;
   const platformMessageId =
     readMetadataString("platformMessageId") ?? memory.id;
+  // SQL fills an omitted agent ID with the current runtime's ID. Stamp the
+  // same identity before exact-retry comparison, keeping the factory's
+  // existing metadata.scope (which may intentionally be shared).
+  memory.agentId ??= runtime.agentId;
   memory.metadata = {
     ...metadataRecord,
     type: "message",
