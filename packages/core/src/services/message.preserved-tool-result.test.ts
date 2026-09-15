@@ -223,7 +223,7 @@ function visibleTexts(contents: Content[]): string[] {
 
 describe("planner-loop death after a completed tool", () => {
 	it.each([true, false])(
-		"propagates an unexpected post-effect error without apology inference (result success=%s)",
+		"preserves an unexpected post-effect error as reply-only recovery without apology inference (result success=%s)",
 		async (success) => {
 			let actionCalls = 0;
 			const h = await createHarness({
@@ -276,14 +276,33 @@ describe("planner-loop death after a completed tool", () => {
 				300,
 			);
 			const onSettledActionResult = vi.fn();
-			await expect(
-				new DefaultMessageService().handleMessage(
-					h.runtime,
-					makeMessage(h.runtime, "Save the note."),
-					h.callback,
-					{ onSettledActionResult },
-				),
-			).rejects.toBe(failure);
+			const result = await new DefaultMessageService().handleMessage(
+				h.runtime,
+				makeMessage(h.runtime, "Save the note."),
+				h.callback,
+				{ onSettledActionResult },
+			);
+			expect(result).toMatchObject({
+				didRespond: false,
+				responseContent: null,
+				terminalFailure: {
+					kind: "reply_generation_error",
+					code: "POST_EFFECT_EVALUATION_FAILED",
+					transient: false,
+				},
+				replyRecovery: { pendingToolCalls: [] },
+				actionResults: [
+					expect.objectContaining({
+						success,
+						effectReceipts: [
+							expect.objectContaining({
+								receiptId: "saved-note-1",
+								outcome: "applied",
+							}),
+						],
+					}),
+				],
+			});
 			expect(actionCalls).toBe(1);
 			expect(onSettledActionResult).toHaveBeenCalledTimes(1);
 			expect(onSettledActionResult).toHaveBeenCalledWith(

@@ -657,9 +657,13 @@ describe("planner-declared pending work", () => {
 				},
 			],
 		});
-		await expect(h.run()).rejects.toThrow(
-			"Unexpected model call RESPONSE_HANDLER after ACTION_PLANNER,RESPONSE_HANDLER",
-		);
+		await expect(h.run()).rejects.toMatchObject({
+			code: "POST_EFFECT_EVALUATION_FAILED",
+			cause: expect.objectContaining({
+				message:
+					"Unexpected model call RESPONSE_HANDLER after ACTION_PLANNER,RESPONSE_HANDLER",
+			}),
+		});
 		expect(h.executed).toEqual(["READ"]);
 	});
 

@@ -971,7 +971,7 @@ describe("v5 tiered action surface", () => {
 		expect(childHandler).toHaveBeenCalledOnce();
 	});
 
-	it("uses Stage 1 hints to promote a parent to Tier A and expose children", async () => {
+	it("exposes the Stage 1 child while retaining other authorized names for discovery", async () => {
 		const playMusic = makeAction({
 			name: "PLAY_MUSIC",
 			description: "Start playing a track.",
@@ -1016,7 +1016,12 @@ describe("v5 tiered action surface", () => {
 		expect(prompt).toContain("MUSIC");
 		expect(prompt).toContain("PLAY_MUSIC");
 		expect(prompt).toContain("PAUSE_MUSIC");
-		expect(prompt).not.toContain("SEND_EMAIL");
+		expect(prompt).toContain("SEND_EMAIL");
+		const toolNames = plannerToolNames(runtime);
+		expect(toolNames).toContain("PLAY_MUSIC");
+		expect(toolNames).toContain("DISCOVER_TOOLS");
+		expect(toolNames).not.toContain("PAUSE_MUSIC");
+		expect(toolNames).not.toContain("SEND_EMAIL");
 	});
 
 	it("executes the model-selected app action while keeping focused-view tools discoverable", async () => {
