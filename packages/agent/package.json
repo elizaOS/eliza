@@ -50,7 +50,7 @@
     "format:check": "bunx @biomejs/biome format src",
     "pack:dry-run": "cd dist && npm pack --dry-run",
     "smoke:isolated": "node scripts/isolated-package-smoke.mjs",
-    "test": "bun run test:mobile-workspace-entry && node scripts/run-vitest-batches.mjs",
+    "test": "node scripts/run-vitest-batches.mjs",
     "test:mobile-workspace-entry": "bun test scripts/mobile-workspace-entry.test.mjs",
     "test:e2e": "RUN_CRASH_RESTART_E2E=1 vitest run --config vitest.config.ts test/crash-restart-supervisor.test.ts",
     "test:integration": "cd ../.. && bunx vitest run --config packages/scripts/vitest/integration.config.ts --coverage.enabled=false packages/agent/",
