@@ -703,9 +703,21 @@ export function formatValue(value: JsonValue, control: FormControl): string {
       // Use locale formatting for numbers
       return typeof value === "number" ? value.toLocaleString() : String(value);
 
-    case "boolean":
-      // Human-friendly boolean display
+    case "boolean": {
+      // Human-friendly boolean display. String boolean forms ("false",
+      // "no", "0", "off") are valid input per validateBoolean, and every
+      // non-empty string is truthy in JS — so parse them explicitly or a
+      // stored "false" renders as "Yes" (#30112).
+      if (typeof value === "boolean") {
+        return value ? "Yes" : "No";
+      }
+      const strValue = String(value).toLowerCase();
+      const falsy = ["false", "no", "0", "off"];
+      const truthy = ["true", "yes", "1", "on"];
+      if (falsy.includes(strValue)) return "No";
+      if (truthy.includes(strValue)) return "Yes";
       return value ? "Yes" : "No";
+    }
 
     case "date":
       // Locale-appropriate date format
