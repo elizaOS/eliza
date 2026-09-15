@@ -142,4 +142,56 @@ describe("Twitter memory utilities", () => {
       isDuplicateTweet(runtime, "bot", "Dashboard shipped wallet", 0.6),
     ).resolves.toBe(true);
   });
+
+  // #29657: a recent tweet that normalizes to "" (URL-only or emoji-only) must
+  // not poison duplicate detection. Before the fix, `anyString.includes("")`
+  // was always true, so one such cached tweet flagged every future tweet as a
+  // duplicate and permanently halted autonomous posting.
+  it("does not treat a URL-only recent tweet as duplicate of unrelated text", async () => {
+    const runtime = runtimeWithStorage({
+      getCache: vi.fn(async () => ["https://t.co/abcd1234"]),
+    });
+
+    await expect(
+      isDuplicateTweet(
+        runtime,
+        "bot",
+        "Excited to announce our new roadmap for Q3!",
+      ),
+    ).resolves.toBe(false);
+  });
+
+  it("does not treat an emoji-only recent tweet as duplicate of unrelated text", async () => {
+    const runtime = runtimeWithStorage({
+      getCache: vi.fn(async () => ["🚀🚀🚀"]),
+    });
+
+    await expect(isDuplicateTweet(runtime, "bot", "gm everyone")).resolves.toBe(
+      false,
+    );
+  });
+
+  it("does not treat two different empty-normalizing tweets as duplicates", async () => {
+    const runtime = runtimeWithStorage({
+      getCache: vi.fn(async () => ["https://t.co/abcd1234"]),
+    });
+
+    // A new URL-only tweet with a different raw URL normalizes to "" as well,
+    // but must not be flagged against the cached URL-only tweet.
+    await expect(
+      isDuplicateTweet(runtime, "bot", "https://t.co/wxyz9876"),
+    ).resolves.toBe(false);
+  });
+
+  it("still flags a byte-for-byte identical empty-normalizing tweet via the raw guard", async () => {
+    const runtime = runtimeWithStorage({
+      getCache: vi.fn(async () => ["https://t.co/abcd1234"]),
+    });
+
+    // The exact raw-text guard above the normalized loop still catches a
+    // genuinely identical repost even when it normalizes to "".
+    await expect(
+      isDuplicateTweet(runtime, "bot", "https://t.co/abcd1234"),
+    ).resolves.toBe(true);
+  });
 });
