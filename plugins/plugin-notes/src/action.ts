@@ -92,14 +92,12 @@ function failure(
  * generation fails.
  */
 function committed(data: Record<string, unknown>): ActionResult {
-  // Bind the mutation to an applied effect receipt so the reply-egress
-  // grounding contract (completed_side_effect claims require a committed
-  // receipt from this turn) can verify the claim instead of failing closed to
-  // the "couldn't verify" fallback on a real write. The store's *WithCommit
-  // family persists durably before returning; the note row id is the commit
-  // identifier ("durable transaction, row, or provider receipt identifier").
+  // Content reuse is a successful no-op, not a new durable write. Completion
+  // must receive the same outcome the store returned rather than fresh commit
+  // evidence for an existing note.
   const op = typeof data.op === "string" ? data.op : "commit";
   const noteId = typeof data.noteId === "string" ? data.noteId : undefined;
+  const replayed = data.replayed === true;
   const observedAt = new Date().toISOString();
   const effectReceipts = noteId
     ? [
@@ -108,10 +106,18 @@ function committed(data: Record<string, unknown>): ActionResult {
           operation: `notes.note.${op}`,
           resource: { kind: "notes.note", id: noteId },
           artifacts: [],
-          idempotency: { key: null, replayed: false },
+          idempotency: { key: replayed ? noteId : null, replayed },
           observedAt,
-          outcome: "applied",
-          commit: { kind: "durable", id: noteId, committedAt: observedAt },
+          ...(replayed
+            ? { outcome: "noop", reason: "An identical note already exists." }
+            : {
+                outcome: "applied",
+                commit: {
+                  kind: "durable",
+                  id: noteId,
+                  committedAt: observedAt,
+                },
+              }),
         }),
       ]
     : undefined;
