@@ -9,6 +9,8 @@ import {
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as persistence from "../state/persistence";
+import * as bridge from "./storage-bridge";
 
 // Captured once, before any test installs the storage-bridge proxy, so every
 // test can read/write "the raw disk" (bypassing whatever proxy state a prior
@@ -141,7 +143,6 @@ describe("native protected-storage bridge contract", () => {
   });
 
   it("protects every native session/runtime record from ever landing in plaintext localStorage", async () => {
-    const bridge = await import("./storage-bridge");
     const cases: Array<[string, string]> = [
       ["eliza.device.auth", "device-secret"],
       ["elizaos:active-server", "active-server-secret"],
@@ -160,7 +161,6 @@ describe("native protected-storage bridge contract", () => {
   });
 
   it("refuses to fall back to plaintext localStorage when a protected write is rejected", async () => {
-    const bridge = await import("./storage-bridge");
     nativeStores.secureSetError = "rejected";
 
     await expect(
@@ -173,7 +173,6 @@ describe("native protected-storage bridge contract", () => {
   });
 
   it("publishes a Steward login only after secure write and exact readback", async () => {
-    await import("./storage-bridge");
     const transitions: string[] = [];
     const listener = (event: Event) => {
       transitions.push((event as CustomEvent<{ state: string }>).detail.state);
@@ -208,7 +207,6 @@ describe("native protected-storage bridge contract", () => {
   });
 
   it("keeps a later Steward token invisible until its own durable write can run", async () => {
-    await import("./storage-bridge");
     const transitions: string[] = [];
     const listener = (event: Event) => {
       transitions.push((event as CustomEvent<{ state: string }>).detail.state);
@@ -251,7 +249,6 @@ describe("native protected-storage bridge contract", () => {
   });
 
   it("does not resurrect a Steward token when a deferred refresh loses to logout", async () => {
-    await import("./storage-bridge");
     await writeStoredStewardToken("refresh-source-token");
     const transitions: string[] = [];
     const listener = (event: Event) => {
@@ -297,7 +294,6 @@ describe("native protected-storage bridge contract", () => {
       releaseGet = resolve;
     });
 
-    const bridge = await import("./storage-bridge");
     const init = bridge.initializeStorageBridge();
 
     // initializeStorageBridge() is now blocked inside its migration loop,
@@ -335,7 +331,6 @@ describe("native protected-storage bridge contract", () => {
   });
 
   it("serializes concurrent writes to the same key instead of racing", async () => {
-    const bridge = await import("./storage-bridge");
     let releaseFirst: () => void = () => {};
     nativeStores.secureSetWait = new Promise<void>((resolve) => {
       releaseFirst = resolve;
@@ -385,7 +380,6 @@ describe("native protected-storage bridge contract", () => {
     // of leaving a genuine pre-migration plaintext value on raw disk.
     rawSetItem("eliza.device.auth", "legacy-device-secret");
 
-    const bridge = await import("./storage-bridge");
     nativeStores.secureAvailable = false;
     await bridge.initializeStorageBridge();
     expect(bridge.isStorageBridgeInitialized()).toBe(false);
@@ -413,7 +407,6 @@ describe("native protected-storage bridge contract", () => {
   }, 60_000);
 
   it("keeps an awaited Steward write hidden until native verification succeeds", async () => {
-    const bridge = await import("./storage-bridge");
     await bridge.initializeStorageBridge();
     await bridge.setStorageValue(STEWARD_TOKEN_KEY, "durable-steward-token");
     nativeStores.operations.length = 0;
@@ -482,7 +475,6 @@ describe("native protected-storage bridge contract", () => {
   });
 
   it("retains the live and restart credential when native deletion is denied", async () => {
-    const bridge = await import("./storage-bridge");
     await bridge.setStorageValue(
       "eliza.device.auth",
       "still-durable-after-failed-delete",
@@ -504,7 +496,6 @@ describe("native protected-storage bridge contract", () => {
   it.each(["rejected", "thrown"] as const)(
     "rolls the live cache back when an awaited protected write is %s",
     async (failureMode) => {
-      const bridge = await import("./storage-bridge");
       await bridge.setStorageValue("eliza.device.auth", "durable-secret");
       nativeStores.secureSetError = failureMode;
 
@@ -519,7 +510,6 @@ describe("native protected-storage bridge contract", () => {
   );
 
   it("publishes logout only after secure deletion and preserves the restart credential on denial", async () => {
-    const bridge = await import("./storage-bridge");
     await bridge.setStorageValue(STEWARD_TOKEN_KEY, "durable-steward-token");
     const transitions: string[] = [];
     const listener = (event: Event) => {
@@ -551,7 +541,6 @@ describe("native protected-storage bridge contract", () => {
   });
 
   it("serializes set then delete so a late set cannot resurrect a token", async () => {
-    const bridge = await import("./storage-bridge");
     let releaseSet: () => void = () => {};
     nativeStores.secureSetWait = new Promise<void>((resolve) => {
       releaseSet = resolve;
@@ -582,7 +571,6 @@ describe("native protected-storage bridge contract", () => {
   });
 
   it("serializes delete then set so a late delete cannot erase a new token", async () => {
-    const bridge = await import("./storage-bridge");
     await bridge.setStorageValue("elizaos:active-server", "old-token");
     nativeStores.operations.length = 0;
     let releaseDelete: () => void = () => {};
@@ -617,8 +605,6 @@ describe("native protected-storage bridge contract", () => {
   });
 
   it("does not finish active-server teardown before native deletion commits", async () => {
-    const bridge = await import("./storage-bridge");
-    const persistence = await import("../state/persistence");
     // Production installs the native storage proxy before any auth/runtime
     // state is published. Model that boot boundary so synchronous persistence
     // readers observe the verified secure-store cache rather than raw disk.
