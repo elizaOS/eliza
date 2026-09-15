@@ -3777,8 +3777,10 @@ export async function handleConversationRoutes(
             : typeof rec.content === "string"
               ? rec.content
               : "";
-        const text = rawText.trim();
-        if (!role || !text) return null;
+        // Validate emptiness without changing the source being transferred.
+        // Quotes, indentation and trailing newlines are part of the message.
+        if (!role || !rawText.trim()) return null;
+        const text = rawText;
         const timestamp =
           typeof rec.timestamp === "number" && Number.isFinite(rec.timestamp)
             ? rec.timestamp

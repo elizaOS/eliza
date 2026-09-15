@@ -3328,6 +3328,48 @@ describe("conversation-route chat idempotency wiring", () => {
 });
 
 describe("conversation handoff import — exact source identities", () => {
+  it("preserves original message whitespace and rejects changed-source retries", async () => {
+    const { state, storedMemories, handleMessage } = createHarness();
+    const messages = [
+      {
+        sourceId: "shared-format-user",
+        role: "user",
+        text: "  Preserve this exact block:\n\tblue mug\n  yellow notebook\n",
+        timestamp: 10,
+      },
+      {
+        sourceId: "shared-format-assistant",
+        role: "assistant",
+        text: "\n  No records changed.  \n",
+        timestamp: 20,
+      },
+    ];
+    const path = "/api/conversations/conv-1/import";
+    const first = await runRoute("POST", path, state, { messages });
+    expect(first.captured.payload).toMatchObject({
+      inserted: 2,
+      complete: true,
+    });
+    expect(storedMemories.map((memory) => memory.content.text)).toEqual(
+      messages.map((message) => message.text),
+    );
+    expect(storedMemories.every((memory) => memory.agentId === AGENT_ID)).toBe(
+      true,
+    );
+    expect(
+      storedMemories.every((memory) => memory.metadata?.scope === "shared"),
+    ).toBe(true);
+    const retry = await runRoute("POST", path, state, { messages });
+    expect(retry.captured.payload).toMatchObject({ inserted: 0, skipped: 2 });
+    const changed = await runRoute("POST", path, state, {
+      messages: [{ ...messages[0], text: messages[0].text.trim() }],
+    });
+    expect(changed.record.writes.join("")).toContain("different content");
+    expect(storedMemories).toHaveLength(2);
+    expect(storedMemories[0].content.text).toBe(messages[0].text);
+    expect(handleMessage).not.toHaveBeenCalled();
+  });
+
   it("idempotently appends only newly observed Shared messages", async () => {
     const { state, storedMemories } = createHarness();
     const firstMessages = [
