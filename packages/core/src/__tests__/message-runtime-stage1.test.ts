@@ -1736,10 +1736,17 @@ describe("runV5MessageRuntimeStage1", () => {
 			([, params]) =>
 				params as {
 					messages: Array<{ role: string; content: string }>;
-					providerOptions: { eliza: { prefixHash: string } };
+					providerOptions: {
+						eliza: { prefixHash: string };
+						cerebras: { prompt_cache_key: string };
+					};
 				},
 		);
 		expect(calls).toHaveLength(2);
+		expect(calls[0]?.providerOptions.cerebras.prompt_cache_key).toBeTruthy();
+		expect(calls[1]?.providerOptions.cerebras.prompt_cache_key).toBe(
+			calls[0]?.providerOptions.cerebras.prompt_cache_key,
+		);
 		expect(calls[0]?.messages[0]).toEqual(calls[1]?.messages[0]);
 		expect(calls[0]?.providerOptions.eliza.prefixHash).toEqual(
 			calls[1]?.providerOptions.eliza.prefixHash,
