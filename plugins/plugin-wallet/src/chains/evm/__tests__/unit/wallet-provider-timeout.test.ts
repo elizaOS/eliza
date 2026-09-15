@@ -20,7 +20,7 @@ describe("WalletProvider RPC balance reads", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns null when the cancellation-aware transport rejects", async () => {
+  it("rejects with a NETWORK_ERROR when the cancellation-aware transport rejects", async () => {
     const provider = new WalletProvider(generatePrivateKey(), makeRuntime(), {
       mainnet,
     });
@@ -31,7 +31,10 @@ describe("WalletProvider RPC balance reads", () => {
       },
     } as never);
 
-    await expect(provider.getWalletBalanceForChain("mainnet" as never)).resolves.toBeNull();
+    await expect(provider.getWalletBalanceForChain("mainnet" as never)).rejects.toMatchObject({
+      name: "EVMError",
+      code: "NETWORK_ERROR",
+    });
   });
 
   it("returns the formatted balance when the RPC responds in time", async () => {

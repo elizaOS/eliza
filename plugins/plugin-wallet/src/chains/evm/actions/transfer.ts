@@ -71,13 +71,17 @@ export async function buildTransferDetails(
   wp: WalletProvider
 ): Promise<TransferParams> {
   const chains = wp.getSupportedChains();
-  const balances = await wp.getWalletBalances();
+  const balances = await wp.getChainBalanceStates();
   state = await runtime.composeState(message, ["RECENT_MESSAGES"], true);
 
   state.chainBalances = Object.entries(balances)
     .map(([chain, balance]) => {
       const chainConfig = wp.getChainConfigs(chain as SupportedChain);
-      return `${chain}: ${balance} ${chainConfig.nativeCurrency.symbol}`;
+      // Name an unreachable chain so the intent model does not read its
+      // absence as an empty balance (#31111).
+      return balance.status === "ok"
+        ? `${chain}: ${balance.balance} ${chainConfig.nativeCurrency.symbol}`
+        : `${chain}: balance unavailable (RPC error)`;
     })
     .join(", ");
   state.supportedChains = chains.join(" | ");

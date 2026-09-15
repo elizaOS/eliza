@@ -47,16 +47,17 @@ describe("EVMService cache reads", () => {
   it("coalesces concurrent refreshes and writes one forced network snapshot", async () => {
     const runtime = new AgentRuntime({ logLevel: "fatal" });
     const setCache = vi.spyOn(runtime, "setCache").mockResolvedValue(true);
-    let releaseBalances: ((balances: { mainnet: string }) => void) | undefined;
-    const getWalletBalances = vi.fn(
+    type States = Record<string, { status: "ok"; balance: string }>;
+    let releaseBalances: ((balances: States) => void) | undefined;
+    const getChainBalanceStates = vi.fn(
       () =>
-        new Promise<{ mainnet: string }>((resolve) => {
+        new Promise<States>((resolve) => {
           releaseBalances = resolve;
         })
     );
     const wallet = {
       getAddress: vi.fn(() => "0x1234"),
-      getWalletBalances,
+      getChainBalanceStates,
       getChainConfigs: vi.fn(() => ({
         id: 1,
         name: "Ethereum",
@@ -70,10 +71,10 @@ describe("EVMService cache reads", () => {
     const second = service.refreshWalletData();
     await Promise.resolve();
     expect(initWalletProviderMock).toHaveBeenCalledOnce();
-    expect(getWalletBalances).toHaveBeenCalledOnce();
-    expect(getWalletBalances).toHaveBeenCalledWith(true);
+    expect(getChainBalanceStates).toHaveBeenCalledOnce();
+    expect(getChainBalanceStates).toHaveBeenCalledWith(true);
 
-    releaseBalances?.({ mainnet: "1.5" });
+    releaseBalances?.({ mainnet: { status: "ok", balance: "1.5" } });
     await Promise.all([first, second]);
 
     expect(setCache).toHaveBeenCalledOnce();
@@ -90,9 +91,39 @@ describe("EVMService cache reads", () => {
             name: "Ethereum",
           },
         ],
+        unavailableChains: [],
       })
     );
     expect(service.getWalletProvider()).toBe(wallet);
+  });
+
+  it("records an unreachable chain as unavailable instead of dropping it (#31111)", async () => {
+    const runtime = new AgentRuntime({ logLevel: "fatal" });
+    const setCache = vi.spyOn(runtime, "setCache").mockResolvedValue(true);
+    const wallet = {
+      getAddress: vi.fn(() => "0x1234"),
+      getChainBalanceStates: vi.fn(async () => ({
+        mainnet: { status: "ok", balance: "1.5" },
+        optimism: { status: "unavailable", error: "HTTP request failed: 503" },
+      })),
+      getChainConfigs: vi.fn(() => ({
+        id: 1,
+        name: "Ethereum",
+        nativeCurrency: { symbol: "ETH" },
+      })),
+    };
+    initWalletProviderMock.mockResolvedValue(wallet);
+    const service = new EVMService(runtime);
+
+    await service.refreshWalletData();
+
+    expect(setCache).toHaveBeenCalledWith(
+      EVM_WALLET_DATA_CACHE_KEY,
+      expect.objectContaining({
+        chains: [expect.objectContaining({ chainName: "mainnet", balance: "1.5" })],
+        unavailableChains: [{ chainName: "optimism", error: "HTTP request failed: 503" }],
+      })
+    );
   });
 
   it("throws an explicit uninitialized error before the first refresh", () => {
