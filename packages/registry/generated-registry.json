@@ -631,6 +631,51 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@superzydan/plugin-x402-dex": {
+      "git": {
+        "repo": "Zydanny/plugin-x402-dex",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@superzydan/plugin-x402-dex",
+        "v0": null,
+        "v1": null,
+        "v2": "1.0.4"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Real-time DEX market intelligence for ElizaOS agents via x402 Base Mainnet micropayments.",
+      "homepage": "https://github.com/Zydanny/plugin-x402-dex",
+      "topics": [
+        "x402",
+        "base",
+        "dex",
+        "trading",
+        "market-intel"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "@thecolony/elizaos-plugin": {
       "git": {
         "repo": "TheColonyCC/elizaos-plugin",
