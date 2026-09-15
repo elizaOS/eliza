@@ -2,11 +2,20 @@
  * This deterministic guard handles only an unambiguous current-time question
  * and a standalone clock/date answer. Historical, hypothetical, multi-part,
  * and explanatory prose require model judgment and are left to normal review.
+ *
+ * The CURRENT_TIME provider puts the user's wall-clock time in the prompt with
+ * an explicit "answer from this block only" instruction, and small models still
+ * occasionally invent a date (live 2026-09-07 "2:16 pm EST"; live 2026-09-11
+ * "Sunday, November 22, 2026 at 5:01:28 PM EST" against a block reading
+ * "Friday, September 11, 2026 at 11:18:30 AM EDT"). When the user asked what
+ * time or day it is, a standalone reply that names a date, weekday or clock
+ * time the provider did not observe is ungrounded, and the provider's own
+ * rendering is the complete answer.
  */
 import type { StateData } from "../../types";
 
 const TIME_QUESTION_PATTERN =
-	/^(?:what(?:['’]s|s| is)?\s+(?:the\s+)?(?:(?:current|local)\s+)?(?:time|day|date)(?:\s+is it)?|what day of the week is it)(?:\s+(?:right now|today|for me|please))*[?.!]*$/i;
+	/^(?:what(?:['’]s|s| is)?\s+(?:the\s+)?(?:(?:current|local|today['’]s)\s+)?(?:time|day|date)(?:\s+is it)?|what day of the week is it)(?:\s+(?:right now|today|for me|please))*[?.!]*$/i;
 
 const MONTH_NAMES = [
 	"january",
