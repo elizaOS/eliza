@@ -6,6 +6,7 @@
  * a canned-response stub runtime, no live model.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { promoteSubactionsToActions } from "../actions/promote-subactions";
 import { _resetActionRolePolicyCacheForTests } from "../runtime/action-role-policy";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
@@ -399,6 +400,154 @@ describe("v5 tiered action surface", () => {
 		expect(handler).toHaveBeenCalledTimes(1);
 	});
 
+	it("retains every promoted operation name for discovery and executes its umbrella", async () => {
+		const handler = vi.fn(async () => ({
+			success: true,
+			text: "Ledger updated.",
+		}));
+		const parent: Action = {
+			...makeAction({
+				name: "HOUSEHOLD_LEDGER",
+				description:
+					"Household ledger entries. Create or delete a shared expense.",
+				contexts: ["household"],
+				roleGate: { minRole: "OWNER" },
+				handler,
+			}),
+			parameters: [
+				{
+					name: "action",
+					description: "Operation to perform.",
+					required: true,
+					schema: { type: "string", enum: ["create", "delete"] },
+				},
+			],
+		};
+		const promoted = promoteSubactionsToActions(parent);
+		expect(promoted.map((action) => action.name)).toEqual([
+			"HOUSEHOLD_LEDGER",
+			"HOUSEHOLD_LEDGER_CREATE",
+			"HOUSEHOLD_LEDGER_DELETE",
+		]);
+		const runtime = makeRuntime({
+			actions: [...promoted],
+			responses: [
+				{
+					...stage1Response({
+						contexts: ["household"],
+						candidateActionNames: [parent.name],
+						replyEffectStatus: "pending",
+					}),
+					inspectInput(params) {
+						const input = JSON.stringify(params);
+						expect(input).toContain("available_actions");
+						expect(input).toContain("HOUSEHOLD_LEDGER");
+						expect(input).toContain(parent.description);
+						expect(input).toContain("HOUSEHOLD_LEDGER_CREATE");
+						expect(input).toContain("HOUSEHOLD_LEDGER_DELETE");
+					},
+				},
+				plannerToolResponse(parent.name, { action: "create" }),
+				finishEvaluatorResponse("Ledger updated."),
+			],
+		});
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: {
+				...makeMessage("Add a shared expense for groceries to the ledger."),
+				entityId: AGENT_ID,
+			},
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+		expect(handler).toHaveBeenCalledTimes(1);
+	});
+
+	it("retains action descriptions and authorization metadata in discovery", async () => {
+		const handler = vi.fn(async () => ({ success: true, text: "Role bound." }));
+		const action = makeAction({
+			name: "HOUSEHOLD_ROLE",
+			description:
+				'Bind or unbind a household role.\n  bind — assign a "caregiver" role.',
+			contexts: ["household"],
+			roleGate: { minRole: "OWNER" },
+			handler,
+		});
+		const runtime = makeRuntime({
+			actions: [action],
+			responses: [
+				{
+					...stage1Response({
+						contexts: ["household"],
+						candidateActionNames: [action.name],
+						replyEffectStatus: "pending",
+					}),
+					inspectInput(params) {
+						const input = JSON.stringify(params);
+						expect(input).toContain("HOUSEHOLD_ROLE");
+						expect(input).toContain("Bind or unbind a household role.");
+						expect(input).toContain("caregiver");
+						expect(input).toContain("OWNER");
+					},
+				},
+				plannerToolResponse(action.name),
+				finishEvaluatorResponse("Role bound."),
+			],
+		});
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: {
+				...makeMessage("Bind the synthetic guest as a caregiver."),
+				entityId: AGENT_ID,
+			},
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+		expect(handler).toHaveBeenCalledTimes(1);
+	});
+
+	it("retains authorized aliases and resolves the alias selected by Stage 1", async () => {
+		const handler = vi.fn(async () => ({ success: true, text: "Role bound." }));
+		const action = makeAction({
+			name: "HOUSEHOLD_ROLE",
+			description: "Bind or unbind a household role.",
+			similes: ["BIND_HOUSEHOLD_ROLE_ALIAS"],
+			contexts: ["household"],
+			roleGate: { minRole: "OWNER" },
+			handler,
+		});
+		const runtime = makeRuntime({
+			actions: [action],
+			responses: [
+				{
+					...stage1Response({
+						contexts: ["household"],
+						candidateActionNames: ["BIND_HOUSEHOLD_ROLE_ALIAS"],
+						replyEffectStatus: "pending",
+					}),
+					inspectInput(params) {
+						const input = JSON.stringify(params);
+						expect(input).toContain("HOUSEHOLD_ROLE");
+						expect(input).toContain(action.description);
+						expect(input).toContain("BIND_HOUSEHOLD_ROLE_ALIAS");
+					},
+				},
+				plannerToolResponse(action.name),
+				finishEvaluatorResponse("Role bound."),
+			],
+		});
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: {
+				...makeMessage("Bind the synthetic guest as a caregiver."),
+				entityId: AGENT_ID,
+			},
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+		expect(handler).toHaveBeenCalledTimes(1);
+	});
+
 	it("does not disclose owner-only, private, or invalid actions during guest discovery", async () => {
 		const handler = vi.fn(async () => ({ success: true }));
 		const actions = [
@@ -768,7 +917,7 @@ describe("v5 tiered action surface", () => {
 		expect(handler).toHaveBeenCalledOnce();
 	});
 
-	it("routes an oversized family through its parent without dropping child schemas", async () => {
+	it("keeps an oversized family's children on the planner surface (the estimate is diagnostic)", async () => {
 		const childHandler = vi.fn(async () => ({
 			success: true,
 			text: "Calendar event created",
@@ -796,9 +945,7 @@ describe("v5 tiered action surface", () => {
 					contexts: ["calendar"],
 					candidateActionNames: ["CALENDAR"],
 				}),
-				plannerToolResponse("CALENDAR"),
 				plannerToolResponse("CALENDAR_OP_01"),
-				finishEvaluatorResponse("Calendar event created."),
 				finishEvaluatorResponse("Calendar event created."),
 			],
 		});
@@ -812,17 +959,15 @@ describe("v5 tiered action surface", () => {
 
 		const toolNames = plannerToolNames(runtime);
 		expect(toolNames).toContain("CALENDAR");
-		expect(toolNames).not.toContain("CALENDAR_OP_01");
-		const subPlannerCall = getCalls(runtime).filter(
+		expect(toolNames).toContain("CALENDAR_OP_01");
+		expect(toolNames).toContain("CALENDAR_OP_28");
+		const plannerCall = getCalls(runtime).find(
 			(call) => call.modelType === ModelType.ACTION_PLANNER,
-		)[1];
-		if (!subPlannerCall) throw new Error("Expected the child-family planner");
-		const childTools = (
-			subPlannerCall.params as { tools: Array<{ name: string }> }
-		).tools;
-		expect(childTools.map((tool) => tool.name)).toContain("CALENDAR_OP_01");
-		expect(childTools.map((tool) => tool.name)).toContain("CALENDAR_OP_28");
-		expect(JSON.stringify(childTools)).toContain(children[27].description);
+		);
+		if (!plannerCall) throw new Error("Expected the planner call");
+		const tools = (plannerCall.params as { tools: Array<{ name: string }> })
+			.tools;
+		expect(JSON.stringify(tools)).toContain(children[27].description);
 		expect(childHandler).toHaveBeenCalledOnce();
 	});
 

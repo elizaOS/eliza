@@ -53,11 +53,13 @@ import {
 	replyClaimsCompletedSideEffect,
 	replyClaimsEmptyTrackedWorkState,
 } from "./side-effect-claims.ts";
+import { statedTimeIsUngrounded } from "./time-observations";
 
 export type PlannedReplyClaimKind =
 	| "completed_side_effect"
 	| "financial_completion"
 	| "financial_holding"
+	| "stated_time"
 	| "empty_tracked_state";
 
 /** Capture the same complete evidence for immediate and durable reply-only recovery. */
@@ -233,6 +235,15 @@ export function evaluatePlannedReplyEgress(args: {
 	if (financialHoldingIsUngrounded(args)) {
 		return { verdict: "reject", kind: "financial_holding" };
 	}
+	if (
+		statedTimeIsUngrounded({
+			reply,
+			request: args.request,
+			providers: args.providers,
+		})
+	) {
+		return { verdict: "reject", kind: "stated_time" };
+	}
 	if (replyClaimsCompletedSideEffect(reply)) {
 		if (
 			plannedReplyHasClaimGroundingReceipt({
@@ -321,7 +332,14 @@ export async function resolvePlannedReplyEgress(args: {
 			: {}),
 		// Match the validator's evidence contract; do not serialize the entire
 		// runtime provider store alongside the complete recovery context above.
-		providers: financialObservationProviders(args.providers),
+		providers: {
+			...financialObservationProviders(args.providers),
+			...(decision.verdict === "reject" &&
+			decision.kind === "stated_time" &&
+			args.providers?.CURRENT_TIME
+				? { CURRENT_TIME: args.providers.CURRENT_TIME }
+				: {}),
+		},
 	});
 	const rewritten = await rewriteActionCallbackInCharacter({
 		runtime: args.runtime,

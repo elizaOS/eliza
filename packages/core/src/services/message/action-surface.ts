@@ -57,7 +57,14 @@ export type V5PlannerActionSurfaceSummary = {
 	omittedParentNamesPreview: string[];
 	actionSurfaceHash?: string;
 	warnings: number;
-	queryTokens: string[];
+	/**
+	 * Size of the retrieval query, not its tokens: the summary is serialized
+	 * into the Stage-1 `message_handler` context event that the planner and
+	 * evaluator read, and the token array (the whole recent conversation when
+	 * retrieval widens the query) reached 262K characters on one live turn
+	 * (2026-09-13, planner prompt 89K tokens).
+	 */
+	queryTokenCount: number;
 	candidateActions: string[];
 	parentActionHints: string[];
 	codingActionProfile?: {
@@ -581,7 +588,7 @@ export function buildFullV5PlannerActionSurface(params: {
 			omittedParentCount: 0,
 			omittedParentNamesPreview: [],
 			warnings: 0,
-			queryTokens: [],
+			queryTokenCount: 0,
 			candidateActions: [...(params.candidateActions ?? [])],
 			parentActionHints: [...(params.parentActionHints ?? [])],
 			...(params.codingActionProfile
@@ -656,7 +663,7 @@ export function buildV5PlannerActionSurface(params: {
 				omittedParentNamesPreview: [],
 				actionSurfaceHash: "relay-delivery",
 				warnings: 0,
-				queryTokens: [],
+				queryTokenCount: 0,
 				candidateActions: [],
 				parentActionHints: [],
 				...(params.codingActionProfile
@@ -833,7 +840,7 @@ export function buildV5PlannerActionSurface(params: {
 			omittedParentNamesPreview: tieredSurface.omittedParentNames,
 			actionSurfaceHash: tieredSurface.actionSurfaceHash,
 			warnings: catalog.warnings.length,
-			queryTokens: retrieval.query.tokens,
+			queryTokenCount: retrieval.query.tokens.length,
 			candidateActions,
 			parentActionHints,
 			...(params.codingActionProfile

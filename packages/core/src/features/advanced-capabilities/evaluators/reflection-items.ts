@@ -480,6 +480,11 @@ function formatKnownLines(memories: Memory[], kind: FactKind): string {
 
 export { formatRecentMessages };
 
+/** Heading of the room entity list; the service renders it once in the shared turn context. */
+const ENTITIES_HEADING = "Entities in Room";
+/** Tags of the interaction edges runtime/addressed-to.ts maintains without a model; not semantic relationships. */
+const ADDRESSED_TAGS = new Set(["addressed", "addressed:auto"]);
+
 function formatEntities(entities: Entity[]): string {
 	if (entities.length === 0) return "(none)";
 	return entities
@@ -490,22 +495,70 @@ function formatEntities(entities: Entity[]): string {
 		.join("\n");
 }
 
+/** The entity list a section prints: a reference when the shared context carries the same text, else its own copy. */
+function entitiesSection(
+	shared: EvaluatorSharedPromptContext | undefined,
+	entities: Entity[],
+): string {
+	const text = formatEntities(entities);
+	return shared?.blocks?.[ENTITIES_HEADING] === text
+		? `${ENTITIES_HEADING}: see "${ENTITIES_HEADING}" in the Shared Turn Context above.`
+		: `${ENTITIES_HEADING}:\n${text}`;
+}
+
+function reflectionSharedBlocks({
+	prepared,
+}: {
+	prepared: ReflectionPrepared;
+}): Record<string, string> {
+	return { [ENTITIES_HEADING]: formatEntities(prepared.entities) };
+}
+
+type ExistingRelationship = ReflectionPrepared["existingRelationships"][number];
+
+function relationshipTypeOf(
+	relationship: ExistingRelationship,
+): string | undefined {
+	const type = (
+		relationship.metadata as { relationshipType?: unknown } | undefined
+	)?.relationshipType;
+	return typeof type === "string" && type ? type : undefined;
+}
+
+function relationshipTags(relationship: ExistingRelationship): string[] {
+	return Array.isArray(relationship.tags) ? relationship.tags : [];
+}
+
+/** An edge carrying only addressed bookkeeping tags and no semantic type. */
+function isAddressedOnlyEdge(relationship: ExistingRelationship): boolean {
+	const tags = relationshipTags(relationship);
+	return (
+		tags.length > 0 &&
+		tags.every((tag) => ADDRESSED_TAGS.has(tag)) &&
+		relationshipTypeOf(relationship) === undefined
+	);
+}
+
+/**
+ * Semantic edges only, one complete line each. The model reads these
+ * to avoid re-emitting known relationships; it cannot emit the addressed
+ * bookkeeping edges at all, so they only cost tokens.
+ */
 function formatRelationships(
 	relationships: ReflectionPrepared["existingRelationships"],
 ): string {
-	if (relationships.length === 0) return "(none)";
-	return JSON.stringify(
-		relationships.map((relationship) => ({
-			sourceEntityId: relationship.sourceEntityId,
-			targetEntityId: relationship.targetEntityId,
-			tags: relationship.tags,
-			relationshipType: (
-				relationship.metadata as { relationshipType?: string } | undefined
-			)?.relationshipType,
-		})),
-		null,
-		2,
+	const semantic = relationships.filter(
+		(relationship) => !isAddressedOnlyEdge(relationship),
 	);
+	if (semantic.length === 0) return "(none)";
+	const lines = semantic.map((relationship) => {
+		const type = relationshipTypeOf(relationship);
+		const tags = relationshipTags(relationship).filter(
+			(tag) => !ADDRESSED_TAGS.has(tag),
+		);
+		return `- ${relationship.sourceEntityId} -> ${relationship.targetEntityId}${type ? ` (${type})` : ""}${tags.length > 0 ? ` [${tags.join(", ")}]` : ""}`;
+	});
+	return lines.join("\n");
 }
 
 function actionResultsFromState(state: State | undefined): ActionResult[] {
@@ -1549,8 +1602,7 @@ Rules:
 		{
 			content: `${recentMessagesSection(shared, prepared.recentMessages)}
 
-Entities in Room:
-${formatEntities(prepared.entities)}
+${entitiesSection(shared, prepared.entities)}
 
 Existing relationships:
 ${formatRelationships(prepared.existingRelationships)}`,
@@ -1577,6 +1629,7 @@ export const relationshipEvaluator: Evaluator<
 	async prepare({ runtime, message, options }) {
 		return prepareReflectionContext(runtime, message, options);
 	},
+	sharedBlocks: reflectionSharedBlocks,
 	promptSegments: renderRelationshipPromptSegments,
 	prompt(context) {
 		return renderRelationshipPromptSegments(context)
@@ -1640,8 +1693,7 @@ Rules:
 					: `Recent messages:\n${formatRecentMessages(prepared.recentMessages, true)}`
 			}
 
-Entities in Room:
-${formatEntities(prepared.entities)}`,
+${entitiesSection(shared, prepared.entities)}`,
 			stable: false,
 		},
 	];
@@ -1664,6 +1716,7 @@ export const identityEvaluator: Evaluator<
 	async prepare({ runtime, message, options }) {
 		return prepareReflectionContext(runtime, message, options);
 	},
+	sharedBlocks: reflectionSharedBlocks,
 	promptSegments: renderIdentityPromptSegments,
 	prompt(context) {
 		return renderIdentityPromptSegments(context)

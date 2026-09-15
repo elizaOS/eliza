@@ -43,21 +43,44 @@ it("persists both owned semantic fixtures and rejects incomplete replay without 
       }
       const requestBody = JSON.parse(body) as {
         messages: Array<{ role: string; content: string }>;
+        response_format?: { type?: string; json_schema?: { schema?: unknown } };
       };
       const prompt = requestBody.messages.find(
         (message) => message.role === "user",
       )?.content;
+      // A schema-constrained request carries the contract structurally and
+      // only outlines it in the prompt; the JSON-object fallback spells it out.
+      const structural = requestBody.response_format?.type === "json_schema";
       const schemaMatch =
         prompt &&
         /## Output JSON Schema\n([\s\S]*?)\n\nEvaluate just-finished turn/.exec(
           prompt,
         );
-      if (!schemaMatch?.[1]) {
+      const contract = (
+        structural
+          ? requestBody.response_format?.json_schema?.schema
+          : schemaMatch?.[1]
+            ? JSON.parse(schemaMatch[1])
+            : undefined
+      ) as
+        | {
+            required: string[];
+            properties: {
+              identities: {
+                properties: { identities: { items: { required: string[] } } };
+              };
+            };
+          }
+        | undefined;
+      if (
+        !contract ||
+        (structural && !prompt?.includes("## Output Shape\n")) ||
+        (structural && Boolean(schemaMatch))
+      ) {
         response.writeHead(400);
         response.end("Complete output contract missing");
         return;
       }
-      const contract = JSON.parse(schemaMatch[1]);
       const handleField =
         contract.properties.identities.properties.identities.items.required.find(
           (field: string) => field === "handle",

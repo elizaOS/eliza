@@ -4582,7 +4582,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		).toContain('"FILE":[');
 	});
 
-	it("keeps the complete umbrella dispatcher when duplicate child schemas exceed the input budget", async () => {
+	it("keeps the complete umbrella dispatcher and its children when duplicate child schemas exceed the estimated budget", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				thought: "A coding task should be delegated.",
@@ -4694,7 +4694,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			(call) => call[0] === ModelType.ACTION_PLANNER,
 		)?.[1] as { tools: Array<{ name: string; parameters: unknown }> };
 		expect(plannerInput.tools.map((tool) => tool.name)).toContain("TASKS");
-		expect(plannerInput.tools.map((tool) => tool.name)).not.toContain(
+		// An estimate is diagnostic, not permission to discard authorized tools:
+		// the oversized child stays on the surface beside its umbrella.
+		expect(plannerInput.tools.map((tool) => tool.name)).toContain(
 			"TASKS_ARCHIVE",
 		);
 		expect(
@@ -5862,7 +5864,10 @@ describe("runV5MessageRuntimeStage1", () => {
 			]);
 			const result = await runV5MessageRuntimeStage1({
 				runtime,
-				message: makeMessage(),
+				// See the STOP lexicon: a terminal STOP needs a stop-shaped message.
+				message: makeMessage(
+					shouldRespond === "STOP" ? { text: "please stop, be quiet" } : {},
+				),
 				state: makeState(),
 				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
@@ -10068,7 +10073,11 @@ describe("runV5MessageRuntimeStage1", () => {
 
 			const result = await runV5MessageRuntimeStage1({
 				runtime,
-				message: makeMessage(),
+				// STOP is terminal only for an actual disengage request; a STOP
+				// verdict on an ordinary message routes on (live misfires 2026-09-11/12).
+				message: makeMessage(
+					action === "STOP" ? { text: "ok stop, leave me alone" } : {},
+				),
 				state: makeState(),
 				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});

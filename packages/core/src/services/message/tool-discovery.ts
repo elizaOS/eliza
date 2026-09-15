@@ -47,6 +47,12 @@ export function createPlannerToolDiscoveryAction(
 	const catalog = catalogFor(authorizedActions);
 	return {
 		name: DISCOVER_TOOLS_NAME,
+		// Names and children only: the routing hints repeated a 14.9K-character
+		// catalog in every planner round (audit 2026-09-13); a loaded family
+		// carries its complete description on the next round. One line per
+		// family rather than a JSON array: the same names cost ~1.1K fewer
+		// characters on the live owner catalog (2026-09-14, 4,674 -> ~3,570),
+		// the shape the Stage-1 available_actions catalog already uses.
 		description:
 			"Load complete tool schemas from the authorized name index below when an exposed tool does not cover an intent. " +
 			"Pass exact child names to load those operations, or parent names to load their complete authorized families. Pass names=[] to read the complete family descriptions and routing hints if the names alone are ambiguous. " +

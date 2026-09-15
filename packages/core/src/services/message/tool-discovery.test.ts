@@ -447,6 +447,9 @@ describe("planner tool discovery", () => {
 			loaded = selected;
 		});
 		expect(discovery.description).not.toContain("DENIED_CHILD");
+		for (const name of ["VIEWS", "CALENDAR", "EVENTS", "READ_EVENT"]) {
+			expect(discovery.description).toContain(name);
+		}
 		const result = await discovery.handler?.(runtime, message, undefined, {
 			parameters: { names: ["CALENDAR"] },
 		});
