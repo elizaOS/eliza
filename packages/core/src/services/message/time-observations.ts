@@ -1,18 +1,21 @@
+/** Validates simple current-time answers against the CURRENT_TIME observation.
+ * This deterministic guard handles only an unambiguous current-time question
+ * and a standalone clock/date answer. Historical, hypothetical, multi-part,
+ * and explanatory prose require model judgment and are left to normal review.
+ *
+ * The CURRENT_TIME provider puts the user's wall-clock time in the prompt with
+ * an explicit "answer from this block only" instruction, and small models still
+ * occasionally invent a date (live 2026-09-07 "2:16 pm EST"; live 2026-09-11
+ * "Sunday, November 22, 2026 at 5:01:28 PM EST" against a block reading
+ * "Friday, September 11, 2026 at 11:18:30 AM EDT"). When the user asked what
+ * time or day it is, a standalone reply that names a date, weekday or clock
+ * time the provider did not observe is ungrounded, and the provider's own
+ * rendering is the complete answer.
+ */
 import type { StateData } from "../../types";
 
-/**
- * Grounding for stated dates and clock times. The CURRENT_TIME provider puts
- * the user's wall-clock time in the prompt with an explicit "answer from this
- * block only" instruction, and small models still occasionally invent a date
- * (live 2026-09-07 "2:16 pm EST"; live 2026-09-11 "Sunday, November 22, 2026
- * at 5:01:28 PM EST" against a block reading "Friday, September 11, 2026 at
- * 11:18:30 AM EDT"). When the user asked what time or day it is, a reply
- * that names a date, weekday or clock time the provider did not observe is
- * ungrounded, and the provider's own rendering is the complete answer.
- */
-
 const TIME_QUESTION_PATTERN =
-	/\b(?:what(?:'s|s| is)?\s+(?:the\s+)?(?:current\s+|local\s+|today'?s\s+)?(?:time|day|date)\b|time is it\b|day is it\b|date is it\b|current (?:time|date)\b|day of the week\b|today'?s date\b)/i;
+	/^(?:what(?:['’]s|s| is)?\s+(?:the\s+)?(?:(?:current|local|today['’]s)\s+)?(?:time|day|date)(?:\s+is it)?|what day of the week is it)(?:\s+(?:right now|today|for me|please))*[?.!]*$/i;
 
 const MONTH_NAMES = [
 	"january",
@@ -91,7 +94,9 @@ export function observedCurrentTime(
 }
 
 export function requestAsksCurrentTime(request: string | undefined): boolean {
-	return typeof request === "string" && TIME_QUESTION_PATTERN.test(request);
+	return (
+		typeof request === "string" && TIME_QUESTION_PATTERN.test(request.trim())
+	);
 }
 
 function localParts(observed: ObservedCurrentTime): {
@@ -116,6 +121,7 @@ function localParts(observed: ObservedCurrentTime): {
 			weekday: "long",
 		}).formatToParts(instant);
 	} catch {
+		// error-policy:J3 Invalid external timezone data is not an observation.
 		return null;
 	}
 	const read = (type: string) =>
@@ -146,6 +152,18 @@ export function statedTimeIsUngrounded(args: {
 	const local = localParts(observed);
 	if (!local) return false;
 	const reply = args.reply;
+	// Restrict deterministic comparison to a standalone answer. Mentioning
+	// tomorrow, an appointment, or a quoted weekday is not a claim about now.
+	const remainder = reply
+		.replace(MONTH_DAY_PATTERN, " ")
+		.replace(WEEKDAY_PATTERN, " ")
+		.replace(CLOCK_PATTERN, " ")
+		.replace(
+			/\b(?:it['’]s|it is|today is|currently|right now|about|at|for you|in your local time|your local time|AM|PM|EST|EDT|CST|CDT|MST|MDT|PST|PDT|UTC|GMT)\b/gi,
+			" ",
+		)
+		.replace(/[\s,.!():]/g, "");
+	if (remainder !== "") return false;
 	for (const match of reply.matchAll(MONTH_DAY_PATTERN)) {
 		const month = MONTH_NAMES.indexOf(match[1].toLowerCase()) + 1;
 		const day = Number(match[2]);

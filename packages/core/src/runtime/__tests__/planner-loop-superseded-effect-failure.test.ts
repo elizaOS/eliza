@@ -45,7 +45,11 @@ function appliedReceipt(operation: string): EffectReceipt {
 	};
 }
 
-async function runMoveTurn(failedOperation: string): Promise<string> {
+async function runMoveTurn(
+	failedOperation: string,
+	failedResourceId = "evt-1",
+	failedResourceKind = "calendar.event",
+): Promise<string> {
 	const useModel = vi
 		.fn()
 		.mockResolvedValueOnce({
@@ -81,7 +85,12 @@ async function runMoveTurn(failedOperation: string): Promise<string> {
 		.mockResolvedValueOnce({
 			success: false,
 			text: "Google Calendar is not connected.",
-			effectReceipts: [failedReceipt(failedOperation)],
+			effectReceipts: [
+				{
+					...failedReceipt(failedOperation),
+					resource: { kind: failedResourceKind, id: failedResourceId },
+				},
+			],
 			data: { error: "CALENDAR_SERVICE_409" },
 		})
 		.mockResolvedValueOnce({
@@ -127,20 +136,35 @@ describe("failure authority superseded by a later applied effect", () => {
 		);
 	});
 
+	it("lets a message-scoped failed receipt yield to the applied retry (live 2026-09-14: the wrapper bound the failure to the source message, the handler bound the applied move to the event)", async () => {
+		await expect(
+			runMoveTurn("calendar.update_event", "msg-1", "runtime.message"),
+		).resolves.toBe("Moved your barber appointment to Friday at 4pm.");
+	});
+
 	it("keeps failure authority when the applied receipt is a different operation", async () => {
 		await expect(runMoveTurn("calendar.event.delete")).resolves.not.toBe(
 			"Moved your barber appointment to Friday at 4pm.",
 		);
 	});
 
-	it("keys operations by their words, not their joiners", () => {
+	it("preserves a failed mutation of another resource", async () => {
+		await expect(
+			runMoveTurn("calendar.event.update", "unrelated-event"),
+		).resolves.not.toBe("Moved your barber appointment to Friday at 4pm.");
+	});
+
+	it("canonicalizes only known calendar wrapper aliases", () => {
 		expect(effectOperationKey("calendar.update_event")).toBe(
 			effectOperationKey("calendar.event.update"),
 		);
 		expect(effectOperationKey("calendar.delete_event")).not.toBe(
 			effectOperationKey("calendar.event.update"),
 		);
-		expect(effectOperationKey("trigger.create")).toBe("create trigger");
+		expect(effectOperationKey("trigger.create")).toBe("trigger.create");
+		expect(effectOperationKey("transfer.from.to")).not.toBe(
+			effectOperationKey("transfer.to.from"),
+		);
 	});
 
 	it("lets a later applied mutation's reply ship over an earlier read-only lookup miss (live: TRIGGER update with a malformed taskId, then delete + create)", async () => {

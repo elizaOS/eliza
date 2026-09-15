@@ -42,24 +42,30 @@ export function formatExperienceForPrompt(
 	// evaluator call of a "general" turn (2026-09-14). A WHY that only
 	// repeats DO says nothing: the distinct extraction rationale stands in
 	// when there is one; otherwise an explicit local reference replaces the
-	// duplicate so distinct reasons and all other provenance remain complete.
+	// duplicate. Comparisons are byte-exact — whitespace can be the learning
+	// itself — and a rationale that adds to WHY is rendered complete on its
+	// own line, so distinct reasons and all other provenance remain complete.
+	const why = whyLine(experience);
+	const rationale =
+		experience.extractionReason &&
+		experience.extractionReason !== why &&
+		experience.extractionReason !== experience.learning
+			? `\nRATIONALE: ${experience.extractionReason}`
+			: "";
 	return `${prefix}DO: ${experience.learning}
 WHEN: ${experience.context || experience.action || "similar situation"}
-WHY: ${whyLine(experience)}
+WHY: ${why}${rationale}
 META: id=${experience.id}; domain=${experience.domain}; confidence=${Math.round(
 		experience.confidence * 100,
 	)}%; importance=${Math.round(experience.importance * 100)}%; keywords=${keywords}`;
 }
 
 function whyLine(experience: Experience): string {
-	const normalize = (text: string) => text.trim().replace(/\s+/g, " ");
-	const learning = normalize(experience.learning ?? "");
-	const result = normalize(experience.result ?? "");
-	if (result && result !== learning) return experience.result;
-	const extractionReason = experience.extractionReason ?? "";
-	const reason = normalize(extractionReason);
-	if (reason && reason !== learning) return extractionReason;
-	if (result || reason) return "Same text as DO above.";
+	const { learning, result, extractionReason } = experience;
+	if (result && result !== learning) return result;
+	if (extractionReason && extractionReason !== learning)
+		return extractionReason;
+	if (result || extractionReason) return "Same text as DO above.";
 	return "past experience";
 }
 

@@ -3228,8 +3228,8 @@ describe("MEMORY inferSubaction (umbrella call without action)", () => {
     expect(infer({ op: "delete", memoryId: MEMORY_ID, confirm: true })).toBe(
       "MEMORY_DELETE",
     );
-    // An unknown spelling carries no declaration; the structure decides.
-    expect(infer({ op: "bogus", text: "t" })).toBe("MEMORY_CREATE");
+    // An invalid declaration cannot authorize a different operation.
+    expect(infer({ op: "bogus", text: "t" })).toBeUndefined();
   });
 
   it("returns undefined when the arguments are ambiguous", () => {
@@ -3245,4 +3245,29 @@ describe("MEMORY inferSubaction (umbrella call without action)", () => {
       expect(infer(params)).toBeUndefined();
     }
   });
+});
+
+it("does not reinterpret a malformed legacy operation as create", () => {
+  expect(
+    memoryAction.inferSubaction?.({ op: "bogus", text: "replacement" }),
+  ).toBeUndefined();
+});
+
+it("stores a target-less update against an empty store as the new fact it describes", async () => {
+  // The update names no memoryId or query; the user's own words are the
+  // implied target and nothing is stored yet, so the request is new
+  // information and is stored as a create rather than failed as an update.
+  const { runtime, rows } = makeRuntime();
+  const result = await runAction(
+    runtime,
+    makeMessage({ text: "remember that my favorite tea is assam" }),
+    { action: "update", text: "My favorite tea is assam.", confirm: true },
+  );
+  expect(result.success, JSON.stringify(result)).toBe(true);
+  expect(result.data).toMatchObject({
+    op: "create",
+    updateFallback: "created",
+  });
+  expect(rows).toHaveLength(1);
+  expect(rows[0]?.memory.content.text).toBe("My favorite tea is assam.");
 });

@@ -35,11 +35,25 @@ describe("resolveUpdateTimeRange", () => {
     ).toEqual({ startAt: "2026-09-11T16:00:00", endAt: "2026-09-11T17:00:00" });
   });
 
-  it("derives the end from the stored duration when an explicit end does not follow the start", () => {
+  it("passes an inverted explicit start/end pair through for the service's typed rejection", () => {
+    // Both bounds came from the planner: silently re-deriving the end would
+    // report a range the user never asked for. The service rejects the pair
+    // with CALENDAR_EVENT_RANGE_INVALID and the planner repairs it.
     expect(
       resolveUpdateTimeRange({
         explicitStart: "2026-09-11T16:00:00",
         explicitEnd: "2026-09-11T15:30:00",
+        target,
+        timeZone: "America/New_York",
+      }),
+    ).toEqual({ startAt: "2026-09-11T16:00:00", endAt: "2026-09-11T15:30:00" });
+  });
+
+  it("derives the end from the stored duration when an extracted end does not follow the extracted start", () => {
+    expect(
+      resolveUpdateTimeRange({
+        extractedStart: "2026-09-11T16:00:00",
+        extractedEnd: "2026-09-11T15:30:00",
         target,
         timeZone: "America/New_York",
       }),

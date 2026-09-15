@@ -4,8 +4,11 @@
  * shape plugin-calendar's respond() stamps) ends the turn through the
  * verified-intent gate with the receipt sentence verbatim and no evaluator
  * model call — the MEMORY behavior, now for calendar. The unverified shape
- * (no flags, same receipt) still evaluates. Deterministic: vitest-mocked
- * `useModel` and `evaluate`; no live model.
+ * (no flags, same receipt) still evaluates, and so must a verified sentence
+ * whose operation contradicts the declared intent even when every other
+ * intent word matches. Receipt-backed egress for the verified sentence is
+ * exercised alongside. Deterministic: vitest-mocked `useModel` and
+ * `evaluate`; no live model.
  */
 import { describe, expect, it, vi } from "vitest";
 import { evaluatePlannedReplyEgress } from "../../services/message/egress-policy";
@@ -184,4 +187,19 @@ describe("verified intent gate — CALENDAR settled receipt", () => {
 			).toEqual({ verdict: "allow" });
 		},
 	);
+});
+
+it("requires semantic evaluation when the operation contradicts otherwise matching intent words", async () => {
+	// The declared operation verb is an intent stop word, so a token-overlap
+	// check alone reads "delete notary appointment friday 4pm" as fulfilled by
+	// "Moved “Notary Appointment” … Friday … 4pm"; the gate must not end the
+	// turn on a verified sentence that performed a different operation.
+	const { runtime, executeToolCall, evaluate } = harness(true);
+	await runPlannerLoop({
+		runtime,
+		context: intentContext(["delete notary appointment friday 4pm"]),
+		executeToolCall,
+		evaluate,
+	});
+	expect(evaluate).toHaveBeenCalledTimes(1);
 });

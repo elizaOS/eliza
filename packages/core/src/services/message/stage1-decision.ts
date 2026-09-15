@@ -4,6 +4,7 @@ import {
 	createHandleResponseTool,
 	HANDLE_RESPONSE_TOOL_NAME,
 } from "../../actions/to-tool";
+import { ElizaError } from "../../errors";
 import { recordInferenceSpan, timeInferenceSpan } from "../../inference-timing";
 import { getCandidateActionBackstopRules } from "../../runtime/candidate-action-backstop";
 import { withRequiredCompletionSourceIdentity } from "../../runtime/completion-context";
@@ -279,9 +280,8 @@ export async function generateStage1Decision(
 		];
 	};
 	let messageHandlerTools = createMessageHandlerTools();
-	// Keep shared-room agents and pipeline stages on separate cache slots, and
-	// keep this slot's identity across the discovery re-render: a read or
-	// repair continues the same scoped workflow even as its input expands.
+	// Discovery and the repaired re-ask continue the same scoped workflow, even
+	// as its input expands.
 	const stage1ConversationId = args.message.roomId
 		? JSON.stringify([args.runtime.agentId, args.message.roomId, "stage1"])
 		: undefined;
@@ -290,6 +290,7 @@ export async function generateStage1Decision(
 			prefixHash: stage1PrefixHash,
 			segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
 			promptSegments: messageHandlerInput.promptSegments,
+			// Keep shared-room agents and pipeline stages on separate cache slots.
 			conversationId: stage1ConversationId,
 		}),
 		buildModelInputBudget({
@@ -460,6 +461,7 @@ export async function generateStage1Decision(
 	// text only). An unusable re-ask keeps the original decision so the
 	// deferral contract (#11504) is unchanged.
 	// Voice keeps its complete path: its spoken answer need not sit in replyText.
+	let stage1StopConfirmed = false;
 	if (!args.codingMode && !voiceDirectMessageChannel) {
 		const unusableRepair = getStage1UnusableDecisionRepair(
 			extractMessageHandlerRawParsed(rawMessageHandler),
@@ -515,8 +517,18 @@ export async function generateStage1Decision(
 					),
 				},
 			)) as string | GenerateTextResult;
-			if (extractMessageHandlerRawParsed(repaired)) {
+			const repairedParsed = extractMessageHandlerRawParsed(repaired);
+			if (repairedParsed) {
 				rawMessageHandler = repaired;
+				// A repeated STOP/IGNORE is the model's considered disengage
+				// verdict, in words the stop lexicon may not recognize; honor it.
+				const verdict = repairedParsed.shouldRespond;
+				stage1StopConfirmed =
+					(verdict === "STOP" || verdict === "IGNORE") &&
+					getStage1UnusableDecisionRepair(
+						repairedParsed,
+						getUserMessageText(args.message),
+					) !== undefined;
 			}
 		}
 	}
@@ -741,6 +753,21 @@ export async function generateStage1Decision(
 		? undefined
 		: args.runtime.getLastResolvedModelProvider?.(ModelType.RESPONSE_HANDLER);
 	const rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
+	if (
+		routingRepairAttempted &&
+		rawFieldParsed?.replyEffectStatus === "non_applied" &&
+		getStage1RoutingRepair(rawFieldParsed)
+	) {
+		// A repeated preview/pending-work conflict cannot authorize effects or a
+		// terminal reply. Keep the recorded model attempts and reject before fields.
+		throw new ElizaError(
+			"Stage-1 preview still declares pending work after repair; retry with a consistent routing decision",
+			{
+				code: "STAGE1_ROUTING_CONFLICT",
+				context: { messageId: args.message.id },
+			},
+		);
+	}
 	// An explicit continuation turn ("finish my request", "that is good")
 	// carries no inferable intent of its own, so candidate inference runs on
 	// the nearest pending prior user request instead. The substitution feeds
@@ -937,6 +964,7 @@ export async function generateStage1Decision(
 
 	return {
 		messageHandler,
+		stage1StopConfirmed,
 		providerDiscoveryEnabled: discoveryEnabled,
 		loadedContextProviders: [...loadedContext],
 		contextCatalogRead,

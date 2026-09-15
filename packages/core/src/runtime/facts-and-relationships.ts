@@ -23,9 +23,7 @@ import { ElizaError } from "../errors.ts";
 import {
 	buildFactKeywordsForStorage,
 	factClaimsEquivalent,
-	factPolarityDiffers,
 	scoreFactKeywordRelevance,
-	tokenizeFactText,
 } from "../features/advanced-capabilities/fact-keywords.ts";
 import { resolveCanonicalOwnerId } from "../roles.ts";
 import { isMobilePlatform } from "../runtime-env";
@@ -242,18 +240,12 @@ function residualUserClaim(runtime: IAgentRuntime, message: Memory): string {
 	return text.replace(REMEMBER_PREFIX, "").trim();
 }
 
-/** Every content word of the claim is in a stored text, with matching polarity. */
+/** Only an identical stored claim proves coverage without semantic judgment. */
 function storedTextsCoverClaim(
 	claim: string,
 	storedTexts: readonly string[],
 ): boolean {
-	const claimTokens = tokenizeFactText(claim);
-	if (claimTokens.length === 0) return false;
-	const storedTokens = new Set(storedTexts.flatMap(tokenizeFactText));
-	return (
-		claimTokens.every((token) => storedTokens.has(token)) &&
-		storedTexts.every((text) => !factPolarityDiffers(claim, text))
-	);
+	return claim.length > 0 && storedTexts.some((text) => text === claim);
 }
 
 export async function runFactsAndRelationshipsStage(
@@ -307,8 +299,8 @@ export async function runFactsAndRelationshipsStage(
 		};
 	}
 
-	// A successful MEMORY create/update holding every content word of the
-	// message already owns this turn's fact; there is nothing left to validate.
+	// A successful MEMORY create/update holding the identical residual claim
+	// already persisted it. Paraphrases still require semantic validation.
 	if (candidateRelationships.length === 0) {
 		const storedTexts = storedMemoryTexts(args.executedTools ?? []);
 		if (

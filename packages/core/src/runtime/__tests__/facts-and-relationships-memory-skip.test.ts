@@ -89,8 +89,6 @@ function memoryCreate(text: string, success = true): FactsStageExecutedTool {
 
 describe("facts stage skip when the MEMORY action stored the whole message", () => {
 	it("skips the model call when MEMORY_CREATE stored a text covering the message", async () => {
-		// Live 2026-09-13 19:34Z: MEMORY_CREATE stored "The user's current favorite
-		// tea is Darjeeling." while the parallel TEXT_LARGE call returned nothing.
 		const runtime = makeRuntime();
 		const result = await runFactsAndRelationshipsStage({
 			runtime,
@@ -99,9 +97,7 @@ describe("facts stage skip when the MEMORY action stored the whole message", () 
 			),
 			state,
 			extract: { facts: ["User's favorite tea is darjeeling"] },
-			executedTools: [
-				memoryCreate("The user's current favorite tea is Darjeeling."),
-			],
+			executedTools: [memoryCreate("my favorite tea is darjeeling")],
 		});
 		expect(runtime.useModel).not.toHaveBeenCalled();
 		expect(runtime.getMemories).not.toHaveBeenCalled();
@@ -127,7 +123,7 @@ describe("facts stage skip when the MEMORY action stored the whole message", () 
 							actionName: "MEMORY",
 							op: "update",
 							memory: {
-								content: { text: "The user's favorite tea is now Assam." },
+								content: { text: "my favorite tea is assam now" },
 							},
 						},
 					},
@@ -239,3 +235,29 @@ describe("planNamesMemoryMutation", () => {
 		expect(planNamesMemoryMutation({})).toBe(false);
 	});
 });
+
+it.each([
+	["Alice follows Robert", "Robert follows Alice"],
+	["I prefer tea to coffee", "I prefer coffee to tea"],
+	// Live 2026-09-13 19:34Z: MEMORY_CREATE stored this paraphrase while the
+	// parallel TEXT_LARGE call returned nothing. Only an identical stored claim
+	// skips the call; the paraphrase still needs semantic validation.
+	[
+		"my favorite tea is darjeeling",
+		"The user's current favorite tea is Darjeeling.",
+	],
+])(
+	"requires model judgment for nonidentical stored claims: %s",
+	async (claim, stored) => {
+		const runtime = makeRuntime();
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message: makeMessage(`remember that ${claim}`),
+			state,
+			extract: { facts: [claim] },
+			executedTools: [memoryCreate(stored)],
+		});
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(result.skipReason).toBeUndefined();
+	},
+);

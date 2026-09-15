@@ -49,12 +49,14 @@ export function TrajectoryCodeBlock({
   if (compact)
     return (
       <div className="developer-code-block min-w-0 space-y-2">
-        <p className="text-sm font-medium text-txt">{label}</p>
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
-          <span>
-            {lines.toLocaleString()} {lines === 1 ? "line" : "lines"} ·{" "}
-            {content.length.toLocaleString()} characters
-          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-txt">{label}</p>
+            <p>
+              {lines.toLocaleString()} {lines === 1 ? "line" : "lines"} ·{" "}
+              {content.length.toLocaleString()} characters
+            </p>
+          </div>
           <Button
             variant="outline"
             size="touch"

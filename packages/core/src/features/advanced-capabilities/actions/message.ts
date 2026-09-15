@@ -620,11 +620,12 @@ export function soleConnectorFamily(
 			connectorAccountIds(connector).map(normalizeComparable),
 		),
 	);
-	if (sources.size !== 1 || accountIds.size > 1) return undefined;
-	return (
-		connectors.find((connector) => connectorAccountIds(connector).length > 0) ??
-		connectors[0]
+	const scoped = connectors.filter(
+		(connector) => connectorAccountIds(connector).length > 0,
 	);
+	if (sources.size !== 1 || accountIds.size !== 1 || scoped.length !== 1)
+		return undefined;
+	return scoped[0];
 }
 
 // Exported for unit-test coverage of the account-resolution rules; not part
@@ -653,6 +654,9 @@ export function selectConnectorForOp(
 			)
 		: [];
 	const explicitMatches = selectAccountConnectors(sourceMatches, accountId);
+	// A legacy source-level route beside its single account route is one
+	// connector family, not an ambiguity (see soleConnectorFamily); distinct
+	// accounts, distinct sources, or duplicate routes stay ambiguous.
 	const sole = soleConnectorFamily(explicitMatches);
 	const resolvedMatches = sole ? [sole] : explicitMatches;
 	if (source && resolvedMatches.length > 1) {

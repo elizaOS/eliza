@@ -1001,7 +1001,7 @@ describe("relationship and identity prompt context stays compact", () => {
 		}
 	});
 
-	it("lists only semantic edges, one compact line each, capped at 20", () => {
+	it("preserves every semantic edge when the relationship set exceeds twenty", () => {
 		const existing: Existing = [
 			...Array.from({ length: 17 }, (_, index) =>
 				edge(index, ["addressed", "addressed:auto"]),
@@ -1024,9 +1024,13 @@ describe("relationship and identity prompt context stays compact", () => {
 		expect(section).toContain(
 			`- ${entityId} -> ${targetId(200)} [supports_agent_business]\n`,
 		);
-		expect(section.match(/^- /gm)).toHaveLength(20);
-		expect(section).toContain("(5 more not shown)");
-		expect(section.length).toBeLessThan(2_400);
+		expect(section.match(/^- /gm)).toHaveLength(25);
+		for (let index = 0; index < 24; index++) {
+			expect(section).toContain(
+				`${targetId(200 + index)} [supports_agent_business]`,
+			);
+		}
+		expect(section).not.toContain("more not shown");
 	});
 
 	it("shows (none) when only addressed bookkeeping edges exist", () => {

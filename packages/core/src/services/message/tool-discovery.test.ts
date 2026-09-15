@@ -448,9 +448,13 @@ describe("planner tool discovery", () => {
 			loaded = selected;
 		});
 		expect(discovery.description).not.toContain("DENIED_CHILD");
-		// Names and children only: one index entry per family (a parent without
-		// children maps to an empty list), never the catalog objects with their
-		// descriptions.
+		// Every authorized family and exact child stays inline by name...
+		for (const name of ["VIEWS", "CALENDAR", "EVENTS", "READ_EVENT"]) {
+			expect(discovery.description).toContain(name);
+		}
+		// ...as names and children only: one index entry per family (a parent
+		// without children maps to an empty list), never the catalog objects with
+		// their descriptions.
 		const index = JSON.parse(discovery.description.split("\n").at(-1) ?? "");
 		expect(index.VIEWS).toEqual([]);
 		expect(index.CALENDAR).toEqual(["EVENTS"]);
@@ -569,11 +573,35 @@ describe("planner tool discovery", () => {
 				parameters: { names },
 			});
 			expect(result?.success).toBe(false);
-			expect(result?.data).toMatchObject({ coachingFailure: true });
+			// A miss is coaching for the planner loop, never a domain failure.
+			expect(result?.data).toMatchObject({
+				readOnlyOperation: true,
+				coachingFailure: true,
+			});
 			expect(result?.error).toContain("No tools were loaded");
 			expect(loaded).toBe(false);
 		},
 	);
+
+	it("returns admitted exact retry names without loading a partial or rejected request", async () => {
+		const loads: Action[][] = [];
+		const discovery = createPlannerToolDiscoveryAction(
+			[{ name: "DOCUMENT", description: "Read documents" }],
+			(actions) => loads.push(actions),
+			async () => [],
+		);
+		const rejected = await discovery.handler?.(runtime, message, undefined, {
+			parameters: { names: ["DOCUMENT", "DOCUMENTS_READ"] },
+		});
+		expect(rejected?.success).toBe(false);
+		expect(loads).toEqual([]);
+		expect(rejected?.data?.availableNames).toEqual(["DOCUMENT"]);
+		const retry = await discovery.handler?.(runtime, message, undefined, {
+			parameters: { names: ["DOCUMENT"] },
+		});
+		expect(retry?.success).toBe(true);
+		expect(loads.flat().map((action) => action.name)).toEqual(["DOCUMENT"]);
+	});
 
 	it("lists a family gated only by context under its own declared contexts and keeps the private and role gates (live: MESSAGE on a general-routed turn)", async () => {
 		const actions: Action[] = [
@@ -612,26 +640,6 @@ describe("planner tool discovery", () => {
 		});
 		expect(result?.success).toBe(true);
 		expect(loaded).toEqual(["MESSAGE"]);
-	});
-
-	it("returns admitted exact retry names without loading a partial or rejected request", async () => {
-		const loads: Action[][] = [];
-		const discovery = createPlannerToolDiscoveryAction(
-			[{ name: "DOCUMENT", description: "Read documents" }],
-			(actions) => loads.push(actions),
-			async () => [],
-		);
-		const rejected = await discovery.handler?.(runtime, message, undefined, {
-			parameters: { names: ["DOCUMENT", "DOCUMENTS_READ"] },
-		});
-		expect(rejected?.success).toBe(false);
-		expect(loads).toEqual([]);
-		expect(rejected?.data?.availableNames).toEqual(["DOCUMENT"]);
-		const retry = await discovery.handler?.(runtime, message, undefined, {
-			parameters: { names: ["DOCUMENT"] },
-		});
-		expect(retry?.success).toBe(true);
-		expect(loads.flat().map((action) => action.name)).toEqual(["DOCUMENT"]);
 	});
 
 	it("rejects a registered action using the reserved discovery protocol name", () => {

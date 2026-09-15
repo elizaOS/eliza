@@ -32,6 +32,7 @@ import {
 	TURN_SCOPE_MORE_WORK_PENDING,
 	withTurnScopeToolArg,
 } from "../planner-loop";
+import type { PlannerLoopParams } from "../planner-types";
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 
 function renderedMessagePrompt(
@@ -4916,33 +4917,37 @@ describe("v5 planner loop skeleton", () => {
 		expect(result).toBeDefined();
 	});
 
-	it("throws when the same tool failure repeats beyond the configured limit", async () => {
-		const runtime = {
-			useModel: vi.fn(async () => ({
-				text: "",
-				toolCalls: [{ id: "call-1", name: "LOOKUP", arguments: {} }],
-			})),
-		};
-		const executeToolCall = vi.fn(async () => ({
-			success: false,
-			error: "boom",
-		}));
-		const evaluate = vi.fn(async () => ({
-			success: false,
-			decision: "CONTINUE" as const,
-			thought: "Retry.",
-		}));
+	it.each([false, true])(
+		"throws when the same tool failure repeats beyond the configured limit (coaching: %s)",
+		async (coaching) => {
+			const runtime = {
+				useModel: vi.fn(async () => ({
+					text: "",
+					toolCalls: [{ id: "call-1", name: "LOOKUP", arguments: {} }],
+				})),
+			};
+			const executeToolCall = vi.fn(async () => ({
+				success: false,
+				error: "boom",
+				...(coaching ? { data: { coachingFailure: true } } : {}),
+			}));
+			const evaluate = vi.fn(async () => ({
+				success: false,
+				decision: "CONTINUE" as const,
+				thought: "Retry.",
+			}));
 
-		await expect(
-			runPlannerLoop({
-				runtime,
-				context: { id: "ctx" },
-				config: { maxRepeatedFailures: 1 },
-				executeToolCall,
-				evaluate,
-			}),
-		).rejects.toBeInstanceOf(TrajectoryLimitExceeded);
-	});
+			await expect(
+				runPlannerLoop({
+					runtime,
+					context: { id: "ctx" },
+					config: { maxRepeatedFailures: 1 },
+					executeToolCall,
+					evaluate,
+				}),
+			).rejects.toBeInstanceOf(TrajectoryLimitExceeded);
+		},
+	);
 
 	it("surfaces the tool's diagnostic reason (not a bare 'failed') when a success:false result carries no typed error (#14873)", async () => {
 		// SCHEDULED_TASKS and most actions report failure as
@@ -5281,10 +5286,13 @@ describe("v5 planner loop skeleton", () => {
 		];
 		const injected = withTurnScopeToolArg(tools);
 
-		// A standalone caller (no shared system prompt) keeps the complete
-		// batch-scope description on the arg; the planner path passes its
-		// template and gets the short pointer instead (asserted below).
-		expect(injected?.[0]?.parameters?.properties?.[TURN_SCOPE_ARG]).toEqual({
+		// Without a shared planner prompt, each tool carries the full contract:
+		// a standalone caller keeps the complete batch-scope description on the
+		// arg, while the planner path passes its template and receives the
+		// short pointer to the shared instruction instead.
+		expect(
+			injected?.[0]?.parameters?.properties?.[TURN_SCOPE_ARG],
+		).toMatchObject({
 			type: "string",
 			enum: [TURN_SCOPE_FINAL, TURN_SCOPE_MORE_WORK_PENDING],
 			description: expect.stringContaining(plannerBatchScopeDescription),
@@ -7557,12 +7565,14 @@ describe("verified intent gate", () => {
 				},
 			],
 		}));
-		const evaluate = vi.fn(async () => ({
-			success: true,
-			decision: "FINISH" as const,
-			thought: "evaluator ran",
-			messageToUser: "Forgot it.",
-		}));
+		const evaluate = vi.fn<NonNullable<PlannerLoopParams["evaluate"]>>(
+			async () => ({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "evaluator ran",
+				messageToUser: "Forgot it.",
+			}),
+		);
 		const result = await runPlannerLoop({
 			runtime,
 			context: intentContext(["forget favorite tea"]),

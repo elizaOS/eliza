@@ -106,8 +106,14 @@ const message = {
 	content: { text: "record hello" },
 } as Memory;
 
-async function execute(args: { actions: Action[]; toolCall: PlannerToolCall }) {
-	const { runtime, useModel } = makeRuntime(args.actions);
+async function execute(args: {
+	actions: Action[];
+	runtimeActions?: Action[];
+	toolCall: PlannerToolCall;
+}) {
+	const { runtime, useModel } = makeRuntime(
+		args.runtimeActions ?? args.actions,
+	);
 	const result = await executeV5PlannedToolCall({
 		runtime,
 		toolCall: args.toolCall,
@@ -334,4 +340,39 @@ describe("inferPromotedSubactionDispatch", () => {
 			),
 		).toBeUndefined();
 	});
+});
+
+it("keeps inference within the supplied action surface", async () => {
+	const { parent, actions, handled } = ledgerFamily(() => "LEDGER_CREATE");
+	const { result } = await execute({
+		actions: [parent],
+		runtimeActions: actions,
+		toolCall: { name: "LEDGER", params: { text: "hello" } },
+	});
+	expect(handled).toEqual([]);
+	expect(result.inferredSubaction).toBeUndefined();
+});
+
+it("does not substitute an umbrella for an independently implemented child", () => {
+	const { parent } = ledgerFamily(() => "LEDGER_CREATE");
+	const child: Action = {
+		name: "LEDGER_CREATE",
+		description: "Independent child contract",
+		parameters: [
+			{
+				name: "action",
+				description: "Operation",
+				required: true,
+				schema: { type: "string", enum: ["create"] },
+			},
+		],
+	};
+	parent.subActions = [child];
+	expect(
+		inferPromotedSubactionDispatch(
+			parent,
+			{ name: "LEDGER", params: { text: "hello" } },
+			() => child,
+		),
+	).toBeUndefined();
 });

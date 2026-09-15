@@ -312,6 +312,11 @@ export function inferMemorySubaction(
   const query = hasNonEmptyString(params.query);
   const confirm = params.confirm === true;
   let op = normalizeMemoryOp(params as MemoryParams);
+  if (
+    !op &&
+    [params.action, params.op, params.subaction].some(hasNonEmptyString)
+  )
+    return undefined;
   if (!op) {
     const target = memoryId || query;
     if (text && !target) {

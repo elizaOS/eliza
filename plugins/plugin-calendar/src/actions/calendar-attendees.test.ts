@@ -32,23 +32,24 @@ describe("normalizeCalendarAttendees (planner-arg sanitization)", () => {
     ]);
   });
 
-  it("drops guests on reserved documentation domains the planner fabricates (live regression)", () => {
-    // "add a vet appointment friday at 3pm" named nobody; the planner still
-    // emitted sam@example.com, and the follow-up move then 400'd on the
-    // built-in calendar's attendee-notification boundary.
-    expect(
-      normalizeCalendarAttendees({
-        attendees: [
-          { email: "sam@example.com", displayName: "Sam" },
-          "guest@Example.ORG",
-          "qa@team.test",
-          "dev@localhost",
-        ],
-      }),
-    ).toBeUndefined();
-    expect(attendeeEmailAccepted("sam@example.com")).toBe(false);
+  it("preserves explicitly supplied addresses without guessing whether a domain was invented", () => {
+    // Live 2026-09-12: "add a vet appointment friday at 3pm" named nobody, the
+    // planner still emitted sam@example.com, and the follow-up move 400'd on
+    // the built-in calendar's attendee-notification boundary. Domain
+    // heuristics are not the fix: the guard lives in shouldNotifyAttendees /
+    // builtInNotifyNote (calendar-handler.notify-attendees.test.ts), so a
+    // supplied recipient is kept whenever its syntax is valid.
+    const attendees = [
+      { email: "sam@example.com", displayName: "Sam" },
+      { email: "guest@Example.ORG" },
+      { email: "qa@team.test" },
+    ];
+    expect(normalizeCalendarAttendees({ attendees })).toEqual(attendees);
+    expect(attendeeEmailAccepted("sam@example.com")).toBe(true);
     expect(attendeeEmailAccepted("sam@examples.com")).toBe(true);
     expect(attendeeEmailAccepted("sam@acme.co")).toBe(true);
+    // A dotless host is still a syntax rejection, not a reserved-domain guess.
+    expect(attendeeEmailAccepted("dev@localhost")).toBe(false);
   });
 
   it("returns undefined when the details carry no attendees", () => {

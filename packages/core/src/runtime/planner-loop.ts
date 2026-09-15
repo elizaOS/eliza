@@ -7,8 +7,6 @@
  * user-safe-message projection that keeps tool/control JSON and pre-tool
  * thoughts out of the reply.
  */
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
 import { promotedParentRoutingHint } from "../actions/promote-subactions";
 import {
 	DEFAULT_SUBACTION_KEYS,
@@ -17,7 +15,6 @@ import {
 import { DISCOVER_TOOLS_NAME } from "../actions/to-tool";
 import { ElizaError } from "../errors";
 import { computeCallCostUsd } from "../features/trajectories/pricing";
-import { logger } from "../logger";
 import { parseInteractionBlocks } from "../messaging/interactions/parse";
 import {
 	plannerBatchScopeDescription,
@@ -48,6 +45,7 @@ import type {
 } from "../types/components";
 import type { ContextEvent, ContextObjectTool } from "../types/context-object";
 import {
+	type EffectReceipt,
 	hasAppliedUserFacingEffectProof,
 	resolveAppliedUserFacingEffectReceipts,
 	resolveUserFacingEffectReceipts,
@@ -82,7 +80,6 @@ import {
 	hasReasoningResidue,
 	stripReasoningPrefixes,
 } from "../utils/reasoning-tags";
-import { resolveStateDir } from "../utils/state-dir";
 import { isObjectRecord, isPlainObject } from "../utils/type-guards";
 import { toWellFormedUnicode } from "../utils/well-formed";
 import {
@@ -1149,7 +1146,8 @@ async function runPlannerLoopIterations(
 				pendingScopeRejectedFinish?.iteration === iteration - 1 &&
 				pendingScopeRejectedFinish.output.protocolFailure !== true &&
 				trajectory.context === contextBeforePlanner &&
-				failures.length === 0 &&
+				// Historical failures remain in the retry budget; only unresolved
+				// operations invalidate an otherwise unchanged verified answer.
 				!latestUnresolvedFailedNonTerminalToolStep(trajectory) &&
 				(plannerOutput.toolCalls.length === 1 || scopeOnlyReplyBatch) &&
 				plannerOutput.toolCalls[0].name.toUpperCase() === "REPLY";
@@ -3002,7 +3000,7 @@ function renderPlannerModelInput(params: {
 			id: "planner-context-selection",
 			label: "planner_context",
 			stable: false,
-			content: `${JSON.stringify({ selection: selected.selection, omittedSourceCount: selected.omittedSourceCount })}\nStage 1 reviewed every prior dialogue source for this request. Only its selected sources are shown; current request, standing provider constraints, selected assistant referents/pending work and all current tool receipts remain complete. If a constraint, correction, referent or historical dependency is uncertain, call RESTORE_CONTEXT alone with scope=history before taking effects. Every original source will be restored for this and all later planner rounds. Never infer or count omitted messages or replay an action to retrieve conversation context.`,
+			content: `${JSON.stringify({ selection: selected.selection, omittedSourceCount: selected.omittedSourceCount })}\nStage 1 reviewed every prior dialogue source for this request. Only its selected sources are shown; current request, standing provider constraints, selected assistant referents/pending work and all current tool receipts remain complete. Explicit live-record filters (such as a keyword and date bounds) do not by themselves require prior dialogue: use the supplied constraints and the live tool. Restore history to resolve a specific missing constraint, correction, referent or historical dependency. If such a dependency is uncertain, call RESTORE_CONTEXT alone with scope=history before taking effects. Every original source will be restored for this and all later planner rounds. Never infer or count omitted messages or replay an action to retrieve conversation context.`,
 		});
 	const template = params.template ?? plannerTemplate;
 	const instructions = (
@@ -3290,6 +3288,7 @@ export const TURN_SCOPE_ARG = "eliza_turn_scope";
 export const TURN_SCOPE_FINAL = "final";
 export const TURN_SCOPE_MORE_WORK_PENDING = "more_work_pending";
 
+// Custom planner prompts need the complete scope contract in the tool schema.
 // Full protocol text for standalone callers. `withTurnScopeToolArg` swaps it
 // for a short pointer whenever the shared system instructions already state
 // the batch-scope rule (the planner path always does, via the template or the
@@ -4370,6 +4369,21 @@ function extractProviderName(
 	return undefined;
 }
 
+/** Preserves a failed evaluator's complete evidence for the outer message boundary. */
+export class PostEffectEvaluationError extends ElizaError {
+	readonly trajectory: PlannerTrajectory;
+
+	constructor(cause: unknown, trajectory: PlannerTrajectory) {
+		super("Evaluation failed after a recorded action outcome.", {
+			code: "POST_EFFECT_EVALUATION_FAILED",
+			cause,
+			severity: "fatal",
+			context: { contextId: trajectory.context.id },
+		});
+		this.trajectory = trajectory;
+	}
+}
+
 function evaluatorFailureAfterInternalEffect(
 	trajectory: PlannerTrajectory,
 	error: unknown,
@@ -4383,8 +4397,20 @@ function evaluatorFailureAfterInternalEffect(
 		)?.result;
 	const noProvider =
 		error instanceof Error && error.name === "NoModelProviderConfiguredError";
-	if (!effectResult || (!noProvider && !isModelProviderError(error))) {
-		return undefined;
+	if (!effectResult) return undefined;
+	if (!noProvider && !isModelProviderError(error)) {
+		if (
+			trajectory.codingMode === true ||
+			isProviderContextOverflowFailure(error) ||
+			(isObjectRecord(error) &&
+				(error.code === "TURN_ABORTED" ||
+					error.name === "TurnAbortedError" ||
+					error.name === "AbortError"))
+		)
+			return undefined;
+		// error-policy:J2 Preserve the programmer error and complete settled
+		// evidence; only the outer message boundary may translate this failure.
+		throw new PostEffectEvaluationError(error, trajectory);
 	}
 	// A later read cannot erase an earlier settled effect. Keep
 	// success/data/receipts intact, and propagate presentation failure through
@@ -5928,46 +5954,96 @@ function latestUnresolvedFailedNonTerminalToolStep(
 }
 
 /**
- * A failed effect receipt is superseded once the same tool applies the same
- * effect operation later in the turn. The operation key carries every
- * argument, so a retry that reaches the target another way (by title after a
- * rejected event id) never matches the failed call and the stale failure kept
- * authority over the final message: live 2026-09-14 a calendar move was
- * applied on the fourth call and the user was told it could not be moved.
- * The receipt's namespaced operation ("calendar.event.update") is the
- * tool's own statement of what it did; an applied receipt for it says the
- * failed attempt's outcome no longer stands.
- */
-/**
- * Two receipt operation names denote the same effect when they carry the
- * same words in any order and joiner: the personal-assistant wrapper names
- * a failed calendar update `calendar.update_event` (its subaction) while the
- * calendar handler names the applied mutation `calendar.event.update`, so an
- * exact comparison never matched on the live path and the failed step kept
- * authority over "Done — moved to 4pm" (live 2026-09-14, tj-5657e3e32de5da:
- * a forced "do not claim success" compose pass after the move applied).
+ * Canonicalizes the calendar wrapper's explicitly supported operation aliases.
+ * The personal-assistant wrapper names a failed calendar update
+ * `calendar.update_event` (its subaction) while the calendar handler names the
+ * applied mutation `calendar.event.update`, so an exact comparison never
+ * matched on the live path and the failed step kept authority over "Done —
+ * moved to 4pm" (live 2026-09-14, tj-5657e3e32de5da: a forced "do not claim
+ * success" compose pass after the move applied). Only these known aliases are
+ * folded; other operations keep their exact name.
  */
 export function effectOperationKey(operation: string): string {
-	return operation
-		.toLowerCase()
-		.split(/[^a-z0-9]+/)
-		.filter((token) => token.length > 0)
-		.sort()
-		.join(" ");
+	return operation.replace(
+		/^calendar\.(create|update|delete)_event$/,
+		"calendar.event.$1",
+	);
 }
 
+/** Calendar retries may change their selector, but must preserve the mutation. */
+function effectRetryParams(call: PlannerToolCall, operation: string): string {
+	const params = { ...call.params };
+	delete params.eliza_turn_scope;
+	if (
+		operation === "calendar.event.update" ||
+		operation === "calendar.event.delete"
+	) {
+		delete params.query;
+		delete params.eventId;
+		if (
+			params.details &&
+			typeof params.details === "object" &&
+			!Array.isArray(params.details)
+		) {
+			const details = { ...(params.details as Record<string, unknown>) };
+			delete details.eventId;
+			params.details = details;
+		}
+	}
+	return stableCorrelationJson(params);
+}
+
+/**
+ * Resource kind of a failure receipt that never reached its target: the
+ * personal-assistant wrapper binds such a failure to the source message. Live
+ * 2026-09-14 (tj-5657e3e32de5da) the failed `calendar.update_event` receipt
+ * carried the message id while the applied `calendar.event.update` receipt
+ * carried the event id, so a resource comparison could never match and the
+ * stale failure kept authority over "Done — moved to 4pm".
+ */
+const MESSAGE_SCOPED_EFFECT_RESOURCE_KIND = "runtime.message";
+
+/**
+ * A failed receipt that names a resource is superseded only by an applied
+ * receipt for that same resource; a message-scoped failure names no target,
+ * so the operation and the retry's mutation (`effectRetryParams`) decide.
+ */
+function failedEffectTargetsAppliedResource(
+	failed: EffectReceipt,
+	applied: EffectReceipt,
+): boolean {
+	if (failed.resource.kind === MESSAGE_SCOPED_EFFECT_RESOURCE_KIND) {
+		return true;
+	}
+	return (
+		applied.resource.kind === failed.resource.kind &&
+		applied.resource.id.length > 0 &&
+		applied.resource.id === failed.resource.id
+	);
+}
+
+/**
+ * A failed effect receipt is superseded once the same tool applies the same
+ * effect operation to the same resource later in the turn. The planner
+ * operation key carries every argument, so a retry that reaches the target
+ * another way (by title after a rejected event id) never matches the failed
+ * call and the stale failure kept authority over the final message: live
+ * 2026-09-14 a calendar move was applied on the fourth call and the user was
+ * told it could not be moved. The receipt's namespaced operation
+ * ("calendar.event.update") is the tool's own statement of what it did; an
+ * applied receipt for it, on the same resource and with the same mutation
+ * (`effectRetryParams`), says the failed attempt's outcome no longer stands.
+ */
 function resolveFailedEffectsSupersededBy(
 	step: PlannerStep,
 	unresolvedByOperation: Map<string, PlannerStep>,
 ): void {
 	const call = step.toolCall;
 	if (!call) return;
-	const applied = new Set(
-		(step.result?.effectReceipts ?? [])
-			.filter((receipt) => receipt.outcome === "applied")
-			.map((receipt) => effectOperationKey(receipt.operation)),
+	const applied = (step.result?.effectReceipts ?? []).filter(
+		(receipt) => receipt.outcome === "applied",
 	);
-	if (applied.size === 0) return;
+	if (applied.length === 0) return;
 	for (const [key, failed] of [...unresolvedByOperation.entries()]) {
 		const failedCall = failed.toolCall;
 		if (
@@ -5976,12 +6052,22 @@ function resolveFailedEffectsSupersededBy(
 		) {
 			continue;
 		}
-		const failedOperations = (failed.result?.effectReceipts ?? [])
-			.filter((receipt) => receipt.outcome === "failed")
-			.map((receipt) => effectOperationKey(receipt.operation));
+		const failedReceipts = (failed.result?.effectReceipts ?? []).filter(
+			(receipt) => receipt.outcome === "failed",
+		);
 		if (
-			failedOperations.length > 0 &&
-			failedOperations.every((operation) => applied.has(operation))
+			failedReceipts.length > 0 &&
+			failedReceipts.every((failedReceipt) =>
+				applied.some((receipt) => {
+					const operation = effectOperationKey(receipt.operation);
+					return (
+						operation === effectOperationKey(failedReceipt.operation) &&
+						failedEffectTargetsAppliedResource(failedReceipt, receipt) &&
+						effectRetryParams(call, operation) ===
+							effectRetryParams(failedCall, operation)
+					);
+				}),
+			)
 		) {
 			unresolvedByOperation.delete(key);
 		}
@@ -10029,131 +10115,13 @@ function getNonEmptyString(value: unknown): string | undefined {
 		: undefined;
 }
 
-/**
- * Look up the optimized `action_planner` prompt from the runtime's
- * OptimizedPromptService, fall back to the baseline `plannerTemplate`. Keeps
- * the planner loop using the latest artifact written by
- * `bun run train -- --backend native --task action_planner` without any
- * additional plumbing at the call site.
- *
- * `PlannerRuntime` is the minimal shape this module accepts; the full
- * `IAgentRuntime` (with `getService`) flows in via the message handler at
- * `services/message.ts`. Cast structurally so we don't widen `PlannerRuntime`
- * just to read one optional service.
- */
-// In-process cache for the on-disk optimized planner artifact. Resolved
-// once per process so we don't re-read the JSON file on every planner
-// invocation. Set to `null` for "no artifact" and to the prompt body when
-// found. The flag avoids re-attempting reads when the file is missing.
-let cachedDiskOptimizedPlannerPrompt: string | null = null;
-let cachedDiskOptimizedPlannerLoaded = false;
-
-function loadOptimizedPlannerFromDisk(runtime: PlannerRuntime): string | null {
-	const dir = join(resolveStateDir(), "optimized-prompts", "action_planner");
-	if (!existsSync(dir)) return null;
-
-	// Preferred path: read via the `current` symlink that
-	// `OptimizedPromptService.setPrompt` / `rollback` maintain. This is the
-	// authoritative live artifact.
-	const currentPath = join(dir, "current");
-	if (existsSync(currentPath)) {
-		try {
-			const raw = readFileSync(currentPath, "utf-8");
-			const parsed = JSON.parse(raw) as {
-				task?: string;
-				prompt?: string;
-			};
-			if (
-				parsed.task === "action_planner" &&
-				typeof parsed.prompt === "string"
-			) {
-				return parsed.prompt;
-			}
-		} catch (err) {
-			// error-policy:J4 A malformed optional optimization artifact degrades
-			// to the next candidate while the failure remains observable.
-			logger.warn(
-				{ path: currentPath, err: (err as Error).message },
-				"[PlannerLoop] malformed action_planner 'current' artifact; falling back to mtime scan",
-			);
-			runtime.reportError?.("PlannerLoop.optimizedPromptCurrent", err, {
-				path: currentPath,
-			});
-		}
-	}
-
-	// Fallback: legacy / pre-symlink stores. Pick the newest artifact by
-	// mtime so we still find something when `current` is missing.
-	const entries = readdirSync(dir)
-		.filter((f) => f.endsWith(".json"))
-		.map((f) => ({
-			path: join(dir, f),
-			mtime: statSync(join(dir, f)).mtimeMs,
-		}))
-		.sort((a, b) => b.mtime - a.mtime);
-	for (const entry of entries) {
-		try {
-			const raw = readFileSync(entry.path, "utf-8");
-			const parsed = JSON.parse(raw) as {
-				task?: string;
-				prompt?: string;
-			};
-			if (
-				parsed.task === "action_planner" &&
-				typeof parsed.prompt === "string"
-			) {
-				return parsed.prompt;
-			}
-		} catch (err) {
-			// error-policy:J4 A malformed optional optimization artifact degrades
-			// to the next candidate while the failure remains observable.
-			logger.warn(
-				{ path: entry.path, err: (err as Error).message },
-				"[PlannerLoop] malformed action_planner artifact; trying next candidate",
-			);
-			runtime.reportError?.("PlannerLoop.optimizedPromptArtifact", err, {
-				path: entry.path,
-			});
-		}
-	}
-	return null;
-}
-
+/** Resolve through the runtime-owned artifact service; startup without it uses the baseline. */
 function resolveOptimizedPlannerTemplate(runtime: PlannerRuntime): string {
-	// Production path: consult the registered service first. When it has
-	// an artifact for `action_planner`, return that. The shared helper
-	// gracefully no-ops when `getService` is missing on the runtime.
-	const fromService = resolveOptimizedPromptForRuntime(
+	return resolveOptimizedPromptForRuntime(
 		runtime as PlannerRuntime & {
 			getService?: <T>(name: string) => T | null | undefined;
 		},
 		"action_planner",
 		plannerTemplate,
 	);
-	if (fromService !== plannerTemplate) return fromService;
-
-	// Fallback: read the on-disk store directly. Handles the test runtime
-	// path (where the service may not have started before the first
-	// planner call), the lazy-start race in production, and any other
-	// path that hasn't gotten the service registered yet.
-	if (!cachedDiskOptimizedPlannerLoaded) {
-		try {
-			cachedDiskOptimizedPlannerPrompt = loadOptimizedPlannerFromDisk(runtime);
-		} catch (err) {
-			// error-policy:J4 Disk optimization is optional; use the bundled
-			// template and report the unavailable optimization.
-			// readdir/stat failures on the optimized-prompts directory are
-			// non-fatal: we fall back to the bundled `plannerTemplate`. Log so
-			// repeated boot failures show up in operator output rather than
-			// being silently masked.
-			logger.warn(
-				{ err: (err as Error).message },
-				"[PlannerLoop] optimized planner disk load failed; using bundled template",
-			);
-			runtime.reportError?.("PlannerLoop.optimizedPromptDisk", err);
-			cachedDiskOptimizedPlannerPrompt = null;
-		}
-		cachedDiskOptimizedPlannerLoaded = true;
-	}
-	return cachedDiskOptimizedPlannerPrompt ?? plannerTemplate;
 }

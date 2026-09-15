@@ -1,15 +1,17 @@
 /**
- * Pins the planner-facing shape of CALENDAR's `details` argument against the
- * handler's alias tolerance. Live 2026-09-13: the 99-key schema (every
- * spelling of every field plus connector control flags) rendered ~10.7k
- * characters per planner call and the 27B planner smeared debris across it
- * ("4pm" as location, neighbouring key names as values, placeholder guests).
- * The planner now sees one canonical key per concept; the older spellings
- * stay accepted by normalizeCalendarDetails for direct callers and replayed
- * requests. Deterministic unit suite over the exported runner: no runtime,
- * no network.
+ * Exercises current and historical calendar requests at the actual
+ * argument-validation boundary, and pins the planner-facing shape of
+ * CALENDAR's `details` argument against the handler's alias tolerance.
+ * Live 2026-09-13: the 99-key schema (every spelling of every field plus
+ * connector control flags) rendered ~10.7k characters per planner call and
+ * the 27B planner smeared debris across it ("4pm" as location, neighbouring
+ * key names as values, placeholder guests). The planner now sees one
+ * canonical key per concept; the older spellings stay accepted by
+ * normalizeCalendarDetails for direct callers and replayed requests.
+ * Deterministic unit suite over the exported runner: no runtime, no network,
+ * and no model call (the deps throw if one is attempted).
  */
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { validateToolArgs } from "../../../packages/core/src/actions/validate-tool-args";
 import {
   createCalendarActionRunner,
@@ -41,15 +43,16 @@ function foldKey(key: string): string {
 
 function deps(): CalendarActionDeps {
   return {
-    runTextModel: vi.fn(async () => null),
-    runJsonModel: vi.fn(async () => null),
-    recentConversationTexts: vi.fn(async () => []),
-    mutationGateway: {
-      schedule: vi.fn(),
-      modify: vi.fn(),
-      cancel: vi.fn(),
+    async runTextModel() {
+      throw new Error("Unexpected model call");
     },
-  } as unknown as CalendarActionDeps;
+    async runJsonModel() {
+      throw new Error("Unexpected model call");
+    },
+    async recentConversationTexts() {
+      return [];
+    },
+  };
 }
 
 describe("CALENDAR details planner schema", () => {
@@ -115,13 +118,10 @@ describe("CALENDAR details planner schema", () => {
         ).toBe("value");
       }
     }
-    // A canonical value already present wins over an alias beside it.
-    expect(
-      normalizeCalendarDetails({ startAt: "canonical", start_time: "alias" })
-        ?.startAt,
-    ).toBe("canonical");
   });
+});
 
+describe("calendar argument compatibility", () => {
   it("accepts canonical create, update and delete arguments at the validation boundary", () => {
     const action = createCalendarActionRunner(deps());
     const create = {
@@ -173,19 +173,28 @@ describe("CALENDAR details planner schema", () => {
   });
 
   it("names an alias spelling as the unexpected details argument so the planner can correct it", () => {
-    // Core closes the details object: an older planner output that still
+    // Core closes the details object: a historical planner output that still
     // says start_time is rejected with the offending path (the planner loop's
-    // correction retry), while direct callers keep the alias fold below.
+    // correction retry), while direct callers and replayed requests keep the
+    // handler's alias fold below, which still normalizes the value.
     const action = createCalendarActionRunner(deps());
-    const result = validateToolArgs(action, {
+    const args = {
       subaction: "create_event",
       title: "Dentist",
-      details: { start_time: "2026-09-18T15:00:00", timeZone: "UTC" },
-    });
+      details: { title: "Dentist", start_time: "2026-09-18T15:00:00" },
+    };
+    const result = validateToolArgs(action, args);
     expect(result.valid).toBe(false);
     expect(result.errors.join("; ")).toContain("details.start_time");
+    expect(normalizeCalendarDetails(args.details)?.startAt).toBe(
+      "2026-09-18T15:00:00",
+    );
+  });
+
+  it("preserves canonical values when an alias is also present", () => {
     expect(
-      normalizeCalendarDetails({ start_time: "2026-09-18T15:00:00" })?.startAt,
-    ).toBe("2026-09-18T15:00:00");
+      normalizeCalendarDetails({ startAt: "canonical", start_time: "alias" })
+        ?.startAt,
+    ).toBe("canonical");
   });
 });

@@ -945,7 +945,7 @@ describe("v5 tiered action surface", () => {
 		expect(handler).toHaveBeenCalledOnce();
 	});
 
-	it("routes an oversized family through its parent without dropping child schemas", async () => {
+	it("keeps an oversized family's children on the planner surface (the estimate is diagnostic)", async () => {
 		const childHandler = vi.fn(async () => ({
 			success: true,
 			text: "Calendar event created",
@@ -973,9 +973,7 @@ describe("v5 tiered action surface", () => {
 					contexts: ["calendar"],
 					candidateActionNames: ["CALENDAR"],
 				}),
-				plannerToolResponse("CALENDAR"),
 				plannerToolResponse("CALENDAR_OP_01"),
-				finishEvaluatorResponse("Calendar event created."),
 				finishEvaluatorResponse("Calendar event created."),
 			],
 		});
@@ -989,21 +987,19 @@ describe("v5 tiered action surface", () => {
 
 		const toolNames = plannerToolNames(runtime);
 		expect(toolNames).toContain("CALENDAR");
-		expect(toolNames).not.toContain("CALENDAR_OP_01");
-		const subPlannerCall = getCalls(runtime).filter(
+		expect(toolNames).toContain("CALENDAR_OP_01");
+		expect(toolNames).toContain("CALENDAR_OP_28");
+		const plannerCall = getCalls(runtime).find(
 			(call) => call.modelType === ModelType.ACTION_PLANNER,
-		)[1];
-		if (!subPlannerCall) throw new Error("Expected the child-family planner");
-		const childTools = (
-			subPlannerCall.params as { tools: Array<{ name: string }> }
-		).tools;
-		expect(childTools.map((tool) => tool.name)).toContain("CALENDAR_OP_01");
-		expect(childTools.map((tool) => tool.name)).toContain("CALENDAR_OP_28");
-		expect(JSON.stringify(childTools)).toContain(children[27].description);
+		);
+		if (!plannerCall) throw new Error("Expected the planner call");
+		const tools = (plannerCall.params as { tools: Array<{ name: string }> })
+			.tools;
+		expect(JSON.stringify(tools)).toContain(children[27].description);
 		expect(childHandler).toHaveBeenCalledOnce();
 	});
 
-	it("uses Stage 1 hints to promote a parent to Tier A and expose children", async () => {
+	it("exposes the Stage 1 child while retaining other authorized names for discovery", async () => {
 		const playMusic = makeAction({
 			name: "PLAY_MUSIC",
 			description: "Start playing a track.",
@@ -1049,13 +1045,21 @@ describe("v5 tiered action surface", () => {
 		expect(prompt).toContain("PLAY_MUSIC");
 		expect(prompt).toContain("PAUSE_MUSIC");
 		// The sibling-context family never becomes a planner tool and its
-		// description is not rendered. Its name may still appear in the
-		// DISCOVER_TOOLS name index: the discovery catalog lists every authorized
-		// family under its own contexts so a misrouted Stage-1 domain cannot make
-		// an authorized family undiscoverable.
-		expect(plannerToolNames(runtime)).not.toContain("SEND_EMAIL");
+		// description is not rendered. Its name still appears in the
+		// DISCOVER_TOOLS name index (the tool's description lists each authorized
+		// family's exact name and child names only): the discovery catalog lists
+		// every authorized family under its own contexts so a misrouted Stage-1
+		// domain cannot make an authorized family undiscoverable. The unselected
+		// sibling child stays discoverable the same way instead of loading its
+		// schema.
+		expect(prompt).toContain("SEND_EMAIL");
 		expect(prompt).not.toContain("- SEND_EMAIL:");
 		expect(prompt).not.toContain("Send an email.");
+		const toolNames = plannerToolNames(runtime);
+		expect(toolNames).toContain("PLAY_MUSIC");
+		expect(toolNames).toContain("DISCOVER_TOOLS");
+		expect(toolNames).not.toContain("PAUSE_MUSIC");
+		expect(toolNames).not.toContain("SEND_EMAIL");
 	});
 
 	it("executes the model-selected app action while keeping focused-view tools discoverable", async () => {

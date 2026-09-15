@@ -6878,6 +6878,8 @@ async function triggerNamedLikeReminder(
       agentIds: [runtime.agentId],
     });
   } catch {
+    // Best-effort hint: a task-store failure must not turn the not-found
+    // reminder reply into a thrown error.
     return undefined;
   }
   const matches = tasks.flatMap((task) => {

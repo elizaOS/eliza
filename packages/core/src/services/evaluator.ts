@@ -382,19 +382,13 @@ function renderSharedContext(params: {
 	options: EvaluatorRunOptions;
 	parts: Record<string, string>;
 	/** Blocks hoisted from the active sections, rendered once after the provider context. */
-	blocks: Record<string, string>;
+	blocks: Readonly<Record<string, string>>;
 }): string {
 	const { runtime, message, agentName, options, parts, blocks } = params;
 	const part = (name: string, fallback = "(none)") => {
 		const text = toWellFormedUnicode(parts[name] ?? "");
 		return text || fallback;
 	};
-	const blockText = Object.entries(blocks)
-		.map(
-			([heading, text]) =>
-				`\n${heading}:\n${toWellFormedUnicode(text) || "(none)"}\n`,
-		)
-		.join("");
 
 	return `Evaluate just-finished turn for ${agentName}.
 
@@ -422,7 +416,10 @@ ${parts.referenceContext ?? ""}
 
 Provider context:
 ${part("providerContext")}
-${blockText}`;
+${Object.entries(blocks)
+	.map(([heading, text]) => `\n${heading}:\n${toWellFormedUnicode(text)}`)
+	.join("\n")}
+`;
 }
 
 function buildPrompt(params: {
@@ -532,20 +529,24 @@ function buildPrompt(params: {
 	};
 	// Blocks several sections would each embed (live 2026-09-14: the room
 	// entity list appeared once per participant section) render once in the
-	// shared context; the first declaring section's text wins.
-	const sharedBlocks: Record<string, string> = {};
+	// shared context; the first declaring section's text wins. Sections
+	// reference the shared copy only when their own complete text matches;
+	// differing bodies with the same heading remain in their owning section.
+	const declaredBlocks = new Map<string, string>();
 	for (const entry of active) {
-		const declared = entry.evaluator.sharedBlocks?.({
+		const blocks = entry.evaluator.sharedBlocks?.({
 			runtime,
 			message: entry.message,
 			state,
 			options: entry.options,
 			prepared: entry.prepared,
 		});
-		for (const [heading, text] of Object.entries(declared ?? {})) {
-			if (text && !(heading in sharedBlocks)) sharedBlocks[heading] = text;
+		for (const [heading, text] of Object.entries(blocks ?? {})) {
+			if (text && !declaredBlocks.has(heading))
+				declaredBlocks.set(heading, text);
 		}
 	}
+	const sharedBlocks = Object.fromEntries(declaredBlocks);
 	const shared = {
 		roomTranscriptRendered:
 			providerConversationRendered || params.roomTranscript !== null,

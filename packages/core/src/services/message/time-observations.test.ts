@@ -1,3 +1,4 @@
+/** Exercises current-time grounding and exclusions with deterministic provider observations. */
 import { describe, expect, it } from "vitest";
 import {
 	groundedCurrentTimeReply,
@@ -28,6 +29,7 @@ describe("statedTimeIsUngrounded", () => {
 			"What day is it?",
 			"whats the date today",
 			"what's the current time",
+			"what's today's date?",
 		])
 			expect(requestAsksCurrentTime(q)).toBe(true);
 		expect(
@@ -103,4 +105,18 @@ describe("statedTimeIsUngrounded", () => {
 			"It's Friday, September 11, 2026 at 11:18:30 AM EDT.",
 		);
 	});
+});
+
+it.each([
+	["What date did Apollo 11 land?", "Sunday, July 20, 1969."],
+	["What day was September 10?", "Thursday."],
+	[
+		"What day is it, and when is my appointment?",
+		"Today is Friday. Your appointment is Thursday.",
+	],
+	["What day is it?", "It is Friday; yesterday was Thursday."],
+	["What day is it?", 'The quoted note says "Thursday"; today is Friday.'],
+	["What time is it in Tokyo?", "It is 12:18 AM."],
+])("does not reinterpret other temporal claims: %s", (request, reply) => {
+	expect(statedTimeIsUngrounded({ request, reply, providers })).toBe(false);
 });

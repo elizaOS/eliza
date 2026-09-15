@@ -288,12 +288,8 @@ export async function executeV5PlannedToolCall(
 	// the planner would have made by passing it.
 	const inferred =
 		action && actionHasSubActions(action) && !hasDispatcherActionParameter
-			? inferPromotedSubactionDispatch(
-					action,
-					toolCall,
-					(name) =>
-						executionActions.find((candidate) => candidate.name === name) ??
-						args.runtime.actions.find((candidate) => candidate.name === name),
+			? inferPromotedSubactionDispatch(action, toolCall, (name) =>
+					executionActions.find((candidate) => candidate.name === name),
 				)
 			: undefined;
 	if (
@@ -746,6 +742,7 @@ export function collectPlannerTools(
 				};
 				return {
 					name: alias.name,
+					...(extendsSharedPreamble ? { descriptionBase: "shared" } : {}),
 					...(suffix !== undefined
 						? suffix === defaultSuffix
 							? {}
@@ -765,7 +762,7 @@ export function collectPlannerTools(
 			});
 			const preambleNote =
 				sharedAliasPreamble !== undefined
-					? ` Aliases carrying descriptionTail (or neither description field) are described by this shared preamble followed by the tail (or by the default " — subaction = value"): ${JSON.stringify(sharedAliasPreamble)}.`
+					? ` Only aliases with descriptionBase="shared" use this shared preamble followed by descriptionTail (or the default " — subaction = value"); all other aliases retain the parent description base: ${JSON.stringify(sharedAliasPreamble)}.`
 					: "";
 			parentTool.description += `\nGenerated aliases represented by this umbrella: call this tool using the alias's pinned discriminator. Defaults for every alias unless its contract says otherwise: pins[name]=value pins that property of this tool to value (enum [value], default value, description 'Subaction discriminator (auto-set to "value" for this virtual; do not change).'); the alias description is this tool's description + " — subaction = value" (descriptionSuffix appends verbatim instead; description replaces it); the alias takes every property of this tool in order, including descriptions and defaults (parentParameterNames lists the exact subset; propertyOverrides replaces only differing properties); type object, nothing required, and this tool's strict and additionalProperties.${preambleNote} Complete alias contracts:\n${JSON.stringify(aliasContracts)}`;
 		}

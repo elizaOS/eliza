@@ -290,7 +290,7 @@ const TASK_STATE_CLAIM_REPLY_RE =
 	/\bno (?:such )?task\b|\btask (?:doesn'?t|does not) exist\b|\b(?:got|was|been) (?:stopped|aborted|cancelled)\b|\bnothing (?:is )?running\b|\bstill (?:running|working)\b|\bnot (?:finished|done|complete)\b/i;
 
 const STOP_LEXICON =
-	/\b(?:stop|quiet|shut up|enough|nvm|never ?mind|cancel that|forget it|don'?t (?:do|reply|answer|respond)|leave me|go away|pause|be quiet|hold off|stand down|mute)\b/i;
+	/\b(?:stop|quiet|shut up|enough|nvm|never ?mind|cancel that|forget it|don'?t (?:do|reply|answer|respond)|leave me|go away|pause|be quiet|hold off|stand down|mute|cease|halt|abort|desist)\b|no continúes|no sigas|dej[aá] de|det[eé]nte|basta|para ya|no continues|arr[êe]te[z]?|laisse[z]? tomber|h[öo]r auf|aufh[öo]ren|stopp\b|fermati|smetti|basta cos[ìi]|прекрати|остановись|хватит|続けないで|やめて|止めて|中止|停止|别继续|不要继续|不要再|停下/iu;
 
 /** Whether the user's own text asks the agent to disengage (the only STOP). */
 export function isStopRequestText(text: string | undefined): boolean {
@@ -309,6 +309,9 @@ export function routeMessageHandlerOutput(
 		 * stage-1 output alone cannot justify. Optional for compatibility —
 		 * absent, the request-shape promotions simply do not run. */
 		messageText?: string;
+		/** Stage 1 repeated STOP/IGNORE after the unusable-decision re-ask: the
+		 * model insists the user disengaged, in words the lexicon may not know. */
+		confirmedStop?: boolean;
 	},
 ): MessageHandlerRoute {
 	const processMessage = output.processMessage;
@@ -321,7 +324,7 @@ export function routeMessageHandlerOutput(
 		// with a hallucinated "On pause" refusal (live 2026-09-11/12). A direct
 		// request with no stop language routes on as RESPOND with its plan intact.
 		const text = options?.messageText?.trim() ?? "";
-		if (!text || isStopRequestText(text)) {
+		if (!text || isStopRequestText(text) || options?.confirmedStop === true) {
 			return { type: "stopped", output };
 		}
 	}

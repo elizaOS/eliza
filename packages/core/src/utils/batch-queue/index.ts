@@ -135,8 +135,14 @@ export class BatchQueue<T> {
 
 	/**
 	 * Run one drain cycle (typically from the repeat task worker).
+	 * Resolves to the number of items processed (0 when idle, disposed, or
+	 * already draining) so callers and the idle-backoff worker share one count.
 	 */
 	async drain(): Promise<number> {
+		return this.drainBatch();
+	}
+
+	private async drainBatch(): Promise<number> {
 		if (this.disposed || this.isDraining) {
 			return 0;
 		}
@@ -216,7 +222,7 @@ export class BatchQueue<T> {
 				idleIntervalMs:
 					this.options.idleDrainIntervalMs ??
 					Math.max(5_000, this.options.drainIntervalMs * 5),
-				onDrain: skip ? undefined : async () => this.drain(),
+				onDrain: skip ? undefined : async () => this.drainBatch(),
 			},
 			this.options.drainIntervalMs,
 		);

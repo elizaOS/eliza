@@ -112,7 +112,7 @@ export function promotedSubactionParent(action: Action): string | undefined {
  * children without the sub-planner: the single-value enum that
  * `pinDiscriminatorForVirtual` left on the child's copy of the parent's
  * discriminator parameter. `undefined` unless `childName` is declared in
- * `parent.subActions` and resolves (inline, or through `lookup`) to an action
+ * `parent.subActions` and resolves through the admitted `lookup` to a generated action of this parent
  * carrying such a pin, so a name that is not a promoted child of this umbrella
  * can never bypass sub-planner routing.
  */
@@ -127,8 +127,9 @@ export function pinnedDiscriminatorForPromotedChild(
 			toUpperSnake(typeof entry === "string" ? entry : entry.name) === wanted,
 	);
 	if (!declared) return undefined;
-	const child = typeof declared === "string" ? lookup(declared) : declared;
-	if (!child) return undefined;
+	const child = lookup(typeof declared === "string" ? declared : declared.name);
+	if (!child || promotedSubactionParent(child) !== parent.name)
+		return undefined;
 	const discriminator = findDiscriminatorParameter(child.parameters);
 	if (!discriminator) return undefined;
 	const enumValues = (discriminator.schema as { enum?: unknown }).enum;

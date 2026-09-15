@@ -1372,6 +1372,85 @@ describe("persistUnpersistedChatReply", () => {
     });
   });
 
+  it("preserves complete reply text and binds identical sentences to distinct turns", async () => {
+    const memories: Memory[] = [];
+    const runtime = makeRuntime({ memories });
+    const first = userTurn();
+    const second = { ...userTurn(), id: stringToUuid("another-user-turn") };
+    const text = "  first line\n\tindented line\n";
+    const result = { text, agentName: "Eliza" };
+    const startedAt = Date.now();
+    await persistUnpersistedChatReply(runtime, first, result, startedAt);
+    await persistUnpersistedChatReply(runtime, second, result, startedAt);
+    expect(memories).toHaveLength(2);
+    expect(memories.map((m) => m.content.text)).toEqual([text, text]);
+    expect(memories.map((m) => m.content.inReplyTo)).toEqual([
+      first.id,
+      second.id,
+    ]);
+    await persistUnpersistedChatReply(runtime, first, result, startedAt);
+    expect(memories).toHaveLength(2);
+    await expect(
+      persistUnpersistedChatReply(
+        runtime,
+        first,
+        { ...result, text: "changed" },
+        startedAt,
+      ),
+    ).rejects.toMatchObject({ code: "CONVERSATION_MEMORY_ID_CONFLICT" });
+  });
+
+  it("reconciles concurrent retries through the unique durable row", async () => {
+    const memories: Memory[] = [];
+    const runtime = makeRuntime({
+      memories,
+      createMemory: async (memory: Memory) => {
+        if (memories.some((row) => row.id === memory.id))
+          throw new Error("duplicate key");
+        memories.push(memory);
+        if (!memory.id) throw new Error("missing durable memory ID");
+        return memory.id;
+      },
+    });
+    const turn = userTurn();
+    const result = { text: replyText, agentName: "Eliza" };
+    const rows = await Promise.all([
+      persistUnpersistedChatReply(runtime, turn, result, Date.now()),
+      persistUnpersistedChatReply(runtime, turn, result, Date.now()),
+    ]);
+    expect(memories).toHaveLength(1);
+    expect(rows[0]?.id).toBe(rows[1]?.id);
+  });
+
+  it("retains the final reply when only a different callback message was committed", async () => {
+    const memories: Memory[] = [];
+    const runtime = makeRuntime({ memories });
+    const interimId = stringToUuid("interim-callback");
+    const interim = createMessageMemory({
+      id: interimId,
+      entityId: AGENT_ID,
+      agentId: AGENT_ID,
+      roomId: ROOM_ID,
+      content: { text: "Checking your calendar." },
+    });
+    memories.push(interim);
+    await persistUnpersistedChatReply(
+      runtime,
+      userTurn(),
+      {
+        text: replyText,
+        agentName: "Eliza",
+        responseMessages: [interim],
+        persistedResponseMessageIds: [interimId],
+      },
+      Date.now(),
+    );
+    expect(memories.map((row) => row.content.text)).toEqual([
+      "Checking your calendar.",
+      replyText,
+    ]);
+  });
+
   it("leaves a reply the message service already committed alone", async () => {
     const memories: Memory[] = [];
     const runtime = makeRuntime({ memories });
@@ -1399,7 +1478,7 @@ describe("persistUnpersistedChatReply", () => {
     expect(memories).toHaveLength(0);
   });
 
-  it("stores nothing for internal, empty, ignored, transient, or already-stored replies", async () => {
+  it("stores nothing for internal, empty, ignored, or transient replies", async () => {
     const turnStartedAt = Date.now() - 5_000;
     const cases: ChatGenerationResult[] = [
       { text: replyText, agentName: "Eliza", transcriptVisibility: "internal" },
@@ -1423,23 +1502,5 @@ describe("persistUnpersistedChatReply", () => {
       ).resolves.toBeNull();
       expect(memories).toHaveLength(0);
     }
-    const stored = createMessageMemory({
-      id: stringToUuid("already-stored"),
-      entityId: AGENT_ID,
-      agentId: AGENT_ID,
-      roomId: ROOM_ID,
-      content: { text: replyText },
-    });
-    stored.createdAt = turnStartedAt + 100;
-    const memories: Memory[] = [stored];
-    await expect(
-      persistUnpersistedChatReply(
-        makeRuntime({ memories }),
-        userTurn(),
-        { text: replyText, agentName: "Eliza" },
-        turnStartedAt,
-      ),
-    ).resolves.toBeNull();
-    expect(memories).toHaveLength(1);
   });
 });

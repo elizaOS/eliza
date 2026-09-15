@@ -260,11 +260,10 @@ export const webFetchAction: Action = {
 };
 
 /**
- * A 5xx, a 429 or a transport error is the endpoint's failure, not the
- * request's: "what's the weather in Austin right now?" ended as "my weather
- * lookup just failed on my end" after one wttr.in HTTP 500 (live sweep
- * 2026-09-14) although WEB_SEARCH could have answered. The failure text names
- * the fallback so the planner tries it before reporting; a 4xx other than 429
+ * Suggest another read source only when the requested endpoint is unavailable:
+ * a 5xx, a 429 or a transport error (including an aborted request timeout) is
+ * the endpoint's failure, not the request's, so the failure text names the
+ * fallback and the planner tries it before reporting. A 4xx other than 429
  * (bad URL, blocked, gone) and a request rejected before it was sent (policy,
  * malformed URL) carry no hint because retrying elsewhere with the same idea
  * rarely helps.
@@ -286,7 +285,7 @@ function withUpstreamFallbackHint(
   try {
     host = new URL(url).hostname;
   } catch {
-    // keep the raw url
+    // error-policy:J3 An invalid URL remains visible as the failed request.
   }
   return `${message} — ${host} failed upstream; try another endpoint or WEB_SEARCH for the same value before telling the user it failed`;
 }

@@ -23,6 +23,7 @@ interface AliasContract {
 	name: string;
 	description?: string;
 	descriptionTail?: string;
+	descriptionBase?: "shared";
 	descriptionSuffix?: string;
 	pins?: Record<string, string>;
 	parameters?: {
@@ -32,7 +33,7 @@ interface AliasContract {
 	};
 }
 
-function ledgerFamily(): Action[] {
+function ledgerFamily(operations = ["create", "delete"]): Action[] {
 	const parent: Action = {
 		name: "LEDGER",
 		description: "Create and remove ledger entries.",
@@ -41,7 +42,7 @@ function ledgerFamily(): Action[] {
 				name: "action",
 				description: "Operation",
 				required: true,
-				schema: { type: "string", enum: ["create", "delete"] },
+				schema: { type: "string", enum: operations },
 			},
 			{
 				name: "id",
@@ -234,4 +235,31 @@ describe("umbrella alias consolidation on the planner wire", () => {
 		expect(contracts[0]?.descriptionTail).toBeUndefined();
 		expect(contracts[0]?.descriptionSuffix).toBeUndefined();
 	});
+});
+
+it("losslessly reconstructs aliases mixing current and prior parent descriptions", () => {
+	const actions = ledgerFamily(["create", "delete", "update"]);
+	const parent = actions[0];
+	if (!parent) throw new Error("missing parent");
+	const shared =
+		"Prior authored ledger policy with all its distinct instructions preserved. "
+			.repeat(3)
+			.trimEnd();
+	for (const alias of actions.slice(1, 3)) {
+		alias.description = alias.description.replace(parent.description, shared);
+	}
+	const tool = collectPlannerTools(contextFor(actions), undefined, {
+		canonicalFamilies: true,
+	})[0];
+	const contracts = aliasContracts(tool?.description);
+	for (const alias of actions.slice(1)) {
+		const contract = contracts.find((entry) => entry.name === alias.name);
+		if (!contract) throw new Error("missing alias");
+		const base =
+			contract.descriptionBase === "shared" ? shared : parent.description;
+		const reconstructed =
+			contract.description ??
+			`${base}${contract.descriptionSuffix ?? contract.descriptionTail ?? ` — subaction = ${Object.values(contract.pins ?? {})[0]}`}`;
+		expect(reconstructed).toBe(alias.description);
+	}
 });

@@ -481,6 +481,44 @@ describe("EvaluatorService", () => {
 		expect(prompt).not.toContain('Action results: see "Action results"');
 	});
 
+	it("renders identical declared blocks once and preserves differing section bodies", async () => {
+		const runtime = makeRuntime();
+		const sharedBody = `entity evidence ${"complete ".repeat(1200)}END_SHARED`;
+		const otherBody = "different entity evidence END_OTHER";
+		for (const [name, body] of [
+			["alpha", sharedBody],
+			["beta", sharedBody],
+			["gamma", otherBody],
+		]) {
+			runtime.registerEvaluator({
+				name,
+				description: name,
+				schema: schema(),
+				shouldRun: async () => true,
+				sharedBlocks: () => ({ "Entities in Room": body }),
+				prompt: ({ shared }) =>
+					shared?.blocks?.["Entities in Room"] === body
+						? `${name}: see shared entities`
+						: `${name}: ${body}`,
+				parse: (output) => output as never,
+			});
+		}
+		let prompt = "";
+		runtime.useModel = vi.fn(async (_type, params) => {
+			prompt = String(params.messages?.[0]?.content ?? "");
+			return { alpha: { ok: true }, beta: { ok: true }, gamma: { ok: true } };
+		}) as AgentRuntime["useModel"];
+		await new EvaluatorService(runtime).run(makeMessage(), {
+			values: {},
+			data: {},
+			text: "",
+		});
+		expect(prompt.split(sharedBody)).toHaveLength(2);
+		expect(prompt).toContain("alpha: see shared entities");
+		expect(prompt).toContain("beta: see shared entities");
+		expect(prompt).toContain(`gamma: ${otherBody}`);
+	});
+
 	it("renders the room transcript once in the shared context for every section", async () => {
 		// Live 2026-09-05: five sections each embedded the whole room history.
 		const runtime = makeRuntime();

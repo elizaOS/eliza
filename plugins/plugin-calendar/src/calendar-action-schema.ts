@@ -11,7 +11,11 @@
  *   plus connector control flags) rendered ~10.7k characters per planner call
  *   and the 27B planner filled most of it with debris: "4pm" as location,
  *   neighbouring key names as values ("grantId" in departure_address), a
- *   placeholder guest with notifyAttendees on a built-in event.
+ *   placeholder guest with notifyAttendees on a built-in event. The promoted
+ *   feed/search read schemas below derive from it and offer the connector
+ *   scope (mode, side) as closed enums, so a stray operation name ("count",
+ *   "read") is rejected at the validation boundary instead of narrowing the
+ *   read to a connector that does not exist.
  * - CALENDAR_DETAIL_ALIASES is what the handler ACCEPTS: the historical
  *   spellings, folded onto their canonical key by normalizeCalendarDetails in
  *   actions/calendar-handler.ts for direct callers, replayed requests and the
@@ -102,7 +106,9 @@ function flag(description: string): ActionParameterSchema {
  * the handler under this name or folded onto its handler-canonical name by
  * CALENDAR_DETAIL_ALIASES (start -> startAt, end -> endAt). Connector control
  * keys the planner never filled correctly (mode, label, windowDays,
- * windowPreset, forceSync, queries) stay handler-readable but are not offered.
+ * windowPreset, forceSync, queries) stay handler-readable but are not offered
+ * on this contract; the feed/search read schemas offer mode and side as
+ * closed enums.
  */
 const CALENDAR_PLANNER_DETAIL_PROPERTIES: Record<
   string,
@@ -118,7 +124,9 @@ const CALENDAR_PLANNER_DETAIL_PROPERTIES: Record<
     "Optional. owner or agent, only when copied from a Calendar result. Omit otherwise.",
   ),
   timeMin: text(`Window start for feed/search_events as ${LOCAL_WALL_TIME}.`),
-  timeMax: text("Window end (exclusive), same format as timeMin."),
+  timeMax: text(
+    "Window end (exclusive), same format as timeMin. For a full day or month, use midnight at the start of the following day or month in timeZone, not midnight at the start of its last day.",
+  ),
   timeZone: text(
     "IANA zone for every wall-clock value here (e.g. America/New_York). Use the user's configured zone unless they name another. Include it on updates.",
   ),
@@ -201,51 +209,30 @@ export const CALENDAR_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
   additionalProperties: false,
 };
 
-/** The next-event reader consumes only calendar selection and timezone.
- * Keep every accepted spelling of those fields; mutation and range arguments
- * remain on the complete CALENDAR contract and their corresponding operations. */
+/** The next-event reader consumes only calendar selection and timezone, under
+ * their canonical planner names (the handler still folds older spellings).
+ * Mutation and range arguments remain on the complete CALENDAR contract and
+ * their corresponding operations. */
 export const CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema =
   {
     type: "object",
     properties: Object.fromEntries(
       Object.entries(CALENDAR_DETAILS_PARAMETER_SCHEMA.properties ?? {}).filter(
-        ([key]) =>
-          [
-            "calendarId",
-            "calendarid",
-            "calendar_id",
-            "timeZone",
-            "timezone",
-            "time_zone",
-          ].includes(key),
+        ([key]) => ["calendarId", "timeZone"].includes(key),
       ),
     ),
     additionalProperties: false,
   };
 
-// Feed/search consume the same window and connector scope. Keep every accepted
-// spelling; event edits, recurrence and travel creation belong to other actions.
+// Feed/search consume the same window and connector scope under the canonical
+// planner names; event edits, recurrence and travel creation belong to other
+// actions. Refresh controls (forceSync, windowDays, label) stay handler-readable
+// for direct callers but are not offered to the planner.
 const CALENDAR_READ_DETAIL_KEYS = [
   "calendarId",
-  "calendarid",
-  "calendar_id",
   "timeMin",
-  "timemin",
-  "time_min",
   "timeMax",
-  "timemax",
-  "time_max",
   "timeZone",
-  "timezone",
-  "time_zone",
-  "forceSync",
-  "forcesync",
-  "force_sync",
-  "windowDays",
-  "windowdays",
-  "window_days",
-  "label",
-  "mode",
   "side",
   "grantId",
   "includeHiddenCalendars",
@@ -253,11 +240,45 @@ const CALENDAR_READ_DETAIL_KEYS = [
 
 export const CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
   type: "object",
-  properties: Object.fromEntries(
-    Object.entries(CALENDAR_DETAILS_PARAMETER_SCHEMA.properties ?? {}).filter(
-      ([key]) => CALENDAR_READ_DETAIL_KEYS.some((name) => name === key),
+  properties: {
+    ...Object.fromEntries(
+      Object.entries(CALENDAR_DETAILS_PARAMETER_SCHEMA.properties ?? {}).filter(
+        ([key]) => CALENDAR_READ_DETAIL_KEYS.some((name) => name === key),
+      ),
     ),
-  ),
+    calendarId: {
+      type: "string",
+      description:
+        "Optional exact calendar ID from a Calendar result. Omit unless restricting to that calendar; never invent an ID or derive it from a title.",
+    },
+    timeZone: {
+      type: "string",
+      description:
+        "IANA timezone for the supplied wall-clock bounds. Use the configured timezone unless the user names another.",
+    },
+    mode: {
+      type: "string",
+      enum: ["local", "remote", "cloud_managed"],
+      description:
+        "Optional connector deployment mode from a Calendar result, not the requested operation. Omit unless restricting to that known connector scope.",
+    },
+    side: {
+      type: "string",
+      enum: ["owner", "agent"],
+      description:
+        "Optional connector ownership side from a Calendar result. Omit unless restricting to that known connector scope.",
+    },
+    grantId: {
+      type: "string",
+      description:
+        "Optional exact connector grant ID from a Calendar result. Omit unless restricting to that connector; never invent a grant ID.",
+    },
+    includeHiddenCalendars: {
+      type: "boolean",
+      description:
+        "Omit to use calendars selected in the Calendar view. Set true only when explicitly asked to include hidden or all connected calendars.",
+    },
+  },
   additionalProperties: false,
 };
 
@@ -265,12 +286,14 @@ export const CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
   type: "object",
   properties: {
     ...CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA.properties,
+    includeHiddenCalendars: {
+      type: "boolean",
+      description:
+        "Omit to search all connected calendars, including hidden ones. Set false only when the user restricts the search to calendars selected in the Calendar view.",
+    },
     ...Object.fromEntries(
       Object.entries(CALENDAR_DETAILS_PARAMETER_SCHEMA.properties ?? {}).filter(
-        ([key]) =>
-          ["query", "queries", "oldTitle", "oldtitle", "old_title"].includes(
-            key,
-          ),
+        ([key]) => ["query", "oldTitle"].includes(key),
       ),
     ),
   },

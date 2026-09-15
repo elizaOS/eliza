@@ -74,6 +74,8 @@ import {
 import { recordFactCandidate } from "./_factCandidates.ts";
 import {
 	reconcileFactEvidence,
+	reconcileIdentityEvidence,
+	reconcileRelationshipEvidence,
 	reconcileSuccessEvidence,
 } from "./extraction-reconciliation.ts";
 import {
@@ -484,8 +486,6 @@ export { formatRecentMessages };
 const ENTITIES_HEADING = "Entities in Room";
 /** Tags of the interaction edges runtime/addressed-to.ts maintains without a model; not semantic relationships. */
 const ADDRESSED_TAGS = new Set(["addressed", "addressed:auto"]);
-/** Existing edges shown for dedupe; the store is unbounded (live 2026-09-14: 18 edges, 3.4K chars, 17 addressed-only). */
-const EXISTING_RELATIONSHIPS_LIMIT = 20;
 
 function formatEntities(entities: Entity[]): string {
 	if (entities.length === 0) return "(none)";
@@ -542,7 +542,7 @@ function isAddressedOnlyEdge(relationship: ExistingRelationship): boolean {
 }
 
 /**
- * Semantic edges only, one compact line each, capped. The model reads these
+ * Semantic edges only, one complete line each. The model reads these
  * to avoid re-emitting known relationships; it cannot emit the addressed
  * bookkeeping edges at all, so they only cost tokens.
  */
@@ -553,18 +553,13 @@ function formatRelationships(
 		(relationship) => !isAddressedOnlyEdge(relationship),
 	);
 	if (semantic.length === 0) return "(none)";
-	const lines = semantic
-		.slice(0, EXISTING_RELATIONSHIPS_LIMIT)
-		.map((relationship) => {
-			const type = relationshipTypeOf(relationship);
-			const tags = relationshipTags(relationship).filter(
-				(tag) => !ADDRESSED_TAGS.has(tag),
-			);
-			return `- ${relationship.sourceEntityId} -> ${relationship.targetEntityId}${type ? ` (${type})` : ""}${tags.length > 0 ? ` [${tags.join(", ")}]` : ""}`;
-		});
-	if (semantic.length > lines.length) {
-		lines.push(`(${semantic.length - lines.length} more not shown)`);
-	}
+	const lines = semantic.map((relationship) => {
+		const type = relationshipTypeOf(relationship);
+		const tags = relationshipTags(relationship).filter(
+			(tag) => !ADDRESSED_TAGS.has(tag),
+		);
+		return `- ${relationship.sourceEntityId} -> ${relationship.targetEntityId}${type ? ` (${type})` : ""}${tags.length > 0 ? ` [${tags.join(", ")}]` : ""}`;
+	});
 	return lines.join("\n");
 }
 
@@ -1201,6 +1196,32 @@ async function applyRelationshipUpdates(
 				? { relationshipType: relationship.relationshipType }
 				: {}),
 		};
+		const relationshipsService = runtime.getService(
+			"relationships",
+		) as RelationshipsService | null;
+		if (extraction && relationshipsService?.supportsRelationshipEvidence?.()) {
+			const source = extraction.messages[0];
+			if (!source)
+				throw new ElizaError("Relationship extraction has no selected source", {
+					code: "RELATIONSHIP_SOURCE_REQUIRED",
+				});
+			await relationshipsService.upsertExtractedRelationship(
+				sourceId,
+				targetId,
+				{ tags, metadata: semanticMetadata },
+				{
+					evidenceId: extraction.evidenceId,
+					roomId: source.roomId,
+					isBackfill: extraction.isBackfill,
+					sourceRevisions: {
+						...extraction.referenceRevisions,
+						...extraction.sourceRevisions,
+					},
+				},
+			);
+			applied += 1;
+			continue;
+		}
 		if (existing) {
 			if (
 				hasExtractionEvidence(existing.metadata as MemoryMetadata, extraction)
@@ -1285,6 +1306,7 @@ async function applyIdentityUpdates(
 	identities: IdentityUpdate[],
 	entities: Entity[],
 	messageId: UUID | undefined,
+	extraction: EvaluatorRunOptions["extraction"],
 ): Promise<number> {
 	if (identities.length === 0) return 0;
 	const relationshipsService = runtime.getService(
@@ -1309,6 +1331,35 @@ async function applyIdentityUpdates(
 		const handle = identity.handle.trim();
 		if (!platform || !handle) continue;
 		const sourceId = asUuidOrNull(identity.sourceMessageId) ?? messageId;
+		if (identity.sourceMessageId && extraction) {
+			if (typeof relationshipsService.upsertExtractedIdentity !== "function")
+				throw new Error(
+					"Identity extraction requires source-owned identity storage",
+				);
+			const source = extraction.messages.find((row) => row.id === sourceId);
+			if (!source) throw new Error("Identity source is no longer selected");
+			await relationshipsService.upsertExtractedIdentity(
+				entityId,
+				{
+					platform,
+					handle,
+					confidence: identity.confidence,
+					source: "reflection",
+					verified: false,
+				},
+				{
+					evidenceId: extraction.evidenceId,
+					roomId: source.roomId,
+					sourceMessageId: identity.sourceMessageId,
+					sourceRevisions: {
+						...extraction.referenceRevisions,
+						...extraction.sourceRevisions,
+					},
+				},
+			);
+			applied += 1;
+			continue;
+		}
 		await relationshipsService.upsertIdentity(
 			entityId,
 			{
@@ -1625,6 +1676,7 @@ export const relationshipEvaluator: Evaluator<
 	name: "relationships",
 	incremental: true,
 	background: true,
+	reconcileEvidence: reconcileRelationshipEvidence,
 	description: "Extracts relationship updates between known room participants.",
 	priority: EvaluatorPriority.REFLECTION_RELATIONSHIPS,
 	providers: ["CONVERSATION_PROXIMITY"],
@@ -1713,6 +1765,7 @@ export const identityEvaluator: Evaluator<
 	name: "identities",
 	incremental: true,
 	background: true,
+	reconcileEvidence: reconcileIdentityEvidence,
 	description: "Extracts platform identities for known room participants.",
 	priority: EvaluatorPriority.REFLECTION_IDENTITY,
 	schema: identitySchema,
@@ -1765,6 +1818,7 @@ export const identityEvaluator: Evaluator<
 					output.identities,
 					prepared.entities,
 					asUuidOrNull(message.id) ?? undefined,
+					options.extraction,
 				);
 				return {
 					success: true,

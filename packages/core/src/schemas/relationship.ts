@@ -49,6 +49,10 @@ export const relationshipSchema: SchemaTable = {
 			name: "metadata",
 			type: "jsonb",
 		},
+		extraction_evidence: {
+			name: "extraction_evidence",
+			type: "jsonb",
+		},
 	},
 	indexes: {
 		idx_relationships_users: {

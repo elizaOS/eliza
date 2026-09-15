@@ -9,8 +9,8 @@ import { ElizaError } from "../../errors";
 import { buildActionCatalog } from "../../runtime/action-catalog";
 import { actionGateRejection } from "../../runtime/action-gate";
 import type { Action } from "../../types/components";
-import type { AgentContext, RoleGateRole } from "../../types/contexts";
 import type { ContextObject } from "../../types/context-object";
+import type { AgentContext, RoleGateRole } from "../../types/contexts";
 import type { Memory } from "../../types/memory";
 import type { ToolDefinition } from "../../types/model";
 import { isObjectRecord } from "../../utils/type-guards";
@@ -21,12 +21,17 @@ import {
 } from "./planned-tool.js";
 
 /**
- * The complete catalog DISCOVER_TOOLS advertises: every runtime action the
- * actor may run under the action's OWN declared contexts merged with the
- * turn's selected contexts (the executor gate's rule), with private,
- * disclosure and role gates unchanged. Building it from the Stage-1 context
- * slice hid context-validated families (MESSAGE on a general-routed turn) and
- * cost a whole planner round per miss (live 2026-09-14).
+ * The families DISCOVER_TOOLS may list and load: every registered action the
+ * actor is authorized for under the action's OWN declared contexts — the same
+ * rule the executor applies at dispatch (planned-tool.ts merges
+ * `action.contexts` into the active set). The planner's exposed surface is
+ * the Stage-1 context slice, and building the catalog from that slice meant a
+ * misrouted turn could never load the family it needed: "read the last 3
+ * messages in the #general discord channel" was routed to `general`, the
+ * planner asked for MESSAGE, and the catalog (42 families, no MESSAGE)
+ * rejected it, so the reply came from the wrong room (live 2026-09-14,
+ * tj-ab82a95eb85149). Private, disclosure and role gates run unchanged with
+ * the real message and roles; only the context term is per-action.
  */
 export function collectDiscoveryCatalogActions(args: {
 	actions: readonly Action[];
@@ -82,6 +87,10 @@ export function createPlannerToolDiscoveryAction(
 		// catalog in every planner round (audit 2026-09-13); a loaded family
 		// carries its complete description on the next round, and names=[]
 		// reads the full descriptions on demand without loading any schema.
+		// One line per family rather than a JSON array: the same names cost
+		// ~1.1K fewer characters on the live owner catalog (2026-09-14,
+		// 4,674 -> ~3,570), the shape the Stage-1 available_actions catalog
+		// already uses.
 		description:
 			"Load complete tool schemas from the authorized name index below when an exposed tool does not cover an intent. " +
 			"Pass exact child names to load those operations, or parent names to load their complete authorized families. Pass names=[] to read the complete family descriptions and routing hints if the names alone are ambiguous. " +

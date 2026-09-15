@@ -32,7 +32,9 @@ export interface TaskDrainOptions {
 	 * Required unless `skipRegisterWorker` is true. Invoked when the repeat task
 	 * fires; may return how many items it processed so an idle queue can back off.
 	 */
-	onDrain?: (runtime: IAgentRuntime) => Promise<number | undefined>;
+	onDrain?: (
+		runtime: IAgentRuntime,
+	) => Promise<void> | Promise<number | undefined>;
 	/**
 	 * Cadence while the last drain processed nothing. EMBEDDING_DRAIN and
 	 * PII_SCRUB_DRAIN rewrote public.tasks every second around the clock while
@@ -47,7 +49,7 @@ export class TaskDrain {
 	private readonly skipRegisterWorker: boolean;
 	private readonly onDrain?: (
 		runtime: IAgentRuntime,
-	) => Promise<number | undefined>;
+	) => Promise<void> | Promise<number | undefined>;
 	private readonly idleIntervalMs?: number;
 	private intervalMs: number;
 	private taskId: UUID | null = null;
@@ -93,7 +95,10 @@ export class TaskDrain {
 					_task: Task,
 				) => {
 					const processed = await onDrain(rt);
-					if (this.idleIntervalMs === undefined || processed === undefined) {
+					if (
+						this.idleIntervalMs === undefined ||
+						typeof processed !== "number"
+					) {
 						return undefined;
 					}
 					return {

@@ -55,6 +55,14 @@ batch runner validates every report before writing one combined JUnit artifact.
 Missing, malformed or failed batch evidence rejects the run; entirely skipped
 suites do not satisfy the repository's required-work gate.
 
+## Trajectory viewer access
+
+Raw trajectory reads require owner authority at the HTTP boundary. Authenticated
+non-owner sessions and shared gateway credentials do not grant developer-view
+access. Standalone trusted-local access, configured API owner credentials, and
+authorized owner sessions retain the existing read-service contract. Product
+role resolvers must grant both owner authority and route access.
+
 ## Backup restore generations
 
 Snapshot capture, local backup publication, and restore share an exclusive
