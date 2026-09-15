@@ -28,6 +28,10 @@ import { resolveApiUrl } from "../../utils";
 import { toSpeakableText } from "../voice-chat-playback";
 import type { VoicePlaybackEvidenceEvent } from "../voice-playback-evidence";
 import {
+  serializeVoiceWorkbenchReport,
+  voiceWorkbenchReportPreview,
+} from "./voice-workbench-artifact";
+import {
   runVoiceWorkbench,
   type VoiceWorkbenchPlatform,
   type VoiceWorkbenchReport,
@@ -98,6 +102,24 @@ export function VoiceWorkbenchShell() {
   const audioRef = useRef<AudioContext | null>(null);
   const [report, setReport] = useState<VoiceWorkbenchReport | null>(null);
   const [running, setRunning] = useState(false);
+  const [artifactUrl, setArtifactUrl] = useState<string | null>(null);
+  const preview = useMemo(
+    () => (report ? voiceWorkbenchReportPreview(report) : null),
+    [report],
+  );
+  useEffect(() => {
+    if (!report?.turns.some((turn) => turn.playbackEvidence)) {
+      setArtifactUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(
+      new Blob([serializeVoiceWorkbenchReport(report)], {
+        type: "application/json",
+      }),
+    );
+    setArtifactUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [report]);
   const runningRef = useRef(false);
   const playbackRef = useRef<{
     messageId: string;
@@ -290,10 +312,28 @@ export function VoiceWorkbenchShell() {
         ))}
       </ul>
 
-      {/* Machine-readable verdict for CI/Playwright to scrape. */}
+      {artifactUrl && (
+        <div>
+          <p>
+            Metadata preview. The download includes complete encoded audio and
+            decoded PCM.
+          </p>
+          <a
+            href={artifactUrl}
+            download="voice-workbench-evidence.json"
+            className="inline-block rounded bg-orange-600 px-3 py-2 text-white hover:bg-orange-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-orange-400"
+          >
+            Download complete playback evidence
+          </a>
+        </div>
+      )}
+      {/* Full typed values remain in the automation return and downloadable artifact. */}
       <pre
         data-testid="voice-workbench-report"
+        data-evidence="metadata-preview"
         style={{
+          maxHeight: 480,
+          overflow: "auto",
           marginTop: 16,
           padding: 12,
           background: "#141414",
@@ -302,16 +342,7 @@ export function VoiceWorkbenchShell() {
           wordBreak: "break-word",
         }}
       >
-        {report
-          ? JSON.stringify(
-              report,
-              (_key, value) =>
-                value instanceof Uint8Array || value instanceof Float32Array
-                  ? Array.from(value)
-                  : value,
-              2,
-            )
-          : "{}"}
+        {preview ? JSON.stringify(preview, null, 2) : "{}"}
       </pre>
     </div>
   );
