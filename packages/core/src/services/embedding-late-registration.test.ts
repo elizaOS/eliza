@@ -31,6 +31,10 @@ test.each([ModelType.TEXT_EMBEDDING, ModelType.TEXT_EMBEDDING_BATCH])(
 			content: { text: "The launch verification phrase is COPPER-FINCH-684." },
 		};
 		let calls = 0;
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
 		const vector = Array.from({ length: 384 }, (_, i) => (i + 1) / 384);
 		try {
 			await runtime.createMemory(memory, "messages");
@@ -44,6 +48,7 @@ test.each([ModelType.TEXT_EMBEDDING, ModelType.TEXT_EMBEDDING_BATCH])(
 			).toHaveLength(0);
 			const embed = async () => {
 				calls++;
+				await gate;
 				return modelType === ModelType.TEXT_EMBEDDING_BATCH ? [vector] : vector;
 			};
 			runtime.registerModel(modelType, embed, "test");
@@ -65,6 +70,23 @@ test.each([ModelType.TEXT_EMBEDDING, ModelType.TEXT_EMBEDDING_BATCH])(
 			const worker = runtime.getTaskWorker("EMBEDDING_DRAIN");
 			if (!worker || !tasks[0])
 				throw new Error("Embedding drain was not registered");
+			// The same durable source can arrive again before or during indexing.
+			await runtime.emitEvent(EventType.EMBEDDING_GENERATION_REQUESTED, {
+				runtime,
+				memory: structuredClone(memory),
+				priority: "high",
+			});
+			expect(service.getQueueSize()).toBe(1);
+			const drain = worker.execute(runtime, {}, tasks[0]);
+			await expect.poll(() => calls).toBe(1);
+			await runtime.emitEvent(EventType.EMBEDDING_GENERATION_REQUESTED, {
+				runtime,
+				memory: structuredClone(memory),
+				priority: "high",
+			});
+			expect(service.getQueueSize()).toBe(0);
+			release();
+			await drain;
 			await worker.execute(runtime, {}, tasks[0]);
 			await service.stop();
 			expect((await runtime.getMemoryById(memory.id))?.embedding).toEqual(
@@ -86,6 +108,7 @@ test.each([ModelType.TEXT_EMBEDDING, ModelType.TEXT_EMBEDDING_BATCH])(
 			expect(calls).toBe(1);
 			expect(service.getQueueSize()).toBe(0);
 		} finally {
+			release();
 			await service.stop();
 			await runtime.close();
 		}

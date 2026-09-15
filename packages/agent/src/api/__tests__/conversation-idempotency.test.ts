@@ -260,6 +260,7 @@ function createHarness(
     },
     createMemory,
     updateMemory,
+    queueEmbeddingGeneration: vi.fn(async () => undefined),
     deleteManyMemories,
     deleteRoom,
     createLogs: vi.fn(async () => undefined),
@@ -3359,12 +3360,19 @@ describe("conversation handoff import — exact source identities", () => {
     expect(
       storedMemories.every((memory) => memory.metadata?.scope === "shared"),
     ).toBe(true);
+    const queue = state.runtime!.queueEmbeddingGeneration;
+    expect(queue).toHaveBeenCalledTimes(2);
+    for (const memory of storedMemories) {
+      expect(queue).toHaveBeenCalledWith(memory, "low");
+    }
     const retry = await runRoute("POST", path, state, { messages });
     expect(retry.captured.payload).toMatchObject({ inserted: 0, skipped: 2 });
+    expect(queue).toHaveBeenCalledTimes(4);
     const changed = await runRoute("POST", path, state, {
       messages: [{ ...messages[0], text: messages[0].text.trim() }],
     });
     expect(changed.record.writes.join("")).toContain("different content");
+    expect(queue).toHaveBeenCalledTimes(4);
     expect(storedMemories).toHaveLength(2);
     expect(storedMemories[0].content.text).toBe(messages[0].text);
     expect(handleMessage).not.toHaveBeenCalled();

@@ -4061,8 +4061,33 @@ export async function handleConversationRoutes(
             );
             if (result.created) inserted += 1;
             else skipped += 1;
+            // Import bypasses normal message processing, which otherwise
+            // requests embeddings. Read the durable, secret-redacted source;
+            // exact retries also repair a still-missing vector.
+            const persisted = result.created
+              ? (
+                  await runtime.getMemoriesByIds(
+                    [result.memory.id!],
+                    "messages",
+                  )
+                )[0]
+              : result.memory;
+            if (!persisted)
+              throw new Error("Imported message was not persisted");
+            await runtime.queueEmbeddingGeneration(persisted, "low");
           } else {
-            await persistConversationMemory(runtime, memory, historyLease);
+            const result = await persistConversationMemory(
+              runtime,
+              memory,
+              historyLease,
+            );
+            const [persisted] = await runtime.getMemoriesByIds(
+              [result.id!],
+              "messages",
+            );
+            if (!persisted)
+              throw new Error("Imported message was not persisted");
+            await runtime.queueEmbeddingGeneration(persisted, "low");
             inserted += 1;
           }
         } catch (err) {
