@@ -321,6 +321,60 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     });
   });
 
+  it("stamps a plain move as verified even when the planner fills every optional key", async () => {
+    // With the complete planner surface a small planner sends end, date,
+    // durationMinutes, notifyAttendees, allowPast, includeHiddenCalendars and
+    // recurrence "none" on a plain move (live 2026-09-15); none of them is an
+    // unshown detail, so the receipt sentence stays self-verified.
+    await service.createCalendarEventMutation(INTERNAL_URL, {
+      title: "Notary appointment",
+      startAt: "2026-09-18T19:00:00.000Z",
+      endAt: "2026-09-18T20:00:00.000Z",
+      timeZone: "America/New_York",
+      idempotencyKey: "notary-gate-180",
+    });
+    const action = createCalendarActionRunner({
+      runTextModel: vi.fn(async () => null),
+      runJsonModel: vi.fn(async () => null),
+      recentConversationTexts: vi.fn(async () => []),
+    });
+    const result = await action.handler(
+      runtime,
+      {
+        id: "00000000-0000-0000-0000-000000000201",
+        entityId: "00000000-0000-0000-0000-000000000102",
+        roomId: "00000000-0000-0000-0000-000000000103",
+        createdAt: Date.parse("2026-09-15T22:00:00.000Z"),
+        content: { text: "move my notary appointment to friday at 4pm" },
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          subaction: "update_event",
+          query: "notary appointment",
+          details: {
+            grantId: ELIZA_CALENDAR_GRANT_ID,
+            calendarId: ELIZA_CALENDAR_ID,
+            timeZone: "America/New_York",
+            start: "2026-09-18T16:00:00",
+            end: "2026-09-18T17:00:00",
+            date: "2026-09-18",
+            durationMinutes: 60,
+            notifyAttendees: true,
+            allowPast: true,
+            includeHiddenCalendars: true,
+            recurrence: "none",
+          },
+        },
+      },
+    );
+    expect(result?.success, JSON.stringify(result)).toBe(true);
+    expect(result?.verifiedUserFacing, JSON.stringify(result)).toBe(true);
+    expect(result?.userFacingText).toBe(
+      "Moved “Notary appointment” to Friday, Sep 18 at 4pm EDT.",
+    );
+  });
+
   it("does not mutate an event when the same update both replaces and clears a field", async () => {
     const created = await service.createCalendarEventMutation(
       INTERNAL_URL,
