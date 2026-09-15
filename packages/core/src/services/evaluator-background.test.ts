@@ -1986,6 +1986,33 @@ describe("durable background memory", () => {
 			...before,
 			embedding: [1, 0, 0],
 		});
+		if (!before?.content.text)
+			throw new Error("Missing persisted fixture source");
+		const expected = {
+			agentId: runtime.agentId,
+			entityId: before.entityId,
+			roomId: before.roomId,
+			text: before.content.text,
+		};
+		expect(
+			await runtime.updateMemoryEmbedding({
+				id: messageId,
+				expected,
+				embedding: [0, 1, 0],
+			}),
+		).toBe(true);
+		expect(await runtime.getMemoryById(messageId)).toEqual({
+			...before,
+			embedding: [0, 1, 0],
+		});
+		expect(
+			await runtime.updateMemoryEmbedding({
+				id: messageId,
+				expected: { ...expected, agentId: stringToUuid("foreign-runtime") },
+				embedding: [1, 0, 0],
+			}),
+		).toBe(false);
+
 		expect(await runtime.getTasksByName("POST_TURN_MEMORY")).toEqual(tasks);
 	});
 
