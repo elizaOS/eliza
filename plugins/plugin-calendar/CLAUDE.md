@@ -86,3 +86,5 @@ Explicit read-window bounds without an offset are civil times in the requested o
 CALENDAR_SEARCH_QUERY_REQUIRED from typed preflight carries the core coachingFailure marker because no read or effect occurred. Preserve its failed receipt and required evaluation; a corrected successful feed may complete without forcing a stale-failure summary. Service outages, permission errors and mutation failures must not receive this marker.
 
 Calendar read-window schema guidance treats timeMax as exclusive: a full civil day/month ends at the next day/month boundary in the requested timezone. The executor preserves model-selected bounds; it does not infer or silently rewrite the requested period from user prose.
+
+Promoted Calendar read schemas describe read scope only: connector mode and side match the executor's accepted enums, and hidden-calendar guidance states each operation's actual default. Omitted connector filters stay omitted. Preserve consumed aliases, exact user-requested scopes and full parent/mutation schemas; do not infer scope from user prose or silently broaden a feed.
