@@ -654,28 +654,11 @@ export function selectConnectorForOp(
 			)
 		: [];
 	const explicitMatches = selectAccountConnectors(sourceMatches, accountId);
-	// A connector service registers a legacy source-level route beside one
-	// route per account (plugin-discord service.ts: registerConnector(undefined)
-	// then registerConnector(accountId)). With a single account that is two
-	// connectors aliasing "discord", and a turn that names no account — the
-	// owner API room carries no connector envelope — has nothing to
-	// disambiguate (live 2026-09-14: "read the last 3 messages in #general"
-	// failed as SOURCE_AMBIGUOUS). Only distinct accounts are ambiguous; the
-	// account-scoped route wins over the unscoped one.
-	const distinctAccountIds = new Set(
-		explicitMatches.flatMap((connector) =>
-			connectorAccountIds(connector).map(normalizeComparable),
-		),
-	);
-	const accountScopedMatches = explicitMatches.filter(
-		(connector) => connectorAccountIds(connector).length > 0,
-	);
-	const resolvedMatches =
-		explicitMatches.length > 1 &&
-		accountScopedMatches.length === 1 &&
-		distinctAccountIds.size === 1
-			? accountScopedMatches
-			: explicitMatches;
+	// A legacy source-level route beside its single account route is one
+	// connector family, not an ambiguity (see soleConnectorFamily); distinct
+	// accounts, distinct sources, or duplicate routes stay ambiguous.
+	const sole = soleConnectorFamily(explicitMatches);
+	const resolvedMatches = sole ? [sole] : explicitMatches;
 	if (source && resolvedMatches.length > 1) {
 		return {
 			error: opFailure(
