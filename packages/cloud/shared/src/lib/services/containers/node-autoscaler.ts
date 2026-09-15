@@ -210,10 +210,27 @@ export class NodeAutoscaler {
       belowBuffer &&
       (!recentlyProvisioned || belowHotFloor);
 
+    // A failed provider delete leaves placement disabled. Rediscover only
+    // explicit persisted deprovision requests, never ordinary operator cordons.
+    const pendingDrains: DockerNode[] = [];
+    for (const node of nodes) {
+      if (
+        !node.enabled &&
+        isAutoscaledHetznerNode(node) &&
+        node.metadata.autoscaleDeprovisionRequested === true &&
+        (await countRetainedWorkloadsOnNode(node.node_id)) === 0
+      ) {
+        pendingDrains.push(node);
+      }
+    }
+
     const drainCandidates =
       shouldScaleUp || belowBuffer
-        ? []
-        : await this.findDrainCandidates(healthyEnabled, allocatedByNode, totalAvailable);
+        ? pendingDrains
+        : [
+            ...pendingDrains,
+            ...(await this.findDrainCandidates(healthyEnabled, allocatedByNode, totalAvailable)),
+          ];
 
     let reason = "steady";
     if (shouldScaleUp) {
@@ -545,7 +562,12 @@ export class NodeAutoscaler {
       throw new HetznerCloudError("not_found", `node ${nodeId} not registered`);
     }
 
-    if (node.enabled) {
+    if (options.deprovision === true && isAutoscaledHetznerNode(node)) {
+      const requested = await dockerNodesRepository.requestAutoscaleDeprovision(node.id);
+      if (!requested) {
+        throw new HetznerCloudError("not_found", `node ${nodeId} disappeared before drain`);
+      }
+    } else if (node.enabled) {
       await dockerNodesRepository.update(node.id, { enabled: false });
       logger.info("[autoscaler] Disabled node for drain", { nodeId });
     }
