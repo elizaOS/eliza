@@ -122,6 +122,77 @@ describe("assistant text helpers", () => {
     ).toBeNull();
   });
 
+  it("preserves leading indentation and structure inside fenced code blocks", () => {
+    const pythonCode =
+      "```python\ndef f(x):\n    if x > 1:\n        return x * 2\n    return x\n```";
+    expect(stripAssistantStageDirections(pythonCode)).toBe(pythonCode);
+
+    const mixedMessage = `Here is the configuration:
+
+\`\`\`yaml
+services:
+  agent:
+    image: elizaos/agent:latest
+    environment:
+      - DEBUG=true
+\`\`\`
+
+*smiles* Hope that helps!`;
+
+    const expected = `Here is the configuration:
+
+\`\`\`yaml
+services:
+  agent:
+    image: elizaos/agent:latest
+    environment:
+      - DEBUG=true
+\`\`\`
+
+Hope that helps!`;
+
+    expect(stripAssistantStageDirections(mixedMessage)).toBe(expected);
+  });
+
+  it("preserves stage direction words and formatting inside code blocks", () => {
+    const codeWithComments =
+      "```ts\n// *smiles* this is a comment\nconst x = _value_;\n```";
+    expect(stripAssistantStageDirections(codeWithComments)).toBe(
+      codeWithComments,
+    );
+  });
+
+  it("preserves indentation in streaming / unterminated code blocks", () => {
+    const streamingCode = "```python\ndef f(x):\n    if x > 1:\n        pass";
+    expect(stripAssistantStageDirections(streamingCode)).toBe(streamingCode);
+  });
+
+  it("preserves indentation and termination for code blocks inside lists", () => {
+    const listNestedBlock = "- item\n    ```py\n    x = 1\n    ```\n*smiles*";
+    const expected = "- item\n    ```py\n    x = 1\n    ```\n";
+    expect(stripAssistantStageDirections(listNestedBlock)).toBe(expected);
+
+    const numberedList = "1. step\n   ```sh\n   npm test\n   ```\n*waves*";
+    const expectedNumbered = "1. step\n   ```sh\n   npm test\n   ```\n";
+    expect(stripAssistantStageDirections(numberedList)).toBe(expectedNumbered);
+  });
+
+  it("preserves outer code fences containing shorter inner code fences (backticks and tildes)", () => {
+    const nestedBackticks =
+      "````markdown\n```ts\nconst x = 1;\n```\n    indented tail\n````\n*smiles* done";
+    const expectedBackticks =
+      "````markdown\n```ts\nconst x = 1;\n```\n    indented tail\n````\ndone";
+    expect(stripAssistantStageDirections(nestedBackticks)).toBe(
+      expectedBackticks,
+    );
+
+    const nestedTildes =
+      "~~~~markdown\n~~~ts\nconst x = 1;\n~~~\n    indented tail\n~~~~\n*smiles* done";
+    const expectedTildes =
+      "~~~~markdown\n~~~ts\nconst x = 1;\n~~~\n    indented tail\n~~~~\ndone";
+    expect(stripAssistantStageDirections(nestedTildes)).toBe(expectedTildes);
+  });
+
   it("is null/undefined-safe (e.g. a 202 placeholder body with no text)", () => {
     // Non-string input must not throw — degrade gracefully.
     expect(

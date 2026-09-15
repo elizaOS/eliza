@@ -11,4 +11,25 @@ describe("stripAssistantStageDirections", () => {
     expect(text.length).toBeGreaterThan(100_000);
     expect(stripAssistantStageDirections(text)).toBe(text);
   });
+
+  it("preserves leading indentation inside fenced code blocks", () => {
+    const pythonCode =
+      "```python\ndef f(x):\n    if x > 1:\n        return x * 2\n    return x\n```";
+    expect(stripAssistantStageDirections(pythonCode)).toBe(pythonCode);
+  });
+
+  it("preserves leading indentation inside list-nested code blocks", () => {
+    const listNested = "- item\n    ```py\n    x = 1\n    ```\n*smiles*";
+    expect(stripAssistantStageDirections(listNested)).toBe(
+      "- item\n    ```py\n    x = 1\n    ```\n",
+    );
+  });
+
+  it("preserves outer code fences containing shorter inner code fences", () => {
+    const nested =
+      "````markdown\n```ts\nconst x = 1;\n```\n    indented tail\n````\n*smiles* done";
+    expect(stripAssistantStageDirections(nested)).toBe(
+      "````markdown\n```ts\nconst x = 1;\n```\n    indented tail\n````\ndone",
+    );
+  });
 });
