@@ -149,7 +149,6 @@
   .stats p { margin-top: 0.7rem; font-size: 1.05rem; color: var(--muted); }
   .question-card { margin-top: clamp(2.5rem, 6vh, 4rem); max-width: 880px; margin-inline: auto; }
   .question-card .q { margin-top: 0.75rem; font-size: clamp(1.2rem, 2vw, 1.5rem); font-weight: 640; letter-spacing: -0.015em; line-height: 1.35; }
-  .question-card .a { margin-top: 0.85rem; font-size: 1.05rem; color: var(--muted); }
 
   /* ---------- team ---------- */
   .bios { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2.5rem; margin-top: 3rem; }
@@ -213,7 +212,6 @@
   }
   .form-card button:hover { background: #e04e00; }
   .form-card button[disabled] { opacity: 0.6; cursor: wait; }
-  .form-card .note { margin-top: 0.75rem; font-size: 0.9rem; color: var(--muted); line-height: 1.5; }
   .form-card .form-status { margin-top: 1rem; font-size: 1.05rem; font-weight: 600; line-height: 1.5; display: none; }
   .form-card .form-status.error { display: block; color: #a63232; }
   .form-card .form-done { display: none; }
@@ -221,12 +219,6 @@
   .form-card.sent .form-done { display: block; }
   .form-card .form-done p { margin-top: 0.9rem; font-size: 1.1rem; line-height: 1.6; }
   .hp-field { position: absolute; left: -9999px; top: -9999px; }
-  footer .legal {
-    margin-top: clamp(2.5rem, 6vh, 3.5rem); display: flex; flex-wrap: wrap; gap: 1rem 2rem;
-    justify-content: space-between; align-items: center;
-    font-size: 0.95rem; color: #a89f9a; border-top: 1px solid var(--line-dark); padding-top: 1.75rem;
-  }
-  footer .legal a { color: var(--orange-bright); text-decoration: none; }
 
   @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
@@ -356,7 +348,7 @@
 
 <section id="research" class="bordered">
   <div class="wrap">
-    <p class="statement">Staying independent in later life takes a lot of <em>invisible work</em>. Families coordinate appointments, rides, services, and follow-ups. Even in a well-run community, someone has to connect the dots.</p>
+    <p class="statement">Staying independent as we age takes a lot of <em>invisible work</em>. Families coordinate appointments, rides, services, and follow-ups. Even in a well-run community, someone has to connect the dots.</p>
     <div class="stats">
       <div>
         <p class="big">51M</p>
@@ -370,7 +362,6 @@
     <div class="card question-card">
       <span class="eyebrow" style="color: var(--orange-deep);">The question behind the study</span>
       <p class="q">Where do seniors rely on others to manage everyday life — and what could help them stay in control while easing the load on families and staff?</p>
-      <p class="a">We're studying where that coordination work piles up, where current tools fall short, and what would let seniors increase their independence.</p>
     </div>
   </div>
 </section>
@@ -522,7 +513,7 @@
     <div class="footer-grid">
       <div>
         <p class="big">Questions welcome.</p>
-        <p class="sub">Whether you heard from us and want to double-check, are curious about the research, or lead a community we should talk to — call, text, or email us any time.</p>
+        <p class="sub">If you're interested in participating or have any questions about this study, you can contact us by phone or book a time to chat.</p>
         <p style="margin-top: 1.75rem;"><a class="pill solid-orange" href="tel:3473917236">Call or text (347) 391-7236</a></p>
         <p class="booking">Representing a community? <a class="link-underline" rel="noopener noreferrer" href="https://calendar.app.google/CazVzgzyQWVkAumn8">Find 30 minutes to talk</a></p>
       </div>
@@ -547,7 +538,6 @@
             <input id="f-website" name="website" type="text" tabindex="-1" autocomplete="off" />
           </div>
           <button type="submit" id="f-submit">Send email</button>
-          <p class="note">Spam-protected. We never share or publish your details.</p>
           <p class="form-status" id="form-status" role="alert"></p>
         </form>
         <div class="form-done">
@@ -555,10 +545,6 @@
           <p>We'll get back to you soon. If it's easier, you can always call or text us at <a href="tel:3473917236" style="font-weight: 700;">(347) 391-7236</a>.</p>
         </div>
       </div>
-    </div>
-    <div class="legal">
-      <span>© 2026 Eliza Research · <a href="https://elizaresearch.ai/">elizaresearch.ai</a></span>
-      <span>Not medical research · No sales · Run with the <a rel="noopener noreferrer" href="https://ownyourdata.foundation/">Own Your Data Foundation</a>, a 501(c)(3) nonprofit</span>
     </div>
   </div>
 </footer>
