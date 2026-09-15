@@ -22,6 +22,7 @@ mock.module("../../lib/services/inference-api-key-auth", () => ({
 mock.module("../../lib/services/inference-credential-revocation", () => ({
   isInferenceStrongRevocationEnabled: () => true,
   InferenceCredentialRevokedError: class extends Error {},
+  InferenceCredentialRevocationUnavailableError: class extends Error {},
   assertInferenceCredentialActive: async () => undefined,
   inferenceCredentialRevocationReason: () => "credential_invalid",
   revokeInferenceApiKey: async () => undefined,

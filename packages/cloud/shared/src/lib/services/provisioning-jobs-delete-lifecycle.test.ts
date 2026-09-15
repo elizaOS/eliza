@@ -26,6 +26,7 @@ import {
   spyOn,
   test,
 } from "bun:test";
+import { getDedicatedComputePriceAcceptance } from "@elizaos/cloud-sdk/browser-contracts";
 
 import * as realHelpersNs from "../../db/helpers";
 import { jobsRepository } from "../../db/repositories/jobs";
@@ -131,6 +132,9 @@ function makeJob(type: ProvisioningJobType, extraData: Record<string, unknown> =
       organizationId: ORG,
       userId: USER,
       agentName: "Test Agent",
+      // Handler-policy fixtures represent new jobs with current terms accepted.
+      // Missing/stale acceptance is covered by provisioning-jobs-execute-dispatch.
+      admittedComputePrice: getDedicatedComputePriceAcceptance(),
       ...(type === JOB_TYPES.AGENT_SUSPEND ? { authorization: "user_request" } : {}),
       ...extraData,
     },
@@ -194,6 +198,7 @@ function withClaimedJob(type: ProvisioningJobType, extraData: Record<string, unk
   );
   const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(EMPTY_RECOVERY);
   const assertLeaseSpy = spyOn(jobsRepository, "assertExecutionLease").mockResolvedValue(undefined);
+  const renewLeaseSpy = spyOn(jobsRepository, "renewExecutionLease").mockResolvedValue("renewed");
   const updateStatusSpy = spyOn(jobsRepository, "settleExecution").mockResolvedValue(undefined);
   const updateSpy = spyOn(jobsRepository, "updateForExecution").mockImplementation(
     async (claimedJob, updates) => ({ ...claimedJob, ...updates }),
@@ -221,6 +226,7 @@ function withClaimedJob(type: ProvisioningJobType, extraData: Record<string, unk
       claimSpy.mockRestore();
       recoverSpy.mockRestore();
       assertLeaseSpy.mockRestore();
+      renewLeaseSpy.mockRestore();
       updateStatusSpy.mockRestore();
       updateSpy.mockRestore();
       incrementSpy.mockRestore();
