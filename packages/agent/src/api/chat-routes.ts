@@ -2275,28 +2275,19 @@ export async function persistAssistantConversationMemory(
 }
 
 /**
- * Compat chat routes (`POST /api/agents/:id/message`, `/v1/*`) hand the
- * message service a callback that only streams, and the service persists a
- * reply itself only on the simple path: a planner turn whose final text was
- * already delivered through an action callback ends with no response
- * memories at all (planner-echo suppression), so the reply reached the
- * caller but never the room transcript. Live 2026-09-14/15, API room: 15
- * user rows against 6 agent rows, every calendar answer missing, later
- * prompts rendered the requests unanswered. Connectors persist inside their
- * own callbacks and the dashboard route reconciles after generation; this is
- * the compat-route equivalent. Returns the stored memory, or null when the
- * service already committed the reply, the turn has no visible text, or the
- * same agent sentence is already stored since the turn started.
+ * Persist visible callback-delivered replies that the message service did not
+ * commit. Exact source-turn IDs distinguish equal replies to different turns;
+ * retries reuse the same durable row and reject changed content.
  */
 export async function persistUnpersistedChatReply(
   runtime: AgentRuntime,
   message: Memory,
   result: ChatGenerationResult,
-  turnStartedAt: number,
+  _turnStartedAt: number,
 ): Promise<Memory | null> {
-  const text = result.text.trim();
+  const text = result.text;
   if (
-    !text ||
+    !text.trim() ||
     result.transcriptVisibility === "internal" ||
     result.noResponseReason === "ignored" ||
     isNoResponsePlaceholder(text)
@@ -2309,7 +2300,8 @@ export async function persistUnpersistedChatReply(
       typeof memory.id === "string" &&
       persistedIds.has(memory.id) &&
       memory.entityId === runtime.agentId &&
-      memory.roomId === message.roomId,
+      memory.roomId === message.roomId &&
+      memory.content.text === text,
   );
   if (committedByService) return null;
   const responseContent: Content =
@@ -2340,12 +2332,27 @@ export async function persistUnpersistedChatReply(
   ) {
     return null;
   }
+  if (!message.id) {
+    throw new ElizaError("Callback reply requires its source turn identity", {
+      code: "CONVERSATION_MEMORY_ID_MISSING",
+      context: { roomId: message.roomId },
+    });
+  }
+  const replyId = stringToUuid(
+    JSON.stringify([
+      "compat-callback-reply",
+      runtime.agentId,
+      message.roomId,
+      message.id,
+    ]),
+  );
   return persistAssistantConversationMemory(
     runtime,
     message.roomId,
     content,
     ChannelType.API,
-    turnStartedAt,
+    undefined,
+    replyId,
   );
 }
 
