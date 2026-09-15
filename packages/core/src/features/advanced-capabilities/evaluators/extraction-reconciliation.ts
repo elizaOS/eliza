@@ -111,6 +111,28 @@ export async function reconcileSuccessEvidence({
 	return { reprocessSourceIds: [...reprocess] };
 }
 
+export async function reconcileRelationshipEvidence(
+	context: EvaluatorRunContext & {
+		reconciliation: EvaluatorEvidenceReconciliation;
+	},
+): Promise<{ reprocessSourceIds: string[] }> {
+	const service = context.runtime.getService(
+		"relationships",
+	) as RelationshipsService | null;
+	if (
+		!service ||
+		typeof service.supportsRelationshipEvidence !== "function" ||
+		!service.supportsRelationshipEvidence()
+	)
+		throw new ElizaError("Relationship reconciliation storage is unavailable", {
+			code: "RELATIONSHIP_RECONCILIATION_UNAVAILABLE",
+		});
+	return service.reconcileRelationshipEvidence(
+		context.message.roomId,
+		context.reconciliation,
+	);
+}
+
 export async function reconcileIdentityEvidence(
 	context: EvaluatorRunContext & {
 		reconciliation: EvaluatorEvidenceReconciliation;

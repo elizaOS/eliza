@@ -257,7 +257,7 @@ describe("durable background memory", () => {
 							error: expect.stringContaining(
 								entry.name === "identities"
 									? "Identity reconciliation storage is unavailable"
-									: "require reconciliation",
+									: "Relationship reconciliation storage is unavailable",
 							),
 						}),
 					]);

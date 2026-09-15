@@ -37,6 +37,13 @@ import {
 	retireIdentityEvidence,
 } from "./identity-evidence.ts";
 import {
+	parseRelationshipEvidence,
+	projectRelationshipEvidence,
+	type RelationshipEvidenceLedger,
+	type RelationshipEvidenceValue,
+	retireRelationshipEvidence,
+} from "./relationship-evidence.ts";
+import {
 	createNativeRelationshipsGraphService,
 	type GraphResolvers,
 	type RelationshipsGraphQuery,
@@ -2214,6 +2221,241 @@ export class RelationshipsService extends Service {
 			await this.persistIdentityState(db, row, state);
 		});
 		this.graphServiceInstance = null;
+	}
+
+	supportsRelationshipEvidence(): boolean {
+		return typeof this.getRuntimeDb()?.transaction === "function";
+	}
+
+	/** Apply only fields owned by a non-extractor writer, without promoting copied
+	 * inferred fields into independent evidence. Full replacements use the adapter. */
+	async mergeIndependentRelationshipFields(
+		id: UUID,
+		value: RelationshipEvidenceValue,
+	): Promise<void> {
+		await this.identityTransaction(async (db) => {
+			const [row] = await this.identityRows(
+				db,
+				`SELECT * FROM relationships WHERE id = ${sqlQuote(id)} AND agent_id = ${sqlQuote(this.runtime.agentId)} FOR UPDATE`,
+			);
+			if (!row)
+				throw new ElizaError("Relationship patch target is missing", {
+					code: "RELATIONSHIP_PATCH_TARGET_MISSING",
+				});
+			if (!row.extraction_evidence) {
+				const tags = [
+					...new Set([...((row.tags as string[]) ?? []), ...value.tags]),
+				];
+				await this.identityRows(
+					db,
+					`UPDATE relationships SET
+					tags = ARRAY(SELECT jsonb_array_elements_text(${sqlJsonbLiteral(tags)})),
+					metadata = COALESCE(metadata, '{}'::jsonb) || ${sqlJsonbLiteral(value.metadata)}
+					WHERE id = ${sqlQuote(id)} AND agent_id = ${sqlQuote(this.runtime.agentId)} RETURNING id`,
+				);
+				return;
+			}
+			const ledger = parseRelationshipEvidence(row.extraction_evidence);
+			this.assertRelationshipProjection(row, ledger);
+			ledger.overlay = {
+				tags: [...new Set([...(ledger.overlay?.tags ?? []), ...value.tags])],
+				metadata: { ...ledger.overlay?.metadata, ...value.metadata },
+			};
+			await this.persistRelationshipEvidence(db, String(row.id), ledger);
+		});
+		this.graphServiceInstance = null;
+	}
+
+	private assertRelationshipProjection(
+		row: Record<string, unknown>,
+		ledger: RelationshipEvidenceLedger,
+	): void {
+		const expected = projectRelationshipEvidence(ledger);
+		if (
+			stableStringify({
+				tags: row.tags ?? [],
+				metadata: row.metadata ?? {},
+			}) !==
+			stableStringify({ tags: expected.tags, metadata: expected.metadata })
+		)
+			throw new ElizaError(
+				"Relationship changed outside its evidence ledger; reconciliation requires review",
+				{
+					code: "RELATIONSHIP_EVIDENCE_EXTERNAL_CHANGE",
+					context: { relationshipId: row.id },
+				},
+			);
+	}
+
+	private async persistRelationshipEvidence(
+		db: RuntimeDbExecutor,
+		id: string,
+		ledger: RelationshipEvidenceLedger,
+	): Promise<void> {
+		ledger = parseRelationshipEvidence(ledger);
+		const projection = projectRelationshipEvidence(ledger);
+		ledger.active = projection.active;
+		const rows = await this.identityRows(
+			db,
+			`UPDATE relationships SET tags = ARRAY(SELECT jsonb_array_elements_text(${sqlJsonbLiteral(projection.tags)})),
+			metadata = ${sqlJsonbLiteral(projection.metadata)}, extraction_evidence = ${sqlJsonbLiteral(ledger)}
+			WHERE id = ${sqlQuote(id)} AND agent_id = ${sqlQuote(this.runtime.agentId)} RETURNING id`,
+		);
+		if (rows.length !== 1)
+			throw new ElizaError("Relationship evidence update was not persisted", {
+				code: "RELATIONSHIP_EVIDENCE_WRITE_FAILED",
+				context: { relationshipId: id },
+			});
+	}
+
+	async upsertExtractedRelationship(
+		sourceEntityId: UUID,
+		targetEntityId: UUID,
+		value: RelationshipEvidenceValue,
+		evidence: {
+			evidenceId: string;
+			roomId: UUID;
+			sourceRevisions: Record<string, string>;
+			isBackfill: boolean;
+		},
+	): Promise<void> {
+		await this.identityTransaction(async (db) => {
+			const inserted = await this.identityRows(
+				db,
+				`INSERT INTO relationships (source_entity_id,target_entity_id,agent_id,tags,metadata)
+				VALUES (${sqlQuote(sourceEntityId)},${sqlQuote(targetEntityId)},${sqlQuote(this.runtime.agentId)},'{}'::text[],'{}'::jsonb)
+				ON CONFLICT ON CONSTRAINT unique_relationship DO NOTHING RETURNING id`,
+			);
+			const [row] = await this.identityRows(
+				db,
+				`SELECT * FROM relationships WHERE source_entity_id = ${sqlQuote(sourceEntityId)}
+				AND target_entity_id = ${sqlQuote(targetEntityId)} AND agent_id = ${sqlQuote(this.runtime.agentId)} FOR UPDATE`,
+			);
+			if (!row)
+				throw new ElizaError("Relationship evidence row is missing", {
+					code: "RELATIONSHIP_EVIDENCE_ROW_MISSING",
+				});
+			const metadata = (row.metadata ??
+				{}) as RelationshipEvidenceValue["metadata"];
+			if (
+				!row.extraction_evidence &&
+				Array.isArray(metadata.extractionEvidenceIds) &&
+				metadata.extractionEvidenceIds.length
+			)
+				throw new ElizaError(
+					"Legacy relationship support requires reconciliation review",
+					{ code: "RELATIONSHIP_LEGACY_REVIEW_REQUIRED" },
+				);
+			const ledger: RelationshipEvidenceLedger = row.extraction_evidence
+				? parseRelationshipEvidence(row.extraction_evidence)
+				: {
+						version: 1,
+						active: true,
+						baseline: inserted.length
+							? null
+							: { tags: (row.tags ?? []) as string[], metadata },
+						observations: {},
+					};
+			this.assertRelationshipProjection(row, ledger);
+			const id = stringToUuid(
+				`${evidence.evidenceId}:${sourceEntityId}:${targetEntityId}`,
+			);
+			const existing = ledger.observations[id];
+			if (existing) {
+				if (
+					existing.retiredBy ||
+					stableStringify({
+						tags: existing.tags,
+						metadata: existing.metadata,
+						roomId: existing.roomId,
+						sourceRevisions: existing.sourceRevisions,
+						isBackfill: existing.isBackfill,
+					}) !==
+						stableStringify({
+							...value,
+							roomId: evidence.roomId,
+							sourceRevisions: evidence.sourceRevisions,
+							isBackfill: evidence.isBackfill,
+						})
+				)
+					throw new ElizaError(
+						"Relationship observation replay differs from stored evidence",
+						{ code: "RELATIONSHIP_EVIDENCE_REPLAY_MISMATCH" },
+					);
+				return;
+			}
+			const active = projectRelationshipEvidence(ledger).active;
+			ledger.observations[id] = {
+				...value,
+				roomId: evidence.roomId,
+				evidenceId: evidence.evidenceId,
+				sourceRevisions: evidence.sourceRevisions,
+				isBackfill: evidence.isBackfill,
+				interactionDelta: active && evidence.isBackfill ? 0 : 1,
+				sequence:
+					Object.values(ledger.observations).reduce(
+						(max, item) => Math.max(max, item.sequence),
+						-1,
+					) + 1,
+			};
+			await this.persistRelationshipEvidence(db, String(row.id), ledger);
+		});
+		this.graphServiceInstance = null;
+	}
+
+	async reconcileRelationshipEvidence(
+		roomId: UUID,
+		reconciliation: EvaluatorEvidenceReconciliation,
+	): Promise<{ reprocessSourceIds: string[] }> {
+		const reprocess = new Set<string>();
+		await this.identityTransaction(async (db) => {
+			const rows = await this.identityRows(
+				db,
+				`SELECT * FROM relationships WHERE agent_id = ${sqlQuote(this.runtime.agentId)} ORDER BY id FOR UPDATE`,
+			);
+			for (const row of rows) {
+				if (!row.extraction_evidence) {
+					const metadata = (row.metadata ?? {}) as Record<string, unknown>;
+					const revisions = metadata.extractionSourceRevisions;
+					const pending = reconciliation.pendingEvidenceId;
+					if (
+						(pending !== undefined &&
+							Array.isArray(metadata.extractionEvidenceIds) &&
+							metadata.extractionEvidenceIds.includes(pending)) ||
+						(revisions &&
+							typeof revisions === "object" &&
+							Object.entries(revisions).some(
+								([id, revision]) =>
+									reconciliation.changedMessageIds.includes(id) ||
+									reconciliation.removedMessageIds.includes(id) ||
+									(reconciliation.currentSourceRevisions[id] !== undefined &&
+										reconciliation.currentSourceRevisions[id] !== revision),
+							))
+					)
+						throw new ElizaError(
+							"Legacy relationship support requires reconciliation review",
+							{ code: "RELATIONSHIP_LEGACY_REVIEW_REQUIRED" },
+						);
+					continue;
+				}
+				const ledger = parseRelationshipEvidence(row.extraction_evidence);
+				this.assertRelationshipProjection(row, ledger);
+				const result = retireRelationshipEvidence(
+					ledger,
+					roomId,
+					reconciliation,
+				);
+				for (const id of result.reprocessSourceIds) reprocess.add(id);
+				if (stableStringify(result.ledger) !== stableStringify(ledger))
+					await this.persistRelationshipEvidence(
+						db,
+						String(row.id),
+						result.ledger,
+					);
+			}
+		});
+		this.graphServiceInstance = null;
+		return { reprocessSourceIds: [...reprocess] };
 	}
 
 	async reconcileIdentityEvidence(

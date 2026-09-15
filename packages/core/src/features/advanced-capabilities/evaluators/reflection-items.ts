@@ -75,6 +75,7 @@ import { recordFactCandidate } from "./_factCandidates.ts";
 import {
 	reconcileFactEvidence,
 	reconcileIdentityEvidence,
+	reconcileRelationshipEvidence,
 	reconcileSuccessEvidence,
 } from "./extraction-reconciliation.ts";
 import {
@@ -1142,6 +1143,32 @@ async function applyRelationshipUpdates(
 				? { relationshipType: relationship.relationshipType }
 				: {}),
 		};
+		const relationshipsService = runtime.getService(
+			"relationships",
+		) as RelationshipsService | null;
+		if (extraction && relationshipsService?.supportsRelationshipEvidence?.()) {
+			const source = extraction.messages[0];
+			if (!source)
+				throw new ElizaError("Relationship extraction has no selected source", {
+					code: "RELATIONSHIP_SOURCE_REQUIRED",
+				});
+			await relationshipsService.upsertExtractedRelationship(
+				sourceId,
+				targetId,
+				{ tags, metadata: semanticMetadata },
+				{
+					evidenceId: extraction.evidenceId,
+					roomId: source.roomId,
+					isBackfill: extraction.isBackfill,
+					sourceRevisions: {
+						...extraction.referenceRevisions,
+						...extraction.sourceRevisions,
+					},
+				},
+			);
+			applied += 1;
+			continue;
+		}
 		if (existing) {
 			if (
 				hasExtractionEvidence(existing.metadata as MemoryMetadata, extraction)
@@ -1597,6 +1624,7 @@ export const relationshipEvaluator: Evaluator<
 	name: "relationships",
 	incremental: true,
 	background: true,
+	reconcileEvidence: reconcileRelationshipEvidence,
 	description: "Extracts relationship updates between known room participants.",
 	priority: EvaluatorPriority.REFLECTION_RELATIONSHIPS,
 	providers: ["CONVERSATION_PROXIMITY"],
