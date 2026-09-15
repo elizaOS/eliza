@@ -1,18 +1,22 @@
-import { securityGateEvaluator } from "./evaluators/securityGateEvaluator.js";
-import { inspectSafetyAction } from "./actions/inspectSafety.js";
-import { securityStatusProvider } from "./providers/securityStatusProvider.js";
+import type { Plugin } from "@elizaos/core";
+import { inspectSafetyAction } from "./actions/inspectSafety";
+import { securityGateEvaluator } from "./evaluators/securityGateEvaluator";
+import { securityStatusProvider } from "./providers/securityStatusProvider";
 
-export * from "./evaluators/securityGateEvaluator.js";
-export * from "./actions/inspectSafety.js";
-export * from "./providers/securityStatusProvider.js";
+export * from "./actions/inspectSafety";
+export * from "./evaluators/securityGateEvaluator";
+export * from "./providers/securityStatusProvider";
+export * from "./localSecurityGate";
 
 /**
  * 🛡️ Security Gate x402 Plugin for ElizaOS
+ * Provides deterministic local prompt injection defense, AST code hazard sandboxing,
+ * and optional on-chain/remote micro-oracle verification.
  */
-export const securityGatePlugin = {
+export const securityGatePlugin: Plugin = {
   name: "security-gate",
   description:
-    "Deterministic security inspection, prompt injection defense, AST code sandboxing, and zero-liability provenance for ElizaOS agents.",
+    "Deterministic local prompt injection defense, AST code sandboxing, and autonomous agent safety guardrails.",
   actions: [inspectSafetyAction],
   evaluators: [securityGateEvaluator],
   providers: [securityStatusProvider],

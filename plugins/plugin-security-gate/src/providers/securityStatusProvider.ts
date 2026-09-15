@@ -1,12 +1,20 @@
-export const securityStatusProvider = {
-  async get(_runtime: any, _message: any, _state?: any): Promise<string> {
+import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+
+declare const process: { env?: Record<string, string | undefined> } | undefined;
+
+export const securityStatusProvider: Provider = {
+  async get(runtime: IAgentRuntime, _message?: Memory, _state?: State): Promise<string> {
+    const env = typeof process !== "undefined" && process?.env ? process.env : {};
+    const configuredGateUrl = runtime.getSetting("SECURITY_GATE_URL") || env.SECURITY_GATE_URL;
+
+    const mode = configuredGateUrl ? `Remote Oracle (${configuredGateUrl})` : "Local Deterministic Guard (Zero Network)";
+
     return (
       "--- [ACTIVE SECURITY GATE STATUS] ---\n" +
-      "Micro-Oracle: agent-security-gate-x402 (The Sheriff of Agent Finance)\n" +
-      "Latency Guarantee: <5ms deterministic regex/AST inspection\n" +
-      "On-Chain Verifier: SecurityGateConsumer.sol deployed on Polygon (137), Base (8453), Arbitrum (42161)\n" +
-      "Zero-Liability Terms: ZERO_LIABILITY_AS_IS_PROVENANCE_V1\n" +
-      "All financial orders and sensitive code executions must pass Security Gate verification."
+      `Mode: ${mode}\n` +
+      "Inspection: Local AST Hazard & Prompt Injection Rules Enabled\n" +
+      "Policy: Deterministic sub-millisecond execution\n" +
+      "Enforcement: High-risk injection payloads and command executions are blocked."
     );
   },
 };

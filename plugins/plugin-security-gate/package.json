@@ -1,12 +1,21 @@
 {
   "name": "@elizaos/plugin-security-gate",
-  "version": "0.1.0",
-  "description": "Security Gate x402 plugin for ElizaOS: Sub-5ms prompt injection defense, AST hazard analyzer, and bounded wallet guardrails",
+  "version": "2.0.4",
+  "description": "Deterministic local prompt injection defense, AST code sandboxing, and autonomous agent safety guardrails for ElizaOS",
+  "type": "module",
   "main": "dist/index.js",
-  "module": "dist/index.mjs",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "build": "tsup src/index.ts --format esm,cjs --dts",
     "test": "vitest run"
   },
   "keywords": [
@@ -17,15 +26,14 @@
     "prompt-injection",
     "guardrails",
     "x402",
-    "web3"
+    "safety"
   ],
   "author": "Security Gate Team",
   "license": "MIT",
-  "peerDependencies": {
-    "@elizaos/core": "^0.1.0"
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@elizaos/core": "^0.1.0",
     "tsup": "^8.3.5",
     "typescript": "^5.6.3",
     "vitest": "^2.1.8"
