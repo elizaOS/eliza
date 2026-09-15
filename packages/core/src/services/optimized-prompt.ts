@@ -32,6 +32,19 @@ import type { IAgentRuntime } from "../types/runtime.js";
 import { Service } from "../types/service.js";
 import { resolveStateDir } from "../utils/state-dir.js";
 
+import {
+	type OptimizedPromptProvenance,
+	type OptimizedPromptTargetBinding,
+	optimizedPromptTargetsMatch,
+	parseOptimizedPromptProvenance,
+	parseOptimizedPromptTargetBinding,
+} from "./optimized-prompt-provenance";
+
+export type {
+	OptimizedPromptProvenance,
+	OptimizedPromptTargetBinding,
+} from "./optimized-prompt-provenance";
+
 export const OPTIMIZED_PROMPT_CURRENT_LINK = "current";
 export const OPTIMIZED_PROMPT_PREVIOUS_LINK = "previous";
 export const OPTIMIZED_PROMPT_PREVIOUS2_LINK = "previous2";
@@ -200,6 +213,7 @@ export interface OptimizedPromptArtifact {
 	lineage: OptimizedPromptLineageEntry[];
 	frontier?: OptimizedPromptFrontierEntry[];
 	promotionDecision?: PromotionDecisionSummary;
+	provenance?: OptimizedPromptProvenance;
 }
 
 export interface OptimizedPromptResolved {
@@ -436,6 +450,7 @@ const OPTIMIZED_PROMPT_ARTIFACT_KEYS = new Set([
 	"lineage",
 	"frontier",
 	"promotionDecision",
+	"provenance",
 ]);
 
 /**
@@ -471,6 +486,11 @@ export function parseOptimizedPromptArtifact(
 	)
 		return null;
 	if (!validOptionalEvidence(raw)) return null;
+	const provenance =
+		raw.provenance === undefined
+			? undefined
+			: parseOptimizedPromptProvenance(raw.provenance);
+	if (provenance === null) return null;
 	if (!Array.isArray(raw.lineage)) return null;
 	const lineage: OptimizedPromptLineageEntry[] = [];
 	for (const entry of raw.lineage) {
@@ -513,6 +533,7 @@ export function parseOptimizedPromptArtifact(
 		fewShotExamples: fewShot,
 		frontier,
 		promotionDecision: coercePromotionDecision(raw.promotionDecision),
+		...(provenance ? { provenance } : {}),
 	};
 }
 
@@ -646,6 +667,9 @@ export class OptimizedPromptService extends Service {
 
 	private storeRoot: string = defaultStoreRoot();
 	private cache: Partial<Record<OptimizedPromptTask, CachedEntry>> = {};
+	private targetBindings: Partial<
+		Record<OptimizedPromptTask, OptimizedPromptTargetBinding>
+	> = {};
 	private disabledTasks: ReadonlySet<OptimizedPromptTask> =
 		parseDisabledTasksEnv(process.env.OPTIMIZED_PROMPT_DISABLE);
 
@@ -659,11 +683,40 @@ export class OptimizedPromptService extends Service {
 
 	override async stop(): Promise<void> {
 		this.cache = {};
+		this.targetBindings = {};
 	}
 
 	/** Override the on-disk store root. Primarily for tests. */
 	setStoreRoot(root: string): void {
 		this.storeRoot = root;
+	}
+
+	/**
+	 * The host binds a task to its actual provider configuration before use and
+	 * rebinds it whenever routing changes. This declaration is not inferred from
+	 * artifact metadata; producers must also inspect actual provider requests.
+	 * Bindings are process-local and must be supplied again after restart.
+	 */
+	setTargetBinding(
+		task: OptimizedPromptTask,
+		binding: OptimizedPromptTargetBinding | null,
+	): void {
+		if (!isTask(task))
+			throw new ElizaError("Unknown optimized prompt task", {
+				code: "OPTIMIZED_PROMPT_TARGET_INVALID",
+				context: { task },
+			});
+		if (binding === null) {
+			delete this.targetBindings[task];
+			return;
+		}
+		const parsed = parseOptimizedPromptTargetBinding(binding);
+		if (!parsed)
+			throw new ElizaError("Optimized prompt target binding is invalid", {
+				code: "OPTIMIZED_PROMPT_TARGET_INVALID",
+				context: { task },
+			});
+		this.targetBindings[task] = parsed;
 	}
 
 	getStoreRoot(): string {
@@ -702,6 +755,21 @@ export class OptimizedPromptService extends Service {
 		if (this.disabledTasks.has(task)) return null;
 		const entry = this.cache[task];
 		if (!entry) return null;
+		if (entry.artifact.provenance) {
+			const binding = this.targetBindings[task];
+			if (
+				!binding ||
+				!optimizedPromptTargetsMatch(entry.artifact.provenance.target, binding)
+			) {
+				throw new ElizaError(
+					"Optimized prompt requires its evaluated provider, model, endpoint, generation configuration and runtime revision",
+					{
+						code: "OPTIMIZED_PROMPT_TARGET_MISMATCH",
+						context: { task, bindingAvailable: binding !== undefined },
+					},
+				);
+			}
+		}
 		if (
 			expectedBaseline !== undefined &&
 			entry.artifact.baseline !== expectedBaseline

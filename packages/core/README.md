@@ -48,6 +48,25 @@ The planner resolves artifacts through its registered `OptimizedPromptService`.
 Before that service is ready, it uses the bundled baseline. Artifact activation,
 refresh and rollback remain owned by the service.
 
+New experiment artifacts may include authenticated `provenance`: evaluated
+provider/model/endpoint, a hash of non-secret generation configuration, runtime
+revision, optimizer version/configuration, all dataset split hashes, and the
+complete evaluation report hash. Supplied provenance must be complete; unknown
+fields and malformed hashes reject before signing. These hashes identify
+external evidence; the artifact service does not claim to have verified that
+report's behavioral conclusions or authorize promotion from it.
+
+Before serving a bound artifact, the host must call
+`setTargetBinding(task, binding)` with its actual current provider configuration.
+Missing or different bindings reject with `OPTIMIZED_PROMPT_TARGET_MISMATCH`
+before prompt substitution. The host must update this declaration when routing
+or generation configuration changes and re-establish it after restart; it must
+not copy the expected binding from the artifact. Producers also verify actual
+wire configuration and returned model identity. No credentials belong in the
+configuration hash input or endpoint. Legacy artifacts without provenance retain
+their baseline compatibility checks but are not model-qualified evidence.
+Operator disable and `restoreBaseline` remain available without a binding.
+
 ## Computer-use adapter contract
 
 `contracts/computer-use.ts` is the provider-neutral boundary shared by browser
