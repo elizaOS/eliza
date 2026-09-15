@@ -353,18 +353,18 @@ describe("useVoiceChat TTS playback across providers", () => {
         expect(fetchWithCsrf).not.toHaveBeenCalled();
       finishPlaybackAutomatically = true;
       act(() => result.current.speak("New complete reply."));
-      await waitFor(() =>
+      await waitFor(() => {
         expect(
           events.filter((event) => event.kind === "terminal"),
-        ).toHaveLength(2),
-      );
+        ).toHaveLength(2);
+        expect(result.current.isSpeaking).toBe(false);
+      });
       expect(
         events
           .filter((event) => event.kind === "terminal")
           .map((event) => event.outcome),
       ).toEqual(["cancelled", "source-ended"]);
       expect(legacyStart).toHaveBeenCalledOnce();
-      expect(result.current.isSpeaking).toBe(false);
       expect(result.current.ttsError).toBeNull();
     },
   );
