@@ -268,7 +268,12 @@ describe("coding-tools WEB_FETCH", () => {
     expect(result.text).not.toContain("WEB_SEARCH");
   });
 
-  it("does not recommend another tool after an aborted request", async () => {
+  it("names the WEB_SEARCH fallback after an aborted request (fetch-guard timeouts abort with no reason)", async () => {
+    // fetchWithSsrfGuard enforces timeoutMs with controller.abort() and no
+    // reason, so a real WEB_FETCH timeout reaches the handler as a bare
+    // AbortError whose message never contains "timeout". The transport
+    // pattern therefore treats "aborted" as the endpoint's failure too;
+    // otherwise a timed-out endpoint would carry no fallback hint.
     __setWebHttpLookupFnForTests(async () => [
       { address: PUBLIC_IP, family: 4 },
     ]);
@@ -280,7 +285,7 @@ describe("coding-tools WEB_FETCH", () => {
     });
     expect(result.success).toBe(false);
     expect(result.text).toContain("aborted");
-    expect(result.text).not.toContain("WEB_SEARCH");
+    expect(result.text).toContain("WEB_SEARCH");
   });
 
   it("surfaces timeout-style fetch errors honestly", async () => {
