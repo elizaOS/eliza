@@ -96,10 +96,18 @@ export const viewContinuationField: ResponseHandlerFieldEvaluator<ContextualNavi
 				"navigationOnly",
 			],
 		},
-		shouldRun: ({ runtime, message }) =>
-			!messageHasNoViewSurface(message) &&
-			runtime.actions.some((action) => action.name === "VIEWS"),
-		parse(value) {
+		shouldRun: ({ runtime, message }) => {
+			const active =
+				!messageHasNoViewSurface(message) &&
+				runtime.actions.some((action) => action.name === "VIEWS");
+			// Inactive fields skip parsing and must not retain an earlier decision.
+			if (!active) stageOneIntents.delete(message);
+			return active;
+		},
+		parse(value, { message }) {
+			// Every dispatch replaces the prior attempt, including missing or invalid
+			// output for which the registry will skip handle().
+			stageOneIntents.delete(message);
 			if (!value || typeof value !== "object" || Array.isArray(value))
 				return null;
 			const record = value as Record<string, unknown>;
