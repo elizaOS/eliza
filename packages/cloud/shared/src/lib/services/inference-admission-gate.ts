@@ -190,15 +190,24 @@ async function gateFetch(
   signal?: AbortSignal,
 ): Promise<Response> {
   try {
-    return await observeInferenceDependency("durable_object", path, () =>
-      stub.fetch(
-        new Request(`${GATE_ORIGIN}${path}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-          signal,
-        }),
-      ),
+    return await observeInferenceDependency(
+      "durable_object",
+      path,
+      () =>
+        stub.fetch(
+          new Request(`${GATE_ORIGIN}${path}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+            signal,
+          }),
+        ),
+      (response) => {
+        const value = response.headers.get("x-eliza-gate-handler-ms");
+        return value !== null && /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)
+          ? Number(value)
+          : undefined;
+      },
     );
   } catch (error) {
     if (error instanceof InferenceAdmissionGateUnavailableError) throw error;
