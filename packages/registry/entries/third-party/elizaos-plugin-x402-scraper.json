@@ -1,0 +1,18 @@
+{
+  "package": "elizaos-plugin-x402-scraper",
+  "repository": "github:ami-guru/x402-scraper-engine",
+  "kind": "plugin",
+  "description": "Autonomous HTTP 402 Web Scraper and Markdown Extraction Plugin for ElizaOS agents on Base L2 with dual-rail USDC micropayments and 2-call free grace tier",
+  "homepage": "https://github.com/ami-guru/x402-scraper-engine/tree/main/integrations/elizaos",
+  "version": "1.4.4",
+  "directory": "integrations/elizaos",
+  "tags": [
+    "x402",
+    "web-scraper",
+    "markdown",
+    "base",
+    "usdc",
+    "micropayments",
+    "agentic-payments"
+  ]
+}
