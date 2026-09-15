@@ -8,7 +8,10 @@ import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { z } from "zod";
 import { previewFamilyDeletionDatabase } from "../lifeops/family-workflows/deletion-database-snapshot.js";
 import {
+  admitFamilyBackupCleanup,
   beginFamilyWorkspaceDeletion,
+  previewFamilyBackupCleanup,
+  purgeFamilyBackupCleanup,
   purgeFamilyWorkspaceFiles,
   readFamilyDeletionJob,
 } from "../lifeops/family-workflows/workspace-deletion.js";
@@ -18,6 +21,10 @@ const prefix = "/api/lifeops/family-workflows/deletion";
 const confirmation = z.strictObject({
   expectedSha256: z.string().regex(/^[a-f0-9]{64}$/),
   backupRetention: z.enum(["immediate", "7-days", "30-days"]),
+});
+const backupConfirmation = z.strictObject({
+  expectedSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  acknowledgeWholeArchiveHistory: z.literal(true),
 });
 
 export async function handleFamilyDeletionRoutes(
@@ -32,6 +39,51 @@ export async function handleFamilyDeletionRoutes(
     return true;
   }
   try {
+    if (method === "GET" && pathname === `${prefix}/backups/preview`) {
+      json(res, await previewFamilyBackupCleanup(runtime, SELF_ENTITY_ID));
+      return true;
+    }
+    if (method === "POST" && pathname === `${prefix}/backups`) {
+      const body = await readJsonBody<z.infer<typeof backupConfirmation>>(
+        req,
+        res,
+      );
+      if (!body) return true;
+      const parsed = backupConfirmation.safeParse(body);
+      if (!parsed.success) {
+        json(
+          res,
+          {
+            code: "FAMILY_DELETION_INVALID_CONFIRMATION",
+            error:
+              "Review every eligible backup and acknowledge removal of its whole archived history",
+          },
+          400,
+        );
+        return true;
+      }
+      const admitted = await admitFamilyBackupCleanup(runtime, {
+        ...parsed.data,
+        ownerEntityId: SELF_ENTITY_ID,
+      });
+      if (
+        admitted.backupCleanup &&
+        Date.now() < Date.parse(admitted.backupCleanup.notBefore)
+      ) {
+        json(res, { job: admitted }, 202);
+        return true;
+      }
+      json(res, {
+        job: await purgeFamilyBackupCleanup(runtime, SELF_ENTITY_ID),
+      });
+      return true;
+    }
+    if (method === "POST" && pathname === `${prefix}/backups/resume`) {
+      json(res, {
+        job: await purgeFamilyBackupCleanup(runtime, SELF_ENTITY_ID),
+      });
+      return true;
+    }
     if (method === "GET" && pathname === `${prefix}/preview`) {
       json(res, await previewFamilyDeletionDatabase(runtime, SELF_ENTITY_ID));
       return true;
@@ -91,6 +143,9 @@ export async function handleFamilyDeletionRoutes(
                 "FAMILY_DELETION_SHARED_SOURCE",
                 "AGENT_BACKUP_AUTHORITY_UNAVAILABLE",
                 "AGENT_BACKUP_RETIREMENT_PENDING",
+                "AGENT_BACKUP_CLEANUP_STALE",
+                "AGENT_BACKUP_RETENTION_PENDING",
+                "FAMILY_DELETION_BACKUP_REVIEW_REQUIRED",
               ].includes(code)
             ? 409
             : 500;
