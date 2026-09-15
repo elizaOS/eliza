@@ -19,6 +19,8 @@ A Discord connector plugin for elizaOS, enabling rich integration with Discord s
 Connector inventory reports a bot account as connected only when its live gateway
 is ready with the currently configured token. A saved token or stale inventory
 row alone does not establish readiness; disabled accounts remain disabled.
+Account-scoped message handlers also forward active turns and status reactions
+to the service shutdown drain so teardown waits for admitted work.
 
 ## Installation
 
