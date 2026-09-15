@@ -2300,6 +2300,131 @@ if (postgresTestUrl) {
       }
     }
   });
+
+  // Suspend routing (#31364) consults the LATEST funding window's retirement
+  // binding through latestAgentComputeFundingWindow. These cases pin the real
+  // query's ordering against PostgreSQL itself — adversarial physical heap
+  // order and an exact period_start tie — where the simulated suite can only
+  // prove branch selection.
+  test("suspend routing reads the latest funding window under adversarial physical order (#31364)", async () => {
+    const { latestAgentComputeFundingWindow } = await import("./eliza-sandbox/lifecycle/power");
+    for (const boundFirstInHeap of [true, false]) {
+      const agentId = crypto.randomUUID();
+      await fixture.query(
+        "INSERT INTO agent_sandboxes(id,organization_id,status,execution_tier,lifecycle_revision) VALUES($1,$2,'stopped','dedicated-always',1)",
+        [agentId, organizationId],
+      );
+      const [heldBound, heldUnbound] = await Promise.all([
+        helpers.writeTransaction((tx) =>
+          funding.subscriptionFundingService.reserveInTransaction(
+            tx,
+            input(`compute.routing-order.bound.${boundFirstInHeap}.${agentId}`, "0.010000"),
+          ),
+        ),
+        helpers.writeTransaction((tx) =>
+          funding.subscriptionFundingService.reserveInTransaction(
+            tx,
+            input(`compute.routing-order.unbound.${boundFirstInHeap}.${agentId}`, "0.010000"),
+          ),
+        ),
+      ]);
+      // Older window: committed funded stop, retirement-bound (settled,
+      // provider-stopped, bound — the 0392 CHECK shape). Newer window:
+      // expiry's settled, unbound stop-in-place.
+      const boundId = crypto.randomUUID();
+      const insertBound = () =>
+        fixture.query(
+          `INSERT INTO agent_compute_funding(id,agent_id,organization_id,funding_reservation_id,
+             period_start,period_end,hourly_rate,settled_at,settled_through,
+             provider_node_id,provider_container_id,provider_bound_at,
+             provider_stopped_at,provider_stop_receipt,retirement_backup_id)
+           VALUES($5::uuid,$1,$2,$3,now()-interval '3 days',now()-interval '2 days',0.15,
+             now()-interval '2 days',now()-interval '2 days',
+             'node-routing-order','abababababababababababababababababababababababababababababababab',now()-interval '3 days',
+             now()-interval '2 days',
+             jsonb_build_object('fundingId',$5::text,'containerId','abababababababababababababababababababababababababababababababab','stoppedAtMs',1757894400000,'bootId','boot-routing-order'),
+             $4)`,
+          [agentId, organizationId, heldBound.reservation.id, crypto.randomUUID(), boundId],
+        );
+      const insertUnbound = () =>
+        fixture.query(
+          `INSERT INTO agent_compute_funding(id,agent_id,organization_id,funding_reservation_id,
+             period_start,period_end,hourly_rate,settled_at,settled_through)
+           VALUES(gen_random_uuid(),$1,$2,$3,now()-interval '1 day',now(),0.15,now(),now())`,
+          [agentId, organizationId, heldUnbound.reservation.id],
+        );
+      if (boundFirstInHeap) {
+        await insertBound();
+        await insertUnbound();
+      } else {
+        await insertUnbound();
+        await insertBound();
+      }
+      const latest = await latestAgentComputeFundingWindow(
+        helpers.dbWrite,
+        agentId,
+        organizationId,
+      );
+      expect(latest).toEqual({ retirementBackupId: null });
+    }
+  });
+
+  test("an exact period_start tie breaks to the higher id, matching the sleep path's read (#31364)", async () => {
+    const { latestAgentComputeFundingWindow } = await import("./eliza-sandbox/lifecycle/power");
+    for (const boundIsHigherId of [true, false]) {
+      const agentId = crypto.randomUUID();
+      await fixture.query(
+        "INSERT INTO agent_sandboxes(id,organization_id,status,execution_tier,lifecycle_revision) VALUES($1,$2,'stopped','dedicated-always',1)",
+        [agentId, organizationId],
+      );
+      const [heldBound, heldUnbound] = await Promise.all([
+        helpers.writeTransaction((tx) =>
+          funding.subscriptionFundingService.reserveInTransaction(
+            tx,
+            input(`compute.routing-tie.bound.${boundIsHigherId}.${agentId}`, "0.010000"),
+          ),
+        ),
+        helpers.writeTransaction((tx) =>
+          funding.subscriptionFundingService.reserveInTransaction(
+            tx,
+            input(`compute.routing-tie.unbound.${boundIsHigherId}.${agentId}`, "0.010000"),
+          ),
+        ),
+      ]);
+      const backupId = crypto.randomUUID();
+      const lowId = `00000000-0000-4000-8000-${agentId.slice(-12)}`;
+      const highId = `ffffffff-ffff-4fff-8fff-${agentId.slice(-12)}`;
+      const boundId = boundIsHigherId ? highId : lowId;
+      await fixture.query(
+        `INSERT INTO agent_compute_funding(id,agent_id,organization_id,funding_reservation_id,
+           period_start,period_end,hourly_rate,settled_at,settled_through,
+           provider_node_id,provider_container_id,provider_bound_at,
+           provider_stopped_at,provider_stop_receipt,retirement_backup_id)
+         VALUES($5::uuid,$1,$2,$3,timestamptz '2026-09-13T00:00:00Z',timestamptz '2026-09-14T00:00:00Z',0.15,
+           timestamptz '2026-09-14T00:00:00Z',timestamptz '2026-09-14T00:00:00Z',
+           'node-routing-tie','cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd',timestamptz '2026-09-13T00:00:00Z',
+           timestamptz '2026-09-14T00:00:00Z',
+           jsonb_build_object('fundingId',$5::text,'containerId','cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd','stoppedAtMs',1757894400000,'bootId','boot-routing-tie'),
+           $4)`,
+        [agentId, organizationId, heldBound.reservation.id, backupId, boundId],
+      );
+      await fixture.query(
+        `INSERT INTO agent_compute_funding(id,agent_id,organization_id,funding_reservation_id,
+           period_start,period_end,hourly_rate,settled_at,settled_through)
+         VALUES($4,$1,$2,$3,timestamptz '2026-09-13T00:00:00Z',timestamptz '2026-09-14T00:00:00Z',0.15,
+           timestamptz '2026-09-14T00:00:00Z',timestamptz '2026-09-14T00:00:00Z')`,
+        [agentId, organizationId, heldUnbound.reservation.id, boundIsHigherId ? lowId : highId],
+      );
+      const latest = await latestAgentComputeFundingWindow(
+        helpers.dbWrite,
+        agentId,
+        organizationId,
+      );
+      expect(latest).toEqual({
+        retirementBackupId: boundIsHigherId ? backupId : null,
+      });
+    }
+  });
 }
 
 if (sshFixturePath) {
