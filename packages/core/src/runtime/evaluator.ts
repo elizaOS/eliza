@@ -1724,6 +1724,11 @@ function containsFabricatedMarkerInvocation(text: string): boolean {
 	const prose = text
 		.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, "")
 		.replace(/`[^`\r\n]*`/g, "");
+	// A planner call reference can appear without an argument body. It is
+	// still protocol syntax, including after a successful tool result (#31382).
+	if (/\[[ \t]*CALL[ \t]*:[ \t]*[A-Za-z0-9_.:-]+[ \t]*\]/.test(prose)) {
+		return true;
+	}
 	for (const match of prose.matchAll(
 		/\[[ \t]*([A-Z][A-Z0-9_]{2,})[ \t]*\]([\s\S]*?)\[[ \t]*\/[ \t]*\1[ \t]*\]/g,
 	)) {
