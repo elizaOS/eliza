@@ -17,6 +17,7 @@
  *     allowlist gates substitution uniformly.
  */
 
+import { ElizaError } from "../errors.ts";
 import { toWellFormedUnicode } from "../utils/well-formed.ts";
 import {
 	OPTIMIZED_PROMPT_SERVICE,
@@ -59,43 +60,45 @@ export function resolveOptimizedPrompt(
 	return injectDemonstrations(optimized.prompt, optimized.fewShotExamples);
 }
 
-/**
- * Extract a recorded planner input's user section for an in-context example.
- * When no tagged user section exists, retain the complete recorded input.
- */
+/** Retain the complete recorded input. The legacy export name remains compatible. */
 export function trimDemonstrationInput(rawInput: string): string {
-	const userMatch =
-		rawInput.match(
-			/(?:^|\n)user(?:\s+message)?\s*:\s*([^\n]+(?:\n(?!\w+:)[^\n]+)*)/i,
-		) ??
-		rawInput.match(/(?:^|\n)user_message\s*:\s*([^\n]+(?:\n(?!\w+:)[^\n]+)*)/i);
-	const candidate = userMatch?.[1]?.trim();
-	if (candidate && candidate.length > 0) {
-		return toWellFormedUnicode(candidate);
-	}
-	return toWellFormedUnicode(rawInput);
+	return completeDemonstrationText(rawInput);
+}
+
+function completeDemonstrationText(value: string): string {
+	if (toWellFormedUnicode(value) !== value)
+		throw new ElizaError(
+			"Optimized prompt text contains an unpaired Unicode surrogate; regenerate the complete artifact",
+			{
+				code: "OPTIMIZED_PROMPT_INVALID_UNICODE",
+			},
+		);
+	return value;
 }
 
 function injectDemonstrations(
 	prompt: string,
 	examples: OptimizedPromptFewShotExample[],
 ): string {
-	if (prompt.includes("Demonstrations:")) {
-		// The artifact already had demonstrations rendered into the prompt
-		// Some offline artifacts already contain rendered demonstrations.
-		// Preserve that producer-owned rendering instead of double-injecting.
-		return prompt;
-	}
-	const lines: string[] = [prompt.trimEnd(), "", "Demonstrations:", ""];
+	const lines: string[] = [
+		completeDemonstrationText(prompt),
+		"",
+		"Demonstrations:",
+		"",
+	];
 	let idx = 1;
 	for (const example of examples) {
 		lines.push(`Example ${idx}:`);
+		if (example.input.system !== undefined)
+			lines.push(`System:\n${completeDemonstrationText(example.input.system)}`);
 		lines.push(`Input:\n${trimDemonstrationInput(example.input.user)}`);
-		lines.push(`Expected:\n${example.expectedOutput}`);
+		lines.push(
+			`Expected:\n${completeDemonstrationText(example.expectedOutput)}`,
+		);
 		lines.push("");
 		idx += 1;
 	}
-	return lines.join("\n").trimEnd();
+	return lines.join("\n");
 }
 
 /**
