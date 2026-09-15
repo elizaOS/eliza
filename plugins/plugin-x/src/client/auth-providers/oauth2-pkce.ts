@@ -53,6 +53,12 @@ export class OAuth2PKCEAuthProvider implements TwitterAuthProvider {
 
   private tokens: StoredOAuth2Tokens | null = null;
   private readonly accountId: string;
+  // Single-flight guard: collapses concurrent expiry-window (or missing-token)
+  // callers onto one refresh/interactive-login so X's single-use, rotating
+  // refresh token is only spent once. Without it, plugin-x's independent loops
+  // (post, interactions, discovery) share this provider instance and can each
+  // refresh the same R0, making the losing caller fail with invalid_grant.
+  private authInFlight: Promise<StoredOAuth2Tokens> | null = null;
 
   constructor(
     private readonly runtime: IAgentRuntime,
@@ -104,7 +110,14 @@ export class OAuth2PKCEAuthProvider implements TwitterAuthProvider {
 
   private async loadTokens(): Promise<StoredOAuth2Tokens | null> {
     if (this.tokens) return this.tokens;
-    this.tokens = await this.tokenStore.load();
+    const loaded = await this.tokenStore.load();
+    // A concurrent single-flight may have refreshed and saved a newer token
+    // while this store read was outstanding (real file/DB stores can have a
+    // read in flight across another loop's write). Never let a pre-write
+    // snapshot clobber the freshly rotated token, or that stale refresh token
+    // gets spent a second time and fails with invalid_grant.
+    if (this.tokens) return this.tokens;
+    this.tokens = loaded;
     return this.tokens;
   }
 
@@ -255,33 +268,74 @@ export class OAuth2PKCEAuthProvider implements TwitterAuthProvider {
     return await this.exchangeCodeForToken({ code, codeVerifier: verifier });
   }
 
+  private runInteractiveLogin(): Promise<StoredOAuth2Tokens> {
+    return this.interactiveLoginFn
+      ? this.interactiveLoginFn()
+      : this.interactiveLogin();
+  }
+
+  /**
+   * Resolve a valid token set, serializing refresh/re-auth work through
+   * `authInFlight`. Concurrent callers that observe an expired token join the
+   * same in-flight operation instead of starting a competing refresh, then
+   * re-check the resulting token before returning. `produce` computes fresh
+   * tokens; it runs at most once per burst of contending callers.
+   */
+  private async obtainTokens(
+    produce: () => Promise<StoredOAuth2Tokens>,
+  ): Promise<StoredOAuth2Tokens> {
+    if (this.authInFlight) {
+      const shared = await this.authInFlight;
+      if (!isExpired(shared)) return shared;
+      // The joined operation produced a token that is already expired (or the
+      // caller needed a distinct credential); fall through to start a new one.
+    }
+    if (!this.authInFlight) {
+      this.authInFlight = (async () => {
+        const produced = await produce();
+        await this.saveTokens(produced);
+        return produced;
+      })().finally(() => {
+        this.authInFlight = null;
+      });
+    }
+    return this.authInFlight;
+  }
+
   async getAccessToken(): Promise<string> {
     const tokens = await this.loadTokens();
-    if (!tokens) {
-      const newTokens = this.interactiveLoginFn
-        ? await this.interactiveLoginFn()
-        : await this.interactiveLogin();
-      await this.saveTokens(newTokens);
-      return newTokens.access_token;
-    }
 
-    if (!isExpired(tokens)) {
+    if (tokens && !isExpired(tokens)) {
       return tokens.access_token;
     }
 
-    if (!tokens.refresh_token) {
-      // No refresh token available; must re-auth.
-      await this.tokenStore.clear();
-      this.tokens = null;
-      const newTokens = this.interactiveLoginFn
-        ? await this.interactiveLoginFn()
-        : await this.interactiveLogin();
-      await this.saveTokens(newTokens);
+    if (!tokens) {
+      const newTokens = await this.obtainTokens(() =>
+        this.runInteractiveLogin(),
+      );
       return newTokens.access_token;
     }
 
-    const refreshed = await this.refreshAccessToken(tokens.refresh_token);
-    await this.saveTokens(refreshed);
+    if (!tokens.refresh_token) {
+      // No refresh token available; must re-auth interactively.
+      const newTokens = await this.obtainTokens(async () => {
+        await this.tokenStore.clear();
+        this.tokens = null;
+        return this.runInteractiveLogin();
+      });
+      return newTokens.access_token;
+    }
+
+    const refreshToken = tokens.refresh_token;
+    const refreshed = await this.obtainTokens(() =>
+      // Read the refresh token when `produce` actually runs, not from the
+      // pre-join capture. A joiner whose shared result is already expired falls
+      // through to start a fresh flight; by then the joined flight has rotated
+      // R0 -> R1 and cached it, so the captured R0 is spent. Using the current
+      // cached token spends R1 and avoids re-spending R0 (a rarer invalid_grant
+      // on the same double-spend path this guard exists to prevent).
+      this.refreshAccessToken(this.tokens?.refresh_token ?? refreshToken),
+    );
     return refreshed.access_token;
   }
 }
