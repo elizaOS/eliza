@@ -123,9 +123,12 @@ export interface IMessageListMessagesOptions {
 export interface IMessageSendOptions {
   /** Connector account ID. iMessage currently supports only the local default account. */
   accountId?: string;
-  /** Media URL or path to attach */
-  mediaUrl?: string;
-  /** Max bytes for media */
+  /**
+   * Media URL(s) or path(s) to attach. Every requested attachment is resolved
+   * and delivered; there is no first-only selection.
+   */
+  mediaUrls?: string[];
+  /** Max bytes per media attachment */
   maxBytes?: number;
 }
 
@@ -137,6 +140,18 @@ export interface IMessageSendResult {
   messageId?: string;
   chatId?: string;
   error?: string;
+  /**
+   * Evidence about externally delivered parts when the overall send failed
+   * partway (#23104): how many text chunks and attachments reached
+   * Messages.app, plus one local-effect stamp per delivered part. AppleScript
+   * returns no provider ids; stamps are locally generated completion markers,
+   * not provider-backed message ids.
+   */
+  delivered?: {
+    textChunks: number;
+    attachments: number;
+    effectStamps: string[];
+  };
 }
 
 export interface IMessagePermissionAction {

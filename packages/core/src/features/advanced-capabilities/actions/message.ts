@@ -3190,10 +3190,17 @@ async function handleSend(
 			);
 		}
 		if (disposition.kind === "partially_delivered") {
+			// Local-effect receipts carry locally generated completion markers,
+			// not provider-issued ids; guidance must never tell an operator to
+			// reconcile ids against a provider that issued none.
+			const partialDeliveryGuidance =
+				disposition.receipt.evidenceKind === "local-effect"
+					? `${selected.connector.label} delivered part of the message, but the complete payload was not delivered. Do not retry blindly; the delivered parts reached the target and the transport returned no provider message ids to reconcile. ${disposition.message}`
+					: `${selected.connector.label} accepted part of the message, but the complete payload was not delivered. Do not retry blindly; provider messages ${disposition.receipt.providerMessageIds.join(", ")} already exist. ${disposition.message}`;
 			return opFailure(
 				"send",
 				"MESSAGE_PARTIAL_DELIVERY",
-				`${selected.connector.label} accepted part of the message, but the complete payload was not delivered. Do not retry blindly; provider messages ${disposition.receipt.providerMessageIds.join(", ")} already exist. ${disposition.message}`,
+				partialDeliveryGuidance,
 				{
 					source: selected.connector.source,
 					target,
@@ -3204,6 +3211,10 @@ async function handleSend(
 					acceptance: "partial",
 					responseMessageId: disposition.providerMessageId,
 					providerMessageIds: disposition.receipt.providerMessageIds,
+					// Absent discriminator documents the provider default; the structured
+					// surface states it explicitly so metadata consumers cannot misread
+					// local-effect markers as provider-backed ids.
+					evidenceKind: disposition.receipt.evidenceKind ?? "provider",
 					replayed: disposition.replayed,
 					persistenceStatus: disposition.receipt.persistence.status,
 					newDelivery: !disposition.replayed,
@@ -3218,10 +3229,17 @@ async function handleSend(
 			(disposition.receipt.persistence.status === "partial" ||
 				disposition.receipt.persistence.status === "failed")
 		) {
+			// Local-effect receipts carry locally generated completion markers,
+			// not provider-issued ids; guidance must never tell an operator to
+			// reconcile ids against a provider that issued none.
+			const persistenceFailureGuidance =
+				disposition.receipt.evidenceKind === "local-effect"
+					? `The complete message reached its target via ${selected.connector.label}, but local delivery evidence was not fully persisted. The transport returned no provider message ids to reconcile; do not resend.`
+					: `The provider accepted the complete message via ${selected.connector.label}, but local delivery evidence was not fully persisted. Do not resend; reconcile provider messages ${disposition.receipt.providerMessageIds.join(", ")}.`;
 			return opFailure(
 				"send",
 				"MESSAGE_DELIVERED_PERSISTENCE_FAILED",
-				`The provider accepted the complete message via ${selected.connector.label}, but local delivery evidence was not fully persisted. Do not resend; reconcile provider messages ${disposition.receipt.providerMessageIds.join(", ")}.`,
+				persistenceFailureGuidance,
 				{
 					source: selected.connector.source,
 					target,
@@ -3231,6 +3249,7 @@ async function handleSend(
 					acceptance: "accepted",
 					responseMessageId: providerMessageId,
 					providerMessageIds: disposition.receipt.providerMessageIds,
+					evidenceKind: disposition.receipt.evidenceKind ?? "provider",
 					persistenceStatus: disposition.receipt.persistence.status,
 					replayed: disposition.replayed,
 					newDelivery: !disposition.replayed,
@@ -3275,10 +3294,17 @@ async function handleSend(
 			const providerMessageIds =
 				disposition.receipt?.providerMessageIds ??
 				(providerMessageId ? [providerMessageId] : undefined);
+			// Local-effect receipts carry locally generated completion markers,
+			// not provider-issued ids; guidance must never tell an operator to
+			// reconcile ids against a provider that issued none.
+			const outboundRecordGuidance =
+				disposition.receipt?.evidenceKind === "local-effect"
+					? `The complete message reached its target via ${selected.connector.label}, but the requested local outbound record failed. The transport returned no provider message ids to reconcile; do not resend.`
+					: `The provider accepted the complete message via ${selected.connector.label}, but the requested local outbound record failed. Do not resend; reconcile the accepted provider message${providerMessageIds?.length === 1 ? "" : "s"}${providerMessageIds ? ` ${providerMessageIds.join(", ")}` : ""}.`;
 			return opFailure(
 				"send",
 				"MESSAGE_DELIVERED_PERSISTENCE_FAILED",
-				`The provider accepted the complete message via ${selected.connector.label}, but the requested local outbound record failed. Do not resend; reconcile the accepted provider message${providerMessageIds?.length === 1 ? "" : "s"}${providerMessageIds ? ` ${providerMessageIds.join(", ")}` : ""}.`,
+				outboundRecordGuidance,
 				{
 					source: selected.connector.source,
 					target,
@@ -3288,6 +3314,7 @@ async function handleSend(
 					acceptance: "accepted",
 					responseMessageId: providerMessageId,
 					providerMessageIds,
+					evidenceKind: disposition.receipt?.evidenceKind ?? "provider",
 					persistenceStatus: "failed",
 					persistenceCode: persistence.code,
 					persistenceMessage: persistence.message,
