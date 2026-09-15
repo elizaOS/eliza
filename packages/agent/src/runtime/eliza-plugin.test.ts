@@ -69,6 +69,13 @@ describe("createElizaPlugin — structure & service wiring", () => {
     expect((plugin.actions ?? []).length).toBeGreaterThan(0);
   });
 
+  it("does not advertise model-authored chat widgets or generative UI", () => {
+    const names = createElizaPlugin().providers?.map((provider) => provider.name);
+    for (const name of ["uiWidgetCapabilities", "uiWidgets", "uiGenerative"]) {
+      expect(names).not.toContain(name);
+    }
+  });
+
   it("registers MemoryRetentionService (the append-only-store bound)", () => {
     const plugin = createElizaPlugin({ workspaceDir: "/tmp/ws", agentId: "u" });
     expect(plugin.services).toContain(MemoryRetentionService);
