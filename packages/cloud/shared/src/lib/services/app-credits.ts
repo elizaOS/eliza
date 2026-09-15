@@ -1707,7 +1707,8 @@ export class AppCreditsService {
         !factUserId ||
         factAppId !== normalizeUuidIdentity(params.appId) ||
         factUserId !== normalizeUuidIdentity(params.userId) ||
-        (params.organizationId !== undefined && params.organizationId !== organizationId) ||
+        (params.organizationId !== undefined &&
+          normalizeUuidIdentity(params.organizationId) !== organizationId) ||
         !reservedBase.isFinite() ||
         reservedBase.isNegative() ||
         !markupPercentage.isFinite() ||
@@ -1720,19 +1721,12 @@ export class AppCreditsService {
       const [existing] = await tx
         .select()
         .from(appReservationSettlements)
-        .where(
-          eq(appReservationSettlements.reservation_transaction_id, params.reservationTransactionId),
-        )
+        .where(eq(appReservationSettlements.reservation_transaction_id, reservation.id))
         .limit(1);
       const [legacyQuarantine] = await tx
         .select()
         .from(appReservationSettlementQuarantines)
-        .where(
-          eq(
-            appReservationSettlementQuarantines.reservation_transaction_id,
-            params.reservationTransactionId,
-          ),
-        )
+        .where(eq(appReservationSettlementQuarantines.reservation_transaction_id, reservation.id))
         .limit(1);
       const [lockedOrg] = await tx
         .select({ balance: organizations.credit_balance })
@@ -1806,12 +1800,12 @@ export class AppCreditsService {
       const [currentApp] = await tx
         .select()
         .from(apps)
-        .where(eq(apps.id, params.appId))
+        .where(eq(apps.id, factAppId))
         .for("update")
         .limit(1);
       const accountingApp: AppCreditAccountingApp = {
         ...(currentApp ?? {}),
-        name: typeof facts.appName === "string" ? facts.appName : params.appId,
+        name: typeof facts.appName === "string" ? facts.appName : factAppId,
         created_by_user_id: creatorUserId,
         monetization_enabled: markupPercentage.gt(0),
         review_status: markupPercentage.gt(0) ? "approved" : "rejected",
@@ -1850,7 +1844,7 @@ export class AppCreditsService {
       ) {
         throw new ElizaError("App settlement lacks its committed creator earning authority", {
           code: "APP_CREATOR_SETTLEMENT_AUTHORITY_MISMATCH",
-          context: { reservationTransactionId: params.reservationTransactionId, organizationId },
+          context: { reservationTransactionId: reservation.id, organizationId },
         });
       }
       const collectsActual =
@@ -1865,8 +1859,8 @@ export class AppCreditsService {
       const creatorLedgerAdjustment = finalCreatorAmount.minus(initialCreatorAmount);
       const identityMetadata = {
         ...params.metadata,
-        reservation_transaction_id: params.reservationTransactionId,
-        idempotencyKey: `app-reservation-settlement:${params.reservationTransactionId}`,
+        reservation_transaction_id: reservation.id,
+        idempotencyKey: `app-reservation-settlement:${reservation.id}`,
         terminal_source: terminalSource,
       };
 
@@ -1885,8 +1879,8 @@ export class AppCreditsService {
         });
         if (creatorLedgerAdjustment.lt(0) && creatorUserId) {
           const reversal = await this.reverseCreatorEarnings(
-            params.appId,
-            params.userId,
+            factAppId,
+            factUserId,
             creatorLedgerAdjustment.abs().toNumber(),
             platformAdjustment.abs().toNumber(),
             "reconcile_refund",
@@ -1900,8 +1894,8 @@ export class AppCreditsService {
         const refund = await creditsService.refundCredits({
           organizationId,
           amount: organizationAdjustment.abs().toFixed(6),
-          description: `App reconciliation refund (${accountingApp.name ?? params.appId})`,
-          stripePaymentIntentId: `reconcile-refund:${params.reservationTransactionId}`,
+          description: `App reconciliation refund (${accountingApp.name ?? factAppId})`,
+          stripePaymentIntentId: `reconcile-refund:${reservation.id}`,
           metadata: identityMetadata,
           db: tx,
           deferCacheInvalidation: true,
@@ -1913,8 +1907,8 @@ export class AppCreditsService {
           const debit = await creditsService.reserveAndDeductCredits({
             organizationId,
             amount: organizationAdjustment.toNumber(),
-            description: `App reconciliation charge (${accountingApp.name ?? params.appId})`,
-            stripePaymentIntentId: `reconcile-charge:${params.reservationTransactionId}`,
+            description: `App reconciliation charge (${accountingApp.name ?? factAppId})`,
+            stripePaymentIntentId: `reconcile-charge:${reservation.id}`,
             metadata: identityMetadata,
             db: tx,
             deferPostCommitEffects: true,
@@ -1927,8 +1921,8 @@ export class AppCreditsService {
           creditTransactionId = debit.transaction.id;
           if (creatorLedgerAdjustment.gt(0) && creatorUserId) {
             const earning = await this.recordCreatorEarnings(
-              params.appId,
-              params.userId,
+              factAppId,
+              factUserId,
               "inference_markup",
               creatorLedgerAdjustment.toNumber(),
               platformAdjustment.toNumber(),
@@ -1948,10 +1942,10 @@ export class AppCreditsService {
       const [receipt] = await tx
         .insert(appReservationSettlements)
         .values({
-          reservation_transaction_id: params.reservationTransactionId,
+          reservation_transaction_id: reservation.id,
           organization_id: organizationId,
-          app_id: params.appId,
-          user_id: params.userId,
+          app_id: factAppId,
+          user_id: factUserId,
           creator_user_id: creatorUserId,
           creator_rule_version: 2,
           creator_original_ledger_entry_id: originalCreator?.id ?? null,
@@ -1978,7 +1972,7 @@ export class AppCreditsService {
         .set({ settled_at: new Date() })
         .where(
           and(
-            eq(creditTransactions.id, params.reservationTransactionId),
+            eq(creditTransactions.id, reservation.id),
             eq(creditTransactions.organization_id, organizationId),
             sql`${creditTransactions.settled_at} IS NULL`,
           ),
