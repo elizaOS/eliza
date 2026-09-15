@@ -66,6 +66,67 @@ describe("TrajectoryDetailView recorded usage", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    api.copy.mockReset();
+  });
+
+  it("reports whole-run clipboard completion only after the full payload is copied", async () => {
+    const recorded = detail();
+    api.getTrajectoryDetail.mockResolvedValue(recorded);
+    let finishCopy!: () => void;
+    api.copy.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishCopy = resolve;
+        }),
+    );
+    render(
+      <TrajectoryDetailView
+        trajectoryId="recorded-correction"
+        collapsibleCalls
+      />,
+    );
+    const button = await screen.findByRole("button", {
+      name: "Copy entire recorded run",
+    });
+    fireEvent.click(button);
+    expect(api.copy).toHaveBeenCalledWith(JSON.stringify(recorded, null, 2));
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("status").textContent).toBe("Copying…");
+    finishCopy();
+    await waitFor(() =>
+      expect(screen.getByRole("status").textContent).toBe(
+        "Recorded run copied.",
+      ),
+    );
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("shows a retryable clipboard failure instead of an unhandled rejection", async () => {
+    api.getTrajectoryDetail.mockResolvedValue(detail());
+    api.copy.mockRejectedValueOnce(new Error("Permission denied"));
+    render(
+      <TrajectoryDetailView
+        trajectoryId="recorded-correction"
+        collapsibleCalls
+      />,
+    );
+    const button = await screen.findByRole("button", {
+      name: "Copy entire recorded run",
+    });
+    fireEvent.click(button);
+    await waitFor(() =>
+      expect(screen.getByRole("status").textContent).toContain(
+        "Could not copy",
+      ),
+    );
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    api.copy.mockResolvedValueOnce(undefined);
+    fireEvent.click(button);
+    await waitFor(() =>
+      expect(screen.getByRole("status").textContent).toBe(
+        "Recorded run copied.",
+      ),
+    );
   });
 
   it("distinguishes missing provider text, captured text, empty results and raw metadata", async () => {

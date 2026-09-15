@@ -547,6 +547,10 @@ export function TrajectoryDetailView({
   const copyToClipboard = useAppSelector((s) => s.copyToClipboard);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<TrajectoryDetailResult | null>(null);
+  const [runCopy, setRunCopy] = useState<{
+    detail: TrajectoryDetailResult;
+    status: "pending" | "copied" | "failed";
+  } | null>(null);
   const [error, setError] = useState<
     "missing" | "restricted" | "offline" | "error" | null
   >(null);
@@ -1330,12 +1334,31 @@ export function TrajectoryDetailView({
           <Button
             size="touch"
             variant="outline"
-            onClick={() =>
-              void copyToClipboard(JSON.stringify(detail, null, 2))
+            disabled={
+              runCopy?.detail === detail && runCopy.status === "pending"
             }
+            onClick={async () => {
+              setRunCopy({ detail, status: "pending" });
+              try {
+                await copyToClipboard(JSON.stringify(detail, null, 2));
+                setRunCopy({ detail, status: "copied" });
+              } catch {
+                // error-policy:J4 Clipboard denial must remain visible and retryable.
+                setRunCopy({ detail, status: "failed" });
+              }
+            }}
           >
             Copy entire recorded run
           </Button>
+          {runCopy?.detail === detail ? (
+            <p role="status" className="text-sm text-muted">
+              {runCopy.status === "pending"
+                ? "Copying…"
+                : runCopy.status === "copied"
+                  ? "Recorded run copied."
+                  : "Could not copy. Check clipboard permission and try again."}
+            </p>
+          ) : null}
         </div>
       ) : null}
     </div>
