@@ -72,11 +72,9 @@ it("persists both owned semantic fixtures and rejects incomplete replay without 
             };
           }
         | undefined;
-      if (
-        !contract ||
-        (structural && !prompt?.includes("## Output Shape\n")) ||
-        (structural && Boolean(schemaMatch))
-      ) {
+      // The complete contract is visible in the prompt on every rung; the
+      // structural request also carries it on the wire.
+      if (!contract || !schemaMatch) {
         response.writeHead(400);
         response.end("Complete output contract missing");
         return;
