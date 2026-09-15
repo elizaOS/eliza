@@ -231,12 +231,12 @@ SMOKE_APP_CMD_START_OVERRIDE="${APP_CMD_START:-}"
 load_env_file "$APP_CORE_DIR/deploy/deploy.defaults.env"
 # The shared deployment defaults still describe older Node images. This
 # Dockerfile uses Bun; keep an explicit caller or deployment-file override.
-APP_CMD_START="${SMOKE_APP_CMD_START_OVERRIDE:-bun --tsconfig-override /app/${APP_CORE_DIR}/deploy/tsx-runtime-tsconfig.json ${APP_ENTRYPOINT:-$AGENT_DIR/dist/bin.js} start}"
+APP_CMD_START="${SMOKE_APP_CMD_START_OVERRIDE:-bun --no-install --tsconfig-override /app/${APP_CORE_DIR}/deploy/tsx-runtime-tsconfig.json ${APP_ENTRYPOINT:-$AGENT_DIR/dist/bin.js} start}"
 load_env_file "deploy/deploy.env"
 
 APP_IMAGE="${APP_IMAGE:-eliza/agent}"
 APP_ENTRYPOINT="${APP_ENTRYPOINT:-$AGENT_DIR/dist/bin.js}"
-APP_CMD_START="${APP_CMD_START:-bun --tsconfig-override /app/${APP_CORE_DIR}/deploy/tsx-runtime-tsconfig.json ${APP_ENTRYPOINT} start}"
+APP_CMD_START="${APP_CMD_START:-bun --no-install --tsconfig-override /app/${APP_CORE_DIR}/deploy/tsx-runtime-tsconfig.json ${APP_ENTRYPOINT} start}"
 APP_PORT="${APP_PORT:-2138}"
 APP_API_BIND="${APP_API_BIND:-127.0.0.1}"
 OCI_SOURCE="${OCI_SOURCE:-}"
