@@ -700,10 +700,10 @@ describe("RESOLVE_REQUEST durable approval execution", () => {
         getService: (name: string) =>
           name === "telegram" ? connector : runtime.getService(name),
       } as unknown as IAgentRuntime;
-      connector = Object.assign(
-        new TelegramService(),
-        { bot, messageManager: new MessageManager(bot as never, harness) },
-      );
+      connector = Object.assign(new TelegramService(), {
+        bot,
+        messageManager: new MessageManager(bot as never, harness),
+      });
       const service = new LifeOpsService(harness);
       const body = "x".repeat(5000);
       const request = await realQueue.enqueue({
