@@ -56,8 +56,8 @@ describe.each([
       const args = {
         title: "Pottery class",
         details: {
-          startAt: "2026-09-11T16:00:00.000Z",
-          endAt: "2026-09-11T17:00:00.000Z",
+          start: "2026-09-11T16:00:00.000Z",
+          end: "2026-09-11T17:00:00.000Z",
           timeZone: "UTC",
         },
       };
@@ -109,8 +109,8 @@ describe.each([
     const args = {
       title: "Unknown",
       details: {
-        startAt: "2026-07-27T16:00:00.000Z",
-        endAt: "2026-07-27T17:00:00.000Z",
+        start: "2026-07-27T16:00:00.000Z",
+        end: "2026-07-27T17:00:00.000Z",
         timeZone: "UTC",
       },
     };
@@ -247,5 +247,51 @@ it.each(["feed", "search_events"])(
         }).valid,
       ).toBe(true);
     }
+  },
+);
+
+it.each(["feed", "search_events"])(
+  "%s connector scope exposes only accepted modes and sides on the native wire",
+  (operation) => {
+    const family = promoteSubactionsToActions(
+      calendarAction,
+      calendarActionPromotionOptions,
+    );
+    const read = family.find(
+      (action) => action.name === `CALENDAR_${operation.toUpperCase()}`,
+    );
+    if (!read) throw new Error("Missing read action");
+    const normalized = normalizeNativeToolsForCall(
+      buildPlannerToolsFromActions([read]),
+      { cerebrasMode: true },
+    ).tools;
+    if (!normalized) throw new Error("Missing normalized tools");
+    const schema = (
+      normalized[read.name] as {
+        inputSchema: { jsonSchema: ActionParameterSchema };
+      }
+    ).inputSchema.jsonSchema;
+    const errorsFor = (input: Record<string, unknown>) => {
+      const errors: string[] = [];
+      validateSchema(schema, input, "", errors);
+      return errors;
+    };
+    for (const mode of ["local", "remote", "cloud_managed"]) {
+      for (const side of ["owner", "agent"]) {
+        expect(errorsFor({ details: { mode, side } })).toEqual([]);
+      }
+    }
+    for (const details of [
+      { mode: "count" },
+      { mode: "read" },
+      { side: "all" },
+    ]) {
+      expect(errorsFor({ details }).length).toBeGreaterThan(0);
+    }
+    expect(errorsFor({})).toEqual([]);
+    // Parent compatibility remains separate from the promoted read grammar.
+    expect(
+      validateToolArgs(calendarAction, { details: { mode: "count" } }).valid,
+    ).toBe(true);
   },
 );

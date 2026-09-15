@@ -289,6 +289,15 @@ const EXPLICIT_TASK_STATUS_REQUEST_RE =
 const TASK_STATE_CLAIM_REPLY_RE =
 	/\bno (?:such )?task\b|\btask (?:doesn'?t|does not) exist\b|\b(?:got|was|been) (?:stopped|aborted|cancelled)\b|\bnothing (?:is )?running\b|\bstill (?:running|working)\b|\bnot (?:finished|done|complete)\b/i;
 
+const STOP_LEXICON =
+	/\b(?:stop|quiet|shut up|enough|nvm|never ?mind|cancel that|forget it|don'?t (?:do|reply|answer|respond)|leave me|go away|pause|be quiet|hold off|stand down|mute)\b/i;
+
+/** Whether the user's own text asks the agent to disengage (the only STOP). */
+export function isStopRequestText(text: string | undefined): boolean {
+	const trimmed = text?.trim() ?? "";
+	return trimmed.length > 0 && STOP_LEXICON.test(trimmed);
+}
+
 export function routeMessageHandlerOutput(
 	output: V5MessageHandlerOutput,
 	options?: {

@@ -1,4 +1,7 @@
 /** Durable handoff and room ownership through real runtime/task/cache adapters. */
+
+import { PGlite } from "@electric-sql/pglite";
+import { drizzle } from "drizzle-orm/pglite";
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { preferenceEvaluator } from "../features/advanced-capabilities/evaluators/preference-items";
@@ -37,6 +40,7 @@ import {
 } from "./history-retention";
 import { resolveStage1SenderRole } from "./message/addressing";
 import { createV5MessageContextObject } from "./message/context-assembly";
+import { RelationshipsService } from "./relationships.ts";
 import { TaskService } from "./task";
 
 const state: State = { values: {}, data: {}, text: "" };
@@ -250,7 +254,11 @@ describe("durable background memory", () => {
 					expect(result.errors).toEqual([
 						expect.objectContaining({
 							evaluatorName: entry.name,
-							error: expect.stringContaining("require reconciliation"),
+							error: expect.stringContaining(
+								entry.name === "identities"
+									? "Identity reconciliation storage is unavailable"
+									: "Relationship reconciliation storage is unavailable",
+							),
 						}),
 					]);
 					expect(model).not.toHaveBeenCalled();
@@ -258,6 +266,103 @@ describe("durable background memory", () => {
 			}
 		},
 	);
+	it.each(["edit", "delete"])(
+		"reconciles native identity observations after source %s through the evidence journal",
+		async (mutation) => {
+			const client = new PGlite();
+			try {
+				await client.exec(
+					`CREATE TABLE entity_identities (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),entity_id uuid NOT NULL,agent_id uuid NOT NULL,platform text NOT NULL,handle text NOT NULL,verified boolean NOT NULL,confidence real NOT NULL,source text,first_seen timestamptz NOT NULL,last_seen timestamptz NOT NULL,evidence_message_ids jsonb,extraction_evidence jsonb,CONSTRAINT unique_entity_identity UNIQUE(entity_id,platform,handle,agent_id))`,
+				);
+				const { runtime, service, message } = await setup(
+					Object.assign(new InMemoryDatabaseAdapter(), { db: drizzle(client) }),
+				);
+				const identities = new RelationshipsService(runtime);
+				const getService = runtime.getService.bind(runtime);
+				vi.spyOn(runtime, "getService").mockImplementation((name) =>
+					name === "relationships" ? (identities as never) : getService(name),
+				);
+				runtime.registerEvaluator(identityEvaluator);
+				message.content.text = "My GitHub handle is example.";
+				await runtime.upsertMemory(message, "messages");
+				const model = vi.fn(async () =>
+					JSON.stringify({
+						identities: {
+							identities: [
+								{
+									entityId: message.entityId,
+									platform: "github",
+									handle: "example",
+									confidence: 0.9,
+									sourceMessageId: message.id,
+								},
+							],
+						},
+					}),
+				);
+				runtime.useModel = model as AgentRuntime["useModel"];
+				const options = { phase: "post_turn" as const, didRespond: true };
+				expect((await service.run(message, state, options)).errors).toEqual([]);
+				expect(
+					await identities.getEntityIdentities(message.entityId),
+				).toHaveLength(1);
+				const next = {
+					...message,
+					id: stringToUuid(`identity-${mutation}`),
+					createdAt: 20,
+					content: { text: "Thanks." },
+				};
+				await runtime.upsertMemory(next, "messages");
+				if (!message.id) throw new Error("Expected source ID");
+				if (mutation === "edit")
+					await runtime.updateMemory({
+						id: message.id,
+						content: { text: "Correction: my GitHub handle is replacement." },
+					});
+				else await runtime.deleteMemory(message.id);
+				model.mockImplementation(async () =>
+					JSON.stringify({
+						identities: {
+							identities:
+								mutation === "edit"
+									? [
+											{
+												entityId: message.entityId,
+												platform: "github",
+												handle: "replacement",
+												confidence: 0.8,
+												sourceMessageId: message.id,
+											},
+										]
+									: [],
+						},
+					}),
+				);
+				const result = await service.run(next, state, options);
+				expect(result.errors).toEqual([]);
+				expect(result.processedEvaluators).toContain("identities");
+				expect(
+					(await identities.getEntityIdentities(message.entityId)).map(
+						(row) => row.handle,
+					),
+				).toEqual(mutation === "edit" ? ["replacement"] : []);
+				const archived = (
+					await client.query(
+						"SELECT extraction_evidence FROM entity_identities WHERE handle = 'example'",
+					)
+				).rows;
+				expect(archived[0].extraction_evidence).toMatchObject({
+					active: false,
+				});
+				const calls = model.mock.calls.length;
+				expect((await service.run(next, state, options)).errors).toEqual([]);
+				expect(model).toHaveBeenCalledTimes(calls);
+			} finally {
+				await client.close();
+			}
+		},
+	);
+
 	it.each(["edit", "delete"])(
 		"reconciles success reflections after source %s before consuming new evidence",
 		async (mutation) => {
@@ -629,6 +734,55 @@ describe("durable background memory", () => {
 				unique: false,
 			}),
 		).toEqual(rows);
+	});
+
+	it("keeps a persisted linked reply when the reviewer defers its outcome", async () => {
+		const { runtime, service, message } = await setup();
+		const reply: Memory = {
+			...message,
+			id: stringToUuid("linked-retention-outcome"),
+			entityId: runtime.agentId,
+			createdAt: 20,
+			content: {
+				text: "The requested note is already saved.",
+				inReplyTo: message.id,
+			},
+		};
+		const next: Memory = {
+			...message,
+			id: stringToUuid("linked-retention-next"),
+			createdAt: 30,
+			content: { text: "hi" },
+		};
+		await runtime.upsertMemory(reply, "messages");
+		await runtime.upsertMemory(next, "messages");
+		runtime.registerEvaluator(historyRetentionEvaluator);
+		runtime.useModel = vi.fn(async (_type, params) =>
+			retentionAnswer(retentionPrompt(params), ["h1"]),
+		) as AgentRuntime["useModel"];
+		await service.enqueue(next, state, { phase: "post_turn" });
+		await execute(runtime, await job(runtime));
+		const cp = await getEvaluatorProgressState(
+			runtime,
+			next,
+			historyRetentionEvaluator.name,
+		);
+		expect(cp).toMatchObject({
+			reviewedCount: 3,
+			retainedEventIds: [`history:${message.id}`, `history:${reply.id}`],
+		});
+		const rows = await runtime.getMemories({
+			tableName: "messages",
+			roomId: message.roomId,
+			unique: false,
+		});
+		expect(
+			validateHistoryRetention(
+				historyRetentionContext(runtime, next, rows),
+				await retentionScope(runtime, next),
+				cp,
+			),
+		).toEqual(cp);
 	});
 
 	it.each(["edit", "delete"])(
@@ -1881,6 +2035,33 @@ describe("durable background memory", () => {
 			...before,
 			embedding: [1, 0, 0],
 		});
+		if (!before?.content.text)
+			throw new Error("Missing persisted fixture source");
+		const expected = {
+			agentId: runtime.agentId,
+			entityId: before.entityId,
+			roomId: before.roomId,
+			text: before.content.text,
+		};
+		expect(
+			await runtime.updateMemoryEmbedding({
+				id: messageId,
+				expected,
+				embedding: [0, 1, 0],
+			}),
+		).toBe(true);
+		expect(await runtime.getMemoryById(messageId)).toEqual({
+			...before,
+			embedding: [0, 1, 0],
+		});
+		expect(
+			await runtime.updateMemoryEmbedding({
+				id: messageId,
+				expected: { ...expected, agentId: stringToUuid("foreign-runtime") },
+				embedding: [1, 0, 0],
+			}),
+		).toBe(false);
+
 		expect(await runtime.getTasksByName("POST_TURN_MEMORY")).toEqual(tasks);
 	});
 

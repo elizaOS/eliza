@@ -781,9 +781,9 @@ function DeveloperPanel({ section }: { section: "chat" | "settings" }) {
   );
   const draftRef = useRef(draft);
   draftRef.current = draft;
-  const [sending, setSending] = useState(false);
+  const [sendStartedAt, setSendStartedAt] = useState<number | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
-  const busy = chatSending || sending;
+  const busy = chatSending || sendStartedAt !== null;
   const scrollRef = useRef<HTMLDivElement>(null);
   const following = useRef(true);
   const scrollConversation = useRef(state.activeConversationId);
@@ -852,7 +852,7 @@ function DeveloperPanel({ section }: { section: "chat" | "settings" }) {
     event.preventDefault();
     if (!draft.trim() || busy || !deriveAgentReady(state.status)) return;
     const prompt = draft;
-    setSending(true);
+    setSendStartedAt(Date.now());
     setSendError(null);
     setDraft("");
     following.current = true;
@@ -869,7 +869,7 @@ function DeveloperPanel({ section }: { section: "chat" | "settings" }) {
           : "Couldn’t send to the app tab. Check it before retrying.",
       );
     } finally {
-      setSending(false);
+      setSendStartedAt(null);
     }
   };
   const latestUser = useMemo(() => {
@@ -879,16 +879,24 @@ function DeveloperPanel({ section }: { section: "chat" | "settings" }) {
     }
     return undefined;
   }, [conversationMessages]);
+  // The relay can be pending before its new user row reaches this tab.
+  const liveUser =
+    latestUser &&
+    (sendStartedAt === null || latestUser.timestamp >= sendStartedAt)
+      ? latestUser
+      : undefined;
   const latestMessage = conversationMessages[conversationMessages.length - 1];
   const liveTools =
-    latestMessage?.role === "assistant" ? (latestMessage.toolEvents ?? []) : [];
+    liveUser && latestMessage?.role === "assistant"
+      ? (latestMessage.toolEvents ?? [])
+      : [];
   // A room-level live preview, not a guessed binding to an optimistic reply ID.
-  const liveRecord = latestUser
+  const liveRecord = liveUser
     ? telemetry.rows.find(
         (row) =>
           row.source === "client_chat" &&
           row.roomId === conversation?.roomId &&
-          row.startTime >= latestUser.timestamp,
+          row.startTime >= liveUser.timestamp,
       )
     : undefined;
   const inspection = telemetry.inspection;
@@ -1050,7 +1058,7 @@ function DeveloperPanel({ section }: { section: "chat" | "settings" }) {
               )}
               {busy ? (
                 <LiveActivity
-                  startedAt={latestUser?.timestamp || Date.now()}
+                  startedAt={sendStartedAt ?? liveUser?.timestamp ?? Date.now()}
                   record={liveRecord}
                   toolEvents={liveTools}
                 />

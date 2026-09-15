@@ -32,7 +32,7 @@ function call(name: string, text?: string) {
 }
 
 describe("explicit catalog-only requests", () => {
-	it.each([[], ["READ"], ["UNAVAILABLE_READ"]])(
+	it.each([[], ["READ"], ["UNAVAILABLE_READ"], [""]])(
 		"replans after settled preparatory discovery %j without judging completion early",
 		async (...names) => {
 			const discovery = createPlannerToolDiscoveryAction(

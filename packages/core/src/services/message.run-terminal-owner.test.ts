@@ -225,6 +225,12 @@ describe("DefaultMessageService run-terminal owner", () => {
 					Object.assign(new Error("Unavailable"), { statusCode: 503 }),
 			},
 			{
+				label: "unexpected evaluator exception",
+				kind: "reply_generation_error",
+				error: () =>
+					new TypeError("Synthetic evaluator implementation failure"),
+			},
+			{
 				label: "no provider",
 				kind: "no_provider",
 				error: () => new NoModelProviderConfiguredError(),
@@ -331,7 +337,10 @@ describe("DefaultMessageService run-terminal owner", () => {
 				responseContent: null,
 				terminalFailure: {
 					kind,
-					code: "EVALUATOR_REPLY_GENERATION_FAILED",
+					code:
+						kind === "reply_generation_error"
+							? "POST_EFFECT_EVALUATION_FAILED"
+							: "EVALUATOR_REPLY_GENERATION_FAILED",
 					transient: false,
 				},
 				actionResults: [
@@ -342,6 +351,20 @@ describe("DefaultMessageService run-terminal owner", () => {
 					},
 				],
 			});
+			expect(result.replyRecovery?.context).toContain(
+				"Delete the selected calendar event.",
+			);
+			expect(result.replyRecovery?.context).toContain("event-1");
+			if (kind === "reply_generation_error") {
+				expect(runtime.reportError).toHaveBeenCalledWith(
+					"MessageService.plannerLoop",
+					expect.objectContaining({
+						code: "POST_EFFECT_EVALUATION_FAILED",
+						cause: expect.any(TypeError),
+					}),
+					expect.objectContaining({ roomId: ROOM_ID }),
+				);
+			}
 			expect([...events]).toEqual(["untouched"]);
 			expect(handler).toHaveBeenCalledTimes(1);
 			expect(callback).not.toHaveBeenCalled();

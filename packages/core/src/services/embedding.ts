@@ -24,6 +24,7 @@ interface EmbeddingQueueItem {
 	memory: Memory;
 	priority: "high" | "normal" | "low";
 	runId?: string;
+	pendingKey?: string;
 }
 
 /**
@@ -38,6 +39,7 @@ export class EmbeddingGenerationService extends Service {
 		"Handles asynchronous embedding generation for memories";
 
 	private batchQueue: BatchQueue<EmbeddingQueueItem> | null = null;
+	private readonly pending = new Set<string>();
 	private isDisabled = false;
 	private stopped = false;
 	private initialization: Promise<void> | null = null;
@@ -144,6 +146,11 @@ export class EmbeddingGenerationService extends Service {
 			maxParallel: 10,
 			maxRetriesAfterFailure: 3,
 			process: (item) => this.generateEmbedding(item),
+			onDrainBatchOutcomes: (outcomes) => {
+				for (const { item } of outcomes) {
+					if (item.pendingKey) this.pending.delete(item.pendingKey);
+				}
+			},
 			processBatch: hasBatchModel
 				? (items) => this.generateEmbeddingsBatch(items)
 				: undefined,
@@ -211,13 +218,32 @@ export class EmbeddingGenerationService extends Service {
 			return;
 		}
 
+		// Coalesce only identical source snapshots while queued or in flight.
+		// Changes of text, owner, room or priority must retain their own work.
+		const pendingKey = memory.id
+			? JSON.stringify([
+					memory.id,
+					memory.agentId,
+					memory.roomId,
+					memory.entityId,
+					memory.content.text,
+					priority,
+				])
+			: undefined;
+		if (pendingKey && this.pending.has(pendingKey)) return;
 		const queueItem: EmbeddingQueueItem = {
-			memory,
+			// Keep inference and its write condition bound to the admitted bytes even
+			// if the event producer later mutates the original Memory object.
+			memory: { ...memory, content: { ...memory.content } },
 			priority,
 			runId,
+			pendingKey,
 		};
 
-		this.batchQueue.enqueue(queueItem);
+		if (pendingKey) this.pending.add(pendingKey);
+		if (!this.batchQueue.enqueue(queueItem) && pendingKey) {
+			this.pending.delete(pendingKey);
+		}
 
 		this.runtime.logger.debug(
 			{
@@ -322,10 +348,31 @@ export class EmbeddingGenerationService extends Service {
 				`[EmbeddingGenerationService] refusing to persist an empty embedding for memory ${memory.id}; the embedding model returned no vector`,
 			);
 		}
-		await this.runtime.updateMemory({
+		const written = await this.runtime.updateMemoryEmbedding({
 			id: memory.id,
 			embedding,
+			expected: {
+				agentId: memory.agentId ?? this.runtime.agentId,
+				entityId: memory.entityId,
+				roomId: memory.roomId,
+				text: memory.content.text ?? "",
+			},
 		});
+		if (!written) {
+			await this.runtime.log({
+				entityId: this.runtime.agentId,
+				roomId: memory.roomId,
+				type: "embedding_event",
+				body: {
+					runId: item.runId,
+					memoryId: memory.id,
+					status: "discarded_stale_source",
+					duration: durationMs,
+					source: "embeddingService",
+				},
+			});
+			return;
+		}
 		await this.runtime.log({
 			entityId: this.runtime.agentId,
 			roomId: memory.roomId || this.runtime.agentId,
@@ -479,6 +526,7 @@ export class EmbeddingGenerationService extends Service {
 		await this.batchQueue.dispose(this.runtime, {
 			flushHighPriority: !fastShutdown,
 		});
+		this.pending.clear();
 
 		this.runtime.logger.info(
 			{

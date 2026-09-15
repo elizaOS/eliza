@@ -125,6 +125,10 @@ import {
   type VoiceTurn,
   webSpeechVoiceDebugFields,
 } from "../voice/voice-chat-types";
+import {
+  BufferedVoiceEvidence,
+  observeVoiceRequest,
+} from "../voice/voice-playback-evidence";
 import { resolveWavAsrRoute } from "../voice/voice-provider-defaults";
 import {
   formatNamedVoiceError,
@@ -133,10 +137,12 @@ import {
 
 /** Queue identity is fixed before lookahead so preparation and playback use the same voice. */
 interface QueuedSpeechTask extends SpeakTask {
+  evidence?: BufferedVoiceEvidence;
   voiceConfig: VoiceConfig | null;
 }
 
 interface PreparedSpeech {
+  bufferId?: number;
   context: AudioContext;
   data:
     | { kind: "decoded"; audioBuffer: AudioBuffer }
@@ -515,6 +521,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
   // ── Progressive speech queue state ────────────────────────────────
   const queueRef = useRef<QueuedSpeechTask[]>([]);
+  const observedTasksRef = useRef(new Map<BufferedVoiceEvidence, number>());
   const queueWorkerRunningRef = useRef(false);
   const generationRef = useRef(0);
   const activeTaskFinishRef = useRef<(() => void) | null>(null);
@@ -1526,6 +1533,8 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   /** Stop all in-progress speech playback/requests but keep assistant queue state. */
   const cancelPlayback = useCallback(() => {
     generationRef.current += 1;
+    for (const evidence of [...observedTasksRef.current.keys()])
+      evidence.terminal("cancelled");
     queueRef.current = [];
     prefetchedSpeechRef.current = null;
     bufferedPlaybackActiveRef.current = false;
@@ -1599,7 +1608,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     async (
       text: string,
       elConfig: NonNullable<VoiceConfig["elevenlabs"]>,
-      task: SpeakTask,
+      task: QueuedSpeechTask,
       controller: AbortController,
     ) => {
       const voiceId = elConfig.voiceId ?? DEFAULT_ELEVEN_VOICE;
@@ -1613,6 +1622,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       const cachedBytes = cacheKey ? readCachedAudio(cacheKey) : undefined;
       let audioBytes: Uint8Array | null = null;
       let cached = false;
+      let selectedResponse: Response | null = null;
 
       if (cacheKey && cachedBytes) {
         audioBytes = cachedBytes.slice();
@@ -1692,10 +1702,15 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         const fetchViaBestAvailableProxy = async (): Promise<Response> => {
           const cloudTarget = resolveApiUrl("/api/tts/cloud");
           try {
-            const cloudRes = await fetchWithCsrf(
-              cloudTarget,
-              makeProxyRequestInit(),
-              { responseType: "arraybuffer", timeoutMs: CLOUD_TTS_TIMEOUT_MS },
+            const cloudRes = await observeVoiceRequest(
+              task.evidence,
+              "cloud-proxy",
+              proxyRequestBody,
+              () =>
+                fetchWithCsrf(cloudTarget, makeProxyRequestInit(), {
+                  responseType: "arraybuffer",
+                  timeoutMs: CLOUD_TTS_TIMEOUT_MS,
+                }),
             );
             if (cloudRes.ok || !shouldFallbackFromCloudProxy(cloudRes.status)) {
               return cloudRes;
@@ -1730,10 +1745,19 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             });
           }
 
-          return fetchWithCsrf(
-            resolveApiUrl("/api/tts/elevenlabs"),
-            makeProxyRequestInit(),
-            { responseType: "arraybuffer", timeoutMs: CLOUD_TTS_TIMEOUT_MS },
+          return observeVoiceRequest(
+            task.evidence,
+            "elevenlabs-proxy",
+            proxyRequestBody,
+            () =>
+              fetchWithCsrf(
+                resolveApiUrl("/api/tts/elevenlabs"),
+                makeProxyRequestInit(),
+                {
+                  responseType: "arraybuffer",
+                  timeoutMs: CLOUD_TTS_TIMEOUT_MS,
+                },
+              ),
           );
         };
 
@@ -1748,16 +1772,22 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}/stream`,
             );
             url.searchParams.set("output_format", "mp3_44100_128");
-            res = await fetch(url.toString(), {
-              method: "POST",
-              headers: {
-                "xi-api-key": trimmedApiKey,
-                "Content-Type": "application/json",
-                Accept: "audio/mpeg",
-              },
-              body: JSON.stringify(requestBody),
-              signal: controller.signal,
-            });
+            res = await observeVoiceRequest(
+              task.evidence,
+              "elevenlabs-direct",
+              JSON.stringify(requestBody),
+              () =>
+                fetch(url.toString(), {
+                  method: "POST",
+                  headers: {
+                    "xi-api-key": trimmedApiKey,
+                    "Content-Type": "application/json",
+                    Accept: "audio/mpeg",
+                  },
+                  body: JSON.stringify(requestBody),
+                  signal: controller.signal,
+                }),
+            );
           } catch (error) {
             // error-policy:J2 Cancellation must not dispatch another provider request.
             if (controller.signal.aborted) throw error;
@@ -1788,6 +1818,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           );
         }
 
+        selectedResponse = res;
         const audioData = await res.arrayBuffer();
         audioBytes = new Uint8Array(audioData);
         if (cacheKey) {
@@ -1795,6 +1826,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         }
       }
 
+      task.evidence?.encoded(audioBytes, selectedResponse);
       return { audioBytes, cached };
     },
     [makeElevenCacheKey, rememberCachedSegment],
@@ -1803,7 +1835,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   // ── Eliza Cloud Kokoro TTS ─────────────────────────────────────────────
 
   const prepareElizaCloud = useCallback(
-    async (text: string, task: SpeakTask, controller: AbortController) => {
+    async (
+      text: string,
+      task: QueuedSpeechTask,
+      controller: AbortController,
+    ) => {
       const cacheKey =
         task.cacheKey ??
         (shouldCacheGeneratedSpeech(text, task.segment)
@@ -1812,6 +1848,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       const cachedBytes = cacheKey ? readCachedAudio(cacheKey) : undefined;
       let audioBytes: Uint8Array | null = null;
       let cached = false;
+      let selectedResponse: Response | null = null;
 
       if (cacheKey && cachedBytes) {
         audioBytes = cachedBytes.slice();
@@ -1881,21 +1918,30 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           // same utterance twice. (Header is in CORS_ALLOW_HEADER_NAMES.)
           const ttsUtteranceKey = crypto.randomUUID();
           const fetchViaProxy = (url: string, bearer: string | null) =>
-            fetchWithCsrf(
-              url,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Accept: "audio/wav, audio/mpeg, audio/*;q=0.9",
-                  "Idempotency-Key": ttsUtteranceKey,
-                  ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
-                  ...debugHeaders,
-                },
-                body: JSON.stringify({ text }),
-                signal: controller.signal,
-              },
-              { responseType: "arraybuffer", timeoutMs: CLOUD_TTS_TIMEOUT_MS },
+            observeVoiceRequest(
+              task.evidence,
+              "cloud-proxy",
+              JSON.stringify({ text }),
+              () =>
+                fetchWithCsrf(
+                  url,
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Accept: "audio/wav, audio/mpeg, audio/*;q=0.9",
+                      "Idempotency-Key": ttsUtteranceKey,
+                      ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+                      ...debugHeaders,
+                    },
+                    body: JSON.stringify({ text }),
+                    signal: controller.signal,
+                  },
+                  {
+                    responseType: "arraybuffer",
+                    timeoutMs: CLOUD_TTS_TIMEOUT_MS,
+                  },
+                ),
             );
           if (route.via === "direct-cloud") {
             ttsDebug("useVoiceChat:eliza-cloud-direct-worker", {
@@ -1914,28 +1960,38 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               // both in `CORS_ALLOW_HEADER_NAMES`
               // (packages/cloud/shared/src/lib/cors-constants.ts), so the
               // preflight passes.
-              const directRes = await requestViaAgentTransport(
-                route.url,
-                {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    "Idempotency-Key": ttsUtteranceKey,
-                    ...(route.bearer
-                      ? { Authorization: `Bearer ${route.bearer}` }
-                      : {}),
-                  },
-                  body: JSON.stringify({
-                    text,
-                    ...(route.voiceId ? { voiceId: route.voiceId } : {}),
-                    ...(route.modelId ? { modelId: route.modelId } : {}),
-                  }),
-                  signal: controller.signal,
-                },
-                {
-                  responseType: "arraybuffer",
-                  timeoutMs: CLOUD_TTS_TIMEOUT_MS,
-                },
+              const directRes = await observeVoiceRequest(
+                task.evidence,
+                "cloud-direct",
+                JSON.stringify({
+                  text,
+                  ...(route.voiceId ? { voiceId: route.voiceId } : {}),
+                  ...(route.modelId ? { modelId: route.modelId } : {}),
+                }),
+                () =>
+                  requestViaAgentTransport(
+                    route.url,
+                    {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        "Idempotency-Key": ttsUtteranceKey,
+                        ...(route.bearer
+                          ? { Authorization: `Bearer ${route.bearer}` }
+                          : {}),
+                      },
+                      body: JSON.stringify({
+                        text,
+                        ...(route.voiceId ? { voiceId: route.voiceId } : {}),
+                        ...(route.modelId ? { modelId: route.modelId } : {}),
+                      }),
+                      signal: controller.signal,
+                    },
+                    {
+                      responseType: "arraybuffer",
+                      timeoutMs: CLOUD_TTS_TIMEOUT_MS,
+                    },
+                  ),
               );
               if (!directRes.ok) {
                 const preview = await directRes.text().catch(() => "");
@@ -1982,12 +2038,14 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           );
         }
 
+        selectedResponse = res;
         audioBytes = new Uint8Array(await res.arrayBuffer());
         if (cacheKey) {
           rememberCachedSegment(cacheKey, audioBytes.slice());
         }
       }
 
+      task.evidence?.encoded(audioBytes, selectedResponse);
       return { audioBytes, cached };
     },
     [makeElizaCloudCacheKey, rememberCachedSegment],
@@ -1996,7 +2054,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   // ── Local inference TTS ───────────────────────────────────────────────
 
   const prepareLocalInference = useCallback(
-    async (text: string, task: SpeakTask, controller: AbortController) => {
+    async (
+      text: string,
+      task: QueuedSpeechTask,
+      controller: AbortController,
+    ) => {
       const cacheKey =
         task.cacheKey ??
         (shouldCacheGeneratedSpeech(text, task.segment)
@@ -2005,6 +2067,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       const cachedBytes = cacheKey ? readCachedAudio(cacheKey) : undefined;
       let audioBytes: Uint8Array | null = null;
       let cached = false;
+      let selectedResponse: Response | null = null;
 
       if (cacheKey && cachedBytes) {
         audioBytes = cachedBytes.slice();
@@ -2019,15 +2082,21 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         }, LOCAL_INFERENCE_TTS_TIMEOUT_MS);
         let res: Response;
         try {
-          res = await fetchWithCsrf(resolveApiUrl("/api/tts/local-inference"), {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Accept: "audio/wav, audio/*;q=0.9",
-            },
-            body: JSON.stringify({ text }),
-            signal: controller.signal,
-          });
+          res = await observeVoiceRequest(
+            task.evidence,
+            "local-inference",
+            JSON.stringify({ text }),
+            () =>
+              fetchWithCsrf(resolveApiUrl("/api/tts/local-inference"), {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Accept: "audio/wav, audio/*;q=0.9",
+                },
+                body: JSON.stringify({ text }),
+                signal: controller.signal,
+              }),
+          );
         } finally {
           clearTimeout(timeoutId);
         }
@@ -2039,12 +2108,14 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           );
         }
 
+        selectedResponse = res;
         audioBytes = new Uint8Array(await res.arrayBuffer());
         if (cacheKey) {
           rememberCachedSegment(cacheKey, audioBytes.slice());
         }
       }
 
+      task.evidence?.encoded(audioBytes, selectedResponse);
       return { audioBytes, cached };
     },
     [makeLocalInferenceCacheKey, rememberCachedSegment],
@@ -2322,6 +2393,9 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         // instead of a large decoded lookahead; decode again at its playback
         // turn without another synthesis request. This is a retention strategy,
         // not an input-size limit or a peak-memory guarantee.
+        const bufferId = task.evidence?.decoded(audioBuffer);
+        if (generation !== generationRef.current || controller.signal.aborted)
+          throw new DOMException("Speech cancelled", "AbortError");
         const deferDecode =
           lookahead &&
           audioBuffer.length *
@@ -2338,6 +2412,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         });
         return {
           context,
+          bufferId,
           data: deferDecode
             ? { kind: "encoded", audioBytes: prepared.audioBytes }
             : { kind: "decoded", audioBuffer },
@@ -2409,6 +2484,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               toArrayBuffer(audio.data.audioBytes),
             );
       if (generation !== generationRef.current) return;
+      const bufferId =
+        audio.data.kind === "decoded"
+          ? audio.bufferId
+          : task.evidence?.decoded(audioBuffer);
+      if (generation !== generationRef.current) return;
       markAudioPlaying();
       bufferedPlaybackActiveRef.current = true;
       prepareNextBufferedSpeech();
@@ -2432,6 +2512,8 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           clearSpeechTimers,
           emitPlaybackStart,
           tracePlayback: true,
+          evidence: task.evidence,
+          evidenceBufferId: bufferId,
         });
       } finally {
         bufferedPlaybackActiveRef.current = false;
@@ -2467,6 +2549,8 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           error,
           context: { engine },
         });
+        for (const evidence of [...observedTasksRef.current.keys()])
+          evidence.terminal("failed");
         workerError = error;
         ttsFailure = {
           engine,
@@ -2663,6 +2747,8 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           await speakBrowser(task.text, task, workerGeneration);
         }
       } catch (error) {
+        for (const evidence of [...observedTasksRef.current.keys()])
+          evidence.terminal("failed");
         workerError = error;
         queueRef.current = [];
         prefetchedSpeechRef.current = null;
@@ -2671,6 +2757,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           err: formatNamedVoiceError(error),
         });
       } finally {
+        for (const [evidence, generation] of [...observedTasksRef.current]) {
+          if (generation === workerGeneration)
+            evidence.terminal(workerError ? "failed" : "cancelled");
+        }
         queueWorkerRunningRef.current = false;
       }
       if (workerGeneration !== generationRef.current) {
@@ -2712,7 +2802,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         cancelPlayback();
       }
 
-      queueRef.current.push({
+      const queuedTask: QueuedSpeechTask = {
         ...task,
         text: speakable,
         voiceConfig: voiceConfigRef.current
@@ -2727,7 +2817,35 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
                   : Date.now(),
             }
           : undefined,
-      });
+      };
+      const enqueueGeneration = generationRef.current;
+      const provider = queuedTask.voiceConfig?.provider;
+      if (
+        options.onPlaybackEvidence &&
+        !Capacitor.isNativePlatform() &&
+        (provider === "eliza-cloud" ||
+          provider === "local-inference" ||
+          (provider === "elevenlabs" && queuedTask.voiceConfig?.elevenlabs))
+      ) {
+        const evidence = new BufferedVoiceEvidence(
+          options.onPlaybackEvidence,
+          () => observedTasksRef.current.delete(evidence),
+        );
+        queuedTask.evidence = evidence;
+        observedTasksRef.current.set(evidence, enqueueGeneration);
+        queueRef.current.push(queuedTask);
+        evidence.emit({
+          kind: "queued",
+          generation: generationRef.current,
+          text: speakable,
+          segment: task.segment,
+          provider,
+          telemetry: queuedTask.telemetry
+            ? { ...queuedTask.telemetry }
+            : undefined,
+        });
+      } else queueRef.current.push(queuedTask);
+      if (enqueueGeneration !== generationRef.current) return;
       ttsDebug("enqueueSpeech", {
         segment: task.segment,
         append: task.append,
@@ -2740,13 +2858,18 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       prepareNextBufferedSpeech();
       processQueue();
     },
-    [cancelPlayback, prepareNextBufferedSpeech, processQueue],
+    [
+      options.onPlaybackEvidence,
+      cancelPlayback,
+      prepareNextBufferedSpeech,
+      processQueue,
+    ],
   );
 
   // ── Public speak APIs ─────────────────────────────────────────────
 
   const speak = useCallback(
-    (text: string, speakOptions?: { append?: boolean }) => {
+    (text: string, speakOptions?: Parameters<VoiceChatState["speak"]>[1]) => {
       if (assistantTtsDebounceRef.current != null) {
         clearTimeout(assistantTtsDebounceRef.current);
         assistantTtsDebounceRef.current = null;
@@ -2756,6 +2879,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         text,
         append: Boolean(speakOptions?.append),
         segment: "full",
+        telemetry: speakOptions?.telemetry,
       });
     },
     [enqueueSpeech],

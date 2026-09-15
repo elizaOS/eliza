@@ -1,3 +1,4 @@
+/** Tests source-bound retention and preservation of linked request/outcome originals. */
 import { describe, expect, it } from "vitest";
 import type { ContextObject } from "../../types/context-object";
 import {
@@ -93,4 +94,94 @@ describe("history retention dependency closure", () => {
 			}),
 		).toThrow();
 	});
+});
+
+describe("recorded reply dependencies", () => {
+	it("restores a previously deferred outcome before reviewing its retained request", () => {
+		const { context, scope, prepared, review } = fixture();
+		const old = applyHistoryRetentionReview(prepared, {
+			...review,
+			dependencyGroups: [],
+		});
+		expect(old.retainedEventIds).toEqual(["history:0"]);
+		const linked = prepareHistoryRetention(context, scope, old, "next", 3, [
+			["history:0", "history:1"],
+		]);
+		expect(linked.candidates.map((source) => source.id)).toEqual(["h1", "h2"]);
+		const next = applyHistoryRetentionReview(linked, {
+			sourceSetId: linked.sourceSetId,
+			complete: true,
+			retainSourceIds: ["h1"],
+			deferSourceIds: ["h2"],
+			uncertainSourceIds: [],
+			dependencyGroups: [],
+		});
+		expect(next.retainedEventIds).toEqual(["history:0", "history:1"]);
+		expect(validateHistoryRetention(context, scope, old)).toEqual(old);
+		expect(validateHistoryRetention(context, scope, next)).toEqual(next);
+	});
+	it("keeps transitive linked outcomes, but permits the whole completed exchange to be deferred", () => {
+		const { context, scope, review } = fixture();
+		const before = structuredClone(context);
+		const linked = prepareHistoryRetention(context, scope, null, "linked", 3, [
+			["history:0", "history:1"],
+			["history:1", "history:2"],
+			["history:2", "history:0"],
+		]);
+		const retained = applyHistoryRetentionReview(linked, {
+			...review,
+			sourceSetId: linked.sourceSetId,
+			dependencyGroups: [],
+		});
+		expect(retained.retainedEventIds).toEqual([
+			"history:0",
+			"history:1",
+			"history:2",
+		]);
+		const deferred = applyHistoryRetentionReview(linked, {
+			...review,
+			sourceSetId: linked.sourceSetId,
+			retainSourceIds: [],
+			deferSourceIds: ["h1", "h2", "h3"],
+			dependencyGroups: [],
+		});
+		expect(deferred.retainedEventIds).toEqual([]);
+		expect(context).toEqual(before);
+	});
+	it("binds the review to the recorded links and never pulls a later source into an earlier evidence page", () => {
+		const { context, scope, prepared, review } = fixture();
+		const linked = prepareHistoryRetention(
+			context,
+			scope,
+			null,
+			"evidence",
+			3,
+			[["history:0", "history:1"]],
+		);
+		expect(linked.sourceSetId).not.toBe(prepared.sourceSetId);
+		expect(() => applyHistoryRetentionReview(linked, review)).toThrow();
+		const future = prepareHistoryRetention(
+			context,
+			scope,
+			null,
+			"evidence",
+			3,
+			[["history:0", "history:3"]],
+		);
+		expect(future.candidates).toEqual(prepared.candidates);
+		expect(future.linkedSourceGroups).toEqual([]);
+	});
+});
+
+it("does not send unrelated deferred reply groups to the reviewer", () => {
+	const { context, scope, prepared, review } = fixture();
+	const old = applyHistoryRetentionReview(prepared, {
+		...review,
+		dependencyGroups: [],
+	});
+	const next = prepareHistoryRetention(context, scope, old, "next", 3, [
+		["history:1", "history:2"],
+	]);
+	expect(next.candidates.map((source) => source.id)).toEqual(["h1"]);
+	expect(next.linkedSourceGroups).toEqual([]);
 });

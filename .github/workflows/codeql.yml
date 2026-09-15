@@ -48,7 +48,6 @@ jobs:
             paths:
               - 'packages/corpus-tools/**'
               - 'packages/elizaos/**'
-              - 'packages/elizaresearch/**'
               - 'packages/evidence/**'
               - 'packages/native/**'
               - 'packages/registry/**'

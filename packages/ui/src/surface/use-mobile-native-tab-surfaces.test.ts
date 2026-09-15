@@ -9,7 +9,7 @@
 // — the manifest-driven red→green — that the unmount teardown follows the
 // declared lifecycle (retained → background-warm, ephemeral → destroy).
 
-import { act, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react/pure";
 import { createElement, type ReactNode, StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "../events";
@@ -372,8 +372,12 @@ function elementAt(rect: Partial<DOMRect>): HTMLElement {
   return el;
 }
 
-afterEach(() => {
-  document.dispatchEvent(new Event(APP_RESUME_EVENT));
+afterEach(async () => {
+  // Settle native acknowledgements and React work before removing the fixture environment.
+  await act(async () => {
+    document.dispatchEvent(new Event(APP_RESUME_EVENT));
+    cleanup();
+  });
   document.body.replaceChildren();
 });
 

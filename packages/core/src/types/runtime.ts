@@ -1508,6 +1508,9 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	updateMemory(
 		memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata },
 	): Promise<boolean>;
+	updateMemoryEmbedding(
+		update: import("./database").MemoryEmbeddingUpdate,
+	): Promise<boolean>;
 	deleteMemory(memoryId: UUID): Promise<void>;
 
 	removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;

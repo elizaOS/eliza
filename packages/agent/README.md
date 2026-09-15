@@ -55,6 +55,14 @@ batch runner validates every report before writing one combined JUnit artifact.
 Missing, malformed or failed batch evidence rejects the run; entirely skipped
 suites do not satisfy the repository's required-work gate.
 
+## Trajectory viewer access
+
+Raw trajectory reads require owner authority at the HTTP boundary. Authenticated
+non-owner sessions and shared gateway credentials do not grant developer-view
+access. Standalone trusted-local access, configured API owner credentials, and
+authorized owner sessions retain the existing read-service contract. Product
+role resolvers must grant both owner authority and route access.
+
 ## Backup restore generations
 
 Snapshot capture, local backup publication, and restore share an exclusive
@@ -374,6 +382,9 @@ separate claims.
 
 Action relevance checks use the same prepared multilingual keyword predicates
 as complete match collection, but stop once any strong or weak term matches.
-Negative checks still inspect every available source. They do not cache
-permission decisions, remove history, change vocabulary, or alter the complete
-match collector used by consumers that need every match.
+Negative checks still inspect every available source. Promoted tools may reuse
+the same keyword result for one message only after comparing the complete fresh
+text snapshot and vocabulary identity. Edits, removals, changed state or locale
+are rechecked; weak message keys release retained snapshots. This does not cache
+action validation or permission decisions, remove history, change vocabulary,
+or alter the complete match collector used by consumers that need every match.

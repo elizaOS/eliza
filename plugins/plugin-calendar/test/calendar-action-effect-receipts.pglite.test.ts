@@ -218,6 +218,104 @@ afterAll(async () => {
 });
 
 describe("CALENDAR receipt grounding over real PGlite", () => {
+  it("reads the requested civil day without shifting boundary events or changing storage", async () => {
+    const source = await service.createIcsCalendarSource({
+      name: "Boundary calendar",
+      url: SOURCE_URL,
+    });
+    const events = [
+      ["previous", "20260727T233000Z", "20260728T000000Z"],
+      ["early", "20260728T003000Z", "20260728T010000Z"],
+      ["late", "20260728T233000Z", "20260729T000000Z"],
+      ["next", "20260729T003000Z", "20260729T010000Z"],
+    ];
+    const body = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//elizaOS//window test//EN",
+      ...events.flatMap(([name, start, end]) => [
+        "BEGIN:VEVENT",
+        `UID:${name}`,
+        "DTSTAMP:20260727T180000Z",
+        `DTSTART:${start}`,
+        `DTEND:${end}`,
+        `SUMMARY:${name}`,
+        "END:VEVENT",
+      ]),
+      "END:VCALENDAR",
+      "",
+    ].join("\r\n");
+    await service.syncIcsCalendarSource(source.id, {
+      now: new Date(),
+      transport: {
+        fetchImpl: async () =>
+          new Response(body, { headers: { "content-type": "text/calendar" } }),
+      },
+    });
+    const before = await pg.query(
+      "SELECT * FROM app_calendar.life_calendar_events ORDER BY id",
+    );
+    expect(before.rows).toHaveLength(4);
+    const action = createCalendarActionRunner({
+      runTextModel: async () => {
+        throw new Error("Typed reads must not invoke a model");
+      },
+      runJsonModel: async () => {
+        throw new Error("Typed reads must not invoke a model");
+      },
+      recentConversationTexts: async () => [],
+    });
+    for (const [timeZone, titles] of [
+      ["UTC", ["early", "late"]],
+      ["Asia/Tokyo", ["previous", "early"]],
+    ] as const) {
+      const details = {
+        timeMin: "2026-07-28T00:00:00",
+        timeMax: "2026-07-29T00:00:00",
+        timeZone,
+      };
+      const feed = await service.getCalendarFeed(
+        new URL("http://127.0.0.1/"),
+        details,
+      );
+      expect(feed.events.map((event) => event.title).sort()).toEqual(
+        [...titles].sort(),
+      );
+      const result = await executePlannedToolCall(
+        runtime,
+        {
+          message: {
+            id: MESSAGE_ID,
+            agentId: AGENT_ID,
+            entityId: ENTITY_ID,
+            roomId: ROOM_ID,
+            content: {
+              text: "Read this calendar day. Do not change any records.",
+            },
+          } as Memory,
+          userRoles: ["OWNER"],
+          activeContexts: ["calendar"],
+          callback: async () => [],
+        },
+        { name: action.name, params: { subaction: "feed", details } },
+        { actions: [action] },
+      );
+      expect(result.success).toBe(true);
+      expect(result.data?.events).toEqual(feed.events);
+      expect(result.effectReceipts?.[0]).toMatchObject({
+        operation: "calendar.feed.read",
+        outcome: "noop",
+      });
+    }
+    expect(
+      (
+        await pg.query(
+          "SELECT * FROM app_calendar.life_calendar_events ORDER BY id",
+        )
+      ).rows,
+    ).toEqual(before.rows);
+  }, 30_000);
+
   it("hands off the persisted ICS snapshot with its authoritative timestamp", async () => {
     const source = await service.createIcsCalendarSource({
       name: "Family calendar",

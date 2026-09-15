@@ -1051,7 +1051,7 @@ export function TrajectoryDetailView({
                   <option key={access.id} value={access.id}>
                     {index + 1}. {access.providerName || "Unknown provider"}
                     {typeof access.data?.textLength === "number"
-                      ? ` · ${access.data.textLength.toLocaleString()} characters`
+                      ? ` · ${access.data.textLength.toLocaleString()} characters returned`
                       : ""}
                     {access.data?.cacheHit === true ? " · reused" : ""}
                   </option>
@@ -1067,6 +1067,11 @@ export function TrajectoryDetailView({
                 {providerSize != null
                   ? ` · ${providerSize.toLocaleString()} characters returned`
                   : ""}
+              </p>
+              <p className="text-sm text-txt">
+                These sizes describe provider results before model-input
+                assembly. The amount sent from this provider is not attributed
+                here. See Model calls → Input for what the model received.
               </p>
               <p className="text-xs text-muted">
                 {providerData?.cacheHit === true

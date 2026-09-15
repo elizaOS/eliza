@@ -412,6 +412,101 @@ async function seededPiiSession(): Promise<{
 }
 
 describe("runV5MessageRuntimeStage1", () => {
+	it.each(["unchanged", "edited", "revoked"])(
+		"reads a fully quoted deferred source before dispatching the draft: %s",
+		async (mode) => {
+			const { runtime, message, rows, state } = await reviewedHistoryFixture();
+			const before = structuredClone(rows);
+			const dispatch = vi.spyOn(
+				runtime.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			if (mode !== "unchanged") {
+				runtime.composeState = async () => {
+					const fresh = structuredClone(state);
+					fresh.data.providers = {
+						RECENT_MESSAGES: {
+							data: {
+								recentMessages:
+									mode === "revoked"
+										? rows.filter((row) => row.id !== rows[1].id)
+										: rows.map((row, i) =>
+												i === 1
+													? {
+															...row,
+															content: {
+																text: "The corrected label is cranberry.",
+															},
+														}
+													: row,
+											),
+							},
+						},
+					};
+					return fresh;
+				};
+			}
+			let calls = 0;
+			runtime.useModel = vi.fn(
+				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+					calls++;
+					if (calls > 2) throw new Error("Unexpected quote read loop");
+					expect(dispatch).not.toHaveBeenCalled();
+					const text = (
+						args[1] as { messages: Array<{ content: string }> }
+					).messages
+						.map((entry) => entry.content)
+						.join("\n");
+					if (calls === 1 || mode !== "unchanged")
+						expect(text).not.toContain(rows[1].content.text);
+					if (calls === 2 && mode === "unchanged") {
+						expect(text).toContain("context_loaded: history:h2");
+						expect(text).toContain(rows[1].content.text);
+					}
+					if (calls === 2 && mode === "edited")
+						expect(text).toContain("The corrected label is cranberry.");
+					return stage1Response({
+						contexts: ["simple"],
+						contextRequests: [],
+						replyText:
+							calls === 1
+								? `You said: “${rows[1].content.text}”`
+								: "The current originals are now supplied; nothing changed.",
+						facts: calls === 1 ? ["Do not process this discarded draft."] : [],
+						extra: {
+							completionContext: {
+								mode: "relevant_prior_dialogue",
+								sourceSetId: text.match(
+									/completion_source_set: ([a-f0-9]{64})/,
+								)?.[1],
+								complete: true,
+								relevantSourceIds:
+									calls === 2 && mode === "unchanged" ? ["h2"] : [],
+								constraintSourceIds: ["h1"],
+								referentSourceIds: [],
+								pendingIntentSourceIds: [],
+							},
+						},
+					});
+				},
+			) as IAgentRuntime["useModel"];
+			const response = await runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state,
+				responseId: message.id as UUID,
+			});
+			expect(response.kind).toBe("direct_reply");
+			if (response.kind === "direct_reply")
+				expect(response.result.responseContent?.text).toBe(
+					"The current originals are now supplied; nothing changed.",
+				);
+			expect(calls).toBe(2);
+			expect(dispatch).toHaveBeenCalledTimes(1);
+			expect(rows).toEqual(before);
+		},
+	);
+
 	it.each(["history:h2", "history:search:blueberry"])(
 		"refreshes role-gated field prompts and processing after %s",
 		async (reference) => {
@@ -1296,90 +1391,114 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(rows).toEqual(before);
 	});
 
-	it("repairs conflicting direct-answer intents before dispatching fields or entering the planner", async () => {
-		const quote = "Correction: the mug is violet; keep the yellow notebook.";
-		const runtime = makeRuntime([
-			stage1Response({
-				contexts: ["simple"],
-				intents: ["quote the correction"],
-				replyText: quote,
-				facts: ["Unaccepted draft extraction"],
-				extra: { replyEffectStatus: "none" },
-			}),
-			stage1Response({
-				contexts: ["simple"],
-				replyText: quote,
-				extra: { replyEffectStatus: "none" },
-			}),
-		]);
-		const dispatch = vi.spyOn(runtime.responseHandlerFieldRegistry, "dispatch");
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({
-				text: `Quote this supplied correction exactly: ${quote}`,
-				channelType: ChannelType.DM,
-			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-		});
-		expect(result.kind).toBe("direct_reply");
-		if (result.kind === "direct_reply")
-			expect(result.result.responseContent?.text).toBe(quote);
-		expect(dispatch).toHaveBeenCalledTimes(1);
-		expect(dispatch.mock.calls[0]?.[0].rawParsed.facts).toEqual([]);
-		const calls = useModelCalls(runtime);
-		expect(calls.map(([model]) => model)).toEqual([
-			ModelType.RESPONSE_HANDLER,
-			ModelType.RESPONSE_HANDLER,
-		]);
-		const [first, repaired] = calls.map(
-			([, params]) =>
-				params as {
-					messages: Array<{ role: string; content: string }>;
-					tools: Array<{ name: string }>;
-					providerOptions: { eliza: { prefixHash: string } };
-				},
-		);
-		expect(repaired.messages.slice(0, first.messages.length)).toEqual(
-			first.messages,
-		);
-		expect(repaired.messages.at(-1)?.content).toContain(quote);
-		expect(repaired.messages.at(-1)?.content).toContain(
-			"Unaccepted draft extraction",
-		);
-		expect(repaired.tools.map(({ name }) => name)).toEqual(["HANDLE_RESPONSE"]);
-		expect(repaired.providerOptions.eliza.prefixHash).toBe(
-			first.providerOptions.eliza.prefixHash,
-		);
-	});
+	it.each(["none", "non_applied"])(
+		"repairs conflicting direct-answer intents before dispatching fields or entering the planner (%s)",
+		async (status) => {
+			const quote = "Correction: the mug is violet; keep the yellow notebook.";
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["simple"],
+					intents: ["quote the correction"],
+					replyText: quote,
+					facts: ["Unaccepted draft extraction"],
+					extra: { replyEffectStatus: status },
+				}),
+				stage1Response({
+					contexts: ["simple"],
+					replyText: quote,
+					extra: { replyEffectStatus: "none" },
+				}),
+			]);
+			const dispatch = vi.spyOn(
+				runtime.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: `Quote this supplied correction exactly: ${quote}`,
+					channelType: ChannelType.DM,
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply")
+				expect(result.result.responseContent?.text).toBe(quote);
+			expect(dispatch).toHaveBeenCalledTimes(1);
+			expect(dispatch.mock.calls[0]?.[0].rawParsed.facts).toEqual([]);
+			const calls = useModelCalls(runtime);
+			expect(calls.map(([model]) => model)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+			const [first, repaired] = calls.map(
+				([, params]) =>
+					params as {
+						messages: Array<{ role: string; content: string }>;
+						tools: Array<{ name: string }>;
+						providerOptions: { eliza: { prefixHash: string } };
+					},
+			);
+			expect(repaired.messages.slice(0, first.messages.length)).toEqual(
+				first.messages,
+			);
+			expect(repaired.messages.at(-1)?.content).toContain(quote);
+			expect(repaired.messages.at(-1)?.content).toContain(
+				"Unaccepted draft extraction",
+			);
+			expect(repaired.tools.map(({ name }) => name)).toEqual([
+				"HANDLE_RESPONSE",
+			]);
+			expect(repaired.providerOptions.eliza.prefixHash).toBe(
+				first.providerOptions.eliza.prefixHash,
+			);
+		},
+	);
 
-	it("bounds contradictory routing correction and preserves pending-action guards", async () => {
-		const intents = ["open notes", "update the selected note"];
-		const conflict = stage1Response({
-			contexts: ["simple"],
-			intents,
-			replyText: "I will open Notes and update the selected note.",
-			extra: { replyEffectStatus: "none" },
-		});
-		const runtime = makeRuntime([conflict, conflict]);
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({
-				text: "Open Notes and update the selected note.",
-				channelType: ChannelType.DM,
-			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-			stage1DecisionOnly: true,
-		});
-		expect(useModelCalls(runtime).map(([model]) => model)).toEqual([
-			ModelType.RESPONSE_HANDLER,
-			ModelType.RESPONSE_HANDLER,
-		]);
-		expect(result.messageHandler.plan.intents).toEqual(intents);
-		expect(result.messageHandler.plan.requiresTool).toBe(true);
-		expect(result.messageHandler.plan.reply).toBe("");
-	});
+	it.each(["none", "non_applied"])(
+		"bounds contradictory routing correction and preserves pending-action guards (%s)",
+		async (status) => {
+			const intents = ["open notes", "update the selected note"];
+			const conflict = stage1Response({
+				contexts: ["simple"],
+				intents,
+				replyText: "I will open Notes and update the selected note.",
+				extra: { replyEffectStatus: status },
+			});
+			const runtime = makeRuntime([conflict, conflict]);
+			const dispatch = vi.spyOn(
+				runtime.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			const run = runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "Open Notes and update the selected note.",
+					channelType: ChannelType.DM,
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+				stage1DecisionOnly: true,
+			});
+			if (status === "non_applied") {
+				await expect(run).rejects.toMatchObject({
+					code: "STAGE1_ROUTING_CONFLICT",
+				});
+				expect(dispatch).not.toHaveBeenCalled();
+				expect(useModelCalls(runtime)).toHaveLength(2);
+				return;
+			}
+			const result = await run;
+			expect(useModelCalls(runtime).map(([model]) => model)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+			expect(result.messageHandler.plan.intents).toEqual(intents);
+			expect(result.messageHandler.plan.requiresTool).toBe(true);
+			expect(result.messageHandler.plan.reply).toBe("");
+		},
+	);
 
 	it("cancels a routing repair before further generation or field dispatch", async () => {
 		const abort = new AbortController();
@@ -1736,10 +1855,17 @@ describe("runV5MessageRuntimeStage1", () => {
 			([, params]) =>
 				params as {
 					messages: Array<{ role: string; content: string }>;
-					providerOptions: { eliza: { prefixHash: string } };
+					providerOptions: {
+						eliza: { prefixHash: string };
+						cerebras: { prompt_cache_key: string };
+					};
 				},
 		);
 		expect(calls).toHaveLength(2);
+		expect(calls[0]?.providerOptions.cerebras.prompt_cache_key).toBeTruthy();
+		expect(calls[1]?.providerOptions.cerebras.prompt_cache_key).toBe(
+			calls[0]?.providerOptions.cerebras.prompt_cache_key,
+		);
 		expect(calls[0]?.messages[0]).toEqual(calls[1]?.messages[0]);
 		expect(calls[0]?.providerOptions.eliza.prefixHash).toEqual(
 			calls[1]?.providerOptions.eliza.prefixHash,
@@ -3346,6 +3472,108 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("re-asks once when Stage 1 declares RESPOND with an empty answer and no pending work", async () => {
+		const runtime = makeRuntime([
+			stage1Response({ contexts: ["simple"], replyText: "" }),
+			stage1Response({ contexts: ["simple"], replyText: "Santiago." }),
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "one line: what's the capital of chile?",
+				channelType: ChannelType.DM,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe("Santiago.");
+		}
+		const calls = useModelCalls(runtime);
+		expect(calls.map(([type]) => type)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+		const repairInput = calls[1]?.[1] as {
+			messages: Array<{ role: string; content: string }>;
+		};
+		expect(repairInput.messages.at(-1)?.content).toContain(
+			"response_contract_repair:",
+		);
+		expect(repairInput.messages.at(-1)?.content).toContain(
+			"neither an answer nor pending work",
+		);
+	});
+
+	it("allows a corrected empty RESPOND to end with terminal STOP", async () => {
+		const runtime = makeRuntime([
+			stage1Response({ contexts: ["simple"], replyText: "" }),
+			stage1Response({ shouldRespond: "STOP", contexts: [] }),
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "one line: what's the capital of chile?",
+				channelType: ChannelType.DM,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result).toMatchObject({ kind: "terminal", action: "STOP" });
+		expect(useModelCalls(runtime)).toHaveLength(2);
+	});
+
+	it.each([
+		"不要回复",
+		"No respondas",
+		"Please cease responding",
+		"one line: what's the capital of chile?",
+	])(
+		"keeps a model STOP terminal without a language-dependent retry: %s",
+		async (text) => {
+			const runtime = makeRuntime([
+				stage1Response({ shouldRespond: "STOP", contexts: [] }),
+				stage1Response({
+					contexts: ["simple"],
+					replyText: "This must never be delivered.",
+				}),
+			]);
+			const handler = vi.fn(async () => ({
+				success: true,
+				text: "Unexpected domain effect",
+			}));
+			runtime.actions = [
+				{
+					name: "NOTES_CREATE",
+					description: "Create a saved note.",
+					validate: async () => true,
+					handler,
+				},
+			];
+			const callback = vi.fn(async () => []);
+			const onResponseHandlerEarlyReply = vi.fn();
+			const onSettledActionResult = vi.fn();
+			const result = await runV5MessageRuntimeStage1({
+				callback,
+				onResponseHandlerEarlyReply,
+				onSettledActionResult,
+				runtime,
+				message: makeMessage({ text, channelType: ChannelType.DM }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(callback).not.toHaveBeenCalled();
+			expect(onResponseHandlerEarlyReply).not.toHaveBeenCalled();
+			expect(onSettledActionResult).not.toHaveBeenCalled();
+			expect(handler).not.toHaveBeenCalled();
+			expect(result).toMatchObject({ kind: "terminal", action: "STOP" });
+			expect(useModelCalls(runtime).map(([type]) => type)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+			]);
+		},
+	);
+
 	it("still defers empty, whitespace, refusal-stub, and degenerate-run replies (#11504)", async () => {
 		for (const badReply of [
 			"",
@@ -4582,7 +4810,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		).toContain('"FILE":[');
 	});
 
-	it("keeps the complete umbrella dispatcher when duplicate child schemas exceed the input budget", async () => {
+	it("keeps the complete umbrella dispatcher and its children when duplicate child schemas exceed the estimated budget", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				thought: "A coding task should be delegated.",
@@ -4694,7 +4922,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			(call) => call[0] === ModelType.ACTION_PLANNER,
 		)?.[1] as { tools: Array<{ name: string; parameters: unknown }> };
 		expect(plannerInput.tools.map((tool) => tool.name)).toContain("TASKS");
-		expect(plannerInput.tools.map((tool) => tool.name)).not.toContain(
+		// An estimate is diagnostic, not permission to discard authorized tools:
+		// the oversized child stays on the surface beside its umbrella.
+		expect(plannerInput.tools.map((tool) => tool.name)).toContain(
 			"TASKS_ARCHIVE",
 		);
 		expect(
@@ -5862,7 +6092,10 @@ describe("runV5MessageRuntimeStage1", () => {
 			]);
 			const result = await runV5MessageRuntimeStage1({
 				runtime,
-				message: makeMessage(),
+				// See the STOP lexicon: a terminal STOP needs a stop-shaped message.
+				message: makeMessage(
+					shouldRespond === "STOP" ? { text: "please stop, be quiet" } : {},
+				),
 				state: makeState(),
 				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
@@ -10068,7 +10301,10 @@ describe("runV5MessageRuntimeStage1", () => {
 
 			const result = await runV5MessageRuntimeStage1({
 				runtime,
-				message: makeMessage(),
+				// Explicit disengagement retains immediate terminal behavior.
+				message: makeMessage(
+					action === "STOP" ? { text: "ok stop, leave me alone" } : {},
+				),
 				state: makeState(),
 				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});

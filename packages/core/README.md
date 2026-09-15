@@ -36,6 +36,37 @@ an explicitly supplied or extracted `[]` through argument resolution; it never
 defaults an omitted or null value to an empty list. The owning action must still
 validate element types, permissions and domain constraints.
 
+## Optimized prompt compatibility
+
+Runtime prompt resolution binds an artifact to the caller's complete baseline
+text. A mismatch raises `OPTIMIZED_PROMPT_BASELINE_MISMATCH` before a model
+request. Regenerate the artifact for the current baseline, or disable the task
+with `OPTIMIZED_PROMPT_DISABLE` to use its current baseline. Whitespace changes
+are baseline changes; matching task names alone do not establish compatibility.
+
+The planner resolves artifacts through its registered `OptimizedPromptService`.
+Before that service is ready, it uses the bundled baseline. Artifact activation,
+refresh and rollback remain owned by the service.
+
+New experiment artifacts may include authenticated `provenance`: evaluated
+provider/model/endpoint, a hash of non-secret generation configuration, runtime
+revision, optimizer version/configuration, all dataset split hashes, and the
+complete evaluation report hash. Supplied provenance must be complete; unknown
+fields and malformed hashes reject before signing. These hashes identify
+external evidence; the artifact service does not claim to have verified that
+report's behavioral conclusions or authorize promotion from it.
+
+Before serving a bound artifact, the host must call
+`setTargetBinding(task, binding)` with its actual current provider configuration.
+Missing or different bindings reject with `OPTIMIZED_PROMPT_TARGET_MISMATCH`
+before prompt substitution. The host must update this declaration when routing
+or generation configuration changes and re-establish it after restart; it must
+not copy the expected binding from the artifact. Producers also verify actual
+wire configuration and returned model identity. No credentials belong in the
+configuration hash input or endpoint. Legacy artifacts without provenance retain
+their baseline compatibility checks but are not model-qualified evidence.
+Operator disable and `restoreBaseline` remain available without a binding.
+
 ## Computer-use adapter contract
 
 `contracts/computer-use.ts` is the provider-neutral boundary shared by browser
@@ -617,3 +648,32 @@ the supplied selection does not establish absence. The current-turn boundary
 uses that retrieval policy instead of limiting answers to initially visible
 chat; full-context and tool-planning boundaries remain unchanged. Original
 speaker/correction evidence and current app-record verification stay distinct.
+
+## Conditional embedding persistence
+
+Background embedding results use `updateMemoryEmbedding({id, expected, embedding})`.
+The adapter must atomically compare the stored source text, agent, author and room
+with `expected` before writing. A changed or deleted source returns `false` and
+receives no vector or completion event; database failures throw. Custom database
+adapters must implement this contract when upgrading core. A separate read followed
+by an unconditional update is insufficient. Vector-only runtime writes retain the
+existing reconciliation-lease bypass and invalidate the room cache on success.
+
+Runtime memory creation fills an omitted agent ID with the current runtime agent,
+matching SQL ownership defaults in the ephemeral adapter as well.
+
+### Restoring the unoptimized baseline
+
+`OptimizedPromptService.restoreBaseline(task)` explicitly returns a task to its
+caller's baseline, including after a first promotion with no previous artifact.
+It preserves version files and writes an authenticated `activation-baseline`
+record in the existing task directory. Refresh/restart honors this choice even
+if `current` disappears; legacy directory scanning cannot reactivate a candidate.
+A later successful `setPrompt` clears the baseline choice. `rollback` continues
+to swap optimized predecessors and rejects while the baseline is active.
+
+The activation record requires a runtime version that supports `restoreBaseline`;
+older runtimes do not recognize it. Keep the existing `OPTIMIZED_PROMPT_DISABLE`
+startup setting in place when deliberately downgrading such a deployment.
+
+History retention also preserves recorded request/reply links. A selected original brings its linked outcome into the same review and retained set; completed exchanges can still be deferred together. These links come from stored agent replies, not inferred adjacency or prose. Existing checkpoints keep their source binding; no originals are rewritten.
