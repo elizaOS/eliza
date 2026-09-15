@@ -23,6 +23,7 @@ import * as cloudBindingsActual from "@/lib/runtime/cloud-bindings";
 import * as billingGateActual from "@/lib/services/agent-billing-gate";
 import * as pairingTokenActual from "@/lib/services/pairing-token";
 import * as provisioningJobsActual from "@/lib/services/provisioning-jobs";
+import type { ProvisioningWorkerHealth } from "@/lib/services/provisioning-worker-health";
 import * as workerHealthActual from "@/lib/services/provisioning-worker-health";
 import * as loggerActual from "@/lib/utils/logger";
 
@@ -38,6 +39,11 @@ let creditGateResult: { allowed: boolean; balance: number; error?: string } = {
   balance: 100,
 };
 let enqueueCalls = 0;
+let enqueueError: Error | null = null;
+let workerHealthResult: ProvisioningWorkerHealth = {
+  ok: true,
+  required: false,
+};
 let wasStoppedByUser = false;
 type BrowserClaim =
   | {
@@ -93,6 +99,7 @@ mock.module("@/lib/services/provisioning-jobs", () => ({
     ...provisioningJobsActual.provisioningJobService,
     enqueueAgentProvisionOnce: async () => {
       enqueueCalls++;
+      if (enqueueError) throw enqueueError;
       return {
         job: { id: "job-1" },
         created: true,
@@ -102,7 +109,7 @@ mock.module("@/lib/services/provisioning-jobs", () => ({
 }));
 mock.module("@/lib/services/provisioning-worker-health", () => ({
   ...workerHealthActual,
-  checkProvisioningWorkerHealth: async () => ({ ok: true }),
+  checkProvisioningWorkerHealth: async () => workerHealthResult,
 }));
 mock.module("@/lib/services/agent-billing-gate", () => ({
   ...billingGateActual,
@@ -259,6 +266,8 @@ beforeEach(() => {
   sandboxLookupError = null;
   creditGateResult = { allowed: true, balance: 100 };
   enqueueCalls = 0;
+  enqueueError = null;
+  workerHealthResult = { ok: true, required: false };
   wasStoppedByUser = false;
   browserClaimResult = { status: "invalid" };
   browserClaimError = null;
@@ -1378,7 +1387,107 @@ describe("dedicated-agent-proxy — unified auth", () => {
     const r = makeRequest("cloud-token");
     const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
     expect(res.status).toBe(202);
+    expect(await res.json()).toMatchObject({
+      success: true,
+      data: { status: "starting", jobId: "job-1", alreadyInProgress: false },
+    });
     expect(enqueueCalls).toBe(1); // paying org is not blocked
+  });
+
+  test("owner sees worker-health failure instead of a false queued resume", async () => {
+    authResult = { user: { id: "u1", organization_id: "org1" } };
+    sandboxResult = { ...runningDedicated, status: "stopped" };
+    workerHealthResult = {
+      ok: false,
+      required: true,
+      status: 503,
+      code: "PROVISIONING_WORKER_UNHEALTHY",
+      error:
+        "Provisioning worker has not reported a heartbeat in the last 60 seconds.",
+    };
+    const request = makeRequest(
+      "cloud-token",
+      "https://app-staging.elizacloud.ai",
+    );
+
+    const response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: "PROVISIONING_WORKER_UNHEALTHY",
+      error: workerHealthResult.error,
+      retryable: true,
+    });
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "https://app-staging.elizacloud.ai",
+    );
+    expect(enqueueCalls).toBe(0);
+    expect(captured).toBeNull();
+  });
+
+  test("owner sees unreachable-worker 502 instead of a false queued resume", async () => {
+    authResult = { user: { id: "u1", organization_id: "org1" } };
+    sandboxResult = { ...runningDedicated, status: "stopped" };
+    workerHealthResult = {
+      ok: false,
+      required: true,
+      status: 502,
+      code: "PROVISIONING_WORKER_UNREACHABLE",
+      error: "Failed to read provisioning worker heartbeat from Redis.",
+    };
+    const request = makeRequest("cloud-token");
+
+    const response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: "PROVISIONING_WORKER_UNREACHABLE",
+      retryable: true,
+    });
+    expect(enqueueCalls).toBe(0);
+    expect(captured).toBeNull();
+  });
+
+  test("owner sees enqueue failure instead of a false queued resume", async () => {
+    authResult = { user: { id: "u1", organization_id: "org1" } };
+    sandboxResult = { ...runningDedicated, status: "stopped" };
+    enqueueError = new Error("database unavailable");
+    const request = makeRequest(
+      "cloud-token",
+      "https://app-staging.elizacloud.ai",
+    );
+
+    const response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: "PROVISIONING_ENQUEUE_FAILED",
+      error: "Failed to start agent resume. Retry in a moment.",
+      retryable: true,
+    });
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "https://app-staging.elizacloud.ai",
+    );
+    expect(enqueueCalls).toBe(1);
+    expect(captured).toBeNull();
   });
 
   test("owner of a SUSPENDED / zero-balance agent → 402 and NO re-provision (free-compute suspension bypass closed, #11583)", async () => {
