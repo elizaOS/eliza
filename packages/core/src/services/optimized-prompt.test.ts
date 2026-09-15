@@ -96,6 +96,36 @@ describe("OptimizedPromptService — symlink-based versioning", () => {
 		await rm(storeRoot, { recursive: true, force: true });
 	});
 
+	it("rejects an artifact for a changed caller baseline before and after reload", async () => {
+		const artifact = makeArtifact(1);
+		await service.setPrompt("action_planner", artifact);
+		for (const current of [service, createService()]) {
+			current.setStoreRoot(storeRoot);
+			current.setDisabledTasksFromEnv(undefined);
+			await current.refresh();
+			expect(
+				resolveOptimizedPrompt(current, "action_planner", artifact.baseline),
+			).toBe(artifact.prompt);
+			for (const changed of [`${artifact.baseline}\n`, "new caller contract"]) {
+				expect(() =>
+					resolveOptimizedPrompt(current, "action_planner", changed),
+				).toThrow(
+					expect.objectContaining({
+						code: "OPTIMIZED_PROMPT_BASELINE_MISMATCH",
+					}),
+				);
+			}
+			current.setDisabledTasksFromEnv("action_planner");
+			expect(
+				resolveOptimizedPrompt(
+					current,
+					"action_planner",
+					"new caller contract",
+				),
+			).toBe("new caller contract");
+		}
+	});
+
 	it("writes vN.json files and points the current/previous/previous2 symlinks", async () => {
 		const dir = join(storeRoot, "action_planner");
 		const v1Path = await service.setPrompt("action_planner", makeArtifact(1));

@@ -36,6 +36,18 @@ an explicitly supplied or extracted `[]` through argument resolution; it never
 defaults an omitted or null value to an empty list. The owning action must still
 validate element types, permissions and domain constraints.
 
+## Optimized prompt compatibility
+
+Runtime prompt resolution binds an artifact to the caller's complete baseline
+text. A mismatch raises `OPTIMIZED_PROMPT_BASELINE_MISMATCH` before a model
+request. Regenerate the artifact for the current baseline, or disable the task
+with `OPTIMIZED_PROMPT_DISABLE` to use its current baseline. Whitespace changes
+are baseline changes; matching task names alone do not establish compatibility.
+
+The planner resolves artifacts through its registered `OptimizedPromptService`.
+Before that service is ready, it uses the bundled baseline. Artifact activation,
+refresh and rollback remain owned by the service.
+
 ## Computer-use adapter contract
 
 `contracts/computer-use.ts` is the provider-neutral boundary shared by browser

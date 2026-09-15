@@ -710,12 +710,28 @@ export class OptimizedPromptService extends Service {
 	 * Synchronous accessor. Returns the cached artifact for the task or null.
 	 * Hot path — called per-prompt in the runtime loop. Honours
 	 * `OPTIMIZED_PROMPT_DISABLE` — a disabled task returns null even when an
-	 * artifact is cached.
+	 * artifact is cached. Runtime callers supply their exact baseline so stale
+	 * artifacts reject before prompt substitution.
 	 */
-	getPrompt(task: OptimizedPromptTask): OptimizedPromptResolved | null {
+	getPrompt(
+		task: OptimizedPromptTask,
+		expectedBaseline?: string,
+	): OptimizedPromptResolved | null {
 		if (this.disabledTasks.has(task)) return null;
 		const entry = this.cache[task];
 		if (!entry) return null;
+		if (
+			expectedBaseline !== undefined &&
+			entry.artifact.baseline !== expectedBaseline
+		) {
+			throw new ElizaError(
+				"Optimized prompt targets a different baseline; regenerate the artifact or disable this task with OPTIMIZED_PROMPT_DISABLE",
+				{
+					code: "OPTIMIZED_PROMPT_BASELINE_MISMATCH",
+					context: { task },
+				},
+			);
+		}
 		return {
 			prompt: entry.artifact.prompt,
 			fewShotExamples: entry.artifact.fewShotExamples,

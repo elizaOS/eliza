@@ -52,7 +52,7 @@ export function resolveOptimizedPrompt(
 	baseline: string,
 ): string {
 	if (!service) return baseline;
-	const optimized = service.getPrompt(task);
+	const optimized = service.getPrompt(task, baseline);
 	if (!optimized) return baseline;
 	if (!optimized.fewShotExamples || optimized.fewShotExamples.length === 0) {
 		return optimized.prompt;

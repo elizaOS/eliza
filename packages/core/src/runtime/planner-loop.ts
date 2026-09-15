@@ -7,8 +7,6 @@
  * user-safe-message projection that keeps tool/control JSON and pre-tool
  * thoughts out of the reply.
  */
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
 import { promotedParentRoutingHint } from "../actions/promote-subactions";
 import {
 	DEFAULT_SUBACTION_KEYS,
@@ -17,7 +15,6 @@ import {
 import { DISCOVER_TOOLS_NAME } from "../actions/to-tool";
 import { ElizaError } from "../errors";
 import { computeCallCostUsd } from "../features/trajectories/pricing";
-import { logger } from "../logger";
 import { parseInteractionBlocks } from "../messaging/interactions/parse";
 import {
 	plannerBatchScopeDescription,
@@ -82,7 +79,6 @@ import {
 	hasReasoningResidue,
 	stripReasoningPrefixes,
 } from "../utils/reasoning-tags";
-import { resolveStateDir } from "../utils/state-dir";
 import { isObjectRecord, isPlainObject } from "../utils/type-guards";
 import { toWellFormedUnicode } from "../utils/well-formed";
 import {
@@ -9703,131 +9699,13 @@ function getNonEmptyString(value: unknown): string | undefined {
 		: undefined;
 }
 
-/**
- * Look up the optimized `action_planner` prompt from the runtime's
- * OptimizedPromptService, fall back to the baseline `plannerTemplate`. Keeps
- * the planner loop using the latest artifact written by
- * `bun run train -- --backend native --task action_planner` without any
- * additional plumbing at the call site.
- *
- * `PlannerRuntime` is the minimal shape this module accepts; the full
- * `IAgentRuntime` (with `getService`) flows in via the message handler at
- * `services/message.ts`. Cast structurally so we don't widen `PlannerRuntime`
- * just to read one optional service.
- */
-// In-process cache for the on-disk optimized planner artifact. Resolved
-// once per process so we don't re-read the JSON file on every planner
-// invocation. Set to `null` for "no artifact" and to the prompt body when
-// found. The flag avoids re-attempting reads when the file is missing.
-let cachedDiskOptimizedPlannerPrompt: string | null = null;
-let cachedDiskOptimizedPlannerLoaded = false;
-
-function loadOptimizedPlannerFromDisk(runtime: PlannerRuntime): string | null {
-	const dir = join(resolveStateDir(), "optimized-prompts", "action_planner");
-	if (!existsSync(dir)) return null;
-
-	// Preferred path: read via the `current` symlink that
-	// `OptimizedPromptService.setPrompt` / `rollback` maintain. This is the
-	// authoritative live artifact.
-	const currentPath = join(dir, "current");
-	if (existsSync(currentPath)) {
-		try {
-			const raw = readFileSync(currentPath, "utf-8");
-			const parsed = JSON.parse(raw) as {
-				task?: string;
-				prompt?: string;
-			};
-			if (
-				parsed.task === "action_planner" &&
-				typeof parsed.prompt === "string"
-			) {
-				return parsed.prompt;
-			}
-		} catch (err) {
-			// error-policy:J4 A malformed optional optimization artifact degrades
-			// to the next candidate while the failure remains observable.
-			logger.warn(
-				{ path: currentPath, err: (err as Error).message },
-				"[PlannerLoop] malformed action_planner 'current' artifact; falling back to mtime scan",
-			);
-			runtime.reportError?.("PlannerLoop.optimizedPromptCurrent", err, {
-				path: currentPath,
-			});
-		}
-	}
-
-	// Fallback: legacy / pre-symlink stores. Pick the newest artifact by
-	// mtime so we still find something when `current` is missing.
-	const entries = readdirSync(dir)
-		.filter((f) => f.endsWith(".json"))
-		.map((f) => ({
-			path: join(dir, f),
-			mtime: statSync(join(dir, f)).mtimeMs,
-		}))
-		.sort((a, b) => b.mtime - a.mtime);
-	for (const entry of entries) {
-		try {
-			const raw = readFileSync(entry.path, "utf-8");
-			const parsed = JSON.parse(raw) as {
-				task?: string;
-				prompt?: string;
-			};
-			if (
-				parsed.task === "action_planner" &&
-				typeof parsed.prompt === "string"
-			) {
-				return parsed.prompt;
-			}
-		} catch (err) {
-			// error-policy:J4 A malformed optional optimization artifact degrades
-			// to the next candidate while the failure remains observable.
-			logger.warn(
-				{ path: entry.path, err: (err as Error).message },
-				"[PlannerLoop] malformed action_planner artifact; trying next candidate",
-			);
-			runtime.reportError?.("PlannerLoop.optimizedPromptArtifact", err, {
-				path: entry.path,
-			});
-		}
-	}
-	return null;
-}
-
+/** Resolve through the runtime-owned artifact service; startup without it uses the baseline. */
 function resolveOptimizedPlannerTemplate(runtime: PlannerRuntime): string {
-	// Production path: consult the registered service first. When it has
-	// an artifact for `action_planner`, return that. The shared helper
-	// gracefully no-ops when `getService` is missing on the runtime.
-	const fromService = resolveOptimizedPromptForRuntime(
+	return resolveOptimizedPromptForRuntime(
 		runtime as PlannerRuntime & {
 			getService?: <T>(name: string) => T | null | undefined;
 		},
 		"action_planner",
 		plannerTemplate,
 	);
-	if (fromService !== plannerTemplate) return fromService;
-
-	// Fallback: read the on-disk store directly. Handles the test runtime
-	// path (where the service may not have started before the first
-	// planner call), the lazy-start race in production, and any other
-	// path that hasn't gotten the service registered yet.
-	if (!cachedDiskOptimizedPlannerLoaded) {
-		try {
-			cachedDiskOptimizedPlannerPrompt = loadOptimizedPlannerFromDisk(runtime);
-		} catch (err) {
-			// error-policy:J4 Disk optimization is optional; use the bundled
-			// template and report the unavailable optimization.
-			// readdir/stat failures on the optimized-prompts directory are
-			// non-fatal: we fall back to the bundled `plannerTemplate`. Log so
-			// repeated boot failures show up in operator output rather than
-			// being silently masked.
-			logger.warn(
-				{ err: (err as Error).message },
-				"[PlannerLoop] optimized planner disk load failed; using bundled template",
-			);
-			runtime.reportError?.("PlannerLoop.optimizedPromptDisk", err);
-			cachedDiskOptimizedPlannerPrompt = null;
-		}
-		cachedDiskOptimizedPlannerLoaded = true;
-	}
-	return cachedDiskOptimizedPlannerPrompt ?? plannerTemplate;
 }
