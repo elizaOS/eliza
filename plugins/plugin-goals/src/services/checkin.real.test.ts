@@ -12,7 +12,8 @@
  *     written,
  *  4. the OWNER_GOALS `checkin` subaction drives the same path from natural
  *     language via the deterministic-model-provider extraction pass,
- *  5. deleting the goal dismisses its live check-in tasks.
+ *  5. deleting the goal dismisses its live check-in tasks,
+ *  6. an invalid empty owner update preserves goal, audit and scheduled state.
  */
 
 import { type HandlerCallback, type Memory, ModelType } from "@elizaos/core";
@@ -133,6 +134,76 @@ function denverHourOf(iso: string): string {
 }
 
 describe("goals check-ins on the scheduling spine (deterministic model-provider runtime)", () => {
+  it("rejects an empty owner update without changing the goal, audit or check-in, and preserves explicit clears", async () => {
+    const harness = await makeHarness();
+    const goals = createOwnerGoalsService(harness.runtime);
+    const record = await goals.createGoal({
+      title: "Practice conversational Spanish",
+      description: "Practice with a partner each week",
+      cadence: { kind: "daily", windows: ["morning"] },
+    });
+    const goalId = record.goal.id;
+    const beforeGoal = await goals.getGoal(goalId);
+    const beforeTasks = await listGoalCheckinTasks(harness, goalId);
+    expect(beforeTasks).toHaveLength(1);
+    const audits = () =>
+      executeRawSql(
+        harness.runtime,
+        "SELECT * FROM app_lifeops.life_audit_events ORDER BY id",
+      );
+    const beforeAudits = await audits();
+
+    async function update(params: { title?: string; description?: string }) {
+      harness.fixtures.register({
+        name: `owner-goal-update-${JSON.stringify(params)}`,
+        match: { modelType: ModelType.TEXT_LARGE },
+        response: JSON.stringify({
+          action: "update",
+          params: { id: goalId, ...params },
+          missing: [],
+          confidence: 0.95,
+        }),
+        times: 1,
+      });
+      return ownerGoalsAction.handler(harness.runtime, {
+        content: { text: "Update my Spanish goal" },
+      } as Memory);
+    }
+
+    const rejected = await update({});
+    expect
+      .soft(rejected)
+      .toMatchObject({
+        success: false,
+        data: { action: "update", error: "missing_fields" },
+      });
+    expect.soft(await goals.getGoal(goalId)).toEqual(beforeGoal);
+    expect.soft(await audits()).toEqual(beforeAudits);
+    expect
+      .soft(await listGoalCheckinTasks(harness, goalId))
+      .toEqual(beforeTasks);
+
+    expect(await update({ description: "" })).toMatchObject({ success: true });
+    expect((await goals.getGoal(goalId)).goal).toMatchObject({
+      title: record.goal.title,
+      description: "",
+    });
+    expect(
+      (await audits()).filter((row) => row.event_type === "goal_updated"),
+    ).toHaveLength(1);
+    expect(await update({ title: "Speak Spanish confidently" })).toMatchObject({
+      success: true,
+    });
+    expect((await goals.getGoal(goalId)).goal).toMatchObject({
+      title: "Speak Spanish confidently",
+      description: "",
+    });
+    const afterTasks = await listGoalCheckinTasks(harness, goalId);
+    expect(afterTasks).toHaveLength(1);
+    expect(afterTasks[0]?.id).toBe(beforeTasks[0]?.id);
+    harness.assertFixturesConsumed();
+  });
+
   it("creates a check-in task on goal create, fires it at the owner's local hour, and records the response into goal progress", async () => {
     const harness = await makeHarness();
     const goals = createOwnerGoalsService(harness.runtime);
