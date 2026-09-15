@@ -4,6 +4,7 @@
  * assignments, and the registry are mocked; no model loads.
  */
 
+import Module from "node:module";
 import {
 	AgentRuntime,
 	ModelType,
@@ -21,6 +22,29 @@ const registryState = vi.hoisted(() => ({
 }));
 const hardwareState = vi.hoisted(() => ({
 	probe: { memory: { totalGb: 8 } },
+}));
+const embeddingState = vi.hoisted(() => ({
+	bundle: vi.fn<() => string | null>(() => null),
+	create: vi.fn(() => 1),
+	embed: vi.fn(() => new Float32Array([0.25, -0.5, 0.75])),
+	destroy: vi.fn(),
+	close: vi.fn(),
+}));
+vi.mock("./fused-embedding-bundle", () => ({
+	resolveFusedEmbeddingBundleRoot: embeddingState.bundle,
+}));
+vi.mock("../services/desktop-fused-ffi-backend-runtime", () => ({
+	resolveFusedLibraryPath: vi.fn(() => "/test/libelizainference"),
+}));
+vi.mock("../services/voice/ffi-bindings", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../services/voice/ffi-bindings")>()),
+	loadElizaInferenceFfi: () => ({
+		embedSupported: () => true,
+		create: embeddingState.create,
+		embed: embeddingState.embed,
+		destroy: embeddingState.destroy,
+		close: embeddingState.close,
+	}),
 }));
 const engineState = vi.hoisted(() => ({
 	activeBackendId: vi.fn(() => "llama-server"),
@@ -438,6 +462,65 @@ describe("ensureLocalInferenceHandler", () => {
 		expect(installRouterHandler).toHaveBeenCalledWith(runtime, {
 			skipSlots: [],
 		});
+	});
+
+	it("retries missing embedding artifacts, then reuses the resident model without hardware discovery", async () => {
+		// Exercise the registered desktop handler; only hardware and native FFI
+		// are substituted. Real-weight vector equivalence is a separate gate.
+		const nativeModule = Module as typeof Module & {
+			_resolveFilename: (id: string, ...args: unknown[]) => string;
+		};
+		const originalResolve = nativeModule._resolveFilename;
+		const resolveSpy = vi
+			.spyOn(nativeModule, "_resolveFilename")
+			.mockImplementation((id, ...args) =>
+				id === "bun:ffi" ? id : originalResolve.call(nativeModule, id, ...args),
+			);
+		vi.stubEnv("ELIZA_EMBED_POOLING", "mean");
+		try {
+			const { registrations, runtime } = makeRuntime();
+			await ensureLocalInferenceHandler(runtime);
+			const handler = findRegisteredHandler(
+				registrations,
+				ModelType.TEXT_EMBEDDING,
+			);
+			await expect(handler(runtime, { text: "hello" })).rejects.toMatchObject({
+				code: "LOCAL_INFERENCE_UNAVAILABLE",
+			});
+			expect(probeHardware).toHaveBeenCalledTimes(1);
+			embeddingState.bundle.mockReturnValue("/test/embedding-bundle");
+			await expect(handler(runtime, { text: "hello" })).resolves.toEqual([
+				0.25, -0.5, 0.75,
+			]);
+			expect(probeHardware).toHaveBeenCalledTimes(2);
+			expect(embeddingState.create).toHaveBeenCalledTimes(1);
+			const initialArgs = embeddingState.embed.mock.calls[0];
+			vi.mocked(probeHardware).mockRejectedValue(
+				new Error("probe should not run for a resident model"),
+			);
+			const secondRuntime = makeRuntime();
+			await ensureLocalInferenceHandler(secondRuntime.runtime);
+			const secondHandler = findRegisteredHandler(
+				secondRuntime.registrations,
+				ModelType.TEXT_EMBEDDING,
+			);
+			expect(
+				await Promise.all([
+					handler(runtime, { text: "hello" }),
+					secondHandler(secondRuntime.runtime, { text: "hello" }),
+				]),
+			).toEqual([
+				[0.25, -0.5, 0.75],
+				[0.25, -0.5, 0.75],
+			]);
+			expect(probeHardware).toHaveBeenCalledTimes(2);
+			expect(embeddingState.create).toHaveBeenCalledTimes(1);
+			expect(embeddingState.embed.mock.calls[2]).toEqual(initialArgs);
+		} finally {
+			vi.mocked(probeHardware).mockResolvedValue(hardwareState.probe as never);
+			resolveSpy.mockRestore();
+			vi.unstubAllEnvs();
+		}
 	});
 
 	it("does not duplicate registrations on the same runtime", async () => {

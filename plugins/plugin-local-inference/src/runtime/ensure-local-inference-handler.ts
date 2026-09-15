@@ -843,16 +843,20 @@ function makeFusedEmbeddingHandler(): EmbeddingHandler {
 		// `performance` preset (gpuLayers: auto — inert on a CPU-only fused lib).
 		// Log WHY so a broken probe on an accelerated box is visible, not silent
 		// (#10727) — the tier is then chosen without hardware evidence.
-		const hardware = await timeInferenceSpan("embedding:hardware-probe", () =>
-			probeHardware(),
-		).catch((error) => {
-			logger.warn(
-				`[ensureLocalInferenceHandler] hardware probe failed; embedding tier chosen without hardware evidence (performance preset, gpuLayers: auto): ${
-					error instanceof Error ? error.message : String(error)
-				}`,
-			);
-			return undefined;
-		});
+		// A resident handle already owns its load configuration. Hardware discovery
+		// cannot reconfigure it; retain fresh probes only for initial load/retries.
+		const hardware = liveFusedEmbeddingHandle
+			? undefined
+			: await timeInferenceSpan("embedding:hardware-probe", () =>
+					probeHardware(),
+				).catch((error) => {
+					logger.warn(
+						`[ensureLocalInferenceHandler] hardware probe failed; embedding tier chosen without hardware evidence (performance preset, gpuLayers: auto): ${
+							error instanceof Error ? error.message : String(error)
+						}`,
+					);
+					return undefined;
+				});
 		const cfg = resolveDesktopEmbeddingConfig(hardware);
 		const fused = await timeInferenceSpan("embedding:handle", () =>
 			getFusedEmbeddingHandle(cfg),

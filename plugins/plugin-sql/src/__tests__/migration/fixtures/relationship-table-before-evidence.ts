@@ -16,10 +16,10 @@ import {
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
-import { agentTable } from "./agent";
-import { entityTable } from "./entity";
+import { agentTable } from "../../../schema/agent";
+import { entityTable } from "../../../schema/entity";
 
-export const relationshipTable = pgTable(
+export const legacyRelationshipTable = pgTable(
   "relationships",
   {
     id: uuid("id").notNull().primaryKey().default(sql`gen_random_uuid()`),
@@ -35,7 +35,6 @@ export const relationshipTable = pgTable(
       .references(() => agentTable.id, { onDelete: "cascade" }),
     tags: text("tags").array(),
     metadata: jsonb("metadata"),
-    extractionEvidence: jsonb("extraction_evidence"),
   },
   (table) => [
     index("idx_relationships_users").on(table.sourceEntityId, table.targetEntityId),

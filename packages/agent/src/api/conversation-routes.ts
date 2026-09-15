@@ -153,6 +153,7 @@ import {
   scheduleConversationConnectionEnsure,
   serializeConversationConnectionRoomDeletion,
 } from "./conversation-connection-readiness.ts";
+import { scheduleImportedConversationEmbeddings } from "./conversation-import-embeddings.ts";
 import {
   buildConversationRoomMetadata,
   sanitizeConversationMetadata,
@@ -3777,8 +3778,10 @@ export async function handleConversationRoutes(
             : typeof rec.content === "string"
               ? rec.content
               : "";
-        const text = rawText.trim();
-        if (!role || !text) return null;
+        // Validate emptiness without changing the source being transferred.
+        // Quotes, indentation and trailing newlines are part of the message.
+        if (!role || !rawText.trim()) return null;
+        const text = rawText;
         const timestamp =
           typeof rec.timestamp === "number" && Number.isFinite(rec.timestamp)
             ? rec.timestamp
@@ -4016,6 +4019,9 @@ export async function handleConversationRoutes(
 
       // Preserve original ordering: assign strictly increasing timestamps,
       // anchored to the provided ones when present.
+      if (importMessages.length > 0) {
+        await scheduleImportedConversationEmbeddings(runtime, conv.roomId);
+      }
       let inserted = 0;
       let skipped = 0;
       const anchor = Date.now() - importMessages.length;
@@ -4059,8 +4065,33 @@ export async function handleConversationRoutes(
             );
             if (result.created) inserted += 1;
             else skipped += 1;
+            // Import bypasses normal message processing, which otherwise
+            // requests embeddings. Read the durable, secret-redacted source;
+            // exact retries also repair a still-missing vector.
+            const persisted = result.created
+              ? (
+                  await runtime.getMemoriesByIds(
+                    [result.memory.id!],
+                    "messages",
+                  )
+                )[0]
+              : result.memory;
+            if (!persisted)
+              throw new Error("Imported message was not persisted");
+            await runtime.queueEmbeddingGeneration(persisted, "low");
           } else {
-            await persistConversationMemory(runtime, memory, historyLease);
+            const result = await persistConversationMemory(
+              runtime,
+              memory,
+              historyLease,
+            );
+            const [persisted] = await runtime.getMemoriesByIds(
+              [result.id!],
+              "messages",
+            );
+            if (!persisted)
+              throw new Error("Imported message was not persisted");
+            await runtime.queueEmbeddingGeneration(persisted, "low");
             inserted += 1;
           }
         } catch (err) {
