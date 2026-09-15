@@ -2037,7 +2037,10 @@ export class RelationshipsService extends Service {
 				confidence = GREATEST(entity_identities.confidence, EXCLUDED.confidence),
 				verified = entity_identities.verified OR EXCLUDED.verified,
 				last_seen = now(),
-				source = COALESCE(EXCLUDED.source, entity_identities.source),
+				source = CASE
+					WHEN EXCLUDED.source = 'reflection' THEN entity_identities.source
+					ELSE COALESCE(EXCLUDED.source, entity_identities.source)
+				END,
 				evidence_message_ids = (
 					SELECT to_jsonb(array_agg(DISTINCT element))
 					FROM jsonb_array_elements_text(
