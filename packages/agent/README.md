@@ -382,6 +382,9 @@ separate claims.
 
 Action relevance checks use the same prepared multilingual keyword predicates
 as complete match collection, but stop once any strong or weak term matches.
-Negative checks still inspect every available source. They do not cache
-permission decisions, remove history, change vocabulary, or alter the complete
-match collector used by consumers that need every match.
+Negative checks still inspect every available source. Promoted tools may reuse
+the same keyword result for one message only after comparing the complete fresh
+text snapshot and vocabulary identity. Edits, removals, changed state or locale
+are rechecked; weak message keys release retained snapshots. This does not cache
+action validation or permission decisions, remove history, change vocabulary,
+or alter the complete match collector used by consumers that need every match.
