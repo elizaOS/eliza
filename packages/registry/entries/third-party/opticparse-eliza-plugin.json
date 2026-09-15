@@ -1,0 +1,16 @@
+{
+  "package": "opticparse-eliza-plugin",
+  "repository": "github:parastejpal987-cmyk/opticparse-public",
+  "kind": "plugin",
+  "description": "Autonomous vision AI web scraper and PhishVision zero-day threat intelligence shield with x402 micropayments for ElizaOS agents.",
+  "homepage": "https://opticparse.com",
+  "version": "1.0.0",
+  "tags": [
+    "web-scraping",
+    "vision",
+    "security",
+    "phishing-detection",
+    "x402",
+    "micropayments"
+  ]
+}

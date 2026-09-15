@@ -1746,6 +1746,52 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "opticparse-eliza-plugin": {
+      "git": {
+        "repo": "parastejpal987-cmyk/opticparse-public",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "opticparse-eliza-plugin",
+        "v0": null,
+        "v1": null,
+        "v2": "1.0.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Autonomous vision AI web scraper and PhishVision zero-day threat intelligence shield with x402 micropayments for ElizaOS agents.",
+      "homepage": "https://opticparse.com",
+      "topics": [
+        "web-scraping",
+        "vision",
+        "security",
+        "phishing-detection",
+        "x402",
+        "micropayments"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "plugin-agentscoin": {
       "git": {
         "repo": "axiosdevs/plugin-agentscoin",
