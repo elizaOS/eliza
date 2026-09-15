@@ -907,7 +907,37 @@ describe("runV5MessageRuntimeStage1", () => {
 							],
 						});
 					} else if (calls > 1) {
-						expect(text).not.toContain("history_literal_search_results:");
+						if (
+							calls === 2 &&
+							["matching", "multiple", "repeat", "repeat-id"].includes(mode)
+						) {
+							const queries =
+								mode === "multiple"
+									? ["BLUEBERRY", "Acknowledged", "OLD LITERAL"]
+									: ["OLD LITERAL"];
+							const receipt = JSON.parse(
+								text.match(/history_literal_search_results: (.+)/)?.[1] ??
+									"null",
+							);
+							expect(receipt).toEqual({
+								sourceSetId: text.match(
+									/completion_source_set: ([a-f0-9]{64})/,
+								)?.[1],
+								matchMode: "case-insensitive literal substring",
+								results: queries.map((query) => ({
+									query,
+									scannedSources: rows.length,
+									matchedSourceIds: rows.flatMap((row, i) =>
+										row.content.text
+											?.toLowerCase()
+											.includes(query.toLowerCase())
+											? [`h${i + 1}`]
+											: [],
+									),
+								})),
+							});
+						} else
+							expect(text).not.toContain("history_literal_search_results:");
 						if (mode === "revoked" || mode === "edited")
 							expect(text).not.toContain(rows[1].content.text);
 						else expect(text).toContain(rows[1].content.text);
@@ -1514,7 +1544,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(dispatch).not.toHaveBeenCalled();
 	});
 
-	it("indexes every authorized action for a greeting without eager descriptions or schemas", async () => {
+	it("defers the complete action catalog for a greeting without mutating registered capabilities", async () => {
 		const description =
 			"Complete action reference: exact Unicode Ω and instructions. ".repeat(
 				30,
@@ -1556,7 +1586,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(calls).toHaveLength(1);
 		const request = calls[0][1] as { messages: Array<{ content: string }> };
 		const wire = request.messages.map(({ content }) => content).join("\n");
-		for (const action of actions) expect(wire).toContain(action.name);
+		for (const action of actions) expect(wire).not.toContain(action.name);
 		expect(wire).not.toContain("PRIVATE_OPERATION");
 		expect(wire).not.toContain(description);
 		expect(wire).toContain("DISCOVER_TOOLS");
@@ -1566,7 +1596,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(request.messages[1].content.startsWith("available_actions:\n")).toBe(
 			true,
 		);
-		// Prefix placement must never turn the catalog into cached authority.
+		// A reference is not cached authorization; planner discovery rechecks actions.
 		actions[0].validate = async () => false;
 		await runV5MessageRuntimeStage1({
 			runtime,
@@ -1584,7 +1614,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(next.messages[1].content).not.toContain('"CUSTOM_OPERATION_0"');
 		expect(next.messages[1].content).not.toContain("PRIVATE_OPERATION");
 		for (const action of actions.slice(1))
-			expect(next.messages[1].content).toContain(action.name);
+			expect(next.messages[1].content).not.toContain(action.name);
 		const rankedActions = [...runtime.actions].reverse();
 		runtime.actions = rankedActions;
 		await runV5MessageRuntimeStage1({
@@ -1716,7 +1746,8 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(wire).toContain(retained.trim());
 		expect(wire).not.toContain(removed.trim());
 		expect(wire).not.toContain("removed_context");
-		expect(wire).toContain("CURRENT_ACTION");
+		expect(wire).not.toContain("CURRENT_ACTION");
+		expect(wire).toContain("DISCOVER_TOOLS");
 		expect(wire).not.toContain("REVOKED_ACTION");
 	});
 

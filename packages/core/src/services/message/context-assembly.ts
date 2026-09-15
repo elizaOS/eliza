@@ -79,7 +79,7 @@ export async function createV5MessageContextObject(args: {
 	/** A framework catalog reference was requested earlier in this turn. */
 	includeContextCatalog?: boolean;
 	/** Per-turn routing catalog for the response handler, which has no action tools. */
-	includeActionDiscovery?: boolean | "index";
+	includeActionDiscovery?: boolean | "index" | "reference";
 	userRoles?: readonly RoleGateRole[];
 	availableContexts?: readonly ContextDefinition[];
 	extraProviderExclusions?: readonly string[];
@@ -281,15 +281,18 @@ export async function createV5MessageContextObject(args: {
 	}
 
 	if (args.includeActionDiscovery) {
-		const actions = await collectV5PlannerCandidateActions({
-			runtime: args.runtime,
-			message: args.message,
-			state: args.state,
-			selectedContexts: args.selectedContexts,
-			userRoles: args.userRoles,
-			discoverActions: true,
-		});
-		// Every name remains visible. Full reference text and schemas are read
+		const referenceOnly = args.includeActionDiscovery === "reference";
+		const actions = referenceOnly
+			? []
+			: await collectV5PlannerCandidateActions({
+					runtime: args.runtime,
+					message: args.message,
+					state: args.state,
+					selectedContexts: args.selectedContexts,
+					userRoles: args.userRoles,
+					discoverActions: true,
+				});
+		// Full reference text and schemas are read
 		// through the existing permission-checked planner discovery protocol.
 		const fullCatalog = JSON.stringify(
 			actions.map((action) => ({
@@ -313,9 +316,10 @@ export async function createV5MessageContextObject(args: {
 				id: "available-actions",
 				label: "available_actions",
 				stable: false,
-				content:
-					args.includeActionDiscovery === "index" &&
-					index.length < fullCatalog.length
+				content: referenceOnly
+					? "For a known operation, name its exact action in candidateActionNames; the planner validates availability and loads its schema. Do not add DISCOVER_TOOLS when those hints already identify the operation. When descriptions or aliases are needed to identify or explain an unfamiliar capability, put DISCOVER_TOOLS in candidateActionNames with a non-simple context, never in contextRequests (which is only for provider/history reads): the planner can read authorized descriptions with names=[] and load schemas by exact name. No catalog is preloaded here; its absence does not imply missing capability. Hints and discovery never establish execution or permission. A conversational reply needs no discovery."
+					: args.includeActionDiscovery === "index" &&
+							index.length < fullCatalog.length
 						? index
 						: fullCatalog,
 			},
