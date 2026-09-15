@@ -11,8 +11,8 @@ import type { IAgentRuntime } from "../types/runtime";
 
 /**
  * Post-parse persistence for the messageHandler's `extract.addressedTo`
- * field. No LLM call: each UUID or participant name is resolved against
- * the room's entity list and the known conversation identities. For each
+ * field. No LLM call: each entry is either a UUID (validated) or a
+ * participant name resolved against the room's entity list. For each
  * resolved target we upsert an "addressed" relationship edge from the
  * speaker to the target.
  *
@@ -232,33 +232,24 @@ export async function resolveAddressedTargets(
 		return [];
 	}
 
-	// A syntactically valid model-generated UUID is not evidence that an entity
-	// exists or participates in this room. Resolve it at the same boundary as names.
+	// Direct UUID hits don't require room lookups.
 	const uuids = new Set<UUID>();
 	const names: string[] = [];
 	for (const entry of cleaned) {
 		if (UUID_PATTERN.test(entry)) {
-			uuids.add(entry.toLowerCase() as UUID);
+			uuids.add(entry as UUID);
 		} else {
 			names.push(entry);
 		}
 	}
 
-	if (names.length > 0 || uuids.size > 0) {
+	if (names.length > 0) {
 		const participants = await runtime.getEntitiesForRoom(message.roomId);
-		const participantIds = new Set([
-			runtime.agentId,
-			message.entityId,
-			...participants.map((entity) => entity.id),
-		]);
-		for (const id of uuids) {
-			if (!participantIds.has(id)) uuids.delete(id);
-		}
 		const normalize = (value: string) => value.trim().toLowerCase();
 		const byName = new Map<string, UUID>();
 		const agentName = runtime.character.name;
 		if (agentName) {
-			const normAgent = normalize(agentName.replace(/^@/, ""));
+			const normAgent = normalize(agentName).replace(/^@/, "");
 			if (normAgent) {
 				byName.set(normAgent, runtime.agentId);
 			}
@@ -267,7 +258,7 @@ export async function resolveAddressedTargets(
 			const id = entity.id as UUID | undefined;
 			if (!id) continue;
 			for (const name of entityNames(entity)) {
-				const norm = normalize(name.replace(/^@/, ""));
+				const norm = normalize(name).replace(/^@/, "");
 				if (!norm) continue;
 				// Stripping '@' collapses '@name' and 'name' into one key; never
 				// let a participant overwrite a key already bound to the agent.
@@ -276,8 +267,9 @@ export async function resolveAddressedTargets(
 			}
 		}
 		for (const name of names) {
-			const stripped = name.replace(/^@/, "");
-			const hit = byName.get(normalize(stripped));
+			const norm = normalize(name).replace(/^@/, "");
+			if (!norm) continue;
+			const hit = byName.get(norm);
 			if (hit) {
 				uuids.add(hit);
 			}

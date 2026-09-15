@@ -158,4 +158,43 @@ describe("resolveAddressedTargets", () => {
 		});
 		expect(resultWithAt).toEqual([agentId]);
 	});
+
+	it("resolves stored handle with leading/trailing whitespace correctly", async () => {
+		const participantId = "00000000-0000-0000-0000-000000000042" as UUID;
+		const runtime = {
+			agentId: "00000000-0000-0000-0000-000000000001" as UUID,
+			character: { name: "Agent" },
+			getEntitiesForRoom: async () => [
+				{
+					id: participantId,
+					names: [" @sol_eth ", " @ ", "@"],
+				} as Entity,
+			],
+		} as unknown as IAgentRuntime;
+
+		const message = {
+			roomId: "00000000-0000-0000-0000-000000000003" as UUID,
+		} as Memory;
+
+		const resolved = await resolveAddressedTargets({
+			runtime,
+			message,
+			addressedTo: ["sol_eth"],
+		});
+		expect(resolved).toEqual([participantId]);
+
+		const resolvedLookupAt = await resolveAddressedTargets({
+			runtime,
+			message,
+			addressedTo: ["@sol_eth"],
+		});
+		expect(resolvedLookupAt).toEqual([participantId]);
+
+		const emptyLookup = await resolveAddressedTargets({
+			runtime,
+			message,
+			addressedTo: ["@", " @ "],
+		});
+		expect(emptyLookup).toEqual([]);
+	});
 });
