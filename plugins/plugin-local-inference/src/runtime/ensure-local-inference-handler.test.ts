@@ -4,7 +4,7 @@
  * assignments, and the registry are mocked; no model loads.
  */
 
-import Module from "node:module";
+import { Module } from "node:module";
 import {
 	AgentRuntime,
 	ModelType,
@@ -24,6 +24,7 @@ const hardwareState = vi.hoisted(() => ({
 	probe: { memory: { totalGb: 8 } },
 }));
 const embeddingState = vi.hoisted(() => ({
+	embedSupported: vi.fn(() => true),
 	bundle: vi.fn<() => string | null>(() => null),
 	create: vi.fn(() => 1),
 	embed: vi.fn(() => new Float32Array([0.25, -0.5, 0.75])),
@@ -39,7 +40,7 @@ vi.mock("../services/desktop-fused-ffi-backend-runtime", () => ({
 vi.mock("../services/voice/ffi-bindings", async (importOriginal) => ({
 	...(await importOriginal<typeof import("../services/voice/ffi-bindings")>()),
 	loadElizaInferenceFfi: () => ({
-		embedSupported: () => true,
+		embedSupported: embeddingState.embedSupported,
 		create: embeddingState.create,
 		embed: embeddingState.embed,
 		destroy: embeddingState.destroy,
@@ -464,7 +465,7 @@ describe("ensureLocalInferenceHandler", () => {
 		});
 	});
 
-	it("retries missing embedding artifacts, then reuses the resident model without hardware discovery", async () => {
+	it("retries embedding initialization failures, then shares resident hardware selection", async () => {
 		// Exercise the registered desktop handler; only hardware and native FFI
 		// are substituted. Real-weight vector equivalence is a separate gate.
 		const nativeModule = Module as typeof Module & {
@@ -489,10 +490,15 @@ describe("ensureLocalInferenceHandler", () => {
 			});
 			expect(probeHardware).toHaveBeenCalledTimes(1);
 			embeddingState.bundle.mockReturnValue("/test/embedding-bundle");
+			embeddingState.embedSupported.mockReturnValueOnce(false);
+			await expect(handler(runtime, { text: "unsupported" })).rejects.toThrow(
+				"TEXT_EMBEDDING unavailable",
+			);
+			expect(embeddingState.close).toHaveBeenCalledTimes(1);
 			await expect(handler(runtime, { text: "hello" })).resolves.toEqual([
 				0.25, -0.5, 0.75,
 			]);
-			expect(probeHardware).toHaveBeenCalledTimes(2);
+			expect(probeHardware).toHaveBeenCalledTimes(3);
 			expect(embeddingState.create).toHaveBeenCalledTimes(1);
 			const initialArgs = embeddingState.embed.mock.calls[0];
 			vi.mocked(probeHardware).mockRejectedValue(
@@ -513,9 +519,23 @@ describe("ensureLocalInferenceHandler", () => {
 				[0.25, -0.5, 0.75],
 				[0.25, -0.5, 0.75],
 			]);
-			expect(probeHardware).toHaveBeenCalledTimes(2);
+			expect(probeHardware).toHaveBeenCalledTimes(3);
 			expect(embeddingState.create).toHaveBeenCalledTimes(1);
 			expect(embeddingState.embed.mock.calls[2]).toEqual(initialArgs);
+			vi.stubEnv("ELIZA_EMBED_POOLING", "cls");
+			await expect(handler(runtime, { text: "warm" })).resolves.toEqual([
+				0.25, -0.5, 0.75,
+			]);
+			const { ELIZA_POOLING_CLS } = await import(
+				"../services/voice/ffi-bindings"
+			);
+			expect(embeddingState.embed).toHaveBeenLastCalledWith({
+				ctx: 1,
+				text: "warm",
+				pooling: ELIZA_POOLING_CLS,
+			});
+			expect(probeHardware).toHaveBeenCalledTimes(3);
+			expect(embeddingState.create).toHaveBeenCalledTimes(1);
 		} finally {
 			vi.mocked(probeHardware).mockResolvedValue(hardwareState.probe as never);
 			resolveSpy.mockRestore();
