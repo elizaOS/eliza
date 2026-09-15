@@ -171,7 +171,7 @@
   .community-detail { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(2rem, 5vw, 4.5rem); margin-top: clamp(2rem, 7vh, 5rem); align-items: start; }
   @media (max-width: 900px) { .community-detail { grid-template-columns: 1fr; } }
   .communities .checklist .item p { color: #f5f2f0; font-size: 1.1rem; }
-  .communities .cta-row { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem 1.5rem; margin-top: 1.6rem; }
+  .communities .cta-row { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem 1.5rem; margin-top: clamp(2rem, 6vh, 3.5rem); }
   .communities a.more { color: var(--orange-bright); font-size: 1.1rem; }
 
   /* ---------- FAQ ---------- */
@@ -459,11 +459,11 @@
             <p>Any future collaboration is optional and separate from this research</p>
           </div>
         </div>
-        <div class="cta-row">
-          <a class="pill solid-orange" rel="noopener noreferrer" href="https://calendar.app.google/CazVzgzyQWVkAumn8">Find 30 minutes to talk</a>
-          <a class="link-underline more" href="#contact">or send us an email ↓</a>
-        </div>
       </div>
+    </div>
+    <div class="cta-row">
+      <a class="pill solid-orange" rel="noopener noreferrer" href="https://calendar.app.google/CazVzgzyQWVkAumn8">Find 30 minutes to talk</a>
+      <a class="link-underline more" href="#contact">or send us an email ↓</a>
     </div>
   </div>
 </section>
