@@ -5,7 +5,8 @@
  * Kokoro as the free fallback when Cartesia is absent, and preserves arbitrary
  * ElevenLabs voice ids for custom voices. Explicit Kokoro-shaped ids are
  * fail-closed so a typo never waits on, or bills through, the ElevenLabs
- * upstream.
+ * upstream. Explicit `gandr-*` voice ids route to the Gandr lane and are
+ * fail-closed the same way; Gandr never substitutes for an unpinned default.
  */
 
 const DEFAULT_KOKORO_VOICE_ID = "af_heart";
@@ -32,7 +33,19 @@ export const KOKORO_VOICE_IDS = new Set([
   "bm_lewis",
 ]);
 
-export type TtsProvider = "cartesia" | "kokoro" | "elevenlabs";
+const GANDR_VOICE_ID_PATTERN = /^gandr-[a-z0-9][a-z0-9_-]*$/;
+
+/** Voices served by Gandr's speech endpoint. */
+export const GANDR_VOICE_IDS = new Set([
+  "gandr-mia",
+  "gandr-ava",
+  "gandr-jenny",
+  "gandr-dane",
+  "gandr-leo",
+  "gandr-lewis",
+]);
+
+export type TtsProvider = "cartesia" | "gandr" | "kokoro" | "elevenlabs";
 
 export type TtsProviderSelection =
   | {
@@ -52,6 +65,12 @@ export type TtsProviderSelection =
     }
   | {
       ok: true;
+      provider: "gandr";
+      voiceId: string;
+      fallbackReason: "explicit-gandr";
+    }
+  | {
+      ok: true;
       provider: "elevenlabs";
       voiceId?: string;
       fallbackReason:
@@ -67,6 +86,16 @@ export type TtsProviderSelection =
       fallbackReason:
         | "unsupported-explicit-kokoro"
         | "explicit-kokoro-unconfigured";
+    }
+  | {
+      ok: false;
+      provider: "gandr";
+      status: 400 | 503;
+      code: "unsupported_gandr_voice" | "gandr_unconfigured";
+      error: string;
+      fallbackReason:
+        | "unsupported-explicit-gandr"
+        | "explicit-gandr-unconfigured";
     };
 
 export function isKokoroVoiceId(voiceId: string): boolean {
@@ -77,9 +106,18 @@ export function isKokoroShapedVoiceId(voiceId: string): boolean {
   return KOKORO_VOICE_ID_PATTERN.test(voiceId);
 }
 
+export function isGandrVoiceId(voiceId: string): boolean {
+  return GANDR_VOICE_IDS.has(voiceId);
+}
+
+export function isGandrShapedVoiceId(voiceId: string): boolean {
+  return GANDR_VOICE_ID_PATTERN.test(voiceId);
+}
+
 export function selectTtsProvider(args: {
   voiceId?: string;
   cartesiaConfigured?: boolean;
+  gandrConfigured?: boolean;
   kokoroConfigured: boolean;
 }): TtsProviderSelection {
   const voiceId = args.voiceId?.trim();
@@ -162,6 +200,36 @@ export function selectTtsProvider(args: {
       code: "unsupported_kokoro_voice",
       error: `Unsupported Kokoro voice ID: ${voiceId}`,
       fallbackReason: "unsupported-explicit-kokoro",
+    };
+  }
+
+  if (isGandrVoiceId(voiceId)) {
+    if (args.gandrConfigured) {
+      return {
+        ok: true,
+        provider: "gandr",
+        voiceId,
+        fallbackReason: "explicit-gandr",
+      };
+    }
+    return {
+      ok: false,
+      provider: "gandr",
+      status: 503,
+      code: "gandr_unconfigured",
+      error: "Gandr TTS is not configured for this environment.",
+      fallbackReason: "explicit-gandr-unconfigured",
+    };
+  }
+
+  if (isGandrShapedVoiceId(voiceId)) {
+    return {
+      ok: false,
+      provider: "gandr",
+      status: 400,
+      code: "unsupported_gandr_voice",
+      error: `Unsupported Gandr voice ID: ${voiceId}`,
+      fallbackReason: "unsupported-explicit-gandr",
     };
   }
 
