@@ -1138,7 +1138,8 @@ async function runPlannerLoopIterations(
 				pendingScopeRejectedFinish?.iteration === iteration - 1 &&
 				pendingScopeRejectedFinish.output.protocolFailure !== true &&
 				trajectory.context === contextBeforePlanner &&
-				failures.length === 0 &&
+				// Historical failures remain in the retry budget; only unresolved
+				// operations invalidate an otherwise unchanged verified answer.
 				!latestUnresolvedFailedNonTerminalToolStep(trajectory) &&
 				(plannerOutput.toolCalls.length === 1 || scopeOnlyReplyBatch) &&
 				plannerOutput.toolCalls[0].name.toUpperCase() === "REPLY";

@@ -3,13 +3,22 @@
  * a controlled feed and model ports. Valid filters read without inference;
  * missing filters return a repairable error before any feed or model call.
  */
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+import {
+  executePlannedToolCall,
+  type IAgentRuntime,
+  type Memory,
+} from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
+import {
+  actionResultToPlannerToolResult,
+  runPlannerLoop,
+} from "../../../packages/core/src/runtime/planner-loop.js";
 import {
   type CalendarActionDeps,
   createCalendarActionRunner,
 } from "../src/index.js";
+import { CalendarServiceError } from "../src/internal/errors.js";
 
 const EVENT: LifeOpsCalendarEvent = {
   id: "agent-1:eliza:owner:calendar:primary:evt-1",
@@ -170,6 +179,168 @@ describe("CALENDAR search_events call shape", () => {
       expect(runTextModel).not.toHaveBeenCalled();
       expect(recentConversationTexts).not.toHaveBeenCalled();
       expect(service.getCalendarFeed).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe("Calendar repair completion", () => {
+  it("reuses the verified answer after repairing a rejected search and releasing pending scope", async () => {
+    const service = stubService();
+    const spies = spiedDeps();
+    const action = createCalendarActionRunner(spies.deps);
+    const runtime = fakeRuntime(service);
+    const actor = message(
+      "How many calendar events are in the requested window? Do not change records.",
+    );
+    const details = {
+      timeMin: "2026-09-01T00:00:00Z",
+      timeMax: "2026-09-30T00:00:00Z",
+      timeZone: "UTC",
+    };
+    const plans = [
+      {
+        name: "CALENDAR",
+        arguments: {
+          subaction: "search_events",
+          query: "event",
+          details,
+          eliza_turn_scope: "more_work_pending",
+        },
+      },
+      {
+        name: "CALENDAR",
+        arguments: {
+          subaction: "feed",
+          details,
+          eliza_turn_scope: "more_work_pending",
+        },
+      },
+      { name: "REPLY", arguments: { eliza_turn_scope: "final" } },
+    ];
+    const reply = "You have one calendar event in that window.";
+    let planningCalls = 0;
+    let evaluations = 0;
+    const result = await runPlannerLoop({
+      runtime: {
+        useModel: async (type) => {
+          if (type === "ACTION_PLANNER") {
+            const plan = plans[planningCalls++];
+            if (!plan)
+              throw new Error(
+                "Unexpected planner or failure-synthesis call after verified completion",
+              );
+            return {
+              text: "",
+              toolCalls: [{ id: `plan-${planningCalls}`, ...plan }],
+            };
+          }
+          if (type === "RESPONSE_HANDLER" && ++evaluations <= 2)
+            return JSON.stringify({
+              thought:
+                evaluations === 1
+                  ? "The query was rejected before reading; use the unfiltered feed."
+                  : "The complete feed contains one event; no requested operation remains.",
+              success: evaluations === 2,
+              decision: evaluations === 2 ? "FINISH" : "CONTINUE",
+              ...(evaluations === 2 ? { messageToUser: reply } : {}),
+            });
+          throw new Error("Unexpected extra completion evaluation");
+        },
+      },
+      context: {
+        id: "calendar-query-repair",
+        events: [
+          {
+            id: "request",
+            type: "message",
+            source: "user",
+            createdAt: 1,
+            content: actor.content.text ?? "",
+          },
+        ],
+      },
+      tools: [
+        {
+          name: "CALENDAR",
+          description: "Read calendar events",
+          parameters: { type: "object", properties: {} },
+        },
+      ],
+      config: { maxIterations: 5, maxToolCalls: 3 },
+      executeToolCall: async (call) =>
+        actionResultToPlannerToolResult(
+          await executePlannedToolCall(
+            runtime,
+            {
+              message: actor,
+              userRoles: ["OWNER"],
+              activeContexts: ["calendar"],
+              callback: async () => [],
+            },
+            { name: action.name, params: call.params ?? {} },
+            { actions: [action] },
+          ),
+        ),
+    });
+    expect(result.finalMessage).toBe(reply);
+    expect(planningCalls).toBe(3);
+    expect(evaluations).toBe(2);
+    expect(service.getCalendarFeed).toHaveBeenCalledTimes(1);
+    expect(spies.runJsonModel).not.toHaveBeenCalled();
+    expect(spies.runTextModel).not.toHaveBeenCalled();
+    expect(
+      result.trajectory.steps
+        .filter((step) => step.result)
+        .map((step) => step.result?.success),
+    ).toEqual([false, true]);
+    expect(
+      result.trajectory.steps.find((step) => step.result?.success === false)
+        ?.result,
+    ).toMatchObject({
+      turnComplete: false,
+      effectReceipts: [
+        expect.objectContaining({
+          outcome: "failed",
+          failure: expect.objectContaining({
+            code: "CALENDAR_SEARCH_QUERY_REQUIRED",
+            acceptance: "rejected",
+          }),
+        }),
+      ],
+    });
+  });
+
+  it.each([403, 500])(
+    "keeps a real Calendar service failure authoritative: %s",
+    async (status) => {
+      const service = stubService();
+      service.getCalendarFeed.mockImplementation(async () => {
+        throw new CalendarServiceError(
+          status,
+          "Calendar service unavailable",
+          "CALENDAR_READ_FAILED",
+        );
+      });
+      const action = createCalendarActionRunner(spiedDeps().deps);
+      const result = await action.handler(
+        fakeRuntime(service),
+        message("Read my calendar"),
+        undefined,
+        { parameters: { subaction: "feed" } },
+        async () => [],
+      );
+      expect(result).toMatchObject({
+        success: false,
+        turnComplete: false,
+        effectReceipts: [
+          expect.objectContaining({
+            outcome: "failed",
+            failure: expect.objectContaining({ code: "CALENDAR_READ_FAILED" }),
+          }),
+        ],
+      });
+      expect(result?.data?.coachingFailure).not.toBe(true);
+      expect(service.getCalendarFeed).toHaveBeenCalledTimes(1);
     },
   );
 });
