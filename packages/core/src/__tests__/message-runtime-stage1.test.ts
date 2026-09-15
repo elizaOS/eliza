@@ -507,6 +507,70 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
+	it.each([
+		{ initiallyActive: false, activeAfterRead: false },
+		{ initiallyActive: false, activeAfterRead: true },
+		{ initiallyActive: true, activeAfterRead: true },
+	])(
+		"preserves field activity and restores its schema after a read: %j",
+		async ({ initiallyActive, activeAfterRead }) => {
+			const { runtime, message, state } = await reviewedHistoryFixture("ADMIN");
+			const handle = vi.fn();
+			let active = initiallyActive;
+			runtime.responseHandlerFieldRegistry.register({
+				name: "inactiveOps",
+				description: "Operations for active work only.",
+				schema: {
+					type: "array",
+					items: { type: "object", properties: { action: { type: "string" } } },
+				},
+				priority: 1,
+				shouldRun: () => active,
+				handle,
+			});
+			let calls = 0;
+			runtime.useModel = vi.fn(
+				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+					calls++;
+					const params = args[1] as {
+						tools: Array<{ parameters: JSONSchema }>;
+					};
+					const field = params.tools[0].parameters.properties?.inactiveOps;
+					if (calls === 1 && !initiallyActive)
+						expect(field?.enum).toEqual([[]]);
+					else {
+						expect(field?.enum).toBeUndefined();
+						expect(field?.items).toMatchObject({ type: "object" });
+					}
+					expect(handle).not.toHaveBeenCalled();
+					if (calls === 1) active = activeAfterRead;
+					return stage1Response({
+						contexts: ["simple"],
+						contextRequests: calls === 1 ? ["history:all"] : [],
+						replyText: calls === 1 ? "" : "Ready.",
+						extra: {
+							inactiveOps: calls > 1 && active ? [{ action: "resume" }] : [],
+							replyEffectStatus: "none",
+						},
+					});
+				},
+			) as IAgentRuntime["useModel"];
+			const response = await runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state,
+				responseId: message.id as UUID,
+			});
+			expect(response.kind).toBe("direct_reply");
+			expect(calls).toBe(2);
+			expect(handle).toHaveBeenCalledTimes(activeAfterRead ? 1 : 0);
+			if (activeAfterRead)
+				expect(handle).toHaveBeenCalledWith(
+					expect.objectContaining({ value: [{ action: "resume" }] }),
+				);
+		},
+	);
+
 	it.each(["history:h2", "history:search:blueberry"])(
 		"refreshes role-gated field prompts and processing after %s",
 		async (reference) => {
@@ -10253,7 +10317,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(runtime.useModel).toHaveBeenCalledTimes(1);
 	});
 
-	it("routes high-stakes direct-message crisis prompts through Stage 1 instead of the fast reply path", async () => {
+	it("returns a model-authored high-stakes direct reply without a planner call", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: ["simple"],
@@ -10276,15 +10340,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(result.kind).toBe("direct_reply");
 		const firstCall = useModelCalls(runtime)[0];
 		expect(firstCall?.[0]).toBe(ModelType.RESPONSE_HANDLER);
-		const params = firstCall?.[1] as {
-			messages?: Array<{ role?: string; content?: string | null }>;
-		};
-		const systemContent =
-			params.messages?.find((m) => m.role === "system")?.content ?? "";
-		expect(systemContent).toContain("Personal-crisis rule:");
-		expect(systemContent).toContain(
-			"The deferral is the complete simple reply",
-		);
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
 	});
 
 	it("keeps arithmetic word questions on the simple direct-reply path", async () => {

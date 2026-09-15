@@ -78,7 +78,7 @@ export const shouldRespondFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "shouldRespond",
 	description:
-		"RESPOND when the current message addresses you, assigns you work, clearly continues a question you asked, or needs a concrete correction or action specifically from you. A question broadcast to a group is not by itself a reason to interrupt; apply the ambient-turn policy when present. IGNORE acknowledgements, reactions, side chatter, feeds, and messages directed to other people. STOP only explicit stop/terminate/no more work. DM usually RESPOND unless explicit stop.",
+		"RESPOND when the current message addresses you, assigns work, clearly continues your question, or specifically needs your correction/action. Group questions alone do not justify interrupting; apply ambient-turn policy. IGNORE acknowledgements, reactions, side chatter, feeds and messages to others. STOP only explicit stop/terminate/no more work. DM usually RESPOND unless explicit stop.",
 	descriptionCompressed:
 		"RESPOND when the current message addresses you, assigns work, continues your question, or specifically needs your correction/action; otherwise apply ambient policy and IGNORE reactions, feeds, or others' conversation; STOP only explicit stop.",
 	priority: 5,
@@ -110,7 +110,7 @@ export const shouldRespondFieldEvaluator: ResponseHandlerFieldEvaluator<
 export const contextsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	name: "contexts",
 	description:
-		'Routing tags from available_contexts; RESPOND requires at least one. Use ["simple"] for a complete reply from supplied context with no pending runtime work. Opening a known view requires navigation only. Inspecting visible controls, displayed contents or current app values requires their read/inspection action: a route/section label alone is not those contents. Owner goal/habit/routine/todo/reminder record work routes to tasks/OWNER_* actions; discussion or supplied-history recall does not request a live record operation.',
+		'Use available_contexts tags; RESPOND needs at least one. ["simple"]=complete supplied-context reply, no pending runtime work. Opening a known view needs navigation only; reading visible controls, contents or current app values needs inspection, not route/section labels. Owner goal/habit/routine/todo/reminder records route to tasks/OWNER_*; discussion or supplied-history recall needs no live record operation.',
 	descriptionCompressed:
 		'Ids from available_contexts. ["simple"]=complete supplied-context reply, no pending work; opening a view needs navigation only, inspecting contents/current values needs a read; owner record operations route to tasks/OWNER_* actions, discussion and supplied-history recall do not.',
 	priority: 10,
@@ -152,7 +152,7 @@ export function readCompleteStringHints(raw: unknown): string[] | null {
 export const intentsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	name: "intents",
 	description:
-		'Short verb phrases covering every explicit outcome requiring runtime actions or external state in this turn. Keep navigation and data changes separate: "open notes and update a note" requires both. Opening one view still has one navigation intent, even when replyText drafts its confirmation; no action has executed yet. Use [] only for text-only conversation or answers complete from supplied context. Describe the requested work; the runtime chooses direct execution or planning.',
+		'One short verb phrase per explicit runtime/external-state outcome this turn. Keep navigation separate from data changes: "open notes and update a note" needs both. A drafted navigation confirmation executes nothing; retain its intent. [] only for text-only conversation or answers complete from supplied context. Runtime chooses direct execution or planning.',
 	descriptionCompressed:
 		"One verb phrase per requested runtime action, navigation separately from edits. A held confirmation does not complete navigation: retain its intent. Empty only for text-only answers. Runtime chooses execution or planning.",
 	priority: 15,
@@ -170,7 +170,7 @@ export const contextRequestsFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "contextRequests",
 	description:
-		'Read only deferred references whose advertised contents are needed to decide or write this response. Use exact context_discovery names, contexts=["simple"], replyText="", and no action candidates; the runtime loads complete authorized bodies and asks for a new decision. Request needed bodies together. Return [] when supplied context suffices. This field reads reference text; it does not discover or execute app actions. Follow each reference notice for its purpose and when a read is needed.',
+		'Read deferred references only when their advertised contents are needed to decide/write this response; follow each notice. Request needed bodies together by exact context_discovery names, with contexts=["simple"], replyText="", no action candidates. Runtime loads complete authorized bodies for a new decision. [] when supplied context suffices. Reads reference text, never discovers or executes app actions.',
 	descriptionCompressed:
 		'Request needed context_discovery names before answering; replyText="". [] if supplied evidence suffices. Context reads need no action planning.',
 	priority: 14,
@@ -186,7 +186,7 @@ export const completionContextFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "completionContext",
 	description:
-		"Exact prior-dialogue selection for planning, execution and completion. Follow history_source_selection for selection modes and resolving missing dialogue. Pending live-record reads do not make dialogue selection incomplete. This is not a summary or completed-tool claim.",
+		"Select exact prior dialogue for planning/execution/completion using history_source_selection modes and missing-dialogue rules. Pending live-record reads do not make dialogue selection incomplete. No summaries or completed-tool claims.",
 	descriptionCompressed:
 		"Follow history_source_selection for the FINAL CURRENT REQUEST, including missing or unresolved dialogue. With sourceSetId, retain every applicable fact, standing constraint/correction, referent and referenced pending intent; reviewed empty lists are valid. List each source once across categories; all categories are retained together. No summaries/caps. Current request/providers remain; future receipts arrive later.",
 	priority: 16,
@@ -204,9 +204,9 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "candidateActionNames",
 	description:
-		"UPPER_SNAKE_CASE retrieval hints for every intent executable before this reply. Prohibited, cancelled and hypothetical actions are not requested work. Cancelling an unexecuted intention needs no mutation; cancelling a stored record/job does. Keep lookups needed to resolve uncertainty. " +
-		"Prefer exact available children: NOTES_CREATE creates sticky notes; NOTES_LIST reads/searches/lists them; NOTES_UPDATE edits and NOTES_DELETE deletes. Stored messages and saved facts use MEMORY_SEARCH; memory writes use MEMORY_CREATE, MEMORY_UPDATE or MEMORY_DELETE. Calendar: CALENDAR_NEXT_EVENT reads the next event; CALENDAR_FEED lists/counts all events in a date range without content filters; CALENDAR_SEARCH_EVENTS requires a title, attendee, location or keyword filter (optional date bounds). Calendar writes use CALENDAR_CREATE_EVENT, CALENDAR_UPDATE_EVENT or CALENDAR_DELETE_EVENT. One known app view -> VIEWS_SHOW; other view/layout/native-device work -> VIEWS. Navigation needs no data action unless data work is also requested. Life management -> matching available OWNER_* or TRIGGER operation. Use umbrellas only for unresolved operations or unknown suitable children; further tools remain discoverable. " +
-		"DISCOVER_TOOLS alone is valid only for a request solely to inspect schemas; preparatory discovery also needs the requested domain candidates. Clarification with no useful lookup or independent work uses [] and simple context; omit actions awaiting the answer. Return [] when none needed. Examples and confident unlisted hints never prove availability, execution or permission.",
+		"UPPER_SNAKE_CASE retrieval hints for every intent executable before this reply; [] if none. Exclude prohibited/cancelled/hypothetical work and actions awaiting clarification; keep useful lookups and independent work. Cancelling an unexecuted intention needs no mutation; cancelling a stored record/job does. " +
+		"Prefer exact available children. Sticky notes: NOTES_CREATE; NOTES_LIST reads/searches/lists; NOTES_UPDATE; NOTES_DELETE. Stored messages/saved facts: MEMORY_SEARCH; writes: MEMORY_CREATE/MEMORY_UPDATE/MEMORY_DELETE. Calendar: CALENDAR_NEXT_EVENT=next event; CALENDAR_FEED=all events/counts in a date range without content filters; CALENDAR_SEARCH_EVENTS=title/attendee/location/keyword filter, optional date bounds; writes: CALENDAR_CREATE_EVENT/CALENDAR_UPDATE_EVENT/CALENDAR_DELETE_EVENT. One known app view: VIEWS_SHOW; other view/layout/native-device work: VIEWS. Navigation needs data actions only for requested data work. Life management: matching available OWNER_* or TRIGGER. Umbrellas only for unresolved operations or unknown suitable children; further tools remain discoverable. " +
+		"DISCOVER_TOOLS alone only for schema-inspection requests; preparatory discovery also needs domain candidates. Clarification without useful lookup/independent work uses [] and simple context. Examples and unlisted hints never prove availability, execution or permission.",
 	descriptionCompressed:
 		"Likely UPPER_SNAKE_CASE actions needed before this reply. Notes data -> NOTES; single view -> VIEWS_SHOW when registered; other navigation/native device -> VIEWS; calendar agenda/date-only counts -> CALENDAR_FEED; keyword-filtered events -> CALENDAR_SEARCH_EVENTS; next event -> CALENDAR_NEXT_EVENT. Open-and-edit requires both. A clarification that needs no lookup uses [] and simple context; do not name future tools awaiting the answer. Keep independently executable current work.",
 	priority: 50,
@@ -239,7 +239,7 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 // ---------------------------------------------------------------------------
 
 const NAVIGATION_REPLY_RULE =
-	"For UI navigation, name the destination. When visualContinuation.navigationOnly=true, draft a concise destination confirmation to deliver IF navigation succeeds, without progress or waiting language; the runtime holds it for the confirming receipt. Do not claim any record was read or changed. ";
+	"Name navigation destinations. With visualContinuation.navigationOnly=true, draft a concise confirmation held for the successful receipt; no progress/waiting language or record-read/change claims. ";
 
 const EXACT_REPLY_TEXT_RULE =
 	" When quoting or previewing text requested verbatim or exactly, copy every character, including punctuation, repeated spaces and line breaks. Put explanations outside that text.";
@@ -248,7 +248,7 @@ export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
 	name: "replyText",
 	description:
 		NAVIGATION_REPLY_RULE +
-		'RESPOND requires a user-facing reply: simple context carries the complete answer; other tool/planner work gets a brief acknowledgment followed by the planner\'s grounded result. IGNORE uses "". No internal reasoning or capability refusal on the planning path. Let available tools attempt the work; only when none can attempt it, use RESPOND with simple context and explain the limitation.' +
+		'RESPOND requires a user-facing reply: simple=complete answer; other tool/planner work=brief acknowledgment before its grounded result. IGNORE="". No internal reasoning or capability refusal on the planning path: let available tools attempt work. Only if none can, RESPOND with simple context and explain the limitation.' +
 		EXACT_REPLY_TEXT_RULE,
 	descriptionCompressed:
 		"User-facing reply. simple=whole answer; navigationOnly=destination confirmation held for successful navigation; other planning=brief ack, never a refusal; IGNORE=empty string.",
@@ -285,7 +285,7 @@ export const replyEffectStatusFieldEvaluator: ResponseHandlerFieldEvaluator<Repl
 	{
 		name: "replyEffectStatus",
 		description:
-			'Classify replyText\'s current-request work claims in any language, including indirect wording ("on the books", "quedó listo"). pending=work still to perform this turn, including live lookup/navigation even alongside an answered recall question. applied=claimed newly completed external change (save/send/schedule/payment/booking/device action/delegation), never execution proof. non_applied=terminal failure, unavailable, cancelled, declined, or an action preview/clarification/conditional offer awaiting a later user answer. A proposed save awaiting separate confirmation is non_applied, not none or pending; if other work remains to perform this turn, use pending. none=answer/explanation/general question with no current action decision; recalling advice, quoting past actions or reporting existing facts alone is none. A new saved reminder is applied; recall plus promised navigation is pending.',
+			"Classify replyText's current-request work using the schema, including indirect claims in any language (e.g. 'on the books', 'quedó listo'). An applied-change claim is never execution proof. A newly saved reminder is applied; recall plus promised navigation is pending. Historical advice/actions or existing facts alone are none.",
 		descriptionCompressed:
 			"Current-request work status in replyText: pending work (including lookup/navigation), claimed new applied change, terminal non_applied outcome, or none. Recall of earlier advice/actions alone is none; wording and language do not determine routing.",
 		priority: 25,
@@ -370,7 +370,7 @@ export const relationshipsFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "relationships",
 	description:
-		'Subject-predicate-object triples user stated. Example {"subject":"alice","predicate":"works_with","object":"bob"}. Drives relationship graph. Empty if none.',
+		'User-stated relationship triples, e.g. {"subject":"alice","predicate":"works_with","object":"bob"}; [] if none.',
 	descriptionCompressed:
 		"Stated subject-predicate-object triples; empty if none.",
 	priority: 85,
@@ -427,7 +427,7 @@ export function normalizeTopics(value: unknown): string[] {
 export const topicsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	name: "topics",
 	description:
-		'1-5 SHORT topic labels for this message (lowercase nouns/noun-phrases): ["billing", "auth bug", "vacation plans"]. NOT verbs/sentences. Tracks what this channel is about over time. Empty when no salient topic.',
+		'1-5 short lowercase nouns/noun-phrases for this message: ["billing", "auth bug", "vacation plans"], not verbs/sentences. Tracks channel topics over time. [] if none salient.',
 	descriptionCompressed:
 		"1-5 short lowercase topic labels; empty when no salient topic.",
 	priority: 88,
@@ -451,7 +451,7 @@ export const addressedToFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "addressedTo",
 	description:
-		"Entity UUIDs or participant names addressed by this message. Drives addressed-to graph. Empty when broadcast/unsure.",
+		"Entity UUIDs or participant names this message addresses; [] when broadcast/unsure. Drives addressed-to graph.",
 	descriptionCompressed:
 		"Entity UUIDs/names this message addresses; empty when broadcast/unsure.",
 	priority: 90,
@@ -493,7 +493,7 @@ export const emotionFieldEvaluator: ResponseHandlerFieldEvaluator<ExpressiveEmot
 	{
 		name: "emotion",
 		description:
-			"User expressed emotion this turn. Single tag: none/happy/sad/angry/nervous/calm/excited/whisper. Default none; use none when ambiguous/no strong cue. Read text + transcript metadata only; do NOT use prior turns. User-side read; assistant emotion uses inline [happy]/[sad]/[excited] tags in replyText when TTS supports.",
+			"Current user emotion from this turn's text/transcript metadata only, never prior turns. One tag: none/happy/sad/angry/nervous/calm/excited/whisper; default none for ambiguous/no strong cue. Assistant emotion instead uses inline [happy]/[sad]/[excited] replyText tags when TTS supports.",
 		descriptionCompressed:
 			"User emotion tag this turn; none when ambiguous/no strong cue.",
 		priority: 95,

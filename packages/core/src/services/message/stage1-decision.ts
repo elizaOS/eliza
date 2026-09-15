@@ -59,6 +59,7 @@ import {
 	requestedHistory,
 	withReviewedHistorySelection,
 } from "./history-discovery.js";
+import { withInactiveArrayFields } from "./inactive-field-schema.js";
 import { composeResponseState } from "./provider-state.js";
 import {
 	getStage1FinishReason,
@@ -252,14 +253,18 @@ export async function generateStage1Decision(
 	let stage1PrefixHash =
 		stableStage1PrefixHashes[stableStage1PrefixHashes.length - 1]?.hash ??
 		hashString(`stage1:${stage1SystemContent}`);
+	let compactInactiveFields = discoveryEnabled;
 	const createMessageHandlerTools = () => {
+		const fieldSchema = compactInactiveFields
+			? withInactiveArrayFields(
+					responseHandlerSchema,
+					responseHandlerFieldPrompt.skippedFieldNames,
+				)
+			: responseHandlerSchema;
 		const referenceSchema =
 			discoveryEnabled && !history
-				? withAvailableContextRequests(
-						responseHandlerSchema,
-						discovery.available,
-					)
-				: responseHandlerSchema;
+				? withAvailableContextRequests(fieldSchema, discovery.available)
+				: fieldSchema;
 		return [
 			createHandleResponseTool({
 				directMessage: directMessageChannel,
@@ -634,6 +639,9 @@ export async function generateStage1Decision(
 		});
 		// Full restoration returns to the ordinary selection contract. Keep the
 		// actual tool schema aligned with the newly rendered history policy.
+		// A read/repair can outlive the field-activity snapshot. Restore the full
+		// contract; dispatch still rechecks shouldRun before handling any field.
+		compactInactiveFields = false;
 		messageHandlerTools = createMessageHandlerTools();
 		stage1ModelParams = {
 			...stage1ModelParams,
