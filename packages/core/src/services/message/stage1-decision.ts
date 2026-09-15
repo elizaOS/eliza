@@ -32,7 +32,6 @@ import type { MessageHandlerResult } from "../../types/components";
 import type { GenerateTextResult } from "../../types/model";
 import { ModelType } from "../../types/model";
 import { ChannelType } from "../../types/primitives";
-import { getUserMessageText } from "../../utils/message-text";
 import { getEvaluatorProgressState } from "../evaluator-progress.ts";
 import { HISTORY_RETENTION_EVALUATOR } from "../history-retention.ts";
 import { CODING_SUB_AGENT_CONTEXTS } from "./action-surface.js";
@@ -454,15 +453,13 @@ export async function generateStage1Decision(
 		)) as string | GenerateTextResult;
 		stage1RetryReason = getStage1RetryReason(rawMessageHandler);
 	}
-	// A parseable decision that ends an addressed turn without an answer gets
-	// one repaired re-ask on every channel (the discovery loop below is direct
-	// text only). The retry still passes through ordinary terminal routing
-	// and reply validation; it cannot turn STOP into a canned response.
+	// An explicit RESPOND without an answer or pending work gets one repaired
+	// re-ask. STOP and IGNORE remain terminal in every language. The retry
+	// still passes through ordinary terminal routing and reply validation.
 	// Voice keeps its complete path: its spoken answer need not sit in replyText.
 	if (!args.codingMode && !voiceDirectMessageChannel) {
 		const unusableRepair = getStage1UnusableDecisionRepair(
 			extractMessageHandlerRawParsed(rawMessageHandler),
-			getUserMessageText(args.message),
 		);
 		if (
 			unusableRepair &&

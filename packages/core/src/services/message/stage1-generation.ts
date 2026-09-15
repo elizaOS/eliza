@@ -1,9 +1,6 @@
 /** Classifies Stage 1 retry conditions and recovers complete direct or planner responses from model output. */
 
-import {
-	isStopRequestText,
-	parseMessageHandlerOutput,
-} from "../../runtime/message-handler";
+import { parseMessageHandlerOutput } from "../../runtime/message-handler";
 import type { Action, MessageHandlerResult } from "../../types/components";
 import type { Memory } from "../../types/memory";
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "../../types/message-source";
@@ -57,14 +54,13 @@ export function getStage1RoutingRepair(
 }
 
 /**
- * A parseable decision that ends an addressed turn without an answer may
- * receive one model correction. Explicit disengagement, complete replies and
- * pending work retain their ordinary paths. The corrected output still passes
- * through normal terminal routing and reply validation.
+ * An explicit RESPOND decision with no answer or pending work may receive
+ * one model correction. STOP and IGNORE retain their terminal meaning without
+ * attempting to classify disengagement from the language of the request.
+ * Corrected output still passes normal terminal routing and reply validation.
  */
 export function getStage1UnusableDecisionRepair(
 	parsed: Record<string, unknown> | null,
-	messageText: string | undefined,
 ): string | undefined {
 	if (!parsed) return undefined;
 	const shouldRespond = parsed.shouldRespond;
@@ -83,20 +79,18 @@ export function getStage1UnusableDecisionRepair(
 		? parsed.contextRequests
 		: [];
 	const endedWithoutAnswer =
-		((shouldRespond === "STOP" || shouldRespond === "IGNORE") &&
-			!isStopRequestText(messageText)) ||
-		(shouldRespond === "RESPOND" &&
-			replyText.length === 0 &&
-			parsed.requiresTool !== true &&
-			contexts.every((context) => context === "simple") &&
-			intents.length === 0 &&
-			candidates.length === 0 &&
-			contextRequests.length === 0);
+		shouldRespond === "RESPOND" &&
+		replyText.length === 0 &&
+		parsed.requiresTool !== true &&
+		contexts.every((context) => context === "simple") &&
+		intents.length === 0 &&
+		candidates.length === 0 &&
+		contextRequests.length === 0;
 	if (!endedWithoutAnswer) return undefined;
 	return [
 		"response_contract_repair:",
-		"Your previous HANDLE_RESPONSE ended the turn without answering. STOP and IGNORE apply only to an explicit request to disengage or to overheard talk, and a simple reply must be the complete nonempty answer; the user addressed you directly with a request. This is validation of that response, not a new user request. Nothing in it has been delivered or executed.",
-		'Return HANDLE_RESPONSE with a consistent decision for the original request: either answer it simply with a nonempty replyText, intents=[], candidateActionNames=[], contexts=["simple"], replyEffectStatus="none", or route it to the applicable planning contexts with the known action candidates and a pending reply. Do not end the turn with an empty reply, invent tool names, or claim an unverified effect.',
+		"Your previous HANDLE_RESPONSE declared RESPOND but provided neither an answer nor pending work. A simple response must contain the complete nonempty answer. Reconsider the original request and all its instructions. This is validation of that response, not a new user request. Nothing in it has been delivered or executed.",
+		'Return HANDLE_RESPONSE with a consistent decision for the original request: either answer it simply with a nonempty replyText, intents=[], candidateActionNames=[], contexts=["simple"], replyEffectStatus="none", or route it to the applicable planning contexts with the known action candidates and a pending reply. If the original request calls for disengagement or silence, use STOP or IGNORE without a reply or actions. Otherwise do not declare RESPOND with an empty reply and no pending work. Do not invent tool names or claim an unverified effect.',
 		"previous_model_response:",
 		JSON.stringify(parsed),
 	].join("\n");

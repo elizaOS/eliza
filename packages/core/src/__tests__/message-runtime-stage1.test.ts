@@ -3472,9 +3472,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("re-asks once when Stage 1 ends an addressed question with STOP and an empty plan (live 2026-09-15: 'what's the capital of chile?' shipped the canned deferral)", async () => {
+	it("re-asks once when Stage 1 declares RESPOND with an empty answer and no pending work", async () => {
 		const runtime = makeRuntime([
-			stage1Response({ shouldRespond: "STOP", contexts: [] }),
+			stage1Response({ contexts: ["simple"], replyText: "" }),
 			stage1Response({ contexts: ["simple"], replyText: "Santiago." }),
 		]);
 		const result = await runV5MessageRuntimeStage1({
@@ -3501,12 +3501,14 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(repairInput.messages.at(-1)?.content).toContain(
 			"response_contract_repair:",
 		);
-		expect(repairInput.messages.at(-1)?.content).toContain("without answering");
+		expect(repairInput.messages.at(-1)?.content).toContain(
+			"neither an answer nor pending work",
+		);
 	});
 
-	it("retains terminal STOP after one unsuccessful corrective re-ask", async () => {
+	it("allows a corrected empty RESPOND to end with terminal STOP", async () => {
 		const runtime = makeRuntime([
-			stage1Response({ shouldRespond: "STOP", contexts: [] }),
+			stage1Response({ contexts: ["simple"], replyText: "" }),
 			stage1Response({ shouldRespond: "STOP", contexts: [] }),
 		]);
 		const result = await runV5MessageRuntimeStage1({
@@ -3521,6 +3523,44 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(result).toMatchObject({ kind: "terminal", action: "STOP" });
 		expect(useModelCalls(runtime)).toHaveLength(2);
 	});
+
+	it.each([
+		"不要回复",
+		"No respondas",
+		"Please cease responding",
+		"one line: what's the capital of chile?",
+	])(
+		"keeps a model STOP terminal without a language-dependent retry: %s",
+		async (text) => {
+			const runtime = makeRuntime([
+				stage1Response({ shouldRespond: "STOP", contexts: [] }),
+				stage1Response({
+					contexts: ["simple"],
+					replyText: "This must never be delivered.",
+				}),
+			]);
+			const callback = vi.fn(async () => []);
+			const onResponseHandlerEarlyReply = vi.fn();
+			const onSettledActionResult = vi.fn();
+			const result = await runV5MessageRuntimeStage1({
+				callback,
+				onResponseHandlerEarlyReply,
+				onSettledActionResult,
+				runtime,
+				message: makeMessage({ text, channelType: ChannelType.DM }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(callback).not.toHaveBeenCalled();
+			expect(onResponseHandlerEarlyReply).not.toHaveBeenCalled();
+			expect(onSettledActionResult).not.toHaveBeenCalled();
+			expect(runtime.runActionsByMode).not.toHaveBeenCalled();
+			expect(result).toMatchObject({ kind: "terminal", action: "STOP" });
+			expect(useModelCalls(runtime).map(([type]) => type)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+			]);
+		},
+	);
 
 	it("still defers empty, whitespace, refusal-stub, and degenerate-run replies (#11504)", async () => {
 		for (const badReply of [
