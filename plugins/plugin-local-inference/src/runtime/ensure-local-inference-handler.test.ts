@@ -201,6 +201,7 @@ function findRegisteredHandler(
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	vi.unstubAllEnvs();
 	modeState.mode = "local";
 	assignmentsState.assignments = {};
 	registryState.installed = [];
@@ -227,6 +228,45 @@ beforeEach(() => {
 });
 
 describe("ensureLocalInferenceHandler", () => {
+	it("registers only embeddings for an opted-in provisioned cloud runtime", async () => {
+		vi.stubEnv("ELIZA_CLOUD_PROVISIONED", "1");
+		vi.stubEnv("ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS", "1");
+		vi.stubEnv("ELIZAOS_CLOUD_USE_EMBEDDINGS", "false");
+		const runtime = new AgentRuntime({ logLevel: "fatal" });
+		runtime.setSetting("ELIZA_DEPLOYMENT_RUNTIME", "cloud");
+		const cloudText = async () => "cloud reply";
+		runtime.registerModel(ModelType.TEXT_SMALL, cloudText, "existing-cloud");
+		await ensureLocalInferenceHandler(runtime);
+		await ensureLocalInferenceHandler(runtime);
+		expect(typeof runtime.getModel(ModelType.TEXT_EMBEDDING)).toBe("function");
+		expect(runtime.getModel(ModelType.TEXT_SMALL)).toBe(cloudText);
+		expect(runtime.getModel(ModelType.TEXT_LARGE)).toBe(cloudText);
+		expect(runtime.getModel(ModelType.TEXT_TO_SPEECH)).toBeUndefined();
+		expect(runtime.getService("localInferenceLoader")).toBeNull();
+		expect(engineState.load).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["cloud", "0", "1", "false", "0"],
+		["cloud", "1", "0", "false", "0"],
+		["cloud", "1", "1", "true", "0"],
+		["cloud", "1", "1", "false", "1"],
+		["remote", "1", "1", "false", "0"],
+	])(
+		"keeps embeddings absent for excluded cloud configuration %j",
+		async (mode, provisioned, optIn, cloudEmbeddings, disabled) => {
+			vi.stubEnv("ELIZA_CLOUD_PROVISIONED", provisioned);
+			vi.stubEnv("ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS", optIn);
+			vi.stubEnv("ELIZAOS_CLOUD_USE_EMBEDDINGS", cloudEmbeddings);
+			vi.stubEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS", disabled);
+			const runtime = new AgentRuntime({ logLevel: "fatal" });
+			runtime.setSetting("ELIZA_DEPLOYMENT_RUNTIME", mode);
+			await ensureLocalInferenceHandler(runtime);
+			expect(runtime.getModel(ModelType.TEXT_EMBEDDING)).toBeUndefined();
+			expect(engineState.load).not.toHaveBeenCalled();
+		},
+	);
+
 	it("boots timed ASR through a real AgentRuntime and stops it cleanly", async () => {
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
 		const stop = vi.spyOn(TimedAsrService.prototype, "stop");
