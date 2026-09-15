@@ -178,6 +178,7 @@ function createHarness(
     },
   );
   const storedMemories: Memory[] = [];
+  const importEmbeddingTasks = new Map<string, import("@elizaos/core").Task>();
   const worlds = new Map<
     UUID,
     { id: UUID; agentId: UUID; metadata: Record<string, unknown> }
@@ -261,6 +262,19 @@ function createHarness(
     createMemory,
     updateMemory,
     queueEmbeddingGeneration: vi.fn(async () => undefined),
+    getTask: vi.fn(async (id: UUID) => importEmbeddingTasks.get(id) ?? null),
+    createTask: vi.fn(async (task: import("@elizaos/core").Task) => {
+      if (!task.id) throw new Error("Task id required in import fixture");
+      importEmbeddingTasks.set(task.id, task);
+      return task.id;
+    }),
+    updateTask: vi.fn(
+      async (id: UUID, update: Partial<import("@elizaos/core").Task>) => {
+        const task = importEmbeddingTasks.get(id);
+        if (!task) throw new Error("Import task missing");
+        importEmbeddingTasks.set(id, { ...task, ...update });
+      },
+    ),
     deleteManyMemories,
     deleteRoom,
     createLogs: vi.fn(async () => undefined),

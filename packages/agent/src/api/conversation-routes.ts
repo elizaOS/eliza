@@ -153,6 +153,7 @@ import {
   scheduleConversationConnectionEnsure,
   serializeConversationConnectionRoomDeletion,
 } from "./conversation-connection-readiness.ts";
+import { scheduleImportedConversationEmbeddings } from "./conversation-import-embeddings.ts";
 import {
   buildConversationRoomMetadata,
   sanitizeConversationMetadata,
@@ -4018,6 +4019,9 @@ export async function handleConversationRoutes(
 
       // Preserve original ordering: assign strictly increasing timestamps,
       // anchored to the provided ones when present.
+      if (importMessages.length > 0) {
+        await scheduleImportedConversationEmbeddings(runtime, conv.roomId);
+      }
       let inserted = 0;
       let skipped = 0;
       const anchor = Date.now() - importMessages.length;
