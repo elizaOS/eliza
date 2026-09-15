@@ -228,6 +228,43 @@ describe("calendarUpdateTextField", () => {
     ).toBeUndefined();
   });
 
+  it("rejects a real replacement beside a clear the user did not ask for as a field conflict", () => {
+    expect(() =>
+      calendarUpdateTextField(
+        { location: "Dr. Chen's office", clearFields: ["location"] },
+        {},
+        "location",
+        {
+          ...guards,
+          requestText: "move my chiropractor appointment to dr. chen's office",
+          userTexts: ["move my chiropractor appointment to dr. chen's office"],
+        },
+      ),
+    ).toThrow(/cannot both replace and clear location/);
+    // A note the user never said beside an unrequested clear is still a
+    // contradictory request, not debris to drop silently.
+    expect(() =>
+      calendarUpdateTextField(
+        { description: "Bring the slides", clearFields: ["description"] },
+        {},
+        "description",
+        guards,
+      ),
+    ).toThrow(/cannot both replace and clear description/);
+    // Without guards the same-source conflict is develop's typed rejection
+    // and a supplied value stands as given.
+    expect(() =>
+      calendarUpdateTextField(
+        { location: "chiro", clearFields: ["location"] },
+        {},
+        "location",
+      ),
+    ).toThrow(/cannot both replace and clear location/);
+    expect(calendarUpdateTextField({ location: "N/A" }, {}, "location")).toBe(
+      "N/A",
+    );
+  });
+
   it("clears only when the user asked, even beside a replacement", () => {
     const removal = "remove the location from my chiropractor appointment";
     const removalGuards = {

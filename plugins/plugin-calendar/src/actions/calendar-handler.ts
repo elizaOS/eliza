@@ -1670,6 +1670,25 @@ function isScaffoldWord(word: string): boolean {
  * scaffold and the event's own title words — appears in their text. With no
  * user text to check against (a programmatic caller) nothing is judged.
  */
+/**
+ * Words of a place or note that are neither schedule tokens, scaffold words
+ * nor the event's own title words: the part that must be grounded in what
+ * the user said.
+ */
+function textFieldResidualWords(
+  value: string,
+  title: string | undefined,
+): string[] {
+  const titleWords = contentWords(title ?? "");
+  const valueWords = contentWords(value);
+  return (valueWords.length > 0 ? valueWords : rawWords(value)).filter(
+    (word) =>
+      !looksLikeScheduleToken(word) &&
+      !isScaffoldWord(word) &&
+      !titleWords.some((titleWord) => wordsAgree(word, titleWord)),
+  );
+}
+
 export function isUngroundedTextField(
   value: string | undefined,
   title: string | undefined,
@@ -1680,20 +1699,30 @@ export function isUngroundedTextField(
     .filter((text): text is string => typeof text === "string")
     .flatMap(rawWords);
   if (spoken.length === 0) return false;
-  const titleWords = contentWords(title ?? "");
-  const valueWords = contentWords(value);
-  const residual = (
-    valueWords.length > 0 ? valueWords : rawWords(value)
-  ).filter(
-    (word) =>
-      !looksLikeScheduleToken(word) &&
-      !isScaffoldWord(word) &&
-      !titleWords.some((titleWord) => wordsAgree(word, titleWord)),
-  );
+  const residual = textFieldResidualWords(value, title);
   if (residual.length === 0) return true;
   const grounding = spoken.filter((word) => !isScaffoldWord(word));
   return !residual.some((word) =>
     grounding.some((spokenWord) => wordsAgree(word, spokenWord)),
+  );
+}
+
+/**
+ * Debris recognizable from the value alone: a placeholder spelling, a
+ * schedule token, a connector calendar id, or a restatement of the event's
+ * own title and schedule. Unlike grounding, this needs no user text.
+ */
+function isStructuralTextFieldDebris(
+  value: string,
+  title: string | undefined,
+  userTexts: ReadonlyArray<string | null | undefined>,
+): boolean {
+  return (
+    looksLikeScheduleToken(value) ||
+    looksLikePlaceholderToken(value) ||
+    CALENDAR_ID_TOKEN_PATTERN.test(value.trim()) ||
+    isTitleEchoLocation(value, title, userTexts) ||
+    textFieldResidualWords(value, title).length === 0
   );
 }
 
@@ -1748,7 +1777,11 @@ function withoutTextFieldDebris(
  * that only the user's current words authorize, and a replacement beside an
  * authorized clear is debris (the built-in calendar rejected "chiro" +
  * clearFields ["location"] as a field conflict and the turn spent a retry,
- * live 2026-09-14).
+ * live 2026-09-14). A real replacement beside a clear the user did not ask
+ * for is a contradictory request and stays the typed
+ * CALENDAR_UPDATE_FIELD_CONFLICT rejection so the planner repairs its call.
+ * Without guards there is no user text to authorize or ground anything: a
+ * supplied value stands as given and a same-source replace+clear conflicts.
  */
 export function calendarUpdateTextField(
   details: Record<string, unknown> | undefined,
@@ -1762,28 +1795,38 @@ export function calendarUpdateTextField(
     userTexts: ReadonlyArray<string | null | undefined>;
   },
 ): string | undefined {
-  // Without grounding texts there is nothing to judge debris against: an
-  // explicitly supplied value stands as given (the live update path always
-  // supplies the guards).
-  if (!guards) {
-    for (const source of [details, extracted]) {
-      const value = source?.[field];
-      if (typeof value === "string" && value.trim()) return value.trim();
-    }
-    return undefined;
-  }
-  const clearRequested = userRequestsFieldClear(field, guards.requestText);
+  const clearRequested = guards
+    ? userRequestsFieldClear(field, guards.requestText)
+    : undefined;
   for (const source of [details, extracted]) {
-    const value = withoutTextFieldDebris(
-      detailString(source, field),
-      guards.title,
-      guards.userTexts,
-    );
-    const clear =
-      clearRequested &&
-      Array.isArray(source?.clearFields) &&
-      source.clearFields.includes(field);
-    if (clear) return "";
+    const raw = detailString(source, field);
+    const clearListed =
+      Array.isArray(source?.clearFields) && source.clearFields.includes(field);
+    if (!guards) {
+      if (clearListed && raw !== undefined) {
+        throw new CalendarServiceError(
+          400,
+          `An event update cannot both replace and clear ${field}.`,
+          "CALENDAR_UPDATE_FIELD_CONFLICT",
+        );
+      }
+      if (clearListed) return "";
+      if (raw !== undefined) return raw;
+      continue;
+    }
+    if (clearListed && clearRequested) return "";
+    if (
+      clearListed &&
+      raw !== undefined &&
+      !isStructuralTextFieldDebris(raw, guards.title, guards.userTexts)
+    ) {
+      throw new CalendarServiceError(
+        400,
+        `An event update cannot both replace and clear ${field}.`,
+        "CALENDAR_UPDATE_FIELD_CONFLICT",
+      );
+    }
+    const value = withoutTextFieldDebris(raw, guards.title, guards.userTexts);
     if (value !== undefined) return value;
   }
   return undefined;
@@ -4083,6 +4126,30 @@ function parseCreateEventDurationValue(value: unknown): number | undefined {
   return undefined;
 }
 
+/**
+ * A place or note for a new event. The planner's typed details are the
+ * user's request as given (a literal "Unknown" or "None" title, note, place
+ * or travel origin is preserved verbatim); only the free-form re-extraction
+ * passes the debris filter, since that is where invented places and
+ * placeholder spellings arrive from.
+ */
+function pickCreateEventTextField(
+  args: CreateEventRequestBuildArgs,
+  key: "description" | "location",
+  title: string | undefined,
+): string | undefined {
+  const explicit = detailString(args.details, key);
+  const extracted = withoutTextFieldDebris(
+    detailString(args.extractedDetails, key),
+    title,
+    args.groundingUserTexts ?? args.authorizingUserTexts ?? [],
+  );
+  const fallback = args.fallbackRequest?.[key];
+  return args.preferExtractedDetails
+    ? (extracted ?? explicit ?? fallback)
+    : (explicit ?? extracted ?? fallback);
+}
+
 function pickCreateEventStringField(
   args: CreateEventRequestBuildArgs,
   key: string,
@@ -4239,18 +4306,8 @@ export function buildCreateEventRequest(
         calendarIdDetail(args.details) ??
         sanitizeCalendarId(args.fallbackRequest?.calendarId),
       title: title ?? "",
-      description:
-        withoutTextFieldDebris(
-          pickCreateEventStringField(args, "description"),
-          title,
-          args.groundingUserTexts ?? args.authorizingUserTexts ?? [],
-        ) ?? args.fallbackRequest?.description,
-      location:
-        withoutTextFieldDebris(
-          pickCreateEventStringField(args, "location"),
-          title,
-          args.groundingUserTexts ?? args.authorizingUserTexts ?? [],
-        ) ?? args.fallbackRequest?.location,
+      description: pickCreateEventTextField(args, "description", title),
+      location: pickCreateEventTextField(args, "location", title),
       startAt: resolvedStartAt,
       endAt: rawEndAt ?? args.fallbackRequest?.endAt,
       timeZone:

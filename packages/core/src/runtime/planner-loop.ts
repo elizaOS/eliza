@@ -9243,16 +9243,94 @@ export function intentFulfilledByResultText(
 	return matched >= 1 && matched / intentTokens.length >= 0.6;
 }
 
+type IntentOperationFamily = "create" | "update" | "delete";
+
+/**
+ * Operation verbs an intent can declare, by effect family. The verb is an
+ * intent stop word for the coverage check above, so it needs its own test:
+ * "delete notary appointment friday 4pm" shares every content word with
+ * "Moved “Notary Appointment” to Friday … 4pm" and yet was not fulfilled.
+ */
+const INTENT_OPERATION_VERBS: ReadonlyArray<
+	readonly [IntentOperationFamily, RegExp]
+> = [
+	[
+		"delete",
+		/\b(?:delete|cancel|remove|forget|drop|erase|unschedule|clear|scrap|discard)\b/i,
+	],
+	[
+		"update",
+		/\b(?:move|reschedule|update|change|rename|edit|modify|shift|postpone|bump|adjust|extend|shorten)\b/i,
+	],
+	[
+		"create",
+		/\b(?:create|add|schedule|book|remember|save|store|note|log|record|plan)\b/i,
+	],
+];
+
+const RECEIPT_OPERATION_FAMILY: ReadonlyArray<
+	readonly [IntentOperationFamily, RegExp]
+> = [
+	["delete", /(?:^|\.)(?:delete|remove|forget|cancel)(?:$|\.)/i],
+	["update", /(?:^|\.)(?:update|move|reschedule|modify)(?:$|\.)/i],
+	["create", /(?:^|\.)(?:create|add)(?:$|\.)/i],
+];
+
+function intentOperationFamily(
+	intent: string,
+): IntentOperationFamily | undefined {
+	let earliest: { family: IntentOperationFamily; index: number } | undefined;
+	for (const [family, pattern] of INTENT_OPERATION_VERBS) {
+		const index = intent.search(pattern);
+		if (index >= 0 && (!earliest || index < earliest.index)) {
+			earliest = { family, index };
+		}
+	}
+	return earliest?.family;
+}
+
+function receiptOperationFamily(
+	operation: string,
+): IntentOperationFamily | undefined {
+	for (const [family, pattern] of RECEIPT_OPERATION_FAMILY) {
+		if (pattern.test(operation)) return family;
+	}
+	return undefined;
+}
+
+/**
+ * The declared intent's operation verb, when it has one, must match the
+ * family of an applied receipt: an intent with no verb defers to the text
+ * coverage check; a verb with no recognizable applied operation, or with a
+ * different one, keeps the evaluator in the loop.
+ */
+export function verifiedIntentOperationAgrees(
+	intent: string,
+	receipts: ReadonlyArray<
+		{ operation?: string; outcome?: string } | null | undefined
+	>,
+): boolean {
+	const intentFamily = intentOperationFamily(intent);
+	if (!intentFamily) return true;
+	return receipts.some(
+		(receipt) =>
+			receipt?.outcome === "applied" &&
+			typeof receipt.operation === "string" &&
+			receiptOperationFamily(receipt.operation) === intentFamily,
+	);
+}
+
 /**
  * Intent-aware sibling of {@link tryGateEvaluator}. Stage 1 declared exactly
  * one intent and the sole executed tool completed it on its own terms:
  * `success`, `turnComplete`, `verifiedUserFacing`, a safe `userFacingText`
- * that names the intent's content, and an applied effect receipt. The
- * evaluator would re-read that same result to author prose (live VPS:
- * 1.3–2.5 s and ~15K prompt tokens per memory turn, and it rephrased
- * "Forgot: your favorite tea…" into slang). Anything else — several intents,
- * pending work, a failure, no receipt, or text that does not cover the
- * intent — still evaluates.
+ * that names the intent's content, and an applied effect receipt whose
+ * operation family agrees with the intent's verb. The evaluator would
+ * re-read that same result to author prose (live VPS: 1.3–2.5 s and ~15K
+ * prompt tokens per memory turn, and it rephrased "Forgot: your favorite
+ * tea…" into slang). Anything else — several intents, pending work, a
+ * failure, no receipt, a contradicting operation, or text that does not
+ * cover the intent — still evaluates.
  */
 function tryVerifiedIntentGate(args: {
 	trajectory: PlannerTrajectory;
@@ -9282,6 +9360,13 @@ function tryVerifiedIntentGate(args: {
 		(receipt) => receipt?.outcome === "applied",
 	);
 	if (!applied) return null;
+	if (
+		!verifiedIntentOperationAgrees(
+			args.declaredIntents[0],
+			result.effectReceipts ?? [],
+		)
+	)
+		return null;
 	const message = result.userFacingText?.trim();
 	if (!message || isUnsafeUserVisibleText(message)) return null;
 	if (!intentFulfilledByResultText(args.declaredIntents[0], message))
