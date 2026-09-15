@@ -48,8 +48,8 @@ it("persists both owned semantic fixtures and rejects incomplete replay without 
       const prompt = requestBody.messages.find(
         (message) => message.role === "user",
       )?.content;
-      // A schema-constrained request carries the contract structurally and
-      // only outlines it in the prompt; the JSON-object fallback spells it out.
+      // Every request carries the complete prompt contract; constrained requests
+      // additionally carry the same contract in the provider schema.
       const structural = requestBody.response_format?.type === "json_schema";
       const schemaMatch =
         prompt &&
@@ -125,6 +125,7 @@ it("persists both owned semantic fixtures and rejects incomplete replay without 
               entityId: fixture.entityId,
               platform: "github",
               [handleField]: fixture.handle,
+              sourceMessageId: fixture.messageId,
               confidence: 0.99,
             },
           ],
