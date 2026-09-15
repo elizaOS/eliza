@@ -229,7 +229,15 @@ export class RuntimeDataMutations {
 	async createMemories(
 		memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
 	): Promise<UUID[]> {
-		const ids = await this.runtime.adapter.createMemories(memories);
+		const ids = await this.runtime.adapter.createMemories(
+			memories.map((entry) => ({
+				...entry,
+				memory: {
+					...entry.memory,
+					agentId: entry.memory.agentId ?? this.runtime.agentId,
+				},
+			})),
+		);
 		for (const entry of memories) {
 			if (entry.tableName === "messages" && entry.memory.roomId) {
 				this.host.roomMessagesMemo().invalidate(entry.memory.roomId);
@@ -254,6 +262,18 @@ export class RuntimeDataMutations {
 		this.host.roomMessagesMemo().invalidate();
 	}
 
+	async updateMemoryEmbedding(
+		update: import("../types/database").MemoryEmbeddingUpdate,
+	): Promise<boolean> {
+		// A vector-only write does not change source evidence. Keep it outside the
+		// reconciliation lease (including during shutdown); the adapter owns CAS.
+		if (update.expected.agentId !== this.runtime.agentId) return false;
+		const written = await this.runtime.adapter.updateMemoryEmbedding(update);
+		if (written)
+			this.host.roomMessagesMemo().invalidate(update.expected.roomId);
+		return written;
+	}
+
 	async deleteMemories(memoryIds: UUID[]): Promise<void> {
 		await this.mutateSourceEvidence(memoryIds, undefined, async () => {
 			await this.runtime.adapter.deleteMemories(memoryIds);
@@ -272,6 +292,9 @@ export class RuntimeDataMutations {
 		unique?: boolean,
 	): Promise<UUID> {
 		if (unique !== undefined) memory.unique = unique;
+		// Match SQL's default ownership in every adapter, including the ephemeral
+		// fallback, so omitted caller identity still produces a scoped source.
+		memory = { ...memory, agentId: memory.agentId ?? this.runtime.agentId };
 
 		// Redact any secrets from memory content before storing
 		const secrets = this.host.getSecretsForRedaction();

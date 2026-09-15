@@ -4249,6 +4249,21 @@ function extractProviderName(
 	return undefined;
 }
 
+/** Preserves a failed evaluator's complete evidence for the outer message boundary. */
+export class PostEffectEvaluationError extends ElizaError {
+	readonly trajectory: PlannerTrajectory;
+
+	constructor(cause: unknown, trajectory: PlannerTrajectory) {
+		super("Evaluation failed after a recorded action outcome.", {
+			code: "POST_EFFECT_EVALUATION_FAILED",
+			cause,
+			severity: "fatal",
+			context: { contextId: trajectory.context.id },
+		});
+		this.trajectory = trajectory;
+	}
+}
+
 function evaluatorFailureAfterInternalEffect(
 	trajectory: PlannerTrajectory,
 	error: unknown,
@@ -4262,8 +4277,20 @@ function evaluatorFailureAfterInternalEffect(
 		)?.result;
 	const noProvider =
 		error instanceof Error && error.name === "NoModelProviderConfiguredError";
-	if (!effectResult || (!noProvider && !isModelProviderError(error))) {
-		return undefined;
+	if (!effectResult) return undefined;
+	if (!noProvider && !isModelProviderError(error)) {
+		if (
+			trajectory.codingMode === true ||
+			isProviderContextOverflowFailure(error) ||
+			(isObjectRecord(error) &&
+				(error.code === "TURN_ABORTED" ||
+					error.name === "TurnAbortedError" ||
+					error.name === "AbortError"))
+		)
+			return undefined;
+		// error-policy:J2 Preserve the programmer error and complete settled
+		// evidence; only the outer message boundary may translate this failure.
+		throw new PostEffectEvaluationError(error, trajectory);
 	}
 	// A later read cannot erase an earlier settled effect. Keep
 	// success/data/receipts intact, and propagate presentation failure through

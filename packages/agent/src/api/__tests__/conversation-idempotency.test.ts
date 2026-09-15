@@ -354,7 +354,11 @@ interface CapturedJson {
 
 /** Real executor and route storage with a deterministic failed completion seam. */
 function createReplyRecoveryHarness(
-  options: { unknownCommit?: boolean; pending?: boolean } = {},
+  options: {
+    unknownCommit?: boolean;
+    pending?: boolean;
+    failureKind?: "provider_issue" | "reply_generation_error";
+  } = {},
 ) {
   const harness = createHarness();
   const runtime = harness.state.runtime as AgentRuntime;
@@ -399,8 +403,11 @@ function createReplyRecoveryHarness(
   };
   runtime.actions.push(action);
   const failure = {
-    kind: "provider_issue",
-    code: "EVALUATOR_REPLY_GENERATION_FAILED",
+    kind: options.failureKind ?? "provider_issue",
+    code:
+      options.failureKind === "reply_generation_error"
+        ? "POST_EFFECT_EVALUATION_FAILED"
+        : "EVALUATOR_REPLY_GENERATION_FAILED",
     message: "Reply unavailable; recorded outcomes are preserved.",
     transient: false,
   } as const;
@@ -579,13 +586,22 @@ describe("conversation-route chat idempotency wiring", () => {
     vi.clearAllMocks();
   });
 
-  it.each([
-    { label: "JSON", path: SEND_PATH },
-    { label: "SSE", path: STREAM_PATH },
-  ])(
-    "$label: recovers only prose from durable evidence across concurrency and process cache loss",
-    async ({ path, label }) => {
-      const harness = createReplyRecoveryHarness({ pending: true });
+  it.each(
+    [
+      { label: "JSON", path: SEND_PATH },
+      { label: "SSE", path: STREAM_PATH },
+    ].flatMap((transport) =>
+      (["provider_issue", "reply_generation_error"] as const).map(
+        (failureKind) => ({ ...transport, failureKind }),
+      ),
+    ),
+  )(
+    "$label/$failureKind: recovers only prose from durable evidence across concurrency and process cache loss",
+    async ({ path, label, failureKind }) => {
+      const harness = createReplyRecoveryHarness({
+        pending: true,
+        failureKind,
+      });
       const { state, storedMemories, effects, generateReply, handleMessage } =
         harness;
       const body = {
