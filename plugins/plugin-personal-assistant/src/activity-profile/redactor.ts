@@ -13,7 +13,7 @@
  * U+2215), any Unicode dash punctuation (\p{Pd}), minus sign, and ANY
  * invisible or combining mark (\p{Cf} format characters, every
  * default-ignorable code point, and \p{M} combining marks — no
- * formatting or combining mark can split a PAN into sub-13 fragments) —
+ * formatting or combining mark can split a run into sub-12 fragments) —
  * with any number of separators between two digits ("4111 - 1111" and
  * "4111  1111" are card-shaped too).
  * Vertical whitespace and any other character break a run, so digit groups

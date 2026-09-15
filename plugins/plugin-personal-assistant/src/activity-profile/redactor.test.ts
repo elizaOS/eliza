@@ -9,8 +9,6 @@
  * visible. Deterministic — pure function, real regexes, no mocks.
  */
 import { execFile } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { redactWindowTitle, resolveRedactorConfigFromEnv } from "./redactor.js";
@@ -160,37 +158,43 @@ describe("redactWindowTitle: runs longer than 19 digits", () => {
     // repeated U+200B after the first digit: 20 repetitions took ~480ms, 40
     // took ~1.7s, and more would hang. A synchronous regex blocks the event
     // loop, so an in-process timer cannot interrupt it; the probe therefore
-    // runs the regex extracted from the module source in a CHILD PROCESS
-    // with a hard wall-clock deadline. The vulnerable shape gets killed at
-    // the deadline and fails this test; the single union character class
-    // matches in ~0ms.
+    // imports the PRODUCTION module in a CHILD PROCESS (Node's native
+    // type-stripping, on by default since Node 22.18; CI pins 24.15.0)
+    // and runs redactWindowTitle itself under a hard wall-clock
+    // deadline. A regressed shape is killed at the deadline and fails
+    // this test; the single union character class completes in ~0ms.
+    // Bounded probe: it proves this near-match completes inside the
+    // deadline, not that matching is linear for all inputs.
     const nearMatch = `Card 4${"\u200B".repeat(60)}1111111111 - Bank`;
     // The child owns BOTH assertions (deadline-protected): a regressed shape
     // is killed at the deadline and this test fails cleanly instead of
     // hanging the worker — so there is deliberately no in-process call on
     // this input.
-    const source = readFileSync(
-      fileURLToPath(new URL("./redactor.ts", import.meta.url)),
-      "utf8",
-    );
-    const ccLike = source.match(/const CC_LIKE =\s*\n?\s*(\/[^\n]+\/gu);/);
-    expect(ccLike, "CC_LIKE literal not found in redactor.ts").not.toBeNull();
+    const modulePath = new URL("./redactor.ts", import.meta.url).pathname;
     const probe = `
-      const re = ${ccLike?.[1] as string};
+      import { redactWindowTitle } from ${JSON.stringify(modulePath)};
       const title = ${JSON.stringify(nearMatch)};
       const t0 = Date.now();
-      const out = title.replace(re, "[redacted-cc]");
+      const out = redactWindowTitle(title, {});
       process.stdout.write(JSON.stringify({ ms: Date.now() - t0, out }));
     `;
     const execFileAsync = promisify(execFile);
-    const { stdout } = await execFileAsync(process.execPath, ["-e", probe], {
-      timeout: 5000,
-    });
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      ["--input-type=module", "-e", probe],
+      {
+        timeout: 5000,
+      },
+    );
     const { ms, out } = JSON.parse(stdout) as { ms: number; out: string };
     // The pre-fix shape needs >5s at 60 repetitions (killed at the deadline,
     // which rejects and fails this test). Keep a generous CI margin below it.
     expect(ms).toBeLessThan(4000);
-    expect(out).toBe(nearMatch);
+    // Production output on this input: the 11 digits (one below the CC
+    // floor) stay CC-unmatched, and the PHONE pass then owns the bare
+    // 10-digit tail — pinned exactly so the probe observes the real
+    // EMAIL -> CC_LIKE -> PHONE pipeline, not just the CC regex.
+    expect(out).toBe(`Card 4${"\u200B".repeat(60)}[redacted-phone] - Bank`);
   });
 
   it("does not combine digit groups across a newline", () => {
